@@ -507,7 +507,6 @@ npm i @grafloria/engine @grafloria/renderer`,
   const setOpen = (open) => {
     document.body.classList.toggle('code-open', open);
     if (open) loadMonaco().then((m) => { if (m) { mountMonaco(m); requestAnimationFrame(() => M.editor?.layout()); } });
-    try { localStorage.setItem('grafloria-code-open', open ? '1' : '0'); } catch { /* private mode */ }
   };
 
   drawer.querySelectorAll('.gfc-tab').forEach((b) => b.addEventListener('click', () => { saveJs(); setTab(b.dataset.tab); }));
@@ -652,9 +651,12 @@ npm i @grafloria/engine @grafloria/renderer`,
   let fw = 'js';
   try { fw = localStorage.getItem('grafloria-fw') || 'js'; } catch { /* private mode */ }
   setTab(FW.some((f) => f.key === fw) ? fw : 'js');
-  let open = false;
-  try { open = localStorage.getItem('grafloria-code-open') === '1'; } catch { /* private mode */ }
-  setOpen(open);
+  // The drawer always starts CLOSED. It used to restore its last state, so
+  // opening it once made every subsequent demo load with the canvas already
+  // squeezed between the nav, the how-to panel and the drawer — the demo is the
+  // point of the page, and it should be what you see first. The `</> Code`
+  // button (and the framework pills) open it on demand.
+  setOpen(false);
 }
 
 /**
