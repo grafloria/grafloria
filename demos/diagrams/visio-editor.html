@@ -31,7 +31,7 @@
 </style>
 <script type="module">
 import {
-  render, registerStencils, bindStencilPalette, bindShapeDataPanel,
+  render, registerStencils, bindStencilPalette, bindShapeDataPanel, erTable,
   AlignCommand, DistributeCommand,
 } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
@@ -48,13 +48,13 @@ import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 //          context where snapping is what a user expects)
 defineDemo({
   name: 'Visio-style editor',
-  blurb: 'The whole authoring surface: stencil palette, drag-to-place, snap guides on drag and resize, containers that adopt what you drop in them, align & distribute, in-place rename, and a shape-data panel — every edit undoable.',
+  blurb: 'The whole authoring surface: drop a shape OR a real database table, edit its columns in the canvas and in the properties panel, snap and align, drop into containers — every edit undoable.',
   howTo: [
     'Drag a shape from the left rail onto the canvas — it drops centred on your cursor and is immediately live.',
-    'Drag it near another shape: dashed guides appear as its edges and centre line up. Resize from a corner — the guides help there too.',
-    'Drop a shape inside the "Process" container: it JOINS the container, so dragging the frame carries it along.',
-    'Select two or more shapes (shift-click) and use Align / Distribute in the toolbar — one undo step for the whole arrangement.',
-    'Double-click a shape to rename it; select it to edit its declared fields in the right-hand panel. Ctrl/⌘+Z undoes any of it.',
+    'Now drag "Entity" (search "entity"): you get a REAL table — header, PK badge, typed columns, ＋ add column, per-row ×. It is the same card the ER editor builds, not a picture of one.',
+    'Click the table: the right panel shows its properties (name, column count). Click one of its COLUMNS: the panel grows a Column section — rename it, change its type, delete it. Edits go straight into the model.',
+    'Drag a shape near another: dashed guides line up edges and centres. Resize from a corner — guides help there too. Drop a shape inside the "Process" container and it JOINS it, so the frame carries it along.',
+    'Select two or more shapes (shift-click) and use Align / Distribute. Double-click any plain shape to rename it. Ctrl/⌘+Z undoes any of it.',
   ],
   reactflow: null,
 
@@ -95,6 +95,10 @@ defineDemo({
       data: (master) => ({ label: master.meta?.name ?? master.id }),
     });
     ctx.panel = bindShapeDataPanel(api, panelEl);
+
+    // Seed one real table so the flagship SHOWS the capability at a glance —
+    // dropped through the same palette builder a user would use.
+    ctx.seededTable = await ctx.palette.place('erd-entity', { x: 760, y: 250 });
 
     // A container to drop shapes into (T8).
     const box = await ctx.engine.addGroup({ name: 'Process' });
@@ -179,6 +183,32 @@ defineDemo({
     await ctx.engine.commandManager.undo();
     const topsUndone = ['a', 'b', 'c'].map((id) => m.getNode(id).position.y);
     check(topsUndone.join(',') === topsBefore.join(','), 'one undo did not restore all three positions');
+
+    // 4b. THE TABLE STORY — a dropped "Entity" is a real kit card, and the
+    //     properties panel edits it through the kit's own handles (not a
+    //     dataSchema form, which only ever rendered flat scalars).
+    const tableId = ctx.seededTable;
+    const tableNode = m.getNode(tableId);
+    check(!!tableNode?.getMetadata('kitEntity'), 'the dropped Entity is not a kit card');
+    const cols = () => m.getNode(tableId).getMetadata('kitEntity').columns.map((c) => c.name);
+    check(cols().length >= 2, `the table should ship with columns, got ${cols().join(',')}`);
+    // its rows are real DOM, which is what makes them selectable/editable
+    check(document.querySelectorAll('#vs-canvas [class*="axk-row"]').length > 0,
+      'the table rendered no interactive rows');
+
+    // selecting it drives the panel from the KIT
+    m.clearSelection();
+    m.selectNode(tableNode);
+    await raf2();
+    const panelText = document.querySelector('#vs-panel')?.textContent ?? '';
+    check(/Table/i.test(panelText), `the panel should show Table properties, got "${panelText.slice(0, 60)}"`);
+
+    // and the kit handle edits it — the same API the ER editor uses
+    const t = erTable(api, tableId);
+    check(!!t, 'erTable() could not resolve the dropped table');
+    await t.columns.add({ name: 'created_at', type: 'timestamp' });
+    check(cols().includes('created_at'), `columns.add did not reach the model: ${cols().join(',')}`);
+    await ctx.engine.commandManager.undo();
 
     // 5. T1/T2 — this editor asked for snap guides on BOTH drag and resize.
     const cfg = ctx.engine.getInteractionConfig();
