@@ -66,8 +66,8 @@ So the fix for most rows is a **one-line data change per master** — point it a
 
 | Stencil | Masters | Issue |
 |---|---|---|
-| BPMN | all 6 **Tasks** (Task, User, Service, Script, Manual, Business Rule) | BPMN tasks are **rounded** rectangles; these render with sharp corners (needs `rx`, not a new shape) |
-| UML | **State** | UML states are rounded rectangles; renders sharp |
+| BPMN | ~~all 6 Tasks render sharp~~ | **CORRECTED + DONE.** Measured: plain **Task already rendered rx=8** and **UML State rx=12** — both were right; my first measurement read the drop-shadow `<rect>` (rx=4) instead of the body. The real defect was narrower: the 5 task *variants* (User/Service/Script/Manual/Business Rule) carried **no** `cornerRadius` while plain Task did. All six are now rx=8. |
+| UML | **Class / Interface** | ~~should be rounded~~ — **verified correctly SHARP** (rx=none), which is right for UML classifiers. No action. |
 | BPMN | events | correct circles, but no **event-type icon** (envelope / clock / lightning) inside |
 | UML | **Class / Interface / Enumeration** etc. | rectangle is correct, but real UML needs **name / attribute / method compartments** — the divider lines are absent |
 
@@ -88,8 +88,8 @@ Flowchart **Process, Decision, Preparation, Connector, OR**(circle) · BPMN **St
 
 ## Recommended order
 
-1. **Group A** — retarget ~26 masters to shapes that already exist. Pure data edit, highest visual payoff per unit of work.
-2. **E2** — shrink-to-fit for unbreakable tokens, and feed the real `measureText` into the wrap. Fixes clipped text across *every* shape at once. (E1 needs no work — verified already correct.)
+1. ~~Group A~~ — **DONE** (25 masters re-synced).
+2. ~~E2~~ — **DONE.** Shrink-to-fit for unbreakable tokens, and feed the real `measureText` into the wrap. Fixes clipped text across *every* shape at once. (E1 needs no work — verified already correct.)
 3. **C** — rounded corners for BPMN tasks + UML states (`rx`), then UML class compartments.
 4. **Group B** — add the missing silhouettes (double-outline variants, Delay, Display, icon overlays).
 5. **E3** — a neutral default palette, with colour moved to the theme.
