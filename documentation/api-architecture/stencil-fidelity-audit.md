@@ -62,6 +62,8 @@ So the fix for most rows is a **one-line data change per master** — point it a
 
 **~9 masters need renderer work** (mostly "double outline" variants + two curved flowchart symbols + an icon overlay).
 
+> **STATUS: DONE (2026-07-25).** All 8 missing silhouettes added in `libs/renderer/src/svg/notation-shapes.ts` through the PUBLIC `registerPathShape` seam (so links attach to the real outline, not a bbox): `delay`, `display`, `summing-junction`, `or-junction`, `sync-bar`, `double-rect`, `double-diamond`, `double-ellipse`. Registry 34 → 42 shapes; `ShapeType` extended; the 9 masters retargeted. Verified visually: Delay has its half-round cap, Display its swept left edge, Weak Entity a true double rectangle, Weak Relationship a double diamond.
+
 ## C · Style-level, not shape-level
 
 | Stencil | Masters | Issue |
@@ -91,5 +93,5 @@ Flowchart **Process, Decision, Preparation, Connector, OR**(circle) · BPMN **St
 1. ~~Group A~~ — **DONE** (25 masters re-synced).
 2. ~~E2~~ — **DONE.** Shrink-to-fit for unbreakable tokens, and feed the real `measureText` into the wrap. Fixes clipped text across *every* shape at once. (E1 needs no work — verified already correct.)
 3. **C** — rounded corners for BPMN tasks + UML states (`rx`), then UML class compartments.
-4. **Group B** — add the missing silhouettes (double-outline variants, Delay, Display, icon overlays).
+4. ~~Group B~~ — **DONE** (8 shapes added, 9 masters retargeted). Still open from C: **UML class compartments** and **BPMN event-type icons**.
 5. **E3** — a neutral default palette, with colour moved to the theme.
