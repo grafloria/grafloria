@@ -13,6 +13,10 @@ export { NodeFactory } from './NodeFactory';
 // bulk registrar — the bridge that un-orphans them into the registry/palette.
 export { registerGeneratedTemplates, generatedTemplates } from './generated/register';
 
+// Stencils — named, categorized master sets; the unit a palette renders.
+export { builtInStencils, listStencils, getStencil, registerStencils } from './stencils';
+export type { Stencil } from './stencils';
+
 // Export only template-specific types (not layout types which are exported from ./types)
 export type {
   NodeTemplate,

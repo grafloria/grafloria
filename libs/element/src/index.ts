@@ -141,6 +141,23 @@ export type { TokenBridge } from '@grafloria/renderer';
 export { portTypeRegistry, arePortDataTypesCompatible, portTypeColor } from '@grafloria/engine';
 export type { PortDataTypeDefinition } from '@grafloria/engine';
 
+// Stencils & shape masters — the Visio-style palette surface. Named here (not
+// left to the `export *` below) because this IS the documented way to browse and
+// register shapes: listStencils() feeds a palette, registerStencils() puts every
+// master behind engine.templateRegistry for NodeFactory to stamp.
+export {
+  listStencils,
+  builtInStencils,
+  getStencil,
+  registerStencils,
+  registerGeneratedTemplates,
+  generatedTemplates,
+  TemplateRegistry,
+  NodeFactory,
+  registerTemplateLibrary,
+} from '@grafloria/engine';
+export type { Stencil, NodeTemplate } from '@grafloria/engine';
+
 // Named style classes — the `named-class` layer of the cascade. The cascade read
 // this registry on every frame; nothing could WRITE to it.
 export {
