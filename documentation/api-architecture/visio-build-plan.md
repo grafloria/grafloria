@@ -24,6 +24,15 @@ Phase 1 ships value in week one and is independent of everything else. Phase 2 i
 
 ## Phase 1 — "It feels precise" (cheap, high-impact, independent)
 
+> **Status (2026-07-25, branch `feat/visio-phase1`):**
+> - **T4 ✅ DONE** (`b945a03`) — `engine.templateRegistry` is real; `registerGeneratedTemplates()` un-orphans all 80 masters. 4 tests, engine builds.
+> - **T3 ✅ DONE** (`ddfaa74`) — `AlignCommand` + `DistributeCommand`, single undoable step, locked-node-safe. 7 tests.
+> - **T1 → FINDING (not shipped as a default flip):** making `enableHelperLines` the global default **regresses the interaction gate** — verified it fails DRAG-ATTACH on `contextual-zoom` and LINK-SELECT-SPAN on `layout-portfolio` (both pass on `main`), because snapping breaks the gate's 1:1-drag covenant and would change the feel for every existing embedder (n8n workflows, dashboards). **Kept opt-in;** the Visio editor (T11) enables it.
+> - **T2 → DEFERRED to the editor phase:** the `updateResize` snap hook is ready to pass, but correct *edge*-snapping (the moving handle's edge, not the box origin) must be verified with snapping actually ON — which only happens in the editor. Wiring it gated-off and unverifiable would violate verify-by-rendering.
+>
+> **Takeaway:** the two *interaction* tickets (T1, T2) are editor-context features, not library defaults — the library keeps its stock feel; the editor turns snapping on. The two *capability* tickets (T3, T4) shipped clean.
+
+
 ### T1 · Default-on drag-time snapping + alignment guides — **S**
 - **Why:** guides already compute & publish, but drag-snap is gated behind a new `enableHelperLines` flag that defaults **false** (row: *Snapping / guides*).
 - **Touch:** `libs/engine/src/config/InteractionConfig.ts:390` (`enableHelperLines: false`); gate at `libs/renderer/src/instance/dom-event-binder.ts:1561`. `DEFAULT_SNAP_CONFIG.enabled` is already `true` (`snapping.ts:51`).
