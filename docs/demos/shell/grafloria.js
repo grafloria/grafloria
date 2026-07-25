@@ -191369,7 +191369,18 @@ function beginRename(api, target) {
     );
     return;
   }
-  const colEl = target.closest(".axk-col");
+  const typeEl = target.closest(".axk-ty");
+  if (typeEl && rowIndex >= 0) {
+    const ent = kitEntity(api, nodeId);
+    if (!ent) return;
+    openInlineEditor(api, typeEl, ent.columns[rowIndex]?.type ?? "", (type) => {
+      const columns = ent.columns.map((c, i) => i === rowIndex ? { ...c, type } : c);
+      void updateEntity(api, nodeId, { columns });
+    });
+    return;
+  }
+  const rowEl = target.closest(".axk-row");
+  const colEl = target.closest(".axk-col") ?? rowEl?.querySelector(".axk-col") ?? null;
   if (colEl && rowIndex >= 0) {
     const ent = kitEntity(api, nodeId);
     if (!ent) return;
@@ -191459,7 +191470,7 @@ function bindCardEditing(api) {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
     if (target.closest(".axk-edit-input")) return;
-    if (target.closest(".axk-entity-head") || target.closest(".axk-uml-name") || target.closest(".axk-col") || target.closest(".axk-member")) {
+    if (target.closest(".axk-entity-head") || target.closest(".axk-uml-name") || target.closest(".axk-col") || target.closest(".axk-ty") || target.closest(".axk-row") || target.closest(".axk-member")) {
       event.preventDefault();
       event.stopPropagation();
       beginRename(api, target);

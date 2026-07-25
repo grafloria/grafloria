@@ -70,12 +70,20 @@ defineDemo({
     ctx.host.appendChild(shell);
 
     const api = render({
+      // A SCENARIO, not a shape dump: an order-fulfilment flow you could
+      // actually hand to someone — the flowchart is the process, the container
+      // groups the fulfilment steps, and the ER table is the data behind it.
       nodes: [
-        { id: 'a', position: { x: 300, y: 140 }, size: { width: 130, height: 56 }, label: 'intake' },
-        { id: 'b', position: { x: 520, y: 210 }, size: { width: 130, height: 56 }, label: 'triage' },
-        { id: 'c', position: { x: 740, y: 300 }, size: { width: 130, height: 56 }, label: 'resolve' },
+        { id: 'recv', position: { x: 120, y: 120 }, size: { width: 150, height: 56 }, label: 'Order received' },
+        { id: 'chk',  position: { x: 340, y: 120 }, size: { width: 150, height: 56 }, label: 'Stock check' },
+        { id: 'pick', position: { x: 340, y: 330 }, size: { width: 150, height: 56 }, label: 'Pick items' },
+        { id: 'ship', position: { x: 340, y: 430 }, size: { width: 150, height: 56 }, label: 'Ship' },
       ],
-      edges: [{ id: 'e1', source: 'a', target: 'b' }, { id: 'e2', source: 'b', target: 'c' }],
+      edges: [
+        { id: 'e1', source: 'recv', target: 'chk' },
+        { id: 'e2', source: 'chk', target: 'pick', label: 'in stock' },
+        { id: 'e3', source: 'pick', target: 'ship' },
+      ],
     }, canvasEl);
     ctx.instance = api;
     ctx.diagram = api.getModel();
@@ -98,11 +106,14 @@ defineDemo({
 
     // Seed one real table so the flagship SHOWS the capability at a glance —
     // dropped through the same palette builder a user would use.
-    ctx.seededTable = await ctx.palette.place('erd-entity', { x: 760, y: 250 });
+    ctx.seededTable = await ctx.palette.place('erd-entity', { x: 190, y: 430 });
+    // Name it for the story — the data behind the process above. Through the
+    // kit handle, i.e. the same call a user's own code would make.
+    await erTable(api, ctx.seededTable).rename('ORDER');
 
     // A container to drop shapes into (T8).
-    const box = await ctx.engine.addGroup({ name: 'Process' });
-    box.setFrame({ x: 260, y: 380, width: 380, height: 190 });
+    const box = await ctx.engine.addGroup({ name: 'Fulfilment' });
+    box.setFrame({ x: 300, y: 290, width: 240, height: 230 });
     ctx.box = box;
 
     // T3 — the align/distribute toolbar over the live selection.
@@ -174,14 +185,14 @@ defineDemo({
 
     // 4. T3 — align the three seeded nodes as ONE undo step.
     m.clearSelection();
-    for (const id of ['a', 'b', 'c']) m.addToSelection(m.getNode(id));  // multi-select: selectNode REPLACES
-    const topsBefore = ['a', 'b', 'c'].map((id) => m.getNode(id).position.y);
+    for (const id of ['recv', 'chk', 'ship']) m.addToSelection(m.getNode(id));  // multi-select: selectNode REPLACES
+    const topsBefore = ['recv', 'chk', 'ship'].map((id) => m.getNode(id).position.y);
     check(new Set(topsBefore).size > 1, 'fixture changed: the three nodes should start at different heights');
     await ctx.align('top');
-    const topsAfter = ['a', 'b', 'c'].map((id) => m.getNode(id).position.y);
+    const topsAfter = ['recv', 'chk', 'ship'].map((id) => m.getNode(id).position.y);
     check(new Set(topsAfter).size === 1, `align top did not level the selection: ${topsAfter.join(',')}`);
     await ctx.engine.commandManager.undo();
-    const topsUndone = ['a', 'b', 'c'].map((id) => m.getNode(id).position.y);
+    const topsUndone = ['recv', 'chk', 'ship'].map((id) => m.getNode(id).position.y);
     check(topsUndone.join(',') === topsBefore.join(','), 'one undo did not restore all three positions');
 
     // 4b. THE TABLE STORY — a dropped "Entity" is a real kit card, and the
