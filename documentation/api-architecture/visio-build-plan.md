@@ -116,6 +116,16 @@ Phase 1 ships value in week one and is independent of everything else. Phase 2 i
 
 ## Phase 4 — Prove it
 
+> **Status (2026-07-25, branch `feat/visio-phase1`): T11 ✅ DONE — and with it T2, and T1's enablement.**
+> - **T11** — `demos/diagrams/visio-editor.html`, the **109th demo**: stencil rail · canvas · shape-data panel · align/distribute toolbar, with drag-to-place, drop-to-contain, in-place rename and snap guides all live in one surface.
+> - **T2** — the resize-snap hook is now passed (`selection-tools.ts` always accepted it; the binder never did). It shares `enableHelperLines` with the drag — a host that asked for snap guides means both — and publishes the same guide segments, so a resize aligns to neighbours instead of landing a pixel out. Needed a new `activeGestureNodeId()` so a box never snaps to itself.
+> - **T1** — helper lines are switched on **here**, in the editor, rather than as a library default (see the Phase 1 note: a global flip regressed the drag gate).
+> - **A real find from the gate:** the first cut of the toolbar failed **DEAD-BUTTON** — Align/Distribute did nothing when too few shapes were selected. Fixed properly by *disabling* each button below the count its command needs (2 for align, 3 for distribute) and syncing on `selection:change`. An enabled control that does nothing is a bug, and the gate was right to call it.
+>
+> **Verification:** gallery **109/109** · interaction **1088/1088** · engine **3467** · renderer **2649** · element **545**.
+
+### Original ticket
+
 ### T11 · "Visio-style editor" flagship demo + gate — **M**
 - **Do:** a gallery demo — stencil palette (left) · canvas · shape-data panel (right) · snap/guides · align toolbar · templates — tying T1–T10 together, published to the demo gallery.
 - **Gate:** add to the variant/visual battery (`demos/e2e/…`) with a real-mouse scenario: drag a shape from the palette, drop into a container (reparents), align a selection, edit a label, edit shape data — screenshot-asserted.
