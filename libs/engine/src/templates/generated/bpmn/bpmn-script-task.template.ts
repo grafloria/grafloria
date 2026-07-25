@@ -103,7 +103,6 @@ export const bpmnScriptTaskTemplate: NodeTemplate = {
       "resizable": false,
       "deletable": true
     },
-      "cornerRadius": 8
   },
   "defaultData": {
     "label": "Script Task"

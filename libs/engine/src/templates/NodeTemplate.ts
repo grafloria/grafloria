@@ -75,6 +75,17 @@ export type ShapeType =
   | 'note'
   | 'terminal'
   | 'actor'
+  // Group B — notation silhouettes added with the stencil fidelity audit. Each
+  // is registered by the renderer (svg/notation-shapes.ts) through the public
+  // registerPathShape seam, so links attach to the real outline.
+  | 'delay'              // flowchart: half-round right cap
+  | 'display'            // flowchart: swept left edge, rounded right
+  | 'summing-junction'   // flowchart: circle crossed by its diagonals
+  | 'or-junction'        // flowchart: circle crossed by its axes
+  | 'sync-bar'           // UML activity: fork/join synchronisation bar
+  | 'double-rect'        // ERD (Chen): weak entity
+  | 'double-diamond'     // ERD (Chen): weak relationship
+  | 'double-ellipse'     // ERD (Chen): multivalued attribute
   // common aliases
   | 'database'
   | 'stadium'

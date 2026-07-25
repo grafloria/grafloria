@@ -38,7 +38,7 @@ export const umlForkTemplate: NodeTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "sync-bar",
       "fill": "#000000",
       "stroke": "#000000",
       "strokeWidth": 1,

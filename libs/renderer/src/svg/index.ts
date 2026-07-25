@@ -10,7 +10,8 @@ export * from './port-glyph'; // Card 0 - non-circle port glyphs
 export * from './port-label'; // Card 1 - port labels with layout
 export * from './port-spots'; // Card 5 - attachment spots + multi-link spreading
 export * from './link-hit-test'; // Wave 1 - Part-aware link hit-testing
-export * from './shape-registry'; // Nodes & shapes - unified shape registry + registerShape API
+export * from './shape-registry';
+export { registerNotationShapes } from './notation-shapes'; // Nodes & shapes - unified shape registry + registerShape API
 export * from './path-outline'; // Wave 5 Card 2 - arbitrary SVG-path outline sampling
 export * from './node-sizing'; // Wave 5 Card 6/7 - per-node sizing constraints
 export * from './node-toolbar'; // Wave 5 Card 6 - per-node toolbar config seam

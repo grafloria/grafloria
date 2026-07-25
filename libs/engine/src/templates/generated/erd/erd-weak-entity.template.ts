@@ -36,7 +36,7 @@ export const erdWeakEntityTemplate: NodeTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
+      "type": "double-rect",
       "fill": "#FFFFFF",
       "stroke": "#000000",
       "strokeWidth": 4,

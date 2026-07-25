@@ -103,7 +103,6 @@ export const bpmnBusinessRuleTaskTemplate: NodeTemplate = {
       "resizable": false,
       "deletable": true
     },
-      "cornerRadius": 8
   },
   "defaultData": {
     "label": "Business Rule Task"

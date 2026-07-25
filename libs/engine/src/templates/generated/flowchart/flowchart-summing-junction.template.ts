@@ -37,7 +37,7 @@ export const flowchartSummingJunctionTemplate: NodeTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
+      "type": "summing-junction",
       "fill": "#E0F2F1",
       "stroke": "#00695C",
       "strokeWidth": 2,
