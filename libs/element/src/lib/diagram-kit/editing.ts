@@ -79,6 +79,24 @@ function umlSection(cls: UmlClassSpec, rowIndex: number): { section: 'attributes
  * Mount a focused `<input>` over `targetEl`, prefilled with `value`. Commits on
  * Enter/blur, cancels on Escape. Returns the input (already in the DOM).
  */
+/**
+ * The inline editor currently open, if any.
+ *
+ * The editor is mounted in the renderer's WORLD layer, not inside the card, so
+ * it does not die when the card re-renders. That is what lets it survive a
+ * re-render mid-edit — and it is also why deleting the very row being edited
+ * used to leave a stray input floating over the canvas: the row vanished, the
+ * portal did not. Any structural edit now dismisses it first.
+ */
+let activeEditor: { cancel: () => void } | null = null;
+
+/** Dismiss any open inline editor WITHOUT committing. */
+export function dismissInlineEditor(): void {
+  const open = activeEditor;
+  activeEditor = null;
+  open?.cancel();
+}
+
 function openInlineEditor(api: EditApi, targetEl: Element, value: string, onCommit: (next: string) => void): HTMLInputElement {
   const container = api.container;
   const doc = container.ownerDocument;
@@ -115,7 +133,9 @@ function openInlineEditor(api: EditApi, targetEl: Element, value: string, onComm
   }
 
   let done = false;
+  const self: { cancel: () => void } = { cancel: () => undefined };
   const cleanup = () => {
+    if (activeEditor === self) activeEditor = null;
     if (portal) portal.dispose();
     else input.remove();
   };
@@ -142,6 +162,10 @@ function openInlineEditor(api: EditApi, targetEl: Element, value: string, onComm
     }
     e.stopPropagation();
   });
+  // Registered AFTER commit/cancel exist so a structural edit can dismiss it.
+  self.cancel = cancel;
+  activeEditor = self;
+
   input.addEventListener('blur', commit);
   // Don't let a click INSIDE the input bubble to the canvas (deselect / pan).
   input.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -287,6 +311,12 @@ export function bindCardEditing(api: EditApi): CardEditingHandle {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
     // Claim control clicks BEFORE row-selection / canvas handlers see them.
+    // An open editor is dismissed first: its row may be the one being removed,
+    // and committing a rename into a structural change is a race even when it
+    // is not (the card re-renders under the caret).
+    if (target.closest('.axk-col-del') || target.closest('.axk-entity-add') || target.closest('.axk-uml-add')) {
+      dismissInlineEditor();
+    }
     if (handleDelete(api, target) || handleAdd(api, target)) {
       event.preventDefault();
       event.stopPropagation();

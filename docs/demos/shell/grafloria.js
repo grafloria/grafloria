@@ -191283,6 +191283,12 @@ function umlSection(cls, rowIndex) {
   const attrs = cls.attributes ?? [];
   return rowIndex < attrs.length ? { section: "attributes", local: rowIndex } : { section: "methods", local: rowIndex - attrs.length };
 }
+var activeEditor = null;
+function dismissInlineEditor() {
+  const open = activeEditor;
+  activeEditor = null;
+  open?.cancel();
+}
 function openInlineEditor(api, targetEl, value, onCommit) {
   const container = api.container;
   const doc = container.ownerDocument;
@@ -191311,7 +191317,9 @@ function openInlineEditor(api, targetEl, value, onCommit) {
     container.appendChild(input);
   }
   let done = false;
+  const self2 = { cancel: () => void 0 };
   const cleanup = () => {
+    if (activeEditor === self2) activeEditor = null;
     if (portal) portal.dispose();
     else input.remove();
   };
@@ -191337,6 +191345,8 @@ function openInlineEditor(api, targetEl, value, onCommit) {
     }
     e.stopPropagation();
   });
+  self2.cancel = cancel;
+  activeEditor = self2;
   input.addEventListener("blur", commit);
   input.addEventListener("mousedown", (e) => e.stopPropagation());
   setTimeout(() => {
@@ -191461,6 +191471,9 @@ function bindCardEditing(api) {
   const onClickCapture = (event) => {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
+    if (target.closest(".axk-col-del") || target.closest(".axk-entity-add") || target.closest(".axk-uml-add")) {
+      dismissInlineEditor();
+    }
     if (handleDelete(api, target) || handleAdd(api, target)) {
       event.preventDefault();
       event.stopPropagation();
