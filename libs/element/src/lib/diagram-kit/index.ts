@@ -31,6 +31,9 @@ export {
 } from './update';
 export { bindCardEditing, type CardEditingHandle } from './editing';
 export { matchColumns, rowIndexFromY } from './card';
+// The card CONTENT builders — shared with the stencil palette so a dropped
+// "Entity"/"Class" is the identical card erDiagram()/umlDiagram() produce.
+export { entityCardContent, entityAutoHeight, classCardContent, classAutoHeight } from './card';
 export {
   erTable,
   umlClass,
