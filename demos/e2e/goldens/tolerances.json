@@ -348,8 +348,8 @@
   "measuredJitterPct": 0
  },
  "interaction__copy-paste.after.png": {
-  "tolerancePct": 0.215,
-  "measuredJitterPct": 0.0716
+  "tolerancePct": 0.235,
+  "measuredJitterPct": 0.0782
  },
  "interaction__copy-paste.boot.png": {
   "tolerancePct": 0.02,
@@ -433,7 +433,7 @@
  },
  "interaction__n8n-workflow.showcase.png": {
   "tolerancePct": 0.02,
-  "measuredJitterPct": 0.0017
+  "measuredJitterPct": 0
  },
  "interaction__parent-move.after.png": {
   "tolerancePct": 0.02,
@@ -560,8 +560,8 @@
   "measuredJitterPct": 0
  },
  "layout__off-thread-layout.after.png": {
-  "tolerancePct": 0.027,
-  "measuredJitterPct": 0.009
+  "tolerancePct": 0.03,
+  "measuredJitterPct": 0.0101
  },
  "layout__off-thread-layout.boot.png": {
   "tolerancePct": 0.02,
@@ -584,12 +584,12 @@
   "measuredJitterPct": 0
  },
  "misc__mermaid-text.after.png": {
-  "tolerancePct": 0.914,
-  "measuredJitterPct": 0.3048
+  "tolerancePct": 0.892,
+  "measuredJitterPct": 0.2972
  },
  "misc__mermaid-text.boot.png": {
-  "tolerancePct": 0.914,
-  "measuredJitterPct": 0.3048
+  "tolerancePct": 0.892,
+  "measuredJitterPct": 0.2972
  },
  "misc__mermaid-viewer.after.png": {
   "tolerancePct": 0.02,
@@ -709,7 +709,7 @@
  },
  "nodes__node-position-animation.after.png": {
   "tolerancePct": 0.02,
-  "measuredJitterPct": 0.0008
+  "measuredJitterPct": 0.0006
  },
  "nodes__node-position-animation.boot.png": {
   "tolerancePct": 0.02,
