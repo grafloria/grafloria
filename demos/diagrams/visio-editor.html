@@ -290,21 +290,33 @@ defineDemo({
     // Each button declares how many shapes it needs; below that it is DISABLED,
     // not silently inert — an enabled control that does nothing is a bug.
     const needs = [];
-    const mkN = (label, title, min, run) => { needs.push([mk(label, title, run), min]); };
+    const mkN = (label, title, min, run) => {
+      const b = mk(label, title, (ids) => Promise.resolve(run(ids)).then(() => setTimeout(syncBar, 0)));
+      needs.push([b, min]);
+    };
     mkN('⇤ Left', 'Align left edges (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'left')));
     mkN('⇥ Right', 'Align right edges (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'right')));
     mkN('⤒ Top', 'Align top edges (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'top')));
+    mkN('⤓ Bottom', 'Align bottom edges (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'bottom')));
+    mkN('≡ Middle', 'Align horizontal middles (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'center-y')));
+    mkN('‖ Centre', 'Align vertical centres (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'center-x')));
     bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
     mkN('↔ Distribute', 'Equal horizontal gaps (3+ shapes)', 3, (ids) => ctx.engine.commandManager.execute(new DistributeCommand(ids, 'horizontal')));
+    mkN('↕ Distribute', 'Equal vertical gaps (3+ shapes)', 3, (ids) => ctx.engine.commandManager.execute(new DistributeCommand(ids, 'vertical')));
     bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
     mkN('⧉ Duplicate', 'Duplicate the selection (Ctrl/⌘+D)', 1, () => ctx.engine.duplicate());
     bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
     const undoBtn = mk('↶ Undo', 'Undo the last edit', () => ctx.engine.commandManager.undo());
+    // Redo lives beside Undo, synced to canRedo the same way (the keyboard
+    // chord always worked; the BUTTON is what the audit found missing).
+    const redoBtn = mk('↷ Redo', 'Redo the undone edit (Ctrl/⌘+Y)', () => ctx.engine.commandManager.redo());
     undoBtn.addEventListener('click', () => setTimeout(syncBar, 0));
+    redoBtn.addEventListener('click', () => setTimeout(syncBar, 0));
     function syncBar() {
       const n = selected().length;
       for (const [btn, min] of needs) btn.disabled = n < min;
       undoBtn.disabled = !ctx.engine.commandManager.canUndo?.();
+      redoBtn.disabled = !ctx.engine.commandManager.canRedo?.();
     }
     ctx.syncBar = syncBar;
     api.on('selection:change', syncBar);
