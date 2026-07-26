@@ -113468,6 +113468,20 @@ var Command = class {
     return true;
   }
   /**
+   * Does this command belong on the undo stack AT ALL?
+   *
+   * `canUndo(context)` is a state probe ("can I undo RIGHT NOW?") consulted at
+   * undo time — many commands answer it from live diagram state. This is the
+   * static declaration consulted at EXECUTE time: a non-mutating command
+   * (Copy) answers false and never enters history. Recording one used to
+   * poison the stack — undo() hit the entry, threw "Cannot undo command:
+   * Copy", never decremented the index, and everything behind it became
+   * permanently unreachable.
+   */
+  isUndoable() {
+    return true;
+  }
+  /**
    * Check if can merge with another command
    */
   canMergeWith(other) {
@@ -113601,12 +113615,14 @@ var CommandManager = class {
       throw e;
     }
     const duration = performance.now() - startTime;
-    this.addToHistory({
-      command,
-      timestamp: Date.now(),
-      duration,
-      success: true
-    });
+    if (command.isUndoable()) {
+      this.addToHistory({
+        command,
+        timestamp: Date.now(),
+        duration,
+        success: true
+      });
+    }
     this.eventBus.emit(DiagramEventTypes.COMMAND_EXECUTED, {
       command,
       duration
@@ -115260,6 +115276,9 @@ var CopyCommand = class extends Command {
   canUndo(context) {
     return false;
   }
+  isUndoable() {
+    return false;
+  }
   serialize() {
     return {
       id: this.id,
@@ -116585,6 +116604,70 @@ var SetLinkLabelCommand = class extends Command {
   }
   getDescription() {
     return `Set link label to "${this.newText}"`;
+  }
+};
+
+// libs/engine/src/commands/basic/SetLinkDisplayLabelCommand.ts
+var SetLinkDisplayLabelCommand = class extends Command {
+  constructor(linkId, newLabel, oldLabel) {
+    super("Edit Link Label");
+    this.linkId = linkId;
+    this.newLabel = newLabel;
+    if (oldLabel !== void 0) {
+      this.oldLabel = oldLabel;
+    }
+  }
+  execute(context) {
+    const link = this.resolve(context);
+    if (this.oldLabel === void 0) {
+      this.oldLabel = String(link.getLabel() ?? "");
+    }
+    link.setLabel(this.newLabel);
+    link.markDirty("label-edited");
+  }
+  undo(context) {
+    if (this.oldLabel === void 0) {
+      throw new Error("Cannot undo: missing old label text");
+    }
+    const link = this.resolve(context);
+    link.setLabel(this.oldLabel);
+    link.markDirty("label-edited");
+  }
+  canExecute(context) {
+    return !!context.diagram?.getLink?.(this.linkId);
+  }
+  canUndo(context) {
+    return this.canExecute(context) && this.oldLabel !== void 0;
+  }
+  /** One editor session = one undo step. */
+  canMergeWith() {
+    return false;
+  }
+  resolve(context) {
+    const diagram = context.diagram;
+    if (!diagram) {
+      throw new Error("Diagram not found in context");
+    }
+    const link = diagram.getLink(this.linkId);
+    if (!link) {
+      throw new Error(`Link ${this.linkId} not found`);
+    }
+    return link;
+  }
+  serialize() {
+    return {
+      id: this.id,
+      name: this.name,
+      timestamp: this.timestamp,
+      data: {
+        linkId: this.linkId,
+        oldLabel: this.oldLabel,
+        newLabel: this.newLabel
+      }
+    };
+  }
+  getDescription() {
+    return `Set link label to "${this.newLabel}"`;
   }
 };
 
@@ -120100,6 +120183,7 @@ var DEFAULT_INTERACTION_CONFIG = {
   enableHelperLines: false,
   enableGroupMembershipOnDrop: false,
   enableInPlaceTextEdit: false,
+  enableKeyboardNudge: false,
   enableEasyConnect: false,
   easyConnectModifier: "none"
 };
@@ -131640,7 +131724,12 @@ var DiagramEngine = class {
           const sourceDirection = sourcePort.alignment?.side;
           const targetDirection = targetPort.alignment?.side;
           await this.generateLinkPathWithRouting(link, sourcePos, targetPos, sourceDirection, targetDirection, sourceNode, targetNode);
-          this.diagram.addLink(link);
+          const command = new AddLinkCommand(link);
+          if (this.commandManager) {
+            await this.commandManager.execute(command);
+          } else {
+            this.diagram.addLink(link);
+          }
           console.log("\u2705 Link created successfully:", link.id, "from", sourcePort.id, "to", targetPort.id);
         } else {
           console.error("\u274C Failed to find nodes for ports");
@@ -132129,8 +132218,9 @@ var DiagramEngine = class {
     if (!this.diagram) {
       throw new Error("No diagram loaded");
     }
+    const diagramSelection = this.diagram.getSelectedNodes();
     const selectedNodeIds = this.store.get("selectedNodes");
-    if (!selectedNodeIds || selectedNodeIds.size === 0) {
+    if (diagramSelection.length === 0 && (!selectedNodeIds || selectedNodeIds.size === 0)) {
       throw new Error("No nodes selected");
     }
     const command = new DuplicateCommand(options);
@@ -141153,15 +141243,22 @@ var GroupMembershipService = class {
       await command.execute({ diagram: this.diagram, eventBus: void 0 });
     }
   }
-  /** Resolve a group's screen rectangle for spatial indexing / hit-testing. */
+  /**
+   * Resolve a group's screen rectangle for spatial indexing / hit-testing.
+   *
+   * The PAINTED frame (explicit position + size) must win over the derived
+   * member `bounds`, exactly as GroupModel.getOuterBounds() orders them. This
+   * method used to prefer `bounds` — which handleNodeDragEnd overwrites with
+   * the tight member bbox after every membership change — so once anything was
+   * dragged in or out, the drop target silently shrank from the frame the user
+   * SEES to an invisible box around the remaining members, and drops in the
+   * frame's empty margin stopped adopting (visio audit, empirically
+   * reproduced: drag-out worked, the next drag-in near the frame edge did
+   * nothing).
+   */
   groupRect(group) {
-    if (group.bounds) {
-      return {
-        x: group.bounds.x,
-        y: group.bounds.y,
-        width: group.bounds.width,
-        height: group.bounds.height
-      };
+    if (typeof group.getOuterBounds === "function") {
+      return group.getOuterBounds();
     }
     if (group.size) {
       return {
@@ -141169,6 +141266,14 @@ var GroupMembershipService = class {
         y: group.position.y,
         width: group.size.width,
         height: group.size.height
+      };
+    }
+    if (group.bounds) {
+      return {
+        x: group.bounds.x,
+        y: group.bounds.y,
+        width: group.bounds.width,
+        height: group.bounds.height
       };
     }
     return { x: group.position.x, y: group.position.y, width: 0, height: 0 };
@@ -182170,12 +182275,27 @@ var InteractionController = class {
   buildLinkHitOptions(link) {
     const points = link.points;
     const style = link.style ?? {};
+    let labels = (link.labels ?? []).map((label) => ({
+      position: label.position,
+      offset: label.offset
+    }));
+    if (labels.length === 0 && points.length >= 2 && link.getLabel()) {
+      const mid = Math.floor(points.length / 2);
+      let total = 0;
+      let toMid = 0;
+      for (let i = 1; i < points.length; i++) {
+        const seg = Math.hypot(
+          points[i].x - points[i - 1].x,
+          points[i].y - points[i - 1].y
+        );
+        total += seg;
+        if (i <= mid) toMid += seg;
+      }
+      if (total > 0) labels = [{ position: toMid / total, offset: { x: 0, y: 0 } }];
+    }
     return {
       points,
-      labels: (link.labels ?? []).map((label) => ({
-        position: label.position,
-        offset: label.offset
-      })),
+      labels,
       // arrowHead renders at the target end, arrowTail at the source end.
       sourceArrow: this.arrowAnchor(points, false, style.arrowTail),
       targetArrow: this.arrowAnchor(points, true, style.arrowHead)
@@ -182825,9 +182945,31 @@ var InPlaceTextEditor = class {
       return this.getSession();
     }
     const link = target.linkId ? diagram.getLink(target.linkId) : void 0;
+    if (!link) return null;
     const index = target.labelIndex ?? 0;
-    const label = link?.labels?.[index];
-    if (!link || !label) return null;
+    const label = link.labels?.[index];
+    if (!label) {
+      const displayValue = String(link.getLabel() ?? "");
+      if ((link.labels?.length ?? 0) > 0 || !displayValue) return null;
+      const points = link.points ?? [];
+      if (points.length < 2) return null;
+      const anchor2 = points[Math.floor(points.length / 2)];
+      const width2 = Math.max(40, displayValue.length * 8);
+      const height2 = 20;
+      this.session = {
+        target: { ...target, labelIndex: -1 },
+        value: displayValue,
+        bounds: {
+          x: anchor2.x - width2 / 2,
+          y: anchor2.y - height2 / 2,
+          width: width2,
+          height: height2
+        },
+        center: { x: anchor2.x, y: anchor2.y },
+        multiline: false
+      };
+      return this.getSession();
+    }
     const anchor = link.getPointAtPosition(label.position ?? 0.5);
     if (!anchor) return null;
     const center = {
@@ -182862,6 +183004,9 @@ var InPlaceTextEditor = class {
     }
     if (session.target.linkId !== void 0 && session.target.labelIndex !== void 0) {
       if (!diagram.getLink(session.target.linkId)) return null;
+      if (session.target.labelIndex === -1) {
+        return new SetLinkDisplayLabelCommand(session.target.linkId, value, session.value);
+      }
       return new SetLinkLabelCommand(
         session.target.linkId,
         session.target.labelIndex,
@@ -184133,8 +184278,13 @@ var KeyboardNavigationController = class {
    * Move the selection (or, with nothing selected, the focused node) by a world
    * delta, as ONE undoable command per key press. Locked / undraggable nodes are
    * skipped; returns null when there is nothing to move.
+   *
+   * `mergeable` defaults FALSE — the a11y contract is "⌘Z undoes each nudge to
+   * the exact pixel". An editor that wants held-key auto-repeat to collapse
+   * into one undo entry (Visio's feel) passes true and the CommandManager's
+   * merge window does the rest.
    */
-  nudgeCommand(engine, dx, dy) {
+  nudgeCommand(engine, dx, dy, options = {}) {
     const diagram = engine?.getDiagram?.();
     if (!diagram) return null;
     let nodes = diagram.getSelectedNodes().filter((n3) => n3.isDraggable());
@@ -184148,7 +184298,7 @@ var KeyboardNavigationController = class {
         node.id,
         { x: node.position.x + dx, y: node.position.y + dy, z: node.position.z },
         { x: node.position.x, y: node.position.y, z: node.position.z },
-        { mergeable: false }
+        { mergeable: options.mergeable === true }
       )
     );
     this.announce(
@@ -186739,7 +186889,10 @@ var DomEventBinder = class {
           this.host.requestRender();
           return;
         }
-        if (edgeHit.part === "label" && edgeHit.labelIndex !== void 0) {
+        if (edgeHit.part === "label" && edgeHit.labelIndex !== void 0 && // Only POSITIONED labels drag (they own position/offset). A display-
+        // label hit (synthesized box over `metadata.label`, no labels[]
+        // entry) falls through to link selection instead.
+        edgeHit.link.labels?.[edgeHit.labelIndex]) {
           event.preventDefault();
           this.host.interaction.startLabelDrag(edgeHit.link, edgeHit.labelIndex);
           this.host.requestRender();
@@ -186747,7 +186900,7 @@ var DomEventBinder = class {
         }
       }
     }
-    const link = state.hoveredLink ?? this.host.interaction.getLinkAtPosition(worldX, worldY, engine);
+    const link = diagram.getNodeAtPosition(worldX, worldY) ? null : state.hoveredLink ?? this.host.interaction.getLinkAtPosition(worldX, worldY, engine);
     if (link) {
       event.preventDefault();
       this.host.interaction.selectLink(link, engine, event.ctrlKey || event.metaKey);
@@ -187028,20 +187181,30 @@ var DomEventBinder = class {
     }
     this.setCursor("default");
   }
-  /** Double-click on a link body inserts a waypoint there (label editing is a host concern). */
+  /** Double-click: node → in-place rename; link label → rename; link body → waypoint. */
   onDoubleClick(event) {
     const engine = this.engine();
     if (!engine || this.isReadonly()) return;
     const { x: worldX, y: worldY } = this.toWorld(event);
-    const hit = this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
+    const nodeUnder = engine.getDiagram()?.getNodeAtPosition(worldX, worldY);
+    const hit = nodeUnder ? null : this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
     if (!hit) {
-      const node = engine.getDiagram()?.getNodeAtPosition(worldX, worldY);
+      const node = nodeUnder;
       if (node) {
         this.host.emit("node:doubleclick", { node, world: { x: worldX, y: worldY } });
         if (engine.getInteractionConfig().enableInPlaceTextEdit === true) {
           this.openTextEditor(engine, { type: "node", nodeId: node.id });
         }
       }
+      return;
+    }
+    if (hit.part === "label" && engine.getInteractionConfig().enableInPlaceTextEdit === true) {
+      event.preventDefault();
+      this.openTextEditor(engine, {
+        type: "link-label",
+        linkId: hit.link.id,
+        labelIndex: hit.labelIndex ?? 0
+      });
       return;
     }
     if (hit.part === "body" && engine.getInteractionConfig().enableWaypointEditing) {
@@ -187114,6 +187277,22 @@ var DomEventBinder = class {
       }
       return;
     }
+    if (!this.isReadonly() && event.key.startsWith("Arrow") && engine.getInteractionConfig().enableKeyboardNudge && !(event.ctrlKey || event.metaKey || event.altKey)) {
+      if (!this.keyboardNav) this.keyboardNav = new KeyboardNavigationController();
+      const delta = this.keyboardNav.nudgeDelta(event.key, event.shiftKey);
+      if (delta && diagram.getSelectedNodes().length > 0) {
+        event.preventDefault();
+        const command = this.keyboardNav.nudgeCommand(engine, delta.x, delta.y, {
+          mergeable: true
+        });
+        if (command) {
+          void engine.commandManager.execute(command);
+          this.host.requestRender();
+          this.emitNodesChange();
+        }
+        return;
+      }
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
       event.preventDefault();
       diagram.selectAll();
@@ -187157,6 +187336,36 @@ var DomEventBinder = class {
         this.emitSelectionChange();
       });
       return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+      if (this.isReadonly() || diagram.getSelectedNodes().length === 0) return;
+      event.preventDefault();
+      void engine.duplicate().then(() => {
+        this.host.requestRender();
+        this.emitNodesChange();
+        this.emitEdgesChange();
+        this.emitSelectionChange();
+      });
+      return;
+    }
+    if (!this.isReadonly() && engine.getInteractionConfig().enableInPlaceTextEdit === true) {
+      const selected = diagram.getSelectedNodes();
+      if (selected.length === 1) {
+        if (event.key === "F2") {
+          event.preventDefault();
+          this.openTextEditor(engine, { type: "node", nodeId: selected[0].id });
+          return;
+        }
+        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          this.openTextEditor(
+            engine,
+            { type: "node", nodeId: selected[0].id },
+            { seed: event.key }
+          );
+          return;
+        }
+      }
     }
   }
   onKeyUp(event) {
@@ -187627,7 +187836,7 @@ var DomEventBinder = class {
    * adds is the DOM input and where to put it — mapped through the live
    * world→client transform so it lands on the label at any zoom or pan.
    */
-  openTextEditor(engine, target) {
+  openTextEditor(engine, target, options) {
     if (!this.textEditor) this.textEditor = new InPlaceTextEditor();
     const editor = this.textEditor;
     this.closeTextEditor();
@@ -187665,7 +187874,8 @@ var DomEventBinder = class {
       cleanup();
       if (command) void engine.commandManager.execute(command);
       this.host.requestRender();
-      this.emitNodesChange();
+      if (target.type === "link-label") this.emitEdgesChange();
+      else this.emitNodesChange();
     };
     const cancel = () => {
       if (settled) return;
@@ -187689,7 +187899,24 @@ var DomEventBinder = class {
     (this.container.ownerDocument ?? document).body.appendChild(input);
     this.activeTextInput = input;
     input.focus();
-    input.select();
+    if (options?.seed !== void 0) {
+      input.value = options.seed;
+      input.setSelectionRange(input.value.length, input.value.length);
+    } else {
+      input.select();
+    }
+  }
+  /**
+   * Open the in-place label editor programmatically — the seam behind F2 and a
+   * host's context-menu Rename. Unlike the double-click path this is NOT gated
+   * on `enableInPlaceTextEdit`: an explicit call IS the host's opt-in.
+   * Returns false when the target does not exist / is not editable / readonly.
+   */
+  beginLabelEdit(target, options) {
+    const engine = this.engine();
+    if (!engine || this.isReadonly()) return false;
+    this.openTextEditor(engine, target, options);
+    return this.activeTextInput !== void 0;
   }
   /** Drop any live text widget without committing (a new edit, or teardown). */
   closeTextEditor() {
@@ -188621,6 +188848,7 @@ function createDiagram(container, options = {}) {
       scheduler.schedule();
     },
     getDraggingNodeIds: () => binder.getDraggingNodeIds(),
+    beginLabelEdit: (target, opts) => binder.beginLabelEdit(target, opts),
     registry: renderer.getRegistry(),
     dispose() {
       if (disposed) return;
@@ -195728,6 +195956,21 @@ var CSS5 = `
 
 /* The canvas while a stencil is held over it. */
 .gf-stencil-target { outline: 2px dashed var(--gf-st-accent); outline-offset: -3px; }
+
+/* The drag GHOST \u2014 the master's silhouette + name following the cursor during a
+   palette drag, so the drop point is legible. A DOM element on purpose: the
+   browser's native drag image lives outside the DOM, does not screenshot, and
+   several platforms simply never paint it. */
+.gf-stencil-ghost {
+  position: fixed; z-index: 1000; pointer-events: none;
+  transform: translate(-50%, -50%); opacity: .6;
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  background: var(--gf-st-bg, #fff); color: var(--gf-st-ink, #1e2436);
+  border: 1px solid var(--gf-st-accent, #3B52D9); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18);
+  font: 12px ui-sans-serif, system-ui, sans-serif;
+}
+.gf-stencil-ghost svg { display: block; }
 `;
 function ensureStencilKitStyles(doc = document) {
   if (doc.getElementById(STENCIL_KIT_STYLE_ID)) return;
@@ -195914,6 +196157,29 @@ function bindStencilPalette(api, hosts, options = {}) {
       body.appendChild(empty2);
     }
   }
+  let ghost = null;
+  const moveGhost = (e) => {
+    if (!ghost) return;
+    ghost.style.left = `${e.clientX}px`;
+    ghost.style.top = `${e.clientY}px`;
+  };
+  const killGhost = () => {
+    ghost?.remove();
+    ghost = null;
+    document.removeEventListener("dragover", moveGhost);
+  };
+  const spawnGhost = (master, e) => {
+    killGhost();
+    const meta = master.meta ?? {};
+    ghost = document.createElement("div");
+    ghost.className = "gf-stencil-ghost";
+    ghost.appendChild(thumbnail(master, 28));
+    ghost.append(meta.name ?? master.id);
+    ghost.style.left = `${e.clientX}px`;
+    ghost.style.top = `${e.clientY}px`;
+    document.body.appendChild(ghost);
+    document.addEventListener("dragover", moveGhost);
+  };
   function itemEl(master) {
     const meta = master.meta ?? {};
     const el = document.createElement("div");
@@ -195932,7 +196198,14 @@ function bindStencilPalette(api, hosts, options = {}) {
       dt.setData(DND_TYPE, master.id);
       dt.setData("text/plain", meta.name ?? master.id);
       dt.effectAllowed = "copy";
+      if (typeof Image !== "undefined" && dt.setDragImage) {
+        const blank = new Image();
+        blank.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+        dt.setDragImage(blank, 0, 0);
+      }
+      spawnGhost(master, e);
     });
+    el.addEventListener("dragend", killGhost);
     return el;
   }
   const heldMaster = (e) => {
@@ -195953,6 +196226,7 @@ function bindStencilPalette(api, hosts, options = {}) {
   const onDrop = (e) => {
     const id = heldMaster(e);
     canvas.classList.remove("gf-stencil-target");
+    killGhost();
     if (!id) return;
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
@@ -195996,6 +196270,7 @@ function bindStencilPalette(api, hosts, options = {}) {
     },
     place,
     destroy() {
+      killGhost();
       canvas.removeEventListener("dragover", onDragOver);
       canvas.removeEventListener("dragleave", onDragLeave);
       canvas.removeEventListener("drop", onDrop);
@@ -196629,6 +196904,7 @@ export {
   SetFlexItemCommand,
   SetGridItemCommand,
   SetLayoutCommand,
+  SetLinkDisplayLabelCommand,
   SetLinkLabelCommand,
   SetLinkLabelsCommand,
   SetLinkPointsCommand,
