@@ -67,7 +67,7 @@ import {
   render, registerStencils, bindStencilPalette, bindShapeDataPanel, erTable,
   AlignCommand, DistributeCommand, registerTool,
   BringNodeToFrontCommand, SendNodeToBackCommand,
-  attachCanvasPlugins,
+  attachCanvasPlugins, GroupModel, AddGroupCommand, RemoveGroupCommand,
 } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
@@ -201,9 +201,45 @@ defineDemo({
       canvasEl.appendChild(wrap);
     }
 
-    // Keyboard zoom, the chords every canvas product answers: Ctrl/⌘+= in,
-    // Ctrl/⌘+− out, Ctrl/⌘+0 → 100%, Ctrl/⌘+Shift+F → fit. preventDefault
-    // keeps the BROWSER's page zoom out of it. Never while typing in a field.
+    // GROUP / UNGROUP — real containers via the engine's own group commands.
+    //
+    // ONE undo step each, by construction: the GroupModel is populated (members
+    // + fitted frame) BEFORE it enters the diagram, so a single AddGroupCommand
+    // carries the whole creation — AddGroupCommand serializes the group at
+    // construction and its undo removes it whole. (A beginBatch over
+    // addGroup+addToGroup cannot do this: BatchCommand's gate validates every
+    // queued command against the PRE-batch state, where the group does not
+    // exist yet.) Ungroup is the mirror: RemoveGroupCommand snapshots the group
+    // into its own undo, so one Ctrl+Z resurrects it, members and all.
+    const groupInScope = () => {
+      const sel = ctx.diagram.getSelectedNodes().map((n) => n.id);
+      if (!sel.length) return null;
+      return ctx.diagram.getGroups().find((g) => sel.some((id) => g.members.has(id))) ?? null;
+    };
+    ctx.groupSelection = async () => {
+      const ids = ctx.diagram.getSelectedNodes().map((n) => n.id);
+      if (ids.length < 2) return null;                       // Visio's own minimum
+      const g = new GroupModel({ name: 'Group' });
+      for (const id of ids) g.addMember(id);
+      g.fitToContents(ctx.diagram);
+      await ctx.engine.commandManager.execute(new AddGroupCommand(g));
+      api.renderNow();
+      syncBar();
+      return ctx.diagram.getGroup(g.id);
+    };
+    ctx.ungroupSelection = async () => {
+      const g = groupInScope();
+      if (!g) return null;
+      await ctx.engine.commandManager.execute(new RemoveGroupCommand(g.id));
+      api.renderNow();
+      syncBar();
+      return g.id;
+    };
+
+    // Keyboard chords every canvas product answers: Ctrl/⌘+= in, Ctrl/⌘+− out,
+    // Ctrl/⌘+0 → 100%, Ctrl/⌘+Shift+F → fit, Ctrl/⌘+G group, +Shift ungroup.
+    // preventDefault keeps the BROWSER's zoom/find out of it. Never while
+    // typing in a field.
     document.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       const t = e.target;
@@ -212,6 +248,11 @@ defineDemo({
       else if (e.key === '-' || e.key === '_') { e.preventDefault(); ctx.zoomOut(); }
       else if (e.key === '0') { e.preventDefault(); ctx.zoomReset(); }
       else if (e.shiftKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); ctx.fit(); }
+      else if (e.key === 'g' || e.key === 'G') {
+        e.preventDefault();
+        if (e.shiftKey) void ctx.ungroupSelection();
+        else void ctx.groupSelection();
+      }
     });
 
     // SNAP-TO-GRID — the engine already has it in its interaction config
@@ -313,7 +354,18 @@ defineDemo({
           start = null;
           clearBox();
         },
-        onCancel: () => { start = null; clearBox(); },
+        // Escape mid-drag (the binder routes it here): the band disappears AND
+        // the half-applied selection rolls back to what it was before the
+        // press — a cancelled gesture must leave no trace.
+        onCancel: () => {
+          if (start) {
+            for (const n of ctx.diagram.getNodes()) n.setSelected(baseSelection.has(n.id));
+            api.renderNow();
+            syncBar();
+          }
+          start = null;
+          clearBox();
+        },
       });
     }
 
@@ -414,6 +466,13 @@ defineDemo({
     bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
     mkN('⧉ Duplicate', 'Duplicate the selection (Ctrl/⌘+D)', 1, () => ctx.engine.duplicate());
     bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
+    // Group needs 2+ shapes, Ungroup needs a group in scope — same
+    // disabled-below-minimum discipline as the aligns, synced in syncBar.
+    const groupBtn = mk('⊞ Group', 'Group the selection into a container (Ctrl/⌘+G, 2+ shapes)',
+      () => ctx.groupSelection());
+    const ungroupBtn = mk('⊟ Ungroup', 'Dissolve the selected shape’s group (Ctrl/⌘+Shift+G)',
+      () => ctx.ungroupSelection());
+    bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
     const undoBtn = mk('↶ Undo', 'Undo the last edit', () => ctx.engine.commandManager.undo());
     // Redo lives beside Undo, synced to canRedo the same way (the keyboard
     // chord always worked; the BUTTON is what the audit found missing).
@@ -423,6 +482,8 @@ defineDemo({
     function syncBar() {
       const n = selected().length;
       for (const [btn, min] of needs) btn.disabled = n < min;
+      groupBtn.disabled = n < 2;
+      ungroupBtn.disabled = !groupInScope();
       undoBtn.disabled = !ctx.engine.commandManager.canUndo?.();
       redoBtn.disabled = !ctx.engine.commandManager.canRedo?.();
     }
@@ -473,8 +534,8 @@ defineDemo({
     check(document.querySelectorAll('#vs-rail .gf-stencil-item').length > 0, 'the stencil rail is empty');
     check(ctx.registered === 80, `expected exactly 80 masters registered, got ${ctx.registered}`);
     check(!!document.querySelector('#vs-panel .gf-sd-title'), 'the shape-data panel did not mount');
-    check(document.querySelectorAll('#vs-bar button').length >= 14,
-      'the toolbar should carry the full set: 6 aligns, 2 distributes, Duplicate, Undo, Redo, Grid, Snap, Minimap');
+    check(document.querySelectorAll('#vs-bar button').length >= 16,
+      'the toolbar should carry the full set: 6 aligns, 2 distributes, Duplicate, Group, Ungroup, Undo, Redo, Grid, Snap, Minimap');
     check(!!document.getElementById('vs-menu'), 'the context menu did not mount');
     // The Visio chrome: the page grid is painted (Background plugin, its own
     // layer under the diagram) and defaults ON.
@@ -520,7 +581,24 @@ defineDemo({
     const topsUndone = ['recv', 'chk', 'ship'].map((id) => m.getNode(id).position.y);
     check(topsUndone.join(',') === topsBefore.join(','), 'one undo did not restore all three positions');
 
-    // 4b. THE TABLE STORY — a dropped "Entity" is a real kit card, and the
+    // 4b. GROUP / UNGROUP — the ONE-undo contract, service-level (the real
+    //     Ctrl+G gestures, the frame drag and the disabled-below-2 discipline
+    //     live in demos/e2e/visio-editor-run.mjs). This pins the engine
+    //     contract in the browser bundle: a populated GroupModel through one
+    //     AddGroupCommand is one history entry.
+    m.clearSelection();
+    for (const id of ['recv', 'chk']) m.addToSelection(m.getNode(id));
+    const groupsBefore = m.getGroups().length;
+    const bundled = await ctx.groupSelection();
+    check(!!bundled && bundled.members.has('recv') && bundled.members.has('chk') && bundled.members.size === 2,
+      `grouping should bundle exactly the 2-node selection, got {${[...(bundled?.members ?? [])]}}`);
+    check(m.getGroups().length === groupsBefore + 1, 'grouping should add exactly one group');
+    await ctx.engine.commandManager.undo();
+    check(m.getGroups().length === groupsBefore, 'ONE undo should take the whole group back out');
+    check(!!m.getNode('recv') && !!m.getNode('chk'), 'undoing a group must not touch the member nodes');
+    m.clearSelection();
+
+    // 4c. THE TABLE STORY — a dropped "Entity" is a real kit card, and the
     //     properties panel edits it through the kit's own handles (not a
     //     dataSchema form, which only ever rendered flat scalars).
     // Dropped here rather than seeded: the canvas stays a clean flowchart, and
