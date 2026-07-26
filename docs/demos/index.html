@@ -28,6 +28,12 @@
   .topbar nav { margin-left:auto; display:flex; gap:20px; font-size:14px; font-weight:500; }
   .topbar nav a { text-decoration:none; }
   .topbar nav a:hover { text-decoration:underline; }
+  /* Five destinations do not fit a phone in one row — wrap rather than push the
+     page into a horizontal scroll. Same rule as the rest of the site. */
+  @media (max-width: 640px) {
+    .topbar { flex-wrap:wrap; }
+    .topbar nav { margin-left:0; width:100%; flex-wrap:wrap; gap:8px 16px; }
+  }
   header.hero { padding:40px 28px 26px; border-bottom:1px solid var(--gf-line); }
   h1 { margin:0 0 8px; font-size:30px; letter-spacing:-.5px; }
   .lede { margin:0; max-width:70ch; color:var(--gf-mut); }
@@ -75,10 +81,11 @@
   <img src="shell/logo.svg" alt="">
   <a class="name" href="https://grafloria.com">grafloria</a>
   <nav>
+    <a href="./" aria-current="page">Demos</a>
+    <a href="https://grafloria.com/mermaid/">Mermaid</a>
+    <a href="https://grafloria.com/compare/">Compare</a>
     <a href="https://github.com/grafloria/grafloria">GitHub</a>
     <a href="https://www.npmjs.com/org/grafloria">npm</a>
-    <a href="https://grafloria.com/compare/">Compare</a>
-    <a href="https://grafloria.com">grafloria.com</a>
   </nav>
 </div>
 <header class="hero">
