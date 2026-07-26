@@ -196,13 +196,12 @@ export class LayoutManager {
         };
       }
 
-      // Option 3: Store old positions for animation
+      // Option 3: Store old positions for animation — and, always, as the
+      // baseline for invalidating stale link routes after the apply below.
       const oldPositions = new Map<string, Point>();
-      if (config?.animate) {
-        this.diagram.getNodes().forEach((node) => {
-          oldPositions.set(node.id, { ...node.position });
-        });
-      }
+      this.diagram.getNodes().forEach((node) => {
+        oldPositions.set(node.id, { ...node.position });
+      });
 
       // Calculate new positions (viewport-aware)
       const positions = this.currentAlgorithm.reLayout(this.diagram, enhancedConfig);
@@ -238,9 +237,16 @@ export class LayoutManager {
       // This must happen BEFORE recalculating paths, so links use optimal ports
       this.optimizeConnections();
 
-      // CRITICAL: Recalculate all link paths after nodes have moved
-      // Links don't automatically update when nodes move - we must explicitly regenerate their paths
-      this.recalculateLinkPaths();
+      // THE stale-polyline fix, applied after BOTH the animated and the
+      // immediate path: a link whose endpoint nodes moved still carries the
+      // polyline it was routed on BEFORE the layout (recalculateLinkPaths
+      // regenerates it with LinkModel's simple generators during animation,
+      // but the renderer's obstacle-aware router is authoritative). Emptying
+      // the routed points is the canonical "re-route on next paint" trigger,
+      // and it marks the link dirty so no cached VNode — with its stale
+      // label position — can be reused. Links whose endpoints did NOT move
+      // keep their still-valid routes.
+      this.invalidateRoutesForMovedNodes(oldPositions);
 
       this.emitEvent({
         type: 'layout:completed',
@@ -311,6 +317,47 @@ export class LayoutManager {
       };
 
       requestAnimationFrame(animate);
+    });
+  }
+
+  /**
+   * Invalidate the routed polyline of every link whose endpoint nodes moved.
+   *
+   * Layout moves NODES; each link keeps the polyline it was routed on before.
+   * Edge labels are placed by walking that polyline (renderer LabelRenderer via
+   * link.getPointAtPosition), so a stale route strands labels at PRE-layout
+   * midpoints — observed live with labels sitting off-canvas at the old world
+   * coordinates. `setPoints([])` is the proven trigger for a re-route on the
+   * next paint (and it marks the link dirty, busting the VNode cache).
+   *
+   * Manual waypoints are cleared with the route — they were authored against
+   * the pre-layout coordinates (same rule as setPathType / setRouter).
+   */
+  private invalidateRoutesForMovedNodes(before: Map<string, Point>): void {
+    const moved = new Set<string>();
+    this.diagram.getNodes().forEach((node) => {
+      const prev = before.get(node.id);
+      if (!prev || prev.x !== node.position.x || prev.y !== node.position.y) {
+        moved.add(node.id);
+      }
+    });
+    if (moved.size === 0) return;
+
+    const nodeIdForPort = (portId: string): string | undefined =>
+      this.diagram.getNodes().find((n) => n.getPorts().some((p) => p.id === portId))?.id;
+
+    this.diagram.getLinks().forEach((link) => {
+      const sourceId = link.sourceNodeId ?? nodeIdForPort(link.sourcePortId);
+      const targetId = link.targetNodeId ?? nodeIdForPort(link.targetPortId);
+      if (!(sourceId && moved.has(sourceId)) && !(targetId && moved.has(targetId))) {
+        return;
+      }
+      if (link.points.length > 0) {
+        link.setPoints([]);
+      }
+      if (link.getMetadata('hasManualWaypoints') === true) {
+        link.setMetadata('hasManualWaypoints', false);
+      }
     });
   }
 

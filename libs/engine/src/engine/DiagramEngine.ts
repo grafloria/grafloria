@@ -2267,6 +2267,11 @@ export class DiagramEngine {
 
     const seed = options.seed ?? DEFAULT_LAYOUT_SEED;
 
+    // Snapshot BEFORE any positions are committed: every return path below must
+    // invalidate the routed polyline of links whose endpoints moved. See
+    // invalidateStaleLinkRoutes for why leaving them is a real, observed bug.
+    const positionsBeforeLayout = this.snapshotNodePositions();
+
     // Wave 7 Card 4 — nested container layout. On by default whenever the
     // diagram has containers, because the flat path is not just worse there, it
     // is WRONG: it interleaves members of different groups and never updates a
@@ -2285,6 +2290,7 @@ export class DiagramEngine {
 
       // CompoundLayoutService commits through setPosition/setFrame as it goes
       // (it has to — each level reads the geometry the level below produced).
+      this.invalidateStaleLinkRoutes(positionsBeforeLayout);
       return {
         nodePositions: result.nodePositions,
         bounds: result.bounds,
@@ -2323,6 +2329,7 @@ export class DiagramEngine {
     if (!registered.adapter) {
       const result = await registered.apply(this.diagram, { ...options, seed });
       this.commitLayoutPositions(result.nodePositions);
+      this.invalidateStaleLinkRoutes(positionsBeforeLayout);
       return {
         ...result,
         algorithm: name,
@@ -2352,6 +2359,7 @@ export class DiagramEngine {
     );
 
     this.commitLayoutPositions(result.nodePositions);
+    this.invalidateStaleLinkRoutes(positionsBeforeLayout);
 
     return { ...result, algorithm: name, seed };
   }
@@ -2425,9 +2433,15 @@ export class DiagramEngine {
       savedByAlignment: Math.max(0, naive.total - settled.total),
     };
 
+    // The alignment translation below moves nodes AGAIN after layout()'s own
+    // commit — so its own snapshot/invalidate pair, or the translated picture
+    // keeps polylines routed for the pre-alignment coordinates.
+    const beforeAlign = this.snapshotNodePositions();
     for (const [id, p] of aligned) {
       this.diagram.getNode(id)?.setPosition(p.x, p.y);
     }
+
+    this.invalidateStaleLinkRoutes(beforeAlign);
 
     return {
       ...result,
@@ -2435,6 +2449,66 @@ export class DiagramEngine {
       movement,
       tween: planTween(before, aligned),
     };
+  }
+
+  /** Every node's current position, keyed by id — the pre-layout baseline. */
+  private snapshotNodePositions(): Map<string, { x: number; y: number }> {
+    const snapshot = new Map<string, { x: number; y: number }>();
+    for (const node of this.diagram?.getNodes() ?? []) {
+      snapshot.set(node.id, { x: node.position.x, y: node.position.y });
+    }
+    return snapshot;
+  }
+
+  /**
+   * THE FIX for the stale-polyline bug: layout moves NODES, but each link keeps
+   * the polyline it was routed on before. The renderer treats a non-empty
+   * `link.points` as painted geometry and edge LABELS are placed by walking it
+   * (LabelRenderer via `link.getPointAtPosition`) — so after `engine.layout()`
+   * the labels sat at PRE-layout midpoints, observed live as "yes"/"no"
+   * stranded off-canvas at the old world coordinates while the nodes moved.
+   *
+   * Emptying the polyline is the canonical "re-route me" state: the renderer's
+   * frame pre-pass recomputes the route from the CURRENT node/port geometry on
+   * the next paint, and `setPoints` marks the link dirty so the cached VNode
+   * cannot be reused. Only links whose endpoint nodes actually MOVED are
+   * touched — an anchored subgraph's links keep their (still valid) routes.
+   *
+   * Manual waypoints are cleared with the route, same as `setPathType` /
+   * `setRouter` do: they were authored against the pre-layout coordinates, and
+   * an empty polyline with the manual flag still set would send the renderer
+   * down its keep-the-interior-waypoints branch with no interior to keep.
+   */
+  private invalidateStaleLinkRoutes(
+    before: Map<string, { x: number; y: number }>
+  ): void {
+    if (!this.diagram) return;
+
+    const moved = new Set<string>();
+    for (const node of this.diagram.getNodes()) {
+      const prev = before.get(node.id);
+      if (!prev || prev.x !== node.position.x || prev.y !== node.position.y) {
+        moved.add(node.id);
+      }
+    }
+    if (moved.size === 0) return;
+
+    const nodeIdForPort = (portId: string): string | undefined =>
+      this.diagram!.getNodes().find((n) => n.getPorts().some((p) => p.id === portId))?.id;
+
+    for (const link of this.diagram.getLinks()) {
+      const sourceId = link.sourceNodeId ?? nodeIdForPort(link.sourcePortId);
+      const targetId = link.targetNodeId ?? nodeIdForPort(link.targetPortId);
+      if (!(sourceId && moved.has(sourceId)) && !(targetId && moved.has(targetId))) {
+        continue;
+      }
+      if (link.points.length > 0) {
+        link.setPoints([]);
+      }
+      if (link.getMetadata('hasManualWaypoints') === true) {
+        link.setMetadata('hasManualWaypoints', false);
+      }
+    }
   }
 
   /**
