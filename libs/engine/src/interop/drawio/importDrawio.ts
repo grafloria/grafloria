@@ -218,6 +218,8 @@ const CONSUMED_STYLE_KEYS = new Set([
   'swimlane',
   'group',
   'edgeLabel',
+  'labelPosition',
+  'verticalLabelPosition',
   ...Object.keys(SHAPE_MAP),
 ]);
 
@@ -524,6 +526,7 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
   const groupsById = new Map<string, GroupModel>();
   const nodesById = new Map<string, NodeModel>();
   const edgeCells: RawCell[] = [];
+  const syntheticLabelNodes: Array<{ parent: string | undefined; id: string }> = [];
 
   // -- pass 1: containers → GroupModels (parents must exist before membership) --
   for (const cell of cells.values()) {
@@ -565,6 +568,8 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
     if (cell.data) node.setMetadata('drawioData', cell.data);
     diagram.addNode(node);
     nodesById.set(cell.id, node);
+    const outside = applyOutsideLabelPlacement(node, cell, diagram);
+    if (outside) syntheticLabelNodes.push({ parent: cell.parent, id: outside.id });
   }
 
   // -- pass 3: membership (groups and nodes both exist now) -------------------
@@ -574,6 +579,11 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
     if (groupsById.has(cell.id) || nodesById.has(cell.id)) {
       parentGroup.addMember(cell.id, diagram);
     }
+  }
+  // A synthesized caption follows its icon into the icon's group, so the frame
+  // that wraps the icon wraps its caption too.
+  for (const synth of syntheticLabelNodes) {
+    if (synth.parent) groupsById.get(synth.parent)?.addMember(synth.id, diagram);
   }
 
   // -- pass 4: edges → LinkModels ---------------------------------------------
@@ -855,6 +865,94 @@ function roundedCornerRadius(
   }
   const factor = num(arc, 15) / 100;
   return Math.min(Math.min(width, height) * factor, Math.min(width, height) / 2);
+}
+
+/**
+ * draw.io's `labelPosition` / `verticalLabelPosition` place the LABEL BOUNDS
+ * completely beside/below the vertex bounds (mxGraph semantics) — the
+ * icon-with-caption idiom every stencil library uses
+ * (`verticalLabelPosition=bottom;verticalAlign=top` on AWS, Azure, Citrix,
+ * network shapes). The engine's node label always paints INSIDE the
+ * silhouette, which turned those captions into ink ON the icon — black text
+ * on a black laptop stencil is invisible, and a caption on a small icon
+ * covers it.
+ *
+ * Two faithful mappings, no renderer changes:
+ * - a free-standing `text;` cell paints nothing but its label, so the offset
+ *   moves the CELL ITSELF to where the label bounds sit;
+ * - a shaped vertex keeps its silhouette and hands its caption to a
+ *   synthesized borderless text node where the label bounds sit, recorded on
+ *   BOTH sides (`drawioOutsideLabel` on the icon, `drawioLabelFor` on the
+ *   caption) so the pairing is data, never a mystery.
+ *
+ * Returns the synthesized caption node, if one was created.
+ */
+function applyOutsideLabelPlacement(
+  node: NodeModel,
+  cell: RawCell,
+  diagram: DiagramModel
+): NodeModel | undefined {
+  const t = parseStyle(cell.style).tokens;
+  const h = t.get('labelPosition'); // left | center | right
+  const v = t.get('verticalLabelPosition'); // top | middle | bottom
+  const horizontal = h === 'left' || h === 'right' ? h : undefined;
+  const vertical = v === 'top' || v === 'bottom' ? v : undefined;
+  if ((!horizontal && !vertical) || !cell.value) return undefined;
+
+  const { width, height } = node.size;
+  if (parseStyle(cell.style).first === 'text') {
+    // The whole cell IS the label — move it onto the label bounds.
+    node.setPosition(
+      node.position.x + (horizontal === 'right' ? width : horizontal === 'left' ? -width : 0),
+      node.position.y + (vertical === 'bottom' ? height : vertical === 'top' ? -height : 0)
+    );
+    node.setMetadata('drawioOutsideLabel', `${horizontal ?? 'center'}/${vertical ?? 'middle'}`);
+    return undefined;
+  }
+
+  const gap = 2;
+  // Wide enough for a caption to read without shrink-to-fit crushing it under
+  // a narrow icon, and TWO text lines tall INSIDE the renderer's padded inner
+  // rect: 8px padding top+bottom (defaultInnerRect) + 2 × 16.8px line height
+  // (14px md font × 1.2) ⇒ 50. At 36 only one line fit and every two-word
+  // caption ellipsized ("Thin Client" → "Thin…"). The renderer wraps +
+  // ellipsizes inside the box.
+  const labelW = Math.max(width, 70);
+  const labelH = 50;
+  const cx = node.position.x + width / 2;
+  const cy = node.position.y + height / 2;
+  const label = new NodeModel({
+    id: `${cell.id}__label`,
+    type: 'default',
+    position: {
+      x:
+        cx -
+        labelW / 2 +
+        (horizontal === 'right'
+          ? (width + labelW) / 2 + gap
+          : horizontal === 'left'
+            ? -((width + labelW) / 2 + gap)
+            : 0),
+      y:
+        cy -
+        labelH / 2 +
+        (vertical === 'bottom'
+          ? (height + labelH) / 2 + gap
+          : vertical === 'top'
+            ? -((height + labelH) / 2 + gap)
+            : 0),
+    },
+    size: { width: labelW, height: labelH },
+  });
+  label.setMetadata('shape', { type: 'rect', fill: 'none', stroke: 'none' });
+  label.setMetadata('drawioLabelFor', cell.id);
+  if (t.get('fontColor')) label.style = { ...(label.style ?? {}), color: t.get('fontColor') };
+  label.setLabel(cell.value);
+  diagram.addNode(label);
+
+  node.setLabel('');
+  node.setMetadata('drawioOutsideLabel', `${horizontal ?? 'center'}/${vertical ?? 'middle'}`);
+  return label;
 }
 
 /** Style tokens → metadata.shape (+ typed node.style for the paints the renderer honours). */
