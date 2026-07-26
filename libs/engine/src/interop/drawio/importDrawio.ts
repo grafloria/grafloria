@@ -1,4 +1,4 @@
-// .drawio (mxGraph XML) IMPORT — v1: import-only, bounded, honest about loss.
+// .drawio (mxGraph XML) IMPORT — import-only, bounded, honest about loss.
 //
 // draw.io / diagrams.net is the largest installed base of free diagramming in
 // existence, and its files are the migration on-ramp: a team does not adopt a
@@ -14,32 +14,61 @@
 //
 // — and maps the mxGraph cell tree onto the engine's own models.
 //
-// THE HONESTY CONTRACT. mxGraph expresses more than v1 maps (manual edge
-// waypoints, exotic shape styles, collapsed containers, multiple pages).
-// Nothing unmapped is dropped in silence: every dropped construct appends a
-// NAMED warning to the result, so a user can see exactly what their file lost
-// — the same "never hide the loss" stance TextFormat.ts takes for Mermaid.
+// THE HONESTY CONTRACT. mxGraph expresses more than this importer maps (exotic
+// stencil shapes, collapsed containers, layers). Nothing unmapped is dropped in
+// silence: every dropped construct appends a NAMED warning to the result, so a
+// user can see exactly what their file lost — the same "never hide the loss"
+// stance TextFormat.ts takes for Mermaid.
 //
 // COORDINATES. mxGraph child geometry is RELATIVE TO ITS PARENT cell; the
 // engine's node positions are world-absolute. The importer walks each cell's
 // parent chain and sums origins, so a node 20px inside a container that sits
-// at (300,80) lands at (320,…) — nested containers nest the sum.
+// at (300,80) lands at (320,…) — nested containers nest the sum. Edge
+// waypoints live in the EDGE's parent space and get the same conversion.
+//
+// MULTI-PAGE. A file with more than one `<diagram>` returns every page under
+// `pages[]`, each decoded and compiled INDEPENDENTLY — one corrupt page fails
+// alone with its own `error` entry instead of sinking the file. The top-level
+// `diagram` stays page 1 (back-compatible), and the top-level warnings are
+// page 1's plus the file-level ones.
 
 import { DiagramModel } from '../../models/DiagramModel';
 import { NodeModel } from '../../models/NodeModel';
 import { GroupModel } from '../../models/GroupModel';
+import type { LinkModel } from '../../models/LinkModel';
+import type { ArrowStyle, LinkStyle, LabelStyle, Point } from '../../types';
 import { parseXml, XmlElement } from './xml';
 
+/** One page of a multi-page file, decoded and compiled on its own. */
+export interface DrawioPage {
+  /** The page's `name` attribute, or "Page N" when the file has none. */
+  name: string;
+  /** Zero-based position of the page in the file. */
+  index: number;
+  /** The page's imported diagram — absent when `error` is set. */
+  diagram?: DiagramModel;
+  /** This page's own named-loss warnings. */
+  warnings: string[];
+  /** Fatal FOR THIS PAGE only: the page payload is not readable. */
+  error?: string;
+}
+
 export interface DrawioImportResult {
-  /** The imported diagram — absent when `error` is set. */
+  /** The imported diagram (page 1 of a multi-page file) — absent when `error` is set. */
   diagram?: DiagramModel;
   /**
    * Every construct the import dropped or approximated, one NAMED entry each.
-   * Empty means the file mapped cleanly.
+   * Empty means the file mapped cleanly. For a multi-page file: page 1's
+   * warnings plus the file-level ones (including any later page's failure).
    */
   warnings: string[];
   /** Fatal: the text is not a readable .drawio document. Never thrown. */
   error?: string;
+  /**
+   * Present ONLY when the file carries more than one `<diagram>` page.
+   * `diagram === pages[0].diagram`; every page imports independently.
+   */
+  pages?: DrawioPage[];
 }
 
 // ---------------------------------------------------------------------------
@@ -69,7 +98,7 @@ interface RawCell {
   /** Remaining UserObject attributes — custom data, kept not dropped. */
   data?: Record<string, string>;
   geometry?: RawGeometry;
-  /** Manual edge waypoints from `<Array as="points">`. */
+  /** Manual edge waypoints from `<Array as="points">`, in the edge's PARENT space. */
   waypoints?: Array<{ x: number; y: number }>;
   collapsed: boolean;
   /** `<mxRectangle as="alternateBounds">` — the EXPANDED size of a collapsed container. */
@@ -124,6 +153,41 @@ const SHAPE_MAP: Record<string, string> = {
 };
 
 /**
+ * mxGraph edge-marker token → the engine's ArrowStyle vocabulary. Only tokens
+ * with a REAL counterpart are mapped; an unknown token keeps the engine's
+ * default marker WITH a warning naming it. The `Thin` variants share their
+ * base silhouette — the engine does not model barb thickness.
+ */
+const ARROW_MAP: Record<string, ArrowStyle['type']> = {
+  classic: 'arrow',
+  classicThin: 'arrow',
+  block: 'arrow',
+  blockThin: 'arrow',
+  open: 'open-arrow',
+  openThin: 'open-arrow',
+  openAsync: 'open-arrow',
+  oval: 'oval',
+  diamond: 'diamond',
+  diamondThin: 'diamond',
+  cross: 'cross',
+  dash: 'bar',
+  box: 'square',
+  circle: 'circle',
+  circlePlus: 'circle',
+  // ER notation — draw.io's ER endpoints map 1:1 onto the engine's ERD arrows.
+  ERone: 'one',
+  ERmandOne: 'one',
+  ERmany: 'crow-foot',
+  ERoneToMany: 'one-or-many',
+  ERzeroToOne: 'zero-or-one',
+  ERzeroToMany: 'zero-or-many',
+  none: 'none',
+};
+
+/** Markers that are outlines by construction — `startFill`/`endFill` cannot fill them. */
+const OPEN_ARROW_TOKENS = new Set(['open', 'openThin', 'openAsync', 'cross', 'dash']);
+
+/**
  * Style keys the importer CONSUMES (mapped into the model). Everything else
  * lands in one aggregated "unmapped style keys" warning — deduped, because a
  * 200-cell file repeating `html=1` should say it once, not 200 times.
@@ -131,14 +195,21 @@ const SHAPE_MAP: Record<string, string> = {
 const CONSUMED_STYLE_KEYS = new Set([
   'shape',
   'rounded',
+  'arcSize',
+  'absoluteArcSize',
   'fillColor',
   'strokeColor',
   'strokeWidth',
   'opacity',
   'dashed',
   'fontColor',
+  'fontSize',
   'edgeStyle',
   'curved',
+  'startArrow',
+  'endArrow',
+  'startFill',
+  'endFill',
   'text',
   'swimlane',
   'group',
@@ -223,33 +294,88 @@ async function inflateDrawioPayload(b64: string): Promise<string> {
  * Import a .drawio / mxGraph XML document.
  *
  * Accepts plain `<mxGraphModel>` XML or a full `<mxfile>` (compressed or not).
- * Multi-page files import the FIRST page (with a warning). Never throws:
- * unreadable input comes back as `{ error }`.
+ * A multi-page file imports EVERY page: `diagram` is page 1 (back-compatible)
+ * and `pages[]` — present only when the file has more than one `<diagram>` —
+ * carries each page's own diagram, warnings, and (for a corrupt page) error.
+ * Never throws: unreadable input comes back as `{ error }`.
  */
 export async function importDrawio(text: string): Promise<DrawioImportResult> {
-  const warnings: string[] = [];
+  const unreadable = (e: unknown): string =>
+    `not a readable .drawio document: ${(e as Error).message}`;
+
+  let root: XmlElement;
   try {
-    const root = parseXml(text.trim());
-    const model = await resolveModelElement(root, warnings);
-    const diagram = buildDiagram(model, warnings);
-    return { diagram, warnings };
+    root = parseXml(text.trim());
   } catch (e) {
-    return { warnings, error: `not a readable .drawio document: ${(e as Error).message}` };
+    return { warnings: [], error: unreadable(e) };
   }
+
+  // (a) A bare model — one page by construction.
+  if (root.tag === 'mxGraphModel') {
+    const warnings: string[] = [];
+    try {
+      return { diagram: buildDiagram(root, warnings), warnings };
+    } catch (e) {
+      return { warnings, error: unreadable(e) };
+    }
+  }
+
+  if (root.tag !== 'mxfile') {
+    return {
+      warnings: [],
+      error: `not a readable .drawio document: root element is <${root.tag}>, expected <mxGraphModel> or <mxfile>`,
+    };
+  }
+  const pageEls = root.children.filter((c) => c.tag === 'diagram');
+  if (pageEls.length === 0) {
+    return { warnings: [], error: 'not a readable .drawio document: <mxfile> contains no <diagram> page' };
+  }
+
+  // (b) Single-page <mxfile> — the classic path, no pages[] array.
+  if (pageEls.length === 1) {
+    const warnings: string[] = [];
+    try {
+      return { diagram: buildDiagram(await resolvePageModel(pageEls[0]), warnings), warnings };
+    } catch (e) {
+      return { warnings, error: unreadable(e) };
+    }
+  }
+
+  // (c) MULTI-PAGE: each page decodes and compiles INDEPENDENTLY, so one
+  // corrupt page fails alone (its own error entry) instead of sinking the file.
+  const pages: DrawioPage[] = [];
+  for (let index = 0; index < pageEls.length; index++) {
+    const el = pageEls[index];
+    const name = el.attrs['name'] ?? `Page ${index + 1}`;
+    const warnings: string[] = [];
+    try {
+      pages.push({ name, index, diagram: buildDiagram(await resolvePageModel(el), warnings), warnings });
+    } catch (e) {
+      pages.push({
+        name,
+        index,
+        warnings,
+        error: `page ${index + 1} ("${name}") is not readable: ${(e as Error).message}`,
+      });
+    }
+  }
+  const first = pages[0];
+  const warnings = [
+    `page 1 of ${pages.length} ("${first.name}") is the primary diagram; all ${pages.length} pages imported under pages[]`,
+    ...first.warnings,
+    // A later page's failure is file-level news, named once here too.
+    ...pages.slice(1).flatMap((p) => (p.error ? [p.error] : [])),
+  ];
+  return {
+    ...(first.diagram ? { diagram: first.diagram } : {}),
+    warnings,
+    ...(first.error ? { error: first.error } : {}),
+    pages,
+  };
 }
 
-/** Find the `<mxGraphModel>` element, unwrapping `<mxfile><diagram>` (and inflating) as needed. */
-async function resolveModelElement(root: XmlElement, warnings: string[]): Promise<XmlElement> {
-  if (root.tag === 'mxGraphModel') return root;
-  if (root.tag !== 'mxfile') {
-    throw new Error(`root element is <${root.tag}>, expected <mxGraphModel> or <mxfile>`);
-  }
-  const pages = root.children.filter((c) => c.tag === 'diagram');
-  if (pages.length === 0) throw new Error('<mxfile> contains no <diagram> page');
-  if (pages.length > 1) {
-    warnings.push(`page 1 of ${pages.length} imported ("${pages[0].attrs['name'] ?? 'unnamed'}"); multi-page import pending`);
-  }
-  const page = pages[0];
+/** Resolve one `<diagram>` element to its `<mxGraphModel>` (inflating a compressed payload). */
+async function resolvePageModel(page: XmlElement): Promise<XmlElement> {
   // Uncompressed save: the model is a literal child element of <diagram>.
   const inline = page.children.find((c) => c.tag === 'mxGraphModel');
   if (inline) return inline;
@@ -395,7 +521,7 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
     const origin = absoluteOrigin(cell.parent);
     const geo = cell.geometry ?? { x: 0, y: 0, width: 200, height: 160, relative: false };
     // A collapsed container's live geometry is its COLLAPSED pill;
-    // alternateBounds carries the expanded frame. v1 imports expanded.
+    // alternateBounds carries the expanded frame. Imported expanded.
     let { width, height } = geo;
     if (cell.collapsed) {
       if (cell.alternate) ({ width, height } = cell.alternate);
@@ -444,17 +570,75 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
   for (const cell of cells.values()) {
     if (cell.edge) edgeCells.push(cell);
   }
-  let waypointEdges = 0;
+
+  /** World-space center of whatever an endpoint id resolves to (node or container frame). */
+  const endpointCenter = (id: string | undefined): Point | undefined => {
+    if (!id) return undefined;
+    const n = nodesById.get(id);
+    if (n) return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 };
+    const g = groupsById.get(id);
+    if (g) {
+      const f = g.getOuterBounds();
+      return { x: f.x + f.width / 2, y: f.y + f.height / 2 };
+    }
+    return undefined;
+  };
+
   for (const cell of edgeCells) {
-    const source = cell.source ? nodesById.get(cell.source) : undefined;
-    const target = cell.target ? nodesById.get(cell.target) : undefined;
-    if (!source || !target) {
-      warnings.push(`edge "${cell.id}" skipped: ${describeMissingEndpoint(cell, nodesById, groupsById)}`);
+    // Waypoints are authored in the EDGE's parent space — same conversion as
+    // vertex geometry (an edge inside a container carries container-relative
+    // waypoints).
+    const edgeOrigin = absoluteOrigin(cell.parent);
+    const absWaypoints = (cell.waypoints ?? []).map((p) => ({
+      x: p.x + edgeOrigin.x,
+      y: p.y + edgeOrigin.y,
+    }));
+
+    const endpointExists = (id: string | undefined): boolean =>
+      !!id && (nodesById.has(id) || groupsById.has(id));
+    if (!endpointExists(cell.source) || !endpointExists(cell.target)) {
+      warnings.push(`edge "${cell.id}" skipped: ${describeMissingEndpoint(cell, nodesById)}`);
       continue;
     }
+
+    // CONTAINER ENDPOINTS. draw.io lets an edge end ON a container. The
+    // engine's links connect node ports, and a GroupModel is a frame, not a
+    // node — so the importer synthesizes an INVISIBLE 1×1 anchor node pinned
+    // to the container frame's perimeter nearest the other endpoint (or the
+    // adjacent manual waypoint, which is where draw.io actually aimed the
+    // line). The anchor is group-owned and marked metadata.drawioContainerAnchor,
+    // so round-trips and tooling can tell it from authored content.
+    const resolveEndpoint = (side: 'source' | 'target'): NodeModel => {
+      const id = (side === 'source' ? cell.source : cell.target)!;
+      const direct = nodesById.get(id);
+      if (direct) return direct;
+      const group = groupsById.get(id)!;
+      const frame = group.getOuterBounds();
+      const toward =
+        (side === 'source' ? absWaypoints[0] : absWaypoints[absWaypoints.length - 1]) ??
+        endpointCenter(side === 'source' ? cell.target : cell.source) ??
+        { x: frame.x + frame.width / 2, y: frame.y - 20 };
+      const pin = nearestPerimeterPoint(frame, toward);
+      const anchor = new NodeModel({
+        id: `drawio-anchor:${cell.id}:${side}`,
+        type: 'default',
+        position: { x: pin.x - 0.5, y: pin.y - 0.5 },
+        size: { width: 1, height: 1 },
+      });
+      anchor.setMetadata('shape', { type: 'rect', fill: 'none', stroke: 'none' });
+      anchor.setMetadata('drawioContainerAnchor', group.id);
+      diagram.addNode(anchor);
+      group.addMember(anchor.id, diagram);
+      return anchor;
+    };
+
+    const source = resolveEndpoint('source');
+    const target = resolveEndpoint('target');
+
     const style = parseStyle(cell.style);
     // draw.io's default connector is orthogonal; only carry that hint over —
-    // everything else routes as the engine's default smooth path.
+    // everything else routes as the engine's default smooth path. curved=1 is
+    // draw.io's "draw this as a curve" flag, whatever the routing style.
     const orthogonal =
       style.tokens.get('edgeStyle')?.toLowerCase().includes('orthogonal') === true &&
       style.tokens.get('curved') !== '1';
@@ -464,21 +648,26 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
       continue;
     }
     link.setMetadata('drawioId', cell.id);
-    const labelText = cell.value || findEdgeLabelChild(cell.id, cells);
+
+    const labelCell = findEdgeLabelChild(cell.id, cells);
+    const labelText = cell.value || labelCell?.value || '';
     if (labelText) link.setLabel(labelText);
-    if (cell.waypoints && cell.waypoints.length > 0) {
-      // v1: auto-routing owns the polyline. Writing mxGraph waypoints into
-      // link.points would be overwritten by the first routing pass anyway —
-      // so they are PRESERVED as metadata and honestly reported, not faked.
+    applyEdgeStyle(link, cell, labelCell, labelText, warnings, unmappedStyleKeys);
+
+    if (absWaypoints.length > 0) {
+      // MANUAL WAYPOINTS APPLY. The full polyline is the routed attach points
+      // with the author's waypoints between them; hasManualWaypoints makes the
+      // router respect it (and the layout invalidation clears it the moment a
+      // layout moves an endpoint — the contract that makes applying safe).
+      // The authored points stay under metadata.drawioWaypoints as provenance.
       link.setMetadata('drawioWaypoints', cell.waypoints);
-      waypointEdges++;
+      const routed = link.points;
+      const start = routed[0] ?? endpointCenter(source.id)!;
+      const end = routed[routed.length - 1] ?? endpointCenter(target.id)!;
+      link.setPoints([{ ...start }, ...absWaypoints, { ...end }]);
+      link.setMetadata('hasManualWaypoints', true);
     }
     collectUnmappedStyleKeys(cell.style, unmappedStyleKeys);
-  }
-  if (waypointEdges > 0) {
-    warnings.push(
-      `manual waypoints on ${waypointEdges} edge(s) ignored (auto-routing owns the polyline); originals kept under link metadata.drawioWaypoints`
-    );
   }
 
   if (unmappedStyleKeys.size > 0) {
@@ -487,27 +676,154 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
   return diagram;
 }
 
+/** The closest point ON the PERIMETER of a rectangle to `toward` (inside or out). */
+function nearestPerimeterPoint(
+  frame: { x: number; y: number; width: number; height: number },
+  toward: Point
+): Point {
+  const left = frame.x;
+  const right = frame.x + frame.width;
+  const top = frame.y;
+  const bottom = frame.y + frame.height;
+  const cx = Math.min(Math.max(toward.x, left), right);
+  const cy = Math.min(Math.max(toward.y, top), bottom);
+  if (toward.x !== cx || toward.y !== cy) return { x: cx, y: cy }; // outside: clamp lands on the edge
+  // Inside: push to the nearest of the four edges.
+  const candidates: Array<{ d: number; p: Point }> = [
+    { d: cx - left, p: { x: left, y: cy } },
+    { d: right - cx, p: { x: right, y: cy } },
+    { d: cy - top, p: { x: cx, y: top } },
+    { d: bottom - cy, p: { x: cx, y: bottom } },
+  ];
+  candidates.sort((a, b) => a.d - b.d);
+  return candidates[0].p;
+}
+
 /** Human wording for WHY an edge endpoint failed to resolve. */
-function describeMissingEndpoint(
-  cell: RawCell,
-  nodes: Map<string, NodeModel>,
-  groups: Map<string, GroupModel>
-): string {
+function describeMissingEndpoint(cell: RawCell, nodes: Map<string, NodeModel>): string {
   const side = (name: 'source' | 'target', id: string | undefined): string | undefined => {
     if (!id) return `no ${name}`;
     if (nodes.has(id)) return undefined;
-    if (groups.has(id)) return `${name} "${id}" is a container (container endpoints pending)`;
     return `${name} "${id}" does not exist`;
   };
   return [side('source', cell.source), side('target', cell.target)].filter(Boolean).join('; ');
 }
 
 /** The label a draw.io edge stores as a CHILD cell (style edgeLabel, parent = the edge). */
-function findEdgeLabelChild(edgeId: string, cells: Map<string, RawCell>): string {
+function findEdgeLabelChild(edgeId: string, cells: Map<string, RawCell>): RawCell | undefined {
   for (const c of cells.values()) {
-    if (c.parent === edgeId && c.vertex && c.value) return c.value;
+    if (c.parent === edgeId && c.vertex && c.value) return c;
   }
-  return '';
+  return undefined;
+}
+
+/**
+ * `startArrow`/`endArrow` token → the engine's ArrowStyle. `undefined` (token
+ * absent) keeps the engine default — which matches draw.io's own defaults
+ * (classic arrow at the target, nothing at the source). Unknown tokens keep
+ * the default too, WITH a warning naming them.
+ */
+function mapArrowToken(
+  token: string | undefined,
+  fillAttr: string | undefined,
+  edgeId: string,
+  end: 'start' | 'end',
+  warnings: string[]
+): ArrowStyle | undefined {
+  if (token === undefined || token === '') return undefined;
+  const mapped = ARROW_MAP[token];
+  if (!mapped) {
+    warnings.push(`unknown ${end}Arrow token "${token}" on edge "${edgeId}"; engine default kept`);
+    return undefined;
+  }
+  const filled = mapped !== 'none' && !OPEN_ARROW_TOKENS.has(token) && fillAttr !== '0';
+  return { type: mapped, size: 10, filled };
+}
+
+/**
+ * Edge visuals: markers, stroke paints, curvature/corner hints, label style.
+ * Everything here PAINTS through LinkStyle — the renderer's own vocabulary —
+ * rather than riding as inert metadata.
+ */
+function applyEdgeStyle(
+  link: LinkModel,
+  cell: RawCell,
+  labelCell: RawCell | undefined,
+  labelText: string,
+  warnings: string[],
+  unmapped: Set<string>
+): void {
+  const t = parseStyle(cell.style).tokens;
+  const styleBag: Partial<LinkStyle> = {};
+
+  // Markers. endArrow → arrowHead (target), startArrow → arrowTail (source) —
+  // draw.io edges run source → target exactly like the engine's links.
+  const head = mapArrowToken(t.get('endArrow'), t.get('endFill'), cell.id, 'end', warnings);
+  if (head) styleBag.arrowHead = head;
+  const tail = mapArrowToken(t.get('startArrow'), t.get('startFill'), cell.id, 'start', warnings);
+  if (tail && tail.type !== 'none') styleBag.arrowTail = tail;
+
+  // Stroke paints.
+  const strokeColor = t.get('strokeColor');
+  if (strokeColor && strokeColor.toLowerCase() !== 'none') styleBag.stroke = strokeColor;
+  if (t.get('strokeWidth')) styleBag.strokeWidth = num(t.get('strokeWidth'), 1);
+  if (t.get('dashed') === '1') styleBag.strokeDasharray = '6,4';
+  if (t.get('opacity')) styleBag.opacity = num(t.get('opacity'), 100) / 100;
+
+  // rounded=1 on an ORTHOGONAL edge = rounded elbows; rounded=0 explicitly
+  // asks for hard corners. Absent = the engine's default look. For rounded
+  // LINES mxGraph reads arcSize as an absolute diameter (LINE_ARCSIZE
+  // fallback), so radius = arcSize / 2.
+  if (link.pathType === 'orthogonal') {
+    const rounded = t.get('rounded');
+    if (rounded === '1') {
+      link.setConnector('rounded');
+      if (t.get('arcSize')) styleBag.cornerRadius = num(t.get('arcSize'), 20) / 2;
+    } else if (rounded === '0') {
+      link.setConnector('straight');
+    }
+  }
+
+  // Label style: the edge's own fontColor/fontSize, else the label CHILD
+  // cell's. Carried on a positioned LinkLabel because that is the label model
+  // that owns a style bag (the canonical metadata label is plain text).
+  if (labelText) {
+    const lt = labelCell ? parseStyle(labelCell.style).tokens : undefined;
+    const fontColor = t.get('fontColor') ?? lt?.get('fontColor');
+    const fontSize = t.get('fontSize') ?? lt?.get('fontSize');
+    if (fontColor || fontSize) {
+      const labelStyle: LabelStyle = {};
+      if (fontColor) labelStyle.color = fontColor;
+      if (fontSize) labelStyle.fontSize = num(fontSize, 12);
+      link.addLabel({ text: labelText, position: 0.5, style: labelStyle });
+    }
+  }
+
+  if (Object.keys(styleBag).length > 0) {
+    link.style = { ...link.style, ...styleBag };
+  }
+}
+
+/**
+ * mxGraph's rounded-rect corner radius, faithfully (mxRectangleShape.paintBackground):
+ *   absoluteArcSize=1 → r = min(w/2, h/2, arcSize/2)   (arcSize is a DIAMETER in px)
+ *   else              → r = min(w,h) · (arcSize/100)   (percentage, default 15,
+ *                        geometrically capped at min(w,h)/2)
+ * No arcSize and no absolute flag keeps the import's classic fixed 8px, which
+ * reads as "rounded" at every size (draw.io's own default factor is 15%).
+ */
+function roundedCornerRadius(
+  t: Map<string, string>,
+  width: number,
+  height: number
+): number {
+  const arc = t.get('arcSize');
+  if (arc === undefined) return 8;
+  if (t.get('absoluteArcSize') === '1') {
+    return Math.min(width / 2, height / 2, num(arc, 20) / 2);
+  }
+  const factor = num(arc, 15) / 100;
+  return Math.min(Math.min(width, height) * factor, Math.min(width, height) / 2);
 }
 
 /** Style tokens → metadata.shape (+ typed node.style for the paints the renderer honours). */
@@ -533,9 +849,7 @@ function applyVertexStyle(
     }
   }
   if (t.get('rounded') === '1' && shape === 'rect') {
-    // mxGraph's arcSize is a PERCENTAGE unless absoluteArcSize=1 — a subtlety
-    // not worth modelling in v1. A fixed 8px reads as "rounded" at every size.
-    cornerRadius = 8;
+    cornerRadius = roundedCornerRadius(t, cell.geometry?.width || 100, cell.geometry?.height || 50);
   }
 
   const shapeMeta: Record<string, unknown> = { type: shape };
@@ -564,7 +878,7 @@ function applyVertexStyle(
   collectUnmappedStyleKeys(cell.style, unmapped);
 }
 
-/** Aggregate the style keys v1 does not consume — one deduped warning per import. */
+/** Aggregate the style keys the importer does not consume — one deduped warning per import. */
 function collectUnmappedStyleKeys(styleString: string, into: Set<string>): void {
   const { tokens, first } = parseStyle(styleString);
   for (const key of tokens.keys()) {
