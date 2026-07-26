@@ -93,7 +93,13 @@ const modelToSpec = (model) => ({
     size: { width: n.size.width, height: n.size.height },
     shape: n.getMetadata('shape'), style: n.style,
   })),
-  edges: model.getLinks().map((l) => ({ id: l.id, source: l.sourceNodeId, target: l.targetNodeId })),
+  // Carry the EDGE LABEL through. Dropping it here is what made `-->|yes|` and
+  // `-->|no|` invisible even once the parser stored them, so a labelled
+  // back-edge read as an unexplained stray line.
+  edges: model.getLinks().map((l) => ({
+    id: l.id, source: l.sourceNodeId, target: l.targetNodeId,
+    label: l.labels?.[0]?.text ?? l.getMetadata?.('label') ?? undefined,
+  })),
 });
 
 defineDemo({
