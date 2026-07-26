@@ -45,6 +45,22 @@
   }
   #vs-menu button:hover:not(:disabled) { background: rgba(59,82,217,.1); color: #3B52D9; }
   #vs-menu button:disabled { opacity: .45; cursor: default; }
+  /* bottom: 34px, not 10: the shell's #canvas allots 100px for a header that
+     wraps to ~121px at gate width, so the page's last ~21px sit below the
+     fold — a cluster hugging the canvas bottom would be half-clipped. */
+  #vs-zoom {
+    position: absolute; right: 10px; bottom: 34px; z-index: 25;
+    display: flex; align-items: center; gap: 2px; padding: 3px;
+    background: var(--gf-panel, #fff); border: 1px solid var(--gf-line, #e5e7eb);
+    border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+    font: 12px ui-sans-serif, system-ui, sans-serif;
+  }
+  #vs-zoom button {
+    padding: 4px 8px; border: 0; border-radius: 6px; background: transparent;
+    color: var(--gf-ink, #1e2436); cursor: pointer; font: inherit;
+  }
+  #vs-zoom button:hover { background: rgba(59,82,217,.1); color: #3B52D9; }
+  #vs-zoom #vs-zoom-pct { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 </style>
 <script type="module">
 import {
@@ -139,6 +155,63 @@ defineDemo({
         color: 'rgba(120,130,145,.16)',
         majorEvery: 5, majorColor: 'rgba(120,130,145,.30)',
       },
+      // The library's own live minimap (node rects + camera rectangle),
+      // bottom-right; slightly smaller than default so the canvas keeps its
+      // room. It sits ABOVE the zoom cluster — nudged below.
+      minimap: { width: 170, height: 120 },
+    });
+    {
+      const mm = canvasEl.querySelector('.grafloria-minimap');
+      if (mm) mm.style.bottom = '76px';   // clear the zoom cluster below it
+    }
+
+    // ZOOM CLUSTER — bottom-right, the Visio/Figma convention: −  %  +  fit.
+    // The % readout doubles as reset-to-100%. Each button is one call into
+    // the instance's own ViewportController (setZoom is centre-anchored), so
+    // there is no camera math here to drift from the canvas's.
+    const ZOOM_STEP = 1.2;
+    ctx.zoomIn = () => { api.viewport.setZoom(api.viewport.getZoom() * ZOOM_STEP); api.renderNow(); };
+    ctx.zoomOut = () => { api.viewport.setZoom(api.viewport.getZoom() / ZOOM_STEP); api.renderNow(); };
+    ctx.zoomReset = () => { api.viewport.setZoom(1); api.renderNow(); };
+    ctx.fit = () => { api.fitView(); api.renderNow(); };
+    {
+      const wrap = document.createElement('div');
+      wrap.id = 'vs-zoom';
+      const zBtn = (label, title, run) => {
+        const b = document.createElement('button');
+        b.textContent = label; b.title = title;
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); run(); });
+        wrap.appendChild(b);
+        return b;
+      };
+      zBtn('−', 'Zoom out (Ctrl/⌘ −)', ctx.zoomOut);
+      const pct = zBtn('100%', 'Zoom level — click to reset to 100% (Ctrl/⌘ 0)', ctx.zoomReset);
+      pct.id = 'vs-zoom-pct';
+      zBtn('＋', 'Zoom in (Ctrl/⌘ =)', ctx.zoomIn);
+      zBtn('⤢', 'Fit the diagram in view (Ctrl/⌘+Shift+F)', ctx.fit);
+      // A press here must never reach the canvas below (it would start a
+      // marquee / clear the selection) — same discipline as the library's
+      // controls component.
+      for (const type of ['pointerdown', 'mousedown']) {
+        wrap.addEventListener(type, (e) => e.stopPropagation());
+      }
+      const paintPct = () => { pct.textContent = `${Math.round(api.viewport.getZoom() * 100)}%`; };
+      api.viewport.onChange(paintPct);
+      paintPct();
+      canvasEl.appendChild(wrap);
+    }
+
+    // Keyboard zoom, the chords every canvas product answers: Ctrl/⌘+= in,
+    // Ctrl/⌘+− out, Ctrl/⌘+0 → 100%, Ctrl/⌘+Shift+F → fit. preventDefault
+    // keeps the BROWSER's page zoom out of it. Never while typing in a field.
+    document.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.key === '=' || e.key === '+') { e.preventDefault(); ctx.zoomIn(); }
+      else if (e.key === '-' || e.key === '_') { e.preventDefault(); ctx.zoomOut(); }
+      else if (e.key === '0') { e.preventDefault(); ctx.zoomReset(); }
+      else if (e.shiftKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); ctx.fit(); }
     });
 
     // SNAP-TO-GRID — the engine already has it in its interaction config
@@ -380,6 +453,8 @@ defineDemo({
       (on) => ctx.engine.getStore().set('gridEnabled', on));
     mkToggle('⌗ Snap', 'Snap dragged shapes and edge points to the 20px grid', true,
       (on) => ctx.setSnap(on));
+    mkToggle('◱ Minimap', 'Show the minimap', true,
+      (on) => ctx.engine.getStore().set('showMinimap', on));
 
     const hint = document.createElement('span');
     hint.className = 'hint';
@@ -398,13 +473,18 @@ defineDemo({
     check(document.querySelectorAll('#vs-rail .gf-stencil-item').length > 0, 'the stencil rail is empty');
     check(ctx.registered === 80, `expected exactly 80 masters registered, got ${ctx.registered}`);
     check(!!document.querySelector('#vs-panel .gf-sd-title'), 'the shape-data panel did not mount');
-    check(document.querySelectorAll('#vs-bar button').length >= 13,
-      'the toolbar should carry the full set: 6 aligns, 2 distributes, Duplicate, Undo, Redo, Grid, Snap');
+    check(document.querySelectorAll('#vs-bar button').length >= 14,
+      'the toolbar should carry the full set: 6 aligns, 2 distributes, Duplicate, Undo, Redo, Grid, Snap, Minimap');
     check(!!document.getElementById('vs-menu'), 'the context menu did not mount');
     // The Visio chrome: the page grid is painted (Background plugin, its own
     // layer under the diagram) and defaults ON.
     const gridSvg = document.querySelector('#vs-canvas .grafloria-background-layer svg.grafloria-background');
     check(!!gridSvg && getComputedStyle(gridSvg).display !== 'none', 'the page grid should paint by default');
+    // …the zoom cluster reads 100% at boot and the minimap mirrors the scene.
+    const pctEl = document.getElementById('vs-zoom-pct');
+    check(!!pctEl && pctEl.textContent === '100%', `the zoom readout should boot at 100%, got "${pctEl?.textContent}"`);
+    check(document.querySelectorAll('#vs-canvas .grafloria-minimap rect[data-node-id]').length === m.getNodes().length,
+      'the minimap should carry one rect per node');
 
     // 2. T7 — placing from the palette adds a live node, undoably.
     const before = m.getNodes().length;
