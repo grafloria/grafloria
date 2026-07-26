@@ -94,6 +94,35 @@ describe('Link edit commands (wave4/edges)', () => {
       const command = new UpdateLinkStyleCommand('nope', { strokeWidth: 1 });
       expect(command.canExecute(context)).toBe(false);
     });
+
+    // visio-panel: the properties panel writes arrow markers through this same
+    // command — the ArrowStyle vocabulary is style, not structure.
+    it('sets arrow markers undoably (the panel Arrows section)', async () => {
+      await manager.execute(
+        new UpdateLinkStyleCommand(link.id, {
+          arrowHead: { type: 'crow-foot', size: 12, filled: true },
+          arrowTail: { type: 'one', size: 12, filled: false },
+        })
+      );
+      expect(link.style.arrowHead?.type).toBe('crow-foot');
+      expect(link.style.arrowTail?.type).toBe('one');
+
+      await manager.undo();
+      expect(link.style.arrowHead).toBeUndefined();
+      expect(link.style.arrowTail).toBeUndefined();
+      expect(link.style.stroke).toBe('#111111'); // pre-existing keys intact
+    });
+
+    it('does not merge: two style edits in quick succession stay two undo entries', async () => {
+      await manager.execute(new UpdateLinkStyleCommand(link.id, { strokeWidth: 4 }));
+      await manager.execute(new UpdateLinkStyleCommand(link.id, { strokeWidth: 6 }));
+      expect(link.style.strokeWidth).toBe(6);
+
+      await manager.undo();
+      expect(link.style.strokeWidth).toBe(4); // one Ctrl+Z rewinds ONE edit
+      await manager.undo();
+      expect(link.style.strokeWidth).toBe(2);
+    });
   });
 
   describe('SetLinkLabelsCommand', () => {

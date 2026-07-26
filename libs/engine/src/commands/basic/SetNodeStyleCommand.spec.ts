@@ -110,6 +110,26 @@ describe('SetNodeStyleCommand', () => {
     expect(cmd.canUndo(ctx)).toBe(true);
   });
 
+  it('does not merge: two style edits in quick succession stay two undo entries', async () => {
+    // The panel commits one command per completed edit (a colour-picker close, a
+    // checkbox toggle). Distinct gestures must rewind one at a time — canMergeWith
+    // stays the Command default (false), so CommandManager's merge window never
+    // collapses them.
+    const { d, ctx } = diagram();
+    const { CommandManager } = await import('../CommandManager');
+    const bus = { emit: jest.fn() };
+    const manager = new CommandManager(ctx as any, bus as any);
+
+    await manager.execute(new SetNodeStyleCommand('a', { fill: '#c00' }));
+    await manager.execute(new SetNodeStyleCommand('a', { fill: '#0a0' })); // same key, inside any merge window
+    expect(d.getNode('a')!.style.fill).toBe('#0a0');
+
+    await manager.undo();
+    expect(d.getNode('a')!.style.fill).toBe('#c00'); // one Ctrl+Z, one edit
+    await manager.undo();
+    expect(d.getNode('a')!.style.fill).toBeUndefined();
+  });
+
   it('serializes its targets and both style states', () => {
     const { d, ctx } = diagram();
     d.getNode('a')!.setStyle({ fill: 'before' });
