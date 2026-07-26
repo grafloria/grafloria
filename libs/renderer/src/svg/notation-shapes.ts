@@ -31,6 +31,10 @@ const diamondPath = (x: number, y: number, w: number, h: number) =>
 const ellipsePath = (cx: number, cy: number, rx: number, ry: number) =>
   `M ${cx - rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx + rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx - rx} ${cy} Z`;
 
+/** The same ellipse wound the OTHER way (sweep 1) — a nonzero-rule fill HOLE. */
+const ellipsePathCCW = (cx: number, cy: number, rx: number, ry: number) =>
+  `M ${cx - rx} ${cy} A ${rx} ${ry} 0 1 1 ${cx + rx} ${cy} A ${rx} ${ry} 0 1 1 ${cx - rx} ${cy} Z`;
+
 /** Register every notation shape that the base registry does not already own. */
 export function registerNotationShapes(): void {
   // ── Flowchart ──────────────────────────────────────────────────────────────
@@ -109,6 +113,19 @@ export function registerNotationShapes(): void {
     const r = Math.min(w, h) / 2, cx = w / 2, cy = h / 2;
     const inset = Math.max(3, r * 0.18);
     return `${ellipsePath(cx, cy, r, r)} ${ellipsePath(cx, cy, r - inset, r - inset)}`;
+  }, delegateTo('circle'));
+
+  // ── UML final node / final state ───────────────────────────────────────────
+  // A BULLS-EYE: thin outer ring + solid inner dot — what tells a final node
+  // apart from the initial node's plain filled disc. Painted from FILL alone by
+  // WINDING: outer circle clockwise, ring-hole circle COUNTER-clockwise (the
+  // nonzero rule leaves the band between them filled and the gap empty), inner
+  // dot clockwise again. Works with any fill colour the template declares;
+  // stroke should stay thin (it outlines each circle).
+  define('final-node', (w, h) => {
+    const r = Math.min(w, h) / 2, cx = w / 2, cy = h / 2;
+    const band = Math.max(2, r * 0.16);          // outer ring line thickness
+    return `${ellipsePath(cx, cy, r, r)} ${ellipsePathCCW(cx, cy, r - band, r - band)} ${ellipsePath(cx, cy, r * 0.5, r * 0.5)}`;
   }, delegateTo('circle'));
 }
 

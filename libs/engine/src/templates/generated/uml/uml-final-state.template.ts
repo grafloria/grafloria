@@ -37,10 +37,10 @@ export const umlFinalStateTemplate: NodeTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "circle",
-      "fill": "#F8FAFC",
+      "type": "final-node",
+      "fill": "#475569",
       "stroke": "#475569",
-      "strokeWidth": 4,
+      "strokeWidth": 1,
       "opacity": 1
     },
     "labelPlacement": "below",

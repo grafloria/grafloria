@@ -78,6 +78,10 @@ const OVERRIDES = {
   // send-signal ACTION pentagon's cousin) spilled the card's rows outside its
   // slanted sides.
   'uml::Signal': 'rect',
+  // Final node / final state are BULLS-EYES (ring + solid dot) — as plain
+  // circles they were pixel-identical to the initial node's filled disc.
+  'uml::Final Node': 'final-node',
+  'uml::Final State': 'final-node',
   // Group B notation silhouettes (renderer notation-shapes.ts): the domain
   // registry still declares plain figures for these, so without a pin a re-run
   // would REGRESS them to rectangles/ellipses.
@@ -146,6 +150,10 @@ const PAINTS = {
   // The double ring reads as TWO lines only when the strokes are thinner than
   // the ring gap (the generated 3px stroke fused them into one fat ring).
   'bpmn::bpmn-intermediate-event': { strokeWidth: 1.5 },
+  // The bulls-eye is winding-rendered from FILL; a 4px stroke on each of its
+  // three circles floods the empty gap between ring and dot.
+  'uml::uml-final-node': { strokeWidth: 1 },
+  'uml::uml-final-state': { strokeWidth: 1, fill: '#475569' },
 };
 
 /** label → declared shape, read straight out of the domain registries. */
