@@ -153,15 +153,38 @@ const CONSUMED_STYLE_KEYS = new Set([
 /**
  * `value="<b>Start</b><br>here"` must become "Start here", not carry markup
  * into the label canon. Block/line-break boundaries turn into single spaces so
- * words do not fuse; entity decoding already happened in the XML reader.
+ * words do not fuse.
+ *
+ * Entities are decoded a SECOND time here, after the tags are gone. The XML
+ * reader already decoded one level — but with `html=1` (draw.io's default) the
+ * value is an HTML FRAGMENT, so an author's literal `&` was double-encoded on
+ * save (`&amp;amp;`) and one decode still leaves `&amp;` in the label.
  */
 export function stripHtmlToText(value: string): string {
-  return value
-    .replace(/<br\s*\/?>/gi, ' ')
-    .replace(/<\/(div|p|li|tr|h[1-6])>/gi, ' ')
-    .replace(/<[^>]*>/g, '')
+  return decodeHtmlEntities(
+    value
+      .replace(/<br\s*\/?>/gi, ' ')
+      .replace(/<\/(div|p|li|tr|h[1-6])>/gi, ' ')
+      .replace(/<[^>]*>/g, '')
+  )
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+const HTML_ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+};
+
+function decodeHtmlEntities(text: string): string {
+  return text.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (whole, body: string) => {
+    if (body[0] === '#') {
+      const code = body[1] === 'x' || body[1] === 'X'
+        ? parseInt(body.slice(2), 16)
+        : parseInt(body.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : whole;
+    }
+    return HTML_ENTITIES[body] ?? whole; // unknown names stay literal, never vanish
+  });
 }
 
 // ---------------------------------------------------------------------------

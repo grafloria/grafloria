@@ -293,3 +293,19 @@ describe('importDrawio — failure honesty', () => {
     expect(warnings).toEqual([]);
   });
 });
+
+// Verifier finding: with html=1 the value is an HTML FRAGMENT, so a literal
+// "&" arrives double-encoded and one XML-level decode still leaves "&amp;" in
+// the label. The strip must decode the second level itself.
+describe('stripHtmlToText — second-level entity decode', () => {
+  const { stripHtmlToText } = require('./importDrawio');
+  it('decodes entities left over after the XML pass', () => {
+    expect(stripHtmlToText('<b>R&amp;D</b><br>&lt;stage 2&gt;')).toBe('R&D <stage 2>');
+  });
+  it('decodes numeric and hex references', () => {
+    expect(stripHtmlToText('caf&#233; &#x2192; lab')).toBe('café → lab');
+  });
+  it('leaves unknown entity names literal instead of eating them', () => {
+    expect(stripHtmlToText('a &bogus; b')).toBe('a &bogus; b');
+  });
+});
