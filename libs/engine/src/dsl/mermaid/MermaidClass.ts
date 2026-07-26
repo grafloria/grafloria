@@ -31,6 +31,7 @@
 import { DiagramModel } from '../../models/DiagramModel';
 import { NodeModel } from '../../models/NodeModel';
 import { significantLines, unquote } from './lines';
+import { rankLayout, type RankEdge } from './layout';
 
 export type UmlVisibility = '+' | '-' | '#' | '~';
 
@@ -422,6 +423,27 @@ function classHeight(def: MermaidClassDef): number {
   return 34 + (def.stereotype ? 14 : 0) + rows * 20 + 24;
 }
 
+/**
+ * Inheritance-depth ranking (gap-analysis §3a "class by inheritance depth"):
+ * ONLY inheritance and realization edges rank the graph — parents (and
+ * interfaces) sit above the classes that extend (implement) them, however the
+ * author spelt the operator (`Animal <|-- Dog` and `Dog --|> Animal` rank
+ * identically, because the flip is the same one umlSpecFrom applies).
+ * Associations, dependencies, aggregation and composition say nothing about
+ * depth and are deliberately excluded.
+ */
+function classRankEdges(model: MermaidClassModel): RankEdge[] {
+  const edges: RankEdge[] = [];
+  for (const rel of model.relationships) {
+    const { kind, reversed } = umlRelationKind(rel.operator);
+    if (kind !== 'inheritance' && kind !== 'realization') continue;
+    const child = reversed ? rel.to : rel.from; // the kit spec's `from`
+    const parent = reversed ? rel.from : rel.to; // the kit spec's `to`
+    edges.push({ from: parent, to: child });
+  }
+  return edges;
+}
+
 export function classModelToDiagram(model: MermaidClassModel): DiagramModel {
   const diagram = new DiagramModel('UML Class Diagram');
   diagram.setMetadata('diagramType', 'classDiagram');
@@ -429,12 +451,28 @@ export function classModelToDiagram(model: MermaidClassModel): DiagramModel {
   diagram.setMetadata('umlSpec', umlSpecFrom(model));
   if (model.notes.length) diagram.setMetadata('umlNotes', model.notes);
 
+  // Type-aware placement, computed BEFORE the nodes exist so smart links pick
+  // their ports against the real geometry. Replaces the naive 3-up grid.
+  const positions = rankLayout(
+    model.classes.map((def) => ({
+      id: def.id,
+      size: { width: CARD_W, height: classHeight(def) },
+    })),
+    classRankEdges(model),
+    {
+      direction: model.direction ?? 'TB',
+      start: { x: 80, y: 60 },
+      rankGap: 80,
+      crossGap: 110, // room for multiplicity chips and edge labels
+    }
+  );
+
   const nodes = new Map<string, NodeModel>();
-  model.classes.forEach((def, i) => {
+  model.classes.forEach((def) => {
     const node = new NodeModel({
       id: def.id,
       type: 'uml:class',
-      position: { x: 80 + (i % 3) * 320, y: 60 + Math.floor(i / 3) * 260 },
+      position: positions.get(def.id) ?? { x: 80, y: 60 },
       size: { width: CARD_W, height: classHeight(def) },
     });
     node.setLabel(def.name);

@@ -21,6 +21,7 @@
 import { DiagramModel } from '../../models/DiagramModel';
 import { NodeModel } from '../../models/NodeModel';
 import { significantLines, unquote } from './lines';
+import { rankLayout, type RankEdge } from './layout';
 
 // ── The grammar's vocabulary ────────────────────────────────────────────────
 
@@ -259,6 +260,38 @@ const HEAD_H = 28;
 const ROW_H = 25;
 const SLACK = 9;
 
+const ONE_SIDE: ReadonlySet<ErCardinalityMarker> = new Set<ErCardinalityMarker>([
+  'one',
+  'zero-or-one',
+]);
+
+/**
+ * FK-dependency ranking (gap-analysis §3a "ER tables by FK dependency"): the
+ * entity on the ONE side of a relationship is the referenced table — the many
+ * side holds the foreign key — so the referenced entity sits one rank BEFORE
+ * the referencing one, whichever way the author happened to write the line
+ * (`CUSTOMER ||--o{ ORDER` and `ORDER }o--|| CUSTOMER` rank identically).
+ * One-to-one / many-to-many carry no FK direction; written order decides,
+ * deterministically. Cycles break at the back-edge inside rankLayout.
+ */
+function erRankEdges(model: MermaidErModel): RankEdge[] {
+  const edges: RankEdge[] = [];
+  for (const rel of model.relationships) {
+    const { tail, head } = erMarkers(rel);
+    const fromIsReferenced = ONE_SIDE.has(tail) && !ONE_SIDE.has(head);
+    const toIsReferenced = ONE_SIDE.has(head) && !ONE_SIDE.has(tail);
+    edges.push(
+      toIsReferenced && !fromIsReferenced
+        ? { from: rel.to, to: rel.from }
+        : { from: rel.from, to: rel.to }
+    );
+  }
+  return edges;
+}
+
+const erEntityHeight = (entity: MermaidErEntity): number =>
+  HEAD_H + entity.attributes.length * ROW_H + SLACK;
+
 /** Build a DiagramModel from a parsed ER model. */
 export function erModelToDiagram(model: MermaidErModel): DiagramModel {
   const diagram = new DiagramModel('ER Diagram');
@@ -268,13 +301,29 @@ export function erModelToDiagram(model: MermaidErModel): DiagramModel {
   // `erDiagram()` from libs/element without re-deriving anything.
   diagram.setMetadata('erSpec', erSpecFrom(model));
 
+  // Type-aware placement, computed BEFORE the nodes exist so smart links pick
+  // their ports against the real geometry. Replaces the naive 3-up grid.
+  const positions = rankLayout(
+    model.entities.map((e) => ({
+      id: e.id,
+      size: { width: CARD_W, height: erEntityHeight(e) },
+    })),
+    erRankEdges(model),
+    {
+      direction: model.direction ?? 'TB',
+      start: { x: 60, y: 60 },
+      rankGap: 90,
+      crossGap: 120, // room for the crow's-foot markers and edge labels
+    }
+  );
+
   const nodes = new Map<string, NodeModel>();
-  model.entities.forEach((entity, i) => {
+  model.entities.forEach((entity) => {
     const node = new NodeModel({
       id: entity.id,
       type: 'er:entity',
-      position: { x: 60 + (i % 3) * 340, y: 60 + Math.floor(i / 3) * 280 },
-      size: { width: CARD_W, height: HEAD_H + entity.attributes.length * ROW_H + SLACK },
+      position: positions.get(entity.id) ?? { x: 60, y: 60 },
+      size: { width: CARD_W, height: erEntityHeight(entity) },
     });
     node.setLabel(entity.name);
     node.setMetadata('erEntity', entity);
