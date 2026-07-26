@@ -138730,21 +138730,56 @@ var SHAPE_MAP = {
   cylinder3: "cylinder"
   // draw.io's current cylinder is shape=cylinder3
 };
+var ARROW_MAP = {
+  classic: "arrow",
+  classicThin: "arrow",
+  block: "arrow",
+  blockThin: "arrow",
+  open: "open-arrow",
+  openThin: "open-arrow",
+  openAsync: "open-arrow",
+  oval: "oval",
+  diamond: "diamond",
+  diamondThin: "diamond",
+  cross: "cross",
+  dash: "bar",
+  box: "square",
+  circle: "circle",
+  circlePlus: "circle",
+  // ER notation — draw.io's ER endpoints map 1:1 onto the engine's ERD arrows.
+  ERone: "one",
+  ERmandOne: "one",
+  ERmany: "crow-foot",
+  ERoneToMany: "one-or-many",
+  ERzeroToOne: "zero-or-one",
+  ERzeroToMany: "zero-or-many",
+  none: "none"
+};
+var OPEN_ARROW_TOKENS = /* @__PURE__ */ new Set(["open", "openThin", "openAsync", "cross", "dash"]);
 var CONSUMED_STYLE_KEYS = /* @__PURE__ */ new Set([
   "shape",
   "rounded",
+  "arcSize",
+  "absoluteArcSize",
   "fillColor",
   "strokeColor",
   "strokeWidth",
   "opacity",
   "dashed",
   "fontColor",
+  "fontSize",
   "edgeStyle",
   "curved",
+  "startArrow",
+  "endArrow",
+  "startFill",
+  "endFill",
   "text",
   "swimlane",
   "group",
   "edgeLabel",
+  "labelPosition",
+  "verticalLabelPosition",
   ...Object.keys(SHAPE_MAP)
 ]);
 function stripHtmlToText(value) {
@@ -138783,27 +138818,70 @@ async function inflateDrawioPayload(b64) {
   return decodeURIComponent(new TextDecoder().decode(inflated));
 }
 async function importDrawio(text) {
-  const warnings = [];
+  const unreadable = (e) => `not a readable .drawio document: ${e.message}`;
+  let root;
   try {
-    const root = parseXml(text.trim());
-    const model = await resolveModelElement(root, warnings);
-    const diagram = buildDiagram(model, warnings);
-    return { diagram, warnings };
+    root = parseXml(text.trim());
   } catch (e) {
-    return { warnings, error: `not a readable .drawio document: ${e.message}` };
+    return { warnings: [], error: unreadable(e) };
   }
-}
-async function resolveModelElement(root, warnings) {
-  if (root.tag === "mxGraphModel") return root;
+  if (root.tag === "mxGraphModel") {
+    const warnings2 = [];
+    try {
+      return { diagram: buildDiagram(root, warnings2), warnings: warnings2 };
+    } catch (e) {
+      return { warnings: warnings2, error: unreadable(e) };
+    }
+  }
   if (root.tag !== "mxfile") {
-    throw new Error(`root element is <${root.tag}>, expected <mxGraphModel> or <mxfile>`);
+    return {
+      warnings: [],
+      error: `not a readable .drawio document: root element is <${root.tag}>, expected <mxGraphModel> or <mxfile>`
+    };
   }
-  const pages = root.children.filter((c) => c.tag === "diagram");
-  if (pages.length === 0) throw new Error("<mxfile> contains no <diagram> page");
-  if (pages.length > 1) {
-    warnings.push(`page 1 of ${pages.length} imported ("${pages[0].attrs["name"] ?? "unnamed"}"); multi-page import pending`);
+  const pageEls = root.children.filter((c) => c.tag === "diagram");
+  if (pageEls.length === 0) {
+    return { warnings: [], error: "not a readable .drawio document: <mxfile> contains no <diagram> page" };
   }
-  const page = pages[0];
+  if (pageEls.length === 1) {
+    const warnings2 = [];
+    try {
+      return { diagram: buildDiagram(await resolvePageModel(pageEls[0]), warnings2), warnings: warnings2 };
+    } catch (e) {
+      return { warnings: warnings2, error: unreadable(e) };
+    }
+  }
+  const pages = [];
+  for (let index = 0; index < pageEls.length; index++) {
+    const el = pageEls[index];
+    const name = el.attrs["name"] ?? `Page ${index + 1}`;
+    const warnings2 = [];
+    try {
+      pages.push({ name, index, diagram: buildDiagram(await resolvePageModel(el), warnings2), warnings: warnings2 });
+    } catch (e) {
+      pages.push({
+        name,
+        index,
+        warnings: warnings2,
+        error: `page ${index + 1} ("${name}") is not readable: ${e.message}`
+      });
+    }
+  }
+  const first = pages[0];
+  const warnings = [
+    `page 1 of ${pages.length} ("${first.name}") is the primary diagram; all ${pages.length} pages imported under pages[]`,
+    ...first.warnings,
+    // A later page's failure is file-level news, named once here too.
+    ...pages.slice(1).flatMap((p) => p.error ? [p.error] : [])
+  ];
+  return {
+    ...first.diagram ? { diagram: first.diagram } : {},
+    warnings,
+    ...first.error ? { error: first.error } : {},
+    pages
+  };
+}
+async function resolvePageModel(page) {
   const inline = page.children.find((c) => c.tag === "mxGraphModel");
   if (inline) return inline;
   if (!page.text) throw new Error("the <diagram> page is empty");
@@ -138860,6 +138938,10 @@ function readCell(el) {
     }
     const alt = geo.children.find((c) => c.tag === "mxRectangle" && c.attrs["as"] === "alternateBounds");
     if (alt) cell.alternate = { width: num(alt.attrs["width"]), height: num(alt.attrs["height"]) };
+    const sp = geo.children.find((c) => c.tag === "mxPoint" && c.attrs["as"] === "sourcePoint");
+    if (sp) cell.sourcePoint = { x: num(sp.attrs["x"]), y: num(sp.attrs["y"]) };
+    const tp = geo.children.find((c) => c.tag === "mxPoint" && c.attrs["as"] === "targetPoint");
+    if (tp) cell.targetPoint = { x: num(tp.attrs["x"]), y: num(tp.attrs["y"]) };
   }
   return cell;
 }
@@ -138911,6 +138993,7 @@ function buildDiagram(model, warnings) {
   const groupsById = /* @__PURE__ */ new Map();
   const nodesById = /* @__PURE__ */ new Map();
   const edgeCells = [];
+  const syntheticLabelNodes = [];
   for (const cell of cells.values()) {
     if (!isContainer(cell) || isEdgeLabel(cell)) continue;
     const origin = absoluteOrigin(cell.parent);
@@ -138946,6 +139029,8 @@ function buildDiagram(model, warnings) {
     if (cell.data) node.setMetadata("drawioData", cell.data);
     diagram.addNode(node);
     nodesById.set(cell.id, node);
+    const outside = applyOutsideLabelPlacement(node, cell, diagram);
+    if (outside) syntheticLabelNodes.push({ parent: cell.parent, id: outside.id });
   }
   for (const cell of cells.values()) {
     const parentGroup = cell.parent ? groupsById.get(cell.parent) : void 0;
@@ -138954,57 +139039,237 @@ function buildDiagram(model, warnings) {
       parentGroup.addMember(cell.id, diagram);
     }
   }
+  for (const synth of syntheticLabelNodes) {
+    if (synth.parent) groupsById.get(synth.parent)?.addMember(synth.id, diagram);
+  }
   for (const cell of cells.values()) {
     if (cell.edge) edgeCells.push(cell);
   }
-  let waypointEdges = 0;
+  const endpointCenter = (id) => {
+    if (!id) return void 0;
+    const n3 = nodesById.get(id);
+    if (n3) return { x: n3.position.x + n3.size.width / 2, y: n3.position.y + n3.size.height / 2 };
+    const g = groupsById.get(id);
+    if (g) {
+      const f = g.getOuterBounds();
+      return { x: f.x + f.width / 2, y: f.y + f.height / 2 };
+    }
+    return void 0;
+  };
   for (const cell of edgeCells) {
-    const source = cell.source ? nodesById.get(cell.source) : void 0;
-    const target = cell.target ? nodesById.get(cell.target) : void 0;
-    if (!source || !target) {
-      warnings.push(`edge "${cell.id}" skipped: ${describeMissingEndpoint(cell, nodesById, groupsById)}`);
+    const edgeOrigin = absoluteOrigin(cell.parent);
+    const absWaypoints = (cell.waypoints ?? []).map((p) => ({
+      x: p.x + edgeOrigin.x,
+      y: p.y + edgeOrigin.y
+    }));
+    const endpointResolvable = (id, point) => id ? nodesById.has(id) || groupsById.has(id) : !!point;
+    if (!endpointResolvable(cell.source, cell.sourcePoint) || !endpointResolvable(cell.target, cell.targetPoint)) {
+      warnings.push(`edge "${cell.id}" skipped: ${describeMissingEndpoint(cell, nodesById)}`);
       continue;
     }
+    const resolveEndpoint = (side) => {
+      const id = side === "source" ? cell.source : cell.target;
+      if (!id) {
+        const p = side === "source" ? cell.sourcePoint : cell.targetPoint;
+        const anchor2 = new NodeModel({
+          id: `drawio-anchor:${cell.id}:${side}`,
+          type: "default",
+          position: { x: p.x + edgeOrigin.x - 0.5, y: p.y + edgeOrigin.y - 0.5 },
+          size: { width: 1, height: 1 }
+        });
+        anchor2.setMetadata("shape", { type: "rect", fill: "none", stroke: "none" });
+        anchor2.setMetadata("drawioPointAnchor", { ...p });
+        diagram.addNode(anchor2);
+        return anchor2;
+      }
+      const direct = nodesById.get(id);
+      if (direct) return direct;
+      const group = groupsById.get(id);
+      const frame = group.getOuterBounds();
+      const toward = (side === "source" ? absWaypoints[0] : absWaypoints[absWaypoints.length - 1]) ?? endpointCenter(side === "source" ? cell.target : cell.source) ?? { x: frame.x + frame.width / 2, y: frame.y - 20 };
+      const pin2 = nearestPerimeterPoint(frame, toward);
+      const anchor = new NodeModel({
+        id: `drawio-anchor:${cell.id}:${side}`,
+        type: "default",
+        position: { x: pin2.x - 0.5, y: pin2.y - 0.5 },
+        size: { width: 1, height: 1 }
+      });
+      anchor.setMetadata("shape", { type: "rect", fill: "none", stroke: "none" });
+      anchor.setMetadata("drawioContainerAnchor", group.id);
+      diagram.addNode(anchor);
+      group.addMember(anchor.id, diagram);
+      return anchor;
+    };
+    const source = resolveEndpoint("source");
+    const target = resolveEndpoint("target");
     const style = parseStyle(cell.style);
-    const orthogonal = style.tokens.get("edgeStyle")?.toLowerCase().includes("orthogonal") === true && style.tokens.get("curved") !== "1";
+    const edgeStyleToken = style.tokens.get("edgeStyle")?.toLowerCase() ?? "";
+    const orthogonal = /orthogonal|elbow|segment|entityrelation/.test(edgeStyleToken) && style.tokens.get("curved") !== "1";
     const link = diagram.createSmartLink(source, target, orthogonal ? "orthogonal" : "smooth");
     if (!link) {
       warnings.push(`edge "${cell.id}" skipped: no connectable ports between "${cell.source}" and "${cell.target}"`);
       continue;
     }
     link.setMetadata("drawioId", cell.id);
-    const labelText = cell.value || findEdgeLabelChild(cell.id, cells);
+    const labelCell = findEdgeLabelChild(cell.id, cells);
+    const labelText = cell.value || labelCell?.value || "";
     if (labelText) link.setLabel(labelText);
-    if (cell.waypoints && cell.waypoints.length > 0) {
+    applyEdgeStyle(link, cell, labelCell, labelText, warnings, unmappedStyleKeys);
+    if (absWaypoints.length > 0) {
       link.setMetadata("drawioWaypoints", cell.waypoints);
-      waypointEdges++;
+      const routed = link.points;
+      const start = routed[0] ?? endpointCenter(source.id);
+      const end = routed[routed.length - 1] ?? endpointCenter(target.id);
+      link.setPoints([{ ...start }, ...absWaypoints, { ...end }]);
+      link.setMetadata("hasManualWaypoints", true);
     }
     collectUnmappedStyleKeys(cell.style, unmappedStyleKeys);
-  }
-  if (waypointEdges > 0) {
-    warnings.push(
-      `manual waypoints on ${waypointEdges} edge(s) ignored (auto-routing owns the polyline); originals kept under link metadata.drawioWaypoints`
-    );
   }
   if (unmappedStyleKeys.size > 0) {
     warnings.push(`unmapped style keys dropped: ${[...unmappedStyleKeys].sort().join(", ")}`);
   }
+  installAnchorLifecycle(diagram);
   return diagram;
 }
-function describeMissingEndpoint(cell, nodes, groups) {
+function installAnchorLifecycle(diagram) {
+  const isAnchor = (n3) => !!n3 && (n3.getMetadata("drawioContainerAnchor") !== void 0 || n3.getMetadata("drawioPointAnchor") !== void 0);
+  diagram.on("link:removed", (link) => {
+    for (const id of [link.sourceNodeId, link.targetNodeId]) {
+      if (!id) continue;
+      const n3 = diagram.getNode(id);
+      if (isAnchor(n3) && diagram.getLinksForNode(id).length === 0) diagram.removeNode(id);
+    }
+  });
+  diagram.on("group:removed", (group) => {
+    for (const n3 of diagram.getNodes()) {
+      if (n3.getMetadata("drawioContainerAnchor") === group.id) diagram.removeNode(n3.id);
+    }
+  });
+}
+function nearestPerimeterPoint(frame, toward) {
+  const left = frame.x;
+  const right = frame.x + frame.width;
+  const top = frame.y;
+  const bottom = frame.y + frame.height;
+  const cx = Math.min(Math.max(toward.x, left), right);
+  const cy = Math.min(Math.max(toward.y, top), bottom);
+  if (toward.x !== cx || toward.y !== cy) return { x: cx, y: cy };
+  const candidates = [
+    { d: cx - left, p: { x: left, y: cy } },
+    { d: right - cx, p: { x: right, y: cy } },
+    { d: cy - top, p: { x: cx, y: top } },
+    { d: bottom - cy, p: { x: cx, y: bottom } }
+  ];
+  candidates.sort((a, b) => a.d - b.d);
+  return candidates[0].p;
+}
+function describeMissingEndpoint(cell, nodes) {
   const side = (name, id) => {
     if (!id) return `no ${name}`;
     if (nodes.has(id)) return void 0;
-    if (groups.has(id)) return `${name} "${id}" is a container (container endpoints pending)`;
     return `${name} "${id}" does not exist`;
   };
   return [side("source", cell.source), side("target", cell.target)].filter(Boolean).join("; ");
 }
 function findEdgeLabelChild(edgeId, cells) {
   for (const c of cells.values()) {
-    if (c.parent === edgeId && c.vertex && c.value) return c.value;
+    if (c.parent === edgeId && c.vertex && c.value) return c;
   }
-  return "";
+  return void 0;
+}
+function mapArrowToken(token, fillAttr, edgeId, end, warnings) {
+  if (token === void 0 || token === "") return void 0;
+  const mapped = ARROW_MAP[token];
+  if (!mapped) {
+    warnings.push(`unknown ${end}Arrow token "${token}" on edge "${edgeId}"; engine default kept`);
+    return void 0;
+  }
+  const filled = mapped !== "none" && !OPEN_ARROW_TOKENS.has(token) && fillAttr !== "0";
+  return { type: mapped, size: 10, filled };
+}
+function applyEdgeStyle(link, cell, labelCell, labelText, warnings, unmapped) {
+  const t = parseStyle(cell.style).tokens;
+  const styleBag = {};
+  const head = mapArrowToken(t.get("endArrow"), t.get("endFill"), cell.id, "end", warnings);
+  if (head) styleBag.arrowHead = head;
+  const tail = mapArrowToken(t.get("startArrow"), t.get("startFill"), cell.id, "start", warnings);
+  if (tail && tail.type !== "none") styleBag.arrowTail = tail;
+  const strokeColor = t.get("strokeColor");
+  if (strokeColor && strokeColor.toLowerCase() !== "none") styleBag.stroke = strokeColor;
+  if (t.get("strokeWidth")) styleBag.strokeWidth = num(t.get("strokeWidth"), 1);
+  if (t.get("dashed") === "1") styleBag.strokeDasharray = "6,4";
+  if (t.get("opacity")) styleBag.opacity = num(t.get("opacity"), 100) / 100;
+  if (link.pathType === "orthogonal") {
+    const rounded = t.get("rounded");
+    if (rounded === "1") {
+      link.setConnector("rounded");
+      if (t.get("arcSize")) styleBag.cornerRadius = num(t.get("arcSize"), 20) / 2;
+    } else if (rounded === "0") {
+      link.setConnector("straight");
+    }
+  }
+  if (labelText) {
+    const lt = labelCell ? parseStyle(labelCell.style).tokens : void 0;
+    const fontColor = t.get("fontColor") ?? lt?.get("fontColor");
+    const fontSize = t.get("fontSize") ?? lt?.get("fontSize");
+    if (fontColor || fontSize) {
+      const labelStyle = {};
+      if (fontColor) labelStyle.color = fontColor;
+      if (fontSize) labelStyle.fontSize = num(fontSize, 12);
+      link.addLabel({ text: labelText, position: 0.5, style: labelStyle });
+    }
+  }
+  if (Object.keys(styleBag).length > 0) {
+    link.style = { ...link.style, ...styleBag };
+  }
+}
+function roundedCornerRadius(t, width, height) {
+  const absolute = t.get("absoluteArcSize") === "1";
+  const arc = t.get("arcSize");
+  if (arc === void 0 && !absolute) return 8;
+  if (absolute) {
+    return Math.min(width / 2, height / 2, num(arc, 20) / 2);
+  }
+  return Math.min(width, height) * (num(arc, 15) / 100);
+}
+function applyOutsideLabelPlacement(node, cell, diagram) {
+  const t = parseStyle(cell.style).tokens;
+  const h = t.get("labelPosition");
+  const v = t.get("verticalLabelPosition");
+  const horizontal = h === "left" || h === "right" ? h : void 0;
+  const vertical = v === "top" || v === "bottom" ? v : void 0;
+  if (!horizontal && !vertical || !cell.value) return void 0;
+  const { width, height } = node.size;
+  if (parseStyle(cell.style).first === "text") {
+    node.setPosition(
+      node.position.x + (horizontal === "right" ? width : horizontal === "left" ? -width : 0),
+      node.position.y + (vertical === "bottom" ? height : vertical === "top" ? -height : 0)
+    );
+    node.setMetadata("drawioOutsideLabel", `${horizontal ?? "center"}/${vertical ?? "middle"}`);
+    return void 0;
+  }
+  const gap = 2;
+  const labelW = Math.max(width, 70);
+  const labelH = 50;
+  const cx = node.position.x + width / 2;
+  const cy = node.position.y + height / 2;
+  const label = new NodeModel({
+    id: `${cell.id}__label`,
+    type: "default",
+    position: {
+      x: cx - labelW / 2 + (horizontal === "right" ? (width + labelW) / 2 + gap : horizontal === "left" ? -((width + labelW) / 2 + gap) : 0),
+      y: cy - labelH / 2 + (vertical === "bottom" ? (height + labelH) / 2 + gap : vertical === "top" ? -((height + labelH) / 2 + gap) : 0)
+    },
+    size: { width: labelW, height: labelH }
+  });
+  label.setMetadata("shape", { type: "rect", fill: "none", stroke: "none" });
+  label.setMetadata("drawioLabelFor", cell.id);
+  if (t.get("fontColor")) label.style = { ...label.style ?? {}, color: t.get("fontColor") };
+  label.setLabel(cell.value);
+  diagram.addNode(label);
+  node.setLabel("");
+  node.setMetadata("drawioOutsideLabel", `${horizontal ?? "center"}/${vertical ?? "middle"}`);
+  return label;
 }
 function applyVertexStyle(node, cell, warnings, unmapped) {
   const style = parseStyle(cell.style);
@@ -139017,11 +139282,12 @@ function applyVertexStyle(node, cell, warnings, unmapped) {
     if (mapped) {
       shape = mapped;
     } else {
-      warnings.push(`unknown shape token "${token}" on cell "${cell.id}"; imported as rect`);
+      const shown = token.length > 48 ? `${token.slice(0, 45)}\u2026` : token;
+      warnings.push(`unknown shape token "${shown}" on cell "${cell.id}"; imported as rect`);
     }
   }
   if (t.get("rounded") === "1" && shape === "rect") {
-    cornerRadius = 8;
+    cornerRadius = roundedCornerRadius(t, cell.geometry?.width || 100, cell.geometry?.height || 50);
   }
   const shapeMeta = { type: shape };
   if (cornerRadius !== void 0) shapeMeta["cornerRadius"] = cornerRadius;
