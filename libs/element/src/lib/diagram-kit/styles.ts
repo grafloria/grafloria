@@ -31,7 +31,15 @@ const CSS = `
 .axk-key { width: 22px; font-size: 9px; font-weight: 700; color: #b45309; }
 .axk-key.axk-fk { color: #6d28d9; }
 .axk-col { flex: 1; color: #0f172a; }
-.axk-ty { color: #64748b; font-size: 11px; }
+.axk-ty {
+  color: #64748b; font-size: 11px;
+  /* A new column starts with an EMPTY type, which collapsed the cell to zero
+     width — there was nothing to double-click, so a type could never be set on
+     a field you just added. Reserve a target and hint that it is editable. */
+  min-width: 52px; text-align: right; cursor: text;
+}
+.axk-ty:empty::before { content: 'type'; color: #cbd5e1; font-style: italic; }
+.axk-ty:hover { color: #0f172a; }
 .axk-row.axk-pk .axk-col { font-weight: 600; }
 
 /* ===== UML class cards ===== */

@@ -166,7 +166,74 @@ const inPage = (fn, arg) => page.evaluate(fn, arg);
   await shot('06-delete-while-editing');
 }
 
-// ── 7. the container really CARRIES its members ────────────────────────────
+// ── 7. a NEW column's empty type cell is still clickable ───────────────────
+{
+  const r = await inPage(async () => {
+    const c = window.__demoCtx;
+    document.querySelector('#vs-canvas .axk-entity-add').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 350));
+    const rows = document.querySelectorAll('#vs-canvas .axk-row');
+    const ty = rows[rows.length - 1]?.querySelector('.axk-ty');
+    const w = ty ? Math.round(ty.getBoundingClientRect().width) : 0;
+    ty?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 250));
+    const input = document.querySelector('.axk-edit-input');
+    const opened = !!input;
+    if (input) { input.value = 'int'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); }
+    await new Promise((r) => setTimeout(r, 300));
+    return { emptyCellWidth: w, opened,
+      cols: c.diagram.getNode(c.seededTable).getMetadata('kitEntity').columns.map((x) => `${x.name}:${x.type}`) };
+  });
+  check('NEW-COLUMN-TYPE', r.emptyCellWidth > 20 && r.opened && r.cols.some((c) => c.endsWith(':int')),
+    `emptyTypeCellWidth=${r.emptyCellWidth} opened=${r.opened} cols=${r.cols.join(' ')}`);
+  await shot('07-new-column-type');
+}
+
+// ── 8. keyboard: Tab walks name → type ─────────────────────────────────────
+{
+  const r = await inPage(async () => {
+    document.querySelector('#vs-canvas .axk-col').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 220));
+    const first = document.querySelector('.axk-edit-input');
+    const startedOnName = first?.getAttribute('list') === null;
+    first?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 350));
+    const next = document.querySelector('.axk-edit-input');
+    return { startedOnName, movedToType: !!next?.getAttribute('list'), open: !!next };
+  });
+  check('KEYBOARD-TAB', r.startedOnName && r.movedToType,
+    `startedOnName=${r.startedOnName} movedToType=${r.movedToType} stillOpen=${r.open}`);
+  await shot('08-keyboard-tab');
+  await inPage(() => document.querySelector('.axk-edit-input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+}
+
+// ── 9. deleting while editing, with the browser's REAL blur ordering ───────
+{
+  const r = await inPage(async () => {
+    const c = window.__demoCtx;
+    const before = c.diagram.getNode(c.seededTable).getMetadata('kitEntity').columns.map((x) => x.name);
+    const nameCell = document.querySelector('#vs-canvas .axk-col');
+    nameCell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 250));
+    const input = document.querySelector('.axk-edit-input');
+    input.value = 'RENAMED_MIDWAY';           // a pending edit that must NOT land
+    const del = document.querySelector('#vs-canvas .axk-row .axk-col-del');
+    // real ordering: mousedown → blur → mouseup → click
+    del.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    input.dispatchEvent(new FocusEvent('blur'));
+    del.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+    del.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 400));
+    const after = c.diagram.getNode(c.seededTable).getMetadata('kitEntity').columns.map((x) => x.name);
+    return { before, after, stray: document.querySelectorAll('.axk-edit-input').length };
+  });
+  const renamedLeak = r.after.includes('RENAMED_MIDWAY');
+  check('DELETE-DURING-EDIT-REALBLUR', r.stray === 0 && !renamedLeak && r.after.length === r.before.length - 1,
+    `stray=${r.stray} ${r.before.join()} → ${r.after.join()}`);
+  await shot('09-delete-during-edit');
+}
+
+// ── 10. the container really CARRIES its members ───────────────────────────
 {
   const r = await inPage(async () => {
     const c = window.__demoCtx, m = c.diagram;

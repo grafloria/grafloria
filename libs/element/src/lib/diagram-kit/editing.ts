@@ -97,6 +97,44 @@ export function dismissInlineEditor(): void {
   open?.cancel();
 }
 
+/** A stable address for a cell, so it can be found again after a re-render. */
+interface CellAddr { nodeId: string; rowIndex: number; kind: 'name' | 'type' }
+
+function addrOf(el: Element): CellAddr | null {
+  const loc = locate(el);
+  if (!loc || loc.rowIndex < 0) return null;
+  const kind = el.closest('.axk-ty') ? 'type' : 'name';
+  return { nodeId: loc.nodeId, rowIndex: loc.rowIndex, kind };
+}
+
+/** The cell `dir` steps away in reading order (name → type → next row's name). */
+function neighbourCell(el: Element, dir: 1 | -1): CellAddr | null {
+  const a = addrOf(el);
+  if (!a) return null;
+  if (dir === 1) {
+    return a.kind === 'name'
+      ? { ...a, kind: 'type' }
+      : { ...a, rowIndex: a.rowIndex + 1, kind: 'name' };
+  }
+  return a.kind === 'type'
+    ? { ...a, kind: 'name' }
+    : { ...a, rowIndex: a.rowIndex - 1, kind: 'type' };
+}
+
+/** The same column, one row down. */
+function cellBelow(el: Element): CellAddr | null {
+  const a = addrOf(el);
+  return a ? { ...a, rowIndex: a.rowIndex + 1 } : null;
+}
+
+/** Re-open the editor at an address, if that cell still exists. */
+function reopenAt(api: EditApi, addr: CellAddr): void {
+  const card = api.container.querySelector(`[data-node-id="${cssEscape(addr.nodeId)}"]`);
+  const row = card?.querySelectorAll('.axk-row, .axk-member')[addr.rowIndex] as Element | undefined;
+  const cell = row?.querySelector(addr.kind === 'type' ? '.axk-ty' : '.axk-col');
+  if (cell) beginRename(api, cell);
+}
+
 /** First occurrence wins, order preserved. */
 function dedupe(values: string[]): string[] {
   return [...new Set(values)];
@@ -210,6 +248,20 @@ function openInlineEditor(
   };
 
   input.addEventListener('keydown', (e) => {
+    // Keyboard navigation: TAB walks the cells (name → type → next row's name,
+    // Shift+Tab back). Enter deliberately does NOT move — it commits and
+    // closes, which is what every other inline editor in the app does and what
+    // a user pressing Enter to "finish" expects. Navigation belongs on Tab.
+    if (e.key === 'Tab') {
+      const next = neighbourCell(targetEl, e.shiftKey ? -1 : 1);
+      if (next) {
+        e.preventDefault();
+        commit();
+        // Re-open on the next cell after the card has re-rendered.
+        setTimeout(() => reopenAt(api, next), 0);
+        return;
+      }
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       commit();
@@ -407,11 +459,26 @@ export function bindCardEditing(api: EditApi): CardEditingHandle {
     }
   };
 
+  // A control press must dismiss the editor BEFORE the browser's focus change
+  // fires `blur` → `commit`. Doing it on `click` was too late: the rename had
+  // already landed, so deleting the row you were editing renamed it first and
+  // then removed a shifted index. preventDefault keeps focus in place too.
+  const onMouseDownCapture = (event: MouseEvent) => {
+    const t = event.target instanceof Element ? event.target : null;
+    if (!t) return;
+    if (t.closest('.axk-col-del') || t.closest('.axk-entity-add') || t.closest('.axk-uml-add')) {
+      dismissInlineEditor();
+      event.preventDefault();
+    }
+  };
+
+  container.addEventListener('mousedown', onMouseDownCapture, true);
   container.addEventListener('click', onClickCapture, true);
   container.addEventListener('dblclick', onDblClickCapture, true);
 
   const handle: CardEditingHandle = {
     dispose() {
+      container.removeEventListener('mousedown', onMouseDownCapture, true);
       container.removeEventListener('click', onClickCapture, true);
       container.removeEventListener('dblclick', onDblClickCapture, true);
       if (bindings.get(container) === handle) bindings.delete(container);
