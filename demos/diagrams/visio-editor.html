@@ -51,7 +51,7 @@ defineDemo({
   blurb: 'The whole authoring surface: drop a shape OR a real database table, edit its columns in the canvas and in the properties panel, snap and align, drop into containers — every edit undoable.',
   howTo: [
     'Drag a shape from the left rail onto the canvas — it drops centred on your cursor and is immediately live.',
-    'Now drag "Entity" (search "entity"): you get a REAL table — header, PK badge, typed columns, ＋ add column, per-row ×. It is the same card the ER editor builds, not a picture of one.',
+    'Now search "entity" and drag it onto the canvas: you get a REAL table — header, PK badge, typed columns, ＋ add column, per-row ×. It is the same card the ER editor builds, not a picture of one.',
     'Click the table: the right panel shows its properties (name, column count). Click one of its COLUMNS: the panel grows a Column section — rename it, change its type, delete it. Edits go straight into the model.',
     'Drag a shape near another: dashed guides line up edges and centres. Resize from a corner — guides help there too. Drop a shape inside the "Process" container and it JOINS it, so the frame carries it along.',
     'Select two or more shapes (shift-click) and use Align / Distribute. Double-click any plain shape to rename it. Ctrl/⌘+Z undoes any of it.',
@@ -103,13 +103,6 @@ defineDemo({
       data: (master) => ({ label: master.meta?.name ?? master.id }),
     });
     ctx.panel = bindShapeDataPanel(api, panelEl);
-
-    // Seed one real table so the flagship SHOWS the capability at a glance —
-    // dropped through the same palette builder a user would use.
-    ctx.seededTable = await ctx.palette.place('erd-entity', { x: 190, y: 430 });
-    // Name it for the story — the data behind the process above. Through the
-    // kit handle, i.e. the same call a user's own code would make.
-    await erTable(api, ctx.seededTable).rename('ORDER');
 
     // A container to drop shapes into (T8).
     const box = await ctx.engine.addGroup({ name: 'Fulfilment' });
@@ -203,7 +196,11 @@ defineDemo({
     // 4b. THE TABLE STORY — a dropped "Entity" is a real kit card, and the
     //     properties panel edits it through the kit's own handles (not a
     //     dataSchema form, which only ever rendered flat scalars).
-    const tableId = ctx.seededTable;
+    // Dropped here rather than seeded: the canvas stays a clean flowchart, and
+    // the drop itself is what we actually want to prove.
+    const tableId = await ctx.palette.place('erd-entity', { x: 190, y: 430 });
+    api.renderNow();
+    await raf2();                       // the card's DOM exists only after a paint
     const tableNode = m.getNode(tableId);
     check(!!tableNode?.getMetadata('kitEntity'), 'the dropped Entity is not a kit card');
     const cols = () => m.getNode(tableId).getMetadata('kitEntity').columns.map((c) => c.name);
@@ -225,6 +222,7 @@ defineDemo({
     await t.columns.add({ name: 'created_at', type: 'timestamp' });
     check(cols().includes('created_at'), `columns.add did not reach the model: ${cols().join(',')}`);
     await ctx.engine.commandManager.undo();
+    m.removeNode(tableId);   // leave the scenario as we found it
 
     // 5. T1/T2 — this editor asked for snap guides on BOTH drag and resize.
     const cfg = ctx.engine.getInteractionConfig();
