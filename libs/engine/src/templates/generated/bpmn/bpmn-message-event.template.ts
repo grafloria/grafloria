@@ -41,6 +41,7 @@ export const bpmnMessageEventTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"bpmn-message-event-content\">\n          <div class=\"node-label\">{{data.label || 'Message Event'}}</div>\n        </div>",

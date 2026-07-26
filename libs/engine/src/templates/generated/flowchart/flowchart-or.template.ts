@@ -42,6 +42,7 @@ export const flowchartOrTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"flowchart-or-content\">\n          <div class=\"node-label\">{{data.label || 'OR'}}</div>\n        </div>",

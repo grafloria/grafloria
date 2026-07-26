@@ -44,6 +44,7 @@ export const umlForkTemplate: NodeTemplate = {
       "strokeWidth": 1,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"uml-fork-content\">\n          <div class=\"node-label\">{{data.label || 'Fork'}}</div>\n        </div>",

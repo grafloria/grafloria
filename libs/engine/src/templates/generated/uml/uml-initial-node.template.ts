@@ -42,6 +42,7 @@ export const umlInitialNodeTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"uml-initial-node-content\">\n          <div class=\"node-label\">{{data.label || 'Initial Node'}}</div>\n        </div>",

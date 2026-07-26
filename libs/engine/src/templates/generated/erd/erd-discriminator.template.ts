@@ -42,6 +42,7 @@ export const erdDiscriminatorTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"erd-discriminator-content\">\n          <div class=\"node-label\">{{data.label || 'Discriminator'}}</div>\n        </div>",

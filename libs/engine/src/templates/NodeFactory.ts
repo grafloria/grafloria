@@ -126,6 +126,12 @@ export class NodeFactory {
       node.setMetadata('shape', structure.shape);
     }
 
+    // Visio-master fidelity: a glyph-sized master declares its caption paints
+    // BELOW the silhouette. The renderer reads `metadata.labelPlacement`.
+    if (structure.labelPlacement && structure.labelPlacement !== 'inside') {
+      node.setMetadata('labelPlacement', structure.labelPlacement);
+    }
+
     // Apply property bindings (data-driven properties)
     // This allows conditional properties based on item data
     if ((structure as any).propertyBindings) {

@@ -42,6 +42,7 @@ export const bpmnInclusiveGatewayTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"bpmn-inclusive-gateway-content\">\n          <div class=\"node-label\">{{data.label || 'Inclusive Gateway'}}</div>\n        </div>",

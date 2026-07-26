@@ -42,6 +42,7 @@ export const bpmnStartEventTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"bpmn-start-event-content\">\n          <div class=\"node-label\">{{data.label || 'Start Event'}}</div>\n        </div>",

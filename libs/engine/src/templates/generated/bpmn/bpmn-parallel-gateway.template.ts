@@ -44,6 +44,7 @@ export const bpmnParallelGatewayTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"bpmn-parallel-gateway-content\">\n          <div class=\"node-label\">{{data.label || 'Parallel Gateway'}}</div>\n        </div>",

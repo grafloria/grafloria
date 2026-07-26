@@ -43,6 +43,7 @@ export const umlActivationTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"uml-activation-content\">\n          <div class=\"node-label\">{{data.label || 'Activation'}}</div>\n        </div>",

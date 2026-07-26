@@ -42,6 +42,7 @@ export const bpmnEndEventTemplate: NodeTemplate = {
       "strokeWidth": 4,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"bpmn-end-event-content\">\n          <div class=\"node-label\">{{data.label || 'End Event'}}</div>\n        </div>",
