@@ -28,6 +28,7 @@ import { DiagramModel } from '../../models/DiagramModel';
 import { NodeModel } from '../../models/NodeModel';
 import { GroupModel } from '../../models/GroupModel';
 import { significantLines, unquote } from './lines';
+import { placeByRank, assignRanks, type RankEdge } from './layout';
 
 export type StateKind =
   | 'state' | 'start' | 'end' | 'choice' | 'fork' | 'join' | 'history' | 'deep-history';
@@ -313,6 +314,178 @@ export function parseMermaidState(text: string): MermaidStateModel {
 
 const PSEUDO_SIZE = 22;
 
+// ── Flow layout (gap-analysis §3a "state by flow") ─────────────────────────
+//
+// Replaces the naive 4-up grid with three type-aware rules:
+//   1. FLOW: within every body, states rank by transition flow — the start
+//      pseudo-state has no incoming transition, so it leads its scope.
+//   2. CONTAINMENT: a composite is SIZED to contain its laid-out children
+//      (bottom-up measure, then top-down commit into world coordinates).
+//   3. BANDING: a concurrent composite stacks its regions as horizontal
+//      bands — each region's children live in their own band, which is what
+//      draws the picture Mermaid divides with dashed lines. The un-banded
+//      picture is the defect the gap analysis names.
+
+const STATE_PAD = 18; // inner padding of a composite body
+const STATE_HEADER = 22; // title strip of a (non-region) composite
+const REGION_PAD = 14; // inner padding of one concurrent band
+const BAND_GAP = 10; // gap between stacked bands
+const RANK_GAP = 50;
+const CROSS_GAP = 40;
+
+interface ScopeArrangement {
+  /** Local top-left per direct child, relative to the scope's CONTENT origin. */
+  positions: Map<string, { x: number; y: number }>;
+  /** Content extent (children bbox; no padding). */
+  width: number;
+  height: number;
+}
+
+/**
+ * Lay every state out by flow, sizing composites to contain their children and
+ * banding concurrent regions. Mutates the NodeModels' position/size in place.
+ */
+function layoutStateModel(
+  model: MermaidStateModel,
+  nodes: Map<string, NodeModel>,
+  start: { x: number; y: number }
+): void {
+  const byId = new Map(model.states.map((s) => [s.id, s]));
+  const childrenOf = (scope: string | undefined): MermaidStateNode[] =>
+    model.states.filter((s) => (s.parent ?? undefined) === scope);
+
+  /** The ancestor of `id` that is a DIRECT child of `scope` (else undefined). */
+  const liftTo = (id: string, scope: string | undefined): string | undefined => {
+    let current: string | undefined = id;
+    while (current !== undefined) {
+      const parent: string | undefined = byId.get(current)?.parent ?? undefined;
+      if (parent === scope) return current;
+      current = parent;
+    }
+    return undefined;
+  };
+
+  /** Transitions, lifted into `scope` — the edges that rank ITS children. */
+  const scopeEdges = (scope: string | undefined): RankEdge[] => {
+    const edges: RankEdge[] = [];
+    for (const t of model.transitions) {
+      const from = liftTo(t.from, scope);
+      const to = liftTo(t.to, scope);
+      if (from !== undefined && to !== undefined && from !== to) {
+        edges.push({ from, to });
+      }
+    }
+    return edges;
+  };
+
+  // Bottom-up: measured outer size per state (leaves read their NodeModel).
+  const measured = new Map<string, { width: number; height: number }>();
+  const arrangements = new Map<string, ScopeArrangement>(); // keyed by scope id ('' = root)
+
+  const measure = (state: MermaidStateNode): { width: number; height: number } => {
+    const cached = measured.get(state.id);
+    if (cached) return cached;
+    let size: { width: number; height: number };
+    if (!state.composite) {
+      const node = nodes.get(state.id)!;
+      size = { width: node.size.width, height: node.size.height };
+    } else if (state.concurrent) {
+      // BANDING: measure each region, give every band the width of the widest
+      // (so the compartments align, as Mermaid draws them), stack them.
+      const regions = childrenOf(state.id).filter((s) => s.region);
+      const bands = regions.map((r) => measure(r));
+      const bandWidth = Math.max(...bands.map((b) => b.width), 0);
+      const stacked =
+        bands.reduce((sum, b) => sum + b.height, 0) +
+        Math.max(0, bands.length - 1) * BAND_GAP;
+      size = {
+        width: bandWidth + 2 * STATE_PAD,
+        height: stacked + 2 * STATE_PAD + STATE_HEADER,
+      };
+    } else {
+      const inner = arrange(state.id);
+      const pad = state.region ? REGION_PAD : STATE_PAD;
+      const header = state.region ? 0 : STATE_HEADER;
+      size = {
+        width: inner.width + 2 * pad,
+        height: inner.height + 2 * pad + header,
+      };
+    }
+    measured.set(state.id, size);
+    return size;
+  };
+
+  /** Rank-place the direct children of `scope` in local coordinates. */
+  const arrange = (scope: string | undefined): ScopeArrangement => {
+    const key = scope ?? '';
+    const cached = arrangements.get(key);
+    if (cached) return cached;
+    const children = childrenOf(scope);
+    const placeable = children.map((child) => ({ id: child.id, size: measure(child) }));
+    const direction =
+      (scope !== undefined ? byId.get(scope)?.direction : undefined) ??
+      model.direction ??
+      'TB';
+    const positions = placeByRank(
+      placeable,
+      assignRanks(placeable.map((p) => p.id), scopeEdges(scope)),
+      { direction, start: { x: 0, y: 0 }, rankGap: RANK_GAP, crossGap: CROSS_GAP }
+    );
+    let width = 0;
+    let height = 0;
+    for (const p of placeable) {
+      const at = positions.get(p.id)!;
+      width = Math.max(width, at.x + p.size.width);
+      height = Math.max(height, at.y + p.size.height);
+    }
+    const arrangement: ScopeArrangement = { positions, width, height };
+    arrangements.set(key, arrangement);
+    return arrangement;
+  };
+
+  // Top-down: convert local placements to world coordinates and commit.
+  const commit = (state: MermaidStateNode, x: number, y: number): void => {
+    const node = nodes.get(state.id)!;
+    node.setPosition(x, y);
+    if (!state.composite) return;
+    const size = measured.get(state.id)!;
+    node.setSize(size.width, size.height);
+    if (state.concurrent) {
+      const regions = childrenOf(state.id).filter((s) => s.region);
+      const bandWidth = size.width - 2 * STATE_PAD;
+      let bandY = y + STATE_PAD + STATE_HEADER;
+      for (const region of regions) {
+        const band = measured.get(region.id)!;
+        const regionNode = nodes.get(region.id)!;
+        regionNode.setPosition(x + STATE_PAD, bandY);
+        // Uniform width: every band spans the composite's content width.
+        regionNode.setSize(bandWidth, band.height);
+        const inner = arrangements.get(region.id) ?? arrange(region.id);
+        for (const child of childrenOf(region.id)) {
+          const local = inner.positions.get(child.id)!;
+          commitChild(child, x + STATE_PAD + REGION_PAD + local.x, bandY + REGION_PAD + local.y);
+        }
+        bandY += band.height + BAND_GAP;
+      }
+    } else {
+      const pad = state.region ? REGION_PAD : STATE_PAD;
+      const header = state.region ? 0 : STATE_HEADER;
+      const inner = arrangements.get(state.id) ?? arrange(state.id);
+      for (const child of childrenOf(state.id)) {
+        const local = inner.positions.get(child.id)!;
+        commitChild(child, x + pad + local.x, y + pad + header + local.y);
+      }
+    }
+  };
+  const commitChild = commit; // alias for readability above
+
+  const root = arrange(undefined);
+  for (const child of childrenOf(undefined)) {
+    const local = root.positions.get(child.id)!;
+    commit(child, start.x + local.x, start.y + local.y);
+  }
+}
+
 export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
   const diagram = new DiagramModel('State Diagram');
   diagram.setMetadata('diagramType', 'stateDiagram-v2');
@@ -320,14 +493,15 @@ export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
   if (model.notes.length) diagram.setMetadata('stateNotes', model.notes);
 
   const nodes = new Map<string, NodeModel>();
-  model.states.forEach((state, i) => {
+  model.states.forEach((state) => {
     const isPseudo = PSEUDO_KINDS.has(state.kind);
     const node = new NodeModel({
       id: state.id,
       // A region is not a state the author wrote — give it its own type so a
       // renderer can draw it as a compartment rather than a rounded box.
       type: state.region ? 'state:region' : `state:${state.kind}`,
-      position: { x: 80 + (i % 4) * 220, y: 60 + Math.floor(i / 4) * 160 },
+      // Placeholder — layoutStateModel below assigns the real geometry.
+      position: { x: 0, y: 0 },
       size: isPseudo
         ? { width: PSEUDO_SIZE, height: PSEUDO_SIZE }
         : { width: 140, height: 56 },
@@ -347,6 +521,12 @@ export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
     diagram.addNode(node);
     nodes.set(state.id, node);
   });
+
+  // Flow layout BEFORE links exist, so createSmartLink below selects its ports
+  // against the real geometry (a link wired to the placeholder grid keeps the
+  // wrong sides). Composites are sized to contain their children; concurrent
+  // regions band. See layoutStateModel.
+  layoutStateModel(model, nodes, { x: 80, y: 60 });
 
   // Composite states become groups whose members are their scoped children.
   // Every group is created BEFORE membership is wired, because a nested

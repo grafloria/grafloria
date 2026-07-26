@@ -114,3 +114,123 @@ describe('classDiagram — inheritance-depth ranking', () => {
     );
   });
 });
+
+describe('stateDiagram — flow ranking, containment and banding', () => {
+  const bbox = (diagram: ReturnType<typeof parse>, id: string) => {
+    const node = diagram.getNode(id)!;
+    return {
+      left: node.position.x,
+      top: node.position.y,
+      right: node.position.x + node.size.width,
+      bottom: node.position.y + node.size.height,
+    };
+  };
+
+  it('states rank by flow from the start pseudo-state', () => {
+    const diagram = parse(
+      [
+        'stateDiagram-v2',
+        '  [*] --> Still',
+        '  Still --> Moving',
+        '  Moving --> Still',
+        '  Moving --> Crash',
+        '  Crash --> [*]',
+      ].join('\n')
+    );
+    const y = (id: string) => diagram.getNode(id)!.position.y;
+    // start → Still → Moving → Crash → end, strictly down the page; the
+    // Moving-->Still back-edge must not drag Still below Moving.
+    expect(y('__start__')).toBeLessThan(y('Still'));
+    expect(y('Still')).toBeLessThan(y('Moving'));
+    expect(y('Moving')).toBeLessThan(y('Crash'));
+    expect(y('Crash')).toBeLessThan(y('__end__'));
+  });
+
+  it('a composite is sized to CONTAIN its children', () => {
+    const diagram = parse(
+      [
+        'stateDiagram-v2',
+        '  [*] --> Working',
+        '  state Working {',
+        '    [*] --> Draft',
+        '    Draft --> Review',
+        '  }',
+      ].join('\n')
+    );
+    const outer = bbox(diagram, 'Working');
+    for (const id of ['Working.__start__', 'Draft', 'Review']) {
+      const inner = bbox(diagram, id);
+      expect(inner.left).toBeGreaterThanOrEqual(outer.left);
+      expect(inner.top).toBeGreaterThanOrEqual(outer.top);
+      expect(inner.right).toBeLessThanOrEqual(outer.right);
+      expect(inner.bottom).toBeLessThanOrEqual(outer.bottom);
+    }
+    // …and the children flow INSIDE it.
+    expect(diagram.getNode('Draft')!.position.y).toBeLessThan(
+      diagram.getNode('Review')!.position.y
+    );
+  });
+
+  it('concurrent regions: the two regions\' children occupy DISJOINT bands', () => {
+    const diagram = parse(
+      [
+        'stateDiagram-v2',
+        '  state Active {',
+        '    s1 --> s2',
+        '    --',
+        '    t1 --> t2',
+        '  }',
+        '  [*] --> Active',
+      ].join('\n')
+    );
+    const first = ['s1', 's2'].map((id) => bbox(diagram, id));
+    const second = ['t1', 't2'].map((id) => bbox(diagram, id));
+    const firstBottom = Math.max(...first.map((b) => b.bottom));
+    const secondTop = Math.min(...second.map((b) => b.top));
+    // Band 1 ends strictly above band 2 — the un-banded picture (both regions
+    // interleaved) is the defect the gap analysis names.
+    expect(firstBottom).toBeLessThan(secondTop);
+
+    // The synthetic region nodes are the bands, stacked inside the composite.
+    const band1 = bbox(diagram, 'Active.region1');
+    const band2 = bbox(diagram, 'Active.region2');
+    expect(band1.bottom).toBeLessThanOrEqual(band2.top);
+    const composite = bbox(diagram, 'Active');
+    for (const band of [band1, band2]) {
+      expect(band.left).toBeGreaterThanOrEqual(composite.left);
+      expect(band.right).toBeLessThanOrEqual(composite.right);
+      expect(band.top).toBeGreaterThanOrEqual(composite.top);
+      expect(band.bottom).toBeLessThanOrEqual(composite.bottom);
+    }
+
+    // And every child sits inside ITS band.
+    for (const [ids, band] of [
+      [['s1', 's2'], band1],
+      [['t1', 't2'], band2],
+    ] as const) {
+      for (const id of ids) {
+        const b = bbox(diagram, id);
+        expect(b.top).toBeGreaterThanOrEqual(band.top);
+        expect(b.bottom).toBeLessThanOrEqual(band.bottom);
+      }
+    }
+  });
+
+  it('the exported text is unchanged by layout (positions are not grammar)', () => {
+    const src = [
+      'stateDiagram-v2',
+      '  state Active {',
+      '    s1 --> s2',
+      '    --',
+      '    t1 --> t2',
+      '  }',
+      '  [*] --> Active',
+    ].join('\n');
+    const dsl = new DSL();
+    const diagram = dsl.parse(src);
+    const generated = dsl.generate(diagram);
+    // Same body from a re-parse of the generated body: layout cannot leak into
+    // the text form.
+    expect(dsl.generate(dsl.parse(generated))).toBe(generated);
+  });
+});
