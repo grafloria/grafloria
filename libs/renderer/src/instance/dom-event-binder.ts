@@ -850,7 +850,14 @@ export class DomEventBinder {
           return;
         }
 
-        if (edgeHit.part === 'label' && edgeHit.labelIndex !== undefined) {
+        if (
+          edgeHit.part === 'label' &&
+          edgeHit.labelIndex !== undefined &&
+          // Only POSITIONED labels drag (they own position/offset). A display-
+          // label hit (synthesized box over `metadata.label`, no labels[]
+          // entry) falls through to link selection instead.
+          edgeHit.link.labels?.[edgeHit.labelIndex]
+        ) {
           event.preventDefault();
           this.host.interaction.startLabelDrag(edgeHit.link, edgeHit.labelIndex);
           this.host.requestRender();
@@ -1285,6 +1292,22 @@ export class DomEventBinder {
           this.openTextEditor(engine, { type: 'node', nodeId: node.id });
         }
       }
+      return;
+    }
+
+    // visio-depth — double-click an edge LABEL edits it in place, exactly like
+    // a node label (same editor, same undoable commit; the display-label
+    // dialect is resolved inside InPlaceTextEditor.begin). Same opt-in flag.
+    if (
+      hit.part === 'label' &&
+      engine.getInteractionConfig().enableInPlaceTextEdit === true
+    ) {
+      event.preventDefault();
+      this.openTextEditor(engine, {
+        type: 'link-label',
+        linkId: hit.link.id,
+        labelIndex: hit.labelIndex ?? 0,
+      });
       return;
     }
 
@@ -2151,7 +2174,10 @@ export class DomEventBinder {
       cleanup();
       if (command) void engine.commandManager.execute(command);
       this.host.requestRender();
-      this.emitNodesChange();
+      // Tell the host WHAT changed: a link-label commit is an edges change —
+      // it used to report nodes:change, so an edge-labels listener never heard.
+      if (target.type === 'link-label') this.emitEdgesChange();
+      else this.emitNodesChange();
     };
     const cancel = () => {
       if (settled) return;
