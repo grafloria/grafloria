@@ -65,11 +65,11 @@ defineDemo({
   name: 'Visio-style editor',
   blurb: 'The whole authoring surface: drop a shape OR a real database table, edit its columns in the canvas and in the properties panel, snap and align, drop into containers — every edit undoable.',
   howTo: [
-    'Drag a shape from the left rail onto the canvas — it drops centred on your cursor and is immediately live.',
-    'Now search "entity" and drag it onto the canvas: you get a REAL table — header, PK badge, typed columns, ＋ add column, per-row ×. It is the same card the ER editor builds, not a picture of one.',
-    'Click the table: the right panel shows its properties (name, column count). Click one of its COLUMNS: the panel grows a Column section — rename it, change its type, delete it. Edits go straight into the model.',
-    'Drag a shape near another: dashed guides line up edges and centres. Resize from a corner — guides help there too. Drop a shape inside the "Process" container and it JOINS it, so the frame carries it along.',
-    'Select two or more shapes (shift-click) and use Align / Distribute. Double-click any plain shape to rename it. Ctrl/⌘+Z undoes any of it.',
+    'Drag a shape from the left rail — a ghost of it rides your cursor, and it drops centred where you release, immediately live.',
+    'Search "entity" and drag it on: you get a REAL table — header, PK badge, typed columns, ＋ add column, per-row ×. Click the table and the right panel edits its properties; click a COLUMN and the panel grows a Column section.',
+    'Hover a shape and DRAG FROM A PORT to another shape: a connector is drawn (release anywhere on the target). Drag a shape near another for snap guides; drop it inside the "Fulfilment" container and it JOINS — the frame carries it along.',
+    'Rubber-band empty canvas to multi-select (Shift adds). Arrows nudge the selection — Shift makes it ×10. Ctrl/⌘+D duplicates. F2 — or simply typing — renames the selected shape; double-click an edge label to edit it.',
+    'Right-click a shape, an edge or the canvas: Rename, Duplicate, Delete, Bring to front / Send to back, Select all, Paste. Align / Distribute / Undo / Redo live in the bar. Ctrl/⌘+Z takes back any of it.',
   ],
   reactflow: null,
 
@@ -338,7 +338,9 @@ defineDemo({
     check(document.querySelectorAll('#vs-rail .gf-stencil-item').length > 0, 'the stencil rail is empty');
     check(ctx.registered === 80, `expected exactly 80 masters registered, got ${ctx.registered}`);
     check(!!document.querySelector('#vs-panel .gf-sd-title'), 'the shape-data panel did not mount');
-    check(document.querySelectorAll('#vs-bar button').length >= 5, 'the align toolbar is missing buttons');
+    check(document.querySelectorAll('#vs-bar button').length >= 11,
+      'the toolbar should carry the full set: 6 aligns, 2 distributes, Duplicate, Undo, Redo');
+    check(!!document.getElementById('vs-menu'), 'the context menu did not mount');
 
     // 2. T7 — placing from the palette adds a live node, undoably.
     const before = m.getNodes().length;
@@ -410,6 +412,8 @@ defineDemo({
     check(cfg.enableHelperLines === true, 'the editor should enable helper lines');
     check(cfg.enableGroupMembershipOnDrop === true, 'the editor should enable drop-to-contain');
     check(cfg.enableInPlaceTextEdit === true, 'the editor should enable in-place rename');
+    check(cfg.enableKeyboardNudge === true, 'the editor should enable arrow-key nudge');
+    check(cfg.enableEasyConnect === true, 'the editor should enable easy-connect');
 
     api.renderNow();
   },
