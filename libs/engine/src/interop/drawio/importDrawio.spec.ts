@@ -621,6 +621,82 @@ describe('importDrawio — corpus-driven hardening', () => {
     expect(w).toContain('stencil(');
     expect(w).toContain('…');
   });
+
+  // The stencil-library caption idiom (`verticalLabelPosition=bottom;
+  // verticalAlign=top` — AWS, Azure, Citrix, network shapes): draw.io paints
+  // the label in a bounds-sized box BELOW the vertex. Painting it inside the
+  // icon put black text on black stencils (citrix2 corpus) — invisible ink.
+  it('verticalLabelPosition=bottom moves the caption to a synthesized text node BELOW the icon', async () => {
+    const { diagram, warnings } = await importDrawio(
+      model(vertex('icon', {
+        value: 'Laptop',
+        style: 'verticalLabelPosition=bottom;verticalAlign=top;strokeColor=none;shape=mxgraph.citrix2.laptop;fillColor=#000000;fontSize=14;',
+        x: 100, y: 100, w: 72, h: 60,
+      }))
+    );
+    const icon = diagram!.getNode('icon')!;
+    expect(icon.getLabel() || '').toBe(''); // the caption no longer inks inside the icon
+    expect(icon.getMetadata('drawioOutsideLabel')).toBe('center/bottom');
+
+    const caption = diagram!.getNode('icon__label')!;
+    expect(caption).toBeDefined();
+    expect(caption.getLabel()).toBe('Laptop');
+    expect(caption.getMetadata('drawioLabelFor')).toBe('icon');
+    // Borderless text box, sitting fully below the icon and centered on it.
+    const shape = caption.getMetadata('shape') as Record<string, unknown>;
+    expect(shape['fill']).toBe('none');
+    expect(shape['stroke']).toBe('none');
+    expect(caption.position.y).toBeGreaterThanOrEqual(160); // below y+h
+    const iconCx = 100 + 72 / 2;
+    expect(caption.position.x + caption.size.width / 2).toBeCloseTo(iconCx, 5);
+    // The placement keys are CONSUMED now — not named as dropped.
+    expect(warnings.some((w) => w.includes('verticalLabelPosition'))).toBe(false);
+  });
+
+  it('a caption follows its icon into the icon\'s group', async () => {
+    const xml = model(
+      `<mxCell id="box" value="Zone" style="swimlane;" vertex="1" parent="1"><mxGeometry x="0" y="0" width="400" height="300" as="geometry"/></mxCell>` +
+      vertex('icon', {
+        parent: 'box', value: 'Server',
+        style: 'verticalLabelPosition=bottom;verticalAlign=top;shape=mxgraph.aws4.ec2;',
+        x: 40, y: 60, w: 48, h: 48,
+      })
+    );
+    const { diagram } = await importDrawio(xml);
+    const group = diagram!.getGroup('box')!;
+    expect(group.members.has('icon')).toBe(true);
+    expect(group.members.has('icon__label')).toBe(true);
+  });
+
+  it('a free-standing text; cell with label offsets MOVES ONTO its label bounds instead of growing a twin', async () => {
+    const { diagram } = await importDrawio(
+      model(vertex('t', {
+        value: 'Amazon Route 53',
+        style: 'text;labelPosition=right;verticalLabelPosition=bottom;fontColor=#3333FF;fontSize=25;',
+        x: 500, y: 200, w: 60, h: 40,
+      }))
+    );
+    const t = diagram!.getNode('t')!;
+    // mxGraph label bounds: one width right, one height down.
+    expect(t.position).toMatchObject({ x: 560, y: 240 });
+    expect(t.getLabel()).toBe('Amazon Route 53');
+    expect(t.getMetadata('drawioOutsideLabel')).toBe('right/bottom');
+    expect(diagram!.getNode('t__label')).toBeFalsy();
+  });
+
+  it('an EMPTY caption synthesizes nothing and center labels stay put', async () => {
+    const { diagram } = await importDrawio(
+      model(
+        vertex('a', { style: 'verticalLabelPosition=bottom;shape=mxgraph.citrix2.laptop;', x: 0, y: 0 }) +
+        vertex('b', { value: 'Inside', style: 'labelPosition=center;verticalLabelPosition=middle;', x: 300, y: 0 })
+      )
+    );
+    expect(diagram!.getNode('a__label')).toBeFalsy();
+    const b = diagram!.getNode('b')!;
+    expect(b.getLabel()).toBe('Inside');
+    expect(b.position).toMatchObject({ x: 300, y: 0 });
+    expect(diagram!.getNode('b__label')).toBeFalsy();
+  });
 });
 
 describe('importDrawio — failure honesty', () => {
