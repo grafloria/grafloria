@@ -63,3 +63,43 @@ describe('notation shapes — BPMN event rings', () => {
     expect(ring.portAnchor(36, 36, 'right', 0, 1)).toEqual(plain.portAnchor(36, 36, 'right', 0, 1));
   });
 });
+
+describe('notation shapes — UML final node bulls-eye', () => {
+  it('is three concentric circles: ring, fill-hole, solid dot', () => {
+    const d = String(getShape('final-node').outline(24, 24).geom['d']);
+    const parts = subpaths(d);
+    expect(parts.length).toBe(3);
+    // outer at x=0, hole inset by the band (2px at r=12), dot at r*0.5
+    expect(parts[0]).toMatch(/^M 0[, ]12/);
+    expect(parts[1]).toMatch(/^M 2[, ]12/);
+    expect(parts[2]).toMatch(/^M 6[, ]12/);
+  });
+
+  it('the hole is wound OPPOSITE to the ring (that is what makes it a hole)', () => {
+    // Nonzero winding cancels between opposite-wound subpaths, leaving the gap
+    // unfilled while ring + dot paint. The serializer may rewrite arcs, so the
+    // ORIENTATION is asserted numerically: signed area of each subpath's
+    // on-path/control coordinate sequence.
+    const d = String(getShape('final-node').outline(24, 24).geom['d']);
+    const signedArea = (s: string): number => {
+      const nums = [...s.matchAll(/(-?[\d.]+)[,\s]+(-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+      let a = 0;
+      for (let i = 0; i < nums.length; i++) {
+        const [x1, y1] = nums[i];
+        const [x2, y2] = nums[(i + 1) % nums.length];
+        a += x1 * y2 - x2 * y1;
+      }
+      return a / 2;
+    };
+    const [outer, hole, dot] = subpaths(d).map(signedArea);
+    expect(Math.sign(hole)).not.toBe(0);
+    expect(Math.sign(outer)).toBe(-Math.sign(hole));
+    expect(Math.sign(dot)).toBe(Math.sign(outer));
+  });
+
+  it('distinguishes final from initial: a plain circle has ONE subpath', () => {
+    const dot = getShape('circle').outline(20, 20);
+    expect(dot.el).toBe('circle'); // initial node stays the plain filled disc
+    expect(subpaths(String(getShape('final-node').outline(20, 20).geom['d'])).length).toBe(3);
+  });
+});
