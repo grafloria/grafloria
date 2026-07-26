@@ -38,6 +38,7 @@ export * from './StrokeLifecycleCommands'; // draw + erase as undoable gestures 
 export * from './ReconnectLinkCommand'; // wave12 (reconnect undo)
 export * from './SetLinkLabelCommand'; // wave4/interaction (in-place text editing)
 export * from './SetLinkDisplayLabelCommand'; // visio-depth (edge display-label editing)
+export * from './SetLinkPathTypeCommand'; // visio-panel (undoable route: smooth | orthogonal)
 
 export * from './PortCommands'; // wave6/ports (dynamic auto-ports)
 
