@@ -70,7 +70,7 @@ const inPage = (fn, arg) => page.evaluate(fn, arg);
 {
   const r = await inPage(async () => {
     const cell = document.querySelector('#vs-canvas .axk-col');
-    const box = (el) => { const b = el.getBoundingClientRect(); return { x: Math.round(b.x), w: Math.round(b.width) }; };
+    const box = (el) => { const b = el.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) }; };
     const cellBox = box(cell);
     cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     await new Promise((r) => setTimeout(r, 250));
@@ -78,7 +78,10 @@ const inPage = (fn, arg) => page.evaluate(fn, arg);
     return { opened: !!input, value: input?.value, cellBox, inputBox: input ? box(input) : null };
   });
   const aligned = r.inputBox && Math.abs(r.inputBox.x - r.cellBox.x) <= 4;
-  check('NAME-EDIT', r.opened && aligned, `value="${r.value}" cell=${JSON.stringify(r.cellBox)} input=${JSON.stringify(r.inputBox)}`);
+  // VERTICAL alignment was never asserted, and that is exactly where it broke:
+  // the caret landed between two rows. Pin it to the cell's own top edge.
+  const vAligned = r.inputBox && Math.abs(r.inputBox.y - r.cellBox.y) <= 3;
+  check('NAME-EDIT', r.opened && aligned && vAligned, `value="${r.value}" cell=${JSON.stringify(r.cellBox)} input=${JSON.stringify(r.inputBox)}`);
   await shot('02-name-editor');
   await inPage(() => document.querySelector('.axk-edit-input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
 }
@@ -87,7 +90,7 @@ const inPage = (fn, arg) => page.evaluate(fn, arg);
 {
   const r = await inPage(async () => {
     const cell = document.querySelector('#vs-canvas .axk-ty');
-    const box = (el) => { const b = el.getBoundingClientRect(); return { x: Math.round(b.x), w: Math.round(b.width) }; };
+    const box = (el) => { const b = el.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) }; };
     const cellBox = box(cell);
     cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     await new Promise((r) => setTimeout(r, 250));
@@ -103,7 +106,8 @@ const inPage = (fn, arg) => page.evaluate(fn, arg);
   // COVER the cell it is editing, and stay inside the card (checked below).
   const covers = r.inputBox && r.inputBox.x <= r.cellBox.x + 2
     && (r.inputBox.x + r.inputBox.w) >= (r.cellBox.x + r.cellBox.w) - 2;
-  check('TYPE-EDIT', r.opened && covers, `value="${r.value}" cell=${JSON.stringify(r.cellBox)} input=${JSON.stringify(r.inputBox)}`);
+  const typeVAligned = r.inputBox && Math.abs(r.inputBox.y - r.cellBox.y) <= 3;
+  check('TYPE-EDIT', r.opened && covers && typeVAligned, `value="${r.value}" cell=${JSON.stringify(r.cellBox)} input=${JSON.stringify(r.inputBox)}`);
   // the combobox must offer real suggestions, and the ones already in use first
   check('TYPE-SUGGESTIONS', r.opts.length >= 10 && r.opts.includes('varchar'), `${r.opts.length} options, first=${r.opts.slice(0, 3).join(',')}`);
   // …and it must stay INSIDE the card. Widening a right-hand cell used to push

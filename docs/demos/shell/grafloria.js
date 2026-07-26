@@ -191356,44 +191356,27 @@ function openInlineEditor(api, targetEl, value, onCommit, suggestions) {
     input.setAttribute("list", listEl.id);
   }
   const rect = targetEl.getBoundingClientRect();
-  const zoom = api.viewport?.getZoom?.() ?? 1;
-  const layer = container.querySelector(".grafloria-html-layer");
-  let portal = null;
-  if (layer && api.viewport?.clientToWorld && rect.width > 0) {
-    const minW = suggestions?.length ? 132 : 72;
-    let w = Math.max(rect.width / zoom, minW);
-    let left = rect.left;
-    const card2 = targetEl.closest(".axk-entity, .axk-uml");
-    if (card2) {
-      const cb = card2.getBoundingClientRect();
-      const pad = 4 * zoom;
-      const maxW = (cb.width - pad * 2) / zoom;
-      if (w > maxW) w = maxW;
-      const overflow = left + w * zoom - (cb.right - pad);
-      if (overflow > 0) left -= overflow;
-      if (left < cb.left + pad) left = cb.left + pad;
-    }
-    input.style.cssText = `width:${w}px;height:${rect.height / zoom}px;`;
-    const world = api.viewport.clientToWorld(left, rect.top, container.getBoundingClientRect());
-    try {
-      portal = createViewportPortal(layer, { x: world.x, y: world.y, className: "axk-edit-portal" });
-      portal.element.appendChild(input);
-    } catch {
-      portal = null;
-    }
+  const host = container.getBoundingClientRect();
+  const minW = suggestions?.length ? 132 : 72;
+  let w = Math.max(rect.width, minW);
+  let left = rect.left;
+  const card2 = targetEl.closest(".axk-entity, .axk-uml");
+  if (card2) {
+    const cb = card2.getBoundingClientRect();
+    const pad = 4;
+    if (w > cb.width - pad * 2) w = cb.width - pad * 2;
+    const overflow = left + w - (cb.right - pad);
+    if (overflow > 0) left -= overflow;
+    if (left < cb.left + pad) left = cb.left + pad;
   }
-  if (!portal) {
-    const host = container.getBoundingClientRect();
-    input.style.cssText = `position:absolute;left:${rect.left - host.left}px;top:${rect.top - host.top}px;` + (rect.width ? `width:${rect.width}px;height:${rect.height}px;` : "min-width:120px;");
-    container.appendChild(input);
-  }
+  input.style.cssText = `position:fixed;left:${Math.round(left)}px;top:${Math.round(rect.top)}px;width:${Math.round(w)}px;height:${Math.round(rect.height)}px;z-index:2147483000;`;
+  container.appendChild(input);
   let done = false;
   const self2 = { cancel: () => void 0 };
   const cleanup = () => {
     if (activeEditor === self2) activeEditor = null;
     listEl?.remove();
-    if (portal) portal.dispose();
-    else input.remove();
+    input.remove();
   };
   const commit = () => {
     if (done) return;

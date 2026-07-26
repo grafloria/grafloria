@@ -178,61 +178,58 @@ function openInlineEditor(
     input.setAttribute('list', listEl.id);
   }
 
+  // POSITIONING — screen space, deliberately.
+  //
+  // This used to mount the input in the renderer's world layer through a
+  // viewport portal so it would scale and pan with the canvas. That produced a
+  // steady trickle of defects: the caret landed between two rows (world/zoom
+  // maths compounding with the card's own scroll offset), and — because the
+  // world layer carries a CSS transform — the browser refused to place the
+  // native <datalist> popup, so the type dropdown never opened.
+  //
+  // An inline editor lives for a few seconds. Pinning it over the cell's actual
+  // screen rect is exact by construction (no maths to get wrong) and keeps it
+  // out of any transformed ancestor, which is what the native popup needs. The
+  // cost is that it does not follow a pan mid-edit; that is a fair trade for an
+  // editor that is reliably WHERE THE CELL IS.
   const rect = targetEl.getBoundingClientRect();
-  const zoom = api.viewport?.getZoom?.() ?? 1;
-  const layer = container.querySelector('.grafloria-html-layer') as HTMLElement | null;
+  const host = container.getBoundingClientRect();
 
-  let portal: { element: HTMLElement; dispose(): void } | null = null;
-  if (layer && api.viewport?.clientToWorld && rect.width > 0) {
-    // World-space: place the input at the target's world position; the layer's
-    // camera transform scales it, so its px width is divided by the zoom.
-    // A cell can be far narrower than the value you are about to pick — the
-    // type cell is sized to "uuid", which left a 23px-wide combobox nobody
-    // could use. Give the editor a comfortable floor…
-    const minW = suggestions?.length ? 132 : 72;
-    let w = Math.max(rect.width / zoom, minW);
-    // …but never let it spill past the CARD. Widening a right-hand cell pushes
-    // the editor outside the table border, which looks broken and can cover the
-    // canvas. Keep the right edge inside the card by sliding the editor left,
-    // and only shrink if the card itself is narrower than the floor.
-    let left = rect.left;
-    const card = targetEl.closest('.axk-entity, .axk-uml') as HTMLElement | null;
-    if (card) {
-      const cb = card.getBoundingClientRect();
-      const pad = 4 * zoom;
-      const maxW = (cb.width - pad * 2) / zoom;
-      if (w > maxW) w = maxW;
-      const overflow = left + w * zoom - (cb.right - pad);
-      if (overflow > 0) left -= overflow;
-      if (left < cb.left + pad) left = cb.left + pad;
-    }
-    input.style.cssText = `width:${w}px;height:${rect.height / zoom}px;`;
-    // World position uses the CLAMPED left, so the editor lands where it will
-    // actually be drawn rather than where the cell happens to start.
-    const world = api.viewport.clientToWorld(left, rect.top, container.getBoundingClientRect());
-    try {
-      portal = createViewportPortal(layer, { x: world.x, y: world.y, className: 'axk-edit-portal' });
-      portal.element.appendChild(input);
-    } catch {
-      portal = null;
-    }
-  }
-  if (!portal) {
-    // Fallback: absolute in the container (jsdom / no world layer).
-    const host = container.getBoundingClientRect();
-    input.style.cssText =
-      `position:absolute;left:${rect.left - host.left}px;top:${rect.top - host.top}px;` +
-      (rect.width ? `width:${rect.width}px;height:${rect.height}px;` : 'min-width:120px;');
-    container.appendChild(input);
+  const minW = suggestions?.length ? 132 : 72;
+  let w = Math.max(rect.width, minW);
+  let left = rect.left;
+  // Never spill past the card: slide left to fit, shrink only if the card is
+  // narrower than the floor.
+  const card = targetEl.closest('.axk-entity, .axk-uml') as HTMLElement | null;
+  if (card) {
+    const cb = card.getBoundingClientRect();
+    const pad = 4;
+    if (w > cb.width - pad * 2) w = cb.width - pad * 2;
+    const overflow = left + w - (cb.right - pad);
+    if (overflow > 0) left -= overflow;
+    if (left < cb.left + pad) left = cb.left + pad;
   }
 
+  // `position: fixed` keys off the viewport, exactly like getBoundingClientRect,
+  // so no ancestor offset or scroll correction can drift it.
+  input.style.cssText =
+    `position:fixed;left:${Math.round(left)}px;top:${Math.round(rect.top)}px;` +
+    `width:${Math.round(w)}px;height:${Math.round(rect.height)}px;z-index:2147483000;`;
+  void host; // container rect intentionally unused: fixed positioning needs none
+  // Mounted on the CONTAINER, not document.body: hosts (and the kit's own
+  // tests) look the editor up inside the diagram container, and moving it out
+  // silently broke every one of those lookups. `position: fixed` still keys off
+  // the viewport, so it stays exact — the point was only ever to escape the
+  // world layer's CSS transform, which is a descendant of the container.
+  container.appendChild(input);
+
+  /** Guards double-settling (blur fires after Enter/Escape already handled it). */
   let done = false;
   const self: { cancel: () => void } = { cancel: () => undefined };
   const cleanup = () => {
     if (activeEditor === self) activeEditor = null;
     listEl?.remove();
-    if (portal) portal.dispose();
-    else input.remove();
+    input.remove();
   };
   const commit = () => {
     if (done) return;
