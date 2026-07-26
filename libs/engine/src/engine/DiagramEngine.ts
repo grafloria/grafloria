@@ -287,8 +287,17 @@ export class DiagramEngine {
           // Use RoutingEngine to calculate path with obstacle avoidance
           await this.generateLinkPathWithRouting(link, sourcePos, targetPos, sourceDirection, targetDirection, sourceNode, targetNode);
 
-          // Add link to diagram
-          this.diagram.addLink(link);
+          // Add link THROUGH THE COMMAND MANAGER — one undoable step, like every
+          // other edit. This used to call diagram.addLink() directly, so a link
+          // the user DREW (the port-drag gesture) was the one mutation Ctrl+Z
+          // could not take back (visio audit). The command serializes the link
+          // AFTER routing, so the routed path is what redo restores.
+          const command = new AddLinkCommand(link);
+          if (this.commandManager) {
+            await this.commandManager.execute(command);
+          } else {
+            this.diagram.addLink(link); // constructor-time fallback; unreachable in practice
+          }
 
           console.log('✅ Link created successfully:', link.id, 'from', sourcePort.id, 'to', targetPort.id);
         } else {
@@ -933,8 +942,13 @@ export class DiagramEngine {
       throw new Error('No diagram loaded');
     }
 
+    // Diagram selection first — a mouse click selects through
+    // diagram.selectNode() and never writes the store's set, so gating on the
+    // store alone made this helper throw for every mouse-selected node while
+    // DuplicateCommand itself (which checks both) would have succeeded.
+    const diagramSelection = this.diagram.getSelectedNodes();
     const selectedNodeIds = this.store.get('selectedNodes') as Set<string> | undefined;
-    if (!selectedNodeIds || selectedNodeIds.size === 0) {
+    if (diagramSelection.length === 0 && (!selectedNodeIds || selectedNodeIds.size === 0)) {
       throw new Error('No nodes selected');
     }
 

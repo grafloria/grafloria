@@ -103,12 +103,20 @@ export class CommandManager {
     // Only a command that EXECUTED (and validated) may enter history. A thrown
     // execute() used to land here anyway — via a `finally` — leaving Ctrl+Z
     // pointing at a mutation that never happened.
-    this.addToHistory({
-      command,
-      timestamp: Date.now(),
-      duration,
-      success: true,
-    });
+    //
+    // And only a command that DECLARES ITSELF UNDOABLE. A non-mutating command
+    // (Copy) recorded here used to poison the stack: undo() reached the entry,
+    // its canUndo() said no, the throw skipped the index decrement, and every
+    // entry behind it became permanently unreachable while canUndo() kept
+    // reporting true.
+    if (command.isUndoable()) {
+      this.addToHistory({
+        command,
+        timestamp: Date.now(),
+        duration,
+        success: true,
+      });
+    }
 
     this.eventBus.emit(DiagramEventTypes.COMMAND_EXECUTED, {
       command,

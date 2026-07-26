@@ -60,6 +60,21 @@ export abstract class Command {
   }
 
   /**
+   * Does this command belong on the undo stack AT ALL?
+   *
+   * `canUndo(context)` is a state probe ("can I undo RIGHT NOW?") consulted at
+   * undo time — many commands answer it from live diagram state. This is the
+   * static declaration consulted at EXECUTE time: a non-mutating command
+   * (Copy) answers false and never enters history. Recording one used to
+   * poison the stack — undo() hit the entry, threw "Cannot undo command:
+   * Copy", never decremented the index, and everything behind it became
+   * permanently unreachable.
+   */
+  isUndoable(): boolean {
+    return true;
+  }
+
+  /**
    * Check if can merge with another command
    */
   canMergeWith(other: Command): boolean {

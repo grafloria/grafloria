@@ -123,6 +123,12 @@ export class CopyCommand extends Command {
     return false;
   }
 
+  override isUndoable(): boolean {
+    // Non-mutating: must never enter the undo stack. When it did, undo() threw
+    // "Cannot undo command: Copy" and stranded the whole history behind it.
+    return false;
+  }
+
   override serialize(): SerializedCommand {
     return {
       id: this.id,

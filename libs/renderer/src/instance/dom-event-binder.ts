@@ -24,6 +24,9 @@ import { portWorldPosition } from '../svg/port-positioning';
 import { delegateWheelToScrollable } from './wheel-scroll-yield';
 import { SnapController } from '../interaction/snapping';
 import { InPlaceTextEditor, type TextEditTarget } from '../interaction/in-place-editor';
+// visio-depth: the shipped nudge math (KeyboardNavigationController.nudgeCommand)
+// was auto-wired only in the Angular wrapper; `enableKeyboardNudge` drives it here.
+import { KeyboardNavigationController } from '../interaction/keyboard-navigation';
 import type { Rectangle } from '../types/geometry.types';
 import type { ProximityCandidate } from '../interaction/snapping';
 
@@ -160,6 +163,7 @@ export class DomEventBinder {
   private snap?: SnapController;
   /** T10 — the in-place label editor + its live DOM widget (lazy). */
   private textEditor?: InPlaceTextEditor;
+  private keyboardNav?: KeyboardNavigationController;
   private activeTextInput?: HTMLInputElement;
   /** T8 — lazily built per diagram; rebuilt when the diagram identity changes. */
   private membership?: { service: GroupMembershipService; diagram: unknown };
@@ -846,7 +850,14 @@ export class DomEventBinder {
           return;
         }
 
-        if (edgeHit.part === 'label' && edgeHit.labelIndex !== undefined) {
+        if (
+          edgeHit.part === 'label' &&
+          edgeHit.labelIndex !== undefined &&
+          // Only POSITIONED labels drag (they own position/offset). A display-
+          // label hit (synthesized box over `metadata.label`, no labels[]
+          // entry) falls through to link selection instead.
+          edgeHit.link.labels?.[edgeHit.labelIndex]
+        ) {
           event.preventDefault();
           this.host.interaction.startLabelDrag(edgeHit.link, edgeHit.labelIndex);
           this.host.requestRender();
@@ -857,9 +868,18 @@ export class DomEventBinder {
 
     // 7. Link body → select. Hover state is the fast path; fall back to a direct
     // hit-test because on first load no mousemove has run yet.
-    const link =
-      state.hoveredLink ??
-      this.host.interaction.getLinkAtPosition(worldX, worldY, engine);
+    //
+    // BUT a node body covers link ink: nodes paint in `nodes-layer`, ABOVE
+    // `links-layer`, so at a point where both coincide the user is touching the
+    // NODE — the ink is invisible under it. This rung used to win anyway, so a
+    // node dropped onto a link's path became undraggable at exactly the spot
+    // the user grabbed it (visio gate: recv adopted between pick and ship sits
+    // on the pick→ship path; the drag-out press selected that link instead and
+    // the node never moved).
+    const link = diagram.getNodeAtPosition(worldX, worldY)
+      ? null
+      : (state.hoveredLink ??
+        this.host.interaction.getLinkAtPosition(worldX, worldY, engine));
     if (link) {
       event.preventDefault();
       this.host.interaction.selectLink(link, engine, event.ctrlKey || event.metaKey);
@@ -1246,15 +1266,21 @@ export class DomEventBinder {
     this.setCursor('default');
   }
 
-  /** Double-click on a link body inserts a waypoint there (label editing is a host concern). */
+  /** Double-click: node → in-place rename; link label → rename; link body → waypoint. */
   onDoubleClick(event: MouseEvent): void {
     const engine = this.engine();
     if (!engine || this.isReadonly()) return;
 
     const { x: worldX, y: worldY } = this.toWorld(event);
-    const hit = this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
+    // Node bodies cover link ink (nodes-layer paints above links-layer), so a
+    // node under the point owns the double-click — same covered-ink rule as the
+    // mousedown ladder's link rung.
+    const nodeUnder = engine.getDiagram()?.getNodeAtPosition(worldX, worldY);
+    const hit = nodeUnder
+      ? null
+      : this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
     if (!hit) {
-      const node = engine.getDiagram()?.getNodeAtPosition(worldX, worldY);
+      const node = nodeUnder;
       if (node) {
         this.host.emit('node:doubleclick', { node, world: { x: worldX, y: worldY } });
         // T10/visio — double-click EDITS the label. InPlaceTextEditor (session +
@@ -1266,6 +1292,22 @@ export class DomEventBinder {
           this.openTextEditor(engine, { type: 'node', nodeId: node.id });
         }
       }
+      return;
+    }
+
+    // visio-depth — double-click an edge LABEL edits it in place, exactly like
+    // a node label (same editor, same undoable commit; the display-label
+    // dialect is resolved inside InPlaceTextEditor.begin). Same opt-in flag.
+    if (
+      hit.part === 'label' &&
+      engine.getInteractionConfig().enableInPlaceTextEdit === true
+    ) {
+      event.preventDefault();
+      this.openTextEditor(engine, {
+        type: 'link-label',
+        linkId: hit.link.id,
+        labelIndex: hit.labelIndex ?? 0,
+      });
       return;
     }
 
@@ -1366,6 +1408,34 @@ export class DomEventBinder {
       return;
     }
 
+    // visio-depth — arrow-key NUDGE (opt-in via `enableKeyboardNudge`): the
+    // selection moves 1 world unit per press, ×10 with Shift, each press one
+    // undoable command — and MERGEABLE, so a held key's auto-repeat collapses
+    // into a single undo entry inside the CommandManager's merge window. The
+    // math is the shipped KeyboardNavigationController's; the focused-input
+    // guard at the top of this handler keeps arrows out of a live text editor.
+    if (
+      !this.isReadonly() &&
+      event.key.startsWith('Arrow') &&
+      engine.getInteractionConfig().enableKeyboardNudge &&
+      !(event.ctrlKey || event.metaKey || event.altKey)
+    ) {
+      if (!this.keyboardNav) this.keyboardNav = new KeyboardNavigationController();
+      const delta = this.keyboardNav.nudgeDelta(event.key, event.shiftKey);
+      if (delta && diagram.getSelectedNodes().length > 0) {
+        event.preventDefault();
+        const command = this.keyboardNav.nudgeCommand(engine, delta.x, delta.y, {
+          mergeable: true,
+        });
+        if (command) {
+          void engine.commandManager.execute(command);
+          this.host.requestRender();
+          this.emitNodesChange();
+        }
+        return;
+      }
+    }
+
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
       event.preventDefault();
       diagram.selectAll();
@@ -1416,6 +1486,52 @@ export class DomEventBinder {
         this.emitSelectionChange();
       });
       return;
+    }
+    // visio-depth — ⌘D / Ctrl+D duplicates the selection: copy + paste-with-
+    // offset as ONE command (DuplicateCommand shipped in Phase 1.8 with no
+    // keyboard reaching it). preventDefault matters here: the browser's default
+    // for this chord is bookmark-the-page.
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') {
+      if (this.isReadonly() || diagram.getSelectedNodes().length === 0) return;
+      event.preventDefault();
+      void engine.duplicate().then(() => {
+        this.host.requestRender();
+        this.emitNodesChange();
+        this.emitEdgesChange();
+        this.emitSelectionChange();
+      });
+      return;
+    }
+
+    // visio-depth — F2 and TYPE-TO-REPLACE, both riding the same in-place
+    // editor double-click opens (gated on the same `enableInPlaceTextEdit`
+    // opt-in, and the focused-input guard at the top keeps both out of a live
+    // editor). F2 opens with the current label selected; a PRINTABLE key with
+    // exactly one node selected opens the editor seeded with that character,
+    // replacing the label on commit — Visio's signature affordance. Modifier
+    // chords never trigger it: every Ctrl/Cmd chord returned above, and
+    // Alt-composed characters are explicitly excluded here.
+    if (
+      !this.isReadonly() &&
+      engine.getInteractionConfig().enableInPlaceTextEdit === true
+    ) {
+      const selected = diagram.getSelectedNodes();
+      if (selected.length === 1) {
+        if (event.key === 'F2') {
+          event.preventDefault();
+          this.openTextEditor(engine, { type: 'node', nodeId: selected[0]!.id });
+          return;
+        }
+        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          this.openTextEditor(
+            engine,
+            { type: 'node', nodeId: selected[0]!.id },
+            { seed: event.key }
+          );
+          return;
+        }
+      }
     }
   }
 
@@ -2010,7 +2126,11 @@ export class DomEventBinder {
    * adds is the DOM input and where to put it — mapped through the live
    * world→client transform so it lands on the label at any zoom or pan.
    */
-  private openTextEditor(engine: DiagramEngine, target: TextEditTarget): void {
+  private openTextEditor(
+    engine: DiagramEngine,
+    target: TextEditTarget,
+    options?: { seed?: string }
+  ): void {
     if (!this.textEditor) this.textEditor = new InPlaceTextEditor();
     const editor = this.textEditor;
     this.closeTextEditor();
@@ -2054,7 +2174,10 @@ export class DomEventBinder {
       cleanup();
       if (command) void engine.commandManager.execute(command);
       this.host.requestRender();
-      this.emitNodesChange();
+      // Tell the host WHAT changed: a link-label commit is an edges change —
+      // it used to report nodes:change, so an edge-labels listener never heard.
+      if (target.type === 'link-label') this.emitEdgesChange();
+      else this.emitNodesChange();
     };
     const cancel = () => {
       if (settled) return;
@@ -2076,7 +2199,28 @@ export class DomEventBinder {
     (this.container.ownerDocument ?? document).body.appendChild(input);
     this.activeTextInput = input;
     input.focus();
-    input.select();
+    if (options?.seed !== undefined) {
+      // Type-to-replace (Visio's signature affordance): the editor opens
+      // holding ONLY the typed character — committing replaces the label,
+      // Escape restores the original untouched (the session keeps it).
+      input.value = options.seed;
+      input.setSelectionRange(input.value.length, input.value.length);
+    } else {
+      input.select();
+    }
+  }
+
+  /**
+   * Open the in-place label editor programmatically — the seam behind F2 and a
+   * host's context-menu Rename. Unlike the double-click path this is NOT gated
+   * on `enableInPlaceTextEdit`: an explicit call IS the host's opt-in.
+   * Returns false when the target does not exist / is not editable / readonly.
+   */
+  beginLabelEdit(target: TextEditTarget, options?: { seed?: string }): boolean {
+    const engine = this.engine();
+    if (!engine || this.isReadonly()) return false;
+    this.openTextEditor(engine, target, options);
+    return this.activeTextInput !== undefined;
   }
 
   /** Drop any live text widget without committing (a new edit, or teardown). */

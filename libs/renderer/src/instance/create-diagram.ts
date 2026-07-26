@@ -358,6 +358,20 @@ export interface DiagramInstance {
   getDraggingNodeIds(): string[];
 
   /**
+   * visio-depth — open the in-place label editor programmatically: a node's
+   * label (`{ type: 'node', nodeId }`) or a link label
+   * (`{ type: 'link-label', linkId, labelIndex }`). The seam a host's
+   * context-menu Rename / F2 binding uses; the same editor + undoable commit
+   * that double-click opens. `seed` replaces the text the editor opens with
+   * (type-to-replace). Returns false when the target is missing, not editable,
+   * or the instance is readonly.
+   */
+  beginLabelEdit(
+    target: { type: 'node' | 'link-label'; nodeId?: string; linkId?: string; labelIndex?: number },
+    opts?: { seed?: string }
+  ): boolean;
+
+  /**
    * THIS diagram's contribution registry — shapes, named styles, link/label
    * templates, markers, anchors, connection points, connectors, animations.
    *
@@ -1499,6 +1513,8 @@ export function createDiagram(
     },
 
     getDraggingNodeIds: () => binder.getDraggingNodeIds(),
+
+    beginLabelEdit: (target, opts) => binder.beginLabelEdit(target, opts),
 
     registry: renderer.getRegistry(),
 

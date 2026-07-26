@@ -337,6 +337,45 @@ describe('DomEventBinder', () => {
       expect(link.state).toBe('selected');
       expect(h.events.map((e) => e.event)).toContain('edge:click');
     });
+
+    it('a NODE BODY over link ink wins the press — the ink is painted beneath it', () => {
+      // Nodes render in nodes-layer, above links-layer: at a point where a node
+      // covers a link's path the user is touching the node. The link rung used
+      // to claim the press anyway, so a node dropped onto a link's route became
+      // undraggable at the exact spot the user grabbed (visio gate, drag-out).
+      h = harness();
+      applyNodes(h.model, [
+        { id: 'a', position: { x: 100, y: 100 }, size: { width: 100, height: 60 } },
+        { id: 'b', position: { x: 400, y: 100 }, size: { width: 100, height: 60 } },
+        { id: 'c', position: { x: 250, y: 100 }, size: { width: 100, height: 60 } },
+      ]);
+      const link = h.model.getLink('e')!;
+      jest.spyOn(h.interaction, 'getLinkAtPosition').mockReturnValue(link);
+
+      // (300,130) is inside node c AND on the a→b link's straight route.
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 300, clientY: 130 }));
+
+      expect(link.state).not.toBe('selected');
+      expect(h.model.getNode('c')!.isSelected()).toBe(true);
+      expect(h.events.map((e) => e.event)).toContain('node:click');
+    });
+
+    it('double-click over node-covered link ink goes to the NODE, not the waypoint path', () => {
+      h = harness();
+      applyNodes(h.model, [
+        { id: 'a', position: { x: 100, y: 100 }, size: { width: 100, height: 60 } },
+        { id: 'b', position: { x: 400, y: 100 }, size: { width: 100, height: 60 } },
+        { id: 'c', position: { x: 250, y: 100 }, size: { width: 100, height: 60 } },
+      ]);
+      const link = h.model.getLink('e')!;
+      jest
+        .spyOn(h.interaction, 'getLinkHitAtPosition')
+        .mockReturnValue({ link, part: 'body', t: 0.5 } as never);
+
+      h.container.dispatchEvent(mouse('dblclick', { clientX: 300, clientY: 130 }));
+
+      expect(h.events.map((e) => e.event)).toContain('node:doubleclick');
+    });
   });
 
   describe('connection gesture', () => {
@@ -401,6 +440,211 @@ describe('DomEventBinder', () => {
 
       expect(h.model.getNode('a')).toBeDefined();
       input.remove();
+    });
+
+    it('Ctrl+D duplicates the MOUSE-selected node as one undoable step', async () => {
+      h = harness();
+      // Select by mouse — the path that never writes the engine store's
+      // selection set, which is exactly the path engine.duplicate() used to
+      // reject with "No nodes selected".
+      h.container.dispatchEvent(mouse('mousedown', A_CENTER));
+      h.container.dispatchEvent(mouse('mouseup', A_CENTER));
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', ctrlKey: true }));
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const nodes = h.model.getNodes();
+      expect(nodes).toHaveLength(3);
+      const copy = nodes.find((n) => n.id !== 'a' && n.id !== 'b')!;
+      // paste-with-offset semantics: the copy lands +20,+20 from the source
+      expect(copy.position.x).toBe(120);
+      expect(copy.position.y).toBe(120);
+
+      await h.engine.commandManager.undo();          // ONE undo removes the copy
+      expect(h.model.getNodes()).toHaveLength(2);
+    });
+
+    it('Ctrl+D with nothing selected is inert', async () => {
+      h = harness();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', ctrlKey: true }));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(h.model.getNodes()).toHaveLength(2);
+    });
+
+    describe('F2 + type-to-replace (enableInPlaceTextEdit)', () => {
+      const editorInput = () =>
+        document.querySelector<HTMLInputElement>('.grafloria-text-editor');
+      afterEach(() => editorInput()?.remove());
+
+      it('F2 opens the in-place editor on the selected node; Enter commits undoably', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        const node = h.model.getNode('a')!;
+        node.setLabel?.('Alpha');
+        h.model.selectNode(node);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2' }));
+        const input = editorInput()!;
+        expect(input).toBeTruthy();
+        expect(input.value).toBe('Alpha');
+
+        input.value = 'Renamed';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(String(node.getLabel?.() ?? '')).toBe('Renamed');
+
+        await h.engine.commandManager.undo();
+        expect(String(node.getLabel?.() ?? '')).toBe('Alpha');
+      });
+
+      it('a printable key opens the editor SEEDED with that character (replace on commit)', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        const node = h.model.getNode('a')!;
+        node.setLabel?.('Alpha');
+        h.model.selectNode(node);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+        const input = editorInput()!;
+        expect(input).toBeTruthy();
+        expect(input.value).toBe('x'); // NOT 'Alphax' — the label is replaced
+
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(String(node.getLabel?.() ?? '')).toBe('x');
+      });
+
+      it('Escape abandons a type-to-replace without touching the label', () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        const node = h.model.getNode('a')!;
+        node.setLabel?.('Alpha');
+        h.model.selectNode(node);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+        editorInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        expect(editorInput()).toBeNull();
+        expect(String(node.getLabel?.() ?? '')).toBe('Alpha');
+      });
+
+      it('modifier chords and multi-selection never trigger it; neither does the default config', () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        h.model.selectNode(h.model.getNode('a')!);
+
+        // Ctrl+x is a chord, not typing.
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', ctrlKey: true }));
+        expect(editorInput()).toBeNull();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', altKey: true }));
+        expect(editorInput()).toBeNull();
+
+        // Two nodes selected: ambiguous target, no editor.
+        h.model.addToSelection(h.model.getNode('b')!);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+        expect(editorInput()).toBeNull();
+
+        // Flag off (default): F2 and typing are inert.
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: false });
+        h.model.selectNode(h.model.getNode('a')!);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2' }));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+        expect(editorInput()).toBeNull();
+      });
+
+      it('beginLabelEdit() opens the same editor programmatically (context-menu Rename seam)', () => {
+        h = harness();
+        const node = h.model.getNode('b')!;
+        node.setLabel?.('Beta');
+
+        const opened = h.binder.beginLabelEdit({ type: 'node', nodeId: 'b' });
+        expect(opened).toBe(true);
+        expect(editorInput()!.value).toBe('Beta');
+      });
+
+      it('double-click on an edge LABEL opens the editor holding the DISPLAY label', () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        const link = h.model.getLink('e')!;
+        link.setLabel?.('in stock');          // the metadata dialect, no labels[]
+        link.setPoints([
+          { x: 200, y: 130 },
+          { x: 300, y: 130 },
+          { x: 400, y: 130 },
+        ]);
+        jest
+          .spyOn(h.interaction, 'getLinkHitAtPosition')
+          .mockReturnValue({ link, part: 'label', labelIndex: 0 } as never);
+
+        // (300,300) is empty canvas in the harness — no node steals the hit.
+        h.container.dispatchEvent(mouse('dblclick', { clientX: 300, clientY: 300 }));
+
+        const input = editorInput()!;
+        expect(input).toBeTruthy();
+        expect(input.value).toBe('in stock');
+      });
+    });
+
+    describe('arrow-key nudge (enableKeyboardNudge)', () => {
+      it('is OFF by default — an arrow press moves nothing', async () => {
+        h = harness();
+        h.model.selectNode(h.model.getNode('a')!);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(100);
+      });
+
+      it('ArrowRight nudges the selected node 1 unit; Shift makes it 10', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableKeyboardNudge: true });
+        h.model.selectNode(h.model.getNode('a')!);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(101);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.y).toBe(110);
+        expect(h.events.some((e) => e.event === 'nodes:change')).toBe(true);
+      });
+
+      it('rapid presses MERGE into one undo entry that rewinds to the start', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableKeyboardNudge: true });
+        h.model.selectNode(h.model.getNode('a')!);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(102);
+
+        await h.engine.commandManager.undo();
+        expect(h.model.getNode('a')!.position.x).toBe(100);
+        // …and that single entry was the whole story: nothing else to unwind
+        // from the two presses.
+        expect(h.engine.commandManager.canUndo()).toBe(false);
+      });
+
+      it('does not fire from a focused text input, and needs a selection', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableKeyboardNudge: true });
+        h.model.selectNode(h.model.getNode('a')!);
+
+        const input = document.createElement('input');
+        document.body.appendChild(input);
+        input.focus();
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(100);
+        input.remove();
+
+        h.model.clearSelection();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(100);
+      });
     });
   });
 

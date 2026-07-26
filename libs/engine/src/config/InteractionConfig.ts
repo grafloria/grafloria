@@ -233,6 +233,19 @@ export interface InteractionConfig {
   enableInPlaceTextEdit: boolean;
 
   /**
+   * visio-depth — arrow keys NUDGE the selected node(s): 1 world unit per
+   * press, ×10 with Shift, committed through MoveNodeCommand so every nudge is
+   * undoable (and successive presses inside the CommandManager's merge window
+   * collapse to one undo entry). The whole computation shipped years ago in
+   * `KeyboardNavigationController.nudgeCommand` — but it was auto-wired only in
+   * the Angular wrapper, so a vanilla/React/Vue embed pressing an arrow moved
+   * nothing (the same built-but-unwired hole `enableInPlaceTextEdit` closed for
+   * double-click rename). Default false (opt-in): arrows may already mean
+   * scroll-the-page to an embedding host.
+   */
+  enableKeyboardNudge: boolean;
+
+  /**
    * wave12/connect-ergonomics (gap 3) — React-Flow "Easy Connect": make the
    * whole node BODY a connection handle. A press on a node body (not over a
    * specific port) starts a connection from the node's nearest/default port
@@ -415,6 +428,7 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
   enableHelperLines: false,
   enableGroupMembershipOnDrop: false,
   enableInPlaceTextEdit: false,
+  enableKeyboardNudge: false,
   enableEasyConnect: false,
   easyConnectModifier: 'none',
 };

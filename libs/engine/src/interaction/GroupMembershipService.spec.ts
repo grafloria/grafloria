@@ -176,4 +176,48 @@ describe('GroupMembershipService (Wave-2)', () => {
       expect(outerHit?.id).toBe('outer');
     });
   });
+
+  describe('painted frame wins over derived member bounds (visio audit)', () => {
+    it('adopts a drop inside the explicit frame even after a membership change shrank `bounds`', async () => {
+      // A container with an explicit frame much larger than its member bbox —
+      // exactly the visio-editor's "Fulfilment" box.
+      const member = makeNode('m1', 340, 430);
+      const wanderer = makeNode('n1', 700, 700);
+      diagram.addNode(member);
+      diagram.addNode(wanderer);
+      const group = new GroupModel({ id: 'g1', name: 'g1' });
+      diagram.addGroup(group);
+      group.setFrame({ x: 300, y: 290, width: 240, height: 230 });
+      group.addMember('m1');
+
+      // A membership change recomputes the derived bounds to the TIGHT member
+      // bbox — this is what the drag-out path does via calculateBounds().
+      group.calculateBounds(diagram);
+      expect(group.bounds!.width).toBeLessThan(240); // derived rect really did shrink
+
+      // Drop in the frame's empty margin: inside the painted frame, OUTSIDE
+      // the tight member bbox. The user sees the frame, so this must adopt.
+      const result = await service.handleNodeDragEnd('n1', { x: 320, y: 310 });
+
+      expect(result.changed).toBe(true);
+      expect(result.toGroupId).toBe('g1');
+      expect(group.members.has('n1')).toBe(true);
+    });
+
+    it('a point outside the painted frame still adopts nothing', async () => {
+      const member = makeNode('m1', 340, 430);
+      const wanderer = makeNode('n1', 700, 700);
+      diagram.addNode(member);
+      diagram.addNode(wanderer);
+      const group = new GroupModel({ id: 'g1', name: 'g1' });
+      diagram.addGroup(group);
+      group.setFrame({ x: 300, y: 290, width: 240, height: 230 });
+      group.addMember('m1');
+
+      const result = await service.handleNodeDragEnd('n1', { x: 600, y: 600 });
+
+      expect(result.changed).toBe(false);
+      expect(group.members.has('n1')).toBe(false);
+    });
+  });
 });
