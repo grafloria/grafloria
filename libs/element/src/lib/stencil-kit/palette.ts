@@ -145,7 +145,10 @@ function applyNotationPanel(node: any, masterId: string, master: NodeTemplate): 
     ? [{ text: 'VALUE_A' }, { text: 'VALUE_B' }]
     : [{ text: '+ field: Type' }, { text: '+ method(): void' }];
   node.setMetadata('panel', {
-    header: { text: stereotype ? `${stereotype} ${name}` : name },
+    // A stereotyped classifier stacks «stereotype» OVER the name, the way UML
+    // draws its cards — inline ("«enumeration» Enumeration") the header line
+    // was wider than the card and painted cut off at both edges.
+    header: stereotype ? { lines: [stereotype, name] } : { text: name },
     rows,
     rowHeight: 18,
   });
