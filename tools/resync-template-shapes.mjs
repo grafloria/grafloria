@@ -143,6 +143,10 @@ const SIZES = {
   // generated 100×60 could not hold both (rows painted over/past the edges).
   // 120×80 matches every other classifier card (class, interface, enum…).
   'uml::uml-signal': { width: 120, height: 80 },
+  // A sequence-diagram activation is a narrow bar ON a lifeline — but the
+  // generated 15×80 was a sliver whose inside caption never had a chance.
+  // 12×60 is the notation's bar; the caption paints below it (LABEL_BELOW).
+  'uml::uml-activation': { width: 12, height: 60 },
 };
 
 // Shape paints the notation demands, keyed `${dir}::${template.id}`.
@@ -154,6 +158,9 @@ const PAINTS = {
   // three circles floods the empty gap between ring and dot.
   'uml::uml-final-node': { strokeWidth: 1 },
   'uml::uml-final-state': { strokeWidth: 1, fill: '#475569' },
+  // UML draws fork and join as the SAME solid synchronisation bar; the
+  // generated join was a hollow outline next to the fork's solid black.
+  'uml::uml-join': { fill: '#000000', stroke: '#000000', strokeWidth: 1 },
 };
 
 /** label → declared shape, read straight out of the domain registries. */

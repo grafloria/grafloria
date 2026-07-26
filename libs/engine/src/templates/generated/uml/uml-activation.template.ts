@@ -29,8 +29,8 @@ export const umlActivationTemplate: NodeTemplate = {
   "structure": {
     "type": "uml:activation",
     "size": {
-      "width": 15,
-      "height": 80,
+      "width": 12,
+      "height": 60,
       "minWidth": 120,
       "maxWidth": 400,
       "minHeight": 80,
