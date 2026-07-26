@@ -53,6 +53,7 @@ jobs:
       - run: node apps/demos-vue/build.mjs
       - run: node demos/e2e/variant-run.mjs vue
       - run: node demos/e2e/interaction-run.mjs
+      - run: node demos/e2e/table-editing-run.mjs
       - run: node demos/e2e/save-load-run.mjs
       - run: node demos/e2e/export-widgets-run.mjs
       - run: node demos/e2e/export-fetch-run.mjs

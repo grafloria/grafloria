@@ -191289,7 +191289,33 @@ function dismissInlineEditor() {
   activeEditor = null;
   open?.cancel();
 }
-function openInlineEditor(api, targetEl, value, onCommit) {
+function dedupe3(values) {
+  return [...new Set(values)];
+}
+var ER_TYPE_SUGGESTIONS = [
+  "uuid",
+  "int",
+  "bigint",
+  "smallint",
+  "serial",
+  "decimal",
+  "numeric",
+  "real",
+  "double",
+  "varchar",
+  "text",
+  "char",
+  "boolean",
+  "date",
+  "time",
+  "timestamp",
+  "timestamptz",
+  "json",
+  "jsonb",
+  "bytea",
+  "enum"
+];
+function openInlineEditor(api, targetEl, value, onCommit, suggestions) {
   const container = api.container;
   const doc = container.ownerDocument;
   const input = doc.createElement("input");
@@ -191297,13 +191323,27 @@ function openInlineEditor(api, targetEl, value, onCommit) {
   input.value = value;
   input.spellcheck = false;
   input.setAttribute("autocomplete", "off");
+  let listEl = null;
+  if (suggestions?.length) {
+    listEl = doc.createElement("datalist");
+    listEl.id = `axk-types-${Math.random().toString(36).slice(2, 8)}`;
+    for (const t of suggestions) {
+      const opt = doc.createElement("option");
+      opt.value = t;
+      listEl.appendChild(opt);
+    }
+    doc.body.appendChild(listEl);
+    input.setAttribute("list", listEl.id);
+  }
   const rect = targetEl.getBoundingClientRect();
   const zoom = api.viewport?.getZoom?.() ?? 1;
   const layer = container.querySelector(".grafloria-html-layer");
   let portal = null;
   if (layer && api.viewport?.clientToWorld && rect.width > 0) {
     const world = api.viewport.clientToWorld(rect.left, rect.top, container.getBoundingClientRect());
-    input.style.cssText = `width:${rect.width / zoom}px;height:${rect.height / zoom}px;`;
+    const minW = suggestions?.length ? 132 : 72;
+    const w = Math.max(rect.width / zoom, minW);
+    input.style.cssText = `width:${w}px;height:${rect.height / zoom}px;`;
     try {
       portal = createViewportPortal(layer, { x: world.x, y: world.y, className: "axk-edit-portal" });
       portal.element.appendChild(input);
@@ -191320,6 +191360,7 @@ function openInlineEditor(api, targetEl, value, onCommit) {
   const self2 = { cancel: () => void 0 };
   const cleanup = () => {
     if (activeEditor === self2) activeEditor = null;
+    listEl?.remove();
     if (portal) portal.dispose();
     else input.remove();
   };
@@ -191383,10 +191424,19 @@ function beginRename(api, target) {
   if (typeEl && rowIndex >= 0) {
     const ent = kitEntity(api, nodeId);
     if (!ent) return;
-    openInlineEditor(api, typeEl, ent.columns[rowIndex]?.type ?? "", (type) => {
-      const columns = ent.columns.map((c, i) => i === rowIndex ? { ...c, type } : c);
-      void updateEntity(api, nodeId, { columns });
-    });
+    openInlineEditor(
+      api,
+      typeEl,
+      ent.columns[rowIndex]?.type ?? "",
+      (type) => {
+        const columns = ent.columns.map((c, i) => i === rowIndex ? { ...c, type } : c);
+        void updateEntity(api, nodeId, { columns });
+      },
+      // Offer the types already used in THIS diagram first, then the standards —
+      // a schema is usually internally consistent, so what you just typed
+      // elsewhere is the likeliest next value.
+      dedupe3([...ent.columns.map((c) => c.type).filter(Boolean), ...ER_TYPE_SUGGESTIONS])
+    );
     return;
   }
   const rowEl = target.closest(".axk-row");
