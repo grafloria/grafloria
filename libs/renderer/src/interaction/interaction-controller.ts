@@ -1428,12 +1428,35 @@ export class InteractionController {
     const points: Point[] = link.points;
     const style = link.style ?? {};
 
+    let labels = (link.labels ?? []).map((label) => ({
+      position: label.position,
+      offset: label.offset,
+    }));
+
+    // The DISPLAY label dialect (`edges: [{label}]` → `metadata.label`) paints
+    // at the middle routed point but lived in no hit geometry at all — so the
+    // label a user could SEE on such an edge reported `body`, never `label`,
+    // and double-click-to-edit / label affordances could not fire on it.
+    // Synthesize its box at the renderer's own anchor (points[mid], expressed
+    // as the arc-length position the hit primitive expects).
+    if (labels.length === 0 && points.length >= 2 && link.getLabel()) {
+      const mid = Math.floor(points.length / 2);
+      let total = 0;
+      let toMid = 0;
+      for (let i = 1; i < points.length; i++) {
+        const seg = Math.hypot(
+          points[i]!.x - points[i - 1]!.x,
+          points[i]!.y - points[i - 1]!.y
+        );
+        total += seg;
+        if (i <= mid) toMid += seg;
+      }
+      if (total > 0) labels = [{ position: toMid / total, offset: { x: 0, y: 0 } }];
+    }
+
     return {
       points,
-      labels: (link.labels ?? []).map((label) => ({
-        position: label.position,
-        offset: label.offset,
-      })),
+      labels,
       // arrowHead renders at the target end, arrowTail at the source end.
       sourceArrow: this.arrowAnchor(points, false, style.arrowTail),
       targetArrow: this.arrowAnchor(points, true, style.arrowHead),

@@ -561,6 +561,28 @@ describe('DomEventBinder', () => {
         expect(opened).toBe(true);
         expect(editorInput()!.value).toBe('Beta');
       });
+
+      it('double-click on an edge LABEL opens the editor holding the DISPLAY label', () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        const link = h.model.getLink('e')!;
+        link.setLabel?.('in stock');          // the metadata dialect, no labels[]
+        link.setPoints([
+          { x: 200, y: 130 },
+          { x: 300, y: 130 },
+          { x: 400, y: 130 },
+        ]);
+        jest
+          .spyOn(h.interaction, 'getLinkHitAtPosition')
+          .mockReturnValue({ link, part: 'label', labelIndex: 0 } as never);
+
+        // (300,300) is empty canvas in the harness — no node steals the hit.
+        h.container.dispatchEvent(mouse('dblclick', { clientX: 300, clientY: 300 }));
+
+        const input = editorInput()!;
+        expect(input).toBeTruthy();
+        expect(input.value).toBe('in stock');
+      });
     });
 
     describe('arrow-key nudge (enableKeyboardNudge)', () => {

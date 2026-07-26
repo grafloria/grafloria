@@ -1,5 +1,9 @@
 import type { DiagramEngine, Command, Point } from '@grafloria/engine';
-import { SetNodeLabelCommand, SetLinkLabelCommand } from '@grafloria/engine';
+import {
+  SetNodeLabelCommand,
+  SetLinkLabelCommand,
+  SetLinkDisplayLabelCommand,
+} from '@grafloria/engine';
 import type { Rectangle } from '../types/geometry.types';
 
 /**
@@ -27,7 +31,14 @@ export interface TextEditTarget {
   nodeId?: string;
   /** Link owning the label (`type: 'link-label'`). */
   linkId?: string;
-  /** Which label on that link. */
+  /**
+   * Which label on that link. Links carry TWO label dialects: the positioned
+   * `labels[]` collection, and the DISPLAY label every spec input writes
+   * (`edges: [{label}]` → `metadata.label`, painted at the path midpoint).
+   * When `labels[index]` does not exist, `begin()` falls back to the display
+   * label — the sentinel `-1` marks that dialect internally so `commit()`
+   * writes it back through {@link SetLinkDisplayLabelCommand}.
+   */
   labelIndex?: number;
 }
 
@@ -85,9 +96,39 @@ export class InPlaceTextEditor {
     }
 
     const link = target.linkId ? diagram.getLink(target.linkId) : undefined;
+    if (!link) return null;
     const index = target.labelIndex ?? 0;
-    const label = link?.labels?.[index];
-    if (!link || !label) return null;
+    const label = link.labels?.[index];
+
+    if (!label) {
+      // DISPLAY-label dialect: the edge has no positioned labels[], but the
+      // canonical `metadata.label` (what `edges: [{label}]` writes and the SVG
+      // renderer paints at the path's middle routed point) may exist — that is
+      // the label the user is LOOKING at, so it is the one an editor must
+      // open on. Anchor exactly where the renderer anchors: points[mid].
+      // A link with positioned labels keeps the old contract: asking for a
+      // slot that does not exist opens nothing.
+      const displayValue = String(link.getLabel() ?? '');
+      if ((link.labels?.length ?? 0) > 0 || !displayValue) return null;
+      const points = link.points ?? [];
+      if (points.length < 2) return null;
+      const anchor = points[Math.floor(points.length / 2)]!;
+      const width = Math.max(40, displayValue.length * 8);
+      const height = 20;
+      this.session = {
+        target: { ...target, labelIndex: -1 },
+        value: displayValue,
+        bounds: {
+          x: anchor.x - width / 2,
+          y: anchor.y - height / 2,
+          width,
+          height,
+        },
+        center: { x: anchor.x, y: anchor.y },
+        multiline: false,
+      };
+      return this.getSession();
+    }
 
     // The label sits at `position` along the route, plus its own offset — the
     // exact anchor LabelRenderer draws it at, so the editor lands ON the text
@@ -131,6 +172,11 @@ export class InPlaceTextEditor {
 
     if (session.target.linkId !== undefined && session.target.labelIndex !== undefined) {
       if (!diagram.getLink(session.target.linkId)) return null;
+      // -1 marks the display-label dialect (see begin()): the write goes to
+      // `metadata.label`, not into a labels[] slot that does not exist.
+      if (session.target.labelIndex === -1) {
+        return new SetLinkDisplayLabelCommand(session.target.linkId, value, session.value);
+      }
       return new SetLinkLabelCommand(
         session.target.linkId,
         session.target.labelIndex,
