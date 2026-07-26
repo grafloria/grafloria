@@ -551,6 +551,78 @@ describe('importDrawio — container-endpoint edges', () => {
   });
 });
 
+describe('importDrawio — floating (point-anchored) edge endpoints', () => {
+  it('an edge with a targetPoint instead of a target cell imports via an invisible point anchor', async () => {
+    const xml = model(
+      vertex('a', { x: 0, y: 0 }) +
+        `<mxCell id="e1" style="" edge="1" parent="1" source="a">` +
+        `<mxGeometry relative="1" as="geometry"><mxPoint x="300" y="220" as="targetPoint"/></mxGeometry></mxCell>`
+    );
+    const { diagram, warnings } = await importDrawio(xml);
+    expect(diagram!.getLinks()).toHaveLength(1);
+    expect(warnings.some((w) => w.includes('skipped'))).toBe(false);
+    const link = diagram!.getLinks()[0];
+    expect(link.sourceNodeId).toBe('a');
+    const anchor = diagram!.getNode(link.targetNodeId!)!;
+    expect(anchor.getMetadata('drawioPointAnchor')).toEqual({ x: 300, y: 220 });
+    expect(anchor.position.x + 0.5).toBeCloseTo(300, 5);
+    expect(anchor.position.y + 0.5).toBeCloseTo(220, 5);
+    expect(anchor.getMetadata('shape')).toMatchObject({ fill: 'none', stroke: 'none' });
+  });
+
+  it('a fully floating edge (sourcePoint AND targetPoint) imports between two anchors — in PARENT space', async () => {
+    const xml = model(
+      vertex('lane', { style: 'swimlane;', x: 100, y: 50, w: 400, h: 300 }) +
+        vertex('k', { parent: 'lane', x: 10, y: 20 }) +
+        `<mxCell id="e1" style="" edge="1" parent="lane">` +
+        `<mxGeometry relative="1" as="geometry"><mxPoint x="20" y="30" as="sourcePoint"/><mxPoint x="200" y="180" as="targetPoint"/></mxGeometry></mxCell>`
+    );
+    const { diagram, warnings } = await importDrawio(xml);
+    expect(diagram!.getLinks()).toHaveLength(1);
+    expect(warnings.some((w) => w.includes('skipped'))).toBe(false);
+    const link = diagram!.getLinks()[0];
+    const src = diagram!.getNode(link.sourceNodeId!)!;
+    const tgt = diagram!.getNode(link.targetNodeId!)!;
+    // The points are authored in the LANE's space: (20,30) → world (120,80).
+    expect(src.position.x + 0.5).toBeCloseTo(120, 5);
+    expect(src.position.y + 0.5).toBeCloseTo(80, 5);
+    expect(tgt.position.x + 0.5).toBeCloseTo(300, 5);
+    expect(tgt.position.y + 0.5).toBeCloseTo(230, 5);
+  });
+
+  it('an edge with NO endpoint cell and NO point on a side is still skipped, with the naming warning', async () => {
+    const xml = model(
+      vertex('a', { x: 0, y: 0 }) +
+        `<mxCell id="e1" style="" edge="1" parent="1" source="a"><mxGeometry relative="1" as="geometry"/></mxCell>`
+    );
+    const { diagram, warnings } = await importDrawio(xml);
+    expect(diagram!.getLinks()).toHaveLength(0);
+    expect(warnings.some((w) => w.includes('"e1"') && w.includes('no target'))).toBe(true);
+  });
+});
+
+describe('importDrawio — corpus-driven hardening', () => {
+  it('elbow/segment/entityRelation edge styles route orthogonally like their draw.io originals', async () => {
+    const two = vertex('a', { x: 0, y: 0 }) + vertex('b', { x: 300, y: 0 });
+    for (const styleName of ['elbowEdgeStyle', 'segmentEdgeStyle', 'entityRelationEdgeStyle']) {
+      const { diagram } = await importDrawio(
+        model(two + `<mxCell id="e1" style="edgeStyle=${styleName};" edge="1" parent="1" source="a" target="b"><mxGeometry relative="1" as="geometry"/></mxCell>`)
+      );
+      expect(diagram!.getLinks()[0].pathType).toBe('orthogonal');
+    }
+  });
+
+  it('kilobyte stencil(...) shape tokens are truncated in the warning, not dumped whole', async () => {
+    const bigToken = 'stencil(' + 'A'.repeat(2000) + ')';
+    const { warnings } = await importDrawio(model(vertex('x', { style: `shape=${bigToken};` })));
+    const w = warnings.find((w) => w.includes('unknown shape token'))!;
+    expect(w).toBeDefined();
+    expect(w.length).toBeLessThan(150);
+    expect(w).toContain('stencil(');
+    expect(w).toContain('…');
+  });
+});
+
 describe('importDrawio — failure honesty', () => {
   it('returns {error} and never throws on garbage input', async () => {
     for (const garbage of ['', 'hello world', '<html><body>nope</body></html>', '<mxfile><diagram>%%%not-base64%%%</diagram></mxfile>']) {
