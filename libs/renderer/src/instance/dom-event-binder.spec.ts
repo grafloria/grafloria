@@ -472,6 +472,97 @@ describe('DomEventBinder', () => {
       expect(h.model.getNodes()).toHaveLength(2);
     });
 
+    describe('F2 + type-to-replace (enableInPlaceTextEdit)', () => {
+      const editorInput = () =>
+        document.querySelector<HTMLInputElement>('.grafloria-text-editor');
+      afterEach(() => editorInput()?.remove());
+
+      it('F2 opens the in-place editor on the selected node; Enter commits undoably', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        const node = h.model.getNode('a')!;
+        node.setLabel?.('Alpha');
+        h.model.selectNode(node);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2' }));
+        const input = editorInput()!;
+        expect(input).toBeTruthy();
+        expect(input.value).toBe('Alpha');
+
+        input.value = 'Renamed';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(String(node.getLabel?.() ?? '')).toBe('Renamed');
+
+        await h.engine.commandManager.undo();
+        expect(String(node.getLabel?.() ?? '')).toBe('Alpha');
+      });
+
+      it('a printable key opens the editor SEEDED with that character (replace on commit)', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        const node = h.model.getNode('a')!;
+        node.setLabel?.('Alpha');
+        h.model.selectNode(node);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+        const input = editorInput()!;
+        expect(input).toBeTruthy();
+        expect(input.value).toBe('x'); // NOT 'Alphax' — the label is replaced
+
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(String(node.getLabel?.() ?? '')).toBe('x');
+      });
+
+      it('Escape abandons a type-to-replace without touching the label', () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        const node = h.model.getNode('a')!;
+        node.setLabel?.('Alpha');
+        h.model.selectNode(node);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+        editorInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        expect(editorInput()).toBeNull();
+        expect(String(node.getLabel?.() ?? '')).toBe('Alpha');
+      });
+
+      it('modifier chords and multi-selection never trigger it; neither does the default config', () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        h.model.selectNode(h.model.getNode('a')!);
+
+        // Ctrl+x is a chord, not typing.
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', ctrlKey: true }));
+        expect(editorInput()).toBeNull();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', altKey: true }));
+        expect(editorInput()).toBeNull();
+
+        // Two nodes selected: ambiguous target, no editor.
+        h.model.addToSelection(h.model.getNode('b')!);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+        expect(editorInput()).toBeNull();
+
+        // Flag off (default): F2 and typing are inert.
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: false });
+        h.model.selectNode(h.model.getNode('a')!);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2' }));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+        expect(editorInput()).toBeNull();
+      });
+
+      it('beginLabelEdit() opens the same editor programmatically (context-menu Rename seam)', () => {
+        h = harness();
+        const node = h.model.getNode('b')!;
+        node.setLabel?.('Beta');
+
+        const opened = h.binder.beginLabelEdit({ type: 'node', nodeId: 'b' });
+        expect(opened).toBe(true);
+        expect(editorInput()!.value).toBe('Beta');
+      });
+    });
+
     describe('arrow-key nudge (enableKeyboardNudge)', () => {
       it('is OFF by default — an arrow press moves nothing', async () => {
         h = harness();
