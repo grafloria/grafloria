@@ -57,6 +57,12 @@ export class ASTTransformer {
   private nodePositions: Map<string, { x: number; y: number }> = new Map();
   private nextAutoPosition = { x: 100, y: 100 };
   private nodeSpacing = 150;
+  /**
+   * The axis auto-placement advances along, from the diagram's direction
+   * keyword. `flowchart TD` is TOP-DOWN and must stack vertically; every
+   * direction used to lay out identically left-to-right, so TD/TB read as LR.
+   */
+  private flowAxis: 'x' | 'y' = 'x';
 
   /**
    * Transform AST into DiagramModel
@@ -80,6 +86,8 @@ export class ASTTransformer {
     // Store diagram type in metadata
     diagram.setMetadata('diagramType', ast.diagramType);
     diagram.setMetadata('direction', ast.direction);
+    // TD / TB (top-down) and BT stack DOWN the page; LR / RL run across it.
+    this.flowAxis = /^(TD|TB|BT)$/i.test(String(ast.direction ?? '')) ? 'y' : 'x';
 
     // Phase 1: structure — nodes, subgraphs→groups, and classDefs (stored so
     // class applications in Phase 3 can resolve regardless of source order).
@@ -608,13 +616,18 @@ export class ASTTransformer {
   private getNextAutoPosition(): { x: number; y: number } {
     const position = { ...this.nextAutoPosition };
 
-    // Move to next position (simple horizontal layout for now)
-    this.nextAutoPosition.x += this.nodeSpacing;
+    // Advance along the DIRECTION's axis, wrapping on the cross axis. This used
+    // to always step in x, so `flowchart TD` produced the same left-to-right
+    // chain as `LR` — the direction keyword parsed, was stored on the diagram,
+    // and then nothing read it.
+    const along = this.flowAxis;
+    const across = along === 'x' ? 'y' : 'x';
+    const limit = along === 'x' ? 1000 : 700;   // wrap a column sooner than a row
 
-    // Wrap to next row after 6 nodes
-    if (this.nextAutoPosition.x > 1000) {
-      this.nextAutoPosition.x = 100;
-      this.nextAutoPosition.y += this.nodeSpacing;
+    this.nextAutoPosition[along] += this.nodeSpacing;
+    if (this.nextAutoPosition[along] > limit) {
+      this.nextAutoPosition[along] = 100;
+      this.nextAutoPosition[across] += this.nodeSpacing;
     }
 
     return position;
