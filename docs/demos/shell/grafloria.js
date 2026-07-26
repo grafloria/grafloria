@@ -191340,10 +191340,21 @@ function openInlineEditor(api, targetEl, value, onCommit, suggestions) {
   const layer = container.querySelector(".grafloria-html-layer");
   let portal = null;
   if (layer && api.viewport?.clientToWorld && rect.width > 0) {
-    const world = api.viewport.clientToWorld(rect.left, rect.top, container.getBoundingClientRect());
     const minW = suggestions?.length ? 132 : 72;
-    const w = Math.max(rect.width / zoom, minW);
+    let w = Math.max(rect.width / zoom, minW);
+    let left = rect.left;
+    const card2 = targetEl.closest(".axk-entity, .axk-uml");
+    if (card2) {
+      const cb = card2.getBoundingClientRect();
+      const pad = 4 * zoom;
+      const maxW = (cb.width - pad * 2) / zoom;
+      if (w > maxW) w = maxW;
+      const overflow = left + w * zoom - (cb.right - pad);
+      if (overflow > 0) left -= overflow;
+      if (left < cb.left + pad) left = cb.left + pad;
+    }
     input.style.cssText = `width:${w}px;height:${rect.height / zoom}px;`;
+    const world = api.viewport.clientToWorld(left, rect.top, container.getBoundingClientRect());
     try {
       portal = createViewportPortal(layer, { x: world.x, y: world.y, className: "axk-edit-portal" });
       portal.element.appendChild(input);

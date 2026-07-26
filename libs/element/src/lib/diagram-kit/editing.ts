@@ -148,14 +148,30 @@ function openInlineEditor(
   if (layer && api.viewport?.clientToWorld && rect.width > 0) {
     // World-space: place the input at the target's world position; the layer's
     // camera transform scales it, so its px width is divided by the zoom.
-    const world = api.viewport.clientToWorld(rect.left, rect.top, container.getBoundingClientRect());
     // A cell can be far narrower than the value you are about to pick — the
     // type cell is sized to "uuid", which left a 23px-wide combobox nobody
-    // could use. Give the editor a comfortable floor while still growing with
-    // the cell.
+    // could use. Give the editor a comfortable floor…
     const minW = suggestions?.length ? 132 : 72;
-    const w = Math.max(rect.width / zoom, minW);
+    let w = Math.max(rect.width / zoom, minW);
+    // …but never let it spill past the CARD. Widening a right-hand cell pushes
+    // the editor outside the table border, which looks broken and can cover the
+    // canvas. Keep the right edge inside the card by sliding the editor left,
+    // and only shrink if the card itself is narrower than the floor.
+    let left = rect.left;
+    const card = targetEl.closest('.axk-entity, .axk-uml') as HTMLElement | null;
+    if (card) {
+      const cb = card.getBoundingClientRect();
+      const pad = 4 * zoom;
+      const maxW = (cb.width - pad * 2) / zoom;
+      if (w > maxW) w = maxW;
+      const overflow = left + w * zoom - (cb.right - pad);
+      if (overflow > 0) left -= overflow;
+      if (left < cb.left + pad) left = cb.left + pad;
+    }
     input.style.cssText = `width:${w}px;height:${rect.height / zoom}px;`;
+    // World position uses the CLAMPED left, so the editor lands where it will
+    // actually be drawn rather than where the cell happens to start.
+    const world = api.viewport.clientToWorld(left, rect.top, container.getBoundingClientRect());
     try {
       portal = createViewportPortal(layer, { x: world.x, y: world.y, className: 'axk-edit-portal' });
       portal.element.appendChild(input);

@@ -94,12 +94,23 @@ const inPage = (fn, arg) => page.evaluate(fn, arg);
     const input = document.querySelector('.axk-edit-input');
     const list = input?.getAttribute('list');
     const opts = list ? [...document.querySelectorAll(`#${list} option`)].map((o) => o.value) : [];
-    return { opened: !!input, value: input?.value, cellBox, inputBox: input ? box(input) : null, opts };
+    const card = document.querySelector('#vs-canvas .axk-entity');
+    return { opened: !!input, value: input?.value, cellBox, inputBox: input ? box(input) : null, opts,
+      cardBox: card ? box(card) : null };
   });
-  const aligned = r.inputBox && Math.abs(r.inputBox.x - r.cellBox.x) <= 4;
-  check('TYPE-EDIT', r.opened && aligned, `value="${r.value}" cell=${JSON.stringify(r.cellBox)} input=${JSON.stringify(r.inputBox)}`);
+  // The type editor is WIDER than its cell (a 23px "uuid" cell cannot hold a
+  // usable combobox), so it is not left-aligned to the cell — it must simply
+  // COVER the cell it is editing, and stay inside the card (checked below).
+  const covers = r.inputBox && r.inputBox.x <= r.cellBox.x + 2
+    && (r.inputBox.x + r.inputBox.w) >= (r.cellBox.x + r.cellBox.w) - 2;
+  check('TYPE-EDIT', r.opened && covers, `value="${r.value}" cell=${JSON.stringify(r.cellBox)} input=${JSON.stringify(r.inputBox)}`);
   // the combobox must offer real suggestions, and the ones already in use first
   check('TYPE-SUGGESTIONS', r.opts.length >= 10 && r.opts.includes('varchar'), `${r.opts.length} options, first=${r.opts.slice(0, 3).join(',')}`);
+  // …and it must stay INSIDE the card. Widening a right-hand cell used to push
+  // the editor past the table border and over the canvas.
+  check('TYPE-WITHIN-CARD',
+    r.cardBox && r.inputBox && r.inputBox.x >= r.cardBox.x - 1 && (r.inputBox.x + r.inputBox.w) <= (r.cardBox.x + r.cardBox.w) + 1,
+    `card=${JSON.stringify(r.cardBox)} input=${JSON.stringify(r.inputBox)}`);
   await shot('03-type-combobox');
 }
 
