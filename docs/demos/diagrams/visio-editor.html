@@ -28,11 +28,26 @@
   #vs-panel { flex: 0 1 200px; min-width: 150px; }
   @media (max-width: 1500px) { #vs-panel { display: none; } }
   @media (max-width: 1180px) { #vs-rail { flex-basis: 150px; } }
+  #vs-menu {
+    position: absolute; z-index: 30; min-width: 170px; display: none;
+    background: var(--gf-panel, #fff); border: 1px solid var(--gf-line, #e5e7eb);
+    border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.15); padding: 4px;
+    font: 12px ui-sans-serif, system-ui, sans-serif;
+  }
+  #vs-menu.open { display: block; }
+  #vs-menu button {
+    display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0;
+    background: transparent; color: var(--gf-ink, #1e2436); border-radius: 5px;
+    cursor: pointer; font: inherit;
+  }
+  #vs-menu button:hover:not(:disabled) { background: rgba(59,82,217,.1); color: #3B52D9; }
+  #vs-menu button:disabled { opacity: .45; cursor: default; }
 </style>
 <script type="module">
 import {
   render, registerStencils, bindStencilPalette, bindShapeDataPanel, erTable,
-  AlignCommand, DistributeCommand,
+  AlignCommand, DistributeCommand, registerTool,
+  BringNodeToFrontCommand, SendNodeToBackCommand,
 } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
@@ -50,11 +65,11 @@ defineDemo({
   name: 'Visio-style editor',
   blurb: 'The whole authoring surface: drop a shape OR a real database table, edit its columns in the canvas and in the properties panel, snap and align, drop into containers — every edit undoable.',
   howTo: [
-    'Drag a shape from the left rail onto the canvas — it drops centred on your cursor and is immediately live.',
-    'Now search "entity" and drag it onto the canvas: you get a REAL table — header, PK badge, typed columns, ＋ add column, per-row ×. It is the same card the ER editor builds, not a picture of one.',
-    'Click the table: the right panel shows its properties (name, column count). Click one of its COLUMNS: the panel grows a Column section — rename it, change its type, delete it. Edits go straight into the model.',
-    'Drag a shape near another: dashed guides line up edges and centres. Resize from a corner — guides help there too. Drop a shape inside the "Process" container and it JOINS it, so the frame carries it along.',
-    'Select two or more shapes (shift-click) and use Align / Distribute. Double-click any plain shape to rename it. Ctrl/⌘+Z undoes any of it.',
+    'Drag a shape from the left rail — a ghost of it rides your cursor, and it drops centred where you release, immediately live.',
+    'Search "entity" and drag it on: you get a REAL table — header, PK badge, typed columns, ＋ add column, per-row ×. Click the table and the right panel edits its properties; click a COLUMN and the panel grows a Column section.',
+    'Hover a shape and DRAG FROM A PORT to another shape: a connector is drawn (release anywhere on the target). Drag a shape near another for snap guides; drop it inside the "Fulfilment" container and it JOINS — the frame carries it along.',
+    'Rubber-band empty canvas to multi-select (Shift adds). Arrows nudge the selection — Shift makes it ×10. Ctrl/⌘+D duplicates. F2 — or simply typing — renames the selected shape; double-click an edge label to edit it.',
+    'Right-click a shape, an edge or the canvas: Rename, Duplicate, Delete, Bring to front / Send to back, Select all, Paste. Align / Distribute / Undo / Redo live in the bar. Ctrl/⌘+Z takes back any of it.',
   ],
   reactflow: null,
 
@@ -95,6 +110,15 @@ defineDemo({
       enableGroupMembershipOnDrop: true,  // T8: drop into a container to join it
       enableInPlaceTextEdit: true,        // T10: double-click to rename
       enableGroupDrag: true,
+      enableKeyboardNudge: true,          // arrows nudge the selection (Shift = ×10)
+      // Draw a connector by dragging from a port and releasing ANYWHERE on the
+      // target node (easy-connect's whole-silhouette drop). Smart port-snap
+      // alone missed a drop on a node's centre — ~28px from the nearest port,
+      // beyond the snap radius — so the audit's port drag created nothing.
+      // The 'alt' modifier keeps a plain body press as MOVE and shift-click as
+      // multi-select; a press on a port glyph always starts a wire regardless.
+      enableEasyConnect: true,
+      easyConnectModifier: 'alt',
     });
 
     // T4/T5 — all 8 stencils behind the registry, feeding the palette.
@@ -114,6 +138,145 @@ defineDemo({
     await ctx.engine.addToGroup(box.id, 'ship');
     ctx.box = box;
 
+    // MARQUEE — rubber-band select on empty canvas, the way every Visio user
+    // reaches for a multi-select. The binder deliberately leaves marquee to the
+    // host (it needs an overlay in the host's own layer), and `registerTool`
+    // is the public seam for exactly this — same assembly as the
+    // interaction/marquee-select demo. EMPTY canvas only: nodes still drag,
+    // and a press inside a container's frame still drags the container
+    // (enableGroupDrag), so the tool's hitTest excludes group frames too.
+    {
+      let overlay = null, start = null, baseSelection = new Set();
+      const showBox = (a, b) => {
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.className = 'vs-marquee';
+          overlay.style.cssText =
+            'position:absolute;pointer-events:none;z-index:20;border:1px dashed #3B52D9;' +
+            'background:rgba(59,82,217,.12);border-radius:2px;';
+          canvasEl.appendChild(overlay);
+        }
+        overlay.style.left = Math.min(a.x, b.x) + 'px';
+        overlay.style.top = Math.min(a.y, b.y) + 'px';
+        overlay.style.width = Math.abs(b.x - a.x) + 'px';
+        overlay.style.height = Math.abs(b.y - a.y) + 'px';
+      };
+      const clearBox = () => { overlay?.remove(); overlay = null; };
+      const worldBounds = (n) => {
+        const p = typeof n.getWorldPosition === 'function' ? n.getWorldPosition() : n.position;
+        return { x: p.x, y: p.y, w: n.size.width, h: n.size.height };
+      };
+      const applySelection = (rect, additive) => {
+        const x1 = Math.min(rect.ax, rect.bx), y1 = Math.min(rect.ay, rect.by);
+        const x2 = Math.max(rect.ax, rect.bx), y2 = Math.max(rect.ay, rect.by);
+        for (const n of ctx.diagram.getNodes()) {
+          const b = worldBounds(n);
+          const inside = b.x >= x1 && b.y >= y1 && b.x + b.w <= x2 && b.y + b.h <= y2;
+          n.setSelected(inside || (additive && baseSelection.has(n.id)));
+        }
+        api.renderNow();
+        syncBar();
+      };
+      const overGroupFrame = (w) => ctx.diagram.getGroups().some((g) => {
+        const r = g.getOuterBounds?.();
+        return r && w.x >= r.x && w.x <= r.x + r.width && w.y >= r.y && w.y <= r.y + r.height;
+      });
+      registerTool({
+        id: 'vs-marquee',
+        priority: 1,
+        hitTest: (ev, hit) => !!hit.empty && !overGroupFrame(ev.world),
+        onPointerDown: (ev) => {
+          start = { world: { ...ev.world }, screen: { ...ev.screen } };
+          const additive = ev.modifiers.shift || ev.modifiers.ctrl || ev.modifiers.meta;
+          baseSelection = new Set(ctx.diagram.getSelectedNodes().map((n) => n.id));
+          if (!additive) { ctx.diagram.clearSelection(); baseSelection.clear(); }
+        },
+        onPointerMove: (ev) => {
+          if (!start) return;
+          showBox(start.screen, ev.screen);
+          const additive = ev.modifiers.shift || ev.modifiers.ctrl || ev.modifiers.meta;
+          applySelection({ ax: start.world.x, ay: start.world.y, bx: ev.world.x, by: ev.world.y }, additive);
+        },
+        onPointerUp: (ev) => {
+          if (start) {
+            const additive = ev.modifiers.shift || ev.modifiers.ctrl || ev.modifiers.meta;
+            applySelection({ ax: start.world.x, ay: start.world.y, bx: ev.world.x, by: ev.world.y }, additive);
+          }
+          start = null;
+          clearBox();
+        },
+        onCancel: () => { start = null; clearBox(); },
+      });
+    }
+
+    // CONTEXT MENU — right-click gets a menu for whatever is under the pointer
+    // (node / edge / empty canvas). Every entry REUSES an existing command
+    // path — beginLabelEdit, duplicate, removeNode/removeLink, the z-order
+    // commands, paste — so each action is undoable exactly like its toolbar or
+    // keyboard twin. Click-away and Escape dismiss it, like every real menu.
+    {
+      const menu = document.createElement('div');
+      menu.id = 'vs-menu';
+      canvasEl.appendChild(menu);
+      const close = () => menu.classList.remove('open');
+      const item = (label, run, enabled = true) => {
+        const b = document.createElement('button');
+        b.textContent = label;
+        b.disabled = !enabled;
+        b.addEventListener('click', async () => {
+          close();
+          await run();
+          api.renderNow();
+          syncBar();
+        });
+        return b;
+      };
+      const openAt = (cx, cy, entries) => {
+        menu.innerHTML = '';
+        for (const e of entries) menu.appendChild(e);
+        const rect = canvasEl.getBoundingClientRect();
+        menu.style.left = `${cx - rect.left}px`;
+        menu.style.top = `${cy - rect.top}px`;
+        menu.classList.add('open');
+      };
+      canvasEl.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const rect = canvasEl.getBoundingClientRect();
+        const w = api.viewport.clientToWorld(e.clientX, e.clientY, rect);
+        const node = ctx.diagram.getNodeAtPosition(w.x, w.y);
+        const link = node ? null : api.interaction.getLinkAtPosition(w.x, w.y, ctx.engine);
+        if (node) {
+          // Right-click selects what it targets (Visio, Figma, the OS — all
+          // agree), so Duplicate/Delete below act on the node the user sees lit.
+          if (!node.isSelected?.()) { ctx.diagram.selectNode(node); api.renderNow(); syncBar(); }
+          openAt(e.clientX, e.clientY, [
+            item('Rename', () => api.beginLabelEdit({ type: 'node', nodeId: node.id })),
+            item('Duplicate', () => ctx.engine.duplicate()),
+            item('Delete', () => ctx.engine.removeNode(node.id)),
+            item('Bring to front', () => ctx.engine.commandManager.execute(new BringNodeToFrontCommand(node.id))),
+            item('Send to back', () => ctx.engine.commandManager.execute(new SendNodeToBackCommand(node.id))),
+          ]);
+        } else if (link) {
+          openAt(e.clientX, e.clientY, [
+            // Rename edits an EXISTING label — either dialect: a positioned
+            // labels[] entry or the display label (`edges: [{label}]`). A
+            // truly unlabeled edge shows the entry disabled rather than
+            // silently doing nothing.
+            item('Rename label', () => api.beginLabelEdit({ type: 'link-label', linkId: link.id, labelIndex: 0 }),
+              (link.labels?.length ?? 0) > 0 || !!link.getLabel?.()),
+            item('Delete', () => ctx.engine.removeLink(link.id)),
+          ]);
+        } else {
+          openAt(e.clientX, e.clientY, [
+            item('Select all', () => { ctx.diagram.selectAll(); }),
+            item('Paste', () => ctx.engine.paste(), ctx.engine.hasClipboardData?.() === true),
+          ]);
+        }
+      });
+      document.addEventListener('pointerdown', (e) => { if (!menu.contains(e.target)) close(); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    }
+
     // T3 — the align/distribute toolbar over the live selection.
     const selected = () => ctx.diagram.getSelectedNodes().map((n) => n.id);
     const mk = (label, title, run) => {
@@ -127,19 +290,33 @@ defineDemo({
     // Each button declares how many shapes it needs; below that it is DISABLED,
     // not silently inert — an enabled control that does nothing is a bug.
     const needs = [];
-    const mkN = (label, title, min, run) => { needs.push([mk(label, title, run), min]); };
+    const mkN = (label, title, min, run) => {
+      const b = mk(label, title, (ids) => Promise.resolve(run(ids)).then(() => setTimeout(syncBar, 0)));
+      needs.push([b, min]);
+    };
     mkN('⇤ Left', 'Align left edges (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'left')));
     mkN('⇥ Right', 'Align right edges (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'right')));
     mkN('⤒ Top', 'Align top edges (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'top')));
+    mkN('⤓ Bottom', 'Align bottom edges (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'bottom')));
+    mkN('≡ Middle', 'Align horizontal middles (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'center-y')));
+    mkN('‖ Centre', 'Align vertical centres (2+ shapes)', 2, (ids) => ctx.engine.commandManager.execute(new AlignCommand(ids, 'center-x')));
     bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
     mkN('↔ Distribute', 'Equal horizontal gaps (3+ shapes)', 3, (ids) => ctx.engine.commandManager.execute(new DistributeCommand(ids, 'horizontal')));
+    mkN('↕ Distribute', 'Equal vertical gaps (3+ shapes)', 3, (ids) => ctx.engine.commandManager.execute(new DistributeCommand(ids, 'vertical')));
+    bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
+    mkN('⧉ Duplicate', 'Duplicate the selection (Ctrl/⌘+D)', 1, () => ctx.engine.duplicate());
     bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
     const undoBtn = mk('↶ Undo', 'Undo the last edit', () => ctx.engine.commandManager.undo());
+    // Redo lives beside Undo, synced to canRedo the same way (the keyboard
+    // chord always worked; the BUTTON is what the audit found missing).
+    const redoBtn = mk('↷ Redo', 'Redo the undone edit (Ctrl/⌘+Y)', () => ctx.engine.commandManager.redo());
     undoBtn.addEventListener('click', () => setTimeout(syncBar, 0));
+    redoBtn.addEventListener('click', () => setTimeout(syncBar, 0));
     function syncBar() {
       const n = selected().length;
       for (const [btn, min] of needs) btn.disabled = n < min;
       undoBtn.disabled = !ctx.engine.commandManager.canUndo?.();
+      redoBtn.disabled = !ctx.engine.commandManager.canRedo?.();
     }
     ctx.syncBar = syncBar;
     api.on('selection:change', syncBar);
@@ -161,15 +338,21 @@ defineDemo({
     check(document.querySelectorAll('#vs-rail .gf-stencil-item').length > 0, 'the stencil rail is empty');
     check(ctx.registered === 80, `expected exactly 80 masters registered, got ${ctx.registered}`);
     check(!!document.querySelector('#vs-panel .gf-sd-title'), 'the shape-data panel did not mount');
-    check(document.querySelectorAll('#vs-bar button').length >= 5, 'the align toolbar is missing buttons');
+    check(document.querySelectorAll('#vs-bar button').length >= 11,
+      'the toolbar should carry the full set: 6 aligns, 2 distributes, Duplicate, Undo, Redo');
+    check(!!document.getElementById('vs-menu'), 'the context menu did not mount');
 
     // 2. T7 — placing from the palette adds a live node, undoably.
     const before = m.getNodes().length;
     const placed = await ctx.palette.place('flowchart-process', { x: 430, y: 470 });
     check(!!placed && m.getNodes().length === before + 1, 'placing a master from the palette failed');
 
-    // 3. T8 — that drop landed inside the "Process" container's frame, so a real
-    //    drag-drop there would adopt it. Prove the adoption path directly.
+    // 3. T8 — that drop landed inside the "Fulfilment" container's frame. The
+    //    REAL pointer-drag adoption is proven by demos/e2e/visio-editor-run.mjs
+    //    (a gesture gate; a direct service call once masked a broken drag).
+    //    This service-level check stays because it pins the engine contract in
+    //    the browser bundle: the hit-rect is the PAINTED frame, not the tight
+    //    member bbox.
     const svc = await (async () => {
       const n = m.getNode(placed);
       // the node sits inside the frame; commit membership the way the binder does
@@ -229,6 +412,8 @@ defineDemo({
     check(cfg.enableHelperLines === true, 'the editor should enable helper lines');
     check(cfg.enableGroupMembershipOnDrop === true, 'the editor should enable drop-to-contain');
     check(cfg.enableInPlaceTextEdit === true, 'the editor should enable in-place rename');
+    check(cfg.enableKeyboardNudge === true, 'the editor should enable arrow-key nudge');
+    check(cfg.enableEasyConnect === true, 'the editor should enable easy-connect');
 
     api.renderNow();
   },
