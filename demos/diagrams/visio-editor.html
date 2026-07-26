@@ -32,7 +32,7 @@
 <script type="module">
 import {
   render, registerStencils, bindStencilPalette, bindShapeDataPanel, erTable,
-  AlignCommand, DistributeCommand,
+  AlignCommand, DistributeCommand, registerTool,
 } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
@@ -121,6 +121,77 @@ defineDemo({
     await ctx.engine.addToGroup(box.id, 'pick');
     await ctx.engine.addToGroup(box.id, 'ship');
     ctx.box = box;
+
+    // MARQUEE — rubber-band select on empty canvas, the way every Visio user
+    // reaches for a multi-select. The binder deliberately leaves marquee to the
+    // host (it needs an overlay in the host's own layer), and `registerTool`
+    // is the public seam for exactly this — same assembly as the
+    // interaction/marquee-select demo. EMPTY canvas only: nodes still drag,
+    // and a press inside a container's frame still drags the container
+    // (enableGroupDrag), so the tool's hitTest excludes group frames too.
+    {
+      let overlay = null, start = null, baseSelection = new Set();
+      const showBox = (a, b) => {
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.className = 'vs-marquee';
+          overlay.style.cssText =
+            'position:absolute;pointer-events:none;z-index:20;border:1px dashed #3B52D9;' +
+            'background:rgba(59,82,217,.12);border-radius:2px;';
+          canvasEl.appendChild(overlay);
+        }
+        overlay.style.left = Math.min(a.x, b.x) + 'px';
+        overlay.style.top = Math.min(a.y, b.y) + 'px';
+        overlay.style.width = Math.abs(b.x - a.x) + 'px';
+        overlay.style.height = Math.abs(b.y - a.y) + 'px';
+      };
+      const clearBox = () => { overlay?.remove(); overlay = null; };
+      const worldBounds = (n) => {
+        const p = typeof n.getWorldPosition === 'function' ? n.getWorldPosition() : n.position;
+        return { x: p.x, y: p.y, w: n.size.width, h: n.size.height };
+      };
+      const applySelection = (rect, additive) => {
+        const x1 = Math.min(rect.ax, rect.bx), y1 = Math.min(rect.ay, rect.by);
+        const x2 = Math.max(rect.ax, rect.bx), y2 = Math.max(rect.ay, rect.by);
+        for (const n of ctx.diagram.getNodes()) {
+          const b = worldBounds(n);
+          const inside = b.x >= x1 && b.y >= y1 && b.x + b.w <= x2 && b.y + b.h <= y2;
+          n.setSelected(inside || (additive && baseSelection.has(n.id)));
+        }
+        api.renderNow();
+        syncBar();
+      };
+      const overGroupFrame = (w) => ctx.diagram.getGroups().some((g) => {
+        const r = g.getOuterBounds?.();
+        return r && w.x >= r.x && w.x <= r.x + r.width && w.y >= r.y && w.y <= r.y + r.height;
+      });
+      registerTool({
+        id: 'vs-marquee',
+        priority: 1,
+        hitTest: (ev, hit) => !!hit.empty && !overGroupFrame(ev.world),
+        onPointerDown: (ev) => {
+          start = { world: { ...ev.world }, screen: { ...ev.screen } };
+          const additive = ev.modifiers.shift || ev.modifiers.ctrl || ev.modifiers.meta;
+          baseSelection = new Set(ctx.diagram.getSelectedNodes().map((n) => n.id));
+          if (!additive) { ctx.diagram.clearSelection(); baseSelection.clear(); }
+        },
+        onPointerMove: (ev) => {
+          if (!start) return;
+          showBox(start.screen, ev.screen);
+          const additive = ev.modifiers.shift || ev.modifiers.ctrl || ev.modifiers.meta;
+          applySelection({ ax: start.world.x, ay: start.world.y, bx: ev.world.x, by: ev.world.y }, additive);
+        },
+        onPointerUp: (ev) => {
+          if (start) {
+            const additive = ev.modifiers.shift || ev.modifiers.ctrl || ev.modifiers.meta;
+            applySelection({ ax: start.world.x, ay: start.world.y, bx: ev.world.x, by: ev.world.y }, additive);
+          }
+          start = null;
+          clearBox();
+        },
+        onCancel: () => { start = null; clearBox(); },
+      });
+    }
 
     // T3 — the align/distribute toolbar over the live selection.
     const selected = () => ctx.diagram.getSelectedNodes().map((n) => n.id);
