@@ -9,6 +9,7 @@ import { DiagramModel } from '../../models/DiagramModel';
 import { NodeModel } from '../../models/NodeModel';
 import { LinkModel } from '../../models/LinkModel';
 import { GroupModel } from '../../models/GroupModel';
+import { assignRanks, placeByRank } from '../mermaid/layout';
 import {
   DiagramNode,
   StatementNode,
@@ -103,12 +104,98 @@ export class ASTTransformer {
       }
     }
 
+    // Phase 2.5: type-aware placement. The chain-wrap positions assigned while
+    // creating nodes step along the flow axis in READING order, so a BRANCH
+    // renders as a straight line that lies about the graph ("Check -->|no|
+    // Order" reads as Pick→Order). Now that every edge exists, re-place the
+    // auto-positioned nodes by RANK: rank along the direction's flow axis,
+    // siblings spread on the cross axis — a fork reads as a fork. Nodes with
+    // EXPLICIT positions (none from a parse, but transform options can disable
+    // auto-positioning) are untouched.
+    if (autoPosition) {
+      this.applyRankPlacement(diagram, startPosition);
+    }
+
     // Phase 3: the extension channel — Tier-1 directives (style/class/linkStyle/
     // click) and Tier-2 %%grafloria: directives. Run last, over the FLATTENED tree,
     // because they reference nodes/links/classDefs that must already exist.
     this.applyDirectives(this.flattenStatements(ast.statements), diagram);
 
     return diagram;
+  }
+
+  /**
+   * Rank-based placement over the whole parsed graph (Phase 2.5).
+   *
+   * Only nodes THIS transform auto-positioned (`this.nodePositions`) move — a
+   * guard, not a hope: anything with an explicit position (restored later by
+   * the sidecar, or added by a caller) must never be rearranged by a parse.
+   * Synchronous and deterministic; see dsl/mermaid/layout.ts.
+   */
+  private applyRankPlacement(
+    diagram: DiagramModel,
+    startPosition: { x: number; y: number }
+  ): void {
+    const placeable = diagram
+      .getNodes()
+      .filter((node) => this.nodePositions.has(node.id));
+    if (placeable.length === 0) return;
+
+    const ids = placeable.map((n) => n.id);
+    const idSet = new Set(ids);
+    const edges = diagram
+      .getLinks()
+      .filter(
+        (l) =>
+          l.sourceNodeId !== undefined &&
+          l.targetNodeId !== undefined &&
+          idSet.has(l.sourceNodeId) &&
+          idSet.has(l.targetNodeId)
+      )
+      .map((l) => ({ from: l.sourceNodeId!, to: l.targetNodeId! }));
+
+    const direction = (diagram.getMetadata('direction') as string) ?? 'TD';
+    const ranks = assignRanks(ids, edges);
+    const positions = placeByRank(placeable, ranks, {
+      direction,
+      start: startPosition,
+      // Bands are size-aware, so these are true GAPS — derived from the same
+      // nodeSpacing constant the chain-wrap used (150 ⇒ 75 / 50 by default).
+      rankGap: this.nodeSpacing / 2,
+      crossGap: this.nodeSpacing / 3,
+    });
+
+    for (const node of placeable) {
+      const position = positions.get(node.id);
+      if (!position) continue;
+      node.setPosition(position.x, position.y);
+      this.nodePositions.set(node.id, position);
+    }
+
+    // The links were smart-linked against the CHAIN-WRAP positions: their port
+    // sides and generated paths describe the old picture. Re-select ports with
+    // the rank context (forward edges leave the flow side, back-edges loop),
+    // then drop the routed polylines so the renderer re-routes from the real
+    // geometry on first paint — the same invalidate-on-move rule the layout
+    // engine applies (see layout-route-invalidation.spec.ts).
+    const contextDirection = (
+      { TD: 'TB', TB: 'TB', BT: 'BT', LR: 'LR', RL: 'RL' } as const
+    )[direction.toUpperCase() as 'TD' | 'TB' | 'BT' | 'LR' | 'RL'];
+    diagram.getLayoutManager().optimizeConnections({
+      ...(contextDirection ? { direction: contextDirection } : {}),
+      ranks,
+    });
+    for (const link of diagram.getLinks()) {
+      if (
+        link.sourceNodeId !== undefined &&
+        link.targetNodeId !== undefined &&
+        idSet.has(link.sourceNodeId) &&
+        idSet.has(link.targetNodeId) &&
+        link.points.length > 0
+      ) {
+        link.setPoints([]);
+      }
+    }
   }
 
   /**
