@@ -646,6 +646,249 @@ const undoKey = () => page.keyboard.press('Control+z');
   }
 }
 
+// ── 13. GRID TOGGLE: ink by default, gone on toggle, back on re-toggle ──────
+// The grid is the Background plugin's SVG pattern layer under the diagram; its
+// "ink" is the pattern geometry plus a computed display that actually paints.
+{
+  await freshPage();
+  const gridState = () => inPage(() => {
+    const svg = document.querySelector('#vs-canvas .grafloria-background-layer svg.grafloria-background');
+    const pattern = svg?.querySelector('pattern');
+    const btn = [...document.querySelectorAll('#vs-bar button')].find((b) => /Grid/.test(b.textContent));
+    return {
+      painted: !!svg && getComputedStyle(svg).display !== 'none',
+      geometry: (pattern?.childNodes.length ?? 0) > 0,
+      pressed: btn?.getAttribute('aria-pressed'),
+    };
+  });
+  const s0 = await gridState();
+  await shot('13-grid-on');
+  const gridBtn = page.locator('#vs-bar button', { hasText: 'Grid' });
+  await gridBtn.click();
+  await raf2();
+  const s1 = await gridState();
+  await shot('13-grid-off');
+  await gridBtn.click();
+  await raf2();
+  const s2 = await gridState();
+  check('GRID-TOGGLE',
+    s0.painted && s0.geometry && s0.pressed === 'true'
+      && !s1.painted && s1.pressed === 'false'
+      && s2.painted && s2.pressed === 'true',
+    `default={painted:${s0.painted},geom:${s0.geometry}} off={painted:${s1.painted}} back={painted:${s2.painted}}`);
+}
+
+// ── 14. ZOOM CONTROLS: + raises the zoom, % tracks it, click-% resets ───────
+{
+  await freshPage();
+  const zoomOf = () => inPage(() => window.__demoCtx.instance.viewport.getZoom());
+  const pctOf = () => inPage(() => document.getElementById('vs-zoom-pct').textContent);
+  const z0 = await zoomOf();
+  await page.locator('#vs-zoom button[title^="Zoom in"]').click();
+  await raf2();
+  const z1 = await zoomOf();
+  const p1 = await pctOf();
+  await shot('14-zoomed-in');
+  await page.locator('#vs-zoom-pct').click();
+  await raf2();
+  const z2 = await zoomOf();
+  const p2 = await pctOf();
+  check('ZOOM-CONTROLS',
+    z0 === 1 && z1 > z0 && p1 === `${Math.round(z1 * 100)}%` && z2 === 1 && p2 === '100%',
+    `zoom 1→${z1} (label "${p1}") reset→${z2} (label "${p2}")`);
+  await shot('14-zoom-reset');
+
+  // The chords drive the same camera: Ctrl+= in, Ctrl+- out, Ctrl+0 reset.
+  await page.keyboard.press('Control+=');
+  await raf2();
+  const zIn = await zoomOf();
+  await page.keyboard.press('Control+-');
+  await page.keyboard.press('Control+-');
+  await raf2();
+  const zOut = await zoomOf();
+  await page.keyboard.press('Control+0');
+  await raf2();
+  const zReset = await zoomOf();
+  check('ZOOM-KEYS', zIn > 1 && zOut < zIn && zReset === 1,
+    `Ctrl+= →${zIn.toFixed(2)} Ctrl+- ×2 →${zOut.toFixed(2)} Ctrl+0 →${zReset}`);
+}
+
+// ── 15. FIT VIEW: scatter a node far out, fit — everything inside the rect ──
+{
+  await freshPage();
+  const farId = await inPage(async () => {
+    const id = await window.__demoCtx.palette.place('flowchart-process', { x: 2400, y: 1700 });
+    window.__demoCtx.instance.renderNow();
+    return id;
+  });
+  await raf2();
+  await page.locator('#vs-zoom button[title^="Fit"]').click();
+  await page.waitForTimeout(250);
+  const r = await inPage((fid) => {
+    const c = window.__demoCtx;
+    const rect = document.getElementById('vs-canvas').getBoundingClientRect();
+    const inside = (id) => {
+      const n = c.diagram.getNode(id);
+      const p = n.getWorldPosition ? n.getWorldPosition() : n.position;
+      const a = c.instance.viewport.worldToClient(p.x, p.y, rect);
+      const b = c.instance.viewport.worldToClient(p.x + n.size.width, p.y + n.size.height, rect);
+      return a.x >= rect.left - 1 && a.y >= rect.top - 1 && b.x <= rect.right + 1 && b.y <= rect.bottom + 1;
+    };
+    return { recv: inside('recv'), far: inside(fid), zoom: c.instance.viewport.getZoom() };
+  }, farId);
+  check('FIT-VIEW', r.recv && r.far && r.zoom < 1,
+    `recvInside=${r.recv} farInside=${r.far} zoom=${r.zoom.toFixed(2)}`);
+  await shot('15-fit-view');
+}
+
+// ── 16. MINIMAP: painted, mirrors the scene, gains a rect per added node ────
+{
+  await freshPage();
+  const mini0 = await inPage(() => ({
+    present: !!document.querySelector('#vs-canvas .grafloria-minimap'),
+    rects: document.querySelectorAll('#vs-canvas .grafloria-minimap rect[data-node-id]').length,
+    camera: !!document.querySelector('#vs-canvas .grafloria-minimap .grafloria-minimap-viewport'),
+    nodes: window.__demoCtx.diagram.getNodes().length,
+  }));
+  await inPage(async () => {
+    await window.__demoCtx.palette.place('flowchart-process', { x: 640, y: 640 });
+    window.__demoCtx.instance.renderNow();
+  });
+  await raf2();
+  const rects1 = await inPage(() => document.querySelectorAll('#vs-canvas .grafloria-minimap rect[data-node-id]').length);
+  check('MINIMAP-PRESENT',
+    mini0.present && mini0.camera && mini0.rects === mini0.nodes && rects1 === mini0.rects + 1,
+    `present=${mini0.present} camera=${mini0.camera} rects ${mini0.rects}/${mini0.nodes} nodes, after add ${rects1}`);
+  await shot('16-minimap');
+
+  // Its toggle tucks it away.
+  await page.locator('#vs-bar button', { hasText: 'Minimap' }).click();
+  await raf2();
+  const hidden = await inPage(() => {
+    const el = document.querySelector('#vs-canvas .grafloria-minimap');
+    return !el || getComputedStyle(el).display === 'none';
+  });
+  check('MINIMAP-TOGGLE', hidden, `hidden after toggle: ${hidden}`);
+}
+
+// ── 17. GROUP / UNGROUP: marquee → Ctrl+G → frame-drag → Ctrl+Shift+G ───────
+// The whole story with real gestures, then the undo ladder proves each step
+// entered history as exactly ONE entry.
+{
+  await freshPage();
+  const a = await client(96, 96);
+  const b = await client(514, 200);
+  await drag(a, b, 10);
+  const sel = await inPage(() => window.__demoCtx.diagram.getSelectedNodes().map((n) => n.id).sort().join(','));
+  const groupsBefore = await inPage(() => window.__demoCtx.diagram.getGroups().length);
+  await page.keyboard.press('Control+g');
+  await page.waitForTimeout(250);
+  const g1 = await inPage(() => {
+    const gs = window.__demoCtx.diagram.getGroups();
+    const g = gs.find((x) => x.name === 'Group');
+    return { count: gs.length, members: [...(g?.members ?? [])].sort().join(',') };
+  });
+  check('CTRL-G-GROUPS', sel === 'chk,recv' && g1.count === groupsBefore + 1 && g1.members === 'chk,recv',
+    `selected={${sel}} groups ${groupsBefore}→${g1.count} members={${g1.members}}`);
+  await shot('17-grouped');
+
+  // Drag the group's FRAME (an empty spot inside it, between the members and
+  // OFF the recv→chk connector) — both members must ride along.
+  const before = await inPage(() => ['recv', 'chk'].map((id) => ({ ...window.__demoCtx.diagram.getNode(id).position })));
+  await drag(await client(300, 126), await client(360, 186), 10);
+  const after = await inPage(() => ['recv', 'chk'].map((id) => ({ ...window.__demoCtx.diagram.getNode(id).position })));
+  const dx = after[0].x - before[0].x, dy = after[0].y - before[0].y;
+  const together = after[1].x - before[1].x === dx && after[1].y - before[1].y === dy;
+  check('GROUP-FRAME-DRAGS-BOTH', (dx !== 0 || dy !== 0) && together,
+    `delta recv=(${dx},${dy}) chk=(${after[1].x - before[1].x},${after[1].y - before[1].y})`);
+  await shot('17-group-dragged');
+
+  // Ungroup with a member selected: the group dissolves, the nodes stay.
+  const recvC = await nodeCentre('recv');
+  await page.mouse.click(recvC.x, recvC.y);
+  await page.waitForTimeout(120);
+  await page.keyboard.press('Control+Shift+G');
+  await page.waitForTimeout(250);
+  const g2 = await inPage(() => ({
+    count: window.__demoCtx.diagram.getGroups().length,
+    intact: ['recv', 'chk'].every((id) => !!window.__demoCtx.diagram.getNode(id)),
+  }));
+  check('CTRL-SHIFT-G-UNGROUPS', g2.count === groupsBefore && g2.intact,
+    `groups=${g2.count} (want ${groupsBefore}) nodesIntact=${g2.intact}`);
+  await shot('17-ungrouped');
+
+  // The undo ladder — 1: the group is back (ungroup was one entry); 2: the
+  // members are back at their pre-drag spots (the frame drag was one entry);
+  // 3: the group is gone (the grouping was one entry).
+  const rung = async () => {
+    await undoKey();
+    await page.waitForTimeout(200);
+    return inPage(() => ({
+      groups: window.__demoCtx.diagram.getGroups().length,
+      recv: { ...window.__demoCtx.diagram.getNode('recv').position },
+    }));
+  };
+  const u1 = await rung();
+  const u2 = await rung();
+  const u3 = await rung();
+  check('GROUP-UNDO-LADDER',
+    u1.groups === groupsBefore + 1
+      && u2.groups === groupsBefore + 1 && u2.recv.x === before[0].x && u2.recv.y === before[0].y
+      && u3.groups === groupsBefore,
+    `undo1 groups=${u1.groups} · undo2 recv=(${u2.recv.x},${u2.recv.y}) want (${before[0].x},${before[0].y}) · undo3 groups=${u3.groups}`);
+}
+
+// ── 18. EDGE CASES: Escape mid-marquee · marquee under zoom · Ctrl+G with 1 ─
+{
+  await freshPage();
+
+  // (a) Escape mid-marquee: the band vanishes, the release selects nothing.
+  const a = await client(96, 96);
+  const b = await client(514, 200);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 6; i++) {
+    await page.mouse.move(a.x + ((b.x - a.x) * i) / 6, a.y + ((b.y - a.y) * i) / 6);
+  }
+  await raf2();
+  const bandMid = await inPage(() => !!document.querySelector('#vs-canvas .vs-marquee'));
+  await shot('18-escape-mid-marquee');
+  await page.keyboard.press('Escape');
+  await raf2();
+  const bandGone = await inPage(() => !document.querySelector('#vs-canvas .vs-marquee'));
+  await page.mouse.up();
+  await raf2();
+  const selAfter = await inPage(() => window.__demoCtx.diagram.getSelectedNodes().length);
+  check('ESCAPE-CANCELS-MARQUEE', bandMid && bandGone && selAfter === 0,
+    `bandMid=${bandMid} bandAfterEsc=${!bandGone ? 'STILL THERE' : 'gone'} selected=${selAfter}`);
+
+  // (b) Zoom via the controls, then marquee: the world↔client mapping under
+  // zoom ≠ 1 must still select exactly the enclosed pair.
+  await page.locator('#vs-zoom button[title^="Zoom in"]').click();
+  await raf2();
+  const zoom = await inPage(() => window.__demoCtx.instance.viewport.getZoom());
+  const za = await client(96, 96);
+  const zb = await client(514, 200);
+  await drag(za, zb, 10);
+  const zSel = await inPage(() => window.__demoCtx.diagram.getSelectedNodes().map((n) => n.id).sort().join(','));
+  check('MARQUEE-UNDER-ZOOM', zoom > 1 && zSel === 'chk,recv', `zoom=${zoom.toFixed(2)} selected={${zSel}}`);
+  await shot('18-marquee-under-zoom');
+
+  // (c) Ctrl+G with ONE node selected: the button is disabled, the chord a no-op.
+  await inPage(() => { window.__demoCtx.diagram.clearSelection(); window.__demoCtx.instance.renderNow(); window.__demoCtx.syncBar(); });
+  const c1 = await nodeCentre('pick');
+  await page.mouse.click(c1.x, c1.y);
+  await page.waitForTimeout(120);
+  const btnDisabled = await page.locator('#vs-bar button', { hasText: '⊞ Group' }).isDisabled();
+  const groupsBefore = await inPage(() => window.__demoCtx.diagram.getGroups().length);
+  await page.keyboard.press('Control+g');
+  await page.waitForTimeout(200);
+  const groupsAfter = await inPage(() => window.__demoCtx.diagram.getGroups().length);
+  check('GROUP-NEEDS-TWO', btnDisabled && groupsAfter === groupsBefore,
+    `buttonDisabled=${btnDisabled} groups ${groupsBefore}→${groupsAfter}`);
+  await shot('18-group-needs-two');
+}
+
 await page.close();
 await browser.close();
 server.close();
