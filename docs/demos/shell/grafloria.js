@@ -191289,6 +191289,26 @@ function dismissInlineEditor() {
   activeEditor = null;
   open?.cancel();
 }
+function addrOf(el) {
+  const loc = locate(el);
+  if (!loc || loc.rowIndex < 0) return null;
+  const kind = el.closest(".axk-ty") ? "type" : "name";
+  return { nodeId: loc.nodeId, rowIndex: loc.rowIndex, kind };
+}
+function neighbourCell(el, dir) {
+  const a = addrOf(el);
+  if (!a) return null;
+  if (dir === 1) {
+    return a.kind === "name" ? { ...a, kind: "type" } : { ...a, rowIndex: a.rowIndex + 1, kind: "name" };
+  }
+  return a.kind === "type" ? { ...a, kind: "name" } : { ...a, rowIndex: a.rowIndex - 1, kind: "type" };
+}
+function reopenAt(api, addr) {
+  const card2 = api.container.querySelector(`[data-node-id="${cssEscape3(addr.nodeId)}"]`);
+  const row = card2?.querySelectorAll(".axk-row, .axk-member")[addr.rowIndex];
+  const cell = row?.querySelector(addr.kind === "type" ? ".axk-ty" : ".axk-col");
+  if (cell) beginRename(api, cell);
+}
 function dedupe3(values) {
   return [...new Set(values)];
 }
@@ -191388,6 +191408,15 @@ function openInlineEditor(api, targetEl, value, onCommit, suggestions) {
     cleanup();
   };
   input.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") {
+      const next = neighbourCell(targetEl, e.shiftKey ? -1 : 1);
+      if (next) {
+        e.preventDefault();
+        commit();
+        setTimeout(() => reopenAt(api, next), 0);
+        return;
+      }
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       commit();
@@ -191550,10 +191579,20 @@ function bindCardEditing(api) {
       beginRename(api, target);
     }
   };
+  const onMouseDownCapture = (event) => {
+    const t = event.target instanceof Element ? event.target : null;
+    if (!t) return;
+    if (t.closest(".axk-col-del") || t.closest(".axk-entity-add") || t.closest(".axk-uml-add")) {
+      dismissInlineEditor();
+      event.preventDefault();
+    }
+  };
+  container.addEventListener("mousedown", onMouseDownCapture, true);
   container.addEventListener("click", onClickCapture, true);
   container.addEventListener("dblclick", onDblClickCapture, true);
   const handle = {
     dispose() {
+      container.removeEventListener("mousedown", onMouseDownCapture, true);
       container.removeEventListener("click", onClickCapture, true);
       container.removeEventListener("dblclick", onDblClickCapture, true);
       if (bindings2.get(container) === handle) bindings2.delete(container);
@@ -191580,7 +191619,15 @@ var CSS3 = `
 .axk-key { width: 22px; font-size: 9px; font-weight: 700; color: #b45309; }
 .axk-key.axk-fk { color: #6d28d9; }
 .axk-col { flex: 1; color: #0f172a; }
-.axk-ty { color: #64748b; font-size: 11px; }
+.axk-ty {
+  color: #64748b; font-size: 11px;
+  /* A new column starts with an EMPTY type, which collapsed the cell to zero
+     width \u2014 there was nothing to double-click, so a type could never be set on
+     a field you just added. Reserve a target and hint that it is editable. */
+  min-width: 52px; text-align: right; cursor: text;
+}
+.axk-ty:empty::before { content: 'type'; color: #cbd5e1; font-style: italic; }
+.axk-ty:hover { color: #0f172a; }
 .axk-row.axk-pk .axk-col { font-weight: 600; }
 
 /* ===== UML class cards ===== */
