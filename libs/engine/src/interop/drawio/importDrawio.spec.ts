@@ -464,14 +464,21 @@ describe('importDrawio — arcSize (mxGraph corner-radius semantics)', () => {
     expect((await shapeOfFirst('rounded=1;arcSize=90;absoluteArcSize=1;', 120, 10))['cornerRadius']).toBe(5);
   });
 
-  it('relative (default): radius = min(w,h) × arcSize/100, geometrically capped at min(w,h)/2', async () => {
+  it('relative (default): radius = min(w,h) × arcSize/100, UNCAPPED like mxGraph', async () => {
     expect((await shapeOfFirst('rounded=1;arcSize=50;'))['cornerRadius']).toBe(30); // 60 × 0.5
     expect((await shapeOfFirst('rounded=1;arcSize=10;', 200, 100))['cornerRadius']).toBe(10); // 100 × 0.1
-    expect((await shapeOfFirst('rounded=1;arcSize=80;'))['cornerRadius']).toBe(30); // capped at 60/2
+    // mxRectangleShape.paintBackground does NOT cap the percentage branch; the
+    // verifier caught the importer capping at min(w,h)/2 and diverging for
+    // arcSize>50. SVG clamps rx at paint time, so the MODEL stays faithful.
+    expect((await shapeOfFirst('rounded=1;arcSize=80;'))['cornerRadius']).toBe(48); // 60 × 0.8, uncapped
   });
 
   it('rounded=1 with NO arcSize keeps the classic fixed 8px', async () => {
     expect((await shapeOfFirst('rounded=1;'))['cornerRadius']).toBe(8);
+  });
+
+  it('absoluteArcSize=1 with NO arcSize falls back to mxGraph LINE_ARCSIZE/2 = 10', async () => {
+    expect((await shapeOfFirst('rounded=1;absoluteArcSize=1;'))['cornerRadius']).toBe(10);
   });
 });
 
@@ -548,6 +555,48 @@ describe('importDrawio — container-endpoint edges', () => {
     // Facing edges: left frame's right side (x=200), right frame's left side (x=400).
     expect(src.position.x + 0.5).toBeCloseTo(200, 5);
     expect(tgt.position.x + 0.5).toBeCloseTo(400, 5);
+  });
+
+  // The verifier's stranding repro: anchors must die with what they stand for.
+  it('removing the container removes its anchor AND the edge — never an edge to empty space', async () => {
+    const { diagram } = await importDrawio(fixture);
+    const anchorId = diagram!.getLinks()[0].targetNodeId!;
+    diagram!.removeGroup('lane');
+    expect(diagram!.getNode(anchorId)).toBeUndefined();
+    expect(diagram!.getLinks()).toHaveLength(0);
+    // the authored content survives untouched
+    expect(diagram!.getNode('outside')).toBeDefined();
+    expect(diagram!.getNode('in-lane')).toBeDefined();
+  });
+
+  it('removing the link removes its now-orphaned anchors', async () => {
+    const { diagram } = await importDrawio(fixture);
+    const link = diagram!.getLinks()[0];
+    const anchorId = link.targetNodeId!;
+    diagram!.removeLink(link.id);
+    expect(diagram!.getNode(anchorId)).toBeUndefined();
+    expect(diagram!.getNode('outside')).toBeDefined();
+  });
+
+  it('a floating point-anchored edge cleans up BOTH point anchors on link removal', async () => {
+    const floating = model(
+      `<mxCell id="e1" edge="1" parent="1"><mxGeometry relative="1" as="geometry">` +
+        `<mxPoint x="10" y="10" as="sourcePoint"/><mxPoint x="200" y="120" as="targetPoint"/>` +
+        `</mxGeometry></mxCell>`
+    );
+    const { diagram } = await importDrawio(floating);
+    const link = diagram!.getLinks()[0];
+    const ids = [link.sourceNodeId!, link.targetNodeId!];
+    diagram!.removeLink(link.id);
+    for (const id of ids) expect(diagram!.getNode(id)).toBeUndefined();
+    expect(diagram!.getNodes()).toHaveLength(0);
+  });
+
+  it('removing an ordinary group leaves ordinary members alone (lifecycle is anchor-scoped)', async () => {
+    const { diagram } = await importDrawio(fixture);
+    // in-lane is a REAL member of the lane, not an anchor
+    diagram!.removeGroup('lane');
+    expect(diagram!.getNode('in-lane')).toBeDefined();
   });
 });
 
