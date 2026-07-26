@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mermaid support — Grafloria</title>
+<meta name="description" content="Grafloria reads and writes Mermaid text — flowchart, erDiagram, classDiagram and stateDiagram — into a live, editable canvas. Round-trips both ways, fails safe on types it does not know, and is verified against real mermaid v11 in CI.">
+<link rel="canonical" href="https://grafloria.com/mermaid/">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../favicon-32.png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta property="og:title" content="Mermaid text, on a canvas you can edit">
+<meta property="og:description" content="Paste Mermaid, get a real editable diagram. Edit the diagram, get Mermaid back. Four diagram types, verified against real mermaid v11 in CI.">
+<meta property="og:url" content="https://grafloria.com/mermaid/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/og-image.png">
+<style>
+  :root {
+    --indigo: #3B52D9;
+    --indigo-deep: #2A3CA8;
+    --indigo-soft: #94A5F0;
+    --indigo-wash: #EEF1FE;
+    --ink: #232A3D;
+    --slate: #5A6478;
+    --line: #E3E7F2;
+    --bg: #FCFCFF;
+    --amber: #9A6207;
+    --amber-wash: #FDF6E7;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink);
+    -webkit-font-smoothing: antialiased; line-height: 1.6;
+  }
+  .wrap { max-width: 1220px; margin: 0 auto; padding: 0 24px; }
+  a { color: var(--indigo); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible { outline: 3px solid var(--indigo-soft); outline-offset: 2px; border-radius: 6px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  header { padding: 20px 0; border-bottom: 1px solid var(--line); background: #fff; }
+  .nav { display: flex; align-items: center; gap: 12px; }
+  .nav img { width: 34px; height: 34px; }
+  .nav .name { font-weight: 700; font-size: 20px; letter-spacing: -0.3px; }
+  .nav .name a { color: var(--ink); }
+  .nav .links { margin-left: auto; display: flex; gap: 22px; font-size: 15px; font-weight: 500; }
+  /* Five destinations do not fit a phone in one row — wrap rather than push the
+     page into a horizontal scroll. */
+  @media (max-width: 640px) {
+    .nav { flex-wrap: wrap; }
+    .nav .links { margin-left: 0; width: 100%; flex-wrap: wrap; gap: 8px 16px; font-size: 14.5px; }
+  }
+
+  .head { padding: 64px 0 8px; max-width: 80ch; }
+  h1 { font-size: clamp(30px, 4.6vw, 46px); font-weight: 800; letter-spacing: -1px; line-height: 1.12; text-wrap: balance; }
+  .head .lede { margin-top: 16px; color: var(--slate); font-size: 17.5px; }
+  .head .lede b { color: var(--ink); }
+  h2 { font-size: 25px; font-weight: 750; letter-spacing: -0.5px; margin: 60px 0 6px; text-wrap: balance; }
+  h3 { font-size: 16px; font-weight: 700; }
+  .sub { color: var(--slate); font-size: 15.5px; max-width: 82ch; margin-bottom: 20px; }
+
+  /* -- the live editor ----------------------------------------------------- */
+  .live {
+    margin-top: 34px; border: 1px solid var(--line); border-radius: 16px; background: #fff;
+    overflow: hidden; box-shadow: 0 1px 2px rgba(35,42,61,.04), 0 12px 32px -18px rgba(35,42,61,.22);
+  }
+  .live .bar {
+    display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+    border-bottom: 1px solid var(--line); background: #FBFCFF; font-size: 13px; color: var(--slate);
+  }
+  .live .bar .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+  .live .bar .badge {
+    display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ink);
+  }
+  .live .bar .status { margin-left: auto; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .live .bar .status.bad { color: #b3261e; }
+  /* A fixed row height, not min-height: Monaco's host is height:100%, and against
+     an auto-sized grid row that resolves to "as tall as it likes". */
+  .live .panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); height: 430px; }
+  .live .src { border-right: 1px solid var(--line); min-width: 0; overflow: hidden; }
+  .live textarea {
+    width: 100%; height: 100%; border: 0; padding: 12px 14px; resize: none; color: inherit;
+    background: transparent; font: 12.5px/1.55 ui-monospace, Menlo, monospace;
+  }
+  .live .cv { min-width: 0; position: relative; overflow: hidden; }
+  .live .cv .skel {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    color: var(--slate); font-size: 13.5px;
+  }
+  @media (max-width: 860px) {
+    .live .panes { grid-template-columns: 1fr; height: auto; }
+    .live .src { border-right: 0; border-bottom: 1px solid var(--line); height: 260px; }
+    .live .cv { height: 320px; }
+  }
+  .hint { margin-top: 12px; font-size: 14px; color: var(--slate); }
+
+  /* -- coverage ------------------------------------------------------------ */
+  .cov { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 14px; }
+  .cov .card { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 18px 20px; }
+  .cov .card.on { border-color: var(--indigo-soft); background: var(--indigo-wash); }
+  .cov .chip {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px; margin-bottom: 8px;
+  }
+  .cov .card.on .chip { background: var(--indigo); color: #fff; }
+  .cov .card.off .chip { background: #EEF0F6; color: var(--slate); }
+  .cov h3 { font-family: ui-monospace, Menlo, monospace; font-size: 15px; margin-bottom: 5px; }
+  .cov p { font-size: 13.5px; color: var(--slate); }
+  .cov .card.on p { color: #3F4A66; }
+
+  /* -- tiers / two-column prose -------------------------------------------- */
+  .tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); gap: 16px; }
+  .tier { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 22px; }
+  .tier .n { font-size: 12px; font-weight: 700; color: var(--indigo); letter-spacing: .06em; text-transform: uppercase; }
+  .tier h3 { margin: 3px 0 7px; }
+  .tier p { font-size: 14px; color: var(--slate); }
+  .tier code { font-size: 12.5px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+
+  pre.code {
+    margin-top: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fff;
+    padding: 16px 18px; overflow-x: auto; font: 13px/1.7 ui-monospace, Menlo, monospace; color: #2C3346;
+  }
+  pre.code .c { color: var(--slate); }
+  pre.code .k { color: var(--indigo); }
+
+  .callout {
+    margin-top: 20px; border: 1px solid var(--line); border-left: 3px solid var(--indigo);
+    border-radius: 12px; background: #fff; padding: 18px 22px;
+  }
+  .callout h3 { margin-bottom: 5px; }
+  .callout p { font-size: 14.5px; color: var(--slate); }
+
+  .gaps { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 8px 6px; }
+  .gaps details { border-top: 1px solid var(--line); }
+  .gaps details:first-child { border-top: 0; }
+  .gaps summary {
+    cursor: pointer; padding: 13px 18px; font-weight: 600; font-size: 15px; list-style: none;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .gaps summary::-webkit-details-marker { display: none; }
+  .gaps summary::after { content: '+'; margin-left: auto; color: var(--slate); font-weight: 500; font-size: 18px; }
+  .gaps details[open] summary::after { content: '−'; }
+  .gaps summary:focus-visible { outline: 3px solid var(--indigo-soft); outline-offset: -3px; border-radius: 8px; }
+  .gaps summary .tag {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 600;
+    background: var(--amber-wash); color: var(--amber); padding: 2px 8px; border-radius: 999px;
+  }
+  .gaps ul { margin: 0 20px 16px 40px; font-size: 14px; color: var(--slate); }
+  .gaps li { margin-bottom: 6px; }
+  .gaps code { font-size: 12.5px; }
+
+  .cta { margin: 54px 0 72px; text-align: center; }
+  .cta .btn { display: inline-block; padding: 12px 26px; border-radius: 10px; font-weight: 600; font-size: 16px; margin: 0 7px 10px; }
+  .btn.primary { background: var(--indigo); color: #fff; }
+  .btn.primary:hover { background: var(--indigo-deep); text-decoration: none; }
+  .btn.ghost { border: 1.5px solid var(--line); color: var(--ink); background: #fff; }
+  .btn.ghost:hover { border-color: var(--indigo-soft); text-decoration: none; }
+
+  .fine { margin: 0 0 56px; max-width: 86ch; font-size: 13px; color: var(--slate); }
+
+  footer { border-top: 1px solid var(--line); padding: 34px 0 44px; color: var(--slate); font-size: 14.5px; background: #fff; }
+  footer .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  footer img { width: 22px; height: 22px; }
+  footer .fam { margin-left: auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../favicon.svg" alt="">
+    <span class="name"><a href="../">grafloria</a></span>
+    <nav class="links">
+      <a href="https://github.com/grafloria/grafloria">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria">npm</a>
+      <a href="../demos/">Demos</a>
+      <a href="./" aria-current="page">Mermaid</a>
+      <a href="../compare/">Compare</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+
+    <div class="head">
+      <h1>Mermaid text, on a canvas you can actually edit</h1>
+      <p class="lede">
+        Mermaid renders text to a picture. Grafloria reads that same text into a <b>live diagram
+        you can drag, connect, restyle and delete from</b> — and writes it back out as a body any
+        Mermaid renderer accepts. The text stays the document; the canvas stops being read-only.
+      </p>
+    </div>
+
+    <!-- ============================ LIVE ============================== -->
+    <div class="live">
+      <div class="bar">
+        <span class="badge"><span class="dot"></span>live</span>
+        <span>edit the Mermaid on the left — the diagram re-renders as you type</span>
+        <span class="status" id="status">loading…</span>
+      </div>
+      <div class="panes">
+        <div class="src"><textarea id="src" spellcheck="false" aria-label="Mermaid source"></textarea></div>
+        <div class="cv" id="cv"><div class="skel">rendering…</div></div>
+      </div>
+    </div>
+    <p class="hint">
+      This is the real engine parsing real Mermaid in your browser — not a screenshot, not a
+      pre-baked SVG. Try changing a shape to <code>{Decision?}</code>, adding
+      <code>--&gt;|label|</code>, or breaking the syntax on purpose.
+    </p>
+
+    <!-- ============================ COVERAGE ========================== -->
+    <h2>Four diagram types, read <i>and</i> written</h2>
+    <p class="sub">
+      Mermaid has grown past 29 diagram types. Grafloria speaks four of them — the graph-family
+      ones people actually paste into an editor — and every one is a matched
+      <b>parser + model + generator</b>, because a type that parses but cannot re-emit itself
+      loses everything on first save. The rest fail safe (below), which we consider far better
+      than a plausible-looking wrong diagram.
+    </p>
+    <div class="cov">
+      <div class="card on">
+        <span class="chip">read + write</span>
+        <h3>flowchart / graph</h3>
+        <p>The full base grammar plus Mermaid-native styling: all node shapes, glued and spaced
+        edges, edge labels, <code>subgraph</code> → real groups, <code>style</code>,
+        <code>classDef</code>, <code>:::</code>, <code>click</code> and <code>direction</code>.</p>
+      </div>
+      <div class="card on">
+        <span class="chip">read + write</span>
+        <h3>erDiagram</h3>
+        <p>Entities with typed attribute blocks, PK/FK/UK badges, all sixteen cardinality pairs
+        mapped to crow's-foot markers, identifying vs non-identifying, labelled relationships —
+        landing as interactive table cards, not boxes.</p>
+      </div>
+      <div class="card on">
+        <span class="chip">read + write</span>
+        <h3>classDiagram</h3>
+        <p>Classes, members in both spellings, visibility and classifiers, generics, annotations,
+        multiplicity, notes — and <b>all 72 legal relationship operators</b>, derived from the
+        grammar rather than a hand-written table.</p>
+      </div>
+      <div class="card on">
+        <span class="chip">read + write</span>
+        <h3>stateDiagram / -v2</h3>
+        <p>States, transitions, scoped <code>[*]</code> and <code>[H]</code> pseudo-states,
+        composite states as nested groups, concurrent <code>--</code> regions, fork / join /
+        choice, and <code>direction</code> scoped to the composite that declares it.</p>
+      </div>
+      <div class="card off">
+        <span class="chip">fails safe</span>
+        <h3>sequenceDiagram, gantt, pie, …</h3>
+        <p>Every other type — journey, gitGraph, mindmap, timeline, C4, sankey, xychart and the
+        rest — returns an explicit <code>unsupported</code> signal naming the type. Never a blank
+        canvas, never a garbage graph. <code>sequenceDiagram</code> is the most-requested next.</p>
+      </div>
+    </div>
+
+    <!-- ============================ ROUND TRIP ======================== -->
+    <h2>It round-trips, and the round trip is the hard part</h2>
+    <p class="sub">
+      Reading Mermaid is the easy direction. The interesting one is what happens after somebody
+      moves a node: positions are not expressible in Mermaid's grammar, so a naive exporter
+      throws them away, and every save quietly re-scrambles the diagram.
+    </p>
+    <div class="callout">
+      <h3>The visible body always stays valid Mermaid</h3>
+      <p>
+        Grafloria writes a body GitHub, GitLab and mermaid.live all render — and parks everything
+        the grammar cannot say in a <code>%%</code> comment those renderers ignore. So the same
+        text is both a lossless Grafloria document <i>and</i> an ordinary Mermaid snippet. That
+        rule is not a convention we try to remember; it is the constraint the three tiers below
+        exist to enforce.
+      </p>
+    </div>
+    <div class="tiers" style="margin-top:16px">
+      <div class="tier">
+        <div class="n">Tier 1</div>
+        <h3>Mermaid's own extension points</h3>
+        <p>Anything with a native analog uses it: fill and stroke become <code>style</code> /
+        <code>classDef</code>, containers become <code>subgraph</code>, navigation becomes
+        <code>click</code>. Visible, portable, renders everywhere.</p>
+      </div>
+      <div class="tier">
+        <div class="n">Tier 2</div>
+        <h3><code>%%grafloria:</code> directives</h3>
+        <p>Grafloria-only semantics with no Mermaid analog — edge animation, node status, routing
+        hints — ride in comments, one line per entity. Mermaid skips them; the body still renders.</p>
+      </div>
+      <div class="tier">
+        <div class="n">Tier 3</div>
+        <h3>The document sidecar</h3>
+        <p>A single <code>%%grafloria:document</code> line carries the exact model for a
+        byte-lossless machine round trip, with a body hash so a hand-edit to the visible text
+        wins over the stale sidecar.</p>
+      </div>
+    </div>
+
+    <pre class="code"><span class="c">// npm i @grafloria/engine</span>
+<span class="k">import</span> { importDiagramText, exportDiagramText } <span class="k">from</span> '@grafloria/engine';
+
+<span class="c">// Mermaid in → a real DiagramModel you can render and edit.</span>
+<span class="k">const</span> r = importDiagramText(`flowchart TD
+  Start([Start]) --&gt; Check{Valid?}
+  Check --&gt;|yes| Save[[Persist]]`);
+
+<span class="k">if</span> (r.unsupported) console.warn(`no parser for ${r.unsupported} yet`);
+<span class="k">else</span> render({ nodes: r.diagram.getNodes(), edges: r.diagram.getLinks() }, host);
+
+<span class="c">// …and back out. lossless:false gives the plain body for a README;</span>
+<span class="c">// the default adds the sidecar so positions survive the trip.</span>
+<span class="k">const</span> text = exportDiagramText(diagram, { lossless: <span class="k">false</span> });</pre>
+
+    <!-- ============================ PROOF ============================= -->
+    <h2>Verified against real Mermaid, in CI</h2>
+    <p class="sub">
+      A compatibility claim is worth exactly as much as the thing that checks it. Ours is an
+      oracle gate: <b>28 cases driven through real mermaid v11 in both directions</b> — every
+      input we say we read, and every body we emit, parsed by Mermaid itself on each run. It has
+      already caught an export bug no unit test would have (ER relationship labels colliding with
+      cardinality keywords). Any new type or syntax has to arrive with oracle cases.
+    </p>
+    <p class="sub" style="margin-bottom:0">
+      The demos are gates too: <a href="../demos/misc/mermaid-viewer.html">the Mermaid viewer</a>
+      and <a href="../demos/misc/mermaid-text.html">the lossless text form</a> both run in CI with
+      real pointer events and pixel-diffed goldens, so the pages on this site cannot rot without
+      failing the build.
+    </p>
+
+    <!-- ============================ HONEST GAPS ======================= -->
+    <h2>What it does <i>not</i> do yet</h2>
+    <p class="sub">
+      The gaps below are all <b>lossy, never wrong</b> — the diagram you get is the diagram you
+      wrote, minus something named here. That property matters more to us than the length of the
+      list, so here is the list.
+    </p>
+    <div class="gaps">
+      <details>
+        <summary><span class="tag">erDiagram</span> three known losses</summary>
+        <ul>
+          <li><code>ENTITY["display alias"]</code> parses, but Mermaid 11 has no syntax to write it back — the alias rides the sidecar instead of the visible body.</li>
+          <li>ER <code>style</code> / <code>classDef</code> / <code>:::</code> directives are ignored, not applied to the entity cards.</li>
+          <li>Relationships are table-level. Mermaid's ER grammar cannot say <i>which column</i> a relationship uses, so the kit's column-pinned edges have nothing to import from. That one is Mermaid's limit, not ours.</li>
+        </ul>
+      </details>
+      <details>
+        <summary><span class="tag">classDiagram</span> grouping and two glyphs</summary>
+        <ul>
+          <li><code>namespace Foo { … }</code> — the classes survive, the grouping does not. The largest remaining class gap.</li>
+          <li>Both-ends operators (<code>&lt;|--|&gt;</code>, <code>*--o</code>, …) keep their structure and re-export exactly, but draw with one marker: the notation table has no both-ends kind yet.</li>
+          <li>Lollipop <code>()--</code> parses and round-trips as a realization, but renders as the dashed triangle rather than the interface ball.</li>
+        </ul>
+      </details>
+      <details>
+        <summary><span class="tag">stateDiagram</span> layout, not structure</summary>
+        <ul>
+          <li>Concurrent regions are modelled and re-exported correctly, but layout does not band them — no dashed divider yet. The structure is right; the picture is not.</li>
+          <li><code>[H]</code> / <code>[H*]</code> round-trip, but draw as a plain circle instead of the H-in-circle glyph.</li>
+          <li>State <code>classDef</code> / <code>class</code> styling is not applied, and an inline <code>:::hook</code> is captured by name but not re-emitted.</li>
+        </ul>
+      </details>
+      <details>
+        <summary><span class="tag">all types</span> layout and the directive channel</summary>
+        <ul>
+          <li>Imported layout is a naive grid for ER / class / state — no type-aware placement (ER by FK dependency, class by inheritance depth) yet.</li>
+          <li>The Tier-2 <code>%%grafloria:</code> per-entity channel is wired for flowchart only; the other three fall back to the Tier-3 sidecar, which is lossless but opaque.</li>
+        </ul>
+      </details>
+    </div>
+
+    <div class="cta">
+      <a class="btn primary" href="../demos/misc/mermaid-viewer.html">Open the live viewer</a>
+      <a class="btn ghost" href="../compare/#mermaid">Grafloria vs Mermaid</a>
+    </div>
+
+    <p class="fine">
+      Mermaid and Mermaid Chart are trademarks of their respective owners; Grafloria is an
+      independent MIT project and implements the Mermaid <i>syntax</i> with its own parser — it
+      does not bundle, fork, or depend on the Mermaid runtime. Coverage described here is current
+      as of July&nbsp;2026 and is tracked in the engine's gap analysis; corrections and requests
+      are welcome via <a href="https://github.com/grafloria/grafloria/issues">GitHub issues</a>.
+    </p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../favicon.svg" alt="">
+    <span>© 2026 Grafloria · MIT License</span>
+    <span class="fam">A sibling of <a href="https://atloria.dev">Atloria</a></span>
+  </div>
+</footer>
+
+<script type="module">
+  // The live pane is the real engine. The bundle is large, so it loads lazily —
+  // on first scroll into view — and the page is fully readable before it lands.
+  // LR, deliberately: the canvas pane is wide and short, and a TD chain fits to
+  // its own height in it — legible source, unreadable diagram.
+  const SRC = [
+    'flowchart LR',
+    '  Start([Order received]) --> Check{In stock?}',
+    '  Check -->|yes| Pick[Pick items]',
+    '  Check -->|no| Order[(Reorder)]',
+    '  Pick --> Ship([Ship])',
+    '  style Start fill:#EEF1FE,stroke:#3B52D9',
+    '  style Ship fill:#E7F6EC,stroke:#1B7F45',
+  ].join('\n');
+
+  const ta = document.getElementById('src');
+  const cv = document.getElementById('cv');
+  const status = document.getElementById('status');
+  ta.value = SRC;
+
+  let api = null, editor = null;
+
+  const draw = async (text) => {
+    if (!window.__gf) return;
+    const { importDiagramText, render } = window.__gf;
+    let r;
+    try { r = importDiagramText(text); }
+    catch (e) { status.className = 'status bad'; status.textContent = 'parse error'; return; }
+    if (r.unsupported) {
+      status.className = 'status bad';
+      status.textContent = `unsupported: ${r.unsupported}`;
+      return;
+    }
+    status.className = 'status';
+    const d = r.diagram;
+    // Hand the renderer the parsed models themselves — projecting them down to a
+    // spec tuple is what silently drops shapes and styles on the way through.
+    const parts = { nodes: d.getNodes(), edges: d.getLinks() };
+    if (!api) {
+      cv.querySelector('.skel')?.remove();
+      api = render(parts, cv);
+    } else {
+      api.setEdges([]); api.setNodes([]);
+      api.setNodes(parts.nodes); api.setEdges(parts.edges);
+    }
+    // LAYOUT, not import order. The parser places nodes in the order it reads
+    // them, so a branch lands in a straight line and the picture LIES about the
+    // graph — `Check -->|no| Order` looks like `Pick --> Order`. Running the
+    // layered engine makes the fork a fork.
+    try {
+      await api.getEngine().layout('layered', { direction: 'LR' });
+      // The layout moves NODES; each link keeps the polyline it was routed on
+      // before. Edge labels are placed by walking that polyline, so leaving it
+      // stale strands `yes` / `no` at their pre-layout midpoints — off-canvas,
+      // while the paths themselves look fine. Emptying it makes the next paint
+      // re-route.
+      for (const l of d.getLinks()) l.setPoints([]);
+    } catch { /* keep import order */ }
+    api.renderNow();
+    api.fitView?.(36);
+    status.textContent = `${d.getNodes().length} nodes · ${d.getLinks().length} links`;
+  };
+
+  let timer = null;
+  const onEdit = () => { clearTimeout(timer); timer = setTimeout(() => draw(ta.value), 260); };
+
+  const boot = async () => {
+    const [gf, ed] = await Promise.all([
+      import('../demos/shell/grafloria.js'),
+      import('../demos/shell/code-editor.js').catch(() => null),
+    ]);
+    window.__gf = gf;
+    draw(ta.value);
+    // Monaco is polish on top of a textarea that already works; if it never
+    // arrives the pane is still a working editor.
+    if (ed) editor = await ed.mountCodeEditor(ta, { language: 'mermaid', onChange: onEdit });
+    ta.addEventListener('input', onEdit);
+  };
+
+  const io = new IntersectionObserver((entries, obs) => {
+    if (!entries.some((e) => e.isIntersecting)) return;
+    obs.disconnect();
+    boot();
+  }, { rootMargin: '200px' });
+  io.observe(document.querySelector('.live'));
+</script>
+
+</body>
+</html>

@@ -15,12 +15,18 @@
  * itself. That also keeps a validation run from rewriting the shared demo
  * bundle (other lanes are live on this tree and the demo server serves it).
  *
- * Run: node demos/e2e/mermaid-oracle-run.mjs   (needs the demo server on :4321)
+ * Run: node demos/e2e/mermaid-oracle-run.mjs
+ *
+ * It serves `demos/` itself on an ephemeral port, so it needs nothing running
+ * first. It used to require a hand-started server on :4321, which is exactly
+ * why it sat outside CI while the site claimed it ran there.
  */
 import { chromium } from 'playwright';
 import { build } from 'esbuild';
+import { createServer } from 'http';
+import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname, join, resolve } from 'path';
+import { dirname, extname, join, resolve } from 'path';
 import { tmpdir } from 'os';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -249,6 +255,31 @@ await build({
   logLevel: 'warning',
 });
 
+// Serve demos/ on an ephemeral port — same pattern as gallery-run, so the gate
+// is self-contained and can run in CI unattended.
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+};
+const docRoot = resolve(HERE, '..');
+const server = createServer((req, res) => {
+  const url = decodeURIComponent((req.url || '/').split('?')[0]);
+  try {
+    const file = join(docRoot, url === '/' ? 'index.html' : url);
+    res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream' });
+    res.end(readFileSync(file));
+  } catch {
+    res.writeHead(404).end('not found');
+  }
+});
+await new Promise((r) => server.listen(0, '127.0.0.1', r));
+const ORIGIN = `http://127.0.0.1:${server.address().port}`;
+
 const b = await chromium.launch({ args: ['--disable-blink-features=AutomationControlled'] });
 const p = await b.newPage({ viewport: { width: 1400, height: 520 } });
 await p.route('**/mermaid.min.js', (route) => route.fulfill({ path: MERMAID_UMD }));
@@ -257,7 +288,7 @@ await p.route('**/shell/grafloria.js', (route) =>
 );
 const pageErrors = [];
 p.on('pageerror', (e) => pageErrors.push(String(e).slice(0, 160)));
-await p.goto('http://127.0.0.1:4321/e2e/mermaid-oracle.html');
+await p.goto(`${ORIGIN}/e2e/mermaid-oracle.html`);
 await p.waitForFunction(() => window.__oracleReady === true, { timeout: 20000 });
 
 let fail = 0;
@@ -290,4 +321,5 @@ console.log('  wrote ' + OUT);
 if (pageErrors.length) { console.log('\nPAGE ERRORS:', pageErrors.join(' | ')); fail++; }
 console.log(`\nmermaid-oracle: ${fail === 0 ? 'ALL VALID' : fail + ' FAILURE(S)'}`);
 await b.close();
+server.close();
 process.exit(fail === 0 ? 0 : 1);
