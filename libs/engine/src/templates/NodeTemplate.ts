@@ -86,6 +86,12 @@ export type ShapeType =
   | 'double-rect'        // ERD (Chen): weak entity
   | 'double-diamond'     // ERD (Chen): weak relationship
   | 'double-ellipse'     // ERD (Chen): multivalued attribute
+  // Notation MARKER shapes — the glyph IS the identity (stencil master audit).
+  | 'gateway-xor'        // BPMN: diamond + ✕ (exclusive)
+  | 'gateway-or'         // BPMN: diamond + ◯ ring (inclusive)
+  | 'gateway-and'        // BPMN: diamond + ＋ (parallel)
+  | 'event-intermediate' // BPMN: double ring
+  | 'final-node'         // UML activity/state: bulls-eye (ring + solid dot)
   // common aliases
   | 'database'
   | 'stadium'

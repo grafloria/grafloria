@@ -11,7 +11,12 @@
  * attribute) is the Chen-notation convention for "existence-dependent": the
  * inner outline is inset by {@link DOUBLE_INSET} px.
  */
-import { registerPathShape, hasShape } from './shape-registry';
+import {
+  registerPathShape,
+  hasShape,
+  getShapeDefinition,
+  type PathShapeOptions,
+} from './shape-registry';
 
 /** Gap between the two outlines of a "double" ERD shape. */
 const DOUBLE_INSET = 5;
@@ -72,10 +77,59 @@ export function registerNotationShapes(): void {
 
   define('double-ellipse', (w, h) =>
     `${ellipsePath(w / 2, h / 2, w / 2, h / 2)} ${ellipsePath(w / 2, h / 2, w / 2 - DOUBLE_INSET, h / 2 - DOUBLE_INSET)}`);
+
+  // ── BPMN gateways ──────────────────────────────────────────────────────────
+  // A gateway's IDENTITY is its inner marker, not its caption: exclusive = ✕,
+  // inclusive = ◯ ring, parallel = ＋ (BPMN 2.0 §10.6). The markers are extra
+  // subpaths of the diamond path: line subpaths have zero area, so `fill`
+  // paints only the diamond while `stroke` draws the marker; the ring subpath
+  // is wound the same direction as the diamond, so nonzero filling leaves it
+  // an outline. Links, ports and the caption's geometry delegate to the plain
+  // diamond so the marker never distorts attachment points.
+  const diamondGeom = delegateTo('diamond');
+  define('gateway-xor', (w, h) => {
+    const cx = w / 2, cy = h / 2, a = Math.min(w, h) * 0.18;
+    return `${diamondPath(0, 0, w, h)} M ${r3(cx - a)} ${r3(cy - a)} L ${r3(cx + a)} ${r3(cy + a)} M ${r3(cx + a)} ${r3(cy - a)} L ${r3(cx - a)} ${r3(cy + a)}`;
+  }, diamondGeom);
+  define('gateway-or', (w, h) => {
+    const r = Math.min(w, h) * 0.22;
+    return `${diamondPath(0, 0, w, h)} ${ellipsePath(w / 2, h / 2, r, r)}`;
+  }, diamondGeom);
+  define('gateway-and', (w, h) => {
+    const cx = w / 2, cy = h / 2, a = Math.min(w, h) * 0.24;
+    return `${diamondPath(0, 0, w, h)} M ${r3(cx - a)} ${cy} L ${r3(cx + a)} ${cy} M ${cx} ${r3(cy - a)} L ${cx} ${r3(cy + a)}`;
+  }, diamondGeom);
+
+  // ── BPMN events ────────────────────────────────────────────────────────────
+  // An intermediate event is a DOUBLE ring (start = thin single, end = thick
+  // single — those two stay `circle` and differ by strokeWidth, which is
+  // template data). Same double-outline device as the Chen shapes; geometry
+  // delegates to the plain circle.
+  define('event-intermediate', (w, h) => {
+    const r = Math.min(w, h) / 2, cx = w / 2, cy = h / 2;
+    const inset = Math.max(3, r * 0.18);
+    return `${ellipsePath(cx, cy, r, r)} ${ellipsePath(cx, cy, r - inset, r - inset)}`;
+  }, delegateTo('circle'));
+}
+
+/** Round to 3 decimals, matching the registry's own vertex formatting. */
+const r3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/**
+ * Geometry options that delegate ports / link attachment / label box to an
+ * already-registered base figure — used by shapes whose path carries interior
+ * MARKER subpaths. `registerPathShape` otherwise derives anchors by sampling
+ * every subpath, and a marker in the middle would pull them off the outline.
+ */
+function delegateTo(base: string): PathShapeOptions {
+  const def = getShapeDefinition(base);
+  return def
+    ? { portAnchor: def.portAnchor, boundaryPoint: def.boundaryPoint, innerRect: def.innerRect }
+    : {};
 }
 
 /** Register `type` unless something already owns that name (never clobber). */
-function define(type: string, path: (w: number, h: number) => string): void {
+function define(type: string, path: (w: number, h: number) => string, opts?: PathShapeOptions): void {
   if (hasShape(type)) return;
-  registerPathShape(type, path);
+  registerPathShape(type, path, opts);
 }
