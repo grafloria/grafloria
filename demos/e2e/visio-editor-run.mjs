@@ -37,14 +37,31 @@ const results = [];
 const check = (name, ok, detail) => { results.push({ name, ok, detail }); };
 
 const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 }, deviceScaleFactor: 2 });
+// 1680 wide ON PURPOSE: the demo hides #vs-panel at ≤1500px (the rails must not
+// crush the canvas), and the original 1500px viewport meant this gate could
+// never exercise the panel. At 1680 the panel is part of what the gate sees.
+const ctx = await browser.newContext({ viewport: { width: 1680, height: 950 }, deviceScaleFactor: 2 });
 await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => false }));
-const page = await ctx.newPage();
 const pageErrors = [];
-page.on('pageerror', (e) => pageErrors.push(String(e).slice(0, 200)));
+let page;
 
-await page.goto(`${origin}/diagrams/visio-editor.html`, { waitUntil: 'domcontentloaded' });
-await page.waitForFunction(() => window.__demoReady === true, { timeout: 30000 });
+/**
+ * A FRESH page per section. The original runner drove all cases on one shared
+ * page with manual cleanup between them — the exact contamination pattern that
+ * produced false audit results twice (an un-undoable command mid-history turned
+ * every later "cleanup undo" into an error). Each numbered section now starts
+ * from the demo's seeded scenario; only the checks WITHIN a section share state,
+ * and they do so deliberately (drag-in → drag-out, connect → undo).
+ */
+const freshPage = async () => {
+  if (page) await page.close();
+  page = await ctx.newPage();
+  page.on('pageerror', (e) => pageErrors.push(String(e).slice(0, 200)));
+  await page.goto(`${origin}/diagrams/visio-editor.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => window.__demoReady === true, { timeout: 30000 });
+  await page.waitForTimeout(150);
+};
+await freshPage();
 
 const shot = async (name) => { await page.locator('#vs-canvas').screenshot({ path: join(SHOTS, `${name}.png`) }); };
 const inPage = (fn, arg) => page.evaluate(fn, arg);
@@ -111,6 +128,7 @@ const undoKey = () => page.keyboard.press('Control+z');
 // (between pick and ship). Membership must change — the demo's old assert
 // called the membership service directly and passed while this gesture failed.
 {
+  await freshPage();
   const start = await nodeCentre('recv');
   const dropAt = await client(420, 406);                    // frame centre, empty area
   await drag(start, dropAt);
@@ -140,6 +158,7 @@ const undoKey = () => page.keyboard.press('Control+z');
 // Hover recv so its ports paint, press ON the right-edge port, pull to ship's
 // body, release: exactly one new link, and one Ctrl+Z removes it.
 {
+  await freshPage();
   const linksBefore = await inPage(() => window.__demoCtx.diagram.getLinks().length);
   const recvC = await nodeCentre('recv');
   await page.mouse.move(recvC.x, recvC.y);                  // hover → ports paint
@@ -170,6 +189,7 @@ const undoKey = () => page.keyboard.press('Control+z');
 // Box recv+chk from a clearly-empty start point; the band must PAINT mid-drag
 // and the release must select exactly the enclosed pair.
 {
+  await freshPage();
   const box = await inPage(() => {
     const c = window.__demoCtx;
     const b = (id) => {
@@ -210,6 +230,7 @@ const undoKey = () => page.keyboard.press('Control+z');
 
 // ── 5. ARROW-KEY NUDGE: 1 unit per press, ×10 with Shift, undoable ──────────
 {
+  await freshPage();
   const c = await nodeCentre('chk');
   await page.mouse.click(c.x, c.y);                        // select chk
   await page.waitForTimeout(80);
@@ -239,6 +260,7 @@ const undoKey = () => page.keyboard.press('Control+z');
 
 // ── 6. CTRL/CMD+D DUPLICATES — one step, one undo — and the toolbar twin ───
 {
+  await freshPage();
   const c = await nodeCentre('ship');
   await page.mouse.click(c.x, c.y);
   await page.waitForTimeout(80);
@@ -280,6 +302,7 @@ const undoKey = () => page.keyboard.press('Control+z');
 // The editor input class is `grafloria-text-editor` (round-1 audit probes
 // missed it with the wrong selector — keep this one).
 {
+  await freshPage();
   const c = await nodeCentre('pick');
   await page.mouse.click(c.x, c.y);
   await page.waitForTimeout(80);
@@ -325,6 +348,7 @@ const undoKey = () => page.keyboard.press('Control+z');
 
 // ── 8. CONTEXT MENU: node / edge / canvas, real right-clicks ────────────────
 {
+  await freshPage();
   // Node menu paints with the full entry set, Escape dismisses.
   const c = await nodeCentre('chk');
   await page.mouse.click(c.x, c.y, { button: 'right' });
@@ -386,6 +410,7 @@ const undoKey = () => page.keyboard.press('Control+z');
 
 // ── 10. EDGE LABEL DBLCLICK EDIT: the "in stock" label opens the editor ─────
 {
+  await freshPage();
   const at = await inPage(() => {
     const c = window.__demoCtx;
     const link = c.diagram.getLink('e2');
@@ -419,6 +444,7 @@ const undoKey = () => page.keyboard.press('Control+z');
 // HTML5 DnD synthesized with a real DataTransfer (headless Chromium's mouse
 // cannot produce native DnD) — the same event stream the browser dispatches.
 {
+  await freshPage();
   const mid = await inPage(() => {
     const rect = document.getElementById('vs-canvas').getBoundingClientRect();
     return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + 120) };
@@ -467,6 +493,7 @@ const undoKey = () => page.keyboard.press('Control+z');
 
 // ── 11. TOOLBAR: Redo synced to canRedo; the new aligns; Distribute vertical ─
 {
+  await freshPage();
   // Stage: marquee recv+chk (2 nodes) then Bottom-align them via the button.
   const box = await inPage(() => {
     const c = window.__demoCtx;
@@ -535,18 +562,91 @@ const undoKey = () => page.keyboard.press('Control+z');
   check('DISTRIBUTE-VERTICAL', distEnabled && Math.abs(gaps[0] - gaps[1]) < 0.5,
     `enabled=${distEnabled} gaps=${gaps.map((g) => Math.round(g)).join(',')}`);
   await shot('11-distribute-vertical');
-  // Rewind this case's edits (distribute, redo-align, chk stagger is unmanaged
-  // — put chk back explicitly).
-  await undoKey(); await page.waitForTimeout(80);
-  await undoKey(); await page.waitForTimeout(80);
-  await inPage(() => {
-    const n = window.__demoCtx.diagram.getNode('chk');
-    n.setPosition(n.position.x, 120);
-    window.__demoCtx.diagram.clearSelection();
-    window.__demoCtx.instance.renderNow();
-  });
 }
 
+// ── 12. SHAPE-DATA PANEL + THE HEADER BAND ──────────────────────────────────
+// Two closures from the audit: (a) the panel was invisible at the old 1500px
+// viewport, so CI never exercised it — this case edits a column THROUGH it;
+// (b) the card's header band sits under the top PORT, whose press used to
+// swallow the click as an aborted connect — a header click must select.
+{
+  await freshPage();
+  const tid = await inPage(async () => {
+    // (190,430): the same free spot the demo's own assert drops its table at —
+    // below 'Order received', clear of the Fulfilment frame. 700,150 rendered
+    // HALF OFF the canvas at this viewport (the visible panel narrows the
+    // canvas), and a header click landing outside #vs-canvas never reaches the
+    // binder at all — the screenshot showed the card clipped at the edge.
+    const id = await window.__demoCtx.palette.place('erd-entity', { x: 190, y: 430 });
+    window.__demoCtx.instance.renderNow();
+    return id;
+  });
+  await raf2();
+  // The card's ports are minted after a paint; give the fresh card a real beat
+  // (matching the hand-probe that established the expected behavior).
+  await page.waitForTimeout(400);
+
+  // (b) click the header band dead-centre — the audit's dead zone. Hover FIRST,
+  // like a hand does: the port arms on mousemove and the sub-threshold release
+  // must still select the node.
+  const head = await inPage(() => {
+    const r = document.querySelector('.axk-entity-head').getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + 4 };
+  });
+  await page.mouse.move(head.x, head.y);
+  await page.waitForTimeout(200);
+  await page.mouse.down();
+  await page.waitForTimeout(80);
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  const sel = await inPage((id) =>
+    window.__demoCtx.diagram.getSelectedNodes().map((n) => n.id).includes(id), tid);
+  const panel = await inPage(() => {
+    const p = document.getElementById('vs-panel');
+    return {
+      visible: !!p && getComputedStyle(p).display !== 'none',
+      table: /Table/i.test(p?.textContent ?? ''),
+    };
+  });
+  check('HEADER-BAND-SELECTS', sel && panel.visible && panel.table,
+    `selected=${sel} panelVisible=${panel.visible} tableSection=${panel.table}`);
+  await shot('12-header-band-select');
+
+  // (a) click a column row, rename it through the PANEL's own input.
+  const row = await inPage(() => {
+    const r = document.querySelector('.axk-row .axk-col').getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await page.mouse.click(row.x, row.y);
+  await raf2();
+  await page.waitForTimeout(250);
+  const nameInput = await inPage(() => {
+    // The panel nests the column block INSIDE the table's fields, so there are
+    // two Name rows: the table's ("Entity") first, then the selected column's
+    // ("id") in the nested block. The LAST Name input is the column's — taking
+    // the first renamed the whole table.
+    const named = [...document.querySelectorAll('#vs-panel .gf-sd-row')].filter((r) =>
+      /^name$/i.test(r.querySelector('.gf-sd-label')?.textContent?.trim() ?? '') &&
+      r.querySelector('input.gf-sd-input'));
+    const input = named.at(-1)?.querySelector('input.gf-sd-input');
+    if (!input || named.length < 2) return null;   // 2 Name rows = the column section is open
+    const b = input.getBoundingClientRect();
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2, value: input.value };
+  });
+  check('PANEL-COLUMN-SECTION', !!nameInput, nameInput ? `column "${nameInput.value}"` : 'no column Name input in the panel');
+  if (nameInput) {
+    await page.mouse.click(nameInput.x, nameInput.y, { clickCount: 3 }); // select-all in the field
+    await page.keyboard.type('renamed_via_panel');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(300);
+    const cols = await inPage((id) =>
+      window.__demoCtx.diagram.getNode(id).getMetadata('kitEntity').columns.map((c) => c.name), tid);
+    check('PANEL-EDITS-COLUMN', cols.includes('renamed_via_panel'), `columns=[${cols.join(',')}]`);
+    await shot('12-panel-column-rename');
+  }
+}
+
+await page.close();
 await browser.close();
 server.close();
 
