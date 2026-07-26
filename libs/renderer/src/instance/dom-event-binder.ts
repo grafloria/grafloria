@@ -857,9 +857,18 @@ export class DomEventBinder {
 
     // 7. Link body → select. Hover state is the fast path; fall back to a direct
     // hit-test because on first load no mousemove has run yet.
-    const link =
-      state.hoveredLink ??
-      this.host.interaction.getLinkAtPosition(worldX, worldY, engine);
+    //
+    // BUT a node body covers link ink: nodes paint in `nodes-layer`, ABOVE
+    // `links-layer`, so at a point where both coincide the user is touching the
+    // NODE — the ink is invisible under it. This rung used to win anyway, so a
+    // node dropped onto a link's path became undraggable at exactly the spot
+    // the user grabbed it (visio gate: recv adopted between pick and ship sits
+    // on the pick→ship path; the drag-out press selected that link instead and
+    // the node never moved).
+    const link = diagram.getNodeAtPosition(worldX, worldY)
+      ? null
+      : (state.hoveredLink ??
+        this.host.interaction.getLinkAtPosition(worldX, worldY, engine));
     if (link) {
       event.preventDefault();
       this.host.interaction.selectLink(link, engine, event.ctrlKey || event.metaKey);
@@ -1246,15 +1255,21 @@ export class DomEventBinder {
     this.setCursor('default');
   }
 
-  /** Double-click on a link body inserts a waypoint there (label editing is a host concern). */
+  /** Double-click: node → in-place rename; link label → rename; link body → waypoint. */
   onDoubleClick(event: MouseEvent): void {
     const engine = this.engine();
     if (!engine || this.isReadonly()) return;
 
     const { x: worldX, y: worldY } = this.toWorld(event);
-    const hit = this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
+    // Node bodies cover link ink (nodes-layer paints above links-layer), so a
+    // node under the point owns the double-click — same covered-ink rule as the
+    // mousedown ladder's link rung.
+    const nodeUnder = engine.getDiagram()?.getNodeAtPosition(worldX, worldY);
+    const hit = nodeUnder
+      ? null
+      : this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
     if (!hit) {
-      const node = engine.getDiagram()?.getNodeAtPosition(worldX, worldY);
+      const node = nodeUnder;
       if (node) {
         this.host.emit('node:doubleclick', { node, world: { x: worldX, y: worldY } });
         // T10/visio — double-click EDITS the label. InPlaceTextEditor (session +

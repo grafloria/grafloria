@@ -337,6 +337,45 @@ describe('DomEventBinder', () => {
       expect(link.state).toBe('selected');
       expect(h.events.map((e) => e.event)).toContain('edge:click');
     });
+
+    it('a NODE BODY over link ink wins the press — the ink is painted beneath it', () => {
+      // Nodes render in nodes-layer, above links-layer: at a point where a node
+      // covers a link's path the user is touching the node. The link rung used
+      // to claim the press anyway, so a node dropped onto a link's route became
+      // undraggable at the exact spot the user grabbed (visio gate, drag-out).
+      h = harness();
+      applyNodes(h.model, [
+        { id: 'a', position: { x: 100, y: 100 }, size: { width: 100, height: 60 } },
+        { id: 'b', position: { x: 400, y: 100 }, size: { width: 100, height: 60 } },
+        { id: 'c', position: { x: 250, y: 100 }, size: { width: 100, height: 60 } },
+      ]);
+      const link = h.model.getLink('e')!;
+      jest.spyOn(h.interaction, 'getLinkAtPosition').mockReturnValue(link);
+
+      // (300,130) is inside node c AND on the a→b link's straight route.
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 300, clientY: 130 }));
+
+      expect(link.state).not.toBe('selected');
+      expect(h.model.getNode('c')!.isSelected()).toBe(true);
+      expect(h.events.map((e) => e.event)).toContain('node:click');
+    });
+
+    it('double-click over node-covered link ink goes to the NODE, not the waypoint path', () => {
+      h = harness();
+      applyNodes(h.model, [
+        { id: 'a', position: { x: 100, y: 100 }, size: { width: 100, height: 60 } },
+        { id: 'b', position: { x: 400, y: 100 }, size: { width: 100, height: 60 } },
+        { id: 'c', position: { x: 250, y: 100 }, size: { width: 100, height: 60 } },
+      ]);
+      const link = h.model.getLink('e')!;
+      jest
+        .spyOn(h.interaction, 'getLinkHitAtPosition')
+        .mockReturnValue({ link, part: 'body', t: 0.5 } as never);
+
+      h.container.dispatchEvent(mouse('dblclick', { clientX: 300, clientY: 130 }));
+
+      expect(h.events.map((e) => e.event)).toContain('node:doubleclick');
+    });
   });
 
   describe('connection gesture', () => {
