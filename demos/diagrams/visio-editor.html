@@ -28,11 +28,26 @@
   #vs-panel { flex: 0 1 200px; min-width: 150px; }
   @media (max-width: 1500px) { #vs-panel { display: none; } }
   @media (max-width: 1180px) { #vs-rail { flex-basis: 150px; } }
+  #vs-menu {
+    position: absolute; z-index: 30; min-width: 170px; display: none;
+    background: var(--gf-panel, #fff); border: 1px solid var(--gf-line, #e5e7eb);
+    border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.15); padding: 4px;
+    font: 12px ui-sans-serif, system-ui, sans-serif;
+  }
+  #vs-menu.open { display: block; }
+  #vs-menu button {
+    display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0;
+    background: transparent; color: var(--gf-ink, #1e2436); border-radius: 5px;
+    cursor: pointer; font: inherit;
+  }
+  #vs-menu button:hover:not(:disabled) { background: rgba(59,82,217,.1); color: #3B52D9; }
+  #vs-menu button:disabled { opacity: .45; cursor: default; }
 </style>
 <script type="module">
 import {
   render, registerStencils, bindStencilPalette, bindShapeDataPanel, erTable,
   AlignCommand, DistributeCommand, registerTool,
+  BringNodeToFrontCommand, SendNodeToBackCommand,
 } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
@@ -192,6 +207,74 @@ defineDemo({
         },
         onCancel: () => { start = null; clearBox(); },
       });
+    }
+
+    // CONTEXT MENU — right-click gets a menu for whatever is under the pointer
+    // (node / edge / empty canvas). Every entry REUSES an existing command
+    // path — beginLabelEdit, duplicate, removeNode/removeLink, the z-order
+    // commands, paste — so each action is undoable exactly like its toolbar or
+    // keyboard twin. Click-away and Escape dismiss it, like every real menu.
+    {
+      const menu = document.createElement('div');
+      menu.id = 'vs-menu';
+      canvasEl.appendChild(menu);
+      const close = () => menu.classList.remove('open');
+      const item = (label, run, enabled = true) => {
+        const b = document.createElement('button');
+        b.textContent = label;
+        b.disabled = !enabled;
+        b.addEventListener('click', async () => {
+          close();
+          await run();
+          api.renderNow();
+          syncBar();
+        });
+        return b;
+      };
+      const openAt = (cx, cy, entries) => {
+        menu.innerHTML = '';
+        for (const e of entries) menu.appendChild(e);
+        const rect = canvasEl.getBoundingClientRect();
+        menu.style.left = `${cx - rect.left}px`;
+        menu.style.top = `${cy - rect.top}px`;
+        menu.classList.add('open');
+      };
+      canvasEl.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const rect = canvasEl.getBoundingClientRect();
+        const w = api.viewport.clientToWorld(e.clientX, e.clientY, rect);
+        const node = ctx.diagram.getNodeAtPosition(w.x, w.y);
+        const link = node ? null : api.interaction.getLinkAtPosition(w.x, w.y, ctx.engine);
+        if (node) {
+          // Right-click selects what it targets (Visio, Figma, the OS — all
+          // agree), so Duplicate/Delete below act on the node the user sees lit.
+          if (!node.isSelected?.()) { ctx.diagram.selectNode(node); api.renderNow(); syncBar(); }
+          openAt(e.clientX, e.clientY, [
+            item('Rename', () => api.beginLabelEdit({ type: 'node', nodeId: node.id })),
+            item('Duplicate', () => ctx.engine.duplicate()),
+            item('Delete', () => ctx.engine.removeNode(node.id)),
+            item('Bring to front', () => ctx.engine.commandManager.execute(new BringNodeToFrontCommand(node.id))),
+            item('Send to back', () => ctx.engine.commandManager.execute(new SendNodeToBackCommand(node.id))),
+          ]);
+        } else if (link) {
+          openAt(e.clientX, e.clientY, [
+            // Rename edits an EXISTING label — either dialect: a positioned
+            // labels[] entry or the display label (`edges: [{label}]`). A
+            // truly unlabeled edge shows the entry disabled rather than
+            // silently doing nothing.
+            item('Rename label', () => api.beginLabelEdit({ type: 'link-label', linkId: link.id, labelIndex: 0 }),
+              (link.labels?.length ?? 0) > 0 || !!link.getLabel?.()),
+            item('Delete', () => ctx.engine.removeLink(link.id)),
+          ]);
+        } else {
+          openAt(e.clientX, e.clientY, [
+            item('Select all', () => { ctx.diagram.selectAll(); }),
+            item('Paste', () => ctx.engine.paste(), ctx.engine.hasClipboardData?.() === true),
+          ]);
+        }
+      });
+      document.addEventListener('pointerdown', (e) => { if (!menu.contains(e.target)) close(); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
     }
 
     // T3 — the align/distribute toolbar over the live selection.
