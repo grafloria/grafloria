@@ -54,6 +54,11 @@ jobs:
       - run: node demos/e2e/variant-run.mjs vue
       - run: node demos/e2e/interaction-run.mjs
       - run: node demos/e2e/table-editing-run.mjs
+      # The master-sheet covenant: every stencil master placed and measured as
+      # PAINTED — ink present and inside its declared bounds, caption visible,
+      # unclipped and untruncated (inside the silhouette or fully below it).
+      # A master that renders garbage fails the user in the first minute.
+      - run: node demos/e2e/master-sheet-run.mjs
       # The Visio-editor covenant: every advertised gesture (marquee, nudge,
       # duplicate, F2/type-to-replace, context menu, port-drag connect,
       # drag-into-container, edge-label edit, palette ghost, toolbar) driven
