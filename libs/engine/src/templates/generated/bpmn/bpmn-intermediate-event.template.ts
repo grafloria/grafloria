@@ -43,6 +43,7 @@ export const bpmnIntermediateEventTemplate: NodeTemplate = {
       "strokeWidth": 3,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"bpmn-intermediate-event-content\">\n          <div class=\"node-label\">{{data.label || 'Intermediate Event'}}</div>\n        </div>",

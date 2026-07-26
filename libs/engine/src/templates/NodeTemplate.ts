@@ -347,6 +347,15 @@ export interface NodeStructureDefinition {
    */
   shape?: ShapeConfig;
 
+  /**
+   * Where the node's caption paints. `'inside'` (default) centres it in the
+   * shape's inner rect; `'below'` paints it centred UNDER the silhouette — the
+   * Visio/BPMN convention for glyph-sized masters (event circles, gateway
+   * diamonds, connectors, fork/join bars) whose caption cannot fit inside.
+   * Carried to the node as `metadata.labelPlacement`; the renderer consumes it.
+   */
+  labelPlacement?: 'inside' | 'below';
+
   layout?: LayoutConfig;
 
   ports?: PortsConfig;

@@ -43,6 +43,7 @@ export const bpmnExclusiveGatewayTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"bpmn-exclusive-gateway-content\">\n          <div class=\"node-label\">{{data.label || 'Exclusive Gateway'}}</div>\n        </div>",

@@ -30,8 +30,8 @@ export const umlJoinTemplate: NodeTemplate = {
   "structure": {
     "type": "uml:join",
     "size": {
-      "width": 120,
-      "height": 80,
+      "width": 100,
+      "height": 10,
       "minWidth": 120,
       "maxWidth": 400,
       "minHeight": 80,
@@ -44,6 +44,7 @@ export const umlJoinTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"uml-join-content\">\n          <div class=\"node-label\">{{data.label || 'Join'}}</div>\n        </div>",

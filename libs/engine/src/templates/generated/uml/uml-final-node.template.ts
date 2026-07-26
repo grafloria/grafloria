@@ -43,6 +43,7 @@ export const umlFinalNodeTemplate: NodeTemplate = {
       "strokeWidth": 4,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"uml-final-node-content\">\n          <div class=\"node-label\">{{data.label || 'Final Node'}}</div>\n        </div>",
