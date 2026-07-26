@@ -83,12 +83,15 @@ import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 //          context where snapping is what a user expects)
 defineDemo({
   name: 'Visio-style editor',
-  blurb: 'The whole authoring surface: drop a shape OR a real database table, edit its columns in the canvas and in the properties panel, snap and align, drop into containers — every edit undoable.',
+  blurb: 'The whole authoring surface: a page grid with snap, zoom controls and a minimap, drop a shape OR a real database table, group, align, drop into containers — every edit undoable.',
   howTo: [
     'Drag a shape from the left rail — a ghost of it rides your cursor, and it drops centred where you release, immediately live.',
     'Search "entity" and drag it on: you get a REAL table — header, PK badge, typed columns, ＋ add column, per-row ×. Click the table and the right panel edits its properties; click a COLUMN and the panel grows a Column section.',
     'Hover a shape and DRAG FROM A PORT to another shape: a connector is drawn (release anywhere on the target). Drag a shape near another for snap guides; drop it inside the "Fulfilment" container and it JOINS — the frame carries it along.',
-    'Rubber-band empty canvas to multi-select (Shift adds). Arrows nudge the selection — Shift makes it ×10. Ctrl/⌘+D duplicates. F2 — or simply typing — renames the selected shape; double-click an edge label to edit it.',
+    'The page grid is a Visio page: faint 20px lines, heavier every 5. ▦ Grid in the bar hides it; ⌗ Snap quantises shape and edge-point drags to it (alignment guides still win per axis).',
+    'Zoom lives bottom-right: − and ＋ step, the % readout resets to 100% on click, ⤢ fits the whole diagram (Ctrl/⌘ + = / − / 0, Ctrl/⌘+Shift+F). The minimap above it mirrors the scene live — click it to jump the camera; ◱ Minimap in the bar tucks it away.',
+    'Rubber-band empty canvas to multi-select (Shift adds; Escape cancels the band). Then Ctrl/⌘+G bundles the selection into a container that drags as one — Ctrl/⌘+Shift+G dissolves it. ⊞ Group / ⊟ Ungroup in the bar do the same, disabled until the selection qualifies. One undo takes back either.',
+    'Arrows nudge the selection — Shift makes it ×10. Ctrl/⌘+D duplicates. F2 — or simply typing — renames the selected shape; double-click an edge label to edit it.',
     'Right-click a shape, an edge or the canvas: Rename, Duplicate, Delete, Bring to front / Send to back, Select all, Paste. Align / Distribute / Undo / Redo live in the bar. Ctrl/⌘+Z takes back any of it.',
   ],
   reactflow: null,
