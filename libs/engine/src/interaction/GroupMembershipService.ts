@@ -265,15 +265,22 @@ export class GroupMembershipService {
     }
   }
 
-  /** Resolve a group's screen rectangle for spatial indexing / hit-testing. */
+  /**
+   * Resolve a group's screen rectangle for spatial indexing / hit-testing.
+   *
+   * The PAINTED frame (explicit position + size) must win over the derived
+   * member `bounds`, exactly as GroupModel.getOuterBounds() orders them. This
+   * method used to prefer `bounds` — which handleNodeDragEnd overwrites with
+   * the tight member bbox after every membership change — so once anything was
+   * dragged in or out, the drop target silently shrank from the frame the user
+   * SEES to an invisible box around the remaining members, and drops in the
+   * frame's empty margin stopped adopting (visio audit, empirically
+   * reproduced: drag-out worked, the next drag-in near the frame edge did
+   * nothing).
+   */
   private groupRect(group: GroupModel): { x: number; y: number; width: number; height: number } {
-    if (group.bounds) {
-      return {
-        x: group.bounds.x,
-        y: group.bounds.y,
-        width: group.bounds.width,
-        height: group.bounds.height,
-      };
+    if (typeof group.getOuterBounds === 'function') {
+      return group.getOuterBounds();
     }
     if (group.size) {
       return {
@@ -281,6 +288,14 @@ export class GroupMembershipService {
         y: group.position.y,
         width: group.size.width,
         height: group.size.height,
+      };
+    }
+    if (group.bounds) {
+      return {
+        x: group.bounds.x,
+        y: group.bounds.y,
+        width: group.bounds.width,
+        height: group.bounds.height,
       };
     }
     return { x: group.position.x, y: group.position.y, width: 0, height: 0 };

@@ -168,8 +168,12 @@ defineDemo({
     const placed = await ctx.palette.place('flowchart-process', { x: 430, y: 470 });
     check(!!placed && m.getNodes().length === before + 1, 'placing a master from the palette failed');
 
-    // 3. T8 — that drop landed inside the "Process" container's frame, so a real
-    //    drag-drop there would adopt it. Prove the adoption path directly.
+    // 3. T8 — that drop landed inside the "Fulfilment" container's frame. The
+    //    REAL pointer-drag adoption is proven by demos/e2e/visio-editor-run.mjs
+    //    (a gesture gate; a direct service call once masked a broken drag).
+    //    This service-level check stays because it pins the engine contract in
+    //    the browser bundle: the hit-rect is the PAINTED frame, not the tight
+    //    member bbox.
     const svc = await (async () => {
       const n = m.getNode(placed);
       // the node sits inside the frame; commit membership the way the binder does
