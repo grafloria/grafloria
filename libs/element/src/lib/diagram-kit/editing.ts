@@ -97,7 +97,25 @@ export function dismissInlineEditor(): void {
   open?.cancel();
 }
 
-function openInlineEditor(api: EditApi, targetEl: Element, value: string, onCommit: (next: string) => void): HTMLInputElement {
+/** First occurrence wins, order preserved. */
+function dedupe(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+/** SQL-ish column types offered when editing a type cell. */
+export const ER_TYPE_SUGGESTIONS = [
+  'uuid', 'int', 'bigint', 'smallint', 'serial', 'decimal', 'numeric', 'real', 'double',
+  'varchar', 'text', 'char', 'boolean', 'date', 'time', 'timestamp', 'timestamptz',
+  'json', 'jsonb', 'bytea', 'enum',
+];
+
+function openInlineEditor(
+  api: EditApi,
+  targetEl: Element,
+  value: string,
+  onCommit: (next: string) => void,
+  suggestions?: readonly string[]
+): HTMLInputElement {
   const container = api.container;
   const doc = container.ownerDocument;
   const input = doc.createElement('input');
@@ -105,6 +123,22 @@ function openInlineEditor(api: EditApi, targetEl: Element, value: string, onComm
   input.value = value;
   input.spellcheck = false;
   input.setAttribute('autocomplete', 'off');
+
+  // A type is a choice, not free prose. `<datalist>` gives a real combobox —
+  // the browser filters the list AS YOU TYPE and still allows a value that is
+  // not in it, which is what a schema editor needs (custom/domain types).
+  let listEl: HTMLDataListElement | null = null;
+  if (suggestions?.length) {
+    listEl = doc.createElement('datalist');
+    listEl.id = `axk-types-${Math.random().toString(36).slice(2, 8)}`;
+    for (const t of suggestions) {
+      const opt = doc.createElement('option');
+      opt.value = t;
+      listEl.appendChild(opt);
+    }
+    doc.body.appendChild(listEl);
+    input.setAttribute('list', listEl.id);
+  }
 
   const rect = targetEl.getBoundingClientRect();
   const zoom = api.viewport?.getZoom?.() ?? 1;
@@ -115,7 +149,13 @@ function openInlineEditor(api: EditApi, targetEl: Element, value: string, onComm
     // World-space: place the input at the target's world position; the layer's
     // camera transform scales it, so its px width is divided by the zoom.
     const world = api.viewport.clientToWorld(rect.left, rect.top, container.getBoundingClientRect());
-    input.style.cssText = `width:${rect.width / zoom}px;height:${rect.height / zoom}px;`;
+    // A cell can be far narrower than the value you are about to pick — the
+    // type cell is sized to "uuid", which left a 23px-wide combobox nobody
+    // could use. Give the editor a comfortable floor while still growing with
+    // the cell.
+    const minW = suggestions?.length ? 132 : 72;
+    const w = Math.max(rect.width / zoom, minW);
+    input.style.cssText = `width:${w}px;height:${rect.height / zoom}px;`;
     try {
       portal = createViewportPortal(layer, { x: world.x, y: world.y, className: 'axk-edit-portal' });
       portal.element.appendChild(input);
@@ -136,6 +176,7 @@ function openInlineEditor(api: EditApi, targetEl: Element, value: string, onComm
   const self: { cancel: () => void } = { cancel: () => undefined };
   const cleanup = () => {
     if (activeEditor === self) activeEditor = null;
+    listEl?.remove();
     if (portal) portal.dispose();
     else input.remove();
   };
@@ -211,10 +252,19 @@ function beginRename(api: EditApi, target: Element): void {
   if (typeEl && rowIndex >= 0) {
     const ent = kitEntity(api, nodeId);
     if (!ent) return;
-    openInlineEditor(api, typeEl, ent.columns[rowIndex]?.type ?? '', (type) => {
-      const columns = ent.columns.map((c, i) => (i === rowIndex ? { ...c, type } : c));
-      void updateEntity(api as never, nodeId, { columns });
-    });
+    openInlineEditor(
+      api,
+      typeEl,
+      ent.columns[rowIndex]?.type ?? '',
+      (type) => {
+        const columns = ent.columns.map((c, i) => (i === rowIndex ? { ...c, type } : c));
+        void updateEntity(api as never, nodeId, { columns });
+      },
+      // Offer the types already used in THIS diagram first, then the standards —
+      // a schema is usually internally consistent, so what you just typed
+      // elsewhere is the likeliest next value.
+      dedupe([...ent.columns.map((c) => c.type).filter(Boolean) as string[], ...ER_TYPE_SUGGESTIONS])
+    );
     return;
   }
 

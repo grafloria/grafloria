@@ -114,6 +114,11 @@ defineDemo({
     // A container to drop shapes into (T8).
     const box = await ctx.engine.addGroup({ name: 'Fulfilment' });
     box.setFrame({ x: 300, y: 290, width: 240, height: 230 });
+    // MEMBERSHIP, not just overlap. A frame drawn around two nodes does not
+    // contain them — dragging it would leave them behind, which reads as a bug
+    // because the picture says otherwise. Make the containment real.
+    await ctx.engine.addToGroup(box.id, 'pick');
+    await ctx.engine.addToGroup(box.id, 'ship');
     ctx.box = box;
 
     // T3 — the align/distribute toolbar over the live selection.
