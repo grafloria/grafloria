@@ -68,6 +68,7 @@
   <url><loc>https://grafloria.com/demos/layout/off-thread-layout.html</loc><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/misc/download-image.html</loc><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/misc/editable-round-trip.html</loc><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/misc/drawio-import.html</loc><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/misc/mermaid-text.html</loc><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/misc/mermaid-viewer.html</loc><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/misc/minimap-and-controls.html</loc><priority>0.6</priority></url>

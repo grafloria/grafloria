@@ -680,6 +680,16 @@
     "error": null
   },
   {
+    "rel": "misc/drawio-import.html",
+    "slug": "misc__drawio-import",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/misc__drawio-import.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/misc__drawio-import.after.png",
+    "reactflow": null,
+    "pro": false,
+    "pageErrors": [],
+    "error": null
+  },
+  {
     "rel": "misc/editable-round-trip.html",
     "slug": "misc__editable-round-trip",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/misc__editable-round-trip.boot.png",

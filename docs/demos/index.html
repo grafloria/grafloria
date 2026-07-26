@@ -28,12 +28,6 @@
   .topbar nav { margin-left:auto; display:flex; gap:20px; font-size:14px; font-weight:500; }
   .topbar nav a { text-decoration:none; }
   .topbar nav a:hover { text-decoration:underline; }
-  /* Five destinations do not fit a phone in one row — wrap rather than push the
-     page into a horizontal scroll. Same rule as the rest of the site. */
-  @media (max-width: 640px) {
-    .topbar { flex-wrap:wrap; }
-    .topbar nav { margin-left:0; width:100%; flex-wrap:wrap; gap:8px 16px; }
-  }
   header.hero { padding:40px 28px 26px; border-bottom:1px solid var(--gf-line); }
   h1 { margin:0 0 8px; font-size:30px; letter-spacing:-.5px; }
   .lede { margin:0; max-width:70ch; color:var(--gf-mut); }
@@ -81,11 +75,10 @@
   <img src="shell/logo.svg" alt="">
   <a class="name" href="https://grafloria.com">grafloria</a>
   <nav>
-    <a href="./" aria-current="page">Demos</a>
-    <a href="https://grafloria.com/mermaid/">Mermaid</a>
-    <a href="https://grafloria.com/compare/">Compare</a>
     <a href="https://github.com/grafloria/grafloria">GitHub</a>
     <a href="https://www.npmjs.com/org/grafloria">npm</a>
+    <a href="https://grafloria.com/compare/">Compare</a>
+    <a href="https://grafloria.com">grafloria.com</a>
   </nav>
 </div>
 <header class="hero">
@@ -94,7 +87,7 @@
   public embed with real pointer events and asserts a consequence; a broken demo fails CI.
   If it's in the gallery, it works.</p>
   <div class="scoreboard">
-    <span class="stat"><b>109</b> demos</span>
+    <span class="stat"><b>110</b> demos</span>
     <span class="stat"><b>12</b> categories</span>
     <span class="stat"><b>MIT</b> — every one of them</span>
     <a class="stat link" href="https://grafloria.com/compare/">how Grafloria compares →</a>
@@ -689,12 +682,17 @@
       </section>
 
       <section>
-        <h2>Export &amp; misc <span class="count">8</span></h2>
+        <h2>Export &amp; misc <span class="count">9</span></h2>
         <div class="grid">
         <a class="card" href="misc/download-image.html" style="--cat:#64748b">
           <div class="card-thumb"><img src="thumbs/misc/download-image.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name">Download image<span class="card-go">→</span></div>
           <div class="card-blurb">PNG and SVG straight from the VNode tree — labels, arrowheads and shadows included — and the raster is provably not blank and not black.</div>
+        </a>
+        <a class="card" href="misc/drawio-import.html" style="--cat:#64748b">
+          <div class="card-thumb"><img src="thumbs/misc/drawio-import.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name">draw.io import<span class="card-go">→</span></div>
+          <div class="card-blurb">Import .drawio files — plain XML or the default compressed save — onto live engine models: shapes, colours, swimlane containers with real membership, edge labels. Every dropped construct is a named warning.</div>
         </a>
         <a class="card" href="misc/editable-round-trip.html" style="--cat:#64748b">
           <div class="card-thumb"><img src="thumbs/misc/editable-round-trip.png" loading="lazy" alt="" width="600" height="360"></div>
@@ -780,7 +778,7 @@
         <a class="card" href="diagrams/visio-editor.html" style="--cat:#9333ea">
           <div class="card-thumb"><img src="thumbs/diagrams/visio-editor.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name">Visio-style editor<span class="card-go">→</span></div>
-          <div class="card-blurb">The whole authoring surface: stencil palette, drag-to-place, snap guides on drag and resize, containers that adopt what you drop in them, align &amp; distribute, in-place rename, and a shape-data panel — every edit undoable.</div>
+          <div class="card-blurb">The whole authoring surface: drop a shape OR a real database table, edit its columns in the canvas and in the properties panel, snap and align, drop into containers — every edit undoable.</div>
         </a>
         </div>
       </section>

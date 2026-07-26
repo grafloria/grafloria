@@ -3144,7 +3144,7 @@ var require_bk = __commonJS({
       });
     }
     function balance(xss, align) {
-      return util.mapValues(xss.ul, (num4, v) => {
+      return util.mapValues(xss.ul, (num5, v) => {
         if (align) {
           return xss[align.toLowerCase()][v];
         } else {
@@ -110359,11 +110359,9 @@ var LayoutManager = class {
         };
       }
       const oldPositions = /* @__PURE__ */ new Map();
-      if (config?.animate) {
-        this.diagram.getNodes().forEach((node) => {
-          oldPositions.set(node.id, { ...node.position });
-        });
-      }
+      this.diagram.getNodes().forEach((node) => {
+        oldPositions.set(node.id, { ...node.position });
+      });
       const positions = this.currentAlgorithm.reLayout(this.diagram, enhancedConfig);
       const lockedNodes = /* @__PURE__ */ new Set();
       this.diagram.getNodes().forEach((node) => {
@@ -110386,7 +110384,7 @@ var LayoutManager = class {
         });
       }
       this.optimizeConnections();
-      this.recalculateLinkPaths();
+      this.invalidateRoutesForMovedNodes(oldPositions);
       this.emitEvent({
         type: "layout:completed",
         algorithmType: this.currentAlgorithm.getType(),
@@ -110436,6 +110434,43 @@ var LayoutManager = class {
         }
       };
       requestAnimationFrame(animate);
+    });
+  }
+  /**
+   * Invalidate the routed polyline of every link whose endpoint nodes moved.
+   *
+   * Layout moves NODES; each link keeps the polyline it was routed on before.
+   * Edge labels are placed by walking that polyline (renderer LabelRenderer via
+   * link.getPointAtPosition), so a stale route strands labels at PRE-layout
+   * midpoints — observed live with labels sitting off-canvas at the old world
+   * coordinates. `setPoints([])` is the proven trigger for a re-route on the
+   * next paint (and it marks the link dirty, busting the VNode cache).
+   *
+   * Manual waypoints are cleared with the route — they were authored against
+   * the pre-layout coordinates (same rule as setPathType / setRouter).
+   */
+  invalidateRoutesForMovedNodes(before) {
+    const moved = /* @__PURE__ */ new Set();
+    this.diagram.getNodes().forEach((node) => {
+      const prev = before.get(node.id);
+      if (!prev || prev.x !== node.position.x || prev.y !== node.position.y) {
+        moved.add(node.id);
+      }
+    });
+    if (moved.size === 0) return;
+    const nodeIdForPort = (portId) => this.diagram.getNodes().find((n3) => n3.getPorts().some((p) => p.id === portId))?.id;
+    this.diagram.getLinks().forEach((link) => {
+      const sourceId = link.sourceNodeId ?? nodeIdForPort(link.sourcePortId);
+      const targetId = link.targetNodeId ?? nodeIdForPort(link.targetPortId);
+      if (!(sourceId && moved.has(sourceId)) && !(targetId && moved.has(targetId))) {
+        return;
+      }
+      if (link.points.length > 0) {
+        link.setPoints([]);
+      }
+      if (link.getMetadata("hasManualWaypoints") === true) {
+        link.setMetadata("hasManualWaypoints", false);
+      }
     });
   }
   /**
@@ -133158,6 +133193,7 @@ var DiagramEngine = class {
       throw new Error(`Unknown layout '${name}'. Registered layouts: ${available}`);
     }
     const seed = options.seed ?? DEFAULT_LAYOUT_SEED;
+    const positionsBeforeLayout = this.snapshotNodePositions();
     const hasGroups = this.diagram.getGroups().length > 0;
     if ((options.nested ?? hasGroups) && hasGroups) {
       const result2 = await new CompoundLayoutService(this.diagram, {
@@ -133168,6 +133204,7 @@ var DiagramEngine = class {
         gridGap: options.groupSpacing,
         layoutOptions: { ...options, seed }
       }).layout();
+      this.invalidateStaleLinkRoutes(positionsBeforeLayout);
       return {
         nodePositions: result2.nodePositions,
         bounds: result2.bounds,
@@ -133193,6 +133230,7 @@ var DiagramEngine = class {
     if (!registered.adapter) {
       const result2 = await registered.apply(this.diagram, { ...options, seed });
       this.commitLayoutPositions(result2.nodePositions);
+      this.invalidateStaleLinkRoutes(positionsBeforeLayout);
       return {
         ...result2,
         algorithm: name,
@@ -133216,6 +133254,7 @@ var DiagramEngine = class {
       }
     );
     this.commitLayoutPositions(result.nodePositions);
+    this.invalidateStaleLinkRoutes(positionsBeforeLayout);
     return { ...result, algorithm: name, seed };
   }
   /**
@@ -133267,15 +133306,69 @@ var DiagramEngine = class {
       ...settled,
       savedByAlignment: Math.max(0, naive.total - settled.total)
     };
+    const beforeAlign = this.snapshotNodePositions();
     for (const [id, p] of aligned) {
       this.diagram.getNode(id)?.setPosition(p.x, p.y);
     }
+    this.invalidateStaleLinkRoutes(beforeAlign);
     return {
       ...result,
       nodePositions: aligned,
       movement,
       tween: planTween(before, aligned)
     };
+  }
+  /** Every node's current position, keyed by id — the pre-layout baseline. */
+  snapshotNodePositions() {
+    const snapshot = /* @__PURE__ */ new Map();
+    for (const node of this.diagram?.getNodes() ?? []) {
+      snapshot.set(node.id, { x: node.position.x, y: node.position.y });
+    }
+    return snapshot;
+  }
+  /**
+   * THE FIX for the stale-polyline bug: layout moves NODES, but each link keeps
+   * the polyline it was routed on before. The renderer treats a non-empty
+   * `link.points` as painted geometry and edge LABELS are placed by walking it
+   * (LabelRenderer via `link.getPointAtPosition`) — so after `engine.layout()`
+   * the labels sat at PRE-layout midpoints, observed live as "yes"/"no"
+   * stranded off-canvas at the old world coordinates while the nodes moved.
+   *
+   * Emptying the polyline is the canonical "re-route me" state: the renderer's
+   * frame pre-pass recomputes the route from the CURRENT node/port geometry on
+   * the next paint, and `setPoints` marks the link dirty so the cached VNode
+   * cannot be reused. Only links whose endpoint nodes actually MOVED are
+   * touched — an anchored subgraph's links keep their (still valid) routes.
+   *
+   * Manual waypoints are cleared with the route, same as `setPathType` /
+   * `setRouter` do: they were authored against the pre-layout coordinates, and
+   * an empty polyline with the manual flag still set would send the renderer
+   * down its keep-the-interior-waypoints branch with no interior to keep.
+   */
+  invalidateStaleLinkRoutes(before) {
+    if (!this.diagram) return;
+    const moved = /* @__PURE__ */ new Set();
+    for (const node of this.diagram.getNodes()) {
+      const prev = before.get(node.id);
+      if (!prev || prev.x !== node.position.x || prev.y !== node.position.y) {
+        moved.add(node.id);
+      }
+    }
+    if (moved.size === 0) return;
+    const nodeIdForPort = (portId) => this.diagram.getNodes().find((n3) => n3.getPorts().some((p) => p.id === portId))?.id;
+    for (const link of this.diagram.getLinks()) {
+      const sourceId = link.sourceNodeId ?? nodeIdForPort(link.sourcePortId);
+      const targetId = link.targetNodeId ?? nodeIdForPort(link.targetPortId);
+      if (!(sourceId && moved.has(sourceId)) && !(targetId && moved.has(targetId))) {
+        continue;
+      }
+      if (link.points.length > 0) {
+        link.setPoints([]);
+      }
+      if (link.getMetadata("hasManualWaypoints") === true) {
+        link.setMetadata("hasManualWaypoints", false);
+      }
+    }
   }
   /**
    * Commit computed positions onto the real nodes.
@@ -134660,6 +134753,112 @@ var Parser = class {
   }
 };
 
+// libs/engine/src/dsl/mermaid/layout.ts
+function assignRanks2(ids, edges) {
+  const idSet = new Set(ids);
+  const out = /* @__PURE__ */ new Map();
+  for (const id of ids) out.set(id, []);
+  for (const edge of edges) {
+    if (!idSet.has(edge.from) || !idSet.has(edge.to)) continue;
+    if (edge.from === edge.to) continue;
+    out.get(edge.from).push(edge);
+  }
+  const GREY = 1;
+  const BLACK = 2;
+  const colour = /* @__PURE__ */ new Map();
+  const forward = /* @__PURE__ */ new Map();
+  for (const id of ids) forward.set(id, []);
+  for (const root of ids) {
+    if (colour.has(root)) continue;
+    const stack = [{ id: root, next: 0 }];
+    colour.set(root, GREY);
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      const outgoing = out.get(frame.id);
+      if (frame.next < outgoing.length) {
+        const edge = outgoing[frame.next++];
+        const state = colour.get(edge.to);
+        if (state === GREY) continue;
+        forward.get(frame.id).push(edge);
+        if (state === void 0) {
+          colour.set(edge.to, GREY);
+          stack.push({ id: edge.to, next: 0 });
+        }
+      } else {
+        colour.set(frame.id, BLACK);
+        stack.pop();
+      }
+    }
+  }
+  const incoming = /* @__PURE__ */ new Map();
+  for (const id of ids) incoming.set(id, 0);
+  for (const bucket of forward.values()) {
+    for (const edge of bucket) incoming.set(edge.to, incoming.get(edge.to) + 1);
+  }
+  const ranks = /* @__PURE__ */ new Map();
+  const queue = ids.filter((id) => incoming.get(id) === 0);
+  for (const id of queue) ranks.set(id, 0);
+  for (let head = 0; head < queue.length; head++) {
+    const id = queue[head];
+    const rank = ranks.get(id);
+    for (const edge of forward.get(id)) {
+      const proposed = rank + 1;
+      if ((ranks.get(edge.to) ?? -1) < proposed) ranks.set(edge.to, proposed);
+      const remaining = incoming.get(edge.to) - 1;
+      incoming.set(edge.to, remaining);
+      if (remaining === 0) queue.push(edge.to);
+    }
+  }
+  for (const id of ids) if (!ranks.has(id)) ranks.set(id, 0);
+  return ranks;
+}
+function placeByRank(nodes, ranks, options = {}) {
+  if (nodes.length === 0) return /* @__PURE__ */ new Map();
+  const direction = (options.direction ?? "TB").toUpperCase();
+  const vertical = direction !== "LR" && direction !== "RL";
+  const reversed = direction === "BT" || direction === "RL";
+  const start = options.start ?? { x: 100, y: 100 };
+  const rankGap = options.rankGap ?? 70;
+  const crossGap = options.crossGap ?? 50;
+  const along = (n3) => vertical ? n3.size.height : n3.size.width;
+  const across = (n3) => vertical ? n3.size.width : n3.size.height;
+  const bands = /* @__PURE__ */ new Map();
+  for (const node of nodes) {
+    const rank = ranks.get(node.id) ?? 0;
+    const band = bands.get(rank) ?? [];
+    band.push(node);
+    bands.set(rank, band);
+  }
+  let order = [...bands.keys()].sort((a, b) => a - b);
+  if (reversed) order = order.reverse();
+  const crossTotal = (band) => band.reduce((sum, n3) => sum + across(n3), 0) + (band.length - 1) * crossGap;
+  const widest = Math.max(...order.map((r) => crossTotal(bands.get(r))));
+  const positions = /* @__PURE__ */ new Map();
+  let alongCursor = vertical ? start.y : start.x;
+  for (const rank of order) {
+    const band = bands.get(rank);
+    const bandDepth = Math.max(...band.map(along));
+    let crossCursor = (vertical ? start.x : start.y) + (widest - crossTotal(band)) / 2;
+    for (const node of band) {
+      const alongPos = alongCursor + (bandDepth - along(node)) / 2;
+      positions.set(
+        node.id,
+        vertical ? { x: crossCursor, y: alongPos } : { x: alongPos, y: crossCursor }
+      );
+      crossCursor += across(node) + crossGap;
+    }
+    alongCursor += bandDepth + rankGap;
+  }
+  return positions;
+}
+function rankLayout(nodes, edges, options = {}) {
+  return placeByRank(
+    nodes,
+    assignRanks2(nodes.map((n3) => n3.id), edges),
+    options
+  );
+}
+
 // libs/engine/src/dsl/transformer/ASTTransformer.ts
 var ASTTransformer = class {
   constructor() {
@@ -134698,8 +134897,54 @@ var ASTTransformer = class {
         this.createLink(statement, diagram);
       }
     }
+    if (autoPosition) {
+      this.applyRankPlacement(diagram, startPosition);
+    }
     this.applyDirectives(this.flattenStatements(ast.statements), diagram);
     return diagram;
+  }
+  /**
+   * Rank-based placement over the whole parsed graph (Phase 2.5).
+   *
+   * Only nodes THIS transform auto-positioned (`this.nodePositions`) move — a
+   * guard, not a hope: anything with an explicit position (restored later by
+   * the sidecar, or added by a caller) must never be rearranged by a parse.
+   * Synchronous and deterministic; see dsl/mermaid/layout.ts.
+   */
+  applyRankPlacement(diagram, startPosition) {
+    const placeable = diagram.getNodes().filter((node) => this.nodePositions.has(node.id));
+    if (placeable.length === 0) return;
+    const ids = placeable.map((n3) => n3.id);
+    const idSet = new Set(ids);
+    const edges = diagram.getLinks().filter(
+      (l) => l.sourceNodeId !== void 0 && l.targetNodeId !== void 0 && idSet.has(l.sourceNodeId) && idSet.has(l.targetNodeId)
+    ).map((l) => ({ from: l.sourceNodeId, to: l.targetNodeId }));
+    const direction = diagram.getMetadata("direction") ?? "TD";
+    const ranks = assignRanks2(ids, edges);
+    const positions = placeByRank(placeable, ranks, {
+      direction,
+      start: startPosition,
+      // Bands are size-aware, so these are true GAPS — derived from the same
+      // nodeSpacing constant the chain-wrap used (150 ⇒ 75 / 50 by default).
+      rankGap: this.nodeSpacing / 2,
+      crossGap: this.nodeSpacing / 3
+    });
+    for (const node of placeable) {
+      const position = positions.get(node.id);
+      if (!position) continue;
+      node.setPosition(position.x, position.y);
+      this.nodePositions.set(node.id, position);
+    }
+    const contextDirection = { TD: "TB", TB: "TB", BT: "BT", LR: "LR", RL: "RL" }[direction.toUpperCase()];
+    diagram.getLayoutManager().optimizeConnections({
+      ...contextDirection ? { direction: contextDirection } : {},
+      ranks
+    });
+    for (const link of diagram.getLinks()) {
+      if (link.sourceNodeId !== void 0 && link.targetNodeId !== void 0 && idSet.has(link.sourceNodeId) && idSet.has(link.targetNodeId) && link.points.length > 0) {
+        link.setPoints([]);
+      }
+    }
   }
   /**
    * Process a single statement
@@ -136459,18 +136704,49 @@ var CARD_W = 190;
 var HEAD_H = 28;
 var ROW_H = 25;
 var SLACK = 9;
+var ONE_SIDE = /* @__PURE__ */ new Set([
+  "one",
+  "zero-or-one"
+]);
+function erRankEdges(model) {
+  const edges = [];
+  for (const rel of model.relationships) {
+    const { tail, head } = erMarkers(rel);
+    const fromIsReferenced = ONE_SIDE.has(tail) && !ONE_SIDE.has(head);
+    const toIsReferenced = ONE_SIDE.has(head) && !ONE_SIDE.has(tail);
+    edges.push(
+      toIsReferenced && !fromIsReferenced ? { from: rel.to, to: rel.from } : { from: rel.from, to: rel.to }
+    );
+  }
+  return edges;
+}
+var erEntityHeight = (entity) => HEAD_H + entity.attributes.length * ROW_H + SLACK;
 function erModelToDiagram(model) {
   const diagram = new DiagramModel("ER Diagram");
   diagram.setMetadata("diagramType", "erDiagram");
   if (model.direction) diagram.setMetadata("direction", model.direction);
   diagram.setMetadata("erSpec", erSpecFrom(model));
+  const positions = rankLayout(
+    model.entities.map((e) => ({
+      id: e.id,
+      size: { width: CARD_W, height: erEntityHeight(e) }
+    })),
+    erRankEdges(model),
+    {
+      direction: model.direction ?? "TB",
+      start: { x: 60, y: 60 },
+      rankGap: 90,
+      crossGap: 120
+      // room for the crow's-foot markers and edge labels
+    }
+  );
   const nodes = /* @__PURE__ */ new Map();
-  model.entities.forEach((entity, i) => {
+  model.entities.forEach((entity) => {
     const node = new NodeModel({
       id: entity.id,
       type: "er:entity",
-      position: { x: 60 + i % 3 * 340, y: 60 + Math.floor(i / 3) * 280 },
-      size: { width: CARD_W, height: HEAD_H + entity.attributes.length * ROW_H + SLACK }
+      position: positions.get(entity.id) ?? { x: 60, y: 60 },
+      size: { width: CARD_W, height: erEntityHeight(entity) }
     });
     node.setLabel(entity.name);
     node.setMetadata("erEntity", entity);
@@ -136764,18 +137040,43 @@ function classHeight(def) {
   const rows = def.attributes.length + def.methods.length;
   return 34 + (def.stereotype ? 14 : 0) + rows * 20 + 24;
 }
+function classRankEdges(model) {
+  const edges = [];
+  for (const rel of model.relationships) {
+    const { kind, reversed } = umlRelationKind(rel.operator);
+    if (kind !== "inheritance" && kind !== "realization") continue;
+    const child = reversed ? rel.to : rel.from;
+    const parent = reversed ? rel.from : rel.to;
+    edges.push({ from: parent, to: child });
+  }
+  return edges;
+}
 function classModelToDiagram(model) {
   const diagram = new DiagramModel("UML Class Diagram");
   diagram.setMetadata("diagramType", "classDiagram");
   if (model.direction) diagram.setMetadata("direction", model.direction);
   diagram.setMetadata("umlSpec", umlSpecFrom(model));
   if (model.notes.length) diagram.setMetadata("umlNotes", model.notes);
+  const positions = rankLayout(
+    model.classes.map((def) => ({
+      id: def.id,
+      size: { width: CARD_W2, height: classHeight(def) }
+    })),
+    classRankEdges(model),
+    {
+      direction: model.direction ?? "TB",
+      start: { x: 80, y: 60 },
+      rankGap: 80,
+      crossGap: 110
+      // room for multiplicity chips and edge labels
+    }
+  );
   const nodes = /* @__PURE__ */ new Map();
-  model.classes.forEach((def, i) => {
+  model.classes.forEach((def) => {
     const node = new NodeModel({
       id: def.id,
       type: "uml:class",
-      position: { x: 80 + i % 3 * 320, y: 60 + Math.floor(i / 3) * 260 },
+      position: positions.get(def.id) ?? { x: 80, y: 60 },
       size: { width: CARD_W2, height: classHeight(def) }
     });
     node.setLabel(def.name);
@@ -137029,20 +137330,142 @@ function parseMermaidState(text) {
   return { states: [...states.values()], transitions, notes, ...direction ? { direction } : {} };
 }
 var PSEUDO_SIZE = 22;
+var STATE_PAD = 18;
+var STATE_HEADER = 22;
+var REGION_PAD = 14;
+var BAND_GAP = 10;
+var RANK_GAP = 50;
+var CROSS_GAP = 40;
+function layoutStateModel(model, nodes, start) {
+  const byId2 = new Map(model.states.map((s) => [s.id, s]));
+  const childrenOf = (scope) => model.states.filter((s) => (s.parent ?? void 0) === scope);
+  const liftTo = (id, scope) => {
+    let current = id;
+    while (current !== void 0) {
+      const parent = byId2.get(current)?.parent ?? void 0;
+      if (parent === scope) return current;
+      current = parent;
+    }
+    return void 0;
+  };
+  const scopeEdges = (scope) => {
+    const edges = [];
+    for (const t of model.transitions) {
+      const from = liftTo(t.from, scope);
+      const to = liftTo(t.to, scope);
+      if (from !== void 0 && to !== void 0 && from !== to) {
+        edges.push({ from, to });
+      }
+    }
+    return edges;
+  };
+  const measured = /* @__PURE__ */ new Map();
+  const arrangements = /* @__PURE__ */ new Map();
+  const measure2 = (state) => {
+    const cached = measured.get(state.id);
+    if (cached) return cached;
+    let size;
+    if (!state.composite) {
+      const node = nodes.get(state.id);
+      size = { width: node.size.width, height: node.size.height };
+    } else if (state.concurrent) {
+      const regions = childrenOf(state.id).filter((s) => s.region);
+      const bands = regions.map((r) => measure2(r));
+      const bandWidth = Math.max(...bands.map((b) => b.width), 0);
+      const stacked = bands.reduce((sum, b) => sum + b.height, 0) + Math.max(0, bands.length - 1) * BAND_GAP;
+      size = {
+        width: bandWidth + 2 * STATE_PAD,
+        height: stacked + 2 * STATE_PAD + STATE_HEADER
+      };
+    } else {
+      const inner = arrange(state.id);
+      const pad = state.region ? REGION_PAD : STATE_PAD;
+      const header = state.region ? 0 : STATE_HEADER;
+      size = {
+        width: inner.width + 2 * pad,
+        height: inner.height + 2 * pad + header
+      };
+    }
+    measured.set(state.id, size);
+    return size;
+  };
+  const arrange = (scope) => {
+    const key = scope ?? "";
+    const cached = arrangements.get(key);
+    if (cached) return cached;
+    const children = childrenOf(scope);
+    const placeable = children.map((child) => ({ id: child.id, size: measure2(child) }));
+    const direction = (scope !== void 0 ? byId2.get(scope)?.direction : void 0) ?? model.direction ?? "TB";
+    const positions = placeByRank(
+      placeable,
+      assignRanks2(placeable.map((p) => p.id), scopeEdges(scope)),
+      { direction, start: { x: 0, y: 0 }, rankGap: RANK_GAP, crossGap: CROSS_GAP }
+    );
+    let width = 0;
+    let height = 0;
+    for (const p of placeable) {
+      const at = positions.get(p.id);
+      width = Math.max(width, at.x + p.size.width);
+      height = Math.max(height, at.y + p.size.height);
+    }
+    const arrangement = { positions, width, height };
+    arrangements.set(key, arrangement);
+    return arrangement;
+  };
+  const commit = (state, x, y) => {
+    const node = nodes.get(state.id);
+    node.setPosition(x, y);
+    if (!state.composite) return;
+    const size = measured.get(state.id);
+    node.setSize(size.width, size.height);
+    if (state.concurrent) {
+      const regions = childrenOf(state.id).filter((s) => s.region);
+      const bandWidth = size.width - 2 * STATE_PAD;
+      let bandY = y + STATE_PAD + STATE_HEADER;
+      for (const region of regions) {
+        const band = measured.get(region.id);
+        const regionNode = nodes.get(region.id);
+        regionNode.setPosition(x + STATE_PAD, bandY);
+        regionNode.setSize(bandWidth, band.height);
+        const inner = arrangements.get(region.id) ?? arrange(region.id);
+        for (const child of childrenOf(region.id)) {
+          const local = inner.positions.get(child.id);
+          commitChild(child, x + STATE_PAD + REGION_PAD + local.x, bandY + REGION_PAD + local.y);
+        }
+        bandY += band.height + BAND_GAP;
+      }
+    } else {
+      const pad = state.region ? REGION_PAD : STATE_PAD;
+      const header = state.region ? 0 : STATE_HEADER;
+      const inner = arrangements.get(state.id) ?? arrange(state.id);
+      for (const child of childrenOf(state.id)) {
+        const local = inner.positions.get(child.id);
+        commitChild(child, x + pad + local.x, y + pad + header + local.y);
+      }
+    }
+  };
+  const commitChild = commit;
+  const root = arrange(void 0);
+  for (const child of childrenOf(void 0)) {
+    const local = root.positions.get(child.id);
+    commit(child, start.x + local.x, start.y + local.y);
+  }
+}
 function stateModelToDiagram(model) {
   const diagram = new DiagramModel("State Diagram");
   diagram.setMetadata("diagramType", "stateDiagram-v2");
   if (model.direction) diagram.setMetadata("direction", model.direction);
   if (model.notes.length) diagram.setMetadata("stateNotes", model.notes);
   const nodes = /* @__PURE__ */ new Map();
-  model.states.forEach((state, i) => {
+  model.states.forEach((state) => {
     const isPseudo = PSEUDO_KINDS.has(state.kind);
     const node = new NodeModel({
       id: state.id,
       // A region is not a state the author wrote — give it its own type so a
       // renderer can draw it as a compartment rather than a rounded box.
       type: state.region ? "state:region" : `state:${state.kind}`,
-      position: { x: 80 + i % 4 * 220, y: 60 + Math.floor(i / 4) * 160 },
+      // Placeholder — layoutStateModel below assigns the real geometry.
+      position: { x: 0, y: 0 },
       size: isPseudo ? { width: PSEUDO_SIZE, height: PSEUDO_SIZE } : { width: 140, height: 56 }
     });
     node.setLabel(state.label);
@@ -137057,6 +137480,7 @@ function stateModelToDiagram(model) {
     diagram.addNode(node);
     nodes.set(state.id, node);
   });
+  layoutStateModel(model, nodes, { x: 80, y: 60 });
   for (const state of model.states) {
     if (!state.composite) continue;
     diagram.addGroup(
@@ -137247,8 +137671,8 @@ var StyleParser = class {
       return value.toLowerCase() === "true" || value === "1";
     }
     if (property === "strokeWidth" || property === "opacity" || property === "borderRadius" || property === "fontSize" || property === "padding" || property === "zIndex" || property === "borderAnimationSpeed") {
-      const num4 = parseFloat(value);
-      return isNaN(num4) ? void 0 : num4;
+      const num5 = parseFloat(value);
+      return isNaN(num5) ? void 0 : num5;
     }
     if (property === "borderAnimationColors") {
       const cleaned = value.replace(/[\[\]]/g, "").trim();
@@ -138135,6 +138559,496 @@ function applyBodyOntoSidecar(sidecarDoc, parsed, options) {
   const direction = parsed.getMetadata?.("direction");
   if (direction !== void 0) base.setMetadata?.("direction", direction);
   return base;
+}
+
+// libs/engine/src/interop/drawio/xml.ts
+var XmlParseError = class extends Error {
+  constructor(message, offset) {
+    super(`${message} (at offset ${offset})`);
+    this.offset = offset;
+    this.name = "XmlParseError";
+  }
+};
+var NAMED_ENTITIES = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  // Not XML, but draw.io labels are HTML fragments and &nbsp; is everywhere in
+  // them. Decoding it to a plain space here keeps the HTML-strip step simple.
+  nbsp: " "
+};
+function decodeXmlEntities(s) {
+  if (s.indexOf("&") === -1) return s;
+  return s.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g, (whole, body) => {
+    if (body[0] === "#") {
+      const hex = body[1] === "x" || body[1] === "X";
+      const code = parseInt(body.slice(hex ? 2 : 1), hex ? 16 : 10);
+      return Number.isFinite(code) && code >= 0 && code <= 1114111 ? String.fromCodePoint(code) : whole;
+    }
+    return NAMED_ENTITIES[body] ?? whole;
+  });
+}
+var isNameChar = (c) => /[^\s/=<>'"]/.test(c);
+function parseXml(source) {
+  let pos = 0;
+  const len2 = source.length;
+  const fail = (msg) => {
+    throw new XmlParseError(msg, pos);
+  };
+  const skipWs = () => {
+    while (pos < len2 && /\s/.test(source[pos])) pos++;
+  };
+  const skipNonElement = () => {
+    if (source.startsWith("<?", pos)) {
+      const end = source.indexOf("?>", pos);
+      if (end === -1) fail("unterminated <?...?> declaration");
+      pos = end + 2;
+      return true;
+    }
+    if (source.startsWith("<!--", pos)) {
+      const end = source.indexOf("-->", pos);
+      if (end === -1) fail("unterminated comment");
+      pos = end + 3;
+      return true;
+    }
+    if (source.startsWith("<!", pos) && !source.startsWith("<![CDATA[", pos)) {
+      const end = source.indexOf(">", pos);
+      if (end === -1) fail("unterminated <!...> declaration");
+      if (source.slice(pos, end).includes("[")) fail("DOCTYPE internal subsets are not supported");
+      pos = end + 1;
+      return true;
+    }
+    return false;
+  };
+  const readName = () => {
+    const start = pos;
+    while (pos < len2 && isNameChar(source[pos])) pos++;
+    if (pos === start) fail("expected a name");
+    return source.slice(start, pos);
+  };
+  const readAttrs = () => {
+    const attrs = {};
+    for (; ; ) {
+      skipWs();
+      const c = source[pos];
+      if (c === ">" || c === "/" || c === void 0) return attrs;
+      const name = readName();
+      skipWs();
+      if (source[pos] !== "=") fail(`attribute "${name}" has no value`);
+      pos++;
+      skipWs();
+      const quote = source[pos];
+      if (quote !== '"' && quote !== "'") fail(`attribute "${name}" value is not quoted`);
+      pos++;
+      const end = source.indexOf(quote, pos);
+      if (end === -1) fail(`unterminated value for attribute "${name}"`);
+      attrs[name] = decodeXmlEntities(source.slice(pos, end));
+      pos = end + 1;
+    }
+  };
+  const readElement = () => {
+    if (source[pos] !== "<") fail('expected "<"');
+    pos++;
+    const tag = readName();
+    const attrs = readAttrs();
+    const el = { tag, attrs, children: [], text: "" };
+    if (source[pos] === "/") {
+      pos++;
+      if (source[pos] !== ">") fail(`self-closing <${tag}/> is not closed`);
+      pos++;
+      return el;
+    }
+    if (source[pos] !== ">") fail(`<${tag}> never closes its start tag`);
+    pos++;
+    for (; ; ) {
+      if (pos >= len2) fail(`<${tag}> is never closed`);
+      if (source[pos] === "<") {
+        if (source.startsWith("</", pos)) {
+          pos += 2;
+          const closing = readName();
+          if (closing !== tag) fail(`</${closing}> closes <${tag}>`);
+          skipWs();
+          if (source[pos] !== ">") fail(`</${closing}> is malformed`);
+          pos++;
+          el.text = el.text.trim();
+          return el;
+        }
+        if (source.startsWith("<![CDATA[", pos)) {
+          const end = source.indexOf("]]>", pos);
+          if (end === -1) fail("unterminated CDATA section");
+          el.text += source.slice(pos + 9, end);
+          pos = end + 3;
+          continue;
+        }
+        if (skipNonElement()) continue;
+        el.children.push(readElement());
+      } else {
+        const next = source.indexOf("<", pos);
+        const stop = next === -1 ? len2 : next;
+        el.text += decodeXmlEntities(source.slice(pos, stop));
+        pos = stop;
+      }
+    }
+  };
+  skipWs();
+  while (pos < len2 && skipNonElement()) skipWs();
+  if (pos >= len2 || source[pos] !== "<") fail("no root element");
+  const root = readElement();
+  skipWs();
+  while (pos < len2 && skipNonElement()) skipWs();
+  if (pos < len2) fail("content after the root element");
+  return root;
+}
+
+// libs/engine/src/interop/drawio/importDrawio.ts
+function parseStyle(style) {
+  const tokens = /* @__PURE__ */ new Map();
+  let first;
+  let index = 0;
+  for (const part of style.split(";")) {
+    const token = part.trim();
+    if (!token) continue;
+    const eq = token.indexOf("=");
+    if (eq === -1) {
+      if (index === 0) first = token;
+      tokens.set(token, "");
+    } else {
+      tokens.set(token.slice(0, eq), token.slice(eq + 1));
+    }
+    index++;
+  }
+  return { tokens, first };
+}
+var SHAPE_MAP = {
+  ellipse: "ellipse",
+  rhombus: "diamond",
+  triangle: "triangle",
+  hexagon: "hexagon",
+  cylinder: "cylinder",
+  cylinder3: "cylinder"
+  // draw.io's current cylinder is shape=cylinder3
+};
+var CONSUMED_STYLE_KEYS = /* @__PURE__ */ new Set([
+  "shape",
+  "rounded",
+  "fillColor",
+  "strokeColor",
+  "strokeWidth",
+  "opacity",
+  "dashed",
+  "fontColor",
+  "edgeStyle",
+  "curved",
+  "text",
+  "swimlane",
+  "group",
+  "edgeLabel",
+  ...Object.keys(SHAPE_MAP)
+]);
+function stripHtmlToText(value) {
+  return decodeHtmlEntities(
+    value.replace(/<br\s*\/?>/gi, " ").replace(/<\/(div|p|li|tr|h[1-6])>/gi, " ").replace(/<[^>]*>/g, "")
+  ).replace(/\s+/g, " ").trim();
+}
+var HTML_ENTITIES = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " "
+};
+function decodeHtmlEntities(text) {
+  return text.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (whole, body) => {
+    if (body[0] === "#") {
+      const code = body[1] === "x" || body[1] === "X" ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : whole;
+    }
+    return HTML_ENTITIES[body] ?? whole;
+  });
+}
+async function inflateDrawioPayload(b64) {
+  if (typeof DecompressionStream === "undefined") {
+    throw new Error(
+      "this runtime has no DecompressionStream('deflate-raw') \u2014 compressed .drawio pages need Node >= 18 or a modern browser; export the file uncompressed (File > Properties > Compressed: off) as a workaround"
+    );
+  }
+  const bin = atob(b64.replace(/\s+/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  const inflated = await new Response(stream).arrayBuffer();
+  return decodeURIComponent(new TextDecoder().decode(inflated));
+}
+async function importDrawio(text) {
+  const warnings = [];
+  try {
+    const root = parseXml(text.trim());
+    const model = await resolveModelElement(root, warnings);
+    const diagram = buildDiagram(model, warnings);
+    return { diagram, warnings };
+  } catch (e) {
+    return { warnings, error: `not a readable .drawio document: ${e.message}` };
+  }
+}
+async function resolveModelElement(root, warnings) {
+  if (root.tag === "mxGraphModel") return root;
+  if (root.tag !== "mxfile") {
+    throw new Error(`root element is <${root.tag}>, expected <mxGraphModel> or <mxfile>`);
+  }
+  const pages = root.children.filter((c) => c.tag === "diagram");
+  if (pages.length === 0) throw new Error("<mxfile> contains no <diagram> page");
+  if (pages.length > 1) {
+    warnings.push(`page 1 of ${pages.length} imported ("${pages[0].attrs["name"] ?? "unnamed"}"); multi-page import pending`);
+  }
+  const page = pages[0];
+  const inline = page.children.find((c) => c.tag === "mxGraphModel");
+  if (inline) return inline;
+  if (!page.text) throw new Error("the <diagram> page is empty");
+  const xml = await inflateDrawioPayload(page.text);
+  const inner = parseXml(xml.trim());
+  if (inner.tag !== "mxGraphModel") {
+    throw new Error(`the decompressed page is <${inner.tag}>, expected <mxGraphModel>`);
+  }
+  return inner;
+}
+function num(v, fallback = 0) {
+  const n3 = v === void 0 ? NaN : parseFloat(v);
+  return Number.isFinite(n3) ? n3 : fallback;
+}
+function readCell(el) {
+  let cellEl = el;
+  let value = el.attrs["value"] ?? "";
+  let link;
+  let data2;
+  if (el.tag !== "mxCell") {
+    const inner = el.children.find((c) => c.tag === "mxCell");
+    if (!inner) return void 0;
+    cellEl = inner;
+    value = el.attrs["label"] ?? "";
+    link = el.attrs["link"];
+    const rest = Object.entries(el.attrs).filter(([k]) => !["id", "label", "link"].includes(k));
+    if (rest.length > 0) data2 = Object.fromEntries(rest);
+  }
+  const cell = {
+    id: el.attrs["id"] ?? cellEl.attrs["id"] ?? "",
+    parent: cellEl.attrs["parent"],
+    vertex: cellEl.attrs["vertex"] === "1",
+    edge: cellEl.attrs["edge"] === "1",
+    source: cellEl.attrs["source"],
+    target: cellEl.attrs["target"],
+    style: cellEl.attrs["style"] ?? "",
+    value: stripHtmlToText(value),
+    link,
+    data: data2,
+    collapsed: cellEl.attrs["collapsed"] === "1"
+  };
+  const geo = cellEl.children.find((c) => c.tag === "mxGeometry" && c.attrs["as"] === "geometry");
+  if (geo) {
+    cell.geometry = {
+      x: num(geo.attrs["x"]),
+      y: num(geo.attrs["y"]),
+      width: num(geo.attrs["width"]),
+      height: num(geo.attrs["height"]),
+      relative: geo.attrs["relative"] === "1"
+    };
+    const points = geo.children.find((c) => c.tag === "Array" && c.attrs["as"] === "points");
+    if (points) {
+      cell.waypoints = points.children.filter((c) => c.tag === "mxPoint").map((p) => ({ x: num(p.attrs["x"]), y: num(p.attrs["y"]) }));
+    }
+    const alt = geo.children.find((c) => c.tag === "mxRectangle" && c.attrs["as"] === "alternateBounds");
+    if (alt) cell.alternate = { width: num(alt.attrs["width"]), height: num(alt.attrs["height"]) };
+  }
+  return cell;
+}
+function buildDiagram(model, warnings) {
+  const rootEl = model.children.find((c) => c.tag === "root");
+  if (!rootEl) throw new Error("<mxGraphModel> has no <root>");
+  const cells = /* @__PURE__ */ new Map();
+  for (const el of rootEl.children) {
+    const cell = readCell(el);
+    if (cell && cell.id) cells.set(cell.id, cell);
+  }
+  const rootId = [...cells.values()].find((c) => c.parent === void 0)?.id;
+  const layerIds = new Set(
+    [...cells.values()].filter((c) => c.parent !== void 0 && c.parent === rootId).map((c) => c.id)
+  );
+  const namedLayers = [...layerIds].filter((id) => !cells.get(id).vertex && !cells.get(id).edge);
+  if (namedLayers.length > 1) {
+    warnings.push(`${namedLayers.length} layers flattened onto one canvas; layers pending`);
+  }
+  const parentRefs = /* @__PURE__ */ new Set();
+  for (const c of cells.values()) {
+    if (c.parent && !layerIds.has(c.parent) && c.parent !== rootId) parentRefs.add(c.parent);
+  }
+  const isStructural = (c) => c.id === rootId || layerIds.has(c.id);
+  const isContainer = (c) => {
+    if (!c.vertex || isStructural(c)) return false;
+    const style = parseStyle(c.style);
+    return style.first === "swimlane" || style.tokens.has("group") || parentRefs.has(c.id);
+  };
+  const isEdgeLabel = (c) => {
+    if (!c.vertex || !c.parent) return false;
+    const parent = cells.get(c.parent);
+    return !!parent?.edge || parseStyle(c.style).tokens.has("edgeLabel");
+  };
+  const originMemo = /* @__PURE__ */ new Map();
+  const absoluteOrigin = (parentId, hops = 0) => {
+    if (!parentId || hops > cells.size) return { x: 0, y: 0 };
+    const parent = cells.get(parentId);
+    if (!parent || isStructural(parent) || !parent.geometry) return { x: 0, y: 0 };
+    const memo = originMemo.get(parentId);
+    if (memo) return memo;
+    const above = absoluteOrigin(parent.parent, hops + 1);
+    const origin = { x: above.x + parent.geometry.x, y: above.y + parent.geometry.y };
+    originMemo.set(parentId, origin);
+    return origin;
+  };
+  const diagram = new DiagramModel("drawio-import");
+  const unmappedStyleKeys = /* @__PURE__ */ new Set();
+  const groupsById = /* @__PURE__ */ new Map();
+  const nodesById = /* @__PURE__ */ new Map();
+  const edgeCells = [];
+  for (const cell of cells.values()) {
+    if (!isContainer(cell) || isEdgeLabel(cell)) continue;
+    const origin = absoluteOrigin(cell.parent);
+    const geo = cell.geometry ?? { x: 0, y: 0, width: 200, height: 160, relative: false };
+    let { width, height } = geo;
+    if (cell.collapsed) {
+      if (cell.alternate) ({ width, height } = cell.alternate);
+      warnings.push(`collapsed container "${cell.id}" imported expanded; collapse state pending`);
+    }
+    const group = new GroupModel({ id: cell.id, name: cell.value || "Group" });
+    diagram.addGroup(group);
+    group.setFrame({ x: origin.x + geo.x, y: origin.y + geo.y, width, height });
+    collectUnmappedStyleKeys(cell.style, unmappedStyleKeys);
+    groupsById.set(cell.id, group);
+  }
+  for (const cell of cells.values()) {
+    if (!cell.vertex || isStructural(cell) || groupsById.has(cell.id)) continue;
+    if (isEdgeLabel(cell)) continue;
+    if (cell.geometry?.relative) {
+      warnings.push(`cell "${cell.id}" has relative geometry outside an edge; imported at its parent's origin`);
+    }
+    const origin = absoluteOrigin(cell.parent);
+    const geo = cell.geometry ?? { x: 0, y: 0, width: 0, height: 0, relative: false };
+    const node = new NodeModel({
+      id: cell.id,
+      type: "default",
+      position: { x: origin.x + geo.x, y: origin.y + geo.y },
+      size: { width: geo.width || 100, height: geo.height || 50 }
+    });
+    applyVertexStyle(node, cell, warnings, unmappedStyleKeys);
+    if (cell.value) node.setLabel(cell.value);
+    if (cell.link) node.setMetadata("drawioLink", cell.link);
+    if (cell.data) node.setMetadata("drawioData", cell.data);
+    diagram.addNode(node);
+    nodesById.set(cell.id, node);
+  }
+  for (const cell of cells.values()) {
+    const parentGroup = cell.parent ? groupsById.get(cell.parent) : void 0;
+    if (!parentGroup || cell.id === rootId) continue;
+    if (groupsById.has(cell.id) || nodesById.has(cell.id)) {
+      parentGroup.addMember(cell.id, diagram);
+    }
+  }
+  for (const cell of cells.values()) {
+    if (cell.edge) edgeCells.push(cell);
+  }
+  let waypointEdges = 0;
+  for (const cell of edgeCells) {
+    const source = cell.source ? nodesById.get(cell.source) : void 0;
+    const target = cell.target ? nodesById.get(cell.target) : void 0;
+    if (!source || !target) {
+      warnings.push(`edge "${cell.id}" skipped: ${describeMissingEndpoint(cell, nodesById, groupsById)}`);
+      continue;
+    }
+    const style = parseStyle(cell.style);
+    const orthogonal = style.tokens.get("edgeStyle")?.toLowerCase().includes("orthogonal") === true && style.tokens.get("curved") !== "1";
+    const link = diagram.createSmartLink(source, target, orthogonal ? "orthogonal" : "smooth");
+    if (!link) {
+      warnings.push(`edge "${cell.id}" skipped: no connectable ports between "${cell.source}" and "${cell.target}"`);
+      continue;
+    }
+    link.setMetadata("drawioId", cell.id);
+    const labelText = cell.value || findEdgeLabelChild(cell.id, cells);
+    if (labelText) link.setLabel(labelText);
+    if (cell.waypoints && cell.waypoints.length > 0) {
+      link.setMetadata("drawioWaypoints", cell.waypoints);
+      waypointEdges++;
+    }
+    collectUnmappedStyleKeys(cell.style, unmappedStyleKeys);
+  }
+  if (waypointEdges > 0) {
+    warnings.push(
+      `manual waypoints on ${waypointEdges} edge(s) ignored (auto-routing owns the polyline); originals kept under link metadata.drawioWaypoints`
+    );
+  }
+  if (unmappedStyleKeys.size > 0) {
+    warnings.push(`unmapped style keys dropped: ${[...unmappedStyleKeys].sort().join(", ")}`);
+  }
+  return diagram;
+}
+function describeMissingEndpoint(cell, nodes, groups) {
+  const side = (name, id) => {
+    if (!id) return `no ${name}`;
+    if (nodes.has(id)) return void 0;
+    if (groups.has(id)) return `${name} "${id}" is a container (container endpoints pending)`;
+    return `${name} "${id}" does not exist`;
+  };
+  return [side("source", cell.source), side("target", cell.target)].filter(Boolean).join("; ");
+}
+function findEdgeLabelChild(edgeId, cells) {
+  for (const c of cells.values()) {
+    if (c.parent === edgeId && c.vertex && c.value) return c.value;
+  }
+  return "";
+}
+function applyVertexStyle(node, cell, warnings, unmapped) {
+  const style = parseStyle(cell.style);
+  const t = style.tokens;
+  let shape = "rect";
+  let cornerRadius;
+  const token = t.get("shape") || (style.first && !t.has("text") ? style.first : void 0);
+  if (token && token !== "rect" && token !== "rectangle") {
+    const mapped = SHAPE_MAP[token];
+    if (mapped) {
+      shape = mapped;
+    } else {
+      warnings.push(`unknown shape token "${token}" on cell "${cell.id}"; imported as rect`);
+    }
+  }
+  if (t.get("rounded") === "1" && shape === "rect") {
+    cornerRadius = 8;
+  }
+  const shapeMeta = { type: shape };
+  if (cornerRadius !== void 0) shapeMeta["cornerRadius"] = cornerRadius;
+  if (t.get("fillColor")) shapeMeta["fill"] = t.get("fillColor");
+  if (t.get("strokeColor")) shapeMeta["stroke"] = t.get("strokeColor");
+  if (t.get("strokeWidth")) shapeMeta["strokeWidth"] = num(t.get("strokeWidth"), 1);
+  if (t.has("text")) {
+    shapeMeta["fill"] = "none";
+    shapeMeta["stroke"] = "none";
+  }
+  node.setMetadata("shape", shapeMeta);
+  const styleBag = {};
+  if (t.get("dashed") === "1") styleBag["strokeDasharray"] = "6,4";
+  if (t.get("fontColor")) styleBag["color"] = t.get("fontColor");
+  if (t.get("opacity")) styleBag["opacity"] = num(t.get("opacity"), 100) / 100;
+  if (Object.keys(styleBag).length > 0) {
+    node.style = { ...node.style ?? {}, ...styleBag };
+  }
+  collectUnmappedStyleKeys(cell.style, unmapped);
+}
+function collectUnmappedStyleKeys(styleString, into) {
+  const { tokens, first } = parseStyle(styleString);
+  for (const key of tokens.keys()) {
+    if (CONSUMED_STYLE_KEYS.has(key)) continue;
+    if (key === first) continue;
+    into.add(key);
+  }
 }
 
 // libs/engine/src/lib/performance/mobile-performance.service.ts
@@ -160323,7 +161237,7 @@ function parsePath(d) {
   let prevQCtrlY = 0;
   let prevOp = "";
   let op = "";
-  const num4 = () => {
+  const num5 = () => {
     const v = parseFloat(tokens[i++]);
     return Number.isNaN(v) ? 0 : v;
   };
@@ -160344,36 +161258,36 @@ function parsePath(d) {
     const oy = rel ? cy : 0;
     switch (op.toUpperCase()) {
       case "M": {
-        cx = num4() + ox;
-        cy = num4() + oy;
+        cx = num5() + ox;
+        cy = num5() + oy;
         sx = cx;
         sy = cy;
         cmds.push({ op: "M", x: cx, y: cy });
         break;
       }
       case "L": {
-        cx = num4() + ox;
-        cy = num4() + oy;
+        cx = num5() + ox;
+        cy = num5() + oy;
         cmds.push({ op: "L", x: cx, y: cy });
         break;
       }
       case "H": {
-        cx = num4() + ox;
+        cx = num5() + ox;
         cmds.push({ op: "L", x: cx, y: cy });
         break;
       }
       case "V": {
-        cy = num4() + oy;
+        cy = num5() + oy;
         cmds.push({ op: "L", x: cx, y: cy });
         break;
       }
       case "C": {
-        const x1 = num4() + ox;
-        const y1 = num4() + oy;
-        const x2 = num4() + ox;
-        const y2 = num4() + oy;
-        cx = num4() + ox;
-        cy = num4() + oy;
+        const x1 = num5() + ox;
+        const y1 = num5() + oy;
+        const x2 = num5() + ox;
+        const y2 = num5() + oy;
+        cx = num5() + ox;
+        cy = num5() + oy;
         cmds.push({ op: "C", x1, y1, x2, y2, x: cx, y: cy });
         prevCtrlX = x2;
         prevCtrlY = y2;
@@ -160383,20 +161297,20 @@ function parsePath(d) {
         const smooth = /[CcSs]/.test(prevOp);
         const x1 = smooth ? 2 * cx - prevCtrlX : cx;
         const y1 = smooth ? 2 * cy - prevCtrlY : cy;
-        const x2 = num4() + ox;
-        const y2 = num4() + oy;
-        cx = num4() + ox;
-        cy = num4() + oy;
+        const x2 = num5() + ox;
+        const y2 = num5() + oy;
+        cx = num5() + ox;
+        cy = num5() + oy;
         cmds.push({ op: "C", x1, y1, x2, y2, x: cx, y: cy });
         prevCtrlX = x2;
         prevCtrlY = y2;
         break;
       }
       case "Q": {
-        const x1 = num4() + ox;
-        const y1 = num4() + oy;
-        cx = num4() + ox;
-        cy = num4() + oy;
+        const x1 = num5() + ox;
+        const y1 = num5() + oy;
+        cx = num5() + ox;
+        cy = num5() + oy;
         cmds.push({ op: "Q", x1, y1, x: cx, y: cy });
         prevQCtrlX = x1;
         prevQCtrlY = y1;
@@ -160406,21 +161320,21 @@ function parsePath(d) {
         const smooth = /[QqTt]/.test(prevOp);
         const x1 = smooth ? 2 * cx - prevQCtrlX : cx;
         const y1 = smooth ? 2 * cy - prevQCtrlY : cy;
-        cx = num4() + ox;
-        cy = num4() + oy;
+        cx = num5() + ox;
+        cy = num5() + oy;
         cmds.push({ op: "Q", x1, y1, x: cx, y: cy });
         prevQCtrlX = x1;
         prevQCtrlY = y1;
         break;
       }
       case "A": {
-        const rx = num4();
-        const ry = num4();
-        const rot = num4();
-        const largeArc = num4();
-        const sweep = num4();
-        const ex = num4() + ox;
-        const ey = num4() + oy;
+        const rx = num5();
+        const ry = num5();
+        const rot = num5();
+        const largeArc = num5();
+        const sweep = num5();
+        const ex = num5() + ox;
+        const ey = num5() + oy;
         cmds.push(...arcToCubics(cx, cy, rx, ry, rot, largeArc !== 0, sweep !== 0, ex, ey));
         cx = ex;
         cy = ey;
@@ -160739,7 +161653,7 @@ var BoxAccumulator = class {
 var AVG_CHAR_WIDTH_EM = 0.6;
 var DEFAULT_FONT_SIZE = 12;
 var NON_PAINTING = /* @__PURE__ */ new Set(["defs", "title", "desc", "metadata", "linearGradient", "radialGradient", "stop", "filter", "marker", "clipPath", "mask", "pattern", "style"]);
-function num(value, fallback = 0) {
+function num2(value, fallback = 0) {
   const n3 = Number(value);
   return Number.isFinite(n3) ? n3 : fallback;
 }
@@ -160754,13 +161668,13 @@ function textBox(vnode) {
   const props = vnode.props ?? {};
   const content = textContentOf(vnode);
   if (!content) return null;
-  const fontSize = num(props["fontSize"] ?? props["font-size"], DEFAULT_FONT_SIZE);
+  const fontSize = num2(props["fontSize"] ?? props["font-size"], DEFAULT_FONT_SIZE);
   const lines = content.split("\n");
   const longest = lines.reduce((max, line) => Math.max(max, line.length), 0);
   const width = longest * fontSize * AVG_CHAR_WIDTH_EM;
   const height = fontSize * lines.length;
-  const x = num(props["x"]);
-  const y = num(props["y"]);
+  const x = num2(props["x"]);
+  const y = num2(props["y"]);
   const anchor = String(props["textAnchor"] ?? props["text-anchor"] ?? "start");
   const left = anchor === "middle" ? x - width / 2 : anchor === "end" ? x - width : x;
   return { x: left, y: y - fontSize * 0.8, width, height };
@@ -160806,38 +161720,38 @@ function blurRadius(filter) {
 }
 function addGeometry(vnode, m, box) {
   const props = vnode.props ?? {};
-  const strokeWidth = props["stroke"] && props["stroke"] !== "none" ? num(props["strokeWidth"] ?? props["stroke-width"], 0) : 0;
+  const strokeWidth = props["stroke"] && props["stroke"] !== "none" ? num2(props["strokeWidth"] ?? props["stroke-width"], 0) : 0;
   const styleFilter = props["style"]?.["filter"];
   const pad = strokeWidth / 2 + Math.max(blurRadius(props["filter"]), blurRadius(styleFilter));
   switch (vnode.type) {
     case "rect": {
-      const x = num(props["x"]);
-      const y = num(props["y"]);
-      box.addBox(m, x - pad, y - pad, num(props["width"]) + pad * 2, num(props["height"]) + pad * 2);
+      const x = num2(props["x"]);
+      const y = num2(props["y"]);
+      box.addBox(m, x - pad, y - pad, num2(props["width"]) + pad * 2, num2(props["height"]) + pad * 2);
       break;
     }
     case "circle": {
-      const cx = num(props["cx"]);
-      const cy = num(props["cy"]);
-      const r = num(props["r"]) + pad;
+      const cx = num2(props["cx"]);
+      const cy = num2(props["cy"]);
+      const r = num2(props["r"]) + pad;
       box.addBox(m, cx - r, cy - r, r * 2, r * 2);
       break;
     }
     case "ellipse": {
-      const cx = num(props["cx"]);
-      const cy = num(props["cy"]);
-      const rx = num(props["rx"]) + pad;
-      const ry = num(props["ry"]) + pad;
+      const cx = num2(props["cx"]);
+      const cy = num2(props["cy"]);
+      const rx = num2(props["rx"]) + pad;
+      const ry = num2(props["ry"]) + pad;
       box.addBox(m, cx - rx, cy - ry, rx * 2, ry * 2);
       break;
     }
     case "line": {
       box.addBox(
         m,
-        Math.min(num(props["x1"]), num(props["x2"])) - pad,
-        Math.min(num(props["y1"]), num(props["y2"])) - pad,
-        Math.abs(num(props["x2"]) - num(props["x1"])) + pad * 2,
-        Math.abs(num(props["y2"]) - num(props["y1"])) + pad * 2
+        Math.min(num2(props["x1"]), num2(props["x2"])) - pad,
+        Math.min(num2(props["y1"]), num2(props["y2"])) - pad,
+        Math.abs(num2(props["x2"]) - num2(props["x1"])) + pad * 2,
+        Math.abs(num2(props["y2"]) - num2(props["y1"])) + pad * 2
       );
       break;
     }
@@ -160865,7 +161779,7 @@ function addGeometry(vnode, m, box) {
     }
     case "image":
     case "foreignObject": {
-      box.addBox(m, num(props["x"]), num(props["y"]), num(props["width"]), num(props["height"]));
+      box.addBox(m, num2(props["x"]), num2(props["y"]), num2(props["width"]), num2(props["height"]));
       break;
     }
     // 'g', 'svg', 'tspan' and anything else: no geometry of its own. `tspan`
@@ -161705,7 +162619,7 @@ function resolveRasterBackend(explicit) {
 }
 
 // libs/renderer/src/export/pdf/pdf-primitives.ts
-function num2(value) {
+function num3(value) {
   if (!Number.isFinite(value)) return "0";
   const rounded = Number(value.toFixed(3));
   return Object.is(rounded, -0) ? "0" : String(rounded);
@@ -162027,18 +162941,18 @@ function cmdsToPdf(cmds) {
   for (const cmd of cmds) {
     switch (cmd.op) {
       case "M":
-        ops.push(`${num2(cmd.x)} ${num2(cmd.y)} m`);
+        ops.push(`${num3(cmd.x)} ${num3(cmd.y)} m`);
         cx = cmd.x;
         cy = cmd.y;
         break;
       case "L":
-        ops.push(`${num2(cmd.x)} ${num2(cmd.y)} l`);
+        ops.push(`${num3(cmd.x)} ${num3(cmd.y)} l`);
         cx = cmd.x;
         cy = cmd.y;
         break;
       case "C":
         ops.push(
-          `${num2(cmd.x1)} ${num2(cmd.y1)} ${num2(cmd.x2)} ${num2(cmd.y2)} ${num2(cmd.x)} ${num2(cmd.y)} c`
+          `${num3(cmd.x1)} ${num3(cmd.y1)} ${num3(cmd.x2)} ${num3(cmd.y2)} ${num3(cmd.x)} ${num3(cmd.y)} c`
         );
         cx = cmd.x;
         cy = cmd.y;
@@ -162048,7 +162962,7 @@ function cmdsToPdf(cmds) {
         const c1y = cy + 2 / 3 * (cmd.y1 - cy);
         const c2x = cmd.x + 2 / 3 * (cmd.x1 - cmd.x);
         const c2y = cmd.y + 2 / 3 * (cmd.y1 - cmd.y);
-        ops.push(`${num2(c1x)} ${num2(c1y)} ${num2(c2x)} ${num2(c2y)} ${num2(cmd.x)} ${num2(cmd.y)} c`);
+        ops.push(`${num3(c1x)} ${num3(c1y)} ${num3(c2x)} ${num3(c2y)} ${num3(cmd.x)} ${num3(cmd.y)} c`);
         cx = cmd.x;
         cy = cmd.y;
         break;
@@ -162729,13 +163643,13 @@ var ContentStream = class {
     this.state = { fill: null, stroke: null, lineWidth: null, dash: null, alpha: null, font: null };
   }
   setFill(rgb) {
-    const op = `${num2(rgb.r)} ${num2(rgb.g)} ${num2(rgb.b)} rg`;
+    const op = `${num3(rgb.r)} ${num3(rgb.g)} ${num3(rgb.b)} rg`;
     if (this.state.fill === op) return;
     this.state.fill = op;
     this.ops.push(op);
   }
   setStroke(rgb) {
-    const op = `${num2(rgb.r)} ${num2(rgb.g)} ${num2(rgb.b)} RG`;
+    const op = `${num3(rgb.r)} ${num3(rgb.g)} ${num3(rgb.b)} RG`;
     if (this.state.stroke === op) return;
     this.state.stroke = op;
     this.ops.push(op);
@@ -162743,7 +163657,7 @@ var ContentStream = class {
   setLineWidth(width) {
     if (this.state.lineWidth === width) return;
     this.state.lineWidth = width;
-    this.ops.push(`${num2(width)} w`);
+    this.ops.push(`${num3(width)} w`);
   }
   setDash(dash) {
     const op = dash ? `[${dash}] 0 d` : "[] 0 d";
@@ -162759,14 +163673,14 @@ var ContentStream = class {
     this.ops.push(`/GS${alphaName(rounded)} gs`);
   }
   setFont(font, size) {
-    const op = `/F${fontIndex(font)} ${num2(size)} Tf`;
+    const op = `/F${fontIndex(font)} ${num3(size)} Tf`;
     if (this.state.font === op) return;
     this.state.font = op;
     this.fonts.add(font);
     this.ops.push(op);
   }
   concat(m) {
-    this.ops.push(`${num2(m.a)} ${num2(m.b)} ${num2(m.c)} ${num2(m.d)} ${num2(m.e)} ${num2(m.f)} cm`);
+    this.ops.push(`${num3(m.a)} ${num3(m.b)} ${num3(m.c)} ${num3(m.d)} ${num3(m.e)} ${num3(m.f)} cm`);
   }
 };
 var BASE_FONTS = [
@@ -162852,7 +163766,7 @@ function exportPdf(root, options = {}) {
       if (bg) {
         stream.save();
         stream.setFill(bg);
-        stream.push(`0 0 ${num2(page.width)} ${num2(page.height)} re`);
+        stream.push(`0 0 ${num3(page.width)} ${num3(page.height)} re`);
         stream.push("f");
         stream.restore();
       }
@@ -162867,7 +163781,7 @@ function exportPdf(root, options = {}) {
       f: offsetY + drawHeight + rect.y * scale
     };
     stream.concat(ctm);
-    stream.push(`${num2(clip.x)} ${num2(clip.y)} ${num2(clip.width)} ${num2(clip.height)} re`);
+    stream.push(`${num3(clip.x)} ${num3(clip.y)} ${num3(clip.width)} ${num3(clip.height)} re`);
     stream.push("W n");
     paint(root, stream, ctx);
     stream.restore();
@@ -162886,7 +163800,7 @@ function exportPdf(root, options = {}) {
     if (usedFonts.has(font)) fontIds.set(font, writer.allocate());
   }
   const fontResources = [...fontIds.entries()].map(([font, id]) => `/F${fontIndex(font)} ${id} 0 R`).join(" ");
-  const alphaResources = [...usedAlphas].sort((a, b) => a - b).map((alpha) => `/GS${alphaName(alpha)} << /Type /ExtGState /ca ${num2(alpha)} /CA ${num2(alpha)} >>`).join(" ");
+  const alphaResources = [...usedAlphas].sort((a, b) => a - b).map((alpha) => `/GS${alphaName(alpha)} << /Type /ExtGState /ca ${num3(alpha)} /CA ${num3(alpha)} >>`).join(" ");
   const imageEntries = ctx.images.entries();
   const imageRefs = [];
   for (const { name, image } of imageEntries) {
@@ -162924,7 +163838,7 @@ function exportPdf(root, options = {}) {
   streams.forEach((stream, index) => {
     writer.set(
       pageIds[index],
-      `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${num2(page.width)} ${num2(page.height)}] /Resources ${resources} /Contents ${contentIds[index]} 0 R >>`
+      `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${num3(page.width)} ${num3(page.height)}] /Resources ${resources} /Contents ${contentIds[index]} 0 R >>`
     );
     writer.setStream(contentIds[index], "", latin1Bytes(stream.ops.join("\n")));
   });
@@ -163186,7 +164100,7 @@ function flattenedPaint(value, ctx, why) {
 var COLOR_CHANNELS = (s) => [s.color.r, s.color.g, s.color.b];
 var ALPHA_CHANNELS = (s) => [s.alpha];
 function rampFunction(from, to, channels) {
-  const c = (s) => `[${channels(s).map(num2).join(" ")}]`;
+  const c = (s) => `[${channels(s).map(num3).join(" ")}]`;
   return `<< /FunctionType 2 /Domain [0 1] /C0 ${c(from)} /C1 ${c(to)} /N 1 >>`;
 }
 function shadingFunction(stops, channels) {
@@ -163204,7 +164118,7 @@ function shadingFunction(stops, channels) {
   }
   const functions = [];
   for (let i = 0; i < padded.length - 1; i++) functions.push(rampFunction(padded[i], padded[i + 1], channels));
-  return `<< /FunctionType 3 /Domain [0 1] /Functions [${functions.join(" ")}] /Bounds [${bounds.map(num2).join(" ")}] /Encode [${functions.map(() => "0 1").join(" ")}] >>`;
+  return `<< /FunctionType 3 /Domain [0 1] /Functions [${functions.join(" ")}] /Bounds [${bounds.map(num3).join(" ")}] /Encode [${functions.map(() => "0 1").join(" ")}] >>`;
 }
 function shadingDictFor(gradient, vnode, ctx) {
   let geometry;
@@ -163218,7 +164132,7 @@ function shadingDictFor(gradient, vnode, ctx) {
       x2 = box.x + x2 * box.width;
       y2 = box.y + y2 * box.height;
     }
-    geometry = `/ShadingType 2 /ColorSpace {CS} /Coords [${num2(x1)} ${num2(y1)} ${num2(x2)} ${num2(y2)}]`;
+    geometry = `/ShadingType 2 /ColorSpace {CS} /Coords [${num3(x1)} ${num3(y1)} ${num3(x2)} ${num3(y2)}]`;
   } else {
     let { cx, cy, r } = gradient.coords;
     if (gradient.objectBoundingBox) {
@@ -163228,7 +164142,7 @@ function shadingDictFor(gradient, vnode, ctx) {
       cy = box.y + cy * box.height;
       r = r * (Math.hypot(box.width, box.height) / Math.SQRT2);
     }
-    geometry = `/ShadingType 3 /ColorSpace {CS} /Coords [${num2(cx)} ${num2(cy)} 0 ${num2(cx)} ${num2(cy)} ${num2(r)}]`;
+    geometry = `/ShadingType 3 /ColorSpace {CS} /Coords [${num3(cx)} ${num3(cy)} 0 ${num3(cx)} ${num3(cy)} ${num3(r)}]`;
   }
   const dict = (cs, channels) => `<< ${geometry.replace("{CS}", cs)} /Function ${shadingFunction(gradient.stops, channels)} /Extend [true true] >>`;
   const color = dict("/DeviceRGB", COLOR_CHANNELS);
@@ -163241,7 +164155,7 @@ function shadingDictFor(gradient, vnode, ctx) {
       return { color, mask: null };
     }
     const pad = 8;
-    const bbox = `${num2(box.x - pad)} ${num2(box.y - pad)} ${num2(box.x + box.width + pad)} ${num2(box.y + box.height + pad)}`;
+    const bbox = `${num3(box.x - pad)} ${num3(box.y - pad)} ${num3(box.x + box.width + pad)} ${num3(box.y + box.height + pad)}`;
     return { color, mask: { shading: dict("/DeviceGray", ALPHA_CHANNELS), bbox } };
   }
   return { color, mask: null };
@@ -163343,7 +164257,7 @@ function len(value, fallback = 0) {
 function normaliseDash(value) {
   if (typeof value !== "string" || value.trim() === "" || value.trim() === "none") return null;
   const parts = value.split(/[\s,]+/).map(Number).filter((n3) => Number.isFinite(n3) && n3 >= 0);
-  return parts.length ? parts.map(num2).join(" ") : null;
+  return parts.length ? parts.map(num3).join(" ") : null;
 }
 function geometryOps(vnode, style) {
   switch (vnode.type) {
@@ -163400,7 +164314,7 @@ function drawText(vnode, style, stream, ctx) {
     const width = measureBaseFont(font, line, fontSize);
     const left = anchor === "middle" ? x - width / 2 : anchor === "end" ? x - width : x;
     const lineY = y + index * fontSize;
-    stream.push(`1 0 0 -1 ${num2(left)} ${num2(lineY)} Tm`);
+    stream.push(`1 0 0 -1 ${num3(left)} ${num3(lineY)} Tm`);
     stream.push(`${pdfString(encoded.bytes)} Tj`);
   };
   if (shading) {
@@ -163456,7 +164370,7 @@ function paintPageNumber(stream, page, total, size, margins) {
   stream.setFill({ r: 0.4, g: 0.4, b: 0.4 });
   stream.setFont("Helvetica", fontSize);
   stream.push("BT");
-  stream.push(`${num2((size.width - width) / 2)} ${num2(Math.max(12, margins.bottom / 2))} Td`);
+  stream.push(`${num3((size.width - width) / 2)} ${num3(Math.max(12, margins.bottom / 2))} Td`);
   stream.push(`${pdfString(encodeWinAnsi(label).bytes)} Tj`);
   stream.push("ET");
   stream.restore();
@@ -191756,12 +192670,12 @@ function gridItemFromCell(cell) {
 }
 function cellFromGridItem(gi, fallback) {
   if (!gi) return null;
-  const num4 = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
-  const cs = num4(gi.columnStart);
-  const rs = num4(gi.rowStart);
+  const num5 = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+  const cs = num5(gi.columnStart);
+  const rs = num5(gi.rowStart);
   if (cs === null || rs === null) return null;
-  const ce = num4(gi.columnEnd);
-  const re = num4(gi.rowEnd);
+  const ce = num5(gi.columnEnd);
+  const re = num5(gi.rowEnd);
   const w = ce !== null ? ce - cs : fallback?.w ?? 1;
   const h = re !== null ? re - rs : fallback?.h ?? 1;
   return { x: cs - 1, y: rs - 1, w: Math.max(1, w), h: Math.max(1, h) };
@@ -193218,7 +194132,7 @@ var BUILT_IN_WIDGET_KINDS = ["kpi", "line", "bar", "donut", "funnel", "table"];
 var PALETTE = ["#3b52d9", "#0ea5e9", "#14b8a6", "#f59e0b", "#8b5cf6", "#64748b"];
 var colorAt = (i) => PALETTE[(i % PALETTE.length + PALETTE.length) % PALETTE.length];
 var esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-var num3 = (v, fallback = 0) => typeof v === "number" && Number.isFinite(v) ? v : fallback;
+var num4 = (v, fallback = 0) => typeof v === "number" && Number.isFinite(v) ? v : fallback;
 var isNum = (v) => typeof v === "number" && Number.isFinite(v);
 function compact(n3) {
   const a = Math.abs(n3);
@@ -193334,7 +194248,7 @@ var renderBarWidget = (widget, host) => {
   const pad = { l: 34, r: 12, t: 12, b: 26 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
-  const max = niceMax(Math.max(...bars.map((b) => num3(b.value))));
+  const max = niceMax(Math.max(...bars.map((b) => num4(b.value))));
   const slot = iw / bars.length;
   const bw = slot * 0.56;
   const grid = [0, 0.5, 1].map((f) => {
@@ -193342,11 +194256,11 @@ var renderBarWidget = (widget, host) => {
     return `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" stroke="var(--axdb-grid)" stroke-width="1"></line><text x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--axdb-muted)">${esc(compact(f * max))}</text>`;
   }).join("");
   const marks = bars.map((b, i) => {
-    const v = Math.max(0, num3(b.value));
+    const v = Math.max(0, num4(b.value));
     const h = v / max * ih;
     const x = pad.l + i * slot + (slot - bw) / 2;
     const y = pad.t + ih - h;
-    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${colorAt(i)}"></rect><text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--axdb-ink)">${esc(compact(num3(b.value)))}</text><text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="var(--axdb-muted)">${esc(b.label ?? "")}</text>`;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${colorAt(i)}"></rect><text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--axdb-ink)">${esc(compact(num4(b.value)))}</text><text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="var(--axdb-muted)">${esc(b.label ?? "")}</text>`;
   }).join("");
   body.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(titleOf(widget))}">${grid}${marks}</svg>`;
 };
@@ -193359,15 +194273,15 @@ function arcPath(cx, cy, r, a0, a1) {
 var renderDonutWidget = (widget, host) => {
   const d = data(widget);
   const body = card(host, widget, titleOf(widget));
-  const slices = (Array.isArray(d.slices) ? d.slices : []).filter((s) => !!s && num3(s.value) > 0);
-  const total = slices.reduce((s, x) => s + num3(x.value), 0);
+  const slices = (Array.isArray(d.slices) ? d.slices : []).filter((s) => !!s && num4(s.value) > 0);
+  const total = slices.reduce((s, x) => s + num4(x.value), 0);
   if (!slices.length || total <= 0) return empty(body);
   const cx = 90;
   const cy = 90;
   const r = 66;
   let a = -Math.PI / 2;
   const segs = slices.map((s, i) => {
-    const sweep = num3(s.value) / total * Math.PI * 2;
+    const sweep = num4(s.value) / total * Math.PI * 2;
     const a1 = a + sweep;
     const inset = Math.min(0.02, sweep / 4);
     const path = arcPath(cx, cy, r, a + inset, a1 - inset);
@@ -193377,7 +194291,7 @@ var renderDonutWidget = (widget, host) => {
   body.classList.add("axdb-donut");
   body.innerHTML = `<svg viewBox="0 0 180 180" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(titleOf(widget))}">` + segs + `<text x="${cx}" y="${cy - 2}" text-anchor="middle" font-size="20" font-weight="700" fill="var(--axdb-ink)">${esc(d.centerLabel ?? compact(total))}</text><text x="${cx}" y="${cy + 16}" text-anchor="middle" font-size="10" fill="var(--axdb-muted)">${esc(d.centerCaption ?? "total")}</text></svg>` + legend(
     slices.map((s, i) => ({
-      label: `${s.label ?? ""} \xB7 ${Math.round(num3(s.value) / total * 100)}%`,
+      label: `${s.label ?? ""} \xB7 ${Math.round(num4(s.value) / total * 100)}%`,
       color: s.color ?? colorAt(i)
     })),
     true
@@ -193392,13 +194306,13 @@ var renderFunnelWidget = (widget, host) => {
   const rowH = 34;
   const gap = 8;
   const H = stages.length * (rowH + gap);
-  const max = Math.max(...stages.map((s) => num3(s.value)), 1);
+  const max = Math.max(...stages.map((s) => num4(s.value)), 1);
   const track = W - 90;
   const marks = stages.map((s, i) => {
-    const w = Math.max(2, num3(s.value) / max * track);
+    const w = Math.max(2, num4(s.value) / max * track);
     const x = (track - w) / 2 + 8;
     const y = i * (rowH + gap);
-    return `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${rowH}" rx="6" fill="${colorAt(i)}"></rect><text x="${(x + w / 2).toFixed(1)}" y="${y + rowH / 2 + 4}" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">${esc(compact(num3(s.value)))}</text><text x="${W - 78}" y="${y + rowH / 2 + 4}" font-size="10.5" fill="var(--axdb-muted)">${esc(s.label ?? "")}</text>`;
+    return `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${rowH}" rx="6" fill="${colorAt(i)}"></rect><text x="${(x + w / 2).toFixed(1)}" y="${y + rowH / 2 + 4}" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">${esc(compact(num4(s.value)))}</text><text x="${W - 78}" y="${y + rowH / 2 + 4}" font-size="10.5" fill="var(--axdb-muted)">${esc(s.label ?? "")}</text>`;
   }).join("");
   body.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(titleOf(widget))}">${marks}</svg>`;
 };
@@ -195821,6 +196735,7 @@ export {
   humaniseType,
   importDiagram,
   importDiagramText,
+  importDrawio,
   inStableOrder,
   incidentEdges,
   inferDirection,
@@ -196106,6 +197021,7 @@ export {
   stateModelFromDiagram,
   stateModelToDiagram,
   stripGrafloriaSidecar,
+  stripHtmlToText,
   stripResolvedImageWarnings,
   sugiyama,
   summarise,

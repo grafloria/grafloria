@@ -137,7 +137,7 @@ Phase 1 ships value in week one and is independent of everything else. Phase 2 i
 
 | Item | Effort | Note |
 |---|---|---|
-| **`.drawio` (mxGraph XML) import** | L | Highest-leverage of the deferred set — migration on-ramp. Do first if interop is prioritised. |
+| **`.drawio` (mxGraph XML) import** | L | **v1 SHIPPED 2026-07-26** (`libs/engine/src/interop/drawio/`, demo `misc/drawio-import` gated): plain + compressed saves, containers with membership, named-loss warnings. Pending: multi-page, container-endpoint edges, waypoint application. |
 | **`.vsdx` import** | L | OOXML/zip; heavier than drawio. |
 | **Layers** (`LayerModel` + per-layer visibility/lock) | L | No layer entity exists; z-order per-node already landed. |
 | **Multi-page documents** (`pages[]` / Workspace) | L | `PersistedDocument` is single-diagram today. |
