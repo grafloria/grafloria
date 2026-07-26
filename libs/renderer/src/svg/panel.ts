@@ -19,7 +19,9 @@
 import type { NodeModel } from '@grafloria/engine';
 import type { VNode } from '../types/vnode.types';
 
-export type PanelCorner = 'tl' | 'tr' | 'bl' | 'br';
+/** Icon/badge anchor: a corner, or `'c'` — dead centre of the node body
+ *  (a BPMN event's trigger glyph sits in the middle of its circle). */
+export type PanelCorner = 'tl' | 'tr' | 'bl' | 'br' | 'c';
 
 /** A header band across the top of the node (ERD/UML title row). */
 export interface PanelHeader {
@@ -367,7 +369,7 @@ export function panelAdjustedInnerRect(
   return { x: inner.x, y: bandTop, w: inner.w, h };
 }
 
-/** Position a `bw × bh` box in one of the four corners (2px inset). */
+/** Position a `bw × bh` box in one of the four corners (2px inset) or centred. */
 function cornerBox(
   corner: PanelCorner,
   width: number,
@@ -387,6 +389,8 @@ function cornerBox(
       return { x: inset, y: bottom };
     case 'br':
       return { x: right, y: bottom };
+    case 'c':
+      return { x: (width - bw) / 2, y: (height - bh) / 2 };
   }
 }
 

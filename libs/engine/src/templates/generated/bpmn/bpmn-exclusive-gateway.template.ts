@@ -37,7 +37,7 @@ export const bpmnExclusiveGatewayTemplate: NodeTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "diamond",
+      "type": "gateway-xor",
       "fill": "#FFFFFF",
       "stroke": "#334155",
       "strokeWidth": 2,

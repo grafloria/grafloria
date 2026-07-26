@@ -57,8 +57,16 @@ const SHAPE_MAP = {
 const OVERRIDES = {
   'flowchart::Predefined Process': 'predefined-process', // double side bars
   'flowchart::Terminal': 'stadium',                      // rounded terminator
-  // BPMN events are CIRCLES (the type icon inside is a separate, missing layer)
+  // BPMN events are CIRCLES; timer/message/error carry their trigger glyph as a
+  // centred panel badge (stencil-kit applyNotationPanel), the intermediate
+  // event is the notation's DOUBLE ring.
   'bpmn::Error Event': 'circle', 'bpmn::Message Event': 'circle', 'bpmn::Timer Event': 'circle',
+  'bpmn::Intermediate Event': 'event-intermediate',
+  // BPMN gateways: identity is the inner MARKER (exclusive ✕ / inclusive ◯ /
+  // parallel ＋), painted by the renderer's gateway-* notation shapes.
+  'bpmn::Exclusive Gateway': 'gateway-xor',
+  'bpmn::Inclusive Gateway': 'gateway-or',
+  'bpmn::Parallel Gateway': 'gateway-and',
   // Chen notation: every attribute is an ellipse; the entity stays a rectangle
   'erd::Key Attribute': 'ellipse', 'erd::Partial Key': 'ellipse',
   'erd::Composite Attribute': 'ellipse', 'erd::Derived Attribute': 'ellipse',
@@ -116,10 +124,20 @@ const SIZES = {
   // the old box painted the 8px bar in the middle and struck the caption
   // through it.
   'uml::uml-join': { width: 100, height: 10 },
+  // BPMN events are uniform glyph circles; timer/message/error were generated
+  // at task size (120×80) and drew as lost 80px balloons next to their 36px
+  // siblings.
+  'bpmn::bpmn-timer-event': { width: 36, height: 36 },
+  'bpmn::bpmn-message-event': { width: 36, height: 36 },
+  'bpmn::bpmn-error-event': { width: 36, height: 36 },
 };
 
 // Shape paints the notation demands, keyed `${dir}::${template.id}`.
-const PAINTS = {};
+const PAINTS = {
+  // The double ring reads as TWO lines only when the strokes are thinner than
+  // the ring gap (the generated 3px stroke fused them into one fat ring).
+  'bpmn::bpmn-intermediate-event': { strokeWidth: 1.5 },
+};
 
 /** label → declared shape, read straight out of the domain registries. */
 function domainShapes() {

@@ -128,7 +128,9 @@ const BPMN_EVENT_GLYPH: Record<string, string> = {
 function applyNotationPanel(node: any, masterId: string, master: NodeTemplate): void {
   const glyph = BPMN_EVENT_GLYPH[masterId];
   if (glyph) {
-    node.setMetadata('panel', { icon: { glyph, size: 16, corner: 'tl' } });
+    // CENTRED, as BPMN draws its trigger glyphs — the caption now paints BELOW
+    // the circle (labelPlacement), so the middle belongs to the badge.
+    node.setMetadata('panel', { icon: { glyph, size: 16, corner: 'c' } });
     return;
   }
   if (!(masterId in UML_CLASSIFIERS)) return;

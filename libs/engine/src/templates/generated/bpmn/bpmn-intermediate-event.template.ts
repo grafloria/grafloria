@@ -37,10 +37,10 @@ export const bpmnIntermediateEventTemplate: NodeTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "circle",
+      "type": "event-intermediate",
       "fill": "#FFFFFF",
       "stroke": "#334155",
-      "strokeWidth": 3,
+      "strokeWidth": 1.5,
       "opacity": 1
     },
     "labelPlacement": "below",
