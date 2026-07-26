@@ -100,6 +100,10 @@ interface RawCell {
   geometry?: RawGeometry;
   /** Manual edge waypoints from `<Array as="points">`, in the edge's PARENT space. */
   waypoints?: Array<{ x: number; y: number }>;
+  /** `<mxPoint as="sourcePoint">` — a FIXED endpoint for an edge with no source cell. */
+  sourcePoint?: { x: number; y: number };
+  /** `<mxPoint as="targetPoint">` — a FIXED endpoint for an edge with no target cell. */
+  targetPoint?: { x: number; y: number };
   collapsed: boolean;
   /** `<mxRectangle as="alternateBounds">` — the EXPANDED size of a collapsed container. */
   alternate?: { width: number; height: number };
@@ -449,6 +453,12 @@ function readCell(el: XmlElement): RawCell | undefined {
     }
     const alt = geo.children.find((c) => c.tag === 'mxRectangle' && c.attrs['as'] === 'alternateBounds');
     if (alt) cell.alternate = { width: num(alt.attrs['width']), height: num(alt.attrs['height']) };
+    // FLOATING ENDPOINTS: an edge drawn from/to empty canvas has no source/
+    // target CELL — the fixed end travels as a point in the edge's geometry.
+    const sp = geo.children.find((c) => c.tag === 'mxPoint' && c.attrs['as'] === 'sourcePoint');
+    if (sp) cell.sourcePoint = { x: num(sp.attrs['x']), y: num(sp.attrs['y']) };
+    const tp = geo.children.find((c) => c.tag === 'mxPoint' && c.attrs['as'] === 'targetPoint');
+    if (tp) cell.targetPoint = { x: num(tp.attrs['x']), y: num(tp.attrs['y']) };
   }
   return cell;
 }
@@ -594,9 +604,12 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
       y: p.y + edgeOrigin.y,
     }));
 
-    const endpointExists = (id: string | undefined): boolean =>
-      !!id && (nodesById.has(id) || groupsById.has(id));
-    if (!endpointExists(cell.source) || !endpointExists(cell.target)) {
+    const endpointResolvable = (id: string | undefined, point: { x: number; y: number } | undefined): boolean =>
+      id ? nodesById.has(id) || groupsById.has(id) : !!point;
+    if (
+      !endpointResolvable(cell.source, cell.sourcePoint) ||
+      !endpointResolvable(cell.target, cell.targetPoint)
+    ) {
       warnings.push(`edge "${cell.id}" skipped: ${describeMissingEndpoint(cell, nodesById)}`);
       continue;
     }
@@ -609,7 +622,23 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
     // line). The anchor is group-owned and marked metadata.drawioContainerAnchor,
     // so round-trips and tooling can tell it from authored content.
     const resolveEndpoint = (side: 'source' | 'target'): NodeModel => {
-      const id = (side === 'source' ? cell.source : cell.target)!;
+      const id = side === 'source' ? cell.source : cell.target;
+      if (!id) {
+        // FLOATING ENDPOINT: no cell, just a fixed point (edge-parent space).
+        // An invisible 1×1 anchor node AT the point keeps the edge painting
+        // exactly where draw.io painted it.
+        const p = (side === 'source' ? cell.sourcePoint : cell.targetPoint)!;
+        const anchor = new NodeModel({
+          id: `drawio-anchor:${cell.id}:${side}`,
+          type: 'default',
+          position: { x: p.x + edgeOrigin.x - 0.5, y: p.y + edgeOrigin.y - 0.5 },
+          size: { width: 1, height: 1 },
+        });
+        anchor.setMetadata('shape', { type: 'rect', fill: 'none', stroke: 'none' });
+        anchor.setMetadata('drawioPointAnchor', { ...p });
+        diagram.addNode(anchor);
+        return anchor;
+      }
       const direct = nodesById.get(id);
       if (direct) return direct;
       const group = groupsById.get(id)!;
@@ -636,11 +665,13 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
     const target = resolveEndpoint('target');
 
     const style = parseStyle(cell.style);
-    // draw.io's default connector is orthogonal; only carry that hint over —
-    // everything else routes as the engine's default smooth path. curved=1 is
+    // draw.io's axis-aligned edge family — orthogonal, elbow, segment and
+    // entity-relation styles all route in right angles; carry that hint over.
+    // Everything else routes as the engine's default smooth path. curved=1 is
     // draw.io's "draw this as a curve" flag, whatever the routing style.
+    const edgeStyleToken = style.tokens.get('edgeStyle')?.toLowerCase() ?? '';
     const orthogonal =
-      style.tokens.get('edgeStyle')?.toLowerCase().includes('orthogonal') === true &&
+      /orthogonal|elbow|segment|entityrelation/.test(edgeStyleToken) &&
       style.tokens.get('curved') !== '1';
     const link = diagram.createSmartLink(source, target, orthogonal ? 'orthogonal' : 'smooth');
     if (!link) {
@@ -845,7 +876,10 @@ function applyVertexStyle(
     if (mapped) {
       shape = mapped;
     } else {
-      warnings.push(`unknown shape token "${token}" on cell "${cell.id}"; imported as rect`);
+      // Inline stencil payloads (`stencil(base64…)`) can be kilobytes — name
+      // the loss without flooding the warning list with the whole payload.
+      const shown = token.length > 48 ? `${token.slice(0, 45)}…` : token;
+      warnings.push(`unknown shape token "${shown}" on cell "${cell.id}"; imported as rect`);
     }
   }
   if (t.get('rounded') === '1' && shape === 'rect') {
