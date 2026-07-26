@@ -10,17 +10,21 @@
   #text { flex: 1; font: 11px ui-monospace, Menlo, monospace; border: 0; border-bottom: 1px solid rgba(127,127,127,.3); padding: 10px; resize: none; background: transparent; color: inherit; white-space: pre; }
   #side .foot { padding: 8px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   #side button { padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; }
+  #pagepick { padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; }
   #status { font-size: 12px; padding: 6px 10px 10px; line-height: 1.5; max-height: 130px; overflow: auto; }
   #status .bad { color: #dc2626; font-weight: 600; }
   #status .warn { opacity: .75; display: block; }
 </style>
 <header id="demo-head"></header>
 <div class="note">
-  <b>.drawio (mxGraph XML) import v1</b> — the migration on-ramp from draw.io / diagrams.net.
+  <b>.drawio (mxGraph XML) import</b> — the migration on-ramp from draw.io / diagrams.net.
   Reads plain <code>&lt;mxGraphModel&gt;</code> XML <i>and</i> the default compressed
   <code>&lt;mxfile&gt;</code> save (base64 → raw-deflate → URI-encoded). Vertices, styles,
-  swimlane containers with real membership, and edges with labels all map onto the engine's
-  own models — and every construct v1 drops is <b>named in a warning</b>, never lost in silence.
+  swimlane containers with real membership, edges with labels, arrow markers, <b>manual
+  waypoints</b> (applied, not parked), edges that end <b>on a container</b>, and
+  <b>multi-page files</b> (every page imports; pick one below) all map onto the engine's
+  own models — and every construct the import drops is <b>named in a warning</b>, never
+  lost in silence.
 </div>
 <div id="canvas">
   <div id="stage"></div>
@@ -29,7 +33,9 @@
     <div class="foot">
       <button id="ex-plain">example: plain XML</button>
       <button id="ex-compressed">example: compressed</button>
+      <button id="ex-pages">example: 2 pages</button>
       <button id="import">import</button>
+      <select id="pagepick" hidden></select>
     </div>
     <div id="status">—</div>
   </div>
@@ -39,8 +45,10 @@ import { render, importDrawio, fromDocument, DiagramSerializer } from '../shell/
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // A small order flow, hand-written in the exact XML draw.io saves: a rounded
-// start box, a rhombus decision, and a SWIMLANE CONTAINER whose children carry
-// PARENT-RELATIVE geometry — the coordinate conversion this importer exists for.
+// start box, a rhombus decision, a SWIMLANE CONTAINER whose children carry
+// PARENT-RELATIVE geometry, an edge with MANUAL WAYPOINTS that detours under
+// the decision, and an edge that ends ON the container itself — the four
+// constructs this importer exists for.
 const PLAIN_XML = `<mxGraphModel dx="800" dy="600" grid="1">
   <root>
     <mxCell id="0"/>
@@ -63,14 +71,34 @@ const PLAIN_XML = `<mxGraphModel dx="800" dy="600" grid="1">
     <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="start" target="check">
       <mxGeometry relative="1" as="geometry"/>
     </mxCell>
-    <mxCell id="e2" value="yes" edge="1" parent="1" source="check" target="pick">
-      <mxGeometry relative="1" as="geometry"/>
+    <mxCell id="e2" value="yes" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="check" target="pick">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points"><mxPoint x="115" y="420"/><mxPoint x="425" y="420"/></Array>
+      </mxGeometry>
     </mxCell>
     <mxCell id="e3" edge="1" parent="lane" source="pick" target="pack">
       <mxGeometry relative="1" as="geometry"/>
     </mxCell>
+    <mxCell id="e4" value="escalate" style="dashed=1;" edge="1" parent="1" source="check" target="lane">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
   </root>
 </mxGraphModel>`;
+
+// A TWO-PAGE file, both pages inline (uncompressed) — the page picker appears
+// and each page renders as its own diagram.
+const MULTI_XML = `<mxfile host="grafloria-demo" version="24.0">
+  <diagram id="p1" name="Overview"><mxGraphModel><root>
+    <mxCell id="0"/><mxCell id="1" parent="0"/>
+    <mxCell id="m1" value="PageOneNode" style="rounded=1;fillColor=#dae8fc;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="170" height="60" as="geometry"/></mxCell>
+  </root></mxGraphModel></diagram>
+  <diagram id="p2" name="Detail"><mxGraphModel><root>
+    <mxCell id="0"/><mxCell id="1" parent="0"/>
+    <mxCell id="m2" value="PageTwoNode" style="ellipse;fillColor=#d5e8d4;" vertex="1" parent="1"><mxGeometry x="40" y="60" width="180" height="80" as="geometry"/></mxCell>
+    <mxCell id="m3" value="Second" vertex="1" parent="1"><mxGeometry x="330" y="70" width="120" height="60" as="geometry"/></mxCell>
+    <mxCell id="me" edge="1" parent="1" source="m2" target="m3"><mxGeometry relative="1" as="geometry"/></mxCell>
+  </root></mxGraphModel></diagram>
+</mxfile>`;
 
 // The COMPRESSED example is generated from the SAME XML, through the browser's
 // own CompressionStream — the exact inverse of the decode path importDrawio
@@ -89,9 +117,10 @@ defineDemo({
   name: 'draw.io import',
   blurb: 'Import .drawio files — plain XML or the default compressed save — onto live engine models: shapes, colours, swimlane containers with real membership, edge labels. Every dropped construct is a named warning.',
   howTo: [
-    'Click "example: plain XML" — the order flow imports: a rounded blue start box, a yellow decision rhombus, and a "Fulfilment" swimlane drawn as a real group frame around its two member nodes.',
+    'Click "example: plain XML" — the order flow imports: a rounded blue start box, a yellow decision rhombus, a "Fulfilment" swimlane drawn as a real group frame, an edge whose MANUAL WAYPOINTS detour under the diamond exactly as authored, and a dashed edge that ends ON the swimlane itself.',
     'Click "example: compressed" — the SAME diagram, but wrapped exactly like draw.io\'s default save (base64 → raw-deflate → URI-encoded). The status line shows identical counts: the decode path is proven live.',
-    'Read the status line: node / link / group counts, then every warning the import raised — v1 names what it drops (unmapped style keys, ignored waypoints, …) instead of losing it silently.',
+    'Click "example: 2 pages" — a multi-page file. Every page imports; the page picker appears next to the buttons, and switching it swaps the rendered diagram.',
+    'Read the status line: node / link / group counts, then every warning the import raised — anything dropped is named (unmapped style keys, …) instead of lost silently.',
     'Paste your own .drawio file into the pane and click import. Garbage input reports an error and leaves the current diagram untouched.',
     'Drag any node — these are live engine models, not a picture of draw.io: selection, dragging and routing all work on the imported diagram.',
   ],
@@ -101,20 +130,15 @@ defineDemo({
     const stage = document.getElementById('stage');
     const ta = document.getElementById('text');
     const status = document.getElementById('status');
+    const pagePick = document.getElementById('pagepick');
     let mountHost = null;
+    let currentPages = null;
 
     // Import → serialize → fromDocument → render: the LOADED path is the same
-    // public one-liner an embedder writes, so groups (frames + membership)
-    // arrive through the supported loader instead of a demo-only rebuild.
-    const show = async (text) => {
-      const result = await importDrawio(text);
-      if (result.error) {
-        // Error path leaves the PREVIOUS diagram fully intact — no unmount.
-        status.innerHTML = `<span class="bad"></span>`;
-        status.querySelector('.bad').textContent = result.error;
-        return result;
-      }
-      const model = result.diagram;
+    // public one-liner an embedder writes, so groups (frames + membership),
+    // applied waypoints and link styles all arrive through the supported
+    // loader instead of a demo-only rebuild.
+    const renderModel = (model) => {
       const json = JSON.stringify(new DiagramSerializer().serialize(model));
       if (mountHost) mountHost.remove();
       mountHost = document.createElement('div');
@@ -124,25 +148,72 @@ defineDemo({
       api.renderNow();
       api.fitView?.(40);
       ctx.instance = api;
+      return api;
+    };
+
+    const showStatus = (model, warnings, pageNote) => {
       const counts = `${model.getNodes().length} nodes · ${model.getLinks().length} links · ${model.getGroups().length} groups`;
       status.textContent = '';
       const head = document.createElement('div');
-      head.textContent = counts + (result.warnings.length ? ` · ${result.warnings.length} warning(s):` : ' · no warnings');
+      head.textContent =
+        (pageNote ? `${pageNote} · ` : '') +
+        counts +
+        (warnings.length ? ` · ${warnings.length} warning(s):` : ' · no warnings');
       status.appendChild(head);
-      for (const w of result.warnings) {
+      for (const w of warnings) {
         const line = document.createElement('span');
         line.className = 'warn';
         line.textContent = '⚠ ' + w;
         status.appendChild(line);
       }
+    };
+
+    const show = async (text) => {
+      const result = await importDrawio(text);
+      if (result.error && !result.diagram) {
+        // Error path leaves the PREVIOUS diagram (and picker) fully intact.
+        status.innerHTML = `<span class="bad"></span>`;
+        status.querySelector('.bad').textContent = result.error;
+        return result;
+      }
+      currentPages = result.pages ?? null;
+      pagePick.innerHTML = '';
+      pagePick.hidden = !currentPages;
+      if (currentPages) {
+        currentPages.forEach((p, i) => {
+          const o = document.createElement('option');
+          o.value = String(i);
+          o.textContent = `page ${i + 1}: ${p.name}${p.error ? ' (unreadable)' : ''}`;
+          if (p.error) o.disabled = true;
+          pagePick.appendChild(o);
+        });
+        pagePick.value = '0';
+      }
+      renderModel(result.diagram);
+      showStatus(
+        result.diagram,
+        result.warnings,
+        currentPages ? `page 1/${currentPages.length} "${currentPages[0].name}"` : ''
+      );
       return result;
     };
+
+    pagePick.onchange = () => {
+      const page = currentPages?.[Number(pagePick.value)];
+      if (!page || !page.diagram) return;
+      renderModel(page.diagram);
+      showStatus(page.diagram, page.warnings, `page ${page.index + 1}/${currentPages.length} "${page.name}"`);
+    };
+
     ctx.show = show;
+    ctx.showPage = (i) => { pagePick.value = String(i); pagePick.onchange(); };
     ctx.compressedCopy = compressedCopy;
     ctx.PLAIN_XML = PLAIN_XML;
+    ctx.MULTI_XML = MULTI_XML;
 
     document.getElementById('ex-plain').onclick = () => { ta.value = PLAIN_XML; show(ta.value); };
     document.getElementById('ex-compressed').onclick = async () => { ta.value = await compressedCopy(PLAIN_XML); show(ta.value); };
+    document.getElementById('ex-pages').onclick = () => { ta.value = MULTI_XML; show(ta.value); };
     document.getElementById('import').onclick = () => show(ta.value);
 
     ta.value = PLAIN_XML;
@@ -153,15 +224,46 @@ defineDemo({
   async assert(ctx) {
     const stage = document.getElementById('stage');
     const status = document.getElementById('status');
+    const pagePick = document.getElementById('pagepick');
+
+    // The PAINTED route of the link a draw.io edge id imported as: the longest
+    // <path> inside its data-link-id group (the wrapper also holds the fat
+    // invisible hit path — same geometry — and small marker shapes).
+    const paintedPathFor = (model, drawioId) => {
+      const link = model.getLinks().find((l) => l.getMetadata('drawioId') === drawioId);
+      if (!link) return null;
+      const g = stage.querySelector(`[data-link-id="${link.id}"]`);
+      if (!g) return null;
+      let best = null;
+      let bestLen = -1;
+      for (const p of g.querySelectorAll('path')) {
+        try {
+          const L = p.getTotalLength();
+          if (L > bestLen) { bestLen = L; best = p; }
+        } catch { /* unmeasurable path */ }
+      }
+      return best;
+    };
+    const minDistTo = (path, pt, samples = 250) => {
+      const L = path.getTotalLength();
+      let min = Infinity;
+      for (let i = 0; i <= samples; i++) {
+        const q = path.getPointAtLength((L * i) / samples);
+        const d = Math.hypot(q.x - pt.x, q.y - pt.y);
+        if (d < min) min = d;
+      }
+      return min;
+    };
 
     // 1. BOTH built-in examples import, with EQUAL counts — the compressed copy
     //    decodes to exactly the plain import (the whole decode pipeline, live).
+    //    5 nodes = 4 authored + the invisible anchor for the container edge e4.
     const plain = await ctx.show(ctx.PLAIN_XML);
     check(!plain.error, `plain XML import failed: ${plain.error}`);
     const pm = ctx.instance.getModel();
     const plainCounts = [pm.getNodes().length, pm.getLinks().length, pm.getGroups().length];
-    check(plainCounts[0] === 4, `expected 4 nodes, got ${plainCounts[0]}`);
-    check(plainCounts[1] === 3, `expected 3 links, got ${plainCounts[1]}`);
+    check(plainCounts[0] === 5, `expected 5 nodes (4 + container anchor), got ${plainCounts[0]}`);
+    check(plainCounts[1] === 4, `expected 4 links, got ${plainCounts[1]}`);
     check(plainCounts[2] === 1, `expected 1 group, got ${plainCounts[2]}`);
 
     const compressed = await ctx.show(await ctx.compressedCopy(ctx.PLAIN_XML));
@@ -205,19 +307,56 @@ defineDemo({
     const laneEl = stage.querySelector(`[data-group-id="${lane.id}"]`);
     check(!!laneEl, 'the swimlane group frame is not in the rendered SVG');
 
-    // 5. GARBAGE input: an error status, and the previous diagram left intact.
+    // 5. MANUAL WAYPOINTS paint. e2's authored detour dips to y=420 — far below
+    //    the straight check→pick line — and the PAINTED path must follow it.
+    const e2 = model.getLinks().find((l) => l.getMetadata('drawioId') === 'e2');
+    check(!!e2 && e2.getMetadata('hasManualWaypoints') === true, 'e2 did not keep its manual-waypoint flag');
+    const e2Path = paintedPathFor(model, 'e2');
+    check(!!e2Path, 'e2 has no painted path in the SVG');
+    check(minDistTo(e2Path, { x: 115, y: 420 }) < 20, 'the painted e2 route misses waypoint (115,420)');
+    check(minDistTo(e2Path, { x: 425, y: 420 }) < 20, 'the painted e2 route misses waypoint (425,420)');
+
+    // 6. CONTAINER-ENDPOINT EDGE paints where draw.io painted it. e4 ends ON the
+    //    lane: its anchor pins to the frame's left edge at (330,265) — nearest
+    //    the decision diamond's centre — and the painted route must arrive there.
+    const e4 = model.getLinks().find((l) => l.getMetadata('drawioId') === 'e4');
+    check(!!e4, 'the container-endpoint edge e4 was skipped');
+    const anchor = model.getNode(e4.targetNodeId);
+    check(anchor && anchor.getMetadata('drawioContainerAnchor') === 'lane', 'e4 target is not a lane-owned anchor');
+    check(lane.members.has(anchor.id), 'the container anchor is not group-owned');
+    const e4Path = paintedPathFor(model, 'e4');
+    check(!!e4Path, 'e4 has no painted path in the SVG');
+    check(minDistTo(e4Path, { x: 330, y: 265 }) < 25, 'the painted e4 route does not arrive at the lane frame edge (330,265)');
+
+    // 7. MULTI-PAGE: both pages import, the picker appears, and switching it
+    //    swaps the rendered diagram.
+    const multi = await ctx.show(ctx.MULTI_XML);
+    check(!multi.error, `multi-page import failed: ${multi.error}`);
+    check(Array.isArray(multi.pages) && multi.pages.length === 2, `expected 2 pages, got ${multi.pages?.length}`);
+    check(multi.diagram === multi.pages[0].diagram, 'top-level diagram is not pages[0].diagram');
+    check(!pagePick.hidden && pagePick.options.length === 2, 'the page picker did not appear with 2 pages');
+    await ctx.tick();
+    check((stage.textContent || '').includes('PageOneNode'), 'page 1 did not render first');
+    check(!(stage.textContent || '').includes('PageTwoNode'), 'page 2 leaked into the page-1 canvas');
+    ctx.showPage(1);
+    await ctx.tick();
+    check((stage.textContent || '').includes('PageTwoNode'), 'switching the picker did not render page 2');
+    check(!(stage.textContent || '').includes('PageOneNode'), 'page 1 leaked into the page-2 canvas');
+    check(ctx.instance.getModel().getLinks().length === 1, 'page 2 lost its edge');
+
+    // 8. GARBAGE input: an error status, and the previous diagram left intact.
     const before = ctx.instance;
     const garbage = await ctx.show('this is not xml at all');
     check(!!garbage.error, 'garbage input did not report an error');
     check((status.textContent || '').includes('not a readable .drawio'), 'the error is not shown in the status line');
     check(ctx.instance === before, 'garbage input remounted the canvas instead of leaving it alone');
-    check(ctx.instance.getModel().getNodes().length === 4, 'garbage input destroyed the previous diagram');
-    check((stage.textContent || '').includes('Pick items'), 'the previous diagram vanished from the stage after a bad import');
+    check((stage.textContent || '').includes('PageTwoNode'), 'the previous diagram vanished from the stage after a bad import');
 
-    // 6. Re-import a good diagram so the demo photographs in its healthy state —
-    //    and the status line shows honest counts again after the error.
+    // 9. Re-import the flagship diagram so the demo photographs in its healthy
+    //    state — and the status line shows honest counts again after the error.
     await ctx.show(ctx.PLAIN_XML);
-    check((status.textContent || '').includes('4 nodes'), 'the status line does not show the node count');
+    check((status.textContent || '').includes('5 nodes'), 'the status line does not show the node count');
+    check(pagePick.hidden, 'the page picker did not hide for a single-page import');
     await ctx.tick();
   },
 });
