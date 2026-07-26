@@ -1479,6 +1479,37 @@ export class DomEventBinder {
       });
       return;
     }
+
+    // visio-depth — F2 and TYPE-TO-REPLACE, both riding the same in-place
+    // editor double-click opens (gated on the same `enableInPlaceTextEdit`
+    // opt-in, and the focused-input guard at the top keeps both out of a live
+    // editor). F2 opens with the current label selected; a PRINTABLE key with
+    // exactly one node selected opens the editor seeded with that character,
+    // replacing the label on commit — Visio's signature affordance. Modifier
+    // chords never trigger it: every Ctrl/Cmd chord returned above, and
+    // Alt-composed characters are explicitly excluded here.
+    if (
+      !this.isReadonly() &&
+      engine.getInteractionConfig().enableInPlaceTextEdit === true
+    ) {
+      const selected = diagram.getSelectedNodes();
+      if (selected.length === 1) {
+        if (event.key === 'F2') {
+          event.preventDefault();
+          this.openTextEditor(engine, { type: 'node', nodeId: selected[0]!.id });
+          return;
+        }
+        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          this.openTextEditor(
+            engine,
+            { type: 'node', nodeId: selected[0]!.id },
+            { seed: event.key }
+          );
+          return;
+        }
+      }
+    }
   }
 
   onKeyUp(event: KeyboardEvent): void {
@@ -2072,7 +2103,11 @@ export class DomEventBinder {
    * adds is the DOM input and where to put it — mapped through the live
    * world→client transform so it lands on the label at any zoom or pan.
    */
-  private openTextEditor(engine: DiagramEngine, target: TextEditTarget): void {
+  private openTextEditor(
+    engine: DiagramEngine,
+    target: TextEditTarget,
+    options?: { seed?: string }
+  ): void {
     if (!this.textEditor) this.textEditor = new InPlaceTextEditor();
     const editor = this.textEditor;
     this.closeTextEditor();
@@ -2138,7 +2173,28 @@ export class DomEventBinder {
     (this.container.ownerDocument ?? document).body.appendChild(input);
     this.activeTextInput = input;
     input.focus();
-    input.select();
+    if (options?.seed !== undefined) {
+      // Type-to-replace (Visio's signature affordance): the editor opens
+      // holding ONLY the typed character — committing replaces the label,
+      // Escape restores the original untouched (the session keeps it).
+      input.value = options.seed;
+      input.setSelectionRange(input.value.length, input.value.length);
+    } else {
+      input.select();
+    }
+  }
+
+  /**
+   * Open the in-place label editor programmatically — the seam behind F2 and a
+   * host's context-menu Rename. Unlike the double-click path this is NOT gated
+   * on `enableInPlaceTextEdit`: an explicit call IS the host's opt-in.
+   * Returns false when the target does not exist / is not editable / readonly.
+   */
+  beginLabelEdit(target: TextEditTarget, options?: { seed?: string }): boolean {
+    const engine = this.engine();
+    if (!engine || this.isReadonly()) return false;
+    this.openTextEditor(engine, target, options);
+    return this.activeTextInput !== undefined;
   }
 
   /** Drop any live text widget without committing (a new edit, or teardown). */
