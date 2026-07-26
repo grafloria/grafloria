@@ -346,6 +346,25 @@
         <div class="story-stage">
           <div class="story-canvas" data-demo="er"><span class="live-badge"><span class="dot"></span>live</span><div class="skel">rendering…</div><div class="cv"></div></div>
         </div>
+      <div class="connector" aria-hidden="true"><svg viewBox="0 0 84 96"><path class="wire" d="M42 6 C 24 34, 60 62, 42 90"/><path class="flow" d="M42 6 C 24 34, 60 62, 42 90"/><circle class="handle-ring" cx="42" cy="6" r="8"/><circle class="handle" cx="42" cy="6" r="4"/><circle class="handle-ring" cx="42" cy="90" r="8"/><circle class="handle" cx="42" cy="90" r="4"/></svg></div>
+
+      <div class="story">
+        <div class="story-text">
+          <span class="chip">Mermaid</span>
+          <h3>Your Mermaid, but you can grab it</h3>
+          <p><b>Paste Mermaid text and get a real diagram.</b> Not a picture of one — every
+            node on the right is live: drag it, connect it, re-route the edges, export it
+            to SVG or PDF.</p>
+          <p>Flowchart, ER, class and state parse today, validated against Mermaid v11 by a
+            28-case oracle; anything else fails safe and says so rather than drawing
+            something wrong.</p>
+          <a class="go" href="demos/misc/mermaid-viewer.html">Open the Mermaid viewer →</a>
+        </div>
+        <div class="story-stage">
+          <div class="story-canvas" data-demo="mermaid"><span class="live-badge"><span class="dot"></span>live</span><div class="skel">rendering…</div><div class="cv"></div></div>
+        </div>
+      </div>
+
       </div>
 
       <p class="more"><a href="demos/">Browse all 100+ live demos →</a></p>
@@ -513,7 +532,33 @@
   });
 
   // Each demo's spec, built lazily from the bundle's kit helpers.
+  /** The Mermaid source shown in the story — parsed live, not pre-baked. */
+  const MERMAID_SRC = [
+    'flowchart TD',
+    '  A[Order received] --> B{In stock?}',
+    '  B --> C[Pick items]',
+    '  B --> D[(Backorder)]',
+    '  C --> E([Ship])',
+  ].join('\n');
+
+  /** A parsed DiagramModel → the {nodes, edges} spec render() takes. */
+  const modelToSpec = (d) => ({
+    nodes: d.getNodes().map((n) => ({
+      id: n.id, position: { ...n.position }, size: { ...n.size },
+      label: n.getLabel?.() ?? '',
+      ...(n.getMetadata?.('shape') ? { shape: n.getMetadata('shape') } : {}),
+    })),
+    edges: d.getLinks().map((l) => ({
+      id: l.id, source: l.sourceNodeId, target: l.targetNodeId,
+      label: l.labels?.[0]?.text ?? l.label ?? undefined,
+    })),
+  });
+
   const DEMOS = {
+    mermaid: (k) => {
+      const r = k.importDiagramText(MERMAID_SRC);
+      return r?.diagram ? modelToSpec(r.diagram) : { nodes: [], edges: [] };
+    },
     workflow: (k) => ({
       nodes: [
         N('trig', 30, 150, 'Webhook',      '#ecfdf5', '#059669', 'terminal'),
