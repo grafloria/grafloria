@@ -106,6 +106,11 @@ export type {
   DiagramValidationReport,
 } from './serialization/DiagramValidator';
 
+// Interop — .drawio (mxGraph XML) import: the migration on-ramp from draw.io
+// files. v1 is import-only; every dropped construct surfaces as a named warning.
+export { importDrawio, stripHtmlToText } from './interop/drawio';
+export type { DrawioImportResult } from './interop/drawio';
+
 // Performance
 export * from './performance';
 
