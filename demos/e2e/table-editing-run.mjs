@@ -51,6 +51,15 @@ const shot = async (name) => { await page.locator('#vs-canvas').screenshot({ pat
 /** Run one case in the page; returns whatever the body returns. */
 const inPage = (fn, arg) => page.evaluate(fn, arg);
 
+// ── 0. drop a table from the palette (the demo canvas is a clean flowchart) ─
+await inPage(async () => {
+  const c = window.__demoCtx;
+  c.seededTable = await c.palette.place('erd-entity', { x: 190, y: 430 });
+  await (window.erTable ?? (await import('../shell/grafloria.js')).erTable)(c.instance, c.seededTable).rename('ORDER');
+  c.instance.renderNow();
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+});
+
 // ── 1. the dropped master is a REAL card, not a silhouette ──────────────────
 {
   const r = await inPage(async () => {
