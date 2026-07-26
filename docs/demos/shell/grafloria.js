@@ -134666,6 +134666,12 @@ var ASTTransformer = class {
     this.nodePositions = /* @__PURE__ */ new Map();
     this.nextAutoPosition = { x: 100, y: 100 };
     this.nodeSpacing = 150;
+    /**
+     * The axis auto-placement advances along, from the diagram's direction
+     * keyword. `flowchart TD` is TOP-DOWN and must stack vertically; every
+     * direction used to lay out identically left-to-right, so TD/TB read as LR.
+     */
+    this.flowAxis = "x";
   }
   /**
    * Transform AST into DiagramModel
@@ -134683,6 +134689,7 @@ var ASTTransformer = class {
     const diagram = new DiagramModel(diagramName);
     diagram.setMetadata("diagramType", ast.diagramType);
     diagram.setMetadata("direction", ast.direction);
+    this.flowAxis = /^(TD|TB|BT)$/i.test(String(ast.direction ?? "")) ? "y" : "x";
     for (const statement of ast.statements) {
       this.processStatement(statement, diagram, defaultNodeSize, autoPosition);
     }
@@ -135080,10 +135087,13 @@ var ASTTransformer = class {
    */
   getNextAutoPosition() {
     const position = { ...this.nextAutoPosition };
-    this.nextAutoPosition.x += this.nodeSpacing;
-    if (this.nextAutoPosition.x > 1e3) {
-      this.nextAutoPosition.x = 100;
-      this.nextAutoPosition.y += this.nodeSpacing;
+    const along = this.flowAxis;
+    const across = along === "x" ? "y" : "x";
+    const limit = along === "x" ? 1e3 : 700;
+    this.nextAutoPosition[along] += this.nodeSpacing;
+    if (this.nextAutoPosition[along] > limit) {
+      this.nextAutoPosition[along] = 100;
+      this.nextAutoPosition[across] += this.nodeSpacing;
     }
     return position;
   }
