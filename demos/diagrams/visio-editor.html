@@ -214,6 +214,8 @@ defineDemo({
     bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
     mkN('↔ Distribute', 'Equal horizontal gaps (3+ shapes)', 3, (ids) => ctx.engine.commandManager.execute(new DistributeCommand(ids, 'horizontal')));
     bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
+    mkN('⧉ Duplicate', 'Duplicate the selection (Ctrl/⌘+D)', 1, () => ctx.engine.duplicate());
+    bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
     const undoBtn = mk('↶ Undo', 'Undo the last edit', () => ctx.engine.commandManager.undo());
     undoBtn.addEventListener('click', () => setTimeout(syncBar, 0));
     function syncBar() {
