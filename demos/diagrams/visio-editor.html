@@ -16,6 +16,9 @@
   }
   #vs-bar button:hover:not(:disabled) { border-color: #3B52D9; color: #3B52D9; }
   #vs-bar button:disabled { opacity: .45; cursor: default; }
+  #vs-bar button.toggle[aria-pressed="true"] {
+    background: rgba(59,82,217,.12); border-color: #3B52D9; color: #3B52D9;
+  }
   #vs-bar .sep { width: 1px; height: 18px; background: var(--gf-line, #e5e7eb); margin: 0 4px; }
   #vs-bar .hint { margin-left: auto; color: var(--gf-mut, #6b7280); }
   #vs-body { display: flex; flex: 1; min-height: 0; }
@@ -42,12 +45,29 @@
   }
   #vs-menu button:hover:not(:disabled) { background: rgba(59,82,217,.1); color: #3B52D9; }
   #vs-menu button:disabled { opacity: .45; cursor: default; }
+  /* bottom: 34px, not 10: the shell's #canvas allots 100px for a header that
+     wraps to ~121px at gate width, so the page's last ~21px sit below the
+     fold — a cluster hugging the canvas bottom would be half-clipped. */
+  #vs-zoom {
+    position: absolute; right: 10px; bottom: 34px; z-index: 25;
+    display: flex; align-items: center; gap: 2px; padding: 3px;
+    background: var(--gf-panel, #fff); border: 1px solid var(--gf-line, #e5e7eb);
+    border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+    font: 12px ui-sans-serif, system-ui, sans-serif;
+  }
+  #vs-zoom button {
+    padding: 4px 8px; border: 0; border-radius: 6px; background: transparent;
+    color: var(--gf-ink, #1e2436); cursor: pointer; font: inherit;
+  }
+  #vs-zoom button:hover { background: rgba(59,82,217,.1); color: #3B52D9; }
+  #vs-zoom #vs-zoom-pct { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 </style>
 <script type="module">
 import {
   render, registerStencils, bindStencilPalette, bindShapeDataPanel, erTable,
   AlignCommand, DistributeCommand, registerTool,
   BringNodeToFrontCommand, SendNodeToBackCommand,
+  attachCanvasPlugins, GroupModel, AddGroupCommand, RemoveGroupCommand,
 } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
@@ -63,12 +83,15 @@ import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 //          context where snapping is what a user expects)
 defineDemo({
   name: 'Visio-style editor',
-  blurb: 'The whole authoring surface: drop a shape OR a real database table, edit its columns in the canvas and in the properties panel, snap and align, drop into containers — every edit undoable.',
+  blurb: 'The whole authoring surface: a page grid with snap, zoom controls and a minimap, drop a shape OR a real database table, group, align, drop into containers — every edit undoable.',
   howTo: [
     'Drag a shape from the left rail — a ghost of it rides your cursor, and it drops centred where you release, immediately live.',
     'Search "entity" and drag it on: you get a REAL table — header, PK badge, typed columns, ＋ add column, per-row ×. Click the table and the right panel edits its properties; click a COLUMN and the panel grows a Column section.',
     'Hover a shape and DRAG FROM A PORT to another shape: a connector is drawn (release anywhere on the target). Drag a shape near another for snap guides; drop it inside the "Fulfilment" container and it JOINS — the frame carries it along.',
-    'Rubber-band empty canvas to multi-select (Shift adds). Arrows nudge the selection — Shift makes it ×10. Ctrl/⌘+D duplicates. F2 — or simply typing — renames the selected shape; double-click an edge label to edit it.',
+    'The page grid is a Visio page: faint 20px lines, heavier every 5. ▦ Grid in the bar hides it; ⌗ Snap quantises shape and edge-point drags to it (alignment guides still win per axis).',
+    'Zoom lives bottom-right: − and ＋ step, the % readout resets to 100% on click, ⤢ fits the whole diagram (Ctrl/⌘ + = / − / 0, Ctrl/⌘+Shift+F). The minimap above it mirrors the scene live — click it to jump the camera; ◱ Minimap in the bar tucks it away.',
+    'Rubber-band empty canvas to multi-select (Shift adds; Escape cancels the band). Then Ctrl/⌘+G bundles the selection into a container that drags as one — Ctrl/⌘+Shift+G dissolves it. ⊞ Group / ⊟ Ungroup in the bar do the same, disabled until the selection qualifies. One undo takes back either.',
+    'Arrows nudge the selection — Shift makes it ×10. Ctrl/⌘+D duplicates. F2 — or simply typing — renames the selected shape; double-click an edge label to edit it.',
     'Right-click a shape, an edge or the canvas: Rename, Duplicate, Delete, Bring to front / Send to back, Select all, Paste. Align / Distribute / Undo / Redo live in the bar. Ctrl/⌘+Z takes back any of it.',
   ],
   reactflow: null,
@@ -120,6 +143,135 @@ defineDemo({
       enableEasyConnect: true,
       easyConnectModifier: 'alt',
     });
+
+    // GRID — the faint page grid that makes a canvas read as Visio. The
+    // library idiom is attachCanvasPlugins' Background component (an SVG
+    // pattern in its own layer under the diagram, camera-tracked); 'lines'
+    // with a heavier line every 5 cells is the graph-paper look. The colours
+    // are the component's own theme-neutral grey at low alpha, so the grid
+    // sits back on both the light and the dark shell theme. The 20-unit gap
+    // deliberately equals the snap gridSize below: what you see is what you
+    // snap to.
+    ctx.plugins = attachCanvasPlugins(api, {
+      background: {
+        variant: 'lines', gap: 20, size: 1,
+        color: 'rgba(120,130,145,.16)',
+        majorEvery: 5, majorColor: 'rgba(120,130,145,.30)',
+      },
+      // The library's own live minimap (node rects + camera rectangle),
+      // bottom-right; slightly smaller than default so the canvas keeps its
+      // room. It sits ABOVE the zoom cluster — nudged below.
+      minimap: { width: 170, height: 120 },
+    });
+    {
+      const mm = canvasEl.querySelector('.grafloria-minimap');
+      if (mm) mm.style.bottom = '76px';   // clear the zoom cluster below it
+    }
+
+    // ZOOM CLUSTER — bottom-right, the Visio/Figma convention: −  %  +  fit.
+    // The % readout doubles as reset-to-100%. Each button is one call into
+    // the instance's own ViewportController (setZoom is centre-anchored), so
+    // there is no camera math here to drift from the canvas's.
+    const ZOOM_STEP = 1.2;
+    ctx.zoomIn = () => { api.viewport.setZoom(api.viewport.getZoom() * ZOOM_STEP); api.renderNow(); };
+    ctx.zoomOut = () => { api.viewport.setZoom(api.viewport.getZoom() / ZOOM_STEP); api.renderNow(); };
+    ctx.zoomReset = () => { api.viewport.setZoom(1); api.renderNow(); };
+    ctx.fit = () => { api.fitView(); api.renderNow(); };
+    {
+      const wrap = document.createElement('div');
+      wrap.id = 'vs-zoom';
+      const zBtn = (label, title, run) => {
+        const b = document.createElement('button');
+        b.textContent = label; b.title = title;
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); run(); });
+        wrap.appendChild(b);
+        return b;
+      };
+      zBtn('−', 'Zoom out (Ctrl/⌘ −)', ctx.zoomOut);
+      const pct = zBtn('100%', 'Zoom level — click to reset to 100% (Ctrl/⌘ 0)', ctx.zoomReset);
+      pct.id = 'vs-zoom-pct';
+      zBtn('＋', 'Zoom in (Ctrl/⌘ =)', ctx.zoomIn);
+      zBtn('⤢', 'Fit the diagram in view (Ctrl/⌘+Shift+F)', ctx.fit);
+      // A press here must never reach the canvas below (it would start a
+      // marquee / clear the selection) — same discipline as the library's
+      // controls component.
+      for (const type of ['pointerdown', 'mousedown']) {
+        wrap.addEventListener(type, (e) => e.stopPropagation());
+      }
+      const paintPct = () => { pct.textContent = `${Math.round(api.viewport.getZoom() * 100)}%`; };
+      api.viewport.onChange(paintPct);
+      paintPct();
+      canvasEl.appendChild(wrap);
+    }
+
+    // GROUP / UNGROUP — real containers via the engine's own group commands.
+    //
+    // ONE undo step each, by construction: the GroupModel is populated (members
+    // + fitted frame) BEFORE it enters the diagram, so a single AddGroupCommand
+    // carries the whole creation — AddGroupCommand serializes the group at
+    // construction and its undo removes it whole. (A beginBatch over
+    // addGroup+addToGroup cannot do this: BatchCommand's gate validates every
+    // queued command against the PRE-batch state, where the group does not
+    // exist yet.) Ungroup is the mirror: RemoveGroupCommand snapshots the group
+    // into its own undo, so one Ctrl+Z resurrects it, members and all.
+    const groupInScope = () => {
+      const sel = ctx.diagram.getSelectedNodes().map((n) => n.id);
+      if (!sel.length) return null;
+      return ctx.diagram.getGroups().find((g) => sel.some((id) => g.members.has(id))) ?? null;
+    };
+    ctx.groupSelection = async () => {
+      const ids = ctx.diagram.getSelectedNodes().map((n) => n.id);
+      if (ids.length < 2) return null;                       // Visio's own minimum
+      const g = new GroupModel({ name: 'Group' });
+      for (const id of ids) g.addMember(id);
+      g.fitToContents(ctx.diagram);
+      await ctx.engine.commandManager.execute(new AddGroupCommand(g));
+      api.renderNow();
+      syncBar();
+      return ctx.diagram.getGroup(g.id);
+    };
+    ctx.ungroupSelection = async () => {
+      const g = groupInScope();
+      if (!g) return null;
+      await ctx.engine.commandManager.execute(new RemoveGroupCommand(g.id));
+      api.renderNow();
+      syncBar();
+      return g.id;
+    };
+
+    // Keyboard chords every canvas product answers: Ctrl/⌘+= in, Ctrl/⌘+− out,
+    // Ctrl/⌘+0 → 100%, Ctrl/⌘+Shift+F → fit, Ctrl/⌘+G group, +Shift ungroup.
+    // preventDefault keeps the BROWSER's zoom/find out of it. Never while
+    // typing in a field.
+    document.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.key === '=' || e.key === '+') { e.preventDefault(); ctx.zoomIn(); }
+      else if (e.key === '-' || e.key === '_') { e.preventDefault(); ctx.zoomOut(); }
+      else if (e.key === '0') { e.preventDefault(); ctx.zoomReset(); }
+      else if (e.shiftKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); ctx.fit(); }
+      else if (e.key === 'g' || e.key === 'G') {
+        e.preventDefault();
+        if (e.shiftKey) void ctx.ungroupSelection();
+        else void ctx.groupSelection();
+      }
+    });
+
+    // SNAP-TO-GRID — the engine already has it in its interaction config
+    // (waypointEditor.snapToGrid feeds SnapController.computeSnap, which
+    // quantises single-node body drags whenever helper lines are on, and the
+    // same flag drives waypoint/vertex snapping). Alignment guides still win
+    // over the grid per axis — that precedence lives in computeSnap.
+    // setInteractionConfig merges SHALLOWLY, so patch the nested objects whole.
+    ctx.setSnap = (on) => {
+      const cfg = ctx.engine.getInteractionConfig();
+      ctx.engine.setInteractionConfig({
+        waypointEditor: { ...cfg.waypointEditor, snapToGrid: on },
+        controlPointEditor: { ...cfg.controlPointEditor, snapToGrid: on },
+      });
+    };
+    ctx.setSnap(true);   // Visio defaults snap ON, so does this editor
 
     // T4/T5 — all 8 stencils behind the registry, feeding the palette.
     ctx.registered = registerStencils(ctx.engine.templateRegistry);
@@ -205,7 +357,18 @@ defineDemo({
           start = null;
           clearBox();
         },
-        onCancel: () => { start = null; clearBox(); },
+        // Escape mid-drag (the binder routes it here): the band disappears AND
+        // the half-applied selection rolls back to what it was before the
+        // press — a cancelled gesture must leave no trace.
+        onCancel: () => {
+          if (start) {
+            for (const n of ctx.diagram.getNodes()) n.setSelected(baseSelection.has(n.id));
+            api.renderNow();
+            syncBar();
+          }
+          start = null;
+          clearBox();
+        },
       });
     }
 
@@ -306,6 +469,13 @@ defineDemo({
     bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
     mkN('⧉ Duplicate', 'Duplicate the selection (Ctrl/⌘+D)', 1, () => ctx.engine.duplicate());
     bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
+    // Group needs 2+ shapes, Ungroup needs a group in scope — same
+    // disabled-below-minimum discipline as the aligns, synced in syncBar.
+    const groupBtn = mk('⊞ Group', 'Group the selection into a container (Ctrl/⌘+G, 2+ shapes)',
+      () => ctx.groupSelection());
+    const ungroupBtn = mk('⊟ Ungroup', 'Dissolve the selected shape’s group (Ctrl/⌘+Shift+G)',
+      () => ctx.ungroupSelection());
+    bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
     const undoBtn = mk('↶ Undo', 'Undo the last edit', () => ctx.engine.commandManager.undo());
     // Redo lives beside Undo, synced to canRedo the same way (the keyboard
     // chord always worked; the BUTTON is what the audit found missing).
@@ -315,12 +485,41 @@ defineDemo({
     function syncBar() {
       const n = selected().length;
       for (const [btn, min] of needs) btn.disabled = n < min;
+      groupBtn.disabled = n < 2;
+      ungroupBtn.disabled = !groupInScope();
       undoBtn.disabled = !ctx.engine.commandManager.canUndo?.();
       redoBtn.disabled = !ctx.engine.commandManager.canRedo?.();
     }
     ctx.syncBar = syncBar;
     api.on('selection:change', syncBar);
     syncBar();
+
+    // View toggles — pressed-state buttons (aria-pressed carries the state,
+    // the .toggle CSS paints it). Each drives the LIBRARY's own switch rather
+    // than a demo-local flag: Grid flips DiagramStore.gridEnabled (which the
+    // Background plugin watches), Snap flips the engine's snap-to-grid config.
+    bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
+    const mkToggle = (label, title, initial, apply) => {
+      const b = document.createElement('button');
+      b.textContent = label; b.title = title; b.className = 'toggle';
+      let on = initial;
+      b.setAttribute('aria-pressed', String(on));
+      b.addEventListener('click', () => {
+        on = !on;
+        b.setAttribute('aria-pressed', String(on));
+        apply(on);
+        api.renderNow();
+      });
+      bar.appendChild(b);
+      return b;
+    };
+    mkToggle('▦ Grid', 'Show the page grid', true,
+      (on) => ctx.engine.getStore().set('gridEnabled', on));
+    mkToggle('⌗ Snap', 'Snap dragged shapes and edge points to the 20px grid', true,
+      (on) => ctx.setSnap(on));
+    mkToggle('◱ Minimap', 'Show the minimap', true,
+      (on) => ctx.engine.getStore().set('showMinimap', on));
+
     const hint = document.createElement('span');
     hint.className = 'hint';
     hint.textContent = 'drag a shape from the rail →';
@@ -338,9 +537,18 @@ defineDemo({
     check(document.querySelectorAll('#vs-rail .gf-stencil-item').length > 0, 'the stencil rail is empty');
     check(ctx.registered === 80, `expected exactly 80 masters registered, got ${ctx.registered}`);
     check(!!document.querySelector('#vs-panel .gf-sd-title'), 'the shape-data panel did not mount');
-    check(document.querySelectorAll('#vs-bar button').length >= 11,
-      'the toolbar should carry the full set: 6 aligns, 2 distributes, Duplicate, Undo, Redo');
+    check(document.querySelectorAll('#vs-bar button').length >= 16,
+      'the toolbar should carry the full set: 6 aligns, 2 distributes, Duplicate, Group, Ungroup, Undo, Redo, Grid, Snap, Minimap');
     check(!!document.getElementById('vs-menu'), 'the context menu did not mount');
+    // The Visio chrome: the page grid is painted (Background plugin, its own
+    // layer under the diagram) and defaults ON.
+    const gridSvg = document.querySelector('#vs-canvas .grafloria-background-layer svg.grafloria-background');
+    check(!!gridSvg && getComputedStyle(gridSvg).display !== 'none', 'the page grid should paint by default');
+    // …the zoom cluster reads 100% at boot and the minimap mirrors the scene.
+    const pctEl = document.getElementById('vs-zoom-pct');
+    check(!!pctEl && pctEl.textContent === '100%', `the zoom readout should boot at 100%, got "${pctEl?.textContent}"`);
+    check(document.querySelectorAll('#vs-canvas .grafloria-minimap rect[data-node-id]').length === m.getNodes().length,
+      'the minimap should carry one rect per node');
 
     // 2. T7 — placing from the palette adds a live node, undoably.
     const before = m.getNodes().length;
@@ -376,7 +584,24 @@ defineDemo({
     const topsUndone = ['recv', 'chk', 'ship'].map((id) => m.getNode(id).position.y);
     check(topsUndone.join(',') === topsBefore.join(','), 'one undo did not restore all three positions');
 
-    // 4b. THE TABLE STORY — a dropped "Entity" is a real kit card, and the
+    // 4b. GROUP / UNGROUP — the ONE-undo contract, service-level (the real
+    //     Ctrl+G gestures, the frame drag and the disabled-below-2 discipline
+    //     live in demos/e2e/visio-editor-run.mjs). This pins the engine
+    //     contract in the browser bundle: a populated GroupModel through one
+    //     AddGroupCommand is one history entry.
+    m.clearSelection();
+    for (const id of ['recv', 'chk']) m.addToSelection(m.getNode(id));
+    const groupsBefore = m.getGroups().length;
+    const bundled = await ctx.groupSelection();
+    check(!!bundled && bundled.members.has('recv') && bundled.members.has('chk') && bundled.members.size === 2,
+      `grouping should bundle exactly the 2-node selection, got {${[...(bundled?.members ?? [])]}}`);
+    check(m.getGroups().length === groupsBefore + 1, 'grouping should add exactly one group');
+    await ctx.engine.commandManager.undo();
+    check(m.getGroups().length === groupsBefore, 'ONE undo should take the whole group back out');
+    check(!!m.getNode('recv') && !!m.getNode('chk'), 'undoing a group must not touch the member nodes');
+    m.clearSelection();
+
+    // 4c. THE TABLE STORY — a dropped "Entity" is a real kit card, and the
     //     properties panel edits it through the kit's own handles (not a
     //     dataSchema form, which only ever rendered flat scalars).
     // Dropped here rather than seeded: the canvas stays a clean flowchart, and
@@ -414,6 +639,8 @@ defineDemo({
     check(cfg.enableInPlaceTextEdit === true, 'the editor should enable in-place rename');
     check(cfg.enableKeyboardNudge === true, 'the editor should enable arrow-key nudge');
     check(cfg.enableEasyConnect === true, 'the editor should enable easy-connect');
+    check(cfg.waypointEditor.snapToGrid === true && cfg.controlPointEditor.snapToGrid === true,
+      'snap-to-grid should default ON (the Snap toggle drives it)');
 
     api.renderNow();
   },
