@@ -137,4 +137,55 @@ describe('Card 5 — InPlaceTextEditor', () => {
       ).toBeNull();
     });
   });
+
+  describe('link DISPLAY labels (the metadata dialect every spec input writes)', () => {
+    function linkWithDisplayLabel(text?: string): LinkModel {
+      const a = addNode();
+      const b = addNode();
+      const link = new LinkModel(a.getPortBySide('right')!.id, b.getPortBySide('left')!.id);
+      link.setPoints([
+        { x: 0, y: 0 },
+        { x: 60, y: 0 },
+        { x: 120, y: 80 },
+      ]);
+      if (text) link.setLabel(text);
+      diagram.addLink(link);
+      return link;
+    }
+
+    test('begin falls back to the display label, anchored at the painted midpoint', () => {
+      const link = linkWithDisplayLabel('in stock');
+      const session = editor.begin(engine, {
+        type: 'link-label',
+        linkId: link.id,
+        labelIndex: 0,
+      })!;
+
+      expect(session).not.toBeNull();
+      expect(session.value).toBe('in stock');
+      // The renderer paints the display label at points[floor(len/2)] = (60,0).
+      expect(session.center).toEqual({ x: 60, y: 0 });
+      expect(session.multiline).toBe(false);
+    });
+
+    test('commit writes back through SetLinkDisplayLabelCommand — undoably', async () => {
+      const link = linkWithDisplayLabel('old');
+      editor.begin(engine, { type: 'link-label', linkId: link.id, labelIndex: 0 });
+
+      const command = editor.commit(engine, 'new')!;
+      expect(command).not.toBeNull();
+      await engine.commandManager.execute(command);
+      expect(link.getLabel()).toBe('new');
+
+      await engine.undo();
+      expect(link.getLabel()).toBe('old');
+    });
+
+    test('an edge with NO label of either dialect opens nothing', () => {
+      const link = linkWithDisplayLabel(undefined);
+      expect(
+        editor.begin(engine, { type: 'link-label', linkId: link.id, labelIndex: 0 })
+      ).toBeNull();
+    });
+  });
 });

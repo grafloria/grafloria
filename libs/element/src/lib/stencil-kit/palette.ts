@@ -297,6 +297,39 @@ export function bindStencilPalette(
     }
   }
 
+  // ── drag ghost ───────────────────────────────────────────────────────────
+  // A lightweight preview that follows the cursor during a palette drag, so
+  // the user can see WHAT they are holding and WHERE it will land. A DOM
+  // element rather than `setDragImage`: the native drag image is browser
+  // chrome — it never appears in a screenshot, and headless/some platforms do
+  // not paint it at all, which is exactly how "dragging from the rail shows no
+  // preview" shipped unnoticed.
+  let ghost: HTMLElement | null = null;
+  const moveGhost = (e: DragEvent) => {
+    if (!ghost) return;
+    ghost.style.left = `${e.clientX}px`;
+    ghost.style.top = `${e.clientY}px`;
+  };
+  const killGhost = () => {
+    ghost?.remove();
+    ghost = null;
+    document.removeEventListener('dragover', moveGhost);
+  };
+  const spawnGhost = (master: NodeTemplate, e: DragEvent) => {
+    killGhost();
+    const meta: any = (master as any).meta ?? {};
+    ghost = document.createElement('div');
+    ghost.className = 'gf-stencil-ghost';
+    ghost.appendChild(thumbnail(master, 28));
+    ghost.append(meta.name ?? master.id);
+    ghost.style.left = `${e.clientX}px`;
+    ghost.style.top = `${e.clientY}px`;
+    document.body.appendChild(ghost);
+    // dragover fires document-wide throughout an HTML5 drag — the one stream
+    // that reliably carries live coordinates on every platform.
+    document.addEventListener('dragover', moveGhost);
+  };
+
   function itemEl(master: NodeTemplate): HTMLElement {
     const meta: any = (master as any).meta ?? {};
     const el = document.createElement('div');
@@ -316,7 +349,17 @@ export function bindStencilPalette(
       dt.setData(DND_TYPE, master.id);
       dt.setData('text/plain', meta.name ?? master.id); // so a stray drop is harmless text
       dt.effectAllowed = 'copy';
+      // Suppress the native drag snapshot where it IS painted — otherwise the
+      // ghost and the platform preview would ride the cursor together.
+      if (typeof Image !== 'undefined' && dt.setDragImage) {
+        const blank = new Image();
+        blank.src =
+          'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        dt.setDragImage(blank, 0, 0);
+      }
+      spawnGhost(master, e as DragEvent);
     });
+    el.addEventListener('dragend', killGhost);
     return el;
   }
 
@@ -342,6 +385,7 @@ export function bindStencilPalette(
   const onDrop = (e: DragEvent) => {
     const id = heldMaster(e);
     canvas.classList.remove('gf-stencil-target');
+    killGhost();
     if (!id) return;
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
@@ -418,6 +462,7 @@ export function bindStencilPalette(
     setSearch(q: string) { query = (q ?? '').trim().toLowerCase(); if (input) input.value = q ?? ''; renderList(); },
     place,
     destroy() {
+      killGhost();
       canvas.removeEventListener('dragover', onDragOver);
       canvas.removeEventListener('dragleave', onDragLeave);
       canvas.removeEventListener('drop', onDrop);

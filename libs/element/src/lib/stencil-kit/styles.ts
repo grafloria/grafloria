@@ -99,6 +99,21 @@ const CSS = `
 
 /* The canvas while a stencil is held over it. */
 .gf-stencil-target { outline: 2px dashed var(--gf-st-accent); outline-offset: -3px; }
+
+/* The drag GHOST — the master's silhouette + name following the cursor during a
+   palette drag, so the drop point is legible. A DOM element on purpose: the
+   browser's native drag image lives outside the DOM, does not screenshot, and
+   several platforms simply never paint it. */
+.gf-stencil-ghost {
+  position: fixed; z-index: 1000; pointer-events: none;
+  transform: translate(-50%, -50%); opacity: .6;
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  background: var(--gf-st-bg, #fff); color: var(--gf-st-ink, #1e2436);
+  border: 1px solid var(--gf-st-accent, #3B52D9); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18);
+  font: 12px ui-sans-serif, system-ui, sans-serif;
+}
+.gf-stencil-ghost svg { display: block; }
 `;
 
 /** Inject the palette stylesheet once per document. */

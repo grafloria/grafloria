@@ -54,6 +54,12 @@ jobs:
       - run: node demos/e2e/variant-run.mjs vue
       - run: node demos/e2e/interaction-run.mjs
       - run: node demos/e2e/table-editing-run.mjs
+      # The Visio-editor covenant: every advertised gesture (marquee, nudge,
+      # duplicate, F2/type-to-replace, context menu, port-drag connect,
+      # drag-into-container, edge-label edit, palette ghost, toolbar) driven
+      # as a REAL pointer/keyboard gesture — a direct API call proving a broken
+      # drag is exactly the failure this gate exists to prevent.
+      - run: node demos/e2e/visio-editor-run.mjs
       # The Mermaid compatibility claim, checked against REAL mermaid v11 in both
       # directions. The site says this runs in CI; this is the line that makes
       # that true.

@@ -364,6 +364,31 @@ describe('DiagramEngine', () => {
       await expect(engine.removeLink('some-id')).rejects.toThrow('No diagram loaded');
     });
 
+    it('a link drawn via the CONNECTION GESTURE is one undoable step (visio audit)', async () => {
+      // Drive the same pipeline the pointer gesture uses: start on a port,
+      // complete on another. The engine's 'connection:complete' handler used to
+      // call diagram.addLink() directly, so the one edit a user DREW was the
+      // one edit Ctrl+Z could not take back.
+      const csm = engine.getConnectionStateManager();
+      csm.startConnection(sourcePort, { x: 0, y: 0 });
+      const result = csm.completeConnection(targetPort);
+      expect(result.success).toBe(true);
+
+      // The handler is async — let its microtasks (routing + command) settle.
+      await new Promise((r) => setTimeout(r, 20));
+
+      const diagram = engine.getDiagram()!;
+      expect(diagram.getLinks()).toHaveLength(1);
+      const linkId = diagram.getLinks()[0]!.id;
+
+      expect(engine.commandManager.canUndo()).toBe(true);
+      await engine.commandManager.undo();
+      expect(diagram.getLink(linkId)).toBeUndefined();
+
+      await engine.commandManager.redo();
+      expect(diagram.getLink(linkId)).toBeDefined();
+    });
+
     it('propagates command failure to the caller (no floating promise)', async () => {
       // Wave 14: same floating-promise shape as removeNode() — see above.
       const link = await engine.addLink({
@@ -533,6 +558,27 @@ describe('DiagramEngine', () => {
       await engine.undo();
 
       expect(engine.canRedo()).toBe(true);
+    });
+
+    it('duplicate() honours the DIAGRAM selection (a mouse click never writes the store set)', async () => {
+      const node = await engine.addNode({
+        type: 'test',
+        position: { x: 50, y: 60 },
+      });
+      const diagram = engine.getDiagram()!;
+      diagram.selectNode(node); // the mouse path: diagram selection only
+
+      // Used to throw 'No nodes selected' because only the store set was checked.
+      await engine.duplicate();
+
+      const nodes = diagram.getNodes();
+      expect(nodes).toHaveLength(2);
+      const copy = nodes.find((n) => n.id !== node.id)!;
+      expect(copy.position.x).toBe(70);
+      expect(copy.position.y).toBe(80);
+
+      await engine.undo(); // one entry takes the whole duplicate back
+      expect(diagram.getNodes()).toHaveLength(1);
     });
   });
 

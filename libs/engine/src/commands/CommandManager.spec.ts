@@ -306,4 +306,48 @@ describe('CommandManager — undo-stack correctness (wave14)', () => {
       expect(manager.canUndo()).toBe(false);
     });
   });
+
+  describe('non-undoable commands (visio audit — Copy poisoned the stack)', () => {
+    /** Non-mutating command: executes fine, declares itself not undoable. */
+    class NonMutatingCommand extends ProbeCommand {
+      constructor() {
+        super('Copy');
+      }
+      override canUndo(): boolean {
+        return false;
+      }
+      override isUndoable(): boolean {
+        return false;
+      }
+    }
+
+    it('never enters history, so it cannot strand the entries behind it', async () => {
+      await manager.execute(new NonMutatingCommand());
+
+      expect(manager.getHistory().length).toBe(0);
+      expect(manager.canUndo()).toBe(false);
+    });
+
+    it('copy → undo undoes the edit BEFORE the copy and never throws', async () => {
+      const node = new NodeModel({ type: 'rect', position: { x: 0, y: 0 } });
+      diagram.addNode(node);
+
+      const move = new MoveNodeCommand(node.id, { x: 100, y: 100 });
+      await manager.execute(move);
+      await manager.execute(new NonMutatingCommand());
+
+      // The regression: undo() hit the Copy entry, threw "Cannot undo command:
+      // Copy", skipped the index decrement, and the Move behind it became
+      // permanently unreachable while canUndo() kept reporting true.
+      await expect(manager.undo()).resolves.toBeUndefined();
+      expect(node.position).toEqual(expect.objectContaining({ x: 0, y: 0 }));
+      expect(manager.canUndo()).toBe(false);
+    });
+
+    it('the REAL CopyCommand is declared non-undoable', async () => {
+      const { CopyCommand } = await import('./basic/CopyCommand');
+      const { ClipboardManager } = await import('../clipboard/ClipboardManager');
+      expect(new CopyCommand(new ClipboardManager()).isUndoable()).toBe(false);
+    });
+  });
 });
