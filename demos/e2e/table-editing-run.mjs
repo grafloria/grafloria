@@ -233,7 +233,28 @@ const inPage = (fn, arg) => page.evaluate(fn, arg);
   await shot('09-delete-during-edit');
 }
 
-// ── 10. the container really CARRIES its members ───────────────────────────
+// ── 10. a real mouse press inside the editor must NOT close it ────────────
+//     The canvas binder owns pointer events and preventDefaults them; that also
+//     suppressed the native <datalist> popup, so the dropdown never opened or
+//     flashed shut. The editor now stops pointer events itself.
+{
+  await inPage(async () => {
+    document.querySelector('#vs-canvas .axk-ty').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 250));
+  });
+  const box = await page.locator('.axk-edit-input').boundingBox();
+  await page.mouse.click(box.x + box.width - 8, box.y + box.height / 2);   // the arrow
+  await page.waitForTimeout(350);
+  const r = await inPage(() => ({
+    open: !!document.querySelector('.axk-edit-input'),
+    focused: document.activeElement?.className === 'axk-edit-input',
+  }));
+  check('DROPDOWN-STAYS-OPEN', r.open && r.focused, `open=${r.open} focused=${r.focused}`);
+  await shot('10-dropdown-open');
+  await inPage(() => document.querySelector('.axk-edit-input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+}
+
+// ── 11. the container really CARRIES its members ───────────────────────────
 {
   const r = await inPage(async () => {
     const c = window.__demoCtx, m = c.diagram;

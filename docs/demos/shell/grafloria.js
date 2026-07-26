@@ -191429,7 +191429,9 @@ function openInlineEditor(api, targetEl, value, onCommit, suggestions) {
   self2.cancel = cancel;
   activeEditor = self2;
   input.addEventListener("blur", commit);
-  input.addEventListener("mousedown", (e) => e.stopPropagation());
+  for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick"]) {
+    input.addEventListener(type, (e) => e.stopPropagation());
+  }
   setTimeout(() => {
     input.focus();
     input.select();
