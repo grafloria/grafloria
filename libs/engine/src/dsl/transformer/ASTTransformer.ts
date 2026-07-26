@@ -369,6 +369,12 @@ export class ASTTransformer {
     // (svg-renderer reads link.getMetadata('label') for the edge label).
     if (astEdge.label) {
       link.setLabel(astEdge.label);
+      // …and ALSO as a real link label. `setLabel` only writes `metadata.label`
+      // (plus the legacy data mirror), but the SVG renderer paints from the
+      // `labels[]` array — so every Mermaid edge label (`-->|yes|`) parsed
+      // correctly, was stored on the link, and then never appeared. That left
+      // branch edges looking like unexplained stray lines.
+      if (!link.labels?.length) link.addLabel({ text: astEdge.label, slot: 'center' });
     }
 
     // Store link type information

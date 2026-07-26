@@ -134892,6 +134892,7 @@ var ASTTransformer = class {
     }
     if (astEdge.label) {
       link.setLabel(astEdge.label);
+      if (!link.labels?.length) link.addLabel({ text: astEdge.label, slot: "center" });
     }
     link.setMetadata("dslLinkType", astEdge.linkType);
     if (astEdge.style) {
