@@ -441,6 +441,68 @@ describe('DomEventBinder', () => {
       expect(h.model.getNode('a')).toBeDefined();
       input.remove();
     });
+
+    describe('arrow-key nudge (enableKeyboardNudge)', () => {
+      it('is OFF by default — an arrow press moves nothing', async () => {
+        h = harness();
+        h.model.selectNode(h.model.getNode('a')!);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(100);
+      });
+
+      it('ArrowRight nudges the selected node 1 unit; Shift makes it 10', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableKeyboardNudge: true });
+        h.model.selectNode(h.model.getNode('a')!);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(101);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.y).toBe(110);
+        expect(h.events.some((e) => e.event === 'nodes:change')).toBe(true);
+      });
+
+      it('rapid presses MERGE into one undo entry that rewinds to the start', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableKeyboardNudge: true });
+        h.model.selectNode(h.model.getNode('a')!);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(102);
+
+        await h.engine.commandManager.undo();
+        expect(h.model.getNode('a')!.position.x).toBe(100);
+        // …and that single entry was the whole story: nothing else to unwind
+        // from the two presses.
+        expect(h.engine.commandManager.canUndo()).toBe(false);
+      });
+
+      it('does not fire from a focused text input, and needs a selection', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableKeyboardNudge: true });
+        h.model.selectNode(h.model.getNode('a')!);
+
+        const input = document.createElement('input');
+        document.body.appendChild(input);
+        input.focus();
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(100);
+        input.remove();
+
+        h.model.clearSelection();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(100);
+      });
+    });
   });
 
   // ==========================================================================

@@ -24,6 +24,9 @@ import { portWorldPosition } from '../svg/port-positioning';
 import { delegateWheelToScrollable } from './wheel-scroll-yield';
 import { SnapController } from '../interaction/snapping';
 import { InPlaceTextEditor, type TextEditTarget } from '../interaction/in-place-editor';
+// visio-depth: the shipped nudge math (KeyboardNavigationController.nudgeCommand)
+// was auto-wired only in the Angular wrapper; `enableKeyboardNudge` drives it here.
+import { KeyboardNavigationController } from '../interaction/keyboard-navigation';
 import type { Rectangle } from '../types/geometry.types';
 import type { ProximityCandidate } from '../interaction/snapping';
 
@@ -160,6 +163,7 @@ export class DomEventBinder {
   private snap?: SnapController;
   /** T10 — the in-place label editor + its live DOM widget (lazy). */
   private textEditor?: InPlaceTextEditor;
+  private keyboardNav?: KeyboardNavigationController;
   private activeTextInput?: HTMLInputElement;
   /** T8 — lazily built per diagram; rebuilt when the diagram identity changes. */
   private membership?: { service: GroupMembershipService; diagram: unknown };
@@ -1379,6 +1383,34 @@ export class DomEventBinder {
         })();
       }
       return;
+    }
+
+    // visio-depth — arrow-key NUDGE (opt-in via `enableKeyboardNudge`): the
+    // selection moves 1 world unit per press, ×10 with Shift, each press one
+    // undoable command — and MERGEABLE, so a held key's auto-repeat collapses
+    // into a single undo entry inside the CommandManager's merge window. The
+    // math is the shipped KeyboardNavigationController's; the focused-input
+    // guard at the top of this handler keeps arrows out of a live text editor.
+    if (
+      !this.isReadonly() &&
+      event.key.startsWith('Arrow') &&
+      engine.getInteractionConfig().enableKeyboardNudge &&
+      !(event.ctrlKey || event.metaKey || event.altKey)
+    ) {
+      if (!this.keyboardNav) this.keyboardNav = new KeyboardNavigationController();
+      const delta = this.keyboardNav.nudgeDelta(event.key, event.shiftKey);
+      if (delta && diagram.getSelectedNodes().length > 0) {
+        event.preventDefault();
+        const command = this.keyboardNav.nudgeCommand(engine, delta.x, delta.y, {
+          mergeable: true,
+        });
+        if (command) {
+          void engine.commandManager.execute(command);
+          this.host.requestRender();
+          this.emitNodesChange();
+        }
+        return;
+      }
     }
 
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {

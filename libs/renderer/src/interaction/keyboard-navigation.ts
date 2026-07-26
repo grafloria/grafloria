@@ -699,8 +699,18 @@ export class KeyboardNavigationController {
    * Move the selection (or, with nothing selected, the focused node) by a world
    * delta, as ONE undoable command per key press. Locked / undraggable nodes are
    * skipped; returns null when there is nothing to move.
+   *
+   * `mergeable` defaults FALSE — the a11y contract is "⌘Z undoes each nudge to
+   * the exact pixel". An editor that wants held-key auto-repeat to collapse
+   * into one undo entry (Visio's feel) passes true and the CommandManager's
+   * merge window does the rest.
    */
-  nudgeCommand(engine: DiagramEngine, dx: number, dy: number): Command | null {
+  nudgeCommand(
+    engine: DiagramEngine,
+    dx: number,
+    dy: number,
+    options: { mergeable?: boolean } = {}
+  ): Command | null {
     const diagram = engine?.getDiagram?.();
     if (!diagram) return null;
 
@@ -717,7 +727,7 @@ export class KeyboardNavigationController {
           node.id,
           { x: node.position.x + dx, y: node.position.y + dy, z: node.position.z },
           { x: node.position.x, y: node.position.y, z: node.position.z },
-          { mergeable: false }
+          { mergeable: options.mergeable === true }
         )
     );
 
