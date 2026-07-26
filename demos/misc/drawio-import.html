@@ -1,0 +1,224 @@
+<meta charset="utf-8">
+<title>draw.io import — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { display: flex; height: calc(100vh - 190px); }
+  #stage { flex: 1; min-width: 0; position: relative; }
+  #side { width: 400px; border-left: 1px solid rgba(127,127,127,.3); display: flex; flex-direction: column; }
+  #text { flex: 1; font: 11px ui-monospace, Menlo, monospace; border: 0; border-bottom: 1px solid rgba(127,127,127,.3); padding: 10px; resize: none; background: transparent; color: inherit; white-space: pre; }
+  #side .foot { padding: 8px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #side button { padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; }
+  #status { font-size: 12px; padding: 6px 10px 10px; line-height: 1.5; max-height: 130px; overflow: auto; }
+  #status .bad { color: #dc2626; font-weight: 600; }
+  #status .warn { opacity: .75; display: block; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  <b>.drawio (mxGraph XML) import v1</b> — the migration on-ramp from draw.io / diagrams.net.
+  Reads plain <code>&lt;mxGraphModel&gt;</code> XML <i>and</i> the default compressed
+  <code>&lt;mxfile&gt;</code> save (base64 → raw-deflate → URI-encoded). Vertices, styles,
+  swimlane containers with real membership, and edges with labels all map onto the engine's
+  own models — and every construct v1 drops is <b>named in a warning</b>, never lost in silence.
+</div>
+<div id="canvas">
+  <div id="stage"></div>
+  <div id="side">
+    <textarea id="text" spellcheck="false" placeholder="Paste .drawio / mxGraph XML here…"></textarea>
+    <div class="foot">
+      <button id="ex-plain">example: plain XML</button>
+      <button id="ex-compressed">example: compressed</button>
+      <button id="import">import</button>
+    </div>
+    <div id="status">—</div>
+  </div>
+</div>
+<script type="module">
+import { render, importDrawio, fromDocument, DiagramSerializer } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+
+// A small order flow, hand-written in the exact XML draw.io saves: a rounded
+// start box, a rhombus decision, and a SWIMLANE CONTAINER whose children carry
+// PARENT-RELATIVE geometry — the coordinate conversion this importer exists for.
+const PLAIN_XML = `<mxGraphModel dx="800" dy="600" grid="1">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="start" value="New order" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+      <mxGeometry x="40" y="70" width="150" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="check" value="In stock?" style="rhombus;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+      <mxGeometry x="45" y="220" width="140" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="lane" value="Fulfilment" style="swimlane;" vertex="1" parent="1">
+      <mxGeometry x="330" y="70" width="380" height="280" as="geometry"/>
+    </mxCell>
+    <mxCell id="pick" value="Pick items" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="lane">
+      <mxGeometry x="30" y="50" width="130" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="pack" value="Pack &amp; ship" style="rounded=0;" vertex="1" parent="lane">
+      <mxGeometry x="210" y="170" width="130" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="start" target="check">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e2" value="yes" edge="1" parent="1" source="check" target="pick">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e3" edge="1" parent="lane" source="pick" target="pack">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>`;
+
+// The COMPRESSED example is generated from the SAME XML, through the browser's
+// own CompressionStream — the exact inverse of the decode path importDrawio
+// runs — so the two examples can never drift apart, and importing both proves
+// compressed ≡ plain end to end.
+async function compressedCopy(xml) {
+  const bytes = new TextEncoder().encode(encodeURIComponent(xml));
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  const buf = new Uint8Array(await new Response(stream).arrayBuffer());
+  let bin = '';
+  for (const b of buf) bin += String.fromCharCode(b);
+  return `<mxfile host="grafloria-demo" version="24.0"><diagram id="d1" name="Page-1">${btoa(bin)}</diagram></mxfile>`;
+}
+
+defineDemo({
+  name: 'draw.io import',
+  blurb: 'Import .drawio files — plain XML or the default compressed save — onto live engine models: shapes, colours, swimlane containers with real membership, edge labels. Every dropped construct is a named warning.',
+  howTo: [
+    'Click "example: plain XML" — the order flow imports: a rounded blue start box, a yellow decision rhombus, and a "Fulfilment" swimlane drawn as a real group frame around its two member nodes.',
+    'Click "example: compressed" — the SAME diagram, but wrapped exactly like draw.io\'s default save (base64 → raw-deflate → URI-encoded). The status line shows identical counts: the decode path is proven live.',
+    'Read the status line: node / link / group counts, then every warning the import raised — v1 names what it drops (unmapped style keys, ignored waypoints, …) instead of losing it silently.',
+    'Paste your own .drawio file into the pane and click import. Garbage input reports an error and leaves the current diagram untouched.',
+    'Drag any node — these are live engine models, not a picture of draw.io: selection, dragging and routing all work on the imported diagram.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    const stage = document.getElementById('stage');
+    const ta = document.getElementById('text');
+    const status = document.getElementById('status');
+    let mountHost = null;
+
+    // Import → serialize → fromDocument → render: the LOADED path is the same
+    // public one-liner an embedder writes, so groups (frames + membership)
+    // arrive through the supported loader instead of a demo-only rebuild.
+    const show = async (text) => {
+      const result = await importDrawio(text);
+      if (result.error) {
+        // Error path leaves the PREVIOUS diagram fully intact — no unmount.
+        status.innerHTML = `<span class="bad"></span>`;
+        status.querySelector('.bad').textContent = result.error;
+        return result;
+      }
+      const model = result.diagram;
+      const json = JSON.stringify(new DiagramSerializer().serialize(model));
+      if (mountHost) mountHost.remove();
+      mountHost = document.createElement('div');
+      mountHost.style.cssText = 'position:absolute;inset:0;';
+      stage.appendChild(mountHost);
+      const api = render(fromDocument(json), mountHost);
+      api.renderNow();
+      api.fitView?.(40);
+      ctx.instance = api;
+      const counts = `${model.getNodes().length} nodes · ${model.getLinks().length} links · ${model.getGroups().length} groups`;
+      status.textContent = '';
+      const head = document.createElement('div');
+      head.textContent = counts + (result.warnings.length ? ` · ${result.warnings.length} warning(s):` : ' · no warnings');
+      status.appendChild(head);
+      for (const w of result.warnings) {
+        const line = document.createElement('span');
+        line.className = 'warn';
+        line.textContent = '⚠ ' + w;
+        status.appendChild(line);
+      }
+      return result;
+    };
+    ctx.show = show;
+    ctx.compressedCopy = compressedCopy;
+    ctx.PLAIN_XML = PLAIN_XML;
+
+    document.getElementById('ex-plain').onclick = () => { ta.value = PLAIN_XML; show(ta.value); };
+    document.getElementById('ex-compressed').onclick = async () => { ta.value = await compressedCopy(PLAIN_XML); show(ta.value); };
+    document.getElementById('import').onclick = () => show(ta.value);
+
+    ta.value = PLAIN_XML;
+    await show(PLAIN_XML);
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const stage = document.getElementById('stage');
+    const status = document.getElementById('status');
+
+    // 1. BOTH built-in examples import, with EQUAL counts — the compressed copy
+    //    decodes to exactly the plain import (the whole decode pipeline, live).
+    const plain = await ctx.show(ctx.PLAIN_XML);
+    check(!plain.error, `plain XML import failed: ${plain.error}`);
+    const pm = ctx.instance.getModel();
+    const plainCounts = [pm.getNodes().length, pm.getLinks().length, pm.getGroups().length];
+    check(plainCounts[0] === 4, `expected 4 nodes, got ${plainCounts[0]}`);
+    check(plainCounts[1] === 3, `expected 3 links, got ${plainCounts[1]}`);
+    check(plainCounts[2] === 1, `expected 1 group, got ${plainCounts[2]}`);
+
+    const compressed = await ctx.show(await ctx.compressedCopy(ctx.PLAIN_XML));
+    check(!compressed.error, `compressed import failed: ${compressed.error}`);
+    const cm = ctx.instance.getModel();
+    check(
+      cm.getNodes().length === plainCounts[0] && cm.getLinks().length === plainCounts[1] && cm.getGroups().length === plainCounts[2],
+      `compressed import diverged from plain: ${cm.getNodes().length}/${cm.getLinks().length}/${cm.getGroups().length} vs ${plainCounts.join('/')}`
+    );
+    await ctx.tick();
+
+    // 2. A known label reaches the PIXELS, not just the model.
+    check((stage.textContent || '').includes('Pick items'), 'the imported label "Pick items" did not render');
+    check((stage.textContent || '').includes('Fulfilment'), 'the swimlane group frame does not show its name');
+
+    // 3. A known draw.io fillColor arrives on the node — model AND ink.
+    const model = ctx.instance.getModel();
+    const startShape = model.getNode('start').getMetadata('shape');
+    check(startShape && startShape.fill === '#dae8fc', `fillColor did not arrive: ${JSON.stringify(startShape)}`);
+    const startEl = stage.querySelector('[data-node-id="start"]');
+    check(!!startEl, 'the start node did not render');
+    check(startEl.innerHTML.toLowerCase().includes('dae8fc'), 'the draw.io fillColor is not in the painted SVG');
+
+    // 4. THE COORDINATE CONTRACT: "pick" was authored at (30,50) RELATIVE to the
+    //    lane at (330,70) — it must land ABSOLUTE at (360,120), inside the lane's
+    //    frame, and be a REAL member of the group (not merely drawn near it).
+    const pick = model.getNode('pick');
+    check(pick.position.x === 360 && pick.position.y === 120,
+      `relative→absolute conversion failed: pick is at (${pick.position.x},${pick.position.y}), expected (360,120)`);
+    const lane = model.getGroup('lane');
+    check(!!lane, 'the swimlane did not import as a group');
+    check(lane.members.has('pick') && lane.members.has('pack'), 'swimlane membership is not real (addMember missing)');
+    const frame = lane.getOuterBounds();
+    check(
+      pick.position.x >= frame.x && pick.position.y >= frame.y &&
+      pick.position.x + pick.size.width <= frame.x + frame.width &&
+      pick.position.y + pick.size.height <= frame.y + frame.height,
+      `pick (${pick.position.x},${pick.position.y}) lies outside the lane frame ${JSON.stringify(frame)}`
+    );
+    // ...and the frame is painted ink, not just a model fact.
+    const laneEl = stage.querySelector(`[data-group-id="${lane.id}"]`);
+    check(!!laneEl, 'the swimlane group frame is not in the rendered SVG');
+
+    // 5. GARBAGE input: an error status, and the previous diagram left intact.
+    const before = ctx.instance;
+    const garbage = await ctx.show('this is not xml at all');
+    check(!!garbage.error, 'garbage input did not report an error');
+    check((status.textContent || '').includes('not a readable .drawio'), 'the error is not shown in the status line');
+    check(ctx.instance === before, 'garbage input remounted the canvas instead of leaving it alone');
+    check(ctx.instance.getModel().getNodes().length === 4, 'garbage input destroyed the previous diagram');
+    check((stage.textContent || '').includes('Pick items'), 'the previous diagram vanished from the stage after a bad import');
+
+    // 6. Re-import a good diagram so the demo photographs in its healthy state —
+    //    and the status line shows honest counts again after the error.
+    await ctx.show(ctx.PLAIN_XML);
+    check((status.textContent || '').includes('4 nodes'), 'the status line does not show the node count');
+    await ctx.tick();
+  },
+});
+</script>
