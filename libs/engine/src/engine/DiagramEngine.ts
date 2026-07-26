@@ -942,8 +942,13 @@ export class DiagramEngine {
       throw new Error('No diagram loaded');
     }
 
+    // Diagram selection first — a mouse click selects through
+    // diagram.selectNode() and never writes the store's set, so gating on the
+    // store alone made this helper throw for every mouse-selected node while
+    // DuplicateCommand itself (which checks both) would have succeeded.
+    const diagramSelection = this.diagram.getSelectedNodes();
     const selectedNodeIds = this.store.get('selectedNodes') as Set<string> | undefined;
-    if (!selectedNodeIds || selectedNodeIds.size === 0) {
+    if (diagramSelection.length === 0 && (!selectedNodeIds || selectedNodeIds.size === 0)) {
       throw new Error('No nodes selected');
     }
 

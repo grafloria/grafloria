@@ -1464,6 +1464,21 @@ export class DomEventBinder {
       });
       return;
     }
+    // visio-depth — ⌘D / Ctrl+D duplicates the selection: copy + paste-with-
+    // offset as ONE command (DuplicateCommand shipped in Phase 1.8 with no
+    // keyboard reaching it). preventDefault matters here: the browser's default
+    // for this chord is bookmark-the-page.
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') {
+      if (this.isReadonly() || diagram.getSelectedNodes().length === 0) return;
+      event.preventDefault();
+      void engine.duplicate().then(() => {
+        this.host.requestRender();
+        this.emitNodesChange();
+        this.emitEdgesChange();
+        this.emitSelectionChange();
+      });
+      return;
+    }
   }
 
   onKeyUp(event: KeyboardEvent): void {

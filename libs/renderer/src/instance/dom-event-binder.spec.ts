@@ -442,6 +442,36 @@ describe('DomEventBinder', () => {
       input.remove();
     });
 
+    it('Ctrl+D duplicates the MOUSE-selected node as one undoable step', async () => {
+      h = harness();
+      // Select by mouse — the path that never writes the engine store's
+      // selection set, which is exactly the path engine.duplicate() used to
+      // reject with "No nodes selected".
+      h.container.dispatchEvent(mouse('mousedown', A_CENTER));
+      h.container.dispatchEvent(mouse('mouseup', A_CENTER));
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', ctrlKey: true }));
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const nodes = h.model.getNodes();
+      expect(nodes).toHaveLength(3);
+      const copy = nodes.find((n) => n.id !== 'a' && n.id !== 'b')!;
+      // paste-with-offset semantics: the copy lands +20,+20 from the source
+      expect(copy.position.x).toBe(120);
+      expect(copy.position.y).toBe(120);
+
+      await h.engine.commandManager.undo();          // ONE undo removes the copy
+      expect(h.model.getNodes()).toHaveLength(2);
+    });
+
+    it('Ctrl+D with nothing selected is inert', async () => {
+      h = harness();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', ctrlKey: true }));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(h.model.getNodes()).toHaveLength(2);
+    });
+
     describe('arrow-key nudge (enableKeyboardNudge)', () => {
       it('is OFF by default — an arrow press moves nothing', async () => {
         h = harness();

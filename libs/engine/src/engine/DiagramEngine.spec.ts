@@ -559,6 +559,27 @@ describe('DiagramEngine', () => {
 
       expect(engine.canRedo()).toBe(true);
     });
+
+    it('duplicate() honours the DIAGRAM selection (a mouse click never writes the store set)', async () => {
+      const node = await engine.addNode({
+        type: 'test',
+        position: { x: 50, y: 60 },
+      });
+      const diagram = engine.getDiagram()!;
+      diagram.selectNode(node); // the mouse path: diagram selection only
+
+      // Used to throw 'No nodes selected' because only the store set was checked.
+      await engine.duplicate();
+
+      const nodes = diagram.getNodes();
+      expect(nodes).toHaveLength(2);
+      const copy = nodes.find((n) => n.id !== node.id)!;
+      expect(copy.position.x).toBe(70);
+      expect(copy.position.y).toBe(80);
+
+      await engine.undo(); // one entry takes the whole duplicate back
+      expect(diagram.getNodes()).toHaveLength(1);
+    });
   });
 
   describe('Validation', () => {
