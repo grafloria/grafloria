@@ -57,7 +57,8 @@ import { GrafloriaFlow } from '@grafloria/react';
 ## Docs
 
 - [Live demo gallery](https://grafloria.com/demos/): 100+ runnable pages — view-source is the tutorial; every demo is also a CI test.
-- [How Grafloria compares](https://grafloria.com/compare/): factual matrix vs React Flow, JointJS+, GoJS, ngx-vflow, Mermaid.
+- [How Grafloria compares](https://grafloria.com/compare/): three sourced matrices — vs diagram libraries (React Flow, JointJS+, GoJS, ngx-vflow), vs dashboard grids (GridStack.js, react-grid-layout, angular-gridster2, Muuri), and vs Mermaid.
+- [Mermaid support](https://grafloria.com/mermaid/): which Mermaid types Grafloria reads and writes (flowchart, erDiagram, classDiagram, stateDiagram), the three-tier extension model, the round trip, and the named gaps.
 - [GitHub repository](https://github.com/grafloria/grafloria): source, READMEs per package, issues.
 - [npm organization](https://www.npmjs.com/org/grafloria): published packages.
 
@@ -66,5 +67,5 @@ import { GrafloriaFlow } from '@grafloria/react';
 - Ports are model anatomy (spec.ports on a node), not separate components — identical across all frameworks.
 - The same JSON spec drives every surface; there is no framework-specific model.
 - Collab: pass collab={{ transport, actor, presence: true }} — the CRDT lives in the engine; BroadcastChannel works serverless for same-browser tabs.
-- Text format: instance.exportText() / instance.loadText() round-trip Mermaid-style text with a lossless position sidecar.
+- Text format: importDiagramText() / exportDiagramText() round-trip Mermaid text with a lossless %%grafloria:document position sidecar; the visible body stays valid Mermaid. Supported types: flowchart/graph, erDiagram, classDiagram, stateDiagram[-v2]. Every other type returns { unsupported: '<type>' } rather than a wrong diagram — check that field before rendering.
 - Dashboards / UML / ER: pass a kit spec ({ dashboard: ... }, { umlDiagram: ... }, { erDiagram: ... }) to the same render/spec entry points.

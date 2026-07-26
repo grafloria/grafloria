@@ -54,6 +54,10 @@ jobs:
       - run: node demos/e2e/variant-run.mjs vue
       - run: node demos/e2e/interaction-run.mjs
       - run: node demos/e2e/table-editing-run.mjs
+      # The Mermaid compatibility claim, checked against REAL mermaid v11 in both
+      # directions. The site says this runs in CI; this is the line that makes
+      # that true.
+      - run: node demos/e2e/mermaid-oracle-run.mjs
       - run: node demos/e2e/save-load-run.mjs
       - run: node demos/e2e/export-widgets-run.mjs
       - run: node demos/e2e/export-fetch-run.mjs
