@@ -95,6 +95,14 @@ defineDemo({
       enableGroupMembershipOnDrop: true,  // T8: drop into a container to join it
       enableInPlaceTextEdit: true,        // T10: double-click to rename
       enableGroupDrag: true,
+      // Draw a connector by dragging from a port and releasing ANYWHERE on the
+      // target node (easy-connect's whole-silhouette drop). Smart port-snap
+      // alone missed a drop on a node's centre — ~28px from the nearest port,
+      // beyond the snap radius — so the audit's port drag created nothing.
+      // The 'alt' modifier keeps a plain body press as MOVE and shift-click as
+      // multi-select; a press on a port glyph always starts a wire regardless.
+      enableEasyConnect: true,
+      easyConnectModifier: 'alt',
     });
 
     // T4/T5 — all 8 stencils behind the registry, feeding the palette.
