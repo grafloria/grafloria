@@ -714,7 +714,42 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
   if (unmappedStyleKeys.size > 0) {
     warnings.push(`unmapped style keys dropped: ${[...unmappedStyleKeys].sort().join(', ')}`);
   }
+  installAnchorLifecycle(diagram);
   return diagram;
+}
+
+/**
+ * Synthesized anchors must DIE WITH what they stand for. Without this, deleting
+ * the container an edge ends on left the invisible 1×1 anchor (and its edge)
+ * painting into the empty space where the frame used to be — an edge to
+ * nowhere a user cannot even select the endpoint of. Two rules, matching what
+ * draw.io itself does:
+ *  - remove a LINK → its anchors go with it (they exist only to carry it);
+ *  - remove the GROUP a container-anchor pins to → the anchor node goes, and
+ *    removeNode cascades the edge away — in draw.io, deleting a shape deletes
+ *    the edges connected to it, and the container IS the endpoint here.
+ * Listeners live on the returned model, so they follow the diagram wherever it
+ * is mounted. Every removal is existence-checked: the two rules trigger each
+ * other (group → node → link → far anchor) and must converge, not recurse.
+ */
+function installAnchorLifecycle(diagram: DiagramModel): void {
+  const isAnchor = (n: NodeModel | undefined): boolean =>
+    !!n && (n.getMetadata('drawioContainerAnchor') !== undefined ||
+            n.getMetadata('drawioPointAnchor') !== undefined);
+
+  diagram.on('link:removed', ((link: LinkModel) => {
+    for (const id of [link.sourceNodeId, link.targetNodeId]) {
+      if (!id) continue;
+      const n = diagram.getNode(id);
+      if (isAnchor(n) && diagram.getLinksForNode(id).length === 0) diagram.removeNode(id);
+    }
+  }) as never);
+
+  diagram.on('group:removed', ((group: { id: string }) => {
+    for (const n of diagram.getNodes()) {
+      if (n.getMetadata('drawioContainerAnchor') === group.id) diagram.removeNode(n.id);
+    }
+  }) as never);
 }
 
 /** The closest point ON the PERIMETER of a rectangle to `toward` (inside or out). */
@@ -847,9 +882,12 @@ function applyEdgeStyle(
 
 /**
  * mxGraph's rounded-rect corner radius, faithfully (mxRectangleShape.paintBackground):
- *   absoluteArcSize=1 → r = min(w/2, h/2, arcSize/2)   (arcSize is a DIAMETER in px)
- *   else              → r = min(w,h) · (arcSize/100)   (percentage, default 15,
- *                        geometrically capped at min(w,h)/2)
+ *   absoluteArcSize=1 → r = min(w/2, h/2, arcSize/2)   (arcSize is a DIAMETER in px;
+ *                        absent, mxGraph falls back to LINE_ARCSIZE/2 = 10)
+ *   else              → r = min(w,h) · (arcSize/100)   (percentage — UNCAPPED,
+ *                        exactly as mxRectangleShape.paintBackground computes it;
+ *                        SVG itself clamps rx at half the side when painting, so
+ *                        capping here would only make the MODEL diverge)
  * No arcSize and no absolute flag keeps the import's classic fixed 8px, which
  * reads as "rounded" at every size (draw.io's own default factor is 15%).
  */
@@ -858,13 +896,13 @@ function roundedCornerRadius(
   width: number,
   height: number
 ): number {
+  const absolute = t.get('absoluteArcSize') === '1';
   const arc = t.get('arcSize');
-  if (arc === undefined) return 8;
-  if (t.get('absoluteArcSize') === '1') {
+  if (arc === undefined && !absolute) return 8;
+  if (absolute) {
     return Math.min(width / 2, height / 2, num(arc, 20) / 2);
   }
-  const factor = num(arc, 15) / 100;
-  return Math.min(Math.min(width, height) * factor, Math.min(width, height) / 2);
+  return Math.min(width, height) * (num(arc, 15) / 100);
 }
 
 /**
