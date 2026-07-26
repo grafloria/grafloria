@@ -31,8 +31,9 @@
   <div id="src"><textarea id="text" spellcheck="false"></textarea></div>
 </div>
 <script type="module">
-import { render, importDiagramText } from '../shell/grafloria.js';
+import { render, importDiagramText, exportDiagramText } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { mountCodeEditor } from '../shell/code-editor.js';
 
 // A live viewer for Grafloria's Mermaid support: pick a diagram type, see how Grafloria
 // renders it, edit the source and re-apply. Honest about current coverage —
@@ -85,22 +86,18 @@ const EXAMPLES = {
   Bob-->>Alice: Hi Alice`,
 };
 
-const labelOf = (n) => n.getMetadata('label');
-const modelToSpec = (model) => ({
-  nodes: model.getNodes().map((n) => ({
-    id: n.id, label: labelOf(n),
-    position: { x: n.position.x, y: n.position.y },
-    size: { width: n.size.width, height: n.size.height },
-    shape: n.getMetadata('shape'), style: n.style,
-  })),
-  // Carry the EDGE LABEL through. Dropping it here is what made `-->|yes|` and
-  // `-->|no|` invisible even once the parser stored them, so a labelled
-  // back-edge read as an unexplained stray line.
-  edges: model.getLinks().map((l) => ({
-    id: l.id, source: l.sourceNodeId, target: l.targetNodeId,
-    label: l.labels?.[0]?.text ?? l.getMetadata?.('label') ?? undefined,
-  })),
-});
+// The parser hands back a real DiagramModel, and `setNodes`/`setEdges` accept
+// live models (`NodeInput = NodeSpec | NodeModel`) — so hand them straight over.
+//
+// This used to project the model down to a {id,label,position,size,shape,style}
+// tuple, which quietly THREW AWAY everything not on that list. The edge labels
+// were one casualty. `dslShape` and `dslStyled` were the others, and they only
+// show up once the diagram is exported back to text: without them the generator
+// falls back to plain rectangles and drops every `style` line, so a round trip
+// silently degraded `Start([Start])` into `Start[Start]` and washed the colours
+// out of the source. Carrying the model itself is the fix that has no next
+// casualty.
+const modelParts = (model) => ({ nodes: model.getNodes(), edges: model.getLinks() });
 
 defineDemo({
   name: 'Mermaid viewer',
@@ -108,6 +105,7 @@ defineDemo({
   howTo: [
     'Pick a diagram type from the dropdown — the source loads on the left-of-text and Grafloria renders it on the canvas.',
     'Edit the Mermaid source in the text pane and click "apply text → diagram" to re-render your changes.',
+    'It round-trips BOTH ways: click a node or an edge on the canvas and press Delete — the Mermaid source rewrites itself to match, so the text never drifts from the drawing.',
     'Try "Sequence (unsupported)": the status line names it as unsupported rather than drawing a broken diagram — that is the safe-failure guarantee.',
     'Compare the Flowchart examples: shapes, style/classDef colours, subgraphs and %%grafloria node-status all render — this is the Mermaid compatibility built in Phases 0-2.',
   ],
@@ -115,34 +113,98 @@ defineDemo({
   async setup(ctx) {
     const stage = document.getElementById('stage');
     const ta = document.getElementById('text');
+    // Syntax-coloured source. The textarea stays canonical underneath, so the
+    // reads below (and the scripted checks) are unchanged; only the programmatic
+    // WRITES go through the editor so both surfaces stay in step.
+    const ed = await mountCodeEditor(ta, { language: 'mermaid' });
+    ctx.editor = ed;
     const sel = document.getElementById('type');
     const status = document.getElementById('status');
     let api = null;
 
-    const renderText = (text) => {
-      const r = importDiagramText(text);
-      status.className = '';
-      if (r.unsupported) {
-        status.className = 'bad';
-        status.textContent = `unsupported diagram type: ${r.unsupported}`;
-        if (api) { api.setNodes([]); api.setEdges([]); api.renderNow(); }
-        return r;
-      }
-      const spec = modelToSpec(r.diagram);
-      if (!api) api = render(spec, stage);
-      else { api.setNodes(spec.nodes); api.setEdges(spec.edges); }
-      api.renderNow();
-      api.fitView?.(40);
-      status.textContent = `${r.diagram.getNodes().length} nodes · ${r.diagram.getLinks().length} links`;
-      return r;
+    // ROUND TRIP — text is not the only source of truth.
+    // Editing the CANVAS (delete a node, delete an edge) regenerates the Mermaid
+    // source, so the pane can never drift from what is actually drawn. The pane
+    // is for reading, so `lossless:false`: plain Mermaid, not the sidecar comment
+    // the on-disk format carries.
+    let applying = false;                      // text → diagram in flight
+    const syncTextFromDiagram = () => {
+      if (applying || !api) return;
+      ed.setValue(exportDiagramText(api.getModel(), { lossless: false }).replace(/\n+$/, '\n'));
+      countStatus();
     };
 
-    const load = (key) => { ta.value = EXAMPLES[key]; renderText(ta.value); };
+    const countStatus = () => {
+      const m = api?.getModel();
+      if (!m) return;
+      status.className = '';
+      status.textContent = `${m.getNodes().length} nodes · ${m.getLinks().length} links`;
+    };
+
+    const renderText = (text) => {
+      applying = true;
+      try {
+        const r = importDiagramText(text);
+        status.className = '';
+        if (r.unsupported) {
+          status.className = 'bad';
+          status.textContent = `unsupported diagram type: ${r.unsupported}`;
+          if (api) { api.setNodes([]); api.setEdges([]); api.renderNow(); }
+          return r;
+        }
+        const parts = modelParts(r.diagram);
+        if (!api) {
+          api = render(parts, stage);
+          ctx.instance = api;
+          // Subscribed ONCE, at creation. Both fire on add and on remove.
+          api.on('nodes:change', syncTextFromDiagram);
+          api.on('edges:change', syncTextFromDiagram);
+        } else {
+          // Clear first. The reconciler treats a live model as "already here" and
+          // leaves the existing object alone, so re-applying edited text would
+          // otherwise keep the STALE nodes for every id that still exists.
+          api.setEdges([]);
+          api.setNodes([]);
+          api.setNodes(parts.nodes);
+          api.setEdges(parts.edges);
+        }
+        api.renderNow();
+        api.fitView?.(40);
+        countStatus();
+        return r;
+      } finally {
+        applying = false;
+      }
+    };
+
+    // The canvas-side edit that drives the round trip. Scoped away from the text
+    // pane on purpose: Backspace inside Monaco must delete a CHARACTER, never a
+    // selected node.
+    const deleteSelection = () => {
+      const m = api?.getModel();
+      if (!m) return 0;
+      const links = m.getLinks().filter((l) => l.state === 'selected');
+      const nodes = m.getSelectedNodes?.() ?? [];
+      if (!links.length && !nodes.length) return 0;
+      for (const l of links) m.removeLink(l.id);
+      for (const n of nodes) m.removeNode(n.id);   // cascades its own edges
+      api.renderNow();
+      return links.length + nodes.length;
+    };
+    window.addEventListener('keydown', (e) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (document.getElementById('src').contains(e.target)) return;
+      if (e.target.closest?.('input, textarea, select, .monaco-editor')) return;
+      if (deleteSelection()) { e.preventDefault(); e.stopImmediatePropagation(); }
+    }, true);
+
+    const load = (key) => { ed.setValue(EXAMPLES[key]); renderText(ta.value); };
     sel.addEventListener('change', () => load(sel.value));
     document.getElementById('apply').addEventListener('click', () => renderText(ta.value));
 
     ctx.renderText = renderText;
     ctx.load = load;
+    ctx.deleteSelection = deleteSelection;
     load('flowchart');
     await ctx.tick();
   },
@@ -154,6 +216,36 @@ defineDemo({
     check(flow.diagram.getNode('Start')?.getMetadata('shape')?.fill === '#c8e6c9', 'the styled Start node should carry its fill');
     const seq = ctx.renderText(EXAMPLES.sequence);
     check(seq.unsupported === 'sequenceDiagram', 'an unsupported type must report itself, not blank silently');
+
+    // ROUND TRIP: a canvas edit must reach the TEXT. Delete the `Check -->|no| Start`
+    // back-edge and the line describing it has to leave the source — otherwise the
+    // pane is a stale snapshot pretending to be the document.
+    ctx.renderText(EXAMPLES.flowchart);
+    const ta = document.getElementById('text');
+    const BACK = /Check\s*-->\|no\|\s*Start/;
+    const FWD = /Check\s*-->\|yes\|\s*Save/;
+    check(BACK.test(ta.value), 'the loaded source should carry the labelled back-edge');
+
+    // Delete a node on the canvas. EVERY check below reads the text AFTER that,
+    // because only then is the pane holding REGENERATED source rather than the
+    // example text it was loaded with — an assertion made before the edit passes
+    // no matter how lossy the export is.
+    const m = ctx.instance.getModel();
+    m.getNode('Done')?.setSelected?.(true);
+    check(ctx.deleteSelection() === 1, 'deleting the selected node should remove exactly one entity');
+    check(!/Done/.test(ta.value), 'the deleted node must disappear from the Mermaid source');
+    check(!/Save\s*-->\s*Done/.test(ta.value), 'its edge must go with it');
+
+    // A round trip must not DEGRADE what survives. Both of these failed while the
+    // canvas still looked perfect: shapes came back as plain rectangles and every
+    // `style` line vanished, because the old render projection never carried
+    // `dslShape` / `dslStyled`.
+    check(/Start\(\[Start\]\)/.test(ta.value), 'the stadium shape must survive the round trip, not flatten to Start[Start]');
+    check(/Check\{Valid\?\}/.test(ta.value), 'the decision diamond must survive the round trip');
+    check(/Load\[\(Fetch data\)\]/.test(ta.value), 'the cylinder shape must survive the round trip');
+    check(/style Start fill:#c8e6c9/.test(ta.value), 'the style line must survive the round trip');
+    check(BACK.test(ta.value) && FWD.test(ta.value), 'both edge labels must survive the round trip');
+
     ctx.renderText(EXAMPLES.flowchart); // leave it on the working example
   },
 });
