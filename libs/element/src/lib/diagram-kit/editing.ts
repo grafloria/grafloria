@@ -277,7 +277,14 @@ function openInlineEditor(
 
   input.addEventListener('blur', commit);
   // Don't let a click INSIDE the input bubble to the canvas (deselect / pan).
-  input.addEventListener('mousedown', (e) => e.stopPropagation());
+  // Keep the canvas binder OUT of the editor. It listens on POINTER events and
+  // preventDefaults them to own the gesture — which also suppressed the native
+  // <datalist> popup, so the type dropdown either never opened or flashed open
+  // and shut. Guarding `mousedown` alone was not enough: pointerdown fires
+  // first and is what the binder acts on.
+  for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick']) {
+    input.addEventListener(type, (e) => e.stopPropagation());
+  }
 
   // Focus after mount so select() works.
   setTimeout(() => {
