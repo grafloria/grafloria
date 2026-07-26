@@ -16,6 +16,9 @@
   }
   #vs-bar button:hover:not(:disabled) { border-color: #3B52D9; color: #3B52D9; }
   #vs-bar button:disabled { opacity: .45; cursor: default; }
+  #vs-bar button.toggle[aria-pressed="true"] {
+    background: rgba(59,82,217,.12); border-color: #3B52D9; color: #3B52D9;
+  }
   #vs-bar .sep { width: 1px; height: 18px; background: var(--gf-line, #e5e7eb); margin: 0 4px; }
   #vs-bar .hint { margin-left: auto; color: var(--gf-mut, #6b7280); }
   #vs-body { display: flex; flex: 1; min-height: 0; }
@@ -48,6 +51,7 @@ import {
   render, registerStencils, bindStencilPalette, bindShapeDataPanel, erTable,
   AlignCommand, DistributeCommand, registerTool,
   BringNodeToFrontCommand, SendNodeToBackCommand,
+  attachCanvasPlugins,
 } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
@@ -120,6 +124,37 @@ defineDemo({
       enableEasyConnect: true,
       easyConnectModifier: 'alt',
     });
+
+    // GRID — the faint page grid that makes a canvas read as Visio. The
+    // library idiom is attachCanvasPlugins' Background component (an SVG
+    // pattern in its own layer under the diagram, camera-tracked); 'lines'
+    // with a heavier line every 5 cells is the graph-paper look. The colours
+    // are the component's own theme-neutral grey at low alpha, so the grid
+    // sits back on both the light and the dark shell theme. The 20-unit gap
+    // deliberately equals the snap gridSize below: what you see is what you
+    // snap to.
+    ctx.plugins = attachCanvasPlugins(api, {
+      background: {
+        variant: 'lines', gap: 20, size: 1,
+        color: 'rgba(120,130,145,.16)',
+        majorEvery: 5, majorColor: 'rgba(120,130,145,.30)',
+      },
+    });
+
+    // SNAP-TO-GRID — the engine already has it in its interaction config
+    // (waypointEditor.snapToGrid feeds SnapController.computeSnap, which
+    // quantises single-node body drags whenever helper lines are on, and the
+    // same flag drives waypoint/vertex snapping). Alignment guides still win
+    // over the grid per axis — that precedence lives in computeSnap.
+    // setInteractionConfig merges SHALLOWLY, so patch the nested objects whole.
+    ctx.setSnap = (on) => {
+      const cfg = ctx.engine.getInteractionConfig();
+      ctx.engine.setInteractionConfig({
+        waypointEditor: { ...cfg.waypointEditor, snapToGrid: on },
+        controlPointEditor: { ...cfg.controlPointEditor, snapToGrid: on },
+      });
+    };
+    ctx.setSnap(true);   // Visio defaults snap ON, so does this editor
 
     // T4/T5 — all 8 stencils behind the registry, feeding the palette.
     ctx.registered = registerStencils(ctx.engine.templateRegistry);
@@ -321,6 +356,31 @@ defineDemo({
     ctx.syncBar = syncBar;
     api.on('selection:change', syncBar);
     syncBar();
+
+    // View toggles — pressed-state buttons (aria-pressed carries the state,
+    // the .toggle CSS paints it). Each drives the LIBRARY's own switch rather
+    // than a demo-local flag: Grid flips DiagramStore.gridEnabled (which the
+    // Background plugin watches), Snap flips the engine's snap-to-grid config.
+    bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
+    const mkToggle = (label, title, initial, apply) => {
+      const b = document.createElement('button');
+      b.textContent = label; b.title = title; b.className = 'toggle';
+      let on = initial;
+      b.setAttribute('aria-pressed', String(on));
+      b.addEventListener('click', () => {
+        on = !on;
+        b.setAttribute('aria-pressed', String(on));
+        apply(on);
+        api.renderNow();
+      });
+      bar.appendChild(b);
+      return b;
+    };
+    mkToggle('▦ Grid', 'Show the page grid', true,
+      (on) => ctx.engine.getStore().set('gridEnabled', on));
+    mkToggle('⌗ Snap', 'Snap dragged shapes and edge points to the 20px grid', true,
+      (on) => ctx.setSnap(on));
+
     const hint = document.createElement('span');
     hint.className = 'hint';
     hint.textContent = 'drag a shape from the rail →';
@@ -338,9 +398,13 @@ defineDemo({
     check(document.querySelectorAll('#vs-rail .gf-stencil-item').length > 0, 'the stencil rail is empty');
     check(ctx.registered === 80, `expected exactly 80 masters registered, got ${ctx.registered}`);
     check(!!document.querySelector('#vs-panel .gf-sd-title'), 'the shape-data panel did not mount');
-    check(document.querySelectorAll('#vs-bar button').length >= 11,
-      'the toolbar should carry the full set: 6 aligns, 2 distributes, Duplicate, Undo, Redo');
+    check(document.querySelectorAll('#vs-bar button').length >= 13,
+      'the toolbar should carry the full set: 6 aligns, 2 distributes, Duplicate, Undo, Redo, Grid, Snap');
     check(!!document.getElementById('vs-menu'), 'the context menu did not mount');
+    // The Visio chrome: the page grid is painted (Background plugin, its own
+    // layer under the diagram) and defaults ON.
+    const gridSvg = document.querySelector('#vs-canvas .grafloria-background-layer svg.grafloria-background');
+    check(!!gridSvg && getComputedStyle(gridSvg).display !== 'none', 'the page grid should paint by default');
 
     // 2. T7 — placing from the palette adds a live node, undoably.
     const before = m.getNodes().length;
@@ -414,6 +478,8 @@ defineDemo({
     check(cfg.enableInPlaceTextEdit === true, 'the editor should enable in-place rename');
     check(cfg.enableKeyboardNudge === true, 'the editor should enable arrow-key nudge');
     check(cfg.enableEasyConnect === true, 'the editor should enable easy-connect');
+    check(cfg.waypointEditor.snapToGrid === true && cfg.controlPointEditor.snapToGrid === true,
+      'snap-to-grid should default ON (the Snap toggle drives it)');
 
     api.renderNow();
   },
