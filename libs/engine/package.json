@@ -1,6 +1,6 @@
 {
   "name": "@grafloria/engine",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
