@@ -441,19 +441,10 @@
       api.setEdges([]); api.setNodes([]);
       api.setNodes(parts.nodes); api.setEdges(parts.edges);
     }
-    // LAYOUT, not import order. The parser places nodes in the order it reads
-    // them, so a branch lands in a straight line and the picture LIES about the
-    // graph — `Check -->|no| Order` looks like `Pick --> Order`. Running the
-    // layered engine makes the fork a fork.
-    try {
-      await api.getEngine().layout('layered', { direction: 'LR' });
-      // The layout moves NODES; each link keeps the polyline it was routed on
-      // before. Edge labels are placed by walking that polyline, so leaving it
-      // stale strands `yes` / `no` at their pre-layout midpoints — off-canvas,
-      // while the paths themselves look fine. Emptying it makes the next paint
-      // re-route.
-      for (const l of d.getLinks()) l.setPoints([]);
-    } catch { /* keep import order */ }
+    // No layout pass and no route-clearing workaround here any more: the
+    // parser itself now places by RANK (a branch reads as a branch), and the
+    // engine invalidates stale link routes whenever a layout moves nodes — so
+    // the fork below is a fork, with `yes`/`no` sitting on their own edges.
     api.renderNow();
     api.fitView?.(36);
     status.textContent = `${d.getNodes().length} nodes · ${d.getLinks().length} links`;
