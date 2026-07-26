@@ -73,6 +73,11 @@ const OVERRIDES = {
   'erd::Optional Attribute': 'ellipse', 'erd::Multivalued Attribute': 'ellipse',
   // UML activity: merge is a diamond, an object is a rectangle (already right)
   'uml::Merge': 'diamond',
+  // A «signal» is a CLASSIFIER — UML 2 draws it as a rectangle card with the
+  // stereotype in its name compartment. The generated trapezoid (the
+  // send-signal ACTION pentagon's cousin) spilled the card's rows outside its
+  // slanted sides.
+  'uml::Signal': 'rect',
   // Group B notation silhouettes (renderer notation-shapes.ts): the domain
   // registry still declares plain figures for these, so without a pin a re-run
   // would REGRESS them to rectangles/ellipses.
@@ -130,6 +135,10 @@ const SIZES = {
   'bpmn::bpmn-timer-event': { width: 36, height: 36 },
   'bpmn::bpmn-message-event': { width: 36, height: 36 },
   'bpmn::bpmn-error-event': { width: 36, height: 36 },
+  // A «signal» classifier card is a header compartment + member rows — the
+  // generated 100×60 could not hold both (rows painted over/past the edges).
+  // 120×80 matches every other classifier card (class, interface, enum…).
+  'uml::uml-signal': { width: 120, height: 80 },
 };
 
 // Shape paints the notation demands, keyed `${dir}::${template.id}`.

@@ -108,11 +108,14 @@ function applyNotationTheme(
   node.setMetadata('shape', shape);
 }
 
-/** UML classifiers get a name compartment + a member compartment. */
+/** UML classifiers get a name compartment + a member compartment.
+ *  Keys are MASTER IDS — `uml-enum` / `uml-primitive-type` are the generated
+ *  ids (the old `uml-enumeration` / `uml-primitivetype` keys matched nothing,
+ *  so those two masters dropped as bare rectangles with no card). */
 const UML_CLASSIFIERS: Record<string, string | null> = {
   'uml-class': null, 'uml-abstract-class': '«abstract»', 'uml-interface': '«interface»',
-  'uml-enumeration': '«enumeration»', 'uml-datatype': '«dataType»',
-  'uml-primitivetype': '«primitive»', 'uml-signal': '«signal»', 'uml-object': null,
+  'uml-enum': '«enumeration»', 'uml-datatype': '«dataType»',
+  'uml-primitive-type': '«primitive»', 'uml-signal': '«signal»', 'uml-object': null,
 };
 
 /** BPMN event types carry their trigger glyph inside the circle. */
@@ -138,7 +141,7 @@ function applyNotationPanel(node: any, masterId: string, master: NodeTemplate): 
   const name = (master as any).meta?.name ?? 'Class';
   // Placeholder members, so a dropped classifier looks like a UML card the user
   // can then edit rather than an empty box.
-  const rows = masterId === 'uml-enumeration'
+  const rows = masterId === 'uml-enum'
     ? [{ text: 'VALUE_A' }, { text: 'VALUE_B' }]
     : [{ text: '+ field: Type' }, { text: '+ method(): void' }];
   node.setMetadata('panel', {
