@@ -186435,6 +186435,16 @@ var DomEventBinder = class {
     this.isPanning = false;
     /** Armed by an empty-canvas left press; becomes a real pan past the drag threshold. */
     this.pendingEmptyPan = null;
+    /**
+     * The screen point where a PORT press started a connection. A press on a
+     * port claims the gesture immediately — but a press that never travels past
+     * the drag threshold is a CLICK, and a click on a shape must select it.
+     * Without this, the port hit zones (top-centre, side-mid — a card's whole
+     * header band) were dead for selection: connect swallowed the press,
+     * completion at the same spot failed validation, and the release fell out
+     * as a silent no-op. Found by live audit, on every node type.
+     */
+    this.pendingPortClick = null;
     this.lastPanX = 0;
     this.lastPanY = 0;
     this.nodeDrag = null;
@@ -186775,6 +186785,7 @@ var DomEventBinder = class {
     const engine = this.engine();
     const diagram = engine?.getDiagram();
     if (!engine || !diagram) return;
+    this.pendingPortClick = null;
     if (event.button === 1 || event.button === 0 && this.spaceKeyPressed) {
       if (!this.options.enablePan) return;
       event.preventDefault();
@@ -186840,6 +186851,11 @@ var DomEventBinder = class {
           this.host.requestRender();
           return;
         }
+        this.pendingPortClick = {
+          startX: event.clientX,
+          startY: event.clientY,
+          nodeId: state.hoveredPort.nodeId
+        };
         this.host.interaction.startConnection(state.hoveredPort, worldX, worldY, engine);
         this.host.requestRender();
         return;
@@ -187116,6 +187132,20 @@ var DomEventBinder = class {
     }
     if (state.isConnecting) {
       event.preventDefault();
+      const press = this.pendingPortClick;
+      this.pendingPortClick = null;
+      if (press && Math.hypot(event.clientX - press.startX, event.clientY - press.startY) < this.options.dragThreshold) {
+        this.host.interaction.cancelConnection(engine);
+        const diagram = engine.getDiagram();
+        const node = diagram?.getNode(press.nodeId);
+        if (diagram && node) {
+          if (event.shiftKey) diagram.addToSelection(node);
+          else diagram.selectNode(node);
+          this.emitSelectionChange();
+        }
+        this.host.requestRender();
+        return;
+      }
       this.host.interaction.completeConnection(engine);
       this.host.requestRender();
       return;
@@ -187176,6 +187206,7 @@ var DomEventBinder = class {
       if (moved) this.emitNodesChange();
     }
     if (engine && this.host.interaction.getState().isConnecting) {
+      this.pendingPortClick = null;
       this.host.interaction.cancelConnection(engine);
       this.host.requestRender();
     }
@@ -187238,7 +187269,10 @@ var DomEventBinder = class {
         }
       }
       const state = this.host.interaction.getState();
-      if (state.isConnecting) this.host.interaction.cancelConnection(engine);
+      if (state.isConnecting) {
+        this.pendingPortClick = null;
+        this.host.interaction.cancelConnection(engine);
+      }
       if (state.isReconnectingLink) this.host.interaction.cancelLinkReconnection(engine);
       if (this.selectionTools.activeGesture() === "resize") {
         this.selectionTools.cancelGesture(engine);

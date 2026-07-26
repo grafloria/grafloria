@@ -399,6 +399,51 @@ describe('DomEventBinder', () => {
 
       expect(h.interaction.getState().isConnecting).toBe(false);
     });
+
+    // The port hit zones were selection DEAD BANDS: a press on a port claimed
+    // the connect gesture, completion at the same spot failed validation, and
+    // the release fell out as a silent no-op — so clicking a node's top-centre
+    // (or a kit card's whole header strip, which sits under the top port)
+    // selected nothing. A sub-threshold release is a CLICK and must select.
+    describe('sub-threshold port click selects the node', () => {
+      const PORT_AT = { clientX: 200, clientY: 130 }; // node a's right port
+
+      it('press-and-release on a port without dragging selects the port’s node', () => {
+        h = harness();
+        const linksBefore = h.model.getLinks().length;
+        h.container.dispatchEvent(mouse('mousemove', PORT_AT)); // hover arms the port
+        h.container.dispatchEvent(mouse('mousedown', PORT_AT));
+        expect(h.interaction.getState().isConnecting).toBe(true);
+
+        h.container.dispatchEvent(mouse('mouseup', { clientX: 201, clientY: 131 }));
+
+        expect(h.interaction.getState().isConnecting).toBe(false);
+        expect(h.model.getSelectedNodes().map((n) => n.id)).toEqual(['a']);
+        expect(h.model.getLinks()).toHaveLength(linksBefore); // a click never creates a link
+      });
+
+      it('shift keeps the click additive, matching body-click semantics', () => {
+        h = harness();
+        h.model.selectNode(h.model.getNode('b')!);
+        h.container.dispatchEvent(mouse('mousemove', PORT_AT));
+        h.container.dispatchEvent(mouse('mousedown', { ...PORT_AT, shiftKey: true }));
+        h.container.dispatchEvent(mouse('mouseup', { ...PORT_AT, shiftKey: true }));
+
+        expect(h.model.getSelectedNodes().map((n) => n.id).sort()).toEqual(['a', 'b']);
+      });
+
+      it('a real drag past the threshold still completes as a connection attempt', () => {
+        h = harness();
+        const complete = jest.spyOn(h.interaction, 'completeConnection');
+        h.container.dispatchEvent(mouse('mousemove', PORT_AT));
+        h.container.dispatchEvent(mouse('mousedown', PORT_AT));
+
+        h.container.dispatchEvent(mouse('mouseup', { clientX: 400, clientY: 130 }));
+
+        expect(complete).toHaveBeenCalledWith(h.engine);
+        expect(h.model.getSelectedNodes()).toHaveLength(0); // no phantom click-select
+      });
+    });
   });
 
   describe('keyboard', () => {
