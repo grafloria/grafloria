@@ -212,7 +212,7 @@ describe('importDrawio — edges', () => {
     expect(warnings.some((w) => w.includes('"ghost"') && w.includes('"nope"'))).toBe(true);
   });
 
-  it('stores manual waypoints under metadata (NOT link.points) and warns once', async () => {
+  it('APPLIES manual waypoints: full polyline in link.points, hasManualWaypoints set, provenance kept', async () => {
     const xml = model(
       twoNodes +
         `<mxCell id="e1" style="" edge="1" parent="1" source="a" target="b">` +
@@ -220,13 +220,60 @@ describe('importDrawio — edges', () => {
     );
     const { diagram, warnings } = await importDrawio(xml);
     const link = diagram!.getLinks()[0];
+    // The authored points survive as provenance…
     expect(link.getMetadata('drawioWaypoints')).toEqual([
       { x: 150, y: 200 },
       { x: 180, y: 220 },
     ]);
-    // the routed polyline is the engine's own, not the mxGraph waypoints
-    expect(link.points.some((p) => p.x === 150 && p.y === 200)).toBe(false);
-    expect(warnings.filter((w) => w.includes('waypoints'))).toHaveLength(1);
+    // …AND the polyline is applied: attach point, waypoints, attach point.
+    expect(link.points.length).toBe(4);
+    expect(link.points[1]).toEqual({ x: 150, y: 200 });
+    expect(link.points[2]).toEqual({ x: 180, y: 220 });
+    // The flag is what makes the router respect the polyline (and what the
+    // layout invalidation clears when a layout moves an endpoint).
+    expect(link.getMetadata('hasManualWaypoints')).toBe(true);
+    // Applied means nothing was lost — no waypoint warning any more.
+    expect(warnings.filter((w) => w.includes('waypoints'))).toHaveLength(0);
+  });
+
+  it('converts waypoints of a CONTAINER-NESTED edge to world coordinates (parent-space rule)', async () => {
+    // The lane sits at (300,100); the edge and its endpoints live INSIDE it, so
+    // the authored waypoint (50,60) is lane-relative and must land at (350,160).
+    const xml = model(
+      vertex('lane', { style: 'swimlane;', x: 300, y: 100, w: 400, h: 300 }) +
+        vertex('a', { parent: 'lane', x: 10, y: 20 }) +
+        vertex('b', { parent: 'lane', x: 250, y: 200 }) +
+        `<mxCell id="e1" style="" edge="1" parent="lane" source="a" target="b">` +
+        `<mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="50" y="60"/></Array></mxGeometry></mxCell>`
+    );
+    const { diagram } = await importDrawio(xml);
+    const link = diagram!.getLinks()[0];
+    expect(link.points[1]).toEqual({ x: 350, y: 160 });
+    // Provenance keeps the AUTHORED (parent-relative) values, untranslated.
+    expect(link.getMetadata('drawioWaypoints')).toEqual([{ x: 50, y: 60 }]);
+  });
+
+  it('a layout that moves an endpoint clears the applied waypoints (the invalidation contract)', async () => {
+    const xml = model(
+      twoNodes +
+        `<mxCell id="e1" style="" edge="1" parent="1" source="a" target="b">` +
+        `<mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="150" y="200"/></Array></mxGeometry></mxCell>`
+    );
+    const { diagram } = await importDrawio(xml);
+    const link = diagram!.getLinks()[0];
+    expect(link.getMetadata('hasManualWaypoints')).toBe(true);
+
+    const before = new Map(diagram!.getNodes().map((n) => [n.id, { ...n.position }]));
+    await diagram!.reLayout();
+    const moved = diagram!
+      .getNodes()
+      .filter((n) => n.position.x !== before.get(n.id)!.x || n.position.y !== before.get(n.id)!.y);
+    expect(moved.length).toBeGreaterThan(0); // otherwise this test asserts nothing
+
+    expect(link.getMetadata('hasManualWaypoints')).toBe(false);
+    expect(link.points).toEqual([]); // the canonical "re-route on next paint" state
+    // Provenance is NOT part of the routed state; it survives the layout.
+    expect(link.getMetadata('drawioWaypoints')).toEqual([{ x: 150, y: 200 }]);
   });
 });
 
@@ -265,6 +312,242 @@ describe('importDrawio — mxfile wrapper and compression', () => {
     expect(diagram!.getNode('a')).toBeDefined();
     expect(diagram!.getNode('z')).toBeUndefined();
     expect(warnings.some((w) => w.includes('page 1 of 2'))).toBe(true);
+  });
+});
+
+describe('importDrawio — multi-page files', () => {
+  const pageA = model(vertex('a', { value: 'Alpha' }));
+  const pageB = model(vertex('z', { value: 'Zulu', x: 50, y: 60 }));
+
+  it('imports EVERY page under pages[]; diagram stays page 1; top-level warnings stay page-1 + file-level', async () => {
+    const wrapped =
+      `<mxfile><diagram id="d1" name="One">${compress(pageA)}</diagram>` +
+      `<diagram id="d2" name="Two">${pageB}</diagram></mxfile>`; // page 2 uncompressed on purpose: both encodings, one file
+    const { diagram, warnings, error, pages } = await importDrawio(wrapped);
+    expect(error).toBeUndefined();
+    expect(pages).toHaveLength(2);
+    expect(pages![0]).toMatchObject({ name: 'One', index: 0 });
+    expect(pages![1]).toMatchObject({ name: 'Two', index: 1 });
+    // diagram IS pages[0].diagram — the back-compatible face of the result.
+    expect(diagram).toBe(pages![0].diagram);
+    expect(diagram!.getNode('a')).toBeDefined();
+    expect(diagram!.getNode('z')).toBeUndefined();
+    // Page 2 compiled independently, into its OWN diagram.
+    expect(pages![1].diagram!.getNode('z')!.getLabel()).toBe('Zulu');
+    expect(pages![1].error).toBeUndefined();
+    expect(warnings.some((w) => w.includes('page 1 of 2'))).toBe(true);
+  });
+
+  it('pages[] is present ONLY for files with more than one <diagram>', async () => {
+    const single = await importDrawio(`<mxfile><diagram id="d1" name="Solo">${compress(pageA)}</diagram></mxfile>`);
+    expect(single.pages).toBeUndefined();
+    expect(single.diagram!.getNode('a')).toBeDefined();
+    const bare = await importDrawio(pageA);
+    expect(bare.pages).toBeUndefined();
+  });
+
+  it('one CORRUPT page fails ALONE, with its own error entry — the other pages still import', async () => {
+    const wrapped =
+      `<mxfile><diagram id="d1" name="Good">${compress(pageA)}</diagram>` +
+      `<diagram id="d2" name="Broken">%%%not-base64%%%</diagram>` +
+      `<diagram id="d3" name="AlsoGood">${compress(pageB)}</diagram></mxfile>`;
+    const { diagram, warnings, error, pages } = await importDrawio(wrapped);
+    expect(error).toBeUndefined(); // page 1 is fine, so the FILE is not fatal
+    expect(diagram!.getNode('a')).toBeDefined();
+    expect(pages).toHaveLength(3);
+    expect(pages![1].error).toContain('page 2');
+    expect(pages![1].error).toContain('Broken');
+    expect(pages![1].diagram).toBeUndefined();
+    expect(pages![2].diagram!.getNode('z')).toBeDefined();
+    // The broken page is file-level news too — named once in the top warnings.
+    expect(warnings.some((w) => w.includes('page 2') && w.includes('Broken'))).toBe(true);
+  });
+
+  it('a corrupt FIRST page fails that page (top-level error mirrors it) without sinking the rest', async () => {
+    const wrapped =
+      `<mxfile><diagram id="d1" name="Broken">%%%garbage%%%</diagram>` +
+      `<diagram id="d2" name="Good">${compress(pageB)}</diagram></mxfile>`;
+    const { diagram, error, pages } = await importDrawio(wrapped);
+    expect(diagram).toBeUndefined();
+    expect(error).toContain('page 1');
+    expect(pages).toHaveLength(2);
+    expect(pages![1].diagram!.getNode('z')).toBeDefined();
+  });
+});
+
+describe('importDrawio — edge visual fidelity', () => {
+  const twoNodes = vertex('a', { x: 0, y: 0 }) + vertex('b', { x: 300, y: 0 });
+  const edge = (style: string, value = ''): string =>
+    `<mxCell id="e1" value="${value}" style="${style}" edge="1" parent="1" source="a" target="b"><mxGeometry relative="1" as="geometry"/></mxCell>`;
+
+  const importEdge = async (style: string, value = '') => {
+    const { diagram, warnings } = await importDrawio(model(twoNodes + edge(style, value)));
+    return { link: diagram!.getLinks()[0], warnings };
+  };
+
+  it('maps startArrow/endArrow tokens onto arrowTail/arrowHead', async () => {
+    const { link } = await importEdge('startArrow=diamond;startFill=1;endArrow=block;endFill=1;');
+    expect(link.style.arrowHead).toMatchObject({ type: 'arrow', filled: true });
+    expect(link.style.arrowTail).toMatchObject({ type: 'diamond', filled: true });
+  });
+
+  it('open and unfilled markers arrive unfilled; oval maps; none kills the head arrow', async () => {
+    const open = (await importEdge('endArrow=open;')).link;
+    expect(open.style.arrowHead).toMatchObject({ type: 'open-arrow', filled: false });
+    const unfilled = (await importEdge('endArrow=diamond;endFill=0;')).link;
+    expect(unfilled.style.arrowHead).toMatchObject({ type: 'diamond', filled: false });
+    const oval = (await importEdge('endArrow=oval;')).link;
+    expect(oval.style.arrowHead).toMatchObject({ type: 'oval' });
+    const none = (await importEdge('endArrow=none;')).link;
+    expect(none.style.arrowHead).toMatchObject({ type: 'none' });
+  });
+
+  it('an UNKNOWN arrow token keeps the engine default — with a warning naming it', async () => {
+    const { link, warnings } = await importEdge('endArrow=dragonTail;');
+    expect(link.style.arrowHead).toBeUndefined();
+    expect(warnings.some((w) => w.includes('dragonTail') && w.includes('"e1"'))).toBe(true);
+  });
+
+  it('absent arrow tokens set nothing — the engine default already matches draw.io defaults', async () => {
+    const { link, warnings } = await importEdge('');
+    expect(link.style.arrowHead).toBeUndefined();
+    expect(link.style.arrowTail).toBeUndefined();
+    expect(warnings.filter((w) => w.includes('Arrow'))).toHaveLength(0);
+  });
+
+  it('edge strokeColor / strokeWidth / dashed PAINT via LinkStyle', async () => {
+    const { link } = await importEdge('strokeColor=#cc0000;strokeWidth=3;dashed=1;');
+    expect(link.style.stroke).toBe('#cc0000');
+    expect(link.style.strokeWidth).toBe(3);
+    expect(link.style.strokeDasharray).toBeTruthy();
+  });
+
+  it('curved=1 beats an orthogonal edgeStyle: the link imports as smooth', async () => {
+    const { link } = await importEdge('edgeStyle=orthogonalEdgeStyle;curved=1;');
+    expect(link.pathType).toBe('smooth');
+  });
+
+  it('rounded on an orthogonal edge: 1 → rounded connector (arcSize/2 radius), 0 → hard corners', async () => {
+    const roundedEdge = (await importEdge('edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=24;')).link;
+    expect(roundedEdge.connector).toBe('rounded');
+    expect(roundedEdge.style.cornerRadius).toBe(12);
+    const hard = (await importEdge('edgeStyle=orthogonalEdgeStyle;rounded=0;')).link;
+    expect(hard.connector).toBe('straight');
+    const unstated = (await importEdge('edgeStyle=orthogonalEdgeStyle;')).link;
+    expect(unstated.connector).toBeUndefined(); // engine default look
+  });
+
+  it('edge fontColor/fontSize land on a positioned label with style (canonical label intact)', async () => {
+    const { link } = await importEdge('fontColor=#0000cc;fontSize=16;', 'go');
+    expect(link.getLabel()).toBe('go');
+    expect(link.labels).toHaveLength(1);
+    expect(link.labels[0].text).toBe('go');
+    expect(link.labels[0].style).toMatchObject({ color: '#0000cc', fontSize: 16 });
+  });
+
+  it('a styleless labelled edge keeps the plain canonical label — no positioned label minted', async () => {
+    const { link } = await importEdge('', 'plain');
+    expect(link.getLabel()).toBe('plain');
+    expect(link.labels).toHaveLength(0);
+  });
+});
+
+describe('importDrawio — arcSize (mxGraph corner-radius semantics)', () => {
+  const shapeOfFirst = async (style: string, w = 120, h = 60) => {
+    const { diagram } = await importDrawio(model(vertex('r', { style, w, h })));
+    return diagram!.getNode('r')!.getMetadata('shape') as Record<string, unknown>;
+  };
+
+  it('absoluteArcSize=1: arcSize is a DIAMETER in px — radius = min(w/2, h/2, arcSize/2)', async () => {
+    expect((await shapeOfFirst('rounded=1;arcSize=20;absoluteArcSize=1;'))['cornerRadius']).toBe(10);
+    // clamped by the short side: min(120/2, 10/2, 90/2) = 5
+    expect((await shapeOfFirst('rounded=1;arcSize=90;absoluteArcSize=1;', 120, 10))['cornerRadius']).toBe(5);
+  });
+
+  it('relative (default): radius = min(w,h) × arcSize/100, geometrically capped at min(w,h)/2', async () => {
+    expect((await shapeOfFirst('rounded=1;arcSize=50;'))['cornerRadius']).toBe(30); // 60 × 0.5
+    expect((await shapeOfFirst('rounded=1;arcSize=10;', 200, 100))['cornerRadius']).toBe(10); // 100 × 0.1
+    expect((await shapeOfFirst('rounded=1;arcSize=80;'))['cornerRadius']).toBe(30); // capped at 60/2
+  });
+
+  it('rounded=1 with NO arcSize keeps the classic fixed 8px', async () => {
+    expect((await shapeOfFirst('rounded=1;'))['cornerRadius']).toBe(8);
+  });
+});
+
+describe('importDrawio — container-endpoint edges', () => {
+  const fixture = model(
+    vertex('lane', { value: 'Zone', style: 'swimlane;', x: 300, y: 50, w: 300, h: 200 }) +
+      vertex('in-lane', { parent: 'lane', x: 40, y: 60 }) +
+      vertex('outside', { x: 0, y: 100 }) +
+      `<mxCell id="e1" edge="1" parent="1" source="outside" target="lane"><mxGeometry relative="1" as="geometry"/></mxCell>`
+  );
+
+  it('an edge ending ON a container connects via an invisible group-owned anchor node — no skip warning', async () => {
+    const { diagram, warnings } = await importDrawio(fixture);
+    expect(diagram!.getLinks()).toHaveLength(1);
+    expect(warnings.some((w) => w.includes('skipped'))).toBe(false);
+
+    const link = diagram!.getLinks()[0];
+    expect(link.sourceNodeId).toBe('outside');
+    const anchor = diagram!.getNode(link.targetNodeId!)!;
+    expect(anchor.getMetadata('drawioContainerAnchor')).toBe('lane');
+    // Invisible: 1×1, no paint.
+    expect(anchor.size).toMatchObject({ width: 1, height: 1 });
+    expect(anchor.getMetadata('shape')).toMatchObject({ fill: 'none', stroke: 'none' });
+    // Group-owned, so group operations (move/collapse) carry the edge endpoint.
+    expect(diagram!.getGroup('lane')!.members.has(anchor.id)).toBe(true);
+  });
+
+  it('the anchor pins to the frame edge NEAREST the other endpoint', async () => {
+    const { diagram } = await importDrawio(fixture);
+    const link = diagram!.getLinks()[0];
+    const anchor = diagram!.getNode(link.targetNodeId!)!;
+    const cx = anchor.position.x + 0.5;
+    const cy = anchor.position.y + 0.5;
+    // 'outside' is at (0,100,120×60): center (60,130) — left of the lane frame
+    // (300..600 × 50..250), so the pin lands ON the frame's LEFT edge at y=130.
+    expect(cx).toBeCloseTo(300, 5);
+    expect(cy).toBeCloseTo(130, 5);
+  });
+
+  it('an edge with waypoints aims its anchor at the ADJACENT waypoint, not the far endpoint', async () => {
+    const withWaypoint = model(
+      vertex('lane', { value: 'Zone', style: 'swimlane;', x: 300, y: 50, w: 300, h: 200 }) +
+        vertex('outside', { x: 0, y: 100 }) +
+        `<mxCell id="e1" edge="1" parent="1" source="outside" target="lane">` +
+        `<mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="450" y="400"/></Array></mxGeometry></mxCell>`
+    );
+    const { diagram } = await importDrawio(withWaypoint);
+    const link = diagram!.getLinks()[0];
+    const anchor = diagram!.getNode(link.targetNodeId!)!;
+    // The waypoint (450,400) sits BELOW the frame → the pin lands on the
+    // BOTTOM edge at x=450, y=250 — where draw.io painted the line's arrival.
+    expect(anchor.position.x + 0.5).toBeCloseTo(450, 5);
+    expect(anchor.position.y + 0.5).toBeCloseTo(250, 5);
+    // …and the applied polyline detours through the waypoint.
+    expect(link.points).toContainEqual({ x: 450, y: 400 });
+  });
+
+  it('container-to-container edges get an anchor on EACH frame', async () => {
+    const xml = model(
+      vertex('left', { style: 'swimlane;', x: 0, y: 0, w: 200, h: 150 }) +
+        vertex('l1', { parent: 'left', x: 20, y: 40 }) +
+        vertex('right', { style: 'swimlane;', x: 400, y: 0, w: 200, h: 150 }) +
+        vertex('r1', { parent: 'right', x: 20, y: 40 }) +
+        `<mxCell id="e1" edge="1" parent="1" source="left" target="right"><mxGeometry relative="1" as="geometry"/></mxCell>`
+    );
+    const { diagram, warnings } = await importDrawio(xml);
+    expect(diagram!.getLinks()).toHaveLength(1);
+    expect(warnings.some((w) => w.includes('skipped'))).toBe(false);
+    const link = diagram!.getLinks()[0];
+    const src = diagram!.getNode(link.sourceNodeId!)!;
+    const tgt = diagram!.getNode(link.targetNodeId!)!;
+    expect(src.getMetadata('drawioContainerAnchor')).toBe('left');
+    expect(tgt.getMetadata('drawioContainerAnchor')).toBe('right');
+    // Facing edges: left frame's right side (x=200), right frame's left side (x=400).
+    expect(src.position.x + 0.5).toBeCloseTo(200, 5);
+    expect(tgt.position.x + 0.5).toBeCloseTo(400, 5);
   });
 });
 
