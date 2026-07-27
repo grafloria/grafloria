@@ -43,6 +43,7 @@
 <script type="module">
 import { render, importDrawio, fromDocument, DiagramSerializer } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { mountCodeEditor } from '../shell/code-editor.js';
 
 // A small order flow, hand-written in the exact XML draw.io saves: a rounded
 // start box, a rhombus decision, a SWIMLANE CONTAINER whose children carry
@@ -129,6 +130,11 @@ defineDemo({
   async setup(ctx) {
     const stage = document.getElementById('stage');
     const ta = document.getElementById('text');
+    // Syntax-coloured XML; the textarea stays canonical beneath, so every
+    // ta.value read (and the gate) is untouched. Monaco's built-in xml
+    // tokenizer colours without workers.
+    const ed = await mountCodeEditor(ta, { language: 'xml' });
+    ctx.editor = ed;
     const status = document.getElementById('status');
     const pagePick = document.getElementById('pagepick');
     let mountHost = null;
@@ -211,12 +217,12 @@ defineDemo({
     ctx.PLAIN_XML = PLAIN_XML;
     ctx.MULTI_XML = MULTI_XML;
 
-    document.getElementById('ex-plain').onclick = () => { ta.value = PLAIN_XML; show(ta.value); };
-    document.getElementById('ex-compressed').onclick = async () => { ta.value = await compressedCopy(PLAIN_XML); show(ta.value); };
-    document.getElementById('ex-pages').onclick = () => { ta.value = MULTI_XML; show(ta.value); };
+    document.getElementById('ex-plain').onclick = () => { ed.setValue(PLAIN_XML); show(ta.value); };
+    document.getElementById('ex-compressed').onclick = async () => { ed.setValue(await compressedCopy(PLAIN_XML)); show(ta.value); };
+    document.getElementById('ex-pages').onclick = () => { ed.setValue(MULTI_XML); show(ta.value); };
     document.getElementById('import').onclick = () => show(ta.value);
 
-    ta.value = PLAIN_XML;
+    ed.setValue(PLAIN_XML);
     await show(PLAIN_XML);
     await ctx.tick();
   },
