@@ -243,6 +243,7 @@
 <script type="module">
 import { render } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { mountCodeEditor } from '../shell/code-editor.js';
 
 // An interactive n8n workflow, rebuilt on the Grafloria engine — now with n8n's
 // EXECUTION model, not just its looks:
@@ -1083,6 +1084,13 @@ defineDemo({
           const t = bindText(id, 'code', 'textarea');
           t.className = 'code';
           add(fieldWrap('JavaScript', t));
+          // Syntax-coloured, like n8n's own Code node. The textarea stays
+          // canonical (mountCodeEditor mirrors every keystroke back), so
+          // bindText's change handling and the gates are untouched. Mounted
+          // after this frame so the field has its final size first.
+          requestAnimationFrame(() => {
+            if (t.isConnected) void mountCodeEditor(t, { language: 'javascript' });
+          });
           break;
         }
         case 'merge':
