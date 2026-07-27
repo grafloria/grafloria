@@ -1026,16 +1026,22 @@ export function bindDashboardGrid(
   };
 
   const commitGesture = (g: GestureState): void => {
-    // Snap the ghost into its engine cell — the instant, truthful drop.
-    const item = engine.getItem(g.id);
-    if (item) {
-      writing = true;
-      try {
-        writeRect(g.id, cellToRect(item, frame(), geom(), rows()));
-      } finally {
-        writing = false;
-      }
-    }
+    // SETTLE FIRST, then measure. Mid-drag the board can transiently hold more
+    // rows than the drop keeps (hover above a locked slab pushes everything
+    // down), and fit-mode row height shrinks with it — every displaced tile is
+    // re-projected at that TRANSIENT height. The old order computed the commit
+    // deltas from those pixels and, when the engine settled back with no cell
+    // changes, nothing ever wrote the pixels back: a refused drop left the
+    // whole board at the mid-drag height, KPI value lines clipped to nothing
+    // (live audit repro: drag the trend chart above the KPI row → every widget
+    // 122px→85px with identical cells). endGesture() keeps the settled cells;
+    // project() then derives every member's pixels — the ghost included — from
+    // that truth, so the deltas below record settled geometry and undo/redo
+    // both replay it faithfully.
+    engine.endGesture();
+    cleanupGestureVisuals(g);
+    gesture = null;
+    project();
     const deltas = deltasSince(g.startCells, g.startGeom);
     const commands = buildCommitCommands(deltas);
     if (g.esc && g.esc.rowsAdded !== 0) {
@@ -1050,10 +1056,6 @@ export function bindDashboardGrid(
       );
     }
     const changed = execute(g.kind === 'resize' ? 'Resize widget' : 'Move widget', commands);
-    engine.endGesture();
-    cleanupGestureVisuals(g);
-    gesture = null;
-    enforceBoardHeight();
     api.renderNow();
     options.onGesture?.({ type: 'commit', kind: g.kind, nodeId: g.id, changed });
   };
