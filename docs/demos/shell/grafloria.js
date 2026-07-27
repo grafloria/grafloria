@@ -83375,7 +83375,7 @@ var require_elk_bundled = __commonJS({
             _.Me = function esd() {
               return new _qb(this);
             };
-            var r32 = Qeb(REe, "BoxLayoutProvider/lambda$2$Type", 977);
+            var r33 = Qeb(REe, "BoxLayoutProvider/lambda$2$Type", 977);
             Ddb(1350, 1, { 837: 1 }, fsd);
             _.Lg = function gsd(a, b) {
               return xyc(), !RD(b, 176) || Zdd((Mdd(), Ldd, JD(a, 176)), b);
@@ -116671,6 +116671,97 @@ var SetLinkDisplayLabelCommand = class extends Command {
   }
 };
 
+// libs/engine/src/commands/basic/SetLinkPathTypeCommand.ts
+var SetLinkPathTypeCommand = class extends Command {
+  constructor(linkId, pathType) {
+    super("Set Link Route");
+    this.linkId = linkId;
+    this.pathType = pathType;
+  }
+  execute(context) {
+    const link = context.diagram?.getLink(this.linkId);
+    if (!link) throw new Error(`Link ${this.linkId} not found`);
+    this.previous = {
+      pathType: link.pathType,
+      points: link.points.map((p) => ({ ...p })),
+      hasManualWaypoints: link.getMetadata("hasManualWaypoints") === true
+    };
+    link.setPathType(this.pathType);
+  }
+  undo(context) {
+    const link = context.diagram?.getLink(this.linkId);
+    if (!link || !this.previous) {
+      throw new Error("Cannot undo: missing link or previous path type");
+    }
+    link.setPathType(this.previous.pathType);
+    if (this.previous.hasManualWaypoints && this.previous.points.length > 0) {
+      link.setPoints(this.previous.points.map((p) => ({ ...p })));
+      link.setMetadata("hasManualWaypoints", true);
+    }
+  }
+  canExecute(context) {
+    return !!context.diagram?.getLink(this.linkId);
+  }
+  canUndo(context) {
+    return !!context.diagram?.getLink(this.linkId) && !!this.previous;
+  }
+  serialize() {
+    return {
+      id: this.id,
+      name: this.name,
+      timestamp: this.timestamp,
+      data: {
+        linkId: this.linkId,
+        pathType: this.pathType,
+        previous: this.previous
+      }
+    };
+  }
+  getDescription() {
+    return `Set route of link ${this.linkId} to ${this.pathType}`;
+  }
+};
+
+// libs/engine/src/commands/basic/SetNodeShapeConfigCommand.ts
+var SetNodeShapeConfigCommand = class extends Command {
+  constructor(nodeId, patch) {
+    super("Set Node Shape Config");
+    this.nodeId = nodeId;
+    this.patch = patch;
+  }
+  execute(context) {
+    const node = context.diagram?.getNode(this.nodeId);
+    if (!node) throw new Error(`Node ${this.nodeId} not found`);
+    const current = node.getMetadata("shape");
+    this.previous = { shape: current ? { ...current } : void 0 };
+    node.setMetadata("shape", { ...current ?? {}, ...this.patch });
+  }
+  undo(context) {
+    const node = context.diagram?.getNode(this.nodeId);
+    if (!node || !this.previous) {
+      throw new Error("Cannot undo: missing node or previous shape config");
+    }
+    node.setMetadata("shape", this.previous.shape ? { ...this.previous.shape } : void 0);
+  }
+  canExecute(context) {
+    return !!context.diagram?.getNode(this.nodeId) && Object.keys(this.patch).length > 0;
+  }
+  canUndo(context) {
+    return !!context.diagram?.getNode(this.nodeId) && !!this.previous;
+  }
+  serialize() {
+    return {
+      id: this.id,
+      name: this.name,
+      timestamp: this.timestamp,
+      data: { nodeId: this.nodeId, patch: this.patch, previous: this.previous }
+    };
+  }
+  getDescription() {
+    return `Set shape config of node ${this.nodeId}`;
+  }
+};
+
 // libs/engine/src/commands/basic/PortCommands.ts
 var AddPortCommand = class extends Command {
   constructor(nodeId, port) {
@@ -141726,6 +141817,9 @@ var NodeFactory = class {
     if (structure.shape) {
       node.setMetadata("shape", structure.shape);
     }
+    if (structure.labelPlacement && structure.labelPlacement !== "inside") {
+      node.setMetadata("labelPlacement", structure.labelPlacement);
+    }
     if (structure.propertyBindings) {
       this.applyPropertyBindings(node, structure.propertyBindings, data2);
     }
@@ -142864,12 +142958,13 @@ var bpmnExclusiveGatewayTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "diamond",
+      "type": "gateway-xor",
       "fill": "#FFFFFF",
       "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="bpmn-exclusive-gateway-content">
@@ -142979,12 +143074,13 @@ var bpmnParallelGatewayTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "diamond",
+      "type": "gateway-and",
       "fill": "#FFFFFF",
       "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="bpmn-parallel-gateway-content">
@@ -143092,12 +143188,13 @@ var bpmnInclusiveGatewayTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "diamond",
+      "type": "gateway-or",
       "fill": "#FFFFFF",
       "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="bpmn-inclusive-gateway-content">
@@ -143211,6 +143308,7 @@ var bpmnStartEventTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="bpmn-start-event-content">
@@ -143324,6 +143422,7 @@ var bpmnEndEventTemplate = {
       "strokeWidth": 4,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="bpmn-end-event-content">
@@ -143432,12 +143531,13 @@ var bpmnIntermediateEventTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "circle",
+      "type": "event-intermediate",
       "fill": "#FFFFFF",
       "stroke": "#334155",
-      "strokeWidth": 3,
+      "strokeWidth": 1.5,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="bpmn-intermediate-event-content">
@@ -143536,8 +143636,8 @@ var bpmnMessageEventTemplate = {
   "structure": {
     "type": "bpmn:message-event",
     "size": {
-      "width": 120,
-      "height": 80,
+      "width": 36,
+      "height": 36,
       "minWidth": 80,
       "maxWidth": 300,
       "minHeight": 60,
@@ -143550,6 +143650,7 @@ var bpmnMessageEventTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="bpmn-message-event-content">
@@ -143649,8 +143750,8 @@ var bpmnTimerEventTemplate = {
   "structure": {
     "type": "bpmn:timer-event",
     "size": {
-      "width": 120,
-      "height": 80,
+      "width": 36,
+      "height": 36,
       "minWidth": 80,
       "maxWidth": 300,
       "minHeight": 60,
@@ -143663,6 +143764,7 @@ var bpmnTimerEventTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="bpmn-timer-event-content">
@@ -143762,8 +143864,8 @@ var bpmnErrorEventTemplate = {
   "structure": {
     "type": "bpmn:error-event",
     "size": {
-      "width": 120,
-      "height": 80,
+      "width": 36,
+      "height": 36,
       "minWidth": 80,
       "maxWidth": 300,
       "minHeight": 60,
@@ -143776,6 +143878,7 @@ var bpmnErrorEventTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="bpmn-error-event-content">
@@ -144480,6 +144583,7 @@ var flowchartConnectorTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="flowchart-connector-content">
@@ -145505,6 +145609,7 @@ var flowchartOrTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="flowchart-or-content">
@@ -145619,6 +145724,7 @@ var flowchartSummingJunctionTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="flowchart-summing-junction-content">
@@ -147358,6 +147464,7 @@ var umlInitialStateTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="uml-initial-state-content">
@@ -147466,12 +147573,13 @@ var umlFinalStateTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "circle",
-      "fill": "#F8FAFC",
+      "type": "final-node",
+      "fill": "#475569",
       "stroke": "#475569",
-      "strokeWidth": 4,
+      "strokeWidth": 1,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="uml-final-state-content">
@@ -147814,6 +147922,7 @@ var umlDecisionTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="uml-decision-content">
@@ -148042,6 +148151,7 @@ var umlForkTemplate = {
       "strokeWidth": 1,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="uml-fork-content">
@@ -148143,8 +148253,8 @@ var umlJoinTemplate = {
   "structure": {
     "type": "uml:join",
     "size": {
-      "width": 120,
-      "height": 80,
+      "width": 100,
+      "height": 10,
       "minWidth": 120,
       "maxWidth": 400,
       "minHeight": 80,
@@ -148152,11 +148262,12 @@ var umlJoinTemplate = {
     },
     "shape": {
       "type": "sync-bar",
-      "fill": "#F8FAFC",
-      "stroke": "#475569",
-      "strokeWidth": 2,
+      "fill": "#000000",
+      "stroke": "#000000",
+      "strokeWidth": 1,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="uml-join-content">
@@ -148270,6 +148381,7 @@ var umlInitialNodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="uml-initial-node-content">
@@ -148378,12 +148490,13 @@ var umlFinalNodeTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "circle",
+      "type": "final-node",
       "fill": "#000000",
       "stroke": "#000000",
-      "strokeWidth": 4,
+      "strokeWidth": 1,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="uml-final-node-content">
@@ -148713,8 +148826,8 @@ var umlActivationTemplate = {
   "structure": {
     "type": "uml:activation",
     "size": {
-      "width": 15,
-      "height": 80,
+      "width": 12,
+      "height": 60,
       "minWidth": 120,
       "maxWidth": 400,
       "minHeight": 80,
@@ -148727,6 +148840,7 @@ var umlActivationTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="uml-activation-content">
@@ -149505,15 +149619,15 @@ var umlSignalTemplate = {
   "structure": {
     "type": "uml:signal",
     "size": {
-      "width": 100,
-      "height": 60,
+      "width": 120,
+      "height": 80,
       "minWidth": 120,
       "maxWidth": 400,
       "minHeight": 80,
       "maxHeight": 600
     },
     "shape": {
-      "type": "trapezoid",
+      "type": "rect",
       "fill": "#F8FAFC",
       "stroke": "#475569",
       "strokeWidth": 2,
@@ -149632,6 +149746,7 @@ var umlPortTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="uml-port-content">
@@ -152227,6 +152342,7 @@ var erdDiscriminatorTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": `<div class="erd-discriminator-content">
@@ -168046,6 +168162,22 @@ var DEFAULT_IMAGE_HEIGHT = 48;
 var DEFAULT_ROW_HEIGHT = 18;
 var DEFAULT_ICON_SIZE = 18;
 var DEFAULT_FONT_SIZE4 = 12;
+var HEADER_LINE_HEIGHT = 16;
+var MIN_HEADER_FONT_PX = 8;
+function headerLines(header) {
+  if (header.lines && header.lines.length > 0) return header.lines;
+  return header.text ? [header.text] : [];
+}
+function headerHeight(header) {
+  if (header.height !== void 0) return header.height;
+  const n3 = headerLines(header).length;
+  return n3 > 1 ? n3 * HEADER_LINE_HEIGHT + 4 : DEFAULT_HEADER_HEIGHT;
+}
+function fitHeaderLine(line, maxWidth, base) {
+  if (!line || !isFinite(maxWidth) || maxWidth <= 0) return base;
+  const needed = maxWidth / (line.length * 0.6);
+  return needed >= base ? base : Math.max(MIN_HEADER_FONT_PX, Math.floor(needed));
+}
 function getNodePanel(node) {
   const raw = node.getMetadata("panel");
   return raw && typeof raw === "object" ? raw : null;
@@ -168072,8 +168204,8 @@ function measurePanelReserve(node) {
   let bottom = 0;
   let width = 0;
   if (panel.header) {
-    top += panel.header.height ?? DEFAULT_HEADER_HEIGHT;
-    width = Math.max(width, estimate(panel.header.text));
+    top += headerHeight(panel.header);
+    for (const line of headerLines(panel.header)) width = Math.max(width, estimate(line));
   }
   if (panel.image) top += panel.image.height ?? DEFAULT_IMAGE_HEIGHT;
   if (panel.rows && panel.rows.length > 0) {
@@ -168096,7 +168228,8 @@ function renderNodePanel(node, width, height, ctx) {
   const rowHeight = panel.rowHeight ?? DEFAULT_ROW_HEIGHT;
   let cursorY = 0;
   if (panel.header) {
-    const h = panel.header.height ?? DEFAULT_HEADER_HEIGHT;
+    const header = panel.header;
+    const h = headerHeight(header);
     out.push({
       type: "rect",
       key: `panel-header-bg-${ctx.nodeId}`,
@@ -168105,24 +168238,30 @@ function renderNodePanel(node, width, height, ctx) {
         y: 0,
         width,
         height: h,
-        fill: panel.header.fill ?? ctx.headerFill,
+        fill: header.fill ?? ctx.headerFill,
         className: "panel-header",
         pointerEvents: "none"
       }
     });
-    if (panel.header.text) {
+    const lines = headerLines(header);
+    const lineH = lines.length > 0 ? h / lines.length : h;
+    lines.forEach((line, i) => {
+      const stereo = lines.length > 1 && i < lines.length - 1;
+      const base = stereo ? ctx.fontSize - 2 : ctx.fontSize;
       out.push(
-        textVNode(`panel-header-text-${ctx.nodeId}`, {
-          text: panel.header.text,
+        textVNode(`panel-header-text-${ctx.nodeId}${lines.length > 1 ? `-${i}` : ""}`, {
+          text: line,
           x: width / 2,
-          y: h / 2,
+          y: lineH * (i + 0.5),
           align: "middle",
-          fill: panel.header.textColor ?? ctx.headerTextColor,
-          fontSize: ctx.fontSize,
-          fontWeight: 600
+          fill: header.textColor ?? ctx.headerTextColor,
+          // A header line cannot wrap; it shrinks to its band instead of
+          // painting past the card's edges.
+          fontSize: fitHeaderLine(line, width - 10, base),
+          fontWeight: stereo ? 400 : 600
         })
       );
-    }
+    });
     cursorY += h;
   }
   if (panel.image) {
@@ -168243,7 +168382,7 @@ function panelAdjustedInnerRect(node, inner, width, height) {
   const rowHeight = panel.rowHeight ?? DEFAULT_ROW_HEIGHT;
   let top = 0;
   let bottom = 0;
-  if (panel.header) top += panel.header.height ?? DEFAULT_HEADER_HEIGHT;
+  if (panel.header) top += headerHeight(panel.header);
   if (panel.image) top += panel.image.height ?? DEFAULT_IMAGE_HEIGHT;
   if (panel.rows && panel.rows.length > 0) bottom += panel.rows.length * rowHeight;
   const bandTop = Math.max(inner.y, top);
@@ -168264,6 +168403,8 @@ function cornerBox(corner, width, height, bw, bh) {
       return { x: inset, y: bottom };
     case "br":
       return { x: right, y: bottom };
+    case "c":
+      return { x: (width - bw) / 2, y: (height - bh) / 2 };
   }
 }
 function textVNode(key, spec) {
@@ -175094,6 +175235,9 @@ var _SVGRenderer = class _SVGRenderer {
    * so the clip rect and the text share the node-local coordinate space.
    */
   renderNodeLabel(node) {
+    if (node.getMetadata("labelPlacement") === "below") {
+      return this.renderNodeLabelBelow(node);
+    }
     const shapeConfig = node.getMetadata("shape") || { type: "rect" };
     const { width, height } = node.size;
     const inner = panelAdjustedInnerRect(
@@ -175146,6 +175290,43 @@ var _SVGRenderer = class _SVGRenderer {
       props["style"] = { ...props["style"] ?? {}, fontSize: `${fontSize}px` };
     }
     return [clip, text];
+  }
+  /**
+   * Paint a node's caption BELOW its silhouette (`metadata.labelPlacement:
+   * 'below'`). The label is centred under the node, wraps at a width a little
+   * wider than the shape (a 36px event circle should not force one-character
+   * lines), is NEVER clipped and NEVER shrunk below the theme size — outside
+   * the silhouette there is room, so legibility wins. The text block's top edge
+   * sits {@link BELOW_LABEL_GAP} px under the node's height, so it can never
+   * straddle the silhouette edge.
+   */
+  renderNodeLabelBelow(node) {
+    const { width, height } = node.size;
+    const label = String(node.getLabel());
+    const fontSize = this.theme.typography.fontSize.md;
+    const lineHeight = fontSize * 1.2;
+    const maxWidth = Math.max(width, fontSize * 9);
+    const lines = wrapText(label, maxWidth, fontSize);
+    const blockH = lines.length * lineHeight;
+    const top = height + _SVGRenderer.BELOW_LABEL_GAP;
+    const text = renderTextBlock({
+      text: label,
+      x: width / 2,
+      y: top + blockH / 2,
+      maxWidth,
+      align: "middle",
+      valign: "middle",
+      fontSize,
+      lineHeight: 1.2,
+      // No maxLines and no clipId: an outside label is never truncated and
+      // never clipped — that is its whole reason to exist.
+      nonInteractive: true,
+      className: this.config.useCSSMode ? "diagram-label gf-label-below" : "gf-label-below",
+      emitFontSize: !this.config.useCSSMode,
+      color: this.config.useCSSMode ? void 0 : this.theme.colors.text.primary,
+      fontWeight: this.config.useCSSMode ? void 0 : this.theme.typography.fontWeight.medium
+    });
+    return [text];
   }
   renderNodeShape(node, styles, isHovered) {
     const shapeConfig = node.getMetadata("shape") || { type: "rect" };
@@ -177983,6 +178164,8 @@ _SVGRenderer.LINK_VAR_SAFE = /* @__PURE__ */ new Set([
   "strokeDasharray",
   "opacity"
 ]);
+/** Gap between a silhouette's bottom edge and its below-label (px). */
+_SVGRenderer.BELOW_LABEL_GAP = 5;
 var SVGRenderer = _SVGRenderer;
 
 // libs/renderer/src/svg/notation-shapes.ts
@@ -177990,6 +178173,7 @@ var DOUBLE_INSET = 5;
 var rectPath2 = (x, y, w, h) => `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`;
 var diamondPath = (x, y, w, h) => `M ${x + w / 2} ${y} L ${x + w} ${y + h / 2} L ${x + w / 2} ${y + h} L ${x} ${y + h / 2} Z`;
 var ellipsePath2 = (cx, cy, rx, ry) => `M ${cx - rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx + rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx - rx} ${cy} Z`;
+var ellipsePathCCW = (cx, cy, rx, ry) => `M ${cx - rx} ${cy} A ${rx} ${ry} 0 1 1 ${cx + rx} ${cy} A ${rx} ${ry} 0 1 1 ${cx - rx} ${cy} Z`;
 function registerNotationShapes() {
   define2("delay", (w, h) => {
     const r = h / 2;
@@ -178016,10 +178200,38 @@ function registerNotationShapes() {
   define2("double-rect", (w, h) => `${rectPath2(0, 0, w, h)} ${rectPath2(DOUBLE_INSET, DOUBLE_INSET, w - DOUBLE_INSET * 2, h - DOUBLE_INSET * 2)}`);
   define2("double-diamond", (w, h) => `${diamondPath(0, 0, w, h)} ${diamondPath(DOUBLE_INSET, DOUBLE_INSET, w - DOUBLE_INSET * 2, h - DOUBLE_INSET * 2)}`);
   define2("double-ellipse", (w, h) => `${ellipsePath2(w / 2, h / 2, w / 2, h / 2)} ${ellipsePath2(w / 2, h / 2, w / 2 - DOUBLE_INSET, h / 2 - DOUBLE_INSET)}`);
+  const diamondGeom = delegateTo("diamond");
+  define2("gateway-xor", (w, h) => {
+    const cx = w / 2, cy = h / 2, a = Math.min(w, h) * 0.18;
+    return `${diamondPath(0, 0, w, h)} M ${r32(cx - a)} ${r32(cy - a)} L ${r32(cx + a)} ${r32(cy + a)} M ${r32(cx + a)} ${r32(cy - a)} L ${r32(cx - a)} ${r32(cy + a)}`;
+  }, diamondGeom);
+  define2("gateway-or", (w, h) => {
+    const r = Math.min(w, h) * 0.22;
+    return `${diamondPath(0, 0, w, h)} ${ellipsePath2(w / 2, h / 2, r, r)}`;
+  }, diamondGeom);
+  define2("gateway-and", (w, h) => {
+    const cx = w / 2, cy = h / 2, a = Math.min(w, h) * 0.24;
+    return `${diamondPath(0, 0, w, h)} M ${r32(cx - a)} ${cy} L ${r32(cx + a)} ${cy} M ${cx} ${r32(cy - a)} L ${cx} ${r32(cy + a)}`;
+  }, diamondGeom);
+  define2("event-intermediate", (w, h) => {
+    const r = Math.min(w, h) / 2, cx = w / 2, cy = h / 2;
+    const inset = Math.max(3, r * 0.18);
+    return `${ellipsePath2(cx, cy, r, r)} ${ellipsePath2(cx, cy, r - inset, r - inset)}`;
+  }, delegateTo("circle"));
+  define2("final-node", (w, h) => {
+    const r = Math.min(w, h) / 2, cx = w / 2, cy = h / 2;
+    const band = Math.max(2, r * 0.16);
+    return `${ellipsePath2(cx, cy, r, r)} ${ellipsePathCCW(cx, cy, r - band, r - band)} ${ellipsePath2(cx, cy, r * 0.5, r * 0.5)}`;
+  }, delegateTo("circle"));
 }
-function define2(type, path) {
+var r32 = (n3) => Math.round(n3 * 1e3) / 1e3;
+function delegateTo(base) {
+  const def = getShapeDefinition(base);
+  return def ? { portAnchor: def.portAnchor, boundaryPoint: def.boundaryPoint, innerRect: def.innerRect } : {};
+}
+function define2(type, path, opts) {
   if (hasShape(type)) return;
-  registerPathShape(type, path);
+  registerPathShape(type, path, opts);
 }
 
 // libs/renderer/src/comments/comment-panel.ts
@@ -187267,6 +187479,8 @@ var DomEventBinder = class {
           this.activeTool = void 0;
           this.activeToolHit = void 0;
         }
+        this.host.requestRender();
+        return;
       }
       const state = this.host.interaction.getState();
       if (state.isConnecting) {
@@ -187418,6 +187632,9 @@ var DomEventBinder = class {
       diagram.toggleNodeSelection(node);
     } else if (!wasSelected) {
       diagram.selectNode(node);
+      diagram.getLinks().forEach((l) => {
+        if (l.state === "selected") l.setState("default");
+      });
     }
     this.host.requestRender();
     this.emitSelectionChange();
@@ -196043,9 +196260,9 @@ var UML_CLASSIFIERS = {
   "uml-class": null,
   "uml-abstract-class": "\xABabstract\xBB",
   "uml-interface": "\xABinterface\xBB",
-  "uml-enumeration": "\xABenumeration\xBB",
+  "uml-enum": "\xABenumeration\xBB",
   "uml-datatype": "\xABdataType\xBB",
-  "uml-primitivetype": "\xABprimitive\xBB",
+  "uml-primitive-type": "\xABprimitive\xBB",
   "uml-signal": "\xABsignal\xBB",
   "uml-object": null
 };
@@ -196057,15 +196274,18 @@ var BPMN_EVENT_GLYPH = {
 function applyNotationPanel(node, masterId, master) {
   const glyph = BPMN_EVENT_GLYPH[masterId];
   if (glyph) {
-    node.setMetadata("panel", { icon: { glyph, size: 16, corner: "tl" } });
+    node.setMetadata("panel", { icon: { glyph, size: 16, corner: "c" } });
     return;
   }
   if (!(masterId in UML_CLASSIFIERS)) return;
   const stereotype = UML_CLASSIFIERS[masterId];
   const name = master.meta?.name ?? "Class";
-  const rows = masterId === "uml-enumeration" ? [{ text: "VALUE_A" }, { text: "VALUE_B" }] : [{ text: "+ field: Type" }, { text: "+ method(): void" }];
+  const rows = masterId === "uml-enum" ? [{ text: "VALUE_A" }, { text: "VALUE_B" }] : [{ text: "+ field: Type" }, { text: "+ method(): void" }];
   node.setMetadata("panel", {
-    header: { text: stereotype ? `${stereotype} ${name}` : name },
+    // A stereotyped classifier stacks «stereotype» OVER the name, the way UML
+    // draws its cards — inline ("«enumeration» Enumeration") the header line
+    // was wider than the card and painted cut off at both edges.
+    header: stereotype ? { lines: [stereotype, name] } : { text: name },
     rows,
     rowHeight: 18
   });
@@ -196327,11 +196547,77 @@ function humanize(key) {
   const spaced = key.replace(/[_-]+/g, " ").replace(/([a-z0-9])([A-Z])/g, "$1 $2");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
+function toHexColor(value, fallback) {
+  if (typeof value === "string") {
+    const v = value.trim();
+    if (/^#[0-9a-f]{6}$/i.test(v)) return v.toLowerCase();
+    const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(v);
+    if (short) return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`.toLowerCase();
+  }
+  return fallback;
+}
+var ARROW_TYPES = [
+  "none",
+  "arrow",
+  "circle",
+  "square",
+  "diamond",
+  "hollow-diamond",
+  "filled-diamond",
+  "generalization",
+  "open-arrow",
+  "double-arrow",
+  "crow-foot",
+  "one",
+  "zero-or-one",
+  "zero-or-many",
+  "one-or-many",
+  "cross",
+  "bar",
+  "dot",
+  "oval",
+  "half-arrow-left",
+  "half-arrow-right"
+];
+var ROUTE_TYPES = ["smooth", "orthogonal", "direct", "bezier"];
+var DASH2 = "6 4";
+var PANEL_STYLE_ID = "grafloria-shapedata-panel-styles";
+function ensureShapeDataPanelStyles(doc = document) {
+  if (doc.getElementById(PANEL_STYLE_ID)) return;
+  const style = doc.createElement("style");
+  style.id = PANEL_STYLE_ID;
+  style.textContent = `
+.gf-sd-ctl {
+  padding: 6px 8px; border: 1px solid var(--gf-st-line, #e5e7eb); border-radius: 7px;
+  background: var(--gf-st-bg, #fff); color: var(--gf-st-ink, #1e2436);
+  font: inherit; outline: none; width: 100%; box-sizing: border-box;
+}
+.gf-sd-ctl:focus { border-color: var(--gf-st-accent, #3B52D9); }
+.gf-sd-color {
+  width: 100%; height: 28px; padding: 1px 2px; box-sizing: border-box; cursor: pointer;
+  border: 1px solid var(--gf-st-line, #e5e7eb); border-radius: 7px; background: var(--gf-st-bg, #fff);
+}
+.gf-sd-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.gf-sd-inline { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.gf-sd-inline .gf-sd-label { flex: 1; }
+.gf-sd-count { padding: 12px 12px 0; font-weight: 600; font-size: 12px; }
+`;
+  doc.head.appendChild(style);
+}
 function bindShapeDataPanel(api, host, options = {}) {
-  ensureStencilKitStyles(host.ownerDocument ?? document);
+  const doc = host.ownerDocument ?? document;
+  ensureStencilKitStyles(doc);
+  ensureShapeDataPanelStyles(doc);
   host.classList.add("gf-shapedata");
   const title = options.title ?? "Shape data";
   const emptyText = options.emptyText ?? "Select a shape to edit its data.";
+  function exec(cmd) {
+    const engine = api.getEngine();
+    Promise.resolve(engine?.commandManager?.execute?.(cmd)).then(
+      () => render2(),
+      () => render2()
+    );
+  }
   function render2() {
     host.innerHTML = "";
     const head = document.createElement("div");
@@ -196340,27 +196626,33 @@ function bindShapeDataPanel(api, host, options = {}) {
     host.appendChild(head);
     const diagram = api.getModel();
     const engine = api.getEngine();
-    const selected = diagram?.getSelectedNodes?.() ?? [];
-    if (selected.length !== 1) {
+    const nodes = diagram?.getSelectedNodes?.() ?? [];
+    const links = (diagram?.getLinks?.() ?? []).filter((l) => l?.state === "selected");
+    const total = nodes.length + links.length;
+    if (total === 0) {
       const empty2 = document.createElement("div");
       empty2.className = "gf-sd-empty";
-      empty2.textContent = selected.length > 1 ? "Select a single shape." : emptyText;
+      empty2.textContent = emptyText;
       host.appendChild(empty2);
       return;
     }
-    const node = selected[0];
-    if (node.getMetadata?.("kitEntity") || node.getMetadata?.("kitClass")) {
+    if (total > 1) {
+      renderMulti(nodes, links);
+      return;
+    }
+    if (links.length === 1) {
+      renderLink(links[0]);
+      return;
+    }
+    const node = nodes[0];
+    const isKit = !!(node.getMetadata?.("kitEntity") || node.getMetadata?.("kitClass"));
+    renderNodeSections(node, isKit);
+    if (isKit) {
       renderKitCard(node);
       return;
     }
     const props = schemaFor(engine, node);
-    if (!props || Object.keys(props).length === 0) {
-      const empty2 = document.createElement("div");
-      empty2.className = "gf-sd-empty";
-      empty2.textContent = "This shape has no data fields.";
-      host.appendChild(empty2);
-      return;
-    }
+    if (!props || Object.keys(props).length === 0) return;
     const form = document.createElement("div");
     form.className = "gf-sd-fields";
     for (const [key, prop] of Object.entries(props)) {
@@ -196423,6 +196715,215 @@ function bindShapeDataPanel(api, host, options = {}) {
       row.appendChild(field);
       form.appendChild(row);
     }
+    host.appendChild(form);
+  }
+  function minSize(node) {
+    const sizing = node.getMetadata?.("sizing") ?? {};
+    return { w: Math.max(16, sizing.minWidth ?? 0), h: Math.max(16, sizing.minHeight ?? 0) };
+  }
+  function renderNodeSections(node, isKit) {
+    const form = document.createElement("div");
+    form.className = "gf-sd-fields";
+    if (!isKit) {
+      form.appendChild(sectionLabel("Shape"));
+      form.appendChild(
+        ctlTextField(
+          "Name",
+          String(node.getLabel?.() ?? ""),
+          (v) => exec(new SetNodeLabelCommand(node.id, v))
+        )
+      );
+    }
+    form.appendChild(sectionLabel("Size & Position"));
+    const move = (x, y) => exec(new MoveNodeCommand(node.id, { x, y, z: node.position?.z }, void 0, { mergeable: false }));
+    const resize = (w, h) => {
+      const min = minSize(node);
+      exec(
+        new ResizeNodeCommand(node.id, {
+          width: Math.max(min.w, w),
+          height: Math.max(min.h, h),
+          depth: node.size?.depth
+        })
+      );
+    };
+    form.appendChild(
+      pair(
+        numberField("X", () => node.position?.x ?? 0, (n3) => move(n3, node.position?.y ?? 0)),
+        numberField("Y", () => node.position?.y ?? 0, (n3) => move(node.position?.x ?? 0, n3))
+      )
+    );
+    form.appendChild(
+      pair(
+        numberField("W", () => node.size?.width ?? 0, (n3) => resize(n3, node.size?.height ?? 0)),
+        numberField("H", () => node.size?.height ?? 0, (n3) => resize(node.size?.width ?? 0, n3))
+      )
+    );
+    if (!isKit) {
+      const shape = node.getMetadata?.("shape") ?? {};
+      const style = node.style ?? {};
+      form.appendChild(sectionLabel("Format"));
+      form.appendChild(
+        colorField(
+          "Fill",
+          toHexColor(style["fill"] ?? shape["fill"], "#ffffff"),
+          (v) => exec(new SetNodeStyleCommand(node.id, { fill: v }))
+        )
+      );
+      form.appendChild(
+        colorField(
+          "Line",
+          toHexColor(style["stroke"] ?? shape["stroke"], "#333333"),
+          (v) => exec(new SetNodeStyleCommand(node.id, { stroke: v }))
+        )
+      );
+      form.appendChild(
+        numberField(
+          "Line width",
+          () => style["strokeWidth"] ?? shape["strokeWidth"] ?? 1,
+          (n3) => exec(new SetNodeStyleCommand(node.id, { strokeWidth: Math.max(0, n3) }))
+        )
+      );
+      form.appendChild(
+        checkField(
+          "Dashed",
+          !!style["strokeDasharray"],
+          (c) => exec(new SetNodeStyleCommand(node.id, { strokeDasharray: c ? DASH2 : void 0 }))
+        )
+      );
+      const silhouette = shape["type"] ?? "rect";
+      if (silhouette === "rect") {
+        form.appendChild(
+          numberField(
+            "Corner radius",
+            () => style["borderRadius"] ?? shape["cornerRadius"] ?? 0,
+            (n3) => {
+              const r = Math.max(0, n3);
+              exec(
+                shape["cornerRadius"] !== void 0 ? new SetNodeShapeConfigCommand(node.id, { cornerRadius: r }) : new SetNodeStyleCommand(node.id, { borderRadius: r })
+              );
+            }
+          )
+        );
+      }
+    }
+    host.appendChild(form);
+  }
+  function renderLink(link) {
+    const form = document.createElement("div");
+    form.className = "gf-sd-fields";
+    const style = link.style ?? {};
+    form.appendChild(sectionLabel("Label"));
+    form.appendChild(
+      ctlTextField(
+        "Text",
+        String(link.getLabel?.() ?? ""),
+        (v) => exec(new SetLinkDisplayLabelCommand(link.id, v))
+      )
+    );
+    form.appendChild(sectionLabel("Line"));
+    form.appendChild(
+      colorField(
+        "Colour",
+        toHexColor(style["stroke"], "#999999"),
+        (v) => exec(new UpdateLinkStyleCommand(link.id, { stroke: v }))
+      )
+    );
+    form.appendChild(
+      numberField(
+        "Width",
+        () => style["strokeWidth"] ?? 2,
+        (n3) => exec(new UpdateLinkStyleCommand(link.id, { strokeWidth: Math.max(0, n3) }))
+      )
+    );
+    form.appendChild(
+      checkField(
+        "Dashed",
+        !!style["strokeDasharray"],
+        (c) => exec(new UpdateLinkStyleCommand(link.id, { strokeDasharray: c ? DASH2 : void 0 }))
+      )
+    );
+    form.appendChild(sectionLabel("Arrows"));
+    const marker = (slot, type) => {
+      const existing = style[slot] ?? {};
+      exec(
+        new UpdateLinkStyleCommand(link.id, {
+          [slot]: { size: 10, filled: true, ...existing, type }
+        })
+      );
+    };
+    form.appendChild(
+      selectField(
+        "Start",
+        ARROW_TYPES,
+        String(style["arrowTail"]?.type ?? "none"),
+        (v) => marker("arrowTail", v)
+      )
+    );
+    form.appendChild(
+      selectField(
+        "End",
+        ARROW_TYPES,
+        String(style["arrowHead"]?.type ?? "arrow"),
+        (v) => marker("arrowHead", v)
+      )
+    );
+    form.appendChild(sectionLabel("Route"));
+    form.appendChild(
+      selectField(
+        "Path",
+        ROUTE_TYPES,
+        String(link.pathType ?? "smooth"),
+        (v) => exec(new SetLinkPathTypeCommand(link.id, v))
+      )
+    );
+    host.appendChild(form);
+  }
+  function renderMulti(nodes, links) {
+    const count2 = document.createElement("div");
+    count2.className = "gf-sd-count";
+    count2.textContent = `${nodes.length + links.length} shapes`;
+    host.appendChild(count2);
+    const styleNodes = nodes.filter(
+      (n3) => !(n3.getMetadata?.("kitEntity") || n3.getMetadata?.("kitClass"))
+    );
+    if (styleNodes.length + links.length === 0) return;
+    const nodeIds = styleNodes.map((n3) => n3.id);
+    const seed = styleNodes[0] ?? links[0];
+    const seedStyle = seed?.style ?? {};
+    const applyAll = (nodePatch, linkPatch) => {
+      const cmds = [];
+      if (nodePatch && nodeIds.length > 0) cmds.push(new SetNodeStyleCommand(nodeIds, nodePatch));
+      if (linkPatch) for (const l of links) cmds.push(new UpdateLinkStyleCommand(l.id, linkPatch));
+      if (cmds.length === 0) return;
+      exec(cmds.length === 1 ? cmds[0] : new BatchCommand("Format selection", cmds));
+    };
+    const form = document.createElement("div");
+    form.className = "gf-sd-fields";
+    form.appendChild(sectionLabel("Format"));
+    if (nodeIds.length > 0) {
+      form.appendChild(
+        colorField("Fill", toHexColor(seedStyle["fill"], "#ffffff"), (v) => applyAll({ fill: v }, null))
+      );
+    }
+    form.appendChild(
+      colorField(
+        "Line",
+        toHexColor(seedStyle["stroke"], "#333333"),
+        (v) => applyAll({ stroke: v }, { stroke: v })
+      )
+    );
+    form.appendChild(
+      numberField("Line width", () => seedStyle["strokeWidth"] ?? 1, (n3) => {
+        const w = Math.max(0, n3);
+        applyAll({ strokeWidth: w }, { strokeWidth: w });
+      })
+    );
+    form.appendChild(
+      checkField("Dashed", !!seedStyle["strokeDasharray"], (c) => {
+        const dash = c ? DASH2 : void 0;
+        applyAll({ strokeDasharray: dash }, { strokeDasharray: dash });
+      })
+    );
     host.appendChild(form);
   }
   function renderKitCard(node) {
@@ -196512,6 +197013,86 @@ function bindShapeDataPanel(api, host, options = {}) {
     });
     row.append(l, i);
     return row;
+  };
+  const fieldRow = (label, field, inline = false) => {
+    const row = document.createElement("label");
+    row.className = inline ? "gf-sd-row gf-sd-inline" : "gf-sd-row";
+    const l = document.createElement("span");
+    l.className = "gf-sd-label";
+    l.textContent = label;
+    row.append(l, field);
+    return row;
+  };
+  const ctlTextField = (label, value, commit) => {
+    const i = document.createElement("input");
+    i.type = "text";
+    i.className = "gf-sd-ctl";
+    i.value = value;
+    i.addEventListener("change", () => commit(i.value));
+    i.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") i.blur();
+    });
+    return fieldRow(label, i);
+  };
+  const numberField = (label, current, commit) => {
+    const i = document.createElement("input");
+    i.type = "number";
+    i.className = "gf-sd-ctl";
+    i.step = "any";
+    const seed = () => {
+      i.value = String(Math.round((current() ?? 0) * 100) / 100);
+    };
+    seed();
+    i.addEventListener("change", () => {
+      const n3 = Number(i.value);
+      if (i.value.trim() === "" || !Number.isFinite(n3)) {
+        seed();
+        return;
+      }
+      commit(n3);
+    });
+    i.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") i.blur();
+    });
+    return fieldRow(label, i);
+  };
+  const colorField = (label, hex, commit) => {
+    const i = document.createElement("input");
+    i.type = "color";
+    i.className = "gf-sd-color";
+    i.value = hex;
+    i.addEventListener("change", () => commit(i.value));
+    return fieldRow(label, i);
+  };
+  const checkField = (label, checked, commit) => {
+    const i = document.createElement("input");
+    i.type = "checkbox";
+    i.className = "gf-sd-check";
+    i.checked = checked;
+    i.addEventListener("change", () => commit(i.checked));
+    return fieldRow(label, i, true);
+  };
+  const selectField = (label, opts, current, commit) => {
+    const sel = document.createElement("select");
+    sel.className = "gf-sd-ctl";
+    const values = opts.includes(current) ? opts : [current, ...opts];
+    for (const opt of values) {
+      const o = document.createElement("option");
+      o.value = opt;
+      o.textContent = opt;
+      if (opt === current) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.addEventListener("change", () => commit(sel.value));
+    return fieldRow(label, sel);
+  };
+  const pair = (a, b) => {
+    const wrap = document.createElement("div");
+    wrap.className = "gf-sd-pair";
+    wrap.append(a, b);
+    return wrap;
   };
   let offRow = null;
   const off = api.on("selection:change", () => render2());
@@ -196941,9 +197522,11 @@ export {
   SetLinkDisplayLabelCommand,
   SetLinkLabelCommand,
   SetLinkLabelsCommand,
+  SetLinkPathTypeCommand,
   SetLinkPointsCommand,
   SetNodeDataCommand,
   SetNodeLabelCommand,
+  SetNodeShapeConfigCommand,
   SetNodeStyleCommand,
   SetNodeZIndexCommand,
   SetParentCommand,

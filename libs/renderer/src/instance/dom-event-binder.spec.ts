@@ -5,6 +5,7 @@ import type { DomEventBinderHost, DomEventBinderOptions } from './dom-event-bind
 import { InteractionController } from '../interaction/interaction-controller';
 import { ViewportController } from '../viewport/viewport-controller';
 import { applyEdges, applyNodes } from './model-input';
+import { registerTool } from '../ext/tools';
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -147,6 +148,29 @@ describe('DomEventBinder', () => {
       );
 
       expect(h.model.getSelectedNodes()).toHaveLength(1);
+    });
+
+    it('a plain node click deselects a selected LINK — one selection, both kinds', () => {
+      h = harness();
+      const link = h.model.getLinks()[0];
+      link.setState('selected');
+
+      h.container.dispatchEvent(mouse('mousedown', A_CENTER));
+
+      expect(h.model.getNode('a')!.isSelected()).toBe(true);
+      // The panel reads node+link selection as ONE selection; a stale
+      // link.state='selected' after a node click showed "2 shapes".
+      expect(link.state).toBe('default');
+    });
+
+    it('ctrl+click on a node PRESERVES a selected link (additive semantics)', () => {
+      h = harness();
+      const link = h.model.getLinks()[0];
+      link.setState('selected');
+
+      h.container.dispatchEvent(mouse('mousedown', { ...A_CENTER, ctrlKey: true }));
+
+      expect(link.state).toBe('selected');
     });
 
     it('ctrl+click toggles (multi-select)', () => {
@@ -375,6 +399,37 @@ describe('DomEventBinder', () => {
       h.container.dispatchEvent(mouse('dblclick', { clientX: 300, clientY: 130 }));
 
       expect(h.events.map((e) => e.event)).toContain('node:doubleclick');
+    });
+  });
+
+  describe('Escape layering with a registered tool', () => {
+    let dispose: (() => void) | undefined;
+    afterEach(() => { dispose?.(); dispose = undefined; });
+
+    it('the first Escape cancels the active tool and PRESERVES the selection it restored', () => {
+      h = harness();
+      h.model.selectNode(h.model.getNode('b')!);
+      let cancelled = 0;
+      // a minimal registered tool that claims empty-canvas presses — the same
+      // seam the visio editor's marquee uses
+      dispose = registerTool({
+        id: 'escape-layering-spec', priority: 1,
+        hitTest: (_ev, hit) => !!hit.empty,
+        onPointerDown: () => {},
+        onCancel: () => { cancelled++; h.model.selectNode(h.model.getNode('b')!); },
+      });
+      // press empty canvas to arm the tool (plain press clears selection first)
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 700, clientY: 500 }));
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+      expect(cancelled).toBe(1);
+      // the selection the tool restored must SURVIVE the same Escape
+      expect(h.model.getSelectedNodes().map((n) => n.id)).toEqual(['b']);
+
+      // …and a SECOND Escape, with no gesture active, deselects as before
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(h.model.getSelectedNodes()).toHaveLength(0);
     });
   });
 

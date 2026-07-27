@@ -108,6 +108,21 @@ const report = await page.evaluate(async (placed) => {
     if (!nodeId) { fail('placed', 'palette.place returned null'); continue; }
     pass('placed');
     const n = c.diagram.getNode(nodeId);
+    // (0) PLACEMENT CONTRACT — the verifier proved the geometric checks alone
+    // cannot catch a labelPlacement flip back to 'inside' (the label engine
+    // shape-fits short captions into the silhouette without straddling), so
+    // the 22 glyph masters assert their placement DIRECTLY.
+    const BELOW = new Set(['flowchart-connector','flowchart-or','flowchart-summing-junction',
+      'bpmn-exclusive-gateway','bpmn-inclusive-gateway','bpmn-parallel-gateway',
+      'bpmn-start-event','bpmn-end-event','bpmn-intermediate-event','bpmn-timer-event',
+      'bpmn-message-event','bpmn-error-event','uml-decision','uml-initial-node',
+      'uml-final-node','uml-initial-state','uml-final-state','uml-fork','uml-join',
+      'uml-activation','uml-port','erd-discriminator']);
+    if (BELOW.has(master)) {
+      if (n.getMetadata('labelPlacement') !== 'below') {
+        fail('placement', `glyph master must carry labelPlacement 'below', got '${n.getMetadata('labelPlacement')}'`);
+      } else pass('placement');
+    }
     const w = n.size.width, h = n.size.height;
     // Camera on THIS master, zoom capped at 1 (fitToBounds would blow a 20px
     // dot up past it); margin holds the below-label in frame too.
