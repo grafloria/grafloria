@@ -1,0 +1,705 @@
+<meta charset="utf-8">
+<title>Query builder — visual SQL — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<header id="demo-head"></header>
+<div id="canvas"></div>
+<style>
+  #qb-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  #qb-body { display: flex; flex: 1; min-height: 0; }
+  #qb-rail {
+    flex: 0 1 190px; min-width: 140px; border-right: 1px solid var(--gf-line, #e5e7eb);
+    background: var(--gf-panel, #fff); padding: 10px; overflow-y: auto;
+    font: 12px ui-sans-serif, system-ui, sans-serif;
+  }
+  #qb-rail .qb-rail-title { font-weight: 700; color: var(--gf-mut, #6b7280);
+    text-transform: uppercase; font-size: 10px; letter-spacing: .6px; margin: 2px 0 8px; }
+  .qb-chip {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 6px;
+    border: 1px solid var(--gf-line, #e5e7eb); border-radius: 8px; cursor: grab;
+    background: var(--gf-bg, #fff); color: var(--gf-ink, #1e2436); user-select: none;
+  }
+  .qb-chip:hover { border-color: #2080e8; }
+  .qb-chip .qb-chip-n { font-weight: 600; flex: 1; }
+  .qb-chip .qb-chip-c { color: var(--gf-mut, #6b7280); font-size: 10px; }
+  .qb-chip.placed { opacity: .38; cursor: default; }
+  .qb-chip.placed:hover { border-color: var(--gf-line, #e5e7eb); }
+  #qb-canvas { flex: 1 1 auto; min-width: 260px; position: relative; --qb-accent: #2080e8; }
+  #qb-inspector {
+    flex: 0 1 210px; min-width: 160px; border-left: 1px solid var(--gf-line, #e5e7eb);
+    background: var(--gf-panel, #fff); padding: 12px; overflow-y: auto;
+    font: 12px ui-sans-serif, system-ui, sans-serif; color: var(--gf-ink, #1e2436);
+  }
+  @media (max-width: 1280px) { #qb-inspector { display: none; } }
+  #qb-inspector h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--gf-mut, #6b7280); margin: 0 0 8px; }
+  #qb-inspector .qb-join-eq { font: 12px ui-monospace, Menlo, monospace; padding: 8px;
+    background: rgba(32,128,232,.08); border-radius: 6px; margin-bottom: 10px; word-break: break-all; }
+  #qb-inspector .qb-types { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  #qb-inspector .qb-type {
+    padding: 6px 0; border: 1px solid var(--gf-line, #e5e7eb); border-radius: 6px;
+    background: transparent; color: var(--gf-ink, #1e2436); cursor: pointer;
+    font: 11px/1 ui-sans-serif, system-ui, sans-serif; font-weight: 700;
+  }
+  #qb-inspector .qb-type:hover { border-color: #2080e8; color: #2080e8; }
+  #qb-inspector .qb-type.on { background: #2080e8; border-color: #2080e8; color: #fff; }
+  #qb-inspector .qb-hint { color: var(--gf-mut, #6b7280); line-height: 1.5; }
+  #qb-inspector .qb-placed-list { margin: 8px 0 0; padding: 0; list-style: none; }
+  #qb-inspector .qb-placed-list li { padding: 3px 0; font-family: ui-monospace, Menlo, monospace; }
+  /* SQL preview pane — the textarea stays canonical; Monaco mounts over it. */
+  #qb-sql { flex: 0 0 148px; border-top: 1px solid var(--gf-line, #e5e7eb);
+    display: flex; flex-direction: column; min-height: 0; background: var(--gf-panel, #fff); }
+  #qb-sql .qb-sql-head { padding: 5px 12px; font: 10px ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--gf-mut, #6b7280); border-bottom: 1px solid var(--gf-line, #e5e7eb); flex: none; }
+  #qb-sql .qb-sql-body { flex: 1; min-height: 0; position: relative; }
+  #qb-sql-text { width: 100%; height: 100%; border: 0; resize: none; outline: none;
+    font: 12.5px/1.5 ui-monospace, Menlo, monospace; padding: 8px 12px; box-sizing: border-box;
+    background: transparent; color: var(--gf-ink, #1e2436); }
+
+  /* ===== The Query Studio card skin — OVER the kit's .axk-* classes ===== */
+  #qb-canvas .axk-entity { background: #fff; border: 1px solid #c7cfdd; border-radius: 10px;
+    box-shadow: 0 4px 14px rgba(30,40,70,.10); font: 13px/1.45 ui-sans-serif, system-ui, sans-serif; }
+  #qb-canvas .axk-entity-head { background: var(--qb-accent); color: #fff; font-weight: 700;
+    font-size: 13px; padding: 8px 12px; height: 34px; box-sizing: border-box;
+    display: flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; }
+  #qb-canvas .axk-row { display: flex; align-items: center; gap: 8px; padding: 5px 12px;
+    height: 28px; box-sizing: border-box; border-top: 1px solid #eef1f7; font-size: 13px; }
+  /* no zebra, no hover tint (the guidance tiers own the row backgrounds) */
+  #qb-canvas .axk-row:not([class*="axk-match"]):not(.qb-on):hover { background: transparent; }
+  #qb-canvas .axk-col { flex: 1; color: #22314f; }
+  #qb-canvas .qb-badge { font-size: 10px; font-weight: 700; border-radius: 4px;
+    padding: 1px 5px; flex: 0 0 auto; line-height: 1.3; }
+  #qb-canvas .qb-badge.pk { background: #fde68a; color: #92600a; }
+  #qb-canvas .qb-badge.fk { background: #bfdbfe; color: #1e40af; }
+  /* checkboxes (structured spans — the html layer allows no form controls) */
+  #qb-canvas .qb-check { width: 14px; height: 14px; flex: 0 0 auto; box-sizing: border-box;
+    border: 1.5px solid #b6c2d6; border-radius: 4px; background: #fff; cursor: pointer; position: relative; }
+  #qb-canvas .qb-check.on { background: var(--qb-accent); border-color: var(--qb-accent); }
+  #qb-canvas .qb-check.on::after { content: ''; position: absolute; left: 3.5px; top: 0.5px;
+    width: 4px; height: 7px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  #qb-canvas .qb-head-check { border-color: rgba(255,255,255,.85); background: transparent; }
+  #qb-canvas .qb-head-check.on { background: #fff; border-color: #fff; }
+  #qb-canvas .qb-head-check.on::after { border-color: var(--qb-accent); }
+  /* checked-row fill */
+  #qb-canvas .axk-row.qb-on, #qb-canvas .axk-row.qb-on:hover {
+    background: color-mix(in srgb, var(--qb-accent) 8%, #fff); }
+  /* guidance tiers must WIN over the skin's row fills (same values as the kit
+     stylesheet — re-scoped here so #qb-canvas rules cannot out-rank them) */
+  #qb-canvas .axk-row.axk-match-top, #qb-canvas .axk-row.axk-match-top:hover {
+    background: #fffbeb; box-shadow: inset 4px 0 0 #f59e0b, inset 0 0 0 1px #fcd34d; }
+  #qb-canvas .axk-row.axk-match-top .axk-col { font-weight: 800; color: #92600a; }
+  #qb-canvas .axk-row.axk-match-good, #qb-canvas .axk-row.axk-match-good:hover {
+    background: #dcfce7; box-shadow: inset 4px 0 0 #16a34a; }
+  #qb-canvas .axk-row.axk-match-good .axk-col { font-weight: 700; color: #14532d; }
+  #qb-canvas .axk-row.axk-match-ok, #qb-canvas .axk-row.axk-match-ok:hover {
+    background: #dbeafe; box-shadow: inset 4px 0 0 #2563eb; }
+  #qb-canvas .axk-row.axk-match-none { opacity: .4; }
+  /* selection = a RING on the card, accent (the kit hides the node rect) */
+  #qb-canvas g.node-group[data-selected="true"] .axk-entity {
+    border-color: var(--qb-accent);
+    box-shadow: 0 0 0 2px var(--qb-accent), 0 4px 14px rgba(30,40,70,.10); }
+  /* per-column ports: 9px accent dots with a white 2px ring, never clipped —
+     they are SVG glyphs BESIDE the card, not children of its overflow box */
+  #qb-canvas circle[data-port-id] { fill: var(--qb-accent); stroke: #fff; stroke-width: 2; }
+  #qb-canvas circle[data-port-invalid] { fill: #dc2626 !important; stroke: #fff !important; }
+  /* join pill: accent bg, white 2px border, radius 999, 10px/800 uppercase */
+  #qb-canvas .link-label-bg { fill: var(--qb-accent); stroke: #fff; stroke-width: 2; rx: 999px;
+    filter: drop-shadow(0 1px 4px rgba(20,25,40,.25)); }
+  #qb-canvas .link-label-group text { fill: #fff; font-weight: 800; font-size: 10px;
+    letter-spacing: .5px; text-transform: uppercase; cursor: pointer; }
+  /* refusal toast — a refused join must be VISIBLE, never a console error */
+  #qb-toast { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%);
+    background: #b42318; color: #fff; padding: 6px 14px; border-radius: 8px;
+    font: 12px ui-sans-serif, system-ui, sans-serif; opacity: 0; transition: opacity .15s;
+    pointer-events: none; z-index: 40; white-space: nowrap; }
+  #qb-toast.show { opacity: 1; }
+  /* zoom cluster (the visio-editor convention, bottom-right; 34px clears the fold) */
+  #qb-zoom { position: absolute; right: 10px; bottom: 34px; z-index: 25;
+    display: flex; align-items: center; gap: 2px; padding: 3px;
+    background: var(--gf-panel, #fff); border: 1px solid var(--gf-line, #e5e7eb);
+    border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+    font: 12px ui-sans-serif, system-ui, sans-serif; }
+  #qb-zoom button { padding: 4px 8px; border: 0; border-radius: 6px; background: transparent;
+    color: var(--gf-ink, #1e2436); cursor: pointer; font: inherit; }
+  #qb-zoom button:hover { background: rgba(32,128,232,.1); color: #2080e8; }
+  #qb-zoom #qb-zoom-pct { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+</style>
+<script type="module">
+import {
+  render, ensureDiagramKitStyles, bindJoinGuidance,
+  registerConnectionValidator, clearConnectionValidators,
+  attachCanvasPlugins, NodeModel, PortModel, SetLinkLabelsCommand,
+} from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { mountCodeEditor } from '../shell/code-editor.js';
+
+// A visual QUERY BUILDER — the Query Studio of a production BI tool, rebuilt on
+// Grafloria's own idioms. Table cards with per-column ports on BOTH sides; drag
+// a wire from a column and every other table's columns tint by join fit (the
+// kit's bindJoinGuidance, scoring ported verbatim); the drop makes an undoable
+// join with a type pill at its centre; and the SQL pane below writes itself on
+// every model change. The connect gesture, its validation (no self-joins, no
+// duplicate table pairs) and Delete/undo are all the engine's own — none of the
+// magnet-circle hit-test hacks the original needed.
+
+const ACCENT = '#2080e8';
+const CARD_W = 220;
+const HEAD_H = 34;   // header row (8px padding + 13px/700 line)
+const ROW_H = 28;    // 5px padding + 13px line + top border, border-box
+const rowCenterY = (i) => 1 + HEAD_H + i * ROW_H + ROW_H / 2; // +1 = card top border
+const cardHeight = (t) => 2 + HEAD_H + t.columns.length * ROW_H; // both borders
+
+const TABLES = [
+  { id: 'customers', columns: [
+    { name: 'id', pk: true }, { name: 'name' }, { name: 'email' }, { name: 'country' } ] },
+  { id: 'orders', columns: [
+    { name: 'id', pk: true }, { name: 'customer_id', fk: true }, { name: 'order_date' }, { name: 'total' } ] },
+  { id: 'order_items', columns: [
+    { name: 'id', pk: true }, { name: 'order_id', fk: true }, { name: 'product_id', fk: true },
+    { name: 'quantity' }, { name: 'price' } ] },
+  { id: 'products', columns: [
+    { name: 'id', pk: true }, { name: 'sku' }, { name: 'name' }, { name: 'unit_price' } ] },
+];
+const tableOf = (id) => TABLES.find((t) => t.id === id);
+
+// column-check state (drives the card DOM AND the SELECT list)
+const checked = new Map(TABLES.map((t) => [t.id, new Set()]));
+
+// ---- the card, as a SKIN over the kit's .axk-* classes --------------------
+// The kit's entityCardContent has no seam for a per-row checkbox (and the html
+// layer's allow-list has no form controls), so the TREE is demo-local — but it
+// keeps the kit's class contract (.axk-entity/.axk-row/.axk-col) and stamps
+// metadata.kitEntity, so bindJoinGuidance and the erTable handles see a
+// perfectly ordinary kit card.
+function cardContent(t) {
+  const cols = checked.get(t.id);
+  const all = cols.size === t.columns.length && t.columns.length > 0;
+  const rows = t.columns.map((c) => ({
+    tag: 'div',
+    className: 'axk-row' + (cols.has(c.name) ? ' qb-on' : ''),
+    children: [
+      { tag: 'span', className: 'qb-check' + (cols.has(c.name) ? ' on' : ''), attrs: { title: 'include in SELECT' } },
+      { tag: 'span', className: 'axk-col', text: c.name },
+      ...(c.pk ? [{ tag: 'span', className: 'qb-badge pk', text: 'PK' }]
+        : c.fk ? [{ tag: 'span', className: 'qb-badge fk', text: 'FK' }] : []),
+    ],
+  }));
+  return { tag: 'div', className: 'axk-entity qb-card', children: [
+    { tag: 'div', className: 'axk-entity-head', children: [
+      { tag: 'span', className: 'qb-check qb-head-check qb-all' + (all ? ' on' : ''), attrs: { title: 'select all columns' } },
+      { tag: 'span', className: 'qb-title', text: t.id },
+    ] },
+    { tag: 'div', className: 'axk-entity-body', children: rows },
+  ] };
+}
+
+// per-column ports on BOTH sides: '<table>.<col>-in' (left target) and
+// '<table>.<col>-out' (right source), pinned to the row centres
+const portSpecs = (t) => t.columns.flatMap((c, i) => [
+  { id: `${t.id}.${c.name}-in`, side: 'left', type: 'input',
+    shape: { shape: 'circle', size: 9 },
+    layout: { strategy: 'absolute', args: { units: 'px', x: 0, y: rowCenterY(i) } } },
+  { id: `${t.id}.${c.name}-out`, side: 'right', type: 'output',
+    shape: { shape: 'circle', size: 9 },
+    layout: { strategy: 'absolute', args: { units: 'px', x: CARD_W, y: rowCenterY(i) } } },
+]);
+
+const nodeSpec = (t, position) => ({
+  id: t.id,
+  position,
+  size: { width: CARD_W, height: cardHeight(t) },
+  metadata: {
+    html: { content: cardContent(t), interactive: true, padding: 0 },
+    kitEntity: { id: t.id, name: t.id, columns: t.columns },
+  },
+  shape: { type: 'rect', fill: 'none', stroke: 'none' },
+  style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+  ports: portSpecs(t),
+});
+
+const JOIN_TYPES = ['INNER', 'LEFT', 'RIGHT', 'FULL'];
+const pillLabel = (type) => ({
+  id: 'join-type', text: type, position: 0.5, offset: { x: 0, y: 0 },
+  style: { fontSize: 10, color: '#fff', background: ACCENT, padding: 6, borderRadius: 999, border: '#fff' },
+});
+const parsePort = (pid) => {
+  const m = /^([^.]+)\.(.+)-(in|out)$/.exec(pid || '');
+  return m ? { table: m[1], column: m[2] } : null;
+};
+
+defineDemo({
+  name: 'Query builder (visual SQL)',
+  blurb: 'A BI-tool Query Studio on Grafloria: drag tables in, wire column to column with LIVE join guidance (the best PK↔FK match glows gold), click the pill to change the join type, tick columns — and the SQL below writes itself. Every edit undoable.',
+  howTo: [
+    'Drag a table (say "products") from the left rail onto the canvas — the card lands where you drop it and its rail chip dims. Each column carries a checkbox, a PK/FK badge and an accent port on BOTH sides.',
+    'Press one of orders.customer_id\'s port dots and DRAG: while the wire follows your cursor, every other table\'s columns tint by join fit — customers.id turns GOLD with a "★ BEST" chip (PK↔FK naming match), PK/FK pairs turn green, name-alike columns blue, everything else dims. The source table never tints. Release mid-air (or press Escape) and every tint clears.',
+    'Drop the wire on a tinted column: an accent join edge appears with an INNER pill at its centre. Try wiring two columns of the SAME table, or a SECOND wire between two already-joined tables — the connection is refused and a red toast says why.',
+    'Click a pill: the join opens in the right rail — its equation plus an INNER/LEFT/RIGHT/FULL selector. Pick LEFT: the pill re-labels and the SQL below flips to LEFT JOIN. One Ctrl/⌘+Z takes it back.',
+    'Tick column checkboxes (the header checkbox selects the whole table) and watch the SELECT list rewrite itself live in the SQL pane. Untick everything and it honestly says SELECT *.',
+    'Select a join (click its pill) and press Delete: the edge and its JOIN clause vanish — undo restores both. Zoom lives bottom-right, and the canvas pans/zooms like every Grafloria surface.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    ensureDiagramKitStyles();
+
+    // ---- shell: rail | canvas | inspector, SQL pane below ------------------
+    const shell = document.createElement('div'); shell.id = 'qb-shell';
+    const body = document.createElement('div'); body.id = 'qb-body';
+    const rail = document.createElement('div'); rail.id = 'qb-rail';
+    const canvasEl = document.createElement('div'); canvasEl.id = 'qb-canvas';
+    const inspector = document.createElement('div'); inspector.id = 'qb-inspector';
+    const sqlPane = document.createElement('div'); sqlPane.id = 'qb-sql';
+    sqlPane.innerHTML = '<div class="qb-sql-head">SQL preview — regenerates on every change</div>' +
+      '<div class="qb-sql-body"><textarea id="qb-sql-text" aria-label="SQL preview" spellcheck="false"></textarea></div>';
+    body.append(rail, canvasEl, inspector);
+    shell.append(body, sqlPane);
+    ctx.host.appendChild(shell);
+
+    // ---- seed: customers + orders, one INNER join, a few columns ticked ----
+    checked.get('customers').add('name');
+    checked.get('orders').add('order_date');
+    checked.get('orders').add('total');
+    const api = render({
+      nodes: [
+        nodeSpec(tableOf('customers'), { x: 60, y: 80 }),
+        nodeSpec(tableOf('orders'), { x: 430, y: 250 }),
+      ],
+      edges: [{
+        id: 'join-1', source: 'customers', target: 'orders',
+        sourceHandle: 'customers.id-out', targetHandle: 'orders.customer_id-in',
+        type: 'orthogonal',
+        style: { stroke: ACCENT, strokeWidth: 2, arrowHead: { type: 'none' }, arrowTail: { type: 'none' } },
+      }],
+    }, canvasEl, { interaction: { portVisibility: 'always' } });
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    const model = ctx.diagram;
+    const engine = ctx.engine;
+
+    // interactive wires route orthogonally ('step'), and invalid targets dim
+    engine.setInteractionConfig({ connectionLineStyle: 'step', highlightValidTargets: true });
+    for (const t of TABLES) model.getNode(t.id)?.setBehavior?.({ resizable: false });
+
+    // dots canvas + fit
+    ctx.plugins = attachCanvasPlugins(api, {
+      background: { variant: 'dots', gap: 20, size: 1.4, color: 'rgba(120,130,145,.38)' },
+    });
+
+    // ---- THE feature: live join guidance, from the kit ---------------------
+    ctx.guidance = bindJoinGuidance(api);
+
+    // ---- join adoption: every link that lands becomes a JOIN ---------------
+    // (seeded edges AND interactively drawn ones — including a link re-added by
+    // redo/undo, which re-fires link:added; adoption is idempotent)
+    const adoptJoin = (link) => {
+      const s = parsePort(link.sourcePortId);
+      const t = parsePort(link.targetPortId);
+      if (!s || !t) return false;
+      if (!link.getMetadata('qbJoin')) link.setMetadata('qbJoin', { source: s, target: t });
+      // 2px accent, no arrowheads — set ON the link (the production tool lost
+      // this to a CSS specificity fight; the element's own style cannot lose)
+      link.updateStyle({ stroke: ACCENT, strokeWidth: 2, arrowHead: { type: 'none' }, arrowTail: { type: 'none' } });
+      if (!link.labels || link.labels.length === 0) link.setLabels([pillLabel('INNER')]);
+      return true;
+    };
+    for (const link of model.getLinks()) adoptJoin(link);
+
+    const joinType = (link) => (link.labels?.[0]?.text ?? 'INNER').toUpperCase();
+    ctx.setJoinType = async (link, type) => {
+      await engine.commandManager.execute(new SetLinkLabelsCommand(link.id, [pillLabel(type)]));
+      api.renderNow();
+      regenerate();
+      renderInspector();
+    };
+
+    // ---- refusal rules: self-joins and duplicate table pairs ---------------
+    // Same-table is already the engine's own self-link rule; the pair rule is a
+    // registered validator. Both dim the ports mid-drag AND stop the drop; the
+    // toast makes the refusal loud (a console error is not a UX).
+    clearConnectionValidators();
+    let lastVeto = null;
+    ctx.disposeValidator = registerConnectionValidator(({ sourceNode, targetNode }) => {
+      if (!sourceNode || !targetNode) return true;
+      const dup = model.getLinks().some((l) => {
+        const j = l.getMetadata('qbJoin');
+        return j && ((j.source.table === sourceNode.id && j.target.table === targetNode.id) ||
+                     (j.source.table === targetNode.id && j.target.table === sourceNode.id));
+      });
+      if (dup) {
+        lastVeto = { msg: `${sourceNode.id} and ${targetNode.id} are already joined`, at: performance.now() };
+        return lastVeto.msg;
+      }
+      return true;
+    });
+    const toastEl = document.createElement('div'); toastEl.id = 'qb-toast';
+    canvasEl.appendChild(toastEl);
+    let toastTimer = 0;
+    const toast = (msg) => {
+      toastEl.textContent = `✕ ${msg}`;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
+    };
+    engine.eventBus.on('connection:cancel', () => {
+      // read the drag state BEFORE the manager resets it (we are inside emit)
+      const st = engine.getConnectionStateManager().getState();
+      if (!st.targetPort) return;   // dropped on air = abandoned, not refused
+      if (lastVeto && performance.now() - lastVeto.at < 400) toast(lastVeto.msg);
+      else if (st.rejectionMessage) toast(st.rejectionMessage);
+    });
+
+    // ---- the SQL generator (honest: creation-ordered joins, no aliases) ----
+    const ta = document.getElementById('qb-sql-text');
+    const generateSql = () => {
+      const placed = TABLES.filter((t) => !!model.getNode(t.id));
+      if (placed.length === 0) return 'SELECT *';
+      const joins = model.getLinks()
+        .map((link) => ({ link, j: link.getMetadata('qbJoin') }))
+        .filter((x) => !!x.j);
+      const chain = [placed[0].id];
+      const joinLines = [];
+      for (const { link, j } of joins) {
+        const other = chain.includes(j.source.table) ? j.target.table : j.source.table;
+        if (!chain.includes(other)) chain.push(other);
+        joinLines.push(`${joinType(link)} JOIN ${other} ON ${j.source.table}.${j.source.column} = ${j.target.table}.${j.target.column}`);
+      }
+      const cols = [];
+      for (const t of placed) {
+        if (!chain.includes(t.id)) continue;   // unjoined tables are not in the query
+        for (const c of t.columns) if (checked.get(t.id).has(c.name)) cols.push(`${t.id}.${c.name}`);
+      }
+      const select = cols.length
+        ? 'SELECT\n' + cols.map((c) => `  ${c}`).join(',\n')
+        : 'SELECT *';
+      return [`${select}`, `FROM ${chain[0]}`, ...joinLines].join('\n');
+    };
+    let editor = null;
+    const regenerate = () => {
+      const sql = generateSql();
+      ta.value = sql;              // the canonical surface, always
+      editor?.setValue(sql);       // the pretty one, when Monaco arrived
+    };
+    ctx.regenerate = regenerate;
+    regenerate();
+    mountCodeEditor(ta, { language: 'sql', readOnly: true }).then((ed) => {
+      editor = ed;
+      ed.setValue(ta.value);
+    });
+
+    // regenerate on every model change — including undo/redo of any of it.
+    // settleLink: a link drawn onto a freshly PLACED table can pass the cull
+    // query yet stay unpainted (verified live: the model had the link, the DOM
+    // had no path until a real geometry change marked it dirty). Two frames
+    // later, re-assert its points — an honest change:points — so the renderer
+    // routes and mounts it. Idempotent; a no-op for links that already paint.
+    const settleLink = (link) => {
+      api.renderNow();
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (link?.points?.length) link.setPoints?.([...link.points]);
+        api.renderNow();
+      }));
+    };
+    model.on?.('link:added', (link) => { adoptJoin(link); settleLink(link); regenerate(); renderInspector(); });
+    model.on?.('link:removed', () => { regenerate(); renderInspector(); });
+    model.on?.('node:added', () => { regenerate(); syncRail(); });
+    model.on?.('node:removed', () => { regenerate(); syncRail(); renderInspector(); });
+    for (const ev of ['command:executed', 'command:undone', 'command:redone']) {
+      engine.eventBus.on(ev, () => { api.renderNow(); regenerate(); renderInspector(); });
+    }
+
+    // ---- column checkboxes: real state, and they never start a drag --------
+    const stopForCheck = (e) => {
+      if (e.target instanceof Element && e.target.closest('.qb-check')) e.stopPropagation();
+    };
+    canvasEl.addEventListener('pointerdown', stopForCheck, true);
+    canvasEl.addEventListener('mousedown', stopForCheck, true);
+    const refreshCard = (t) => {
+      const node = model.getNode(t.id);
+      if (!node) return;
+      node.setMetadata('html', { content: cardContent(t), interactive: true, padding: 0 });
+      api.renderNow();
+    };
+    ctx.toggleColumn = (tableId, colName) => {
+      const set = checked.get(tableId);
+      if (set.has(colName)) set.delete(colName); else set.add(colName);
+      refreshCard(tableOf(tableId));
+      regenerate();
+    };
+    ctx.toggleAll = (tableId) => {
+      const t = tableOf(tableId);
+      const set = checked.get(tableId);
+      if (set.size === t.columns.length) set.clear();
+      else for (const c of t.columns) set.add(c.name);
+      refreshCard(t);
+      regenerate();
+    };
+    canvasEl.addEventListener('click', (e) => {
+      const chk = e.target instanceof Element ? e.target.closest('.qb-check') : null;
+      if (!chk) return;
+      e.stopPropagation();
+      const group = chk.closest('[data-node-id]');
+      const tableId = group?.getAttribute('data-node-id');
+      if (!tableId || !tableOf(tableId)) return;
+      if (chk.classList.contains('qb-all')) { ctx.toggleAll(tableId); return; }
+      const row = chk.closest('.axk-row');
+      const rowIndex = [...group.querySelectorAll('.axk-row')].indexOf(row);
+      const col = tableOf(tableId).columns[rowIndex];
+      if (col) ctx.toggleColumn(tableId, col.name);
+    }, true);
+
+    // ---- the left rail: native drag-in, one placement per table ------------
+    rail.innerHTML = '<div class="qb-rail-title">Tables</div>';
+    for (const t of TABLES) {
+      const chip = document.createElement('div');
+      chip.className = 'qb-chip';
+      chip.setAttribute('data-table', t.id);
+      chip.draggable = true;
+      chip.innerHTML = `<span class="qb-chip-n">${t.id}</span><span class="qb-chip-c">${t.columns.length} cols</span>`;
+      chip.addEventListener('dragstart', (e) => {
+        if (model.getNode(t.id)) { e.preventDefault(); return; }
+        e.dataTransfer.setData('text/plain', t.id);
+        e.dataTransfer.effectAllowed = 'copy';
+      });
+      rail.appendChild(chip);
+    }
+    const syncRail = () => {
+      for (const chip of rail.querySelectorAll('.qb-chip')) {
+        const placed = !!model.getNode(chip.getAttribute('data-table'));
+        chip.classList.toggle('placed', placed);
+        chip.draggable = !placed;
+      }
+    };
+    ctx.syncRail = syncRail;
+    syncRail();
+
+    ctx.placeTable = (tableId, position) => {
+      const t = tableOf(tableId);
+      if (!t || model.getNode(t.id)) return null;
+      const node = new NodeModel({ id: t.id, type: 'rect', position, size: { width: CARD_W, height: cardHeight(t) } });
+      node.ports.clear();
+      for (const spec of portSpecs(t)) node.addPort(new PortModel({ ...spec, visible: true }));
+      node.setMetadata('html', { content: cardContent(t), interactive: true, padding: 0 });
+      node.setMetadata('kitEntity', { id: t.id, name: t.id, columns: t.columns });
+      node.setMetadata('shape', { type: 'rect', fill: 'none', stroke: 'none' });
+      node.style = { ...node.style, fill: 'transparent', stroke: 'transparent', strokeWidth: 0 };
+      node.setBehavior?.({ resizable: false });
+      model.addNode(node);
+      api.renderNow();
+      regenerate();
+      syncRail();
+      return node;
+    };
+    canvasEl.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    canvasEl.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const id = e.dataTransfer.getData('text/plain');
+      if (!tableOf(id) || model.getNode(id)) return;
+      const world = api.viewport.clientToWorld(e.clientX, e.clientY, canvasEl.getBoundingClientRect());
+      ctx.placeTable(id, { x: world.x - CARD_W / 2, y: world.y - HEAD_H / 2 });
+    });
+
+    // ---- the inspector: clicking a pill SELECTS its join (never cycles) ----
+    let selectedJoin = null;
+    const renderInspector = () => {
+      const live = selectedJoin && model.getLink?.(selectedJoin.id) ? selectedJoin : null;
+      selectedJoin = live;
+      if (!live) {
+        const placed = TABLES.filter((t) => !!model.getNode(t.id));
+        inspector.innerHTML = '<h3>Query</h3>' +
+          `<div class="qb-hint">Drag tables in from the left, wire column to column, tick the columns you want.<br><br>Click a join's pill to edit its type here.</div>` +
+          `<ul class="qb-placed-list">${placed.map((t) => `<li>▦ ${t.id}</li>`).join('')}</ul>`;
+        return;
+      }
+      const j = live.getMetadata('qbJoin');
+      const current = joinType(live);
+      inspector.innerHTML = '<h3>Join</h3>' +
+        `<div class="qb-join-eq">${j.source.table}.${j.source.column} = ${j.target.table}.${j.target.column}</div>` +
+        `<div class="qb-types">${JOIN_TYPES.map((t) =>
+          `<button class="qb-type${t === current ? ' on' : ''}" data-type="${t}">${t}</button>`).join('')}</div>` +
+        '<p class="qb-hint" style="margin-top:10px">Delete/Backspace removes this join. Ctrl/⌘+Z undoes any of it.</p>';
+      for (const btn of inspector.querySelectorAll('.qb-type')) {
+        btn.addEventListener('click', () => void ctx.setJoinType(live, btn.getAttribute('data-type')));
+      }
+    };
+    ctx.renderInspector = renderInspector;
+    api.on('selection:change', ({ edges }) => {
+      selectedJoin = (edges?.length === 1 && edges[0].getMetadata('qbJoin')) ? edges[0] : null;
+      renderInspector();
+    });
+    renderInspector();
+
+    // ---- zoom cluster, bottom-right (the visio-editor pattern) -------------
+    {
+      const wrap = document.createElement('div');
+      wrap.id = 'qb-zoom';
+      const ZOOM_STEP = 1.2;
+      const zBtn = (label, title, run) => {
+        const b = document.createElement('button');
+        b.textContent = label; b.title = title;
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); run(); });
+        wrap.appendChild(b);
+        return b;
+      };
+      zBtn('−', 'Zoom out', () => { api.viewport.setZoom(api.viewport.getZoom() / ZOOM_STEP); api.renderNow(); });
+      const pct = zBtn('100%', 'Zoom level — click to reset', () => { api.viewport.setZoom(1); api.renderNow(); });
+      pct.id = 'qb-zoom-pct';
+      zBtn('＋', 'Zoom in', () => { api.viewport.setZoom(api.viewport.getZoom() * ZOOM_STEP); api.renderNow(); });
+      zBtn('⤢', 'Fit the query in view', () => { api.fitView(); api.renderNow(); });
+      for (const type of ['pointerdown', 'mousedown']) wrap.addEventListener(type, (e) => e.stopPropagation());
+      const paint = () => { pct.textContent = `${Math.round(api.viewport.getZoom() * 100)}%`; };
+      api.viewport.onChange(paint);
+      paint();
+      canvasEl.appendChild(wrap);
+    }
+
+    api.fitView?.(40);
+    api.renderNow();
+    await ctx.tick();
+
+    // gesture helpers the in-page assert and the e2e gate both use
+    ctx.portCenter = (portId) => {
+      const el = canvasEl.querySelector(`[data-port-id="${CSS.escape(portId)}"]`);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    };
+    ctx.pointer = (type, cx, cy) => canvasEl.dispatchEvent(new PointerEvent(type, {
+      clientX: cx, clientY: cy, bubbles: true, cancelable: true, button: 0,
+      buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse',
+    }));
+    ctx.dragWire = async (fromId, toId, { drop = true } = {}) => {
+      const from = ctx.portCenter(fromId), to = ctx.portCenter(toId);
+      ctx.pointer('pointermove', from.x, from.y); await ctx.tick();
+      ctx.pointer('pointerdown', from.x, from.y); await ctx.tick();
+      ctx.pointer('pointermove', (from.x + to.x) / 2, (from.y + to.y) / 2); await ctx.tick();
+      ctx.pointer('pointermove', to.x, to.y); await ctx.tick();
+      if (drop) { ctx.pointer('pointerup', to.x, to.y); await ctx.tick(); }
+    };
+  },
+
+  // The money shot: a live drag mid-air with the guidance lit.
+  async showcase(ctx) {
+    ctx.placeTable('order_items', { x: 430, y: 480 });
+    await ctx.tick(50);
+    const from = ctx.portCenter('orders.customer_id-out');
+    const to = ctx.portCenter('customers.id-in');
+    ctx.pointer('pointermove', from.x, from.y); await ctx.tick();
+    ctx.pointer('pointerdown', from.x, from.y); await ctx.tick();
+    ctx.pointer('pointermove', (from.x + to.x) / 2, (from.y + to.y) / 2 + 40); await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance, model = ctx.diagram, engine = ctx.engine;
+    const host = ctx.host;
+    const ta = document.getElementById('qb-sql-text');
+    const rowsOf = (id) => [...host.querySelectorAll(`[data-node-id="${id}"] .axk-row`)];
+
+    // 1. the seed painted: two skinned cards, per-column ports on both sides,
+    //    the join pill reading INNER, and the SQL already telling the story
+    check(host.querySelectorAll('.qb-card').length === 2, 'the two seeded table cards should paint');
+    check(!!host.querySelector('[data-port-id="customers.id-out"]') && !!host.querySelector('[data-port-id="customers.id-in"]'),
+      'every column carries a port on BOTH sides');
+    check(model.getLinks().length === 1 && model.getLinks()[0].getMetadata('qbJoin'), 'the seed join is a real join');
+    const pillText = [...host.querySelectorAll('.link-label-group text')].map((t) => t.textContent).join('');
+    check(pillText.includes('INNER'), `the pill should read INNER, got "${pillText}"`);
+    check(ta.value.includes('customers.name') && ta.value.includes('INNER JOIN orders ON customers.id = orders.customer_id'),
+      `the seeded SQL should carry the checked columns and the join, got:\n${ta.value}`);
+
+    // 2. LIVE GUIDANCE — start a real port drag; the other table's rows tint,
+    //    the source table's never do, and an aborted drag clears every tint
+    ctx.placeTable('order_items', { x: 430, y: 480 });
+    await ctx.tick(30);
+    api.fitView?.(40); api.renderNow(); await ctx.tick(30);
+    // The drag runs from order_items.order_id — a pair with NO existing join.
+    // (Dragging orders.customer_id would aim at the SEEDED customers⋈orders
+    // pair, which the validator refuses — and guidance now ranks a refused
+    // target 'none' rather than glorifying it; that rule is asserted below.)
+    await ctx.dragWire('order_items.order_id-out', 'orders.id-in', { drop: false });
+    const ordRows = rowsOf('orders');
+    const custRows = rowsOf('customers');
+    check(ordRows[0]?.classList.contains('axk-match-top'), 'orders.id should be the GOLD top candidate (PK↔FK naming match)');
+    check(!!ordRows[0]?.querySelector('.axk-match-chip'), 'the top row should wear the ★ BEST chip');
+    check(custRows[0]?.classList.contains('axk-match-good'), 'customers.id (PK against the FK source) should tint green');
+    check(ordRows[1]?.classList.contains('axk-match-ok'), 'orders.customer_id (both end in id) should tint blue');
+    check(custRows[1]?.classList.contains('axk-match-none'), 'customers.name should dim to none');
+    check(rowsOf('order_items').every((r) => ![...r.classList].some((c) => c.startsWith('axk-match'))),
+      'the SOURCE table must never be tinted');
+    check(!!document.getElementById('grafloria-join-guidance-ports'), 'the port-glow stylesheet should be live mid-drag');
+    // abort mid-air: everything clears
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await ctx.tick(30);
+    check(host.querySelectorAll('[class*="axk-match-"]').length === 0, 'aborting the drag must clear every tint');
+    check(!document.getElementById('grafloria-join-guidance-ports'), '…and the port-glow stylesheet');
+
+    // 2b. THE VALIDATOR OUTRANKS THE SCORE — drag at the SEEDED pair: its
+    // textual '★ BEST' match is un-connectable (already joined), so guidance
+    // must dim it, not glorify a target the drop will refuse.
+    await ctx.dragWire('orders.customer_id-out', 'customers.id-in', { drop: false });
+    check(rowsOf('customers')[0]?.classList.contains('axk-match-none'),
+      'an already-joined pair must rank NONE whatever its score');
+    check(!rowsOf('customers')[0]?.querySelector('.axk-match-chip'), 'and must not wear the ★ BEST chip');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await ctx.tick(30);
+
+    // 3. CONNECT — the same drag, dropped: an undoable join with an INNER pill
+    const linksBefore = model.getLinks().length;
+    await ctx.dragWire('orders.id-out', 'order_items.order_id-in');
+    await ctx.tick(60);
+    check(model.getLinks().length === linksBefore + 1, `dropping on a valid column should create the join (${linksBefore} → ${model.getLinks().length})`);
+    const drawn = model.getLinks().find((l) => l.getMetadata('qbJoin')?.target.table === 'order_items');
+    check(!!drawn, 'the drawn link should be adopted as a join');
+    check(drawn.style?.stroke === '#2080e8' && drawn.style?.strokeWidth === 2, `the join edge should carry the 2px accent ON the element, got ${drawn.style?.stroke}/${drawn.style?.strokeWidth}`);
+    check((drawn.labels?.[0]?.text ?? '') === 'INNER', 'a new join defaults to INNER');
+    check(ta.value.includes('INNER JOIN order_items ON orders.id = order_items.order_id'), `the SQL should gain the new join, got:\n${ta.value}`);
+
+    // 4. REFUSALS — self-join and duplicate pair make no edge (and no console error)
+    const count = model.getLinks().length;
+    await ctx.dragWire('orders.id-out', 'orders.total-in');
+    check(model.getLinks().length === count, 'a same-table join must be refused');
+    await ctx.dragWire('customers.name-out', 'orders.order_date-in');
+    check(model.getLinks().length === count, 'a second join between an already-joined table pair must be refused');
+
+    // 5. JOIN TYPE — undoable, pill + SQL agree
+    await ctx.setJoinType(model.getLink('join-1'), 'LEFT');
+    check((model.getLink('join-1').labels?.[0]?.text) === 'LEFT', 'the pill should re-label to LEFT');
+    check(ta.value.includes('LEFT JOIN orders'), `the SQL should flip to LEFT JOIN, got:\n${ta.value}`);
+    await engine.commandManager.undo();
+    await ctx.tick(30);
+    check((model.getLink('join-1').labels?.[0]?.text) === 'INNER', 'one undo should restore INNER');
+    check(ta.value.includes('INNER JOIN orders'), 'the SQL should follow the undo');
+
+    // 6. COLUMN CHECKBOXES drive the SELECT list (a real click on the box)
+    const emailRow = rowsOf('customers').find((r) => r.textContent.includes('email'));
+    emailRow.querySelector('.qb-check').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await ctx.tick(30);
+    check(ta.value.includes('customers.email'), `ticking email should put customers.email in the SELECT, got:\n${ta.value}`);
+    // …and the re-rendered card shows it checked
+    check(rowsOf('customers').find((r) => r.textContent.includes('email'))?.classList.contains('qb-on'),
+      'the checked row should paint with the accent fill');
+    ctx.toggleColumn('customers', 'email');   // leave the page as seeded
+    await ctx.tick(20);
+
+    // 7. DELETE a selected join, undoably (service level here; the REAL
+    //    pill-click + Delete keyboard gesture is demos/e2e/query-builder-run.mjs)
+    await engine.removeLink(drawn.id);
+    await ctx.tick(30);
+    check(!ta.value.includes('JOIN order_items'), 'removing the join should drop its clause from the SQL');
+    await engine.commandManager.undo();
+    await ctx.tick(30);
+    check(ta.value.includes('INNER JOIN order_items'), 'undo should restore the join AND its SQL');
+    check(model.getLinks().find((l) => l.getMetadata('qbJoin')?.target.table === 'order_items')?.labels?.[0]?.text === 'INNER',
+      'the restored join keeps its pill');
+
+    // leave the canvas as the visitor found it (goldens see the seed story)
+    const restored = model.getLinks().find((l) => l.getMetadata('qbJoin')?.target.table === 'order_items');
+    if (restored) await engine.removeLink(restored.id);
+    model.removeNode('order_items');
+    ctx.syncRail();
+    api.fitView?.(40);
+    api.renderNow();
+    ctx.regenerate();
+  },
+});
+</script>

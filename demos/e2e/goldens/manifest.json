@@ -112,6 +112,17 @@
     "error": null
   },
   {
+    "rel": "diagrams/query-builder.html",
+    "slug": "diagrams__query-builder",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__query-builder.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__query-builder.after.png",
+    "reactflow": null,
+    "pro": false,
+    "pageErrors": [],
+    "error": null,
+    "showcase": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__query-builder.showcase.png"
+  },
+  {
     "rel": "diagrams/scrollable-cards.html",
     "slug": "diagrams__scrollable-cards",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__scrollable-cards.boot.png",

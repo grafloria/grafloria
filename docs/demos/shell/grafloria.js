@@ -15800,7 +15800,7 @@ var require_elk_bundled = __commonJS({
             }
             function isc() {
               fsc();
-              return WC(OC(dW, 1), gxe, 166, 0, [esc2, asc, bsc, csc, dsc]);
+              return WC(OC(dW, 1), gxe, 166, 0, [esc3, asc, bsc, csc, dsc]);
             }
             function Fhd() {
               Chd();
@@ -17611,7 +17611,7 @@ var require_elk_bundled = __commonJS({
             }
             function ksc() {
               ksc = Edb;
-              jsc = gs((fsc(), WC(OC(dW, 1), gxe, 166, 0, [esc2, asc, bsc, csc, dsc])));
+              jsc = gs((fsc(), WC(OC(dW, 1), gxe, 166, 0, [esc3, asc, bsc, csc, dsc])));
             }
             function Izc() {
               Izc = Edb;
@@ -23131,7 +23131,7 @@ var require_elk_bundled = __commonJS({
             }
             function fsc() {
               fsc = Edb;
-              esc2 = new gsc(aBe, 0);
+              esc3 = new gsc(aBe, 0);
               asc = new gsc("FIRST", 1);
               bsc = new gsc(FBe, 2);
               csc = new gsc("LAST", 3);
@@ -38771,10 +38771,10 @@ var require_elk_bundled = __commonJS({
               c = JD(CNb(a, (pyc(), Hwc)), 166);
               b = JD(CNb(a, (_rc(), krc)), 316);
               if (c == (fsc(), bsc)) {
-                FNb(a, Hwc, esc2);
+                FNb(a, Hwc, esc3);
                 FNb(a, krc, (Bqc(), Aqc));
               } else if (c == dsc) {
-                FNb(a, Hwc, esc2);
+                FNb(a, Hwc, esc3);
                 FNb(a, krc, (Bqc(), yqc));
               } else if (b == (Bqc(), Aqc)) {
                 FNb(a, Hwc, bsc);
@@ -66140,7 +66140,7 @@ var require_elk_bundled = __commonJS({
               ntc = new mHd(gCe, otc);
               cuc = (Syc(), Qyc);
               buc = new mHd(hCe, cuc);
-              Utc = (fsc(), esc2);
+              Utc = (fsc(), esc3);
               Ttc = new mHd(iCe, Utc);
               Qfb(-1);
               Stc = new mHd(jCe, null);
@@ -78581,7 +78581,7 @@ var require_elk_bundled = __commonJS({
             var Nqc;
             var Pqc, Qqc, Rqc, Sqc, Tqc, Uqc, Vqc, Wqc, Xqc, Yqc, Zqc, $qc, _qc, arc, brc, crc, drc, erc, frc, grc, hrc, irc, jrc, krc, lrc, mrc, nrc, orc, prc, qrc, rrc, trc, urc, vrc, wrc, xrc, yrc, zrc, Arc, Brc, Crc, Drc, Erc, Frc, Grc, Hrc, Irc, Jrc, Krc, Lrc, Mrc, Nrc, Orc, Prc, Qrc, Rrc, Src, Trc, Urc, Vrc, Wrc, Xrc, Yrc, Zrc, $rc;
             Ddb(166, 23, { 3: 1, 34: 1, 23: 1, 166: 1 }, gsc);
-            var asc, bsc, csc, dsc, esc2;
+            var asc, bsc, csc, dsc, esc3;
             var dW = Reb(RBe, "LayerConstraint", 166, MI, isc, hsc);
             var jsc;
             Ddb(428, 23, { 3: 1, 34: 1, 23: 1, 428: 1 }, osc);
@@ -186657,6 +186657,13 @@ var DomEventBinder = class {
      * as a silent no-op. Found by live audit, on every node type.
      */
     this.pendingPortClick = null;
+    /**
+     * Same click-vs-gesture layering for POSITIONED EDGE LABELS: a press on a
+     * label arms a label DRAG, so a motionless press-release ended as a silent
+     * no-op and the label was a selection dead zone — a query-builder join pill
+     * you could not click (live audit finding, the port dead-band's twin).
+     */
+    this.pendingLabelClick = null;
     this.lastPanX = 0;
     this.lastPanY = 0;
     this.nodeDrag = null;
@@ -186998,6 +187005,7 @@ var DomEventBinder = class {
     const diagram = engine?.getDiagram();
     if (!engine || !diagram) return;
     this.pendingPortClick = null;
+    this.pendingLabelClick = null;
     if (event.button === 1 || event.button === 0 && this.spaceKeyPressed) {
       if (!this.options.enablePan) return;
       event.preventDefault();
@@ -187122,6 +187130,11 @@ var DomEventBinder = class {
         // entry) falls through to link selection instead.
         edgeHit.link.labels?.[edgeHit.labelIndex]) {
           event.preventDefault();
+          this.pendingLabelClick = {
+            startX: event.clientX,
+            startY: event.clientY,
+            linkId: edgeHit.link.id
+          };
           this.host.interaction.startLabelDrag(edgeHit.link, edgeHit.labelIndex);
           this.host.requestRender();
           return;
@@ -187338,7 +187351,18 @@ var DomEventBinder = class {
     }
     if (state.isDraggingLabel) {
       event.preventDefault();
+      const press = this.pendingLabelClick;
+      this.pendingLabelClick = null;
       this.host.interaction.endLabelDrag();
+      if (press && Math.hypot(event.clientX - press.startX, event.clientY - press.startY) < this.options.dragThreshold) {
+        const diagram = engine?.getDiagram();
+        const link = diagram?.getLink?.(press.linkId);
+        if (engine && link) {
+          this.host.interaction.selectLink(link, engine, event.ctrlKey || event.metaKey);
+          this.emitSelectionChange();
+          this.host.emit("edge:click", { edge: link, world: this.toWorld(event) });
+        }
+      }
       this.host.requestRender();
       return;
     }
@@ -192562,8 +192586,8 @@ var ROW_SELECTOR = ".axk-row, .axk-member";
 var SELECTED_CLASS = "axk-row-selected";
 var bindings = /* @__PURE__ */ new WeakMap();
 function rowsOfNode(container, nodeId) {
-  const esc2 = window.CSS && CSS.escape ? CSS.escape(nodeId) : nodeId.replace(/"/g, '\\"');
-  const group = container.querySelector(`[data-node-id="${esc2}"]`);
+  const esc3 = window.CSS && CSS.escape ? CSS.escape(nodeId) : nodeId.replace(/"/g, '\\"');
+  const group = container.querySelector(`[data-node-id="${esc3}"]`);
   return group ? Array.from(group.querySelectorAll(ROW_SELECTOR)) : [];
 }
 function resolveRef(container, api, rowEl) {
@@ -193723,8 +193747,8 @@ function bindDashboardGrid(api, group, options = {}) {
   const rows = () => Math.max(1, engine.rows());
   const htmlLayer = () => api.container.querySelector(".grafloria-html-layer");
   const hostOf = (id) => {
-    const esc2 = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
-    return api.container.querySelector(`.grafloria-node-host[data-node-id="${esc2}"]`);
+    const esc3 = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
+    return api.container.querySelector(`.grafloria-node-host[data-node-id="${esc3}"]`);
   };
   const memberEntity = (id) => diagram.getNode(id) ?? diagram.getGroup(id);
   const isGroupMember = (id) => !diagram.getNode(id) && !!diagram.getGroup(id);
@@ -195851,6 +195875,214 @@ function umlDiagram(options) {
   return { nodes, edges, finalize };
 }
 
+// libs/element/src/lib/diagram-kit/join-guidance.ts
+function singularize(word) {
+  const w = word.toLowerCase();
+  if (w.endsWith("ies") && w.length > 3) return w.slice(0, -3) + "y";
+  if (/(?:ses|xes|zes|ches|shes)$/.test(w)) return w.slice(0, -2);
+  if (w.endsWith("s") && !w.endsWith("ss")) return w.slice(0, -1);
+  return w;
+}
+function conventionMatch(a, b) {
+  return a.column.name.toLowerCase() === `${singularize(b.table)}_id` && b.column.name.toLowerCase() === "id";
+}
+function scoreMatch(a, b) {
+  if (!a || !b || a.table === b.table) return 0;
+  const an = a.column.name.toLowerCase();
+  const bn = b.column.name.toLowerCase();
+  if (conventionMatch(a, b) || conventionMatch(b, a)) return 3;
+  if (an === bn && an.endsWith("_id") && (a.column.fk === true || b.column.fk === true)) return 3;
+  if (a.column.pk === true && b.column.fk === true || a.column.fk === true && b.column.pk === true) return 2;
+  if (an === bn) return 1;
+  if (an.endsWith("id") && bn.endsWith("id")) return 1;
+  return 0;
+}
+function matchTier(score) {
+  if (score >= 2) return "good";
+  if (score >= 1) return "ok";
+  return "none";
+}
+function assignTiers(scores) {
+  const max = scores.reduce((m, s) => s > m ? s : m, 0);
+  let topIndex = -1;
+  if (max >= 2) topIndex = scores.indexOf(max);
+  return scores.map((s, i) => i === topIndex ? "top" : matchTier(s));
+}
+var TIER_CLASS = {
+  top: "axk-match-top",
+  good: "axk-match-good",
+  ok: "axk-match-ok",
+  none: "axk-match-none"
+};
+var CHIP_CLASS = "axk-match-chip";
+var PORT_STYLE_ID = "grafloria-join-guidance-ports";
+var JOIN_GUIDANCE_STYLE_ID = "grafloria-join-guidance-styles";
+var GUIDANCE_CSS = `
+.axk-row.axk-match-top { background: #fffbeb;
+  box-shadow: inset 4px 0 0 #f59e0b, inset 0 0 0 1px #fcd34d; }
+.axk-row.axk-match-top .axk-col { font-weight: 800; color: #92600a; }
+.axk-row.axk-match-good { background: #dcfce7; box-shadow: inset 4px 0 0 #16a34a; }
+.axk-row.axk-match-good .axk-col { font-weight: 700; color: #14532d; }
+.axk-row.axk-match-ok { background: #dbeafe; box-shadow: inset 4px 0 0 #2563eb; }
+.axk-row.axk-match-none { opacity: .4; }
+.${CHIP_CLASS} { font-size: 9px; font-weight: 800; text-transform: uppercase;
+  background: #f59e0b; color: #4a2e05; border-radius: 4px; padding: 1px 4px;
+  margin-left: 4px; flex: 0 0 auto; letter-spacing: .3px; }
+`;
+function ensureJoinGuidanceStyles(doc = typeof document !== "undefined" ? document : void 0) {
+  if (!doc) return;
+  if (doc.getElementById(JOIN_GUIDANCE_STYLE_ID)) return;
+  const style = doc.createElement("style");
+  style.id = JOIN_GUIDANCE_STYLE_ID;
+  style.textContent = GUIDANCE_CSS;
+  doc.head.appendChild(style);
+}
+var esc2 = (value) => typeof CSS !== "undefined" && CSS.escape ? CSS.escape(value) : value.replace(/"/g, '\\"');
+function defaultPortCss(tier, selector) {
+  switch (tier) {
+    case "top":
+      return `${selector} { fill: #f59e0b !important; stroke: #f59e0b !important; filter: drop-shadow(0 0 4px rgba(245,158,11,.4)) drop-shadow(0 0 2px rgba(245,158,11,.4)); }`;
+    case "good":
+      return `${selector} { fill: #16a34a !important; stroke: #16a34a !important; filter: drop-shadow(0 0 3px rgba(22,163,74,.35)); }`;
+    case "ok":
+      return `${selector} { fill: #2563eb !important; stroke: #2563eb !important; filter: drop-shadow(0 0 2px rgba(37,99,235,.3)); }`;
+    default:
+      return "";
+  }
+}
+function bindJoinGuidance(api, options = {}) {
+  ensureJoinGuidanceStyles(api.container.ownerDocument);
+  const chipText = options.chipText ?? "\u2605 BEST";
+  const portCss = options.portCss ?? defaultPortCss;
+  const kitOf = (node) => {
+    const raw = node?.getMetadata?.("kitEntity");
+    return raw && typeof raw === "object" ? raw : null;
+  };
+  const defaultResolve = (portId, nodeId) => {
+    const model = api.getModel();
+    const nodes = nodeId ? [model.getNode(nodeId)].filter((n3) => !!n3) : (model.getNodes?.() ?? []).filter((n3) => !!n3.getPort?.(portId));
+    for (const node of nodes) {
+      const kit = kitOf(node);
+      if (!kit?.columns) continue;
+      for (const column of kit.columns) {
+        if (portId === `${node.id}.${column.name}-in` || portId === `${node.id}.${column.name}-out` || portId.startsWith(`${node.id}__${column.name}__`)) {
+          return { nodeId: node.id, column: column.name };
+        }
+      }
+    }
+    return null;
+  };
+  const resolvePort = options.resolvePort ?? defaultResolve;
+  const active2 = /* @__PURE__ */ new Map();
+  let portStyle = null;
+  const rowsOf = (nodeId) => {
+    const group = api.container.querySelector(`[data-node-id="${esc2(nodeId)}"]`);
+    return group ? Array.from(group.querySelectorAll(".axk-row")) : [];
+  };
+  const clear = () => {
+    for (const cls of Object.values(TIER_CLASS)) {
+      for (const el of Array.from(api.container.querySelectorAll(`.${cls}`))) el.classList.remove(cls);
+    }
+    for (const chip2 of Array.from(api.container.querySelectorAll(`.${CHIP_CLASS}`))) chip2.remove();
+    portStyle?.remove();
+    portStyle = null;
+    active2.clear();
+  };
+  const portsForColumn = (node, column) => {
+    const ports = node.getPorts?.() ?? [];
+    return ports.map((p) => p.id).filter(
+      (id) => id === `${node.id}.${column}-in` || id === `${node.id}.${column}-out` || id.startsWith(`${node.id}__${column}__`)
+    );
+  };
+  const onStart = (data2) => {
+    clear();
+    const payload = data2;
+    const sourcePort = payload?.sourcePort;
+    if (!sourcePort) return;
+    const source = resolvePort(sourcePort.id, sourcePort.nodeId);
+    if (!source) return;
+    const model = api.getModel();
+    const sourceNode = model.getNode(source.nodeId);
+    const sourceKit = kitOf(sourceNode);
+    const sourceColumn = sourceKit?.columns?.find((c) => c.name === source.column);
+    if (!sourceColumn) return;
+    const sourceEnd = { table: source.nodeId, column: sourceColumn };
+    const candidates = [];
+    for (const node of model.getNodes?.() ?? []) {
+      if (node.id === source.nodeId) continue;
+      const kit = kitOf(node);
+      if (!kit?.columns) continue;
+      kit.columns.forEach((column, rowIndex) => candidates.push({ node, rowIndex, column }));
+    }
+    if (candidates.length === 0) return;
+    const invalid = (() => {
+      try {
+        const engine = api.getEngine?.();
+        const map = engine?.getConnectionStateManager?.()?.getState?.()?.invalidTargetPorts;
+        return new Set(map ? [...map.keys()] : []);
+      } catch {
+        return /* @__PURE__ */ new Set();
+      }
+    })();
+    const scores = candidates.map((c) => {
+      const targetIn = `${c.node.id}.${c.column.name}-in`;
+      if (invalid.has(targetIn)) return 0;
+      const port = c.node.getPort?.(targetIn) ?? null;
+      if (port?.id && invalid.has(port.id)) return 0;
+      return scoreMatch(sourceEnd, { table: c.node.id, column: c.column });
+    });
+    const tiers = assignTiers(scores);
+    const cssRules = [];
+    candidates.forEach((candidate, i) => {
+      const tier = tiers[i];
+      const byRow = active2.get(candidate.node.id) ?? /* @__PURE__ */ new Map();
+      byRow.set(candidate.rowIndex, tier);
+      active2.set(candidate.node.id, byRow);
+      const row = rowsOf(candidate.node.id)[candidate.rowIndex];
+      if (row) {
+        row.classList.add(TIER_CLASS[tier]);
+        if (tier === "top") {
+          const chip2 = api.container.ownerDocument.createElement("span");
+          chip2.className = CHIP_CLASS;
+          chip2.textContent = chipText;
+          row.appendChild(chip2);
+        }
+      }
+      if (tier !== "none") {
+        for (const portId of portsForColumn(candidate.node, candidate.column.name)) {
+          const rule = portCss(tier, `[data-port-id="${esc2(portId)}"]`);
+          if (rule) cssRules.push(rule);
+        }
+      }
+    });
+    if (cssRules.length > 0) {
+      portStyle = api.container.ownerDocument.createElement("style");
+      portStyle.id = PORT_STYLE_ID;
+      portStyle.textContent = cssRules.join("\n");
+      api.container.ownerDocument.head.appendChild(portStyle);
+    }
+  };
+  const bus = api.getEngine?.()?.eventBus;
+  const offs = [];
+  if (bus) {
+    offs.push(bus.on("connection:start", onStart));
+    offs.push(bus.on("connection:complete", clear));
+    offs.push(bus.on("connection:cancel", clear));
+    offs.push(bus.on("connection:cancelled", clear));
+  }
+  return {
+    activeTiers: () => {
+      const copy = /* @__PURE__ */ new Map();
+      for (const [nodeId, byRow] of active2) copy.set(nodeId, new Map(byRow));
+      return copy;
+    },
+    dispose: () => {
+      for (const off of offs) off();
+      clear();
+    }
+  };
+}
+
 // libs/element/src/lib/diagram-kit/handles.ts
 var deep = (v) => JSON.parse(JSON.stringify(v));
 var CardHandle = class {
@@ -197400,6 +197632,7 @@ export {
   IntegratedSyncManager,
   InteractionController,
   InteractionMode,
+  JOIN_GUIDANCE_STYLE_ID,
   JumpPointDetector,
   JumpPointRenderer,
   KeyboardNavigationController,
@@ -197600,6 +197833,7 @@ export {
   assessLabelClearance,
   assessPortRespect,
   assignSpreadLanes,
+  assignTiers,
   attachCanvasPlugins,
   auditThemeContrast,
   autoSelectLayout,
@@ -197609,6 +197843,7 @@ export {
   beginIncrementalCapture,
   bindCardEditing,
   bindDashboardGrid,
+  bindJoinGuidance,
   bindPresence,
   bindShapeDataPanel,
   bindStencilPalette,
@@ -197763,6 +197998,7 @@ export {
   ensureContrast,
   ensureDashboardKitStyles,
   ensureDiagramKitStyles,
+  ensureJoinGuidanceStyles,
   ensureMotionPreferenceStyles,
   ensureScreenLayer,
   ensureStencilKitStyles,
@@ -197956,6 +198192,7 @@ export {
   mapPathCmds,
   markerTipOffset,
   matchColumns,
+  matchTier,
   matchesRule,
   measureAnimationFPS,
   measureLabelContent,
@@ -198148,6 +198385,7 @@ export {
   scaling,
   selectionKeys as scopeKeysFor,
   scopedTable,
+  scoreMatch,
   secondsToMs,
   segmentDistance,
   segmentIntersectsRect,
@@ -198168,6 +198406,7 @@ export {
   sideNormal,
   sideTangent,
   sideTowards,
+  singularize,
   sizeToSpan,
   snapAngle,
   snapshotRestore,
