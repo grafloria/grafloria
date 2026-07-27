@@ -305,7 +305,31 @@ export function bindJoinGuidance(api: JoinGuidanceApi, options: JoinGuidanceOpti
     }
     if (candidates.length === 0) return;
 
-    const scores = candidates.map((c) => scoreMatch(sourceEnd, { table: c.node.id, column: c.column }));
+    // The VALIDATOR outranks the score. A column can be the best textual
+    // match and still be un-connectable (its table pair already joined, or a
+    // custom validator refuses it) — the engine records those as
+    // invalidTargetPorts at drag start, and the renderer paints them red on
+    // hover. Tinting the same port gold would be the guidance lying about a
+    // target the drop will refuse (caught by the demo gate: the seeded
+    // customers⋈orders pair made customers.id both '★ BEST' and invalid).
+    const invalid = ((): Set<string> => {
+      try {
+        const engine = api.getEngine?.() as
+          | { getConnectionStateManager?: () => { getState?: () => { invalidTargetPorts?: Map<string, string> } } }
+          | undefined;
+        const map = engine?.getConnectionStateManager?.()?.getState?.()?.invalidTargetPorts;
+        return new Set(map ? [...map.keys()] : []);
+      } catch {
+        return new Set();
+      }
+    })();
+    const scores = candidates.map((c) => {
+      const targetIn = `${c.node.id}.${c.column.name}-in`;
+      if (invalid.has(targetIn)) return 0;
+      const port = (c.node.getPort?.(targetIn) ?? null) as { id?: string } | null;
+      if (port?.id && invalid.has(port.id)) return 0;
+      return scoreMatch(sourceEnd, { table: c.node.id, column: c.column });
+    });
     const tiers = assignTiers(scores);
 
     const cssRules: string[] = [];

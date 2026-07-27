@@ -142,15 +142,19 @@ function stubApi() {
   };
 
   const nodes = [customers, orders];
+  const invalid = new Map<string, string>();
   const api = {
     container,
     getModel: () => ({
       getNode: (id: string) => nodes.find((n) => n.id === id),
       getNodes: () => nodes,
     }),
-    getEngine: () => ({ eventBus: bus }),
+    getEngine: () => ({
+      eventBus: bus,
+      getConnectionStateManager: () => ({ getState: () => ({ invalidTargetPorts: invalid }) }),
+    }),
   };
-  return { api, bus, container };
+  return { api, bus, container, invalid };
 }
 
 describe('bindJoinGuidance', () => {
@@ -186,6 +190,26 @@ describe('bindJoinGuidance', () => {
     expect(portStyle?.textContent).toContain('#f59e0b');
 
     expect(handle.activeTiers().get('customers')?.get(0)).toBe('top');
+    handle.dispose();
+  });
+
+  it('a validator-invalid target NEVER tints, whatever its score', () => {
+    const { api, bus, container, invalid } = stubApi();
+    // the engine recorded customers.id-in as un-connectable for this drag
+    // (e.g. the pair is already joined) — the '★ BEST' textual match must
+    // rank 'none', not gold, or the guidance glorifies a refused drop.
+    invalid.set('customers.id-in', 'pair already joined');
+    const handle = bindJoinGuidance(api);
+
+    bus.emit('connection:start', { sourcePort: { id: 'orders.customer_id-out', nodeId: 'orders' } });
+
+    const customerRows = Array.from(
+      container.querySelectorAll('[data-node-id="customers"] .axk-row')
+    ) as HTMLElement[];
+    expect(customerRows[0]!.classList.contains('axk-match-none')).toBe(true);
+    expect(customerRows[0]!.querySelector('.axk-match-chip')).toBeNull();
+    const portStyle = document.getElementById('grafloria-join-guidance-ports');
+    expect(portStyle?.textContent ?? '').not.toContain('customers.id-in');
     handle.dispose();
   });
 
