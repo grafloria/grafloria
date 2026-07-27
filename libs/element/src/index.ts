@@ -590,6 +590,23 @@ export {
   bindCardEditing,
   matchColumns,
   rowIndexFromY,
+  // Live join guidance (query-builder): score every other table's columns
+  // against a connection drag's source column and tint the kit rows by fit.
+  scoreMatch,
+  matchTier,
+  assignTiers,
+  singularize,
+  bindJoinGuidance,
+  ensureJoinGuidanceStyles,
+  JOIN_GUIDANCE_STYLE_ID,
+} from './lib/diagram-kit';
+export type {
+  JoinColumn,
+  JoinEnd,
+  MatchTier,
+  JoinGuidanceApi,
+  JoinGuidanceOptions,
+  JoinGuidanceHandle,
 } from './lib/diagram-kit';
 export type {
   ErColumn,

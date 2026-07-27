@@ -71,7 +71,7 @@ function registerMermaid(monaco) {
  * Mount a coloured editor over `textarea`. Always resolves — with Monaco when
  * it loads, with a textarea-backed shim otherwise.
  */
-export async function mountCodeEditor(textarea, { language = 'mermaid', onChange } = {}) {
+export async function mountCodeEditor(textarea, { language = 'mermaid', onChange, readOnly = false } = {}) {
   const fallback = {
     monaco: false,
     getValue: () => textarea.value,
@@ -79,6 +79,7 @@ export async function mountCodeEditor(textarea, { language = 'mermaid', onChange
     layout: () => undefined,
   };
   if (!textarea) return fallback;
+  if (readOnly) textarea.readOnly = true;   // the canonical surface obeys too
 
   const monaco = await loadMonaco();
   if (!monaco) return fallback;
@@ -98,6 +99,7 @@ export async function mountCodeEditor(textarea, { language = 'mermaid', onChange
       value: textarea.value,
       language,
       theme: dark ? 'vs-dark' : 'vs',
+      readOnly,
       minimap: { enabled: false },
       fontSize: 12.5,
       lineNumbers: 'on',
