@@ -159,6 +159,13 @@ export class DomEventBinder {
    * as a silent no-op. Found by live audit, on every node type.
    */
   private pendingPortClick: { startX: number; startY: number; nodeId: string } | null = null;
+  /**
+   * Same click-vs-gesture layering for POSITIONED EDGE LABELS: a press on a
+   * label arms a label DRAG, so a motionless press-release ended as a silent
+   * no-op and the label was a selection dead zone — a query-builder join pill
+   * you could not click (live audit finding, the port dead-band's twin).
+   */
+  private pendingLabelClick: { startX: number; startY: number; linkId: string } | null = null;
   private lastPanX = 0;
   private lastPanY = 0;
 
@@ -653,9 +660,10 @@ export class DomEventBinder {
     const engine = this.engine();
     const diagram = engine?.getDiagram();
     if (!engine || !diagram) return;
-    // A new press invalidates any recorded port press — only the port branch
-    // below re-arms it. Leaving a stale one would mis-read a later release.
+    // A new press invalidates any recorded port/label press — only their
+    // branches below re-arm them. Stale ones would mis-read a later release.
     this.pendingPortClick = null;
+    this.pendingLabelClick = null;
 
     // 1. Pan: middle button, or left button while Space is held.
     if (event.button === 1 || (event.button === 0 && this.spaceKeyPressed)) {
@@ -879,6 +887,11 @@ export class DomEventBinder {
           edgeHit.link.labels?.[edgeHit.labelIndex]
         ) {
           event.preventDefault();
+          this.pendingLabelClick = {
+            startX: event.clientX,
+            startY: event.clientY,
+            linkId: edgeHit.link.id,
+          };
           this.host.interaction.startLabelDrag(edgeHit.link, edgeHit.labelIndex);
           this.host.requestRender();
           return;
@@ -1191,7 +1204,25 @@ export class DomEventBinder {
 
     if (state.isDraggingLabel) {
       event.preventDefault();
+      const press = this.pendingLabelClick;
+      this.pendingLabelClick = null;
       this.host.interaction.endLabelDrag();
+      // CLICK, not drag: select the label's link with the same semantics a
+      // press on the link body has, so a pill click drives selection:change
+      // and every inspector listening to it.
+      if (
+        press &&
+        Math.hypot(event.clientX - press.startX, event.clientY - press.startY) <
+          this.options.dragThreshold
+      ) {
+        const diagram = engine?.getDiagram();
+        const link = diagram?.getLink?.(press.linkId);
+        if (engine && link) {
+          this.host.interaction.selectLink(link, engine, event.ctrlKey || event.metaKey);
+          this.emitSelectionChange();
+          this.host.emit('edge:click', { edge: link, world: this.toWorld(event) });
+        }
+      }
       this.host.requestRender();
       return;
     }

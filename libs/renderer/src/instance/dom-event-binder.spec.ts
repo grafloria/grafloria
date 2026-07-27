@@ -433,6 +433,42 @@ describe('DomEventBinder', () => {
     });
   });
 
+  describe('positioned-label click layering', () => {
+    // The house idiom for label hits (see the dblclick-label spec): route the
+    // link, add the label, and mock getLinkHitAtPosition — jsdom paints no
+    // label boxes, so the geometric part-resolution is mocked at its seam.
+    const labelHit = () => {
+      const link = h.model.getLink('e')!;
+      link.addLabel({ text: 'INNER', slot: 'center' });
+      link.setPoints([{ x: 200, y: 130 }, { x: 300, y: 130 }, { x: 400, y: 130 }]);
+      jest
+        .spyOn(h.interaction, 'getLinkHitAtPosition')
+        .mockReturnValue({ link, part: 'label', labelIndex: 0 } as never);
+      return link;
+    };
+
+    it('a motionless press on a positioned edge label SELECTS its link', () => {
+      h = harness();
+      const link = labelHit();
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 300, clientY: 300 }));
+      h.container.dispatchEvent(mouse('mouseup', { clientX: 301, clientY: 300 }));
+
+      expect(link.state).toBe('selected');
+      expect(h.events.some((e) => e.event === 'selection:change')).toBe(true);
+      expect(h.events.some((e) => e.event === 'edge:click')).toBe(true);
+    });
+
+    it('a real label drag past the threshold does NOT select the link', () => {
+      h = harness();
+      const link = labelHit();
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 300, clientY: 300 }));
+      h.container.dispatchEvent(mouse('mousemove', { clientX: 340, clientY: 325 }));
+      h.container.dispatchEvent(mouse('mouseup', { clientX: 340, clientY: 325 }));
+
+      expect(link.state).toBe('default');
+    });
+  });
+
   describe('connection gesture', () => {
     it('mouseup while connecting completes the connection', () => {
       h = harness();
