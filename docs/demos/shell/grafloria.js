@@ -193578,9 +193578,15 @@ var CSS4 = `
 }
 
 /* kpi: value + delta stack, the spark yields its height before they do */
-.axdb-widget-b.axdb-kpi { display: flex; flex-direction: column; }
-.axdb-kpi-v { font: 700 30px/1.05 system-ui, sans-serif; letter-spacing: -.02em; color: var(--axdb-ink); }
-.axdb-kpi-d { margin-top: 6px; font: 600 12px/1.2 system-ui, sans-serif; }
+/* A SIZE CONTAINER, so the card's type scales with the tile instead of
+   clipping. Fit-mode shrinks tiles when rows are added (dropping a chart above
+   the KPI row took these from 122px to 85px) and fixed 30px/12px lines were
+   sliced mid-glyph by the card's overflow \u2014 the audited "trimmed" widgets.
+   cqh = 1% of the body's own height, clamped so full-size tiles look exactly
+   as before and short tiles compress instead of cutting. */
+.axdb-widget-b.axdb-kpi { display: flex; flex-direction: column; container-type: size; }
+.axdb-kpi-v { font: 700 clamp(15px, 44cqh, 30px)/1.05 system-ui, sans-serif; letter-spacing: -.02em; color: var(--axdb-ink); }
+.axdb-kpi-d { margin-top: clamp(1px, 5cqh, 6px); font: 600 clamp(9px, 19cqh, 12px)/1.2 system-ui, sans-serif; }
 .axdb-kpi-d span { color: var(--axdb-muted); font-weight: 500; }
 .axdb-kpi-d.up { color: #12a150; }
 .axdb-kpi-d.down { color: #e11d48; }
@@ -194089,15 +194095,10 @@ function bindDashboardGrid(api, group, options = {}) {
     placeholder = null;
   };
   const commitGesture = (g) => {
-    const item = engine.getItem(g.id);
-    if (item) {
-      writing = true;
-      try {
-        writeRect(g.id, cellToRect(item, frame(), geom(), rows()));
-      } finally {
-        writing = false;
-      }
-    }
+    engine.endGesture();
+    cleanupGestureVisuals(g);
+    gesture = null;
+    project();
     const deltas = deltasSince(g.startCells, g.startGeom);
     const commands = buildCommitCommands(deltas);
     if (g.esc && g.esc.rowsAdded !== 0) {
@@ -194112,10 +194113,6 @@ function bindDashboardGrid(api, group, options = {}) {
       );
     }
     const changed = execute(g.kind === "resize" ? "Resize widget" : "Move widget", commands);
-    engine.endGesture();
-    cleanupGestureVisuals(g);
-    gesture = null;
-    enforceBoardHeight();
     api.renderNow();
     options.onGesture?.({ type: "commit", kind: g.kind, nodeId: g.id, changed });
   };
