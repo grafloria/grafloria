@@ -137,31 +137,50 @@ async function paintedNear(page, x, y, want, tol = 14) {
     c.instance.fitView?.(40); c.instance.renderNow();
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   });
-  // hold a REAL drag from orders.customer_id mid-air
-  await wire(page, 'orders.customer_id-out', 'customers.id-in', { drop: false });
+  // hold a REAL drag from order_items.order_id mid-air — a pair with NO
+  // existing join, so the validator has no reason to veto the gold match.
+  // (The seeded customers⋈orders pair gets its own case below: guidance must
+  // DIM it, because the validator refuses re-joining an already-joined pair.)
+  await wire(page, 'order_items.order_id-out', 'orders.id-in', { drop: false });
   const g = await page.evaluate(() => {
     const rows = (id) => [...document.querySelectorAll(`[data-node-id="${id}"] .axk-row`)];
     const cls = (el) => [...el.classList].filter((c) => c.startsWith('axk-match')).join(',');
-    const cust = rows('customers'), oi = rows('order_items'), src = rows('orders');
-    const goldBox = cust[0].getBoundingClientRect();
-    const portEl = document.querySelector('[data-port-id="customers.id-in"]');
+    const ord = rows('orders'), cust = rows('customers'), src = rows('order_items');
+    const goldBox = ord[0].getBoundingClientRect();
+    const portEl = document.querySelector('[data-port-id="orders.id-in"]');
     return {
-      gold: cls(cust[0]), chip: cust[0].querySelector('.axk-match-chip')?.textContent ?? '',
+      gold: cls(ord[0]), chip: ord[0].querySelector('.axk-match-chip')?.textContent ?? '',
       goldPort: portEl ? getComputedStyle(portEl).fill : '',
-      good: cls(oi[0]), ok: cls(oi[1]), dim: cls(cust[2]),
+      good: cls(cust[0]),        // customers.id: PK + source FK flags → score 2, green
+      ok: cls(ord[1]),           // orders.customer_id: both end in 'id' → score 1, blue
+      dim: cls(cust[1]),         // customers.name: nothing → dimmed
       srcTinted: src.some((r) => cls(r) !== ''),
       goldSample: { x: goldBox.x + goldBox.width * 0.45, y: goldBox.y + goldBox.height / 2 },
     };
   });
   await shot(page, '02-wire-guidance');
-  check('WIRE-GUIDANCE', g.gold === 'axk-match-top' && g.chip === '★ BEST' && g.good === 'axk-match-good'
-    && g.ok === 'axk-match-ok' && g.dim === 'axk-match-none' && !g.srcTinted,
+  check('WIRE-GUIDANCE', g.gold === 'axk-match-top' && g.chip === '★ BEST'
+    && g.good === 'axk-match-good' && g.ok === 'axk-match-ok' && g.dim === 'axk-match-none' && !g.srcTinted,
     `gold=${g.gold} chip="${g.chip}" good=${g.good} ok=${g.ok} dim=${g.dim} srcTinted=${g.srcTinted}`);
   // the gold port wears the gold GLOW fill (the per-drag stylesheet, computed)
   check('WIRE-GUIDANCE-PORT', g.goldPort === 'rgb(245, 158, 11)', `top port fill=${g.goldPort}`);
   // …and the gold row BG is PAINTED #fffbeb, not just classed
   const gold = await paintedNear(page, g.goldSample.x, g.goldSample.y, [255, 251, 235], 10);
   check('WIRE-GUIDANCE-PIXEL', gold.hit, `sampled ${JSON.stringify(gold.px)} at the gold row (want ~255,251,235)`);
+
+  // the SEEDED pair: guidance must DIM what the validator refuses — dragging
+  // orders.customer_id again must NOT paint customers.id gold (it is already
+  // joined; the drop would be refused, and gold would be a lie).
+  await wire(page, 'orders.customer_id-out', 'customers.id-in', { drop: false });
+  const vg = await page.evaluate(() => {
+    const row = document.querySelector('[data-node-id="customers"] .axk-row');
+    return { cls: [...row.classList].filter((c) => c.startsWith('axk-match')).join(','),
+      chip: !!row.querySelector('.axk-match-chip') };
+  });
+  check('GUIDANCE-RESPECTS-VALIDATOR', vg.cls === 'axk-match-none' && !vg.chip,
+    `already-joined target tier=${vg.cls} chip=${vg.chip}`);
+  await page.mouse.up();
+  await page.waitForTimeout(250);
 
   // abort MID-AIR: release over empty canvas — every tint must clear
   const canvas = await page.locator('#qb-canvas').boundingBox();
