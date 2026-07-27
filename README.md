@@ -16,7 +16,7 @@ one headless core, native in <b>Angular</b>, <b>React</b>, and <b>Vue</b>. MIT, 
 
 <p align="center">
   <a href="https://grafloria.com"><b>grafloria.com</b></a> ·
-  <a href="https://grafloria.com/demos/"><b>110 live demos</b></a> ·
+  <a href="https://grafloria.com/demos/"><b>111 live demos</b></a> ·
   <a href="https://grafloria.com/mermaid/"><b>Mermaid support</b></a> ·
   <a href="https://grafloria.com/compare/"><b>how it compares</b></a> ·
   <a href="https://www.npmjs.com/org/grafloria"><b>packages</b></a>
@@ -71,7 +71,7 @@ children. Every capability has a working page in the demo gallery.
 
 ## The demo gallery is the documentation
 
-**[Play with 110 live demos → grafloria.com/demos](https://grafloria.com/demos/)** — each
+**[Play with 111 live demos → grafloria.com/demos](https://grafloria.com/demos/)** — each
 one a real, runnable example of exactly one capability, and each executed in CI as a gate.
 If it's in the gallery, it works; if it works, it's in the gallery.
 
@@ -100,7 +100,7 @@ The test surface is unusually deep, and all of it runs on every change:
 - **6,900+ unit tests** across the engine, renderer, and kits
 - **Visual gate** — 235 golden frames pixel-diffed against blessed captures, with
   per-frame tolerance measured from each demo's own run-to-run jitter
-- **Interaction gate** — 1,119 live-gesture checks (real mouse, real browser) across all 110 demos
+- **Interaction gate** — 1,119 live-gesture checks (real mouse, real browser) across all 111 demos
 - **Editor gates** — 41 pointer/keyboard gesture cases on the Visio-style editor,
   13 in-canvas table-editing cases, and an 80-master render sheet that fails on a
   clipped caption or ink outside a shape's bounds
