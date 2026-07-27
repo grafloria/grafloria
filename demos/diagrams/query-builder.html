@@ -612,14 +612,19 @@ defineDemo({
     ctx.placeTable('order_items', { x: 430, y: 480 });
     await ctx.tick(30);
     api.fitView?.(40); api.renderNow(); await ctx.tick(30);
-    await ctx.dragWire('orders.customer_id-out', 'customers.id-in', { drop: false });
+    // The drag runs from order_items.order_id — a pair with NO existing join.
+    // (Dragging orders.customer_id would aim at the SEEDED customers⋈orders
+    // pair, which the validator refuses — and guidance now ranks a refused
+    // target 'none' rather than glorifying it; that rule is asserted below.)
+    await ctx.dragWire('order_items.order_id-out', 'orders.id-in', { drop: false });
+    const ordRows = rowsOf('orders');
     const custRows = rowsOf('customers');
-    check(custRows[0]?.classList.contains('axk-match-top'), 'customers.id should be the GOLD top candidate (PK↔FK naming match)');
-    check(!!custRows[0]?.querySelector('.axk-match-chip'), 'the top row should wear the ★ BEST chip');
-    check(rowsOf('order_items')[0]?.classList.contains('axk-match-good'), 'order_items.id (PK against the FK source) should tint green');
-    check(rowsOf('order_items')[1]?.classList.contains('axk-match-ok'), 'order_items.order_id (both end in id) should tint blue');
+    check(ordRows[0]?.classList.contains('axk-match-top'), 'orders.id should be the GOLD top candidate (PK↔FK naming match)');
+    check(!!ordRows[0]?.querySelector('.axk-match-chip'), 'the top row should wear the ★ BEST chip');
+    check(custRows[0]?.classList.contains('axk-match-good'), 'customers.id (PK against the FK source) should tint green');
+    check(ordRows[1]?.classList.contains('axk-match-ok'), 'orders.customer_id (both end in id) should tint blue');
     check(custRows[1]?.classList.contains('axk-match-none'), 'customers.name should dim to none');
-    check(rowsOf('orders').every((r) => ![...r.classList].some((c) => c.startsWith('axk-match'))),
+    check(rowsOf('order_items').every((r) => ![...r.classList].some((c) => c.startsWith('axk-match'))),
       'the SOURCE table must never be tinted');
     check(!!document.getElementById('grafloria-join-guidance-ports'), 'the port-glow stylesheet should be live mid-drag');
     // abort mid-air: everything clears
@@ -627,6 +632,16 @@ defineDemo({
     await ctx.tick(30);
     check(host.querySelectorAll('[class*="axk-match-"]').length === 0, 'aborting the drag must clear every tint');
     check(!document.getElementById('grafloria-join-guidance-ports'), '…and the port-glow stylesheet');
+
+    // 2b. THE VALIDATOR OUTRANKS THE SCORE — drag at the SEEDED pair: its
+    // textual '★ BEST' match is un-connectable (already joined), so guidance
+    // must dim it, not glorify a target the drop will refuse.
+    await ctx.dragWire('orders.customer_id-out', 'customers.id-in', { drop: false });
+    check(rowsOf('customers')[0]?.classList.contains('axk-match-none'),
+      'an already-joined pair must rank NONE whatever its score');
+    check(!rowsOf('customers')[0]?.querySelector('.axk-match-chip'), 'and must not wear the ★ BEST chip');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await ctx.tick(30);
 
     // 3. CONNECT — the same drag, dropped: an undoable join with an INNER pill
     const linksBefore = model.getLinks().length;
