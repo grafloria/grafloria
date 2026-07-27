@@ -16,7 +16,8 @@ one headless core, native in <b>Angular</b>, <b>React</b>, and <b>Vue</b>. MIT, 
 
 <p align="center">
   <a href="https://grafloria.com"><b>grafloria.com</b></a> ·
-  <a href="https://grafloria.com/demos/"><b>100+ live demos</b></a> ·
+  <a href="https://grafloria.com/demos/"><b>110 live demos</b></a> ·
+  <a href="https://grafloria.com/mermaid/"><b>Mermaid support</b></a> ·
   <a href="https://grafloria.com/compare/"><b>how it compares</b></a> ·
   <a href="https://www.npmjs.com/org/grafloria"><b>packages</b></a>
 </p>
@@ -36,7 +37,7 @@ SVG/PNG/PDF exporters — there is no second implementation to drift.
 
 | Package | What it is |
 | --- | --- |
-| `@grafloria/engine` | Headless core — graph model, commands/undo, layout engines (ELK, dagre, force, tree…), DSL + Mermaid-compatible text format, collab op-log |
+| `@grafloria/engine` | Headless core — graph model, commands/undo, layout engines (ELK, dagre, force, tree…), Mermaid-compatible text format with type-aware import layout, `.drawio` import, collab op-log |
 | `@grafloria/renderer` | SVG renderer — interaction, theming, a11y outline, and the export pipeline (SVG, PNG, and a self-contained vector **PDF writer**: gradients, soft masks, images, text) |
 | `@grafloria/element` | `<grafloria-flow>` custom element + high-level kits: dashboard kit (grid pack, widgets), UML kit, ERD kit — works in any framework or none |
 | `@grafloria/react` | React bindings — component custom nodes, hooks, SSR + hydration |
@@ -70,7 +71,7 @@ children. Every capability has a working page in the demo gallery.
 
 ## The demo gallery is the documentation
 
-**[Play with 100+ live demos → grafloria.com/demos](https://grafloria.com/demos/)** — each
+**[Play with 110 live demos → grafloria.com/demos](https://grafloria.com/demos/)** — each
 one a real, runnable example of exactly one capability, and each executed in CI as a gate.
 If it's in the gallery, it works; if it works, it's in the gallery.
 
@@ -80,19 +81,31 @@ node demos/build.mjs          # bundle libs → demos/shell/grafloria.js
 npx serve demos               # any static server — then open /index.html
 ```
 
-Highlights: dashboard builder with drag-pack grid and version history · live-cursor
-collaboration on an op-log with read-only replicas · Mermaid-compatible text round-trip ·
-ERD / class-UML kits · async custom nodes captured into exports · PDF export with real
-vector gradients, shadows, and images (no rasterized page screenshots).
+Highlights: a [Visio-style editor](https://grafloria.com/demos/diagrams/visio-editor.html)
+with a searchable stencil palette, page grid + snap, zoom/minimap, group/ungroup and a real
+properties panel · [.drawio import](https://grafloria.com/demos/misc/drawio-import.html)
+(plain **and** compressed saves — the migration on-ramp from diagrams.net) ·
+[Mermaid text](https://grafloria.com/mermaid/) in *and* out of the live canvas with
+type-aware layout · dashboard builder with drag-pack grid · live-cursor collaboration on an
+op-log · ERD / class-UML kits · PDF export with real vector gradients, shadows, and images.
+
+<a href="https://grafloria.com/demos/diagrams/visio-editor.html"><img src="docs/shots/visio-editor.png" alt="The Visio-style editor: searchable stencil palette, page grid with snap, a selected BPMN gateway with its X marker and caption below, a properties panel with Shape / Size &amp; Position / Format sections, minimap and zoom controls"></a>
+
+<p align="center"><i>The Visio-style flagship — every gesture in this screenshot is CI-gated: 41 pointer/keyboard cases, an 80-master render sheet, and 13 in-canvas table-editing cases.</i></p>
 
 ## Quality gates
 
 The test surface is unusually deep, and all of it runs on every change:
 
-- **6,600+ unit tests** across the engine, renderer, and kits
-- **Visual gate** — 220+ golden frames pixel-diffed against blessed captures, with
+- **6,900+ unit tests** across the engine, renderer, and kits
+- **Visual gate** — 235 golden frames pixel-diffed against blessed captures, with
   per-frame tolerance measured from each demo's own run-to-run jitter
-- **Interaction gate** — 1,042 live-gesture checks (real mouse, real browser) across all demos
+- **Interaction gate** — 1,119 live-gesture checks (real mouse, real browser) across all 110 demos
+- **Editor gates** — 41 pointer/keyboard gesture cases on the Visio-style editor,
+  13 in-canvas table-editing cases, and an 80-master render sheet that fails on a
+  clipped caption or ink outside a shape's bounds
+- **Mermaid oracle** — 28 cases driven through *real* mermaid v11 in both directions:
+  everything we read, real Mermaid accepts; everything we write, real Mermaid parses
 - **Export gates** — exported SVG/PDF bytes are rasterized and pixel-probed
   (`pdftoppm`), not just string-matched
 - **Save/load, dashboard-scenario, and reachability gates** — every public API a demo
