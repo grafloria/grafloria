@@ -1395,6 +1395,13 @@ export class DomEventBinder {
           this.activeTool = undefined;
           this.activeToolHit = undefined;
         }
+        // Escape LAYERS: the first press cancels the in-flight gesture and is
+        // CONSUMED — falling through here let the clear-selection branch below
+        // wipe the very selection the tool's onCancel just rolled back, so a
+        // cancelled marquee ended empty instead of restored (live audit
+        // finding). A second Escape, with no gesture active, deselects.
+        this.host.requestRender();
+        return;
       }
       const state = this.host.interaction.getState();
       if (state.isConnecting) {
@@ -1608,6 +1615,14 @@ export class DomEventBinder {
       diagram.toggleNodeSelection(node);
     } else if (!wasSelected) {
       diagram.selectNode(node);
+      // A plain node click REPLACES the selection, and links are part of it.
+      // Leaving a link in state 'selected' here made the properties panel read
+      // "2 shapes" after edge-click → node-click (live audit finding): node
+      // and link selection are one selection to the user, so clearing one
+      // side must clear the other — exactly what the empty-canvas click does.
+      diagram.getLinks().forEach((l) => {
+        if (l.state === 'selected') l.setState('default');
+      });
     }
     // Clicking an already-selected node without a modifier keeps the whole
     // selection, so a multi-node drag works.
