@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>React diagram library — Grafloria</title>
+<meta name="description" content="An MIT React diagram library with everything in the box: obstacle-avoiding edge routing, built-in auto-layout, undo/redo, collaboration and vector export. SSR-ready for Next.js.">
+<link rel="canonical" href="https://grafloria.com/react/">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../favicon-32.png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta property="og:title" content="React diagram library — Grafloria">
+<meta property="og:description" content="An MIT React diagram library with everything in the box: obstacle-avoiding edge routing, built-in auto-layout, undo/redo, collaboration and vector export. SSR-ready for Next.js.">
+<meta property="og:url" content="https://grafloria.com/react/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/og-image.png">
+<style>
+  :root {
+    --indigo: #3B52D9; --indigo-deep: #2A3CA8; --indigo-soft: #94A5F0; --indigo-wash: #EEF1FE;
+    --ink: #232A3D; --slate: #5A6478; --line: #E3E7F2; --bg: #FCFCFF;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; line-height: 1.6; }
+  .wrap { max-width: 1220px; margin: 0 auto; padding: 0 24px; }
+  a { color: var(--indigo); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible { outline: 3px solid var(--indigo-soft); outline-offset: 2px; border-radius: 6px; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  header { padding: 20px 0; border-bottom: 1px solid var(--line); background: #fff; }
+  .nav { display: flex; align-items: center; gap: 12px; }
+  .nav img { width: 34px; height: 34px; }
+  .nav .name { font-weight: 700; font-size: 20px; letter-spacing: -0.3px; }
+  .nav .name a { color: var(--ink); }
+  .nav .links { margin-left: auto; display: flex; gap: 22px; font-size: 15px; font-weight: 500; }
+  @media (max-width: 640px) {
+    .nav { flex-wrap: wrap; }
+    .nav .links { margin-left: 0; width: 100%; flex-wrap: wrap; gap: 8px 16px; font-size: 14.5px; }
+  }
+
+  .head { padding: 56px 0 6px; max-width: 82ch; }
+  .fw-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .fw-chips a { font-size: 13px; font-weight: 600; padding: 5px 13px; border-radius: 999px;
+    border: 1px solid var(--line); background: #fff; color: var(--slate); }
+  .fw-chips a[aria-current] { background: var(--indigo); border-color: var(--indigo); color: #fff; }
+  .fw-chips a:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  h1 { font-size: clamp(30px, 4.6vw, 46px); font-weight: 800; letter-spacing: -1px; line-height: 1.12; text-wrap: balance; }
+  .lede { margin-top: 14px; color: var(--slate); font-size: 17.5px; max-width: 78ch; }
+  .lede b { color: var(--ink); }
+  h2 { font-size: 25px; font-weight: 750; letter-spacing: -0.5px; margin: 56px 0 6px; text-wrap: balance; }
+  h3 { font-size: 16px; font-weight: 700; }
+  .sub { color: var(--slate); font-size: 15.5px; max-width: 82ch; margin-bottom: 18px; }
+
+  .hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 20px; margin-top: 30px; }
+  @media (max-width: 980px) { .hero { grid-template-columns: 1fr; } }
+  .codecard { border: 1px solid var(--line); border-radius: 16px; background: #fff; overflow: hidden;
+    box-shadow: 0 1px 2px rgba(35,42,61,.04), 0 12px 32px -18px rgba(35,42,61,.22); }
+  .codecard .bar { display: flex; align-items: center; gap: 8px; padding: 9px 14px; font-size: 12.5px;
+    color: var(--slate); border-bottom: 1px solid var(--line); background: #FBFCFF;
+    font-family: ui-monospace, Menlo, monospace; }
+  .codecard pre { padding: 14px 16px; overflow-x: auto; font-size: 12.5px; line-height: 1.62; color: #2C3346; }
+  .codecard .k { color: var(--indigo); } .codecard .s { color: #0f766e; } .codecard .c { color: var(--slate); }
+  .livecard { border: 1px solid var(--line); border-radius: 16px; background: #fff; overflow: hidden;
+    display: flex; flex-direction: column; min-height: 380px;
+    box-shadow: 0 1px 2px rgba(35,42,61,.04), 0 12px 32px -18px rgba(35,42,61,.22); }
+  .livecard .bar { display: flex; align-items: center; gap: 8px; padding: 9px 14px; font-size: 13px;
+    color: var(--slate); border-bottom: 1px solid var(--line); background: #FBFCFF; }
+  .livecard .bar .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+  .livecard .cv { flex: 1; position: relative; min-height: 320px; }
+  .livecard .cv .skel { position: absolute; inset: 0; display: grid; place-items: center; color: var(--slate); font-size: 13.5px; }
+
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 14px; }
+  .card { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 18px 20px; }
+  .card h3 { margin-bottom: 5px; }
+  .card p { font-size: 14px; color: var(--slate); }
+  .card p code { font-size: 12.5px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+
+  .install { margin-top: 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff;
+    padding: 13px 18px; font-family: ui-monospace, Menlo, monospace; font-size: 13.5px; overflow-x: auto; white-space: nowrap; }
+  .install b { color: var(--indigo); font-weight: 600; }
+
+  .callout { margin-top: 20px; border: 1px solid var(--line); border-left: 3px solid var(--indigo);
+    border-radius: 12px; background: #fff; padding: 18px 22px; }
+  .callout h3 { margin-bottom: 5px; }
+  .callout p { font-size: 14.5px; color: var(--slate); }
+
+  .cta { margin: 54px 0 72px; text-align: center; }
+  .cta .btn { display: inline-block; padding: 12px 26px; border-radius: 10px; font-weight: 600; font-size: 16px; margin: 0 7px 10px; }
+  .btn.primary { background: var(--indigo); color: #fff; }
+  .btn.primary:hover { background: var(--indigo-deep); text-decoration: none; }
+  .btn.ghost { border: 1.5px solid var(--line); color: var(--ink); background: #fff; }
+  .btn.ghost:hover { border-color: var(--indigo-soft); text-decoration: none; }
+
+  .fine { margin: 0 0 56px; max-width: 86ch; font-size: 13px; color: var(--slate); }
+  footer { border-top: 1px solid var(--line); padding: 34px 0 44px; color: var(--slate); font-size: 14.5px; background: #fff; }
+  footer .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  footer img { width: 22px; height: 22px; }
+  footer .fam { margin-left: auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../favicon.svg" alt="">
+    <span class="name"><a href="../">grafloria</a></span>
+    <nav class="links">
+      <a href="../demos/">Demos</a>
+      <a href="../mermaid/">Mermaid</a>
+      <a href="../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="head">
+      <nav class="fw-chips" aria-label="Frameworks">
+      <a href="../react/" aria-current="page">React</a>
+      <a href="../angular/">Angular</a>
+      <a href="../vue/">Vue</a>
+      <a href="../javascript/">JavaScript</a>
+      </nav>
+      <h1>The React diagram library with everything in the box</h1>
+      <p class="lede">Node editors, flow charts, dashboards and ER diagrams as <b>React components</b> — with the parts other libraries sell or leave to you: obstacle-avoiding routing, ELK auto-layout, undo/redo, live collaboration and true vector export. MIT, no Pro tier. <b>SSR-ready for Next.js.</b></p>
+      <div class="install">npm install <b>@grafloria/react</b> @grafloria/renderer @grafloria/engine</div>
+    </div>
+
+    <div class="hero">
+      <div class="codecard">
+        <div class="bar">Flow.tsx</div>
+        <pre><span class="k">import</span> { GrafloriaFlow, useNodesState, useEdgesState } <span class="k">from</span> <span class="s">'@grafloria/react'</span>;
+
+<span class="k">function</span> JobNode({ data }) {
+  <span class="k">return</span> &lt;<span class="k">div</span> className=<span class="s">"job-card"</span>&gt;{data.title}&lt;/<span class="k">div</span>&gt;;
+}
+
+<span class="k">export function</span> Flow() {
+  <span class="k">const</span> [nodes, setNodes] = useNodesState([
+    { id: <span class="s">'a'</span>, type: <span class="s">'job'</span>, custom: <span class="k">true</span>, position: { x: 0, y: 0 }, data: { title: <span class="s">'Extract'</span> } },
+    { id: <span class="s">'b'</span>, position: { x: 240, y: 0 }, label: <span class="s">'Load'</span> },
+  ]);
+  <span class="k">const</span> [edges, setEdges] = useEdgesState([{ source: <span class="s">'a'</span>, target: <span class="s">'b'</span> }]);
+  <span class="k">return</span> (
+    &lt;<span class="k">GrafloriaFlow</span>
+      nodes={nodes} onNodesChange={setNodes}
+      edges={edges} onEdgesChange={setEdges}
+      nodeTypes={{ job: JobNode }}
+      layout=<span class="s">"elk"</span> /&gt;
+  );
+}</pre>
+      </div>
+      <div class="livecard">
+        <div class="bar"><span class="dot"></span>live — the same engine this binding wraps, drag anything</div>
+        <div class="cv" id="fw-live"><div class="skel">rendering…</div></div>
+      </div>
+    </div>
+
+    <h2>Why teams pick it</h2>
+    <div class="grid3">
+      <div class="card">
+        <h3>Components &amp; hooks, the React way</h3>
+        <p>Custom nodes are <code>nodeTypes</code> components with props; <code>useNodesState</code>/<code>useEdgesState</code>, <code>useGrafloria</code>, <code>useSelection</code> and <code>useViewport</code> hooks; controlled data end to end. StrictMode-clean.</p>
+      </div>
+      <div class="card">
+        <h3>Next.js &amp; SSR, for real</h3>
+        <p>The engine is headless — it runs in Node with no DOM. The React bindings ship <code>SSR + hydration</code>: render the diagram on the server, hydrate it interactive on the client. No <code>dynamic(() =&gt; …, {ssr:false})</code> workarounds.</p>
+      </div>
+      <div class="card">
+        <h3>Everything in the box, MIT</h3>
+        <p>Obstacle-avoiding orthogonal routing, ELK/dagre/force layout off-thread, command-based undo, per-property CRDT collaboration, SVG/PNG/PDF export — features that are Pro examples elsewhere are library code here.</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <h3>Coming from React Flow?</h3>
+      <p>React Flow is excellent and has the biggest community in this space — if you only need React and are happy assembling routing, layout, undo and collab from (often Pro) examples, it is a fine choice. Grafloria ships those as library features under MIT, and the same engine also runs in Angular, Vue and plain JS. The <a href="../compare/#diagrams">comparison page</a> has the sourced, cell-by-cell table.</p>
+    </div>
+
+    <h2>Every demo, in your framework</h2>
+    <p class="sub">The gallery is the documentation: 111 runnable pages, each executed in CI with real
+    pointer events — and each one available in this framework’s own idiom, source shown.
+    <a href="../demos-react/"><b>React demos — every gallery page as real JSX →</b></a></p>
+
+    <div class="cta">
+      <a class="btn primary" href="../demos-react/">Open the demos</a>
+      <a class="btn ghost" href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">Get the packages</a>
+    </div>
+
+    <p class="fine">
+      Grafloria is MIT — every feature, no commercial tier. React, Next.js, Angular, Vue, React Flow,
+      Vue Flow, ngx-vflow, JointJS and Drawflow are trademarks of their respective owners; comparative
+      references only, no affiliation implied. Corrections welcome via
+      <a href="https://github.com/grafloria/grafloria/issues">GitHub issues</a>.
+    </p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../favicon.svg" alt="">
+    <span>© 2026 Grafloria · MIT License</span>
+    <span class="fam">A sibling of <a href="https://atloria.dev">Atloria</a></span>
+  </div>
+</footer>
+
+<script type="module">
+  // One live canvas, lazily: the shared demo bundle, loaded on first scroll into view.
+  const NODES = [{"id": "a", "position": {"x": 40, "y": 60}, "size": {"width": 165, "height": 56}, "label": "Products API", "style": {"fill": "#eef2ff", "stroke": "#3B52D9", "strokeWidth": 1.5}}, {"id": "b", "position": {"x": 255, "y": 165}, "size": {"width": 165, "height": 56}, "label": "useCatalog()", "style": {"fill": "#f5f3ff", "stroke": "#7c3aed", "strokeWidth": 1.5}}, {"id": "c", "position": {"x": 470, "y": 60}, "size": {"width": 165, "height": 56}, "label": "<Cart />", "style": {"fill": "#ecfdf5", "stroke": "#059669", "strokeWidth": 1.5}}];
+  const EDGES = [{ source: NODES[0].id, target: NODES[1].id }, { source: NODES[1].id, target: NODES[2].id }];
+  const host = document.getElementById('fw-live');
+  const boot = async () => {
+    const { render } = await import('../demos/shell/grafloria.js');
+    host.querySelector('.skel')?.remove();
+    const api = render({ nodes: NODES, edges: EDGES }, host);
+    api.renderNow();
+    api.fitView?.(36);
+  };
+  const io = new IntersectionObserver((entries, obs) => {
+    if (!entries.some((e) => e.isIntersecting)) return;
+    obs.disconnect();
+    boot();
+  }, { rootMargin: '200px' });
+  io.observe(host);
+</script>
+
+</body>
+</html>
