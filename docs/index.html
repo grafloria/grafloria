@@ -48,10 +48,14 @@
 
   /* Hero — two columns: the pitch on the left, a LIVE Grafloria canvas on the right. */
   .hero { padding: 60px 0 20px; display: grid; grid-template-columns: 1fr 1.05fr; gap: 40px; align-items: center; }
-    .fw-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-  .fw-row a { font-size: 13.5px; font-weight: 600; padding: 6px 14px; border-radius: 999px;
-    border: 1px solid var(--line, #E3E7F2); background: #fff; color: var(--slate, #5A6478); text-decoration: none; }
-  .fw-row a:hover { border-color: #94A5F0; color: #3B52D9; }
+    .fw-band { margin-top: 16px; }
+  .fw-label { display: block; font-size: 11.5px; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--slate, #5A6478); margin-bottom: 8px; }
+  .fw-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .fw-row a { font-size: 13.5px; font-weight: 600; padding: 7px 14px; border-radius: 999px;
+    border: 1px solid #94A5F0; background: #fff; color: #3B52D9; text-decoration: none; }
+  .fw-row a span { opacity: .55; margin-left: 2px; }
+  .fw-row a:hover { background: #EEF1FE; text-decoration: none; }
   .hero .brandmark { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
   .hero .brandmark img { width: 40px; height: 40px; }
   .hero .brandmark span { font-weight: 700; font-size: 17px; letter-spacing: -0.3px; }
@@ -264,11 +268,14 @@
           <code>npm install <b>@grafloria/react</b>   <i># or angular · vue · element</i></code>
         </div>
         <!-- Developers search by framework — each chip is a dedicated landing page. -->
-        <div class="fw-row" aria-label="Framework guides">
-          <a href="react/">⚛ React &amp; Next.js</a>
-          <a href="angular/">🅰 Angular</a>
-          <a href="vue/">✳ Vue 3</a>
-          <a href="javascript/">〈/〉 JavaScript</a>
+        <div class="fw-band" aria-label="Framework guides">
+          <span class="fw-label">Guides for your stack</span>
+          <div class="fw-row">
+            <a href="react/">⚛ React &amp; Next.js <span>→</span></a>
+            <a href="angular/">🅰 Angular <span>→</span></a>
+            <a href="vue/">✳ Vue 3 <span>→</span></a>
+            <a href="javascript/">〈/〉 JavaScript <span>→</span></a>
+          </div>
         </div>
         <a class="ph-badge" href="https://www.producthunt.com/products/grafloria?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-grafloria" target="_blank" rel="noopener noreferrer">
           <img alt="Grafloria - The framework-agnostic diagram engine | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204715&amp;theme=light&amp;t=1784932924027">
@@ -523,6 +530,15 @@
 </main>
 
 <footer>
+  <div class="wrap" style="display:flex;flex-wrap:wrap;gap:8px 20px;padding-bottom:18px;font-size:14px">
+    <a href="react/">React &amp; Next.js</a> ·
+    <a href="angular/">Angular</a> ·
+    <a href="vue/">Vue 3</a> ·
+    <a href="javascript/">JavaScript</a> ·
+    <a href="mermaid/">Mermaid</a> ·
+    <a href="compare/">Compare</a> ·
+    <a href="demos/">All demos</a>
+  </div>
   <div class="wrap row">
     <img src="favicon.svg" alt="">
     <span>© 2026 Grafloria · MIT License</span>
