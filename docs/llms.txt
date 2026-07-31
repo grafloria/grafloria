@@ -58,6 +58,7 @@ import { GrafloriaFlow } from '@grafloria/react';
 
 - [Live demo gallery](https://grafloria.com/demos/): 100+ runnable pages — view-source is the tutorial; every demo is also a CI test.
 - [How Grafloria compares](https://grafloria.com/compare/): three sourced matrices — vs diagram libraries (React Flow, JointJS+, GoJS, ngx-vflow), vs dashboard grids (GridStack.js, react-grid-layout, angular-gridster2, Muuri), and vs Mermaid.
+- Framework guides: [React & Next.js](https://grafloria.com/react/), [Angular](https://grafloria.com/angular/), [Vue 3](https://grafloria.com/vue/), [plain JavaScript](https://grafloria.com/javascript/) — per-framework install, idiomatic quickstart, and links to that framework's demo variants.
 - [Mermaid support](https://grafloria.com/mermaid/): which Mermaid types Grafloria reads and writes (flowchart, erDiagram, classDiagram, stateDiagram), the three-tier extension model, the round trip, and the named gaps.
 - [GitHub repository](https://github.com/grafloria/grafloria): source, READMEs per package, issues.
 - [npm organization](https://www.npmjs.com/org/grafloria): published packages.

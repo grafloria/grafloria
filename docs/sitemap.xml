@@ -4,6 +4,10 @@
   <url><loc>https://grafloria.com/compare/</loc><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/demos/</loc><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/mermaid/</loc><priority>0.9</priority></url>
+  <url><loc>https://grafloria.com/react/</loc><priority>0.9</priority></url>
+  <url><loc>https://grafloria.com/angular/</loc><priority>0.9</priority></url>
+  <url><loc>https://grafloria.com/vue/</loc><priority>0.9</priority></url>
+  <url><loc>https://grafloria.com/javascript/</loc><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/demos/collab/comments.html</loc><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/collab/conflict-resolution.html</loc><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/collab/live-cursors.html</loc><priority>0.6</priority></url>
