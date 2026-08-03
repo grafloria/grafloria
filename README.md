@@ -93,6 +93,25 @@ op-log · ERD / class-UML kits · PDF export with real vector gradients, shadows
 
 <p align="center"><i>The Visio-style flagship — every gesture in this screenshot is CI-gated: 41 pointer/keyboard cases, an 80-master render sheet, and 13 in-canvas table-editing cases.</i></p>
 
+## Bundle size — read this before judging the npm stats
+
+Installing the package family unpacks ~14 MB, because each package ships its
+code three ways (CJS + ESM + TypeScript declarations). **None of that is
+shipped weight.** Measured worst-case — importing the *entire* public surface,
+esbuild with minify + ESM + `--splitting`:
+
+| entry | eager (gzip) | notes |
+|---|---|---|
+| `@grafloria/engine` | **228 KB** | headless: model, undo, layout, DSL, validation, collab |
+| `@grafloria/react` / `@grafloria/vue` | **334 KB** | + SVG renderer, interaction, export, themes |
+| `@grafloria/angular` | **395 KB** | + the full Angular component library |
+| `@grafloria/element` | **451 KB** | the whole stack incl. every kit |
+| elkjs layout | 432 KB **lazy** | a split chunk that downloads only if ELK layout is invoked |
+
+Real apps importing only what they use ship less. Each package README carries
+a two-minute reproduction script; `--splitting` is essential (without it the
+lazy ELK chunk gets inlined and inflates the number by ~1.4 MB).
+
 ## Quality gates
 
 The test surface is unusually deep, and all of it runs on every change:

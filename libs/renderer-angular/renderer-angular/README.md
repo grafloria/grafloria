@@ -95,4 +95,34 @@ outputs are signal `output()`s.
   CJS for Node. A basic canvas app builds to ~1.2 MB initial / ~300 KB
   transfer; raise the default Angular bundle budget accordingly.
 
+## Bundle size — what actually ships
+
+Don't judge this library by npm's **unpacked size** stat. Installing the
+Grafloria family unpacks ~14 MB because every package publishes its code three
+ways — a CJS build, an ESM build, and TypeScript declarations. None of that
+reaches your users as-is; what matters is what your bundler emits.
+
+Worst case, importing the **entire** public surface of `@grafloria/angular`
+(engine + renderer + the full Angular component library), measured with esbuild (minify, ESM, code-splitting):
+
+| | minified | gzipped |
+|---|---|---|
+| eager bundle | 1501 KB | **395 KB** |
+| elkjs — lazy chunk, downloads **only** if ELK layout is invoked | 1,423 KB | 432 KB |
+
+A real app importing only what it uses ships less. Reproduce it in two minutes:
+
+```sh
+npm i -D esbuild @grafloria/angular
+echo "export * from '@grafloria/angular';" > entry.mjs
+npx esbuild entry.mjs --bundle --minify --format=esm --splitting --outdir=out '--external:@angular/*' --external:rxjs
+gzip -k9 out/entry.js && wc -c out/entry.js out/entry.js.gz
+```
+
+`--splitting` matters: without it esbuild inlines the lazily-imported ELK
+chunk and inflates the number by ~1.4 MB. Real app bundlers (Angular CLI,
+Vite, Next.js) split by default. Use current versions — engine ≥ 0.2.13,
+renderer ≥ 0.3.12, element ≥ 0.3.22 — older cores were CJS-only, which
+defeats splitting and tree-shaking.
+
 MIT © [Grafloria](https://github.com/grafloria/grafloria)
