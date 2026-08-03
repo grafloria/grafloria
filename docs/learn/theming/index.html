@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Theming — one theme object, every surface — Grafloria</title>
+<meta name="description" content="Grafloria theming: LIGHT_THEME/DARK_THEME, per-canvas theme objects, app-wide defaults, the token bridge for shadcn/MUI/Tailwind variables, per-node styling.">
+<link rel="canonical" href="https://grafloria.com/learn/theming/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Theming — one theme object, every surface — Grafloria">
+<meta property="og:description" content="Grafloria theming: LIGHT_THEME/DARK_THEME, per-canvas theme objects, app-wide defaults, the token bridge for shadcn/MUI/Tailwind variables, per-node styling.">
+<meta property="og:url" content="https://grafloria.com/learn/theming/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/" aria-current="page">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Theming</p>
+      <h1>Theming</h1>
+      <p class="lede">One <code>Theme</code> object drives the canvas chrome, node defaults, link colors and selection states — swap it and everything repaints. Per-node styling stays in the spec, so themes and data never fight.</p>
+
+      <h2>Built-in themes</h2>
+<pre>// exported from @grafloria/react, @grafloria/vue, or @grafloria/renderer
+import { LIGHT_THEME, DARK_THEME } from '@grafloria/react';
+
+// React
+&lt;GrafloriaFlow theme={dark ? DARK_THEME : LIGHT_THEME} ... /&gt;
+
+// Vue — a computed ref works
+&lt;GrafloriaFlow :theme="theme" ... /&gt;
+
+// Angular
+&lt;grafloria-diagram-canvas [theme]="theme" ... /&gt;
+
+// element attribute (strings only here)
+&lt;grafloria-flow theme="dark" ...&gt;</pre>
+      <p>Switching is live — no remount, no data loss. At runtime on any instance:
+      <code>instance.setTheme(DARK_THEME)</code>.</p>
+<p><a class="demo-link" href="../../demos-vue/#dark-mode">Live: dark mode toggle →</a></p>
+
+      <h2>App-wide defaults (Angular)</h2>
+<pre>bootstrapApplication(App, {
+  providers: [provideGrafloria({ theme: DARK_THEME })],
+});</pre>
+      <p>Precedence: a canvas-level <code>[theme]</code> binding → the provided default →
+      <code>LIGHT_THEME</code>.</p>
+
+      <h2>Adopting your design system: the token bridge</h2>
+      <p>If your app already speaks CSS variables — shadcn, MUI, Tailwind — hand them over
+      with <code>tokenBridge</code> and the canvas derives its colors from
+      <b>your</b> tokens instead of its own palette. The diagram stops looking embedded and
+      starts looking native.</p>
+
+      <h2>Per-node and per-edge styling</h2>
+      <p>Theme = the room; spec styling = the furniture:</p>
+<pre>{ id: 'a', position: { x: 60, y: 80 },
+  shape: { type: 'terminal', fill: '#ecfdf5', stroke: '#059669', cornerRadius: 10 } }
+
+{ id: 'e1', source: 'a', target: 'b',
+  style: { stroke: '#9333ea', strokeWidth: 2, strokeDasharray: '6 3' }, label: 'retry' }</pre>
+      <p>And because custom nodes are your own HTML (React components, Vue slots, Angular
+      templates, plain templates), they inherit your app's stylesheet directly — the element
+      renders in <b>light DOM</b> precisely so your CSS cascades in.</p>
+      <div class="note">The renderer injects one scoped <code>&lt;style&gt;</code> block per instance
+      and exposes <code>--grafloria-*</code> variables — there is no stylesheet you must
+      import, in any framework.</div>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../export/">Export</a> — exports honor the active theme.</li>
+        <li><a href="../../demos/">Demos</a> — themed galleries in light and dark.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a class="next" href="../export/">Export</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

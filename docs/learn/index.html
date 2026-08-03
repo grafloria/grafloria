@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learn Grafloria — tutorials & concepts</title>
+<meta name="description" content="Learn the Grafloria diagram engine: 10-minute tutorials for JavaScript, React, Vue and Angular, plus concept guides for the model, ports, undo, layout, Mermaid, theming, export, collaboration and kits.">
+<link rel="canonical" href="https://grafloria.com/learn/">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../favicon-32.png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta property="og:title" content="Learn Grafloria — tutorials & concepts">
+<meta property="og:description" content="10-minute tutorials for JavaScript, React, Vue and Angular, plus nine concept guides. Every code sample executed against the published packages.">
+<meta property="og:url" content="https://grafloria.com/learn/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="learn.css">
+<style>
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 18px 0 8px; }
+  .lcard { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 16px 18px; display: block; color: var(--ink); }
+  .lcard:hover { border-color: var(--indigo-soft); text-decoration: none; box-shadow: 0 6px 20px -12px rgba(35,42,61,.25); }
+  .lcard b { display: block; margin-bottom: 4px; color: var(--indigo-deep); }
+  .lcard span { font-size: 13.5px; color: var(--slate); }
+  .learn-index { max-width: 900px; margin: 0 auto; padding: 40px 0 70px; }
+  .learn-index h1 { font-size: clamp(30px, 4.4vw, 42px); font-weight: 800; letter-spacing: -1px; line-height: 1.12; text-wrap: balance; }
+  .learn-index .lede { margin: 12px 0 6px; color: var(--slate); font-size: 17px; max-width: 74ch; }
+  .learn-index h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 2px; }
+  .learn-index .sub { color: var(--slate); font-size: 14.5px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../favicon.svg" alt="">
+    <span class="name"><a href="../">grafloria</a></span>
+    <nav class="links">
+      <a href="./" aria-current="page">Learn</a>
+      <a href="../demos/">Demos</a>
+      <a href="../mermaid/">Mermaid</a>
+      <a href="../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn-index">
+    <h1>Learn Grafloria</h1>
+    <p class="lede">Two layers: a <b>10-minute tutorial</b> in your framework takes you from
+    install to a working editor, and the <b>concept guides</b> explain how the engine thinks —
+    so the API stops being a list and starts being obvious. Every code sample on these pages
+    was executed against the published packages before it was published here; the
+    <a href="../demos/">demo gallery</a> stays the deep reference, with 111 CI-run pages.</p>
+
+    <h2>Tutorials</h2>
+    <p class="sub">Install → canvas → custom nodes → connection rules → undo → layout → export.</p>
+    <div class="cards">
+      <a class="lcard" href="javascript/"><b>JavaScript</b><span>render() and the &lt;grafloria-flow&gt; element — no framework, no build step required.</span></a>
+      <a class="lcard" href="react/"><b>React</b><span>&lt;GrafloriaFlow&gt;, nodeTypes components, useNodesState — Next.js notes included.</span></a>
+      <a class="lcard" href="vue/"><b>Vue 3</b><span>v-model bindings and #node-&lt;type&gt; slots — declaring the slot is the opt-in.</span></a>
+      <a class="lcard" href="angular/"><b>Angular</b><span>Signal bindings, ng-template nodes, zoneless-verified.</span></a>
+    </div>
+
+    <h2>Concepts</h2>
+    <p class="sub">Framework-agnostic — read once, apply everywhere.</p>
+    <div class="cards">
+      <a class="lcard" href="the-model/"><b>The model</b><span>Nodes, ports, links, groups — one headless model under every binding.</span></a>
+      <a class="lcard" href="ports-and-validation/"><b>Ports &amp; validation</b><span>Where links may attach, and the three layers that keep wires legal.</span></a>
+      <a class="lcard" href="commands-and-undo/"><b>Commands &amp; undo</b><span>Why ⌘Z always works, and how your features join the same history.</span></a>
+      <a class="lcard" href="layout/"><b>Layout</b><span>Eleven algorithms, one call — and why ELK never bloats your bundle.</span></a>
+      <a class="lcard" href="mermaid-and-the-dsl/"><b>Mermaid &amp; the text format</b><span>Diagrams in git: the round trip and the lossless sidecar.</span></a>
+      <a class="lcard" href="theming/"><b>Theming</b><span>One theme object, the token bridge, per-node styling.</span></a>
+      <a class="lcard" href="export/"><b>Export</b><span>PNG, SVG, real vector PDF, server-side — and files that re-open editable.</span></a>
+      <a class="lcard" href="collaboration/"><b>Collaboration</b><span>CRDT sync with any transport; presence and comments ride along.</span></a>
+      <a class="lcard" href="kits/"><b>Kits</b><span>erDiagram(), umlDiagram(), dashboard() — data in, interactive diagram out.</span></a>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

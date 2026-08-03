@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mermaid &amp; the text format — Grafloria</title>
+<meta name="description" content="Grafloria reads and writes Mermaid text: flowchart, erDiagram, classDiagram, stateDiagram. The lossless position sidecar, the round trip, and the honest gaps.">
+<link rel="canonical" href="https://grafloria.com/learn/mermaid-and-the-dsl/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Mermaid &amp; the text format — Grafloria">
+<meta property="og:description" content="Grafloria reads and writes Mermaid text: flowchart, erDiagram, classDiagram, stateDiagram. The lossless position sidecar, the round trip, and the honest gaps.">
+<meta property="og:url" content="https://grafloria.com/learn/mermaid-and-the-dsl/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/" aria-current="page">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Mermaid &amp; the text format</p>
+      <h1>Mermaid &amp; the text format</h1>
+      <p class="lede">Diagrams-as-text is how diagrams live in git. Grafloria reads and writes Mermaid-compatible text — and adds the one thing Mermaid cannot express: your hand-arranged positions, in a sidecar that keeps the text valid Mermaid.</p>
+
+      <h2>Import</h2>
+<pre>import { importDiagramText } from '@grafloria/engine';
+
+const result = importDiagramText(`flowchart LR
+  a[Start] --&gt; b{Gate}
+  b --&gt;|yes| c[Ship]
+  b --&gt;|no| a`);
+
+result.diagram;             // a live DiagramModel — 3 nodes, 3 links
+result.diagram.getNodes()[0].getData('label');   // 'Start'
+result.diagram.getNodes()[0].type;               // 'flowchart:process' — typed, not generic</pre>
+      <p>Imported nodes carry <b>semantic types</b> (<code>flowchart:process</code>,
+      <code>flowchart:decision</code>, ER entities, class boxes…), so they render with the
+      right glyphs and get type-aware layout — a state machine lays out differently from an
+      entity-relationship diagram.</p>
+
+      <h2>Supported types — and the honest line</h2>
+      <p><code>flowchart</code>/<code>graph</code>, <code>erDiagram</code>,
+      <code>classDiagram</code>, <code>stateDiagram</code>/<code>stateDiagram-v2</code>. These
+      four are verified against real Mermaid by a CI oracle — the same text rendered by
+      Mermaid itself and by Grafloria, compared structurally. Everything else is refused
+      loudly rather than rendered wrongly:</p>
+<pre>const r = importDiagramText('sequenceDiagram\n  A-&gt;&gt;B: hi');
+r.unsupported;   // 'sequenceDiagram' — check this field; there is no silent wrong guess</pre>
+<p><a class="demo-link" href="../../mermaid/">The full Mermaid compatibility story →</a></p>
+
+      <h2>Export — and the sidecar trick</h2>
+<pre>import { exportDiagramText } from '@grafloria/engine';
+
+const text = exportDiagramText(diagram);</pre>
+      <p>The output is valid Mermaid that any Mermaid renderer accepts. Positions, sizes and
+      styling — things Mermaid has no syntax for — ride in a
+      <code>%%grafloria:document</code> comment block at the end. Mermaid ignores comments;
+      Grafloria reads them back. So the round trip is <b>lossless for Grafloria</b> and
+      <b>legible for everyone else</b>: hand-arrange a diagram, export, commit, re-import —
+      your arrangement survives, and GitHub still previews the file.</p>
+
+      <h2>Text and canvas, live</h2>
+      <p>The framework surfaces wire both directions into the live canvas —
+      <code>instance.exportText()</code> / <code>instance.loadText(text)</code> (React/Vue) and
+      <code>exportText()</code> / <code>loadText()</code> on the Angular canvas.
+      <code>loadText</code> <i>reconciles into</i> the existing diagram rather than replacing
+      it — listeners, plugins and selection survive. That's the pattern behind the Monaco
+      side-by-side demos: edit text, watch the canvas; drag the canvas, watch the text.</p>
+<p><a class="demo-link" href="../../demos/#mermaid">Live: the Mermaid round-trip demos →</a></p>
+
+      <div class="note"><b>Scope note:</b> the import result also reports <code>bodyEdited</code> and
+      <code>sidecarInvalid</code> so an editor can tell "the human edited the Mermaid body by
+      hand" from "the sidecar is stale" and re-layout only when needed.</div>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../../compare/#mermaid">Grafloria vs Mermaid</a> — when text-only is enough and when it isn't.</li>
+        <li><a href="../layout/">Layout</a> — what happens when imported text has no positions.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../layout/">Layout</a>
+        <a class="next" href="../theming/">Theming</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

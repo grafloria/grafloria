@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>React tutorial — a flow editor in 10 minutes — Grafloria</title>
+<meta name="description" content="Build a complete React flow editor with Grafloria: canvas, custom nodes, typed ports, validation, undo, auto-layout and PNG export — every snippet runnable.">
+<link rel="canonical" href="https://grafloria.com/learn/react/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="React tutorial — a flow editor in 10 minutes — Grafloria">
+<meta property="og:description" content="Build a complete React flow editor with Grafloria: canvas, custom nodes, typed ports, validation, undo, auto-layout and PNG export — every snippet runnable.">
+<meta property="og:url" content="https://grafloria.com/learn/react/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/" aria-current="page">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / React in 10 minutes</p>
+      <h1>React in 10 minutes</h1>
+      <p class="lede">From <code>npm install</code> to a flow editor with custom nodes, connection rules, undo and export. Every snippet below is real, current API — the same code the CI-gated <a href="../../demos-react/">React demo gallery</a> runs.</p>
+
+      <h2>1 — Install and mount a canvas</h2>
+<pre>npm install @grafloria/react @grafloria/element @grafloria/renderer @grafloria/engine react react-dom</pre>
+      <p>One component does the heavy lifting: <code>&lt;GrafloriaFlow&gt;</code>. Give it nodes,
+      edges, and — this matters — <b>a parent with a real height</b>. The canvas fills
+      100% of its container, and 100% of zero is an empty page.</p>
+<div class="filebar">App.tsx</div>
+<pre>import { GrafloriaFlow } from '@grafloria/react';
+
+const nodes = [
+  { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' } },
+  { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Publish' } },
+];
+const edges = [{ id: 'e1', source: 'a', target: 'b' }];
+
+export default function App() {
+  return (
+    &lt;div style={{ height: '100vh' }}&gt;
+      &lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} plugins /&gt;
+    &lt;/div&gt;
+  );
+}</pre>
+      <p>That's already a working editor: drag nodes, draw connections between them, pan and
+      zoom, and — because of <code>plugins</code> — a minimap, zoom controls and a dotted
+      background (all lazy-loaded, they cost nothing if you omit the prop).
+      <code>defaultNodes</code>/<code>defaultEdges</code> is the <b>uncontrolled</b> form: the
+      canvas owns the data from here on. No stylesheet import is needed — the renderer injects
+      its own scoped styles.</p>
+
+      <h2>2 — Controlled state, the React way</h2>
+      <p>When your app needs to own the graph, use <code>useNodesState</code> /
+      <code>useEdgesState</code>. Each returns a triple — and the <b>third</b> element is the
+      change handler for the canvas, not the second:</p>
+<div class="filebar">Editor.tsx</div>
+<pre>import { GrafloriaFlow, useNodesState, useEdgesState } from '@grafloria/react';
+
+function Editor() {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  return (
+    &lt;div style={{ height: '100vh' }}&gt;
+      &lt;button onClick={() =&gt; setNodes((all) =&gt; [...all,
+        { id: 'n' + all.length, position: { x: 80, y: 80 }, data: { label: 'New' } }])}&gt;
+        Add node
+      &lt;/button&gt;
+      &lt;GrafloriaFlow
+        nodes={nodes} onNodesChange={onNodesChange}
+        edges={edges} onEdgesChange={onEdgesChange} /&gt;
+    &lt;/div&gt;
+  );
+}</pre>
+      <div class="note"><b>Why the third element?</b> <code>setNodes</code> updates your state with
+      specs; <code>onNodesChange</code> receives the engine's live <code>NodeModel[]</code>
+      after a drag or delete and folds them back into your state. Wiring
+      <code>setNodes</code> into <code>onNodesChange</code> type-errors — the tuple keeps the
+      two directions separate on purpose.</div>
+
+      <h2>3 — Custom nodes are just components</h2>
+      <p>Map a node <code>type</code> to a component with <code>nodeTypes</code>, and mark the
+      spec <code>custom: true</code> so it renders through the HTML layer instead of as SVG.
+      The node still drags, routes and hit-tests like any other:</p>
+<div class="filebar">Card.tsx</div>
+<pre>function Card({ data, selected }) {
+  return (
+    &lt;div style={{ height: '100%', background: '#fff', borderRadius: 12,
+                  border: selected ? '2px solid #3B52D9' : '1.5px solid #94A5F0',
+                  padding: '10px 14px', boxSizing: 'border-box' }}&gt;
+      &lt;div style={{ fontWeight: 700 }}&gt;{data.title}&lt;/div&gt;
+      &lt;div style={{ fontSize: 12, color: '#5A6478' }}&gt;owner: {data.owner}&lt;/div&gt;
+    &lt;/div&gt;
+  );
+}
+
+const nodes = [
+  { id: 'a', type: 'card', custom: true, position: { x: 80, y: 90 },
+    size: { width: 230, height: 110 }, data: { title: 'Build', owner: 'CI' } },
+  { id: 'b', type: 'card', custom: true, position: { x: 430, y: 90 },
+    size: { width: 230, height: 110 }, data: { title: 'Deploy', owner: 'CD' } },
+];
+
+&lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} nodeTypes={{ card: Card }} /&gt;</pre>
+      <p>Your component receives <code>{ id, data, selected, node }</code> — <code>node</code>
+      is the live engine model, the escape hatch when you need more than data.</p>
+<p><a class="demo-link" href="../../demos-react/#html-nodes">Live: custom nodes in React →</a></p>
+
+      <h2>4 — Ports and connection rules</h2>
+      <p>Ports are part of the node spec — no separate handle components. Declare them with a
+      side, a direction, and optionally a <code>dataType</code>:</p>
+<pre>const nodes = [
+  { id: 'src', position: { x: 120, y: 260 }, size: { width: 130, height: 70 }, label: 'number src',
+    ports: [{ id: 'out', side: 'right', type: 'output', dataType: 'number' }] },
+  { id: 'num', position: { x: 640, y: 140 }, size: { width: 130, height: 70 }, label: 'number in',
+    ports: [{ id: 'nin', side: 'left', type: 'input', dataType: 'number' }] },
+  { id: 'str', position: { x: 640, y: 400 }, size: { width: 130, height: 70 }, label: 'string in',
+    ports: [{ id: 'sin', side: 'left', type: 'input', dataType: 'string' }] },
+];</pre>
+      <p>Two validation mechanisms compose. <b>Type compatibility</b> is declarative — register
+      the types once and incompatible ports refuse the wire mid-drag:</p>
+<pre>import { portTypeRegistry } from '@grafloria/element';
+
+portTypeRegistry.registerAll([
+  { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
+  { name: 'string', color: '#9333ea', compatibleWith: ['string'] },
+]);</pre>
+      <p><b>Custom rules</b> are a validator function — return <code>true</code> to allow, or a
+      string to veto with a reason:</p>
+<pre>import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/element';
+
+useEffect(() =&gt; {
+  const dispose = registerConnectionValidator(({ sourcePort, targetPort }) =&gt; {
+    if (sourcePort?.type === 'output' &amp;&amp; targetPort?.type === 'output')
+      return 'an output cannot feed another output';
+    return true;
+  });
+  return () =&gt; { dispose(); clearConnectionValidators(); };
+}, []);</pre>
+      <div class="note">Validators are <b>global</b>, not per-canvas — always dispose in the effect
+      cleanup or they leak across remounts (StrictMode double-invoke included). Ports are
+      invisible until hover by default; show them permanently with
+      <code>interaction={{ portVisibility: 'always' }}</code> on the flow.</div>
+<p><a class="demo-link" href="../../demos-react/#typed-ports">Live: typed ports →</a></p>
+<p><a class="demo-link" href="../../demos-react/#connection-validation">Live: connection validation →</a></p>
+
+      <h2>5 — Undo comes free; buttons reach the engine</h2>
+      <p><kbd>⌘Z</kbd>/<kbd>Ctrl+Z</kbd> and <kbd>⌘⇧Z</kbd>/<kbd>Ctrl+Y</kbd> work with zero
+      wiring — every gesture is a command on the engine's history. For your own buttons, reach
+      the engine through the instance:</p>
+<pre>import type { DiagramInstance } from '@grafloria/react';
+
+const inst = useRef&lt;DiagramInstance | null&gt;(null);
+
+&lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges}
+  onInit={(instance) =&gt; { inst.current = instance; }} /&gt;
+
+&lt;button onClick={() =&gt; void inst.current?.getEngine().undo()}&gt;Undo&lt;/button&gt;
+&lt;button onClick={() =&gt; void inst.current?.getEngine().redo()}&gt;Redo&lt;/button&gt;</pre>
+<p><a class="demo-link" href="../../demos-react/#drag-undo">Live: drag, then ⌘Z →</a></p>
+
+      <h2>6 — Auto-layout</h2>
+      <p>Stop hand-placing nodes: name a layout and the engine arranges them. ELK is the
+      heavyweight — it loads lazily (a separate ~432&nbsp;KB gz chunk) only when first used:</p>
+<pre>&lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} layout="elk" /&gt;
+
+// or configured:
+&lt;GrafloriaFlow layout={{ name: 'dagre', options: { direction: 'TB', rankSpacing: 80 } }} ... /&gt;</pre>
+      <p>Registered names: <code>auto</code>, <code>elk</code>, <code>dagre</code>,
+      <code>layered</code>, <code>tree</code>, <code>grid</code>, <code>circular</code>,
+      <code>radial</code>, <code>force</code>, <code>spectral</code>, <code>community</code>.
+      The prop re-runs on <i>value</i> change only — it will never fight a user's drag. To
+      re-layout on demand, call <code>instance.getEngine().layout('layered', { direction: 'LR' })</code>.</p>
+<p><a class="demo-link" href="../../demos-react/#elk-tree">Live: ELK layout →</a></p>
+
+      <h2>7 — Save, load, export</h2>
+<pre>// PNG (data: URL) and SVG (raw string) — exports the scene graph, not a screenshot
+const png = await inst.current.export('png', { scale: 2 });
+const svg = await inst.current.export('svg');
+const pdf = await inst.current.export('pdf');   // real vector PDF
+
+// Mermaid-compatible text round-trip
+const text = inst.current.exportText();          // valid Mermaid + position sidecar
+inst.current.loadText(text);                     // reconciles into the live canvas</pre>
+      <p>Pass <code>{ embedModel: true }</code> to PNG/SVG export and the diagram model rides
+      inside the file — the exported image re-opens as an editable diagram.</p>
+<p><a class="demo-link" href="../../demos-react/#download-image">Live: PNG/SVG download →</a></p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../../demos-react/">Every demo as a React component</a> — 100+ routes, source shown.</li>
+        <li><a href="../the-model/">The model</a> — what nodes, ports, links and groups really are.</li>
+        <li><a href="../collaboration/">Collaboration</a> — the <code>collab</code> prop and CRDT sync.</li>
+        <li>Next.js: all components carry <code>'use client'</code>; for server rendering use the
+        <code>ssr</code> prop with <code>renderToStaticSVG()</code> — no <code>dynamic()</code> tricks needed.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../javascript/">JavaScript in 10 minutes</a>
+        <a class="next" href="../vue/">Vue 3 in 10 minutes</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
