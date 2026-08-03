@@ -225,5 +225,19 @@
   io.observe(host);
 </script>
 
+
+<script>
+  // PAGE SCROLL WINS on landing pages. The canvas binder preventDefaults wheel
+  // (zoom) — correct in the tool pages, wrong under a reader's scrolling
+  // thumb: the page froze wherever the pointer crossed a diagram. Stop the
+  // wheel at capture phase so the binder never sees it (the browser then
+  // scrolls normally); drag-to-pan and every click still work. pan-y lets
+  // vertical TOUCH pans through for the same reason.
+  for (const el of document.querySelectorAll('#fw-live')) {
+    el.addEventListener('wheel', (e) => e.stopPropagation(), { capture: true, passive: true });
+  }
+</script>
+<style>#fw-live , #fw-live * { touch-action: pan-y !important; }</style>
+
 </body>
 </html>
