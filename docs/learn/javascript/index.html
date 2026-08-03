@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/">Layout</a>
         <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
         <a href="../theming/">Theming</a>
         <a href="../export/">Export</a>
         <a href="../collaboration/">Collaboration</a>
         <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -62,11 +70,11 @@
       <p class="lede">No framework, no build step required. Two front doors — a <code>render()</code> function and a <code>&lt;grafloria-flow&gt;</code> element — over the same engine that powers every framework binding. The same code the CI-gated <a href="../../demos/">demo gallery</a> runs.</p>
 
       <h2>1 — Install and render</h2>
-<pre>npm install @grafloria/element @grafloria/renderer @grafloria/engine</pre>
+<pre data-lang="shell">npm install @grafloria/element @grafloria/renderer @grafloria/engine</pre>
       <p><code>render(spec, target)</code> mounts a full editor into any sized element —
       spec first, target second:</p>
 <div class="filebar">main.js</div>
-<pre>import { render } from '@grafloria/element';
+<pre data-lang="javascript">import { render } from '@grafloria/element';
 
 const api = render({
   nodes: [
@@ -88,7 +96,7 @@ const api = render({
       <p>The same canvas as a custom element — JSON attributes in, DOM events out. This is
       the CMS/notebook/plain-HTML path:</p>
 <div class="filebar">index.html</div>
-<pre>&lt;script type="module"&gt;import '@grafloria/element';&lt;/script&gt;
+<pre data-lang="html">&lt;script type="module"&gt;import '@grafloria/element';&lt;/script&gt;
 
 &lt;grafloria-flow theme="light" fit-view style="height: 80vh"
   nodes='[{"id":"a","position":{"x":0,"y":0},"label":"Extract"},
@@ -110,7 +118,7 @@ const api = render({
 
       <h2>3 — Custom nodes without a framework</h2>
       <p>Two paths. A renderer function:</p>
-<pre>import { Grafloria } from '@grafloria/element';
+<pre data-lang="typescript">import { Grafloria } from '@grafloria/element';
 
 Grafloria.registerNodeType('card', (node, el) =&gt; {
   el.innerHTML = `&lt;div class="card"&gt;&lt;b&gt;${node.getData('title')}&lt;/b&gt;&lt;/div&gt;`;
@@ -122,7 +130,7 @@ Grafloria.registerNodeType('card', (node, el) =&gt; {
       <p>…or a zero-JavaScript template slotted into the element — cloned per node,
       <code>data-field</code> elements filled from <code>node.data</code> via
       <code>textContent</code> (never <code>innerHTML</code> — diagram data is user input):</p>
-<pre>&lt;grafloria-flow nodes='[{"id":"a","type":"card","custom":true,
+<pre data-lang="html">&lt;grafloria-flow nodes='[{"id":"a","type":"card","custom":true,
     "position":{"x":80,"y":90},"size":{"width":230,"height":110},
     "data":{"title":"Build"}}]'&gt;
   &lt;template data-node-type="card"&gt;
@@ -135,7 +143,7 @@ Grafloria.registerNodeType('card', (node, el) =&gt; {
 <p><a class="demo-link" href="../../demos/#nodes">Live: custom node demos →</a></p>
 
       <h2>4 — Ports and connection rules</h2>
-<pre>const nodes = [
+<pre data-lang="typescript">const nodes = [
   { id: 'src', position: { x: 120, y: 260 }, size: { width: 130, height: 70 }, label: 'number src',
     ports: [{ id: 'out', side: 'right', type: 'output', dataType: 'number' }] },
   { id: 'num', position: { x: 640, y: 140 }, size: { width: 130, height: 70 }, label: 'number in',
@@ -160,7 +168,7 @@ const dispose = registerConnectionValidator(({ sourcePort, targetPort }) =&gt; {
 api.getEngine().setInteractionConfig({ portVisibility: 'always' });</pre>
 
       <h2>5 — Undo, layout, plugins</h2>
-<pre>// ⌘Z / Ctrl+Z already works. For buttons:
+<pre data-lang="typescript">// ⌘Z / Ctrl+Z already works. For buttons:
 await api.getEngine().undo();
 await api.getEngine().redo();
 api.getEngine().canUndo();
@@ -178,7 +186,7 @@ attachCanvasPlugins(api, { background: { variant: 'dots' }, minimap: true, contr
       <code>radial</code>, <code>force</code>, <code>spectral</code>, <code>community</code>.</p>
 
       <h2>6 — Save and load, losslessly</h2>
-<pre>import { DiagramSerializer, fromDocument, render } from '@grafloria/element';
+<pre data-lang="typescript">import { DiagramSerializer, fromDocument, render } from '@grafloria/element';
 
 // save
 const json = JSON.stringify(new DiagramSerializer().serialize(api.getModel()));
@@ -187,7 +195,7 @@ const json = JSON.stringify(new DiagramSerializer().serialize(api.getModel()));
 const api2 = render(fromDocument(json), host);</pre>
 
       <h2>7 — Mermaid text and image export</h2>
-<pre>// text round-trip — valid Mermaid out, sidecar keeps your positions
+<pre data-lang="typescript">// text round-trip — valid Mermaid out, sidecar keeps your positions
 const text = api.exportText();
 api.loadText(text);                       // reconciles into the live canvas
 
@@ -225,5 +233,21 @@ const pdf = await api.export('pdf');                 // real vector PDF</pre>
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

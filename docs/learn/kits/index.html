@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/">Layout</a>
         <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
         <a href="../theming/">Theming</a>
         <a href="../export/">Export</a>
         <a href="../collaboration/">Collaboration</a>
         <a href="../kits/" aria-current="page">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -62,7 +70,7 @@
       <p class="lede">A kit turns plain data into a finished interactive diagram — entities in, an ER diagram with column-level ports out. Kits are functions returning specs, so they compose with everything else on this site.</p>
 
       <h2>The pattern</h2>
-<pre>import { render, erDiagram } from '@grafloria/element';
+<pre data-lang="typescript">import { render, erDiagram } from '@grafloria/element';
 
 const spec = erDiagram({ entities, relationships });
 const api = render(spec, host);      // render() runs the kit's finalize for you</pre>
@@ -72,7 +80,7 @@ const api = render(spec, host);      // render() runs the kit's finalize for you
       unchanged.</p>
 
       <h2>ER — tables with real columns</h2>
-<pre>const spec = erDiagram({
+<pre data-lang="typescript">const spec = erDiagram({
   entities: [
     { id: 'CUSTOMER', name: 'Customer', position: { x: 60, y: 76 }, columns: [
       { name: 'id', type: 'int', pk: true },
@@ -95,7 +103,7 @@ const api = render(spec, host);      // render() runs the kit's finalize for you
 <p><a class="demo-link" href="../../demos/#table-er">Live: ER diagram →</a></p>
 
       <h2>UML — classes, stereotypes, markers</h2>
-<pre>const spec = umlDiagram({
+<pre data-lang="typescript">const spec = umlDiagram({
   classes: [
     { id: 'Animal', abstract: true, position: { x: 380, y: 40 },
       attributes: ['# name: String'], methods: ['+ speak(): void'] },
@@ -111,7 +119,7 @@ const api = render(spec, host);      // render() runs the kit's finalize for you
       <code>aggregation</code>, <code>composition</code>, <code>dependency</code>.</p>
       <p>Both card kits also expose a <b>typed handle façade</b> for programmatic editing that
       rides the undo stack:</p>
-<pre>import { umlClass } from '@grafloria/element';
+<pre data-lang="typescript">import { umlClass } from '@grafloria/element';
 
 const animal = umlClass(api, 'Animal');
 await animal.methods.add('+ move(): void');
@@ -120,7 +128,7 @@ await animal.undo();</pre>
 <p><a class="demo-link" href="../../demos/#class-uml">Live: UML class diagram →</a></p>
 
       <h2>Dashboards — a drag-and-pack grid</h2>
-<pre>import { render, dashboard } from '@grafloria/element';
+<pre data-lang="typescript">import { render, dashboard } from '@grafloria/element';
 
 const spec = dashboard({
   columns: 12,
@@ -157,7 +165,7 @@ spec.handle.addWidget({ id: 'later', kind: 'bar', span: 3, data: { bars: [] } })
 
       <div class="pn">
         <a class="prev" href="../collaboration/">Collaboration</a>
-        <span></span>
+        <a class="next" href="../the-instance/">The DiagramInstance</a>
       </div>
     </article>
   </div>
@@ -171,5 +179,21 @@ spec.handle.addWidget({ id: 'later', kind: 'bar', span: 3, data: { bars: [] } })
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

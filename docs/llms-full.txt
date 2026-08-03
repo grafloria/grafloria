@@ -1057,6 +1057,88 @@ engine2.getDiagram().getNode('intake').getData('label');   // 'Intake' — every
         - Mermaid & the text format — the second, human-writable serialization.
 
 
+# Edges & routing (https://grafloria.com/learn/edges-and-routing/)
+
+An edge stores intent — connect A to B, orthogonally, avoiding obstacles — and the renderer turns intent into geometry that stays correct as nodes move. Only two fields are required.
+
+## The minimal edge, and every field after it
+
+```
+{ source: 'a', target: 'b' }                       // that's a complete edge
+
+{ id: 'e1',
+  source: 'a', target: 'b',                          // node ids
+  sourceHandle: 'out',                               // a port id — or a bare side: 'right'
+  targetHandle: 'left',
+  type: 'orthogonal',                                // 'direct' | 'smooth' | 'orthogonal' | 'bezier'
+  router: 'avoid',                                   // 'straight' | 'orthogonal' | 'manhattan' | 'avoid' | 'elk'
+  connector: 'rounded',                              // corner treatment: 'straight' | 'rounded' | 'smooth' | 'bezier'
+  label: 'retry',
+  style: { stroke: '#9333ea', strokeWidth: 2, strokeDasharray: '6 3' },
+  data: { weight: 3 },                               // your payload
+  points: [{ x: 340, y: 180 }] }                     // explicit waypoints — restores a user-edited route
+```
+
+      Omit both handles and the edge attaches to whichever default port faces its partner
+      as nodes move. Default ports have deterministic ids
+      (<nodeId>__top … __left), which is why a bare side name
+      like sourceHandle: 'bottom' resolves. For true perimeter floating —
+      attaching anywhere along the node's outline rather than at a port — set
+      metadata: { connectionPoint: 'smart' }.
+
+      
+## Type versus router — two different questions
+
+      type answers "what shape is the line" (straight segments, one smooth
+      curve, right angles, a bezier). router answers "which path does it take"
+      — and that is where the interesting engineering lives:
+      
+        | Router | Behavior |
+
+        | straight | direct line, endpoints only |
+
+        | orthogonal | right-angled path from the port's exit direction |
+
+        | manhattan | grid-based right-angle routing with turn minimization |
+
+        | avoid | obstacle avoidance — the path walks around nodes instead of crossing them, and re-routes live as you drag |
+
+        | elk | edge routes computed by the ELK layout engine, consistent with an ELK-laid-out graph |
+
+      
+      Obstacle-avoiding routing is the feature most diagram libraries sell as a paid
+      add-on or leave as an exercise. Here it is one word on the edge spec. The
+      comparison table sources this cell by cell.
+Live: every edge type, router and connector →
+
+      
+## Labels, parallel edges, crossings
+
+      label puts editable text on the path (double-click to edit in place;
+      drag to reposition — the position persists in the model). When several edges connect
+      the same pair of nodes, the renderer fans them apart
+      (rendererConfig: { parallelLinks: true, parallelSpacing: 12 }), and where
+      unrelated edges cross you can render jump-overs via the renderer config's jump
+      styles.
+
+      
+## Reconnecting and editing
+
+      Drag an edge's endpoint and drop it on another port — validators run again (see
+      Ports & validation; the candidate carries
+      link so a rule can treat reconnection differently). Drag the path itself
+      to bend it — the bend lands in points and round-trips through
+      serialization. Every one of these edits is a single undoable step.
+
+      
+## Where next
+
+      
+        - Ports & validation — what edges attach to.
+
+        - Layout — edge routes that come from the layout engine.
+
+
 # Ports & validation (https://grafloria.com/learn/ports-and-validation/)
 
 Ports decide where links attach and which connections are legal. The spec is identical in every framework — declared on the node, enforced by the engine, drawn by the renderer.
@@ -1169,6 +1251,78 @@ Live: validation demos →
         - The tutorials wire typed ports end-to-end in each framework.
 
 
+# Groups (https://grafloria.com/learn/groups/)
+
+A group is not a rectangle drawn behind some nodes — it is a container the engine understands: members move together, collapse is reversible by construction, and nesting reflows parents around children.
+
+## Creating and membership
+
+```
+import { GroupModel } from '@grafloria/engine';
+
+diagram.addGroup(new GroupModel({
+  id: 'ingest-stage',
+  position: { x: 0, y: 0 }, size: { width: 320, height: 180 },
+}));
+
+await engine.addToGroup('ingest-stage', 'a');    // (groupId, entityId) — group first
+await engine.addToGroup('ingest-stage', 'b');
+await engine.removeFromGroup('ingest-stage', 'b');
+```
+
+      Members drag with the group, and interactive membership works too — drag a node
+      into a group's frame and it joins; groups can contain groups. Query structure with
+      diagram.getGroups(), diagram.getGroup(id),
+      diagram.getAncestors(id) / getDescendants(id).
+
+      
+## Collapse is a reversible snapshot
+
+```
+await engine.collapseGroup('ingest-stage');   // members hide, links re-route to the header
+await engine.expandGroup('ingest-stage');     // everything returns exactly where it was
+```
+
+      Collapse stores a snapshot on the group — member world-positions and the
+      links removed at collapse time — so a collapsed diagram serializes, round-trips,
+      and expands correctly later, even in a different session. Links from outside to a
+      hidden member re-anchor to the collapsed header, and parallel edges merge into one
+      until expand.
+
+      
+## Nesting and fit
+
+      Containers reflow: a group can fit itself around its already-fitted children, and a
+      resize cascades down into nested containers' own reflows. That is what makes
+      swimlanes, BPMN pools and stage-based pipelines behave — moving a lane moves its
+      contents; growing content grows the lane.
+
+      
+## Frameless groups — layout without chrome
+
+```
+const g = diagram.getGroup('kpi-row');
+g.setMetadata('frameChrome', 'none');    // no border, no header — pure layout container
+```
+
+      A frameless group is the primitive under the
+      dashboard kit's grid: cells that pack and drag without looking
+      like "a group". Use it whenever you want container behavior without container
+      pixels.
+      Groups participate in everything else on this site: group operations are
+      commands (undoable), groups serialize in the document, ELK lays out nested structures
+      natively, and a collapsed group exports exactly as it looks on screen.
+Live: group demos — drag in, collapse, nest →
+
+      
+## Where next
+
+      
+        - The model — where groups sit among nodes and links.
+
+        - Kits — the dashboard grid built on frameless groups.
+
+
 # Commands & undo (https://grafloria.com/learn/commands-and-undo/)
 
 Every user gesture — drag, connect, delete, paste, group — becomes a command object on one history stack. That is why ⌘Z works everywhere with zero wiring, and why your own features can join the same history.
@@ -1251,6 +1405,93 @@ await engine.undo();  // and it cleanly reverts
         - The model — what these commands mutate.
 
         - Collaboration — how local commands become CRDT ops.
+
+
+# Events & interaction (https://grafloria.com/learn/events-and-interaction/)
+
+One event map on the instance; each framework dresses it in its own idiom — DOM events, React callbacks, Vue emits, Angular outputs. Learn the map once and the bindings become predictable.
+
+## The instance event map
+
+```
+instance.on('nodes:change',     ({ nodes }) => save(nodes));      // add/remove — live NodeModel[]
+instance.on('edges:change',     ({ edges }) => {});
+instance.on('selection:change', ({ nodes, edges }) => inspect(nodes));
+instance.on('connect',          ({ link }) => {});                 // a wire was completed
+instance.on('reconnect',        ({ link, endpoint }) => {});       // 'source' | 'target' moved
+instance.on('node:click',       ({ node, world }) => {});          // world = diagram coords
+instance.on('node:doubleclick', ({ node, world }) => {});
+instance.on('edge:click',       ({ edge, world }) => {});
+instance.on('viewport:change',  ({ viewport, zoom }) => {});
+// every on() returns an unsubscribe function
+```
+
+      
+## The same map, per framework
+
+      
+        | Surface | Idiom | Example |
+
+        | Plain JS | api.on(...), or bubbling DOM events on <grafloria-flow> | el.addEventListener('grafloria-connect', e => e.detail.link) |
+
+        | React | callback props | onConnect, onNodeClick, onSelectionChange, onNodesChange |
+
+        | Vue | emits (kebab-case) | @connect, @node-click, @selection-change, v-model:nodes |
+
+        | Angular | model writes + outputs | [(nodes)], (viewportChanged), (layoutDone); clicks via the engine bus |
+
+      
+      The element's DOM events (grafloria-ready, -nodes-change,
+      -edges-change, -selection-change, -connect,
+      -node-click, -edge-click, -viewport-change) all
+      bubble and cross shadow boundaries — delegate at document level if you
+      like.
+
+      
+## The connection lifecycle, live
+
+      While a user drags a wire, the engine's bus narrates it — this is what powers
+      guidance UIs (tint the good targets, explain the refusals):
+
+```
+const bus = instance.getEngine().eventBus;
+for (const name of ['connection:start', 'connection:update', 'connection:port-enter',
+                    'connection:port-leave', 'connection:complete', 'connection:cancel']) {
+  bus.on(name, (payload) => log(name, payload));
+}
+```
+
+Live: connection events narrated on screen →
+
+      
+## Interaction config — what the user may do
+
+```
+// at creation (a prop in React/Vue: interaction={{ ... }})
+render(spec, host, { interaction: { portVisibility: 'always' } });
+
+// at runtime
+instance.getEngine().setInteractionConfig({ portVisibility: 'always' });
+```
+
+      Framework-level switches cover the common cases directly:
+      readonly (view-only canvas), enablePan /
+      enableZoom / minZoom / maxZoom /
+      zoomSensitivity, fitView, and in Angular also
+      enableSnapping, enableProximityConnect,
+      enableKeyboardNavigation, enableInPlaceEditing and
+      canvasBounds.
+      Built-in keyboard support ships enabled: ⌘Z/⌘⇧Z history, Delete for
+      selection, arrow-key nudging, and focus-visible navigation with live-region narration
+      for screen readers. You wire nothing.
+
+      
+## Where next
+
+      
+        - The DiagramInstance — the object all of this hangs off.
+
+        - Commands & undo — what a gesture becomes once it lands.
 
 
 # Layout (https://grafloria.com/learn/layout/)
@@ -1772,3 +2013,195 @@ Live: dashboard builder →
 
         - Commands & undo — why kit edits are
         undoable for free.
+
+
+# The DiagramInstance (https://grafloria.com/learn/the-instance/)
+
+Everything hands you the same object: render() returns it, React/Vue give it via onInit/@init, the element exposes it as el.diagram. This page is its map.
+
+## Orientation: three layers down
+
+```
+const api = render(spec, host);       // DiagramInstance — the renderer-level facade
+api.getModel();                       // DiagramModel  — the data (nodes, links, groups)
+api.getEngine();                      // DiagramEngine — behavior (commands, layout, validation)
+```
+
+      Rule of thumb: pixels and specs → instance; data queries → model; behavior →
+      engine. If a method is missing on the instance, it lives one layer down.
+
+      
+## The surface, grouped
+
+      
+        | Area | Members |
+
+        | Model in/out | setNodes(specs), setEdges(specs) — reconcile specs into the live diagram; getModel() |
+
+        | Events | on(event, handler) → unsubscribe fn, off(event, handler) — see Events & interaction |
+
+        | Camera | viewport (controller), fitView(padding?) |
+
+        | Painting | render() — queued, coalesced; renderNow() — synchronous |
+
+        | Batching | batchUpdate((model) => { ... }) — many mutations, one repaint |
+
+        | Export | export(format?, options?) async; exportSvgString(), exportPdf() sync — see Export |
+
+        | Text | exportText(), loadText(text) — Mermaid round-trip, reconciled into the live canvas |
+
+        | Appearance | setTheme(theme) |
+
+        | Interaction | interaction (controller); config via getEngine().setInteractionConfig(...) |
+
+        | Lifecycle | dispose(); container — the host element |
+
+      
+
+      
+## The reconciler — and its one gotcha
+
+      setNodes/setEdges and loadText do not
+      rebuild the diagram; they reconcile — existing ids keep their live objects
+      (selection, listeners, plugins all survive), new ids are created, missing ids are
+      removed. The gotcha: an id that still exists keeps its existing object, so
+      re-applying externally-edited data for the same ids needs a clear first:
+
+```
+// re-applying edited text/specs where ids persist:
+api.setEdges([]); api.setNodes([]);   // clear, then apply — otherwise stale nodes survive
+api.setNodes(next.nodes);
+api.setEdges(next.edges);
+```
+
+      
+## What is deliberately NOT here
+
+      
+        - undo()/redo() — history lives on the engine:
+        await api.getEngine().undo(). (⌘Z needs no wiring at all.)
+
+        - layout() — also the engine: await api.getEngine().layout('elk'),
+        then api.renderNow().
+
+        - serialize() — the model: api.getModel().serialize(); restore
+        losslessly via fromDocument() from @grafloria/element.
+
+      
+      If you prefer one flat object over three layers,
+      createDiagramApi(instance) from @grafloria/element wraps the
+      common cross-layer calls — including undo()/redo()/execute(command) —
+      into a single facade.
+
+      
+## Where next
+
+      
+        - FAQ & troubleshooting — the ten minutes of debugging this page prevents.
+
+
+# FAQ & troubleshooting (https://grafloria.com/learn/faq/)
+
+Every entry here is a wall someone actually hit — most of them us, while verifying the tutorials. Symptoms first, causes second.
+
+## The canvas is blank
+
+      The container has no resolved height. The canvas fills 100% of its parent — and
+      100% of zero is an empty page. Give the wrapper a real height
+      (height: 100vh, a flex row with flex: 1, a sized grid cell).
+      This is the #1 first-run issue in every framework.
+
+      
+## My custom node renders as a plain rectangle
+
+      In plain JS and React the spec must carry custom: true — that is what
+      routes the node through the HTML layer where your renderer/component mounts. Vue slots
+      (#node-<type>) and Angular templates
+      (ng-template grafloriaNode="type") set it for you; nodeTypes
+      and registerNodeType do not.
+
+      
+## instance.undo is not a function
+
+      Correct — history lives on the engine: await instance.getEngine().undo().
+      Angular's canvas component mirrors undo()/redo() directly;
+      nothing else does. Keyboard ⌘Z/Ctrl+Z works everywhere with zero wiring.
+
+      
+## I can't see any ports
+
+      Ports show on hover by default. Show them permanently with
+      interaction: { portVisibility: 'always' } at creation (a prop in
+      React/Vue) or engine.setInteractionConfig({ portVisibility: 'always' })
+      at runtime.
+
+      
+## My connection validator fires on a completely different page
+
+      The validator registry is process-global, not per-canvas. Keep the disposer
+      returned by registerConnectionValidator and call it on unmount (plus
+      clearConnectionValidators() if you want a clean slate). React StrictMode
+      double-invokes effects — the cleanup protects you there too.
+
+      
+## The layout prop doesn't re-run when my data changes
+
+      Deliberate. layout re-runs when the prop value changes, never
+      when node data changes — otherwise every user drag would be fought by a relayout.
+      Re-run on demand: instance.getEngine().layout('elk') (then
+      renderNow()), or applyLayout() in Angular/Vue.
+
+      
+## Re-applying edited data keeps stale nodes
+
+      setNodes/loadText reconcile: ids that still exist
+      keep their live objects. When you re-apply externally-edited data for the same ids,
+      clear first — api.setEdges([]); api.setNodes([]); then apply.
+
+      
+## Export throws "the canvas has not rendered yet"
+
+      Export needs a painted canvas — call it after the first paint (in practice: after
+      onInit/ngAfterViewInit plus a frame, or behind a user
+      action). SVG returns a raw string; PNG/PDF return data: URLs.
+
+      
+## ESM, require(), Jest
+
+      
+        - Since engine 0.3.x / renderer 0.4.x / element 0.4.x the packages are
+        pure ESM. Bundlers need no config; Node ≥ 20.19 can even
+        require() them.
+
+        - Jest with CJS transforms: allow the packages through
+        (transformIgnorePatterns: ['/node_modules/(?!@grafloria)']) or run
+        Jest/Vitest in ESM mode. Test failures like "Unexpected token export" are runner
+        config, not library bugs.
+
+        - Importing @grafloria/element registers the
+        <grafloria-flow> element as a side effect — safe in Node and
+        workers (it no-ops without customElements).
+
+      
+
+      
+## Isn't 9 MB unpacked huge?
+
+      npm's unpacked-size stat counts uncompressed ESM source plus full TypeScript
+      declarations — none of it ships. What your users download, measured worst-case:
+      engine 228 KB gz, react/vue 334, angular 395, element
+      451 — with ELK layout in a lazy chunk (432 KB gz) that only downloads if
+      invoked. Every package README carries a two-minute reproduction script.
+
+      
+## The element ignores my nodes attribute
+
+      Malformed JSON — the element warns
+      ([grafloria-flow] ignoring malformed JSON attribute) and keeps running.
+      Single-quote the attribute, double-quote the JSON inside, and remember geometry is
+      "position":{"x":0,"y":0} — never top-level x/y. After mount, prefer
+      properties: el.nodes = [...].
+
+      Something not covered here? The 111 demos are
+      executable answers — find the closest one and read its source. Or open an issue on
+      GitHub.

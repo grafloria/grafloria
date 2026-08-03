@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/">Layout</a>
         <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
         <a href="../theming/">Theming</a>
         <a href="../export/" aria-current="page">Export</a>
         <a href="../collaboration/">Collaboration</a>
         <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -62,7 +70,7 @@
       <p class="lede">Exports render the <b>scene graph</b>, not a screenshot — full quality at any scale, whatever is on or off camera. Five formats, one async call, plus a server-side path that needs no DOM at all.</p>
 
       <h2>The one call</h2>
-<pre>const png  = await instance.export('png', { scale: 2 });  // data: URL
+<pre data-lang="typescript">const png  = await instance.export('png', { scale: 2 });  // data: URL
 const jpeg = await instance.export('jpeg');                 // data: URL
 const webp = await instance.export('webp');                 // data: URL
 const svg  = await instance.export('svg');                  // raw SVG source string
@@ -73,7 +81,7 @@ const pdf  = await instance.export('pdf');                  // data: URL — a r
       warnings) and <code>exportPdf()</code> (returns <code>{ pdf: Uint8Array, … }</code>).</p>
       <p>Angular surfaces the same thing as <code>exportDiagram(format, options)</code> on the
       canvas component; Vue also exposes template-ref shortcuts.</p>
-<pre>// the classic download button
+<pre data-lang="typescript">// the classic download button
 const a = document.createElement('a');
 a.href = await instance.export('png', { scale: 2 });
 a.download = 'diagram.png';
@@ -89,7 +97,7 @@ a.click();</pre>
       a rasterized page. Print it at any size; search it; extract from it.</p>
 
       <h2>The editable file trick: embedModel</h2>
-<pre>const svg = await instance.export('svg', { embedModel: true });
+<pre data-lang="typescript">const svg = await instance.export('svg', { embedModel: true });
 // the diagram's full document now rides inside the artifact
 
 import { importDiagram, isEditableArtifact } from '@grafloria/element';
@@ -100,7 +108,7 @@ const model = importDiagram(svg); // back to a live, editable diagram</pre>
 <p><a class="demo-link" href="../../demos-react/#editable-round-trip">Live: the editable round-trip →</a></p>
 
       <h2>Server-side, no DOM</h2>
-<pre>import { renderStatic } from '@grafloria/element';
+<pre data-lang="typescript">import { renderStatic } from '@grafloria/element';
 
 const r = renderStatic({ nodes, edges, width: 520, height: 300, standalone: true });
 // r.svg — deterministic SVG, rendered headlessly (Node, workers, edge functions)</pre>
@@ -131,5 +139,21 @@ const r = renderStatic({ nodes, edges, width: 520, height: 300, standalone: true
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

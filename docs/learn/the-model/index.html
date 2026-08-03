@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/" aria-current="page">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/">Layout</a>
         <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
         <a href="../theming/">Theming</a>
         <a href="../export/">Export</a>
         <a href="../collaboration/">Collaboration</a>
         <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -69,7 +77,7 @@
       models internally, and hand models back in change events. This page is the layer
       underneath — it runs identically in the browser, in a worker, and in Node (the snippets
       below execute in plain Node against the published package).</p>
-<pre>import { DiagramEngine, NodeModel, PortModel, LinkModel } from '@grafloria/engine';
+<pre data-lang="typescript">import { DiagramEngine, NodeModel, PortModel, LinkModel } from '@grafloria/engine';
 
 const engine  = new DiagramEngine();
 const diagram = engine.createDiagram('order-flow');
@@ -107,7 +115,7 @@ diagram.addLink(new LinkModel({
       <p>Every node is born with <b>four deterministic bi-directional ports</b> (top, right,
       bottom, left) — the industry default, so plain flowcharts need zero port ceremony.
       The moment you need precision, add your own:</p>
-<pre>intake.addPort(new PortModel({ id: 'intake-out', type: 'output', side: 'right' }));
+<pre data-lang="typescript">intake.addPort(new PortModel({ id: 'intake-out', type: 'output', side: 'right' }));
 
 // reach them later
 intake.getPorts();                    // all ports
@@ -122,7 +130,7 @@ diagram.getNodeByPortId('intake-out');</pre>
       <h2>Links</h2>
       <p>A link connects two endpoints. Each endpoint names a node — and optionally a specific
       port; omit <code>portId</code> and the renderer picks the best side as things move:</p>
-<pre>new LinkModel({
+<pre data-lang="typescript">new LinkModel({
   id: 'l1',
   source: { nodeId: 'intake', portId: 'intake-out' },   // pinned to a port
   target: { nodeId: 'review' },                          // free — best side wins
@@ -146,7 +154,7 @@ diagram.getLinksForNode('intake');   // every link touching a node</pre>
       <h2>Serialization — the document is the API</h2>
       <p>The whole diagram round-trips through one JSON document with a
       <code>schemaVersion</code> and migrations on load — save it anywhere:</p>
-<pre>const doc = diagram.serialize();
+<pre data-lang="typescript">const doc = diagram.serialize();
 // { schemaVersion, id, uuid, type, version, metadata, name, nodes, links, groups, viewport }
 
 const engine2 = new DiagramEngine();
@@ -167,7 +175,7 @@ engine2.getDiagram().getNode('intake').getData('label');   // 'Intake' — every
 
       <div class="pn">
         <a class="prev" href="../angular/">Angular in 10 minutes</a>
-        <a class="next" href="../ports-and-validation/">Ports & validation</a>
+        <a class="next" href="../edges-and-routing/">Edges & routing</a>
       </div>
     </article>
   </div>
@@ -181,5 +189,21 @@ engine2.getDiagram().getNode('intake').getData('label');   // 'Intake' — every
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

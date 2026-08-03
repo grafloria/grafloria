@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/">Layout</a>
         <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
         <a href="../theming/" aria-current="page">Theming</a>
         <a href="../export/">Export</a>
         <a href="../collaboration/">Collaboration</a>
         <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -62,7 +70,7 @@
       <p class="lede">One <code>Theme</code> object drives the canvas chrome, node defaults, link colors and selection states — swap it and everything repaints. Per-node styling stays in the spec, so themes and data never fight.</p>
 
       <h2>Built-in themes</h2>
-<pre>// exported from @grafloria/react, @grafloria/vue, or @grafloria/renderer
+<pre data-lang="typescript">// exported from @grafloria/react, @grafloria/vue, or @grafloria/renderer
 import { LIGHT_THEME, DARK_THEME } from '@grafloria/react';
 
 // React
@@ -81,7 +89,7 @@ import { LIGHT_THEME, DARK_THEME } from '@grafloria/react';
 <p><a class="demo-link" href="../../demos-vue/#dark-mode">Live: dark mode toggle →</a></p>
 
       <h2>App-wide defaults (Angular)</h2>
-<pre>bootstrapApplication(App, {
+<pre data-lang="typescript">bootstrapApplication(App, {
   providers: [provideGrafloria({ theme: DARK_THEME })],
 });</pre>
       <p>Precedence: a canvas-level <code>[theme]</code> binding → the provided default →
@@ -95,7 +103,7 @@ import { LIGHT_THEME, DARK_THEME } from '@grafloria/react';
 
       <h2>Per-node and per-edge styling</h2>
       <p>Theme = the room; spec styling = the furniture:</p>
-<pre>{ id: 'a', position: { x: 60, y: 80 },
+<pre data-lang="typescript">{ id: 'a', position: { x: 60, y: 80 },
   shape: { type: 'terminal', fill: '#ecfdf5', stroke: '#059669', cornerRadius: 10 } }
 
 { id: 'e1', source: 'a', target: 'b',
@@ -129,5 +137,21 @@ import { LIGHT_THEME, DARK_THEME } from '@grafloria/react';
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

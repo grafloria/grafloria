@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/">Layout</a>
         <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
         <a href="../theming/">Theming</a>
         <a href="../export/">Export</a>
         <a href="../collaboration/">Collaboration</a>
         <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -62,11 +70,11 @@
       <p class="lede">From <code>npm install</code> to a flow editor with slot-defined nodes, connection rules, undo and export. The same code the CI-gated <a href="../../demos-vue/">Vue demo gallery</a> runs.</p>
 
       <h2>1 — Install and mount a canvas</h2>
-<pre>npm install @grafloria/vue @grafloria/element @grafloria/renderer @grafloria/engine</pre>
+<pre data-lang="shell">npm install @grafloria/vue @grafloria/element @grafloria/renderer @grafloria/engine</pre>
       <p>One component: <code>&lt;GrafloriaFlow&gt;</code>. Give its wrapper a real height —
       the canvas fills its container, and 100% of zero is a blank page.</p>
 <div class="filebar">App.vue</div>
-<pre>&lt;script setup&gt;
+<pre data-lang="html">&lt;script setup&gt;
 import { GrafloriaFlow } from '@grafloria/vue';
 
 const nodes = [
@@ -92,7 +100,7 @@ const edges = [{ id: 'e1', source: 'a', target: 'b' }];
       <code>#node-card</code> — declaring the slot <i>is</i> the opt-in, no flag needed.
       Slot content is real Vue: reactivity, components and event handlers all work.</p>
 <div class="filebar">App.vue</div>
-<pre>&lt;template&gt;
+<pre data-lang="html">&lt;template&gt;
   &lt;div style="height: 100vh"&gt;
     &lt;GrafloriaFlow :default-nodes="nodes" :default-edges="edges"&gt;
       &lt;template #node-card="{ data }"&gt;
@@ -110,7 +118,7 @@ const edges = [{ id: 'e1', source: 'a', target: 'b' }];
         border-radius: 12px; padding: 10px 14px; box-sizing: border-box; }
 .title { font-weight: 700; } .owner { font-size: 12px; color: #5A6478; }
 &lt;/style&gt;</pre>
-<pre>const nodes = [
+<pre data-lang="typescript">const nodes = [
   { id: 'a', type: 'card', position: { x: 80, y: 90 },  size: { width: 230, height: 110 },
     data: { title: 'Build', owner: 'CI' } },
   { id: 'b', type: 'card', position: { x: 430, y: 90 }, size: { width: 230, height: 110 },
@@ -123,7 +131,7 @@ const edges = [{ id: 'e1', source: 'a', target: 'b' }];
 
       <h2>3 — Ports and connection rules</h2>
 <div class="filebar">Ports.vue</div>
-<pre>&lt;script setup&gt;
+<pre data-lang="html">&lt;script setup&gt;
 import { onBeforeUnmount } from 'vue';
 import { GrafloriaFlow } from '@grafloria/vue';
 import type { DiagramInstance } from '@grafloria/vue';
@@ -167,7 +175,7 @@ onBeforeUnmount(() =&gt; { dispose?.(); clearConnectionValidators(); });
       <h2>4 — Undo and engine access</h2>
       <p><kbd>⌘Z</kbd>/<kbd>Ctrl+Z</kbd> works with zero wiring. For buttons, capture the
       instance in <code>@init</code> and go through the engine:</p>
-<pre>let instance = null;
+<pre data-lang="typescript">let instance = null;
 function onInit(api) { instance = api; }
 
 async function undo() { await instance?.getEngine().undo(); instance?.renderNow(); }
@@ -179,7 +187,7 @@ async function redo() { await instance?.getEngine().redo(); instance?.renderNow(
 <p><a class="demo-link" href="../../demos-vue/#drag-undo">Live: drag, then ⌘Z →</a></p>
 
       <h2>5 — Auto-layout</h2>
-<pre>&lt;GrafloriaFlow :default-nodes="nodes" :default-edges="edges" layout="elk" /&gt;
+<pre data-lang="html">&lt;GrafloriaFlow :default-nodes="nodes" :default-edges="edges" layout="elk" /&gt;
 
 &lt;!-- configured: --&gt;
 &lt;GrafloriaFlow :layout="{ name: 'dagre', options: { direction: 'TB', rankSpacing: 80 } }" ... /&gt;</pre>
@@ -192,7 +200,7 @@ async function redo() { await instance?.getEngine().redo(); instance?.renderNow(
 <p><a class="demo-link" href="../../demos-vue/#elk-tree">Live: ELK layout →</a></p>
 
       <h2>6 — Save, load, export</h2>
-<pre>import { DiagramSerializer, fromDocument } from '@grafloria/element';
+<pre data-lang="typescript">import { DiagramSerializer, fromDocument } from '@grafloria/element';
 
 // save — the full document, losslessly
 const serializer = new DiagramSerializer();
@@ -234,5 +242,21 @@ const png = await instance.export('png', { scale: 2 });</pre>
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAQ &amp; troubleshooting — Grafloria</title>
+<meta name="description" content="Grafloria troubleshooting: blank canvas, invisible ports, custom nodes not mounting, undo is not a function, leaking validators, layout not re-running, ESM and Jest, bundle size.">
+<link rel="canonical" href="https://grafloria.com/learn/faq/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="FAQ &amp; troubleshooting — Grafloria">
+<meta property="og:description" content="Grafloria troubleshooting: blank canvas, invisible ports, custom nodes not mounting, undo is not a function, leaking validators, layout not re-running, ESM and Jest, bundle size.">
+<meta property="og:url" content="https://grafloria.com/learn/faq/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/" aria-current="page">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / FAQ &amp; troubleshooting</p>
+      <h1>FAQ &amp; troubleshooting</h1>
+      <p class="lede">Every entry here is a wall someone actually hit — most of them us, while verifying the tutorials. Symptoms first, causes second.</p>
+
+      <h2>The canvas is blank</h2>
+      <p>The container has no resolved height. The canvas fills 100% of its parent — and
+      100% of zero is an empty page. Give the wrapper a real height
+      (<code>height: 100vh</code>, a flex row with <code>flex: 1</code>, a sized grid cell).
+      This is the #1 first-run issue in every framework.</p>
+
+      <h2>My custom node renders as a plain rectangle</h2>
+      <p>In plain JS and React the spec must carry <code>custom: true</code> — that is what
+      routes the node through the HTML layer where your renderer/component mounts. Vue slots
+      (<code>#node-&lt;type&gt;</code>) and Angular templates
+      (<code>ng-template grafloriaNode="type"</code>) set it for you; <code>nodeTypes</code>
+      and <code>registerNodeType</code> do not.</p>
+
+      <h2><code>instance.undo is not a function</code></h2>
+      <p>Correct — history lives on the engine: <code>await instance.getEngine().undo()</code>.
+      Angular's canvas component mirrors <code>undo()</code>/<code>redo()</code> directly;
+      nothing else does. Keyboard ⌘Z/Ctrl+Z works everywhere with zero wiring.</p>
+
+      <h2>I can't see any ports</h2>
+      <p>Ports show on hover by default. Show them permanently with
+      <code>interaction: { portVisibility: 'always' }</code> at creation (a prop in
+      React/Vue) or <code>engine.setInteractionConfig({ portVisibility: 'always' })</code>
+      at runtime.</p>
+
+      <h2>My connection validator fires on a completely different page</h2>
+      <p>The validator registry is <b>process-global</b>, not per-canvas. Keep the disposer
+      returned by <code>registerConnectionValidator</code> and call it on unmount (plus
+      <code>clearConnectionValidators()</code> if you want a clean slate). React StrictMode
+      double-invokes effects — the cleanup protects you there too.</p>
+
+      <h2>The layout prop doesn't re-run when my data changes</h2>
+      <p>Deliberate. <code>layout</code> re-runs when the <i>prop value</i> changes, never
+      when node data changes — otherwise every user drag would be fought by a relayout.
+      Re-run on demand: <code>instance.getEngine().layout('elk')</code> (then
+      <code>renderNow()</code>), or <code>applyLayout()</code> in Angular/Vue.</p>
+
+      <h2>Re-applying edited data keeps stale nodes</h2>
+      <p><code>setNodes</code>/<code>loadText</code> <b>reconcile</b>: ids that still exist
+      keep their live objects. When you re-apply externally-edited data for the same ids,
+      clear first — <code>api.setEdges([]); api.setNodes([]);</code> then apply.</p>
+
+      <h2>Export throws "the canvas has not rendered yet"</h2>
+      <p>Export needs a painted canvas — call it after the first paint (in practice: after
+      <code>onInit</code>/<code>ngAfterViewInit</code> plus a frame, or behind a user
+      action). SVG returns a <b>raw string</b>; PNG/PDF return <code>data:</code> URLs.</p>
+
+      <h2>ESM, require(), Jest</h2>
+      <ul>
+        <li>Since engine 0.3.x / renderer 0.4.x / element 0.4.x the packages are
+        <b>pure ESM</b>. Bundlers need no config; Node ≥ 20.19 can even
+        <code>require()</code> them.</li>
+        <li>Jest with CJS transforms: allow the packages through
+        (<code>transformIgnorePatterns: ['/node_modules/(?!@grafloria)']</code>) or run
+        Jest/Vitest in ESM mode. Test failures like "Unexpected token export" are runner
+        config, not library bugs.</li>
+        <li>Importing <code>@grafloria/element</code> registers the
+        <code>&lt;grafloria-flow&gt;</code> element as a side effect — safe in Node and
+        workers (it no-ops without <code>customElements</code>).</li>
+      </ul>
+
+      <h2>Isn't 9 MB unpacked huge?</h2>
+      <p>npm's unpacked-size stat counts uncompressed ESM source plus full TypeScript
+      declarations — none of it ships. What your users download, measured worst-case:
+      engine <b>228 KB gz</b>, react/vue <b>334</b>, angular <b>395</b>, element
+      <b>451</b> — with ELK layout in a lazy chunk (432 KB gz) that only downloads if
+      invoked. Every package README carries a two-minute reproduction script.</p>
+
+      <h2>The element ignores my <code>nodes</code> attribute</h2>
+      <p>Malformed JSON — the element warns
+      (<code>[grafloria-flow] ignoring malformed JSON attribute</code>) and keeps running.
+      Single-quote the attribute, double-quote the JSON inside, and remember geometry is
+      <code>"position":{"x":0,"y":0}</code> — never top-level x/y. After mount, prefer
+      properties: <code>el.nodes = [...]</code>.</p>
+
+      <div class="note">Something not covered here? The <a href="../../demos/">111 demos</a> are
+      executable answers — find the closest one and read its source. Or open an issue on
+      <a href="https://github.com/grafloria/grafloria">GitHub</a>.</div>
+
+      <div class="pn">
+        <a class="prev" href="../the-instance/">The DiagramInstance</a>
+        <span></span>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

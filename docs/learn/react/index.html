@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/">Layout</a>
         <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
         <a href="../theming/">Theming</a>
         <a href="../export/">Export</a>
         <a href="../collaboration/">Collaboration</a>
         <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -62,12 +70,12 @@
       <p class="lede">From <code>npm install</code> to a flow editor with custom nodes, connection rules, undo and export. Every snippet below is real, current API — the same code the CI-gated <a href="../../demos-react/">React demo gallery</a> runs.</p>
 
       <h2>1 — Install and mount a canvas</h2>
-<pre>npm install @grafloria/react @grafloria/element @grafloria/renderer @grafloria/engine react react-dom</pre>
+<pre data-lang="shell">npm install @grafloria/react @grafloria/element @grafloria/renderer @grafloria/engine react react-dom</pre>
       <p>One component does the heavy lifting: <code>&lt;GrafloriaFlow&gt;</code>. Give it nodes,
       edges, and — this matters — <b>a parent with a real height</b>. The canvas fills
       100% of its container, and 100% of zero is an empty page.</p>
 <div class="filebar">App.tsx</div>
-<pre>import { GrafloriaFlow } from '@grafloria/react';
+<pre data-lang="typescript">import { GrafloriaFlow } from '@grafloria/react';
 
 const nodes = [
   { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' } },
@@ -94,7 +102,7 @@ export default function App() {
       <code>useEdgesState</code>. Each returns a triple — and the <b>third</b> element is the
       change handler for the canvas, not the second:</p>
 <div class="filebar">Editor.tsx</div>
-<pre>import { GrafloriaFlow, useNodesState, useEdgesState } from '@grafloria/react';
+<pre data-lang="typescript">import { GrafloriaFlow, useNodesState, useEdgesState } from '@grafloria/react';
 
 function Editor() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -123,7 +131,7 @@ function Editor() {
       spec <code>custom: true</code> so it renders through the HTML layer instead of as SVG.
       The node still drags, routes and hit-tests like any other:</p>
 <div class="filebar">Card.tsx</div>
-<pre>function Card({ data, selected }) {
+<pre data-lang="typescript">function Card({ data, selected }) {
   return (
     &lt;div style={{ height: '100%', background: '#fff', borderRadius: 12,
                   border: selected ? '2px solid #3B52D9' : '1.5px solid #94A5F0',
@@ -149,7 +157,7 @@ const nodes = [
       <h2>4 — Ports and connection rules</h2>
       <p>Ports are part of the node spec — no separate handle components. Declare them with a
       side, a direction, and optionally a <code>dataType</code>:</p>
-<pre>const nodes = [
+<pre data-lang="typescript">const nodes = [
   { id: 'src', position: { x: 120, y: 260 }, size: { width: 130, height: 70 }, label: 'number src',
     ports: [{ id: 'out', side: 'right', type: 'output', dataType: 'number' }] },
   { id: 'num', position: { x: 640, y: 140 }, size: { width: 130, height: 70 }, label: 'number in',
@@ -159,7 +167,7 @@ const nodes = [
 ];</pre>
       <p>Two validation mechanisms compose. <b>Type compatibility</b> is declarative — register
       the types once and incompatible ports refuse the wire mid-drag:</p>
-<pre>import { portTypeRegistry } from '@grafloria/element';
+<pre data-lang="typescript">import { portTypeRegistry } from '@grafloria/element';
 
 portTypeRegistry.registerAll([
   { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
@@ -167,7 +175,7 @@ portTypeRegistry.registerAll([
 ]);</pre>
       <p><b>Custom rules</b> are a validator function — return <code>true</code> to allow, or a
       string to veto with a reason:</p>
-<pre>import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/element';
+<pre data-lang="typescript">import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/element';
 
 useEffect(() =&gt; {
   const dispose = registerConnectionValidator(({ sourcePort, targetPort }) =&gt; {
@@ -188,7 +196,7 @@ useEffect(() =&gt; {
       <p><kbd>⌘Z</kbd>/<kbd>Ctrl+Z</kbd> and <kbd>⌘⇧Z</kbd>/<kbd>Ctrl+Y</kbd> work with zero
       wiring — every gesture is a command on the engine's history. For your own buttons, reach
       the engine through the instance:</p>
-<pre>import type { DiagramInstance } from '@grafloria/react';
+<pre data-lang="typescript">import type { DiagramInstance } from '@grafloria/react';
 
 const inst = useRef&lt;DiagramInstance | null&gt;(null);
 
@@ -202,7 +210,7 @@ const inst = useRef&lt;DiagramInstance | null&gt;(null);
       <h2>6 — Auto-layout</h2>
       <p>Stop hand-placing nodes: name a layout and the engine arranges them. ELK is the
       heavyweight — it loads lazily (a separate ~432&nbsp;KB gz chunk) only when first used:</p>
-<pre>&lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} layout="elk" /&gt;
+<pre data-lang="html">&lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} layout="elk" /&gt;
 
 // or configured:
 &lt;GrafloriaFlow layout={{ name: 'dagre', options: { direction: 'TB', rankSpacing: 80 } }} ... /&gt;</pre>
@@ -214,7 +222,7 @@ const inst = useRef&lt;DiagramInstance | null&gt;(null);
 <p><a class="demo-link" href="../../demos-react/#elk-tree">Live: ELK layout →</a></p>
 
       <h2>7 — Save, load, export</h2>
-<pre>// PNG (data: URL) and SVG (raw string) — exports the scene graph, not a screenshot
+<pre data-lang="typescript">// PNG (data: URL) and SVG (raw string) — exports the scene graph, not a screenshot
 const png = await inst.current.export('png', { scale: 2 });
 const svg = await inst.current.export('svg');
 const pdf = await inst.current.export('pdf');   // real vector PDF
@@ -251,5 +259,21 @@ inst.current.loadText(text);                     // reconciles into the live can
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

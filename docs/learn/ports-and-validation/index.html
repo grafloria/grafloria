@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/" aria-current="page">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/">Layout</a>
         <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
         <a href="../theming/">Theming</a>
         <a href="../export/">Export</a>
         <a href="../collaboration/">Collaboration</a>
         <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -69,7 +77,7 @@
       side name.</p>
 
       <h2>Declared ports</h2>
-<pre>{ id: 'transform', position: { x: 300, y: 120 }, size: { width: 150, height: 90 },
+<pre data-lang="typescript">{ id: 'transform', position: { x: 300, y: 120 }, size: { width: 150, height: 90 },
   ports: [
     { id: 'in',    side: 'left',  type: 'input' },
     { id: 'out',   side: 'right', type: 'output', dataType: 'frame' },
@@ -102,7 +110,7 @@
       target is tinted while you drag.</p>
 
       <h3>2. Type compatibility — declarative</h3>
-<pre>import { portTypeRegistry } from '@grafloria/element';
+<pre data-lang="typescript">import { portTypeRegistry } from '@grafloria/element';
 
 portTypeRegistry.registerAll([
   { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
@@ -113,7 +121,7 @@ portTypeRegistry.registerAll([
       declaration.</p>
 
       <h3>3. Custom rules — a function with veto power</h3>
-<pre>import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/element';
+<pre data-lang="typescript">import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/element';
 
 const dispose = registerConnectionValidator(({ sourceNode, sourcePort, targetNode, targetPort, link }) =&gt; {
   if (sourcePort?.type === 'output' &amp;&amp; targetPort?.type === 'output')
@@ -138,8 +146,8 @@ const dispose = registerConnectionValidator(({ sourceNode, sourcePort, targetNod
       </ul>
 
       <div class="pn">
-        <a class="prev" href="../the-model/">The model</a>
-        <a class="next" href="../commands-and-undo/">Commands & undo</a>
+        <a class="prev" href="../edges-and-routing/">Edges & routing</a>
+        <a class="next" href="../groups/">Groups</a>
       </div>
     </article>
   </div>
@@ -153,5 +161,21 @@ const dispose = registerConnectionValidator(({ sourceNode, sourcePort, targetNod
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>
