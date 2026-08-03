@@ -1,0 +1,2 @@
+{ "extends": "./tsconfig.lib.json",
+  "compilerOptions": { "outDir": ".", "rootDir": ".", "declaration": true, "noEmitOnError": false } }

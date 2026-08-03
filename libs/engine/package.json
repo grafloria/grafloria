@@ -1,6 +1,6 @@
 {
   "name": "@grafloria/engine",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
@@ -19,7 +19,7 @@
   "description": "Headless diagram engine \u2014 graph model, commands and undo, layout engines (ELK, dagre, force, tree), Mermaid-compatible text format, collaboration op-log",
   "license": "MIT",
   "author": "Ramy Othman",
-  "homepage": "https://github.com/grafloria/grafloria",
+  "homepage": "https://grafloria.com",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/grafloria/grafloria.git",
