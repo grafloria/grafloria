@@ -18,15 +18,15 @@ function JobNode({ data }: NodeProps<{ title: string }>) {
 }
 
 export function Flow() {
-  const [nodes, setNodes] = useNodesState([
+  const [nodes, setNodes, onNodesChange] = useNodesState([
     { id: 'a', type: 'job', custom: true, position: { x: 0, y: 0 }, data: { title: 'Extract' } },
     { id: 'b', position: { x: 240, y: 0 }, label: 'Load' },
   ]);
-  const [edges, setEdges] = useEdgesState([{ source: 'a', target: 'b' }]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([{ source: 'a', target: 'b' }]);
   return (
     <GrafloriaFlow
-      nodes={nodes} onNodesChange={setNodes}
-      edges={edges} onEdgesChange={setEdges}
+      nodes={nodes} onNodesChange={onNodesChange}
+      edges={edges} onEdgesChange={onEdgesChange}
       nodeTypes={{ job: JobNode }}
       layout="elk" onLayoutDone={() => {}}
     />

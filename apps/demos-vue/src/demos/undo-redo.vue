@@ -13,8 +13,8 @@ const edges = [{ id: 'e1', source: 'a', target: 'b' }];
 
 let apiRef: DiagramInstance | null = null;
 function onInit(api: DiagramInstance) { apiRef = api; markReady(); }
-function undo() { void apiRef?.undo(); }
-function redo() { void apiRef?.redo(); }
+function undo() { void apiRef?.getEngine().undo(); }
+function redo() { void apiRef?.getEngine().redo(); }
 </script>
 
 <template>

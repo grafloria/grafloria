@@ -7,7 +7,10 @@
  * @see https://github.com/dagrejs/dagre
  */
 
-import * as dagre from '@dagrejs/dagre';
+import * as dagreNs from '@dagrejs/dagre';
+// CJS interop: Node's ESM loader exposes dagre's API only on .default (its
+// exports are invisible to the CJS lexer); bundlers expose it both ways.
+const dagre: typeof dagreNs = (dagreNs as any).default ?? dagreNs;
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
 import {
