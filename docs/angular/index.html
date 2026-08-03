@@ -186,6 +186,11 @@
       <p>ngx-vflow is a lovely lightweight Angular canvas — if you need drag/connect and nothing else, it is genuinely small. Its harder parts (obstacle-avoiding curves, dagre layout) are paid source templates, and undo/export are absent. JointJS+ is deep but commercial per developer. Grafloria ships the whole surface MIT. The <a href="../compare/#diagrams">comparison table</a> is sourced cell by cell.</p>
     </div>
 
+    <div class="callout">
+      <h3>&ldquo;npm says 14&nbsp;MB&rdquo; &mdash; no, that is not what ships</h3>
+      <p>npm&rsquo;s <i>unpacked size</i> counts every package&rsquo;s code three ways (CJS&nbsp;+&nbsp;ESM&nbsp;+ TypeScript declarations). What your users download, measured worst-case &mdash; the <b>entire</b> public surface of <code>@grafloria/angular</code>, esbuild minify&nbsp;+ splitting: <b>395&nbsp;KB gzipped</b> eager, with the ELK layout engine in a lazy chunk that downloads only if you invoke it. That covers the renderer, undo, export, Mermaid import and validation &mdash; about the cost of one charting library. Every package README carries a two-minute reproduction script.</p>
+    </div>
+
     <h2>Every demo, in your framework</h2>
     <p class="sub">The gallery is the documentation: 111 runnable pages, each executed in CI with real
     pointer events — and each one available in this framework’s own idiom, source shown.
