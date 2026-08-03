@@ -1,9 +1,13 @@
 {
+  // The ESM build the `module` field promises. Emits esm/src/**/*.js beside
+  // the in-place CJS build; consumed by bundlers (tree-shaking), never by the
+  // `main` path. Types stay with the CJS build (src/**/*.d.ts).
   "extends": "./tsconfig.lib.json",
   "compilerOptions": {
-    "paths": {
-      "@grafloria/engine": ["dist/libs/engine/src/index.d.ts"],
-      "@grafloria/renderer": ["dist/libs/renderer/src/index.d.ts"]
-    }
+    "module": "es2020",
+    "outDir": "esm",
+    "rootDir": ".",
+    "declaration": false,
+    "noEmitOnError": false
   }
 }

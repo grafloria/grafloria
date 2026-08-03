@@ -1,6 +1,6 @@
 {
   "name": "@grafloria/element",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
@@ -11,7 +11,7 @@
   "dependencies": {
     "tslib": "^2.3.0"
   },
-  "description": "The <grafloria-flow> custom element and high-level diagram kits (dashboard, UML, ERD) — works in any framework or none",
+  "description": "The <grafloria-flow> custom element and high-level diagram kits (dashboard, UML, ERD) \u2014 works in any framework or none",
   "license": "MIT",
   "author": "Ramy Othman",
   "homepage": "https://github.com/grafloria/grafloria",
@@ -38,5 +38,14 @@
   "publishConfig": {
     "access": "public"
   },
-  "module": "./esm/src/index.js"
+  "module": "./esm/src/index.js",
+  "files": [
+    "src/**/*.js",
+    "src/**/*.d.ts",
+    "esm/**/*.js"
+  ],
+  "sideEffects": [
+    "./src/index.js",
+    "./esm/src/index.js"
+  ]
 }
