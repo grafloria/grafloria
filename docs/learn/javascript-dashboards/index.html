@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboards in plain JavaScript — dashboard(), the handle, the round trip — Grafloria</title>
+<meta name="description" content="The Grafloria dashboard kit in depth: every dashboard() option, the widget spec, six built-in widget kinds and their data contracts, renderWidget, the live DashboardHandle, and the toJSON round trip.">
+<link rel="canonical" href="https://grafloria.com/learn/javascript-dashboards/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Dashboards in plain JavaScript — dashboard(), the handle, the round trip — Grafloria">
+<meta property="og:description" content="The Grafloria dashboard kit in depth: every dashboard() option, the widget spec, six built-in widget kinds and their data contracts, renderWidget, the live DashboardHandle, and the toJSON round trip.">
+<meta property="og:url" content="https://grafloria.com/learn/javascript-dashboards/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/" aria-current="page">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Dashboards in plain JavaScript</p>
+      <h1>Dashboards in plain JavaScript</h1>
+      <p class="lede">A dashboard is <b>declared, not assembled</b>: you write what the board is — views, widgets, spans — and <code>render()</code> wires the pack grid, drag/resize with live push, fit/grow, pin and one-undo-per-gesture. This page is the whole contract: every option, every widget kind, the live handle, and the save/load round trip.</p>
+
+      <h2>One call, a working board</h2>
+<div class="filebar">board.js</div>
+<pre data-lang="javascript">import { render, dashboard } from '@grafloria/element';
+
+const SPEC = dashboard({
+  columns: 12,
+  sizing: 'fit',
+  views: [{
+    id: 'overview', name: 'Overview',
+    widgets: [
+      { id: 'rev',   kind: 'kpi',   span: 3, rows: 1,
+        data: { label: 'Total revenue', value: '$6.81M', delta: 12.4, spark: [42,45,51,61,76] } },
+      { id: 'trend', kind: 'line',  span: 8, rows: 2, title: 'Revenue vs target',
+        data: { series: [{ name: 'Revenue', values: [420,455,512,588,648] }], labels: ['Jan','Feb','Mar','Apr','May'] } },
+      { id: 'mix',   kind: 'donut', span: 4, rows: 2, pinned: true, title: 'By region',
+        data: { slices: [{ label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }] } },
+    ],
+  }],
+});
+render(SPEC, document.getElementById('canvas'));
+const H = SPEC.handle;                 // the live handle — every edit goes through it</pre>
+      <p><code>dashboard()</code> returns a render spec (<code>nodes</code>,
+      <code>edges</code>, <code>renderCustomNode</code>, <code>finalize</code>) plus the
+      <code>handle</code>; <code>render()</code> runs the <code>finalize</code> for you —
+      the same pattern as every <a href="../kits/">kit</a>.</p>
+
+      <h2>The options, in depth</h2>
+      <div class="tablewrap"><table>
+        <tr><th>Option</th><th>Default</th><th>What it does</th></tr>
+        <tr><td><code>columns</code></td><td>12</td><td>Column count for every view (a view can override)</td></tr>
+        <tr><td><code>gap</code></td><td>8</td><td>Gap between widgets <b>and</b> the board padding, px</td></tr>
+        <tr><td><code>sizing</code></td><td><code>'fit'</code></td>
+          <td><code>'fit'</code> keeps the board at its design height and squeezes rows —
+          nothing falls below the fold; <code>'grow'</code> keeps the row height and
+          extends the board downward</td></tr>
+        <tr><td><code>rowHeight</code></td><td>130</td><td>Row height in <code>'grow'</code> mode, px</td></tr>
+        <tr><td><code>width</code>, <code>height</code></td><td>1180 × 660</td><td>Board size, px</td></tr>
+        <tr><td><code>float</code></td><td><code>false</code></td>
+          <td>Off = gravity packs widgets upward, no holes; on = widgets sit wherever you
+          drop them, gaps are legal</td></tr>
+        <tr><td><code>rtl</code></td><td><code>false</code></td>
+          <td>Column <code>x=0</code> renders at the <b>right</b> edge. Cells are untouched
+          — the same <code>widgets</code> array describes the same layout in both
+          directions, only the pixels mirror</td></tr>
+        <tr><td><code>responsive</code></td><td>—</td>
+          <td>Derive the live column count from the board's width:
+          <code>{ columnWidth: 100 }</code> or
+          <code>{ breakpoints: [{ w: 480, c: 1 }, { w: 900, c: 6 }] }</code>. Runs through
+          the engine's per-column layout <b>cache</b>, so narrowing and widening back
+          restores the wide layout exactly</td></tr>
+        <tr><td><code>views</code> / <code>widgets</code></td><td>—</td>
+          <td>Mutually exclusive. <code>views</code> is the tab pattern (only one on
+          camera); <code>widgets</code> is shorthand for a single unnamed view</td></tr>
+        <tr><td><code>renderWidget</code></td><td>built-ins</td>
+          <td>Your chart painter — called <b>once per widget when it mounts</b>; the host
+          is reused across re-renders, so this is not a per-frame hook</td></tr>
+        <tr><td><code>onLayoutChange</code></td><td>—</td>
+          <td><i>"Fires after any committed gesture, with the view whose layout
+          changed"</i> — the persistence hook</td></tr>
+        <tr><td><code>binder</code></td><td>—</td>
+          <td>Extra options merged into the grid binder underneath — the escape hatch to
+          the layer below (drag-out-to-remove zones, palette drop-in, gesture callbacks)</td></tr>
+      </table></div>
+
+      <h2>The widget spec</h2>
+<pre data-lang="typescript">{ id: 'trend',        // required
+  kind: 'line',         // free-form string handed to renderWidget (built-ins below)
+  span: 8, rows: 2,     // cell spans — defaults 3 and 1
+  x: 0, y: 1,           // explicit cell — OMIT and widgets flow in declaration
+                        // order, wrapping at the column count
+  pinned: true,         // never pushed, refuses the mover, survives every reflow
+  title: 'Revenue',     // used by the built-in renderers' header
+  data: { ... } }       // your payload — passed straight back to renderWidget</pre>
+      <p>Mixing works: one widget with an explicit cell, the rest flowing around it — the
+      flagship demo's Pipeline view does exactly that.</p>
+
+      <h2>The six built-in kinds</h2>
+      <p>Write no <code>renderWidget</code> and the kit draws the declared
+      <code>kind</code> from <b>your own data</b> in hand-rolled inline SVG — no charting
+      dependency, no sample dataset, and a renderer <i>"must never throw: it paints into a
+      live board, mid-gesture, on every reflow"</i> — bad or missing data degrades to an
+      empty-state note. The contracts, with shapes straight from the flagship demo:</p>
+<pre data-lang="typescript">kpi:    { label: 'Total revenue', value: '$6.81M',   // value is YOUR formatting
+          delta: +12.4, deltaLabel: 'vs last qtr',    // signed % — up/green, down/red
+          spark: [42, 45, 47, 51, 55, 61, 76] }       // oldest → newest
+
+line:   { series: [{ name: 'Revenue', values: [420, 455, 512] },
+                  { name: 'Target',  values: [400, 430, 465] }],
+          labels: ['Jan', 'Feb', 'Mar'] }             // a bare number[] also works
+
+bar:    { bars: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }] }
+
+donut:  { slices: [{ label: 'EMEA', value: 1920, color: '#14b8a6' }],
+          centerLabel: '$6.73M', centerCaption: 'total' }
+
+funnel: { stages: [{ label: 'Lead', value: 1200 }, { label: 'Qualified', value: 820 }] }
+
+table:  { columns: ['Rep', 'Deals', 'Revenue'],
+          rows: [['A. Farouk', 38, '$1.24M'], ['M. Haddad', 31, '$0.98M']] }</pre>
+      <p>Any other <code>kind</code> falls back to a titled placeholder frame, so a layout
+      is testable before any chart exists.</p>
+
+      <h2>Your own charts: <code>renderWidget</code></h2>
+<pre data-lang="typescript">import { dashboard, defaultWidgetRenderer } from '@grafloria/element';
+
+dashboard({
+  views,
+  renderWidget: (widget, host) =&gt; {
+    defaultWidgetRenderer(widget, host);      // let the kit draw the card + chart…
+    host.firstElementChild.classList.add('my-chrome');   // …then decorate it
+    host.onclick = () =&gt; select(widget.id);
+  },
+});</pre>
+      <p>The seam is deliberate — the kit <i>"hands you the widget and a raw HTML host (the
+      renderer's custom-node path, which unlike <code>metadata.html</code> is not
+      sanitised, so real <code>&lt;svg&gt;</code>/<code>&lt;canvas&gt;</code> is fine)"</i>.
+      Composing with <code>defaultWidgetRenderer</code> first is exactly how the flagship
+      demo adds its focus ring and pin marker. And because the board renders in light DOM,
+      the cards are styled by your page stylesheet like any
+      <a href="../javascript-custom-nodes/">custom node</a>.</p>
+
+      <h2>The live handle</h2>
+      <p>Every runtime edit is one call on <code>SPEC.handle</code> — no commands to
+      sequence, no models to build:</p>
+<pre data-lang="typescript">H.views                      // view ids, in declaration order
+H.activeView                 // the one on camera
+H.showView('sales');         // the tab switch — others park off-camera, camera re-frames
+
+const w = H.addWidget({ kind: 'bar', span: 6, rows: 2, data: {...} });
+// CREATES the node, wires its metadata, commits node + membership as ONE undoable
+// step, auto-positions into the first free hole when the spec names no cell
+
+H.setSizing('grow');  H.getSizing();     // the two toolbar toggles, live
+H.setFloat(true);     H.getFloat();
+H.setColumns(6);      H.getColumns();    // per-column layout CACHE: shrink then grow
+                                         // back restores the wide layout; an explicit
+                                         // call PINS the count against `responsive`
+H.setRtl(true);       H.getRtl();
+H.refresh();                 // re-read the boards after undo/redo or out-of-band edits
+H.fit();                     // re-frame the camera on the active view
+H.metrics();                 // live geometry: columns, gap, rows, rowHeight, frame
+H.exportIds();               // the ids ONE view occupies — for scoped export
+H.binderOf();                // the documented escape hatch to the grid binder
+H.dispose();</pre>
+      <p>Per-widget, <code>H.widget(id)</code> returns a <code>WidgetHandle</code>:</p>
+<pre data-lang="typescript">const w = H.widget('trend');
+w.cell; w.rect; w.spec; w.node;          // where it is, what it is
+await w.resize(6, 3);                    // in CELLS — resolves true when accepted
+await w.moveTo(0, 2);                    //             …the board may refuse
+w.pin();  w.pinned;                      // locked: never pushed, drags refused
+w.bringToFront();  w.sendToBack();       // one undoable step each
+w.update({ data: nextData });            // replace data (and title/kind) and repaint
+w.repaint();                             // re-run renderWidget after your data changed
+w.remove();                              // ONE undoable step incl. the survivors' re-pack</pre>
+      <div class="note"><b>Undo is already wired.</b> Drags, resizes, adds and removes each land as
+      one undoable step on the engine's command stack — ⌘Z works, and buttons go through
+      <code>api.getEngine().undo()</code>. After an undo/redo call <code>H.refresh()</code>
+      so the grid and the model agree again. See
+      <a href="../commands-and-undo/">Commands &amp; undo</a>.</div>
+      <div class="note"><b>Exporting a board? Scope it.</b> Tabs park inactive views far off-camera,
+      and <code>export()</code> frames the whole model — <i>"a two-view board writes a
+      ~21,000px document that is almost entirely empty — with no warning, because nothing
+      is technically wrong."</i> Pass <code>{ includeIds: H.exportIds() }</code>; the set
+      includes the view's group as well as its widgets, which a hand-rolled id list from
+      <code>toJSON()</code> would drop.</div>
+
+      <h2>Saving: the round trip</h2>
+      <p><code>H.toJSON()</code> returns the whole board as plain data — and that data
+      <b>is</b> valid <code>dashboard()</code> input:</p>
+<pre data-lang="typescript">// save — everything except the function seams
+const snapshot = H.toJSON();   // views + cells + columns, gap, rowHeight,
+                               // sizing, float, rtl — read from the LIVE board,
+                               // so a mode the user changed is what you get back
+
+// …later: a true round trip. renderWidget cannot be written to a file,
+// so it is supplied again on the way back in:
+const SPEC2 = dashboard({ ...snapshot, renderWidget });
+render(SPEC2, host);</pre>
+      <p>Two properties worth knowing. First, cells serialise from the engine's
+      <b>largest cached column count</b> — <i>"a board currently squeezed to 1 column
+      still writes out the 12-column layout its user authored"</i>: saving on a phone
+      saves the desktop layout. Second, <code>JSON.stringify(H)</code> calls the same
+      <code>toJSON()</code>, so there is no partial-answer footgun.</p>
+      <p>The persistence hook completes the pattern:</p>
+<pre data-lang="typescript">dashboard({
+  views,
+  renderWidget,
+  onLayoutChange: (viewId, widgets) =&gt; {
+    // after every committed gesture — save the WHOLE board, not just the view
+    localStorage.setItem('board', JSON.stringify(SPEC.handle.toJSON()));
+  },
+});</pre>
+      <p>There is also a second, document-level round trip: serialise the entire diagram
+      with <code>DiagramSerializer</code> and load it with
+      <code>fromDocument(json, { renderWidget })</code> — the loaded spec carries the
+      <b>same</b> <code>DashboardHandle</code>, rebuilt by the same builder, so
+      <code>showView</code>/<code>addWidget</code>/<code>toJSON</code> all work on the
+      reload. Two carried limits, both because the datum is not in the document:
+      <code>responsive</code> is a runtime seam and is never serialised, and
+      <code>renderWidget</code>/<code>onLayoutChange</code> are functions — pass
+      <code>renderWidget</code> to <code>fromDocument</code> again or the reload silently
+      drops your chrome.</p>
+
+      <h2>What a board is underneath</h2>
+      <p>No magic: each view is a <code>GroupModel</code> whose chrome is suppressed with
+      <code>frameChrome: 'none'</code> — a <b>frameless group</b>, the pure layout
+      container from <a href="../groups/">Groups</a>. Each widget is a custom HTML node
+      (<code>custom: true</code>, unconnectable, ports stripped — a widget is not a wiring
+      endpoint), and the board geometry that turns cells into pixels is persisted as group
+      metadata so a saved document can rebind its grid. Which is why everything else on
+      this site — export, collaboration, commands — works on dashboards unchanged.</p>
+<p><a class="demo-link" href="../../demos/#dashboard">Live: the dashboard builder — tabs, palette, versions →</a></p>
+<p><a class="demo-link" href="../../demos/#dashboard">Live: grid options — nesting, responsive columns, RTL, pinning →</a></p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../kits/">Kits</a> — the pattern dashboard() shares with
+        <code>erDiagram()</code> and <code>umlDiagram()</code>.</li>
+        <li><a href="../groups/">Groups</a> — frameless containers, the primitive under
+        every board.</li>
+        <li><a href="../export/">Export</a> — PNG/SVG/PDF, plus
+        <code>includeIds</code> for one-board exports.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../javascript-element-vs-render/">Element vs render()</a>
+        <a class="next" href="../the-model/">The model</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

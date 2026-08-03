@@ -44,6 +44,30 @@
         <a href="../angular/">Angular in 10 minutes</a>
       </div>
       <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
         <a href="../edges-and-routing/">Edges & routing</a>
@@ -100,7 +124,7 @@ const api = render(spec, host);      // render() runs the kit's finalize for you
       <p>Rows are selectable (listen for <code>axk:row-select</code>), a fixed entity
       <code>height</code> makes the column list scroll, and <code>editable: true</code> adds
       rename/add/delete chrome where every edit is one undoable step.</p>
-<p><a class="demo-link" href="../../demos/#table-er">Live: ER diagram →</a></p>
+<p><a class="demo-link" href="../../demos/diagrams/table-er.html">Live: ER diagram →</a></p>
 
       <h2>UML — classes, stereotypes, markers</h2>
 <pre data-lang="typescript">const spec = umlDiagram({
@@ -125,7 +149,7 @@ const animal = umlClass(api, 'Animal');
 await animal.methods.add('+ move(): void');
 await animal.setAbstract(true);
 await animal.undo();</pre>
-<p><a class="demo-link" href="../../demos/#class-uml">Live: UML class diagram →</a></p>
+<p><a class="demo-link" href="../../demos/diagrams/class-uml.html">Live: UML class diagram →</a></p>
 
       <h2>Dashboards — a drag-and-pack grid</h2>
 <pre data-lang="typescript">import { render, dashboard } from '@grafloria/element';

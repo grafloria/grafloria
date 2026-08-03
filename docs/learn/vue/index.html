@@ -44,6 +44,30 @@
         <a href="../angular/">Angular in 10 minutes</a>
       </div>
       <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
         <a href="../edges-and-routing/">Edges & routing</a>
@@ -127,7 +151,7 @@ const edges = [{ id: 'e1', source: 'a', target: 'b' }];
       <p>Slot context: <code>{ node, data, engine }</code> — <code>node</code> is the live
       <code>NodeModel</code>. <code>#node</code> (no type) is the wildcard. Give the slot
       root <code>height: 100%</code> so it fills the node box.</p>
-<p><a class="demo-link" href="../../demos-vue/#html-nodes">Live: slot-defined custom nodes →</a></p>
+<p><a class="demo-link" href="../../demos-vue/#/nodes/html-nodes">Live: slot-defined custom nodes →</a></p>
 
       <h2>3 — Ports and connection rules</h2>
 <div class="filebar">Ports.vue</div>
@@ -169,8 +193,8 @@ onBeforeUnmount(() =&gt; { dispose?.(); clearConnectionValidators(); });
       <div class="note">Validators are <b>global</b> — dispose in <code>onBeforeUnmount</code> or they
       leak across routed pages. A validator returns <code>true</code> to allow, or a string
       as the rejection reason.</div>
-<p><a class="demo-link" href="../../demos-vue/#typed-ports">Live: typed ports →</a></p>
-<p><a class="demo-link" href="../../demos-vue/#connection-validation">Live: connection validation →</a></p>
+<p><a class="demo-link" href="../../demos-vue/#/ports/typed-ports">Live: typed ports →</a></p>
+<p><a class="demo-link" href="../../demos-vue/#/ports/connection-validation">Live: connection validation →</a></p>
 
       <h2>4 — Undo and engine access</h2>
       <p><kbd>⌘Z</kbd>/<kbd>Ctrl+Z</kbd> works with zero wiring. For buttons, capture the
@@ -184,7 +208,7 @@ async function redo() { await instance?.getEngine().redo(); instance?.renderNow(
       <code>&lt;GrafloriaProvider&gt;</code> and use the composables —
       <code>useGrafloria()</code>, <code>useSelection()</code>, <code>useViewport()</code>,
       <code>useOnSelectionChange()</code>.</p>
-<p><a class="demo-link" href="../../demos-vue/#drag-undo">Live: drag, then ⌘Z →</a></p>
+<p><a class="demo-link" href="../../demos-vue/#/interaction/drag-undo">Live: drag, then ⌘Z →</a></p>
 
       <h2>5 — Auto-layout</h2>
 <pre data-lang="html">&lt;GrafloriaFlow :default-nodes="nodes" :default-edges="edges" layout="elk" /&gt;
@@ -197,7 +221,7 @@ async function redo() { await instance?.getEngine().redo(); instance?.renderNow(
       first use. The prop re-runs on <i>value</i> change only — never on node data, so it
       won't fight a drag. Template ref: <code>applyLayout('dagre')</code>; event:
       <code>@layout-done</code>.</p>
-<p><a class="demo-link" href="../../demos-vue/#elk-tree">Live: ELK layout →</a></p>
+<p><a class="demo-link" href="../../demos-vue/#/layout/elk-tree">Live: ELK layout →</a></p>
 
       <h2>6 — Save, load, export</h2>
 <pre data-lang="typescript">import { DiagramSerializer, fromDocument } from '@grafloria/element';
@@ -215,8 +239,8 @@ instance.loadText(text);
 
 // images: PNG/PDF return data: URLs, SVG returns the raw string
 const png = await instance.export('png', { scale: 2 });</pre>
-<p><a class="demo-link" href="../../demos-vue/#save-and-restore">Live: save & restore →</a></p>
-<p><a class="demo-link" href="../../demos-vue/#download-image">Live: PNG/SVG download →</a></p>
+<p><a class="demo-link" href="../../demos-vue/#/interaction/save-and-restore">Live: save & restore →</a></p>
+<p><a class="demo-link" href="../../demos-vue/#/misc/download-image">Live: PNG/SVG download →</a></p>
 
       <h2>Where next</h2>
       <ul>

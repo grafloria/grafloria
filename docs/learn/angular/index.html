@@ -44,6 +44,30 @@
         <a href="../angular/" aria-current="page">Angular in 10 minutes</a>
       </div>
       <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
         <a href="../edges-and-routing/">Edges & routing</a>
@@ -136,7 +160,7 @@ export class FlowComponent {
       <code>let-node</code> (the live <code>NodeModel</code>) and
       <code>let-engine="engine"</code>. An <code>&lt;ng-template grafloriaNode&gt;</code> with
       no value is the wildcard fallback for every type without its own template.</p>
-<p><a class="demo-link" href="../../demos-angular/#html-nodes">Live: ng-template custom nodes →</a></p>
+<p><a class="demo-link" href="../../demos-angular/#/nodes/html-nodes">Live: ng-template custom nodes →</a></p>
 
       <h2>3 — Ports and connection rules</h2>
       <p>Ports are part of the node spec — a side, a direction, optionally a
@@ -174,8 +198,8 @@ export class FlowComponent implements AfterViewInit, OnDestroy {
       across routes. Ports show on hover by default; to show them always, reach the engine
       after view init:
       <code>this.canvas().activeEngine()?.setInteractionConfig({ portVisibility: 'always' })</code>.</div>
-<p><a class="demo-link" href="../../demos-angular/#typed-ports">Live: typed ports →</a></p>
-<p><a class="demo-link" href="../../demos-angular/#connection-validation">Live: connection validation →</a></p>
+<p><a class="demo-link" href="../../demos-angular/#/ports/typed-ports">Live: typed ports →</a></p>
+<p><a class="demo-link" href="../../demos-angular/#/ports/connection-validation">Live: connection validation →</a></p>
 
       <h2>4 — Undo, viewport, engine access</h2>
       <p><kbd>⌘Z</kbd>/<kbd>Ctrl+Z</kbd> works with zero wiring. For your own toolbar, the
@@ -196,7 +220,7 @@ export class FlowComponent {
 }</pre>
       <div class="note"><code>activeEngine()</code> is available from <code>ngAfterViewInit</code>
       onward — engine-touching setup belongs there, not in the constructor.</div>
-<p><a class="demo-link" href="../../demos-angular/#undo-redo">Live: undo/redo buttons →</a></p>
+<p><a class="demo-link" href="../../demos-angular/#/interaction/undo-redo">Live: undo/redo buttons →</a></p>
 
       <h2>5 — Auto-layout</h2>
 <pre data-lang="html">&lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
@@ -211,7 +235,7 @@ export class FlowComponent {
       The binding re-runs on value change only — it never fights a drag; call
       <code>applyLayout()</code> on the component to re-run on demand, and listen with
       <code>(layoutDone)</code>.</p>
-<p><a class="demo-link" href="../../demos-angular/#elk-tree">Live: ELK layout →</a></p>
+<p><a class="demo-link" href="../../demos-angular/#/layout/elk-tree">Live: ELK layout →</a></p>
 
       <h2>6 — Save, load, export</h2>
 <pre data-lang="typescript">// snapshot / restore (JSON)
@@ -233,8 +257,8 @@ async downloadPng() {
       <div class="note">Export needs a painted canvas — calling it before the first paint throws a
       clear error. PDF export (<code>exportDiagram('pdf')</code>) produces a real vector PDF:
       paths stay paths, text stays selectable.</div>
-<p><a class="demo-link" href="../../demos-angular/#save-and-restore">Live: save & restore →</a></p>
-<p><a class="demo-link" href="../../demos-angular/#download-image">Live: PNG/SVG download →</a></p>
+<p><a class="demo-link" href="../../demos-angular/#/interaction/save-and-restore">Live: save & restore →</a></p>
+<p><a class="demo-link" href="../../demos-angular/#/misc/download-image">Live: PNG/SVG download →</a></p>
 
       <h2>Where next</h2>
       <ul>
@@ -250,7 +274,7 @@ async downloadPng() {
 
       <div class="pn">
         <a class="prev" href="../vue/">Vue 3 in 10 minutes</a>
-        <a class="next" href="../the-model/">The model</a>
+        <a class="next" href="../react-custom-nodes/">Custom nodes</a>
       </div>
     </article>
   </div>

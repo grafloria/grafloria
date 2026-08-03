@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboards in React — data-first boards — Grafloria</title>
+<meta name="description" content="GrafloriaDashboard in React: declare views and widgets as data, six built-in widget kinds with real data shapes, widgetTypes for custom React widgets, layout-change events and toJSON round-trips.">
+<link rel="canonical" href="https://grafloria.com/learn/react-dashboards/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Dashboards in React — data-first boards — Grafloria">
+<meta property="og:description" content="GrafloriaDashboard in React: declare views and widgets as data, six built-in widget kinds with real data shapes, widgetTypes for custom React widgets, layout-change events and toJSON round-trips.">
+<meta property="og:url" content="https://grafloria.com/learn/react-dashboards/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/" aria-current="page">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Dashboards in React</p>
+      <h1>Dashboards in React</h1>
+      <p class="lede"><code>&lt;GrafloriaDashboard&gt;</code> is the dashboard kit with React idioms on top: <code>views</code> declare the whole board as data, the kit wires the 12-column pack grid, drag/resize gestures and undo, and <code>widgetTypes</code> is the <code>nodeTypes</code> pattern applied to widgets.</p>
+
+      <h2>Declare the board, mount the component</h2>
+      <p>A widget is <code>{ id, kind, span, rows, data }</code> — plus optional
+      <code>title</code>, <code>pinned</code>, and an explicit cell (<code>x</code>/<code>y</code>).
+      Omit the coordinates and widgets flow in declaration order, wrapping at the column
+      count, so the common case needs no geometry at all. <code>span</code> defaults to 3
+      columns, <code>rows</code> to 1:</p>
+<div class="filebar">Board.tsx</div>
+<pre data-lang="typescript">import { GrafloriaDashboard } from '@grafloria/react';
+
+const views = [
+  { id: 'overview', name: 'Overview', widgets: [
+    { id: 'kpi-revenue', kind: 'kpi', span: 3, rows: 1,
+      data: { label: 'Total revenue', value: '$6.81M', delta: 12.4, deltaLabel: 'vs last qtr',
+              spark: [42, 45, 47, 51, 50, 55, 59, 61, 60, 65, 71, 76] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 2, title: 'Revenue trend',
+      data: { series: [{ name: 'Revenue', values: [42, 45, 47, 51, 50, 55, 59, 61, 60, 65, 71, 76] }],
+              labels: ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'] } },
+    { id: 'mix', kind: 'donut', span: 6, rows: 2, title: 'Revenue by region',
+      data: { slices: [
+        { label: 'EMEA', value: 2.9, color: '#3B52D9' },
+        { label: 'AMER', value: 2.4, color: '#94A5F0' },
+        { label: 'APAC', value: 1.5, color: '#059669' },
+      ], centerLabel: '$6.8M' } },
+    { id: 'bars', kind: 'bar', span: 6, rows: 2, title: 'Deals by quarter',
+      data: { bars: [
+        { label: 'Q1', value: 210 }, { label: 'Q2', value: 260 },
+        { label: 'Q3', value: 245 }, { label: 'Q4', value: 292 },
+      ] } },
+  ] },
+];
+
+export default function Board() {
+  return (
+    &lt;div style={{ height: '100vh' }}&gt;
+      &lt;GrafloriaDashboard views={views} activeView="overview" /&gt;
+    &lt;/div&gt;
+  );
+}</pre>
+      <p>That renders a working board — drag widgets between cells, resize them from the
+      corner, undo any of it — with real KPI, line, donut and bar widgets drawn from the
+      data above and not a charting library in sight. <code>views</code> is the multi-view
+      (tabbed) form; <code>widgets</code> is the single-view shorthand, and the two props are
+      mutually exclusive.</p>
+<p><a class="demo-link" href="../../demos-react/#/dashboard/dashboard-builder">Live: the board above →</a></p>
+
+      <h2>The six built-in kinds</h2>
+      <p>When a widget's <code>kind</code> has no entry in <code>widgetTypes</code>, the
+      kit's built-in painters draw it from your own <code>data</code> — hand-rolled inline
+      SVG, zero dependencies, no sample dataset. The shapes they read:</p>
+<pre data-lang="typescript">kind: 'kpi'     data: { label?, value?, delta?, deltaLabel?, spark?: number[] }
+kind: 'line'    data: { series?: number[] | { name?, values: number[] }[], labels?: string[] }
+kind: 'bar'     data: { bars?: { label?, value? }[] }
+kind: 'donut'   data: { slices?: { label?, value?, color? }[], centerLabel?, centerCaption? }
+kind: 'funnel'  data: { stages?: { label?, value? }[] }
+kind: 'table'   data: { columns?: string[], rows?: (string | number)[][] }</pre>
+      <p>Every field is optional because a widget renderer must never throw — it paints into
+      a live board, mid-gesture, on every reflow — so missing or partial data degrades to an
+      empty-state note instead. A <code>kind</code> nobody knows falls back to a titled
+      placeholder frame, which makes a layout testable before any chart exists. Colors cycle
+      a built-in categorical palette; a per-slice <code>color</code> wins. KPI
+      <code>value</code> is a string on purpose: you pre-format it, so units and currency
+      stay yours.</p>
+
+      <h2>Custom widgets: widgetTypes and WidgetProps</h2>
+      <p><code>widgetTypes</code> maps a widget <code>kind</code> to a real React component.
+      Components are portal-mounted into the kit's host elements, so hooks, context and
+      state work inside — the exact custom-node idiom, applied to boards. The component
+      receives <code>{ widget, data }</code>: the full spec, and its <code>data</code>
+      payload:</p>
+<div class="filebar">OrdersCard.tsx</div>
+<pre data-lang="typescript">import { useState } from 'react';
+import type { WidgetProps } from '@grafloria/react';
+
+function OrdersCard({ widget, data }: WidgetProps&lt;{ title: string }&gt;) {
+  const [expanded, setExpanded] = useState(false);   // real component: state survives gestures
+  return (
+    &lt;div onClick={() =&gt; setExpanded(!expanded)}&gt;
+      &lt;b&gt;{data.title}&lt;/b&gt; {expanded ? '▾' : '▸'}
+    &lt;/div&gt;
+  );
+}
+
+&lt;GrafloriaDashboard
+  views={views}
+  widgetTypes={{ orders: OrdersCard as never }} /&gt;</pre>
+      <p>Kinds with a component render through React; kinds without one fall back to the
+      built-in painters. Mixing both on one board is the normal case, not a trick.</p>
+      <div class="note"><b>In React, custom painting goes through <code>widgetTypes</code> — not
+      <code>options.renderWidget</code>.</b> The wrapper installs its own
+      <code>renderWidget</code> to power the portal mechanism, so a function you pass inside
+      <code>options</code> is shadowed. Reserve <code>options</code> for board behavior and
+      geometry.</div>
+
+      <h2>Props: options, activeView, and the mount-once rule</h2>
+      <p><code>options</code> carries the board's physics — <code>columns</code> (default 12),
+      <code>gap</code> (default 8), <code>sizing</code> (<code>'fit'</code> squeezes rows into
+      the board height, <code>'grow'</code> extends the board at <code>rowHeight</code>,
+      default 130), <code>width</code>/<code>height</code>, <code>float</code> (off means
+      gravity packs upward), <code>rtl</code> (mirrors pixels, never cells),
+      <code>responsive</code> (width-driven column count, via <code>columnWidth</code> or
+      named <code>breakpoints</code>) and <code>binder</code>, the escape hatch to the
+      gesture layer below.</p>
+      <p><code>activeView</code> is the tab pattern: a controlled prop that drives
+      <code>showView</code>, so switching tabs is just re-rendering with a different id —
+      inactive views park off-camera, they are not unmounted.</p>
+      <div class="note"><b>The board mounts once.</b> Like the flow, the component reads
+      <code>views</code>, <code>widgets</code> and <code>options</code> at mount and does not
+      rebuild on prop changes — <code>activeView</code> is the one prop that stays live.
+      After mount, data flows through the <b>handle</b>: widget updates, adds, removals,
+      sizing switches. Changing the <code>views</code> array on a later render does
+      nothing.</div>
+<p><a class="demo-link" href="../../demos-react/#/dashboard/grid-options">Live: gravity packing, pinning, RTL, responsive columns →</a></p>
+
+      <h2>The handle: your runtime API</h2>
+      <p><code>onReady</code> hands you the typed <code>DashboardHandle</code> once the board
+      is live; <code>onLayoutChange</code> mirrors every committed gesture — drag, resize,
+      add, remove — with the affected view's widgets, ready to persist:</p>
+<div class="filebar">Handle.tsx</div>
+<pre data-lang="typescript">import type { DashboardHandle } from '@grafloria/element';
+
+const handleRef = useRef&lt;DashboardHandle | null&gt;(null);
+
+&lt;GrafloriaDashboard
+  views={views}
+  onReady={(h) =&gt; { handleRef.current = h; }}
+  onLayoutChange={({ viewId, widgets }) =&gt; persist(viewId, widgets)} /&gt;
+
+// later — everything is a method on the handle:
+const h = handleRef.current!;
+h.widget('kpi-revenue')?.update({ data: { label: 'Total revenue', value: '$7.02M', delta: 3.1 } });
+h.addWidget({ id: 'funnel', kind: 'funnel', span: 4, rows: 2,
+              data: { stages: [{ label: 'Leads', value: 900 }, { label: 'Won', value: 210 }] } });
+h.setSizing('grow');
+h.showView('ops');</pre>
+      <p>The highlights: <code>widget(id)</code> returns a per-widget handle
+      (<code>update</code>, <code>repaint</code>, <code>resize</code>, <code>moveTo</code>,
+      <code>pin</code>, <code>remove</code> — the destructive ones are single undoable
+      steps, re-pack included). <code>addWidget</code> creates the node <i>and</i> its board
+      membership as one undo step. <code>setSizing</code> / <code>setFloat</code> /
+      <code>setColumns</code> / <code>setRtl</code> flip board behavior live, and
+      <code>refresh()</code> re-reads the boards after an undo/redo or any out-of-band model
+      change. <code>binderOf()</code> is the documented escape hatch to the raw grid
+      binder.</p>
+
+      <h2>Persistence: the toJSON round-trip</h2>
+<pre data-lang="typescript">// save — the whole board as plain data (views, cells, columns, gap, sizing, float, rtl)
+localStorage.setItem('board', JSON.stringify(handle.toJSON()));
+
+// restore — the function seams cannot be serialized, so supply them again:
+import type { DashboardSnapshot } from '@grafloria/element';
+const { views, ...options } = JSON.parse(saved) as DashboardSnapshot;
+&lt;GrafloriaDashboard views={views} options={options} widgetTypes={{ orders: OrdersCard as never }} /&gt;</pre>
+      <p><code>toJSON()</code> reads the <b>live</b> board, not the authored literal — a
+      sizing mode or column count the user changed after mount is what you get back. And it
+      serializes from the engine's widest cached column layout, so a board squeezed to one
+      column on a phone still saves the 12-column layout its user authored. It is also what
+      <code>JSON.stringify(handle)</code> calls.</p>
+      <div class="note"><b>Exporting a multi-view board?</b> Tabs park inactive views far off-camera,
+      and <code>export()</code> frames the whole model — a two-view board can silently write
+      a ~21,000px document that is almost entirely empty. Scope it:
+      <code>api.export('pdf', { includeIds: handle.exportIds() })</code>. The set includes
+      the view's group, which hand-rolling from <code>toJSON()</code> would drop.</div>
+
+      <h2>Dashboard or flow?</h2>
+      <p>Use <code>&lt;GrafloriaDashboard&gt;</code> when the thing you are building is a
+      <i>board</i>: cells, spans, gravity packing, pinning — and no wires. Widgets are
+      deliberately not connectable (their ports are stripped), and the board has no edges at
+      all. Use <a href="../react/"><code>&lt;GrafloriaFlow&gt;</code></a> when nodes connect
+      to nodes — free positions, edges, routing, validation. And if you are rendering any kit
+      spec — <code>erDiagram(...)</code>, <code>umlDiagram(...)</code>,
+      <code>dashboard(...)</code>, DSL text — <code>&lt;GrafloriaDiagram spec={...}&gt;</code>
+      is the one generic host component; <code>&lt;GrafloriaDashboard&gt;</code> is that,
+      plus the React widget idioms.</p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../kits/">Kits</a> — the data-first authoring layer the dashboard kit belongs to.</li>
+        <li><a href="../react-custom-nodes/">Custom nodes in React</a> — the same portal mechanism, one level down.</li>
+        <li><a href="../commands-and-undo/">Commands and undo</a> — why widget add/remove is one Ctrl-Z, not two.</li>
+        <li><a href="../export/">Export</a> — PNG, SVG and real vector PDF, with <code>includeIds</code> scoping.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../react-state-and-data/">State & data flow</a>
+        <a class="next" href="../vue-custom-nodes/">Custom nodes</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

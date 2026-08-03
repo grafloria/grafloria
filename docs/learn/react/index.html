@@ -44,6 +44,30 @@
         <a href="../angular/">Angular in 10 minutes</a>
       </div>
       <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
         <a href="../edges-and-routing/">Edges & routing</a>
@@ -152,7 +176,7 @@ const nodes = [
 &lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} nodeTypes={{ card: Card }} /&gt;</pre>
       <p>Your component receives <code>{ id, data, selected, node }</code> — <code>node</code>
       is the live engine model, the escape hatch when you need more than data.</p>
-<p><a class="demo-link" href="../../demos-react/#html-nodes">Live: custom nodes in React →</a></p>
+<p><a class="demo-link" href="../../demos-react/#/nodes/html-nodes">Live: custom nodes in React →</a></p>
 
       <h2>4 — Ports and connection rules</h2>
       <p>Ports are part of the node spec — no separate handle components. Declare them with a
@@ -189,8 +213,8 @@ useEffect(() =&gt; {
       cleanup or they leak across remounts (StrictMode double-invoke included). Ports are
       invisible until hover by default; show them permanently with
       <code>interaction={{ portVisibility: 'always' }}</code> on the flow.</div>
-<p><a class="demo-link" href="../../demos-react/#typed-ports">Live: typed ports →</a></p>
-<p><a class="demo-link" href="../../demos-react/#connection-validation">Live: connection validation →</a></p>
+<p><a class="demo-link" href="../../demos-react/#/ports/typed-ports">Live: typed ports →</a></p>
+<p><a class="demo-link" href="../../demos-react/#/ports/connection-validation">Live: connection validation →</a></p>
 
       <h2>5 — Undo comes free; buttons reach the engine</h2>
       <p><kbd>⌘Z</kbd>/<kbd>Ctrl+Z</kbd> and <kbd>⌘⇧Z</kbd>/<kbd>Ctrl+Y</kbd> work with zero
@@ -205,7 +229,7 @@ const inst = useRef&lt;DiagramInstance | null&gt;(null);
 
 &lt;button onClick={() =&gt; void inst.current?.getEngine().undo()}&gt;Undo&lt;/button&gt;
 &lt;button onClick={() =&gt; void inst.current?.getEngine().redo()}&gt;Redo&lt;/button&gt;</pre>
-<p><a class="demo-link" href="../../demos-react/#drag-undo">Live: drag, then ⌘Z →</a></p>
+<p><a class="demo-link" href="../../demos-react/#/interaction/drag-undo">Live: drag, then ⌘Z →</a></p>
 
       <h2>6 — Auto-layout</h2>
       <p>Stop hand-placing nodes: name a layout and the engine arranges them. ELK is the
@@ -219,7 +243,7 @@ const inst = useRef&lt;DiagramInstance | null&gt;(null);
       <code>radial</code>, <code>force</code>, <code>spectral</code>, <code>community</code>.
       The prop re-runs on <i>value</i> change only — it will never fight a user's drag. To
       re-layout on demand, call <code>instance.getEngine().layout('layered', { direction: 'LR' })</code>.</p>
-<p><a class="demo-link" href="../../demos-react/#elk-tree">Live: ELK layout →</a></p>
+<p><a class="demo-link" href="../../demos-react/#/layout/elk-tree">Live: ELK layout →</a></p>
 
       <h2>7 — Save, load, export</h2>
 <pre data-lang="typescript">// PNG (data: URL) and SVG (raw string) — exports the scene graph, not a screenshot
@@ -232,7 +256,7 @@ const text = inst.current.exportText();          // valid Mermaid + position sid
 inst.current.loadText(text);                     // reconciles into the live canvas</pre>
       <p>Pass <code>{ embedModel: true }</code> to PNG/SVG export and the diagram model rides
       inside the file — the exported image re-opens as an editable diagram.</p>
-<p><a class="demo-link" href="../../demos-react/#download-image">Live: PNG/SVG download →</a></p>
+<p><a class="demo-link" href="../../demos-react/#/misc/download-image">Live: PNG/SVG download →</a></p>
 
       <h2>Where next</h2>
       <ul>
