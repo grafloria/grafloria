@@ -181,6 +181,11 @@
       <p>Vue Flow gives Vue developers the familiar React-Flow-style canvas and does it well. As with its sibling, the editor extras around it — automatic layout, undo, exports, collaboration — are yours to assemble. Grafloria ships them as MIT library features, with the same engine available if your team also touches React or Angular. Our broader field-by-field table is on the <a href="../compare/#diagrams">comparison page</a>.</p>
     </div>
 
+    <div class="callout">
+      <h3>&ldquo;npm says 14&nbsp;MB&rdquo; &mdash; no, that is not what ships</h3>
+      <p>npm&rsquo;s <i>unpacked size</i> counts every package&rsquo;s code three ways (CJS&nbsp;+&nbsp;ESM&nbsp;+ TypeScript declarations). What your users download, measured worst-case &mdash; the <b>entire</b> public surface of <code>@grafloria/vue</code>, esbuild minify&nbsp;+ splitting: <b>334&nbsp;KB gzipped</b> eager, with the ELK layout engine in a lazy chunk that downloads only if you invoke it. That covers the renderer, undo, export, Mermaid import and validation &mdash; about the cost of one charting library. Every package README carries a two-minute reproduction script.</p>
+    </div>
+
     <h2>Every demo, in your framework</h2>
     <p class="sub">The gallery is the documentation: 111 runnable pages, each executed in CI with real
     pointer events — and each one available in this framework’s own idiom, source shown.
