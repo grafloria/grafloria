@@ -20,9 +20,9 @@ export default function UndoRedoDemo() {
   return (
     <div style={{ height: '100vh' }}>
       <div style={{ position: 'fixed', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 5, display: 'flex', gap: 8 }}>
-        <button onClick={() => void inst.current?.undo()}
+        <button onClick={() => void inst.current?.getEngine().undo()}
           style={{ padding: '7px 16px', borderRadius: 999, border: 0, background: '#3B52D9', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>↩ Undo</button>
-        <button onClick={() => void inst.current?.redo()}
+        <button onClick={() => void inst.current?.getEngine().redo()}
           style={{ padding: '7px 16px', borderRadius: 999, border: '1px solid #94A5F0', background: '#EEF1FE', color: '#3B52D9', fontWeight: 600, cursor: 'pointer' }}>↪ Redo</button>
       </div>
       <GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} onInit={onInit} />

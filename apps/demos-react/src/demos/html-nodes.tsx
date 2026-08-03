@@ -3,9 +3,9 @@ import { GrafloriaFlow } from '@grafloria/react';
 import { markReady } from '../ready';
 
 const nodes = [
-  { id: 'a', type: 'card', position: { x: 80, y: 90 },  size: { width: 230, height: 110 },
+  { id: 'a', type: 'card', custom: true, position: { x: 80, y: 90 },  size: { width: 230, height: 110 },
     data: { title: 'Build', owner: 'CI', status: 'passing' } },
-  { id: 'b', type: 'card', position: { x: 430, y: 90 }, size: { width: 230, height: 110 },
+  { id: 'b', type: 'card', custom: true, position: { x: 430, y: 90 }, size: { width: 230, height: 110 },
     data: { title: 'Deploy', owner: 'CD', status: 'ready' } },
 ];
 const edges = [{ id: 'e1', source: 'a', target: 'b' }];

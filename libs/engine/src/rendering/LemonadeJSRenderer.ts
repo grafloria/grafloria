@@ -1,7 +1,8 @@
 // LemonadeJS Enhanced Renderer (Phase 3.4 - Complete)
 // Full LemonadeJS integration with two-way binding and reactivity
 
-import * as lemonade from 'lemonadejs';
+import lemonadeNs from 'lemonadejs';
+const lemonade: typeof lemonadeNs = (lemonadeNs as any).default ?? lemonadeNs;
 import type { EventBus } from '../events/EventBus';
 import type { HtmlConfig } from '../templates/NodeTemplate';
 import type { NodeModel } from '../models/NodeModel';
