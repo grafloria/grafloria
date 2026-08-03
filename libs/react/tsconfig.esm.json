@@ -1,10 +1,2 @@
-{
-  "extends": "./tsconfig.lib.json",
-  "compilerOptions": {
-    "paths": {
-      "@grafloria/engine": ["dist/libs/engine/src/index.d.ts"],
-      "@grafloria/renderer": ["dist/libs/renderer/src/index.d.ts"],
-      "@grafloria/element": ["dist/libs/element/src/index.d.ts"]
-    }
-  }
-}
+{ "extends": "./tsconfig.lib.json",
+  "compilerOptions": { "module": "es2020", "outDir": "esm", "rootDir": ".", "declaration": false, "noEmitOnError": false } }

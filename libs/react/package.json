@@ -1,6 +1,6 @@
 {
   "name": "@grafloria/react",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
@@ -17,7 +17,7 @@
   "description": "React bindings for the Grafloria diagram engine",
   "license": "MIT",
   "author": "Ramy Othman",
-  "homepage": "https://github.com/grafloria/grafloria",
+  "homepage": "https://grafloria.com/react/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/grafloria/grafloria.git",
@@ -42,5 +42,10 @@
     "access": "public"
   },
   "module": "./esm/src/index.js",
-  "sideEffects": false
+  "sideEffects": false,
+  "files": [
+    "src/**/*.js",
+    "src/**/*.d.ts",
+    "esm/**/*.js"
+  ]
 }

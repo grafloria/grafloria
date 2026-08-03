@@ -1,10 +1,10 @@
 {
   "name": "@grafloria/vue",
-  "version": "0.9.0",
-  "description": "Vue 3 bindings for the Grafloria diagram engine — v-model data, slot-based custom nodes, declarative layout",
+  "version": "0.9.1",
+  "description": "Vue 3 bindings for the Grafloria diagram engine \u2014 v-model data, slot-based custom nodes, declarative layout",
   "license": "MIT",
   "author": "Ramy Othman",
-  "homepage": "https://github.com/grafloria/grafloria",
+  "homepage": "https://grafloria.com/vue/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/grafloria/grafloria.git",
@@ -38,5 +38,10 @@
     "@grafloria/renderer": "^0.3.0",
     "vue": "^3.4.0",
     "@grafloria/element": "^0.3.1"
-  }
+  },
+  "files": [
+    "src/**/*.js",
+    "src/**/*.d.ts",
+    "esm/**/*.js"
+  ]
 }
