@@ -1,11 +1,11 @@
 {
   "name": "@grafloria/renderer",
-  "version": "0.3.13",
-  "type": "commonjs",
+  "version": "0.4.0",
+  "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "peerDependencies": {
-    "@grafloria/engine": "^0.2.0"
+    "@grafloria/engine": "^0.3.0"
   },
   "dependencies": {
     "tslib": "^2.3.0",
@@ -38,11 +38,10 @@
   "publishConfig": {
     "access": "public"
   },
-  "module": "./esm/src/index.js",
+  "module": "./src/index.js",
   "sideEffects": false,
   "files": [
     "src/**/*.js",
-    "src/**/*.d.ts",
-    "esm/**/*.js"
+    "src/**/*.d.ts"
   ]
 }

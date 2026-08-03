@@ -95,9 +95,9 @@ op-log · ERD / class-UML kits · PDF export with real vector gradients, shadows
 
 ## Bundle size — read this before judging the npm stats
 
-Installing the package family unpacks ~14 MB, because each package ships its
-code three ways (CJS + ESM + TypeScript declarations). **None of that is
-shipped weight.** Measured worst-case — importing the *entire* public surface,
+Installing the package family unpacks ~9 MB — uncompressed ESM source plus
+full TypeScript declarations (pure ESM since engine 0.3.0; Node ≥ 20.19 can
+`require()` it too). **None of that is shipped weight.** Measured worst-case — importing the *entire* public surface,
 esbuild with minify + ESM + `--splitting`:
 
 | entry | eager (gzip) | notes |

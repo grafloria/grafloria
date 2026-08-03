@@ -1,2 +1,10 @@
-{ "extends": "./tsconfig.lib.json",
-  "compilerOptions": { "outDir": ".", "rootDir": ".", "declaration": true, "noEmitOnError": false } }
+{
+  "extends": "./tsconfig.lib.json",
+  "compilerOptions": {
+    "outDir": ".",
+    "rootDir": ".",
+    "declaration": true,
+    "noEmitOnError": false,
+    "module": "es2020"
+  }
+}

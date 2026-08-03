@@ -8,7 +8,7 @@
  * @see https://github.com/kieler/elkjs
  */
 
-import type { ElkNode, ElkExtendedEdge, ELK } from 'elkjs/lib/elk.bundled';
+import type { ElkNode, ElkExtendedEdge, ELK } from 'elkjs/lib/elk.bundled.js';
 import { loadElk } from './elk-loader';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';

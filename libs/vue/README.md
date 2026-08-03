@@ -48,10 +48,10 @@ Node. MIT © [Grafloria](https://github.com/grafloria/grafloria)
 
 ## Bundle size — what actually ships
 
-Don't judge this library by npm's **unpacked size** stat. Installing the
-Grafloria family unpacks ~14 MB because every package publishes its code three
-ways — a CJS build, an ESM build, and TypeScript declarations. None of that
-reaches your users as-is; what matters is what your bundler emits.
+Don't judge this library by npm's **unpacked size** stat — that is
+uncompressed ESM source plus full TypeScript declarations (the whole family
+installs ~9 MB). None of it reaches your users as-is; what matters is what
+your bundler emits.
 
 Worst case, importing the **entire** public surface of `@grafloria/vue`
 (engine + renderer + the Vue component layer), measured with esbuild (minify, ESM, code-splitting):
@@ -72,7 +72,7 @@ gzip -k9 out/entry.js && wc -c out/entry.js out/entry.js.gz
 
 `--splitting` matters: without it esbuild inlines the lazily-imported ELK
 chunk and inflates the number by ~1.4 MB. Real app bundlers (Angular CLI,
-Vite, Next.js) split by default. Use current versions — engine ≥ 0.2.13,
-renderer ≥ 0.3.12, element ≥ 0.3.22 — older cores were CJS-only, which
-defeats splitting and tree-shaking.
+Vite, Next.js) split by default. Since engine 0.3.0 / renderer 0.4.0 /
+element 0.4.0 the packages are **pure ESM** — every bundler tree-shakes them,
+and Node ≥ 20.19 can `require()` them too.
 

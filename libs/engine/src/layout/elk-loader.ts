@@ -14,8 +14,8 @@
  * spawns elkjs's nested Worker, so instances must ALSO be created lazily —
  * this loader only fetches the module; callers instantiate on first layout.
  */
-let pending: Promise<typeof import('elkjs/lib/elk.bundled')> | undefined;
+let pending: Promise<typeof import('elkjs/lib/elk.bundled.js')> | undefined;
 
-export function loadElk(): Promise<typeof import('elkjs/lib/elk.bundled')> {
-  return (pending ??= import('elkjs/lib/elk.bundled'));
+export function loadElk(): Promise<typeof import('elkjs/lib/elk.bundled.js')> {
+  return (pending ??= import('elkjs/lib/elk.bundled.js'));
 }
