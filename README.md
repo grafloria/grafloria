@@ -114,7 +114,11 @@ The test surface is unusually deep, and all of it runs on every change:
 ## Repository layout
 
 Nx monorepo: libraries in [`libs/`](libs/), the demo gallery in [`demos/`](demos/),
-an Angular showcase app in [`apps/renderer-demo/`](apps/renderer-demo/), architecture
+**per-framework demo apps** in [`apps/demos-angular/`](apps/demos-angular/),
+[`apps/demos-react/`](apps/demos-react/) and [`apps/demos-vue/`](apps/demos-vue/) —
+every gallery demo as a real component in that framework, ~100 routes each, live at
+[grafloria.com/demos-angular](https://grafloria.com/demos-angular/) (and `-react`, `-vue`) —
+plus an Angular showcase app in [`apps/renderer-demo/`](apps/renderer-demo/) and architecture
 notes in [`documentation/`](documentation/).
 
 ```sh
