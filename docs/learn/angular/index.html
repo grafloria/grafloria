@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/">Layout</a>
         <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
         <a href="../theming/">Theming</a>
         <a href="../export/">Export</a>
         <a href="../collaboration/">Collaboration</a>
         <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -62,12 +70,12 @@
       <p class="lede">From <code>npm install</code> to a flow editor with template-defined nodes, connection rules, undo and export — signal-based, zoneless-verified. The same code the CI-gated <a href="../../demos-angular/">Angular demo gallery</a> runs.</p>
 
       <h2>1 — Install and mount a canvas</h2>
-<pre>npm install @grafloria/angular @grafloria/element @grafloria/renderer @grafloria/engine</pre>
+<pre data-lang="shell">npm install @grafloria/angular @grafloria/element @grafloria/renderer @grafloria/engine</pre>
       <p><code>DiagramCanvasComponent</code> is a standalone component with signal-based
       two-way bindings. One rule to remember: <b>give the canvas a real height</b> — it fills
       its container, and an unstyled custom element collapses to zero.</p>
 <div class="filebar">flow.component.ts</div>
-<pre>import { Component } from '@angular/core';
+<pre data-lang="typescript">import { Component } from '@angular/core';
 import { DiagramCanvasComponent } from '@grafloria/angular';
 
 @Component({
@@ -95,7 +103,7 @@ export class FlowComponent {
       <p>Declare a template for a node <code>type</code> and every node of that type renders
       through it — declaring the template <i>is</i> the opt-in, no extra flag needed:</p>
 <div class="filebar">flow.component.ts</div>
-<pre>import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/angular';
+<pre data-lang="typescript">import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/angular';
 
 @Component({
   selector: 'app-flow',
@@ -133,7 +141,7 @@ export class FlowComponent {
       <h2>3 — Ports and connection rules</h2>
       <p>Ports are part of the node spec — a side, a direction, optionally a
       <code>dataType</code>:</p>
-<pre>nodes = [
+<pre data-lang="typescript">nodes = [
   { id: 'src', position: { x: 120, y: 260 }, size: { width: 130, height: 70 }, label: 'number src',
     ports: [{ id: 'out', side: 'right' as const, type: 'output', dataType: 'number' }] },
   { id: 'num', position: { x: 640, y: 140 }, size: { width: 130, height: 70 }, label: 'number in',
@@ -142,7 +150,7 @@ export class FlowComponent {
       <p>Type compatibility is registered once, app-wide; custom rules are a validator that
       returns <code>true</code> to allow or a string to veto with a reason. Both come from the
       framework-agnostic packages:</p>
-<pre>import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/renderer';
+<pre data-lang="typescript">import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/renderer';
 import { portTypeRegistry } from '@grafloria/element';
 
 portTypeRegistry.registerAll([
@@ -173,7 +181,7 @@ export class FlowComponent implements AfterViewInit, OnDestroy {
       <p><kbd>⌘Z</kbd>/<kbd>Ctrl+Z</kbd> works with zero wiring. For your own toolbar, the
       canvas surfaces the essentials directly; everything else lives on the engine, reached
       with <code>viewChild</code> after the view initializes:</p>
-<pre>import { Component, viewChild } from '@angular/core';
+<pre data-lang="typescript">import { Component, viewChild } from '@angular/core';
 import { DiagramCanvasComponent } from '@grafloria/angular';
 
 export class FlowComponent {
@@ -191,7 +199,7 @@ export class FlowComponent {
 <p><a class="demo-link" href="../../demos-angular/#undo-redo">Live: undo/redo buttons →</a></p>
 
       <h2>5 — Auto-layout</h2>
-<pre>&lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
+<pre data-lang="html">&lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
   [layout]="'elk'" style="display:block; height:100vh" /&gt;
 
 &lt;!-- configured: --&gt;
@@ -206,7 +214,7 @@ export class FlowComponent {
 <p><a class="demo-link" href="../../demos-angular/#elk-tree">Live: ELK layout →</a></p>
 
       <h2>6 — Save, load, export</h2>
-<pre>// snapshot / restore (JSON)
+<pre data-lang="typescript">// snapshot / restore (JSON)
 saved: SerializedDiagram | null = null;            // type from '@grafloria/engine'
 save()    { this.saved = this.canvas().snapshot(); }
 restore() { if (this.saved) this.canvas().loadSnapshot(this.saved); }
@@ -256,5 +264,21 @@ async downloadPng() {
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

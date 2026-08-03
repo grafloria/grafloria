@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/" aria-current="page">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/">Layout</a>
         <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
         <a href="../theming/">Theming</a>
         <a href="../export/">Export</a>
         <a href="../collaboration/">Collaboration</a>
         <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -64,7 +72,7 @@
       <h2>The free part</h2>
       <p>Mount any canvas and <kbd>⌘Z</kbd>/<kbd>Ctrl+Z</kbd> undoes, <kbd>⌘⇧Z</kbd>/<kbd>Ctrl+Y</kbd>
       redoes. One drag is one step — not sixty position updates. Buttons are one call:</p>
-<pre>await engine.undo();      // all async — a command may do async work
+<pre data-lang="typescript">await engine.undo();      // all async — a command may do async work
 await engine.redo();
 engine.canUndo();          // drive your buttons' disabled state
 engine.canRedo();</pre>
@@ -84,7 +92,7 @@ engine.canRedo();</pre>
             <td><code>engine.commandManager.execute(command)</code></td>
             <td>recorded — the user can ⌘Z your feature</td></tr>
       </table></div>
-<pre>import { AddNodeCommand } from '@grafloria/engine';
+<pre data-lang="typescript">import { AddNodeCommand } from '@grafloria/engine';
 
 const node = new NodeModel({ id: 'ship', type: 'task',
   position: { x: 480, y: 60 }, size: { width: 120, height: 48 } });
@@ -124,8 +132,8 @@ await engine.undo();  // and it cleanly reverts</pre>
       </ul>
 
       <div class="pn">
-        <a class="prev" href="../ports-and-validation/">Ports & validation</a>
-        <a class="next" href="../layout/">Layout</a>
+        <a class="prev" href="../groups/">Groups</a>
+        <a class="next" href="../events-and-interaction/">Events & interaction</a>
       </div>
     </article>
   </div>
@@ -139,5 +147,21 @@ await engine.undo();  // and it cleanly reverts</pre>
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

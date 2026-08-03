@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/" aria-current="page">Layout</a>
         <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
         <a href="../theming/">Theming</a>
         <a href="../export/">Export</a>
         <a href="../collaboration/">Collaboration</a>
         <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -62,7 +70,7 @@
       <p class="lede">Hand-placing nodes stops scaling around fifteen of them. Grafloria puts eleven layout algorithms behind one registry and one call — and keeps the heavyweight (ELK) out of your bundle until the moment it is used.</p>
 
       <h2>One call</h2>
-<pre>await engine.layout('elk');                                   // opinionated default
+<pre data-lang="typescript">await engine.layout('elk');                                   // opinionated default
 await engine.layout('dagre', { direction: 'TB', rankSpacing: 80 });
 await engine.layout();                                        // 'auto' — picks for you</pre>
       <p>Registered names: <code>auto</code>, <code>elk</code>, <code>dagre</code>,
@@ -92,7 +100,7 @@ await engine.layout();                                        // 'auto' — pick
       else (dagre, tree, force, grid…) is small and ships eagerly.</p>
 
       <h2>Declarative, in every framework</h2>
-<pre>// React
+<pre data-lang="typescript">// React
 &lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} layout="elk" /&gt;
 
 // Angular
@@ -109,7 +117,7 @@ layout={{ name: 'dagre', options: { direction: 'LR' } }}</pre>
       <h2>Incremental layout</h2>
       <p>After inserting into an already-laid-out graph, a full re-layout scrambles the user's
       mental map. <code>layoutIncremental</code> moves only the neighborhood:</p>
-<pre>await engine.layoutIncremental({ changed: ['inserted-node-id'], direction: 'LR', radius: 1 });</pre>
+<pre data-lang="typescript">await engine.layoutIncremental({ changed: ['inserted-node-id'], direction: 'LR', radius: 1 });</pre>
 <p><a class="demo-link" href="../../demos-react/#dynamic-layouting">Live: incremental layout on insert →</a></p>
 
       <h2>Where next</h2>
@@ -120,7 +128,7 @@ layout={{ name: 'dagre', options: { direction: 'LR' } }}</pre>
       </ul>
 
       <div class="pn">
-        <a class="prev" href="../commands-and-undo/">Commands & undo</a>
+        <a class="prev" href="../events-and-interaction/">Events & interaction</a>
         <a class="next" href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
       </div>
     </article>
@@ -135,5 +143,21 @@ layout={{ name: 'dagre', options: { direction: 'LR' } }}</pre>
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

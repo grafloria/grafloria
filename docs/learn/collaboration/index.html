@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/">Layout</a>
         <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
         <a href="../theming/">Theming</a>
         <a href="../export/">Export</a>
         <a href="../collaboration/" aria-current="page">Collaboration</a>
         <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -62,7 +70,7 @@
       <p class="lede">Two people drag the same diagram and both keep their changes. The CRDT lives in the engine — you bring a message channel, Grafloria brings convergence, presence and comments.</p>
 
       <h2>The one-prop version</h2>
-<pre>// React
+<pre data-lang="typescript">// React
 &lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges}
   collab={{ transport, actor: 'lena' }}
   onCollabReady={(session) =&gt; console.log('joined')} /&gt;
@@ -103,7 +111,7 @@
       transport, and it runs anywhere the engine runs — including Node, which is how you
       build a persistence peer (a headless replica that joins the room and writes every
       converged state to a database):</p>
-<pre>import { createSyncSession } from '@grafloria/engine';
+<pre data-lang="typescript">import { createSyncSession } from '@grafloria/engine';
 
 const session = createSyncSession(diagram, transport, { actor: 'server-writer' });
 // same CRDT, no renderer — a Node process is just another peer</pre>
@@ -137,5 +145,21 @@ const session = createSyncSession(diagram, transport, { actor: 'server-writer' }
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

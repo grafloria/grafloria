@@ -46,14 +46,22 @@
       <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
         <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
         <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
         <a href="../layout/">Layout</a>
         <a href="../mermaid-and-the-dsl/" aria-current="page">Mermaid & the text format</a>
         <a href="../theming/">Theming</a>
         <a href="../export/">Export</a>
         <a href="../collaboration/">Collaboration</a>
         <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
       </div>
     </aside>
     <article class="prose">
@@ -62,7 +70,7 @@
       <p class="lede">Diagrams-as-text is how diagrams live in git. Grafloria reads and writes Mermaid-compatible text — and adds the one thing Mermaid cannot express: your hand-arranged positions, in a sidecar that keeps the text valid Mermaid.</p>
 
       <h2>Import</h2>
-<pre>import { importDiagramText } from '@grafloria/engine';
+<pre data-lang="typescript">import { importDiagramText } from '@grafloria/engine';
 
 const result = importDiagramText(`flowchart LR
   a[Start] --&gt; b{Gate}
@@ -83,12 +91,12 @@ result.diagram.getNodes()[0].type;               // 'flowchart:process' — type
       four are verified against real Mermaid by a CI oracle — the same text rendered by
       Mermaid itself and by Grafloria, compared structurally. Everything else is refused
       loudly rather than rendered wrongly:</p>
-<pre>const r = importDiagramText('sequenceDiagram\n  A-&gt;&gt;B: hi');
+<pre data-lang="typescript">const r = importDiagramText('sequenceDiagram\n  A-&gt;&gt;B: hi');
 r.unsupported;   // 'sequenceDiagram' — check this field; there is no silent wrong guess</pre>
 <p><a class="demo-link" href="../../mermaid/">The full Mermaid compatibility story →</a></p>
 
       <h2>Export — and the sidecar trick</h2>
-<pre>import { exportDiagramText } from '@grafloria/engine';
+<pre data-lang="typescript">import { exportDiagramText } from '@grafloria/engine';
 
 const text = exportDiagramText(diagram);</pre>
       <p>The output is valid Mermaid that any Mermaid renderer accepts. Positions, sizes and
@@ -133,5 +141,21 @@ const text = exportDiagramText(diagram);</pre>
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

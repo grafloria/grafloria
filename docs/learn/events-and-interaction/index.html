@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Events &amp; interaction — one event map, four surfaces — Grafloria</title>
+<meta name="description" content="The Grafloria event map (nodes:change, connect, node:click, viewport:change…), how each framework surfaces it, connection lifecycle events, and the interaction config.">
+<link rel="canonical" href="https://grafloria.com/learn/events-and-interaction/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Events &amp; interaction — one event map, four surfaces — Grafloria">
+<meta property="og:description" content="The Grafloria event map (nodes:change, connect, node:click, viewport:change…), how each framework surfaces it, connection lifecycle events, and the interaction config.">
+<meta property="og:url" content="https://grafloria.com/learn/events-and-interaction/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/" aria-current="page">Events & interaction</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Events &amp; interaction</p>
+      <h1>Events &amp; interaction</h1>
+      <p class="lede">One event map on the instance; each framework dresses it in its own idiom — DOM events, React callbacks, Vue emits, Angular outputs. Learn the map once and the bindings become predictable.</p>
+
+      <h2>The instance event map</h2>
+<pre data-lang="typescript">instance.on('nodes:change',     ({ nodes }) =&gt; save(nodes));      // add/remove — live NodeModel[]
+instance.on('edges:change',     ({ edges }) =&gt; {});
+instance.on('selection:change', ({ nodes, edges }) =&gt; inspect(nodes));
+instance.on('connect',          ({ link }) =&gt; {});                 // a wire was completed
+instance.on('reconnect',        ({ link, endpoint }) =&gt; {});       // 'source' | 'target' moved
+instance.on('node:click',       ({ node, world }) =&gt; {});          // world = diagram coords
+instance.on('node:doubleclick', ({ node, world }) =&gt; {});
+instance.on('edge:click',       ({ edge, world }) =&gt; {});
+instance.on('viewport:change',  ({ viewport, zoom }) =&gt; {});
+// every on() returns an unsubscribe function</pre>
+
+      <h2>The same map, per framework</h2>
+      <div class="tablewrap"><table>
+        <tr><th>Surface</th><th>Idiom</th><th>Example</th></tr>
+        <tr><td>Plain JS</td><td><code>api.on(...)</code>, or bubbling DOM events on <code>&lt;grafloria-flow&gt;</code></td>
+            <td><code>el.addEventListener('grafloria-connect', e =&gt; e.detail.link)</code></td></tr>
+        <tr><td>React</td><td>callback props</td><td><code>onConnect</code>, <code>onNodeClick</code>, <code>onSelectionChange</code>, <code>onNodesChange</code></td></tr>
+        <tr><td>Vue</td><td>emits (kebab-case)</td><td><code>@connect</code>, <code>@node-click</code>, <code>@selection-change</code>, <code>v-model:nodes</code></td></tr>
+        <tr><td>Angular</td><td>model writes + outputs</td><td><code>[(nodes)]</code>, <code>(viewportChanged)</code>, <code>(layoutDone)</code>; clicks via the engine bus</td></tr>
+      </table></div>
+      <p>The element's DOM events (<code>grafloria-ready</code>, <code>-nodes-change</code>,
+      <code>-edges-change</code>, <code>-selection-change</code>, <code>-connect</code>,
+      <code>-node-click</code>, <code>-edge-click</code>, <code>-viewport-change</code>) all
+      bubble and cross shadow boundaries — delegate at <code>document</code> level if you
+      like.</p>
+
+      <h2>The connection lifecycle, live</h2>
+      <p>While a user drags a wire, the engine's bus narrates it — this is what powers
+      guidance UIs (tint the good targets, explain the refusals):</p>
+<pre data-lang="typescript">const bus = instance.getEngine().eventBus;
+for (const name of ['connection:start', 'connection:update', 'connection:port-enter',
+                    'connection:port-leave', 'connection:complete', 'connection:cancel']) {
+  bus.on(name, (payload) =&gt; log(name, payload));
+}</pre>
+<p><a class="demo-link" href="../../demos/#events">Live: connection events narrated on screen →</a></p>
+
+      <h2>Interaction config — what the user may do</h2>
+<pre data-lang="typescript">// at creation (a prop in React/Vue: interaction={{ ... }})
+render(spec, host, { interaction: { portVisibility: 'always' } });
+
+// at runtime
+instance.getEngine().setInteractionConfig({ portVisibility: 'always' });</pre>
+      <p>Framework-level switches cover the common cases directly:
+      <code>readonly</code> (view-only canvas), <code>enablePan</code> /
+      <code>enableZoom</code> / <code>minZoom</code> / <code>maxZoom</code> /
+      <code>zoomSensitivity</code>, <code>fitView</code>, and in Angular also
+      <code>enableSnapping</code>, <code>enableProximityConnect</code>,
+      <code>enableKeyboardNavigation</code>, <code>enableInPlaceEditing</code> and
+      <code>canvasBounds</code>.</p>
+      <div class="note">Built-in keyboard support ships enabled: ⌘Z/⌘⇧Z history, Delete for
+      selection, arrow-key nudging, and focus-visible navigation with live-region narration
+      for screen readers. You wire nothing.</div>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../the-instance/">The DiagramInstance</a> — the object all of this hangs off.</li>
+        <li><a href="../commands-and-undo/">Commands &amp; undo</a> — what a gesture becomes once it lands.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../commands-and-undo/">Commands & undo</a>
+        <a class="next" href="../layout/">Layout</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>
