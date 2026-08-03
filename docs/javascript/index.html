@@ -179,8 +179,8 @@
     </div>
 
     <div class="callout">
-      <h3>&ldquo;npm says 14&nbsp;MB&rdquo; &mdash; no, that is not what ships</h3>
-      <p>npm&rsquo;s <i>unpacked size</i> counts every package&rsquo;s code three ways (CJS&nbsp;+&nbsp;ESM&nbsp;+ TypeScript declarations). What your users download, measured worst-case &mdash; the <b>entire</b> public surface of <code>@grafloria/element</code>, esbuild minify&nbsp;+ splitting: <b>451&nbsp;KB gzipped</b> eager, with the ELK layout engine in a lazy chunk that downloads only if you invoke it. That covers the renderer, undo, export, Mermaid import and validation &mdash; about the cost of one charting library. Every package README carries a two-minute reproduction script.</p>
+      <h3>npm&rsquo;s &ldquo;unpacked size&rdquo; is not what ships</h3>
+      <p>npm&rsquo;s <i>unpacked size</i> is uncompressed ESM source plus full TypeScript declarations. What your users download, measured worst-case &mdash; the <b>entire</b> public surface of <code>@grafloria/element</code>, esbuild minify&nbsp;+ splitting: <b>451&nbsp;KB gzipped</b> eager, with the ELK layout engine in a lazy chunk that downloads only if you invoke it. That covers the renderer, undo, export, Mermaid import and validation &mdash; about the cost of one charting library. Every package README carries a two-minute reproduction script.</p>
     </div>
 
     <h2>Every demo, in your framework</h2>

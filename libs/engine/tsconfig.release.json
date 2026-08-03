@@ -1,5 +1,12 @@
 {
   "extends": "./tsconfig.lib.json",
-  "compilerOptions": { "outDir": ".", "rootDir": ".", "declaration": true,
-    "noEmitOnError": false, "baseUrl": ".", "paths": {} }
+  "compilerOptions": {
+    "outDir": ".",
+    "rootDir": ".",
+    "declaration": true,
+    "noEmitOnError": false,
+    "baseUrl": ".",
+    "paths": {},
+    "module": "es2020"
+  }
 }
