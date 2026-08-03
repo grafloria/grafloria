@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.lib.json",
+  "compilerOptions": { "outDir": ".", "rootDir": ".", "declaration": true,
+    "noEmitOnError": false, "baseUrl": ".", "paths": {"@grafloria/engine": ["../engine/src/index.d.ts"]} }
+}

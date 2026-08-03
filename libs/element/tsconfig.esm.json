@@ -1,13 +1,10 @@
 {
-  // The ESM build the `module` field promises. Emits esm/src/**/*.js beside
-  // the in-place CJS build; consumed by bundlers (tree-shaking), never by the
-  // `main` path. Types stay with the CJS build (src/**/*.d.ts).
+  // The ESM build the `module` field promises (esm/src/**). Dependency imports
+  // resolve to the dependencies' BUILT d.ts — never their sources — so the
+  // program contains only this lib's files and emit can never escape the lib
+  // (in-place cross-lib emit is exactly how 0.2.11/0.3.10 shipped a broken CJS
+  // entry: renderer's ESM pass wrote ../engine/src/*.js over engine's build).
   "extends": "./tsconfig.lib.json",
-  "compilerOptions": {
-    "module": "es2020",
-    "outDir": "esm",
-    "rootDir": ".",
-    "declaration": false,
-    "noEmitOnError": false
-  }
+  "compilerOptions": { "module": "es2020", "outDir": "esm", "rootDir": ".",
+    "declaration": false, "noEmitOnError": false, "baseUrl": ".", "paths": {"@grafloria/engine": ["../engine/src/index.d.ts"], "@grafloria/renderer": ["../renderer/src/index.d.ts"]} }
 }
