@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ports &amp; validation — where links may attach — Grafloria</title>
+<meta name="description" content="The Grafloria port spec: sides, directions, dataType colors, groups and layouts, gating — and the three validation mechanisms that keep wires legal.">
+<link rel="canonical" href="https://grafloria.com/learn/ports-and-validation/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Ports &amp; validation — where links may attach — Grafloria">
+<meta property="og:description" content="The Grafloria port spec: sides, directions, dataType colors, groups and layouts, gating — and the three validation mechanisms that keep wires legal.">
+<meta property="og:url" content="https://grafloria.com/learn/ports-and-validation/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../ports-and-validation/" aria-current="page">Ports & validation</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Ports &amp; validation</p>
+      <h1>Ports &amp; validation</h1>
+      <p class="lede">Ports decide where links attach and which connections are legal. The spec is identical in every framework — declared on the node, enforced by the engine, drawn by the renderer.</p>
+
+      <h2>The default: zero ceremony</h2>
+      <p>Every node is born with four deterministic bi-directional ports — top, right, bottom,
+      left, with ids <code>&lt;nodeId&gt;__top</code> … <code>__left</code>. Plain flowcharts
+      need nothing declared: omit handles on an edge and it attaches to whichever side faces
+      its partner as nodes move. <code>sourceHandle: 'bottom'</code> pins a default port by
+      side name.</p>
+
+      <h2>Declared ports</h2>
+<pre>{ id: 'transform', position: { x: 300, y: 120 }, size: { width: 150, height: 90 },
+  ports: [
+    { id: 'in',    side: 'left',  type: 'input' },
+    { id: 'out',   side: 'right', type: 'output', dataType: 'frame' },
+    { id: 'errs',  side: 'bottom', type: 'output', maxConnections: 1,
+      shape: { shape: 'diamond', size: 12 },
+      label: { text: 'errors', layout: 'outside' } },
+  ] }</pre>
+      <p>The full spec, field by field:</p>
+      <div class="tablewrap"><table>
+        <tr><th>Field</th><th>What it does</th></tr>
+        <tr><td><code>side</code>, <code>index</code></td><td>which edge of the node, and ordering along it</td></tr>
+        <tr><td><code>type</code></td><td><code>input</code> / <code>output</code> / <code>bi</code> — directionality, enforced while wiring</td></tr>
+        <tr><td><code>dataType</code></td><td>a named data-flow type; drives the glyph color <i>and</i> compatibility (below)</td></tr>
+        <tr><td><code>shape</code></td><td>glyph: circle (default), square, diamond, triangle, or a custom SVG path</td></tr>
+        <tr><td><code>label</code></td><td>text + placement: <code>inside</code> / <code>outside</code> / <code>orthogonal</code> / <code>radial</code></td></tr>
+        <tr><td><code>group</code> + <code>metadata.portGroups</code></td><td>shared config and a layout strategy — <code>sideLinear</code>, <code>line</code>, <code>ellipseSpread</code> — for many-port nodes</td></tr>
+        <tr><td><code>maxConnections</code>, <code>gating</code></td><td>link caps; <code>gating</code> is the richer form (directional connectability, allowed types, self-links)</td></tr>
+        <tr><td><code>fromSpot</code> / <code>toSpot</code>, <code>spread</code></td><td>where links leave the glyph box, and fanning several links along an edge</td></tr>
+      </table></div>
+      <div class="note">Ports show on <b>hover</b> by default. To show them always:
+      <code>interaction: { portVisibility: 'always' }</code> at creation (a prop in
+      React/Vue), or <code>engine.setInteractionConfig({ portVisibility: 'always' })</code>
+      at runtime.</div>
+<p><a class="demo-link" href="../../demos/#ports">Live: port shapes, labels, groups and layouts →</a></p>
+
+      <h2>Three validation layers</h2>
+      <h3>1. Port anatomy — free</h3>
+      <p>Directions and caps enforce themselves: an <code>input</code> refuses to start a
+      wire, a full <code>maxConnections: 1</code> port refuses a second, and the invalid
+      target is tinted while you drag.</p>
+
+      <h3>2. Type compatibility — declarative</h3>
+<pre>import { portTypeRegistry } from '@grafloria/element';
+
+portTypeRegistry.registerAll([
+  { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
+  { name: 'string', color: '#9333ea', compatibleWith: ['string'] },
+]);</pre>
+      <p>Ports carrying a <code>dataType</code> get the registered color, and incompatible
+      pairs refuse the wire mid-drag — the visual language and the rule are one
+      declaration.</p>
+
+      <h3>3. Custom rules — a function with veto power</h3>
+<pre>import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/element';
+
+const dispose = registerConnectionValidator(({ sourceNode, sourcePort, targetNode, targetPort, link }) =&gt; {
+  if (sourcePort?.type === 'output' &amp;&amp; targetPort?.type === 'output')
+    return 'an output cannot feed another output';   // string = veto, with a reason
+  if (sourceNode?.data?.role === 'sink')
+    return 'a Sink has no outputs';
+  return true;                                        // true = allow
+});</pre>
+      <p>The candidate carries both nodes, both ports, and — when the user is
+      <i>reconnecting</i> an existing edge rather than drawing a new one — the
+      <code>link</code>. Every registered validator must pass: it's veto power, not voting.</p>
+      <div class="note"><b>The registry is process-global, not per-canvas.</b> Always keep the
+      returned disposer and call it (plus <code>clearConnectionValidators()</code>) when your
+      view unmounts — otherwise validators leak across routes, remounts, and React
+      StrictMode's double-invoke.</div>
+<p><a class="demo-link" href="../../demos/#validation">Live: validation demos →</a></p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../the-model/">The model</a> — ports as engine objects (<code>PortModel</code>).</li>
+        <li>The <a href="../javascript/">tutorials</a> wire typed ports end-to-end in each framework.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../the-model/">The model</a>
+        <a class="next" href="../commands-and-undo/">Commands & undo</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

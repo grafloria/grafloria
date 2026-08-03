@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Angular tutorial — a flow editor in 10 minutes — Grafloria</title>
+<meta name="description" content="Build a complete Angular flow editor with Grafloria: signal bindings, ng-template custom nodes, typed ports, undo, ELK layout and PNG export — every snippet runnable.">
+<link rel="canonical" href="https://grafloria.com/learn/angular/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Angular tutorial — a flow editor in 10 minutes — Grafloria">
+<meta property="og:description" content="Build a complete Angular flow editor with Grafloria: signal bindings, ng-template custom nodes, typed ports, undo, ELK layout and PNG export — every snippet runnable.">
+<meta property="og:url" content="https://grafloria.com/learn/angular/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/" aria-current="page">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Angular in 10 minutes</p>
+      <h1>Angular in 10 minutes</h1>
+      <p class="lede">From <code>npm install</code> to a flow editor with template-defined nodes, connection rules, undo and export — signal-based, zoneless-verified. The same code the CI-gated <a href="../../demos-angular/">Angular demo gallery</a> runs.</p>
+
+      <h2>1 — Install and mount a canvas</h2>
+<pre>npm install @grafloria/angular @grafloria/element @grafloria/renderer @grafloria/engine</pre>
+      <p><code>DiagramCanvasComponent</code> is a standalone component with signal-based
+      two-way bindings. One rule to remember: <b>give the canvas a real height</b> — it fills
+      its container, and an unstyled custom element collapses to zero.</p>
+<div class="filebar">flow.component.ts</div>
+<pre>import { Component } from '@angular/core';
+import { DiagramCanvasComponent } from '@grafloria/angular';
+
+@Component({
+  selector: 'app-flow',
+  imports: [DiagramCanvasComponent],
+  template: `
+    &lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
+      [plugins]="true" style="display:block; height:100vh" /&gt;
+  `,
+})
+export class FlowComponent {
+  nodes = [
+    { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' } },
+    { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Publish' } },
+  ];
+  edges = [{ id: 'e1', source: 'a', target: 'b' }];
+}</pre>
+      <p>That's a working editor: drag, connect, pan, zoom — plus minimap, zoom controls and a
+      dotted background from <code>[plugins]="true"</code> (lazy-loaded; omit the binding and
+      none of it is downloaded). Plain array fields work; <code>signal([...])</code> works
+      identically — the bindings are <code>model()</code>-based either way. No stylesheet
+      import, no NgModule, no provider is required.</p>
+
+      <h2>2 — Custom nodes are ng-templates</h2>
+      <p>Declare a template for a node <code>type</code> and every node of that type renders
+      through it — declaring the template <i>is</i> the opt-in, no extra flag needed:</p>
+<div class="filebar">flow.component.ts</div>
+<pre>import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/angular';
+
+@Component({
+  selector: 'app-flow',
+  imports: [DiagramCanvasComponent, GrafloriaNodeDefDirective],
+  template: `
+    &lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
+        style="display:block; height:100vh"&gt;
+      &lt;ng-template grafloriaNode="card" let-data="data"&gt;
+        &lt;div class="card"&gt;
+          &lt;div class="title"&gt;{{ data['title'] }}&lt;/div&gt;
+          &lt;div class="owner"&gt;owner: {{ data['owner'] }}&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/ng-template&gt;
+    &lt;/grafloria-diagram-canvas&gt;
+  `,
+  styles: [`.card { height: 100%; background: #fff; border: 1.5px solid #94A5F0;
+    border-radius: 12px; padding: 10px 14px; box-sizing: border-box; }
+    .title { font-weight: 700; } .owner { font-size: 12px; color: #5A6478; }`],
+})
+export class FlowComponent {
+  nodes = [
+    { id: 'a', type: 'card', position: { x: 80, y: 90 },  size: { width: 230, height: 110 },
+      data: { title: 'Build', owner: 'CI' } },
+    { id: 'b', type: 'card', position: { x: 430, y: 90 }, size: { width: 230, height: 110 },
+      data: { title: 'Deploy', owner: 'CD' } },
+  ];
+  edges = [{ id: 'e1', source: 'a', target: 'b' }];
+}</pre>
+      <p>The template context gives you <code>let-data="data"</code> (the node's payload),
+      <code>let-node</code> (the live <code>NodeModel</code>) and
+      <code>let-engine="engine"</code>. An <code>&lt;ng-template grafloriaNode&gt;</code> with
+      no value is the wildcard fallback for every type without its own template.</p>
+<p><a class="demo-link" href="../../demos-angular/#html-nodes">Live: ng-template custom nodes →</a></p>
+
+      <h2>3 — Ports and connection rules</h2>
+      <p>Ports are part of the node spec — a side, a direction, optionally a
+      <code>dataType</code>:</p>
+<pre>nodes = [
+  { id: 'src', position: { x: 120, y: 260 }, size: { width: 130, height: 70 }, label: 'number src',
+    ports: [{ id: 'out', side: 'right' as const, type: 'output', dataType: 'number' }] },
+  { id: 'num', position: { x: 640, y: 140 }, size: { width: 130, height: 70 }, label: 'number in',
+    ports: [{ id: 'nin', side: 'left' as const, type: 'input', dataType: 'number' }] },
+];</pre>
+      <p>Type compatibility is registered once, app-wide; custom rules are a validator that
+      returns <code>true</code> to allow or a string to veto with a reason. Both come from the
+      framework-agnostic packages:</p>
+<pre>import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/renderer';
+import { portTypeRegistry } from '@grafloria/element';
+
+portTypeRegistry.registerAll([
+  { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
+  { name: 'string', color: '#9333ea', compatibleWith: ['string'] },
+]);
+
+export class FlowComponent implements AfterViewInit, OnDestroy {
+  private dispose?: () =&gt; void;
+
+  ngAfterViewInit() {
+    this.dispose = registerConnectionValidator(({ sourcePort, targetPort }) =&gt; {
+      if (sourcePort?.type === 'output' &amp;&amp; targetPort?.type === 'output')
+        return 'an output cannot feed another output';
+      return true;
+    });
+  }
+  ngOnDestroy() { this.dispose?.(); clearConnectionValidators(); }
+}</pre>
+      <div class="note">Validators are <b>global</b> — dispose in <code>ngOnDestroy</code> or they leak
+      across routes. Ports show on hover by default; to show them always, reach the engine
+      after view init:
+      <code>this.canvas().activeEngine()?.setInteractionConfig({ portVisibility: 'always' })</code>.</div>
+<p><a class="demo-link" href="../../demos-angular/#typed-ports">Live: typed ports →</a></p>
+<p><a class="demo-link" href="../../demos-angular/#connection-validation">Live: connection validation →</a></p>
+
+      <h2>4 — Undo, viewport, engine access</h2>
+      <p><kbd>⌘Z</kbd>/<kbd>Ctrl+Z</kbd> works with zero wiring. For your own toolbar, the
+      canvas surfaces the essentials directly; everything else lives on the engine, reached
+      with <code>viewChild</code> after the view initializes:</p>
+<pre>import { Component, viewChild } from '@angular/core';
+import { DiagramCanvasComponent } from '@grafloria/angular';
+
+export class FlowComponent {
+  canvas = viewChild.required(DiagramCanvasComponent);
+
+  undo() { void this.canvas().undo(); }
+  redo() { void this.canvas().redo(); }
+  fit()  { this.canvas().fitToContent(40); }
+
+  // engine escape hatch — canUndo, copy/paste, selection, interaction config …
+  get engine() { return this.canvas().activeEngine(); }
+}</pre>
+      <div class="note"><code>activeEngine()</code> is available from <code>ngAfterViewInit</code>
+      onward — engine-touching setup belongs there, not in the constructor.</div>
+<p><a class="demo-link" href="../../demos-angular/#undo-redo">Live: undo/redo buttons →</a></p>
+
+      <h2>5 — Auto-layout</h2>
+<pre>&lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
+  [layout]="'elk'" style="display:block; height:100vh" /&gt;
+
+&lt;!-- configured: --&gt;
+[layout]="{ name: 'dagre', options: { direction: 'TB', rankSpacing: 80 } }"</pre>
+      <p>Registered names: <code>auto</code>, <code>elk</code>, <code>dagre</code>,
+      <code>layered</code>, <code>tree</code>, <code>grid</code>, <code>circular</code>,
+      <code>radial</code>, <code>force</code>, <code>spectral</code>, <code>community</code>.
+      ELK loads lazily in a Worker (a separate ~432&nbsp;KB gz chunk, only when first used).
+      The binding re-runs on value change only — it never fights a drag; call
+      <code>applyLayout()</code> on the component to re-run on demand, and listen with
+      <code>(layoutDone)</code>.</p>
+<p><a class="demo-link" href="../../demos-angular/#elk-tree">Live: ELK layout →</a></p>
+
+      <h2>6 — Save, load, export</h2>
+<pre>// snapshot / restore (JSON)
+saved: SerializedDiagram | null = null;            // type from '@grafloria/engine'
+save()    { this.saved = this.canvas().snapshot(); }
+restore() { if (this.saved) this.canvas().loadSnapshot(this.saved); }
+
+// Mermaid-compatible text round-trip
+text = '';
+export() { this.text = this.canvas().exportText(); }
+load()   { this.canvas().loadText(this.text); }
+
+// images — PNG returns a data: URL, SVG returns the raw string
+async downloadPng() {
+  const url = await this.canvas().exportDiagram('png', { scale: 2 });
+  const a = document.createElement('a');
+  a.href = url; a.download = 'diagram.png'; a.click();
+}</pre>
+      <div class="note">Export needs a painted canvas — calling it before the first paint throws a
+      clear error. PDF export (<code>exportDiagram('pdf')</code>) produces a real vector PDF:
+      paths stay paths, text stays selectable.</div>
+<p><a class="demo-link" href="../../demos-angular/#save-and-restore">Live: save & restore →</a></p>
+<p><a class="demo-link" href="../../demos-angular/#download-image">Live: PNG/SVG download →</a></p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../../demos-angular/">Every demo as an Angular component</a> — 100+ routes, source shown.</li>
+        <li><a href="../the-model/">The model</a> — what nodes, ports, links and groups really are.</li>
+        <li><a href="../kits/">Kits</a> — <code>&lt;grafloria-dashboard&gt;</code> with
+        <code>ng-template grafloriaWidget</code> widgets.</li>
+        <li>App-wide defaults: <code>provideGrafloria({ theme })</code> in your bootstrap
+        providers; a canvas-level <code>[theme]</code> binding always wins.</li>
+        <li>Zoneless: the binding is verified against zoneless change detection — no
+        <code>zone.js</code> assumptions anywhere.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../vue/">Vue 3 in 10 minutes</a>
+        <a class="next" href="../the-model/">The model</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

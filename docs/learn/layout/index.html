@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layout — eleven algorithms, one call — Grafloria</title>
+<meta name="description" content="Grafloria auto-layout: ELK, dagre, tree, force, grid and more behind one registry. Lazy ELK loading, worker offload, incremental layout, framework bindings.">
+<link rel="canonical" href="https://grafloria.com/learn/layout/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Layout — eleven algorithms, one call — Grafloria">
+<meta property="og:description" content="Grafloria auto-layout: ELK, dagre, tree, force, grid and more behind one registry. Lazy ELK loading, worker offload, incremental layout, framework bindings.">
+<meta property="og:url" content="https://grafloria.com/learn/layout/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../layout/" aria-current="page">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Layout</p>
+      <h1>Layout</h1>
+      <p class="lede">Hand-placing nodes stops scaling around fifteen of them. Grafloria puts eleven layout algorithms behind one registry and one call — and keeps the heavyweight (ELK) out of your bundle until the moment it is used.</p>
+
+      <h2>One call</h2>
+<pre>await engine.layout('elk');                                   // opinionated default
+await engine.layout('dagre', { direction: 'TB', rankSpacing: 80 });
+await engine.layout();                                        // 'auto' — picks for you</pre>
+      <p>Registered names: <code>auto</code>, <code>elk</code>, <code>dagre</code>,
+      <code>layered</code>, <code>tree</code>, <code>grid</code>, <code>circular</code>,
+      <code>radial</code>, <code>force</code>, <code>spectral</code>, <code>community</code>.
+      An unknown name throws with the list of registered ones — no silent no-op.
+      <code>auto</code> inspects the graph (a tree? a DAG? a hairball?) and dispatches to the
+      right algorithm.</p>
+
+      <h2>Choosing</h2>
+      <div class="tablewrap"><table>
+        <tr><th>Graph</th><th>Reach for</th><th>Why</th></tr>
+        <tr><td>Flowcharts, pipelines, DAGs</td><td><code>elk</code> or <code>layered</code>/<code>dagre</code></td>
+            <td>layered ranking, few crossings; ELK handles ports and nesting best</td></tr>
+        <tr><td>Hierarchies, org charts</td><td><code>tree</code></td><td>parent-centered, tidy</td></tr>
+        <tr><td>Networks, clusters</td><td><code>force</code>, <code>community</code>, <code>spectral</code></td>
+            <td>physical spread; community detection groups related nodes</td></tr>
+        <tr><td>Catalogs, galleries</td><td><code>grid</code>, <code>circular</code>, <code>radial</code></td><td>uniform placement</td></tr>
+        <tr><td>Don't want to think</td><td><code>auto</code></td><td>classification + dispatch</td></tr>
+      </table></div>
+
+      <h2>The cost model — why ELK doesn't bloat you</h2>
+      <p>ELK is the best layered engine available and also ~1.4&nbsp;MB minified. Grafloria
+      loads it through a lazy <code>import()</code> — a separate chunk (~432&nbsp;KB gz) that
+      downloads on the <b>first</b> <code>layout('elk')</code> call and never before. It also
+      runs off-thread in a Worker, so a thousand-node layout doesn't freeze your UI. Everything
+      else (dagre, tree, force, grid…) is small and ships eagerly.</p>
+
+      <h2>Declarative, in every framework</h2>
+<pre>// React
+&lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} layout="elk" /&gt;
+
+// Angular
+&lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges" [layout]="'elk'" /&gt;
+
+// object form everywhere
+layout={{ name: 'dagre', options: { direction: 'LR' } }}</pre>
+      <div class="note">The binding re-runs when its <b>value</b> changes — never when node data
+      changes. That is deliberate: a user drag round-trips through the nodes binding, and a
+      re-layout firing on every change would fight the user's hands. Re-run on demand with
+      <code>instance.getEngine().layout(...)</code> (React/Vue) or
+      <code>applyLayout()</code> (Angular).</div>
+
+      <h2>Incremental layout</h2>
+      <p>After inserting into an already-laid-out graph, a full re-layout scrambles the user's
+      mental map. <code>layoutIncremental</code> moves only the neighborhood:</p>
+<pre>await engine.layoutIncremental({ changed: ['inserted-node-id'], direction: 'LR', radius: 1 });</pre>
+<p><a class="demo-link" href="../../demos-react/#dynamic-layouting">Live: incremental layout on insert →</a></p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../../demos/">Layout demos</a> — every algorithm on a real graph.</li>
+        <li><a href="../mermaid-and-the-dsl/">Mermaid &amp; the text format</a> — imported text
+        gets type-aware layout automatically.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../commands-and-undo/">Commands & undo</a>
+        <a class="next" href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

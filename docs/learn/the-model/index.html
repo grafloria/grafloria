@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The model — nodes, ports, links and groups — Grafloria</title>
+<meta name="description" content="How Grafloria thinks: one headless model drives every framework binding. Nodes, deterministic default ports, links, groups, and JSON serialization.">
+<link rel="canonical" href="https://grafloria.com/learn/the-model/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="The model — nodes, ports, links and groups — Grafloria">
+<meta property="og:description" content="How Grafloria thinks: one headless model drives every framework binding. Nodes, deterministic default ports, links, groups, and JSON serialization.">
+<meta property="og:url" content="https://grafloria.com/learn/the-model/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/" aria-current="page">The model</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / The model</p>
+      <h1>The model</h1>
+      <p class="lede">Everything in Grafloria — the React component, the Angular canvas, the web component — is a thin skin over one headless model in <code>@grafloria/engine</code>. Understand the model once and every binding makes sense.</p>
+
+      <h2>Two layers, one truth</h2>
+      <p>The <b>engine</b> (<code>DiagramEngine</code>) owns behavior: commands, history,
+      layout, validation, collaboration. The <b>diagram</b> (<code>DiagramModel</code>) owns
+      the data: nodes, links, groups, viewport. The framework bindings hand you a friendlier
+      <i>spec</i> layer (<code>{ id, position, data, ports }</code> objects), convert it to
+      models internally, and hand models back in change events. This page is the layer
+      underneath — it runs identically in the browser, in a worker, and in Node (the snippets
+      below execute in plain Node against the published package).</p>
+<pre>import { DiagramEngine, NodeModel, PortModel, LinkModel } from '@grafloria/engine';
+
+const engine  = new DiagramEngine();
+const diagram = engine.createDiagram('order-flow');
+
+const intake = new NodeModel({
+  id: 'intake', type: 'task',
+  position: { x: 40, y: 60 }, size: { width: 120, height: 48 },
+});
+intake.setData('label', 'Intake');
+
+const review = new NodeModel({
+  id: 'review', type: 'task',
+  position: { x: 260, y: 60 }, size: { width: 120, height: 48 },
+});
+review.setData('label', 'Review');
+
+diagram.addNode(intake);
+diagram.addNode(review);
+diagram.addLink(new LinkModel({
+  id: 'l1',
+  source: { nodeId: 'intake' },
+  target: { nodeId: 'review' },
+}));</pre>
+
+      <h2>Nodes</h2>
+      <p>A node is an id, a <code>type</code> (which selects its renderer — a shape, a custom
+      component, a template), geometry (<code>position</code>, <code>size</code>), and two
+      open dictionaries: <code>data</code> for your payload
+      (<code>setData</code>/<code>getData</code>) and <code>metadata</code> for
+      Grafloria-adjacent settings (label, shape styling, port groups). In the framework spec
+      layer, <code>label: 'Intake'</code> and <code>data: { label: 'Intake' }</code> are the
+      convenient front doors to the same places.</p>
+
+      <h2>Ports — four by default, precise on demand</h2>
+      <p>Every node is born with <b>four deterministic bi-directional ports</b> (top, right,
+      bottom, left) — the industry default, so plain flowcharts need zero port ceremony.
+      The moment you need precision, add your own:</p>
+<pre>intake.addPort(new PortModel({ id: 'intake-out', type: 'output', side: 'right' }));
+
+// reach them later
+intake.getPorts();                    // all ports
+intake.getPortBySide('right');
+diagram.getPortById('intake-out');
+diagram.getNodeByPortId('intake-out');</pre>
+      <p>A port has a direction (<code>input</code> / <code>output</code> / <code>bi</code>),
+      a side, an optional <code>dataType</code> (drives both its color and connection
+      compatibility), connection caps, glyph shape, label, and layout strategy. The full
+      surface is on <a href="../ports-and-validation/">Ports &amp; validation</a>.</p>
+
+      <h2>Links</h2>
+      <p>A link connects two endpoints. Each endpoint names a node — and optionally a specific
+      port; omit <code>portId</code> and the renderer picks the best side as things move:</p>
+<pre>new LinkModel({
+  id: 'l1',
+  source: { nodeId: 'intake', portId: 'intake-out' },   // pinned to a port
+  target: { nodeId: 'review' },                          // free — best side wins
+});
+
+diagram.getLinksForNode('intake');   // every link touching a node</pre>
+      <p>In the spec layer this is just <code>{ source: 'intake', target: 'review' }</code> —
+      with <code>sourceHandle</code>/<code>targetHandle</code> to pin ports, and
+      <code>type: 'orthogonal' | 'smooth' | 'bezier' | 'direct'</code> to pick geometry.
+      Routing (including the obstacle-avoiding router) is the renderer's job; the model stores
+      intent, not pixels.</p>
+
+      <h2>Groups</h2>
+      <p>Groups are containers with real semantics — membership
+      (<code>engine.addToGroup</code>), collective drag, collapse/expand
+      (<code>engine.collapseGroup</code>), and nesting
+      (<code>diagram.getAncestors</code>/<code>getDescendants</code>). A group can render with
+      full chrome or frameless (<code>frameChrome: 'none'</code>) for dashboard-style
+      packing.</p>
+
+      <h2>Serialization — the document is the API</h2>
+      <p>The whole diagram round-trips through one JSON document with a
+      <code>schemaVersion</code> and migrations on load — save it anywhere:</p>
+<pre>const doc = diagram.serialize();
+// { schemaVersion, id, uuid, type, version, metadata, name, nodes, links, groups, viewport }
+
+const engine2 = new DiagramEngine();
+engine2.createDiagram('restored');
+engine2.deserialize(doc);
+engine2.getDiagram().getNode('intake').getData('label');   // 'Intake' — everything survives</pre>
+      <div class="note">The same document shape is what <code>snapshot()</code>/<code>loadSnapshot()</code>
+      (Angular), <code>DiagramSerializer</code> (React/Vue), SVG/PNG <code>embedModel</code>
+      export, and the collaboration op-log all speak. There is exactly one persistence format
+      to learn.</div>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../ports-and-validation/">Ports &amp; validation</a> — the full port spec and connection rules.</li>
+        <li><a href="../commands-and-undo/">Commands &amp; undo</a> — why mutations are objects.</li>
+        <li><a href="../mermaid-and-the-dsl/">Mermaid &amp; the text format</a> — the second, human-writable serialization.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../angular/">Angular in 10 minutes</a>
+        <a class="next" href="../ports-and-validation/">Ports & validation</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

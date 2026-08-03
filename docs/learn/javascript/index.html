@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JavaScript tutorial — a flow editor in 10 minutes — Grafloria</title>
+<meta name="description" content="Build a flow editor in plain JavaScript with Grafloria: render(), the &lt;grafloria-flow&gt; element, custom nodes without a framework, validation, undo, layout, export.">
+<link rel="canonical" href="https://grafloria.com/learn/javascript/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="JavaScript tutorial — a flow editor in 10 minutes — Grafloria">
+<meta property="og:description" content="Build a flow editor in plain JavaScript with Grafloria: render(), the &lt;grafloria-flow&gt; element, custom nodes without a framework, validation, undo, layout, export.">
+<meta property="og:url" content="https://grafloria.com/learn/javascript/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/" aria-current="page">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / JavaScript in 10 minutes</p>
+      <h1>JavaScript in 10 minutes</h1>
+      <p class="lede">No framework, no build step required. Two front doors — a <code>render()</code> function and a <code>&lt;grafloria-flow&gt;</code> element — over the same engine that powers every framework binding. The same code the CI-gated <a href="../../demos/">demo gallery</a> runs.</p>
+
+      <h2>1 — Install and render</h2>
+<pre>npm install @grafloria/element @grafloria/renderer @grafloria/engine</pre>
+      <p><code>render(spec, target)</code> mounts a full editor into any sized element —
+      spec first, target second:</p>
+<div class="filebar">main.js</div>
+<pre>import { render } from '@grafloria/element';
+
+const api = render({
+  nodes: [
+    { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' } },
+    { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Publish' } },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }],
+}, document.getElementById('canvas'));</pre>
+      <p>Drag, connect, pan, zoom — all live. The return value is the
+      <code>DiagramInstance</code>, your handle to everything else on this page. Two rules:
+      the target must have a real height (<code>#canvas { height: 80vh }</code>), and the
+      spec is <b>data, not text</b> — Mermaid text has its own door (step 7).</p>
+      <div class="note"><b>Position is the only required node field.</b> <code>label</code> and
+      <code>data: { label }</code> both work. Every node is born with four bi-directional
+      ports (top/right/bottom/left), so connections work with zero port ceremony —
+      <code>sourceHandle: 'bottom'</code> targets a default port by side name.</div>
+
+      <h2>2 — Or: the zero-build tag</h2>
+      <p>The same canvas as a custom element — JSON attributes in, DOM events out. This is
+      the CMS/notebook/plain-HTML path:</p>
+<div class="filebar">index.html</div>
+<pre>&lt;script type="module"&gt;import '@grafloria/element';&lt;/script&gt;
+
+&lt;grafloria-flow theme="light" fit-view style="height: 80vh"
+  nodes='[{"id":"a","position":{"x":0,"y":0},"label":"Extract"},
+          {"id":"b","position":{"x":220,"y":0},"label":"Load"}]'
+  edges='[{"source":"a","target":"b"}]'&gt;
+&lt;/grafloria-flow&gt;
+
+&lt;script&gt;
+  const el = document.querySelector('grafloria-flow');
+  el.addEventListener('grafloria-connect', (e) =&gt; console.log('wired:', e.detail.link));
+  el.addEventListener('grafloria-nodes-change', (e) =&gt; save(e.detail.nodes));
+  // properties work too: el.nodes = [...]; the engine: el.diagram
+&lt;/script&gt;</pre>
+      <p>Events (<code>grafloria-ready</code>, <code>-nodes-change</code>,
+      <code>-edges-change</code>, <code>-selection-change</code>, <code>-connect</code>,
+      <code>-node-click</code>, <code>-edge-click</code>, <code>-viewport-change</code>) all
+      bubble and cross shadow boundaries. The element uses <b>light DOM</b> on purpose — your
+      stylesheet can style node content directly.</p>
+
+      <h2>3 — Custom nodes without a framework</h2>
+      <p>Two paths. A renderer function:</p>
+<pre>import { Grafloria } from '@grafloria/element';
+
+Grafloria.registerNodeType('card', (node, el) =&gt; {
+  el.innerHTML = `&lt;div class="card"&gt;&lt;b&gt;${node.getData('title')}&lt;/b&gt;&lt;/div&gt;`;
+});
+
+// nodes of that type must opt into the HTML layer:
+{ id: 'a', type: 'card', custom: true, position: { x: 80, y: 90 },
+  size: { width: 230, height: 110 }, data: { title: 'Build' } }</pre>
+      <p>…or a zero-JavaScript template slotted into the element — cloned per node,
+      <code>data-field</code> elements filled from <code>node.data</code> via
+      <code>textContent</code> (never <code>innerHTML</code> — diagram data is user input):</p>
+<pre>&lt;grafloria-flow nodes='[{"id":"a","type":"card","custom":true,
+    "position":{"x":80,"y":90},"size":{"width":230,"height":110},
+    "data":{"title":"Build"}}]'&gt;
+  &lt;template data-node-type="card"&gt;
+    &lt;div class="card"&gt;&lt;h4 data-field="title"&gt;&lt;/h4&gt;&lt;/div&gt;
+  &lt;/template&gt;
+&lt;/grafloria-flow&gt;</pre>
+      <div class="note"><b>Plain JS is the one surface where <code>custom: true</code> is always
+      explicit.</b> The React <code>nodeTypes</code> prop needs it too; Vue slots and Angular
+      templates flag it for you.</div>
+<p><a class="demo-link" href="../../demos/#nodes">Live: custom node demos →</a></p>
+
+      <h2>4 — Ports and connection rules</h2>
+<pre>const nodes = [
+  { id: 'src', position: { x: 120, y: 260 }, size: { width: 130, height: 70 }, label: 'number src',
+    ports: [{ id: 'out', side: 'right', type: 'output', dataType: 'number' }] },
+  { id: 'num', position: { x: 640, y: 140 }, size: { width: 130, height: 70 }, label: 'number in',
+    ports: [{ id: 'nin', side: 'left', type: 'input', dataType: 'number' }] },
+];
+
+// declarative type compatibility…
+import { portTypeRegistry, registerConnectionValidator } from '@grafloria/element';
+portTypeRegistry.registerAll([
+  { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
+  { name: 'string', color: '#9333ea', compatibleWith: ['string'] },
+]);
+
+// …and custom rules: true allows, a string vetoes with a reason
+const dispose = registerConnectionValidator(({ sourcePort, targetPort }) =&gt; {
+  if (sourcePort?.type === 'output' &amp;&amp; targetPort?.type === 'output')
+    return 'an output cannot feed another output';
+  return true;
+});
+
+// ports show on hover by default; keep them always visible:
+api.getEngine().setInteractionConfig({ portVisibility: 'always' });</pre>
+
+      <h2>5 — Undo, layout, plugins</h2>
+<pre>// ⌘Z / Ctrl+Z already works. For buttons:
+await api.getEngine().undo();
+await api.getEngine().redo();
+api.getEngine().canUndo();
+
+// auto-layout — ELK lazy-loads (~432 KB gz) only on first use
+await api.getEngine().layout('elk');
+api.renderNow();
+api.fitView(40);
+
+// minimap + zoom controls + dotted background, lazy-loaded
+import { attachCanvasPlugins } from '@grafloria/element';
+attachCanvasPlugins(api, { background: { variant: 'dots' }, minimap: true, controls: true });</pre>
+      <p>Layout names: <code>auto</code>, <code>elk</code>, <code>dagre</code>,
+      <code>layered</code>, <code>tree</code>, <code>grid</code>, <code>circular</code>,
+      <code>radial</code>, <code>force</code>, <code>spectral</code>, <code>community</code>.</p>
+
+      <h2>6 — Save and load, losslessly</h2>
+<pre>import { DiagramSerializer, fromDocument, render } from '@grafloria/element';
+
+// save
+const json = JSON.stringify(new DiagramSerializer().serialize(api.getModel()));
+
+// …later, in a fresh page — fromDocument() restores ports, metadata, everything:
+const api2 = render(fromDocument(json), host);</pre>
+
+      <h2>7 — Mermaid text and image export</h2>
+<pre>// text round-trip — valid Mermaid out, sidecar keeps your positions
+const text = api.exportText();
+api.loadText(text);                       // reconciles into the live canvas
+
+// or at the model level:
+import { importDiagramText } from '@grafloria/element';
+const r = importDiagramText('flowchart LR\n  a[Start] --&gt; b[Ship]');
+if (r.unsupported) console.warn('not a supported type:', r.unsupported);
+
+// images — exports the scene graph, not a screenshot
+const png = await api.export('png', { scale: 2 });   // data: URL
+const svg = await api.export('svg');                 // raw SVG string
+const pdf = await api.export('pdf');                 // real vector PDF</pre>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../../demos/">The demo gallery</a> — 111 pages; view-source is the tutorial.</li>
+        <li><a href="../kits/">Kits</a> — <code>erDiagram()</code>, <code>umlDiagram()</code>,
+        <code>dashboard()</code>: data in, a full interactive diagram out.</li>
+        <li><a href="../the-model/">The model</a> — the engine underneath, which also runs in Node and workers.</li>
+      </ul>
+
+      <div class="pn">
+        <span></span>
+        <a class="next" href="../react/">React in 10 minutes</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

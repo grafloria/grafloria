@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vue 3 tutorial — a flow editor in 10 minutes — Grafloria</title>
+<meta name="description" content="Build a complete Vue 3 flow editor with Grafloria: v-model bindings, slot-defined custom nodes, typed ports, validation, undo, ELK layout and export.">
+<link rel="canonical" href="https://grafloria.com/learn/vue/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Vue 3 tutorial — a flow editor in 10 minutes — Grafloria">
+<meta property="og:description" content="Build a complete Vue 3 flow editor with Grafloria: v-model bindings, slot-defined custom nodes, typed ports, validation, undo, ELK layout and export.">
+<meta property="og:url" content="https://grafloria.com/learn/vue/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/" aria-current="page">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Vue 3 in 10 minutes</p>
+      <h1>Vue 3 in 10 minutes</h1>
+      <p class="lede">From <code>npm install</code> to a flow editor with slot-defined nodes, connection rules, undo and export. The same code the CI-gated <a href="../../demos-vue/">Vue demo gallery</a> runs.</p>
+
+      <h2>1 — Install and mount a canvas</h2>
+<pre>npm install @grafloria/vue @grafloria/element @grafloria/renderer @grafloria/engine</pre>
+      <p>One component: <code>&lt;GrafloriaFlow&gt;</code>. Give its wrapper a real height —
+      the canvas fills its container, and 100% of zero is a blank page.</p>
+<div class="filebar">App.vue</div>
+<pre>&lt;script setup&gt;
+import { GrafloriaFlow } from '@grafloria/vue';
+
+const nodes = [
+  { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' } },
+  { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Publish' } },
+];
+const edges = [{ id: 'e1', source: 'a', target: 'b' }];
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;div style="height: 100vh"&gt;
+    &lt;GrafloriaFlow :default-nodes="nodes" :default-edges="edges" :plugins="true" /&gt;
+  &lt;/div&gt;
+&lt;/template&gt;</pre>
+      <p>Drag, connect, pan, zoom — plus minimap, zoom controls and a dotted background from
+      <code>:plugins="true"</code> (lazy-loaded). <code>default-nodes</code> is the
+      uncontrolled form; for app-owned state use <code>v-model:nodes</code> /
+      <code>v-model:edges</code> with <code>ref()</code>s — the canvas emits spec updates
+      after every add/remove. No stylesheet import needed.</p>
+
+      <h2>2 — Custom nodes are slots</h2>
+      <p>A node whose <code>type</code> is <code>card</code> renders through
+      <code>#node-card</code> — declaring the slot <i>is</i> the opt-in, no flag needed.
+      Slot content is real Vue: reactivity, components and event handlers all work.</p>
+<div class="filebar">App.vue</div>
+<pre>&lt;template&gt;
+  &lt;div style="height: 100vh"&gt;
+    &lt;GrafloriaFlow :default-nodes="nodes" :default-edges="edges"&gt;
+      &lt;template #node-card="{ data }"&gt;
+        &lt;div class="card"&gt;
+          &lt;div class="title"&gt;{{ data.title }}&lt;/div&gt;
+          &lt;div class="owner"&gt;owner: {{ data.owner }}&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/template&gt;
+    &lt;/GrafloriaFlow&gt;
+  &lt;/div&gt;
+&lt;/template&gt;
+
+&lt;style scoped&gt;
+.card { height: 100%; background: #fff; border: 1.5px solid #94A5F0;
+        border-radius: 12px; padding: 10px 14px; box-sizing: border-box; }
+.title { font-weight: 700; } .owner { font-size: 12px; color: #5A6478; }
+&lt;/style&gt;</pre>
+<pre>const nodes = [
+  { id: 'a', type: 'card', position: { x: 80, y: 90 },  size: { width: 230, height: 110 },
+    data: { title: 'Build', owner: 'CI' } },
+  { id: 'b', type: 'card', position: { x: 430, y: 90 }, size: { width: 230, height: 110 },
+    data: { title: 'Deploy', owner: 'CD' } },
+];</pre>
+      <p>Slot context: <code>{ node, data, engine }</code> — <code>node</code> is the live
+      <code>NodeModel</code>. <code>#node</code> (no type) is the wildcard. Give the slot
+      root <code>height: 100%</code> so it fills the node box.</p>
+<p><a class="demo-link" href="../../demos-vue/#html-nodes">Live: slot-defined custom nodes →</a></p>
+
+      <h2>3 — Ports and connection rules</h2>
+<div class="filebar">Ports.vue</div>
+<pre>&lt;script setup&gt;
+import { onBeforeUnmount } from 'vue';
+import { GrafloriaFlow } from '@grafloria/vue';
+import type { DiagramInstance } from '@grafloria/vue';
+import { registerConnectionValidator, clearConnectionValidators, portTypeRegistry } from '@grafloria/element';
+
+portTypeRegistry.registerAll([
+  { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
+  { name: 'string', color: '#9333ea', compatibleWith: ['string'] },
+]);
+
+const nodes = [
+  { id: 'src', position: { x: 120, y: 260 }, size: { width: 130, height: 70 }, label: 'number src',
+    ports: [{ id: 'out', side: 'right', type: 'output', dataType: 'number' }] },
+  { id: 'num', position: { x: 640, y: 140 }, size: { width: 130, height: 70 }, label: 'number in',
+    ports: [{ id: 'nin', side: 'left', type: 'input', dataType: 'number' }] },
+];
+
+let dispose;
+function onInit(instance: DiagramInstance) {
+  dispose = registerConnectionValidator(({ sourcePort, targetPort }) =&gt; {
+    if (sourcePort?.type === 'output' &amp;&amp; targetPort?.type === 'output')
+      return 'an output cannot feed another output';
+    return true;
+  });
+  instance.getEngine().setInteractionConfig({ portVisibility: 'always' });
+}
+onBeforeUnmount(() =&gt; { dispose?.(); clearConnectionValidators(); });
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;div style="height: 100vh"&gt;
+    &lt;GrafloriaFlow :default-nodes="nodes" :default-edges="[]" @init="onInit" /&gt;
+  &lt;/div&gt;
+&lt;/template&gt;</pre>
+      <div class="note">Validators are <b>global</b> — dispose in <code>onBeforeUnmount</code> or they
+      leak across routed pages. A validator returns <code>true</code> to allow, or a string
+      as the rejection reason.</div>
+<p><a class="demo-link" href="../../demos-vue/#typed-ports">Live: typed ports →</a></p>
+<p><a class="demo-link" href="../../demos-vue/#connection-validation">Live: connection validation →</a></p>
+
+      <h2>4 — Undo and engine access</h2>
+      <p><kbd>⌘Z</kbd>/<kbd>Ctrl+Z</kbd> works with zero wiring. For buttons, capture the
+      instance in <code>@init</code> and go through the engine:</p>
+<pre>let instance = null;
+function onInit(api) { instance = api; }
+
+async function undo() { await instance?.getEngine().undo(); instance?.renderNow(); }
+async function redo() { await instance?.getEngine().redo(); instance?.renderNow(); }</pre>
+      <p>For an inspector panel elsewhere in the tree, wrap the flow in
+      <code>&lt;GrafloriaProvider&gt;</code> and use the composables —
+      <code>useGrafloria()</code>, <code>useSelection()</code>, <code>useViewport()</code>,
+      <code>useOnSelectionChange()</code>.</p>
+<p><a class="demo-link" href="../../demos-vue/#drag-undo">Live: drag, then ⌘Z →</a></p>
+
+      <h2>5 — Auto-layout</h2>
+<pre>&lt;GrafloriaFlow :default-nodes="nodes" :default-edges="edges" layout="elk" /&gt;
+
+&lt;!-- configured: --&gt;
+&lt;GrafloriaFlow :layout="{ name: 'dagre', options: { direction: 'TB', rankSpacing: 80 } }" ... /&gt;</pre>
+      <p>Names: <code>auto</code>, <code>elk</code>, <code>dagre</code>, <code>layered</code>,
+      <code>tree</code>, <code>grid</code>, <code>circular</code>, <code>radial</code>,
+      <code>force</code>, <code>spectral</code>, <code>community</code>. ELK lazy-loads on
+      first use. The prop re-runs on <i>value</i> change only — never on node data, so it
+      won't fight a drag. Template ref: <code>applyLayout('dagre')</code>; event:
+      <code>@layout-done</code>.</p>
+<p><a class="demo-link" href="../../demos-vue/#elk-tree">Live: ELK layout →</a></p>
+
+      <h2>6 — Save, load, export</h2>
+<pre>import { DiagramSerializer, fromDocument } from '@grafloria/element';
+
+// save — the full document, losslessly
+const serializer = new DiagramSerializer();
+const json = JSON.stringify(serializer.serialize(instance.getModel()));
+
+// restore later with fromDocument() — ports and metadata survive
+// (see the JavaScript tutorial, step 6, for the fresh-page form)
+
+// Mermaid text — template ref shortcuts exist too (exportText / loadText)
+const text = instance.exportText();
+instance.loadText(text);
+
+// images: PNG/PDF return data: URLs, SVG returns the raw string
+const png = await instance.export('png', { scale: 2 });</pre>
+<p><a class="demo-link" href="../../demos-vue/#save-and-restore">Live: save & restore →</a></p>
+<p><a class="demo-link" href="../../demos-vue/#download-image">Live: PNG/SVG download →</a></p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../../demos-vue/">Every demo as a Vue SFC</a> — 100+ routes, source shown.</li>
+        <li><a href="../kits/">Kits</a> — <code>&lt;GrafloriaDiagram :spec="erDiagram(...)"&gt;</code>
+        and <code>&lt;GrafloriaDashboard&gt;</code> with <code>#widget-&lt;kind&gt;</code> slots.</li>
+        <li><a href="../the-model/">The model</a> — what nodes, ports, links and groups really are.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../react/">React in 10 minutes</a>
+        <a class="next" href="../angular/">Angular in 10 minutes</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

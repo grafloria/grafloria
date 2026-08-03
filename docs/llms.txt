@@ -24,20 +24,32 @@ executed in CI with real pointer events.
 
 ## Quick start (plain web)
 
+Two doors. The function (spec FIRST, target second; spec is data, not Mermaid text):
+
+```js
+import { render } from '@grafloria/element';
+
+const api = render({
+  nodes: [
+    { id: 'a', position: { x: 40, y: 60 },  size: { width: 160, height: 60 }, label: 'Start' },
+    { id: 'b', position: { x: 260, y: 60 }, size: { width: 160, height: 60 }, label: 'Ship' },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }],
+}, document.getElementById('canvas'));   // the target MUST have a real height
+```
+
+Or the custom element — JSON attributes in, bubbling `grafloria-*` DOM events out;
+properties `el.nodes = [...]` / `el.edges` work after mount, and `el.diagram` is the
+full instance. There is NO `el.render()` method and NO top-level `x`/`y` on nodes —
+node geometry is always `position: { x, y }` (+ optional `size: { width, height }`):
+
 ```html
-<script type="module">
-  import '@grafloria/element';
-</script>
-<grafloria-flow id="flow"></grafloria-flow>
-<script>
-  document.getElementById('flow').render({
-    nodes: [
-      { id: 'a', label: 'Start', x: 40,  y: 60 },
-      { id: 'b', label: 'Ship',  x: 260, y: 60 },
-    ],
-    edges: [{ id: 'e1', source: 'a', target: 'b' }],
-  });
-</script>
+<script type="module">import '@grafloria/element';</script>
+<grafloria-flow theme="light" fit-view style="height: 80vh"
+  nodes='[{"id":"a","position":{"x":0,"y":0},"label":"Extract"},
+          {"id":"b","position":{"x":220,"y":0},"label":"Load"}]'
+  edges='[{"source":"a","target":"b"}]'>
+</grafloria-flow>
 ```
 
 ## Quick start (React)
@@ -56,6 +68,7 @@ import { GrafloriaFlow } from '@grafloria/react';
 
 ## Docs
 
+- [Learn](https://grafloria.com/learn/): 10-minute tutorials (JavaScript, React, Vue, Angular) + nine concept guides (model, ports & validation, commands & undo, layout, Mermaid & the text format, theming, export, collaboration, kits). Every sample executed against the published packages. Full text: https://grafloria.com/llms-full.txt
 - [Live demo gallery](https://grafloria.com/demos/): 100+ runnable pages — view-source is the tutorial; every demo is also a CI test.
 - [How Grafloria compares](https://grafloria.com/compare/): three sourced matrices — vs diagram libraries (React Flow, JointJS+, GoJS, ngx-vflow), vs dashboard grids (GridStack.js, react-grid-layout, angular-gridster2, Muuri), and vs Mermaid.
 - Framework guides: [React & Next.js](https://grafloria.com/react/), [Angular](https://grafloria.com/angular/), [Vue 3](https://grafloria.com/vue/), [plain JavaScript](https://grafloria.com/javascript/) — per-framework install, idiomatic quickstart, and links to that framework's demo variants.
@@ -65,8 +78,16 @@ import { GrafloriaFlow } from '@grafloria/react';
 
 ## Notes for code generation
 
+- Node geometry: `position: { x, y }` (required) and `size: { width, height }` — never top-level x/y.
+- Custom HTML nodes need `custom: true` on the spec in plain JS and React (`nodeTypes`); Vue slots (`#node-<type>`) and Angular templates (`ng-template grafloriaNode="type"`) flag it automatically.
+- Undo/redo live on the ENGINE, not the instance: `instance.getEngine().undo()` (async). ⌘Z/Ctrl+Z works with zero wiring. Angular's canvas component mirrors undo()/redo() directly.
+- React useNodesState returns [nodes, setNodes, onNodesChange] — wire the THIRD element into <GrafloriaFlow onNodesChange>, not setNodes.
+- The canvas fills its container: the parent element must have a real height or the page renders blank.
+- Connection validators (registerConnectionValidator from @grafloria/element) are process-global — keep the disposer and clear on unmount.
+- Versions ≥ engine 0.3.1 / renderer 0.4.1 / element 0.4.0 are pure ESM; shipped weight is ~230–450 KB gz eager with ELK layout in a lazy chunk (see each package README's "Bundle size" section for the reproduction script).
+
 - Ports are model anatomy (spec.ports on a node), not separate components — identical across all frameworks.
 - The same JSON spec drives every surface; there is no framework-specific model.
 - Collab: pass collab={{ transport, actor, presence: true }} — the CRDT lives in the engine; BroadcastChannel works serverless for same-browser tabs.
 - Text format: importDiagramText() / exportDiagramText() round-trip Mermaid text with a lossless %%grafloria:document position sidecar; the visible body stays valid Mermaid. Supported types: flowchart/graph, erDiagram, classDiagram, stateDiagram[-v2]. Every other type returns { unsupported: '<type>' } rather than a wrong diagram — check that field before rendering.
-- Dashboards / UML / ER: pass a kit spec ({ dashboard: ... }, { umlDiagram: ... }, { erDiagram: ... }) to the same render/spec entry points.
+- Dashboards / UML / ER: kits are FUNCTIONS — call erDiagram({ entities, relationships }) / umlDiagram({ classes, relationships }) / dashboard({ widgets }) from @grafloria/element and pass the RETURNED spec to render(spec, host) or <GrafloriaDiagram :spec>. There is no { erDiagram: ... } wrapper-object form.

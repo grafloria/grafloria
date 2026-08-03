@@ -109,6 +109,7 @@
     <img src="../favicon.svg" alt="">
     <span class="name"><a href="../">grafloria</a></span>
     <nav class="links">
+      <a href="../learn/">Learn</a>
       <a href="../demos/">Demos</a>
       <a href="../mermaid/">Mermaid</a>
       <a href="../compare/">Compare</a>
@@ -142,15 +143,15 @@
 }
 
 <span class="k">export function</span> Flow() {
-  <span class="k">const</span> [nodes, setNodes] = useNodesState([
+  <span class="k">const</span> [nodes, setNodes, onNodesChange] = useNodesState([
     { id: <span class="s">'a'</span>, type: <span class="s">'job'</span>, custom: <span class="k">true</span>, position: { x: 0, y: 0 }, data: { title: <span class="s">'Extract'</span> } },
     { id: <span class="s">'b'</span>, position: { x: 240, y: 0 }, label: <span class="s">'Load'</span> },
   ]);
-  <span class="k">const</span> [edges, setEdges] = useEdgesState([{ source: <span class="s">'a'</span>, target: <span class="s">'b'</span> }]);
+  <span class="k">const</span> [edges, setEdges, onEdgesChange] = useEdgesState([{ source: <span class="s">'a'</span>, target: <span class="s">'b'</span> }]);
   <span class="k">return</span> (
     &lt;<span class="k">GrafloriaFlow</span>
-      nodes={nodes} onNodesChange={setNodes}
-      edges={edges} onEdgesChange={setEdges}
+      nodes={nodes} onNodesChange={onNodesChange}
+      edges={edges} onEdgesChange={onEdgesChange}
       nodeTypes={{ job: JobNode }}
       layout=<span class="s">"elk"</span> /&gt;
   );

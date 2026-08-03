@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Export — scene graph out, five formats — Grafloria</title>
+<meta name="description" content="Grafloria export: PNG/JPEG/WebP data URLs, raw SVG, real vector PDF, server-side rendering with renderStatic, and embedModel round-trip files.">
+<link rel="canonical" href="https://grafloria.com/learn/export/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Export — scene graph out, five formats — Grafloria">
+<meta property="og:description" content="Grafloria export: PNG/JPEG/WebP data URLs, raw SVG, real vector PDF, server-side rendering with renderStatic, and embedModel round-trip files.">
+<meta property="og:url" content="https://grafloria.com/learn/export/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/" aria-current="page">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Export</p>
+      <h1>Export</h1>
+      <p class="lede">Exports render the <b>scene graph</b>, not a screenshot — full quality at any scale, whatever is on or off camera. Five formats, one async call, plus a server-side path that needs no DOM at all.</p>
+
+      <h2>The one call</h2>
+<pre>const png  = await instance.export('png', { scale: 2 });  // data: URL
+const jpeg = await instance.export('jpeg');                 // data: URL
+const webp = await instance.export('webp');                 // data: URL
+const svg  = await instance.export('svg');                  // raw SVG source string
+const pdf  = await instance.export('pdf');                  // data: URL — a real vector PDF</pre>
+      <p><code>export()</code> is async because it waits for custom-node painters — your
+      React/Vue/Angular-rendered nodes are captured faithfully. Two sync variants exist when
+      you don't need that: <code>exportSvgString()</code> (deterministic, DOM-free, carries
+      warnings) and <code>exportPdf()</code> (returns <code>{ pdf: Uint8Array, … }</code>).</p>
+      <p>Angular surfaces the same thing as <code>exportDiagram(format, options)</code> on the
+      canvas component; Vue also exposes template-ref shortcuts.</p>
+<pre>// the classic download button
+const a = document.createElement('a');
+a.href = await instance.export('png', { scale: 2 });
+a.download = 'diagram.png';
+a.click();</pre>
+      <div class="note">SVG comes back as a <b>raw string</b> — wrap it yourself:
+      <code>'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)</code>. And export
+      requires a painted canvas — calling before the first paint throws a clear error rather
+      than returning a blank image.</div>
+<p><a class="demo-link" href="../../demos/#export">Live: export demos →</a></p>
+
+      <h2>PDF that is actually vector</h2>
+      <p><code>export('pdf')</code> produces paths as paths and text as selectable text — not
+      a rasterized page. Print it at any size; search it; extract from it.</p>
+
+      <h2>The editable file trick: embedModel</h2>
+<pre>const svg = await instance.export('svg', { embedModel: true });
+// the diagram's full document now rides inside the artifact
+
+import { importDiagram, isEditableArtifact } from '@grafloria/element';
+isEditableArtifact(svg);          // true
+const model = importDiagram(svg); // back to a live, editable diagram</pre>
+      <p>Works for PNG and SVG. An exported image becomes its own save file — email the
+      picture, and the recipient can keep editing it.</p>
+<p><a class="demo-link" href="../../demos-react/#editable-round-trip">Live: the editable round-trip →</a></p>
+
+      <h2>Server-side, no DOM</h2>
+<pre>import { renderStatic } from '@grafloria/element';
+
+const r = renderStatic({ nodes, edges, width: 520, height: 300, standalone: true });
+// r.svg — deterministic SVG, rendered headlessly (Node, workers, edge functions)</pre>
+      <p>The same path powers SSR: React's <code>renderToStaticSVG()</code> +
+      the <code>ssr</code> prop renders on the server and hydrates into a live canvas on the
+      client — no <code>dynamic(() =&gt; …, { ssr: false })</code> workarounds.</p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../mermaid-and-the-dsl/">Mermaid &amp; the text format</a> — the third
+        export target: text for git.</li>
+        <li><a href="../theming/">Theming</a> — exports honor the active theme.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../theming/">Theming</a>
+        <a class="next" href="../collaboration/">Collaboration</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

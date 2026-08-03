@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kits — dashboards, ER &amp; UML from data — Grafloria</title>
+<meta name="description" content="Grafloria kits: erDiagram(), umlDiagram() and dashboard() turn plain data into interactive diagrams — column-level ER ports, UML markers, a drag-and-pack dashboard grid.">
+<link rel="canonical" href="https://grafloria.com/learn/kits/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Kits — dashboards, ER &amp; UML from data — Grafloria">
+<meta property="og:description" content="Grafloria kits: erDiagram(), umlDiagram() and dashboard() turn plain data into interactive diagrams — column-level ER ports, UML markers, a drag-and-pack dashboard grid.">
+<meta property="og:url" content="https://grafloria.com/learn/kits/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/" aria-current="page">Kits: dashboards, ER & UML</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Kits: dashboards, ER &amp; UML</p>
+      <h1>Kits: dashboards, ER &amp; UML</h1>
+      <p class="lede">A kit turns plain data into a finished interactive diagram — entities in, an ER diagram with column-level ports out. Kits are functions returning specs, so they compose with everything else on this site.</p>
+
+      <h2>The pattern</h2>
+<pre>import { render, erDiagram } from '@grafloria/element';
+
+const spec = erDiagram({ entities, relationships });
+const api = render(spec, host);      // render() runs the kit's finalize for you</pre>
+      <p>In Vue: <code>&lt;GrafloriaDiagram :spec="spec" /&gt;</code>. A kit spec is
+      <code>{ nodes, edges, finalize }</code> — regular nodes and edges plus a wiring step, so
+      everything else (layout, export, undo, collaboration) works on kit diagrams
+      unchanged.</p>
+
+      <h2>ER — tables with real columns</h2>
+<pre>const spec = erDiagram({
+  entities: [
+    { id: 'CUSTOMER', name: 'Customer', position: { x: 60, y: 76 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'email', type: 'varchar' },
+    ]},
+    { id: 'ORDER', name: 'Order', position: { x: 400, y: 64 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'customer_id', type: 'int', fk: true },
+    ]},
+  ],
+  relationships: [
+    { from: 'CUSTOMER', to: 'ORDER', label: 'places', cardinality: 'one-to-many' },
+    // attach at a COLUMN with ENTITY.column:
+    { from: 'ORDER.customer_id', to: 'CUSTOMER.id' },
+  ],
+});</pre>
+      <p>Rows are selectable (listen for <code>axk:row-select</code>), a fixed entity
+      <code>height</code> makes the column list scroll, and <code>editable: true</code> adds
+      rename/add/delete chrome where every edit is one undoable step.</p>
+<p><a class="demo-link" href="../../demos/#table-er">Live: ER diagram →</a></p>
+
+      <h2>UML — classes, stereotypes, markers</h2>
+<pre>const spec = umlDiagram({
+  classes: [
+    { id: 'Animal', abstract: true, position: { x: 380, y: 40 },
+      attributes: ['# name: String'], methods: ['+ speak(): void'] },
+    { id: 'Dog', position: { x: 150, y: 320 }, methods: ['+ fetch(): void'] },
+  ],
+  relationships: [
+    { from: 'Dog', to: 'Animal', kind: 'inheritance' },
+    { from: 'Owner', to: 'Dog', kind: 'aggregation', label: 'owns', multiplicity: ['1', '0..*'] },
+  ],
+});</pre>
+      <p>Relationship kinds draw the correct UML markers: <code>inheritance</code>,
+      <code>realization</code>, <code>association</code>, <code>directed-association</code>,
+      <code>aggregation</code>, <code>composition</code>, <code>dependency</code>.</p>
+      <p>Both card kits also expose a <b>typed handle façade</b> for programmatic editing that
+      rides the undo stack:</p>
+<pre>import { umlClass } from '@grafloria/element';
+
+const animal = umlClass(api, 'Animal');
+await animal.methods.add('+ move(): void');
+await animal.setAbstract(true);
+await animal.undo();</pre>
+<p><a class="demo-link" href="../../demos/#class-uml">Live: UML class diagram →</a></p>
+
+      <h2>Dashboards — a drag-and-pack grid</h2>
+<pre>import { render, dashboard } from '@grafloria/element';
+
+const spec = dashboard({
+  columns: 12,
+  widgets: [
+    { id: 'kpi-revenue', kind: 'kpi', span: 3,
+      data: { label: 'Total revenue', value: '$6.81M', delta: 12.4,
+              spark: [42, 45, 51, 55, 61, 71, 76] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 2, title: 'Revenue trend',
+      data: { series: [{ name: 'Revenue', values: [1.2, 1.4, 1.9, 2.3] }],
+              labels: ['Q1', 'Q2', 'Q3', 'Q4'] } },
+    { id: 'mix', kind: 'donut', span: 3, rows: 2, title: 'By region',
+      data: { slices: [{ label: 'EMEA', value: 2.9, color: '#3B52D9' }] } },
+  ],
+});
+render(spec, host);
+spec.handle.addWidget({ id: 'later', kind: 'bar', span: 3, data: { bars: [] } });</pre>
+      <p>Six built-in widget kinds render with zero code — <code>kpi</code>,
+      <code>line</code>, <code>bar</code>, <code>donut</code>, <code>funnel</code>,
+      <code>table</code> — and <code>renderWidget</code> (or React's
+      <code>widgetTypes</code>, Vue's <code>#widget-&lt;kind&gt;</code> slots, Angular's
+      <code>ng-template grafloriaWidget</code>) takes over for your own. Widgets drag and
+      pack live, gridstack-style; multiple <code>views</code> give you tabs; and
+      <code>handle.toJSON()</code> returns exactly what <code>dashboard()</code> accepts —
+      the layout round-trips by construction.</p>
+<p><a class="demo-link" href="../../demos/#dashboard">Live: dashboard builder →</a></p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../../compare/#dashboards">vs GridStack-class libraries</a> — where the
+        dashboard kit sits.</li>
+        <li><a href="../commands-and-undo/">Commands &amp; undo</a> — why kit edits are
+        undoable for free.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../collaboration/">Collaboration</a>
+        <span></span>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
