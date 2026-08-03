@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custom nodes in plain JavaScript — renderers and templates — Grafloria</title>
+<meta name="description" content="Grafloria custom nodes without a framework: registerNodeType renderer functions, the zero-JS &lt;template data-node-type&gt; path, custom: true, light-DOM styling, ports, and the mistakes that bite.">
+<link rel="canonical" href="https://grafloria.com/learn/javascript-custom-nodes/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Custom nodes in plain JavaScript — renderers and templates — Grafloria">
+<meta property="og:description" content="Grafloria custom nodes without a framework: registerNodeType renderer functions, the zero-JS &lt;template data-node-type&gt; path, custom: true, light-DOM styling, ports, and the mistakes that bite.">
+<meta property="og:url" content="https://grafloria.com/learn/javascript-custom-nodes/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/" aria-current="page">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Custom nodes in plain JavaScript</p>
+      <h1>Custom nodes in plain JavaScript</h1>
+      <p class="lede">A custom node is a box the engine drives and you fill. Two ways to fill it — a registered <b>renderer function</b>, or a <b>&lt;template&gt;</b> that needs no JavaScript at all — and one stylesheet: yours, because the canvas renders in light DOM.</p>
+
+      <h2>The mental model</h2>
+      <p>A node that opts in with <code>custom: true</code> does not render as SVG. The
+      instance creates an absolutely-positioned host element in the HTML layer —
+      <code>&lt;div class="grafloria-node-host" data-node-id="…"&gt;</code> — keeps its
+      <code>left/top/width/height</code> glued to the model, and hands it to your renderer
+      exactly once. Everything around the box stays the engine's job: selection, dragging,
+      hit-testing, ports and wires are painted by the SVG layer as for any stock node.</p>
+
+      <h2>The renderer function</h2>
+<div class="filebar">main.js</div>
+<pre data-lang="javascript">import { Grafloria, render } from '@grafloria/element';
+
+// (node: NodeModel, element: HTMLElement) =&gt; void — register (or replace) globally
+Grafloria.registerNodeType('card', (node, el) =&gt; {
+  el.innerHTML = `
+    &lt;div class="card"&gt;
+      &lt;h4&gt;${node.getData('title')}&lt;/h4&gt;
+      &lt;small&gt;${node.id}&lt;/small&gt;
+    &lt;/div&gt;`;
+});
+
+render({
+  nodes: [{ id: 'a', type: 'card', custom: true,
+    position: { x: 80, y: 90 }, size: { width: 230, height: 110 },
+    data: { title: 'Build' } }],
+}, '#canvas');</pre>
+      <p>The renderer receives the live <code>NodeModel</code>: read the payload with
+      <code>node.getData('title')</code> (spec <code>data</code> lands there key by key),
+      plus <code>node.id</code> and <code>node.getMetadata(…)</code>. The same registry
+      serves both front doors — <code>render()</code> and
+      <code>&lt;grafloria-flow&gt;</code> resolve types from it identically.</p>
+      <div class="note"><b>When does it run? Once, at mount.</b> The source states the contract
+      plainly: <i>"renderCustomNode fires only when the element is created"</i> — it is a
+      mount hook, not a data binding. Dragging, panning, zooming and selection never re-run
+      it (the engine moves the host, your DOM rides along), and neither does a later change
+      to <code>node.data</code>. If content must update, you own that: keep a reference to
+      the elements you created, or repaint from your own event handler. The
+      <a href="../javascript-dashboards/">dashboard kit</a> wraps this pattern for you as
+      <code>widget.update()</code> / <code>widget.repaint()</code>.</div>
+      <div class="note"><b>Register before you render.</b> A node whose type has no renderer and no
+      template mounts an <i>empty</i> host — deliberately: <i>"leave the host empty rather
+      than throwing inside a render. The node still exists, is selectable and is
+      draggable."</i> Registering afterwards does not back-fill hosts that already mounted.</div>
+
+      <h2><code>custom: true</code> is the opt-in</h2>
+      <p>Plain JavaScript is the surface where the flag is always explicit. It maps to the
+      model's <code>useHTMLLayer</code> metadata — the renderer's signal to build an HTML
+      host instead of an SVG body. Omit it and the node paints as a stock SVG node: your
+      renderer is simply never consulted, with no warning, because a non-custom node of
+      type <code>'card'</code> is perfectly legal.</p>
+
+      <h2>The zero-JavaScript path: <code>&lt;template data-node-type&gt;</code></h2>
+      <p>Slotted inside the element, a template makes a custom node with no build step and
+      no script — the CMS / notebook / static-page path:</p>
+<div class="filebar">index.html</div>
+<pre data-lang="html">&lt;grafloria-flow nodes='[{"id":"n1","type":"card","custom":true,
+    "position":{"x":80,"y":90},"size":{"width":230,"height":110},
+    "data":{"title":"Build"}}]'&gt;
+  &lt;template data-node-type="card"&gt;
+    &lt;div class="card"&gt;
+      &lt;h4 data-field="title"&gt;&lt;/h4&gt;
+      &lt;small data-field="id"&gt;&lt;/small&gt;
+    &lt;/div&gt;
+  &lt;/template&gt;
+&lt;/grafloria-flow&gt;</pre>
+      <p>The template is <b>cloned per node</b>, and every <code>[data-field="key"]</code>
+      descendant is filled from <code>node.data[key]</code>. One special case:
+      <code>data-field="id"</code> fills from <code>node.id</code> rather than the data
+      bag. A missing or <code>null</code> value becomes an empty string, never the text
+      "undefined".</p>
+      <div class="note"><b>Values are written with <code>textContent</code>, never
+      <code>innerHTML</code></b> — in the source's words: <i>"a diagram's <code>data</code>
+      is frequently user-supplied, and a template engine that injected raw HTML here would
+      be an XSS vector in every host that embeds us."</i> The test suite pins this down: a
+      <code>data.title</code> of <code>&lt;img src=x onerror=…&gt;</code> arrives on screen
+      as literal text, not as an element. The same stance applies to your renderer
+      functions — the engine hands you a raw host precisely so <code>&lt;svg&gt;</code> and
+      <code>&lt;canvas&gt;</code> work, which means <code>innerHTML</code> with
+      user-supplied data is <b>your</b> XSS to avoid. Interpolate untrusted values via
+      <code>textContent</code>.</div>
+      <p><b>Precedence: a registered renderer wins over a template.</b> The element checks
+      the registry first and only then looks for a matching template — so a page can ship a
+      template fallback and an app can override it later without touching the markup.</p>
+<p><a class="demo-link" href="../../demos/#nodes">Live: custom node demos →</a></p>
+
+      <h2>Styling: your stylesheet already applies</h2>
+      <p>The element renders in <b>light DOM</b> on purpose. From the source: <i>"the
+      diagram's stylesheet is injected into <code>&lt;head&gt;</code> and its CSS variables
+      cascade — a shadow root would cut both off, and hosts routinely want to style nodes
+      from their own stylesheet."</i> So a custom node is styled like any other markup on
+      the page:</p>
+<div class="filebar">app.css</div>
+<pre data-lang="css">.card { height: 100%; border: 1px solid #d8dce6; border-radius: 9px;
+  background: #fff; padding: 10px 12px; font-family: system-ui; }
+.card h4 { margin: 0; font-size: 14px; }
+.grafloria-node-host[data-node-id="n1"] .card { border-color: #3b52d9; }</pre>
+      <p>See <a href="../theming/">Theming</a> for the theme object and the token bridge —
+      theme = the room, your node CSS = the furniture.</p>
+
+      <h2>Ports on custom nodes</h2>
+      <p>Port machinery is untouched by <code>custom: true</code>. A spec-built node gets
+      the four default bi-directional side ports with deterministic ids
+      (<code>&lt;nodeId&gt;__top</code>, <code>__right</code>, <code>__bottom</code>,
+      <code>__left</code>), or exactly the <code>ports: [{ id, side, type, dataType }]</code>
+      you declare — port glyphs and wires paint in the SVG layer, above and around your
+      HTML. A node that should <i>not</i> be wired (a dashboard tile, a legend) opts out on
+      the model, which is exactly what the dashboard kit does for every widget:</p>
+<pre data-lang="typescript">const n = api.getModel().getNode('a');
+n.setBehavior({ connectable: false });                  // refuses link ends, no hover glyphs
+for (const p of [...n.getPorts().values()]) n.removePort(p.id);   // and says so in the model</pre>
+      <p>Validation and typed ports work as everywhere else — see
+      <a href="../ports-and-validation/">Ports &amp; validation</a>.</p>
+
+      <h2>Common mistakes</h2>
+      <ul>
+        <li><b>Top-level <code>x</code>/<code>y</code>.</b> Node geometry is
+        <code>position: { x, y }</code> (plus <code>size: { width, height }</code>) —
+        there is no top-level <code>x</code>/<code>y</code> on a node spec.</li>
+        <li><b>Forgetting <code>custom: true</code>.</b> The renderer is never called and
+        the node paints as a stock SVG node — silently.</li>
+        <li><b>Registering after mounting.</b> Hosts that mounted while the type was
+        unknown stay empty. Register first, then <code>render()</code>.</li>
+        <li><b><code>innerHTML</code> with user data.</b> The template path refuses to do
+        this for you; do not undo that in a renderer. <code>textContent</code> for anything
+        a user typed.</li>
+        <li><b>Expecting a re-render on data change.</b> Mount-once is the contract.
+        Update the DOM you own, or use the dashboard kit's widget handles.</li>
+        <li><b>Styling the host itself.</b> The host's inline <code>left/top/width/height</code>
+        is rewritten by the engine every frame — style a child (<code>.card</code> above),
+        not <code>.grafloria-node-host</code>'s geometry.</li>
+      </ul>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../javascript-element-vs-render/">The element vs render()</a> — which
+        front door your custom nodes ride through, and everything each one offers.</li>
+        <li><a href="../javascript-dashboards/">Dashboards in plain JavaScript</a> — custom
+        HTML nodes at scale, with update/repaint handles built in.</li>
+        <li><a href="../ports-and-validation/">Ports &amp; validation</a> — typed ports and
+        connection rules on any node, custom or stock.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../angular-dashboards/">Dashboards</a>
+        <a class="next" href="../javascript-element-vs-render/">Element vs render()</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

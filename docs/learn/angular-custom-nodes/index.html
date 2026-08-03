@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custom nodes in Angular — ng-template all the way down — Grafloria</title>
+<meta name="description" content="Deep guide to Grafloria custom nodes in Angular: the grafloriaNode template context, the auto-custom mechanic, wildcard templates, sizing the template root, ports on HTML nodes, and reaching the engine from a template.">
+<link rel="canonical" href="https://grafloria.com/learn/angular-custom-nodes/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Custom nodes in Angular — ng-template all the way down — Grafloria">
+<meta property="og:description" content="Deep guide to Grafloria custom nodes in Angular: the grafloriaNode template context, the auto-custom mechanic, wildcard templates, sizing the template root, ports on HTML nodes, and reaching the engine from a template.">
+<meta property="og:url" content="https://grafloria.com/learn/angular-custom-nodes/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/" aria-current="page">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Custom nodes in Angular</p>
+      <h1>Custom nodes in Angular</h1>
+      <p class="lede">One <code>&lt;ng-template grafloriaNode="type"&gt;</code> inside the canvas and every node of that type renders through real Angular — bindings, pipes, components, event handlers. This page is the full mechanics: the context, the auto-opt-in, sizing, ports, and the mistakes that cost an afternoon.</p>
+
+      <h2>The idiom, precisely</h2>
+      <p>A custom node is an <code>ng-template</code> projected into the canvas, tagged with
+      the node <code>type</code> it renders. There is no registry call, no component map, no
+      <code>custom: true</code> flag to remember — the directive's own doc says it best:</p>
+      <div class="note">From the source: <i>"A node whose <code>type</code> matches a template is
+      rendered by THAT template in the HTML layer — full Angular change detection, pipes,
+      directives, and bindings, no string micro-templates and no component registry required.
+      In controlled mode the canvas flags matching specs as <code>custom</code>
+      automatically, so declaring the template is the whole integration."</i></div>
+<div class="filebar">board.component.ts</div>
+<pre data-lang="typescript">import { Component } from '@angular/core';
+import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/angular';
+
+@Component({
+  selector: 'app-board',
+  imports: [DiagramCanvasComponent, GrafloriaNodeDefDirective],
+  template: `
+    &lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
+        style="display:block; height:100vh"&gt;
+
+      &lt;ng-template grafloriaNode="ticket" let-node let-data="data" let-engine="engine"&gt;
+        &lt;div class="ticket"&gt;
+          &lt;header&gt;{{ data['title'] }}&lt;/header&gt;
+          &lt;p class="assignee"&gt;{{ data['assignee'] }}&lt;/p&gt;
+          &lt;button (click)="engine?.getDiagram()?.removeNode(node.id)"&gt;✕&lt;/button&gt;
+        &lt;/div&gt;
+      &lt;/ng-template&gt;
+
+    &lt;/grafloria-diagram-canvas&gt;
+  `,
+  styles: [`.ticket { height: 100%; box-sizing: border-box; background: #fff;
+    border: 1.5px solid #94A5F0; border-radius: 12px; padding: 10px 14px; }`],
+})
+export class BoardComponent {
+  nodes = [
+    { id: 't1', type: 'ticket', position: { x: 80, y: 90 }, size: { width: 230, height: 110 },
+      data: { title: 'Fix login flow', assignee: 'Nour' } },
+  ];
+  edges = [];
+}</pre>
+      <p>Both pieces must be in <code>imports</code>: the canvas <b>and</b>
+      <code>GrafloriaNodeDefDirective</code>. Forget the directive and the
+      <code>grafloriaNode</code> attribute matches nothing — the template is silently
+      ignored and the node falls back to its default rendering. That is the single most
+      common "my template does nothing" report.</p>
+<p><a class="demo-link" href="../../demos-angular/#/nodes/html-nodes">Live: ng-template custom nodes →</a></p>
+
+      <h2>The template context</h2>
+      <p>The directive publishes a typed context (<code>GrafloriaNodeTemplateContext</code>),
+      and ships an <code>ngTemplateContextGuard</code>, so the language service type-checks
+      what you write in the template:</p>
+<div class="filebar">grafloria-node-def.directive.ts (shape)</div>
+<pre data-lang="typescript">export interface GrafloriaNodeTemplateContext {
+  $implicit: NodeModel | GroupModel;      // let-node          — the LIVE model object
+  engine: DiagramEngine | undefined;      // let-engine="engine"
+  data: Record&lt;string, unknown&gt;;          // let-data="data"   — your payload
+}</pre>
+      <ul>
+        <li><code>let-node</code> — the <code>$implicit</code> value: not a copy of your spec
+        but the live <code>NodeModel</code> (or <code>GroupModel</code> for groups). Its
+        <code>id</code>, <code>position</code> and <code>size</code> are current
+        mid-drag, and its tracked setters (<code>setMetadata</code>, <code>setSize</code>)
+        are how external UI edits a node in place.</li>
+        <li><code>let-data="data"</code> — the free-form payload from the spec's
+        <code>data</code> field. It is typed <code>Record&lt;string, unknown&gt;</code>, so
+        templates read it with index syntax: <code>{{ data['title'] }}</code>, not
+        <code>data.title</code>.</li>
+        <li><code>let-engine="engine"</code> — the same engine
+        <code>activeEngine()</code> returns; <code>undefined</code> only before the canvas
+        has one. Guard with <code>engine?.</code> and any button in your node can dispatch
+        real operations.</li>
+      </ul>
+
+      <h2>The wildcard template</h2>
+      <p><code>&lt;ng-template grafloriaNode&gt;</code> with <b>no value</b> registers under
+      the empty string and becomes the fallback: any HTML-layer node whose <code>type</code>
+      has no exact template renders through it. Exact matches always win. One wildcard plus a
+      few specialised templates is the usual shape of a node palette:</p>
+<pre data-lang="html">&lt;ng-template grafloriaNode="decision" let-data="data"&gt;
+  &lt;div class="diamond"&gt;{{ data['question'] }}&lt;/div&gt;
+&lt;/ng-template&gt;
+
+&lt;ng-template grafloriaNode let-node let-data="data"&gt;  &lt;!-- everything else --&gt;
+  &lt;div class="generic-card"&gt;{{ data['label'] ?? node.id }}&lt;/div&gt;
+&lt;/ng-template&gt;</pre>
+
+      <h2>How the auto-custom mechanic works</h2>
+      <p>Grafloria nodes normally paint in the SVG layer; HTML nodes live in a separate
+      HTML layer that shares the same camera. The spec flag <code>custom: true</code> is what
+      routes a node to the HTML layer — and in Angular you almost never write it, because the
+      canvas derives it while syncing your arrays in. The exact rule, from the component
+      source:</p>
+      <div class="note"><i>"Angular-native custom nodes: a spec whose <code>type</code> has an exact
+      <code>&lt;ng-template grafloriaNode="type"&gt;</code> def renders in the HTML layer
+      without the author touching <code>custom</code> — declaring the template IS the opt-in.
+      Explicit <code>custom</code> (either value) always wins; live models pass through."</i></div>
+      <p>Three consequences worth spelling out:</p>
+      <ul>
+        <li>The match is <b>exact</b> — the wildcard template does not auto-flag anything.
+        A node with no <code>type</code>, or a type with no exact template, stays in the SVG
+        layer unless you set <code>custom: true</code> yourself (at which point the wildcard
+        can render it).</li>
+        <li><code>custom: false</code> in a spec <b>disables</b> the template for that node,
+        even when the type matches — explicit wins, in both directions.</li>
+        <li>The rewrite happens on the spec on its way into the reconciler; live
+        <code>NodeModel</code> instances you pass through <code>[(nodes)]</code> are never
+        rewritten.</li>
+      </ul>
+
+      <h2>Plain arrays or signals — both are the model</h2>
+      <p><code>nodes</code> and <code>edges</code> are <code>model()</code> signals on the
+      component, so <code>[(nodes)]</code> accepts either a plain array property or a
+      <code>signal([...])</code> on your side; Angular wires the write-back in both cases.
+      Updating a node from outside can therefore go two ways:</p>
+<pre data-lang="typescript">// 1 — data-down: hand the canvas a NEW array (the shared reconciler diffs it;
+//     only fields that actually changed are written, nothing else repaints)
+this.nodes = this.nodes.map((n) =&gt; n.id === 't1'
+  ? { ...n, data: { ...n.data, title: 'Renamed' } } : n);
+
+// 2 — straight at the live model: tracked setters repaint on the spot
+const node = this.canvas().activeEngine()?.getDiagram()?.getNode('t1');
+node?.setMetadata('title', 'Renamed');
+node?.setSize(320, node.size.height);</pre>
+<p><a class="demo-link" href="../../demos-angular/#/nodes/updating-nodes">Live: editing a live node from outside the canvas →</a></p>
+
+      <h2>Sizing and styling the template root</h2>
+      <p>The canvas absolutely positions a wrapper <code>div</code> per HTML node at the
+      node's world position, sized to <b>the node's <code>size</code> from the spec</b> —
+      your template is stamped inside that wrapper. Two rules follow:</p>
+      <ul>
+        <li>Give every custom-node spec a real <code>size</code>. The wrapper's width and
+        height come from it; the template does not size the node, the node sizes the
+        template.</li>
+        <li>Make your template root fill the wrapper: <code>height: 100%</code> and
+        <code>box-sizing: border-box</code> (so borders and padding don't overflow the
+        node's hit area). Every shipped demo template starts this way.</li>
+      </ul>
+      <p>Styling is ordinary Angular styling — the template belongs to <b>your</b> component,
+      so your component's <code>styles</code> and your global stylesheet apply exactly as
+      they would anywhere else. Nothing to import, no style bridge.</p>
+
+      <h2>Ports on custom nodes</h2>
+      <p>Ports are part of the node spec, and they survive the trip to the HTML layer: for
+      each port on an HTML-layer node the canvas renders a small connection handle inside the
+      wrapper — <code>type: 'output'</code> ports become drag <i>sources</i>,
+      <code>type: 'input'</code> ports become drop <i>targets</i>, each positioned on its
+      declared <code>side</code> (shape-aware, in percentages, so they stay put at any
+      zoom):</p>
+<pre data-lang="typescript">nodes = [
+  { id: 'step', type: 'ticket', position: { x: 80, y: 90 }, size: { width: 230, height: 110 },
+    data: { title: 'Review' },
+    ports: [
+      { id: 'in',  side: 'left',  type: 'input' },
+      { id: 'out', side: 'right', type: 'output' },
+    ] },
+];</pre>
+      <p>Connections dragged from these handles run through the same validation pipeline as
+      everywhere else — typed ports, validators, the lot; see
+      <a href="../ports-and-validation/">ports &amp; validation</a>. To keep ports visible
+      instead of hover-only, the port demos flip the engine's interaction config once the
+      view exists:</p>
+<pre data-lang="typescript">ngAfterViewInit() {
+  this.canvas().activeEngine()?.setInteractionConfig({ portVisibility: 'always' });
+}</pre>
+<p><a class="demo-link" href="../../demos-angular/#/ports/typed-ports">Live: typed ports →</a></p>
+
+      <h2>Reaching out from inside a template</h2>
+      <p>Because <code>let-engine</code> and <code>let-node</code> are in scope, a template
+      can carry its own controls — the delete button in the first example is the pattern:
+      read from <code>data</code>, act through <code>engine</code>, address the node by
+      <code>node.id</code>. Anything the engine can do (selection, commands, layout) is one
+      expression away.</p>
+      <div class="note">There are <b>no</b> node/edge click outputs on the canvas component — do not
+      hunt for a <code>(nodeClick)</code>. For clicks on the node body, put the handler in
+      your template (it is your DOM). For diagram-level interaction — connections being
+      drawn, selection changing — subscribe to the engine's <code>eventBus</code>; the
+      pattern is in <a href="../angular-state-and-tooling/">State, signals &amp;
+      tooling</a>.</div>
+
+      <h2>Common mistakes</h2>
+      <ul>
+        <li><b><code>GrafloriaNodeDefDirective</code> missing from <code>imports</code>.</b>
+        The attribute matches nothing, the template is ignored, no error is thrown.</li>
+        <li><b><code>data.title</code> instead of <code>data['title']</code>.</b> The payload
+        is <code>Record&lt;string, unknown&gt;</code>; the strictly-typed context makes dot
+        access a compile error.</li>
+        <li><b>No <code>size</code> on the spec / no <code>height: 100%</code> on the
+        root.</b> The node exists but the card renders collapsed or overflows its hit
+        area.</li>
+        <li><b><code>custom: false</code> left in a spec.</b> Explicit always beats the
+        template match — the node stays in the SVG layer and the template never runs.</li>
+        <li><b>Engine work in the constructor.</b> <code>activeEngine()</code> is available
+        from <code>ngAfterViewInit</code> onward; before that it is <code>undefined</code>
+        and template buttons should guard with <code>engine?.</code>.</li>
+        <li><b>No height on the canvas element.</b> The canvas fills its container; an
+        unstyled custom element collapses to zero and your nodes render into nothing.</li>
+      </ul>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../angular-state-and-tooling/">State, signals &amp; tooling</a> — the
+        two-way bindings, the component methods, the engine escape hatch.</li>
+        <li><a href="../angular-dashboards/">Dashboards in Angular</a> — the same template
+        idiom applied to widgets.</li>
+        <li><a href="../the-model/">The model</a> — what a <code>NodeModel</code> actually
+        is.</li>
+        <li><a href="../ports-and-validation/">Ports &amp; validation</a> — typed ports and
+        connection rules in depth.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../vue-dashboards/">Dashboards</a>
+        <a class="next" href="../angular-state-and-tooling/">State, signals & tooling</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

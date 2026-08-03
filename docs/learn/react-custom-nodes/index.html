@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custom nodes in React — your components on the canvas — Grafloria</title>
+<meta name="description" content="Grafloria custom nodes in React: the NodeProps contract, nodeTypes registration, why custom: true is required, the portal mechanism, selection styling, ports, sizing and re-render behavior.">
+<link rel="canonical" href="https://grafloria.com/learn/react-custom-nodes/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Custom nodes in React — your components on the canvas — Grafloria">
+<meta property="og:description" content="Grafloria custom nodes in React: the NodeProps contract, nodeTypes registration, why custom: true is required, the portal mechanism, selection styling, ports, sizing and re-render behavior.">
+<meta property="og:url" content="https://grafloria.com/learn/react-custom-nodes/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/" aria-current="page">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Custom nodes in React</p>
+      <h1>Custom nodes in React</h1>
+      <p class="lede">A custom node is an ordinary React component, portal-mounted into a host element the engine creates and positions. You render the <b>inside</b> of the box; the engine owns the box — dragging, hit-testing, connections and selection keep working exactly as for built-in nodes.</p>
+
+      <h2>The contract: NodeProps</h2>
+      <p>Your component receives exactly four props — <code>{ id, data, selected, node }</code>.
+      <code>data</code> is the payload you declared on the spec, <code>selected</code> is live
+      selection state, and <code>node</code> is the engine's <code>NodeModel</code> itself —
+      the escape hatch for everything the other three don't cover.</p>
+<div class="filebar">Card.tsx</div>
+<pre data-lang="typescript">import { GrafloriaFlow } from '@grafloria/react';
+import type { NodeProps } from '@grafloria/react';
+
+type CardData = { title: string; owner: string };
+
+function Card({ id, data, selected, node }: NodeProps&lt;CardData&gt;) {
+  return (
+    &lt;div style={{ height: '100%', boxSizing: 'border-box', padding: '10px 14px',
+                  background: '#fff', borderRadius: 12,
+                  border: selected ? '2px solid #3B52D9' : '1.5px solid #94A5F0' }}&gt;
+      &lt;div style={{ fontWeight: 700 }}&gt;{data.title}&lt;/div&gt;
+      &lt;div style={{ fontSize: 12, color: '#5A6478' }}&gt;owner: {data.owner}&lt;/div&gt;
+    &lt;/div&gt;
+  );
+}
+
+const nodes = [
+  { id: 'a', type: 'card', custom: true, position: { x: 80, y: 90 },
+    size: { width: 230, height: 110 }, data: { title: 'Build', owner: 'CI' } },
+  { id: 'b', type: 'card', custom: true, position: { x: 430, y: 90 },
+    size: { width: 230, height: 110 }, data: { title: 'Deploy', owner: 'CD' } },
+];
+const edges = [{ id: 'e1', source: 'a', target: 'b' }];
+
+&lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges}
+               nodeTypes={{ card: Card as never }} /&gt;</pre>
+      <p>Two registrations, and both are required: <code>nodeTypes</code> maps the node's
+      <code>type</code> string to the component, and the node spec carries
+      <code>custom: true</code>. Miss either and nothing mounts — more on why below.</p>
+      <div class="note"><b>The cast is deliberate.</b> <code>NodeTypes</code> is a type-erased registry
+      (<code>Record&lt;string, ComponentType&lt;NodeProps&lt;never&gt;&gt;&gt;</code>), so a
+      component typed with its own <code>NodeProps&lt;CardData&gt;</code> needs
+      <code>as never</code> at the registration site — the library's own tests register
+      components exactly this way.</div>
+<p><a class="demo-link" href="../../demos-react/#/nodes/html-nodes">Live: custom React nodes →</a></p>
+
+      <h2>Why custom: true — the two render paths</h2>
+      <p>Grafloria draws a diagram twice over: an SVG scene graph for built-in nodes, edges
+      and ports, and an <b>HTML layer</b> — a camera-registered sibling of the SVG — for
+      nodes that render as framework components. <code>custom: true</code> on the spec is the
+      switch: it sets <code>metadata.useHTMLLayer</code> on the model, the SVG renderer then
+      skips the node's body entirely, and the instance creates an absolutely-positioned host
+      element for it instead:</p>
+<pre data-lang="html">&lt;div class="grafloria-flow"&gt;                &lt;!-- your container --&gt;
+  &lt;svg&gt;…&lt;/svg&gt;                               &lt;!-- the scene graph --&gt;
+  &lt;div class="grafloria-html-layer"&gt;         &lt;!-- camera-registered sibling --&gt;
+    &lt;div class="grafloria-node-host" data-node-id="a" style="left:80px; top:90px; …"&gt;
+      …your component renders in here…
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</pre>
+      <p>This is why the flag is not optional. Without it the node takes the SVG path and
+      renders as a normal built-in node — your <code>nodeTypes</code> entry is simply never
+      consulted, with no warning. The reverse failure is equally quiet by design: a
+      <code>custom: true</code> node whose <code>type</code> has no entry in
+      <code>nodeTypes</code> renders nothing rather than throwing an exception in the middle
+      of a canvas.</p>
+
+      <h2>The portal mechanism</h2>
+      <p>When the core mounts a custom node it hands <code>&lt;GrafloriaFlow&gt;</code> the
+      model and the host element; the wrapper renders your component into that element with
+      <code>createPortal</code>. Portals keep the component <b>inside your React tree</b> —
+      context, hooks and state all work, and React (not the diagram) owns its lifecycle. It
+      is also why the binding uses <code>createPortal</code> and not <code>createRoot</code>:
+      portals behave identically on React 17, 18 and 19.</p>
+      <p>The host mounts <b>once</b>. Moving the node — a drag, a layout run, a
+      <code>setNodes</code> reconcile — updates the host's <code>left</code>/<code>top</code>
+      style; it never re-creates the element or remounts your component, so component state
+      survives every gesture. When the node is removed from the model, the core retires the
+      host and the wrapper drops the portal, so React unmounts your component normally.</p>
+
+      <h2>Selection-aware styling</h2>
+      <p>The <code>selected</code> prop is not a snapshot: the wrapper subscribes each portal
+      to the instance's <code>selection:change</code> (and <code>nodes:change</code>) events
+      and re-renders your component when they fire, reading
+      <code>node.isSelected()</code> fresh. Styling selection is therefore just an ordinary
+      conditional — the <code>border: selected ? … : …</code> line in the card above is the
+      whole technique. There is no CSS class to hunt for and no observer to wire.</p>
+
+      <h2>Ports on custom nodes</h2>
+      <p>Ports belong to the <b>spec</b>, not to your component — there is no
+      <code>&lt;Handle&gt;</code> equivalent to render. Declare them exactly as on a built-in
+      node and the engine draws them, hit-tests them, and routes edges to them; typed ports
+      and connection validators apply unchanged:</p>
+<pre data-lang="typescript">{ id: 'sum', type: 'card', custom: true, position: { x: 430, y: 90 },
+  size: { width: 230, height: 110 }, data: { title: 'Sum' },
+  ports: [
+    { id: 'in',  side: 'left',  type: 'input',  dataType: 'number' },
+    { id: 'out', side: 'right', type: 'output', dataType: 'number' },
+  ] }</pre>
+      <p>And ports are not even a prerequisite for wiring: a custom node with no declared
+      ports still accepts connections on its body — the two cards in the demo above are
+      joined by a plain <code>{ source: 'a', target: 'b' }</code> edge.</p>
+<p><a class="demo-link" href="../../demos-react/#/ports/typed-ports">Live: typed ports and type-checked wires →</a></p>
+
+      <h2>Sizing: the component fills the node box</h2>
+      <p>The engine sizes and positions the host from the node's <code>size</code> and
+      <code>position</code>; your component is expected to fill it. Give the spec a real
+      <code>size</code>, then make the root element <code>height: '100%'</code> with
+      <code>boxSizing: 'border-box'</code> so padding and borders stay inside the box the
+      engine is hit-testing. If your borders visually overhang the selection outline or
+      edges attach slightly outside the card, a missing <code>boxSizing</code> is almost
+      always why.</p>
+      <div class="note"><b>And the canvas itself needs a sized parent.</b> The flow fills 100% of its
+      container — mount it in a <code>&lt;div style={{ height: '100vh' }}&gt;</code> (or any
+      element with a real height) or you will be staring at a perfectly healthy, zero-pixel
+      diagram.</div>
+
+      <h2>Reaching the live NodeModel</h2>
+      <p>The <code>node</code> prop is the live engine model, and because the portal keeps
+      your component in the React tree, <code>useGrafloria()</code> works <i>inside a node</i>
+      too. Mutate through the model's tracked setters, then ask for a frame:</p>
+<div class="filebar">LiveModel.tsx</div>
+<pre data-lang="typescript">import { useGrafloria } from '@grafloria/react';
+import type { NodeProps } from '@grafloria/react';
+
+function Card({ data, node }: NodeProps&lt;CardData&gt;) {
+  const grafloria = useGrafloria();   // the DiagramInstance, from inside the node
+
+  const grow = () =&gt; {
+    node.setSize(node.size.width + 40, node.size.height);
+    node.setMetadata('label', 'wider');
+    grafloria?.renderNow();
+  };
+
+  return &lt;button onClick={grow}&gt;{data.title}&lt;/button&gt;;
+}</pre>
+      <p><code>setSize</code>, <code>setMetadata</code>, <code>setData</code> and friends are
+      tracked setters — they record the change for undo and mark the node dirty. Writing to
+      plain properties bypasses all of that; if an edit seems to vanish, check that it went
+      through a setter.</p>
+<p><a class="demo-link" href="../../demos-react/#/nodes/updating-nodes">Live: editing a live node from outside the canvas →</a></p>
+
+      <h2>When your component re-renders</h2>
+      <p>Three triggers, and knowing them explains every "why didn't it update":</p>
+      <ul>
+        <li><b>Your own state and context</b> — it is a normal component; local
+        <code>useState</code>, props from context, a store subscription all re-render it as
+        usual.</li>
+        <li><b><code>nodes:change</code></b> — fired when nodes are added or removed and when
+        a gesture <i>commits</i>. During a drag the core moves the host element directly and
+        does not stream events, so your component does not re-render per frame — the box
+        moves, the contents stand still. That is a feature.</li>
+        <li><b><code>selection:change</code></b> — so <code>selected</code> is always
+        current.</li>
+      </ul>
+
+      <h2>Common mistakes</h2>
+      <div class="note"><b>Forgot <code>custom: true</code>.</b> The single most common failure: the
+      node renders as a default SVG rectangle and the component never mounts. The spec flag —
+      not the <code>nodeTypes</code> entry — is what routes a node through the HTML layer.</div>
+      <div class="note"><b>Type key mismatch.</b> <code>type: 'card'</code> must match the
+      <code>nodeTypes</code> key exactly; a miss renders nothing, silently, by design. If a
+      custom node is invisible, check the flag first and the key second.</div>
+      <div class="note"><b>Expecting per-frame renders during a drag.</b> Position lives on the host
+      element, not in your props — do not try to read <code>node.position</code> from render
+      and animate with it. If you need mid-gesture geometry, subscribe to the instance's
+      events through <code>useGrafloria()</code> instead.</div>
+      <p>If you only need a different <i>look</i> — a terminal shape, a document silhouette,
+      a fill — you may not need a component at all: per-node <code>shape</code> styling on
+      the spec keeps the node on the fast SVG path.</p>
+<p><a class="demo-link" href="../../demos-react/#/nodes/custom-nodes">Live: custom shapes with no components →</a></p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../react-state-and-data/">State &amp; data flow in React</a> — who owns the graph, and how changes round-trip.</li>
+        <li><a href="../ports-and-validation/">Ports and validation</a> — sides, directions, typed ports, validators.</li>
+        <li><a href="../react-dashboards/">Dashboards in React</a> — the same portal idiom, applied to widget boards.</li>
+        <li><a href="../theming/">Theming</a> — custom nodes render in light DOM, so your app's CSS cascades in.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../angular/">Angular in 10 minutes</a>
+        <a class="next" href="../react-state-and-data/">State & data flow</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

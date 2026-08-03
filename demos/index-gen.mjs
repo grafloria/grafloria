@@ -154,7 +154,7 @@ function render(byCat) {
   const featuredCards = FEATURED.map((k) => byRel[k]).filter(Boolean)
     .map(({ d, cat }) => cardHtml(d, cat)).join('');
   const featuredSection = featuredCards ? `
-      <section class="featured">
+      <section class="featured" id="featured">
         <h2>★ Featured <span class="count">start here</span></h2>
         <div class="grid">${featuredCards}
         </div>
@@ -167,7 +167,7 @@ function render(byCat) {
         .map((d) => cardHtml(d, cat))
         .join('');
       return `
-      <section>
+      <section id="${esc(cat)}">
         <h2>${esc(CATEGORY_LABEL[cat] ?? cat)} <span class="count">${byCat[cat].length}</span></h2>
         <div class="grid">${cards}
         </div>

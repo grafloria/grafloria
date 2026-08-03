@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The element vs render() — two doors, one engine — Grafloria</title>
+<meta name="description" content="Choosing between &lt;grafloria-flow&gt; and Grafloria.render(): the full attribute table (live vs mount-time), all eight events with detail shapes, el.diagram, render() options, and when each door fits.">
+<link rel="canonical" href="https://grafloria.com/learn/javascript-element-vs-render/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="The element vs render() — two doors, one engine — Grafloria">
+<meta property="og:description" content="Choosing between &lt;grafloria-flow&gt; and Grafloria.render(): the full attribute table (live vs mount-time), all eight events with detail shapes, el.diagram, render() options, and when each door fits.">
+<meta property="og:url" content="https://grafloria.com/learn/javascript-element-vs-render/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/" aria-current="page">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / The element vs render() — choosing your door</p>
+      <h1>The element vs render() — choosing your door</h1>
+      <p class="lede">Both doors open onto the same <code>DiagramInstance</code>. The element speaks HTML — attributes in, DOM events out, dispose on disconnect. <code>render()</code> speaks JavaScript — spec in, instance out, every option on the table. This page is the full contract of each, so the choice is mechanical.</p>
+
+      <h2>Same engine, two grips</h2>
+      <div class="tablewrap"><table>
+        <tr><th></th><th><code>&lt;grafloria-flow&gt;</code></th><th><code>render(spec, target, options)</code></th></tr>
+        <tr><td>Input</td><td>JSON attributes, or properties</td><td>A spec object (or its JSON string), incl. kit specs</td></tr>
+        <tr><td>Output</td><td>Bubbling DOM <code>CustomEvent</code>s</td><td>The <code>DiagramInstance</code>, returned</td></tr>
+        <tr><td>Options</td><td>The attribute set below</td><td>Everything <code>createDiagram()</code> takes</td></tr>
+        <tr><td>Teardown</td><td>Automatic on disconnect</td><td><code>api.dispose()</code>, yours to call</td></tr>
+        <tr><td>The instance</td><td><code>el.diagram</code> (the escape hatch)</td><td>The return value</td></tr>
+      </table></div>
+      <p>The element's own doc states why it exists: <i>"React Flow serves React. ngx-vflow
+      serves Angular. Each is a wall around one framework. A custom element has no wall:
+      Vue, Svelte, Solid, Lit, Alpine, plain HTML, a CMS block, a Jupyter/Observable cell
+      and a static site all speak 'HTML element with attributes and events'."</i> And
+      <code>render()</code> is <i>"the Mermaid-shaped top-level API"</i> — one function, no
+      build step, returning <i>"the same <code>DiagramInstance</code> every wrapper binds
+      to, so the 'tiny API' is not a lesser one — it is the whole engine, addressed in one
+      call."</i></p>
+
+      <h2>The element: attributes</h2>
+      <div class="tablewrap"><table>
+        <tr><th>Attribute</th><th>After mount</th><th>Semantics</th></tr>
+        <tr><td><code>nodes</code>, <code>edges</code></td><td><b>live</b></td>
+          <td>JSON arrays; a change reconciles into the running diagram</td></tr>
+        <tr><td><code>theme</code></td><td><b>live</b></td>
+          <td><code>"light"</code> | <code>"dark"</code> (strings only here); swaps in
+          place — the SVG is patched, not remounted. Unknown values fall back to light.</td></tr>
+        <tr><td><code>fit-view</code></td><td><b>live</b></td>
+          <td>Boolean by <b>presence</b>; setting it after mount re-frames the content</td></tr>
+        <tr><td><code>zoom</code></td><td><b>live</b></td>
+          <td>Number; drives <code>viewport.setZoom()</code> when changed</td></tr>
+        <tr><td><code>readonly</code></td><td>mount-time</td>
+          <td>Boolean by <b>presence</b>; blocks every mutating gesture but still pans and zooms</td></tr>
+        <tr><td><code>pan</code>, <code>wheel-zoom</code></td><td>mount-time</td>
+          <td><b>Opt-out</b> booleans: on by default, disabled only by the literal value
+          <code>"false"</code></td></tr>
+        <tr><td><code>min-zoom</code>, <code>max-zoom</code></td><td>mount-time</td>
+          <td>Numbers; camera clamp</td></tr>
+      </table></div>
+      <p>The mount-time five are read once, deliberately: <i>"they configure the event
+      binder, which is created once. Changing them afterwards is rare enough that we do not
+      tear the instance down."</i></p>
+      <div class="note"><b>Malformed JSON never takes the page down.</b> A bad
+      <code>nodes</code>/<code>edges</code> attribute logs
+      <code>[grafloria-flow] ignoring malformed JSON attribute: …</code> and falls back to an
+      empty array — the element still mounts a working (empty) canvas. There is a test that
+      feeds it <code>{{{ not json</code> to keep this true.</div>
+
+      <h2>The element: properties and methods</h2>
+<pre data-lang="typescript">const el = document.querySelector('grafloria-flow');
+
+el.nodes = bigGraph.nodes;      // the RICH path — real objects, no JSON round-trip
+el.edges = bigGraph.edges;      // (what Vue/Svelte/Solid template bindings target)
+
+el.fitView(40);                 // the one convenience method
+
+el.diagram                      // the DiagramInstance — the escape hatch to everything:
+el.diagram.getModel();          //   the data
+el.diagram.getEngine();         //   commands, undo, layout, validation
+el.diagram.renderNow();         //   force a synchronous paint</pre>
+      <div class="note"><b>There is no <code>el.render()</code>.</b> Attribute and property writes
+      reconcile the model and the scheduler paints on the next frame; when you must measure
+      the DOM immediately after a change, go through the instance:
+      <code>el.diagram.renderNow()</code>.</div>
+      <div class="note"><b>The reconciler keeps live objects for ids that persist.</b> Setting
+      <code>el.nodes</code> (or <code>api.setNodes()</code>) adds what is new, patches what
+      exists and removes what disappeared — an existing id keeps its live
+      <code>NodeModel</code>. That is what you want for incremental updates; it is
+      <i>not</i> what you want when the new array carries freshly built models under old
+      ids. The Mermaid-viewer demo documents the trap: <i>"the reconciler treats a live
+      model as 'already here' and leaves the existing object alone, so re-applying edited
+      text would otherwise keep the STALE nodes for every id that still exists."</i> The
+      fix is clear-then-apply: <code>setNodes([])</code>, then <code>setNodes(next)</code>.</div>
+<p><a class="demo-link" href="../../demos/misc/mermaid-text.html">Live: the clear-then-apply reconciler in the Mermaid viewer →</a></p>
+
+      <h2>The element: all eight events</h2>
+      <p>Instance events are forwarded as <code>CustomEvent</code>s that <b>bubble</b> and
+      are <b>composed</b> — they cross shadow boundaries, so a listener on
+      <code>document</code> works (the test suite proves exactly that):</p>
+      <div class="tablewrap"><table>
+        <tr><th>Event</th><th><code>e.detail</code></th></tr>
+        <tr><td><code>grafloria-ready</code></td><td><code>{ diagram }</code> — the instance</td></tr>
+        <tr><td><code>grafloria-nodes-change</code></td><td><code>{ nodes: NodeModel[] }</code></td></tr>
+        <tr><td><code>grafloria-edges-change</code></td><td><code>{ edges: LinkModel[] }</code></td></tr>
+        <tr><td><code>grafloria-selection-change</code></td><td><code>{ nodes, edges }</code></td></tr>
+        <tr><td><code>grafloria-connect</code></td><td><code>{ link: LinkModel }</code></td></tr>
+        <tr><td><code>grafloria-node-click</code></td><td><code>{ node, world: { x, y } }</code></td></tr>
+        <tr><td><code>grafloria-edge-click</code></td><td><code>{ edge, world: { x, y } }</code></td></tr>
+        <tr><td><code>grafloria-viewport-change</code></td><td><code>{ viewport, zoom }</code></td></tr>
+      </table></div>
+<pre data-lang="typescript">el.addEventListener('grafloria-connect', (e) =&gt; save(e.detail.link));
+el.addEventListener('grafloria-nodes-change', (e) =&gt; persist(e.detail.nodes));</pre>
+      <p>The instance itself emits a few more (<code>reconnect</code>,
+      <code>node:doubleclick</code>) — subscribe on <code>el.diagram.on(…)</code> for
+      those. And teardown is automatic: <b>disconnecting the element disposes the
+      diagram</b> — after <code>el.remove()</code>, <code>el.diagram</code> is
+      <code>null</code> and the DOM is gone. Re-connecting mounts fresh.</p>
+
+      <h2>Renaming the tag</h2>
+<pre data-lang="typescript">import { Grafloria } from '@grafloria/element';
+Grafloria.define('acme-flow');       // same class, your tag name</pre>
+      <p>Importing the package already registers <code>&lt;grafloria-flow&gt;</code> for you;
+      <code>define()</code> is idempotent and <i>"safe to call on the server (where
+      <code>customElements</code> does not exist)"</i>. The class itself is guarded the
+      same way, so importing the bundle in Node or a Web Worker throws nothing.</p>
+
+      <h2><code>render(spec, target, options)</code></h2>
+<pre data-lang="typescript">import { render, DARK_THEME } from '@grafloria/element';
+
+const api = render(
+  { nodes: [...], edges: [...] },   // or the JSON string of it, or a kit spec
+  '#canvas',                        // an element, or a CSS selector
+  { theme: DARK_THEME, fitView: true }
+);</pre>
+      <p>The contract, point by point:</p>
+      <ul>
+        <li><b>Target</b> — an element or a selector; no match throws
+        <code>Grafloria.render: no element matched …</code> rather than failing silently.</li>
+        <li><b>Spec</b> — an object or its JSON string. A <b>kit spec is a render spec</b>:
+        <code>render(dashboard({…}), host)</code> and <code>render(erDiagram({…}), host)</code>
+        are the documented one-liners, and a kit's <code>finalize(api)</code> runs
+        automatically so the diagram is fully wired from one call
+        (see <a href="../kits/">Kits</a>).</li>
+        <li><b>Custom nodes</b> — resolved with the precedence <i>"explicit option &gt;
+        spec &gt; registry"</i>: your <code>options.renderCustomNode</code> outranks a kit
+        spec's own painter, which outranks
+        <a href="../javascript-custom-nodes/">registered node types</a>.</li>
+      </ul>
+      <div class="note"><b>The scope, quoted rather than paraphrased:</b> <i>"<code>spec</code> is
+      data (an object or its JSON), not a Mermaid-style text DSL. The engine does have a
+      DSL, but wiring it in is a separate card — <code>render()</code> is the embedding
+      surface, not a parser."</i> Mermaid text goes through
+      <code>api.loadText()</code> / <code>importDiagramText()</code> — see
+      <a href="../mermaid-and-the-dsl/">Mermaid &amp; the text format</a>.</div>
+      <p><b>Options</b> are everything <code>createDiagram()</code> accepts except
+      <code>nodes</code>/<code>edges</code>. The ones you will actually reach for:</p>
+      <ul>
+        <li><code>theme</code>, <code>colorMode</code> (<code>'system'</code> follows the
+        OS), <code>tokenBridge</code> — see <a href="../theming/">Theming</a>.</li>
+        <li><code>fitView</code>, <code>zoom</code>, <code>minZoom</code>,
+        <code>maxZoom</code>, <code>viewport</code> — the camera.</li>
+        <li><code>readonly</code>, <code>enablePan</code>, <code>enableZoom</code>,
+        <code>zoomSensitivity</code>, <code>dragThreshold</code> — the gesture binder
+        (the element's mount-time attributes are exactly these).</li>
+        <li><code>interaction</code> — passed through to the engine's interaction config.</li>
+        <li><code>renderer</code> — the full renderer config <i>"for every knob the
+        ergonomic fields above do not name"</i>: floating connection points, parallel
+        links, channel nudging, link hit-area width.</li>
+        <li><code>renderCustomNode</code> / <code>removeCustomNode</code> — the custom-node
+        hook pair; a painter that draws later (fetch, rAF, web font) should <b>return its
+        promise</b>, which is what lets <code>await api.export(…)</code> wait for exactly
+        the widgets that were not done.</li>
+      </ul>
+      <p>And the pieces people look for on the instance: undo lives on the engine
+      (<code>await api.getEngine().undo()</code> — ⌘Z is already wired), layout too
+      (<code>await api.getEngine().layout('elk')</code>), and plugins attach with a plain
+      static import — <code>import { attachCanvasPlugins } from '@grafloria/element'</code>,
+      then <code>attachCanvasPlugins(api, { minimap: true, controls: true })</code>. The
+      full surface is in <a href="../the-instance/">The DiagramInstance</a>.</p>
+
+      <h2>So: which door?</h2>
+      <ul>
+        <li><b>The element</b>, when the page is the platform: a CMS block, a static site,
+        a notebook cell, a framework without a first-class binding — anywhere "HTML in,
+        events out, cleanup on removal" is the natural shape, and the JSON-attribute
+        ceiling (plus <code>el.diagram</code> for everything above it) is acceptable.</li>
+        <li><b><code>render()</code></b>, when you are writing application code: you want
+        the instance in hand from line one, the full options surface, kit specs, and
+        explicit control of disposal.</li>
+      </ul>
+      <p>It is not a fork in the road. <code>el.diagram</code> <i>is</i> the instance
+      <code>render()</code> returns, so code written against one door runs unchanged behind
+      the other.</p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../the-instance/">The DiagramInstance</a> — the shared surface both
+        doors hand you.</li>
+        <li><a href="../javascript-custom-nodes/">Custom nodes in plain JavaScript</a> —
+        renderers and templates over either door.</li>
+        <li><a href="../events-and-interaction/">Events &amp; interaction</a> — the event
+        model beneath the eight DOM events.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../javascript-custom-nodes/">Custom nodes</a>
+        <a class="next" href="../javascript-dashboards/">Dashboards</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

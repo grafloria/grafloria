@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custom nodes in Vue — slot-defined nodes in depth — Grafloria</title>
+<meta name="description" content="Deep guide to Grafloria custom nodes in Vue 3: #node-&lt;type&gt; slots, the auto-custom opt-in, slot context, repaint mechanics, styling and sizing, ports on custom nodes, and driving the engine from inside a node.">
+<link rel="canonical" href="https://grafloria.com/learn/vue-custom-nodes/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Custom nodes in Vue — slot-defined nodes in depth — Grafloria">
+<meta property="og:description" content="Deep guide to Grafloria custom nodes in Vue 3: #node-&lt;type&gt; slots, the auto-custom opt-in, slot context, repaint mechanics, styling and sizing, ports on custom nodes, and driving the engine from inside a node.">
+<meta property="og:url" content="https://grafloria.com/learn/vue-custom-nodes/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/" aria-current="page">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Custom nodes in Vue</p>
+      <h1>Custom nodes in Vue</h1>
+      <p class="lede">A custom node is a named slot. Declaring <code>#node-&lt;type&gt;</code> is the whole opt-in — no flag, no registry call — and what renders inside is real Vue: components, event handlers, your stylesheet. This page is the full mechanics: how the opt-in works, what the slot receives, when it repaints, and how to reach the engine from inside a node.</p>
+
+      <h2>The mechanic: a slot per node type</h2>
+      <p>Give a node a <code>type</code>, declare a slot named after it, and the node's body
+      becomes your template. It still hit-tests, drags, connects and exports like any other
+      node — the engine keeps the geometry; you paint the interior.</p>
+<div class="filebar">App.vue</div>
+<pre data-lang="html">&lt;script setup&gt;
+import { GrafloriaFlow } from '@grafloria/vue';
+
+const nodes = [
+  { id: 'a', type: 'card', position: { x: 80, y: 90 },  size: { width: 230, height: 110 },
+    data: { title: 'Build', owner: 'CI', status: 'passing' } },
+  { id: 'b', type: 'card', position: { x: 430, y: 90 }, size: { width: 230, height: 110 },
+    data: { title: 'Deploy', owner: 'CD', status: 'ready' } },
+];
+const edges = [{ id: 'e1', source: 'a', target: 'b' }];
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;div style="height: 100vh"&gt;
+    &lt;GrafloriaFlow :default-nodes="nodes" :default-edges="edges"&gt;
+      &lt;template #node-card="{ data }"&gt;
+        &lt;div class="card"&gt;
+          &lt;div class="title"&gt;{{ data.title }}&lt;/div&gt;
+          &lt;div class="owner"&gt;owner: {{ data.owner }}&lt;/div&gt;
+          &lt;span class="badge"&gt;{{ data.status }}&lt;/span&gt;
+        &lt;/div&gt;
+      &lt;/template&gt;
+    &lt;/GrafloriaFlow&gt;
+  &lt;/div&gt;
+&lt;/template&gt;</pre>
+<p><a class="demo-link" href="../../demos-vue/#/nodes/html-nodes">Live: slot-defined custom nodes →</a></p>
+
+      <p>The opt-in rule, quoted from the wrapper source, because the details matter:</p>
+<div class="filebar">libs/vue/src/lib/grafloria-flow.ts</div>
+<pre data-lang="typescript">/**
+ * Declaring `#node-&lt;type&gt;` IS the opt-in (the same DX as the Angular
+ * wrapper): specs whose type has an exact slot are flagged `custom`
+ * automatically. Explicit `custom` always wins; the wildcard `#node` slot
+ * renders already-custom nodes but does not flag anything itself.
+ */</pre>
+      <p>Three consequences worth reading twice:</p>
+      <ul>
+        <li>A node whose <code>type</code> has an <b>exact</b> slot renders through it —
+        nothing else to write.</li>
+        <li><code>#node</code> (no type) is the <b>wildcard</b>: it catches custom nodes
+        that have no exact slot, but it never opts a node in by itself. To route a node
+        through the wildcard, set <code>custom: true</code> on its spec.</li>
+        <li>An explicit <code>custom</code> on the spec wins in both directions —
+        <code>custom: false</code> keeps a node in SVG even when a matching slot exists.</li>
+      </ul>
+
+      <h2>What the slot receives</h2>
+      <p>Slot context is <code>{ node, data, engine }</code>:</p>
+      <ul>
+        <li><code>node</code> — the live <code>NodeModel</code>, not a copy. Its setters
+        (<code>setMetadata</code>, <code>setSize</code>, <code>setPosition</code>) write
+        straight into the model.</li>
+        <li><code>data</code> — the node's <code>data</code> payload
+        (<code>{}</code> when the spec declared none), passed through untouched.</li>
+        <li><code>engine</code> — the <code>DiagramEngine</code>
+        (the same object <code>instance.getEngine()</code> returns): commands, undo/redo,
+        layout, interaction config.</li>
+      </ul>
+
+      <h2>Reactivity, and how repaints actually work</h2>
+      <p>Slot content is mounted with Vue's low-level <code>render()</code> into the host
+      element the engine provides in its HTML layer. That makes it real Vue — components
+      mount with their own state and lifecycle, and event handlers are real DOM listeners.
+      But the <i>repaint schedule</i> is the engine's, not Vue's, so it pays to know when
+      the wrapper re-invokes your slot:</p>
+      <ul>
+        <li><b>On mount</b> — once per custom node, when the engine creates its host.</li>
+        <li><b>On every <code>nodes:change</code></b> — which the instance emits on node
+        <b>add and remove only</b>. In-place changes (<code>node:changed</code>) repaint the
+        SVG canvas but do not re-run slots.</li>
+      </ul>
+      <div class="note">The trap this implies: mutating <code>node.data</code> — or updating a
+      controlled <code>v-model:nodes</code> array in place — does <b>not</b> repaint slot
+      content, because no node was added or removed. A plain interpolation of page-level
+      state inside a slot refreshes only when a repaint happens to run. For content that
+      must stay live, put a <b>component</b> in the slot and let it read from your own
+      reactive source (a store, a reactive map keyed by <code>node.id</code>): a mounted
+      component re-renders itself, on its own schedule, regardless of the canvas.</div>
+<pre data-lang="html">&lt;template #node-metric="{ node }"&gt;
+  &lt;!-- MetricCard subscribes to your store by id; it stays live on its own --&gt;
+  &lt;MetricCard :metric-id="node.id" style="height: 100%" /&gt;
+&lt;/template&gt;</pre>
+
+      <h2>Styling and sizing</h2>
+      <p>The wrapper renders your slot inside a <code>width:100%; height:100%</code> host,
+      and the host is sized to the node's box — so the one rule is: give your slot root
+      <code>height: 100%</code> (and <code>box-sizing: border-box</code> if it has padding),
+      or the card will not fill the node it lives in. The node's footprint itself comes from
+      the spec's <code>size</code>, not from your CSS.</p>
+      <p>Custom nodes render in <b>light DOM</b>, so your app stylesheet — including
+      <code>&lt;style scoped&gt;</code> in the SFC that declares the slot — cascades in
+      directly. No stylesheet import, no shadow-DOM piercing.</p>
+      <div class="note">The canvas itself fills its container, and 100% of zero is a blank page —
+      the component's own root is <code>width:100%; height:100%</code>, so the element you
+      mount <code>&lt;GrafloriaFlow&gt;</code> into must have a real height.</div>
+
+      <h2>Ports on custom nodes</h2>
+      <p>Ports belong to the <b>spec</b>, not to the painter — how the body renders and
+      where edges attach are orthogonal. A custom node you declare no ports for keeps the
+      default four (one per side, deterministic ids <code>&lt;nodeId&gt;__&lt;side&gt;</code>);
+      declare <code>ports</code> to replace them:</p>
+<pre data-lang="typescript">const nodes = [
+  { id: 'src', type: 'card', position: { x: 80, y: 90 }, size: { width: 230, height: 110 },
+    data: { title: 'Extract' },
+    ports: [
+      { id: 'out',  side: 'right', type: 'output', dataType: 'number' },
+      { id: 'ctl',  side: 'top',   type: 'input' },
+    ] },
+];</pre>
+<pre data-lang="html">&lt;GrafloriaFlow :default-nodes="nodes" :interaction="{ portVisibility: 'always' }"&gt;
+  &lt;template #node-card="{ data }"&gt; ... &lt;/template&gt;
+&lt;/GrafloriaFlow&gt;</pre>
+      <p>Typed ports, connection validators and port gating all work unchanged on custom
+      nodes — see <a href="../ports-and-validation/">Ports &amp; validation</a>. One caveat
+      carries over: connection validators are <b>process-global</b>, so dispose them in
+      <code>onBeforeUnmount</code>.</p>
+<p><a class="demo-link" href="../../demos-vue/#/ports/typed-ports">Live: typed ports →</a></p>
+
+      <h2>Reaching the model and engine from inside a node</h2>
+      <p>Because the slot gets the live <code>NodeModel</code> and the engine, a node can
+      carry its own controls. Deletion is one call — it runs through the command layer, so
+      it is a single undoable step, and the removal fires <code>nodes:change</code>, which
+      repaints the remaining slots and (in controlled mode) emits the updated specs:</p>
+<pre data-lang="html">&lt;template #node-card="{ node, data, engine }"&gt;
+  &lt;div class="card"&gt;
+    &lt;strong&gt;{{ data.title }}&lt;/strong&gt;
+    &lt;button class="close" @click="engine.removeNode(node.id)"&gt;✕&lt;/button&gt;
+  &lt;/div&gt;
+&lt;/template&gt;</pre>
+      <div class="note">Undo and redo live on the <b>engine</b>, not the instance:
+      <code>instance.getEngine().undo()</code>. There is no <code>instance.undo()</code> —
+      reaching for one fails silently in an <code>?.</code> chain, which makes it a
+      long-lived bug rather than a loud one.</div>
+<p><a class="demo-link" href="../../demos-vue/#/interaction/undo-redo">Live: undo/redo from your own buttons →</a></p>
+
+      <h2>Common mistakes</h2>
+      <ul>
+        <li><b>No height on the wrapper.</b> The canvas fills its parent; an unsized parent
+        renders nothing.</li>
+        <li><b>No <code>height: 100%</code> on the slot root.</b> The card floats at the top
+        of an invisible node box.</li>
+        <li><b>Expecting <code>#node</code> to opt nodes in.</b> The wildcard only renders
+        nodes that are already custom — add <code>custom: true</code> to the spec.</li>
+        <li><b>Expecting a data mutation to repaint the slot.</b> Slots repaint on
+        add/remove; live content belongs in a component with its own reactive source.</li>
+        <li><b><code>instance.undo()</code>.</b> It does not exist; go through
+        <code>getEngine()</code>.</li>
+        <li><b>Doing shape work in a slot that the spec already does.</b> For a styled
+        rectangle, terminal or document shape, <code>shape: { type, fill, stroke }</code>
+        on the spec is cheaper than a custom node — see the
+        <a href="../../demos-vue/#/nodes/custom-nodes">shape-based demo</a> for the contrast.</li>
+      </ul>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../vue-state-and-data/">State &amp; data flow in Vue</a> — controlled
+        vs uncontrolled nodes, the emit rules, saving and loading.</li>
+        <li><a href="../vue-dashboards/">Dashboards in Vue</a> — the same slot idiom,
+        <code>#widget-&lt;kind&gt;</code>, on the dashboard kit.</li>
+        <li><a href="../the-model/">The model</a> — what a <code>NodeModel</code> really is
+        under the slot.</li>
+        <li><a href="../ports-and-validation/">Ports &amp; validation</a> — the port
+        vocabulary your custom nodes inherit.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../react-dashboards/">Dashboards</a>
+        <a class="next" href="../vue-state-and-data/">State & data flow</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

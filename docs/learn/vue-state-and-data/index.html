@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>State &amp; data flow in Vue — controlled, uncontrolled, saved — Grafloria</title>
+<meta name="description" content="How Grafloria state flows through Vue 3: defaultNodes vs v-model:nodes, the update:nodes emit rule, the spec reconciler, template-ref API, GrafloriaProvider composables, and lossless save/load.">
+<link rel="canonical" href="https://grafloria.com/learn/vue-state-and-data/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="State &amp; data flow in Vue — controlled, uncontrolled, saved — Grafloria">
+<meta property="og:description" content="How Grafloria state flows through Vue 3: defaultNodes vs v-model:nodes, the update:nodes emit rule, the spec reconciler, template-ref API, GrafloriaProvider composables, and lossless save/load.">
+<meta property="og:url" content="https://grafloria.com/learn/vue-state-and-data/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/" aria-current="page">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / State &amp; data flow in Vue</p>
+      <h1>State &amp; data flow in Vue</h1>
+      <p class="lede">Two ownership models (<code>default-nodes</code> or <code>v-model:nodes</code>), one reconciler underneath, and a precise contract for what flows back out and when. This page pins down that contract — including the parts that surprise people — then covers the template-ref API, the composables, and save/load.</p>
+
+      <h2>Uncontrolled: <code>default-nodes</code></h2>
+      <p>The uncontrolled form hands the engine an initial snapshot and steps aside:</p>
+<pre data-lang="html">&lt;GrafloriaFlow :default-nodes="nodes" :default-edges="edges" /&gt;</pre>
+      <p><code>default-nodes</code>/<code>default-edges</code> are read <b>once, at
+      mount</b> — the wrapper watches only the controlled props, so later changes to these
+      arrays are ignored. The model owns the state from then on; reach it through
+      <code>@init</code>, a template ref, or the composables below. This is the right form
+      for editors where the diagram <i>is</i> the state and your app only needs snapshots.</p>
+
+      <h2>Controlled: <code>v-model:nodes</code></h2>
+<div class="filebar">App.vue</div>
+<pre data-lang="html">&lt;script setup&gt;
+import { ref } from 'vue';
+import { GrafloriaFlow } from '@grafloria/vue';
+
+const nodes = ref([
+  { id: 'a', position: { x: 0, y: 0 }, size: { width: 100, height: 50 }, label: 'A' },
+]);
+const edges = ref([]);
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;div style="height: 100vh"&gt;
+    &lt;GrafloriaFlow v-model:nodes="nodes" v-model:edges="edges" /&gt;
+  &lt;/div&gt;
+&lt;/template&gt;</pre>
+      <p>Inbound, every assignment to the ref is reconciled into the model. Outbound, the
+      wrapper subscribes to the instance and emits specs back — but under two rules that
+      are easy to miss and worth quoting from the source:</p>
+<div class="filebar">libs/vue/src/lib/grafloria-flow.ts</div>
+<pre data-lang="typescript">inst.on('nodes:change', ({ nodes: next }: { nodes: NodeModel[] }) =&gt; {
+  repaintSlots();
+  if (props.nodes !== undefined) emit('update:nodes', next.map((n) =&gt; toNodeSpec(n)));
+}),</pre>
+      <ul>
+        <li><b><code>update:nodes</code> is emitted only when the <code>nodes</code> prop is
+        bound.</b> An uncontrolled canvas never emits it — there is no half-controlled mode
+        where you listen without binding.</li>
+        <li><b><code>nodes:change</code> fires on add and remove</b> — membership changes,
+        not every mutation. A drag does not stream positions through
+        <code>v-model:nodes</code> frame by frame; the specs you receive on the next
+        membership change carry the then-current positions, because they are projected from
+        the live model at emit time.</li>
+      </ul>
+      <p>The wrapper's own test suite states the contract as two assertions: pushing a spec
+      into the ref grows the model, and <code>model.removeNode('b')</code> comes back as an
+      emitted spec array of <code>['a']</code>. Prop in, spec out — that round trip is the
+      whole feature.</p>
+      <div class="note">What flows back is a <b>projection</b>, not the document. <code>toNodeSpec()</code>
+      carries id, type, position, size, selected, data, label, shape and the custom flag —
+      and nothing else: no ports, no metadata, no behavior. <code>v-model:nodes</code> keeps
+      your app state in sync; it is not a save format. For persistence, use
+      <code>snapshot()</code> below.</div>
+
+      <h2>The reconciler underneath</h2>
+      <p>Every controlled update runs through one reconciler: add what is new, update what
+      moved, remove what disappeared. A node whose id persists keeps its <b>live model
+      object</b> — the update path patches position, size, data, label, shape and metadata
+      in place, and never rebuilds ports (those are built once, when the id first
+      appears).</p>
+      <p>That identity-keeping is what makes drags, undo history and selections survive a
+      controlled update. It is also a trap when you <b>re-import</b>: load a second document
+      that happens to reuse ids and the survivors keep their old ports and metadata. The
+      recipe for a genuine fresh start is clear-then-apply:</p>
+<pre data-lang="typescript">nodes.value = [];
+edges.value = [];
+await nextTick();          // let the empty lists reconcile first
+nodes.value = importedNodes;
+edges.value = importedEdges;</pre>
+      <p>(The two-step matters: Vue batches watcher runs, so assigning twice in one tick
+      reconciles only the final value — the clear never happens.)</p>
+
+      <h2>The template-ref surface</h2>
+      <p>The component exposes a small, typed API — everything else goes through the
+      instance:</p>
+<pre data-lang="html">&lt;GrafloriaFlow ref="flow" :default-nodes="nodes" @init="onInit" /&gt;</pre>
+<pre data-lang="typescript">const flow = ref();
+
+flow.value.getInstance();                  // the live DiagramInstance
+flow.value.applyLayout('elk');             // or { name: 'dagre', options: {...} }
+flow.value.snapshot();                     // getModel().serialize() — the full document
+flow.value.exportSvg();                    // SVG string (sync)
+await flow.value.exportPdf();              // PDF data: URL
+await flow.value.exportDiagram('png', { scale: 2 });
+flow.value.exportText();                   // Mermaid-compatible text
+flow.value.loadText(text);                 // ...and back in
+flow.value.fitView(40);                    // frame the content, optional padding</pre>
+      <p><code>@init</code> hands you the same <code>DiagramInstance</code> the moment it
+      exists — the usual pattern is to stash it for event wiring and engine access
+      (<code>instance.getEngine().undo()</code>, interaction config, layout). Both roads
+      lead to the same object; the ref is just the declarative doorway.</p>
+
+      <h2>Siblings: <code>GrafloriaProvider</code> and the composables</h2>
+      <p>A toolbar or inspector that lives <i>next to</i> the canvas — not inside it — needs
+      the instance without prop-drilling. Wrap both in <code>&lt;GrafloriaProvider&gt;</code>
+      and the flow publishes itself to the nearest provider:</p>
+<div class="filebar">App.vue</div>
+<pre data-lang="html">&lt;template&gt;
+  &lt;GrafloriaProvider&gt;
+    &lt;InspectorPanel /&gt;
+    &lt;div style="height: 80vh"&gt;
+      &lt;GrafloriaFlow :default-nodes="nodes" /&gt;
+    &lt;/div&gt;
+  &lt;/GrafloriaProvider&gt;
+&lt;/template&gt;</pre>
+<div class="filebar">InspectorPanel.vue</div>
+<pre data-lang="html">&lt;script setup&gt;
+import { useGrafloria, useSelection, useViewport, useOnSelectionChange } from '@grafloria/vue';
+
+const grafloria = useGrafloria();   // ShallowRef&lt;DiagramInstance | null&gt; — null until the flow mounts
+const selection = useSelection();   // reactive { nodes, edges }
+const viewport  = useViewport();    // reactive { zoom, x, y }
+useOnSelectionChange((change) =&gt; console.log(change.nodes.map((n) =&gt; n.id)));
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;aside v-if="grafloria"&gt;
+    {{ selection.nodes.length }} selected · zoom {{ viewport.zoom.toFixed(2) }}
+  &lt;/aside&gt;
+&lt;/template&gt;</pre>
+      <p>Every composable is a subscription to the headless instance — no diagram state
+      lives in Vue, and teardown is automatic when the component's scope disposes.
+      <code>useSelection()</code> also seeds itself from the model on attach, so a panel
+      mounted after a selection exists starts correct rather than empty.</p>
+
+      <h2>Save and load</h2>
+      <p>Saving is one call — <code>snapshot()</code> on the ref, or the serializer
+      directly. The result is the full document: nodes, links, ports, groups, metadata.</p>
+<pre data-lang="typescript">import { DiagramSerializer } from '@grafloria/element';
+
+const serializer = new DiagramSerializer();
+const json = JSON.stringify(serializer.serialize(instance.getModel()));</pre>
+      <p>Restoring is where fidelity is decided. The
+      <a href="../../demos-vue/#/interaction/save-and-restore">save-and-restore demo</a> deliberately
+      shows the <i>lossy</i> road: it deserializes, then hand-projects each node back to a
+      spec of id/position/size/label and calls <code>setNodes()</code>. That round-trips
+      what it names and silently drops the rest — declared ports come back as the four
+      defaults, metadata is gone. Fine for that demo's plain boxes; wrong for anything with
+      structure.</p>
+      <p>The lossless door is <code>fromDocument()</code>: it feeds the deserialized
+      <b>live models</b> back in untouched — ports, metadata and kit wiring survive — and
+      it is the documented way to reload kit-built diagrams:</p>
+<pre data-lang="typescript">import { render, fromDocument } from '@grafloria/element';
+
+render(fromDocument(JSON.parse(json)), hostElement);</pre>
+      <div class="note"><code>&lt;GrafloriaFlow&gt;</code> has no document prop — its controlled input
+      is specs. Re-declaring specs (clear-then-apply) is enough whenever your app owns the
+      source of truth anyway; reach for <code>fromDocument()</code> + <code>render()</code>
+      when the saved document <b>is</b> the source of truth and nothing may be lost.</div>
+<p><a class="demo-link" href="../../demos-vue/#/interaction/save-and-restore">Live: save & restore →</a></p>
+
+      <h2>The controlled-viewer pattern</h2>
+      <p>The mermaid viewer is the cleanest showcase of controlled mode: parsing happens
+      entirely outside the canvas, and the canvas just renders whatever the refs hold.</p>
+<div class="filebar">mermaid-viewer.vue (trimmed)</div>
+<pre data-lang="typescript">import { importDiagramText } from '@grafloria/element';
+
+function renderText(src) {
+  const r = importDiagramText(src);
+  if (r.unsupported) {            // reports its reason instead of throwing
+    nodes.value = []; edges.value = [];
+    status.value = 'unsupported diagram type: ' + r.unsupported;
+    return;
+  }
+  const model = r.diagram;
+  nodes.value = model.getNodes().map((n) =&gt; ({
+    id: n.id, label: n.getMetadata('label'),
+    position: { x: n.position.x, y: n.position.y },
+    size: { width: n.size.width, height: n.size.height },
+    shape: n.getMetadata('shape'), style: n.style,
+  }));
+  edges.value = model.getLinks().map((l) =&gt; ({
+    id: l.id, source: l.sourceNodeId, target: l.targetNodeId,
+  }));
+}</pre>
+      <p>Text goes in, specs come out, the reconciler does the diffing — re-parsing edited
+      text updates in place because the ids persist. (And if two parses genuinely mean
+      different diagrams, clear-then-apply, as above.) For quick round trips the template
+      ref has shortcuts: <code>exportText()</code> / <code>loadText()</code>.</p>
+<p><a class="demo-link" href="../../demos-vue/#/misc/mermaid-viewer">Live: Mermaid viewer, fully controlled →</a></p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../vue-custom-nodes/">Custom nodes in Vue</a> — why slot repaints follow
+        <code>nodes:change</code>, and what to do about it.</li>
+        <li><a href="../vue-dashboards/">Dashboards in Vue</a> — the dashboard kit's own
+        state story: handle, snapshot, round trip.</li>
+        <li><a href="../commands-and-undo/">Commands &amp; undo</a> — what "one undoable
+        step" means in the engine.</li>
+        <li><a href="../mermaid-and-the-dsl/">Mermaid &amp; the DSL</a> — everything
+        <code>importDiagramText()</code> understands.</li>
+        <li><a href="../the-instance/">The instance</a> — the full surface behind
+        <code>getInstance()</code>.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../vue-custom-nodes/">Custom nodes</a>
+        <a class="next" href="../vue-dashboards/">Dashboards</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

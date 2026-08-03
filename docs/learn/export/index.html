@@ -44,6 +44,30 @@
         <a href="../angular/">Angular in 10 minutes</a>
       </div>
       <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
         <b>Concepts</b>
         <a href="../the-model/">The model</a>
         <a href="../edges-and-routing/">Edges & routing</a>
@@ -90,7 +114,7 @@ a.click();</pre>
       <code>'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)</code>. And export
       requires a painted canvas — calling before the first paint throws a clear error rather
       than returning a blank image.</div>
-<p><a class="demo-link" href="../../demos/#export">Live: export demos →</a></p>
+<p><a class="demo-link" href="../../demos/misc/pdf-export.html">Live: export demos →</a></p>
 
       <h2>PDF that is actually vector</h2>
       <p><code>export('pdf')</code> produces paths as paths and text as selectable text — not
@@ -105,7 +129,7 @@ isEditableArtifact(svg);          // true
 const model = importDiagram(svg); // back to a live, editable diagram</pre>
       <p>Works for PNG and SVG. An exported image becomes its own save file — email the
       picture, and the recipient can keep editing it.</p>
-<p><a class="demo-link" href="../../demos-react/#editable-round-trip">Live: the editable round-trip →</a></p>
+<p><a class="demo-link" href="../../demos-react/#/misc/editable-round-trip">Live: the editable round-trip →</a></p>
 
       <h2>Server-side, no DOM</h2>
 <pre data-lang="typescript">import { renderStatic } from '@grafloria/element';
