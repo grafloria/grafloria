@@ -1,7 +1,11 @@
 // LemonadeJS Enhanced Renderer (Phase 3.4 - Complete)
 // Full LemonadeJS integration with two-way binding and reactivity
 
-import lemonadeNs from 'lemonadejs';
+import * as lemonadeNs from 'lemonadejs';
+// CJS interop, both directions: Node's ESM loader exposes lemonade's API on
+// .default; ts-jest's CJS interop leaves .default undefined (lemonade sets
+// __esModule without one) — a DEFAULT import binds undefined there and
+// crashes at module scope. The namespace import is defined in both worlds.
 const lemonade: typeof lemonadeNs = (lemonadeNs as any).default ?? lemonadeNs;
 import type { EventBus } from '../events/EventBus';
 import type { HtmlConfig } from '../templates/NodeTemplate';
