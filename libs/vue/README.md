@@ -3,6 +3,8 @@
 Vue 3 bindings for the [Grafloria](https://github.com/grafloria/grafloria)
 diagram engine — `v-model` data, slot-based custom nodes, declarative layout.
 
+**Docs:** [Vue 3 in 10 minutes](https://grafloria.com/learn/vue/) · [Vue deep guides](https://grafloria.com/learn/vue-custom-nodes/) · [every demo as a Vue SFC](https://grafloria.com/demos-vue/)
+
 ```sh
 npm install @grafloria/vue @grafloria/element @grafloria/renderer @grafloria/engine
 ```

@@ -5,6 +5,8 @@ Angular components, directives, and providers for the
 Angular way: standalone components, signal inputs/outputs, `OnPush`, and
 verified **zoneless**.
 
+**Docs:** [Angular in 10 minutes](https://grafloria.com/learn/angular/) · [Angular deep guides](https://grafloria.com/learn/angular-custom-nodes/) · [every demo as an Angular component](https://grafloria.com/demos-angular/)
+
 ```sh
 npm install @grafloria/angular @grafloria/renderer @grafloria/engine
 ```

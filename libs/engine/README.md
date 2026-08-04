@@ -6,6 +6,8 @@ commands with undo/redo, layout engines (ELK, dagre, force, tree, grid, and a
 zero-config `auto`), a Mermaid-compatible text format with a lossless sidecar,
 collaboration op-log with replicas, and serialization with schema migrations.
 
+**Docs:** [tutorials & concept guides](https://grafloria.com/learn/) — start with [The model](https://grafloria.com/learn/the-model/) · [111 live demos](https://grafloria.com/demos/)
+
 ```sh
 npm install @grafloria/engine
 ```
