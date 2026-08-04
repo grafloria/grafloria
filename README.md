@@ -33,6 +33,14 @@ Node and workers), a renderer that paints it, and thin framework bindings on top
 diagram model drives the interactive canvas, the text format, the collab replicas, and the
 SVG/PNG/PDF exporters — there is no second implementation to drift.
 
+## Documentation
+
+**[grafloria.com/learn](https://grafloria.com/learn/)** — 10-minute tutorials for
+JavaScript, React, Vue and Angular, twelve framework-specific deep guides, twelve
+concept guides, and reference pages. Every code sample is executed against the
+published packages before it is published. Machine-readable full text:
+[llms.txt](https://grafloria.com/llms.txt) / [llms-full.txt](https://grafloria.com/llms-full.txt).
+
 ## Packages
 
 | Package | What it is |

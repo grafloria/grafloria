@@ -44,6 +44,8 @@ Worst case, importing the **entire** public surface of `@grafloria/element`
 
 A real app importing only what it uses ships less. Reproduce it in two minutes:
 
+**Docs:** [JavaScript in 10 minutes](https://grafloria.com/learn/javascript/) · [guides & concepts](https://grafloria.com/learn/) · [111 live demos](https://grafloria.com/demos/)
+
 ```sh
 npm i -D esbuild @grafloria/element
 echo "export * from '@grafloria/element';" > entry.mjs

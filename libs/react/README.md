@@ -5,6 +5,8 @@ diagram engine — deliberately React Flow-shaped: custom nodes are **your React
 components** (portal-mounted, so hooks, context, and state work inside),
 controlled or uncontrolled data, hooks, and SSR with hydration.
 
+**Docs:** [React in 10 minutes](https://grafloria.com/learn/react/) · [React deep guides](https://grafloria.com/learn/react-custom-nodes/) · [every demo as a React component](https://grafloria.com/demos-react/)
+
 ```sh
 npm install @grafloria/react @grafloria/renderer @grafloria/engine
 ```

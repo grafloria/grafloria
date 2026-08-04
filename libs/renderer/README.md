@@ -7,6 +7,8 @@ vector **PDF writer** (gradients, soft masks, images, real text). Plus the
 `createDiagram()` instance API, canvas plugins (minimap, zoom controls,
 background grid), and headless server-side rendering.
 
+**Docs:** [tutorials & concept guides](https://grafloria.com/learn/) · [111 live demos](https://grafloria.com/demos/)
+
 ```sh
 npm install @grafloria/renderer @grafloria/engine
 ```
