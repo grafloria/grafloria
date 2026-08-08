@@ -2170,6 +2170,13 @@ export class SVGRenderer implements IRenderer {
 
     this.disposed = true;
 
+    // The animation service holds document-global state: a refcounted
+    // stylesheet and matchMedia/battery listeners. destroy() had no caller,
+    // so every mount left a 9 KB keyframe sheet in the recalculation set for
+    // the life of the document (found by a consumer auditing an SPA that
+    // routed in and out of a diagram page).
+    this.animationService.destroy();
+
     // Wave 8 — Card 6: the route memo outlives the frame by design, so it must
     // not outlive the renderer. (It holds a routed polyline per link plus a rect
     // per node — on a 10k diagram that is real memory to hand back.)

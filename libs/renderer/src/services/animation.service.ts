@@ -93,7 +93,9 @@ export class AnimationService {
   };
 
   private motionMediaQuery: MediaQueryList | null = null;
+  private motionHandler: ((e: MediaQueryListEvent) => void) | null = null;
   private batteryManager: any = null;  // Battery API (experimental)
+  private batteryHandler: (() => void) | null = null;
   private listeners: Set<(config: AnimationConfig) => void> = new Set();
 
   // Phase 1.1: Lazy CSS loading
@@ -131,12 +133,14 @@ export class AnimationService {
       this.motionMediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
       this.config.reducedMotion = this.motionMediaQuery.matches;
 
-      // Listen for changes
+      // Listen for changes. Stored on the instance: destroy() must remove
+      // THIS function — removeEventListener with a fresh arrow removes nothing.
       const handler = (e: MediaQueryListEvent) => {
         this.config.reducedMotion = e.matches;
         this.updateAllAnimations();
         this.notifyListeners();
       };
+      this.motionHandler = handler;
 
       // Modern browsers
       if (this.motionMediaQuery.addEventListener) {
@@ -179,6 +183,7 @@ export class AnimationService {
         }
       };
 
+      this.batteryHandler = updateBatteryMode;
       this.batteryManager.addEventListener('levelchange', updateBatteryMode);
       this.batteryManager.addEventListener('chargingchange', updateBatteryMode);
 
@@ -512,13 +517,25 @@ export class AnimationService {
     }
 
     try {
-      // Create style element
-      this.styleElement = document.createElement('style');
-      this.styleElement.id = 'grafloria-animations';
-      this.styleElement.textContent = this.getAnimationCSS();
-
-      // Inject into head
-      document.head.appendChild(this.styleElement);
+      // ONE stylesheet per document, refcounted. The CSS is a static template
+      // (zero interpolations), so every instance can share one element. The
+      // count lives in a data attribute ON the element — not in module state —
+      // because two bundled copies of this renderer share the document but not
+      // their module scope; the DOM is the only ledger both can read. An
+      // instance flag alone cannot guard a document-global id: concurrent
+      // renderers each passed it, and sequential mounts accumulated a 9 KB
+      // live-keyframe sheet per visit.
+      const existing = document.getElementById('grafloria-animations') as HTMLStyleElement | null;
+      if (existing) {
+        existing.dataset['grafloriaRefs'] = String(Number(existing.dataset['grafloriaRefs'] ?? '1') + 1);
+        this.styleElement = existing;
+      } else {
+        this.styleElement = document.createElement('style');
+        this.styleElement.id = 'grafloria-animations';
+        this.styleElement.dataset['grafloriaRefs'] = '1';
+        this.styleElement.textContent = this.getAnimationCSS();
+        document.head.appendChild(this.styleElement);
+      }
       this.cssInjected = true;
 
       console.debug('Animation CSS injected');
@@ -536,8 +553,17 @@ export class AnimationService {
     }
 
     try {
-      if (this.styleElement && this.styleElement.parentNode) {
-        this.styleElement.parentNode.removeChild(this.styleElement);
+      // Last one out turns off the light: decrement the shared element's
+      // refcount and remove it only at zero. `cssInjected` guarantees a single
+      // decrement per instance however many times this runs.
+      const el = this.styleElement ?? (document.getElementById('grafloria-animations') as HTMLStyleElement | null);
+      if (el) {
+        const refs = Number(el.dataset['grafloriaRefs'] ?? '1') - 1;
+        if (refs <= 0) {
+          el.parentNode?.removeChild(el);
+        } else {
+          el.dataset['grafloriaRefs'] = String(refs);
+        }
       }
 
       this.styleElement = null;
@@ -930,23 +956,23 @@ export class AnimationService {
     // Phase 1.1: Remove injected CSS
     this.removeCSS();
 
-    // Remove motion preference listener
-    if (this.motionMediaQuery) {
-      // Modern browsers
+    // Remove the STORED handlers — removal only works with the same function
+    // reference that was registered; a fresh arrow here removes nothing and
+    // the listener outlives the service.
+    if (this.motionMediaQuery && this.motionHandler) {
       if (this.motionMediaQuery.removeEventListener) {
-        this.motionMediaQuery.removeEventListener('change', () => {});
-      }
-      // Legacy browsers
-      else if ((this.motionMediaQuery as any).removeListener) {
-        (this.motionMediaQuery as any).removeListener(() => {});
+        this.motionMediaQuery.removeEventListener('change', this.motionHandler);
+      } else if ((this.motionMediaQuery as any).removeListener) {
+        (this.motionMediaQuery as any).removeListener(this.motionHandler);
       }
     }
+    this.motionHandler = null;
 
-    // Remove battery listeners
-    if (this.batteryManager) {
-      this.batteryManager.removeEventListener('levelchange', () => {});
-      this.batteryManager.removeEventListener('chargingchange', () => {});
+    if (this.batteryManager && this.batteryHandler) {
+      this.batteryManager.removeEventListener('levelchange', this.batteryHandler);
+      this.batteryManager.removeEventListener('chargingchange', this.batteryHandler);
     }
+    this.batteryHandler = null;
 
     // Clear all listeners
     this.listeners.clear();
