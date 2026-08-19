@@ -11,9 +11,6 @@ var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require
   if (typeof require !== "undefined") return require.apply(this, arguments);
   throw Error('Dynamic require of "' + x + '" is not supported');
 });
-var __esm = (fn, res) => function __init() {
-  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-};
 var __commonJS = (cb, mod) => function __require2() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
@@ -39,9 +36,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-// node_modules/eventemitter3/index.js
+// ../node_modules/eventemitter3/index.js
 var require_eventemitter3 = __commonJS({
-  "node_modules/eventemitter3/index.js"(exports, module) {
+  "../node_modules/eventemitter3/index.js"(exports, module) {
     "use strict";
     var has = Object.prototype.hasOwnProperty;
     var prefix = "~";
@@ -201,9 +198,9 @@ var require_eventemitter3 = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/graph.js
+// ../node_modules/@dagrejs/graphlib/lib/graph.js
 var require_graph = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/graph.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/graph.js"(exports, module) {
     "use strict";
     var DEFAULT_EDGE_NAME = "\0";
     var GRAPH_NODE = "\0";
@@ -794,16 +791,16 @@ var require_graph = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/version.js
+// ../node_modules/@dagrejs/graphlib/lib/version.js
 var require_version = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/version.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/version.js"(exports, module) {
     module.exports = "2.2.4";
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/index.js
+// ../node_modules/@dagrejs/graphlib/lib/index.js
 var require_lib = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/index.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/index.js"(exports, module) {
     module.exports = {
       Graph: require_graph(),
       version: require_version()
@@ -811,9 +808,9 @@ var require_lib = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/json.js
+// ../node_modules/@dagrejs/graphlib/lib/json.js
 var require_json = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/json.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/json.js"(exports, module) {
     var Graph = require_graph();
     module.exports = {
       write,
@@ -877,9 +874,9 @@ var require_json = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/components.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/components.js
 var require_components = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/components.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/components.js"(exports, module) {
     module.exports = components;
     function components(g) {
       var visited = {};
@@ -904,9 +901,9 @@ var require_components = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/data/priority-queue.js
+// ../node_modules/@dagrejs/graphlib/lib/data/priority-queue.js
 var require_priority_queue = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/data/priority-queue.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/data/priority-queue.js"(exports, module) {
     var PriorityQueue4 = class {
       constructor() {
         __publicField(this, "_arr", []);
@@ -1044,9 +1041,9 @@ var require_priority_queue = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/dijkstra.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/dijkstra.js
 var require_dijkstra = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/dijkstra.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/dijkstra.js"(exports, module) {
     var PriorityQueue4 = require_priority_queue();
     module.exports = dijkstra;
     var DEFAULT_WEIGHT_FUNC = () => 1;
@@ -1096,9 +1093,9 @@ var require_dijkstra = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/dijkstra-all.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/dijkstra-all.js
 var require_dijkstra_all = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/dijkstra-all.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/dijkstra-all.js"(exports, module) {
     var dijkstra = require_dijkstra();
     module.exports = dijkstraAll;
     function dijkstraAll(g, weightFunc, edgeFunc) {
@@ -1110,9 +1107,9 @@ var require_dijkstra_all = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/tarjan.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/tarjan.js
 var require_tarjan = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/tarjan.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/tarjan.js"(exports, module) {
     module.exports = tarjan;
     function tarjan(g) {
       var index = 0;
@@ -1155,9 +1152,9 @@ var require_tarjan = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/find-cycles.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/find-cycles.js
 var require_find_cycles = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/find-cycles.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/find-cycles.js"(exports, module) {
     var tarjan = require_tarjan();
     module.exports = findCycles2;
     function findCycles2(g) {
@@ -1168,9 +1165,9 @@ var require_find_cycles = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/floyd-warshall.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/floyd-warshall.js
 var require_floyd_warshall = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/floyd-warshall.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/floyd-warshall.js"(exports, module) {
     module.exports = floydWarshall;
     var DEFAULT_WEIGHT_FUNC = () => 1;
     function floydWarshall(g, weightFn, edgeFn) {
@@ -1220,9 +1217,9 @@ var require_floyd_warshall = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/topsort.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/topsort.js
 var require_topsort = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/topsort.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/topsort.js"(exports, module) {
     function topsort(g) {
       var visited = {};
       var stack = {};
@@ -1255,9 +1252,9 @@ var require_topsort = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/is-acyclic.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/is-acyclic.js
 var require_is_acyclic = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/is-acyclic.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/is-acyclic.js"(exports, module) {
     var topsort = require_topsort();
     module.exports = isAcyclic2;
     function isAcyclic2(g) {
@@ -1274,9 +1271,9 @@ var require_is_acyclic = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/dfs.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/dfs.js
 var require_dfs = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/dfs.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/dfs.js"(exports, module) {
     module.exports = dfs;
     function dfs(g, vs, order) {
       if (!Array.isArray(vs)) {
@@ -1330,9 +1327,9 @@ var require_dfs = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/postorder.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/postorder.js
 var require_postorder = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/postorder.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/postorder.js"(exports, module) {
     var dfs = require_dfs();
     module.exports = postorder;
     function postorder(g, vs) {
@@ -1341,9 +1338,9 @@ var require_postorder = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/preorder.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/preorder.js
 var require_preorder = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/preorder.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/preorder.js"(exports, module) {
     var dfs = require_dfs();
     module.exports = preorder;
     function preorder(g, vs) {
@@ -1352,9 +1349,9 @@ var require_preorder = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/prim.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/prim.js
 var require_prim = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/prim.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/prim.js"(exports, module) {
     var Graph = require_graph();
     var PriorityQueue4 = require_priority_queue();
     module.exports = prim;
@@ -1399,9 +1396,9 @@ var require_prim = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/index.js
+// ../node_modules/@dagrejs/graphlib/lib/alg/index.js
 var require_alg = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/index.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/lib/alg/index.js"(exports, module) {
     module.exports = {
       components: require_components(),
       dijkstra: require_dijkstra(),
@@ -1418,9 +1415,9 @@ var require_alg = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/index.js
+// ../node_modules/@dagrejs/graphlib/index.js
 var require_graphlib = __commonJS({
-  "node_modules/@dagrejs/graphlib/index.js"(exports, module) {
+  "../node_modules/@dagrejs/graphlib/index.js"(exports, module) {
     var lib = require_lib();
     module.exports = {
       Graph: lib.Graph,
@@ -1431,9 +1428,9 @@ var require_graphlib = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/data/list.js
+// ../node_modules/@dagrejs/dagre/lib/data/list.js
 var require_list = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/data/list.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/data/list.js"(exports, module) {
     var List = class {
       constructor() {
         let sentinel = {};
@@ -1484,9 +1481,9 @@ var require_list = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/greedy-fas.js
+// ../node_modules/@dagrejs/dagre/lib/greedy-fas.js
 var require_greedy_fas = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/greedy-fas.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/greedy-fas.js"(exports, module) {
     var Graph = require_graphlib().Graph;
     var List = require_list();
     module.exports = greedyFAS;
@@ -1585,9 +1582,9 @@ var require_greedy_fas = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/util.js
+// ../node_modules/@dagrejs/dagre/lib/util.js
 var require_util = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/util.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/util.js"(exports, module) {
     "use strict";
     var Graph = require_graphlib().Graph;
     module.exports = {
@@ -1849,9 +1846,9 @@ var require_util = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/acyclic.js
+// ../node_modules/@dagrejs/dagre/lib/acyclic.js
 var require_acyclic = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/acyclic.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/acyclic.js"(exports, module) {
     "use strict";
     var greedyFAS = require_greedy_fas();
     var uniqueId = require_util().uniqueId;
@@ -1911,9 +1908,9 @@ var require_acyclic = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/normalize.js
+// ../node_modules/@dagrejs/dagre/lib/normalize.js
 var require_normalize = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/normalize.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/normalize.js"(exports, module) {
     "use strict";
     var util = require_util();
     module.exports = {
@@ -1983,9 +1980,9 @@ var require_normalize = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/rank/util.js
+// ../node_modules/@dagrejs/dagre/lib/rank/util.js
 var require_util2 = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/rank/util.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/rank/util.js"(exports, module) {
     "use strict";
     var { applyWithChunking } = require_util();
     module.exports = {
@@ -2020,9 +2017,9 @@ var require_util2 = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/rank/feasible-tree.js
+// ../node_modules/@dagrejs/dagre/lib/rank/feasible-tree.js
 var require_feasible_tree = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/rank/feasible-tree.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/rank/feasible-tree.js"(exports, module) {
     "use strict";
     var Graph = require_graphlib().Graph;
     var slack = require_util2().slack;
@@ -2073,9 +2070,9 @@ var require_feasible_tree = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/rank/network-simplex.js
+// ../node_modules/@dagrejs/dagre/lib/rank/network-simplex.js
 var require_network_simplex = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/rank/network-simplex.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/rank/network-simplex.js"(exports, module) {
     "use strict";
     var feasibleTree = require_feasible_tree();
     var slack = require_util2().slack;
@@ -2219,9 +2216,9 @@ var require_network_simplex = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/rank/index.js
+// ../node_modules/@dagrejs/dagre/lib/rank/index.js
 var require_rank = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/rank/index.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/rank/index.js"(exports, module) {
     "use strict";
     var rankUtil = require_util2();
     var longestPath = rankUtil.longestPath;
@@ -2260,9 +2257,9 @@ var require_rank = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/parent-dummy-chains.js
+// ../node_modules/@dagrejs/dagre/lib/parent-dummy-chains.js
 var require_parent_dummy_chains = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/parent-dummy-chains.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/parent-dummy-chains.js"(exports, module) {
     module.exports = parentDummyChains;
     function parentDummyChains(g) {
       let postorderNums = postorder(g);
@@ -2329,9 +2326,9 @@ var require_parent_dummy_chains = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/nesting-graph.js
+// ../node_modules/@dagrejs/dagre/lib/nesting-graph.js
 var require_nesting_graph = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/nesting-graph.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/nesting-graph.js"(exports, module) {
     var util = require_util();
     module.exports = {
       run,
@@ -2415,9 +2412,9 @@ var require_nesting_graph = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/add-border-segments.js
+// ../node_modules/@dagrejs/dagre/lib/add-border-segments.js
 var require_add_border_segments = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/add-border-segments.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/add-border-segments.js"(exports, module) {
     var util = require_util();
     module.exports = addBorderSegments;
     function addBorderSegments(g) {
@@ -2451,9 +2448,9 @@ var require_add_border_segments = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/coordinate-system.js
+// ../node_modules/@dagrejs/dagre/lib/coordinate-system.js
 var require_coordinate_system = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/coordinate-system.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/coordinate-system.js"(exports, module) {
     "use strict";
     module.exports = {
       adjust,
@@ -2515,9 +2512,9 @@ var require_coordinate_system = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/init-order.js
+// ../node_modules/@dagrejs/dagre/lib/order/init-order.js
 var require_init_order = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/init-order.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/order/init-order.js"(exports, module) {
     "use strict";
     var util = require_util();
     module.exports = initOrder;
@@ -2541,9 +2538,9 @@ var require_init_order = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/cross-count.js
+// ../node_modules/@dagrejs/dagre/lib/order/cross-count.js
 var require_cross_count = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/cross-count.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/order/cross-count.js"(exports, module) {
     "use strict";
     var zipObject = require_util().zipObject;
     module.exports = crossCount;
@@ -2585,9 +2582,9 @@ var require_cross_count = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/barycenter.js
+// ../node_modules/@dagrejs/dagre/lib/order/barycenter.js
 var require_barycenter = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/barycenter.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/order/barycenter.js"(exports, module) {
     module.exports = barycenter;
     function barycenter(g, movable = []) {
       return movable.map((v) => {
@@ -2613,9 +2610,9 @@ var require_barycenter = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/resolve-conflicts.js
+// ../node_modules/@dagrejs/dagre/lib/order/resolve-conflicts.js
 var require_resolve_conflicts = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/resolve-conflicts.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/order/resolve-conflicts.js"(exports, module) {
     "use strict";
     var util = require_util();
     module.exports = resolveConflicts;
@@ -2695,9 +2692,9 @@ var require_resolve_conflicts = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/sort.js
+// ../node_modules/@dagrejs/dagre/lib/order/sort.js
 var require_sort = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/sort.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/order/sort.js"(exports, module) {
     var util = require_util();
     module.exports = sort;
     function sort(entries, biasRight) {
@@ -2743,9 +2740,9 @@ var require_sort = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/sort-subgraph.js
+// ../node_modules/@dagrejs/dagre/lib/order/sort-subgraph.js
 var require_sort_subgraph = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/sort-subgraph.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/order/sort-subgraph.js"(exports, module) {
     var barycenter = require_barycenter();
     var resolveConflicts = require_resolve_conflicts();
     var sort = require_sort();
@@ -2808,9 +2805,9 @@ var require_sort_subgraph = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/build-layer-graph.js
+// ../node_modules/@dagrejs/dagre/lib/order/build-layer-graph.js
 var require_build_layer_graph = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/build-layer-graph.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/order/build-layer-graph.js"(exports, module) {
     var Graph = require_graphlib().Graph;
     var util = require_util();
     module.exports = buildLayerGraph;
@@ -2843,9 +2840,9 @@ var require_build_layer_graph = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/add-subgraph-constraints.js
+// ../node_modules/@dagrejs/dagre/lib/order/add-subgraph-constraints.js
 var require_add_subgraph_constraints = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/add-subgraph-constraints.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/order/add-subgraph-constraints.js"(exports, module) {
     module.exports = addSubgraphConstraints;
     function addSubgraphConstraints(g, cg, vs) {
       let prev = {}, rootPrev;
@@ -2871,9 +2868,9 @@ var require_add_subgraph_constraints = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/index.js
+// ../node_modules/@dagrejs/dagre/lib/order/index.js
 var require_order = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/index.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/order/index.js"(exports, module) {
     "use strict";
     var initOrder = require_init_order();
     var crossCount = require_cross_count();
@@ -2927,9 +2924,9 @@ var require_order = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/position/bk.js
+// ../node_modules/@dagrejs/dagre/lib/position/bk.js
 var require_bk = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/position/bk.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/position/bk.js"(exports, module) {
     "use strict";
     var Graph = require_graphlib().Graph;
     var util = require_util();
@@ -3235,9 +3232,9 @@ var require_bk = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/position/index.js
+// ../node_modules/@dagrejs/dagre/lib/position/index.js
 var require_position = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/position/index.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/position/index.js"(exports, module) {
     "use strict";
     var util = require_util();
     var positionX = require_bk().positionX;
@@ -3267,9 +3264,9 @@ var require_position = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/layout.js
+// ../node_modules/@dagrejs/dagre/lib/layout.js
 var require_layout = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/layout.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/layout.js"(exports, module) {
     "use strict";
     var acyclic = require_acyclic();
     var normalize = require_normalize();
@@ -3284,8 +3281,8 @@ var require_layout = __commonJS({
     var position = require_position();
     var util = require_util();
     var Graph = require_graphlib().Graph;
-    module.exports = layout3;
-    function layout3(g, opts) {
+    module.exports = layout;
+    function layout(g, opts) {
       let time = opts && opts.debugTiming ? util.time : util.notime;
       time("layout", () => {
         let layoutGraph = time("  buildLayoutGraph", () => buildLayoutGraph(g));
@@ -3627,9 +3624,9 @@ var require_layout = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/debug.js
+// ../node_modules/@dagrejs/dagre/lib/debug.js
 var require_debug = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/debug.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/debug.js"(exports, module) {
     var util = require_util();
     var Graph = require_graphlib().Graph;
     module.exports = {
@@ -3656,16 +3653,16 @@ var require_debug = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/version.js
+// ../node_modules/@dagrejs/dagre/lib/version.js
 var require_version2 = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/version.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/lib/version.js"(exports, module) {
     module.exports = "1.1.5";
   }
 });
 
-// node_modules/@dagrejs/dagre/index.js
+// ../node_modules/@dagrejs/dagre/index.js
 var require_dagre = __commonJS({
-  "node_modules/@dagrejs/dagre/index.js"(exports, module) {
+  "../node_modules/@dagrejs/dagre/index.js"(exports, module) {
     module.exports = {
       graphlib: require_graphlib(),
       layout: require_layout(),
@@ -3679,9 +3676,9 @@ var require_dagre = __commonJS({
   }
 });
 
-// node_modules/elkjs/lib/elk.bundled.js
+// ../node_modules/elkjs/lib/elk.bundled.js
 var require_elk_bundled = __commonJS({
-  "node_modules/elkjs/lib/elk.bundled.js"(exports, module) {
+  "../node_modules/elkjs/lib/elk.bundled.js"(exports, module) {
     (function(f) {
       if (typeof exports === "object" && typeof module !== "undefined") {
         module.exports = f();
@@ -3795,7 +3792,7 @@ var require_elk_bundled = __commonJS({
           }
           return _createClass(ELK2, [{
             key: "layout",
-            value: function layout3(graph) {
+            value: function layout(graph) {
               var _ref2 = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {}, _ref2$layoutOptions = _ref2.layoutOptions, layoutOptions = _ref2$layoutOptions === void 0 ? this.defaultLayoutOptions : _ref2$layoutOptions, _ref2$logging = _ref2.logging, logging = _ref2$logging === void 0 ? false : _ref2$logging, _ref2$measureExecutio = _ref2.measureExecutionTime, measureExecutionTime = _ref2$measureExecutio === void 0 ? false : _ref2$measureExecutio;
               if (!graph) {
                 return Promise.reject(new Error("Missing mandatory parameter 'graph'."));
@@ -96676,9 +96673,9 @@ var require_elk_bundled = __commonJS({
   }
 });
 
-// node_modules/lemonadejs/dist/lemonade.js
+// ../node_modules/lemonadejs/dist/lemonade.js
 var require_lemonade = __commonJS({
-  "node_modules/lemonadejs/dist/lemonade.js"(exports, module) {
+  "../node_modules/lemonadejs/dist/lemonade.js"(exports, module) {
     (function(global3, factory) {
       typeof exports === "object" && typeof module !== "undefined" ? module.exports = factory() : typeof define === "function" && define.amd ? define(factory) : global3.lemonade = factory();
     })(exports, function() {
@@ -97499,17 +97496,17 @@ var require_lemonade = __commonJS({
           if (!lemon.path.elements) {
             lemon.path.elements = [];
           }
-          let element2 = getElement(item);
+          let element = getElement(item);
           lemon.path.elements.push({
-            element: element2,
+            element,
             path: prop.value
           });
           let event = function() {
-            let value = getAttribute(element2, "value");
+            let value = getAttribute(element, "value");
             if (lemon.path.value) {
               Path.call(lemon.path.value, prop.value, value);
               if (typeof lemon.path.change === "function") {
-                lemon.path.change(value, prop.value, element2);
+                lemon.path.change(value, prop.value, element);
               }
             } else {
               console.log("Use setPath to define the form container before using lm-path");
@@ -97550,7 +97547,7 @@ var require_lemonade = __commonJS({
             return getAttributeName(event);
           }
         };
-        const isValidEventName = function(element2, eventName) {
+        const isValidEventName = function(element, eventName) {
           const validEventPattern = /^on[a-z]+$/;
           return validEventPattern.test(eventName);
         };
@@ -97643,7 +97640,7 @@ var require_lemonade = __commonJS({
                 item.props.forEach(function(prop) {
                   let event = getAttributeEvent(prop.name);
                   if (event) {
-                    let element2 = item.element;
+                    let element = item.element;
                     let value = prop.value;
                     if (value) {
                       let handler = null;
@@ -97657,24 +97654,24 @@ var require_lemonade = __commonJS({
                           }
                         }
                       }
-                      if (isDOM(element2)) {
+                      if (isDOM(element)) {
                         let eventHandler;
                         if (typeof handler === "function") {
                           eventHandler = function(e, a, b) {
-                            return handler.call(element2, e, lemon.self, a, b);
+                            return handler.call(element, e, lemon.self, a, b);
                           };
                         } else {
                           eventHandler = function(e) {
-                            return Function("e", "self", value).call(element2, e, lemon.self);
+                            return Function("e", "self", value).call(element, e, lemon.self);
                           };
                         }
-                        if (isValidEventName(element2, prop.name)) {
-                          element2.addEventListener(event.substring(2), eventHandler);
+                        if (isValidEventName(element, prop.name)) {
+                          element.addEventListener(event.substring(2), eventHandler);
                         } else {
-                          if (element2.tagName?.includes("-")) {
-                            element2[event] = handler;
+                          if (element.tagName?.includes("-")) {
+                            element[event] = handler;
                           } else {
-                            element2[event] = eventHandler;
+                            element[event] = eventHandler;
                           }
                         }
                       } else {
@@ -97900,25 +97897,25 @@ var require_lemonade = __commonJS({
         args.shift();
         return args;
       };
-      function cloneChildren(element2) {
-        if (!element2 || typeof element2 !== "object") {
-          return element2;
+      function cloneChildren(element) {
+        if (!element || typeof element !== "object") {
+          return element;
         }
-        if (Array.isArray(element2)) {
-          return element2.map((item) => cloneChildren(item));
+        if (Array.isArray(element)) {
+          return element.map((item) => cloneChildren(item));
         }
         const cloned = {};
-        for (const key in element2) {
+        for (const key in element) {
           if (key === "children") {
-            cloned.children = element2.children ? cloneChildren(element2.children) : void 0;
+            cloned.children = element.children ? cloneChildren(element.children) : void 0;
           } else if (key === "props") {
-            cloned.props = element2.props.map((prop) => ({
+            cloned.props = element.props.map((prop) => ({
               ...prop,
               value: prop.value
               // If value is a function, it will maintain the reference which is what we want
             }));
           } else {
-            cloned[key] = element2[key];
+            cloned[key] = element[key];
           }
         }
         return cloned;
@@ -98000,20 +97997,20 @@ var require_lemonade = __commonJS({
         if (typeof result === "string") {
           result = HTMLParser(result.trim(), values);
         }
-        let element2;
+        let element;
         if (result) {
           lemon.tree = result;
-          element2 = generateHTML(lemon);
-          if (element2) {
+          element = generateHTML(lemon);
+          if (element) {
             lemon.elements = [];
-            if (element2.tagName === "ROOT") {
-              element2.childNodes.forEach((e) => {
+            if (element.tagName === "ROOT") {
+              element.childNodes.forEach((e) => {
                 lemon.elements.push(e);
               });
             } else {
-              lemon.elements.push(element2);
+              lemon.elements.push(element);
             }
-            register(lemon.self, "el", element2);
+            register(lemon.self, "el", element);
             const destroy = () => {
               let div = document.createElement("div");
               lemon.elements[0].parentNode.insertBefore(div, lemon.elements[0]);
@@ -98085,10 +98082,10 @@ var require_lemonade = __commonJS({
             }
           }
         }
-        if (element2) {
+        if (element) {
           processOnload(lemon);
         }
-        return element2;
+        return element;
       };
       const registerComponents = function(components) {
         if (components && R.currentLemon) {
@@ -98372,11 +98369,11 @@ var require_lemonade = __commonJS({
         };
         return {
           create,
-          dispatch(element2, event, options) {
+          dispatch(element, event, options) {
             if (typeof event === "string") {
               event = create(event, options);
             }
-            element2.dispatchEvent(event);
+            element.dispatchEvent(event);
           }
         };
       }();
@@ -98385,832 +98382,7 @@ var require_lemonade = __commonJS({
   }
 });
 
-// libs/renderer/src/ext/disposable.ts
-function once(fn) {
-  let done = false;
-  return () => {
-    if (done) return;
-    done = true;
-    fn();
-  };
-}
-function snapshotRestore(previous, restore, remove) {
-  return once(() => {
-    if (previous === void 0) remove();
-    else restore(previous);
-  });
-}
-var DisposableStore;
-var init_disposable = __esm({
-  "libs/renderer/src/ext/disposable.ts"() {
-    DisposableStore = class {
-      constructor() {
-        this.disposers = [];
-        this.disposed = false;
-      }
-      /** Track a disposer. If the store is ALREADY disposed, run it immediately. */
-      add(disposer) {
-        if (this.disposed) {
-          disposer();
-          return () => void 0;
-        }
-        const wrapped = once(disposer);
-        this.disposers.push(wrapped);
-        return wrapped;
-      }
-      /** How many live registrations this store holds (tests assert on this). */
-      get size() {
-        return this.disposers.length;
-      }
-      get isDisposed() {
-        return this.disposed;
-      }
-      dispose() {
-        if (this.disposed) return;
-        this.disposed = true;
-        const errors = [];
-        for (let i = this.disposers.length - 1; i >= 0; i--) {
-          try {
-            this.disposers[i]();
-          } catch (error) {
-            errors.push(error);
-          }
-        }
-        this.disposers.length = 0;
-        if (errors.length > 0) {
-          const error = new Error(
-            `${errors.length} disposer(s) threw during dispose(): ` + errors.map((e) => e instanceof Error ? e.message : String(e)).join("; ")
-          );
-          error.errors = errors;
-          throw error;
-        }
-      }
-    };
-  }
-});
-
-// libs/renderer/src/ext/portal.ts
-function ensureScreenLayer(root) {
-  const existing = root.querySelector(`:scope > .${SCREEN_LAYER_CLASS}`);
-  if (existing) return existing;
-  const doc = root.ownerDocument;
-  const layer = doc.createElement("div");
-  layer.className = SCREEN_LAYER_CLASS;
-  layer.setAttribute(
-    "style",
-    "position:absolute;inset:0;pointer-events:none;overflow:hidden"
-  );
-  root.appendChild(layer);
-  return layer;
-}
-function applyStyleString(element2, style) {
-  const written = [];
-  for (const decl of style.split(";")) {
-    const at = decl.indexOf(":");
-    if (at <= 0) continue;
-    const prop = decl.slice(0, at).trim();
-    const value = decl.slice(at + 1).trim();
-    if (prop && value) {
-      element2.style.setProperty(prop, value);
-      written.push(prop);
-    }
-  }
-  return written;
-}
-function swapOwnedClasses(element2, prev, next) {
-  for (const c of prev) if (!next.includes(c)) element2.classList.remove(c);
-  for (const c of next) element2.classList.add(c);
-  return next;
-}
-function classTokens(className) {
-  return className ? className.split(/\s+/).filter(Boolean) : [];
-}
-function placementStyle(placement, offset) {
-  switch (placement) {
-    case "top-left":
-      return `top:${offset}px;left:${offset}px;`;
-    case "top-right":
-      return `top:${offset}px;right:${offset}px;`;
-    case "bottom-left":
-      return `bottom:${offset}px;left:${offset}px;`;
-    case "bottom-right":
-      return `bottom:${offset}px;right:${offset}px;`;
-    case "top-center":
-      return `top:${offset}px;left:50%;transform:translateX(-50%);`;
-    case "bottom-center":
-      return `bottom:${offset}px;left:50%;transform:translateX(-50%);`;
-    case "center":
-      return `top:50%;left:50%;transform:translate(-50%,-50%);`;
-    case "none":
-      return "";
-  }
-}
-function createPortal(root, options = {}) {
-  const layer = ensureScreenLayer(root);
-  const doc = root.ownerDocument;
-  const element2 = doc.createElement("div");
-  let current = { placement: "top-left", offset: 12, ...options };
-  let ownedClasses = [];
-  let ownedProps = [];
-  const apply = () => {
-    const placement = current.placement ?? "top-left";
-    const offset = current.offset ?? 12;
-    ownedClasses = swapOwnedClasses(element2, ownedClasses, [
-      PORTAL_CLASS,
-      ...classTokens(current.className)
-    ]);
-    for (const p of ownedProps) element2.style.removeProperty(p);
-    ownedProps = applyStyleString(
-      element2,
-      "position:absolute;pointer-events:auto;" + placementStyle(placement, offset) + (current.zIndex !== void 0 ? `z-index:${current.zIndex};` : "") + (current.style ?? "")
-    );
-  };
-  apply();
-  layer.appendChild(element2);
-  return {
-    element: element2,
-    update(next) {
-      if (next) current = { ...current, ...next };
-      apply();
-    },
-    dispose: once(() => {
-      element2.remove();
-      if (layer.childElementCount === 0) layer.remove();
-    })
-  };
-}
-function createViewportPortal(htmlLayer, options = {}) {
-  const doc = htmlLayer.ownerDocument;
-  const element2 = doc.createElement("div");
-  let x = options.x ?? 0;
-  let y = options.y ?? 0;
-  let ownedClasses = [];
-  let ownedProps = [];
-  const apply = () => {
-    ownedClasses = swapOwnedClasses(element2, ownedClasses, [
-      WORLD_PORTAL_CLASS,
-      ...classTokens(options.className)
-    ]);
-    for (const p of ownedProps) element2.style.removeProperty(p);
-    ownedProps = applyStyleString(
-      element2,
-      `position:absolute;left:${x}px;top:${y}px;pointer-events:auto;` + (options.style ?? "")
-    );
-  };
-  apply();
-  htmlLayer.appendChild(element2);
-  return {
-    element: element2,
-    setPosition(nx, ny) {
-      x = nx;
-      y = ny;
-      apply();
-    },
-    update() {
-      apply();
-    },
-    dispose: once(() => {
-      element2.remove();
-    })
-  };
-}
-function createCounterScaledPortal(htmlLayer, viewport, options = {}) {
-  const portal = createViewportPortal(htmlLayer, options);
-  const applyScale = () => {
-    const zoom = viewport.getZoom() || 1;
-    portal.element.style.transform = `scale(${1 / zoom})`;
-    portal.element.style.transformOrigin = "0 0";
-  };
-  applyScale();
-  const unsubscribe = viewport.onChange(applyScale);
-  return {
-    element: portal.element,
-    setPosition(x, y) {
-      portal.setPosition(x, y);
-      applyScale();
-    },
-    update() {
-      portal.update();
-      applyScale();
-    },
-    dispose: once(() => {
-      unsubscribe();
-      portal.dispose();
-    })
-  };
-}
-var SCREEN_LAYER_CLASS, PORTAL_CLASS, WORLD_PORTAL_CLASS;
-var init_portal = __esm({
-  "libs/renderer/src/ext/portal.ts"() {
-    init_disposable();
-    SCREEN_LAYER_CLASS = "grafloria-screen-layer";
-    PORTAL_CLASS = "grafloria-portal";
-    WORLD_PORTAL_CLASS = "grafloria-world-portal";
-  }
-});
-
-// libs/renderer/src/ext/components/background.ts
-function createBackground(root, viewport, options = {}) {
-  const doc = root.ownerDocument;
-  let opts = {
-    variant: options.variant ?? "dots",
-    gap: options.gap ?? 20,
-    size: options.size ?? 1,
-    color: options.color ?? "rgba(120,130,145,0.45)",
-    majorEvery: options.majorEvery ?? 0,
-    minZoom: options.minZoom ?? 0.25,
-    majorColor: options.majorColor,
-    backgroundColor: options.backgroundColor,
-    idSuffix: options.idSuffix
-  };
-  const uid = opts.idSuffix ?? `bg${++backgroundSeq}`;
-  const patternId = `grafloria-grid-${uid}`;
-  const majorId = `grafloria-grid-major-${uid}`;
-  let layer = root.querySelector(`:scope > .${BACKGROUND_LAYER_CLASS}`);
-  if (!layer) {
-    layer = doc.createElement("div");
-    layer.className = BACKGROUND_LAYER_CLASS;
-    layer.setAttribute(
-      "style",
-      "position:absolute;inset:0;pointer-events:none;overflow:hidden"
-    );
-    root.insertBefore(layer, root.firstChild);
-  }
-  const svg = doc.createElementNS(SVG_NS3, "svg");
-  svg.setAttribute("width", "100%");
-  svg.setAttribute("height", "100%");
-  svg.setAttribute("class", "grafloria-background");
-  svg.style.display = "block";
-  const defs = doc.createElementNS(SVG_NS3, "defs");
-  const pattern = doc.createElementNS(SVG_NS3, "pattern");
-  pattern.setAttribute("id", patternId);
-  pattern.setAttribute("patternUnits", "userSpaceOnUse");
-  const majorPattern = doc.createElementNS(SVG_NS3, "pattern");
-  majorPattern.setAttribute("id", majorId);
-  majorPattern.setAttribute("patternUnits", "userSpaceOnUse");
-  defs.appendChild(pattern);
-  defs.appendChild(majorPattern);
-  svg.appendChild(defs);
-  const bgRect = doc.createElementNS(SVG_NS3, "rect");
-  bgRect.setAttribute("width", "100%");
-  bgRect.setAttribute("height", "100%");
-  svg.appendChild(bgRect);
-  const gridRect = doc.createElementNS(SVG_NS3, "rect");
-  gridRect.setAttribute("width", "100%");
-  gridRect.setAttribute("height", "100%");
-  gridRect.setAttribute("fill", `url(#${patternId})`);
-  svg.appendChild(gridRect);
-  const majorRect = doc.createElementNS(SVG_NS3, "rect");
-  majorRect.setAttribute("width", "100%");
-  majorRect.setAttribute("height", "100%");
-  majorRect.setAttribute("fill", `url(#${majorId})`);
-  svg.appendChild(majorRect);
-  layer.appendChild(svg);
-  let visible2 = true;
-  const paintPattern = (target, tile, offsetX, offsetY, color, thickness, variant) => {
-    target.setAttribute("width", String(tile));
-    target.setAttribute("height", String(tile));
-    target.setAttribute("patternTransform", `translate(${offsetX},${offsetY})`);
-    while (target.firstChild) target.removeChild(target.firstChild);
-    if (variant === "none" || tile <= 0) return;
-    if (variant === "dots") {
-      const dot = doc.createElementNS(SVG_NS3, "circle");
-      dot.setAttribute("cx", String(thickness));
-      dot.setAttribute("cy", String(thickness));
-      dot.setAttribute("r", String(thickness));
-      dot.setAttribute("fill", color);
-      target.appendChild(dot);
-      return;
-    }
-    if (variant === "cross") {
-      const arm = Math.max(2, tile * 0.12);
-      const path2 = doc.createElementNS(SVG_NS3, "path");
-      path2.setAttribute("d", `M ${-arm} 0 H ${arm} M 0 ${-arm} V ${arm}`);
-      path2.setAttribute("stroke", color);
-      path2.setAttribute("stroke-width", String(thickness));
-      path2.setAttribute("fill", "none");
-      target.appendChild(path2);
-      return;
-    }
-    const path = doc.createElementNS(SVG_NS3, "path");
-    path.setAttribute("d", `M ${tile} 0 V ${tile} M 0 ${tile} H ${tile}`);
-    path.setAttribute("stroke", color);
-    path.setAttribute("stroke-width", String(thickness));
-    path.setAttribute("fill", "none");
-    target.appendChild(path);
-  };
-  const render2 = () => {
-    const zoom = viewport.getZoom() || 1;
-    const world = viewport.getViewport();
-    const suppressed = opts.variant === "none" || opts.minZoom > 0 && zoom < opts.minZoom;
-    svg.style.display = visible2 && !suppressed ? "block" : "none";
-    if (!visible2 || suppressed) return;
-    bgRect.setAttribute("fill", opts.backgroundColor ?? "none");
-    const tile = opts.gap * zoom;
-    if (!(tile > 0.5) || !Number.isFinite(tile)) {
-      svg.style.display = "none";
-      return;
-    }
-    const modulo = (v, m) => (v % m + m) % m;
-    const offsetX = modulo(-world.x * zoom, tile);
-    const offsetY = modulo(-world.y * zoom, tile);
-    paintPattern(pattern, tile, offsetX, offsetY, opts.color, opts.size, opts.variant);
-    if (opts.majorEvery > 0 && opts.variant !== "dots") {
-      const majorTile = tile * opts.majorEvery;
-      paintPattern(
-        majorPattern,
-        majorTile,
-        modulo(-world.x * zoom, majorTile),
-        modulo(-world.y * zoom, majorTile),
-        opts.majorColor ?? opts.color,
-        opts.size * 1.5,
-        "lines"
-      );
-      majorRect.style.display = "block";
-    } else {
-      majorRect.style.display = "none";
-    }
-  };
-  render2();
-  const unsubscribe = viewport.onChange(render2);
-  return {
-    element: svg,
-    update(next) {
-      opts = { ...opts, ...next };
-      render2();
-    },
-    setVisible(next) {
-      if (visible2 === next) return;
-      visible2 = next;
-      render2();
-    },
-    isVisible: () => visible2,
-    dispose: once(() => {
-      unsubscribe();
-      svg.remove();
-      if (layer && layer.childElementCount === 0) layer.remove();
-    })
-  };
-}
-var BACKGROUND_LAYER_CLASS, SVG_NS3, backgroundSeq;
-var init_background = __esm({
-  "libs/renderer/src/ext/components/background.ts"() {
-    init_disposable();
-    BACKGROUND_LAYER_CLASS = "grafloria-background-layer";
-    SVG_NS3 = "http://www.w3.org/2000/svg";
-    backgroundSeq = 0;
-  }
-});
-
-// libs/renderer/src/ext/components/minimap.ts
-function contentBoundsOf2(model, padding) {
-  const nodes = model.getNodes().filter((n3) => n3.state?.visible !== false);
-  if (nodes.length === 0) return null;
-  let left = Infinity;
-  let top = Infinity;
-  let right = -Infinity;
-  let bottom = -Infinity;
-  for (const node of nodes) {
-    const p = typeof node.getWorldPosition === "function" ? node.getWorldPosition() : node.position;
-    left = Math.min(left, p.x);
-    top = Math.min(top, p.y);
-    right = Math.max(right, p.x + node.size.width);
-    bottom = Math.max(bottom, p.y + node.size.height);
-  }
-  if (!Number.isFinite(left)) return null;
-  return {
-    x: left - padding,
-    y: top - padding,
-    w: Math.max(1, right - left + padding * 2),
-    h: Math.max(1, bottom - top + padding * 2)
-  };
-}
-function createMiniMap(root, viewport, getModel, options = {}) {
-  const doc = root.ownerDocument;
-  let opts = {
-    placement: options.placement ?? "bottom-right",
-    offset: options.offset ?? 12,
-    width: options.width ?? 200,
-    height: options.height ?? 150,
-    padding: options.padding ?? 40,
-    maskColor: options.maskColor ?? "rgba(80,130,220,0.18)",
-    maskStroke: options.maskStroke ?? "rgba(60,110,200,0.9)",
-    panelBackground: options.panelBackground ?? "rgba(250,250,252,0.92)",
-    panelBorder: options.panelBorder ?? "rgba(0,0,0,0.15)",
-    interactive: options.interactive ?? true,
-    showLinks: options.showLinks ?? false,
-    linkColor: options.linkColor ?? "rgba(120,130,145,0.6)",
-    ariaLabel: options.ariaLabel ?? "Diagram minimap",
-    nodeColor: options.nodeColor
-  };
-  const portal = createPortal(root, {
-    placement: opts.placement,
-    offset: opts.offset,
-    className: "grafloria-minimap"
-  });
-  const applyPanelStyle = () => {
-    portal.element.style.width = `${opts.width}px`;
-    portal.element.style.height = `${opts.height}px`;
-    portal.element.style.background = opts.panelBackground;
-    portal.element.style.border = `1px solid ${opts.panelBorder}`;
-    portal.element.style.borderRadius = "4px";
-    portal.element.style.boxShadow = "0 1px 4px rgba(0,0,0,0.12)";
-    portal.element.style.overflow = "hidden";
-    portal.element.style.cursor = opts.interactive ? "pointer" : "default";
-  };
-  applyPanelStyle();
-  const svg = doc.createElementNS(SVG_NS4, "svg");
-  svg.setAttribute("width", "100%");
-  svg.setAttribute("height", "100%");
-  svg.setAttribute("class", "grafloria-minimap-svg");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", opts.ariaLabel);
-  svg.style.display = "block";
-  const linkLayer = doc.createElementNS(SVG_NS4, "g");
-  linkLayer.setAttribute("class", "grafloria-minimap-links");
-  const nodeLayer = doc.createElementNS(SVG_NS4, "g");
-  nodeLayer.setAttribute("class", "grafloria-minimap-nodes");
-  const cameraRect = doc.createElementNS(SVG_NS4, "rect");
-  cameraRect.setAttribute("class", "grafloria-minimap-viewport");
-  cameraRect.setAttribute("pointer-events", "none");
-  svg.appendChild(linkLayer);
-  svg.appendChild(nodeLayer);
-  svg.appendChild(cameraRect);
-  portal.element.appendChild(svg);
-  let visible2 = true;
-  let bounds = null;
-  const nodeFill = (node) => {
-    const c = opts.nodeColor;
-    if (typeof c === "function") return c(node);
-    if (typeof c === "string") return c;
-    return node.state?.selected ? "rgba(60,110,200,0.95)" : "rgba(140,150,165,0.85)";
-  };
-  const refresh = () => {
-    if (!visible2) return;
-    const model = getModel();
-    bounds = contentBoundsOf2(model, opts.padding);
-    while (nodeLayer.firstChild) nodeLayer.removeChild(nodeLayer.firstChild);
-    while (linkLayer.firstChild) linkLayer.removeChild(linkLayer.firstChild);
-    if (!bounds) {
-      svg.removeAttribute("viewBox");
-      cameraRect.setAttribute("width", "0");
-      cameraRect.setAttribute("height", "0");
-      return;
-    }
-    svg.setAttribute("viewBox", `${bounds.x} ${bounds.y} ${bounds.w} ${bounds.h}`);
-    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-    if (opts.showLinks) {
-      for (const link of model.getLinks()) {
-        const pts = link.points;
-        if (!pts || pts.length < 2) continue;
-        const line = doc.createElementNS(SVG_NS4, "polyline");
-        line.setAttribute("points", pts.map((p) => `${p.x},${p.y}`).join(" "));
-        line.setAttribute("fill", "none");
-        line.setAttribute("stroke", opts.linkColor);
-        line.setAttribute("stroke-width", String(Math.max(1, bounds.w / 300)));
-        linkLayer.appendChild(line);
-      }
-    }
-    for (const node of model.getNodes()) {
-      if (node.state?.visible === false) continue;
-      const p = typeof node.getWorldPosition === "function" ? node.getWorldPosition() : node.position;
-      const rect = doc.createElementNS(SVG_NS4, "rect");
-      rect.setAttribute("x", String(p.x));
-      rect.setAttribute("y", String(p.y));
-      rect.setAttribute("width", String(Math.max(1, node.size.width)));
-      rect.setAttribute("height", String(Math.max(1, node.size.height)));
-      rect.setAttribute("rx", "2");
-      rect.setAttribute("fill", nodeFill(node));
-      rect.setAttribute("data-node-id", node.id);
-      nodeLayer.appendChild(rect);
-    }
-    drawCamera();
-  };
-  const drawCamera = () => {
-    if (!visible2 || !bounds) return;
-    const v = viewport.getViewBox();
-    cameraRect.setAttribute("x", String(v.x));
-    cameraRect.setAttribute("y", String(v.y));
-    cameraRect.setAttribute("width", String(Math.max(0, v.width)));
-    cameraRect.setAttribute("height", String(Math.max(0, v.height)));
-    cameraRect.setAttribute("fill", opts.maskColor);
-    cameraRect.setAttribute("stroke", opts.maskStroke);
-    cameraRect.setAttribute("stroke-width", String(Math.max(1, bounds.w / 200)));
-  };
-  const clientToMiniWorld = (clientX, clientY) => {
-    if (!bounds) return null;
-    const r = svg.getBoundingClientRect();
-    if (r.width === 0 || r.height === 0) return null;
-    const scale = Math.min(r.width / bounds.w, r.height / bounds.h);
-    const drawnW = bounds.w * scale;
-    const drawnH = bounds.h * scale;
-    const padX = (r.width - drawnW) / 2;
-    const padY = (r.height - drawnH) / 2;
-    return {
-      x: bounds.x + (clientX - r.left - padX) / scale,
-      y: bounds.y + (clientY - r.top - padY) / scale
-    };
-  };
-  const centreOn = (world) => {
-    const vp = viewport.getViewport();
-    const vb = viewport.getViewBox();
-    viewport.setViewport({
-      x: world.x - vb.width / 2,
-      y: world.y - vb.height / 2,
-      width: vp.width,
-      height: vp.height
-    });
-  };
-  let dragging = false;
-  const onPointerDown = (event) => {
-    if (!opts.interactive) return;
-    const world = clientToMiniWorld(event.clientX, event.clientY);
-    if (!world) return;
-    dragging = true;
-    svg.setPointerCapture?.(event.pointerId);
-    centreOn(world);
-    event.preventDefault();
-    event.stopPropagation();
-  };
-  const onPointerMove = (event) => {
-    if (!dragging || !opts.interactive) return;
-    const world = clientToMiniWorld(event.clientX, event.clientY);
-    if (!world) return;
-    centreOn(world);
-    event.preventDefault();
-  };
-  const endDrag = (event) => {
-    if (!dragging) return;
-    dragging = false;
-    svg.releasePointerCapture?.(event.pointerId);
-  };
-  const onWheel = (event) => {
-    if (!opts.interactive) return;
-    viewport.zoomByWheel(event.deltaY);
-    event.preventDefault();
-    event.stopPropagation();
-  };
-  svg.addEventListener("pointerdown", onPointerDown);
-  svg.addEventListener("pointermove", onPointerMove);
-  svg.addEventListener("pointerup", endDrag);
-  svg.addEventListener("pointercancel", endDrag);
-  svg.addEventListener("wheel", onWheel, { passive: false });
-  refresh();
-  const unsubscribeViewport = viewport.onChange(drawCamera);
-  return {
-    portal,
-    element: svg,
-    refresh,
-    setVisible(next) {
-      if (visible2 === next) return;
-      visible2 = next;
-      portal.element.style.display = next ? "block" : "none";
-      if (next) refresh();
-    },
-    isVisible: () => visible2,
-    update(next) {
-      opts = { ...opts, ...next };
-      applyPanelStyle();
-      portal.update({ placement: opts.placement, offset: opts.offset });
-      svg.setAttribute("aria-label", opts.ariaLabel);
-      refresh();
-    },
-    dispose: once(() => {
-      unsubscribeViewport();
-      svg.removeEventListener("pointerdown", onPointerDown);
-      svg.removeEventListener("pointermove", onPointerMove);
-      svg.removeEventListener("pointerup", endDrag);
-      svg.removeEventListener("pointercancel", endDrag);
-      svg.removeEventListener("wheel", onWheel);
-      portal.dispose();
-    })
-  };
-}
-var SVG_NS4;
-var init_minimap = __esm({
-  "libs/renderer/src/ext/components/minimap.ts"() {
-    init_disposable();
-    init_portal();
-    SVG_NS4 = "http://www.w3.org/2000/svg";
-  }
-});
-
-// libs/renderer/src/ext/components/controls.ts
-function createControls(root, viewport, options = {}) {
-  const doc = root.ownerDocument;
-  const opts = {
-    placement: options.placement ?? "bottom-left",
-    offset: options.offset ?? 12,
-    showZoom: options.showZoom ?? true,
-    showFitView: options.showFitView ?? true,
-    showLock: options.showLock ?? false,
-    orientation: options.orientation ?? "vertical",
-    zoomStep: options.zoomStep ?? 1.2,
-    onFitView: options.onFitView,
-    onToggleLock: options.onToggleLock
-  };
-  let locked = options.locked ?? false;
-  let visible2 = true;
-  const portal = createPortal(root, {
-    placement: opts.placement,
-    offset: opts.offset,
-    className: "grafloria-controls"
-  });
-  const bar = doc.createElement("div");
-  bar.setAttribute("role", "toolbar");
-  bar.setAttribute("aria-label", "Diagram controls");
-  bar.setAttribute(
-    "style",
-    `display:flex;gap:1px;background:rgba(0,0,0,0.12);border-radius:4px;overflow:hidden;flex-direction:${opts.orientation === "horizontal" ? "row" : "column"};`
-  );
-  portal.element.appendChild(bar);
-  const cleanups = [];
-  const makeButton = (icon, label, onClick) => {
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.setAttribute("aria-label", label);
-    button.title = label;
-    button.setAttribute(
-      "style",
-      "width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:0;padding:0;cursor:pointer;background:#fff;color:#333;"
-    );
-    button.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">${icon}</svg>`;
-    const handler = (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onClick();
-    };
-    button.addEventListener("click", handler);
-    const swallow = (event) => event.stopPropagation();
-    button.addEventListener("pointerdown", swallow);
-    button.addEventListener("mousedown", swallow);
-    cleanups.push(() => {
-      button.removeEventListener("click", handler);
-      button.removeEventListener("pointerdown", swallow);
-      button.removeEventListener("mousedown", swallow);
-    });
-    bar.appendChild(button);
-    return button;
-  };
-  if (opts.showZoom) {
-    makeButton(ICONS.zoomIn, "Zoom in", () => {
-      viewport.setZoom(viewport.getZoom() * opts.zoomStep);
-    });
-    makeButton(ICONS.zoomOut, "Zoom out", () => {
-      viewport.setZoom(viewport.getZoom() / opts.zoomStep);
-    });
-  }
-  if (opts.showFitView) {
-    makeButton(ICONS.fit, "Fit view", () => {
-      opts.onFitView?.();
-    });
-  }
-  let lockButton;
-  const paintLock = () => {
-    if (!lockButton) return;
-    lockButton.setAttribute("aria-pressed", String(locked));
-    lockButton.setAttribute("aria-label", locked ? "Unlock canvas" : "Lock canvas");
-    lockButton.title = locked ? "Unlock canvas" : "Lock canvas";
-    lockButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">${locked ? ICONS.lock : ICONS.unlock}</svg>`;
-    lockButton.style.background = locked ? "#e8eefc" : "#fff";
-  };
-  if (opts.showLock) {
-    lockButton = makeButton(ICONS.unlock, "Lock canvas", () => {
-      locked = !locked;
-      paintLock();
-      opts.onToggleLock?.(locked);
-    });
-    paintLock();
-  }
-  return {
-    portal,
-    element: bar,
-    setVisible(next) {
-      if (visible2 === next) return;
-      visible2 = next;
-      portal.element.style.display = next ? "block" : "none";
-    },
-    isVisible: () => visible2,
-    setLocked(next) {
-      locked = next;
-      paintLock();
-    },
-    dispose: once(() => {
-      for (const cleanup of cleanups) cleanup();
-      cleanups.length = 0;
-      portal.dispose();
-    })
-  };
-}
-var ICONS;
-var init_controls = __esm({
-  "libs/renderer/src/ext/components/controls.ts"() {
-    init_disposable();
-    init_portal();
-    ICONS = {
-      zoomIn: '<path d="M7 3v8M3 7h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
-      zoomOut: '<path d="M3 7h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
-      fit: '<path d="M2 5V2h3M12 5V2H9M2 9v3h3M12 9v3H9" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>',
-      lock: '<path d="M4 6V4.5a3 3 0 0 1 6 0V6M3 6h8v6H3z" stroke="currentColor" stroke-width="1.3" fill="none"/>',
-      unlock: '<path d="M4 6V4.5a3 3 0 0 1 5.7-1.3M3 6h8v6H3z" stroke="currentColor" stroke-width="1.3" fill="none"/>'
-    };
-  }
-});
-
-// libs/renderer/src/ext/components/attach.ts
-var attach_exports = {};
-__export(attach_exports, {
-  attachCanvasPlugins: () => attachCanvasPlugins
-});
-function rootOf(instance) {
-  const root = instance.container.querySelector(".grafloria-diagram-root");
-  return root ?? instance.container;
-}
-function attachCanvasPlugins(instance, options = {}) {
-  const store = new DisposableStore();
-  const root = rootOf(instance);
-  const engine = instance.getEngine();
-  const bind = options.bindToStore ?? true;
-  const diagramStore = bind && typeof engine.getStore === "function" ? engine.getStore() : void 0;
-  const plugins = { dispose: () => store.dispose() };
-  if (options.background) {
-    const backgroundOptions = typeof options.background === "object" ? options.background : {};
-    const background = createBackground(root, instance.viewport, backgroundOptions);
-    plugins.background = background;
-    store.add(() => background.dispose());
-    if (diagramStore) {
-      const enabled = diagramStore.get("gridEnabled");
-      if (typeof enabled === "boolean") background.setVisible(enabled);
-      store.add(
-        diagramStore.watch("gridEnabled", (value) => {
-          background.setVisible(value !== false);
-        })
-      );
-    }
-  }
-  if (options.minimap) {
-    const minimapOptions = typeof options.minimap === "object" ? options.minimap : {};
-    const minimap = createMiniMap(
-      root,
-      instance.viewport,
-      () => instance.getModel(),
-      minimapOptions
-    );
-    plugins.minimap = minimap;
-    store.add(() => minimap.dispose());
-    for (const event of [
-      "node:added",
-      "node:removed",
-      "node:changed",
-      "link:added",
-      "link:removed",
-      "link:changed",
-      "selection:changed"
-    ]) {
-      store.add(instance.getModel().on(event, () => minimap.refresh()));
-    }
-    if (diagramStore) {
-      const show = diagramStore.get("showMinimap");
-      if (show === false) diagramStore.set("showMinimap", true);
-      store.add(
-        diagramStore.watch("showMinimap", (value) => {
-          minimap.setVisible(value !== false);
-        })
-      );
-    }
-  }
-  if (options.controls) {
-    const controlOptions = typeof options.controls === "object" ? options.controls : {};
-    const controls = createControls(root, instance.viewport, {
-      ...controlOptions,
-      onFitView: controlOptions.onFitView ?? (() => instance.fitView()),
-      onToggleLock: controlOptions.onToggleLock ?? ((locked) => {
-        diagramStore?.set("locked", locked);
-      }),
-      locked: controlOptions.locked ?? Boolean(diagramStore?.get("locked"))
-    });
-    plugins.controls = controls;
-    store.add(() => controls.dispose());
-    if (diagramStore) {
-      store.add(
-        diagramStore.watch("locked", (value) => {
-          controls.setLocked(value === true);
-        })
-      );
-    }
-  }
-  return plugins;
-}
-var init_attach = __esm({
-  "libs/renderer/src/ext/components/attach.ts"() {
-    init_disposable();
-    init_background();
-    init_minimap();
-    init_controls();
-  }
-});
-
-// libs/renderer/src/vnode/container-id-generator.ts
+// ../libs/renderer/src/vnode/container-id-generator.ts
 var ContainerIdGenerator = class {
   /**
    * Generate a unique container ID for a foreignObject element
@@ -99287,7 +98459,7 @@ var ContainerIdGenerator = class {
  */
 ContainerIdGenerator.counter = 0;
 
-// libs/renderer/src/vnode/foreign-object.ts
+// ../libs/renderer/src/vnode/foreign-object.ts
 function createForeignObject(options) {
   const {
     nodeId,
@@ -99340,7 +98512,7 @@ function getContainerId(vnode) {
   return vnode.props?.containerId;
 }
 
-// libs/renderer/src/vnode/patch.ts
+// ../libs/renderer/src/vnode/patch.ts
 var SVG_NS = "http://www.w3.org/2000/svg";
 var XHTML_NS = "http://www.w3.org/1999/xhtml";
 var VERBATIM_ATTRS = /* @__PURE__ */ new Set([
@@ -99723,7 +98895,7 @@ function createDomElement(vnode, namespace = SVG_NS) {
   return defaultPatcher.createElement(vnode, namespace);
 }
 
-// libs/renderer/src/themes/default-light-theme.ts
+// ../libs/renderer/src/themes/default-light-theme.ts
 var LIGHT_THEME = {
   name: "Light",
   version: "1.0.0",
@@ -99885,7 +99057,7 @@ var LIGHT_THEME = {
   }
 };
 
-// libs/renderer/src/themes/default-dark-theme.ts
+// ../libs/renderer/src/themes/default-dark-theme.ts
 var DARK_THEME = {
   name: "Dark",
   version: "1.0.0",
@@ -100004,7 +99176,7 @@ var DARK_THEME = {
   numbers: LIGHT_THEME.numbers
 };
 
-// libs/renderer/src/themes/high-contrast-theme.ts
+// ../libs/renderer/src/themes/high-contrast-theme.ts
 var HIGH_CONTRAST_LIGHT_THEME = {
   name: "High Contrast Light",
   version: "1.0.0",
@@ -100152,7 +99324,7 @@ var HIGH_CONTRAST_DARK_THEME = {
   numbers: { hairline: 2, regular: 3, emphasis: 4, heavy: 5 }
 };
 
-// libs/renderer/src/themes/default-theme-set.ts
+// ../libs/renderer/src/themes/default-theme-set.ts
 var DEFAULT_THEME_SET = {
   light: LIGHT_THEME,
   dark: DARK_THEME,
@@ -100160,7 +99332,7 @@ var DEFAULT_THEME_SET = {
   highContrastDark: HIGH_CONTRAST_DARK_THEME
 };
 
-// libs/renderer/src/themes/color-mode.ts
+// ../libs/renderer/src/themes/color-mode.ts
 var MEDIA_PREFERS_DARK = "(prefers-color-scheme: dark)";
 var MEDIA_PREFERS_CONTRAST = "(prefers-contrast: more)";
 var MEDIA_FORCED_COLORS = "(forced-colors: active)";
@@ -100255,7 +99427,7 @@ var ColorModeController = class {
   }
 };
 
-// libs/renderer/src/themes/theme-vars.ts
+// ../libs/renderer/src/themes/theme-vars.ts
 var GRAFLORIA_INSTANCE_ATTR = "data-grafloria-instance";
 var GRAFLORIA_VAR_PREFIX = "--grafloria-";
 var THEME_VARS = {
@@ -100317,7 +99489,7 @@ function resolveThemeVars(theme) {
   return out;
 }
 
-// libs/renderer/src/themes/theme-ref.ts
+// ../libs/renderer/src/themes/theme-ref.ts
 var THEME_REF_MARKER = "__grafloriaThemeRef";
 function themeRef(token) {
   return { [THEME_REF_MARKER]: token };
@@ -100391,7 +99563,7 @@ function resolveBindableVars(theme) {
   return out;
 }
 
-// libs/renderer/src/themes/theme-css.ts
+// ../libs/renderer/src/themes/theme-css.ts
 var BASE_STYLE_RULES = [
   // ---- Nodes: base, then states in ASCENDING precedence ------------------
   {
@@ -100644,7 +99816,7 @@ ${[...chrome, ...bindable].join("\n")}
 }`;
 }
 
-// libs/renderer/src/themes/token-bridge.ts
+// ../libs/renderer/src/themes/token-bridge.ts
 function bridgeVarName(key) {
   if (key.startsWith("--")) return key;
   return THEME_VARS[key]?.cssVar ?? themeRefVar(key);
@@ -100906,7 +100078,7 @@ function tailwindBridge(options = {}) {
 }
 var BRIDGEABLE_TOKENS = Object.keys(THEME_VARS);
 
-// libs/renderer/src/themes/contrast.ts
+// ../libs/renderer/src/themes/contrast.ts
 var WCAG = {
   /** Normal-size text, AA. */
   AA_TEXT: 4.5,
@@ -101036,7 +100208,7 @@ function ensureContrast(foreground, background, minimum) {
   return direction < 0 ? "#000000" : "#ffffff";
 }
 
-// libs/renderer/src/themes/theme-a11y.ts
+// ../libs/renderer/src/themes/theme-a11y.ts
 function check(id, kind, foreground, background, required, exempt = false) {
   const ratio = contrastRatio(foreground, background);
   return {
@@ -101236,7 +100408,7 @@ function deriveTheme(options) {
   return theme;
 }
 
-// libs/renderer/src/ext/registry-scope.ts
+// ../libs/renderer/src/ext/registry-scope.ts
 var SHAPES = "shapes";
 var STYLES = "styles";
 var LINK_TEMPLATES = "linkTemplates";
@@ -101293,7 +100465,7 @@ function runInRegistryScope(scope, fn) {
   }
 }
 
-// libs/renderer/src/themes/style-registry.ts
+// ../libs/renderer/src/themes/style-registry.ts
 var registry = /* @__PURE__ */ new Map();
 var listeners = /* @__PURE__ */ new Set();
 var version = 0;
@@ -101354,7 +100526,7 @@ function resolveStyleClasses(styleClass) {
   return merged;
 }
 
-// libs/renderer/src/themes/style-cascade.ts
+// ../libs/renderer/src/themes/style-cascade.ts
 var CASCADE_ORDER = [
   "theme",
   "type-default",
@@ -101464,7 +100636,7 @@ function resolveLinkStyle(link, theme, options = {}) {
   };
 }
 
-// libs/engine/src/types/geometry.types.ts
+// ../libs/engine/src/types/geometry.types.ts
 var IDENTITY_MATRIX = {
   a: 1,
   b: 0,
@@ -101474,7 +100646,7 @@ var IDENTITY_MATRIX = {
   f: 0
 };
 
-// libs/engine/src/types/event.types.ts
+// ../libs/engine/src/types/event.types.ts
 var DiagramEventTypes = {
   // Node events
   NODE_ADDED: "node:added",
@@ -101567,7 +100739,7 @@ var DiagramEventTypes = {
   ENGINE_DESTROYED: "engine:destroyed"
 };
 
-// libs/engine/src/types/domain/flowchart.ts
+// ../libs/engine/src/types/domain/flowchart.ts
 var FlowchartTypes = {
   PROCESS: "flowchart:process",
   DECISION: "flowchart:decision",
@@ -101975,7 +101147,7 @@ function registerFlowchartTypes(registry5) {
   });
 }
 
-// libs/engine/src/types/domain/erd.ts
+// ../libs/engine/src/types/domain/erd.ts
 var ERDTypes = {
   // Entities
   ENTITY: "erd:entity",
@@ -102343,7 +101515,7 @@ function registerERDTypes(registry5) {
   });
 }
 
-// libs/engine/src/types/domain/bpmn.ts
+// ../libs/engine/src/types/domain/bpmn.ts
 var BPMNTypes = {
   // Activities (Tasks)
   TASK: "bpmn:task",
@@ -102647,7 +101819,7 @@ function registerBPMNTypes(registry5) {
   });
 }
 
-// libs/engine/src/types/domain/uml.ts
+// ../libs/engine/src/types/domain/uml.ts
 var UMLTypes = {
   // Classifiers
   CLASS: "uml:class",
@@ -103363,7 +102535,7 @@ function registerUMLTypes(registry5) {
   });
 }
 
-// libs/engine/src/types/layout.types.ts
+// ../libs/engine/src/types/layout.types.ts
 var DEFAULT_FLEXBOX_CONFIG = {
   direction: "row",
   wrap: "nowrap",
@@ -103380,7 +102552,7 @@ var DEFAULT_GRID_CONFIG = {
   autoFlow: "row"
 };
 
-// libs/engine/src/types/performance.types.ts
+// ../libs/engine/src/types/performance.types.ts
 var ALL_LOD_FEATURES = [
   "labels",
   "icons",
@@ -103463,10 +102635,10 @@ function createDefaultLODConfig() {
   };
 }
 
-// node_modules/eventemitter3/index.mjs
+// ../node_modules/eventemitter3/index.mjs
 var import_index = __toESM(require_eventemitter3(), 1);
 
-// libs/engine/src/utils/geometry.ts
+// ../libs/engine/src/utils/geometry.ts
 function distance(p1, p2) {
   const dx = p2.x - p1.x;
   const dy = p2.y - p1.y;
@@ -103609,10 +102781,10 @@ function isPointInPolygon(px2, py, vertices) {
   return inside;
 }
 
-// node_modules/nanoid/url-alphabet/index.js
+// ../node_modules/nanoid/url-alphabet/index.js
 var urlAlphabet = "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict";
 
-// node_modules/nanoid/index.browser.js
+// ../node_modules/nanoid/index.browser.js
 var nanoid = (size = 21) => {
   let id = "";
   let bytes = crypto.getRandomValues(new Uint8Array(size |= 0));
@@ -103622,7 +102794,7 @@ var nanoid = (size = 21) => {
   return id;
 };
 
-// node_modules/uuid/dist/stringify.js
+// ../node_modules/uuid/dist/stringify.js
 var byteToHex = [];
 for (let i = 0; i < 256; ++i) {
   byteToHex.push((i + 256).toString(16).slice(1));
@@ -103631,7 +102803,7 @@ function unsafeStringify(arr, offset = 0) {
   return (byteToHex[arr[offset + 0]] + byteToHex[arr[offset + 1]] + byteToHex[arr[offset + 2]] + byteToHex[arr[offset + 3]] + "-" + byteToHex[arr[offset + 4]] + byteToHex[arr[offset + 5]] + "-" + byteToHex[arr[offset + 6]] + byteToHex[arr[offset + 7]] + "-" + byteToHex[arr[offset + 8]] + byteToHex[arr[offset + 9]] + "-" + byteToHex[arr[offset + 10]] + byteToHex[arr[offset + 11]] + byteToHex[arr[offset + 12]] + byteToHex[arr[offset + 13]] + byteToHex[arr[offset + 14]] + byteToHex[arr[offset + 15]]).toLowerCase();
 }
 
-// node_modules/uuid/dist/rng.js
+// ../node_modules/uuid/dist/rng.js
 var getRandomValues;
 var rnds8 = new Uint8Array(16);
 function rng() {
@@ -103644,11 +102816,11 @@ function rng() {
   return getRandomValues(rnds8);
 }
 
-// node_modules/uuid/dist/native.js
+// ../node_modules/uuid/dist/native.js
 var randomUUID = typeof crypto !== "undefined" && crypto.randomUUID && crypto.randomUUID.bind(crypto);
 var native_default = { randomUUID };
 
-// node_modules/uuid/dist/v4.js
+// ../node_modules/uuid/dist/v4.js
 function _v4(options, buf, offset) {
   options = options || {};
   const rnds = options.random ?? options.rng?.() ?? rng();
@@ -103677,7 +102849,7 @@ function v4(options, buf, offset) {
 }
 var v4_default = v4;
 
-// libs/engine/src/utils/id.ts
+// ../libs/engine/src/utils/id.ts
 function generateId() {
   return nanoid(12);
 }
@@ -103695,7 +102867,7 @@ function isValidUUID(uuid) {
   return uuidRegex.test(uuid);
 }
 
-// libs/engine/src/utils/deep-clone.ts
+// ../libs/engine/src/utils/deep-clone.ts
 function deepClone(value, visited = /* @__PURE__ */ new WeakMap()) {
   if (value === null || value === void 0) {
     return value;
@@ -103790,7 +102962,7 @@ function deepEqual(a, b) {
   return keysA.every((key) => deepEqual(a[key], b[key]));
 }
 
-// libs/engine/src/models/DiagramEntity.ts
+// ../libs/engine/src/models/DiagramEntity.ts
 var mutationEpoch = 0;
 function getMutationEpoch() {
   return mutationEpoch;
@@ -104090,7 +103262,7 @@ var DiagramEntity = class {
   }
 };
 
-// libs/engine/src/ports/port-type-registry.ts
+// ../libs/engine/src/ports/port-type-registry.ts
 var ANY_PORT_TYPE = "*";
 var PortTypeRegistry = class {
   constructor() {
@@ -104149,7 +103321,7 @@ function portTypeColor(name) {
   return portTypeRegistry.colorFor(name);
 }
 
-// libs/engine/src/models/PortModel.ts
+// ../libs/engine/src/models/PortModel.ts
 var PortModel = class _PortModel extends DiagramEntity {
   constructor(config) {
     super(config.id);
@@ -104679,7 +103851,7 @@ var PortModel = class _PortModel extends DiagramEntity {
   }
 };
 
-// libs/engine/src/models/readonly-lock.ts
+// ../libs/engine/src/models/readonly-lock.ts
 var ReadonlyLock = class {
   constructor() {
     this.locked = false;
@@ -104727,7 +103899,7 @@ function isSystemWrite(owner) {
   return owner?.inSystemWrite?.() === true;
 }
 
-// libs/engine/src/utils/transform.ts
+// ../libs/engine/src/utils/transform.ts
 function multiplyMatrices(a, b) {
   return {
     a: a.a * b.a + a.c * b.b,
@@ -104806,7 +103978,7 @@ function transformPoint(point, matrix) {
   };
 }
 
-// libs/engine/src/models/NodeModel.ts
+// ../libs/engine/src/models/NodeModel.ts
 var VIEW_STATE_KEYS = ["selected", "hovered", "highlighted", "focused"];
 var NodeModel = class _NodeModel extends DiagramEntity {
   constructor(config) {
@@ -106144,7 +105316,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
   }
 };
 
-// libs/engine/src/models/LinkModel.ts
+// ../libs/engine/src/models/LinkModel.ts
 function snapshotLabels(labels) {
   return labels.map((label) => ({
     ...label,
@@ -107087,7 +106259,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
 _LinkModel.DEFAULT_CURVATURE = 0.5;
 var LinkModel = _LinkModel;
 
-// libs/engine/src/models/GroupModel.ts
+// ../libs/engine/src/models/GroupModel.ts
 var DEFAULT_GROUP_PADDING = 16;
 var DEFAULT_GROUP_HEADER_HEIGHT = 24;
 var GroupModel = class _GroupModel extends DiagramEntity {
@@ -108322,7 +107494,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
   }
 };
 
-// libs/engine/src/routing/PathSimplifier.ts
+// ../libs/engine/src/routing/PathSimplifier.ts
 var PathSimplifier = class {
   constructor() {
     /**
@@ -108512,7 +107684,7 @@ var PathSimplifier = class {
   }
 };
 
-// libs/engine/src/models/StrokeModel.ts
+// ../libs/engine/src/models/StrokeModel.ts
 var DEFAULT_STROKE_STYLE = { color: "#1f2933", width: 3 };
 var COORD_DP = 2;
 var PRESSURE_DP = 3;
@@ -108759,7 +107931,7 @@ function normalizePoints(points) {
   return out;
 }
 
-// libs/engine/src/performance/SpatialIndex.ts
+// ../libs/engine/src/performance/SpatialIndex.ts
 var SpatialIndex = class {
   constructor(config) {
     /**
@@ -109001,7 +108173,7 @@ var SpatialIndex = class {
   }
 };
 
-// libs/engine/src/layout/ILayoutAlgorithm.ts
+// ../libs/engine/src/layout/ILayoutAlgorithm.ts
 var BaseLayoutAlgorithm = class {
   constructor(config) {
     this.config = config || {
@@ -109070,7 +108242,7 @@ var BaseLayoutAlgorithm = class {
   }
 };
 
-// libs/engine/src/layout/ViewportTransform.ts
+// ../libs/engine/src/layout/ViewportTransform.ts
 function calculateViewportTransform(layoutBounds, viewport, margins = 50) {
   const availableWidth = viewport.width - 2 * margins;
   const availableHeight = viewport.height - 2 * margins;
@@ -109118,7 +108290,7 @@ function calculateNodeBounds(nodes) {
   };
 }
 
-// libs/engine/src/layout/SmartSpacingCalculator.ts
+// ../libs/engine/src/layout/SmartSpacingCalculator.ts
 function calculateSmartSpacing(options) {
   const {
     viewport,
@@ -109194,7 +108366,7 @@ function calculateForceDirectedSmartSpacing(options) {
   };
 }
 
-// libs/engine/src/layout/algorithms/GridLayoutAlgorithm.ts
+// ../libs/engine/src/layout/algorithms/GridLayoutAlgorithm.ts
 var GridLayoutAlgorithm = class extends BaseLayoutAlgorithm {
   constructor(config) {
     super(config);
@@ -109401,8 +108573,9 @@ var GridLayoutAlgorithm = class extends BaseLayoutAlgorithm {
   }
 };
 
-// libs/engine/src/layout/algorithms/HierarchicalLayoutAlgorithm.ts
-var dagre = __toESM(require_dagre());
+// ../libs/engine/src/layout/algorithms/HierarchicalLayoutAlgorithm.ts
+var dagreNs = __toESM(require_dagre(), 1);
+var dagre = dagreNs.default ?? dagreNs;
 var HierarchicalLayoutAlgorithm = class extends BaseLayoutAlgorithm {
   constructor(config) {
     super(config);
@@ -109668,7 +108841,7 @@ var HierarchicalLayoutAlgorithm = class extends BaseLayoutAlgorithm {
   }
 };
 
-// libs/engine/src/layout/algorithms/ForceDirectedLayoutAlgorithm.ts
+// ../libs/engine/src/layout/algorithms/ForceDirectedLayoutAlgorithm.ts
 var ForceDirectedLayoutAlgorithm = class extends BaseLayoutAlgorithm {
   constructor(options) {
     super();
@@ -109959,7 +109132,7 @@ var ForceDirectedLayoutAlgorithm = class extends BaseLayoutAlgorithm {
   }
 };
 
-// libs/engine/src/layout/algorithms/HybridLayoutAlgorithm.ts
+// ../libs/engine/src/layout/algorithms/HybridLayoutAlgorithm.ts
 var HybridLayoutAlgorithm = class extends BaseLayoutAlgorithm {
   constructor(options) {
     super();
@@ -110235,7 +109408,7 @@ var HybridLayoutAlgorithm = class extends BaseLayoutAlgorithm {
   }
 };
 
-// libs/engine/src/layout/LayoutManager.ts
+// ../libs/engine/src/layout/LayoutManager.ts
 var LayoutManager = class {
   constructor(diagram, initialAlgorithm = "grid") {
     this.diagram = diagram;
@@ -110752,7 +109925,7 @@ var LayoutManager = class {
   }
 };
 
-// libs/engine/src/serialization/DiagramMigrations.ts
+// ../libs/engine/src/serialization/DiagramMigrations.ts
 var DIAGRAM_SCHEMA_VERSION = 3;
 var registry2 = [];
 function registerDiagramMigration(migration) {
@@ -110823,7 +109996,7 @@ registerDiagramMigration({
   }
 });
 
-// libs/engine/src/serialization/DiagramValidator.ts
+// ../libs/engine/src/serialization/DiagramValidator.ts
 var DiagramValidationError = class extends Error {
   constructor(report) {
     super(
@@ -110952,7 +110125,7 @@ function validateSerializedDiagram(data2) {
   return { ok: errors.length === 0, errors, warnings };
 }
 
-// libs/engine/src/serialization/Incremental.ts
+// ../libs/engine/src/serialization/Incremental.ts
 var INCREMENTAL_FORMAT = "grafloria-incremental";
 var emptyIds = () => ({ added: /* @__PURE__ */ new Set(), removed: /* @__PURE__ */ new Set(), modified: /* @__PURE__ */ new Set() });
 var IncrementalCapture = class {
@@ -111128,7 +110301,7 @@ function beginIncrementalCapture(diagram) {
   return new IncrementalCapture(diagram);
 }
 
-// libs/engine/src/models/DiagramModel.ts
+// ../libs/engine/src/models/DiagramModel.ts
 var DEFAULT_PORT_SNAP_RADIUS = 24;
 var PORT_OFFSET_PAD = 64;
 var DiagramModel = class _DiagramModel extends DiagramEntity {
@@ -113229,7 +112402,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
   }
 };
 
-// libs/engine/src/events/EventBus.ts
+// ../libs/engine/src/events/EventBus.ts
 var EventBus = class {
   constructor() {
     this.eventLog = [];
@@ -113442,7 +112615,7 @@ var EventBus = class {
   }
 };
 
-// libs/engine/src/commands/Command.ts
+// ../libs/engine/src/commands/Command.ts
 var Command = class {
   constructor(name) {
     this.id = generateId();
@@ -113501,7 +112674,7 @@ var Command = class {
   }
 };
 
-// libs/engine/src/commands/composite/BatchCommand.ts
+// ../libs/engine/src/commands/composite/BatchCommand.ts
 var BatchCommand = class extends Command {
   constructor(name, commands) {
     super(name);
@@ -113550,7 +112723,7 @@ var BatchCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/CommandManager.ts
+// ../libs/engine/src/commands/CommandManager.ts
 var CommandManager = class {
   // ms
   constructor(context, eventBus = context.eventBus) {
@@ -113906,7 +113079,7 @@ var CommandManager = class {
   }
 };
 
-// libs/engine/src/commands/basic/AddNodeCommand.ts
+// ../libs/engine/src/commands/basic/AddNodeCommand.ts
 var AddNodeCommand = class extends Command {
   constructor(node) {
     super("Add Node");
@@ -113962,7 +113135,7 @@ var AddNodeCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/RemoveNodeCommand.ts
+// ../libs/engine/src/commands/basic/RemoveNodeCommand.ts
 var RemoveNodeCommand = class extends Command {
   constructor(nodeId) {
     super("Remove Node");
@@ -114049,7 +113222,7 @@ var RemoveNodeCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/MoveNodeCommand.ts
+// ../libs/engine/src/commands/basic/MoveNodeCommand.ts
 var MoveNodeCommand = class _MoveNodeCommand extends Command {
   constructor(nodeId, newPosition, oldPosition, options = {}) {
     super("Move Node");
@@ -114129,7 +113302,7 @@ var MoveNodeCommand = class _MoveNodeCommand extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/MoveGroupCommand.ts
+// ../libs/engine/src/commands/basic/MoveGroupCommand.ts
 var MoveGroupCommand = class extends Command {
   constructor(nodeMoves, frameMoves) {
     super("Move Group");
@@ -114187,7 +113360,7 @@ var MoveGroupCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/ResizeNodeCommand.ts
+// ../libs/engine/src/commands/basic/ResizeNodeCommand.ts
 var ResizeNodeCommand = class _ResizeNodeCommand extends Command {
   constructor(nodeId, newSize, oldSize) {
     super("Resize Node");
@@ -114262,7 +113435,7 @@ var ResizeNodeCommand = class _ResizeNodeCommand extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/AddLinkCommand.ts
+// ../libs/engine/src/commands/basic/AddLinkCommand.ts
 var AddLinkCommand = class extends Command {
   constructor(link) {
     super("Add Link");
@@ -114305,7 +113478,7 @@ var AddLinkCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/RemoveLinkCommand.ts
+// ../libs/engine/src/commands/basic/RemoveLinkCommand.ts
 var RemoveLinkCommand = class extends Command {
   constructor(linkId) {
     super("Remove Link");
@@ -114353,7 +113526,7 @@ var RemoveLinkCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetParentCommand.ts
+// ../libs/engine/src/commands/basic/SetParentCommand.ts
 var SetParentCommand = class extends Command {
   constructor(nodeId, newParentId) {
     super("Set Parent");
@@ -114445,7 +113618,7 @@ var SetParentCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/AddGroupCommand.ts
+// ../libs/engine/src/commands/basic/AddGroupCommand.ts
 var AddGroupCommand = class extends Command {
   constructor(group) {
     super("Add Group");
@@ -114488,7 +113661,7 @@ var AddGroupCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/RemoveGroupCommand.ts
+// ../libs/engine/src/commands/basic/RemoveGroupCommand.ts
 var RemoveGroupCommand = class extends Command {
   constructor(groupId) {
     super("Remove Group");
@@ -114535,7 +113708,7 @@ var RemoveGroupCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/AddToGroupCommand.ts
+// ../libs/engine/src/commands/basic/AddToGroupCommand.ts
 var AddToGroupCommand = class extends Command {
   constructor(groupId, entityId) {
     super("Add To Group");
@@ -114598,7 +113771,7 @@ var AddToGroupCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/RemoveFromGroupCommand.ts
+// ../libs/engine/src/commands/basic/RemoveFromGroupCommand.ts
 var RemoveFromGroupCommand = class extends Command {
   constructor(groupId, entityId) {
     super("Remove From Group");
@@ -114657,7 +113830,7 @@ var RemoveFromGroupCommand = class extends Command {
   }
 };
 
-// libs/engine/src/interaction/GroupCollapseService.ts
+// ../libs/engine/src/interaction/GroupCollapseService.ts
 var PROXY_NODE_GROUP_KEY = "__collapsedGroupId";
 var PROXY_LINK_GROUP_KEY = "__proxyForGroup";
 var PLACEHOLDER_WIDTH = 180;
@@ -114878,7 +114051,7 @@ var GroupCollapseService = class {
   }
 };
 
-// libs/engine/src/commands/basic/ExpandGroupCommand.ts
+// ../libs/engine/src/commands/basic/ExpandGroupCommand.ts
 var ExpandGroupCommand = class extends Command {
   constructor(groupId) {
     super("Expand Group");
@@ -114935,7 +114108,7 @@ var ExpandGroupCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/CollapseGroupCommand.ts
+// ../libs/engine/src/commands/basic/CollapseGroupCommand.ts
 var CollapseGroupCommand = class extends Command {
   constructor(groupId, options) {
     super("Collapse Group");
@@ -114993,7 +114166,7 @@ var CollapseGroupCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetLayoutCommand.ts
+// ../libs/engine/src/commands/basic/SetLayoutCommand.ts
 var SetLayoutCommand = class extends Command {
   constructor(groupId, layoutType, layoutConfig) {
     super("Set Layout");
@@ -115061,7 +114234,7 @@ var SetLayoutCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetFlexItemCommand.ts
+// ../libs/engine/src/commands/basic/SetFlexItemCommand.ts
 var SetFlexItemCommand = class extends Command {
   constructor(nodeId, flexConfig) {
     super("Set Flex Item");
@@ -115124,7 +114297,7 @@ var SetFlexItemCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetGridItemCommand.ts
+// ../libs/engine/src/commands/basic/SetGridItemCommand.ts
 var SetGridItemCommand = class extends Command {
   constructor(nodeId, gridConfig) {
     super("Set Grid Item");
@@ -115187,7 +114360,7 @@ var SetGridItemCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/resolveLinkNodeIds.ts
+// ../libs/engine/src/commands/basic/resolveLinkNodeIds.ts
 function resolveLinkNodeIds(diagram, link) {
   return {
     sourceNodeId: resolveEndpointNodeId(diagram, link.sourcePortId, link.sourceNodeId),
@@ -115209,7 +114382,7 @@ function resolveEndpointNodeId(diagram, portId, cachedNodeId) {
   return void 0;
 }
 
-// libs/engine/src/commands/basic/CopyCommand.ts
+// ../libs/engine/src/commands/basic/CopyCommand.ts
 var CopyCommand = class extends Command {
   constructor(clipboard, options = {}) {
     super("Copy");
@@ -115298,7 +114471,7 @@ var CopyCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/remapNodePortIds.ts
+// ../libs/engine/src/commands/basic/remapNodePortIds.ts
 function remapNodePortIds(node, newNodeId, portIdMap) {
   node.uuid = generateUUID();
   const ports = node.getPorts();
@@ -115314,7 +114487,7 @@ function remapNodePortIds(node, newNodeId, portIdMap) {
   }
 }
 
-// libs/engine/src/commands/basic/PasteCommand.ts
+// ../libs/engine/src/commands/basic/PasteCommand.ts
 var PasteCommand = class extends Command {
   // claimed once; stable across redo
   constructor(clipboard, options = {}) {
@@ -115475,7 +114648,7 @@ var PasteCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/DuplicateCommand.ts
+// ../libs/engine/src/commands/basic/DuplicateCommand.ts
 var DuplicateCommand = class extends Command {
   // old port ID -> new port ID
   constructor(options = {}) {
@@ -115648,7 +114821,7 @@ var DuplicateCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/DeleteSelectionCommand.ts
+// ../libs/engine/src/commands/basic/DeleteSelectionCommand.ts
 var DeleteSelectionCommand = class extends Command {
   // groupId -> removed member IDs
   constructor(options = {}) {
@@ -115890,7 +115063,7 @@ var DeleteSelectionCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/composite/MacroCommand.ts
+// ../libs/engine/src/commands/composite/MacroCommand.ts
 var MacroCommand = class extends Command {
   constructor(name) {
     super(name);
@@ -115966,7 +115139,7 @@ var MacroCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/CutCommand.ts
+// ../libs/engine/src/commands/basic/CutCommand.ts
 var CutCommand = class extends MacroCommand {
   constructor(clipboard, options = {}) {
     super("Cut");
@@ -116001,7 +115174,7 @@ var CutCommand = class extends MacroCommand {
   }
 };
 
-// libs/engine/src/commands/basic/UpdateLinkStyleCommand.ts
+// ../libs/engine/src/commands/basic/UpdateLinkStyleCommand.ts
 var UpdateLinkStyleCommand = class extends Command {
   constructor(linkId, style) {
     super("Update Link Style");
@@ -116046,7 +115219,7 @@ var UpdateLinkStyleCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetNodeStyleCommand.ts
+// ../libs/engine/src/commands/basic/SetNodeStyleCommand.ts
 var SetNodeStyleCommand = class extends Command {
   constructor(nodeId, style) {
     super("Set Node Style");
@@ -116100,7 +115273,7 @@ var SetNodeStyleCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetLinkLabelsCommand.ts
+// ../libs/engine/src/commands/basic/SetLinkLabelsCommand.ts
 function cloneLabels(labels) {
   return labels.map((label) => ({
     ...label,
@@ -116156,7 +115329,7 @@ var SetLinkLabelsCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/RotateNodeCommand.ts
+// ../libs/engine/src/commands/basic/RotateNodeCommand.ts
 var RotateNodeCommand = class _RotateNodeCommand extends Command {
   constructor(nodeId, newRotation, oldRotation, options = {}) {
     super("Rotate Node");
@@ -116232,7 +115405,7 @@ var RotateNodeCommand = class _RotateNodeCommand extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetNodeLabelCommand.ts
+// ../libs/engine/src/commands/basic/SetNodeLabelCommand.ts
 var SetNodeLabelCommand = class extends Command {
   constructor(nodeId, newLabel, oldLabel) {
     super("Edit Node Label");
@@ -116298,7 +115471,7 @@ var SetNodeLabelCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetLinkPointsCommand.ts
+// ../libs/engine/src/commands/basic/SetLinkPointsCommand.ts
 var SetLinkPointsCommand = class extends Command {
   constructor(linkId, newPoints, oldPoints) {
     super("Edit Link Path");
@@ -116365,7 +115538,7 @@ var SetLinkPointsCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetStrokePointsCommand.ts
+// ../libs/engine/src/commands/basic/SetStrokePointsCommand.ts
 var SetStrokePointsCommand = class extends Command {
   constructor(strokeId, newPoints, oldPoints) {
     super("Edit Stroke");
@@ -116427,7 +115600,7 @@ var SetStrokePointsCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/StrokeLifecycleCommands.ts
+// ../libs/engine/src/commands/basic/StrokeLifecycleCommands.ts
 var AddStrokeCommand = class extends Command {
   constructor(stroke) {
     super("Draw Stroke");
@@ -116495,7 +115668,7 @@ var RemoveStrokesCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/ReconnectLinkCommand.ts
+// ../libs/engine/src/commands/basic/ReconnectLinkCommand.ts
 var ReconnectLinkCommand = class extends Command {
   constructor(linkId, endpoint, newPortId, newNodeId, oldPortId, oldNodeId) {
     super("Reconnect Link");
@@ -116540,7 +115713,7 @@ var ReconnectLinkCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetLinkLabelCommand.ts
+// ../libs/engine/src/commands/basic/SetLinkLabelCommand.ts
 var SetLinkLabelCommand = class extends Command {
   constructor(linkId, labelIndex, newText, oldText) {
     super("Edit Link Label");
@@ -116607,7 +115780,7 @@ var SetLinkLabelCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetLinkDisplayLabelCommand.ts
+// ../libs/engine/src/commands/basic/SetLinkDisplayLabelCommand.ts
 var SetLinkDisplayLabelCommand = class extends Command {
   constructor(linkId, newLabel, oldLabel) {
     super("Edit Link Label");
@@ -116671,7 +115844,7 @@ var SetLinkDisplayLabelCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetLinkPathTypeCommand.ts
+// ../libs/engine/src/commands/basic/SetLinkPathTypeCommand.ts
 var SetLinkPathTypeCommand = class extends Command {
   constructor(linkId, pathType) {
     super("Set Link Route");
@@ -116722,7 +115895,7 @@ var SetLinkPathTypeCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/SetNodeShapeConfigCommand.ts
+// ../libs/engine/src/commands/basic/SetNodeShapeConfigCommand.ts
 var SetNodeShapeConfigCommand = class extends Command {
   constructor(nodeId, patch) {
     super("Set Node Shape Config");
@@ -116762,7 +115935,7 @@ var SetNodeShapeConfigCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/PortCommands.ts
+// ../libs/engine/src/commands/basic/PortCommands.ts
 var AddPortCommand = class extends Command {
   constructor(nodeId, port) {
     super("Add Port");
@@ -116825,7 +115998,7 @@ var RemovePortCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/NodeZOrderCommands.ts
+// ../libs/engine/src/commands/basic/NodeZOrderCommands.ts
 var NodeZOrderCommand = class extends Command {
   constructor(nodeId, name) {
     super(name);
@@ -116923,7 +116096,7 @@ var SendNodeToBackCommand = class extends NodeZOrderCommand {
   }
 };
 
-// libs/engine/src/commands/basic/SetNodeDataCommand.ts
+// ../libs/engine/src/commands/basic/SetNodeDataCommand.ts
 var ABSENT = Symbol("absent");
 var SetNodeDataCommand = class extends Command {
   constructor(nodeId, data2) {
@@ -116988,7 +116161,7 @@ var SetNodeDataCommand = class extends Command {
   }
 };
 
-// libs/engine/src/commands/basic/AlignCommands.ts
+// ../libs/engine/src/commands/basic/AlignCommands.ts
 var MultiNodeArrangeCommand = class extends Command {
   constructor(name, nodeIds) {
     super(name);
@@ -117117,7 +116290,7 @@ var DistributeCommand = class extends MultiNodeArrangeCommand {
   }
 };
 
-// libs/engine/src/plugins/PluginManager.ts
+// ../libs/engine/src/plugins/PluginManager.ts
 var PluginManager = class {
   constructor(engine, eventBus, config = {}) {
     this.plugins = /* @__PURE__ */ new Map();
@@ -117455,12 +116628,12 @@ var PluginManager = class {
   }
 };
 
-// libs/engine/src/adapters/component-adapter.interface.ts
+// ../libs/engine/src/adapters/component-adapter.interface.ts
 function isComponentAdapter(obj) {
   return obj && typeof obj.framework === "string" && typeof obj.registerComponent === "function" && typeof obj.hasComponent === "function" && typeof obj.getComponent === "function" && typeof obj.createComponentInstance === "function" && typeof obj.updateComponentInstance === "function" && typeof obj.destroyComponentInstance === "function" && typeof obj.getRegisteredTypes === "function";
 }
 
-// libs/engine/src/validation/TypeRegistry.ts
+// ../libs/engine/src/validation/TypeRegistry.ts
 var TypeRegistry = class {
   constructor() {
     this.nodeTypes = /* @__PURE__ */ new Map();
@@ -117800,7 +116973,7 @@ var TypeRegistry = class {
   }
 };
 
-// libs/engine/src/validation/ValidationEngine.ts
+// ../libs/engine/src/validation/ValidationEngine.ts
 var ValidationEngine = class {
   // Phase 1 - Critical Fixes
   constructor(typeRegistry, eventBus) {
@@ -118828,7 +118001,7 @@ var ValidationEngine = class {
   }
 };
 
-// libs/engine/src/validation/ConnectionGroupValidator.ts
+// ../libs/engine/src/validation/ConnectionGroupValidator.ts
 function createConnectionGroupValidator(engine) {
   return (sourcePort, targetPort) => {
     const diagram = engine.getDiagram();
@@ -118856,7 +118029,7 @@ function isConnectionAllowedByGroup(sourcePort, targetPort, engine) {
   return validator(sourcePort, targetPort);
 }
 
-// libs/engine/src/state/DiagramStore.ts
+// ../libs/engine/src/state/DiagramStore.ts
 var DiagramStore = class {
   constructor(initialState) {
     this.listeners = /* @__PURE__ */ new Map();
@@ -119214,7 +118387,7 @@ var DiagramStore = class {
   }
 };
 
-// libs/engine/src/ports/port-types.ts
+// ../libs/engine/src/ports/port-types.ts
 var DEFAULT_PORT_GATING = {
   isConnectableStart: true,
   isConnectableEnd: true,
@@ -119228,7 +118401,7 @@ var DEFAULT_PORT_GATING = {
 var DEFAULT_PORT_LABEL_OFFSET = 6;
 var DEFAULT_PORT_SPREAD_SPACING = 10;
 
-// libs/engine/src/ports/port-groups.ts
+// ../libs/engine/src/ports/port-groups.ts
 var PORT_GROUPS_METADATA_KEY = "portGroups";
 var PortGroupRegistry = class {
   constructor() {
@@ -119335,7 +118508,7 @@ function resolvePortConfig(port, node) {
   };
 }
 
-// libs/engine/src/ports/connection-rules.ts
+// ../libs/engine/src/ports/connection-rules.ts
 var OK = { ok: true };
 function no(reason, message) {
   return { ok: false, reason, message };
@@ -119415,7 +118588,7 @@ function canConnectPortsWithRules(source, target, context = {}) {
   return evaluatePortConnection(source, target, context).ok;
 }
 
-// libs/engine/src/state/ConnectionStateManager.ts
+// ../libs/engine/src/state/ConnectionStateManager.ts
 var ConnectionStateManager = class {
   constructor(eventBus, diagram = null) {
     this.validators = [];
@@ -119706,7 +118879,7 @@ var ConnectionStateManager = class {
   }
 };
 
-// libs/engine/src/clipboard/ClipboardManager.ts
+// ../libs/engine/src/clipboard/ClipboardManager.ts
 var ClipboardManager = class {
   constructor() {
     this.clipboard = null;
@@ -119797,7 +118970,7 @@ var ClipboardManager = class {
   }
 };
 
-// libs/engine/src/selection/SelectionManager.ts
+// ../libs/engine/src/selection/SelectionManager.ts
 var SelectionManager = class {
   constructor(diagram, store, eventBus) {
     this.store = store;
@@ -120198,7 +119371,7 @@ var SelectionManager = class {
   }
 };
 
-// libs/engine/src/config/InteractionConfig.ts
+// ../libs/engine/src/config/InteractionConfig.ts
 var InteractionMode = /* @__PURE__ */ ((InteractionMode2) => {
   InteractionMode2["DIRECT"] = "direct";
   InteractionMode2["DELIBERATE"] = "deliberate";
@@ -120296,7 +119469,7 @@ var SMART_MODE_CONFIG = {
   highlightValidTargets: true
 };
 
-// libs/engine/src/templates/TemplateRegistry.ts
+// ../libs/engine/src/templates/TemplateRegistry.ts
 var TemplateRegistry = class {
   constructor(eventBus) {
     this.eventBus = eventBus;
@@ -120408,7 +119581,7 @@ var TemplateRegistry = class {
   }
 };
 
-// libs/engine/src/serialization/DocumentEnvelope.ts
+// ../libs/engine/src/serialization/DocumentEnvelope.ts
 var DIAGRAM_ENVELOPE_FORMAT = "grafloria-diagram";
 var DIAGRAM_ENVELOPE_VERSION = 1;
 function canonicalStringify(value) {
@@ -120483,7 +119656,7 @@ function unwrapDiagramDocument(input) {
   return { document: input };
 }
 
-// libs/engine/src/serialization/Serializer.ts
+// ../libs/engine/src/serialization/Serializer.ts
 var DiagramSerializer = class {
   constructor() {
     this.VERSION = "1.0.0";
@@ -120526,7 +119699,7 @@ var DiagramSerializer = class {
   }
 };
 
-// libs/engine/src/performance/PerformanceMonitor.ts
+// ../libs/engine/src/performance/PerformanceMonitor.ts
 var PerformanceMonitor = class {
   constructor(config = {}) {
     this.metrics = /* @__PURE__ */ new Map();
@@ -120630,7 +119803,7 @@ var PerformanceMonitor = class {
   }
 };
 
-// libs/engine/src/ports/dynamic-ports.ts
+// ../libs/engine/src/ports/dynamic-ports.ts
 var EMPTY_PLAN = { add: [], remove: [] };
 function groupsOnNode(node) {
   const groups = /* @__PURE__ */ new Map();
@@ -120703,7 +119876,7 @@ function buildDynamicPortCommandsForDiagram(diagram) {
   return commands;
 }
 
-// libs/engine/src/engine/DiagramMode.ts
+// ../libs/engine/src/engine/DiagramMode.ts
 var DiagramMode = /* @__PURE__ */ ((DiagramMode2) => {
   DiagramMode2["DESIGNER"] = "designer";
   DiagramMode2["RUNNING"] = "running";
@@ -120716,7 +119889,7 @@ function isValidDiagramMode(mode) {
   return Object.values(DiagramMode).includes(mode);
 }
 
-// libs/engine/src/engine/ModeManager.ts
+// ../libs/engine/src/engine/ModeManager.ts
 var ModeManager = class {
   constructor(eventBus, getContext, initialMode = "designer" /* DESIGNER */) {
     this.eventBus = eventBus;
@@ -121070,7 +120243,7 @@ var ModeManager = class {
   }
 };
 
-// libs/engine/src/routing/ObstacleMap.ts
+// ../libs/engine/src/routing/ObstacleMap.ts
 var ObstacleMap = class {
   constructor() {
     this.obstacles = /* @__PURE__ */ new Map();
@@ -121349,7 +120522,7 @@ var ObstacleMap = class {
   }
 };
 
-// libs/engine/src/routing/ObstacleIndex.ts
+// ../libs/engine/src/routing/ObstacleIndex.ts
 var DEFAULT_CELL_SIZE = 128;
 var MAX_CELLS_PER_OBSTACLE = 1024;
 var MAX_CELL_COORD = 1 << 20;
@@ -121484,7 +120657,7 @@ function mergeObstacles(a, b) {
   return out;
 }
 
-// libs/engine/src/routing/algorithms/StraightRouter.ts
+// ../libs/engine/src/routing/algorithms/StraightRouter.ts
 var StraightRouter = class {
   getName() {
     return "straight";
@@ -121526,7 +120699,7 @@ var StraightRouter = class {
   }
 };
 
-// libs/engine/src/routing/algorithms/OrthogonalRouter.ts
+// ../libs/engine/src/routing/algorithms/OrthogonalRouter.ts
 var INDEX_THRESHOLD = 24;
 var _OrthogonalRouter = class _OrthogonalRouter {
   /**
@@ -122402,7 +121575,7 @@ var _OrthogonalRouter = class _OrthogonalRouter {
 _OrthogonalRouter.indexCache = /* @__PURE__ */ new WeakMap();
 var OrthogonalRouter = _OrthogonalRouter;
 
-// libs/engine/src/routing/algorithms/ManhattanRouter.ts
+// ../libs/engine/src/routing/algorithms/ManhattanRouter.ts
 var DIR_VECTORS = {
   left: { x: -1, y: 0 },
   right: { x: 1, y: 0 },
@@ -122577,13 +121750,13 @@ var ManhattanRouter = class {
   }
 };
 
-// libs/engine/src/layout/elk-loader.ts
+// ../libs/engine/src/layout/elk-loader.ts
 var pending;
 function loadElk() {
-  return pending ?? (pending = Promise.resolve().then(() => __toESM(require_elk_bundled())));
+  return pending ?? (pending = Promise.resolve().then(() => __toESM(require_elk_bundled(), 1)));
 }
 
-// libs/engine/src/routing/algorithms/ElkRouter.ts
+// ../libs/engine/src/routing/algorithms/ElkRouter.ts
 var ElkRouter = class {
   getName() {
     return "elk";
@@ -122753,7 +121926,7 @@ var ElkRouter = class {
   }
 };
 
-// libs/engine/src/routing/algorithms/AStarRouter.ts
+// ../libs/engine/src/routing/algorithms/AStarRouter.ts
 var AStarHeuristic = /* @__PURE__ */ ((AStarHeuristic2) => {
   AStarHeuristic2["MANHATTAN"] = "manhattan";
   AStarHeuristic2["EUCLIDEAN"] = "euclidean";
@@ -123044,7 +122217,7 @@ var AStarRouter = class {
   }
 };
 
-// libs/engine/src/routing/algorithms/DijkstraRouter.ts
+// ../libs/engine/src/routing/algorithms/DijkstraRouter.ts
 var PriorityQueue2 = class {
   constructor() {
     this.heap = [];
@@ -123307,7 +122480,7 @@ var DijkstraRouter = class {
   }
 };
 
-// libs/engine/src/routing/algorithms/VisibilityGraphRouter.ts
+// ../libs/engine/src/routing/algorithms/VisibilityGraphRouter.ts
 var PriorityQueue3 = class {
   constructor() {
     this.heap = [];
@@ -123536,7 +122709,7 @@ var VisibilityGraphRouter = class {
   }
 };
 
-// libs/engine/src/performance/LRUCache.ts
+// ../libs/engine/src/performance/LRUCache.ts
 var LRUNode = class {
   constructor(key, value, prev = null, next = null) {
     this.key = key;
@@ -123680,7 +122853,7 @@ var LRUCache = class {
   }
 };
 
-// libs/engine/src/routing/RoutingEngine.ts
+// ../libs/engine/src/routing/RoutingEngine.ts
 function syncObstacles(map, request) {
   map.clear();
   for (const o of request.obstacles ?? []) map.add(o);
@@ -124138,7 +123311,7 @@ var RoutingEngine = class {
   }
 };
 
-// libs/engine/src/routing/LiveReroutingEngine.ts
+// ../libs/engine/src/routing/LiveReroutingEngine.ts
 var LiveReroutingEngine = class {
   constructor(routingEngine, diagram) {
     this.enabled = true;
@@ -124264,7 +123437,7 @@ var LiveReroutingEngine = class {
   }
 };
 
-// libs/engine/src/routing/ObstacleMapBuilder.ts
+// ../libs/engine/src/routing/ObstacleMapBuilder.ts
 var ObstacleMapBuilder = class {
   /**
    * Build obstacle map from all nodes in diagram (Phase 1.6b)
@@ -124324,7 +123497,7 @@ var ObstacleMapBuilder = class {
   }
 };
 
-// libs/engine/src/layout/rng.ts
+// ../libs/engine/src/layout/rng.ts
 var DEFAULT_LAYOUT_SEED = 24301;
 function createLayoutRng(seed = DEFAULT_LAYOUT_SEED) {
   let state = Number.isFinite(seed) ? Math.floor(Math.abs(seed)) >>> 0 : DEFAULT_LAYOUT_SEED;
@@ -124346,10 +123519,10 @@ function inStableOrder(items) {
   return [...items].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
-// libs/engine/src/layout/dagre-layout-adapter.ts
-var dagre2 = __toESM(require_dagre());
+// ../libs/engine/src/layout/dagre-layout-adapter.ts
+var dagreNs2 = __toESM(require_dagre(), 1);
 
-// libs/engine/src/layout/port-label-bridge.ts
+// ../libs/engine/src/layout/port-label-bridge.ts
 function isDefaultPort(port) {
   return port.getMetadata("default") === true;
 }
@@ -124484,7 +123657,7 @@ function reservedLabelSpace(links) {
   return { width, height };
 }
 
-// libs/engine/src/layout/layout-constraints.interface.ts
+// ../libs/engine/src/layout/layout-constraints.interface.ts
 var ConstraintManager = class {
   constructor(constraints) {
     this.constraints = /* @__PURE__ */ new Map();
@@ -124598,7 +123771,7 @@ var ConstraintManager = class {
   }
 };
 
-// libs/engine/src/layout/incremental-layout.interface.ts
+// ../libs/engine/src/layout/incremental-layout.interface.ts
 var IncrementalLayoutManager = class {
   /**
    * Identify new nodes that need to be laid out
@@ -124877,7 +124050,7 @@ var IncrementalLayoutManager = class {
   }
 };
 
-// libs/engine/src/layout/layout-quality-metrics.ts
+// ../libs/engine/src/layout/layout-quality-metrics.ts
 var LayoutQualityMetrics = class {
   /**
    * Assess the quality of a layout
@@ -125284,7 +124457,7 @@ LayoutQualityMetrics.DEFAULT_WEIGHTS = {
   // Moderate - good use of space
 };
 
-// libs/engine/src/layout/port-aware-layout.interface.ts
+// ../libs/engine/src/layout/port-aware-layout.interface.ts
 var PortAwareLayoutManager = class {
   /**
    * Assign ports to sides of their parent nodes
@@ -125635,7 +124808,7 @@ var PortAwareLayoutManager = class {
 };
 PortAwareLayoutManager.DEFAULT_PORT_SPACING = 20;
 
-// libs/engine/src/layout/subgraph-layout.interface.ts
+// ../libs/engine/src/layout/subgraph-layout.interface.ts
 var SubgraphLayoutManager = class {
   /**
    * Build hierarchical tree of groups
@@ -126029,7 +125202,7 @@ var SubgraphLayoutManager = class {
 SubgraphLayoutManager.DEFAULT_PADDING = 20;
 SubgraphLayoutManager.DEFAULT_GROUP_SPACING = 40;
 
-// libs/engine/src/layout/edge-bundling.interface.ts
+// ../libs/engine/src/layout/edge-bundling.interface.ts
 var EdgeBundlingManager = class {
   /**
    * Compute edge bundling for a set of edges
@@ -126367,7 +125540,8 @@ EdgeBundlingManager.DEFAULT_SPRING_CONSTANT = 0.1;
 EdgeBundlingManager.DEFAULT_COMPATIBILITY_THRESHOLD = 0.6;
 EdgeBundlingManager.DEFAULT_MIN_EDGE_LENGTH = 50;
 
-// libs/engine/src/layout/dagre-layout-adapter.ts
+// ../libs/engine/src/layout/dagre-layout-adapter.ts
+var dagre2 = dagreNs2.default ?? dagreNs2;
 var DEFAULT_DAGRE_OPTIONS = {
   rankdir: "TB",
   nodesep: 50,
@@ -126946,7 +126120,7 @@ var DagreLayoutAdapter = class {
   }
 };
 
-// libs/engine/src/layout/elk-layout-adapter.ts
+// ../libs/engine/src/layout/elk-layout-adapter.ts
 var DEFAULT_ELK_OPTIONS = {
   algorithm: "layered",
   "elk.direction": "RIGHT",
@@ -127434,7 +126608,7 @@ var ELKLayoutAdapter = class {
   }
 };
 
-// libs/engine/src/layout/overlap-removal.ts
+// ../libs/engine/src/layout/overlap-removal.ts
 var intersects = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 function removeOverlaps(nodes, positions, options = {}) {
   const spacing = options.spacing ?? 20;
@@ -127468,7 +126642,7 @@ function removeOverlaps(nodes, positions, options = {}) {
   return positions;
 }
 
-// libs/engine/src/layout/component-packing.ts
+// ../libs/engine/src/layout/component-packing.ts
 var DEFAULT_NODE_WIDTH = 150;
 var DEFAULT_NODE_HEIGHT = 50;
 function nodeSize(node) {
@@ -127635,7 +126809,7 @@ async function layoutWithComponentPacking(name, fn, nodes, links, options = {}) 
   };
 }
 
-// libs/engine/src/layout/force-layout-adapter.ts
+// ../libs/engine/src/layout/force-layout-adapter.ts
 var ForceLayoutAdapter = class {
   constructor() {
     this.name = "force";
@@ -128281,7 +127455,7 @@ var ForceLayoutAdapter = class {
   }
 };
 
-// libs/engine/src/layout/spectral-layout-adapter.ts
+// ../libs/engine/src/layout/spectral-layout-adapter.ts
 var Matrix = class _Matrix {
   constructor(rows, cols, fill = 0) {
     this.rows = rows;
@@ -128612,7 +127786,7 @@ var SpectralLayoutAdapter = class {
   }
 };
 
-// libs/engine/src/layout/community-layout-adapter.ts
+// ../libs/engine/src/layout/community-layout-adapter.ts
 var CommunityLayoutAdapter = class {
   constructor() {
     this.name = "community";
@@ -129027,7 +128201,7 @@ function shuffle(items, rng2) {
   return items;
 }
 
-// libs/engine/src/layout/layout-quality-extended.ts
+// ../libs/engine/src/layout/layout-quality-extended.ts
 function midpointAlongPath(points) {
   if (points.length === 0) return { x: 0, y: 0 };
   if (points.length === 1) return points[0];
@@ -129164,7 +128338,7 @@ function layoutArea(result) {
   return Math.max(0, width) * Math.max(0, height);
 }
 
-// libs/engine/src/layout/layout-auto-select.ts
+// ../libs/engine/src/layout/layout-auto-select.ts
 var AUTO_LAYOUT_NAME = "auto";
 function analyseGraphShape(nodes, links) {
   const nodeCount = nodes.length;
@@ -129583,7 +128757,7 @@ function restorePositions(nodes, original) {
   }
 }
 
-// libs/engine/src/layout/tree-layout.ts
+// ../libs/engine/src/layout/tree-layout.ts
 var DEFAULT_NODE_SPACING = 50;
 var DEFAULT_RANK_SPACING = 70;
 var isVertical = (d) => d === "TB" || d === "BT";
@@ -129848,7 +129022,7 @@ function depthOf(root, children) {
   return depth;
 }
 
-// libs/engine/src/layout/portfolio-layouts.ts
+// ../libs/engine/src/layout/portfolio-layouts.ts
 var DEFAULT_NODE_SPACING2 = 50;
 var DEFAULT_RANK_SPACING2 = 70;
 var slotOf = (node, spacing) => {
@@ -130083,7 +129257,7 @@ function forceLayout(nodes, links, options = {}) {
   return forceAdapter.apply(nodes, links, translated);
 }
 
-// libs/engine/src/layout/sugiyama/sugiyama.ts
+// ../libs/engine/src/layout/sugiyama/sugiyama.ts
 var DEFAULTS = {
   direction: "TB",
   nodeSpacing: 50,
@@ -130587,7 +129761,7 @@ function inferDirection(nodes, edges) {
   return depth >= 4 && maxWidth <= 2 ? "LR" : "TB";
 }
 
-// libs/engine/src/layout/sugiyama/layered-layout.ts
+// ../libs/engine/src/layout/sugiyama/layered-layout.ts
 function readGraph(diagram) {
   const nodes = diagram.getNodes().map((n3) => ({
     id: n3.id,
@@ -130649,7 +129823,7 @@ function createLayeredLayout(name = "layered") {
   };
 }
 
-// libs/engine/src/layout/layout-registry.ts
+// ../libs/engine/src/layout/layout-registry.ts
 var LayoutRegistry = class {
   constructor() {
     this.engines = /* @__PURE__ */ new Map();
@@ -130807,27 +129981,27 @@ function createDefaultLayoutRegistry() {
   for (const adapter of createBuiltInLayoutAdapters()) {
     registry5.register(fromAdapter(adapter));
   }
-  for (const layout3 of createPortfolioLayouts()) {
-    registry5.register(layout3);
+  for (const layout of createPortfolioLayouts()) {
+    registry5.register(layout);
   }
   registry5.register(createLayeredLayout("layered"));
   registry5.register(createAutoLayout(registry5));
   return registry5;
 }
 async function runLayout(registry5, diagram, name, options = {}) {
-  const layout3 = registry5.get(name);
-  if (!layout3) {
+  const layout = registry5.get(name);
+  if (!layout) {
     throw new Error(`Unknown layout '${name}'. Registered layouts: ${registry5.names().join(", ")}`);
   }
   const seed = options.seed ?? DEFAULT_LAYOUT_SEED;
-  const result = await layout3.apply(diagram, { ...options, seed });
+  const result = await layout.apply(diagram, { ...options, seed });
   for (const [nodeId, position] of result.nodePositions) {
     diagram.getNode(nodeId)?.setPosition(position.x, position.y);
   }
   return { ...result, algorithm: name, seed, partial: false, iteration: 1, totalIterations: 1 };
 }
 
-// libs/engine/src/layout/incremental/mental-map.ts
+// ../libs/engine/src/layout/incremental/mental-map.ts
 function alignToPrevious(next, previous) {
   const shared = [...next.keys()].filter((id) => previous.has(id));
   if (shared.length === 0) return { positions: next, shift: { x: 0, y: 0 } };
@@ -130935,7 +130109,7 @@ function planTween(before, after) {
   };
 }
 
-// libs/engine/src/layout/CompoundLayoutService.ts
+// ../libs/engine/src/layout/CompoundLayoutService.ts
 var byId = (a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 var CompoundLayoutService = class {
   constructor(diagram, options = {}) {
@@ -131359,12 +130533,12 @@ function minimumTranslation(a, b) {
   return { dx: 0, dy: -up };
 }
 
-// libs/engine/src/layout/steppable-layout.ts
+// ../libs/engine/src/layout/steppable-layout.ts
 function isSteppable(adapter) {
   return typeof adapter.createRun === "function";
 }
 
-// libs/engine/src/layout/layout-graph.ts
+// ../libs/engine/src/layout/layout-graph.ts
 function serializeGraph(nodes, links) {
   return {
     nodes: inStableOrder(nodes).map((node) => ({
@@ -131433,7 +130607,7 @@ function reviveGraph(graph) {
   return { nodes, links };
 }
 
-// libs/engine/src/layout/layout-host.ts
+// ../libs/engine/src/layout/layout-host.ts
 var DEFAULT_SLICE_MS = 12;
 var PROGRESS_EMIT_MIN_MS = 16;
 var PROGRESS_EMIT_MIN_DELTA = 0.1;
@@ -131742,7 +130916,7 @@ function stripNonClonable(options) {
   return out;
 }
 
-// libs/engine/src/engine/DiagramEngine.ts
+// ../libs/engine/src/engine/DiagramEngine.ts
 var DiagramEngine = class {
   constructor(config = {}) {
     // Shape "masters" for stencils / the palette
@@ -133663,7 +132837,7 @@ var DiagramEngine = class {
   }
 };
 
-// libs/engine/src/serialization/Subgraph.ts
+// ../libs/engine/src/serialization/Subgraph.ts
 var SUBGRAPH_FORMAT = "grafloria-subgraph";
 function serializeSubgraph(diagram, selection) {
   const nodeIds = new Set(selection.nodeIds);
@@ -133792,7 +132966,7 @@ function deserializeSubgraphInto(diagram, subgraph, options = {}) {
   return { nodes, links, groups, idMap, portIdMap };
 }
 
-// libs/engine/src/dsl/types/Token.ts
+// ../libs/engine/src/dsl/types/Token.ts
 var TokenType = /* @__PURE__ */ ((TokenType2) => {
   TokenType2["FLOWCHART"] = "FLOWCHART";
   TokenType2["GRAPH"] = "GRAPH";
@@ -133857,7 +133031,7 @@ function createToken(type, value, line, column, startIndex, endIndex) {
   return { type, value, line, column, startIndex, endIndex };
 }
 
-// libs/engine/src/dsl/lexer/Lexer.ts
+// ../libs/engine/src/dsl/lexer/Lexer.ts
 var Lexer = class {
   constructor(input) {
     this.position = 0;
@@ -134294,7 +133468,7 @@ var Lexer = class {
   }
 };
 
-// libs/engine/src/dsl/parser/Parser.ts
+// ../libs/engine/src/dsl/parser/Parser.ts
 var ParseError = class extends Error {
   constructor(message, token, line, column) {
     super(`Parse error at line ${line}, column ${column}: ${message}`);
@@ -134934,7 +134108,7 @@ var Parser = class {
   }
 };
 
-// libs/engine/src/dsl/mermaid/layout.ts
+// ../libs/engine/src/dsl/mermaid/layout.ts
 function assignRanks2(ids, edges) {
   const idSet = new Set(ids);
   const out = /* @__PURE__ */ new Map();
@@ -135040,7 +134214,7 @@ function rankLayout(nodes, edges, options = {}) {
   );
 }
 
-// libs/engine/src/dsl/transformer/ASTTransformer.ts
+// ../libs/engine/src/dsl/transformer/ASTTransformer.ts
 var ASTTransformer = class {
   constructor() {
     this.nodePositions = /* @__PURE__ */ new Map();
@@ -135533,7 +134707,7 @@ var ASTTransformer = class {
   }
 };
 
-// libs/engine/src/dsl/detector/LayoutDetector.ts
+// ../libs/engine/src/dsl/detector/LayoutDetector.ts
 var LayoutDetector = class {
   /**
    * Detect optimal layout for a diagram
@@ -135830,7 +135004,7 @@ var LayoutDetector = class {
   }
 };
 
-// libs/engine/src/dsl/generator/DiagramAnalyzer.ts
+// ../libs/engine/src/dsl/generator/DiagramAnalyzer.ts
 var DiagramAnalyzer = class {
   /**
    * Analyze diagram structure
@@ -136138,7 +135312,7 @@ var DiagramAnalyzer = class {
   }
 };
 
-// libs/engine/src/dsl/generator/DSLGenerator.ts
+// ../libs/engine/src/dsl/generator/DSLGenerator.ts
 var DSLGenerator = class {
   constructor() {
     this.analyzer = new DiagramAnalyzer();
@@ -136424,7 +135598,7 @@ var DSLGenerator = class {
   }
 };
 
-// libs/engine/src/dsl/generator/DSLFormatter.ts
+// ../libs/engine/src/dsl/generator/DSLFormatter.ts
 var DSLFormatter = class {
   constructor(options = {}) {
     this.options = {
@@ -136637,7 +135811,7 @@ var DSLFormatter = class {
   }
 };
 
-// libs/engine/src/dsl/extended/BPMNGenerator.ts
+// ../libs/engine/src/dsl/extended/BPMNGenerator.ts
 var BPMNGenerator = class {
   /**
    * Generate BPMN flowchart DSL
@@ -136715,7 +135889,7 @@ var BPMNGenerator = class {
   }
 };
 
-// libs/engine/src/dsl/mermaid/lines.ts
+// ../libs/engine/src/dsl/mermaid/lines.ts
 function stripTrailingComment(raw) {
   let inQuote = false;
   for (let i = 0; i < raw.length; i++) {
@@ -136758,7 +135932,7 @@ function unquote(token) {
   return t;
 }
 
-// libs/engine/src/dsl/mermaid/MermaidER.ts
+// ../libs/engine/src/dsl/mermaid/MermaidER.ts
 var LEFT_CARDINALITY = {
   "||": "one",
   "|o": "zero-or-one",
@@ -137005,7 +136179,7 @@ function generateErFromDiagram(diagram) {
   return generateMermaidEr(erModelFromDiagram(diagram));
 }
 
-// libs/engine/src/dsl/mermaid/MermaidClass.ts
+// ../libs/engine/src/dsl/mermaid/MermaidClass.ts
 var LEFT_MARKERS = {
   "<|": "extension",
   "*": "composition",
@@ -137347,7 +136521,7 @@ function generateClassFromDiagram(diagram) {
   return generateMermaidClass(classModelFromDiagram(diagram));
 }
 
-// libs/engine/src/dsl/mermaid/MermaidState.ts
+// ../libs/engine/src/dsl/mermaid/MermaidState.ts
 var PSEUDO_KINDS = /* @__PURE__ */ new Set([
   "start",
   "end",
@@ -137786,7 +136960,7 @@ function generateStateFromDiagram(diagram) {
   return generateMermaidState(stateModelFromDiagram(diagram));
 }
 
-// libs/engine/src/dsl/advanced/StyleParser.ts
+// ../libs/engine/src/dsl/advanced/StyleParser.ts
 var StyleParser = class {
   /**
    * Parse @style definitions from DSL text
@@ -137922,7 +137096,7 @@ var StyleParser = class {
   }
 };
 
-// libs/engine/src/dsl/advanced/TemplateParser.ts
+// ../libs/engine/src/dsl/advanced/TemplateParser.ts
 var TemplateParser = class {
   /**
    * Parse @template definitions from DSL text
@@ -138115,7 +137289,7 @@ var TemplateParser = class {
   }
 };
 
-// libs/engine/src/dsl/DSL.ts
+// ../libs/engine/src/dsl/DSL.ts
 var _DSL = class _DSL {
   constructor(options = {}) {
     this.lexer = new Lexer("");
@@ -138599,7 +137773,7 @@ _DSL.KNOWN_DIAGRAM_TYPES = {
 };
 var DSL = _DSL;
 
-// libs/engine/src/serialization/TextFormat.ts
+// ../libs/engine/src/serialization/TextFormat.ts
 var GRAFLORIA_DOC_PREFIX = "%%grafloria:document ";
 var GRAFLORIA_HASH_PREFIX = "%%grafloria:body-hash ";
 function stripGrafloriaSidecar(text) {
@@ -138742,7 +137916,7 @@ function applyBodyOntoSidecar(sidecarDoc, parsed, options) {
   return base;
 }
 
-// libs/engine/src/interop/drawio/xml.ts
+// ../libs/engine/src/interop/drawio/xml.ts
 var XmlParseError = class extends Error {
   constructor(message, offset) {
     super(`${message} (at offset ${offset})`);
@@ -138883,7 +138057,7 @@ function parseXml(source) {
   return root;
 }
 
-// libs/engine/src/interop/drawio/importDrawio.ts
+// ../libs/engine/src/interop/drawio/importDrawio.ts
 function parseStyle(style) {
   const tokens = /* @__PURE__ */ new Map();
   let first;
@@ -139498,7 +138672,7 @@ function collectUnmappedStyleKeys(styleString, into) {
   }
 }
 
-// libs/engine/src/lib/performance/mobile-performance.service.ts
+// ../libs/engine/src/lib/performance/mobile-performance.service.ts
 var MobilePerformanceService = class _MobilePerformanceService {
   constructor() {
     this.config = {
@@ -139591,7 +138765,7 @@ var MobilePerformanceService = class _MobilePerformanceService {
   }
 };
 
-// libs/engine/src/routing/global/GlobalRouteSolver.ts
+// ../libs/engine/src/routing/global/GlobalRouteSolver.ts
 var DEFAULTS2 = {
   gridSize: 20,
   obstacleMargin: 10,
@@ -139837,7 +139011,7 @@ var GlobalRouteSolver = class {
   }
 };
 
-// libs/engine/src/routing/global/solver-host.ts
+// ../libs/engine/src/routing/global/solver-host.ts
 function serveSolver(port) {
   let solver = null;
   port.onmessage = (ev) => {
@@ -139889,7 +139063,7 @@ var SolverHost = class {
   }
 };
 
-// libs/engine/src/layout/layout-presets.ts
+// ../libs/engine/src/layout/layout-presets.ts
 var LayoutPresets = class {
   /**
    * Get all preset categories
@@ -140215,7 +139389,7 @@ LayoutPresets.INTERACTIVE = {
   ]
 };
 
-// libs/engine/src/layout/layout-history.ts
+// ../libs/engine/src/layout/layout-history.ts
 var LayoutHistory = class {
   constructor(options = {}) {
     this.history = [];
@@ -140450,7 +139624,7 @@ var LayoutHistory = class {
   }
 };
 
-// libs/engine/src/layout/layout.service.ts
+// ../libs/engine/src/layout/layout.service.ts
 var LayoutService = class {
   constructor() {
     this.adapters = /* @__PURE__ */ new Map();
@@ -140623,7 +139797,7 @@ var LayoutService = class {
 };
 var layoutService = new LayoutService();
 
-// libs/engine/src/layout/grid-pack/grid-pack-engine.ts
+// ../libs/engine/src/layout/grid-pack/grid-pack-engine.ts
 var GridPackEngine = class _GridPackEngine {
   constructor(items = [], options = {}) {
     this.items = [];
@@ -140920,7 +140094,7 @@ var GridPackEngine = class _GridPackEngine {
    *
    * Returns true when the count actually changed.
    */
-  setColumns(next, layout3 = "moveScale") {
+  setColumns(next, layout = "moveScale") {
     const n3 = Math.max(1, Math.round(next));
     const prev = this._columns;
     if (n3 === prev) return false;
@@ -140940,8 +140114,8 @@ var GridPackEngine = class _GridPackEngine {
         }
       }
       const ratio = n3 / prev;
-      const move = layout3 === "move" || layout3 === "moveScale";
-      const scale = layout3 === "scale" || layout3 === "moveScale";
+      const move = layout === "move" || layout === "moveScale";
+      const scale = layout === "scale" || layout === "moveScale";
       for (const it of this.items) {
         if (restored.has(it.id)) continue;
         const w = scale ? Math.max(1, Math.round(it.w * ratio)) : it.w;
@@ -141178,7 +140352,7 @@ var GridPackEngine = class _GridPackEngine {
   }
 };
 
-// libs/engine/src/interaction/GroupMembershipService.ts
+// ../libs/engine/src/interaction/GroupMembershipService.ts
 var GroupMembershipService = class {
   constructor(options) {
     this.diagram = options.diagram;
@@ -141377,7 +140551,7 @@ var GroupMembershipService = class {
   }
 };
 
-// libs/engine/src/interaction/SwimlaneService.ts
+// ../libs/engine/src/interaction/SwimlaneService.ts
 var SwimlaneService = class {
   constructor(diagram) {
     this.diagram = diagram;
@@ -141518,7 +140692,7 @@ var SwimlaneService = class {
   }
 };
 
-// libs/engine/src/interaction/SemanticMembershipService.ts
+// ../libs/engine/src/interaction/SemanticMembershipService.ts
 var AUTO_MEMBER_KEY = "__autoMemberOf";
 function matchesRule(rule, node) {
   if ("all" in rule) {
@@ -141653,7 +140827,7 @@ var SemanticMembershipService = class {
   }
 };
 
-// libs/engine/src/templates/TemplateLoader.ts
+// ../libs/engine/src/templates/TemplateLoader.ts
 var TemplateLoader = class {
   /**
    * Load template from JSON string
@@ -141747,7 +140921,7 @@ var TemplateLoader = class {
   }
 };
 
-// libs/engine/src/templates/NodeFactory.ts
+// ../libs/engine/src/templates/NodeFactory.ts
 var NodeFactory = class {
   constructor(templateRegistry, diagram) {
     this.templateRegistry = templateRegistry;
@@ -142112,7 +141286,7 @@ var NodeFactory = class {
   }
 };
 
-// libs/engine/src/templates/generated/index.ts
+// ../libs/engine/src/templates/generated/index.ts
 var generated_exports = {};
 __export(generated_exports, {
   bpmnBusinessRuleTaskTemplate: () => bpmnBusinessRuleTaskTemplate,
@@ -142197,7 +141371,7 @@ __export(generated_exports, {
   umlUseCaseTemplate: () => umlUseCaseTemplate
 });
 
-// libs/engine/src/templates/generated/bpmn/index.ts
+// ../libs/engine/src/templates/generated/bpmn/index.ts
 var bpmn_exports = {};
 __export(bpmn_exports, {
   bpmnBusinessRuleTaskTemplate: () => bpmnBusinessRuleTaskTemplate,
@@ -142217,7 +141391,7 @@ __export(bpmn_exports, {
   bpmnUserTaskTemplate: () => bpmnUserTaskTemplate
 });
 
-// libs/engine/src/templates/generated/bpmn/bpmn-task.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-task.template.ts
 var bpmnTaskTemplate = {
   "id": "bpmn-task",
   "version": "1.0.0",
@@ -142360,7 +141534,7 @@ var bpmnTaskTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-user-task.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-user-task.template.ts
 var bpmnUserTaskTemplate = {
   "id": "bpmn-user-task",
   "version": "1.0.0",
@@ -142474,7 +141648,7 @@ var bpmnUserTaskTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-service-task.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-service-task.template.ts
 var bpmnServiceTaskTemplate = {
   "id": "bpmn-service-task",
   "version": "1.0.0",
@@ -142588,7 +141762,7 @@ var bpmnServiceTaskTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-manual-task.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-manual-task.template.ts
 var bpmnManualTaskTemplate = {
   "id": "bpmn-manual-task",
   "version": "1.0.0",
@@ -142702,7 +141876,7 @@ var bpmnManualTaskTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-business-rule-task.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-business-rule-task.template.ts
 var bpmnBusinessRuleTaskTemplate = {
   "id": "bpmn-business-rule-task",
   "version": "1.0.0",
@@ -142816,7 +141990,7 @@ var bpmnBusinessRuleTaskTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-script-task.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-script-task.template.ts
 var bpmnScriptTaskTemplate = {
   "id": "bpmn-script-task",
   "version": "1.0.0",
@@ -142930,7 +142104,7 @@ var bpmnScriptTaskTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-exclusive-gateway.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-exclusive-gateway.template.ts
 var bpmnExclusiveGatewayTemplate = {
   "id": "bpmn-exclusive-gateway",
   "version": "1.0.0",
@@ -143045,7 +142219,7 @@ var bpmnExclusiveGatewayTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-parallel-gateway.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-parallel-gateway.template.ts
 var bpmnParallelGatewayTemplate = {
   "id": "bpmn-parallel-gateway",
   "version": "1.0.0",
@@ -143161,7 +142335,7 @@ var bpmnParallelGatewayTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-inclusive-gateway.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-inclusive-gateway.template.ts
 var bpmnInclusiveGatewayTemplate = {
   "id": "bpmn-inclusive-gateway",
   "version": "1.0.0",
@@ -143275,7 +142449,7 @@ var bpmnInclusiveGatewayTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-start-event.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-start-event.template.ts
 var bpmnStartEventTemplate = {
   "id": "bpmn-start-event",
   "version": "1.0.0",
@@ -143389,7 +142563,7 @@ var bpmnStartEventTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-end-event.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-end-event.template.ts
 var bpmnEndEventTemplate = {
   "id": "bpmn-end-event",
   "version": "1.0.0",
@@ -143503,7 +142677,7 @@ var bpmnEndEventTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-intermediate-event.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-intermediate-event.template.ts
 var bpmnIntermediateEventTemplate = {
   "id": "bpmn-intermediate-event",
   "version": "1.0.0",
@@ -143618,7 +142792,7 @@ var bpmnIntermediateEventTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-message-event.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-message-event.template.ts
 var bpmnMessageEventTemplate = {
   "id": "bpmn-message-event",
   "version": "1.0.0",
@@ -143731,7 +142905,7 @@ var bpmnMessageEventTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-timer-event.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-timer-event.template.ts
 var bpmnTimerEventTemplate = {
   "id": "bpmn-timer-event",
   "version": "1.0.0",
@@ -143845,7 +143019,7 @@ var bpmnTimerEventTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/bpmn/bpmn-error-event.template.ts
+// ../libs/engine/src/templates/generated/bpmn/bpmn-error-event.template.ts
 var bpmnErrorEventTemplate = {
   "id": "bpmn-error-event",
   "version": "1.0.0",
@@ -143959,7 +143133,7 @@ var bpmnErrorEventTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/index.ts
+// ../libs/engine/src/templates/generated/flowchart/index.ts
 var flowchart_exports = {};
 __export(flowchart_exports, {
   flowchartConnectorTemplate: () => flowchartConnectorTemplate,
@@ -143980,7 +143154,7 @@ __export(flowchart_exports, {
   flowchartTerminalTemplate: () => flowchartTerminalTemplate
 });
 
-// libs/engine/src/templates/generated/flowchart/flowchart-process.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-process.template.ts
 var flowchartProcessTemplate = {
   "id": "flowchart-process",
   "version": "1.0.0",
@@ -144093,7 +143267,7 @@ var flowchartProcessTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-decision.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-decision.template.ts
 var flowchartDecisionTemplate = {
   "id": "flowchart-decision",
   "version": "1.0.0",
@@ -144207,7 +143381,7 @@ var flowchartDecisionTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-terminal.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-terminal.template.ts
 var flowchartTerminalTemplate = {
   "id": "flowchart-terminal",
   "version": "1.0.0",
@@ -144322,7 +143496,7 @@ var flowchartTerminalTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-data.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-data.template.ts
 var flowchartDataTemplate = {
   "id": "flowchart-data",
   "version": "1.0.0",
@@ -144436,7 +143610,7 @@ var flowchartDataTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-document.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-document.template.ts
 var flowchartDocumentTemplate = {
   "id": "flowchart-document",
   "version": "1.0.0",
@@ -144550,7 +143724,7 @@ var flowchartDocumentTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-connector.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-connector.template.ts
 var flowchartConnectorTemplate = {
   "id": "flowchart-connector",
   "version": "1.0.0",
@@ -144664,7 +143838,7 @@ var flowchartConnectorTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-delay.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-delay.template.ts
 var flowchartDelayTemplate = {
   "id": "flowchart-delay",
   "version": "1.0.0",
@@ -144779,7 +143953,7 @@ var flowchartDelayTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-manual-input.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-manual-input.template.ts
 var flowchartManualInputTemplate = {
   "id": "flowchart-manual-input",
   "version": "1.0.0",
@@ -144893,7 +144067,7 @@ var flowchartManualInputTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-manual-operation.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-manual-operation.template.ts
 var flowchartManualOperationTemplate = {
   "id": "flowchart-manual-operation",
   "version": "1.0.0",
@@ -145006,7 +144180,7 @@ var flowchartManualOperationTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-predefined-process.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-predefined-process.template.ts
 var flowchartPredefinedProcessTemplate = {
   "id": "flowchart-predefined-process",
   "version": "1.0.0",
@@ -145120,7 +144294,7 @@ var flowchartPredefinedProcessTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-stored-data.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-stored-data.template.ts
 var flowchartStoredDataTemplate = {
   "id": "flowchart-stored-data",
   "version": "1.0.0",
@@ -145234,7 +144408,7 @@ var flowchartStoredDataTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-display.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-display.template.ts
 var flowchartDisplayTemplate = {
   "id": "flowchart-display",
   "version": "1.0.0",
@@ -145349,7 +144523,7 @@ var flowchartDisplayTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-preparation.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-preparation.template.ts
 var flowchartPreparationTemplate = {
   "id": "flowchart-preparation",
   "version": "1.0.0",
@@ -145463,7 +144637,7 @@ var flowchartPreparationTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-merge.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-merge.template.ts
 var flowchartMergeTemplate = {
   "id": "flowchart-merge",
   "version": "1.0.0",
@@ -145576,7 +144750,7 @@ var flowchartMergeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-or.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-or.template.ts
 var flowchartOrTemplate = {
   "id": "flowchart-or",
   "version": "1.0.0",
@@ -145690,7 +144864,7 @@ var flowchartOrTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/flowchart/flowchart-summing-junction.template.ts
+// ../libs/engine/src/templates/generated/flowchart/flowchart-summing-junction.template.ts
 var flowchartSummingJunctionTemplate = {
   "id": "flowchart-summing-junction",
   "version": "1.0.0",
@@ -145805,7 +144979,7 @@ var flowchartSummingJunctionTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/index.ts
+// ../libs/engine/src/templates/generated/uml/index.ts
 var uml_exports = {};
 __export(uml_exports, {
   umlAbstractClassTemplate: () => umlAbstractClassTemplate,
@@ -145840,7 +145014,7 @@ __export(uml_exports, {
   umlUseCaseTemplate: () => umlUseCaseTemplate
 });
 
-// libs/engine/src/templates/generated/uml/uml-class.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-class.template.ts
 var umlClassTemplate = {
   "id": "uml-class",
   "version": "1.0.0",
@@ -146066,7 +145240,7 @@ var umlClassTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-interface.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-interface.template.ts
 var umlInterfaceTemplate = {
   "id": "uml-interface",
   "version": "1.0.0",
@@ -146292,7 +145466,7 @@ var umlInterfaceTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-abstract-class.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-abstract-class.template.ts
 var umlAbstractClassTemplate = {
   "id": "uml-abstract-class",
   "version": "1.0.0",
@@ -146518,7 +145692,7 @@ var umlAbstractClassTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-enum.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-enum.template.ts
 var umlEnumTemplate = {
   "id": "uml-enum",
   "version": "1.0.0",
@@ -146744,7 +145918,7 @@ var umlEnumTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-package.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-package.template.ts
 var umlPackageTemplate = {
   "id": "uml-package",
   "version": "1.0.0",
@@ -146858,7 +146032,7 @@ var umlPackageTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-component.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-component.template.ts
 var umlComponentTemplate = {
   "id": "uml-component",
   "version": "1.0.0",
@@ -146971,7 +146145,7 @@ var umlComponentTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-node.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-node.template.ts
 var umlNodeTemplate = {
   "id": "uml-node",
   "version": "1.0.0",
@@ -147084,7 +146258,7 @@ var umlNodeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-actor.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-actor.template.ts
 var umlActorTemplate = {
   "id": "uml-actor",
   "version": "1.0.0",
@@ -147201,7 +146375,7 @@ var umlActorTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-use-case.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-use-case.template.ts
 var umlUseCaseTemplate = {
   "id": "uml-use-case",
   "version": "1.0.0",
@@ -147317,7 +146491,7 @@ var umlUseCaseTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-state.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-state.template.ts
 var umlStateTemplate = {
   "id": "uml-state",
   "version": "1.0.0",
@@ -147431,7 +146605,7 @@ var umlStateTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-initial-state.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-initial-state.template.ts
 var umlInitialStateTemplate = {
   "id": "uml-initial-state",
   "version": "1.0.0",
@@ -147545,7 +146719,7 @@ var umlInitialStateTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-final-state.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-final-state.template.ts
 var umlFinalStateTemplate = {
   "id": "uml-final-state",
   "version": "1.0.0",
@@ -147660,7 +146834,7 @@ var umlFinalStateTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-note.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-note.template.ts
 var umlNoteTemplate = {
   "id": "uml-note",
   "version": "1.0.0",
@@ -147774,7 +146948,7 @@ var umlNoteTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-activity.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-activity.template.ts
 var umlActivityTemplate = {
   "id": "uml-activity",
   "version": "1.0.0",
@@ -147888,7 +147062,7 @@ var umlActivityTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-decision.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-decision.template.ts
 var umlDecisionTemplate = {
   "id": "uml-decision",
   "version": "1.0.0",
@@ -148003,7 +147177,7 @@ var umlDecisionTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-merge.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-merge.template.ts
 var umlMergeTemplate = {
   "id": "uml-merge",
   "version": "1.0.0",
@@ -148116,7 +147290,7 @@ var umlMergeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-fork.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-fork.template.ts
 var umlForkTemplate = {
   "id": "uml-fork",
   "version": "1.0.0",
@@ -148232,7 +147406,7 @@ var umlForkTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-join.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-join.template.ts
 var umlJoinTemplate = {
   "id": "uml-join",
   "version": "1.0.0",
@@ -148348,7 +147522,7 @@ var umlJoinTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-initial-node.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-initial-node.template.ts
 var umlInitialNodeTemplate = {
   "id": "uml-initial-node",
   "version": "1.0.0",
@@ -148462,7 +147636,7 @@ var umlInitialNodeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-final-node.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-final-node.template.ts
 var umlFinalNodeTemplate = {
   "id": "uml-final-node",
   "version": "1.0.0",
@@ -148577,7 +147751,7 @@ var umlFinalNodeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-activity-partition.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-activity-partition.template.ts
 var umlActivityPartitionTemplate = {
   "id": "uml-activity-partition",
   "version": "1.0.0",
@@ -148692,7 +147866,7 @@ var umlActivityPartitionTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-lifeline.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-lifeline.template.ts
 var umlLifelineTemplate = {
   "id": "uml-lifeline",
   "version": "1.0.0",
@@ -148806,7 +147980,7 @@ var umlLifelineTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-activation.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-activation.template.ts
 var umlActivationTemplate = {
   "id": "uml-activation",
   "version": "1.0.0",
@@ -148921,7 +148095,7 @@ var umlActivationTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-object.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-object.template.ts
 var umlObjectTemplate = {
   "id": "uml-object",
   "version": "1.0.0",
@@ -149147,7 +148321,7 @@ var umlObjectTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-datatype.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-datatype.template.ts
 var umlDatatypeTemplate = {
   "id": "uml-datatype",
   "version": "1.0.0",
@@ -149373,7 +148547,7 @@ var umlDatatypeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-primitive-type.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-primitive-type.template.ts
 var umlPrimitiveTypeTemplate = {
   "id": "uml-primitive-type",
   "version": "1.0.0",
@@ -149599,7 +148773,7 @@ var umlPrimitiveTypeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-signal.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-signal.template.ts
 var umlSignalTemplate = {
   "id": "uml-signal",
   "version": "1.0.0",
@@ -149713,7 +148887,7 @@ var umlSignalTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-port.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-port.template.ts
 var umlPortTemplate = {
   "id": "uml-port",
   "version": "1.0.0",
@@ -149827,7 +149001,7 @@ var umlPortTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-part.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-part.template.ts
 var umlPartTemplate = {
   "id": "uml-part",
   "version": "1.0.0",
@@ -149940,7 +149114,7 @@ var umlPartTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/uml/uml-collaboration.template.ts
+// ../libs/engine/src/templates/generated/uml/uml-collaboration.template.ts
 var umlCollaborationTemplate = {
   "id": "uml-collaboration",
   "version": "1.0.0",
@@ -150053,7 +149227,7 @@ var umlCollaborationTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/index.ts
+// ../libs/engine/src/templates/generated/erd/index.ts
 var erd_exports = {};
 __export(erd_exports, {
   erdAssociativeEntityTemplate: () => erdAssociativeEntityTemplate,
@@ -150077,7 +149251,7 @@ __export(erd_exports, {
   erdWeakRelationshipTemplate: () => erdWeakRelationshipTemplate
 });
 
-// libs/engine/src/templates/generated/erd/erd-entity.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-entity.template.ts
 var erdEntityTemplate = {
   "id": "erd-entity",
   "version": "1.0.0",
@@ -150237,7 +149411,7 @@ var erdEntityTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-weak-entity.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-weak-entity.template.ts
 var erdWeakEntityTemplate = {
   "id": "erd-weak-entity",
   "version": "1.0.0",
@@ -150397,7 +149571,7 @@ var erdWeakEntityTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-relationship.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-relationship.template.ts
 var erdRelationshipTemplate = {
   "id": "erd-relationship",
   "version": "1.0.0",
@@ -150509,7 +149683,7 @@ var erdRelationshipTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-weak-relationship.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-weak-relationship.template.ts
 var erdWeakRelationshipTemplate = {
   "id": "erd-weak-relationship",
   "version": "1.0.0",
@@ -150622,7 +149796,7 @@ var erdWeakRelationshipTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-attribute.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-attribute.template.ts
 var erdAttributeTemplate = {
   "id": "erd-attribute",
   "version": "1.0.0",
@@ -150735,7 +149909,7 @@ var erdAttributeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-key-attribute.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-key-attribute.template.ts
 var erdKeyAttributeTemplate = {
   "id": "erd-key-attribute",
   "version": "1.0.0",
@@ -150848,7 +150022,7 @@ var erdKeyAttributeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-multivalued-attribute.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-multivalued-attribute.template.ts
 var erdMultivaluedAttributeTemplate = {
   "id": "erd-multivalued-attribute",
   "version": "1.0.0",
@@ -150961,7 +150135,7 @@ var erdMultivaluedAttributeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-derived-attribute.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-derived-attribute.template.ts
 var erdDerivedAttributeTemplate = {
   "id": "erd-derived-attribute",
   "version": "1.0.0",
@@ -151074,7 +150248,7 @@ var erdDerivedAttributeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-composite-attribute.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-composite-attribute.template.ts
 var erdCompositeAttributeTemplate = {
   "id": "erd-composite-attribute",
   "version": "1.0.0",
@@ -151187,7 +150361,7 @@ var erdCompositeAttributeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-isa.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-isa.template.ts
 var erdIsaTemplate = {
   "id": "erd-isa",
   "version": "1.0.0",
@@ -151301,7 +150475,7 @@ var erdIsaTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-associative-entity.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-associative-entity.template.ts
 var erdAssociativeEntityTemplate = {
   "id": "erd-associative-entity",
   "version": "1.0.0",
@@ -151464,7 +150638,7 @@ var erdAssociativeEntityTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-partial-key.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-partial-key.template.ts
 var erdPartialKeyTemplate = {
   "id": "erd-partial-key",
   "version": "1.0.0",
@@ -151578,7 +150752,7 @@ var erdPartialKeyTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-optional-attribute.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-optional-attribute.template.ts
 var erdOptionalAttributeTemplate = {
   "id": "erd-optional-attribute",
   "version": "1.0.0",
@@ -151691,7 +150865,7 @@ var erdOptionalAttributeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-table.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-table.template.ts
 var erdTableTemplate = {
   "id": "erd-table",
   "version": "1.0.0",
@@ -151805,7 +150979,7 @@ var erdTableTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-view.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-view.template.ts
 var erdViewTemplate = {
   "id": "erd-view",
   "version": "1.0.0",
@@ -151919,7 +151093,7 @@ var erdViewTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-bridge-entity.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-bridge-entity.template.ts
 var erdBridgeEntityTemplate = {
   "id": "erd-bridge-entity",
   "version": "1.0.0",
@@ -152081,7 +151255,7 @@ var erdBridgeEntityTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-subtype.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-subtype.template.ts
 var erdSubtypeTemplate = {
   "id": "erd-subtype",
   "version": "1.0.0",
@@ -152195,7 +151369,7 @@ var erdSubtypeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-supertype.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-supertype.template.ts
 var erdSupertypeTemplate = {
   "id": "erd-supertype",
   "version": "1.0.0",
@@ -152309,7 +151483,7 @@ var erdSupertypeTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/erd/erd-discriminator.template.ts
+// ../libs/engine/src/templates/generated/erd/erd-discriminator.template.ts
 var erdDiscriminatorTemplate = {
   "id": "erd-discriminator",
   "version": "1.0.0",
@@ -152423,7 +151597,7 @@ var erdDiscriminatorTemplate = {
   }
 };
 
-// libs/engine/src/templates/generated/register.ts
+// ../libs/engine/src/templates/generated/register.ts
 function isNodeTemplate(v) {
   return !!v && typeof v === "object" && "id" in v && "structure" in v && "meta" in v;
 }
@@ -152444,7 +151618,7 @@ function registerGeneratedTemplates(registry5) {
   return templates.length;
 }
 
-// libs/engine/src/templates/stencils.ts
+// ../libs/engine/src/templates/stencils.ts
 function templatesOf(mod) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
@@ -152504,7 +151678,7 @@ function registerStencils(registry5, stencils = builtInStencils()) {
   return n3;
 }
 
-// libs/engine/src/rendering/HtmlTemplateRenderer.ts
+// ../libs/engine/src/rendering/HtmlTemplateRenderer.ts
 var HtmlTemplateRenderer = class {
   constructor(eventBus) {
     this.eventBus = eventBus;
@@ -152755,8 +151929,9 @@ var HtmlTemplateRenderer = class {
   }
 };
 
-// libs/engine/src/rendering/LemonadeJSRenderer.ts
-var lemonade = __toESM(require_lemonade());
+// ../libs/engine/src/rendering/LemonadeJSRenderer.ts
+var lemonadeNs = __toESM(require_lemonade(), 1);
+var lemonade = lemonadeNs.default ?? lemonadeNs;
 var LemonadeJSRenderer = class {
   constructor(eventBus) {
     this.eventBus = eventBus;
@@ -152956,21 +152131,21 @@ var LemonadeJSRenderer = class {
   /**
    * Apply styles and classes to rendered element
    */
-  applyStyles(element2, result) {
+  applyStyles(element, result) {
     if (result.className) {
-      element2.className = result.className;
+      element.className = result.className;
     }
     if (result.style) {
       Object.entries(result.style).forEach(([key, value]) => {
         const cssKey = this.camelToKebab(key);
-        element2.style.setProperty(cssKey, String(value));
+        element.style.setProperty(cssKey, String(value));
       });
     }
     if (result.zIndex !== void 0) {
-      element2.style.zIndex = String(result.zIndex);
+      element.style.zIndex = String(result.zIndex);
     }
     if (result.pointerEvents === false) {
-      element2.style.pointerEvents = "none";
+      element.style.pointerEvents = "none";
     }
   }
   /**
@@ -153031,9 +152206,9 @@ var LemonadeJSRenderer = class {
    * @param nodeUuid - UUID of node to clean up
    */
   disposeNode(nodeUuid) {
-    const element2 = this.renderedElements.get(nodeUuid);
-    if (element2 && element2.parentNode) {
-      element2.parentNode.removeChild(element2);
+    const element = this.renderedElements.get(nodeUuid);
+    if (element && element.parentNode) {
+      element.parentNode.removeChild(element);
     }
     this.renderedElements.delete(nodeUuid);
     const self2 = this.selfObjects.get(nodeUuid);
@@ -153072,7 +152247,7 @@ var LemonadeJSRenderer = class {
   }
 };
 
-// libs/engine/src/template-library/common-templates.ts
+// ../libs/engine/src/template-library/common-templates.ts
 var UserAvatarTemplate = {
   id: "user-avatar",
   version: "1.0.0",
@@ -153437,7 +152612,7 @@ var CommonTemplates = {
   IconNode: IconNodeTemplate
 };
 
-// libs/engine/src/template-library/workflow-templates.ts
+// ../libs/engine/src/template-library/workflow-templates.ts
 var ProcessStepTemplate = {
   id: "process-step",
   version: "1.0.0",
@@ -153843,7 +153018,7 @@ var WorkflowTemplates = {
   Activity: ActivityTemplate
 };
 
-// libs/engine/src/template-library/data-viz-templates.ts
+// ../libs/engine/src/template-library/data-viz-templates.ts
 var MetricCardTemplate = {
   id: "metric-card",
   version: "1.0.0",
@@ -154279,7 +153454,7 @@ var DataVizTemplates = {
   ProgressBar: ProgressBarTemplate
 };
 
-// libs/engine/src/template-library/erd-templates.ts
+// ../libs/engine/src/template-library/erd-templates.ts
 var ERDTable = {
   id: "erd-table",
   version: "1.0.0",
@@ -155003,7 +154178,7 @@ var ERDTemplates = {
   ERDTableRepeater
 };
 
-// libs/engine/src/template-library/integration.ts
+// ../libs/engine/src/template-library/integration.ts
 function getAllLibraryTemplates() {
   return [
     ...Object.values(CommonTemplates),
@@ -155065,7 +154240,7 @@ function getUnregisteredTemplates(registry5) {
   return unregistered;
 }
 
-// libs/engine/src/template-library/index.ts
+// ../libs/engine/src/template-library/index.ts
 var TemplateLibraryManager = class {
   constructor() {
     this.templates = /* @__PURE__ */ new Map();
@@ -155248,7 +154423,7 @@ function registerCustomTemplate(template, category, tags = []) {
   TemplateLibrary.register(template, category, tags);
 }
 
-// libs/engine/src/dsl/sync/BidirectionalSync.ts
+// ../libs/engine/src/dsl/sync/BidirectionalSync.ts
 var BidirectionalSync = class {
   constructor(options = {}) {
     this.currentText = "";
@@ -155573,7 +154748,7 @@ var BidirectionalSync = class {
   }
 };
 
-// libs/engine/src/dsl/sync/LayoutApplicator.ts
+// ../libs/engine/src/dsl/sync/LayoutApplicator.ts
 function presetOptions(preset) {
   return {
     ...preset.options,
@@ -155808,7 +154983,7 @@ var LayoutApplicator = class {
   }
 };
 
-// libs/engine/src/dsl/sync/SyncStateManager.ts
+// ../libs/engine/src/dsl/sync/SyncStateManager.ts
 var SyncStateManager = class {
   constructor() {
     this.status = {
@@ -156037,7 +155212,7 @@ var SyncStateManager = class {
   }
 };
 
-// libs/engine/src/dsl/sync/IntegratedSyncManager.ts
+// ../libs/engine/src/dsl/sync/IntegratedSyncManager.ts
 var IntegratedSyncManager = class {
   constructor(options = {}) {
     // Callbacks
@@ -156258,7 +155433,7 @@ var IntegratedSyncManager = class {
   }
 };
 
-// libs/engine/src/dsl/types/ASTNode.ts
+// ../libs/engine/src/dsl/types/ASTNode.ts
 function isNodeDefinition(node) {
   return node.type === "NodeDefinition";
 }
@@ -156275,7 +155450,7 @@ function isClassDef(node) {
   return node.type === "ClassDef";
 }
 
-// libs/engine/src/collab/op.ts
+// ../libs/engine/src/collab/op.ts
 function setValueOf(op) {
   return op.clear === true ? void 0 : op.value;
 }
@@ -156313,7 +155488,7 @@ var LamportClock = class {
   }
 };
 
-// libs/engine/src/collab/apply-op.ts
+// ../libs/engine/src/collab/apply-op.ts
 var OpApplyError = class extends Error {
   constructor(message, op) {
     super(message);
@@ -156793,7 +155968,7 @@ function setDiagramProp(diagram, path, value) {
   }
 }
 
-// libs/engine/src/collab/integrity.ts
+// ../libs/engine/src/collab/integrity.ts
 var ReferentialIntegrity = class {
   constructor(diagram, lww) {
     this.diagram = diagram;
@@ -157107,7 +156282,7 @@ var ReferentialIntegrity = class {
   }
 };
 
-// libs/engine/src/collab/lww.ts
+// ../libs/engine/src/collab/lww.ts
 function newer(a, b) {
   if (a.clock !== b.clock) return a.clock > b.clock;
   return a.actor > b.actor;
@@ -157180,7 +156355,7 @@ var _LwwRegistry = class _LwwRegistry {
 _LwwRegistry.SEP = "\0";
 var LwwRegistry = _LwwRegistry;
 
-// libs/engine/src/collab/op-log.ts
+// ../libs/engine/src/collab/op-log.ts
 var OpLog = class {
   constructor() {
     this.ops = [];
@@ -157244,7 +156419,7 @@ function replay(diagram, ops) {
   return applied;
 }
 
-// libs/engine/src/collab/capture.ts
+// ../libs/engine/src/collab/capture.ts
 var STRUCTURAL = /* @__PURE__ */ new Set(["nodes", "links", "groups", "strokes"]);
 var STRUCTURAL_TARGET = {
   nodes: "node",
@@ -157549,7 +156724,7 @@ var OpCapture = class {
   }
 };
 
-// libs/engine/src/collab/undo.ts
+// ../libs/engine/src/collab/undo.ts
 function registerOf(op) {
   return op.op === "set" ? `${op.target} ${op.id} ${op.path}` : `${op.target} ${op.id}  presence`;
 }
@@ -157764,7 +156939,7 @@ var UndoStack = class {
   }
 };
 
-// libs/engine/src/collab/replica.ts
+// ../libs/engine/src/collab/replica.ts
 var Replica = class {
   constructor(diagram, options) {
     this.diagram = diagram;
@@ -158109,7 +157284,7 @@ var Replica = class {
   }
 };
 
-// libs/engine/src/comments/types.ts
+// ../libs/engine/src/comments/types.ts
 function messageOrder(a, b) {
   if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
   if (a.author !== b.author) return a.author < b.author ? -1 : 1;
@@ -158119,7 +157294,7 @@ function messageKey(m) {
   return `${String(m.createdAt).padStart(16, "0")}|${m.author}|${m.id}`;
 }
 
-// libs/engine/src/comments/mentions.ts
+// ../libs/engine/src/comments/mentions.ts
 var EXPLICIT = /@\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 var BARE = /(^|[^\w@[\]()])@([A-Za-z0-9][\w.-]*)/g;
 function parseMentions(body) {
@@ -158148,7 +157323,7 @@ function mentionKey(threadId, messageId) {
   return `${threadId}:${messageId}`;
 }
 
-// libs/engine/src/comments/read-state.ts
+// ../libs/engine/src/comments/read-state.ts
 var ReadState = class _ReadState {
   constructor(viewer) {
     this.viewer = viewer;
@@ -158204,7 +157379,7 @@ var ReadState = class _ReadState {
   }
 };
 
-// libs/engine/src/comments/comment-store.ts
+// ../libs/engine/src/comments/comment-store.ts
 var CommentStore = class {
   constructor(diagram, options) {
     this.diagram = diagram;
@@ -158669,7 +157844,7 @@ var CommentStore = class {
   }
 };
 
-// libs/engine/src/sync/awareness.ts
+// ../libs/engine/src/sync/awareness.ts
 var Awareness = class {
   constructor(options) {
     this.options = options;
@@ -158813,7 +157988,7 @@ function shallowEqual(a, b) {
   return false;
 }
 
-// libs/engine/src/sync/batcher.ts
+// ../libs/engine/src/sync/batcher.ts
 function registerKey(op) {
   return op.op === "set" ? `${op.target}\0${op.id}\0${op.path}` : null;
 }
@@ -158900,7 +158075,7 @@ var OpBatcher = class {
   }
 };
 
-// libs/engine/src/sync/causal-buffer.ts
+// ../libs/engine/src/sync/causal-buffer.ts
 var CausalBuffer = class {
   constructor(diagram, options = {}) {
     this.diagram = diagram;
@@ -159018,7 +158193,7 @@ var CausalBuffer = class {
   }
 };
 
-// libs/engine/src/sync/version-vector.ts
+// ../libs/engine/src/sync/version-vector.ts
 function mix32(n3) {
   let x = n3 | 0;
   x = Math.imul(x ^ x >>> 16, 73244475);
@@ -159097,7 +158272,7 @@ function deltaFor(ours, remote) {
   return { ops: out, repairedActors };
 }
 
-// libs/engine/src/sync/sync-adapter.ts
+// ../libs/engine/src/sync/sync-adapter.ts
 var SyncAdapter = class {
   constructor(replica, transport, options = {}) {
     this.replica = replica;
@@ -159471,12 +158646,12 @@ function createSyncSession(diagram, transport, options) {
   return adapter;
 }
 
-// libs/engine/src/sync/protocol.ts
+// ../libs/engine/src/sync/protocol.ts
 function isDocumentMessage(msg) {
   return msg.t === "ops";
 }
 
-// libs/engine/src/sync/transports/memory.ts
+// ../libs/engine/src/sync/transports/memory.ts
 var MemoryHub = class {
   constructor() {
     this.ports = /* @__PURE__ */ new Set();
@@ -159554,7 +158729,7 @@ var MemoryTransport = class {
   }
 };
 
-// libs/engine/src/sync/transports/unreliable.ts
+// ../libs/engine/src/sync/transports/unreliable.ts
 function mulberry32(seed) {
   let a = seed >>> 0;
   return () => {
@@ -159641,7 +158816,7 @@ var UnreliableHub = class extends MemoryHub {
   }
 };
 
-// libs/engine/src/sync/transports/broadcast-channel.ts
+// ../libs/engine/src/sync/transports/broadcast-channel.ts
 var BroadcastChannelTransport = class {
   constructor(options) {
     this.options = options;
@@ -159715,7 +158890,7 @@ var BroadcastChannelTransport = class {
   }
 };
 
-// libs/engine/src/sync/transports/websocket.ts
+// ../libs/engine/src/sync/transports/websocket.ts
 var OPEN = 1;
 var WebSocketTransport = class {
   constructor(options) {
@@ -159832,7 +159007,7 @@ var WebSocketTransport = class {
   }
 };
 
-// libs/renderer/src/svg/channel-nudging.ts
+// ../libs/renderer/src/svg/channel-nudging.ts
 var EPS = 1e-6;
 function computeChannelNudges(routes, options) {
   const members = [];
@@ -159984,7 +159159,7 @@ function applyChannelNudges(points, deltas) {
   return out;
 }
 
-// libs/renderer/src/svg/route-memo.ts
+// ../libs/renderer/src/svg/route-memo.ts
 var ROUTE_INFLUENCE_PAD = 80;
 var MAX_ENTRIES = 5e4;
 var RouteMemo = class {
@@ -160110,7 +159285,7 @@ function coalesce2(rects, maxBoxes = 16) {
   return boxes;
 }
 
-// libs/renderer/src/svg/motion-tracker.ts
+// ../libs/renderer/src/svg/motion-tracker.ts
 var MotionTracker = class {
   constructor() {
     /** Rects as of the previous observed frame. */
@@ -160153,7 +159328,7 @@ var MotionTracker = class {
   }
 };
 
-// libs/renderer/src/svg/node-sizing.ts
+// ../libs/renderer/src/svg/node-sizing.ts
 function getNodeSizing(node) {
   const raw = node.getMetadata("sizing");
   return raw && typeof raw === "object" ? raw : {};
@@ -160185,7 +159360,7 @@ function clampSizeToConstraints(width, height, sizing, opts = {}) {
   };
 }
 
-// libs/renderer/src/svg/node-toolbar.ts
+// ../libs/renderer/src/svg/node-toolbar.ts
 function getNodeToolbar(node) {
   const raw = node.getMetadata("toolbar");
   return raw && typeof raw === "object" ? raw : void 0;
@@ -160204,7 +159379,7 @@ function haloAllows(config, action, def = true) {
   return h.includes(action);
 }
 
-// libs/renderer/src/interaction/selection-tools.ts
+// ../libs/renderer/src/interaction/selection-tools.ts
 var DEFAULT_SELECTION_TOOLS_CONFIG = {
   handleSize: 8,
   rotateHandleOffset: 26,
@@ -160972,7 +160147,7 @@ function samePoints(a, b) {
   return true;
 }
 
-// libs/renderer/src/perf/quality-governor.ts
+// ../libs/renderer/src/perf/quality-governor.ts
 var DEFAULTS3 = {
   budgetMs: 16.7,
   downFactor: 1,
@@ -161077,7 +160252,7 @@ function medianOf(values) {
   return v.length % 2 ? v[v.length >> 1] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
 }
 
-// libs/renderer/src/svg/route-solver-bridge.ts
+// ../libs/renderer/src/svg/route-solver-bridge.ts
 var RouteSolverBridge = class {
   constructor(options = {}) {
     /** The solver's latest accepted answer, and the world it describes. */
@@ -161169,7 +160344,7 @@ function toRoutedPath(points) {
   };
 }
 
-// libs/renderer/src/a11y/semantics.ts
+// ../libs/renderer/src/a11y/semantics.ts
 var DIAGRAM_ROLE = "graphics-document";
 var NODE_ROLE = "graphics-symbol";
 var EDGE_ROLE = "graphics-symbol";
@@ -161300,7 +160475,7 @@ function diagramOf(engine) {
   return typeof asDiagram.getNodes === "function" ? asDiagram : void 0;
 }
 
-// libs/renderer/src/export/style-flattener.ts
+// ../libs/renderer/src/export/style-flattener.ts
 var PAINTABLE_PROPS = /* @__PURE__ */ new Set([
   "fill",
   "stroke",
@@ -161358,7 +160533,7 @@ function createClassStyleResolver(theme, warnings = []) {
   };
 }
 
-// libs/renderer/src/export/vnode-serializer.ts
+// ../libs/renderer/src/export/vnode-serializer.ts
 var DROPPED_PROPS = /* @__PURE__ */ new Set(["containerId", "data-grafloria-instance"]);
 var CSS_BLUR = /^blur\(\s*([\d.]+)(?:px)?\s*\)$/;
 function escapeAttr(value) {
@@ -161535,7 +160710,7 @@ function isVNodeChild(child) {
   return !!child && typeof child === "object" && typeof child.type === "string";
 }
 
-// libs/renderer/src/export/scope.ts
+// ../libs/renderer/src/export/scope.ts
 var IDENTIFIED = /^(node|link)-/;
 function selectionKeys(ids) {
   const keys = /* @__PURE__ */ new Set();
@@ -161566,7 +160741,7 @@ function prune(vnode, keys) {
   return { ...vnode, children: kept };
 }
 
-// libs/renderer/src/canvas/path-geometry.ts
+// ../libs/renderer/src/canvas/path-geometry.ts
 var KAPPA = 0.5522847498307936;
 var IDENTITY = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 function multiply(m1, m2) {
@@ -162100,7 +161275,7 @@ function padBounds(b, pad) {
   return { minX: b.minX - pad, minY: b.minY - pad, maxX: b.maxX + pad, maxY: b.maxY + pad };
 }
 
-// libs/renderer/src/export/bounds.ts
+// ../libs/renderer/src/export/bounds.ts
 var BoxAccumulator = class {
   constructor() {
     this.minX = Infinity;
@@ -162311,7 +161486,7 @@ function padRect(rect, padding) {
   };
 }
 
-// libs/renderer/src/export/custom-nodes.ts
+// ../libs/renderer/src/export/custom-nodes.ts
 var XHTML_NS2 = "http://www.w3.org/1999/xhtml";
 function n(value) {
   if (!Number.isFinite(value)) return "0";
@@ -162456,7 +161631,7 @@ function filterCaptures(captures, ids) {
   return captures.filter((capture) => set.has(capture.id));
 }
 
-// libs/renderer/src/export/round-trip.ts
+// ../libs/renderer/src/export/round-trip.ts
 var GRAFLORIA_NS = "https://grafloria.dev/ns/diagram";
 var GRAFLORIA_MODEL_KEY = "grafloria-model";
 function escapeXmlText(value) {
@@ -162734,7 +161909,7 @@ function importDiagram(artifact, options) {
   return new DiagramSerializer().deserialize(envelope, options);
 }
 
-// libs/renderer/src/export/assets.ts
+// ../libs/renderer/src/export/assets.ts
 var FONT_MIME = {
   woff2: "font/woff2",
   woff: "font/woff",
@@ -162947,7 +162122,7 @@ async function fetchFont(url, descriptor, options = {}) {
   return { ...descriptor, data: data2, format: descriptor.format ?? fontFormatFromUrl(url) };
 }
 
-// libs/renderer/src/export/svg-export.ts
+// ../libs/renderer/src/export/svg-export.ts
 var SVG_XMLNS = "http://www.w3.org/2000/svg";
 var XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>';
 function readViewBox(root) {
@@ -163035,7 +162210,7 @@ function unionRects(a, b) {
   };
 }
 
-// libs/renderer/src/export/raster.ts
+// ../libs/renderer/src/export/raster.ts
 var MIME_BY_FORMAT = {
   png: "image/png",
   jpeg: "image/jpeg",
@@ -163105,7 +162280,7 @@ function resolveRasterBackend(explicit) {
   );
 }
 
-// libs/renderer/src/export/pdf/pdf-primitives.ts
+// ../libs/renderer/src/export/pdf/pdf-primitives.ts
 function num3(value) {
   if (!Number.isFinite(value)) return "0";
   const rounded = Number(value.toFixed(3));
@@ -163420,7 +162595,7 @@ function pageDimensions(size, orientation) {
   return orientation === "landscape" ? { width: portrait.height, height: portrait.width } : portrait;
 }
 
-// libs/renderer/src/export/pdf/pdf-path.ts
+// ../libs/renderer/src/export/pdf/pdf-path.ts
 function cmdsToPdf(cmds) {
   const ops = [];
   let cx = 0;
@@ -163470,7 +162645,7 @@ var pdfCircle = (cx, cy, r) => cmdsToPdf(circlePath(cx, cy, r));
 var pdfLine = (x1, y1, x2, y2) => cmdsToPdf(linePath(x1, y1, x2, y2));
 var pdfPoly = (points, close) => cmdsToPdf(polyPath(points, close));
 
-// libs/renderer/src/export/pdf/flate.ts
+// ../libs/renderer/src/export/pdf/flate.ts
 function adler32(data2) {
   let a = 1;
   let b = 0;
@@ -163672,7 +162847,7 @@ function zlibDeflateStored(data2) {
   return out;
 }
 
-// libs/renderer/src/export/pdf/png.ts
+// ../libs/renderer/src/export/pdf/png.ts
 function decodeDataUrlImage(href, warn) {
   const match = /^data:(image\/[a-z+.-]+)?(;base64)?,([\s\S]*)$/i.exec(href.trim());
   if (!match) {
@@ -164105,7 +163280,7 @@ function decodeJpeg(bytes, warn) {
   };
 }
 
-// libs/renderer/src/export/pdf/pdf-export.ts
+// ../libs/renderer/src/export/pdf/pdf-export.ts
 function resolveMargins(margin) {
   if (typeof margin === "number") return { top: margin, right: margin, bottom: margin, left: margin };
   if (margin) return margin;
@@ -164866,7 +164041,7 @@ function dedupe(warnings) {
   return [...new Set(warnings)];
 }
 
-// libs/renderer/src/export/pagination.ts
+// ../libs/renderer/src/export/pagination.ts
 function nodeBoxes(root) {
   const out = [];
   const walk3 = (vnode) => {
@@ -165025,7 +164200,7 @@ function printDocument(html) {
   });
 }
 
-// libs/renderer/src/svg/paint-servers.ts
+// ../libs/renderer/src/svg/paint-servers.ts
 var GRADIENT_TYPES = /* @__PURE__ */ new Set(["linear", "radial"]);
 var PATTERN_TYPES = /* @__PURE__ */ new Set(["dots", "lines", "grid", "hatch", "crosshatch"]);
 function isPaintSpec(value) {
@@ -165189,7 +164364,7 @@ function buildShadowFilterVNode(id, shadow) {
   };
 }
 
-// libs/renderer/src/utils/lru-cache.ts
+// ../libs/renderer/src/utils/lru-cache.ts
 var LruCache = class {
   constructor(capacity) {
     this.capacity = capacity;
@@ -165242,7 +164417,7 @@ var LruCache = class {
   }
 };
 
-// libs/renderer/src/platform/platform.ts
+// ../libs/renderer/src/platform/platform.ts
 function hasDocument() {
   return typeof document !== "undefined" && !!document;
 }
@@ -165269,7 +164444,7 @@ function now() {
   return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
 }
 
-// libs/renderer/src/comments/comment-pins.ts
+// ../libs/renderer/src/comments/comment-pins.ts
 var DEFAULT_RADIUS = 11;
 function commentPinAccessibleName(thread) {
   const anchor = thread.resolvedAnchor;
@@ -165428,7 +164603,7 @@ function pin(t, r, scale, options) {
   };
 }
 
-// libs/renderer/src/svg/stroke-layer.ts
+// ../libs/renderer/src/svg/stroke-layer.ts
 function n2(v) {
   return (Math.round(v * 100) / 100).toString();
 }
@@ -165517,7 +164692,7 @@ function renderStrokesLayer(strokes) {
   };
 }
 
-// libs/renderer/src/svg/path-outline.ts
+// ../libs/renderer/src/svg/path-outline.ts
 function round3(n3) {
   return Math.round(n3 * 1e3) / 1e3;
 }
@@ -165605,7 +164780,7 @@ function sampleOutlineFromData(d, steps = 24) {
   return sampleOutlinePoints(parsePath(d), steps);
 }
 
-// libs/renderer/src/svg/shape-registry.ts
+// ../libs/renderer/src/svg/shape-registry.ts
 function fmt(verts) {
   return verts.map((v) => `${v.x},${v.y}`).join(" ");
 }
@@ -166450,7 +165625,7 @@ function buildShapeShadow(def, width, height, offset, borderRadius, baseProps) {
   return { type: spec.el, props: { ...spec.geom, ...baseProps } };
 }
 
-// libs/renderer/src/svg/port-layout.ts
+// ../libs/renderer/src/svg/port-layout.ts
 var DEG = Math.PI / 180;
 function edgeSpan(side, width, height, padding) {
   switch (side) {
@@ -166575,7 +165750,7 @@ function runPortLayout(spec, input) {
   return point;
 }
 
-// libs/renderer/src/svg/port-positioning.ts
+// ../libs/renderer/src/svg/port-positioning.ts
 function getPortPositionForShape(port, node) {
   const shapeConfig = node.getMetadata("shape") || { type: "rect" };
   const { width, height } = node.size;
@@ -166613,7 +165788,7 @@ function getLayoutRank(port, node, side, groupId) {
   return { rank: rank < 0 ? 0 : rank, count: Math.max(1, inScope.length) };
 }
 
-// libs/renderer/src/svg/port-glyph.ts
+// ../libs/renderer/src/svg/port-glyph.ts
 function glyphHalfExtents(shape, radius) {
   const size = shape?.size;
   const width = shape?.width ?? size ?? radius * 2;
@@ -166683,7 +165858,7 @@ function renderPortGlyph(input) {
   };
 }
 
-// libs/renderer/src/svg/text-block.ts
+// ../libs/renderer/src/svg/text-block.ts
 var DEFAULT_FONT_SIZE2 = 12;
 var DEFAULT_LINE_HEIGHT = 1.2;
 var ELLIPSIS = "\u2026";
@@ -166798,7 +165973,7 @@ function renderTextBlock(opts) {
   return { type: "text", props: baseProps, children: tspans };
 }
 
-// libs/renderer/src/svg/port-label.ts
+// ../libs/renderer/src/svg/port-label.ts
 function outwardNormal(side) {
   switch (side) {
     case "left":
@@ -166816,12 +165991,12 @@ function clearance(direction, hw, hh) {
 }
 function portLabelGeometry(input) {
   const { spec, x, y, hw, hh, side, width, height } = input;
-  const layout3 = spec.layout ?? "outside";
+  const layout = spec.layout ?? "outside";
   const offset = spec.offset ?? DEFAULT_PORT_LABEL_OFFSET;
   const nudge = input.nudge ?? 0;
   const normal = outwardNormal(side);
   let direction;
-  switch (layout3) {
+  switch (layout) {
     case "inside":
       direction = { x: -normal.x, y: -normal.y };
       break;
@@ -166915,7 +166090,7 @@ function renderPortLabel(input) {
   };
 }
 
-// libs/renderer/src/svg/link-fanout.ts
+// ../libs/renderer/src/svg/link-fanout.ts
 var EPSILON = 1e-6;
 var DEFAULT_PARALLEL_SPACING = 16;
 var DEFAULT_SELF_LOOP_SIZE = 40;
@@ -167087,7 +166262,7 @@ function buildSelfLoopPoints(spec) {
   return [a, aOut, corner, bOut, b];
 }
 
-// libs/renderer/src/svg/port-spots.ts
+// ../libs/renderer/src/svg/port-spots.ts
 function sideTangent(side) {
   const normal = sideNormal(side);
   return { x: -normal.y, y: normal.x };
@@ -167173,8 +166348,66 @@ function assignSpreadLanes(entries, spec) {
   return lanes;
 }
 
-// libs/renderer/src/ext/link-pipeline.ts
-init_disposable();
+// ../libs/renderer/src/ext/disposable.ts
+function once(fn) {
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    fn();
+  };
+}
+function snapshotRestore(previous, restore, remove) {
+  return once(() => {
+    if (previous === void 0) remove();
+    else restore(previous);
+  });
+}
+var DisposableStore = class {
+  constructor() {
+    this.disposers = [];
+    this.disposed = false;
+  }
+  /** Track a disposer. If the store is ALREADY disposed, run it immediately. */
+  add(disposer) {
+    if (this.disposed) {
+      disposer();
+      return () => void 0;
+    }
+    const wrapped = once(disposer);
+    this.disposers.push(wrapped);
+    return wrapped;
+  }
+  /** How many live registrations this store holds (tests assert on this). */
+  get size() {
+    return this.disposers.length;
+  }
+  get isDisposed() {
+    return this.disposed;
+  }
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    const errors = [];
+    for (let i = this.disposers.length - 1; i >= 0; i--) {
+      try {
+        this.disposers[i]();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    this.disposers.length = 0;
+    if (errors.length > 0) {
+      const error = new Error(
+        `${errors.length} disposer(s) threw during dispose(): ` + errors.map((e) => e instanceof Error ? e.message : String(e)).join("; ")
+      );
+      error.errors = errors;
+      throw error;
+    }
+  }
+};
+
+// ../libs/renderer/src/ext/link-pipeline.ts
 var anchors = /* @__PURE__ */ new Map();
 function registerAnchor(name, fn) {
   const previous = anchors.get(name);
@@ -167421,10 +166654,7 @@ function installBuiltinLinkPipeline() {
 }
 installBuiltinLinkPipeline();
 
-// libs/renderer/src/ext/diagram-registry.ts
-init_disposable();
-
-// libs/renderer/src/svg/edge-templates.ts
+// ../libs/renderer/src/svg/edge-templates.ts
 var linkTemplates = /* @__PURE__ */ new Map();
 var labelTemplates = /* @__PURE__ */ new Map();
 var markers = /* @__PURE__ */ new Map();
@@ -167553,7 +166783,7 @@ function hashString(value) {
   return (hash >>> 0).toString(36);
 }
 
-// libs/renderer/src/services/custom-animation-registry.ts
+// ../libs/renderer/src/services/custom-animation-registry.ts
 var CustomAnimationRegistry = class {
   constructor() {
     this.animations = /* @__PURE__ */ new Map();
@@ -167634,37 +166864,37 @@ var CustomAnimationRegistry = class {
   /**
    * Apply animation to an element
    */
-  applyToElement(element2, animationName) {
+  applyToElement(element, animationName) {
     const definition = this.animations.get(animationName);
     if (!definition) {
       console.error(`Animation "${animationName}" not found`);
       return false;
     }
-    if (!this.appliedAnimations.has(element2)) {
-      this.appliedAnimations.set(element2, /* @__PURE__ */ new Set());
+    if (!this.appliedAnimations.has(element)) {
+      this.appliedAnimations.set(element, /* @__PURE__ */ new Set());
     }
-    this.appliedAnimations.get(element2).add(animationName);
+    this.appliedAnimations.get(element).add(animationName);
     const animationCSS = this.buildAnimationCSS(definition);
-    element2.style.animation = animationCSS;
+    element.style.animation = animationCSS;
     if (definition.willChange && definition.willChange.length > 0) {
-      element2.style.willChange = definition.willChange.join(", ");
+      element.style.willChange = definition.willChange.join(", ");
     }
-    this.notifyListeners(animationName, element2);
+    this.notifyListeners(animationName, element);
     return true;
   }
   /**
    * Remove animation from an element
    */
-  removeFromElement(element2, animationName) {
-    const applied = this.appliedAnimations.get(element2);
+  removeFromElement(element, animationName) {
+    const applied = this.appliedAnimations.get(element);
     if (applied) {
       applied.delete(animationName);
       if (applied.size === 0) {
-        element2.style.animation = "";
-        element2.style.willChange = "";
-        this.appliedAnimations.delete(element2);
+        element.style.animation = "";
+        element.style.willChange = "";
+        this.appliedAnimations.delete(element);
       } else {
-        this.reapplyAnimations(element2);
+        this.reapplyAnimations(element);
       }
     }
   }
@@ -167672,17 +166902,17 @@ var CustomAnimationRegistry = class {
    * Remove animation from all elements
    */
   removeFromAllElements(animationName) {
-    this.appliedAnimations.forEach((animations, element2) => {
+    this.appliedAnimations.forEach((animations, element) => {
       if (animations.has(animationName)) {
-        this.removeFromElement(element2, animationName);
+        this.removeFromElement(element, animationName);
       }
     });
   }
   /**
    * Reapply all animations to an element
    */
-  reapplyAnimations(element2) {
-    const applied = this.appliedAnimations.get(element2);
+  reapplyAnimations(element) {
+    const applied = this.appliedAnimations.get(element);
     if (!applied || applied.size === 0) {
       return;
     }
@@ -167697,9 +166927,9 @@ var CustomAnimationRegistry = class {
         }
       }
     });
-    element2.style.animation = cssValues.join(", ");
+    element.style.animation = cssValues.join(", ");
     if (willChangeValues.length > 0) {
-      element2.style.willChange = [...new Set(willChangeValues)].join(", ");
+      element.style.willChange = [...new Set(willChangeValues)].join(", ");
     }
   }
   /**
@@ -167748,12 +166978,12 @@ ${anim.keyframes}
   /**
    * Notify listeners when animation is applied
    */
-  notifyListeners(animationName, element2) {
+  notifyListeners(animationName, element) {
     const listeners3 = this.animationListeners.get(animationName);
     if (listeners3) {
       listeners3.forEach((listener) => {
         try {
-          listener(element2);
+          listener(element);
         } catch (error) {
           console.error("Error in animation listener:", error);
         }
@@ -167765,9 +166995,9 @@ ${anim.keyframes}
    */
   getElementsWithAnimation(animationName) {
     const elements = [];
-    this.appliedAnimations.forEach((animations, element2) => {
+    this.appliedAnimations.forEach((animations, element) => {
       if (animations.has(animationName)) {
-        elements.push(element2);
+        elements.push(element);
       }
     });
     return elements;
@@ -167775,25 +167005,25 @@ ${anim.keyframes}
   /**
    * Get all animations applied to an element
    */
-  getElementAnimations(element2) {
-    const applied = this.appliedAnimations.get(element2);
+  getElementAnimations(element) {
+    const applied = this.appliedAnimations.get(element);
     return applied ? Array.from(applied) : [];
   }
   /**
    * Clear all animations from an element
    */
-  clearElement(element2) {
-    this.appliedAnimations.delete(element2);
-    element2.style.animation = "";
-    element2.style.willChange = "";
+  clearElement(element) {
+    this.appliedAnimations.delete(element);
+    element.style.animation = "";
+    element.style.willChange = "";
   }
   /**
    * Clear all animations
    */
   clearAll() {
-    this.appliedAnimations.forEach((_, element2) => {
-      element2.style.animation = "";
-      element2.style.willChange = "";
+    this.appliedAnimations.forEach((_, element) => {
+      element.style.animation = "";
+      element.style.willChange = "";
     });
     this.appliedAnimations.clear();
   }
@@ -167852,7 +167082,7 @@ function resetGlobalCustomAnimationRegistry() {
   globalRegistry = null;
 }
 
-// libs/renderer/src/ext/diagram-registry.ts
+// ../libs/renderer/src/ext/diagram-registry.ts
 function setScoped(scope, table, key, value, notify) {
   const map = scope.table(table);
   const had = map.has(key);
@@ -168085,7 +167315,7 @@ var DiagramRegistry = class {
 };
 var GLOBAL_DIAGRAM_REGISTRY = new DiagramRegistry(null);
 
-// libs/renderer/src/svg/auto-size.ts
+// ../libs/renderer/src/svg/auto-size.ts
 var DEFAULT_FONT_SIZE3 = 14;
 var DEFAULT_LINE_HEIGHT2 = 1.2;
 function measureLabelContent(text, opts = {}) {
@@ -168156,7 +167386,7 @@ function autoSizeDiagram(nodes, opts = {}) {
   return changed;
 }
 
-// libs/renderer/src/svg/panel.ts
+// ../libs/renderer/src/svg/panel.ts
 var DEFAULT_HEADER_HEIGHT = 22;
 var DEFAULT_IMAGE_HEIGHT = 48;
 var DEFAULT_ROW_HEIGHT = 18;
@@ -168425,7 +167655,7 @@ function textVNode(key, spec) {
   };
 }
 
-// libs/renderer/src/svg/html-node.ts
+// ../libs/renderer/src/svg/html-node.ts
 var ALLOWED_TAGS = /* @__PURE__ */ new Set([
   "div",
   "span",
@@ -168570,7 +167800,7 @@ function buildHtmlForeignObject(node, width, height) {
   };
 }
 
-// libs/renderer/src/svg/ArrowRenderer.ts
+// ../libs/renderer/src/svg/ArrowRenderer.ts
 var ArrowRenderer = class {
   constructor() {
     this.defaultColor = "#000000";
@@ -169239,7 +168469,7 @@ var ArrowRenderer = class {
   }
 };
 
-// libs/renderer/src/svg/LabelRenderer.ts
+// ../libs/renderer/src/svg/LabelRenderer.ts
 var DEFAULT_HTML_LABEL_WIDTH = 120;
 var DEFAULT_HTML_LABEL_HEIGHT = 28;
 var LabelRenderer = class {
@@ -169443,7 +168673,7 @@ var LabelRenderer = class {
   }
 };
 
-// libs/renderer/src/svg/JumpPointDetector.ts
+// ../libs/renderer/src/svg/JumpPointDetector.ts
 var JumpPointDetector = class {
   /**
    * Find intersection between two line segments
@@ -169578,7 +168808,7 @@ var JumpPointDetector = class {
   }
 };
 
-// libs/renderer/src/svg/JumpPointRenderer.ts
+// ../libs/renderer/src/svg/JumpPointRenderer.ts
 var JumpPointRenderer = class {
   constructor() {
     this.defaultSize = 10;
@@ -169846,7 +169076,7 @@ var JumpPointRenderer = class {
   }
 };
 
-// libs/renderer/src/svg/link-hit-test.ts
+// ../libs/renderer/src/svg/link-hit-test.ts
 var DEFAULT_ENDPOINT_RADIUS = 8;
 var DEFAULT_ARROW_RADIUS = 10;
 var DEFAULT_LABEL_WIDTH = 40;
@@ -169956,7 +169186,7 @@ function hitTestLink(options, query, tolerance) {
   return null;
 }
 
-// libs/renderer/src/svg/edge-optimizer.ts
+// ../libs/renderer/src/svg/edge-optimizer.ts
 var DEFAULTS4 = {
   cellSize: 120,
   labelSearchSteps: 6,
@@ -170435,7 +169665,7 @@ function includeByMode(angle, mode, threshold) {
   }
 }
 
-// libs/renderer/src/interaction/WaypointEditor.ts
+// ../libs/renderer/src/interaction/WaypointEditor.ts
 var WaypointEditor = class {
   constructor(config) {
     this.config = config;
@@ -170658,7 +169888,7 @@ var WaypointEditor = class {
   }
 };
 
-// libs/renderer/src/interaction/ControlPointEditor.ts
+// ../libs/renderer/src/interaction/ControlPointEditor.ts
 var ControlPointEditor = class {
   constructor(config) {
     this.config = { ...config };
@@ -170959,7 +170189,7 @@ var ControlPointEditor = class {
   }
 };
 
-// libs/renderer/src/a11y/reduced-motion.ts
+// ../libs/renderer/src/a11y/reduced-motion.ts
 var MOTION_PREFERENCE_STYLE_ID = "grafloria-motion-preferences";
 var MOTION_PREFERENCE_CSS = `
 /* ==========================================================================
@@ -171129,7 +170359,7 @@ function removeMotionPreferenceStyles(doc) {
   target?.getElementById(MOTION_PREFERENCE_STYLE_ID)?.remove();
 }
 
-// libs/renderer/src/services/animation.service.ts
+// ../libs/renderer/src/services/animation.service.ts
 var AnimationService = class {
   constructor(config) {
     this.config = {
@@ -171145,8 +170375,10 @@ var AnimationService = class {
       lazyLoadCSS: false
     };
     this.motionMediaQuery = null;
+    this.motionHandler = null;
     this.batteryManager = null;
     // Battery API (experimental)
+    this.batteryHandler = null;
     this.listeners = /* @__PURE__ */ new Set();
     // Phase 1.1: Lazy CSS loading
     this.cssInjected = false;
@@ -171176,6 +170408,7 @@ var AnimationService = class {
         this.updateAllAnimations();
         this.notifyListeners();
       };
+      this.motionHandler = handler;
       if (this.motionMediaQuery.addEventListener) {
         this.motionMediaQuery.addEventListener("change", handler);
       } else if (this.motionMediaQuery.addListener) {
@@ -171206,6 +170439,7 @@ var AnimationService = class {
           this.notifyListeners();
         }
       };
+      this.batteryHandler = updateBatteryMode;
       this.batteryManager.addEventListener("levelchange", updateBatteryMode);
       this.batteryManager.addEventListener("chargingchange", updateBatteryMode);
       updateBatteryMode();
@@ -171446,10 +170680,17 @@ var AnimationService = class {
       return;
     }
     try {
-      this.styleElement = document.createElement("style");
-      this.styleElement.id = "grafloria-animations";
-      this.styleElement.textContent = this.getAnimationCSS();
-      document.head.appendChild(this.styleElement);
+      const existing = document.getElementById("grafloria-animations");
+      if (existing) {
+        existing.dataset["grafloriaRefs"] = String(Number(existing.dataset["grafloriaRefs"] ?? "1") + 1);
+        this.styleElement = existing;
+      } else {
+        this.styleElement = document.createElement("style");
+        this.styleElement.id = "grafloria-animations";
+        this.styleElement.dataset["grafloriaRefs"] = "1";
+        this.styleElement.textContent = this.getAnimationCSS();
+        document.head.appendChild(this.styleElement);
+      }
       this.cssInjected = true;
       console.debug("Animation CSS injected");
     } catch (error) {
@@ -171464,8 +170705,14 @@ var AnimationService = class {
       return;
     }
     try {
-      if (this.styleElement && this.styleElement.parentNode) {
-        this.styleElement.parentNode.removeChild(this.styleElement);
+      const el = this.styleElement ?? document.getElementById("grafloria-animations");
+      if (el) {
+        const refs = Number(el.dataset["grafloriaRefs"] ?? "1") - 1;
+        if (refs <= 0) {
+          el.parentNode?.removeChild(el);
+        } else {
+          el.dataset["grafloriaRefs"] = String(refs);
+        }
       }
       this.styleElement = null;
       this.cssInjected = false;
@@ -171847,26 +171094,24 @@ var AnimationService = class {
    */
   destroy() {
     this.removeCSS();
-    if (this.motionMediaQuery) {
+    if (this.motionMediaQuery && this.motionHandler) {
       if (this.motionMediaQuery.removeEventListener) {
-        this.motionMediaQuery.removeEventListener("change", () => {
-        });
+        this.motionMediaQuery.removeEventListener("change", this.motionHandler);
       } else if (this.motionMediaQuery.removeListener) {
-        this.motionMediaQuery.removeListener(() => {
-        });
+        this.motionMediaQuery.removeListener(this.motionHandler);
       }
     }
-    if (this.batteryManager) {
-      this.batteryManager.removeEventListener("levelchange", () => {
-      });
-      this.batteryManager.removeEventListener("chargingchange", () => {
-      });
+    this.motionHandler = null;
+    if (this.batteryManager && this.batteryHandler) {
+      this.batteryManager.removeEventListener("levelchange", this.batteryHandler);
+      this.batteryManager.removeEventListener("chargingchange", this.batteryHandler);
     }
+    this.batteryHandler = null;
     this.listeners.clear();
   }
 };
 
-// libs/renderer/src/svg/svg-renderer.ts
+// ../libs/renderer/src/svg/svg-renderer.ts
 var GRAFLORIA_BASE_STYLE_ID = "grafloria-renderer-styles";
 var GRAFLORIA_INSTANCE_STYLE_PREFIX = "grafloria-renderer-theme-";
 var GRAFLORIA_INSTANCE_OVERRIDE_PREFIX = "grafloria-renderer-overrides-";
@@ -172656,9 +171901,9 @@ var _SVGRenderer = class _SVGRenderer {
    * with the element that wraps BOTH layers (the canvas host) so those nodes
    * inherit the `--grafloria-*` variables and match the scoped rules too.
    */
-  applyInstanceScope(element2) {
-    if (!element2 || !this.config.useCSSMode) return;
-    element2.setAttribute(GRAFLORIA_INSTANCE_ATTR, this.instanceId);
+  applyInstanceScope(element) {
+    if (!element || !this.config.useCSSMode) return;
+    element.setAttribute(GRAFLORIA_INSTANCE_ATTR, this.instanceId);
   }
   /**
    * The instance-scope prop for a root VNode. Emitted in CSS mode only:
@@ -173047,9 +172292,9 @@ var _SVGRenderer = class _SVGRenderer {
     const ids = options.scope === "selection" ? this.selectedIds() : options.includeIds;
     let tree = this.render(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
     if (ids !== void 0) tree = filterTreeByIds(tree, ids);
-    const layout3 = paginate(tree, { padding, ...pagination });
-    const warnings = [...layout3.warnings];
-    const pages = layout3.pages.map((page) => {
+    const layout = paginate(tree, { padding, ...pagination });
+    const warnings = [...layout.warnings];
+    const pages = layout.pages.map((page) => {
       const result = exportSvg(tree, {
         theme: this.theme,
         viewBox: page.rect,
@@ -173063,7 +172308,7 @@ var _SVGRenderer = class _SVGRenderer {
       warnings.push(...result.warnings);
       return { ...page, svg: result.svg };
     });
-    return { pages, columns: layout3.columns, rows: layout3.rows, warnings: [...new Set(warnings)] };
+    return { pages, columns: layout.columns, rows: layout.rows, warnings: [...new Set(warnings)] };
   }
   /**
    * A multi-page PDF of a diagram too big for one sheet.
@@ -173076,16 +172321,16 @@ var _SVGRenderer = class _SVGRenderer {
     const ids = options.scope === "selection" ? this.selectedIds() : options.includeIds;
     let tree = this.render(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
     if (ids !== void 0) tree = filterTreeByIds(tree, ids);
-    const layout3 = paginate(tree, { padding, ...pagination });
+    const layout = paginate(tree, { padding, ...pagination });
     const result = exportPdf(tree, {
       theme: this.theme,
       padding,
       backgroundColor: options.backgroundColor,
       pageNumbers: true,
       ...options.pdf,
-      pages: layout3.pages
+      pages: layout.pages
     });
-    return { ...result, warnings: [.../* @__PURE__ */ new Set([...layout3.warnings, ...result.warnings])] };
+    return { ...result, warnings: [.../* @__PURE__ */ new Set([...layout.warnings, ...result.warnings])] };
   }
   /**
    * Every EXTERNAL image URL the exported tree will reference — a panel node's
@@ -173184,6 +172429,7 @@ var _SVGRenderer = class _SVGRenderer {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.animationService.destroy();
     this.routeMemo.clear();
     this.frameObstacleCache = null;
     this.solverBridge?.dispose();
@@ -178168,7 +177414,7 @@ _SVGRenderer.LINK_VAR_SAFE = /* @__PURE__ */ new Set([
 _SVGRenderer.BELOW_LABEL_GAP = 5;
 var SVGRenderer = _SVGRenderer;
 
-// libs/renderer/src/svg/notation-shapes.ts
+// ../libs/renderer/src/svg/notation-shapes.ts
 var DOUBLE_INSET = 5;
 var rectPath2 = (x, y, w, h) => `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`;
 var diamondPath = (x, y, w, h) => `M ${x + w / 2} ${y} L ${x + w} ${y + h / 2} L ${x + w / 2} ${y + h} L ${x} ${y + h / 2} Z`;
@@ -178234,7 +177480,7 @@ function define2(type, path, opts) {
   registerPathShape(type, path, opts);
 }
 
-// libs/renderer/src/comments/comment-panel.ts
+// ../libs/renderer/src/comments/comment-panel.ts
 function panelSignature(threads, selected) {
   return selected + "|" + threads.map(
     (t) => `${t.id}:${t.resolved ? "r" : "o"}:${t.unread}:${t.resolvedAnchor.attached ? "a" : "d"}:${t.resolvedAnchor.targetLabel}:` + t.messages.map((m) => `${m.id}${m.deleted ? "x" : ""}${m.editedAt ?? ""}`).join(",")
@@ -178452,7 +177698,7 @@ function cssEscape(v) {
   return v.replace(/["\\]/g, "\\$&");
 }
 
-// libs/renderer/src/comments/comment-overlay.ts
+// ../libs/renderer/src/comments/comment-overlay.ts
 var CommentOverlayController = class {
   constructor(store, renderer, options = {}) {
     this.store = store;
@@ -178518,7 +177764,7 @@ var CommentOverlayController = class {
   }
 };
 
-// libs/renderer/src/export/capture-host.ts
+// ../libs/renderer/src/export/capture-host.ts
 var ELEMENT_NODE = 1;
 var TEXT_NODE = 3;
 var SVG_PAINT_PROPS = [
@@ -179379,7 +178625,7 @@ function round2(value) {
   return Math.round(value * 1e4) / 1e4;
 }
 
-// libs/renderer/src/export/node-raster.ts
+// ../libs/renderer/src/export/node-raster.ts
 function createResvgBackend(resvg) {
   return {
     async rasterize({ svg, width, mimeType }) {
@@ -179449,7 +178695,7 @@ async function tryImport(specifier) {
   }
 }
 
-// libs/renderer/src/export/batch.ts
+// ../libs/renderer/src/export/batch.ts
 async function exportBatch(jobs, options = {}) {
   const results = new Array(jobs.length);
   const concurrency = Math.max(1, options.concurrency ?? 4);
@@ -179494,7 +178740,7 @@ async function runJob(job, batch) {
   }
 }
 
-// libs/renderer/src/canvas/style-resolution.ts
+// ../libs/renderer/src/canvas/style-resolution.ts
 var INHERITED_DEFAULTS = {
   fill: "#000000",
   stroke: void 0,
@@ -179755,13 +179001,13 @@ function writeToken(theme, token, value) {
 function structuredCloneish(value) {
   return JSON.parse(JSON.stringify(value));
 }
-function readCssVarOverrides(element2) {
-  if (!element2) return {};
-  const view = element2.ownerDocument?.defaultView;
+function readCssVarOverrides(element) {
+  if (!element) return {};
+  const view = element.ownerDocument?.defaultView;
   if (!view || typeof view.getComputedStyle !== "function") return {};
   let computed;
   try {
-    computed = view.getComputedStyle(element2);
+    computed = view.getComputedStyle(element);
   } catch {
     return {};
   }
@@ -179806,7 +179052,7 @@ function textBaselineFor(baseline) {
   }
 }
 
-// libs/renderer/src/canvas/canvas-context.ts
+// ../libs/renderer/src/canvas/canvas-context.ts
 var RecordingContext2D = class {
   constructor() {
     this.calls = [];
@@ -180056,7 +179302,7 @@ var NULL_CONTEXT = {
   measureText: (text) => ({ width: text.length * 6 })
 };
 
-// libs/renderer/src/canvas/vnode-painter.ts
+// ../libs/renderer/src/canvas/vnode-painter.ts
 var CANVAS_LINK_HIT_TOLERANCE = DEFAULT_LINK_HIT_TOLERANCE;
 var NON_PICKABLE_CLASSES = /* @__PURE__ */ new Set([
   "node-shadow",
@@ -180521,7 +179767,7 @@ function applyAlpha(color, alpha) {
   return `rgba(${v >> 16 & 255}, ${v >> 8 & 255}, ${v & 255}, ${alpha})`;
 }
 
-// libs/renderer/src/canvas/dirty-region.ts
+// ../libs/renderer/src/canvas/dirty-region.ts
 var FULL_REDRAW_THRESHOLD = 64;
 function mergeRects(rects, slack = 8) {
   if (rects.length <= 1) return rects;
@@ -180626,7 +179872,7 @@ function previewIsActive(root) {
   return false;
 }
 
-// libs/renderer/src/canvas/canvas-renderer.ts
+// ../libs/renderer/src/canvas/canvas-renderer.ts
 var CanvasRenderer = class {
   constructor(engine, options = {}) {
     this.mode = "canvas";
@@ -181113,7 +180359,7 @@ function createOffscreenCanvas(source) {
   return doc.createElement("canvas");
 }
 
-// libs/renderer/src/canvas/tier-policy.ts
+// ../libs/renderer/src/canvas/tier-policy.ts
 function canvasSafety(input) {
   const hazards = [];
   if (input.a11yActive) hazards.push("a11y-active");
@@ -181131,7 +180377,7 @@ function explainHazards(hazards) {
 }
 var ALWAYS_SAFE_MODE = "svg";
 
-// libs/renderer/src/canvas/render-backend.ts
+// ../libs/renderer/src/canvas/render-backend.ts
 var DiagramRenderBackend = class {
   constructor(engine, container, options = {}) {
     // svg mode
@@ -181395,8 +180641,7 @@ function treeHasForeignObject(vnode) {
   return false;
 }
 
-// libs/renderer/src/ext/tools.ts
-init_disposable();
+// ../libs/renderer/src/ext/tools.ts
 var validators = /* @__PURE__ */ new Map();
 var validatorSeq = 0;
 function registerConnectionValidator(validator) {
@@ -181471,7 +180716,7 @@ function resolveTool(event, hit) {
   return best;
 }
 
-// libs/renderer/src/interaction/interaction-controller.ts
+// ../libs/renderer/src/interaction/interaction-controller.ts
 var InteractionController = class {
   constructor() {
     /**
@@ -182931,7 +182176,7 @@ var InteractionController = class {
   }
 };
 
-// libs/renderer/src/interaction/highlighters.ts
+// ../libs/renderer/src/interaction/highlighters.ts
 var DEFAULT_HIGHLIGHTER_CONFIG = {
   hoverPadding: 2,
   selectionPadding: 4,
@@ -183118,7 +182363,7 @@ var HighlighterController = class {
   }
 };
 
-// libs/renderer/src/interaction/in-place-editor.ts
+// ../libs/renderer/src/interaction/in-place-editor.ts
 var InPlaceTextEditor = class {
   constructor() {
     this.session = null;
@@ -183234,7 +182479,7 @@ var InPlaceTextEditor = class {
   }
 };
 
-// libs/renderer/src/interaction/snapping.ts
+// ../libs/renderer/src/interaction/snapping.ts
 var DEFAULT_SNAP_CONFIG = {
   enabled: true,
   snapToGrid: false,
@@ -183685,7 +182930,7 @@ var SnapController = class {
   }
 };
 
-// libs/renderer/src/a11y/graph-topology.ts
+// ../libs/renderer/src/a11y/graph-topology.ts
 function readingOrder(nodes) {
   return nodes.slice().sort((a, b) => {
     const ab = a.getBoundingBox();
@@ -183848,7 +183093,7 @@ function nameOf(id, diagram) {
   return node ? nodeName(node) : "unknown";
 }
 
-// libs/renderer/src/a11y/diagram-outline.ts
+// ../libs/renderer/src/a11y/diagram-outline.ts
 function cycleMembers(topology) {
   const members = /* @__PURE__ */ new Set();
   for (const cycle of topology.cycles) for (const id of cycle) members.add(id);
@@ -184001,7 +183246,7 @@ function positionContext(nodeId, diagram) {
   return `node ${index + 1} of ${ordered.length}, ${incoming} incoming, ${outgoing} outgoing`;
 }
 
-// libs/renderer/src/interaction/keyboard-navigation.ts
+// ../libs/renderer/src/interaction/keyboard-navigation.ts
 var DEFAULT_KEYBOARD_NAV_CONFIG = {
   nudgeStep: 1,
   coarseNudgeStep: 10,
@@ -184782,7 +184027,7 @@ function centerOf(node) {
   return { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 };
 }
 
-// libs/renderer/src/interaction/ink-overlay.ts
+// ../libs/renderer/src/interaction/ink-overlay.ts
 var SVG_NS2 = "http://www.w3.org/2000/svg";
 var INK_OVERLAY_CLASS = "grafloria-ink-overlay";
 var InkOverlay = class {
@@ -184890,7 +184135,7 @@ function polyline(points) {
   return d;
 }
 
-// libs/renderer/src/instance/layers.ts
+// ../libs/renderer/src/instance/layers.ts
 var ROOT_CLASS = "grafloria-diagram-root";
 var SVG_LAYER_CLASS = "grafloria-svg-layer";
 var HTML_LAYER_CLASS = "grafloria-html-layer";
@@ -184904,7 +184149,7 @@ function nodeHostStyle(x, y, width, height) {
   return `position:absolute;left:${x}px;top:${y}px;width:${width}px;height:${height}px;pointer-events:auto`;
 }
 
-// libs/renderer/src/interaction/whiteboard-tools.ts
+// ../libs/renderer/src/interaction/whiteboard-tools.ts
 var WHITEBOARD_MODE_TOOL_PRIORITY = 1;
 var WHITEBOARD_INK_TOOL_PRIORITY = 2;
 var WhiteboardTool = class {
@@ -185237,7 +184482,7 @@ function normRect(a, b) {
   };
 }
 
-// libs/renderer/src/interaction/touch-gestures.ts
+// ../libs/renderer/src/interaction/touch-gestures.ts
 var TOUCH_HIT_SLOP_PX = 16;
 var TouchGestureController = class {
   constructor(host, options = {}, selectionTools) {
@@ -185681,7 +184926,7 @@ var TouchGestureController = class {
   }
 };
 
-// libs/renderer/src/a11y/outline-view.ts
+// ../libs/renderer/src/a11y/outline-view.ts
 var VISUALLY_HIDDEN = "position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;";
 var DiagramOutlineView = class {
   constructor(container, options = {}) {
@@ -185815,7 +185060,7 @@ function targetLabel(target) {
   return bits.join(", ");
 }
 
-// libs/renderer/src/a11y/live-region.ts
+// ../libs/renderer/src/a11y/live-region.ts
 var VISUALLY_HIDDEN2 = "position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;";
 var LiveRegionController = class {
   constructor(container, options = {}) {
@@ -185901,10 +185146,10 @@ var LiveRegionController = class {
       this.cancel(this.timer);
       this.timer = null;
     }
-    const pending3 = this.pending;
+    const pending2 = this.pending;
     this.pending = null;
-    if (pending3) {
-      this.speak(pending3.message, pending3.politeness);
+    if (pending2) {
+      this.speak(pending2.message, pending2.politeness);
       this.lastAt = this.now();
     }
   }
@@ -185938,7 +185183,7 @@ var LiveRegionController = class {
   }
 };
 
-// libs/renderer/src/utils/animation-utils.ts
+// ../libs/renderer/src/utils/animation-utils.ts
 function generateGradientBorderCSS(colors, duration = 3) {
   if (colors.length < 2) {
     colors = ["#667eea", "#764ba2"];
@@ -186023,8 +185268,8 @@ function supportsAnimations() {
   if (typeof document === "undefined") {
     return false;
   }
-  const element2 = document.createElement("div");
-  return "animation" in element2.style || "webkitAnimation" in element2.style || "mozAnimation" in element2.style;
+  const element = document.createElement("div");
+  return "animation" in element.style || "webkitAnimation" in element.style || "mozAnimation" in element.style;
 }
 function prefersReducedMotion() {
   if (typeof window === "undefined" || !window.matchMedia) {
@@ -186099,7 +185344,7 @@ function isValidStatus(status) {
   return ["idle", "pending", "running", "completed", "error", "warning"].includes(status);
 }
 
-// libs/renderer/src/a11y/focus-containment.ts
+// ../libs/renderer/src/a11y/focus-containment.ts
 var FocusContainmentController = class {
   constructor(viewport, options = {}) {
     this.animation = null;
@@ -186241,7 +185486,7 @@ function boundsOfPoints(points, pad = 8) {
   };
 }
 
-// libs/renderer/src/viewport/viewport-controller.ts
+// ../libs/renderer/src/viewport/viewport-controller.ts
 var DEFAULT_VIEWPORT = { x: 0, y: 0, width: 800, height: 600 };
 var ViewportController = class {
   constructor(options = {}) {
@@ -186495,7 +185740,7 @@ var ViewportController = class {
   }
 };
 
-// libs/renderer/src/instance/render-scheduler.ts
+// ../libs/renderer/src/instance/render-scheduler.ts
 var RenderScheduler = class {
   constructor(options) {
     this.handle = null;
@@ -186580,7 +185825,7 @@ var RenderScheduler = class {
   }
 };
 
-// libs/renderer/src/instance/wheel-scroll-yield.ts
+// ../libs/renderer/src/instance/wheel-scroll-yield.ts
 var SCROLLABLE_OVERFLOW = /(auto|scroll)/;
 function ownsWheel(el, event) {
   const style = el.ownerDocument?.defaultView?.getComputedStyle(el);
@@ -186637,7 +185882,7 @@ function delegateWheelToScrollable(event) {
   return true;
 }
 
-// libs/renderer/src/instance/dom-event-binder.ts
+// ../libs/renderer/src/instance/dom-event-binder.ts
 var DomEventBinder = class {
   constructor(container, host, options = {}) {
     this.container = container;
@@ -188217,15 +187462,15 @@ var DomEventBinder = class {
       this.pressViaDragHandle = hit.behavior?.dragHandler?.isDragHandler === true;
       return this.dragTargetFor(hit, diagram);
     }
-    let element2 = event.target;
-    while (element2 && element2 !== this.container) {
-      const nodeId = element2.getAttribute?.("data-node-id");
+    let element = event.target;
+    while (element && element !== this.container) {
+      const nodeId = element.getAttribute?.("data-node-id");
       if (nodeId) {
         const node = diagram.getNode(nodeId);
         this.pressViaDragHandle = node?.behavior?.dragHandler?.isDragHandler === true;
         return node ? this.dragTargetFor(node, diagram) : void 0;
       }
-      element2 = element2.parentElement;
+      element = element.parentElement;
     }
     return void 0;
   }
@@ -188284,7 +187529,7 @@ function isTextEntryTarget(target) {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable === true;
 }
 
-// libs/renderer/src/instance/model-input.ts
+// ../libs/renderer/src/instance/model-input.ts
 var PORT_SIDES = ["top", "right", "bottom", "left"];
 function defaultPortId(nodeId, side) {
   return `${nodeId}__${side}`;
@@ -188513,7 +187758,7 @@ function applyEdges(diagram, specs) {
   return changed;
 }
 
-// libs/renderer/src/lazy/host-culling.ts
+// ../libs/renderer/src/lazy/host-culling.ts
 var DEFAULT_MARGIN = 200;
 var DEFAULT_HYSTERESIS = 100;
 var HtmlHostCuller = class {
@@ -188570,7 +187815,7 @@ function intersects2(a, b) {
   return !(a.x + a.width < b.x || b.x + b.width < a.x || a.y + a.height < b.y || b.y + b.height < a.y);
 }
 
-// libs/renderer/src/instance/create-diagram.ts
+// ../libs/renderer/src/instance/create-diagram.ts
 function createDiagram(container, options = {}) {
   if (!isBrowser()) {
     throw new Error(
@@ -189200,7 +188445,7 @@ function ensureLayers(container, doc, hydration) {
   return { root, svg, html };
 }
 
-// libs/renderer/src/ssr/render-to-static.ts
+// ../libs/renderer/src/ssr/render-to-static.ts
 function renderToStaticSVG(options = {}) {
   const width = options.width ?? 800;
   const height = options.height ?? 600;
@@ -189259,7 +188504,7 @@ function contentBoundsOf(model) {
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
-// libs/renderer/src/lazy/view-lifecycle.ts
+// ../libs/renderer/src/lazy/view-lifecycle.ts
 var keyOf = (kind, id) => `${kind}:${id}`;
 var ViewLifecycle = class {
   constructor(options = {}) {
@@ -189436,7 +188681,7 @@ var ViewLifecycle = class {
   }
 };
 
-// libs/renderer/src/lazy/progressive-mounter.ts
+// ../libs/renderer/src/lazy/progressive-mounter.ts
 var ProgressiveMounter = class {
   constructor(engine, lifecycle, frame, deferred) {
     this.handle = null;
@@ -189504,8 +188749,8 @@ var ProgressiveMounter = class {
       const step = () => {
         this.handle = null;
         if (!this.running) return finish(true);
-        const pending3 = this.deferred();
-        if (pending3.length === 0) {
+        const pending2 = this.deferred();
+        if (pending2.length === 0) {
           this.lifecycle.endDeferred();
           return finish(false);
         }
@@ -189514,9 +188759,9 @@ var ProgressiveMounter = class {
           this.frame(viewport, zoom);
           return finish(false);
         }
-        const take = Math.min(chunk, pending3.length);
+        const take = Math.min(chunk, pending2.length);
         for (let i = 0; i < take; i++) {
-          const [kind, id] = pending3[i];
+          const [kind, id] = pending2[i];
           this.lifecycle.admit(kind, id);
           if (kind === "link") stats.linksMounted++;
           else stats.nodesMounted++;
@@ -189583,7 +188828,7 @@ function learnFixedCost(fixedMs, marginalMs, chunk, sliceMs) {
   return { fixedMs: nextFixed, marginalMs: nextMarginal };
 }
 
-// libs/renderer/src/presence/presence-overlay.ts
+// ../libs/renderer/src/presence/presence-overlay.ts
 var PRESENCE_LAYER_CLASS = "grafloria-presence-layer";
 function actorColor(actor) {
   let hash = 0;
@@ -189864,7 +189109,7 @@ var PresenceOverlay = class {
   }
 };
 
-// libs/renderer/src/presence/bind-presence.ts
+// ../libs/renderer/src/presence/bind-presence.ts
 function bindPresence(instance, source, options = {}) {
   const container = instance.container;
   const root = container.querySelector(`.${ROOT_CLASS}`) ?? container;
@@ -189944,11 +189189,161 @@ function bindPresence(instance, source, options = {}) {
   };
 }
 
-// libs/renderer/src/ext/extension-host.ts
-init_disposable();
+// ../libs/renderer/src/ext/portal.ts
+var SCREEN_LAYER_CLASS = "grafloria-screen-layer";
+var PORTAL_CLASS = "grafloria-portal";
+var WORLD_PORTAL_CLASS = "grafloria-world-portal";
+function ensureScreenLayer(root) {
+  const existing = root.querySelector(`:scope > .${SCREEN_LAYER_CLASS}`);
+  if (existing) return existing;
+  const doc = root.ownerDocument;
+  const layer = doc.createElement("div");
+  layer.className = SCREEN_LAYER_CLASS;
+  layer.setAttribute(
+    "style",
+    "position:absolute;inset:0;pointer-events:none;overflow:hidden"
+  );
+  root.appendChild(layer);
+  return layer;
+}
+function applyStyleString(element, style) {
+  const written = [];
+  for (const decl of style.split(";")) {
+    const at = decl.indexOf(":");
+    if (at <= 0) continue;
+    const prop = decl.slice(0, at).trim();
+    const value = decl.slice(at + 1).trim();
+    if (prop && value) {
+      element.style.setProperty(prop, value);
+      written.push(prop);
+    }
+  }
+  return written;
+}
+function swapOwnedClasses(element, prev, next) {
+  for (const c of prev) if (!next.includes(c)) element.classList.remove(c);
+  for (const c of next) element.classList.add(c);
+  return next;
+}
+function classTokens(className) {
+  return className ? className.split(/\s+/).filter(Boolean) : [];
+}
+function placementStyle(placement, offset) {
+  switch (placement) {
+    case "top-left":
+      return `top:${offset}px;left:${offset}px;`;
+    case "top-right":
+      return `top:${offset}px;right:${offset}px;`;
+    case "bottom-left":
+      return `bottom:${offset}px;left:${offset}px;`;
+    case "bottom-right":
+      return `bottom:${offset}px;right:${offset}px;`;
+    case "top-center":
+      return `top:${offset}px;left:50%;transform:translateX(-50%);`;
+    case "bottom-center":
+      return `bottom:${offset}px;left:50%;transform:translateX(-50%);`;
+    case "center":
+      return `top:50%;left:50%;transform:translate(-50%,-50%);`;
+    case "none":
+      return "";
+  }
+}
+function createPortal(root, options = {}) {
+  const layer = ensureScreenLayer(root);
+  const doc = root.ownerDocument;
+  const element = doc.createElement("div");
+  let current = { placement: "top-left", offset: 12, ...options };
+  let ownedClasses = [];
+  let ownedProps = [];
+  const apply = () => {
+    const placement = current.placement ?? "top-left";
+    const offset = current.offset ?? 12;
+    ownedClasses = swapOwnedClasses(element, ownedClasses, [
+      PORTAL_CLASS,
+      ...classTokens(current.className)
+    ]);
+    for (const p of ownedProps) element.style.removeProperty(p);
+    ownedProps = applyStyleString(
+      element,
+      "position:absolute;pointer-events:auto;" + placementStyle(placement, offset) + (current.zIndex !== void 0 ? `z-index:${current.zIndex};` : "") + (current.style ?? "")
+    );
+  };
+  apply();
+  layer.appendChild(element);
+  return {
+    element,
+    update(next) {
+      if (next) current = { ...current, ...next };
+      apply();
+    },
+    dispose: once(() => {
+      element.remove();
+      if (layer.childElementCount === 0) layer.remove();
+    })
+  };
+}
+function createViewportPortal(htmlLayer, options = {}) {
+  const doc = htmlLayer.ownerDocument;
+  const element = doc.createElement("div");
+  let x = options.x ?? 0;
+  let y = options.y ?? 0;
+  let ownedClasses = [];
+  let ownedProps = [];
+  const apply = () => {
+    ownedClasses = swapOwnedClasses(element, ownedClasses, [
+      WORLD_PORTAL_CLASS,
+      ...classTokens(options.className)
+    ]);
+    for (const p of ownedProps) element.style.removeProperty(p);
+    ownedProps = applyStyleString(
+      element,
+      `position:absolute;left:${x}px;top:${y}px;pointer-events:auto;` + (options.style ?? "")
+    );
+  };
+  apply();
+  htmlLayer.appendChild(element);
+  return {
+    element,
+    setPosition(nx, ny) {
+      x = nx;
+      y = ny;
+      apply();
+    },
+    update() {
+      apply();
+    },
+    dispose: once(() => {
+      element.remove();
+    })
+  };
+}
+function createCounterScaledPortal(htmlLayer, viewport, options = {}) {
+  const portal = createViewportPortal(htmlLayer, options);
+  const applyScale = () => {
+    const zoom = viewport.getZoom() || 1;
+    portal.element.style.transform = `scale(${1 / zoom})`;
+    portal.element.style.transformOrigin = "0 0";
+  };
+  applyScale();
+  const unsubscribe = viewport.onChange(applyScale);
+  return {
+    element: portal.element,
+    setPosition(x, y) {
+      portal.setPosition(x, y);
+      applyScale();
+    },
+    update() {
+      portal.update();
+      applyScale();
+    },
+    dispose: once(() => {
+      unsubscribe();
+      portal.dispose();
+    })
+  };
+}
 
-// libs/renderer/src/ext/capability-factory.ts
-init_portal();
+// ../libs/renderer/src/ext/capability-factory.ts
 function buildCapabilities(granted, bindings3, store) {
   const capabilities = {};
   const wanted = new Set(granted);
@@ -190066,7 +189461,7 @@ function buildCapabilities(granted, bindings3, store) {
   return capabilities;
 }
 
-// libs/renderer/src/ext/manifest.ts
+// ../libs/renderer/src/ext/manifest.ts
 var ID_RE = /^[a-z0-9][a-z0-9._-]*$/i;
 var SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9a-z.-]+)?(?:\+[0-9a-z.-]+)?$/i;
 var VALID_CAPABILITIES = [
@@ -190166,7 +189561,7 @@ function satisfiesOne(target, range) {
   }
 }
 
-// libs/renderer/src/ext/extension-host.ts
+// ../libs/renderer/src/ext/extension-host.ts
 var EXTENSION_API_VERSION = "1.0.0";
 var ExtensionHost = class {
   constructor(options) {
@@ -190361,11 +189756,7 @@ function createExtensionHost(options) {
   return new ExtensionHost(options);
 }
 
-// libs/renderer/src/ext/index.ts
-init_disposable();
-
-// libs/renderer/src/ext/public-api.ts
-init_disposable();
+// ../libs/renderer/src/ext/public-api.ts
 function nodeRect(node) {
   const p = typeof node.getWorldPosition === "function" ? node.getWorldPosition() : node.position;
   return { x: p.x, y: p.y, width: node.size.width, height: node.size.height };
@@ -190502,8 +189893,7 @@ function createDiagramApi(instance) {
   };
 }
 
-// libs/renderer/src/ext/node-component.ts
-init_disposable();
+// ../libs/renderer/src/ext/node-component.ts
 function defineNodeComponent(component) {
   return component;
 }
@@ -190532,23 +189922,23 @@ function mountNodeComponents(instance, registry5) {
   const mounted = /* @__PURE__ */ new Map();
   const observers = /* @__PURE__ */ new Map();
   const componentFor = (node) => registry5[String(node.type)] ?? registry5[String(node.getMetadata?.("component") ?? "")];
-  const readSize = (node, element2, component) => {
+  const readSize = (node, element, component) => {
     if (!component.autoSize) return null;
     const threshold = component.sizeThreshold ?? 1;
     const zoom = instance.viewport.getZoom() || 1;
-    const width = element2.offsetWidth || element2.getBoundingClientRect().width / zoom;
-    const height = element2.offsetHeight || element2.getBoundingClientRect().height / zoom;
+    const width = element.offsetWidth || element.getBoundingClientRect().width / zoom;
+    const height = element.offsetHeight || element.getBoundingClientRect().height / zoom;
     if (!(width > 0) || !(height > 0)) return null;
     if (Math.abs(width - node.size.width) < threshold && Math.abs(height - node.size.height) < threshold) {
       return null;
     }
     return { width, height };
   };
-  const measureAll = (pending3) => {
-    if (pending3.length === 0) return;
+  const measureAll = (pending2) => {
+    if (pending2.length === 0) return;
     const sizes = [];
-    for (const { node, element: element2, component } of pending3) {
-      const size = readSize(node, element2, component);
+    for (const { node, element, component } of pending2) {
+      const size = readSize(node, element, component);
       if (size) sizes.push({ node, ...size });
     }
     if (sizes.length === 0) return;
@@ -190565,53 +189955,53 @@ function mountNodeComponents(instance, registry5) {
       instance.render();
     }
   };
-  const writeInto = (node, element2, first) => {
+  const writeInto = (node, element, first) => {
     const component = componentFor(node);
     if (!component) return false;
     const dragging = instance.getDraggingNodeIds().includes(node.id);
     const props = propsFor(node, instance.viewport.getZoom(), dragging);
     if (first || !component.onUpdate) {
-      const vnode = component.render(props, element2);
-      if (vnode) instance.patcher.reconcile(element2, vnode);
+      const vnode = component.render(props, element);
+      if (vnode) instance.patcher.reconcile(element, vnode);
     } else {
-      component.onUpdate(props, element2);
+      component.onUpdate(props, element);
     }
     return !!component.autoSize;
   };
-  const renderInto = (node, element2, first) => {
+  const renderInto = (node, element, first) => {
     const component = componentFor(node);
     if (!component) return;
-    if (writeInto(node, element2, first)) measureAll([{ node, element: element2, component }]);
+    if (writeInto(node, element, first)) measureAll([{ node, element, component }]);
   };
-  const onCreate = (node, element2) => {
+  const onCreate = (node, element) => {
     const component = componentFor(node);
     if (!component) return;
-    mounted.set(node.id, { component, element: element2 });
-    renderInto(node, element2, true);
+    mounted.set(node.id, { component, element });
+    renderInto(node, element, true);
     if (component.autoSize && typeof ResizeObserver !== "undefined") {
-      const observer = new ResizeObserver(() => measureAll([{ node, element: element2, component }]));
-      observer.observe(element2);
+      const observer = new ResizeObserver(() => measureAll([{ node, element, component }]));
+      observer.observe(element);
       observers.set(node.id, observer);
     }
   };
-  const onRemove = (id, element2) => {
+  const onRemove = (id, element) => {
     observers.get(id)?.disconnect();
     observers.delete(id);
     const entry = mounted.get(id);
-    entry?.component.onDestroy?.(element2);
-    if (entry) instance.patcher.unmount(element2);
+    entry?.component.onDestroy?.(element);
+    if (entry) instance.patcher.unmount(element);
     mounted.delete(id);
   };
   const refresh = () => {
-    const pending3 = [];
+    const pending2 = [];
     for (const [id, entry] of mounted) {
       const node = instance.getModel().getNode(id);
       if (!node) continue;
       if (writeInto(node, entry.element, false)) {
-        pending3.push({ node, element: entry.element, component: entry.component });
+        pending2.push({ node, element: entry.element, component: entry.component });
       }
     }
-    measureAll(pending3);
+    measureAll(pending2);
   };
   store.add(instance.on("nodes:change", refresh));
   store.add(instance.on("selection:change", refresh));
@@ -190640,34 +190030,599 @@ function nodeComponentOptions(registry5, getInstance) {
     return instance;
   };
   return {
-    renderCustomNode(node, element2) {
+    renderCustomNode(node, element) {
       const instance = ensure();
       if (!instance) return;
       const hooks = instance.__nodeComponentHooks;
-      hooks?.renderCustomNode?.(node, element2);
+      hooks?.renderCustomNode?.(node, element);
     },
-    removeCustomNode(id, element2) {
+    removeCustomNode(id, element) {
       const instance = getInstance();
       const hooks = instance?.__nodeComponentHooks;
-      hooks?.removeCustomNode?.(id, element2);
+      hooks?.removeCustomNode?.(id, element);
     }
   };
 }
 
-// libs/renderer/src/ext/index.ts
-init_portal();
-init_background();
-init_minimap();
-init_controls();
-init_attach();
-
-// libs/renderer/src/ext/plugins-loader.ts
-var pending2;
-function loadCanvasPlugins() {
-  return pending2 ?? (pending2 = Promise.resolve().then(() => (init_attach(), attach_exports)));
+// ../libs/renderer/src/ext/components/background.ts
+var BACKGROUND_LAYER_CLASS = "grafloria-background-layer";
+var SVG_NS3 = "http://www.w3.org/2000/svg";
+var backgroundSeq = 0;
+function createBackground(root, viewport, options = {}) {
+  const doc = root.ownerDocument;
+  let opts = {
+    variant: options.variant ?? "dots",
+    gap: options.gap ?? 20,
+    size: options.size ?? 1,
+    color: options.color ?? "rgba(120,130,145,0.45)",
+    majorEvery: options.majorEvery ?? 0,
+    minZoom: options.minZoom ?? 0.25,
+    majorColor: options.majorColor,
+    backgroundColor: options.backgroundColor,
+    idSuffix: options.idSuffix
+  };
+  const uid = opts.idSuffix ?? `bg${++backgroundSeq}`;
+  const patternId = `grafloria-grid-${uid}`;
+  const majorId = `grafloria-grid-major-${uid}`;
+  let layer = root.querySelector(`:scope > .${BACKGROUND_LAYER_CLASS}`);
+  if (!layer) {
+    layer = doc.createElement("div");
+    layer.className = BACKGROUND_LAYER_CLASS;
+    layer.setAttribute(
+      "style",
+      "position:absolute;inset:0;pointer-events:none;overflow:hidden"
+    );
+    root.insertBefore(layer, root.firstChild);
+  }
+  const svg = doc.createElementNS(SVG_NS3, "svg");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.setAttribute("class", "grafloria-background");
+  svg.style.display = "block";
+  const defs = doc.createElementNS(SVG_NS3, "defs");
+  const pattern = doc.createElementNS(SVG_NS3, "pattern");
+  pattern.setAttribute("id", patternId);
+  pattern.setAttribute("patternUnits", "userSpaceOnUse");
+  const majorPattern = doc.createElementNS(SVG_NS3, "pattern");
+  majorPattern.setAttribute("id", majorId);
+  majorPattern.setAttribute("patternUnits", "userSpaceOnUse");
+  defs.appendChild(pattern);
+  defs.appendChild(majorPattern);
+  svg.appendChild(defs);
+  const bgRect = doc.createElementNS(SVG_NS3, "rect");
+  bgRect.setAttribute("width", "100%");
+  bgRect.setAttribute("height", "100%");
+  svg.appendChild(bgRect);
+  const gridRect = doc.createElementNS(SVG_NS3, "rect");
+  gridRect.setAttribute("width", "100%");
+  gridRect.setAttribute("height", "100%");
+  gridRect.setAttribute("fill", `url(#${patternId})`);
+  svg.appendChild(gridRect);
+  const majorRect = doc.createElementNS(SVG_NS3, "rect");
+  majorRect.setAttribute("width", "100%");
+  majorRect.setAttribute("height", "100%");
+  majorRect.setAttribute("fill", `url(#${majorId})`);
+  svg.appendChild(majorRect);
+  layer.appendChild(svg);
+  let visible2 = true;
+  const paintPattern = (target, tile, offsetX, offsetY, color, thickness, variant) => {
+    target.setAttribute("width", String(tile));
+    target.setAttribute("height", String(tile));
+    target.setAttribute("patternTransform", `translate(${offsetX},${offsetY})`);
+    while (target.firstChild) target.removeChild(target.firstChild);
+    if (variant === "none" || tile <= 0) return;
+    if (variant === "dots") {
+      const dot = doc.createElementNS(SVG_NS3, "circle");
+      dot.setAttribute("cx", String(thickness));
+      dot.setAttribute("cy", String(thickness));
+      dot.setAttribute("r", String(thickness));
+      dot.setAttribute("fill", color);
+      target.appendChild(dot);
+      return;
+    }
+    if (variant === "cross") {
+      const arm = Math.max(2, tile * 0.12);
+      const path2 = doc.createElementNS(SVG_NS3, "path");
+      path2.setAttribute("d", `M ${-arm} 0 H ${arm} M 0 ${-arm} V ${arm}`);
+      path2.setAttribute("stroke", color);
+      path2.setAttribute("stroke-width", String(thickness));
+      path2.setAttribute("fill", "none");
+      target.appendChild(path2);
+      return;
+    }
+    const path = doc.createElementNS(SVG_NS3, "path");
+    path.setAttribute("d", `M ${tile} 0 V ${tile} M 0 ${tile} H ${tile}`);
+    path.setAttribute("stroke", color);
+    path.setAttribute("stroke-width", String(thickness));
+    path.setAttribute("fill", "none");
+    target.appendChild(path);
+  };
+  const render2 = () => {
+    const zoom = viewport.getZoom() || 1;
+    const world = viewport.getViewport();
+    const suppressed = opts.variant === "none" || opts.minZoom > 0 && zoom < opts.minZoom;
+    svg.style.display = visible2 && !suppressed ? "block" : "none";
+    if (!visible2 || suppressed) return;
+    bgRect.setAttribute("fill", opts.backgroundColor ?? "none");
+    const tile = opts.gap * zoom;
+    if (!(tile > 0.5) || !Number.isFinite(tile)) {
+      svg.style.display = "none";
+      return;
+    }
+    const modulo = (v, m) => (v % m + m) % m;
+    const offsetX = modulo(-world.x * zoom, tile);
+    const offsetY = modulo(-world.y * zoom, tile);
+    paintPattern(pattern, tile, offsetX, offsetY, opts.color, opts.size, opts.variant);
+    if (opts.majorEvery > 0 && opts.variant !== "dots") {
+      const majorTile = tile * opts.majorEvery;
+      paintPattern(
+        majorPattern,
+        majorTile,
+        modulo(-world.x * zoom, majorTile),
+        modulo(-world.y * zoom, majorTile),
+        opts.majorColor ?? opts.color,
+        opts.size * 1.5,
+        "lines"
+      );
+      majorRect.style.display = "block";
+    } else {
+      majorRect.style.display = "none";
+    }
+  };
+  render2();
+  const unsubscribe = viewport.onChange(render2);
+  return {
+    element: svg,
+    update(next) {
+      opts = { ...opts, ...next };
+      render2();
+    },
+    setVisible(next) {
+      if (visible2 === next) return;
+      visible2 = next;
+      render2();
+    },
+    isVisible: () => visible2,
+    dispose: once(() => {
+      unsubscribe();
+      svg.remove();
+      if (layer && layer.childElementCount === 0) layer.remove();
+    })
+  };
 }
 
-// libs/renderer/src/utils/animation-presets.ts
+// ../libs/renderer/src/ext/components/minimap.ts
+var SVG_NS4 = "http://www.w3.org/2000/svg";
+function contentBoundsOf2(model, padding) {
+  const nodes = model.getNodes().filter((n3) => n3.state?.visible !== false);
+  if (nodes.length === 0) return null;
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const node of nodes) {
+    const p = typeof node.getWorldPosition === "function" ? node.getWorldPosition() : node.position;
+    left = Math.min(left, p.x);
+    top = Math.min(top, p.y);
+    right = Math.max(right, p.x + node.size.width);
+    bottom = Math.max(bottom, p.y + node.size.height);
+  }
+  if (!Number.isFinite(left)) return null;
+  return {
+    x: left - padding,
+    y: top - padding,
+    w: Math.max(1, right - left + padding * 2),
+    h: Math.max(1, bottom - top + padding * 2)
+  };
+}
+function createMiniMap(root, viewport, getModel, options = {}) {
+  const doc = root.ownerDocument;
+  let opts = {
+    placement: options.placement ?? "bottom-right",
+    offset: options.offset ?? 12,
+    width: options.width ?? 200,
+    height: options.height ?? 150,
+    padding: options.padding ?? 40,
+    maskColor: options.maskColor ?? "rgba(80,130,220,0.18)",
+    maskStroke: options.maskStroke ?? "rgba(60,110,200,0.9)",
+    panelBackground: options.panelBackground ?? "rgba(250,250,252,0.92)",
+    panelBorder: options.panelBorder ?? "rgba(0,0,0,0.15)",
+    interactive: options.interactive ?? true,
+    showLinks: options.showLinks ?? false,
+    linkColor: options.linkColor ?? "rgba(120,130,145,0.6)",
+    ariaLabel: options.ariaLabel ?? "Diagram minimap",
+    nodeColor: options.nodeColor
+  };
+  const portal = createPortal(root, {
+    placement: opts.placement,
+    offset: opts.offset,
+    className: "grafloria-minimap"
+  });
+  const applyPanelStyle = () => {
+    portal.element.style.width = `${opts.width}px`;
+    portal.element.style.height = `${opts.height}px`;
+    portal.element.style.background = opts.panelBackground;
+    portal.element.style.border = `1px solid ${opts.panelBorder}`;
+    portal.element.style.borderRadius = "4px";
+    portal.element.style.boxShadow = "0 1px 4px rgba(0,0,0,0.12)";
+    portal.element.style.overflow = "hidden";
+    portal.element.style.cursor = opts.interactive ? "pointer" : "default";
+  };
+  applyPanelStyle();
+  const svg = doc.createElementNS(SVG_NS4, "svg");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.setAttribute("class", "grafloria-minimap-svg");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", opts.ariaLabel);
+  svg.style.display = "block";
+  const linkLayer = doc.createElementNS(SVG_NS4, "g");
+  linkLayer.setAttribute("class", "grafloria-minimap-links");
+  const nodeLayer = doc.createElementNS(SVG_NS4, "g");
+  nodeLayer.setAttribute("class", "grafloria-minimap-nodes");
+  const cameraRect = doc.createElementNS(SVG_NS4, "rect");
+  cameraRect.setAttribute("class", "grafloria-minimap-viewport");
+  cameraRect.setAttribute("pointer-events", "none");
+  svg.appendChild(linkLayer);
+  svg.appendChild(nodeLayer);
+  svg.appendChild(cameraRect);
+  portal.element.appendChild(svg);
+  let visible2 = true;
+  let bounds = null;
+  const nodeFill = (node) => {
+    const c = opts.nodeColor;
+    if (typeof c === "function") return c(node);
+    if (typeof c === "string") return c;
+    return node.state?.selected ? "rgba(60,110,200,0.95)" : "rgba(140,150,165,0.85)";
+  };
+  const refresh = () => {
+    if (!visible2) return;
+    const model = getModel();
+    bounds = contentBoundsOf2(model, opts.padding);
+    while (nodeLayer.firstChild) nodeLayer.removeChild(nodeLayer.firstChild);
+    while (linkLayer.firstChild) linkLayer.removeChild(linkLayer.firstChild);
+    if (!bounds) {
+      svg.removeAttribute("viewBox");
+      cameraRect.setAttribute("width", "0");
+      cameraRect.setAttribute("height", "0");
+      return;
+    }
+    svg.setAttribute("viewBox", `${bounds.x} ${bounds.y} ${bounds.w} ${bounds.h}`);
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    if (opts.showLinks) {
+      for (const link of model.getLinks()) {
+        const pts = link.points;
+        if (!pts || pts.length < 2) continue;
+        const line = doc.createElementNS(SVG_NS4, "polyline");
+        line.setAttribute("points", pts.map((p) => `${p.x},${p.y}`).join(" "));
+        line.setAttribute("fill", "none");
+        line.setAttribute("stroke", opts.linkColor);
+        line.setAttribute("stroke-width", String(Math.max(1, bounds.w / 300)));
+        linkLayer.appendChild(line);
+      }
+    }
+    for (const node of model.getNodes()) {
+      if (node.state?.visible === false) continue;
+      const p = typeof node.getWorldPosition === "function" ? node.getWorldPosition() : node.position;
+      const rect = doc.createElementNS(SVG_NS4, "rect");
+      rect.setAttribute("x", String(p.x));
+      rect.setAttribute("y", String(p.y));
+      rect.setAttribute("width", String(Math.max(1, node.size.width)));
+      rect.setAttribute("height", String(Math.max(1, node.size.height)));
+      rect.setAttribute("rx", "2");
+      rect.setAttribute("fill", nodeFill(node));
+      rect.setAttribute("data-node-id", node.id);
+      nodeLayer.appendChild(rect);
+    }
+    drawCamera();
+  };
+  const drawCamera = () => {
+    if (!visible2 || !bounds) return;
+    const v = viewport.getViewBox();
+    cameraRect.setAttribute("x", String(v.x));
+    cameraRect.setAttribute("y", String(v.y));
+    cameraRect.setAttribute("width", String(Math.max(0, v.width)));
+    cameraRect.setAttribute("height", String(Math.max(0, v.height)));
+    cameraRect.setAttribute("fill", opts.maskColor);
+    cameraRect.setAttribute("stroke", opts.maskStroke);
+    cameraRect.setAttribute("stroke-width", String(Math.max(1, bounds.w / 200)));
+  };
+  const clientToMiniWorld = (clientX, clientY) => {
+    if (!bounds) return null;
+    const r = svg.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return null;
+    const scale = Math.min(r.width / bounds.w, r.height / bounds.h);
+    const drawnW = bounds.w * scale;
+    const drawnH = bounds.h * scale;
+    const padX = (r.width - drawnW) / 2;
+    const padY = (r.height - drawnH) / 2;
+    return {
+      x: bounds.x + (clientX - r.left - padX) / scale,
+      y: bounds.y + (clientY - r.top - padY) / scale
+    };
+  };
+  const centreOn = (world) => {
+    const vp = viewport.getViewport();
+    const vb = viewport.getViewBox();
+    viewport.setViewport({
+      x: world.x - vb.width / 2,
+      y: world.y - vb.height / 2,
+      width: vp.width,
+      height: vp.height
+    });
+  };
+  let dragging = false;
+  const onPointerDown = (event) => {
+    if (!opts.interactive) return;
+    const world = clientToMiniWorld(event.clientX, event.clientY);
+    if (!world) return;
+    dragging = true;
+    svg.setPointerCapture?.(event.pointerId);
+    centreOn(world);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const onPointerMove = (event) => {
+    if (!dragging || !opts.interactive) return;
+    const world = clientToMiniWorld(event.clientX, event.clientY);
+    if (!world) return;
+    centreOn(world);
+    event.preventDefault();
+  };
+  const endDrag = (event) => {
+    if (!dragging) return;
+    dragging = false;
+    svg.releasePointerCapture?.(event.pointerId);
+  };
+  const onWheel = (event) => {
+    if (!opts.interactive) return;
+    viewport.zoomByWheel(event.deltaY);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  svg.addEventListener("pointerdown", onPointerDown);
+  svg.addEventListener("pointermove", onPointerMove);
+  svg.addEventListener("pointerup", endDrag);
+  svg.addEventListener("pointercancel", endDrag);
+  svg.addEventListener("wheel", onWheel, { passive: false });
+  refresh();
+  const unsubscribeViewport = viewport.onChange(drawCamera);
+  return {
+    portal,
+    element: svg,
+    refresh,
+    setVisible(next) {
+      if (visible2 === next) return;
+      visible2 = next;
+      portal.element.style.display = next ? "block" : "none";
+      if (next) refresh();
+    },
+    isVisible: () => visible2,
+    update(next) {
+      opts = { ...opts, ...next };
+      applyPanelStyle();
+      portal.update({ placement: opts.placement, offset: opts.offset });
+      svg.setAttribute("aria-label", opts.ariaLabel);
+      refresh();
+    },
+    dispose: once(() => {
+      unsubscribeViewport();
+      svg.removeEventListener("pointerdown", onPointerDown);
+      svg.removeEventListener("pointermove", onPointerMove);
+      svg.removeEventListener("pointerup", endDrag);
+      svg.removeEventListener("pointercancel", endDrag);
+      svg.removeEventListener("wheel", onWheel);
+      portal.dispose();
+    })
+  };
+}
+
+// ../libs/renderer/src/ext/components/controls.ts
+var ICONS = {
+  zoomIn: '<path d="M7 3v8M3 7h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+  zoomOut: '<path d="M3 7h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+  fit: '<path d="M2 5V2h3M12 5V2H9M2 9v3h3M12 9v3H9" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>',
+  lock: '<path d="M4 6V4.5a3 3 0 0 1 6 0V6M3 6h8v6H3z" stroke="currentColor" stroke-width="1.3" fill="none"/>',
+  unlock: '<path d="M4 6V4.5a3 3 0 0 1 5.7-1.3M3 6h8v6H3z" stroke="currentColor" stroke-width="1.3" fill="none"/>'
+};
+function createControls(root, viewport, options = {}) {
+  const doc = root.ownerDocument;
+  const opts = {
+    placement: options.placement ?? "bottom-left",
+    offset: options.offset ?? 12,
+    showZoom: options.showZoom ?? true,
+    showFitView: options.showFitView ?? true,
+    showLock: options.showLock ?? false,
+    orientation: options.orientation ?? "vertical",
+    zoomStep: options.zoomStep ?? 1.2,
+    onFitView: options.onFitView,
+    onToggleLock: options.onToggleLock
+  };
+  let locked = options.locked ?? false;
+  let visible2 = true;
+  const portal = createPortal(root, {
+    placement: opts.placement,
+    offset: opts.offset,
+    className: "grafloria-controls"
+  });
+  const bar = doc.createElement("div");
+  bar.setAttribute("role", "toolbar");
+  bar.setAttribute("aria-label", "Diagram controls");
+  bar.setAttribute(
+    "style",
+    `display:flex;gap:1px;background:rgba(0,0,0,0.12);border-radius:4px;overflow:hidden;flex-direction:${opts.orientation === "horizontal" ? "row" : "column"};`
+  );
+  portal.element.appendChild(bar);
+  const cleanups = [];
+  const makeButton = (icon, label, onClick) => {
+    const button = doc.createElement("button");
+    button.type = "button";
+    button.setAttribute("aria-label", label);
+    button.title = label;
+    button.setAttribute(
+      "style",
+      "width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:0;padding:0;cursor:pointer;background:#fff;color:#333;"
+    );
+    button.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">${icon}</svg>`;
+    const handler = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onClick();
+    };
+    button.addEventListener("click", handler);
+    const swallow = (event) => event.stopPropagation();
+    button.addEventListener("pointerdown", swallow);
+    button.addEventListener("mousedown", swallow);
+    cleanups.push(() => {
+      button.removeEventListener("click", handler);
+      button.removeEventListener("pointerdown", swallow);
+      button.removeEventListener("mousedown", swallow);
+    });
+    bar.appendChild(button);
+    return button;
+  };
+  if (opts.showZoom) {
+    makeButton(ICONS.zoomIn, "Zoom in", () => {
+      viewport.setZoom(viewport.getZoom() * opts.zoomStep);
+    });
+    makeButton(ICONS.zoomOut, "Zoom out", () => {
+      viewport.setZoom(viewport.getZoom() / opts.zoomStep);
+    });
+  }
+  if (opts.showFitView) {
+    makeButton(ICONS.fit, "Fit view", () => {
+      opts.onFitView?.();
+    });
+  }
+  let lockButton;
+  const paintLock = () => {
+    if (!lockButton) return;
+    lockButton.setAttribute("aria-pressed", String(locked));
+    lockButton.setAttribute("aria-label", locked ? "Unlock canvas" : "Lock canvas");
+    lockButton.title = locked ? "Unlock canvas" : "Lock canvas";
+    lockButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">${locked ? ICONS.lock : ICONS.unlock}</svg>`;
+    lockButton.style.background = locked ? "#e8eefc" : "#fff";
+  };
+  if (opts.showLock) {
+    lockButton = makeButton(ICONS.unlock, "Lock canvas", () => {
+      locked = !locked;
+      paintLock();
+      opts.onToggleLock?.(locked);
+    });
+    paintLock();
+  }
+  return {
+    portal,
+    element: bar,
+    setVisible(next) {
+      if (visible2 === next) return;
+      visible2 = next;
+      portal.element.style.display = next ? "block" : "none";
+    },
+    isVisible: () => visible2,
+    setLocked(next) {
+      locked = next;
+      paintLock();
+    },
+    dispose: once(() => {
+      for (const cleanup of cleanups) cleanup();
+      cleanups.length = 0;
+      portal.dispose();
+    })
+  };
+}
+
+// ../libs/renderer/src/ext/components/attach.ts
+var attach_exports = {};
+__export(attach_exports, {
+  attachCanvasPlugins: () => attachCanvasPlugins
+});
+function rootOf(instance) {
+  const root = instance.container.querySelector(".grafloria-diagram-root");
+  return root ?? instance.container;
+}
+function attachCanvasPlugins(instance, options = {}) {
+  const store = new DisposableStore();
+  const root = rootOf(instance);
+  const engine = instance.getEngine();
+  const bind = options.bindToStore ?? true;
+  const diagramStore = bind && typeof engine.getStore === "function" ? engine.getStore() : void 0;
+  const plugins = { dispose: () => store.dispose() };
+  if (options.background) {
+    const backgroundOptions = typeof options.background === "object" ? options.background : {};
+    const background = createBackground(root, instance.viewport, backgroundOptions);
+    plugins.background = background;
+    store.add(() => background.dispose());
+    if (diagramStore) {
+      const enabled = diagramStore.get("gridEnabled");
+      if (typeof enabled === "boolean") background.setVisible(enabled);
+      store.add(
+        diagramStore.watch("gridEnabled", (value) => {
+          background.setVisible(value !== false);
+        })
+      );
+    }
+  }
+  if (options.minimap) {
+    const minimapOptions = typeof options.minimap === "object" ? options.minimap : {};
+    const minimap = createMiniMap(
+      root,
+      instance.viewport,
+      () => instance.getModel(),
+      minimapOptions
+    );
+    plugins.minimap = minimap;
+    store.add(() => minimap.dispose());
+    for (const event of [
+      "node:added",
+      "node:removed",
+      "node:changed",
+      "link:added",
+      "link:removed",
+      "link:changed",
+      "selection:changed"
+    ]) {
+      store.add(instance.getModel().on(event, () => minimap.refresh()));
+    }
+    if (diagramStore) {
+      const show = diagramStore.get("showMinimap");
+      if (show === false) diagramStore.set("showMinimap", true);
+      store.add(
+        diagramStore.watch("showMinimap", (value) => {
+          minimap.setVisible(value !== false);
+        })
+      );
+    }
+  }
+  if (options.controls) {
+    const controlOptions = typeof options.controls === "object" ? options.controls : {};
+    const controls = createControls(root, instance.viewport, {
+      ...controlOptions,
+      onFitView: controlOptions.onFitView ?? (() => instance.fitView()),
+      onToggleLock: controlOptions.onToggleLock ?? ((locked) => {
+        diagramStore?.set("locked", locked);
+      }),
+      locked: controlOptions.locked ?? Boolean(diagramStore?.get("locked"))
+    });
+    plugins.controls = controls;
+    store.add(() => controls.dispose());
+    if (diagramStore) {
+      store.add(
+        diagramStore.watch("locked", (value) => {
+          controls.setLocked(value === true);
+        })
+      );
+    }
+  }
+  return plugins;
+}
+
+// ../libs/renderer/src/ext/plugins-loader.ts
+function loadCanvasPlugins() {
+  return Promise.resolve(attach_exports);
+}
+
+// ../libs/renderer/src/utils/animation-presets.ts
 var AnimationPresets = {
   /**
    * Workflow & Process States
@@ -191032,7 +190987,7 @@ var AnimationColorSchemes = {
   GRADIENT_SUNSET: ["#fa709a", "#fee140"]
 };
 
-// libs/renderer/src/utils/animation-priority.ts
+// ../libs/renderer/src/utils/animation-priority.ts
 var AnimationPriority = /* @__PURE__ */ ((AnimationPriority2) => {
   AnimationPriority2[AnimationPriority2["BORDER_GRADIENT"] = 10] = "BORDER_GRADIENT";
   AnimationPriority2[AnimationPriority2["BORDER_SHIMMER"] = 15] = "BORDER_SHIMMER";
@@ -191231,7 +191186,7 @@ function createPriorityResolver(config) {
   return new AnimationPriorityResolver(config);
 }
 
-// libs/renderer/src/services/animation-performance.service.ts
+// ../libs/renderer/src/services/animation-performance.service.ts
 var PerformanceWarning = /* @__PURE__ */ ((PerformanceWarning2) => {
   PerformanceWarning2["LOW_FPS"] = "LOW_FPS";
   PerformanceWarning2["HIGH_ELEMENT_COUNT"] = "HIGH_ELEMENT_COUNT";
@@ -191540,7 +191495,7 @@ Animation Performance Summary:
   }
 };
 
-// libs/renderer/src/services/animation-lifecycle.ts
+// ../libs/renderer/src/services/animation-lifecycle.ts
 var AnimationLifecycleManager = class {
   constructor() {
     this.trackedElements = /* @__PURE__ */ new Set();
@@ -191589,29 +191544,29 @@ var AnimationLifecycleManager = class {
   /**
    * Track an element for animation events
    */
-  trackElement(element2) {
-    if (this.trackedElements.has(element2)) {
+  trackElement(element) {
+    if (this.trackedElements.has(element)) {
       return;
     }
-    this.trackedElements.add(element2);
-    element2.addEventListener("animationstart", this.handleAnimationStart);
-    element2.addEventListener("animationend", this.handleAnimationEnd);
-    element2.addEventListener("animationiteration", this.handleAnimationIteration);
-    element2.addEventListener("animationcancel", this.handleAnimationCancel);
+    this.trackedElements.add(element);
+    element.addEventListener("animationstart", this.handleAnimationStart);
+    element.addEventListener("animationend", this.handleAnimationEnd);
+    element.addEventListener("animationiteration", this.handleAnimationIteration);
+    element.addEventListener("animationcancel", this.handleAnimationCancel);
   }
   /**
    * Untrack an element
    */
-  untrackElement(element2) {
-    if (!this.trackedElements.has(element2)) {
+  untrackElement(element) {
+    if (!this.trackedElements.has(element)) {
       return;
     }
-    this.trackedElements.delete(element2);
-    this.elementListeners.delete(element2);
-    element2.removeEventListener("animationstart", this.handleAnimationStart);
-    element2.removeEventListener("animationend", this.handleAnimationEnd);
-    element2.removeEventListener("animationiteration", this.handleAnimationIteration);
-    element2.removeEventListener("animationcancel", this.handleAnimationCancel);
+    this.trackedElements.delete(element);
+    this.elementListeners.delete(element);
+    element.removeEventListener("animationstart", this.handleAnimationStart);
+    element.removeEventListener("animationend", this.handleAnimationEnd);
+    element.removeEventListener("animationiteration", this.handleAnimationIteration);
+    element.removeEventListener("animationcancel", this.handleAnimationCancel);
   }
   /**
    * Listen to a specific animation lifecycle event
@@ -191662,12 +191617,12 @@ var AnimationLifecycleManager = class {
    * @param callback - Callback function
    * @returns Unsubscribe function
    */
-  onElement(element2, eventType, callback) {
-    this.trackElement(element2);
-    if (!this.elementListeners.has(element2)) {
-      this.elementListeners.set(element2, /* @__PURE__ */ new Map());
+  onElement(element, eventType, callback) {
+    this.trackElement(element);
+    if (!this.elementListeners.has(element)) {
+      this.elementListeners.set(element, /* @__PURE__ */ new Map());
     }
-    const elementMap = this.elementListeners.get(element2);
+    const elementMap = this.elementListeners.get(element);
     if (!elementMap.has(eventType)) {
       elementMap.set(eventType, /* @__PURE__ */ new Set());
     }
@@ -191742,11 +191697,11 @@ var AnimationLifecycleManager = class {
    * Wait for an animation to end
    * Returns a promise that resolves when the animation ends
    */
-  waitFor(animationName, element2) {
+  waitFor(animationName, element) {
     return new Promise((resolve) => {
-      if (element2) {
-        this.trackElement(element2);
-        const unsubscribe = this.onElement(element2, "end", (data2) => {
+      if (element) {
+        this.trackElement(element);
+        const unsubscribe = this.onElement(element, "end", (data2) => {
           if (data2.animationName === animationName) {
             unsubscribe();
             resolve(data2);
@@ -191763,10 +191718,10 @@ var AnimationLifecycleManager = class {
   /**
    * Wait for any animation to complete on an element
    */
-  waitForElement(element2) {
-    this.trackElement(element2);
+  waitForElement(element) {
+    this.trackElement(element);
     return new Promise((resolve) => {
-      const unsubscribe = this.onElement(element2, "end", (data2) => {
+      const unsubscribe = this.onElement(element, "end", (data2) => {
         unsubscribe();
         resolve(data2);
       });
@@ -191781,15 +191736,15 @@ var AnimationLifecycleManager = class {
   /**
    * Check if element is being tracked
    */
-  isTracking(element2) {
-    return this.trackedElements.has(element2);
+  isTracking(element) {
+    return this.trackedElements.has(element);
   }
   /**
    * Cleanup: Remove all listeners and untrack all elements
    */
   destroy() {
     const elements = Array.from(this.trackedElements);
-    elements.forEach((element2) => this.untrackElement(element2));
+    elements.forEach((element) => this.untrackElement(element));
     this.listeners.clear();
     this.globalListeners.clear();
     this.elementListeners.clear();
@@ -191810,7 +191765,7 @@ function resetGlobalAnimationLifecycleManager() {
   globalLifecycleManager = null;
 }
 
-// libs/renderer/src/services/animation-sequencer.ts
+// ../libs/renderer/src/services/animation-sequencer.ts
 var AnimationSequencer = class _AnimationSequencer {
   constructor(animationRegistry, lifecycleManager) {
     this.steps = [];
@@ -191823,10 +191778,10 @@ var AnimationSequencer = class _AnimationSequencer {
   /**
    * Add a single animation step
    */
-  add(element2, animationName, options) {
+  add(element, animationName, options) {
     this.steps.push({
       type: "single",
-      element: element2,
+      element,
       animationName,
       options
     });
@@ -191924,10 +191879,10 @@ var AnimationSequencer = class _AnimationSequencer {
    * Execute a single animation
    */
   async executeSingleAnimation(step) {
-    const { element: element2, animationName, options } = step;
-    this.applyAnimation(element2, animationName, options);
+    const { element, animationName, options } = step;
+    this.applyAnimation(element, animationName, options);
     if (this.lifecycleManager) {
-      await this.lifecycleManager.waitFor(animationName, element2);
+      await this.lifecycleManager.waitFor(animationName, element);
     } else {
       const duration = this.parseDuration(options?.duration || "1s");
       await this.sleep(duration);
@@ -191966,7 +191921,7 @@ var AnimationSequencer = class _AnimationSequencer {
   /**
    * Apply animation to an element
    */
-  applyAnimation(element2, animationName, options) {
+  applyAnimation(element, animationName, options) {
     const parts = [animationName];
     if (options?.duration) parts.push(options.duration);
     if (options?.timingFunction) parts.push(options.timingFunction);
@@ -191974,9 +191929,9 @@ var AnimationSequencer = class _AnimationSequencer {
     if (options?.iterationCount) parts.push(options.iterationCount);
     if (options?.direction) parts.push(options.direction);
     if (options?.fillMode) parts.push(options.fillMode);
-    element2.style.animation = parts.join(" ");
+    element.style.animation = parts.join(" ");
     if (this.lifecycleManager) {
-      this.lifecycleManager.trackElement(element2);
+      this.lifecycleManager.trackElement(element);
     }
   }
   /**
@@ -192098,26 +192053,26 @@ function createSequencer(animationRegistry, lifecycleManager) {
 }
 function fadeInSequence(elements, delay = 100) {
   const sequencer = new AnimationSequencer();
-  elements.forEach((element2, index) => {
+  elements.forEach((element, index) => {
     if (index > 0) {
       sequencer.delay(delay);
     }
-    sequencer.add(element2, "fade-in", { duration: "300ms", fillMode: "forwards" });
+    sequencer.add(element, "fade-in", { duration: "300ms", fillMode: "forwards" });
   });
   return sequencer;
 }
 function staggerSequence(elements, animationName, staggerDelay = 100, options) {
   const sequencer = new AnimationSequencer();
-  elements.forEach((element2, index) => {
+  elements.forEach((element, index) => {
     if (index > 0) {
       sequencer.delay(staggerDelay);
     }
-    sequencer.add(element2, animationName, options);
+    sequencer.add(element, animationName, options);
   });
   return sequencer;
 }
 
-// libs/renderer/src/perf/perf-hud.ts
+// ../libs/renderer/src/perf/perf-hud.ts
 var EMPTY_SNAPSHOT = {
   fps: 0,
   frameMs: 0,
@@ -192186,7 +192141,7 @@ var PerfHud = class {
   }
 };
 
-// libs/renderer/src/presentation/viewport-channel.ts
+// ../libs/renderer/src/presentation/viewport-channel.ts
 var InMemoryViewportChannel = class {
   constructor() {
     this.subscribers = /* @__PURE__ */ new Set();
@@ -192216,12 +192171,12 @@ var InMemoryViewportChannel = class {
   }
 };
 
-// libs/renderer/src/presentation/presentation.ts
+// ../libs/renderer/src/presentation/presentation.ts
 function presentTo(host, channel, options = {}) {
   const presenterId = options.presenterId;
   const throttleMs = options.throttleMs ?? 50;
   let lastSentAt = 0;
-  let pending3 = null;
+  let pending2 = null;
   const payload = () => {
     const vp = host.viewport.getViewport();
     const zoom = host.viewport.getZoom();
@@ -192239,16 +192194,16 @@ function presentTo(host, channel, options = {}) {
   const onViewportChange = () => {
     const since = Date.now() - lastSentAt;
     if (since >= throttleMs) {
-      if (pending3) {
-        clearTimeout(pending3);
-        pending3 = null;
+      if (pending2) {
+        clearTimeout(pending2);
+        pending2 = null;
       }
       send();
       return;
     }
-    if (!pending3) {
-      pending3 = setTimeout(() => {
-        pending3 = null;
+    if (!pending2) {
+      pending2 = setTimeout(() => {
+        pending2 = null;
         send();
       }, throttleMs - since);
     }
@@ -192258,9 +192213,9 @@ function presentTo(host, channel, options = {}) {
   return {
     stop: () => {
       unsubscribe();
-      if (pending3) {
-        clearTimeout(pending3);
-        pending3 = null;
+      if (pending2) {
+        clearTimeout(pending2);
+        pending2 = null;
       }
     }
   };
@@ -192306,10 +192261,10 @@ function loadReadonlySnapshot(engine, snapshot) {
   return model;
 }
 
-// libs/renderer/src/index.ts
+// ../libs/renderer/src/index.ts
 registerNotationShapes();
 
-// libs/element/src/lib/node-type-registry.ts
+// ../libs/element/src/lib/node-type-registry.ts
 var registry4 = /* @__PURE__ */ new Map();
 function registerNodeType(type, renderer) {
   registry4.set(type, renderer);
@@ -192326,7 +192281,7 @@ function unregisterNodeType(type) {
 function registeredNodeTypes() {
   return [...registry4.keys()];
 }
-function renderFromTemplate(template, node, element2) {
+function renderFromTemplate(template, node, element) {
   const fragment = template.content.cloneNode(true);
   const fields = fragment.querySelectorAll("[data-field]");
   for (const field of Array.from(fields)) {
@@ -192335,11 +192290,11 @@ function renderFromTemplate(template, node, element2) {
     const value = key === "id" ? node.id : node.data[key];
     field.textContent = value === void 0 || value === null ? "" : String(value);
   }
-  element2.textContent = "";
-  element2.appendChild(fragment);
+  element.textContent = "";
+  element.appendChild(fragment);
 }
 
-// libs/element/src/lib/grafloria-flow-element.ts
+// ../libs/element/src/lib/grafloria-flow-element.ts
 var THEMES = {
   light: LIGHT_THEME,
   dark: DARK_THEME
@@ -192459,24 +192414,24 @@ var GrafloriaFlowElement = class extends HTMLElementBase {
       zoom: this.hasAttribute("zoom") ? Number(this.getAttribute("zoom")) : void 0,
       minZoom: this.hasAttribute("min-zoom") ? Number(this.getAttribute("min-zoom")) : void 0,
       maxZoom: this.hasAttribute("max-zoom") ? Number(this.getAttribute("max-zoom")) : void 0,
-      renderCustomNode: (node, element2) => this.renderCustomNode(node, element2)
+      renderCustomNode: (node, element) => this.renderCustomNode(node, element)
     };
   }
   /**
    * Custom nodes, two ways and no framework: a registered renderer
    * (`Grafloria.registerNodeType`), or a slotted `<template data-node-type="…">`.
    */
-  renderCustomNode(node, element2) {
+  renderCustomNode(node, element) {
     const renderer = getNodeType(node.type);
     if (renderer) {
-      renderer(node, element2);
+      renderer(node, element);
       return;
     }
     const template = this.querySelector(
       `template[data-node-type="${cssEscape2(node.type)}"]`
     );
     if (template) {
-      renderFromTemplate(template, node, element2);
+      renderFromTemplate(template, node, element);
       return;
     }
   }
@@ -192532,14 +192487,14 @@ function defineGrafloriaFlow(tagName = "grafloria-flow") {
   customElements.define(tagName, GrafloriaFlowElement);
 }
 
-// libs/element/src/lib/grafloria.ts
+// ../libs/element/src/lib/grafloria.ts
 function render(spec, target, options = {}) {
-  const element2 = typeof target === "string" ? document.querySelector(target) : target;
-  if (!element2) {
+  const element = typeof target === "string" ? document.querySelector(target) : target;
+  if (!element) {
     throw new Error(`Grafloria.render: no element matched ${JSON.stringify(target)}`);
   }
   const parsed = typeof spec === "string" ? parseSpec(spec) : spec;
-  const instance = createDiagram(element2, {
+  const instance = createDiagram(element, {
     ...options,
     nodes: parsed.nodes ?? [],
     edges: parsed.edges ?? [],
@@ -192581,7 +192536,7 @@ var Grafloria = {
   define: defineGrafloriaFlow
 };
 
-// libs/element/src/lib/diagram-kit/rows.ts
+// ../libs/element/src/lib/diagram-kit/rows.ts
 var ROW_SELECTOR = ".axk-row, .axk-member";
 var SELECTED_CLASS = "axk-row-selected";
 var bindings = /* @__PURE__ */ new WeakMap();
@@ -192681,7 +192636,7 @@ function bindRowInteractions(api) {
   return handle;
 }
 
-// libs/element/src/lib/diagram-kit/card.ts
+// ../libs/element/src/lib/diagram-kit/card.ts
 var ER_ROW_H = 25;
 var ER_HEAD_H = 28;
 var ER_BORDER_SLACK = 9;
@@ -192804,7 +192759,7 @@ function matchColumns(oldCols, newCols) {
   return out;
 }
 
-// libs/element/src/lib/diagram-kit/update.ts
+// ../libs/element/src/lib/diagram-kit/update.ts
 var UpdateCardCommand = class extends Command {
   constructor(nodeId, kind, build) {
     super(kind === "er" ? "Edit table" : "Edit class");
@@ -192958,7 +192913,7 @@ function renameColumnAt(columns, index, name) {
   return columns.map((c, i) => i === index ? { ...c, name } : c);
 }
 
-// libs/element/src/lib/diagram-kit/editing.ts
+// ../libs/element/src/lib/diagram-kit/editing.ts
 var bindings2 = /* @__PURE__ */ new WeakMap();
 var ROW_SELECTOR2 = ".axk-row, .axk-member";
 function locate(el) {
@@ -193281,7 +193236,7 @@ function bindCardEditing(api) {
   return handle;
 }
 
-// libs/element/src/lib/diagram-kit/styles.ts
+// ../libs/element/src/lib/diagram-kit/styles.ts
 var DIAGRAM_KIT_STYLE_ID = "grafloria-diagram-kit-styles";
 var CSS3 = `
 /* ===== ER entity (table) cards ===== */
@@ -193382,7 +193337,7 @@ function ensureDiagramKitStyles(doc = typeof document !== "undefined" ? document
   doc.head.appendChild(style);
 }
 
-// libs/element/src/lib/dashboard-kit/grid-mapping.ts
+// ../libs/element/src/lib/dashboard-kit/grid-mapping.ts
 function rowHeightFor(g, rows) {
   if (g.sizing === "grow") return g.baseRowHeight;
   const r = Math.max(1, rows);
@@ -193477,7 +193432,7 @@ function buildCommitCommands(deltas) {
   return commands;
 }
 
-// libs/element/src/lib/dashboard-kit/styles.ts
+// ../libs/element/src/lib/dashboard-kit/styles.ts
 var DASHBOARD_KIT_STYLE_ID = "grafloria-dashboard-kit-styles";
 var CSS4 = `
 /* ===== reflow glide (armed on the html layer for the whole gesture) ===== */
@@ -193659,7 +193614,7 @@ function ensureDashboardKitStyles(doc = document) {
   doc.head.appendChild(style);
 }
 
-// libs/element/src/lib/dashboard-kit/grid-binder.ts
+// ../libs/element/src/lib/dashboard-kit/grid-binder.ts
 var BOARD_REGISTRY = /* @__PURE__ */ new Map();
 var SetGroupCellCommand = class extends Command {
   constructor(groupId, cellBefore, cellAfter, frameBefore, frameAfter) {
@@ -194023,9 +193978,9 @@ function bindDashboardGrid(api, group, options = {}) {
       writing = false;
     }
   };
-  const applyColumns = (n3, layout3) => {
+  const applyColumns = (n3, layout) => {
     const prev = columns;
-    if (!engine.setColumns(n3, layout3)) return false;
+    if (!engine.setColumns(n3, layout)) return false;
     columns = engine.columns;
     persistLiveCells();
     armGlide();
@@ -194571,7 +194526,13 @@ function bindDashboardGrid(api, group, options = {}) {
     hitTest(ev, hit) {
       if (disposed) return false;
       if (gesture) return true;
-      if (hit.node) return (group.members ?? /* @__PURE__ */ new Set()).has(hit.node.id);
+      if (hit.node) {
+        if ((group.members ?? /* @__PURE__ */ new Set()).has(hit.node.id)) return true;
+        for (const p of BOARD_REGISTRY.get(api.container) ?? []) {
+          if (p !== selfPeer && p.hasItem(hit.node.id)) return false;
+        }
+        return insideMemberGroupFrame(ev.world.x, ev.world.y);
+      }
       return insideMemberGroupFrame(ev.world.x, ev.world.y);
     },
     onPointerDown(ev, hit) {
@@ -194769,10 +194730,10 @@ function bindDashboardGrid(api, group, options = {}) {
       api.renderNow();
       evaluateResponsive();
     },
-    setColumns(n3, layout3, opts) {
+    setColumns(n3, layout, opts) {
       if (disposed) return false;
       if (!opts?.responsive) responsivePinned = true;
-      return applyColumns(n3, layout3 ?? responsive?.layout ?? "moveScale");
+      return applyColumns(n3, layout ?? responsive?.layout ?? "moveScale");
     },
     getColumns: () => columns,
     setRtl(on) {
@@ -194893,7 +194854,7 @@ function bindDashboardGrid(api, group, options = {}) {
   return handle;
 }
 
-// libs/element/src/lib/dashboard-kit/widgets.ts
+// ../libs/element/src/lib/dashboard-kit/widgets.ts
 var BUILT_IN_WIDGET_KINDS = ["kpi", "line", "bar", "donut", "funnel", "table"];
 var PALETTE = ["#3b52d9", "#0ea5e9", "#14b8a6", "#f59e0b", "#8b5cf6", "#64748b"];
 var colorAt = (i) => PALETTE[(i % PALETTE.length + PALETTE.length) % PALETTE.length];
@@ -195116,7 +195077,7 @@ var defaultWidgetRenderer = (widget, host) => {
   card(host, widget ?? { id: "" }, titleOf(widget ?? { id: "" }));
 };
 
-// libs/element/src/lib/dashboard-kit/dashboard.ts
+// ../libs/element/src/lib/dashboard-kit/dashboard.ts
 var AddWidgetCommand = class extends Command {
   constructor(node, groupId) {
     super("Add widget");
@@ -195172,6 +195133,23 @@ function buildWidgetNode(w, rowHeight) {
   for (const p of [...node.getPorts().values()]) node.removePort(p.id);
   return node;
 }
+function cloneWidgets(ws) {
+  return ws.map((w) => ({ ...w, ...w.widgets ? { widgets: cloneWidgets(w.widgets) } : {} }));
+}
+function innerColumnsOf(w) {
+  return Math.max(1, w.columns ?? w.span ?? 3);
+}
+function rowExtentOf(widgets) {
+  let max = 1;
+  for (const w of widgets) max = Math.max(max, (w.y ?? 0) + (w.rows ?? 1));
+  return max;
+}
+function assignCellsDeep(widgets, columns) {
+  assignCells(widgets, columns);
+  for (const w of widgets) {
+    if (w.widgets) assignCellsDeep(w.widgets, innerColumnsOf(w));
+  }
+}
 function assignCells(widgets, columns) {
   let x = 0;
   let y = 0;
@@ -195197,6 +195175,26 @@ function assignCells(widgets, columns) {
 function createDashboardHandle(ctx) {
   const { views, groups, binders, specById, viewOfWidget } = ctx;
   const hostOf = (id) => ctx.hosts.get(id);
+  const treeOf = (boardId) => {
+    const g = ctx.boardGroups.get(boardId);
+    const b = binders.get(boardId);
+    if (!g) return [];
+    const saved = b?.saveLayout();
+    const cellOf = (id) => saved?.cells.get(id) ?? b?.cellOf(id);
+    const entries = [];
+    for (const memberId of g.members ?? []) {
+      const spec = specById.get(memberId);
+      const cell = cellOf(memberId);
+      const at = cell ? { x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : {};
+      if (ctx.boardGroups.has(memberId)) {
+        entries.push({ id: memberId, ...spec ?? {}, ...at, widgets: treeOf(memberId) });
+      } else if (spec) {
+        entries.push({ ...spec, ...at });
+      }
+    }
+    entries.sort((p1, p2) => (p1.y ?? 0) - (p2.y ?? 0) || (p1.x ?? 0) - (p2.x ?? 0));
+    return entries;
+  };
   const execCommand = (cmd) => {
     try {
       const r = ctx.apiRef?.getEngine?.()?.commandManager.execute(cmd);
@@ -195246,9 +195244,9 @@ function createDashboardHandle(ctx) {
       ctx.apiRef?.renderNow();
     },
     getFloat: () => binders.get(ctx.active)?.getFloat() ?? (ctx.optionsBase.float ?? false),
-    setColumns(n3, layout3, viewId) {
+    setColumns(n3, layout, viewId) {
       const targets = viewId ? [binders.get(viewId)] : [...binders.values()];
-      for (const b of targets) b?.setColumns(n3, layout3);
+      for (const b of targets) b?.setColumns(n3, layout);
       ctx.apiRef?.renderNow();
     },
     getColumns: (viewId) => binders.get(viewId ?? ctx.active)?.getColumns() ?? ctx.columns,
@@ -195259,17 +195257,17 @@ function createDashboardHandle(ctx) {
     getRtl: () => binders.get(ctx.active)?.getRtl() ?? (ctx.optionsBase.rtl ?? false),
     addWidget(spec, viewId) {
       const vid = viewId ?? ctx.active;
-      const v = views.find((x) => x.id === vid);
+      const arr = ctx.boardWidgets.get(vid);
       const model = ctx.apiRef?.getModel();
-      const group = groups.get(vid);
-      if (!v || !model || !group) return void 0;
+      const group = ctx.boardGroups.get(vid);
+      if (!arr || !model || !group) return void 0;
       const w = {
         ...spec,
         id: spec.id || `w-${++autoId}`,
         span: spec.span ?? 3,
         rows: spec.rows ?? 1
       };
-      v.widgets.push(w);
+      arr.push(w);
       specById.set(w.id, w);
       viewOfWidget.set(w.id, vid);
       const existing = model.getNode(w.id);
@@ -195305,19 +195303,25 @@ function createDashboardHandle(ctx) {
       const ids = /* @__PURE__ */ new Set();
       if (!groups.has(id)) return ids;
       ids.add(id);
-      for (const w of views.find((v) => v.id === id)?.widgets ?? []) ids.add(w.id);
+      const walk3 = (ws) => {
+        for (const w of ws) {
+          ids.add(w.id);
+          if (w.widgets) walk3(w.widgets);
+        }
+      };
+      walk3(views.find((v) => v.id === id)?.widgets ?? []);
       return ids;
     },
     toJSON() {
       const savedViews = views.map((v) => {
         const saved = binders.get(v.id)?.saveLayout();
+        const live = treeOf(v.id);
         return {
           ...v,
           ...saved ? { columns: saved.columns } : {},
-          widgets: v.widgets.map((w) => {
-            const cell = saved?.cells.get(w.id) ?? binders.get(v.id)?.cellOf(w.id);
-            return cell ? { ...w, x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : { ...w };
-          })
+          // Live membership when the view is mounted; the authored tree before
+          // finalize (a spec serialised without ever rendering keeps its shape).
+          widgets: live.length > 0 || (ctx.boardGroups.get(v.id)?.members?.size ?? 0) > 0 ? live : v.widgets.map((w) => ({ ...w }))
         };
       });
       return {
@@ -195337,8 +195341,10 @@ function createDashboardHandle(ctx) {
       for (const b of binders.values()) b.dispose();
       binders.clear();
       const model = ctx.apiRef?.getModel();
+      for (const id of [...ctx.boardGroups.keys()].reverse()) model?.removeGroup?.(id);
       for (const id of groups.keys()) model?.removeGroup?.(id);
       groups.clear();
+      ctx.boardGroups.clear();
       ctx.hosts.clear();
     }
   };
@@ -195395,15 +195401,22 @@ function createDashboardHandle(ctx) {
         if (host) ctx.renderWidget(spec, host);
       },
       remove(displaced) {
+        if (spec.widgets) {
+          console.warn("[dashboard] remove() on a container is not supported");
+          return;
+        }
         const n3 = node();
-        const group = groups.get(viewId);
+        const group = ctx.boardGroups.get(viewId);
         const b = binder();
         if (!n3 || !group || !b) return;
         const survivors = displaced ?? b.planRemoval(id);
         const cmds = [...survivors, new RemoveFromGroupCommand(group.id, id), new RemoveNodeCommand(id)];
         void execCommand(new BatchCommand("Remove widget", cmds));
-        const v = views.find((x) => x.id === viewId);
-        if (v) v.widgets = v.widgets.filter((w) => w.id !== id);
+        const arr = ctx.boardWidgets.get(viewId);
+        if (arr) {
+          const i = arr.findIndex((w) => w.id === id);
+          if (i >= 0) arr.splice(i, 1);
+        }
         specById.delete(id);
         viewOfWidget.delete(id);
         b.sync();
@@ -195426,15 +195439,28 @@ function dashboard(options) {
   const rowHeight = options.rowHeight ?? DEFAULTS5.rowHeight;
   const boardW = options.width ?? DEFAULTS5.width;
   const boardH = options.height ?? DEFAULTS5.height;
-  const views = options.views ? options.views.map((v) => ({ ...v, widgets: v.widgets.map((w) => ({ ...w })) })) : [{ id: "main", widgets: (options.widgets ?? []).map((w) => ({ ...w })) }];
-  for (const v of views) assignCells(v.widgets, v.columns ?? columns);
+  const views = options.views ? options.views.map((v) => ({ ...v, widgets: cloneWidgets(v.widgets) })) : [{ id: "main", widgets: cloneWidgets(options.widgets ?? []) }];
+  for (const v of views) assignCellsDeep(v.widgets, v.columns ?? columns);
   const nodes = [];
   const specById = /* @__PURE__ */ new Map();
   const viewOfWidget = /* @__PURE__ */ new Map();
-  for (const v of views) {
-    for (const w of v.widgets) {
+  const boardWidgets = /* @__PURE__ */ new Map();
+  const viewOfBoard = /* @__PURE__ */ new Map();
+  const flatten2 = (boardId, viewId, widgets) => {
+    for (const w of widgets) {
       specById.set(w.id, w);
-      viewOfWidget.set(w.id, v.id);
+      viewOfWidget.set(w.id, boardId);
+      if (w.widgets) {
+        boardWidgets.set(w.id, w.widgets);
+        viewOfBoard.set(w.id, viewId);
+        flatten2(w.id, viewId, w.widgets);
+        continue;
+      }
+      pushWidgetNode(w);
+    }
+  };
+  const pushWidgetNode = (w) => {
+    {
       nodes.push({
         id: w.id,
         type: "widget",
@@ -195455,6 +195481,11 @@ function dashboard(options) {
         }
       });
     }
+  };
+  for (const v of views) {
+    boardWidgets.set(v.id, v.widgets);
+    viewOfBoard.set(v.id, v.id);
+    flatten2(v.id, v.id, v.widgets);
   }
   const renderWidget = options.renderWidget ?? defaultWidgetRenderer;
   const ctx = {
@@ -195463,6 +195494,9 @@ function dashboard(options) {
     binders: /* @__PURE__ */ new Map(),
     specById,
     viewOfWidget,
+    boardGroups: /* @__PURE__ */ new Map(),
+    boardWidgets,
+    viewOfBoard,
     hosts: /* @__PURE__ */ new Map(),
     renderWidget,
     columns,
@@ -195511,17 +195545,8 @@ function dashboard(options) {
         g.size = { width: v.width ?? boardW, height: v.height ?? boardH, depth: 0 };
         g.position = { x: v.id === ctx.active ? 0 : OFFSCREEN_X, y: 0 };
         groups.set(v.id, g);
-        for (const w of v.widgets) {
-          const n3 = model.getNode(w.id);
-          if (!n3) continue;
-          if (w.x !== void 0 && w.y !== void 0) {
-            n3.setGridItem(gridItemFromCell({ x: w.x, y: w.y, w: w.span ?? 3, h: w.rows ?? 1 }));
-          }
-          if (w.pinned) n3.setState({ locked: true });
-          n3.setBehavior({ connectable: false });
-          for (const p of [...n3.getPorts().values()]) n3.removePort(p.id);
-          g.addMember(w.id);
-        }
+        ctx.boardGroups.set(v.id, g);
+        mountBoard(v.id, v.id, v.widgets, g);
         binders.set(
           v.id,
           bindDashboardGrid(a, g, {
@@ -195536,21 +195561,89 @@ function dashboard(options) {
             ...options.responsive ? { responsive: options.responsive } : {},
             ...options.binder ?? {},
             onGesture: (e) => {
-              if (e.type === "commit" && options.onLayoutChange) {
-                const snapshot = handle.toJSON().views.find((x) => x.id === v.id);
-                if (snapshot) options.onLayoutChange(v.id, snapshot.widgets);
-              }
+              if (e.type === "commit") reportLayoutChange(v.id);
               options.binder?.onGesture?.(e);
             }
           })
         );
       }
       handle.showView(ctx.active);
+      return;
+      function mountBoard(boardId, viewId, widgets, boardGroup) {
+        for (const w of widgets) {
+          if (w.widgets) {
+            const innerColumns = innerColumnsOf(w);
+            const innerRows = w.maxRows ?? rowExtentOf(w.widgets);
+            const cg = new GroupModel({ id: w.id, name: w.title ?? w.id });
+            model.addGroup(cg);
+            cg.setMetadata("frameChrome", "none");
+            cg.setMetadata("gridItem", gridItemFromCell({ x: w.x, y: w.y, w: w.span, h: w.rows }));
+            cg.setMetadata("containerWidget", {
+              ...w.kind !== void 0 ? { kind: w.kind } : {},
+              ...w.title !== void 0 ? { title: w.title } : {},
+              columns: innerColumns,
+              maxRows: innerRows,
+              ...w.data !== void 0 ? { data: w.data } : {}
+            });
+            cg.setMetadata("dashboardBoard", {
+              columns: innerColumns,
+              gap,
+              padding: 0,
+              sizing: "fit",
+              baseRowHeight: rowHeight,
+              // The slab's height is the PARENT's business — 0 hands it over,
+              // which is what makes escalation grow the slab instead of the
+              // container fighting its own frame.
+              designHeight: 0,
+              maxRows: innerRows,
+              float: false,
+              rtl: options.rtl ?? false
+            });
+            cg.size = { width: 100, height: rowHeight, depth: 0 };
+            boardGroup.addMember(w.id);
+            ctx.boardGroups.set(w.id, cg);
+            mountBoard(w.id, viewId, w.widgets, cg);
+            binders.set(
+              w.id,
+              bindDashboardGrid(a, cg, {
+                columns: innerColumns,
+                gap,
+                padding: 0,
+                sizing: "fit",
+                baseRowHeight: rowHeight,
+                designHeight: 0,
+                maxRows: innerRows,
+                float: false,
+                rtl: options.rtl ?? false,
+                onGesture: (e) => {
+                  if (e.type === "commit") reportLayoutChange(viewId);
+                  options.binder?.onGesture?.(e);
+                }
+              })
+            );
+            continue;
+          }
+          const n3 = model.getNode(w.id);
+          if (!n3) continue;
+          if (w.x !== void 0 && w.y !== void 0) {
+            n3.setGridItem(gridItemFromCell({ x: w.x, y: w.y, w: w.span ?? 3, h: w.rows ?? 1 }));
+          }
+          if (w.pinned) n3.setState({ locked: true });
+          n3.setBehavior({ connectable: false });
+          for (const p of [...n3.getPorts().values()]) n3.removePort(p.id);
+          boardGroup.addMember(w.id);
+        }
+      }
+      function reportLayoutChange(viewId) {
+        if (!options.onLayoutChange) return;
+        const snapshot = handle.toJSON().views.find((x) => x.id === viewId);
+        if (snapshot) options.onLayoutChange(viewId, snapshot.widgets);
+      }
     }
   };
 }
 
-// libs/element/src/lib/load.ts
+// ../libs/element/src/lib/load.ts
 function isDiagramKitCard(node) {
   return node.getMetadata("kitEntity") !== void 0 || node.getMetadata("kitClass") !== void 0;
 }
@@ -195579,10 +195672,33 @@ function fromDocument(document2, options = {}) {
   const dashGroups = groups.filter((g) => g.getMetadata("dashboardBoard") !== void 0);
   const specById = /* @__PURE__ */ new Map();
   const viewOfWidget = /* @__PURE__ */ new Map();
-  const ctxViews = dashGroups.map((g) => {
-    const board = g.getMetadata("dashboardBoard");
+  const boardWidgets = /* @__PURE__ */ new Map();
+  const viewOfBoard = /* @__PURE__ */ new Map();
+  const boardGroups = new Map(dashGroups.map((g) => [g.id, g]));
+  const containerIds = /* @__PURE__ */ new Set();
+  for (const g of dashGroups) {
+    for (const m of g.members ?? []) if (boardGroups.has(m)) containerIds.add(m);
+  }
+  const rebuildBoard = (g, viewId) => {
     const widgets = [];
     for (const memberId of g.members ?? []) {
+      const childGroup = boardGroups.get(memberId);
+      if (childGroup) {
+        const meta = childGroup.getMetadata("containerWidget") ?? {};
+        const cell = cellFromGridItem(childGroup.getMetadata("gridItem"));
+        const ws2 = {
+          id: childGroup.id,
+          ...meta,
+          ...cell ? { x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : {},
+          widgets: rebuildBoard(childGroup, viewId)
+        };
+        specById.set(ws2.id, ws2);
+        viewOfWidget.set(ws2.id, g.id);
+        boardWidgets.set(ws2.id, ws2.widgets);
+        viewOfBoard.set(ws2.id, viewId);
+        widgets.push(ws2);
+        continue;
+      }
       const node = model.getNode(memberId);
       const ws = node ? widgetSpecOf(node) : null;
       if (!ws) continue;
@@ -195590,24 +195706,37 @@ function fromDocument(document2, options = {}) {
       viewOfWidget.set(ws.id, g.id);
       widgets.push(ws);
     }
+    return widgets;
+  };
+  const viewGroups = dashGroups.filter((g) => !containerIds.has(g.id));
+  const ctxViews = viewGroups.map((g) => {
+    const board = g.getMetadata("dashboardBoard");
+    const widgets = rebuildBoard(g, g.id);
+    boardWidgets.set(g.id, widgets);
+    viewOfBoard.set(g.id, g.id);
     return { id: g.id, name: g.name, widgets, columns: board.columns, width: g.size?.width, height: g.size?.height };
   });
-  const firstBoard = dashGroups[0]?.getMetadata("dashboardBoard");
-  const activeGroup = dashGroups.find((g) => g.position.x > -1e3) ?? dashGroups[0];
+  const firstBoard = viewGroups[0]?.getMetadata("dashboardBoard");
+  const activeGroup = viewGroups.find((g) => g.position.x > -1e3) ?? viewGroups[0];
   const ctx = {
     views: ctxViews,
-    groups: new Map(dashGroups.map((g) => [g.id, g])),
+    // PARKING map: views only. A container must follow its parent when a view
+    // parks, not travel to OFFSCREEN_X on its own.
+    groups: new Map(viewGroups.map((g) => [g.id, g])),
     // The SAME map the LoadedDiagramSpec exposes as `boards` — derived, not a copy.
     binders: boards,
     specById,
     viewOfWidget,
+    boardGroups,
+    boardWidgets,
+    viewOfBoard,
     hosts: /* @__PURE__ */ new Map(),
     renderWidget: paintWidget,
     columns: firstBoard?.columns ?? 12,
     gap: firstBoard?.gap ?? 8,
     rowHeight: firstBoard?.baseRowHeight ?? 130,
-    boardW: dashGroups[0]?.size?.width ?? 1180,
-    boardH: dashGroups[0]?.size?.height ?? 660,
+    boardW: viewGroups[0]?.size?.width ?? 1180,
+    boardH: viewGroups[0]?.size?.height ?? 660,
     // responsive is NOT in the document (a runtime seam), so it is deliberately
     // absent from the round-trip; width/height/columns/gap/sizing/float/rtl are.
     optionsBase: firstBoard ? {
@@ -195617,8 +195746,8 @@ function fromDocument(document2, options = {}) {
       sizing: firstBoard.sizing,
       float: firstBoard.float,
       rtl: firstBoard.rtl,
-      width: dashGroups[0]?.size?.width,
-      height: dashGroups[0]?.size?.height
+      width: viewGroups[0]?.size?.width,
+      height: viewGroups[0]?.size?.height
     } : {},
     active: activeGroup?.id ?? "main",
     apiRef: null
@@ -195672,7 +195801,7 @@ function parseDocument(json) {
   }
 }
 
-// libs/element/src/lib/diagram-kit/er.ts
+// ../libs/element/src/lib/diagram-kit/er.ts
 var DEFAULT_WIDTH = 190;
 var CARDINALITY = {
   "one-to-many": { tail: "one", head: "crow-foot" },
@@ -195784,7 +195913,7 @@ function erDiagram(options) {
   };
 }
 
-// libs/element/src/lib/diagram-kit/uml.ts
+// ../libs/element/src/lib/diagram-kit/uml.ts
 var DEFAULT_WIDTH2 = 200;
 var STROKE = "#475569";
 var DASH = "6,4";
@@ -195875,7 +196004,7 @@ function umlDiagram(options) {
   return { nodes, edges, finalize };
 }
 
-// libs/element/src/lib/diagram-kit/join-guidance.ts
+// ../libs/element/src/lib/diagram-kit/join-guidance.ts
 function singularize(word) {
   const w = word.toLowerCase();
   if (w.endsWith("ies") && w.length > 3) return w.slice(0, -3) + "y";
@@ -196083,7 +196212,7 @@ function bindJoinGuidance(api, options = {}) {
   };
 }
 
-// libs/element/src/lib/diagram-kit/handles.ts
+// ../libs/element/src/lib/diagram-kit/handles.ts
 var deep = (v) => JSON.parse(JSON.stringify(v));
 var CardHandle = class {
   constructor(api, id) {
@@ -196340,7 +196469,7 @@ function umlClasses(api) {
   return (model.getNodes?.() ?? []).filter((n3) => n3.getMetadata?.("kitClass")).map((n3) => new UmlClass(api, n3.id));
 }
 
-// libs/element/src/lib/stencil-kit/styles.ts
+// ../libs/element/src/lib/stencil-kit/styles.ts
 var STENCIL_KIT_STYLE_ID = "grafloria-stencil-kit-styles";
 var CSS5 = `
 .gf-stencil {
@@ -196460,7 +196589,7 @@ function ensureStencilKitStyles(doc = document) {
   doc.head.appendChild(style);
 }
 
-// libs/element/src/lib/stencil-kit/builders.ts
+// ../libs/element/src/lib/stencil-kit/builders.ts
 var builders = /* @__PURE__ */ new Map();
 function registerStencilBuilder(masterId, builder) {
   builders.set(masterId, builder);
@@ -196469,7 +196598,7 @@ function getStencilBuilder(masterId) {
   return builders.get(masterId);
 }
 
-// libs/element/src/lib/stencil-kit/palette.ts
+// ../libs/element/src/lib/stencil-kit/palette.ts
 var SVG_NS5 = "http://www.w3.org/2000/svg";
 var DND_TYPE = "application/x-grafloria-master";
 function applyNotationTheme(node, stencilId, scheme, api) {
@@ -196764,7 +196893,7 @@ function bindStencilPalette(api, hosts, options = {}) {
   };
 }
 
-// libs/element/src/lib/stencil-kit/shape-data.ts
+// ../libs/element/src/lib/stencil-kit/shape-data.ts
 function schemaFor(engine, node) {
   const templateId = node?.getMetadata?.("templateId");
   if (!templateId) return null;
@@ -197337,7 +197466,7 @@ function bindShapeDataPanel(api, host, options = {}) {
   };
 }
 
-// libs/element/src/lib/stencil-kit/card-builders.ts
+// ../libs/element/src/lib/stencil-kit/card-builders.ts
 var CARD_SHAPE = { type: "rect", fill: "none", stroke: "none" };
 var CARD_STYLE = { fill: "transparent", stroke: "transparent", strokeWidth: 0 };
 var seq = 0;
@@ -197415,10 +197544,10 @@ function registerCardBuilders() {
   }
 }
 
-// libs/element/src/lib/stencil-kit/index.ts
+// ../libs/element/src/lib/stencil-kit/index.ts
 registerCardBuilders();
 
-// libs/element/src/index.ts
+// ../libs/element/src/index.ts
 defineGrafloriaFlow();
 export {
   ALL_LOD_FEATURES,

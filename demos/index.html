@@ -87,7 +87,7 @@
   public embed with real pointer events and asserts a consequence; a broken demo fails CI.
   If it's in the gallery, it works.</p>
   <div class="scoreboard">
-    <span class="stat"><b>111</b> demos</span>
+    <span class="stat"><b>112</b> demos</span>
     <span class="stat"><b>12</b> categories</span>
     <span class="stat"><b>MIT</b> — every one of them</span>
     <a class="stat link" href="https://grafloria.com/compare/">how Grafloria compares →</a>
@@ -573,12 +573,17 @@
       </section>
 
       <section id="dashboard">
-        <h2>Dashboards <span class="count">2</span></h2>
+        <h2>Dashboards <span class="count">3</span></h2>
         <div class="grid">
         <a class="card is-new" href="dashboard/dashboard-builder.html" style="--cat:#0891b2">
           <div class="card-thumb"><img src="thumbs/dashboard/dashboard-builder.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name"><span class="badge new">New</span>Dashboard builder<span class="card-go">→</span></div>
           <div class="card-blurb">A dashboard-builder app authored with the kit's DATA-FIRST API: `dashboard({ views: [{ widgets: [{ id, kind, span, rows, data }] }] })` — three tabbed views declared as plain data, no groups/nodes/cells assembled by hand, and every chart drawn by the kit's built-in renderers (kpi / line / bar / donut / funnel / table) from this page's own dataset. render() wires the rest: ONE flat 12-column PACK grid per view, so drag a tile and neighbours slide out of the way live around a truthful placeholder; resize from the corner and only that tile changes; pinned tiles refuse the mover; Esc restores; palette drag-in and drag-out-to-remove; fit/grow sizing — every gesture ONE undoable BatchCommand, from the @grafloria/element front door.</div>
+        </a>
+        <a class="card" href="dashboard/nested-containers.html" style="--cat:#0891b2">
+          <div class="card-thumb"><img src="thumbs/dashboard/nested-containers.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name">Dashboard containers<span class="card-go">→</span></div>
+          <div class="card-blurb">CONTAINMENT declared as data: a widget carrying `widgets` in `dashboard()` mounts as a section — a locked slab in the board with its own pack grid inside. Drag a tile across the boundary and the other grid adopts it live, in either direction; one undo restores the whole gesture, both grids at once. Resize a KPI taller than the section and the SECTION grows a row in the board (the escalation ratchet). toJSON() reports the nesting from live membership — a tile you dragged in serialises under the section, and the snapshot rebuilds through dashboard() unchanged. The hand-built version of this construct lives in dashboard/grid-options.html; this page is the same thing as one field in the data.</div>
         </a>
         <a class="card is-new" href="dashboard/grid-options.html" style="--cat:#0891b2">
           <div class="card-thumb"><img src="thumbs/dashboard/grid-options.png" loading="lazy" alt="" width="600" height="360"></div>

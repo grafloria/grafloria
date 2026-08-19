@@ -4992,3 +4992,33 @@ Live: grid options — nesting, responsive columns, RTL, pinning →
 
         - Export — PNG/SVG/PDF, plus
         includeIds for one-board exports.
+
+
+# Dashboard containers (added in @grafloria/element 0.4.2)
+
+A widget spec carrying `widgets` is a CONTAINER: it mounts as a locked slab in
+its parent board with its own nested pack grid. Inner grid: `columns` (default:
+the container's span), `maxRows` (default: row extent of the declared children;
+a child resized past it grows the container in the PARENT board — escalation).
+Cross-boundary drag adopts in both directions, one undo restores the whole
+gesture, `handle.addWidget(spec, containerId)` targets a container, and
+`toJSON()` serialises nesting from live membership. Tested to two levels.
+A full bounded section refuses adoption (tile snaps home). A container renders
+no card of its own. Live demo: https://grafloria.com/demos/dashboard/nested-containers.html
+
+```
+const spec = dashboard({
+  columns: 12,
+  widgets: [
+    { id: 'trend', kind: 'line', span: 8, rows: 2, data: { /* … */ } },
+    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4,
+      widgets: [
+        { id: 'k-rev',  kind: 'kpi', span: 1, data: { label: 'Revenue', value: '$6.8M' } },
+        { id: 'k-cust', kind: 'kpi', span: 1, data: { label: 'Customers', value: '1,284' } },
+        { id: 'k-win',  kind: 'kpi', span: 1, data: { label: 'Win rate', value: '27.4%' } },
+      ] },
+  ],
+});
+render(spec, host);
+// later: spec.handle.toJSON() — the tree, from live membership
+```

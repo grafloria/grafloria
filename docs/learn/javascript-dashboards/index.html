@@ -307,6 +307,39 @@ render(SPEC2, host);</pre>
 <p><a class="demo-link" href="../../demos/#dashboard">Live: the dashboard builder — tabs, palette, versions →</a></p>
 <p><a class="demo-link" href="../../demos/#dashboard">Live: grid options — nesting, responsive columns, RTL, pinning →</a></p>
 
+      <h2>Containers: a widget that holds widgets</h2>
+      <p>Give a widget a <code>widgets</code> array and it becomes a container —
+      a locked slab in its board with a nested pack grid inside. The inner grid
+      takes its own <code>columns</code> (default: the container's span) and
+      <code>maxRows</code> (default: the row extent of the declared children;
+      resizing a child past it grows the container in the parent board — the
+      escalation ratchet). Cross-boundary drag adopts in both directions with
+      one-undo gestures, <code>handle.addWidget(spec, containerId)</code>
+      targets a container directly, and <code>toJSON()</code> serialises the
+      nesting from live membership — a dragged-in tile lands under its new
+      parent in the snapshot, and the snapshot rebuilds through
+      <code>dashboard()</code> unchanged. Nesting is exercised to two levels.</p>
+<pre data-lang="typescript">const spec = dashboard({
+  columns: 12,
+  widgets: [
+    { id: &#x27;trend&#x27;, kind: &#x27;line&#x27;, span: 8, rows: 2, data: { /* … */ } },
+    { id: &#x27;kpis&#x27;, title: &#x27;KPI section&#x27;, span: 12, rows: 1, columns: 4,
+      widgets: [
+        { id: &#x27;k-rev&#x27;,  kind: &#x27;kpi&#x27;, span: 1, data: { label: &#x27;Revenue&#x27;, value: &#x27;$6.8M&#x27; } },
+        { id: &#x27;k-cust&#x27;, kind: &#x27;kpi&#x27;, span: 1, data: { label: &#x27;Customers&#x27;, value: &#x27;1,284&#x27; } },
+        { id: &#x27;k-win&#x27;,  kind: &#x27;kpi&#x27;, span: 1, data: { label: &#x27;Win rate&#x27;, value: &#x27;27.4%&#x27; } },
+      ] },
+  ],
+});
+render(spec, host);
+// later: spec.handle.toJSON() — the tree, from live membership</pre>
+      <div class="note">A container renders no card of its own — <code>kind</code>/<code>data</code>
+      on it are carried for your bookkeeping, not painted. A FULL bounded
+      section refuses adoption (the tile snaps home) — leave a free slot if you
+      want drag-in room. Container removal through the widget handle is not
+      supported yet.</div>
+<p><a class="demo-link" href="../../demos/dashboard/nested-containers.html">Live: dashboard containers — drag across the boundary, escalate, undo →</a></p>
+
       <h2>Where next</h2>
       <ul>
         <li><a href="../kits/">Kits</a> — the pattern dashboard() shares with

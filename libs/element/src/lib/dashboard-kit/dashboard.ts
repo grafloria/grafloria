@@ -85,6 +85,30 @@ export interface DashboardWidgetSpec {
   data?: Record<string, unknown>;
   /** Optional title used by the built-in fallback renderer. */
   title?: string;
+  /**
+   * CONTAINMENT. A widget carrying `widgets` is a CONTAINER: it mounts as a
+   * member group (a locked slab in its parent's grid, exactly like a view's
+   * board one level down) with its own nested pack grid bound on it. Children
+   * lay out inside its frame; dragging a tile across the boundary adopts it
+   * live in either direction, and one undo restores the whole gesture.
+   * Containers may nest — tested to TWO levels; deeper is not exercised by
+   * the gates and rides at your own risk. A container renders no card of its
+   * own (`kind`/`data` are carried for your bookkeeping and serialization,
+   * not painted).
+   */
+  widgets?: DashboardWidgetSpec[];
+  /**
+   * Container only: column count of the INNER grid (default: the parent
+   * board's column count).
+   */
+  columns?: number;
+  /**
+   * Container only: the inner grid's designed row count. A child resized past
+   * it ESCALATES — the container's slab grows a row in the parent board (the
+   * ratchet), instead of the child overflowing the frame. Default: the row
+   * extent of the declared children.
+   */
+  maxRows?: number;
 }
 
 /** One board. Multiple views are the tab pattern: only one is on-camera. */
@@ -380,6 +404,32 @@ function buildWidgetNode(w: DashboardWidgetSpec, rowHeight: number): NodeModel {
   return node;
 }
 
+function cloneWidgets(ws: DashboardWidgetSpec[]): DashboardWidgetSpec[] {
+  return ws.map((w) => ({ ...w, ...(w.widgets ? { widgets: cloneWidgets(w.widgets) } : {}) }));
+}
+
+/** A container's inner column count: authored, else its own span — inner cells
+ *  then ride the parent's column rhythm, which is what a section reads as. */
+function innerColumnsOf(w: DashboardWidgetSpec): number {
+  return Math.max(1, w.columns ?? w.span ?? 3);
+}
+
+/** The row extent of a laid-out widget list (the inner grid's design height). */
+function rowExtentOf(widgets: DashboardWidgetSpec[]): number {
+  let max = 1;
+  for (const w of widgets) max = Math.max(max, (w.y ?? 0) + (w.rows ?? 1));
+  return max;
+}
+
+/** Recursive `assignCells`: a container flows in its parent like any widget,
+ *  and its children flow inside its OWN column count. */
+function assignCellsDeep(widgets: DashboardWidgetSpec[], columns: number): void {
+  assignCells(widgets, columns);
+  for (const w of widgets) {
+    if (w.widgets) assignCellsDeep(w.widgets, innerColumnsOf(w));
+  }
+}
+
 /** Flow widgets that declared no cell: left-to-right, wrapping at `columns`. */
 function assignCells(widgets: DashboardWidgetSpec[], columns: number): void {
   let x = 0;
@@ -439,7 +489,17 @@ export interface DashboardHandleContext {
   groups: Map<string, GroupModel>;
   binders: Map<string, DashboardGridHandle>;
   specById: Map<string, DashboardWidgetSpec>;
+  /** Widget id → the BOARD that owns it (a view id, or a container id). */
   viewOfWidget: Map<string, string>;
+  /** Every board group — the views PLUS every container. Views also live in
+   *  `groups` (the parking map showView drives); containers deliberately do
+   *  NOT — parking flings a group to OFFSCREEN_X, and a container must follow
+   *  its parent, not travel on its own. */
+  boardGroups: Map<string, GroupModel>;
+  /** Board id → its authored widgets array (views and containers alike). */
+  boardWidgets: Map<string, DashboardWidgetSpec[]>;
+  /** Board id → the VIEW it belongs to (identity for views). */
+  viewOfBoard: Map<string, string>;
   hosts: Map<string, HTMLElement>;
   renderWidget: (widget: DashboardWidgetSpec, host: HTMLElement) => void;
   columns: number;
@@ -469,6 +529,36 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
   const { views, groups, binders, specById, viewOfWidget } = ctx;
 
   const hostOf = (id: string): HTMLElement | undefined => ctx.hosts.get(id);
+
+  /**
+   * A board's widgets as a NESTED tree, derived from LIVE membership — not the
+   * authored arrays. A cross-boundary drag moves membership through commands
+   * (and undo moves it back); the authored arrays do not follow. Deriving from
+   * the groups + engines is what makes toJSON() and onLayoutChange report a
+   * tile under the container it is actually in, in every one of those states.
+   */
+  const treeOf = (boardId: string): DashboardWidgetSpec[] => {
+    const g = ctx.boardGroups.get(boardId);
+    const b = binders.get(boardId);
+    if (!g) return [];
+    // Cells from the binder's serialisation (largest cached layout — the
+    // saving-on-a-phone rule), falling back to the live engine cell.
+    const saved = b?.saveLayout();
+    const cellOf = (id: string) => saved?.cells.get(id) ?? b?.cellOf(id);
+    const entries: DashboardWidgetSpec[] = [];
+    for (const memberId of g.members ?? []) {
+      const spec = specById.get(memberId);
+      const cell = cellOf(memberId);
+      const at = cell ? { x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : {};
+      if (ctx.boardGroups.has(memberId)) {
+        entries.push({ id: memberId, ...(spec ?? {}), ...at, widgets: treeOf(memberId) });
+      } else if (spec) {
+        entries.push({ ...spec, ...at });
+      }
+    }
+    entries.sort((p1, p2) => (p1.y ?? 0) - (p2.y ?? 0) || (p1.x ?? 0) - (p2.x ?? 0));
+    return entries;
+  };
 
   const execCommand = (cmd: unknown): void => {
     try {
@@ -538,10 +628,12 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     getRtl: () => binders.get(ctx.active)?.getRtl() ?? (ctx.optionsBase.rtl ?? false),
     addWidget(spec, viewId) {
       const vid = viewId ?? ctx.active;
-      const v = views.find((x) => x.id === vid);
+      // `vid` may name a view OR a container — both are boards with a group,
+      // a binder and an authored array.
+      const arr = ctx.boardWidgets.get(vid);
       const model = ctx.apiRef?.getModel();
-      const group = groups.get(vid);
-      if (!v || !model || !group) return undefined;
+      const group = ctx.boardGroups.get(vid);
+      if (!arr || !model || !group) return undefined;
       const w: DashboardWidgetSpec = {
         ...spec,
         id: spec.id || `w-${++autoId}`,
@@ -551,7 +643,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // REGISTER FIRST: a custom node mounts exactly once, and the painter
       // returns early for an id the spec does not know — so the widget must be
       // known before the node reaches the model, or it paints blank forever.
-      v.widgets.push(w);
+      arr.push(w);
       specById.set(w.id, w);
       viewOfWidget.set(w.id, vid);
 
@@ -595,8 +687,15 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       ids.add(id);
       // Read the SPEC, not the group's member Set: membership is maintained by
       // commands and an in-flight drag can have a widget momentarily reparented.
-      // The spec is what the view IS.
-      for (const w of views.find((v) => v.id === id)?.widgets ?? []) ids.add(w.id);
+      // The spec is what the view IS. Containers add themselves AND their
+      // subtree — an exported container without its children is an empty frame.
+      const walk = (ws: DashboardWidgetSpec[]): void => {
+        for (const w of ws) {
+          ids.add(w.id);
+          if (w.widgets) walk(w.widgets);
+        }
+      };
+      walk(views.find((v) => v.id === id)?.widgets ?? []);
       return ids;
     },
     toJSON() {
@@ -607,13 +706,13 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // feeding this straight back into dashboard() rebuilds the wide board.
       const savedViews = views.map((v) => {
         const saved = binders.get(v.id)?.saveLayout();
+        const live = treeOf(v.id);
         return {
           ...v,
           ...(saved ? { columns: saved.columns } : {}),
-          widgets: v.widgets.map((w) => {
-            const cell = saved?.cells.get(w.id) ?? binders.get(v.id)?.cellOf(w.id);
-            return cell ? { ...w, x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : { ...w };
-          }),
+          // Live membership when the view is mounted; the authored tree before
+          // finalize (a spec serialised without ever rendering keeps its shape).
+          widgets: live.length > 0 || (ctx.boardGroups.get(v.id)?.members?.size ?? 0) > 0 ? live : v.widgets.map((w) => ({ ...w })),
         };
       });
 
@@ -640,8 +739,12 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // The groups finalize() created are ours to clean up — leaving them
       // behind made a rebuild stack a second set of boards on the first.
       const model = ctx.apiRef?.getModel();
+      // Deepest first: a container group removed after its parent is an orphan
+      // the model never saw inside a board.
+      for (const id of [...ctx.boardGroups.keys()].reverse()) model?.removeGroup?.(id);
       for (const id of groups.keys()) model?.removeGroup?.(id);
       groups.clear();
+      ctx.boardGroups.clear();
       ctx.hosts.clear();
     },
   };
@@ -702,8 +805,15 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         if (host) ctx.renderWidget(spec, host);
       },
       remove(displaced) {
+        if (spec.widgets) {
+          // A container is a GROUP, not a node — RemoveNodeCommand would
+          // silently no-op and strand the children. Container removal is not
+          // supported through the widget handle (yet); say so loudly.
+          console.warn('[dashboard] remove() on a container is not supported');
+          return;
+        }
         const n = node();
-        const group = groups.get(viewId);
+        const group = ctx.boardGroups.get(viewId);
         const b = binder();
         if (!n || !group || !b) return;
         // ONE undoable step, survivors' re-pack folded in — the same atomic
@@ -714,8 +824,11 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         const survivors = (displaced as never[] | undefined) ?? b.planRemoval(id);
         const cmds = [...survivors, new RemoveFromGroupCommand(group.id, id), new RemoveNodeCommand(id)];
         void execCommand(new BatchCommand('Remove widget', cmds));
-        const v = views.find((x) => x.id === viewId);
-        if (v) v.widgets = v.widgets.filter((w) => w.id !== id);
+        const arr = ctx.boardWidgets.get(viewId);
+        if (arr) {
+          const i = arr.findIndex((w) => w.id === id);
+          if (i >= 0) arr.splice(i, 1);
+        }
         specById.delete(id);
         viewOfWidget.delete(id);
         b.sync();
@@ -743,18 +856,34 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
   const boardH = options.height ?? DEFAULTS.height;
 
   const views: DashboardViewSpec[] = options.views
-    ? options.views.map((v) => ({ ...v, widgets: v.widgets.map((w) => ({ ...w })) }))
-    : [{ id: 'main', widgets: (options.widgets ?? []).map((w) => ({ ...w })) }];
-  for (const v of views) assignCells(v.widgets, v.columns ?? columns);
+    ? options.views.map((v) => ({ ...v, widgets: cloneWidgets(v.widgets) }))
+    : [{ id: 'main', widgets: cloneWidgets(options.widgets ?? []) }];
+  for (const v of views) assignCellsDeep(v.widgets, v.columns ?? columns);
 
   // -- the render spec: one custom-HTML node per widget ----------------------
   const nodes: Array<Record<string, unknown>> = [];
   const specById = new Map<string, DashboardWidgetSpec>();
   const viewOfWidget = new Map<string, string>();
-  for (const v of views) {
-    for (const w of v.widgets) {
+  const boardWidgets = new Map<string, DashboardWidgetSpec[]>();
+  const viewOfBoard = new Map<string, string>();
+  // Recursive walk: a CONTAINER contributes no node (it becomes a group in
+  // finalize) but registers like a widget, and its children flatten into the
+  // render spec with the container as their board.
+  const flatten = (boardId: string, viewId: string, widgets: DashboardWidgetSpec[]): void => {
+    for (const w of widgets) {
       specById.set(w.id, w);
-      viewOfWidget.set(w.id, v.id);
+      viewOfWidget.set(w.id, boardId);
+      if (w.widgets) {
+        boardWidgets.set(w.id, w.widgets);
+        viewOfBoard.set(w.id, viewId);
+        flatten(w.id, viewId, w.widgets);
+        continue;
+      }
+      pushWidgetNode(w);
+    }
+  };
+  const pushWidgetNode = (w: DashboardWidgetSpec): void => {
+    {
       nodes.push({
         id: w.id,
         type: 'widget',
@@ -775,6 +904,11 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         },
       });
     }
+  };
+  for (const v of views) {
+    boardWidgets.set(v.id, v.widgets);
+    viewOfBoard.set(v.id, v.id);
+    flatten(v.id, v.id, v.widgets);
   }
 
   // No renderWidget → the built-in renderers draw the declared `kind` from the
@@ -794,6 +928,9 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
     binders: new Map<string, DashboardGridHandle>(),
     specById,
     viewOfWidget,
+    boardGroups: new Map<string, GroupModel>(),
+    boardWidgets,
+    viewOfBoard,
     hosts: new Map<string, HTMLElement>(),
     renderWidget,
     columns,
@@ -852,7 +989,102 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         g.size = { width: v.width ?? boardW, height: v.height ?? boardH, depth: 0 };
         g.position = { x: v.id === ctx.active ? 0 : OFFSCREEN_X, y: 0 };
         groups.set(v.id, g);
-        for (const w of v.widgets) {
+        ctx.boardGroups.set(v.id, g);
+        mountBoard(v.id, v.id, v.widgets, g);
+        binders.set(
+          v.id,
+          bindDashboardGrid(a as never, g, {
+            columns: v.columns ?? columns,
+            gap,
+            padding: gap,
+            sizing: options.sizing ?? 'fit',
+            baseRowHeight: rowHeight,
+            designHeight: v.height ?? boardH,
+            float: options.float ?? false,
+            rtl: options.rtl ?? false,
+            ...(options.responsive ? { responsive: options.responsive } : {}),
+            ...(options.binder ?? {}),
+            onGesture: (e) => {
+              if (e.type === 'commit') reportLayoutChange(v.id);
+              options.binder?.onGesture?.(e);
+            },
+          })
+        );
+      }
+      handle.showView(ctx.active);
+      return;
+
+      /**
+       * Mount one board's widgets into its group — and recurse for CONTAINERS.
+       * A container is a view's construction one level down: a frameless
+       * member group with a slab cell in the PARENT's grid, its own
+       * `dashboardBoard` metadata (so `fromDocument()` rebinds it like any
+       * board), and a second `bindDashboardGrid` on the same canvas — which
+       * registers it as a BinderPeer, so cross-boundary drag, deepest-wins
+       * hit-testing and the height-escalation ratchet all apply unchanged.
+       */
+      function mountBoard(
+        boardId: string,
+        viewId: string,
+        widgets: DashboardWidgetSpec[],
+        boardGroup: GroupModel
+      ): void {
+        for (const w of widgets) {
+          if (w.widgets) {
+            const innerColumns = innerColumnsOf(w);
+            const innerRows = w.maxRows ?? rowExtentOf(w.widgets);
+            const cg = new GroupModel({ id: w.id, name: w.title ?? w.id });
+            model.addGroup(cg);
+            cg.setMetadata('frameChrome', 'none');
+            // Slab cells live in GROUP metadata (groups carry no GridItemConfig).
+            cg.setMetadata('gridItem', gridItemFromCell({ x: w.x!, y: w.y!, w: w.span!, h: w.rows! }));
+            // The container's own spec fields, persisted ON the group — a
+            // reloaded document has no authored literal to read them from.
+            cg.setMetadata('containerWidget', {
+              ...(w.kind !== undefined ? { kind: w.kind } : {}),
+              ...(w.title !== undefined ? { title: w.title } : {}),
+              columns: innerColumns,
+              maxRows: innerRows,
+              ...(w.data !== undefined ? { data: w.data } : {}),
+            });
+            cg.setMetadata('dashboardBoard', {
+              columns: innerColumns,
+              gap,
+              padding: 0,
+              sizing: 'fit',
+              baseRowHeight: rowHeight,
+              // The slab's height is the PARENT's business — 0 hands it over,
+              // which is what makes escalation grow the slab instead of the
+              // container fighting its own frame.
+              designHeight: 0,
+              maxRows: innerRows,
+              float: false,
+              rtl: options.rtl ?? false,
+            });
+            cg.size = { width: 100, height: rowHeight, depth: 0 };
+            boardGroup.addMember(w.id);
+            ctx.boardGroups.set(w.id, cg);
+            mountBoard(w.id, viewId, w.widgets, cg);
+            binders.set(
+              w.id,
+              bindDashboardGrid(a as never, cg, {
+                columns: innerColumns,
+                gap,
+                padding: 0,
+                sizing: 'fit',
+                baseRowHeight: rowHeight,
+                designHeight: 0,
+                maxRows: innerRows,
+                float: false,
+                rtl: options.rtl ?? false,
+                onGesture: (e) => {
+                  if (e.type === 'commit') reportLayoutChange(viewId);
+                  options.binder?.onGesture?.(e);
+                },
+              })
+            );
+            continue;
+          }
           const n = model.getNode(w.id);
           if (!n) continue;
           // DECLARED CELLS ARE AUTHORITATIVE. `metadata.gridItem` on the node
@@ -875,32 +1107,23 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           // exactly what hid it, and why the tooth now covers both.
           n.setBehavior({ connectable: false });
           for (const p of [...n.getPorts().values()]) n.removePort(p.id);
-          g.addMember(w.id);
+          boardGroup.addMember(w.id);
         }
-        binders.set(
-          v.id,
-          bindDashboardGrid(a as never, g, {
-            columns: v.columns ?? columns,
-            gap,
-            padding: gap,
-            sizing: options.sizing ?? 'fit',
-            baseRowHeight: rowHeight,
-            designHeight: v.height ?? boardH,
-            float: options.float ?? false,
-            rtl: options.rtl ?? false,
-            ...(options.responsive ? { responsive: options.responsive } : {}),
-            ...(options.binder ?? {}),
-            onGesture: (e) => {
-              if (e.type === 'commit' && options.onLayoutChange) {
-                const snapshot = handle.toJSON().views.find((x) => x.id === v.id);
-                if (snapshot) options.onLayoutChange(v.id, snapshot.widgets);
-              }
-              options.binder?.onGesture?.(e);
-            },
-          })
-        );
       }
-      handle.showView(ctx.active);
+
+      /**
+       * One reporter for every binder on a view — the view's own and each
+       * container's. The payload is the view's FULL NESTED TREE derived from
+       * live membership (handle.toJSON()), so an inner commit reports the same
+       * truth an outer one does, and a tile that crossed a boundary shows up
+       * under its NEW parent. (The old per-view lookup found nothing for a
+       * container binder and silently reported nothing.)
+       */
+      function reportLayoutChange(viewId: string): void {
+        if (!options.onLayoutChange) return;
+        const snapshot = handle.toJSON().views.find((x) => x.id === viewId);
+        if (snapshot) options.onLayoutChange(viewId, snapshot.widgets);
+      }
     },
   };
 }
