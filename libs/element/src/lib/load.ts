@@ -75,6 +75,7 @@ import { bindRowInteractions } from './diagram-kit/rows';
 import { bindCardEditing } from './diagram-kit/editing';
 import { ensureDiagramKitStyles } from './diagram-kit/styles';
 import { bindDashboardGrid, type DashboardGridHandle } from './dashboard-kit/grid-binder';
+import { cellFromGridItem } from './dashboard-kit/grid-mapping';
 import { ensureDashboardKitStyles } from './dashboard-kit/styles';
 import { defaultWidgetRenderer, type WidgetRenderer } from './dashboard-kit/widgets';
 import {
@@ -224,40 +225,81 @@ export function fromDocument(
   const dashGroups = groups.filter((g) => g.getMetadata('dashboardBoard') !== undefined);
   const specById = new Map<string, DashboardWidgetSpec>();
   const viewOfWidget = new Map<string, string>();
-  const ctxViews: DashboardViewSpec[] = dashGroups.map((g) => {
-    const board = g.getMetadata('dashboardBoard') as PersistedBoard;
+  const boardWidgets = new Map<string, DashboardWidgetSpec[]>();
+  const viewOfBoard = new Map<string, string>();
+  const boardGroups = new Map(dashGroups.map((g) => [g.id, g]));
+  // A CONTAINER is a dashboard group that is itself a MEMBER of another
+  // dashboard group; the rest are views. This is the whole nesting test —
+  // containment IS membership.
+  const containerIds = new Set<string>();
+  for (const g of dashGroups) {
+    for (const m of g.members ?? []) if (boardGroups.has(m)) containerIds.add(m);
+  }
+  const rebuildBoard = (g: (typeof dashGroups)[number], viewId: string): DashboardWidgetSpec[] => {
     const widgets: DashboardWidgetSpec[] = [];
     for (const memberId of g.members ?? []) {
+      const childGroup = boardGroups.get(memberId);
+      if (childGroup) {
+        // A nested container: its spec fields ride on the group, its cell in
+        // the group's slab `gridItem`, its children in its own membership.
+        const meta = (childGroup.getMetadata('containerWidget') ?? {}) as Partial<DashboardWidgetSpec>;
+        const cell = cellFromGridItem(childGroup.getMetadata('gridItem') as never);
+        const ws: DashboardWidgetSpec = {
+          id: childGroup.id,
+          ...meta,
+          ...(cell ? { x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : {}),
+          widgets: rebuildBoard(childGroup, viewId),
+        };
+        specById.set(ws.id, ws);
+        viewOfWidget.set(ws.id, g.id);
+        boardWidgets.set(ws.id, ws.widgets!);
+        viewOfBoard.set(ws.id, viewId);
+        widgets.push(ws);
+        continue;
+      }
       const node = model.getNode(memberId);
       const ws = node ? widgetSpecOf(node) : null;
-      if (!ws) continue; // non-widget members (e.g. a nested slab group) are not widgets
+      if (!ws) continue;
       specById.set(ws.id, ws);
       viewOfWidget.set(ws.id, g.id);
       widgets.push(ws);
     }
+    return widgets;
+  };
+  const viewGroups = dashGroups.filter((g) => !containerIds.has(g.id));
+  const ctxViews: DashboardViewSpec[] = viewGroups.map((g) => {
+    const board = g.getMetadata('dashboardBoard') as PersistedBoard;
+    const widgets = rebuildBoard(g, g.id);
+    boardWidgets.set(g.id, widgets);
+    viewOfBoard.set(g.id, g.id);
     return { id: g.id, name: g.name, widgets, columns: board.columns, width: g.size?.width, height: g.size?.height };
   });
 
-  const firstBoard = dashGroups[0]?.getMetadata('dashboardBoard') as PersistedBoard | undefined;
+  const firstBoard = viewGroups[0]?.getMetadata('dashboardBoard') as PersistedBoard | undefined;
   // The active view is the one the save left ON camera (x≈0); the others were
   // parked far off-screen by showView. Falls back to the first board when
   // positions are ambiguous (e.g. a single view, or positions not restored).
-  const activeGroup = dashGroups.find((g) => g.position.x > -1000) ?? dashGroups[0];
+  const activeGroup = viewGroups.find((g) => g.position.x > -1000) ?? viewGroups[0];
 
   const ctx: DashboardHandleContext = {
     views: ctxViews,
-    groups: new Map(dashGroups.map((g) => [g.id, g])),
+    // PARKING map: views only. A container must follow its parent when a view
+    // parks, not travel to OFFSCREEN_X on its own.
+    groups: new Map(viewGroups.map((g) => [g.id, g])),
     // The SAME map the LoadedDiagramSpec exposes as `boards` — derived, not a copy.
     binders: boards,
     specById,
     viewOfWidget,
+    boardGroups,
+    boardWidgets,
+    viewOfBoard,
     hosts: new Map<string, HTMLElement>(),
     renderWidget: paintWidget,
     columns: firstBoard?.columns ?? 12,
     gap: firstBoard?.gap ?? 8,
     rowHeight: firstBoard?.baseRowHeight ?? 130,
-    boardW: dashGroups[0]?.size?.width ?? 1180,
-    boardH: dashGroups[0]?.size?.height ?? 660,
+    boardW: viewGroups[0]?.size?.width ?? 1180,
+    boardH: viewGroups[0]?.size?.height ?? 660,
     // responsive is NOT in the document (a runtime seam), so it is deliberately
     // absent from the round-trip; width/height/columns/gap/sizing/float/rtl are.
     optionsBase: firstBoard
@@ -268,8 +310,8 @@ export function fromDocument(
           sizing: firstBoard.sizing,
           float: firstBoard.float,
           rtl: firstBoard.rtl,
-          width: dashGroups[0]?.size?.width,
-          height: dashGroups[0]?.size?.height,
+          width: viewGroups[0]?.size?.width,
+          height: viewGroups[0]?.size?.height,
         }
       : {},
     active: activeGroup?.id ?? 'main',

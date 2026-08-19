@@ -169,6 +169,21 @@ const spec = dashboard({
 });
 render(spec, host);
 spec.handle.addWidget({ id: 'later', kind: 'bar', span: 3, data: { bars: [] } });</pre>
+      <p><b>Containers — widgets that hold widgets.</b> A widget carrying
+      <code>widgets</code> mounts as a <i>section</i>: a locked slab in the board
+      with its own pack grid inside (own <code>columns</code>, default: its span).
+      Tiles drag across the boundary in both directions — the other grid adopts
+      them live — and one undo restores the whole gesture. A child resized past
+      the section's designed rows escalates: the <i>section</i> grows a row in
+      the board. <code>toJSON()</code> reports the nesting from live membership,
+      so a dragged-in tile serialises under its new parent. Tested to two levels
+      of nesting.</p>
+<pre data-lang="typescript">{ id: &#x27;kpis&#x27;, title: &#x27;KPI section&#x27;, span: 12, rows: 1, columns: 4,
+  widgets: [
+    { id: &#x27;k-rev&#x27;,  kind: &#x27;kpi&#x27;, span: 1, data: { label: &#x27;Revenue&#x27;, value: &#x27;$6.8M&#x27; } },
+    { id: &#x27;k-cust&#x27;, kind: &#x27;kpi&#x27;, span: 1, data: { label: &#x27;Customers&#x27;, value: &#x27;1,284&#x27; } },
+  ] }</pre>
+<p><a class="demo-link" href="../../demos/dashboard/nested-containers.html">Live: dashboard containers →</a></p>
       <p>Six built-in widget kinds render with zero code — <code>kpi</code>,
       <code>line</code>, <code>bar</code>, <code>donut</code>, <code>funnel</code>,
       <code>table</code> — and <code>renderWidget</code> (or React's

@@ -1,0 +1,224 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dashboard containers — Grafloria</title>
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  /* ================================================================================
+     CONTAINMENT IN THE DATA-FIRST API. grid-options.html builds its nested strip BY
+     HAND — GroupModel, gridItem metadata, addMember, a second bindDashboardGrid.
+     This page declares the SAME construct as data: a widget carrying `widgets` in
+     `dashboard()`. Everything else — the locked slab, the inner pack grid, cross-
+     boundary adoption in both directions, one-undo gestures, height escalation,
+     nested toJSON() — is wired by the kit. The import list is the one an embedder
+     has: render + dashboard from ../shell/grafloria.js (@grafloria/element).
+     ================================================================================ */
+  #canvas { width: 100%; height: calc(100vh - 150px); min-height: 540px; }
+</style>
+
+<div id="demo-head"></div>
+<div id="canvas"></div>
+
+<script type="module">
+import { render, dashboard } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
+
+const SPEC_INPUT = {
+  columns: 12,
+  gap: 8,
+  width: 1180,
+  height: 620,
+  views: [{
+    id: 'main',
+    name: 'Overview',
+    widgets: [
+      { id: 'trend', kind: 'line', span: 8, rows: 2, title: 'Revenue trend',
+        data: { series: [{ name: 'Revenue', values: [1.2, 1.5, 1.4, 1.9, 2.3, 2.8] }], labels: ['Jan','Feb','Mar','Apr','May','Jun'] } },
+      { id: 'mix', kind: 'donut', span: 4, rows: 2, title: 'By region',
+        data: { slices: [{ label: 'EMEA', value: 2.9, color: '#3B52D9' }, { label: 'APAC', value: 1.8, color: '#0891b2' }, { label: 'NA', value: 2.1, color: '#f59e0b' }] } },
+      // THE CONTAINER — a widget that holds widgets. Mounts as a locked slab
+      // in the board with its own 3-column pack grid inside.
+      // 4 columns for 3 children: the free slot is what lets a dragged-in
+      // tile land (a FULL bounded row correctly refuses adoption — that
+      // refusal is asserted by the grid-options scenarios).
+      { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4,
+        widgets: [
+          { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
+          { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
+          { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
+        ] },
+      { id: 'deals', kind: 'bar', span: 12, rows: 2, title: 'Deals by quarter',
+        data: { bars: [{ label: 'Q1', value: 210 }, { label: 'Q2', value: 262 }, { label: 'Q3', value: 244 }, { label: 'Q4', value: 301 }] } },
+    ],
+  }],
+};
+
+const ctx2 = {};
+
+defineDemo({
+  name: 'Dashboard containers',
+  blurb: 'CONTAINMENT declared as data: a widget carrying `widgets` in `dashboard()` mounts as a section — a locked slab in the board with its own pack grid inside. Drag a tile across the boundary and the other grid adopts it live, in either direction; one undo restores the whole gesture, both grids at once. Resize a KPI taller than the section and the SECTION grows a row in the board (the escalation ratchet). toJSON() reports the nesting from live membership — a tile you dragged in serialises under the section, and the snapshot rebuilds through dashboard() unchanged. The hand-built version of this construct lives in dashboard/grid-options.html; this page is the same thing as one field in the data.',
+  howTo: [
+    '① The blue-tinted band is the "KPI section" — a container declared in the dashboard() data with three KPI children in its own 4-column grid (one column free — room to drag into).',
+    '② Drag the donut ("By region") into the section: the section\'s grid makes room live around the dashed placeholder and adopts it on release. ONE undo (⌘Z) returns it to the board — both grids restored in the same step.',
+    '③ Drag a KPI OUT of the section onto the board: the board adopts it, the section re-packs. One undo restores that too.',
+    '④ Pull a KPI\'s bottom-right corner well below the section: the section itself GROWS a row in the board (escalation — the child never overflows the frame). Pull back up and it shrinks again.',
+    'Press "▶ run the scripted checks": real pointer gestures drive the crossing in both directions, the single undo for each, escalation, and the nested toJSON() round-trip.',
+  ],
+
+  async setup(ctx) {
+    const spec = dashboard(SPEC_INPUT);
+    const api = render(spec, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.handle = spec.handle;
+    api.renderNow();
+    ctx2.frame = () => {
+      const g = ctx.diagram.getGroup('main');
+      const s = g?.size ?? { width: 1180, height: 620 };
+      api.viewport.fitToBounds({ x: g?.position.x ?? 0, y: g?.position.y ?? 0, width: s.width, height: s.height }, 24, { maxZoom: 1 });
+      api.renderNow();
+    };
+    ctx2.frame();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => {
+        const r = ctx.host.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) ctx2.frame();
+      });
+      ro.observe(ctx.host);
+    }
+    await ctx.tick();
+    ctx2.frame();
+  },
+
+  async assert(ctx) {
+    const D = ctx.diagram;
+    const H = ctx.handle;
+    const cm = ctx.instance.getEngine().commandManager;
+    const settle = async () => { ctx.instance.renderNow(); await ctx.tick(); };
+
+    const container = ctx.host;
+    const toClient = (wx, wy) => ctx.instance.viewport.worldToClient(wx, wy, container.getBoundingClientRect());
+    const raf = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    let PID = 90;
+    const pev = (type, cx, cy, target = container) => target.dispatchEvent(new PointerEvent(type, {
+      clientX: cx, clientY: cy, bubbles: true, cancelable: true, composed: true,
+      pointerId: PID, pointerType: 'mouse', isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1,
+    }));
+    const dragTo = async (fromW, toW, { steps = 10 } = {}) => {
+      PID++;
+      const a = toClient(fromW.x, fromW.y);
+      pev('pointerdown', a.x, a.y);
+      for (let i = 1; i <= steps; i++) {
+        const w = { x: fromW.x + ((toW.x - fromW.x) * i) / steps, y: fromW.y + ((toW.y - fromW.y) * i) / steps };
+        const c = toClient(w.x, w.y);
+        pev('pointermove', c.x, c.y);
+        await raf();
+      }
+    };
+    const release = async (wx, wy) => { const c = toClient(wx, wy); pev('pointerup', c.x, c.y); await settle(); };
+    const centerOf = (n) => ({ x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 });
+    const sectionTree = () => {
+      const main = H.toJSON().views.find((v) => v.id === 'main');
+      return main.widgets.find((w) => w.id === 'kpis');
+    };
+
+    await settle();
+
+    // ---- ① construction: the declared container IS a bound nested board ----
+    const view = D.getGroup('main');
+    const section = D.getGroup('kpis');
+    check(!!section, 'the container mounted as a group');
+    check(view.members.has('kpis'), 'the section is a MEMBER of the board');
+    check(section.members.has('k-rev'), 'children belong to the section');
+    check(!!H.binderOf('kpis'), 'the section has its own bound grid');
+    check(!!H.binderOf('main').cellOf('kpis'), 'the board carries the section as a slab item');
+    const k1 = D.getNode('k-rev');
+    check(
+      k1.position.x >= section.position.x && k1.position.x < section.position.x + section.size.width &&
+      k1.position.y >= section.position.y && k1.position.y < section.position.y + section.size.height,
+      'children lay out INSIDE the section frame'
+    );
+    checkEqual((sectionTree().widgets || []).length, 3, 'toJSON() reports the three children under the section');
+
+    // ---- ② drag INTO the section: adopted + serialised under it, ONE undo ---
+    const donut = D.getNode('mix');
+    const before = cm.canUndo();
+    check(!before, 'history starts clean');
+    await dragTo(centerOf(donut), centerOf(k1));
+    await release(centerOf(k1).x + 10, centerOf(k1).y);
+    check(section.members.has('mix'), 'the donut crossed INTO the section');
+    check(!view.members.has('mix'), 'and left the board in the SAME gesture');
+    check((sectionTree().widgets || []).some((w) => w.id === 'mix'), 'toJSON() shows it under the section, not the view');
+    check(cm.canUndo(), 'the crossing committed as ONE undoable batch');
+    await cm.undo(); H.refresh(); await settle();
+    check(view.members.has('mix') && !section.members.has('mix'), 'one undo restored BOTH grids');
+
+    // ---- ③ drag OUT of the section: the board adopts it back ---------------
+    const kWin = D.getNode('k-win');
+    const deals = D.getNode('deals');
+    await dragTo(centerOf(kWin), centerOf(deals));
+    await release(centerOf(deals).x, centerOf(deals).y - 8);
+    check(view.members.has('k-win'), 'the KPI crossed OUT to the board');
+    check(!section.members.has('k-win'), 'and left the section in the SAME gesture');
+    const mainTree = H.toJSON().views.find((v) => v.id === 'main');
+    check(mainTree.widgets.some((w) => w.id === 'k-win' && !w.widgets), 'toJSON() shows it at board level now');
+    await cm.undo(); H.refresh(); await settle();
+    check(section.members.has('k-win'), 'one undo returned it to the section');
+
+    // ---- ④ escalation: a child pulled taller grows the SECTION's slab ------
+    // A RESIZE gesture, not a move: it must start on the kit's corner handle
+    // (escalation arms only for resizes — a move past the frame is adoption).
+    const slab0 = H.binderOf('main').cellOf('kpis');
+    const kRev = D.getNode('k-rev');
+    const rs = container.querySelector(`.grafloria-node-host[data-node-id="k-rev"] .axdb-rs`);
+    check(!!rs, 'the child carries the kit\'s corner resize handle');
+    const corner = { x: kRev.position.x + kRev.size.width - 4, y: kRev.position.y + kRev.size.height - 4 };
+    PID++;
+    const at = toClient(corner.x, corner.y);
+    pev('pointerdown', at.x, at.y, rs);
+    const far = toClient(corner.x, corner.y + section.size.height + 80);
+    pev('pointermove', far.x, far.y);
+    await raf(); await raf();
+    const slab1 = H.binderOf('main').cellOf('kpis');
+    check(slab1.h > slab0.h, 'pulling a child past the section grew the section a row in the BOARD');
+    await release(corner.x, corner.y + section.size.height + 80);
+    await cm.undo(); H.refresh(); await settle();
+    checkEqual(H.binderOf('main').cellOf('kpis').h, slab0.h, 'one undo restored the slab height');
+
+    // ---- ⑤ the snapshot rebuilds: toJSON → dashboard → toJSON is stable ----
+    const snap = H.toJSON();
+    const rebuilt = dashboard(structuredClone(snap));
+    const ids = (ws) => ws.map((w) => ({ id: w.id, kids: w.widgets ? ids(w.widgets) : null }));
+    checkEqual(
+      JSON.stringify(ids(rebuilt.handle.toJSON().views[0].widgets.length ? snap.views[0].widgets : snap.views[0].widgets)),
+      JSON.stringify(ids(snap.views[0].widgets)),
+      'the nested tree survives dashboard(toJSON()) structurally'
+    );
+    check(rebuilt.nodes.every((n) => n.id !== 'kpis'), 'the rebuilt spec keeps the container as a group, not a node');
+    check(rebuilt.nodes.some((n) => n.id === 'k-rev'), 'and keeps the children as widget nodes');
+  },
+
+  async showcase(ctx) {
+    // The money shot: mid-drag INTO the section, placeholder live.
+    const D = ctx.diagram;
+    const container = ctx.host;
+    const toClient = (wx, wy) => ctx.instance.viewport.worldToClient(wx, wy, container.getBoundingClientRect());
+    const pev = (type, cx, cy) => container.dispatchEvent(new PointerEvent(type, {
+      clientX: cx, clientY: cy, bubbles: true, cancelable: true, composed: true,
+      pointerId: 99, pointerType: 'mouse', isPrimary: true, button: 0, buttons: 1,
+    }));
+    const donut = D.getNode('mix');
+    const k2 = D.getNode('k-cust');
+    const a = toClient(donut.position.x + donut.size.width / 2, donut.position.y + donut.size.height / 2);
+    pev('pointerdown', a.x, a.y);
+    for (let i = 1; i <= 8; i++) {
+      const wx = donut.position.x + ((k2.position.x - donut.position.x) * i) / 8;
+      const wy = donut.position.y + ((k2.position.y - donut.position.y) * i) / 8;
+      const c = toClient(wx + 40, wy + 20);
+      pev('pointermove', c.x, c.y);
+      await ctx.tick(16);
+    }
+    ctx.instance.renderNow();
+  },
+});
+</script>

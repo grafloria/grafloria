@@ -1594,7 +1594,20 @@ export function bindDashboardGrid(
     hitTest(ev, hit) {
       if (disposed) return false;
       if (gesture) return true; // own the rest of an in-flight gesture
-      if (hit.node) return (group.members ?? new Set<string>()).has(hit.node.id);
+      if (hit.node) {
+        if ((group.members ?? new Set<string>()).has(hit.node.id)) return true;
+        // A press on a tile that belongs to a NESTED board must reach that
+        // board's tool. The dead-zone claim below deadens the slab's EMPTY
+        // band — claiming a peer's tile with it swallowed every resize inside
+        // an API-built container (which binds child-before-parent, so the
+        // parent's tool won the registration-order tie and the child's resize
+        // never armed; grid-options binds parent-first and worked by
+        // accident).
+        for (const p of BOARD_REGISTRY.get(api.container) ?? []) {
+          if (p !== selfPeer && p.hasItem(hit.node.id)) return false;
+        }
+        return insideMemberGroupFrame(ev.world.x, ev.world.y);
+      }
       // Claim (and deaden) empty presses inside a member group's frame so the
       // built-in group-drag cannot fight the pack layout for the KPI slab.
       return insideMemberGroupFrame(ev.world.x, ev.world.y);
