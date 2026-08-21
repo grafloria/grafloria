@@ -181,6 +181,12 @@ function render(byCat) {
 <title>Grafloria — demo gallery</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Over 100 live, clickable Grafloria demos — every one executed in CI as a test. Nodes, edges, layouts, dashboards, collaboration, exports.">
+<link rel="canonical" href="https://grafloria.com/demos/">
+<meta property="og:title" content="Grafloria — demo gallery">
+<meta property="og:description" content="Over 100 live, clickable Grafloria demos — every one executed in CI as a test.">
+<meta property="og:url" content="https://grafloria.com/demos/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="shell/logo.svg" type="image/svg+xml">
 <style>
   :root {
