@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>When your Mermaid diagram grows up — Grafloria engineering</title>
+<meta name="description" content="Your Mermaid flowchart was perfect at ten nodes. At forty it's an unreadable ribbon with tiny text, and you're adding invisible nodes to trick the layout. Keep the text — make it editable.">
+<link rel="canonical" href="https://grafloria.com/blog/when-mermaid-diagrams-grow-up/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="When your Mermaid diagram grows up">
+<meta property="og:description" content="Your Mermaid flowchart was perfect at ten nodes. At forty it's an unreadable ribbon with tiny text, and you're adding invisible nodes to trick the layout. Keep the text — make it editable.">
+<meta property="og:url" content="https://grafloria.com/blog/when-mermaid-diagrams-grow-up/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"When your Mermaid diagram grows up","description":"Your Mermaid flowchart was perfect at ten nodes. At forty it's an unreadable ribbon with tiny text, and you're adding invisible nodes to trick the layout. Keep the text \u2014 make it editable.","url":"https://grafloria.com/blog/when-mermaid-diagrams-grow-up/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/when-mermaid-diagrams-grow-up/"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="../" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Use cases</p>
+      <h1>When your Mermaid diagram grows up</h1>
+      <p class="meta">August 22, 2026 · use cases · mermaid</p>
+      <p class="lede">If you've ever shipped a Mermaid diagram in a README, you know the arc.
+      At ten nodes it's perfect — text in git, rendered everywhere, reviewed as a diff. At
+      forty nodes it's a ribbon three screens wide with text nobody over thirty can read,
+      and you're googling things no one should have to google.</p>
+
+      <h2>The hacks we've all done</h2>
+      <p>We keep meeting the same three workarounds, because we did them too:</p>
+      <ul>
+        <li><b>The invisible node trick.</b> A node fans out to eight children, the layout
+        goes horizontal forever, so you insert fake intermediate nodes to force wrapping.
+        Now your diagram's <i>source</i> lies about your system to make the <i>picture</i>
+        tolerable.</li>
+        <li><b>The direction shuffle.</b> <code>flowchart LR</code> — too wide. <code>TD</code>
+        — too tall. Back to <code>LR</code>, but with subgraphs, which now refuse to align
+        the way you want. There's a whole genre of Stack Overflow questions about nudging
+        Mermaid's layout with syntax that was never meant to be a layout language.</li>
+        <li><b>The print surrender.</b> Someone asks for it on paper. The SVG scales the whole
+        drawing to fit, so a big diagram means small text <i>by construction</i> — and you end
+        up screenshotting quadrants.</li>
+      </ul>
+      <p>None of this is Mermaid's fault. Text-to-diagram is the right tool for documentation —
+      that's why we made Grafloria speak it rather than replace it. The problem is the moment a
+      diagram crosses from <i>documentation</i> to <i>thing people work with</i>. Text has no
+      verb for "drag this node out of the way".</p>
+
+      <h2>Keep the text. Add hands.</h2>
+      <p>Grafloria reads your Mermaid source into a live, editable canvas — same nodes, same
+      edges, now draggable:</p>
+      <pre data-lang="javascript">import { render } from '@grafloria/element';
+
+const api = render({ nodes: [], edges: [] }, document.getElementById('canvas'));
+api.loadText(mermaidSource);      // the same text your README renders</pre>
+      <p>And here's the part that makes it a workflow instead of a migration:
+      <b>the round trip is lossless and the text stays valid Mermaid.</b> Drag nodes into the
+      arrangement your team actually thinks in, then:</p>
+      <pre data-lang="javascript">const text = api.exportText();
+// still renders in GitHub — your positions ride in a %%grafloria:document
+// comment that Mermaid ignores and Grafloria reads back</pre>
+      <p>Your hand-arranged layout survives a commit, a review, and a re-import. The file in
+      git is still a Mermaid file. Nobody on your team has to install anything to keep reading
+      it.</p>
+
+      <h2>The forty-node problems, specifically</h2>
+      <ul>
+        <li><b>Too wide?</b> Run a real layout engine on it — <code>await
+        api.getEngine().layout('dagre', { direction: 'TB' })</code>, or <code>'elk'</code>
+        for the hard graphs. Then fix the two nodes it got wrong by dragging them.</li>
+        <li><b>Too small to print?</b> <code>await api.export('pdf')</code> is a
+        <b>vector</b> PDF — text stays text, crisp at any paper size, and your PDF viewer's
+        poster mode handles multi-page.</li>
+        <li><b>Unsupported diagram type?</b> We support <code>flowchart</code>,
+        <code>erDiagram</code>, <code>classDiagram</code> and <code>stateDiagram</code>,
+        verified against real Mermaid v11 in CI — and anything else is refused loudly with
+        <code>result.unsupported</code>, never rendered wrong.</li>
+      </ul>
+
+      <p>Try it with your own diagram: paste your Mermaid into the
+      <a href="../../demos/misc/mermaid-text.html">live round-trip demo</a>, or start with the
+      <a href="../../learn/mermaid-and-the-dsl/">Mermaid &amp; the text format guide</a>. The
+      honest comparison — including when to just stay with Mermaid — is at
+      <a href="../../alternatives/mermaid/">alternatives/mermaid</a>.</p>
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

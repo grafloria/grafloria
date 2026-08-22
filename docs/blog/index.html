@@ -51,17 +51,33 @@
 </header>
 <main>
   <div class="wrap">
-    <div class="plist">
-      <h1>Engineering blog</h1>
-      <p class="lede">Deep-dives from inside the engine — written from the source, with the
-      real numbers, the trade-offs, and the things we deliberately don't do. The
-      <a href="../demos/">112 CI-gated demos</a> remain the living documentation; this is the
-      why behind them.</p>
+        <div class="plist">
+      <h1>The Grafloria blog</h1>
+      <p class="lede">Hi — we build Grafloria, and we've spent years making the same diagram
+      and dashboard mistakes you might be fighting right now. This blog is two things: honest
+      write-ups of problems we see developers hit (Mermaid diagrams that outgrow their
+      text, dashboards that desync, diagrams that quietly lie), and deep-dives into how the
+      engine works, with the real numbers. Our rule for publishing: if a post doesn't teach
+      you something useful <i>even if you never install Grafloria</i>, it doesn't ship.</p>
+      <a class="pcard" href="a-dashboard-is-three-problems/">
+        <h2>A dashboard is three problems wearing one grid</h2>
+        <p>August 22, 2026 — Drag-and-drop is the demo. The product is keeping layout, widget
+        state and persistence in sync while users drag, resize, undo and reload.</p>
+      </a>
+      <a class="pcard" href="ways-a-diagram-can-lie/">
+        <h2>Ways a diagram can lie to your users</h2>
+        <p>August 22, 2026 — Three edges that render as one. A line that might connect or
+        might pass behind. Diagram bugs your tests never catch.</p>
+      </a>
+      <a class="pcard" href="when-mermaid-diagrams-grow-up/">
+        <h2>When your Mermaid diagram grows up</h2>
+        <p>August 22, 2026 — The invisible-node trick, the direction shuffle, the print
+        surrender — and how to keep your text while getting your hands back.</p>
+      </a>
       <a class="pcard" href="obstacle-avoiding-edge-routing/">
         <h2>How obstacle-avoiding edge routing works</h2>
-        <p>August 22, 2026 — A spatial hash, a family of grid searches with explicit turn costs,
-        three cache layers, and user waypoints treated as constraints. The whole pipeline behind
-        <code>router: 'avoid'</code>.</p>
+        <p>August 22, 2026 — A spatial hash, a family of grid searches with explicit turn
+        costs, three cache layers, and user waypoints treated as constraints.</p>
       </a>
     </div>
   </div>

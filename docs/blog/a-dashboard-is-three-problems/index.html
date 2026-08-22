@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A dashboard is three problems wearing one grid — Grafloria engineering</title>
+<meta name="description" content="Drag-and-drop is the demo. The product is keeping layout, widget state and persistence in sync while users drag, resize, undo and reload. Where the grid ends and your real work begins.">
+<link rel="canonical" href="https://grafloria.com/blog/a-dashboard-is-three-problems/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="A dashboard is three problems wearing one grid">
+<meta property="og:description" content="Drag-and-drop is the demo. The product is keeping layout, widget state and persistence in sync while users drag, resize, undo and reload. Where the grid ends and your real work begins.">
+<meta property="og:url" content="https://grafloria.com/blog/a-dashboard-is-three-problems/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"A dashboard is three problems wearing one grid","description":"Drag-and-drop is the demo. The product is keeping layout, widget state and persistence in sync while users drag, resize, undo and reload. Where the grid ends and your real work begins.","url":"https://grafloria.com/blog/a-dashboard-is-three-problems/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/a-dashboard-is-three-problems/"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="../" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Use cases</p>
+      <h1>A dashboard is three problems wearing one grid</h1>
+      <p class="meta">August 22, 2026 · use cases · dashboards</p>
+      <p class="lede">Every dashboard project starts the same way: you find a grid library,
+      the drag-and-drop demo works in an afternoon, everyone's happy. Three sprints later
+      you're maintaining a small distributed system. Not because the grid was bad — because
+      the grid was only ever one third of the problem.</p>
+
+      <h2>The three problems</h2>
+      <ul>
+        <li><b>Geometry.</b> Place, drag, resize, re-pack, don't jitter. Grid libraries —
+        GridStack especially — genuinely solve this. It's the part that demos well.</li>
+        <li><b>Widget state.</b> Each tile has a kind, a config, and data. The grid doesn't
+        know any of that, so you build a registry mapping cells to widgets, and now every
+        add/remove has to update two structures that can disagree.</li>
+        <li><b>Persistence &amp; history.</b> Layouts must survive reload; users expect ⌘Z
+        after a bad drag. Now you're versioning two structures and synthesizing undo across
+        them — and the bug reports read "my widget disappeared", which is what desync looks
+        like from the outside.</li>
+      </ul>
+      <p>If you've built this, none of it is news. The engineering write-ups about dashboard
+      grids all converge on the same sentence: the hard part is keeping visual layout, widget
+      configuration and persistence synchronized while users edit in real time.</p>
+
+      <h2>What "one document" changes</h2>
+      <p>Grafloria's dashboard kit collapses the three structures into one: <b>the board is a
+      document</b>. A widget is data (<code>kind</code> + <code>data</code> + a cell), a
+      gesture is a command on that document, and persistence is the document itself:</p>
+      <pre data-lang="javascript">import { render, dashboard } from '@grafloria/element';
+
+const spec = dashboard({
+  columns: 12,
+  widgets: [
+    { id: 'rev',   kind: 'kpi',  span: 3, data: { label: 'Revenue', value: '$6.8M', delta: 12.4 } },
+    { id: 'trend', kind: 'line', span: 9, rows: 2, title: 'Trend', data: { /* your series */ } },
+  ],
+});
+render(spec, host);
+
+// persistence IS the document — no second structure to keep honest:
+const saved = spec.handle.toJSON();   // later: dashboard({ ...saved, renderWidget })</pre>
+      <p>Because every gesture is a command, <b>⌘Z works across all three layers at once</b> —
+      a cross-container drag that re-packed two grids and grew a section undoes as one step.
+      And because widgets are declared data, "my widget disappeared" stops being a bug class:
+      there is no second registry to fall out of sync.</p>
+
+      <h2>Sections, since your users will ask</h2>
+      <p>The request that breaks most homegrown dashboards on arrival: "can we group these
+      KPIs in a box, and drag things in and out of it?" In the kit a container is one field —
+      a widget carrying <code>widgets</code> nests a full board, with cross-boundary drag and
+      the section growing when a child needs more room:</p>
+      <pre data-lang="javascript">{ id: 'kpis', title: 'KPI section', span: 12, columns: 4,
+  widgets: [
+    { id: 'k1', kind: 'kpi', span: 1, data: { label: 'Revenue',   value: '$6.8M' } },
+    { id: 'k2', kind: 'kpi', span: 1, data: { label: 'Customers', value: '1,284' } },
+  ] }</pre>
+      <p>Your charts stay yours — <code>renderWidget</code> hands you the widget and a raw
+      element, and the kit never picks a charting library for you.</p>
+
+      <p>Play with it live: <a href="../../demos/dashboard/dashboard-builder.html">the
+      dashboard builder</a> and <a href="../../demos/dashboard/nested-containers.html">nested
+      containers</a> · the guide: <a href="../../learn/javascript-dashboards/">Dashboards in
+      plain JavaScript</a> · the honest boundary with grid libraries:
+      <a href="../../alternatives/gridstack/">alternatives/gridstack</a>.</p>
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>
