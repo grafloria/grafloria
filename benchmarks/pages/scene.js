@@ -12,3 +12,15 @@ export function makeScene(n) {
   }
   return { nodes, edges };
 }
+
+/**
+ * The scene's world bounds — the harness frames BOTH libraries to this exact
+ * rect so neither is measured drawing a different amount of the same scene.
+ * (Left to their own fitView defaults they do not agree: React Flow's default
+ * minZoom of 0.5 cannot frame these meshes at all.)
+ */
+export function sceneBounds(n) {
+  const cols = Math.ceil(Math.sqrt(n));
+  const rows = Math.ceil(n / cols);
+  return { x: 0, y: 0, width: (cols - 1) * 220 + 160, height: (rows - 1) * 120 + 60 };
+}
