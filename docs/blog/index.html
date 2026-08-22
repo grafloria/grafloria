@@ -29,6 +29,12 @@
   .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
   .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
   .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .tagbar { display: flex; gap: 6px; flex-wrap: wrap; margin: 18px 0 4px; }
+  .tag { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
+    background: var(--indigo-wash); color: var(--indigo-deep); border: 0; }
+  .tbtn { cursor: pointer; font-family: inherit; }
+  .tbtn.active, .tbtn:hover { background: var(--indigo); color: #fff; }
+  .ctags { margin-top: 8px !important; display: flex; gap: 6px; flex-wrap: wrap; }
   .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
   .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
 </style>
@@ -59,55 +65,79 @@
       text, dashboards that desync, diagrams that quietly lie), and deep-dives into how the
       engine works, with the real numbers. Our rule for publishing: if a post doesn't teach
       you something useful <i>even if you never install Grafloria</i>, it doesn't ship.</p>
-      <a class="pcard" href="why-nesting-breaks-flow-libraries/">
+      <div class="tagbar">
+        <button class="tag tbtn active" data-filter="">all</button>
+        <button class="tag tbtn" data-filter="angular">angular</button>
+        <button class="tag tbtn" data-filter="dashboards">dashboards</button>
+        <button class="tag tbtn" data-filter="diagrams">diagrams</button>
+        <button class="tag tbtn" data-filter="edges">edges</button>
+        <button class="tag tbtn" data-filter="engine">engine</button>
+        <button class="tag tbtn" data-filter="layout">layout</button>
+        <button class="tag tbtn" data-filter="mermaid">mermaid</button>
+        <button class="tag tbtn" data-filter="react">react</button>
+        <button class="tag tbtn" data-filter="routing">routing</button>
+        <button class="tag tbtn" data-filter="tutorial">tutorial</button>
+        <button class="tag tbtn" data-filter="vue">vue</button>
+      </div>
+      <a class="pcard" data-tags="diagrams dashboards react" href="why-nesting-breaks-flow-libraries/">
         <h2>Sub-flows, groups, containers: why nesting breaks every flow library</h2>
         <p>August 22, 2026 — The most-requested feature in the flow-library world, and why
         half-shipping it is worse than not shipping it.</p>
+              <p class="ctags"><span class="tag">diagrams</span> <span class="tag">dashboards</span> <span class="tag">react</span></p>
       </a>
-      <a class="pcard" href="draggable-edges-that-stay-routed/">
+      <a class="pcard" data-tags="diagrams edges react" href="draggable-edges-that-stay-routed/">
         <h2>Draggable edges that stay routed</h2>
         <p>August 22, 2026 — The top-voted react-flow question on Stack Overflow, answered:
         bends as model state the router treats as constraints.</p>
+              <p class="ctags"><span class="tag">diagrams</span> <span class="tag">edges</span> <span class="tag">react</span></p>
       </a>
-      <a class="pcard" href="the-angular-diagram-library-graveyard/">
+      <a class="pcard" data-tags="angular diagrams" href="the-angular-diagram-library-graveyard/">
         <h2>The Angular diagram-library problem, and how not to get stranded again</h2>
         <p>August 22, 2026 — "Angular 15 not supported" has 23 upvotes and years of silence.
         Four demands to make of any diagram dependency.</p>
+              <p class="ctags"><span class="tag">angular</span> <span class="tag">diagrams</span></p>
       </a>
-      <a class="pcard" href="auto-layout-you-dont-have-to-build/">
+      <a class="pcard" data-tags="layout react angular vue" href="auto-layout-you-dont-have-to-build/">
         <h2>Auto-layout you don't have to build</h2>
         <p>August 22, 2026 — Issue #5, still generating wiring tutorials. What the tutorials
         skip, and the one call that absorbs it.</p>
+              <p class="ctags"><span class="tag">layout</span> <span class="tag">react</span> <span class="tag">angular</span> <span class="tag">vue</span></p>
       </a>
-      <a class="pcard" href="custom-nodes-without-the-props-mystery/">
+      <a class="pcard" data-tags="react angular vue" href="custom-nodes-without-the-props-mystery/">
         <h2>Custom nodes without the props mystery</h2>
         <p>August 22, 2026 — 35,000 developers have viewed two questions that are really one:
         who owns a node's data? The mental model, in three frameworks.</p>
+              <p class="ctags"><span class="tag">react</span> <span class="tag">angular</span> <span class="tag">vue</span></p>
       </a>
-      <a class="pcard" href="build-a-workflow-editor-in-vue/">
+      <a class="pcard" data-tags="vue tutorial diagrams" href="build-a-workflow-editor-in-vue/">
         <h2>Build a workflow editor in Vue 3 — the whole thing</h2>
         <p>August 22, 2026 — Slot nodes, connection rules, undo, layout and a save format —
         Vue idiom the whole way.</p>
+              <p class="ctags"><span class="tag">vue</span> <span class="tag">tutorial</span> <span class="tag">diagrams</span></p>
       </a>
-      <a class="pcard" href="a-dashboard-is-three-problems/">
+      <a class="pcard" data-tags="dashboards" href="a-dashboard-is-three-problems/">
         <h2>A dashboard is three problems wearing one grid</h2>
         <p>August 22, 2026 — Drag-and-drop is the demo. The product is keeping layout, widget
         state and persistence in sync while users drag, resize, undo and reload.</p>
+              <p class="ctags"><span class="tag">dashboards</span></p>
       </a>
-      <a class="pcard" href="ways-a-diagram-can-lie/">
+      <a class="pcard" data-tags="diagrams edges" href="ways-a-diagram-can-lie/">
         <h2>Ways a diagram can lie to your users</h2>
         <p>August 22, 2026 — Three edges that render as one. A line that might connect or
         might pass behind. Diagram bugs your tests never catch.</p>
+              <p class="ctags"><span class="tag">diagrams</span> <span class="tag">edges</span></p>
       </a>
-      <a class="pcard" href="when-mermaid-diagrams-grow-up/">
+      <a class="pcard" data-tags="mermaid diagrams" href="when-mermaid-diagrams-grow-up/">
         <h2>When your Mermaid diagram grows up</h2>
         <p>August 22, 2026 — The invisible-node trick, the direction shuffle, the print
         surrender — and how to keep your text while getting your hands back.</p>
+              <p class="ctags"><span class="tag">mermaid</span> <span class="tag">diagrams</span></p>
       </a>
-      <a class="pcard" href="obstacle-avoiding-edge-routing/">
+      <a class="pcard" data-tags="engine routing diagrams" href="obstacle-avoiding-edge-routing/">
         <h2>How obstacle-avoiding edge routing works</h2>
         <p>August 22, 2026 — A spatial hash, a family of grid searches with explicit turn
         costs, three cache layers, and user waypoints treated as constraints.</p>
+              <p class="ctags"><span class="tag">engine</span> <span class="tag">routing</span> <span class="tag">diagrams</span></p>
       </a>
     </div>
   </div>
@@ -132,6 +162,24 @@
       });
     });
   }
+</script>
+<script>
+  (function () {
+    var btns = document.querySelectorAll('.tbtn');
+    var cards = document.querySelectorAll('.pcard');
+    function apply(tag) {
+      btns.forEach(function (b) { b.classList.toggle('active', b.dataset.filter === tag); });
+      cards.forEach(function (c) {
+        var tags = (c.dataset.tags || '').split(' ');
+        c.style.display = !tag || tags.indexOf(tag) !== -1 ? '' : 'none';
+      });
+    }
+    btns.forEach(function (b) {
+      b.addEventListener('click', function () { apply(b.dataset.filter); });
+    });
+    var q = new URLSearchParams(location.search).get('tag');
+    if (q) apply(q);
+  })();
 </script>
 </body>
 </html>
