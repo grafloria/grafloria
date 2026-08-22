@@ -60,9 +60,10 @@ all three defects above produced perfectly plausible tables.
 
 ## Current results (Apple M1 Pro, 2026-08-22)
 
-Grafloria 0.4.4, React Flow 12. Every row re-measured after the harness fixes
-above; the previous table on this page was produced by the broken gestures and
-should not be compared against.
+Grafloria 0.4.4 (this repo — run with `--source` until it reaches npm), React
+Flow 12. Every row re-measured after the harness fixes above; the previous table
+on this page was produced by the broken gestures and should not be compared
+against.
 
 | lib        | nodes | mount ms | pan fit avg/p95 | pan slice avg/p95 | drag avg/p95 |
 |------------|------:|---------:|----------------:|------------------:|-------------:|
