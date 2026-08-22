@@ -5,15 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How obstacle-avoiding edge routing works — Grafloria engineering</title>
 <meta name="description" content="Behind router: 'avoid' — a spatial hash over obstacles, a family of grid searches with explicit turn costs, three cache layers, and user waypoints as constraints. The whole pipeline, with the real numbers.">
+<link rel="alternate" type="application/rss+xml" title="The Grafloria blog" href="https://grafloria.com/blog/feed.xml">
 <link rel="canonical" href="https://grafloria.com/blog/obstacle-avoiding-edge-routing/">
 <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="../../favicon-32.png">
 <meta property="og:title" content="How obstacle-avoiding edge routing works — Grafloria engineering">
 <meta property="og:description" content="Behind router: 'avoid' — a spatial hash over obstacles, a family of grid searches with explicit turn costs, three cache layers, and user waypoints as constraints. The whole pipeline, with the real numbers.">
 <meta property="og:url" content="https://grafloria.com/blog/obstacle-avoiding-edge-routing/">
-<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta property="og:image" content="https://grafloria.com/blog/obstacle-avoiding-edge-routing/og.png">
+<meta name="twitter:image" content="https://grafloria.com/blog/obstacle-avoiding-edge-routing/og.png">
 <meta name="twitter:card" content="summary_large_image">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"How obstacle-avoiding edge routing works","description":"Behind router: 'avoid' \u2014 a spatial hash over obstacles, a family of grid searches with explicit turn costs, three cache layers, and user waypoints as constraints. The whole pipeline, with the real numbers.","url":"https://grafloria.com/blog/obstacle-avoiding-edge-routing/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/obstacle-avoiding-edge-routing/","keywords":"engine, routing, diagrams"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"How obstacle-avoiding edge routing works","description":"Behind router: 'avoid' \u2014 a spatial hash over obstacles, a family of grid searches with explicit turn costs, three cache layers, and user waypoints as constraints. The whole pipeline, with the real numbers.","url":"https://grafloria.com/blog/obstacle-avoiding-edge-routing/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/blog/obstacle-avoiding-edge-routing/og.png","mainEntityOfPage":"https://grafloria.com/blog/obstacle-avoiding-edge-routing/","keywords":"engine, routing, diagrams"}</script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="../../learn/learn.css">
 <style>

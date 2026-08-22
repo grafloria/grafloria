@@ -1,0 +1,15 @@
+{
+  "name": "grafloria-benchmarks",
+  "private": true,
+  "type": "module",
+  "description": "Reproducible side-by-side benchmarks. Run: npm install && node run.mjs",
+  "dependencies": {
+    "@grafloria/element": "^0.4.2",
+    "@grafloria/renderer": "^0.4.3",
+    "@grafloria/engine": "^0.3.3",
+    "@xyflow/react": "^12.3.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "devDependencies": { "esbuild": "^0.24.0" }
+}

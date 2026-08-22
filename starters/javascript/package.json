@@ -1,0 +1,12 @@
+{
+  "name": "grafloria-starter-javascript",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite", "build": "vite build" },
+  "dependencies": {
+    "@grafloria/element": "^0.4.2",
+    "@grafloria/renderer": "^0.4.3",
+    "@grafloria/engine": "^0.3.3"
+  },
+  "devDependencies": { "vite": "^6.0.0" }
+}

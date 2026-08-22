@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+  <title>The Grafloria blog</title>
+  <link>https://grafloria.com/blog/</link>
+  <atom:link href="https://grafloria.com/blog/feed.xml" rel="self" type="application/rss+xml"/>
+  <description>Honest write-ups of diagram and dashboard problems developers actually hit, and engine deep-dives with the real numbers.</description>
+  <language>en</language>
+  <lastBuildDate>Sat, 22 Aug 2026 12:00:00 GMT</lastBuildDate>
+  <item>
+    <title>A dashboard is three problems wearing one grid</title>
+    <link>https://grafloria.com/blog/a-dashboard-is-three-problems/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/a-dashboard-is-three-problems/</guid>
+    <pubDate>Sat, 22 Aug 2026 12:00:00 GMT</pubDate>
+    <description>Drag-and-drop is the demo. The product is keeping layout, widget state and persistence in sync while users drag, resize, undo and reload. Where the grid ends and your real work begins.</description>
+    <category>dashboards</category>
+  </item>
+  <item>
+    <title>Auto-layout you don't have to build</title>
+    <link>https://grafloria.com/blog/auto-layout-you-dont-have-to-build/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/auto-layout-you-dont-have-to-build/</guid>
+    <pubDate>Sat, 22 Aug 2026 12:00:00 GMT</pubDate>
+    <description>React Flow's issue #5 — 'Layout Algorithm' — has been open territory since the beginning: 27 upvotes, 42 comments, and a whole genre of dagre-wiring tutorials. Layout should be one call.</description>
+    <category>layout</category>
+    <category>react</category>
+    <category>angular</category>
+    <category>vue</category>
+  </item>
+  <item>
+    <title>Build a workflow editor in Vue 3 — the whole thing</title>
+    <link>https://grafloria.com/blog/build-a-workflow-editor-in-vue/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/build-a-workflow-editor-in-vue/</guid>
+    <pubDate>Sat, 22 Aug 2026 12:00:00 GMT</pubDate>
+    <description>A real workflow editor in Vue: slot-defined nodes, typed ports with connection rules, undo, auto-layout, save/load — v-model all the way down, no framework wrappers.</description>
+    <category>vue</category>
+    <category>tutorial</category>
+    <category>diagrams</category>
+  </item>
+  <item>
+    <title>Custom nodes without the props mystery</title>
+    <link>https://grafloria.com/blog/custom-nodes-without-the-props-mystery/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/custom-nodes-without-the-props-mystery/</guid>
+    <pubDate>Sat, 22 Aug 2026 12:00:00 GMT</pubDate>
+    <description>35,000 developers have viewed two Stack Overflow questions about getting data into and out of custom flow nodes. The confusion is structural — here's the mental model, in React, Vue and Angular.</description>
+    <category>react</category>
+    <category>angular</category>
+    <category>vue</category>
+  </item>
+  <item>
+    <title>Draggable edges that stay routed</title>
+    <link>https://grafloria.com/blog/draggable-edges-that-stay-routed/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/draggable-edges-that-stay-routed/</guid>
+    <pubDate>Sat, 22 Aug 2026 12:00:00 GMT</pubDate>
+    <description>The top-voted react-flow question on Stack Overflow asks whether you can shape edges by dragging them. You can — if bends are model state the router treats as constraints instead of decorations.</description>
+    <category>diagrams</category>
+    <category>edges</category>
+    <category>react</category>
+  </item>
+  <item>
+    <title>How obstacle-avoiding edge routing works</title>
+    <link>https://grafloria.com/blog/obstacle-avoiding-edge-routing/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/obstacle-avoiding-edge-routing/</guid>
+    <pubDate>Sat, 22 Aug 2026 12:00:00 GMT</pubDate>
+    <description>Behind router: 'avoid' — a spatial hash over obstacles, a family of grid searches with explicit turn costs, three cache layers, and user waypoints as constraints. The whole pipeline, with the real numbers.</description>
+    <category>engine</category>
+    <category>routing</category>
+    <category>diagrams</category>
+  </item>
+  <item>
+    <title>The Angular diagram-library problem, and how not to get stranded again</title>
+    <link>https://grafloria.com/blog/the-angular-diagram-library-graveyard/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/the-angular-diagram-library-graveyard/</guid>
+    <pubDate>Sat, 22 Aug 2026 12:00:00 GMT</pubDate>
+    <description>Angular's most-starred graph library hasn't supported a current Angular for years — its top issue is 'Angular 15 not supported'. What Angular teams should demand from any diagram dependency.</description>
+    <category>angular</category>
+    <category>diagrams</category>
+  </item>
+  <item>
+    <title>Ways a diagram can lie to your users</title>
+    <link>https://grafloria.com/blog/ways-a-diagram-can-lie/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/ways-a-diagram-can-lie/</guid>
+    <pubDate>Sat, 22 Aug 2026 12:00:00 GMT</pubDate>
+    <description>Three edges that render as one. A line that might connect or might pass behind. A label floating near the wrong transition. Diagram bugs your tests never catch — and how an engine can make them impossible.</description>
+    <category>diagrams</category>
+    <category>edges</category>
+  </item>
+  <item>
+    <title>When your Mermaid diagram grows up</title>
+    <link>https://grafloria.com/blog/when-mermaid-diagrams-grow-up/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/when-mermaid-diagrams-grow-up/</guid>
+    <pubDate>Sat, 22 Aug 2026 12:00:00 GMT</pubDate>
+    <description>Your Mermaid flowchart was perfect at ten nodes. At forty it's an unreadable ribbon with tiny text, and you're adding invisible nodes to trick the layout. Keep the text — make it editable.</description>
+    <category>mermaid</category>
+    <category>diagrams</category>
+  </item>
+  <item>
+    <title>Sub-flows, groups, containers: why nesting breaks every flow library</title>
+    <link>https://grafloria.com/blog/why-nesting-breaks-flow-libraries/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/why-nesting-breaks-flow-libraries/</guid>
+    <pubDate>Sat, 22 Aug 2026 12:00:00 GMT</pubDate>
+    <description>Nesting is the most-requested feature in the flow-library world — and the most refused. Why containers are genuinely hard, and what it takes to make a group a real thing instead of a rectangle.</description>
+    <category>diagrams</category>
+    <category>dashboards</category>
+    <category>react</category>
+  </item>
+</channel>
+</rss>

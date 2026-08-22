@@ -1,0 +1,15 @@
+{
+  "name": "grafloria-starter-react",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite", "build": "vite build" },
+  "dependencies": {
+    "@grafloria/react": "^0.10.2",
+    "@grafloria/element": "^0.4.2",
+    "@grafloria/renderer": "^0.4.3",
+    "@grafloria/engine": "^0.3.3",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "devDependencies": { "@vitejs/plugin-react": "^4.3.0", "vite": "^6.0.0" }
+}
