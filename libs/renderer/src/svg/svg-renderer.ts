@@ -53,6 +53,33 @@ import { exportPdf, type PdfExportResult } from '../export/pdf/pdf-export';
 import { paginate, type Page, type PaginationOptions } from '../export/pagination';
 
 /** One paginated tile: its grid position, its world window, and the SVG for it. */
+/**
+ * What one live `render()` pass actually drew, in world coordinates — the
+ * contract behind the host's camera fast path (see CAMERA_OVERSCAN).
+ *
+ * `rect` is the node-cull rectangle INCLUDING overscan: every node, group,
+ * stroke and comment intersecting it was rendered (links got LINK_CULL_MARGIN
+ * of extra slack beyond it). While a new viewBox of the same size and zoom
+ * stays inside `rect`, the DOM already contains everything that viewBox can
+ * show, and the camera may move by rewriting the `viewBox` attribute alone.
+ *
+ * `total` — every node and link in the diagram was admitted and no optional
+ * layer (groups, ink, comment pins) exists, so containment is moot: ANY camera
+ * position at this zoom shows a complete picture. This is what makes panning a
+ * fit-to-content scene free.
+ *
+ * Null when there is no diagram, or when the mount gate deferred anything (a
+ * progressive mount in flight, frozen entities): the drawn set is then smaller
+ * than the culled set and the coverage claim would be a lie.
+ */
+export interface FrameCoverage {
+  rect: Rectangle;
+  zoom: number;
+  viewBoxWidth: number;
+  viewBoxHeight: number;
+  total: boolean;
+}
+
 export interface PagedSvgResult {
   pages: Array<Page & { svg: string }>;
   columns: number;
@@ -360,6 +387,22 @@ export class SVGRenderer implements IRenderer {
    */
   private static readonly LINK_CULL_MARGIN = 250;
 
+  /**
+   * Camera overscan — every cull query runs against the viewBox EXPANDED by this
+   * fraction of its own size on each side, and the expanded rect is published as
+   * {@link getFrameCoverage}. The point is the host's camera fast path: a pan
+   * whose new viewBox stays inside the last frame's coverage needs NO re-render —
+   * the SVG draws in world coordinates, so moving the `viewBox` attribute (and
+   * the HTML layer's transform) shows the already-painted overscan margin. The
+   * frame only has to be rebuilt when the camera EXITS what was actually drawn.
+   *
+   * The trade is explicit: 0.25 per side renders ~1.5×1.5 = 2.25× the visible
+   * area per full frame, and buys a quarter-viewport of free travel in every
+   * direction between full frames. Identity-stable cached VNodes keep the extra
+   * entities cheap for the patcher.
+   */
+  private static readonly CAMERA_OVERSCAN = 0.25;
+
   private theme: Theme;
   private config: Required<SVGRendererConfig>;
   // Bounded LRU so the cache honors config.maxCacheSize instead of growing
@@ -476,6 +519,8 @@ export class SVGRenderer implements IRenderer {
   private frameInvalidated = true;
   /** Monotone count of invalidateFrame() calls — a HOST's idle-skip keys on this. */
   private invalidationEpoch = 0;
+  /** What the most recent render() actually drew — see getFrameCoverage(). */
+  private frameCoverage: FrameCoverage | null = null;
   /**
    * Did the frame being built move any link's FINAL geometry? If so it has not
    * reached a fixed point and must not arm the gate.
@@ -882,6 +927,7 @@ export class SVGRenderer implements IRenderer {
 
     const diagram = this.engine.getDiagram();
     if (!diagram) {
+      this.frameCoverage = null;
       return this.createEmptyDiagram(viewport);
     }
 
@@ -974,8 +1020,21 @@ export class SVGRenderer implements IRenderer {
       height: viewBoxHeight,
     };
 
+    // Every cull below queries the OVERSCANNED rect, not the bare viewBox — see
+    // CAMERA_OVERSCAN. The margin is what the camera fast path pans across
+    // without a re-render; anything culled by `visibleRect` here but shown by a
+    // fast-path viewBox move would pop in a frame late (or not at all).
+    const overscanX = viewBoxWidth * SVGRenderer.CAMERA_OVERSCAN;
+    const overscanY = viewBoxHeight * SVGRenderer.CAMERA_OVERSCAN;
+    const cullRect: Rectangle = {
+      x: viewBoxX - overscanX,
+      y: viewBoxY - overscanY,
+      width: viewBoxWidth + overscanX * 2,
+      height: viewBoxHeight + overscanY * 2,
+    };
+
     // Get visible nodes using engine's SpatialIndex (viewport virtualization)
-    const culledNodes = diagram.getVisibleNodes(visibleRect);
+    const culledNodes = diagram.getVisibleNodes(cullRect);
 
     // Get visible links by GEOMETRY, through the engine's link SpatialIndex.
     // (This used to be "render the link only if BOTH endpoint nodes are visible",
@@ -986,7 +1045,7 @@ export class SVGRenderer implements IRenderer {
     // argument: the two diverge once zoom != 1, and culling links against the
     // un-zoomed rect dropped on-screen links whenever the view was zoomed out
     // (which fit-to-content always does). Nodes above are culled the same way.
-    const culledLinks = diagram.getVisibleLinks(this.expandForLinkCulling(visibleRect));
+    const culledLinks = diagram.getVisibleLinks(this.expandForLinkCulling(cullRect));
 
     // Wave 8 — Card 3: the MOUNT GATE. Culling has said what is on screen; the gate
     // says what may have a VIEW. It can only ever subtract (a frozen entity, or one
@@ -1022,7 +1081,7 @@ export class SVGRenderer implements IRenderer {
 
     // wave9/comments (Card 6): the pins. Null unless a comment source is attached, so a
     // canvas with no comment system pays literally nothing — not a layer, not a query.
-    const commentsLayer = this.renderCommentsLayer(visibleRect, zoom);
+    const commentsLayer = this.renderCommentsLayer(cullRect, zoom);
 
     // wave10/whiteboard: committed ink. Null (and zero cost) on a canvas with no strokes.
     // Culled by a linear bounds scan — strokes are rare (tens, not tens of thousands), so
@@ -1030,7 +1089,7 @@ export class SVGRenderer implements IRenderer {
     // would go if that ever stops being true.
     const strokesLayer =
       diagram.strokes.size > 0
-        ? renderStrokesLayer(diagram.getVisibleStrokes(visibleRect))
+        ? renderStrokesLayer(diagram.getVisibleStrokes(cullRect))
         : null;
 
     // wave12/group-visuals: the group FRAMES. Groups have driven layout, collapse
@@ -1040,7 +1099,29 @@ export class SVGRenderer implements IRenderer {
     // the children[0]=links / children[1]=nodes contract is byte-identical
     // whenever grouping is not in use — exactly like strokes/comments are null
     // when absent. A linear bounds scan culls it (groups are tens, not thousands).
-    const groupsLayer = this.renderGroupsLayer(diagram, visibleRect);
+    const groupsLayer = this.renderGroupsLayer(diagram, cullRect);
+
+    // Publish what this frame drew (see FrameCoverage). Recorded only when the
+    // mount gate deferred nothing — a deferred entity means the DOM holds LESS
+    // than the culled set, and a coverage claim over it would let the camera
+    // fast path show a hole. `total` is deliberately conservative: it requires
+    // every node AND link admitted and no optional layer present, because the
+    // optional layers cull by their own bounds and are not counted here.
+    this.frameCoverage =
+      this.deferredThisFrame.length === 0
+        ? {
+            rect: cullRect,
+            zoom,
+            viewBoxWidth,
+            viewBoxHeight,
+            total:
+              groupsLayer === null &&
+              strokesLayer === null &&
+              commentsLayer === null &&
+              culledNodes.length === diagram.getNodes().length &&
+              culledLinks.length === diagram.getLinks().length,
+          }
+        : null;
 
     // Card 2: assemble the deduped paint-server `<defs>` populated while the
     // layers rendered. Appended LAST (not prepended) so existing positional
@@ -1271,6 +1352,20 @@ export class SVGRenderer implements IRenderer {
    */
   getInvalidationEpoch(): number {
     return this.invalidationEpoch;
+  }
+
+  /**
+   * The {@link FrameCoverage} of the most recent `render()` pass.
+   *
+   * CAPTURE IT IMMEDIATELY after the render() call whose frame you patched into
+   * the DOM — do not hold the renderer and ask later. Exports run through the
+   * same render pass with their own viewport (see exportSvg callers), so this
+   * field describes whatever rendered LAST, which is not necessarily what is on
+   * screen. `createDiagram`'s paint() takes its own copy for exactly this
+   * reason.
+   */
+  getFrameCoverage(): FrameCoverage | null {
+    return this.frameCoverage;
   }
 
   /**
