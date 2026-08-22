@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auto-layout you don't have to build — Grafloria engineering</title>
+<meta name="description" content="React Flow's issue #5 — 'Layout Algorithm' — has been open territory since the beginning: 27 upvotes, 42 comments, and a whole genre of dagre-wiring tutorials. Layout should be one call.">
+<link rel="canonical" href="https://grafloria.com/blog/auto-layout-you-dont-have-to-build/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="Auto-layout you don't have to build">
+<meta property="og:description" content="React Flow's issue #5 — 'Layout Algorithm' — has been open territory since the beginning: 27 upvotes, 42 comments, and a whole genre of dagre-wiring tutorials. Layout should be one call.">
+<meta property="og:url" content="https://grafloria.com/blog/auto-layout-you-dont-have-to-build/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Auto-layout you don't have to build","description":"React Flow's issue #5 \u2014 'Layout Algorithm' \u2014 has been open territory since the beginning: 27 upvotes, 42 comments, and a whole genre of dagre-wiring tutorials. Layout should be one call.","url":"https://grafloria.com/blog/auto-layout-you-dont-have-to-build/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/auto-layout-you-dont-have-to-build/"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="../" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Use cases</p>
+      <h1>Auto-layout you don't have to build</h1>
+      <p class="meta">August 22, 2026 · use cases · layout</p>
+      <p class="lede">There's a special kind of feature request: the one filed as
+      <a href="https://github.com/xyflow/xyflow/issues/5" rel="nofollow">issue #5</a> of a
+      project and still generating tutorials years later. For flow libraries that's
+      auto-layout. The mainstream answer became "integrate dagre or elk yourself", and an
+      entire genre of blog posts exists to walk you through the wiring — graph conversion in,
+      position mapping out, edge cases yours forever. (The sequel,
+      <a href="https://github.com/xyflow/xyflow/issues/1113" rel="nofollow">"is dynamic auto
+      layouting possible?"</a>, has 28 comments of people discovering the hard parts.)</p>
+
+      <h2>What the wiring tutorials don't tell you</h2>
+      <p>Getting dagre to emit positions is the easy afternoon. The parts that eat the
+      week:</p>
+      <ul>
+        <li><b>Which algorithm, when?</b> Layered algorithms are right for DAGs and wrong
+        for hairballs; trees want tree layouts; a picker is part of the feature.</li>
+        <li><b>ELK is 1.4&nbsp;MB.</b> The best layered engine is also the heaviest — ship it
+        eagerly and your bundle audit will find it.</li>
+        <li><b>The second layout.</b> Insert a node into a laid-out graph and a full re-run
+        scrambles every position the user has memorized. You need <i>incremental</i> layout,
+        and no wiring tutorial covers it.</li>
+        <li><b>Don't fight the hands.</b> If layout re-runs on every data change, it undoes
+        the drag your user just made. When it runs is as important as what it computes.</li>
+      </ul>
+
+      <h2>One call, and the four problems it absorbs</h2>
+      <pre data-lang="javascript">await engine.layout('elk');                                    // picker: 'auto' inspects the graph
+await engine.layout('dagre', { direction: 'TB', rankSpacing: 80 });
+await engine.layoutIncremental({ changed: ['inserted-id'], radius: 1 });  // the second layout</pre>
+      <p>Registered names: <code>auto</code>, <code>elk</code>, <code>dagre</code>,
+      <code>layered</code>, <code>tree</code>, <code>grid</code>, <code>circular</code>,
+      <code>radial</code>, <code>force</code>, <code>spectral</code>, <code>community</code>.
+      ELK loads as a lazy chunk on first use — it costs your bundle nothing until someone
+      actually invokes it — and runs off-thread in a Worker. And in every framework binding,
+      the declarative form re-runs on <i>prop-value</i> change only, never on node data, so
+      it structurally cannot fight a user's drag:</p>
+      <pre data-lang="javascript">// React
+&lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} layout="elk" /&gt;
+
+// Angular
+&lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges" [layout]="'elk'" /&gt;
+
+// Vue
+&lt;GrafloriaFlow :default-nodes="nodes" :default-edges="edges" layout="elk" /&gt;</pre>
+
+      <p>See every algorithm on a real graph: <a href="../../demos/#layout">layout demos</a> ·
+      the concept guide (including the choosing table):
+      <a href="../../learn/layout/">Layout</a>.</p>
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

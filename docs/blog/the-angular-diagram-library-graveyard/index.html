@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Angular diagram-library problem, and how not to get stranded again — Grafloria engineering</title>
+<meta name="description" content="Angular's most-starred graph library hasn't supported a current Angular for years — its top issue is 'Angular 15 not supported'. What Angular teams should demand from any diagram dependency.">
+<link rel="canonical" href="https://grafloria.com/blog/the-angular-diagram-library-graveyard/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="The Angular diagram-library problem, and how not to get stranded again">
+<meta property="og:description" content="Angular's most-starred graph library hasn't supported a current Angular for years — its top issue is 'Angular 15 not supported'. What Angular teams should demand from any diagram dependency.">
+<meta property="og:url" content="https://grafloria.com/blog/the-angular-diagram-library-graveyard/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"The Angular diagram-library problem, and how not to get stranded again","description":"Angular's most-starred graph library hasn't supported a current Angular for years \u2014 its top issue is 'Angular 15 not supported'. What Angular teams should demand from any diagram dependency.","url":"https://grafloria.com/blog/the-angular-diagram-library-graveyard/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/the-angular-diagram-library-graveyard/"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="../" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Use cases</p>
+      <h1>The Angular diagram-library problem, and how not to get stranded again</h1>
+      <p class="meta">August 22, 2026 · use cases · angular</p>
+      <p class="lede">If you maintain an Angular app that draws graphs, there's a decent
+      chance you've lived this story. The most popular Angular-native graph library's
+      top-reacted issue is <a href="https://github.com/swimlane/ngx-graph/issues/481" rel="nofollow">"Angular 15
+      not supported"</a> — open for years, twenty-three thumbs up, followed by the same
+      request for 17, 14, and 12 before it. A
+      <a href="https://github.com/swimlane/ngx-graph/issues/78" rel="nofollow">rendering bug
+      from 2018</a> is still open. Meanwhile the Stack Overflow history under its tag is
+      install failures on each new Angular major.</p>
+      <p>To be clear about tone: this is not a dunk. Open-source maintenance is unpaid work,
+      the maintainers gave the community something real, and every library — ours included —
+      is one life-change away from the same curve. The useful question isn't "whose fault",
+      it's: <b>what should an Angular team demand from a diagram dependency so this can't
+      strand them again?</b></p>
+
+      <h2>The trap has a shape</h2>
+      <p>Angular's major-version cadence means a UI library that misses two majors becomes
+      uninstallable in new projects (peer-dependency resolution simply refuses), and the
+      workarounds — <code>--legacy-peer-deps</code>, forks, vendoring — each transfer the
+      maintenance burden to you. The other escape hatch we keep seeing is
+      <a href="https://www.reddit.com/r/angular/comments/1innh2x/" rel="nofollow">wrapping a
+      React library in Angular</a>, which means shipping two frameworks and bridging every
+      event across the boundary. It works. You will not enjoy it.</p>
+
+      <h2>Four demands to make of any diagram library</h2>
+      <ul>
+        <li><b>A peer range that spans majors, on record.</b> Not a README promise — the
+        <code>package.json</code>. (Ours currently declares
+        <code>^18.1.0 || ^19.0.0 || ^20.0.0</code>.)</li>
+        <li><b>Proof the examples run, on every release.</b> A gallery of screenshots proves
+        nothing about the current version. Every Grafloria demo is executed in CI with real
+        pointer events on every commit — an example that breaks blocks the release. Ask any
+        vendor: <i>what fails your build if a demo breaks?</i></li>
+        <li><b>A framework-agnostic core.</b> If the engine has no framework dependency, the
+        Angular binding is a thin layer that's cheap to keep current — and if the worst
+        happens, your diagram logic survives a framework migration. Our Angular layer is
+        components and signals over the same engine the React, Vue and vanilla builds use.</li>
+        <li><b>Full source under a real license.</b> MIT means the ultimate fallback — you
+        can maintain it — is at least possible. It's the difference between a risk and a
+        cliff.</li>
+      </ul>
+
+      <h2>What Angular-native actually looks like now</h2>
+      <p>Signal-based two-way bindings, templates for custom nodes, zoneless-verified —
+      no wrappers around another framework's runtime:</p>
+      <pre data-lang="typescript">import { Component } from '@angular/core';
+import { DiagramCanvasComponent } from '@grafloria/angular';
+
+@Component({
+  selector: 'app-flow',
+  imports: [DiagramCanvasComponent],
+  template: `
+    &lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
+      [plugins]="true" style="display:block; height:100vh" /&gt;
+  `,
+})
+export class FlowComponent {
+  nodes = [
+    { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Start' } },
+    { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Ship' } },
+  ];
+  edges = [{ id: 'e1', source: 'a', target: 'b' }];
+}</pre>
+      <p>Drag, connect, pan/zoom, minimap, ⌘Z — wired. Every gallery demo exists as a real
+      Angular component with source shown: <a href="../../demos-angular/">the Angular
+      demos</a>.</p>
+
+      <p>Ten-minute start: <a href="../../learn/angular/">the Angular tutorial</a> · the
+      honest shortlist including ngx-vflow and the commercial suites:
+      <a href="../../alternatives/">alternatives</a>.</p>
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

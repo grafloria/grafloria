@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Draggable edges that stay routed — Grafloria engineering</title>
+<meta name="description" content="The top-voted react-flow question on Stack Overflow asks whether you can shape edges by dragging them. You can — if bends are model state the router treats as constraints instead of decorations.">
+<link rel="canonical" href="https://grafloria.com/blog/draggable-edges-that-stay-routed/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="Draggable edges that stay routed">
+<meta property="og:description" content="The top-voted react-flow question on Stack Overflow asks whether you can shape edges by dragging them. You can — if bends are model state the router treats as constraints instead of decorations.">
+<meta property="og:url" content="https://grafloria.com/blog/draggable-edges-that-stay-routed/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Draggable edges that stay routed","description":"The top-voted react-flow question on Stack Overflow asks whether you can shape edges by dragging them. You can \u2014 if bends are model state the router treats as constraints instead of decorations.","url":"https://grafloria.com/blog/draggable-edges-that-stay-routed/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/draggable-edges-that-stay-routed/"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="../" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Use cases</p>
+      <h1>Draggable edges that stay routed</h1>
+      <p class="meta">August 22, 2026 · use cases · edges</p>
+      <p class="lede">The single most-voted react-flow question on Stack Overflow is
+      disarmingly simple: <a href="https://stackoverflow.com/questions/77831116/is-it-possible-to-shape-reactflow-edges-by-dragging-them" rel="nofollow">"Is
+      it possible to shape reactflow edges by dragging them?"</a> The accepted reality in
+      the answers: not built in — write a custom edge, manage your own control points.
+      Anyone who has built a wiring UI knows why users keep asking: the router's idea of a
+      good path and a human's idea of a <i>readable</i> path are different things.</p>
+
+      <h2>Why "just add drag handles" fails</h2>
+      <p>The naive version stores pixel positions for a bend and draws through them. It
+      works until anything moves. Then you face the real question: when the router
+      recomputes — because a node moved, because an obstacle appeared — what happens to the
+      user's bend?</p>
+      <ul>
+        <li>If the router <b>discards</b> it, users learn their edits don't stick and stop
+        making them. (This is the classic smart-router-vs-segment-tool conflict — the same
+        one JointJS users hit when the Manhattan router and the vertex tool fight over the
+        same path.)</li>
+        <li>If the router <b>defers</b> to it entirely, the edge happily runs through the
+        node your bend now overlaps, and the diagram starts lying.</li>
+      </ul>
+
+      <h2>Bends as constraints</h2>
+      <p>The version that works treats a user's bend as a <b>waypoint in the model</b> —
+      serialized with the edge, undoable like any edit, and handed to the router as a
+      constraint: route <i>through</i> these points, avoid obstacles <i>between</i> them.</p>
+      <pre data-lang="javascript">edges: [{
+  source: 'r1', target: 'c1',
+  type: 'orthogonal', router: 'avoid',
+  // A user dragged the wire here once. It survives node drags, re-routes,
+  // serialization, and undo — the router works around it, not over it.
+  points: [{ x: 340, y: 90 }],
+}]</pre>
+      <p>In Grafloria you don't write the drag handling: grab any segment of a routed edge
+      and bend it; the bend lands in <code>points</code>; the <code>avoid</code> router keeps
+      dodging nodes on the spans between your waypoints. Delete the bend and the router owns
+      the whole path again. The mechanics of that router — the obstacle index, the grid
+      search, what a turn costs — are in
+      <a href="../obstacle-avoiding-edge-routing/">their own deep-dive</a>.</p>
+
+      <h2>The details users actually feel</h2>
+      <ul>
+        <li><b>Fat hit targets.</b> A 2px line is a 2px click target — another
+        <a href="https://github.com/xyflow/xyflow/issues/1211" rel="nofollow">long-lived
+        request</a> elsewhere. Grafloria edges hit-test against a widened invisible band, so
+        grabbing a wire doesn't require surgical aim.</li>
+        <li><b>Labels ride along.</b> An edge label is anchored to the path and draggable
+        itself; its position persists in the model too.</li>
+        <li><b>One undo per gesture.</b> A bend, a reconnect, a label move — each is one
+        command, so ⌘Z behaves the way muscle memory expects.</li>
+      </ul>
+
+      <p>Try it: <a href="../../demos/edges/editable-edge.html">the editable-edge demo</a> ·
+      the concepts: <a href="../../learn/edges-and-routing/">Edges &amp; routing</a>.</p>
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

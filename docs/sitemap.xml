@@ -11,11 +11,11 @@
   <url><loc>https://grafloria.com/mermaid/</loc><lastmod>2026-08-22</lastmod><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/react/</loc><lastmod>2026-08-22</lastmod><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/vue/</loc><lastmod>2026-08-22</lastmod><priority>0.9</priority></url>
-  <url><loc>https://grafloria.com/learn/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
+  <url><loc>https://grafloria.com/learn/</loc><lastmod>2026-08-22</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/angular-custom-nodes/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/angular-dashboards/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/angular-state-and-tooling/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
-  <url><loc>https://grafloria.com/learn/angular/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
+  <url><loc>https://grafloria.com/learn/angular/</loc><lastmod>2026-08-22</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/collaboration/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/commands-and-undo/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/edges-and-routing/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
@@ -26,7 +26,7 @@
   <url><loc>https://grafloria.com/learn/javascript-custom-nodes/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/javascript-dashboards/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/javascript-element-vs-render/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
-  <url><loc>https://grafloria.com/learn/javascript/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
+  <url><loc>https://grafloria.com/learn/javascript/</loc><lastmod>2026-08-22</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/kits/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/layout/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/mermaid-and-the-dsl/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
@@ -34,14 +34,14 @@
   <url><loc>https://grafloria.com/learn/react-custom-nodes/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/react-dashboards/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/react-state-and-data/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
-  <url><loc>https://grafloria.com/learn/react/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
+  <url><loc>https://grafloria.com/learn/react/</loc><lastmod>2026-08-22</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/the-instance/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/the-model/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/theming/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/vue-custom-nodes/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/vue-dashboards/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/vue-state-and-data/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
-  <url><loc>https://grafloria.com/learn/vue/</loc><lastmod>2026-08-21</lastmod><priority>0.8</priority></url>
+  <url><loc>https://grafloria.com/learn/vue/</loc><lastmod>2026-08-22</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/alternatives/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/alternatives/gojs/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/alternatives/gridstack/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
@@ -49,10 +49,16 @@
   <url><loc>https://grafloria.com/alternatives/mermaid/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/alternatives/react-flow/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/blog/a-dashboard-is-three-problems/</loc><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/a-dashboard-is-three-problems/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/auto-layout-you-dont-have-to-build/</loc><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/build-a-workflow-editor-in-vue/</loc><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/custom-nodes-without-the-props-mystery/</loc><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/draggable-edges-that-stay-routed/</loc><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/obstacle-avoiding-edge-routing/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/blog/ways-a-diagram-can-lie/</loc><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/blog/when-mermaid-diagrams-grow-up/</loc><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/the-angular-diagram-library-graveyard/</loc><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/ways-a-diagram-can-lie/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/when-mermaid-diagrams-grow-up/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/why-nesting-breaks-flow-libraries/</loc><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/collab/comments.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/collab/conflict-resolution.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/collab/live-cursors.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>

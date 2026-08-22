@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sub-flows, groups, containers: why nesting breaks every flow library — Grafloria engineering</title>
+<meta name="description" content="Nesting is the most-requested feature in the flow-library world — and the most refused. Why containers are genuinely hard, and what it takes to make a group a real thing instead of a rectangle.">
+<link rel="canonical" href="https://grafloria.com/blog/why-nesting-breaks-flow-libraries/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="Sub-flows, groups, containers: why nesting breaks every flow library">
+<meta property="og:description" content="Nesting is the most-requested feature in the flow-library world — and the most refused. Why containers are genuinely hard, and what it takes to make a group a real thing instead of a rectangle.">
+<meta property="og:url" content="https://grafloria.com/blog/why-nesting-breaks-flow-libraries/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Sub-flows, groups, containers: why nesting breaks every flow library","description":"Nesting is the most-requested feature in the flow-library world \u2014 and the most refused. Why containers are genuinely hard, and what it takes to make a group a real thing instead of a rectangle.","url":"https://grafloria.com/blog/why-nesting-breaks-flow-libraries/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/why-nesting-breaks-flow-libraries/"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="../" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Use cases</p>
+      <h1>Sub-flows, groups, containers: why nesting breaks every flow library</h1>
+      <p class="meta">August 22, 2026 · use cases · groups &amp; containers</p>
+      <p class="lede">Look at the top-voted feature requests of any flow library and one
+      theme towers over the rest: users want to put things <i>inside</i> other things. In
+      React Flow's tracker it's
+      <a href="https://github.com/xyflow/xyflow/issues/1377" rel="nofollow">"Nested flows"</a>,
+      <a href="https://github.com/xyflow/xyflow/issues/611" rel="nofollow">"Nested Nodes"</a> and
+      <a href="https://github.com/xyflow/xyflow/issues/3393" rel="nofollow">"absolute positioning
+      in sub flows"</a> — sixty-plus upvotes between them, one still open. This isn't a
+      React Flow problem. It's that nesting looks like a styling feature and is actually a
+      <i>semantics</i> feature, and half-shipping it is worse than not shipping it.</p>
+
+      <h2>Why it's genuinely hard</h2>
+      <p>The moment a node can contain nodes, every subsystem gets a second opinion:</p>
+      <ul>
+        <li><b>Dragging:</b> does moving the parent move the children? (Yes.) Does dragging a
+        child near the edge leave the parent? (Your call — but it must be <i>a</i> call, not
+        an accident. One of the top-voted react-flow Stack Overflow questions is literally
+        <a href="https://stackoverflow.com/questions/72548536/react-flow-one-nodes-drags-other-nodes" rel="nofollow">"one
+        node drags other nodes"</a> — accidental containment.)</li>
+        <li><b>Hit-testing:</b> a click inside a container over empty space — who gets it?
+        The container? The canvas? The deepest nested thing under the pointer?</li>
+        <li><b>Serialization:</b> if membership isn't part of the document, a saved diagram
+        reloads as loose boxes over a decorative rectangle.</li>
+        <li><b>Undo:</b> dragging a node from one container into another touches two
+        containers and a membership record. One gesture must be one undo step.</li>
+        <li><b>Collapse:</b> fold a container and its links must re-anchor to the header —
+        and unfold must restore <i>exactly</i> what was there, even after a save/reload.</li>
+      </ul>
+      <p>Libraries that treat groups as a rendering trick get the first demo right and the
+      next four bullets wrong — which is exactly why the feature requests stay open for
+      years. The correct-but-expensive answer is that containment has to live in the model.</p>
+
+      <h2>Containment is membership</h2>
+      <p>In Grafloria a group is a model object with members, and everything else follows
+      from that one decision:</p>
+      <pre data-lang="javascript">import { GroupModel } from '@grafloria/engine';
+
+diagram.addGroup(new GroupModel({ id: 'ingest-stage', position: { x: 0, y: 0 },
+  size: { width: 320, height: 180 } }));
+
+await engine.addToGroup('ingest-stage', 'a');   // membership is model state
+await engine.collapseGroup('ingest-stage');     // reversible: a snapshot rides ON the group
+await engine.expandGroup('ingest-stage');       // …so collapsed diagrams survive save/reload</pre>
+      <p>Members drag with the group. Collapse stores member positions and removed links
+      <i>on the group itself</i>, so a collapsed diagram serializes and expands correctly in
+      a different session. Hit-testing is deepest-wins. And because group operations are
+      commands, the cross-container drag really is one ⌘Z.</p>
+
+      <h2>The dashboard version, since that's where nesting usually ends up</h2>
+      <p>The most common concrete ask behind "nested flows" is a dashboard section: a box of
+      KPIs that lays out its own children and accepts tiles dragged in. In our dashboard kit
+      that's one field on a widget:</p>
+      <pre data-lang="javascript">{ id: 'kpis', title: 'KPI section', span: 12, columns: 4,
+  widgets: [
+    { id: 'k1', kind: 'kpi', span: 1, data: { label: 'Revenue',   value: '$6.8M' } },
+    { id: 'k2', kind: 'kpi', span: 1, data: { label: 'Customers', value: '1,284' } },
+  ] }</pre>
+      <p>Drag a tile across the boundary and the other grid adopts it live; drag it back out
+      and the board takes it back; either way one undo restores everything, and
+      <code>toJSON()</code> reports the tile under whichever parent it's actually in —
+      derived from live membership, not from the array you authored. Resize a child taller
+      than the section and the <i>section</i> grows a row in its board rather than letting
+      the child overflow.</p>
+
+      <p>Try both live: <a href="../../demos/#grouping">group demos</a> ·
+      <a href="../../demos/dashboard/nested-containers.html">dashboard containers</a> ·
+      the concepts: <a href="../../learn/groups/">Groups</a>.</p>
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>
