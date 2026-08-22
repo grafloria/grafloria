@@ -87,3 +87,9 @@ footer { border-top: 1px solid var(--line); padding: 34px 0 44px; color: var(--s
 footer .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 footer img { width: 22px; height: 22px; }
 footer .fam { margin-left: auto; }
+
+.sbbtn { display: inline-flex; align-items: center; gap: 8px; margin: 6px 0 2px;
+  padding: 9px 18px; border-radius: 10px; background: var(--indigo); color: #fff !important;
+  font-weight: 600; font-size: 14.5px; }
+.sbbtn:hover { background: var(--indigo-deep); text-decoration: none; }
+.sbnote { font-size: 13px; color: var(--slate); margin: 4px 0 0 2px; }

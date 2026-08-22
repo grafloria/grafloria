@@ -15,6 +15,11 @@ one headless core, native in <b>Angular</b>, <b>React</b>, and <b>Vue</b>. MIT, 
 </p>
 
 <p align="center">
+  <a href="https://grafloria.com/demos/dashboard/dashboard-builder.html"><img src="assets/editor.gif" width="800" alt="Dragging a dashboard tile in Grafloria — the grid re-packs live around a placeholder, and one undo restores everything"></a>
+</p>
+<p align="center"><i>Live drag with real re-packing — <a href="https://grafloria.com/demos/">every demo is clickable</a>, and every one runs in CI as a test.</i></p>
+
+<p align="center">
   <a href="https://grafloria.com"><b>grafloria.com</b></a> ·
   <a href="https://grafloria.com/demos/"><b>111 live demos</b></a> ·
   <a href="https://grafloria.com/mermaid/"><b>Mermaid support</b></a> ·

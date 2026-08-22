@@ -66,3 +66,6 @@ demos/shell/grafloria.js
 libs/*/src/**/*.js
 libs/*/src/**/*.d.ts
 libs/*/src/**/*.js.map
+benchmarks/node_modules/
+benchmarks/dist/
+benchmarks/results.json

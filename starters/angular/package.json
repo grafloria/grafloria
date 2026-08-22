@@ -1,0 +1,25 @@
+{
+  "name": "grafloria-starter-angular",
+  "private": true,
+  "scripts": { "start": "ng serve", "build": "ng build" },
+  "dependencies": {
+    "@angular/common": "^19.0.0",
+    "@angular/compiler": "^19.0.0",
+    "@angular/core": "^19.0.0",
+    "@angular/forms": "^19.0.0",
+    "@angular/platform-browser": "^19.0.0",
+    "@grafloria/angular": "^0.13.1",
+    "@grafloria/element": "^0.4.2",
+    "@grafloria/renderer": "^0.4.3",
+    "@grafloria/engine": "^0.3.3",
+    "rxjs": "^7.8.0",
+    "tslib": "^2.6.0",
+    "zone.js": "^0.15.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^19.0.0",
+    "@angular/cli": "^19.0.0",
+    "@angular/compiler-cli": "^19.0.0",
+    "typescript": "~5.6.0"
+  }
+}
