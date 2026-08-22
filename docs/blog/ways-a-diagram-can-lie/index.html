@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ways a diagram can lie to your users — Grafloria engineering</title>
+<meta name="description" content="Three edges that render as one. A line that might connect or might pass behind. A label floating near the wrong transition. Diagram bugs your tests never catch — and how an engine can make them impossible.">
+<link rel="canonical" href="https://grafloria.com/blog/ways-a-diagram-can-lie/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="Ways a diagram can lie to your users">
+<meta property="og:description" content="Three edges that render as one. A line that might connect or might pass behind. A label floating near the wrong transition. Diagram bugs your tests never catch — and how an engine can make them impossible.">
+<meta property="og:url" content="https://grafloria.com/blog/ways-a-diagram-can-lie/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Ways a diagram can lie to your users","description":"Three edges that render as one. A line that might connect or might pass behind. A label floating near the wrong transition. Diagram bugs your tests never catch \u2014 and how an engine can make them impossible.","url":"https://grafloria.com/blog/ways-a-diagram-can-lie/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/ways-a-diagram-can-lie/"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="../" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Use cases</p>
+      <h1>Ways a diagram can lie to your users</h1>
+      <p class="meta">August 22, 2026 · use cases · correctness</p>
+      <p class="lede">A wrong number in a table looks wrong. A wrong diagram looks
+      <i>fine</i> — that's what makes it dangerous. Here are three lies we see diagram UIs
+      tell in production, why they slip through code review, and why we ended up treating
+      them as correctness bugs in the engine rather than styling problems in the app.</p>
+
+      <h2>Lie #1 — three edges render as one</h2>
+      <p>A classic from the support queues of every flow library: you declare three edges
+      between the same two nodes and see one on screen. Nothing crashed. All three are
+      <i>there</i> — drawn on exactly the same path, overlapping into a single line. Your
+      user reads "one relationship" where the data says three.</p>
+      <p>The usual fix is manual: invent separate connection points, or write a custom edge
+      that offsets its path. Our fix is that the renderer refuses to tell this lie —
+      parallel edges fan apart, labels kept legible:</p>
+      <pre data-lang="javascript">rendererConfig: { parallelLinks: true, parallelSpacing: 12 }</pre>
+
+      <h2>Lie #2 — the edge that might connect, or might pass behind</h2>
+      <p>At six nodes a straight edge is fine. At sixty, edges slice through node bodies, and
+      every crossing is a question your user has to answer alone: does this line <i>connect</i>
+      to that box or pass behind it? We wrote a
+      <a href="../obstacle-avoiding-edge-routing/">whole deep-dive</a> on the machinery, but the
+      principle fits in a sentence: <b>links must never run through node bodies</b> — so the
+      <code>avoid</code> router walks around them, keeps doing it live while you drag, and when
+      a user hand-bends a wire, the bend becomes a constraint the router respects instead of a
+      casualty it discards.</p>
+
+      <h2>Lie #3 — the label near the wrong thing</h2>
+      <p>State machines are the worst offenders: transition text that floats in ambiguous
+      space between three arrows. Whose label is it? In Grafloria edge labels are anchored to
+      their path, editable in place, and draggable — and a dragged label position
+      <i>persists in the model</i>, so the disambiguation someone did by hand survives
+      serialization, undo, and everyone else's session.</p>
+
+      <h2>Why this is an engine's job</h2>
+      <p>Every one of these can be patched in app code — teams do it every day, and the
+      patches are where diagram UIs go to become unmaintainable. The reason we bake them into
+      the engine is the same reason databases enforce constraints: a rule enforced at the
+      bottom can't be forgotten at the top. Our <a href="../../demos/">112 demos run in CI
+      with real pointer events</a> partly for this — a diagram that lies is a failing gate,
+      not a screenshot in a bug report.</p>
+
+      <p>See it live: <a href="../../demos/#edges">edge demos</a> · the concepts:
+      <a href="../../learn/edges-and-routing/">Edges &amp; routing</a>.</p>
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>
