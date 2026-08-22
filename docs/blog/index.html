@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engineering blog — Grafloria</title>
+<meta name="description" content="Engineering deep-dives from the Grafloria diagram engine: routing, layout, testing, packaging — with the real numbers.">
+<link rel="canonical" href="https://grafloria.com/blog/">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../favicon-32.png">
+<meta property="og:title" content="Engineering blog — Grafloria">
+<meta property="og:description" content="Engineering deep-dives from the Grafloria diagram engine: routing, layout, testing, packaging — with the real numbers.">
+<meta property="og:url" content="https://grafloria.com/blog/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Blog","name":"Grafloria engineering blog","url":"https://grafloria.com/blog/","description":"Engineering deep-dives from the Grafloria diagram engine: routing, layout, testing, packaging \u2014 with the real numbers."}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../favicon.svg" alt="">
+    <span class="name"><a href="../">grafloria</a></span>
+    <nav class="links">
+      <a href="../learn/">Learn</a>
+      <a href="../demos/">Demos</a>
+      <a href="../mermaid/">Mermaid</a>
+      <a href="../compare/">Compare</a>
+      <a href="./" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <div class="plist">
+      <h1>Engineering blog</h1>
+      <p class="lede">Deep-dives from inside the engine — written from the source, with the
+      real numbers, the trade-offs, and the things we deliberately don't do. The
+      <a href="../demos/">112 CI-gated demos</a> remain the living documentation; this is the
+      why behind them.</p>
+      <a class="pcard" href="obstacle-avoiding-edge-routing/">
+        <h2>How obstacle-avoiding edge routing works</h2>
+        <p>August 22, 2026 — A spatial hash, a family of grid searches with explicit turn costs,
+        three cache layers, and user waypoints treated as constraints. The whole pipeline behind
+        <code>router: 'avoid'</code>.</p>
+      </a>
+    </div>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../learn/">Learn</a> · <a href="../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

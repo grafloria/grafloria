@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GridStack alternative — when a dashboard needs more than geometry</title>
+<meta name="description" content="GridStack is the reference drag-and-pack grid — and MIT. Grafloria's dashboard kit is for when the dashboard also needs widgets, undo, exports, nesting and persistence in one engine across React, Angular, Vue.">
+<link rel="canonical" href="https://grafloria.com/alternatives/gridstack/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="GridStack alternative — when a dashboard needs more than geometry">
+<meta property="og:description" content="GridStack is the reference drag-and-pack grid — and MIT. Grafloria's dashboard kit is for when the dashboard also needs widgets, undo, exports, nesting and persistence in one engine across React, Angular, Vue.">
+<meta property="og:url" content="https://grafloria.com/alternatives/gridstack/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebPage","name":"GridStack alternative \u2014 when a dashboard needs more than geometry","url":"https://grafloria.com/alternatives/gridstack/","description":"GridStack is the reference drag-and-pack grid \u2014 and MIT. Grafloria's dashboard kit is for when the dashboard also needs widgets, undo, exports, nesting and persistence in one engine across React, Angular, Vue."},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Alternatives","item":"https://grafloria.com/alternatives/"},{"@type":"ListItem","position":2,"name":"GridStack","item":"https://grafloria.com/alternatives/gridstack/"}]}]}</script>
+<style>
+  :root { --indigo:#3B52D9; --indigo-deep:#2A3CA8; --indigo-soft:#94A5F0; --indigo-wash:#EEF1FE;
+    --ink:#232A3D; --slate:#5A6478; --line:#E3E7F2; --bg:#FCFCFF; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; line-height:1.6; }
+  .wrap { max-width:980px; margin:0 auto; padding:0 24px; }
+  a { color:var(--indigo); text-decoration:none; } a:hover { text-decoration:underline; }
+  code, pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  header { padding:20px 0; border-bottom:1px solid var(--line); background:#fff; }
+  .nav { display:flex; align-items:center; gap:12px; max-width:1220px; margin:0 auto; padding:0 24px; }
+  .nav img { width:34px; height:34px; }
+  .nav .name { font-weight:700; font-size:20px; letter-spacing:-.3px; } .nav .name a { color:var(--ink); }
+  .nav .links { margin-left:auto; display:flex; gap:22px; font-size:15px; font-weight:500; flex-wrap:wrap; }
+  h1 { font-size:clamp(28px,4.4vw,42px); font-weight:800; letter-spacing:-1px; line-height:1.14; text-wrap:balance; margin-top:48px; }
+  .lede { margin:14px 0 8px; color:var(--slate); font-size:17px; max-width:74ch; }
+  .lede b { color:var(--ink); }
+  h2 { font-size:23px; font-weight:750; letter-spacing:-.4px; margin:44px 0 10px; }
+  p, li { font-size:15.5px; } p { margin:10px 0; max-width:78ch; }
+  ul { margin:10px 0 10px 22px; } li { margin:5px 0; max-width:74ch; }
+  p code, li code, td code { font-size:13px; background:var(--indigo-wash); padding:1px 5px; border-radius:5px; color:var(--indigo-deep); }
+  .callout { margin:18px 0; border:1px solid var(--line); border-left:3px solid var(--indigo);
+    border-radius:12px; background:#fff; padding:16px 20px; }
+  .callout h3 { font-size:16px; font-weight:700; margin-bottom:5px; }
+  .callout p { font-size:14.5px; color:var(--slate); margin:0; }
+  .tablewrap { overflow-x:auto; margin:14px 0; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { text-align:left; padding:8px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--slate); }
+  td.us { background:var(--indigo-wash); }
+  pre { border:1px solid var(--line); border-radius:12px; background:#fff; padding:14px 16px;
+    overflow-x:auto; font-size:13px; line-height:1.62; color:#2C3346; margin:14px 0; }
+  .cta { margin:44px 0 64px; display:flex; gap:10px; flex-wrap:wrap; }
+  .btn { display:inline-block; padding:11px 22px; border-radius:10px; font-weight:600; font-size:15px; }
+  .btn.primary { background:var(--indigo); color:#fff; } .btn.primary:hover { background:var(--indigo-deep); text-decoration:none; }
+  .btn.ghost { border:1.5px solid var(--line); color:var(--ink); background:#fff; }
+  .fine { margin:0 0 56px; font-size:13px; color:var(--slate); max-width:80ch; }
+  footer { border-top:1px solid var(--line); padding:30px 0 40px; color:var(--slate); font-size:14px; background:#fff; }
+  footer .wrap { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <h1>A GridStack alternative for dashboards that outgrow the grid</h1>
+    <p class="lede">Honest framing first: GridStack.js is the <b>reference implementation</b> of drag-resize-repack, it's MIT, and if a layout engine is all you need, use it. Grafloria's dashboard kit is for the moment the grid becomes an <b>application</b>: widgets with data, undo across every gesture, containers inside containers, exports, and a save format shared with your diagrams.</p>
+    <h2>When to stay with GridStack</h2>
+    <p>You need exactly a grid: place, drag, resize, re-pack, responsive breakpoints, sub-grids.
+    GridStack does all of it, small and focused, with wrappers for Angular, React and Vue 3.</p>
+
+    <h2>Where the boundary of the box sits</h2>
+    <div class="tablewrap"><table>
+      <tr><th></th><th>Grafloria dashboard kit</th><th>GridStack.js</th></tr>
+      <tr><td>License</td><td class="us">MIT</td><td>MIT</td></tr>
+      <tr><td>Grid gestures</td><td class="us">Push-down with skip, swap shapes, locked tiles, truthful placeholder</td><td>The reference implementation</td></tr>
+      <tr><td>Widgets</td><td class="us">Declared as data (<code>kind</code> + <code>data</code>); 6 built-in renderers; <code>renderWidget</code> seam for your charts</td><td>Yours to build</td></tr>
+      <tr><td>Undo</td><td class="us">Every gesture one command — ⌘Z included</td><td>Yours to build</td></tr>
+      <tr><td>Containers</td><td class="us">A widget carrying <code>widgets</code> nests a board; cross-boundary drag, escalation, one-undo</td><td>subGridOpts (geometry only)</td></tr>
+      <tr><td>Persistence</td><td class="us"><code>toJSON()</code> ↔ <code>dashboard()</code> round-trip; same document as diagrams</td><td>save/load of cells</td></tr>
+      <tr><td>Export</td><td class="us">PNG / SVG / vector PDF of any view</td><td>—</td></tr>
+    </table></div>
+
+    <h2>A board as data</h2>
+    <pre>import { render, dashboard } from '@grafloria/element';
+
+render(dashboard({
+  columns: 12,
+  widgets: [
+    { id: 'rev', kind: 'kpi', span: 3, data: { label: 'Revenue', value: '$6.8M', delta: 12.4 } },
+    { id: 'trend', kind: 'line', span: 9, rows: 2, title: 'Trend', data: { /* … */ } },
+  ],
+}), host);</pre>
+    <div class="cta">
+      <a class="btn primary" href="../../learn/javascript-dashboards/">10-minute tutorial</a>
+      <a class="btn ghost" href="../../demos/#dashboard">Live demos</a>
+      <a class="btn ghost" href="../../compare/#dashboards">The full sourced comparison</a>
+    </div>
+    <p class="fine">Pricing and feature cells reflect vendor pages and shipped type definitions as of
+    July–August 2026 — always confirm on the vendor's site. Corrections welcome on
+    <a href="https://github.com/grafloria/grafloria/issues">GitHub</a>; this page aims to stay honest, not to win.</p>
+  </div>
+</main>
+<footer>
+  <div class="wrap">
+    <img src="../../favicon.svg" alt="" width="22" height="22">
+    <span>Grafloria — MIT licensed, free forever.</span>
+  </div>
+</footer>
+</body>
+</html>

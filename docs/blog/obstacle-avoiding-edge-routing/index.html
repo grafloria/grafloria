@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How obstacle-avoiding edge routing works — Grafloria engineering</title>
+<meta name="description" content="Behind router: 'avoid' — a spatial hash over obstacles, a family of grid searches with explicit turn costs, three cache layers, and user waypoints as constraints. The whole pipeline, with the real numbers.">
+<link rel="canonical" href="https://grafloria.com/blog/obstacle-avoiding-edge-routing/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="How obstacle-avoiding edge routing works — Grafloria engineering">
+<meta property="og:description" content="Behind router: 'avoid' — a spatial hash over obstacles, a family of grid searches with explicit turn costs, three cache layers, and user waypoints as constraints. The whole pipeline, with the real numbers.">
+<meta property="og:url" content="https://grafloria.com/blog/obstacle-avoiding-edge-routing/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"How obstacle-avoiding edge routing works","description":"Behind router: 'avoid' \u2014 a spatial hash over obstacles, a family of grid searches with explicit turn costs, three cache layers, and user waypoints as constraints. The whole pipeline, with the real numbers.","url":"https://grafloria.com/blog/obstacle-avoiding-edge-routing/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/obstacle-avoiding-edge-routing/"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="../" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Engineering</p>
+      <h1>How obstacle-avoiding edge routing works</h1>
+      <p class="meta">August 22, 2026 · engine internals</p>
+      <p class="lede">Setting <code>router: 'avoid'</code> on an edge is one word in the spec. Behind it is a spatial hash, a family of grid searches, three layers of caching, and a handful of decisions about what a router should refuse to do. This is the whole pipeline, from "the edge needs a path" to "the path is on screen at 60fps while you drag".</p>
+<h2>Why the straight line fails</h2>
+<p>The naive edge is a segment between two ports. At six nodes it looks fine; at sixty it slices through node bodies, and a line through a box is worse than ugly — it is misinformation. Does that edge connect to this node, or pass behind it? The reader cannot tell, so the renderer treats it as a correctness rule: links must never run through node bodies.</p>
+<p>But a full search on every edge pays for avoidance most edges do not need, so the orthogonal router escalates: compute the cheap elbow route first, test it honestly, search only when the test fails.</p>
+<pre data-lang="typescript">// Check if the simple path intersects any obstacles
+const hasCollision = this.pathIntersectsObstacles(simplePath.points, obstacles, index);
+if (!hasCollision) {
+  // Path is clear, use the simple routing
+  return withJetty(simplePath);
+}
+// Path has collisions - use A* pathfinding for obstacle avoidance
+if (options.avoidObstacles) {
+  const avoidancePath = this.avoidObstaclesRoute(start, end, obstacles, options, srcDir, tgtDir, index);</pre>
+<p>If the search itself comes up empty, the router returns the simple path <em>with</em> its collisions — a visible signal that this diagram needs a human decision, rather than a blank canvas or a hung frame.</p>
+
+<h2>How obstacles enter the index</h2>
+<p>Nobody declares obstacles. The engine registers every node as one the moment it is added, updates the record when the node moves or resizes, and removes it when the node goes. Groups get the same treatment with one twist: a collapsed group becomes one solid obstacle, and the members hidden inside it stop being obstacles entirely — they are not visible, and routing around invisible things produces inexplicable detours. Every such change bumps an obstacle version counter and clears the engine's route cache: a stale route cannot outlive the world it was computed for.</p>
+<p>Registration is the easy half. The expensive half is the query: A* asks "is this point free?" once per neighbour of every cell it expands, and that predicate used to be a linear scan of the whole obstacle array. Profiling one node-drag frame on the 5,000-node benchmark counted 187,488 collision calls against ~9,998 obstacles each — 1.87 billion rectangle tests in a single frame, 88% of a 2.2-second frame. The routing was never the expensive part; scanning the scene to ask about one cell was.</p>
+<p>The fix is a uniform grid hash. Obstacle rectangles are bucketed into 128-unit cells (a node is ~140×70, so a cell holds a handful), a point query only looks at the cells its margin-expanded square touches, and anything absurdly large — a collapsed group the size of the diagram — goes on a small "oversized" list that every query checks directly. Crucially, the index does not approximate: it narrows the candidate set and then runs the exact same inclusive bounds test the linear scan ran.</p>
+<pre data-lang="typescript">private static hit(o: Obstacle, px: number, py: number, margin: number): boolean {
+  return (
+    px >= o.x - margin &&
+    px <= o.x + o.width + margin &&
+    py >= o.y - margin &&
+    py <= o.y + o.height + margin
+  );
+}</pre>
+<p>Same answer, every time, proportional to the obstacles <em>near</em> the query rather than to the scene — which is what let the index land without moving a pixel under the existing line-geometry test harness.</p>
+
+<h2>The search: a grid, and what a step costs</h2>
+<p>There is not one search but a small family. The workhorse is the A* embedded in the orthogonal router: it pushes off each port by a 30-unit stub (so paths never start flat against a node border), snaps to a 10-unit lattice, expands in the four cardinal directions with a 20-unit clearance margin around every obstacle, and charges half a step extra whenever the direction changes — enough to prefer straight runs without forbidding turns. A cap of 10,000 expansions bounds the worst case; exhausting it falls back to the simple route instead of stalling the frame.</p>
+<p>The <code>manhattan</code> router is the same idea taken seriously as an algorithm: the entry <em>direction</em> is part of the search state, so a turn is an explicit move with an explicit price, and a U-turn is simply not a legal move. Paths come out orthogonal by construction, not by post-cleanup.</p>
+<pre data-lang="typescript">// U-turns are forbidden: a 180° flip is never a legal Manhattan move.
+if (node.move >= 0 && mi === (node.move + 2) % 4) continue;
+// ...
+const turn = node.move >= 0 && mi !== node.move ? bendCost : 0;
+// Card 6: leaving the container is allowed but costs.
+const g = node.g + step + turn + outside;</pre>
+<p>That last term: when both endpoints live inside the same expanded group, steps <em>outside</em> the group's rectangle cost extra. The route stays inside its container when an inside route exists, but can still escape when obstacles force it — soft containment, not a wall.</p>
+<p><code>router: 'avoid'</code> itself dispatches to a third searcher, a free-angle A* on a finer 5-unit grid with diagonal moves allowed and a line-of-sight smoothing pass that deletes every waypoint the path can see past. Its output is a taut polyline rather than strict elbows. All three searchers give up honestly — an empty result, never an exception — and the caller's fallback chain decides what to draw instead.</p>
+
+<h2>Staying interactive</h2>
+<p>A correct route that takes 5.5 seconds is not a feature, and that is a measured number: before the incremental-routing work, moving one node on a 10,000-node diagram cost 5.5 seconds, because the renderer re-solved every visible edge on every frame. The cure is three layers of memoisation, each invalidated by a different thing.</p>
+<p>At the bottom, the engine keeps an LRU cache of 1,000 solved routes keyed on endpoints, algorithm and obstacle ids, and memoises the merged, deduplicated, spatially-indexed obstacle set on the identity of the array the renderer hands it — so a frame that routes 700 edges against one world builds that world's index exactly once.</p>
+<p>Above it, the renderer keeps a per-edge route memo whose key <em>is</em> the routing inputs: endpoints quantised to 1/100 unit, port directions, router name, lane assignment. An endpoint that moved changes the key by construction — no separate "did my node move?" bookkeeping to forget. The trap is the input deliberately left out of the key: the obstacle set. A node this edge does not touch can move into the corridor it routes through, and nothing about the edge changes while its correct route does. A cache that only watches endpoints serves a route straight through the new obstacle — fast and wrong.</p>
+<p>So every frame, the renderer diffs all node rectangles against the previous frame's. Each node that moved contributes two dirty regions:</p>
+<pre data-lang="typescript">if (before.x !== now.x || before.y !== now.y ||
+    before.width !== now.width || before.height !== now.height) {
+  dirty.push(before); // vacated
+  dirty.push(now); // occupied
+}</pre>
+<p>Both matter — an edge routed <em>around</em> the old position is just as stale as one routed <em>through</em> the new one. The regions are coalesced, inflated by 80 units (the sum of stub, clearance and grid pitch, with margin), and handed to a spatial index of routed edge bounding boxes; exactly the edges whose corridors were disturbed get their routes evicted. An edge that neither moved nor had its corridor touched keeps its route indefinitely, for free. Changes the rect-diff cannot see — a group collapsing raises a block without moving any node — are fingerprinted separately, and a change there drops the whole cache. That is deliberately blunt: it is rare, and reasoning about exactly which edges a collapse touched is how you ship a stale route.</p>
+<p>Dragging adds one more rule, about honesty over eagerness. Recomputing detours mid-drag made edges flip shape class frame to frame — 17 flips and 22 path discontinuities measured in one 900ms tween. So while an edge's endpoints are in motion, the plain route stands and is marked volatile — computed, drawn, and pointedly <em>not</em> cached — and the settle frame recomputes the honest detour. The engine also exposes an opt-in <code>enableLiveRerouting()</code> that watches node move and resize events and re-generates affected edges' paths on a 16ms throttle, batching everything that lands within one tick. And at far zoom, routing is skipped entirely: a detour around a 35×17-pixel smudge is sub-pixel, so edges become direct polylines — the same picture, arrived at without the arithmetic.</p>
+
+<h2>Waypoints are constraints, not decorations</h2>
+<p>Drag an edge's path and the bend lands in its <code>points</code> array and survives serialization. From the router's side, the important question is what those points <em>mean</em>, and the answer starts with how they are detected:</p>
+<pre data-lang="typescript">private linkHasManualWaypoints(link: LinkModel): boolean {
+  return link.getMetadata('hasManualWaypoints') === true &&
+    !!link.points && link.points.length > 2;
+}</pre>
+<p>Manual waypoints are an explicit editor action, flagged in metadata — never inferred from point count, because auto-routed orthogonal paths also have more than two points, and inferring from count once froze auto-routed edges in place forever. Once flagged, the edge is excluded from the automatic route pass: your bends are a constraint the router must respect, not a suggestion it may optimise away. But "respect" is not "freeze". Every frame the first and last points are refreshed from the current port positions, so the edge stays attached as its nodes move; the first and last <em>segments</em> — port to first waypoint, last waypoint to port — are still routed through the engine with obstacle avoidance on, so the edge still leaves its port perpendicular and still dodges what sits in the way; and the interior waypoint-to-waypoint segments use a direct orthogonal construction that keeps your bends exactly where you put them.</p>
+
+<h2>What we deliberately don't do</h2>
+<p>We do not chase a global optimum by default. Edges route one at a time against the shared index; an opt-in off-thread solver can refine the whole picture in a worker, but its answers are versioned against the world they were computed for and dropped on the floor if anything moved meanwhile — a globally optimised route through a node that has since arrived is worse than a greedy route around it.</p>
+<p>We do not pretend impossible geometry is routable. When an edge's own endpoint bodies overlap, some penetration is geometrically unavoidable; the renderer's last line of defence retries with the endpoint nodes included as obstacles and keeps whichever candidate penetrates <em>least</em>, minimising the damage instead of drawing a confident lie.</p>
+<p>And one honest admission, straight from a comment in the source: because the engine registers every node globally and the routers union that set with the per-request one, an edge's own endpoint nodes are in its obstacle set — the old per-edge filter that appeared to exclude them never actually did anything, so nearly every edge takes the avoidance path rather than the trivial one. Making the exclusion real would change routes across every existing diagram, so it is measured, documented at the site, and left as found: a routing-semantics decision, not a performance patch.</p>
+
+<h2>See it move</h2>
+<p>The <a href="https://grafloria.com/demos/#edges">edges demo gallery</a> exercises all of this live: the edge-routing demo asserts its route is orthogonal <em>and</em> never crosses the wall — then lets you drag the wall across the corridor and watch the detour follow; the routing-algorithms demo runs three routers down one corridor and asserts they take genuinely different paths; the editable-edge demo shows waypoints surviving node drags. For the edge spec itself — types, routers, connectors, handles — start with <a href="https://grafloria.com/learn/edges-and-routing/">Edges &amp; routing</a>.</p>
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>
