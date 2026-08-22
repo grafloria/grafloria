@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build a workflow editor in Vue 3 — the whole thing — Grafloria engineering</title>
+<meta name="description" content="A real workflow editor in Vue: slot-defined nodes, typed ports with connection rules, undo, auto-layout, save/load — v-model all the way down, no framework wrappers.">
+<link rel="canonical" href="https://grafloria.com/blog/build-a-workflow-editor-in-vue/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="Build a workflow editor in Vue 3 — the whole thing">
+<meta property="og:description" content="A real workflow editor in Vue: slot-defined nodes, typed ports with connection rules, undo, auto-layout, save/load — v-model all the way down, no framework wrappers.">
+<meta property="og:url" content="https://grafloria.com/blog/build-a-workflow-editor-in-vue/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Build a workflow editor in Vue 3 \u2014 the whole thing","description":"A real workflow editor in Vue: slot-defined nodes, typed ports with connection rules, undo, auto-layout, save/load \u2014 v-model all the way down, no framework wrappers.","url":"https://grafloria.com/blog/build-a-workflow-editor-in-vue/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/build-a-workflow-editor-in-vue/"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="../" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Tutorials</p>
+      <h1>Build a workflow editor in Vue 3 — the whole thing</h1>
+      <p class="meta">August 22, 2026 · tutorial · vue</p>
+      <p class="lede">Vue gets fewer diagram tutorials than React, and the ones that exist
+      usually stop at "nodes appear on screen". This one goes where real workflow editors
+      go: custom node cards, ports with connection rules, ⌘Z, auto-layout, and a save
+      format — in Vue idiom the whole way. Everything below is running code; it's the same
+      API our Vue demo gallery exercises in CI.</p>
+
+      <h2>1 — A canvas with taste</h2>
+      <pre data-lang="html">&lt;script setup&gt;
+import { GrafloriaFlow } from '@grafloria/vue';
+
+const nodes = [
+  { id: 'trigger', type: 'step', position: { x: 60, y: 120 },
+    size: { width: 220, height: 90 }, data: { title: 'New signup', kind: 'Trigger' } },
+  { id: 'email', type: 'step', position: { x: 380, y: 120 },
+    size: { width: 220, height: 90 }, data: { title: 'Send welcome email', kind: 'Action' } },
+];
+const edges = [{ id: 'e1', source: 'trigger', target: 'email' }];
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;div style="height: 100vh"&gt;
+    &lt;GrafloriaFlow :default-nodes="nodes" :default-edges="edges" :plugins="true"&gt;
+      &lt;template #node-step="{ data }"&gt;
+        &lt;div class="step"&gt;
+          &lt;span class="kind"&gt;{{ data.kind }}&lt;/span&gt;
+          &lt;div class="title"&gt;{{ data.title }}&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/template&gt;
+    &lt;/GrafloriaFlow&gt;
+  &lt;/div&gt;
+&lt;/template&gt;
+
+&lt;style scoped&gt;
+.step { height: 100%; background: #fff; border: 1.5px solid #94A5F0; border-radius: 12px;
+        padding: 10px 14px; box-sizing: border-box; }
+.kind { font-size: 11px; font-weight: 600; color: #3B52D9; text-transform: uppercase; }
+.title { font-weight: 700; }
+&lt;/style&gt;</pre>
+      <p>The <code>#node-step</code> slot renders every node of type <code>step</code> —
+      declaring the slot is the whole custom-node opt-in. <code>:plugins="true"</code>
+      mounts the minimap, zoom controls and dotted background (lazy-loaded). Give the
+      wrapper a real height: the canvas fills its container, and 100% of zero is a blank
+      page.</p>
+
+      <h2>2 — Ports and the rules of connection</h2>
+      <p>A workflow editor without connection rules teaches users to build broken flows.
+      Ports carry direction; validators carry your domain:</p>
+      <pre data-lang="javascript">import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/element';
+import { onBeforeUnmount } from 'vue';
+
+const nodes = [
+  { id: 'trigger', type: 'step', position: { x: 60, y: 120 }, size: { width: 220, height: 90 },
+    data: { title: 'New signup', kind: 'Trigger' },
+    ports: [{ id: 't-out', side: 'right', type: 'output' }] },
+  { id: 'email', type: 'step', position: { x: 380, y: 120 }, size: { width: 220, height: 90 },
+    data: { title: 'Send welcome email', kind: 'Action' },
+    ports: [{ id: 'e-in', side: 'left', type: 'input' },
+            { id: 'e-out', side: 'right', type: 'output' }] },
+];
+
+let dispose;
+function onInit(instance) {
+  dispose = registerConnectionValidator(({ sourceNode, targetNode }) =&gt; {
+    if (targetNode?.getData?.('kind') === 'Trigger') return 'a Trigger has no inputs';
+    return true;
+  });
+  instance.getEngine().setInteractionConfig({ portVisibility: 'always' });
+}
+onBeforeUnmount(() =&gt; { dispose?.(); clearConnectionValidators(); });</pre>
+      <p>Wire it with <code>@init="onInit"</code>. An <code>input</code> port refuses to
+      start a wire, the validator vetoes with a reason your user sees, and — the part you
+      never have to build — <b>⌘Z already works</b>: every gesture is one command on the
+      engine's history.</p>
+
+      <h2>3 — Layout and persistence</h2>
+      <pre data-lang="javascript">// stop hand-placing steps: one prop
+// &lt;GrafloriaFlow ... layout="dagre" /&gt;   (or "elk" for gnarlier graphs)
+
+// save — the whole diagram is one document:
+import { DiagramSerializer } from '@grafloria/element';
+const json = JSON.stringify(new DiagramSerializer().serialize(instance.getModel()));
+
+// text for humans: the same flow as valid Mermaid, positions preserved
+const text = instance.exportText();</pre>
+
+      <h2>Where to go from here</h2>
+      <p>The <a href="../../learn/vue/">10-minute Vue tutorial</a> covers the same ground
+      interactively; the <a href="../../learn/vue-custom-nodes/">Vue deep guides</a> go into
+      slots, state and dashboards; and every demo in the gallery exists as
+      <a href="../../demos-vue/">a real Vue SFC with source shown</a>. If you're coming from
+      Vue Flow, the <a href="../../compare/#diagrams">sourced comparison</a> shows exactly
+      where the boxes differ.</p>
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custom nodes without the props mystery — Grafloria engineering</title>
+<meta name="description" content="35,000 developers have viewed two Stack Overflow questions about getting data into and out of custom flow nodes. The confusion is structural — here's the mental model, in React, Vue and Angular.">
+<link rel="canonical" href="https://grafloria.com/blog/custom-nodes-without-the-props-mystery/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="Custom nodes without the props mystery">
+<meta property="og:description" content="35,000 developers have viewed two Stack Overflow questions about getting data into and out of custom flow nodes. The confusion is structural — here's the mental model, in React, Vue and Angular.">
+<meta property="og:url" content="https://grafloria.com/blog/custom-nodes-without-the-props-mystery/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Custom nodes without the props mystery","description":"35,000 developers have viewed two Stack Overflow questions about getting data into and out of custom flow nodes. The confusion is structural \u2014 here's the mental model, in React, Vue and Angular.","url":"https://grafloria.com/blog/custom-nodes-without-the-props-mystery/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/custom-nodes-without-the-props-mystery/"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="../" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Use cases</p>
+      <h1>Custom nodes without the props mystery</h1>
+      <p class="meta">August 22, 2026 · use cases · custom nodes</p>
+      <p class="lede">Two of the most-viewed custom-node questions on Stack Overflow —
+      <a href="https://stackoverflow.com/questions/71586417/" rel="nofollow">"Can you pass props
+      to a custom node?"</a> (9.7k views) and
+      <a href="https://stackoverflow.com/questions/73508204/" rel="nofollow">"saving additional
+      data to a node after it has been created"</a> (25k views) — are really one question
+      asked from two directions: <b>who owns a node's data?</b> Get that model wrong and
+      every read and write becomes a mystery.</p>
+
+      <h2>The mental model</h2>
+      <p>A node has exactly one data home: the <code>data</code> dictionary on the node
+      itself, in the diagram's model. Your component doesn't receive "props you passed" —
+      it receives <i>the node's data</i>, and updating means writing to the node, not to a
+      component. Once that clicks, every framework binding is the same pattern wearing
+      local idiom:</p>
+
+      <pre data-lang="javascript">// The spec — identical in all three frameworks:
+{ id: 'a', type: 'card', position: { x: 80, y: 90 },
+  size: { width: 230, height: 110 },
+  data: { title: 'Build', owner: 'CI' } }     // ← the one data home</pre>
+
+      <p><b>React</b> — a component per type via <code>nodeTypes</code>, receiving
+      <code>{ id, data, selected, node }</code> (mark the spec <code>custom: true</code>):</p>
+      <pre data-lang="javascript">function Card({ data, selected }) {
+  return &lt;div className={selected ? 'card sel' : 'card'}&gt;{data.title}&lt;/div&gt;;
+}
+&lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} nodeTypes={{ card: Card }} /&gt;</pre>
+
+      <p><b>Vue</b> — a named slot per type; declaring the slot <i>is</i> the opt-in:</p>
+      <pre data-lang="html">&lt;GrafloriaFlow :default-nodes="nodes" :default-edges="edges"&gt;
+  &lt;template #node-card="{ data }"&gt;
+    &lt;div class="card"&gt;{{ data.title }}&lt;/div&gt;
+  &lt;/template&gt;
+&lt;/GrafloriaFlow&gt;</pre>
+
+      <p><b>Angular</b> — an ng-template per type, same auto-opt-in:</p>
+      <pre data-lang="html">&lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"&gt;
+  &lt;ng-template grafloriaNode="card" let-data="data"&gt;
+    &lt;div class="card"&gt;{{ data['title'] }}&lt;/div&gt;
+  &lt;/ng-template&gt;
+&lt;/grafloria-diagram-canvas&gt;</pre>
+
+      <h2>And the 25k-view question: writing data later</h2>
+      <p>Because the node owns its data, "saving additional data after creation" is a write
+      to the node — tracked for undo and events like any other model change:</p>
+      <pre data-lang="javascript">const node = instance.getModel().getNode('a');
+node.setData('status', 'passing');   // undoable, observable, serialized
+instance.renderNow();</pre>
+      <p>No syncing a parallel store, no cloning the nodes array to smuggle a field in. The
+      escape hatch is symmetric: your component/template also receives the live
+      <code>node</code>, so reads that outgrow <code>data</code> have somewhere to go.</p>
+
+      <p>Deep guides per framework: <a href="../../learn/react-custom-nodes/">React</a> ·
+      <a href="../../learn/vue-custom-nodes/">Vue</a> ·
+      <a href="../../learn/angular-custom-nodes/">Angular</a> ·
+      <a href="../../learn/javascript-custom-nodes/">plain JavaScript</a>.</p>
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../../learn/">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>
