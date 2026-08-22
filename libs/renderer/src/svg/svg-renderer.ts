@@ -1114,12 +1114,14 @@ export class SVGRenderer implements IRenderer {
             zoom,
             viewBoxWidth,
             viewBoxHeight,
+            // `.size` on the maps, not getNodes()/getLinks(): those materialize
+            // a fresh array each call, and this runs on every full frame.
             total:
               groupsLayer === null &&
               strokesLayer === null &&
               commentsLayer === null &&
-              culledNodes.length === diagram.getNodes().length &&
-              culledLinks.length === diagram.getLinks().length,
+              culledNodes.length === diagram.nodes.size &&
+              culledLinks.length === diagram.links.size,
           }
         : null;
 
