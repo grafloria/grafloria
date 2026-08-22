@@ -13,7 +13,7 @@
 <meta property="og:url" content="https://grafloria.com/blog/a-dashboard-is-three-problems/">
 <meta property="og:image" content="https://grafloria.com/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"A dashboard is three problems wearing one grid","description":"Drag-and-drop is the demo. The product is keeping layout, widget state and persistence in sync while users drag, resize, undo and reload. Where the grid ends and your real work begins.","url":"https://grafloria.com/blog/a-dashboard-is-three-problems/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/a-dashboard-is-three-problems/"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"A dashboard is three problems wearing one grid","description":"Drag-and-drop is the demo. The product is keeping layout, widget state and persistence in sync while users drag, resize, undo and reload. Where the grid ends and your real work begins.","url":"https://grafloria.com/blog/a-dashboard-is-three-problems/","datePublished":"2026-08-22","dateModified":"2026-08-22","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"image":"https://grafloria.com/og-image.png","mainEntityOfPage":"https://grafloria.com/blog/a-dashboard-is-three-problems/","keywords":"dashboards"}</script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="../../learn/learn.css">
 <style>
@@ -25,6 +25,10 @@
   .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
   .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
   .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .tags { margin: 2px 0 0; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
+    background: var(--indigo-wash); color: var(--indigo-deep); }
+  .tag:hover { background: var(--indigo); color: #fff; text-decoration: none; }
   .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
   .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
   .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
@@ -55,6 +59,7 @@
       <p class="crumb"><a href="../">Blog</a> / Use cases</p>
       <h1>A dashboard is three problems wearing one grid</h1>
       <p class="meta">August 22, 2026 · use cases · dashboards</p>
+      <p class="tags"><a class="tag" href="../?tag=dashboards">dashboards</a></p>
       <p class="lede">Every dashboard project starts the same way: you find a grid library,
       the drag-and-drop demo works in an afternoon, everyone's happy. Three sprints later
       you're maintaining a small distributed system. Not because the grid was bad — because
