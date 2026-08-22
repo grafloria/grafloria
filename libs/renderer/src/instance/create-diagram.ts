@@ -24,6 +24,7 @@ import { captureCustomNodeHost, stripResolvedImageWarnings } from '../export/cap
 import { collectAssetUrls, fetchAssetsTiered, inlineAssets } from '../export/assets';
 import type { VNode } from '../types/vnode.types';
 import { SVGRenderer } from '../svg/svg-renderer';
+import type { FrameCoverage } from '../svg/svg-renderer';
 import type { DiagramRegistry } from '../ext/diagram-registry';
 import { VNodePatcher } from '../vnode/patch';
 import { InteractionController } from '../interaction/interaction-controller';
@@ -1214,6 +1215,19 @@ export function createDiagram(
   let lastFrameEpoch = -1;
   /** Renderer invalidation epoch as of the end of the last painted frame. */
   let lastRendererEpoch = -1;
+  /**
+   * Coverage of the frame currently in the DOM — OUR copy, captured right after
+   * the render() call paint() reconciled. Never read the renderer's field
+   * lazily: exports share the render pass and overwrite it (see
+   * SVGRenderer.getFrameCoverage).
+   */
+  let lastFrameCoverage: FrameCoverage | null = null;
+  /**
+   * True while renderNow() is on the stack. renderNow is the documented "give
+   * me a correct DOM before I measure it" escape hatch — it must reconcile for
+   * real, never take the camera fast path.
+   */
+  let forceFullPaint = false;
   let ready = false;
   let disposed = false;
 
@@ -1298,7 +1312,69 @@ export function createDiagram(
    * structurally impossible rather than merely absent today. (`node-component.ts`
    * had exactly this bug in its refresh loop; it now batches the same way.)
    */
+  /**
+   * THE CAMERA FAST PATH. The SVG draws in WORLD coordinates — the camera is
+   * nothing but the root's `viewBox` attribute plus the HTML layer's CSS
+   * transform. So a frame in which ONLY the camera moved needs no VNode build,
+   * no reconcile, no custom-node sync: rewrite those two strings and the
+   * already-painted overscan margin (SVGRenderer.CAMERA_OVERSCAN) scrolls into
+   * view. This is what holds 60fps pan on scenes whose full frame costs 30ms.
+   *
+   * "Only the camera moved" is decided by the SAME signals canSkipFrame()
+   * already stakes correctness on — the model's mutation epoch and the
+   * renderer's invalidation epoch. Anything that changes the picture without
+   * bumping one of those is already a bug today (canSkipFrame would drop its
+   * frame outright). On any doubt this returns false and the full paint runs:
+   * the fallback is never wrong, only slower.
+   */
+  const tryCameraFrame = (): boolean => {
+    const cov = lastFrameCoverage;
+    if (!cov || forceFullPaint) return false;
+    // A custom-node culler admits hosts against the exact viewBox inside
+    // syncCustomNodes(), which this path skips — its hosts have no overscan
+    // margin to reveal, so boards that cull custom nodes take the full paint.
+    if (culler) return false;
+    if (!engine.getDiagram()) return false;
+    if (getMutationEpoch() !== lastFrameEpoch) return false;
+    if (renderer.getInvalidationEpoch() !== lastRendererEpoch) return false;
+    if (isConnectionPreviewActive() || lastFrameHadPreview) return false;
+
+    // The zoom must MATCH (LOD tiers are chosen per zoom) and the viewBox must
+    // stay inside what the last full frame actually drew.
+    const zoom = viewport.getZoom();
+    if (zoom !== cov.zoom) return false;
+    const box = viewport.getViewBox();
+    if (box.width !== cov.viewBoxWidth || box.height !== cov.viewBoxHeight) return false;
+    if (!cov.total) {
+      const r = cov.rect;
+      if (
+        box.x < r.x ||
+        box.y < r.y ||
+        box.x + box.width > r.x + r.width ||
+        box.y + box.height > r.y + r.height
+      ) {
+        return false;
+      }
+    }
+
+    const svg = layers.svg.firstElementChild;
+    if (!svg) return false;
+
+    // Identical strings to the ones a full frame would produce: the viewBox from
+    // the same getViewBox() math SVGRenderer uses, the transform from the same
+    // helper paint() writes.
+    svg.setAttribute('viewBox', `${box.x} ${box.y} ${box.width} ${box.height}`);
+    layers.html.setAttribute('style', htmlLayerStyle(viewport.getHtmlLayerTransform()));
+
+    // The epochs did not move (precondition) and the DOM'd frame is unchanged —
+    // only the viewport key advances, so a following no-camera schedule skips.
+    lastViewportKey = viewportKey();
+    return true;
+  };
+
   const paint = (): void => {
+    if (tryCameraFrame()) return;
+
     // -- READ ------------------------------------------------------------------
     const renderViewport = viewport.getRenderViewport();
     const zoom = viewport.getZoom();
@@ -1306,6 +1382,7 @@ export function createDiagram(
 
     // -- COMPUTE ---------------------------------------------------------------
     const vnode = renderer.render(renderViewport, zoom);
+    lastFrameCoverage = renderer.getFrameCoverage();
 
     // -- WRITE -----------------------------------------------------------------
     layers.html.setAttribute('style', htmlLayerStyle(htmlTransform));
@@ -1329,6 +1406,7 @@ export function createDiagram(
    */
   const hydratePaint = (): void => {
     const vnode = renderer.render(viewport.getRenderViewport(), viewport.getZoom());
+    lastFrameCoverage = renderer.getFrameCoverage();
     patcher.hydrate(layers.svg, vnode);
     syncCustomNodes();
     lastViewportKey = viewportKey();
@@ -1493,7 +1571,14 @@ export function createDiagram(
     fitView,
 
     render: () => scheduler.schedule(),
-    renderNow: () => scheduler.flush(),
+    renderNow: () => {
+      forceFullPaint = true;
+      try {
+        scheduler.flush();
+      } finally {
+        forceFullPaint = false;
+      }
+    },
 
     batchUpdate(mutate) {
       model.beginBatch();
