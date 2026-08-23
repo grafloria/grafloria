@@ -29,6 +29,19 @@ import type { LinkHitTestOptions, LinkPart } from '../svg/link-hit-test';
 import { isValidConnection } from '../ext/tools';
 
 /**
+ * World-space slack added around the cursor when asking the link index which
+ * links are worth hit-testing.
+ *
+ * Deliberately the same 250 the RENDER pass allows around its own cull query
+ * (SVGRenderer.LINK_CULL_MARGIN), and for the same reason: a link's indexed
+ * bounds are its last written `points`, so routed geometry that has not been
+ * written back yet can put real ink outside them. Being too generous here costs
+ * a handful of extra geometry tests; being too mean means a line the user can
+ * see and cannot click.
+ */
+const LINK_HIT_QUERY_PAD = 250;
+
+/**
  * Part-aware link hit result: a link plus WHICH sub-part of it was hit
  * (body / label / endpoint / arrow) and local info (label index, or the 0-1
  * position `t` along the path for body hits). Downstream edge features
@@ -1377,6 +1390,39 @@ export class InteractionController {
    * path for body hits. Delegates the geometry to the pure `hitTestLink`
    * primitive in `@grafloria/renderer` so the same logic backs both hit paths.
    */
+  /**
+   * The links worth running geometry against for a hit at `query`.
+   *
+   * Served by the link spatial index when the model has one, and by the full
+   * list otherwise — a model without the index (or one whose index has not been
+   * populated) must still hit-test correctly, just slowly. Falls back the same
+   * way if the query returns nothing while the model has links, because a wrong
+   * "nothing here" is a link the user can see and cannot click.
+   */
+  private linkHitCandidates(diagram: any, query: Point): LinkModel[] {
+    const all: LinkModel[] = diagram.getLinks?.() ?? [];
+    // No index (a bare or stubbed model): correctness first, scan.
+    if (typeof diagram.getVisibleLinks !== 'function' || all.length === 0) return all;
+
+    // Padded by LINK_HIT_QUERY_PAD for the same reason the render pass pads its
+    // own cull query: a link's indexed bounds are its last written `points`, and
+    // a routed detour that has not been written back yet can put real ink
+    // outside them. The render pass allows 250 world units of slack for exactly
+    // this, so a hit-test that allowed less could refuse a click on a line the
+    // user can see — which is a far worse bug than the scan this replaces.
+    const reach =
+      linkBodyHitTolerance(this.linkHitAreaWidthConfig, this.linkHitAreaWidthConfig) +
+      this.hitSlop +
+      LINK_HIT_QUERY_PAD;
+
+    return diagram.getVisibleLinks({
+      x: query.x - reach,
+      y: query.y - reach,
+      width: reach * 2,
+      height: reach * 2,
+    });
+  }
+
   findLinkHitAtPosition(
     worldX: number,
     worldY: number,
@@ -1397,9 +1443,28 @@ export class InteractionController {
     // by body distance (falling back to the part's own distance) because at a
     // shared anchor every sibling's endpoint HANDLE is equidistant — only the
     // link actually under the cursor has body distance ~0.
+    // CANDIDATES FIRST, GEOMETRY SECOND. This runs on every pointermove, and it
+    // used to run the full `hitTestLink` geometry against EVERY link in the
+    // model — including links nowhere near the cursor, and including links not
+    // even on screen. The cost tracked total link count rather than anything
+    // visible: with the camera parked away from the content, so that literally
+    // nothing was drawn, the handler still cost 0.79ms at 1,936 links and 2.4ms
+    // at 12,474, all of it provably wasted.
+    //
+    // `linkSpatialIndex` already knows which links are near a point — it is the
+    // same index the render pass culls with. A small box around the cursor turns
+    // an O(links) scan into a bounded query, and the geometry below then decides
+    // between the few candidates that survive.
+    //
+    // The box is generous on purpose: the per-link threshold below is computed
+    // from each link's own stroke, which we do not know until we have the link,
+    // so the query has to admit anything that COULD pass it. Too wide only costs
+    // a few extra geometry tests; too narrow drops a hit the user can see.
+    const candidates: LinkModel[] = this.linkHitCandidates(diagram, query);
+
     let best: LinkPartHit | null = null;
     let bestScore = Infinity;
-    for (const link of diagram.getLinks()) {
+    for (const link of candidates) {
       const points = link.points;
       if (!points || points.length < 2) continue;
 
