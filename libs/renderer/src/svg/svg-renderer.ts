@@ -6172,11 +6172,15 @@ export class SVGRenderer implements IRenderer {
       return out;
     }
     // Multi-point smooth: mirror convertRoutedPathToSVG's choice — the
-    // catmull-rom spline unless its overshoot would clip the link's own nodes
-    // (then the drawn path is rounded corners, which hug the route within
-    // ~0.4 units — the route polyline is already an honest hit shape there).
+    // catmull-rom spline unless its overshoot would clip a node (then the drawn
+    // path is rounded corners, which hug the route within ~0.4 units — the route
+    // polyline is already an honest hit shape there).
+    //
+    // ANY node the curve reaches, not just the link's own two: the whole reason
+    // this route has corners is that it was steered around something.
     const samples = this.sampleCatmullRom(routePoints, 8);
-    if (avoidNodes.length === 0 || this.penetrationLength(samples, avoidNodes) <= 2) {
+    const mustClear = this.splineClearanceNodes(samples, avoidNodes);
+    if (mustClear.length === 0 || this.penetrationLength(samples, mustClear) <= 2) {
       return samples;
     }
     return routePoints;
@@ -6226,15 +6230,18 @@ export class SVGRenderer implements IRenderer {
       } else {
         // Multi-point route (e.g. a detour around a node): a smooth link must
         // KEEP ITS CURVED IDENTITY — fit a spline through the route points.
-        // Guard: if the spline's corner overshoot would dip into the link's
-        // own nodes, fall back to tight rounded corners instead.
+        // Guard: if the spline's corner overshoot would dip into ANY node it
+        // passes — not merely the link's own two — fall back to tight rounded
+        // corners instead. A detouring route was bought clearance from
+        // obstacles; the spline must not spend it. Must stay in step with
+        // paintedHitPolyline, or the hit shape and the drawn shape disagree.
         const spline = this.catmullRomPath(points);
-        const avoid = avoidNodes ?? [];
-        if (avoid.length === 0 ||
-            this.penetrationLength(this.sampleCatmullRom(points, 8), avoid) <= 2) {
+        const samples = this.sampleCatmullRom(points, 8);
+        const avoid = this.splineClearanceNodes(samples, avoidNodes ?? []);
+        if (avoid.length === 0 || this.penetrationLength(samples, avoid) <= 2) {
           return spline;
         }
-        // Rounded-corner fallback for a detour that would clip its own nodes.
+        // Rounded-corner fallback for a detour that would clip a node.
         // Default radius here is 12 (tighter corners read as "still a curve").
         return this.convertOrthogonalPathWithBends(points, this.resolveCornerRadius(style, pathType));
       }
@@ -8906,6 +8913,58 @@ export class SVGRenderer implements IRenderer {
    * Total length of the polyline that lies inside the given node bodies
    * (rects inset by 1px so port-touch on the border doesn't count).
    */
+  /**
+   * Everything a smoothed route has to stay out of: the link's own endpoint
+   * nodes, PLUS whatever else the curve now passes near.
+   *
+   * The overshoot guard used to consider only `linkOwnNodes`. But a multi-point
+   * route exists precisely BECAUSE it was steered around other nodes, and fitting
+   * a Catmull-Rom spline through its corners pushes the curve OUTSIDE the
+   * polyline — straight back into the obstacle the detour was buying clearance
+   * from. A link would route correctly and then be drawn through a node, with the
+   * overshoot written into `link.points` as well, so hit-testing agreed with the
+   * wrong picture.
+   *
+   * Asked of the spatial index, and only for the curve's own bounds, so this
+   * costs one region query on the links that actually bend — a 2-point link
+   * returns from `paintedHitPolyline` long before reaching here.
+   */
+  private splineClearanceNodes(
+    samples: Array<{ x: number; y: number }>,
+    ownNodes: NodeModel[]
+  ): NodeModel[] {
+    const diagram = this.engine.getDiagram();
+    if (!diagram || samples.length < 2) return ownNodes;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of samples) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY)) return ownNodes;
+
+    const near: NodeModel[] = diagram.getVisibleNodes({
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    });
+
+    const seen = new Set(ownNodes.map((n) => n.id));
+    const out = [...ownNodes];
+    for (const node of near) {
+      if (seen.has(node.id)) continue;
+      seen.add(node.id);
+      out.push(node);
+    }
+    return out;
+  }
+
   private penetrationLength(
     points: Array<{ x: number; y: number }>,
     nodes: NodeModel[]
