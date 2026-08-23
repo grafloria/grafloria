@@ -2174,6 +2174,7 @@ export class DiagramModel extends DiagramEntity {
   setLODConfig(config: LODConfig): void {
     this._lodConfig = config;
     this._resortLODTiers();
+    this._announceLODChange();
   }
 
   /**
@@ -2188,6 +2189,22 @@ export class DiagramModel extends DiagramEntity {
       this._lodConfig.tiers.push(tier);
     }
     this._resortLODTiers();
+    this._announceLODChange();
+  }
+
+  /**
+   * Tell the renderer the LOD POLICY changed.
+   *
+   * Nothing about the model's entities moved, so neither the mutation epoch nor
+   * any entity's dirty flag notices this — and the renderer's caches are keyed by
+   * TIER NAME, which a redefinition keeps. The result was that `setLODConfig`
+   * appeared to do nothing at all: the next `render()` was idle-skipped, and
+   * redefining a tier under its existing name left a mixed picture, some entities
+   * drawn under the old policy and some under the new. A policy change is exactly
+   * the sort of thing the model cannot see and must therefore say out loud.
+   */
+  private _announceLODChange(): void {
+    this.emitOrQueue('lod:config-changed', { tiers: this._lodConfig.tiers.length });
   }
 
   /** Keep the highest-minZoom-first tier cache in sync with _lodConfig. */
