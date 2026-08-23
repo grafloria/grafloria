@@ -79,6 +79,10 @@ jobs:
       # that true.
       - run: node demos/e2e/mermaid-oracle-run.mjs
       - run: node demos/e2e/save-load-run.mjs
+      # The dashboard covenant: 30 board scenarios driven by a real mouse. This
+      # file called itself "the gate" for months while nothing — not CI, not nx,
+      # not a package script — ever ran it.
+      - run: node demos/e2e/dashboard-scenarios-run.mjs
       - run: node demos/e2e/export-widgets-run.mjs
       - run: node demos/e2e/export-fetch-run.mjs
       - run: node demos/e2e/export-tree-images-run.mjs
