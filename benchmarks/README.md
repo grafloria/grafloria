@@ -58,30 +58,29 @@ all three defects above produced perfectly plausible tables.
   cull.
 - Machine, date, build mode and framings are recorded in `results.json`.
 
-## Current results (Apple M1 Pro, 2026-08-23)
+## Current results (Apple M1 Pro, 2026-08-24)
 
-Grafloria 0.4.5 / engine 0.3.5 — the **published** packages, so `node run.mjs`
-reproduces this table without `--source`. React Flow 12.11.3. Median of three
-consecutive runs.
+Grafloria 0.4.6 / engine 0.3.6 — the **published** packages, so `node run.mjs`
+reproduces this table without `--source`. React Flow 12.11.3, measured in the
+same session.
 
 | lib        | nodes | mount ms | pan fit avg/p95 | pan slice avg/p95 | drag avg/p95 |
 |------------|------:|---------:|----------------:|------------------:|-------------:|
-| grafloria  |   500 |      150 |     16.7 / 16.8 |       16.7 / 16.8 |  17.0 / 16.8 |
-| reactflow  |   500 |      182 |     16.7 / 16.7 |       16.7 / 16.8 |  16.8 / 16.7 |
-| grafloria  |  2000 |      362 |     17.0 / 16.8 |       16.7 / 16.8 |  29.4 / 83.3 |
-| reactflow  |  2000 |      643 |     18.4 / 33.3 |       16.8 / 16.8 |  40.7 / 66.7 |
+| grafloria  |   500 |      144 |     16.7 / 16.7 |       16.7 / 16.8 |  16.8 / 16.7 |
+| reactflow  |   500 |      168 |     16.7 / 16.7 |       16.7 / 16.7 |  16.8 / 16.8 |
+| grafloria  |  2000 |      346 |     16.9 / 16.8 |       16.7 / 16.7 |  25.6 / 66.7 |
+| reactflow  |  2000 |      631 |     18.3 / 33.3 |       16.8 / 16.8 |  38.5 / 66.7 |
 
-Reading it honestly: at 500 nodes everything holds 60fps in both libraries and
-the differences are noise. At 2,000 nodes Grafloria mounts ~1.8× faster and both
-pan rows hold 60fps with no dropped frames, where React Flow drops one on the
-fitted pan. **Node drag at 2,000 nodes is the row that is still not 60fps in
-either library** — 29.4ms average for us against React Flow's 40.7, and our p95
-of 83.3ms is worse than their 66.7ms, meaning our slowest drag frames are the
-uglier ones. Dragging a node re-routes its edges, and that work is still on the
-frame.
-
-Profiling that drag names the cost, and it is not routing: `getInteractionConfig`
-alone accounts for ~590ms of a 4.5s gesture. That is the next thing to fix.
+Reading it honestly: at 500 nodes every row in both libraries holds 60fps,
+including drag. At 2,000 nodes Grafloria mounts ~1.8× faster and both pan rows
+hold 60fps with no dropped frames, where React Flow drops one on the fitted pan.
+**Node drag at 2,000 nodes is the one row still short of 60fps in either
+library** — 25.6ms average against React Flow's 38.5, with equal p95s. The
+biggest single cost the last profile named (`getInteractionConfig`, ~590ms of a
+gesture — the engine handing out a fresh config copy per port per frame) is
+fixed in 0.3.6 and no longer appears in the profile; what remains is spread
+across VDOM child patching and port-position work, with no single dominant
+function.
 
 ### Do not compare these numbers against an older table
 

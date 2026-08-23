@@ -5,8 +5,8 @@
   "description": "Reproducible side-by-side benchmarks. Run: npm install && node run.mjs",
   "dependencies": {
     "@grafloria/element": "^0.4.2",
-    "@grafloria/engine": "^0.3.5",
-    "@grafloria/renderer": "^0.4.5",
+    "@grafloria/engine": "^0.3.6",
+    "@grafloria/renderer": "^0.4.6",
     "@xyflow/react": "^12.3.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
