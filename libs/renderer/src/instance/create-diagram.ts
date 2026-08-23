@@ -611,6 +611,13 @@ export function createDiagram(
    */
   const pendingPaints = new Map<string, Promise<void>>();
   const paintFailures = new Map<string, string>();
+  /**
+   * Which of those failures was a SYNCHRONOUS throw rather than a rejected
+   * promise. Kept apart because the two have different fixes and the warning
+   * should say which one happened — "your painter threw" sends a developer to a
+   * stack trace, "your promise rejected" sends them to the async work inside it.
+   */
+  const paintThrew = new Set<string>();
 
   const isThenable = (value: unknown): value is PromiseLike<unknown> =>
     value !== null &&
@@ -677,6 +684,7 @@ export function createDiagram(
       // 'destroy' cull mode, which is the one mode that re-runs a painter.
       pendingPaints.delete(node.id);
       paintFailures.delete(node.id);
+      paintThrew.delete(node.id);
       // The RETURN VALUE is the whole async contract: a painter that is not finished says
       // so by handing back a promise. Sync painters return undefined and cost nothing.
       //
@@ -693,6 +701,7 @@ export function createDiagram(
         trackPaint(node.id, options.renderCustomNode?.(node, host));
       } catch (error) {
         paintFailures.set(node.id, error instanceof Error ? error.message : String(error));
+        paintThrew.add(node.id);
       }
     } else if (!host.parentNode) {
       // Re-entry after a detach cull: the SAME element goes back, with its subtree, its
@@ -902,9 +911,12 @@ export function createDiagram(
   ): string | undefined => {
     const failure = paintFailures.get(id);
     if (failure !== undefined) {
+      const how = paintThrew.has(id)
+        ? 'THREW synchronously'
+        : 'promise REJECTED';
       return (
-        `custom node "${id}" — its renderCustomNode FAILED (${failure}), so whatever it had ` +
-        'not drawn is missing from this export.'
+        `custom node "${id}" — its renderCustomNode ${how} (${failure}), so whatever ` +
+        'it had not drawn by then is missing from this export.'
       );
     }
     if (!pendingPaints.has(id)) return undefined;
