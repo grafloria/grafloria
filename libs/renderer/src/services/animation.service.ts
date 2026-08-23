@@ -97,6 +97,8 @@ export class AnimationService {
   private motionHandler: ((e: MediaQueryListEvent) => void) | null = null;
   private batteryManager: any = null;  // Battery API (experimental)
   private batteryHandler: (() => void) | null = null;
+  /** Set by destroy(). Anything resuming after an `await` must check it first. */
+  private destroyed = false;
   private listeners: Set<(config: AnimationConfig) => void> = new Set();
 
   // Phase 1.1: Lazy CSS loading
@@ -167,7 +169,17 @@ export class AnimationService {
     }
 
     try {
-      this.batteryManager = await (navigator as any).getBattery();
+      const manager = await (navigator as any).getBattery();
+
+      // THE AWAIT IS A DOOR destroy() can walk through. `getBattery()` settles a
+      // microtask or two later, and a host that mounts and unmounts inside one
+      // synchronous turn — a React StrictMode double-invoke, a quick route
+      // change — has already destroyed this service by the time we get here.
+      // Attaching now would hook a BatteryManager that outlives the page's
+      // reference to us, with nothing left to unhook it: 15 mount/dispose cycles
+      // in one turn left 30 listeners attached and 0 removed.
+      if (this.destroyed) return;
+      this.batteryManager = manager;
 
       const updateBatteryMode = () => {
         // The host said no: never auto-toggle (a late levelchange event must
@@ -954,6 +966,10 @@ export class AnimationService {
    * Cleanup: Remove event listeners and injected CSS
    */
   destroy(): void {
+    // Recorded FIRST, so an in-flight detectBatteryStatus() that resumes after
+    // this call finds the door shut instead of hooking a destroyed service.
+    this.destroyed = true;
+
     // Phase 1.1: Remove injected CSS
     this.removeCSS();
 
