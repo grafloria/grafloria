@@ -58,41 +58,39 @@ all three defects above produced perfectly plausible tables.
   cull.
 - Machine, date, build mode and framings are recorded in `results.json`.
 
-## Current results (Apple M1 Pro, 2026-08-22)
+## Current results (Apple M1 Pro, 2026-08-23)
 
-Grafloria 0.4.4 (this repo — run with `--source` until it reaches npm), React
-Flow 12. Every row re-measured after the harness fixes above; the previous table
-on this page was produced by the broken gestures and should not be compared
-against.
+Grafloria 0.4.5 / engine 0.3.5 — the **published** packages, so `node run.mjs`
+reproduces this table without `--source`. React Flow 12.11.3. Median of three
+consecutive runs.
 
 | lib        | nodes | mount ms | pan fit avg/p95 | pan slice avg/p95 | drag avg/p95 |
 |------------|------:|---------:|----------------:|------------------:|-------------:|
-| grafloria  |   500 |      184 |     16.7 / 16.8 |       16.7 / 16.8 |  17.2 / 16.8 |
-| reactflow  |   500 |      167 |     16.7 / 16.7 |       16.7 / 16.8 |  16.8 / 16.7 |
-| grafloria  |  2000 |      393 |     17.0 / 16.8 |       17.3 / 16.8 |  26.6 / 66.7 |
-| reactflow  |  2000 |      648 |     18.5 / 33.3 |       16.8 / 16.7 |  39.4 / 66.7 |
+| grafloria  |   500 |      150 |     16.7 / 16.8 |       16.7 / 16.8 |  17.0 / 16.8 |
+| reactflow  |   500 |      182 |     16.7 / 16.7 |       16.7 / 16.8 |  16.8 / 16.7 |
+| grafloria  |  2000 |      362 |     17.0 / 16.8 |       16.7 / 16.8 |  29.4 / 83.3 |
+| reactflow  |  2000 |      643 |     18.4 / 33.3 |       16.8 / 16.8 |  40.7 / 66.7 |
 
 Reading it honestly: at 500 nodes everything holds 60fps in both libraries and
-the differences are noise. At 2,000 nodes Grafloria mounts ~1.6× faster and both
-pan rows hold 60fps with no dropped frames. **Node drag at 2,000 nodes is the
-row that is still not 60fps in either library** — 26.6ms average with a 66.7ms
-p95 for us. We are ahead of React Flow's 39.4/66.7 there, and neither number is
-good; dragging a node re-routes its edges, and that work is still on the frame.
+the differences are noise. At 2,000 nodes Grafloria mounts ~1.8× faster and both
+pan rows hold 60fps with no dropped frames, where React Flow drops one on the
+fitted pan. **Node drag at 2,000 nodes is the row that is still not 60fps in
+either library** — 29.4ms average for us against React Flow's 40.7, and our p95
+of 83.3ms is worse than their 66.7ms, meaning our slowest drag frames are the
+uglier ones. Dragging a node re-routes its edges, and that work is still on the
+frame.
 
-### What changed, and what it cost
+Profiling that drag names the cost, and it is not routing: `getInteractionConfig`
+alone accounts for ~590ms of a 4.5s gesture. That is the next thing to fix.
 
-Against the published 0.4.3 the same harness measured `pan fit` at 2,000 nodes
-as **21.5ms avg / 66.6ms p95** — a real gap, though a much smaller one than the
-broken harness had claimed. 0.4.4 adds a camera fast path: the SVG draws in
-world coordinates, so a frame in which only the camera moved rewrites the
-`viewBox` attribute and the HTML layer transform and skips the VNode build and
-reconcile entirely. Measured directly, a 100-frame pan over the fitted 2,000
-node mesh went from ~100 `render()` calls to **1**.
+### Do not compare these numbers against an older table
 
-The cost is that every full frame now renders 25% beyond the viewport on each
-side, so it has margin to pan across — about 2.25× the visible area. Mount did
-not measurably change (404ms → 393ms across runs), because that overscan is
-cheap next to what it saves.
+Absolute milliseconds are only comparable **within one run**, and this is not a
+platitude — between 2026-08-22 and 2026-08-23 React Flow's drag row moved from
+39.4ms to 40.7ms on identical, untouched library code. That is the machine, not
+the library. Whenever you want a before/after, measure both arms in the same
+session; that is exactly what `run.mjs` does, and it is what makes the
+comparison above meaningful even though the absolute numbers drift.
 
 ## Caveats
 - One scene, one machine class, default configs. Different node counts, custom
