@@ -66,6 +66,19 @@ function verdict(ok, detail) {
   console.log(`${ok ? '✓' : '✗'} ${scenario}${ok ? '' : `   ${detail}`}`);
 }
 
+/**
+ * An uncaught exception on the page fails the scenario it happened in.
+ *
+ * These were being collected onto `page.__errs` and then never read, so a
+ * scenario could throw on every interaction and still be scored a pass — the
+ * same hole `interaction-run` had. Call this before closing a page.
+ */
+function assertNoPageErrors(page) {
+  const errs = page.__errs ?? [];
+  if (errs.length) verdict(false, `uncaught page error: ${errs.join(' | ')}`);
+  return errs.length === 0;
+}
+
 const DASH = '/dashboard/dashboard-builder.html';   // the plain, flat grid
 const OPTS = '/dashboard/grid-options.html';        // the advanced constructs
 
@@ -197,6 +210,7 @@ try {
     (donutMid.x !== donut0.x || donutMid.y !== donut0.y) && ph && st.overlaps === 0,
     `neighbour moved mid-drag=${donutMid.x !== donut0.x || donutMid.y !== donut0.y} placeholder=${ph} overlaps=${st.overlaps}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -208,7 +222,7 @@ try {
   await page.waitForTimeout(300);
   const table0 = await host(page, 'Top reps');
   const rs = await resizeHandleOf(page, 'Revenue vs target');
-  if (!rs) { verdict(false, 'no resize handle found'); await page.close(); }
+  if (!rs) { verdict(false, 'no resize handle found'); assertNoPageErrors(page); await page.close(); }
   else {
     await shot(page, 'before');
     await page.mouse.move(rs.x, rs.y);
@@ -228,7 +242,8 @@ try {
       tableMid.y > table0.y && Math.abs(tableBack.y - table0.y) < 5 && st.overlaps === 0,
       `pushed=${tableMid.y > table0.y} restored=${Math.abs(tableBack.y - table0.y) < 5} overlaps=${st.overlaps}`
     );
-    await page.close();
+    assertNoPageErrors(page);
+  await page.close();
   }
 }
 
@@ -264,6 +279,7 @@ try {
     firstSwap && lineB.x < donutB.x && st.overlaps === 0,
     `big->small=${firstSwap} small->big=${lineB.x < donutB.x} overlaps=${st.overlaps}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -304,6 +320,7 @@ try {
     belowTable && onPlaceholder && committed && !!backHome && st.overlaps === 0 && ghostKeptItsSize,
     `below-table=${belowTable} landed-on-placeholder=${onPlaceholder} committed=${committed} undo-restores=${!!backHome} overlaps=${st.overlaps} ghost-full-size=${ghostKeptItsSize}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -346,6 +363,7 @@ try {
     snapHome && noCommit && !!inStrip && st.overlaps === 0,
     `full-section-refused=${snapHome} no-commit=${noCommit} joined-when-room=${!!inStrip} overlaps=${st.overlaps}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -358,7 +376,7 @@ try {
   await page.mouse.click(tr.x + tr.w / 2, tr.y + 12);
   await page.waitForTimeout(300);
   const rs = await resizeHandleOf(page, 'Strip A');
-  if (!rs) { verdict(false, 'no resize handle on the strip tile'); await page.close(); }
+  if (!rs) { verdict(false, 'no resize handle on the strip tile'); assertNoPageErrors(page); await page.close(); }
   else {
     await shot(page, 'before');
     // (HEIGHT growth is s21's contract: pulling past the section GROWS the
@@ -403,7 +421,8 @@ try {
       fullRefused && widthPushed && widthRestored && st.overlaps === 0,
       `full-section-refused=${fullRefused} w-pushes-right=${widthPushed} w-restores=${widthRestored} overlaps=${st.overlaps}`
     );
-    await page.close();
+    assertNoPageErrors(page);
+  await page.close();
   }
 }
 
@@ -428,6 +447,7 @@ try {
     Math.abs(donutA.x - donut0.x) < 5 && Math.abs(donutA.y - donut0.y) < 5;
   const noCommit = !(await undoEnabled(page));
   verdict(restored && noCommit, `restored=${restored} no-commit=${noCommit}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -451,6 +471,7 @@ try {
     Math.abs(lineA.x - line0.x) < 5 && Math.abs(donutA.x - donut0.x) < 5;
   const historyEmpty = !(await undoEnabled(page));
   verdict(restored && historyEmpty, `restored-by-ONE-undo=${restored} history-empty=${historyEmpty}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -475,6 +496,7 @@ try {
   const refit = !!lineBack && Math.abs(lineBack.h - lineFit.h) < 8;
   verdict(taller && refit && st.overlaps === 0,
     `grow-taller-on-screen=${taller} fit-refits=${refit} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -514,6 +536,7 @@ try {
     afterRemove === before - 1 && afterUndo === before && survivedOvershoot,
     `removed-at-palette=${afterRemove === before - 1} undo-restored=${afterUndo === before} overshoot-survives=${survivedOvershoot}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -535,6 +558,7 @@ try {
   const st = await boardState(page);
   verdict(r1.ok && m1.ok && r2.ok && m2.ok && st.overlaps === 0,
     `shrink=${r1.ok}(${r1.detail}) move=${m1.ok}(${m1.detail}) grow=${r2.ok}(${r2.detail}) move2=${m2.ok}(${m2.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -560,6 +584,7 @@ try {
   const st2 = await boardState(page);
   verdict(m1.ok && m2.ok && r2.ok && st1.overlaps === 0 && st2.overlaps === 0,
     `sales-swap=${m1.ok}(${m1.detail}) pipeline-drag=${m2.ok}(${m2.detail}) pipeline-resize=${r2.ok}(${r2.detail}) overlaps=${st1.overlaps}/${st2.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -581,6 +606,7 @@ try {
   const st = await boardState(page);
   verdict(m.ok && r.ok && st.overlaps === 0,
     `grow-swap=${m.ok}(${m.detail}) grow-resize=${r.ok}(${r.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -602,6 +628,7 @@ try {
   const st = await boardState(page);
   verdict(m.ok && r.ok && st.overlaps === 0,
     `zoom-swap=${m.ok}(${m.detail}) zoom-resize=${r.ok}(${r.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -637,6 +664,7 @@ try {
   const st = await boardState(page);
   verdict(!!cornerOk && !!flickOk && st.overlaps === 0,
     `corner-grab=${!!cornerOk} flick=${!!flickOk} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -655,6 +683,7 @@ try {
   const st = await boardState(page);
   verdict(!!added && m.ok && r.ok && st.overlaps === 0,
     `added=${!!added} moved=${m.ok}(${m.detail}) shrunk=${r.ok}(${r.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -681,6 +710,7 @@ try {
   await shot(page, 'after-2-redos');
   verdict(r.ok && undone && st.overlaps === 0,
     `resize-ok=${r.ok} both-undone-exact=${undone} redo-clean-overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -704,6 +734,7 @@ try {
   const st = await boardState(page);
   verdict(!!restored && m.ok && st.overlaps === 0,
     `load-restored=${!!restored} gesture-after-load=${m.ok}(${m.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -740,6 +771,7 @@ try {
   const st = await boardState(page);
   verdict(refused && pinHeld && m.ok && st.overlaps === 0,
     `pinned-refuses=${refused} pin-held=${pinHeld} unpin-swaps=${m.ok}(${m.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -758,6 +790,7 @@ try {
   const st = await boardState(page);
   verdict(r.ok && m.ok && sameRow && st.overlaps === 0,
     `shrink=${r.ok}(${r.detail}) move-into-gap=${m.ok}(${m.detail}) same-row=${sameRow} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -772,7 +805,7 @@ try {
   await page.mouse.click(tr0.x + tr0.w / 2, tr0.y + 10);
   await page.waitForTimeout(250);
   const rs = await resizeHandleOf(page, 'Strip A');
-  if (!rs) { verdict(false, 'no strip-tile handle'); await page.close(); }
+  if (!rs) { verdict(false, 'no strip-tile handle'); assertNoPageErrors(page); await page.close(); }
   else {
     await page.mouse.move(rs.x, rs.y);
     await page.mouse.down();
@@ -800,7 +833,8 @@ try {
                    Math.abs(lineU.y - line0.y) < 8;
     verdict(grewLive && grewCommitted && undone && st.overlaps === 0,
       `section-grew-live=${grewLive} committed=${grewCommitted} one-undo-restores=${undone} overlaps=${st.overlaps} (a ${tr0.h}->${trA.h}, b ${nc0.h}->${ncA.h})`);
-    await page.close();
+    assertNoPageErrors(page);
+  await page.close();
   }
 }
 
@@ -821,6 +855,7 @@ try {
   await shot(page, 'bottom-tile-grown');
   const st = await boardState(page);
   verdict(r.ok && st.overlaps === 0, `pan-then-resize=${r.ok}(${r.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -846,6 +881,7 @@ try {
   const st = await boardState(page);
   verdict(m.ok && stayed && repacked && st.overlaps === 0,
     `placed=${m.ok}(${m.detail}) stays-in-float=${stayed} repacks-on-off=${repacked} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -875,6 +911,7 @@ try {
   });
   await shot(page, 'aligned');
   verdict(dev <= 2, `max column-line deviation ${dev}px (must be ≤2px)`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -916,6 +953,7 @@ try {
   await shot(page, 'after-undos');
   verdict(grew && shrank && undo1Tall && undo2Orig && st.overlaps === 0,
     `grew=${grew} shrank-in-NEW-gesture=${shrank} undo1-tall=${undo1Tall} undo2-original=${undo2Orig} overlaps=${st.overlaps} (a ${tr0.h}->${trTall.h}->${trBack.h})`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -934,7 +972,7 @@ try {
   await page.mouse.click(tr0.x + tr0.w / 2, tr0.y + 10);
   await page.waitForTimeout(250);
   const rs = await resizeHandleOf(page, 'Total revenue');
-  if (!rs) { verdict(false, 'no KPI handle'); await page.close(); }
+  if (!rs) { verdict(false, 'no KPI handle'); assertNoPageErrors(page); await page.close(); }
   else {
     await page.mouse.move(rs.x, rs.y); await page.mouse.down();
     await page.mouse.move(rs.x, rs.y + 130, { steps: 12 });   // grow it a row taller
@@ -961,7 +999,8 @@ try {
     const st = await boardState(page);
     verdict(itGrew && siblingsDidNotGrow && siblingsHeldTheirPlace && undone && st.overlaps === 0,
       `only-it-grew=${itGrew} siblings-unchanged=${siblingsDidNotGrow} siblings-in-place=${siblingsHeldTheirPlace} one-undo=${undone} overlaps=${st.overlaps} (tr ${tr0.h}->${trA.h}, nc ${nc0.h}->${ncA.h})`);
-    await page.close();
+    assertNoPageErrors(page);
+  await page.close();
   }
 }
 
@@ -1000,6 +1039,7 @@ try {
                  Math.abs(lineU.y - line0.y) < 6 && Math.abs(lineU.x - line0.x) < 6;
   verdict(displacedLive && landedOnPh && chartMoved && undone && st.overlaps === 0,
     `chart-pushed-live=${displacedLive} landed-on-placeholder=${landedOnPh} chart-moved=${chartMoved} one-undo=${undone} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -1064,6 +1104,7 @@ try {
     `re-laid-out=${reLaidOut} save-while-narrow-keeps-desktop=${savedTheDesktop}(cols=${narrow.savedColumns}) ` +
     `widen-restores-exactly=${restoredExactly} overlaps=${st.overlaps}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -1139,6 +1180,7 @@ try {
     `drag-landed-on-placeholder=${m.ok}(${m.detail}) cell-advanced=${movedRight}(x=${moved.cell.x}) ` +
     `pixels-went-left=${movedLeftOnScreen} still-mirrored-after-gesture=${stillMirrored} overlaps=${st.overlaps}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -1237,6 +1279,7 @@ try {
     `re-laid-out=${reLaidOut} viewport-restore-restores-cells-exactly=${restoredExactly} ` +
     `still-responsive=${stillResponsive} overlaps=${st.overlaps}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 

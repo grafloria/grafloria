@@ -51,6 +51,18 @@ function demoPages(dir = root, out = []) {
 const filter = process.argv[2];
 const pages = demoPages().filter((p) => !filter || relative(root, p).startsWith(filter));
 
+// A run over nothing is not a pass. Without this, a typo'd category ("nods")
+// drove zero demos, executed zero checks, printed a green summary line and
+// exited 0 — the most flattering possible result for the least possible work.
+if (pages.length === 0) {
+  console.error(
+    filter
+      ? `interaction: no demos matched "${filter}" — nothing was tested, which is not the same as nothing being wrong`
+      : `interaction: no demo pages found under ${root} — did demos/build.mjs run?`
+  );
+  process.exit(1);
+}
+
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml' };
 const server = createServer((req, res) => {
   const url = decodeURIComponent((req.url || '/').split('?')[0]);
@@ -724,14 +736,26 @@ for (const page of pages) {
       }
     } catch (e) { rec.skipped.push(`FOCUS-RING (harness: ${e.message})`); }
   } catch (e) { rec.error = e.message; }
+  // An uncaught exception on the page is a failure, full stop. These were being
+  // collected and then never read: `errs` appeared exactly once in this file, so
+  // a demo could throw on every gesture and still print a clean pass. Every
+  // sibling gate (gallery, save-load, mermaid-oracle, table-editing,
+  // master-sheet, variant) already asserts on this; this one just didn't.
+  //
+  // It is worse than a missed failure, because the SKIP text then explains the
+  // crash away: a throw in the ctrl+wheel branch produced "~ skip WHEEL-ANCHOR
+  // (ctrl+wheel zoom disabled here)", reporting a crash as a configuration
+  // difference.
+  rec.pageErrors = errs;
   await tab.close();
   results.push(rec);
 
   const failed = rec.checks.filter((c) => !c.ok);
-  const mark = rec.error ? '✗' : failed.length ? '✗' : '✓';
+  const mark = rec.error || failed.length || rec.pageErrors?.length ? '✗' : '✓';
   const summary = rec.error ? `harness: ${rec.error}` : rec.checks.map((c) => `${c.ok ? '·' : '✗'}${c.name}`).join(' ');
   console.log(`${mark} ${rel}   ${summary}`);
   for (const c of failed) console.log(`      ${c.name}: ${c.detail}`);
+  for (const e of rec.pageErrors ?? []) console.log(`      PAGE ERROR: ${e}`);
   // Skips are part of the contract ("skip loudly"): a check that silently
   // stopped running looks exactly like a check that passes.
   for (const s of rec.skipped) console.log(`      ~ skip ${s}`);
@@ -740,10 +764,39 @@ for (const page of pages) {
 await browser.close();
 server.close();
 
-const bad = results.filter((r) => r.error || r.checks.some((c) => !c.ok));
+// ---- THE CORPUS FLOOR --------------------------------------------------------
+// Individually, "the drag never grabbed the node" is a fair SKIP: a custom
+// hit-area or an odd placement can genuinely defeat the setup, and one demo
+// bowing out is not a verdict on the product.
+//
+// Collectively it is the opposite. Break node dragging outright — return early
+// from moveNodeDrag, or raise dragThreshold to 250px — and EVERY demo takes that
+// same skip: the executed-check count quietly fell 182 -> 146 and the gate still
+// printed a green pass and exited 0. Nothing floored it, so a total loss of
+// dragging looked exactly like eighteen unlucky setups.
+//
+// So: a skip is allowed to explain one demo, never all of them. If a drag was
+// attempted on several demos and NOT ONE of them moved a node, that is the
+// product, and the gate says so.
+const attempted = results.filter((r) =>
+  (r.skipped ?? []).some((s) => /^(DRAG-ATTACH|RENDER-TRACK) \(drag did not move the node/.test(s))
+);
+const dragWorked = results.filter((r) =>
+  r.checks.some((c) => c.name === 'DRAG-ATTACH' || c.name === 'RENDER-TRACK')
+);
+const dragCollapsed = attempted.length >= 3 && dragWorked.length === 0;
+
+const bad = results.filter((r) => r.error || r.pageErrors?.length || r.checks.some((c) => !c.ok));
 const totalChecks = results.reduce((n, r) => n + r.checks.length, 0);
 const passChecks = results.reduce((n, r) => n + r.checks.filter((c) => c.ok).length, 0);
 console.log('');
 console.log(`interaction: ${passChecks}/${totalChecks} live-gesture checks pass across ${results.length} demos`);
+
+if (dragCollapsed) {
+  console.error(
+    `\ninteraction: dragging is BROKEN — ${attempted.length} demos tried to drag a node and not one moved. ` +
+      `That is not ${attempted.length} unlucky setups, it is the product.`
+  );
+}
 if (bad.length) console.log('\nA GESTURE THAT MISBEHAVES WHILE YOU TOUCH IT is a bug no static frame can see. This is the gate.');
-process.exit(bad.length ? 1 : 0);
+process.exit(bad.length || dragCollapsed ? 1 : 0);

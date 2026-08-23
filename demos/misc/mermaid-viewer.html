@@ -188,22 +188,47 @@ defineDemo({
     // The canvas-side edit that drives the round trip. Scoped away from the text
     // pane on purpose: Backspace inside Monaco must delete a CHARACTER, never a
     // selected node.
-    const deleteSelection = () => {
+    // THROUGH THE COMMAND STACK, as one undoable step — never `model.removeNode`
+    // directly. Mutating the model behind the command manager's back does not
+    // just lose the undo: it leaves the stack pointing at entities that no
+    // longer exist, so the NEXT Ctrl+Z throws ("Node Start not found") on a
+    // command that has nothing to do with the delete. The canvas' own Delete
+    // handler learned this already; this handler shadows it (window capture +
+    // stopImmediatePropagation) and so has to do the same thing.
+    const deleteSelection = async () => {
       const m = api?.getModel();
       if (!m) return 0;
       const links = m.getLinks().filter((l) => l.state === 'selected');
       const nodes = m.getSelectedNodes?.() ?? [];
       if (!links.length && !nodes.length) return 0;
-      for (const l of links) m.removeLink(l.id);
-      for (const n of nodes) m.removeNode(n.id);   // cascades its own edges
+
+      const engine = api.getEngine();
+      const cm = engine.commandManager;
+      const many = links.length + nodes.length > 1;
+      if (many) cm.beginBatch();
+      try {
+        for (const l of links) await engine.removeLink(l.id);
+        for (const n of nodes) await engine.removeNode(n.id);   // cascades its own edges
+      } finally {
+        if (many) await cm.endBatch('Delete Selection');
+      }
       api.renderNow();
       return links.length + nodes.length;
     };
     window.addEventListener('keydown', (e) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      if (document.getElementById('src').contains(e.target)) return;
+      // `e.target` is not always an element: a key dispatched at `window` (which
+      // is what a programmatic shortcut usually does) makes it the window, and
+      // `Node.contains(window)` throws rather than returning false.
+      const target = e.target instanceof Node ? e.target : null;
+      if (target && document.getElementById('src').contains(target)) return;
       if (e.target.closest?.('input, textarea, select, .monaco-editor')) return;
-      if (deleteSelection()) { e.preventDefault(); e.stopImmediatePropagation(); }
+      // The delete is async now (it goes through the command stack), so the
+      // event has to be claimed up front rather than on its result: by the time
+      // the promise settles the browser has long since dispatched the default.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      void deleteSelection();
     }, true);
 
     const load = (key) => { ed.setValue(EXAMPLES[key]); renderText(ta.value); };
@@ -240,7 +265,7 @@ defineDemo({
     // no matter how lossy the export is.
     const m = ctx.instance.getModel();
     m.getNode('Done')?.setSelected?.(true);
-    check(ctx.deleteSelection() === 1, 'deleting the selected node should remove exactly one entity');
+    check((await ctx.deleteSelection()) === 1, 'deleting the selected node should remove exactly one entity');
     check(!/Done/.test(ta.value), 'the deleted node must disappear from the Mermaid source');
     check(!/Save\s*-->\s*Done/.test(ta.value), 'its edge must go with it');
 
