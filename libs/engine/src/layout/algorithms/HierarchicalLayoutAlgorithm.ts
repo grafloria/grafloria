@@ -1,3 +1,4 @@
+import { debugLog } from '../../util/debug';
 /**
  * Hierarchical Layout Algorithm
  *
@@ -286,7 +287,7 @@ export class HierarchicalLayoutAlgorithm extends BaseLayoutAlgorithm {
         positions.set(node.id, transformedPos);
       });
 
-      console.log(`📐 Hierarchical layout: ${nodes.length} nodes fit in viewport (scale: ${transform.scale.toFixed(2)}, node-spacing: ${nodeSpacing}px, rank-spacing: ${rankSpacing}px)`);
+      debugLog(`📐 Hierarchical layout: ${nodes.length} nodes fit in viewport (scale: ${transform.scale.toFixed(2)}, node-spacing: ${nodeSpacing}px, rank-spacing: ${rankSpacing}px)`);
     } else {
       // No viewport - use relative positions as-is (backward compatibility)
       relativePositions.forEach(({ node, position }) => {

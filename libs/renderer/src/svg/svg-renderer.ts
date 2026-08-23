@@ -1,7 +1,7 @@
 import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, ProximityPreview, LODLevel, LODFeature, Shadow, GroupModel } from '@grafloria/engine';
 // Value import: the ONE definition of "where does a label sit along the path"
 // (slot vs position), shared by the model, this renderer and the edge optimizer.
-import { linkLabelPosition, DiagramSerializer } from '@grafloria/engine';
+import { linkLabelPosition, DiagramSerializer, debugLog } from '@grafloria/engine';
 // wave8/dirty — the O(1) "has anything changed?" counter every model mutation
 // bumps. See the FRAME GATE in render().
 import { getMutationEpoch } from '@grafloria/engine';
@@ -3454,7 +3454,7 @@ export class SVGRenderer implements IRenderer {
       if (fallbackPath) {
         // ✅ CRITICAL FIX: Also pass directions for fallback path
         pathData = this.convertRoutedPathToSVG(fallbackPath, pathType, sourceDirection, targetDirection);
-        console.log('✅ Fallback routing succeeded for connection preview');
+        debugLog('✅ Fallback routing succeeded for connection preview');
       } else {
         // Fallback Strategy 2: Hide invalid preview (don't show crossing line)
         console.warn('All routing strategies failed for connection preview - hiding invalid preview');
@@ -5028,7 +5028,7 @@ export class SVGRenderer implements IRenderer {
     const debugPortVisibility = false; // Disabled - working correctly now
 
     if (debugPortVisibility && visibilityStr === 'on-hover') {
-      console.log(`🔍 Port visibility check:`, {
+      debugLog(`🔍 Port visibility check:`, {
         port: `${port.side}`,
         nodeHovered: node.state.hovered,
         portHovered: port.isHovered,
@@ -5236,7 +5236,7 @@ export class SVGRenderer implements IRenderer {
                                      node.style?.borderAnimationType !== 'none';
 
     if (hasActiveBorderAnimation && styles.strokeWidth !== undefined) {
-      console.log(`[SVGRenderer] Removing inline strokeWidth for ${node.id} due to active border animation`);
+      debugLog(`[SVGRenderer] Removing inline strokeWidth for ${node.id} due to active border animation`);
       const { strokeWidth, ...stylesWithoutStrokeWidth } = styles;
       styles = stylesWithoutStrokeWidth;
     }

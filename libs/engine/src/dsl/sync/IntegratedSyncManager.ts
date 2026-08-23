@@ -1,3 +1,4 @@
+import { debugLog } from '../../util/debug';
 /**
  * Integrated Sync Manager - Complete synchronization solution
  *
@@ -78,7 +79,7 @@ export class IntegratedSyncManager {
     this.bidirectionalSync.initialize(diagram, initialText);
 
     if (this.options.debug) {
-      console.log('[IntegratedSync] Initialized');
+      debugLog('[IntegratedSync] Initialized');
     }
 
     // Emit initial state
@@ -300,7 +301,7 @@ export class IntegratedSyncManager {
     this.diagramChangeCallbacks = [];
 
     if (this.options.debug) {
-      console.log('[IntegratedSync] Disposed');
+      debugLog('[IntegratedSync] Disposed');
     }
   }
 }

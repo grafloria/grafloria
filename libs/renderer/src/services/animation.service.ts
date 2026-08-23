@@ -26,6 +26,7 @@
  */
 
 import { ensureMotionPreferenceStyles } from '../a11y/reduced-motion';
+import { debugLog } from '@grafloria/engine';
 import type { LinkModel, NodeModel } from '@grafloria/engine';
 
 export interface AnimationConfig {
@@ -191,7 +192,7 @@ export class AnimationService {
       updateBatteryMode();
     } catch (error) {
       // Battery API not supported or permission denied
-      console.debug('Battery API not available:', error);
+      debugLog('Battery API not available:', error);
     }
   }
 
@@ -538,7 +539,7 @@ export class AnimationService {
       }
       this.cssInjected = true;
 
-      console.debug('Animation CSS injected');
+      debugLog('Animation CSS injected');
     } catch (error) {
       console.error('Failed to inject animation CSS:', error);
     }
@@ -569,7 +570,7 @@ export class AnimationService {
       this.styleElement = null;
       this.cssInjected = false;
 
-      console.debug('Animation CSS removed');
+      debugLog('Animation CSS removed');
     } catch (error) {
       console.error('Failed to remove animation CSS:', error);
     }

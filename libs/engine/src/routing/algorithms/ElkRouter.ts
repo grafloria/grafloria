@@ -1,3 +1,4 @@
+import { debugLog } from '../../util/debug';
 // ElkRouter - Uses ELK.js for intelligent orthogonal routing with obstacle avoidance
 // Based on Eclipse Layout Kernel - handles complex graph layouts automatically
 
@@ -94,7 +95,7 @@ export class ElkRouter implements IRouter {
       const layouted = await this.elk.layout(graph);
 
       // Debug: Log the ELK result
-      console.log('ELK layout result:', JSON.stringify(layouted, null, 2));
+      debugLog('ELK layout result:', JSON.stringify(layouted, null, 2));
 
       // Extract edge routing points
       const edge = layouted.edges?.[0] as ElkExtendedEdge | undefined;
@@ -105,7 +106,7 @@ export class ElkRouter implements IRouter {
         return this.createDirectPath(start, end);
       }
 
-      console.log('ELK edge sections:', edge.sections);
+      debugLog('ELK edge sections:', edge.sections);
 
       // Convert ELK edge sections to our point format
       // ELK sections contain: startPoint, bendPoints (optional), endPoint
@@ -142,8 +143,8 @@ export class ElkRouter implements IRouter {
         segments: this.calculateSegments(points),
       };
 
-      console.log('ELK routing result:', result);
-      console.log('Points:', points.map(p => `(${p.x.toFixed(1)}, ${p.y.toFixed(1)})`).join(' -> '));
+      debugLog('ELK routing result:', result);
+      debugLog('Points:', points.map(p => `(${p.x.toFixed(1)}, ${p.y.toFixed(1)})`).join(' -> '));
 
       return result;
     } catch (error) {

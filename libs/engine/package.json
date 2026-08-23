@@ -47,6 +47,12 @@
   "sideEffects": false,
   "files": [
     "src/**/*.js",
-    "src/**/*.d.ts"
+    "src/**/*.d.ts",
+    "!src/__mocks__/**",
+    "!src/**/*-demo.*",
+    "!src/**/*-test.*",
+    "!src/dsl/example.*",
+    "!src/collab/test-helpers.*",
+    "!src/template-library/dynamic-rendering-examples.*"
   ]
 }

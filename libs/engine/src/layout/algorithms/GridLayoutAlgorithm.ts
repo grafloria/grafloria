@@ -1,3 +1,4 @@
+import { debugLog } from '../../util/debug';
 /**
  * Grid Layout Algorithm
  *
@@ -184,7 +185,7 @@ export class GridLayoutAlgorithm extends BaseLayoutAlgorithm {
         positions.set(node.id, transformedPos);
       });
 
-      console.log(`📐 Grid layout: ${nodes.length} nodes in ${gridParams.columns} columns, fit in viewport (scale: ${transform.scale.toFixed(2)}, spacing: ${spacing}px)`);
+      debugLog(`📐 Grid layout: ${nodes.length} nodes in ${gridParams.columns} columns, fit in viewport (scale: ${transform.scale.toFixed(2)}, spacing: ${spacing}px)`);
     } else {
       // No viewport - use relative positions with padding offset (backward compatibility)
       relativePositions.forEach(({ node, position }) => {

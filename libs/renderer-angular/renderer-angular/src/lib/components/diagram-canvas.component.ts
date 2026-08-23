@@ -1,3 +1,4 @@
+import { debugLog } from '@grafloria/engine';
 import {
   Component,
   ComponentRef,
@@ -3554,7 +3555,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
       // Phase 3: Check for HTML handle click (Phase 2 integration - HIGHEST PRIORITY)
       // HTML handles need to be checked before SVG ports
-      console.log('🔍 [Phase 3 Debug] Checking for HTML handle at:', {
+      debugLog('🔍 [Phase 3 Debug] Checking for HTML handle at:', {
         clientX: event.clientX,
         clientY: event.clientY,
         zoom: this.zoom(),
@@ -3563,11 +3564,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
       const htmlHandleHit = this.handleRegistry.getHandleAtPoint(event.clientX, event.clientY, this.zoom());
 
-      console.log('🔍 [Phase 3 Debug] Handle detection result:', htmlHandleHit);
+      debugLog('🔍 [Phase 3 Debug] Handle detection result:', htmlHandleHit);
 
       if (htmlHandleHit) {
         event.preventDefault();
-        console.log('🧪 [Phase 3] HTML Handle clicked:', {
+        debugLog('🧪 [Phase 3] HTML Handle clicked:', {
           nodeId: htmlHandleHit.nodeId,
           handleId: htmlHandleHit.handleId,
           type: htmlHandleHit.handle.type,
@@ -3610,7 +3611,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
           if (controlPointHit) {
             event.preventDefault();
-            console.log('🟢 Control point handle clicked:', controlPointHit.controlType, 'of segment', controlPointHit.segmentIndex, 'on link', selectedLink.id);
+            debugLog('🟢 Control point handle clicked:', controlPointHit.controlType, 'of segment', controlPointHit.segmentIndex, 'on link', selectedLink.id);
             this.interactionHandler.startControlPointDrag(controlPointHit.segmentIndex, controlPointHit.controlType, selectedLink);
             this.cdr.markForCheck();
             return;
@@ -3630,7 +3631,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
           if (waypointIndex !== null) {
             event.preventDefault();
-            console.log('🔵 Waypoint handle clicked:', waypointIndex, 'on link', selectedLink.id);
+            debugLog('🔵 Waypoint handle clicked:', waypointIndex, 'on link', selectedLink.id);
             this.interactionHandler.startWaypointDrag(waypointIndex, selectedLink);
             this.cdr.markForCheck();
             return;
@@ -3640,7 +3641,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
           const hitPath = this.interactionHandler.hitTestPath(worldX, worldY, selectedLink);
           if (hitPath) {
             event.preventDefault();
-            console.log('🟢 Link path clicked, adding waypoint on link', selectedLink.id);
+            debugLog('🟢 Link path clicked, adding waypoint on link', selectedLink.id);
             const added = this.interactionHandler.addWaypoint(worldX, worldY, selectedLink);
             if (added) {
               this.scheduleRender();
@@ -3719,7 +3720,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         // Store the originally clicked node (before any parent substitution)
         const originallyClickedNode = clickedNode;
 
-        console.log('[FieldSelectDebug] Clicked node:', {
+        debugLog('[FieldSelectDebug] Clicked node:', {
           id: clickedNode.id,
           type: clickedNode.type,
           draggable: clickedNode.behavior?.draggable,
@@ -3732,7 +3733,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         if (isDragHandler && originallyClickedNode.parentId) {
           const parentNode = diagram.getNode(originallyClickedNode.parentId);
           if (parentNode) {
-            console.log('[FieldSelectDebug] Drag handler - switching to parent:', parentNode.id);
+            debugLog('[FieldSelectDebug] Drag handler - switching to parent:', parentNode.id);
             clickedNode = parentNode;
           }
         }
@@ -3742,7 +3743,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         // BUT if the node is selectable (even if not draggable), keep it selected
         if (!isDragHandler) {
           const nodeIsSelectable = clickedNode.behavior?.selectable !== false;
-          console.log('[FieldSelectDebug] Node selectable check:', {
+          debugLog('[FieldSelectDebug] Node selectable check:', {
             nodeIsSelectable,
             isDraggable: clickedNode.isDraggable(),
             willCheckParent: !clickedNode.isDraggable() && !nodeIsSelectable && clickedNode.parentId
@@ -3753,7 +3754,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
             while (currentNode.parentId) {
               const parentNode = diagram.getNode(currentNode.parentId);
               if (parentNode && parentNode.isDraggable()) {
-                console.log('[FieldSelectDebug] Non-selectable node - switching to draggable parent:', parentNode.id);
+                debugLog('[FieldSelectDebug] Non-selectable node - switching to draggable parent:', parentNode.id);
                 clickedNode = parentNode;
                 break;
               }
@@ -3768,15 +3769,15 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         const nodeWasSelected = clickedNode.isSelected();
 
         // Handle selection
-        console.log('[FieldSelectDebug] Before selection - node:', clickedNode.id, 'isSelected:', clickedNode.isSelected());
+        debugLog('[FieldSelectDebug] Before selection - node:', clickedNode.id, 'isSelected:', clickedNode.isSelected());
         if (event.ctrlKey || event.metaKey) {
           // Ctrl+Click: Toggle selection (multi-select)
           diagram.toggleNodeSelection(clickedNode);
-          console.log('[FieldSelectDebug] Toggled selection - isSelected:', clickedNode.isSelected());
+          debugLog('[FieldSelectDebug] Toggled selection - isSelected:', clickedNode.isSelected());
         } else if (!clickedNode.isSelected()) {
           // Normal click on unselected node: Select only this node (clearing others)
           diagram.selectNode(clickedNode);
-          console.log('[FieldSelectDebug] Selected node - isSelected:', clickedNode.isSelected());
+          debugLog('[FieldSelectDebug] Selected node - isSelected:', clickedNode.isSelected());
         }
         // If clicking an already-selected node without Ctrl: Keep all selections for multi-drag
 
@@ -4765,7 +4766,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // Add port to node
       node.addPort(port);
 
-      console.log(`✅ [Phase 3] Created virtual port for HTML handle:`, {
+      debugLog(`✅ [Phase 3] Created virtual port for HTML handle:`, {
         portId,
         type: portType,
         side: portSide,

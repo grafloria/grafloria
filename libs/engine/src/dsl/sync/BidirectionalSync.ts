@@ -1,3 +1,4 @@
+import { debugLog } from '../../util/debug';
 /**
  * Bidirectional Sync - Manages real-time text ↔ visual synchronization
  *
@@ -154,7 +155,7 @@ export class BidirectionalSync {
     this.state.active = true;
 
     if (this.options.debug) {
-      console.log('[BidirectionalSync] Initialized');
+      debugLog('[BidirectionalSync] Initialized');
     }
   }
 
@@ -176,7 +177,7 @@ export class BidirectionalSync {
     this.state.pendingCount++;
 
     if (this.options.debug) {
-      console.log(`[BidirectionalSync] Text changed, debouncing (${this.options.debounceMs}ms)...`);
+      debugLog(`[BidirectionalSync] Text changed, debouncing (${this.options.debounceMs}ms)...`);
     }
 
     // Debounce
@@ -202,7 +203,7 @@ export class BidirectionalSync {
 
     try {
       if (this.options.debug) {
-        console.log('[BidirectionalSync] Syncing text → visual...');
+        debugLog('[BidirectionalSync] Syncing text → visual...');
       }
 
       const startTime = performance.now();
@@ -221,7 +222,7 @@ export class BidirectionalSync {
       this.state.stats.lastSyncTime = performance.now() - startTime;
 
       if (this.options.debug) {
-        console.log(`[BidirectionalSync] Text → Visual complete (${this.state.stats.lastSyncTime.toFixed(2)}ms)`);
+        debugLog(`[BidirectionalSync] Text → Visual complete (${this.state.stats.lastSyncTime.toFixed(2)}ms)`);
       }
 
       // Notify callbacks
@@ -251,7 +252,7 @@ export class BidirectionalSync {
 
     try {
       if (this.options.debug) {
-        console.log('[BidirectionalSync] Syncing visual → text...');
+        debugLog('[BidirectionalSync] Syncing visual → text...');
       }
 
       const startTime = performance.now();
@@ -267,7 +268,7 @@ export class BidirectionalSync {
       this.state.stats.lastSyncTime = performance.now() - startTime;
 
       if (this.options.debug) {
-        console.log(`[BidirectionalSync] Visual → Text complete (${this.state.stats.lastSyncTime.toFixed(2)}ms)`);
+        debugLog(`[BidirectionalSync] Visual → Text complete (${this.state.stats.lastSyncTime.toFixed(2)}ms)`);
       }
 
       // Notify callbacks
@@ -290,23 +291,23 @@ export class BidirectionalSync {
     // BATCH UPDATE: Suspend events during clear+rebuild to prevent flickering
     // This prevents the UI from seeing intermediate states (5→4→3→2→1→0 nodes during clear)
     const batchMethod = (this.diagram as any).beginBatch;
-    console.log('[BidirectionalSync] Beginning batch update on OLD diagram, batchMethod exists:', !!batchMethod);
+    debugLog('[BidirectionalSync] Beginning batch update on OLD diagram, batchMethod exists:', !!batchMethod);
     if (batchMethod && typeof batchMethod === 'function') {
       (this.diagram as any).beginBatch();
-      console.log('[BidirectionalSync] OLD diagram batch mode active:', (this.diagram as any).isBatching?.());
+      debugLog('[BidirectionalSync] OLD diagram batch mode active:', (this.diagram as any).isBatching?.());
     }
 
     // IMPORTANT: Also put the NEW diagram in batch mode to prevent events during node iteration
     const newBatchMethod = (newDiagram as any).beginBatch;
-    console.log('[BidirectionalSync] Beginning batch update on NEW diagram, batchMethod exists:', !!newBatchMethod);
+    debugLog('[BidirectionalSync] Beginning batch update on NEW diagram, batchMethod exists:', !!newBatchMethod);
     if (newBatchMethod && typeof newBatchMethod === 'function') {
       (newDiagram as any).beginBatch();
-      console.log('[BidirectionalSync] NEW diagram batch mode active:', (newDiagram as any).isBatching?.());
+      debugLog('[BidirectionalSync] NEW diagram batch mode active:', (newDiagram as any).isBatching?.());
     }
 
     try {
       // Clear existing content
-      console.log('[BidirectionalSync] Clearing diagram...');
+      debugLog('[BidirectionalSync] Clearing diagram...');
       this.diagram.clear();
 
       // Copy nodes
@@ -334,19 +335,19 @@ export class BidirectionalSync {
       }
     } finally {
       // END BATCH on NEW diagram first (before ending old diagram batch)
-      console.log('[BidirectionalSync] Ending batch update on NEW diagram...');
+      debugLog('[BidirectionalSync] Ending batch update on NEW diagram...');
       const newEndBatchMethod = (newDiagram as any).endBatch;
       if (newEndBatchMethod && typeof newEndBatchMethod === 'function') {
         (newDiagram as any).endBatch();
-        console.log('[BidirectionalSync] NEW diagram batch mode ended, still batching:', (newDiagram as any).isBatching?.());
+        debugLog('[BidirectionalSync] NEW diagram batch mode ended, still batching:', (newDiagram as any).isBatching?.());
       }
 
       // END BATCH: Resume events and fire single update on OLD diagram
-      console.log('[BidirectionalSync] Ending batch update on OLD diagram...');
+      debugLog('[BidirectionalSync] Ending batch update on OLD diagram...');
       const endBatchMethod = (this.diagram as any).endBatch;
       if (endBatchMethod && typeof endBatchMethod === 'function') {
         (this.diagram as any).endBatch();
-        console.log('[BidirectionalSync] OLD diagram batch mode ended, still batching:', (this.diagram as any).isBatching?.());
+        debugLog('[BidirectionalSync] OLD diagram batch mode ended, still batching:', (this.diagram as any).isBatching?.());
       }
     }
   }
@@ -390,7 +391,7 @@ export class BidirectionalSync {
     this.state.pendingCount++;
 
     if (this.options.debug) {
-      console.log(`[BidirectionalSync] Visual changed, debouncing (${this.options.debounceMs}ms)...`);
+      debugLog(`[BidirectionalSync] Visual changed, debouncing (${this.options.debounceMs}ms)...`);
     }
 
     // Debounce
@@ -470,7 +471,7 @@ export class BidirectionalSync {
     this.state.active = false;
 
     if (this.options.debug) {
-      console.log('[BidirectionalSync] Paused');
+      debugLog('[BidirectionalSync] Paused');
     }
   }
 
@@ -481,7 +482,7 @@ export class BidirectionalSync {
     this.state.active = true;
 
     if (this.options.debug) {
-      console.log('[BidirectionalSync] Resumed');
+      debugLog('[BidirectionalSync] Resumed');
     }
   }
 
@@ -516,7 +517,7 @@ export class BidirectionalSync {
     this.callbacks = [];
 
     if (this.options.debug) {
-      console.log('[BidirectionalSync] Disposed');
+      debugLog('[BidirectionalSync] Disposed');
     }
   }
 }

@@ -1,3 +1,4 @@
+import { debugLog } from '../../util/debug';
 // HybridLayoutAlgorithm - Intelligent pattern detection and algorithm selection
 
 import { BaseLayoutAlgorithm, type ILayoutAlgorithm } from '../ILayoutAlgorithm';
@@ -332,7 +333,7 @@ export class HybridLayoutAlgorithm extends BaseLayoutAlgorithm implements ILayou
     const analysis = this.analyzePattern(diagram);
     this.lastDetectedPattern = analysis.pattern;
 
-    console.log('🔍 Hybrid Layout Analysis:', {
+    debugLog('🔍 Hybrid Layout Analysis:', {
       pattern: analysis.pattern,
       confidence: `${(analysis.confidence * 100).toFixed(0)}%`,
       reason: analysis.reason,
@@ -346,15 +347,15 @@ export class HybridLayoutAlgorithm extends BaseLayoutAlgorithm implements ILayou
     if (analysis.confidence >= (this.hybridOptions.analysisThreshold || 0.7)) {
       switch (analysis.recommendedAlgorithm) {
         case 'grid':
-          console.log('📊 Applying Grid Layout');
+          debugLog('📊 Applying Grid Layout');
           positions = this.gridAlgorithm.reLayout(diagram, config);
           break;
         case 'hierarchical':
-          console.log('🌳 Applying Hierarchical Layout');
+          debugLog('🌳 Applying Hierarchical Layout');
           positions = this.hierarchicalAlgorithm.reLayout(diagram, config);
           break;
         case 'force-directed':
-          console.log('🧲 Applying Force-Directed Layout');
+          debugLog('🧲 Applying Force-Directed Layout');
           positions = this.forceDirectedAlgorithm.reLayout(diagram, config);
           break;
         default:
@@ -363,7 +364,7 @@ export class HybridLayoutAlgorithm extends BaseLayoutAlgorithm implements ILayou
     } else {
       // Low confidence, use fallback
       const fallback = this.hybridOptions.fallbackAlgorithm || 'grid';
-      console.log(`⚠️ Low confidence (${(analysis.confidence * 100).toFixed(0)}%), using fallback: ${fallback}`);
+      debugLog(`⚠️ Low confidence (${(analysis.confidence * 100).toFixed(0)}%), using fallback: ${fallback}`);
 
       switch (fallback) {
         case 'grid':
@@ -384,11 +385,11 @@ export class HybridLayoutAlgorithm extends BaseLayoutAlgorithm implements ILayou
   }
 
   onActivate(): void {
-    console.log('🎯 Hybrid layout activated (intelligent pattern detection)');
+    debugLog('🎯 Hybrid layout activated (intelligent pattern detection)');
   }
 
   onDeactivate(): void {
-    console.log('🎯 Hybrid layout deactivated');
+    debugLog('🎯 Hybrid layout deactivated');
   }
 
   /**
