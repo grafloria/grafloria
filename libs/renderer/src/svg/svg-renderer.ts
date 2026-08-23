@@ -6053,6 +6053,96 @@ export class SVGRenderer implements IRenderer {
    * The historical 100px cap scales with the multiplier so curvature 0.5 is
    * exactly the old `Math.min(distance / 2, 100)`.
    */
+  /**
+   * The bezier for a 2-POINT smooth link, at the deepest curvature the scene
+   * has room for.
+   *
+   * A direction-aware bezier's control points push the curve OUTSIDE the chord —
+   * that is the whole point of them — and nothing checked what the bulge swept
+   * through. A chord that legally grazed past a neighbouring node by a few units
+   * was drawn as a curve bowing straight through that node's body (the
+   * theme-bound demo's info→sink edge sat 4 units under a node and was painted
+   * 20 units INSIDE it). The multi-point branch has had this guard since the
+   * spline-clearance fix; this is the same contract for the 2-point case.
+   *
+   * Degrade by HALVING the control distance rather than jumping straight to a
+   * line: most grazes clear after one halving and the link keeps its curved
+   * identity. `cp1 === null` in the result means even the flattest curve clipped
+   * something and the caller should draw the chord itself.
+   *
+   * Returns the SAMPLES too, because the painted hit polyline must flatten the
+   * same curve this shape describes — one decision, consumed by both.
+   */
+  private twoPointSmoothCurve(
+    p0: { x: number; y: number },
+    p1: { x: number; y: number },
+    style: Partial<LinkStyle> | undefined,
+    sourceDirection: string | undefined,
+    targetDirection: string | undefined,
+    ownNodes: NodeModel[]
+  ): {
+    cp1: { x: number; y: number } | null;
+    cp2: { x: number; y: number } | null;
+    samples: Array<{ x: number; y: number }>;
+  } {
+    const distance = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+    const STEPS = 16;
+
+    const sampled = (cp1: { x: number; y: number }, cp2: { x: number; y: number }) => {
+      const out: Array<{ x: number; y: number }> = [];
+      for (let i = 0; i <= STEPS; i++) {
+        const t = i / STEPS;
+        const u = 1 - t;
+        out.push({
+          x: u * u * u * p0.x + 3 * u * u * t * cp1.x + 3 * u * t * t * cp2.x + t * t * t * p1.x,
+          y: u * u * u * p0.y + 3 * u * u * t * cp1.y + 3 * u * t * t * cp2.y + t * t * t * p1.y,
+        });
+      }
+      return out;
+    };
+
+    // NEIGHBOURS only. The stub legitimately hugs — and may clip the corner of —
+    // its OWN nodes: that has always been the 2-point look, and judging it now
+    // would flatten curves that were never a problem. The defect this guards
+    // against is the bulge entering somebody ELSE's node.
+    const ownIds = new Set(ownNodes.map((n) => n.id));
+
+    let controlDistance = this.controlDistanceFor(distance, style);
+
+    // curvature: 0 is a CONTRACT, not an absence — "collapse the curve onto its
+    // chord, control points at the endpoints" (link-shape spec). A chord-shaped
+    // cubic cannot bulge, so it needs no clearance check either.
+    if (controlDistance <= 0) {
+      const { cp1, cp2 } = this.smoothControlPoints(p0, p1, 0, sourceDirection, targetDirection);
+      return { cp1, cp2, samples: [p0, p1] };
+    }
+
+    // MOTION SUSPENDS THE GUARD, exactly as it suspends the route's own detour
+    // decision (see the motion-stable block in the route ladder): a link whose
+    // endpoint is mid-tween must not flip shape class frame to frame, and a node
+    // SWEEPING across a curve must not toggle it flat and back as it passes.
+    // The settle machinery already owes a repaint when motion stops — that frame
+    // re-runs this guard against the world at rest.
+    const endpointsInMotion =
+      this.motionTracker.hasMotion && ownNodes.some((n) => this.motionTracker.isInMotion(n.id));
+
+    for (let attempt = 0; attempt < 3 && controlDistance >= 1; attempt++, controlDistance /= 2) {
+      const { cp1, cp2 } = this.smoothControlPoints(p0, p1, controlDistance, sourceDirection, targetDirection);
+      const samples = sampled(cp1, cp2);
+      if (endpointsInMotion) return { cp1, cp2, samples };
+      const neighbours = this.splineClearanceNodes(samples, []).filter(
+        (n) =>
+          !ownIds.has(n.id) &&
+          !(this.motionTracker.hasMotion && this.motionTracker.isInMotion(n.id))
+      );
+      if (neighbours.length === 0 || this.penetrationLength(samples, neighbours) <= 2) {
+        return { cp1, cp2, samples };
+      }
+    }
+
+    return { cp1: null, cp2: null, samples: [p0, p1] };
+  }
+
   private controlDistanceFor(distance: number, style?: Partial<LinkStyle>): number {
     const c = style?.curvature;
     const curvature = typeof c === 'number' && isFinite(c) && c >= 0 ? c : 0.5;
@@ -6156,20 +6246,10 @@ export class SVGRenderer implements IRenderer {
       const p1 = routePoints[1];
       const distance = Math.hypot(p1.x - p0.x, p1.y - p0.y);
       if (distance < 1) return routePoints;
-      const { cp1, cp2 } = this.smoothControlPoints(
-        p0, p1, this.controlDistanceFor(distance, style), sourceDirection, targetDirection
-      );
-      const STEPS = 16;
-      const out: Array<{ x: number; y: number }> = [];
-      for (let i = 0; i <= STEPS; i++) {
-        const t = i / STEPS;
-        const u = 1 - t;
-        out.push({
-          x: u * u * u * p0.x + 3 * u * u * t * cp1.x + 3 * u * t * t * cp2.x + t * t * t * p1.x,
-          y: u * u * u * p0.y + 3 * u * u * t * cp1.y + 3 * u * t * t * cp2.y + t * t * t * p1.y,
-        });
-      }
-      return out;
+      // ONE decision for the curve's depth, shared with the drawn path — see
+      // twoPointSmoothCurve. Whatever bezier (or chord) that picks, this hit
+      // polyline is its flattening, so the hit shape and the ink cannot diverge.
+      return this.twoPointSmoothCurve(p0, p1, style, sourceDirection, targetDirection, avoidNodes).samples;
     }
     // Multi-point smooth: mirror convertRoutedPathToSVG's choice — the
     // catmull-rom spline unless its overshoot would clip a node (then the drawn
@@ -6213,20 +6293,20 @@ export class SVGRenderer implements IRenderer {
 
       // Simple bezier curve for 2 points
       if (points.length === 2) {
-        const dx = points[1].x - points[0].x;
-        const dy = points[1].y - points[0].y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const controlDistance = this.controlDistanceFor(distance, style);
-
-        // ENHANCED: Direction-aware control points (ReactFlow style)
-        // Control points extend from the port in the direction it faces.
-        // Shared with paintedHitPolyline — the hit test must flatten the SAME
-        // curve this draws (see that method's header).
-        const { cp1, cp2 } = this.smoothControlPoints(
-          points[0], points[1], controlDistance, sourceDirection, targetDirection
+        // Direction-aware control points, at the deepest curvature with room to
+        // exist — twoPointSmoothCurve halves the depth until the bulge stops
+        // entering a NEIGHBOURING node, and hands back null control points when
+        // even the flattest curve clips one (then the chord is the honest
+        // drawing). Shared with paintedHitPolyline — the hit test flattens the
+        // SAME curve this draws.
+        const { cp1, cp2 } = this.twoPointSmoothCurve(
+          points[0], points[1], style, sourceDirection, targetDirection, avoidNodes ?? []
         );
-
-        path += ` C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${points[1].x} ${points[1].y}`;
+        if (cp1 && cp2) {
+          path += ` C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${points[1].x} ${points[1].y}`;
+        } else {
+          path += ` L ${points[1].x} ${points[1].y}`;
+        }
       } else {
         // Multi-point route (e.g. a detour around a node): a smooth link must
         // KEEP ITS CURVED IDENTITY — fit a spline through the route points.
