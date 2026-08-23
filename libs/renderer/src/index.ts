@@ -20,6 +20,23 @@ export * from './svg';
 // Group B — the notation silhouettes the base registry lacked (Delay, Display,
 // summing junction, sync bar, and the Chen double-outline family). Registered on
 // import so every embed has them without an opt-in call.
+//
+// ⚠️ THIS LINE IS THE REASON package.json SAYS `"sideEffects": ["./src/index.js"]`
+// AND NOT `false`. It is a top-level statement whose only purpose IS the side
+// effect, so `sideEffects: false` is a LIE to the bundler — and every bundler
+// believes it: esbuild, rollup/Vite and webpack all drop this call in a
+// production build. Nothing errors. The shapes simply stop existing, and all 13
+// of these types silently fall back to a plain rectangle in the consumer's app
+// while every test here stays green (the unit tests import the source, and the
+// gallery gate bundles element's SOURCE entry, so neither goes through the
+// tarball where the flag applies). Verified by bundling the published tarball:
+// `delay` renders its ISO 5807 half-round cap under raw Node ESM and a bare
+// `<rect>` under esbuild, and flipping this one flag back restores it.
+//
+// If you add another top-level registration to this file it is already covered.
+// If you add one to engine/react/vue, fix their `sideEffects` in the same commit
+// — all three still say `false`, which is true today only because none of them
+// has a top-level call yet.
 import { registerNotationShapes as _registerNotationShapes } from './svg/notation-shapes';
 _registerNotationShapes();
 
