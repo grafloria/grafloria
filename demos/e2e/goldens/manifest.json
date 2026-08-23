@@ -82,6 +82,17 @@
     "error": null
   },
   {
+    "rel": "dashboard/nested-containers.html",
+    "slug": "dashboard__nested-containers",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/dashboard__nested-containers.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/dashboard__nested-containers.after.png",
+    "reactflow": null,
+    "pro": false,
+    "pageErrors": [],
+    "error": null,
+    "showcase": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/dashboard__nested-containers.showcase.png"
+  },
+  {
     "rel": "diagrams/class-uml.html",
     "slug": "diagrams__class-uml",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/diagrams__class-uml.boot.png",
