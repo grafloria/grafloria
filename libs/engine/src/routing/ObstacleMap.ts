@@ -3,6 +3,12 @@
 import type { Obstacle, Rectangle } from './types';
 import type { Point } from '../types';
 
+/** An obstacle spanning more cells than this is held outside the grid. */
+const MAX_CELLS_PER_OBSTACLE = 1024;
+
+/** Cell coordinates beyond this also fall out of the grid. */
+const MAX_CELL_COORD = 1 << 20;
+
 /**
  * ObstacleMap manages spatial indexing of obstacles for efficient queries
  * Uses a simple grid-based spatial index for O(1) lookups
@@ -11,6 +17,12 @@ export class ObstacleMap {
   private obstacles: Map<string, Obstacle> = new Map();
   private gridCellSize = 100; // Grid cell size for spatial indexing
   private spatialGrid: Map<string, Set<string>> = new Map();
+
+  /**
+   * Obstacles the grid could not hold (unbounded or enormous). Every query adds
+   * these to its candidate set — unindexed must never mean unfindable.
+   */
+  private unindexed: Set<string> = new Set();
 
   /**
    * Get number of obstacles in the map
@@ -61,6 +73,7 @@ export class ObstacleMap {
   clear(): void {
     this.obstacles.clear();
     this.spatialGrid.clear();
+    this.unindexed.clear();
   }
 
   /**
@@ -70,13 +83,22 @@ export class ObstacleMap {
     const result: Obstacle[] = [];
     const seen = new Set<string>();
 
-    // Get all grid cells that overlap the region
+    // Get all grid cells that overlap the region. A null list means the region
+    // itself is unbounded, so the grid cannot narrow anything — every cell counts.
     const cells = this.getOverlappingCells(region);
+    const buckets =
+      cells === null
+        ? [...this.spatialGrid.values()]
+        : cells.map((k) => this.spatialGrid.get(k)).filter((s): s is Set<string> => !!s);
 
-    for (const cellKey of cells) {
-      const obstacleIds = this.spatialGrid.get(cellKey);
-      if (!obstacleIds) continue;
+    // Obstacles held outside the grid are candidates for every query.
+    for (const id of this.unindexed) {
+      seen.add(id);
+      const obstacle = this.obstacles.get(id);
+      if (obstacle && this.rectanglesOverlap(region, obstacle)) result.push(obstacle);
+    }
 
+    for (const obstacleIds of buckets) {
       for (const id of obstacleIds) {
         if (seen.has(id)) continue;
         seen.add(id);
@@ -213,6 +235,11 @@ export class ObstacleMap {
 
   private addToSpatialGrid(obstacle: Obstacle): void {
     const cells = this.getOverlappingCells(obstacle);
+    if (cells === null) {
+      this.unindexed.add(obstacle.id);
+      return;
+    }
+    this.unindexed.delete(obstacle.id);
     for (const cellKey of cells) {
       if (!this.spatialGrid.has(cellKey)) {
         this.spatialGrid.set(cellKey, new Set());
@@ -222,7 +249,9 @@ export class ObstacleMap {
   }
 
   private removeFromSpatialGrid(obstacle: Obstacle): void {
+    this.unindexed.delete(obstacle.id);
     const cells = this.getOverlappingCells(obstacle);
+    if (cells === null) return;
     for (const cellKey of cells) {
       const cell = this.spatialGrid.get(cellKey);
       if (cell) {
@@ -234,14 +263,37 @@ export class ObstacleMap {
     }
   }
 
-  private getOverlappingCells(rect: Rectangle): string[] {
-    const cells: string[] = [];
-
+  /**
+   * The grid cells a rectangle covers — `null` when there are too many to
+   * enumerate, or when the rectangle is not finite.
+   *
+   * Same guard, same limits, same reasoning as `SpatialIndex.getOverlappingCells`
+   * and `ObstacleIndex.insert`. Unbounded, this loop hung the tab outright: a
+   * node whose width computed to `Infinity` (dividing by an empty array's length
+   * does it) drove `cells.push` until it threw `RangeError: Invalid array length`
+   * twelve seconds later, and `position: {x: Infinity}` never came back at all.
+   * Registering a node as a routing obstacle is on that path, so ordinary bad
+   * arithmetic in a consumer's app took the whole page down.
+   */
+  private getOverlappingCells(rect: Rectangle): string[] | null {
     const minCellX = Math.floor(rect.x / this.gridCellSize);
     const minCellY = Math.floor(rect.y / this.gridCellSize);
     const maxCellX = Math.floor((rect.x + rect.width) / this.gridCellSize);
     const maxCellY = Math.floor((rect.y + rect.height) / this.gridCellSize);
 
+    const span = (maxCellX - minCellX + 1) * (maxCellY - minCellY + 1);
+    if (
+      !Number.isFinite(span) ||
+      span > MAX_CELLS_PER_OBSTACLE ||
+      Math.abs(minCellX) >= MAX_CELL_COORD ||
+      Math.abs(maxCellX) >= MAX_CELL_COORD ||
+      Math.abs(minCellY) >= MAX_CELL_COORD ||
+      Math.abs(maxCellY) >= MAX_CELL_COORD
+    ) {
+      return null;
+    }
+
+    const cells: string[] = [];
     for (let x = minCellX; x <= maxCellX; x++) {
       for (let y = minCellY; y <= maxCellY; y++) {
         cells.push(`${x},${y}`);
