@@ -23,7 +23,7 @@
 // esbuild in production mode and checks the behaviour survived.
 
 import { execSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, cpSync, mkdirSync, readdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -32,8 +32,28 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const work = mkdtempSync(join(tmpdir(), 'grafloria-packaging-'));
 let failures = 0;
 
-const run = (cmd, cwd) =>
-  execSync(cmd, { cwd, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+/**
+ * Run a command, and if it fails SAY WHY.
+ *
+ * execSync's own error message is just the command line and an exit code; the
+ * actual cause is in the child's stderr, which it captures and then buries. A
+ * gate whose CI failure reads "Process completed with exit code 1" costs an
+ * entire round-trip to diagnose — this one prints the output it already has.
+ */
+const run = (cmd, cwd) => {
+  try {
+    return execSync(cmd, { cwd, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+  } catch (error) {
+    console.error(`\npackaging: command FAILED in ${cwd}\n  $ ${cmd}`);
+    const tail = (label, text) => {
+      const t = (text ?? '').toString().trim();
+      if (t) console.error(`  --- ${label} ---\n${t.split('\n').slice(-25).map((l) => '  ' + l).join('\n')}`);
+    };
+    tail('stdout', error.stdout);
+    tail('stderr', error.stderr);
+    throw error;
+  }
+};
 
 function check(name, actual, expected) {
   const ok = actual === expected;
@@ -43,19 +63,33 @@ function check(name, actual, expected) {
 
 try {
   // -- build + pack every package a consumer would install ---------------------
+  //
+  // IN PLACE, and ENGINE FIRST, because that is what publishing actually does and
+  // the order is load-bearing: `libs/renderer/tsconfig.release.json` maps
+  // `@grafloria/engine` to `../engine/src/index.d.ts` — a file that only exists
+  // once the engine has been built, and one that `.gitignore` excludes. Build
+  // renderer into a staging dir against a clean checkout and that mapping
+  // resolves to nothing, the emit is quietly wrong, and the tarball you test is
+  // not the tarball you ship. (This gate did exactly that and passed on a
+  // developer machine — where a stale `index.d.ts` from an earlier release was
+  // still lying around — while failing on CI.)
   console.log('packaging: building and packing…');
   const tarballs = [];
   for (const pkg of ['engine', 'renderer']) {
     const src = join(REPO, 'libs', pkg);
-    const staged = join(work, 'staged', pkg);
-    mkdirSync(staged, { recursive: true });
-    // Build the release output into the staging dir, exactly as publishing does:
-    // tsc with the release config, then the extension fixer that makes the emitted
-    // relative specifiers valid pure-Node ESM.
-    run(`npx tsc -p tsconfig.release.json --outDir ${staged} --rootDir . || true`, src);
-    run(`node ${join(REPO, 'tools', 'fix-esm-extensions.mjs')} ${staged}`, REPO);
-    cpSync(join(src, 'package.json'), join(staged, 'package.json'));
-    const out = run('npm pack --pack-destination ' + work, staged);
+    // tsc's EXIT CODE is not the verdict here, and deliberately so: the release
+    // configs set `noEmitOnError: false`, and the renderer's build reports TS6059
+    // against engine sources while still emitting a perfectly good package. That
+    // is how every release has been cut. So the build is allowed to complain —
+    // what it is not allowed to do is produce output that fails the end-to-end
+    // checks below, which is where the real verdict lives.
+    try {
+      run('npx tsc -p tsconfig.release.json', src);
+    } catch {
+      console.log(`  (${pkg}: tsc reported errors; continuing, since the emit is what is under test)`);
+    }
+    run(`node ${join(REPO, 'tools', 'fix-esm-extensions.mjs')} ${join(src, 'src')}`, REPO);
+    const out = run('npm pack --pack-destination ' + work, src);
     tarballs.push(join(work, out.trim().split('\n').pop()));
   }
 
@@ -108,10 +142,24 @@ console.log(JSON.stringify({ missing, drew }));
   // — so the consumer's build fails on our declaration file, with nothing they
   // can do from their side. Four of these shipped in engine 0.3.3.
   console.log('\npackaging: declaration files resolve under nodenext');
-  const bare = run(
-    `grep -rn --include='*.d.ts' -E "(from|import\\()\\s*['\\"]\\.\\.?['\\"]" node_modules/@grafloria || true`,
-    consumer
-  ).trim();
+  // Walked in Node rather than shelled out to grep: the pattern needs three
+  // levels of quoting to survive a shell, and GNU and BSD grep do not agree on
+  // all of it. This is the same check with nothing between it and the files.
+  const bareHits = [];
+  const walkDts = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, entry.name);
+      if (entry.isDirectory()) walkDts(p);
+      else if (entry.name.endsWith('.d.ts')) {
+        const text = readFileSync(p, 'utf8');
+        for (const m of text.matchAll(/(?:from|import\()\s*(['"])(\.\.?)\1/g)) {
+          bareHits.push(`${p.slice(consumer.length + 1)}: ${m[0]}`);
+        }
+      }
+    }
+  };
+  walkDts(join(consumer, 'node_modules', '@grafloria'));
+  const bare = bareHits.join('\n');
   check('no bare directory specifiers in any .d.ts', bare === '' ? 'none' : 'found', 'none');
   if (bare) console.log('    ' + bare.split('\n').slice(0, 5).join('\n    '));
 
