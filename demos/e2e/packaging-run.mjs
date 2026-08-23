@@ -102,6 +102,19 @@ console.log(JSON.stringify({ missing, drew }));
   check('every notation shape survives bundling', bundled.missing.length, 0);
   check('delay still draws its silhouette', bundled.drew, 'path');
 
+  // -- 1b. the declarations resolve under nodenext ----------------------------
+  // tsc emits `import("..")` when it infers a type through a barrel. That is a
+  // bare DIRECTORY specifier, which `moduleResolution: nodenext` cannot resolve
+  // — so the consumer's build fails on our declaration file, with nothing they
+  // can do from their side. Four of these shipped in engine 0.3.3.
+  console.log('\npackaging: declaration files resolve under nodenext');
+  const bare = run(
+    `grep -rn --include='*.d.ts' -E "(from|import\\()\\s*['\\"]\\.\\.?['\\"]" node_modules/@grafloria || true`,
+    consumer
+  ).trim();
+  check('no bare directory specifiers in any .d.ts', bare === '' ? 'none' : 'found', 'none');
+  if (bare) console.log('    ' + bare.split('\n').slice(0, 5).join('\n    '));
+
   // -- 2. the sideEffects/top-level-call invariant, for every package ---------
   // The bug above is a CLASS: any package whose entry has a top-level statement
   // executed for its effect must not claim `sideEffects: false`. Check the rule

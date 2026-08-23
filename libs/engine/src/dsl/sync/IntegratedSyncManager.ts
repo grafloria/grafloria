@@ -9,6 +9,12 @@ import { debugLog } from '../../util/debug';
 import { DiagramModel } from '../../models/DiagramModel';
 import { BidirectionalSync, SyncOptions, SyncDirection } from './BidirectionalSync';
 import { LayoutApplicator, LayoutApplicatorOptions } from './LayoutApplicator';
+// Imported EXPLICITLY, and from where it is defined rather than through the
+// package barrel. Left to infer this return type, tsc emitted
+// `import("..").LayoutSuggestion` into the .d.ts — a bare directory specifier,
+// which a consumer on `moduleResolution: nodenext` cannot resolve. Their build
+// fails on our declaration file, in a way they cannot fix from their side.
+import type { LayoutSuggestion } from '../detector/LayoutDetector';
 import { SyncStateManager, SyncStatus, SyncMetrics } from './SyncStateManager';
 
 export interface IntegratedSyncOptions {
@@ -149,7 +155,7 @@ export class IntegratedSyncManager {
   /**
    * Get layout suggestion
    */
-  suggestLayout() {
+  suggestLayout(): LayoutSuggestion | null {
     const diagram = this.getDiagram();
     if (!diagram) return null;
 
