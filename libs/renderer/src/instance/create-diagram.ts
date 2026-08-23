@@ -679,7 +679,21 @@ export function createDiagram(
       paintFailures.delete(node.id);
       // The RETURN VALUE is the whole async contract: a painter that is not finished says
       // so by handing back a promise. Sync painters return undefined and cost nothing.
-      trackPaint(node.id, options.renderCustomNode?.(node, host));
+      //
+      // A painter that THROWS is contained here, exactly like one whose promise
+      // rejects — same failure map, same export warning. Uncontained, a single
+      // bad widget did far more than blank itself: the throw propagated out of
+      // the mount paint, which runs BEFORE `const instance` is constructed, so
+      // createDiagram() never returned. The caller got an exception instead of a
+      // diagram and therefore had no handle to dispose — while the instance was
+      // already alive, with its ResizeObserver still driving the viewport. Retry
+      // the call (which is what a React error boundary or StrictMode does) and
+      // the undisposable instances stack up in the same container.
+      try {
+        trackPaint(node.id, options.renderCustomNode?.(node, host));
+      } catch (error) {
+        paintFailures.set(node.id, error instanceof Error ? error.message : String(error));
+      }
     } else if (!host.parentNode) {
       // Re-entry after a detach cull: the SAME element goes back, with its subtree, its
       // scroll offset, its canvas bitmap and its event listeners intact. `renderCustomNode`
@@ -889,8 +903,8 @@ export function createDiagram(
     const failure = paintFailures.get(id);
     if (failure !== undefined) {
       return (
-        `custom node "${id}" — its renderCustomNode promise REJECTED (${failure}), so whatever ` +
-        'it had not drawn by then is missing from this export.'
+        `custom node "${id}" — its renderCustomNode FAILED (${failure}), so whatever it had ` +
+        'not drawn is missing from this export.'
       );
     }
     if (!pendingPaints.has(id)) return undefined;
