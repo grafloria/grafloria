@@ -1557,8 +1557,35 @@ export function createDiagram(
       // Reconcile INTO the live model (never swap it): applyNodes/applyEdges
       // are full reconcilers, so removals happen and every listener, plugin,
       // and renderer binding stays attached to the same DiagramModel.
-      applyNodes(model, result.diagram.getNodes().map((n) => toNodeSpec(n)));
-      applyEdges(model, result.diagram.getLinks().map((l) => toEdgeSpec(l)));
+      //
+      // Hand them the imported MODELS, not `toNodeSpec`/`toEdgeSpec` projections
+      // of them. Those projections carry id/type/position/size/selected/data/
+      // label/shape/custom — and nothing else — so loading a saved document into
+      // a FRESH canvas silently dropped custom ports, node and link styles, and
+      // every metadata key but `label`. (Loading into the same instance that
+      // still held those node objects looked lossless, because applyNodes
+      // updates existing models in place; the loss only showed up in the case
+      // that matters, opening a file.) applyNodes/applyEdges already accept live
+      // models through their isNodeModel branch, so nothing about the reconciler
+      // required the projection — and exportText's own contract promises a
+      // "lossless sidecar … feed the result back to loadText for a full
+      // round-trip", which this is what makes true.
+      applyNodes(model, result.diagram.getNodes());
+      applyEdges(model, result.diagram.getLinks());
+
+      // Groups travel in neither `nodes` nor `edges`, so without this they were
+      // simply not loaded — the same trap `@grafloria/element`'s loader documents
+      // and works around in its own finalize step.
+      const incoming = result.diagram.getGroups();
+      const wanted = new Set(incoming.map((g) => g.id));
+      for (const existing of model.getGroups()) {
+        if (!wanted.has(existing.id)) model.removeGroup(existing.id);
+      }
+      for (const group of incoming) {
+        if (!model.getGroup(group.id)) model.addGroup(group);
+      }
+
+      scheduler.schedule();
       return result;
     },
 
