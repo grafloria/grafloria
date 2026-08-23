@@ -114,3 +114,62 @@ describe('OrthogonalRouter — A* at distance', () => {
     expect(pathEnters(path!.points, box)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Descending clearance — tight layouts get a real route, not a shrug.
+//
+// The requested 20-unit margin seals a 20-unit gap from both sides, and the
+// fixed 30-unit port offset used to land the A* start inside the neighbouring
+// node's body. One attempt was made, it failed, and the "avoidance" route came
+// back identical to the no-avoidance one: drawn straight through the neighbour.
+// This is the four-nodes-in-a-row scene from the theme-bound demo, verbatim.
+describe('OrthogonalRouter — descending clearance in tight layouts', () => {
+  const ROW: Obstacle[] = [
+    { id: 'critical', x: 60, y: 90, width: 170, height: 76 },
+    { id: 'warning', x: 250, y: 90, width: 170, height: 76 },
+    { id: 'success', x: 440, y: 90, width: 170, height: 76 },
+    { id: 'info', x: 630, y: 90, width: 170, height: 76 },
+    { id: 'sink', x: 340, y: 280, width: 200, height: 76 },
+  ];
+
+  it('threads the 20-unit corridor instead of routing through the neighbour', () => {
+    const router = new OrthogonalRouter();
+    // critical's right port → sink's left port: the neighbour (warning) starts
+    // 20 units from the port.
+    const path = router.route({
+      start: { x: 230, y: 128 },
+      end: { x: 340, y: 318 },
+      sourceDirection: 'right',
+      targetDirection: 'left',
+      obstacles: ROW,
+      options: { avoidObstacles: true, gridSize: 10 },
+    });
+
+    expect(path).toBeDefined();
+    const breached = ROW.filter(
+      (o) => o.id !== 'critical' && o.id !== 'sink' && pathEnters(path!.points, o)
+    ).map((o) => o.id);
+    expect(breached).toEqual([]);
+  });
+
+  it('a spacious scene still routes at the full requested clearance', () => {
+    // Control: with room everywhere, the first attempt must succeed and the
+    // route must not hug obstacles any tighter than it used to.
+    const router = new OrthogonalRouter();
+    const spread: Obstacle[] = [{ id: 'block', x: 400, y: 150, width: 80, height: 60 }];
+    const path = router.route({
+      start: { x: 0, y: 180 },
+      end: { x: 900, y: 180 },
+      obstacles: spread,
+      options: { avoidObstacles: true, gridSize: 10 },
+    });
+
+    expect(path).toBeDefined();
+    expect(pathEnters(path!.points, spread[0])).toBe(false);
+    // Full clearance honoured: no point within 10 of the block's body.
+    const near = path!.points.some(
+      (p) => p.x > 390 && p.x < 490 && p.y > 140 && p.y < 220
+    );
+    expect(near).toBe(false);
+  });
+});
