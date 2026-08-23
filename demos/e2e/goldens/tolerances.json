@@ -372,8 +372,8 @@
   "measuredJitterPct": 0
  },
  "interaction__copy-paste.after.png": {
-  "tolerancePct": 0.213,
-  "measuredJitterPct": 0.0709
+  "tolerancePct": 0.228,
+  "measuredJitterPct": 0.0761
  },
  "interaction__copy-paste.boot.png": {
   "tolerancePct": 0.02,
@@ -457,7 +457,7 @@
  },
  "interaction__n8n-workflow.showcase.png": {
   "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "measuredJitterPct": 0.0017
  },
  "interaction__parent-move.after.png": {
   "tolerancePct": 0.02,
@@ -556,8 +556,8 @@
   "measuredJitterPct": 0
  },
  "layout__expand-collapse.showcase.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.361,
+  "measuredJitterPct": 0.1202
  },
  "layout__force-layout.after.png": {
   "tolerancePct": 0.02,
@@ -584,8 +584,8 @@
   "measuredJitterPct": 0
  },
  "layout__off-thread-layout.after.png": {
-  "tolerancePct": 0.026,
-  "measuredJitterPct": 0.0086
+  "tolerancePct": 0.023,
+  "measuredJitterPct": 0.0077
  },
  "layout__off-thread-layout.boot.png": {
   "tolerancePct": 0.02,
@@ -741,7 +741,7 @@
  },
  "nodes__node-position-animation.after.png": {
   "tolerancePct": 0.02,
-  "measuredJitterPct": 0.0006
+  "measuredJitterPct": 0
  },
  "nodes__node-position-animation.boot.png": {
   "tolerancePct": 0.02,
