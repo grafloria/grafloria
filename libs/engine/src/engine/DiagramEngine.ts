@@ -362,10 +362,29 @@ export class DiagramEngine {
   /**
    * Phase 1: Get interaction configuration
    * Returns the current interaction mode settings
+   *
+   * A CACHED, FROZEN snapshot — not a fresh spread per call. This getter is on
+   * the hottest paths in the product: the renderer consults it per port and per
+   * link inside every frame, and the binder on every pointer event, so the old
+   * `{ ...config }` allocated tens of thousands of full copies per second and
+   * showed up as the single largest self-time in a 2,000-node drag profile
+   * (~590ms of a 4.5s gesture — more than routing).
+   *
+   * The spread existed to keep callers from mutating engine state; the freeze
+   * keeps that promise the honest way. A caller that used to scribble on its
+   * private copy now throws instead of silently diverging — which is the
+   * correct outcome, because two callers sharing one snapshot must not see each
+   * other's scribbles.
    */
   getInteractionConfig(): InteractionConfig {
-    return { ...this.interactionConfig };
+    if (!this.interactionConfigSnapshot) {
+      this.interactionConfigSnapshot = Object.freeze({ ...this.interactionConfig });
+    }
+    return this.interactionConfigSnapshot;
   }
+
+  /** The frozen view handed to getInteractionConfig callers; null after a write. */
+  private interactionConfigSnapshot: Readonly<InteractionConfig> | null = null;
 
   /**
    * Phase 1: Set interaction configuration
@@ -377,6 +396,8 @@ export class DiagramEngine {
       ...this.interactionConfig,
       ...config,
     };
+    // The frozen view is now stale — the next getInteractionConfig rebuilds it.
+    this.interactionConfigSnapshot = null;
 
     this.eventBus.emit('config:interaction-changed', {
       oldConfig,
