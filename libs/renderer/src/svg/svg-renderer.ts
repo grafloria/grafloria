@@ -522,6 +522,35 @@ export class SVGRenderer implements IRenderer {
   /** What the most recent render() actually drew — see getFrameCoverage(). */
   private frameCoverage: FrameCoverage | null = null;
   /**
+   * Depth of the export passes currently on the stack.
+   *
+   * An export calls the same `render()` the screen does, but what it produces is
+   * NOT the picture on screen: different viewport, always zoom 1, the whole
+   * diagram. Everything that learns from a frame — the quality governor, the
+   * frame gate — has to be told to ignore these, or saving a PNG changes what
+   * the user is looking at. A counter rather than a flag because export paths
+   * nest (a paged export renders per page inside one export).
+   */
+  private exportDepth = 0;
+
+  /** True while an export pass is building a tree. See {@link exportDepth}. */
+  private get exporting(): boolean {
+    return this.exportDepth > 0;
+  }
+
+  /**
+   * Render a tree FOR AN EXPORT — same pass, but flagged so it neither teaches
+   * the governor nor arms the on-screen frame gate.
+   */
+  private renderForExport(viewport: Rectangle, zoom: number): VNode {
+    this.exportDepth++;
+    try {
+      return this.render(viewport, zoom);
+    } finally {
+      this.exportDepth--;
+    }
+  }
+  /**
    * Did the frame being built move any link's FINAL geometry? If so it has not
    * reached a fixed point and must not arm the gate.
    *
@@ -1202,10 +1231,16 @@ export class SVGRenderer implements IRenderer {
     // something different from the same model and the same viewport. See
     // `frameChangedGeometry`.
     const settled = !this.frameChangedGeometry;
-    this.lastFrameRoot = frameSig === null || !settled ? null : root;
-    this.lastFrameSig = settled ? frameSig : null;
-    this.lastFrameEpoch = getMutationEpoch();
-    this.frameInvalidated = false;
+    // …and NOT on an export pass. An export renders its own viewport at its own
+    // zoom, which is not the picture on screen; arming the gate with it would
+    // make the next real frame either reuse an export's tree or rebuild from
+    // scratch, neither of which the screen asked for.
+    if (!this.exporting) {
+      this.lastFrameRoot = frameSig === null || !settled ? null : root;
+      this.lastFrameSig = settled ? frameSig : null;
+      this.lastFrameEpoch = getMutationEpoch();
+      this.frameInvalidated = false;
+    }
     this.framesBuilt++;
 
     // Track render time
@@ -1221,7 +1256,16 @@ export class SVGRenderer implements IRenderer {
     // 99% route computation, zero percent paint), and it is the only part we can
     // attribute. A renderer that blamed the compositor for its own O(n²) loop would
     // be worse than no governor at all.
-    this.governor?.record(this.lastRenderTime);
+    // NOT on an export pass. The governor's whole job is to judge what this
+    // machine can afford to put on SCREEN, from frames it actually painted — and
+    // an export is not one. It renders the WHOLE diagram at zoom 1 regardless of
+    // the viewport, so on a large scene it is legitimately slow (hundreds of ms
+    // against a 16ms budget), and feeding that in convinced the governor the
+    // machine could not cope: it dropped the LOD tier and the user's canvas
+    // visibly lost detail because they saved a PNG. This is the same refusal the
+    // frame-gate skip path makes at the top of this method, for the mirror-image
+    // reason — there, a frame that cost nothing must not argue for more detail.
+    if (!this.exporting) this.governor?.record(this.lastRenderTime);
 
     // Motion-stable routing: this frame painted PROVISIONAL routes (suppressed
     // detours / penetration retries), so a settle repaint is owed once motion
@@ -2001,7 +2045,7 @@ export class SVGRenderer implements IRenderer {
     // zoom 1: the SVG stays vector, and `scale` multiplies the intrinsic
     // width/height instead of the viewBox — so a 2x PNG is 2x pixels of the
     // identical picture, not a differently-culled render.
-    let root = this.render(renderViewport, 1);
+    let root = this.renderForExport(renderViewport, 1);
 
     // PRE-RESOLVED external images (a panel node's avatar/logo) become bytes in the
     // file. A PURE substitution — `inlineAssets` maps URL → data: URI over the tree,
@@ -2052,7 +2096,7 @@ export class SVGRenderer implements IRenderer {
     const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
 
     const renderViewport = options.viewport ?? this.contentViewport(padding + CONTENT_RENDER_SLACK);
-    let tree = this.render(renderViewport, 1);
+    let tree = this.renderForExport(renderViewport, 1);
     if (ids !== undefined) tree = filterTreeByIds(tree, ids);
 
     // CUSTOM NODES IN PDF. A `foreignObject` genuinely cannot survive here — PDF has no
@@ -2103,7 +2147,7 @@ export class SVGRenderer implements IRenderer {
     const padding = options.padding ?? 20;
     const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
 
-    let tree = this.render(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
+    let tree = this.renderForExport(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
     if (ids !== undefined) tree = filterTreeByIds(tree, ids);
 
     const layout = paginate(tree, { padding, ...pagination });
@@ -2140,7 +2184,7 @@ export class SVGRenderer implements IRenderer {
     const padding = options.padding ?? 20;
     const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
 
-    let tree = this.render(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
+    let tree = this.renderForExport(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
     if (ids !== undefined) tree = filterTreeByIds(tree, ids);
 
     const layout = paginate(tree, { padding, ...pagination });
@@ -2176,7 +2220,7 @@ export class SVGRenderer implements IRenderer {
     // scope 'viewport' without a rectangle throws in the export proper; enumeration is
     // best-effort and simply falls back to the content bounds (a superset of the URLs).
     const renderViewport = options.viewport ?? this.contentViewport(padding + CONTENT_RENDER_SLACK);
-    let tree = this.render(renderViewport, 1);
+    let tree = this.renderForExport(renderViewport, 1);
     if (ids !== undefined) tree = filterTreeByIds(tree, ids);
     return collectAssetUrls(tree);
   }
@@ -3806,6 +3850,25 @@ export class SVGRenderer implements IRenderer {
    * to communicate (what connects to what) was the one thing AT users could not
    * get.
    */
+  /**
+   * The part of a link's cache key that tracks its endpoints' NAMES.
+   *
+   * Two map lookups per link per frame, which is cheap next to building the
+   * VNode this key protects — and the labels are read from the same metadata the
+   * accessible name reads, so the two cannot disagree.
+   */
+  private endpointNameKey(link: LinkModel): string {
+    const diagram = this.engine?.getDiagram?.();
+    if (!diagram) return '';
+    const nameOf = (id: string | undefined): string => {
+      if (!id) return '';
+      const node = diagram.getNode(id);
+      const label = node?.getMetadata('label');
+      return typeof label === 'string' ? label : '';
+    };
+    return `${nameOf(link.sourceNodeId)}${nameOf(link.targetNodeId)}`;
+  }
+
   private linkAriaProps(link: LinkModel): Record<string, unknown> {
     const diagram = this.engine?.getDiagram?.();
     return {
@@ -6211,7 +6274,19 @@ export class SVGRenderer implements IRenderer {
     // A clean link crossing an LOD threshold on zoom must NOT serve a
     // wrong-LOD VNode. NOTE: this is the cache lookup key only; the VNode's
     // `key` prop stays `link-${link.id}` for stable VDOM reconciliation.
-    const cacheKey = `link-${link.id}-${lod}`;
+    // The ENDPOINT NAMES are part of the key, because they are part of what this
+    // VNode renders: the edge's accessible name is "Edge from <source> to
+    // <target>" (see linkAriaProps). Keyed only by id and LOD, renaming a node
+    // left every attached edge announcing the OLD name to a screen reader —
+    // permanently, since nothing about the LINK had changed, so it never went
+    // dirty and the cached tree was handed back forever.
+    //
+    // Folded into the key rather than fixed by dirtying incident links on a
+    // label write: a name can change through setLabel, setMetadata('label'), the
+    // legacy data.label mirror, a spec reconcile or a document restore, and a
+    // fix that has to intercept all five is a fix that will miss the sixth. A
+    // key cannot miss one — if the name is different, the key is different.
+    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}`;
     // Paint-server links bypass the cache so their `<defs>` entry is re-registered
     // every frame (a cache hit would skip style computation and orphan url(#…)).
     const usesPaintServer = this.linkUsesPaintServer(link);
@@ -7629,6 +7704,16 @@ export class SVGRenderer implements IRenderer {
     diagram.on('link:removed', dropFrame);
     diagram.on('group:added', dropFrame);
     diagram.on('group:removed', dropFrame);
+    // An LOD POLICY change is invisible to every other channel: no entity moved,
+    // so the epoch does not budge, and the per-entity cache keys carry the tier
+    // NAME, which a redefinition keeps. `invalidateStyles` is the right hammer —
+    // it clears the VNode cache, bumps the invalidation epoch so the host stops
+    // idle-skipping, and dirties every entity so none is left drawn under the
+    // policy that was just replaced.
+    diagram.on('lod:config-changed', () => {
+      this.lodCache.clear();
+      this.invalidateStyles('lod-config-changed');
+    });
     // (`link:path-changed` needs no listener here: LinkModel.generatePath() now
     // markDirty()s the link, which is both more correct and bumps the epoch — see
     // the note there. It used to rewrite `points` in place and tell no one.)
