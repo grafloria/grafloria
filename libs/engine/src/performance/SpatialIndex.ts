@@ -33,6 +33,16 @@ export interface QueryOptions<T> {
 }
 
 /**
+ * An entity spanning more cells than this is held OUTSIDE the grid — see
+ * `getOverlappingCells`. Same limit `ObstacleIndex` uses, deliberately: these are
+ * the same trade-off in two indexes, and they should not drift apart.
+ */
+const MAX_CELLS_PER_ENTITY = 1024;
+
+/** Cell coordinates beyond this also fall out of the grid. */
+const MAX_CELL_COORD = 1 << 20;
+
+/**
  * Grid cell coordinates
  */
 interface CellCoord {
@@ -76,6 +86,13 @@ export class SpatialIndex<T extends { id: string }> {
    * cellKey format: "row,col"
    */
   private grid = new Map<string, Set<string>>();
+
+  /**
+   * Entities whose bounds are too large — or not finite — to enumerate as grid
+   * cells. Held here and added to every query's candidate set, so an unindexable
+   * entity is still FOUND; it just is not narrowed by the grid.
+   */
+  private unindexed = new Set<string>();
 
   constructor(config: SpatialIndexConfig<T>) {
     this.cellSize = config.cellSize ?? 100;
@@ -146,6 +163,7 @@ export class SpatialIndex<T extends { id: string }> {
   clear(): void {
     this.entities.clear();
     this.grid.clear();
+    this.unindexed.clear();
   }
 
   /**
@@ -188,13 +206,24 @@ export class SpatialIndex<T extends { id: string }> {
     }
 
     const cells = this.getOverlappingCells(region);
-    const candidates = new Set<string>();
+    // Anything the grid could not hold is a candidate for EVERY query — it is
+    // unindexed precisely because its extent is unbounded, so no cell test can
+    // rule it out. There are never many, by construction.
+    const candidates = new Set<string>(this.unindexed);
 
-    // Collect all entity IDs in overlapping cells
-    for (const cellKey of cells) {
-      const cellEntities = this.grid.get(cellKey);
-      if (cellEntities) {
+    // Collect all entity IDs in overlapping cells. A null cell list means the
+    // QUERY rect itself is unbounded; the grid cannot narrow it, so every
+    // indexed entity is a candidate.
+    if (cells === null) {
+      for (const cellEntities of this.grid.values()) {
         cellEntities.forEach((id) => candidates.add(id));
+      }
+    } else {
+      for (const cellKey of cells) {
+        const cellEntities = this.grid.get(cellKey);
+        if (cellEntities) {
+          cellEntities.forEach((id) => candidates.add(id));
+        }
       }
     }
 
@@ -279,6 +308,15 @@ export class SpatialIndex<T extends { id: string }> {
     const bounds = this.getBounds(entity);
     const cells = this.getOverlappingCells(bounds);
 
+    // Too big (or not finite) to enumerate: keep it OUT of the grid but IN the
+    // index, on a list every query consults. Dropping it instead would be worse
+    // than the crash it replaces — the entity would silently stop being found.
+    if (cells === null) {
+      this.unindexed.add(entity.id);
+      return;
+    }
+    this.unindexed.delete(entity.id);
+
     for (const cellKey of cells) {
       let cellSet = this.grid.get(cellKey);
       if (!cellSet) {
@@ -296,8 +334,11 @@ export class SpatialIndex<T extends { id: string }> {
     const entity = this.entities.get(id);
     if (!entity) return;
 
+    this.unindexed.delete(id);
+
     const bounds = this.getBounds(entity);
     const cells = this.getOverlappingCells(bounds);
+    if (cells === null) return;
 
     for (const cellKey of cells) {
       const cellSet = this.grid.get(cellKey);
@@ -313,14 +354,44 @@ export class SpatialIndex<T extends { id: string }> {
   /**
    * Get all grid cells that overlap with rectangle
    */
-  private getOverlappingCells(rect: Rectangle): string[] {
-    const cells: string[] = [];
-
+  /**
+   * The grid cells a rectangle covers — or `null` when it covers too many to
+   * enumerate.
+   *
+   * NULL IS NOT AN ERROR CASE, it is the answer for a rectangle the grid cannot
+   * usefully hold, and every caller has to honour it. Without this the two loops
+   * below ran from `Math.floor(x / cellSize)` to `Math.floor((x + width) /
+   * cellSize)` with no bound at all, so geometry a consumer never meant to
+   * produce took the tab with it: a node whose width came out `Infinity` (a
+   * division by an empty array's length is enough) walked the loop until
+   * `cells.push` threw `RangeError: Invalid array length` — after twelve seconds
+   * of frozen main thread — and `position: {x: Infinity}` never returned at all.
+   * A merely huge node was slow rather than fatal: 100,000px cost ~770ms and
+   * 200,000px ~4s, on one node.
+   *
+   * `ObstacleIndex` already guarded exactly this, with exactly these limits;
+   * this index and `ObstacleMap` did not. NaN was always harmless — `NaN <= NaN`
+   * is false, so the loop simply never runs.
+   */
+  private getOverlappingCells(rect: Rectangle): string[] | null {
     const minCol = Math.floor(rect.x / this.cellSize);
     const maxCol = Math.floor((rect.x + rect.width) / this.cellSize);
     const minRow = Math.floor(rect.y / this.cellSize);
     const maxRow = Math.floor((rect.y + rect.height) / this.cellSize);
 
+    const span = (maxCol - minCol + 1) * (maxRow - minRow + 1);
+    if (
+      !Number.isFinite(span) ||
+      span > MAX_CELLS_PER_ENTITY ||
+      Math.abs(minCol) >= MAX_CELL_COORD ||
+      Math.abs(maxCol) >= MAX_CELL_COORD ||
+      Math.abs(minRow) >= MAX_CELL_COORD ||
+      Math.abs(maxRow) >= MAX_CELL_COORD
+    ) {
+      return null;
+    }
+
+    const cells: string[] = [];
     for (let row = minRow; row <= maxRow; row++) {
       for (let col = minCol; col <= maxCol; col++) {
         cells.push(this.getCellKey(row, col));
