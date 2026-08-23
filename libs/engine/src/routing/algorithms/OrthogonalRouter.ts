@@ -924,6 +924,24 @@ export class OrthogonalRouter implements IRouter {
   /**
    * Orthogonal routing with obstacle avoidance using A*
    */
+  /**
+   * Route with obstacle avoidance, at the best clearance the SCENE can afford.
+   *
+   * The requested margin (default 20) is a preference, not a possibility: in a
+   * row of nodes 20 units apart, a 20-unit margin on BOTH sides seals every gap,
+   * and the 30-unit port offset lands the A* start inside the neighbouring
+   * node's body. The old code made exactly one attempt at exactly that margin,
+   * and when it failed — which in tight layouts it reliably did — it silently
+   * returned the simple route, drawn straight through the node it was asked to
+   * avoid. Measured on a four-in-a-row demo: the "avoidance" route and the
+   * no-avoidance route were byte-identical.
+   *
+   * So: try the requested clearance first, and when an attempt cannot even
+   * stand at its start/end or A* finds no path, RETRY at half, then a quarter,
+   * then a 2-unit floor. A tightly-packed scene gets a route that hugs its
+   * corridors instead of one that ignores them; a spacious scene succeeds on
+   * the first attempt and pays nothing new.
+   */
   private avoidObstaclesRoute(
     start: Point,
     end: Point,
@@ -934,9 +952,47 @@ export class OrthogonalRouter implements IRouter {
     index?: ObstacleIndex | null
   ): RoutedPath | null {
     const gridSize = options.gridSize ?? 10;
-    const margin = options.obstacleMargin ?? 20; // Margin around obstacles
+    const requestedMargin = options.obstacleMargin ?? 20;
     const maxIterations = options.maxIterations ?? 10000;
-    const gapOffset = 30; // Distance to move away from port (must be > margin to clear obstacle boundary)
+
+    const clearances: number[] = [requestedMargin];
+    for (const next of [Math.ceil(requestedMargin / 2), Math.ceil(requestedMargin / 4), 2]) {
+      if (next >= 2 && next < clearances[clearances.length - 1]) clearances.push(next);
+    }
+
+    for (const margin of clearances) {
+      const attempt = this.attemptAvoidanceRoute(
+        start, end, obstacles, gridSize, margin, maxIterations, options,
+        sourceDirection, targetDirection, index
+      );
+      if (attempt) return attempt;
+    }
+
+    debugLog(`⚠️ A* pathfinding failed at every clearance (${clearances.join(', ')}):`, {
+      start, end, obstacleCount: obstacles.length, gridSize,
+    });
+    debugLog(`   Falling back to simple orthogonal route (no obstacle avoidance)`);
+    return this.simpleOrthogonalRoute(start, end, gridSize, options.costs?.bends ?? 10, sourceDirection, targetDirection);
+  }
+
+  /** One avoidance attempt at one clearance. Null means "not at this margin". */
+  private attemptAvoidanceRoute(
+    start: Point,
+    end: Point,
+    obstacles: Obstacle[],
+    gridSize: number,
+    margin: number,
+    maxIterations: number,
+    options: any,
+    sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
+    targetDirection?: 'left' | 'right' | 'top' | 'bottom',
+    index?: ObstacleIndex | null
+  ): RoutedPath | null {
+    // The port stub scales WITH the clearance — it exists to clear the obstacle
+    // boundary, so it must stay just past the margin. The old fixed 30 was the
+    // other half of the tight-row failure: it jumped clean over a 20-unit gap
+    // into the neighbour's body before pathfinding even began.
+    const gapOffset = Math.max(margin + 2, 8);
 
     // Apply gap offset to move away from ports before pathfinding
     // This ensures paths don't start/end directly on node borders
@@ -964,14 +1020,20 @@ export class OrthogonalRouter implements IRouter {
     let gridEnd = this.snapToGrid(targetOffset, searchGrid);
 
     // CRITICAL FIX: Validate start/end points are not inside obstacles
-    // If grid snapping moved them into an obstacle, adjust outward
+    // If grid snapping moved them into an obstacle, adjust outward. A start or
+    // end that CANNOT be made valid fails this attempt — the caller retries at
+    // a smaller clearance, where the same point may be perfectly standable.
     if (this.collidesWithObstacles(gridStart, obstacles, margin, index)) {
       debugLog(`⚠️ Grid start point inside obstacle, adjusting...`);
-      gridStart = this.findNearestValidPoint(gridStart, sourceDirection, obstacles, margin, searchGrid, index);
+      const adjusted = this.findNearestValidPoint(gridStart, sourceDirection, obstacles, margin, searchGrid, index);
+      if (!adjusted) return null;
+      gridStart = adjusted;
     }
     if (this.collidesWithObstacles(gridEnd, obstacles, margin, index)) {
       debugLog(`⚠️ Grid end point inside obstacle, adjusting...`);
-      gridEnd = this.findNearestValidPoint(gridEnd, targetDirection, obstacles, margin, searchGrid, index);
+      const adjusted = this.findNearestValidPoint(gridEnd, targetDirection, obstacles, margin, searchGrid, index);
+      if (!adjusted) return null;
+      gridEnd = adjusted;
     }
 
     // Use A* to find path between offset points. `searchGrid` — NOT `gridSize` —
@@ -988,20 +1050,9 @@ export class OrthogonalRouter implements IRouter {
       index
     );
 
-    if (!path || path.length === 0) {
-      // IMPROVED: Log why pathfinding failed and what we're doing
-      debugLog(`⚠️ A* pathfinding failed for link routing:`, {
-        start: gridStart,
-        end: gridEnd,
-        obstacleCount: obstacles.length,
-        gridSize,
-        margin
-      });
-      debugLog(`   Falling back to simple orthogonal route (no obstacle avoidance)`);
-
-      // Fallback to simple route if pathfinding fails
-      return this.simpleOrthogonalRoute(start, end, gridSize, options.costs?.bends ?? 10, sourceDirection, targetDirection);
-    }
+    // No path at this clearance — the ATTEMPT fails, not the routing: the
+    // caller has smaller clearances to try before conceding to the fallback.
+    if (!path || path.length === 0) return null;
 
     // Prepend actual start point and append actual end point
     // This ensures the path connects to the exact port positions
@@ -1345,7 +1396,7 @@ export class OrthogonalRouter implements IRouter {
     margin: number,
     gridSize: number,
     index?: ObstacleIndex | null
-  ): Point {
+  ): Point | null {
     // Try moving outward in the port direction to find a valid point
     const maxAttempts = 10;
     let current = { ...point };
@@ -1388,9 +1439,14 @@ export class OrthogonalRouter implements IRouter {
       }
     }
 
-    // If all attempts failed, return original point (pathfinding will fail, but at least we tried)
-    debugLog(`   ✗ Could not find valid point after ${maxAttempts} attempts, using original`);
-    return point;
+    // NULL, not the original point. This used to return the colliding point with
+    // a comment admitting "pathfinding will fail" — and it did, silently, and the
+    // caller then fell back to a route drawn straight through the obstacle. A
+    // start we cannot stand on is this ATTEMPT failing, and the caller has a
+    // cheaper clearance to try next; poisoning A* with an unreachable start
+    // helped nobody.
+    debugLog(`   ✗ Could not find valid point after ${maxAttempts} attempts`);
+    return null;
   }
 
   /**
