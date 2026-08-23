@@ -541,3 +541,66 @@ describe('SpatialIndex (Phase 5.1 - Viewport Virtualization)', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// update()'s early-out.
+//
+// Cells are 100 world units wide and a drag moves a node a pixel or two per
+// frame, so re-bucketing on every update is almost always work with no result —
+// dragging 2,000 selected nodes, 0 of 2,000 changed cells on a 1px move while
+// every one still paid a remove + add. update() now compares the cell RANGE
+// first and skips the pair when it is unchanged.
+//
+// The risk of that shortcut is an entity whose stored BOUNDS go stale while its
+// buckets stay right, so these tests care much more about queries still being
+// correct than about the skip happening.
+describe('SpatialIndex.update — skipping work that would change nothing', () => {
+  interface Box { id: string; x: number; y: number; width: number; height: number }
+  const make = () =>
+    new SpatialIndex<Box>({
+      cellSize: 100,
+      getBounds: (b) => ({ x: b.x, y: b.y, width: b.width, height: b.height }),
+    });
+
+  it('a sub-cell move still reports the NEW position', () => {
+    const index = make();
+    index.add({ id: 'a', x: 10, y: 10, width: 20, height: 20 });
+
+    // Same cell, different place inside it.
+    index.update({ id: 'a', x: 60, y: 60, width: 20, height: 20 });
+
+    // The query filters on real bounds, so a stale entity would show up here.
+    expect(index.queryRegion({ x: 55, y: 55, width: 10, height: 10 })).toHaveLength(1);
+    expect(index.queryRegion({ x: 5, y: 5, width: 10, height: 10 })).toHaveLength(0);
+    expect(index.get('a')!.x).toBe(60);
+  });
+
+  it('a move ACROSS a cell boundary re-buckets', () => {
+    const index = make();
+    index.add({ id: 'a', x: 10, y: 10, width: 20, height: 20 });
+
+    index.update({ id: 'a', x: 640, y: 420, width: 20, height: 20 });
+
+    expect(index.queryRegion({ x: 630, y: 410, width: 40, height: 40 })).toHaveLength(1);
+    expect(index.queryRegion({ x: 0, y: 0, width: 100, height: 100 })).toHaveLength(0);
+  });
+
+  it('a resize that grows into new cells re-buckets', () => {
+    const index = make();
+    index.add({ id: 'a', x: 10, y: 10, width: 20, height: 20 });
+
+    index.update({ id: 'a', x: 10, y: 10, width: 400, height: 400 });
+
+    // Reaches a cell it did not occupy before.
+    expect(index.queryRegion({ x: 350, y: 350, width: 20, height: 20 })).toHaveLength(1);
+  });
+
+  it('removing after an early-out update still removes', () => {
+    const index = make();
+    index.add({ id: 'a', x: 10, y: 10, width: 20, height: 20 });
+    index.update({ id: 'a', x: 12, y: 12, width: 20, height: 20 });
+
+    expect(index.remove('a')).toBe(true);
+    expect(index.queryRegion({ x: 0, y: 0, width: 100, height: 100 })).toHaveLength(0);
+  });
+});
