@@ -47,21 +47,45 @@ const MAX_GRID_COARSENING = 4;
 class FScoreHeap {
   private readonly keys: string[] = [];
   private readonly scores: number[] = [];
+  /**
+   * Tie-break rank, carried alongside the score.
+   *
+   * TIES ARE THE COMMON CASE on a uniform grid — most frontier cells share an
+   * fScore — so whatever breaks them decides the route's shape. The Set this
+   * replaced was scanned with a strict `<`, which meant "the earliest-inserted
+   * cell wins", and routes were built on that without anyone writing it down: an
+   * obstacle with equal-cost detours to either side was always rounded the same
+   * way. A bare heap breaks ties arbitrarily, which silently mirrored some routes
+   * — the jump-over gallery demo caught it, because a route that had gone right
+   * of an obstacle went left instead and started crossing a neighbouring link.
+   *
+   * So the order is made explicit and stable rather than incidental: equal
+   * scores are resolved by first-insertion rank, exactly as the scan did.
+   */
+  private readonly ranks: number[] = [];
 
   get size(): number {
     return this.keys.length;
   }
 
-  push(key: string, score: number): void {
+  /** `rank` orders equal scores; pass each key's first-insertion sequence. */
+  push(key: string, score: number, rank: number): void {
     this.keys.push(key);
     this.scores.push(score);
+    this.ranks.push(rank);
     let i = this.keys.length - 1;
     while (i > 0) {
       const parent = (i - 1) >> 1;
-      if (this.scores[parent] <= this.scores[i]) break;
+      if (!this.before(i, parent)) break;
       this.swap(parent, i);
       i = parent;
     }
+  }
+
+  /** Does entry `a` come before entry `b`? Score first, insertion rank second. */
+  private before(a: number, b: number): boolean {
+    if (this.scores[a] !== this.scores[b]) return this.scores[a] < this.scores[b];
+    return this.ranks[a] < this.ranks[b];
   }
 
   pop(): string | undefined {
@@ -70,17 +94,19 @@ class FScoreHeap {
     const top = this.keys[0];
     const lastKey = this.keys.pop() as string;
     const lastScore = this.scores.pop() as number;
+    const lastRank = this.ranks.pop() as number;
 
     if (this.keys.length > 0) {
       this.keys[0] = lastKey;
       this.scores[0] = lastScore;
+      this.ranks[0] = lastRank;
       let i = 0;
       for (;;) {
         const left = i * 2 + 1;
         const right = left + 1;
         let smallest = i;
-        if (left < this.keys.length && this.scores[left] < this.scores[smallest]) smallest = left;
-        if (right < this.keys.length && this.scores[right] < this.scores[smallest]) smallest = right;
+        if (left < this.keys.length && this.before(left, smallest)) smallest = left;
+        if (right < this.keys.length && this.before(right, smallest)) smallest = right;
         if (smallest === i) break;
         this.swap(smallest, i);
         i = smallest;
@@ -96,6 +122,9 @@ class FScoreHeap {
     const s = this.scores[a];
     this.scores[a] = this.scores[b];
     this.scores[b] = s;
+    const r = this.ranks[a];
+    this.ranks[a] = this.ranks[b];
+    this.ranks[b] = r;
   }
 }
 
@@ -1031,10 +1060,25 @@ export class OrthogonalRouter implements IRouter {
     const cameFrom = new Map<string, Point>();
     const gScore = new Map<string, number>();
 
+    // FIRST-INSERTION ORDER, which is what the Set this replaced iterated in and
+    // therefore what every existing route's shape was decided by. Recorded per
+    // KEY, not per push: re-adding a key to a Set does not move it, so an
+    // improved cell kept its original position in the old scan too.
+    const firstSeen = new Map<string, number>();
+    let seq = 0;
+    const rankOf = (key: string): number => {
+      let rank = firstSeen.get(key);
+      if (rank === undefined) {
+        rank = seq++;
+        firstSeen.set(key, rank);
+      }
+      return rank;
+    };
+
     const startKey = this.pointToKey(start);
     const endKey = this.pointToKey(end);
 
-    openHeap.push(startKey, this.heuristic(start, end));
+    openHeap.push(startKey, this.heuristic(start, end), rankOf(startKey));
     gScore.set(startKey, 0);
 
     let iterations = 0;
@@ -1095,7 +1139,7 @@ export class OrthogonalRouter implements IRouter {
 
         cameFrom.set(neighborKey, current);
         gScore.set(neighborKey, tentativeG);
-        openHeap.push(neighborKey, tentativeG + this.heuristic(neighbor, end));
+        openHeap.push(neighborKey, tentativeG + this.heuristic(neighbor, end), rankOf(neighborKey));
       }
     }
 
