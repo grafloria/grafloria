@@ -44,6 +44,12 @@ jobs:
       # per-platform (font rasterization differs), and the blessed set is
       # macOS. Blessing a Linux golden set in CI is tracked in ROADMAP.md.
       - run: node demos/e2e/gallery-run.mjs
+      # The packaging covenant: what a consumer INSTALLS still works after their
+      # bundler has finished with it. Every other gate here tests source — which
+      # is why `sideEffects: false` was able to let three bundlers strip the
+      # renderer's shape registration, degrading 13 shape types to plain
+      # rectangles in every published build, with the whole suite green.
+      - run: node demos/e2e/packaging-run.mjs
       # The framework-variant covenant: each host app builds and every route
       # paints, or the claim "this demo runs in <framework>" must not ship.
       - run: npx nx build demos-angular

@@ -39,7 +39,9 @@
     "access": "public"
   },
   "module": "./src/index.js",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/index.js"
+  ],
   "files": [
     "src/**/*.js",
     "src/**/*.d.ts"
