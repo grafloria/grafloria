@@ -1,3 +1,4 @@
+import { debugLog } from '../util/debug';
 /**
  * Layout Manager
  *
@@ -217,7 +218,7 @@ export class LayoutManager {
       });
 
       if (lockedNodes.size > 0) {
-        console.log(`📌 ${lockedNodes.size} locked node(s) preserved during layout`);
+        debugLog(`📌 ${lockedNodes.size} locked node(s) preserved during layout`);
       }
 
       // Option 3: Apply animation if requested
@@ -419,7 +420,7 @@ export class LayoutManager {
       recalculated++;
     });
 
-    console.log(`🔗 Recalculated ${recalculated} link paths after layout`);
+    debugLog(`🔗 Recalculated ${recalculated} link paths after layout`);
   }
 
   /**
@@ -681,7 +682,7 @@ export class LayoutManager {
       const contextInfo = layoutContext?.direction
         ? ` using layout-aware algorithm (${layoutContext.direction})`
         : ' using geometric algorithm';
-      console.log(`🎯 Optimized ${optimized} connections${contextInfo}`);
+      debugLog(`🎯 Optimized ${optimized} connections${contextInfo}`);
     }
 
     return optimized;

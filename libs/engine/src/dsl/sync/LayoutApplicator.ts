@@ -1,3 +1,4 @@
+import { debugLog } from '../../util/debug';
 /**
  * Layout Applicator - Applies layout presets to diagrams
  *
@@ -115,15 +116,15 @@ export class LayoutApplicator {
       const suggestion = this.detector.detect(diagram, ast);
 
       if (this.options.debug) {
-        console.log(`[LayoutApplicator] Detected layout: ${suggestion.presetId}`);
-        console.log(`[LayoutApplicator] Confidence: ${suggestion.confidence.toFixed(2)}`);
-        console.log(`[LayoutApplicator] Reasoning: ${suggestion.reasoning}`);
+        debugLog(`[LayoutApplicator] Detected layout: ${suggestion.presetId}`);
+        debugLog(`[LayoutApplicator] Confidence: ${suggestion.confidence.toFixed(2)}`);
+        debugLog(`[LayoutApplicator] Reasoning: ${suggestion.reasoning}`);
       }
 
       // Check confidence threshold
       if (suggestion.confidence < this.options.minConfidence) {
         if (this.options.debug) {
-          console.log(
+          debugLog(
             `[LayoutApplicator] Confidence too low (${suggestion.confidence.toFixed(2)} < ${this.options.minConfidence}), skipping`
           );
         }
@@ -143,7 +144,7 @@ export class LayoutApplicator {
       const applyTime = performance.now() - startTime;
 
       if (this.options.debug) {
-        console.log(`[LayoutApplicator] Layout applied in ${applyTime.toFixed(2)}ms`);
+        debugLog(`[LayoutApplicator] Layout applied in ${applyTime.toFixed(2)}ms`);
       }
 
       return {
@@ -250,7 +251,7 @@ export class LayoutApplicator {
 
     try {
       if (this.options.debug) {
-        console.log(`[LayoutApplicator] Applying custom layout: ${config.type || 'default'}`);
+        debugLog(`[LayoutApplicator] Applying custom layout: ${config.type || 'default'}`);
       }
 
       await diagram.reLayout(config);
@@ -258,7 +259,7 @@ export class LayoutApplicator {
       const applyTime = performance.now() - startTime;
 
       if (this.options.debug) {
-        console.log(`[LayoutApplicator] Custom layout applied in ${applyTime.toFixed(2)}ms`);
+        debugLog(`[LayoutApplicator] Custom layout applied in ${applyTime.toFixed(2)}ms`);
       }
 
       return {
@@ -341,7 +342,7 @@ export class LayoutApplicator {
     this.options.minConfidence = Math.max(0, Math.min(1, threshold));
 
     if (this.options.debug) {
-      console.log(`[LayoutApplicator] Min confidence set to ${this.options.minConfidence.toFixed(2)}`);
+      debugLog(`[LayoutApplicator] Min confidence set to ${this.options.minConfidence.toFixed(2)}`);
     }
   }
 
@@ -352,7 +353,7 @@ export class LayoutApplicator {
     this.options.customLayouts.set(id, config);
 
     if (this.options.debug) {
-      console.log(`[LayoutApplicator] Added custom layout: ${id}`);
+      debugLog(`[LayoutApplicator] Added custom layout: ${id}`);
     }
   }
 
@@ -363,7 +364,7 @@ export class LayoutApplicator {
     const removed = this.options.customLayouts.delete(id);
 
     if (this.options.debug && removed) {
-      console.log(`[LayoutApplicator] Removed custom layout: ${id}`);
+      debugLog(`[LayoutApplicator] Removed custom layout: ${id}`);
     }
 
     return removed;

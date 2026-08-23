@@ -1,3 +1,4 @@
+import { debugLog } from '../util/debug';
 // DiagramEngine - Main orchestrator for diagram functionality
 
 import { EventBus } from '../events/EventBus';
@@ -265,7 +266,7 @@ export class DiagramEngine {
               pathType = 'smooth';
           }
 
-          console.log(`🔗 Creating link with pathType: ${pathType} (from connectionLineStyle: ${this.interactionConfig.connectionLineStyle})`);
+          debugLog(`🔗 Creating link with pathType: ${pathType} (from connectionLineStyle: ${this.interactionConfig.connectionLineStyle})`);
 
           // Create the link manually (same logic as createSmartLink)
           const link = new LinkModel(sourcePort.id, targetPort.id, pathType);
@@ -299,7 +300,7 @@ export class DiagramEngine {
             this.diagram.addLink(link); // constructor-time fallback; unreachable in practice
           }
 
-          console.log('✅ Link created successfully:', link.id, 'from', sourcePort.id, 'to', targetPort.id);
+          debugLog('✅ Link created successfully:', link.id, 'from', sourcePort.id, 'to', targetPort.id);
         } else {
           console.error('❌ Failed to find nodes for ports');
         }
@@ -460,7 +461,7 @@ export class DiagramEngine {
     }
 
     this.liveReroutingEngine.enable();
-    console.log('✅ Live rerouting enabled');
+    debugLog('✅ Live rerouting enabled');
   }
 
   /**
@@ -469,7 +470,7 @@ export class DiagramEngine {
   disableLiveRerouting(): void {
     if (this.liveReroutingEngine) {
       this.liveReroutingEngine.disable();
-      console.log('⚠️ Live rerouting disabled');
+      debugLog('⚠️ Live rerouting disabled');
     }
   }
 

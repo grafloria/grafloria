@@ -1,3 +1,4 @@
+import { debugLog } from '../util/debug';
 /**
  * DSL - Main interface for Mermaid-compatible diagram text parsing
  *
@@ -183,7 +184,7 @@ export class DSL {
       const diagramType = this.detectDiagramType(text);
 
       if (this.options.debug) {
-        console.log(`[DSL] Detected diagram type: ${diagramType}`);
+        debugLog(`[DSL] Detected diagram type: ${diagramType}`);
       }
 
       // Mermaid graph-family types with a real parser of their own (Phase 3).
@@ -225,42 +226,42 @@ export class DSL {
 
       // Phase 4: Parse styles and templates first
       if (this.options.debug) {
-        console.log('[DSL] Phase 4: Parsing styles and templates...');
+        debugLog('[DSL] Phase 4: Parsing styles and templates...');
       }
       const styleDefinitions = this.styleParser.parseStyleDefinitions(text);
       const templateDefinitions = this.templateParser.parseTemplateDefinitions(text);
 
       if (this.options.debug && styleDefinitions.size > 0) {
-        console.log(`[DSL] Found ${styleDefinitions.size} style definitions`);
+        debugLog(`[DSL] Found ${styleDefinitions.size} style definitions`);
       }
       if (this.options.debug && templateDefinitions.size > 0) {
-        console.log(`[DSL] Found ${templateDefinitions.size} template definitions`);
+        debugLog(`[DSL] Found ${templateDefinitions.size} template definitions`);
       }
 
       // Step 1: Lexical analysis
       if (this.options.debug) {
-        console.log('[DSL] Starting lexical analysis...');
+        debugLog('[DSL] Starting lexical analysis...');
       }
       this.lexer = new Lexer(text);
       const tokens = this.lexer.tokenize();
 
       if (this.options.debug) {
-        console.log(`[DSL] Tokenized: ${tokens.length} tokens`);
+        debugLog(`[DSL] Tokenized: ${tokens.length} tokens`);
       }
 
       // Step 2: Parsing
       if (this.options.debug) {
-        console.log('[DSL] Starting parsing...');
+        debugLog('[DSL] Starting parsing...');
       }
       const ast = this.parser.parse(tokens);
 
       if (this.options.debug) {
-        console.log(`[DSL] Parsed AST: ${ast.statements.length} statements`);
+        debugLog(`[DSL] Parsed AST: ${ast.statements.length} statements`);
       }
 
       // Step 3: Transformation
       if (this.options.debug) {
-        console.log('[DSL] Transforming AST to DiagramModel...');
+        debugLog('[DSL] Transforming AST to DiagramModel...');
       }
       const diagram = this.transformer.transform(ast, this.options.transformOptions);
 
@@ -271,7 +272,7 @@ export class DSL {
       const linkCount = diagram.getLinks().length;
 
       if (this.options.debug) {
-        console.log(`[DSL] Created diagram: ${nodeCount} nodes, ${linkCount} links`);
+        debugLog(`[DSL] Created diagram: ${nodeCount} nodes, ${linkCount} links`);
       }
 
       // Step 4: Layout detection and application
@@ -279,16 +280,16 @@ export class DSL {
 
       if (this.options.autoLayout) {
         if (this.options.debug) {
-          console.log('[DSL] Detecting optimal layout...');
+          debugLog('[DSL] Detecting optimal layout...');
         }
 
         layoutSuggestion = this.layoutDetector.detect(diagram, ast);
 
         if (this.options.debug) {
-          console.log(
+          debugLog(
             `[DSL] Layout suggestion: ${layoutSuggestion.presetId} (confidence: ${layoutSuggestion.confidence.toFixed(2)})`
           );
-          console.log(`[DSL] Reasoning: ${layoutSuggestion.reasoning}`);
+          debugLog(`[DSL] Reasoning: ${layoutSuggestion.reasoning}`);
         }
 
         // Store layout suggestion in diagram metadata
@@ -300,7 +301,7 @@ export class DSL {
       const parseTime = performance.now() - startTime;
 
       if (this.options.debug) {
-        console.log(`[DSL] Parse complete in ${parseTime.toFixed(2)}ms`);
+        debugLog(`[DSL] Parse complete in ${parseTime.toFixed(2)}ms`);
       }
 
       return {
@@ -404,7 +405,7 @@ export class DSL {
    */
   generate(diagram: DiagramModel, options?: GeneratorOptions): string {
     if (this.options.debug) {
-      console.log('[DSL] Generating DSL text from diagram...');
+      debugLog('[DSL] Generating DSL text from diagram...');
     }
 
     // A graph-family diagram must be written back in ITS OWN grammar. Handing
@@ -421,7 +422,7 @@ export class DSL {
     const text = this.generator.generate(diagram, options);
 
     if (this.options.debug) {
-      console.log(`[DSL] Generated ${text.split('\n').length} lines of DSL text`);
+      debugLog(`[DSL] Generated ${text.split('\n').length} lines of DSL text`);
     }
 
     return text;
@@ -528,7 +529,7 @@ export class DSL {
   parseERD(text: string): DiagramModel {
     const model = parseMermaidEr(text);
     if (this.options.debug) {
-      console.log(
+      debugLog(
         `[DSL] Parsed ERD: ${model.entities.length} entities, ${model.relationships.length} relationships`
       );
     }
@@ -569,7 +570,7 @@ export class DSL {
   parseUML(text: string): DiagramModel {
     const model = parseMermaidClass(text);
     if (this.options.debug) {
-      console.log(
+      debugLog(
         `[DSL] Parsed UML: ${model.classes.length} classes, ${model.relationships.length} relationships`
       );
     }

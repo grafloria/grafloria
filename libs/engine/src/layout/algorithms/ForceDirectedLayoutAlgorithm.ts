@@ -1,3 +1,4 @@
+import { debugLog } from '../../util/debug';
 // ForceDirectedLayoutAlgorithm - Physics-based layout using force simulation
 // Based on Fruchterman-Reingold algorithm
 
@@ -256,7 +257,7 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
     const baseK = Math.sqrt(area / nodes.length);
     const k = baseK * (smartSpacing.horizontal / 36); // Scale by spacing factor
 
-    console.log(`🧲 Force-Directed: ${nodes.length} nodes, k=${k.toFixed(2)}, area=${area}, spacing=${smartSpacing.horizontal}px`);
+    debugLog(`🧲 Force-Directed: ${nodes.length} nodes, k=${k.toFixed(2)}, area=${area}, spacing=${smartSpacing.horizontal}px`);
 
     // Simulation parameters
     let temperature = this.forceOptions.temperature || 100;
@@ -393,7 +394,7 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
         positions.set(node.id, transformedPos);
       });
 
-      console.log(`🧲 Force-Directed layout: ${nodes.length} nodes fit in viewport (scale: ${transform.scale.toFixed(2)})`);
+      debugLog(`🧲 Force-Directed layout: ${nodes.length} nodes fit in viewport (scale: ${transform.scale.toFixed(2)})`);
     } else {
       // No viewport - normalize to positive coordinates with padding (backward compatibility)
       let minX = Infinity;
@@ -417,10 +418,10 @@ export class ForceDirectedLayoutAlgorithm extends BaseLayoutAlgorithm implements
   }
 
   onActivate(): void {
-    console.log('🧲 Force-Directed layout activated');
+    debugLog('🧲 Force-Directed layout activated');
   }
 
   onDeactivate(): void {
-    console.log('🧲 Force-Directed layout deactivated');
+    debugLog('🧲 Force-Directed layout deactivated');
   }
 }

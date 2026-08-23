@@ -1,3 +1,4 @@
+import { debugLog } from '../../util/debug';
 // OrthogonalRouter - Right-angle routing with obstacle avoidance
 
 import type { IRouter, RouteRequest, RoutedPath, RoutePoint, Obstacle } from '../types';
@@ -936,11 +937,11 @@ export class OrthogonalRouter implements IRouter {
     // CRITICAL FIX: Validate start/end points are not inside obstacles
     // If grid snapping moved them into an obstacle, adjust outward
     if (this.collidesWithObstacles(gridStart, obstacles, margin, index)) {
-      console.debug(`⚠️ Grid start point inside obstacle, adjusting...`);
+      debugLog(`⚠️ Grid start point inside obstacle, adjusting...`);
       gridStart = this.findNearestValidPoint(gridStart, sourceDirection, obstacles, margin, searchGrid, index);
     }
     if (this.collidesWithObstacles(gridEnd, obstacles, margin, index)) {
-      console.debug(`⚠️ Grid end point inside obstacle, adjusting...`);
+      debugLog(`⚠️ Grid end point inside obstacle, adjusting...`);
       gridEnd = this.findNearestValidPoint(gridEnd, targetDirection, obstacles, margin, searchGrid, index);
     }
 
@@ -960,14 +961,14 @@ export class OrthogonalRouter implements IRouter {
 
     if (!path || path.length === 0) {
       // IMPROVED: Log why pathfinding failed and what we're doing
-      console.debug(`⚠️ A* pathfinding failed for link routing:`, {
+      debugLog(`⚠️ A* pathfinding failed for link routing:`, {
         start: gridStart,
         end: gridEnd,
         obstacleCount: obstacles.length,
         gridSize,
         margin
       });
-      console.debug(`   Falling back to simple orthogonal route (no obstacle avoidance)`);
+      debugLog(`   Falling back to simple orthogonal route (no obstacle avoidance)`);
 
       // Fallback to simple route if pathfinding fails
       return this.simpleOrthogonalRoute(start, end, gridSize, options.costs?.bends ?? 10, sourceDirection, targetDirection);
@@ -1344,7 +1345,7 @@ export class OrthogonalRouter implements IRouter {
     }
 
     // If all attempts failed, return original point (pathfinding will fail, but at least we tried)
-    console.debug(`   ✗ Could not find valid point after ${maxAttempts} attempts, using original`);
+    debugLog(`   ✗ Could not find valid point after ${maxAttempts} attempts, using original`);
     return point;
   }
 

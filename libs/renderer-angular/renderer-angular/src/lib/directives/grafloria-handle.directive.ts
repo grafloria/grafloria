@@ -1,3 +1,4 @@
+import { debugLog } from '@grafloria/engine';
 import {
   Directive,
   ElementRef,
@@ -80,7 +81,7 @@ export class GrafloriaHandleDirective implements AfterViewInit, OnDestroy {
     this.registeredNodeId = nodeId;
     this.registeredHandleId = handleId;
 
-    console.log(
+    debugLog(
       `✅ [GrafloriaHandle] Registered ${this.grafloriaHandle} handle "${handleId}" ` +
       `for node "${nodeId}" at position ${this.handlePosition || 'right'}`
     );
@@ -94,7 +95,7 @@ export class GrafloriaHandleDirective implements AfterViewInit, OnDestroy {
         this.registeredHandleId
       );
 
-      console.log(
+      debugLog(
         `🗑️  [GrafloriaHandle] Unregistered handle "${this.registeredHandleId}" ` +
         `from node "${this.registeredNodeId}"`
       );

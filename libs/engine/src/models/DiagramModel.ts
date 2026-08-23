@@ -1,3 +1,4 @@
+import { debugLog } from '../util/debug';
 // DiagramModel - Root container for all diagram entities
 
 import { DiagramEntity } from './DiagramEntity';
@@ -1769,7 +1770,7 @@ export class DiagramModel extends DiagramEntity {
       this.viewport.zoom
     );
 
-    console.log(`📐 Fit to view: ${nodes.length} nodes, bounds=(${minX.toFixed(1)}, ${minY.toFixed(1)}) to (${maxX.toFixed(1)}, ${maxY.toFixed(1)})`);
+    debugLog(`📐 Fit to view: ${nodes.length} nodes, bounds=(${minX.toFixed(1)}, ${minY.toFixed(1)}) to (${maxX.toFixed(1)}, ${maxY.toFixed(1)})`);
   }
 
   /**
@@ -1826,7 +1827,7 @@ export class DiagramModel extends DiagramEntity {
       Math.max(0.1, Math.min(10, newZoom))
     );
 
-    console.log(`🔍 Zoom to fit: ${nodes.length} nodes, zoom=${newZoom.toFixed(2)}, content=${contentWidth.toFixed(1)}x${contentHeight.toFixed(1)}`);
+    debugLog(`🔍 Zoom to fit: ${nodes.length} nodes, zoom=${newZoom.toFixed(2)}, content=${contentWidth.toFixed(1)}x${contentHeight.toFixed(1)}`);
   }
 
   /**

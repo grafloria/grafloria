@@ -10,6 +10,8 @@ import {
   isConnectionAllowedByGroup,
   SetLinkPointsCommand,
   ReconnectLinkCommand,
+  debugLog,
+  isDebugLogging,
 } from '@grafloria/engine';
 // Wave 6: THE port-position function — hit-test and magnet where you DRAW.
 import { portWorldPosition } from '../svg/port-positioning';
@@ -326,7 +328,7 @@ export class InteractionController {
     // CRITICAL FIX: Debug logging for port detection
     const debugPortDetection = false; // Disabled - working correctly now
     if (debugPortDetection && (portAtPosition || nodeAtPosition)) {
-      console.log('🔍 Hover detection:', {
+      debugLog('🔍 Hover detection:', {
         worldPos: { x: worldX.toFixed(1), y: worldY.toFixed(1) },
         node: nodeAtPosition?.getMetadata('label') || 'none',
         port: portAtPosition ? `${portAtPosition.side} (${portAtPosition.id})` : 'none',
@@ -351,7 +353,7 @@ export class InteractionController {
         node.setState({ hovered: isHovered });
         needsRender = true;
         if (debugPortDetection) {
-          console.log(`  Node ${node.getMetadata('label')} hover: ${wasHovered} → ${isHovered}`);
+          debugLog(`  Node ${node.getMetadata('label')} hover: ${wasHovered} → ${isHovered}`);
         }
       }
     });
@@ -368,8 +370,18 @@ export class InteractionController {
           // CRITICAL FIX: Mark node as dirty when port hover state changes
           // This forces the renderer to regenerate the port VNodes with updated styles
           node.markDirty('port-hover-changed');
-          // TEMPORARY DEBUG: Always log port hover changes to see what's happening
-          console.log(`🔘 Port ${port.side} hover: ${wasHovered} → ${isHovered}`, { nodeLabel: node.getMetadata('label') });
+          // Guarded, not just routed through debugLog: this runs on a pointer
+          // move, and the template and object literal would be built on every
+          // hover transition even with logging off. (It was marked "TEMPORARY
+          // DEBUG: Always log" and shipped that way — it printed the consumer's
+          // own node labels into their production console whenever the mouse
+          // crossed a port. Its two neighbours in this same function were
+          // already gated; only this one was not.)
+          if (isDebugLogging()) {
+            debugLog(`Port ${port.side} hover: ${wasHovered} → ${isHovered}`, {
+              nodeLabel: node.getMetadata('label'),
+            });
+          }
         }
       });
     });
@@ -479,7 +491,7 @@ export class InteractionController {
       const connectionStateManager = engine.getConnectionStateManager();
       connectionStateManager.startConnection(port, { x: worldX, y: worldY });
 
-      console.debug('🔌 Connection started:', {
+      debugLog('🔌 Connection started:', {
         portId: port.id,
         portType: port.type,
         portSide: port.side,
@@ -640,9 +652,9 @@ export class InteractionController {
       success = result.success;
 
       if (success) {
-        console.debug('✅ Connection completed:', this.connectionSourcePort.id, '->', targetPort.id);
+        debugLog('✅ Connection completed:', this.connectionSourcePort.id, '->', targetPort.id);
       } else {
-        console.log('❌ Connection failed: Invalid connection');
+        debugLog('❌ Connection failed: Invalid connection');
       }
     }
 
@@ -675,7 +687,7 @@ export class InteractionController {
     // Clear port highlights
     this.clearPortHighlights(engine);
 
-    console.debug('🚫 Connection cancelled');
+    debugLog('🚫 Connection cancelled');
   }
 
   /**
@@ -713,7 +725,7 @@ export class InteractionController {
     });
     this.updateReconnectPortHighlights(engine);
 
-    console.debug(`🔗 Link reconnection started: ${endpoint} endpoint of link ${link.id}`);
+    debugLog(`🔗 Link reconnection started: ${endpoint} endpoint of link ${link.id}`);
   }
 
   /**
@@ -840,7 +852,7 @@ export class InteractionController {
     // Reject: no drop target, or an invalid one → restore original connection.
     if (!targetPort ||
         !this.isValidReconnectionTarget(this.reconnectingLink, this.reconnectingEndpoint, targetPort, engine)) {
-      console.debug('🚫 Link reconnection rejected: no valid target port');
+      debugLog('🚫 Link reconnection rejected: no valid target port');
       this.cancelLinkReconnection(engine);
       return false;
     }
@@ -862,7 +874,7 @@ export class InteractionController {
     }
 
     if (!targetNode) {
-      console.log('❌ Link reconnection failed: Target node not found');
+      debugLog('❌ Link reconnection failed: Target node not found');
       this.cancelLinkReconnection(engine);
       return false;
     }
@@ -923,7 +935,7 @@ export class InteractionController {
       }
     }
 
-    console.debug(`✅ Link reconnected: ${this.reconnectingEndpoint} endpoint to port ${targetPort.id}`);
+    debugLog(`✅ Link reconnected: ${this.reconnectingEndpoint} endpoint to port ${targetPort.id}`);
 
     // Cleanup (clears preview + highlights + state)
     this.resetReconnectionState(engine);
@@ -938,7 +950,7 @@ export class InteractionController {
   cancelLinkReconnection(engine: DiagramEngine): void {
     if (!this.isReconnectingLink) return;
     this.resetReconnectionState(engine);
-    console.debug('🚫 Link reconnection cancelled');
+    debugLog('🚫 Link reconnection cancelled');
   }
 
   /**
@@ -1049,7 +1061,7 @@ export class InteractionController {
     this.isDraggingLabel = true;
     this.editingLabelLink = link;
     this.editingLabelIndex = labelIndex;
-    console.log(`🏷️ Started dragging label ${labelIndex} on link ${link.id}`);
+    debugLog(`🏷️ Started dragging label ${labelIndex} on link ${link.id}`);
   }
 
   /**
@@ -1079,7 +1091,7 @@ export class InteractionController {
    */
   endLabelDrag(): void {
     if (this.isDraggingLabel) {
-      console.log(`🏷️ Ended dragging label ${this.editingLabelIndex} on link ${this.editingLabelLink?.id}`);
+      debugLog(`🏷️ Ended dragging label ${this.editingLabelIndex} on link ${this.editingLabelLink?.id}`);
     }
     this.isDraggingLabel = false;
     this.editingLabelLink = null;
@@ -1109,10 +1121,10 @@ export class InteractionController {
     // Toggle or select this link
     if (multiSelect && link.state === 'selected') {
       link.setState('default');
-      console.debug('🔗 Link deselected:', link.id);
+      debugLog('🔗 Link deselected:', link.id);
     } else {
       link.setState('selected');
-      console.debug('🔗 Link selected:', link.id);
+      debugLog('🔗 Link selected:', link.id);
     }
   }
 
@@ -1131,7 +1143,7 @@ export class InteractionController {
     // Remove the link
     diagram.removeLink(selectedLink.id);
 
-    console.log('🗑️ Link deleted:', selectedLink.id);
+    debugLog('🗑️ Link deleted:', selectedLink.id);
     return true;
   }
 
@@ -1660,7 +1672,7 @@ export class InteractionController {
     this.editingWaypointIndex = waypointIndex;
     // wave12: snapshot the path BEFORE the drag so end can commit one undoable FROM→TO step.
     this.waypointDragStartPoints = link.points.map((p) => ({ ...p }));
-    console.log(`🔵 Started dragging waypoint ${waypointIndex} on link ${link.id}`);
+    debugLog(`🔵 Started dragging waypoint ${waypointIndex} on link ${link.id}`);
   }
 
   /**
@@ -1685,7 +1697,7 @@ export class InteractionController {
     if (newPoints) {
       this.editingLink.setPoints(newPoints);
       this.editingLink.setMetadata('hasManualWaypoints', true);
-      console.log(`🔵 Moved waypoint ${this.editingWaypointIndex} to (${worldX.toFixed(1)}, ${worldY.toFixed(1)})`);
+      debugLog(`🔵 Moved waypoint ${this.editingWaypointIndex} to (${worldX.toFixed(1)}, ${worldY.toFixed(1)})`);
       return true;
     }
 
@@ -1697,7 +1709,7 @@ export class InteractionController {
    */
   endWaypointDrag(engine?: DiagramEngine): void {
     if (this.isDraggingWaypoint) {
-      console.log(`🔵 Ended dragging waypoint ${this.editingWaypointIndex} on link ${this.editingLink?.id}`);
+      debugLog(`🔵 Ended dragging waypoint ${this.editingWaypointIndex} on link ${this.editingLink?.id}`);
 
       // wave12: commit the finished gesture as ONE undoable step. The live moveWaypoint
       // already applied the final points, so SetLinkPointsCommand's execute() re-sets the
@@ -1736,7 +1748,7 @@ export class InteractionController {
     if (result) {
       link.setPoints(result.newPoints);
       link.setMetadata('hasManualWaypoints', true);
-      console.log(`🟢 Added waypoint at index ${result.waypointIndex} on link ${link.id}`);
+      debugLog(`🟢 Added waypoint at index ${result.waypointIndex} on link ${link.id}`);
       return true;
     }
 
@@ -1759,7 +1771,7 @@ export class InteractionController {
       if (newPoints.length <= 2) {
         link.setMetadata('hasManualWaypoints', false);
       }
-      console.log(`🔴 Removed waypoint at index ${waypointIndex} from link ${link.id}`);
+      debugLog(`🔴 Removed waypoint at index ${waypointIndex} from link ${link.id}`);
       return true;
     }
 
@@ -1913,7 +1925,7 @@ export class InteractionController {
     this.editingControlPointLink = link;
     this.editingControlPointSegmentIndex = segmentIndex;
     this.editingControlPointType = controlType;
-    console.log(`🟢 Started dragging ${controlType} of segment ${segmentIndex} on link ${link.id}`);
+    debugLog(`🟢 Started dragging ${controlType} of segment ${segmentIndex} on link ${link.id}`);
   }
 
   /**
@@ -1943,7 +1955,7 @@ export class InteractionController {
       this.editingControlPointLink.segments = newSegments;
       // Mark link as dirty to trigger re-render with updated segments
       this.editingControlPointLink.markDirty();
-      console.log(
+      debugLog(
         `🟢 Moved ${this.editingControlPointType} of segment ${this.editingControlPointSegmentIndex} to (${worldX.toFixed(1)}, ${worldY.toFixed(1)})`
       );
       return true;
@@ -1957,7 +1969,7 @@ export class InteractionController {
    */
   endControlPointDrag(): void {
     if (this.isDraggingControlPoint) {
-      console.log(
+      debugLog(
         `🟢 Ended dragging ${this.editingControlPointType} of segment ${this.editingControlPointSegmentIndex} on link ${this.editingControlPointLink?.id}`
       );
     }
@@ -2013,7 +2025,7 @@ export class InteractionController {
       // For now, we don't support "deleting" control points
       // Control points are intrinsic to bezier curves
       // User would need to change pathType instead
-      console.log('⚠️ Control points cannot be deleted, only moved');
+      debugLog('⚠️ Control points cannot be deleted, only moved');
       return false;
     }
     return false;
