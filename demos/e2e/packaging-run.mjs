@@ -23,7 +23,7 @@
 // esbuild in production mode and checks the behaviour survived.
 
 import { execSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync, readdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -74,8 +74,22 @@ try {
   // developer machine — where a stale `index.d.ts` from an earlier release was
   // still lying around — while failing on CI.)
   console.log('packaging: building and packing…');
-  const tarballs = [];
-  for (const pkg of ['engine', 'renderer']) {
+  const PACKAGES = ['engine', 'renderer'];
+
+  // ALL the compiling first, THEN all the extension-fixing, THEN all the packing.
+  // The three passes must not interleave, and this is not tidiness — it is the
+  // only order that produces a correct package.
+  //
+  // The renderer's release build pulls engine `.ts` sources into its program
+  // (that is what its TS6059 errors are) and RE-EMITS engine's `.js` alongside
+  // its own — without extensions, undoing the fixer that had already run over
+  // engine. Build-fix-pack per package therefore packs a correct engine and then
+  // silently corrupts it on the next iteration, and anything that inspects the
+  // working tree afterwards is looking at the corrupted version. That is exactly
+  // how `@grafloria/engine@0.3.4` shipped with 668 unresolvable specifiers: the
+  // gate packed engine before the clobber and passed, and `npm publish` ran after
+  // it and shipped the clobber.
+  for (const pkg of PACKAGES) {
     const src = join(REPO, 'libs', pkg);
     // tsc's EXIT CODE is not the verdict here, and deliberately so: the release
     // configs set `noEmitOnError: false`, and the renderer's build reports TS6059
@@ -88,8 +102,13 @@ try {
     } catch {
       console.log(`  (${pkg}: tsc reported errors; continuing, since the emit is what is under test)`);
     }
-    run(`node ${join(REPO, 'tools', 'fix-esm-extensions.mjs')} ${join(src, 'src')}`, REPO);
-    const out = run('npm pack --pack-destination ' + work, src);
+  }
+  for (const pkg of PACKAGES) {
+    run(`node ${join(REPO, 'tools', 'fix-esm-extensions.mjs')} ${join(REPO, 'libs', pkg, 'src')}`, REPO);
+  }
+  const tarballs = [];
+  for (const pkg of PACKAGES) {
+    const out = run('npm pack --pack-destination ' + work, join(REPO, 'libs', pkg));
     tarballs.push(join(work, out.trim().split('\n').pop()));
   }
 
@@ -107,7 +126,14 @@ try {
   // satisfied by a fallback, whereas the path data is the shape or it is not.
   writeFileSync(
     join(consumer, 'entry.mjs'),
-    `import { renderToStaticSVG, hasShape } from '@grafloria/renderer';
+    `// Importing BOTH entries matters: Node ESM does not guess extensions, so a
+// package with \`from './types'\` anywhere on its import graph is a hard
+// ERR_MODULE_NOT_FOUND for anyone not using a bundler — while every bundled
+// check stays green. engine@0.3.4 shipped 668 of those. Loading each entry for
+// real is the only check that cannot be fooled, and it is why this line imports
+// the engine directly rather than relying on renderer to pull it in.
+import '@grafloria/engine';
+import { renderToStaticSVG, hasShape } from '@grafloria/renderer';
 const NOTATION = ['delay', 'display', 'summing-junction', 'sync-bar', 'final-node'];
 const missing = NOTATION.filter((s) => !hasShape(s));
 const out = renderToStaticSVG(
