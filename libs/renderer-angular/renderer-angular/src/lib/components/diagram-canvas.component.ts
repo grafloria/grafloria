@@ -559,8 +559,22 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     const diagram = this.eng?.getDiagram();
     if (!diagram) return undefined;
     const result = importDiagramText(text, options as never);
-    applyNodes(diagram, result.diagram.getNodes().map((n) => toNodeSpec(n)));
-    applyEdges(diagram, result.diagram.getLinks().map((l) => toEdgeSpec(l)));
+    // The imported MODELS, not spec projections of them — see the same call in
+    // createDiagram's loadText. Projecting through toNodeSpec/toEdgeSpec drops
+    // custom ports, styles and all metadata but `label`, which turned "open a
+    // saved file" into a quiet data loss.
+    applyNodes(diagram, result.diagram.getNodes());
+    applyEdges(diagram, result.diagram.getLinks());
+
+    // Groups ride in neither collection, so they need their own reconcile.
+    const incoming = result.diagram.getGroups();
+    const wanted = new Set(incoming.map((g) => g.id));
+    for (const existing of diagram.getGroups()) {
+      if (!wanted.has(existing.id)) diagram.removeGroup(existing.id);
+    }
+    for (const group of incoming) {
+      if (!diagram.getGroup(group.id)) diagram.addGroup(group);
+    }
     return result;
   }
 
