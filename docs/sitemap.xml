@@ -47,18 +47,19 @@
   <url><loc>https://grafloria.com/alternatives/gridstack/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/alternatives/jointjs/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/alternatives/mermaid/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/alternatives/react-flow-for-angular/</loc><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/alternatives/react-flow/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/a-dashboard-is-three-problems/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/blog/auto-layout-you-dont-have-to-build/</loc><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/blog/build-a-workflow-editor-in-vue/</loc><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/blog/custom-nodes-without-the-props-mystery/</loc><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/blog/draggable-edges-that-stay-routed/</loc><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/auto-layout-you-dont-have-to-build/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/build-a-workflow-editor-in-vue/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/custom-nodes-without-the-props-mystery/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/draggable-edges-that-stay-routed/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/obstacle-avoiding-edge-routing/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/blog/the-angular-diagram-library-graveyard/</loc><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/the-angular-diagram-library-graveyard/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/ways-a-diagram-can-lie/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/when-mermaid-diagrams-grow-up/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/blog/why-nesting-breaks-flow-libraries/</loc><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/why-nesting-breaks-flow-libraries/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/collab/comments.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/collab/conflict-resolution.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/collab/live-cursors.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>

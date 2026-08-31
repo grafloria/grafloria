@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>React Flow alternative for Angular — Grafloria (native component, MIT)</title>
+<meta name="description" content="A native Angular alternative to React Flow: same mental model — nodes and edges as data, custom nodes as templates — plus obstacle-avoiding routing, auto-layout, undo and collaboration. MIT, no pro tier.">
+<link rel="canonical" href="https://grafloria.com/alternatives/react-flow-for-angular/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="React Flow alternative for Angular — Grafloria (native component, MIT)">
+<meta property="og:description" content="A native Angular alternative to React Flow: same mental model — nodes and edges as data, custom nodes as templates — plus obstacle-avoiding routing, auto-layout, undo and collaboration. MIT, no pro tier.">
+<meta property="og:url" content="https://grafloria.com/alternatives/react-flow-for-angular/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "WebPage", "name": "React Flow alternative for Angular \u2014 Grafloria (native component, MIT)", "url": "https://grafloria.com/alternatives/react-flow-for-angular/", "description": "A native Angular alternative to React Flow: same mental model \u2014 nodes and edges as data, custom nodes as templates \u2014 plus obstacle-avoiding routing, auto-layout, undo and collaboration. MIT, no pro tier."}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Alternatives", "item": "https://grafloria.com/alternatives/"}, {"@type": "ListItem", "position": 2, "name": "React Flow for Angular", "item": "https://grafloria.com/alternatives/react-flow-for-angular/"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Can I use React Flow in an Angular app?", "acceptedAnswer": {"@type": "Answer", "text": "Only by embedding a React runtime inside Angular and bridging every prop and event across the boundary. It works, but you ship two frameworks, lose Angular templates and DI inside nodes, and debug change detection at the seam. A native component avoids all of it."}}, {"@type": "Question", "name": "Is Grafloria's Angular support a wrapper around React?", "acceptedAnswer": {"@type": "Answer", "text": "No. @grafloria/angular is a native Angular component over a framework-agnostic TypeScript engine. Custom nodes are Angular templates with full DI; there is no React anywhere in the dependency tree."}}, {"@type": "Question", "name": "Is it actually free?", "acceptedAnswer": {"@type": "Answer", "text": "MIT, all of it. Undo/redo, obstacle-avoiding routing, auto-layout, export and CRDT collaboration are in the one public package \u2014 there is no pro tier where the good parts live."}}]}]}</script>
+<style>
+  :root { --indigo:#3B52D9; --indigo-deep:#2A3CA8; --indigo-soft:#94A5F0; --indigo-wash:#EEF1FE;
+    --ink:#232A3D; --slate:#5A6478; --line:#E3E7F2; --bg:#FCFCFF; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; line-height:1.6; }
+  .wrap { max-width:980px; margin:0 auto; padding:0 24px; }
+  a { color:var(--indigo); text-decoration:none; } a:hover { text-decoration:underline; }
+  code, pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  header { padding:20px 0; border-bottom:1px solid var(--line); background:#fff; }
+  .nav { display:flex; align-items:center; gap:12px; max-width:1220px; margin:0 auto; padding:0 24px; }
+  .nav img { width:34px; height:34px; }
+  .nav .name { font-weight:700; font-size:20px; letter-spacing:-.3px; } .nav .name a { color:var(--ink); }
+  .nav .links { margin-left:auto; display:flex; gap:22px; font-size:15px; font-weight:500; flex-wrap:wrap; }
+  h1 { font-size:clamp(28px,4.4vw,42px); font-weight:800; letter-spacing:-1px; line-height:1.14; text-wrap:balance; margin-top:48px; }
+  .lede { margin:14px 0 8px; color:var(--slate); font-size:17px; max-width:74ch; }
+  .lede b { color:var(--ink); }
+  h2 { font-size:23px; font-weight:750; letter-spacing:-.4px; margin:44px 0 10px; }
+  p, li { font-size:15.5px; } p { margin:10px 0; max-width:78ch; }
+  ul { margin:10px 0 10px 22px; } li { margin:5px 0; max-width:74ch; }
+  p code, li code, td code { font-size:13px; background:var(--indigo-wash); padding:1px 5px; border-radius:5px; color:var(--indigo-deep); }
+  .callout { margin:18px 0; border:1px solid var(--line); border-left:3px solid var(--indigo);
+    border-radius:12px; background:#fff; padding:16px 20px; }
+  .callout h3 { font-size:16px; font-weight:700; margin-bottom:5px; }
+  .callout p { font-size:14.5px; color:var(--slate); margin:0; }
+  .tablewrap { overflow-x:auto; margin:14px 0; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { text-align:left; padding:8px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--slate); }
+  td.us { background:var(--indigo-wash); }
+  pre { border:1px solid var(--line); border-radius:12px; background:#fff; padding:14px 16px;
+    overflow-x:auto; font-size:13px; line-height:1.62; color:#2C3346; margin:14px 0; }
+  .cta { margin:44px 0 64px; display:flex; gap:10px; flex-wrap:wrap; }
+  .btn { display:inline-block; padding:11px 22px; border-radius:10px; font-weight:600; font-size:15px; }
+  .btn.primary { background:var(--indigo); color:#fff; } .btn.primary:hover { background:var(--indigo-deep); text-decoration:none; }
+  .btn.ghost { border:1.5px solid var(--line); color:var(--ink); background:#fff; }
+  .fine { margin:0 0 56px; font-size:13px; color:var(--slate); max-width:80ch; }
+  footer { border-top:1px solid var(--line); padding:30px 0 40px; color:var(--slate); font-size:14px; background:#fff; }
+  footer .wrap { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+  <main class="wrap">
+    <h1>React Flow alternative for Angular</h1>
+    <p class="lede">React Flow is the benchmark for node-based UIs — and it is React-only, by design.
+    If your app is Angular, your choices are wrapping a React runtime inside it or using something
+    native. <b>Grafloria is the native option that keeps React Flow's mental model</b>: nodes and
+    edges as data, custom nodes as templates, one component to mount.</p>
+
+    <h2>Why not just wrap React Flow?</h2>
+    <p>You can — <code>createRoot</code> inside an Angular host, props bridged by hand. Teams that
+    try it hit the same three walls:</p>
+    <ul>
+      <li><b>Two frameworks in the bundle.</b> React + ReactDOM ride along inside your Angular app,
+      and every upgrade of either side is now your integration problem.</li>
+      <li><b>Your nodes stop being Angular.</b> Custom nodes are the whole point of a flow builder,
+      and inside the wrapper they are React components — no Angular templates, no DI, no pipes,
+      no signals.</li>
+      <li><b>Change detection at the seam.</b> State lives on both sides of the boundary, and the
+      bugs live exactly on it.</li>
+    </ul>
+
+    <h2>The React Flow mental model, native in Angular</h2>
+    <p>If you know React Flow, you already know this API. The concepts map one-to-one:</p>
+    <div class="tablewrap"><table>
+      <tr><th>React Flow</th><th>Grafloria (Angular)</th></tr>
+      <tr><td><code>nodes</code> / <code>edges</code> arrays</td><td class="us"><code>[(nodes)]</code> / <code>[(edges)]</code> two-way bindings — same shape: <code>id</code>, <code>position</code>, <code>data</code></td></tr>
+      <tr><td><code>onNodesChange</code> + <code>applyNodeChanges</code></td><td class="us">the banana-in-a-box does it; granular events (<code>nodesChange</code>, <code>connect</code>, <code>selectionChange</code>) if you want them</td></tr>
+      <tr><td><code>nodeTypes</code> map of React components</td><td class="us">an <code>ng-template</code> per type with the node as template context — full DI inside</td></tr>
+      <tr><td><code>&lt;Handle&gt;</code> components</td><td class="us"><code>ports</code> on the node spec — data, not JSX, so they serialize with the document</td></tr>
+      <tr><td><code>fitView</code>, minimap, controls</td><td class="us"><code>plugins</code> flag mounts minimap + controls; <code>fitView()</code> on the component</td></tr>
+      <tr><td>subflows via <code>parentId</code> + <code>extent</code></td><td class="us">containers with live drag-adoption in and out, one undo step</td></tr>
+    </table></div>
+
+    <h2>The same flow, both ways</h2>
+    <p>React Flow in React:</p>
+<pre data-lang="typescript">import { ReactFlow, useNodesState, useEdgesState } from '@xyflow/react';
+
+const initialNodes = [
+  { id: 'a', position: { x: 60, y: 80 },  data: { label: 'Ingest' } },
+  { id: 'b', position: { x: 380, y: 80 }, data: { label: 'Publish' } },
+];
+const initialEdges = [{ id: 'e1', source: 'a', target: 'b' }];
+
+export default function App() {
+  const [nodes, , onNodesChange] = useNodesState(initialNodes);
+  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+  return (
+    &lt;div style={{ height: '100vh' }}&gt;
+      &lt;ReactFlow nodes={nodes} edges={edges}
+        onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} /&gt;
+    &lt;/div&gt;
+  );
+}</pre>
+    <p>Grafloria in Angular:</p>
+<pre data-lang="typescript">import { Component } from '@angular/core';
+import { DiagramCanvasComponent } from '@grafloria/angular';
+
+@Component({
+  selector: 'app-flow',
+  imports: [DiagramCanvasComponent],
+  template: `
+    &lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges"
+      [plugins]="true" style="display:block; height:100vh" /&gt;
+  `,
+})
+export class FlowComponent {
+  nodes = [
+    { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' } },
+    { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Publish' } },
+  ];
+  edges = [{ id: 'e1', source: 'a', target: 'b' }];
+}</pre>
+
+    <h2>What you get past the basics</h2>
+    <p>The features an automation builder or workflow editor needs next are in the box, and each
+    link below is a running demo (every demo on the site is also a CI test):</p>
+    <ul>
+      <li><a href="../../demos/interaction/n8n-workflow.html">An n8n-style workflow editor</a>, end to end</li>
+      <li><a href="../../demos/interaction/validation.html">Connection validation</a> — only valid connections land, typed ports included</li>
+      <li>Edges that <a href="../../demos/edges/animating-edges.html">route around nodes and animate while running</a></li>
+      <li><a href="../../demos/interaction/undo-redo.html">Undo/redo</a> with zero wiring, and <a href="../../demos/interaction/save-and-restore.html">JSON save/restore</a></li>
+      <li>Auto-layout (ELK, dagre, tree, force) — one call, lazily loaded</li>
+      <li>Real-time collaboration over a per-property CRDT, transport-agnostic</li>
+    </ul>
+
+    <h2>What React Flow has that we don't pretend to match</h2>
+    <p>The ecosystem. React Flow has the largest community in this space, years of examples,
+    integrations and answered questions — if your app is React and its model fits, it is a
+    great choice and you should use it. This page exists for the Angular case, where that
+    ecosystem cannot follow you anyway.</p>
+
+    <h2>Start in five minutes</h2>
+<pre data-lang="shell">npm install @grafloria/angular @grafloria/element @grafloria/renderer @grafloria/engine</pre>
+    <p>Then the component above is the whole mount. The
+    <a href="../../learn/angular/">10-minute Angular tutorial</a> takes it from there —
+    custom nodes as <code>ng-template</code>s, events, layout — or open the
+    <a href="https://stackblitz.com/github/grafloria/grafloria/tree/main/starters/angular">Angular starter on StackBlitz</a>
+    without installing anything.</p>
+
+    <div class="cta">
+      <a class="btn primary" href="../../learn/angular/">Angular tutorial</a>
+      <a class="btn ghost" href="../../demos/">112 live demos</a>
+      <a class="btn ghost" href="../react-flow/">The full React Flow comparison</a>
+    </div>
+
+    <p class="fine">Feature statements about React Flow reflect its public docs and pricing pages as of
+    August 2026 — confirm on the vendor's site. Corrections welcome on
+    <a href="https://github.com/grafloria/grafloria">GitHub</a>; this page aims to stay honest, not to win.</p>
+  </main>
+<footer>
+  <div class="wrap">
+    <img src="../../favicon.svg" alt="" width="22" height="22">
+    <span>Grafloria — MIT licensed, free forever.</span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

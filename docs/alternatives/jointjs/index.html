@@ -100,6 +100,16 @@
   type: 'orthogonal', router: 'avoid',
   points: [{ x: 340, y: 90 }],   // the user's bend — survives re-routing
 }]</pre>
+
+    <h2>How the concepts map</h2>
+    <div class="tablewrap"><table>
+      <tr><th>JointJS</th><th>Grafloria</th></tr>
+      <tr><td><code>dia.Graph</code> + <code>dia.Paper</code></td><td class="us">one component (or <code>createDiagram(container, spec)</code>) — model and view wired for you</td></tr>
+      <tr><td><code>elementView</code> markup / <code>dia.Element</code> subclasses</td><td class="us">framework templates or HTML custom nodes — no subclassing, full DI in Angular</td></tr>
+      <tr><td><code>manhattan</code> router + vertices tool (JointJS+)</td><td class="us">obstacle-avoiding router + <a href="../../demos/edges/reconnect-edge.html">waypoint and endpoint editing</a>, MIT</td></tr>
+      <tr><td><code>ui.Stencil</code> (JointJS+)</td><td class="us"><a href="../../demos/diagrams/stencil-palette.html">drag-in stencil palette</a>, MIT</td></tr>
+      <tr><td><code>graph.toJSON()</code></td><td class="us"><code>toJSON()</code> — plus a Mermaid-compatible text format with a lossless sidecar</td></tr>
+    </table></div>
     <div class="cta">
       <a class="btn primary" href="../../learn/javascript/">10-minute tutorial</a>
       <a class="btn ghost" href="../../demos/#edges">Live demos</a>
