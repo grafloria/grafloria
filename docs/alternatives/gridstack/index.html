@@ -100,6 +100,14 @@ render(dashboard({
     { id: 'trend', kind: 'line', span: 9, rows: 2, title: 'Trend', data: { /* … */ } },
   ],
 }), host);</pre>
+
+    <h2>See the difference in one demo</h2>
+    <p>The clearest way to judge the boundary: GridStack gives you the grid geometry;
+    <a href="../../demos/dashboard/nested-containers.html">this demo</a> is a dashboard whose
+    sections are containers — drag a tile across a section boundary and the other grid adopts it
+    live, one undo restores the whole gesture, and <code>toJSON()</code> serializes the nesting.
+    The <a href="../../demos/dashboard/grid-options.html">grid options demo</a> shows column
+    counts, packing and responsive re-flow driven as data.</p>
     <div class="cta">
       <a class="btn primary" href="../../learn/javascript-dashboards/">10-minute tutorial</a>
       <a class="btn ghost" href="../../demos/#dashboard">Live demos</a>

@@ -92,6 +92,16 @@
     edge cases. Where we compete: the editor features most apps actually use, at the price of an
     <code>npm install</code>, with the live demo gallery as the proof — every demo doubles as a CI test:
     <a href="../../demos/">grafloria.com/demos</a>.</p>
+
+    <h2>How the concepts map</h2>
+    <div class="tablewrap"><table>
+      <tr><th>GoJS</th><th>Grafloria</th></tr>
+      <tr><td><code>nodeTemplate</code> of <code>GraphObject</code>s</td><td class="us">your framework's own templates/components as nodes — HTML and CSS, not a scene-graph DSL</td></tr>
+      <tr><td><code>Model</code> + TwoWay bindings</td><td class="us">plain arrays with two-way bindings (<code>[(nodes)]</code> in Angular, hooks in React)</td></tr>
+      <tr><td>Groups + <code>placeholder</code></td><td class="us">containers with live drag-adoption — <a href="../../demos/dashboard/nested-containers.html">demo</a></td></tr>
+      <tr><td><code>AvoidsNodes</code> routing</td><td class="us">obstacle-avoiding router, on by default for routed edges</td></tr>
+      <tr><td>License key per domain</td><td class="us">MIT — no key, no watermark, no per-app fee</td></tr>
+    </table></div>
     <div class="cta">
       <a class="btn primary" href="../../learn/javascript/">10-minute tutorial</a>
       <a class="btn ghost" href="../../demos/">Live demos</a>

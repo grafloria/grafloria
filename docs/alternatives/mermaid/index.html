@@ -97,6 +97,21 @@ api.loadText(mermaidText);          // the same text your README renders
 // … user drags things around …
 const back = api.exportText();      // still valid Mermaid + position sidecar</pre>
     <p>Full compatibility story, including the named gaps: <a href="../../mermaid/">grafloria.com/mermaid</a>.</p>
+
+    <h2>Your existing Mermaid files just load</h2>
+<pre data-lang="typescript">import { render } from '@grafloria/element';
+
+const api = render({ nodes: [], edges: [] }, document.getElementById('root'));
+api.loadText(`flowchart TD
+  Start([Start]) --&gt; Check{Valid?}
+  Check --&gt;|yes| Save[[Persist]]
+  Check --&gt;|no| Start`);
+// …edit on the canvas, then:
+const text = api.exportText();   // still Mermaid — with a lossless sidecar</pre>
+    <p>Try it live in the <a href="../../demos/misc/mermaid-viewer.html">Mermaid viewer demo</a> —
+    it round-trips both ways, so the text never drifts from the drawing. The
+    <a href="../../learn/mermaid-and-the-dsl/">Mermaid &amp; text-format guide</a> documents exactly
+    which constructs are covered and how unsupported types fail loudly instead of blanking.</p>
     <div class="cta">
       <a class="btn primary" href="../../learn/mermaid-and-the-dsl/">10-minute tutorial</a>
       <a class="btn ghost" href="../../demos/misc/mermaid-text.html">Live demos</a>
@@ -113,5 +128,20 @@ const back = api.exportText();      // still valid Mermaid + position sidecar</p
     <span>Grafloria — MIT licensed, free forever.</span>
   </div>
 </footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>

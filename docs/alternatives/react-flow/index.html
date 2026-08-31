@@ -88,21 +88,73 @@
       <tr><td>Auto-layout</td><td class="us">ELK, dagre, tree, force, grid — one call, ELK lazy-loaded</td><td>Bring your own (elkjs/dagre wiring is on you)</td></tr>
       <tr><td>Undo / redo</td><td class="us">Command-based, ⌘Z works with zero wiring</td><td>Pro example</td></tr>
       <tr><td>Collaboration</td><td class="us">Per-property CRDT in the engine; bring any transport</td><td>Pro example</td></tr>
+      <tr><td>Nested sub-flows</td><td class="us">Containers with live drag-adoption in and out — one undo step</td><td><code>parentId</code> + <code>extent</code> primitives; the editor behaviour is DIY</td></tr>
+      <tr><td>Export</td><td class="us">SVG / PNG / PDF built in, server-side too</td><td>Screenshot via html-to-image (community recipe)</td></tr>
+      <tr><td>Text format</td><td class="us">Mermaid-compatible import/export with a lossless sidecar</td><td>—</td></tr>
+      <tr><td>Minimap / controls</td><td class="us">Built in (<code>plugins</code>)</td><td>Built in</td></tr>
     </table></div>
 
-    <h2>The API will feel familiar</h2>
-    <p>Deliberately React-Flow-shaped: nodes and edges as data, <code>nodeTypes</code> components
-    for custom nodes, controlled or uncontrolled state.</p>
-    <pre>import { GrafloriaFlow } from '@grafloria/react';
+    <h2>The same flow, both ways</h2>
+    <p>The API is deliberately React-Flow-shaped — controlled state, the same hooks pattern —
+    so an evaluation is a diff, not a rewrite. React Flow:</p>
+<pre data-lang="typescript">import { ReactFlow, useNodesState, useEdgesState } from '@xyflow/react';
 
-&lt;div style={{ height: '100vh' }}&gt;
-  &lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges}
-    nodeTypes={{ card: Card }} layout="elk" plugins /&gt;
-&lt;/div&gt;</pre>
+export default function App() {
+  const [nodes, , onNodesChange] = useNodesState(initialNodes);
+  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+  return (
+    &lt;div style={{ height: '100vh' }}&gt;
+      &lt;ReactFlow nodes={nodes} edges={edges}
+        onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} /&gt;
+    &lt;/div&gt;
+  );
+}</pre>
+    <p>Grafloria:</p>
+<pre data-lang="typescript">import { GrafloriaFlow, useNodesState, useEdgesState } from '@grafloria/react';
+
+export default function App() {
+  const [nodes, , onNodesChange] = useNodesState(initialNodes);
+  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+  return (
+    &lt;div style={{ height: '100vh' }}&gt;
+      &lt;GrafloriaFlow nodes={nodes} edges={edges}
+        onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
+        layout="elk" plugins /&gt;
+    &lt;/div&gt;
+  );
+}</pre>
+
+    <h2>The mental model maps one-to-one</h2>
+    <div class="tablewrap"><table>
+      <tr><th>React Flow</th><th>Grafloria</th></tr>
+      <tr><td><code>nodes</code>/<code>edges</code>, <code>useNodesState</code></td><td class="us">same names, same shapes — <code>id</code>, <code>position</code>, <code>data</code></td></tr>
+      <tr><td><code>nodeTypes</code> components</td><td class="us"><code>nodeTypes</code> components, marked <code>custom: true</code> on the node</td></tr>
+      <tr><td><code>&lt;Handle&gt;</code> in JSX</td><td class="us"><code>ports</code> on the node spec — data that serializes with the document</td></tr>
+      <tr><td><code>fitView</code>, minimap, controls</td><td class="us"><code>fitView()</code>, <code>plugins</code> flag</td></tr>
+      <tr><td>subflows (<code>parentId</code>)</td><td class="us">containers with drag-adoption — <a href="../../demos/dashboard/nested-containers.html">live demo</a></td></tr>
+    </table></div>
+
     <p>Migration notes: <code>position</code>/<code>data</code> carry over as-is; handles become
     <code>ports</code> on the node spec (no <code>&lt;Handle&gt;</code> components); mark
     <code>nodeTypes</code> nodes <code>custom: true</code>. The
     <a href="../../learn/react-custom-nodes/">React deep guides</a> cover each mapping.</p>
+
+    <h2>Measured, not claimed</h2>
+    <p>We publish a <a href="https://github.com/grafloria/grafloria/tree/main/benchmarks">reproducible
+    two-library benchmark</a> — one deterministic scene, real mouse gestures, both libraries measured
+    in the same session against the published npm packages. As of the current release (engine 0.3.6 /
+    renderer 0.4.6, Apple M1 Pro): at 2,000 nodes Grafloria mounts ~1.8× faster, both pan gestures
+    hold 60fps, and node drag averages 25.6ms/frame against React Flow's 38.5 — with neither library
+    at 60fps on that last row yet. The harness throws if the two libraries are not driven identically;
+    the first version of it was wrong in our favour and the README documents exactly how.
+    <code>cd benchmarks &amp;&amp; npm install &amp;&amp; node run.mjs</code> reproduces the table on
+    your machine.</p>
+
+    <h2>Building in Angular or Vue?</h2>
+    <p>The same engine ships native components for both — see
+    <a href="../react-flow-for-angular/">React Flow alternative for Angular</a> and the
+    <a href="../../learn/vue/">Vue tutorial</a>.</p>
+
     <div class="cta">
       <a class="btn primary" href="../../learn/react/">10-minute tutorial</a>
       <a class="btn ghost" href="../../demos-react/">Live demos</a>
@@ -119,5 +171,20 @@
     <span>Grafloria — MIT licensed, free forever.</span>
   </div>
 </footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>
