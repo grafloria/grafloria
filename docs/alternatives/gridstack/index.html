@@ -78,16 +78,33 @@
     <p>You need exactly a grid: place, drag, resize, re-pack, responsive breakpoints, sub-grids.
     GridStack does all of it, small and focused, with wrappers for Angular, React and Vue 3.</p>
 
-    <h2>Where the boundary of the box sits</h2>
+    <h2>Feature by feature</h2>
+    <p>✓ built in · <em>DIY</em> possible, but yours to build · — out of scope. Both columns are
+    meant to be true, including the rows we lose.</p>
     <div class="tablewrap"><table>
-      <tr><th></th><th>Grafloria dashboard kit</th><th>GridStack.js</th></tr>
-      <tr><td>License</td><td class="us">MIT</td><td>MIT</td></tr>
-      <tr><td>Grid gestures</td><td class="us">Push-down with skip, swap shapes, locked tiles, truthful placeholder</td><td>The reference implementation</td></tr>
-      <tr><td>Widgets</td><td class="us">Declared as data (<code>kind</code> + <code>data</code>); 6 built-in renderers; <code>renderWidget</code> seam for your charts</td><td>Yours to build</td></tr>
-      <tr><td>Undo</td><td class="us">Every gesture one command — ⌘Z included</td><td>Yours to build</td></tr>
-      <tr><td>Containers</td><td class="us">A widget carrying <code>widgets</code> nests a board; cross-boundary drag, escalation, one-undo</td><td>subGridOpts (geometry only)</td></tr>
-      <tr><td>Persistence</td><td class="us"><code>toJSON()</code> ↔ <code>dashboard()</code> round-trip; same document as diagrams</td><td>save/load of cells</td></tr>
-      <tr><td>Export</td><td class="us">PNG / SVG / vector PDF of any view</td><td>—</td></tr>
+      <tr><th></th><th>GridStack.js</th><th>Grafloria dashboard kit</th></tr>
+      <tr><th colspan="3">Grid &amp; layout</th></tr>
+      <tr><td>Drag / resize / re-pack</td><td>✓ — the reference implementation</td><td class="us">✓ push-down with skip, swap shapes, truthful placeholder</td></tr>
+      <tr><td>Nested grids</td><td>✓ <code>subGridOpts</code> (geometry)</td><td class="us">✓ containers — cross-boundary drag with adoption, one undo step</td></tr>
+      <tr><td>Responsive columns</td><td>✓ breakpoints</td><td class="us">✓ cells re-flow, not just clamp</td></tr>
+      <tr><td>Locked tiles</td><td>✓ <code>locked</code>/<code>noMove</code></td><td class="us">✓ <code>pinned</code> — survives every reflow</td></tr>
+      <tr><th colspan="3">Widgets &amp; content</th></tr>
+      <tr><td>Content model</td><td><code>content</code> HTML string — rendering is yours</td><td class="us"><code>kind</code> + <code>data</code> — widgets are data</td></tr>
+      <tr><td>Built-in renderers (KPI, line, donut…)</td><td>—</td><td class="us">✓ six, themed</td></tr>
+      <tr><td>Your own charts</td><td><em>DIY</em> inside the HTML</td><td class="us">✓ <code>renderWidget</code> seam — mount anything</td></tr>
+      <tr><th colspan="3">Editing</th></tr>
+      <tr><td>Undo / redo</td><td>—</td><td class="us">✓ every gesture one command, ⌘Z included</td></tr>
+      <tr><td>Cross-container gestures</td><td><em>DIY</em> on top of the geometry</td><td class="us">✓ adoption + escalation, one undo</td></tr>
+      <tr><th colspan="3">Persistence &amp; sharing</th></tr>
+      <tr><td>Save / load</td><td>✓ cell geometry</td><td class="us">✓ the whole board — widgets, nesting, data</td></tr>
+      <tr><td>Export PNG / SVG / PDF</td><td>—</td><td class="us">✓ client and server-side</td></tr>
+      <tr><td>Diagrams in the same document</td><td>—</td><td class="us">✓ one engine, one format, one undo stack</td></tr>
+      <tr><td>Real-time collaboration</td><td>—</td><td class="us">✓ per-property CRDT, transport-agnostic</td></tr>
+      <tr><th colspan="3">Project</th></tr>
+      <tr><td>License</td><td>MIT</td><td class="us">MIT — no pro tier</td></tr>
+      <tr><td>Dependencies</td><td>zero</td><td class="us">a handful; ELK layout is a lazy chunk (<a href="https://github.com/grafloria/grafloria#bundle-size--read-this-before-judging-the-npm-stats">sizes</a>)</td></tr>
+      <tr><td>Framework wrappers</td><td>✓ Angular · React · Vue</td><td class="us">✓ native components, same three + web component</td></tr>
+      <tr><td>Maturity</td><td>✓ a decade in production, huge install base</td><td class="us">newer — every claim above is a CI-tested demo you can open</td></tr>
     </table></div>
 
 
