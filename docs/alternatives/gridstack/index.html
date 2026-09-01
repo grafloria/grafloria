@@ -13,7 +13,7 @@
 <meta property="og:url" content="https://grafloria.com/alternatives/gridstack/">
 <meta property="og:image" content="https://grafloria.com/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebPage","name":"GridStack alternative \u2014 when a dashboard needs more than geometry","url":"https://grafloria.com/alternatives/gridstack/","description":"GridStack is the reference drag-and-pack grid \u2014 and MIT. Grafloria's dashboard kit is for when the dashboard also needs widgets, undo, exports, nesting and persistence in one engine across React, Angular, Vue."},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Alternatives","item":"https://grafloria.com/alternatives/"},{"@type":"ListItem","position":2,"name":"GridStack","item":"https://grafloria.com/alternatives/gridstack/"}]}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "WebPage", "name": "GridStack alternative \u2014 when a dashboard needs more than geometry", "url": "https://grafloria.com/alternatives/gridstack/", "description": "GridStack is the reference drag-and-pack grid \u2014 and MIT. Grafloria's dashboard kit is for when the dashboard also needs widgets, undo, exports, nesting and persistence in one engine across React, Angular, Vue."}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Alternatives", "item": "https://grafloria.com/alternatives/"}, {"@type": "ListItem", "position": 2, "name": "GridStack", "item": "https://grafloria.com/alternatives/gridstack/"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is Grafloria a drop-in replacement for GridStack?", "acceptedAnswer": {"@type": "Answer", "text": "No \u2014 they sit at different levels. GridStack is a grid layout engine and excellent at exactly that; Grafloria's dashboard kit is the layer above: widgets declared as data with built-in renderers, undo across every gesture, nested containers with drag-adoption, export, and one save format shared with diagrams. If a layout engine is all you need, GridStack is the right tool."}}, {"@type": "Question", "name": "Can a dashboard and a diagram live in the same document?", "acceptedAnswer": {"@type": "Answer", "text": "Yes \u2014 that is the point of the shared engine. A board serializes through the same toJSON() as a flowchart, so a workflow editor and its metrics dashboard are one document, one undo stack, one export."}}]}]}</script>
 <style>
   :root { --indigo:#3B52D9; --indigo-deep:#2A3CA8; --indigo-soft:#94A5F0; --indigo-wash:#EEF1FE;
     --ink:#232A3D; --slate:#5A6478; --line:#E3E7F2; --bg:#FCFCFF; }
@@ -90,16 +90,45 @@
       <tr><td>Export</td><td class="us">PNG / SVG / vector PDF of any view</td><td>—</td></tr>
     </table></div>
 
-    <h2>A board as data</h2>
-    <pre>import { render, dashboard } from '@grafloria/element';
 
-render(dashboard({
+    <h2>The same dashboard, both ways</h2>
+    <p>GridStack builds the grid; the widgets' content is HTML you render yourself:</p>
+<pre data-lang="javascript">import { GridStack } from 'gridstack';
+
+const grid = GridStack.init({ column: 12 });
+grid.load([
+  { x: 0, y: 0, w: 3, h: 1, content: '&lt;div class="kpi"&gt;Total revenue&lt;/div&gt;' },
+  { x: 3, y: 0, w: 8, h: 2, content: '&lt;canvas id="trend"&gt;&lt;/canvas&gt;' },  // chart wiring is yours
+]);
+const layout = grid.save();   // geometry back out</pre>
+    <p>Grafloria declares the widgets too — the chart <em>is</em> the declaration:</p>
+<pre data-lang="javascript">import { render, dashboard } from '@grafloria/element';
+
+const SPEC = dashboard({
   columns: 12,
   widgets: [
-    { id: 'rev', kind: 'kpi', span: 3, data: { label: 'Revenue', value: '$6.8M', delta: 12.4 } },
-    { id: 'trend', kind: 'line', span: 9, rows: 2, title: 'Trend', data: { /* … */ } },
+    { id: 'rev',   kind: 'kpi',  span: 3, rows: 1,
+      data: { label: 'Total revenue', value: '$6.81M', delta: 12.4 } },
+    { id: 'trend', kind: 'line', span: 8, rows: 2, title: 'Revenue vs target',
+      data: { series: [{ name: 'Revenue', values: [420,455,512,588,648] }],
+              labels: ['Jan','Feb','Mar','Apr','May'] } },
   ],
-}), host);</pre>
+});
+render(SPEC, document.getElementById('canvas'));
+// SPEC.handle.toJSON() round-trips the WHOLE board — widgets, nesting, data</pre>
+
+    <h2>How the concepts map</h2>
+    <div class="tablewrap"><table>
+      <tr><th>GridStack.js</th><th>Grafloria dashboard kit</th></tr>
+      <tr><td><code>x, y, w, h</code> on an item</td><td class="us"><code>x, y, span, rows</code> — or omit them and widgets flow in declaration order</td></tr>
+      <tr><td><code>content</code> HTML string</td><td class="us"><code>kind</code> + <code>data</code> — six built-in renderers (KPI, line, donut…), or your own via <code>renderWidget</code></td></tr>
+      <tr><td><code>grid.save()</code> / <code>grid.load()</code></td><td class="us"><code>toJSON()</code> ↔ <code>dashboard()</code> — one document format shared with diagrams</td></tr>
+      <tr><td><code>subGridOpts</code> nested grids</td><td class="us">a widget carrying <code>widgets</code> — cross-boundary drag with adoption, one undo step</td></tr>
+      <tr><td><code>locked</code> / <code>noMove</code></td><td class="us"><code>pinned: true</code> — never pushed, survives every reflow</td></tr>
+      <tr><td><code>column(n)</code>, responsive breakpoints</td><td class="us"><code>columns</code> + responsive re-flow of the cells themselves</td></tr>
+    </table></div>
+
+
 
     <h2>See the difference in one demo</h2>
     <p>The clearest way to judge the boundary: GridStack gives you the grid geometry;
@@ -124,5 +153,20 @@ render(dashboard({
     <span>Grafloria — MIT licensed, free forever.</span>
   </div>
 </footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
 </body>
 </html>
