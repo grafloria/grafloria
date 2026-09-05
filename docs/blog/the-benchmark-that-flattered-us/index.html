@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Our benchmark was wrong three ways — all in our favour — Grafloria engineering</title>
+<meta name="description" content="We published a performance comparison against React Flow. The first version was broken in three separate ways, every one flattering us. Here is how a benchmark lies, how to build one that throws instead, and the numbers it prints today — including the row we still lose.">
+<link rel="alternate" type="application/rss+xml" title="The Grafloria blog" href="https://grafloria.com/blog/feed.xml">
+<link rel="canonical" href="https://grafloria.com/blog/the-benchmark-that-flattered-us/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="Our benchmark was wrong three ways — all in our favour">
+<meta property="og:description" content="We published a performance comparison against React Flow. The first version was broken in three separate ways, every one flattering us. Here is how a benchmark lies, how to build one that throws instead, and the numbers it prints today — including the row we still lose.">
+<meta property="og:url" content="https://grafloria.com/blog/the-benchmark-that-flattered-us/">
+<meta property="og:image" content="https://grafloria.com/blog/the-benchmark-that-flattered-us/og.png">
+<meta name="twitter:image" content="https://grafloria.com/blog/why-nesting-breaks-flow-libraries/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Our benchmark was wrong three ways \u2014 all in our favour", "description": "We published a performance comparison against React Flow. The first version was broken in three separate ways, every one flattering us. Here is how a benchmark lies, how to build one that throws instead, and the numbers it prints today \u2014 including the row we still lose.", "url": "https://grafloria.com/blog/the-benchmark-that-flattered-us/", "datePublished": "2026-09-05", "dateModified": "2026-09-05", "author": {"@type": "Organization", "name": "Grafloria"}, "publisher": {"@type": "Organization", "name": "Grafloria", "logo": {"@type": "ImageObject", "url": "https://grafloria.com/apple-touch-icon.png"}}, "image": "https://grafloria.com/blog/the-benchmark-that-flattered-us/og.png", "mainEntityOfPage": "https://grafloria.com/blog/the-benchmark-that-flattered-us/", "keywords": "performance, react, engine"}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../../learn/learn.css">
+<style>
+  .post { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .post .crumb { font-size: 13px; color: var(--slate); margin-bottom: 10px; }
+  .post h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; text-wrap: balance; }
+  .post .lede { margin: 14px 0 10px; color: var(--slate); font-size: 17px; }
+  .post h2 { font-size: 22px; font-weight: 750; letter-spacing: -0.4px; margin: 40px 0 10px; }
+  .post p, .post li { font-size: 15.5px; } .post p { margin: 10px 0; }
+  .post p code, .post li code { font-size: 13px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  .post pre { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; color: #2C3346; margin: 14px 0; }
+  .tags { margin: 2px 0 0; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
+    background: var(--indigo-wash); color: var(--indigo-deep); }
+  .tag:hover { background: var(--indigo); color: #fff; text-decoration: none; }
+  .meta { font-size: 13.5px; color: var(--slate); margin: 8px 0 4px; }
+  .plist { max-width: 78ch; margin: 0 auto; padding: 38px 0 70px; }
+  .pcard { display: block; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 20px 24px; margin: 14px 0; color: var(--ink); }
+  .pcard:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .pcard h2 { font-size: 20px; font-weight: 750; margin: 0 0 6px; color: var(--indigo-deep); }
+  .pcard p { font-size: 14.5px; color: var(--slate); margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../mermaid/">Mermaid</a>
+      <a href="../../compare/">Compare</a>
+      <a href="../" aria-current="page">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <article class="post">
+      <p class="crumb"><a href="../">Blog</a> / Engineering</p>
+      <h1>Our benchmark was wrong three ways — all in our favour</h1>
+      <p class="meta">September 5, 2026 · engineering · performance</p>
+      <p class="tags"><a class="tag" href="../?tag=performance">performance</a> <a class="tag" href="../?tag=react">react</a> <a class="tag" href="../?tag=engine">engine</a></p>
+
+      <p class="lede">We publish a side-by-side performance comparison between Grafloria and
+      React Flow. You should not trust it — not because the numbers are wrong today, but because
+      vendor benchmarks are exactly the genre of document where wrong numbers look most
+      authoritative. Ours did. The first version of our harness was broken in three separate
+      ways, and every one of the three flattered us. This post is the anatomy of how that
+      happens, what a benchmark that <i>cannot</i> lie looks like, and what ours prints now —
+      including the row we still lose.</p>
+
+      <h2>The three lies</h2>
+      <p>Nothing was fabricated. Every number was faithfully measured — of the wrong thing.
+      That is what makes benchmark bugs worse than ordinary bugs: the output still looks like
+      evidence.</p>
+      <ul>
+        <li><b>The pan gesture never panned us.</b> The script pressed at a fixed
+        <code>(1000, 500)</code> and dragged. In React Flow that landed on empty pane, so it
+        timed a pan. In Grafloria the same pixel happened to be on a <i>link</i> — so it timed
+        a link hit-test and a selection, while the camera never moved. The table compared them
+        as if they were the same gesture.</li>
+        <li><b>The drag gesture never moved a node.</b> It pressed where node
+        <code>n0</code> had been <i>before</i> an earlier gesture moved the camera 2,400 pixels
+        away, and then metered the resulting do-nothing frames. Sixty frames of nothing are
+        very fast.</li>
+        <li><b>The two libraries weren't looking at the same scene.</b> React Flow's default
+        <code>minZoom</code> stopped its fit-to-view early, so it drew a slice of the mesh while
+        we drew all of it. And our bundler, walking up to the repo's
+        <code>tsconfig.json</code>, silently resolved the packages to the <i>working tree</i>
+        while the README claimed the published npm builds were being measured.</li>
+      </ul>
+
+      <h2>The fix is not "we corrected the numbers"</h2>
+      <p>Corrected numbers rot the same way the originals did. The fix is a harness where each
+      of those failures is <b>a thrown error instead of a plausible row</b>:</p>
+      <ul>
+        <li>Every pan starts on <i>verified empty canvas</i> in both libraries, and the run
+        throws if the camera did not actually move.</li>
+        <li>The drag re-frames first, finds its node <i>by id</i>, and throws if that node's
+        position is unchanged afterwards.</li>
+        <li>Both cameras are pinned to the same world rectangle, the framing of each run is
+        recorded into <code>results.json</code>, and a fairness gate throws if the two
+        libraries were not shown the same scene. The build mode (published packages vs working
+        tree) is chosen explicitly and printed.</li>
+      </ul>
+      <p>A benchmark that cannot fail cannot be trusted. Ours now fails loudly, which is the
+      only reason the rest of this post is worth reading.</p>
+
+      <h2>What the honest numbers bought us</h2>
+      <p>The repaired harness immediately demoted us: at 2,000 nodes we were dropping frames on
+      gestures the broken version had scored at a smooth 60fps. That hurt, and it was the most
+      useful performance data we ever collected, because each ugly row pointed at a real
+      defect:</p>
+      <ul>
+        <li>Our A* router scanned its whole frontier for the minimum on every iteration —
+        <b>1,097ms of pathfinding</b> inside one 40-move drag of a long edge. A binary heap and
+        an adaptive search grid took it to 29ms, and fixed a worse bug the cost had been
+        hiding: past ~2,200 world units the router used to give up and draw the edge straight
+        through the obstacles it was avoiding.</li>
+        <li>The engine handed out a <i>fresh copy</i> of its interaction config on every call —
+        and it is called per port, per link, per frame. ~590ms of a drag gesture, gone by
+        caching one frozen snapshot.</li>
+        <li>A camera-only frame rebuilt the whole virtual-DOM tree. Since the SVG draws in world
+        coordinates, a pan can be two attribute writes: a 100-frame pan now performs one real
+        render instead of one hundred.</li>
+      </ul>
+      <p>All of it shipped — the current npm releases carry every fix above.</p>
+
+      <h2>Today's table</h2>
+      <p>Apple M1 Pro, published packages (engine 0.3.6 / renderer 0.4.6), React Flow 12.11.3,
+      both measured in the same session by the same scripted mouse:</p>
+      <div class="tablewrap"><table>
+        <tr><th>lib</th><th>nodes</th><th>mount ms</th><th>pan (fit) avg/p95</th><th>pan (zoomed) avg/p95</th><th>drag avg/p95</th></tr>
+        <tr><td>grafloria</td><td>2000</td><td><b>346</b></td><td>16.9 / 16.8</td><td>16.7 / 16.7</td><td><b>25.6</b> / 66.7</td></tr>
+        <tr><td>reactflow</td><td>2000</td><td>631</td><td>18.3 / 33.3</td><td>16.8 / 16.8</td><td>38.5 / 66.7</td></tr>
+      </table></div>
+      <p>Read it honestly: we mount ~1.8× faster and hold 60fps on both pan gestures.
+      <b>Node drag is the row neither library gets to 60fps</b> — 25.6ms a frame for us against
+      38.5, and both of us drop the same worst-case frames. Dragging a node re-routes its
+      edges, and that work is still on the frame. When that row reaches 16.7 we will say so;
+      until then it says what it says.</p>
+
+      <h2>One more way benchmarks lie: yesterday</h2>
+      <p>Between two consecutive days, React Flow's drag row moved from 39.4ms to 40.7ms —
+      on identical, untouched library code. That was the machine, not the library. Absolute
+      milliseconds are only comparable <i>within one run</i>, which is why the harness always
+      measures both libraries in the same session and why we never compare a today-number
+      against a yesterday-table. If you see a vendor doing that, close the tab.</p>
+
+      <h2>Run it yourself</h2>
+      <pre data-lang="shell">git clone https://github.com/grafloria/grafloria
+cd grafloria/benchmarks
+npm install &amp;&amp; node run.mjs</pre>
+      <p>That reproduces the table against the published npm packages on your machine — the
+      framings, build mode and environment land in <code>results.json</code> alongside the
+      numbers. The
+      <a href="https://github.com/grafloria/grafloria/tree/main/benchmarks">benchmark README</a>
+      documents the three defects above in full, and the
+      <a href="../../alternatives/react-flow/">React Flow comparison page</a> puts the numbers
+      in context of everything that isn't performance. If you find a fourth way the harness can
+      lie, we genuinely want the issue.</p>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="row wrap">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Blog</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

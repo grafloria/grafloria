@@ -6,7 +6,17 @@
   <atom:link href="https://grafloria.com/blog/feed.xml" rel="self" type="application/rss+xml"/>
   <description>Honest write-ups of diagram and dashboard problems developers actually hit, and engine deep-dives with the real numbers.</description>
   <language>en</language>
-  <lastBuildDate>Sat, 22 Aug 2026 12:00:00 GMT</lastBuildDate>
+  <lastBuildDate>Sat, 05 Sep 2026 12:00:00 GMT</lastBuildDate>
+  <item>
+    <title>Our benchmark was wrong three ways — all in our favour</title>
+    <link>https://grafloria.com/blog/the-benchmark-that-flattered-us/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/the-benchmark-that-flattered-us/</guid>
+    <pubDate>Sat, 05 Sep 2026 12:00:00 GMT</pubDate>
+    <description>We published a performance comparison against React Flow. The first version was broken in three separate ways, every one flattering us. Here is how a benchmark lies, how to build one that throws instead, and the numbers it prints today — including the row we still lose.</description>
+    <category>performance</category>
+    <category>react</category>
+    <category>engine</category>
+  </item>
   <item>
     <title>A dashboard is three problems wearing one grid</title>
     <link>https://grafloria.com/blog/a-dashboard-is-three-problems/</link>
