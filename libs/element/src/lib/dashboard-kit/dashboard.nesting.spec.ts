@@ -20,7 +20,7 @@ function makeApi(model: DiagramModel) {
   container.appendChild(layer);
   return {
     getModel: () => model,
-    getEngine: () => ({ commandManager: manager }),
+    getEngine: () => ({ commandManager: manager, eventBus: bus }),
     container,
     render: () => undefined,
     renderNow: () => undefined,
@@ -231,5 +231,34 @@ describe('dashboard() containment', () => {
     expect(section.widgets?.map((w: DashboardWidgetSpec) => w.id).sort()).toEqual(['k1', 'k2', 'k3']);
     // the container did NOT come back as a view
     expect(snap.views.some((v) => v.id === 'section')).toBe(false);
+  });
+});
+
+describe('removing a container (plan step 6, D12)', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+
+  it('takes the section, its children and its slab away as ONE undoable step — and undo brings the grid back live', async () => {
+    const { model, handle, api } = mount(NESTED());
+    const cm = api.getEngine().commandManager;
+    expect(model.getGroup('section')).toBeDefined();
+    handle.widget('section')!.remove();
+    await settle();
+    expect(model.getGroup('section')).toBeUndefined();
+    expect(['k1', 'k2', 'k3'].map((id) => model.getNode(id))).toEqual([undefined, undefined, undefined]);
+    expect(model.getGroup('main')!.members?.has('section')).toBe(false);
+    expect(handle.widget('section')).toBeUndefined();
+    expect(handle.toJSON().views[0].widgets.map((w) => w.id)).toEqual(['free']);
+    expect(handle.binderOf('section')).toBeUndefined();
+
+    await cm.undo();
+    await settle();
+    expect(model.getGroup('section')).toBeDefined();
+    expect(['k1', 'k2', 'k3'].every((id) => !!model.getNode(id))).toBe(true);
+    expect(model.getGroup('main')!.members?.has('section')).toBe(true);
+    expect(handle.widget('section')).toBeDefined();
+    expect(handle.binderOf('section')).toBeDefined();
+    expect(handle.binderOf('section')!.cellOf('k1')).toBeDefined();
+    const section = handle.toJSON().views[0].widgets.find((w) => w.id === 'section')!;
+    expect(section.widgets?.map((w) => w.id).sort()).toEqual(['k1', 'k2', 'k3']);
   });
 });

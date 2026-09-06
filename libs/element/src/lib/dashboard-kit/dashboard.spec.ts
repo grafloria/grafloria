@@ -1301,3 +1301,41 @@ describe('accessibility — name, role, keyboard, announcements', () => {
     expect(css).toContain('.axdb-sr');
   });
 });
+
+describe('host observer (plan step 6, D10)', () => {
+  it('re-syncs only the hosts a host-level mutation names, and ignores a chart\'s internal churn', async () => {
+    const { api, handle } = mount(dashboard({ width: 1180, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    const mk = (id: string) => {
+      const h = document.createElement('div');
+      h.className = 'grafloria-node-host';
+      h.setAttribute('data-node-id', id);
+      layer.appendChild(h);
+      return h;
+    };
+    const a = mk('a');
+    const b = mk('b');
+    handle.refresh();
+    let calls = 0;
+    const orig = api.container.querySelector.bind(api.container);
+    (api.container as { querySelector: typeof orig }).querySelector = ((sel: string) => {
+      calls++;
+      return orig(sel);
+    }) as typeof orig;
+    // Deep churn inside a widget: nothing to re-sync.
+    const inner = document.createElement('div');
+    a.appendChild(inner);
+    await new Promise((r) => setTimeout(r, 0));
+    calls = 0;
+    for (let i = 0; i < 20; i++) inner.appendChild(document.createElement('i'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls).toBe(0);
+    // A repaint wipes a's handle: exactly a is looked up again, not b.
+    a.querySelector('.axdb-rs')?.remove();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls).toBeGreaterThan(0);
+    expect(calls).toBeLessThanOrEqual(2);
+    expect(a.querySelector('.axdb-rs')).toBeTruthy();
+    expect(b.querySelector('.axdb-rs')).toBeTruthy();
+  });
+});

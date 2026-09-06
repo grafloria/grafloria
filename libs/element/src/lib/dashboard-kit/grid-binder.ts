@@ -395,7 +395,13 @@ interface AdoptedLeg {
   finalize(): { commands: Command[]; cell: CellRect; rect: WorldRect } | null;
 }
 
-const BOARD_REGISTRY = new Map<HTMLElement, Set<BinderPeer>>();
+/**
+ * Binders on the same canvas find each other here. A WeakMap: a canvas that
+ * is gone takes its (empty) peer set with it — the strong Map it replaced kept
+ * every container element a dashboard had ever mounted for the life of the
+ * page (review D12).
+ */
+const BOARD_REGISTRY = new WeakMap<HTMLElement, Set<BinderPeer>>();
 
 /**
  * ONE aria-live region per canvas, shared by every board on it — the
@@ -958,12 +964,13 @@ export function bindDashboardGrid(
    * and the ROVING TABINDEX — exactly one member per board is a tab stop.
    * Runs with the handles, so a repainted host gets it back too.
    */
-  const syncA11y = (): void => {
+  const syncA11y = (only?: ReadonlySet<string>): void => {
     if (disposed) return;
     const members = [...(group.members ?? [])].filter((id) => !!diagram.getNode(id));
     if (focusedId && !members.includes(focusedId)) focusedId = undefined;
     const stop = focusedId ?? members[0];
     for (const id of members) {
+      if (only && !only.has(id)) continue;
       const node = diagram.getNode(id);
       const host = hostOf(id);
       if (!node || !host) continue;
@@ -978,10 +985,11 @@ export function bindDashboardGrid(
     }
   };
 
-  const syncHandles = (): void => {
-    syncA11y();
+  const syncHandles = (only?: ReadonlySet<string>): void => {
+    syncA11y(only);
     if (!wantHandles || disposed) return;
     for (const id of group.members ?? []) {
+      if (only && !only.has(id)) continue;
       const node = diagram.getNode(id);
       if (!node) continue;
       const host = hostOf(id);
@@ -1003,7 +1011,37 @@ export function bindDashboardGrid(
     }
   };
 
-  const hostObserver = new MutationObserver(() => syncHandles());
+  /**
+   * Only a HOST-LEVEL change matters: a host arriving (a mount) or a host's
+   * own children changing (a repaint that wiped the injected handle). A
+   * chart's internal churn — most of what a live dashboard mutates — targets
+   * deeper nodes and is ignored, and the hosts the records DO name are the
+   * only ones re-synced. This was members × repaints `querySelector` calls
+   * per wave (9,216 at 96 widgets, review D10); it is now proportional to the
+   * hosts that actually changed.
+   */
+  const hostObserver = new MutationObserver((records) => {
+    const touched = new Set<string>();
+    const noteHost = (el: Node | null): void => {
+      const e = el as Element | null;
+      if (e?.classList?.contains('grafloria-node-host')) {
+        const id = e.getAttribute('data-node-id');
+        if (id) touched.add(id);
+      }
+    };
+    for (const r of records) {
+      // Our own re-injected handle arriving is not a change to answer — it
+      // would echo one more pass per repaint.
+      const ownEcho =
+        r.removedNodes.length === 0 &&
+        r.addedNodes.length > 0 &&
+        Array.from(r.addedNodes).every((n) => (n as Element).classList?.contains('axdb-rs'));
+      if (ownEcho) continue;
+      noteHost(r.target);
+      r.addedNodes.forEach((n) => noteHost(n));
+    }
+    if (touched.size) syncHandles(touched);
+  });
 
   // -- gesture snapshot / commit ---------------------------------------------
 
