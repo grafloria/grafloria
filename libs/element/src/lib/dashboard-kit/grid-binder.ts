@@ -954,6 +954,10 @@ export function bindDashboardGrid(
   const nameOf = (node: NodeModel): string => {
     const title = node.getMetadata?.('widgetTitle');
     if (typeof title === 'string' && title) return title;
+    // The visible header falls back to a data label (a KPI's `label`) before
+    // the kind — the spoken name must agree with what is painted.
+    const label = (node.getMetadata?.('widgetSpec') as { label?: unknown } | undefined)?.label;
+    if (typeof label === 'string' && label) return label;
     const kind = node.getMetadata?.('widgetKind');
     return typeof kind === 'string' && kind && kind !== 'widget' ? `${kind} widget` : node.id;
   };
@@ -1668,9 +1672,18 @@ export function bindDashboardGrid(
       if (!pullsX) w = itemNow.w * (cuNow + gap) - gap;
       if (!pullsY) h = itemNow.h * (rhNow + gap) - gap;
     }
-    // Anchor: the pulled edges follow w/h, the opposite ones stay put.
-    const px = E.w ? right - w : left;
-    const py = E.n ? bottom - h : top;
+    // Anchor: the pulled edges follow w/h, the opposite ones stay put — on
+    // the LIVE projection of the tile's cell, not the start-of-gesture pixels.
+    // In fit mode a push during the gesture reflows every row, so the row the
+    // tile sits in moves; anchoring on the start rect drew the ghost a row or
+    // two below its own placeholder (visual audit, west pull on the donut).
+    const liveRect = itemNow ? cellToRect(itemNow, fNow, ggNow, rows()) : null;
+    const anchorLeft = liveRect && !E.w && !E.e ? liveRect.x : left;
+    const anchorRight = liveRect ? liveRect.x + liveRect.width : right;
+    const anchorTop = liveRect && !E.n && !E.s ? liveRect.y : top;
+    const anchorBottom = liveRect ? liveRect.y + liveRect.height : bottom;
+    const px = E.w ? anchorRight - w : anchorLeft;
+    const py = E.n ? anchorBottom - h : anchorTop;
     g.node.setSize(w, h, g.node.size.depth ?? 0);
     g.node.setPosition(px, py);
     ghostStyleFastPath(g, { x: px, y: py, width: w, height: h });
