@@ -149,6 +149,9 @@
     .hist-id { color:#e6e9f0; } .hist-sub { color:#aab2c2; }
     .hist-tag { background:#2a3040; color:#9aa2b2; } .hist-tag.now { background:#3b52d9; color:#fff; }
   }
+  .pal-layout { display: flex; gap: 8px; }
+  .pal-item.pal-half { width: auto; flex: 1; justify-content: center; }
+  .pal-item[aria-pressed="true"] { background: rgba(59, 82, 217, .12); border-color: #3b52d9; color: #2c3fb0; }
 </style>
 
 <header id="demo-head"></header>
@@ -183,6 +186,11 @@
     <button class="pal-item" data-add="donut"><span class="pal-glyph" style="background:#f59e0b">◕</span>Donut</button>
     <button class="pal-item" data-add="funnel"><span class="pal-glyph" style="background:#8b5cf6">▽</span>Funnel</button>
     <button class="pal-item" data-add="table"><span class="pal-glyph" style="background:#64748b">▤</span>Table</button>
+    <div class="pal-title" style="margin-top:14px">Layout</div>
+    <div class="pal-layout">
+      <button class="pal-item pal-half" id="t-layout-grid" aria-pressed="true" title="The cell grid: columns, spans, push">Grid</button>
+      <button class="pal-item pal-half" id="t-layout-split" aria-pressed="false" title="The DevExpress splitter tree: the board is always covered, dividers are percentages">Split</button>
+    </div>
     <div class="pal-note">Click to add, or DRAG onto the board — it makes room live from the moment the cursor enters. On the board: drag tiles (neighbours slide out of the way around the dashed placeholder), resize from a tile's corner, drag OUT to remove. Click a tile to focus it, then use the toolbar.</div>
   </aside>
   <div id="canvas"><div id="db-status"></div></div>
@@ -352,7 +360,7 @@ let SPEC = null;                  // the live dashboard() spec (Load rebuilds it
 let H = null;                     // SPEC.handle — showView / widget() / setSizing / …
 let ctxRef = null;                // { diagram, engine, instance } from defineDemo
 let statusEl = null;
-let sizingMode = 'fit', floatMode = false;
+let sizingMode = 'fit', floatMode = false, layoutMode = 'grid';
 const state = { focus: null, saved: null, seq: 0 };
 
 /** dashboard()'s `renderWidget` seam. The LIBRARY draws the chart from the
@@ -422,6 +430,7 @@ function buildSpec(views) {
     ...BOARD,
     sizing: sizingMode,
     float: floatMode,
+    layout: layoutMode,
     views,
     renderWidget,
     // Fires after every committed gesture: the undo button must light up as
@@ -584,6 +593,25 @@ function setFloatMode(on) {
 /** SIZING MODE: fit (default) keeps every board at its design height and
  *  squeezes rows (DevExtreme-style — nothing falls below the fold); grow keeps
  *  the 130px design row and extends the board downward. */
+function syncLayoutButtons(mode) {
+  document.getElementById('t-layout-grid').setAttribute('aria-pressed', String(mode !== 'split'));
+  document.getElementById('t-layout-split').setAttribute('aria-pressed', String(mode === 'split'));
+}
+
+function setLayoutMode(mode) {
+  if (!H) return;
+  layoutMode = mode;
+  H.setLayout(mode);
+  syncLayoutButtons(mode);
+  const fitOnly = mode === 'split';
+  document.getElementById('t-mode').disabled = fitOnly;
+  document.getElementById('t-float').disabled = fitOnly;
+  flash(mode === 'split'
+    ? 'split layout — every widget covers its slot; drag a divider, drop a widget on an edge, add one and it halves the largest'
+    : 'grid layout — cells, spans and push');
+  syncToolbarSoon();
+}
+
 function setSizingMode(mode) {
   if (mode === sizingMode) return;
   sizingMode = mode;
@@ -737,6 +765,7 @@ function applyVersion(v) {
   H.dispose();                      // drops the old binders AND their boards
   sizingMode = v.sizing ?? sizingMode;
   floatMode = v.float ?? floatMode;
+  layoutMode = v.board?.layout ?? layoutMode;   // the split tree rides in the views
   SPEC = buildSpec(v.views);        // toJSON() output IS dashboard() input
   H = SPEC.handle;
   // Reconcile the model to the rebuilt spec (same ids → the same hosts, so
@@ -746,6 +775,10 @@ function applyVersion(v) {
   cmd().clear();                    // a load is not an undoable edit
   document.getElementById('t-mode').textContent = `Mode: ${sizingMode}`;
   document.getElementById('t-float').textContent = `Float: ${floatMode ? 'on' : 'off'}`;
+  const layout = H ? H.getLayout() : 'grid';
+  syncLayoutButtons(layout);
+  document.getElementById('t-mode').disabled = layout === 'split';
+  document.getElementById('t-float').disabled = layout === 'split';
   afterMount(active);
 }
 
@@ -870,6 +903,7 @@ function wireControls() {
     // Click-to-add stays; pointerdown ALSO arms the kit's palette DRAG-IN
     // (clone follows the cursor; entering the board places it live). A drag
     // that actually ran suppresses the click that may follow it.
+    if (!btn.dataset.add) continue; // the Layout pair below is not a widget chip
     btn.addEventListener('click', () => {
       if (Date.now() - lastPaletteGestureAt < 400) return;   // that click was a drag
       addWidget(btn.dataset.add);
@@ -896,6 +930,8 @@ function wireControls() {
   on('t-redo', async () => { const cm = cmd(); if (cm.canRedo()) { await cm.redo(); refresh(); } syncToolbarSoon(); flash('redo'); });
   on('t-mode', () => setSizingMode(sizingMode === 'fit' ? 'grow' : 'fit'));
   on('t-float', () => setFloatMode(!floatMode));
+  on('t-layout-grid', () => setLayoutMode('grid'));
+  on('t-layout-split', () => setLayoutMode('split'));
   on('t-pin', focused(togglePin));
   on('t-grow', focused(cycleRows));
   on('t-remove', focused(removeWidget));
