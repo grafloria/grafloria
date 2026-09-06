@@ -839,3 +839,70 @@ describe('saveLayout — saving on a phone saves the desktop layout', () => {
     expect(saved.items.find((i) => i.id === 'late')).toBeDefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// `capacity` — a row bound WITHOUT the strip's row-first push. The dashboard
+// kit's bounded fit mode: a fit board never changes size, so past its row floor
+// it refuses. The board still pushes DOWN like an unbounded one; only an op
+// whose settled result needs a row past the capacity is rolled back.
+// ---------------------------------------------------------------------------
+describe('GridPackEngine — capacity (bounded fit)', () => {
+  it('pushes DOWN, not along the row — the main board keeps its feel', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'a', x: 0, y: 0, w: 6, h: 1 },
+        { id: 'b', x: 0, y: 1, w: 3, h: 1 },
+      ],
+      { columns: 12, capacity: 3 }
+    );
+    expect(e.moveCheck('a', 0, 1).changed).toBe(true);
+    // b was displaced BELOW a (row 2), not shifted right along row 1.
+    expect(e.getItem('b')).toMatchObject({ x: 0, y: 2 });
+    expect(e.hasOverlaps()).toBe(false);
+  });
+
+  it('refuses a push whose settled result would need a row past the capacity', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'a', x: 0, y: 0, w: 12, h: 1 },
+        { id: 'b', x: 0, y: 1, w: 12, h: 1 },
+      ],
+      { columns: 12, capacity: 2 }
+    );
+    // Growing a to two rows would push b to row 2 — one past the capacity.
+    expect(e.resizeCheck('a', 12, 2).changed).toBe(false);
+    expect(e.getItem('a')).toMatchObject({ h: 1 });
+    expect(e.getItem('b')).toMatchObject({ y: 1 });
+    // A same-size swap needs no new row and still works.
+    expect(e.moveCheck('a', 0, 1).changed).toBe(true);
+    expect(e.getItem('a')!.y).toBe(1);
+  });
+
+  it('add() returns null when nothing can fit, and a legal add still lands', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'a', x: 0, y: 0, w: 12, h: 1 },
+        { id: 'b', x: 0, y: 1, w: 6, h: 1 },
+      ],
+      { columns: 12, capacity: 2 }
+    );
+    expect(e.add({ id: 'c', x: 0, y: 0, w: 6, h: 1, autoPosition: true })).toMatchObject({ x: 6, y: 1 });
+    expect(e.add({ id: 'd', x: 0, y: 0, w: 12, h: 1, autoPosition: true })).toBeNull();
+    expect(e.getItems().map((i) => i.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('maxRows wins when both are given — the strip semantics are untouched', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'a', x: 0, y: 0, w: 6, h: 1 },
+        { id: 'b', x: 6, y: 0, w: 3, h: 1 },
+      ],
+      { columns: 12, maxRows: 1, capacity: 5 }
+    );
+    expect(e.moveCheck('a', 3, 0).changed).toBe(true);
+    // The strip's row swap: b takes the left, a follows — no new row minted.
+    expect(e.getItem('b')).toMatchObject({ x: 0, y: 0 });
+    expect(e.getItem('a')).toMatchObject({ x: 3, y: 0 });
+    expect(e.rows()).toBe(1);
+  });
+});
