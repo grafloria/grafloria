@@ -539,6 +539,59 @@ describe('fromDocument — dashboard handle', () => {
 // The front door itself
 // ---------------------------------------------------------------------------
 
+describe('fromDocument — a document saved while NARROW (D4)', () => {
+  it('reloads at the WIDE layout, the same one toJSON() would have saved', () => {
+    // handle.toJSON() always got this right (it serialises from the engine's
+    // widest cached layout). The DOCUMENT path read the node's GridItemConfig,
+    // and a responsive column change wrote the live, NARROW cells into exactly
+    // that field — so a board saved on a phone reloaded as 1-wide tiles crammed
+    // into the left of a 12-column board.
+    const original = mount(DASH_SPEC());
+    const H = original.spec.handle;
+    H.setColumns(4);
+    expect(H.getColumns()).toBe(4);
+    expect(H.widget('t1')!.cell!.w).toBeLessThan(9); // squeezed, as it should be
+
+    const spec = fromDocument(save(original.api));
+    mount(spec);
+    expect(spec.handle.getColumns()).toBe(12);
+    expect(spec.handle.widget('t1')!.cell).toEqual({ x: 3, y: 0, w: 9, h: 2 });
+    expect(spec.handle.widget('k1')!.cell).toEqual({ x: 0, y: 0, w: 3, h: 1 });
+    expect(spec.handle.toJSON().views[0].columns).toBe(12);
+  });
+
+  it('an edit made while narrow still reaches the reloaded wide board', async () => {
+    // A reorder on the phone is exactly what a user does there; the engine
+    // propagates it into the cached wide layout, and the document must carry
+    // that cache, not just the cells of the moment. Two FULL-WIDTH tiles, so
+    // the order is the layout at every column count (a KPI beside a 9-wide
+    // table would legitimately climb back up at 12 columns — that is gravity,
+    // not a lost edit).
+    const original = mount(
+      dashboard({
+        columns: 12,
+        widgets: [
+          { id: 'top', kind: 'kpi', span: 12, rows: 1, title: 'Top' },
+          { id: 'bottom', kind: 'kpi', span: 12, rows: 1, title: 'Bottom' },
+        ],
+      })
+    );
+    const H = original.spec.handle;
+    H.setColumns(1);
+    expect(H.widget('top')!.cell).toEqual({ x: 0, y: 0, w: 1, h: 1 });
+    expect(H.widget('bottom')!.cell).toEqual({ x: 0, y: 1, w: 1, h: 1 });
+    // Same-size swap: BOTTOM goes on top.
+    expect(await H.widget('bottom')!.moveTo(0, 0)).toBe(true);
+    expect(H.widget('bottom')!.cell!.y).toBe(0);
+
+    const spec = fromDocument(save(original.api));
+    mount(spec);
+    expect(spec.handle.getColumns()).toBe(12);
+    expect(spec.handle.widget('bottom')!.cell).toEqual({ x: 0, y: 0, w: 12, h: 1 });
+    expect(spec.handle.widget('top')!.cell).toEqual({ x: 0, y: 1, w: 12, h: 1 });
+  });
+});
+
 describe('fromDocument — the front door', () => {
   it('accepts the parsed object as well as the JSON string', () => {
     const original = mount(ER_SPEC());

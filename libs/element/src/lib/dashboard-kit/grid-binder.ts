@@ -59,6 +59,7 @@ import {
   type DiagramModel,
   type GridColumnLayout,
   type GridItemConfig,
+  type GridLayoutCache,
   type GridPackItem,
   type GroupModel,
   type NodeModel,
@@ -482,10 +483,34 @@ export function bindDashboardGrid(
    * authored spec (a declared cell hovering over an empty row settles — the
    * kit's documented boot contract) and turning float off.
    */
-  const engineFrom = (items: GridPackItem[], pack = false): GridPackEngine => {
-    const e = new GridPackEngine(items, { columns, float: pack ? float : true, maxRows });
+  const engineFrom = (items: GridPackItem[], pack = false, at = columns): GridPackEngine => {
+    const e = new GridPackEngine(items, { columns: at, float: pack ? float : true, maxRows });
     e.float = float;
     return e;
+  };
+
+  /**
+   * THE PERSISTED COLUMN CACHE (D4). `toJSON()` always saved the wide layout —
+   * it reads the engine's widest cached count. The DOCUMENT path read the
+   * node's GridItemConfig, and a responsive column change writes the live,
+   * NARROW cells into exactly that field: a board saved on a phone reloaded as
+   * 1-wide tiles crammed into the left of a 12-column board, because the cache
+   * that knew better lived only in this closure. It now rides on the group as
+   * `dashboardLayouts` — the cache as plain data plus the live count the
+   * GridItemConfigs belong to — and `rebuild()` reads it back on a fresh bind.
+   * Written only when there is a cache, so a board that never changed column
+   * count serialises exactly as before.
+   */
+  const persistLayouts = (): void => {
+    if (disposed || engine.cachedColumns().length === 0) return;
+    writing = true;
+    try {
+      diagram.runSystemWrite(() =>
+        group.setMetadata('dashboardLayouts', { columns: engine.columns, layouts: engine.getLayouts() })
+      );
+    } finally {
+      writing = false;
+    }
   };
   let engine = engineFrom([]);
   let gesture: GestureState | null = null;
@@ -905,6 +930,7 @@ export function bindDashboardGrid(
     if (!engine.setColumns(n, layout)) return false;
     columns = engine.columns;
     persistLiveCells();
+    persistLayouts();
     armGlide();
     project();
     syncPlaceholder();
@@ -1074,6 +1100,7 @@ export function bindDashboardGrid(
       );
     }
     const changed = execute(g.kind === 'resize' ? 'Resize widget' : 'Move widget', commands);
+    persistLayouts(); // an edit at a narrow count propagated into the wide cache
     api.renderNow();
     options.onGesture?.({ type: 'commit', kind: g.kind, nodeId: g.id, changed });
   };
@@ -1406,6 +1433,7 @@ export function bindDashboardGrid(
       cleanupGestureVisuals(g);
       gesture = null;
       enforceBoardHeight();
+      persistLayouts();
       api.renderNow();
       options.onGesture?.({ type: 'commit', kind: g.kind, nodeId: g.id, changed: true });
       return;
@@ -1791,6 +1819,7 @@ export function bindDashboardGrid(
         cleanupGestureVisuals(g);
         gesture = null;
         void options.onDropIn?.(node, cell, displaced);
+        persistLayouts();
         options.onGesture?.({ type: 'drop-in', kind: 'palette', nodeId: g.id, changed: true });
         api.renderNow();
         return;
@@ -1847,6 +1876,7 @@ export function bindDashboardGrid(
     if (commands.length > 0) {
       await api.getEngine().commandManager.execute(new BatchCommand(name, commands));
     }
+    persistLayouts();
     api.renderNow();
     return true;
   };
@@ -1864,15 +1894,28 @@ export function bindDashboardGrid(
     // CARRY THE PER-COLUMN CACHE ACROSS THE REBUILD. sync() runs on every
     // undo, member add and refresh; without this handoff a responsive board
     // would silently lose its wide layouts the first time anything else
-    // happened, and growing back would re-derive instead of restoring.
-    const carried = engine.getLayouts();
-    engine = engineFrom(items, pack);
+    // happened, and growing back would re-derive instead of restoring. On a
+    // FRESH bind (a loaded document) the cache comes from the group instead.
+    const persisted = group.getMetadata?.('dashboardLayouts') as
+      | { columns?: number; layouts?: GridLayoutCache }
+      | undefined;
+    const carried = engine.cachedColumns().length > 0 ? engine.getLayouts() : (persisted?.layouts ?? {});
+    // The document's cells belong to the count it was SAVED at. When that is
+    // not the count this board is bound at, build the engine at the saved
+    // count — where the cells are legal — hand it the cache, and let its own
+    // column change bring the board to the bound count: known items come back
+    // from the cache exactly, the rest scale. (Only a fresh bind can see a
+    // mismatch; every later rebuild finds cells the binder itself wrote.)
+    const savedAt = engine.cachedColumns().length === 0 && typeof persisted?.columns === 'number' ? persisted.columns : columns;
+    engine = engineFrom(items, pack, savedAt);
     engine.setLayouts(carried);
-    // A PACKED rebuild may have moved cells (gravity); write them all back so
-    // the next verbatim sync reads the settled board, not the pre-pack one.
+    const converted = savedAt !== columns && engine.setColumns(columns, responsive?.layout ?? 'moveScale');
+    // A PACKED or CONVERTED rebuild may have moved cells; write them all back
+    // so the next verbatim sync reads the settled board, not the pre-pack one.
     // A verbatim rebuild only fills in cells that were never persisted.
-    if (pack) persistLiveCells();
+    if (pack || converted) persistLiveCells();
     else for (const item of engine.getItems()) persistAdoptedCell(item.id, item);
+    persistLayouts();
     project();
     syncHandles();
     api.renderNow();
