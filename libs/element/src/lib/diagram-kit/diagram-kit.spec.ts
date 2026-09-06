@@ -11,6 +11,7 @@
 import { erDiagram, ER_ROW_H, ER_HEAD_H } from './er';
 import { umlDiagram } from './uml';
 import { DIAGRAM_KIT_STYLE_ID, ensureDiagramKitStyles } from './styles';
+import { entityAutoHeight, ER_BORDER_SLACK } from './card';
 
 const CUSTOMER = {
   id: 'CUSTOMER',
@@ -461,5 +462,39 @@ describe('row selection (P1: select a column / field)', () => {
     const row2 = container2.querySelector('.axk-row') as HTMLElement;
     row2.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(row2.classList.contains('axk-row-selected')).toBe(false);
+  });
+});
+
+describe('ER card rows are one line — the rule the height math depends on', () => {
+  // entityAutoHeight allocates exactly ER_ROW_H per column and .axk-entity-body
+  // is overflow-y:hidden, so a wrapped column name pushes the last row out of
+  // the card and it disappears with no scrollbar. Measured before the fix: a
+  // long identifier produced a 40px row against the 25px reserved, hiding 14px
+  // of the final column. These assertions guard the CSS that keeps rows to one
+  // line; delete them only alongside a height model that measures real rows.
+  function ruleFor(selector: string): string {
+    ensureDiagramKitStyles(document);
+    const css = document.getElementById(DIAGRAM_KIT_STYLE_ID)?.textContent ?? '';
+    const at = css.indexOf(selector + ' {');
+    expect(at).toBeGreaterThan(-1);
+    return css.slice(at, css.indexOf('}', at));
+  }
+
+  it('.axk-col cannot wrap, and can shrink inside its flex row', () => {
+    const rule = ruleFor('.axk-col');
+    expect(rule).toContain('white-space: nowrap');
+    expect(rule).toContain('text-overflow: ellipsis');
+    expect(rule).toContain('min-width: 0');
+  });
+
+  it('.axk-ty cannot wrap either — a long type must not grow the row', () => {
+    expect(ruleFor('.axk-ty')).toContain('white-space: nowrap');
+  });
+
+  it('entityAutoHeight reserves exactly one row height per column', () => {
+    const h = (n: number) =>
+      entityAutoHeight({ id: 'T', columns: Array.from({ length: n }, (_, i) => ({ name: 'c' + i })) } as never);
+    expect(h(4) - h(3)).toBe(ER_ROW_H);
+    expect(h(0)).toBe(ER_HEAD_H + ER_BORDER_SLACK);
   });
 });

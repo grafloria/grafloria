@@ -30,13 +30,29 @@ const CSS = `
   border-top: 1px solid #e2e8f0; }
 .axk-key { width: 22px; font-size: 9px; font-weight: 700; color: #b45309; }
 .axk-key.axk-fk { color: #6d28d9; }
-.axk-col { flex: 1; color: #0f172a; }
+/* ONE LINE PER COLUMN, ALWAYS — this rule is load-bearing for the card's HEIGHT.
+   entityAutoHeight allocates exactly ER_ROW_H per column, and .axk-entity-body is
+   overflow-y:hidden, so a name that wrapped to a second line pushed the last row
+   past the card's bottom edge and it silently vanished (measured: a 40px row
+   against the 25px the height math had reserved — 14px of the final column gone,
+   with no scrollbar to hint at it). Long identifiers ellipsis instead, so the
+   ROW always survives even when the text does not fit; an author who needs the
+   whole identifier visible sets an explicit width on the entity. (No title
+   attribute: the HTML-node contract deliberately passes text through
+   textContent and no attributes, and a tooltip is not worth widening it.)
+   min-width:0 is what lets a flex child shrink below its content. */
+.axk-col { flex: 1; min-width: 0; color: #0f172a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .axk-ty {
   color: #64748b; font-size: 11px;
   /* A new column starts with an EMPTY type, which collapsed the cell to zero
      width — there was nothing to double-click, so a type could never be set on
      a field you just added. Reserve a target and hint that it is editable. */
   min-width: 52px; text-align: right; cursor: text;
+  /* Same contract as .axk-col: a long type must not wrap the row either.
+     It keeps its reserved width and never shrinks away. */
+  flex: 0 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 45%;
 }
 .axk-ty:empty::before { content: 'type'; color: #cbd5e1; font-style: italic; }
 .axk-ty:hover { color: #0f172a; }
