@@ -44,7 +44,6 @@
  */
 
 import {
-  AddToGroupCommand,
   BatchCommand,
   BringNodeToFrontCommand,
   Command,
@@ -331,19 +330,31 @@ export interface WidgetHandle {
  * unwinds both in undo().
  */
 class AddWidgetCommand extends Command {
+  /**
+   * `registry` is the kit's bookkeeping for the widget (see
+   * RegisterWidgetCommand): it is applied INSIDE this command rather than in a
+   * batch beside it, because a batch runs its members across awaits and the
+   * node would reach the model a microtask after the caller's `addWidget()`
+   * returned — every consumer that read the model right after would have
+   * broken. `nodeWasInModel` covers re-adding a node that already exists
+   * (membership only), the case that used to be a separate AddToGroupCommand.
+   */
   constructor(
     private node: NodeModel,
-    private groupId: string
+    private groupId: string,
+    private registry?: { register(): void; unregister(): void },
+    private nodeWasInModel = false
   ) {
     super('Add widget');
   }
 
   override execute(context: { diagram?: unknown }): void {
     const diagram = context.diagram as
-      | { addNode(n: NodeModel): void; getGroup(id: string): GroupModel | undefined }
+      | { addNode(n: NodeModel): void; getNode(id: string): NodeModel | undefined; getGroup(id: string): GroupModel | undefined }
       | undefined;
     if (!diagram) return;
-    diagram.addNode(this.node);
+    this.registry?.register();
+    if (!this.nodeWasInModel && !diagram.getNode(this.node.id)) diagram.addNode(this.node);
     diagram.getGroup(this.groupId)?.addMember(this.node.id);
   }
 
@@ -353,7 +364,8 @@ class AddWidgetCommand extends Command {
       | undefined;
     if (!diagram) return;
     diagram.getGroup(this.groupId)?.removeMember(this.node.id);
-    diagram.removeNode(this.node.id);
+    if (!this.nodeWasInModel) diagram.removeNode(this.node.id);
+    this.registry?.unregister();
   }
 
   override serialize() {
@@ -365,6 +377,88 @@ class AddWidgetCommand extends Command {
     };
   }
 }
+
+/**
+ * The kit's BOOKKEEPING for a widget — its spec, its board, its slot in the
+ * authored array — travels through the history WITH the node.
+ *
+ * It did not, and that was D2 of the 2026-09-06 review: `remove()` deleted the
+ * spec synchronously while the removal itself was a command, so undo restored
+ * the node and the membership through the model and the painter — asked to
+ * paint a node whose id the kit no longer knew — returned without drawing. A
+ * blank host where the donut was, `widget(id)` undefined, not listed. The
+ * comment on AddWidgetCommand already warns that the painter needs the spec
+ * BEFORE the node reaches the model; the same holds on the way back in.
+ *
+ * `register`/`unregister` are idempotent so the handle may also apply them
+ * synchronously (execute() is async, and the caller reads the handle right
+ * after) without double-counting when the command runs.
+ */
+class RegisterWidgetCommand extends Command {
+  constructor(
+    private registry: { register(): void; unregister(): void },
+    private direction: 'register' | 'unregister'
+  ) {
+    super(direction === 'register' ? 'Register widget' : 'Unregister widget');
+  }
+
+  override execute(): void {
+    if (this.direction === 'register') this.registry.register();
+    else this.registry.unregister();
+  }
+
+  override undo(): void {
+    if (this.direction === 'register') this.registry.unregister();
+    else this.registry.register();
+  }
+
+  override serialize() {
+    return { id: this.id, name: this.name, timestamp: this.timestamp, data: { direction: this.direction } };
+  }
+}
+
+/**
+ * Pin as ONE undoable step. `pin()` wrote the node's lock directly, which made
+ * it the only layout mutation outside the history (Ctrl-Z after a pin undid the
+ * gesture before it) and the reason toJSON() never saw it — D5. `before` is
+ * captured at construction so the handle can apply the lock synchronously and
+ * let the command re-apply it idempotently when it runs.
+ */
+class SetWidgetLockCommand extends Command {
+  constructor(
+    private nodeId: string,
+    private before: boolean,
+    private after: boolean
+  ) {
+    super(after ? 'Pin widget' : 'Unpin widget');
+  }
+
+  private apply(context: { diagram?: unknown }, locked: boolean): void {
+    const diagram = context.diagram as { getNode(id: string): NodeModel | undefined } | undefined;
+    diagram?.getNode(this.nodeId)?.setState({ locked });
+  }
+
+  override execute(context: { diagram?: unknown }): void {
+    this.apply(context, this.after);
+  }
+
+  override undo(context: { diagram?: unknown }): void {
+    this.apply(context, this.before);
+  }
+
+  override serialize() {
+    return {
+      id: this.id,
+      name: this.name,
+      timestamp: this.timestamp,
+      data: { nodeId: this.nodeId, before: this.before, after: this.after },
+    };
+  }
+}
+
+/** The history events a layout can change on — the engine's DiagramEventTypes
+ *  values, spelled out so the kit needs no import from the engine's type bag. */
+const HISTORY_EVENTS = ['command:executed', 'command:undone', 'command:redone'] as const;
 
 const DEFAULTS = { columns: 12, gap: 8, rowHeight: 130, width: 1180, height: 660 };
 const OFFSCREEN_X = -20000;
@@ -465,8 +559,13 @@ export interface DashboardApiRef {
     addGroup(g: GroupModel): void;
     getGroup(id: string): GroupModel | undefined;
     removeGroup?(id: string): unknown;
+    removeNode?(id: string): unknown;
   };
-  getEngine?: () => { commandManager: { execute(c: unknown): unknown } };
+  getEngine?: () => {
+    commandManager: { execute(c: unknown): unknown };
+    /** The engine's bus — the kit listens for history events on it (D3). */
+    eventBus?: { on(event: string, handler: (...args: unknown[]) => void): () => void };
+  };
   renderNow(): void;
   viewport?: { fitToBounds(r: unknown, pad: number, o?: unknown): void };
 }
@@ -518,6 +617,21 @@ export interface DashboardHandleContext {
   active: string;
   /** MUTABLE — set by the caller's finalize once the render API exists. */
   apiRef: DashboardApiRef | null;
+  /** The consumer's layout hook, if any (dashboard() passes its option). */
+  onLayoutChange?: (viewId: string, widgets: DashboardWidgetSpec[]) => void;
+  /**
+   * Set by createDashboardHandle. `reportChanged()` fires `onLayoutChange` for
+   * every view whose layout differs from the last report — ONE reporter for
+   * pointer commits, API calls, undo/redo and column changes alike, so a
+   * consumer's autosave sees every change and never the same change twice.
+   * `attachHistory()` is what finalize calls once `apiRef` exists: it
+   * subscribes the boards to the command history so an undo re-syncs them
+   * without the consumer calling refresh().
+   */
+  reportChanged?: () => void;
+  attachHistory?: () => void;
+  /** Unsubscribers dispose() runs. */
+  subscriptions?: Array<() => void>;
 }
 
 /**
@@ -553,11 +667,79 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       if (ctx.boardGroups.has(memberId)) {
         entries.push({ id: memberId, ...(spec ?? {}), ...at, widgets: treeOf(memberId) });
       } else if (spec) {
-        entries.push({ ...spec, ...at });
+        // `pinned` is read from the NODE's lock, not the authored spec: pin()
+        // changes the node, and a saved board must come back pinned the way
+        // the user left it (D5). Written only when true, so an unpinned
+        // widget serialises exactly as it always did.
+        const entry: DashboardWidgetSpec = { ...spec, ...at };
+        if (ctx.apiRef?.getModel().getNode(memberId)?.state?.locked === true) entry.pinned = true;
+        else delete entry.pinned;
+        entries.push(entry);
       }
     }
     entries.sort((p1, p2) => (p1.y ?? 0) - (p2.y ?? 0) || (p1.x ?? 0) - (p2.x ?? 0));
     return entries;
+  };
+
+  /** Bookkeeping closures for one widget, shared by the add and remove
+   *  commands (and applied synchronously by the handle — idempotent). */
+  const registryOf = (id: string, boardId: string, spec: DashboardWidgetSpec) => {
+    let slot = -1;
+    return {
+      register: (): void => {
+        specById.set(id, spec);
+        viewOfWidget.set(id, boardId);
+        const arr = ctx.boardWidgets.get(boardId);
+        if (arr && !arr.some((w) => w.id === id)) {
+          arr.splice(slot < 0 ? arr.length : Math.min(slot, arr.length), 0, spec);
+        }
+      },
+      unregister: (): void => {
+        specById.delete(id);
+        viewOfWidget.delete(id);
+        const arr = ctx.boardWidgets.get(boardId);
+        if (arr) {
+          const i = arr.findIndex((w) => w.id === id);
+          if (i >= 0) {
+            slot = i; // remembered so undo puts it back where it was
+            arr.splice(i, 1);
+          }
+        }
+      },
+    };
+  };
+
+  // ONE reporter for every path that changes a layout (D3). Diff-based: a
+  // pointer commit reports synchronously, the history event that follows finds
+  // nothing new and stays quiet.
+  const lastReported = new Map<string, string>();
+  const reportChanged = (): void => {
+    if (!ctx.onLayoutChange || !ctx.apiRef) return;
+    for (const v of handle.toJSON().views) {
+      const key = JSON.stringify(v.widgets);
+      if (lastReported.get(v.id) === key) continue;
+      lastReported.set(v.id, key);
+      ctx.onLayoutChange(v.id, v.widgets);
+    }
+  };
+  ctx.reportChanged = reportChanged;
+
+  // The boards follow the HISTORY, not the consumer's memory of it: after any
+  // command lands, is undone or redone, every binder re-reads the model and the
+  // reporter runs. This is what retires "call refresh() after undo".
+  ctx.attachHistory = (): void => {
+    const bus = ctx.apiRef?.getEngine?.()?.eventBus;
+    if (!bus) return;
+    // Prime the reporter so the boot layout is never reported as a change.
+    for (const v of handle.toJSON().views) lastReported.set(v.id, JSON.stringify(v.widgets));
+    const onHistory = (): void => {
+      if (!ctx.apiRef) return;
+      for (const b of binders.values()) b.sync();
+      ctx.apiRef.renderNow();
+      reportChanged();
+    };
+    ctx.subscriptions = ctx.subscriptions ?? [];
+    for (const ev of HISTORY_EVENTS) ctx.subscriptions.push(bus.on(ev, onHistory));
   };
 
   const execCommand = (cmd: unknown): void => {
@@ -613,12 +795,14 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     setFloat(on) {
       for (const b of binders.values()) b.setFloat(on);
       ctx.apiRef?.renderNow();
+      reportChanged(); // gravity re-packs when float turns off
     },
     getFloat: () => binders.get(ctx.active)?.getFloat() ?? (ctx.optionsBase.float ?? false),
     setColumns(n, layout, viewId) {
       const targets = viewId ? [binders.get(viewId)] : [...binders.values()];
       for (const b of targets) b?.setColumns(n, layout);
       ctx.apiRef?.renderNow();
+      reportChanged(); // derived state, never a command — report it here
     },
     getColumns: (viewId) => binders.get(viewId ?? ctx.active)?.getColumns() ?? ctx.columns,
     setRtl(on) {
@@ -643,15 +827,16 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // REGISTER FIRST: a custom node mounts exactly once, and the painter
       // returns early for an id the spec does not know — so the widget must be
       // known before the node reaches the model, or it paints blank forever.
-      arr.push(w);
-      specById.set(w.id, w);
-      viewOfWidget.set(w.id, vid);
+      // The registration ALSO rides in the batch, so undo un-lists the widget
+      // and redo lists it again before the node comes back.
+      const registry = registryOf(w.id, vid, w);
+      registry.register();
 
       const existing = model.getNode(w.id);
       const node = existing ?? buildWidgetNode(w, ctx.rowHeight);
       if (w.pinned) node.setState({ locked: true });
-      // ONE undoable step (see AddWidgetCommand for why this cannot be a batch).
-      execCommand(existing ? new AddToGroupCommand(group.id, w.id) : new AddWidgetCommand(node, group.id));
+      // ONE undoable step, registration included (see AddWidgetCommand).
+      execCommand(new AddWidgetCommand(node, group.id, registry, !!existing));
 
       binders.get(vid)?.sync();
       ctx.apiRef?.renderNow();
@@ -734,11 +919,19 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       } as DashboardSnapshot;
     },
     dispose() {
+      for (const off of ctx.subscriptions ?? []) off();
+      ctx.subscriptions = [];
       for (const b of binders.values()) b.dispose();
       binders.clear();
       // The groups finalize() created are ours to clean up — leaving them
       // behind made a rebuild stack a second set of boards on the first.
       const model = ctx.apiRef?.getModel();
+      // …and so are the widget NODES (D9): they used to stay behind with live
+      // hosts, so a consumer switching dashboards in one canvas accumulated
+      // orphans, and a rebuild with the same ids re-added nodes that existed.
+      for (const id of specById.keys()) {
+        if (!ctx.boardGroups.has(id)) model?.removeNode?.(id);
+      }
       // Deepest first: a container group removed after its parent is an orphan
       // the model never saw inside a board.
       for (const id of [...ctx.boardGroups.keys()].reverse()) model?.removeGroup?.(id);
@@ -782,12 +975,19 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       pin(on) {
         const n = node();
         if (!n) return;
-        n.setState({ locked: on ?? !(n.state?.locked === true) });
+        const before = n.state?.locked === true;
+        const after = on ?? !before;
+        if (after === before) return;
+        // Applied now so the handle reads back correctly at once, AND recorded
+        // as one undoable step (D5) — the command re-applies idempotently.
+        n.setState({ locked: after });
+        execCommand(new SetWidgetLockCommand(id, before, after));
         // Re-sync so the ENGINE's locked flag (never pushed, drags refused)
         // and the hidden corner handle take effect on this frame, not the next
         // gesture.
         binder()?.sync();
         ctx.apiRef?.renderNow();
+        reportChanged();
       },
       bringToFront() {
         execCommand(new BringNodeToFrontCommand(id));
@@ -822,15 +1022,18 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         // gone from the engine, so planRemoval() would return [] and the
         // survivors' cells would never commit.
         const survivors = (displaced as never[] | undefined) ?? b.planRemoval(id);
-        const cmds = [...survivors, new RemoveFromGroupCommand(group.id, id), new RemoveNodeCommand(id)];
+        // The un-registration is the LAST command so that undo — which runs
+        // the batch in reverse — re-registers the spec BEFORE the node and its
+        // membership come back and the painter is asked to paint it (D2).
+        const registry = registryOf(id, viewId, spec);
+        const cmds = [
+          ...survivors,
+          new RemoveFromGroupCommand(group.id, id),
+          new RemoveNodeCommand(id),
+          new RegisterWidgetCommand(registry, 'unregister'),
+        ];
         void execCommand(new BatchCommand('Remove widget', cmds));
-        const arr = ctx.boardWidgets.get(viewId);
-        if (arr) {
-          const i = arr.findIndex((w) => w.id === id);
-          if (i >= 0) arr.splice(i, 1);
-        }
-        specById.delete(id);
-        viewOfWidget.delete(id);
+        registry.unregister(); // now, for the caller reading the handle next
         b.sync();
         ctx.apiRef?.renderNow();
       },
@@ -941,6 +1144,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
     optionsBase: options,
     active: views[0]?.id ?? 'main',
     apiRef: null,
+    onLayoutChange: options.onLayoutChange,
   };
   const { binders, groups } = ctx;
   const handle = createDashboardHandle(ctx);
@@ -1005,13 +1209,14 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             ...(options.responsive ? { responsive: options.responsive } : {}),
             ...(options.binder ?? {}),
             onGesture: (e) => {
-              if (e.type === 'commit') reportLayoutChange(v.id);
+              if (e.type === 'commit') reportChanged();
               options.binder?.onGesture?.(e);
             },
           })
         );
       }
       handle.showView(ctx.active);
+      ctx.attachHistory?.();
       return;
 
       /**
@@ -1078,7 +1283,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
                 float: false,
                 rtl: options.rtl ?? false,
                 onGesture: (e) => {
-                  if (e.type === 'commit') reportLayoutChange(viewId);
+                  if (e.type === 'commit') reportChanged();
                   options.binder?.onGesture?.(e);
                 },
               })
@@ -1113,16 +1318,14 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
 
       /**
        * One reporter for every binder on a view — the view's own and each
-       * container's. The payload is the view's FULL NESTED TREE derived from
-       * live membership (handle.toJSON()), so an inner commit reports the same
-       * truth an outer one does, and a tile that crossed a boundary shows up
-       * under its NEW parent. (The old per-view lookup found nothing for a
-       * container binder and silently reported nothing.)
+       * container's — and for every API call, undo and redo (D3): the handle's
+       * diff-based `reportChanged`. The payload is the view's FULL NESTED TREE
+       * derived from live membership (handle.toJSON()), so an inner commit
+       * reports the same truth an outer one does, and a tile that crossed a
+       * boundary shows up under its NEW parent.
        */
-      function reportLayoutChange(viewId: string): void {
-        if (!options.onLayoutChange) return;
-        const snapshot = handle.toJSON().views.find((x) => x.id === viewId);
-        if (snapshot) options.onLayoutChange(viewId, snapshot.widgets);
+      function reportChanged(): void {
+        ctx.reportChanged?.();
       }
     },
   };

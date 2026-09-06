@@ -24,7 +24,7 @@ function makeApi(model: DiagramModel) {
   container.appendChild(layer);
   return {
     getModel: () => model,
-    getEngine: () => ({ commandManager: manager }),
+    getEngine: () => ({ commandManager: manager, eventBus: bus }),
     container,
     render: () => undefined,
     renderNow: () => undefined,
@@ -55,6 +55,10 @@ function mount(spec: DashboardSpec) {
   spec.finalize(api);
   return { model, api, handle: spec.handle };
 }
+
+/** The handle's commands are fire-and-forget (execute() is async with two
+ *  awaits inside); a test that reads the model right after must let them land. */
+const settle = () => new Promise<void>((r) => setTimeout(r, 0));
 
 const SIMPLE = () =>
   dashboard({
@@ -817,5 +821,141 @@ describe('handle.toJSON() — the round-trip promise, kept', () => {
     expect(again.gap).toBe(6);
     expect(again.rowHeight).toBe(90);
     expect(again.views[0].widgets.map((w) => w.id)).toEqual(['a']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// STATE LEAKS — the authored spec, the engine cells and the model each hold a
+// piece of the layout, and these are the places one copy moved while another
+// did not. Every one was reproduced in a browser on the shipped builder demo
+// before it was written down here (review of 2026-09-06, D2/D3/D5/D9).
+// ---------------------------------------------------------------------------
+describe('state leaks between the spec, the engine and the model', () => {
+  it('D2: undo after remove() brings the widget back PAINTED and listed', async () => {
+    const spec = SIMPLE();
+    const { model, api, handle } = mount(spec);
+    handle.widget('b')!.remove();
+    await settle();
+    expect(model.getNode('b')).toBeUndefined();
+
+    await api.getEngine().commandManager.undo();
+    // The node is back in the model AND the kit knows it again…
+    expect(model.getNode('b')).toBeDefined();
+    expect(handle.widget('b')).toBeDefined();
+    expect(handle.widgetsOf().map((w) => w.id)).toEqual(['a', 'b', 'c']);
+    // …so the painter, asked to paint it, actually paints (it used to return
+    // early for an id the spec no longer knew — a blank host after undo).
+    const host = document.createElement('div');
+    spec.renderCustomNode({ id: 'b' }, host);
+    expect(host.children.length).toBeGreaterThan(0);
+    // And redo takes it away again, bookkeeping included.
+    await api.getEngine().commandManager.redo();
+    expect(model.getNode('b')).toBeUndefined();
+    expect(handle.widget('b')).toBeUndefined();
+  });
+
+  it('D2b: undo after addWidget() un-lists the widget too', async () => {
+    const { model, api, handle } = mount(SIMPLE());
+    handle.addWidget({ id: 'z', kind: 'kpi', span: 3 });
+    await settle();
+    expect(model.getNode('z')).toBeDefined();
+    await api.getEngine().commandManager.undo();
+    expect(model.getNode('z')).toBeUndefined();
+    expect(handle.widget('z')).toBeUndefined();
+    expect(handle.widgetsOf().map((w) => w.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('D5: pin() reaches toJSON() and is one undoable step', async () => {
+    const { api, handle } = mount(SIMPLE());
+    const a = handle.widget('a')!;
+    expect(a.pinned).toBe(false);
+    a.pin(true);
+    expect(a.pinned).toBe(true);
+    const saved = handle.toJSON().views[0].widgets.find((w) => w.id === 'a')!;
+    expect(saved.pinned).toBe(true);
+    await settle();
+    await api.getEngine().commandManager.undo();
+    expect(a.pinned).toBe(false);
+    expect(handle.toJSON().views[0].widgets.find((w) => w.id === 'a')!.pinned).toBeFalsy();
+  });
+
+  it('D3: onLayoutChange fires for EVERY layout mutation, not only pointer gestures', async () => {
+    const calls: string[] = [];
+    const spec = dashboard({
+      widgets: [
+        { id: 'a', kind: 'kpi', span: 3 },
+        { id: 'b', kind: 'kpi', span: 3 },
+      ],
+      onLayoutChange: (viewId) => calls.push(viewId),
+    });
+    const { api, handle } = mount(spec);
+    const cm = api.getEngine().commandManager;
+    const n = () => calls.length;
+    expect(n()).toBe(0);
+
+    await handle.widget('a')!.moveTo(6, 0);
+    const afterMove = n();
+    expect(afterMove).toBeGreaterThan(0);
+
+    handle.addWidget({ id: 'z', kind: 'kpi', span: 3 });
+    await settle();
+    expect(n()).toBeGreaterThan(afterMove);
+    const afterAdd = n();
+
+    handle.widget('z')!.remove();
+    await settle();
+    expect(n()).toBeGreaterThan(afterAdd);
+    const afterRemove = n();
+
+    await cm.undo();
+    expect(n()).toBeGreaterThan(afterRemove);
+    const afterUndo = n();
+
+    await cm.redo();
+    expect(n()).toBeGreaterThan(afterUndo);
+    const afterRedo = n();
+
+    handle.widget('a')!.pin(true);
+    await settle();
+    expect(n()).toBeGreaterThan(afterRedo);
+    const afterPin = n();
+
+    // A responsive column change is NOT a layout change: toJSON() keeps
+    // serialising the widest layout, so there is nothing new to save and the
+    // hook stays quiet. (The binder's onColumnsChange is the hook for that.)
+    handle.setColumns(6);
+    expect(n()).toBe(afterPin);
+  });
+
+  it('D3b: after an undo the handle reads the undone cell WITHOUT a manual refresh()', async () => {
+    const { api, handle } = mount(SIMPLE());
+    const before = handle.widget('a')!.cell;
+    await handle.widget('a')!.moveTo(3, 0); // same-size swap with b
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 3 });
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(handle.widget('a')!.cell).toEqual(before);
+  });
+
+  it('D9: dispose() takes the widget nodes it created, not only the boards', () => {
+    const { model, handle } = mount(SIMPLE());
+    expect(model.getNodes().length).toBe(4);
+    handle.dispose();
+    expect(model.getGroups().length).toBe(0);
+    expect(model.getNodes().length).toBe(0);
+  });
+});
+
+describe('a rebuild honours the persisted cells verbatim', () => {
+  it('refresh() keeps the gap a drop left — gravity must not re-pack on rebuild', async () => {
+    // A tile dropped below free space stays where the placeholder promised (the
+    // mover is exempt from gravity during its own gesture). sync() rebuilt the
+    // engine through add()+settle, which packed that gap away — so every
+    // refresh, undo and history event moved a tile the user had just placed.
+    const { handle } = mount(SIMPLE());
+    expect(await handle.widget('a')!.moveTo(0, 4)).toBe(true);
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0, y: 4 });
+    handle.refresh();
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0, y: 4 });
   });
 });
