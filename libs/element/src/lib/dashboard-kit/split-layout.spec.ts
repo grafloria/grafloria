@@ -17,7 +17,9 @@ import {
   removeSplitLeaf,
   splitFromCells,
   splitLeaf,
+  splitAt,
   splitLeaves,
+  groupRectsOf,
   type SplitGroup,
   type SplitNode,
 } from './split-layout';
@@ -188,5 +190,37 @@ describe('split layout — the DevExpress model as arithmetic', () => {
       expect(c.h).toBeGreaterThanOrEqual(1);
       expect(c.x + c.w).toBeLessThanOrEqual(12);
     }
+  });
+
+  it('a drop on a GROUP edge lands beside the whole group: under all the columns, not under one of them', () => {
+    // A row of three KPIs over a chart (column root of [row, chart]).
+    let t: SplitNode | null = { dir: 'column', weight: 1, children: [{ dir: 'row', weight: 1, children: [{ id: 'k1', weight: 1 }, { id: 'k2', weight: 1 }, { id: 'k3', weight: 1 }] }, { id: 'chart', weight: 3 }] };
+    // Move the chart's mate: insert a new widget under the WHOLE KPI row (group path [0], bottom).
+    t = insertSplitLeaf(t, 'strip', { path: [0] }, 'bottom');
+    const r = projectSplit(t, FRAME);
+    expect(r.get('strip')!.width).toBe(1200); // full width — under all three
+    expect(r.get('strip')!.y).toBeGreaterThan(r.get('k2')!.y);
+    expect(r.get('strip')!.y).toBeLessThan(r.get('chart')!.y);
+    expect(near(r.get('k1')!.y + r.get('k1')!.height + r.get('strip')!.height, r.get('strip')!.y + r.get('strip')!.height)).toBe(true);
+    // The row itself is untouched: k1..k3 still share it.
+    expect(near(r.get('k1')!.width + r.get('k2')!.width + r.get('k3')!.width, 1200)).toBe(true);
+    // Under the ROOT row (a row root, drop at its bottom): the tree gets a column root with a full-width row.
+    let row: SplitNode | null = { dir: 'row', weight: 1, children: [{ id: 'a', weight: 1 }, { id: 'b', weight: 1 }, { id: 'c', weight: 1 }] };
+    row = insertSplitLeaf(row, 'd', { path: [] }, 'bottom');
+    const rr = projectSplit(row, FRAME);
+    expect(rr.get('d')).toEqual({ x: 0, y: 300, width: 1200, height: 300 });
+    expect(rr.get('a')).toEqual({ x: 0, y: 0, width: 400, height: 300 });
+    // A MOVE onto a group edge: c leaves the row and lands under a+b.
+    const moved = insertSplitLeaf(row, 'c', { path: [0] }, 'bottom')!;
+    const rm = projectSplit(moved, FRAME);
+    // c's old slot went to its neighbour b (the remove rule), so a stays 400 and b is 800.
+    expect(rm.get('a')!.width).toBe(400);
+    expect(rm.get('b')!.width).toBe(800);
+    expect(rm.get('c')!.width).toBe(1200);
+    expect(rm.get('c')!.y).toBeLessThan(rm.get('d')!.y);
+    // Group rects: the row group is the top band.
+    const gr = groupRectsOf(t, FRAME);
+    expect(gr.find((g) => g.path.length === 1 && g.dir === 'row')!.rect).toMatchObject({ x: 0, y: 0, width: 1200 });
+    expect(splitAt(null, [], 'x', 'row')).toEqual({ id: 'x', weight: 1 });
   });
 });

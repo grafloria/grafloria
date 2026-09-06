@@ -2597,6 +2597,9 @@ export function bindDashboardGrid(
       hostObserver.disconnect();
       containerObserver?.disconnect();
       for (const off of subs) off();
+      // The corner handles are THIS binder's affordance: a board re-bound as a
+      // split layout must not keep showing a resize corner it cannot act on.
+      for (const id of group.members ?? []) hostOf(id)?.querySelector(':scope > .axdb-rs')?.remove();
       placeholder?.remove();
       placeholder = null;
       if (glideTimer) clearTimeout(glideTimer);

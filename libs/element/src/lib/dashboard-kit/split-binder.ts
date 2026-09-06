@@ -32,6 +32,7 @@ import {
   cellsFromSplit,
   cloneSplit,
   dividersOf,
+  groupRectsOf,
   insertSplitLeaf,
   moveSplitDivider,
   normalizeSplit,
@@ -147,8 +148,8 @@ interface Gesture {
   liveTree: SplitNode | null;
   /** Divider gesture: which one. */
   divider: SplitDivider | null;
-  /** Move / palette gesture: where the drop would land. */
-  target: { id: string; side: SplitSide } | null;
+  /** Move / palette gesture: where the drop would land — a widget's edge, or a whole group's outer edge. */
+  target: { id: string; side: SplitSide } | { path: number[]; side: SplitSide } | null;
   out: boolean;
   chip: HTMLElement | null;
   esc: ((e: KeyboardEvent) => void) | null;
@@ -376,19 +377,46 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     }
   };
 
-  /** Which leaf is under the world point, and which of its edges is nearest. */
-  const dropTargetAt = (tree: SplitNode | null, wx: number, wy: number, exclude?: string): { id: string; side: SplitSide; rect: WorldRect } | null => {
+  /**
+   * Where a drop at the world point lands. Near the OUTER edge of a group —
+   * within GROUP_BAND px, the outermost such group winning — the target is the
+   * whole group ("under all of these columns", DevExpress's group indicator);
+   * otherwise it is the widget under the pointer, on its nearest edge.
+   */
+  const GROUP_BAND = 18;
+  type DropTarget = ({ id: string } | { path: number[] }) & { side: SplitSide; rect: WorldRect };
+  const dropTargetAt = (tree: SplitNode | null, wx: number, wy: number, exclude?: string): DropTarget | null => {
+    let leaf: { id: string; rect: WorldRect } | null = null;
     for (const [id, r] of rectsOf(tree)) {
       if (id === exclude) continue;
-      if (wx < r.x || wx > r.x + r.width || wy < r.y || wy > r.y + r.height) continue;
-      const d = { left: wx - r.x, right: r.x + r.width - wx, top: wy - r.y, bottom: r.y + r.height - wy };
-      // Normalise by the axis length so a wide, short tile still has a usable top / bottom band.
-      const n = { left: d.left / r.width, right: d.right / r.width, top: d.top / r.height, bottom: d.bottom / r.height };
-      const side = (Object.keys(n) as SplitSide[]).reduce((a, b) => (n[b] < n[a] ? b : a));
-      return { id, side, rect: r };
+      if (wx >= r.x && wx <= r.x + r.width && wy >= r.y && wy <= r.y + r.height) {
+        leaf = { id, rect: r };
+        break;
+      }
     }
-    return null;
+    if (!leaf) return null;
+    const leafPath = pathToLeaf(tree, leaf.id) ?? [];
+    // Ancestors first (the root is path []), outermost wins.
+    const groups = groupRectsOf(tree, frame(), gap, padding, rtl)
+      .filter((g) => g.path.length < leafPath.length && g.path.every((i, k) => leafPath[k] === i))
+      .sort((a, b) => a.path.length - b.path.length);
+    for (const g of groups) {
+      const r = g.rect;
+      const d: Record<SplitSide, number> = { left: wx - r.x, right: r.x + r.width - wx, top: wy - r.y, bottom: r.y + r.height - wy };
+      const side = (Object.keys(d) as SplitSide[]).reduce((a, b) => (d[b] < d[a] ? b : a));
+      if (d[side] <= GROUP_BAND) return { path: g.path, side, rect: r };
+    }
+    const r = leaf.rect;
+    const d = { left: wx - r.x, right: r.x + r.width - wx, top: wy - r.y, bottom: r.y + r.height - wy };
+    // Normalise by the axis length so a wide, short tile still has a usable top / bottom band.
+    const n = { left: d.left / r.width, right: d.right / r.width, top: d.top / r.height, bottom: d.bottom / r.height };
+    const side = (Object.keys(n) as SplitSide[]).reduce((a, b) => (n[b] < n[a] ? b : a));
+    return { id: leaf.id, side, rect: r };
   };
+  const targetOf = (t: DropTarget): { id: string; side: SplitSide } | { path: number[]; side: SplitSide } =>
+    'id' in t ? { id: t.id, side: t.side } : { path: t.path, side: t.side };
+  const targetRef = (t: { id: string } | { path: number[] }): string | { path: number[] } => ('id' in t ? t.id : { path: t.path });
+  const targetName = (t: { id: string } | { path: number[] }): string => ('id' in t ? nameOf(t.id) : 'the group');
 
   const worldInsideBoard = (x: number, y: number): boolean => {
     const f = frame();
@@ -417,6 +445,9 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
   const syncA11y = (): void => {
     if (disposed) return;
     const order = splitLeaves(paintedTree()).filter((id) => !!diagram.getNode(id));
+    // No corner handles on a split board: size comes from the dividers. A host
+    // that carried the grid's handle (a board switched live) sheds it here.
+    for (const id of order) hostOf(id)?.querySelector(':scope > .axdb-rs')?.remove();
     if (focusedId && !order.includes(focusedId)) focusedId = undefined;
     const stop = focusedId ?? order[0];
     order.forEach((id, i) => {
@@ -538,7 +569,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     }
     const inside = worldInsideBoard(ev.world.x, ev.world.y);
     const t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
-    g.target = t ? { id: t.id, side: t.side } : null;
+    g.target = t ? targetOf(t) : null;
     showInsertion(t ? insertionRect(t.rect, t.side) : null);
     const out =
       !inside &&
@@ -574,13 +605,13 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     }
     if (g.target) {
       const side = rtl && (g.target.side === 'left' || g.target.side === 'right') ? (g.target.side === 'left' ? 'right' : 'left') : g.target.side;
-      const after = insertSplitLeaf(g.liveTree, g.id, g.target.id, side);
+      const after = insertSplitLeaf(g.liveTree, g.id, targetRef(g.target), side);
       const changed = JSON.stringify(normalizeSplit(after)) !== JSON.stringify(normalizeSplit(g.startTree));
       if (changed) commitTree(g.startTree, after);
       else project(g.startTree);
       project(readTree());
       api.renderNow();
-      if (changed) live.announce(`${nameOf(g.id)} moved ${side === 'left' || side === 'top' ? 'before' : 'after'} ${nameOf(g.target.id)}`, 'polite', true);
+      if (changed) live.announce(`${nameOf(g.id)} moved ${side === 'left' || side === 'top' ? 'before' : 'after'} ${targetName(g.target)}`, 'polite', true);
       fire({ type: changed ? 'commit' : 'cancel', kind: 'move', nodeId: g.id, changed });
       return;
     }
@@ -727,7 +758,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       }
       const w = toWorld(e.clientX, e.clientY);
       const t = worldInsideBoard(w.x, w.y) ? dropTargetAt(g.liveTree, w.x, w.y) : null;
-      g.target = t ? { id: t.id, side: t.side } : null;
+      g.target = t ? targetOf(t) : null;
       showInsertion(t ? insertionRect(t.rect, t.side) : null);
       chip?.classList.toggle('axdb-out', !t && !!g.liveTree);
       api.render();
@@ -739,7 +770,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       teardownGesture(g);
       const tree = g.liveTree;
       const after = g.target
-        ? insertSplitLeaf(tree, node.id, g.target.id, g.target.side)
+        ? insertSplitLeaf(tree, node.id, targetRef(g.target), g.target.side)
         : tree
           ? null
           : addSplitLeaf(null, node.id, frame(), gap, padding);
