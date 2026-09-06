@@ -151,12 +151,20 @@ const CSS = `
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   color: var(--axdb-ink);
 }
-/* The host is the card's size container, so the card can shed its padding at the
-   row floor instead of clipping its own header. */
-.grafloria-html-layer > .grafloria-node-host { container-type: size; }
-@container (max-height: 46px) {
+/* The host is the card's size container (named, so a widget's inner parts can
+   ask the TILE's size as well as their own body's), so the card can shed its
+   padding as the tile gets short instead of clipping its own content. */
+.grafloria-html-layer > .grafloria-node-host { container: axdb-tile / size; }
+@container axdb-tile (max-height: 90px) {
+  .axdb-widget { padding: 8px 14px 7px; }
+  .axdb-widget-h { margin-bottom: 4px; }
+}
+@container axdb-tile (max-height: 46px) {
   .axdb-widget { padding: 4px 12px 3px; }
   .axdb-widget-h { margin-bottom: 0; }
+}
+@container axdb-tile (max-height: 26px) {
+  .axdb-widget { padding: 2px 12px 1px; }
 }
 .axdb-widget-h {
   display: flex;
@@ -193,7 +201,7 @@ const CSS = `
    sliced mid-glyph by the card's overflow — the audited "trimmed" widgets.
    cqh = 1% of the body's own height, clamped so full-size tiles look exactly
    as before and short tiles compress instead of cutting. */
-.axdb-widget-b.axdb-kpi { display: flex; flex-direction: column; container-type: size; }
+.axdb-widget-b.axdb-kpi { display: flex; flex-direction: column; container: axdb-kpi / size; }
 /* STEP DOWN, NEVER CLIP. As the body gets shorter the sparkline goes first, then the
    delta, then the value — the header alone at the row floor. Before this a 99-px row
    drew the sparkline as a 13-px sliver and a 28-px row cut the value mid-glyph (the
@@ -202,15 +210,38 @@ const CSS = `
    a bare .axdb-kpi-s lost that cascade and the sparkline stayed. */
 @container (max-height: 78px) { .axdb-kpi > .axdb-kpi-s { display: none; } }
 @container (max-height: 40px) { .axdb-kpi > .axdb-kpi-d { display: none; } }
-@container (max-height: 22px) { .axdb-kpi > .axdb-kpi-v { display: none; } }
-.axdb-kpi-v { font: 700 clamp(15px, 44cqh, 30px)/1.05 system-ui, sans-serif; letter-spacing: -.02em; color: var(--axdb-ink); }
-.axdb-kpi-d { margin-top: clamp(1px, 5cqh, 6px); font: 600 clamp(9px, 19cqh, 12px)/1.2 system-ui, sans-serif; }
+@container (max-height: 16px) { .axdb-kpi > .axdb-kpi-v { display: none; } }
+.axdb-kpi-v { font: 700 clamp(15px, 44cqh, 30px)/1.05 system-ui, sans-serif; letter-spacing: -.02em; color: var(--axdb-ink); white-space: nowrap; }
+.axdb-kpi-d { margin-top: clamp(1px, 5cqh, 6px); font: 600 clamp(9px, 19cqh, 12px)/1.2 system-ui, sans-serif; white-space: nowrap; }
 .axdb-kpi-d span { color: var(--axdb-muted); font-weight: 500; }
 .axdb-kpi-d.up { color: var(--axdb-up); }
 .axdb-kpi-d.down { color: var(--axdb-down); }
 /* Grows into a tall tile (a 3-row KPI is not a number over a void) and never
    takes more than two fifths of the body. */
 .axdb-kpi-s { margin-top: auto; height: auto; min-height: 0; flex: 1 1 34px; max-height: 40%; }
+/* SHORT AND WIDE — a one-row KPI on a fluid board. Stacked, a short tile dropped
+   its sparkline and left a small figure in the corner of an empty card. Here the
+   figure, its delta and the sparkline sit in a row and the spark fills the width.
+   The outer query asks the TILE (host), the inner one the body, so a strip too
+   thin for a readable spark (under 24 px) keeps the figure alone. 340 px is what
+   a figure, its delta, the gaps and a spark worth reading need — the builder's
+   236-px tiles got a 40-px wedge of spark beside the delta. */
+@container axdb-tile (max-height: 125px) and (min-width: 340px) {
+  .axdb-widget--kpi > .axdb-kpi { flex-direction: row; align-items: center; gap: 14px; }
+  .axdb-widget--kpi .axdb-kpi-d { margin-top: 0; }
+  @container axdb-kpi (min-height: 24px) {
+    .axdb-kpi > .axdb-kpi-s { display: block; flex: 1 1 40%; min-width: 80px; height: 100%; max-height: 100%; margin-top: 0; align-self: stretch; }
+  }
+}
+/* THE STRIP (row floor): header and figure on one line, the spark beside them
+   when the tile is wide enough. */
+@container axdb-tile (max-height: 46px) {
+  .axdb-widget--kpi { flex-direction: row; align-items: center; gap: 12px; }
+  .axdb-widget--kpi > .axdb-widget-h { flex: none; }
+  /* The body is a SIZE container: in a centred row it would collapse to zero
+     and every height query would fire. It takes the card's full inner height. */
+  .axdb-widget--kpi > .axdb-kpi { flex: 1; align-self: stretch; }
+}
 
 /* donut: ring beside its legend. The ring takes the body's height (a tall
    tile gets a bigger ring, not dead card), square, capped so its centre figure
