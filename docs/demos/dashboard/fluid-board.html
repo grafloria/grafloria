@@ -194,8 +194,26 @@ defineDemo({
     check(ctx2.addRow(), 'grow accepts the row fit refused');
     await settle();
     check(frameOf().height > box().h, 'and the board extended past the container (wheel to scroll)');
+
+    // ---- ⑥ the camera is a scroll position, bounded to the board ---------------
+    const wheel = (dy) => host.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, clientX: c.x + 200, clientY: c.y + 200, bubbles: true, cancelable: true }));
+    wheel(100000);
+    await settle();
+    const down = api.viewport.getViewBox();
+    check(down.y > 0, 'a wheel scrolls the grown board');
+    check(down.y <= frameOf().height - box().h + 1, 'and stops at its last row — never past the board');
+    ctx2.sizing('fit');
+    await settle();
+    // The board holds one row more than the fit capacity here (⑤), so fit
+    // extends the frame at the row floor instead of clipping — the camera may
+    // sit at most that overhang down, never further, never above the origin.
+    const fy = api.viewport.getViewBox().y;
+    check(fy >= -0.5 && fy <= Math.max(0, frameOf().height - box().h) + 1, `fit pulls a scrolled camera back into the board (y=${Math.round(fy)}, overhang ${Math.round(Math.max(0, frameOf().height - box().h))})`);
     ctx2.sizing('grow');
     await settle();
+    wheel(-100000);
+    await settle();
+    check(Math.abs(api.viewport.getViewBox().y) < 1, 'and a wheel back up stops exactly at the origin — the page is at rest');
   },
 });
 </script>
