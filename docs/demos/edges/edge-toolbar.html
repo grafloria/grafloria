@@ -82,7 +82,14 @@ defineDemo({
     });
 
     ctx.reanchor = () => {
-      const m = midpoint(ctx.diagram.getLink('e1').points);
+      // The link can go away underneath this loop — the toolbar's own Delete
+      // button is not the only way (select the edge and press Delete, and the
+      // engine removes it without ever calling the handler that stops the rAF).
+      // An overlay that tracks geometry has to tolerate the geometry ceasing to
+      // exist, or it throws once per frame forever.
+      const link = ctx.diagram.getLink('e1');
+      if (!link) return null;
+      const m = midpoint(link.points);
       ctx.portal.setPosition(m.x, m.y);
       return m;
     };
