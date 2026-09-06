@@ -237,3 +237,31 @@ describe('dispatch and the dashboard() default', () => {
     expect(h.textContent).toBe('mine:rev');
   });
 });
+
+describe('line widget — a single data point is still data', () => {
+  // A one-value series used to render axes, grid and legend around an invisible
+  // chart: a polyline needs two points, and one point drew nothing. That is the
+  // day-one-of-data tile, and it looked broken. A single value now draws a dot.
+  function renderInto(values: number[]): HTMLElement {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    renderLineWidget(
+      { id: 'w', kind: 'line', title: 'T', data: { series: [{ name: 'One', values }], labels: ['a', 'b'] } } as never,
+      host
+    );
+    return host;
+  }
+
+  it('draws a visible dot for a one-point series', () => {
+    const host = renderInto([42]);
+    expect(host.querySelectorAll('circle').length).toBe(1);
+    host.remove();
+  });
+
+  it('draws no dots once a real line exists — the ≥2-point look is unchanged', () => {
+    const host = renderInto([42, 51]);
+    expect(host.querySelectorAll('circle').length).toBe(0);
+    expect(host.querySelector('polyline')).toBeTruthy();
+    host.remove();
+  });
+});

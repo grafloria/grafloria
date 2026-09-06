@@ -266,10 +266,25 @@ export const renderLineWidget: WidgetRenderer = (widget, host) => {
             `L${xAt(s.values.length - 1).toFixed(1)},${(pad.t + ih).toFixed(1)} Z" ` +
             `fill="${colorAt(si)}" fill-opacity="0.10"></path>`
           : '';
+      // A series with ONE point has nothing for a polyline to connect, so the
+      // plot rendered its axes and legend around an invisible chart — the
+      // classic day-one-of-data tile. A single value is still data: draw it as
+      // a dot. (Two or more points keep exactly the look they had.)
+      const dots =
+        s.values.length < 2
+          ? s.values
+              .map(
+                (v, i) =>
+                  `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(v).toFixed(1)}" r="3.5" ` +
+                  `fill="${colorAt(si)}"></circle>`
+              )
+              .join('')
+          : '';
       return (
         area +
         `<polyline points="${pts}" fill="none" stroke="${colorAt(si)}" stroke-width="${si === 0 ? 2.4 : 1.8}" ` +
-        `stroke-linejoin="round" stroke-linecap="round"></polyline>`
+        `stroke-linejoin="round" stroke-linecap="round"></polyline>` +
+        dots
       );
     })
     .join('');
