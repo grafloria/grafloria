@@ -35,8 +35,8 @@
 <div id="fb-bar">
   <button id="fb-narrow" aria-pressed="false" title="Make the container 60% wide — the board follows">Narrow container</button>
   <span class="fb-sep"></span>
-  <button id="fb-fit" aria-pressed="true">Fit</button>
-  <button id="fb-grow" aria-pressed="false">Grow</button>
+  <button id="fb-fit" aria-pressed="false">Fit</button>
+  <button id="fb-grow" aria-pressed="true">Grow</button>
   <span class="fb-sep"></span>
   <button id="fb-add" title="Add a full-width KPI row — a fit board refuses once it is full">+ Add a row</button>
   <span class="fb-msg" id="fb-msg"></span>
@@ -48,10 +48,11 @@ import { render, dashboard } from '../shell/grafloria.js';
 import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
 
 // No `width` → mode 'fluid' (an explicit width would make it 'fixed').
+// No `sizing` either: a fluid board grows by default (rows keep their height,
+// the board extends, the canvas scrolls) — dragging one tile never resizes another.
 const SPEC_INPUT = {
   columns: 12,
   gap: 10,
-  sizing: 'fit',
   widgets: [
     { id: 'rev',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
     { id: 'cust', kind: 'kpi',   span: 3, rows: 1, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
@@ -72,12 +73,12 @@ const ctx2 = {};
 
 defineDemo({
   name: 'Fluid dashboard',
-  blurb: 'The DEFAULT mode of `dashboard()`: no width authored, so the board is 100% of its container at zoom 1 — laid out at real CSS pixels, the way gridstack and react-grid-layout lay out, never a picture the camera scales. Shrink the container ("Narrow container") and the board follows; the type stays 30 px. FIT MEANS BOUNDED: a fit board never changes size, widgets do — and the row floor is a capacity. "+ Add a row" lands while there is room and is REFUSED, visibly, when there is none; nothing is ever painted past the board\'s edge. Grow mode is unbounded: rows keep their height and the board extends downward (wheel scrolls). `mode: \'fixed\'` (or an explicit width) keeps the framed-world behaviour for a dashboard embedded inside a larger diagram — see dashboard/dashboard-builder.html.',
+  blurb: 'The DEFAULT mode of `dashboard()`: no width authored, so the board is 100% of its container at zoom 1 — laid out at real CSS pixels, the way gridstack and react-grid-layout lay out, never a picture the camera scales. Rows keep their height (GROW, the fluid default): drag or resize one tile and no other tile changes size; the board extends downward and the wheel scrolls it. Shrink the container ("Narrow container") and the board follows; the type stays 30 px. Switch to FIT and the board keeps its height instead — FIT MEANS BOUNDED: rows squeeze so everything stays on one screen, the row floor is a capacity, and "+ Add a row" is REFUSED, visibly, when there is no room; nothing is ever painted past the board\'s edge. `mode: \'fixed\'` (or an explicit width) keeps the framed-world behaviour for a dashboard embedded inside a larger diagram — see dashboard/dashboard-builder.html.',
   howTo: [
     '① The board fills the canvas exactly — no zoom, no margins the camera invented. Ctrl/⌘-wheel does nothing: a fluid board pins its zoom range to 1.',
     '② Press "Narrow container": the canvas becomes 60% wide and every tile re-lays out against the new width. Press again to widen.',
-    '③ Press "+ Add a row" a few times. Each row lands while the fit board has room; when the next row would need more than the board\'s height allows, the add is refused and the message says so. Nothing ever hangs below the board.',
-    '④ Switch to "Grow": rows keep their 130-px height and the board extends past the fold — scroll with the wheel to reach it. Adds are never refused in grow mode.',
+    '③ Drag "Revenue by region" up onto the KPI row: the KPIs slide out of the way, nothing else changes size, and the board grows a few rows — scroll with the wheel to reach the bottom. Adds are never refused in grow mode.',
+    '④ Switch to "Fit": the board keeps its height and rows squeeze so everything stays on one screen. Press "+ Add a row" a few times: each row lands while there is room; when the next would need more than the board\'s height allows, the add is refused and the message says so.',
     'Press "▶ run the scripted checks": mode, frame = container, zoom 1, the container resize, the capacity refusal and the no-overflow invariant are all asserted.',
   ],
   reactflow: null,
@@ -122,7 +123,7 @@ defineDemo({
     document.getElementById('fb-fit').addEventListener('click', () => ctx2.sizing('fit'));
     document.getElementById('fb-grow').addEventListener('click', () => ctx2.sizing('grow'));
     const m0 = H.metrics();
-    say(`fluid · ${Math.round(m0.frame.width)}×${Math.round(m0.frame.height)} px · ${m0.rows} rows of ${m0.capacity}`);
+    say(`fluid · grow · ${Math.round(m0.frame.width)}×${Math.round(m0.frame.height)} px · ${m0.rows} rows`);
   },
 
   async assert(ctx) {
@@ -137,7 +138,8 @@ defineDemo({
     checkEqual(H.toJSON().mode, 'fluid', 'no width authored → mode is fluid');
     check(H.metrics().fluid, 'the binder runs fluid');
     checkEqual(Math.round(frameOf().width), Math.round(box().w), 'the board frame is exactly the container width');
-    checkEqual(Math.round(frameOf().height), Math.round(box().h), 'the board frame is exactly the container height (fit)');
+    checkEqual(H.getSizing(), 'grow', 'a fluid board grows by default — no tile resizes because another moved');
+    check(Math.round(frameOf().height) >= Math.round(box().h), 'the board frame is at least the container height (grow)');
     checkEqual(api.viewport.zoom, 1, 'the camera sits at zoom 1');
     const vb = api.viewport.getViewBox();
     check(Math.abs(vb.x) < 1 && Math.abs(vb.y) < 1, 'the board origin is at the canvas top-left');
@@ -166,6 +168,9 @@ defineDemo({
     checkEqual(Math.round(frameOf().width), wide, 'widening restores the wide board');
 
     // ---- ④ fit means bounded ---------------------------------------------------
+    ctx2.sizing('fit');
+    await settle();
+    checkEqual(Math.round(frameOf().height), Math.round(box().h), 'fit: the board frame is exactly the container height');
     const cap = H.metrics().capacity;
     check(Number.isInteger(cap) && cap > 0, `a fit board reports a capacity (${cap} rows)`);
     let landed = 0;
@@ -189,7 +194,7 @@ defineDemo({
     check(ctx2.addRow(), 'grow accepts the row fit refused');
     await settle();
     check(frameOf().height > box().h, 'and the board extended past the container (wheel to scroll)');
-    ctx2.sizing('fit');
+    ctx2.sizing('grow');
     await settle();
   },
 });
