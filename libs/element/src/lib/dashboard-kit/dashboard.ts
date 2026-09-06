@@ -642,6 +642,8 @@ export interface DashboardApiRef {
     setZoom?(z: number): unknown;
     getViewport?(): { x: number; y: number; width: number; height: number };
     setViewport?(r: { x: number; y: number; width: number; height: number }): void;
+    /** Camera changes (wheel, drag-pan, a canvas resize) — the fluid clamp listens. */
+    onChange?(listener: (state: unknown) => void): () => void;
   };
 }
 
@@ -752,6 +754,35 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
   };
 
   /**
+   * FLUID: the camera is a SCROLL POSITION over the board, never a free pan.
+   * Bounded to the active board's frame — the page-scroll model of every grid
+   * library — so a wheel cannot run past the last row, and a frame that
+   * shrinks under a scrolled camera (Fit after a scroll in Grow; an undo that
+   * removes rows) pulls the camera back into the board. Found by the user
+   * switching Fit and Grow on the live page: Fit shrank the board to the
+   * canvas while the camera stayed 600 px down — the top half of the board
+   * out of view above an empty canvas. FIXED boards are diagrams and pan free.
+   */
+  let clamping = false;
+  const clampCamera = (): void => {
+    if (ctx.mode !== 'fluid' || clamping) return;
+    const vp = ctx.apiRef?.viewport;
+    const g = groups.get(ctx.active);
+    if (!vp?.getViewport || !vp.setViewport || !g) return;
+    const cur = vp.getViewport();
+    const gs = g.size ?? { width: ctx.boardW, height: ctx.boardH };
+    const x = Math.min(Math.max(cur.x, g.position.x), g.position.x + Math.max(0, gs.width - cur.width));
+    const y = Math.min(Math.max(cur.y, g.position.y), g.position.y + Math.max(0, gs.height - cur.height));
+    if (Math.abs(x - cur.x) < 0.5 && Math.abs(y - cur.y) < 0.5) return;
+    clamping = true;
+    try {
+      vp.setViewport({ x, y, width: cur.width, height: cur.height });
+    } finally {
+      clamping = false;
+    }
+  };
+
+  /**
    * A board's widgets as a NESTED tree, derived from LIVE membership — not the
    * authored arrays. A cross-boundary drag moves membership through commands
    * (and undo moves it back); the authored arrays do not follow. Deriving from
@@ -846,11 +877,14 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         if (!binders.has(id) && model.getGroup(id)) ctx.rebindContainer?.(id);
       }
       for (const b of binders.values()) b.sync();
+      clampCamera();
       ctx.apiRef.renderNow();
       reportChanged();
     };
     ctx.subscriptions = ctx.subscriptions ?? [];
     for (const ev of HISTORY_EVENTS) ctx.subscriptions.push(bus.on(ev, onHistory));
+    const vp = ctx.apiRef?.viewport;
+    if (ctx.mode === 'fluid' && vp?.onChange) ctx.subscriptions.push(vp.onChange(() => clampCamera()));
   };
 
   const execCommand = (cmd: unknown): void => {
@@ -894,6 +928,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     },
     setSizing(mode) {
       for (const b of binders.values()) b.setSizing(mode);
+      clampCamera();
       ctx.apiRef?.renderNow();
     },
     getSizing: () =>

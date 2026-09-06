@@ -31,7 +31,17 @@ function makeApi(model: DiagramModel, size?: { w: number; h: number }) {
   layer.className = 'grafloria-html-layer';
   container.appendChild(layer);
   // A camera that REMEMBERS what it was asked, so a test can tell a fit from a pin.
-  const camera = { fits: 0, zooms: [] as number[], rect: { x: 0, y: 0, width: size?.w ?? 800, height: size?.h ?? 600 } };
+  const camera = {
+    fits: 0,
+    zooms: [] as number[],
+    rect: { x: 0, y: 0, width: size?.w ?? 800, height: size?.h ?? 600 },
+    listeners: [] as Array<(s: unknown) => void>,
+    /** What the renderer does after a wheel or drag pan: move, then tell the listeners. */
+    panTo(x: number, y: number) {
+      camera.rect = { ...camera.rect, x, y };
+      for (const l of camera.listeners) l({ viewport: { ...camera.rect }, zoom: 1 });
+    },
+  };
   return {
     getModel: () => model,
     getEngine: () => ({ commandManager: manager, eventBus: bus }),
@@ -51,6 +61,12 @@ function makeApi(model: DiagramModel, size?: { w: number; h: number }) {
       getViewport: () => ({ ...camera.rect }),
       setViewport: (r: { x: number; y: number; width: number; height: number }) => {
         camera.rect = { ...r };
+      },
+      onChange: (l: (s: unknown) => void) => {
+        camera.listeners.push(l);
+        return () => {
+          camera.listeners = camera.listeners.filter((x) => x !== l);
+        };
       },
     },
   };
@@ -1339,5 +1355,42 @@ describe('host observer (plan step 6, D10)', () => {
     expect(calls).toBeLessThanOrEqual(2);
     expect(a.querySelector('.axdb-rs')).toBeTruthy();
     expect(b.querySelector('.axdb-rs')).toBeTruthy();
+  });
+});
+
+// ---- round two (2026-09-06): the fluid camera is a scroll position ---------
+// Found on the live page: scroll down in Grow, press Fit — the board shrank to
+// the canvas while the camera stayed where it was, the board's top half out of
+// view above an empty canvas. And a wheel could run past the last row.
+describe('fluid camera is a scroll position, bounded to the board', () => {
+  const tall = () =>
+    dashboard({
+      widgets: Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, kind: 'kpi', span: 12, rows: 1 })),
+    });
+
+  it('a pan cannot run past the last row nor above the origin', () => {
+    const { api, handle } = mount(tall(), { w: 800, h: 600 });
+    const frame = handle.metrics()!.frame;
+    expect(frame.height).toBeGreaterThan(600); // 12 rows of 130 px: taller than the canvas
+    expect(api.camera.listeners).toHaveLength(1);
+    api.camera.panTo(0, 100000);
+    expect(api.camera.rect.y).toBeCloseTo(frame.height - 600, 3);
+    api.camera.panTo(300, -500);
+    expect(api.camera.rect).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it('Fit under a scrolled camera pulls the camera back into the board', () => {
+    const { api, handle } = mount(tall(), { w: 800, h: 600 });
+    api.camera.panTo(0, 1000);
+    expect(api.camera.rect.y).toBeGreaterThan(0);
+    handle.setSizing('fit');
+    const frame = handle.metrics()!.frame;
+    expect(api.camera.rect.y).toBeCloseTo(Math.max(0, frame.height - 600), 3);
+  });
+
+  it('a fixed board is a diagram: its camera pans free', () => {
+    const { api } = mount(dashboard({ width: 1180, height: 400, widgets: [{ id: 'a', kind: 'kpi', span: 3 }] }), { w: 800, h: 600 });
+    api.camera.panTo(-900, 5000);
+    expect(api.camera.rect).toMatchObject({ x: -900, y: 5000 });
   });
 });
