@@ -379,6 +379,9 @@ export function fromDocument(
       if (!board) continue;
       boards.set(group.id, bindDashboardGrid(a as never, group, { ...board }));
     }
+    // A loaded board follows the history exactly as an authored one does: an
+    // undo re-syncs every binder without the consumer calling refresh().
+    ctx.attachHistory?.();
   };
 
   return { nodes, edges: model.getLinks(), renderCustomNode, finalize, model, boards, handle };

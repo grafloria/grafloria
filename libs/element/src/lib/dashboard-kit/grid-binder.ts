@@ -469,7 +469,25 @@ export function bindDashboardGrid(
   const designH = options.designHeight ?? group.size?.height ?? 0;
 
   let sizing: 'fit' | 'grow' = options.sizing ?? 'fit';
-  let engine = new GridPackEngine([], { columns, float, maxRows });
+  /**
+   * A fresh engine holding `items` VERBATIM. The constructor add()s each item
+   * and settles after every one, so in gravity mode a legal layout with a gap
+   * — a tile dropped below free space, exactly what the placeholder promised —
+   * was re-packed on every rebuild: refresh(), undo, and (since the kit follows
+   * the history) every commit moved a tile the user had just placed. The
+   * persisted cells are the truth; a rebuild must not edit them. Float while
+   * constructing, then restore the real mode for everything that follows.
+   *
+   * `pack` is for the two moments gravity IS wanted: the first adoption of the
+   * authored spec (a declared cell hovering over an empty row settles — the
+   * kit's documented boot contract) and turning float off.
+   */
+  const engineFrom = (items: GridPackItem[], pack = false): GridPackEngine => {
+    const e = new GridPackEngine(items, { columns, float: pack ? float : true, maxRows });
+    e.float = float;
+    return e;
+  };
+  let engine = engineFrom([]);
   let gesture: GestureState | null = null;
   let disposed = false;
   /** Reentrancy guard: our own derived frame writes must not re-project. */
@@ -1083,7 +1101,7 @@ export function bindDashboardGrid(
           const lockedNode = diagram.getNode(id)?.state?.locked === true;
           items.push({ id, ...c, locked: lockedNode || isGroupMember(id) });
         }
-        engine = new GridPackEngine(items, { columns, float, maxRows });
+        engine = engineFrom(items);
       } else {
         engine.cancelGesture();
       }
@@ -1833,27 +1851,37 @@ export function bindDashboardGrid(
     return true;
   };
 
+  /** Rebuild the engine from the members' persisted cells. `pack` runs gravity
+   *  over the result (boot, float→off); a plain sync keeps the cells verbatim. */
+  const rebuild = (pack: boolean): void => {
+    if (disposed) return;
+    if (gesture) cancelActiveGesture(false);
+    const items: GridPackItem[] = [];
+    for (const id of group.members ?? []) {
+      if (!memberEntity(id)) continue;
+      items.push(itemFor(id));
+    }
+    // CARRY THE PER-COLUMN CACHE ACROSS THE REBUILD. sync() runs on every
+    // undo, member add and refresh; without this handoff a responsive board
+    // would silently lose its wide layouts the first time anything else
+    // happened, and growing back would re-derive instead of restoring.
+    const carried = engine.getLayouts();
+    engine = engineFrom(items, pack);
+    engine.setLayouts(carried);
+    // A PACKED rebuild may have moved cells (gravity); write them all back so
+    // the next verbatim sync reads the settled board, not the pre-pack one.
+    // A verbatim rebuild only fills in cells that were never persisted.
+    if (pack) persistLiveCells();
+    else for (const item of engine.getItems()) persistAdoptedCell(item.id, item);
+    project();
+    syncHandles();
+    api.renderNow();
+    evaluateResponsive();
+  };
+
   const handle: DashboardGridHandle = {
     sync(): void {
-      if (disposed) return;
-      if (gesture) cancelActiveGesture(false);
-      const items: GridPackItem[] = [];
-      for (const id of group.members ?? []) {
-        if (!memberEntity(id)) continue;
-        items.push(itemFor(id));
-      }
-      // CARRY THE PER-COLUMN CACHE ACROSS THE REBUILD. sync() runs on every
-      // undo, member add and refresh; without this handoff a responsive board
-      // would silently lose its wide layouts the first time anything else
-      // happened, and growing back would re-derive instead of restoring.
-      const carried = engine.getLayouts();
-      engine = new GridPackEngine(items, { columns, float, maxRows });
-      engine.setLayouts(carried);
-      for (const item of engine.getItems()) persistAdoptedCell(item.id, item);
-      project();
-      syncHandles();
-      api.renderNow();
-      evaluateResponsive();
+      rebuild(false);
     },
     setColumns(n, layout, opts): boolean {
       if (disposed) return false;
@@ -1887,10 +1915,9 @@ export function bindDashboardGrid(
     setFloat(on): void {
       if (on === float) return;
       float = on;
-      // Rebuild from persisted cells under the new mode: sync() constructs a
-      // fresh engine with the captured `float`, and gravity (when turning
-      // OFF) packs immediately through its settle.
-      this.sync();
+      // Rebuild from persisted cells under the new mode, PACKED: gravity (when
+      // float turns off) applies immediately through the rebuild's settle.
+      rebuild(true);
       api.renderNow();
     },
     getFloat: () => float,
@@ -1977,10 +2004,12 @@ export function bindDashboardGrid(
     },
   };
 
-  // Boot: adopt the current members, observe host churn for handle re-injection,
-  // and let a responsive board settle on the count its width asks for before the
-  // first frame (a 400px board declared at 12 columns must not flash at 12).
-  handle.sync();
+  // Boot: adopt the current members (PACKED — a declared cell hovering over an
+  // empty row settles, the documented contract), observe host churn for handle
+  // re-injection, and let a responsive board settle on the count its width asks
+  // for before the first frame (a 400px board declared at 12 columns must not
+  // flash at 12).
+  rebuild(true);
   const layer = htmlLayer();
   if (layer) hostObserver.observe(layer, { childList: true, subtree: true });
   containerObserver?.observe(api.container);
