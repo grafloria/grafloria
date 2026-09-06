@@ -22,7 +22,14 @@
  */
 import { ensureDiagramKitStyles } from './styles';
 import { bindRowInteractions } from './rows';
-import { entityCardContent, entityAutoHeight, erRowCenterY, ER_ROW_H, ER_HEAD_H } from './card';
+import {
+  entityCardContent,
+  entityAutoHeight,
+  entityAutoWidth,
+  erRowCenterY,
+  ER_ROW_H,
+  ER_HEAD_H,
+} from './card';
 import { bindCardEditing } from './editing';
 
 // Layout constants + the row-centre helper live in card.ts now (the ONE source
@@ -30,7 +37,6 @@ import { bindCardEditing } from './editing';
 // keeps working.
 export { erRowCenterY, ER_ROW_H, ER_HEAD_H };
 
-const DEFAULT_WIDTH = 190;
 
 export interface ErColumn {
   name: string;
@@ -145,7 +151,10 @@ export function erDiagram(options: ErDiagramOptions): {
   // spread (dy) so shared columns (a PK referenced twice) don't stack.
   const rowLandings = new Map<string, number>();
 
-  const width = (e: ErEntitySpec) => e.width ?? DEFAULT_WIDTH;
+  // Width is derived from content the same way height is, so a long column name
+  // or table title widens the card instead of falling off it. Ports read this
+  // same function, so they stay glued to the edge whatever it works out to.
+  const width = (e: ErEntitySpec) => entityAutoWidth(e, options.editable === true);
 
   const fieldPort = (end: ParsedEnd, side: ErSide): string => {
     const entity = end.entity;
