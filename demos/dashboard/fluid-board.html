@@ -204,11 +204,11 @@ defineDemo({
     check(down.y <= frameOf().height - box().h + 1, 'and stops at its last row — never past the board');
     ctx2.sizing('fit');
     await settle();
-    // The board holds one row more than the fit capacity here (⑤), so fit
-    // extends the frame at the row floor instead of clipping — the camera may
-    // sit at most that overhang down, never further, never above the origin.
-    const fy = api.viewport.getViewBox().y;
-    check(fy >= -0.5 && fy <= Math.max(0, frameOf().height - box().h) + 1, `fit pulls a scrolled camera back into the board (y=${Math.round(fy)}, overhang ${Math.round(Math.max(0, frameOf().height - box().h))})`);
+    // The board holds one row more than the fit capacity here (⑤): fit still
+    // never scrolls — the board is exactly the container and rows squeeze.
+    checkEqual(Math.round(frameOf().height), Math.round(box().h), 'fit never extends: one row past capacity squeezes, the board is still exactly the container');
+    check(Math.abs(api.viewport.getViewBox().y) < 1, 'fit pulls a scrolled camera back to the board origin');
+    check(H.widgetsOf().every((w) => w.rect.y + w.rect.height <= frameOf().y + frameOf().height + 0.5), 'and every tile is inside the board');
     ctx2.sizing('grow');
     await settle();
     wheel(-100000);

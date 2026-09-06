@@ -720,7 +720,10 @@ export function bindDashboardGrid(
     padding,
     sizing,
     baseRowHeight,
-    minRowHeight,
+    // BOUNDED FIT NEVER SCROLLS: the floor is a capacity for growth, not a
+    // reason to paint past the frame. A board already holding more rows than
+    // fit (a Grow→Fit switch, a loaded document) squeezes below it instead.
+    minRowHeight: sizing === 'fit' && overflow !== 'scroll' ? 1 : minRowHeight,
     designHeight: sizing === 'fit' ? frame().height : designH,
     rtl,
   });
@@ -851,13 +854,15 @@ export function bindDashboardGrid(
   const enforceBoardHeight = (): void => {
     if (designH <= 0) return;
     const r = rows();
-    // FIT keeps its design height — and when the rows would need more than
-    // that at the row floor (overflow:'scroll', or a document holding more
-    // than the capacity), the frame EXTENDS to hold them at exactly the floor
-    // height instead of painting tiles past its bottom edge (review D6).
+    // FIT keeps its design height, full stop — the user's rule: "the board
+    // stays the same and the widgets change size so all of them fit". Only
+    // overflow:'scroll' lets the frame EXTEND to hold the rows at the floor
+    // height (and the canvas pan). Grow extends at the base row height.
     const target =
       sizing === 'fit'
-        ? Math.max(designH, 2 * padding + r * minRowHeight + (r - 1) * gap)
+        ? overflow === 'scroll'
+          ? Math.max(designH, 2 * padding + r * minRowHeight + (r - 1) * gap)
+          : designH
         : Math.max(designH, 2 * padding + r * baseRowHeight + (r - 1) * gap);
     const f = frame();
     if (Math.abs(f.height - target) > 0.5) {

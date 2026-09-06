@@ -172,9 +172,11 @@ export interface DashboardOptions {
    * the row floor the design height is a CAPACITY: a drop, resize or
    * `addWidget()` that would need one row too many is refused (the placeholder
    * stays put, the palette chip dims, `addWidget` returns undefined) — at
-   * design time, instead of tiles painted past the frame. 'scroll' is the
+   * design time, instead of tiles painted past the frame. A board that already
+   * holds more than fits (a grow→fit switch, a loaded document) squeezes its
+   * rows below the floor: a bounded fit board NEVER scrolls. 'scroll' is the
    * opt-in for boards that want more than fits: the frame extends to hold the
-   * rows and the canvas pans.
+   * rows at the floor height and the canvas pans.
    */
   overflow?: 'bounded' | 'scroll';
   /**

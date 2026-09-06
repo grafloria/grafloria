@@ -1124,11 +1124,16 @@ describe('fit means bounded', () => {
     }
   });
 
-  it('a board holding MORE than its capacity keeps every tile and only refuses growth', () => {
+  it('a board holding MORE than its capacity keeps every tile INSIDE the frame — fit never scrolls', () => {
     const { handle } = mount(board({}, 7));
     expect(handle.widgetsOf().every((w) => w.cell !== undefined)).toBe(true);
-    expect(handle.metrics()!.capacity).toBe(7); // floored at the content
-    expect(handle.metrics()!.frame.height).toBeGreaterThan(200); // extended, not overflowing
+    const m = handle.metrics()!;
+    expect(m.capacity).toBe(7); // floored at the content: growth is still refused
+    expect(m.frame.height).toBe(200); // the board stays the board
+    expect(m.rowHeight).toBeLessThan(28); // rows go below the floor before the board grows
+    for (const w of handle.widgetsOf()) {
+      expect(w.rect!.y + w.rect!.height).toBeLessThanOrEqual(m.frame.y + m.frame.height + 0.5);
+    }
     expect(handle.addWidget({ id: 'r7', kind: 'kpi', span: 12, rows: 1 })).toBeUndefined();
   });
 

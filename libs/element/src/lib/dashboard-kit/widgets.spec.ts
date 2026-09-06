@@ -394,8 +394,25 @@ describe('the KPI card steps down instead of clipping', () => {
     const css = document.getElementById(DASHBOARD_KIT_STYLE_ID)!.textContent ?? '';
     expect(css).toContain('@container (max-height: 78px) { .axdb-kpi > .axdb-kpi-s { display: none; } }');
     expect(css).toContain('@container (max-height: 40px) { .axdb-kpi > .axdb-kpi-d { display: none; } }');
-    expect(css).toContain('@container (max-height: 22px) { .axdb-kpi > .axdb-kpi-v { display: none; } }');
-    expect(css).toContain('.grafloria-html-layer > .grafloria-node-host { container-type: size; }');
+    expect(css).toContain('@container (max-height: 16px) { .axdb-kpi > .axdb-kpi-v { display: none; } }');
+    expect(css).toContain('.grafloria-html-layer > .grafloria-node-host { container: axdb-tile / size; }');
+  });
+
+  it('a short, wide KPI lays the figure, delta and sparkline in a row; the strip puts header and figure on one line', () => {
+    ensureDashboardKitStyles(document);
+    const css = document.getElementById(DASHBOARD_KIT_STYLE_ID)!.textContent ?? '';
+    const row = css.indexOf('@container axdb-tile (max-height: 125px) and (min-width: 340px) {');
+    expect(row).toBeGreaterThan(-1);
+    const block = css.slice(row, css.indexOf('/* THE STRIP', row));
+    expect(block).toContain('.axdb-widget--kpi > .axdb-kpi { flex-direction: row;');
+    // The spark comes back in the row — a nested query on the BODY keeps it away
+    // from a strip too thin to draw it readably.
+    expect(block).toContain('@container axdb-kpi (min-height: 24px) {');
+    expect(block).toContain('.axdb-kpi > .axdb-kpi-s { display: block; flex: 1 1 40%;');
+    // The row rule must come AFTER the stacked hide rule: same specificity, later wins.
+    expect(css.indexOf('@container (max-height: 78px) { .axdb-kpi > .axdb-kpi-s { display: none; } }')).toBeLessThan(row);
+    const strip = css.slice(css.indexOf('/* THE STRIP'));
+    expect(strip).toContain('@container axdb-tile (max-height: 46px) {\n  .axdb-widget--kpi { flex-direction: row;');
   });
 
   it('the donut ring takes its body height (square, capped) instead of a fixed 150 px', () => {
