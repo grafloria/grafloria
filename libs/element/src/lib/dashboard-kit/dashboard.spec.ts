@@ -318,6 +318,8 @@ describe('the typed handles (the erTable/umlClass equivalent)', () => {
 
   it('setSizing / setFloat drive every view at once', () => {
     const { handle } = mount(SIMPLE());
+    expect(handle.getSizing()).toBe('grow'); // a fluid board grows by default
+    handle.setSizing('fit');
     expect(handle.getSizing()).toBe('fit');
     handle.setSizing('grow');
     expect(handle.getSizing()).toBe('grow');

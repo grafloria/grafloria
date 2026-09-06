@@ -21,6 +21,7 @@ import {
   renderKpiWidget,
   renderLineWidget,
   renderTableWidget,
+  chartBox,
 } from './widgets';
 
 const host = (): HTMLElement => document.createElement('div');
@@ -346,5 +347,38 @@ describe('the built-in widgets keep their contrast in both themes', () => {
     expect(body.getAttribute('tabindex')).toBe('0');
     expect(body.getAttribute('role')).toBe('region');
     expect(body.getAttribute('aria-label')).toBe('Top reps');
+  });
+});
+
+describe('charts draw to the box they are painted into', () => {
+  it('chartBox follows the body, less the legend strip, and falls back to 640×250 without a layout', () => {
+    expect(chartBox({ clientWidth: 0, clientHeight: 0 })).toEqual({ W: 640, H: 250 });
+    expect(chartBox({ clientWidth: 1100, clientHeight: 300 })).toEqual({ W: 1100, H: 300 });
+    expect(chartBox({ clientWidth: 1100, clientHeight: 300 }, true)).toEqual({ W: 1100, H: 274 });
+    expect(chartBox({ clientWidth: 50, clientHeight: 300 })).toEqual({ W: 640, H: 250 }); // too small to trust
+  });
+
+  it('the label set does not depend on the box — a reload at another size paints the same text', () => {
+    const labels = Array.from({ length: 12 }, (_, i) => 'M' + i);
+    const paint = (w: number, h: number): string[] => {
+      const host = document.createElement('div');
+      Object.defineProperty(host, 'clientWidth', { value: w });
+      Object.defineProperty(host, 'clientHeight', { value: h });
+      defaultWidgetRenderer({ id: 'w', kind: 'line', data: { series: labels.map((_, i) => i), labels } }, host);
+      return Array.from(host.querySelectorAll('svg text')).map((t) => t.textContent ?? '').filter((t) => /^M\d+$/.test(t));
+    };
+    expect(paint(0, 0)).toEqual(paint(1200, 300));
+    expect(paint(0, 0)).toHaveLength(6); // >8 labels → every second one
+  });
+});
+
+describe('the KPI card steps down instead of clipping', () => {
+  it('the stylesheet hides the sparkline, then the delta, then the value as the body shrinks', () => {
+    ensureDashboardKitStyles(document);
+    const css = document.getElementById(DASHBOARD_KIT_STYLE_ID)!.textContent ?? '';
+    expect(css).toContain('@container (max-height: 78px) { .axdb-kpi > .axdb-kpi-s { display: none; } }');
+    expect(css).toContain('@container (max-height: 40px) { .axdb-kpi > .axdb-kpi-d { display: none; } }');
+    expect(css).toContain('@container (max-height: 22px) { .axdb-kpi > .axdb-kpi-v { display: none; } }');
+    expect(css).toContain('.grafloria-html-layer > .grafloria-node-host { container-type: size; }');
   });
 });
