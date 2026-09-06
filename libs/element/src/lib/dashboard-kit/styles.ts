@@ -151,6 +151,13 @@ const CSS = `
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   color: var(--axdb-ink);
 }
+/* The host is the card's size container, so the card can shed its padding at the
+   row floor instead of clipping its own header. */
+.grafloria-html-layer > .grafloria-node-host { container-type: size; }
+@container (max-height: 46px) {
+  .axdb-widget { padding: 4px 12px 3px; }
+  .axdb-widget-h { margin-bottom: 0; }
+}
 .axdb-widget-h {
   display: flex;
   align-items: center;
@@ -187,12 +194,23 @@ const CSS = `
    cqh = 1% of the body's own height, clamped so full-size tiles look exactly
    as before and short tiles compress instead of cutting. */
 .axdb-widget-b.axdb-kpi { display: flex; flex-direction: column; container-type: size; }
+/* STEP DOWN, NEVER CLIP. As the body gets shorter the sparkline goes first, then the
+   delta, then the value — the header alone at the row floor. Before this a 99-px row
+   drew the sparkline as a 13-px sliver and a 28-px row cut the value mid-glyph (the
+   fluid board, after a drag pushed the KPI row down). Thresholds are body heights. */
+/* Two class hops, so these outrank ".axdb-widget-b > svg { display: block }" —
+   a bare .axdb-kpi-s lost that cascade and the sparkline stayed. */
+@container (max-height: 78px) { .axdb-kpi > .axdb-kpi-s { display: none; } }
+@container (max-height: 40px) { .axdb-kpi > .axdb-kpi-d { display: none; } }
+@container (max-height: 22px) { .axdb-kpi > .axdb-kpi-v { display: none; } }
 .axdb-kpi-v { font: 700 clamp(15px, 44cqh, 30px)/1.05 system-ui, sans-serif; letter-spacing: -.02em; color: var(--axdb-ink); }
 .axdb-kpi-d { margin-top: clamp(1px, 5cqh, 6px); font: 600 clamp(9px, 19cqh, 12px)/1.2 system-ui, sans-serif; }
 .axdb-kpi-d span { color: var(--axdb-muted); font-weight: 500; }
 .axdb-kpi-d.up { color: var(--axdb-up); }
 .axdb-kpi-d.down { color: var(--axdb-down); }
-.axdb-kpi-s { margin-top: auto; height: 34px; min-height: 0; flex: 0 1 34px; }
+/* Grows into a tall tile (a 3-row KPI is not a number over a void) and never
+   takes more than two fifths of the body. */
+.axdb-kpi-s { margin-top: auto; height: auto; min-height: 0; flex: 1 1 34px; max-height: 40%; }
 
 /* donut: ring beside its legend */
 .axdb-widget-b.axdb-donut { display: flex; align-items: center; gap: 10px; }

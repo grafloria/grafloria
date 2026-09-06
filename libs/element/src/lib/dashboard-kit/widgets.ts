@@ -161,6 +161,53 @@ const data = <T>(widget: DashboardWidgetSpec): Partial<T> =>
   (widget.data ?? {}) as Partial<T>;
 
 /**
+ * The drawing box a chart should lay itself out in: the body it is painted
+ * into, less the legend's strip. A fixed 640×250 viewBox scaled to "meet" left
+ * a wide fluid tile with ~170 px of dead card either side; drawing to the
+ * body's own aspect fills it. Outside a layout (jsdom, a host not yet sized)
+ * the classic 640×250 stands in, and the size watcher below repaints once the
+ * real box exists.
+ */
+export function chartBox(body: { clientWidth: number; clientHeight: number }, legend = false): { W: number; H: number } {
+  const w = body.clientWidth || 0;
+  const h = (body.clientHeight || 0) - (legend ? 26 : 0);
+  if (w < 60 || h < 40) return { W: 640, H: 250 };
+  return { W: Math.round(w), H: Math.round(h) };
+}
+
+const sizeWatchers = new WeakMap<HTMLElement, ResizeObserver>();
+
+/**
+ * Re-lay a chart out when the HOST's box changes (a fit-mode reflow, a
+ * resize, a narrower container) — coalesced to a frame, skipping sub-2-px
+ * jitter. `relayout` redraws ONLY the chart body: the card and anything an
+ * app painted onto it after `defaultWidgetRenderer` (a focus ring, a pin
+ * marker — the documented composition) are never touched. The first version
+ * re-ran the whole painter and wiped exactly those, which the save/load gate
+ * caught as a reloaded board reading differently from the original.
+ */
+function watchSize(host: HTMLElement, relayout: () => void): void {
+  if (typeof ResizeObserver === 'undefined') return;
+  sizeWatchers.get(host)?.disconnect();
+  let last = { w: host.clientWidth, h: host.clientHeight };
+  let frame = 0;
+  const ro = new ResizeObserver(() => {
+    const w = host.clientWidth;
+    const h = host.clientHeight;
+    if (Math.abs(w - last.w) < 2 && Math.abs(h - last.h) < 2) return;
+    last = { w, h };
+    if (frame) cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      if (host.isConnected) relayout();
+      else ro.disconnect();
+    });
+  });
+  ro.observe(host);
+  sizeWatchers.set(host, ro);
+}
+
+/**
  * The chart's numbers as a visually-hidden table — what a screen reader gets
  * instead of an svg it cannot read (WCAG 1.1.1). `role="img"` + aria-label on
  * the svg names the chart; this carries the values.
@@ -232,13 +279,20 @@ function normalizeSeries(raw: LineWidgetData['series']): LineSeries[] {
 
 /** `{ series, labels? }` — area under the first series, a line per series. */
 export const renderLineWidget: WidgetRenderer = (widget, host) => {
-  const d = data<LineWidgetData>(widget);
   const body = card(host, widget, titleOf(widget));
+  layoutLine(widget, body);
+  watchSize(host, () => layoutLine(widget, body));
+};
+
+/** The line chart's body, drawn to the body's current box. */
+function layoutLine(widget: DashboardWidgetSpec, body: HTMLElement): void {
+  const d = data<LineWidgetData>(widget);
   const series = normalizeSeries(d.series);
   if (!series.length) return empty(body);
 
-  const W = 640;
-  const H = 250;
+  const named = series.filter((s) => s.name);
+  if (named.length) body.classList.add('axdb-has-lg');
+  const { W, H } = chartBox(body, named.length > 0);
   const pad = { l: 34, r: 12, t: 12, b: 22 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
@@ -262,6 +316,9 @@ export const renderLineWidget: WidgetRenderer = (widget, host) => {
     .join('');
 
   const labels = Array.isArray(d.labels) ? d.labels : [];
+  // The label SET must not depend on the box: a board reloaded at another size
+  // has to paint the same text as the original (the save/load gate's contract).
+  // Only the geometry follows the box.
   const every = labels.length > 8 ? 2 : 1;
   const ticks = labels
     .slice(0, count)
@@ -305,8 +362,6 @@ export const renderLineWidget: WidgetRenderer = (widget, host) => {
     })
     .join('');
 
-  const named = series.filter((s) => s.name);
-  if (named.length) body.classList.add('axdb-has-lg');
   body.innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
     `aria-label="${esc(titleOf(widget))}">${grid}${ticks}${marks}</svg>` +
@@ -316,19 +371,24 @@ export const renderLineWidget: WidgetRenderer = (widget, host) => {
       ['', ...series.map((s, i) => String(s.name ?? `Series ${i + 1}`))],
       Array.from({ length: count }, (_, i) => [labels[i] ?? String(i + 1), ...series.map((s) => s.values[i] ?? '')])
     );
-};
+}
 
 // -- bar ----------------------------------------------------------------------
 
 /** `{ bars: [{label, value}] }` — columns, value above, category below. */
 export const renderBarWidget: WidgetRenderer = (widget, host) => {
-  const d = data<BarWidgetData>(widget);
   const body = card(host, widget, titleOf(widget));
+  layoutBar(widget, body);
+  watchSize(host, () => layoutBar(widget, body));
+};
+
+/** The bar chart's body, drawn to the body's current box. */
+function layoutBar(widget: DashboardWidgetSpec, body: HTMLElement): void {
+  const d = data<BarWidgetData>(widget);
   const bars = (Array.isArray(d.bars) ? d.bars : []).filter((b) => !!b);
   if (!bars.length) return empty(body);
 
-  const W = 640;
-  const H = 250;
+  const { W, H } = chartBox(body);
   const pad = { l: 34, r: 12, t: 12, b: 26 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
@@ -369,7 +429,7 @@ export const renderBarWidget: WidgetRenderer = (widget, host) => {
     `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
     `aria-label="${esc(titleOf(widget))}">${grid}${marks}</svg>` +
     srTable(titleOf(widget), ['Category', 'Value'], bars.map((b) => [b.label ?? '', num(b.value)]));
-};
+}
 
 // -- donut --------------------------------------------------------------------
 

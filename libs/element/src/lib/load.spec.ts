@@ -470,6 +470,8 @@ describe('fromDocument — dashboard handle', () => {
     const spec = fromDocument(save(original.api));
     mount(spec);
 
+    expect(spec.handle.getSizing()).toBe('grow'); // fluid → grow by default, and it reloaded as saved
+    spec.handle.setSizing('fit');
     expect(spec.handle.getSizing()).toBe('fit');
     spec.handle.setSizing('grow');
     expect(spec.handle.getSizing()).toBe('grow');

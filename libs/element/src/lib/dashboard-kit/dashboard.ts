@@ -138,7 +138,14 @@ export interface DashboardOptions {
   columns?: number;
   /** Gap between widgets AND the board padding, px (default 8). */
   gap?: number;
-  /** Sizing mode (default 'fit' — squeeze rows; 'grow' extends the board). */
+  /**
+   * Sizing mode. 'grow': rows keep `rowHeight` and the board extends
+   * downward — the default on a FLUID board, and what every grid library
+   * does: dragging one tile never resizes another. 'fit': the board keeps its
+   * height and rows squeeze so everything stays on one screen (bounded, see
+   * `overflow`) — the default on a FIXED board, and the choice for a designer
+   * who wants the whole dashboard visible at once.
+   */
   sizing?: 'fit' | 'grow';
   /** Row height in 'grow' mode, px (default 130). */
   rowHeight?: number;
@@ -889,7 +896,8 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       for (const b of binders.values()) b.setSizing(mode);
       ctx.apiRef?.renderNow();
     },
-    getSizing: () => binders.get(ctx.active)?.getSizing() ?? (ctx.optionsBase.sizing ?? 'fit'),
+    getSizing: () =>
+      binders.get(ctx.active)?.getSizing() ?? ctx.optionsBase.sizing ?? (ctx.mode === 'fluid' ? 'grow' : 'fit'),
     setFloat(on) {
       for (const b of binders.values()) b.setFloat(on);
       ctx.apiRef?.renderNow();
@@ -1202,6 +1210,9 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
   // An explicit width is a fixed world; everything else lays out fluid.
   const mode: 'fluid' | 'fixed' = options.mode ?? (options.width !== undefined ? 'fixed' : 'fluid');
   const overflow: 'bounded' | 'scroll' = options.overflow ?? 'bounded';
+  // A fluid board grows (fixed row heights, the board extends); a fixed board
+  // fits (its authored height is the picture).
+  const sizing: 'fit' | 'grow' = options.sizing ?? (mode === 'fluid' ? 'grow' : 'fit');
 
   const views: DashboardViewSpec[] = options.views
     ? options.views.map((v) => ({ ...v, widgets: cloneWidgets(v.widgets) }))
@@ -1345,7 +1356,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           columns: v.columns ?? columns,
           gap,
           padding: gap,
-          sizing: options.sizing ?? 'fit',
+          sizing,
           baseRowHeight: rowHeight,
           designHeight: viewH(v),
           float: options.float ?? false,
@@ -1365,7 +1376,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             columns: v.columns ?? columns,
             gap,
             padding: gap,
-            sizing: options.sizing ?? 'fit',
+            sizing,
             baseRowHeight: rowHeight,
             designHeight: viewH(v),
             float: options.float ?? false,

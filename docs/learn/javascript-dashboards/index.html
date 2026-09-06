@@ -132,13 +132,15 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
           authored <code>width</code>/<code>height</code> are the world and the camera
           frames them — for a dashboard embedded inside a larger diagram. An explicit
           <code>width</code> implies <code>'fixed'</code></td></tr>
-        <tr><td><code>sizing</code></td><td><code>'fit'</code></td>
-          <td><code>'fit'</code> keeps the board at its height and squeezes rows — and
+        <tr><td><code>sizing</code></td><td><code>'grow'</code> fluid · <code>'fit'</code> fixed</td>
+          <td><code>'grow'</code> keeps the row height and extends the board downward
+          (the wheel scrolls) — dragging one tile never resizes another, which is why
+          it is the fluid default. <code>'fit'</code> keeps the board at its height and squeezes rows — and
           <b>fit means bounded</b>: the height is a capacity, and a drop, resize or
           <code>addWidget()</code> that would need one row too many is refused (the
           placeholder stays put, the palette chip dims, <code>addWidget</code> returns
-          <code>undefined</code>). <code>'grow'</code> keeps the row height and extends the
-          board downward; the wheel scrolls</td></tr>
+          <code>undefined</code>) — the choice for a designer who wants the whole
+          dashboard on one screen</td></tr>
         <tr><td><code>overflow</code></td><td><code>'bounded'</code></td>
           <td><code>'scroll'</code> lifts the fit capacity: the frame extends to hold the
           rows at the row floor and the canvas pans</td></tr>
