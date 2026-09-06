@@ -72,6 +72,16 @@
     "showcase": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/dashboard__dashboard-builder.showcase.png"
   },
   {
+    "rel": "dashboard/fluid-board.html",
+    "slug": "dashboard__fluid-board",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/dashboard__fluid-board.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/dashboard__fluid-board.after.png",
+    "reactflow": null,
+    "pro": false,
+    "pageErrors": [],
+    "error": null
+  },
+  {
     "rel": "dashboard/grid-options.html",
     "slug": "dashboard__grid-options",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/dashboard__grid-options.boot.png",

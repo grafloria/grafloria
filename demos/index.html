@@ -93,7 +93,7 @@
   public embed with real pointer events and asserts a consequence; a broken demo fails CI.
   If it's in the gallery, it works.</p>
   <div class="scoreboard">
-    <span class="stat"><b>112</b> demos</span>
+    <span class="stat"><b>113</b> demos</span>
     <span class="stat"><b>12</b> categories</span>
     <span class="stat"><b>MIT</b> — every one of them</span>
     <a class="stat link" href="https://grafloria.com/compare/">how Grafloria compares →</a>
@@ -579,7 +579,7 @@
       </section>
 
       <section id="dashboard">
-        <h2>Dashboards <span class="count">3</span></h2>
+        <h2>Dashboards <span class="count">4</span></h2>
         <div class="grid">
         <a class="card is-new" href="dashboard/dashboard-builder.html" style="--cat:#0891b2">
           <div class="card-thumb"><img src="thumbs/dashboard/dashboard-builder.png" loading="lazy" alt="" width="600" height="360"></div>
@@ -595,6 +595,11 @@
           <div class="card-thumb"><img src="thumbs/dashboard/grid-options.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name"><span class="badge new">New</span>Dashboard grid options<span class="card-go">→</span></div>
           <div class="card-blurb">The dashboard kit's ADVANCED grid constructs, one labelled board each — cross-container drag between two boards, a bounded section (maxRows: 1) nested inside a board with height escalation, a pinned tile that refuses the mover, explicit cell placement with auto-flow around it, float and fit/grow toggles, palette drag-in and drag-out-to-remove. The flagship Dashboard builder deliberately uses NONE of these: it is one flat 12-column grid so its behaviour is predictable. This page is the options menu. LAYERS: `dashboard({ views })` declares a whole board as data and wires all of this for you (dashboard/dashboard-builder.html) — this page is the layer beneath it, `bindDashboardGrid` driven directly, because that is where these options live.</div>
+        </a>
+        <a class="card" href="dashboard/fluid-board.html" style="--cat:#0891b2">
+          <div class="card-thumb"><img src="thumbs/dashboard/fluid-board.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name">Fluid dashboard<span class="card-go">→</span></div>
+          <div class="card-blurb">The DEFAULT mode of `dashboard()`: no width authored, so the board is 100% of its container at zoom 1 — laid out at real CSS pixels, the way gridstack and react-grid-layout lay out, never a picture the camera scales. Shrink the container (&quot;Narrow container&quot;) and the board follows; the type stays 30 px. FIT MEANS BOUNDED: a fit board never changes size, widgets do — and the row floor is a capacity. &quot;+ Add a row&quot; lands while there is room and is REFUSED, visibly, when there is none; nothing is ever painted past the board's edge. Grow mode is unbounded: rows keep their height and the board extends downward (wheel scrolls). `mode: 'fixed'` (or an explicit width) keeps the framed-world behaviour for a dashboard embedded inside a larger diagram — see dashboard/dashboard-builder.html.</div>
         </a>
         </div>
       </section>
