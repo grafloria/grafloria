@@ -12,6 +12,7 @@
 import { Command, DiagramModel, GroupModel, NodeModel, CommandManager, EventBus } from '@grafloria/engine';
 import { render } from '../grafloria';
 import { dashboard, type DashboardSpec } from './dashboard';
+import { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID } from './styles';
 
 /** Give a jsdom element a measurable box (jsdom lays nothing out). */
 function sizeElement(el: HTMLElement, w: number, h: number): void {
@@ -1170,5 +1171,133 @@ describe('per-widget limits, pointer flags and the static board', () => {
     handle.setStatic(false);
     expect(handle.getStatic()).toBe(false);
     expect(handle.toJSON().static).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ACCESSIBILITY (plan step 5, decided 2026-09-06: full — WCAG 2.1 AA). The
+// harness mounts no renderer, so the hosts the renderer would create are
+// made here by hand, exactly as the renderer names them.
+// ---------------------------------------------------------------------------
+describe('accessibility — name, role, keyboard, announcements', () => {
+  function hostsFor(api: ReturnType<typeof makeApi>, ids: string[]): Map<string, HTMLElement> {
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    const out = new Map<string, HTMLElement>();
+    for (const id of ids) {
+      const h = document.createElement('div');
+      h.className = 'grafloria-node-host';
+      h.setAttribute('data-node-id', id);
+      layer.appendChild(h);
+      out.set(id, h);
+    }
+    return out;
+  }
+  const liveText = (api: ReturnType<typeof makeApi>) =>
+    Array.from(api.container.querySelectorAll('[aria-live]')).map((el) => el.textContent).join(' ');
+  const key = (el: HTMLElement, k: string, shift = false) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, shiftKey: shift, bubbles: true, cancelable: true }));
+
+  const BOARD = () =>
+    dashboard({
+      width: 1180,
+      widgets: [
+        { id: 'a', kind: 'kpi', span: 3, title: 'Revenue' },
+        { id: 'b', kind: 'kpi', span: 3, title: 'Customers' },
+        { id: 'c', kind: 'line', span: 6, rows: 2 },
+      ],
+    });
+
+  it('every widget host gets a role, a description, a label with its cell, and ONE tab stop per board', () => {
+    const { api, handle } = mount(BOARD());
+    const hosts = hostsFor(api, ['a', 'b', 'c']);
+    handle.refresh();
+    expect(hosts.get('a')!.getAttribute('role')).toBe('group');
+    expect(hosts.get('a')!.getAttribute('aria-roledescription')).toBe('dashboard widget');
+    expect(hosts.get('a')!.getAttribute('aria-label')).toBe('Revenue, column 1, row 1, 3 by 1');
+    expect(hosts.get('c')!.getAttribute('aria-label')).toBe('line widget, column 7, row 1, 6 by 2');
+    expect([...hosts.values()].map((h) => h.getAttribute('tabindex'))).toEqual(['0', '-1', '-1']);
+  });
+
+  it('a pinned widget says so, and the roving tab stop follows focus', () => {
+    const { api, handle } = mount(BOARD());
+    const hosts = hostsFor(api, ['a', 'b', 'c']);
+    handle.widget('b')!.pin(true);
+    expect(hosts.get('b')!.getAttribute('aria-label')).toContain('pinned');
+    expect(handle.binderOf()!.focusWidget('c')).toBe(true);
+    expect([...hosts.values()].map((h) => h.getAttribute('tabindex'))).toEqual(['-1', '-1', '0']);
+    expect(handle.binderOf()!.getFocusedWidget()).toBe('c');
+  });
+
+  it('arrows move the focused widget one cell — one undoable step, announced', async () => {
+    const { api, handle } = mount(BOARD());
+    const hosts = hostsFor(api, ['a', 'b', 'c']);
+    handle.refresh();
+    key(hosts.get('a')!, 'ArrowRight'); // onto b: a same-size swap
+    await settle();
+    await settle();
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 3, y: 0 });
+    expect(handle.widget('b')!.cell).toMatchObject({ x: 0, y: 0 });
+    expect(liveText(api)).toContain('Revenue moved to column 4, row 1, 3 by 1');
+    expect(liveText(api)).toContain('Customers moved to column 1, row 1');
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it('Shift+arrows resize it, a refusal is announced, and a static board only reads', async () => {
+    const { api, handle } = mount(BOARD());
+    const hosts = hostsFor(api, ['a', 'b', 'c']);
+    handle.refresh();
+    key(hosts.get('c')!, 'ArrowDown', true);
+    await settle();
+    await settle();
+    expect(handle.widget('c')!.cell).toMatchObject({ h: 3 });
+    expect(liveText(api)).toContain('line widget resized to column 7, row 1, 6 by 3');
+    key(hosts.get('a')!, 'ArrowLeft'); // column 0 already: nowhere to go
+    await settle();
+    await settle();
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0 });
+    expect(liveText(api)).toContain('Cannot move Revenue left');
+    handle.setStatic(true);
+    key(hosts.get('a')!, 'ArrowRight');
+    await settle();
+    await settle();
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0 });
+    // Still reachable, just not editable: the roving stop is where focus last
+    // rested (the resize focused c), and the board keeps exactly one.
+    expect([...hosts.values()].map((h) => h.getAttribute('tabindex')).filter((t) => t === '0')).toHaveLength(1);
+    expect(hosts.get('c')!.getAttribute('tabindex')).toBe('0');
+  });
+
+  it('a fixed widget refuses the keyboard the way it refuses the pointer', async () => {
+    const { api, handle } = mount(
+      dashboard({ width: 1180, widgets: [{ id: 'a', kind: 'kpi', span: 3, title: 'Fixed', movable: false }] })
+    );
+    const hosts = hostsFor(api, ['a']);
+    handle.refresh();
+    key(hosts.get('a')!, 'ArrowRight');
+    await settle();
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0 });
+    expect(liveText(api)).toContain('Fixed cannot be moved');
+  });
+
+  it('an arrow on the diagram root hands focus to the board\'s tab stop', () => {
+    const { api, handle } = mount(BOARD());
+    const hosts = hostsFor(api, ['a', 'b', 'c']);
+    handle.refresh();
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'grafloria-diagram');
+    api.container.appendChild(svg);
+    svg.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    expect(handle.binderOf()!.getFocusedWidget()).toBe('a');
+    expect(hosts.get('a')!.getAttribute('tabindex')).toBe('0');
+  });
+
+  it('the stylesheet carries the focus ring, the reduced-motion rule and the sr-only table class', () => {
+    ensureDashboardKitStyles(document);
+    const css = document.getElementById(DASHBOARD_KIT_STYLE_ID)!.textContent ?? '';
+    expect(css).toContain('.grafloria-node-host:focus-visible');
+    expect(css).toContain('prefers-reduced-motion: reduce');
+    expect(css).toContain('.axdb-sr');
   });
 });

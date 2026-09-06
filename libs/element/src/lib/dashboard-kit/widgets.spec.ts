@@ -11,6 +11,7 @@
  *     must all paint something rather than take the board down.
  */
 import { dashboard } from './dashboard';
+import { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID } from './styles';
 import {
   BUILT_IN_WIDGET_KINDS,
   defaultWidgetRenderer,
@@ -263,5 +264,87 @@ describe('line widget — a single data point is still data', () => {
     expect(host.querySelectorAll('circle').length).toBe(0);
     expect(host.querySelector('polyline')).toBeTruthy();
     host.remove();
+  });
+});
+
+describe('every built-in chart carries its data as a screen-reader table', () => {
+  const host = () => document.createElement('div');
+  it('line, bar, donut and funnel each render one .axdb-sr table with the numbers', () => {
+    const cases: Array<[string, Record<string, unknown>, string]> = [
+      ['line', { series: [{ name: 'Rev', values: [1, 2] }], labels: ['Jan', 'Feb'] }, '2'],
+      ['bar', { bars: [{ label: 'Q1', value: 210 }] }, '210'],
+      ['donut', { slices: [{ label: 'EMEA', value: 3 }, { label: 'NA', value: 1 }] }, '75%'],
+      ['funnel', { stages: [{ label: 'Leads', value: 1840 }] }, '1840'],
+    ];
+    for (const [kind, data, needle] of cases) {
+      const h = host();
+      defaultWidgetRenderer({ id: 'w', kind, data }, h);
+      const table = h.querySelector('table.axdb-sr');
+      expect(table).toBeTruthy();
+      expect(table!.textContent).toContain(needle);
+      expect(h.querySelector('svg')!.getAttribute('role')).toBe('img');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CONTRAST (WCAG 1.4.3 text ≥ 4.5:1, 1.4.11 non-text ≥ 3:1), both themes —
+// computed from the stylesheet's own tokens so a colour tweak that breaks a
+// ratio fails here before axe-core sees it in the battery.
+// ---------------------------------------------------------------------------
+describe('the built-in widgets keep their contrast in both themes', () => {
+  const lum = (hex: string): number => {
+    const h = hex.replace('#', '');
+    const c = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const ratio = (a: string, b: string): number => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const tokensOf = (block: string): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const m of block.matchAll(/--axdb-([a-z0-9]+):\s*(#[0-9a-fA-F]{3,6})/g)) out[m[1]] = m[2].length === 4 ? '#' + [...m[2].slice(1)].map((c) => c + c).join('') : m[2];
+    return out;
+  };
+  const themes = (): { light: Record<string, string>; dark: Record<string, string> } => {
+    ensureDashboardKitStyles(document);
+    const css = document.getElementById(DASHBOARD_KIT_STYLE_ID)!.textContent ?? '';
+    const lightStart = css.indexOf('.axdb-widget {');
+    const darkStart = css.indexOf('@media (prefers-color-scheme: dark) {\n  .axdb-widget {');
+    const light = tokensOf(css.slice(lightStart, css.indexOf('}', lightStart)));
+    const dark = { ...light, ...tokensOf(css.slice(darkStart, css.indexOf('}', darkStart))) };
+    return { light, dark };
+  };
+
+  it('captions, deltas and headers read at 4.5:1 or better', () => {
+    for (const t of Object.values(themes())) {
+      expect(ratio(t['muted'], t['card'])).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(t['ink'], t['card'])).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(t['up'], t['card'])).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(t['down'], t['card'])).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('every palette entry clears 3:1 against its card', () => {
+    for (const t of Object.values(themes())) {
+      for (let i = 1; i <= 6; i++) expect(ratio(t['c' + i], t['card'])).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('charts colour through the tokens, so the dark card gets its own steps', () => {
+    const h = document.createElement('div');
+    defaultWidgetRenderer({ id: 'w', kind: 'bar', data: { bars: [{ label: 'a', value: 1 }, { label: 'b', value: 2 }] } }, h);
+    const fills = Array.from(h.querySelectorAll('rect')).map((r) => r.getAttribute('fill'));
+    expect(fills).toEqual(['var(--axdb-c1)', 'var(--axdb-c2)']);
+  });
+
+  it('the table body is a focusable, named region (axe: scrollable-region-focusable)', () => {
+    const h = document.createElement('div');
+    defaultWidgetRenderer({ id: 'w', kind: 'table', title: 'Top reps', data: { columns: ['a'], rows: [[1]] } }, h);
+    const body = h.querySelector('.axdb-scroll')!;
+    expect(body.getAttribute('tabindex')).toBe('0');
+    expect(body.getAttribute('role')).toBe('region');
+    expect(body.getAttribute('aria-label')).toBe('Top reps');
   });
 });

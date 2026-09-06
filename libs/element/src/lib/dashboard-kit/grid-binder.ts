@@ -64,7 +64,7 @@ import {
   type GroupModel,
   type NodeModel,
 } from '@grafloria/engine';
-import { registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
+import { LiveRegionController, registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
 import {
   buildCommitCommands,
   cellFromGridItem,
@@ -259,6 +259,13 @@ export interface DashboardGridHandle {
   setStatic(on: boolean): void;
   getStatic(): boolean;
   /**
+   * Move keyboard focus to a member (the roving tabindex lands on it). The
+   * host takes DOM focus when it exists; returns false for a non-member.
+   */
+  focusWidget(id: string): boolean;
+  /** The member the roving tabindex currently rests on. */
+  getFocusedWidget(): string | undefined;
+  /**
    * The layout to PERSIST — from the engine's LARGEST cached column count, so
    * saving while the board is narrow still saves the wide layout the user
    * authored (gridstack's `save()` semantics).
@@ -389,6 +396,31 @@ interface AdoptedLeg {
 }
 
 const BOARD_REGISTRY = new Map<HTMLElement, Set<BinderPeer>>();
+
+/**
+ * ONE aria-live region per canvas, shared by every board on it — the
+ * renderer's own controller (coalescing, de-duplicating), so a dashboard
+ * announces through the same channel a diagram does. WeakMap: the region
+ * follows the container out of memory.
+ */
+const LIVE_REGIONS = new WeakMap<HTMLElement, LiveRegionController>();
+function liveRegionFor(container: HTMLElement): LiveRegionController {
+  let live = LIVE_REGIONS.get(container);
+  if (!live) {
+    live = new LiveRegionController(container);
+    LIVE_REGIONS.set(container, live);
+  }
+  return live;
+}
+
+function directionName(dx: number, dy: number): string {
+  return dx < 0 ? 'left' : dx > 0 ? 'right' : dy < 0 ? 'up' : 'down';
+}
+
+/** "column 4, row 2, 3 by 1" — the cell as a person hears it (1-based). */
+function describeCell(c: CellRect): string {
+  return `column ${c.x + 1}, row ${c.y + 1}, ${c.w} by ${c.h}`;
+}
 
 /**
  * Undoable cell+frame write for a GROUP member (the strip's slab). The engine
@@ -545,6 +577,9 @@ export function bindDashboardGrid(
   const fluid = options.fluid === true;
   const overflow = options.overflow ?? 'bounded';
   let isStatic = options.static === true;
+  /** The member the ROVING TABINDEX rests on (one tab stop per board). */
+  let focusedId: string | undefined;
+  const live = liveRegionFor(api.container);
   /** The design height. Fluid boards re-read it from the container. */
   let designH = options.designHeight ?? group.size?.height ?? 0;
   /** Fit-mode CAPACITY in rows (see `overflow`). Undefined = unbounded. */
@@ -909,7 +944,42 @@ export function bindDashboardGrid(
 
   // -- resize handles ---------------------------------------------------------
 
+  /** The accessible name of a widget: its title, else its kind, else its id. */
+  const nameOf = (node: NodeModel): string => {
+    const title = node.getMetadata?.('widgetTitle');
+    if (typeof title === 'string' && title) return title;
+    const kind = node.getMetadata?.('widgetKind');
+    return typeof kind === 'string' && kind && kind !== 'widget' ? `${kind} widget` : node.id;
+  };
+
+  /**
+   * ACCESSIBLE CHROME on every member host (WCAG 4.1.2 name/role/value): a
+   * group role, a widget role description, a label that carries the cell,
+   * and the ROVING TABINDEX — exactly one member per board is a tab stop.
+   * Runs with the handles, so a repainted host gets it back too.
+   */
+  const syncA11y = (): void => {
+    if (disposed) return;
+    const members = [...(group.members ?? [])].filter((id) => !!diagram.getNode(id));
+    if (focusedId && !members.includes(focusedId)) focusedId = undefined;
+    const stop = focusedId ?? members[0];
+    for (const id of members) {
+      const node = diagram.getNode(id);
+      const host = hostOf(id);
+      if (!node || !host) continue;
+      const cell = engine.getItem(id);
+      const bits = [nameOf(node)];
+      if (cell) bits.push(describeCell(cell));
+      if (node.state?.locked === true) bits.push('pinned');
+      host.setAttribute('role', 'group');
+      host.setAttribute('aria-roledescription', 'dashboard widget');
+      host.setAttribute('aria-label', bits.join(', '));
+      host.setAttribute('tabindex', id === stop ? '0' : '-1');
+    }
+  };
+
   const syncHandles = (): void => {
+    syncA11y();
     if (!wantHandles || disposed) return;
     for (const id of group.members ?? []) {
       const node = diagram.getNode(id);
@@ -1268,6 +1338,11 @@ export function bindDashboardGrid(
     }
     const changed = execute(g.kind === 'resize' ? 'Resize widget' : 'Move widget', commands);
     persistLayouts(); // an edit at a narrow count propagated into the wide cache
+    if (changed) {
+      const it = engine.getItem(g.id);
+      if (it) live.announce(`${nameOf(g.node)} ${g.kind === 'resize' ? 'resized' : 'moved'} to ${describeCell(it)}`);
+    }
+    syncA11y();
     api.renderNow();
     options.onGesture?.({ type: 'commit', kind: g.kind, nodeId: g.id, changed });
   };
@@ -1980,6 +2055,125 @@ export function bindDashboardGrid(
   };
   api.container.addEventListener('pointermove', onHover, { passive: true });
 
+  /**
+   * KEYBOARD OPERATION (WCAG 2.1.1, and the non-drag alternative 2.5.7 asks
+   * for): on a focused member, arrows move it one cell, Shift+arrows resize it
+   * one cell, Home/End jump to the first/last member. Every move and resize is
+   * the same programmatic gesture the API uses — one undoable step, reported
+   * through onLayoutChange — and every outcome is spoken: the tile's new
+   * cell, each neighbour it displaced, or why it was refused. Handled keys
+   * stop here so the renderer's own pixel nudge never fights the grid.
+   */
+  const memberHostAt = (target: EventTarget | null): { id: string; host: HTMLElement } | null => {
+    const host = (target as Element | null)?.closest?.('.grafloria-node-host') as HTMLElement | null;
+    if (!host) return null;
+    const id = host.getAttribute('data-node-id') ?? '';
+    if (!(group.members ?? new Set<string>()).has(id) || !diagram.getNode(id)) return null;
+    return { id, host };
+  };
+
+  const onFocusIn = (e: FocusEvent): void => {
+    const hit = memberHostAt(e.target);
+    if (!hit || disposed) return;
+    if (focusedId !== hit.id) {
+      focusedId = hit.id;
+      syncA11y();
+    }
+  };
+
+  const onKey = (e: KeyboardEvent): void => {
+    if (disposed || gesture) return;
+    const hit = memberHostAt(e.target);
+    if (!hit) {
+      // Tab reaches the diagram's own root (the svg) before any widget. An
+      // arrow or Enter there hands focus to the board's tab stop, so a
+      // keyboard user is never parked on "Diagram, 8 nodes" with nowhere to go.
+      const el = e.target as Element | null;
+      const onRoot = !!el && el.tagName?.toLowerCase() === 'svg' && el.classList?.contains('grafloria-diagram');
+      if (onRoot && (e.key.startsWith('Arrow') || e.key === 'Enter' || e.key === ' ')) {
+        const members = [...(group.members ?? [])].filter((id) => !!diagram.getNode(id) && !!hostOf(id));
+        const target = focusedId && members.includes(focusedId) ? focusedId : members[0];
+        if (target && handle.focusWidget(target)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+      return;
+    }
+    const members = [...(group.members ?? [])].filter((id) => !!diagram.getNode(id) && !!hostOf(id));
+    if (e.key === 'Home' || e.key === 'End') {
+      const id = e.key === 'Home' ? members[0] : members[members.length - 1];
+      if (id) handle.focusWidget(id);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (!arrow) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (isStatic) return; // readable, not editable
+    const node = diagram.getNode(hit.id);
+    const item = engine.getItem(hit.id);
+    if (!node || !item) return;
+    const name = nameOf(node);
+    if (node.state?.locked === true) {
+      live.announceError(`${name} is pinned`);
+      return;
+    }
+    const [dx, dy] = arrow;
+    const before = new Map(engine.getItems().map((i) => [i.id, { x: i.x, y: i.y, w: i.w, h: i.h }]));
+    const resize = e.shiftKey;
+    if (resize && node.getMetadata?.('widgetResizable') === false) {
+      live.announceError(`${name} cannot be resized`);
+      return;
+    }
+    if (!resize && node.getMetadata?.('widgetMovable') === false) {
+      live.announceError(`${name} cannot be moved`);
+      return;
+    }
+    // A one-cell keyboard step onto a neighbour would be refused by the
+    // pointer's anti-jitter gate (a 3-wide covering a third of its neighbour
+    // is not "more than half"). A key press is deliberate, so when the step
+    // is refused and a neighbour sits there, aim at the neighbour's far edge —
+    // the same swap a full drag lands on.
+    const stepOrSwap = async (): Promise<boolean> => {
+      if (await handle.moveTo(hit.id, item.x + dx, item.y + dy)) return true;
+      const probe = { x: item.x + dx, y: item.y + dy, w: item.w, h: item.h };
+      const c = engine
+        .getItems()
+        .find((o) => o.id !== hit.id && probe.x < o.x + o.w && o.x < probe.x + probe.w && probe.y < o.y + o.h && o.y < probe.y + probe.h);
+      if (!c) return false;
+      const tx = dx > 0 ? c.x + c.w - item.w : dx < 0 ? c.x : item.x;
+      const ty = dy > 0 ? c.y + c.h - item.h : dy < 0 ? c.y : item.y;
+      return handle.moveTo(hit.id, tx, ty);
+    };
+    const op = resize ? handle.resizeTo(hit.id, item.w + dx, item.h + dy) : stepOrSwap();
+    void op.then((ok) => {
+      if (disposed) return;
+      const after = engine.getItem(hit.id);
+      if (!ok || !after) {
+        live.announceError(
+          resize ? `Cannot resize ${name} that way` : `Cannot move ${name} ${directionName(dx, dy)}`
+        );
+        return;
+      }
+      const parts = [`${name} ${resize ? 'resized' : 'moved'} to ${describeCell(after)}`];
+      for (const other of engine.getItems()) {
+        if (other.id === hit.id) continue;
+        const was = before.get(other.id);
+        if (!was || (was.x === other.x && was.y === other.y)) continue;
+        const o = diagram.getNode(other.id);
+        parts.push(`${o ? nameOf(o) : other.id} moved to ${describeCell(other)}`);
+      }
+      live.announce(parts.join('. '), 'polite', true);
+      syncA11y();
+      hostOf(hit.id)?.focus?.({ preventScroll: true });
+    });
+  };
+  api.container.addEventListener('focusin', onFocusIn);
+  api.container.addEventListener('keydown', onKey);
+
   // -- palette drag-in --------------------------------------------------------
 
   const beginPaletteDrag = (
@@ -2221,6 +2415,14 @@ export function bindDashboardGrid(
       api.renderNow();
     },
     getRtl: () => rtl,
+    focusWidget(id): boolean {
+      if (disposed || !(group.members ?? new Set<string>()).has(id) || !diagram.getNode(id)) return false;
+      focusedId = id;
+      syncA11y();
+      hostOf(id)?.focus?.({ preventScroll: true });
+      return true;
+    },
+    getFocusedWidget: () => focusedId,
     setStatic(on): void {
       if (on === isStatic) return;
       isStatic = on;
@@ -2334,6 +2536,8 @@ export function bindDashboardGrid(
       peersOnCanvas().delete(selfPeer);
       unregisterTool();
       api.container.removeEventListener('pointermove', onHover);
+      api.container.removeEventListener('focusin', onFocusIn);
+      api.container.removeEventListener('keydown', onKey);
       hostObserver.disconnect();
       containerObserver?.disconnect();
       for (const off of subs) off();

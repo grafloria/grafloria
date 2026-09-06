@@ -1283,6 +1283,73 @@ try {
   await page.close();
 }
 
+// ---- S31 · ACCESSIBILITY (WCAG 2.1 AA — decided 2026-09-06) --------------
+// Three boards through axe-core, plus the operability WCAG 2.1.1 asks for:
+// a keyboard alone must reach a widget, move it, resize it, and hear the result.
+{
+  begin('s31-accessibility');
+  const axeSrc = readFileSync(join(root, '..', 'node_modules', 'axe-core', 'axe.min.js'), 'utf8');
+  const violationsOn = async (path) => {
+    const page = await freshPage(path);
+    await page.addScriptTag({ content: axeSrc });
+    const r = await page.evaluate(async () => {
+      const res = await window.axe.run(document.getElementById('canvas'), {
+        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
+      });
+      return res.violations
+        .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+        .map((v) => `${v.id}(${v.impact})×${v.nodes.length}`);
+    });
+    const ok = assertNoPageErrors(page);
+    await page.close();
+    return { path, violations: r, ok };
+  };
+  const audits = [];
+  for (const path of [DASH, '/dashboard/fluid-board.html', '/dashboard/nested-containers.html']) {
+    audits.push(await violationsOn(path));
+  }
+  const clean = audits.every((a) => a.violations.length === 0 && a.ok);
+
+  // Keyboard operation on the fluid board: Tab from the toolbar lands on ONE
+  // widget; arrows move it; Shift+arrows resize it; every outcome is announced.
+  const page = await freshPage('/dashboard/fluid-board.html');
+  const read = () => page.evaluate(() => ({
+    active: document.activeElement?.getAttribute('data-node-id') ?? null,
+    label: document.activeElement?.getAttribute('aria-label') ?? '',
+    live: Array.from(document.querySelectorAll('[aria-live]')).map((e) => e.textContent).join(' '),
+    rev: window.__demoCtx.handle.widget('rev').cell,
+    stops: document.querySelectorAll('.grafloria-node-host[tabindex="0"]').length,
+  }));
+  await page.focus('#fb-add');
+  // The diagram root is a tab stop of its own before the board's; keep
+  // tabbing until a widget holds focus (three presses is the ceiling).
+  let s0 = await read();
+  for (let i = 0; i < 3 && !s0.active; i++) {
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(150);
+    s0 = await read();
+  }
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(500);
+  const s1 = await read();
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.waitForTimeout(500);
+  const s2 = await read();
+  await shot(page, 'after-keyboard-move-and-resize');
+  const cm = () => page.evaluate(() => window.__demoCtx.instance.getEngine().commandManager.canUndo());
+  const undoable = await cm();
+  const reached = s0.active === 'rev' && s0.stops === 1 && /column 1, row 1/.test(s0.label);
+  const moved = s1.rev.x > 0 && /moved to column/.test(s1.live);
+  const resized = s2.rev.h > s1.rev.h && /resized to/.test(s2.live);
+  const st = await boardState(page);
+  verdict(clean && reached && moved && resized && undoable && st.overlaps === 0,
+    `axe=${audits.map((a) => `${a.path.split('/').pop()}:${a.violations.length ? a.violations.join(',') : 'clean'}`).join(' ')} ` +
+    `tab-reaches-one-widget=${reached}(${s0.active},stops=${s0.stops}) arrow-moved=${moved}(x=${s1.rev.x}) ` +
+    `shift-arrow-resized=${resized}(h=${s1.rev.h}->${s2.rev.h}) announced="${s2.live.slice(0, 80)}" undoable=${undoable} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
+
 } finally {
   await browser.close();
   server.close();
