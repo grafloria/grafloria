@@ -34,9 +34,11 @@ header { padding: 10px 24px 12px; border-bottom: 1px solid var(--gf-line); backg
 .head-links { margin-left: auto; display: flex; gap: 16px; font-size: 12.5px; font-weight: 500; }
 .head-links a { color: var(--gf-accent); text-decoration: none; }
 .head-links a:hover { text-decoration: underline; }
-h1 { margin: 0 0 2px; font-size: 19px; letter-spacing: -.3px; }
+h1 { margin: 0; font-size: 19px; letter-spacing: -.3px; }
+/* The description moved into the "About & how to test" panel (demo.js); the
+   header is the brand row and the title, so the board gets the page. */
 .blurb { margin: 0; color: var(--gf-mut); font-size: 13px; max-width: 120ch; }
-#canvas { width: 100%; height: calc(100vh - 100px); }
+#canvas { width: 100%; height: calc(100vh - 78px); }
 
 /* ── The gallery side menu (built by demo.js from the generated manifest) ── */
 #grafloria-nav-toggle {
@@ -92,6 +94,8 @@ body.nav-open #grafloria-nav { transform: none; }
 #grafloria-howto .ht-head button { border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer;
   color: var(--gf-mut); padding: 0 2px; }
 #grafloria-howto .ht-head button:hover { color: var(--gf-ink); }
+#grafloria-howto .ht-about { margin: 10px 14px 4px; padding: 0 0 10px; border-bottom: 1px solid var(--gf-line); font-size: 12.5px; line-height: 1.5; color: var(--gf-mut); }
+#grafloria-howto .ht-steps { margin: 8px 14px 0; font-size: 11px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--gf-mut); }
 #grafloria-howto ol { margin: 8px 0 12px; padding-left: 30px; }
 #grafloria-howto li { margin: 7px 8px 7px 0; line-height: 1.45; overflow-wrap: anywhere; }
 #grafloria-howto-open { position: fixed; top: 16px; right: 16px; z-index: 50; width: 34px; height: 34px;
