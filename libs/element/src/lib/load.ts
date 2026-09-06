@@ -396,6 +396,15 @@ export function fromDocument(
       if (!board) continue;
       boards.set(group.id, bindDashboardGrid(a as never, group, { ...board }));
     }
+    // A container removed and restored through the history comes back as a
+    // fresh group: bind it again from its own persisted geometry.
+    ctx.rebindContainer = (id: string): void => {
+      const group = model.getGroup(id);
+      const board = group?.getMetadata('dashboardBoard') as PersistedBoard | undefined;
+      if (!group || !board) return;
+      ctx.boardGroups.set(id, group);
+      boards.set(id, bindDashboardGrid(a as never, group, { ...board }));
+    };
     // A loaded board follows the history exactly as an authored one does: an
     // undo re-syncs every binder without the consumer calling refresh().
     ctx.attachHistory?.();

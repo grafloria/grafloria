@@ -50,6 +50,7 @@ import {
   GroupModel,
   NodeModel,
   RemoveFromGroupCommand,
+  RemoveGroupCommand,
   RemoveNodeCommand,
   SendNodeToBackCommand,
   type GridColumnLayout,
@@ -702,6 +703,13 @@ export interface DashboardHandleContext {
   attachHistory?: () => void;
   /** Unsubscribers dispose() runs. */
   subscriptions?: Array<() => void>;
+  /**
+   * Re-bind a CONTAINER whose group came back through the history (undo of a
+   * container removal restores the group as a fresh GroupModel, which the old
+   * binder cannot see). Set by the two finalizes; called by the history
+   * handler for any board group the model holds without a binder.
+   */
+  rebindContainer?: (id: string) => void;
 }
 
 /**
@@ -826,6 +834,10 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     for (const v of handle.toJSON().views) lastReported.set(v.id, JSON.stringify(v.widgets));
     const onHistory = (): void => {
       if (!ctx.apiRef) return;
+      const model = ctx.apiRef.getModel();
+      for (const id of [...ctx.boardGroups.keys()]) {
+        if (!binders.has(id) && model.getGroup(id)) ctx.rebindContainer?.(id);
+      }
       for (const b of binders.values()) b.sync();
       ctx.apiRef.renderNow();
       reportChanged();
@@ -1098,10 +1110,48 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       },
       remove(displaced) {
         if (spec.widgets) {
-          // A container is a GROUP, not a node — RemoveNodeCommand would
-          // silently no-op and strand the children. Container removal is not
-          // supported through the widget handle (yet); say so loudly.
-          console.warn('[dashboard] remove() on a container is not supported');
+          // A CONTAINER (review D12): its subtree, its own group, its slab in
+          // the parent board and the parent's re-pack, as ONE undoable batch.
+          // Undo restores the groups as fresh GroupModels, so the history
+          // handler re-binds the container's grid (ctx.rebindContainer).
+          const parentGroup = ctx.boardGroups.get(viewId);
+          const parentBinder = binders.get(viewId);
+          const model = ctx.apiRef?.getModel();
+          if (!parentGroup || !parentBinder || !model) return;
+          // ORDER MATTERS FOR UNDO. A batch may only undo when EVERY member
+          // can, checked before any of them runs — and RemoveFromGroupCommand
+          // can undo only while its group exists. So no membership commands
+          // for the members of a group that is going: the group is removed
+          // FIRST (its serialized members ride with it and come back on undo),
+          // its nodes after; on undo the nodes return, then the group with its
+          // membership, then the slab's membership in the parent.
+          const cmds: Command[] = [
+            ...((displaced as Command[] | undefined) ?? parentBinder.planRemoval(id)),
+            new RemoveFromGroupCommand(parentGroup.id, id),
+          ];
+          const nodeRemovals: Command[] = [];
+          const unregisters: Command[] = [];
+          const removeSubtree = (boardId: string): void => {
+            const g = ctx.boardGroups.get(boardId);
+            cmds.push(new RemoveGroupCommand(boardId));
+            for (const m of [...(g?.members ?? [])]) {
+              const mSpec = specById.get(m);
+              if (mSpec) unregisters.push(new RegisterWidgetCommand(registryOf(m, boardId, mSpec), 'unregister'));
+              if (ctx.boardGroups.has(m)) removeSubtree(m);
+              else nodeRemovals.push(new RemoveNodeCommand(m));
+              binders.get(m)?.dispose();
+              binders.delete(m);
+            }
+          };
+          removeSubtree(id);
+          const registry = registryOf(id, viewId, spec);
+          cmds.push(...nodeRemovals, ...unregisters, new RegisterWidgetCommand(registry, 'unregister'));
+          binders.get(id)?.dispose();
+          binders.delete(id);
+          void execCommand(new BatchCommand('Remove section', cmds));
+          registry.unregister();
+          parentBinder.sync();
+          ctx.apiRef?.renderNow();
           return;
         }
         const n = node();
@@ -1333,6 +1383,13 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         );
       }
       handle.showView(ctx.active);
+      ctx.rebindContainer = (id: string): void => {
+        const g = model.getGroup(id);
+        const w = specById.get(id);
+        if (!g || !w || !w.widgets) return;
+        ctx.boardGroups.set(id, g);
+        bindContainer(g, w, ctx.viewOfBoard.get(id) ?? ctx.active);
+      };
       ctx.attachHistory?.();
       return;
 
@@ -1387,25 +1444,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             boardGroup.addMember(w.id);
             ctx.boardGroups.set(w.id, cg);
             mountBoard(w.id, viewId, w.widgets, cg);
-            binders.set(
-              w.id,
-              bindDashboardGrid(a as never, cg, {
-                columns: innerColumns,
-                gap,
-                padding: 0,
-                sizing: 'fit',
-                baseRowHeight: rowHeight,
-                designHeight: 0,
-                maxRows: innerRows,
-                float: false,
-                rtl: options.rtl ?? false,
-                static: options.static ?? false,
-                onGesture: (e) => {
-                  if (e.type === 'commit') reportChanged();
-                  options.binder?.onGesture?.(e);
-                },
-              })
-            );
+            bindContainer(cg, w, viewId);
             continue;
           }
           const n = model.getNode(w.id);
@@ -1432,6 +1471,29 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           for (const p of [...n.getPorts().values()]) n.removePort(p.id);
           boardGroup.addMember(w.id);
         }
+      }
+
+      /** Bind (or re-bind) a container's inner grid on its group. */
+      function bindContainer(cg: GroupModel, w: DashboardWidgetSpec, viewId: string): void {
+        binders.set(
+          w.id,
+          bindDashboardGrid(a as never, cg, {
+            columns: innerColumnsOf(w),
+            gap,
+            padding: 0,
+            sizing: 'fit',
+            baseRowHeight: rowHeight,
+            designHeight: 0,
+            maxRows: w.maxRows ?? rowExtentOf(w.widgets ?? []),
+            float: false,
+            rtl: options.rtl ?? false,
+            static: options.static ?? false,
+            onGesture: (e) => {
+              if (e.type === 'commit') reportChanged();
+              options.binder?.onGesture?.(e);
+            },
+          })
+        );
       }
 
       /**
