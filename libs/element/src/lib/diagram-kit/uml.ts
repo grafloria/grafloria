@@ -24,10 +24,9 @@
  */
 import { ensureDiagramKitStyles } from './styles';
 import { bindRowInteractions } from './rows';
-import { classCardContent, classAutoHeight } from './card';
+import { classCardContent, classAutoHeight, classAutoWidth } from './card';
 import { bindCardEditing } from './editing';
 
-const DEFAULT_WIDTH = 200;
 
 export interface UmlClassSpec {
   id: string;
@@ -148,7 +147,7 @@ export function umlDiagram(options: UmlDiagramOptions): {
     return {
       id: cls.id,
       position: cls.position ?? { x: 80 + (i % 3) * 320, y: 60 + Math.floor(i / 3) * 260 },
-      size: { width: cls.width ?? DEFAULT_WIDTH, height: classAutoHeight(cls, editable) },
+      size: { width: classAutoWidth(cls, editable), height: classAutoHeight(cls, editable) },
       // interactive: members are real DOM targets (hover, row selection, inline
       // editing); node drag/select stay geometric in the binder.
       metadata: {

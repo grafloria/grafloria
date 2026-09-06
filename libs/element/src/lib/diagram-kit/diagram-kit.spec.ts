@@ -11,7 +11,21 @@
 import { erDiagram, ER_ROW_H, ER_HEAD_H } from './er';
 import { umlDiagram } from './uml';
 import { DIAGRAM_KIT_STYLE_ID, ensureDiagramKitStyles } from './styles';
-import { entityAutoHeight, ER_BORDER_SLACK } from './card';
+import {
+  entityAutoHeight,
+  entityAutoWidth,
+  classAutoWidth,
+  measureCardText,
+  ER_BORDER_SLACK,
+  ER_DEFAULT_WIDTH,
+  UML_DEFAULT_WIDTH,
+  CARD_MAX_AUTO_W,
+  CARD_PAD_X,
+  ER_KEY_W,
+  ER_ROW_GAP,
+  ER_TYPE_MIN_W,
+  CARD_SLACK_X,
+} from './card';
 
 const CUSTOMER = {
   id: 'CUSTOMER',
@@ -496,5 +510,119 @@ describe('ER card rows are one line — the rule the height math depends on', ()
       entityAutoHeight({ id: 'T', columns: Array.from({ length: n }, (_, i) => ({ name: 'c' + i })) } as never);
     expect(h(4) - h(3)).toBe(ER_ROW_H);
     expect(h(0)).toBe(ER_HEAD_H + ER_BORDER_SLACK);
+  });
+});
+
+describe('cards size to their content in BOTH axes — the width half of the contract', () => {
+  // Height was always derived from content; width was a flat constant, so
+  // anything wider simply fell off the card and did so SILENTLY. Measured on
+  // the shipped demos before the fix: the ER head lost 125px of
+  // A_VERY_LONG_TABLE_NAME_THAT_KEEPS_GOING with no ellipsis, the column
+  // from_warehouse_id needed 221px against the 190 it got, and a UML method
+  // signature needed 487px against 190 — 297px cut mid-glyph.
+  //
+  // jsdom has no canvas, so measureCardText runs its per-character fallback
+  // here. That is deliberate: these assertions are about the SHAPE of the
+  // sizing rule (longer content ⇒ wider card, bounded, explicit width wins),
+  // which must hold under either measurement. The exact pixel agreement between
+  // canvas and DOM layout is checked in the browser, not in jsdom.
+
+  const cols = (...names: string[]) => names.map((name) => ({ name, type: 'int' }));
+
+  it('a card whose content fits keeps the default width', () => {
+    expect(entityAutoWidth({ id: 'T', columns: cols('id') })).toBe(ER_DEFAULT_WIDTH);
+    expect(classAutoWidth({ id: 'C', attributes: ['- x: int'] })).toBe(UML_DEFAULT_WIDTH);
+  });
+
+  it('a long column name widens the card instead of being cut off', () => {
+    const narrow = entityAutoWidth({ id: 'T', columns: cols('id') });
+    const wide = entityAutoWidth({ id: 'T', columns: cols('id', 'a_considerably_longer_column_name') });
+    expect(wide).toBeGreaterThan(narrow);
+  });
+
+  it('a long TABLE NAME widens the card too — the head overflow that had no ellipsis', () => {
+    const plain = entityAutoWidth({ id: 'T', columns: cols('id') });
+    const titled = entityAutoWidth({
+      id: 'A_VERY_LONG_TABLE_NAME_THAT_KEEPS_GOING',
+      columns: cols('id'),
+    });
+    expect(titled).toBeGreaterThan(plain);
+  });
+
+  it('a long UML member widens the class — the signature is the information', () => {
+    const plain = classAutoWidth({ id: 'C', methods: ['+ run(): void'] });
+    const long = classAutoWidth({
+      id: 'C',
+      methods: ['+ findAllByCriteriaAndSort(criteria: Criteria, sort: Sort): List<Entity>'],
+    });
+    expect(long).toBeGreaterThan(plain);
+  });
+
+  it('the derived width matches the row box model the stylesheet lays out', () => {
+    // key + two gaps + the name + the type cell, inside the row's padding.
+    const name = 'a_considerably_longer_column_name';
+    const expected = Math.ceil(
+      CARD_PAD_X + ER_KEY_W + ER_ROW_GAP +
+        measureCardText(name, '12px system-ui, sans-serif') +
+        ER_ROW_GAP + ER_TYPE_MIN_W + CARD_SLACK_X
+    );
+    expect(entityAutoWidth({ id: 'T', columns: [{ name, type: 'int' }] })).toBe(expected);
+  });
+
+  it('a pathological identifier is bounded — past the ceiling the ellipsis takes over', () => {
+    const monstrous = 'x'.repeat(500);
+    expect(entityAutoWidth({ id: 'T', columns: cols(monstrous) })).toBe(CARD_MAX_AUTO_W);
+    expect(classAutoWidth({ id: 'C', methods: [monstrous] })).toBe(CARD_MAX_AUTO_W);
+  });
+
+  it('an explicit width always wins, and is never clamped', () => {
+    expect(entityAutoWidth({ id: 'T', columns: cols('id'), width: 90 })).toBe(90);
+    expect(entityAutoWidth({ id: 'T', columns: cols('id'), width: 900 })).toBe(900);
+    expect(classAutoWidth({ id: 'C', width: 77 })).toBe(77);
+  });
+
+  it('the editable card reserves room for the delete control', () => {
+    const spec = { id: 'T', columns: cols('a_reasonably_long_column_name') };
+    expect(entityAutoWidth(spec, true)).toBeGreaterThan(entityAutoWidth(spec, false));
+  });
+
+  it('erDiagram and umlDiagram actually ship the derived width', () => {
+    const spec = erDiagram({
+      entities: [{ id: 'T', columns: cols('a_considerably_longer_column_name') }],
+    });
+    expect((spec.nodes[0] as { size: { width: number } }).size.width).toBe(
+      entityAutoWidth({ id: 'T', columns: cols('a_considerably_longer_column_name') })
+    );
+
+    const uspec = umlDiagram({
+      classes: [{ id: 'C', methods: ['+ findAllByCriteriaAndSort(criteria: Criteria): List<Entity>'] }],
+    });
+    expect((uspec.nodes[0] as { size: { width: number } }).size.width).toBeGreaterThan(UML_DEFAULT_WIDTH);
+  });
+});
+
+describe('the overflows that used to be invisible now say so', () => {
+  function ruleFor(selector: string): string {
+    ensureDiagramKitStyles(document);
+    const css = document.getElementById(DIAGRAM_KIT_STYLE_ID)?.textContent ?? '';
+    const at = css.indexOf(selector + ' {');
+    expect(at).toBeGreaterThan(-1);
+    return css.slice(at, css.indexOf('}', at));
+  }
+
+  it('.axk-entity-head ellipsises instead of running off the card', () => {
+    const rule = ruleFor('.axk-entity-head');
+    expect(rule).toContain('white-space: nowrap');
+    expect(rule).toContain('text-overflow: ellipsis');
+  });
+
+  it('.axk-member ellipsises instead of being cut mid-glyph', () => {
+    const rule = ruleFor('.axk-member');
+    expect(rule).toContain('text-overflow: ellipsis');
+    expect(rule).toContain('overflow: hidden');
+  });
+
+  it('.axk-uml-name stays one line — classAutoHeight reserves exactly UML_NAME_H', () => {
+    expect(ruleFor('.axk-uml-name')).toContain('white-space: nowrap');
   });
 });
