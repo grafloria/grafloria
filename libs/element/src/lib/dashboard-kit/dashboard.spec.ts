@@ -1399,3 +1399,92 @@ describe('fluid camera is a scroll position, bounded to the board', () => {
     expect(api.camera.rect).toMatchObject({ x: -900, y: 5000 });
   });
 });
+
+// ---- layout: 'split' — the DevExpress splitter tree (decided 6 Sep 2026) ---
+describe("layout: 'split' — the board is always covered", () => {
+  const board = (extra: Partial<Parameters<typeof dashboard>[0]> = {}) =>
+    dashboard({
+      width: 1200,
+      height: 600,
+      gap: 0,
+      layout: 'split',
+      widgets: [
+        { id: 'a', kind: 'kpi', span: 6, rows: 1 },
+        { id: 'b', kind: 'kpi', span: 6, rows: 1 },
+        { id: 'c', kind: 'line', span: 12, rows: 3 },
+      ],
+      ...extra,
+    });
+  const covered = (handle: ReturnType<typeof dashboard>['handle']) => {
+    const f = handle.metrics()!.frame;
+    const rects = handle.widgetsOf().map((w) => w.rect!);
+    const area = rects.reduce((s, r) => s + r.width * r.height, 0);
+    return Math.abs(area - f.width * f.height) < 1;
+  };
+
+  it('opens a grid-authored board as a tree with the same proportions, every slot covered', () => {
+    const { handle } = mount(board());
+    expect(handle.getLayout()).toBe('split');
+    expect(handle.getSizing()).toBe('fit');
+    const a = handle.widget('a')!.rect!;
+    const c = handle.widget('c')!.rect!;
+    // 1 row of 4 → a quarter of the height; a and b share the top row.
+    expect(a).toMatchObject({ x: 0, y: 0, width: 600, height: 150 });
+    expect(c).toMatchObject({ x: 0, y: 150, width: 1200, height: 450 });
+    expect(covered(handle)).toBe(true);
+    expect(handle.metrics()!.capacity).toBeUndefined();
+  });
+
+  it('addWidget halves the largest widget along its longer axis; remove hands the slot back; both undo as one step', async () => {
+    const { api, handle } = mount(board());
+    const added = handle.addWidget({ id: 'd', kind: 'kpi' });
+    await settle();
+    expect(added).toBeDefined();
+    const c = handle.widget('c')!.rect!;
+    const d = handle.widget('d')!.rect!;
+    // c was 1200×450 (wider than tall) → left / right halves.
+    expect(c).toMatchObject({ x: 0, y: 150, width: 600, height: 450 });
+    expect(d).toMatchObject({ x: 600, y: 150, width: 600, height: 450 });
+    expect(covered(handle)).toBe(true);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    handle.refresh();
+    expect(handle.widget('d')).toBeUndefined();
+    expect(handle.widget('c')!.rect).toMatchObject({ x: 0, y: 150, width: 1200, height: 450 });
+    // Remove b: a takes the whole top row.
+    handle.widget('b')!.remove();
+    await settle();
+    expect(handle.widget('a')!.rect).toMatchObject({ x: 0, y: 0, width: 1200, height: 150 });
+    expect(covered(handle)).toBe(true);
+  });
+
+  it('toJSON carries the layout and the tree, and a snapshot fed back opens the same board', () => {
+    const { handle } = mount(board());
+    const snap = handle.toJSON();
+    expect(snap.layout).toBe('split');
+    const view = snap.views[0] as { tree?: unknown };
+    expect(view.tree).toBeDefined();
+    const { handle: again } = mount(dashboard({ ...snap, renderWidget: undefined }));
+    expect(again.widget('c')!.rect).toMatchObject({ x: 0, y: 150, width: 1200, height: 450 });
+    expect(again.getLayout()).toBe('split');
+  });
+
+  it('setLayout switches live and keeps the picture: split → grid snaps to cells, grid → split cuts the cells into a tree', () => {
+    const { handle } = mount(board());
+    handle.setLayout('grid');
+    expect(handle.getLayout()).toBe('grid');
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0, y: 0, w: 6, h: 1 });
+    expect(handle.widget('c')!.cell).toMatchObject({ x: 0, y: 1, w: 12, h: 3 });
+    handle.setLayout('split');
+    expect(handle.getLayout()).toBe('split');
+    expect(handle.widget('c')!.rect).toMatchObject({ x: 0, y: 150, width: 1200, height: 450 });
+    expect(covered(handle)).toBe(true);
+  });
+
+  it('a split board persists its layout on the group, so fromDocument rebinds it as a split', () => {
+    const { model } = mount(board());
+    const g = model.getGroup('main')!;
+    expect((g.getMetadata('dashboardBoard') as { layout?: string }).layout).toBe('split');
+    expect(g.getMetadata('dashboardTree')).toBeDefined();
+  });
+});

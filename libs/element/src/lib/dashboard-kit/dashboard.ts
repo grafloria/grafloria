@@ -61,6 +61,8 @@ import {
   type DashboardGridOptions,
   type DashboardResponsiveOptions,
 } from './grid-binder';
+import { bindDashboardSplit, SPLIT_TREE_KEY, type DashboardSplitHandle } from './split-binder';
+import type { SplitNode } from './split-layout';
 import { gridItemFromCell } from './grid-mapping';
 import { ensureDashboardKitStyles } from './styles';
 import { defaultWidgetRenderer } from './widgets';
@@ -131,6 +133,14 @@ export interface DashboardViewSpec {
   columns?: number;
   width?: number;
   height?: number;
+  /** Per-view layout (default: the dashboard-level `layout`). `toJSON()` writes it per view. */
+  layout?: 'grid' | 'split';
+  /**
+   * SPLIT layout only: the authored splitter tree (see `layout`). Omit it and
+   * the tree is derived from the widgets' cells, so a grid-authored view keeps
+   * its proportions when it opens as a split board. `toJSON()` writes it back.
+   */
+  tree?: SplitNode | null;
 }
 
 export interface DashboardOptions {
@@ -147,6 +157,18 @@ export interface DashboardOptions {
    * who wants the whole dashboard visible at once.
    */
   sizing?: 'fit' | 'grow';
+  /**
+   * HOW THE BOARD IS LAID OUT (the DevExpress question, decided 6 Sep 2026).
+   * 'grid' (the default): the cell grid — columns, spans, push, gravity, the
+   *   gridstack model. 'split': a splitter tree — the board is always covered;
+   *   one widget fills it, a second halves it, a third halves the larger half
+   *   the other way; dividers drag as percentages; a drag lifts the widget out
+   *   and an insertion line on the nearest edge says where it lands; a removed
+   *   widget's slot goes to its siblings. Sizing is always fit under 'split'.
+   *   Switch live with `handle.setLayout()`: grid cells become a tree by
+   *   guillotine cuts, a tree becomes cells by snapping to the columns.
+   */
+  layout?: 'grid' | 'split';
   /** Row height in 'grow' mode, px (default 130). */
   rowHeight?: number;
   /** Board size, px (default 1180 × 660). */
@@ -257,6 +279,14 @@ export interface DashboardHandle {
   widget(id: string): WidgetHandle | undefined;
   /** Every widget handle of a view (default: the active one). */
   widgetsOf(viewId?: string): WidgetHandle[];
+  /**
+   * Switch a view (default: the active one) between the cell grid and the
+   * split tree, live and keeping the picture: cells → tree by guillotine cuts,
+   * tree → cells by snapping to the columns. Persisted on the board, so a
+   * saved document reopens in the layout it was left in.
+   */
+  setLayout(layout: 'grid' | 'split', viewId?: string): void;
+  getLayout(viewId?: string): 'grid' | 'split';
   /** Live sizing/float switches — the two prototype toggles. */
   setSizing(mode: 'fit' | 'grow'): void;
   getSizing(): 'fit' | 'grow';
@@ -631,6 +661,8 @@ export interface DashboardApiRef {
     getGroup(id: string): GroupModel | undefined;
     removeGroup?(id: string): unknown;
     removeNode?(id: string): unknown;
+    /** Derived writes (a layout switch) bypass the history like the binder's own. */
+    runSystemWrite?(fn: () => void): void;
   };
   getEngine?: () => {
     commandManager: { execute(c: unknown): unknown };
@@ -688,6 +720,10 @@ export interface DashboardHandleContext {
   /** See DashboardOptions.mode / overflow. */
   mode: 'fluid' | 'fixed';
   overflow: 'bounded' | 'scroll';
+  /** See DashboardOptions.layout — per view. */
+  layoutOf: Map<string, 'grid' | 'split'>;
+  /** Set by finalize: re-bind a VIEW's board under the given layout (setLayout). */
+  rebindView?: (viewId: string, layout: 'grid' | 'split') => void;
   /**
    * Spread verbatim into `toJSON()` output — carries width/height/responsive
    * and any other authored option so a new `DashboardOptions` field round-trips
@@ -928,6 +964,16 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       const v = views.find((x) => x.id === (viewId ?? ctx.active));
       return (v?.widgets ?? []).map((w) => makeWidgetHandle(w.id)).filter(Boolean) as WidgetHandle[];
     },
+    setLayout(layout, viewId) {
+      const vid = viewId ?? ctx.active;
+      if (!views.some((v) => v.id === vid)) return;
+      if ((ctx.layoutOf.get(vid) ?? 'grid') === layout) return;
+      ctx.rebindView?.(vid, layout);
+      clampCamera();
+      ctx.apiRef?.renderNow();
+      reportChanged();
+    },
+    getLayout: (viewId) => ctx.layoutOf.get(viewId ?? ctx.active) ?? 'grid',
     setSizing(mode) {
       for (const b of binders.values()) b.setSizing(mode);
       clampCamera();
@@ -1038,9 +1084,14 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       const savedViews = views.map((v) => {
         const saved = binders.get(v.id)?.saveLayout();
         const live = treeOf(v.id);
+        const layout = ctx.layoutOf.get(v.id) ?? 'grid';
+        const split = binders.get(v.id) as Partial<DashboardSplitHandle> | undefined;
+        const tree = layout === 'split' && split?.getSplitTree ? split.getSplitTree() : undefined;
         return {
           ...v,
           ...(saved ? { columns: saved.columns } : {}),
+          layout,
+          ...(tree !== undefined ? { tree } : {}),
           // Live membership when the view is mounted; the authored tree before
           // finalize (a spec serialised without ever rendering keeps its shape).
           widgets: live.length > 0 || (ctx.boardGroups.get(v.id)?.members?.size ?? 0) > 0 ? live : v.widgets.map((w) => ({ ...w })),
@@ -1064,6 +1115,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         float: handle.getFloat(),
         rtl: handle.getRtl(),
         static: handle.getStatic(),
+        layout: handle.getLayout(),
         views: savedViews,
       } as DashboardSnapshot;
     },
@@ -1250,6 +1302,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
   // A fluid board grows (fixed row heights, the board extends); a fixed board
   // fits (its authored height is the picture).
   const sizing: 'fit' | 'grow' = options.sizing ?? (mode === 'fluid' ? 'grow' : 'fit');
+  const layout: 'grid' | 'split' = options.layout ?? 'grid';
 
   const views: DashboardViewSpec[] = options.views
     ? options.views.map((v) => ({ ...v, widgets: cloneWidgets(v.widgets) }))
@@ -1339,6 +1392,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
     boardH,
     mode,
     overflow,
+    layoutOf: new Map(views.map((v) => [v.id, v.layout ?? layout])),
     optionsBase: options,
     active: views[0]?.id ?? 'main',
     apiRef: null,
@@ -1401,35 +1455,44 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           fluid: mode === 'fluid',
           overflow,
           static: options.static ?? false,
+          layout: ctx.layoutOf.get(v.id) ?? layout,
         });
+        if ((ctx.layoutOf.get(v.id) ?? layout) === 'split' && v.tree !== undefined) g.setMetadata(SPLIT_TREE_KEY, v.tree);
         g.size = { width: viewW(v), height: viewH(v), depth: 0 };
         g.position = { x: v.id === ctx.active ? 0 : OFFSCREEN_X, y: 0 };
         groups.set(v.id, g);
         ctx.boardGroups.set(v.id, g);
         mountBoard(v.id, v.id, v.widgets, g);
-        binders.set(
-          v.id,
-          bindDashboardGrid(a as never, g, {
-            columns: v.columns ?? columns,
-            gap,
-            padding: gap,
-            sizing,
-            baseRowHeight: rowHeight,
-            designHeight: viewH(v),
-            float: options.float ?? false,
-            rtl: options.rtl ?? false,
-            fluid: mode === 'fluid',
-            overflow,
-            static: options.static ?? false,
-            ...(options.responsive ? { responsive: options.responsive } : {}),
-            ...(options.binder ?? {}),
-            onGesture: (e) => {
-              if (e.type === 'commit') reportChanged();
-              options.binder?.onGesture?.(e);
-            },
-          })
-        );
+        binders.set(v.id, bindView(v, g, ctx.layoutOf.get(v.id) ?? layout));
       }
+      // LIVE LAYOUT SWITCH (setLayout): keep the picture, swap the binder.
+      // Either way the outgoing binder's cells are written where the grid
+      // binder reads members' cells (gridItem metadata): grid → split derives
+      // its tree from exactly those, so any stale tree is cleared first;
+      // split → grid rebuilds from them, so the column cache goes too.
+      ctx.rebindView = (viewId, next) => {
+        const v = views.find((x) => x.id === viewId);
+        const g = groups.get(viewId);
+        const b = binders.get(viewId);
+        if (!v || !g || !b) return;
+        const cells = b.saveLayout().cells;
+        b.dispose();
+        const write = (fn: () => void): void => (model.runSystemWrite ? model.runSystemWrite(fn) : fn());
+        write(() => {
+          for (const [id, cell] of cells) {
+            const n = model.getNode(id);
+            if (n) n.setMetadata('gridItem', gridItemFromCell(cell));
+            else model.getGroup(id)?.setMetadata('gridItem', gridItemFromCell(cell));
+          }
+          g.setMetadata(SPLIT_TREE_KEY, undefined);
+          g.setMetadata('dashboardLayouts', undefined);
+          const board = (g.getMetadata('dashboardBoard') as Record<string, unknown> | undefined) ?? {};
+          g.setMetadata('dashboardBoard', { ...board, layout: next });
+        });
+        ctx.layoutOf.set(viewId, next);
+        binders.set(viewId, bindView(v, g, next));
+        binders.get(viewId)?.sync();
+      };
       handle.showView(ctx.active);
       ctx.rebindContainer = (id: string): void => {
         const g = model.getGroup(id);
@@ -1519,6 +1582,41 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           for (const p of [...n.getPorts().values()]) n.removePort(p.id);
           boardGroup.addMember(w.id);
         }
+      }
+
+      /** Bind a VIEW's board on its group, under the given layout. */
+      function bindView(v: DashboardViewSpec, g: GroupModel, viewLayout: 'grid' | 'split'): DashboardGridHandle {
+        const common = {
+          gap,
+          padding: gap,
+          rtl: options.rtl ?? false,
+          fluid: mode === 'fluid',
+          static: options.static ?? false,
+          ...(options.binder ?? {}),
+          onGesture: (e: Parameters<NonNullable<DashboardGridOptions['onGesture']>>[0]) => {
+            if (e.type === 'commit') reportChanged();
+            options.binder?.onGesture?.(e);
+          },
+        };
+        if (viewLayout === 'split') {
+          return bindDashboardSplit(a as never, g, {
+            ...common,
+            columns: v.columns ?? columns,
+            baseRowHeight: rowHeight,
+            designHeight: viewH(v),
+            ...(v.tree !== undefined ? { tree: v.tree } : {}),
+          });
+        }
+        return bindDashboardGrid(a as never, g, {
+          ...common,
+          columns: v.columns ?? columns,
+          sizing,
+          baseRowHeight: rowHeight,
+          designHeight: viewH(v),
+          float: options.float ?? false,
+          overflow,
+          ...(options.responsive ? { responsive: options.responsive } : {}),
+        });
       }
 
       /** Bind (or re-bind) a container's inner grid on its group. */

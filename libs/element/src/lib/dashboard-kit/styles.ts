@@ -243,6 +243,24 @@ const CSS = `
   .axdb-widget--kpi > .axdb-kpi { flex: 1; align-self: stretch; }
 }
 
+/* SPLIT LAYOUT chrome: a divider sits in the gap between two siblings (a
+   24-px hit zone around a 10-px gap) and shows its line on hover or while
+   dragged; the insertion line marks the edge a dragged widget will land on. */
+.grafloria-html-layer > .axdb-div { position: absolute; z-index: 2; pointer-events: auto; background: transparent; }
+.grafloria-html-layer > .axdb-div--row { cursor: col-resize; }
+.grafloria-html-layer > .axdb-div--column { cursor: row-resize; }
+.grafloria-html-layer > .axdb-div::after {
+  content: ""; position: absolute; border-radius: 2px; background: #3b52d9; opacity: 0; transition: opacity .12s ease;
+}
+.grafloria-html-layer > .axdb-div--row::after { left: 50%; top: 8px; bottom: 8px; width: 4px; margin-left: -2px; }
+.grafloria-html-layer > .axdb-div--column::after { top: 50%; left: 8px; right: 8px; height: 4px; margin-top: -2px; }
+.grafloria-html-layer > .axdb-div:hover::after, .grafloria-html-layer > .axdb-div.axdb-active::after { opacity: .9; }
+.grafloria-html-layer > .axdb-ins {
+  position: absolute; z-index: 3; pointer-events: none; border-radius: 2px;
+  background: #3b52d9; box-shadow: 0 0 0 3px rgba(59, 82, 217, .22);
+}
+@media (prefers-reduced-motion: reduce) { .grafloria-html-layer > .axdb-div::after { transition: none; } }
+
 /* donut: ring beside its legend. The ring takes the body's height (a tall
    tile gets a bigger ring, not dead card), square, capped so its centre figure
    stays a figure and not a headline. */

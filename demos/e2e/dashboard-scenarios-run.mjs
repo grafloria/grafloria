@@ -1406,6 +1406,68 @@ try {
   await page.close();
 }
 
+// ---- S33 · SPLIT LAYOUT (the DevExpress splitter tree, 2026-09-06) --------
+// Measured on the DevExpress designer: the board is always covered, an add
+// halves the largest widget, a divider is a percentage, a dragged widget lands
+// on the edge the insertion line shows, a removed widget's slot goes to its
+// siblings, and one undo is one thing.
+{
+  begin('s33-split-layout');
+  const page = await freshPage('/dashboard/fluid-board.html');
+  const read = () => page.evaluate(() => {
+    const H = window.__demoCtx.handle; const m = H.metrics();
+    const ws = Object.fromEntries(H.widgetsOf().map((w) => [w.id, { x: Math.round(w.rect.x), y: Math.round(w.rect.y), w: Math.round(w.rect.width), h: Math.round(w.rect.height) }]));
+    const area = Object.values(ws).reduce((s, r) => s + r.w * r.h, 0);
+    return { layout: H.getLayout(), sizing: H.getSizing(), coverage: area / (m.frame.width * m.frame.height), n: Object.keys(ws).length, ws, dividers: document.querySelectorAll('.axdb-div').length, ins: document.querySelectorAll('.axdb-ins').length };
+  });
+  const rectOf = (id) => page.evaluate((id) => document.querySelector(`.grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect().toJSON(), id);
+  await page.click('#fb-split'); await page.waitForTimeout(500);
+  const s0 = await read();
+  await shot(page, 'split-boot');
+  // A. divider between rev and cust: +150 px → a percentage, the pair re-shares
+  const div = await page.evaluate(() => { const d = [...document.querySelectorAll('.axdb-div--row')].map((e) => e.getBoundingClientRect()).sort((a, b) => a.y - b.y || a.x - b.x)[0]; return { x: d.x + d.width / 2, y: d.y + d.height / 2 }; });
+  await page.mouse.move(div.x, div.y); await page.mouse.down(); await page.mouse.move(div.x + 50, div.y, { steps: 8 }); await page.mouse.move(div.x + 150, div.y, { steps: 12 });
+  const mid = await read();
+  await shot(page, 'divider-mid');
+  await page.mouse.up(); await page.waitForTimeout(400);
+  const s1 = await read();
+  const dividerLive = mid.ws.rev.w > s0.ws.rev.w + 100;
+  const dividerIsPercent = Math.abs(s1.ws.rev.w - (s0.ws.rev.w + 150)) < 12 && Math.abs(s1.ws.cust.w - (s0.ws.cust.w - 150)) < 12 && s1.ws.win.w === s0.ws.win.w;
+  // B. drag the donut onto the chart's LEFT edge: insertion line, then the drop lands it there
+  const mix = await rectOf('mix'); const tr = await rectOf('trend');
+  await page.mouse.move(mix.x + mix.width / 2, mix.y + 14); await page.mouse.down(); await page.mouse.move(mix.x + mix.width / 2 - 40, mix.y + 40, { steps: 8 });
+  await page.mouse.move(tr.x + 30, tr.y + tr.height / 2, { steps: 25 }); await page.waitForTimeout(300);
+  const drag = await read();
+  await shot(page, 'drag-insertion-line');
+  const liftedOut = drag.ws.trend.w > s1.ws.trend.w + 300; // the chart took the donut's slot at once
+  await page.mouse.up(); await page.waitForTimeout(500);
+  const s2 = await read();
+  await shot(page, 'dropped-left-of-chart');
+  const landedLeft = s2.ws.mix.x < s2.ws.trend.x && Math.abs(s2.ws.mix.y - s2.ws.trend.y) < 2 && Math.abs(s2.ws.mix.w - s2.ws.trend.w) < 12;
+  // C. one undo restores the drop; a second restores the divider
+  const undo = () => page.evaluate(() => window.__demoCtx.instance.getEngine().commandManager.undo());
+  await undo(); await page.waitForTimeout(400); const u1 = await read();
+  await undo(); await page.waitForTimeout(400); const u2 = await read();
+  const undoOneEach = JSON.stringify(u1.ws) === JSON.stringify(s1.ws) && JSON.stringify(u2.ws) === JSON.stringify(s0.ws);
+  // D. add halves the largest; remove hands the slot back
+  const largest = Object.entries(s0.ws).sort((a, b) => b[1].w * b[1].h - a[1].w * a[1].h)[0];
+  await page.click('#fb-add'); await page.waitForTimeout(500); const s3 = await read();
+  await shot(page, 'add-halves-largest');
+  const halved = s3.n === s0.n + 1 && Math.abs(s3.ws[largest[0]].w * s3.ws[largest[0]].h - (largest[1].w * largest[1].h) / 2) < largest[1].w * largest[1].h * 0.08;
+  await page.evaluate(() => window.__demoCtx.handle.widget('row-1').remove()); await page.waitForTimeout(500); const s4 = await read();
+  const slotBack = s4.n === s0.n && JSON.stringify(s4.ws) === JSON.stringify(s0.ws);
+  // E. back to the grid: the same picture, then split again
+  await page.click('#fb-grid'); await page.waitForTimeout(500); const g = await read();
+  const gridBack = g.layout === 'grid' && g.dividers === 0 && g.n === s0.n;
+  const covered = [s0, s1, s2, s3, s4].every((s) => s.coverage > 0.9 && s.coverage <= 1.001);
+  const st = await boardState(page);
+  verdict(s0.layout === 'split' && s0.sizing === 'fit' && s0.dividers > 0 && covered && dividerLive && dividerIsPercent && liftedOut && drag.ins === 1 && landedLeft && undoOneEach && halved && slotBack && gridBack && st.overlaps === 0,
+    `split=${s0.layout}/${s0.sizing} dividers=${s0.dividers} covered=${covered}(${s0.coverage.toFixed(3)}) divider-live=${dividerLive} divider-percent=${dividerIsPercent}(rev ${s0.ws.rev.w}->${s1.ws.rev.w}) ` +
+    `lifted-out=${liftedOut} insertion-line=${drag.ins} landed-left=${landedLeft} undo-one-each=${undoOneEach} add-halves-largest=${halved}(${largest[0]}) slot-back=${slotBack} grid-back=${gridBack} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
+
 } finally {
   await browser.close();
   server.close();

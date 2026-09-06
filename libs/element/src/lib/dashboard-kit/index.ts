@@ -6,6 +6,30 @@ export {
   type DashboardResponsiveOptions,
 } from './grid-binder';
 export {
+  bindDashboardSplit,
+  SetSplitTreeCommand,
+  SPLIT_TREE_KEY,
+  type DashboardSplitOptions,
+  type DashboardSplitHandle,
+} from './split-binder';
+export {
+  projectSplit,
+  dividersOf,
+  addSplitLeaf,
+  removeSplitLeaf,
+  insertSplitLeaf,
+  moveSplitDivider,
+  splitFromCells,
+  cellsFromSplit,
+  splitLeaves,
+  type SplitNode,
+  type SplitGroup,
+  type SplitLeaf,
+  type SplitDir,
+  type SplitSide,
+  type SplitDivider,
+} from './split-layout';
+export {
   rowHeightFor,
   boardHeightFor,
   columnUnitFor,
