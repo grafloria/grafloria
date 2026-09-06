@@ -203,6 +203,23 @@ export interface DashboardGridOptions {
   }) => void;
   /** Inject the hover-revealed corner resize handle into member hosts (default true). */
   resizeHandles?: boolean;
+  /**
+   * FLUID board: the group's frame follows the CANVAS CONTAINER — width
+   * always, and height too in 'fit' — so the dashboard is laid out at real CSS
+   * pixels like every other grid library, never as a picture the camera scales
+   * (review D1: a 900-px viewport drew 30-px KPI figures at 18 px). The binder
+   * owns the ResizeObserver; `sync()` re-reads the container as well.
+   */
+  fluid?: boolean;
+  /**
+   * What FIT mode does past its row floor. 'bounded' (default): the design
+   * height is a CAPACITY — a drop, resize or add that would need one row too
+   * many is refused (the engine's `capacity`), visibly, at design time.
+   * 'scroll': no bound; the frame extends to hold the rows at the floor height
+   * so nothing paints outside it, and the canvas pans. Either way a fit board
+   * never paints past its own edge (review D6: 204 px of tiles below the frame).
+   */
+  overflow?: 'bounded' | 'scroll';
 }
 
 export interface DashboardGridHandle {
@@ -246,6 +263,9 @@ export interface DashboardGridHandle {
     maxColumns: number;
     rtl: boolean;
     responsive: boolean;
+    fluid: boolean;
+    /** Fit-mode row capacity (undefined when unbounded). */
+    capacity: number | undefined;
     gap: number;
     padding: number;
     sizing: 'fit' | 'grow';
@@ -255,6 +275,12 @@ export interface DashboardGridHandle {
     boardHeight: number;
     frame: WorldRect;
   };
+  /**
+   * Would a w×h tile fit on the board as it is now (gridstack's `willItFit`)?
+   * Always true on an unbounded board; on a bounded fit board this is what
+   * `addWidget()` asks before creating anything.
+   */
+  willItFit(w: number, h: number): boolean;
   /** The engine's cell record for a member (undefined when not a member). */
   cellOf(id: string): CellRect | undefined;
   /** World rect the member's current cells project to. */
@@ -464,10 +490,16 @@ export function bindDashboardGrid(
   const baseRowHeight = options.baseRowHeight ?? 110;
   const minRowHeight = options.minRowHeight ?? 28;
   let float = options.float ?? false;
+  /** The AUTHORED bound — a nested strip's design (row-first push, escalation). */
   const maxRows = options.maxRows;
   const dragOut = options.dragOut ?? 'cancel';
   const wantHandles = options.resizeHandles !== false;
-  const designH = options.designHeight ?? group.size?.height ?? 0;
+  const fluid = options.fluid === true;
+  const overflow = options.overflow ?? 'bounded';
+  /** The design height. Fluid boards re-read it from the container. */
+  let designH = options.designHeight ?? group.size?.height ?? 0;
+  /** Fit-mode CAPACITY in rows (see `overflow`). Undefined = unbounded. */
+  let capacity: number | undefined;
 
   let sizing: 'fit' | 'grow' = options.sizing ?? 'fit';
   /**
@@ -484,9 +516,62 @@ export function bindDashboardGrid(
    * kit's documented boot contract) and turning float off.
    */
   const engineFrom = (items: GridPackItem[], pack = false, at = columns): GridPackEngine => {
-    const e = new GridPackEngine(items, { columns: at, float: pack ? float : true, maxRows });
+    const e = new GridPackEngine(items, { columns: at, float: pack ? float : true, maxRows, capacity });
     e.float = float;
     return e;
+  };
+
+  /** The effective row bound a gesture must respect: the strip's, else the fit capacity. */
+  const bound = (): number | undefined => maxRows ?? capacity;
+
+  /**
+   * The rows the design height can hold at the row floor — what 'bounded' fit
+   * enforces. A board is never bounded BELOW what it already holds: a document
+   * loaded with more rows than fit keeps every tile (the frame extends, see
+   * enforceBoardHeight) and only further growth is refused.
+   */
+  const fitCapacity = (): number | undefined => {
+    if (maxRows !== undefined || sizing !== 'fit' || overflow === 'scroll' || designH <= 0) return undefined;
+    const rowsThatFit = Math.floor((designH - 2 * padding + gap) / (minRowHeight + gap));
+    return Math.max(1, rowsThatFit, engine.rows());
+  };
+
+  /** Re-derive the capacity; true when the engine must be rebuilt to carry it. */
+  const refreshCapacity = (): boolean => {
+    const next = fitCapacity();
+    if (next === capacity) return false;
+    capacity = next;
+    return true;
+  };
+
+  /** The canvas container's CSS-pixel box (0 when unmeasurable, e.g. jsdom). */
+  const containerBox = (): { w: number; h: number } => ({
+    w: api.container.clientWidth || 0,
+    h: api.container.clientHeight || 0,
+  });
+
+  /**
+   * FLUID: make the group's frame the container's box. Width always; the
+   * design height follows too, so fit capacity follows the viewport (a shorter
+   * window holds fewer rows) and grow never shrinks below the visible area.
+   * Returns true when the frame changed. A container that cannot be measured
+   * (width 0) leaves the authored frame alone.
+   */
+  const applyFluidFrame = (): boolean => {
+    if (!fluid || disposed) return false;
+    const box = containerBox();
+    if (box.w <= 0) return false;
+    if (box.h > 0) designH = box.h;
+    const f = frame();
+    const height = sizing === 'fit' && box.h > 0 ? box.h : f.height;
+    if (Math.abs(f.width - box.w) < 0.5 && Math.abs(f.height - height) < 0.5) return false;
+    writing = true;
+    try {
+      diagram.runSystemWrite(() => group.setFrame({ x: f.x, y: f.y, width: box.w, height }));
+    } finally {
+      writing = false;
+    }
+    return true;
   };
 
   /**
@@ -661,9 +746,13 @@ export function bindDashboardGrid(
   const enforceBoardHeight = (): void => {
     if (designH <= 0) return;
     const r = rows();
+    // FIT keeps its design height — and when the rows would need more than
+    // that at the row floor (overflow:'scroll', or a document holding more
+    // than the capacity), the frame EXTENDS to hold them at exactly the floor
+    // height instead of painting tiles past its bottom edge (review D6).
     const target =
       sizing === 'fit'
-        ? designH
+        ? Math.max(designH, 2 * padding + r * minRowHeight + (r - 1) * gap)
         : Math.max(designH, 2 * padding + r * baseRowHeight + (r - 1) * gap);
     const f = frame();
     if (Math.abs(f.height - target) > 0.5) {
@@ -840,7 +929,16 @@ export function bindDashboardGrid(
     if (disposed) return;
     if (!engine.getItem(id)) {
       const item = itemFor(id);
-      const placed = engine.add(item);
+      let placed = engine.add(item);
+      if (!placed && capacity !== undefined) {
+        // Membership is a document fact (an undo just restored it, say); a
+        // bounded board must not strand the node invisible. Lift the capacity
+        // for this adoption — it floors at the content on the next refresh.
+        capacity = undefined;
+        engine = engineFrom([...engine.getItems().map((i) => ({ ...i })), item]);
+        placed = engine.getItem(id) ?? null;
+        refreshCapacity();
+      }
       if (placed) persistAdoptedCell(id, placed);
     }
     project();
@@ -947,9 +1045,14 @@ export function bindDashboardGrid(
    * owns this — pages should never have to wire a ResizeObserver for it.
    */
   const containerObserver =
-    responsive && typeof ResizeObserver !== 'undefined'
+    (responsive || fluid) && typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(() => {
           if (disposed) return;
+          if (applyFluidFrame()) {
+            if (refreshCapacity()) rebuild(false);
+            else project();
+            api.renderNow();
+          }
           evaluateResponsive();
         })
       : null;
@@ -1359,8 +1462,9 @@ export function bindDashboardGrid(
       const cuNow = columnUnitFor(ggNow, fNow.width);
       const rhNow = rowHeightFor(ggNow, rows());
       w = Math.min(w, (columns - itemNow.x) * (cuNow + gap) - gap);
-      if (maxRows !== undefined) {
-        h = Math.min(h, Math.max(1, maxRows - itemNow.y) * (rhNow + gap) - gap);
+      const b = bound();
+      if (b !== undefined) {
+        h = Math.min(h, Math.max(1, b - itemNow.y) * (rhNow + gap) - gap);
       }
     }
     g.node.setSize(w, h, g.node.size.depth ?? 0);
@@ -1375,8 +1479,8 @@ export function bindDashboardGrid(
     } else {
       ghostStyleFastPath(g, { width: w, height: h });
     }
-    const spanF = maxRows !== undefined ? frame() : f;
-    const spanG = maxRows !== undefined ? geom() : gg;
+    const spanF = bound() !== undefined ? frame() : f;
+    const spanG = bound() !== undefined ? geom() : gg;
     const span = sizeToSpan(w, h, spanF, spanG, rows());
     if (engine.resizeCheck(g.id, span.w, span.h).changed) project();
     syncPlaceholder();
@@ -1530,7 +1634,8 @@ export function bindDashboardGrid(
     // Clamp to the TARGET board's shape: a tall tile entering a one-row strip
     // arrives as a strip-height tile, not a refusal.
     span.w = Math.max(1, Math.min(columns, span.w));
-    if (maxRows !== undefined) span.h = Math.max(1, Math.min(maxRows, span.h));
+    const b = bound();
+    if (b !== undefined) span.h = Math.max(1, Math.min(b, span.h));
     engine.beginGesture(); // pre-entry snapshot — abort() restores it
     const entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
     if (!entered) {
@@ -1785,14 +1890,18 @@ export function bindDashboardGrid(
           g.removedFromBoard = false;
           // Enter at the bottom edge (collision-free), then take the cursor
           // cell GATELESSLY — gridstack's drag-in skips the gate on entry.
-          engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
-          engine.moveCheck(g.id, cell.x, cell.y, { gate: false });
+          // A bounded board with no room refuses the entry: the chip dims to
+          // say so, and the release will snap it home.
+          const entered = engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
+          chip?.classList.toggle('axdb-out', !entered);
+          if (entered) engine.moveCheck(g.id, cell.x, cell.y, { gate: false });
           project();
         } else if (engine.moveCheck(g.id, cell.x, cell.y).changed) {
           project();
         }
       } else if (!g.removedFromBoard) {
         g.removedFromBoard = true;
+        chip?.classList.remove('axdb-out');
         engine.remove(g.id); // displaced tiles come home (gesture memory)
         project();
       }
@@ -1886,6 +1995,7 @@ export function bindDashboardGrid(
   const rebuild = (pack: boolean): void => {
     if (disposed) return;
     if (gesture) cancelActiveGesture(false);
+    applyFluidFrame();
     const items: GridPackItem[] = [];
     for (const id of group.members ?? []) {
       if (!memberEntity(id)) continue;
@@ -1915,6 +2025,9 @@ export function bindDashboardGrid(
     // A verbatim rebuild only fills in cells that were never persisted.
     if (pack || converted) persistLiveCells();
     else for (const item of engine.getItems()) persistAdoptedCell(item.id, item);
+    // The capacity is derived from the design height AND floors at the content
+    // just rebuilt, so it is computed here and carried into the engine.
+    if (refreshCapacity()) engine = engineFrom(engine.getItems().map((i) => ({ ...i })), false);
     persistLayouts();
     project();
     syncHandles();
@@ -1951,7 +2064,9 @@ export function bindDashboardGrid(
     setSizing(mode): void {
       if (mode === sizing) return;
       sizing = mode;
-      project();
+      applyFluidFrame();
+      if (refreshCapacity()) rebuild(false);
+      else project();
       api.renderNow();
     },
     getSizing: () => sizing,
@@ -1973,6 +2088,8 @@ export function bindDashboardGrid(
         maxColumns,
         rtl,
         responsive: !!responsive && !responsivePinned,
+        fluid,
+        capacity,
         gap,
         padding,
         sizing,
@@ -1982,6 +2099,11 @@ export function bindDashboardGrid(
         boardHeight: f.height,
         frame: f,
       };
+    },
+    willItFit(w, h) {
+      if (bound() === undefined) return true;
+      const probe = engineFrom(engine.getItems().map((i) => ({ ...i })));
+      return probe.add({ id: '\u0000probe', x: 0, y: 0, w: Math.max(1, w), h: Math.max(1, h), autoPosition: true }) !== null;
     },
     cellOf(id) {
       const it = engine.getItem(id);

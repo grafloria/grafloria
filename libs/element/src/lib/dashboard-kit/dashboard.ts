@@ -136,6 +136,29 @@ export interface DashboardOptions {
   /** Engine float mode (default false → gravity packs upward). */
   float?: boolean;
   /**
+   * DIAGRAM OR LAYOUT — the one switch (decision of 2026-09-06).
+   *
+   * 'fluid' (the default): the board is 100% of its container, laid out at
+   *   real CSS pixels; zoom is pinned at 1; a plain wheel scrolls; in 'fit' the
+   *   height follows the container too. What every grid library does, and
+   *   what "responsive" means to a dashboard author.
+   * 'fixed': the authored `width`/`height` are the world, and the camera frames
+   *   them — today's behaviour, kept for a dashboard embedded inside a larger
+   *   diagram. An explicit `width` implies 'fixed', so existing boards keep
+   *   their behaviour without naming a mode.
+   */
+  mode?: 'fluid' | 'fixed';
+  /**
+   * FIT MEANS BOUNDED. In 'fit' the board never changes size; widgets do. Past
+   * the row floor the design height is a CAPACITY: a drop, resize or
+   * `addWidget()` that would need one row too many is refused (the placeholder
+   * stays put, the palette chip dims, `addWidget` returns undefined) — at
+   * design time, instead of tiles painted past the frame. 'scroll' is the
+   * opt-in for boards that want more than fits: the frame extends to hold the
+   * rows and the canvas pans.
+   */
+  overflow?: 'bounded' | 'scroll';
+  /**
    * RIGHT-TO-LEFT boards: column x=0 renders at the RIGHT edge and columns run
    * leftwards. Cells are untouched — the same `widgets` array describes the
    * same layout in both directions, and a layout saved in one renders mirrored
@@ -175,6 +198,11 @@ export interface DashboardSpec {
   finalize: (api: unknown) => void;
   /** Live handle, populated by finalize(). */
   readonly handle: DashboardHandle;
+  /**
+   * Instance options the spec asks `render()` to apply — a fluid board pins
+   * the zoom range to 1 so the layout can never become a scaled picture.
+   */
+  renderOptions?: { minZoom?: number; maxZoom?: number };
 }
 
 /**
@@ -567,7 +595,13 @@ export interface DashboardApiRef {
     eventBus?: { on(event: string, handler: (...args: unknown[]) => void): () => void };
   };
   renderNow(): void;
-  viewport?: { fitToBounds(r: unknown, pad: number, o?: unknown): void };
+  viewport?: {
+    fitToBounds(r: unknown, pad: number, o?: unknown): void;
+    /** Fluid boards pin the camera instead of framing the board. */
+    setZoom?(z: number): unknown;
+    getViewport?(): { x: number; y: number; width: number; height: number };
+    setViewport?(r: { x: number; y: number; width: number; height: number }): void;
+  };
 }
 
 /**
@@ -606,6 +640,9 @@ export interface DashboardHandleContext {
   rowHeight: number;
   boardW: number;
   boardH: number;
+  /** See DashboardOptions.mode / overflow. */
+  mode: 'fluid' | 'fixed';
+  overflow: 'bounded' | 'scroll';
   /**
    * Spread verbatim into `toJSON()` output — carries width/height/responsive
    * and any other authored option so a new `DashboardOptions` field round-trips
@@ -643,6 +680,28 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
   const { views, groups, binders, specById, viewOfWidget } = ctx;
 
   const hostOf = (id: string): HTMLElement | undefined => ctx.hosts.get(id);
+
+  /**
+   * Put the camera on a view. FLUID: the board IS the container, so the camera
+   * sits at zoom 1 with the board's origin at the top-left — never a fit, which
+   * is what made a dashboard a scaled picture (D1). FIXED: frame the board.
+   */
+  const frameView = (g: GroupModel): void => {
+    const vp = ctx.apiRef?.viewport;
+    if (!vp) return;
+    const gs = g.size ?? { width: ctx.boardW, height: ctx.boardH };
+    if (ctx.mode === 'fluid' && vp.setViewport && vp.getViewport) {
+      vp.setZoom?.(1);
+      const cur = vp.getViewport();
+      vp.setViewport({ x: g.position.x, y: g.position.y, width: cur.width, height: cur.height });
+      return;
+    }
+    vp.fitToBounds(
+      { x: g.position.x, y: g.position.y, width: gs.width, height: gs.height },
+      26,
+      { maxZoom: 1 }
+    );
+  };
 
   /**
    * A board's widgets as a NESTED tree, derived from LIVE membership — not the
@@ -772,13 +831,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       }
       binders.get(id)?.sync();
       ctx.apiRef?.renderNow();
-      const g = groups.get(id)!;
-      const gs = g.size ?? { width: ctx.boardW, height: ctx.boardH };
-      ctx.apiRef?.viewport?.fitToBounds(
-        { x: g.position.x, y: g.position.y, width: gs.width, height: gs.height },
-        26,
-        { maxZoom: 1 }
-      );
+      frameView(groups.get(id)!);
     },
     widget(id) {
       return makeWidgetHandle(id);
@@ -829,6 +882,10 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // known before the node reaches the model, or it paints blank forever.
       // The registration ALSO rides in the batch, so undo un-lists the widget
       // and redo lists it again before the node comes back.
+      // A bounded fit board with no room says so HERE, before anything is
+      // created: undefined, the same answer as an unknown board.
+      if (binders.get(vid)?.willItFit(w.span!, w.rows!) === false) return undefined;
+
       const registry = registryOf(w.id, vid, w);
       registry.register();
 
@@ -848,13 +905,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     },
     fit(viewId) {
       const g = groups.get(viewId ?? ctx.active);
-      if (!g) return;
-      const gs = g.size ?? { width: ctx.boardW, height: ctx.boardH };
-      ctx.apiRef?.viewport?.fitToBounds(
-        { x: g.position.x, y: g.position.y, width: gs.width, height: gs.height },
-        26,
-        { maxZoom: 1 }
-      );
+      if (g) frameView(g);
     },
     metrics(viewId) {
       return binders.get(viewId ?? ctx.active)?.metrics();
@@ -912,6 +963,8 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         columns: ctx.columns,
         gap: ctx.gap,
         rowHeight: ctx.rowHeight,
+        mode: ctx.mode,
+        overflow: ctx.overflow,
         sizing: handle.getSizing(),
         float: handle.getFloat(),
         rtl: handle.getRtl(),
@@ -1057,6 +1110,9 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
   const rowHeight = options.rowHeight ?? DEFAULTS.rowHeight;
   const boardW = options.width ?? DEFAULTS.width;
   const boardH = options.height ?? DEFAULTS.height;
+  // An explicit width is a fixed world; everything else lays out fluid.
+  const mode: 'fluid' | 'fixed' = options.mode ?? (options.width !== undefined ? 'fixed' : 'fluid');
+  const overflow: 'bounded' | 'scroll' = options.overflow ?? 'bounded';
 
   const views: DashboardViewSpec[] = options.views
     ? options.views.map((v) => ({ ...v, widgets: cloneWidgets(v.widgets) }))
@@ -1141,6 +1197,8 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
     rowHeight,
     boardW,
     boardH,
+    mode,
+    overflow,
     optionsBase: options,
     active: views[0]?.id ?? 'main',
     apiRef: null,
@@ -1152,6 +1210,8 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
   return {
     nodes,
     edges: [],
+    // A fluid board can never be zoomed into a scaled picture.
+    ...(mode === 'fluid' ? { renderOptions: { minZoom: 1, maxZoom: 1 } } : {}),
     renderCustomNode: (node: unknown, host: HTMLElement) => {
       const n = node as { id: string };
       const spec = specById.get(n.id);
@@ -1167,6 +1227,15 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       if (!a) return;
       ctx.apiRef = a;
       const model = a.getModel();
+      // FLUID: the board starts at the container's box when it can be measured
+      // (the binder keeps it there); the authored defaults only fill in for a
+      // container with no size yet.
+      const box =
+        mode === 'fluid'
+          ? { w: (a as { container?: HTMLElement }).container?.clientWidth || 0, h: (a as { container?: HTMLElement }).container?.clientHeight || 0 }
+          : { w: 0, h: 0 };
+      const viewW = (v: DashboardViewSpec): number => (mode === 'fluid' && box.w > 0 ? box.w : v.width ?? boardW);
+      const viewH = (v: DashboardViewSpec): number => (mode === 'fluid' && box.h > 0 ? box.h : v.height ?? boardH);
 
       for (const v of views) {
         // One board per view; the group is a pure LAYOUT CONTAINER, so its
@@ -1186,11 +1255,13 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           padding: gap,
           sizing: options.sizing ?? 'fit',
           baseRowHeight: rowHeight,
-          designHeight: v.height ?? boardH,
+          designHeight: viewH(v),
           float: options.float ?? false,
           rtl: options.rtl ?? false,
+          fluid: mode === 'fluid',
+          overflow,
         });
-        g.size = { width: v.width ?? boardW, height: v.height ?? boardH, depth: 0 };
+        g.size = { width: viewW(v), height: viewH(v), depth: 0 };
         g.position = { x: v.id === ctx.active ? 0 : OFFSCREEN_X, y: 0 };
         groups.set(v.id, g);
         ctx.boardGroups.set(v.id, g);
@@ -1203,9 +1274,11 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             padding: gap,
             sizing: options.sizing ?? 'fit',
             baseRowHeight: rowHeight,
-            designHeight: v.height ?? boardH,
+            designHeight: viewH(v),
             float: options.float ?? false,
             rtl: options.rtl ?? false,
+            fluid: mode === 'fluid',
+            overflow,
             ...(options.responsive ? { responsive: options.responsive } : {}),
             ...(options.binder ?? {}),
             onGesture: (e) => {

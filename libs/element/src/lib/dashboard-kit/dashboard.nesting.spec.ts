@@ -177,10 +177,42 @@ describe('dashboard() containment', () => {
     for (const id of ['main', 'free', 'section', 'k1', 'k2', 'k3']) expect(ids.has(id)).toBe(true);
   });
 
-  it('addWidget accepts a container id as the target board', () => {
-    const { model, handle } = mount(NESTED());
+  it('addWidget accepts a container id as the target board — when it has room', () => {
+    // NESTED's section is 3 columns × 1 row and FULL. Adding a fourth KPI used
+    // to "succeed": the node became a member with no engine item, invisible,
+    // and this test read the membership and called it a pass. A bounded board
+    // now refuses up front, and nothing is created.
+    const full = mount(NESTED());
+    expect(full.handle.addWidget({ id: 'k4', kind: 'kpi', span: 1, rows: 1 }, 'section')).toBeUndefined();
+    expect(full.model.getNode('k4')).toBeUndefined();
+    expect(full.model.getGroup('section')!.members?.has('k4')).toBe(false);
+
+    // The same section with a free column takes it, membership and all.
+    const roomy = dashboard({
+      columns: 12,
+      views: [
+        {
+          id: 'main',
+          widgets: [
+            {
+              id: 'section',
+              span: 12,
+              rows: 1,
+              columns: 4,
+              widgets: [
+                { id: 'k1', kind: 'kpi', span: 1, rows: 1 },
+                { id: 'k2', kind: 'kpi', span: 1, rows: 1 },
+                { id: 'k3', kind: 'kpi', span: 1, rows: 1 },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const { model, handle } = mount(roomy);
     const w = handle.addWidget({ id: 'k4', kind: 'kpi', span: 1, rows: 1 }, 'section');
     expect(w).toBeDefined();
+    expect(w!.cell).toEqual({ x: 3, y: 0, w: 1, h: 1 });
     expect(model.getGroup('section')!.members?.has('k4')).toBe(true);
     const snap = handle.toJSON();
     const section = snap.views[0].widgets.find((x) => x.id === 'section')!;

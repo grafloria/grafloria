@@ -147,6 +147,8 @@ export interface LoadedDiagramSpec {
    *    app's own painter, exactly as `dashboard({ renderWidget })` did.
    */
   readonly handle: DashboardHandle;
+  /** Instance options the loaded spec asks `render()` to apply (a fluid board pins zoom). */
+  renderOptions?: { minZoom?: number; maxZoom?: number };
 }
 
 /** The board geometry `dashboard()` stamps on its view group so a reload can rebind. */
@@ -159,6 +161,8 @@ interface PersistedBoard {
   designHeight?: number;
   float?: boolean;
   rtl?: boolean;
+  fluid?: boolean;
+  overflow?: 'bounded' | 'scroll';
 }
 
 /** True when the node is an ER entity card or a UML class card. */
@@ -300,6 +304,10 @@ export function fromDocument(
     rowHeight: firstBoard?.baseRowHeight ?? 130,
     boardW: viewGroups[0]?.size?.width ?? 1180,
     boardH: viewGroups[0]?.size?.height ?? 660,
+    // A board saved before `mode` existed carries no flag and was authored as
+    // a fixed world — it stays one. Fluid is only what was saved fluid.
+    mode: firstBoard?.fluid === true ? 'fluid' : 'fixed',
+    overflow: firstBoard?.overflow ?? 'bounded',
     // responsive is NOT in the document (a runtime seam), so it is deliberately
     // absent from the round-trip; width/height/columns/gap/sizing/float/rtl are.
     optionsBase: firstBoard
@@ -310,6 +318,8 @@ export function fromDocument(
           sizing: firstBoard.sizing,
           float: firstBoard.float,
           rtl: firstBoard.rtl,
+          mode: firstBoard.fluid === true ? 'fluid' : 'fixed',
+          overflow: firstBoard.overflow ?? 'bounded',
           width: viewGroups[0]?.size?.width,
           height: viewGroups[0]?.size?.height,
         }
@@ -384,7 +394,17 @@ export function fromDocument(
     ctx.attachHistory?.();
   };
 
-  return { nodes, edges: model.getLinks(), renderCustomNode, finalize, model, boards, handle };
+  return {
+    nodes,
+    edges: model.getLinks(),
+    renderCustomNode,
+    finalize,
+    model,
+    boards,
+    handle,
+    // A fluid board reloads with its zoom pinned, exactly as dashboard() ships it.
+    ...(ctx.mode === 'fluid' ? { renderOptions: { minZoom: 1, maxZoom: 1 } } : {}),
+  };
 }
 
 interface FinalizeApi {
