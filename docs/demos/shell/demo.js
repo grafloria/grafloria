@@ -184,11 +184,16 @@ function buildHowTo(spec) {
 
   const panel = document.createElement('aside');
   panel.id = 'grafloria-howto';
+  // The demo's description lives HERE, not under the title: a visitor gets a
+  // clean board and reads the story when they open the panel (the gallery
+  // index still shows the first lines on each card).
   panel.innerHTML = `
     <div class="ht-head">
-      <span>How to test</span>
+      <span>About &amp; how to test</span>
       <button id="grafloria-howto-toggle" title="collapse">×</button>
     </div>
+    ${spec.blurb ? `<p class="ht-about">${escapeHtml(spec.blurb)}</p>` : ''}
+    <div class="ht-steps">How to test</div>
     <ol>${spec.howTo.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ol>
     <div class="ht-run">
       <button id="grafloria-howto-run">▶ run the scripted checks</button>
@@ -729,8 +734,7 @@ export function defineDemo(spec) {
             <a href="https://grafloria.com">grafloria.com</a>
           </nav>
         </div>
-        <h1>${escapeHtml(spec.name)}</h1>
-        <p class="blurb">${escapeHtml(spec.blurb)}</p>`;
+        <h1>${escapeHtml(spec.name)}</h1>`;
     }
 
     // Reserve the CHROME's layout space BEFORE the page fits itself: buildNav
