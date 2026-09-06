@@ -1488,3 +1488,26 @@ describe("layout: 'split' — the board is always covered", () => {
     expect(g.getMetadata('dashboardTree')).toBeDefined();
   });
 });
+
+describe('split layout has no corner resize handle', () => {
+  it('switching grid → split removes the grid\'s injected handles; switching back re-injects them', () => {
+    const { api, handle } = mount(dashboard({ width: 1200, height: 600, widgets: [{ id: 'a', kind: 'kpi', span: 6 }, { id: 'b', kind: 'kpi', span: 6 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    const hosts = new Map(['a', 'b'].map((id) => {
+      const h = document.createElement('div');
+      h.className = 'grafloria-node-host';
+      h.setAttribute('data-node-id', id);
+      layer.appendChild(h);
+      return [id, h] as const;
+    }));
+    handle.refresh();
+    expect(hosts.get('a')!.querySelector(':scope > .axdb-rs')).not.toBeNull();
+    handle.setLayout('split');
+    handle.refresh();
+    expect(hosts.get('a')!.querySelector(':scope > .axdb-rs')).toBeNull();
+    expect(hosts.get('b')!.querySelector(':scope > .axdb-rs')).toBeNull();
+    handle.setLayout('grid');
+    handle.refresh();
+    expect(hosts.get('a')!.querySelector(':scope > .axdb-rs')).not.toBeNull();
+  });
+});

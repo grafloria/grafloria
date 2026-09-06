@@ -118,6 +118,47 @@ export function projectSplit(
   return out;
 }
 
+/** Every GROUP's projected rect, keyed by its index path — drop targets for "under all of these". */
+export interface SplitGroupRect {
+  path: number[];
+  dir: SplitDir;
+  rect: WorldRect;
+}
+export function groupRectsOf(root: SplitNode | null, frame: WorldRect, gap = 0, padding = 0, rtl = false): SplitGroupRect[] {
+  const out: SplitGroupRect[] = [];
+  if (!root) return out;
+  const inner: WorldRect = {
+    x: frame.x + padding,
+    y: frame.y + padding,
+    width: Math.max(0, frame.width - 2 * padding),
+    height: Math.max(0, frame.height - 2 * padding),
+  };
+  const walk = (node: SplitNode, r: WorldRect, path: number[]): void => {
+    if (!isSplitGroup(node)) return;
+    out.push({ path, dir: node.dir, rect: { ...r } });
+    const n = node.children.length;
+    if (!n) return;
+    const total = sum(node.children);
+    const along = node.dir === 'row' ? r.width : r.height;
+    const free = Math.max(0, along - gap * (n - 1));
+    let cursor = 0;
+    const mirrored = node.dir === 'row' && rtl;
+    for (let i = 0; i < n; i++) {
+      const idx = mirrored ? n - 1 - i : i;
+      const c = node.children[idx];
+      const size = (free * Math.max(0, c.weight)) / total;
+      const cr: WorldRect =
+        node.dir === 'row'
+          ? { x: r.x + cursor, y: r.y, width: size, height: r.height }
+          : { x: r.x, y: r.y + cursor, width: r.width, height: size };
+      walk(c, cr, [...path, idx]);
+      cursor += size + gap;
+    }
+  };
+  walk(root, inner, []);
+  return out;
+}
+
 /** One draggable divider: the gap between two siblings of a group. */
 export interface SplitDivider {
   /** Index path to the GROUP that owns the divider. */
@@ -195,15 +236,26 @@ export function splitLeaf(
   dir: SplitDir,
   before = false
 ): SplitNode {
+  if (!root) return { id: newId, weight: 1 };
+  const path = pathToLeaf(root, targetId);
+  return path ? splitAt(root, path, newId, dir, before) : cloneSplit(root);
+}
+
+/**
+ * Split the slot of the node at `path` — a leaf OR a whole group — to make
+ * room for `newId` beside it: the DevExpress drop on a group's outer edge
+ * ("under all of these columns", not under one of them). Same weight rule as
+ * `splitLeaf`; a group target keeps its inner structure intact.
+ */
+export function splitAt(root: SplitNode | null, path: readonly number[], newId: string, dir: SplitDir, before = false): SplitNode {
   const leaf: SplitLeaf = { id: newId, weight: 1 };
   if (!root) return leaf;
   const tree = cloneSplit(root);
-  const path = pathToLeaf(tree, targetId);
-  if (!path) return tree;
+  const target = nodeAt(tree, path);
+  if (!target) return tree;
   const parentPath = path.slice(0, -1);
   const idx = path[path.length - 1];
   const parent = path.length ? (nodeAt(tree, parentPath) as SplitGroup) : null;
-  const target = nodeAt(tree, path) as SplitLeaf;
   if (parent && parent.dir === dir) {
     const half = target.weight / 2;
     target.weight = half;
@@ -286,13 +338,25 @@ export function collapse(node: SplitNode | null): SplitNode | null {
  * left / right split the target's slot along a row, top / bottom along a
  * column; the mover lands on the named side.
  */
-export function insertSplitLeaf(root: SplitNode | null, id: string, targetId: string, side: SplitSide): SplitNode | null {
-  if (id === targetId) return cloneSplit(root);
+export function insertSplitLeaf(
+  root: SplitNode | null,
+  id: string,
+  target: string | { path: readonly number[] },
+  side: SplitSide
+): SplitNode | null {
+  if (typeof target === 'string' && id === target) return cloneSplit(root);
   const without = pathToLeaf(root, id) ? removeSplitLeaf(root, id) : cloneSplit(root);
   if (!without) return { id, weight: 1 };
-  if (!pathToLeaf(without, targetId)) return without;
   const dir: SplitDir = side === 'left' || side === 'right' ? 'row' : 'column';
-  return splitLeaf(without, targetId, id, dir, side === 'left' || side === 'top');
+  const before = side === 'left' || side === 'top';
+  if (typeof target === 'string') {
+    if (!pathToLeaf(without, target)) return without;
+    return splitLeaf(without, target, id, dir, before);
+  }
+  // A GROUP target: its path was read from the tree WITHOUT the mover (the
+  // painted one), so it addresses the same node here.
+  if (!nodeAt(without, target.path)) return without;
+  return splitAt(without, target.path, id, dir, before);
 }
 
 /**

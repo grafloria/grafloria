@@ -155,13 +155,16 @@ const CSS = `
    ask the TILE's size as well as their own body's), so the card can shed its
    padding as the tile gets short instead of clipping its own content. */
 .grafloria-html-layer > .grafloria-node-host { container: axdb-tile / size; }
+/* Two class hops on the header: these blocks precede the header's own rule
+   below and would lose the cascade at equal specificity — at 54 px the margin
+   stayed 8 px, the body shrank to 14 px and the KPI figure hid. */
 @container axdb-tile (max-height: 90px) {
   .axdb-widget { padding: 8px 14px 7px; }
-  .axdb-widget-h { margin-bottom: 4px; }
+  .axdb-widget > .axdb-widget-h { margin-bottom: 4px; }
 }
 @container axdb-tile (max-height: 46px) {
   .axdb-widget { padding: 4px 12px 3px; }
-  .axdb-widget-h { margin-bottom: 0; }
+  .axdb-widget > .axdb-widget-h { margin-bottom: 0; }
 }
 @container axdb-tile (max-height: 26px) {
   .axdb-widget { padding: 2px 12px 1px; }

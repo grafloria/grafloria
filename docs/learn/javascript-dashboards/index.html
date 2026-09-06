@@ -146,8 +146,9 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
           <td><code>'split'</code> is the DevExpress model: a splitter tree instead of cells —
           the board is always covered, one widget fills it, a second halves it, a third
           halves the larger half the other way; dividers drag as percentages; a dragged
-          widget shows an insertion line on the nearest edge of the widget under it; a
-          removed widget's slot goes to its siblings. Always fit. Switch live with
+          widget shows an insertion line on the nearest edge of the widget under it, or,
+          near a group's outer edge, across the whole group (drop under all the columns of
+          a row, not under one of them); a removed widget's slot goes to its neighbour. Always fit. Switch live with
           <code>H.setLayout('split' | 'grid')</code> — cells become a tree by guillotine
           cuts, a tree becomes cells by snapping to the columns; the choice is saved with
           the board</td></tr>

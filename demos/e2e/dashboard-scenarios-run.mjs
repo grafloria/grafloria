@@ -1456,14 +1456,29 @@ try {
   const halved = s3.n === s0.n + 1 && Math.abs(s3.ws[largest[0]].w * s3.ws[largest[0]].h - (largest[1].w * largest[1].h) / 2) < largest[1].w * largest[1].h * 0.08;
   await page.evaluate(() => window.__demoCtx.handle.widget('row-1').remove()); await page.waitForTimeout(500); const s4 = await read();
   const slotBack = s4.n === s0.n && JSON.stringify(s4.ws) === JSON.stringify(s0.ws);
-  // E. back to the grid: the same picture, then split again
+  // E. a drop on the KPI ROW's bottom edge (18 px band): nps lands UNDER ALL FOUR, full width
+  const nps = await rectOf('nps'); const rev = await rectOf('rev');
+  await page.mouse.move(nps.x + nps.width / 2, nps.y + 14); await page.mouse.down(); await page.mouse.move(nps.x + nps.width / 2 - 40, nps.y + 40, { steps: 8 });
+  await page.mouse.move(rev.x + rev.width + 60, rev.y + rev.height - 6, { steps: 25 }); await page.waitForTimeout(300);
+  const gdrag = await read();
+  await shot(page, 'drag-group-edge');
+  await page.mouse.up(); await page.waitForTimeout(500);
+  const s5 = await read();
+  await shot(page, 'dropped-under-the-row');
+  const f = await page.evaluate(() => window.__demoCtx.handle.metrics().frame);
+  // nps spans the board under the row; the row's three survivors still fill the
+  // width between them (win took nps's old slot — the neighbour rule).
+  const rowW = s5.ws.rev.w + s5.ws.cust.w + s5.ws.win.w;
+  const underAll = s5.ws.nps.w > f.width * 0.9 && s5.ws.nps.y > s5.ws.rev.y + s5.ws.rev.h - 1 && s5.ws.nps.y < s5.ws.trend.y && Math.abs(rowW - s5.ws.nps.w) < 40;
+  await undo(); await page.waitForTimeout(400);
+  // F. back to the grid: the same picture, then split again
   await page.click('#fb-grid'); await page.waitForTimeout(500); const g = await read();
   const gridBack = g.layout === 'grid' && g.dividers === 0 && g.n === s0.n;
   const covered = [s0, s1, s2, s3, s4].every((s) => s.coverage > 0.9 && s.coverage <= 1.001);
   const st = await boardState(page);
-  verdict(s0.layout === 'split' && s0.sizing === 'fit' && s0.dividers > 0 && covered && dividerLive && dividerIsPercent && liftedOut && drag.ins === 1 && landedLeft && undoOneEach && halved && slotBack && gridBack && st.overlaps === 0,
+  verdict(s0.layout === 'split' && s0.sizing === 'fit' && s0.dividers > 0 && covered && dividerLive && dividerIsPercent && liftedOut && drag.ins === 1 && landedLeft && undoOneEach && halved && slotBack && gdrag.ins === 1 && underAll && gridBack && st.overlaps === 0,
     `split=${s0.layout}/${s0.sizing} dividers=${s0.dividers} covered=${covered}(${s0.coverage.toFixed(3)}) divider-live=${dividerLive} divider-percent=${dividerIsPercent}(rev ${s0.ws.rev.w}->${s1.ws.rev.w}) ` +
-    `lifted-out=${liftedOut} insertion-line=${drag.ins} landed-left=${landedLeft} undo-one-each=${undoOneEach} add-halves-largest=${halved}(${largest[0]}) slot-back=${slotBack} grid-back=${gridBack} overlaps=${st.overlaps}`);
+    `lifted-out=${liftedOut} insertion-line=${drag.ins} landed-left=${landedLeft} undo-one-each=${undoOneEach} add-halves-largest=${halved}(${largest[0]}) slot-back=${slotBack} group-edge-drop-under-all=${underAll}(nps ${s5.ws.nps.w}px wide, y ${s5.ws.nps.y}) grid-back=${gridBack} overlaps=${st.overlaps}`);
   assertNoPageErrors(page);
   await page.close();
 }
