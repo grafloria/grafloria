@@ -194363,7 +194363,7 @@ function ensureDashboardKitStyles(doc = document) {
 }
 
 // libs/element/src/lib/dashboard-kit/grid-binder.ts
-var BOARD_REGISTRY = /* @__PURE__ */ new Map();
+var BOARD_REGISTRY = /* @__PURE__ */ new WeakMap();
 var LIVE_REGIONS = /* @__PURE__ */ new WeakMap();
 function liveRegionFor(container) {
   let live = LIVE_REGIONS.get(container);
@@ -194701,12 +194701,13 @@ function bindDashboardGrid(api, group, options = {}) {
     const kind = node.getMetadata?.("widgetKind");
     return typeof kind === "string" && kind && kind !== "widget" ? `${kind} widget` : node.id;
   };
-  const syncA11y = () => {
+  const syncA11y = (only) => {
     if (disposed) return;
     const members = [...group.members ?? []].filter((id) => !!diagram.getNode(id));
     if (focusedId && !members.includes(focusedId)) focusedId = void 0;
     const stop = focusedId ?? members[0];
     for (const id of members) {
+      if (only && !only.has(id)) continue;
       const node = diagram.getNode(id);
       const host = hostOf(id);
       if (!node || !host) continue;
@@ -194720,10 +194721,11 @@ function bindDashboardGrid(api, group, options = {}) {
       host.setAttribute("tabindex", id === stop ? "0" : "-1");
     }
   };
-  const syncHandles = () => {
-    syncA11y();
+  const syncHandles = (only) => {
+    syncA11y(only);
     if (!wantHandles || disposed) return;
     for (const id of group.members ?? []) {
+      if (only && !only.has(id)) continue;
       const node = diagram.getNode(id);
       if (!node) continue;
       const host = hostOf(id);
@@ -194742,7 +194744,23 @@ function bindDashboardGrid(api, group, options = {}) {
       rs.classList.toggle("axdb-rs--rtl", rtl);
     }
   };
-  const hostObserver = new MutationObserver(() => syncHandles());
+  const hostObserver = new MutationObserver((records) => {
+    const touched = /* @__PURE__ */ new Set();
+    const noteHost = (el) => {
+      const e = el;
+      if (e?.classList?.contains("grafloria-node-host")) {
+        const id = e.getAttribute("data-node-id");
+        if (id) touched.add(id);
+      }
+    };
+    for (const r of records) {
+      const ownEcho = r.removedNodes.length === 0 && r.addedNodes.length > 0 && Array.from(r.addedNodes).every((n3) => n3.classList?.contains("axdb-rs"));
+      if (ownEcho) continue;
+      noteHost(r.target);
+      r.addedNodes.forEach((n3) => noteHost(n3));
+    }
+    if (touched.size) syncHandles(touched);
+  });
   const snapshotAll = () => {
     const cells = /* @__PURE__ */ new Map();
     const geoms = /* @__PURE__ */ new Map();
@@ -196444,6 +196462,10 @@ function createDashboardHandle(ctx) {
     for (const v of handle.toJSON().views) lastReported.set(v.id, JSON.stringify(v.widgets));
     const onHistory = () => {
       if (!ctx.apiRef) return;
+      const model = ctx.apiRef.getModel();
+      for (const id of [...ctx.boardGroups.keys()]) {
+        if (!binders.has(id) && model.getGroup(id)) ctx.rebindContainer?.(id);
+      }
       for (const b of binders.values()) b.sync();
       ctx.apiRef.renderNow();
       reportChanged();
@@ -196666,7 +196688,37 @@ function createDashboardHandle(ctx) {
       },
       remove(displaced) {
         if (spec.widgets) {
-          console.warn("[dashboard] remove() on a container is not supported");
+          const parentGroup = ctx.boardGroups.get(viewId);
+          const parentBinder = binders.get(viewId);
+          const model = ctx.apiRef?.getModel();
+          if (!parentGroup || !parentBinder || !model) return;
+          const cmds2 = [
+            ...displaced ?? parentBinder.planRemoval(id),
+            new RemoveFromGroupCommand(parentGroup.id, id)
+          ];
+          const nodeRemovals = [];
+          const unregisters = [];
+          const removeSubtree = (boardId) => {
+            const g = ctx.boardGroups.get(boardId);
+            cmds2.push(new RemoveGroupCommand(boardId));
+            for (const m of [...g?.members ?? []]) {
+              const mSpec = specById.get(m);
+              if (mSpec) unregisters.push(new RegisterWidgetCommand(registryOf(m, boardId, mSpec), "unregister"));
+              if (ctx.boardGroups.has(m)) removeSubtree(m);
+              else nodeRemovals.push(new RemoveNodeCommand(m));
+              binders.get(m)?.dispose();
+              binders.delete(m);
+            }
+          };
+          removeSubtree(id);
+          const registry6 = registryOf(id, viewId, spec);
+          cmds2.push(...nodeRemovals, ...unregisters, new RegisterWidgetCommand(registry6, "unregister"));
+          binders.get(id)?.dispose();
+          binders.delete(id);
+          void execCommand(new BatchCommand("Remove section", cmds2));
+          registry6.unregister();
+          parentBinder.sync();
+          ctx.apiRef?.renderNow();
           return;
         }
         const n3 = node();
@@ -196851,6 +196903,13 @@ function dashboard(options) {
         );
       }
       handle.showView(ctx.active);
+      ctx.rebindContainer = (id) => {
+        const g = model.getGroup(id);
+        const w = specById.get(id);
+        if (!g || !w || !w.widgets) return;
+        ctx.boardGroups.set(id, g);
+        bindContainer(g, w, ctx.viewOfBoard.get(id) ?? ctx.active);
+      };
       ctx.attachHistory?.();
       return;
       function mountBoard(boardId, viewId, widgets, boardGroup) {
@@ -196887,25 +196946,7 @@ function dashboard(options) {
             boardGroup.addMember(w.id);
             ctx.boardGroups.set(w.id, cg);
             mountBoard(w.id, viewId, w.widgets, cg);
-            binders.set(
-              w.id,
-              bindDashboardGrid(a, cg, {
-                columns: innerColumns,
-                gap,
-                padding: 0,
-                sizing: "fit",
-                baseRowHeight: rowHeight,
-                designHeight: 0,
-                maxRows: innerRows,
-                float: false,
-                rtl: options.rtl ?? false,
-                static: options.static ?? false,
-                onGesture: (e) => {
-                  if (e.type === "commit") reportChanged();
-                  options.binder?.onGesture?.(e);
-                }
-              })
-            );
+            bindContainer(cg, w, viewId);
             continue;
           }
           const n3 = model.getNode(w.id);
@@ -196918,6 +196959,27 @@ function dashboard(options) {
           for (const p of [...n3.getPorts().values()]) n3.removePort(p.id);
           boardGroup.addMember(w.id);
         }
+      }
+      function bindContainer(cg, w, viewId) {
+        binders.set(
+          w.id,
+          bindDashboardGrid(a, cg, {
+            columns: innerColumnsOf(w),
+            gap,
+            padding: 0,
+            sizing: "fit",
+            baseRowHeight: rowHeight,
+            designHeight: 0,
+            maxRows: w.maxRows ?? rowExtentOf(w.widgets ?? []),
+            float: false,
+            rtl: options.rtl ?? false,
+            static: options.static ?? false,
+            onGesture: (e) => {
+              if (e.type === "commit") reportChanged();
+              options.binder?.onGesture?.(e);
+            }
+          })
+        );
       }
       function reportChanged() {
         ctx.reportChanged?.();
@@ -197083,6 +197145,13 @@ function fromDocument(document2, options = {}) {
       if (!board) continue;
       boards.set(group.id, bindDashboardGrid(a, group, { ...board }));
     }
+    ctx.rebindContainer = (id) => {
+      const group = model.getGroup(id);
+      const board = group?.getMetadata("dashboardBoard");
+      if (!group || !board) return;
+      ctx.boardGroups.set(id, group);
+      boards.set(id, bindDashboardGrid(a, group, { ...board }));
+    };
     ctx.attachHistory?.();
   };
   return {
