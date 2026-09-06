@@ -107,7 +107,12 @@ const CSS = `
   pointer-events: none;
   opacity: .9;
   filter: drop-shadow(0 8px 14px rgba(16, 24, 40, .3));
+  transition: opacity .12s, filter .12s;
 }
+/* A bounded board with no room refuses the entry: the chip dims to say so
+   (the same signal a tile ghost gives outside the board). Without this rule
+   the class was set and nothing showed — a refusal a user could not see. */
+.axdb-drag-chip.axdb-out { opacity: .35; filter: grayscale(.7) drop-shadow(0 8px 14px rgba(16, 24, 40, .2)); }
 
 /* ===========================================================================
    BUILT-IN WIDGET CARDS — what widgets.ts paints when a page writes no
