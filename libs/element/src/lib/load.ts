@@ -75,6 +75,8 @@ import { bindRowInteractions } from './diagram-kit/rows';
 import { bindCardEditing } from './diagram-kit/editing';
 import { ensureDiagramKitStyles } from './diagram-kit/styles';
 import { bindDashboardGrid, type DashboardGridHandle } from './dashboard-kit/grid-binder';
+import { bindDashboardSplit, SPLIT_TREE_KEY } from './dashboard-kit/split-binder';
+import { gridItemFromCell } from './dashboard-kit/grid-mapping';
 import { cellFromGridItem } from './dashboard-kit/grid-mapping';
 import { ensureDashboardKitStyles } from './dashboard-kit/styles';
 import { defaultWidgetRenderer, type WidgetRenderer } from './dashboard-kit/widgets';
@@ -164,6 +166,8 @@ interface PersistedBoard {
   fluid?: boolean;
   overflow?: 'bounded' | 'scroll';
   static?: boolean;
+  /** 'split': a splitter tree persisted as `dashboardTree` on the group. */
+  layout?: 'grid' | 'split';
 }
 
 /** True when the node is an ER entity card or a UML class card. */
@@ -314,6 +318,9 @@ export function fromDocument(
     // a fixed world — it stays one. Fluid is only what was saved fluid.
     mode: firstBoard?.fluid === true ? 'fluid' : 'fixed',
     overflow: firstBoard?.overflow ?? 'bounded',
+    layoutOf: new Map(
+      viewGroups.map((g) => [g.id, ((g.getMetadata('dashboardBoard') as PersistedBoard | undefined)?.layout ?? 'grid') as 'grid' | 'split'])
+    ),
     // responsive is NOT in the document (a runtime seam), so it is deliberately
     // absent from the round-trip; width/height/columns/gap/sizing/float/rtl are.
     optionsBase: firstBoard
@@ -327,6 +334,7 @@ export function fromDocument(
           mode: firstBoard.fluid === true ? 'fluid' : 'fixed',
           overflow: firstBoard.overflow ?? 'bounded',
           static: firstBoard.static ?? false,
+          layout: firstBoard.layout ?? 'grid',
           width: viewGroups[0]?.size?.width,
           height: viewGroups[0]?.size?.height,
         }
@@ -394,8 +402,32 @@ export function fromDocument(
     for (const group of groups) {
       const board = group.getMetadata('dashboardBoard') as PersistedBoard | undefined;
       if (!board) continue;
-      boards.set(group.id, bindDashboardGrid(a as never, group, { ...board }));
+      boards.set(group.id, bindBoard(group, board));
     }
+    // LIVE LAYOUT SWITCH on a loaded document — the same contract dashboard()
+    // finalize offers: cells persisted where the grid reads them, any tree and
+    // column cache cleared, the board's `layout` flag flipped, a fresh binder.
+    ctx.rebindView = (viewId, next) => {
+      const group = model.getGroup(viewId);
+      const b = boards.get(viewId);
+      const board = group?.getMetadata('dashboardBoard') as PersistedBoard | undefined;
+      if (!group || !b || !board) return;
+      const cells = b.saveLayout().cells;
+      b.dispose();
+      model.runSystemWrite(() => {
+        for (const [id, cell] of cells) {
+          const n = model.getNode(id);
+          if (n) n.setMetadata('gridItem', gridItemFromCell(cell));
+          else model.getGroup(id)?.setMetadata('gridItem', gridItemFromCell(cell));
+        }
+        group.setMetadata(SPLIT_TREE_KEY, undefined);
+        group.setMetadata('dashboardLayouts', undefined);
+        group.setMetadata('dashboardBoard', { ...board, layout: next });
+      });
+      ctx.layoutOf.set(viewId, next);
+      boards.set(viewId, bindBoard(group, { ...board, layout: next }));
+      boards.get(viewId)?.sync();
+    };
     // A container removed and restored through the history comes back as a
     // fresh group: bind it again from its own persisted geometry.
     ctx.rebindContainer = (id: string): void => {
@@ -403,8 +435,13 @@ export function fromDocument(
       const board = group?.getMetadata('dashboardBoard') as PersistedBoard | undefined;
       if (!group || !board) return;
       ctx.boardGroups.set(id, group);
-      boards.set(id, bindDashboardGrid(a as never, group, { ...board }));
+      boards.set(id, bindBoard(group, board));
     };
+    function bindBoard(group: GroupModel, board: PersistedBoard): DashboardGridHandle {
+      return board.layout === 'split'
+        ? bindDashboardSplit(a as never, group, { ...board })
+        : bindDashboardGrid(a as never, group, { ...board });
+    }
     // A loaded board follows the history exactly as an authored one does: an
     // undo re-syncs every binder without the consumer calling refresh().
     ctx.attachHistory?.();

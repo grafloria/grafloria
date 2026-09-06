@@ -142,6 +142,15 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
           <code>undefined</code>) — and a bounded fit board never scrolls: a board that
           already holds more than fits squeezes its rows below the floor rather than
           growing. The choice for a designer who wants the whole dashboard on one screen</td></tr>
+        <tr><td><code>layout</code></td><td><code>'grid'</code></td>
+          <td><code>'split'</code> is the DevExpress model: a splitter tree instead of cells —
+          the board is always covered, one widget fills it, a second halves it, a third
+          halves the larger half the other way; dividers drag as percentages; a dragged
+          widget shows an insertion line on the nearest edge of the widget under it; a
+          removed widget's slot goes to its siblings. Always fit. Switch live with
+          <code>H.setLayout('split' | 'grid')</code> — cells become a tree by guillotine
+          cuts, a tree becomes cells by snapping to the columns; the choice is saved with
+          the board</td></tr>
         <tr><td><code>overflow</code></td><td><code>'bounded'</code></td>
           <td><code>'scroll'</code> lifts the fit capacity: the frame extends to hold the
           rows at the row floor and the canvas pans</td></tr>
