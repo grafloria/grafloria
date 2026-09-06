@@ -92,6 +92,10 @@ export function render(
   const parsed = (typeof spec === 'string' ? parseSpec(spec) : spec) as DiagramSpec;
 
   const instance = createDiagram(element, {
+    // A kit spec may ask for instance options of its own — a fluid dashboard
+    // pins the zoom range so its layout can never become a scaled picture. The
+    // caller's explicit options still win.
+    ...((parsed as { renderOptions?: Partial<RenderOptions> }).renderOptions ?? {}),
     ...options,
     nodes: parsed.nodes ?? [],
     edges: parsed.edges ?? [],

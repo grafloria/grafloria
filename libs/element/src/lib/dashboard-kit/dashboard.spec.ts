@@ -13,27 +13,50 @@ import { Command, DiagramModel, GroupModel, NodeModel, CommandManager, EventBus 
 import { render } from '../grafloria';
 import { dashboard, type DashboardSpec } from './dashboard';
 
+/** Give a jsdom element a measurable box (jsdom lays nothing out). */
+function sizeElement(el: HTMLElement, w: number, h: number): void {
+  Object.defineProperty(el, 'clientWidth', { value: w, configurable: true });
+  Object.defineProperty(el, 'clientHeight', { value: h, configurable: true });
+}
+
 /** The slice of a DiagramInstance `finalize()` uses, over a real model. */
-function makeApi(model: DiagramModel) {
+function makeApi(model: DiagramModel, size?: { w: number; h: number }) {
   const bus = new EventBus();
   const manager = new CommandManager({ diagram: model, eventBus: bus });
   const container = document.createElement('div');
   document.body.appendChild(container);
+  if (size) sizeElement(container, size.w, size.h);
   const layer = document.createElement('div');
   layer.className = 'grafloria-html-layer';
   container.appendChild(layer);
+  // A camera that REMEMBERS what it was asked, so a test can tell a fit from a pin.
+  const camera = { fits: 0, zooms: [] as number[], rect: { x: 0, y: 0, width: size?.w ?? 800, height: size?.h ?? 600 } };
   return {
     getModel: () => model,
     getEngine: () => ({ commandManager: manager, eventBus: bus }),
     container,
     render: () => undefined,
     renderNow: () => undefined,
-    viewport: { fitToBounds: () => undefined, clientToWorld: () => ({ x: 0, y: 0 }) },
+    camera,
+    viewport: {
+      fitToBounds: () => {
+        camera.fits++;
+      },
+      clientToWorld: () => ({ x: 0, y: 0 }),
+      setZoom: (z: number) => {
+        camera.zooms.push(z);
+        return z;
+      },
+      getViewport: () => ({ ...camera.rect }),
+      setViewport: (r: { x: number; y: number; width: number; height: number }) => {
+        camera.rect = { ...r };
+      },
+    },
   };
 }
 
 /** Mount a spec the way `render()` does: build nodes, then run finalize. */
-function mount(spec: DashboardSpec) {
+function mount(spec: DashboardSpec, size?: { w: number; h: number }) {
   const model = new DiagramModel('dash');
   for (const n of spec.nodes) {
     const raw = n as {
@@ -51,7 +74,7 @@ function mount(spec: DashboardSpec) {
     for (const [k, v] of Object.entries(raw.metadata)) node.setMetadata(k, v);
     model.addNode(node);
   }
-  const api = makeApi(model);
+  const api = makeApi(model, size);
   spec.finalize(api);
   return { model, api, handle: spec.handle };
 }
@@ -957,5 +980,142 @@ describe('a rebuild honours the persisted cells verbatim', () => {
     expect(handle.widget('a')!.cell).toMatchObject({ x: 0, y: 4 });
     handle.refresh();
     expect(handle.widget('a')!.cell).toMatchObject({ x: 0, y: 4 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DIAGRAM OR LAYOUT — `mode` (review D1, decided 2026-09-06: both, fluid by
+// default). A fluid board is 100% of its container at zoom 1; a fixed board is
+// the authored world the camera frames.
+// ---------------------------------------------------------------------------
+describe('mode: fluid — the board is laid out at the container\'s own pixels', () => {
+  const ROW = () => [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 9 }];
+
+  it('defaults to fluid without an authored width, and to fixed with one', () => {
+    const fl = mount(dashboard({ widgets: ROW() }), { w: 900, h: 500 });
+    expect(fl.handle.toJSON().mode).toBe('fluid');
+    expect(fl.handle.metrics()!.frame).toMatchObject({ width: 900, height: 500 });
+    expect(fl.handle.metrics()!.fluid).toBe(true);
+    // The 9-wide tile really is laid out against 900 px, not 1180.
+    expect(fl.handle.widget('b')!.rect!.width).toBeLessThan(900);
+    expect(fl.handle.widget('b')!.rect!.x + fl.handle.widget('b')!.rect!.width).toBeLessThanOrEqual(900);
+
+    const fx = mount(dashboard({ width: 1180, widgets: ROW() }), { w: 900, h: 500 });
+    expect(fx.handle.toJSON().mode).toBe('fixed');
+    expect(fx.handle.metrics()!.frame).toMatchObject({ width: 1180, height: 660 });
+    expect(fx.handle.metrics()!.fluid).toBe(false);
+  });
+
+  it('an explicit mode wins over the width rule', () => {
+    const fl = mount(dashboard({ mode: 'fluid', width: 1180, widgets: ROW() }), { w: 900, h: 500 });
+    expect(fl.handle.metrics()!.frame.width).toBe(900);
+    const fx = mount(dashboard({ mode: 'fixed', widgets: ROW() }), { w: 900, h: 500 });
+    expect(fx.handle.metrics()!.frame.width).toBe(1180);
+  });
+
+  it('follows the container when it resizes — re-read on refresh()', () => {
+    const { api, handle } = mount(dashboard({ widgets: ROW() }), { w: 900, h: 500 });
+    sizeElement(api.container, 600, 400);
+    handle.refresh();
+    expect(handle.metrics()!.frame).toMatchObject({ width: 600, height: 400 });
+    expect(handle.widget('b')!.rect!.x + handle.widget('b')!.rect!.width).toBeLessThanOrEqual(600);
+  });
+
+  it('a container that cannot be measured keeps the authored frame', () => {
+    const { handle } = mount(dashboard({ widgets: ROW() }));
+    expect(handle.metrics()!.frame).toMatchObject({ width: 1180, height: 660 });
+  });
+
+  it('pins the camera at zoom 1 on the board origin — never a fit', () => {
+    const fl = mount(dashboard({ widgets: ROW() }), { w: 900, h: 500 });
+    expect(fl.api.camera.fits).toBe(0);
+    expect(fl.api.camera.zooms).toContain(1);
+    expect(fl.api.camera.rect).toMatchObject({ x: 0, y: 0 });
+    fl.handle.fit();
+    expect(fl.api.camera.fits).toBe(0);
+
+    const fx = mount(dashboard({ width: 1180, widgets: ROW() }), { w: 900, h: 500 });
+    expect(fx.api.camera.fits).toBeGreaterThan(0);
+  });
+
+  it('asks render() to lock the zoom range, and a fixed board does not', () => {
+    expect(dashboard({ widgets: ROW() }).renderOptions).toEqual({ minZoom: 1, maxZoom: 1 });
+    expect(dashboard({ width: 1180, widgets: ROW() }).renderOptions).toBeUndefined();
+  });
+
+  it('toJSON() → dashboard() keeps the mode', () => {
+    const fl = mount(dashboard({ widgets: ROW() }), { w: 900, h: 500 });
+    const saved = fl.handle.toJSON();
+    expect(saved.mode).toBe('fluid');
+    const again = mount(dashboard(saved), { w: 700, h: 400 });
+    expect(again.handle.toJSON().mode).toBe('fluid');
+    expect(again.handle.metrics()!.frame.width).toBe(700);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIT MEANS BOUNDED (review D6, decided 2026-09-06). A fit board never changes
+// size; widgets do. The 28-px row floor is a CAPACITY, and past it the board
+// refuses — visibly, at design time — instead of painting tiles past its edge.
+// ---------------------------------------------------------------------------
+describe('fit means bounded', () => {
+  // 200 px tall, gap 8, row floor 28 → floor((200 - 16 + 8) / 36) = 5 rows.
+  const rowsOf = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ id: 'r' + i, kind: 'kpi', span: 12, rows: 1 }));
+  const board = (extra: Partial<Parameters<typeof dashboard>[0]> = {}, n = 5) =>
+    dashboard({ width: 1180, height: 200, sizing: 'fit', widgets: rowsOf(n), ...extra });
+
+  it('reports the capacity its height allows, and every widget that fits is there', () => {
+    const { handle } = mount(board());
+    expect(handle.metrics()!.capacity).toBe(5);
+    expect(handle.widgetsOf().every((w) => w.cell !== undefined)).toBe(true);
+    expect(handle.metrics()!.rows).toBe(5);
+  });
+
+  it('refuses the widget that would need one row too many — nothing is created', () => {
+    const { model, handle } = mount(board());
+    expect(handle.addWidget({ id: 'r5', kind: 'kpi', span: 12, rows: 1 })).toBeUndefined();
+    expect(model.getNode('r5')).toBeUndefined();
+    expect(handle.widgetsOf().map((w) => w.id)).not.toContain('r5');
+    // …while one that fits in a free hole still lands.
+    const { handle: h2 } = mount(board({}, 4));
+    expect(h2.addWidget({ id: 'r4', kind: 'kpi', span: 6, rows: 1 })).toBeDefined();
+  });
+
+  it('refuses a resize past the capacity, and the board stays inside its frame', async () => {
+    const { handle } = mount(board());
+    expect(await handle.widget('r4')!.resize(12, 2)).toBe(false);
+    expect(handle.widget('r4')!.cell).toMatchObject({ h: 1 });
+    const frame = handle.metrics()!.frame;
+    for (const w of handle.widgetsOf()) {
+      expect(w.rect!.y + w.rect!.height).toBeLessThanOrEqual(frame.y + frame.height + 0.5);
+    }
+  });
+
+  it('overflow: "scroll" lifts the bound and EXTENDS the frame so nothing paints past it', () => {
+    const { handle } = mount(board({ overflow: 'scroll' }));
+    expect(handle.metrics()!.capacity).toBeUndefined();
+    expect(handle.addWidget({ id: 'r5', kind: 'kpi', span: 12, rows: 1 })).toBeDefined();
+    const m = handle.metrics()!;
+    expect(m.rows).toBe(6);
+    // 6 rows at the 28-px floor: 2·8 + 6·28 + 5·8 = 224 > the 200 design height.
+    expect(m.frame.height).toBe(224);
+    for (const w of handle.widgetsOf()) {
+      expect(w.rect!.y + w.rect!.height).toBeLessThanOrEqual(m.frame.y + m.frame.height + 0.5);
+    }
+  });
+
+  it('a board holding MORE than its capacity keeps every tile and only refuses growth', () => {
+    const { handle } = mount(board({}, 7));
+    expect(handle.widgetsOf().every((w) => w.cell !== undefined)).toBe(true);
+    expect(handle.metrics()!.capacity).toBe(7); // floored at the content
+    expect(handle.metrics()!.frame.height).toBeGreaterThan(200); // extended, not overflowing
+    expect(handle.addWidget({ id: 'r7', kind: 'kpi', span: 12, rows: 1 })).toBeUndefined();
+  });
+
+  it('grow mode is never bounded', () => {
+    const { handle } = mount(board({ sizing: 'grow' }, 7));
+    expect(handle.metrics()!.capacity).toBeUndefined();
+    expect(handle.addWidget({ id: 'r7', kind: 'kpi', span: 12, rows: 1 })).toBeDefined();
   });
 });

@@ -592,6 +592,28 @@ describe('fromDocument — a document saved while NARROW (D4)', () => {
   });
 });
 
+describe('fromDocument — mode (D1)', () => {
+  it('a fluid board reloads fluid, at the container it lands in, zoom pinned', () => {
+    const original = mount(DASH_SPEC()); // no width authored → fluid
+    expect(original.spec.handle.toJSON().mode).toBe('fluid');
+    const spec = fromDocument(save(original.api));
+    expect(spec.renderOptions).toEqual({ minZoom: 1, maxZoom: 1 });
+    mount(spec);
+    expect(spec.handle.toJSON().mode).toBe('fluid');
+    expect(spec.handle.metrics()!.fluid).toBe(true);
+    expect(spec.handle.metrics()!.frame.width).toBe(1200); // the sized host
+  });
+
+  it('a fixed board reloads fixed at its authored world', () => {
+    const original = mount(dashboard({ width: 1180, height: 620, widgets: [{ id: 'k', kind: 'kpi', span: 3 }] }));
+    const spec = fromDocument(save(original.api));
+    expect(spec.renderOptions).toBeUndefined();
+    mount(spec);
+    expect(spec.handle.toJSON().mode).toBe('fixed');
+    expect(spec.handle.metrics()!.frame).toMatchObject({ width: 1180, height: 620 });
+  });
+});
+
 describe('fromDocument — the front door', () => {
   it('accepts the parsed object as well as the JSON string', () => {
     const original = mount(ER_SPEC());
