@@ -194304,7 +194304,7 @@ var CSS4 = `
 /* The data behind a chart, for readers that cannot see the chart: present in
    the accessibility tree, absent from the picture (WCAG 1.1.1). */
 .axdb-sr {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  position: absolute; top: 0; left: 0; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
   clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
 }
 .axdb-widget-empty {
@@ -194338,9 +194338,13 @@ var CSS4 = `
    takes more than two fifths of the body. */
 .axdb-kpi-s { margin-top: auto; height: auto; min-height: 0; flex: 1 1 34px; max-height: 40%; }
 
-/* donut: ring beside its legend */
+/* donut: ring beside its legend. The ring takes the body's height (a tall
+   tile gets a bigger ring, not dead card), square, capped so its centre figure
+   stays a figure and not a headline. */
 .axdb-widget-b.axdb-donut { display: flex; align-items: center; gap: 10px; }
-.axdb-widget-b.axdb-donut > svg { max-width: 150px; }
+.axdb-widget-b.axdb-donut > svg {
+  flex: 0 0 auto; width: auto; height: 100%; max-height: 260px; max-width: 60%; aspect-ratio: 1 / 1;
+}
 
 /* legend chips, shared by line and donut */
 .axdb-lg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; }
@@ -196223,24 +196227,33 @@ var renderDonutWidget = (widget, host) => {
   );
 };
 var renderFunnelWidget = (widget, host) => {
-  const d = data(widget);
   const body = card(host, widget, titleOf(widget));
+  layoutFunnel(widget, body);
+  watchSize(host, () => layoutFunnel(widget, body));
+};
+var valueWidth = (text) => text.length * 6.6 + 14;
+function layoutFunnel(widget, body) {
+  const d = data(widget);
   const stages = (Array.isArray(d.stages) ? d.stages : []).filter((s) => !!s);
   if (!stages.length) return empty(body);
-  const W = 260;
-  const rowH = 34;
-  const gap = 8;
-  const H = stages.length * (rowH + gap);
+  const { W, H } = chartBox(body);
+  const n3 = stages.length;
+  const gap = 6;
+  const rowH = Math.max(18, Math.min(40, (H - gap * (n3 - 1)) / n3));
+  const top = Math.max(0, (H - (n3 * rowH + (n3 - 1) * gap)) / 2);
+  const labelCol = Math.min(120, Math.max(60, W * 0.28));
+  const track = Math.max(40, W - labelCol - 16);
   const max = Math.max(...stages.map((s) => num4(s.value)), 1);
-  const track = W - 90;
   const marks = stages.map((s, i) => {
-    const w = Math.max(2, num4(s.value) / max * track);
-    const x = (track - w) / 2 + 8;
-    const y = i * (rowH + gap);
-    return `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${rowH}" rx="6" fill="${colorAt(i)}"></rect><text x="${(x + w / 2).toFixed(1)}" y="${y + rowH / 2 + 4}" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">${esc(compact(num4(s.value)))}</text><text x="${W - 78}" y="${y + rowH / 2 + 4}" font-size="10.5" fill="var(--axdb-muted)">${esc(s.label ?? "")}</text>`;
+    const text = compact(num4(s.value));
+    const w = Math.min(track, Math.max(valueWidth(text), num4(s.value) / max * track));
+    const x = 8 + (track - w) / 2;
+    const y = top + i * (rowH + gap);
+    const mid = (y + rowH / 2 + 4).toFixed(1);
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${rowH.toFixed(1)}" rx="6" fill="${colorAt(i)}"></rect><text x="${(x + w / 2).toFixed(1)}" y="${mid}" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">${esc(text)}</text><text x="${8 + track + 8}" y="${mid}" font-size="10.5" fill="var(--axdb-muted)">${esc(s.label ?? "")}</text>`;
   }).join("");
   body.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(titleOf(widget))}">${marks}</svg>` + srTable(titleOf(widget), ["Stage", "Value"], stages.map((s) => [s.label ?? "", num4(s.value)]));
-};
+}
 var renderTableWidget = (widget, host) => {
   const d = data(widget);
   const body = card(host, widget, titleOf(widget));
@@ -196460,6 +196473,24 @@ function createDashboardHandle(ctx) {
       { maxZoom: 1 }
     );
   };
+  let clamping = false;
+  const clampCamera = () => {
+    if (ctx.mode !== "fluid" || clamping) return;
+    const vp = ctx.apiRef?.viewport;
+    const g = groups.get(ctx.active);
+    if (!vp?.getViewport || !vp.setViewport || !g) return;
+    const cur = vp.getViewport();
+    const gs = g.size ?? { width: ctx.boardW, height: ctx.boardH };
+    const x = Math.min(Math.max(cur.x, g.position.x), g.position.x + Math.max(0, gs.width - cur.width));
+    const y = Math.min(Math.max(cur.y, g.position.y), g.position.y + Math.max(0, gs.height - cur.height));
+    if (Math.abs(x - cur.x) < 0.5 && Math.abs(y - cur.y) < 0.5) return;
+    clamping = true;
+    try {
+      vp.setViewport({ x, y, width: cur.width, height: cur.height });
+    } finally {
+      clamping = false;
+    }
+  };
   const treeOf = (boardId) => {
     const g = ctx.boardGroups.get(boardId);
     const b = binders.get(boardId);
@@ -196530,11 +196561,14 @@ function createDashboardHandle(ctx) {
         if (!binders.has(id) && model.getGroup(id)) ctx.rebindContainer?.(id);
       }
       for (const b of binders.values()) b.sync();
+      clampCamera();
       ctx.apiRef.renderNow();
       reportChanged();
     };
     ctx.subscriptions = ctx.subscriptions ?? [];
     for (const ev of HISTORY_EVENTS) ctx.subscriptions.push(bus.on(ev, onHistory));
+    const vp = ctx.apiRef?.viewport;
+    if (ctx.mode === "fluid" && vp?.onChange) ctx.subscriptions.push(vp.onChange(() => clampCamera()));
   };
   const execCommand = (cmd) => {
     try {
@@ -196571,6 +196605,7 @@ function createDashboardHandle(ctx) {
     },
     setSizing(mode) {
       for (const b of binders.values()) b.setSizing(mode);
+      clampCamera();
       ctx.apiRef?.renderNow();
     },
     getSizing: () => binders.get(ctx.active)?.getSizing() ?? ctx.optionsBase.sizing ?? (ctx.mode === "fluid" ? "grow" : "fit"),
