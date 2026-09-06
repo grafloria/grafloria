@@ -194281,13 +194281,16 @@ var CSS4 = `
    ask the TILE's size as well as their own body's), so the card can shed its
    padding as the tile gets short instead of clipping its own content. */
 .grafloria-html-layer > .grafloria-node-host { container: axdb-tile / size; }
+/* Two class hops on the header: these blocks precede the header's own rule
+   below and would lose the cascade at equal specificity \u2014 at 54 px the margin
+   stayed 8 px, the body shrank to 14 px and the KPI figure hid. */
 @container axdb-tile (max-height: 90px) {
   .axdb-widget { padding: 8px 14px 7px; }
-  .axdb-widget-h { margin-bottom: 4px; }
+  .axdb-widget > .axdb-widget-h { margin-bottom: 4px; }
 }
 @container axdb-tile (max-height: 46px) {
   .axdb-widget { padding: 4px 12px 3px; }
-  .axdb-widget-h { margin-bottom: 0; }
+  .axdb-widget > .axdb-widget-h { margin-bottom: 0; }
 }
 @container axdb-tile (max-height: 26px) {
   .axdb-widget { padding: 2px 12px 1px; }
@@ -196048,6 +196051,7 @@ function bindDashboardGrid(api, group, options = {}) {
       hostObserver.disconnect();
       containerObserver?.disconnect();
       for (const off of subs) off();
+      for (const id of group.members ?? []) hostOf(id)?.querySelector(":scope > .axdb-rs")?.remove();
       placeholder?.remove();
       placeholder = null;
       if (glideTimer) clearTimeout(glideTimer);
@@ -196125,6 +196129,37 @@ function projectSplit(root, frame, gap = 0, padding = 0, rtl = false) {
   walk3(root, inner);
   return out;
 }
+function groupRectsOf(root, frame, gap = 0, padding = 0, rtl = false) {
+  const out = [];
+  if (!root) return out;
+  const inner = {
+    x: frame.x + padding,
+    y: frame.y + padding,
+    width: Math.max(0, frame.width - 2 * padding),
+    height: Math.max(0, frame.height - 2 * padding)
+  };
+  const walk3 = (node, r, path) => {
+    if (!isSplitGroup(node)) return;
+    out.push({ path, dir: node.dir, rect: { ...r } });
+    const n3 = node.children.length;
+    if (!n3) return;
+    const total = sum(node.children);
+    const along = node.dir === "row" ? r.width : r.height;
+    const free = Math.max(0, along - gap * (n3 - 1));
+    let cursor = 0;
+    const mirrored = node.dir === "row" && rtl;
+    for (let i = 0; i < n3; i++) {
+      const idx = mirrored ? n3 - 1 - i : i;
+      const c = node.children[idx];
+      const size = free * Math.max(0, c.weight) / total;
+      const cr = node.dir === "row" ? { x: r.x + cursor, y: r.y, width: size, height: r.height } : { x: r.x, y: r.y + cursor, width: r.width, height: size };
+      walk3(c, cr, [...path, idx]);
+      cursor += size + gap;
+    }
+  };
+  walk3(root, inner, []);
+  return out;
+}
 function dividersOf(root, frame, gap = 0, padding = 0, rtl = false) {
   const out = [];
   if (!root) return out;
@@ -196161,15 +196196,19 @@ function dividersOf(root, frame, gap = 0, padding = 0, rtl = false) {
   return out;
 }
 function splitLeaf(root, targetId, newId, dir, before = false) {
+  if (!root) return { id: newId, weight: 1 };
+  const path = pathToLeaf(root, targetId);
+  return path ? splitAt(root, path, newId, dir, before) : cloneSplit(root);
+}
+function splitAt(root, path, newId, dir, before = false) {
   const leaf = { id: newId, weight: 1 };
   if (!root) return leaf;
   const tree = cloneSplit(root);
-  const path = pathToLeaf(tree, targetId);
-  if (!path) return tree;
+  const target = nodeAt(tree, path);
+  if (!target) return tree;
   const parentPath = path.slice(0, -1);
   const idx = path[path.length - 1];
   const parent = path.length ? nodeAt(tree, parentPath) : null;
-  const target = nodeAt(tree, path);
   if (parent && parent.dir === dir) {
     const half = target.weight / 2;
     target.weight = half;
@@ -196229,13 +196268,18 @@ function collapse(node) {
   }
   return { dir: node.dir, weight: node.weight, children: flat };
 }
-function insertSplitLeaf(root, id, targetId, side) {
-  if (id === targetId) return cloneSplit(root);
+function insertSplitLeaf(root, id, target, side) {
+  if (typeof target === "string" && id === target) return cloneSplit(root);
   const without = pathToLeaf(root, id) ? removeSplitLeaf(root, id) : cloneSplit(root);
   if (!without) return { id, weight: 1 };
-  if (!pathToLeaf(without, targetId)) return without;
   const dir = side === "left" || side === "right" ? "row" : "column";
-  return splitLeaf(without, targetId, id, dir, side === "left" || side === "top");
+  const before = side === "left" || side === "top";
+  if (typeof target === "string") {
+    if (!pathToLeaf(without, target)) return without;
+    return splitLeaf(without, target, id, dir, before);
+  }
+  if (!nodeAt(without, target.path)) return without;
+  return splitAt(without, target.path, id, dir, before);
 }
 function moveSplitDivider(root, path, index, fraction, min = 0.05) {
   const tree = cloneSplit(root);
@@ -196527,17 +196571,34 @@ function bindDashboardSplit(api, group, options = {}) {
         return { x: r.x, y: r.y + r.height - t / 2, width: r.width, height: t };
     }
   };
+  const GROUP_BAND = 18;
   const dropTargetAt = (tree, wx, wy, exclude) => {
-    for (const [id, r] of rectsOf(tree)) {
+    let leaf = null;
+    for (const [id, r2] of rectsOf(tree)) {
       if (id === exclude) continue;
-      if (wx < r.x || wx > r.x + r.width || wy < r.y || wy > r.y + r.height) continue;
-      const d = { left: wx - r.x, right: r.x + r.width - wx, top: wy - r.y, bottom: r.y + r.height - wy };
-      const n3 = { left: d.left / r.width, right: d.right / r.width, top: d.top / r.height, bottom: d.bottom / r.height };
-      const side = Object.keys(n3).reduce((a, b) => n3[b] < n3[a] ? b : a);
-      return { id, side, rect: r };
+      if (wx >= r2.x && wx <= r2.x + r2.width && wy >= r2.y && wy <= r2.y + r2.height) {
+        leaf = { id, rect: r2 };
+        break;
+      }
     }
-    return null;
+    if (!leaf) return null;
+    const leafPath = pathToLeaf(tree, leaf.id) ?? [];
+    const groups = groupRectsOf(tree, frame(), gap, padding, rtl).filter((g) => g.path.length < leafPath.length && g.path.every((i, k) => leafPath[k] === i)).sort((a, b) => a.path.length - b.path.length);
+    for (const g of groups) {
+      const r2 = g.rect;
+      const d2 = { left: wx - r2.x, right: r2.x + r2.width - wx, top: wy - r2.y, bottom: r2.y + r2.height - wy };
+      const side2 = Object.keys(d2).reduce((a, b) => d2[b] < d2[a] ? b : a);
+      if (d2[side2] <= GROUP_BAND) return { path: g.path, side: side2, rect: r2 };
+    }
+    const r = leaf.rect;
+    const d = { left: wx - r.x, right: r.x + r.width - wx, top: wy - r.y, bottom: r.y + r.height - wy };
+    const n3 = { left: d.left / r.width, right: d.right / r.width, top: d.top / r.height, bottom: d.bottom / r.height };
+    const side = Object.keys(n3).reduce((a, b) => n3[b] < n3[a] ? b : a);
+    return { id: leaf.id, side, rect: r };
   };
+  const targetOf = (t) => "id" in t ? { id: t.id, side: t.side } : { path: t.path, side: t.side };
+  const targetRef = (t) => "id" in t ? t.id : { path: t.path };
+  const targetName = (t) => "id" in t ? nameOf2(t.id) : "the group";
   const worldInsideBoard = (x, y) => {
     const f = frame();
     return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + f.height;
@@ -196560,6 +196621,7 @@ function bindDashboardSplit(api, group, options = {}) {
   const syncA11y = () => {
     if (disposed) return;
     const order = splitLeaves(paintedTree()).filter((id) => !!diagram.getNode(id));
+    for (const id of order) hostOf(id)?.querySelector(":scope > .axdb-rs")?.remove();
     if (focusedId && !order.includes(focusedId)) focusedId = void 0;
     const stop = focusedId ?? order[0];
     order.forEach((id, i) => {
@@ -196664,7 +196726,7 @@ function bindDashboardSplit(api, group, options = {}) {
     }
     const inside = worldInsideBoard(ev.world.x, ev.world.y);
     const t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
-    g.target = t ? { id: t.id, side: t.side } : null;
+    g.target = t ? targetOf(t) : null;
     showInsertion(t ? insertionRect(t.rect, t.side) : null);
     const out = !inside && options.dragOut === "remove" && (!options.removeZone || options.removeZone({ x: ev.screen.x, y: ev.screen.y }, { x: ev.world.x, y: ev.world.y }));
     g.out = out;
@@ -196696,13 +196758,13 @@ function bindDashboardSplit(api, group, options = {}) {
     }
     if (g.target) {
       const side = rtl && (g.target.side === "left" || g.target.side === "right") ? g.target.side === "left" ? "right" : "left" : g.target.side;
-      const after = insertSplitLeaf(g.liveTree, g.id, g.target.id, side);
+      const after = insertSplitLeaf(g.liveTree, g.id, targetRef(g.target), side);
       const changed = JSON.stringify(normalizeSplit(after)) !== JSON.stringify(normalizeSplit(g.startTree));
       if (changed) commitTree(g.startTree, after);
       else project(g.startTree);
       project(readTree());
       api.renderNow();
-      if (changed) live.announce(`${nameOf2(g.id)} moved ${side === "left" || side === "top" ? "before" : "after"} ${nameOf2(g.target.id)}`, "polite", true);
+      if (changed) live.announce(`${nameOf2(g.id)} moved ${side === "left" || side === "top" ? "before" : "after"} ${targetName(g.target)}`, "polite", true);
       fire({ type: changed ? "commit" : "cancel", kind: "move", nodeId: g.id, changed });
       return;
     }
@@ -196843,7 +196905,7 @@ function bindDashboardSplit(api, group, options = {}) {
       }
       const w = toWorld(e.clientX, e.clientY);
       const t = worldInsideBoard(w.x, w.y) ? dropTargetAt(g.liveTree, w.x, w.y) : null;
-      g.target = t ? { id: t.id, side: t.side } : null;
+      g.target = t ? targetOf(t) : null;
       showInsertion(t ? insertionRect(t.rect, t.side) : null);
       chip2?.classList.toggle("axdb-out", !t && !!g.liveTree);
       api.render();
@@ -196854,7 +196916,7 @@ function bindDashboardSplit(api, group, options = {}) {
       gesture = null;
       teardownGesture(g);
       const tree2 = g.liveTree;
-      const after = g.target ? insertSplitLeaf(tree2, node.id, g.target.id, g.target.side) : tree2 ? null : addSplitLeaf(null, node.id, frame(), gap, padding);
+      const after = g.target ? insertSplitLeaf(tree2, node.id, targetRef(g.target), g.target.side) : tree2 ? null : addSplitLeaf(null, node.id, frame(), gap, padding);
       if (!after) {
         api.renderNow();
         fire({ type: "cancel", kind: "palette", nodeId: node.id, changed: false });
