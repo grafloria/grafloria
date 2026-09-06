@@ -178,7 +178,7 @@ const CSS = `
 /* The data behind a chart, for readers that cannot see the chart: present in
    the accessibility tree, absent from the picture (WCAG 1.1.1). */
 .axdb-sr {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  position: absolute; top: 0; left: 0; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
   clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
 }
 .axdb-widget-empty {
@@ -212,9 +212,13 @@ const CSS = `
    takes more than two fifths of the body. */
 .axdb-kpi-s { margin-top: auto; height: auto; min-height: 0; flex: 1 1 34px; max-height: 40%; }
 
-/* donut: ring beside its legend */
+/* donut: ring beside its legend. The ring takes the body's height (a tall
+   tile gets a bigger ring, not dead card), square, capped so its centre figure
+   stays a figure and not a headline. */
 .axdb-widget-b.axdb-donut { display: flex; align-items: center; gap: 10px; }
-.axdb-widget-b.axdb-donut > svg { max-width: 150px; }
+.axdb-widget-b.axdb-donut > svg {
+  flex: 0 0 auto; width: auto; height: 100%; max-height: 260px; max-width: 60%; aspect-ratio: 1 / 1;
+}
 
 /* legend chips, shared by line and donut */
 .axdb-lg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; }

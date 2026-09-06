@@ -132,6 +132,22 @@ describe('built-in widget renderers — structure from the declared data', () =>
     expect(h.querySelector('svg')!.textContent).toContain('Lead');
   });
 
+  it('funnel draws to its box with fixed type, and the smallest stage still holds its number', () => {
+    const h = paint({
+      id: 'f',
+      kind: 'funnel',
+      data: { stages: [{ label: 'Leads', value: 100000 }, { label: 'Won', value: 1 }] },
+    });
+    const svg = h.querySelector('svg')!;
+    // Outside a layout the classic 640x250 stands in — the viewBox IS the box,
+    // never a 260-wide picture scaled with the tile (24-px digits in a tall one).
+    expect(svg.getAttribute('viewBox')).toBe('0 0 640 250');
+    const [lead, won] = Array.from(h.querySelectorAll('rect'));
+    expect(parseFloat(won.getAttribute('width')!)).toBeGreaterThanOrEqual(20); // wider than "1" at 11 px
+    expect(parseFloat(won.getAttribute('width')!)).toBeLessThan(parseFloat(lead.getAttribute('width')!) / 10);
+    for (const t of Array.from(svg.querySelectorAll('text'))) expect(['11', '10.5']).toContain(t.getAttribute('font-size'));
+  });
+
   it('table renders a header cell per column, a row per row, numbers right-aligned', () => {
     const h = paint({
       id: 't',
@@ -380,5 +396,16 @@ describe('the KPI card steps down instead of clipping', () => {
     expect(css).toContain('@container (max-height: 40px) { .axdb-kpi > .axdb-kpi-d { display: none; } }');
     expect(css).toContain('@container (max-height: 22px) { .axdb-kpi > .axdb-kpi-v { display: none; } }');
     expect(css).toContain('.grafloria-html-layer > .grafloria-node-host { container-type: size; }');
+  });
+
+  it('the donut ring takes its body height (square, capped) instead of a fixed 150 px', () => {
+    ensureDashboardKitStyles(document);
+    const css = document.getElementById(DASHBOARD_KIT_STYLE_ID)!.textContent ?? '';
+    const rule = css.slice(css.indexOf('.axdb-widget-b.axdb-donut > svg {'));
+    expect(rule.slice(0, rule.indexOf('}'))).toContain('height: 100%; max-height: 260px; max-width: 60%; aspect-ratio: 1 / 1;');
+    expect(css).not.toContain('max-width: 150px');
+    // The sr-only data table sits at the body's origin, so it never extends the
+    // card's scroll range below the chart (a table ignores a 1-px height).
+    expect(css).toContain('.axdb-sr {\n  position: absolute; top: 0; left: 0;');
   });
 });

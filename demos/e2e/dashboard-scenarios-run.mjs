@@ -1350,6 +1350,62 @@ try {
   await page.close();
 }
 
+// ---- S32 · THE CAMERA IS A SCROLL POSITION (round two, 2026-09-06) --------
+// Found on the live page: scroll in Grow, press Fit → the board shrank to the
+// canvas while the camera stayed 600 px down. And a wheel ran past the last row.
+{
+  begin('s32-scroll-then-fit-camera-follows');
+  const page = await freshPage('/dashboard/fluid-board.html');
+  const read = () => page.evaluate(() => {
+    const c = document.getElementById('canvas').getBoundingClientRect();
+    const hosts = [...document.querySelectorAll('.grafloria-node-host')].map((h) => h.getBoundingClientRect());
+    const m = window.__demoCtx.handle.metrics();
+    return {
+      top: Math.round(Math.min(...hosts.map((r) => r.y)) - c.y),
+      bottom: Math.round(Math.max(...hosts.map((r) => r.bottom)) - c.y),
+      canvasH: Math.round(c.height),
+      frameH: Math.round(m.frame.height),
+      sizing: m.sizing,
+      vy: Math.round(window.__demoCtx.instance.viewport.getViewport().y),
+    };
+  });
+  const rectOf = (id) => page.evaluate((id) => document.querySelector(`.grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect().toJSON(), id);
+  const c = await page.evaluate(() => document.getElementById('canvas').getBoundingClientRect().toJSON());
+  // Grow a board taller than the canvas: the donut onto the KPI row (the user's gesture).
+  const mix = await rectOf('mix');
+  const win = await rectOf('win');
+  await page.mouse.move(mix.x + mix.width / 2, mix.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(win.x + 20, win.y + 30, { steps: 25 });
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  const tall = await read();
+  await page.mouse.move(c.x + c.width / 2, c.y + c.height / 2);
+  await page.mouse.wheel(0, 100000);
+  await page.waitForTimeout(400);
+  const down = await read();
+  await shot(page, 'wheel-stops-at-last-row');
+  await page.mouse.wheel(0, -100000);
+  await page.waitForTimeout(400);
+  const up = await read();
+  await page.mouse.wheel(0, 600);
+  await page.waitForTimeout(400);
+  await page.click('#fb-fit');
+  await page.waitForTimeout(600);
+  const fit = await read();
+  await shot(page, 'fit-after-scroll');
+  const grewTall = tall.frameH > tall.canvasH;
+  const stoppedAtLastRow = down.vy > 0 && down.bottom <= down.canvasH + 1 && down.bottom >= down.canvasH - 60;
+  const backToTop = up.vy === 0 && up.top >= 0;
+  const fitPulledBack = fit.sizing === 'fit' && fit.vy === 0 && fit.top >= 0 && fit.bottom <= fit.canvasH + 1;
+  const st = await boardState(page);
+  verdict(grewTall && stoppedAtLastRow && backToTop && fitPulledBack && st.overlaps === 0,
+    `grew-tall=${grewTall}(${tall.frameH}>${tall.canvasH}) wheel-stops-at-last-row=${stoppedAtLastRow}(vy=${down.vy},bottom=${down.bottom}/${down.canvasH}) ` +
+    `back-to-top=${backToTop}(vy=${up.vy},top=${up.top}) fit-pulls-camera-back=${fitPulledBack}(vy=${fit.vy},top=${fit.top},bottom=${fit.bottom}/${fit.canvasH}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
+
 } finally {
   await browser.close();
   server.close();

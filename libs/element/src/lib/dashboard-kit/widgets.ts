@@ -491,30 +491,49 @@ export const renderDonutWidget: WidgetRenderer = (widget, host) => {
 
 // -- funnel -------------------------------------------------------------------
 
-/** `{ stages: [{label, value}] }` — centred bars scaled against the first stage. */
+/** `{ stages: [{label, value}] }` — centred bars scaled against the widest stage. */
 export const renderFunnelWidget: WidgetRenderer = (widget, host) => {
-  const d = data<FunnelWidgetData>(widget);
   const body = card(host, widget, titleOf(widget));
+  layoutFunnel(widget, body);
+  watchSize(host, () => layoutFunnel(widget, body));
+};
+
+/** Room an 11-px value needs, so the smallest stage's bar still holds its number. */
+const valueWidth = (text: string): number => text.length * 6.6 + 14;
+
+/**
+ * The funnel's body, drawn to the body's current box. The old fixed 260-wide
+ * viewBox scaled bars AND type with the tile: 24-px digits in a tall tile,
+ * "188" spilling out of a stage narrower than its own label. Here the type is
+ * fixed, bars share the height between a readable 18 px and a 40 px cap, the
+ * stack is centred, and a bar is never narrower than its value.
+ */
+function layoutFunnel(widget: DashboardWidgetSpec, body: HTMLElement): void {
+  const d = data<FunnelWidgetData>(widget);
   const stages = (Array.isArray(d.stages) ? d.stages : []).filter((s) => !!s);
   if (!stages.length) return empty(body);
 
-  const W = 260;
-  const rowH = 34;
-  const gap = 8;
-  const H = stages.length * (rowH + gap);
+  const { W, H } = chartBox(body);
+  const n = stages.length;
+  const gap = 6;
+  const rowH = Math.max(18, Math.min(40, (H - gap * (n - 1)) / n));
+  const top = Math.max(0, (H - (n * rowH + (n - 1) * gap)) / 2);
+  const labelCol = Math.min(120, Math.max(60, W * 0.28));
+  const track = Math.max(40, W - labelCol - 16);
   const max = Math.max(...stages.map((s) => num(s.value)), 1);
-  const track = W - 90;
 
   const marks = stages
     .map((s, i) => {
-      const w = Math.max(2, (num(s.value) / max) * track);
-      const x = (track - w) / 2 + 8;
-      const y = i * (rowH + gap);
+      const text = compact(num(s.value));
+      const w = Math.min(track, Math.max(valueWidth(text), (num(s.value) / max) * track));
+      const x = 8 + (track - w) / 2;
+      const y = top + i * (rowH + gap);
+      const mid = (y + rowH / 2 + 4).toFixed(1);
       return (
-        `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${rowH}" rx="6" fill="${colorAt(i)}"></rect>` +
-        `<text x="${(x + w / 2).toFixed(1)}" y="${y + rowH / 2 + 4}" text-anchor="middle" font-size="11" ` +
-        `font-weight="600" fill="#fff">${esc(compact(num(s.value)))}</text>` +
-        `<text x="${W - 78}" y="${y + rowH / 2 + 4}" font-size="10.5" fill="var(--axdb-muted)">${esc(s.label ?? '')}</text>`
+        `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${rowH.toFixed(1)}" rx="6" fill="${colorAt(i)}"></rect>` +
+        `<text x="${(x + w / 2).toFixed(1)}" y="${mid}" text-anchor="middle" font-size="11" ` +
+        `font-weight="600" fill="#fff">${esc(text)}</text>` +
+        `<text x="${8 + track + 8}" y="${mid}" font-size="10.5" fill="var(--axdb-muted)">${esc(s.label ?? '')}</text>`
       );
     })
     .join('');
@@ -523,7 +542,7 @@ export const renderFunnelWidget: WidgetRenderer = (widget, host) => {
     `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
     `aria-label="${esc(titleOf(widget))}">${marks}</svg>` +
     srTable(titleOf(widget), ['Stage', 'Value'], stages.map((s) => [s.label ?? '', num(s.value)]));
-};
+}
 
 // -- table --------------------------------------------------------------------
 
