@@ -194233,7 +194233,12 @@ var CSS4 = `
   pointer-events: none;
   opacity: .9;
   filter: drop-shadow(0 8px 14px rgba(16, 24, 40, .3));
+  transition: opacity .12s, filter .12s;
 }
+/* A bounded board with no room refuses the entry: the chip dims to say so
+   (the same signal a tile ghost gives outside the board). Without this rule
+   the class was set and nothing showed \u2014 a refusal a user could not see. */
+.axdb-drag-chip.axdb-out { opacity: .35; filter: grayscale(.7) drop-shadow(0 8px 14px rgba(16, 24, 40, .2)); }
 
 /* ===========================================================================
    BUILT-IN WIDGET CARDS \u2014 what widgets.ts paints when a page writes no
@@ -194698,6 +194703,8 @@ function bindDashboardGrid(api, group, options = {}) {
   const nameOf2 = (node) => {
     const title = node.getMetadata?.("widgetTitle");
     if (typeof title === "string" && title) return title;
+    const label = node.getMetadata?.("widgetSpec")?.label;
+    if (typeof label === "string" && label) return label;
     const kind = node.getMetadata?.("widgetKind");
     return typeof kind === "string" && kind && kind !== "widget" ? `${kind} widget` : node.id;
   };
@@ -195215,8 +195222,13 @@ function bindDashboardGrid(api, group, options = {}) {
       if (!pullsX) w = itemNow.w * (cuNow + gap) - gap;
       if (!pullsY) h = itemNow.h * (rhNow + gap) - gap;
     }
-    const px2 = E.w ? right - w : left;
-    const py = E.n ? bottom - h : top;
+    const liveRect = itemNow ? cellToRect(itemNow, fNow, ggNow, rows()) : null;
+    const anchorLeft = liveRect && !E.w && !E.e ? liveRect.x : left;
+    const anchorRight = liveRect ? liveRect.x + liveRect.width : right;
+    const anchorTop = liveRect && !E.n && !E.s ? liveRect.y : top;
+    const anchorBottom = liveRect ? liveRect.y + liveRect.height : bottom;
+    const px2 = E.w ? anchorRight - w : anchorLeft;
+    const py = E.n ? anchorBottom - h : anchorTop;
     g.node.setSize(w, h, g.node.size.depth ?? 0);
     g.node.setPosition(px2, py);
     ghostStyleFastPath(g, { x: px2, y: py, width: w, height: h });
