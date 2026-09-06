@@ -1119,3 +1119,56 @@ describe('fit means bounded', () => {
     expect(handle.addWidget({ id: 'r7', kind: 'kpi', span: 12, rows: 1 })).toBeDefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// PER-WIDGET CONSTRAINTS AND THE STATIC BOARD (plan step 4).
+// ---------------------------------------------------------------------------
+describe('per-widget limits, pointer flags and the static board', () => {
+  it('limits reach the engine: a resize clamps to minSpan/maxSpan/minRows/maxRows', async () => {
+    const { handle } = mount(
+      dashboard({ widgets: [{ id: 'a', kind: 'kpi', span: 6, rows: 2, limits: { minSpan: 3, maxSpan: 8, minRows: 1, maxRows: 3 } }] })
+    );
+    expect(await handle.widget('a')!.resize(1, 1)).toBe(true);
+    expect(handle.widget('a')!.cell).toMatchObject({ w: 3, h: 1 });
+    expect(await handle.widget('a')!.resize(12, 9)).toBe(true);
+    expect(handle.widget('a')!.cell).toMatchObject({ w: 8, h: 3 });
+  });
+
+  it('limits clamp the AUTHORED size too, and a column change honours them', () => {
+    const { handle } = mount(
+      dashboard({ widgets: [{ id: 'a', kind: 'kpi', span: 12, limits: { maxSpan: 6, minSpan: 4 } }] })
+    );
+    expect(handle.widget('a')!.cell).toMatchObject({ w: 6 });
+    handle.setColumns(6); // 6 → 3 by ratio, but never under minSpan 4
+    expect(handle.widget('a')!.cell!.w).toBe(4);
+  });
+
+  it('limits, movable and resizable reach the node on BOTH paths and round-trip through toJSON()', () => {
+    const { model, handle } = mount(
+      dashboard({ widgets: [{ id: 'a', kind: 'kpi', span: 3, limits: { maxSpan: 6 }, movable: false, resizable: false }] })
+    );
+    expect(model.getNode('a')!.getMetadata('widgetLimits')).toEqual({ maxSpan: 6 });
+    expect(model.getNode('a')!.getMetadata('widgetMovable')).toBe(false);
+    expect(model.getNode('a')!.getMetadata('widgetResizable')).toBe(false);
+    handle.addWidget({ id: 'b', kind: 'kpi', span: 3, limits: { minRows: 2 }, movable: false });
+    expect(model.getNode('b')!.getMetadata('widgetLimits')).toEqual({ minRows: 2 });
+    expect(model.getNode('b')!.getMetadata('widgetMovable')).toBe(false);
+    expect(model.getNode('b')!.getMetadata('widgetResizable')).toBeUndefined();
+    const saved = handle.toJSON().views[0].widgets;
+    expect(saved.find((w) => w.id === 'a')).toMatchObject({ limits: { maxSpan: 6 }, movable: false, resizable: false });
+    expect(saved.find((w) => w.id === 'b')).toMatchObject({ limits: { minRows: 2 }, movable: false });
+  });
+
+  it('a static board reports so, round-trips, toggles live, and the API still edits it', async () => {
+    const { handle } = mount(dashboard({ static: true, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    expect(handle.getStatic()).toBe(true);
+    expect(handle.metrics()!.static).toBe(true);
+    expect(handle.toJSON().static).toBe(true);
+    // gridstack's staticGrid: the POINTER is off, the API is not.
+    expect(await handle.widget('a')!.moveTo(3, 0)).toBe(true);
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 3 });
+    handle.setStatic(false);
+    expect(handle.getStatic()).toBe(false);
+    expect(handle.toJSON().static).toBe(false);
+  });
+});

@@ -80,6 +80,17 @@ export interface DashboardWidgetSpec {
   y?: number;
   /** Pinned: never pushed, refuses the mover, survives every reflow. */
   pinned?: boolean;
+  /**
+   * SIZE LIMITS in cells (gridstack's minW/maxW/minH/maxH). A resize — by
+   * hand, by the API, or by a column change scaling widths — clamps to them.
+   * `maxRows` here is the WIDGET's row limit; a container's inner row count is
+   * its own `maxRows` field one level up, which is why these live in `limits`.
+   */
+  limits?: { minSpan?: number; maxSpan?: number; minRows?: number; maxRows?: number };
+  /** May the user drag it? Default true. The API can always move it. */
+  movable?: boolean;
+  /** May the user resize it? Default true (no handle when false). The API can always resize it. */
+  resizable?: boolean;
   /** Your payload — passed straight back to `renderWidget`. */
   data?: Record<string, unknown>;
   /** Optional title used by the built-in fallback renderer. */
@@ -158,6 +169,12 @@ export interface DashboardOptions {
    * rows and the canvas pans.
    */
   overflow?: 'bounded' | 'scroll';
+  /**
+   * STATIC board (gridstack's `staticGrid`): no drag, no resize, no handles —
+   * the viewer's mode. The API (moveTo, resize, addWidget, undo) still works,
+   * so a designer/viewer pair is one flag apart. Live: `handle.setStatic()`.
+   */
+  static?: boolean;
   /**
    * RIGHT-TO-LEFT boards: column x=0 renders at the RIGHT edge and columns run
    * leftwards. Cells are untouched — the same `widgets` array describes the
@@ -247,6 +264,9 @@ export interface DashboardHandle {
   /** RTL mirroring, live — pixels only, cells never change. */
   setRtl(on: boolean): void;
   getRtl(): boolean;
+  /** Static (read-only for the pointer) mode, live — the viewer/designer switch. */
+  setStatic(on: boolean): void;
+  getStatic(): boolean;
   /**
    * Add a widget to a view. CREATES the node (you do not pre-build one), wires
    * its metadata, and commits node + membership as ONE undoable step.
@@ -512,6 +532,12 @@ function buildWidgetNode(w: DashboardWidgetSpec, rowHeight: number): NodeModel {
   if (w.title !== undefined) node.setMetadata('widgetTitle', w.title);
   node.setMetadata('columnSpan', w.span ?? 3);
   node.setMetadata('rowSpan', w.rows ?? 1);
+  // Limits and the two pointer flags reach the node too, so the binder reads
+  // them and a reload rebuilds them (only when authored — an unconstrained
+  // widget serialises exactly as it always did).
+  if (w.limits !== undefined) node.setMetadata('widgetLimits', { ...w.limits });
+  if (w.movable === false) node.setMetadata('widgetMovable', false);
+  if (w.resizable === false) node.setMetadata('widgetResizable', false);
   if (w.x !== undefined && w.y !== undefined) {
     node.setGridItem({
       columnStart: w.x + 1,
@@ -558,8 +584,15 @@ function assignCells(widgets: DashboardWidgetSpec[], columns: number): void {
   let y = 0;
   let rowMax = 0;
   for (const w of widgets) {
-    const span = Math.max(1, Math.min(columns, w.span ?? 3));
-    const rows = Math.max(1, w.rows ?? 1);
+    const lim = w.limits ?? {};
+    let span = Math.max(1, Math.min(columns, w.span ?? 3));
+    if (lim.minSpan !== undefined) span = Math.max(span, lim.minSpan);
+    if (lim.maxSpan !== undefined) span = Math.min(span, lim.maxSpan);
+    span = Math.max(1, Math.min(columns, span));
+    let rows = Math.max(1, w.rows ?? 1);
+    if (lim.minRows !== undefined) rows = Math.max(rows, lim.minRows);
+    if (lim.maxRows !== undefined) rows = Math.min(rows, lim.maxRows);
+    rows = Math.max(1, rows);
     if (w.x === undefined || w.y === undefined) {
       if (x + span > columns) {
         x = 0;
@@ -863,6 +896,11 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       ctx.apiRef?.renderNow();
     },
     getRtl: () => binders.get(ctx.active)?.getRtl() ?? (ctx.optionsBase.rtl ?? false),
+    setStatic(on) {
+      for (const b of binders.values()) b.setStatic(on);
+      ctx.apiRef?.renderNow();
+    },
+    getStatic: () => binders.get(ctx.active)?.getStatic() ?? (ctx.optionsBase.static ?? false),
     addWidget(spec, viewId) {
       const vid = viewId ?? ctx.active;
       // `vid` may name a view OR a container — both are boards with a group,
@@ -968,6 +1006,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         sizing: handle.getSizing(),
         float: handle.getFloat(),
         rtl: handle.getRtl(),
+        static: handle.getStatic(),
         views: savedViews,
       } as DashboardSnapshot;
     },
@@ -1157,6 +1196,9 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           // cannot rebuild the card's header. These two paths are the drift the
           // comment on buildWidgetNode warns about — they must agree.
           ...(w.title !== undefined ? { widgetTitle: w.title } : {}),
+          ...(w.limits !== undefined ? { widgetLimits: { ...w.limits } } : {}),
+          ...(w.movable === false ? { widgetMovable: false } : {}),
+          ...(w.resizable === false ? { widgetResizable: false } : {}),
           columnSpan: w.span,
           rowSpan: w.rows,
           gridItem: { columnStart: w.x! + 1, columnEnd: w.x! + 1 + w.span!, rowStart: w.y! + 1, rowEnd: w.y! + 1 + w.rows! },
@@ -1260,6 +1302,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           rtl: options.rtl ?? false,
           fluid: mode === 'fluid',
           overflow,
+          static: options.static ?? false,
         });
         g.size = { width: viewW(v), height: viewH(v), depth: 0 };
         g.position = { x: v.id === ctx.active ? 0 : OFFSCREEN_X, y: 0 };
@@ -1279,6 +1322,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             rtl: options.rtl ?? false,
             fluid: mode === 'fluid',
             overflow,
+            static: options.static ?? false,
             ...(options.responsive ? { responsive: options.responsive } : {}),
             ...(options.binder ?? {}),
             onGesture: (e) => {
@@ -1355,6 +1399,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
                 maxRows: innerRows,
                 float: false,
                 rtl: options.rtl ?? false,
+                static: options.static ?? false,
                 onGesture: (e) => {
                   if (e.type === 'commit') reportChanged();
                   options.binder?.onGesture?.(e);

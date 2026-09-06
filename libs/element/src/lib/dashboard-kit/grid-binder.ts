@@ -220,6 +220,12 @@ export interface DashboardGridOptions {
    * never paints past its own edge (review D6: 204 px of tiles below the frame).
    */
   overflow?: 'bounded' | 'scroll';
+  /**
+   * STATIC board (gridstack's `staticGrid`): the pointer can neither drag nor
+   * resize and no handles are injected; the API (moveTo/resizeTo, adds, undo)
+   * still works. The viewer's mode — see `setStatic` for the live switch.
+   */
+  static?: boolean;
 }
 
 export interface DashboardGridHandle {
@@ -249,6 +255,9 @@ export interface DashboardGridHandle {
   /** RTL mirroring, live. Cells never change — only the pixels. */
   setRtl(on: boolean): void;
   getRtl(): boolean;
+  /** Static mode, live: pointer gestures off (and handles gone) or back on. */
+  setStatic(on: boolean): void;
+  getStatic(): boolean;
   /**
    * The layout to PERSIST — from the engine's LARGEST cached column count, so
    * saving while the board is narrow still saves the wide layout the user
@@ -264,6 +273,7 @@ export interface DashboardGridHandle {
     rtl: boolean;
     responsive: boolean;
     fluid: boolean;
+    static: boolean;
     /** Fit-mode row capacity (undefined when unbounded). */
     capacity: number | undefined;
     gap: number;
@@ -441,6 +451,10 @@ interface GestureState {
   startCells: Map<string, CellRect>;
   startGeom: Map<string, GeomSnapshot>;
   startSize: { width: number; height: number };
+  /** The tile's rect origin at press — the anchor a resize rebuilds from. */
+  startPos: { x: number; y: number };
+  /** Which edges a RESIZE moves (the corner handle is s+e; s+w on RTL). */
+  edges: ResizeEdges;
   spans: { w: number; h: number };
   /** Drag-out: the item is currently absent from the engine. */
   removedFromBoard: boolean;
@@ -466,6 +480,40 @@ interface GestureState {
 
 const DRAG_THRESHOLD = 4;
 const GLIDE_OFF_DELAY = 400;
+/** A press this close (CSS px) to a tile's border takes that edge for a resize. */
+const EDGE_GRIP = 7;
+
+interface ResizeEdges {
+  n: boolean;
+  e: boolean;
+  s: boolean;
+  w: boolean;
+}
+const NO_EDGES: ResizeEdges = { n: false, e: false, s: false, w: false };
+
+/** Which of a host's edges a client point is within EDGE_GRIP of (none when outside). */
+function edgesNear(host: Element, cx: number, cy: number): ResizeEdges {
+  const r = host.getBoundingClientRect();
+  if (cx < r.left - 2 || cx > r.right + 2 || cy < r.top - 2 || cy > r.bottom + 2) return NO_EDGES;
+  return {
+    n: cy - r.top <= EDGE_GRIP,
+    s: r.bottom - cy <= EDGE_GRIP,
+    w: cx - r.left <= EDGE_GRIP,
+    e: r.right - cx <= EDGE_GRIP,
+  };
+}
+
+const anyEdge = (E: ResizeEdges): boolean => E.n || E.e || E.s || E.w;
+
+/** The resize cursor for a set of edges ('' when none). */
+function cursorFor(E: ResizeEdges): string {
+  const v = E.n || E.s;
+  const h = E.e || E.w;
+  if (v && h) return (E.n && E.w) || (E.s && E.e) ? 'nwse-resize' : 'nesw-resize';
+  if (v) return 'ns-resize';
+  if (h) return 'ew-resize';
+  return '';
+}
 
 let binderSeq = 0;
 
@@ -496,6 +544,7 @@ export function bindDashboardGrid(
   const wantHandles = options.resizeHandles !== false;
   const fluid = options.fluid === true;
   const overflow = options.overflow ?? 'bounded';
+  let isStatic = options.static === true;
   /** The design height. Fluid boards re-read it from the container. */
   let designH = options.designHeight ?? group.size?.height ?? 0;
   /** Fit-mode CAPACITY in rows (see `overflow`). Undefined = unbounded. */
@@ -661,11 +710,25 @@ export function bindDashboardGrid(
       const spanMeta = Number(node.getMetadata?.('columnSpan')) || 0;
       const rowsMeta = Number(node.getMetadata?.('rowSpan')) || 0;
       const locked = node.state?.locked === true;
+      // Per-widget size limits ride on the node as `widgetLimits` and reach the
+      // engine as gridstack's minW/maxW/minH/maxH.
+      const lim = (node.getMetadata?.('widgetLimits') ?? {}) as {
+        minSpan?: number;
+        maxSpan?: number;
+        minRows?: number;
+        maxRows?: number;
+      };
+      const limits = {
+        ...(lim.minSpan !== undefined ? { minW: lim.minSpan } : {}),
+        ...(lim.maxSpan !== undefined ? { maxW: lim.maxSpan } : {}),
+        ...(lim.minRows !== undefined ? { minH: lim.minRows } : {}),
+        ...(lim.maxRows !== undefined ? { maxH: lim.maxRows } : {}),
+      };
       const cell = cellFromGridItem(node.getGridItem?.(), {
         w: spanMeta || 1,
         h: rowsMeta || 1,
       });
-      if (cell) return { id, ...cell, locked };
+      if (cell) return { id, ...cell, locked, ...limits };
       const f = frame();
       const g = geom();
       if (node.position && (node.position.x !== 0 || node.position.y !== 0)) {
@@ -681,9 +744,10 @@ export function bindDashboardGrid(
           w: spanMeta || s.w,
           h: rowsMeta || s.h,
           locked,
+          ...limits,
         };
       }
-      return { id, x: 0, y: 0, w: spanMeta || 1, h: rowsMeta || 1, locked, autoPosition: true };
+      return { id, x: 0, y: 0, w: spanMeta || 1, h: rowsMeta || 1, locked, autoPosition: true, ...limits };
     }
     const grp = diagram.getGroup(id);
     const cell = grp
@@ -853,7 +917,7 @@ export function bindDashboardGrid(
       const host = hostOf(id);
       if (!host) continue;
       const existing = host.querySelector(':scope > .axdb-rs');
-      if (node.state?.locked === true) {
+      if (node.state?.locked === true || isStatic || node.getMetadata?.('widgetResizable') === false) {
         existing?.remove();
         continue;
       }
@@ -1386,23 +1450,36 @@ export function bindDashboardGrid(
 
     // resize: fluid pixel preview on the ghost, cell-stepped live push.
     //
-    // RTL: the corner handle is on the BOTTOM-LEFT and the tile grows
-    // leftwards, so the horizontal delta inverts and the tile's RIGHT edge is
-    // what stays pinned. Everything below this line — the span rounding, the
-    // engine's resizeCheck, the maxRows escalation — is in CELLS and needs no
-    // mirroring at all.
-    const dw = rtl ? g.downWorld.x - ev.world.x : ev.world.x - g.downWorld.x;
-    const dh = ev.world.y - g.downWorld.y;
+    // ANCHORED ON THE OPPOSITE EDGE. The gesture carries which edges the press
+    // took (the corner handle is s+e — s+w on an RTL board, whose corner sits
+    // bottom-left — and a press near any border takes that edge), and the
+    // tile's rect is rebuilt from its start rect with only those edges moved.
+    // A pull from the west or north keeps the right/bottom edge pinned, in
+    // cells too: the target cell is anchored, and the engine is driven MOVE
+    // then RESIZE when growing (so the push happens on the side that grows)
+    // and RESIZE then MOVE when shrinking. The s+e case reproduces the old
+    // corner maths exactly, which the scenario battery pins.
+    const dx = ev.world.x - g.downWorld.x;
+    const dy = ev.world.y - g.downWorld.y;
+    const E = g.edges;
+    let left = g.startPos.x;
+    let right = g.startPos.x + g.startSize.width;
+    let top = g.startPos.y;
+    let bottom = g.startPos.y + g.startSize.height;
+    if (E.e) right += dx;
+    if (E.w) left += dx;
+    if (E.s) bottom += dy;
+    if (E.n) top += dy;
     const f = frame();
     const gg = geom();
     const minW = Math.max(8, columnUnitFor(gg, f.width));
-    let w = Math.max(minW, g.startSize.width + dw);
+    let w = Math.max(minW, right - left);
     // The height min-clamp is applied AFTER the escalation logic below: on a
     // grown strip "one current row" IS the whole strip, and clamping the
     // fluid pull to it made the de-escalation threshold unreachable — the
     // ratchet's second disguise (grow committed; a fresh shrink gesture could
     // never pull low enough to ask the parent for a row back).
-    let h = g.startSize.height + dh;
+    let h = bottom - top;
     // NESTED HEIGHT ESCALATION (live report: "i cant increase height"). A
     // bounded strip cannot grow a tile taller than itself — so pulling
     // clearly past its bottom GROWS THE STRIP: the slab gains a row in the
@@ -1452,37 +1529,54 @@ export function bindDashboardGrid(
     // The fluid preview must not outrun what the board can accept: on a
     // bounded strip an unclamped ghost ballooned to 273px while the engine
     // (rightly) refused every cell — visually indistinguishable from the
-    // squeeze bug it replaced. Clamp to the tile's maximum legal rect.
+    // squeeze bug it replaced. Clamp to the tile's maximum legal rect: the
+    // growing side can reach the board edge on ITS side — column 0 / row 0
+    // for a west / north pull, the last column / the bound otherwise.
     // (Escalation above may have just grown OR shrunk the board — re-read.)
     const fNow = frame();
     const ggNow = geom();
     h = Math.max(Math.max(8, rowHeightFor(ggNow, rows())), h);
     const itemNow = engine.getItem(g.id);
+    const pullsX = E.e || E.w;
+    const pullsY = E.n || E.s;
     if (itemNow) {
       const cuNow = columnUnitFor(ggNow, fNow.width);
       const rhNow = rowHeightFor(ggNow, rows());
-      w = Math.min(w, (columns - itemNow.x) * (cuNow + gap) - gap);
+      const wCells = E.w ? itemNow.x + itemNow.w : columns - itemNow.x;
+      w = Math.min(w, wCells * (cuNow + gap) - gap);
       const b = bound();
-      if (b !== undefined) {
-        h = Math.min(h, Math.max(1, b - itemNow.y) * (rhNow + gap) - gap);
-      }
+      const hCells = E.n ? itemNow.y + itemNow.h : b !== undefined ? Math.max(1, b - itemNow.y) : Infinity;
+      if (hCells !== Infinity) h = Math.min(h, hCells * (rhNow + gap) - gap);
+      // AN AXIS NOBODY PULLED KEEPS ITS CELLS. In fit mode a push during the
+      // gesture reflows the board and the row height shrinks, so a pixel
+      // height that never changed re-quantises to MORE rows (measured: a west
+      // pull took a 3-row donut to 5). The un-pulled axis follows the live
+      // projection of its cell span instead of the start-of-gesture pixels.
+      if (!pullsX) w = itemNow.w * (cuNow + gap) - gap;
+      if (!pullsY) h = itemNow.h * (rhNow + gap) - gap;
     }
+    // Anchor: the pulled edges follow w/h, the opposite ones stay put.
+    const px = E.w ? right - w : left;
+    const py = E.n ? bottom - h : top;
     g.node.setSize(w, h, g.node.size.depth ?? 0);
-    if (rtl) {
-      // Keep the RIGHT edge pinned: mirrored, that is the tile's origin. The
-      // start position is recoverable from the grab offset, so this needs no
-      // extra gesture state.
-      const startLeft = g.downWorld.x - g.grab.dx;
-      const right = startLeft + g.startSize.width;
-      g.node.setPosition(right - w, g.node.position.y);
-      ghostStyleFastPath(g, { x: right - w, width: w, height: h });
-    } else {
-      ghostStyleFastPath(g, { width: w, height: h });
-    }
+    g.node.setPosition(px, py);
+    ghostStyleFastPath(g, { x: px, y: py, width: w, height: h });
     const spanF = bound() !== undefined ? frame() : f;
     const spanG = bound() !== undefined ? geom() : gg;
     const span = sizeToSpan(w, h, spanF, spanG, rows());
-    if (engine.resizeCheck(g.id, span.w, span.h).changed) project();
+    if (itemNow) {
+      if (!pullsX) span.w = itemNow.w;
+      if (!pullsY) span.h = itemNow.h;
+      const tx = E.w ? itemNow.x + itemNow.w - span.w : itemNow.x;
+      const ty = E.n ? itemNow.y + itemNow.h - span.h : itemNow.y;
+      const moves = tx !== itemNow.x || ty !== itemNow.y;
+      const growing = span.w > itemNow.w || span.h > itemNow.h;
+      let changed = false;
+      if (moves && growing) changed = engine.moveCheck(g.id, tx, ty, { gate: false }).changed || changed;
+      changed = engine.resizeCheck(g.id, span.w, span.h).changed || changed;
+      if (moves && !growing) changed = engine.moveCheck(g.id, tx, ty, { gate: false }).changed || changed;
+      if (changed) project();
+    }
     syncPlaceholder();
   };
 
@@ -1778,6 +1872,31 @@ export function bindDashboardGrid(
       }
       const node = diagram.getNode(hit.node.id);
       if (!node || node.state?.locked === true) return; // pinned: refuse; click still focuses
+      if (isStatic) return; // a static board: claimed and deadened, click still focuses
+      // Which edges did the press take? The corner handle names its own (s+e,
+      // or s+w on RTL); a bare press within EDGE_GRIP of the tile's border
+      // takes that border; anywhere else is a move.
+      const target = (ev.source?.target ?? null) as Element | null;
+      const onHandle = !!target?.closest?.('.axdb-rs');
+      const hostEl = hostOf(node.id);
+      const resizable = node.getMetadata?.('widgetResizable') !== false;
+      const movable = node.getMetadata?.('widgetMovable') !== false;
+      let edges: ResizeEdges = NO_EDGES;
+      if (resizable) {
+        if (onHandle) edges = rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false };
+        else if (hostEl) {
+          // `ev.screen` is ELEMENT-LOCAL px; the host rect is in client px.
+          // Compare like with like — the source event's clientX/Y when there
+          // is one, else the container's origin plus the local offset.
+          const src = ev.source as { clientX?: number; clientY?: number } | undefined;
+          const cr = api.container.getBoundingClientRect();
+          const cx = typeof src?.clientX === 'number' ? src.clientX : cr.left + ev.screen.x;
+          const cy = typeof src?.clientY === 'number' ? src.clientY : cr.top + ev.screen.y;
+          edges = edgesNear(hostEl, cx, cy);
+        }
+      }
+      const isResize = anyEdge(edges);
+      if (!isResize && !movable) return; // a fixed tile: refuse the drag, click still focuses
       // Arm the glide class NOW, a full task before any displacement can
       // happen: a transition defined in the same style recalc as the first
       // left/top write does not run (CSS transitions fire only when the
@@ -1785,8 +1904,6 @@ export function bindDashboardGrid(
       // style) — the first pushed neighbour of every gesture TELEPORTED
       // (measured 109px in one frame) while later ones glided.
       armGlide();
-      const target = (ev.source?.target ?? null) as Element | null;
-      const isResize = !!target?.closest?.('.axdb-rs');
       const it = engine.getItem(node.id);
       gesture = {
         kind: isResize ? 'resize' : 'move',
@@ -1803,6 +1920,8 @@ export function bindDashboardGrid(
         startCells: new Map(),
         startGeom: new Map(),
         startSize: { width: node.size.width, height: node.size.height },
+        startPos: { x: node.position.x, y: node.position.y },
+        edges,
         spans: { w: it?.w ?? 1, h: it?.h ?? 1 },
         removedFromBoard: false,
         leg: null,
@@ -1826,6 +1945,41 @@ export function bindDashboardGrid(
 
   const unregisterTool = registerTool(tool);
 
+  /**
+   * Edge affordance: the cursor says which border a press would take, the
+   * way gridstack's invisible edge handles do. One passive listener on the
+   * container; the corner handle keeps its own cursor from the stylesheet.
+   */
+  let hoverHost: HTMLElement | null = null;
+  const onHover = (e: PointerEvent): void => {
+    if (disposed || gesture) return;
+    // The event may target the host, its content, or (when a host's content
+    // is pointer-transparent) the canvas under it — find the member host by
+    // the pointer's position in that case.
+    let host = (e.target as Element | null)?.closest?.('.grafloria-node-host') as HTMLElement | null;
+    if (!host) {
+      for (const id of group.members ?? []) {
+        const h = hostOf(id);
+        if (!h) continue;
+        const r = h.getBoundingClientRect();
+        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+          host = h;
+          break;
+        }
+      }
+    }
+    if (hoverHost && hoverHost !== host) hoverHost.style.cursor = '';
+    hoverHost = host;
+    if (!host) return;
+    const id = host.getAttribute('data-node-id') ?? '';
+    if (!(group.members ?? new Set<string>()).has(id)) return;
+    const node = diagram.getNode(id);
+    const resizable =
+      !!node && !isStatic && node.state?.locked !== true && node.getMetadata?.('widgetResizable') !== false;
+    host.style.cursor = resizable ? cursorFor(edgesNear(host, e.clientX, e.clientY)) : '';
+  };
+  api.container.addEventListener('pointermove', onHover, { passive: true });
+
   // -- palette drag-in --------------------------------------------------------
 
   const beginPaletteDrag = (
@@ -1833,7 +1987,7 @@ export function bindDashboardGrid(
     spec: { w: number; h: number; chip?: HTMLElement },
     event: PointerEvent
   ): void => {
-    if (disposed || gesture) return;
+    if (disposed || gesture || isStatic) return;
     const chip = spec.chip ?? null;
     if (chip) {
       chip.classList.add('axdb-drag-chip');
@@ -1853,6 +2007,8 @@ export function bindDashboardGrid(
       startCells: new Map(),
       startGeom: new Map(),
       startSize: { width: 0, height: 0 },
+      startPos: { x: 0, y: 0 },
+      edges: NO_EDGES,
       spans: { w: Math.max(1, spec.w), h: Math.max(1, spec.h) },
       removedFromBoard: true,
       leg: null,
@@ -2065,6 +2221,14 @@ export function bindDashboardGrid(
       api.renderNow();
     },
     getRtl: () => rtl,
+    setStatic(on): void {
+      if (on === isStatic) return;
+      isStatic = on;
+      if (gesture) cancelActiveGesture(false);
+      syncHandles();
+      api.renderNow();
+    },
+    getStatic: () => isStatic,
     saveLayout() {
       const saved = engine.saveLayout();
       return {
@@ -2100,6 +2264,7 @@ export function bindDashboardGrid(
         rtl,
         responsive: !!responsive && !responsivePinned,
         fluid,
+        static: isStatic,
         capacity,
         gap,
         padding,
@@ -2168,6 +2333,7 @@ export function bindDashboardGrid(
       disposed = true;
       peersOnCanvas().delete(selfPeer);
       unregisterTool();
+      api.container.removeEventListener('pointermove', onHover);
       hostObserver.disconnect();
       containerObserver?.disconnect();
       for (const off of subs) off();

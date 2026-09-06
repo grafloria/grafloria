@@ -163,6 +163,7 @@ interface PersistedBoard {
   rtl?: boolean;
   fluid?: boolean;
   overflow?: 'bounded' | 'scroll';
+  static?: boolean;
 }
 
 /** True when the node is an ER entity card or a UML class card. */
@@ -186,6 +187,11 @@ function widgetSpecOf(node: NodeModel): DashboardWidgetSpec | null {
     data: (node.getMetadata('widgetSpec') ?? {}) as Record<string, unknown>,
     span: node.getMetadata('columnSpan') as number | undefined,
     rows: node.getMetadata('rowSpan') as number | undefined,
+    ...(node.getMetadata('widgetLimits') !== undefined
+      ? { limits: { ...(node.getMetadata('widgetLimits') as DashboardWidgetSpec['limits']) } }
+      : {}),
+    ...(node.getMetadata('widgetMovable') === false ? { movable: false } : {}),
+    ...(node.getMetadata('widgetResizable') === false ? { resizable: false } : {}),
   };
 }
 
@@ -320,6 +326,7 @@ export function fromDocument(
           rtl: firstBoard.rtl,
           mode: firstBoard.fluid === true ? 'fluid' : 'fixed',
           overflow: firstBoard.overflow ?? 'bounded',
+          static: firstBoard.static ?? false,
           width: viewGroups[0]?.size?.width,
           height: viewGroups[0]?.size?.height,
         }

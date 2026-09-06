@@ -614,6 +614,24 @@ describe('fromDocument — mode (D1)', () => {
   });
 });
 
+describe('fromDocument — limits, pointer flags, static (plan step 4)', () => {
+  it('a widget\'s limits and flags survive the document round-trip', () => {
+    const original = mount(
+      dashboard({
+        width: 1180,
+        static: true,
+        widgets: [{ id: 'a', kind: 'kpi', span: 3, limits: { minSpan: 2, maxSpan: 6 }, movable: false, resizable: false }],
+      })
+    );
+    const spec = fromDocument(save(original.api));
+    mount(spec);
+    expect(spec.handle.widget('a')!.spec).toMatchObject({ limits: { minSpan: 2, maxSpan: 6 }, movable: false, resizable: false });
+    expect(spec.handle.getStatic()).toBe(true);
+    expect(spec.handle.toJSON().static).toBe(true);
+    expect(spec.handle.toJSON().views[0].widgets[0]).toMatchObject({ limits: { minSpan: 2, maxSpan: 6 }, movable: false, resizable: false });
+  });
+});
+
 describe('fromDocument — the front door', () => {
   it('accepts the parsed object as well as the JSON string', () => {
     const original = mount(ER_SPEC());
