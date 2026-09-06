@@ -30,6 +30,18 @@ const CSS = `
               width .28s cubic-bezier(.2, 0, .2, 1), height .28s cubic-bezier(.2, 0, .2, 1);
 }
 
+/* Motion is a preference (WCAG 2.3.3): no glide for those who asked for none. */
+@media (prefers-reduced-motion: reduce) {
+  .grafloria-html-layer.axdb-glide > .grafloria-node-host { transition: none; }
+}
+
+/* ===== keyboard focus: the roving tab stop shows where it is (WCAG 2.4.7) ===== */
+.grafloria-html-layer > .grafloria-node-host:focus-visible {
+  outline: 2px solid #3b52d9;
+  outline-offset: 2px;
+  border-radius: var(--axdb-rs-radius, 12px);
+}
+
 /* ===== the held tile: transition-exempt ghost, above everything ===== */
 .grafloria-html-layer > .grafloria-node-host.axdb-ghost,
 .grafloria-html-layer.axdb-glide > .grafloria-node-host.axdb-ghost {
@@ -107,11 +119,19 @@ const CSS = `
    =========================================================================== */
 .axdb-widget {
   --axdb-ink: #1f2430;
-  --axdb-muted: #7a8496;
+  /* 5.95:1 on the card — WCAG 1.4.3 for the 9–11px captions this paints
+     (the #7a8496 it replaced sat at 3.77:1, axe-core's first finding). */
+  --axdb-muted: #5a6478;
   --axdb-grid: rgba(120, 130, 148, .22);
   --axdb-card: #fff;
   --axdb-line: #e7eaf1;
   --axdb-soft: rgba(120, 130, 148, .14);
+  --axdb-up: #0f7a3d;     /* 5.42:1 */
+  --axdb-down: #be123c;   /* 6.29:1 */
+  /* The categorical palette, as tokens so the dark card can carry its own
+     steps: every entry clears 3:1 against its card (WCAG 1.4.11). */
+  --axdb-c1: #3b52d9; --axdb-c2: #0369a1; --axdb-c3: #0f766e;
+  --axdb-c4: #b45309; --axdb-c5: #6d28d9; --axdb-c6: #475569;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
@@ -143,9 +163,15 @@ const CSS = `
    own (without this the 100%-tall svg pushes the legend out of the card). */
 .axdb-widget-b.axdb-has-lg { display: flex; flex-direction: column; }
 .axdb-widget-b.axdb-has-lg > svg { flex: 1; height: auto; min-height: 0; }
+/* The data behind a chart, for readers that cannot see the chart: present in
+   the accessibility tree, absent from the picture (WCAG 1.1.1). */
+.axdb-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
 .axdb-widget-empty {
   display: flex; align-items: center; justify-content: center; height: 100%;
-  font: 500 11.5px/1.3 system-ui, sans-serif; color: var(--axdb-muted); opacity: .75;
+  font: 500 11.5px/1.3 system-ui, sans-serif; color: var(--axdb-muted);
 }
 
 /* kpi: value + delta stack, the spark yields its height before they do */
@@ -159,8 +185,8 @@ const CSS = `
 .axdb-kpi-v { font: 700 clamp(15px, 44cqh, 30px)/1.05 system-ui, sans-serif; letter-spacing: -.02em; color: var(--axdb-ink); }
 .axdb-kpi-d { margin-top: clamp(1px, 5cqh, 6px); font: 600 clamp(9px, 19cqh, 12px)/1.2 system-ui, sans-serif; }
 .axdb-kpi-d span { color: var(--axdb-muted); font-weight: 500; }
-.axdb-kpi-d.up { color: #12a150; }
-.axdb-kpi-d.down { color: #e11d48; }
+.axdb-kpi-d.up { color: var(--axdb-up); }
+.axdb-kpi-d.down { color: var(--axdb-down); }
 .axdb-kpi-s { margin-top: auto; height: 34px; min-height: 0; flex: 0 1 34px; }
 
 /* donut: ring beside its legend */
@@ -195,6 +221,10 @@ const CSS = `
     --axdb-card: #1a1d25;
     --axdb-line: #2b3040;
     --axdb-soft: rgba(150, 160, 182, .16);
+    --axdb-up: #4ade80;
+    --axdb-down: #fb7185;
+    --axdb-c1: #8b9cff; --axdb-c2: #38bdf8; --axdb-c3: #2dd4bf;
+    --axdb-c4: #fbbf24; --axdb-c5: #a78bfa; --axdb-c6: #94a3b8;
   }
 }
 `;

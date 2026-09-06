@@ -95,8 +95,12 @@ export const BUILT_IN_WIDGET_KINDS = ['kpi', 'line', 'bar', 'donut', 'funnel', '
  * Categorical default palette — readable on both light and dark cards. Per-mark
  * overrides win (`slices[].color`); everything else cycles this list.
  */
-const PALETTE = ['#3b52d9', '#0ea5e9', '#14b8a6', '#f59e0b', '#8b5cf6', '#64748b'];
-const colorAt = (i: number): string => PALETTE[((i % PALETTE.length) + PALETTE.length) % PALETTE.length];
+/* Every entry clears 3:1 against the light AND the dark card (WCAG 1.4.11,
+   non-text contrast): the sky, teal and amber of the first palette sat at
+   2.9, 2.5 and 2.2 against white and were replaced by their darker steps. */
+const PALETTE_SIZE = 6;
+/** The i-th palette token — the stylesheet resolves it per theme (`--axdb-c1…c6`). */
+const colorAt = (i: number): string => `var(--axdb-c${(((i % PALETTE_SIZE) + PALETTE_SIZE) % PALETTE_SIZE) + 1})`;
 
 // -- primitives ---------------------------------------------------------------
 
@@ -155,6 +159,18 @@ function empty(body: HTMLElement, note = 'no data'): void {
 
 const data = <T>(widget: DashboardWidgetSpec): Partial<T> =>
   (widget.data ?? {}) as Partial<T>;
+
+/**
+ * The chart's numbers as a visually-hidden table — what a screen reader gets
+ * instead of an svg it cannot read (WCAG 1.1.1). `role="img"` + aria-label on
+ * the svg names the chart; this carries the values.
+ */
+const srTable = (caption: string, columns: string[], rows: Array<Array<string | number>>): string =>
+  `<table class="axdb-sr"><caption>${esc(caption)}</caption><thead><tr>${columns
+    .map((c) => `<th scope="col">${esc(c)}</th>`)
+    .join('')}</tr></thead><tbody>${rows
+    .map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join('')}</tr>`)
+    .join('')}</tbody></table>`;
 
 const legend = (items: Array<{ label: string; color: string }>, column = false): string =>
   `<div class="axdb-lg${column ? ' axdb-lg--col' : ''}">` +
@@ -294,7 +310,12 @@ export const renderLineWidget: WidgetRenderer = (widget, host) => {
   body.innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
     `aria-label="${esc(titleOf(widget))}">${grid}${ticks}${marks}</svg>` +
-    (named.length ? legend(series.map((s, i) => ({ label: String(s.name ?? ''), color: colorAt(i) }))) : '');
+    (named.length ? legend(series.map((s, i) => ({ label: String(s.name ?? ''), color: colorAt(i) }))) : '') +
+    srTable(
+      titleOf(widget),
+      ['', ...series.map((s, i) => String(s.name ?? `Series ${i + 1}`))],
+      Array.from({ length: count }, (_, i) => [labels[i] ?? String(i + 1), ...series.map((s) => s.values[i] ?? '')])
+    );
 };
 
 // -- bar ----------------------------------------------------------------------
@@ -346,7 +367,8 @@ export const renderBarWidget: WidgetRenderer = (widget, host) => {
 
   body.innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
-    `aria-label="${esc(titleOf(widget))}">${grid}${marks}</svg>`;
+    `aria-label="${esc(titleOf(widget))}">${grid}${marks}</svg>` +
+    srTable(titleOf(widget), ['Category', 'Value'], bars.map((b) => [b.label ?? '', num(b.value)]));
 };
 
 // -- donut --------------------------------------------------------------------
@@ -399,6 +421,11 @@ export const renderDonutWidget: WidgetRenderer = (widget, host) => {
         color: s.color ?? colorAt(i),
       })),
       true
+    ) +
+    srTable(
+      titleOf(widget),
+      ['Slice', 'Value', 'Share'],
+      slices.map((s) => [s.label ?? '', num(s.value), `${Math.round((num(s.value) / total) * 100)}%`])
     );
 };
 
@@ -434,7 +461,8 @@ export const renderFunnelWidget: WidgetRenderer = (widget, host) => {
 
   body.innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
-    `aria-label="${esc(titleOf(widget))}">${marks}</svg>`;
+    `aria-label="${esc(titleOf(widget))}">${marks}</svg>` +
+    srTable(titleOf(widget), ['Stage', 'Value'], stages.map((s) => [s.label ?? '', num(s.value)]));
 };
 
 // -- table --------------------------------------------------------------------
@@ -463,6 +491,11 @@ export const renderTableWidget: WidgetRenderer = (widget, host) => {
     .join('');
 
   body.classList.add('axdb-scroll');
+  // A scrollable region must be reachable by keyboard (axe: scrollable-
+  // region-focusable) — it is a tab stop with the table's name.
+  body.setAttribute('tabindex', '0');
+  body.setAttribute('role', 'region');
+  body.setAttribute('aria-label', titleOf(widget));
   body.innerHTML = `<table class="axdb-table">${head}<tbody>${tbody}</tbody></table>`;
 };
 
