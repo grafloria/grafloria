@@ -1760,11 +1760,22 @@ export function bindDashboardGrid(
         return insideMemberGroupFrame(ev.world.x, ev.world.y);
       }
       // Claim (and deaden) empty presses inside a member group's frame so the
-      // built-in group-drag cannot fight the pack layout for the KPI slab.
-      return insideMemberGroupFrame(ev.world.x, ev.world.y);
+      // built-in group-drag cannot fight the pack layout for the KPI slab —
+      // and empty presses on the BOARD itself: its group is a layout
+      // container, not a thing to drag around the canvas, and on a fluid
+      // board there is no void outside it, so the space between tiles IS the
+      // void (a click there clears the selection, see onPointerDown).
+      return insideMemberGroupFrame(ev.world.x, ev.world.y) || worldInsideBoard(ev.world.x, ev.world.y);
     },
     onPointerDown(ev, hit) {
-      if (gesture || !hit.node) return; // dead zone (slab area), or mid-palette
+      if (gesture) return; // mid-palette
+      if (!hit.node) {
+        // The board's own empty area: a void click. Nothing to drag, and the
+        // selection clears exactly as a click outside any board would.
+        (diagram as { clearSelection?: () => void }).clearSelection?.();
+        api.render();
+        return;
+      }
       const node = diagram.getNode(hit.node.id);
       if (!node || node.state?.locked === true) return; // pinned: refuse; click still focuses
       // Arm the glide class NOW, a full task before any displacement can
