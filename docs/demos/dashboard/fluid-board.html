@@ -37,6 +37,9 @@
   <span class="fb-sep"></span>
   <button id="fb-fit" aria-pressed="false">Fit</button>
   <button id="fb-grow" aria-pressed="true">Grow</button>
+  <span class="sep"></span>
+  <button id="fb-grid" aria-pressed="true" title="The cell grid: columns, spans, push">Grid</button>
+  <button id="fb-split" aria-pressed="false" title="The splitter tree: the board is always covered, dividers are percentages">Split</button>
   <span class="fb-sep"></span>
   <button id="fb-add" title="Add a full-width KPI row — a fit board refuses once it is full">+ Add a row</button>
   <span class="fb-msg" id="fb-msg"></span>
@@ -79,6 +82,7 @@ defineDemo({
     '② Press "Narrow container": the canvas becomes 60% wide and every tile re-lays out against the new width. Press again to widen.',
     '③ Drag "Revenue by region" up onto the KPI row: the KPIs slide out of the way, nothing else changes size, and the board grows a few rows — scroll with the wheel to reach the bottom. Adds are never refused in grow mode.',
     '④ Switch to "Fit": the board keeps its height and rows squeeze so everything stays on one screen. Press "+ Add a row" a few times: each row lands while there is room; when the next would need more than the board\'s height allows, the add is refused and the message says so.',
+    '⑤ Switch to "Split": the DevExpress model — every widget stretches to cover the board, a divider between two widgets drags as a percentage, dragging a widget onto another\'s edge inserts it there, "+ Add a row" halves the largest widget. "Grid" brings the cells back with the same picture.',
     'Press "▶ run the scripted checks": mode, frame = container, zoom 1, the container resize, the capacity refusal and the no-overflow invariant are all asserted.',
   ],
   reactflow: null,
@@ -122,6 +126,21 @@ defineDemo({
     document.getElementById('fb-narrow').addEventListener('click', () => ctx2.narrow(!stage.classList.contains('narrow')));
     document.getElementById('fb-fit').addEventListener('click', () => ctx2.sizing('fit'));
     document.getElementById('fb-grow').addEventListener('click', () => ctx2.sizing('grow'));
+    ctx2.layout = (mode) => {
+      H.setLayout(mode);
+      setPressed('fb-grid', mode === 'grid');
+      setPressed('fb-split', mode === 'split');
+      const fitOnly = mode === 'split';
+      document.getElementById('fb-fit').disabled = fitOnly;
+      document.getElementById('fb-grow').disabled = fitOnly;
+      if (fitOnly) { setPressed('fb-fit', true); setPressed('fb-grow', false); }
+      else { setPressed('fb-fit', H.getSizing() === 'fit'); setPressed('fb-grow', H.getSizing() === 'grow'); }
+      say(mode === 'split'
+        ? 'split: the board is always covered — drag a divider (a percentage), drag a widget onto an edge, add one and it halves the largest'
+        : 'grid: cells, spans and push — the gridstack model');
+    };
+    document.getElementById('fb-grid').addEventListener('click', () => ctx2.layout('grid'));
+    document.getElementById('fb-split').addEventListener('click', () => ctx2.layout('split'));
     const m0 = H.metrics();
     say(`fluid · grow · ${Math.round(m0.frame.width)}×${Math.round(m0.frame.height)} px · ${m0.rows} rows`);
   },
@@ -214,6 +233,46 @@ defineDemo({
     wheel(-100000);
     await settle();
     check(Math.abs(api.viewport.getViewBox().y) < 1, 'and a wheel back up stops exactly at the origin — the page is at rest');
+
+    // ---- ⑦ split: the board is always covered ---------------------------------
+    ctx2.layout('split');
+    await settle();
+    checkEqual(H.getLayout(), 'split', 'the view runs the split layout');
+    checkEqual(H.getSizing(), 'fit', 'a split board is always fit');
+    // COVERED means: what is not a widget is exactly the padding band and the
+    // gaps between siblings — one gap per divider, never a hole. Widgets never
+    // overlap and never leave the frame.
+    const covered = () => {
+      const fr = frameOf();
+      const m = H.metrics();
+      const ws = H.widgetsOf().map((w) => w.rect);
+      const area = ws.reduce((s, r) => s + r.width * r.height, 0);
+      const dividers = host.querySelectorAll('.axdb-div').length;
+      const allowance = 2 * m.padding * (fr.width + fr.height) + dividers * m.gap * Math.max(fr.width, fr.height) + 1;
+      const inside = ws.every((r) => r.x >= fr.x - 0.5 && r.y >= fr.y - 0.5 && r.x + r.width <= fr.x + fr.width + 0.5 && r.y + r.height <= fr.y + fr.height + 0.5);
+      let overlaps = 0;
+      for (let i = 0; i < ws.length; i++) for (let j = i + 1; j < ws.length; j++) { const a = ws[i], b = ws[j]; if (a.x < b.x + b.width - 1 && b.x < a.x + a.width - 1 && a.y < b.y + b.height - 1 && b.y < a.y + a.height - 1) overlaps++; }
+      return inside && overlaps === 0 && fr.width * fr.height - area <= allowance;
+    };
+    check(covered(), 'every slot is covered: only gaps and padding are not a widget');
+    checkEqual(Math.round(frameOf().height), Math.round(box().h), 'the split board is exactly the container');
+    const nBefore = H.widgetsOf().length;
+    const biggest = H.widgetsOf().reduce((p, w) => (w.rect.width * w.rect.height > p.rect.width * p.rect.height ? w : p));
+    const areaBefore = biggest.rect.width * biggest.rect.height;
+    check(!!H.addWidget({ id: 'split-add', kind: 'kpi', data: { label: 'Added', value: '+1' } }), 'an add lands on a split board');
+    await settle();
+    checkEqual(H.widgetsOf().length, nBefore + 1, 'the widget joined the board');
+    const after = H.widget(biggest.id).rect;
+    check(Math.abs(after.width * after.height - areaBefore / 2) < areaBefore * 0.08, `the newcomer halved the largest widget (${biggest.id})`);
+    check(covered(), 'and the board is still fully covered');
+    await H.widget('split-add').remove();
+    await settle();
+    checkEqual(H.widgetsOf().length, nBefore, 'removing it hands the slot back');
+    ctx2.layout('grid');
+    await settle();
+    checkEqual(H.getLayout(), 'grid', 'and the view is back on the grid');
+    ctx2.sizing('grow');
+    await settle();
   },
 });
 </script>

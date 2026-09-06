@@ -2673,18 +2673,18 @@ var require_resolve_conflicts = __commonJS({
       });
     }
     function mergeEntries(target, source) {
-      let sum = 0;
+      let sum2 = 0;
       let weight = 0;
       if (target.weight) {
-        sum += target.barycenter * target.weight;
+        sum2 += target.barycenter * target.weight;
         weight += target.weight;
       }
       if (source.weight) {
-        sum += source.barycenter * source.weight;
+        sum2 += source.barycenter * source.weight;
         weight += source.weight;
       }
       target.vs = source.vs.concat(target.vs);
-      target.barycenter = sum / weight;
+      target.barycenter = sum2 / weight;
       target.weight = weight;
       target.i = Math.min(source.i, target.i);
       source.merged = true;
@@ -2701,19 +2701,19 @@ var require_sort = __commonJS({
       let parts = util.partition(entries, (entry) => {
         return Object.hasOwn(entry, "barycenter");
       });
-      let sortable = parts.lhs, unsortable = parts.rhs.sort((a, b) => b.i - a.i), vs = [], sum = 0, weight = 0, vsIndex = 0;
+      let sortable = parts.lhs, unsortable = parts.rhs.sort((a, b) => b.i - a.i), vs = [], sum2 = 0, weight = 0, vsIndex = 0;
       sortable.sort(compareWithBias(!!biasRight));
       vsIndex = consumeUnsortable(vs, unsortable, vsIndex);
       sortable.forEach((entry) => {
         vsIndex += entry.vs.length;
         vs.push(entry.vs);
-        sum += entry.barycenter * entry.weight;
+        sum2 += entry.barycenter * entry.weight;
         weight += entry.weight;
         vsIndex = consumeUnsortable(vs, unsortable, vsIndex);
       });
       let result = { vs: vs.flat(true) };
       if (weight) {
-        result.barycenter = sum / weight;
+        result.barycenter = sum2 / weight;
         result.weight = weight;
       }
       return result;
@@ -3189,9 +3189,9 @@ var require_bk = __commonJS({
       return (g, v, w) => {
         let vLabel = g.node(v);
         let wLabel = g.node(w);
-        let sum = 0;
+        let sum2 = 0;
         let delta;
-        sum += vLabel.width / 2;
+        sum2 += vLabel.width / 2;
         if (Object.hasOwn(vLabel, "labelpos")) {
           switch (vLabel.labelpos.toLowerCase()) {
             case "l":
@@ -3203,12 +3203,12 @@ var require_bk = __commonJS({
           }
         }
         if (delta) {
-          sum += reverseSep ? delta : -delta;
+          sum2 += reverseSep ? delta : -delta;
         }
         delta = 0;
-        sum += (vLabel.dummy ? edgeSep : nodeSep) / 2;
-        sum += (wLabel.dummy ? edgeSep : nodeSep) / 2;
-        sum += wLabel.width / 2;
+        sum2 += (vLabel.dummy ? edgeSep : nodeSep) / 2;
+        sum2 += (wLabel.dummy ? edgeSep : nodeSep) / 2;
+        sum2 += wLabel.width / 2;
         if (Object.hasOwn(wLabel, "labelpos")) {
           switch (wLabel.labelpos.toLowerCase()) {
             case "l":
@@ -3220,10 +3220,10 @@ var require_bk = __commonJS({
           }
         }
         if (delta) {
-          sum += reverseSep ? delta : -delta;
+          sum2 += reverseSep ? delta : -delta;
         }
         delta = 0;
-        return sum;
+        return sum2;
       };
     }
     function width(g, v) {
@@ -106043,7 +106043,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
    */
   getTotalLength() {
     return this.segments.reduce(
-      (sum, segment) => sum + this.getSegmentLength(segment),
+      (sum2, segment) => sum2 + this.getSegmentLength(segment),
       0
     );
   }
@@ -108249,7 +108249,7 @@ var SpatialIndex = class {
       cellSizes.push(cellSet.size);
     });
     const maxEntitiesPerCell = cellSizes.length > 0 ? Math.max(...cellSizes) : 0;
-    const averageEntitiesPerCell = cellSizes.length > 0 ? cellSizes.reduce((sum, size) => sum + size, 0) / cellSizes.length : 0;
+    const averageEntitiesPerCell = cellSizes.length > 0 ? cellSizes.reduce((sum2, size) => sum2 + size, 0) / cellSizes.length : 0;
     return {
       entities: this.entities.size,
       cells: this.grid.size,
@@ -124861,17 +124861,17 @@ var PortAwareLayoutManager = class {
     const barycenters = /* @__PURE__ */ new Map();
     for (const port of ports) {
       const connectedPorts = this.getConnectedPorts(port.id, links);
-      let sum = 0;
+      let sum2 = 0;
       let counted = 0;
       for (const connectedPortId of connectedPorts) {
         const partner = portsById.get(connectedPortId);
         if (!partner) continue;
         const nodePos = nodePositions.get(partner.nodeId);
         if (!nodePos) continue;
-        sum += side === "left" || side === "right" ? nodePos.y : nodePos.x;
+        sum2 += side === "left" || side === "right" ? nodePos.y : nodePos.x;
         counted++;
       }
-      barycenters.set(port.id, counted > 0 ? sum / counted : 0);
+      barycenters.set(port.id, counted > 0 ? sum2 / counted : 0);
     }
     return [...ports].sort((a, b) => {
       const bcA = barycenters.get(a.id) ?? 0;
@@ -126190,9 +126190,9 @@ var DagreLayoutAdapter = class {
             bary.set(node.id, pos.get(node.id) ?? 0.5);
             return;
           }
-          let sum = 0;
-          ns.forEach((id) => sum += pos.get(id) ?? 0.5);
-          bary.set(node.id, sum / ns.length);
+          let sum2 = 0;
+          ns.forEach((id) => sum2 += pos.get(id) ?? 0.5);
+          bary.set(node.id, sum2 / ns.length);
         });
         layer.sort((a, b) => (bary.get(a.id) ?? 0.5) - (bary.get(b.id) ?? 0.5));
         refresh(layer);
@@ -126985,7 +126985,7 @@ function packBoxes(boxes, options = {}) {
   const aspectRatio = options.aspectRatio ?? DEFAULT_ASPECT_RATIO;
   const offsets = /* @__PURE__ */ new Map();
   if (boxes.length === 0) return offsets;
-  const totalArea = boxes.reduce((sum, b) => sum + (b.width + spacing) * (b.height + spacing), 0);
+  const totalArea = boxes.reduce((sum2, b) => sum2 + (b.width + spacing) * (b.height + spacing), 0);
   const widest = Math.max(...boxes.map((b) => b.width));
   const targetWidth = Math.max(widest, Math.sqrt(totalArea * aspectRatio));
   const sorted = [...boxes].sort(
@@ -127793,11 +127793,11 @@ var Matrix = class _Matrix {
 };
 var VectorOps = class {
   static dot(a, b) {
-    let sum = 0;
+    let sum2 = 0;
     for (let i = 0; i < a.length; i++) {
-      sum += a[i] * b[i];
+      sum2 += a[i] * b[i];
     }
-    return sum;
+    return sum2;
   }
   static norm(v) {
     return Math.sqrt(this.dot(v, v));
@@ -127886,21 +127886,21 @@ var SpectralLayoutAdapter = class {
       const temp = new Matrix(n3, n3, 0);
       for (let i = 0; i < n3; i++) {
         for (let j = 0; j < n3; j++) {
-          let sum = 0;
+          let sum2 = 0;
           for (let k = 0; k < n3; k++) {
-            sum += D_inv_sqrt.get(i, k) * laplacian.get(k, j);
+            sum2 += D_inv_sqrt.get(i, k) * laplacian.get(k, j);
           }
-          temp.set(i, j, sum);
+          temp.set(i, j, sum2);
         }
       }
       L = new Matrix(n3, n3, 0);
       for (let i = 0; i < n3; i++) {
         for (let j = 0; j < n3; j++) {
-          let sum = 0;
+          let sum2 = 0;
           for (let k = 0; k < n3; k++) {
-            sum += temp.get(i, k) * D_inv_sqrt.get(k, j);
+            sum2 += temp.get(i, k) * D_inv_sqrt.get(k, j);
           }
-          L.set(i, j, sum);
+          L.set(i, j, sum2);
         }
       }
     }
@@ -129470,7 +129470,7 @@ function radialLayout(nodes, links, options = {}) {
     const kids = children.get(id) ?? [];
     leaves.set(
       id,
-      kids.length === 0 ? 1 : kids.reduce((sum, kid) => sum + (leaves.get(kid) ?? 1), 0)
+      kids.length === 0 ? 1 : kids.reduce((sum2, kid) => sum2 + (leaves.get(kid) ?? 1), 0)
     );
   }
   const perDepth = /* @__PURE__ */ new Map();
@@ -129486,7 +129486,7 @@ function radialLayout(nodes, links, options = {}) {
   let previous = Math.max(rootSize.width, rootSize.height) / 2;
   for (let d = 1; d <= maxDepth; d++) {
     const onRing = perDepth.get(d) ?? [];
-    const needed = onRing.reduce((sum, n3) => sum + slotOf(n3, nodeSpacing), 0) / (2 * Math.PI);
+    const needed = onRing.reduce((sum2, n3) => sum2 + slotOf(n3, nodeSpacing), 0) / (2 * Math.PI);
     const tallest = Math.max(0, ...onRing.map((n3) => Math.max(nodeSize(n3).width, nodeSize(n3).height)));
     const radius = Math.max(previous + rankSpacing + tallest / 2, needed);
     radii.set(d, radius);
@@ -129501,7 +129501,7 @@ function radialLayout(nodes, links, options = {}) {
     angles.set(id, (start + end) / 2);
     const kids = children.get(id) ?? [];
     if (kids.length === 0) continue;
-    const total = kids.reduce((sum, kid) => sum + (leaves.get(kid) ?? 1), 0);
+    const total = kids.reduce((sum2, kid) => sum2 + (leaves.get(kid) ?? 1), 0);
     let cursor = start;
     for (const kid of kids) {
       const share = (leaves.get(kid) ?? 1) / total * (end - start);
@@ -134488,7 +134488,7 @@ function placeByRank(nodes, ranks, options = {}) {
   }
   let order = [...bands.keys()].sort((a, b) => a - b);
   if (reversed) order = order.reverse();
-  const crossTotal = (band) => band.reduce((sum, n3) => sum + across(n3), 0) + (band.length - 1) * crossGap;
+  const crossTotal = (band) => band.reduce((sum2, n3) => sum2 + across(n3), 0) + (band.length - 1) * crossGap;
   const widest = Math.max(...order.map((r) => crossTotal(bands.get(r))));
   const positions = /* @__PURE__ */ new Map();
   let alongCursor = vertical ? start.y : start.x;
@@ -137029,7 +137029,7 @@ function layoutStateModel(model, nodes, start) {
       const regions = childrenOf(state.id).filter((s) => s.region);
       const bands = regions.map((r) => measure2(r));
       const bandWidth = Math.max(...bands.map((b) => b.width), 0);
-      const stacked = bands.reduce((sum, b) => sum + b.height, 0) + Math.max(0, bands.length - 1) * BAND_GAP;
+      const stacked = bands.reduce((sum2, b) => sum2 + b.height, 0) + Math.max(0, bands.length - 1) * BAND_GAP;
       size = {
         width: bandWidth + 2 * STATE_PAD,
         height: stacked + 2 * STATE_PAD + STATE_HEADER
@@ -166375,7 +166375,7 @@ function nudgePortLabels(centres, heights, gap = 2) {
     }
     previousBottom = wanted + nudges[i] + half;
   }
-  const mean = nudges.reduce((sum, n3) => sum + n3, 0) / count2;
+  const mean = nudges.reduce((sum2, n3) => sum2 + n3, 0) / count2;
   return nudges.map((n3) => n3 - mean);
 }
 function portLabelWidth(spec, fontSize) {
@@ -191862,7 +191862,7 @@ var AnimationPerformanceService = class {
    */
   updateMetrics(currentFps, frameTime) {
     const monitoringDuration = (performance.now() - this.startTime) / 1e3;
-    const averageFps = this.fpsHistory.length > 0 ? this.fpsHistory.reduce((sum, fps) => sum + fps, 0) / this.fpsHistory.length : 0;
+    const averageFps = this.fpsHistory.length > 0 ? this.fpsHistory.reduce((sum2, fps) => sum2 + fps, 0) / this.fpsHistory.length : 0;
     const minFps = this.fpsHistory.length > 0 ? Math.min(...this.fpsHistory) : 0;
     const maxFps = this.fpsHistory.length > 0 ? Math.max(...this.fpsHistory) : 0;
     const frameDrops = this.fpsHistory.filter((fps) => fps < this.thresholds.minFps).length;
@@ -194369,6 +194369,24 @@ var CSS4 = `
   .axdb-widget--kpi > .axdb-kpi { flex: 1; align-self: stretch; }
 }
 
+/* SPLIT LAYOUT chrome: a divider sits in the gap between two siblings (a
+   24-px hit zone around a 10-px gap) and shows its line on hover or while
+   dragged; the insertion line marks the edge a dragged widget will land on. */
+.grafloria-html-layer > .axdb-div { position: absolute; z-index: 2; pointer-events: auto; background: transparent; }
+.grafloria-html-layer > .axdb-div--row { cursor: col-resize; }
+.grafloria-html-layer > .axdb-div--column { cursor: row-resize; }
+.grafloria-html-layer > .axdb-div::after {
+  content: ""; position: absolute; border-radius: 2px; background: #3b52d9; opacity: 0; transition: opacity .12s ease;
+}
+.grafloria-html-layer > .axdb-div--row::after { left: 50%; top: 8px; bottom: 8px; width: 4px; margin-left: -2px; }
+.grafloria-html-layer > .axdb-div--column::after { top: 50%; left: 8px; right: 8px; height: 4px; margin-top: -2px; }
+.grafloria-html-layer > .axdb-div:hover::after, .grafloria-html-layer > .axdb-div.axdb-active::after { opacity: .9; }
+.grafloria-html-layer > .axdb-ins {
+  position: absolute; z-index: 3; pointer-events: none; border-radius: 2px;
+  background: #3b52d9; box-shadow: 0 0 0 3px rgba(59, 82, 217, .22);
+}
+@media (prefers-reduced-motion: reduce) { .grafloria-html-layer > .axdb-div::after { transition: none; } }
+
 /* donut: ring beside its legend. The ring takes the body's height (a tall
    tile gets a bigger ring, not dead card), square, capped so its centre figure
    stays a figure and not a headline. */
@@ -196045,6 +196063,1059 @@ function bindDashboardGrid(api, group, options = {}) {
   return handle;
 }
 
+// libs/element/src/lib/dashboard-kit/split-layout.ts
+var isSplitGroup = (n3) => !!n3 && typeof n3 === "object" && Array.isArray(n3.children);
+function splitLeaves(root) {
+  if (!root) return [];
+  return isSplitGroup(root) ? root.children.flatMap(splitLeaves) : [root.id];
+}
+function cloneSplit(root) {
+  if (!root) return root;
+  if (isSplitGroup(root)) {
+    return { dir: root.dir, weight: root.weight, children: root.children.map((c) => cloneSplit(c)) };
+  }
+  return { id: root.id, weight: root.weight };
+}
+function pathToLeaf(root, id, path = []) {
+  if (!root) return null;
+  if (!isSplitGroup(root)) return root.id === id ? path : null;
+  for (let i = 0; i < root.children.length; i++) {
+    const p = pathToLeaf(root.children[i], id, [...path, i]);
+    if (p) return p;
+  }
+  return null;
+}
+function nodeAt(root, path) {
+  let n3 = root;
+  for (const i of path) {
+    if (!isSplitGroup(n3)) return null;
+    n3 = n3.children[i] ?? null;
+  }
+  return n3;
+}
+var sum = (children) => children.reduce((s, c) => s + Math.max(0, c.weight), 0) || 1;
+function projectSplit(root, frame, gap = 0, padding = 0, rtl = false) {
+  const out = /* @__PURE__ */ new Map();
+  if (!root) return out;
+  const inner = {
+    x: frame.x + padding,
+    y: frame.y + padding,
+    width: Math.max(0, frame.width - 2 * padding),
+    height: Math.max(0, frame.height - 2 * padding)
+  };
+  const walk3 = (node, r) => {
+    if (!isSplitGroup(node)) {
+      out.set(node.id, { ...r });
+      return;
+    }
+    const n3 = node.children.length;
+    if (!n3) return;
+    const total = sum(node.children);
+    const along = node.dir === "row" ? r.width : r.height;
+    const free = Math.max(0, along - gap * (n3 - 1));
+    let cursor = 0;
+    const order = node.dir === "row" && rtl ? [...node.children].reverse() : node.children;
+    for (const child of order) {
+      const size = free * Math.max(0, child.weight) / total;
+      const cr = node.dir === "row" ? { x: r.x + cursor, y: r.y, width: size, height: r.height } : { x: r.x, y: r.y + cursor, width: r.width, height: size };
+      walk3(child, cr);
+      cursor += size + gap;
+    }
+  };
+  walk3(root, inner);
+  return out;
+}
+function dividersOf(root, frame, gap = 0, padding = 0, rtl = false) {
+  const out = [];
+  if (!root) return out;
+  const inner = {
+    x: frame.x + padding,
+    y: frame.y + padding,
+    width: Math.max(0, frame.width - 2 * padding),
+    height: Math.max(0, frame.height - 2 * padding)
+  };
+  const walk3 = (node, r, path) => {
+    if (!isSplitGroup(node)) return;
+    const n3 = node.children.length;
+    if (!n3) return;
+    const total = sum(node.children);
+    const along = node.dir === "row" ? r.width : r.height;
+    const free = Math.max(0, along - gap * (n3 - 1));
+    let cursor = 0;
+    const mirrored = node.dir === "row" && rtl;
+    node.children.forEach((child, i) => {
+      const idx = mirrored ? n3 - 1 - i : i;
+      const c = node.children[idx];
+      const size = free * Math.max(0, c.weight) / total;
+      const cr = node.dir === "row" ? { x: r.x + cursor, y: r.y, width: size, height: r.height } : { x: r.x, y: r.y + cursor, width: r.width, height: size };
+      walk3(c, cr, [...path, idx]);
+      if (i < n3 - 1) {
+        const gapRect = node.dir === "row" ? { x: r.x + cursor + size, y: r.y, width: gap, height: r.height } : { x: r.x, y: r.y + cursor + size, width: r.width, height: gap };
+        const after = mirrored ? idx - 1 : idx;
+        out.push({ path, index: after, dir: node.dir, rect: gapRect, length: free });
+      }
+      cursor += size + gap;
+    });
+  };
+  walk3(root, inner, []);
+  return out;
+}
+function splitLeaf(root, targetId, newId, dir, before = false) {
+  const leaf = { id: newId, weight: 1 };
+  if (!root) return leaf;
+  const tree = cloneSplit(root);
+  const path = pathToLeaf(tree, targetId);
+  if (!path) return tree;
+  const parentPath = path.slice(0, -1);
+  const idx = path[path.length - 1];
+  const parent = path.length ? nodeAt(tree, parentPath) : null;
+  const target = nodeAt(tree, path);
+  if (parent && parent.dir === dir) {
+    const half = target.weight / 2;
+    target.weight = half;
+    leaf.weight = half;
+    parent.children.splice(before ? idx : idx + 1, 0, leaf);
+    return tree;
+  }
+  const group = {
+    dir,
+    weight: target.weight,
+    children: before ? [leaf, { ...target, weight: 1 }] : [{ ...target, weight: 1 }, leaf]
+  };
+  if (!parent) return group;
+  parent.children[idx] = group;
+  return tree;
+}
+function addSplitLeaf(root, newId, frame, gap = 0, padding = 0) {
+  if (!root) return { id: newId, weight: 1 };
+  if (pathToLeaf(root, newId)) return cloneSplit(root);
+  const rects = projectSplit(root, frame, gap, padding);
+  let bestId = null;
+  let best = null;
+  for (const [id, r] of rects) {
+    if (!best || r.width * r.height > best.width * best.height + 0.5) {
+      best = r;
+      bestId = id;
+    }
+  }
+  if (!bestId || !best) return cloneSplit(root);
+  return splitLeaf(root, bestId, newId, best.width >= best.height ? "row" : "column", false);
+}
+function removeSplitLeaf(root, id) {
+  if (!root) return null;
+  if (!isSplitGroup(root)) return root.id === id ? null : cloneSplit(root);
+  const tree = cloneSplit(root);
+  const path = pathToLeaf(tree, id);
+  if (!path) return tree;
+  const parent = nodeAt(tree, path.slice(0, -1));
+  const i = path[path.length - 1];
+  const [gone] = parent.children.splice(i, 1);
+  const heir = parent.children[i - 1] ?? parent.children[i];
+  if (heir) heir.weight += Math.max(0, gone.weight);
+  return collapse(tree);
+}
+function collapse(node) {
+  if (!node || !isSplitGroup(node)) return node;
+  const kids = node.children.map((c) => collapse(c)).filter((c) => !!c);
+  if (kids.length === 0) return null;
+  if (kids.length === 1) return { ...kids[0], weight: node.weight };
+  const flat = [];
+  const total = sum(kids);
+  for (const k of kids) {
+    if (isSplitGroup(k) && k.dir === node.dir) {
+      const inner = sum(k.children);
+      for (const g of k.children) flat.push({ ...g, weight: k.weight / total * (g.weight / inner) * total });
+    } else flat.push(k);
+  }
+  return { dir: node.dir, weight: node.weight, children: flat };
+}
+function insertSplitLeaf(root, id, targetId, side) {
+  if (id === targetId) return cloneSplit(root);
+  const without = pathToLeaf(root, id) ? removeSplitLeaf(root, id) : cloneSplit(root);
+  if (!without) return { id, weight: 1 };
+  if (!pathToLeaf(without, targetId)) return without;
+  const dir = side === "left" || side === "right" ? "row" : "column";
+  return splitLeaf(without, targetId, id, dir, side === "left" || side === "top");
+}
+function moveSplitDivider(root, path, index, fraction, min = 0.05) {
+  const tree = cloneSplit(root);
+  const group = nodeAt(tree, path);
+  if (!isSplitGroup(group) || index < 0 || index >= group.children.length - 1) return tree;
+  const total = sum(group.children);
+  const a = group.children[index];
+  const b = group.children[index + 1];
+  const fa = a.weight / total;
+  const fb = b.weight / total;
+  const next = Math.min(Math.max(fa + fraction, min), fa + fb - min);
+  if (!Number.isFinite(next)) return tree;
+  a.weight = next * total;
+  b.weight = (fa + fb - next) * total;
+  return tree;
+}
+function normalizeSplit(root) {
+  if (!root || !isSplitGroup(root)) return root;
+  const total = sum(root.children);
+  return {
+    dir: root.dir,
+    weight: root.weight,
+    children: root.children.map((c) => ({ ...normalizeSplit(c), weight: +(Math.max(0, c.weight) / total).toFixed(4) }))
+  };
+}
+function splitFromCells(cells) {
+  const items = [...cells].map(([id, c]) => ({ id, ...c }));
+  if (!items.length) return null;
+  const cutsAlong = (list2, axis) => {
+    const lo = Math.min(...list2.map((i) => axis === "y" ? i.y : i.x));
+    const hi = Math.max(...list2.map((i) => axis === "y" ? i.y + i.h : i.x + i.w));
+    const lines = /* @__PURE__ */ new Set();
+    for (const i of list2) {
+      const a = axis === "y" ? i.y : i.x;
+      const b = axis === "y" ? i.y + i.h : i.x + i.w;
+      if (a > lo) lines.add(a);
+      if (b < hi) lines.add(b);
+    }
+    return [...lines].filter((line) => list2.every((i) => axis === "y" ? i.y >= line || i.y + i.h <= line : i.x >= line || i.x + i.w <= line)).sort((p, q) => p - q);
+  };
+  const build = (list2, prefer) => {
+    if (list2.length === 1) return { id: list2[0].id, weight: 1 };
+    for (const axis of [prefer, prefer === "y" ? "x" : "y"]) {
+      const cuts = cutsAlong(list2, axis);
+      if (!cuts.length) continue;
+      const lo = Math.min(...list2.map((i) => axis === "y" ? i.y : i.x));
+      const hi = Math.max(...list2.map((i) => axis === "y" ? i.y + i.h : i.x + i.w));
+      const edges = [lo, ...cuts, hi];
+      const children = [];
+      for (let k = 0; k < edges.length - 1; k++) {
+        const band = list2.filter((i) => axis === "y" ? i.y >= edges[k] && i.y + i.h <= edges[k + 1] : i.x >= edges[k] && i.x + i.w <= edges[k + 1]);
+        if (!band.length) continue;
+        const child = build(band, axis === "y" ? "x" : "y");
+        children.push({ ...child, weight: edges[k + 1] - edges[k] });
+      }
+      return children.length === 1 ? children[0] : { dir: axis === "y" ? "column" : "row", weight: 1, children };
+    }
+    const sorted = [...list2].sort((p, q) => p.x - q.x || p.y - q.y);
+    return { dir: "row", weight: 1, children: sorted.map((i) => ({ id: i.id, weight: i.w })) };
+  };
+  return collapse(build(items, "y"));
+}
+function cellsFromSplit(root, columns, rows) {
+  const out = /* @__PURE__ */ new Map();
+  const rects = projectSplit(root, { x: 0, y: 0, width: columns, height: rows });
+  for (const [id, r] of rects) {
+    const x = Math.max(0, Math.min(columns - 1, Math.round(r.x)));
+    const y = Math.max(0, Math.round(r.y));
+    const x2 = Math.max(x + 1, Math.min(columns, Math.round(r.x + r.width)));
+    const y2 = Math.max(y + 1, Math.round(r.y + r.height));
+    out.set(id, { x, y, w: x2 - x, h: y2 - y });
+  }
+  return out;
+}
+
+// libs/element/src/lib/dashboard-kit/split-binder.ts
+var SPLIT_TREE_KEY = "dashboardTree";
+var SetSplitTreeCommand = class extends Command {
+  constructor(groupId, before, after) {
+    super("Lay out board");
+    this.groupId = groupId;
+    this.before = before;
+    this.after = after;
+  }
+  apply(context, tree) {
+    const diagram = context.diagram;
+    const grp = diagram?.getGroup(this.groupId);
+    if (!grp) return;
+    grp.setMetadata(SPLIT_TREE_KEY, tree ? cloneSplit(tree) : null);
+  }
+  execute(context) {
+    this.apply(context, this.after);
+  }
+  undo(context) {
+    this.apply(context, this.before);
+  }
+  serialize() {
+    return {
+      id: this.id,
+      name: this.name,
+      timestamp: this.timestamp,
+      data: { groupId: this.groupId, before: this.before, after: this.after }
+    };
+  }
+};
+var LIVE_REGIONS2 = /* @__PURE__ */ new WeakMap();
+function liveRegionFor2(container) {
+  let live = LIVE_REGIONS2.get(container);
+  if (!live) {
+    live = new LiveRegionController(container);
+    LIVE_REGIONS2.set(container, live);
+  }
+  return live;
+}
+var DRAG_THRESHOLD2 = 4;
+var DIVIDER_HIT = 24;
+var KEY_STEP = 0.05;
+var binderSeq2 = 0;
+function bindDashboardSplit(api, group, options = {}) {
+  const diagram = api.getModel();
+  ensureDashboardKitStyles(api.container.ownerDocument ?? document);
+  const columns = options.columns ?? 12;
+  const gap = options.gap ?? 12;
+  const padding = options.padding ?? gap;
+  const baseRowHeight = options.baseRowHeight ?? 110;
+  const fluid = options.fluid === true;
+  let rtl = options.rtl === true;
+  let isStatic = options.static === true;
+  let designH = options.designHeight ?? group.size?.height ?? 0;
+  let designW = group.size?.width ?? 0;
+  let disposed = false;
+  let gesture = null;
+  let focusedId;
+  const live = liveRegionFor2(api.container);
+  const frame = () => ({
+    x: group.position.x,
+    y: group.position.y,
+    width: group.size?.width ?? designW,
+    height: group.size?.height ?? designH
+  });
+  const containerBox = () => ({
+    w: api.container.clientWidth || 0,
+    h: api.container.clientHeight || 0
+  });
+  const applyFluidFrame = () => {
+    if (!fluid || disposed) return false;
+    const box = containerBox();
+    if (box.w <= 0) return false;
+    const f = frame();
+    const height = box.h > 0 ? box.h : f.height;
+    if (Math.abs(f.width - box.w) < 0.5 && Math.abs(f.height - height) < 0.5) return false;
+    designW = box.w;
+    designH = height;
+    diagram.runSystemWrite(() => group.setFrame({ x: f.x, y: f.y, width: box.w, height }));
+    return true;
+  };
+  const members = () => [...group.members ?? []].filter((id) => !!diagram.getNode(id) || !!diagram.getGroup(id));
+  const readTree = () => {
+    const t = group.getMetadata(SPLIT_TREE_KEY);
+    return t ? cloneSplit(t) : null;
+  };
+  const writeTree = (tree) => {
+    diagram.runSystemWrite(() => group.setMetadata(SPLIT_TREE_KEY, tree ? cloneSplit(tree) : null));
+  };
+  const persistedCell = (id) => {
+    const n3 = diagram.getNode(id);
+    const raw = n3 ? n3.getMetadata?.("gridItem") : diagram.getGroup(id)?.getMetadata("gridItem");
+    return (raw ? cellFromGridItem(raw) : void 0) ?? void 0;
+  };
+  const reconcile2 = () => {
+    const ids = members();
+    let tree = readTree();
+    const known = new Set(splitLeaves(tree));
+    let changed = false;
+    if (!tree && ids.length) {
+      const cells = /* @__PURE__ */ new Map();
+      for (const id of ids) {
+        const c = persistedCell(id);
+        if (c) cells.set(id, c);
+      }
+      tree = cells.size === ids.length ? splitFromCells(cells) : null;
+      if (!tree) for (const id of ids) tree = addSplitLeaf(tree, id, frame(), gap, padding);
+      changed = true;
+      for (const id of ids) known.add(id);
+    }
+    for (const id of [...known]) {
+      if (!ids.includes(id)) {
+        tree = removeSplitLeaf(tree, id);
+        known.delete(id);
+        changed = true;
+      }
+    }
+    for (const id of ids) {
+      if (!known.has(id)) {
+        tree = addSplitLeaf(tree, id, frame(), gap, padding);
+        known.add(id);
+        changed = true;
+      }
+    }
+    if (changed) writeTree(tree);
+    return tree;
+  };
+  const rectsOf = (tree) => projectSplit(tree, frame(), gap, padding, rtl);
+  const htmlLayer = () => api.container.querySelector(".grafloria-html-layer");
+  const hostOf = (id) => {
+    const esc3 = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
+    return api.container.querySelector(`.grafloria-node-host[data-node-id="${esc3}"]`);
+  };
+  const writeRect = (id, r) => {
+    const node = diagram.getNode(id);
+    if (node) {
+      if (Math.abs(node.position.x - r.x) > 0.25 || Math.abs(node.position.y - r.y) > 0.25 || Math.abs(node.size.width - r.width) > 0.25 || Math.abs(node.size.height - r.height) > 0.25) {
+        diagram.runSystemWrite(() => {
+          node.setPosition(r.x, r.y);
+          node.setSize(r.width, r.height, node.size.depth ?? 0);
+        });
+      }
+      return;
+    }
+    const grp = diagram.getGroup(id);
+    if (grp) diagram.runSystemWrite(() => grp.setFrame({ ...r }));
+  };
+  const paintedTree = () => gesture?.started ? gesture.liveTree : readTree();
+  const project = (tree = paintedTree()) => {
+    const rects = rectsOf(tree);
+    for (const [id, r] of rects) {
+      if (gesture?.started && gesture.kind !== "divider" && id === gesture.id) continue;
+      writeRect(id, r);
+    }
+    syncDividers(tree);
+    syncA11y();
+  };
+  const dividerEls = [];
+  let insertion = null;
+  const syncDividers = (tree) => {
+    const layer = htmlLayer();
+    for (const el of dividerEls) el.remove();
+    dividerEls.length = 0;
+    if (!layer || isStatic || disposed) return;
+    const divs = dividersOf(tree, frame(), gap, padding, rtl);
+    divs.forEach((d, i) => {
+      const el = document.createElement("div");
+      el.className = `axdb-div axdb-div--${d.dir}`;
+      el.setAttribute("data-divider", String(i));
+      const grow = Math.max(0, DIVIDER_HIT - (d.dir === "row" ? d.rect.width : d.rect.height)) / 2;
+      const x = d.dir === "row" ? d.rect.x - grow : d.rect.x;
+      const y = d.dir === "row" ? d.rect.y : d.rect.y - grow;
+      const w = d.dir === "row" ? d.rect.width + 2 * grow : d.rect.width;
+      const h = d.dir === "row" ? d.rect.height : d.rect.height + 2 * grow;
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
+      el.style.width = `${w}px`;
+      el.style.height = `${h}px`;
+      el.setAttribute("aria-hidden", "true");
+      layer.appendChild(el);
+      dividerEls.push(el);
+    });
+    liveDividers = divs;
+  };
+  let liveDividers = [];
+  const showInsertion = (rect) => {
+    const layer = htmlLayer();
+    if (!rect || !layer) {
+      insertion?.remove();
+      insertion = null;
+      return;
+    }
+    if (!insertion || insertion.parentElement !== layer) {
+      insertion?.remove();
+      insertion = document.createElement("div");
+      insertion.className = "axdb-ins";
+      layer.appendChild(insertion);
+    }
+    insertion.style.left = `${rect.x}px`;
+    insertion.style.top = `${rect.y}px`;
+    insertion.style.width = `${rect.width}px`;
+    insertion.style.height = `${rect.height}px`;
+  };
+  const insertionRect = (r, side) => {
+    const t = 4;
+    switch (side) {
+      case "left":
+        return { x: r.x - t / 2, y: r.y, width: t, height: r.height };
+      case "right":
+        return { x: r.x + r.width - t / 2, y: r.y, width: t, height: r.height };
+      case "top":
+        return { x: r.x, y: r.y - t / 2, width: r.width, height: t };
+      default:
+        return { x: r.x, y: r.y + r.height - t / 2, width: r.width, height: t };
+    }
+  };
+  const dropTargetAt = (tree, wx, wy, exclude) => {
+    for (const [id, r] of rectsOf(tree)) {
+      if (id === exclude) continue;
+      if (wx < r.x || wx > r.x + r.width || wy < r.y || wy > r.y + r.height) continue;
+      const d = { left: wx - r.x, right: r.x + r.width - wx, top: wy - r.y, bottom: r.y + r.height - wy };
+      const n3 = { left: d.left / r.width, right: d.right / r.width, top: d.top / r.height, bottom: d.bottom / r.height };
+      const side = Object.keys(n3).reduce((a, b) => n3[b] < n3[a] ? b : a);
+      return { id, side, rect: r };
+    }
+    return null;
+  };
+  const worldInsideBoard = (x, y) => {
+    const f = frame();
+    return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + f.height;
+  };
+  const nameOf2 = (id) => {
+    const node = diagram.getNode(id);
+    const title = node?.getMetadata?.("widgetTitle");
+    if (typeof title === "string" && title) return title;
+    const label = node?.getMetadata?.("widgetData")?.label;
+    if (typeof label === "string" && label) return label;
+    const kind = node?.getMetadata?.("widgetKind");
+    return typeof kind === "string" && kind ? `${kind} widget` : id;
+  };
+  const describeSlot = (id, tree) => {
+    const r = rectsOf(tree).get(id);
+    const f = frame();
+    if (!r || f.width <= 0 || f.height <= 0) return "";
+    return `${Math.round(r.width / f.width * 100)} percent wide, ${Math.round(r.height / f.height * 100)} percent tall`;
+  };
+  const syncA11y = () => {
+    if (disposed) return;
+    const order = splitLeaves(paintedTree()).filter((id) => !!diagram.getNode(id));
+    if (focusedId && !order.includes(focusedId)) focusedId = void 0;
+    const stop = focusedId ?? order[0];
+    order.forEach((id, i) => {
+      const node = diagram.getNode(id);
+      const host = hostOf(id);
+      if (!node || !host) return;
+      const bits = [nameOf2(id), `${i + 1} of ${order.length}`, describeSlot(id, paintedTree())];
+      if (node.state?.locked === true) bits.push("pinned");
+      host.setAttribute("role", "group");
+      host.setAttribute("aria-roledescription", "dashboard widget");
+      host.setAttribute("aria-label", bits.filter(Boolean).join(", "));
+      host.setAttribute("tabindex", id === stop ? "0" : "-1");
+    });
+  };
+  const execCommand = (cmd) => {
+    try {
+      const r = api.getEngine().commandManager.execute(cmd);
+      r?.catch?.(() => void 0);
+      return r;
+    } catch {
+      return void 0;
+    }
+  };
+  const commitTree = (before, after) => {
+    const norm = normalizeSplit(after);
+    return execCommand(new SetSplitTreeCommand(group.id, before, norm));
+  };
+  const fire = (e) => {
+    try {
+      options.onGesture?.(e);
+    } catch {
+    }
+  };
+  const toWorld = (cx, cy) => {
+    const rect = api.container.getBoundingClientRect();
+    return api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
+  };
+  const armEscape = (g) => {
+    g.esc = (e) => {
+      if (e.key === "Escape" && gesture === g) {
+        e.preventDefault();
+        cancelActiveGesture();
+      }
+    };
+    window.addEventListener("keydown", g.esc, true);
+  };
+  const capturePointer = (g) => {
+    if (g.pointerId === null) return;
+    try {
+      api.container.setPointerCapture?.(g.pointerId);
+    } catch {
+    }
+  };
+  const teardownGesture = (g) => {
+    if (g.pointerId !== null) {
+      try {
+        api.container.releasePointerCapture?.(g.pointerId);
+      } catch {
+      }
+    }
+    if (g.esc) window.removeEventListener("keydown", g.esc, true);
+    g.chip?.remove();
+    showInsertion(null);
+    g.hostEl?.classList.remove("axdb-ghost", "axdb-out");
+    for (const el of dividerEls) el.classList.remove("axdb-active");
+    api.container.style.cursor = "";
+  };
+  const beginMoveVisuals = (g) => {
+    g.started = true;
+    g.liveTree = removeSplitLeaf(g.startTree, g.id);
+    g.hostEl = hostOf(g.id);
+    g.hostEl?.classList.add("axdb-ghost");
+    project(g.liveTree);
+    api.render();
+  };
+  const onToolMove = (ev) => {
+    const g = gesture;
+    if (!g || g.kind === "palette") return;
+    if (!g.started) {
+      if (Math.abs(ev.screen.x - g.downClient.x) + Math.abs(ev.screen.y - g.downClient.y) < DRAG_THRESHOLD2) return;
+      if (g.kind === "move") beginMoveVisuals(g);
+      else {
+        g.started = true;
+        dividerEls[liveDividers.indexOf(g.divider)]?.classList.add("axdb-active");
+      }
+      capturePointer(g);
+      armEscape(g);
+    }
+    if (g.kind === "divider" && g.divider) {
+      const d = g.divider;
+      const delta = d.dir === "row" ? ev.world.x - g.downWorld.x : ev.world.y - g.downWorld.y;
+      const signed = d.dir === "row" && rtl ? -delta : delta;
+      g.liveTree = moveSplitDivider(g.startTree, d.path, d.index, d.length > 0 ? signed / d.length : 0);
+      project(g.liveTree);
+      api.render();
+      return;
+    }
+    if (g.node) {
+      const x = ev.world.x - g.grab.dx;
+      const y = ev.world.y - g.grab.dy;
+      diagram.runSystemWrite(() => g.node.setPosition(x, y));
+    }
+    const inside = worldInsideBoard(ev.world.x, ev.world.y);
+    const t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
+    g.target = t ? { id: t.id, side: t.side } : null;
+    showInsertion(t ? insertionRect(t.rect, t.side) : null);
+    const out = !inside && options.dragOut === "remove" && (!options.removeZone || options.removeZone({ x: ev.screen.x, y: ev.screen.y }, { x: ev.world.x, y: ev.world.y }));
+    g.out = out;
+    g.hostEl?.classList.toggle("axdb-out", out);
+    api.render();
+  };
+  const onToolUp = () => {
+    const g = gesture;
+    if (!g || g.kind === "palette") return;
+    gesture = null;
+    teardownGesture(g);
+    if (!g.started) {
+      api.render();
+      return;
+    }
+    if (g.kind === "divider") {
+      const changed = JSON.stringify(g.liveTree) !== JSON.stringify(g.startTree);
+      if (changed) commitTree(g.startTree, g.liveTree);
+      project(readTree());
+      api.renderNow();
+      fire({ type: changed ? "commit" : "cancel", kind: "resize", nodeId: g.id, changed });
+      return;
+    }
+    if (g.out && options.onRemoveRequest) {
+      const without = g.liveTree;
+      void options.onRemoveRequest(g.id, [new SetSplitTreeCommand(group.id, g.startTree, normalizeSplit(without))]);
+      fire({ type: "remove", kind: "move", nodeId: g.id, changed: true });
+      return;
+    }
+    if (g.target) {
+      const side = rtl && (g.target.side === "left" || g.target.side === "right") ? g.target.side === "left" ? "right" : "left" : g.target.side;
+      const after = insertSplitLeaf(g.liveTree, g.id, g.target.id, side);
+      const changed = JSON.stringify(normalizeSplit(after)) !== JSON.stringify(normalizeSplit(g.startTree));
+      if (changed) commitTree(g.startTree, after);
+      else project(g.startTree);
+      project(readTree());
+      api.renderNow();
+      if (changed) live.announce(`${nameOf2(g.id)} moved ${side === "left" || side === "top" ? "before" : "after"} ${nameOf2(g.target.id)}`, "polite", true);
+      fire({ type: changed ? "commit" : "cancel", kind: "move", nodeId: g.id, changed });
+      return;
+    }
+    project(g.startTree);
+    api.renderNow();
+    fire({ type: "cancel", kind: "move", nodeId: g.id, changed: false });
+  };
+  const cancelActiveGesture = () => {
+    const g = gesture;
+    if (!g) return;
+    gesture = null;
+    teardownGesture(g);
+    if (g.kind === "palette") {
+      api.renderNow();
+      fire({ type: "cancel", kind: "palette", nodeId: g.id, changed: false });
+      return;
+    }
+    project(g.startTree);
+    api.renderNow();
+    if (g.started) fire({ type: "cancel", kind: g.kind === "divider" ? "resize" : "move", nodeId: g.id, changed: false });
+  };
+  const tool = {
+    id: `dashboard-split:${group.id}:${++binderSeq2}`,
+    priority: 2,
+    hitTest(ev, hit) {
+      if (disposed) return false;
+      if (gesture) return true;
+      if (hit.node) return (group.members ?? /* @__PURE__ */ new Set()).has(hit.node.id);
+      return worldInsideBoard(ev.world.x, ev.world.y);
+    },
+    onPointerDown(ev, hit) {
+      if (gesture) return;
+      const target = ev.source?.target ?? null;
+      const dividerEl = target?.closest?.(".axdb-div");
+      if (dividerEl && !isStatic) {
+        const d = liveDividers[Number(dividerEl.getAttribute("data-divider"))];
+        if (!d) return;
+        const tree2 = readTree();
+        gesture = {
+          kind: "divider",
+          id: `divider:${d.path.join(".")}:${d.index}`,
+          node: null,
+          started: false,
+          downClient: { x: ev.screen.x, y: ev.screen.y },
+          downWorld: { x: ev.world.x, y: ev.world.y },
+          grab: { dx: 0, dy: 0 },
+          startTree: tree2,
+          liveTree: tree2,
+          divider: d,
+          target: null,
+          out: false,
+          chip: null,
+          esc: null,
+          hostEl: null,
+          pointerId: typeof PointerEvent !== "undefined" && ev.source instanceof PointerEvent ? ev.source.pointerId : null
+        };
+        api.container.style.cursor = d.dir === "row" ? "col-resize" : "row-resize";
+        return;
+      }
+      if (!hit.node) {
+        diagram.clearSelection?.();
+        api.render();
+        return;
+      }
+      const node = diagram.getNode(hit.node.id);
+      if (!node || node.state?.locked === true || isStatic) return;
+      if (node.getMetadata?.("widgetMovable") === false) return;
+      const tree = readTree();
+      gesture = {
+        kind: "move",
+        id: node.id,
+        node,
+        started: false,
+        downClient: { x: ev.screen.x, y: ev.screen.y },
+        downWorld: { x: ev.world.x, y: ev.world.y },
+        grab: { dx: ev.world.x - node.position.x, dy: ev.world.y - node.position.y },
+        startTree: tree,
+        liveTree: tree,
+        divider: null,
+        target: null,
+        out: false,
+        chip: null,
+        esc: null,
+        hostEl: null,
+        pointerId: typeof PointerEvent !== "undefined" && ev.source instanceof PointerEvent ? ev.source.pointerId : null
+      };
+    },
+    onPointerMove(ev) {
+      onToolMove(ev);
+    },
+    onPointerUp() {
+      onToolUp();
+    },
+    onCancel() {
+      cancelActiveGesture();
+    }
+  };
+  const unregisterTool = registerTool(tool);
+  const beginPaletteDrag = (node, spec, event) => {
+    if (disposed || gesture || isStatic) return;
+    const chip2 = spec.chip ?? null;
+    if (chip2) {
+      chip2.classList.add("axdb-drag-chip");
+      document.body.appendChild(chip2);
+      chip2.style.left = `${event.clientX + 6}px`;
+      chip2.style.top = `${event.clientY + 6}px`;
+    }
+    const tree = readTree();
+    const g = {
+      kind: "palette",
+      id: node.id,
+      node,
+      started: true,
+      downClient: { x: event.clientX, y: event.clientY },
+      downWorld: { x: 0, y: 0 },
+      grab: { dx: 0, dy: 0 },
+      startTree: tree,
+      liveTree: tree,
+      divider: null,
+      target: null,
+      out: false,
+      chip: chip2,
+      esc: null,
+      hostEl: null,
+      pointerId: null
+    };
+    gesture = g;
+    armEscape(g);
+    const detach = () => {
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+    };
+    const onMove = (e) => {
+      if (gesture !== g) return detach();
+      if (chip2) {
+        chip2.style.left = `${e.clientX + 6}px`;
+        chip2.style.top = `${e.clientY + 6}px`;
+      }
+      const w = toWorld(e.clientX, e.clientY);
+      const t = worldInsideBoard(w.x, w.y) ? dropTargetAt(g.liveTree, w.x, w.y) : null;
+      g.target = t ? { id: t.id, side: t.side } : null;
+      showInsertion(t ? insertionRect(t.rect, t.side) : null);
+      chip2?.classList.toggle("axdb-out", !t && !!g.liveTree);
+      api.render();
+    };
+    const onUp = () => {
+      detach();
+      if (gesture !== g) return;
+      gesture = null;
+      teardownGesture(g);
+      const tree2 = g.liveTree;
+      const after = g.target ? insertSplitLeaf(tree2, node.id, g.target.id, g.target.side) : tree2 ? null : addSplitLeaf(null, node.id, frame(), gap, padding);
+      if (!after) {
+        api.renderNow();
+        fire({ type: "cancel", kind: "palette", nodeId: node.id, changed: false });
+        return;
+      }
+      const cells = cellsFromSplit(after, columns, rowsGuess());
+      const cell = cells.get(node.id) ?? { x: 0, y: 0, w: Math.max(1, spec.w), h: Math.max(1, spec.h) };
+      const displaced = [new SetSplitTreeCommand(group.id, tree2, normalizeSplit(after))];
+      void options.onDropIn?.(node, cell, displaced);
+      fire({ type: "drop-in", kind: "palette", nodeId: node.id, changed: true });
+    };
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+  };
+  const memberHostAt = (target) => {
+    const host = target?.closest?.(".grafloria-node-host");
+    if (!host) return null;
+    const id = host.getAttribute("data-node-id") ?? "";
+    if (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id)) return null;
+    return { id, host };
+  };
+  const onFocusIn = (e) => {
+    const hit = memberHostAt(e.target);
+    if (!hit || disposed) return;
+    if (focusedId !== hit.id) {
+      focusedId = hit.id;
+      syncA11y();
+    }
+  };
+  const dividerBeside = (tree, id, side) => {
+    const path = pathToLeaf(tree, id);
+    if (!path || !tree) return null;
+    const dir = side === "left" || side === "right" ? "row" : "column";
+    for (let depth = path.length - 1; depth >= 0; depth--) {
+      const groupPath = path.slice(0, depth);
+      let node = tree;
+      for (const i2 of groupPath) node = node.children[i2];
+      const grp = node;
+      if (grp.dir !== dir) continue;
+      const i = path[depth];
+      const after = side === "right" || side === "bottom";
+      const index = after ? i : i - 1;
+      if (index >= 0 && index < grp.children.length - 1) return { path: groupPath, index };
+      return null;
+    }
+    return null;
+  };
+  const onKey = (e) => {
+    if (disposed || gesture) return;
+    const hit = memberHostAt(e.target);
+    const order = splitLeaves(readTree()).filter((id) => !!diagram.getNode(id) && !!hostOf(id));
+    if (!hit) {
+      const el = e.target;
+      const onRoot = !!el && el.tagName?.toLowerCase() === "svg" && el.classList?.contains("grafloria-diagram");
+      if (onRoot && (e.key.startsWith("Arrow") || e.key === "Enter" || e.key === " ")) {
+        const target = focusedId && order.includes(focusedId) ? focusedId : order[0];
+        if (target && handle.focusWidget(target)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+      return;
+    }
+    if (e.key === "Home" || e.key === "End") {
+      const id = e.key === "Home" ? order[0] : order[order.length - 1];
+      if (id) handle.focusWidget(id);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    const side = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "top", ArrowDown: "bottom" }[e.key];
+    if (!side) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.shiftKey) {
+      const i = order.indexOf(hit.id);
+      const next = order[side === "left" || side === "top" ? i - 1 : i + 1];
+      if (next) handle.focusWidget(next);
+      return;
+    }
+    if (isStatic) return;
+    const name = nameOf2(hit.id);
+    const tree = readTree();
+    const d = dividerBeside(tree, hit.id, side);
+    if (!d || !tree) {
+      live.announceError(`${name} has no divider on its ${side === "top" ? "top" : side === "bottom" ? "bottom" : side} side`);
+      return;
+    }
+    const grows = side === "right" || side === "bottom" ? KEY_STEP : -KEY_STEP;
+    const after = moveSplitDivider(tree, d.path, d.index, grows);
+    const r = commitTree(tree, after);
+    void Promise.resolve(r).then(() => {
+      if (disposed) return;
+      project(readTree());
+      api.renderNow();
+      live.announce(`${name} resized to ${describeSlot(hit.id, readTree())}`, "polite", true);
+      syncA11y();
+      hostOf(hit.id)?.focus?.({ preventScroll: true });
+    });
+  };
+  api.container.addEventListener("focusin", onFocusIn);
+  api.container.addEventListener("keydown", onKey);
+  const containerObserver = fluid && typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => {
+    if (disposed) return;
+    if (applyFluidFrame()) {
+      project();
+      api.renderNow();
+    }
+  }) : null;
+  containerObserver?.observe(api.container);
+  const hostObserver = typeof MutationObserver !== "undefined" ? new MutationObserver((records) => {
+    if (disposed) return;
+    const landed = records.some((r) => Array.from(r.addedNodes).some((n3) => n3.classList?.contains("grafloria-node-host")));
+    if (landed) syncA11y();
+  }) : null;
+  const layerEl = htmlLayer();
+  if (layerEl && hostObserver) hostObserver.observe(layerEl, { childList: true });
+  const rowsGuess = () => Math.max(1, Math.round(frame().height / (baseRowHeight + gap)));
+  const handle = {
+    sync() {
+      if (disposed) return;
+      applyFluidFrame();
+      const tree = reconcile2();
+      project(tree);
+      api.renderNow();
+    },
+    setSizing() {
+    },
+    getSizing: () => "fit",
+    setFloat() {
+    },
+    getFloat: () => false,
+    setColumns: () => false,
+    getColumns: () => columns,
+    setRtl(on) {
+      if (on === rtl) return;
+      rtl = on;
+      project();
+      api.renderNow();
+    },
+    getRtl: () => rtl,
+    setStatic(on) {
+      if (on === isStatic) return;
+      cancelActiveGesture();
+      isStatic = on;
+      project();
+      api.renderNow();
+    },
+    getStatic: () => isStatic,
+    focusWidget(id) {
+      if (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id)) return false;
+      focusedId = id;
+      syncA11y();
+      hostOf(id)?.focus?.({ preventScroll: true });
+      return true;
+    },
+    getFocusedWidget: () => focusedId,
+    saveLayout() {
+      return { columns, cells: cellsFromSplit(readTree(), columns, rowsGuess()) };
+    },
+    metrics() {
+      const f = frame();
+      return {
+        columns,
+        maxColumns: columns,
+        rtl,
+        responsive: false,
+        fluid,
+        static: isStatic,
+        capacity: void 0,
+        gap,
+        padding,
+        sizing: "fit",
+        rows: rowsGuess(),
+        rowHeight: rowsGuess() > 0 ? (f.height - 2 * padding - (rowsGuess() - 1) * gap) / rowsGuess() : 0,
+        columnUnit: columns > 0 ? (f.width - 2 * padding - (columns - 1) * gap) / columns : 0,
+        boardHeight: f.height,
+        frame: f
+      };
+    },
+    willItFit: () => true,
+    cellOf(id) {
+      return cellsFromSplit(readTree(), columns, rowsGuess()).get(id);
+    },
+    cellRectOf(id) {
+      const r = rectsOf(paintedTree()).get(id);
+      if (r) return r;
+      const n3 = diagram.getNode(id);
+      return n3 ? { x: n3.position.x, y: n3.position.y, width: n3.size.width, height: n3.size.height } : void 0;
+    },
+    planRemoval(id) {
+      const tree = readTree();
+      if (!pathToLeaf(tree, id)) return [];
+      return [new SetSplitTreeCommand(group.id, tree, normalizeSplit(removeSplitLeaf(tree, id)))];
+    },
+    async moveTo(id, x, y) {
+      const tree = readTree();
+      if (!pathToLeaf(tree, id)) return false;
+      const cells = cellsFromSplit(tree, columns, rowsGuess());
+      let targetId;
+      for (const [tid, c] of cells) {
+        if (tid !== id && x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) targetId = tid;
+      }
+      if (!targetId) return false;
+      const mine = cells.get(id);
+      const side = mine.x + mine.w <= cells.get(targetId).x ? "left" : mine.x >= cells.get(targetId).x + cells.get(targetId).w ? "right" : mine.y < cells.get(targetId).y ? "top" : "bottom";
+      const after = insertSplitLeaf(tree, id, targetId, side);
+      await commitTree(tree, after);
+      project(readTree());
+      api.renderNow();
+      return true;
+    },
+    async resizeTo(id, w, h) {
+      const tree = readTree();
+      const cells = cellsFromSplit(tree, columns, rowsGuess());
+      const mine = cells.get(id);
+      if (!tree || !mine) return false;
+      let next = tree;
+      const dw = w - mine.w;
+      const dh = h - mine.h;
+      const dx = dividerBeside(next, id, "right");
+      if (dw && dx) next = moveSplitDivider(next, dx.path, dx.index, dw / columns);
+      const dy = dividerBeside(next, id, "bottom");
+      if (dh && dy) next = moveSplitDivider(next, dy.path, dy.index, dh / rowsGuess());
+      if (JSON.stringify(next) === JSON.stringify(tree)) return false;
+      await commitTree(tree, next);
+      project(readTree());
+      api.renderNow();
+      return true;
+    },
+    beginPaletteDrag,
+    getSplitTree: () => readTree(),
+    async setSplitTree(tree) {
+      const before = readTree();
+      await commitTree(before, tree);
+      project(readTree());
+      api.renderNow();
+    },
+    dispose() {
+      if (disposed) return;
+      cancelActiveGesture();
+      disposed = true;
+      unregisterTool();
+      api.container.removeEventListener("focusin", onFocusIn);
+      api.container.removeEventListener("keydown", onKey);
+      containerObserver?.disconnect();
+      hostObserver?.disconnect();
+      for (const el of dividerEls) el.remove();
+      dividerEls.length = 0;
+      insertion?.remove();
+      insertion = null;
+      api.container.style.cursor = "";
+    }
+  };
+  if (options.tree !== void 0) writeTree(options.tree);
+  applyFluidFrame();
+  project(reconcile2());
+  api.renderNow();
+  return handle;
+}
+
 // libs/element/src/lib/dashboard-kit/widgets.ts
 var BUILT_IN_WIDGET_KINDS = ["kpi", "line", "bar", "donut", "funnel", "table"];
 var PALETTE_SIZE = 6;
@@ -196637,6 +197708,16 @@ function createDashboardHandle(ctx) {
       const v = views.find((x) => x.id === (viewId ?? ctx.active));
       return (v?.widgets ?? []).map((w) => makeWidgetHandle(w.id)).filter(Boolean);
     },
+    setLayout(layout, viewId) {
+      const vid = viewId ?? ctx.active;
+      if (!views.some((v) => v.id === vid)) return;
+      if ((ctx.layoutOf.get(vid) ?? "grid") === layout) return;
+      ctx.rebindView?.(vid, layout);
+      clampCamera();
+      ctx.apiRef?.renderNow();
+      reportChanged();
+    },
+    getLayout: (viewId) => ctx.layoutOf.get(viewId ?? ctx.active) ?? "grid",
     setSizing(mode) {
       for (const b of binders.values()) b.setSizing(mode);
       clampCamera();
@@ -196721,9 +197802,14 @@ function createDashboardHandle(ctx) {
       const savedViews = views.map((v) => {
         const saved = binders.get(v.id)?.saveLayout();
         const live = treeOf(v.id);
+        const layout = ctx.layoutOf.get(v.id) ?? "grid";
+        const split = binders.get(v.id);
+        const tree = layout === "split" && split?.getSplitTree ? split.getSplitTree() : void 0;
         return {
           ...v,
           ...saved ? { columns: saved.columns } : {},
+          layout,
+          ...tree !== void 0 ? { tree } : {},
           // Live membership when the view is mounted; the authored tree before
           // finalize (a spec serialised without ever rendering keeps its shape).
           widgets: live.length > 0 || (ctx.boardGroups.get(v.id)?.members?.size ?? 0) > 0 ? live : v.widgets.map((w) => ({ ...w }))
@@ -196742,6 +197828,7 @@ function createDashboardHandle(ctx) {
         float: handle.getFloat(),
         rtl: handle.getRtl(),
         static: handle.getStatic(),
+        layout: handle.getLayout(),
         views: savedViews
       };
     },
@@ -196890,6 +197977,7 @@ function dashboard(options) {
   const mode = options.mode ?? (options.width !== void 0 ? "fixed" : "fluid");
   const overflow = options.overflow ?? "bounded";
   const sizing = options.sizing ?? (mode === "fluid" ? "grow" : "fit");
+  const layout = options.layout ?? "grid";
   const views = options.views ? options.views.map((v) => ({ ...v, widgets: cloneWidgets(v.widgets) })) : [{ id: "main", widgets: cloneWidgets(options.widgets ?? []) }];
   for (const v of views) assignCellsDeep(v.widgets, v.columns ?? columns);
   const nodes = [];
@@ -196960,6 +198048,7 @@ function dashboard(options) {
     boardH,
     mode,
     overflow,
+    layoutOf: new Map(views.map((v) => [v.id, v.layout ?? layout])),
     optionsBase: options,
     active: views[0]?.id ?? "main",
     apiRef: null,
@@ -197005,36 +198094,40 @@ function dashboard(options) {
           rtl: options.rtl ?? false,
           fluid: mode === "fluid",
           overflow,
-          static: options.static ?? false
+          static: options.static ?? false,
+          layout: ctx.layoutOf.get(v.id) ?? layout
         });
+        if ((ctx.layoutOf.get(v.id) ?? layout) === "split" && v.tree !== void 0) g.setMetadata(SPLIT_TREE_KEY, v.tree);
         g.size = { width: viewW(v), height: viewH(v), depth: 0 };
         g.position = { x: v.id === ctx.active ? 0 : OFFSCREEN_X, y: 0 };
         groups.set(v.id, g);
         ctx.boardGroups.set(v.id, g);
         mountBoard(v.id, v.id, v.widgets, g);
-        binders.set(
-          v.id,
-          bindDashboardGrid(a, g, {
-            columns: v.columns ?? columns,
-            gap,
-            padding: gap,
-            sizing,
-            baseRowHeight: rowHeight,
-            designHeight: viewH(v),
-            float: options.float ?? false,
-            rtl: options.rtl ?? false,
-            fluid: mode === "fluid",
-            overflow,
-            static: options.static ?? false,
-            ...options.responsive ? { responsive: options.responsive } : {},
-            ...options.binder ?? {},
-            onGesture: (e) => {
-              if (e.type === "commit") reportChanged();
-              options.binder?.onGesture?.(e);
-            }
-          })
-        );
+        binders.set(v.id, bindView(v, g, ctx.layoutOf.get(v.id) ?? layout));
       }
+      ctx.rebindView = (viewId, next) => {
+        const v = views.find((x) => x.id === viewId);
+        const g = groups.get(viewId);
+        const b = binders.get(viewId);
+        if (!v || !g || !b) return;
+        const cells = b.saveLayout().cells;
+        b.dispose();
+        const write = (fn) => model.runSystemWrite ? model.runSystemWrite(fn) : fn();
+        write(() => {
+          for (const [id, cell] of cells) {
+            const n3 = model.getNode(id);
+            if (n3) n3.setMetadata("gridItem", gridItemFromCell(cell));
+            else model.getGroup(id)?.setMetadata("gridItem", gridItemFromCell(cell));
+          }
+          g.setMetadata(SPLIT_TREE_KEY, void 0);
+          g.setMetadata("dashboardLayouts", void 0);
+          const board = g.getMetadata("dashboardBoard") ?? {};
+          g.setMetadata("dashboardBoard", { ...board, layout: next });
+        });
+        ctx.layoutOf.set(viewId, next);
+        binders.set(viewId, bindView(v, g, next));
+        binders.get(viewId)?.sync();
+      };
       handle.showView(ctx.active);
       ctx.rebindContainer = (id) => {
         const g = model.getGroup(id);
@@ -197092,6 +198185,39 @@ function dashboard(options) {
           for (const p of [...n3.getPorts().values()]) n3.removePort(p.id);
           boardGroup.addMember(w.id);
         }
+      }
+      function bindView(v, g, viewLayout) {
+        const common = {
+          gap,
+          padding: gap,
+          rtl: options.rtl ?? false,
+          fluid: mode === "fluid",
+          static: options.static ?? false,
+          ...options.binder ?? {},
+          onGesture: (e) => {
+            if (e.type === "commit") reportChanged();
+            options.binder?.onGesture?.(e);
+          }
+        };
+        if (viewLayout === "split") {
+          return bindDashboardSplit(a, g, {
+            ...common,
+            columns: v.columns ?? columns,
+            baseRowHeight: rowHeight,
+            designHeight: viewH(v),
+            ...v.tree !== void 0 ? { tree: v.tree } : {}
+          });
+        }
+        return bindDashboardGrid(a, g, {
+          ...common,
+          columns: v.columns ?? columns,
+          sizing,
+          baseRowHeight: rowHeight,
+          designHeight: viewH(v),
+          float: options.float ?? false,
+          overflow,
+          ...options.responsive ? { responsive: options.responsive } : {}
+        });
       }
       function bindContainer(cg, w, viewId) {
         binders.set(
@@ -197222,6 +198348,9 @@ function fromDocument(document2, options = {}) {
     // a fixed world — it stays one. Fluid is only what was saved fluid.
     mode: firstBoard?.fluid === true ? "fluid" : "fixed",
     overflow: firstBoard?.overflow ?? "bounded",
+    layoutOf: new Map(
+      viewGroups.map((g) => [g.id, g.getMetadata("dashboardBoard")?.layout ?? "grid"])
+    ),
     // responsive is NOT in the document (a runtime seam), so it is deliberately
     // absent from the round-trip; width/height/columns/gap/sizing/float/rtl are.
     optionsBase: firstBoard ? {
@@ -197234,6 +198363,7 @@ function fromDocument(document2, options = {}) {
       mode: firstBoard.fluid === true ? "fluid" : "fixed",
       overflow: firstBoard.overflow ?? "bounded",
       static: firstBoard.static ?? false,
+      layout: firstBoard.layout ?? "grid",
       width: viewGroups[0]?.size?.width,
       height: viewGroups[0]?.size?.height
     } : {},
@@ -197276,15 +198406,39 @@ function fromDocument(document2, options = {}) {
     for (const group of groups) {
       const board = group.getMetadata("dashboardBoard");
       if (!board) continue;
-      boards.set(group.id, bindDashboardGrid(a, group, { ...board }));
+      boards.set(group.id, bindBoard(group, board));
     }
+    ctx.rebindView = (viewId, next) => {
+      const group = model.getGroup(viewId);
+      const b = boards.get(viewId);
+      const board = group?.getMetadata("dashboardBoard");
+      if (!group || !b || !board) return;
+      const cells = b.saveLayout().cells;
+      b.dispose();
+      model.runSystemWrite(() => {
+        for (const [id, cell] of cells) {
+          const n3 = model.getNode(id);
+          if (n3) n3.setMetadata("gridItem", gridItemFromCell(cell));
+          else model.getGroup(id)?.setMetadata("gridItem", gridItemFromCell(cell));
+        }
+        group.setMetadata(SPLIT_TREE_KEY, void 0);
+        group.setMetadata("dashboardLayouts", void 0);
+        group.setMetadata("dashboardBoard", { ...board, layout: next });
+      });
+      ctx.layoutOf.set(viewId, next);
+      boards.set(viewId, bindBoard(group, { ...board, layout: next }));
+      boards.get(viewId)?.sync();
+    };
     ctx.rebindContainer = (id) => {
       const group = model.getGroup(id);
       const board = group?.getMetadata("dashboardBoard");
       if (!group || !board) return;
       ctx.boardGroups.set(id, group);
-      boards.set(id, bindDashboardGrid(a, group, { ...board }));
+      boards.set(id, bindBoard(group, board));
     };
+    function bindBoard(group, board) {
+      return board.layout === "split" ? bindDashboardSplit(a, group, { ...board }) : bindDashboardGrid(a, group, { ...board });
+    }
     ctx.attachHistory?.();
   };
   return {
