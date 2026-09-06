@@ -239,6 +239,14 @@ h.showView('ops');</pre>
       change. <code>binderOf()</code> is the documented escape hatch to the raw grid
       binder.</p>
 
+      <div class="note"><b>Everything the JavaScript options table lists passes straight through
+      <code>options</code></b> — <code>mode: 'fluid' | 'fixed'</code> (fluid by default: the
+      board is 100% of its container), <code>static</code> for a read-only viewer,
+      <code>overflow</code>, and per-widget <code>limits</code>, <code>movable</code> and
+      <code>resizable</code>. Keyboard operation (arrows move, Shift+arrows resize, every
+      outcome announced) needs nothing from you. See
+      <a href="../javascript-dashboards/">Dashboards in JavaScript</a> for the full table
+      and the keyboard section.</div>
       <h2>Persistence: the toJSON round-trip</h2>
 <pre data-lang="typescript">// save — the whole board as plain data (views, cells, columns, gap, sizing, float, rtl)
 localStorage.setItem('board', JSON.stringify(handle.toJSON()));

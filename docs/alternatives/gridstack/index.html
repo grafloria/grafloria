@@ -87,7 +87,14 @@
       <tr><td>Drag / resize / re-pack</td><td>✓ — the reference implementation</td><td class="us">✓ push-down with skip, swap shapes, truthful placeholder</td></tr>
       <tr><td>Nested grids</td><td>✓ <code>subGridOpts</code> (geometry)</td><td class="us">✓ containers — cross-boundary drag with adoption, one undo step</td></tr>
       <tr><td>Responsive columns</td><td>✓ breakpoints</td><td class="us">✓ cells re-flow, not just clamp</td></tr>
-      <tr><td>Locked tiles</td><td>✓ <code>locked</code>/<code>noMove</code></td><td class="us">✓ <code>pinned</code> — survives every reflow</td></tr>
+      <tr><td>Locked tiles</td><td>✓ <code>locked</code>/<code>noMove</code>/<code>noResize</code></td><td class="us">✓ <code>pinned</code>, <code>movable</code>, <code>resizable</code> — pinned survives every reflow</td></tr>
+      <tr><td>Fluid width — 100% of the container</td><td>✓</td><td class="us">✓ the default; <code>mode: 'fixed'</code> keeps an authored world for a board inside a diagram</td></tr>
+      <tr><td>Per-widget min / max size</td><td>✓ <code>minW … maxH</code></td><td class="us">✓ <code>limits: { minSpan, maxSpan, minRows, maxRows }</code></td></tr>
+      <tr><td>Resize from any edge</td><td>✓ configurable handles</td><td class="us">✓ every edge and corner, the cursor says which</td></tr>
+      <tr><td>Static (read-only) grid</td><td>✓ <code>staticGrid</code></td><td class="us">✓ <code>static: true</code>, switched live with <code>setStatic()</code></td></tr>
+      <tr><td>Bounded height</td><td>✓ <code>maxRow</code></td><td class="us">✓ fit mode is a capacity — a board never paints past its own edge</td></tr>
+      <tr><td>Keyboard operation</td><td>not documented</td><td class="us">✓ arrows move, Shift+arrows resize, every outcome announced — axe-core in CI</td></tr>
+      <tr><td>Touch</td><td>✓</td><td class="us">✓ drag and resize, 24-px handles visible without hover</td></tr>
       <tr><th colspan="3">Widgets &amp; content</th></tr>
       <tr><td>Content model</td><td><code>content</code> HTML string — rendering is yours</td><td class="us"><code>kind</code> + <code>data</code> — widgets are data</td></tr>
       <tr><td>Built-in renderers (KPI, line, donut…)</td><td>—</td><td class="us">✓ six, themed</td></tr>
@@ -143,6 +150,9 @@ render(SPEC, document.getElementById('canvas'));
       <tr><td><code>subGridOpts</code> nested grids</td><td class="us">a widget carrying <code>widgets</code> — cross-boundary drag with adoption, one undo step</td></tr>
       <tr><td><code>locked</code> / <code>noMove</code></td><td class="us"><code>pinned: true</code> — never pushed, survives every reflow</td></tr>
       <tr><td><code>column(n)</code>, responsive breakpoints</td><td class="us"><code>columns</code> + responsive re-flow of the cells themselves</td></tr>
+      <tr><td><code>staticGrid</code></td><td class="us"><code>static: true</code> — the viewer's mode; the API and undo keep working</td></tr>
+      <tr><td><code>minW</code> / <code>maxW</code> / <code>minH</code> / <code>maxH</code></td><td class="us"><code>limits: { minSpan, maxSpan, minRows, maxRows }</code> on the widget</td></tr>
+      <tr><td><code>maxRow</code></td><td class="us"><code>sizing: 'fit'</code> — the board's height is the capacity; <code>overflow: 'scroll'</code> opts out</td></tr>
     </table></div>
 
 

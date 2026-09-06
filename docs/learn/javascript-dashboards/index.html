@@ -126,12 +126,27 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
         <tr><th>Option</th><th>Default</th><th>What it does</th></tr>
         <tr><td><code>columns</code></td><td>12</td><td>Column count for every view (a view can override)</td></tr>
         <tr><td><code>gap</code></td><td>8</td><td>Gap between widgets <b>and</b> the board padding, px</td></tr>
+        <tr><td><code>mode</code></td><td><code>'fluid'</code></td>
+          <td><code>'fluid'</code>: the board is 100% of its container, laid out at real
+          CSS pixels at zoom 1 — what every grid library does. <code>'fixed'</code>: the
+          authored <code>width</code>/<code>height</code> are the world and the camera
+          frames them — for a dashboard embedded inside a larger diagram. An explicit
+          <code>width</code> implies <code>'fixed'</code></td></tr>
         <tr><td><code>sizing</code></td><td><code>'fit'</code></td>
-          <td><code>'fit'</code> keeps the board at its design height and squeezes rows —
-          nothing falls below the fold; <code>'grow'</code> keeps the row height and
-          extends the board downward</td></tr>
+          <td><code>'fit'</code> keeps the board at its height and squeezes rows — and
+          <b>fit means bounded</b>: the height is a capacity, and a drop, resize or
+          <code>addWidget()</code> that would need one row too many is refused (the
+          placeholder stays put, the palette chip dims, <code>addWidget</code> returns
+          <code>undefined</code>). <code>'grow'</code> keeps the row height and extends the
+          board downward; the wheel scrolls</td></tr>
+        <tr><td><code>overflow</code></td><td><code>'bounded'</code></td>
+          <td><code>'scroll'</code> lifts the fit capacity: the frame extends to hold the
+          rows at the row floor and the canvas pans</td></tr>
+        <tr><td><code>static</code></td><td><code>false</code></td>
+          <td>The viewer's mode: no drag, no resize, no handles — the API, undo and
+          keyboard <i>reading</i> keep working. Switch live with <code>H.setStatic()</code></td></tr>
         <tr><td><code>rowHeight</code></td><td>130</td><td>Row height in <code>'grow'</code> mode, px</td></tr>
-        <tr><td><code>width</code>, <code>height</code></td><td>1180 × 660</td><td>Board size, px</td></tr>
+        <tr><td><code>width</code>, <code>height</code></td><td>1180 × 660</td><td>Board size, px — only in <code>mode: 'fixed'</code>; a fluid board takes the container's</td></tr>
         <tr><td><code>float</code></td><td><code>false</code></td>
           <td>Off = gravity packs widgets upward, no holes; on = widgets sit wherever you
           drop them, gaps are legal</td></tr>
@@ -152,8 +167,11 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
           <td>Your chart painter — called <b>once per widget when it mounts</b>; the host
           is reused across re-renders, so this is not a per-frame hook</td></tr>
         <tr><td><code>onLayoutChange</code></td><td>—</td>
-          <td><i>"Fires after any committed gesture, with the view whose layout
-          changed"</i> — the persistence hook</td></tr>
+          <td>Fires with the view whose layout changed — after a pointer gesture, an
+          API call (<code>moveTo</code>, <code>resize</code>, <code>addWidget</code>,
+          <code>remove</code>, <code>pin</code>), a keyboard step, an undo or a redo.
+          Never twice for the same layout; not for a responsive column change, whose
+          saved layout is unchanged. The persistence hook</td></tr>
         <tr><td><code>binder</code></td><td>—</td>
           <td>Extra options merged into the grid binder underneath — the escape hatch to
           the layer below (drag-out-to-remove zones, palette drop-in, gesture callbacks)</td></tr>
@@ -166,7 +184,10 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
   x: 0, y: 1,           // explicit cell — OMIT and widgets flow in declaration
                         // order, wrapping at the column count
   pinned: true,         // never pushed, refuses the mover, survives every reflow
-  title: 'Revenue',     // used by the built-in renderers' header
+  movable: false,       // the pointer and keyboard may not move it (the API may)
+  resizable: false,     // no handle, no edge pull (the API may)
+  limits: { minSpan: 2, maxSpan: 8, minRows: 1, maxRows: 3 },   // cells; resizes clamp
+  title: 'Revenue',     // used by the built-in renderers' header — and as its spoken name
   data: { ... } }       // your payload — passed straight back to renderWidget</pre>
       <p>Mixing works: one widget with an explicit cell, the rest flowing around it — the
       flagship demo's Pipeline view does exactly that.</p>
@@ -233,7 +254,9 @@ H.setColumns(6);      H.getColumns();    // per-column layout CACHE: shrink then
                                          // back restores the wide layout; an explicit
                                          // call PINS the count against `responsive`
 H.setRtl(true);       H.getRtl();
-H.refresh();                 // re-read the boards after undo/redo or out-of-band edits
+H.setStatic(true);    H.getStatic();    // viewer / designer, one switch
+H.refresh();                 // re-read the boards after an out-of-band model edit
+                             // (undo/redo need nothing — the boards follow the history)
 H.fit();                     // re-frame the camera on the active view
 H.metrics();                 // live geometry: columns, gap, rows, rowHeight, frame
 H.exportIds();               // the ids ONE view occupies — for scoped export
@@ -249,10 +272,10 @@ w.bringToFront();  w.sendToBack();       // one undoable step each
 w.update({ data: nextData });            // replace data (and title/kind) and repaint
 w.repaint();                             // re-run renderWidget after your data changed
 w.remove();                              // ONE undoable step incl. the survivors' re-pack</pre>
-      <div class="note"><b>Undo is already wired.</b> Drags, resizes, adds and removes each land as
-      one undoable step on the engine's command stack — ⌘Z works, and buttons go through
-      <code>api.getEngine().undo()</code>. After an undo/redo call <code>H.refresh()</code>
-      so the grid and the model agree again. See
+      <div class="note"><b>Undo is already wired.</b> Drags, resizes, adds, removes, pins and
+      keyboard steps each land as one undoable step on the engine's command stack — ⌘Z
+      works, and buttons go through <code>api.getEngine().undo()</code>. The boards follow
+      the history themselves, so nothing needs a <code>refresh()</code> after an undo. See
       <a href="../commands-and-undo/">Commands &amp; undo</a>.</div>
       <div class="note"><b>Exporting a board? Scope it.</b> Tabs park inactive views far off-camera,
       and <code>export()</code> frames the whole model — <i>"a two-view board writes a
@@ -341,6 +364,28 @@ render(spec, host);
       want drag-in room. Container removal through the widget handle is not
       supported yet.</div>
 <p><a class="demo-link" href="../../demos/dashboard/nested-containers.html">Live: dashboard containers — drag across the boundary, escalate, undo →</a></p>
+
+      <h2>Keyboard and screen readers</h2>
+      <p>Every widget host is a named, focusable group — <code>role="group"</code>, a
+      <code>dashboard widget</code> role description, and a label that carries the widget's
+      name, its cell and whether it is pinned. One tile per board is the tab stop (a roving
+      tabindex); the diagram's own root comes first, and an arrow there hands focus to the
+      board.</p>
+      <div class="tablewrap"><table>
+        <tr><th>Key</th><th>On a focused widget</th></tr>
+        <tr><td>← → ↑ ↓</td><td>Move one cell — a step onto a neighbour swaps with it, as a full drag would</td></tr>
+        <tr><td>Shift + arrows</td><td>Resize one cell</td></tr>
+        <tr><td>Home / End</td><td>First / last widget on the board</td></tr>
+        <tr><td>Tab</td><td>Out of the board (one stop per board)</td></tr>
+      </table></div>
+      <p>Every outcome is spoken through the renderer's live region — the tile's new cell,
+      each neighbour it displaced, or why it was refused. Each step is one undoable command
+      and reaches <code>onLayoutChange</code>. Resize handles are 24&nbsp;px and stay
+      visible on touch devices; motion follows <code>prefers-reduced-motion</code>; every
+      built-in chart carries its numbers as a visually-hidden table; the palette clears
+      3:1 on both light and dark cards. The demo battery runs axe-core (WCAG 2.1 A/AA) on
+      three boards and drives the keyboard for real — see
+      <a href="../../demos/dashboard/fluid-board.html">the fluid dashboard demo</a>.</p>
 
       <h2>Where next</h2>
       <ul>

@@ -208,6 +208,14 @@ kind: 'table'  → data: { columns?: string[], rows?: (string | number)[][] }</p
       (honoring a pre-set <code>tab</code>), and <code>@ready</code> hands you the
       <code>DashboardHandle</code> — the same object <code>getHandle()</code> returns.</p>
 
+      <div class="note"><b>Everything the JavaScript options table lists passes straight through
+      <code>options</code></b> — <code>mode: 'fluid' | 'fixed'</code> (fluid by default: the
+      board is 100% of its container), <code>static</code> for a read-only viewer,
+      <code>overflow</code>, and per-widget <code>limits</code>, <code>movable</code> and
+      <code>resizable</code>. Keyboard operation (arrows move, Shift+arrows resize, every
+      outcome announced) needs nothing from you. See
+      <a href="../javascript-dashboards/">Dashboards in JavaScript</a> for the full table
+      and the keyboard section.</div>
       <h2>Persisting layout: <code>@layout-change</code></h2>
       <p>After any committed gesture — a drag, a resize, an undo of either — the component
       emits <code>layoutChange</code> with <code>{ viewId, widgets }</code>: the affected
