@@ -194277,6 +194277,13 @@ var CSS4 = `
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   color: var(--axdb-ink);
 }
+/* The host is the card's size container, so the card can shed its padding at the
+   row floor instead of clipping its own header. */
+.grafloria-html-layer > .grafloria-node-host { container-type: size; }
+@container (max-height: 46px) {
+  .axdb-widget { padding: 4px 12px 3px; }
+  .axdb-widget-h { margin-bottom: 0; }
+}
 .axdb-widget-h {
   display: flex;
   align-items: center;
@@ -194313,12 +194320,23 @@ var CSS4 = `
    cqh = 1% of the body's own height, clamped so full-size tiles look exactly
    as before and short tiles compress instead of cutting. */
 .axdb-widget-b.axdb-kpi { display: flex; flex-direction: column; container-type: size; }
+/* STEP DOWN, NEVER CLIP. As the body gets shorter the sparkline goes first, then the
+   delta, then the value \u2014 the header alone at the row floor. Before this a 99-px row
+   drew the sparkline as a 13-px sliver and a 28-px row cut the value mid-glyph (the
+   fluid board, after a drag pushed the KPI row down). Thresholds are body heights. */
+/* Two class hops, so these outrank ".axdb-widget-b > svg { display: block }" \u2014
+   a bare .axdb-kpi-s lost that cascade and the sparkline stayed. */
+@container (max-height: 78px) { .axdb-kpi > .axdb-kpi-s { display: none; } }
+@container (max-height: 40px) { .axdb-kpi > .axdb-kpi-d { display: none; } }
+@container (max-height: 22px) { .axdb-kpi > .axdb-kpi-v { display: none; } }
 .axdb-kpi-v { font: 700 clamp(15px, 44cqh, 30px)/1.05 system-ui, sans-serif; letter-spacing: -.02em; color: var(--axdb-ink); }
 .axdb-kpi-d { margin-top: clamp(1px, 5cqh, 6px); font: 600 clamp(9px, 19cqh, 12px)/1.2 system-ui, sans-serif; }
 .axdb-kpi-d span { color: var(--axdb-muted); font-weight: 500; }
 .axdb-kpi-d.up { color: var(--axdb-up); }
 .axdb-kpi-d.down { color: var(--axdb-down); }
-.axdb-kpi-s { margin-top: auto; height: 34px; min-height: 0; flex: 0 1 34px; }
+/* Grows into a tall tile (a 3-row KPI is not a number over a void) and never
+   takes more than two fifths of the body. */
+.axdb-kpi-s { margin-top: auto; height: auto; min-height: 0; flex: 1 1 34px; max-height: 40%; }
 
 /* donut: ring beside its legend */
 .axdb-widget-b.axdb-donut { display: flex; align-items: center; gap: 10px; }
@@ -196032,6 +196050,33 @@ function empty(body, note = "no data") {
   body.innerHTML = `<div class="axdb-widget-empty">${esc(note)}</div>`;
 }
 var data = (widget) => widget.data ?? {};
+function chartBox(body, legend2 = false) {
+  const w = body.clientWidth || 0;
+  const h = (body.clientHeight || 0) - (legend2 ? 26 : 0);
+  if (w < 60 || h < 40) return { W: 640, H: 250 };
+  return { W: Math.round(w), H: Math.round(h) };
+}
+var sizeWatchers = /* @__PURE__ */ new WeakMap();
+function watchSize(host, relayout) {
+  if (typeof ResizeObserver === "undefined") return;
+  sizeWatchers.get(host)?.disconnect();
+  let last = { w: host.clientWidth, h: host.clientHeight };
+  let frame = 0;
+  const ro = new ResizeObserver(() => {
+    const w = host.clientWidth;
+    const h = host.clientHeight;
+    if (Math.abs(w - last.w) < 2 && Math.abs(h - last.h) < 2) return;
+    last = { w, h };
+    if (frame) cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      if (host.isConnected) relayout();
+      else ro.disconnect();
+    });
+  });
+  ro.observe(host);
+  sizeWatchers.set(host, ro);
+}
 var srTable = (caption, columns, rows) => `<table class="axdb-sr"><caption>${esc(caption)}</caption><thead><tr>${columns.map((c) => `<th scope="col">${esc(c)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
 var legend = (items, column = false) => `<div class="axdb-lg${column ? " axdb-lg--col" : ""}">` + items.map((i) => `<i><b style="background:${esc(i.color)}"></b>${esc(i.label)}</i>`).join("") + "</div>";
 var renderKpiWidget = (widget, host) => {
@@ -196068,12 +196113,17 @@ function normalizeSeries(raw) {
   return raw.filter((s) => !!s && Array.isArray(s.values)).map((s) => ({ name: s.name, values: s.values.filter(isNum) })).filter((s) => s.values.length > 0);
 }
 var renderLineWidget = (widget, host) => {
-  const d = data(widget);
   const body = card(host, widget, titleOf(widget));
+  layoutLine(widget, body);
+  watchSize(host, () => layoutLine(widget, body));
+};
+function layoutLine(widget, body) {
+  const d = data(widget);
   const series = normalizeSeries(d.series);
   if (!series.length) return empty(body);
-  const W = 640;
-  const H = 250;
+  const named = series.filter((s) => s.name);
+  if (named.length) body.classList.add("axdb-has-lg");
+  const { W, H } = chartBox(body, named.length > 0);
   const pad = { l: 34, r: 12, t: 12, b: 22 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
@@ -196100,21 +196150,22 @@ var renderLineWidget = (widget, host) => {
     ).join("") : "";
     return area + `<polyline points="${pts}" fill="none" stroke="${colorAt(si)}" stroke-width="${si === 0 ? 2.4 : 1.8}" stroke-linejoin="round" stroke-linecap="round"></polyline>` + dots;
   }).join("");
-  const named = series.filter((s) => s.name);
-  if (named.length) body.classList.add("axdb-has-lg");
   body.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(titleOf(widget))}">${grid}${ticks}${marks}</svg>` + (named.length ? legend(series.map((s, i) => ({ label: String(s.name ?? ""), color: colorAt(i) }))) : "") + srTable(
     titleOf(widget),
     ["", ...series.map((s, i) => String(s.name ?? `Series ${i + 1}`))],
     Array.from({ length: count2 }, (_, i) => [labels[i] ?? String(i + 1), ...series.map((s) => s.values[i] ?? "")])
   );
-};
+}
 var renderBarWidget = (widget, host) => {
-  const d = data(widget);
   const body = card(host, widget, titleOf(widget));
+  layoutBar(widget, body);
+  watchSize(host, () => layoutBar(widget, body));
+};
+function layoutBar(widget, body) {
+  const d = data(widget);
   const bars = (Array.isArray(d.bars) ? d.bars : []).filter((b) => !!b);
   if (!bars.length) return empty(body);
-  const W = 640;
-  const H = 250;
+  const { W, H } = chartBox(body);
   const pad = { l: 34, r: 12, t: 12, b: 26 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
@@ -196133,7 +196184,7 @@ var renderBarWidget = (widget, host) => {
     return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${colorAt(i)}"></rect><text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--axdb-ink)">${esc(compact(num4(b.value)))}</text><text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="var(--axdb-muted)">${esc(b.label ?? "")}</text>`;
   }).join("");
   body.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(titleOf(widget))}">${grid}${marks}</svg>` + srTable(titleOf(widget), ["Category", "Value"], bars.map((b) => [b.label ?? "", num4(b.value)]));
-};
+}
 function arcPath(cx, cy, r, a0, a1) {
   const at = (a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
   const [x0, y0] = at(a0);
@@ -196522,7 +196573,7 @@ function createDashboardHandle(ctx) {
       for (const b of binders.values()) b.setSizing(mode);
       ctx.apiRef?.renderNow();
     },
-    getSizing: () => binders.get(ctx.active)?.getSizing() ?? (ctx.optionsBase.sizing ?? "fit"),
+    getSizing: () => binders.get(ctx.active)?.getSizing() ?? ctx.optionsBase.sizing ?? (ctx.mode === "fluid" ? "grow" : "fit"),
     setFloat(on) {
       for (const b of binders.values()) b.setFloat(on);
       ctx.apiRef?.renderNow();
@@ -196769,6 +196820,7 @@ function dashboard(options) {
   const boardH = options.height ?? DEFAULTS5.height;
   const mode = options.mode ?? (options.width !== void 0 ? "fixed" : "fluid");
   const overflow = options.overflow ?? "bounded";
+  const sizing = options.sizing ?? (mode === "fluid" ? "grow" : "fit");
   const views = options.views ? options.views.map((v) => ({ ...v, widgets: cloneWidgets(v.widgets) })) : [{ id: "main", widgets: cloneWidgets(options.widgets ?? []) }];
   for (const v of views) assignCellsDeep(v.widgets, v.columns ?? columns);
   const nodes = [];
@@ -196877,7 +196929,7 @@ function dashboard(options) {
           columns: v.columns ?? columns,
           gap,
           padding: gap,
-          sizing: options.sizing ?? "fit",
+          sizing,
           baseRowHeight: rowHeight,
           designHeight: viewH(v),
           float: options.float ?? false,
@@ -196897,7 +196949,7 @@ function dashboard(options) {
             columns: v.columns ?? columns,
             gap,
             padding: gap,
-            sizing: options.sizing ?? "fit",
+            sizing,
             baseRowHeight: rowHeight,
             designHeight: viewH(v),
             float: options.float ?? false,
