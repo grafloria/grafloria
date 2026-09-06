@@ -906,3 +906,33 @@ describe('GridPackEngine — capacity (bounded fit)', () => {
     expect(e.rows()).toBe(1);
   });
 });
+
+describe('GridPackEngine — per-item size limits', () => {
+  it('a resize clamps to minW/maxW/minH/maxH', () => {
+    const e = new GridPackEngine([{ id: 'a', x: 0, y: 0, w: 6, h: 2, minW: 3, maxW: 8, minH: 1, maxH: 3 }], { columns: 12 });
+    expect(e.resizeCheck('a', 1, 1).changed).toBe(true);
+    expect(e.getItem('a')).toMatchObject({ w: 3, h: 1 });
+    expect(e.resizeCheck('a', 12, 9).changed).toBe(true);
+    expect(e.getItem('a')).toMatchObject({ w: 8, h: 3 });
+    // Already at the limit: asking past it again is a no-op.
+    expect(e.resizeCheck('a', 12, 9).changed).toBe(false);
+  });
+
+  it('a column change scales a width only within its limits', () => {
+    const e = new GridPackEngine([{ id: 'a', x: 0, y: 0, w: 6, h: 1, minW: 4 }], { columns: 12 });
+    e.setColumns(6); // 6 → 3 by ratio, but never below minW
+    expect(e.getItem('a')!.w).toBe(4);
+  });
+
+  it('limits never move a tile — a push is not a resize', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'a', x: 0, y: 0, w: 6, h: 1 },
+        { id: 'b', x: 0, y: 1, w: 6, h: 1, minW: 6, maxW: 6 },
+      ],
+      { columns: 12 }
+    );
+    expect(e.resizeCheck('a', 6, 2).changed).toBe(true);
+    expect(e.getItem('b')).toMatchObject({ x: 0, y: 2, w: 6 });
+  });
+});

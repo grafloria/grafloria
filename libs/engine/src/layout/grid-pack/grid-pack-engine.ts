@@ -47,6 +47,15 @@ export interface GridPackItem {
   /** Pinned: never pushed, never packed, refuses the mover outright (E4b). */
   locked?: boolean;
   /**
+   * Per-item SIZE LIMITS in cells (gridstack's minW/maxW/minH/maxH). A resize
+   * clamps to them, and a column change scales a width only within them. They
+   * never move a tile: a push or a swap is not a resize.
+   */
+  minW?: number;
+  maxW?: number;
+  minH?: number;
+  maxH?: number;
+  /**
    * Ask add() to IGNORE x/y and scan row-major for the first free hole —
    * gridstack's autoPosition (addWidget without coordinates). Distinct from
    * gravity, which climbs one column: a hole at (3,0) under an occupied
@@ -468,8 +477,8 @@ export class GridPackEngine {
   resizeCheck(id: string, w: number, h: number): GridPackResult {
     const n = this.getItem(id);
     if (!n) return { changed: false };
-    w = Math.max(1, Math.min(this._columns - n.x, Math.round(w)));
-    h = Math.max(1, Math.round(h));
+    w = GridPackEngine.clampW(n, Math.max(1, Math.min(this._columns - n.x, Math.round(w))));
+    h = GridPackEngine.clampH(n, Math.max(1, Math.round(h)));
     // A bounded board clamps the tile's own height outright…
     if (this.bound !== undefined) h = Math.min(h, Math.max(1, this.bound - n.y));
     while (w > n.w && this.collideLocked({ ...n, w }, n)) w--;
@@ -545,7 +554,7 @@ export class GridPackEngine {
       for (const it of this.items) {
         if (restored.has(it.id)) continue;
         const w = scale ? Math.max(1, Math.round(it.w * ratio)) : it.w;
-        it.w = Math.max(1, Math.min(n, w));
+        it.w = Math.max(1, Math.min(n, GridPackEngine.clampW(it, w)));
         const x = move ? Math.round(it.x * ratio) : it.x;
         it.x = Math.max(0, Math.min(n - it.w, x));
       }
@@ -676,6 +685,19 @@ export class GridPackEngine {
   }
 
   // -- internals -------------------------------------------------------------
+
+  /** The item's own width limits, applied to a candidate width. */
+  private static clampW(it: GridPackItem, w: number): number {
+    if (it.minW !== undefined) w = Math.max(it.minW, w);
+    if (it.maxW !== undefined) w = Math.min(it.maxW, w);
+    return Math.max(1, w);
+  }
+
+  private static clampH(it: GridPackItem, h: number): number {
+    if (it.minH !== undefined) h = Math.max(it.minH, h);
+    if (it.maxH !== undefined) h = Math.min(it.maxH, h);
+    return Math.max(1, h);
+  }
 
   private static hit(a: GridPackItem, b: GridPackItem): boolean {
     return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
