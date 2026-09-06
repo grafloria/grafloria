@@ -62,8 +62,8 @@ const CSS = `
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 18px;
-  height: 18px;
+  width: 24px;   /* WCAG 2.5.8: a 24-px minimum target (was 18) */
+  height: 24px;
   cursor: nwse-resize;
   border-right: 3px solid rgba(120, 130, 148, .55);
   border-bottom: 3px solid rgba(120, 130, 148, .55);
@@ -73,6 +73,9 @@ const CSS = `
   z-index: 5;
 }
 .grafloria-node-host:hover > .axdb-rs { opacity: 1; }
+/* A finger never hovers: on touch devices the corner handle is always visible
+   (review D8 — hover-only meant no resize at all on a tablet). */
+@media (hover: none) { .grafloria-node-host > .axdb-rs { opacity: .8; } }
 .grafloria-node-host > .axdb-rs:hover { border-color: #3b52d9; }
 /* RTL boards grow leftwards, so the grab corner mirrors with them. */
 .grafloria-node-host > .axdb-rs.axdb-rs--rtl {

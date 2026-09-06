@@ -63,14 +63,6 @@
   "tolerancePct": 0.02,
   "measuredJitterPct": 0
  },
- "dashboard__fluid-board.after.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
- },
- "dashboard__fluid-board.boot.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
- },
  "dashboard__grid-options.after.png": {
   "tolerancePct": 0.02,
   "measuredJitterPct": 0
@@ -380,8 +372,8 @@
   "measuredJitterPct": 0
  },
  "interaction__copy-paste.after.png": {
-  "tolerancePct": 0.233,
-  "measuredJitterPct": 0.0777
+  "tolerancePct": 0.232,
+  "measuredJitterPct": 0.0772
  },
  "interaction__copy-paste.boot.png": {
   "tolerancePct": 0.02,
@@ -564,8 +556,8 @@
   "measuredJitterPct": 0
  },
  "layout__expand-collapse.showcase.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0
+  "tolerancePct": 0.361,
+  "measuredJitterPct": 0.1202
  },
  "layout__force-layout.after.png": {
   "tolerancePct": 0.02,
@@ -592,8 +584,8 @@
   "measuredJitterPct": 0
  },
  "layout__off-thread-layout.after.png": {
-  "tolerancePct": 0.02,
-  "measuredJitterPct": 0.0049
+  "tolerancePct": 0.024,
+  "measuredJitterPct": 0.0079
  },
  "layout__off-thread-layout.boot.png": {
   "tolerancePct": 0.02,
@@ -624,12 +616,12 @@
   "measuredJitterPct": 0
  },
  "misc__mermaid-text.after.png": {
-  "tolerancePct": 0.027,
-  "measuredJitterPct": 0.009
+  "tolerancePct": 0.025,
+  "measuredJitterPct": 0.0085
  },
  "misc__mermaid-text.boot.png": {
-  "tolerancePct": 0.027,
-  "measuredJitterPct": 0.009
+  "tolerancePct": 0.025,
+  "measuredJitterPct": 0.0085
  },
  "misc__mermaid-viewer.after.png": {
   "tolerancePct": 0.02,
@@ -968,6 +960,14 @@
   "measuredJitterPct": 0
  },
  "whiteboard__stroke-edit.boot.png": {
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
+ },
+ "dashboard__fluid-board.boot.png": {
+  "tolerancePct": 0.02,
+  "measuredJitterPct": 0
+ },
+ "dashboard__fluid-board.after.png": {
   "tolerancePct": 0.02,
   "measuredJitterPct": 0
  }
