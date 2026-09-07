@@ -1,9 +1,8 @@
 # @grafloria/angular
 
-Angular components, directives, and providers for the
-[Grafloria](https://github.com/grafloria/grafloria) diagram engine — built the
-Angular way: standalone components, signal inputs/outputs, `OnPush`, and
-verified **zoneless**.
+Angular components for **Grafloria Diagrams** and **Grafloria Dashboards**. Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React and Vue bindings, one document format and one undo stack.
+
+Grafloria Diagrams is an MIT JavaScript diagram library for flowcharts, workflow editors, UML and ER diagrams, with obstacle-avoiding routing, auto-layout, undo and real-time collaboration built in. Built the Angular way: standalone components, signal inputs/outputs, `OnPush`, verified **zoneless**. `<grafloria-dashboard>` brings the dashboard layout kit with live `[layout]`, `[sizing]` and `[static]` inputs.
 
 **Docs:** [Angular in 10 minutes](https://grafloria.com/learn/angular/) · [Angular deep guides](https://grafloria.com/learn/angular-custom-nodes/) · [every demo as an Angular component](https://grafloria.com/demos-angular/)
 

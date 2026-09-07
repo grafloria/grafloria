@@ -69,3 +69,8 @@ libs/*/src/**/*.js.map
 benchmarks/node_modules/
 benchmarks/dist/
 benchmarks/results.json
+
+# package emits and tarballs of the thin dashboard package
+libs/dashboard/src/*.js
+libs/dashboard/src/*.d.ts
+libs/**/*.tgz
