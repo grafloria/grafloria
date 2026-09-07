@@ -17,7 +17,7 @@
     "@angular/platform-browser-dynamic": "^19.2.0",
     "@angular/router": "^19.2.0",
     "@grafloria/angular": "^0.13.3",
-    "@grafloria/element": "^0.4.3",
+    "@grafloria/element": "^0.4.4",
     "@grafloria/engine": "^0.3.7",
     "@grafloria/renderer": "^0.4.6",
     "rxjs": "~7.8.0",
