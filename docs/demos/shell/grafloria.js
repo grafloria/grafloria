@@ -194165,7 +194165,7 @@ var CSS4 = `
 .grafloria-html-layer > .grafloria-node-host:focus-visible {
   outline: 2px solid #3b52d9;
   outline-offset: 2px;
-  border-radius: var(--axdb-rs-radius, 12px);
+  border-radius: var(--axdb-rs-radius, 6px);
 }
 
 /* ===== the held tile: transition-exempt ghost, above everything ===== */
@@ -194183,7 +194183,7 @@ var CSS4 = `
 /* ===== the placeholder: dashed slab, truthful, never animated ===== */
 .grafloria-html-layer > .axdb-ph {
   position: absolute;
-  border-radius: var(--axdb-rs-radius, 12px);
+  border-radius: var(--axdb-rs-radius, 6px);
   background: rgba(30, 34, 45, .14);
   border: 2px dashed rgba(30, 34, 45, .28);
   box-sizing: border-box;
@@ -194205,7 +194205,7 @@ var CSS4 = `
   cursor: nwse-resize;
   border-right: 3px solid rgba(120, 130, 148, .55);
   border-bottom: 3px solid rgba(120, 130, 148, .55);
-  border-bottom-right-radius: var(--axdb-rs-radius, 12px);
+  border-bottom-right-radius: var(--axdb-rs-radius, 6px);
   opacity: 0;
   transition: opacity .12s;
   z-index: 5;
@@ -194223,7 +194223,7 @@ var CSS4 = `
   border-right: none;
   border-left: 3px solid rgba(120, 130, 148, .55);
   border-bottom-right-radius: 0;
-  border-bottom-left-radius: var(--axdb-rs-radius, 12px);
+  border-bottom-left-radius: var(--axdb-rs-radius, 6px);
 }
 
 /* ===== palette drag-in chip (screen-space clone following the cursor) ===== */
@@ -194272,7 +194272,7 @@ var CSS4 = `
   padding: 13px 15px 12px;
   background: var(--axdb-card);
   border: 1px solid var(--axdb-line);
-  border-radius: var(--axdb-rs-radius, 12px);
+  border-radius: var(--axdb-rs-radius, 6px);
   box-shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .05);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   color: var(--axdb-ink);

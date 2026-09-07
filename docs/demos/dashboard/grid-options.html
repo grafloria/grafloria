@@ -149,6 +149,110 @@
   <div id="canvas"><div id="go-status"></div></div>
 </div>
 
+<script type="text/plain" data-code="angular">
+// npm i @grafloria/angular
+import { Component } from '@angular/core';
+import { GrafloriaDashboardComponent } from '@grafloria/angular';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+@Component({
+  selector: 'app-grid-options',
+  imports: [GrafloriaDashboardComponent],
+  template: `
+    <div class="bar">
+      <button (click)="handle?.setRtl(!handle?.getRtl())">RTL</button>
+      <button (click)="handle?.setFloat(!handle?.getFloat())">Float</button>
+      <button (click)="handle?.setColumns(6)">6 columns</button>
+      <button (click)="handle?.setColumns(12)">12 columns</button>
+    </div>
+    <!-- Every construct on this page as DATA — the section, a pinned tile, RTL, a responsive column count, float. The hand-built bindDashboardGrid() calls in the JS tab are what the component does for you. -->
+    <grafloria-dashboard [views]="views" [options]="options" (ready)="handle = $event"
+      style="display:block; height:620px" />
+  `,
+})
+export class GridOptionsComponent {
+  handle?: DashboardHandle;
+  options = { columns: 12, gap: 8, width: 1180, height: 620, responsive: { columnWidth: 96 } };
+  views: DashboardViewSpec[] = [{ id: 'main', widgets: [
+    { id: 'trend', kind: 'line',  span: 8, rows: 2, title: 'Revenue trend', data: { series: [[1.2, 1.5, 1.4, 1.9, 2.3, 2.8]], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix',   kind: 'donut', span: 4, rows: 2, title: 'By region', data: { slices: [{ label: 'EMEA', value: 2.9 }, { label: 'APAC', value: 1.8 }, { label: 'NA', value: 2.1 }] } },
+    // A SECTION: a widget carrying widgets — a locked slab with its own grid.
+    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+      { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
+      { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
+      { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
+    ] },
+    { id: 'pinned', kind: 'kpi', span: 12, rows: 1, pinned: true, data: { label: 'Pinned row', value: 'no reflow moves it' } },
+  ] }];
+}
+</script>
+<script type="text/plain" data-code="react">
+// npm i @grafloria/react
+import { useState } from 'react';
+import { GrafloriaDashboard } from '@grafloria/react';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+// Every construct on this page as DATA — the section, a pinned tile, RTL, a responsive column count, float. The hand-built bindDashboardGrid() calls in the JS tab are what the component does for you.
+const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
+    { id: 'trend', kind: 'line',  span: 8, rows: 2, title: 'Revenue trend', data: { series: [[1.2, 1.5, 1.4, 1.9, 2.3, 2.8]], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix',   kind: 'donut', span: 4, rows: 2, title: 'By region', data: { slices: [{ label: 'EMEA', value: 2.9 }, { label: 'APAC', value: 1.8 }, { label: 'NA', value: 2.1 }] } },
+    // A SECTION: a widget carrying widgets — a locked slab with its own grid.
+    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+      { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
+      { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
+      { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
+    ] },
+    { id: 'pinned', kind: 'kpi', span: 12, rows: 1, pinned: true, data: { label: 'Pinned row', value: 'no reflow moves it' } },
+] }];
+
+export function GridOptions() {
+  const [handle, setHandle] = useState<DashboardHandle>();
+  return (
+    <>
+      <div className="bar">
+        <button onClick={() => handle?.setRtl(!handle.getRtl())}>RTL</button>
+        <button onClick={() => handle?.setFloat(!handle.getFloat())}>Float</button>
+        <button onClick={() => handle?.setColumns(6)}>6 columns</button>
+        <button onClick={() => handle?.setColumns(12)}>12 columns</button>
+      </div>
+      <GrafloriaDashboard views={views} options={{ columns: 12, gap: 8, width: 1180, height: 620, responsive: { columnWidth: 96 } }} onReady={setHandle} style={{ height: 620 }} />
+    </>
+  );
+}
+</script>
+<script type="text/plain" data-code="vue">
+<!-- npm i @grafloria/vue -->
+<script setup lang="ts">
+import { shallowRef } from 'vue';
+import { GrafloriaDashboard } from '@grafloria/vue';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+// Every construct on this page as DATA — the section, a pinned tile, RTL, a responsive column count, float. The hand-built bindDashboardGrid() calls in the JS tab are what the component does for you.
+const handle = shallowRef<DashboardHandle>();
+const options = { columns: 12, gap: 8, width: 1180, height: 620, responsive: { columnWidth: 96 } };
+const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
+    { id: 'trend', kind: 'line',  span: 8, rows: 2, title: 'Revenue trend', data: { series: [[1.2, 1.5, 1.4, 1.9, 2.3, 2.8]], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix',   kind: 'donut', span: 4, rows: 2, title: 'By region', data: { slices: [{ label: 'EMEA', value: 2.9 }, { label: 'APAC', value: 1.8 }, { label: 'NA', value: 2.1 }] } },
+    // A SECTION: a widget carrying widgets — a locked slab with its own grid.
+    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+      { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
+      { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
+      { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
+    ] },
+    { id: 'pinned', kind: 'kpi', span: 12, rows: 1, pinned: true, data: { label: 'Pinned row', value: 'no reflow moves it' } },
+] }];
+<\/script>
+
+<template>
+  <div class="bar">
+    <button @click="handle?.setRtl(!handle.getRtl())">RTL</button>
+    <button @click="handle?.setFloat(!handle.getFloat())">Float</button>
+    <button @click="handle?.setColumns(6)">6 columns</button>
+    <button @click="handle?.setColumns(12)">12 columns</button>
+  </div>
+  <GrafloriaDashboard :views="views" :options="options" @ready="handle = $event" style="display:block; height:620px" />
+</template>
+</script>
 <script type="module">
 // ===========================================================================
 //  DASHBOARD GRID OPTIONS — the advanced constructs, labelled.
