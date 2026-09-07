@@ -19,6 +19,8 @@ import { markReady } from '../demo-ready';
       <button id="grid" (click)="layout.set('grid')" [class.on]="layout() === 'grid'">Grid</button>
       <button id="split" (click)="layout.set('split')" [class.on]="layout() === 'split'">Split</button>
       <span class="sep"></span>
+      <button id="handle" (click)="toggleHandle()" [class.on]="grip" title="DevExpress caption drag: a widget moves only from its header">Drag by header</button>
+      <span class="sep"></span>
       <button id="add" (click)="addRow()">+ Add a row</button>
     </div>
     <grafloria-dashboard
@@ -57,6 +59,9 @@ export class FluidBoardComponent implements AfterViewInit {
       data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
   ] }];
 
+  grip = false;
+  /** DevExpress caption drag, live on the handle: the header is the only grip. */
+  toggleHandle() { this.grip = !this.grip; this.handle?.setDragHandle(this.grip); }
   addRow() {
     this.handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Added row', value: '+1' } });
   }

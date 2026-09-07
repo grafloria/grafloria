@@ -36,6 +36,9 @@ export default function FluidBoardDemo() {
   const [handle, setHandle] = useState<DashboardHandle | null>(null);
   const [layout, setLayout] = useState<'grid' | 'split'>('grid');
   const [sizing, setSizing] = useState<'fit' | 'grow'>('grow');
+  // DevExpress caption drag, live on the handle: the header is the only grip.
+  const [grip, setGrip] = useState(false);
+  useEffect(() => { handle?.setDragHandle(grip); }, [handle, grip]);
   useEffect(() => markReady(), []);
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -45,6 +48,8 @@ export default function FluidBoardDemo() {
         <span style={sep} />
         <button id="grid" style={btn(layout === 'grid')} onClick={() => setLayout('grid')}>Grid</button>
         <button id="split" style={btn(layout === 'split')} onClick={() => setLayout('split')}>Split</button>
+        <span style={sep} />
+        <button id="handle" style={btn(grip)} onClick={() => setGrip(!grip)} title="DevExpress caption drag: a widget moves only from its header">Drag by header</button>
         <span style={sep} />
         <button id="add" style={btn(false)} onClick={() => handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Added row', value: '+1' } })}>+ Add a row</button>
       </div>

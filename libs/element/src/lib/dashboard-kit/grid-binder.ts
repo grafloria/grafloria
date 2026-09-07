@@ -226,6 +226,39 @@ export interface DashboardGridOptions {
    * still works. The viewer's mode — see `setStatic` for the live switch.
    */
   static?: boolean;
+  /**
+   * DRAG HANDLE (DevExpress drags an item by its caption; gridstack's
+   * `handle`): `true` — a widget moves only from its header, which shows a
+   * grip; a selector string — your own handle inside the host. Off (default):
+   * the whole card is the handle. Resize edges are unaffected and the body
+   * stays interactive (scroll a table, click a legend). Live: `setDragHandle`.
+   */
+  dragHandle?: boolean | string;
+}
+
+/** The selector a `dragHandle` value names — `null` when the whole card is the handle. */
+export const dragHandleSelector = (v: boolean | string | undefined): string | null =>
+  v === true ? '.axdb-widget-h' : typeof v === 'string' && v.length > 0 ? v : null;
+/** The public form of a stored handle selector (the inverse of `dragHandleSelector`). */
+export const dragHandleValue = (sel: string | null): boolean | string =>
+  sel === null ? false : sel === '.axdb-widget-h' ? true : sel;
+/** The container class that turns the header grip on. */
+export const DRAG_HANDLE_CLASS = 'axdb-drag-handle';
+/**
+ * Did a press land on the drag handle? A press INSIDE the handle element
+ * always does. The default handle is a CAPTION BAR the DevExpress way: the
+ * strip from the card's top edge down to the header's bottom, padding
+ * included — so the pointer need not hit the header's text to grab the tile.
+ */
+export function pressOnDragHandle(sel: string, target: Element | null, hostEl: HTMLElement | null, clientX: number, clientY: number): boolean {
+  const grip = target?.closest?.(sel) ?? null;
+  if (grip && (!hostEl || hostEl.contains(grip))) return true;
+  if (sel !== '.axdb-widget-h' || !hostEl) return false;
+  const header = hostEl.querySelector('.axdb-widget-h');
+  if (!header) return false;
+  const hr = hostEl.getBoundingClientRect();
+  const r = header.getBoundingClientRect();
+  return clientX >= hr.left && clientX <= hr.right && clientY >= hr.top && clientY <= r.bottom;
 }
 
 export interface DashboardGridHandle {
@@ -258,6 +291,9 @@ export interface DashboardGridHandle {
   /** Static mode, live: pointer gestures off (and handles gone) or back on. */
   setStatic(on: boolean): void;
   getStatic(): boolean;
+  /** Drag-handle mode, live: `true` = the header, a selector = your own handle, `false` = the whole card. */
+  setDragHandle(v: boolean | string): void;
+  getDragHandle(): boolean | string;
   /**
    * Move keyboard focus to a member (the roving tabindex lands on it). The
    * host takes DOM focus when it exists; returns false for a non-member.
@@ -281,6 +317,8 @@ export interface DashboardGridHandle {
     responsive: boolean;
     fluid: boolean;
     static: boolean;
+    /** `true` = the header is the grip, a selector = a custom one, `false` = the whole card. */
+    dragHandle: boolean | string;
     /** Fit-mode row capacity (undefined when unbounded). */
     capacity: number | undefined;
     gap: number;
@@ -583,6 +621,8 @@ export function bindDashboardGrid(
   const fluid = options.fluid === true;
   const overflow = options.overflow ?? 'bounded';
   let isStatic = options.static === true;
+  let dragHandle = dragHandleSelector(options.dragHandle);
+  api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
   /** The member the ROVING TABINDEX rests on (one tab stop per board). */
   let focusedId: string | undefined;
   const live = liveRegionFor(api.container);
@@ -2012,22 +2052,25 @@ export function bindDashboardGrid(
       const hostEl = hostOf(node.id);
       const resizable = node.getMetadata?.('widgetResizable') !== false;
       const movable = node.getMetadata?.('widgetMovable') !== false;
+      // `ev.screen` is ELEMENT-LOCAL px; host rects are in client px. Compare
+      // like with like — the source event's clientX/Y when there is one, else
+      // the container's origin plus the local offset.
+      const src = ev.source as { clientX?: number; clientY?: number } | undefined;
+      const cr = api.container.getBoundingClientRect();
+      const cx = typeof src?.clientX === 'number' ? src.clientX : cr.left + ev.screen.x;
+      const cy = typeof src?.clientY === 'number' ? src.clientY : cr.top + ev.screen.y;
       let edges: ResizeEdges = NO_EDGES;
       if (resizable) {
         if (onHandle) edges = rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false };
-        else if (hostEl) {
-          // `ev.screen` is ELEMENT-LOCAL px; the host rect is in client px.
-          // Compare like with like — the source event's clientX/Y when there
-          // is one, else the container's origin plus the local offset.
-          const src = ev.source as { clientX?: number; clientY?: number } | undefined;
-          const cr = api.container.getBoundingClientRect();
-          const cx = typeof src?.clientX === 'number' ? src.clientX : cr.left + ev.screen.x;
-          const cy = typeof src?.clientY === 'number' ? src.clientY : cr.top + ev.screen.y;
-          edges = edgesNear(hostEl, cx, cy);
-        }
+        else if (hostEl) edges = edgesNear(hostEl, cx, cy);
       }
       const isResize = anyEdge(edges);
       if (!isResize && !movable) return; // a fixed tile: refuse the drag, click still focuses
+      // Drag-handle mode: only a press on the handle (the caption strip by
+      // default) moves the tile. Anywhere else the press is claimed (no group
+      // drag) but starts nothing, so the body keeps its own behaviour — a
+      // table scrolls, a legend clicks.
+      if (!isResize && dragHandle !== null && !pressOnDragHandle(dragHandle, target, hostEl, cx, cy)) return;
       // Arm the glide class NOW, a full task before any displacement can
       // happen: a transition defined in the same style recalc as the first
       // left/top write does not run (CSS transitions fire only when the
@@ -2487,6 +2530,15 @@ export function bindDashboardGrid(
       api.renderNow();
     },
     getStatic: () => isStatic,
+    setDragHandle(v): void {
+      const sel = dragHandleSelector(v);
+      if (sel === dragHandle) return;
+      dragHandle = sel;
+      if (gesture) cancelActiveGesture(false);
+      api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
+      api.renderNow();
+    },
+    getDragHandle: () => dragHandleValue(dragHandle),
     saveLayout() {
       const saved = engine.saveLayout();
       return {
@@ -2523,6 +2575,7 @@ export function bindDashboardGrid(
         responsive: !!responsive && !responsivePinned,
         fluid,
         static: isStatic,
+        dragHandle: dragHandleValue(dragHandle),
         capacity,
         gap,
         padding,
