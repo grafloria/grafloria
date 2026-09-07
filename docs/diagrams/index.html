@@ -313,8 +313,9 @@
   let hero = null, run = 0;
   const say = (n, step, text) => { num.innerHTML = `${String(n).padStart(2, '0')}<small>/05</small>`; cap.innerHTML = `<span class="step">${step}</span>${text}`; msg.textContent = ''; };
   const board = host.parentElement;
-  const sideOn = (html) => { side.innerHTML = html; board.classList.add('side-on'); requestAnimationFrame(() => { hero?.api.renderNow(); hero?.api.fitView?.(40); }); };
-  const sideOff = () => { board.classList.remove('side-on'); requestAnimationFrame(() => { hero?.api.renderNow(); hero?.api.fitView?.(48); }); };
+  const refit = (pad) => { window.dispatchEvent(new Event('resize')); setTimeout(() => { hero?.api.renderNow(); hero?.api.fitView?.(pad); }, 160); };
+  const sideOn = (html) => { side.innerHTML = html; board.classList.add('side-on'); refit(36); };
+  const sideOff = () => { board.classList.remove('side-on'); refit(48); };
   const mountHero = async () => { if (hero) { hero.api.dispose?.(); host.innerHTML = ''; } board.classList.remove('side-on'); side.innerHTML = ''; hero = await mount(host, flow()); hero.api.fitView?.(48); window.__diagramsHero = hero.api; };
   const tour = async () => {
     const me = ++run; const alive = () => me === run;
