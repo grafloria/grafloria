@@ -237,6 +237,18 @@ export interface DashboardGridOptions {
    * interactive (scroll a table, click a legend). Live: `setDragHandle`.
    */
   dragHandle?: DragHandleOption;
+  /**
+   * FIT AND THE ROW FLOOR. `true` (default): a bounded fit board holds as many
+   * rows as fit at `minRowHeight` — a gesture that needs another row SQUEEZES
+   * every row toward the floor, and is refused only when even that is not
+   * enough. `false`: rows FREEZE at the height they have now — the capacity is
+   * what the frame holds at the current row height, so a resize, move or add
+   * that needs a row the frame does not have is refused outright (placeholder
+   * stays, `onGesture` reports `changed: false`) and no other tile shrinks. A
+   * board loaded with more rows than fit still squeezes to the frame (fit never
+   * scrolls); it just cannot be pushed further by a gesture.
+   */
+  squeeze?: boolean;
 }
 
 /** A painted grip: the only drag zone, placed along the card's top edge. */
@@ -302,12 +314,15 @@ export function pressOnDragHandle(sel: string, target: Element | null, hostEl: H
   const grip = target?.closest?.(sel) ?? null;
   if (grip && (!hostEl || hostEl.contains(grip))) return true;
   if (sel !== '.axdb-widget-h' || !hostEl) return false;
-  const header = hostEl.querySelector('.axdb-widget-h');
-  if (!header) return false;
   const hr = hostEl.getBoundingClientRect();
-  const r = header.getBoundingClientRect();
-  return clientX >= hr.left && clientX <= hr.right && clientY >= hr.top && clientY <= r.bottom;
+  const header = hostEl.querySelector('.axdb-widget-h');
+  // A host painting its own content has no kit header: its caption is the top
+  // band of the card, so `dragHandle: true` still means something there.
+  const bottom = header ? header.getBoundingClientRect().bottom : hr.top + CAPTION_BAND;
+  return clientX >= hr.left && clientX <= hr.right && clientY >= hr.top && clientY <= bottom;
 }
+/** The caption strip of a host with no kit header, px from the card's top. */
+export const CAPTION_BAND = 28;
 
 export interface DashboardGridHandle {
   /** Rebuild the engine from the group's members + their cells, re-project pixels. */
@@ -661,6 +676,7 @@ export function bindDashboardGrid(
   const padding = options.padding ?? gap;
   const baseRowHeight = options.baseRowHeight ?? 110;
   const minRowHeight = options.minRowHeight ?? 28;
+  const squeeze = options.squeeze !== false;
   let float = options.float ?? false;
   /** The AUTHORED bound — a nested strip's design (row-first push, escalation). */
   const maxRows = options.maxRows;
@@ -711,7 +727,10 @@ export function bindDashboardGrid(
    */
   const fitCapacity = (): number | undefined => {
     if (maxRows !== undefined || sizing !== 'fit' || overflow === 'scroll' || designH <= 0) return undefined;
-    const rowsThatFit = Math.floor((designH - 2 * padding + gap) / (minRowHeight + gap));
+    // Elastic (default): rows at the floor. Frozen (`squeeze: false`): rows at
+    // the height they have NOW, so a gesture never shrinks a neighbour.
+    const floor = squeeze ? minRowHeight : Math.max(minRowHeight, rowHeightFor(geom(), rows()));
+    const rowsThatFit = Math.floor((designH - 2 * padding + gap) / (floor + gap));
     return Math.max(1, rowsThatFit, engine.rows());
   };
 
@@ -1108,6 +1127,7 @@ export function bindDashboardGrid(
   const syncHandles = (only?: ReadonlySet<string>): void => {
     syncA11y(only);
     if (disposed) return;
+    ensureStaticGuard();
     const grip = gripOf(dragHandle);
     for (const id of group.members ?? []) {
       if (only && !only.has(id)) continue;
@@ -2233,9 +2253,43 @@ export function bindDashboardGrid(
     const node = diagram.getNode(id);
     const resizable =
       !!node && !isStatic && node.state?.locked !== true && node.getMetadata?.('widgetResizable') !== false;
-    host.style.cursor = resizable ? cursorFor(edgesNear(host, e.clientX, e.clientY)) : '';
+    const cursor = resizable ? cursorFor(edgesNear(host, e.clientX, e.clientY)) : '';
+    // The affordance rides on an ATTRIBUTE, not the inline style: a repaint
+    // rewrites the host's style and used to clear the cursor mid-hover, and
+    // content that sets its own cursor (a chart canvas) hid it — the
+    // stylesheet applies the attribute's cursor to the host and everything in it.
+    if (cursor) host.setAttribute('data-axdb-edge', cursor);
+    else host.removeAttribute('data-axdb-edge');
   };
   api.container.addEventListener('pointermove', onHover, { passive: true });
+
+  /**
+   * STATIC BOARDS LET CONTENT BE CLICKED. The renderer prevents the default of
+   * every press a tool claims, which cancels the compatibility mouse events —
+   * a chart inside a read-only board could not be clicked. So under `static`
+   * a press inside a member's CONTENT (not on kit chrome) is stopped on the
+   * HTML layer, in the bubble phase: the content has already received it, the
+   * renderer never does, nothing is prevented.
+   */
+  const staticGuard = (e: Event): void => {
+    if (!isStatic || disposed) return;
+    const t = e.target as Element | null;
+    const host = t?.closest?.('.grafloria-node-host') as HTMLElement | null;
+    if (!host || !(group.members ?? new Set<string>()).has(host.getAttribute('data-node-id') ?? '')) return;
+    if (t?.closest?.('.axdb-rs, .axdb-grip, .axdb-div')) return;
+    e.stopPropagation();
+  };
+  let guardedLayer: HTMLElement | null = null;
+  const ensureStaticGuard = (): void => {
+    // One lookup, ever: the host observer budgets container lookups per
+    // repaint, and the layer element lives as long as the instance.
+    if (guardedLayer?.isConnected) return;
+    const layer = htmlLayer();
+    if (!layer) return;
+    guardedLayer?.removeEventListener('pointerdown', staticGuard);
+    guardedLayer = layer;
+    layer.addEventListener('pointerdown', staticGuard);
+  };
 
   /**
    * KEYBOARD OPERATION (WCAG 2.1.1, and the non-drag alternative 2.5.7 asks
@@ -2732,6 +2786,7 @@ export function bindDashboardGrid(
       peersOnCanvas().delete(selfPeer);
       unregisterTool();
       api.container.removeEventListener('pointermove', onHover);
+      guardedLayer?.removeEventListener('pointerdown', staticGuard);
       api.container.removeEventListener('focusin', onFocusIn);
       api.container.removeEventListener('keydown', onKey);
       hostObserver.disconnect();

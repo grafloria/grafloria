@@ -61,6 +61,7 @@ export interface DashboardSplitOptions
     | 'fluid'
     | 'static'
     | 'dragHandle'
+    | 'squeeze'
     | 'designHeight'
     | 'baseRowHeight'
     | 'dragOut'
@@ -463,13 +464,33 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     syncA11y();
   };
 
+  // Static boards let content be clicked — see grid-binder's staticGuard.
+  const staticGuard = (e: Event): void => {
+    if (!isStatic || disposed) return;
+    const t = e.target as Element | null;
+    const host = t?.closest?.('.grafloria-node-host') as HTMLElement | null;
+    if (!host || !(group.members ?? new Set<string>()).has(host.getAttribute('data-node-id') ?? '')) return;
+    if (t?.closest?.('.axdb-rs, .axdb-grip, .axdb-div')) return;
+    e.stopPropagation();
+  };
+  let guardedLayer: HTMLElement | null = null;
+  const ensureStaticGuard = (): void => {
+    if (guardedLayer?.isConnected) return;
+    const layer = api.container.querySelector('.grafloria-html-layer') as HTMLElement | null;
+    if (!layer) return;
+    guardedLayer?.removeEventListener('pointerdown', staticGuard);
+    guardedLayer = layer;
+    layer.addEventListener('pointerdown', staticGuard);
+  };
+
   const syncA11y = (): void => {
     if (disposed) return;
+    ensureStaticGuard();
     const order = splitLeaves(paintedTree()).filter((id) => !!diagram.getNode(id));
     if (selectedId && !order.includes(selectedId)) selectedId = undefined;
     // No corner handles on a split board: size comes from the dividers. A host
     // that carried the grid's handle (a board switched live) sheds it here.
-    for (const id of order) hostOf(id)?.querySelector(':scope > .axdb-rs')?.remove();
+    for (const id of group.members ?? []) hostOf(id)?.querySelector(':scope > .axdb-rs')?.remove();
     // The painted grip (or none), on every leaf host.
     for (const id of order) {
       const host = hostOf(id);
@@ -1127,6 +1148,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       api.renderNow();
     },
     dispose(): void {
+      guardedLayer?.removeEventListener('pointerdown', staticGuard);
       if (disposed) return;
       cancelActiveGesture();
       disposed = true;

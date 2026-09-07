@@ -158,7 +158,15 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
           rows at the row floor and the canvas pans</td></tr>
         <tr><td><code>static</code></td><td><code>false</code></td>
           <td>The viewer's mode: no drag, no resize, no handles — the API, undo and
-          keyboard <i>reading</i> keep working. Switch live with <code>H.setStatic()</code></td></tr>
+          keyboard <i>reading</i> keep working, and clicks inside a widget's content still
+          reach it (a chart's click-to-filter works on a read-only board). Switch live with <code>H.setStatic()</code></td></tr>
+        <tr><td><code>squeeze</code></td><td><code>true</code></td>
+          <td>What a bounded fit board does when a gesture needs another row. <code>true</code>:
+          rows squeeze toward <code>minRowHeight</code> (28 px) before growth is refused.
+          <code>false</code>: rows freeze at the height they have now — the frame's capacity is
+          counted at that height, so a resize, move or add that needs a row the frame does not hold
+          is refused outright and no other tile shrinks. A document loaded with more rows than fit
+          still squeezes to the frame; fit never scrolls either way</td></tr>
         <tr><td><code>dragHandle</code></td><td><code>false</code></td>
           <td>Where a widget can be grabbed. <code>true</code>: the caption strip is the
           only handle (DevExpress caption drag; the header shows grip dots and a grab
@@ -166,7 +174,9 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
           <code>{ grip: true, position: 'left' | 'center' | 'right', placement: 'inside' | 'outside' }</code>:
           a painted grip along the top edge, in the header band (the header makes room)
           or a tab above the card like the DevExpress item bar; it shows on the selected
-          widget only (a press selects, a void click clears). <code>false</code>: the
+          widget only (a press selects, a void click clears; it fades in over 120 ms, so a
+          gate that reads its opacity should wait). A host that paints its own content and
+          has no kit header gets the top 28 px of the card as its caption. <code>false</code>: the
           whole card. The body then scrolls and clicks as content; resize edges and the
           keyboard are unchanged. Switch live with <code>H.setDragHandle()</code></td></tr>
         <tr><td><code>rowHeight</code></td><td>130</td><td>Row height in <code>'grow'</code> mode, px</td></tr>
