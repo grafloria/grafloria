@@ -34,6 +34,9 @@ const walk = (dir) => {
       walk(p);
     } else if (e.endsWith('.html')) {
       const rel = relative(DOCS, p);
+      // The framework app shells (demos-<fw>/index.html) are hash-routed SPAs
+      // with no static body — noindex in their <head>, and out of the sitemap.
+      if (/^demos-\w+\/index\.html$/.test(rel)) continue;
       // priorities: home 1.0 · top sections 0.9 · learn 0.8 · demo pages 0.6
       const pr = rel === 'index.html' ? '1.0'
         : /^(react|angular|vue|javascript|mermaid|compare|demos|demos-\w+)\/index\.html$/.test(rel) ? '0.9'
