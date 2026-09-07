@@ -194433,12 +194433,13 @@ var CSS4 = `
   }
 }
 `;
-function ensureDashboardKitStyles(doc = document) {
-  if (doc.getElementById(DASHBOARD_KIT_STYLE_ID)) return;
-  const style = doc.createElement("style");
+function ensureDashboardKitStyles(doc) {
+  const d = doc ?? (typeof document !== "undefined" ? document : void 0);
+  if (!d || d.getElementById(DASHBOARD_KIT_STYLE_ID)) return;
+  const style = d.createElement("style");
   style.id = DASHBOARD_KIT_STYLE_ID;
   style.textContent = CSS4;
-  doc.head.appendChild(style);
+  d.head.appendChild(style);
 }
 
 // libs/element/src/lib/dashboard-kit/grid-binder.ts
