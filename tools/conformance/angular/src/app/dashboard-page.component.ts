@@ -18,10 +18,18 @@ import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
       }
       <span id="db-status">{{ status() }}</span>
     </p>
+    <p>
+      <button id="layout-grid" type="button" (click)="layout.set('grid')">Grid</button>
+      <button id="layout-split" type="button" (click)="layout.set('split')">Split</button>
+      <button id="sizing-fit" type="button" (click)="sizing.set('fit')">Fit</button>
+      <button id="sizing-grow" type="button" (click)="sizing.set('grow')">Grow</button>
+      <span id="switch-status">{{ layout() }} / {{ sizing() }}</span>
+    </p>
     <grafloria-dashboard
       style="display:block;width:860px;height:430px;border:1px solid #ccc"
       [views]="views"
       [options]="{ columns: 12, gap: 8 }"
+      [layout]="layout()" [sizing]="sizing()"
       [(activeView)]="activeView"
       (ready)="handle = $event"
       (layoutChange)="status.set('layout changed: ' + $event.viewId)">
@@ -42,6 +50,9 @@ export class DashboardPageComponent {
   handle: DashboardHandle | null = null;
   readonly activeView = signal<string | undefined>(undefined);
   readonly status = signal('idle');
+  // The live switches as inputs: a signal change is one handle call, never a remount.
+  readonly layout = signal<'grid' | 'split'>('grid');
+  readonly sizing = signal<'fit' | 'grow'>('fit');
 
   asDeploys(v: unknown): Array<{ name: string; state: string }> {
     return (v as Array<{ name: string; state: string }>) ?? [];
