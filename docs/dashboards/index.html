@@ -86,7 +86,8 @@
   .ch .ctl .msg.refused { color: #b3261e; }
   .frame { position: relative; border: 1px solid var(--line); border-radius: 16px; background: #f6f7fb; overflow: hidden; box-shadow: 0 20px 40px -30px rgba(35,42,61,.35); }
   .frame .cv { height: 340px; position: relative; } .frame .cv.short { height: 250px; }
-  .frame .tag { position: absolute; bottom: 10px; right: 12px; z-index: 3; font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--slate); background: rgba(255,255,255,.85); padding: 5px 8px; border-radius: 6px; pointer-events: none; }
+  .frame .tag { display: block; font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--slate); background: #fff; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  .frame.two .tag { grid-column: 1 / -1; }
   .frame.two { display: grid; grid-template-columns: 1.7fr .8fr; }
   .frame.two pre { margin: 0; border-left: 1px solid var(--line); background: #fff; font-size: 11.5px; line-height: 1.5; padding: 12px 14px; overflow: auto; height: 340px; color: #2C3346; }
   .frame.two pre .k { color: var(--indigo-deep); } .frame.two pre .s { color: #0f7b4f; }
@@ -338,13 +339,13 @@ watch(grip, (v) =&gt; handle.value?.setDragHandle(v));</pre>
     await H.widget('mix')?.moveTo(0, 1); await sleep(1900); if (!alive()) return;
     say(2, 'undo', '<b>One ⌘Z.</b> The whole gesture was one command, so the whole picture comes back.');
     hero.undo(); await sleep(1700); if (!alive()) return;
-    say(3, 'fit', '<b>Fit means bounded.</b> The last free rows are filled, then one more row is asked for. It is refused — visibly, not silently — because it would paint past the edge.');
-    { const m0 = H.metrics(); const free = Math.max(1, (m0.capacity ?? m0.rows + 1) - m0.rows);
-      const fill = H.addWidget({ id: 'row-fill', kind: 'bar', span: 12, rows: free, title: `Added: ${free} row${free > 1 ? 's' : ''}, the last that fit`, data: { bars: [{ label: 'Q1', value: 210 }, { label: 'Q2', value: 262 }, { label: 'Q3', value: 244 }, { label: 'Q4', value: 301 }] } });
-      const m1 = H.metrics(); msg.textContent = fill ? `landed — ${m1.rows} of ${m1.capacity} rows, full` : 'refused'; await sleep(1500); if (!alive()) return;
-      const more = H.addWidget({ id: 'row-more', kind: 'kpi', span: 12, rows: 1, data: { label: 'One more row', value: '?' } });
-      msg.textContent = more ? 'landed' : `refused — ${m1.capacity} rows is the capacity`; msg.classList.toggle('refused', !more);
-      await sleep(1900); if (!alive()) return; }
+    say(3, 'grow · fit', '<b>Grow keeps every row its height</b> and extends the board — scroll it. <b>Fit squeezes the rows to the frame</b> and never scrolls; a full fit board refuses one more row (chapter 02 lets you try).');
+    H.setSizing('grow'); press('[data-sizing]', 'sizing', 'grow');
+    H.addWidget({ id: 'row-a', kind: 'bar', span: 12, rows: 2, title: 'Added row', data: { bars: [{ label: 'Q1', value: 210 }, { label: 'Q2', value: 262 }, { label: 'Q3', value: 244 }, { label: 'Q4', value: 301 }] } });
+    msg.textContent = 'grow — the board extends past the frame; scroll it'; await sleep(2200); if (!alive()) return;
+    H.setSizing('fit'); press('[data-sizing]', 'sizing', 'fit');
+    { const m = H.metrics(); msg.textContent = `fit — ${m.rows} rows squeezed into the frame, no scroll`; }
+    await sleep(2000); if (!alive()) return;
     say(4, 'split', '<b>The splitter layout.</b> The same widgets, the surface always covered, dividers you drag as percentages. Same document.');
     H.setLayout('split'); press('[data-layout]', 'layout', 'split'); await sleep(1900); if (!alive()) return;
     say(5, 'grip', '<b>A grip on the selected widget only.</b> Drag by that tab; the header and body are content. Click another card to move the grip.');
