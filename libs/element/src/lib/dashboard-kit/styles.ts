@@ -309,10 +309,15 @@ const CSS = `
 `;
 
 /** Idempotently inject the kit stylesheet (safe to call per binder). */
-export function ensureDashboardKitStyles(doc: Document = document): void {
-  if (doc.getElementById(DASHBOARD_KIT_STYLE_ID)) return;
-  const style = doc.createElement('style');
+export function ensureDashboardKitStyles(doc?: Document): void {
+  // SERVER-SAFE: `dashboard()` is a pure spec builder and runs where there is
+  // no document (SSR, a Node script sizing a board). A default parameter of
+  // `document` threw ReferenceError there — the packaging gate's raw-Node
+  // import caught it. No document, no stylesheet, no error.
+  const d = doc ?? (typeof document !== 'undefined' ? document : undefined);
+  if (!d || d.getElementById(DASHBOARD_KIT_STYLE_ID)) return;
+  const style = d.createElement('style');
   style.id = DASHBOARD_KIT_STYLE_ID;
   style.textContent = CSS;
-  doc.head.appendChild(style);
+  d.head.appendChild(style);
 }
