@@ -26,6 +26,135 @@
 <div id="demo-head"></div>
 <div id="canvas"></div>
 
+<script type="text/plain" data-code="angular">
+// npm i @grafloria/angular
+import { Component, signal } from '@angular/core';
+import { GrafloriaDashboardComponent } from '@grafloria/angular';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+@Component({
+  selector: 'app-containers-board',
+  imports: [GrafloriaDashboardComponent],
+  template: `
+    <div class="bar">
+      <button (click)="handle?.widget('k-rev')?.resize(1, 2)">Make Revenue taller — the section grows a row</button>
+      <button (click)="undo()">Undo</button>
+    </div>
+    <!-- An explicit width/height → mode 'fixed': the authored 1180×620 world the camera frames. toJSON() reports the nesting from LIVE membership. -->
+    <grafloria-dashboard
+      [views]="views" [options]="options"
+      (ready)="handle = $event"
+      (layoutChange)="onLayout($event)"
+      style="display:block; height:620px" />
+  `,
+})
+export class ContainersBoardComponent {
+  handle?: DashboardHandle;
+  options = { columns: 12, gap: 8, width: 1180, height: 620 };
+  views: DashboardViewSpec[] = [{ id: 'main', widgets: [
+    { id: 'trend', kind: 'line', span: 8, rows: 2, title: 'Revenue trend',
+      data: { series: [{ name: 'Revenue', values: [1.2, 1.5, 1.4, 1.9, 2.3, 2.8] }], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix', kind: 'donut', span: 4, rows: 2, title: 'By region',
+      data: { slices: [{ label: 'EMEA', value: 2.9, color: '#3B52D9' }, { label: 'APAC', value: 1.8, color: '#0891b2' }, { label: 'NA', value: 2.1, color: '#f59e0b' }] } },
+    // THE CONTAINER — a widget that holds widgets: a locked slab in the board
+    // with its own 4-column pack grid inside. Drag a tile across its edge and
+    // the other grid adopts it live; one undo restores both grids.
+    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+      { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
+      { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
+      { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
+    ] },
+    { id: 'deals', kind: 'bar', span: 12, rows: 2, title: 'Deals by quarter',
+      data: { bars: [{ label: 'Q1', value: 210 }, { label: 'Q2', value: 262 }, { label: 'Q3', value: 244 }, { label: 'Q4', value: 301 }] } },
+  ] }];
+
+  undo() { /* the instance's commandManager — see the JS tab: one undo restores both grids */ }
+
+  onLayout(e: { viewId: string; widgets: unknown[] }) {
+    // Every committed gesture, API call, undo and redo lands here — persist it.
+    console.log('layout changed', e.viewId, e.widgets.length, 'widgets');
+  }
+}
+</script>
+<script type="text/plain" data-code="react">
+// npm i @grafloria/react
+import { useState } from 'react';
+import { GrafloriaDashboard } from '@grafloria/react';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
+    { id: 'trend', kind: 'line', span: 8, rows: 2, title: 'Revenue trend',
+      data: { series: [{ name: 'Revenue', values: [1.2, 1.5, 1.4, 1.9, 2.3, 2.8] }], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix', kind: 'donut', span: 4, rows: 2, title: 'By region',
+      data: { slices: [{ label: 'EMEA', value: 2.9, color: '#3B52D9' }, { label: 'APAC', value: 1.8, color: '#0891b2' }, { label: 'NA', value: 2.1, color: '#f59e0b' }] } },
+    // THE CONTAINER — a widget that holds widgets: a locked slab in the board
+    // with its own 4-column pack grid inside. Drag a tile across its edge and
+    // the other grid adopts it live; one undo restores both grids.
+    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+      { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
+      { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
+      { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
+    ] },
+    { id: 'deals', kind: 'bar', span: 12, rows: 2, title: 'Deals by quarter',
+      data: { bars: [{ label: 'Q1', value: 210 }, { label: 'Q2', value: 262 }, { label: 'Q3', value: 244 }, { label: 'Q4', value: 301 }] } },
+] }];
+
+export function ContainersBoard() {
+  const [handle, setHandle] = useState<DashboardHandle>();
+  return (
+    <>
+      <div className="bar">
+        <button onClick={() => handle?.widget('k-rev')?.resize(1, 2)}>Make Revenue taller — the section grows a row</button>
+      </div>
+      {/* An explicit width/height → mode 'fixed': the authored 1180×620 world the camera frames. toJSON() reports the nesting from LIVE membership. */}
+      <GrafloriaDashboard
+        views={views}
+        options={{ columns: 12, gap: 8, width: 1180, height: 620 }}
+        onReady={setHandle}
+        onLayoutChange={({ viewId, widgets }) => console.log('layout changed', viewId, widgets.length, 'widgets')}
+        style={{ height: '620px' }}
+      />
+    </>
+  );
+}
+</script>
+<script type="text/plain" data-code="vue">
+<!-- npm i @grafloria/vue -->
+<script setup lang="ts">
+import { shallowRef } from 'vue';
+import { GrafloriaDashboard } from '@grafloria/vue';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+const handle = shallowRef<DashboardHandle>();
+const options = { columns: 12, gap: 8, width: 1180, height: 620 };
+const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
+    { id: 'trend', kind: 'line', span: 8, rows: 2, title: 'Revenue trend',
+      data: { series: [{ name: 'Revenue', values: [1.2, 1.5, 1.4, 1.9, 2.3, 2.8] }], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix', kind: 'donut', span: 4, rows: 2, title: 'By region',
+      data: { slices: [{ label: 'EMEA', value: 2.9, color: '#3B52D9' }, { label: 'APAC', value: 1.8, color: '#0891b2' }, { label: 'NA', value: 2.1, color: '#f59e0b' }] } },
+    // THE CONTAINER — a widget that holds widgets: a locked slab in the board
+    // with its own 4-column pack grid inside. Drag a tile across its edge and
+    // the other grid adopts it live; one undo restores both grids.
+    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+      { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
+      { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
+      { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
+    ] },
+    { id: 'deals', kind: 'bar', span: 12, rows: 2, title: 'Deals by quarter',
+      data: { bars: [{ label: 'Q1', value: 210 }, { label: 'Q2', value: 262 }, { label: 'Q3', value: 244 }, { label: 'Q4', value: 301 }] } },
+] }];
+const onLayout = (e: { viewId: string; widgets: unknown[] }) => console.log('layout changed', e.viewId, e.widgets.length, 'widgets');
+<\/script>
+
+<template>
+  <div class="bar">
+    <button @click="handle?.widget('k-rev')?.resize(1, 2)">Make Revenue taller — the section grows a row</button>
+  </div>
+  <!-- An explicit width/height → mode 'fixed': the authored 1180×620 world the camera frames. toJSON() reports the nesting from LIVE membership. -->
+  <GrafloriaDashboard :views="views" :options="options" @ready="handle = $event" @layout-change="onLayout"
+    style="display:block; height:620px" />
+</template>
+</script>
 <script type="module">
 import { render, dashboard } from '../shell/grafloria.js';
 import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
