@@ -61,7 +61,7 @@ import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
       <button (click)="sizing.set('grow')">Grow</button>
       <button (click)="layout.set('grid')">Grid</button>
       <button (click)="layout.set('split')">Split</button>
-      <button (click)="handle?.addWidget({ kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })">+ Add a row</button>
+      <button (click)="handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })">+ Add a row</button>
     </div>
     <!-- No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. -->
     <grafloria-dashboard
@@ -136,7 +136,7 @@ export function FluidBoard() {
         <button onClick={() => setSizing('grow')}>Grow</button>
         <button onClick={() => setLayout('grid')}>Grid</button>
         <button onClick={() => setLayout('split')}>Split</button>
-        <button onClick={() => handle?.addWidget({ kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })}>+ Add a row</button>
+        <button onClick={() => handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })}>+ Add a row</button>
       </div>
       {/* No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. */}
       <GrafloriaDashboard
@@ -189,7 +189,7 @@ const onLayout = (e: { viewId: string; widgets: unknown[] }) => console.log('lay
     <button @click="sizing = 'grow'">Grow</button>
     <button @click="layout = 'grid'">Grid</button>
     <button @click="layout = 'split'">Split</button>
-    <button @click="handle?.addWidget({ kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })">+ Add a row</button>
+    <button @click="handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })">+ Add a row</button>
   </div>
   <!-- No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. -->
   <GrafloriaDashboard :views="views" :options="options" :layout="layout" :sizing="sizing"

@@ -257,7 +257,7 @@ dashboard({
 H.activeView                 // the one on camera
 H.showView('sales');         // the tab switch — others park off-camera, camera re-frames
 
-const w = H.addWidget({ kind: 'bar', span: 6, rows: 2, data: {...} });
+const w = H.addWidget({ id: 'deals', kind: 'bar', span: 6, rows: 2, data: {...} });
 // CREATES the node, wires its metadata, commits node + membership as ONE undoable
 // step, auto-positions into the first free hole when the spec names no cell
 

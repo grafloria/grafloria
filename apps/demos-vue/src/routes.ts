@@ -45,6 +45,8 @@ export const ROUTES: Record<string, () => Promise<{ default: Component }>> = {
   'diagrams/class-uml': () => import('./demos/class-uml.vue'),
   'diagrams/erd-editor': () => import('./demos/erd-editor.vue'),
   'dashboard/dashboard-builder': () => import('./demos/dashboard-builder.vue'),
+  'dashboard/fluid-board': () => import('./demos/fluid-board.vue'),
+  'dashboard/nested-containers': () => import('./demos/dashboard-containers.vue'),
   'collab/two-tabs-live': () => import('./demos/two-tabs-live.vue'),
   'collab/comments': () => import('./demos/comments.vue'),
   'misc/mermaid-text': () => import('./demos/mermaid-text.vue'),
