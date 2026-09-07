@@ -69,29 +69,42 @@ const galleryServer = createServer(async (req, res) => {
 await new Promise((r) => galleryServer.listen(PORT + 100, r));
 
 const COUNT = () => document.querySelectorAll('svg g, svg rect, svg path, foreignObject, .grafloria-html-layer *').length;
+// The KIND of thing painted. A paint count cannot tell a dashboard from a
+// diagram — a dashboard component wired under a diagram route sailed through
+// on count alone (2026-09-07). Kit dashboards paint .axdb-widget; SVG diagrams
+// paint svg text with an empty HTML layer; the hand-built grid pages are
+// neither, so they are not judged.
+const KIND = () => {
+  const w = document.querySelectorAll('.axdb-widget').length;
+  const html = document.querySelectorAll('.grafloria-html-layer > *').length;
+  const txt = document.querySelectorAll('svg text').length;
+  return w > 0 ? 'kit' : html === 0 && txt > 0 ? 'svg-diagram' : 'other';
+};
 const REF_FLOOR = 0.45; // a faithful variant paints at least this fraction of the JS original
 
 for (const route of ROUTES) {
   const errs = [];
   // The JS reference paint count.
-  let ref = 0;
+  let ref = 0, refKind = 'other';
   try {
     const rp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await rp.goto(`http://localhost:${PORT + 100}/${route}.html`, { waitUntil: 'networkidle' });
     await rp.waitForFunction(() => window.__demoReady === true, { timeout: 15000 });
     await rp.waitForTimeout(400);
     ref = await rp.evaluate(COUNT);
+    refKind = await rp.evaluate(KIND);
     await rp.close();
   } catch { /* no JS reference (rare) — fall back to the bare threshold */ }
 
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   page.on('pageerror', (e) => errs.push(String(e).slice(0, 140)));
-  let painted = 0;
+  let painted = 0, kind = 'other';
   try {
     await page.goto(`http://localhost:${PORT}/#/${route}`, { waitUntil: 'networkidle' });
     await page.waitForFunction((flag) => window[flag] === true, READY, { timeout: 15000 });
     await page.waitForTimeout(400);
     painted = await page.evaluate(COUNT);
+    kind = await page.evaluate(KIND);
   } catch (e) {
     errs.push(String(e).slice(0, 140));
   }
@@ -100,8 +113,12 @@ for (const route of ROUTES) {
   // canvas. 60+ painted elements means real content rendered (a culling/LOD
   // demo can legitimately paint far fewer than an extreme reference).
   const under = painted <= floor && painted < 60;
-  const ok = painted > 2 && !under && errs.length === 0;
-  const note = under && errs.length === 0 ? `  UNDER-RENDERING (ref=${ref}, floor=${floor})` : errs.length ? '  ' + errs[0] : '';
+  // Same kind as the reference: a kit dashboard where the JS page is one, and
+  // never a kit dashboard where the JS page is an SVG diagram.
+  const wrongKind = ref > 0 && ((refKind === 'kit' && kind !== 'kit') || (refKind === 'svg-diagram' && kind === 'kit'));
+  const ok = painted > 2 && !under && !wrongKind && errs.length === 0;
+  const note = wrongKind ? `  WRONG KIND (reference ${refKind}, variant ${kind})`
+    : under && errs.length === 0 ? `  UNDER-RENDERING (ref=${ref}, floor=${floor})` : errs.length ? '  ' + errs[0] : '';
   console.log(`${ok ? '✓' : '✗'} ${route}  painted=${painted}${ref ? ` ref=${ref}` : ''}${note}`);
   if (!ok) failed++;
   await page.close();
