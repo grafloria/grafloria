@@ -480,6 +480,30 @@
               <td><span class="yes">✓</span></td>
             </tr>
             <tr>
+              <th scope="row">Drag handle</th>
+              <td class="us"><span class="yes">✓</span><span class="note"><code>dragHandle</code> — the caption strip, your own selector, or a painted grip (left / center / right, in the header or a tab above the card) shown on the selected widget only; switched live</span></td>
+              <td><span class="yes">✓</span><span class="note"><code>handle</code></span></td>
+              <td><span class="yes">✓</span><span class="note"><code>draggableHandle</code></span></td>
+              <td><span class="yes">✓</span><span class="note"><code>draggable.dragHandleClass</code></span></td>
+              <td><span class="yes">✓</span><span class="note"><code>dragHandle</code></span></td>
+            </tr>
+            <tr>
+              <th scope="row">Sizing modes</th>
+              <td class="us"><span class="yes">✓</span><span class="note"><code>sizing: 'grow'</code> — rows keep their height, the board extends; <code>'fit'</code> — rows squeeze and the board never scrolls, its height is a capacity; switched live</span></td>
+              <td><span class="yes">✓</span><span class="note"><code>cellHeight</code>, <code>maxRow</code></span></td>
+              <td><span class="yes">✓</span><span class="note"><code>rowHeight</code>, <code>maxRows</code>, <code>autoSize</code></span></td>
+              <td><span class="yes">✓</span><span class="note"><code>gridType</code>: fit · fixed · scroll</span></td>
+              <td>—<span class="note">no row model</span></td>
+            </tr>
+            <tr>
+              <th scope="row">Splitter layout — the surface is always covered</th>
+              <td class="us"><span class="yes">✓</span><span class="note"><code>layout: 'split'</code> — the way BI dashboard designers align widgets: one fills, the next halves, dividers are percentages; switched live, same document</span></td>
+              <td>—</td>
+              <td>—</td>
+              <td>—</td>
+              <td>—</td>
+            </tr>
+            <tr>
               <th scope="row">Save / load</th>
               <td class="us"><span class="yes">✓</span><span class="note">cells are the document — the same save/load path as any other diagram, no special case</span></td>
               <td><span class="yes">✓</span><span class="note"><code>serialize()</code> / <code>load()</code></span></td>
