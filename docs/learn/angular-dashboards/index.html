@@ -153,6 +153,11 @@ export class BoardComponent {
         <code>responsive</code> (derive the live column count from board width — by
         <code>columnWidth</code> or named <code>breakpoints</code>).</li>
         <li><code>[(activeView)]</code> — two-way active view id; the tab pattern.</li>
+        <li><code>[layout]</code> — <code>'grid' | 'split'</code>: the cell grid or the DevExpress-style
+        splitter tree (the board always covered, dividers as percentages). <code>[sizing]</code> —
+        <code>'fit' | 'grow'</code>. <code>[static]</code> — the viewer's mode. All three are LIVE:
+        applied at mount over <code>[options]</code>, and a later change is one handle call
+        (<code>setLayout</code> / <code>setSizing</code> / <code>setStatic</code>), never a remount.</li>
         <li><code>(ready)</code> — emits the typed <code>DashboardHandle</code> once the
         board is live.</li>
         <li><code>(layoutChange)</code> — <code>{ viewId, widgets }</code>, mirroring the

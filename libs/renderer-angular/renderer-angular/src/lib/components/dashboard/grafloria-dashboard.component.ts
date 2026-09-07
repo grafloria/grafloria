@@ -64,6 +64,16 @@ export class GrafloriaDashboardComponent implements AfterViewInit, OnDestroy {
   readonly options = input<Partial<DashboardOptions>>({});
   /** Two-way active view id — the tab pattern. */
   readonly activeView = model<string | undefined>(undefined);
+  /**
+   * LIVE SWITCHES — the toolbar toggles as inputs: applied at mount (over
+   * `[options]`) and, when they change, through the handle (`setLayout` /
+   * `setSizing` / `setStatic`), never by remounting. 'split' is the
+   * DevExpress splitter tree; 'grid' the cell grid.
+   */
+  readonly layout = input<'grid' | 'split' | undefined>(undefined);
+  readonly sizing = input<'fit' | 'grow' | undefined>(undefined);
+  /** Static board: the viewer's mode — no drag, no resize, no handles. */
+  readonly static = input<boolean | undefined>(undefined);
 
   /** The typed DashboardHandle, once the board is live. */
   readonly ready = output<DashboardHandle>();
@@ -93,11 +103,36 @@ export class GrafloriaDashboardComponent implements AfterViewInit, OnDestroy {
         }
       });
     });
+    // The switches: a changed input is one handle call, never a remount.
+    effect(() => {
+      const layout = this.layout();
+      untracked(() => {
+        // The input names the BOARD's layout: every view, not only the visible tab.
+        const h = this.handle;
+        if (layout === undefined || !h) return;
+        for (const v of h.views) if (h.getLayout(v) !== layout) h.setLayout(layout, v);
+      });
+    });
+    effect(() => {
+      const sizing = this.sizing();
+      untracked(() => {
+        if (sizing !== undefined && this.handle && this.handle.getSizing() !== sizing) this.handle.setSizing(sizing);
+      });
+    });
+    effect(() => {
+      const isStatic = this.static();
+      untracked(() => {
+        if (isStatic !== undefined && this.handle && this.handle.getStatic() !== isStatic) this.handle.setStatic(isStatic);
+      });
+    });
   }
 
   ngAfterViewInit(): void {
     const spec = dashboard({
       ...this.options(),
+      ...(this.layout() !== undefined ? { layout: this.layout() } : {}),
+      ...(this.sizing() !== undefined ? { sizing: this.sizing() } : {}),
+      ...(this.static() !== undefined ? { static: this.static() } : {}),
       ...(this.views() ? { views: this.views() } : {}),
       ...(!this.views() && this.widgets() ? { widgets: this.widgets() } : {}),
       renderWidget: (widget, host) => this.paintWidget(widget, host),

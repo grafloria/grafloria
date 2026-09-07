@@ -202,7 +202,11 @@ function OrdersCard({ widget, data }: WidgetProps&lt;{ title: string }&gt;) {
       inactive views park off-camera, they are not unmounted.</p>
       <div class="note"><b>The board mounts once.</b> Like the flow, the component reads
       <code>views</code>, <code>widgets</code> and <code>options</code> at mount and does not
-      rebuild on prop changes — <code>activeView</code> is the one prop that stays live.
+      rebuild on prop changes — <code>activeView</code>, <code>layout</code>, <code>sizing</code> and
+      <code>static</code> are the props that stay live: each later change is one handle call
+      (<code>showView</code>, <code>setLayout</code>, <code>setSizing</code>, <code>setStatic</code>),
+      never a remount. <code>layout="split"</code> is the DevExpress-style splitter tree; the board is
+      always covered and dividers drag as percentages.
       After mount, data flows through the <b>handle</b>: widget updates, adds, removals,
       sizing switches. Changing the <code>views</code> array on a later render does
       nothing.</div>

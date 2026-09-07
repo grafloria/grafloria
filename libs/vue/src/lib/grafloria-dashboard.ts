@@ -51,6 +51,16 @@ export const GrafloriaDashboard = defineComponent({
     options: { type: Object as PropType<Partial<DashboardOptions>>, default: () => ({}) },
     /** The visible view — `v-model:active-view`. */
     activeView: { type: String, default: undefined },
+    /**
+     * LIVE SWITCHES — the toolbar toggles as props: applied at mount (over
+     * `options`) and, when they change, through the handle (`setLayout` /
+     * `setSizing` / `setStatic`), never by remounting. 'split' is the
+     * DevExpress splitter tree; 'grid' the cell grid.
+     */
+    layout: { type: String as PropType<'grid' | 'split'>, default: undefined },
+    sizing: { type: String as PropType<'fit' | 'grow'>, default: undefined },
+    /** Static board: the viewer's mode — no drag, no resize, no handles. */
+    static: { type: Boolean, default: undefined },
   },
   emits: ['update:activeView', 'ready', 'layoutChange'],
   setup(props, { emit, slots, expose }) {
@@ -82,6 +92,9 @@ export const GrafloriaDashboard = defineComponent({
 
       const spec = dashboard({
         ...props.options,
+        ...(props.layout !== undefined ? { layout: props.layout } : {}),
+        ...(props.sizing !== undefined ? { sizing: props.sizing } : {}),
+        ...(props.static !== undefined ? { static: props.static } : {}),
         ...(props.views ? { views: props.views } : {}),
         ...(!props.views && props.widgets ? { widgets: props.widgets } : {}),
         renderWidget: (widget, hostEl) => {
@@ -118,6 +131,16 @@ export const GrafloriaDashboard = defineComponent({
         }
       }
     );
+
+    // The switches: a changed prop is one handle call, never a remount.
+    // The prop names the BOARD's layout: every view, not only the visible tab.
+    watch(() => props.layout, (v) => {
+      const hnd = handle.value;
+      if (v === undefined || !hnd) return;
+      for (const id of hnd.views) if (hnd.getLayout(id) !== v) hnd.setLayout(v, id);
+    });
+    watch(() => props.sizing, (v) => { if (v !== undefined && handle.value && handle.value.getSizing() !== v) handle.value.setSizing(v); });
+    watch(() => props.static, (v) => { if (v !== undefined && handle.value && handle.value.getStatic() !== v) handle.value.setStatic(v); });
 
     onBeforeUnmount(() => {
       for (const entry of mounted.values()) vueRender(null, entry.element);

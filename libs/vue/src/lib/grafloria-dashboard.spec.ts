@@ -77,3 +77,36 @@ describe('<GrafloriaDashboard> (Vue)', () => {
     expect(handle.activeView).toBe('ops');
   });
 });
+
+describe('<GrafloriaDashboard> (Vue) live switches', () => {
+  let host: HTMLElement;
+  let app: App | null = null;
+  beforeEach(() => { host = document.createElement('div'); document.body.appendChild(host); });
+  afterEach(() => { app?.unmount(); app = null; host.remove(); });
+  const W: DashboardViewSpec[] = [
+    { id: 'main', widgets: [{ id: 'a', kind: 'kpi', span: 6 }, { id: 'b', kind: 'kpi', span: 6 }, { id: 'c', kind: 'line', span: 12, rows: 2 }] },
+  ];
+  it('layout / sizing / static boot from the props and switch live through the same handle', async () => {
+    let handle: any = null;
+    let ready = 0;
+    const layout = ref<'grid' | 'split'>('split');
+    const sizing = ref<'fit' | 'grow'>('fit');
+    app = createApp(defineComponent({
+      setup() {
+        return () => h(GrafloriaDashboard, { views: W, options: { width: 1200, height: 600 }, layout: layout.value, sizing: sizing.value, static: true, onReady: (h_: unknown) => { handle = h_; ready++; } });
+      },
+    }));
+    app.mount(host);
+    await flush();
+    expect(handle.getLayout()).toBe('split');
+    expect(handle.getStatic()).toBe(true);
+    const first = handle;
+    layout.value = 'grid';
+    sizing.value = 'grow';
+    await flush();
+    expect(first.getLayout()).toBe('grid');
+    expect(first.getSizing()).toBe('grow');
+    expect(ready).toBe(1);
+    expect(handle).toBe(first);
+  });
+});
