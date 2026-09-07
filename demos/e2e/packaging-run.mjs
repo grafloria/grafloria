@@ -74,7 +74,9 @@ try {
   // developer machine — where a stale `index.d.ts` from an earlier release was
   // still lying around — while failing on CI.)
   console.log('packaging: building and packing…');
-  const PACKAGES = ['engine', 'renderer'];
+  // element LAST: its release build maps engine and renderer to their built
+  // .d.ts and pulls their sources in the same way — one more clobber source.
+  const PACKAGES = ['engine', 'renderer', 'element'];
 
   // ALL the compiling first, THEN all the extension-fixing, THEN all the packing.
   // The three passes must not interleave, and this is not tidiness — it is the
@@ -134,6 +136,11 @@ try {
 // the engine directly rather than relying on renderer to pull it in.
 import '@grafloria/engine';
 import { renderToStaticSVG, hasShape } from '@grafloria/renderer';
+// element too — the package with the most surface: the custom element must
+// stay inert without a DOM, and the data-first kit must build a board.
+import { dashboard } from '@grafloria/element';
+const board = dashboard({ layout: 'split', widgets: [{ id: 'a', kind: 'kpi', span: 6 }, { id: 'b', kind: 'kpi', span: 6 }] });
+const kit = { nodes: board.nodes.length, layout: board.handle.getLayout() };
 const NOTATION = ['delay', 'display', 'summing-junction', 'sync-bar', 'final-node'];
 const missing = NOTATION.filter((s) => !hasShape(s));
 const out = renderToStaticSVG(
@@ -144,7 +151,7 @@ const html = typeof out === 'string' ? out : out.html;
 // The Delay silhouette is a <path> with the ISO 5807 half-round cap. A <rect>
 // here means the shape was dropped and the node fell back to a plain box.
 const drew = /<path[^>]*class="diagram-node"/.test(html) ? 'path' : /<rect[^>]*class="diagram-node"/.test(html) ? 'rect' : 'none';
-console.log(JSON.stringify({ missing, drew }));
+console.log(JSON.stringify({ missing, drew, kit }));
 `
   );
 
@@ -152,6 +159,7 @@ console.log(JSON.stringify({ missing, drew }));
   const raw = JSON.parse(run('node entry.mjs', consumer).trim());
   check('every notation shape registered', raw.missing.length, 0);
   check('delay draws its silhouette', raw.drew, 'path');
+  check('element imports without a DOM and dashboard() builds a split board', `${raw.kit.nodes}/${raw.kit.layout}`, '2/split');
 
   console.log('\npackaging: esbuild, production settings (respects sideEffects)');
   run(
@@ -161,6 +169,7 @@ console.log(JSON.stringify({ missing, drew }));
   const bundled = JSON.parse(run('node bundled.mjs', consumer).trim());
   check('every notation shape survives bundling', bundled.missing.length, 0);
   check('delay still draws its silhouette', bundled.drew, 'path');
+  check('element survives bundling', `${bundled.kit.nodes}/${bundled.kit.layout}`, '2/split');
 
   // -- 1b. the declarations resolve under nodenext ----------------------------
   // tsc emits `import("..")` when it infers a type through a barrel. That is a
