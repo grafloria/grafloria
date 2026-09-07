@@ -74,6 +74,10 @@
   <div class="wrap">
     <h1>A GridStack alternative for dashboards that outgrow the grid</h1>
     <p class="lede">Honest framing first: GridStack.js is the <b>reference implementation</b> of drag-resize-repack, it's MIT, and if a layout engine is all you need, use it. Grafloria's dashboard kit is for the moment the grid becomes an <b>application</b>: widgets with data, undo across every gesture, containers inside containers, exports, and a save format shared with your diagrams.</p>
+    <p>The comparison here is with <b>grid layout engines</b>. Where a BI product such as DevExpress
+    Dashboard comes up below, it is only for how its designer <em>aligns widgets</em> — a splitter
+    surface that is always covered — which the kit's split layout reproduces. Data sources, query
+    builders and the rest of a BI suite are out of scope on both sides of this table.</p>
     <h2>When to stay with GridStack</h2>
     <p>You need exactly a grid: place, drag, resize, re-pack, responsive breakpoints, sub-grids.
     GridStack does all of it, small and focused, with wrappers for Angular, React and Vue 3.</p>
@@ -92,6 +96,9 @@
       <tr><td>Per-widget min / max size</td><td>✓ <code>minW … maxH</code></td><td class="us">✓ <code>limits: { minSpan, maxSpan, minRows, maxRows }</code></td></tr>
       <tr><td>Resize from any edge</td><td>✓ configurable handles</td><td class="us">✓ every edge and corner, the cursor says which</td></tr>
       <tr><td>Static (read-only) grid</td><td>✓ <code>staticGrid</code></td><td class="us">✓ <code>static: true</code>, switched live with <code>setStatic()</code></td></tr>
+      <tr><td>Drag handle</td><td>✓ <code>handle</code> selector</td><td class="us">✓ <code>dragHandle</code> — the caption strip, your own selector, or a painted grip (left / center / right, in the header or a tab above the card) shown on the selected widget only; switched live</td></tr>
+      <tr><td>Sizing modes</td><td>✓ <code>cellHeight</code>, <code>maxRow</code></td><td class="us">✓ <code>sizing: 'grow'</code> — rows keep their height, the board extends; <code>'fit'</code> — rows squeeze, the board never scrolls; switched live</td></tr>
+      <tr><td>Splitter layout — the surface is always covered</td><td>—</td><td class="us">✓ <code>layout: 'split'</code> — the way a BI dashboard designer (DevExpress's, for one) aligns widgets: one fills, the next halves, dividers are percentages, a drop lands on an edge; switched live, same document</td></tr>
       <tr><td>Bounded height</td><td>✓ <code>maxRow</code></td><td class="us">✓ fit mode is a capacity — a board never paints past its own edge</td></tr>
       <tr><td>Keyboard operation</td><td>not documented</td><td class="us">✓ arrows move, Shift+arrows resize, every outcome announced — axe-core in CI</td></tr>
       <tr><td>Touch</td><td>✓</td><td class="us">✓ drag and resize, 24-px handles visible without hover</td></tr>
@@ -151,6 +158,8 @@ render(SPEC, document.getElementById('canvas'));
       <tr><td><code>locked</code> / <code>noMove</code></td><td class="us"><code>pinned: true</code> — never pushed, survives every reflow</td></tr>
       <tr><td><code>column(n)</code>, responsive breakpoints</td><td class="us"><code>columns</code> + responsive re-flow of the cells themselves</td></tr>
       <tr><td><code>staticGrid</code></td><td class="us"><code>static: true</code> — the viewer's mode; the API and undo keep working</td></tr>
+      <tr><td><code>handle</code> selector</td><td class="us"><code>dragHandle: true | '.sel' | { grip: true, position, placement }</code> — caption strip, your element, or a grip on the selected widget</td></tr>
+      <tr><td><em>no equivalent</em></td><td class="us"><code>layout: 'split'</code> — a splitter tree beside the grid, <code>setLayout()</code> keeps the picture either way</td></tr>
       <tr><td><code>minW</code> / <code>maxW</code> / <code>minH</code> / <code>maxH</code></td><td class="us"><code>limits: { minSpan, maxSpan, minRows, maxRows }</code> on the widget</td></tr>
       <tr><td><code>maxRow</code></td><td class="us"><code>sizing: 'fit'</code> — the board's height is the capacity; <code>overflow: 'scroll'</code> opts out</td></tr>
     </table></div>
@@ -163,14 +172,16 @@ render(SPEC, document.getElementById('canvas'));
     sections are containers — drag a tile across a section boundary and the other grid adopts it
     live, one undo restores the whole gesture, and <code>toJSON()</code> serializes the nesting.
     The <a href="../../demos/dashboard/grid-options.html">grid options demo</a> shows column
-    counts, packing and responsive re-flow driven as data.</p>
+    counts, packing and responsive re-flow driven as data, and the
+    <a href="../../demos/dashboard/fluid-board.html">fluid dashboard</a> has Fit / Grow, Grid / Split
+    and the drag-handle modes in one toolbar.</p>
     <div class="cta">
       <a class="btn primary" href="../../learn/javascript-dashboards/">10-minute tutorial</a>
       <a class="btn ghost" href="../../demos/#dashboard">Live demos</a>
       <a class="btn ghost" href="../../compare/#dashboards">The full sourced comparison</a>
     </div>
     <p class="fine">Pricing and feature cells reflect vendor pages and shipped type definitions as of
-    July–August 2026 — always confirm on the vendor's site. Corrections welcome on
+    July–September 2026 — always confirm on the vendor's site. Corrections welcome on
     <a href="https://github.com/grafloria/grafloria/issues">GitHub</a>; this page aims to stay honest, not to win.</p>
   </div>
 </main>
