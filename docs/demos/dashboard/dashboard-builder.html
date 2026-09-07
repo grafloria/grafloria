@@ -698,6 +698,8 @@ function showView(id) {
   H.showView(id);
   for (const btn of document.querySelectorAll('.db-tab')) btn.setAttribute('aria-selected', String(btn.dataset.tab === id));
   setFocus(H.widgetsOf()[0]?.id ?? null);
+  // Layout is PER VIEW: the Grid / Split pair must read the view just shown.
+  syncToolbarSoon();
   flash(`view: ${id}`);
 }
 
