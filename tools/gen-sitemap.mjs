@@ -1,7 +1,7 @@
 // Generate docs/sitemap.xml from what is actually served: every directory
 // index under docs/ plus every demo page. lastmod comes from git history so
 // crawlers see real change dates. Rerun after adding pages; CI-free by design.
-import { readdirSync, statSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { execSync } from 'node:child_process';
 
@@ -37,6 +37,8 @@ const walk = (dir) => {
       // The framework app shells (demos-<fw>/index.html) are hash-routed SPAs
       // with no static body — noindex in their <head>, and out of the sitemap.
       if (/^demos-\w+\/index\.html$/.test(rel)) continue;
+      // A page that asks not to be indexed (a redirect stub, an app shell) is not a sitemap entry.
+      if (readFileSync(p, 'utf8').includes('name="robots" content="noindex"')) continue;
       // priorities: home 1.0 · top sections 0.9 · learn 0.8 · demo pages 0.6
       const pr = rel === 'index.html' ? '1.0'
         : /^(react|angular|vue|javascript|mermaid|compare|demos|demos-\w+)\/index\.html$/.test(rel) ? '0.9'

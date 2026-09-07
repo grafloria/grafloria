@@ -8,11 +8,11 @@
   <language>en</language>
   <lastBuildDate>Mon, 07 Sep 2026 12:00:00 GMT</lastBuildDate>
   <item>
-    <title>What DevExpress dashboard users expect, and what it took to match it</title>
-    <link>https://grafloria.com/blog/what-devexpress-dashboard-users-expect/</link>
-    <guid isPermaLink="true">https://grafloria.com/blog/what-devexpress-dashboard-users-expect/</guid>
+    <title>Fluid boards, a split layout and a drag grip</title>
+    <link>https://grafloria.com/blog/fluid-boards-split-layout-and-a-drag-grip/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/fluid-boards-split-layout-and-a-drag-grip/</guid>
     <pubDate>Mon, 07 Sep 2026 12:00:00 GMT</pubDate>
-    <description>We drove the DevExpress dashboard designer with a script and wrote down what its users take for granted: a surface that is always covered, percentage dividers, drag by caption, a grip on the selected item. Then we built each one as data.</description>
+    <description>What changed in the Grafloria dashboard kit: boards that lay out in real pixels, a fit mode that never scrolls, a splitter-tree layout beside the grid, and a drag handle that can be the caption, your own element, or a grip only the selected widget shows.</description>
     <category>dashboards,layout</category>
   </item>
   <item>
