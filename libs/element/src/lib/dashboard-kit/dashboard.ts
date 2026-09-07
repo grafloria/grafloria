@@ -288,6 +288,12 @@ export interface DashboardHandle {
   readonly activeView: string;
   /** A widget handle by id (undefined when unknown). */
   widget(id: string): WidgetHandle | undefined;
+  /**
+   * SELECT a widget and move keyboard focus to it — what a press on the widget
+   * does. The selected widget shows its painted grip (`dragHandle: { grip }`)
+   * and a quiet ring; a void click clears. False when the id is unknown.
+   */
+  focusWidget(id: string): boolean;
   /** Every widget handle of a view (default: the active one). */
   widgetsOf(viewId?: string): WidgetHandle[];
   /**
@@ -973,6 +979,10 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     },
     widget(id) {
       return makeWidgetHandle(id);
+    },
+    focusWidget(id) {
+      const b = binders.get(viewOfWidget.get(id) ?? '');
+      return b?.focusWidget(id) ?? false;
     },
     widgetsOf(viewId) {
       const v = views.find((x) => x.id === (viewId ?? ctx.active));

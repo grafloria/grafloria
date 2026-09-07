@@ -1250,6 +1250,27 @@ describe('per-widget limits, pointer flags and the static board', () => {
     expect(document.querySelector('.axdb-gp-right')).toBeNull();
   });
 
+  it('selection: focusWidget stamps axdb-selected on that host only (the grip shows on the selected widget)', () => {
+    const { api, handle } = mount(dashboard({ dragHandle: { grip: true }, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    for (const id of ['a', 'b']) {
+      const h = document.createElement('div');
+      h.className = 'grafloria-node-host';
+      h.setAttribute('data-node-id', id);
+      layer.appendChild(h);
+    }
+    handle.refresh();
+    const host = (id: string) => api.container.querySelector(`.grafloria-node-host[data-node-id="${id}"]`)!;
+    expect(host('a').classList.contains('axdb-selected')).toBe(false);
+    expect(host('b').classList.contains('axdb-selected')).toBe(false);
+    handle.focusWidget('b');
+    expect(host('b').classList.contains('axdb-selected')).toBe(true);
+    expect(host('a').classList.contains('axdb-selected')).toBe(false);
+    handle.focusWidget('a');
+    expect(host('a').classList.contains('axdb-selected')).toBe(true);
+    expect(host('b').classList.contains('axdb-selected')).toBe(false);
+  });
+
   it('a layout switch keeps the LIVE switches: static, rtl and the drag handle survive setLayout', () => {
     const { handle } = mount(dashboard({ widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
     handle.setStatic(true);

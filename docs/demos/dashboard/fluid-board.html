@@ -244,7 +244,7 @@ const ctx2 = {};
 
 defineDemo({
   name: 'Fluid dashboard',
-  blurb: 'The DEFAULT mode of `dashboard()`: no width authored, so the board is 100% of its container at zoom 1 — laid out at real CSS pixels, the way gridstack and react-grid-layout lay out, never a picture the camera scales. Rows keep their height (GROW, the fluid default): drag or resize one tile and no other tile changes size; the board extends downward and the wheel scrolls it. Shrink the container ("Narrow container") and the board follows; the type stays 30 px. Switch to FIT and the board keeps its height instead — FIT MEANS BOUNDED: rows squeeze so everything stays on one screen, the row floor is a capacity, and "+ Add a row" is REFUSED, visibly, when there is no room; nothing is ever painted past the board\'s edge. `mode: \'fixed\'` (or an explicit width) keeps the framed-world behaviour for a dashboard embedded inside a larger diagram — see dashboard/dashboard-builder.html. "Drag" picks the handle: anywhere on the card; BY CAPTION (`dragHandle: true`, the DevExpress caption drag — the caption strip is the only grip, so a table body scrolls and a legend clicks instead of starting a move); or BY GRIP (`{ grip: true, position, placement }` — a painted grip, left / center / right, INSIDE the header band or OUTSIDE as a tab above the card like the DevExpress item bar). `handle.setDragHandle()` switches it live.',
+  blurb: 'The DEFAULT mode of `dashboard()`: no width authored, so the board is 100% of its container at zoom 1 — laid out at real CSS pixels, the way gridstack and react-grid-layout lay out, never a picture the camera scales. Rows keep their height (GROW, the fluid default): drag or resize one tile and no other tile changes size; the board extends downward and the wheel scrolls it. Shrink the container ("Narrow container") and the board follows; the type stays 30 px. Switch to FIT and the board keeps its height instead — FIT MEANS BOUNDED: rows squeeze so everything stays on one screen, the row floor is a capacity, and "+ Add a row" is REFUSED, visibly, when there is no room; nothing is ever painted past the board\'s edge. `mode: \'fixed\'` (or an explicit width) keeps the framed-world behaviour for a dashboard embedded inside a larger diagram — see dashboard/dashboard-builder.html. "Drag" picks the handle: anywhere on the card; BY CAPTION (`dragHandle: true`, the DevExpress caption drag — the caption strip is the only grip, so a table body scrolls and a legend clicks instead of starting a move); or BY GRIP (`{ grip: true, position, placement }` — a painted grip, left / center / right, INSIDE the header band or OUTSIDE as a tab above the card like the DevExpress item bar; it shows on the SELECTED widget only — click a widget to select it, click the board to clear). `handle.setDragHandle()` switches it live.',
   howTo: [
     '① The board fills the canvas exactly — no zoom, no margins the camera invented. Ctrl/⌘-wheel does nothing: a fluid board pins its zoom range to 1.',
     '② Press "Narrow container": the canvas becomes 60% wide and every tile re-lays out against the new width. Press again to widen.',
@@ -476,7 +476,18 @@ defineDemo({
     checkEqual(grips().length, H.widgetsOf().length, 'every widget carries one grip');
     check(!document.querySelector('.axdb-drag-handle'), 'and the caption class is gone (the grip is the only handle)');
     const hostRect = (g) => g.parentElement.getBoundingClientRect();
-    check(grips().every((g) => { const r = g.getBoundingClientRect(), h = hostRect(g); return r.top >= h.top && r.left - h.left < 12; }), 'inside-left: the grip sits in the header band at the left edge');
+    // Grips show on the SELECTED widget only (the DevExpress designer's item bar).
+    check(grips().every((g) => getComputedStyle(g).opacity === '0'), 'nothing selected: every grip is hidden');
+    H.focusWidget('trend');
+    await settle();
+    await new Promise((r) => setTimeout(r, 250)); // the grip fades in over 120 ms
+    const tGrip = document.querySelector('.grafloria-node-host[data-node-id="trend"] > .axdb-grip');
+    checkEqual(getComputedStyle(tGrip).opacity, '1', 'selecting the chart shows ITS grip');
+    checkEqual(grips().filter((g) => getComputedStyle(g).opacity === '1').length, 1, 'and only its grip');
+    check(grips().every((g) => { const r = g.getBoundingClientRect(), h = hostRect(g); return r.top >= h.top && r.left - h.left < 20; }), 'inside-left: the grip sits in the header band, flush with the card padding');
+    const hdr = document.querySelector('.grafloria-node-host[data-node-id="trend"] .axdb-widget-h').getBoundingClientRect();
+    const gr = tGrip.getBoundingClientRect();
+    check(Math.abs((gr.top + gr.bottom) / 2 - (hdr.top + hdr.bottom) / 2) <= 3, 'and is centred on the caption text line');
     check(parseFloat(getComputedStyle(document.querySelector('.axdb-gp-left .axdb-widget-h')).paddingLeft) >= 20, 'and the header makes room for it');
     ctx2.drag('grip', 'right', 'outside');
     await settle();

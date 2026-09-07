@@ -455,9 +455,18 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     return `${Math.round((r.width / f.width) * 100)} percent wide, ${Math.round((r.height / f.height) * 100)} percent tall`;
   };
 
+  /** The selected widget (see grid-binder): stamped `axdb-selected`, shows the grip. */
+  let selectedId: string | undefined;
+  const selectWidget = (id: string | undefined): void => {
+    if (id === selectedId) return;
+    selectedId = id;
+    syncA11y();
+  };
+
   const syncA11y = (): void => {
     if (disposed) return;
     const order = splitLeaves(paintedTree()).filter((id) => !!diagram.getNode(id));
+    if (selectedId && !order.includes(selectedId)) selectedId = undefined;
     // No corner handles on a split board: size comes from the dividers. A host
     // that carried the grid's handle (a board switched live) sheds it here.
     for (const id of order) hostOf(id)?.querySelector(':scope > .axdb-rs')?.remove();
@@ -479,6 +488,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       host.setAttribute('aria-roledescription', 'dashboard widget');
       host.setAttribute('aria-label', bits.filter(Boolean).join(', '));
       host.setAttribute('tabindex', id === stop ? '0' : '-1');
+      host.classList.toggle('axdb-selected', id === selectedId);
     });
   };
 
@@ -699,11 +709,14 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       const onGrip = !!gripId && (group.members ?? new Set<string>()).has(gripId);
       if (!hit.node && !onGrip) {
         (diagram as { clearSelection?: () => void }).clearSelection?.();
+        selectWidget(undefined);
         api.render();
         return;
       }
       const node = diagram.getNode(onGrip ? (gripId as string) : (hit.node as { id: string }).id);
-      if (!node || node.state?.locked === true || isStatic) return;
+      if (!node) return;
+      selectWidget(node.id); // a press selects, whether or not it starts a gesture
+      if (node.state?.locked === true || isStatic) return;
       if (node.getMetadata?.('widgetMovable') === false) return;
       // Drag-handle mode: only the handle (the caption strip, a custom element
       // or the painted grip) lifts a widget out — see pressOnDragHandle.
@@ -834,8 +847,9 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
   const onFocusIn = (e: FocusEvent): void => {
     const hit = memberHostAt(e.target);
     if (!hit || disposed) return;
-    if (focusedId !== hit.id) {
+    if (focusedId !== hit.id || selectedId !== hit.id) {
       focusedId = hit.id;
+      selectedId = hit.id;
       syncA11y();
     }
   };
@@ -1019,6 +1033,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     focusWidget(id): boolean {
       if (!(group.members ?? new Set<string>()).has(id) || !diagram.getNode(id)) return false;
       focusedId = id;
+      selectedId = id;
       syncA11y();
       hostOf(id)?.focus?.({ preventScroll: true });
       return true;

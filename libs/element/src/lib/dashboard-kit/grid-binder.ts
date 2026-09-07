@@ -1062,10 +1062,25 @@ export function bindDashboardGrid(
    * and the ROVING TABINDEX — exactly one member per board is a tab stop.
    * Runs with the handles, so a repainted host gets it back too.
    */
+  /**
+   * THE SELECTED WIDGET — the one a press or keyboard focus last landed on.
+   * Stamped on its host as `axdb-selected`; that is what shows the painted
+   * grip (the DevExpress designer shows an item's bar on the selected item
+   * only). A press on a member selects it even when it starts no gesture; a
+   * void click clears it. Distinct from the roving tab stop, which must stay.
+   */
+  let selectedId: string | undefined;
+  const selectWidget = (id: string | undefined): void => {
+    if (id === selectedId) return;
+    selectedId = id;
+    syncA11y();
+  };
+
   const syncA11y = (only?: ReadonlySet<string>): void => {
     if (disposed) return;
     const members = [...(group.members ?? [])].filter((id) => !!diagram.getNode(id));
     if (focusedId && !members.includes(focusedId)) focusedId = undefined;
+    if (selectedId && !members.includes(selectedId)) selectedId = undefined;
     const stop = focusedId ?? members[0];
     for (const id of members) {
       if (only && !only.has(id)) continue;
@@ -1080,6 +1095,7 @@ export function bindDashboardGrid(
       host.setAttribute('aria-roledescription', 'dashboard widget');
       host.setAttribute('aria-label', bits.join(', '));
       host.setAttribute('tabindex', id === stop ? '0' : '-1');
+      host.classList.toggle('axdb-selected', id === selectedId);
     }
   };
 
@@ -2103,11 +2119,14 @@ export function bindDashboardGrid(
         // The board's own empty area: a void click. Nothing to drag, and the
         // selection clears exactly as a click outside any board would.
         (diagram as { clearSelection?: () => void }).clearSelection?.();
+        selectWidget(undefined);
         api.render();
         return;
       }
       const node = diagram.getNode(onGrip ? (gripId as string) : (hit.node as { id: string }).id);
-      if (!node || node.state?.locked === true) return; // pinned: refuse; click still focuses
+      if (!node) return;
+      selectWidget(node.id); // a press selects, whether or not it starts a gesture
+      if (node.state?.locked === true) return; // pinned: refuse; click still focuses
       if (isStatic) return; // a static board: claimed and deadened, click still focuses
       // Which edges did the press take? The corner handle names its own (s+e,
       // or s+w on RTL); a bare press within EDGE_GRIP of the tile's border
@@ -2238,8 +2257,9 @@ export function bindDashboardGrid(
   const onFocusIn = (e: FocusEvent): void => {
     const hit = memberHostAt(e.target);
     if (!hit || disposed) return;
-    if (focusedId !== hit.id) {
+    if (focusedId !== hit.id || selectedId !== hit.id) {
       focusedId = hit.id;
+      selectedId = hit.id;
       syncA11y();
     }
   };
@@ -2581,6 +2601,7 @@ export function bindDashboardGrid(
     focusWidget(id): boolean {
       if (disposed || !(group.members ?? new Set<string>()).has(id) || !diagram.getNode(id)) return false;
       focusedId = id;
+      selectedId = id;
       syncA11y();
       hostOf(id)?.focus?.({ preventScroll: true });
       return true;
