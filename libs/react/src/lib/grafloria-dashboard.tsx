@@ -55,6 +55,16 @@ export interface GrafloriaDashboardProps {
   widgetTypes?: WidgetTypes;
   /** The visible view (the tab pattern). Omit for kit-managed. */
   activeView?: string;
+  /**
+   * LIVE SWITCHES — the toolbar toggles as props. Each is applied at mount
+   * (over `options`) and, when it changes afterwards, through the handle
+   * (`setLayout` / `setSizing` / `setStatic`) — no remount, like `activeView`.
+   * 'split' is the DevExpress splitter tree; 'grid' the cell grid.
+   */
+  layout?: 'grid' | 'split';
+  sizing?: 'fit' | 'grow';
+  /** Static board: the viewer's mode — no drag, no resize, no handles. */
+  static?: boolean;
   /** The typed handle, once the board is live. */
   onReady?: (handle: DashboardHandle) => void;
   /** Mirrors the kit's committed gestures (drag, resize, add, remove). */
@@ -86,6 +96,9 @@ export function GrafloriaDashboard(props: GrafloriaDashboardProps) {
 
     const spec = dashboard({
       ...latest.current.options,
+      ...(latest.current.layout !== undefined ? { layout: latest.current.layout } : {}),
+      ...(latest.current.sizing !== undefined ? { sizing: latest.current.sizing } : {}),
+      ...(latest.current.static !== undefined ? { static: latest.current.static } : {}),
       ...(latest.current.views ? { views: latest.current.views } : {}),
       ...(!latest.current.views && latest.current.widgets
         ? { widgets: latest.current.widgets }
@@ -129,6 +142,18 @@ export function GrafloriaDashboard(props: GrafloriaDashboardProps) {
       handle.showView(props.activeView);
     }
   }, [handle, props.activeView]);
+  // The switches: a changed prop is one handle call, never a remount.
+  useEffect(() => {
+    // The prop names the BOARD's layout: every view, not only the visible tab.
+    if (!handle || props.layout === undefined) return;
+    for (const v of handle.views) if (handle.getLayout(v) !== props.layout) handle.setLayout(props.layout, v);
+  }, [handle, props.layout]);
+  useEffect(() => {
+    if (handle && props.sizing !== undefined && handle.getSizing() !== props.sizing) handle.setSizing(props.sizing);
+  }, [handle, props.sizing]);
+  useEffect(() => {
+    if (handle && props.static !== undefined && handle.getStatic() !== props.static) handle.setStatic(props.static);
+  }, [handle, props.static]);
 
   const rootStyle = useMemo<CSSProperties>(
     () => ({ width: '100%', height: '100%', position: 'relative', ...style }),

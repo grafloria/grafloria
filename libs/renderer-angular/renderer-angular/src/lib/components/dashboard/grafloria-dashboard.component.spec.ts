@@ -105,3 +105,69 @@ describe('<grafloria-dashboard>', () => {
     expect(document.querySelector('.tpl-widget')).toBeNull();
   });
 });
+
+
+@Component({
+  imports: [GrafloriaDashboardComponent],
+  template: `
+    <grafloria-dashboard
+      style="display:block;width:1200px;height:600px"
+      [views]="views" [options]="{ width: 1200, height: 600, layout: 'grid' }"
+      [layout]="layout()" [sizing]="sizing()" [static]="isStatic()"
+      (ready)="handle = $event; readyCount = readyCount + 1" />
+  `,
+})
+class SwitchHost {
+  handle: DashboardHandle | null = null;
+  readyCount = 0;
+  layout = signal<'grid' | 'split'>('split');
+  sizing = signal<'fit' | 'grow'>('fit');
+  isStatic = signal(true);
+  views: DashboardViewSpec[] = [
+    { id: 'main', widgets: [{ id: 'a', kind: 'kpi', span: 6 }, { id: 'b', kind: 'kpi', span: 6 }, { id: 'c', kind: 'line', span: 12, rows: 2 }] },
+    { id: 'other', widgets: [{ id: 'd', kind: 'kpi', span: 12 }] },
+  ];
+}
+
+describe('<grafloria-dashboard> live switches ([layout] / [sizing] / [static])', () => {
+  it('boot from the inputs over [options], and switch live through the same handle', async () => {
+    await TestBed.configureTestingModule({ imports: [SwitchHost] }).compileComponents();
+    const fixture = TestBed.createComponent(SwitchHost);
+    const host = fixture.componentInstance;
+    fixture.detectChanges();
+    expect(host.handle!.getLayout()).toBe('split');
+    expect(host.handle!.getStatic()).toBe(true);
+    const first = host.handle;
+    host.layout.set('grid');
+    host.sizing.set('grow');
+    host.isStatic.set(false);
+    // Effects run on the next change-detection pass; `whenStable` would wait
+    // on the board's own observers and timers instead.
+    fixture.detectChanges();
+    await Promise.resolve();
+    fixture.detectChanges();
+    expect(first!.getLayout()).toBe('grid');
+    expect(first!.getSizing()).toBe('grow');
+    expect(first!.getStatic()).toBe(false);
+    expect(host.readyCount).toBe(1);
+    expect(host.handle).toBe(first);
+    fixture.destroy();
+  });
+  it('[layout] names the whole board: a parked view switches too', async () => {
+    await TestBed.configureTestingModule({ imports: [SwitchHost] }).compileComponents();
+    const fixture = TestBed.createComponent(SwitchHost);
+    const host = fixture.componentInstance;
+    host.layout.set('grid');
+    fixture.detectChanges();
+    const h = host.handle!;
+    expect(h.getLayout('main')).toBe('grid');
+    expect(h.getLayout('other')).toBe('grid');
+    host.layout.set('split');
+    fixture.detectChanges();
+    await Promise.resolve();
+    fixture.detectChanges();
+    expect(h.getLayout('main')).toBe('split');
+    expect(h.getLayout('other')).toBe('split'); // parked, and switched all the same
+    fixture.destroy();
+  });
+});

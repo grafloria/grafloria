@@ -193,6 +193,12 @@ kind: 'table'  → data: { columns?: string[], rows?: (string | number)[][] }</p
       <code>:options</code> is overwritten — use slots and <code>@layout-change</code>;
       they are the Vue spelling of those seams.</div>
 
+      <h2>Live switches: <code>:layout</code>, <code>:sizing</code>, <code>:static</code></h2>
+      <p><code>:layout="'split'"</code> opens the board as the DevExpress-style splitter tree (the board
+      always covered, dividers as percentages); <code>'grid'</code> is the cell grid. <code>:sizing</code>
+      is <code>'fit' | 'grow'</code>, <code>:static</code> the viewer's mode. All three are applied at
+      mount over <code>:options</code>, and a later change is one handle call
+      (<code>setLayout</code> / <code>setSizing</code> / <code>setStatic</code>), never a remount.</p>
       <h2>Views and <code>v-model:active-view</code></h2>
       <p>Multiple views are the tab pattern: only one is on-camera; the kit parks the others
       far off-screen. There is <b>no built-in tab bar</b> — your tab strip is ordinary Vue

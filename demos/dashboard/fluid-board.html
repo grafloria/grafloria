@@ -57,15 +57,16 @@ import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
   imports: [GrafloriaDashboardComponent],
   template: `
     <div class="bar">
-      <button (click)="handle?.setSizing('fit')">Fit</button>
-      <button (click)="handle?.setSizing('grow')">Grow</button>
-      <button (click)="handle?.setLayout('grid')">Grid</button>
-      <button (click)="handle?.setLayout('split')">Split</button>
+      <button (click)="sizing.set('fit')">Fit</button>
+      <button (click)="sizing.set('grow')">Grow</button>
+      <button (click)="layout.set('grid')">Grid</button>
+      <button (click)="layout.set('split')">Split</button>
       <button (click)="handle?.addWidget({ kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })">+ Add a row</button>
     </div>
     <!-- No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. -->
     <grafloria-dashboard
       [views]="views" [options]="options"
+      [layout]="layout()" [sizing]="sizing()"
       (ready)="handle = $event"
       (layoutChange)="onLayout($event)"
       style="display:block; height:calc(100vh - 140px)" />
@@ -73,6 +74,9 @@ import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
 })
 export class FluidBoardComponent {
   handle?: DashboardHandle;
+  // The switches are INPUTS: a signal change is one handle call, never a remount.
+  layout = signal<'grid' | 'split'>('grid');
+  sizing = signal<'fit' | 'grow'>('grow');
   options = { columns: 12, gap: 10 };
   views: DashboardViewSpec[] = [{ id: 'main', widgets: [
     { id: 'rev',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
@@ -122,19 +126,24 @@ const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
 
 export function FluidBoard() {
   const [handle, setHandle] = useState<DashboardHandle>();
+  // The switches are PROPS: a state change is one handle call, never a remount.
+  const [layout, setLayout] = useState<'grid' | 'split'>('grid');
+  const [sizing, setSizing] = useState<'fit' | 'grow'>('grow');
   return (
     <>
       <div className="bar">
-        <button onClick={() => handle?.setSizing('fit')}>Fit</button>
-        <button onClick={() => handle?.setSizing('grow')}>Grow</button>
-        <button onClick={() => handle?.setLayout('grid')}>Grid</button>
-        <button onClick={() => handle?.setLayout('split')}>Split</button>
+        <button onClick={() => setSizing('fit')}>Fit</button>
+        <button onClick={() => setSizing('grow')}>Grow</button>
+        <button onClick={() => setLayout('grid')}>Grid</button>
+        <button onClick={() => setLayout('split')}>Split</button>
         <button onClick={() => handle?.addWidget({ kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })}>+ Add a row</button>
       </div>
       {/* No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. */}
       <GrafloriaDashboard
         views={views}
         options={{ columns: 12, gap: 10 }}
+        layout={layout}
+        sizing={sizing}
         onReady={setHandle}
         onLayoutChange={({ viewId, widgets }) => console.log('layout changed', viewId, widgets.length, 'widgets')}
         style={{ height: 'calc(100vh - 140px)' }}
@@ -146,11 +155,14 @@ export function FluidBoard() {
 <script type="text/plain" data-code="vue">
 <!-- npm i @grafloria/vue -->
 <script setup lang="ts">
-import { shallowRef } from 'vue';
+import { ref, shallowRef } from 'vue';
 import { GrafloriaDashboard } from '@grafloria/vue';
 import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
 
 const handle = shallowRef<DashboardHandle>();
+// The switches are PROPS: a ref change is one handle call, never a remount.
+const layout = ref<'grid' | 'split'>('grid');
+const sizing = ref<'fit' | 'grow'>('grow');
 const options = { columns: 12, gap: 10 };
 const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
     { id: 'rev',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
@@ -173,14 +185,15 @@ const onLayout = (e: { viewId: string; widgets: unknown[] }) => console.log('lay
 
 <template>
   <div class="bar">
-    <button @click="handle?.setSizing('fit')">Fit</button>
-    <button @click="handle?.setSizing('grow')">Grow</button>
-    <button @click="handle?.setLayout('grid')">Grid</button>
-    <button @click="handle?.setLayout('split')">Split</button>
+    <button @click="sizing = 'fit'">Fit</button>
+    <button @click="sizing = 'grow'">Grow</button>
+    <button @click="layout = 'grid'">Grid</button>
+    <button @click="layout = 'split'">Split</button>
     <button @click="handle?.addWidget({ kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })">+ Add a row</button>
   </div>
   <!-- No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. -->
-  <GrafloriaDashboard :views="views" :options="options" @ready="handle = $event" @layout-change="onLayout"
+  <GrafloriaDashboard :views="views" :options="options" :layout="layout" :sizing="sizing"
+    @ready="handle = $event" @layout-change="onLayout"
     style="display:block; height:calc(100vh - 140px)" />
 </template>
 </script>
