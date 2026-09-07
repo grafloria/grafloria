@@ -1511,3 +1511,32 @@ describe('split layout has no corner resize handle', () => {
     expect(hosts.get('a')!.querySelector(':scope > .axdb-rs')).not.toBeNull();
   });
 });
+
+describe('split layout with tabs: a parked view leaves the camera', () => {
+  it('showView parks the other split view off-camera — its widgets follow the group frame', () => {
+    const { model, handle } = mount(
+      dashboard({
+        width: 1200,
+        height: 600,
+        layout: 'split',
+        views: [
+          { id: 'sales', widgets: [{ id: 'rev', kind: 'kpi', span: 6 }, { id: 'ord', kind: 'kpi', span: 6 }] },
+          { id: 'ops', widgets: [{ id: 'cpu', kind: 'kpi', span: 12 }] },
+        ],
+      })
+    );
+    // The NODE positions are what the hosts paint — a projected rect can look
+    // right while the painted widget is still on camera (the Angular
+    // conformance drive saw the parked view's cards bleed through).
+    const x = (id: string) => model.getNode(id)!.position.x;
+    expect(x('rev')).toBeGreaterThanOrEqual(0);
+    expect(x('cpu')).toBeLessThan(-10000); // parked at boot
+    handle.showView('ops');
+    expect(x('cpu')).toBeGreaterThanOrEqual(0); // came on camera
+    expect(x('rev')).toBeLessThan(-10000); // and sales LEFT it
+    expect(x('ord')).toBeLessThan(-10000);
+    handle.showView('sales');
+    expect(x('rev')).toBeGreaterThanOrEqual(0);
+    expect(x('cpu')).toBeLessThan(-10000);
+  });
+});
