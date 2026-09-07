@@ -208,6 +208,14 @@ export interface DashboardOptions {
    */
   static?: boolean;
   /**
+   * DRAG HANDLE — DevExpress drags an item by its caption. `true`: a widget
+   * moves only from its header, which shows a grip; a selector string: your
+   * own handle inside the card; off (default): the whole card. Resize edges
+   * and the keyboard are unaffected; the body stays interactive. Live:
+   * `handle.setDragHandle()`.
+   */
+  dragHandle?: boolean | string;
+  /**
    * RIGHT-TO-LEFT boards: column x=0 renders at the RIGHT edge and columns run
    * leftwards. Cells are untouched — the same `widgets` array describes the
    * same layout in both directions, and a layout saved in one renders mirrored
@@ -307,6 +315,9 @@ export interface DashboardHandle {
   /** Static (read-only for the pointer) mode, live — the viewer/designer switch. */
   setStatic(on: boolean): void;
   getStatic(): boolean;
+  /** Drag-handle mode, live, every view: `true` = the header, a selector = your own handle, `false` = the whole card. */
+  setDragHandle(v: boolean | string): void;
+  getDragHandle(): boolean | string;
   /**
    * Add a widget to a view. CREATES the node (you do not pre-build one), wires
    * its metadata, and commits node + membership as ONE undoable step.
@@ -1004,6 +1015,11 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       ctx.apiRef?.renderNow();
     },
     getStatic: () => binders.get(ctx.active)?.getStatic() ?? (ctx.optionsBase.static ?? false),
+    setDragHandle(v) {
+      for (const b of binders.values()) b.setDragHandle(v);
+      ctx.apiRef?.renderNow();
+    },
+    getDragHandle: () => binders.get(ctx.active)?.getDragHandle() ?? (ctx.optionsBase.dragHandle ?? false),
     addWidget(spec, viewId) {
       const vid = viewId ?? ctx.active;
       // `vid` may name a view OR a container — both are boards with a group,
@@ -1115,6 +1131,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         float: handle.getFloat(),
         rtl: handle.getRtl(),
         static: handle.getStatic(),
+        dragHandle: handle.getDragHandle(),
         layout: handle.getLayout(),
         views: savedViews,
       } as DashboardSnapshot;
@@ -1455,6 +1472,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           fluid: mode === 'fluid',
           overflow,
           static: options.static ?? false,
+          dragHandle: options.dragHandle ?? false,
           layout: ctx.layoutOf.get(v.id) ?? layout,
         });
         if ((ctx.layoutOf.get(v.id) ?? layout) === 'split' && v.tree !== undefined) g.setMetadata(SPLIT_TREE_KEY, v.tree);
@@ -1476,6 +1494,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         const b = binders.get(viewId);
         if (!v || !g || !b) return;
         const cells = b.saveLayout().cells;
+        const live = { rtl: b.getRtl(), static: b.getStatic(), dragHandle: b.getDragHandle() };
         b.dispose();
         const write = (fn: () => void): void => (model.runSystemWrite ? model.runSystemWrite(fn) : fn());
         write(() => {
@@ -1490,7 +1509,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           g.setMetadata('dashboardBoard', { ...board, layout: next });
         });
         ctx.layoutOf.set(viewId, next);
-        binders.set(viewId, bindView(v, g, next));
+        binders.set(viewId, bindView(v, g, next, live));
         binders.get(viewId)?.sync();
       };
       handle.showView(ctx.active);
@@ -1585,13 +1604,25 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       }
 
       /** Bind a VIEW's board on its group, under the given layout. */
-      function bindView(v: DashboardViewSpec, g: GroupModel, viewLayout: 'grid' | 'split'): DashboardGridHandle {
+      /**
+       * Bind a view's board. `live` carries the switches a previous binder of
+       * the same view held (a re-bind on a layout change): without it a board
+       * switched to static, RTL or drag-by-header LIVE snapped back to its
+       * authored options the moment its layout changed (s34 caught it).
+       */
+      function bindView(
+        v: DashboardViewSpec,
+        g: GroupModel,
+        viewLayout: 'grid' | 'split',
+        live?: { rtl: boolean; static: boolean; dragHandle: boolean | string }
+      ): DashboardGridHandle {
         const common = {
           gap,
           padding: gap,
-          rtl: options.rtl ?? false,
+          rtl: live?.rtl ?? options.rtl ?? false,
           fluid: mode === 'fluid',
-          static: options.static ?? false,
+          static: live?.static ?? options.static ?? false,
+          dragHandle: live?.dragHandle ?? options.dragHandle ?? false,
           ...(options.binder ?? {}),
           onGesture: (e: Parameters<NonNullable<DashboardGridOptions['onGesture']>>[0]) => {
             if (e.type === 'commit') reportChanged();
@@ -1634,6 +1665,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             float: false,
             rtl: options.rtl ?? false,
             static: options.static ?? false,
+            dragHandle: options.dragHandle ?? false,
             onGesture: (e) => {
               if (e.type === 'commit') reportChanged();
               options.binder?.onGesture?.(e);

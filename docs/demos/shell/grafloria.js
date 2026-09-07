@@ -194305,6 +194305,14 @@ var CSS4 = `
   text-transform: uppercase;
   color: var(--axdb-muted);
 }
+/* Drag-handle mode (DevExpress drags an item by its caption): the header is
+   the grip and says so with a dot pattern and a grab cursor; the body keeps
+   its own cursor because a press there starts nothing. */
+.axdb-drag-handle .axdb-widget > .axdb-widget-h { cursor: grab; }
+.axdb-drag-handle .axdb-widget > .axdb-widget-h::before {
+  content: ''; flex: none; width: 8px; height: 12px; opacity: .55;
+  background: radial-gradient(circle, currentColor 1.1px, transparent 1.5px) 0 0 / 4px 4px;
+}
 .axdb-widget-b { flex: 1; min-height: 0; position: relative; }
 .axdb-widget-b > svg { display: block; width: 100%; height: 100%; }
 .axdb-widget-b.axdb-scroll { overflow: auto; }
@@ -194443,6 +194451,19 @@ function ensureDashboardKitStyles(doc) {
 }
 
 // libs/element/src/lib/dashboard-kit/grid-binder.ts
+var dragHandleSelector = (v) => v === true ? ".axdb-widget-h" : typeof v === "string" && v.length > 0 ? v : null;
+var dragHandleValue = (sel) => sel === null ? false : sel === ".axdb-widget-h" ? true : sel;
+var DRAG_HANDLE_CLASS = "axdb-drag-handle";
+function pressOnDragHandle(sel, target, hostEl, clientX, clientY) {
+  const grip = target?.closest?.(sel) ?? null;
+  if (grip && (!hostEl || hostEl.contains(grip))) return true;
+  if (sel !== ".axdb-widget-h" || !hostEl) return false;
+  const header = hostEl.querySelector(".axdb-widget-h");
+  if (!header) return false;
+  const hr = hostEl.getBoundingClientRect();
+  const r = header.getBoundingClientRect();
+  return clientX >= hr.left && clientX <= hr.right && clientY >= hr.top && clientY <= r.bottom;
+}
 var BOARD_REGISTRY = /* @__PURE__ */ new WeakMap();
 var LIVE_REGIONS = /* @__PURE__ */ new WeakMap();
 function liveRegionFor(container) {
@@ -194539,6 +194560,8 @@ function bindDashboardGrid(api, group, options = {}) {
   const fluid = options.fluid === true;
   const overflow = options.overflow ?? "bounded";
   let isStatic = options.static === true;
+  let dragHandle = dragHandleSelector(options.dragHandle);
+  api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
   let focusedId;
   const live = liveRegionFor(api.container);
   let designH = options.designHeight ?? group.size?.height ?? 0;
@@ -195572,19 +195595,18 @@ function bindDashboardGrid(api, group, options = {}) {
       const hostEl = hostOf(node.id);
       const resizable = node.getMetadata?.("widgetResizable") !== false;
       const movable = node.getMetadata?.("widgetMovable") !== false;
+      const src = ev.source;
+      const cr = api.container.getBoundingClientRect();
+      const cx = typeof src?.clientX === "number" ? src.clientX : cr.left + ev.screen.x;
+      const cy = typeof src?.clientY === "number" ? src.clientY : cr.top + ev.screen.y;
       let edges = NO_EDGES;
       if (resizable) {
         if (onHandle) edges = rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false };
-        else if (hostEl) {
-          const src = ev.source;
-          const cr = api.container.getBoundingClientRect();
-          const cx = typeof src?.clientX === "number" ? src.clientX : cr.left + ev.screen.x;
-          const cy = typeof src?.clientY === "number" ? src.clientY : cr.top + ev.screen.y;
-          edges = edgesNear(hostEl, cx, cy);
-        }
+        else if (hostEl) edges = edgesNear(hostEl, cx, cy);
       }
       const isResize = anyEdge(edges);
       if (!isResize && !movable) return;
+      if (!isResize && dragHandle !== null && !pressOnDragHandle(dragHandle, target, hostEl, cx, cy)) return;
       armGlide();
       const it = engine.getItem(node.id);
       gesture = {
@@ -195944,6 +195966,15 @@ function bindDashboardGrid(api, group, options = {}) {
       api.renderNow();
     },
     getStatic: () => isStatic,
+    setDragHandle(v) {
+      const sel = dragHandleSelector(v);
+      if (sel === dragHandle) return;
+      dragHandle = sel;
+      if (gesture) cancelActiveGesture(false);
+      api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
+      api.renderNow();
+    },
+    getDragHandle: () => dragHandleValue(dragHandle),
     saveLayout() {
       const saved = engine.saveLayout();
       return {
@@ -195978,6 +196009,7 @@ function bindDashboardGrid(api, group, options = {}) {
         responsive: !!responsive && !responsivePinned,
         fluid,
         static: isStatic,
+        dragHandle: dragHandleValue(dragHandle),
         capacity,
         gap,
         padding,
@@ -196409,6 +196441,8 @@ function bindDashboardSplit(api, group, options = {}) {
   const fluid = options.fluid === true;
   let rtl = options.rtl === true;
   let isStatic = options.static === true;
+  let dragHandle = dragHandleSelector(options.dragHandle);
+  api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
   let designH = options.designHeight ?? group.size?.height ?? 0;
   let designW = group.size?.width ?? 0;
   let disposed = false;
@@ -196839,6 +196873,13 @@ function bindDashboardSplit(api, group, options = {}) {
       const node = diagram.getNode(hit.node.id);
       if (!node || node.state?.locked === true || isStatic) return;
       if (node.getMetadata?.("widgetMovable") === false) return;
+      if (dragHandle !== null) {
+        const src = ev.source;
+        const cr = api.container.getBoundingClientRect();
+        const cx = typeof src?.clientX === "number" ? src.clientX : cr.left + ev.screen.x;
+        const cy = typeof src?.clientY === "number" ? src.clientY : cr.top + ev.screen.y;
+        if (!pressOnDragHandle(dragHandle, target, hostOf(node.id), cx, cy)) return;
+      }
       const tree = readTree();
       gesture = {
         kind: "move",
@@ -197090,6 +197131,15 @@ function bindDashboardSplit(api, group, options = {}) {
       api.renderNow();
     },
     getStatic: () => isStatic,
+    setDragHandle(v) {
+      const sel = dragHandleSelector(v);
+      if (sel === dragHandle) return;
+      dragHandle = sel;
+      cancelActiveGesture();
+      api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
+      api.renderNow();
+    },
+    getDragHandle: () => dragHandleValue(dragHandle),
     focusWidget(id) {
       if (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id)) return false;
       focusedId = id;
@@ -197110,6 +197160,7 @@ function bindDashboardSplit(api, group, options = {}) {
         responsive: false,
         fluid,
         static: isStatic,
+        dragHandle: dragHandleValue(dragHandle),
         capacity: void 0,
         gap,
         padding,
@@ -197834,6 +197885,11 @@ function createDashboardHandle(ctx) {
       ctx.apiRef?.renderNow();
     },
     getStatic: () => binders.get(ctx.active)?.getStatic() ?? (ctx.optionsBase.static ?? false),
+    setDragHandle(v) {
+      for (const b of binders.values()) b.setDragHandle(v);
+      ctx.apiRef?.renderNow();
+    },
+    getDragHandle: () => binders.get(ctx.active)?.getDragHandle() ?? (ctx.optionsBase.dragHandle ?? false),
     addWidget(spec, viewId) {
       const vid = viewId ?? ctx.active;
       const arr = ctx.boardWidgets.get(vid);
@@ -197915,6 +197971,7 @@ function createDashboardHandle(ctx) {
         float: handle.getFloat(),
         rtl: handle.getRtl(),
         static: handle.getStatic(),
+        dragHandle: handle.getDragHandle(),
         layout: handle.getLayout(),
         views: savedViews
       };
@@ -198182,6 +198239,7 @@ function dashboard(options) {
           fluid: mode === "fluid",
           overflow,
           static: options.static ?? false,
+          dragHandle: options.dragHandle ?? false,
           layout: ctx.layoutOf.get(v.id) ?? layout
         });
         if ((ctx.layoutOf.get(v.id) ?? layout) === "split" && v.tree !== void 0) g.setMetadata(SPLIT_TREE_KEY, v.tree);
@@ -198198,6 +198256,7 @@ function dashboard(options) {
         const b = binders.get(viewId);
         if (!v || !g || !b) return;
         const cells = b.saveLayout().cells;
+        const live = { rtl: b.getRtl(), static: b.getStatic(), dragHandle: b.getDragHandle() };
         b.dispose();
         const write = (fn) => model.runSystemWrite ? model.runSystemWrite(fn) : fn();
         write(() => {
@@ -198212,7 +198271,7 @@ function dashboard(options) {
           g.setMetadata("dashboardBoard", { ...board, layout: next });
         });
         ctx.layoutOf.set(viewId, next);
-        binders.set(viewId, bindView(v, g, next));
+        binders.set(viewId, bindView(v, g, next, live));
         binders.get(viewId)?.sync();
       };
       handle.showView(ctx.active);
@@ -198273,13 +198332,14 @@ function dashboard(options) {
           boardGroup.addMember(w.id);
         }
       }
-      function bindView(v, g, viewLayout) {
+      function bindView(v, g, viewLayout, live) {
         const common = {
           gap,
           padding: gap,
-          rtl: options.rtl ?? false,
+          rtl: live?.rtl ?? options.rtl ?? false,
           fluid: mode === "fluid",
-          static: options.static ?? false,
+          static: live?.static ?? options.static ?? false,
+          dragHandle: live?.dragHandle ?? options.dragHandle ?? false,
           ...options.binder ?? {},
           onGesture: (e) => {
             if (e.type === "commit") reportChanged();
@@ -198320,6 +198380,7 @@ function dashboard(options) {
             float: false,
             rtl: options.rtl ?? false,
             static: options.static ?? false,
+            dragHandle: options.dragHandle ?? false,
             onGesture: (e) => {
               if (e.type === "commit") reportChanged();
               options.binder?.onGesture?.(e);

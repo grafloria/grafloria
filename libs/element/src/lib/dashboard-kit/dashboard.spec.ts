@@ -1195,6 +1195,40 @@ describe('per-widget limits, pointer flags and the static board', () => {
     expect(handle.getStatic()).toBe(false);
     expect(handle.toJSON().static).toBe(false);
   });
+
+  it('a drag-handle board reports so, round-trips, toggles live, and marks its container', () => {
+    const { handle } = mount(dashboard({ dragHandle: true, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    expect(handle.getDragHandle()).toBe(true);
+    expect(handle.metrics()!.dragHandle).toBe(true);
+    expect(handle.toJSON().dragHandle).toBe(true);
+    // The header grip is CSS keyed on the container class — the class is the contract.
+    expect(document.querySelector('.axdb-drag-handle')).not.toBeNull();
+    handle.setDragHandle('.my-grip');
+    expect(handle.getDragHandle()).toBe('.my-grip');
+    expect(document.querySelector('.axdb-drag-handle')).not.toBeNull();
+    handle.setDragHandle(false);
+    expect(handle.getDragHandle()).toBe(false);
+    expect(handle.toJSON().dragHandle).toBe(false);
+    expect(document.querySelector('.axdb-drag-handle')).toBeNull();
+    // Off by default, and the split layout carries the same switch.
+    const { handle: h2 } = mount(dashboard({ layout: 'split', widgets: [{ id: 'a', kind: 'kpi', span: 3 }] }));
+    expect(h2.getDragHandle()).toBe(false);
+    h2.setDragHandle(true);
+    expect(h2.getDragHandle()).toBe(true);
+    expect(h2.metrics()!.dragHandle).toBe(true);
+  });
+
+  it('a layout switch keeps the LIVE switches: static, rtl and the drag handle survive setLayout', () => {
+    const { handle } = mount(dashboard({ widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    handle.setStatic(true);
+    handle.setRtl(true);
+    handle.setDragHandle(true);
+    handle.setLayout('split');
+    expect([handle.getStatic(), handle.getRtl(), handle.getDragHandle()]).toEqual([true, true, true]);
+    handle.setLayout('grid');
+    expect([handle.getStatic(), handle.getRtl(), handle.getDragHandle()]).toEqual([true, true, true]);
+    expect(handle.getLayout()).toBe('grid');
+  });
 });
 
 // ---------------------------------------------------------------------------

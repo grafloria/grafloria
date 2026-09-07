@@ -40,6 +40,7 @@
   <span class="sep"></span>
   <button id="fb-grid" aria-pressed="true" title="The cell grid: columns, spans, push">Grid</button>
   <button id="fb-split" aria-pressed="false" title="The splitter tree: the board is always covered, dividers are percentages">Split</button>
+  <button id="fb-handle" aria-pressed="false" title="DevExpress caption drag: a widget moves only from its header (the grip); the body stays interactive">Drag by header</button>
   <span class="fb-sep"></span>
   <button id="fb-add" title="Add a full-width KPI row — a fit board refuses once it is full">+ Add a row</button>
   <span class="fb-msg" id="fb-msg"></span>
@@ -61,6 +62,7 @@ import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
       <button (click)="sizing.set('grow')">Grow</button>
       <button (click)="layout.set('grid')">Grid</button>
       <button (click)="layout.set('split')">Split</button>
+      <button (click)="handle?.setDragHandle(!handle.getDragHandle())">Drag by header</button>
       <button (click)="handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })">+ Add a row</button>
     </div>
     <!-- No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. -->
@@ -136,6 +138,7 @@ export function FluidBoard() {
         <button onClick={() => setSizing('grow')}>Grow</button>
         <button onClick={() => setLayout('grid')}>Grid</button>
         <button onClick={() => setLayout('split')}>Split</button>
+        <button onClick={() => handle?.setDragHandle(!handle.getDragHandle())}>Drag by header</button>
         <button onClick={() => handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })}>+ Add a row</button>
       </div>
       {/* No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. */}
@@ -189,6 +192,7 @@ const onLayout = (e: { viewId: string; widgets: unknown[] }) => console.log('lay
     <button @click="sizing = 'grow'">Grow</button>
     <button @click="layout = 'grid'">Grid</button>
     <button @click="layout = 'split'">Split</button>
+    <button @click="handle?.setDragHandle(!handle.getDragHandle())">Drag by header</button>
     <button @click="handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })">+ Add a row</button>
   </div>
   <!-- No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. -->
@@ -227,7 +231,7 @@ const ctx2 = {};
 
 defineDemo({
   name: 'Fluid dashboard',
-  blurb: 'The DEFAULT mode of `dashboard()`: no width authored, so the board is 100% of its container at zoom 1 — laid out at real CSS pixels, the way gridstack and react-grid-layout lay out, never a picture the camera scales. Rows keep their height (GROW, the fluid default): drag or resize one tile and no other tile changes size; the board extends downward and the wheel scrolls it. Shrink the container ("Narrow container") and the board follows; the type stays 30 px. Switch to FIT and the board keeps its height instead — FIT MEANS BOUNDED: rows squeeze so everything stays on one screen, the row floor is a capacity, and "+ Add a row" is REFUSED, visibly, when there is no room; nothing is ever painted past the board\'s edge. `mode: \'fixed\'` (or an explicit width) keeps the framed-world behaviour for a dashboard embedded inside a larger diagram — see dashboard/dashboard-builder.html.',
+  blurb: 'The DEFAULT mode of `dashboard()`: no width authored, so the board is 100% of its container at zoom 1 — laid out at real CSS pixels, the way gridstack and react-grid-layout lay out, never a picture the camera scales. Rows keep their height (GROW, the fluid default): drag or resize one tile and no other tile changes size; the board extends downward and the wheel scrolls it. Shrink the container ("Narrow container") and the board follows; the type stays 30 px. Switch to FIT and the board keeps its height instead — FIT MEANS BOUNDED: rows squeeze so everything stays on one screen, the row floor is a capacity, and "+ Add a row" is REFUSED, visibly, when there is no room; nothing is ever painted past the board\'s edge. `mode: \'fixed\'` (or an explicit width) keeps the framed-world behaviour for a dashboard embedded inside a larger diagram — see dashboard/dashboard-builder.html. "Drag by header" is the DevExpress caption drag: `dragHandle: true` (or a selector) makes the header the only grip, so a table body scrolls and a legend clicks instead of starting a move — `handle.setDragHandle()` switches it live.',
   howTo: [
     '① The board fills the canvas exactly — no zoom, no margins the camera invented. Ctrl/⌘-wheel does nothing: a fluid board pins its zoom range to 1.',
     '② Press "Narrow container": the canvas becomes 60% wide and every tile re-lays out against the new width. Press again to widen.',
@@ -292,6 +296,12 @@ defineDemo({
     };
     document.getElementById('fb-grid').addEventListener('click', () => ctx2.layout('grid'));
     document.getElementById('fb-split').addEventListener('click', () => ctx2.layout('split'));
+    ctx2.dragHandle = (on) => {
+      H.setDragHandle(on);
+      setPressed('fb-handle', on);
+      say(on ? 'drag by header: a widget moves only from its caption (the grip) — the body scrolls and clicks as content' : 'drag anywhere: the whole card is the handle');
+    };
+    document.getElementById('fb-handle').addEventListener('click', () => ctx2.dragHandle(!H.getDragHandle()));
     const m0 = H.metrics();
     say(`fluid · grow · ${Math.round(m0.frame.width)}×${Math.round(m0.frame.height)} px · ${m0.rows} rows`);
   },
@@ -424,6 +434,19 @@ defineDemo({
     checkEqual(H.getLayout(), 'grid', 'and the view is back on the grid');
     ctx2.sizing('grow');
     await settle();
+
+    // ---- ⑧ drag by the header (DevExpress caption drag), on and off ------------
+    ctx2.dragHandle(true);
+    await settle();
+    checkEqual(H.getDragHandle(), true, 'the board drags by the header');
+    checkEqual(H.toJSON().dragHandle, true, 'and says so in its snapshot');
+    check(!!document.querySelector('.axdb-drag-handle'), 'the container carries the drag-handle class');
+    checkEqual(getComputedStyle(document.querySelector('.axdb-widget-h')).cursor, 'grab', 'a header shows the grab cursor (the grip)');
+    checkEqual(getComputedStyle(document.querySelector('.axdb-widget-h'), '::before').width, '8px', 'and the grip glyph is painted');
+    ctx2.dragHandle(false);
+    await settle();
+    checkEqual(H.getDragHandle(), false, 'off again: the whole card is the handle');
+    check(!document.querySelector('.axdb-drag-handle'), 'and the class is gone');
   },
 });
 </script>

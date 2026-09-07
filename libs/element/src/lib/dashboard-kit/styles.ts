@@ -179,6 +179,14 @@ const CSS = `
   text-transform: uppercase;
   color: var(--axdb-muted);
 }
+/* Drag-handle mode (DevExpress drags an item by its caption): the header is
+   the grip and says so with a dot pattern and a grab cursor; the body keeps
+   its own cursor because a press there starts nothing. */
+.axdb-drag-handle .axdb-widget > .axdb-widget-h { cursor: grab; }
+.axdb-drag-handle .axdb-widget > .axdb-widget-h::before {
+  content: ''; flex: none; width: 8px; height: 12px; opacity: .55;
+  background: radial-gradient(circle, currentColor 1.1px, transparent 1.5px) 0 0 / 4px 4px;
+}
 .axdb-widget-b { flex: 1; min-height: 0; position: relative; }
 .axdb-widget-b > svg { display: block; width: 100%; height: 100%; }
 .axdb-widget-b.axdb-scroll { overflow: auto; }

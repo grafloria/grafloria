@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { GrafloriaDashboard } from '@grafloria/vue';
 import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
 import { markReady } from '../ready';
@@ -12,6 +12,9 @@ import { markReady } from '../ready';
 const handle = ref<DashboardHandle | null>(null);
 const layout = ref<'grid' | 'split'>('grid');
 const sizing = ref<'fit' | 'grow'>('grow');
+// DevExpress caption drag, live on the handle: the header is the only grip.
+const grip = ref(false);
+watch(grip, (v) => handle.value?.setDragHandle(v));
 const options = { columns: 12, gap: 10 };
 const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
   { id: 'rev',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
@@ -44,6 +47,8 @@ onMounted(() => markReady());
       <span class="sep"></span>
       <button id="grid" :class="{ on: layout === 'grid' }" @click="layout = 'grid'">Grid</button>
       <button id="split" :class="{ on: layout === 'split' }" @click="layout = 'split'">Split</button>
+      <span class="sep"></span>
+      <button id="handle" :class="{ on: grip }" @click="grip = !grip" title="DevExpress caption drag: a widget moves only from its header">Drag by header</button>
       <span class="sep"></span>
       <button id="add" @click="addRow">+ Add a row</button>
     </div>
