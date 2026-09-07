@@ -689,6 +689,8 @@ export type {
   DashboardOptions,
   DashboardSpec,
   DashboardSnapshot,
+  DragHandleOption,
+  DragGripOptions,
   DashboardHandle,
   DashboardViewSpec,
   DashboardWidgetSpec,
