@@ -26,7 +26,7 @@
 import { Command, type DiagramModel, type GroupModel, type NodeModel } from '@grafloria/engine';
 import { LiveRegionController, registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
 import type { DashboardGridApi, DashboardGridHandle, DashboardGridOptions } from './grid-binder';
-import { dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, pressOnDragHandle, syncGrip, DRAG_HANDLE_CLASS, type DragHandleOption } from './grid-binder';
+import { dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, pressOnDragHandle, registerBoardPeer, syncGrip, DRAG_HANDLE_CLASS, type DragHandleOption } from './grid-binder';
 import { cellFromGridItem, type CellRect, type WorldRect } from './grid-mapping';
 import {
   addSplitLeaf,
@@ -1180,5 +1180,25 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
   project(reconcile());
   api.renderNow();
 
+  // A split board on a CONTAINER (item 7) sits inside a parent grid: register
+  // as a peer so the parent's hitTest hands presses on our tiles to us.
+  const unregisterPeer = registerBoardPeer(api.container, {
+    group,
+    hasItem: (id) => (group.members ?? new Set<string>()).has(id),
+    memberCell: (id) => handle.cellOf(id),
+    resizeMemberBy: () => ({ changed: false }),
+    containsWorld: (x, y) => worldInsideBoard(x, y),
+    containsWorldExtended: (x, y) => worldInsideBoard(x, y),
+    frameArea: () => {
+      const f = frame();
+      return f.width * f.height;
+    },
+    adopt: () => null,
+  });
+  const disposeHandle = handle.dispose.bind(handle);
+  handle.dispose = (): void => {
+    unregisterPeer();
+    disposeHandle();
+  };
   return handle;
 }

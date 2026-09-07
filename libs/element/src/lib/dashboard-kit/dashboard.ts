@@ -123,6 +123,25 @@ export interface DashboardWidgetSpec {
    * extent of the declared children.
    */
   maxRows?: number;
+  /**
+   * Container only: the inner board's layout, exactly as a view's. `'grid'`
+   * (default) packs the children in cells; `'split'` is a splitter tree that
+   * always covers the pane. Switch live with `setLayout(mode, containerId)`;
+   * `toJSON()` writes it per container.
+   */
+  layout?: 'grid' | 'split';
+  /**
+   * Container only, split layout: the authored splitter tree. Omit it and the
+   * tree is derived from the children's cells. `toJSON()` writes it back.
+   */
+  tree?: SplitNode | null;
+  /**
+   * Container only: what a pull past the pane's rows does. `'grow'` (default):
+   * the container's slab grows a row in the parent — the ratchet above.
+   * `'fit'`: the pane is the bound — a child that needs a row the pane does
+   * not hold is refused where it stands, and nothing outside the pane moves.
+   */
+  sizing?: 'fit' | 'grow';
 }
 
 /** One board. Multiple views are the tab pattern: only one is on-camera. */
@@ -877,7 +896,14 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       const cell = cellOf(memberId);
       const at = cell ? { x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : {};
       if (ctx.boardGroups.has(memberId)) {
-        entries.push({ id: memberId, ...(spec ?? {}), ...at, widgets: treeOf(memberId) });
+        // The container's LIVE layout and, under split, its live tree — the
+        // authored `tree` is stale the moment a divider moves.
+        const { tree: _authored, ...rest } = spec ?? {};
+        void _authored;
+        const clayout = ctx.layoutOf.get(memberId) ?? spec?.layout ?? 'grid';
+        const cb = binders.get(memberId) as Partial<DashboardSplitHandle> | undefined;
+        const ctree = clayout === 'split' && cb?.getSplitTree ? cb.getSplitTree() : undefined;
+        entries.push({ id: memberId, ...rest, ...at, layout: clayout, ...(ctree !== undefined ? { tree: ctree } : {}), widgets: treeOf(memberId) });
       } else if (spec) {
         // `pinned` is read from the NODE's lock, not the authored spec: pin()
         // changes the node, and a saved board must come back pinned the way
@@ -1028,7 +1054,8 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     },
     setLayout(layout, viewId) {
       const vid = viewId ?? ctx.active;
-      if (!views.some((v) => v.id === vid)) return;
+      // A view, or a CONTAINER (item 7): the same switch one level down.
+      if (!views.some((v) => v.id === vid) && !ctx.boardGroups.has(vid)) return;
       if ((ctx.layoutOf.get(vid) ?? 'grid') === layout) return;
       ctx.rebindView?.(vid, layout);
       clampCamera();
@@ -1541,6 +1568,10 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       // split → grid rebuilds from them, so the column cache goes too.
       ctx.rebindView = (viewId, next) => {
         const v = views.find((x) => x.id === viewId);
+        if (!v) {
+          rebindContainerLayout(viewId, next);
+          return;
+        }
         const g = groups.get(viewId);
         const b = binders.get(viewId);
         if (!v || !g || !b) return;
@@ -1579,6 +1610,49 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         ctx.boardGroups.set(id, g);
         bindContainer(g, w, ctx.viewOfBoard.get(id) ?? ctx.active);
       };
+      /**
+       * LIVE LAYOUT SWITCH ON A CONTAINER (item 7) — the view's contract one
+       * level down: cells persisted where the grid reads them, the tree and
+       * column cache cleared, the container's `layout` flipped on its spec and
+       * its metadata, a fresh binder on the same group, selection carried.
+       */
+      function rebindContainerLayout(id: string, next: 'grid' | 'split'): void {
+        const cg = ctx.boardGroups.get(id);
+        const w = specById.get(id);
+        const b = binders.get(id);
+        if (!cg || !w || !w.widgets || !b) return;
+        const cells = b.saveLayout().cells;
+        const focused = b.getFocusedWidget();
+        const selected = b.getSelectedWidget();
+        b.dispose();
+        const write = (fn: () => void): void => (model.runSystemWrite ? model.runSystemWrite(fn) : fn());
+        write(() => {
+          for (const [cid, cell] of cells) {
+            const n = model.getNode(cid);
+            if (n) n.setMetadata('gridItem', gridItemFromCell(cell));
+            else model.getGroup(cid)?.setMetadata('gridItem', gridItemFromCell(cell));
+          }
+          cg.setMetadata(SPLIT_TREE_KEY, undefined);
+          cg.setMetadata('dashboardLayouts', undefined);
+          const board = (cg.getMetadata('dashboardBoard') as Record<string, unknown> | undefined) ?? {};
+          cg.setMetadata('dashboardBoard', { ...board, layout: next });
+          const cw = (cg.getMetadata('containerWidget') as Record<string, unknown> | undefined) ?? {};
+          cg.setMetadata('containerWidget', { ...cw, layout: next });
+        });
+        w.layout = next;
+        delete w.tree;
+        ctx.layoutOf.set(id, next);
+        // The inner bound is the slab's LIVE row count, not the authored design:
+        // a child escalation grew to two rows must keep them through a
+        // split → grid round trip (the visual gate caught it collapsing to one
+        // inside a two-row slab).
+        const slabRows = binders.get(ctx.viewOfWidget.get(id) ?? '')?.cellOf(id)?.h;
+        const authored = w.maxRows ?? rowExtentOf(w.widgets ?? []);
+        bindContainer(cg, w, ctx.viewOfBoard.get(id) ?? ctx.active, Math.max(authored, slabRows ?? 0));
+        binders.get(id)?.sync();
+        if (focused) binders.get(id)?.focusWidget(focused);
+        else if (selected) binders.get(id)?.selectWidget(selected);
+      }
       ctx.attachHistory?.();
       return;
 
@@ -1614,7 +1688,12 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
               columns: innerColumns,
               maxRows: innerRows,
               ...(w.data !== undefined ? { data: w.data } : {}),
+              ...(w.layout !== undefined ? { layout: w.layout } : {}),
+              ...(w.sizing !== undefined ? { sizing: w.sizing } : {}),
             });
+            // Item 7: the container's own layout and bound, persisted like a view's.
+            ctx.layoutOf.set(w.id, w.layout ?? 'grid');
+            if (w.layout === 'split' && w.tree !== undefined) cg.setMetadata(SPLIT_TREE_KEY, w.tree);
             cg.setMetadata('dashboardBoard', {
               columns: innerColumns,
               gap,
@@ -1628,6 +1707,8 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
               maxRows: innerRows,
               float: false,
               rtl: options.rtl ?? false,
+              layout: w.layout ?? 'grid',
+              escalate: w.sizing !== 'fit',
             });
             cg.size = { width: 100, height: rowHeight, depth: 0 };
             boardGroup.addMember(w.id);
@@ -1711,26 +1792,40 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       }
 
       /** Bind (or re-bind) a container's inner grid on its group. */
-      function bindContainer(cg: GroupModel, w: DashboardWidgetSpec, viewId: string): void {
+      function bindContainer(cg: GroupModel, w: DashboardWidgetSpec, viewId: string, innerRows?: number): void {
+        void viewId;
+        // The LIVE switches ride on the view's binder when it exists (a
+        // container bound after a setStatic/setRtl/setDragHandle must match).
+        const vb = binders.get(ctx.viewOfBoard.get(w.id) ?? ctx.active);
+        const inner = {
+          columns: innerColumnsOf(w),
+          gap,
+          padding: 0,
+          baseRowHeight: rowHeight,
+          rtl: vb?.getRtl() ?? options.rtl ?? false,
+          static: vb?.getStatic() ?? options.static ?? false,
+          dragHandle: vb?.getDragHandle() ?? options.dragHandle ?? false,
+          ...(options.squeeze !== undefined ? { squeeze: options.squeeze } : {}),
+          onGesture: (e: Parameters<NonNullable<DashboardGridOptions['onGesture']>>[0]) => {
+            if (e.type === 'commit') reportChanged();
+            options.binder?.onGesture?.(e);
+          },
+        };
+        if ((ctx.layoutOf.get(w.id) ?? w.layout) === 'split') {
+          // A splitter tree covering the pane; the pane's frame is the parent's
+          // slab, so no design height of its own.
+          binders.set(w.id, bindDashboardSplit(a as never, cg, { ...inner, ...(w.tree !== undefined ? { tree: w.tree } : {}) }));
+          return;
+        }
         binders.set(
           w.id,
           bindDashboardGrid(a as never, cg, {
-            columns: innerColumnsOf(w),
-            gap,
-            padding: 0,
+            ...inner,
             sizing: 'fit',
-            baseRowHeight: rowHeight,
             designHeight: 0,
-            maxRows: w.maxRows ?? rowExtentOf(w.widgets ?? []),
+            maxRows: innerRows ?? w.maxRows ?? rowExtentOf(w.widgets ?? []),
             float: false,
-            rtl: options.rtl ?? false,
-            static: options.static ?? false,
-            dragHandle: options.dragHandle ?? false,
-            ...(options.squeeze !== undefined ? { squeeze: options.squeeze } : {}),
-            onGesture: (e) => {
-              if (e.type === 'commit') reportChanged();
-              options.binder?.onGesture?.(e);
-            },
+            escalate: w.sizing !== 'fit',
           })
         );
       }

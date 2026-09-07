@@ -168,6 +168,13 @@ export interface DashboardGridOptions {
    */
   maxRows?: number;
   /**
+   * Nested boards only. `true` (default): a child pulled clearly past the
+   * bound GROWS the container's slab in the parent (height escalation).
+   * `false`: the pane is the bound — the pull is refused where it stands, the
+   * container's `sizing: 'fit'`.
+   */
+  escalate?: boolean;
+  /**
    * What dragging a tile OUT of the board means (default 'cancel' — the tile
    * snaps back on release). 'remove' dims the ghost outside the board and a
    * release outside calls `onRemoveRequest` — deletion stays on the page's
@@ -534,6 +541,28 @@ interface AdoptedLeg {
 const BOARD_REGISTRY = new WeakMap<HTMLElement, Set<BinderPeer>>();
 
 /**
+ * Register a board that is NOT a grid (the split binder on a container) as a
+ * peer on its canvas, so the parent grid's hitTest defers a press on one of
+ * its tiles to it ("a press on a tile that belongs to a NESTED board must
+ * reach that board's tool") whatever the registration order. Returns the
+ * unregister. A split board adopts nothing and grows no slab: its `adopt`
+ * answers null and `resizeMemberBy` answers unchanged.
+ */
+export function registerBoardPeer(container: HTMLElement, peer: BinderPeer): () => void {
+  let set = BOARD_REGISTRY.get(container);
+  if (!set) {
+    set = new Set();
+    BOARD_REGISTRY.set(container, set);
+  }
+  set.add(peer);
+  const s = set;
+  return () => {
+    s.delete(peer);
+  };
+}
+export type { BinderPeer };
+
+/**
  * ONE aria-live region per canvas, shared by every board on it — the
  * renderer's own controller (coalescing, de-duplicating), so a dashboard
  * announces through the same channel a diagram does. WeakMap: the region
@@ -709,6 +738,8 @@ export function bindDashboardGrid(
   let float = options.float ?? false;
   /** The AUTHORED bound — a nested strip's design (row-first push, escalation). */
   const maxRows = options.maxRows;
+  /** May a pull past the bound grow the slab in the parent? `false` = the pane is the bound. */
+  const escalate = options.escalate !== false;
   const dragOut = options.dragOut ?? 'cancel';
   const wantHandles = options.resizeHandles !== false;
   const fluid = options.fluid === true;
@@ -1074,19 +1105,42 @@ export function bindDashboardGrid(
     glideTimer = setTimeout(() => htmlLayer()?.classList.remove('axdb-glide'), GLIDE_OFF_DELAY);
   };
 
+  /** The host whose ghost class the pending timer will lift. */
+  let ghostHost: HTMLElement | null = null;
+  /**
+   * Lift a pending ghost NOW. One timer serves every host, so superseding it
+   * (a new gesture within 60 ms of the last drop — ③ then ④ in the
+   * nested-containers checks — or a dispose on a rebind) used to clear the
+   * timer and leave the previous tile lifted for good: a permanent drop
+   * shadow the visual gate finally caught.
+   */
+  const flushGhost = (): void => {
+    if (ghostTimer) clearTimeout(ghostTimer);
+    ghostTimer = null;
+    ghostHost?.classList.remove('axdb-ghost', 'axdb-out');
+    ghostHost = null;
+  };
   const setGhost = (id: string, on: boolean): void => {
     const host = hostOf(id);
     if (!host) return;
+    if (ghostHost && ghostHost !== host) flushGhost();
     if (on) {
       if (ghostTimer) clearTimeout(ghostTimer);
+      ghostTimer = null;
       host.classList.add('axdb-ghost');
       host.classList.remove('axdb-out');
+      ghostHost = host;
     } else {
       host.classList.remove('axdb-out');
       // Keep transition-exemption through the drop write so the snap into the
       // placeholder is INSTANT (gridstack-style), then let glides resume.
       if (ghostTimer) clearTimeout(ghostTimer);
-      ghostTimer = setTimeout(() => host.classList.remove('axdb-ghost'), 60);
+      ghostHost = host;
+      ghostTimer = setTimeout(() => {
+        host.classList.remove('axdb-ghost');
+        ghostTimer = null;
+        if (ghostHost === host) ghostHost = null;
+      }, 60);
     }
   };
 
@@ -1777,7 +1831,7 @@ export function bindDashboardGrid(
     // the strip's CURRENT slab rows, whatever gesture created them; the
     // ledger just accumulates this gesture's net change for the one-batch
     // commit and for Escape.
-    if (maxRows !== undefined && g.kind === 'resize') {
+    if (maxRows !== undefined && escalate && g.kind === 'resize') {
       const parent = parentPeer();
       if (parent) {
         const visual = boardVisualHeight();
@@ -2838,7 +2892,10 @@ export function bindDashboardGrid(
       placeholder?.remove();
       placeholder = null;
       if (glideTimer) clearTimeout(glideTimer);
-      if (ghostTimer) clearTimeout(ghostTimer);
+      // A rebind inside the 60 ms window (a layout switch right after an undo)
+      // disposed this binder with the timer pending — the host kept its
+      // lifted ghost for good (visual gate, nested-containers ⑤).
+      flushGhost();
       htmlLayer()?.classList.remove('axdb-glide');
       api.container.style.cursor = '';
     },

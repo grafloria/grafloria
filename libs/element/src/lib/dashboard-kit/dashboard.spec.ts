@@ -12,7 +12,8 @@
 import { ownsPress, pressOnDragHandle } from './grid-binder';
 import { Command, DiagramModel, GroupModel, NodeModel, CommandManager, EventBus } from '@grafloria/engine';
 import { render } from '../grafloria';
-import { dashboard, type DashboardSpec } from './dashboard';
+import { dashboard, type DashboardSpec, type DashboardWidgetSpec } from './dashboard';
+import type { DashboardSplitHandle } from './split-binder';
 import { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID } from './styles';
 
 /** Give a jsdom element a measurable box (jsdom lays nothing out). */
@@ -1741,5 +1742,75 @@ describe('ownsPress — the page-global tool registry asks every board about eve
   });
   it('a press with no DOM source and no node is nobody\'s to refuse', () => {
     expect(ownsPress(document.createElement('div'), { getNode: () => undefined }, ev(undefined), {})).toBe(true);
+  });
+});
+
+describe('item 7 — layout and sizing per container', () => {
+  const NESTED = (extra: Partial<DashboardWidgetSpec>) =>
+    dashboard({
+      columns: 12,
+      widgets: [
+        { id: 'k', kind: 'kpi', span: 12, rows: 1, x: 0, y: 0 },
+        {
+          id: 'box', span: 12, rows: 2, x: 0, y: 1, columns: 12, ...extra,
+          widgets: [
+            { id: 'i1', kind: 'line', span: 8, rows: 2, x: 0, y: 0 },
+            { id: 'i2', kind: 'donut', span: 4, rows: 2, x: 8, y: 0 },
+          ],
+        },
+      ],
+    });
+  const boxOf = (h: ReturnType<typeof mount>['handle']) => h.toJSON().views[0].widgets.find((w) => w.id === 'box')!;
+  const splitOf = (h: ReturnType<typeof mount>['handle']) => h.binderOf('box') as Partial<DashboardSplitHandle> | undefined;
+
+  it('a split container binds a splitter tree; toJSON writes layout and tree under it', () => {
+    const { handle } = mount(NESTED({ layout: 'split' }));
+    expect(handle.getLayout('box')).toBe('split');
+    expect(typeof splitOf(handle)?.getSplitTree).toBe('function');
+    const box = boxOf(handle);
+    expect(box.layout).toBe('split');
+    expect(box.tree).toBeTruthy();
+    expect(box.widgets!.map((w) => w.id).sort()).toEqual(['i1', 'i2']);
+  });
+
+  it('setLayout(mode, containerId) switches a container live and back, children intact', () => {
+    const { handle } = mount(NESTED({}));
+    expect(handle.getLayout('box')).toBe('grid');
+    handle.setLayout('split', 'box');
+    expect(handle.getLayout('box')).toBe('split');
+    expect(typeof splitOf(handle)?.getSplitTree).toBe('function');
+    expect(boxOf(handle).tree).toBeTruthy();
+    handle.setLayout('grid', 'box');
+    expect(handle.getLayout('box')).toBe('grid');
+    expect(splitOf(handle)?.getSplitTree).toBeUndefined();
+    const box = boxOf(handle);
+    expect(box.layout).toBe('grid');
+    expect(box.tree).toBeUndefined();
+    expect(box.widgets!.length).toBe(2);
+    expect(handle.getLayout()).toBe('grid'); // the view itself untouched
+  });
+
+  it('a fit container persists escalate:false and its sizing; grow (default) escalates', () => {
+    const fit = mount(NESTED({ sizing: 'fit' }));
+    expect((fit.model.getGroup('box')!.getMetadata('dashboardBoard') as { escalate?: boolean }).escalate).toBe(false);
+    expect(boxOf(fit.handle).sizing).toBe('fit');
+    const grow = mount(NESTED({}));
+    expect((grow.model.getGroup('box')!.getMetadata('dashboardBoard') as { escalate?: boolean }).escalate).toBe(true);
+    expect(boxOf(grow.handle).sizing).toBeUndefined();
+  });
+
+  it('a saved split container comes back split (toJSON → dashboard)', () => {
+    const a = mount(NESTED({ layout: 'split' }));
+    const json = a.handle.toJSON();
+    const b = mount(dashboard({ ...json }));
+    expect(b.handle.getLayout('box')).toBe('split');
+    expect(typeof splitOf(b.handle)?.getSplitTree).toBe('function');
+    expect(boxOf(b.handle).widgets!.map((w) => w.id).sort()).toEqual(['i1', 'i2']);
+  });
+
+  it('setLayout on an unknown id is a no-op', () => {
+    const { handle } = mount(NESTED({}));
+    handle.setLayout('split', 'nope');
+    expect(handle.getLayout('box')).toBe('grid');
   });
 });

@@ -78,6 +78,8 @@ const sanity = (board) => page.evaluate((b) => {
   return { count: hs.length, overlaps, overflow };
 }, board);
 /** Card to the top of the viewport: a +300 px pull must stay inside the window. */
+/** A container GROUP's frame (groups have no node host). */
+const groupRect = (board, id) => page.evaluate(([b, id]) => { const g = window.__lab[b].api.getModel().getGroup(id); return g ? { x: g.position.x, y: g.position.y, w: g.size?.width ?? 0, h: g.size?.height ?? 0 } : null; }, [board, id]);
 const scrollTo = async (board) => { await page.evaluate((b) => document.getElementById(`cv-${b}`).parentElement.scrollIntoView({ block: 'start' }), board); await page.waitForTimeout(120); };
 
 // ---- gestures -------------------------------------------------------------
@@ -557,6 +559,75 @@ for (const [board, pos, place] of [['grip-in-l', 'left', 'inside'], ['grip-in-c'
   await shot('narrow', 'back-wide');
   verdict(cols === 6 && s1.overflow === 0 && s1.overlaps === 0 && s1.count === 6 && cols2 === 12 && JSON.stringify(h0) === JSON.stringify(h2) && s2.overflow === 0,
     `600px → cols=${cols} rows=${m.rows} ${JSON.stringify(s1)} heights=${JSON.stringify(h1)} · back → cols=${cols2} restored=${JSON.stringify(h0) === JSON.stringify(h2)}`);
+}
+
+// ===========================================================================
+// ITEM 7 — LAYOUT AND SIZING PER CONTAINER
+// ===========================================================================
+{
+  begin('L25-container-split-dividers-tree-and-switch');
+  await scrollTo('c-split');
+  const divs0 = await page.evaluate(() => [...document.querySelectorAll('#cv-c-split .axdb-div')].map((d) => d.getBoundingClientRect().toJSON()));
+  const t0 = await rect('c-split', 'n-trend'); const m0 = await rect('c-split', 'n-mix');
+  const box0 = await groupRect('c-split', 'box');
+  await shot('c-split', 'at-rest');
+  // the divider between the two inner tiles: drag it 150 px left
+  const div = divs0.find((d) => d.height > d.width) ?? divs0[0];
+  if (div) await drag(div.x + div.width / 2, div.y + div.height / 2, div.x + div.width / 2 - 150, div.y + div.height / 2, { mid: async () => shot('c-split', 'divider-drag-mid') });
+  const t1 = await rect('c-split', 'n-trend'); const m1 = await rect('c-split', 'n-mix');
+  const json1 = await page.evaluate(() => { const b = window.__lab['c-split'].handle.toJSON().views[0].widgets.find((w) => w.id === 'box'); return { layout: b.layout, tree: !!b.tree, kids: (b.widgets ?? []).map((w) => w.id).sort() }; });
+  // select an inner tile, switch the CONTAINER to grid and back: selection kept, children kept
+  await page.mouse.click(m1.x + m1.w / 2, m1.y + m1.h / 2); await page.waitForTimeout(250);
+  const sel0 = await selected('c-split');
+  await page.evaluate(() => window.__lab['c-split'].handle.setLayout('grid', 'box')); await page.waitForTimeout(500);
+  const asGrid = { layout: await page.evaluate(() => window.__lab['c-split'].handle.getLayout('box')), divs: await page.evaluate(() => document.querySelectorAll('#cv-c-split .axdb-div').length), sel: await selected('c-split'), kids: await page.evaluate(() => window.__lab['c-split'].handle.toJSON().views[0].widgets.find((w) => w.id === 'box').widgets.length), viewLayout: await page.evaluate(() => window.__lab['c-split'].handle.getLayout()) };
+  await shot('c-split', 'container-as-grid');
+  await page.evaluate(() => window.__lab['c-split'].handle.setLayout('split', 'box')); await page.waitForTimeout(500);
+  const asSplit = { layout: await page.evaluate(() => window.__lab['c-split'].handle.getLayout('box')), divs: await page.evaluate(() => document.querySelectorAll('#cv-c-split .axdb-div').length), sel: await selected('c-split') };
+  // an inner press still reaches the container's own tool after the rebind: drag n-mix's grip → it moves
+  const gr = await page.evaluate(() => document.querySelector('#cv-c-split .grafloria-node-host[data-node-id="n-mix"] > .axdb-grip')?.getBoundingClientRect().toJSON());
+  const mx0 = (await rect('c-split', 'n-mix')).x;
+  if (gr) await drag(gr.x + gr.width / 2, gr.y + gr.height / 2, gr.x + gr.width / 2 - 600, gr.y + gr.height / 2);
+  const mx1 = (await rect('c-split', 'n-mix')).x;
+  const box1 = await groupRect('c-split', 'box');
+  await shot('c-split', 'container-split-again');
+  const s = await sanity('c-split');
+  verdict(divs0.length >= 1 && t1.w < t0.w - 100 && m1.w > m0.w + 100 && json1.layout === 'split' && json1.tree && json1.kids.join() === 'n-mix,n-trend' && sel0[0] === 'n-mix' && asGrid.layout === 'grid' && asGrid.divs === 0 && asGrid.sel[0] === 'n-mix' && asGrid.kids === 2 && asGrid.viewLayout === 'grid' && asSplit.layout === 'split' && asSplit.divs >= 1 && asSplit.sel[0] === 'n-mix' && mx1 < mx0 && Math.round(box1.h) === Math.round(box0.h) && s.overlaps === 0,
+    `dividers=${divs0.length} trend w ${Math.round(t0.w)}→${Math.round(t1.w)} mix w ${Math.round(m0.w)}→${Math.round(m1.w)} json=${JSON.stringify(json1)} sel=${sel0} grid=${JSON.stringify(asGrid)} split=${JSON.stringify(asSplit)} mix x ${Math.round(mx0)}→${Math.round(mx1)} box h ${Math.round(box0.h)}→${Math.round(box1.h)} ${JSON.stringify(s)}`);
+}
+{
+  begin('L26-container-fit-refuses-a-pull-past-the-pane');
+  await scrollTo('c-fit');
+  const box0 = await groupRect('c-fit', 'box'); const t0 = await rect('c-fit', 'n-trend');
+  const c0 = await cells('c-fit');
+  const inner0 = await page.evaluate(() => { const w = window.__lab['c-fit'].handle.widget('n-trend'); return { h: w.cell.h }; });
+  await pullBottom('c-fit', 'n-trend', 150, { mid: async () => shot('c-fit', 'pull-mid') });
+  const box1 = await groupRect('c-fit', 'box'); const t1 = await rect('c-fit', 'n-trend');
+  const c1 = await cells('c-fit');
+  const inner1 = await page.evaluate(() => { const w = window.__lab['c-fit'].handle.widget('n-trend'); return { h: w.cell.h }; });
+  const ev = await events('c-fit');
+  await shot('c-fit', 'after');
+  const s = await sanity('c-fit');
+  verdict(Math.round(box0.h) === Math.round(box1.h) && Math.round(t0.h) === Math.round(t1.h) && c0.box.h === c1.box.h && inner0.h === inner1.h && ev.length > 0 && ev.every((e) => !e.changed) && s.overlaps === 0,
+    `slab h ${Math.round(box0.h)}→${Math.round(box1.h)} rows ${c0.box.h}→${c1.box.h} inner trend rows ${inner0.h}→${inner1.h} px ${Math.round(t0.h)}→${Math.round(t1.h)} events=${JSON.stringify(ev)} ${JSON.stringify(s)}`);
+}
+{
+  begin('L27-container-grow-escalates-the-slab');
+  await scrollTo('c-grow');
+  const box0 = await groupRect('c-grow', 'box'); const t0 = await rect('c-grow', 'n-trend');
+  const c0 = await cells('c-grow');
+  await pullBottom('c-grow', 'n-trend', 150, { mid: async () => shot('c-grow', 'pull-mid') });
+  const box1 = await groupRect('c-grow', 'box'); const t1 = await rect('c-grow', 'n-trend');
+  const c1 = await cells('c-grow');
+  const inner1 = await page.evaluate(() => window.__lab['c-grow'].handle.widget('n-trend').cell.h);
+  const ev = await events('c-grow');
+  await shot('c-grow', 'after');
+  // The slab gains a row in the parent and every inner tile gets taller together
+  // (the inner design stays 2 rows). The parent is a GROW board, so it extends
+  // past the 430 px frame and scrolls — overflow of the frame is the point.
+  const s = await sanity('c-grow');
+  verdict(c1.box.h === c0.box.h + 1 && box1.h > box0.h + 100 && inner1 === 2 && t1.h > t0.h + 100 && ev.some((e) => e.type === 'commit' && e.changed) && s.overlaps === 0,
+    `slab rows ${c0.box.h}→${c1.box.h} px ${Math.round(box0.h)}→${Math.round(box1.h)} inner trend rows ${inner1} px ${Math.round(t0.h)}→${Math.round(t1.h)} events=${JSON.stringify(ev)} ${JSON.stringify(s)}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);

@@ -389,6 +389,18 @@ render(SPEC2, host);</pre>
       nesting from live membership — a dragged-in tile lands under its new
       parent in the snapshot, and the snapshot rebuilds through
       <code>dashboard()</code> unchanged. Nesting is exercised to two levels.</p>
+      <p><b>Layout and sizing per container</b> (element 0.4.14). A container takes
+      <code>layout: 'grid' | 'split'</code> exactly as a view does — <code>'split'</code> is a
+      splitter tree covering the pane, with dividers to drag and a <code>tree</code> that
+      <code>toJSON()</code> writes under the container; <code>handle.setLayout(mode, containerId)</code>
+      switches it live, keeping the children and the selection, and
+      <code>getLayout(containerId)</code> reads it. <code>sizing</code> on a container says
+      what a pull past the pane's rows does: <code>'grow'</code> (default) grows the container's
+      slab in the parent — the ratchet above; <code>'fit'</code> makes the pane the bound: a child
+      that needs a row the pane does not hold is refused where it stands, the placeholder stays,
+      <code>onGesture</code> reports <code>changed: false</code>, and nothing outside the pane moves.
+      A split container keeps its own members — tiles are not dragged into or out of it — and
+      nothing scrolls inside a pane.</p>
 <pre data-lang="typescript">const spec = dashboard({
   columns: 12,
   widgets: [
