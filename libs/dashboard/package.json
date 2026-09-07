@@ -1,0 +1,19 @@
+{
+  "name": "@grafloria/dashboard",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "description": "Grafloria Dashboards is an MIT JavaScript dashboard layout library: draggable, resizable widgets on a grid or a splitter layout, with undo, nesting and persistence built in, for Angular, React, Vue or plain JavaScript.",
+  "license": "MIT",
+  "author": "Ramy Othman",
+  "homepage": "https://grafloria.com/dashboards/",
+  "repository": { "type": "git", "url": "git+https://github.com/grafloria/grafloria.git", "directory": "libs/dashboard" },
+  "bugs": { "url": "https://github.com/grafloria/grafloria/issues" },
+  "keywords": ["dashboard", "dashboard-layout", "grid-layout", "widgets", "draggable", "resizable", "drag-and-drop", "gridstack-alternative", "react-grid-layout", "undo", "splitter", "angular", "react", "vue"],
+  "peerDependencies": { "@grafloria/element": "^0.4.9", "@grafloria/engine": "^0.3.0", "@grafloria/renderer": "^0.4.0" },
+  "publishConfig": { "access": "public" },
+  "files": ["src/**/*.js", "src/**/*.d.ts"],
+  "sideEffects": false
+}

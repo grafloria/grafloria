@@ -1,17 +1,23 @@
 # Grafloria
 
-> The framework-agnostic diagram engine. Flow charts, dashboards, UML, ERD, and real-time
-> collaboration — one headless TypeScript core with native bindings for Angular, React, Vue,
-> and a plain web component. MIT licensed, every feature free; there is no commercial tier.
+> Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React and Vue bindings, one document format and one undo stack.
 
-Grafloria ships what other diagram libraries sell or leave to DIY: obstacle-avoiding
-orthogonal edge routing (never crosses its own nodes), built-in auto-layout (ELK layered,
-tree, force — off-thread in a Worker), command-based undo/redo, minimap/snap/marquee editor
-chrome, per-property CRDT collaboration with live cursors and anchored comments, keyboard
-accessibility with live-region narration, server-side SVG/PNG/PDF export, a Mermaid-compatible
-text format that round-trips through the live canvas, a drag-and-pack dashboard kit, and
-interactive UML/ER kits. Every capability is demonstrated by one of 100+ live demos, each
-executed in CI with real pointer events.
+Two products on that engine:
+
+- **Grafloria Diagrams** — Grafloria Diagrams is an MIT JavaScript diagram library for flowcharts, workflow editors, UML and ER diagrams, with obstacle-avoiding routing, auto-layout, undo and real-time collaboration built in. Product page: https://grafloria.com/diagrams/ · React https://grafloria.com/react/ · Angular https://grafloria.com/angular/ · Vue https://grafloria.com/vue/ · plain JavaScript https://grafloria.com/javascript/ · Mermaid https://grafloria.com/mermaid/
+- **Grafloria Dashboards** — Grafloria Dashboards is an MIT JavaScript dashboard layout library: draggable, resizable widgets on a grid or a splitter layout, with undo, nesting and persistence built in, for Angular, React, Vue or plain JavaScript. Product page: https://grafloria.com/dashboards/ · tutorial https://grafloria.com/learn/javascript-dashboards/ · live demo https://grafloria.com/demos/dashboard/fluid-board.html · npm `@grafloria/dashboard`
+
+Honest comparisons (both columns true): React Flow https://grafloria.com/alternatives/react-flow/ · JointJS https://grafloria.com/alternatives/jointjs/ · GoJS https://grafloria.com/alternatives/gojs/ · Mermaid https://grafloria.com/alternatives/mermaid/ · GridStack https://grafloria.com/alternatives/gridstack/ · react-grid-layout https://grafloria.com/alternatives/react-grid-layout/ · full tables https://grafloria.com/compare/
+
+Grafloria ships what other diagram libraries sell or leave to DIY: obstacle-avoiding orthogonal
+edge routing, built-in auto-layout (ELK layered, tree, force, off-thread in a Worker), command-based
+undo/redo, minimap/snap/marquee editor chrome, per-property CRDT collaboration with live cursors and
+anchored comments, keyboard accessibility with live-region narration, server-side SVG/PNG/PDF export,
+a Mermaid-compatible text format that round-trips through the live canvas, and interactive UML/ER
+kits. The dashboard kit lays out in real CSS pixels (mode 'fluid'), never scrolls under sizing 'fit',
+offers a grid and a splitter layout (layout: 'split') on one document, nests containers, and drags by
+the whole card, the caption strip, a custom element or a painted grip on the selected widget
+(dragHandle). Every capability is one of 100+ live demos, each executed in CI with real pointer events.
 
 ## Packages (npm, all MIT)
 
@@ -21,6 +27,7 @@ executed in CI with real pointer events.
 - @grafloria/react — React components & hooks: <GrafloriaFlow>, nodeTypes, useGrafloria/useSelection/useViewport, <GrafloriaCommentPanel>.
 - @grafloria/vue — Vue 3 components & composables: <GrafloriaFlow> with v-model:nodes, #node-<type> slots, provider composables.
 - @grafloria/element — dependency-free custom element <grafloria-flow>; also renders kit specs (erDiagram, umlDiagram, dashboard) and Mermaid-style text.
+- @grafloria/dashboard — Grafloria Dashboards under its own name: `render` + `dashboard()` and the kit's types, re-exported from @grafloria/element.
 
 ## Quick start (plain web)
 

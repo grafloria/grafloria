@@ -1,6 +1,6 @@
 {
   "name": "@grafloria/react",
-  "version": "0.10.3",
+  "version": "0.10.4",
   "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
@@ -14,7 +14,7 @@
   "dependencies": {
     "tslib": "^2.3.0"
   },
-  "description": "React bindings for the Grafloria diagram engine",
+  "description": "React bindings for Grafloria Diagrams and Grafloria Dashboards — an MIT diagram and dashboard engine: routing, auto-layout, undo, collaboration and dashboard layouts, native in React.",
   "license": "MIT",
   "author": "Ramy Othman",
   "homepage": "https://grafloria.com/react/",
@@ -36,7 +36,9 @@
     "erd",
     "svg",
     "layout",
-    "mermaid"
+    "mermaid",
+    "dashboard-layout",
+    "workflow-editor"
   ],
   "publishConfig": {
     "access": "public"

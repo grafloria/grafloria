@@ -2,7 +2,7 @@
 //   node tools/blog-og.mjs "<title>" "tag1,tag2" docs/blog/<slug>/og.png
 import { chromium } from 'playwright';
 import { readFileSync } from 'fs';
-const [,, title, tagsCsv, out] = process.argv;
+const [,, title, tagsCsv, out, sub = "engineering blog"] = process.argv;
 const svg = readFileSync(new URL('../docs/favicon.svg', import.meta.url), 'utf8');
 const tags = tagsCsv.split(',').map((t) => `<span class="pill">${t.trim()}</span>`).join('');
 const html = `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -21,7 +21,7 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   .pills { position: absolute; left: 72px; bottom: 64px; display: flex; gap: 14px; }
   .pill { background: #3b52d9; color: #fff; font-size: 22px; font-weight: 700; padding: 8px 22px; border-radius: 999px; }
 </style></head><body><div class="dots"></div><div class="blob"></div>
-<div class="brand"><div class="logo">${svg.replace('<svg', '<svg fill="#fff"')}</div><span class="name">grafloria</span><span class="sub">· engineering blog</span></div>
+<div class="brand"><div class="logo">${svg.replace('<svg', '<svg fill="#fff"')}</div><span class="name">grafloria</span><span class="sub">· ${sub}</span></div>
 <h1 class="${title.length > 52 ? 'long' : ''}">${title}</h1><div class="pills">${tags}</div></body></html>`;
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1200, height: 630 } });

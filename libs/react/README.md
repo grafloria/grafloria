@@ -1,9 +1,8 @@
 # @grafloria/react
 
-React bindings for the [Grafloria](https://github.com/grafloria/grafloria)
-diagram engine — deliberately React Flow-shaped: custom nodes are **your React
-components** (portal-mounted, so hooks, context, and state work inside),
-controlled or uncontrolled data, hooks, and SSR with hydration.
+React bindings for **Grafloria Diagrams** and **Grafloria Dashboards**. Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React and Vue bindings, one document format and one undo stack.
+
+Grafloria Diagrams is an MIT JavaScript diagram library for flowcharts, workflow editors, UML and ER diagrams, with obstacle-avoiding routing, auto-layout, undo and real-time collaboration built in. In React, custom nodes are **your components** (portal-mounted, so hooks, context and state work inside), with controlled or uncontrolled data, hooks, and SSR with hydration. `<GrafloriaDashboard>` brings the dashboard layout kit with live `layout`, `sizing` and `static` props.
 
 **Docs:** [React in 10 minutes](https://grafloria.com/learn/react/) · [React deep guides](https://grafloria.com/learn/react-custom-nodes/) · [every demo as a React component](https://grafloria.com/demos-react/)
 

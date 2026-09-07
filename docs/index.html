@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Grafloria — the framework-agnostic diagram engine</title>
-<meta name="description" content="Flow charts, dashboards, UML, ERD and real-time collaboration — one headless core with native Angular, React and Vue bindings. Open source, MIT.">
+<title>Grafloria — diagrams and dashboards, one engine</title>
+<meta name="description" content="Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React and Vue bindings, one document format and one undo stack. Grafloria Diagrams for flowcharts, workflow editors, UML and ER; Grafloria Dashboards for draggable, resizable widget layouts.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="favicon-32.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="canonical" href="https://grafloria.com/">
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"SoftwareApplication","name":"Grafloria","url":"https://grafloria.com/","description":"Open-source diagram engine for flow charts, node editors, dashboards, UML and ER diagrams \u2014 obstacle-avoiding routing, auto-layout, undo/redo and real-time collaboration built in. Native bindings for React, Angular, Vue and a plain web component.","applicationCategory":"DeveloperApplication","operatingSystem":"Web","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"screenshot":"https://grafloria.com/og-image.png","softwareHelp":"https://grafloria.com/learn/","sameAs":["https://github.com/grafloria/grafloria","https://www.npmjs.com/org/grafloria"]},{"@type":"WebSite","url":"https://grafloria.com/","name":"Grafloria","publisher":{"@type":"Organization","name":"Grafloria","url":"https://grafloria.com/","logo":"https://grafloria.com/apple-touch-icon.png"}}]}</script>
-<meta property="og:title" content="Grafloria — the framework-agnostic diagram engine">
-<meta property="og:description" content="Flow charts, dashboards, UML, ERD and real-time collaboration — native in Angular, React and Vue. MIT.">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"SoftwareApplication","name":"Grafloria","url":"https://grafloria.com/","description":"Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React and Vue bindings, one document format and one undo stack.","applicationCategory":"DeveloperApplication","operatingSystem":"Web","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"screenshot":"https://grafloria.com/og-image.png","softwareHelp":"https://grafloria.com/learn/","sameAs":["https://github.com/grafloria/grafloria","https://www.npmjs.com/org/grafloria"]},{"@type":"WebSite","url":"https://grafloria.com/","name":"Grafloria","publisher":{"@type":"Organization","name":"Grafloria","url":"https://grafloria.com/","logo":"https://grafloria.com/apple-touch-icon.png"}}]}</script>
+<meta property="og:title" content="Grafloria — diagrams and dashboards, one engine">
+<meta property="og:description" content="Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React and Vue bindings, one document format and one undo stack.">
 <meta property="og:url" content="https://grafloria.com">
 <meta property="og:image" content="https://grafloria.com/og-image.png">
 <meta property="og:image:width" content="1280">
@@ -235,6 +235,12 @@
   footer .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   footer img { width: 22px; height: 22px; }
   footer .fam { margin-left: auto; }
+  .prod-band { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 18px 0 6px; }
+  .prod { display: block; border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; color: var(--ink); text-decoration: none; }
+  .prod:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .prod b { display: block; font-size: 16px; margin-bottom: 4px; }
+  .prod span { display: block; font-size: 13.5px; color: var(--slate); line-height: 1.45; }
+  .prod i { display: block; font-style: normal; font-weight: 600; font-size: 13.5px; color: var(--indigo); margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -244,13 +250,13 @@
     <img src="favicon.svg" alt="">
     <span class="name">grafloria</span>
     <nav class="links">
+      <a href="diagrams/">Diagrams</a>
+      <a href="dashboards/">Dashboards</a>
       <a href="learn/">Learn</a>
       <a href="demos/">Demos</a>
-      <a href="mermaid/">Mermaid</a>
-      <a href="compare/">Compare</a>
       <a href="blog/">Blog</a>
-      <a href="https://github.com/grafloria/grafloria">GitHub</a>
-      <a href="https://www.npmjs.com/org/grafloria">npm</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
     </nav>
   </div>
 </header>
@@ -259,11 +265,15 @@
   <div class="wrap">
     <div class="hero">
       <div class="hero-copy">
-        <h1>Wire your ideas with <em>Grafloria</em></h1>
+        <h1>Diagrams and dashboards, <em>one engine</em></h1>
         <p class="lede">
-          The framework-agnostic diagram engine — flow charts, dashboards, UML, and real-time
-          collaboration. Native in Angular, React and Vue. Open source, MIT, no pro tier.
+          Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native
+          Angular, React and Vue bindings, one document format and one undo stack.
         </p>
+        <div class="prod-band" aria-label="Products">
+          <a class="prod" href="diagrams/"><b>Grafloria Diagrams</b><span>Flowcharts, workflow editors, UML and ER diagrams — routing, auto-layout, undo and collaboration built in.</span><i>The diagram library →</i></a>
+          <a class="prod" href="dashboards/"><b>Grafloria Dashboards</b><span>Draggable, resizable widgets on a grid or a splitter layout — undo, nesting and persistence built in.</span><i>The dashboard layout library →</i></a>
+        </div>
         <div class="cta">
           <a class="btn primary" href="demos/">Try the live demos</a>
           <a class="btn ghost" href="https://github.com/grafloria/grafloria">Star on GitHub</a>

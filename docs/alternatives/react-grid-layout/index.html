@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>react-grid-layout alternative — when a dashboard needs more than geometry</title>
+<meta name="description" content="react-grid-layout is the standard React dashboard grid — and MIT. Grafloria Dashboards is for when the dashboard also needs undo, nesting, a splitter layout, persistence of the whole board, or Angular and Vue.">
+<link rel="canonical" href="https://grafloria.com/alternatives/react-grid-layout/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<meta property="og:title" content="react-grid-layout alternative — when a dashboard needs more than geometry">
+<meta property="og:description" content="react-grid-layout is the standard React dashboard grid — and MIT. Grafloria Dashboards is for when the dashboard also needs undo, nesting, a splitter layout, persistence of the whole board, or Angular and Vue.">
+<meta property="og:url" content="https://grafloria.com/alternatives/react-grid-layout/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "WebPage", "name": "react-grid-layout alternative — when a dashboard needs more than geometry", "url": "https://grafloria.com/alternatives/react-grid-layout/", "description": "react-grid-layout is the standard React dashboard grid — and MIT. Grafloria Dashboards is for when the dashboard also needs undo, nesting, a splitter layout, persistence of the whole board, or Angular and Vue."}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Alternatives", "item": "https://grafloria.com/alternatives/"}, {"@type": "ListItem", "position": 2, "name": "GridStack", "item": "https://grafloria.com/alternatives/react-grid-layout/"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is Grafloria a drop-in replacement for GridStack?", "acceptedAnswer": {"@type": "Answer", "text": "No — they sit at different levels. GridStack is a grid layout engine and excellent at exactly that; Grafloria's dashboard kit is the layer above: widgets declared as data with built-in renderers, undo across every gesture, nested containers with drag-adoption, export, and one save format shared with diagrams. If a layout engine is all you need, GridStack is the right tool."}}, {"@type": "Question", "name": "Can a dashboard and a diagram live in the same document?", "acceptedAnswer": {"@type": "Answer", "text": "Yes — that is the point of the shared engine. A board serializes through the same toJSON() as a flowchart, so a workflow editor and its metrics dashboard are one document, one undo stack, one export."}}]}]}</script>
+<style>
+  :root { --indigo:#3B52D9; --indigo-deep:#2A3CA8; --indigo-soft:#94A5F0; --indigo-wash:#EEF1FE;
+    --ink:#232A3D; --slate:#5A6478; --line:#E3E7F2; --bg:#FCFCFF; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; line-height:1.6; }
+  .wrap { max-width:980px; margin:0 auto; padding:0 24px; }
+  a { color:var(--indigo); text-decoration:none; } a:hover { text-decoration:underline; }
+  code, pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  header { padding:20px 0; border-bottom:1px solid var(--line); background:#fff; }
+  .nav { display:flex; align-items:center; gap:12px; max-width:1220px; margin:0 auto; padding:0 24px; }
+  .nav img { width:34px; height:34px; }
+  .nav .name { font-weight:700; font-size:20px; letter-spacing:-.3px; } .nav .name a { color:var(--ink); }
+  .nav .links { margin-left:auto; display:flex; gap:22px; font-size:15px; font-weight:500; flex-wrap:wrap; }
+  h1 { font-size:clamp(28px,4.4vw,42px); font-weight:800; letter-spacing:-1px; line-height:1.14; text-wrap:balance; margin-top:48px; }
+  .lede { margin:14px 0 8px; color:var(--slate); font-size:17px; max-width:74ch; }
+  .lede b { color:var(--ink); }
+  h2 { font-size:23px; font-weight:750; letter-spacing:-.4px; margin:44px 0 10px; }
+  p, li { font-size:15.5px; } p { margin:10px 0; max-width:78ch; }
+  ul { margin:10px 0 10px 22px; } li { margin:5px 0; max-width:74ch; }
+  p code, li code, td code { font-size:13px; background:var(--indigo-wash); padding:1px 5px; border-radius:5px; color:var(--indigo-deep); }
+  .callout { margin:18px 0; border:1px solid var(--line); border-left:3px solid var(--indigo);
+    border-radius:12px; background:#fff; padding:16px 20px; }
+  .callout h3 { font-size:16px; font-weight:700; margin-bottom:5px; }
+  .callout p { font-size:14.5px; color:var(--slate); margin:0; }
+  .tablewrap { overflow-x:auto; margin:14px 0; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { text-align:left; padding:8px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--slate); }
+  td.us { background:var(--indigo-wash); }
+  pre { border:1px solid var(--line); border-radius:12px; background:#fff; padding:14px 16px;
+    overflow-x:auto; font-size:13px; line-height:1.62; color:#2C3346; margin:14px 0; }
+  .cta { margin:44px 0 64px; display:flex; gap:10px; flex-wrap:wrap; }
+  .btn { display:inline-block; padding:11px 22px; border-radius:10px; font-weight:600; font-size:15px; }
+  .btn.primary { background:var(--indigo); color:#fff; } .btn.primary:hover { background:var(--indigo-deep); text-decoration:none; }
+  .btn.ghost { border:1.5px solid var(--line); color:var(--ink); background:#fff; }
+  .fine { margin:0 0 56px; font-size:13px; color:var(--slate); max-width:80ch; }
+  footer { border-top:1px solid var(--line); padding:30px 0 40px; color:var(--slate); font-size:14px; background:#fff; }
+  footer .wrap { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../diagrams/">Diagrams</a>
+      <a href="../../dashboards/">Dashboards</a>
+      <a href="../../learn/">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../blog/">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <h1>A react-grid-layout alternative for dashboards that outgrow the grid — and React</h1>
+    <p class="lede">Honest framing first: react-grid-layout is the <b>standard React dashboard grid</b> — draggable, resizable, responsive breakpoints, MIT, millions of weekly installs — and if you are all-React and a layout engine is all you need, use it. Grafloria Dashboards is for the moment the grid becomes an <em>application</em>: undo, nesting, persistence of the whole board, a splitter layout, and the same board in Angular and Vue.</p>
+    <p>The comparison here is with <b>React grid layout engines</b>. Where a BI product such as DevExpress
+    Dashboard comes up below, it is only for how its designer <em>aligns widgets</em> — a splitter
+    surface that is always covered — which the kit's split layout reproduces. Data sources, query
+    builders and the rest of a BI suite are out of scope on both sides of this table.</p>
+    <h2>When to stay with react-grid-layout</h2>
+    <p>You are all-React and need exactly a grid: place, drag, resize, compact, responsive breakpoints
+    with a layout per breakpoint. react-grid-layout does all of it, small and focused, and its item
+    array is plain state you already own.</p>
+
+    <h2>Feature by feature</h2>
+    <p>✓ built in · <em>DIY</em> possible, but yours to build · — out of scope. Both columns are
+    meant to be true, including the rows we lose.</p>
+    <div class="tablewrap"><table>
+      <tr><th></th><th>react-grid-layout</th><th>Grafloria Dashboards</th></tr>
+      <tr><th colspan="3">Grid &amp; layout</th></tr>
+      <tr><td>Drag / resize / re-pack</td><td>✓ — <code>compactType</code> vertical / horizontal / none</td><td class="us">✓ push-down with skip, swap shapes, truthful placeholder</td></tr>
+      <tr><td>Nested grids</td><td>—</td><td class="us">✓ containers — cross-boundary drag with adoption, one undo step</td></tr>
+      <tr><td>Responsive columns</td><td>✓ <code>ResponsiveGridLayout</code>, a layout per breakpoint</td><td class="us">✓ cells re-flow, not just clamp</td></tr>
+      <tr><td>Locked tiles</td><td>✓ <code>static</code>, <code>isDraggable</code>/<code>isResizable</code> per item</td><td class="us">✓ <code>pinned</code>, <code>movable</code>, <code>resizable</code> — pinned survives every reflow</td></tr>
+      <tr><td>Fluid width — 100% of the container</td><td>✓ <code>WidthProvider</code></td><td class="us">✓ the default; <code>mode: 'fixed'</code> keeps an authored world for a board inside a diagram</td></tr>
+      <tr><td>Per-widget min / max size</td><td>✓ <code>minW … maxH</code></td><td class="us">✓ <code>limits: { minSpan, maxSpan, minRows, maxRows }</code></td></tr>
+      <tr><td>Resize from any edge</td><td>✓ <code>resizeHandles</code></td><td class="us">✓ every edge and corner, the cursor says which</td></tr>
+      <tr><td>Static (read-only) grid</td><td>✓ <code>isDraggable={false}</code> + <code>isResizable={false}</code></td><td class="us">✓ <code>static: true</code>, switched live with <code>setStatic()</code></td></tr>
+      <tr><td>Drag handle</td><td>✓ <code>draggableHandle</code> / <code>draggableCancel</code></td><td class="us">✓ <code>dragHandle</code> — the caption strip, your own selector, or a painted grip (left / center / right, in the header or a tab above the card) shown on the selected widget only; switched live</td></tr>
+      <tr><td>Sizing modes</td><td>✓ <code>rowHeight</code>, <code>maxRows</code>, <code>autoSize</code></td><td class="us">✓ <code>sizing: 'grow'</code> — rows keep their height, the board extends; <code>'fit'</code> — rows squeeze, the board never scrolls; switched live</td></tr>
+      <tr><td>Splitter layout — the surface is always covered</td><td>—</td><td class="us">✓ <code>layout: 'split'</code> — the way a BI dashboard designer (DevExpress's, for one) aligns widgets: one fills, the next halves, dividers are percentages, a drop lands on an edge; switched live, same document</td></tr>
+      <tr><td>Bounded height</td><td>✓ <code>maxRows</code></td><td class="us">✓ fit mode is a capacity — a board never paints past its own edge</td></tr>
+      <tr><td>Keyboard operation</td><td>not documented</td><td class="us">✓ arrows move, Shift+arrows resize, every outcome announced — axe-core in CI</td></tr>
+      <tr><td>Touch</td><td>✓</td><td class="us">✓ drag and resize, 24-px handles visible without hover</td></tr>
+      <tr><th colspan="3">Widgets &amp; content</th></tr>
+      <tr><td>Content model</td><td>children keyed by <code>i</code> — rendering is yours</td><td class="us"><code>kind</code> + <code>data</code> — widgets are data</td></tr>
+      <tr><td>Built-in renderers (KPI, line, donut…)</td><td>—</td><td class="us">✓ six, themed</td></tr>
+      <tr><td>Your own charts</td><td><em>DIY</em> as children</td><td class="us">✓ <code>renderWidget</code> seam — mount anything</td></tr>
+      <tr><th colspan="3">Editing</th></tr>
+      <tr><td>Undo / redo</td><td>—</td><td class="us">✓ every gesture one command, ⌘Z included</td></tr>
+      <tr><td>Cross-container gestures</td><td>—</td><td class="us">✓ adoption + escalation, one undo</td></tr>
+      <tr><th colspan="3">Persistence &amp; sharing</th></tr>
+      <tr><td>Save / load</td><td>✓ <code>onLayoutChange</code> gives you the layout array</td><td class="us">✓ the whole board — widgets, nesting, data</td></tr>
+      <tr><td>Export PNG / SVG / PDF</td><td>—</td><td class="us">✓ client and server-side</td></tr>
+      <tr><td>Diagrams in the same document</td><td>—</td><td class="us">✓ one engine, one format, one undo stack</td></tr>
+      <tr><td>Real-time collaboration</td><td>—</td><td class="us">✓ per-property CRDT, transport-agnostic</td></tr>
+      <tr><th colspan="3">Project</th></tr>
+      <tr><td>License</td><td>MIT</td><td class="us">MIT — no pro tier</td></tr>
+      <tr><td>Dependencies</td><td>react-draggable, react-resizable</td><td class="us">a handful; ELK layout is a lazy chunk (<a href="https://github.com/grafloria/grafloria#bundle-size--read-this-before-judging-the-npm-stats">sizes</a>)</td></tr>
+      <tr><td>Framework wrappers</td><td>React only</td><td class="us">✓ native components, same three + web component</td></tr>
+      <tr><td>Maturity</td><td>✓ a decade in production, one of the most installed React libraries</td><td class="us">newer — every claim above is a CI-tested demo you can open</td></tr>
+    </table></div>
+
+
+    <h2>The same dashboard, both ways</h2>
+    <p>react-grid-layout lays out children you render; the layout array is your state:</p>
+<pre data-lang="javascript">import GridLayout from 'react-grid-layout';
+
+const layout = [
+  { i: 'rev',   x: 0, y: 0, w: 3, h: 1 },
+  { i: 'trend', x: 3, y: 0, w: 8, h: 2 },
+];
+&lt;GridLayout layout={layout} cols={12} rowHeight={30} width={1200} onLayoutChange={save}&gt;
+  &lt;div key="rev" className="kpi"&gt;Total revenue&lt;/div&gt;
+  &lt;div key="trend"&gt;&lt;canvas id="trend" /&gt;&lt;/div&gt;   {/* chart wiring is yours */}
+&lt;/GridLayout&gt;</pre>
+    <p>Grafloria declares the widgets too — the chart <em>is</em> the declaration — and in React it is one component:</p>
+<pre data-lang="javascript">import { GrafloriaDashboard } from '@grafloria/react';
+import { dashboard } from '@grafloria/dashboard';
+
+// &lt;GrafloriaDashboard views={views} layout="grid" sizing="fit" onReady={h => (handle = h)} /&gt;
+// …or without React, the same board:
+const SPEC = dashboard({
+  columns: 12,
+  widgets: [
+    { id: 'rev',   kind: 'kpi',  span: 3, rows: 1,
+      data: { label: 'Total revenue', value: '$6.81M', delta: 12.4 } },
+    { id: 'trend', kind: 'line', span: 8, rows: 2, title: 'Revenue vs target',
+      data: { series: [{ name: 'Revenue', values: [420,455,512,588,648] }],
+              labels: ['Jan','Feb','Mar','Apr','May'] } },
+  ],
+});
+render(SPEC, document.getElementById('canvas'));
+// SPEC.handle.toJSON() round-trips the WHOLE board — widgets, nesting, data</pre>
+
+    <h2>How the concepts map</h2>
+    <div class="tablewrap"><table>
+      <tr><th>react-grid-layout</th><th>Grafloria Dashboards</th></tr>
+      <tr><td><code>x, y, w, h</code> on a layout item</td><td class="us"><code>x, y, span, rows</code> — or omit them and widgets flow in declaration order</td></tr>
+      <tr><td>children keyed by <code>i</code></td><td class="us"><code>kind</code> + <code>data</code> — six built-in renderers (KPI, line, donut…), or your own via <code>renderWidget</code></td></tr>
+      <tr><td><code>onLayoutChange(layout)</code> / the <code>layout</code> prop</td><td class="us"><code>toJSON()</code> ↔ <code>dashboard()</code> — one document format shared with diagrams</td></tr>
+      <tr><td><em>no equivalent</em></td><td class="us">a widget carrying <code>widgets</code> — cross-boundary drag with adoption, one undo step</td></tr>
+      <tr><td><code>static: true</code> on an item</td><td class="us"><code>pinned: true</code> — never pushed, survives every reflow</td></tr>
+      <tr><td><code>cols</code> per breakpoint, <code>layouts</code> per breakpoint</td><td class="us"><code>columns</code> + responsive re-flow of the cells themselves</td></tr>
+      <tr><td><code>isDraggable={false}</code> <code>isResizable={false}</code></td><td class="us"><code>static: true</code> — the viewer's mode; the API and undo keep working</td></tr>
+      <tr><td><code>draggableHandle</code> selector</td><td class="us"><code>dragHandle: true | '.sel' | { grip: true, position, placement }</code> — caption strip, your element, or a grip on the selected widget</td></tr>
+      <tr><td><em>no equivalent</em></td><td class="us"><code>layout: 'split'</code> — a splitter tree beside the grid, <code>setLayout()</code> keeps the picture either way</td></tr>
+      <tr><td><code>minW</code> / <code>maxW</code> / <code>minH</code> / <code>maxH</code></td><td class="us"><code>limits: { minSpan, maxSpan, minRows, maxRows }</code> on the widget</td></tr>
+      <tr><td><code>maxRows</code></td><td class="us"><code>sizing: 'fit'</code> — the board's height is the capacity; <code>overflow: 'scroll'</code> opts out</td></tr>
+    </table></div>
+
+
+
+    <h2>See the difference in one demo</h2>
+    <p>The clearest way to judge the boundary: react-grid-layout gives you the grid geometry;
+    <a href="../../demos/dashboard/nested-containers.html">this demo</a> is a dashboard whose
+    sections are containers — drag a tile across a section boundary and the other grid adopts it
+    live, one undo restores the whole gesture, and <code>toJSON()</code> serializes the nesting.
+    The <a href="../../demos/dashboard/grid-options.html">grid options demo</a> shows column
+    counts, packing and responsive re-flow driven as data, and the
+    <a href="../../demos/dashboard/fluid-board.html">fluid dashboard</a> has Fit / Grow, Grid / Split
+    and the drag-handle modes in one toolbar.</p>
+    <div class="cta">
+      <a class="btn primary" href="../../learn/javascript-dashboards/">10-minute tutorial</a>
+      <a class="btn ghost" href="../../demos/#dashboard">Live demos</a>
+      <a class="btn ghost" href="../../compare/#dashboards">The full sourced comparison</a>
+    </div>
+    <p class="fine">Pricing and feature cells reflect vendor pages and shipped type definitions as of
+    July–September 2026 — always confirm on the vendor's site. Corrections welcome on
+    <a href="https://github.com/grafloria/grafloria/issues">GitHub</a>; this page aims to stay honest, not to win.</p>
+  </div>
+</main>
+<footer>
+  <div class="wrap">
+    <img src="../../favicon.svg" alt="" width="22" height="22">
+    <span>Grafloria — MIT licensed, free forever.</span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

@@ -4,39 +4,28 @@
 
 <h1 align="center">Grafloria</h1>
 
-<p align="center"><b>The framework-agnostic diagram engine.</b><br>
-Flow charts, dashboards, UML, ERD, and real-time collaboration —<br>
-one headless core, native in <b>Angular</b>, <b>React</b>, and <b>Vue</b>. MIT, no pro tier.</p>
+<p align="center"><b>Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React and Vue bindings, one document format and one undo stack.</b></p>
 
-<p align="center">
-  <a href="https://github.com/grafloria/grafloria/actions/workflows/ci.yml"><img src="https://github.com/grafloria/grafloria/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://www.npmjs.com/org/grafloria"><img src="https://img.shields.io/npm/v/%40grafloria%2Fengine?label=npm&color=3B52D9" alt="npm"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3B52D9" alt="MIT"></a>
-</p>
+<table align="center"><tr>
+<td valign="top" width="50%">
 
-<p align="center">
-  <a href="https://grafloria.com/demos/dashboard/dashboard-builder.html"><img src="assets/editor.gif" width="800" alt="Dragging a dashboard tile in Grafloria — the grid re-packs live around a placeholder, and one undo restores everything"></a>
-</p>
-<p align="center"><i>Live drag with real re-packing — <a href="https://grafloria.com/demos/">every demo is clickable</a>, and every one runs in CI as a test.</i></p>
+### Grafloria Diagrams
+Grafloria Diagrams is an MIT JavaScript diagram library for flowcharts, workflow editors, UML and ER diagrams, with obstacle-avoiding routing, auto-layout, undo and real-time collaboration built in.
 
-<p align="center">
-  <a href="https://grafloria.com"><b>grafloria.com</b></a> ·
-  <a href="https://grafloria.com/demos/"><b>111 live demos</b></a> ·
-  <a href="https://grafloria.com/mermaid/"><b>Mermaid support</b></a> ·
-  <a href="https://grafloria.com/compare/"><b>how it compares</b></a> ·
-  <a href="https://www.npmjs.com/org/grafloria"><b>packages</b></a>
-</p>
+**[grafloria.com/diagrams](https://grafloria.com/diagrams/)** · [React](https://grafloria.com/react/) · [Angular](https://grafloria.com/angular/) · [Vue](https://grafloria.com/vue/) · [JavaScript](https://grafloria.com/javascript/) · [Mermaid](https://grafloria.com/mermaid/)
 
----
+</td><td valign="top" width="50%">
 
-<a href="https://grafloria.com/demos/interaction/n8n-workflow.html"><img src="docs/shots/workflow.png" alt="An n8n-style workflow editor built with Grafloria — typed wires, an AI-agent node with model/memory/tool ports, and a step-execution toolbar"></a>
+### Grafloria Dashboards
+Grafloria Dashboards is an MIT JavaScript dashboard layout library: draggable, resizable widgets on a grid or a splitter layout, with undo, nesting and persistence built in, for Angular, React, Vue or plain JavaScript.
 
-<p align="center"><i>An n8n-style workflow editor, a drag-pack <a href="https://grafloria.com/demos/dashboard/dashboard-builder.html">dashboard builder</a>, <a href="https://grafloria.com/demos/diagrams/class-uml.html">UML</a> &amp; ER kits, live-cursor collaboration — every one of them a <a href="https://grafloria.com/demos/">clickable demo</a>, not a mockup.</i></p>
+**[grafloria.com/dashboards](https://grafloria.com/dashboards/)** · [tutorial](https://grafloria.com/learn/javascript-dashboards/) · [live demo](https://grafloria.com/demos/dashboard/fluid-board.html) · `npm i @grafloria/dashboard`
 
-Grafloria is a layered system: a headless model you can run anywhere (including
-Node and workers), a renderer that paints it, and thin framework bindings on top. The same
-diagram model drives the interactive canvas, the text format, the collab replicas, and the
-SVG/PNG/PDF exporters — there is no second implementation to drift.
+</td></tr></table>
+
+Both share one engine: one document format, one undo stack, a diagram can be a widget in a
+dashboard. Every capability is one of 100+ live demos, each executed in CI with real pointer
+events. MIT licensed, every feature free; there is no commercial tier.
 
 ## Documentation
 
