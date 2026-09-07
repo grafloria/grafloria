@@ -194372,6 +194372,11 @@ var CSS4 = `
 .grafloria-node-host.axdb-gp-inside.axdb-gp-right .axdb-widget > .axdb-widget-h { padding-right: 32px; }
 .grafloria-node-host.axdb-gp-inside.axdb-gp-center .axdb-widget > .axdb-widget-h { padding-top: 12px; }
 .axdb-widget-b { flex: 1; min-height: 0; position: relative; }
+/* A drag across a STATIC board (nothing prevents the press's default there)
+   used to select every label on it; kit cards are not prose. Tables stay
+   copyable \u2014 a figure in a grid is the one thing a viewer selects. */
+.axdb-widget { user-select: none; -webkit-user-select: none; }
+.axdb-widget .axdb-table { user-select: text; -webkit-user-select: text; }
 .axdb-widget-b > svg { display: block; width: 100%; height: 100%; }
 .axdb-widget-b.axdb-scroll { overflow: auto; }
 /* A chart WITH a legend under it: the plot yields height, the legend keeps its
@@ -194460,6 +194465,9 @@ var CSS4 = `
    tile gets a bigger ring, not dead card), square, capped so its centre figure
    stays a figure and not a headline. */
 .axdb-widget-b.axdb-donut { display: flex; align-items: center; gap: 10px; }
+/* A legend taller than a SHORT body (a 2-row donut on a squeezed board) is
+   clipped at its own foot, not centred over the title above it. */
+.axdb-widget-b.axdb-donut > .axdb-lg--col { max-height: 100%; min-height: 0; overflow: hidden; }
 .axdb-widget-b.axdb-donut > svg {
   flex: 0 0 auto; width: auto; height: 100%; max-height: 260px; max-width: 60%; aspect-ratio: 1 / 1;
 }
@@ -194530,6 +194538,12 @@ function syncGrip(host, cfg, movable) {
   }
   el.className = `${GRIP_CLASS} ${GRIP_CLASS}--${cfg.position ?? "left"} ${GRIP_CLASS}--${cfg.placement ?? "inside"}`;
   host.classList.add(`axdb-gp-${cfg.placement ?? "inside"}`, `axdb-gp-${cfg.position ?? "left"}`);
+}
+function ownsPress(container, diagram, ev, hit) {
+  const t = ev.source?.target;
+  if (typeof Node !== "undefined" && t instanceof Node && !container.contains(t)) return false;
+  if (hit.node && diagram.getNode(hit.node.id) !== hit.node) return false;
+  return true;
 }
 function gripHostOf(target) {
   const grip = target?.closest?.("." + GRIP_CLASS);
@@ -195667,6 +195681,7 @@ function bindDashboardGrid(api, group, options = {}) {
     hitTest(ev, hit) {
       if (disposed) return false;
       if (gesture) return true;
+      if (!ownsPress(api.container, diagram, ev, hit)) return false;
       if (hit.node) {
         if ((group.members ?? /* @__PURE__ */ new Set()).has(hit.node.id)) return true;
         for (const p of BOARD_REGISTRY.get(api.container) ?? []) {
@@ -195761,7 +195776,10 @@ function bindDashboardGrid(api, group, options = {}) {
         }
       }
     }
-    if (hoverHost && hoverHost !== host) hoverHost.style.cursor = "";
+    if (hoverHost && hoverHost !== host) {
+      hoverHost.style.cursor = "";
+      hoverHost.removeAttribute("data-axdb-edge");
+    }
     hoverHost = host;
     if (!host) return;
     const id = host.getAttribute("data-node-id") ?? "";
@@ -196081,6 +196099,13 @@ function bindDashboardGrid(api, group, options = {}) {
       return true;
     },
     getFocusedWidget: () => focusedId,
+    selectWidget(id) {
+      if (disposed) return false;
+      if (id !== void 0 && (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id))) return false;
+      selectWidget(id);
+      return true;
+    },
+    getSelectedWidget: () => selectedId,
     setStatic(on) {
       if (on === isStatic) return;
       isStatic = on;
@@ -196991,6 +197016,7 @@ function bindDashboardSplit(api, group, options = {}) {
     hitTest(ev, hit) {
       if (disposed) return false;
       if (gesture) return true;
+      if (!ownsPress(api.container, diagram, ev, hit)) return false;
       if (hit.node) return (group.members ?? /* @__PURE__ */ new Set()).has(hit.node.id);
       return worldInsideBoard(ev.world.x, ev.world.y);
     },
@@ -197315,6 +197341,13 @@ function bindDashboardSplit(api, group, options = {}) {
       return true;
     },
     getFocusedWidget: () => focusedId,
+    selectWidget(id) {
+      if (disposed) return false;
+      if (id !== void 0 && (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id))) return false;
+      selectWidget(id);
+      return true;
+    },
+    getSelectedWidget: () => selectedId,
     saveLayout() {
       return { columns, cells: cellsFromSplit(readTree(), columns, rowsGuess()) };
     },
@@ -198021,6 +198054,21 @@ function createDashboardHandle(ctx) {
       queueMicrotask(() => retry(4));
       return true;
     },
+    selectWidget(id) {
+      if (id === void 0) {
+        for (const b2 of binders.values()) b2.selectWidget(void 0);
+        return true;
+      }
+      const b = binders.get(viewOfWidget.get(id) ?? "");
+      return !!b && b.selectWidget(id);
+    },
+    getSelectedWidget() {
+      for (const b of binders.values()) {
+        const s = b.getSelectedWidget();
+        if (s) return s;
+      }
+      return void 0;
+    },
     widgetsOf(viewId) {
       const v = views.find((x) => x.id === (viewId ?? ctx.active));
       return (v?.widgets ?? []).map((w) => makeWidgetHandle(w.id)).filter(Boolean);
@@ -198437,6 +198485,7 @@ function dashboard(options) {
         const cells = b.saveLayout().cells;
         const live = { rtl: b.getRtl(), static: b.getStatic(), dragHandle: b.getDragHandle() };
         const focused = b.getFocusedWidget();
+        const selected = b.getSelectedWidget();
         b.dispose();
         const write = (fn) => model.runSystemWrite ? model.runSystemWrite(fn) : fn();
         write(() => {
@@ -198454,6 +198503,7 @@ function dashboard(options) {
         binders.set(viewId, bindView(v, g, next, live));
         binders.get(viewId)?.sync();
         if (focused) binders.get(viewId)?.focusWidget(focused);
+        else if (selected) binders.get(viewId)?.selectWidget(selected);
       };
       handle.showView(ctx.active);
       ctx.rebindContainer = (id) => {
