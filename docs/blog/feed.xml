@@ -6,7 +6,15 @@
   <atom:link href="https://grafloria.com/blog/feed.xml" rel="self" type="application/rss+xml"/>
   <description>Honest write-ups of diagram and dashboard problems developers actually hit, and engine deep-dives with the real numbers.</description>
   <language>en</language>
-  <lastBuildDate>Sat, 05 Sep 2026 12:00:00 GMT</lastBuildDate>
+  <lastBuildDate>Mon, 07 Sep 2026 12:00:00 GMT</lastBuildDate>
+  <item>
+    <title>What DevExpress dashboard users expect, and what it took to match it</title>
+    <link>https://grafloria.com/blog/what-devexpress-dashboard-users-expect/</link>
+    <guid isPermaLink="true">https://grafloria.com/blog/what-devexpress-dashboard-users-expect/</guid>
+    <pubDate>Mon, 07 Sep 2026 12:00:00 GMT</pubDate>
+    <description>We drove the DevExpress dashboard designer with a script and wrote down what its users take for granted: a surface that is always covered, percentage dividers, drag by caption, a grip on the selected item. Then we built each one as data.</description>
+    <category>dashboards,layout</category>
+  </item>
   <item>
     <title>Our benchmark was wrong three ways — all in our favour</title>
     <link>https://grafloria.com/blog/the-benchmark-that-flattered-us/</link>
