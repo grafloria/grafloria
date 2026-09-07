@@ -37,8 +37,8 @@ onMounted(() => markReady());
 </script>
 
 <template>
-  <div class="page">
-    <div class="bar">
+  <div class="fb-page">
+    <div class="fb-bar">
       <button id="fit" :class="{ on: sizing === 'fit' }" @click="sizing = 'fit'">Fit</button>
       <button id="grow" :class="{ on: sizing === 'grow' }" @click="sizing = 'grow'">Grow</button>
       <span class="sep"></span>
@@ -47,18 +47,18 @@ onMounted(() => markReady());
       <span class="sep"></span>
       <button id="add" @click="addRow">+ Add a row</button>
     </div>
-    <div class="board">
+    <div class="fb-board">
       <GrafloriaDashboard :views="views" :options="options" :layout="layout" :sizing="sizing" @ready="handle = $event" />
     </div>
   </div>
 </template>
 
 <style scoped>
-.page { height: 100vh; display: flex; flex-direction: column; }
-.bar { display: flex; gap: 6px; align-items: center; height: 44px; padding: 0 10px; box-sizing: border-box;
+.fb-page { height: 100vh; display: flex; flex-direction: column; }
+.fb-bar { display: flex; gap: 6px; align-items: center; height: 44px; padding: 0 10px; box-sizing: border-box;
        border-bottom: 1px solid #e5e7eb; font: 13px system-ui, sans-serif; }
-.bar button { padding: 5px 10px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; cursor: pointer; }
-.bar button.on { background: #3B52D9; border-color: #3B52D9; color: #fff; }
-.sep { width: 1px; height: 20px; background: #e5e7eb; margin: 0 4px; }
-.board { flex: 1; min-height: 0; }
+.fb-bar button { padding: 5px 10px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; cursor: pointer; }
+.fb-bar button.on { background: #3B52D9; border-color: #3B52D9; color: #fff; }
+.fb-bar .sep { width: 1px; height: 20px; background: #e5e7eb; margin: 0 4px; }
+.fb-board { flex: 1; min-height: 0; }
 </style>

@@ -1,6 +1,7 @@
 import { build } from 'esbuild';
 import { cpSync, mkdirSync, rmSync, readFileSync } from 'fs';
 import { dirname, join, relative } from 'path';
+import { createHash } from 'crypto';
 import { fileURLToPath } from 'url';
 import { parse, compileScript, compileTemplate, compileStyle } from '@vue/compiler-sfc';
 
@@ -16,8 +17,11 @@ const vuePlugin = {
   setup(b) {
     b.onLoad({ filter: /\.vue$/ }, (args) => {
       const src = readFileSync(args.path, 'utf8');
-      const id = relative(root, args.path);
+      // A short hash is the scope id: it becomes the data-v-… attribute, so it
+      // must be attribute-safe (a path is not).
+      const id = createHash('md5').update(relative(root, args.path)).digest('hex').slice(0, 8);
       const { descriptor } = parse(src, { filename: args.path });
+      const scoped = descriptor.styles.some((s) => s.scoped);
       const scriptResult = compileScript(descriptor, { id, inlineTemplate: true });
       // Compile <style> blocks and inject them at runtime — esbuild bundles a
       // single JS file, so an SFC's styles ride along as a head <style> element
@@ -29,7 +33,15 @@ const vuePlugin = {
       const styleInject = css
         ? `if (typeof document !== 'undefined') { const __s = document.createElement('style'); __s.textContent = ${JSON.stringify(css)}; document.head.appendChild(__s); }\n`
         : '';
-      return { contents: styleInject + scriptResult.content, loader: 'ts', resolveDir: dirname(args.path) };
+      // <style scoped> compiles to `.x[data-v-ID]` selectors; the renderer only
+      // stamps data-v-ID on the component's elements when the component carries
+      // __scopeId (what vite-plugin-vue appends). Without it every scoped rule
+      // was dead — context-menu and execute-flow mounted unstyled (2026-09-07).
+      let code = scriptResult.content;
+      if (scoped) {
+        code = code.replace(/export default\s+/, 'const __sfc = ') + `\n__sfc.__scopeId = 'data-v-${id}';\nexport default __sfc;\n`;
+      }
+      return { contents: styleInject + code, loader: 'ts', resolveDir: dirname(args.path) };
     });
   },
 };
