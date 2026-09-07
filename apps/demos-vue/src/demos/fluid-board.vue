@@ -12,9 +12,14 @@ import { markReady } from '../ready';
 const handle = ref<DashboardHandle | null>(null);
 const layout = ref<'grid' | 'split'>('grid');
 const sizing = ref<'fit' | 'grow'>('grow');
-// DevExpress caption drag, live on the handle: the header is the only grip.
-const grip = ref(false);
-watch(grip, (v) => handle.value?.setDragHandle(v));
+// The drag handle, live on the handle: the whole card, the caption strip
+// (DevExpress caption drag) or a painted grip placed along the top edge.
+const drag = ref<'anywhere' | 'caption' | 'grip'>('anywhere');
+const gripPos = ref<'left' | 'center' | 'right'>('left');
+const gripPlace = ref<'inside' | 'outside'>('inside');
+watch([drag, gripPos, gripPlace], ([d, p, l]) => {
+  handle.value?.setDragHandle(d === 'grip' ? { grip: true, position: p, placement: l } : d === 'caption');
+});
 const options = { columns: 12, gap: 10 };
 const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
   { id: 'rev',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
@@ -48,7 +53,12 @@ onMounted(() => markReady());
       <button id="grid" :class="{ on: layout === 'grid' }" @click="layout = 'grid'">Grid</button>
       <button id="split" :class="{ on: layout === 'split' }" @click="layout = 'split'">Split</button>
       <span class="sep"></span>
-      <button id="handle" :class="{ on: grip }" @click="grip = !grip" title="DevExpress caption drag: a widget moves only from its header">Drag by header</button>
+      <label>Drag <select id="drag" v-model="drag">
+        <option value="anywhere">anywhere</option><option value="caption">by caption</option><option value="grip">by grip</option></select></label>
+      <select id="grip-pos" v-model="gripPos" :disabled="drag !== 'grip'">
+        <option value="left">left</option><option value="center">center</option><option value="right">right</option></select>
+      <select id="grip-place" v-model="gripPlace" :disabled="drag !== 'grip'">
+        <option value="inside">inside</option><option value="outside">outside</option></select>
       <span class="sep"></span>
       <button id="add" @click="addRow">+ Add a row</button>
     </div>
@@ -66,4 +76,7 @@ onMounted(() => markReady());
 .fb-bar button.on { background: #3B52D9; border-color: #3B52D9; color: #fff; }
 .fb-bar .sep { width: 1px; height: 20px; background: #e5e7eb; margin: 0 4px; }
 .fb-board { flex: 1; min-height: 0; }
+.fb-bar label { display: inline-flex; align-items: center; gap: 6px; }
+.fb-bar select { font: inherit; padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; }
+.fb-bar select:disabled { opacity: .45; }
 </style>

@@ -19,7 +19,12 @@ import { markReady } from '../demo-ready';
       <button id="grid" (click)="layout.set('grid')" [class.on]="layout() === 'grid'">Grid</button>
       <button id="split" (click)="layout.set('split')" [class.on]="layout() === 'split'">Split</button>
       <span class="sep"></span>
-      <button id="handle" (click)="toggleHandle()" [class.on]="grip" title="DevExpress caption drag: a widget moves only from its header">Drag by header</button>
+      <label>Drag <select id="drag" [value]="drag" (change)="setDrag($any($event.target).value)">
+        <option value="anywhere">anywhere</option><option value="caption">by caption</option><option value="grip">by grip</option></select></label>
+      <select id="grip-pos" [disabled]="drag !== 'grip'" [value]="gripPos" (change)="gripPos = $any($event.target).value; applyDrag()">
+        <option value="left">left</option><option value="center">center</option><option value="right">right</option></select>
+      <select id="grip-place" [disabled]="drag !== 'grip'" [value]="gripPlace" (change)="gripPlace = $any($event.target).value; applyDrag()">
+        <option value="inside">inside</option><option value="outside">outside</option></select>
       <span class="sep"></span>
       <button id="add" (click)="addRow()">+ Add a row</button>
     </div>
@@ -35,6 +40,9 @@ import { markReady } from '../demo-ready';
     .bar button { padding:5px 10px; border:1px solid #d1d5db; border-radius:6px; background:#fff; cursor:pointer; }
     .bar button.on { background:#3B52D9; border-color:#3B52D9; color:#fff; }
     .sep { width:1px; height:20px; background:#e5e7eb; margin:0 4px; }
+    .bar label { display:inline-flex; align-items:center; gap:6px; }
+    .bar select { font:inherit; padding:4px 6px; border:1px solid #d1d5db; border-radius:6px; background:#fff; }
+    .bar select:disabled { opacity:.45; }
   `],
 })
 export class FluidBoardComponent implements AfterViewInit {
@@ -59,9 +67,15 @@ export class FluidBoardComponent implements AfterViewInit {
       data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
   ] }];
 
-  grip = false;
-  /** DevExpress caption drag, live on the handle: the header is the only grip. */
-  toggleHandle() { this.grip = !this.grip; this.handle?.setDragHandle(this.grip); }
+  /** The drag handle, live on the handle: the whole card, the caption strip
+   *  (DevExpress caption drag) or a painted grip placed along the top edge. */
+  drag: 'anywhere' | 'caption' | 'grip' = 'anywhere';
+  gripPos: 'left' | 'center' | 'right' = 'left';
+  gripPlace: 'inside' | 'outside' = 'inside';
+  setDrag(v: string) { this.drag = v as typeof this.drag; this.applyDrag(); }
+  applyDrag() {
+    this.handle?.setDragHandle(this.drag === 'grip' ? { grip: true, position: this.gripPos, placement: this.gripPlace } : this.drag === 'caption');
+  }
   addRow() {
     this.handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Added row', value: '+1' } });
   }

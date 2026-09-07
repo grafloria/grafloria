@@ -4,6 +4,9 @@ export {
   type DashboardGridOptions,
   type DashboardGridHandle,
   type DashboardResponsiveOptions,
+  type DragHandleOption,
+  type DragGripOptions,
+  normalizeDragHandle,
 } from './grid-binder';
 export {
   bindDashboardSplit,

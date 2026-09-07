@@ -228,22 +228,70 @@ export interface DashboardGridOptions {
   static?: boolean;
   /**
    * DRAG HANDLE (DevExpress drags an item by its caption; gridstack's
-   * `handle`): `true` — a widget moves only from its header, which shows a
-   * grip; a selector string — your own handle inside the host. Off (default):
-   * the whole card is the handle. Resize edges are unaffected and the body
-   * stays interactive (scroll a table, click a legend). Live: `setDragHandle`.
+   * `handle`). `true` — the CAPTION STRIP is the handle (the header shows grip
+   * dots); a selector string — your own element inside the host; a
+   * `{ grip: true }` object — a dedicated GRIP the kit paints, positioned
+   * left / center / right and, for the top edge, `inside` the header band or
+   * `outside` as a tab above the card (the DevExpress item bar). Off
+   * (default): the whole card. Resize edges are unaffected and the body stays
+   * interactive (scroll a table, click a legend). Live: `setDragHandle`.
    */
-  dragHandle?: boolean | string;
+  dragHandle?: DragHandleOption;
 }
 
-/** The selector a `dragHandle` value names — `null` when the whole card is the handle. */
-export const dragHandleSelector = (v: boolean | string | undefined): string | null =>
-  v === true ? '.axdb-widget-h' : typeof v === 'string' && v.length > 0 ? v : null;
-/** The public form of a stored handle selector (the inverse of `dragHandleSelector`). */
-export const dragHandleValue = (sel: string | null): boolean | string =>
-  sel === null ? false : sel === '.axdb-widget-h' ? true : sel;
-/** The container class that turns the header grip on. */
+/** A painted grip: the only drag zone, placed along the card's top edge. */
+export interface DragGripOptions {
+  grip: true;
+  /** Where along the top edge. Default 'left'. */
+  position?: 'left' | 'center' | 'right';
+  /** In the header band, or a tab above the card. Default 'inside'. */
+  placement?: 'inside' | 'outside';
+}
+export type DragHandleOption = boolean | string | DragGripOptions;
+
+/** The class of the painted grip element (a child of the node host). */
+export const GRIP_CLASS = 'axdb-grip';
+/** The container class that turns the caption strip's grip dots on. */
 export const DRAG_HANDLE_CLASS = 'axdb-drag-handle';
+
+/** A `dragHandle` value with its defaults filled in — the form the handle reports. */
+export const normalizeDragHandle = (v: DragHandleOption | undefined): DragHandleOption =>
+  typeof v === 'object' && v !== null && v.grip
+    ? { grip: true, position: v.position ?? 'left', placement: v.placement ?? 'inside' }
+    : v === true ? true : typeof v === 'string' && v.length > 0 ? v : false;
+/** The selector a `dragHandle` value names — `null` when the whole card is the handle. */
+export const dragHandleSelector = (v: DragHandleOption): string | null =>
+  v === true ? '.axdb-widget-h' : typeof v === 'string' ? v : typeof v === 'object' ? '.' + GRIP_CLASS : null;
+/** The grip config of a value, or null when it paints no grip. */
+export const gripOf = (v: DragHandleOption): DragGripOptions | null => (typeof v === 'object' ? v : null);
+const sameDragHandle = (a: DragHandleOption, b: DragHandleOption): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Paint (or remove) the grip on one host, and stamp the host with the grip's
+ * placement so the header can make room for it. `movable` false = no grip.
+ */
+export function syncGrip(host: HTMLElement, cfg: DragGripOptions | null, movable: boolean): void {
+  const existing = host.querySelector(':scope > .' + GRIP_CLASS);
+  host.classList.remove('axdb-gp-inside', 'axdb-gp-outside', 'axdb-gp-left', 'axdb-gp-center', 'axdb-gp-right');
+  if (!cfg || !movable) {
+    existing?.remove();
+    return;
+  }
+  const el = (existing as HTMLElement | null) ?? host.ownerDocument.createElement('div');
+  if (!existing) {
+    el.setAttribute('aria-hidden', 'true');
+    el.setAttribute('title', 'Drag');
+    host.appendChild(el);
+  }
+  el.className = `${GRIP_CLASS} ${GRIP_CLASS}--${cfg.position ?? 'left'} ${GRIP_CLASS}--${cfg.placement ?? 'inside'}`;
+  host.classList.add(`axdb-gp-${cfg.placement ?? 'inside'}`, `axdb-gp-${cfg.position ?? 'left'}`);
+}
+
+/** The member host a press on a painted grip belongs to (the grip may sit OUTSIDE the host's box). */
+export function gripHostOf(target: Element | null): HTMLElement | null {
+  const grip = target?.closest?.('.' + GRIP_CLASS);
+  return (grip?.closest('.grafloria-node-host') as HTMLElement | null) ?? null;
+}
 /**
  * Did a press land on the drag handle? A press INSIDE the handle element
  * always does. The default handle is a CAPTION BAR the DevExpress way: the
@@ -291,9 +339,9 @@ export interface DashboardGridHandle {
   /** Static mode, live: pointer gestures off (and handles gone) or back on. */
   setStatic(on: boolean): void;
   getStatic(): boolean;
-  /** Drag-handle mode, live: `true` = the header, a selector = your own handle, `false` = the whole card. */
-  setDragHandle(v: boolean | string): void;
-  getDragHandle(): boolean | string;
+  /** Drag-handle mode, live: `true` = the caption strip, a selector = your own handle, `{ grip: true, … }` = a painted grip, `false` = the whole card. */
+  setDragHandle(v: DragHandleOption): void;
+  getDragHandle(): DragHandleOption;
   /**
    * Move keyboard focus to a member (the roving tabindex lands on it). The
    * host takes DOM focus when it exists; returns false for a non-member.
@@ -317,8 +365,8 @@ export interface DashboardGridHandle {
     responsive: boolean;
     fluid: boolean;
     static: boolean;
-    /** `true` = the header is the grip, a selector = a custom one, `false` = the whole card. */
-    dragHandle: boolean | string;
+    /** `true` = the caption strip, a selector = a custom one, `{ grip: true, … }` = a painted grip, `false` = the whole card. */
+    dragHandle: DragHandleOption;
     /** Fit-mode row capacity (undefined when unbounded). */
     capacity: number | undefined;
     gap: number;
@@ -621,8 +669,9 @@ export function bindDashboardGrid(
   const fluid = options.fluid === true;
   const overflow = options.overflow ?? 'bounded';
   let isStatic = options.static === true;
-  let dragHandle = dragHandleSelector(options.dragHandle);
-  api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
+  let dragHandle: DragHandleOption = normalizeDragHandle(options.dragHandle);
+  let dragSel = dragHandleSelector(dragHandle);
+  api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle === true);
   /** The member the ROVING TABINDEX rests on (one tab stop per board). */
   let focusedId: string | undefined;
   const live = liveRegionFor(api.container);
@@ -1034,15 +1083,24 @@ export function bindDashboardGrid(
     }
   };
 
+  /**
+   * The chrome on every member host: the painted grip (or none) and the corner
+   * resize handle — ONE host lookup per member, which the host observer's
+   * budget counts (a repaint of one host must cost that host's lookup, not a
+   * second pass).
+   */
   const syncHandles = (only?: ReadonlySet<string>): void => {
     syncA11y(only);
-    if (!wantHandles || disposed) return;
+    if (disposed) return;
+    const grip = gripOf(dragHandle);
     for (const id of group.members ?? []) {
       if (only && !only.has(id)) continue;
       const node = diagram.getNode(id);
       if (!node) continue;
       const host = hostOf(id);
       if (!host) continue;
+      syncGrip(host, grip, node.state?.locked !== true && !isStatic && node.getMetadata?.('widgetMovable') !== false);
+      if (!wantHandles) continue;
       const existing = host.querySelector(':scope > .axdb-rs');
       if (node.state?.locked === true || isStatic || node.getMetadata?.('widgetResizable') === false) {
         existing?.remove();
@@ -2034,20 +2092,26 @@ export function bindDashboardGrid(
     },
     onPointerDown(ev, hit) {
       if (gesture) return; // mid-palette
-      if (!hit.node) {
+      const target = (ev.source?.target ?? null) as Element | null;
+      // A press on a painted grip names its widget by the DOM: an OUTSIDE tab
+      // sits above the card's box, where the hit test sees the gap or the
+      // neighbour above.
+      const gripHost = gripHostOf(target);
+      const gripId = gripHost?.getAttribute('data-node-id') ?? null;
+      const onGrip = !!gripId && (group.members ?? new Set<string>()).has(gripId);
+      if (!hit.node && !onGrip) {
         // The board's own empty area: a void click. Nothing to drag, and the
         // selection clears exactly as a click outside any board would.
         (diagram as { clearSelection?: () => void }).clearSelection?.();
         api.render();
         return;
       }
-      const node = diagram.getNode(hit.node.id);
+      const node = diagram.getNode(onGrip ? (gripId as string) : (hit.node as { id: string }).id);
       if (!node || node.state?.locked === true) return; // pinned: refuse; click still focuses
       if (isStatic) return; // a static board: claimed and deadened, click still focuses
       // Which edges did the press take? The corner handle names its own (s+e,
       // or s+w on RTL); a bare press within EDGE_GRIP of the tile's border
-      // takes that border; anywhere else is a move.
-      const target = (ev.source?.target ?? null) as Element | null;
+      // takes that border; anywhere else is a move. A grip press is a move.
       const onHandle = !!target?.closest?.('.axdb-rs');
       const hostEl = hostOf(node.id);
       const resizable = node.getMetadata?.('widgetResizable') !== false;
@@ -2060,17 +2124,17 @@ export function bindDashboardGrid(
       const cx = typeof src?.clientX === 'number' ? src.clientX : cr.left + ev.screen.x;
       const cy = typeof src?.clientY === 'number' ? src.clientY : cr.top + ev.screen.y;
       let edges: ResizeEdges = NO_EDGES;
-      if (resizable) {
+      if (resizable && !onGrip) {
         if (onHandle) edges = rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false };
         else if (hostEl) edges = edgesNear(hostEl, cx, cy);
       }
       const isResize = anyEdge(edges);
       if (!isResize && !movable) return; // a fixed tile: refuse the drag, click still focuses
-      // Drag-handle mode: only a press on the handle (the caption strip by
-      // default) moves the tile. Anywhere else the press is claimed (no group
-      // drag) but starts nothing, so the body keeps its own behaviour — a
-      // table scrolls, a legend clicks.
-      if (!isResize && dragHandle !== null && !pressOnDragHandle(dragHandle, target, hostEl, cx, cy)) return;
+      // Drag-handle mode: only a press on the handle (the caption strip, a
+      // custom element, or the painted grip) moves the tile. Anywhere else the
+      // press is claimed (no group drag) but starts nothing, so the body keeps
+      // its own behaviour — a table scrolls, a legend clicks.
+      if (!isResize && dragSel !== null && !pressOnDragHandle(dragSel, target, hostEl, cx, cy)) return;
       // Arm the glide class NOW, a full task before any displacement can
       // happen: a transition defined in the same style recalc as the first
       // left/top write does not run (CSS transitions fire only when the
@@ -2531,14 +2595,16 @@ export function bindDashboardGrid(
     },
     getStatic: () => isStatic,
     setDragHandle(v): void {
-      const sel = dragHandleSelector(v);
-      if (sel === dragHandle) return;
-      dragHandle = sel;
+      const next = normalizeDragHandle(v);
+      if (sameDragHandle(next, dragHandle)) return;
+      dragHandle = next;
+      dragSel = dragHandleSelector(next);
       if (gesture) cancelActiveGesture(false);
-      api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
+      api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle === true);
+      syncHandles();
       api.renderNow();
     },
-    getDragHandle: () => dragHandleValue(dragHandle),
+    getDragHandle: () => (typeof dragHandle === 'object' ? { ...dragHandle } : dragHandle),
     saveLayout() {
       const saved = engine.saveLayout();
       return {
@@ -2575,7 +2641,7 @@ export function bindDashboardGrid(
         responsive: !!responsive && !responsivePinned,
         fluid,
         static: isStatic,
-        dragHandle: dragHandleValue(dragHandle),
+        dragHandle: typeof dragHandle === 'object' ? { ...dragHandle } : dragHandle,
         capacity,
         gap,
         padding,

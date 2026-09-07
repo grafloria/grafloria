@@ -187,6 +187,28 @@ const CSS = `
   content: ''; flex: none; width: 8px; height: 12px; opacity: .55;
   background: radial-gradient(circle, currentColor 1.1px, transparent 1.5px) 0 0 / 4px 4px;
 }
+/* A PAINTED GRIP (dragHandle: { grip: true }): the only drag zone, a small
+   dotted tab along the card's top edge. Inside sits in the header band and
+   the header makes room for it; outside is a tab above the card, the
+   DevExpress item bar. The host must not clip it. */
+.grafloria-node-host > .axdb-grip {
+  position: absolute; z-index: 4; box-sizing: border-box; width: 24px; height: 12px;
+  border: 1px solid var(--axdb-line, #e7eaf1); border-radius: 3px; background: var(--axdb-card, #fff);
+  color: var(--axdb-muted, #5a6478); cursor: grab; opacity: .8;
+}
+.grafloria-node-host > .axdb-grip::before {
+  content: ''; position: absolute; left: 5px; top: 2px; width: 12px; height: 6px;
+  background: radial-gradient(circle, currentColor 1px, transparent 1.4px) 0 0 / 4px 3px;
+}
+.grafloria-node-host:hover > .axdb-grip, .grafloria-node-host > .axdb-grip:hover { opacity: 1; border-color: #3b52d9; color: #3b52d9; }
+.grafloria-node-host > .axdb-grip--inside { top: 5px; }
+.grafloria-node-host > .axdb-grip--outside { top: -11px; height: 11px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; box-shadow: 0 -1px 2px rgba(16, 24, 40, .08); }
+.grafloria-node-host > .axdb-grip--left { left: 8px; }
+.grafloria-node-host > .axdb-grip--right { right: 8px; }
+.grafloria-node-host > .axdb-grip--center { left: 50%; transform: translateX(-50%); }
+.grafloria-node-host.axdb-gp-inside.axdb-gp-left .axdb-widget > .axdb-widget-h { padding-left: 24px; }
+.grafloria-node-host.axdb-gp-inside.axdb-gp-right .axdb-widget > .axdb-widget-h { padding-right: 24px; }
+.grafloria-node-host.axdb-gp-inside.axdb-gp-center .axdb-widget > .axdb-widget-h { padding-top: 10px; }
 .axdb-widget-b { flex: 1; min-height: 0; position: relative; }
 .axdb-widget-b > svg { display: block; width: 100%; height: 100%; }
 .axdb-widget-b.axdb-scroll { overflow: auto; }
