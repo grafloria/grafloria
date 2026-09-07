@@ -26,7 +26,7 @@
 import { Command, type DiagramModel, type GroupModel, type NodeModel } from '@grafloria/engine';
 import { LiveRegionController, registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
 import type { DashboardGridApi, DashboardGridHandle, DashboardGridOptions } from './grid-binder';
-import { dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, pressOnDragHandle, syncGrip, DRAG_HANDLE_CLASS, type DragHandleOption } from './grid-binder';
+import { dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, pressOnDragHandle, syncGrip, DRAG_HANDLE_CLASS, type DragHandleOption } from './grid-binder';
 import { cellFromGridItem, type CellRect, type WorldRect } from './grid-mapping';
 import {
   addSplitLeaf,
@@ -692,6 +692,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     hitTest(ev, hit) {
       if (disposed) return false;
       if (gesture) return true;
+      if (!ownsPress(api.container, diagram, ev, hit)) return false;
       if (hit.node) return (group.members ?? new Set<string>()).has(hit.node.id);
       return worldInsideBoard(ev.world.x, ev.world.y);
     },
@@ -1060,6 +1061,13 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       return true;
     },
     getFocusedWidget: () => focusedId,
+    selectWidget(id): boolean {
+      if (disposed) return false;
+      if (id !== undefined && (!(group.members ?? new Set<string>()).has(id) || !diagram.getNode(id))) return false;
+      selectWidget(id);
+      return true;
+    },
+    getSelectedWidget: () => selectedId,
     saveLayout() {
       return { columns, cells: cellsFromSplit(readTree(), columns, rowsGuess()) };
     },
