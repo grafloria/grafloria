@@ -103,6 +103,13 @@ board('nested', 'container with children · static toggled at runtime', { dragHa
     { id: 'n-mix', kind: 'donut', span: 4, rows: 2, title: 'Inner mix', data: { slices: [{ label: 'A', value: 3 }, { label: 'B', value: 2 }] } },
   ] },
 ] });
+const INNER = () => [
+  { id: 'n-trend', kind: 'line', span: 8, rows: 2, title: 'Inner trend', data: { labels: ['a', 'b', 'c', 'd'], series: [{ name: 'x', values: [1, 3, 2, 4] }] } },
+  { id: 'n-mix', kind: 'donut', span: 4, rows: 2, title: 'Inner mix', data: { slices: [{ label: 'A', value: 3 }, { label: 'B', value: 2 }] } },
+];
+board('c-split', 'container · layout split (item 7)', { sizing: 'grow', dragHandle: { grip: true, position: 'left', placement: 'inside' }, widgets: [...KPIS(), { id: 'box', span: 12, rows: 2, columns: 12, layout: 'split', widgets: INNER() }] });
+board('c-fit', 'container · sizing fit (pane is the bound) · grow board', { sizing: 'grow', widgets: [...KPIS(), { id: 'box', span: 12, rows: 2, columns: 12, sizing: 'fit', widgets: INNER() }] });
+board('c-grow', 'container · sizing grow (default: slab escalates) · grow board', { sizing: 'grow', widgets: [...KPIS(), { id: 'box', span: 12, rows: 2, columns: 12, widgets: INNER() }] });
 board('narrow', 'responsive 12→6 at 700 px · squeeze false', { squeeze: false, responsive: { breakpoints: [{ w: 700, c: 6, layout: 'move' }], columnMax: 12, layout: 'move' } });
 
 await new Promise((r) => setTimeout(r, 300));

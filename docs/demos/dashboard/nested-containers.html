@@ -199,7 +199,8 @@ defineDemo({
     '② Drag the donut ("By region") into the section: the section\'s grid makes room live around the dashed placeholder and adopts it on release. ONE undo (⌘Z) returns it to the board — both grids restored in the same step.',
     '③ Drag a KPI OUT of the section onto the board: the board adopts it, the section re-packs. One undo restores that too.',
     '④ Pull a KPI\'s bottom-right corner well below the section: the section itself GROWS a row in the board (escalation — the child never overflows the frame). Pull back up and it shrinks again.',
-    'Press "▶ run the scripted checks": real pointer gestures drive the crossing in both directions, the single undo for each, escalation, and the nested toJSON() round-trip.',
+    '⑤ A container has its own layout and bound: `layout: \'split\'` on the section makes it a splitter tree inside its pane (`handle.setLayout(mode, containerId)` switches it live; toJSON() writes the tree under the section), and `sizing: \'fit\'` makes the pane the bound — a child pulled past it is refused instead of growing the section.',
+    'Press "▶ run the scripted checks": real pointer gestures drive the crossing in both directions, the single undo for each, escalation, the section\'s live layout switch, and the nested toJSON() round-trip.',
   ],
 
   async setup(ctx) {
@@ -333,6 +334,22 @@ defineDemo({
     );
     check(rebuilt.nodes.every((n) => n.id !== 'kpis'), 'the rebuilt spec keeps the container as a group, not a node');
     check(rebuilt.nodes.some((n) => n.id === 'k-rev'), 'and keeps the children as widget nodes');
+
+    // ---- ⑤ layout per container: the section as a splitter tree, live ------
+    H.setLayout('split', 'kpis');
+    await settle();
+    check(H.getLayout('kpis') === 'split' && H.getLayout() === 'grid', 'setLayout(mode, containerId) switches the SECTION, not the view');
+    const asSplit = H.toJSON().views[0].widgets.find((w) => w.id === 'kpis');
+    check(asSplit?.layout === 'split' && !!asSplit?.tree && (asSplit?.widgets?.length ?? 0) >= 3, 'toJSON() writes layout and a tree under the section, children intact');
+    check(container.querySelectorAll('.axdb-div').length >= 1, 'the section shows its dividers');
+    H.setLayout('grid', 'kpis');
+    await settle();
+    const asGrid = H.toJSON().views[0].widgets.find((w) => w.id === 'kpis');
+    check(H.getLayout('kpis') === 'grid' && asGrid?.tree === undefined && container.querySelectorAll('.axdb-div').length === 0, 'and back to a grid: no tree, no dividers');
+    // A switch right after a gesture's undo must not strand a lifted ghost on
+    // any tile (the visual gate caught a binder disposed inside its 60 ms window).
+    await new Promise((r) => setTimeout(r, 80));
+    check(container.querySelectorAll('.axdb-ghost').length === 0, 'no tile is left wearing the drag ghost after the switches');
   },
 
   async showcase(ctx) {

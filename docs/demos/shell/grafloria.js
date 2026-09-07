@@ -194560,6 +194560,18 @@ function pressOnDragHandle(sel, target, hostEl, clientX, clientY) {
 }
 var CAPTION_BAND = 28;
 var BOARD_REGISTRY = /* @__PURE__ */ new WeakMap();
+function registerBoardPeer(container, peer) {
+  let set = BOARD_REGISTRY.get(container);
+  if (!set) {
+    set = /* @__PURE__ */ new Set();
+    BOARD_REGISTRY.set(container, set);
+  }
+  set.add(peer);
+  const s = set;
+  return () => {
+    s.delete(peer);
+  };
+}
 var LIVE_REGIONS = /* @__PURE__ */ new WeakMap();
 function liveRegionFor(container) {
   let live = LIVE_REGIONS.get(container);
@@ -194651,6 +194663,7 @@ function bindDashboardGrid(api, group, options = {}) {
   const squeeze = options.squeeze !== false;
   let float = options.float ?? false;
   const maxRows = options.maxRows;
+  const escalate = options.escalate !== false;
   const dragOut = options.dragOut ?? "cancel";
   const wantHandles = options.resizeHandles !== false;
   const fluid = options.fluid === true;
@@ -194886,17 +194899,32 @@ function bindDashboardGrid(api, group, options = {}) {
     if (glideTimer) clearTimeout(glideTimer);
     glideTimer = setTimeout(() => htmlLayer()?.classList.remove("axdb-glide"), GLIDE_OFF_DELAY);
   };
+  let ghostHost = null;
+  const flushGhost = () => {
+    if (ghostTimer) clearTimeout(ghostTimer);
+    ghostTimer = null;
+    ghostHost?.classList.remove("axdb-ghost", "axdb-out");
+    ghostHost = null;
+  };
   const setGhost = (id, on) => {
     const host = hostOf(id);
     if (!host) return;
+    if (ghostHost && ghostHost !== host) flushGhost();
     if (on) {
       if (ghostTimer) clearTimeout(ghostTimer);
+      ghostTimer = null;
       host.classList.add("axdb-ghost");
       host.classList.remove("axdb-out");
+      ghostHost = host;
     } else {
       host.classList.remove("axdb-out");
       if (ghostTimer) clearTimeout(ghostTimer);
-      ghostTimer = setTimeout(() => host.classList.remove("axdb-ghost"), 60);
+      ghostHost = host;
+      ghostTimer = setTimeout(() => {
+        host.classList.remove("axdb-ghost");
+        ghostTimer = null;
+        if (ghostHost === host) ghostHost = null;
+      }, 60);
     }
   };
   const nameOf2 = (node) => {
@@ -195385,7 +195413,7 @@ function bindDashboardGrid(api, group, options = {}) {
     const minW = Math.max(8, columnUnitFor(gg, f.width));
     let w = Math.max(minW, right - left);
     let h = bottom - top;
-    if (maxRows !== void 0 && g.kind === "resize") {
+    if (maxRows !== void 0 && escalate && g.kind === "resize") {
       const parent = parentPeer();
       if (parent) {
         const visual = boardVisualHeight();
@@ -196239,7 +196267,7 @@ function bindDashboardGrid(api, group, options = {}) {
       placeholder?.remove();
       placeholder = null;
       if (glideTimer) clearTimeout(glideTimer);
-      if (ghostTimer) clearTimeout(ghostTimer);
+      flushGhost();
       htmlLayer()?.classList.remove("axdb-glide");
       api.container.style.cursor = "";
     }
@@ -197452,6 +197480,24 @@ function bindDashboardSplit(api, group, options = {}) {
   applyFluidFrame();
   project(reconcile2());
   api.renderNow();
+  const unregisterPeer = registerBoardPeer(api.container, {
+    group,
+    hasItem: (id) => (group.members ?? /* @__PURE__ */ new Set()).has(id),
+    memberCell: (id) => handle.cellOf(id),
+    resizeMemberBy: () => ({ changed: false }),
+    containsWorld: (x, y) => worldInsideBoard(x, y),
+    containsWorldExtended: (x, y) => worldInsideBoard(x, y),
+    frameArea: () => {
+      const f = frame();
+      return f.width * f.height;
+    },
+    adopt: () => null
+  });
+  const disposeHandle = handle.dispose.bind(handle);
+  handle.dispose = () => {
+    unregisterPeer();
+    disposeHandle();
+  };
   return handle;
 }
 
@@ -197947,7 +197993,11 @@ function createDashboardHandle(ctx) {
       const cell = cellOf(memberId);
       const at = cell ? { x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : {};
       if (ctx.boardGroups.has(memberId)) {
-        entries.push({ id: memberId, ...spec ?? {}, ...at, widgets: treeOf(memberId) });
+        const { tree: _authored, ...rest } = spec ?? {};
+        const clayout = ctx.layoutOf.get(memberId) ?? spec?.layout ?? "grid";
+        const cb = binders.get(memberId);
+        const ctree = clayout === "split" && cb?.getSplitTree ? cb.getSplitTree() : void 0;
+        entries.push({ id: memberId, ...rest, ...at, layout: clayout, ...ctree !== void 0 ? { tree: ctree } : {}, widgets: treeOf(memberId) });
       } else if (spec) {
         const entry = { ...spec, ...at };
         if (ctx.apiRef?.getModel().getNode(memberId)?.state?.locked === true) entry.pinned = true;
@@ -198075,7 +198125,7 @@ function createDashboardHandle(ctx) {
     },
     setLayout(layout, viewId) {
       const vid = viewId ?? ctx.active;
-      if (!views.some((v) => v.id === vid)) return;
+      if (!views.some((v) => v.id === vid) && !ctx.boardGroups.has(vid)) return;
       if ((ctx.layoutOf.get(vid) ?? "grid") === layout) return;
       ctx.rebindView?.(vid, layout);
       clampCamera();
@@ -198479,6 +198529,10 @@ function dashboard(options) {
       }
       ctx.rebindView = (viewId, next) => {
         const v = views.find((x) => x.id === viewId);
+        if (!v) {
+          rebindContainerLayout(viewId, next);
+          return;
+        }
         const g = groups.get(viewId);
         const b = binders.get(viewId);
         if (!v || !g || !b) return;
@@ -198513,6 +198567,39 @@ function dashboard(options) {
         ctx.boardGroups.set(id, g);
         bindContainer(g, w, ctx.viewOfBoard.get(id) ?? ctx.active);
       };
+      function rebindContainerLayout(id, next) {
+        const cg = ctx.boardGroups.get(id);
+        const w = specById.get(id);
+        const b = binders.get(id);
+        if (!cg || !w || !w.widgets || !b) return;
+        const cells = b.saveLayout().cells;
+        const focused = b.getFocusedWidget();
+        const selected = b.getSelectedWidget();
+        b.dispose();
+        const write = (fn) => model.runSystemWrite ? model.runSystemWrite(fn) : fn();
+        write(() => {
+          for (const [cid, cell] of cells) {
+            const n3 = model.getNode(cid);
+            if (n3) n3.setMetadata("gridItem", gridItemFromCell(cell));
+            else model.getGroup(cid)?.setMetadata("gridItem", gridItemFromCell(cell));
+          }
+          cg.setMetadata(SPLIT_TREE_KEY, void 0);
+          cg.setMetadata("dashboardLayouts", void 0);
+          const board = cg.getMetadata("dashboardBoard") ?? {};
+          cg.setMetadata("dashboardBoard", { ...board, layout: next });
+          const cw = cg.getMetadata("containerWidget") ?? {};
+          cg.setMetadata("containerWidget", { ...cw, layout: next });
+        });
+        w.layout = next;
+        delete w.tree;
+        ctx.layoutOf.set(id, next);
+        const slabRows = binders.get(ctx.viewOfWidget.get(id) ?? "")?.cellOf(id)?.h;
+        const authored = w.maxRows ?? rowExtentOf(w.widgets ?? []);
+        bindContainer(cg, w, ctx.viewOfBoard.get(id) ?? ctx.active, Math.max(authored, slabRows ?? 0));
+        binders.get(id)?.sync();
+        if (focused) binders.get(id)?.focusWidget(focused);
+        else if (selected) binders.get(id)?.selectWidget(selected);
+      }
       ctx.attachHistory?.();
       return;
       function mountBoard(boardId, viewId, widgets, boardGroup) {
@@ -198529,8 +198616,12 @@ function dashboard(options) {
               ...w.title !== void 0 ? { title: w.title } : {},
               columns: innerColumns,
               maxRows: innerRows,
-              ...w.data !== void 0 ? { data: w.data } : {}
+              ...w.data !== void 0 ? { data: w.data } : {},
+              ...w.layout !== void 0 ? { layout: w.layout } : {},
+              ...w.sizing !== void 0 ? { sizing: w.sizing } : {}
             });
+            ctx.layoutOf.set(w.id, w.layout ?? "grid");
+            if (w.layout === "split" && w.tree !== void 0) cg.setMetadata(SPLIT_TREE_KEY, w.tree);
             cg.setMetadata("dashboardBoard", {
               columns: innerColumns,
               gap,
@@ -198543,7 +198634,9 @@ function dashboard(options) {
               designHeight: 0,
               maxRows: innerRows,
               float: false,
-              rtl: options.rtl ?? false
+              rtl: options.rtl ?? false,
+              layout: w.layout ?? "grid",
+              escalate: w.sizing !== "fit"
             });
             cg.size = { width: 100, height: rowHeight, depth: 0 };
             boardGroup.addMember(w.id);
@@ -198598,26 +198691,35 @@ function dashboard(options) {
           ...options.responsive ? { responsive: options.responsive } : {}
         });
       }
-      function bindContainer(cg, w, viewId) {
+      function bindContainer(cg, w, viewId, innerRows) {
+        const vb = binders.get(ctx.viewOfBoard.get(w.id) ?? ctx.active);
+        const inner = {
+          columns: innerColumnsOf(w),
+          gap,
+          padding: 0,
+          baseRowHeight: rowHeight,
+          rtl: vb?.getRtl() ?? options.rtl ?? false,
+          static: vb?.getStatic() ?? options.static ?? false,
+          dragHandle: vb?.getDragHandle() ?? options.dragHandle ?? false,
+          ...options.squeeze !== void 0 ? { squeeze: options.squeeze } : {},
+          onGesture: (e) => {
+            if (e.type === "commit") reportChanged();
+            options.binder?.onGesture?.(e);
+          }
+        };
+        if ((ctx.layoutOf.get(w.id) ?? w.layout) === "split") {
+          binders.set(w.id, bindDashboardSplit(a, cg, { ...inner, ...w.tree !== void 0 ? { tree: w.tree } : {} }));
+          return;
+        }
         binders.set(
           w.id,
           bindDashboardGrid(a, cg, {
-            columns: innerColumnsOf(w),
-            gap,
-            padding: 0,
+            ...inner,
             sizing: "fit",
-            baseRowHeight: rowHeight,
             designHeight: 0,
-            maxRows: w.maxRows ?? rowExtentOf(w.widgets ?? []),
+            maxRows: innerRows ?? w.maxRows ?? rowExtentOf(w.widgets ?? []),
             float: false,
-            rtl: options.rtl ?? false,
-            static: options.static ?? false,
-            dragHandle: options.dragHandle ?? false,
-            ...options.squeeze !== void 0 ? { squeeze: options.squeeze } : {},
-            onGesture: (e) => {
-              if (e.type === "commit") reportChanged();
-              options.binder?.onGesture?.(e);
-            }
+            escalate: w.sizing !== "fit"
           })
         );
       }
@@ -198730,7 +198832,7 @@ function fromDocument(document2, options = {}) {
     mode: firstBoard?.fluid === true ? "fluid" : "fixed",
     overflow: firstBoard?.overflow ?? "bounded",
     layoutOf: new Map(
-      viewGroups.map((g) => [g.id, g.getMetadata("dashboardBoard")?.layout ?? "grid"])
+      dashGroups.map((g) => [g.id, g.getMetadata("dashboardBoard")?.layout ?? "grid"])
     ),
     // responsive is NOT in the document (a runtime seam), so it is deliberately
     // absent from the round-trip; width/height/columns/gap/sizing/float/rtl are.

@@ -232,6 +232,30 @@ describe('dashboard() containment', () => {
     // the container did NOT come back as a view
     expect(snap.views.some((v) => v.id === 'section')).toBe(false);
   });
+
+  it('a split, fit container reloads as a split, fit container (item 7 through fromDocument)', () => {
+    const spec = NESTED();
+    const { model, handle } = mount(spec);
+    handle.setLayout('split', 'section');
+    expect(handle.getLayout('section')).toBe('split');
+    const json = JSON.stringify(new DiagramSerializer().serialize(model));
+    const loaded = fromDocument(json);
+    const api = makeApi(loaded.model as DiagramModel);
+    loaded.finalize(api);
+    const h = loaded.handle!;
+    expect(h.getLayout('section')).toBe('split');
+    expect(h.getLayout('main')).toBe('grid');
+    const b = h.binderOf('section') as { getSplitTree?: () => unknown } | undefined;
+    expect(typeof b?.getSplitTree).toBe('function');
+    const section = h.toJSON().views[0].widgets.find((w) => w.id === 'section')!;
+    expect(section.layout).toBe('split');
+    expect(section.tree).toBeTruthy();
+    expect(section.widgets?.map((w: DashboardWidgetSpec) => w.id).sort()).toEqual(['k1', 'k2', 'k3']);
+    // …and the switch works on the loaded document too
+    h.setLayout('grid', 'section');
+    expect(h.getLayout('section')).toBe('grid');
+    expect((h.binderOf('section') as { getSplitTree?: unknown } | undefined)?.getSplitTree).toBeUndefined();
+  });
 });
 
 describe('removing a container (plan step 6, D12)', () => {

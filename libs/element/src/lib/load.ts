@@ -168,6 +168,9 @@ interface PersistedBoard {
   static?: boolean;
   /** 'split': a splitter tree persisted as `dashboardTree` on the group. */
   layout?: 'grid' | 'split';
+  /** Containers: the inner row bound, and whether a pull past it grows the slab. */
+  maxRows?: number;
+  escalate?: boolean;
 }
 
 /** True when the node is an ER entity card or a UML class card. */
@@ -319,7 +322,7 @@ export function fromDocument(
     mode: firstBoard?.fluid === true ? 'fluid' : 'fixed',
     overflow: firstBoard?.overflow ?? 'bounded',
     layoutOf: new Map(
-      viewGroups.map((g) => [g.id, ((g.getMetadata('dashboardBoard') as PersistedBoard | undefined)?.layout ?? 'grid') as 'grid' | 'split'])
+      dashGroups.map((g) => [g.id, ((g.getMetadata('dashboardBoard') as PersistedBoard | undefined)?.layout ?? 'grid') as 'grid' | 'split'])
     ),
     // responsive is NOT in the document (a runtime seam), so it is deliberately
     // absent from the round-trip; width/height/columns/gap/sizing/float/rtl are.
