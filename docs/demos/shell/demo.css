@@ -42,13 +42,16 @@ h1 { margin: 0; font-size: 19px; letter-spacing: -.3px; }
 
 /* ── The gallery side menu (built by demo.js from the generated manifest) ── */
 #grafloria-nav-toggle {
-  position: fixed; left: 14px; bottom: 14px; z-index: 60;
-  width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--gf-line);
-  background: var(--gf-panel); color: var(--gf-ink); font-size: 17px; cursor: pointer;
-  box-shadow: var(--an-shadow); display: flex; align-items: center; justify-content: center;
-  transition: transform .15s, opacity .15s;
+  /* A TAB on the left edge, not a floating disc in the corner: the collapsed
+     menu stays discoverable ("closed the side menu — can't get it back"). */
+  position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 60;
+  writing-mode: vertical-rl; transform-origin: center;
+  padding: 12px 6px 12px 5px; border: 1px solid var(--gf-line); border-left: 0; border-radius: 0 8px 8px 0;
+  background: var(--gf-panel); color: var(--gf-ink); font: 600 12px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: .04em; cursor: pointer; box-shadow: var(--an-shadow);
+  display: flex; align-items: center; gap: 6px; transition: background .15s, color .15s, opacity .15s;
 }
-#grafloria-nav-toggle:hover { transform: scale(1.06); border-color: var(--gf-soft); }
+#grafloria-nav-toggle:hover { background: var(--gf-accent); color: #fff; border-color: var(--gf-accent); }
 body.nav-open #grafloria-nav-toggle { opacity: 0; pointer-events: none; }
 #grafloria-nav {
   position: fixed; top: 0; left: 0; bottom: 0; width: 264px; z-index: 55;

@@ -118,15 +118,17 @@ async function buildNav() {
   nav.setAttribute('aria-label', 'Demo gallery');
   nav.innerHTML =
     `<div class="an-head"><a class="an-home" href="../index.html"><img src="../shell/logo.svg" alt="">Grafloria demos</a>` +
-    `<button class="an-close" aria-label="Close menu" title="Close (Esc)">×</button></div>` +
+    `<button class="an-close" aria-label="Collapse menu" title="Collapse (Esc) — the tab at the left edge brings it back">‹</button></div>` +
     `<input class="an-search" type="search" placeholder="Filter demos…  ( / )" aria-label="Filter demos" autocomplete="off">` +
     `<div class="an-list">${list}</div>` +
     `<div class="an-foot">${DEMOS.length} demos · every one MIT · <a href="https://grafloria.com">grafloria.com</a></div>`;
 
   const toggle = document.createElement('button');
   toggle.id = 'grafloria-nav-toggle';
+  toggle.setAttribute('aria-label', 'Expand the demos menu');
+  toggle.title = 'Demos menu';
   toggle.setAttribute('aria-label', 'Open demo menu');
-  toggle.innerHTML = '☰';
+  toggle.innerHTML = '☰ Demos';
 
   document.body.append(toggle, nav);
 
@@ -286,9 +288,13 @@ function buildCodePanel(spec) {
     { key: 'install', label: 'Install' },
   ];
 
+  // A demo may ship its own dialect samples as plain-text script blocks —
+  // `<script type="text/plain" data-code="angular">…</script>` — so they stay
+  // out of the module the JavaScript tab shows. `spec.code` still wins.
+  const blockCode = (fw) => document.querySelector(`script[type="text/plain"][data-code="${fw}"]`)?.textContent?.replace(/^\n/, '') ?? undefined;
   const samples = {
     js: pageSource,
-    angular: spec.code?.angular ?? `// npm i @grafloria/angular
+    angular: spec.code?.angular ?? blockCode('angular') ?? `// npm i @grafloria/angular
 import { Component, viewChild } from '@angular/core';
 import { GrafloriaDiagramCanvas } from '@grafloria/angular';
 
@@ -311,7 +317,7 @@ export class DemoComponent {
   // JavaScript tab: one engine underneath every framework.
   canvas = viewChild(GrafloriaDiagramCanvas);
 }`,
-    react: spec.code?.react ?? `// npm i @grafloria/react
+    react: spec.code?.react ?? blockCode('react') ?? `// npm i @grafloria/react
 import { GrafloriaFlow } from '@grafloria/react';
 
 // Use this demo's exact nodes/edges — copy them from the JavaScript tab.
@@ -330,7 +336,7 @@ export function Demo() {
     />
   );
 }`,
-    vue: spec.code?.vue ?? `<!-- npm i @grafloria/vue -->
+    vue: spec.code?.vue ?? blockCode('vue') ?? `<!-- npm i @grafloria/vue -->
 <script setup>
 import { GrafloriaFlow } from '@grafloria/vue';
 import { ref } from 'vue';
@@ -488,7 +494,11 @@ npm i @grafloria/engine @grafloria/renderer`,
         const f = realFw[M.file];
         showMonaco(f.text, f.name.split('.').pop(), true, realFw, M.file, (i) => { M.file = i; setTab(t); });
       } else {
-        showMonaco(samples[t], t === 'install' ? 'js' : 'typescript', true, null, 0);
+        // EXT_LANG is keyed by file EXTENSION: 'ts' → TypeScript colouring for
+        // the Angular / React samples, 'vue' → HTML for the SFC. Passing a
+        // language NAME here fell through to plaintext — every framework tab
+        // painted black while the JS tab was coloured (live report).
+        showMonaco(samples[t], t === 'install' ? 'js' : t === 'vue' ? 'vue' : 'ts', true, null, 0);
       }
     } else {
       // Fallback: textarea (JS) / highlighted <pre> (frameworks).

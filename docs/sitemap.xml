@@ -61,16 +61,16 @@
   <url><loc>https://grafloria.com/blog/ways-a-diagram-can-lie/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/when-mermaid-diagrams-grow-up/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/why-nesting-breaks-flow-libraries/</loc><lastmod>2026-08-22</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/collab/comments.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/collab/conflict-resolution.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/collab/live-cursors.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/collab/offline-and-reconnect.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/collab/presentation-mode.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/collab/two-tabs-live.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/collab/comments.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/collab/conflict-resolution.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/collab/live-cursors.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/collab/offline-and-reconnect.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/collab/presentation-mode.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/collab/two-tabs-live.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/dashboard/dashboard-builder.html</loc><lastmod>2026-09-06</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/dashboard/fluid-board.html</loc><lastmod>2026-09-06</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/dashboard/fluid-board.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/dashboard/grid-options.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/dashboard/nested-containers.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/dashboard/nested-containers.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/class-uml.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/er-advanced.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/erd-editor.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
@@ -81,63 +81,63 @@
   <url><loc>https://grafloria.com/demos/diagrams/table-er.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/uml-relationships.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/visio-editor.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/animating-edges.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/custom-edges.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/edge-labels.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/edge-markers.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/edge-routing.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/edge-toolbar.html</loc><lastmod>2026-09-06</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/edge-types.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/editable-edge.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/floating-edges.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/jump-overs.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/parallel-links-and-self-loops.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/reconnect-edge.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/routing-algorithms.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/animating-edges.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/custom-edges.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/edge-labels.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/edge-markers.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/edge-routing.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/edge-toolbar.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/edge-types.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/editable-edge.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/floating-edges.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/jump-overs.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/parallel-links-and-self-loops.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/reconnect-edge.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/routing-algorithms.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/grouping/collapse-expand.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/grouping/drop-to-contain.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/grouping/group-frames.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/grouping/parent-child.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/grouping/parent-child.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/grouping/selection-grouping.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/grouping/sub-flow.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/grouping/swimlanes.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/interaction/computing-flows.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/interaction/connection-events.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/interaction/context-menu.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/interaction/contextual-zoom.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/interaction/copy-paste.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/computing-flows.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/connection-events.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/context-menu.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/contextual-zoom.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/copy-paste.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/drag-and-drop.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/drag-undo.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/easy-connect-body.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/interaction/execute-flow.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/interaction/helper-lines.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/execute-flow.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/helper-lines.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/keyboard-a11y.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/marquee-select.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/n8n-workflow.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/parent-move.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/interaction/preventing-cycles.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/preventing-cycles.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/proximity-connect-live.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/interaction/save-and-restore.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/interaction/touch-device.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/save-and-restore.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/touch-device.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/undo-redo.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/interaction/validation.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/layout/auto-layout.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/layout/dagre-tree.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/layout/dynamic-layouting.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/layout/elk-tree.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/layout/expand-collapse.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/layout/force-layout.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/layout/layout-portfolio.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/layout/nested-containers.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/layout/off-thread-layout.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/misc/download-image.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/misc/drawio-import.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/misc/editable-round-trip.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/misc/mermaid-text.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/validation.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/layout/auto-layout.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/layout/dagre-tree.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/layout/dynamic-layouting.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/layout/elk-tree.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/layout/expand-collapse.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/layout/force-layout.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/layout/layout-portfolio.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/layout/nested-containers.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/layout/off-thread-layout.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/misc/download-image.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/misc/drawio-import.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/misc/editable-round-trip.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/misc/mermaid-text.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/misc/mermaid-viewer.html</loc><lastmod>2026-09-06</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/misc/minimap-and-controls.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/misc/pdf-export.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/misc/perf-hud.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/misc/minimap-and-controls.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/misc/pdf-export.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/misc/perf-hud.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/misc/server-side-export.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/nodes/auto-sizing.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/nodes/connection-limit.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
@@ -147,29 +147,29 @@
   <url><loc>https://grafloria.com/demos/nodes/easy-connect.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/nodes/edit-label.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/nodes/html-nodes.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/nodes/intersections.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/nodes/node-position-animation.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/nodes/intersections.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/nodes/node-position-animation.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/nodes/node-resize-gesture.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/nodes/node-resizer.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/nodes/node-toolbar.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/nodes/proximity-connect.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/nodes/rotatable-node.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/nodes/shapes.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/nodes/stress-test.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/nodes/updating-nodes.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/ports/connection-validation.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/ports/magnet-and-highlight.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/ports/port-groups-and-layouts.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/ports/port-labels.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/ports/port-shapes.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/ports/typed-ports.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/styling/css-variables.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/styling/dark-mode.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/styling/named-style-classes.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/styling/paint-servers.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/styling/theme-bound-properties.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/nodes/shapes.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/nodes/stress-test.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/nodes/updating-nodes.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/ports/connection-validation.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/ports/magnet-and-highlight.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/ports/port-groups-and-layouts.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/ports/port-labels.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/ports/port-shapes.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/ports/typed-ports.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/styling/css-variables.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/styling/dark-mode.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/styling/named-style-classes.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/styling/paint-servers.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/styling/theme-bound-properties.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/styling/themes-and-tokens.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/styling/turbo-flow.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/styling/turbo-flow.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/whiteboard/eraser.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/whiteboard/freehand-draw.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/whiteboard/rectangle.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
