@@ -1513,8 +1513,11 @@ try {
   const bodyBack = phOff && c3.y < c2.y;
   // D. GRIP mode, left / inside: body AND caption text are inert; only the grip moves it
   await page.selectOption('#fb-drag', 'grip'); await page.waitForTimeout(300);
-  const gripInfo = () => page.evaluate(() => { const h = document.querySelector('.grafloria-node-host[data-node-id="trend"]'); const g = h.querySelector(':scope > .axdb-grip'); if (!g) return null; const r = g.getBoundingClientRect(), hr = h.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, above: r.bottom <= hr.top + 1, left: r.left - hr.left, right: hr.right - r.right, cls: g.className }; });
+  const gripInfo = () => page.evaluate(() => { const h = document.querySelector('.grafloria-node-host[data-node-id="trend"]'); const g = h.querySelector(':scope > .axdb-grip'); if (!g) return null; const r = g.getBoundingClientRect(), hr = h.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, above: r.bottom <= hr.top + 1, left: r.left - hr.left, right: hr.right - r.right, cls: g.className, shown: getComputedStyle(g).opacity === '1' }; });
+  // Grips show on the SELECTED widget only: trend was pressed in C (selected), reps was not.
   const g1 = await gripInfo();
+  const repsHidden = await page.evaluate(() => getComputedStyle(document.querySelector('.grafloria-node-host[data-node-id="reps"] > .axdb-grip')).opacity === '0');
+  const selectedOnly = !!g1 && g1.shown && repsHidden;
   const c4 = await cellOf('trend'); const r4 = await rectOf('trend');
   const phGripBody = await pull(r4.x + r4.width / 2, r4.y + r4.height * 0.6, 300);
   const phGripCaption = await pull(r4.x + r4.width / 2, r4.y + 12, 300);
@@ -1547,9 +1550,9 @@ try {
   await shot(page, 'split-grip-drag');
   await page.mouse.up(); await page.waitForTimeout(400);
   const st = await boardState(page);
-  verdict(on.v === true && on.cls && on.cursor === 'grab' && bodyInert && headerMoves && off.v === false && !off.cls && bodyBack && !!g1 && !g1.above && g1.left < 12 && gripInert && gripMoves && outsideMoves && splitBody === 0 && splitGrip === 1 && st.overlaps === 0,
+  verdict(on.v === true && on.cls && on.cursor === 'grab' && bodyInert && headerMoves && off.v === false && !off.cls && bodyBack && !!g1 && !g1.above && g1.left < 20 && selectedOnly && gripInert && gripMoves && outsideMoves && splitBody === 0 && splitGrip === 1 && st.overlaps === 0,
     `caption=${on.v}/${on.cls}/cursor=${on.cursor} body-inert=${bodyInert} caption-moves=${headerMoves}(y ${c0.y}->${c2.y}) off=${off.v}/${off.cls} body-back=${bodyBack} ` +
-    `grip-inside-left=${!!g1 && !g1.above && g1.left < 12}(${g1?.cls}) grip-body+caption-inert=${gripInert} grip-moves=${gripMoves}(y ${c4.y}->${c6.y}) ` +
+    `grip-inside-left=${!!g1 && !g1.above && g1.left < 20}(${g1?.cls}) selected-only=${selectedOnly} grip-body+caption-inert=${gripInert} grip-moves=${gripMoves}(y ${c4.y}->${c6.y}) ` +
     `outside-right-moves=${outsideMoves}(above=${g2?.above}, right=${g2?.right}, y ${c7.y}->${c8.y}) split-body-line=${splitBody} split-grip-line=${splitGrip} overlaps=${st.overlaps}`);
   assertNoPageErrors(page);
   await page.close();

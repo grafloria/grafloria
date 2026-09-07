@@ -194320,21 +194320,50 @@ var CSS4 = `
 .grafloria-node-host > .axdb-grip {
   position: absolute; z-index: 4; box-sizing: border-box; width: 24px; height: 12px;
   border: 1px solid var(--axdb-line, #e7eaf1); border-radius: 3px; background: var(--axdb-card, #fff);
-  color: var(--axdb-muted, #5a6478); cursor: grab; opacity: .8;
+  color: var(--axdb-muted, #5a6478); cursor: grab;
+  /* Shown on the SELECTED widget only (the DevExpress designer shows an item's
+     bar on the selected item): a press or keyboard focus selects, a void
+     click clears. Hidden, it takes no pointer either. */
+  opacity: 0; pointer-events: none; transition: opacity .12s ease;
 }
+.grafloria-node-host.axdb-selected > .axdb-grip, .grafloria-node-host:focus-within > .axdb-grip { opacity: 1; pointer-events: auto; }
 .grafloria-node-host > .axdb-grip::before {
   content: ''; position: absolute; left: 5px; top: 2px; width: 12px; height: 6px;
   background: radial-gradient(circle, currentColor 1px, transparent 1.4px) 0 0 / 4px 3px;
 }
-.grafloria-node-host:hover > .axdb-grip, .grafloria-node-host > .axdb-grip:hover { opacity: 1; border-color: #3b52d9; color: #3b52d9; }
-.grafloria-node-host > .axdb-grip--inside { top: 5px; }
+.grafloria-node-host > .axdb-grip:hover { border-color: #3b52d9; color: #3b52d9; }
+/* The selected card says so, quietly. */
+.grafloria-node-host.axdb-selected > .axdb-widget { box-shadow: 0 0 0 1.5px rgba(59, 82, 217, .55), 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .05); }
+/* INSIDE: centred on the header's text line and flush with the card padding,
+   per size tier (padding 13/15, then 8/14, 4/12, 2/12). */
+.grafloria-node-host > .axdb-grip--inside { top: 14px; }
+.grafloria-node-host > .axdb-grip--inside.axdb-grip--left { left: 15px; }
+.grafloria-node-host > .axdb-grip--inside.axdb-grip--right { right: 15px; }
+.grafloria-node-host > .axdb-grip--inside.axdb-grip--center { top: 3px; }
+@container axdb-tile (max-height: 90px) {
+  .grafloria-node-host > .axdb-grip--inside { top: 9px; }
+  .grafloria-node-host > .axdb-grip--inside.axdb-grip--left { left: 14px; }
+  .grafloria-node-host > .axdb-grip--inside.axdb-grip--right { right: 14px; }
+  .grafloria-node-host > .axdb-grip--inside.axdb-grip--center { top: 2px; }
+}
+@container axdb-tile (max-height: 46px) {
+  .grafloria-node-host > .axdb-grip--inside { top: 5px; }
+  .grafloria-node-host > .axdb-grip--inside.axdb-grip--left { left: 12px; }
+  .grafloria-node-host > .axdb-grip--inside.axdb-grip--right { right: 12px; }
+  .grafloria-node-host > .axdb-grip--inside.axdb-grip--center { top: 1px; }
+}
+@container axdb-tile (max-height: 26px) {
+  .grafloria-node-host > .axdb-grip--inside { top: 2px; }
+}
+/* OUTSIDE: a tab on the card's top edge, its corners in line with the card's. */
 .grafloria-node-host > .axdb-grip--outside { top: -11px; height: 11px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; box-shadow: 0 -1px 2px rgba(16, 24, 40, .08); }
-.grafloria-node-host > .axdb-grip--left { left: 8px; }
-.grafloria-node-host > .axdb-grip--right { right: 8px; }
+.grafloria-node-host > .axdb-grip--outside.axdb-grip--left { left: 10px; }
+.grafloria-node-host > .axdb-grip--outside.axdb-grip--right { right: 10px; }
 .grafloria-node-host > .axdb-grip--center { left: 50%; transform: translateX(-50%); }
-.grafloria-node-host.axdb-gp-inside.axdb-gp-left .axdb-widget > .axdb-widget-h { padding-left: 24px; }
-.grafloria-node-host.axdb-gp-inside.axdb-gp-right .axdb-widget > .axdb-widget-h { padding-right: 24px; }
-.grafloria-node-host.axdb-gp-inside.axdb-gp-center .axdb-widget > .axdb-widget-h { padding-top: 10px; }
+/* The header makes room for an inside grip on its side; a centred one sits above it. */
+.grafloria-node-host.axdb-gp-inside.axdb-gp-left .axdb-widget > .axdb-widget-h { padding-left: 32px; }
+.grafloria-node-host.axdb-gp-inside.axdb-gp-right .axdb-widget > .axdb-widget-h { padding-right: 32px; }
+.grafloria-node-host.axdb-gp-inside.axdb-gp-center .axdb-widget > .axdb-widget-h { padding-top: 12px; }
 .axdb-widget-b { flex: 1; min-height: 0; position: relative; }
 .axdb-widget-b > svg { display: block; width: 100%; height: 100%; }
 .axdb-widget-b.axdb-scroll { overflow: auto; }
@@ -194855,10 +194884,17 @@ function bindDashboardGrid(api, group, options = {}) {
     const kind = node.getMetadata?.("widgetKind");
     return typeof kind === "string" && kind && kind !== "widget" ? `${kind} widget` : node.id;
   };
+  let selectedId;
+  const selectWidget = (id) => {
+    if (id === selectedId) return;
+    selectedId = id;
+    syncA11y();
+  };
   const syncA11y = (only) => {
     if (disposed) return;
     const members = [...group.members ?? []].filter((id) => !!diagram.getNode(id));
     if (focusedId && !members.includes(focusedId)) focusedId = void 0;
+    if (selectedId && !members.includes(selectedId)) selectedId = void 0;
     const stop = focusedId ?? members[0];
     for (const id of members) {
       if (only && !only.has(id)) continue;
@@ -194873,6 +194909,7 @@ function bindDashboardGrid(api, group, options = {}) {
       host.setAttribute("aria-roledescription", "dashboard widget");
       host.setAttribute("aria-label", bits.join(", "));
       host.setAttribute("tabindex", id === stop ? "0" : "-1");
+      host.classList.toggle("axdb-selected", id === selectedId);
     }
   };
   const syncHandles = (only) => {
@@ -195637,11 +195674,14 @@ function bindDashboardGrid(api, group, options = {}) {
       const onGrip = !!gripId && (group.members ?? /* @__PURE__ */ new Set()).has(gripId);
       if (!hit.node && !onGrip) {
         diagram.clearSelection?.();
+        selectWidget(void 0);
         api.render();
         return;
       }
       const node = diagram.getNode(onGrip ? gripId : hit.node.id);
-      if (!node || node.state?.locked === true) return;
+      if (!node) return;
+      selectWidget(node.id);
+      if (node.state?.locked === true) return;
       if (isStatic) return;
       const onHandle = !!target?.closest?.(".axdb-rs");
       const hostEl = hostOf(node.id);
@@ -195731,8 +195771,9 @@ function bindDashboardGrid(api, group, options = {}) {
   const onFocusIn = (e) => {
     const hit = memberHostAt(e.target);
     if (!hit || disposed) return;
-    if (focusedId !== hit.id) {
+    if (focusedId !== hit.id || selectedId !== hit.id) {
       focusedId = hit.id;
+      selectedId = hit.id;
       syncA11y();
     }
   };
@@ -196005,6 +196046,7 @@ function bindDashboardGrid(api, group, options = {}) {
     focusWidget(id) {
       if (disposed || !(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id)) return false;
       focusedId = id;
+      selectedId = id;
       syncA11y();
       hostOf(id)?.focus?.({ preventScroll: true });
       return true;
@@ -196714,9 +196756,16 @@ function bindDashboardSplit(api, group, options = {}) {
     if (!r || f.width <= 0 || f.height <= 0) return "";
     return `${Math.round(r.width / f.width * 100)} percent wide, ${Math.round(r.height / f.height * 100)} percent tall`;
   };
+  let selectedId;
+  const selectWidget = (id) => {
+    if (id === selectedId) return;
+    selectedId = id;
+    syncA11y();
+  };
   const syncA11y = () => {
     if (disposed) return;
     const order = splitLeaves(paintedTree()).filter((id) => !!diagram.getNode(id));
+    if (selectedId && !order.includes(selectedId)) selectedId = void 0;
     for (const id of order) hostOf(id)?.querySelector(":scope > .axdb-rs")?.remove();
     for (const id of order) {
       const host = hostOf(id);
@@ -196735,6 +196784,7 @@ function bindDashboardSplit(api, group, options = {}) {
       host.setAttribute("aria-roledescription", "dashboard widget");
       host.setAttribute("aria-label", bits.filter(Boolean).join(", "));
       host.setAttribute("tabindex", id === stop ? "0" : "-1");
+      host.classList.toggle("axdb-selected", id === selectedId);
     });
   };
   const execCommand = (cmd) => {
@@ -196929,11 +196979,14 @@ function bindDashboardSplit(api, group, options = {}) {
       const onGrip = !!gripId && (group.members ?? /* @__PURE__ */ new Set()).has(gripId);
       if (!hit.node && !onGrip) {
         diagram.clearSelection?.();
+        selectWidget(void 0);
         api.render();
         return;
       }
       const node = diagram.getNode(onGrip ? gripId : hit.node.id);
-      if (!node || node.state?.locked === true || isStatic) return;
+      if (!node) return;
+      selectWidget(node.id);
+      if (node.state?.locked === true || isStatic) return;
       if (node.getMetadata?.("widgetMovable") === false) return;
       if (dragSel !== null) {
         const src = ev.source;
@@ -197051,8 +197104,9 @@ function bindDashboardSplit(api, group, options = {}) {
   const onFocusIn = (e) => {
     const hit = memberHostAt(e.target);
     if (!hit || disposed) return;
-    if (focusedId !== hit.id) {
+    if (focusedId !== hit.id || selectedId !== hit.id) {
       focusedId = hit.id;
+      selectedId = hit.id;
       syncA11y();
     }
   };
@@ -197207,6 +197261,7 @@ function bindDashboardSplit(api, group, options = {}) {
     focusWidget(id) {
       if (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id)) return false;
       focusedId = id;
+      selectedId = id;
       syncA11y();
       hostOf(id)?.focus?.({ preventScroll: true });
       return true;
@@ -197905,6 +197960,10 @@ function createDashboardHandle(ctx) {
     },
     widget(id) {
       return makeWidgetHandle(id);
+    },
+    focusWidget(id) {
+      const b = binders.get(viewOfWidget.get(id) ?? "");
+      return b?.focusWidget(id) ?? false;
     },
     widgetsOf(viewId) {
       const v = views.find((x) => x.id === (viewId ?? ctx.active));
