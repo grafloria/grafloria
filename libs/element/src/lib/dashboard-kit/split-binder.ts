@@ -190,6 +190,9 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     h: api.container.clientHeight || 0,
   });
 
+  /** Reentrancy guard: our own frame write must not re-project through bounds:changed. */
+  let writing = false;
+
   /** FLUID: the frame is the container, both axes. Returns true when it changed. */
   const applyFluidFrame = (): boolean => {
     if (!fluid || disposed) return false;
@@ -200,7 +203,12 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     if (Math.abs(f.width - box.w) < 0.5 && Math.abs(f.height - height) < 0.5) return false;
     designW = box.w;
     designH = height;
-    diagram.runSystemWrite(() => group.setFrame({ x: f.x, y: f.y, width: box.w, height }));
+    writing = true;
+    try {
+      diagram.runSystemWrite(() => group.setFrame({ x: f.x, y: f.y, width: box.w, height }));
+    } finally {
+      writing = false;
+    }
     return true;
   };
 
@@ -888,6 +896,30 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
 
   // -- observers --------------------------------------------------------------
 
+  // THE GROUP'S FRAME IS THE BOARD. When it moves — a view parked off-camera by
+  // showView, a container re-slotted by its parent, an external resize — the
+  // widgets must follow, exactly as the grid binder's do. Without this the
+  // parked view's hosts stayed on camera under the shown view (the Angular
+  // conformance drive: the sales cards bleeding through the ops tab). Member
+  // churn re-reconciles the tree the same way.
+  const groupSubs: Array<() => void> = [
+    group.on('bounds:changed', (() => {
+      if (disposed || writing) return;
+      project();
+      api.render();
+    }) as (...args: unknown[]) => void),
+    group.on('member:added', (() => {
+      if (disposed) return;
+      project(reconcile());
+      api.render();
+    }) as (...args: unknown[]) => void),
+    group.on('member:removed', (() => {
+      if (disposed) return;
+      project(reconcile());
+      api.render();
+    }) as (...args: unknown[]) => void),
+  ];
+
   const containerObserver =
     fluid && typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(() => {
@@ -1052,6 +1084,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       api.container.removeEventListener('keydown', onKey);
       containerObserver?.disconnect();
       hostObserver?.disconnect();
+      for (const off of groupSubs) off();
       for (const el of dividerEls) el.remove();
       dividerEls.length = 0;
       insertion?.remove();
