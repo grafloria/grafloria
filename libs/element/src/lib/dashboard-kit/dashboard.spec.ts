@@ -9,7 +9,7 @@
  * They drive the real engine (DiagramModel + the kit's binder) through a
  * minimal API stub, the same shape `render()` passes to `finalize()`.
  */
-import { pressOnDragHandle } from './grid-binder';
+import { ownsPress, pressOnDragHandle } from './grid-binder';
 import { Command, DiagramModel, GroupModel, NodeModel, CommandManager, EventBus } from '@grafloria/engine';
 import { render } from '../grafloria';
 import { dashboard, type DashboardSpec } from './dashboard';
@@ -1339,6 +1339,29 @@ describe('per-widget limits, pointer flags and the static board', () => {
     expect(host('a').classList.contains('axdb-selected')).toBe(false);
   });
 
+  it('a layout switch keeps a MOUSE-selected widget — selected, never focused', () => {
+    const { api, handle } = mount(dashboard({ dragHandle: { grip: true }, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    for (const id of ['a', 'b']) { const h = document.createElement('div'); h.className = 'grafloria-node-host'; h.setAttribute('data-node-id', id); layer.appendChild(h); }
+    handle.refresh();
+    expect(handle.selectWidget('b')).toBe(true);
+    expect(handle.getSelectedWidget()).toBe('b');
+    expect(handle.binderOf()!.getFocusedWidget()).not.toBe('b');
+    handle.setLayout('split');
+    handle.refresh();
+    const host = (id: string) => api.container.querySelector(`.grafloria-node-host[data-node-id="${id}"]`)!;
+    expect(host('b').classList.contains('axdb-selected')).toBe(true);
+    expect(handle.getSelectedWidget()).toBe('b');
+    handle.setLayout('grid');
+    handle.refresh();
+    expect(host('b').classList.contains('axdb-selected')).toBe(true);
+    expect(handle.selectWidget('nope')).toBe(false);
+    expect(handle.selectWidget(undefined)).toBe(true);
+    expect(handle.getSelectedWidget()).toBeUndefined();
+    handle.refresh();
+    expect(host('b').classList.contains('axdb-selected')).toBe(false);
+  });
+
   it('a layout switch keeps the LIVE switches: static, rtl and the drag handle survive setLayout', () => {
     const { handle } = mount(dashboard({ widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
     handle.setStatic(true);
@@ -1693,5 +1716,30 @@ describe('split layout with tabs: a parked view leaves the camera', () => {
     handle.showView('sales');
     expect(x('rev')).toBeGreaterThanOrEqual(0);
     expect(x('cpu')).toBeLessThan(-10000);
+  });
+});
+
+describe('ownsPress — the page-global tool registry asks every board about every press', () => {
+  const ev = (target: unknown) => ({ world: { x: 0, y: 0 }, screen: { x: 0, y: 0 }, source: target === undefined ? undefined : ({ target } as never) }) as never;
+  it('refuses a press whose DOM target sits in another container', () => {
+    const mine = document.createElement('div');
+    const theirs = document.createElement('div');
+    const inner = document.createElement('span');
+    theirs.appendChild(inner);
+    const diagram = { getNode: () => undefined };
+    expect(ownsPress(mine, diagram, ev(inner), {})).toBe(false);
+    mine.appendChild(inner);
+    expect(ownsPress(mine, diagram, ev(inner), {})).toBe(true);
+  });
+  it('refuses a hit node that is a NAMESAKE from another diagram, takes its own', () => {
+    const mine = document.createElement('div');
+    const own = { id: 'rev' };
+    const namesake = { id: 'rev' };
+    const diagram = { getNode: (id: string) => (id === 'rev' ? own : undefined) };
+    expect(ownsPress(mine, diagram, ev(undefined), { node: namesake })).toBe(false);
+    expect(ownsPress(mine, diagram, ev(undefined), { node: own })).toBe(true);
+  });
+  it('a press with no DOM source and no node is nobody\'s to refuse', () => {
+    expect(ownsPress(document.createElement('div'), { getNode: () => undefined }, ev(undefined), {})).toBe(true);
   });
 });

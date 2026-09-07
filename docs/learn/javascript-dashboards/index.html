@@ -159,7 +159,8 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
         <tr><td><code>static</code></td><td><code>false</code></td>
           <td>The viewer's mode: no drag, no resize, no handles — the API, undo and
           keyboard <i>reading</i> keep working, and clicks inside a widget's content still
-          reach it (a chart's click-to-filter works on a read-only board). Switch live with <code>H.setStatic()</code></td></tr>
+          reach it (a chart's click-to-filter works on a read-only board); a drag across the
+          board selects no text (tables stay copyable). Switch live with <code>H.setStatic()</code></td></tr>
         <tr><td><code>squeeze</code></td><td><code>true</code></td>
           <td>What a bounded fit board does when a gesture needs another row. <code>true</code>:
           rows squeeze toward <code>minRowHeight</code> (28 px) before growth is refused.
@@ -289,6 +290,10 @@ H.setColumns(6);      H.getColumns();    // per-column layout CACHE: shrink then
                                          // call PINS the count against `responsive`
 H.setRtl(true);       H.getRtl();
 H.setStatic(true);    H.getStatic();    // viewer / designer, one switch
+H.setDragHandle({ grip: true, position: 'left' }); H.getDragHandle();
+H.focusWidget('trend');                  // select AND move keyboard focus (what Tab does)
+H.selectWidget('trend');                 // select only — ring and grip, focus untouched
+H.getSelectedWidget();                   //   (what a mouse press does); undefined clears
 H.refresh();                 // re-read the boards after an out-of-band model edit
                              // (undo/redo need nothing — the boards follow the history)
 H.fit();                     // re-frame the camera on the active view
@@ -306,6 +311,12 @@ w.bringToFront();  w.sendToBack();       // one undoable step each
 w.update({ data: nextData });            // replace data (and title/kind) and repaint
 w.repaint();                             // re-run renderWidget after your data changed
 w.remove();                              // ONE undoable step incl. the survivors' re-pack</pre>
+      <div class="note"><b>Several boards on one page</b> — a designer beside its preview, a
+      gallery of examples — may share widget ids. Each board answers only presses inside its own
+      container: a press on the second board never selects or moves the first's namesake
+      (element 0.4.13; before it, the first board mounted claimed them all). A mouse-selected
+      widget also keeps its selection and grip across <code>setLayout</code>,
+      <code>setDragHandle</code>, <code>setStatic</code> and <code>setColumns</code>.</div>
       <div class="note"><b>Undo is already wired.</b> Drags, resizes, adds, removes, pins and
       keyboard steps each land as one undoable step on the engine's command stack — ⌘Z
       works, and buttons go through <code>api.getEngine().undo()</code>. The boards follow

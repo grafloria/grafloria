@@ -300,6 +300,27 @@ export function syncGrip(host: HTMLElement, cfg: DragGripOptions | null, movable
 }
 
 /** The member host a press on a painted grip belongs to (the grip may sit OUTSIDE the host's box). */
+/**
+ * Is this press OURS? The renderer's tool registry is PAGE-GLOBAL: every
+ * registered tool is asked about every press on every canvas, ties going to
+ * the first registered. Two boards on one page sharing widget ids — a designer
+ * beside its preview, a page of examples — had the FIRST board's tool claim
+ * the second's presses: it selected its own tile and moved nothing (kit lab,
+ * 2026-09-08: 16 of 23 boards dead to the mouse). A tool claims only a press
+ * whose DOM target sits in its own container and whose hit node is its own
+ * diagram's object, not a namesake from another model.
+ */
+export function ownsPress(
+  container: HTMLElement,
+  diagram: { getNode(id: string): unknown },
+  ev: ToolPointerEvent,
+  hit: { node?: { id: string } }
+): boolean {
+  const t = (ev.source as { target?: unknown } | undefined)?.target;
+  if (typeof Node !== 'undefined' && t instanceof Node && !container.contains(t)) return false;
+  if (hit.node && diagram.getNode(hit.node.id) !== hit.node) return false;
+  return true;
+}
 export function gripHostOf(target: Element | null): HTMLElement | null {
   const grip = target?.closest?.('.' + GRIP_CLASS);
   return (grip?.closest('.grafloria-node-host') as HTMLElement | null) ?? null;
@@ -364,6 +385,14 @@ export interface DashboardGridHandle {
   focusWidget(id: string): boolean;
   /** The member the roving tabindex currently rests on. */
   getFocusedWidget(): string | undefined;
+  /**
+   * SELECT a member without moving keyboard focus — what a mouse press does
+   * (the renderer cancels the press's default, so a click never focuses the
+   * host). `undefined` clears. False for a non-member.
+   */
+  selectWidget(id: string | undefined): boolean;
+  /** The selected member: the one wearing the ring and, in grip mode, the grip. */
+  getSelectedWidget(): string | undefined;
   /**
    * The layout to PERSIST — from the engine's LARGEST cached column count, so
    * saving while the board is narrow still saves the wide layout the user
@@ -2104,6 +2133,7 @@ export function bindDashboardGrid(
     hitTest(ev, hit) {
       if (disposed) return false;
       if (gesture) return true; // own the rest of an in-flight gesture
+      if (!ownsPress(api.container, diagram, ev, hit)) return false;
       if (hit.node) {
         if ((group.members ?? new Set<string>()).has(hit.node.id)) return true;
         // A press on a tile that belongs to a NESTED board must reach that
@@ -2245,7 +2275,10 @@ export function bindDashboardGrid(
         }
       }
     }
-    if (hoverHost && hoverHost !== host) hoverHost.style.cursor = '';
+    if (hoverHost && hoverHost !== host) {
+      hoverHost.style.cursor = '';
+      hoverHost.removeAttribute('data-axdb-edge'); // the affordance follows the pointer off a tile
+    }
     hoverHost = host;
     if (!host) return;
     const id = host.getAttribute('data-node-id') ?? '';
@@ -2661,6 +2694,13 @@ export function bindDashboardGrid(
       return true;
     },
     getFocusedWidget: () => focusedId,
+    selectWidget(id): boolean {
+      if (disposed) return false;
+      if (id !== undefined && (!(group.members ?? new Set<string>()).has(id) || !diagram.getNode(id))) return false;
+      selectWidget(id);
+      return true;
+    },
+    getSelectedWidget: () => selectedId,
     setStatic(on): void {
       if (on === isStatic) return;
       isStatic = on;

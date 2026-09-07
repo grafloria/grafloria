@@ -302,6 +302,14 @@ export interface DashboardHandle {
    * and a quiet ring; a void click clears. False when the id is unknown.
    */
   focusWidget(id: string): boolean;
+  /**
+   * SELECT a widget WITHOUT moving keyboard focus — the ring and the grip,
+   * nothing else; what a mouse press does. `undefined` clears the selection
+   * on every view. False when the id is unknown.
+   */
+  selectWidget(id: string | undefined): boolean;
+  /** The selected widget, if any (across views: only the on-camera one can be). */
+  getSelectedWidget(): string | undefined;
   /** Every widget handle of a view (default: the active one). */
   widgetsOf(viewId?: string): WidgetHandle[];
   /**
@@ -999,6 +1007,21 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       queueMicrotask(() => retry(4));
       return true;
     },
+    selectWidget(id) {
+      if (id === undefined) {
+        for (const b of binders.values()) b.selectWidget(undefined);
+        return true;
+      }
+      const b = binders.get(viewOfWidget.get(id) ?? '');
+      return !!b && b.selectWidget(id);
+    },
+    getSelectedWidget() {
+      for (const b of binders.values()) {
+        const s = b.getSelectedWidget();
+        if (s) return s;
+      }
+      return undefined;
+    },
     widgetsOf(viewId) {
       const v = views.find((x) => x.id === (viewId ?? ctx.active));
       return (v?.widgets ?? []).map((w) => makeWidgetHandle(w.id)).filter(Boolean) as WidgetHandle[];
@@ -1524,6 +1547,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         const cells = b.saveLayout().cells;
         const live = { rtl: b.getRtl(), static: b.getStatic(), dragHandle: b.getDragHandle() };
         const focused = b.getFocusedWidget();
+        const selected = b.getSelectedWidget();
         b.dispose();
         const write = (fn: () => void): void => (model.runSystemWrite ? model.runSystemWrite(fn) : fn());
         write(() => {
@@ -1541,8 +1565,11 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         binders.set(viewId, bindView(v, g, next, live));
         binders.get(viewId)?.sync();
         // The selected widget (and its grip) survives the switch, as it does in
-        // the DevExpress designer — the host used to have to restate it.
+        // the DevExpress designer — the host used to have to restate it. A
+        // MOUSE selection is not a focus (the press never focuses the host),
+        // so it is carried on its own: the kit lab's L21 lost it (2026-09-08).
         if (focused) binders.get(viewId)?.focusWidget(focused);
+        else if (selected) binders.get(viewId)?.selectWidget(selected);
       };
       handle.showView(ctx.active);
       ctx.rebindContainer = (id: string): void => {

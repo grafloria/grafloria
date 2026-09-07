@@ -1,0 +1,110 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dashboard kit lab</title>
+<style>
+  body { margin: 0; font: 13px system-ui, sans-serif; background: #f6f7fb; color: #1f2937; }
+  .lab { padding: 16px; display: grid; gap: 16px; }
+  .card { background: #fff; border: 1px solid #e3e7f2; border-radius: 6px; overflow: hidden; }
+  .h { padding: 6px 10px; border-bottom: 1px solid #e3e7f2; font: 600 11px ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; color: #5a6478; }
+  .cv { position: relative; }
+  .log { padding: 6px 10px; font: 11px ui-monospace, monospace; color: #5a6478; min-height: 14px; white-space: pre-wrap; }
+  .my-host { height: 100%; box-sizing: border-box; padding: 8px; background: #fffbe6; border: 1px dashed #d4b106; border-radius: 3px; display: flex; flex-direction: column; }
+  .my-host .band { font: 600 11px ui-monospace, monospace; color: #7c5e00; }
+  .my-host button { margin-top: auto; align-self: flex-start; }
+  .my-handle { display: inline-block; padding: 2px 6px; background: #d4b106; color: #fff; border-radius: 3px; font: 600 10px ui-monospace, monospace; cursor: grab; }
+  .accent .cv { --axdb-accent: #c2185b; --axdb-accent-ring: rgba(194, 24, 91, .55); }
+</style>
+<div class="lab" id="lab"></div>
+<script type="module">
+import { render, dashboard } from '../shell/grafloria.js';
+
+// One KPI row + two charts: 12 columns, three rows at rowHeight 130.
+const KPIS = () => [
+  { id: 'rev',  kind: 'kpi', span: 3, rows: 1, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
+  { id: 'cust', kind: 'kpi', span: 3, rows: 1, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
+  { id: 'win',  kind: 'kpi', span: 3, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
+  { id: 'nps',  kind: 'kpi', span: 3, rows: 1, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
+];
+const CHARTS = () => [
+  { id: 'trend', kind: 'line', span: 8, rows: 2, title: 'Revenue vs target', data: { labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'], series: [{ name: 'Revenue', values: [4.1, 4.4, 4.9, 5.2, 5.9, 6.8] }, { name: 'Target', values: [4.0, 4.5, 5.0, 5.5, 6.0, 6.5] }] } },
+  { id: 'mix', kind: 'donut', span: 4, rows: 2, title: 'Revenue by region', data: { slices: [{ label: 'NA', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } },
+];
+const BOARD = () => [...KPIS(), ...CHARTS()];
+
+// A host that paints its own content — no kit header, a button, a handle span.
+const customRenderer = (w, host) => {
+  host.innerHTML = `<div class="my-host"><div class="band">${w.title ?? w.id} <span class="my-handle">⠿ handle</span></div><div class="body">${w.data?.text ?? ''}</div><button class="my-btn">Click me</button></div>`;
+  host.querySelector('.my-btn').addEventListener('click', () => { window.__labClicks[w.id] = (window.__labClicks[w.id] ?? 0) + 1; });
+};
+
+const lab = document.getElementById('lab');
+window.__lab = {};
+window.__labClicks = {};
+window.__labEvents = {};
+
+/** Mount one board under a titled card. `opts` go straight to dashboard(). */
+function board(id, title, opts, { height = 430, cls = '' } = {}) {
+  const card = document.createElement('div');
+  card.className = `card ${cls}`;
+  card.innerHTML = `<div class="h">${id} · ${title}</div><div class="cv" id="cv-${id}" style="height:${height}px"></div><div class="log" id="log-${id}"></div>`;
+  lab.appendChild(card);
+  window.__labEvents[id] = [];
+  const spec = dashboard({
+    columns: 12, gap: 10, sizing: 'fit', widgets: BOARD(),
+    ...opts,
+    binder: { ...(opts.binder ?? {}), onGesture: (e) => { window.__labEvents[id].push({ type: e.type, kind: e.kind, changed: e.changed }); document.getElementById(`log-${id}`).textContent = window.__labEvents[id].map((x) => `${x.type}:${x.kind}:${x.changed}`).join('  '); } },
+  });
+  const api = render(spec, document.getElementById(`cv-${id}`));
+  api.renderNow();
+  window.__lab[id] = { handle: spec.handle, api, host: document.getElementById(`cv-${id}`) };
+  return spec.handle;
+}
+
+board('elastic', 'fit · squeeze true (default)', {});
+board('frozen', 'fit · squeeze false', { squeeze: false });
+board('floor41', 'fit · squeeze true · minRowHeight 41', { binder: { minRowHeight: 41 } });
+board('grow-frozen', 'grow · squeeze false (inert on grow)', { sizing: 'grow', squeeze: false });
+board('overfull', 'fit · squeeze false · loaded with 6 rows in 430 px', { squeeze: false, widgets: [...BOARD(), { id: 'extra1', kind: 'kpi', span: 12, rows: 1, data: { label: 'Extra 1', value: '#1' } }, { id: 'extra2', kind: 'kpi', span: 12, rows: 1, data: { label: 'Extra 2', value: '#2' } }, { id: 'extra3', kind: 'kpi', span: 12, rows: 1, data: { label: 'Extra 3', value: '#3' } }] });
+board('custom', 'custom hosts · dragHandle true (caption band)', { dragHandle: true, renderWidget: customRenderer, widgets: [
+  { id: 'c1', title: 'Alpha', span: 4, rows: 2, data: { text: 'No kit header here. The top 28 px is the caption band.' } },
+  { id: 'c2', title: 'Beta', span: 4, rows: 2, data: { text: 'Same host, second tile.' } },
+  { id: 'c3', title: 'Gamma', span: 4, rows: 2, data: { text: 'Third tile.' } },
+  { id: 'c4', title: 'Tiny', span: 3, rows: 1, data: { text: 'one-row' } },
+] }, { height: 300 });
+board('selector', 'custom hosts · dragHandle ".my-handle"', { dragHandle: '.my-handle', renderWidget: customRenderer, widgets: [
+  { id: 's1', title: 'Alpha', span: 6, rows: 2, data: { text: 'Drag only from the yellow handle.' } },
+  { id: 's2', title: 'Beta', span: 6, rows: 2, data: { text: 'Second tile.' } },
+] }, { height: 300 });
+board('static', 'static true · kit widgets', { static: true, dragHandle: { grip: true } });
+board('static-custom', 'static true · custom hosts with a button', { static: true, renderWidget: customRenderer, widgets: [
+  { id: 'b1', title: 'Alpha', span: 6, rows: 2, data: { text: 'Static: the button must still click.' } },
+  { id: 'b2', title: 'Beta', span: 6, rows: 2, data: { text: 'Second tile.' } },
+] }, { height: 300 });
+board('static-split', 'static true · split layout', { static: true, layout: 'split' });
+board('edges', 'edge cursors · one widget resizable:false', { widgets: [...KPIS().map((k, i) => (i === 0 ? { ...k, resizable: false } : k)), ...CHARTS()] });
+board('rtl', 'rtl · grip inside-left', { rtl: true, dragHandle: { grip: true, position: 'left', placement: 'inside' } });
+board('grip-in-l', 'grip inside · left', { dragHandle: { grip: true, position: 'left', placement: 'inside' } });
+board('grip-in-c', 'grip inside · center', { dragHandle: { grip: true, position: 'center', placement: 'inside' } });
+board('grip-in-r', 'grip inside · right', { dragHandle: { grip: true, position: 'right', placement: 'inside' } });
+board('grip-out-l', 'grip outside · left', { dragHandle: { grip: true, position: 'left', placement: 'outside' } });
+board('grip-out-c', 'grip outside · center', { dragHandle: { grip: true, position: 'center', placement: 'outside' } });
+board('grip-out-r', 'grip outside · right', { dragHandle: { grip: true, position: 'right', placement: 'outside' } });
+board('grip-custom', 'grip inside-left on custom hosts', { dragHandle: { grip: true, position: 'left', placement: 'inside' }, renderWidget: customRenderer, widgets: [
+  { id: 'g1', title: 'Alpha', span: 6, rows: 2, data: { text: 'Grip over a custom host.' } },
+  { id: 'g2', title: 'Beta', span: 6, rows: 2, data: { text: 'Second tile.' } },
+] }, { height: 300 });
+board('accent', 'accent themed (--axdb-accent crimson) · grip inside-right', { dragHandle: { grip: true, position: 'right', placement: 'inside' } }, { cls: 'accent' });
+board('layouts', 'selection across setLayout / setDragHandle / setStatic / setColumns', { dragHandle: { grip: true, position: 'left', placement: 'inside' } });
+board('views', 'two views · selection and view switch', { dragHandle: { grip: true }, views: [{ id: 'v1', widgets: BOARD() }, { id: 'v2', widgets: KPIS() }] });
+board('nested', 'container with children · static toggled at runtime', { dragHandle: { grip: true, position: 'left', placement: 'inside' }, widgets: [
+  ...KPIS(),
+  { id: 'box', span: 12, rows: 2, columns: 12, widgets: [
+    { id: 'n-trend', kind: 'line', span: 8, rows: 2, title: 'Inner trend', data: { labels: ['a', 'b', 'c', 'd'], series: [{ name: 'x', values: [1, 3, 2, 4] }] } },
+    { id: 'n-mix', kind: 'donut', span: 4, rows: 2, title: 'Inner mix', data: { slices: [{ label: 'A', value: 3 }, { label: 'B', value: 2 }] } },
+  ] },
+] });
+board('narrow', 'responsive 12→6 at 700 px · squeeze false', { squeeze: false, responsive: { breakpoints: [{ w: 700, c: 6, layout: 'move' }], columnMax: 12, layout: 'move' } });
+
+await new Promise((r) => setTimeout(r, 300));
+window.__labReady = true;
+</script>

@@ -246,6 +246,11 @@ const CSS = `
 .grafloria-node-host.axdb-gp-inside.axdb-gp-right .axdb-widget > .axdb-widget-h { padding-right: 32px; }
 .grafloria-node-host.axdb-gp-inside.axdb-gp-center .axdb-widget > .axdb-widget-h { padding-top: 12px; }
 .axdb-widget-b { flex: 1; min-height: 0; position: relative; }
+/* A drag across a STATIC board (nothing prevents the press's default there)
+   used to select every label on it; kit cards are not prose. Tables stay
+   copyable — a figure in a grid is the one thing a viewer selects. */
+.axdb-widget { user-select: none; -webkit-user-select: none; }
+.axdb-widget .axdb-table { user-select: text; -webkit-user-select: text; }
 .axdb-widget-b > svg { display: block; width: 100%; height: 100%; }
 .axdb-widget-b.axdb-scroll { overflow: auto; }
 /* A chart WITH a legend under it: the plot yields height, the legend keeps its
@@ -334,6 +339,9 @@ const CSS = `
    tile gets a bigger ring, not dead card), square, capped so its centre figure
    stays a figure and not a headline. */
 .axdb-widget-b.axdb-donut { display: flex; align-items: center; gap: 10px; }
+/* A legend taller than a SHORT body (a 2-row donut on a squeezed board) is
+   clipped at its own foot, not centred over the title above it. */
+.axdb-widget-b.axdb-donut > .axdb-lg--col { max-height: 100%; min-height: 0; overflow: hidden; }
 .axdb-widget-b.axdb-donut > svg {
   flex: 0 0 auto; width: auto; height: 100%; max-height: 260px; max-width: 60%; aspect-ratio: 1 / 1;
 }

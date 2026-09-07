@@ -1,6 +1,6 @@
 {
   "name": "@grafloria/element",
-  "version": "0.4.12",
+  "version": "0.4.13",
   "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
