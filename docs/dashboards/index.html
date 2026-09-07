@@ -21,103 +21,101 @@
 <style>
   :root {
     --indigo: #3B52D9; --indigo-deep: #2A3CA8; --indigo-soft: #94A5F0; --indigo-wash: #EEF1FE;
-    --ink: #232A3D; --slate: #5A6478; --line: #E3E7F2; --bg: #FCFCFF;
+    --ink: #232A3D; --slate: #5A6478; --line: #E3E7F2; --bg: #FCFCFF; --stage: #131a2e; --stage-2: #1b2340;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; line-height: 1.6; }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; line-height: 1.6; }
   .wrap { max-width: 1220px; margin: 0 auto; padding: 0 24px; }
-  a { color: var(--indigo); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  a:focus-visible { outline: 3px solid var(--indigo-soft); outline-offset: 2px; border-radius: 6px; }
-  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-
+  a { color: var(--indigo); text-decoration: none; } a:hover { text-decoration: underline; }
+  a:focus-visible, button:focus-visible { outline: 3px solid var(--indigo-soft); outline-offset: 2px; border-radius: 6px; }
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   header { padding: 20px 0; border-bottom: 1px solid var(--line); background: #fff; }
-  .nav { display: flex; align-items: center; gap: 12px; }
-  .nav img { width: 34px; height: 34px; }
-  .nav .name { font-weight: 700; font-size: 20px; letter-spacing: -0.3px; }
-  .nav .name a { color: var(--ink); }
+  .nav { display: flex; align-items: center; gap: 12px; } .nav img { width: 34px; height: 34px; }
+  .nav .name { font-weight: 700; font-size: 20px; letter-spacing: -0.3px; } .nav .name a { color: var(--ink); }
   .nav .links { margin-left: auto; display: flex; gap: 22px; font-size: 15px; font-weight: 500; }
-  @media (max-width: 640px) {
-    .nav { flex-wrap: wrap; }
-    .nav .links { margin-left: 0; width: 100%; flex-wrap: wrap; gap: 8px 16px; font-size: 14.5px; }
-  }
+  .nav .links a[aria-current] { color: var(--ink); }
+  @media (max-width: 760px) { .nav .links { display: none; } }
 
-  .head { padding: 56px 0 6px; max-width: 82ch; }
-  .fw-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
-  .fw-chips a { font-size: 13px; font-weight: 600; padding: 5px 13px; border-radius: 999px;
-    border: 1px solid var(--line); background: #fff; color: var(--slate); }
-  .fw-chips a[aria-current] { background: var(--indigo); border-color: var(--indigo); color: #fff; }
-  .fw-chips a:hover { border-color: var(--indigo-soft); text-decoration: none; }
-  h1 { font-size: clamp(30px, 4.6vw, 46px); font-weight: 800; letter-spacing: -1px; line-height: 1.12; text-wrap: balance; }
-  .lede { margin-top: 14px; color: var(--slate); font-size: 17.5px; max-width: 78ch; }
-  .lede b { color: var(--ink); }
-  h2 { font-size: 25px; font-weight: 750; letter-spacing: -0.5px; margin: 56px 0 6px; text-wrap: balance; }
-  h3 { font-size: 16px; font-weight: 700; }
-  .sub { color: var(--slate); font-size: 15.5px; max-width: 82ch; margin-bottom: 18px; }
+  /* ---- hero: the headline, then the stage ---- */
+  .kicker { font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--indigo-deep); margin: 46px 0 14px; }
+  h1 { font-size: clamp(34px, 5vw, 58px); line-height: 1.04; letter-spacing: -1.6px; font-weight: 800; max-width: 20ch; text-wrap: balance; }
+  .lede { margin: 18px 0 0; font-size: 18px; color: var(--slate); max-width: 64ch; }
+  .heroRow { display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: end; margin-bottom: 26px; }
+  .heroSide { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+  .install { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; color: var(--ink); width: 100%; }
+  .install b { color: var(--indigo-deep); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 10px; font-weight: 650; font-size: 15px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
+  .btn.primary { background: var(--indigo); color: #fff; border-color: var(--indigo); } .btn:hover { text-decoration: none; filter: brightness(.97); }
+  @media (max-width: 900px) { .heroRow { grid-template-columns: 1fr; } }
 
-  .hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 20px; margin-top: 30px; }
-  @media (max-width: 980px) { .hero { grid-template-columns: 1fr; } }
-  .codecard { border: 1px solid var(--line); border-radius: 16px; background: #fff; overflow: hidden;
-    box-shadow: 0 1px 2px rgba(35,42,61,.04), 0 12px 32px -18px rgba(35,42,61,.22); }
-  .codecard .bar { display: flex; align-items: center; gap: 8px; padding: 9px 14px; font-size: 12.5px;
-    color: var(--slate); border-bottom: 1px solid var(--line); background: #FBFCFF;
-    font-family: ui-monospace, Menlo, monospace; }
-  .codecard pre { padding: 14px 16px; overflow-x: auto; font-size: 12.5px; line-height: 1.62; color: #2C3346; }
-  .codecard .k { color: var(--indigo); } .codecard .s { color: #0f766e; } .codecard .c { color: var(--slate); }
-  .livecard { border: 1px solid var(--line); border-radius: 16px; background: #fff; overflow: hidden;
-    display: flex; flex-direction: column; min-height: 380px;
-    box-shadow: 0 1px 2px rgba(35,42,61,.04), 0 12px 32px -18px rgba(35,42,61,.22); }
-  .livecard .bar { display: flex; align-items: center; gap: 8px; padding: 9px 14px; font-size: 13px;
-    color: var(--slate); border-bottom: 1px solid var(--line); background: #FBFCFF; }
-  .livecard .bar .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
-  .livecard .cv { flex: 1; position: relative; min-height: 320px; }
-  .livecard .cv .skel { position: absolute; inset: 0; display: grid; place-items: center; color: var(--slate); font-size: 13.5px; }
+  .stage { position: relative; border-radius: 22px; background: radial-gradient(1200px 600px at 20% -10%, var(--stage-2), var(--stage) 60%); padding: 16px 16px 14px; margin: 0 0 8px; box-shadow: 0 30px 60px -30px rgba(19, 26, 46, .55); }
+  .stage::before { content: ""; position: absolute; inset: 0; border-radius: 22px; background-image: radial-gradient(circle, rgba(148,165,240,.22) 1px, transparent 1.6px); background-size: 26px 26px; pointer-events: none; }
+  .rail { position: relative; z-index: 1; display: grid; grid-template-columns: 78px 1fr auto; gap: 16px; align-items: center; color: #fff; padding: 4px 8px 14px; }
+  .rail .num { font: 800 44px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -2px; color: #fff; }
+  .rail .num small { font-size: 16px; letter-spacing: 0; color: rgba(255,255,255,.45); font-weight: 600; }
+  .rail .cap { font-size: 17px; line-height: 1.35; max-width: 60ch; }
+  .rail .cap b { color: #fff; } .rail .cap { color: rgba(255,255,255,.78); }
+  .rail .cap .step { display: block; font: 600 11.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--indigo-soft); margin-bottom: 6px; }
+  .rail .ctl { display: flex; gap: 8px; }
+  .rail .ctl button { font: 600 12.5px ui-sans-serif, system-ui, sans-serif; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08); color: #fff; cursor: pointer; }
+  .rail .ctl button:hover { background: rgba(255,255,255,.16); }
+  .board { position: relative; z-index: 1; background: #f6f7fb; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,.08); }
+  .board .cv { height: 500px; position: relative; }
+  .skel { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--slate); font-size: 13px; }
+  .tools { position: relative; z-index: 1; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 12px 6px 0; font-size: 12.5px; color: rgba(255,255,255,.7); }
+  .tools .lab { font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; margin-right: 6px; }
+  .tools button, .tools select { font: 500 12.5px ui-sans-serif, system-ui, sans-serif; padding: 6px 10px; border-radius: 7px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.06); color: #fff; cursor: pointer; }
+  .tools button[aria-pressed="true"] { background: var(--indigo); border-color: var(--indigo); }
+  .tools select option { color: var(--ink); }
+  .tools .sep { width: 1px; height: 16px; background: rgba(255,255,255,.2); margin: 0 4px; }
+  .tools .msg { margin-left: auto; font: 500 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: rgba(255,255,255,.7); }
+  .tools .msg.refused { color: #ffb4a8; }
+  .stage.locked .tools { opacity: .45; pointer-events: none; }
+  .under { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; color: var(--slate); padding: 8px 6px 0; }
 
-  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 14px; }
-  .card { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 18px 20px; }
-  .card h3 { margin-bottom: 5px; }
-  .card p { font-size: 14px; color: var(--slate); }
-  .card p code { font-size: 12.5px; background: var(--indigo-wash); padding: 1px 5px; border-radius: 5px; color: var(--indigo-deep); }
+  /* ---- chapters ---- */
+  .ch { display: grid; grid-template-columns: 1fr 1.25fr; gap: 44px; align-items: center; padding: 64px 0; border-top: 1px solid var(--line); }
+  .ch.flip { grid-template-columns: 1.25fr 1fr; } .ch.flip .copy { order: 2; }
+  .ch .n { font: 800 64px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -3px; color: var(--indigo-wash); -webkit-text-stroke: 1.5px var(--indigo-soft); margin-bottom: 10px; }
+  .ch h2 { font-size: clamp(24px, 3vw, 32px); line-height: 1.12; letter-spacing: -0.7px; font-weight: 800; text-wrap: balance; }
+  .ch p { margin: 12px 0 0; color: var(--slate); font-size: 16px; max-width: 46ch; }
+  .ch .ctl { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; align-items: center; }
+  .ch .ctl button { font: 600 13px ui-sans-serif, system-ui, sans-serif; padding: 8px 14px; border-radius: 9px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
+  .ch .ctl button[aria-pressed="true"] { background: var(--indigo); border-color: var(--indigo); color: #fff; }
+  .ch .ctl .msg { font: 500 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--slate); }
+  .ch .ctl .msg.refused { color: #b3261e; }
+  .frame { position: relative; border: 1px solid var(--line); border-radius: 16px; background: #f6f7fb; overflow: hidden; box-shadow: 0 20px 40px -30px rgba(35,42,61,.35); }
+  .frame .cv { height: 340px; position: relative; } .frame .cv.short { height: 250px; }
+  .frame .tag { position: absolute; bottom: 10px; right: 12px; z-index: 3; font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--slate); background: rgba(255,255,255,.85); padding: 5px 8px; border-radius: 6px; pointer-events: none; }
+  .frame.two { display: grid; grid-template-columns: 1.7fr .8fr; }
+  .frame.two pre { margin: 0; border-left: 1px solid var(--line); background: #fff; font-size: 11.5px; line-height: 1.5; padding: 12px 14px; overflow: auto; height: 340px; color: #2C3346; }
+  .frame.two pre .k { color: var(--indigo-deep); } .frame.two pre .s { color: #0f7b4f; }
+  @media (max-width: 900px) { .ch, .ch.flip { grid-template-columns: 1fr; gap: 20px; padding: 44px 0; } .ch.flip .copy { order: 0; } .frame.two { grid-template-columns: 1fr; } .frame.two pre { height: auto; max-height: 240px; border-left: 0; border-top: 1px solid var(--line); } }
 
-  .install { margin-top: 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff;
-    padding: 13px 18px; font-family: ui-monospace, Menlo, monospace; font-size: 13.5px; overflow-x: auto; white-space: nowrap; }
-  .install b { color: var(--indigo); font-weight: 600; }
+  .code { border: 1px solid var(--line); border-radius: 14px; background: #fff; overflow: hidden; }
+  .code .bar { display: flex; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: #fafbff; }
+  .code .bar button { font: 600 12.5px ui-sans-serif, system-ui, sans-serif; padding: 6px 12px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--slate); cursor: pointer; }
+  .code .bar button[aria-selected="true"] { background: var(--indigo-wash); color: var(--indigo-deep); border-color: var(--indigo-soft); }
+  .code pre { margin: 0; padding: 14px 16px; font-size: 12.5px; line-height: 1.55; overflow-x: auto; color: #2C3346; }
+  .code pre .k { color: var(--indigo-deep); } .code pre .s { color: #0f7b4f; } .code pre .c { color: #8a94a8; }
 
-  .callout { margin-top: 20px; border: 1px solid var(--line); border-left: 3px solid var(--indigo);
-    border-radius: 12px; background: #fff; padding: 18px 22px; }
-  .callout h3 { margin-bottom: 5px; }
-  .callout p { font-size: 14.5px; color: var(--slate); }
+  /* ---- proof band ---- */
+  .proof { background: var(--stage); color: #fff; border-radius: 22px; padding: 38px 40px; margin: 24px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 24px; }
+  .proof .big { font: 800 44px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -2px; font-variant-numeric: tabular-nums; }
+  .proof .lbl { margin-top: 8px; font-size: 13.5px; color: rgba(255,255,255,.72); line-height: 1.4; }
+  .proof .lbl b { color: #fff; }
+  .proof .note { grid-column: 1 / -1; font-size: 13px; color: rgba(255,255,255,.6); border-top: 1px solid rgba(255,255,255,.12); padding-top: 14px; }
 
-  .cta { margin: 54px 0 72px; text-align: center; }
-  .cta .btn { display: inline-block; padding: 12px 26px; border-radius: 10px; font-weight: 600; font-size: 16px; margin: 0 7px 10px; }
-  .btn.primary { background: var(--indigo); color: #fff; }
-  .btn.primary:hover { background: var(--indigo-deep); text-decoration: none; }
-  .btn.ghost { border: 1.5px solid var(--line); color: var(--ink); background: #fff; }
-  .btn.ghost:hover { border-color: var(--indigo-soft); text-decoration: none; }
-
-  .fine { margin: 0 0 56px; max-width: 86ch; font-size: 13px; color: var(--slate); }
-  footer { border-top: 1px solid var(--line); padding: 34px 0 44px; color: var(--slate); font-size: 14.5px; background: #fff; }
-  footer .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  footer img { width: 22px; height: 22px; }
-  footer .fam { margin-left: auto; }
-
-  .faq { max-width: 860px; }
+  .faq { max-width: 860px; margin-top: 8px; }
   .faq details { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 12px 18px; margin: 10px 0; }
-  .faq summary { font-weight: 650; cursor: pointer; }
-  .faq p { margin: 8px 0 2px; color: var(--slate); font-size: 15px; }
-  .db-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
-  .db-bar button, .db-bar select { font: inherit; padding: 4px 9px; border-radius: 6px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; cursor: pointer; }
-  .db-bar button[aria-pressed="true"] { background: var(--indigo-wash); border-color: var(--indigo); }
-  .db-bar .sep { width: 1px; height: 16px; background: var(--line); margin: 0 2px; }
-  .livecard .cv.tall { height: 420px; }
-  .grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 14px 0 6px; }
-  .grid4 .card h3 { font-size: 15px; }
-  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin: 12px 0; }
-  .two .card img { width: 100%; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 8px; }
-  .kicker { font-size: 12px; letter-spacing: .5px; text-transform: uppercase; color: var(--slate); font-weight: 650; margin-bottom: 6px; }
-  .prodnav { display: flex; gap: 14px; font-size: 14px; margin-bottom: 14px; }
-  .prodnav a[aria-current] { color: var(--ink); font-weight: 650; }
+  .faq summary { font-weight: 650; cursor: pointer; } .faq p { margin: 8px 0 2px; color: var(--slate); font-size: 15px; }
+  .h2 { font-size: clamp(24px, 3vw, 32px); letter-spacing: -0.7px; font-weight: 800; margin: 64px 0 10px; }
+  .sub { color: var(--slate); font-size: 15.5px; max-width: 70ch; margin: 0 0 14px; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; margin: 30px 0 10px; }
+  .fine { font-size: 12.5px; color: var(--slate); margin: 14px 0 60px; max-width: 90ch; }
+  footer { border-top: 1px solid var(--line); background: #fff; padding: 24px 0; font-size: 13px; color: var(--slate); }
+  footer .row { display: flex; align-items: center; gap: 10px; } footer img { width: 22px; height: 22px; } footer .fam { margin-left: auto; }
+  @media (prefers-reduced-motion: reduce) { .stage, .frame { box-shadow: none; } }
 </style>
 </head>
 <body>
@@ -127,7 +125,7 @@
     <span class="name"><a href="../">grafloria</a></span>
     <nav class="links">
       <a href="../diagrams/">Diagrams</a>
-      <a href="../dashboards/">Dashboards</a>
+      <a href="../dashboards/" aria-current="page">Dashboards</a>
       <a href="../learn/">Learn</a>
       <a href="../demos/">Demos</a>
       <a href="../blog/">Blog</a>
@@ -136,99 +134,143 @@
     </nav>
   </div>
 </header>
+
 <main>
   <div class="wrap">
-
-    <div class="hero-copy">
-      <div class="kicker">Grafloria Dashboards</div>
-      <h1>The JavaScript dashboard layout library with undo, nesting and a splitter layout</h1>
-      <p class="lede">Grafloria Dashboards is an MIT JavaScript dashboard layout library: draggable, resizable widgets on a grid or a splitter layout, with undo, nesting and persistence built in, for Angular, React, Vue or plain JavaScript.</p>
-      <div class="install">npm install <b>@grafloria/dashboard</b> @grafloria/element @grafloria/renderer @grafloria/engine</div>
-      <div class="cta" style="margin-top:14px">
-        <a class="btn primary" href="../demos/dashboard/fluid-board.html">Open the live demo</a>
-        <a class="btn ghost" href="../learn/javascript-dashboards/">10-minute tutorial</a>
+    <div class="heroRow">
+      <div>
+        <div class="kicker">Grafloria Dashboards</div>
+        <h1>The dashboard layout library that can show you, not tell you</h1>
+        <p class="lede">Grafloria Dashboards is an MIT JavaScript dashboard layout library: draggable, resizable widgets on a grid or a splitter layout, with undo, nesting and persistence built in, for Angular, React, Vue or plain JavaScript.</p>
       </div>
-    </div>
-
-    <div class="hero">
-      <div class="livecard" style="grid-column: 1 / -1">
-        <div class="bar"><span class="dot"></span>live — a real board, not a screenshot: drag a card, switch the layout, change the handle</div>
-        <div class="db-bar" id="db-bar">
-          <button data-sizing="fit" aria-pressed="true">Fit</button><button data-sizing="grow" aria-pressed="false">Grow</button>
-          <span class="sep"></span>
-          <button data-layout="grid" aria-pressed="true">Grid</button><button data-layout="split" aria-pressed="false">Split</button>
-          <span class="sep"></span>
-          <label>Drag <select id="db-drag"><option value="anywhere">anywhere</option><option value="caption">by caption</option><option value="grip">by grip</option></select></label>
+      <div class="heroSide">
+        <div class="install">npm install <b>@grafloria/dashboard</b> @grafloria/element @grafloria/renderer @grafloria/engine</div>
+        <div class="cta" style="margin:0">
+          <a class="btn primary" href="../demos/dashboard/fluid-board.html">Open the full demo</a>
+          <a class="btn" href="../learn/javascript-dashboards/">10-minute tutorial</a>
         </div>
-        <div class="cv tall" id="db-live"><div class="skel">rendering…</div></div>
       </div>
     </div>
 
-    <h2>Two layouts, one document</h2>
-    <div class="two">
-      <div class="card">
-        <h3>The grid</h3>
-        <p>Twelve columns, spans and rows, push-down re-packing with a truthful placeholder — the gridstack model, with fluid width by default so widgets lay out in real CSS pixels rather than a scaled picture. <code>sizing: 'grow'</code> extends the board; <code>'fit'</code> keeps the height and never scrolls.</p>
+    <section class="stage locked" id="stage" aria-label="A live dashboard performing the product's claims">
+      <div class="rail">
+        <div class="num" id="tour-num">00<small>/05</small></div>
+        <div class="cap" id="tour-cap"><span class="step">the board gives the tour</span>A real board, not a video. Give it twelve seconds, then it is yours.</div>
+        <div class="ctl"><button id="tour-replay" type="button">Replay</button><button id="tour-skip" type="button">Skip, let me drag</button></div>
       </div>
-      <div class="card">
-        <h3>The splitter</h3>
-        <p><code>layout: 'split'</code> is the way BI dashboard designers align widgets: one widget fills the surface, the next halves it, dividers are percentages you drag, a drop lands on an edge or under a whole row. <code>setLayout()</code> switches live and keeps the picture; <code>toJSON()</code> saves either one.</p>
+      <div class="board"><div class="cv" id="hero-board"><div class="skel">rendering…</div></div></div>
+      <div class="tools" id="hero-tools">
+        <span class="lab">Sizing</span><button data-sizing="fit" aria-pressed="true" type="button">Fit</button><button data-sizing="grow" aria-pressed="false" type="button">Grow</button>
+        <span class="sep"></span><span class="lab">Layout</span><button data-layout="grid" aria-pressed="true" type="button">Grid</button><button data-layout="split" aria-pressed="false" type="button">Split</button>
+        <span class="sep"></span><span class="lab">Drag</span><select id="hero-drag" aria-label="Drag handle"><option value="anywhere">anywhere</option><option value="caption">by caption</option><option value="grip">by grip</option></select>
+        <span class="sep"></span><button id="hero-add" type="button">+ Add a row</button><button id="hero-undo" type="button">Undo</button>
+        <span class="msg" id="hero-msg"></span>
       </div>
+    </section>
+    <div class="under"><span>Every step above is a public API call: <code>moveTo</code>, <code>undo</code>, <code>addWidget</code>, <code>setLayout</code>, <code>setDragHandle</code>, <code>focusWidget</code>.</span><span>Reduced-motion users get the board at rest.</span></div>
+
+    <section class="ch" id="layouts">
+      <div class="copy">
+        <div class="n">01</div>
+        <h2>Two layouts, one document</h2>
+        <p>The grid is the gridstack model: spans, rows, push-down re-packing. The splitter is the way BI designers align widgets: one fills, the next halves, dividers are percentages. Switch live; the same JSON holds either one.</p>
+        <div class="ctl"><button data-l="grid" aria-pressed="true" type="button">Grid</button><button data-l="split" aria-pressed="false" type="button">Split</button><span class="msg" id="l-msg">layout: grid</span></div>
+      </div>
+      <div class="frame two"><div class="cv" data-board="layouts"><div class="skel">rendering…</div></div><pre id="l-json"></pre></div>
+    </section>
+
+    <section class="ch flip" id="fit">
+      <div class="copy">
+        <div class="n">02</div>
+        <h2>Fit never scrolls</h2>
+        <p>Under <code>sizing: 'fit'</code> the container height is a capacity. Rows squeeze so everything stays on one screen, and an add that would need one row too many is refused where you can see it. Nothing is ever painted past the board's edge.</p>
+        <div class="ctl"><button id="fit-add" type="button">+ Add a row</button><button id="fit-undo" type="button">Undo</button><span class="msg" id="fit-msg"></span></div>
+      </div>
+      <div class="frame"><span class="tag">fit · 250 px tall</span><div class="cv short" data-board="fit"><div class="skel">rendering…</div></div></div>
+    </section>
+
+    <section class="ch" id="handles">
+      <div class="copy">
+        <div class="n">03</div>
+        <h2>Drag by caption, by grip, or anywhere</h2>
+        <p>One option, three answers. <code>true</code> makes the caption strip the only handle, so a table body scrolls and a legend clicks. A painted grip appears on the selected widget only, left, centre or right, inside the header or as a tab above the card.</p>
+        <div class="ctl"><button data-h="anywhere" aria-pressed="true" type="button">Anywhere</button><button data-h="caption" aria-pressed="false" type="button">Caption</button><button data-h="grip" aria-pressed="false" type="button">Grip</button><span class="msg" id="h-msg">click a card, then drag</span></div>
+      </div>
+      <div class="frame"><span class="tag">dragHandle</span><div class="cv" data-board="handles"><div class="skel">rendering…</div></div></div>
+    </section>
+
+    <section class="ch flip" id="containers">
+      <div class="copy">
+        <div class="n">04</div>
+        <h2>Containers, as one field</h2>
+        <p>A widget carrying <code>widgets</code> is a section with its own grid, locked in the board. Drag a KPI out of the band and the board adopts it live; drag it back and the section takes it. One undo restores the whole crossing.</p>
+        <div class="ctl"><button id="c-undo" type="button">Undo</button><span class="msg">drag a KPI across the section's edge</span></div>
+      </div>
+      <div class="frame"><span class="tag">columns: 4 inside</span><div class="cv" data-board="containers"><div class="skel">rendering…</div></div></div>
+    </section>
+
+    <section class="ch" id="charts">
+      <div class="copy">
+        <div class="n">05</div>
+        <h2>Bring your charts</h2>
+        <p>The kit never picks a charting library. <code>renderWidget</code> hands you the widget and a raw element; anything you mount there is laid out, dragged, undone and saved like the built-ins. The board on the right has one hand-drawn kind next to the six that ship.</p>
+        <div class="code" style="margin-top:16px"><div class="bar"><button aria-selected="true" type="button">board.js</button></div>
+<pre><span class="k">const</span> spec = dashboard({
+  widgets: [ …, { id: <span class="s">'burn'</span>, kind: <span class="s">'spark'</span>, span: 6, rows: 2, title: <span class="s">'Burn rate'</span>, data: { values: [3, 5, 4, 8, 7, 9] } } ],
+  renderWidget: (w, el) =&gt; {
+    <span class="k">if</span> (w.kind === <span class="s">'spark'</span>) el.innerHTML = mySparkline(w.data);   <span class="c">// yours</span>
+    <span class="k">else</span> defaultWidgetRenderer(w, el);                          <span class="c">// the six built-ins</span>
+  },
+});</pre></div>
+      </div>
+      <div class="frame"><span class="tag">renderWidget</span><div class="cv" data-board="charts"><div class="skel">rendering…</div></div></div>
+    </section>
+
+    <div class="proof" aria-label="How the claims are checked">
+      <div><div class="big">34</div><div class="lbl"><b>real-mouse scenarios</b> drive the board through drags, resizes, undo, both layouts and the drag handle</div></div>
+      <div><div class="big">1,145</div><div class="lbl"><b>gesture checks</b> across the demo gallery, every commit</div></div>
+      <div><div class="big">243</div><div class="lbl"><b>pixel goldens</b> that a changed picture cannot pass without a bless</div></div>
+      <div><div class="big">106×3</div><div class="lbl"><b>routes</b> built and driven as real Angular, React and Vue apps</div></div>
+      <div class="note">Every claim on this page is a CI-tested demo you can open. The full board with every switch is the <a href="../demos/dashboard/fluid-board.html" style="color:#fff">fluid dashboard demo</a>; its framework tabs are the real apps, source shown.</div>
     </div>
 
-    <h2>Built in, not DIY</h2>
-    <div class="grid4">
-      <div class="card"><h3>Fluid or fixed</h3><p>No width → the board is 100% of its container at zoom 1. An authored width keeps a framed world for a board inside a larger diagram.</p></div>
-      <div class="card"><h3>Fit never scrolls</h3><p>The container height is a capacity. A full board refuses one more row, visibly, instead of painting past its edge.</p></div>
-      <div class="card"><h3>Drag by caption or grip</h3><p><code>dragHandle</code>: the caption strip, your own element, or a painted grip that only the selected widget shows.</p></div>
-      <div class="card"><h3>Containers</h3><p>A widget carrying <code>widgets</code> is a section with its own grid; drag across the boundary and the other grid adopts the tile live.</p></div>
-      <div class="card"><h3>One undo per gesture</h3><p>Every drag, resize, add or divider move is one command. ⌘Z restores the whole gesture, across containers.</p></div>
-      <div class="card"><h3>The whole board persists</h3><p><code>toJSON()</code> writes widgets, nesting, data, layout and the split tree. Feed it back and the board is the same board.</p></div>
-      <div class="card"><h3>Keyboard and screen reader</h3><p>Roving tab stop, spoken labels per tile, arrows move, Shift+arrows resize or move a divider. axe-core in CI.</p></div>
-      <div class="card"><h3>Export</h3><p>SVG, PNG and PDF, client and server side — the same engine that exports diagrams exports the board.</p></div>
+    <h2 class="h2">Native in your framework</h2>
+    <p class="sub">The switches are props, so a change is one call on the live board, never a remount.</p>
+    <div class="code" id="fw-code">
+      <div class="bar"><button data-t="angular" aria-selected="true" type="button">Angular</button><button data-t="react" aria-selected="false" type="button">React</button><button data-t="vue" aria-selected="false" type="button">Vue</button></div>
+<pre data-t="angular">&lt;grafloria-dashboard [views]="views" [options]="{ columns: 12 }"
+  [layout]="layout()" [sizing]="sizing()" [static]="viewer()"
+  (ready)="handle = $event" style="display:block; height: 70vh" /&gt;
+
+<span class="c">// a signal change is one handle call</span>
+layout = signal&lt;<span class="s">'grid'</span> | <span class="s">'split'</span>&gt;(<span class="s">'grid'</span>);</pre>
+<pre data-t="react" hidden>&lt;GrafloriaDashboard views={views} options={{ columns: 12 }}
+  layout={layout} sizing={sizing} static={viewer}
+  onReady={setHandle} /&gt;
+
+<span class="c">// setLayout('split') is one effect, never a remount</span>
+handle?.setDragHandle({ grip: <span class="k">true</span>, placement: <span class="s">'outside'</span> });</pre>
+<pre data-t="vue" hidden>&lt;GrafloriaDashboard :views="views" :options="{ columns: 12 }"
+  :layout="layout" :sizing="sizing" :static="viewer"
+  @ready="handle = $event" /&gt;
+
+<span class="c">// refs are watched; each change is one handle call</span>
+watch(grip, (v) =&gt; handle.value?.setDragHandle(v));</pre>
     </div>
+    <p class="sub" style="margin-top:12px"><a href="../learn/angular-dashboards/">Angular dashboards</a> · <a href="../learn/react-dashboards/">React dashboards</a> · <a href="../learn/vue-dashboards/">Vue dashboards</a> · the framework tabs on <a href="../demos/dashboard/fluid-board.html">the demo</a> are the real apps.</p>
 
-    <h2>Bring your charts</h2>
-    <p class="sub">The kit never picks a charting library. <code>renderWidget</code> hands you the widget and a raw element; six built-in kinds (KPI, line, bar, donut, funnel, table) cover the moment you have none.</p>
-    <div class="codecard"><div class="bar">board.js</div>
-<pre><span class="k">import</span> { render, dashboard } <span class="k">from</span> <span class="s">'@grafloria/dashboard'</span>;
+    <h2 class="h2">Where it stops</h2>
+    <p class="sub">This is a layout and editing library, not a BI suite: no data sources, no query builder, no scheduled reports. Where a BI designer's widget alignment comes up, it is the splitter surface the split layout reproduces, nothing more. The honest boundaries with the grid libraries are on the <a href="../alternatives/gridstack/">GridStack</a> and <a href="../alternatives/react-grid-layout/">react-grid-layout</a> pages, both columns true.</p>
 
-<span class="k">const</span> spec = dashboard({
-  columns: 12, sizing: <span class="s">'fit'</span>, dragHandle: <span class="s">true</span>,
-  widgets: [
-    { id: <span class="s">'rev'</span>,   kind: <span class="s">'kpi'</span>,  span: 3, data: { label: <span class="s">'Revenue'</span>, value: <span class="s">'$6.8M'</span>, delta: 12.4 } },
-    { id: <span class="s">'trend'</span>, kind: <span class="s">'line'</span>, span: 9, rows: 2, title: <span class="s">'Revenue vs target'</span>, data: { <span class="c">/* series */</span> } },
-    { id: <span class="s">'sales'</span>, kind: <span class="s">'echarts'</span>, span: 12, rows: 2 },   <span class="c">// your kind…</span>
-  ],
-  renderWidget: (w, el) =&gt; { <span class="k">if</span> (w.kind === <span class="s">'echarts'</span>) mountMyChart(el, w.data); },   <span class="c">// …your renderer</span>
-});
-render(spec, document.getElementById(<span class="s">'board'</span>));
-spec.handle.setLayout(<span class="s">'split'</span>);           <span class="c">// live</span>
-<span class="k">const</span> saved = spec.handle.toJSON();         <span class="c">// the whole board</span></pre></div>
-
-    <h2>Native in your framework</h2>
-    <div class="grid3">
-      <div class="card"><h3>Angular</h3><p><code>&lt;grafloria-dashboard [views] [options] [layout] [sizing] [static]&gt;</code> — signal inputs, one handle call per change. <a href="../learn/angular-dashboards/">Angular dashboards →</a></p></div>
-      <div class="card"><h3>React</h3><p><code>&lt;GrafloriaDashboard views options layout sizing onReady /&gt;</code> — props are live, never a remount. <a href="../learn/react-dashboards/">React dashboards →</a></p></div>
-      <div class="card"><h3>Vue</h3><p><code>&lt;GrafloriaDashboard :views :options :layout :sizing @ready&gt;</code> — the same, the Vue way. <a href="../learn/vue-dashboards/">Vue dashboards →</a></p></div>
-    </div>
-    <p class="sub">The framework tabs on <a href="../demos/dashboard/fluid-board.html">the fluid dashboard demo</a> are real Angular, React and Vue apps, built and driven in CI, source shown.</p>
-
-    <div class="callout">
-      <h3>Where it stops</h3>
-      <p>This is a layout and editing library, not a BI suite: no data sources, no query builder, no scheduled reports. Where a BI designer's widget alignment comes up, it is the splitter surface the split layout reproduces, nothing more. The honest boundaries with the grid libraries are on the <a href="../alternatives/gridstack/">GridStack</a> and <a href="../alternatives/react-grid-layout/">react-grid-layout</a> pages, both columns true.</p>
-    </div>
-
-    <h2>Questions people ask</h2>
+    <h2 class="h2">Questions people ask</h2>
     <div class="faq"><details><summary>Is Grafloria Dashboards a gridstack alternative?</summary><p>Yes for the layout: draggable, resizable widgets on a responsive grid with push-down re-packing. It adds what a layout engine leaves to you: undo per gesture, nested containers, a splitter layout, persistence of the whole board and built-in widget renderers. The honest comparison is on the GridStack alternative page, both columns true.</p></details><details><summary>Does fit mode scroll?</summary><p>No. Under sizing 'fit' the container height is a capacity: rows squeeze so everything stays on one screen, an add that would need one row too many is refused visibly, and nothing is ever painted past the board's edge. Sizing 'grow' keeps row heights and lets the board extend; the wheel scrolls it.</p></details><details><summary>Can a widget be dragged only by a handle?</summary><p>Yes. dragHandle: true makes the caption strip the only handle; a selector names your own element; { grip: true, position, placement } paints a grip on the selected widget, left, centre or right, inside the header or as a tab above the card. All of it switches live.</p></details><details><summary>Does it work without React?</summary><p>Yes. The kit is a plain JavaScript function, dashboard(), rendered into any element. Native components exist for Angular, React and Vue, and a web component for everything else.</p></details><details><summary>Can a dashboard contain a diagram?</summary><p>Yes. Dashboards and diagrams share one engine and one document format, so a diagram is a widget like any other and the same undo stack covers both.</p></details><details><summary>Is any of it paid?</summary><p>No. Every feature is MIT licensed; there is no pro tier.</p></details></div>
 
     <div class="cta">
       <a class="btn primary" href="../learn/javascript-dashboards/">Read the tutorial</a>
-      <a class="btn ghost" href="../demos/#dashboard">All dashboard demos</a>
-      <a class="btn ghost" href="../compare/#dashboards">The sourced comparison</a>
+      <a class="btn" href="../demos/#dashboard">All dashboard demos</a>
+      <a class="btn" href="../compare/#dashboards">The sourced comparison</a>
     </div>
-    <p class="fine">Every claim on this page is a CI-tested demo you can open. Grafloria is MIT — every feature, no commercial tier. GridStack, react-grid-layout and DevExpress are trademarks of their respective owners; comparative references only, no affiliation implied.</p>
-
+    <p class="fine">Grafloria is MIT — every feature, no commercial tier. GridStack, react-grid-layout and DevExpress are trademarks of their respective owners; comparative references only, no affiliation implied.</p>
   </div>
 </main>
 
@@ -241,42 +283,144 @@ spec.handle.setLayout(<span class="s">'split'</span>);           <span class="c"
 </footer>
 
 <script type="module">
-  // The hero board: the kit, mounted through the same public entry point an embedder uses.
-  const host = document.getElementById('db-live');
-  const bar = document.getElementById('db-bar');
-  const WIDGETS = [
+  const KPIS = [
     { id: 'rev',  kind: 'kpi', span: 3, rows: 1, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
     { id: 'cust', kind: 'kpi', span: 3, rows: 1, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
     { id: 'win',  kind: 'kpi', span: 3, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
     { id: 'nps',  kind: 'kpi', span: 3, rows: 1, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
-    { id: 'trend', kind: 'line', span: 8, rows: 2, title: 'Revenue vs target',
-      data: { series: [{ name: 'Revenue', values: [4.1, 4.4, 4.9, 5.2, 5.9, 6.8] }, { name: 'Target', values: [4.0, 4.5, 5.0, 5.5, 6.0, 6.5] }], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
-    { id: 'mix', kind: 'donut', span: 4, rows: 2, title: 'Revenue by region',
-      data: { slices: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } },
   ];
-  const boot = async () => {
-    const { render, dashboard } = await import('../demos/shell/grafloria.js');
+  const TREND = { id: 'trend', kind: 'line', span: 8, rows: 2, title: 'Revenue vs target',
+    data: { series: [{ name: 'Revenue', values: [4.1, 4.4, 4.9, 5.2, 5.9, 6.8] }, { name: 'Target', values: [4.0, 4.5, 5.0, 5.5, 6.0, 6.5] }], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } };
+  const MIX = { id: 'mix', kind: 'donut', span: 4, rows: 2, title: 'Revenue by region',
+    data: { slices: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } };
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let lib;
+  const load = async () => (lib ??= await import('../demos/shell/grafloria.js'));
+
+  // A board in a host: returns { handle, api, undo } and clears the skeleton.
+  const mount = async (host, options) => {
+    const { render, dashboard } = await load();
     host.querySelector('.skel')?.remove();
-    const spec = dashboard({ columns: 12, gap: 8, sizing: 'fit', widgets: WIDGETS });
+    const spec = dashboard(options);
     const api = render(spec, host);
     api.renderNow();
-    const H = spec.handle;
-    window.__dashboardsHero = H;
-    const press = (sel, on) => bar.querySelectorAll(sel).forEach((b) => b.setAttribute('aria-pressed', String(b === on)));
-    bar.querySelectorAll('[data-sizing]').forEach((b) => b.addEventListener('click', () => { H.setSizing(b.dataset.sizing); press('[data-sizing]', b); }));
-    bar.querySelectorAll('[data-layout]').forEach((b) => b.addEventListener('click', () => { H.setLayout(b.dataset.layout); press('[data-layout]', b); }));
-    document.getElementById('db-drag').addEventListener('change', (e) => {
-      const v = e.target.value; H.setDragHandle(v === 'grip' ? { grip: true, position: 'left', placement: 'inside' } : v === 'caption');
-    });
+    const undo = () => { const cm = api.getEngine?.()?.commandManager; if (cm?.canUndo?.()) cm.undo(); };
+    return { handle: spec.handle, api, undo, spec };
   };
-  const io = new IntersectionObserver((entries, obs) => { if (!entries.some((e) => e.isIntersecting)) return; obs.disconnect(); boot(); }, { rootMargin: '200px' });
-  io.observe(host);
+
+  // ---------------- the hero tour ----------------
+  const stage = document.getElementById('stage');
+  const heroHost = document.getElementById('hero-board');
+  const num = document.getElementById('tour-num'), cap = document.getElementById('tour-cap'), msg = document.getElementById('hero-msg');
+  let hero = null, tourRun = 0;
+  const say = (n, step, text, refused = false) => {
+    num.innerHTML = `${String(n).padStart(2, '0')}<small>/05</small>`;
+    cap.innerHTML = `<span class="step">${step}</span>${text}`;
+    msg.textContent = ''; msg.classList.toggle('refused', refused);
+  };
+  const press = (sel, key, val) => stage.querySelectorAll(sel).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset[key] === val)));
+  const mountHero = async () => {
+    if (hero) { hero.api.dispose?.(); heroHost.innerHTML = ''; }
+    hero = await mount(heroHost, { columns: 12, gap: 8, sizing: 'fit', widgets: [...clone(KPIS), clone(TREND), clone(MIX)] });
+    window.__dashboardsHero = hero.handle;
+    press('[data-sizing]', 'sizing', 'fit'); press('[data-layout]', 'layout', 'grid'); document.getElementById('hero-drag').value = 'anywhere';
+  };
+  const tour = async () => {
+    const run = ++tourRun; const alive = () => run === tourRun;
+    stage.classList.add('locked');
+    await mountHero(); if (!alive()) return;
+    const H = hero.handle;
+    say(0, 'the board gives the tour', 'A real board, not a video. Give it twelve seconds, then it is yours.');
+    await sleep(1400); if (!alive()) return;
+    say(1, 'drag', '<b>The donut moves under the KPIs.</b> The chart it displaces is pushed down, live, with a truthful placeholder — the gridstack model.');
+    await H.widget('mix')?.moveTo(0, 1); await sleep(1900); if (!alive()) return;
+    say(2, 'undo', '<b>One ⌘Z.</b> The whole gesture was one command, so the whole picture comes back.');
+    hero.undo(); await sleep(1700); if (!alive()) return;
+    say(3, 'fit', '<b>Fit means bounded.</b> The last free rows are filled, then one more row is asked for. It is refused — visibly, not silently — because it would paint past the edge.');
+    { const m0 = H.metrics(); const free = Math.max(1, (m0.capacity ?? m0.rows + 1) - m0.rows);
+      const fill = H.addWidget({ id: 'row-fill', kind: 'bar', span: 12, rows: free, title: `Added: ${free} row${free > 1 ? 's' : ''}, the last that fit`, data: { bars: [{ label: 'Q1', value: 210 }, { label: 'Q2', value: 262 }, { label: 'Q3', value: 244 }, { label: 'Q4', value: 301 }] } });
+      const m1 = H.metrics(); msg.textContent = fill ? `landed — ${m1.rows} of ${m1.capacity} rows, full` : 'refused'; await sleep(1500); if (!alive()) return;
+      const more = H.addWidget({ id: 'row-more', kind: 'kpi', span: 12, rows: 1, data: { label: 'One more row', value: '?' } });
+      msg.textContent = more ? 'landed' : `refused — ${m1.capacity} rows is the capacity`; msg.classList.toggle('refused', !more);
+      await sleep(1900); if (!alive()) return; }
+    say(4, 'split', '<b>The splitter layout.</b> The same widgets, the surface always covered, dividers you drag as percentages. Same document.');
+    H.setLayout('split'); press('[data-layout]', 'layout', 'split'); await sleep(1900); if (!alive()) return;
+    say(5, 'grip', '<b>A grip on the selected widget only.</b> Drag by that tab; the header and body are content. Click another card to move the grip.');
+    H.setDragHandle({ grip: true, position: 'right', placement: 'outside' }); document.getElementById('hero-drag').value = 'grip';
+    H.focusWidget('trend'); await sleep(1800); if (!alive()) return;
+    say(5, 'your turn', 'The controls are live. Drag a card, switch the layout, add rows until it refuses, undo everything.');
+    stage.classList.remove('locked');
+  };
+  const skip = async () => { tourRun++; if (!hero) await mountHero(); say(5, 'your turn', 'The controls are live. Drag a card, switch the layout, add rows until it refuses, undo everything.'); stage.classList.remove('locked'); };
+  document.getElementById('tour-replay').addEventListener('click', () => tour());
+  document.getElementById('tour-skip').addEventListener('click', () => skip());
+  const tools = document.getElementById('hero-tools');
+  tools.querySelectorAll('[data-sizing]').forEach((b) => b.addEventListener('click', () => { hero.handle.setSizing(b.dataset.sizing); press('[data-sizing]', 'sizing', b.dataset.sizing); }));
+  tools.querySelectorAll('[data-layout]').forEach((b) => b.addEventListener('click', () => { hero.handle.setLayout(b.dataset.layout); press('[data-layout]', 'layout', b.dataset.layout); }));
+  document.getElementById('hero-drag').addEventListener('change', (e) => { const v = e.target.value; hero.handle.setDragHandle(v === 'grip' ? { grip: true, position: 'right', placement: 'outside' } : v === 'caption'); });
+  let added = 0;
+  document.getElementById('hero-add').addEventListener('click', () => { const w = hero.handle.addWidget({ id: `row-${++added}-${Date.now()}`, kind: 'kpi', span: 12, rows: 1, data: { label: 'Added row', value: String(added) } }); const m = hero.handle.metrics(); msg.textContent = w ? `landed — ${m.rows} rows` : `refused — ${m.capacity} rows is the capacity`; msg.classList.toggle('refused', !w); });
+  document.getElementById('hero-undo').addEventListener('click', () => { hero.undo(); msg.textContent = ''; });
+  const heroIO = new IntersectionObserver((es, o) => { if (!es.some((e) => e.isIntersecting)) return; o.disconnect(); reduced ? skip() : tour(); }, { rootMargin: '100px' });
+  heroIO.observe(heroHost);
+
+  // ---------------- chapters ----------------
+  const boards = {};
+  const chapter = {
+    layouts: async (host) => {
+      const b = await mount(host, { columns: 12, gap: 8, sizing: 'fit', widgets: [...clone(KPIS), clone(TREND), clone(MIX)] });
+      const pre = document.getElementById('l-json');
+      const show = () => { const j = b.handle.toJSON(); const v = j.views[0]; const out = { layout: j.layout, sizing: j.sizing, columns: j.columns, views: [{ id: v.id, layout: v.layout, tree: v.tree ? '{ … the splitter tree … }' : undefined, widgets: v.widgets.map((w) => ({ id: w.id, kind: w.kind, x: w.x, y: w.y, span: w.span, rows: w.rows })) }] };
+        pre.innerHTML = JSON.stringify(out, null, 1).replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:').replace(/: "([^"]*)"/g, ': <span class="s">"$1"</span>'); };
+      show();
+      document.querySelectorAll('#layouts [data-l]').forEach((btn) => btn.addEventListener('click', () => { b.handle.setLayout(btn.dataset.l); document.querySelectorAll('#layouts [data-l]').forEach((x) => x.setAttribute('aria-pressed', String(x === btn))); document.getElementById('l-msg').textContent = 'layout: ' + btn.dataset.l; setTimeout(show, 80); }));
+      b.handle.onLayoutChange?.(show);
+      host.addEventListener('pointerup', () => setTimeout(show, 400));
+    },
+    fit: async (host) => {
+      const b = await mount(host, { columns: 12, gap: 8, sizing: 'fit', widgets: [...clone(KPIS), { ...clone(TREND), span: 12 }] });
+      let n = 0; const m = document.getElementById('fit-msg');
+      document.getElementById('fit-add').addEventListener('click', () => { const w = b.handle.addWidget({ id: `f-${++n}-${Date.now()}`, kind: 'bar', span: 12, rows: 2, title: `Added row ${n}`, data: { bars: [{ label: 'Q1', value: 210 }, { label: 'Q2', value: 262 }, { label: 'Q3', value: 244 }, { label: 'Q4', value: 301 }] } }); const mt = b.handle.metrics(); m.textContent = w ? `landed — ${mt.rows} of ${mt.capacity} rows` : `refused — ${mt.capacity} rows is the capacity`; m.classList.toggle('refused', !w); });
+      document.getElementById('fit-undo').addEventListener('click', () => { b.undo(); m.textContent = ''; });
+    },
+    handles: async (host) => {
+      const b = await mount(host, { columns: 12, gap: 8, sizing: 'fit', widgets: [...clone(KPIS), clone(TREND), clone(MIX)] });
+      document.querySelectorAll('#handles [data-h]').forEach((btn) => btn.addEventListener('click', () => { const v = btn.dataset.h; b.handle.setDragHandle(v === 'grip' ? { grip: true, position: 'left', placement: 'inside' } : v === 'caption'); document.querySelectorAll('#handles [data-h]').forEach((x) => x.setAttribute('aria-pressed', String(x === btn))); document.getElementById('h-msg').textContent = v === 'grip' ? 'click a card — its grip appears; drag by it' : v === 'caption' ? 'drag by the caption strip; the body is content' : 'drag anywhere on a card'; if (v === 'grip') b.handle.focusWidget('trend'); }));
+    },
+    containers: async (host) => {
+      const b = await mount(host, { columns: 12, gap: 8, sizing: 'fit', widgets: [
+        { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+          { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
+          { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
+          { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } } ] },
+        { ...clone(TREND), span: 12 },
+      ] });
+      document.getElementById('c-undo').addEventListener('click', () => b.undo());
+    },
+    charts: async (host) => {
+      const { defaultWidgetRenderer } = await load();
+      const spark = (d) => { const v = d.values, w = 300, h = 90, mx = Math.max(...v), mn = Math.min(...v); const pts = v.map((y, i) => [i * (w / (v.length - 1)), h - ((y - mn) / (mx - mn || 1)) * (h - 10) - 5]); const path = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' '); return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:100%;display:block" preserveAspectRatio="none"><path d="${path} L${w} ${h} L0 ${h} Z" fill="#3B52D9" opacity=".12"/><path d="${path}" fill="none" stroke="#3B52D9" stroke-width="2.5" stroke-linejoin="round"/>${pts.map((p) => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="#fff" stroke="#3B52D9" stroke-width="2"/>`).join('')}</svg>`; };
+      await mount(host, { columns: 12, gap: 8, sizing: 'fit',
+        widgets: [clone(KPIS[0]), clone(KPIS[1]), { id: 'burn', kind: 'spark', span: 6, rows: 2, title: 'Burn rate · your renderer', data: { values: [3, 5, 4, 8, 7, 9, 8, 11] } }, { ...clone(MIX), span: 6 }],
+        renderWidget: (w, el) => { if (w.kind === 'spark') { el.innerHTML = spark(w.data); return; } defaultWidgetRenderer(w, el); } });
+    },
+  };
+  const io = new IntersectionObserver((entries, obs) => {
+    for (const e of entries) { if (!e.isIntersecting) continue; obs.unobserve(e.target); const k = e.target.dataset.board; boards[k] = chapter[k](e.target); }
+  }, { rootMargin: '160px' });
+  document.querySelectorAll('[data-board]').forEach((el) => io.observe(el));
+
+  // framework tabs
+  const fw = document.getElementById('fw-code');
+  fw.querySelectorAll('.bar button').forEach((b) => b.addEventListener('click', () => { fw.querySelectorAll('.bar button').forEach((x) => x.setAttribute('aria-selected', String(x === b))); fw.querySelectorAll('pre').forEach((p) => { p.hidden = p.dataset.t !== b.dataset.t; }); }));
 </script>
 <script>
-  // Page scroll wins over the board's wheel handling on a landing page.
-  for (const el of document.querySelectorAll('#db-live')) el.addEventListener('wheel', (e) => e.stopPropagation(), { capture: true, passive: true });
+  // Page scroll wins over a board's wheel handling on a landing page.
+  for (const el of document.querySelectorAll('#hero-board, [data-board]')) el.addEventListener('wheel', (e) => e.stopPropagation(), { capture: true, passive: true });
 </script>
-<style>#db-live, #db-live * { touch-action: pan-y !important; }</style>
+<style>#hero-board, #hero-board *, [data-board], [data-board] * { touch-action: pan-y !important; }</style>
 
 </body>
 </html>
