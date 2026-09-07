@@ -121,14 +121,16 @@
 
   .stage .cv { height: 460px; }
   .stage .cv, .frame .cv { background: #fff; background-image: radial-gradient(circle, #dfe3f0 1px, transparent 1.4px); background-size: 22px 22px; }
-  .side { position: absolute; right: 14px; top: 14px; z-index: 4; width: 300px; max-height: calc(100% - 28px); overflow: auto; background: rgba(255,255,255,.96); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: #2C3346; white-space: pre-wrap; box-shadow: 0 12px 30px -18px rgba(35,42,61,.45); display: none; }
-  .side.on { display: block; }
+  .stage .board { display: grid; grid-template-columns: 1fr; }
+  .stage .board.side-on { grid-template-columns: 1fr 300px; }
+  .side { display: none; height: 460px; overflow: auto; background: #fff; border-left: 1px solid var(--line); padding: 12px 14px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: #2C3346; white-space: pre-wrap; }
+  .board.side-on .side { display: block; }
   .side .h { font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--slate); margin-bottom: 6px; }
   .side img { width: 100%; display: block; border: 1px solid var(--line); border-radius: 8px; background: #fff; margin-top: 6px; }
   .mm { display: grid; grid-template-columns: .9fr 1.1fr; }
   .mm textarea { border: 0; border-right: 1px solid var(--line); background: #fff; padding: 12px 14px; font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: #2C3346; resize: none; height: 340px; width: 100%; }
   .mm .cv { height: 340px; }
-  @media (max-width: 900px) { .mm { grid-template-columns: 1fr; } .mm textarea { height: 160px; border-right: 0; border-bottom: 1px solid var(--line); } .side { position: static; width: auto; max-height: none; margin: 0 0 8px; } }
+  @media (max-width: 900px) { .mm { grid-template-columns: 1fr; } .mm textarea { height: 160px; border-right: 0; border-bottom: 1px solid var(--line); } .stage .board.side-on { grid-template-columns: 1fr; } .side { height: 180px; border-left: 0; border-top: 1px solid var(--line); } }
   .thumbs { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
   .thumbs figure { margin: 0; width: 150px; } .thumbs img { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: #fff; } .thumbs figcaption { font: 500 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--slate); margin-top: 4px; }
 </style>
@@ -291,7 +293,7 @@
   const BLUE = { fill: '#eef2ff', stroke: '#3B52D9', strokeWidth: 1.5 }, GREEN = { fill: '#ecfdf5', stroke: '#059669', strokeWidth: 1.5 }, AMBER = { fill: '#fff7ed', stroke: '#c2410c', strokeWidth: 1.5 };
   const E = (source, target, label) => ({ id: `${source}-${target}`, source, target, ...(label ? { label } : {}) });
   const flow = () => ({
-    nodes: [N('extract', 'Extract', 40, 80, BLUE), N('clean', 'Clean', 300, 80, BLUE), N('load', 'Load', 560, 80, BLUE), N('warehouse', 'Warehouse', 560, 300, GREEN), N('report', 'Report', 300, 300, AMBER)],
+    nodes: [N('extract', 'Extract', 40, 80, BLUE), N('clean', 'Clean', 300, 80, BLUE), N('load', 'Load', 680, 80, BLUE), N('warehouse', 'Warehouse', 680, 300, GREEN), N('report', 'Report', 300, 300, AMBER)],
     edges: [E('extract', 'clean'), E('clean', 'load'), E('load', 'warehouse'), E('warehouse', 'report')],
   });
   const mount = async (host, spec) => {
@@ -310,7 +312,10 @@
   const num = document.getElementById('tour-num'), cap = document.getElementById('tour-cap'), msg = document.getElementById('hero-msg');
   let hero = null, run = 0;
   const say = (n, step, text) => { num.innerHTML = `${String(n).padStart(2, '0')}<small>/05</small>`; cap.innerHTML = `<span class="step">${step}</span>${text}`; msg.textContent = ''; };
-  const mountHero = async () => { if (hero) { hero.api.dispose?.(); host.innerHTML = ''; } side.className = 'side'; side.innerHTML = ''; hero = await mount(host, flow()); hero.api.fitView?.(48); window.__diagramsHero = hero.api; };
+  const board = host.parentElement;
+  const sideOn = (html) => { side.innerHTML = html; board.classList.add('side-on'); requestAnimationFrame(() => { hero?.api.renderNow(); hero?.api.fitView?.(40); }); };
+  const sideOff = () => { board.classList.remove('side-on'); requestAnimationFrame(() => { hero?.api.renderNow(); hero?.api.fitView?.(48); }); };
+  const mountHero = async () => { if (hero) { hero.api.dispose?.(); host.innerHTML = ''; } board.classList.remove('side-on'); side.innerHTML = ''; hero = await mount(host, flow()); hero.api.fitView?.(48); window.__diagramsHero = hero.api; };
   const tour = async () => {
     const me = ++run; const alive = () => me === run;
     stage.classList.add('locked');
@@ -319,7 +324,7 @@
     say(0, 'the canvas gives the tour', 'A real canvas, not a video. Give it twelve seconds, then it is yours.');
     await sleep(1400); if (!alive()) return;
     say(1, 'route', '<b>A node drops onto an edge\'s path.</b> The edge walks around it — an edge never crosses a node, not even one you just put in its way.');
-    { const f = flow(); f.nodes.find((n) => n.id === 'report').position = { x: 430, y: 40 }; A.setNodes(f.nodes); A.renderNow(); }
+    { const f = flow(); f.nodes.find((n) => n.id === 'report').position = { x: 490, y: 80 }; A.setNodes(f.nodes); A.renderNow(); }
     await sleep(2200); if (!alive()) return;
     say(2, 'layout', '<b>Auto-layout, off the main thread.</b> Two nodes join, then one call lays the whole graph out in layers. Positions land in the same document.');
     { const f = flow(); f.nodes.push(N('validate', 'Validate', 40, 300, BLUE), N('audit', 'Audit', 800, 300, AMBER)); f.edges.push(E('extract', 'validate'), E('validate', 'clean'), E('warehouse', 'audit')); A.setNodes(f.nodes); A.setEdges(f.edges); A.renderNow(); }
@@ -330,29 +335,29 @@
     try {
       A.loadText('flowchart LR\n  A[Webhook] --> B[Validate]\n  B --> C{Valid?}\n  C -->|yes| D[Transform]\n  C -->|no| E[Reject]\n  D --> F[Load]');
       A.renderNow(); await hero.layout('layered:LR');
-      const back = A.exportText(); side.innerHTML = '<div class="h">exportText()</div>' + back.replace(/</g, '&lt;').slice(0, 900); side.classList.add('on');
+      const back = A.exportText(); sideOn('<div class="h">exportText()</div>' + back.replace(/</g, '&lt;').slice(0, 900));
     } catch (e) { msg.textContent = 'text import: ' + String(e).slice(0, 80); }
     await sleep(2600); if (!alive()) return;
     say(4, 'export', '<b>Vector export, from the same renderer.</b> This thumbnail is a standalone SVG of the canvas above, made just now; PNG and PDF come from the same call.');
-    try { const t = svgThumb(A); side.innerHTML = `<div class="h">exportSvgString() · ${t.kb} kB · ${t.w}×${t.h}</div><img alt="SVG export of the canvas" src="${t.src}">`; side.classList.add('on'); } catch (e) { msg.textContent = 'export: ' + String(e).slice(0, 80); }
+    try { const t = svgThumb(A); sideOn(`<div class="h">exportSvgString() · ${t.kb} kB · ${t.w}×${t.h}</div><img alt="SVG export of the canvas" src="${t.src}">`); } catch (e) { msg.textContent = 'export: ' + String(e).slice(0, 80); }
     await sleep(2400); if (!alive()) return;
     say(5, 'your turn', 'Drag a node across an edge and watch it re-route. Lay it out again, undo a gesture, export it.');
-    side.classList.remove('on'); stage.classList.remove('locked');
+    sideOff(); stage.classList.remove('locked');
   };
-  const skip = async () => { run++; if (!hero) await mountHero(); say(5, 'your turn', 'Drag a node across an edge and watch it re-route. Lay it out again, undo a gesture, export it.'); side.classList.remove('on'); stage.classList.remove('locked'); };
+  const skip = async () => { run++; if (!hero) await mountHero(); say(5, 'your turn', 'Drag a node across an edge and watch it re-route. Lay it out again, undo a gesture, export it.'); sideOff(); stage.classList.remove('locked'); };
   document.getElementById('tour-replay').addEventListener('click', () => tour());
   document.getElementById('tour-skip').addEventListener('click', () => skip());
   stage.querySelectorAll('[data-layout]').forEach((b) => b.addEventListener('click', async () => { await hero.layout(b.dataset.layout); msg.textContent = `layout: ${b.dataset.layout.replace(':', ' ')}`; }));
   document.getElementById('hero-fit').addEventListener('click', () => hero.api.fitView?.(48));
   document.getElementById('hero-undo').addEventListener('click', () => hero.undo());
-  document.getElementById('hero-svg').addEventListener('click', () => { const t = svgThumb(hero.api); side.innerHTML = `<div class="h">exportSvgString() · ${t.kb} kB · ${t.w}×${t.h}</div><img alt="SVG export" src="${t.src}">`; side.classList.add('on'); setTimeout(() => side.classList.remove('on'), 6000); });
+  document.getElementById('hero-svg').addEventListener('click', () => { const t = svgThumb(hero.api); sideOn(`<div class="h">exportSvgString() · ${t.kb} kB · ${t.w}×${t.h}</div><img alt="SVG export" src="${t.src}">`); setTimeout(sideOff, 6000); });
   new IntersectionObserver((es, o) => { if (!es.some((e) => e.isIntersecting)) return; o.disconnect(); reduced ? skip() : tour(); }, { rootMargin: '100px' }).observe(host);
 
   // ---------------- chapters ----------------
   const chapter = {
     routing: async (h) => {
       const c = await mount(h, flow()); c.api.fitView?.(40); let on = false;
-      document.getElementById('r-toggle').addEventListener('click', () => { on = !on; const f = flow(); if (on) f.nodes.find((n) => n.id === 'report').position = { x: 430, y: 40 }; c.api.setNodes(f.nodes); c.api.renderNow(); document.getElementById('r-toggle').textContent = on ? 'Move it back' : 'Drop a node on the path'; document.getElementById('r-msg').textContent = on ? 'the Clean → Load edge walked around Report' : 'or drag any node across an edge'; });
+      document.getElementById('r-toggle').addEventListener('click', () => { on = !on; const f = flow(); if (on) f.nodes.find((n) => n.id === 'report').position = { x: 490, y: 80 }; c.api.setNodes(f.nodes); c.api.renderNow(); document.getElementById('r-toggle').textContent = on ? 'Move it back' : 'Drop a node on the path'; document.getElementById('r-msg').textContent = on ? 'the Clean → Load edge walked around Report' : 'or drag any node across an edge'; });
     },
     layout: async (h) => {
       const ids = ['Order', 'Pay', 'Pack', 'Ship', 'Notify', 'Refund', 'Review', 'Archive', 'Audit'];
