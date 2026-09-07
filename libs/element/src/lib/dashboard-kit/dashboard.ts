@@ -219,6 +219,14 @@ export interface DashboardOptions {
    */
   dragHandle?: DragHandleOption;
   /**
+   * FIT AND THE ROW FLOOR. `true` (default): a bounded fit board squeezes its
+   * rows toward `minRowHeight` before refusing growth. `false`: rows freeze at
+   * the height they have now — a gesture that needs a row the frame does not
+   * hold is refused outright and no other tile shrinks. See the grid binder's
+   * `squeeze` for the exact rule.
+   */
+  squeeze?: boolean;
+  /**
    * RIGHT-TO-LEFT boards: column x=0 renders at the RIGHT edge and columns run
    * leftwards. Cells are untouched — the same `widgets` array describes the
    * same layout in both directions, and a layout saved in one renders mirrored
@@ -982,7 +990,14 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     },
     focusWidget(id) {
       const b = binders.get(viewOfWidget.get(id) ?? '');
-      return b?.focusWidget(id) ?? false;
+      if (!b) return false;
+      if (b.focusWidget(id)) return true;
+      // A widget added in this same tick is not a member yet (adds commit
+      // asynchronously): the spec knows it, so select it once the commit lands.
+      if (!specById.has(id)) return false;
+      const retry = (n: number): void => { if (!b.focusWidget(id) && n > 0) setTimeout(() => retry(n - 1), 16); };
+      queueMicrotask(() => retry(4));
+      return true;
     },
     widgetsOf(viewId) {
       const v = views.find((x) => x.id === (viewId ?? ctx.active));
@@ -1508,6 +1523,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         if (!v || !g || !b) return;
         const cells = b.saveLayout().cells;
         const live = { rtl: b.getRtl(), static: b.getStatic(), dragHandle: b.getDragHandle() };
+        const focused = b.getFocusedWidget();
         b.dispose();
         const write = (fn: () => void): void => (model.runSystemWrite ? model.runSystemWrite(fn) : fn());
         write(() => {
@@ -1524,6 +1540,9 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         ctx.layoutOf.set(viewId, next);
         binders.set(viewId, bindView(v, g, next, live));
         binders.get(viewId)?.sync();
+        // The selected widget (and its grip) survives the switch, as it does in
+        // the DevExpress designer — the host used to have to restate it.
+        if (focused) binders.get(viewId)?.focusWidget(focused);
       };
       handle.showView(ctx.active);
       ctx.rebindContainer = (id: string): void => {
@@ -1636,6 +1655,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           fluid: mode === 'fluid',
           static: live?.static ?? options.static ?? false,
           dragHandle: live?.dragHandle ?? options.dragHandle ?? false,
+          ...(options.squeeze !== undefined ? { squeeze: options.squeeze } : {}),
           ...(options.binder ?? {}),
           onGesture: (e: Parameters<NonNullable<DashboardGridOptions['onGesture']>>[0]) => {
             if (e.type === 'commit') reportChanged();
@@ -1679,6 +1699,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             rtl: options.rtl ?? false,
             static: options.static ?? false,
             dragHandle: options.dragHandle ?? false,
+            ...(options.squeeze !== undefined ? { squeeze: options.squeeze } : {}),
             onGesture: (e) => {
               if (e.type === 'commit') reportChanged();
               options.binder?.onGesture?.(e);

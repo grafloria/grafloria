@@ -1558,6 +1558,34 @@ try {
   await page.close();
 }
 
+{
+  begin('s35-static-clicks-and-edge-cursor');
+  const page = await freshPage('/dashboard/fluid-board.html');
+  const rectOf = (sel) => page.evaluate((sel) => document.querySelector(sel).getBoundingClientRect().toJSON(), sel);
+  // A. hover near a chart's bottom edge: the cursor says resize even over the chart's own svg
+  const t = await rectOf('.grafloria-node-host[data-node-id="trend"]');
+  await page.mouse.move(t.x + t.width / 2, t.y + t.height - 3); await page.waitForTimeout(150);
+  const cursorNearEdge = await page.evaluate(() => { const h = document.querySelector('.grafloria-node-host[data-node-id="trend"]'); const el = document.elementFromPoint(h.getBoundingClientRect().x + h.getBoundingClientRect().width / 2, h.getBoundingClientRect().bottom - 3); return { host: h.getAttribute('data-axdb-edge') ?? '', attr: h.hasAttribute('data-axdb-edge'), under: getComputedStyle(el).cursor, tag: el.tagName }; });
+  await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2); await page.waitForTimeout(150);
+  const cursorMid = await page.evaluate(() => { const h = document.querySelector('.grafloria-node-host[data-node-id="trend"]'); return { host: h.getAttribute('data-axdb-edge') ?? '', attr: h.hasAttribute('data-axdb-edge') }; });
+  // B. static board: a real click inside the chart's content reaches a listener on the content
+  await page.evaluate(() => { window.__demoCtx.handle.setStatic(true); window.__clicks = 0; document.querySelector('.grafloria-node-host[data-node-id="trend"] .axdb-widget-b').addEventListener('click', () => { window.__clicks++; }); });
+  await page.waitForTimeout(200);
+  await page.mouse.click(t.x + t.width / 2, t.y + t.height / 2); await page.waitForTimeout(200);
+  const clicksStatic = await page.evaluate(() => window.__clicks);
+  const movedStatic = await page.evaluate(() => { const c = window.__demoCtx.handle.widget('trend').cell; return { x: c.x, y: c.y }; });
+  // …and a press there starts no drag
+  await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2); await page.mouse.down(); await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2 + 200, { steps: 10 }); await page.waitForTimeout(200); await page.mouse.up(); await page.waitForTimeout(300);
+  const afterDrag = await page.evaluate(() => { const c = window.__demoCtx.handle.widget('trend').cell; return { x: c.x, y: c.y }; });
+  await shot(page, 'static-click-reaches-content');
+  await page.evaluate(() => window.__demoCtx.handle.setStatic(false));
+  const st = await boardState(page);
+  verdict(cursorNearEdge.host === 'ns-resize' && cursorNearEdge.attr && cursorNearEdge.under === 'ns-resize' && cursorMid.host === '' && !cursorMid.attr && clicksStatic === 1 && afterDrag.x === movedStatic.x && afterDrag.y === movedStatic.y && st.overlaps === 0,
+    `edge-cursor=${cursorNearEdge.host}/under=${cursorNearEdge.under}(${cursorNearEdge.tag}) attr=${cursorNearEdge.attr} mid=${JSON.stringify(cursorMid)} static-click=${clicksStatic} static-drag-moved=${afterDrag.x !== movedStatic.x || afterDrag.y !== movedStatic.y} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
+
 } finally {
   await browser.close();
   server.close();

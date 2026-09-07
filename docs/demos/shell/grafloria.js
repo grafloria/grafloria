@@ -194163,7 +194163,7 @@ var CSS4 = `
 
 /* ===== keyboard focus: the roving tab stop shows where it is (WCAG 2.4.7) ===== */
 .grafloria-html-layer > .grafloria-node-host:focus-visible {
-  outline: 2px solid #3b52d9;
+  outline: 2px solid var(--axdb-accent, #3b52d9);
   outline-offset: 2px;
   border-radius: var(--axdb-rs-radius, 3px);
 }
@@ -194331,9 +194331,16 @@ var CSS4 = `
   content: ''; position: absolute; left: 5px; top: 2px; width: 12px; height: 6px;
   background: radial-gradient(circle, currentColor 1px, transparent 1.4px) 0 0 / 4px 3px;
 }
-.grafloria-node-host > .axdb-grip:hover { border-color: #3b52d9; color: #3b52d9; }
-/* The selected card says so, quietly. */
-.grafloria-node-host.axdb-selected > .axdb-widget { box-shadow: 0 0 0 1.5px rgba(59, 82, 217, .55), 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .05); }
+.grafloria-node-host > .axdb-grip:hover { border-color: var(--axdb-accent, #3b52d9); color: var(--axdb-accent, #3b52d9); }
+/* The selected card says so, quietly. --axdb-accent themes the grip's hover, the
+   ring and the focus outline together; --axdb-accent-ring the ring alone. */
+.grafloria-node-host.axdb-selected > .axdb-widget { box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)), 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .05); }
+/* While a resize edge is near, the host and everything in it (a chart canvas
+   with its own cursor included) show the edge's cursor. */
+.grafloria-node-host[data-axdb-edge="ns-resize"], .grafloria-node-host[data-axdb-edge="ns-resize"] * { cursor: ns-resize !important; }
+.grafloria-node-host[data-axdb-edge="ew-resize"], .grafloria-node-host[data-axdb-edge="ew-resize"] * { cursor: ew-resize !important; }
+.grafloria-node-host[data-axdb-edge="nwse-resize"], .grafloria-node-host[data-axdb-edge="nwse-resize"] * { cursor: nwse-resize !important; }
+.grafloria-node-host[data-axdb-edge="nesw-resize"], .grafloria-node-host[data-axdb-edge="nesw-resize"] * { cursor: nesw-resize !important; }
 /* INSIDE: centred on the header's text line and flush with the card padding,
    per size tier (padding 13/15, then 8/14, 4/12, 2/12). */
 .grafloria-node-host > .axdb-grip--inside { top: 14px; }
@@ -194532,12 +194539,12 @@ function pressOnDragHandle(sel, target, hostEl, clientX, clientY) {
   const grip = target?.closest?.(sel) ?? null;
   if (grip && (!hostEl || hostEl.contains(grip))) return true;
   if (sel !== ".axdb-widget-h" || !hostEl) return false;
-  const header = hostEl.querySelector(".axdb-widget-h");
-  if (!header) return false;
   const hr = hostEl.getBoundingClientRect();
-  const r = header.getBoundingClientRect();
-  return clientX >= hr.left && clientX <= hr.right && clientY >= hr.top && clientY <= r.bottom;
+  const header = hostEl.querySelector(".axdb-widget-h");
+  const bottom = header ? header.getBoundingClientRect().bottom : hr.top + CAPTION_BAND;
+  return clientX >= hr.left && clientX <= hr.right && clientY >= hr.top && clientY <= bottom;
 }
+var CAPTION_BAND = 28;
 var BOARD_REGISTRY = /* @__PURE__ */ new WeakMap();
 var LIVE_REGIONS = /* @__PURE__ */ new WeakMap();
 function liveRegionFor(container) {
@@ -194627,6 +194634,7 @@ function bindDashboardGrid(api, group, options = {}) {
   const padding = options.padding ?? gap;
   const baseRowHeight = options.baseRowHeight ?? 110;
   const minRowHeight = options.minRowHeight ?? 28;
+  const squeeze = options.squeeze !== false;
   let float = options.float ?? false;
   const maxRows = options.maxRows;
   const dragOut = options.dragOut ?? "cancel";
@@ -194650,7 +194658,8 @@ function bindDashboardGrid(api, group, options = {}) {
   const bound = () => maxRows ?? capacity;
   const fitCapacity = () => {
     if (maxRows !== void 0 || sizing !== "fit" || overflow === "scroll" || designH <= 0) return void 0;
-    const rowsThatFit = Math.floor((designH - 2 * padding + gap) / (minRowHeight + gap));
+    const floor = squeeze ? minRowHeight : Math.max(minRowHeight, rowHeightFor(geom(), rows()));
+    const rowsThatFit = Math.floor((designH - 2 * padding + gap) / (floor + gap));
     return Math.max(1, rowsThatFit, engine.rows());
   };
   const refreshCapacity = () => {
@@ -194915,6 +194924,7 @@ function bindDashboardGrid(api, group, options = {}) {
   const syncHandles = (only) => {
     syncA11y(only);
     if (disposed) return;
+    ensureStaticGuard();
     const grip = gripOf(dragHandle);
     for (const id of group.members ?? []) {
       if (only && !only.has(id)) continue;
@@ -195758,9 +195768,28 @@ function bindDashboardGrid(api, group, options = {}) {
     if (!(group.members ?? /* @__PURE__ */ new Set()).has(id)) return;
     const node = diagram.getNode(id);
     const resizable = !!node && !isStatic && node.state?.locked !== true && node.getMetadata?.("widgetResizable") !== false;
-    host.style.cursor = resizable ? cursorFor(edgesNear(host, e.clientX, e.clientY)) : "";
+    const cursor = resizable ? cursorFor(edgesNear(host, e.clientX, e.clientY)) : "";
+    if (cursor) host.setAttribute("data-axdb-edge", cursor);
+    else host.removeAttribute("data-axdb-edge");
   };
   api.container.addEventListener("pointermove", onHover, { passive: true });
+  const staticGuard = (e) => {
+    if (!isStatic || disposed) return;
+    const t = e.target;
+    const host = t?.closest?.(".grafloria-node-host");
+    if (!host || !(group.members ?? /* @__PURE__ */ new Set()).has(host.getAttribute("data-node-id") ?? "")) return;
+    if (t?.closest?.(".axdb-rs, .axdb-grip, .axdb-div")) return;
+    e.stopPropagation();
+  };
+  let guardedLayer = null;
+  const ensureStaticGuard = () => {
+    if (guardedLayer?.isConnected) return;
+    const layer2 = htmlLayer();
+    if (!layer2) return;
+    guardedLayer?.removeEventListener("pointerdown", staticGuard);
+    guardedLayer = layer2;
+    layer2.addEventListener("pointerdown", staticGuard);
+  };
   const memberHostAt = (target) => {
     const host = target?.closest?.(".grafloria-node-host");
     if (!host) return null;
@@ -196175,6 +196204,7 @@ function bindDashboardGrid(api, group, options = {}) {
       peersOnCanvas().delete(selfPeer);
       unregisterTool();
       api.container.removeEventListener("pointermove", onHover);
+      guardedLayer?.removeEventListener("pointerdown", staticGuard);
       api.container.removeEventListener("focusin", onFocusIn);
       api.container.removeEventListener("keydown", onKey);
       hostObserver.disconnect();
@@ -196762,11 +196792,29 @@ function bindDashboardSplit(api, group, options = {}) {
     selectedId = id;
     syncA11y();
   };
+  const staticGuard = (e) => {
+    if (!isStatic || disposed) return;
+    const t = e.target;
+    const host = t?.closest?.(".grafloria-node-host");
+    if (!host || !(group.members ?? /* @__PURE__ */ new Set()).has(host.getAttribute("data-node-id") ?? "")) return;
+    if (t?.closest?.(".axdb-rs, .axdb-grip, .axdb-div")) return;
+    e.stopPropagation();
+  };
+  let guardedLayer = null;
+  const ensureStaticGuard = () => {
+    if (guardedLayer?.isConnected) return;
+    const layer = api.container.querySelector(".grafloria-html-layer");
+    if (!layer) return;
+    guardedLayer?.removeEventListener("pointerdown", staticGuard);
+    guardedLayer = layer;
+    layer.addEventListener("pointerdown", staticGuard);
+  };
   const syncA11y = () => {
     if (disposed) return;
+    ensureStaticGuard();
     const order = splitLeaves(paintedTree()).filter((id) => !!diagram.getNode(id));
     if (selectedId && !order.includes(selectedId)) selectedId = void 0;
-    for (const id of order) hostOf(id)?.querySelector(":scope > .axdb-rs")?.remove();
+    for (const id of group.members ?? []) hostOf(id)?.querySelector(":scope > .axdb-rs")?.remove();
     for (const id of order) {
       const host = hostOf(id);
       const node = diagram.getNode(id);
@@ -197350,6 +197398,7 @@ function bindDashboardSplit(api, group, options = {}) {
       api.renderNow();
     },
     dispose() {
+      guardedLayer?.removeEventListener("pointerdown", staticGuard);
       if (disposed) return;
       cancelActiveGesture();
       disposed = true;
@@ -197963,7 +198012,14 @@ function createDashboardHandle(ctx) {
     },
     focusWidget(id) {
       const b = binders.get(viewOfWidget.get(id) ?? "");
-      return b?.focusWidget(id) ?? false;
+      if (!b) return false;
+      if (b.focusWidget(id)) return true;
+      if (!specById.has(id)) return false;
+      const retry = (n3) => {
+        if (!b.focusWidget(id) && n3 > 0) setTimeout(() => retry(n3 - 1), 16);
+      };
+      queueMicrotask(() => retry(4));
+      return true;
     },
     widgetsOf(viewId) {
       const v = views.find((x) => x.id === (viewId ?? ctx.active));
@@ -198380,6 +198436,7 @@ function dashboard(options) {
         if (!v || !g || !b) return;
         const cells = b.saveLayout().cells;
         const live = { rtl: b.getRtl(), static: b.getStatic(), dragHandle: b.getDragHandle() };
+        const focused = b.getFocusedWidget();
         b.dispose();
         const write = (fn) => model.runSystemWrite ? model.runSystemWrite(fn) : fn();
         write(() => {
@@ -198396,6 +198453,7 @@ function dashboard(options) {
         ctx.layoutOf.set(viewId, next);
         binders.set(viewId, bindView(v, g, next, live));
         binders.get(viewId)?.sync();
+        if (focused) binders.get(viewId)?.focusWidget(focused);
       };
       handle.showView(ctx.active);
       ctx.rebindContainer = (id) => {
@@ -198463,6 +198521,7 @@ function dashboard(options) {
           fluid: mode === "fluid",
           static: live?.static ?? options.static ?? false,
           dragHandle: live?.dragHandle ?? options.dragHandle ?? false,
+          ...options.squeeze !== void 0 ? { squeeze: options.squeeze } : {},
           ...options.binder ?? {},
           onGesture: (e) => {
             if (e.type === "commit") reportChanged();
@@ -198504,6 +198563,7 @@ function dashboard(options) {
             rtl: options.rtl ?? false,
             static: options.static ?? false,
             dragHandle: options.dragHandle ?? false,
+            ...options.squeeze !== void 0 ? { squeeze: options.squeeze } : {},
             onGesture: (e) => {
               if (e.type === "commit") reportChanged();
               options.binder?.onGesture?.(e);

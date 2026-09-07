@@ -9,6 +9,7 @@
  * They drive the real engine (DiagramModel + the kit's binder) through a
  * minimal API stub, the same shape `render()` passes to `finalize()`.
  */
+import { pressOnDragHandle } from './grid-binder';
 import { Command, DiagramModel, GroupModel, NodeModel, CommandManager, EventBus } from '@grafloria/engine';
 import { render } from '../grafloria';
 import { dashboard, type DashboardSpec } from './dashboard';
@@ -1269,6 +1270,73 @@ describe('per-widget limits, pointer flags and the static board', () => {
     handle.focusWidget('a');
     expect(host('a').classList.contains('axdb-selected')).toBe(true);
     expect(host('b').classList.contains('axdb-selected')).toBe(false);
+  });
+
+  it('squeeze: false freezes the row height — a full fit board refuses a row instead of shrinking its neighbours', () => {
+    // 3 rows of 130 px + 2 gaps of 10 + 2 × 10 padding = 430 px: the frame is full at the current height.
+    const widgets = [{ id: 'a', kind: 'kpi', span: 12, rows: 1 }, { id: 'b', kind: 'kpi', span: 12, rows: 1 }, { id: 'c', kind: 'kpi', span: 12, rows: 1 }];
+    const frozen = mount(dashboard({ width: 1200, height: 430, gap: 10, rowHeight: 130, sizing: 'fit', squeeze: false, widgets }));
+    expect(frozen.handle.metrics()!.capacity).toBe(3);
+    expect(frozen.handle.addWidget({ id: 'd', kind: 'kpi', span: 12, rows: 1 })).toBeUndefined();
+    expect(frozen.handle.widget('a')!.cell).toMatchObject({ h: 1 });
+    // The default squeezes: the same frame holds rows at the 28 px floor, so the add lands.
+    const elastic = mount(dashboard({ width: 1200, height: 430, gap: 10, rowHeight: 130, sizing: 'fit', widgets }));
+    expect(elastic.handle.metrics()!.capacity).toBeGreaterThan(3);
+    expect(elastic.handle.addWidget({ id: 'd', kind: 'kpi', span: 12, rows: 1 })).toBeDefined();
+  });
+
+  it('a press inside a static board\'s content never reaches the renderer; a press on kit chrome does', () => {
+    const { api, handle } = mount(dashboard({ static: true, widgets: [{ id: 'a', kind: 'kpi', span: 3 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    const h = document.createElement('div');
+    h.className = 'grafloria-node-host';
+    h.setAttribute('data-node-id', 'a');
+    // Chrome the grid binder does not strip on a static board: a split divider element.
+    h.innerHTML = '<div class="axdb-widget"><canvas class="chart"></canvas></div><div class="axdb-div"></div>';
+    layer.appendChild(h);
+    handle.refresh();
+    const seen: string[] = [];
+    api.container.addEventListener('pointerdown', (e) => seen.push((e.target as Element).className));
+    h.querySelector('.chart')!.dispatchEvent(new Event('pointerdown', { bubbles: true, cancelable: true }));
+    h.querySelector('.axdb-div')!.dispatchEvent(new Event('pointerdown', { bubbles: true, cancelable: true }));
+    expect(seen).toEqual(['axdb-div']);
+    // Off static, content presses reach the renderer again (the kit's tool claims them).
+    handle.setStatic(false);
+    h.querySelector('.chart')!.dispatchEvent(new Event('pointerdown', { bubbles: true, cancelable: true }));
+    expect(seen).toEqual(['axdb-div', 'chart']);
+  });
+
+  it('dragHandle: true on a host with no kit header treats the top band as the caption', () => {
+    const host = document.createElement('div');
+    host.innerHTML = '<div class="mine"><span class="deep"></span></div>';
+    const deep = host.querySelector('.deep') as Element;
+    // jsdom rects are all zero: the band is 0…28 px from the top.
+    expect(pressOnDragHandle('.axdb-widget-h', deep, host, 0, 10)).toBe(true);
+    expect(pressOnDragHandle('.axdb-widget-h', deep, host, 0, 40)).toBe(false);
+  });
+
+  it('focusWidget right after addWidget selects once the add has landed', async () => {
+    const { api, handle } = mount(dashboard({ widgets: [{ id: 'a', kind: 'kpi', span: 3 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    for (const id of ['a', 'b']) { const h = document.createElement('div'); h.className = 'grafloria-node-host'; h.setAttribute('data-node-id', id); layer.appendChild(h); }
+    handle.addWidget({ id: 'b', kind: 'kpi', span: 3 });
+    expect(handle.focusWidget('b')).toBe(true);
+    await new Promise((r) => setTimeout(r, 80));
+    handle.refresh();
+    expect(api.container.querySelector('.grafloria-node-host[data-node-id="b"]')!.classList.contains('axdb-selected')).toBe(true);
+  });
+
+  it('a layout switch keeps the selected widget', () => {
+    const { api, handle } = mount(dashboard({ dragHandle: { grip: true }, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    for (const id of ['a', 'b']) { const h = document.createElement('div'); h.className = 'grafloria-node-host'; h.setAttribute('data-node-id', id); layer.appendChild(h); }
+    handle.refresh();
+    handle.focusWidget('b');
+    handle.setLayout('split');
+    handle.refresh();
+    const host = (id: string) => api.container.querySelector(`.grafloria-node-host[data-node-id="${id}"]`)!;
+    expect(host('b').classList.contains('axdb-selected')).toBe(true);
+    expect(host('a').classList.contains('axdb-selected')).toBe(false);
   });
 
   it('a layout switch keeps the LIVE switches: static, rtl and the drag handle survive setLayout', () => {

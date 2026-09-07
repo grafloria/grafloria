@@ -37,7 +37,7 @@ const CSS = `
 
 /* ===== keyboard focus: the roving tab stop shows where it is (WCAG 2.4.7) ===== */
 .grafloria-html-layer > .grafloria-node-host:focus-visible {
-  outline: 2px solid #3b52d9;
+  outline: 2px solid var(--axdb-accent, #3b52d9);
   outline-offset: 2px;
   border-radius: var(--axdb-rs-radius, 3px);
 }
@@ -205,9 +205,16 @@ const CSS = `
   content: ''; position: absolute; left: 5px; top: 2px; width: 12px; height: 6px;
   background: radial-gradient(circle, currentColor 1px, transparent 1.4px) 0 0 / 4px 3px;
 }
-.grafloria-node-host > .axdb-grip:hover { border-color: #3b52d9; color: #3b52d9; }
-/* The selected card says so, quietly. */
-.grafloria-node-host.axdb-selected > .axdb-widget { box-shadow: 0 0 0 1.5px rgba(59, 82, 217, .55), 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .05); }
+.grafloria-node-host > .axdb-grip:hover { border-color: var(--axdb-accent, #3b52d9); color: var(--axdb-accent, #3b52d9); }
+/* The selected card says so, quietly. --axdb-accent themes the grip's hover, the
+   ring and the focus outline together; --axdb-accent-ring the ring alone. */
+.grafloria-node-host.axdb-selected > .axdb-widget { box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)), 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .05); }
+/* While a resize edge is near, the host and everything in it (a chart canvas
+   with its own cursor included) show the edge's cursor. */
+.grafloria-node-host[data-axdb-edge="ns-resize"], .grafloria-node-host[data-axdb-edge="ns-resize"] * { cursor: ns-resize !important; }
+.grafloria-node-host[data-axdb-edge="ew-resize"], .grafloria-node-host[data-axdb-edge="ew-resize"] * { cursor: ew-resize !important; }
+.grafloria-node-host[data-axdb-edge="nwse-resize"], .grafloria-node-host[data-axdb-edge="nwse-resize"] * { cursor: nwse-resize !important; }
+.grafloria-node-host[data-axdb-edge="nesw-resize"], .grafloria-node-host[data-axdb-edge="nesw-resize"] * { cursor: nesw-resize !important; }
 /* INSIDE: centred on the header's text line and flush with the card padding,
    per size tier (padding 13/15, then 8/14, 4/12, 2/12). */
 .grafloria-node-host > .axdb-grip--inside { top: 14px; }
