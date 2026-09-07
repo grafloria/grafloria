@@ -61,6 +61,7 @@ import {
   type DashboardGridOptions,
   type DashboardResponsiveOptions,
 } from './grid-binder';
+import type { DragHandleOption } from './grid-binder';
 import { bindDashboardSplit, SPLIT_TREE_KEY, type DashboardSplitHandle } from './split-binder';
 import type { SplitNode } from './split-layout';
 import { gridItemFromCell } from './grid-mapping';
@@ -208,13 +209,15 @@ export interface DashboardOptions {
    */
   static?: boolean;
   /**
-   * DRAG HANDLE — DevExpress drags an item by its caption. `true`: a widget
-   * moves only from its header, which shows a grip; a selector string: your
-   * own handle inside the card; off (default): the whole card. Resize edges
-   * and the keyboard are unaffected; the body stays interactive. Live:
-   * `handle.setDragHandle()`.
+   * DRAG HANDLE — DevExpress drags an item by its caption. `true`: the caption
+   * strip is the only handle (the header shows grip dots); a selector string:
+   * your own element inside the card; `{ grip: true, position, placement }`:
+   * a painted grip, left / center / right along the top edge, `inside` the
+   * header band or `outside` as a tab above the card; off (default): the
+   * whole card. Resize edges and the keyboard are unaffected; the body stays
+   * interactive. Live: `handle.setDragHandle()`.
    */
-  dragHandle?: boolean | string;
+  dragHandle?: DragHandleOption;
   /**
    * RIGHT-TO-LEFT boards: column x=0 renders at the RIGHT edge and columns run
    * leftwards. Cells are untouched — the same `widgets` array describes the
@@ -315,9 +318,9 @@ export interface DashboardHandle {
   /** Static (read-only for the pointer) mode, live — the viewer/designer switch. */
   setStatic(on: boolean): void;
   getStatic(): boolean;
-  /** Drag-handle mode, live, every view: `true` = the header, a selector = your own handle, `false` = the whole card. */
-  setDragHandle(v: boolean | string): void;
-  getDragHandle(): boolean | string;
+  /** Drag-handle mode, live, every view: `true` = the caption strip, a selector = your own handle, `{ grip: true, … }` = a painted grip, `false` = the whole card. */
+  setDragHandle(v: DragHandleOption): void;
+  getDragHandle(): DragHandleOption;
   /**
    * Add a widget to a view. CREATES the node (you do not pre-build one), wires
    * its metadata, and commits node + membership as ONE undoable step.
@@ -1614,7 +1617,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         v: DashboardViewSpec,
         g: GroupModel,
         viewLayout: 'grid' | 'split',
-        live?: { rtl: boolean; static: boolean; dragHandle: boolean | string }
+        live?: { rtl: boolean; static: boolean; dragHandle: DragHandleOption }
       ): DashboardGridHandle {
         const common = {
           gap,

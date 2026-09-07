@@ -31,14 +31,24 @@ const bar: React.CSSProperties = { display: 'flex', gap: 6, alignItems: 'center'
 const btn = (on: boolean): React.CSSProperties => ({ padding: '5px 10px', border: '1px solid ' + (on ? '#3B52D9' : '#d1d5db'), borderRadius: 6,
   background: on ? '#3B52D9' : '#fff', color: on ? '#fff' : 'inherit', cursor: 'pointer' });
 const sep: React.CSSProperties = { width: 1, height: 20, background: '#e5e7eb', margin: '0 4px' };
+const lab: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6 };
+const sel: React.CSSProperties = { font: 'inherit', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff' };
+type Drag = 'anywhere' | 'caption' | 'grip';
+type GripPos = 'left' | 'center' | 'right';
+type GripPlace = 'inside' | 'outside';
 
 export default function FluidBoardDemo() {
   const [handle, setHandle] = useState<DashboardHandle | null>(null);
   const [layout, setLayout] = useState<'grid' | 'split'>('grid');
   const [sizing, setSizing] = useState<'fit' | 'grow'>('grow');
-  // DevExpress caption drag, live on the handle: the header is the only grip.
-  const [grip, setGrip] = useState(false);
-  useEffect(() => { handle?.setDragHandle(grip); }, [handle, grip]);
+  // The drag handle, live on the handle: the whole card, the caption strip
+  // (DevExpress caption drag) or a painted grip placed along the top edge.
+  const [drag, setDrag] = useState<Drag>('anywhere');
+  const [gripPos, setGripPos] = useState<GripPos>('left');
+  const [gripPlace, setGripPlace] = useState<GripPlace>('inside');
+  useEffect(() => {
+    handle?.setDragHandle(drag === 'grip' ? { grip: true, position: gripPos, placement: gripPlace } : drag === 'caption');
+  }, [handle, drag, gripPos, gripPlace]);
   useEffect(() => markReady(), []);
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -49,7 +59,12 @@ export default function FluidBoardDemo() {
         <button id="grid" style={btn(layout === 'grid')} onClick={() => setLayout('grid')}>Grid</button>
         <button id="split" style={btn(layout === 'split')} onClick={() => setLayout('split')}>Split</button>
         <span style={sep} />
-        <button id="handle" style={btn(grip)} onClick={() => setGrip(!grip)} title="DevExpress caption drag: a widget moves only from its header">Drag by header</button>
+        <label style={lab}>Drag <select id="drag" style={sel} value={drag} onChange={(e) => setDrag(e.target.value as Drag)}>
+          <option value="anywhere">anywhere</option><option value="caption">by caption</option><option value="grip">by grip</option></select></label>
+        <select id="grip-pos" style={sel} disabled={drag !== 'grip'} value={gripPos} onChange={(e) => setGripPos(e.target.value as GripPos)}>
+          <option value="left">left</option><option value="center">center</option><option value="right">right</option></select>
+        <select id="grip-place" style={sel} disabled={drag !== 'grip'} value={gripPlace} onChange={(e) => setGripPlace(e.target.value as GripPlace)}>
+          <option value="inside">inside</option><option value="outside">outside</option></select>
         <span style={sep} />
         <button id="add" style={btn(false)} onClick={() => handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Added row', value: '+1' } })}>+ Add a row</button>
       </div>

@@ -1205,7 +1205,8 @@ describe('per-widget limits, pointer flags and the static board', () => {
     expect(document.querySelector('.axdb-drag-handle')).not.toBeNull();
     handle.setDragHandle('.my-grip');
     expect(handle.getDragHandle()).toBe('.my-grip');
-    expect(document.querySelector('.axdb-drag-handle')).not.toBeNull();
+    // A custom handle is the app's own element: no caption dots on the header.
+    expect(document.querySelector('.axdb-drag-handle')).toBeNull();
     handle.setDragHandle(false);
     expect(handle.getDragHandle()).toBe(false);
     expect(handle.toJSON().dragHandle).toBe(false);
@@ -1216,6 +1217,37 @@ describe('per-widget limits, pointer flags and the static board', () => {
     h2.setDragHandle(true);
     expect(h2.getDragHandle()).toBe(true);
     expect(h2.metrics()!.dragHandle).toBe(true);
+  });
+
+  it('a painted grip: defaults filled in, one grip per host placed as asked, gone when off, on both layouts', () => {
+    const { api, handle } = mount(dashboard({ dragHandle: { grip: true }, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3, movable: false }] }));
+    // jsdom paints no hosts: stand two in, as the observer test does, and re-sync.
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    for (const id of ['a', 'b']) {
+      const h = document.createElement('div');
+      h.className = 'grafloria-node-host';
+      h.setAttribute('data-node-id', id);
+      layer.appendChild(h);
+    }
+    handle.refresh();
+    expect(handle.getDragHandle()).toEqual({ grip: true, position: 'left', placement: 'inside' });
+    expect(handle.toJSON().dragHandle).toEqual({ grip: true, position: 'left', placement: 'inside' });
+    const gripOn = (id: string) => document.querySelector(`.grafloria-node-host[data-node-id="${id}"] > .axdb-grip`);
+    expect(gripOn('a')!.className).toBe('axdb-grip axdb-grip--left axdb-grip--inside');
+    expect(gripOn('a')!.parentElement!.classList.contains('axdb-gp-left')).toBe(true);
+    expect(gripOn('b')).toBeNull(); // a fixed tile paints no grip
+    // The caption class is NOT set on THIS board (earlier mounts stay in the document): the grip is the only handle.
+    expect(api.container.classList.contains('axdb-drag-handle')).toBe(false);
+    handle.setDragHandle({ grip: true, position: 'right', placement: 'outside' });
+    expect(gripOn('a')!.className).toBe('axdb-grip axdb-grip--right axdb-grip--outside');
+    expect(gripOn('a')!.parentElement!.classList.contains('axdb-gp-outside')).toBe(true);
+    handle.setLayout('split');
+    expect(handle.getDragHandle()).toEqual({ grip: true, position: 'right', placement: 'outside' });
+    handle.refresh();
+    expect(gripOn('a')!.className).toBe('axdb-grip axdb-grip--right axdb-grip--outside');
+    handle.setDragHandle(false);
+    expect(gripOn('a')).toBeNull();
+    expect(document.querySelector('.axdb-gp-right')).toBeNull();
   });
 
   it('a layout switch keeps the LIVE switches: static, rtl and the drag handle survive setLayout', () => {

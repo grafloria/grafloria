@@ -1488,53 +1488,69 @@ try {
   const page = await freshPage('/dashboard/fluid-board.html');
   const rectOf = (id) => page.evaluate((id) => document.querySelector(`.grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect().toJSON(), id);
   const cellOf = (id) => page.evaluate((id) => { const c = window.__demoCtx.handle.widget(id).cell; return { x: c.x, y: c.y }; }, id);
-  await page.click('#fb-handle'); await page.waitForTimeout(300);
+  const drag = (mode, pos, place) => page.evaluate(([m, p, l]) => window.__demoCtx.ctx2 ? window.__demoCtx.ctx2.drag(m, p, l) : null, [mode, pos, place]);
+  const pull = async (x, y, dy) => { await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y + dy, { steps: 15 }); await page.waitForTimeout(300); const ph = await phRect(page); await page.mouse.up(); await page.waitForTimeout(500); return !!ph; };
+  await page.selectOption('#fb-drag', 'caption'); await page.waitForTimeout(300);
   const on = await page.evaluate(() => ({ v: window.__demoCtx.handle.getDragHandle(), cls: !!document.querySelector('.axdb-drag-handle'), cursor: getComputedStyle(document.querySelector('.grafloria-node-host[data-node-id="trend"] .axdb-widget-h')).cursor }));
-  // A. a press in the chart's BODY and a 300 px pull: no placeholder, no move
+  // A. caption mode — a press in the chart's BODY and a 300 px pull: no placeholder, no move
   const c0 = await cellOf('trend'); const r0 = await rectOf('trend');
-  await page.mouse.move(r0.x + r0.width / 2, r0.y + r0.height * 0.6); await page.mouse.down();
-  await page.mouse.move(r0.x + r0.width / 2, r0.y + r0.height * 0.6 + 300, { steps: 15 }); await page.waitForTimeout(300);
-  const phBody = await phRect(page);
-  await shot(page, 'body-press-starts-nothing');
-  await page.mouse.up(); await page.waitForTimeout(400);
+  const phBody = await pull(r0.x + r0.width / 2, r0.y + r0.height * 0.6, 300);
+  await shot(page, 'caption-body-press-starts-nothing');
   const c1 = await cellOf('trend');
   const bodyInert = !phBody && c1.x === c0.x && c1.y === c0.y;
-  // B. the same pull from the HEADER moves it
+  // B. the same pull from the caption strip moves it
   const r1 = await rectOf('trend');
-  await page.mouse.move(r1.x + r1.width / 2, r1.y + 12); await page.mouse.down();
-  await page.mouse.move(r1.x + r1.width / 2, r1.y + 12 + 300, { steps: 15 }); await page.waitForTimeout(300);
-  const phHead = await phRect(page);
-  await shot(page, 'header-press-moves');
-  await page.mouse.up(); await page.waitForTimeout(500);
+  const phHead = await pull(r1.x + r1.width / 2, r1.y + 12, 300);
+  await shot(page, 'caption-press-moves');
   const c2 = await cellOf('trend');
-  const headerMoves = !!phHead && c2.y > c0.y;
+  const headerMoves = phHead && c2.y > c0.y;
   // C. off again: the body drags as before
-  await page.click('#fb-handle'); await page.waitForTimeout(300);
+  await page.selectOption('#fb-drag', 'anywhere'); await page.waitForTimeout(300);
   const off = await page.evaluate(() => ({ v: window.__demoCtx.handle.getDragHandle(), cls: !!document.querySelector('.axdb-drag-handle') }));
   const r2 = await rectOf('trend');
-  await page.mouse.move(r2.x + r2.width / 2, r2.y + r2.height * 0.6); await page.mouse.down();
-  await page.mouse.move(r2.x + r2.width / 2, r2.y + r2.height * 0.6 - 300, { steps: 15 }); await page.waitForTimeout(300);
-  const phOff = await phRect(page);
-  await page.mouse.up(); await page.waitForTimeout(500);
+  const phOff = await pull(r2.x + r2.width / 2, r2.y + r2.height * 0.6, -300);
   const c3 = await cellOf('trend');
-  const bodyBack = !!phOff && c3.y < c2.y;
-  // D. the split layout honours it too: a body press draws no insertion line, a header press does
-  await page.click('#fb-handle'); await page.click('#fb-split'); await page.waitForTimeout(500);
+  const bodyBack = phOff && c3.y < c2.y;
+  // D. GRIP mode, left / inside: body AND caption text are inert; only the grip moves it
+  await page.selectOption('#fb-drag', 'grip'); await page.waitForTimeout(300);
+  const gripInfo = () => page.evaluate(() => { const h = document.querySelector('.grafloria-node-host[data-node-id="trend"]'); const g = h.querySelector(':scope > .axdb-grip'); if (!g) return null; const r = g.getBoundingClientRect(), hr = h.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, above: r.bottom <= hr.top + 1, left: r.left - hr.left, right: hr.right - r.right, cls: g.className }; });
+  const g1 = await gripInfo();
+  const c4 = await cellOf('trend'); const r4 = await rectOf('trend');
+  const phGripBody = await pull(r4.x + r4.width / 2, r4.y + r4.height * 0.6, 300);
+  const phGripCaption = await pull(r4.x + r4.width / 2, r4.y + 12, 300);
+  const c5 = await cellOf('trend');
+  const gripInert = !phGripBody && !phGripCaption && c5.y === c4.y;
+  const phGrip = await pull(g1.x, g1.y, 300);
+  await shot(page, 'grip-inside-left-press-moves');
+  const c6 = await cellOf('trend');
+  const gripMoves = phGrip && c6.y > c4.y;
+  // E. right / OUTSIDE: the tab sits above the card, and a press on it moves the widget
+  await page.selectOption('#fb-grip-pos', 'right'); await page.selectOption('#fb-grip-place', 'outside'); await page.waitForTimeout(300);
+  const g2 = await gripInfo();
+  const c7 = await cellOf('trend');
+  const phOut = await pull(g2.x, g2.y, -300);
+  await shot(page, 'grip-outside-right-press-moves');
+  const c8 = await cellOf('trend');
+  const outsideMoves = g2.above && g2.right < 12 && phOut && c8.y < c7.y;
+  // F. split honours the grip too: a body press draws no insertion line, a grip press does
+  await page.click('#fb-split'); await page.waitForTimeout(500);
   const m = await rectOf('mix'); const t = await rectOf('trend');
   await page.mouse.move(m.x + m.width / 2, m.y + m.height * 0.6); await page.mouse.down();
   await page.mouse.move(t.x + 30, t.y + t.height / 2, { steps: 20 }); await page.waitForTimeout(300);
   const splitBody = await page.evaluate(() => document.querySelectorAll('.axdb-ins').length);
   await page.mouse.up(); await page.waitForTimeout(400);
-  const m2 = await rectOf('mix'); const t2 = await rectOf('trend');
-  await page.mouse.move(m2.x + m2.width / 2, m2.y + 12); await page.mouse.down();
+  const gm = await page.evaluate(() => { const g = document.querySelector('.grafloria-node-host[data-node-id="mix"] > .axdb-grip'); const r = g.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  const t2 = await rectOf('trend');
+  await page.mouse.move(gm.x, gm.y); await page.mouse.down();
   await page.mouse.move(t2.x + 30, t2.y + t2.height / 2, { steps: 20 }); await page.waitForTimeout(300);
-  const splitHead = await page.evaluate(() => document.querySelectorAll('.axdb-ins').length);
-  await shot(page, 'split-header-drag');
+  const splitGrip = await page.evaluate(() => document.querySelectorAll('.axdb-ins').length);
+  await shot(page, 'split-grip-drag');
   await page.mouse.up(); await page.waitForTimeout(400);
   const st = await boardState(page);
-  verdict(on.v === true && on.cls && on.cursor === 'grab' && bodyInert && headerMoves && off.v === false && !off.cls && bodyBack && splitBody === 0 && splitHead === 1 && st.overlaps === 0,
-    `on=${on.v}/${on.cls}/cursor=${on.cursor} body-inert=${bodyInert}(ph=${!!phBody}, cell ${c0.x},${c0.y}->${c1.x},${c1.y}) header-moves=${headerMoves}(y ${c0.y}->${c2.y}) ` +
-    `off=${off.v}/${off.cls} body-back=${bodyBack}(y ${c2.y}->${c3.y}) split-body-line=${splitBody} split-header-line=${splitHead} overlaps=${st.overlaps}`);
+  verdict(on.v === true && on.cls && on.cursor === 'grab' && bodyInert && headerMoves && off.v === false && !off.cls && bodyBack && !!g1 && !g1.above && g1.left < 12 && gripInert && gripMoves && outsideMoves && splitBody === 0 && splitGrip === 1 && st.overlaps === 0,
+    `caption=${on.v}/${on.cls}/cursor=${on.cursor} body-inert=${bodyInert} caption-moves=${headerMoves}(y ${c0.y}->${c2.y}) off=${off.v}/${off.cls} body-back=${bodyBack} ` +
+    `grip-inside-left=${!!g1 && !g1.above && g1.left < 12}(${g1?.cls}) grip-body+caption-inert=${gripInert} grip-moves=${gripMoves}(y ${c4.y}->${c6.y}) ` +
+    `outside-right-moves=${outsideMoves}(above=${g2?.above}, right=${g2?.right}, y ${c7.y}->${c8.y}) split-body-line=${splitBody} split-grip-line=${splitGrip} overlaps=${st.overlaps}`);
   assertNoPageErrors(page);
   await page.close();
 }

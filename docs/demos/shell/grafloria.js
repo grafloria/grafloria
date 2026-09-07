@@ -194313,6 +194313,28 @@ var CSS4 = `
   content: ''; flex: none; width: 8px; height: 12px; opacity: .55;
   background: radial-gradient(circle, currentColor 1.1px, transparent 1.5px) 0 0 / 4px 4px;
 }
+/* A PAINTED GRIP (dragHandle: { grip: true }): the only drag zone, a small
+   dotted tab along the card's top edge. Inside sits in the header band and
+   the header makes room for it; outside is a tab above the card, the
+   DevExpress item bar. The host must not clip it. */
+.grafloria-node-host > .axdb-grip {
+  position: absolute; z-index: 4; box-sizing: border-box; width: 24px; height: 12px;
+  border: 1px solid var(--axdb-line, #e7eaf1); border-radius: 3px; background: var(--axdb-card, #fff);
+  color: var(--axdb-muted, #5a6478); cursor: grab; opacity: .8;
+}
+.grafloria-node-host > .axdb-grip::before {
+  content: ''; position: absolute; left: 5px; top: 2px; width: 12px; height: 6px;
+  background: radial-gradient(circle, currentColor 1px, transparent 1.4px) 0 0 / 4px 3px;
+}
+.grafloria-node-host:hover > .axdb-grip, .grafloria-node-host > .axdb-grip:hover { opacity: 1; border-color: #3b52d9; color: #3b52d9; }
+.grafloria-node-host > .axdb-grip--inside { top: 5px; }
+.grafloria-node-host > .axdb-grip--outside { top: -11px; height: 11px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; box-shadow: 0 -1px 2px rgba(16, 24, 40, .08); }
+.grafloria-node-host > .axdb-grip--left { left: 8px; }
+.grafloria-node-host > .axdb-grip--right { right: 8px; }
+.grafloria-node-host > .axdb-grip--center { left: 50%; transform: translateX(-50%); }
+.grafloria-node-host.axdb-gp-inside.axdb-gp-left .axdb-widget > .axdb-widget-h { padding-left: 24px; }
+.grafloria-node-host.axdb-gp-inside.axdb-gp-right .axdb-widget > .axdb-widget-h { padding-right: 24px; }
+.grafloria-node-host.axdb-gp-inside.axdb-gp-center .axdb-widget > .axdb-widget-h { padding-top: 10px; }
 .axdb-widget-b { flex: 1; min-height: 0; position: relative; }
 .axdb-widget-b > svg { display: block; width: 100%; height: 100%; }
 .axdb-widget-b.axdb-scroll { overflow: auto; }
@@ -194451,9 +194473,32 @@ function ensureDashboardKitStyles(doc) {
 }
 
 // libs/element/src/lib/dashboard-kit/grid-binder.ts
-var dragHandleSelector = (v) => v === true ? ".axdb-widget-h" : typeof v === "string" && v.length > 0 ? v : null;
-var dragHandleValue = (sel) => sel === null ? false : sel === ".axdb-widget-h" ? true : sel;
+var GRIP_CLASS = "axdb-grip";
 var DRAG_HANDLE_CLASS = "axdb-drag-handle";
+var normalizeDragHandle = (v) => typeof v === "object" && v !== null && v.grip ? { grip: true, position: v.position ?? "left", placement: v.placement ?? "inside" } : v === true ? true : typeof v === "string" && v.length > 0 ? v : false;
+var dragHandleSelector = (v) => v === true ? ".axdb-widget-h" : typeof v === "string" ? v : typeof v === "object" ? "." + GRIP_CLASS : null;
+var gripOf = (v) => typeof v === "object" ? v : null;
+var sameDragHandle = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function syncGrip(host, cfg, movable) {
+  const existing = host.querySelector(":scope > ." + GRIP_CLASS);
+  host.classList.remove("axdb-gp-inside", "axdb-gp-outside", "axdb-gp-left", "axdb-gp-center", "axdb-gp-right");
+  if (!cfg || !movable) {
+    existing?.remove();
+    return;
+  }
+  const el = existing ?? host.ownerDocument.createElement("div");
+  if (!existing) {
+    el.setAttribute("aria-hidden", "true");
+    el.setAttribute("title", "Drag");
+    host.appendChild(el);
+  }
+  el.className = `${GRIP_CLASS} ${GRIP_CLASS}--${cfg.position ?? "left"} ${GRIP_CLASS}--${cfg.placement ?? "inside"}`;
+  host.classList.add(`axdb-gp-${cfg.placement ?? "inside"}`, `axdb-gp-${cfg.position ?? "left"}`);
+}
+function gripHostOf(target) {
+  const grip = target?.closest?.("." + GRIP_CLASS);
+  return grip?.closest(".grafloria-node-host") ?? null;
+}
 function pressOnDragHandle(sel, target, hostEl, clientX, clientY) {
   const grip = target?.closest?.(sel) ?? null;
   if (grip && (!hostEl || hostEl.contains(grip))) return true;
@@ -194560,8 +194605,9 @@ function bindDashboardGrid(api, group, options = {}) {
   const fluid = options.fluid === true;
   const overflow = options.overflow ?? "bounded";
   let isStatic = options.static === true;
-  let dragHandle = dragHandleSelector(options.dragHandle);
-  api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
+  let dragHandle = normalizeDragHandle(options.dragHandle);
+  let dragSel = dragHandleSelector(dragHandle);
+  api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle === true);
   let focusedId;
   const live = liveRegionFor(api.container);
   let designH = options.designHeight ?? group.size?.height ?? 0;
@@ -194831,13 +194877,16 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const syncHandles = (only) => {
     syncA11y(only);
-    if (!wantHandles || disposed) return;
+    if (disposed) return;
+    const grip = gripOf(dragHandle);
     for (const id of group.members ?? []) {
       if (only && !only.has(id)) continue;
       const node = diagram.getNode(id);
       if (!node) continue;
       const host = hostOf(id);
       if (!host) continue;
+      syncGrip(host, grip, node.state?.locked !== true && !isStatic && node.getMetadata?.("widgetMovable") !== false);
+      if (!wantHandles) continue;
       const existing = host.querySelector(":scope > .axdb-rs");
       if (node.state?.locked === true || isStatic || node.getMetadata?.("widgetResizable") === false) {
         existing?.remove();
@@ -195582,15 +195631,18 @@ function bindDashboardGrid(api, group, options = {}) {
     },
     onPointerDown(ev, hit) {
       if (gesture) return;
-      if (!hit.node) {
+      const target = ev.source?.target ?? null;
+      const gripHost = gripHostOf(target);
+      const gripId = gripHost?.getAttribute("data-node-id") ?? null;
+      const onGrip = !!gripId && (group.members ?? /* @__PURE__ */ new Set()).has(gripId);
+      if (!hit.node && !onGrip) {
         diagram.clearSelection?.();
         api.render();
         return;
       }
-      const node = diagram.getNode(hit.node.id);
+      const node = diagram.getNode(onGrip ? gripId : hit.node.id);
       if (!node || node.state?.locked === true) return;
       if (isStatic) return;
-      const target = ev.source?.target ?? null;
       const onHandle = !!target?.closest?.(".axdb-rs");
       const hostEl = hostOf(node.id);
       const resizable = node.getMetadata?.("widgetResizable") !== false;
@@ -195600,13 +195652,13 @@ function bindDashboardGrid(api, group, options = {}) {
       const cx = typeof src?.clientX === "number" ? src.clientX : cr.left + ev.screen.x;
       const cy = typeof src?.clientY === "number" ? src.clientY : cr.top + ev.screen.y;
       let edges = NO_EDGES;
-      if (resizable) {
+      if (resizable && !onGrip) {
         if (onHandle) edges = rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false };
         else if (hostEl) edges = edgesNear(hostEl, cx, cy);
       }
       const isResize = anyEdge(edges);
       if (!isResize && !movable) return;
-      if (!isResize && dragHandle !== null && !pressOnDragHandle(dragHandle, target, hostEl, cx, cy)) return;
+      if (!isResize && dragSel !== null && !pressOnDragHandle(dragSel, target, hostEl, cx, cy)) return;
       armGlide();
       const it = engine.getItem(node.id);
       gesture = {
@@ -195967,14 +196019,16 @@ function bindDashboardGrid(api, group, options = {}) {
     },
     getStatic: () => isStatic,
     setDragHandle(v) {
-      const sel = dragHandleSelector(v);
-      if (sel === dragHandle) return;
-      dragHandle = sel;
+      const next = normalizeDragHandle(v);
+      if (sameDragHandle(next, dragHandle)) return;
+      dragHandle = next;
+      dragSel = dragHandleSelector(next);
       if (gesture) cancelActiveGesture(false);
-      api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
+      api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle === true);
+      syncHandles();
       api.renderNow();
     },
-    getDragHandle: () => dragHandleValue(dragHandle),
+    getDragHandle: () => typeof dragHandle === "object" ? { ...dragHandle } : dragHandle,
     saveLayout() {
       const saved = engine.saveLayout();
       return {
@@ -196009,7 +196063,7 @@ function bindDashboardGrid(api, group, options = {}) {
         responsive: !!responsive && !responsivePinned,
         fluid,
         static: isStatic,
-        dragHandle: dragHandleValue(dragHandle),
+        dragHandle: typeof dragHandle === "object" ? { ...dragHandle } : dragHandle,
         capacity,
         gap,
         padding,
@@ -196441,8 +196495,9 @@ function bindDashboardSplit(api, group, options = {}) {
   const fluid = options.fluid === true;
   let rtl = options.rtl === true;
   let isStatic = options.static === true;
-  let dragHandle = dragHandleSelector(options.dragHandle);
-  api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
+  let dragHandle = normalizeDragHandle(options.dragHandle);
+  let dragSel = dragHandleSelector(dragHandle);
+  api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle === true);
   let designH = options.designHeight ?? group.size?.height ?? 0;
   let designW = group.size?.width ?? 0;
   let disposed = false;
@@ -196663,6 +196718,11 @@ function bindDashboardSplit(api, group, options = {}) {
     if (disposed) return;
     const order = splitLeaves(paintedTree()).filter((id) => !!diagram.getNode(id));
     for (const id of order) hostOf(id)?.querySelector(":scope > .axdb-rs")?.remove();
+    for (const id of order) {
+      const host = hostOf(id);
+      const node = diagram.getNode(id);
+      if (host && node) syncGrip(host, gripOf(dragHandle), node.state?.locked !== true && !isStatic && node.getMetadata?.("widgetMovable") !== false);
+    }
     if (focusedId && !order.includes(focusedId)) focusedId = void 0;
     const stop = focusedId ?? order[0];
     order.forEach((id, i) => {
@@ -196865,20 +196925,22 @@ function bindDashboardSplit(api, group, options = {}) {
         api.container.style.cursor = d.dir === "row" ? "col-resize" : "row-resize";
         return;
       }
-      if (!hit.node) {
+      const gripId = gripHostOf(target)?.getAttribute("data-node-id") ?? null;
+      const onGrip = !!gripId && (group.members ?? /* @__PURE__ */ new Set()).has(gripId);
+      if (!hit.node && !onGrip) {
         diagram.clearSelection?.();
         api.render();
         return;
       }
-      const node = diagram.getNode(hit.node.id);
+      const node = diagram.getNode(onGrip ? gripId : hit.node.id);
       if (!node || node.state?.locked === true || isStatic) return;
       if (node.getMetadata?.("widgetMovable") === false) return;
-      if (dragHandle !== null) {
+      if (dragSel !== null) {
         const src = ev.source;
         const cr = api.container.getBoundingClientRect();
         const cx = typeof src?.clientX === "number" ? src.clientX : cr.left + ev.screen.x;
         const cy = typeof src?.clientY === "number" ? src.clientY : cr.top + ev.screen.y;
-        if (!pressOnDragHandle(dragHandle, target, hostOf(node.id), cx, cy)) return;
+        if (!pressOnDragHandle(dragSel, target, hostOf(node.id), cx, cy)) return;
       }
       const tree = readTree();
       gesture = {
@@ -197132,14 +197194,16 @@ function bindDashboardSplit(api, group, options = {}) {
     },
     getStatic: () => isStatic,
     setDragHandle(v) {
-      const sel = dragHandleSelector(v);
-      if (sel === dragHandle) return;
-      dragHandle = sel;
+      const next = normalizeDragHandle(v);
+      if (JSON.stringify(next) === JSON.stringify(dragHandle)) return;
+      dragHandle = next;
+      dragSel = dragHandleSelector(next);
       cancelActiveGesture();
-      api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
+      api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle === true);
+      syncA11y();
       api.renderNow();
     },
-    getDragHandle: () => dragHandleValue(dragHandle),
+    getDragHandle: () => typeof dragHandle === "object" ? { ...dragHandle } : dragHandle,
     focusWidget(id) {
       if (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id)) return false;
       focusedId = id;
@@ -197160,7 +197224,7 @@ function bindDashboardSplit(api, group, options = {}) {
         responsive: false,
         fluid,
         static: isStatic,
-        dragHandle: dragHandleValue(dragHandle),
+        dragHandle: typeof dragHandle === "object" ? { ...dragHandle } : dragHandle,
         capacity: void 0,
         gap,
         padding,

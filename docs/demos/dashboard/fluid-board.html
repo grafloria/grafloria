@@ -23,6 +23,9 @@
   #fb-bar button { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; cursor: pointer; }
   #fb-bar button[aria-pressed="true"] { background: rgba(59, 82, 217, .12); border-color: #3b52d9; }
   #fb-bar .fb-sep { width: 1px; height: 18px; background: rgba(127,127,127,.3); margin: 0 4px; }
+  #fb-bar .fb-lab { display: inline-flex; align-items: center; gap: 6px; }
+  #fb-bar select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; }
+  #fb-bar select:disabled { opacity: .45; }
   #fb-bar .fb-msg { margin-left: auto; opacity: .75; font-variant-numeric: tabular-nums; }
   #fb-bar .fb-msg.refused { color: #b3261e; opacity: 1; }
   /* The container is what the board follows: 100% wide, or 60% when "narrow". */
@@ -40,7 +43,11 @@
   <span class="sep"></span>
   <button id="fb-grid" aria-pressed="true" title="The cell grid: columns, spans, push">Grid</button>
   <button id="fb-split" aria-pressed="false" title="The splitter tree: the board is always covered, dividers are percentages">Split</button>
-  <button id="fb-handle" aria-pressed="false" title="DevExpress caption drag: a widget moves only from its header (the grip); the body stays interactive">Drag by header</button>
+  <span class="fb-sep"></span>
+  <label class="fb-lab" title="Where a widget can be grabbed: anywhere on the card, only its caption strip (DevExpress caption drag), or only a painted grip">Drag
+    <select id="fb-drag"><option value="anywhere">anywhere</option><option value="caption">by caption</option><option value="grip">by grip</option></select></label>
+  <select id="fb-grip-pos" disabled title="Where the grip sits along the top edge"><option value="left">left</option><option value="center">center</option><option value="right">right</option></select>
+  <select id="fb-grip-place" disabled title="Inside the header band, or a tab above the card"><option value="inside">inside</option><option value="outside">outside</option></select>
   <span class="fb-sep"></span>
   <button id="fb-add" title="Add a full-width KPI row — a fit board refuses once it is full">+ Add a row</button>
   <span class="fb-msg" id="fb-msg"></span>
@@ -62,7 +69,9 @@ import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
       <button (click)="sizing.set('grow')">Grow</button>
       <button (click)="layout.set('grid')">Grid</button>
       <button (click)="layout.set('split')">Split</button>
-      <button (click)="handle?.setDragHandle(!handle.getDragHandle())">Drag by header</button>
+      <button (click)="handle?.setDragHandle(true)">Drag by caption</button>
+      <button (click)="handle?.setDragHandle({ grip: true, position: 'right', placement: 'outside' })">Grip outside</button>
+      <button (click)="handle?.setDragHandle(false)">Drag anywhere</button>
       <button (click)="handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })">+ Add a row</button>
     </div>
     <!-- No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. -->
@@ -138,7 +147,9 @@ export function FluidBoard() {
         <button onClick={() => setSizing('grow')}>Grow</button>
         <button onClick={() => setLayout('grid')}>Grid</button>
         <button onClick={() => setLayout('split')}>Split</button>
-        <button onClick={() => handle?.setDragHandle(!handle.getDragHandle())}>Drag by header</button>
+        <button onClick={() => handle?.setDragHandle(true)}>Drag by caption</button>
+        <button onClick={() => handle?.setDragHandle({ grip: true, position: 'right', placement: 'outside' })}>Grip outside</button>
+        <button onClick={() => handle?.setDragHandle(false)}>Drag anywhere</button>
         <button onClick={() => handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })}>+ Add a row</button>
       </div>
       {/* No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. */}
@@ -192,7 +203,9 @@ const onLayout = (e: { viewId: string; widgets: unknown[] }) => console.log('lay
     <button @click="sizing = 'grow'">Grow</button>
     <button @click="layout = 'grid'">Grid</button>
     <button @click="layout = 'split'">Split</button>
-    <button @click="handle?.setDragHandle(!handle.getDragHandle())">Drag by header</button>
+    <button @click="handle?.setDragHandle(true)">Drag by caption</button>
+    <button @click="handle?.setDragHandle({ grip: true, position: 'right', placement: 'outside' })">Grip outside</button>
+    <button @click="handle?.setDragHandle(false)">Drag anywhere</button>
     <button @click="handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })">+ Add a row</button>
   </div>
   <!-- No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. -->
@@ -231,7 +244,7 @@ const ctx2 = {};
 
 defineDemo({
   name: 'Fluid dashboard',
-  blurb: 'The DEFAULT mode of `dashboard()`: no width authored, so the board is 100% of its container at zoom 1 — laid out at real CSS pixels, the way gridstack and react-grid-layout lay out, never a picture the camera scales. Rows keep their height (GROW, the fluid default): drag or resize one tile and no other tile changes size; the board extends downward and the wheel scrolls it. Shrink the container ("Narrow container") and the board follows; the type stays 30 px. Switch to FIT and the board keeps its height instead — FIT MEANS BOUNDED: rows squeeze so everything stays on one screen, the row floor is a capacity, and "+ Add a row" is REFUSED, visibly, when there is no room; nothing is ever painted past the board\'s edge. `mode: \'fixed\'` (or an explicit width) keeps the framed-world behaviour for a dashboard embedded inside a larger diagram — see dashboard/dashboard-builder.html. "Drag by header" is the DevExpress caption drag: `dragHandle: true` (or a selector) makes the header the only grip, so a table body scrolls and a legend clicks instead of starting a move — `handle.setDragHandle()` switches it live.',
+  blurb: 'The DEFAULT mode of `dashboard()`: no width authored, so the board is 100% of its container at zoom 1 — laid out at real CSS pixels, the way gridstack and react-grid-layout lay out, never a picture the camera scales. Rows keep their height (GROW, the fluid default): drag or resize one tile and no other tile changes size; the board extends downward and the wheel scrolls it. Shrink the container ("Narrow container") and the board follows; the type stays 30 px. Switch to FIT and the board keeps its height instead — FIT MEANS BOUNDED: rows squeeze so everything stays on one screen, the row floor is a capacity, and "+ Add a row" is REFUSED, visibly, when there is no room; nothing is ever painted past the board\'s edge. `mode: \'fixed\'` (or an explicit width) keeps the framed-world behaviour for a dashboard embedded inside a larger diagram — see dashboard/dashboard-builder.html. "Drag" picks the handle: anywhere on the card; BY CAPTION (`dragHandle: true`, the DevExpress caption drag — the caption strip is the only grip, so a table body scrolls and a legend clicks instead of starting a move); or BY GRIP (`{ grip: true, position, placement }` — a painted grip, left / center / right, INSIDE the header band or OUTSIDE as a tab above the card like the DevExpress item bar). `handle.setDragHandle()` switches it live.',
   howTo: [
     '① The board fills the canvas exactly — no zoom, no margins the camera invented. Ctrl/⌘-wheel does nothing: a fluid board pins its zoom range to 1.',
     '② Press "Narrow container": the canvas becomes 60% wide and every tile re-lays out against the new width. Press again to widen.',
@@ -296,12 +309,25 @@ defineDemo({
     };
     document.getElementById('fb-grid').addEventListener('click', () => ctx2.layout('grid'));
     document.getElementById('fb-split').addEventListener('click', () => ctx2.layout('split'));
-    ctx2.dragHandle = (on) => {
-      H.setDragHandle(on);
-      setPressed('fb-handle', on);
-      say(on ? 'drag by header: a widget moves only from its caption (the grip) — the body scrolls and clicks as content' : 'drag anywhere: the whole card is the handle');
+    // Drag handle: anywhere | caption strip | painted grip (position × placement).
+    const dragSel = document.getElementById('fb-drag');
+    const gripPos = document.getElementById('fb-grip-pos');
+    const gripPlace = document.getElementById('fb-grip-place');
+    ctx2.drag = (mode, position, placement) => {
+      if (mode !== undefined) dragSel.value = mode;
+      if (position !== undefined) gripPos.value = position;
+      if (placement !== undefined) gripPlace.value = placement;
+      const grip = dragSel.value === 'grip';
+      gripPos.disabled = !grip; gripPlace.disabled = !grip;
+      const v = grip ? { grip: true, position: gripPos.value, placement: gripPlace.value } : dragSel.value === 'caption';
+      H.setDragHandle(v);
+      say(grip
+        ? `drag by grip: a ${gripPlace.value} grip on the ${gripPos.value} is the only handle — the header and body are content`
+        : dragSel.value === 'caption' ? 'drag by caption: a widget moves only from its caption strip — the body scrolls and clicks as content' : 'drag anywhere: the whole card is the handle');
     };
-    document.getElementById('fb-handle').addEventListener('click', () => ctx2.dragHandle(!H.getDragHandle()));
+    // Kept for older scripts: on = caption drag.
+    ctx2.dragHandle = (on) => ctx2.drag(on ? 'caption' : 'anywhere');
+    for (const el of [dragSel, gripPos, gripPlace]) el.addEventListener('change', () => ctx2.drag());
     const m0 = H.metrics();
     say(`fluid · grow · ${Math.round(m0.frame.width)}×${Math.round(m0.frame.height)} px · ${m0.rows} rows`);
   },
@@ -435,18 +461,33 @@ defineDemo({
     ctx2.sizing('grow');
     await settle();
 
-    // ---- ⑧ drag by the header (DevExpress caption drag), on and off ------------
-    ctx2.dragHandle(true);
+    // ---- ⑧ drag handle: caption strip, painted grip (position × placement), off ----
+    ctx2.drag('caption');
     await settle();
-    checkEqual(H.getDragHandle(), true, 'the board drags by the header');
+    checkEqual(H.getDragHandle(), true, 'the board drags by the caption strip');
     checkEqual(H.toJSON().dragHandle, true, 'and says so in its snapshot');
-    check(!!document.querySelector('.axdb-drag-handle'), 'the container carries the drag-handle class');
-    checkEqual(getComputedStyle(document.querySelector('.axdb-widget-h')).cursor, 'grab', 'a header shows the grab cursor (the grip)');
-    checkEqual(getComputedStyle(document.querySelector('.axdb-widget-h'), '::before').width, '8px', 'and the grip glyph is painted');
-    ctx2.dragHandle(false);
+    check(!!document.querySelector('.axdb-drag-handle'), 'the container carries the caption class');
+    checkEqual(getComputedStyle(document.querySelector('.axdb-widget-h')).cursor, 'grab', 'a header shows the grab cursor');
+    checkEqual(getComputedStyle(document.querySelector('.axdb-widget-h'), '::before').width, '8px', 'and the grip dots are painted');
+    ctx2.drag('grip', 'left', 'inside');
+    await settle();
+    checkEqual(JSON.stringify(H.getDragHandle()), JSON.stringify({ grip: true, position: 'left', placement: 'inside' }), 'a painted grip, left, inside');
+    const grips = () => [...document.querySelectorAll('.grafloria-node-host > .axdb-grip')];
+    checkEqual(grips().length, H.widgetsOf().length, 'every widget carries one grip');
+    check(!document.querySelector('.axdb-drag-handle'), 'and the caption class is gone (the grip is the only handle)');
+    const hostRect = (g) => g.parentElement.getBoundingClientRect();
+    check(grips().every((g) => { const r = g.getBoundingClientRect(), h = hostRect(g); return r.top >= h.top && r.left - h.left < 12; }), 'inside-left: the grip sits in the header band at the left edge');
+    check(parseFloat(getComputedStyle(document.querySelector('.axdb-gp-left .axdb-widget-h')).paddingLeft) >= 20, 'and the header makes room for it');
+    ctx2.drag('grip', 'right', 'outside');
+    await settle();
+    check(grips().every((g) => { const r = g.getBoundingClientRect(), h = hostRect(g); return r.bottom <= h.top + 1 && h.right - r.right < 12; }), 'outside-right: the grip is a tab above the card at the right edge');
+    ctx2.drag('grip', 'center', 'inside');
+    await settle();
+    check(grips().every((g) => { const r = g.getBoundingClientRect(), h = hostRect(g); return Math.abs((r.left + r.right) / 2 - (h.left + h.right) / 2) < 2; }), 'center: the grip is centred on the card');
+    ctx2.drag('anywhere');
     await settle();
     checkEqual(H.getDragHandle(), false, 'off again: the whole card is the handle');
-    check(!document.querySelector('.axdb-drag-handle'), 'and the class is gone');
+    checkEqual(grips().length, 0, 'and the grips are gone');
   },
 });
 </script>

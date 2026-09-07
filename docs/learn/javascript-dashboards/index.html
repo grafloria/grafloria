@@ -159,11 +159,14 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
           <td>The viewer's mode: no drag, no resize, no handles — the API, undo and
           keyboard <i>reading</i> keep working. Switch live with <code>H.setStatic()</code></td></tr>
         <tr><td><code>dragHandle</code></td><td><code>false</code></td>
-          <td>DevExpress caption drag: <code>true</code> makes the header the only grip
-          (it shows a dot pattern and a grab cursor), a selector names your own handle
-          inside the card, <code>false</code> drags anywhere. The body then scrolls and
-          clicks as content; resize edges and the keyboard are unchanged. Switch live
-          with <code>H.setDragHandle()</code></td></tr>
+          <td>Where a widget can be grabbed. <code>true</code>: the caption strip is the
+          only handle (DevExpress caption drag; the header shows grip dots and a grab
+          cursor). A selector: your own element inside the card.
+          <code>{ grip: true, position: 'left' | 'center' | 'right', placement: 'inside' | 'outside' }</code>:
+          a painted grip along the top edge, in the header band (the header makes room)
+          or a tab above the card like the DevExpress item bar. <code>false</code>: the
+          whole card. The body then scrolls and clicks as content; resize edges and the
+          keyboard are unchanged. Switch live with <code>H.setDragHandle()</code></td></tr>
         <tr><td><code>rowHeight</code></td><td>130</td><td>Row height in <code>'grow'</code> mode, px</td></tr>
         <tr><td><code>width</code>, <code>height</code></td><td>1180 × 660</td><td>Board size, px — only in <code>mode: 'fixed'</code>; a fluid board takes the container's</td></tr>
         <tr><td><code>float</code></td><td><code>false</code></td>

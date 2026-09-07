@@ -26,7 +26,7 @@
 import { Command, type DiagramModel, type GroupModel, type NodeModel } from '@grafloria/engine';
 import { LiveRegionController, registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
 import type { DashboardGridApi, DashboardGridHandle, DashboardGridOptions } from './grid-binder';
-import { dragHandleSelector, dragHandleValue, pressOnDragHandle, DRAG_HANDLE_CLASS } from './grid-binder';
+import { dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, pressOnDragHandle, syncGrip, DRAG_HANDLE_CLASS, type DragHandleOption } from './grid-binder';
 import { cellFromGridItem, type CellRect, type WorldRect } from './grid-mapping';
 import {
   addSplitLeaf,
@@ -171,8 +171,9 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
   const fluid = options.fluid === true;
   let rtl = options.rtl === true;
   let isStatic = options.static === true;
-  let dragHandle = dragHandleSelector(options.dragHandle);
-  api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
+  let dragHandle: DragHandleOption = normalizeDragHandle(options.dragHandle);
+  let dragSel = dragHandleSelector(dragHandle);
+  api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle === true);
   let designH = options.designHeight ?? group.size?.height ?? 0;
   let designW = group.size?.width ?? 0;
   let disposed = false;
@@ -460,6 +461,12 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     // No corner handles on a split board: size comes from the dividers. A host
     // that carried the grid's handle (a board switched live) sheds it here.
     for (const id of order) hostOf(id)?.querySelector(':scope > .axdb-rs')?.remove();
+    // The painted grip (or none), on every leaf host.
+    for (const id of order) {
+      const host = hostOf(id);
+      const node = diagram.getNode(id);
+      if (host && node) syncGrip(host, gripOf(dragHandle), node.state?.locked !== true && !isStatic && node.getMetadata?.('widgetMovable') !== false);
+    }
     if (focusedId && !order.includes(focusedId)) focusedId = undefined;
     const stop = focusedId ?? order[0];
     order.forEach((id, i) => {
@@ -686,22 +693,26 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
         api.container.style.cursor = d.dir === 'row' ? 'col-resize' : 'row-resize';
         return;
       }
-      if (!hit.node) {
+      // A press on a painted grip names its widget by the DOM (an outside tab
+      // sits above the card's box) — see grid-binder.
+      const gripId = gripHostOf(target)?.getAttribute('data-node-id') ?? null;
+      const onGrip = !!gripId && (group.members ?? new Set<string>()).has(gripId);
+      if (!hit.node && !onGrip) {
         (diagram as { clearSelection?: () => void }).clearSelection?.();
         api.render();
         return;
       }
-      const node = diagram.getNode(hit.node.id);
+      const node = diagram.getNode(onGrip ? (gripId as string) : (hit.node as { id: string }).id);
       if (!node || node.state?.locked === true || isStatic) return;
       if (node.getMetadata?.('widgetMovable') === false) return;
-      // Drag-handle mode: only the handle (the caption strip by default) lifts
-      // a widget out — see pressOnDragHandle in grid-binder.
-      if (dragHandle !== null) {
+      // Drag-handle mode: only the handle (the caption strip, a custom element
+      // or the painted grip) lifts a widget out — see pressOnDragHandle.
+      if (dragSel !== null) {
         const src = ev.source as { clientX?: number; clientY?: number } | undefined;
         const cr = api.container.getBoundingClientRect();
         const cx = typeof src?.clientX === 'number' ? src.clientX : cr.left + ev.screen.x;
         const cy = typeof src?.clientY === 'number' ? src.clientY : cr.top + ev.screen.y;
-        if (!pressOnDragHandle(dragHandle, target, hostOf(node.id), cx, cy)) return;
+        if (!pressOnDragHandle(dragSel, target, hostOf(node.id), cx, cy)) return;
       }
       const tree = readTree();
       gesture = {
@@ -995,14 +1006,16 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     },
     getStatic: () => isStatic,
     setDragHandle(v): void {
-      const sel = dragHandleSelector(v);
-      if (sel === dragHandle) return;
-      dragHandle = sel;
+      const next = normalizeDragHandle(v);
+      if (JSON.stringify(next) === JSON.stringify(dragHandle)) return;
+      dragHandle = next;
+      dragSel = dragHandleSelector(next);
       cancelActiveGesture();
-      api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle !== null);
+      api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle === true);
+      syncA11y();
       api.renderNow();
     },
-    getDragHandle: () => dragHandleValue(dragHandle),
+    getDragHandle: () => (typeof dragHandle === 'object' ? { ...dragHandle } : dragHandle),
     focusWidget(id): boolean {
       if (!(group.members ?? new Set<string>()).has(id) || !diagram.getNode(id)) return false;
       focusedId = id;
@@ -1023,7 +1036,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
         responsive: false,
         fluid,
         static: isStatic,
-        dragHandle: dragHandleValue(dragHandle),
+        dragHandle: typeof dragHandle === 'object' ? { ...dragHandle } : dragHandle,
         capacity: undefined,
         gap,
         padding,
