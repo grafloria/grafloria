@@ -16,9 +16,10 @@
     "@angular/platform-browser": "^19.2.0",
     "@angular/platform-browser-dynamic": "^19.2.0",
     "@angular/router": "^19.2.0",
-    "@grafloria/engine": "^0.2.1",
-    "@grafloria/renderer": "^0.2.0",
-    "@grafloria/angular": "file:../grafloria-renderer-angular-0.4.0.tgz",
+    "@grafloria/angular": "^0.13.3",
+    "@grafloria/element": "^0.4.3",
+    "@grafloria/engine": "^0.3.7",
+    "@grafloria/renderer": "^0.4.6",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.15.0"
