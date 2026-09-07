@@ -196425,6 +196425,7 @@ function bindDashboardSplit(api, group, options = {}) {
     w: api.container.clientWidth || 0,
     h: api.container.clientHeight || 0
   });
+  let writing = false;
   const applyFluidFrame = () => {
     if (!fluid || disposed) return false;
     const box = containerBox();
@@ -196434,7 +196435,12 @@ function bindDashboardSplit(api, group, options = {}) {
     if (Math.abs(f.width - box.w) < 0.5 && Math.abs(f.height - height) < 0.5) return false;
     designW = box.w;
     designH = height;
-    diagram.runSystemWrite(() => group.setFrame({ x: f.x, y: f.y, width: box.w, height }));
+    writing = true;
+    try {
+      diagram.runSystemWrite(() => group.setFrame({ x: f.x, y: f.y, width: box.w, height }));
+    } finally {
+      writing = false;
+    }
     return true;
   };
   const members = () => [...group.members ?? []].filter((id) => !!diagram.getNode(id) || !!diagram.getGroup(id));
@@ -197020,6 +197026,23 @@ function bindDashboardSplit(api, group, options = {}) {
   };
   api.container.addEventListener("focusin", onFocusIn);
   api.container.addEventListener("keydown", onKey);
+  const groupSubs = [
+    group.on("bounds:changed", () => {
+      if (disposed || writing) return;
+      project();
+      api.render();
+    }),
+    group.on("member:added", () => {
+      if (disposed) return;
+      project(reconcile2());
+      api.render();
+    }),
+    group.on("member:removed", () => {
+      if (disposed) return;
+      project(reconcile2());
+      api.render();
+    })
+  ];
   const containerObserver = fluid && typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => {
     if (disposed) return;
     if (applyFluidFrame()) {
@@ -197165,6 +197188,7 @@ function bindDashboardSplit(api, group, options = {}) {
       api.container.removeEventListener("keydown", onKey);
       containerObserver?.disconnect();
       hostObserver?.disconnect();
+      for (const off of groupSubs) off();
       for (const el of dividerEls) el.remove();
       dividerEls.length = 0;
       insertion?.remove();
