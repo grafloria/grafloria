@@ -26,6 +26,8 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; line-height: 1.6; }
   .wrap { max-width: 1220px; margin: 0 auto; padding: 0 24px; }
+  .wide { max-width: 1520px; margin: 0 auto; padding: 0 24px; }
+  @media (max-width: 760px) { .wrap, .wide { padding: 0 14px; } }
   a { color: var(--indigo); text-decoration: none; } a:hover { text-decoration: underline; }
   a:focus-visible, button:focus-visible { outline: 3px solid var(--indigo-soft); outline-offset: 2px; border-radius: 6px; }
   code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -51,6 +53,7 @@
   .stage { position: relative; border-radius: 22px; background: radial-gradient(1200px 600px at 20% -10%, var(--stage-2), var(--stage) 60%); padding: 16px 16px 14px; margin: 0 0 8px; box-shadow: 0 30px 60px -30px rgba(19, 26, 46, .55); }
   .stage::before { content: ""; position: absolute; inset: 0; border-radius: 22px; background-image: radial-gradient(circle, rgba(148,165,240,.22) 1px, transparent 1.6px); background-size: 26px 26px; pointer-events: none; }
   .rail { position: relative; z-index: 1; display: grid; grid-template-columns: 78px 1fr auto; gap: 16px; align-items: center; color: #fff; padding: 4px 8px 14px; }
+  @media (max-width: 900px) { .rail { grid-template-columns: 62px 1fr; } .rail .ctl { grid-column: 1 / -1; } .rail .num { font-size: 34px; } .rail .cap { font-size: 15px; } }
   .rail .num { font: 800 44px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -2px; color: #fff; }
   .rail .num small { font-size: 16px; letter-spacing: 0; color: rgba(255,255,255,.45); font-weight: 600; }
   .rail .cap { font-size: 17px; line-height: 1.35; max-width: 60ch; }
@@ -60,7 +63,8 @@
   .rail .ctl button { font: 600 12.5px ui-sans-serif, system-ui, sans-serif; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08); color: #fff; cursor: pointer; }
   .rail .ctl button:hover { background: rgba(255,255,255,.16); }
   .board { position: relative; z-index: 1; background: #f6f7fb; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,.08); }
-  .board .cv { height: 500px; position: relative; }
+  .board .cv { height: clamp(440px, min(64vh, 60vw), 760px); position: relative; }
+  @media (max-width: 760px) { .board .cv { height: clamp(380px, min(70vh, 130vw), 560px); } .stage { padding: 12px 10px 10px; border-radius: 16px; } }
   .skel { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--slate); font-size: 13px; }
   .tools { position: relative; z-index: 1; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 12px 6px 0; font-size: 12.5px; color: rgba(255,255,255,.7); }
   .tools .lab { font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; margin-right: 6px; }
@@ -69,29 +73,34 @@
   .tools select option { color: var(--ink); }
   .tools .sep { width: 1px; height: 16px; background: rgba(255,255,255,.2); margin: 0 4px; }
   .tools .msg { margin-left: auto; font: 500 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: rgba(255,255,255,.7); }
+  @media (max-width: 900px) { .tools .msg { margin-left: 0; flex-basis: 100%; } .tools .sep { display: none; } .tools .lab { flex-basis: 100%; margin-top: 4px; } }
   .tools .msg.refused { color: #ffb4a8; }
   .stage.locked .tools { opacity: .45; pointer-events: none; }
-  .under { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; color: var(--slate); padding: 8px 6px 0; }
+  .under { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--slate); padding: 8px 6px 0; }
 
   /* ---- chapters ---- */
-  .ch { display: grid; grid-template-columns: 1fr 1.25fr; gap: 44px; align-items: center; padding: 64px 0; border-top: 1px solid var(--line); }
-  .ch.flip { grid-template-columns: 1.25fr 1fr; } .ch.flip .copy { order: 2; }
+  .ch { display: grid; grid-template-columns: 1fr; gap: 22px; padding: 56px 0 40px; border-top: 1px solid var(--line); }
+  .ch .copy { display: grid; grid-template-columns: 110px 1fr; gap: 0 22px; align-items: start; }
+  .ch .copy .n { grid-row: 1 / span 3; }
+  .ch > *, .ch .copy > * { min-width: 0; }
+  @media (max-width: 760px) { .ch { padding: 40px 0 28px; } .ch .copy { grid-template-columns: 1fr; } .ch .copy .n { grid-row: auto; font-size: 44px; } }
   .ch .n { font: 800 64px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -3px; color: var(--indigo-wash); -webkit-text-stroke: 1.5px var(--indigo-soft); margin-bottom: 10px; }
   .ch h2 { font-size: clamp(24px, 3vw, 32px); line-height: 1.12; letter-spacing: -0.7px; font-weight: 800; text-wrap: balance; }
-  .ch p { margin: 12px 0 0; color: var(--slate); font-size: 16px; max-width: 46ch; }
+  .ch p { margin: 10px 0 0; color: var(--slate); font-size: 16px; max-width: 72ch; }
   .ch .ctl { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; align-items: center; }
   .ch .ctl button { font: 600 13px ui-sans-serif, system-ui, sans-serif; padding: 8px 14px; border-radius: 9px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
   .ch .ctl button[aria-pressed="true"] { background: var(--indigo); border-color: var(--indigo); color: #fff; }
   .ch .ctl .msg { font: 500 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--slate); }
   .ch .ctl .msg.refused { color: #b3261e; }
   .frame { position: relative; border: 1px solid var(--line); border-radius: 16px; background: #f6f7fb; overflow: hidden; box-shadow: 0 20px 40px -30px rgba(35,42,61,.35); }
-  .frame .cv { height: 340px; position: relative; } .frame .cv.short { height: 250px; }
+  .frame .cv { height: clamp(380px, min(52vh, 50vw), 560px); position: relative; } .frame .cv.short { height: 300px; }
+  @media (max-width: 760px) { .frame .cv { height: clamp(340px, min(60vh, 120vw), 480px); } }
   .frame .tag { display: block; font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--slate); background: #fff; padding: 9px 12px; border-bottom: 1px solid var(--line); }
   .frame.two .tag { grid-column: 1 / -1; }
-  .frame.two { display: grid; grid-template-columns: 1.7fr .8fr; }
-  .frame.two pre { margin: 0; border-left: 1px solid var(--line); background: #fff; font-size: 11.5px; line-height: 1.5; padding: 12px 14px; overflow: auto; height: 340px; color: #2C3346; }
+  .frame.two { display: grid; grid-template-columns: 2.4fr 1fr; }
+  .frame.two pre { margin: 0; border-left: 1px solid var(--line); background: #fff; font-size: 11.5px; line-height: 1.5; padding: 12px 14px; overflow: auto; height: clamp(380px, min(52vh, 50vw), 560px); color: #2C3346; }
   .frame.two pre .k { color: var(--indigo-deep); } .frame.two pre .s { color: #0f7b4f; }
-  @media (max-width: 900px) { .ch, .ch.flip { grid-template-columns: 1fr; gap: 20px; padding: 44px 0; } .ch.flip .copy { order: 0; } .frame.two { grid-template-columns: 1fr; } .frame.two pre { height: auto; max-height: 240px; border-left: 0; border-top: 1px solid var(--line); } }
+  @media (max-width: 1100px) { .frame.two { grid-template-columns: 1fr; } .frame.two pre { height: auto; max-height: 220px; border-left: 0; border-top: 1px solid var(--line); } }
 
   .code { border: 1px solid var(--line); border-radius: 14px; background: #fff; overflow: hidden; }
   .code .bar { display: flex; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: #fafbff; }
@@ -153,6 +162,8 @@
       </div>
     </div>
 
+  </div>
+  <div class="wide">
     <section class="stage locked" id="stage" aria-label="A live dashboard performing the product's claims">
       <div class="rail">
         <div class="num" id="tour-num">00<small>/05</small></div>
@@ -169,6 +180,8 @@
       </div>
     </section>
     <div class="under"><span>Every step above is a public API call: <code>moveTo</code>, <code>undo</code>, <code>addWidget</code>, <code>setLayout</code>, <code>setDragHandle</code>, <code>focusWidget</code>.</span><span>Reduced-motion users get the board at rest.</span></div>
+  </div>
+  <div class="wrap">
 
     <section class="ch" id="layouts">
       <div class="copy">
@@ -295,6 +308,8 @@ watch(grip, (v) =&gt; handle.value?.setDragHandle(v));</pre>
   const MIX = { id: 'mix', kind: 'donut', span: 4, rows: 2, title: 'Revenue by region',
     data: { slices: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } };
   const clone = (x) => JSON.parse(JSON.stringify(x));
+  // Six columns below 700 px: KPIs two per row on a phone, twelve columns above.
+  const RESP = { breakpoints: [{ w: 700, c: 6, layout: 'move' }], columnMax: 12, layout: 'move' };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let lib;
@@ -324,7 +339,7 @@ watch(grip, (v) =&gt; handle.value?.setDragHandle(v));</pre>
   const press = (sel, key, val) => stage.querySelectorAll(sel).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset[key] === val)));
   const mountHero = async () => {
     if (hero) { hero.api.dispose?.(); heroHost.innerHTML = ''; }
-    hero = await mount(heroHost, { columns: 12, gap: 8, sizing: 'fit', widgets: [...clone(KPIS), clone(TREND), clone(MIX)] });
+    hero = await mount(heroHost, { columns: 12, gap: 8, sizing: 'fit', responsive: RESP, widgets: [...clone(KPIS), clone(TREND), clone(MIX)] });
     window.__dashboardsHero = hero.handle;
     press('[data-sizing]', 'sizing', 'fit'); press('[data-layout]', 'layout', 'grid'); document.getElementById('hero-drag').value = 'anywhere';
   };
@@ -371,7 +386,7 @@ watch(grip, (v) =&gt; handle.value?.setDragHandle(v));</pre>
   const boards = {};
   const chapter = {
     layouts: async (host) => {
-      const b = await mount(host, { columns: 12, gap: 8, sizing: 'fit', widgets: [...clone(KPIS), clone(TREND), clone(MIX)] });
+      const b = await mount(host, { columns: 12, gap: 8, sizing: 'fit', responsive: RESP, widgets: [...clone(KPIS), clone(TREND), clone(MIX)] });
       const pre = document.getElementById('l-json');
       const show = () => { const j = b.handle.toJSON(); const v = j.views[0]; const out = { layout: j.layout, sizing: j.sizing, columns: j.columns, views: [{ id: v.id, layout: v.layout, tree: v.tree ? '{ … the splitter tree … }' : undefined, widgets: v.widgets.map((w) => ({ id: w.id, kind: w.kind, x: w.x, y: w.y, span: w.span, rows: w.rows })) }] };
         pre.innerHTML = JSON.stringify(out, null, 1).replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:').replace(/: "([^"]*)"/g, ': <span class="s">"$1"</span>'); };
@@ -381,17 +396,17 @@ watch(grip, (v) =&gt; handle.value?.setDragHandle(v));</pre>
       host.addEventListener('pointerup', () => setTimeout(show, 400));
     },
     fit: async (host) => {
-      const b = await mount(host, { columns: 12, gap: 8, sizing: 'fit', widgets: [...clone(KPIS), { ...clone(TREND), span: 12 }] });
+      const b = await mount(host, { columns: 12, gap: 8, sizing: 'fit', responsive: RESP, widgets: [...clone(KPIS), { ...clone(TREND), span: 12 }] });
       let n = 0; const m = document.getElementById('fit-msg');
       document.getElementById('fit-add').addEventListener('click', () => { const w = b.handle.addWidget({ id: `f-${++n}-${Date.now()}`, kind: 'bar', span: 12, rows: 2, title: `Added row ${n}`, data: { bars: [{ label: 'Q1', value: 210 }, { label: 'Q2', value: 262 }, { label: 'Q3', value: 244 }, { label: 'Q4', value: 301 }] } }); const mt = b.handle.metrics(); m.textContent = w ? `landed — ${mt.rows} of ${mt.capacity} rows` : `refused — ${mt.capacity} rows is the capacity`; m.classList.toggle('refused', !w); });
       document.getElementById('fit-undo').addEventListener('click', () => { b.undo(); m.textContent = ''; });
     },
     handles: async (host) => {
-      const b = await mount(host, { columns: 12, gap: 8, sizing: 'fit', widgets: [...clone(KPIS), clone(TREND), clone(MIX)] });
+      const b = await mount(host, { columns: 12, gap: 8, sizing: 'fit', responsive: RESP, widgets: [...clone(KPIS), clone(TREND), clone(MIX)] });
       document.querySelectorAll('#handles [data-h]').forEach((btn) => btn.addEventListener('click', () => { const v = btn.dataset.h; b.handle.setDragHandle(v === 'grip' ? { grip: true, position: 'left', placement: 'inside' } : v === 'caption'); document.querySelectorAll('#handles [data-h]').forEach((x) => x.setAttribute('aria-pressed', String(x === btn))); document.getElementById('h-msg').textContent = v === 'grip' ? 'click a card — its grip appears; drag by it' : v === 'caption' ? 'drag by the caption strip; the body is content' : 'drag anywhere on a card'; if (v === 'grip') b.handle.focusWidget('trend'); }));
     },
     containers: async (host) => {
-      const b = await mount(host, { columns: 12, gap: 8, sizing: 'fit', widgets: [
+      const b = await mount(host, { columns: 12, gap: 8, sizing: 'fit', responsive: RESP, widgets: [
         { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
           { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
           { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
@@ -403,7 +418,7 @@ watch(grip, (v) =&gt; handle.value?.setDragHandle(v));</pre>
     charts: async (host) => {
       const { defaultWidgetRenderer } = await load();
       const spark = (d) => { const v = d.values, w = 300, h = 90, mx = Math.max(...v), mn = Math.min(...v); const pts = v.map((y, i) => [i * (w / (v.length - 1)), h - ((y - mn) / (mx - mn || 1)) * (h - 10) - 5]); const path = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' '); return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:100%;display:block" preserveAspectRatio="none"><path d="${path} L${w} ${h} L0 ${h} Z" fill="#3B52D9" opacity=".12"/><path d="${path}" fill="none" stroke="#3B52D9" stroke-width="2.5" stroke-linejoin="round"/>${pts.map((p) => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="#fff" stroke="#3B52D9" stroke-width="2"/>`).join('')}</svg>`; };
-      await mount(host, { columns: 12, gap: 8, sizing: 'fit',
+      await mount(host, { columns: 12, gap: 8, sizing: 'fit', responsive: RESP,
         widgets: [clone(KPIS[0]), clone(KPIS[1]), { id: 'burn', kind: 'spark', span: 6, rows: 2, title: 'Burn rate · your renderer', data: { values: [3, 5, 4, 8, 7, 9, 8, 11] } }, { ...clone(MIX), span: 6 }],
         renderWidget: (w, el) => { if (w.kind === 'spark') { el.innerHTML = spark(w.data); return; } defaultWidgetRenderer(w, el); } });
     },
