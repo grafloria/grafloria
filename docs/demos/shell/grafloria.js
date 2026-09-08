@@ -194472,6 +194472,14 @@ var CSS4 = `
   flex: 0 0 auto; width: auto; height: 100%; max-height: 260px; max-width: 60%; aspect-ratio: 1 / 1;
 }
 
+/* READABILITY TIERS (widgets.ts chartTier): the text is always in the DOM;
+   what a short body cannot afford is hidden, not dropped. */
+.axdb-tier-1 .axdb-yt--q, .axdb-tier-1 .axdb-yl--q,
+.axdb-tier-2 .axdb-yt--q, .axdb-tier-2 .axdb-yl--q,
+.axdb-tier-2 .axdb-yt--h, .axdb-tier-2 .axdb-yl--h,
+.axdb-tier-2 .axdb-xt, .axdb-tier-2 .axdb-vt,
+.axdb-lg--off { display: none; }
+
 /* legend chips, shared by line and donut */
 .axdb-lg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; }
 .axdb-lg--col { flex-direction: column; flex-wrap: nowrap; gap: 6px; margin-top: 0; }
@@ -197544,6 +197552,12 @@ function empty(body, note = "no data") {
   body.innerHTML = `<div class="axdb-widget-empty">${esc(note)}</div>`;
 }
 var data = (widget) => widget.data ?? {};
+function chartTier(bodyH, hasLegend) {
+  if (!bodyH) return { tier: 0, legendShown: hasLegend };
+  const legendShown = hasLegend && bodyH >= 64;
+  const h = bodyH - (legendShown ? 26 : 0);
+  return { tier: h < 60 ? 2 : h < 120 ? 1 : 0, legendShown };
+}
 function chartBox(body, legend2 = false) {
   const w = body.clientWidth || 0;
   const h = (body.clientHeight || 0) - (legend2 ? 26 : 0);
@@ -197572,7 +197586,7 @@ function watchSize(host, relayout) {
   sizeWatchers.set(host, ro);
 }
 var srTable = (caption, columns, rows) => `<table class="axdb-sr"><caption>${esc(caption)}</caption><thead><tr>${columns.map((c) => `<th scope="col">${esc(c)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
-var legend = (items, column = false) => `<div class="axdb-lg${column ? " axdb-lg--col" : ""}">` + items.map((i) => `<i><b style="background:${esc(i.color)}"></b>${esc(i.label)}</i>`).join("") + "</div>";
+var legend = (items, column = false, off = false) => `<div class="axdb-lg${column ? " axdb-lg--col" : ""}${off ? " axdb-lg--off" : ""}">` + items.map((i) => `<i><b style="background:${esc(i.color)}"></b>${esc(i.label)}</i>`).join("") + "</div>";
 var renderKpiWidget = (widget, host) => {
   const d = data(widget);
   const body = card(host, widget, titleOf(widget, d.label));
@@ -197616,9 +197630,10 @@ function layoutLine(widget, body) {
   const series = normalizeSeries(d.series);
   if (!series.length) return empty(body);
   const named = series.filter((s) => s.name);
-  if (named.length) body.classList.add("axdb-has-lg");
-  const { W, H } = chartBox(body, named.length > 0);
-  const pad = { l: 34, r: 12, t: 12, b: 22 };
+  const { tier, legendShown } = chartTier(body.clientHeight || 0, named.length > 0);
+  body.classList.toggle("axdb-has-lg", legendShown);
+  const { W, H } = chartBox(body, legendShown);
+  const pad = tier === 2 ? { l: 34, r: 12, t: 4, b: 6 } : { l: 34, r: 12, t: 12, b: 22 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
   const all = series.flatMap((s) => s.values);
@@ -197629,12 +197644,13 @@ function layoutLine(widget, body) {
   const yAt = (v) => pad.t + ih - (v - min) / (max - min || 1) * ih;
   const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => {
     const y = pad.t + ih - f * ih;
-    return `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" stroke="var(--axdb-grid)" stroke-width="1"></line><text x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--axdb-muted)">${esc(compact(min + f * (max - min)))}</text>`;
+    const cls = f === 0.5 ? " axdb-yt--h" : f === 0.25 || f === 0.75 ? " axdb-yt--q" : "";
+    return `<line class="axdb-yl${cls.replace("yt", "yl")}" x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" stroke="var(--axdb-grid)" stroke-width="1"></line><text class="axdb-yt${cls}" x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--axdb-muted)">${esc(compact(min + f * (max - min)))}</text>`;
   }).join("");
   const labels = Array.isArray(d.labels) ? d.labels : [];
   const every = labels.length > 8 ? 2 : 1;
   const ticks = labels.slice(0, count2).map(
-    (l, i) => i % every === 0 ? `<text x="${xAt(i).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--axdb-muted)">${esc(l)}</text>` : ""
+    (l, i) => i % every === 0 ? `<text class="axdb-xt" x="${xAt(i).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--axdb-muted)">${esc(l)}</text>` : ""
   ).join("");
   const marks = series.map((s, si) => {
     const pts = s.values.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(" ");
@@ -197644,7 +197660,7 @@ function layoutLine(widget, body) {
     ).join("") : "";
     return area + `<polyline points="${pts}" fill="none" stroke="${colorAt(si)}" stroke-width="${si === 0 ? 2.4 : 1.8}" stroke-linejoin="round" stroke-linecap="round"></polyline>` + dots;
   }).join("");
-  body.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(titleOf(widget))}">${grid}${ticks}${marks}</svg>` + (named.length ? legend(series.map((s, i) => ({ label: String(s.name ?? ""), color: colorAt(i) }))) : "") + srTable(
+  body.innerHTML = `<svg class="axdb-tier-${tier}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(titleOf(widget))}">${grid}${ticks}${marks}</svg>` + (named.length ? legend(series.map((s, i) => ({ label: String(s.name ?? ""), color: colorAt(i) })), false, !legendShown) : "") + srTable(
     titleOf(widget),
     ["", ...series.map((s, i) => String(s.name ?? `Series ${i + 1}`))],
     Array.from({ length: count2 }, (_, i) => [labels[i] ?? String(i + 1), ...series.map((s) => s.values[i] ?? "")])
@@ -197659,8 +197675,9 @@ function layoutBar(widget, body) {
   const d = data(widget);
   const bars = (Array.isArray(d.bars) ? d.bars : []).filter((b) => !!b);
   if (!bars.length) return empty(body);
+  const { tier } = chartTier(body.clientHeight || 0, false);
   const { W, H } = chartBox(body);
-  const pad = { l: 34, r: 12, t: 12, b: 26 };
+  const pad = tier === 2 ? { l: 34, r: 12, t: 4, b: 6 } : { l: 34, r: 12, t: 12, b: 26 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
   const max = niceMax(Math.max(...bars.map((b) => num4(b.value))));
@@ -197668,16 +197685,17 @@ function layoutBar(widget, body) {
   const bw = slot * 0.56;
   const grid = [0, 0.5, 1].map((f) => {
     const y = pad.t + ih - f * ih;
-    return `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" stroke="var(--axdb-grid)" stroke-width="1"></line><text x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--axdb-muted)">${esc(compact(f * max))}</text>`;
+    const cls = f === 0.5 ? " axdb-yt--h" : "";
+    return `<line class="axdb-yl${cls.replace("yt", "yl")}" x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" stroke="var(--axdb-grid)" stroke-width="1"></line><text class="axdb-yt${cls}" x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--axdb-muted)">${esc(compact(f * max))}</text>`;
   }).join("");
   const marks = bars.map((b, i) => {
     const v = Math.max(0, num4(b.value));
     const h = v / max * ih;
     const x = pad.l + i * slot + (slot - bw) / 2;
     const y = pad.t + ih - h;
-    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${colorAt(i)}"></rect><text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--axdb-ink)">${esc(compact(num4(b.value)))}</text><text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="var(--axdb-muted)">${esc(b.label ?? "")}</text>`;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${colorAt(i)}"></rect><text class="axdb-vt" x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--axdb-ink)">${esc(compact(num4(b.value)))}</text><text class="axdb-xt" x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="var(--axdb-muted)">${esc(b.label ?? "")}</text>`;
   }).join("");
-  body.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(titleOf(widget))}">${grid}${marks}</svg>` + srTable(titleOf(widget), ["Category", "Value"], bars.map((b) => [b.label ?? "", num4(b.value)]));
+  body.innerHTML = `<svg class="axdb-tier-${tier}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(titleOf(widget))}">${grid}${marks}</svg>` + srTable(titleOf(widget), ["Category", "Value"], bars.map((b) => [b.label ?? "", num4(b.value)]));
 }
 function arcPath(cx, cy, r, a0, a1) {
   const at = (a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];

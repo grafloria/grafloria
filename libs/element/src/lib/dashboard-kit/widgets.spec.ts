@@ -20,6 +20,7 @@ import {
   renderFunnelWidget,
   renderKpiWidget,
   renderLineWidget,
+  chartTier,
   renderTableWidget,
   chartBox,
 } from './widgets';
@@ -424,5 +425,50 @@ describe('the KPI card steps down instead of clipping', () => {
     // The sr-only data table sits at the body's origin, so it never extends the
     // card's scroll range below the chart (a table ignores a 1-px height).
     expect(css).toContain('.axdb-sr {\n  position: absolute; top: 0; left: 0;');
+  });
+});
+
+describe('readability tiers — a squeezed chart hides what it cannot afford, and keeps the text', () => {
+  it('chartTier: full at 120+, quarters gone under 120, min/max only under 60, legend off under 64', () => {
+    expect(chartTier(0, true)).toEqual({ tier: 0, legendShown: true });
+    expect(chartTier(200, true)).toEqual({ tier: 0, legendShown: true });
+    expect(chartTier(140, true)).toEqual({ tier: 1, legendShown: true }); // 140 - 26 = 114
+    expect(chartTier(80, true)).toEqual({ tier: 2, legendShown: true }); // 80 - 26 = 54
+    expect(chartTier(60, true)).toEqual({ tier: 1, legendShown: false }); // legend off, 60 keeps the halves
+    expect(chartTier(59, true)).toEqual({ tier: 2, legendShown: false });
+    expect(chartTier(100, false)).toEqual({ tier: 1, legendShown: false });
+  });
+
+  it('a 50 px body paints tier 2 classes, keeps every label in the DOM and hides the legend', () => {
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 50 });
+    try {
+      const host = document.createElement('div');
+      renderLineWidget(
+        { id: 't', kind: 'line', data: { series: [{ name: 'Revenue', values: [1, 5, 3] }], labels: ['Jan', 'Feb', 'Mar'] } },
+        host
+      );
+      const svg = host.querySelector('svg')!;
+      expect(svg.classList.contains('axdb-tier-2')).toBe(true);
+      expect(svg.querySelectorAll('.axdb-yt')).toHaveLength(5);
+      expect(svg.querySelectorAll('.axdb-yt--q')).toHaveLength(2);
+      expect(svg.querySelectorAll('.axdb-xt')).toHaveLength(3);
+      expect(svg.textContent).toContain('Jan');
+      expect(host.querySelector('.axdb-lg')!.classList.contains('axdb-lg--off')).toBe(true);
+      expect(host.querySelector('.axdb-lg')!.textContent).toContain('Revenue');
+      expect(host.querySelector('.axdb-widget-b')!.classList.contains('axdb-has-lg')).toBe(false);
+    } finally {
+      // clientHeight lives on Element.prototype; the override was an OWN
+      // property on HTMLElement.prototype and must go, or the next test sees 50.
+      if (desc) Object.defineProperty(HTMLElement.prototype, 'clientHeight', desc);
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>)['clientHeight'];
+    }
+  });
+
+  it('an unmeasured body (jsdom) paints the full tier with its legend, as before', () => {
+    const host = document.createElement('div');
+    renderLineWidget({ id: 't', kind: 'line', data: { series: [{ name: 'Revenue', values: [1, 5, 3] }] } }, host);
+    expect(host.querySelector('svg')!.classList.contains('axdb-tier-0')).toBe(true);
+    expect(host.querySelector('.axdb-lg')!.classList.contains('axdb-lg--off')).toBe(false);
   });
 });

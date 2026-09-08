@@ -389,6 +389,12 @@ render(SPEC2, host);</pre>
       nesting from live membership — a dragged-in tile lands under its new
       parent in the snapshot, and the snapshot rebuilds through
       <code>dashboard()</code> unchanged. Nesting is exercised to two levels.</p>
+      <p><b>Charts on a squeezed board stay readable</b> (element 0.4.15). The built-in
+      line and bar widgets tier their axes to the room they have: under 120 px of body the
+      quarter ticks go, under 60 px only the minimum and maximum remain and the x labels and
+      bar values go, and a legend on a body under 64 px steps aside so the plot takes the
+      space. The text is hidden, never dropped — a reloaded board paints the same text at any
+      size — and your own <code>renderWidget</code> is untouched.</p>
       <p><b>Layout and sizing per container</b> (element 0.4.14). A container takes
       <code>layout: 'grid' | 'split'</code> exactly as a view does — <code>'split'</code> is a
       splitter tree covering the pane, with dividers to drag and a <code>tree</code> that
