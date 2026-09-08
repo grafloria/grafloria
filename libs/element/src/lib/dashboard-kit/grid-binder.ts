@@ -2585,6 +2585,26 @@ export function bindDashboardGrid(
   };
 
   /** This binder's side of an adoption: enter gateless, then live-push. */
+  /**
+   * Put an ARRIVING tile as close to the pointer as the board allows. The
+   * exact cell is often refused because a SECTION is a locked tile and the
+   * incoming tile overlaps it (E4b), and a refused placement left the tile
+   * wherever it entered — the bottom row. That read as "it did not drop where
+   * I put it". Slide along the row instead, nearest first, so a tile that
+   * cannot take the cell under the pointer still lands beside it.
+   */
+  const placeNear = (id: string, x: number, y: number, w: number): boolean => {
+    if (engine.moveCheck(id, x, y, { gate: false }).changed) return true;
+    const maxX = Math.max(0, columns - w);
+    for (let d = 1; d <= columns; d++) {
+      for (const cx of [x - d, x + d]) {
+        if (cx < 0 || cx > maxX) continue;
+        if (engine.moveCheck(id, cx, y, { gate: false }).changed) return true;
+      }
+    }
+    return false;
+  };
+
   const adopt = (
     node: NodeModel,
     world: { x: number; y: number },
@@ -2623,7 +2643,7 @@ export function bindDashboardGrid(
     adoptedGhostId = node.id;
     const tl = centredTopLeft(world.x, world.y, span);
     const cell0 = pointToCell(tl.x, tl.y, f, gg, rows(), span.w);
-    engine.moveCheck(node.id, cell0.x, cell0.y, { gate: false });
+    placeNear(node.id, cell0.x, cell0.y, span.w);
     armGlide();
     project();
     syncPlaceholder();
@@ -2634,7 +2654,7 @@ export function bindDashboardGrid(
         if (!item) return;
         const tlm = centredTopLeft(w.x, w.y, { w: item.w, h: item.h });
         const cell = pointToCell(tlm.x, tlm.y, frame(), geom(), rows(), item.w);
-        if (engine.moveCheck(node.id, cell.x, cell.y).changed) project();
+        if (placeNear(node.id, cell.x, cell.y, item.w)) project();
         syncPlaceholder();
       },
       abort: () => {

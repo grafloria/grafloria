@@ -158,6 +158,56 @@ describe('tab containers', () => {
     expect(stops).toEqual([-1, 0, -1]);
   });
 
+  it('a plain widget among the pages becomes a page of its own', () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          {
+            id: 'panel',
+            title: 'Mixed',
+            span: 12,
+            rows: 4,
+            x: 0,
+            y: 0,
+            layout: 'tabs',
+            widgets: [PAGE('p-one', 'Filters', 'k-one'), { id: 'loose', kind: 'kpi', title: 'Loose', span: 6, rows: 4 }],
+          },
+        ],
+      })
+    );
+    // it gets a tab of its own, named by its title…
+    expect(tabs(api).map((t) => t.label)).toEqual(['Filters', 'Loose']);
+    // …and it is laid out like any page instead of being stranded at the
+    // board origin at its placeholder size, which is what used to happen
+    expect(handle.activateTab('panel', 'loose__page')).toBe(true);
+    const w = model.getNode('loose')!;
+    expect(w.position.x).toBeGreaterThan(PARKED);
+    expect(w.size!.width).toBeGreaterThan(200);
+  });
+
+  it('a tab container whose children are ALL plain widgets still works', () => {
+    const { api, model } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          { id: 'panel', title: 'All plain', span: 12, rows: 4, x: 0, y: 0, layout: 'tabs', widgets: [
+            { id: 'w1', kind: 'kpi', title: 'One', span: 12, rows: 4 },
+            { id: 'w2', kind: 'kpi', title: 'Two', span: 12, rows: 4 },
+          ] },
+        ],
+      })
+    );
+    expect(tabs(api).map((t) => t.label)).toEqual(['One', 'Two']);
+    expect(model.getNode('w1')!.size!.width).toBeGreaterThan(200);
+  });
+
   it('a board with no tab container carries no strip at all', () => {
     const { api } = up(
       dashboard({ columns: 12, width: 1200, height: 600, widgets: [{ id: 'a', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0 }] })

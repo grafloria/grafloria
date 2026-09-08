@@ -701,6 +701,33 @@ function buildWidgetNode(w: DashboardWidgetSpec, rowHeight: number): NodeModel {
   return node;
 }
 
+/**
+ * EVERY CHILD OF A TAB CONTAINER IS A PAGE. A page is a container, so a plain
+ * widget written among them is wrapped in one carrying its title. Without this
+ * the tab system simply ignored it: it was never positioned and painted at the
+ * board's origin at its 100×60 placeholder size, silently losing part of the
+ * author's layout (measured on a container mixing a widget with two pages).
+ */
+function wrapTabPages(ws: DashboardWidgetSpec[]): DashboardWidgetSpec[] {
+  for (const w of ws) {
+    if (!w.widgets) continue;
+    if (w.layout === 'tabs') {
+      w.widgets = w.widgets.map((c) =>
+        c.widgets
+          ? c
+          : {
+              id: `${c.id}__page`,
+              title: c.title ?? c.id,
+              ...(w.columns !== undefined ? { columns: w.columns } : {}),
+              widgets: [{ ...c, x: 0, y: 0 }],
+            }
+      );
+    }
+    wrapTabPages(w.widgets);
+  }
+  return ws;
+}
+
 function cloneWidgets(ws: DashboardWidgetSpec[]): DashboardWidgetSpec[] {
   return ws.map((w) => ({ ...w, ...(w.widgets ? { widgets: cloneWidgets(w.widgets) } : {}) }));
 }
@@ -1652,8 +1679,8 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
   const layout: 'grid' | 'split' = options.layout ?? 'grid';
 
   const views: DashboardViewSpec[] = options.views
-    ? options.views.map((v) => ({ ...v, widgets: cloneWidgets(v.widgets) }))
-    : [{ id: 'main', widgets: cloneWidgets(options.widgets ?? []) }];
+    ? options.views.map((v) => ({ ...v, widgets: wrapTabPages(cloneWidgets(v.widgets)) }))
+    : [{ id: 'main', widgets: wrapTabPages(cloneWidgets(options.widgets ?? [])) }];
   for (const v of views) assignCellsDeep(v.widgets, v.columns ?? columns);
 
   // -- the render spec: one custom-HTML node per widget ----------------------
