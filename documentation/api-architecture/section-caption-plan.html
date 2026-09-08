@@ -62,13 +62,14 @@
 caption?: false | true | string | {
   text?: string;                          // default: the container's title
   subtitle?: string;                      // muted second line (band grows to 44 px) or suffix
-  description?: string;                   // an ⓘ at the end; tooltip + accessible description
+  description?: string;                   // an ⓘ at the end; its tooltip and its accessible label
   icon?: string;                          // a glyph before the text (emoji or data: URI); anything richer → renderCaption
   position?: 'inside' | 'tab';            // default 'inside'; a tab is the same band sized to its text,
                                           // a chip at the leading corner. BOTH reserve inside the section's own cell.
   align?: 'start' | 'center' | 'end';     // horizontal — default 'start' (mirrored on RTL)
   valign?: 'top' | 'center' | 'bottom';   // vertical, within the band — default 'center'
-  height?: number;                        // px, 'inside' only — default 28 (44 with a subtitle)
+  height?: number;                        // px — default 28 (44 with a subtitle, 22 on a section under 90 px);
+                                          // an authored height wins over that default, then clamps to sectionH - 20
   font?: { size?: number; weight?: number | string; family?: string; color?: string; transform?: 'none' | 'uppercase' };
                                           // typography of the text; the subtitle follows at 0.85× and muted
   padding?: number | [number, number];    // inside the band: px, or [vertical, horizontal] — default [0, 10]
@@ -131,7 +132,7 @@ getCaption(id: string): CaptionOption;</code></pre>
     <tr><td>per-group colour</td><td>group background</td><td>transparent toggle</td><td>—</td><td>—</td><td><code>className</code> + <code>--axdb-caption-*</code></td></tr>
     <tr><td>squeeze</td><td>—</td><td>—</td><td>—</td><td>—</td><td>fixed pixels, never squeezed; under 90 px of section the band steps down like widget headers do, and it clamps so the children keep 20 px (floored at a 16 px band)</td></tr>
     <tr><td>never over a neighbour</td><td>the caption is inside the item</td><td>inside the panel</td><td>inside the visual</td><td>inside the card</td><td>every position reserves inside the SECTION's own cell — gated by a sweep that fails if any band's box touches a widget that is not its own child</td></tr>
-    <tr><td>a11y</td><td>—</td><td>panel is a region named by its title</td><td>—</td><td>—</td><td>the band names the group (<code>aria-labelledby</code>), the description describes it, the band is the section's tab stop</td></tr>
+    <tr><td>a11y</td><td>—</td><td>panel is a region named by its title</td><td>—</td><td>—</td><td><b>shipped:</b> the band is a <code>role="group"</code> named by the caption text; the description rides the ⓘ as its tooltip and accessible label. <b>Later:</b> the band as the section's own tab stop, with the actions reachable from it — today they are out of the tab order so a board keeps exactly one stop</td></tr>
   </table></div>
   <p class="note" style="margin-top:14px">Two things deliberately stay out of the kit: what an action <i>does</i> (maximize, export, filters are the app's), and chart-level status. The kit paints the header, reserves its space, routes presses and keeps the theme consistent between widget headers and section headers — that is the boundary it already draws for cards.</p>
 

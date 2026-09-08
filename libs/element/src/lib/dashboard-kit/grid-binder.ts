@@ -1686,6 +1686,7 @@ export function bindDashboardGrid(
       hoverSlabs.delete(el);
       el.classList.remove('axdb-slab--hot');
       el.removeAttribute('aria-label');
+      el.removeAttribute('role');
       return;
     }
     if (cap.show === 'hover') hoverSlabs.add(el);
@@ -1709,8 +1710,17 @@ export function bindDashboardGrid(
       onAction: (actionId: string) => options.onCaptionAction?.(id, actionId),
     });
     band.setAttribute('data-key', key);
-    if (cap.text) el.setAttribute('aria-label', cap.text);
-    else el.removeAttribute('aria-label');
+    // A named group, so the caption text is the section's name in the
+    // accessibility tree rather than a stray label on an unnamed div. (The
+    // band is not a tab stop yet — the actions are deliberately out of the
+    // tab order so a board keeps exactly ONE stop; see the plan.)
+    if (cap.text) {
+      el.setAttribute('role', 'group');
+      el.setAttribute('aria-label', cap.text);
+    } else {
+      el.removeAttribute('role');
+      el.removeAttribute('aria-label');
+    }
   };
 
   const insideMemberGroupFrame = (x: number, y: number): boolean => {

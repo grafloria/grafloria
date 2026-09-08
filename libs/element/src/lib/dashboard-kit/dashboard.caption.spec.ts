@@ -115,7 +115,8 @@ describe('section captions — painting and reserving', () => {
     expect(band.style.height).toBe('28px');
     expect(dropOf(model)).toBeGreaterThanOrEqual(28);
     expect(dropOf(model)).toBeLessThan(29);
-    // the band is the section's accessible name
+    // the band names the section in the accessibility tree
+    expect(slabOf(api)!.getAttribute('role')).toBe('group');
     expect(slabOf(api)!.getAttribute('aria-label')).toBe('Report controls');
   });
 
@@ -426,10 +427,12 @@ describe('section captions — API and persistence', () => {
     expect(handle.setCaption('nope', 'x')).toBe(false);
   });
 
-  it('setCaption(false) removes the band and gives the rows back', () => {
+  it('setCaption(false) removes the band, its name and the rows it held', () => {
     const { api, model, handle } = up(BOARD(true));
     expect(handle.setCaption('box', false)).toBe(true);
     expect(bandOf(api)).toBeNull();
+    expect(slabOf(api)!.getAttribute('role')).toBeNull();
+    expect(slabOf(api)!.getAttribute('aria-label')).toBeNull();
     expect(dropOf(model)).toBeLessThan(1);
     expect(handle.getCaption('box')).toBe(false);
   });
