@@ -1142,6 +1142,26 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `a press on the strip's empty space selected ${sel} · resize ${g0.cell.w}x${g0.cell.h} → ${g1.cell.w}x${g1.cell.h} → undo ${g2.cell.w}x${g2.cell.h} · the strip tracks the container at rest/mid-drag/after: ${[g0, mid, g1, g2].map((g) => (g && aligned(g) ? 'yes' : 'NO')).join('/')} (widths ${g0.strip?.w}→${mid?.strip?.w}→${g1.strip?.w}→${g2.strip?.w}) ${JSON.stringify(sane)}`);
 }
 {
+  begin('L59-a-drop-blocked-by-a-locked-section-lands-beside-it');
+  await scrollTo('near');
+  const owner = () => page.evaluate(() => { const walk = (ws, p) => { for (const w of ws) { if (w.id === 'n-inner') return `${p}:${w.x},${w.y}`; if (w.widgets) { const r = walk(w.widgets, w.id); if (r) return r; } } return null; }; return walk(window.__lab.near.handle.toJSON().views[0].widgets, 'BOARD'); });
+  const before = await owner();
+  const a = await rect('near', 'n-a');
+  const cv = await page.evaluate(() => document.getElementById('cv-near').getBoundingClientRect().toJSON());
+  const col = (cv.width - 16) / 12;
+  // aim so the tile's own cell would START at column 6 — overlapping the locked
+  // section at column 7. The only room on that row is columns 4..7.
+  const src = await rect('near', 'n-inner');
+  await drag(src.x + src.w / 2, src.y + src.h / 2, cv.x + 8 + col * 6.5, a.y + a.h / 2, { steps: 16 });
+  const after = await owner();
+  const sane = await sanity('near');
+  await shot('near', 'landed-beside-the-locked-section');
+  await undoAll('near', 2);
+  const undone = await owner();
+  verdict(before === 'n-sec:0,0' && after === 'BOARD:4,0' && undone === before && sane.overlaps === 0,
+    `dragged out of the section over the LOCKED slab: ${before} → ${after} (wanted BOARD:4,0 — beside it on the same row, not a new row at the bottom) · undo → ${undone} ${JSON.stringify(sane)}`);
+}
+{
   begin('L53-a-caption-reserves-only-where-something-paints-it');
   await scrollTo('cap-split');
   const r = await page.evaluate(() => {
