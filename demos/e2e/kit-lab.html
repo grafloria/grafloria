@@ -41,6 +41,7 @@ const lab = document.getElementById('lab');
 window.__lab = {};
 window.__labClicks = {};
 window.__labEvents = {};
+window.__labSelects = {};
 
 /** Mount one board under a titled card. `opts` go straight to dashboard(). */
 function board(id, title, opts, { height = 430, cls = '' } = {}) {
@@ -52,6 +53,7 @@ function board(id, title, opts, { height = 430, cls = '' } = {}) {
   const spec = dashboard({
     columns: 12, gap: 10, sizing: 'fit', widgets: BOARD(),
     ...opts,
+    onSelect: (sel, view) => { (window.__labSelects[id] ||= []).push(`${view}:${sel ?? '-'}`); },
     binder: { ...(opts.binder ?? {}), onGesture: (e) => { window.__labEvents[id].push({ type: e.type, kind: e.kind, changed: e.changed }); document.getElementById(`log-${id}`).textContent = window.__labEvents[id].map((x) => `${x.type}:${x.kind}:${x.changed}`).join('  '); } },
   });
   const api = render(spec, document.getElementById(`cv-${id}`));

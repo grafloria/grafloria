@@ -194196,7 +194196,7 @@ var CSS4 = `
 }
 
 /* ===== corner resize handle (hover-revealed, radius-matched) ===== */
-.grafloria-node-host > .axdb-rs {
+:is(.grafloria-node-host, .axdb-slab) > .axdb-rs {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -194216,7 +194216,7 @@ var CSS4 = `
 @media (hover: none) { .grafloria-node-host > .axdb-rs { opacity: .8; } }
 .grafloria-node-host > .axdb-rs:hover { border-color: #3b52d9; }
 /* RTL boards grow leftwards, so the grab corner mirrors with them. */
-.grafloria-node-host > .axdb-rs.axdb-rs--rtl {
+:is(.grafloria-node-host, .axdb-slab) > .axdb-rs.axdb-rs--rtl {
   right: auto;
   left: 0;
   cursor: nesw-resize;
@@ -194482,6 +194482,14 @@ var CSS4 = `
 .axdb-tier-2 .axdb-yt--h, .axdb-tier-2 .axdb-yl--h,
 .axdb-tier-2 .axdb-xt, .axdb-tier-2 .axdb-vt,
 .axdb-lg--off { display: none; }
+
+/* SECTION CHROME: a pointer-transparent overlay on every member group. It
+   wears the selection ring and, while selected, the corner handle. */
+.grafloria-html-layer > .axdb-slab { position: absolute; pointer-events: none; border-radius: var(--axdb-rs-radius, 3px); z-index: 4; }
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected { box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)); }
+.grafloria-html-layer > .axdb-slab > .axdb-rs { pointer-events: auto; opacity: 0; }
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { opacity: 1; }
+.grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-rs { display: none; }
 
 /* legend chips, shared by line and donut */
 .axdb-lg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; }
@@ -194780,6 +194788,11 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const memberEntity = (id) => diagram.getNode(id) ?? diagram.getGroup(id);
   const isGroupMember = (id) => !diagram.getNode(id) && !!diagram.getGroup(id);
+  const innerRowsOf = (id) => {
+    for (const p of BOARD_REGISTRY.get(api.container) ?? []) if (p.group.id === id && p.innerRows) return Math.max(1, p.innerRows());
+    const meta = diagram.getGroup(id)?.getMetadata?.("containerWidget");
+    return Math.max(1, meta?.maxRows ?? 1);
+  };
   const itemFor = (id) => {
     const node = diagram.getNode(id);
     if (node) {
@@ -194959,13 +194972,15 @@ function bindDashboardGrid(api, group, options = {}) {
     if (id === selectedId) return;
     selectedId = id;
     syncA11y();
+    syncSlabs();
+    options.onSelect?.(id);
   };
   let selfPeerRef = null;
   const syncA11y = (only) => {
     if (disposed) return;
     const members = [...group.members ?? []].filter((id) => !!diagram.getNode(id));
     if (focusedId && !members.includes(focusedId)) focusedId = void 0;
-    if (selectedId && !members.includes(selectedId)) selectedId = void 0;
+    if (selectedId && !members.includes(selectedId) && !(group.members?.has(selectedId) && memberEntity(selectedId))) selectedId = void 0;
     const stop = focusedId ?? members[0];
     for (const id of members) {
       if (only && !only.has(id)) continue;
@@ -194987,6 +195002,7 @@ function bindDashboardGrid(api, group, options = {}) {
     syncA11y(only);
     if (disposed) return;
     ensureStaticGuard();
+    syncSlabs();
     const grip = gripOf(dragHandle);
     for (const id of group.members ?? []) {
       if (only && !only.has(id)) continue;
@@ -195139,6 +195155,7 @@ function bindDashboardGrid(api, group, options = {}) {
     } finally {
       writing = false;
     }
+    syncSlabs();
   };
   const applyColumns = (n3, layout) => {
     const prev = columns;
@@ -195185,6 +195202,62 @@ function bindDashboardGrid(api, group, options = {}) {
     const band = rowHeightFor(geom(), rows()) + gap;
     return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + boardVisualHeight() + band;
   };
+  const memberGroupAt = (x, y) => {
+    for (const id of group.members ?? []) {
+      const grp = diagram.getGroup(id);
+      if (!grp) continue;
+      const p = grp.position;
+      const s = sizeOf(grp);
+      if (x >= p.x && x <= p.x + s.width && y >= p.y && y <= p.y + s.height) return id;
+    }
+    return null;
+  };
+  const slabEdgesNear = (grp, x, y) => {
+    const p = grp.position;
+    const s = sizeOf(grp);
+    return { n: y - p.y <= EDGE_GRIP, s: p.y + s.height - y <= EDGE_GRIP, w: x - p.x <= EDGE_GRIP, e: p.x + s.width - x <= EDGE_GRIP };
+  };
+  const slabEls = /* @__PURE__ */ new Map();
+  let slabLayer = null;
+  const syncSlabs = () => {
+    if (disposed) return;
+    const layer2 = slabLayer?.isConnected ? slabLayer : slabLayer = htmlLayer();
+    if (!layer2) return;
+    const seen = /* @__PURE__ */ new Set();
+    for (const id of group.members ?? []) {
+      const grp = diagram.getGroup(id);
+      if (!grp || diagram.getNode(id)) continue;
+      seen.add(id);
+      let el = slabEls.get(id);
+      if (!el || el.parentElement !== layer2) {
+        el?.remove();
+        el = document.createElement("div");
+        el.className = "axdb-slab";
+        el.setAttribute("data-slab-id", id);
+        const rs = document.createElement("div");
+        rs.className = "axdb-rs";
+        rs.setAttribute("title", "Resize section");
+        el.appendChild(rs);
+        layer2.appendChild(el);
+        slabEls.set(id, el);
+      }
+      const p = grp.position;
+      const sz = sizeOf(grp);
+      el.style.left = `${p.x}px`;
+      el.style.top = `${p.y}px`;
+      el.style.width = `${sz.width}px`;
+      el.style.height = `${sz.height}px`;
+      el.classList.toggle("axdb-slab--selected", selectedId === id);
+      el.classList.toggle("axdb-slab--static", isStatic);
+      el.querySelector(":scope > .axdb-rs")?.classList.toggle("axdb-rs--rtl", rtl);
+    }
+    for (const [id, el] of slabEls) {
+      if (!seen.has(id)) {
+        el.remove();
+        slabEls.delete(id);
+      }
+    }
+  };
   const insideMemberGroupFrame = (x, y) => {
     for (const id of group.members ?? []) {
       const grp = diagram.getGroup(id);
@@ -195194,6 +195267,112 @@ function bindDashboardGrid(api, group, options = {}) {
       if (x >= p.x && x <= p.x + s.width && y >= p.y && y <= p.y + s.height) return true;
     }
     return false;
+  };
+  let slabGesture = null;
+  let forwardSlab = null;
+  const frameOfGroup = (grp) => ({ x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height });
+  const beginSlabResize = (id, edges, ev) => {
+    const grp = diagram.getGroup(id);
+    const it = engine.getItem(id);
+    if (!grp || !it || gesture || slabGesture) return;
+    engine.beginGesture();
+    const snap = snapshotAll();
+    slabGesture = {
+      id,
+      edges,
+      pointerId: typeof PointerEvent !== "undefined" && ev.source instanceof PointerEvent ? ev.source.pointerId : null,
+      started: false,
+      downScreen: { x: ev.screen.x, y: ev.screen.y },
+      startCells: snap.cells,
+      startGeom: snap.geoms,
+      cellBefore: { x: it.x, y: it.y, w: it.w, h: it.h },
+      frameBefore: frameOfGroup(grp),
+      grab: {
+        dx: edges.e ? grp.position.x + sizeOf(grp).width - ev.world.x : edges.w ? grp.position.x - ev.world.x : 0,
+        dy: edges.s ? grp.position.y + sizeOf(grp).height - ev.world.y : edges.n ? grp.position.y - ev.world.y : 0
+      }
+    };
+    capturePointer(slabGesture.pointerId);
+    api.container.style.cursor = cursorFor(edges);
+  };
+  const slabMove = (ev) => {
+    const g = slabGesture;
+    if (!g) return;
+    if (!g.started) {
+      if (Math.abs(ev.screen.x - g.downScreen.x) + Math.abs(ev.screen.y - g.downScreen.y) < DRAG_THRESHOLD) return;
+      g.started = true;
+      armGlide();
+    }
+    const it = engine.getItem(g.id);
+    if (!it) return;
+    const f = frame();
+    const gg = geom();
+    const cu = columnUnitFor(gg, f.width);
+    const rh = rowHeightFor(gg, rows());
+    const colAt = (wx) => Math.round((rtl ? f.x + f.width - padding - wx : wx - f.x - padding) / (cu + gap));
+    const rowAt = (wy) => Math.round((wy - f.y - padding) / (rh + gap));
+    let { x, y, w, h } = it;
+    const px2 = ev.world.x + g.grab.dx;
+    const py = ev.world.y + g.grab.dy;
+    if (g.edges.e) w = Math.max(1, colAt(px2) - x);
+    if (g.edges.s) h = Math.max(1, rowAt(py) - y);
+    if (g.edges.w) {
+      const nx = Math.max(0, Math.min(x + w - 1, colAt(px2)));
+      w = x + w - nx;
+      x = nx;
+    }
+    if (g.edges.n) {
+      const ny = Math.max(0, Math.min(y + h - 1, rowAt(py)));
+      h = y + h - ny;
+      y = ny;
+    }
+    w = Math.max(1, Math.min(w, columns - x));
+    const floor = innerRowsOf(g.id);
+    if (h < floor) {
+      if (g.edges.n) y = y + h - floor;
+      h = floor;
+    }
+    let changed = false;
+    if (x !== it.x || y !== it.y) changed = engine.moveCheck(g.id, x, y, { gate: false }).changed || changed;
+    if (w !== it.w || h !== it.h) changed = engine.resizeCheck(g.id, w, h).changed || changed;
+    if (changed) project();
+  };
+  const slabUp = () => {
+    const g = slabGesture;
+    if (!g) return;
+    slabGesture = null;
+    releasePointer(g.pointerId);
+    api.container.style.cursor = "";
+    if (!g.started) {
+      engine.endGesture();
+      return;
+    }
+    engine.endGesture();
+    project();
+    const it = engine.getItem(g.id);
+    const grp = diagram.getGroup(g.id);
+    const commands = buildCommitCommands(deltasSince(g.startCells, g.startGeom, g.id));
+    const b = g.cellBefore;
+    if (it && grp && (b.x !== it.x || b.y !== it.y || b.w !== it.w || b.h !== it.h)) {
+      commands.push(new SetGroupCellCommand(g.id, b, { x: it.x, y: it.y, w: it.w, h: it.h }, g.frameBefore, frameOfGroup(grp)));
+    }
+    const changed = execute("Resize section", commands);
+    disarmGlideSoon();
+    syncHandles();
+    api.renderNow();
+    options.onGesture?.({ type: "commit", kind: "resize", nodeId: g.id, changed });
+  };
+  const slabCancel = () => {
+    const g = slabGesture;
+    if (!g) return;
+    slabGesture = null;
+    releasePointer(g.pointerId);
+    api.container.style.cursor = "";
+    if (g.started) engine.cancelGesture();
+    else engine.endGesture();
+    project();
+    disarmGlideSoon();
+    options.onGesture?.({ type: "cancel", kind: "resize", nodeId: g.id, changed: false });
   };
   const capturePointer = (pointerId) => {
     if (pointerId === null) return;
@@ -195270,6 +195449,11 @@ function bindDashboardGrid(api, group, options = {}) {
     options.onGesture?.({ type: "commit", kind: g.kind, nodeId: g.id, changed });
   };
   const cancelActiveGesture = (notify = true) => {
+    if (forwardSlab) {
+      forwardSlab.slabCancel?.();
+      forwardSlab = null;
+    }
+    if (slabGesture) slabCancel();
     const g = gesture;
     if (!g) return;
     gesture = null;
@@ -195759,7 +195943,24 @@ function bindDashboardGrid(api, group, options = {}) {
       if (selectedId === void 0) return;
       selectedId = void 0;
       syncA11y();
+      syncSlabs();
+      options.onSelect?.(void 0);
     },
+    innerRows: () => maxRows ?? rows(),
+    selectMember: (id) => {
+      if ((group.members ?? /* @__PURE__ */ new Set()).has(id)) {
+        selectWidget(id);
+        api.render();
+      }
+    },
+    beginSlabResize: (id, edges, ev) => {
+      if (isStatic) return false;
+      beginSlabResize(id, edges, ev);
+      return slabGesture?.id === id;
+    },
+    slabMove: (ev) => slabMove(ev),
+    slabUp: () => slabUp(),
+    slabCancel: () => slabCancel(),
     hasItem: (id) => !!engine.getItem(id),
     memberCell: (id) => {
       const it = engine.getItem(id);
@@ -195798,7 +195999,7 @@ function bindDashboardGrid(api, group, options = {}) {
     // point-specific claim — outranks mode-style tools (see ext/tools.ts)
     hitTest(ev, hit) {
       if (disposed) return false;
-      if (gesture) return true;
+      if (gesture || slabGesture || forwardSlab) return true;
       if (!ownsPress(api.container, diagram, ev, hit)) return false;
       if (hit.node) {
         if ((group.members ?? /* @__PURE__ */ new Set()).has(hit.node.id)) return true;
@@ -195816,6 +196017,27 @@ function bindDashboardGrid(api, group, options = {}) {
       const gripId = gripHost?.getAttribute("data-node-id") ?? null;
       const onGrip = !!gripId && (group.members ?? /* @__PURE__ */ new Set()).has(gripId);
       if (!hit.node && !onGrip) {
+        const slabHandle = target?.closest?.(".axdb-slab > .axdb-rs");
+        const slabId = slabHandle?.parentElement?.getAttribute("data-slab-id") ?? memberGroupAt(ev.world.x, ev.world.y);
+        const grp = slabId && (group.members ?? /* @__PURE__ */ new Set()).has(slabId) ? diagram.getGroup(slabId) : void 0;
+        if (slabId && grp) {
+          selectWidget(slabId);
+          api.render();
+          if (isStatic) return;
+          const edges2 = slabHandle ? rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false } : slabEdgesNear(grp, ev.world.x, ev.world.y);
+          if (anyEdge(edges2)) beginSlabResize(slabId, edges2, ev);
+          return;
+        }
+        const parent = parentPeer();
+        if (parent?.selectMember && worldInsideBoard(ev.world.x, ev.world.y)) {
+          const ownHandle = slabHandle?.parentElement?.getAttribute("data-slab-id") === group.id;
+          parent.selectMember(group.id);
+          if (!isStatic && parent.beginSlabResize) {
+            const edges2 = ownHandle ? rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false } : slabEdgesNear(group, ev.world.x, ev.world.y);
+            if (anyEdge(edges2) && parent.beginSlabResize(group.id, edges2, ev)) forwardSlab = parent;
+          }
+          return;
+        }
         diagram.clearSelection?.();
         selectWidget(void 0);
         api.render();
@@ -195869,10 +196091,16 @@ function bindDashboardGrid(api, group, options = {}) {
       };
     },
     onPointerMove(ev) {
-      onToolMove(ev);
+      if (forwardSlab) forwardSlab.slabMove?.(ev);
+      else if (slabGesture) slabMove(ev);
+      else onToolMove(ev);
     },
     onPointerUp() {
-      onToolUp();
+      if (forwardSlab) {
+        forwardSlab.slabUp?.();
+        forwardSlab = null;
+      } else if (slabGesture) slabUp();
+      else onToolUp();
     },
     onCancel() {
       cancelActiveGesture();
@@ -195899,7 +196127,15 @@ function bindDashboardGrid(api, group, options = {}) {
       hoverHost.removeAttribute("data-axdb-edge");
     }
     hoverHost = host;
-    if (!host) return;
+    if (!host) {
+      const wpt = api.viewport?.clientToWorld ? api.viewport.clientToWorld(e.clientX, e.clientY, api.container.getBoundingClientRect()) : null;
+      const sid = wpt ? memberGroupAt(wpt.x, wpt.y) : null;
+      const grp = sid ? diagram.getGroup(sid) : void 0;
+      const c = grp && wpt && !isStatic ? cursorFor(slabEdgesNear(grp, wpt.x, wpt.y)) : "";
+      if (!slabGesture) api.container.style.cursor = c;
+      return;
+    }
+    if (!slabGesture && api.container.style.cursor) api.container.style.cursor = "";
     const id = host.getAttribute("data-node-id") ?? "";
     if (!(group.members ?? /* @__PURE__ */ new Set()).has(id)) return;
     const node = diagram.getNode(id);
@@ -196156,6 +196392,15 @@ function bindDashboardGrid(api, group, options = {}) {
       writing = false;
     }
     const commands = buildCommitCommands(deltasSince(snap.cells, snap.geoms));
+    if (isGroupMember(id)) {
+      const it = engine.getItem(id);
+      const grp = diagram.getGroup(id);
+      const cb = snap.cells.get(id);
+      const gb = snap.geoms.get(id);
+      if (it && grp && cb && gb && (cb.x !== it.x || cb.y !== it.y || cb.w !== it.w || cb.h !== it.h)) {
+        commands.push(new SetGroupCellCommand(id, cb, { x: it.x, y: it.y, w: it.w, h: it.h }, { x: gb.pos.x, y: gb.pos.y, width: gb.size.width, height: gb.size.height }, frameOfGroup(grp)));
+      }
+    }
     engine.endGesture();
     disarmGlideSoon();
     enforceBoardHeight();
@@ -196219,7 +196464,7 @@ function bindDashboardGrid(api, group, options = {}) {
     getFocusedWidget: () => focusedId,
     selectWidget(id) {
       if (disposed) return false;
-      if (id !== void 0 && (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id))) return false;
+      if (id !== void 0 && (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !memberEntity(id))) return false;
       selectWidget(id);
       return true;
     },
@@ -196337,7 +196582,8 @@ function bindDashboardGrid(api, group, options = {}) {
       return programmatic("Move widget", id, () => engine.moveCheck(id, x, y).changed);
     },
     resizeTo(id, w, h) {
-      return programmatic("Resize widget", id, () => engine.resizeCheck(id, w, h).changed);
+      const hh = isGroupMember(id) ? Math.max(h, innerRowsOf(id)) : h;
+      return programmatic("Resize widget", id, () => engine.resizeCheck(id, w, hh).changed);
     },
     beginPaletteDrag,
     dispose() {
@@ -196357,6 +196603,8 @@ function bindDashboardGrid(api, group, options = {}) {
       placeholder?.remove();
       placeholder = null;
       if (glideTimer) clearTimeout(glideTimer);
+      for (const el of slabEls.values()) el.remove();
+      slabEls.clear();
       flushGhost();
       htmlLayer()?.classList.remove("axdb-glide");
       api.container.style.cursor = "";
@@ -196935,6 +197183,7 @@ function bindDashboardSplit(api, group, options = {}) {
     if (id === selectedId) return;
     selectedId = id;
     syncA11y();
+    options.onSelect?.(id);
   };
   let selfPeerRef = null;
   const staticGuard = (e) => {
@@ -197587,6 +197836,7 @@ function bindDashboardSplit(api, group, options = {}) {
       if (selectedId === void 0) return;
       selectedId = void 0;
       syncA11y();
+      options.onSelect?.(void 0);
     },
     hasItem: (id) => (group.members ?? /* @__PURE__ */ new Set()).has(id),
     memberCell: (id) => handle.cellOf(id),
@@ -198787,7 +199037,8 @@ function dashboard(options) {
           onGesture: (e) => {
             if (e.type === "commit") reportChanged();
             options.binder?.onGesture?.(e);
-          }
+          },
+          onSelect: (id) => options.onSelect?.(id, v.id)
         };
         if (viewLayout === "split") {
           return bindDashboardSplit(a, g, {
@@ -198823,7 +199074,8 @@ function dashboard(options) {
           onGesture: (e) => {
             if (e.type === "commit") reportChanged();
             options.binder?.onGesture?.(e);
-          }
+          },
+          onSelect: (id) => options.onSelect?.(id, ctx.viewOfBoard.get(w.id) ?? ctx.active)
         };
         if ((ctx.layoutOf.get(w.id) ?? w.layout) === "split") {
           binders.set(w.id, bindDashboardSplit(a, cg, { ...inner, ...w.tree !== void 0 ? { tree: w.tree } : {} }));

@@ -209,6 +209,8 @@ export interface DashboardGridOptions {
     changed: boolean;
   }) => void;
   /** Inject the hover-revealed corner resize handle into member hosts (default true). */
+  /** The selection on this board changed: the selected member — a widget or a SECTION (container) — or undefined. */
+  onSelect?: (id: string | undefined) => void;
   resizeHandles?: boolean;
   /**
    * FLUID board: the group's frame follows the CANVAS CONTAINER — width
@@ -493,6 +495,20 @@ interface BinderPeer {
    * boards after three clicks).
    */
   clearSelection?(): void;
+  /** A nested board's live row bound — what its slab must never shrink below. */
+  innerRows?(): number;
+  /**
+   * SECTION PRESSES. A press on a section's empty band lands on the NESTED
+   * board's tool (it claims its own frame), which knows nothing to select;
+   * the section is a member of the PARENT. The child asks the parent to
+   * select it and, on an edge or the corner handle, to run the section
+   * resize — and forwards the rest of the pointer sequence.
+   */
+  selectMember?(id: string): void;
+  beginSlabResize?(id: string, edges: ResizeEdges, ev: ToolPointerEvent): boolean;
+  slabMove?(ev: ToolPointerEvent): void;
+  slabUp?(): void;
+  slabCancel?(): void;
   /** The member's current cell in this board (undefined when absent). */
   memberCell(id: string): CellRect | undefined;
   /**
@@ -939,6 +955,17 @@ export function bindDashboardGrid(
   /** The engine item a member should enter as (cells from GridItemConfig /
    *  group metadata; spans falling back to metadata columnSpan/rowSpan; last
    *  resort: adopt from the current pixel geometry). */
+  /**
+   * A SECTION's floor: its nested board's live rows (the peer), else the rows
+   * it was mounted with — a section resized by hand never squeezes its
+   * children below their cells.
+   */
+  const innerRowsOf = (id: string): number => {
+    for (const p of BOARD_REGISTRY.get(api.container) ?? []) if (p.group.id === id && p.innerRows) return Math.max(1, p.innerRows());
+    const meta = diagram.getGroup(id)?.getMetadata?.('containerWidget') as { maxRows?: number } | undefined;
+    return Math.max(1, meta?.maxRows ?? 1);
+  };
+
   const itemFor = (id: string): GridPackItem => {
     const node = diagram.getNode(id);
     if (node) {
@@ -1200,6 +1227,8 @@ export function bindDashboardGrid(
     if (id === selectedId) return;
     selectedId = id;
     syncA11y();
+    syncSlabs();
+    options.onSelect?.(id);
   };
   /** Set once the peer object exists (below); `selectWidget` runs before that only on boot. */
   let selfPeerRef: BinderPeer | null = null;
@@ -1208,7 +1237,8 @@ export function bindDashboardGrid(
     if (disposed) return;
     const members = [...(group.members ?? [])].filter((id) => !!diagram.getNode(id));
     if (focusedId && !members.includes(focusedId)) focusedId = undefined;
-    if (selectedId && !members.includes(selectedId)) selectedId = undefined;
+    // A selected SECTION is a group member, not a node: keep it as long as it is a member.
+    if (selectedId && !members.includes(selectedId) && !(group.members?.has(selectedId) && memberEntity(selectedId))) selectedId = undefined;
     const stop = focusedId ?? members[0];
     for (const id of members) {
       if (only && !only.has(id)) continue;
@@ -1237,6 +1267,7 @@ export function bindDashboardGrid(
     syncA11y(only);
     if (disposed) return;
     ensureStaticGuard();
+    syncSlabs();
     const grip = gripOf(dragHandle);
     for (const id of group.members ?? []) {
       if (only && !only.has(id)) continue;
@@ -1445,6 +1476,7 @@ export function bindDashboardGrid(
     } finally {
       writing = false;
     }
+    syncSlabs();
   };
 
   const applyColumns = (n: number, layout: GridColumnLayout): boolean => {
@@ -1518,6 +1550,75 @@ export function bindDashboardGrid(
     return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + boardVisualHeight() + band;
   };
 
+  /** The member SECTION whose frame holds the world point, if any. */
+  const memberGroupAt = (x: number, y: number): string | null => {
+    for (const id of group.members ?? []) {
+      const grp = diagram.getGroup(id);
+      if (!grp) continue;
+      const p = grp.position;
+      const s = sizeOf(grp);
+      if (x >= p.x && x <= p.x + s.width && y >= p.y && y <= p.y + s.height) return id;
+    }
+    return null;
+  };
+  /** Which of a section frame's edges a world point is within EDGE_GRIP of. */
+  const slabEdgesNear = (grp: GroupModel, x: number, y: number): ResizeEdges => {
+    const p = grp.position;
+    const s = sizeOf(grp);
+    return { n: y - p.y <= EDGE_GRIP, s: p.y + s.height - y <= EDGE_GRIP, w: x - p.x <= EDGE_GRIP, e: p.x + s.width - x <= EDGE_GRIP };
+  };
+
+  /**
+   * SECTION CHROME. A section (member group) paints no card of its own, so it
+   * had nothing to press: a click on its empty band cleared the selection and
+   * its frame had no handle and no edge — a section with many children could
+   * not be selected at all, and could only be resized by pulling a child
+   * (Quantia, Groups page). Every section gets a pointer-transparent overlay
+   * in the HTML layer that wears the selection ring and, while selected, the
+   * corner handle; its frame edges answer the resize cursor.
+   */
+  const slabEls = new Map<string, HTMLElement>();
+  let slabLayer: HTMLElement | null = null;
+  const syncSlabs = (): void => {
+    if (disposed) return;
+    const layer = slabLayer?.isConnected ? slabLayer : (slabLayer = htmlLayer());
+    if (!layer) return;
+    const seen = new Set<string>();
+    for (const id of group.members ?? []) {
+      const grp = diagram.getGroup(id);
+      if (!grp || diagram.getNode(id)) continue;
+      seen.add(id);
+      let el = slabEls.get(id);
+      if (!el || el.parentElement !== layer) {
+        el?.remove();
+        el = document.createElement('div');
+        el.className = 'axdb-slab';
+        el.setAttribute('data-slab-id', id);
+        const rs = document.createElement('div');
+        rs.className = 'axdb-rs';
+        rs.setAttribute('title', 'Resize section');
+        el.appendChild(rs);
+        layer.appendChild(el);
+        slabEls.set(id, el);
+      }
+      const p = grp.position;
+      const sz = sizeOf(grp);
+      el.style.left = `${p.x}px`;
+      el.style.top = `${p.y}px`;
+      el.style.width = `${sz.width}px`;
+      el.style.height = `${sz.height}px`;
+      el.classList.toggle('axdb-slab--selected', selectedId === id);
+      el.classList.toggle('axdb-slab--static', isStatic);
+      el.querySelector(':scope > .axdb-rs')?.classList.toggle('axdb-rs--rtl', rtl);
+    }
+    for (const [id, el] of slabEls) {
+      if (!seen.has(id)) {
+        el.remove();
+        slabEls.delete(id);
+      }
+    }
+  };
+
   const insideMemberGroupFrame = (x: number, y: number): boolean => {
     for (const id of group.members ?? []) {
       const grp = diagram.getGroup(id);
@@ -1527,6 +1628,136 @@ export function bindDashboardGrid(
       if (x >= p.x && x <= p.x + s.width && y >= p.y && y <= p.y + s.height) return true;
     }
     return false;
+  };
+
+  /**
+   * A SECTION RESIZE — the slab's cell in this board follows the pointer,
+   * edge by edge, through the engine; the nested board re-lays its children
+   * out inside the new frame. Floored by the slab item's `minH` (the
+   * children's rows). One undoable step: the displaced tiles plus the
+   * section's cell and frame.
+   */
+  interface SlabGesture {
+    id: string;
+    edges: ResizeEdges;
+    pointerId: number | null;
+    started: boolean;
+    downScreen: { x: number; y: number };
+    startCells: Map<string, CellRect>;
+    startGeom: Map<string, GeomSnapshot>;
+    cellBefore: CellRect;
+    frameBefore: WorldRect;
+    /** Pointer-to-edge offset at press, so the pulled edge follows the pointer exactly. */
+    grab: { dx: number; dy: number };
+  }
+  let slabGesture: SlabGesture | null = null;
+  /** The PARENT running a resize of OUR section from a press this tool claimed. */
+  let forwardSlab: BinderPeer | null = null;
+  const frameOfGroup = (grp: GroupModel): WorldRect => ({ x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height });
+  const beginSlabResize = (id: string, edges: ResizeEdges, ev: ToolPointerEvent): void => {
+    const grp = diagram.getGroup(id);
+    const it = engine.getItem(id);
+    if (!grp || !it || gesture || slabGesture) return;
+    engine.beginGesture();
+    const snap = snapshotAll();
+    slabGesture = {
+      id,
+      edges,
+      pointerId: typeof PointerEvent !== 'undefined' && ev.source instanceof PointerEvent ? ev.source.pointerId : null,
+      started: false,
+      downScreen: { x: ev.screen.x, y: ev.screen.y },
+      startCells: snap.cells,
+      startGeom: snap.geoms,
+      cellBefore: { x: it.x, y: it.y, w: it.w, h: it.h },
+      frameBefore: frameOfGroup(grp),
+      grab: {
+        dx: edges.e ? grp.position.x + sizeOf(grp).width - ev.world.x : edges.w ? grp.position.x - ev.world.x : 0,
+        dy: edges.s ? grp.position.y + sizeOf(grp).height - ev.world.y : edges.n ? grp.position.y - ev.world.y : 0,
+      },
+    };
+    capturePointer(slabGesture.pointerId);
+    api.container.style.cursor = cursorFor(edges);
+  };
+  const slabMove = (ev: ToolPointerEvent): void => {
+    const g = slabGesture;
+    if (!g) return;
+    if (!g.started) {
+      if (Math.abs(ev.screen.x - g.downScreen.x) + Math.abs(ev.screen.y - g.downScreen.y) < DRAG_THRESHOLD) return;
+      g.started = true;
+      armGlide();
+    }
+    const it = engine.getItem(g.id);
+    if (!it) return;
+    const f = frame();
+    const gg = geom();
+    const cu = columnUnitFor(gg, f.width);
+    const rh = rowHeightFor(gg, rows());
+    // The grid line nearest the pointer, in cells (mirrored on RTL).
+    const colAt = (wx: number): number => Math.round((rtl ? f.x + f.width - padding - wx : wx - f.x - padding) / (cu + gap));
+    const rowAt = (wy: number): number => Math.round((wy - f.y - padding) / (rh + gap));
+    let { x, y, w, h } = it;
+    const px = ev.world.x + g.grab.dx;
+    const py = ev.world.y + g.grab.dy;
+    if (g.edges.e) w = Math.max(1, colAt(px) - x);
+    if (g.edges.s) h = Math.max(1, rowAt(py) - y);
+    if (g.edges.w) {
+      const nx = Math.max(0, Math.min(x + w - 1, colAt(px)));
+      w = x + w - nx;
+      x = nx;
+    }
+    if (g.edges.n) {
+      const ny = Math.max(0, Math.min(y + h - 1, rowAt(py)));
+      h = y + h - ny;
+      y = ny;
+    }
+    w = Math.max(1, Math.min(w, columns - x));
+    // Never below the children's rows (the nested board's live bound).
+    const floor = innerRowsOf(g.id);
+    if (h < floor) {
+      if (g.edges.n) y = y + h - floor;
+      h = floor;
+    }
+    let changed = false;
+    if (x !== it.x || y !== it.y) changed = engine.moveCheck(g.id, x, y, { gate: false }).changed || changed;
+    if (w !== it.w || h !== it.h) changed = engine.resizeCheck(g.id, w, h).changed || changed;
+    if (changed) project();
+  };
+  const slabUp = (): void => {
+    const g = slabGesture;
+    if (!g) return;
+    slabGesture = null;
+    releasePointer(g.pointerId);
+    api.container.style.cursor = '';
+    if (!g.started) {
+      engine.endGesture();
+      return;
+    }
+    engine.endGesture();
+    project();
+    const it = engine.getItem(g.id);
+    const grp = diagram.getGroup(g.id);
+    const commands = buildCommitCommands(deltasSince(g.startCells, g.startGeom, g.id));
+    const b = g.cellBefore;
+    if (it && grp && (b.x !== it.x || b.y !== it.y || b.w !== it.w || b.h !== it.h)) {
+      commands.push(new SetGroupCellCommand(g.id, b, { x: it.x, y: it.y, w: it.w, h: it.h }, g.frameBefore, frameOfGroup(grp)));
+    }
+    const changed = execute('Resize section', commands);
+    disarmGlideSoon();
+    syncHandles();
+    api.renderNow();
+    options.onGesture?.({ type: 'commit', kind: 'resize', nodeId: g.id, changed });
+  };
+  const slabCancel = (): void => {
+    const g = slabGesture;
+    if (!g) return;
+    slabGesture = null;
+    releasePointer(g.pointerId);
+    api.container.style.cursor = '';
+    if (g.started) engine.cancelGesture();
+    else engine.endGesture();
+    project();
+    disarmGlideSoon();
+    options.onGesture?.({ type: 'cancel', kind: 'resize', nodeId: g.id, changed: false });
   };
 
   const capturePointer = (pointerId: number | null): void => {
@@ -1638,6 +1869,11 @@ export function bindDashboardGrid(
   };
 
   const cancelActiveGesture = (notify = true): void => {
+    if (forwardSlab) {
+      forwardSlab.slabCancel?.();
+      forwardSlab = null;
+    }
+    if (slabGesture) slabCancel();
     const g = gesture;
     if (!g) return;
     gesture = null;
@@ -2255,7 +2491,24 @@ export function bindDashboardGrid(
       if (selectedId === undefined) return;
       selectedId = undefined;
       syncA11y();
+      syncSlabs();
+      options.onSelect?.(undefined);
     },
+    innerRows: () => maxRows ?? rows(),
+    selectMember: (id) => {
+      if ((group.members ?? new Set<string>()).has(id)) {
+        selectWidget(id);
+        api.render();
+      }
+    },
+    beginSlabResize: (id, edges, ev) => {
+      if (isStatic) return false;
+      beginSlabResize(id, edges, ev);
+      return slabGesture?.id === id;
+    },
+    slabMove: (ev) => slabMove(ev),
+    slabUp: () => slabUp(),
+    slabCancel: () => slabCancel(),
     hasItem: (id) => !!engine.getItem(id),
     memberCell: (id) => {
       const it = engine.getItem(id);
@@ -2299,7 +2552,7 @@ export function bindDashboardGrid(
     priority: 2, // point-specific claim — outranks mode-style tools (see ext/tools.ts)
     hitTest(ev, hit) {
       if (disposed) return false;
-      if (gesture) return true; // own the rest of an in-flight gesture
+      if (gesture || slabGesture || forwardSlab) return true; // own the rest of an in-flight gesture
       if (!ownsPress(api.container, diagram, ev, hit)) return false;
       if (hit.node) {
         if ((group.members ?? new Set<string>()).has(hit.node.id)) return true;
@@ -2333,6 +2586,37 @@ export function bindDashboardGrid(
       const gripId = gripHost?.getAttribute('data-node-id') ?? null;
       const onGrip = !!gripId && (group.members ?? new Set<string>()).has(gripId);
       if (!hit.node && !onGrip) {
+        // A press on a SECTION — its empty band, its corner handle or its
+        // frame edge — selects the section; the handle or an edge resizes it.
+        const slabHandle = target?.closest?.('.axdb-slab > .axdb-rs') as HTMLElement | null;
+        const slabId = slabHandle?.parentElement?.getAttribute('data-slab-id') ?? memberGroupAt(ev.world.x, ev.world.y);
+        const grp = slabId && (group.members ?? new Set<string>()).has(slabId) ? diagram.getGroup(slabId) : undefined;
+        if (slabId && grp) {
+          selectWidget(slabId);
+          api.render();
+          if (isStatic) return;
+          const edges: ResizeEdges = slabHandle
+            ? rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false }
+            : slabEdgesNear(grp, ev.world.x, ev.world.y);
+          if (anyEdge(edges)) beginSlabResize(slabId, edges, ev);
+          return;
+        }
+        // OUR OWN empty band, and we are a section of a parent board: the
+        // press selects the section there, and its edge or corner handle
+        // starts the section resize, which the parent runs while this tool
+        // forwards the pointer sequence.
+        const parent = parentPeer();
+        if (parent?.selectMember && worldInsideBoard(ev.world.x, ev.world.y)) {
+          const ownHandle = slabHandle?.parentElement?.getAttribute('data-slab-id') === group.id;
+          parent.selectMember(group.id);
+          if (!isStatic && parent.beginSlabResize) {
+            const edges: ResizeEdges = ownHandle
+              ? rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false }
+              : slabEdgesNear(group, ev.world.x, ev.world.y);
+            if (anyEdge(edges) && parent.beginSlabResize(group.id, edges, ev)) forwardSlab = parent;
+          }
+          return;
+        }
         // The board's own empty area: a void click. Nothing to drag, and the
         // selection clears exactly as a click outside any board would.
         (diagram as { clearSelection?: () => void }).clearSelection?.();
@@ -2407,10 +2691,16 @@ export function bindDashboardGrid(
       };
     },
     onPointerMove(ev) {
-      onToolMove(ev);
+      if (forwardSlab) forwardSlab.slabMove?.(ev);
+      else if (slabGesture) slabMove(ev);
+      else onToolMove(ev);
     },
     onPointerUp() {
-      onToolUp();
+      if (forwardSlab) {
+        forwardSlab.slabUp?.();
+        forwardSlab = null;
+      } else if (slabGesture) slabUp();
+      else onToolUp();
     },
     onCancel() {
       cancelActiveGesture();
@@ -2447,7 +2737,16 @@ export function bindDashboardGrid(
       hoverHost.removeAttribute('data-axdb-edge'); // the affordance follows the pointer off a tile
     }
     hoverHost = host;
-    if (!host) return;
+    if (!host) {
+      // No tile under the pointer: a SECTION's frame edge still says resize.
+      const wpt = api.viewport?.clientToWorld ? api.viewport.clientToWorld(e.clientX, e.clientY, api.container.getBoundingClientRect()) : null;
+      const sid = wpt ? memberGroupAt(wpt.x, wpt.y) : null;
+      const grp = sid ? diagram.getGroup(sid) : undefined;
+      const c = grp && wpt && !isStatic ? cursorFor(slabEdgesNear(grp, wpt.x, wpt.y)) : '';
+      if (!slabGesture) api.container.style.cursor = c;
+      return;
+    }
+    if (!slabGesture && api.container.style.cursor) api.container.style.cursor = '';
     const id = host.getAttribute('data-node-id') ?? '';
     if (!(group.members ?? new Set<string>()).has(id)) return;
     const node = diagram.getNode(id);
@@ -2777,6 +3076,17 @@ export function bindDashboardGrid(
       writing = false;
     }
     const commands = buildCommitCommands(deltasSince(snap.cells, snap.geoms));
+    if (isGroupMember(id)) {
+      // A SECTION: its cell lives in group metadata and its frame is written
+      // by project(); the node commands above skip groups (D5 of the review).
+      const it = engine.getItem(id);
+      const grp = diagram.getGroup(id);
+      const cb = snap.cells.get(id);
+      const gb = snap.geoms.get(id);
+      if (it && grp && cb && gb && (cb.x !== it.x || cb.y !== it.y || cb.w !== it.w || cb.h !== it.h)) {
+        commands.push(new SetGroupCellCommand(id, cb, { x: it.x, y: it.y, w: it.w, h: it.h }, { x: gb.pos.x, y: gb.pos.y, width: gb.size.width, height: gb.size.height }, frameOfGroup(grp)));
+      }
+    }
     engine.endGesture();
     disarmGlideSoon();
     enforceBoardHeight();
@@ -2863,7 +3173,7 @@ export function bindDashboardGrid(
     getFocusedWidget: () => focusedId,
     selectWidget(id): boolean {
       if (disposed) return false;
-      if (id !== undefined && (!(group.members ?? new Set<string>()).has(id) || !diagram.getNode(id))) return false;
+      if (id !== undefined && (!(group.members ?? new Set<string>()).has(id) || !memberEntity(id))) return false;
       selectWidget(id);
       return true;
     },
@@ -2983,7 +3293,8 @@ export function bindDashboardGrid(
       return programmatic('Move widget', id, () => engine.moveCheck(id, x, y).changed);
     },
     resizeTo(id, w, h) {
-      return programmatic('Resize widget', id, () => engine.resizeCheck(id, w, h).changed);
+      const hh = isGroupMember(id) ? Math.max(h, innerRowsOf(id)) : h; // a section: never below its children
+      return programmatic('Resize widget', id, () => engine.resizeCheck(id, w, hh).changed);
     },
     beginPaletteDrag,
     dispose(): void {
@@ -3005,6 +3316,8 @@ export function bindDashboardGrid(
       placeholder?.remove();
       placeholder = null;
       if (glideTimer) clearTimeout(glideTimer);
+      for (const el of slabEls.values()) el.remove();
+      slabEls.clear();
       // A rebind inside the 60 ms window (a layout switch right after an undo)
       // disposed this binder with the timer pending — the host kept its
       // lifted ghost for good (visual gate, nested-containers ⑤).

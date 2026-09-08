@@ -69,6 +69,7 @@ export interface DashboardSplitOptions
     | 'onRemoveRequest'
     | 'onDropIn'
     | 'onGesture'
+    | 'onSelect'
   > {
   /** An authored tree. Default: the persisted one, else derived from the members' cells. */
   tree?: SplitNode | null;
@@ -463,6 +464,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     if (id === selectedId) return;
     selectedId = id;
     syncA11y();
+    options.onSelect?.(id);
   };
   let selfPeerRef: BinderPeer | null = null;
 
@@ -1208,6 +1210,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       if (selectedId === undefined) return;
       selectedId = undefined;
       syncA11y();
+      options.onSelect?.(undefined);
     },
     hasItem: (id) => (group.members ?? new Set<string>()).has(id),
     memberCell: (id) => handle.cellOf(id),
