@@ -453,9 +453,12 @@ render(SPEC2, host);</pre>
       rows the layout no longer needs go back as the tile shrinks — never below the section's
       designed rows. The board decides whether the section may grow: a grow board extends, a fit
       board squeezes its rows, or refuses when <code>squeeze: false</code> and the frame is
-      full. A tile spanning the section's full height — every tile of a one-row KPI strip —
-      pulls the section with it as a row: every full-height tile grows a row together and the
-      cells say so, so a saved board reloads the way it looked. Before 0.4.17 a partial tile was
+      full. A tile spanning the section's full height — any tile of a one-row KPI strip —
+      pulls the section with it: the section gains the row and <b>the dragged tile takes it</b>,
+      while its siblings keep their own cells, and the cells say so, so a saved board reloads the
+      way it looked. A grid resize changes the widget you grabbed and nothing else (element
+      0.4.26; before it, every full-height tile grew together). A top-edge pull on a tile that
+      already sits in the first row is refused rather than grown downwards. Before 0.4.17 a partial tile was
       refused past the section's rows, and before 0.4.16 a 150 px pull on a one-row control
       inside a 14-row panel shrank the whole panel to 4 rows.</p>
       <p><b>Charts on a squeezed board stay readable</b> (element 0.4.15). The built-in

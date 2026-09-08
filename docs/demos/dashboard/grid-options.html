@@ -138,7 +138,7 @@
     <ul class="go-key">
       <li><span class="n">1</span><span><b>Two boards, one canvas</b>Drag a tile from ① into ② — the source board settles, the target makes room live, and the whole crossing is ONE undo.</span></li>
       <li><span class="n">2</span><span><b>Explicit cell placement</b>The green tile declares fixed cells (<code>gridItem</code> col 3–4 · row 1–2); the others carry no cells and auto-flow around it.</span></li>
-      <li><span class="n">3</span><span><b>Bounded section</b><code>maxRows: 1</code> nested inside board ③: its own pack grid, a locked slab outside. Pull a tile past it and the strip GROWS a row (all tiles together); pull back and it shrinks. <em>The main dashboard deliberately does not use this.</em></span></li>
+      <li><span class="n">3</span><span><b>Bounded section</b><code>maxRows: 1</code> nested inside board ③: its own pack grid, a locked slab outside. Pull a tile past it and the section GROWS a row for THAT tile; its neighbours keep their cells; pull back and it shrinks. <em>The main dashboard deliberately does not use this.</em></span></li>
       <li><span class="n">4</span><span><b>Pinned tile</b>The amber tile is <code>locked</code>: never pushed, and a drag onto it is refused outright.</span></li>
       <li><span class="n">5</span><span><b>Float &amp; fit/grow</b><b style="font-weight:400">Float off</b> = gravity packs upward, no holes; <b style="font-weight:400">on</b> = tiles stay where you drop them. <b style="font-weight:400">Fit</b> = board keeps its height, rows squeeze; <b style="font-weight:400">grow</b> = rows keep their height, the board extends.</span></li>
       <li><span class="n">6</span><span><b>Palette in, drag out</b>Drag-in places live from the moment the cursor enters; a release over the palette deletes, undoably.</span></li>
@@ -779,7 +779,7 @@ defineDemo({
   howTo: [
     '① Drag "A · one" from board A into board B: the source board settles behind it, board B makes room live around the dashed placeholder, and ONE undo restores both boards at once (cross-container drag — the tile changes group membership in the same batch).',
     '② Board B\'s green tile declares explicit cells (gridItem col 3–4, row 1–2). The other three carry no cells at all and were auto-positioned around it by the engine\'s row-major scan.',
-    '③ Board C\'s blue strip is a nested SECTION bound with maxRows: 1 — its own 4-column pack grid inside, a locked slab to board C outside. Drag a strip tile onto another and they shift ALONG the row (never onto a second row). Pull "Strip A"\'s bottom-right corner well past the strip and the whole strip GROWS a row; pull back up and it shrinks again. The main dashboard deliberately does not use this construct.',
+    '③ Board C\'s blue strip is a nested SECTION bound with maxRows: 1 — its own 4-column pack grid inside, a locked slab to board C outside. Drag a strip tile onto another and they shift ALONG the row (never onto a second row). Pull "Strip A"\'s bottom-right corner well past the strip and the section GROWS a row which "Strip A" alone takes — a grid resize changes the tile you grabbed, never its neighbour; pull back up and it shrinks again. The main dashboard deliberately does not use this construct.',
     '④ The amber "A · pinned" tile is locked: drag another tile onto it and the drag is refused outright, and nothing can push it. Focus any tile and press Pin to lock it too.',
     '⑤ Float: off is gravity — tiles pack upward and holes close. Float: on lets a tile stay exactly where you dropped it. Mode: fit keeps every board at its design height and squeezes the rows; Mode: grow keeps 110px rows and lets the boards extend downward.',
     '⑥ Drag a palette item onto the board you last touched — it places live from the moment the cursor enters. Drag any tile OUT and release over the palette panel to delete it; one undo puts it back with its neighbours.',
@@ -914,7 +914,9 @@ defineDemo({
       cm.clear();
 
       // HEIGHT ESCALATION: pull a strip tile well past the strip and the SLAB
-      // grows a row in board C — every strip tile gets taller together.
+      // grows a row in board C — and the tile UNDER THE POINTER takes it. Its
+      // neighbours keep their own cells: a grid resize adjusts what you
+      // grabbed, nothing else (element 0.4.26).
       const s0b = byLabel('Strip A');
       const h0 = s0b.size.height, sibH0 = byLabel('Strip B').size.height;
       const slab0 = { ...binders.c.cellOf('sec-strip') };
@@ -927,7 +929,7 @@ defineDemo({
       let cpt = toClient(corner.x, corner.y + 150);
       pev('pointermove', cpt.x, cpt.y); await raf(); await raf();
       checkEqual(binders.c.cellOf('sec-strip').h, slab0.h + 1, 'pulling past the strip grew the SLAB by a row');
-      check(byLabel('Strip B').size.height > sibH0 + 10, 'every tile in the section grew with it (it is one bounded row)');
+      check(byLabel('Strip B').size.height < byLabel('Strip A').size.height - 10, 'its neighbour kept its own cell — only the dragged tile grew');
       await release(corner.x, corner.y + 150);
       check(byLabel('Strip A').size.height > h0 + 10, 'the escalation committed');
       await cm.undo(); refreshBoards(); await settle();

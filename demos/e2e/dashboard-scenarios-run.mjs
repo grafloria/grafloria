@@ -380,7 +380,7 @@ try {
   else {
     await shot(page, 'before');
     // (HEIGHT growth is s21's contract: pulling past the section GROWS the
-    //  section — all tiles together. This scenario owns the WIDTH rules.)
+    //  section, and the DRAGGED tile takes the row. This scenario owns WIDTH.)
     // 1) WIDTH growth on a FULL 4/4 section must be REFUSED — there is nowhere
     //    for a sibling to go, and refusing IS the design staying intact.
     const rs2 = await resizeHandleOf(page, 'Strip A');
@@ -1474,10 +1474,12 @@ try {
   const s5 = await read();
   await shot(page, 'dropped-under-the-row');
   const f = await page.evaluate(() => window.__demoCtx.handle.metrics().frame);
-  // nps spans the board under the row; the row's three survivors still fill the
-  // width between them (win took nps's old slot — the neighbour rule).
+  // nps spans the KPI ROW under it, and the row's three survivors still fill
+  // the width between them (win took nps's old slot — the neighbour rule).
+  // Not the whole FRAME: the board keeps a right-hand column of tab-captioned
+  // sections, which is a sibling of the row in the split tree.
   const rowW = s5.ws.rev.w + s5.ws.cust.w + s5.ws.win.w;
-  const underAll = s5.ws.nps.w > f.width * 0.9 && s5.ws.nps.y > s5.ws.rev.y + s5.ws.rev.h - 1 && s5.ws.nps.y < s5.ws.trend.y && Math.abs(rowW - s5.ws.nps.w) < 40;
+  const underAll = s5.ws.nps.w > f.width * 0.6 && s5.ws.nps.y > s5.ws.rev.y + s5.ws.rev.h - 1 && s5.ws.nps.y < s5.ws.trend.y && Math.abs(rowW - s5.ws.nps.w) < 40;
   await undo(); await page.waitForTimeout(400);
   // F. back to the grid: the same picture, then split again
   await page.click('#fb-grid'); await page.waitForTimeout(500); const g = await read();
