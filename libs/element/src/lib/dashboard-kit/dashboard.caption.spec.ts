@@ -239,10 +239,14 @@ describe('section captions — actions, presses and pass-through', () => {
     expect(btns[0].getAttribute('title')).toBe('Maximize');
     expect(btns[0].textContent).toBe('⤢');
     expect((btns[1] as HTMLButtonElement).disabled).toBe(true);
-    press(btns[0], inBand(api, model));
+    // no tool claims the press (the button is content), and the browser's own
+    // click — mouse, touch, or Enter/Space on the keyboard — fires the action
+    expect(press(btns[0], inBand(api, model))).toBeUndefined();
+    (btns[0] as HTMLButtonElement).click();
     expect(onCaptionAction).toHaveBeenCalledWith('box', 'max', 'main');
+    expect(onCaptionAction).toHaveBeenCalledTimes(1);
     expect(handle.getSelectedWidget()).toBeUndefined();
-    press(btns[1], inBand(api, model));
+    (btns[1] as HTMLButtonElement).click();
     expect(onCaptionAction).toHaveBeenCalledTimes(1);
   });
 

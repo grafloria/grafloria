@@ -137,11 +137,16 @@ export function sizeCaptionBand(band: HTMLElement, c: SectionCaptionOptions, sec
   if (c.position === 'tab') band.style.top = `${-h}px`;
 }
 
-/** Is a press on `target`, inside `band`, content rather than the band? Actions are never pass-through. */
+/**
+ * Is a press on `target`, inside `band`, content rather than the band? An
+ * action button is always content: no tool claims it, so the browser's own
+ * `click` reaches it — from a mouse, a touch, or Enter/Space on the keyboard
+ * (a pointerdown-only action never fired from the keyboard, and the
+ * interaction gate's DEAD-BUTTON check, which clicks, called it dead).
+ */
 export function captionPassThrough(target: Element | null, band: Element, c: SectionCaptionOptions | null): boolean {
   if (!target || !band.contains(target)) return false;
-  if (target.closest('.axdb-slab-h-action')) return false;
-  const sel = c?.passThrough ?? CAPTION_PASS_THROUGH;
+  const sel = `${c?.passThrough ?? CAPTION_PASS_THROUGH}, .axdb-slab-h-action`;
   const hit = target.closest(sel);
   return !!hit && band.contains(hit) && hit !== band;
 }
@@ -162,7 +167,7 @@ const el = (doc: Document, cls: string, text?: string): HTMLElement => {
 export function paintCaptionBand(
   band: HTMLElement,
   c: SectionCaptionOptions,
-  ctx: { rtl: boolean; static: boolean; sectionH: number; render?: (host: HTMLElement) => void }
+  ctx: { rtl: boolean; static: boolean; sectionH: number; render?: (host: HTMLElement) => void; onAction?: (actionId: string) => void }
 ): void {
   const doc = band.ownerDocument;
   const h = captionBandHeight(c, ctx.sectionH);
@@ -228,6 +233,10 @@ export function paintCaptionBand(
       b.textContent = a.icon ?? a.label;
       if (a.disabled) b.disabled = true;
       if (ctx.static) b.tabIndex = -1;
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!b.disabled) ctx.onAction?.(a.id);
+      });
       row.appendChild(b);
     }
     band.appendChild(row);

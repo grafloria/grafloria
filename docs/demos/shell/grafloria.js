@@ -69525,7 +69525,7 @@ var require_elk_bundled = __commonJS({
             _.Fd = function dl(a) {
               phb(uhb(a, this.a), 93);
             };
-            _.Hb = function el() {
+            _.Hb = function el2() {
               return ~tb(this.a);
             };
             _.Hd = function fl(a) {
@@ -97438,9 +97438,9 @@ var require_lemonade = __commonJS({
             }
             if (data2 && Array.isArray(data2)) {
               data2.forEach(function(self2) {
-                let el = self2.el;
-                if (el) {
-                  root.appendChild(el);
+                let el2 = self2.el;
+                if (el2) {
+                  root.appendChild(el2);
                 } else {
                   register(self2, "parent", lemon.self);
                   L.render(method, root, self2, item);
@@ -98103,14 +98103,14 @@ var require_lemonade = __commonJS({
         registerComponents(components);
         return template;
       };
-      L.apply = function(el, s, components) {
-        let template = el.innerHTML;
-        el.textContent = "";
+      L.apply = function(el2, s, components) {
+        let template = el2.innerHTML;
+        el2.textContent = "";
         let Component = function() {
           registerComponents(components);
           return `<>${template}</>`;
         };
-        return L.render(Component, el, s);
+        return L.render(Component, el2, s);
       };
       L.getProperties = function(o) {
         let n3 = {};
@@ -98584,14 +98584,14 @@ var VNodePatcher = class {
         container.removeChild(container.firstChild);
         this._stats.removed++;
       }
-      const el2 = this.createElement(vnode);
-      container.appendChild(el2);
-      this.mounts.set(container, { vnode, el: el2 });
-      return el2;
+      const el3 = this.createElement(vnode);
+      container.appendChild(el3);
+      this.mounts.set(container, { vnode, el: el3 });
+      return el3;
     }
-    const el = this.patchElement(prev.el, prev.vnode, vnode);
-    this.mounts.set(container, { vnode, el });
-    return el;
+    const el2 = this.patchElement(prev.el, prev.vnode, vnode);
+    this.mounts.set(container, { vnode, el: el2 });
+    return el2;
   }
   /**
    * ADOPT the DOM already inside `container` as the materialization of `vnode`,
@@ -98636,17 +98636,17 @@ var VNodePatcher = class {
   /** Build a fresh detached DOM element (deep) for a VNode. */
   createElement(vnode, namespace = SVG_NS) {
     const ns = typeof vnode.props?.xmlns === "string" ? vnode.props.xmlns : namespace;
-    const el = this.document.createElementNS(ns, vnode.type);
+    const el2 = this.document.createElementNS(ns, vnode.type);
     this._stats.created++;
-    this.applyProps(el, vnode.props ?? {});
+    this.applyProps(el2, vnode.props ?? {});
     if (vnode.key !== void 0 && vnode.key !== null) {
-      el.setAttribute("data-vnode-key", String(vnode.key));
+      el2.setAttribute("data-vnode-key", String(vnode.key));
     }
     const childNs = vnode.type === "foreignObject" ? XHTML_NS : ns;
     for (const child of normalizeChildren(vnode.children)) {
-      el.appendChild(this.createChild(child, childNs));
+      el2.appendChild(this.createChild(child, childNs));
     }
-    return el;
+    return el2;
   }
   /**
    * Diff two VNodes onto an existing element.
@@ -98655,59 +98655,59 @@ var VNodePatcher = class {
    * be reused, a fresh one when type/key changed (in which case it has already
    * replaced `el` in the DOM, if `el` was attached).
    */
-  patchElement(el, oldVNode, newVNode) {
+  patchElement(el2, oldVNode, newVNode) {
     if (oldVNode === newVNode) {
       this._stats.skipped++;
-      return el;
+      return el2;
     }
     if (oldVNode.type !== newVNode.type || oldVNode.key !== newVNode.key) {
-      const fresh = this.createElement(newVNode, el.namespaceURI ?? SVG_NS);
-      if (el.parentNode) {
-        el.parentNode.replaceChild(fresh, el);
+      const fresh = this.createElement(newVNode, el2.namespaceURI ?? SVG_NS);
+      if (el2.parentNode) {
+        el2.parentNode.replaceChild(fresh, el2);
         this._stats.removed++;
       }
       return fresh;
     }
     this._stats.reused++;
-    this.patchProps(el, oldVNode.props ?? {}, newVNode.props ?? {});
+    this.patchProps(el2, oldVNode.props ?? {}, newVNode.props ?? {});
     if (isOpaqueVNode(newVNode)) {
-      return el;
+      return el2;
     }
     if (hasTextContentProp(newVNode) || hasInnerHTMLProp(newVNode)) {
-      return el;
+      return el2;
     }
     this.patchChildren(
-      el,
+      el2,
       oldVNode.children ?? [],
       newVNode.children ?? []
     );
-    return el;
+    return el2;
   }
   /** Apply a prop delta to an element (no children touched). */
-  patchProps(el, oldProps, newProps) {
+  patchProps(el2, oldProps, newProps) {
     if (oldProps === newProps) return;
     for (const key in oldProps) {
       if (!(key in newProps)) {
-        this.removeProp(el, key);
+        this.removeProp(el2, key);
       }
     }
     for (const key in newProps) {
       const next = newProps[key];
       const prev = oldProps[key];
       if (next === null || next === void 0) {
-        if (prev !== null && prev !== void 0) this.removeProp(el, key);
+        if (prev !== null && prev !== void 0) this.removeProp(el2, key);
         continue;
       }
       if (key === "style") {
         const nextStyle = serializeStyle(next);
         if (nextStyle !== serializeStyle(prev)) {
-          if (nextStyle) el.setAttribute("style", nextStyle);
-          else el.removeAttribute("style");
+          if (nextStyle) el2.setAttribute("style", nextStyle);
+          else el2.removeAttribute("style");
         }
         continue;
       }
       if (prev === next) continue;
-      this.setProp(el, key, next);
+      this.setProp(el2, key, next);
     }
   }
   // ---------------------------------------------------------------------------
@@ -98811,52 +98811,52 @@ var VNodePatcher = class {
     }
     return node;
   }
-  applyProps(el, props) {
+  applyProps(el2, props) {
     for (const key in props) {
-      this.setProp(el, key, props[key]);
+      this.setProp(el2, key, props[key]);
     }
   }
-  setProp(el, key, value) {
+  setProp(el2, key, value) {
     if (value === null || value === void 0) return;
     if (typeof value === "function") return;
     if (key === "textContent") {
-      el.textContent = String(value);
+      el2.textContent = String(value);
       return;
     }
     if (key === "innerHTML") {
-      el.innerHTML = String(value);
+      el2.innerHTML = String(value);
       return;
     }
     if (key === "className") {
-      el.setAttribute("class", String(value));
+      el2.setAttribute("class", String(value));
       return;
     }
     if (key === "style") {
       const style = serializeStyle(value);
-      if (style) el.setAttribute("style", style);
-      else el.removeAttribute("style");
+      if (style) el2.setAttribute("style", style);
+      else el2.removeAttribute("style");
       return;
     }
-    el.setAttribute(attrNameForProp(key), String(value));
+    el2.setAttribute(attrNameForProp(key), String(value));
   }
-  removeProp(el, key) {
+  removeProp(el2, key) {
     if (key === "textContent") {
-      el.textContent = "";
+      el2.textContent = "";
       return;
     }
     if (key === "innerHTML") {
-      el.innerHTML = "";
+      el2.innerHTML = "";
       return;
     }
     if (key === "className") {
-      el.removeAttribute("class");
+      el2.removeAttribute("class");
       return;
     }
     if (key === "style") {
-      el.removeAttribute("style");
+      el2.removeAttribute("style");
       return;
     }
-    el.removeAttribute(attrNameForProp(key));
+    el2.removeAttribute(attrNameForProp(key));
   }
 };
 function normalizeChildren(children) {
@@ -138310,12 +138310,12 @@ function parseXml(source) {
     pos++;
     const tag = readName();
     const attrs = readAttrs();
-    const el = { tag, attrs, children: [], text: "" };
+    const el2 = { tag, attrs, children: [], text: "" };
     if (source[pos] === "/") {
       pos++;
       if (source[pos] !== ">") fail(`self-closing <${tag}/> is not closed`);
       pos++;
-      return el;
+      return el2;
     }
     if (source[pos] !== ">") fail(`<${tag}> never closes its start tag`);
     pos++;
@@ -138329,22 +138329,22 @@ function parseXml(source) {
           skipWs();
           if (source[pos] !== ">") fail(`</${closing}> is malformed`);
           pos++;
-          el.text = el.text.trim();
-          return el;
+          el2.text = el2.text.trim();
+          return el2;
         }
         if (source.startsWith("<![CDATA[", pos)) {
           const end = source.indexOf("]]>", pos);
           if (end === -1) fail("unterminated CDATA section");
-          el.text += source.slice(pos + 9, end);
+          el2.text += source.slice(pos + 9, end);
           pos = end + 3;
           continue;
         }
         if (skipNonElement()) continue;
-        el.children.push(readElement());
+        el2.children.push(readElement());
       } else {
         const next = source.indexOf("<", pos);
         const stop = next === -1 ? len2 : next;
-        el.text += decodeXmlEntities(source.slice(pos, stop));
+        el2.text += decodeXmlEntities(source.slice(pos, stop));
         pos = stop;
       }
     }
@@ -138510,11 +138510,11 @@ async function importDrawio(text) {
   }
   const pages = [];
   for (let index = 0; index < pageEls.length; index++) {
-    const el = pageEls[index];
-    const name = el.attrs["name"] ?? `Page ${index + 1}`;
+    const el2 = pageEls[index];
+    const name = el2.attrs["name"] ?? `Page ${index + 1}`;
     const warnings2 = [];
     try {
-      pages.push({ name, index, diagram: buildDiagram(await resolvePageModel(el), warnings2), warnings: warnings2 });
+      pages.push({ name, index, diagram: buildDiagram(await resolvePageModel(el2), warnings2), warnings: warnings2 });
     } catch (e) {
       pages.push({
         name,
@@ -138553,22 +138553,22 @@ function num(v, fallback = 0) {
   const n3 = v === void 0 ? NaN : parseFloat(v);
   return Number.isFinite(n3) ? n3 : fallback;
 }
-function readCell(el) {
-  let cellEl = el;
-  let value = el.attrs["value"] ?? "";
+function readCell(el2) {
+  let cellEl = el2;
+  let value = el2.attrs["value"] ?? "";
   let link;
   let data2;
-  if (el.tag !== "mxCell") {
-    const inner = el.children.find((c) => c.tag === "mxCell");
+  if (el2.tag !== "mxCell") {
+    const inner = el2.children.find((c) => c.tag === "mxCell");
     if (!inner) return void 0;
     cellEl = inner;
-    value = el.attrs["label"] ?? "";
-    link = el.attrs["link"];
-    const rest = Object.entries(el.attrs).filter(([k]) => !["id", "label", "link"].includes(k));
+    value = el2.attrs["label"] ?? "";
+    link = el2.attrs["link"];
+    const rest = Object.entries(el2.attrs).filter(([k]) => !["id", "label", "link"].includes(k));
     if (rest.length > 0) data2 = Object.fromEntries(rest);
   }
   const cell = {
-    id: el.attrs["id"] ?? cellEl.attrs["id"] ?? "",
+    id: el2.attrs["id"] ?? cellEl.attrs["id"] ?? "",
     parent: cellEl.attrs["parent"],
     vertex: cellEl.attrs["vertex"] === "1",
     edge: cellEl.attrs["edge"] === "1",
@@ -138606,8 +138606,8 @@ function buildDiagram(model, warnings) {
   const rootEl = model.children.find((c) => c.tag === "root");
   if (!rootEl) throw new Error("<mxGraphModel> has no <root>");
   const cells = /* @__PURE__ */ new Map();
-  for (const el of rootEl.children) {
-    const cell = readCell(el);
+  for (const el2 of rootEl.children) {
+    const cell = readCell(el2);
     if (cell && cell.id) cells.set(cell.id, cell);
   }
   const rootId = [...cells.values()].find((c) => c.parent === void 0)?.id;
@@ -171028,13 +171028,13 @@ var AnimationService = class {
       return;
     }
     try {
-      const el = this.styleElement ?? document.getElementById("grafloria-animations");
-      if (el) {
-        const refs = Number(el.dataset["grafloriaRefs"] ?? "1") - 1;
+      const el2 = this.styleElement ?? document.getElementById("grafloria-animations");
+      if (el2) {
+        const refs = Number(el2.dataset["grafloriaRefs"] ?? "1") - 1;
         if (refs <= 0) {
-          el.parentNode?.removeChild(el);
+          el2.parentNode?.removeChild(el2);
         } else {
-          el.dataset["grafloriaRefs"] = String(refs);
+          el2.dataset["grafloriaRefs"] = String(refs);
         }
       }
       this.styleElement = null;
@@ -178299,12 +178299,12 @@ var SKIP_ATTRS = /* @__PURE__ */ new Set(["class", "style", "xmlns"]);
 var SVG_IGNORED = /* @__PURE__ */ new Set(["title", "desc", "metadata", "script", "style"]);
 function captureCustomNodeHost(id, rect, host, options = {}) {
   try {
-    const el = host;
-    const win = el?.ownerDocument?.defaultView;
-    if (!el || !win || typeof win.getComputedStyle !== "function") {
+    const el2 = host;
+    const win = el2?.ownerDocument?.defaultView;
+    if (!el2 || !win || typeof win.getComputedStyle !== "function") {
       return { id, rect, fidelity: "empty" };
     }
-    const hostRect = el.getBoundingClientRect();
+    const hostRect = el2.getBoundingClientRect();
     const inferred = hostRect.width > 0 && host.offsetWidth ? hostRect.width / host.offsetWidth : 1;
     const scale = options.scale && options.scale > 0 ? options.scale : inferred > 0 ? inferred : 1;
     const ctx = {
@@ -178326,7 +178326,7 @@ function captureCustomNodeHost(id, rect, host, options = {}) {
         win.navigator?.userAgent ?? ""
       )
     };
-    walk2(el, ctx, ctx.out);
+    walk2(el2, ctx, ctx.out);
     if (ctx.out.length === 0) return { id, rect, fidelity: "empty" };
     const warning = ctx.warnings.length ? dedupe2(ctx.warnings).join(" ") : void 0;
     return warning ? { id, rect, fidelity: "vector", content: ctx.out, warning } : { id, rect, fidelity: "vector", content: ctx.out };
@@ -178360,16 +178360,16 @@ var px = (value) => {
   const v = parseFloat(value);
   return Number.isFinite(v) ? v : 0;
 };
-function walk2(el, ctx, sink) {
+function walk2(el2, ctx, sink) {
   if (ctx.budget-- <= 0) return;
-  const style = ctx.win.getComputedStyle(el);
+  const style = ctx.win.getComputedStyle(el2);
   if (style["display"] === "none" || style["visibility"] === "hidden") return;
   if (parseFloat(style["opacity"] ?? "1") === 0) return;
-  if (el.localName === "svg" && el.namespaceURI !== "http://www.w3.org/1999/xhtml") {
-    liftSvg(el, ctx, sink);
+  if (el2.localName === "svg" && el2.namespaceURI !== "http://www.w3.org/1999/xhtml") {
+    liftSvg(el2, ctx, sink);
     return;
   }
-  const rect = localRect(ctx, el.getBoundingClientRect());
+  const rect = localRect(ctx, el2.getBoundingClientRect());
   const hasBox = rect.width > 0 && rect.height > 0;
   const selfClip = hasBox ? clipPathShapeFor(style["clip-path"] ?? style["clipPath"] ?? "", rect, ctx) : null;
   const overflowClip = hasBox ? overflowClipFor(style, rect) : null;
@@ -178377,26 +178377,26 @@ function walk2(el, ctx, sink) {
   const childSink = overflowClip ? [] : ownSink;
   if (hasBox) {
     emitBox(style, rect, ctx, ownSink);
-    if (el.localName === "img") emitImage(el, rect, ctx, el.getAttribute("src"), ownSink);
+    if (el2.localName === "img") emitImage(el2, rect, ctx, el2.getAttribute("src"), ownSink);
   }
   let hasFlowContent = false;
-  for (let i = 0; i < el.childNodes.length; i++) {
-    const child = el.childNodes[i];
+  for (let i = 0; i < el2.childNodes.length; i++) {
+    const child = el2.childNodes[i];
     if (child.nodeType === ELEMENT_NODE || child.nodeType === TEXT_NODE && (child.nodeValue ?? "").trim() !== "") {
       hasFlowContent = true;
       break;
     }
   }
-  const beforeExists = hasBox ? emitPseudo(el, style, rect, "::before", ctx, childSink, false) : false;
-  for (let i = 0; i < el.childNodes.length; i++) {
-    const child = el.childNodes[i];
+  const beforeExists = hasBox ? emitPseudo(el2, style, rect, "::before", ctx, childSink, false) : false;
+  for (let i = 0; i < el2.childNodes.length; i++) {
+    const child = el2.childNodes[i];
     if (child.nodeType === ELEMENT_NODE) {
       walk2(child, ctx, childSink);
     } else if (child.nodeType === TEXT_NODE && (child.nodeValue ?? "").trim() !== "") {
-      emitText(el, child, style, ctx, childSink);
+      emitText(el2, child, style, ctx, childSink);
     }
   }
-  if (hasBox) emitPseudo(el, style, rect, "::after", ctx, childSink, hasFlowContent || beforeExists);
+  if (hasBox) emitPseudo(el2, style, rect, "::after", ctx, childSink, hasFlowContent || beforeExists);
   if (overflowClip && childSink.length > 0) {
     pushDef(ctx, overflowClip.id, () => overflowClip.def);
     ownSink.push({
@@ -178547,14 +178547,14 @@ function normalWeight(style) {
   const w = String(style["font-weight"] ?? style["fontWeight"] ?? "400");
   return w === "400" || w === "normal";
 }
-function liftSvg(el, ctx, sink) {
-  const rect = localRect(ctx, el.getBoundingClientRect());
+function liftSvg(el2, ctx, sink) {
+  const rect = localRect(ctx, el2.getBoundingClientRect());
   if (!(rect.width > 0) || !(rect.height > 0)) return;
-  const viewBox = parseViewBox(el.getAttribute("viewBox"));
-  const fit = viewBox ? viewBoxTransform(viewBox, rect, el.getAttribute("preserveAspectRatio") ?? "xMidYMid meet") : "";
+  const viewBox = parseViewBox(el2.getAttribute("viewBox"));
+  const fit = viewBox ? viewBoxTransform(viewBox, rect, el2.getAttribute("preserveAspectRatio") ?? "xMidYMid meet") : "";
   const children = [];
-  for (let i = 0; i < el.childNodes.length; i++) {
-    const child = el.childNodes[i];
+  for (let i = 0; i < el2.childNodes.length; i++) {
+    const child = el2.childNodes[i];
     if (child.nodeType !== ELEMENT_NODE) continue;
     const vnode = transcribeSvgElement(child, ctx);
     if (vnode) children.push(vnode);
@@ -178573,18 +178573,18 @@ function parseViewBox(raw) {
   if (parts.length !== 4 || !parts.every(Number.isFinite)) return null;
   return { x: parts[0], y: parts[1], width: parts[2], height: parts[3] };
 }
-function transcribeSvgElement(el, ctx) {
+function transcribeSvgElement(el2, ctx) {
   if (ctx.budget-- <= 0) return null;
-  if (SVG_IGNORED.has(el.localName)) return null;
-  const style = ctx.win.getComputedStyle(el);
+  if (SVG_IGNORED.has(el2.localName)) return null;
+  const style = ctx.win.getComputedStyle(el2);
   if (style["display"] === "none" || style["visibility"] === "hidden") return null;
   const props = {};
-  for (let i = 0; i < el.attributes.length; i++) {
-    const attr = el.attributes[i];
+  for (let i = 0; i < el2.attributes.length; i++) {
+    const attr = el2.attributes[i];
     if (SKIP_ATTRS.has(attr.name)) continue;
     props[attr.name] = attr.value;
   }
-  const wanted = TEXT_ELEMENTS.has(el.localName) ? [...SVG_PAINT_PROPS, ...SVG_TEXT_PROPS] : SVG_PAINT_PROPS;
+  const wanted = TEXT_ELEMENTS.has(el2.localName) ? [...SVG_PAINT_PROPS, ...SVG_TEXT_PROPS] : SVG_PAINT_PROPS;
   for (const [attr, prop] of wanted) {
     const value = style[attr] ?? style[prop];
     if (value === void 0 || value === "" || value === "normal") continue;
@@ -178592,8 +178592,8 @@ function transcribeSvgElement(el, ctx) {
   }
   const children = [];
   let text;
-  for (let i = 0; i < el.childNodes.length; i++) {
-    const child = el.childNodes[i];
+  for (let i = 0; i < el2.childNodes.length; i++) {
+    const child = el2.childNodes[i];
     if (child.nodeType === ELEMENT_NODE) {
       const vnode = transcribeSvgElement(child, ctx);
       if (vnode) children.push(vnode);
@@ -178602,7 +178602,7 @@ function transcribeSvgElement(el, ctx) {
     }
   }
   if (text !== void 0 && children.length === 0) props["textContent"] = text;
-  return { type: el.localName, props, children };
+  return { type: el2.localName, props, children };
 }
 var IMAGE_PDF_WARNING = "a widget image references an EXTERNAL URL \u2014 a synchronous export keeps the link (the SVG renders online, but a PDF cannot fetch a URL, so it will be MISSING from a PDF export). `await export(\u2026)` embeds the image when its server allows CORS or when ExportOptions.assetFetcher is supplied.";
 var IMAGE_NOT_INLINED_WARNING = "an image could not be inlined (cross-origin or unloaded) \u2014 the export references it externally and is not fully self-contained.";
@@ -178832,9 +178832,9 @@ function parseBgUrl(bgImage) {
   const m = /url\(\s*(['"]?)([^'")]+)\1\s*\)/i.exec(bgImage ?? "");
   return m ? m[2] : null;
 }
-function emitImage(el, rect, ctx, src, sink) {
+function emitImage(el2, rect, ctx, src, sink) {
   if (!src) return;
-  const href = resolveImageHref(el, src, ctx);
+  const href = resolveImageHref(el2, src, ctx);
   if (!href.startsWith("data:")) ctx.warnings.push(IMAGE_PDF_WARNING);
   sink.push({
     type: "image",
@@ -178848,18 +178848,18 @@ function emitImage(el, rect, ctx, src, sink) {
     children: []
   });
 }
-function resolveImageHref(el, src, ctx) {
+function resolveImageHref(el2, src, ctx) {
   if (src.startsWith("data:")) return src;
-  const inlined = el ? tryCanvasInline(el, ctx) : null;
+  const inlined = el2 ? tryCanvasInline(el2, ctx) : null;
   if (inlined) return inlined;
   ctx.warnings.push(IMAGE_NOT_INLINED_WARNING);
   return src;
 }
-function tryCanvasInline(el, ctx) {
+function tryCanvasInline(el2, ctx) {
   try {
-    const doc = el.ownerDocument;
+    const doc = el2.ownerDocument;
     if (!doc || typeof doc.createElement !== "function") return null;
-    const img = el;
+    const img = el2;
     const nw = img.naturalWidth ?? 0;
     const nh = img.naturalHeight ?? 0;
     if (!nw || !nh) return null;
@@ -178868,7 +178868,7 @@ function tryCanvasInline(el, ctx) {
     canvas.height = nh;
     const context = canvas.getContext("2d");
     if (!context) return null;
-    context.drawImage(el, 0, 0);
+    context.drawImage(el2, 0, 0);
     return canvas.toDataURL("image/png");
   } catch {
     ctx.warnings.push(
@@ -178922,11 +178922,11 @@ function pseudoPaintsBox(ps) {
   }
   return false;
 }
-function emitPseudo(el, originStyle, originRect, which, ctx, sink, precededByFlowContent) {
+function emitPseudo(el2, originStyle, originRect, which, ctx, sink, precededByFlowContent) {
   if (ctx.pseudoUnsupported) return false;
   let ps;
   try {
-    ps = ctx.win.getComputedStyle(el, which);
+    ps = ctx.win.getComputedStyle(el2, which);
   } catch {
     ctx.pseudoUnsupported = true;
     return false;
@@ -185622,13 +185622,13 @@ var LiveRegionController = class {
     container.appendChild(this.assertiveEl);
   }
   makeRegion(doc, politeness) {
-    const el = doc.createElement("div");
-    el.setAttribute("role", politeness === "assertive" ? "alert" : "status");
-    el.setAttribute("aria-live", politeness);
-    el.setAttribute("aria-atomic", "true");
-    el.setAttribute("data-grafloria-live", politeness);
-    el.setAttribute("style", VISUALLY_HIDDEN2);
-    return el;
+    const el2 = doc.createElement("div");
+    el2.setAttribute("role", politeness === "assertive" ? "alert" : "status");
+    el2.setAttribute("aria-live", politeness);
+    el2.setAttribute("aria-atomic", "true");
+    el2.setAttribute("data-grafloria-live", politeness);
+    el2.setAttribute("style", VISUALLY_HIDDEN2);
+    return el2;
   }
   /** The live elements, for tests and for hosts that relocate them. */
   getElement(politeness) {
@@ -185689,11 +185689,11 @@ var LiveRegionController = class {
     }
   }
   speak(text, politeness) {
-    const el = this.getElement(politeness);
-    if (el.textContent === text) {
-      el.textContent = "";
+    const el2 = this.getElement(politeness);
+    if (el2.textContent === text) {
+      el2.textContent = "";
     }
-    el.textContent = text;
+    el2.textContent = text;
     this.lastMessage[politeness] = text;
     this.speakCount++;
   }
@@ -186362,30 +186362,30 @@ var RenderScheduler = class {
 
 // libs/renderer/src/instance/wheel-scroll-yield.ts
 var SCROLLABLE_OVERFLOW = /(auto|scroll)/;
-function ownsWheel(el, event) {
-  const style = el.ownerDocument?.defaultView?.getComputedStyle(el);
+function ownsWheel(el2, event) {
+  const style = el2.ownerDocument?.defaultView?.getComputedStyle(el2);
   if (!style) return false;
-  const scrollableY = SCROLLABLE_OVERFLOW.test(style.overflowY) && el.scrollHeight > el.clientHeight;
-  const scrollableX = SCROLLABLE_OVERFLOW.test(style.overflowX) && el.scrollWidth > el.clientWidth;
+  const scrollableY = SCROLLABLE_OVERFLOW.test(style.overflowY) && el2.scrollHeight > el2.clientHeight;
+  const scrollableX = SCROLLABLE_OVERFLOW.test(style.overflowX) && el2.scrollWidth > el2.clientWidth;
   return event.deltaY !== 0 && scrollableY || event.deltaX !== 0 && scrollableX;
 }
-function applyScroll(el, event) {
-  const style = el.ownerDocument?.defaultView?.getComputedStyle(el);
+function applyScroll(el2, event) {
+  const style = el2.ownerDocument?.defaultView?.getComputedStyle(el2);
   if (!style) return;
-  if (event.deltaY !== 0 && SCROLLABLE_OVERFLOW.test(style.overflowY) && el.scrollHeight > el.clientHeight) {
-    el.scrollTop = Math.max(0, Math.min(el.scrollTop + event.deltaY, el.scrollHeight - el.clientHeight));
+  if (event.deltaY !== 0 && SCROLLABLE_OVERFLOW.test(style.overflowY) && el2.scrollHeight > el2.clientHeight) {
+    el2.scrollTop = Math.max(0, Math.min(el2.scrollTop + event.deltaY, el2.scrollHeight - el2.clientHeight));
   }
-  if (event.deltaX !== 0 && SCROLLABLE_OVERFLOW.test(style.overflowX) && el.scrollWidth > el.clientWidth) {
-    el.scrollLeft = Math.max(0, Math.min(el.scrollLeft + event.deltaX, el.scrollWidth - el.clientWidth));
+  if (event.deltaX !== 0 && SCROLLABLE_OVERFLOW.test(style.overflowX) && el2.scrollWidth > el2.clientWidth) {
+    el2.scrollLeft = Math.max(0, Math.min(el2.scrollLeft + event.deltaX, el2.scrollWidth - el2.clientWidth));
   }
 }
 function scrollScope(target) {
-  let el = target;
-  while (el) {
-    const name = el.localName.toLowerCase();
-    if (name === "foreignobject") return el;
-    if (el.hasAttribute?.("data-node-id") || el.classList?.contains("node-group")) return el;
-    el = el.parentElement;
+  let el2 = target;
+  while (el2) {
+    const name = el2.localName.toLowerCase();
+    if (name === "foreignobject") return el2;
+    if (el2.hasAttribute?.("data-node-id") || el2.classList?.contains("node-group")) return el2;
+    el2 = el2.parentElement;
   }
   return null;
 }
@@ -186393,13 +186393,13 @@ function delegateWheelToScrollable(event) {
   if (event.ctrlKey || event.metaKey) return false;
   const target = event.target instanceof Element ? event.target : null;
   if (!target) return false;
-  let el = target;
-  while (el && el instanceof HTMLElement) {
-    if (ownsWheel(el, event)) {
-      applyScroll(el, event);
+  let el2 = target;
+  while (el2 && el2 instanceof HTMLElement) {
+    if (ownsWheel(el2, event)) {
+      applyScroll(el2, event);
       return true;
     }
-    el = el.parentElement;
+    el2 = el2.parentElement;
   }
   const scope = scrollScope(target);
   if (!scope) return false;
@@ -188058,10 +188058,10 @@ var DomEventBinder = class {
   }
 };
 function isTextEntryTarget(target) {
-  const el = target;
-  if (!el || typeof el.tagName !== "string") return false;
-  const tag = el.tagName.toUpperCase();
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable === true;
+  const el2 = target;
+  if (!el2 || typeof el2.tagName !== "string") return false;
+  const tag = el2.tagName.toUpperCase();
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el2.isContentEditable === true;
 }
 
 // libs/renderer/src/instance/model-input.ts
@@ -189536,7 +189536,7 @@ var PresenceOverlay = class {
     const view = this.peers.get(actor);
     if (!view) return;
     view.cursorEl.remove();
-    for (const el of view.selectionEls.values()) el.remove();
+    for (const el2 of view.selectionEls.values()) el2.remove();
     this.peers.delete(actor);
   }
   clear() {
@@ -189578,17 +189578,17 @@ var PresenceOverlay = class {
   }
   buildCursor(peer) {
     const color = peer.color ?? actorColor(peer.actor);
-    const el = this.doc.createElement("div");
-    el.className = "grafloria-presence-cursor";
-    el.setAttribute("data-actor", peer.actor);
-    el.setAttribute(
+    const el2 = this.doc.createElement("div");
+    el2.className = "grafloria-presence-cursor";
+    el2.setAttribute("data-actor", peer.actor);
+    el2.setAttribute(
       "style",
       "position:absolute;left:0;top:0;will-change:transform;pointer-events:none;display:none"
     );
-    el.innerHTML = `<svg width="14" height="20" viewBox="0 0 14 20" style="display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))"><path d="M1 1 L1 15 L4.7 11.5 L7.2 17.5 L9.8 16.4 L7.3 10.6 L12.4 10.4 Z" fill="${color}" stroke="#fff" stroke-width="1"/></svg><span class="grafloria-presence-label" style="position:absolute;left:13px;top:16px;background:${color};color:${contrastingTextColor(color)};font:600 11px/1.4 system-ui,sans-serif;padding:1px 6px;border-radius:9px;white-space:nowrap"></span>`;
-    const label = el.querySelector(".grafloria-presence-label");
+    el2.innerHTML = `<svg width="14" height="20" viewBox="0 0 14 20" style="display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))"><path d="M1 1 L1 15 L4.7 11.5 L7.2 17.5 L9.8 16.4 L7.3 10.6 L12.4 10.4 Z" fill="${color}" stroke="#fff" stroke-width="1"/></svg><span class="grafloria-presence-label" style="position:absolute;left:13px;top:16px;background:${color};color:${contrastingTextColor(color)};font:600 11px/1.4 system-ui,sans-serif;padding:1px 6px;border-radius:9px;white-space:nowrap"></span>`;
+    const label = el2.querySelector(".grafloria-presence-label");
     label.textContent = peer.name ?? peer.actor;
-    return el;
+    return el2;
   }
   paintLabel(view) {
     const label = view.cursorEl.querySelector(".grafloria-presence-label");
@@ -189607,9 +189607,9 @@ var PresenceOverlay = class {
     const getBounds = this.options.getBounds;
     const wanted = new Set(getBounds ? view.peer.selection ?? [] : []);
     const color = view.peer.color ?? actorColor(view.peer.actor);
-    for (const [id, el] of [...view.selectionEls]) {
+    for (const [id, el2] of [...view.selectionEls]) {
       if (!wanted.has(id)) {
-        el.remove();
+        el2.remove();
         view.selectionEls.delete(id);
       }
     }
@@ -189623,16 +189623,16 @@ var PresenceOverlay = class {
         }
         continue;
       }
-      let el = view.selectionEls.get(id);
-      if (!el) {
-        el = this.doc.createElement("div");
-        el.className = "grafloria-presence-selection";
-        el.setAttribute("data-actor", view.peer.actor);
-        el.setAttribute("data-entity", id);
-        this.world.appendChild(el);
-        view.selectionEls.set(id, el);
+      let el2 = view.selectionEls.get(id);
+      if (!el2) {
+        el2 = this.doc.createElement("div");
+        el2.className = "grafloria-presence-selection";
+        el2.setAttribute("data-actor", view.peer.actor);
+        el2.setAttribute("data-entity", id);
+        this.world.appendChild(el2);
+        view.selectionEls.set(id, el2);
       }
-      el.setAttribute(
+      el2.setAttribute(
         "style",
         `position:absolute;left:${box.x}px;top:${box.y}px;width:${box.width}px;height:${box.height}px;border:2px solid ${color};border-radius:3px;pointer-events:none;box-sizing:border-box`
       );
@@ -192701,10 +192701,10 @@ var PerfHud = class {
   }
   show() {
     if (this.el) return;
-    const el = this.host.ownerDocument.createElement("div");
-    el.setAttribute("data-grafloria-perf-hud", "");
-    el.setAttribute("aria-hidden", "true");
-    el.style.cssText = [
+    const el2 = this.host.ownerDocument.createElement("div");
+    el2.setAttribute("data-grafloria-perf-hud", "");
+    el2.setAttribute("aria-hidden", "true");
+    el2.style.cssText = [
       "position:absolute",
       "top:8px",
       "left:8px",
@@ -192717,8 +192717,8 @@ var PerfHud = class {
       "background:rgba(15,23,42,.82)",
       "color:#e2e8f0"
     ].join(";");
-    this.host.appendChild(el);
-    this.el = el;
+    this.host.appendChild(el2);
+    this.el = el2;
   }
   update(snapshot) {
     if (!this.el) return;
@@ -193169,8 +193169,8 @@ function bindRowInteractions(api) {
   bindings.get(container)?.dispose();
   let selected = null;
   const paint2 = () => {
-    for (const el of Array.from(container.querySelectorAll(`.${SELECTED_CLASS}`))) {
-      el.classList.remove(SELECTED_CLASS);
+    for (const el2 of Array.from(container.querySelectorAll(`.${SELECTED_CLASS}`))) {
+      el2.classList.remove(SELECTED_CLASS);
     }
     if (selected) rowsOfNode(container, selected.nodeId)[selected.rowIndex]?.classList.add(SELECTED_CLASS);
   };
@@ -193199,9 +193199,9 @@ function bindRowInteractions(api) {
   };
   const observer = new MutationObserver(() => {
     if (!selected) return;
-    const el = rowsOfNode(container, selected.nodeId)[selected.rowIndex];
-    if (el && !el.classList.contains(SELECTED_CLASS)) paint2();
-    else if (!el) {
+    const el2 = rowsOfNode(container, selected.nodeId)[selected.rowIndex];
+    if (el2 && !el2.classList.contains(SELECTED_CLASS)) paint2();
+    else if (!el2) {
       setSelected(null);
     }
   });
@@ -193214,9 +193214,9 @@ function bindRowInteractions(api) {
         setSelected(null);
         return;
       }
-      const el = rowsOfNode(container, ref.nodeId)[ref.rowIndex];
-      if (!el) return;
-      const resolved2 = resolveRef(container, api, el);
+      const el2 = rowsOfNode(container, ref.nodeId)[ref.rowIndex];
+      if (!el2) return;
+      const resolved2 = resolveRef(container, api, el2);
       if (resolved2) setSelected(resolved2);
     },
     dispose: () => {
@@ -193596,12 +193596,12 @@ function renameColumnAt(columns, index, name) {
 // libs/element/src/lib/diagram-kit/editing.ts
 var bindings2 = /* @__PURE__ */ new WeakMap();
 var ROW_SELECTOR2 = ".axk-row, .axk-member";
-function locate(el) {
-  const group = el.closest("[data-node-id]");
+function locate(el2) {
+  const group = el2.closest("[data-node-id]");
   if (!group) return null;
   const nodeId = group.getAttribute("data-node-id");
   if (!nodeId) return null;
-  const rowEl = el.closest(ROW_SELECTOR2);
+  const rowEl = el2.closest(ROW_SELECTOR2);
   const rows = Array.from(group.querySelectorAll(ROW_SELECTOR2));
   const rowIndex = rowEl ? rows.indexOf(rowEl) : -1;
   return { nodeId, rowIndex, group };
@@ -193618,14 +193618,14 @@ function dismissInlineEditor() {
   activeEditor = null;
   open?.cancel();
 }
-function addrOf(el) {
-  const loc = locate(el);
+function addrOf(el2) {
+  const loc = locate(el2);
   if (!loc || loc.rowIndex < 0) return null;
-  const kind = el.closest(".axk-ty") ? "type" : "name";
+  const kind = el2.closest(".axk-ty") ? "type" : "name";
   return { nodeId: loc.nodeId, rowIndex: loc.rowIndex, kind };
 }
-function neighbourCell(el, dir) {
-  const a = addrOf(el);
+function neighbourCell(el2, dir) {
+  const a = addrOf(el2);
   if (!a) return null;
   if (dir === 1) {
     return a.kind === "name" ? { ...a, kind: "type" } : { ...a, rowIndex: a.rowIndex + 1, kind: "name" };
@@ -194493,6 +194493,61 @@ var CSS4 = `
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { pointer-events: auto; opacity: 1; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-rs { display: none; }
 
+/* SECTION CAPTION (0.4.22): the band on the slab. Geometry is inline (the
+   reserve and the pixels come from one function); everything visual is a
+   variable the options write and a theme may override. The band takes the
+   pointer \u2014 the slab does not \u2014 so a press on it is the section's. */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h {
+  position: absolute; box-sizing: border-box; pointer-events: auto; z-index: 1;
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  padding: var(--axdb-caption-pad, 0 10px);
+  background: var(--axdb-caption-bg, rgba(31, 36, 48, .045));
+  border-bottom: var(--axdb-caption-border, none);
+  color: var(--axdb-caption-fg, #1f2430);
+  font: var(--axdb-caption-font-weight, 600) var(--axdb-caption-font-size, 13px)/1.2 var(--axdb-caption-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
+  text-transform: var(--axdb-caption-transform, none);
+  letter-spacing: .01em;
+  border-radius: var(--axdb-rs-radius, 3px) var(--axdb-rs-radius, 3px) 0 0;
+  cursor: default; user-select: none; -webkit-user-select: none; overflow: hidden;
+  transition: opacity .12s;
+}
+/* The modifiers carry the band's own selector so they outrank its defaults. */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--center { justify-content: center; }
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--end { justify-content: flex-end; }
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--vtop { align-items: flex-start; }
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--vbottom { align-items: flex-end; }
+/* 'tab': above the frame, sized to its text */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tab { right: auto; max-width: 100%; }
+/* 'hover': an overlay that appears with the pointer or the selection */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--hover { opacity: 0; }
+.grafloria-html-layer > .axdb-slab:hover > .axdb-slab-h.axdb-slab-h--hover,
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-slab-h.axdb-slab-h--hover,
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--hover:focus-within { opacity: 1; }
+/* the tight tier: a section under 90 px */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tight { font-size: min(var(--axdb-caption-font-size, 12px), 12px); gap: 4px; }
+.axdb-slab-h--tight .axdb-slab-h-sub, .axdb-slab-h--tight .axdb-slab-h-actions { display: none; }
+.axdb-slab-h-icon { flex: none; }
+.axdb-slab-h-body { display: flex; flex-direction: column; justify-content: center; min-width: 0; flex: 0 1 auto; }
+.axdb-slab-h-text, .axdb-slab-h-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.axdb-slab-h-sub { font-size: .85em; font-weight: 500; opacity: .72; }
+.axdb-slab-h-info { flex: none; opacity: .6; font-size: .9em; cursor: help; }
+.axdb-slab-h-actions { flex: none; display: flex; gap: 2px; margin-inline-start: auto; opacity: 0; transition: opacity .12s; }
+.axdb-slab-h--center .axdb-slab-h-actions, .axdb-slab-h--end .axdb-slab-h-actions { margin-inline-start: 0; }
+.axdb-slab-h:hover > .axdb-slab-h-actions, .axdb-slab--selected > .axdb-slab-h > .axdb-slab-h-actions, .axdb-slab-h:focus-within > .axdb-slab-h-actions { opacity: 1; }
+.axdb-slab-h-action {
+  all: unset; box-sizing: border-box; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; cursor: pointer; font-size: 14px; line-height: 1; color: inherit;
+}
+.axdb-slab-h-action:hover { background: rgba(31, 36, 48, .08); }
+.axdb-slab-h-action:focus-visible { outline: 2px solid var(--axdb-accent-ring, rgba(59, 82, 217, .55)); outline-offset: -2px; }
+.axdb-slab-h-action[disabled] { opacity: .4; cursor: default; }
+.axdb-slab-h-action[disabled]:hover { background: none; }
+.grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-slab-h { cursor: default; }
+@media (prefers-color-scheme: dark) {
+  .grafloria-html-layer > .axdb-slab > .axdb-slab-h { background: var(--axdb-caption-bg, rgba(236, 238, 244, .06)); color: var(--axdb-caption-fg, #eceef4); }
+  .axdb-slab-h-action:hover { background: rgba(236, 238, 244, .1); }
+}
+
 /* legend chips, shared by line and donut */
 .axdb-lg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; }
 .axdb-lg--col { flex-direction: column; flex-wrap: nowrap; gap: 6px; margin-top: 0; }
@@ -194537,6 +194592,137 @@ function ensureDashboardKitStyles(doc) {
   d.head.appendChild(style);
 }
 
+// libs/element/src/lib/dashboard-kit/caption.ts
+var CAPTION_HEIGHT = 28;
+var CAPTION_HEIGHT_SUBTITLE = 44;
+var CAPTION_HEIGHT_TIGHT = 22;
+var CAPTION_TIGHT_BELOW = 90;
+var CAPTION_PASS_THROUGH = "button, a, input, select, textarea, [data-axdb-pass]";
+function normalizeCaption(c, title) {
+  if (c === void 0 || c === false) return null;
+  const o = c === true ? {} : typeof c === "string" ? { text: c } : { ...c };
+  if (o.text === void 0 && title !== void 0) o.text = title;
+  return o;
+}
+function captionOfGroup(grp) {
+  if (!grp) return null;
+  const meta = grp.getMetadata("containerWidget");
+  if (!meta || meta.caption === void 0) return null;
+  return normalizeCaption(meta.caption, meta.title ?? grp.name);
+}
+function pairOf(v, dflt) {
+  if (v === void 0) return dflt;
+  return typeof v === "number" ? [v, v] : [v[0], v[1]];
+}
+function captionPainted(c, isStatic) {
+  if (!c) return false;
+  return !(c.show === "design" && isStatic);
+}
+function captionBandHeight(c, sectionH) {
+  if (sectionH > 0 && sectionH < CAPTION_TIGHT_BELOW) return CAPTION_HEIGHT_TIGHT;
+  return c.height ?? (c.subtitle ? CAPTION_HEIGHT_SUBTITLE : CAPTION_HEIGHT);
+}
+function captionReserve(c, ctx) {
+  if (!c || !captionPainted(c, ctx.static)) return 0;
+  if (c.position === "tab" || c.show === "hover") return 0;
+  const [mv] = pairOf(c.margin, [0, 0]);
+  return captionBandHeight(c, ctx.sectionH) + 2 * mv;
+}
+function captionKey(c, ctx) {
+  return JSON.stringify([c, ctx.rtl, ctx.static]);
+}
+var captionTight = (sectionH) => sectionH > 0 && sectionH < CAPTION_TIGHT_BELOW;
+function sizeCaptionBand(band, c, sectionH) {
+  const h = captionBandHeight(c, sectionH);
+  band.classList.toggle("axdb-slab-h--tight", captionTight(sectionH));
+  band.style.height = `${h}px`;
+  if (c.position === "tab") band.style.top = `${-h}px`;
+}
+function captionPassThrough(target, band, c) {
+  if (!target || !band.contains(target)) return false;
+  const sel = `${c?.passThrough ?? CAPTION_PASS_THROUGH}, .axdb-slab-h-action`;
+  const hit = target.closest(sel);
+  return !!hit && band.contains(hit) && hit !== band;
+}
+var el = (doc, cls, text) => {
+  const e = doc.createElement("div");
+  e.className = cls;
+  if (text !== void 0) e.textContent = text;
+  return e;
+};
+function paintCaptionBand(band, c, ctx) {
+  const doc = band.ownerDocument;
+  const h = captionBandHeight(c, ctx.sectionH);
+  const [mv, mh] = pairOf(c.margin, [0, 0]);
+  const [pv, ph] = pairOf(c.padding, [0, 10]);
+  band.className = "axdb-slab-h";
+  band.textContent = "";
+  const cls = (name, on) => band.classList.toggle(name, on);
+  cls("axdb-slab-h--tab", c.position === "tab");
+  cls("axdb-slab-h--hover", c.show === "hover");
+  cls("axdb-slab-h--tight", captionTight(ctx.sectionH));
+  cls("axdb-slab-h--center", c.align === "center");
+  cls("axdb-slab-h--end", c.align === "end");
+  cls("axdb-slab-h--vtop", c.valign === "top");
+  cls("axdb-slab-h--vbottom", c.valign === "bottom");
+  if (c.className) for (const k of c.className.split(/\s+/).filter(Boolean)) band.classList.add(k);
+  band.setAttribute("dir", ctx.rtl ? "rtl" : "ltr");
+  band.style.height = `${h}px`;
+  band.style.top = c.position === "tab" ? `${-h}px` : `${mv}px`;
+  band.style.left = `${mh}px`;
+  band.style.right = c.position === "tab" ? "auto" : `${mh}px`;
+  const v = (name, value) => {
+    if (value === void 0) band.style.removeProperty(name);
+    else band.style.setProperty(name, value);
+  };
+  v("--axdb-caption-pad", `${pv}px ${ph}px`);
+  const bandH = c.height ?? (c.subtitle ? CAPTION_HEIGHT_SUBTITLE : CAPTION_HEIGHT);
+  v("--axdb-caption-font-size", c.font?.size !== void 0 ? `${Math.min(c.font.size, Math.max(8, bandH - 2 * pv - 4))}px` : void 0);
+  v("--axdb-caption-font-weight", c.font?.weight !== void 0 ? String(c.font.weight) : void 0);
+  v("--axdb-caption-font-family", c.font?.family);
+  v("--axdb-caption-fg", c.font?.color);
+  v("--axdb-caption-transform", c.font?.transform);
+  v("--axdb-caption-bg", c.background);
+  v("--axdb-caption-border", c.border);
+  if (ctx.render) {
+    ctx.render(band);
+    return;
+  }
+  if (c.icon) band.appendChild(el(doc, "axdb-slab-h-icon", c.icon));
+  const body = el(doc, "axdb-slab-h-body");
+  const text = el(doc, "axdb-slab-h-text", c.text ?? "");
+  text.setAttribute("title", c.text ?? "");
+  body.appendChild(text);
+  if (c.subtitle) body.appendChild(el(doc, "axdb-slab-h-sub", c.subtitle));
+  band.appendChild(body);
+  if (c.description) {
+    const info = el(doc, "axdb-slab-h-info", "\u24D8");
+    info.setAttribute("title", c.description);
+    info.setAttribute("aria-label", c.description);
+    band.appendChild(info);
+  }
+  if (c.actions?.length) {
+    const row = el(doc, "axdb-slab-h-actions");
+    for (const a of c.actions) {
+      const b = doc.createElement("button");
+      b.type = "button";
+      b.className = "axdb-slab-h-action";
+      b.setAttribute("data-action", a.id);
+      b.setAttribute("aria-label", a.label);
+      b.setAttribute("title", a.title ?? a.label);
+      b.textContent = a.icon ?? a.label;
+      if (a.disabled) b.disabled = true;
+      if (ctx.static) b.tabIndex = -1;
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!b.disabled) ctx.onAction?.(a.id);
+      });
+      row.appendChild(b);
+    }
+    band.appendChild(row);
+  }
+}
+
 // libs/element/src/lib/dashboard-kit/grid-binder.ts
 var GRIP_CLASS = "axdb-grip";
 var DRAG_HANDLE_CLASS = "axdb-drag-handle";
@@ -194551,19 +194737,27 @@ function syncGrip(host, cfg, movable) {
     existing?.remove();
     return;
   }
-  const el = existing ?? host.ownerDocument.createElement("div");
+  const el2 = existing ?? host.ownerDocument.createElement("div");
   if (!existing) {
-    el.setAttribute("aria-hidden", "true");
-    el.setAttribute("title", "Drag");
-    host.appendChild(el);
+    el2.setAttribute("aria-hidden", "true");
+    el2.setAttribute("title", "Drag");
+    host.appendChild(el2);
   }
-  el.className = `${GRIP_CLASS} ${GRIP_CLASS}--${cfg.position ?? "left"} ${GRIP_CLASS}--${cfg.placement ?? "inside"}`;
+  el2.className = `${GRIP_CLASS} ${GRIP_CLASS}--${cfg.position ?? "left"} ${GRIP_CLASS}--${cfg.placement ?? "inside"}`;
   host.classList.add(`axdb-gp-${cfg.placement ?? "inside"}`, `axdb-gp-${cfg.position ?? "left"}`);
 }
 function ownsPress(container, diagram, ev, hit) {
   const t = ev.source?.target;
   if (typeof Node !== "undefined" && t instanceof Node && !container.contains(t)) return false;
   if (hit.node && diagram.getNode(hit.node.id) !== hit.node) return false;
+  if (typeof Element !== "undefined" && t instanceof Element) {
+    const band = t.closest(".axdb-slab > .axdb-slab-h");
+    const sid = band?.parentElement?.getAttribute("data-slab-id");
+    if (band && sid) {
+      const grp = diagram.getGroup?.(sid);
+      if (captionPassThrough(t, band, captionOfGroup(grp))) return false;
+    }
+  }
   return true;
 }
 function gripHostOf(target) {
@@ -194766,12 +194960,16 @@ function bindDashboardGrid(api, group, options = {}) {
   let adoptedGhostId = null;
   let glideTimer = null;
   let ghostTimer = null;
-  const frame = () => ({
-    x: group.position.x,
-    y: group.position.y,
-    width: group.size?.width ?? 0,
-    height: group.size?.height ?? 0
-  });
+  const ownReserve = () => captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 });
+  const frame = () => {
+    const r = ownReserve();
+    return {
+      x: group.position.x,
+      y: group.position.y + r,
+      width: group.size?.width ?? 0,
+      height: Math.max(0, (group.size?.height ?? 0) - r)
+    };
+  };
   const sizeOf = (e) => e.size ?? { width: 0, height: 0 };
   const geom = () => ({
     columns,
@@ -194903,6 +195101,7 @@ function bindDashboardGrid(api, group, options = {}) {
       writing = false;
     }
     syncPlaceholder();
+    syncSlabs();
   };
   const syncPlaceholder = () => {
     const ghostId = adoptedGhostId ?? (gesture?.started && !gesture.removedFromBoard ? gesture.id : null);
@@ -195034,8 +195233,8 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const hostObserver = new MutationObserver((records) => {
     const touched = /* @__PURE__ */ new Set();
-    const noteHost = (el) => {
-      const e = el;
+    const noteHost = (el2) => {
+      const e = el2;
       if (e?.classList?.contains("grafloria-node-host")) {
         const id = e.getAttribute("data-node-id");
         if (id) touched.add(id);
@@ -195234,35 +195433,63 @@ function bindDashboardGrid(api, group, options = {}) {
       const grp = diagram.getGroup(id);
       if (!grp || diagram.getNode(id)) continue;
       seen.add(id);
-      let el = slabEls.get(id);
-      if (!el || el.parentElement !== layer2) {
-        el?.remove();
-        el = document.createElement("div");
-        el.className = "axdb-slab";
-        el.setAttribute("data-slab-id", id);
+      let el2 = slabEls.get(id);
+      if (!el2 || el2.parentElement !== layer2) {
+        el2?.remove();
+        el2 = document.createElement("div");
+        el2.className = "axdb-slab";
+        el2.setAttribute("data-slab-id", id);
         const rs = document.createElement("div");
         rs.className = "axdb-rs";
         rs.setAttribute("title", "Resize section");
-        el.appendChild(rs);
-        layer2.appendChild(el);
-        slabEls.set(id, el);
+        el2.appendChild(rs);
+        layer2.appendChild(el2);
+        slabEls.set(id, el2);
       }
       const p = grp.position;
       const sz = sizeOf(grp);
-      el.style.left = `${p.x}px`;
-      el.style.top = `${p.y}px`;
-      el.style.width = `${sz.width}px`;
-      el.style.height = `${sz.height}px`;
-      el.classList.toggle("axdb-slab--selected", selectedId === id);
-      el.classList.toggle("axdb-slab--static", isStatic);
-      el.querySelector(":scope > .axdb-rs")?.classList.toggle("axdb-rs--rtl", rtl);
+      el2.style.left = `${p.x}px`;
+      el2.style.top = `${p.y}px`;
+      el2.style.width = `${sz.width}px`;
+      el2.style.height = `${sz.height}px`;
+      el2.classList.toggle("axdb-slab--selected", selectedId === id);
+      el2.classList.toggle("axdb-slab--static", isStatic);
+      el2.querySelector(":scope > .axdb-rs")?.classList.toggle("axdb-rs--rtl", rtl);
+      syncCaption(el2, id, grp, sz.height);
     }
-    for (const [id, el] of slabEls) {
+    for (const [id, el2] of slabEls) {
       if (!seen.has(id)) {
-        el.remove();
+        el2.remove();
         slabEls.delete(id);
       }
     }
+  };
+  const syncCaption = (el2, id, grp, sectionH) => {
+    const cap = captionOfGroup(grp);
+    let band = el2.querySelector(":scope > .axdb-slab-h");
+    if (!cap || !captionPainted(cap, isStatic)) {
+      band?.remove();
+      el2.removeAttribute("aria-label");
+      return;
+    }
+    const ctx = { rtl, static: isStatic, sectionH };
+    const key = captionKey(cap, ctx);
+    if (band && band.getAttribute("data-key") === key) {
+      sizeCaptionBand(band, cap, sectionH);
+      return;
+    }
+    band?.remove();
+    band = document.createElement("div");
+    el2.prepend(band);
+    const render2 = options.renderCaption;
+    paintCaptionBand(band, cap, {
+      ...ctx,
+      ...render2 ? { render: (host) => render2(id, host) } : {},
+      onAction: (actionId) => options.onCaptionAction?.(id, actionId)
+    });
+    band.setAttribute("data-key", key);
+    if (cap.text) el2.setAttribute("aria-label", cap.text);
+    else el2.removeAttribute("aria-label");
   };
   const insideMemberGroupFrame = (x, y) => {
     for (const id of group.members ?? []) {
@@ -195410,12 +195637,12 @@ function bindDashboardGrid(api, group, options = {}) {
     syncPlaceholder();
   };
   const ghostStyleFastPath = (g, rect) => {
-    const el = g.hostEl;
-    if (!el) return;
-    if (rect.x !== void 0) el.style.left = `${rect.x}px`;
-    if (rect.y !== void 0) el.style.top = `${rect.y}px`;
-    if (rect.width !== void 0) el.style.width = `${rect.width}px`;
-    if (rect.height !== void 0) el.style.height = `${rect.height}px`;
+    const el2 = g.hostEl;
+    if (!el2) return;
+    if (rect.x !== void 0) el2.style.left = `${rect.x}px`;
+    if (rect.y !== void 0) el2.style.top = `${rect.y}px`;
+    if (rect.width !== void 0) el2.style.width = `${rect.width}px`;
+    if (rect.height !== void 0) el2.style.height = `${rect.height}px`;
   };
   const cleanupGestureVisuals = (g) => {
     if (g.kind !== "palette") setGhost(g.id, false);
@@ -196017,6 +196244,9 @@ function bindDashboardGrid(api, group, options = {}) {
       if (disposed) return false;
       if (gesture || slabGesture || forwardSlab) return true;
       if (!ownsPress(api.container, diagram, ev, hit)) return false;
+      const bandTarget = ev.source?.target?.closest?.(".axdb-slab > .axdb-slab-h");
+      const bandId = bandTarget?.parentElement?.getAttribute("data-slab-id");
+      if (bandId && (group.members ?? /* @__PURE__ */ new Set()).has(bandId)) return true;
       if (hit.node) {
         if ((group.members ?? /* @__PURE__ */ new Set()).has(hit.node.id)) return true;
         for (const p of BOARD_REGISTRY.get(api.container) ?? []) {
@@ -196036,9 +196266,12 @@ function bindDashboardGrid(api, group, options = {}) {
       const gripId = gripHost?.getAttribute("data-node-id") ?? null;
       const onGrip = !!gripId && (group.members ?? /* @__PURE__ */ new Set()).has(gripId);
       const sectionHandle = target?.closest?.(".axdb-slab > .axdb-rs");
-      if (!hit.node && !onGrip || sectionHandle) {
+      const captionBand = target?.closest?.(".axdb-slab > .axdb-slab-h");
+      const captionId = captionBand?.parentElement?.getAttribute("data-slab-id") ?? null;
+      const ownCaption = !!captionId && (group.members ?? /* @__PURE__ */ new Set()).has(captionId);
+      if (!hit.node && !onGrip || sectionHandle || ownCaption) {
         const slabHandle = target?.closest?.(".axdb-slab > .axdb-rs");
-        const slabId = slabHandle?.parentElement?.getAttribute("data-slab-id") ?? memberGroupAt(ev.world.x, ev.world.y);
+        const slabId = slabHandle?.parentElement?.getAttribute("data-slab-id") ?? (ownCaption ? captionId : null) ?? memberGroupAt(ev.world.x, ev.world.y);
         const grp = slabId && (group.members ?? /* @__PURE__ */ new Set()).has(slabId) ? diagram.getGroup(slabId) : void 0;
         if (slabId && grp) {
           selectWidget(slabId);
@@ -196202,8 +196435,8 @@ function bindDashboardGrid(api, group, options = {}) {
     if (disposed || gesture) return;
     const hit = memberHostAt(e.target);
     if (!hit) {
-      const el = e.target;
-      const onRoot = !!el && el.tagName?.toLowerCase() === "svg" && el.classList?.contains("grafloria-diagram");
+      const el2 = e.target;
+      const onRoot = !!el2 && el2.tagName?.toLowerCase() === "svg" && el2.classList?.contains("grafloria-diagram");
       if (onRoot && (e.key.startsWith("Arrow") || e.key === "Enter" || e.key === " ")) {
         const members2 = [...group.members ?? []].filter((id) => !!diagram.getNode(id) && !!hostOf(id));
         const target = focusedId && members2.includes(focusedId) ? focusedId : members2[0];
@@ -196493,6 +196726,7 @@ function bindDashboardGrid(api, group, options = {}) {
       if (on === isStatic) return;
       isStatic = on;
       if (gesture) cancelActiveGesture(false);
+      project();
       syncHandles();
       api.renderNow();
     },
@@ -196623,7 +196857,7 @@ function bindDashboardGrid(api, group, options = {}) {
       placeholder?.remove();
       placeholder = null;
       if (glideTimer) clearTimeout(glideTimer);
-      for (const el of slabEls.values()) el.remove();
+      for (const el2 of slabEls.values()) el2.remove();
       slabEls.clear();
       flushGhost();
       htmlLayer()?.classList.remove("axdb-glide");
@@ -196988,12 +197222,16 @@ function bindDashboardSplit(api, group, options = {}) {
   let forwardSlab = null;
   let focusedId;
   const live = liveRegionFor2(api.container);
-  const frame = () => ({
-    x: group.position.x,
-    y: group.position.y,
-    width: group.size?.width ?? designW,
-    height: group.size?.height ?? designH
-  });
+  const ownReserve = () => captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 });
+  const frame = () => {
+    const r = ownReserve();
+    return {
+      x: group.position.x,
+      y: group.position.y + r,
+      width: group.size?.width ?? designW,
+      height: Math.max(0, (group.size?.height ?? designH) - r)
+    };
+  };
   const containerBox = () => ({
     w: api.container.clientWidth || 0,
     h: api.container.clientHeight || 0
@@ -197096,26 +197334,26 @@ function bindDashboardSplit(api, group, options = {}) {
   let insertion = null;
   const syncDividers = (tree) => {
     const layer = htmlLayer();
-    for (const el of dividerEls) el.remove();
+    for (const el2 of dividerEls) el2.remove();
     dividerEls.length = 0;
     if (!layer || isStatic || disposed) return;
     const divs = dividersOf(tree, frame(), gap, padding, rtl);
     divs.forEach((d, i) => {
-      const el = document.createElement("div");
-      el.className = `axdb-div axdb-div--${d.dir}`;
-      el.setAttribute("data-divider", String(i));
+      const el2 = document.createElement("div");
+      el2.className = `axdb-div axdb-div--${d.dir}`;
+      el2.setAttribute("data-divider", String(i));
       const grow = Math.max(0, DIVIDER_HIT - (d.dir === "row" ? d.rect.width : d.rect.height)) / 2;
       const x = d.dir === "row" ? d.rect.x - grow : d.rect.x;
       const y = d.dir === "row" ? d.rect.y : d.rect.y - grow;
       const w = d.dir === "row" ? d.rect.width + 2 * grow : d.rect.width;
       const h = d.dir === "row" ? d.rect.height : d.rect.height + 2 * grow;
-      el.style.left = `${x}px`;
-      el.style.top = `${y}px`;
-      el.style.width = `${w}px`;
-      el.style.height = `${h}px`;
-      el.setAttribute("aria-hidden", "true");
-      layer.appendChild(el);
-      dividerEls.push(el);
+      el2.style.left = `${x}px`;
+      el2.style.top = `${y}px`;
+      el2.style.width = `${w}px`;
+      el2.style.height = `${h}px`;
+      el2.setAttribute("aria-hidden", "true");
+      layer.appendChild(el2);
+      dividerEls.push(el2);
     });
     liveDividers = divs;
   };
@@ -197300,7 +197538,7 @@ function bindDashboardSplit(api, group, options = {}) {
     g.chip?.remove();
     showInsertion(null);
     g.hostEl?.classList.remove("axdb-ghost", "axdb-out");
-    for (const el of dividerEls) el.classList.remove("axdb-active");
+    for (const el2 of dividerEls) el2.classList.remove("axdb-active");
     api.container.style.cursor = "";
   };
   const beginMoveVisuals = (g) => {
@@ -197617,8 +197855,8 @@ function bindDashboardSplit(api, group, options = {}) {
     const hit = memberHostAt(e.target);
     const order = splitLeaves(readTree()).filter((id) => !!diagram.getNode(id) && !!hostOf(id));
     if (!hit) {
-      const el = e.target;
-      const onRoot = !!el && el.tagName?.toLowerCase() === "svg" && el.classList?.contains("grafloria-diagram");
+      const el2 = e.target;
+      const onRoot = !!el2 && el2.tagName?.toLowerCase() === "svg" && el2.classList?.contains("grafloria-diagram");
       if (onRoot && (e.key.startsWith("Arrow") || e.key === "Enter" || e.key === " ")) {
         const target = focusedId && order.includes(focusedId) ? focusedId : order[0];
         if (target && handle.focusWidget(target)) {
@@ -197860,7 +198098,7 @@ function bindDashboardSplit(api, group, options = {}) {
       containerObserver?.disconnect();
       hostObserver?.disconnect();
       for (const off of groupSubs) off();
-      for (const el of dividerEls) el.remove();
+      for (const el2 of dividerEls) el2.remove();
       dividerEls.length = 0;
       insertion?.remove();
       insertion = null;
@@ -198354,6 +198592,24 @@ function assignCells(widgets, columns) {
     w.rows = rows;
   }
 }
+var SetCaptionCommand = class extends Command {
+  constructor(sectionId, before, after, apply) {
+    super("Set section caption");
+    this.sectionId = sectionId;
+    this.before = before;
+    this.after = after;
+    this.apply = apply;
+  }
+  execute() {
+    this.apply(this.after);
+  }
+  undo() {
+    this.apply(this.before);
+  }
+  serialize() {
+    return { id: this.id, name: this.name, timestamp: this.timestamp, data: { sectionId: this.sectionId, before: this.before, after: this.after } };
+  }
+};
 function createDashboardHandle(ctx) {
   const { views, groups, binders, specById, viewOfWidget } = ctx;
   const hostOf = (id) => ctx.hosts.get(id);
@@ -198543,6 +198799,30 @@ function createDashboardHandle(ctx) {
       reportChanged();
     },
     getLayout: (viewId) => ctx.layoutOf.get(viewId ?? ctx.active) ?? "grid",
+    setCaption(id, caption) {
+      const cg = ctx.boardGroups.get(id);
+      const w = specById.get(id);
+      if (!cg || !w || !w.widgets || views.some((v) => v.id === id)) return false;
+      const before = w.caption;
+      if (JSON.stringify(before ?? null) === JSON.stringify(caption ?? null)) return true;
+      const apply = (c) => {
+        if (c === void 0) delete w.caption;
+        else w.caption = c;
+        const cw = cg.getMetadata("containerWidget") ?? {};
+        const next = { ...cw };
+        if (c === void 0) delete next["caption"];
+        else next["caption"] = c;
+        cg.setMetadata("containerWidget", next);
+        binders.get(id)?.sync();
+        binders.get(viewOfWidget.get(id) ?? "")?.sync();
+        ctx.apiRef?.renderNow();
+      };
+      apply(caption);
+      execCommand(new SetCaptionCommand(id, before, caption, apply));
+      reportChanged();
+      return true;
+    },
+    getCaption: (id) => specById.get(id)?.caption,
     setSizing(mode) {
       for (const b of binders.values()) b.setSizing(mode);
       clampCamera();
@@ -199027,7 +199307,8 @@ function dashboard(options) {
               maxRows: innerRows,
               ...w.data !== void 0 ? { data: w.data } : {},
               ...w.layout !== void 0 ? { layout: w.layout } : {},
-              ...w.sizing !== void 0 ? { sizing: w.sizing } : {}
+              ...w.sizing !== void 0 ? { sizing: w.sizing } : {},
+              ...w.caption !== void 0 ? { caption: w.caption } : {}
             });
             ctx.layoutOf.set(w.id, w.layout ?? "grid");
             if (w.layout === "split" && w.tree !== void 0) cg.setMetadata(SPLIT_TREE_KEY, w.tree);
@@ -199065,6 +199346,18 @@ function dashboard(options) {
           boardGroup.addMember(w.id);
         }
       }
+      function captionHooks(viewId) {
+        const render2 = options.renderCaption;
+        return {
+          ...render2 ? {
+            renderCaption: (sectionId, host) => {
+              const spec = specById.get(sectionId);
+              if (spec) render2(spec, host);
+            }
+          } : {},
+          onCaptionAction: (sectionId, actionId) => options.onCaptionAction?.(sectionId, actionId, viewId)
+        };
+      }
       function bindView(v, g, viewLayout, live) {
         const common = {
           gap,
@@ -199079,7 +199372,8 @@ function dashboard(options) {
             if (e.type === "commit") reportChanged();
             options.binder?.onGesture?.(e);
           },
-          onSelect: (id) => options.onSelect?.(id, v.id)
+          onSelect: (id) => options.onSelect?.(id, v.id),
+          ...captionHooks(v.id)
         };
         if (viewLayout === "split") {
           return bindDashboardSplit(a, g, {
@@ -199116,7 +199410,8 @@ function dashboard(options) {
             if (e.type === "commit") reportChanged();
             options.binder?.onGesture?.(e);
           },
-          onSelect: (id) => options.onSelect?.(id, ctx.viewOfBoard.get(w.id) ?? ctx.active)
+          onSelect: (id) => options.onSelect?.(id, ctx.viewOfBoard.get(w.id) ?? ctx.active),
+          ...captionHooks(ctx.viewOfBoard.get(w.id) ?? ctx.active)
         };
         if ((ctx.layoutOf.get(w.id) ?? w.layout) === "split") {
           binders.set(w.id, bindDashboardSplit(a, cg, { ...inner, ...w.tree !== void 0 ? { tree: w.tree } : {} }));
@@ -199664,7 +199959,7 @@ function bindJoinGuidance(api, options = {}) {
   };
   const clear = () => {
     for (const cls of Object.values(TIER_CLASS)) {
-      for (const el of Array.from(api.container.querySelectorAll(`.${cls}`))) el.classList.remove(cls);
+      for (const el2 of Array.from(api.container.querySelectorAll(`.${cls}`))) el2.classList.remove(cls);
     }
     for (const chip2 of Array.from(api.container.querySelectorAll(`.${CHIP_CLASS}`))) chip2.remove();
     portStyle?.remove();
@@ -200217,23 +200512,23 @@ function thumbnail(master, box = 34) {
   const s = Math.min((box - pad * 2) / w0, (box - pad * 2) / h0);
   const w = Math.max(6, w0 * s);
   const h = Math.max(6, h0 * s);
-  let el;
+  let el2;
   try {
     const spec = getShape(paint2.type).outline(w, h);
-    el = document.createElementNS(SVG_NS5, spec.el);
-    for (const [k, v] of Object.entries(spec.geom)) el.setAttribute(k, String(v));
+    el2 = document.createElementNS(SVG_NS5, spec.el);
+    for (const [k, v] of Object.entries(spec.geom)) el2.setAttribute(k, String(v));
   } catch {
-    el = document.createElementNS(SVG_NS5, "rect");
-    el.setAttribute("width", String(w));
-    el.setAttribute("height", String(h));
-    el.setAttribute("rx", "3");
+    el2 = document.createElementNS(SVG_NS5, "rect");
+    el2.setAttribute("width", String(w));
+    el2.setAttribute("height", String(h));
+    el2.setAttribute("rx", "3");
   }
-  el.setAttribute("fill", paint2.fill ?? "#eef1fb");
-  el.setAttribute("stroke", paint2.stroke ?? "#3B52D9");
-  el.setAttribute("stroke-width", String(Math.min(Number(paint2.strokeWidth) || 1.5, 2)));
+  el2.setAttribute("fill", paint2.fill ?? "#eef1fb");
+  el2.setAttribute("stroke", paint2.stroke ?? "#3B52D9");
+  el2.setAttribute("stroke-width", String(Math.min(Number(paint2.strokeWidth) || 1.5, 2)));
   const g = document.createElementNS(SVG_NS5, "g");
   g.setAttribute("transform", `translate(${(box - w) / 2} ${(box - h) / 2})`);
-  g.appendChild(el);
+  g.appendChild(el2);
   svg.appendChild(g);
   return svg;
 }
@@ -200348,17 +200643,17 @@ function bindStencilPalette(api, hosts, options = {}) {
   };
   function itemEl(master) {
     const meta = master.meta ?? {};
-    const el = document.createElement("div");
-    el.className = "gf-stencil-item";
-    el.draggable = true;
-    el.dataset["masterId"] = master.id;
-    el.title = meta.description ? `${meta.name} \u2014 ${meta.description}` : meta.name ?? master.id;
-    el.appendChild(thumbnail(master));
+    const el2 = document.createElement("div");
+    el2.className = "gf-stencil-item";
+    el2.draggable = true;
+    el2.dataset["masterId"] = master.id;
+    el2.title = meta.description ? `${meta.name} \u2014 ${meta.description}` : meta.name ?? master.id;
+    el2.appendChild(thumbnail(master));
     const label = document.createElement("span");
     label.className = "gf-stencil-label";
     label.textContent = meta.name ?? master.id;
-    el.appendChild(label);
-    el.addEventListener("dragstart", (e) => {
+    el2.appendChild(label);
+    el2.addEventListener("dragstart", (e) => {
       const dt = e.dataTransfer;
       if (!dt) return;
       dt.setData(DND_TYPE, master.id);
@@ -200371,8 +200666,8 @@ function bindStencilPalette(api, hosts, options = {}) {
       }
       spawnGhost(master, e);
     });
-    el.addEventListener("dragend", killGhost);
-    return el;
+    el2.addEventListener("dragend", killGhost);
+    return el2;
   }
   const heldMaster = (e) => {
     const dt = e.dataTransfer;
@@ -200885,16 +201180,16 @@ function bindShapeDataPanel(api, host, options = {}) {
     host.appendChild(form);
   }
   const sectionLabel = (text) => {
-    const el = document.createElement("div");
-    el.className = "gf-sd-section";
-    el.textContent = text;
-    return el;
+    const el2 = document.createElement("div");
+    el2.className = "gf-sd-section";
+    el2.textContent = text;
+    return el2;
   };
   const hint = (text) => {
-    const el = document.createElement("div");
-    el.className = "gf-sd-empty";
-    el.textContent = text;
-    return el;
+    const el2 = document.createElement("div");
+    el2.className = "gf-sd-empty";
+    el2.textContent = text;
+    return el2;
   };
   const readOnlyField = (label, value) => {
     const row = document.createElement("label");
