@@ -1080,6 +1080,31 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `a split board paints no section chrome, so its captioned sections reserve nothing: ${r.map((x) => `${x.id} band=${x.band} gap=${x.gap}px`).join(' · ')} ${JSON.stringify(sane)}`);
 }
 {
+  begin('L55-a-widget-still-drags-INTO-a-captioned-section-and-lands-under-the-band');
+  await scrollTo('cap-default');
+  const before = await page.evaluate(() => ({
+    members: [...(window.__lab['cap-default'].api.getModel().getGroup('sec-controls')?.members ?? [])].length,
+    outside: !!window.__lab['cap-default'].api.getModel().getGroup('main')?.members?.has('sec-outside'),
+  }));
+  const b = await band('cap-default', 'sec-controls');
+  const src = await rect('cap-default', 'ctl-caption');
+  // drag the section's own first control DOWN inside the section, then check
+  // nothing ever lands above the band
+  await drag(src.x + src.w / 2, src.y + src.h / 2, src.x + src.w / 2, src.y + src.h / 2 + 120, { steps: 14 });
+  const after = await page.evaluate(() => {
+    const m = window.__lab['cap-default'].api.getModel();
+    const g = m.getGroup('sec-controls');
+    const tops = [...(g.members ?? [])].map((id) => document.querySelector(`#cv-cap-default .grafloria-node-host[data-node-id="${id}"]`)?.getBoundingClientRect().top).filter((t) => t != null);
+    return { members: [...(g.members ?? [])].length, minTop: Math.min(...tops) };
+  });
+  const sane = await sanity('cap-default');
+  await shot('cap-default', 'reordered-under-the-band');
+  await undoAll('cap-default', 2);
+  const restored = await page.evaluate(() => [...(window.__lab['cap-default'].api.getModel().getGroup('sec-controls')?.members ?? [])].length);
+  verdict(after.members === before.members && after.minTop >= b.band.y + b.band.height - 0.5 && restored === before.members && sane.overlaps === 0,
+    `moving a control inside a captioned section keeps ${after.members} members (was ${before.members}); the topmost child stays at ${Math.round(after.minTop)}, below the band's ${Math.round(b.band.y + b.band.height)}; undo restores ${restored} ${JSON.stringify(sane)}`);
+}
+{
   begin('L54-a-live-parent-layout-switch-takes-the-band-and-its-reserve-with-it');
   await scrollTo('cap-fit');
   const state = async () => ({
