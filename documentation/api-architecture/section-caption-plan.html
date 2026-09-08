@@ -1,0 +1,213 @@
+<title>Section Captions</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #f4f5f9; --paper: #ffffff; --ink: #1f2430; --muted: #5a6478; --line: #e3e7f0; --soft: #eef0f6;
+    --accent: #3b52d9; --accent-ring: rgba(59, 82, 217, .55); --accent-soft: #e8ecfb; --warn: #9a5b00; --warn-soft: #fff4de;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --ground: #12141a; --paper: #1a1d26; --ink: #e8eaf1; --muted: #9aa3b8; --line: #2a2f3d; --soft: #222634;
+    --accent: #7d8ff0; --accent-ring: rgba(125, 143, 240, .6); --accent-soft: #232a4a; --warn: #f0b64d; --warn-soft: #3a2f16;
+  } }
+  :root[data-theme="dark"] {
+    --ground: #12141a; --paper: #1a1d26; --ink: #e8eaf1; --muted: #9aa3b8; --line: #2a2f3d; --soft: #222634;
+    --accent: #7d8ff0; --accent-ring: rgba(125, 143, 240, .6); --accent-soft: #232a4a; --warn: #f0b64d; --warn-soft: #3a2f16;
+  }
+  body { background: var(--ground); color: var(--ink); font: 15px/1.55 var(--sans); }
+  main { max-width: 1040px; margin: 0 auto; padding: 40px 28px 80px; }
+  h1 { font-size: 34px; line-height: 1.15; letter-spacing: -.02em; margin: 0 0 6px; text-wrap: balance; }
+  .lede { color: var(--muted); font-size: 17px; max-width: 64ch; margin: 0 0 36px; }
+  h2 { font-size: 20px; letter-spacing: -.01em; margin: 48px 0 12px; padding-top: 18px; border-top: 1px solid var(--line); }
+  h3 { font-size: 15px; margin: 22px 0 8px; }
+  p { max-width: 68ch; }
+  .eyebrow { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  code { font: 13px var(--mono); background: var(--soft); padding: 1px 5px; border-radius: 4px; }
+  pre { font: 13px/1.5 var(--mono); background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); background: var(--soft); }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { white-space: nowrap; }
+  .wrap { overflow-x: auto; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; }
+  figure { margin: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; }
+  figcaption b { color: var(--ink); font-weight: 600; }
+  svg { width: 100%; height: auto; display: block; }
+  .note { background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 0 8px 8px 0; max-width: 70ch; }
+  .ask { background: var(--warn-soft); border-left: 3px solid var(--warn); padding: 10px 14px; border-radius: 0 8px 8px 0; }
+  ol.steps { padding-left: 22px; } ol.steps li { margin: 6px 0; }
+  .kv { display: grid; grid-template-columns: 180px 1fr; gap: 6px 16px; font-size: 14px; max-width: 70ch; }
+  .kv dt { font: 500 13px var(--mono); color: var(--muted); } .kv dd { margin: 0; }
+  .t { font: 600 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .tt { font: 500 11px var(--sans); }
+  .v { font: 700 18px var(--sans); }
+  .cap { font: 600 12.5px var(--sans); letter-spacing: .01em; }
+  .dim { font: 500 10.5px var(--mono); }
+</style>
+<main>
+  <div class="eyebrow">Grafloria Dashboards · element 0.4.22 · plan</div>
+  <h1>Section captions</h1>
+  <p class="lede">A section (a container widget) paints nothing today: no header, no label, no border. This plan gives it an opt-in caption painted by the kit, on the overlay the kit already owns, with reserved space, selection and theming, so a designer never has to draw one over the kit's frame again.</p>
+
+  <h2>Why the kit and not the app</h2>
+  <p>Three things only the kit can do for a section header. It can <b>route the press</b>: the kit owns the slab overlay, the ring, the handle and the hand-off between a nested board and its parent, and a header drawn outside that routing steals presses or loses them (Quantia's label tab selected the widget under it). It can <b>reserve the pixels</b>: a header needs room inside the slab that no child may take, and an app's header either overlaps the first child or is drawn outside the frame (the 7 px panel overlap). And it can <b>persist it</b>: the caption belongs in <code>toJSON()</code> next to <code>layout</code>, <code>tree</code> and <code>sizing</code>. Widget cards already follow this pattern, a default painter with <code>renderWidget</code> as the escape hatch; sections get the same.</p>
+
+  <h2>The option</h2>
+<pre><code>// DashboardWidgetSpec — containers only
+caption?: false | true | string | {
+  text?: string;                       // default: the container's title
+  position?: 'inside' | 'tab';         // default 'inside'
+  align?: 'start' | 'center' | 'end';  // default 'start' (mirrored on RTL)
+  height?: number;                     // px, 'inside' only — default 28
+};
+
+// dashboard() — the escape hatch, as renderWidget is for cards
+renderCaption?: (widget: DashboardWidgetSpec, host: HTMLElement) => void;
+
+// DashboardHandle
+setCaption(id: string, caption: CaptionOption): void;   // live, undoable
+getCaption(id: string): CaptionOption;</code></pre>
+
+  <div class="wrap"><table>
+    <tr><th>value</th><th>paints</th><th>space</th><th>notes</th></tr>
+    <tr><td><code>false</code> <span class="tt">(default)</span></td><td>nothing — today's section</td><td>none</td><td>Every existing board is unchanged.</td></tr>
+    <tr><td><code>true</code></td><td>a bar with the container's <code>title</code></td><td>28 px reserved at the top of the slab</td><td>The shortest way to get DevExpress-style groups.</td></tr>
+    <tr><td><code>'Report controls'</code></td><td>a bar with that text</td><td>28 px reserved</td><td>Text independent of <code>title</code> (which stays the accessible name).</td></tr>
+    <tr><td><code>{ position: 'inside' }</code></td><td>the bar</td><td><code>height</code> px reserved; the inner grid starts below it</td><td>Rows of the inner grid are laid out in the remaining height; escalation and resize floors include the band.</td></tr>
+    <tr><td><code>{ position: 'tab' }</code></td><td>a small label riding the frame's top edge</td><td>none reserved</td><td>Never taller than the gap less one pixel, clamped like the outside grip tab, so it never sits on the tile above. For dense boards.</td></tr>
+    <tr><td><code>{ align }</code></td><td>label at start, center or end of the band</td><td>—</td><td>Mirrored under <code>rtl</code>, exactly as the grip's <code>position</code> is.</td></tr>
+    <tr><td><code>renderCaption</code></td><td>your content in the band's host</td><td>the same reserved band</td><td>Badges, a menu button, a collapse chevron — yours; the band keeps its press semantics.</td></tr>
+  </table></div>
+
+  <h2>How it looks</h2>
+  <div class="grid2">
+    <figure>
+      <svg viewBox="0 0 520 300" role="img" aria-label="Two sections with inside captions; the first is selected">
+        <rect x="0" y="0" width="520" height="300" rx="6" fill="var(--ground)"/>
+        <!-- section A: selected, caption inside -->
+        <rect x="14" y="14" width="236" height="272" rx="3" fill="none" stroke="var(--accent-ring)" stroke-width="2"/>
+        <rect x="14" y="14" width="236" height="28" rx="3" fill="var(--soft)"/>
+        <text x="26" y="32" class="cap" fill="var(--ink)">Report controls</text>
+        <!-- children -->
+        <rect x="20" y="50" width="164" height="30" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="30" y="70" class="t" fill="var(--muted)">CAPTION</text>
+        <rect x="20" y="88" width="164" height="30" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="30" y="108" class="t" fill="var(--muted)">PRODUCT</text>
+        <rect x="20" y="126" width="164" height="72" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="30" y="146" class="t" fill="var(--muted)">INVOICE DATE</text>
+        <rect x="20" y="206" width="164" height="72" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="30" y="226" class="t" fill="var(--muted)">INVOICE SIZE</text>
+        <!-- free column -->
+        <rect x="192" y="50" width="52" height="228" rx="3" fill="none" stroke="var(--line)" stroke-dasharray="3 3"/>
+        <!-- corner handle -->
+        <path d="M226 262 h20 v20 h-20" fill="none" stroke="var(--accent)" stroke-width="3"/>
+        <!-- dims -->
+        <line x1="258" y1="14" x2="258" y2="42" stroke="var(--muted)"/><text x="263" y="31" class="dim" fill="var(--muted)">28 px reserved</text>
+        <line x1="258" y1="42" x2="258" y2="50" stroke="var(--muted)"/><text x="263" y="49" class="dim" fill="var(--muted)">gap 10 (inner padding 0)</text>
+        <!-- section B -->
+        <rect x="270" y="14" width="236" height="272" rx="3" fill="none" stroke="var(--line)"/>
+        <rect x="270" y="14" width="236" height="28" rx="3" fill="var(--soft)"/>
+        <text x="282" y="32" class="cap" fill="var(--ink)">Paid business</text>
+        <rect x="276" y="50" width="86" height="228" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="286" y="70" class="t" fill="var(--muted)">STATUS</text>
+        <rect x="370" y="50" width="130" height="228" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="380" y="70" class="t" fill="var(--muted)">AREA SALES</text>
+        <polyline points="386,240 410,190 436,210 460,120 486,150" fill="none" stroke="var(--accent)" stroke-width="2"/>
+      </svg>
+      <figcaption><b>A · <code>caption: true</code>, position inside, selected.</b> The band is part of the section: the ring wraps it, the inner grid starts below it, the corner handle shows while selected. The dashed area is the free inner column, as on the Groups page.</figcaption>
+    </figure>
+    <figure>
+      <svg viewBox="0 0 520 300" role="img" aria-label="Two sections with tab captions and a widget beside them">
+        <rect x="0" y="0" width="520" height="300" rx="6" fill="var(--ground)"/>
+        <!-- section A: tab -->
+        <rect x="14" y="24" width="236" height="262" rx="3" fill="none" stroke="var(--line)"/>
+        <rect x="22" y="15" width="102" height="18" rx="3" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="30" y="28" class="cap" fill="var(--ink)" font-size="11">Report controls</text>
+        <rect x="20" y="34" width="164" height="30" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="30" y="54" class="t" fill="var(--muted)">CAPTION</text>
+        <rect x="20" y="72" width="164" height="30" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="30" y="92" class="t" fill="var(--muted)">PRODUCT</text>
+        <rect x="20" y="110" width="164" height="80" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="30" y="130" class="t" fill="var(--muted)">INVOICE DATE</text>
+        <rect x="20" y="198" width="164" height="80" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="30" y="218" class="t" fill="var(--muted)">INVOICE SIZE</text>
+        <!-- section B: tab, selected -->
+        <rect x="270" y="24" width="236" height="262" rx="3" fill="none" stroke="var(--accent-ring)" stroke-width="2"/>
+        <rect x="278" y="15" width="90" height="18" rx="3" fill="var(--paper)" stroke="var(--accent-ring)"/>
+        <text x="286" y="28" class="cap" fill="var(--ink)" font-size="11">Paid business</text>
+        <rect x="276" y="34" width="86" height="244" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="286" y="54" class="t" fill="var(--muted)">STATUS</text>
+        <rect x="370" y="34" width="130" height="244" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="380" y="54" class="t" fill="var(--muted)">AREA SALES</text>
+        <polyline points="386,240 410,190 436,210 460,120 486,150" fill="none" stroke="var(--accent)" stroke-width="2"/>
+        <path d="M482 262 h20 v20 h-20" fill="none" stroke="var(--accent)" stroke-width="3"/>
+        <line x1="14" y1="8" x2="14" y2="24" stroke="var(--muted)"/><text x="18" y="12" class="dim" fill="var(--muted)">tab ≤ gap − 1 px above the frame</text>
+      </svg>
+      <figcaption><b>B · <code>position: 'tab'</code>.</b> A label on the top edge, no space reserved, clamped to the gap so it never covers the tile above — the compact look Quantia paints today, but inside the kit's frame and its press routing. The selected section's tab takes the ring colour.</figcaption>
+    </figure>
+    <figure>
+      <svg viewBox="0 0 520 190" role="img" aria-label="A caption with custom content and one in static mode">
+        <rect x="0" y="0" width="520" height="190" rx="6" fill="var(--ground)"/>
+        <rect x="14" y="14" width="236" height="162" rx="3" fill="none" stroke="var(--line)"/>
+        <rect x="14" y="14" width="236" height="28" rx="3" fill="var(--soft)"/>
+        <text x="26" y="32" class="cap" fill="var(--ink)">Report controls</text>
+        <rect x="150" y="19" width="42" height="18" rx="9" fill="var(--accent-soft)"/><text x="158" y="32" class="tt" fill="var(--accent)">3 filters</text>
+        <text x="228" y="33" class="cap" fill="var(--muted)">⋯</text>
+        <rect x="20" y="50" width="224" height="118" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="30" y="70" class="t" fill="var(--muted)">CHILDREN</text>
+        <rect x="270" y="14" width="236" height="162" rx="3" fill="none" stroke="var(--line)"/>
+        <rect x="270" y="14" width="236" height="28" rx="3" fill="var(--soft)"/>
+        <text x="282" y="32" class="cap" fill="var(--ink)">Paid business</text>
+        <rect x="276" y="50" width="224" height="118" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="286" y="70" class="t" fill="var(--muted)">CHILDREN</text>
+        <text x="282" y="186" class="dim" fill="var(--muted)">static: painted, no ring, no handle, presses reach content</text>
+      </svg>
+      <figcaption><b>C · <code>renderCaption</code> and static.</b> Left: the app paints a badge and a menu into the band; the band still selects the section on press. Right: under <code>static</code> the caption is painted and inert, like a widget header.</figcaption>
+    </figure>
+    <figure>
+      <svg viewBox="0 0 520 190" role="img" aria-label="Alignment and RTL">
+        <rect x="0" y="0" width="520" height="190" rx="6" fill="var(--ground)"/>
+        <rect x="14" y="14" width="236" height="50" rx="3" fill="none" stroke="var(--line)"/><rect x="14" y="14" width="236" height="28" fill="var(--soft)"/><text x="26" y="32" class="cap" fill="var(--ink)">start</text>
+        <rect x="270" y="14" width="236" height="50" rx="3" fill="none" stroke="var(--line)"/><rect x="270" y="14" width="236" height="28" fill="var(--soft)"/><text x="388" y="32" class="cap" fill="var(--ink)" text-anchor="middle">center</text>
+        <rect x="14" y="80" width="236" height="50" rx="3" fill="none" stroke="var(--line)"/><rect x="14" y="80" width="236" height="28" fill="var(--soft)"/><text x="238" y="98" class="cap" fill="var(--ink)" text-anchor="end">end</text>
+        <rect x="270" y="80" width="236" height="50" rx="3" fill="none" stroke="var(--line)"/><rect x="270" y="80" width="236" height="28" fill="var(--soft)"/><text x="494" y="98" class="cap" fill="var(--ink)" text-anchor="end">start · rtl</text>
+        <text x="14" y="160" class="dim" fill="var(--muted)">align follows the board's direction, as the grip position does</text>
+      </svg>
+      <figcaption><b>D · <code>align</code> and RTL.</b> Start, center, end; under <code>rtl</code> start is the right edge.</figcaption>
+    </figure>
+  </div>
+
+  <h2>Behaviour</h2>
+  <div class="wrap"><table>
+    <tr><th>gesture / state</th><th>what happens</th></tr>
+    <tr><td>press on the band</td><td>selects the section (ring, handle); clears any other selection on the canvas; <code>onSelect(sectionId)</code> fires</td></tr>
+    <tr><td>drag on the band</td><td>nothing in this round — a section is a locked slab and does not move. Moving sections by their caption is the next feature if you want it; the band is the right handle for it</td></tr>
+    <tr><td>press on the band's edge / corner handle</td><td>section resize, as 0.4.19: floored at the children's rows plus the band</td></tr>
+    <tr><td>inside layout</td><td>the inner grid's frame starts <code>height</code> px lower; rows are laid out in the remaining height; escalation grows the slab exactly as today; a child can never sit under the band</td></tr>
+    <tr><td>tab layout</td><td>no reserved space; the tab is clamped to <code>gap − 1</code> px above the frame, never covering the tile above</td></tr>
+    <tr><td>split section</td><td>the band is painted the same way; the panes cover the remaining pane</td></tr>
+    <tr><td>static</td><td>painted, no ring, no handle, presses pass to content</td></tr>
+    <tr><td>keyboard</td><td>the band is the section's tab stop; Enter selects; arrows stay with the widgets (unchanged)</td></tr>
+    <tr><td>hover</td><td>the band shows a pointer cursor; the frame edges keep the resize cursors</td></tr>
+    <tr><td>persistence</td><td><code>toJSON()</code> writes <code>caption</code> as given; <code>fromDocument()</code> paints it back; <code>setCaption</code> is one undoable step</td></tr>
+    <tr><td>a11y</td><td>the band carries the group's accessible name; a section with <code>caption: false</code> keeps its name on the group as today</td></tr>
+  </table></div>
+
+  <h2>Theming</h2>
+  <dl class="kv">
+    <dt>.axdb-slab-h</dt><dd>the band; <code>.axdb-slab-h--tab</code> for the tab variant; <code>.axdb-slab-h--start|center|end</code></dd>
+    <dt>--axdb-caption-bg</dt><dd>band background (default: the widget header's soft fill)</dd>
+    <dt>--axdb-caption-fg</dt><dd>band text (default <code>--axdb-ink</code>)</dd>
+    <dt>--axdb-caption-h</dt><dd>band height, mirrors the <code>height</code> option so CSS and layout agree</dd>
+    <dt>--axdb-accent / --axdb-accent-ring</dt><dd>the selected band's ring and tab border, as everywhere else</dd>
+  </dl>
+
+  <h2>Build</h2>
+  <ol class="steps">
+    <li><b>Spec and types</b>: <code>caption</code> on <code>DashboardWidgetSpec</code>, <code>renderCaption</code> on <code>DashboardOptions</code>, <code>setCaption</code>/<code>getCaption</code> on the handle; <code>containerWidget</code> metadata carries it; <code>toJSON()</code> and <code>load.ts</code> round-trip it.</li>
+    <li><b>Painting</b>: the band is a child of the section's overlay (<code>.axdb-slab</code>), positioned by <code>syncSlabs()</code>; <code>renderCaption</code> paints into it; static and RTL classes as for the grip.</li>
+    <li><b>Space</b>: the container binder takes a <code>paddingTop</code> (the band's height plus the gap) so the inner frame starts below the band; the split binder the same; the section-resize floor and the escalation maths include it.</li>
+    <li><b>Presses</b>: a press on the band routes to the section-press path added in 0.4.19 (select; edges resize) — through the nested board's forwarding, so registration order never matters.</li>
+    <li><b>Gates</b>: unit tests for the option, the reserved space and the round trip; lab scenarios L40–L43 (inside reserves space: the first child's top ≥ the band's bottom at every row height; tab clamps to the gap; a band press selects and a band-edge press resizes; static paints and is inert; RTL mirrors align); the battery, gallery, save/load, interaction, visual and the three variant apps as always; packaging gate last; release as 0.4.22.</li>
+    <li><b>Docs and Quantia</b>: the learn page's Containers section; the Quantia prompt gains "replace the <code>.sec</code> tab with <code>caption</code> and delete the overlap".</li>
+  </ol>
+
+  <h2>Decisions I need from you</h2>
+  <div class="ask">
+    <p style="margin:0 0 8px"><b>1.</b> Default position when <code>caption: true</code>: <b>inside</b> (DevExpress-like bar, my recommendation) or <b>tab</b> (Quantia's current look)?</p>
+    <p style="margin:0 0 8px"><b>2.</b> Default band height: <b>28 px</b>, the widget header's height, so a section header and a widget header line up?</p>
+    <p style="margin:0 0 8px"><b>3.</b> Dragging a section by its caption to move it: <b>not in this round</b> (sections stay locked slabs), or include it now?</p>
+    <p style="margin:0"><b>4.</b> A collapse chevron (fold a section to its band): <b>later</b>, or now?</p>
+  </div>
+  <p class="note" style="margin-top:18px">Nothing in this plan changes a board that does not set <code>caption</code>. Every existing section stays a bare slab.</p>
+</main>
