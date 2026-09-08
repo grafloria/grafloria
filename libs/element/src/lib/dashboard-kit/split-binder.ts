@@ -188,9 +188,17 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
 
   // -- geometry ---------------------------------------------------------------
 
-  /** Our own caption band's pixels, given up at the top of the pane (see grid-binder). */
+  /**
+   * Our own caption band's pixels, given up at the top of the pane — but only
+   * when the parent board actually paints one (see BinderPeer.paintsCaptions).
+   * A split board paints no section chrome, so a captioned section inside one
+   * reserves nothing until the tab-container round gives the split binder its
+   * own overlays.
+   */
   const ownReserve = (): number =>
-    captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 });
+    parentPeerOf(api.container, group.id)?.paintsCaptions === true
+      ? captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 })
+      : 0;
   const frame = (): WorldRect => {
     const r = ownReserve();
     return {
