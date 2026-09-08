@@ -232,7 +232,12 @@ export function paintCaptionBand(
       b.setAttribute('title', a.title ?? a.label);
       b.textContent = a.icon ?? a.label;
       if (a.disabled) b.disabled = true;
-      if (ctx.static) b.tabIndex = -1;
+      // Out of the tab order: a board keeps exactly ONE tab stop (the roving
+      // tabindex over its widgets — the accessibility scenario asserts it).
+      // The band becomes the section's tab stop, with its actions reachable
+      // from it, in the section-keyboard round; a click (mouse, touch, or a
+      // script) fires the action today.
+      b.tabIndex = -1;
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         if (!b.disabled) ctx.onAction?.(a.id);

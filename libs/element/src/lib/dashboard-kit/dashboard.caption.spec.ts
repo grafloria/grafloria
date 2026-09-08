@@ -239,6 +239,8 @@ describe('section captions — actions, presses and pass-through', () => {
     expect(btns[0].getAttribute('title')).toBe('Maximize');
     expect(btns[0].textContent).toBe('⤢');
     expect((btns[1] as HTMLButtonElement).disabled).toBe(true);
+    // out of the tab order: a board keeps exactly one tab stop
+    expect(Array.from(btns).every((b) => (b as HTMLButtonElement).tabIndex === -1)).toBe(true);
     // no tool claims the press (the button is content), and the browser's own
     // click — mouse, touch, or Enter/Space on the keyboard — fires the action
     expect(press(btns[0], inBand(api, model))).toBeUndefined();

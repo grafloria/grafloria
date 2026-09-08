@@ -194712,7 +194712,7 @@ function paintCaptionBand(band, c, ctx) {
       b.setAttribute("title", a.title ?? a.label);
       b.textContent = a.icon ?? a.label;
       if (a.disabled) b.disabled = true;
-      if (ctx.static) b.tabIndex = -1;
+      b.tabIndex = -1;
       b.addEventListener("click", (e) => {
         e.stopPropagation();
         if (!b.disabled) ctx.onAction?.(a.id);
