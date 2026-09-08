@@ -97,29 +97,42 @@ export class FluidBoardComponent {
   sizing = signal<'fit' | 'grow'>('grow');
   options = { columns: 12, gap: 10 };
   views: DashboardViewSpec[] = [{ id: 'main', widgets: [
-    { id: 'rev',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
-    { id: 'cust', kind: 'kpi',   span: 3, rows: 1, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
-    { id: 'win',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
-    { id: 'nps',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
-    { id: 'trend', kind: 'line', span: 8, rows: 3, title: 'Revenue vs target',
+    { id: 'rev',  kind: 'kpi',   span: 2, rows: 1, x: 0, y: 0, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
+    { id: 'cust', kind: 'kpi',   span: 2, rows: 1, x: 2, y: 0, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
+    { id: 'win',  kind: 'kpi',   span: 2, rows: 1, x: 4, y: 0, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
+    { id: 'nps',  kind: 'kpi',   span: 2, rows: 1, x: 6, y: 0, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 3, x: 0, y: 1, title: 'Revenue vs target',
       data: { series: [{ name: 'Revenue', values: [4.1, 4.4, 4.9, 5.2, 5.9, 6.8] }, { name: 'Target', values: [4.0, 4.5, 5.0, 5.5, 6.0, 6.5] }],
               labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
-    { id: 'mix',  kind: 'donut', span: 4, rows: 3, title: 'Revenue by region',
+    { id: 'mix',  kind: 'donut', span: 3, rows: 3, x: 6, y: 1, title: 'Revenue by region',
       data: { slices: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } },
-    { id: 'reps', kind: 'table', span: 7, rows: 3, title: 'Top reps',
+    { id: 'reps', kind: 'table', span: 5, rows: 3, x: 0, y: 4, title: 'Top reps',
       data: { columns: ['Rep', 'Region', 'Closed', 'Quota'],
               rows: [['A. Farouk', 'EMEA', 412000, '118%'], ['J. Park', 'APAC', 388000, '104%'], ['M. Silva', 'LATAM', 301000, '96%'], ['R. Chen', 'NA', 297000, '91%']] } },
-    { id: 'funnel', kind: 'funnel', span: 5, rows: 3, title: 'Pipeline',
+    { id: 'funnel', kind: 'funnel', span: 4, rows: 3, x: 5, y: 4, title: 'Pipeline',
       data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
     // A SECTION with a caption painted by the kit (element 0.4.22): its own
     // 12-column grid, a 44 px band reserved above its children, four free
     // columns to drag a KPI into. `setCaption` restyles it live.
-    { id: 'ops', title: 'Operations', span: 12, rows: 1, columns: 12,
+    { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9,
       caption: { subtitle: 'live since 08:00', description: 'A section: its own grid inside the board. Drag a KPI in or out; the band is the kit\'s.', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }, { id: 'menu', label: 'More', icon: '⋯' }] },
       widgets: [
         { id: 'orders', kind: 'kpi', span: 4, rows: 1, data: { label: 'Orders today', value: '312', delta: 5.2 } },
         { id: 'churn',  kind: 'kpi', span: 4, rows: 1, data: { label: 'Churn', value: '1.9%', delta: -0.3 } },
       ] },
+    // THREE TAB CAPTIONS, down the right, together the board's full height.
+    // `position: 'tab'` is the same band sized to its text — a chip at the
+    // section's leading corner. It RESERVES its height inside the section's
+    // own cell, so a tab never lies over the widget above it.
+    { id: 'tab-filters', title: 'Filters', span: 3, rows: 3, x: 9, y: 0, columns: 3,
+      caption: { position: 'tab', text: 'Filters', icon: '▤' },
+      widgets: [{ id: 'f-region', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } }] },
+    { id: 'tab-alerts', title: 'Alerts', span: 3, rows: 3, x: 9, y: 3, columns: 3,
+      caption: { position: 'tab', text: 'Alerts', icon: '⚠', actions: [{ id: 'clear', label: 'Clear alerts', icon: '✕' }] },
+      widgets: [{ id: 'a-open', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Open', value: '3', delta: -2.0 } }] },
+    { id: 'tab-notes', title: 'Notes', span: 3, rows: 2, x: 9, y: 6, columns: 3,
+      caption: { position: 'tab', text: 'Notes' },
+      widgets: [{ id: 'n-last', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } }] },
   ] }];
 
   onLayout(e: { viewId: string; widgets: unknown[] }) {
@@ -135,29 +148,42 @@ import { GrafloriaDashboard } from '@grafloria/react';
 import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
 
 const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
-    { id: 'rev',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
-    { id: 'cust', kind: 'kpi',   span: 3, rows: 1, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
-    { id: 'win',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
-    { id: 'nps',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
-    { id: 'trend', kind: 'line', span: 8, rows: 3, title: 'Revenue vs target',
+    { id: 'rev',  kind: 'kpi',   span: 2, rows: 1, x: 0, y: 0, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
+    { id: 'cust', kind: 'kpi',   span: 2, rows: 1, x: 2, y: 0, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
+    { id: 'win',  kind: 'kpi',   span: 2, rows: 1, x: 4, y: 0, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
+    { id: 'nps',  kind: 'kpi',   span: 2, rows: 1, x: 6, y: 0, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 3, x: 0, y: 1, title: 'Revenue vs target',
       data: { series: [{ name: 'Revenue', values: [4.1, 4.4, 4.9, 5.2, 5.9, 6.8] }, { name: 'Target', values: [4.0, 4.5, 5.0, 5.5, 6.0, 6.5] }],
               labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
-    { id: 'mix',  kind: 'donut', span: 4, rows: 3, title: 'Revenue by region',
+    { id: 'mix',  kind: 'donut', span: 3, rows: 3, x: 6, y: 1, title: 'Revenue by region',
       data: { slices: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } },
-    { id: 'reps', kind: 'table', span: 7, rows: 3, title: 'Top reps',
+    { id: 'reps', kind: 'table', span: 5, rows: 3, x: 0, y: 4, title: 'Top reps',
       data: { columns: ['Rep', 'Region', 'Closed', 'Quota'],
               rows: [['A. Farouk', 'EMEA', 412000, '118%'], ['J. Park', 'APAC', 388000, '104%'], ['M. Silva', 'LATAM', 301000, '96%'], ['R. Chen', 'NA', 297000, '91%']] } },
-    { id: 'funnel', kind: 'funnel', span: 5, rows: 3, title: 'Pipeline',
+    { id: 'funnel', kind: 'funnel', span: 4, rows: 3, x: 5, y: 4, title: 'Pipeline',
       data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
     // A SECTION with a caption painted by the kit (element 0.4.22): its own
     // 12-column grid, a 44 px band reserved above its children, four free
     // columns to drag a KPI into. `setCaption` restyles it live.
-    { id: 'ops', title: 'Operations', span: 12, rows: 1, columns: 12,
+    { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9,
       caption: { subtitle: 'live since 08:00', description: 'A section: its own grid inside the board. Drag a KPI in or out; the band is the kit\'s.', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }, { id: 'menu', label: 'More', icon: '⋯' }] },
       widgets: [
         { id: 'orders', kind: 'kpi', span: 4, rows: 1, data: { label: 'Orders today', value: '312', delta: 5.2 } },
         { id: 'churn',  kind: 'kpi', span: 4, rows: 1, data: { label: 'Churn', value: '1.9%', delta: -0.3 } },
       ] },
+    // THREE TAB CAPTIONS, down the right, together the board's full height.
+    // `position: 'tab'` is the same band sized to its text — a chip at the
+    // section's leading corner. It RESERVES its height inside the section's
+    // own cell, so a tab never lies over the widget above it.
+    { id: 'tab-filters', title: 'Filters', span: 3, rows: 3, x: 9, y: 0, columns: 3,
+      caption: { position: 'tab', text: 'Filters', icon: '▤' },
+      widgets: [{ id: 'f-region', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } }] },
+    { id: 'tab-alerts', title: 'Alerts', span: 3, rows: 3, x: 9, y: 3, columns: 3,
+      caption: { position: 'tab', text: 'Alerts', icon: '⚠', actions: [{ id: 'clear', label: 'Clear alerts', icon: '✕' }] },
+      widgets: [{ id: 'a-open', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Open', value: '3', delta: -2.0 } }] },
+    { id: 'tab-notes', title: 'Notes', span: 3, rows: 2, x: 9, y: 6, columns: 3,
+      caption: { position: 'tab', text: 'Notes' },
+      widgets: [{ id: 'n-last', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } }] },
 ] }];
 
 export function FluidBoard() {
@@ -204,29 +230,42 @@ const layout = ref<'grid' | 'split'>('grid');
 const sizing = ref<'fit' | 'grow'>('grow');
 const options = { columns: 12, gap: 10 };
 const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
-    { id: 'rev',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
-    { id: 'cust', kind: 'kpi',   span: 3, rows: 1, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
-    { id: 'win',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
-    { id: 'nps',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
-    { id: 'trend', kind: 'line', span: 8, rows: 3, title: 'Revenue vs target',
+    { id: 'rev',  kind: 'kpi',   span: 2, rows: 1, x: 0, y: 0, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
+    { id: 'cust', kind: 'kpi',   span: 2, rows: 1, x: 2, y: 0, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
+    { id: 'win',  kind: 'kpi',   span: 2, rows: 1, x: 4, y: 0, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
+    { id: 'nps',  kind: 'kpi',   span: 2, rows: 1, x: 6, y: 0, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 3, x: 0, y: 1, title: 'Revenue vs target',
       data: { series: [{ name: 'Revenue', values: [4.1, 4.4, 4.9, 5.2, 5.9, 6.8] }, { name: 'Target', values: [4.0, 4.5, 5.0, 5.5, 6.0, 6.5] }],
               labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
-    { id: 'mix',  kind: 'donut', span: 4, rows: 3, title: 'Revenue by region',
+    { id: 'mix',  kind: 'donut', span: 3, rows: 3, x: 6, y: 1, title: 'Revenue by region',
       data: { slices: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } },
-    { id: 'reps', kind: 'table', span: 7, rows: 3, title: 'Top reps',
+    { id: 'reps', kind: 'table', span: 5, rows: 3, x: 0, y: 4, title: 'Top reps',
       data: { columns: ['Rep', 'Region', 'Closed', 'Quota'],
               rows: [['A. Farouk', 'EMEA', 412000, '118%'], ['J. Park', 'APAC', 388000, '104%'], ['M. Silva', 'LATAM', 301000, '96%'], ['R. Chen', 'NA', 297000, '91%']] } },
-    { id: 'funnel', kind: 'funnel', span: 5, rows: 3, title: 'Pipeline',
+    { id: 'funnel', kind: 'funnel', span: 4, rows: 3, x: 5, y: 4, title: 'Pipeline',
       data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
     // A SECTION with a caption painted by the kit (element 0.4.22): its own
     // 12-column grid, a 44 px band reserved above its children, four free
     // columns to drag a KPI into. `setCaption` restyles it live.
-    { id: 'ops', title: 'Operations', span: 12, rows: 1, columns: 12,
+    { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9,
       caption: { subtitle: 'live since 08:00', description: 'A section: its own grid inside the board. Drag a KPI in or out; the band is the kit\'s.', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }, { id: 'menu', label: 'More', icon: '⋯' }] },
       widgets: [
         { id: 'orders', kind: 'kpi', span: 4, rows: 1, data: { label: 'Orders today', value: '312', delta: 5.2 } },
         { id: 'churn',  kind: 'kpi', span: 4, rows: 1, data: { label: 'Churn', value: '1.9%', delta: -0.3 } },
       ] },
+    // THREE TAB CAPTIONS, down the right, together the board's full height.
+    // `position: 'tab'` is the same band sized to its text — a chip at the
+    // section's leading corner. It RESERVES its height inside the section's
+    // own cell, so a tab never lies over the widget above it.
+    { id: 'tab-filters', title: 'Filters', span: 3, rows: 3, x: 9, y: 0, columns: 3,
+      caption: { position: 'tab', text: 'Filters', icon: '▤' },
+      widgets: [{ id: 'f-region', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } }] },
+    { id: 'tab-alerts', title: 'Alerts', span: 3, rows: 3, x: 9, y: 3, columns: 3,
+      caption: { position: 'tab', text: 'Alerts', icon: '⚠', actions: [{ id: 'clear', label: 'Clear alerts', icon: '✕' }] },
+      widgets: [{ id: 'a-open', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Open', value: '3', delta: -2.0 } }] },
+    { id: 'tab-notes', title: 'Notes', span: 3, rows: 2, x: 9, y: 6, columns: 3,
+      caption: { position: 'tab', text: 'Notes' },
+      widgets: [{ id: 'n-last', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } }] },
 ] }];
 const onLayout = (e: { viewId: string; widgets: unknown[] }) => console.log('layout changed', e.viewId, e.widgets.length, 'widgets');
 <\/script>
@@ -259,27 +298,40 @@ const SPEC_INPUT = {
   columns: 12,
   gap: 10,
   widgets: [
-    { id: 'rev',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
-    { id: 'cust', kind: 'kpi',   span: 3, rows: 1, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
-    { id: 'win',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
-    { id: 'nps',  kind: 'kpi',   span: 3, rows: 1, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
-    { id: 'trend', kind: 'line', span: 8, rows: 3, title: 'Revenue vs target',
+    { id: 'rev',  kind: 'kpi',   span: 2, rows: 1, x: 0, y: 0, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
+    { id: 'cust', kind: 'kpi',   span: 2, rows: 1, x: 2, y: 0, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
+    { id: 'win',  kind: 'kpi',   span: 2, rows: 1, x: 4, y: 0, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
+    { id: 'nps',  kind: 'kpi',   span: 2, rows: 1, x: 6, y: 0, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 3, x: 0, y: 1, title: 'Revenue vs target',
       data: { series: [{ name: 'Revenue', values: [4.1, 4.4, 4.9, 5.2, 5.9, 6.8] }, { name: 'Target', values: [4.0, 4.5, 5.0, 5.5, 6.0, 6.5] }], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
-    { id: 'mix',  kind: 'donut', span: 4, rows: 3, title: 'Revenue by region',
+    { id: 'mix',  kind: 'donut', span: 3, rows: 3, x: 6, y: 1, title: 'Revenue by region',
       data: { slices: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } },
-    { id: 'reps', kind: 'table', span: 7, rows: 3, title: 'Top reps',
+    { id: 'reps', kind: 'table', span: 5, rows: 3, x: 0, y: 4, title: 'Top reps',
       data: { columns: ['Rep', 'Region', 'Closed', 'Quota'], rows: [['A. Farouk', 'EMEA', 412000, '118%'], ['J. Park', 'APAC', 388000, '104%'], ['M. Silva', 'LATAM', 301000, '96%'], ['R. Chen', 'NA', 297000, '91%']] } },
-    { id: 'funnel', kind: 'funnel', span: 5, rows: 3, title: 'Pipeline',
+    { id: 'funnel', kind: 'funnel', span: 4, rows: 3, x: 5, y: 4, title: 'Pipeline',
       data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
     // A SECTION with a caption painted by the kit (element 0.4.22): its own
     // 12-column grid, a 44 px band reserved above its children, four free
     // columns to drag a KPI into. `setCaption` restyles it live.
-    { id: 'ops', title: 'Operations', span: 12, rows: 1, columns: 12,
+    { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9,
       caption: { subtitle: 'live since 08:00', description: 'A section: its own grid inside the board. Drag a KPI in or out; the band is the kit\'s.', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }, { id: 'menu', label: 'More', icon: '⋯' }] },
       widgets: [
         { id: 'orders', kind: 'kpi', span: 4, rows: 1, data: { label: 'Orders today', value: '312', delta: 5.2 } },
         { id: 'churn',  kind: 'kpi', span: 4, rows: 1, data: { label: 'Churn', value: '1.9%', delta: -0.3 } },
       ] },
+    // THREE TAB CAPTIONS, down the right, together the board's full height.
+    // `position: 'tab'` is the same band sized to its text — a chip at the
+    // section's leading corner. It RESERVES its height inside the section's
+    // own cell, so a tab never lies over the widget above it.
+    { id: 'tab-filters', title: 'Filters', span: 3, rows: 3, x: 9, y: 0, columns: 3,
+      caption: { position: 'tab', text: 'Filters', icon: '▤' },
+      widgets: [{ id: 'f-region', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } }] },
+    { id: 'tab-alerts', title: 'Alerts', span: 3, rows: 3, x: 9, y: 3, columns: 3,
+      caption: { position: 'tab', text: 'Alerts', icon: '⚠', actions: [{ id: 'clear', label: 'Clear alerts', icon: '✕' }] },
+      widgets: [{ id: 'a-open', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Open', value: '3', delta: -2.0 } }] },
+    { id: 'tab-notes', title: 'Notes', span: 3, rows: 2, x: 9, y: 6, columns: 3,
+      caption: { position: 'tab', text: 'Notes' },
+      widgets: [{ id: 'n-last', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } }] },
   ],
 };
 
@@ -294,7 +346,8 @@ defineDemo({
     '③ Drag "Revenue by region" up onto the KPI row: the KPIs slide out of the way, nothing else changes size, and the board grows a few rows — scroll with the wheel to reach the bottom. Adds are never refused in grow mode.',
     '④ Switch to "Fit": the board keeps its height and rows squeeze so everything stays on one screen. Press "+ Add a row" a few times: each row lands while there is room; when the next would need more than the board\'s height allows, the add is refused and the message says so.',
     '⑤ Switch to "Split": the DevExpress model — every widget stretches to cover the board, a divider between two widgets drags as a percentage, dragging a widget onto another\'s edge inserts it there, "+ Add a row" halves the largest widget. "Grid" brings the cells back with the same picture.',
-    '⑥ The "Operations" row is a section with a caption the kit paints: click the band to select the section, hover it for its actions, press ⤢ and read the message. Drag "Orders today" out onto the board, or a KPI in — four columns are free. "Caption" restyles it live; Ctrl/⌘-Z undoes each change. Every variant keeps its pixels inside the section — a header hanging over the neighbour above is the bug this replaces.',
+    '⑥ Down the RIGHT, three sections carry a `position: \'tab\'` caption — Filters, Alerts and Notes — the chip form of the band. Each reserves its own height, so no chip sits over the section above it; the Alerts chip carries an action button too.',
+    '⑦ The "Operations" row is a section with a caption the kit paints: click the band to select the section, hover it for its actions, press ⤢ and read the message. Drag "Orders today" out onto the board, or a KPI in — four columns are free. "Caption" restyles it live; Ctrl/⌘-Z undoes each change. Every variant keeps its pixels inside the section — a header hanging over the neighbour above is the bug this replaces.',
     'Press "▶ run the scripted checks": mode, frame = container, zoom 1, the container resize, the capacity refusal, the no-overflow invariant and the section caption are all asserted.',
   ],
   reactflow: null,
@@ -320,7 +373,7 @@ defineDemo({
 
     ctx2.addRow = () => {
       const id = `row-${++added}`;
-      const w = H.addWidget({ id, kind: 'kpi', span: 12, rows: 1, data: { label: `Row ${added}`, value: `#${added}` } });
+      const w = H.addWidget({ id, kind: 'kpi', span: 9, rows: 1, data: { label: `Row ${added}`, value: `#${added}` } });
       const m = H.metrics();
       if (w) say(`added ${id} — ${m.rows} rows of ${m.capacity ?? '∞'}`);
       else say(`refused: the board holds ${m.capacity} rows and is full — nothing painted past its edge`, true);
