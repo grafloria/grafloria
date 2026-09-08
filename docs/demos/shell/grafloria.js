@@ -194501,8 +194501,10 @@ var CSS4 = `
   position: absolute; box-sizing: border-box; pointer-events: auto; z-index: 1;
   display: flex; align-items: center; gap: 6px; min-width: 0;
   padding: var(--axdb-caption-pad, 0 10px);
-  background: var(--axdb-caption-bg, rgba(31, 36, 48, .045));
-  border-bottom: var(--axdb-caption-border, none);
+  background: var(--axdb-caption-bg, rgba(31, 36, 48, .055));
+  /* A hairline by default: two bands meeting (a captioned section inside a
+     captioned section) read as two headers, not one grey block. */
+  border-bottom: var(--axdb-caption-border, 1px solid rgba(31, 36, 48, .1));
   color: var(--axdb-caption-fg, #1f2430);
   font: var(--axdb-caption-font-weight, 600) var(--axdb-caption-font-size, 13px)/1.2 var(--axdb-caption-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
   text-transform: var(--axdb-caption-transform, none);
@@ -194516,13 +194518,27 @@ var CSS4 = `
 .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--end { justify-content: flex-end; }
 .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--vtop { align-items: flex-start; }
 .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--vbottom { align-items: flex-end; }
-/* 'tab': above the frame, sized to its text */
-.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tab { right: auto; max-width: 100%; }
-/* 'hover': an overlay that appears with the pointer or the selection */
-.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--hover { opacity: 0; }
-.grafloria-html-layer > .axdb-slab:hover > .axdb-slab-h.axdb-slab-h--hover,
-.grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-slab-h.axdb-slab-h--hover,
-.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--hover:focus-within { opacity: 1; }
+/* 'tab': the same band sized to its text, a chip at the leading corner. It
+   reserves its height like 'inside' \u2014 see captionReserve. */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tab {
+  max-width: 100%; border-radius: var(--axdb-rs-radius, 3px);
+  border-bottom: var(--axdb-caption-border-tab, none);
+  box-shadow: inset 0 0 0 1px rgba(31, 36, 48, .08);
+}
+/* 'hover': an overlay. It reserves nothing, so while hidden it must not take
+   the pointer (an invisible band swallowed clicks on the content beneath),
+   and while shown it paints OPAQUE \u2014 a 5% tint over a chart is a smear. */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--hover {
+  opacity: 0; pointer-events: none;
+  background: var(--axdb-caption-bg, #fff);
+  box-shadow: 0 1px 4px rgba(31, 36, 48, .16);
+}
+/* .axdb-slab--hot is set by the binder from the live pointer (the overlay
+   takes no pointer of its own, so CSS :hover can never fire on it). */
+.grafloria-html-layer > .axdb-slab.axdb-slab--hot > .axdb-slab-h.axdb-slab-h--hover,
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-slab-h.axdb-slab-h--hover { pointer-events: auto; opacity: 1; }
+/* the actions of a hovered or selected section */
+.grafloria-html-layer > .axdb-slab.axdb-slab--hot > .axdb-slab-h > .axdb-slab-h-actions { opacity: 1; }
 /* the tight tier: a section under 90 px */
 .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tight { font-size: min(var(--axdb-caption-font-size, 12px), 12px); gap: 4px; }
 .axdb-slab-h--tight .axdb-slab-h-sub, .axdb-slab-h--tight .axdb-slab-h-actions { display: none; }
@@ -194544,7 +194560,13 @@ var CSS4 = `
 .axdb-slab-h-action[disabled]:hover { background: none; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-slab-h { cursor: default; }
 @media (prefers-color-scheme: dark) {
-  .grafloria-html-layer > .axdb-slab > .axdb-slab-h { background: var(--axdb-caption-bg, rgba(236, 238, 244, .06)); color: var(--axdb-caption-fg, #eceef4); }
+  .grafloria-html-layer > .axdb-slab > .axdb-slab-h {
+    background: var(--axdb-caption-bg, rgba(236, 238, 244, .07));
+    color: var(--axdb-caption-fg, #eceef4);
+    border-bottom: var(--axdb-caption-border, 1px solid rgba(236, 238, 244, .12));
+  }
+  .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tab { box-shadow: inset 0 0 0 1px rgba(236, 238, 244, .12); }
+  .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--hover { background: var(--axdb-caption-bg, #1a1d25); box-shadow: 0 1px 4px rgba(0, 0, 0, .5); }
   .axdb-slab-h-action:hover { background: rgba(236, 238, 244, .1); }
 }
 
@@ -194597,6 +194619,8 @@ var CAPTION_HEIGHT = 28;
 var CAPTION_HEIGHT_SUBTITLE = 44;
 var CAPTION_HEIGHT_TIGHT = 22;
 var CAPTION_TIGHT_BELOW = 90;
+var CAPTION_MIN_HEIGHT = 16;
+var CAPTION_MIN_CONTENT = 20;
 var CAPTION_PASS_THROUGH = "button, a, input, select, textarea, [data-axdb-pass]";
 function normalizeCaption(c, title) {
   if (c === void 0 || c === false) return null;
@@ -194619,12 +194643,13 @@ function captionPainted(c, isStatic) {
   return !(c.show === "design" && isStatic);
 }
 function captionBandHeight(c, sectionH) {
-  if (sectionH > 0 && sectionH < CAPTION_TIGHT_BELOW) return CAPTION_HEIGHT_TIGHT;
-  return c.height ?? (c.subtitle ? CAPTION_HEIGHT_SUBTITLE : CAPTION_HEIGHT);
+  const want = captionTight(sectionH) ? CAPTION_HEIGHT_TIGHT : c.height ?? (c.subtitle ? CAPTION_HEIGHT_SUBTITLE : CAPTION_HEIGHT);
+  if (sectionH <= 0) return want;
+  return Math.max(CAPTION_MIN_HEIGHT, Math.min(want, sectionH - CAPTION_MIN_CONTENT));
 }
 function captionReserve(c, ctx) {
   if (!c || !captionPainted(c, ctx.static)) return 0;
-  if (c.position === "tab" || c.show === "hover") return 0;
+  if (c.show === "hover") return 0;
   const [mv] = pairOf(c.margin, [0, 0]);
   return captionBandHeight(c, ctx.sectionH) + 2 * mv;
 }
@@ -194632,11 +194657,13 @@ function captionKey(c, ctx) {
   return JSON.stringify([c, ctx.rtl, ctx.static]);
 }
 var captionTight = (sectionH) => sectionH > 0 && sectionH < CAPTION_TIGHT_BELOW;
+function bandSides(c, mh, rtl) {
+  if (c.position !== "tab") return { left: `${mh}px`, right: `${mh}px` };
+  return rtl ? { left: "auto", right: `${mh}px` } : { left: `${mh}px`, right: "auto" };
+}
 function sizeCaptionBand(band, c, sectionH) {
-  const h = captionBandHeight(c, sectionH);
   band.classList.toggle("axdb-slab-h--tight", captionTight(sectionH));
-  band.style.height = `${h}px`;
-  if (c.position === "tab") band.style.top = `${-h}px`;
+  band.style.height = `${captionBandHeight(c, sectionH)}px`;
 }
 function captionPassThrough(target, band, c) {
   if (!target || !band.contains(target)) return false;
@@ -194668,9 +194695,10 @@ function paintCaptionBand(band, c, ctx) {
   if (c.className) for (const k of c.className.split(/\s+/).filter(Boolean)) band.classList.add(k);
   band.setAttribute("dir", ctx.rtl ? "rtl" : "ltr");
   band.style.height = `${h}px`;
-  band.style.top = c.position === "tab" ? `${-h}px` : `${mv}px`;
-  band.style.left = `${mh}px`;
-  band.style.right = c.position === "tab" ? "auto" : `${mh}px`;
+  band.style.top = `${mv}px`;
+  const sides = bandSides(c, mh, ctx.rtl);
+  band.style.left = sides.left;
+  band.style.right = sides.right;
   const v = (name, value) => {
     if (value === void 0) band.style.removeProperty(name);
     else band.style.setProperty(name, value);
@@ -196361,8 +196389,21 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const unregisterTool = registerTool(tool);
   let hoverHost = null;
+  const markHotSection = (clientX, clientY) => {
+    if (!slabEls.size) return;
+    for (const [id, el2] of slabEls) {
+      if (!el2.querySelector(":scope > .axdb-slab-h--hover")) continue;
+      const r = el2.getBoundingClientRect();
+      const hot = clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+      el2.classList.toggle("axdb-slab--hot", hot);
+    }
+  };
+  const onHoverLeave = () => {
+    for (const el2 of slabEls.values()) el2.classList.remove("axdb-slab--hot");
+  };
   const onHover = (e) => {
     if (disposed || gesture) return;
+    markHotSection(e.clientX, e.clientY);
     let host = e.target?.closest?.(".grafloria-node-host");
     if (!host) {
       for (const id2 of group.members ?? []) {
@@ -196398,6 +196439,7 @@ function bindDashboardGrid(api, group, options = {}) {
     else host.removeAttribute("data-axdb-edge");
   };
   api.container.addEventListener("pointermove", onHover, { passive: true });
+  api.container.addEventListener("pointerleave", onHoverLeave, { passive: true });
   const staticGuard = (e) => {
     if (!isStatic || disposed) return;
     const t = e.target;
@@ -196847,6 +196889,7 @@ function bindDashboardGrid(api, group, options = {}) {
       peersOnCanvas().delete(selfPeer);
       unregisterTool();
       api.container.removeEventListener("pointermove", onHover);
+      api.container.removeEventListener("pointerleave", onHoverLeave);
       guardedLayer?.removeEventListener("pointerdown", staticGuard);
       api.container.removeEventListener("focusin", onFocusIn);
       api.container.removeEventListener("keydown", onKey);
@@ -201442,6 +201485,10 @@ export {
   BroadcastChannelTransport,
   ButtonNode,
   CANVAS_LINK_HIT_TOLERANCE,
+  CAPTION_HEIGHT,
+  CAPTION_HEIGHT_SUBTITLE,
+  CAPTION_HEIGHT_TIGHT,
+  CAPTION_PASS_THROUGH,
   CASCADE_ORDER,
   CONNECTION_POINTS,
   CONNECTORS,
@@ -201862,6 +201909,8 @@ export {
   cancelFrame,
   canonicalStringify,
   canvasSafety,
+  captionBandHeight,
+  captionReserve,
   captureCustomNodeHost,
   cellFromGridItem,
   cellToRect,
@@ -202204,6 +202253,7 @@ export {
   nodeSize,
   nodeSpecId,
   normalizeAngle,
+  normalizeCaption,
   notifyEdgeTemplatesChanged,
   notifyLinkPipelineChanged,
   notifyShapeRegistered,
@@ -202225,6 +202275,7 @@ export {
   padRect,
   pageDimensions,
   paginate,
+  paintCaptionBand,
   panelAdjustedInnerRect,
   parallelOffsets,
   parseColor,

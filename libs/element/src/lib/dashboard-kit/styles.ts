@@ -375,8 +375,10 @@ const CSS = `
   position: absolute; box-sizing: border-box; pointer-events: auto; z-index: 1;
   display: flex; align-items: center; gap: 6px; min-width: 0;
   padding: var(--axdb-caption-pad, 0 10px);
-  background: var(--axdb-caption-bg, rgba(31, 36, 48, .045));
-  border-bottom: var(--axdb-caption-border, none);
+  background: var(--axdb-caption-bg, rgba(31, 36, 48, .055));
+  /* A hairline by default: two bands meeting (a captioned section inside a
+     captioned section) read as two headers, not one grey block. */
+  border-bottom: var(--axdb-caption-border, 1px solid rgba(31, 36, 48, .1));
   color: var(--axdb-caption-fg, #1f2430);
   font: var(--axdb-caption-font-weight, 600) var(--axdb-caption-font-size, 13px)/1.2 var(--axdb-caption-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
   text-transform: var(--axdb-caption-transform, none);
@@ -390,13 +392,27 @@ const CSS = `
 .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--end { justify-content: flex-end; }
 .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--vtop { align-items: flex-start; }
 .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--vbottom { align-items: flex-end; }
-/* 'tab': above the frame, sized to its text */
-.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tab { right: auto; max-width: 100%; }
-/* 'hover': an overlay that appears with the pointer or the selection */
-.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--hover { opacity: 0; }
-.grafloria-html-layer > .axdb-slab:hover > .axdb-slab-h.axdb-slab-h--hover,
-.grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-slab-h.axdb-slab-h--hover,
-.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--hover:focus-within { opacity: 1; }
+/* 'tab': the same band sized to its text, a chip at the leading corner. It
+   reserves its height like 'inside' — see captionReserve. */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tab {
+  max-width: 100%; border-radius: var(--axdb-rs-radius, 3px);
+  border-bottom: var(--axdb-caption-border-tab, none);
+  box-shadow: inset 0 0 0 1px rgba(31, 36, 48, .08);
+}
+/* 'hover': an overlay. It reserves nothing, so while hidden it must not take
+   the pointer (an invisible band swallowed clicks on the content beneath),
+   and while shown it paints OPAQUE — a 5% tint over a chart is a smear. */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--hover {
+  opacity: 0; pointer-events: none;
+  background: var(--axdb-caption-bg, #fff);
+  box-shadow: 0 1px 4px rgba(31, 36, 48, .16);
+}
+/* .axdb-slab--hot is set by the binder from the live pointer (the overlay
+   takes no pointer of its own, so CSS :hover can never fire on it). */
+.grafloria-html-layer > .axdb-slab.axdb-slab--hot > .axdb-slab-h.axdb-slab-h--hover,
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-slab-h.axdb-slab-h--hover { pointer-events: auto; opacity: 1; }
+/* the actions of a hovered or selected section */
+.grafloria-html-layer > .axdb-slab.axdb-slab--hot > .axdb-slab-h > .axdb-slab-h-actions { opacity: 1; }
 /* the tight tier: a section under 90 px */
 .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tight { font-size: min(var(--axdb-caption-font-size, 12px), 12px); gap: 4px; }
 .axdb-slab-h--tight .axdb-slab-h-sub, .axdb-slab-h--tight .axdb-slab-h-actions { display: none; }
@@ -418,7 +434,13 @@ const CSS = `
 .axdb-slab-h-action[disabled]:hover { background: none; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-slab-h { cursor: default; }
 @media (prefers-color-scheme: dark) {
-  .grafloria-html-layer > .axdb-slab > .axdb-slab-h { background: var(--axdb-caption-bg, rgba(236, 238, 244, .06)); color: var(--axdb-caption-fg, #eceef4); }
+  .grafloria-html-layer > .axdb-slab > .axdb-slab-h {
+    background: var(--axdb-caption-bg, rgba(236, 238, 244, .07));
+    color: var(--axdb-caption-fg, #eceef4);
+    border-bottom: var(--axdb-caption-border, 1px solid rgba(236, 238, 244, .12));
+  }
+  .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tab { box-shadow: inset 0 0 0 1px rgba(236, 238, 244, .12); }
+  .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--hover { background: var(--axdb-caption-bg, #1a1d25); box-shadow: 0 1px 4px rgba(0, 0, 0, .5); }
   .axdb-slab-h-action:hover { background: rgba(236, 238, 244, .1); }
 }
 

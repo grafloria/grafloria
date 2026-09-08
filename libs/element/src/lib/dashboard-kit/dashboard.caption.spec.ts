@@ -132,13 +132,48 @@ describe('section captions — painting and reserving', () => {
     expect(dropOf(rich.model)).toBeGreaterThanOrEqual(44);
   });
 
-  it("position 'tab' paints the band above the frame and reserves nothing inside it", () => {
+  it("position 'tab' is the band sized to its text, at the leading corner, and it RESERVES", () => {
     const { api, model } = up(BOARD({ position: 'tab' }));
     const band = bandOf(api)!;
     expect(band.classList.contains('axdb-slab-h--tab')).toBe(true);
-    expect(band.style.top).toBe('-28px');
-    expect(band.style.right).not.toBe('0px'); // sized to its text, not the frame (jsdom reads 'auto' back as '')
-    expect(dropOf(model)).toBeLessThan(1);
+    // inside its own cell, never hanging over whatever the board put above it
+    expect(band.style.top).toBe('0px');
+    expect(band.style.left).toBe('0px');
+    expect(band.style.right).not.toBe('0px'); // sized to its text (jsdom reads 'auto' back as '')
+    expect(dropOf(model)).toBeGreaterThanOrEqual(28);
+  });
+
+  it('an RTL tab hugs the trailing edge instead', () => {
+    const { api } = up(BOARD({ position: 'tab' }, { rtl: true }));
+    const band = bandOf(api)!;
+    expect(band.style.right).toBe('0px');
+    expect(band.style.left).not.toBe('0px');
+  });
+
+  it('a band never takes the section: it clamps to sectionH - 20, floored at 16', () => {
+    // A 1-row 34 px section with ONE 1-row child: a 22 px band would leave a
+    // 12 px sliver. The band clamps to 16 and the child keeps 18.
+    const { api, model } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 34,
+        sizing: 'grow',
+        widgets: [
+          { id: 'box', title: 'Short', caption: true, span: 4, rows: 1, x: 0, y: 0, columns: 4, widgets: [{ id: 'c1', kind: 'kpi', span: 4, rows: 1, x: 0, y: 0 }] },
+          { id: 'free', kind: 'line', span: 8, rows: 1, x: 4, y: 0 },
+        ],
+      })
+    );
+    expect(model.getGroup('box')!.size!.height).toBe(34);
+    expect(bandOf(api)!.style.height).toBe('16px');
+    expect(dropOf(model)).toBeGreaterThanOrEqual(16);
+    expect(model.getNode('c1')!.size!.height).toBeGreaterThanOrEqual(16);
+    // and a roomy section is not clamped at all
+    const roomy = up(BOARD(true));
+    expect(bandOf(roomy.api)!.style.height).toBe('28px');
   });
 
   it('align, valign, font, padding, margin, background and border land on the band', () => {
@@ -178,6 +213,15 @@ describe('section captions — painting and reserving', () => {
     expect(band.style.getPropertyValue('--axdb-caption-pad')).toBe('6px 6px');
     expect(band.style.top).toBe('3px');
     expect(band.style.left).toBe('3px');
+  });
+
+  it('only a hover caption reserves nothing — inside and tab both take their pixels', () => {
+    const inside = up(BOARD(true));
+    const tab = up(BOARD({ position: 'tab' }));
+    const hover = up(BOARD({ show: 'hover' }));
+    expect(dropOf(inside.model)).toBeGreaterThanOrEqual(28);
+    expect(dropOf(tab.model)).toBeGreaterThanOrEqual(28);
+    expect(dropOf(hover.model)).toBeLessThan(1);
   });
 
   it("show: 'design' is neither painted nor reserved under static; 'hover' overlays without reserving", () => {

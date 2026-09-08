@@ -994,19 +994,118 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `rest: selected=${b0.selected} actions op=${b0.actionsOp} · band press: selected=${b1.selected} api=${sel1} events=${ev1} · hover: op=${b2.actionsOp} · Maximize: ${acts} sel=${sel2} · disabled: ${acts2.length} · child press: slab=${b3.selected} op=${b3.actionsOp} sel=${sel3} ${JSON.stringify(sane)}`);
 }
 {
-  begin('L42-a-tab-caption-sits-above-the-frame-and-selects-it');
+  begin('L42-a-tab-caption-reserves-its-own-space-and-never-covers-a-neighbour');
   await scrollTo('cap-tab');
   const t = await band('cap-tab', 'box');
-  const top = await childTop('cap-tab', 'box');
-  const kpi = await rect('cap-tab', 'rev');
-  const under = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('.axdb-slab-h') ? 'band' : 'other', [t.textRect.x + 4, t.textRect.y + t.textRect.height / 2]);
+  const top = await band('cap-tab', 'top');
+  const inner = await childTop('cap-tab', 'box');
+  const innerTop = await childTop('cap-tab', 'top');
+  const above = await rect('cap-tab', 'above');
+  const cv = await page.evaluate(() => document.getElementById('cv-cap-tab').getBoundingClientRect().toJSON());
+  const under = await page.evaluate(([x, y]) => (document.elementFromPoint(x, y)?.closest('.axdb-slab-h') ? 'band' : 'other'), [t.textRect.x + 4, t.textRect.y + t.textRect.height / 2]);
   await page.mouse.click(t.textRect.x + 4, t.textRect.y + t.textRect.height / 2); await page.waitForTimeout(300);
   const t1 = await band('cap-tab', 'box');
   const sel = await page.evaluate(() => window.__lab['cap-tab'].handle.getSelectedWidget());
   const sane = await sanity('cap-tab');
-  await shot('cap-tab', 'tab-caption-selected');
-  verdict(t.band && t.cls.includes('axdb-slab-h--tab') && Math.abs(t.band.y + t.band.height - t.slab.y) < 1 && t.band.width < t.slab.width - 40 && Math.abs(top - t.slab.y) < 1 && t.band.y >= kpi.bottom - 0.5 && under === 'band' && t1.selected && sel === 'box' && sane.overlaps === 0,
-    `tab: y ${t.band?.y}+${t.band?.height} vs slab y ${t.slab.y} · width ${t.band?.width} of ${t.slab.width} · child top ${top} · above KPI bottom ${kpi.bottom} · under=${under} · press: selected=${t1.selected} api=${sel} ${JSON.stringify(sane)}`);
+  await shot('cap-tab', 'tab-captions-reserved');
+  verdict(t.band && t.cls.includes('axdb-slab-h--tab')
+    // sized to its text, inside its own slab, reserving its height for the children
+    && t.band.width < t.slab.width - 40 && Math.abs(t.band.y - t.slab.y) < 1 && inner >= t.band.y + t.band.height - 0.5
+    // never over the chart above it, and never off the top of the canvas
+    && t.band.y >= above.bottom - 0.5 && top.band.y >= cv.y - 0.5 && innerTop >= top.band.y + top.band.height - 0.5
+    && under === 'band' && t1.selected && sel === 'box' && sane.overlaps === 0 && sane.overflow === 0,
+    `tab: ${t.band?.width} of ${t.slab.width} wide, y ${t.band?.y} slab y ${t.slab.y} child top ${inner} · chart above ends ${above.bottom} · top-row tab y ${top.band?.y} canvas y ${cv.y} its child ${innerTop} · under=${under} press: sel=${sel} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L49-no-caption-band-ever-lies-over-a-widget-that-is-not-its-own');
+  const boards = ['cap-default', 'cap-fit', 'cap-tab', 'cap-styled', 'cap-custom', 'cap-rtl', 'cap-tight', 'cap-nested', 'cap-edge'];
+  const bad = [];
+  for (const b of boards) {
+    await scrollTo(b);
+    const r = await page.evaluate((b) => {
+      const out = [];
+      const cv = document.getElementById(`cv-${b}`);
+      const model = window.__lab[b].api.getModel();
+      for (const slab of cv.querySelectorAll('.axdb-slab')) {
+        const sid = slab.dataset.slabId;
+        const bandEl = slab.querySelector(':scope > .axdb-slab-h');
+        const sr = slab.getBoundingClientRect();
+        const own = new Set([...(model.getGroup(sid)?.members ?? [])]);
+        if (bandEl && getComputedStyle(bandEl).opacity !== '0') {
+          const br = bandEl.getBoundingClientRect();
+          // inside its own slab
+          if (br.top < sr.top - 0.5 || br.bottom > sr.bottom + 0.5 || br.left < sr.left - 0.5 || br.right > sr.right + 0.5) out.push(`${b}/${sid}:BAND-OUTSIDE-SLAB`);
+          for (const h of cv.querySelectorAll('.grafloria-node-host')) {
+            const r2 = h.getBoundingClientRect();
+            if (r2.width < 4) continue;
+            if (br.left < r2.right - 1 && r2.left < br.right - 1 && br.top < r2.bottom - 1 && r2.top < br.bottom - 1) out.push(`${b}/${sid}:COVERS ${h.dataset.nodeId}${own.has(h.dataset.nodeId) ? '(own)' : '(FOREIGN)'}`);
+          }
+        }
+        // every child inside its own section, and none crushed
+        for (const m of own) {
+          const h = cv.querySelector(`.grafloria-node-host[data-node-id="${m}"]`);
+          if (!h) continue;
+          const r2 = h.getBoundingClientRect();
+          if (r2.top < sr.top - 0.5 || r2.bottom > sr.bottom + 0.5) out.push(`${b}/${sid}:CHILD-OUT ${m}`);
+          if (r2.height < 12) out.push(`${b}/${sid}:CHILD-CRUSHED ${m}(${Math.round(r2.height)}px)`);
+        }
+      }
+      return out;
+    }, b);
+    bad.push(...r);
+  }
+  await shot('cap-edge', 'edge-captions');
+  await shot('cap-tab', 'tab-captions');
+  // a hover band is the ONE overlay: it may cover its own children, never a foreign one
+  const foreign = bad.filter((x) => x.includes('FOREIGN') || x.includes('OUTSIDE') || x.includes('CHILD-OUT') || x.includes('CRUSHED'));
+  verdict(foreign.length === 0, `${boards.length} captioned boards swept · offences: ${foreign.length ? foreign.join(' | ') : 'none'} (own-child overlays, allowed: ${bad.length - foreign.length})`);
+}
+{
+  begin('L50-a-short-section-clamps-its-band-and-keeps-its-children');
+  await scrollTo('cap-edge');
+  const one = await band('cap-edge', 'one');
+  const two = await band('cap-edge', 'two');
+  const all = await band('cap-edge', 'all');
+  const oneChild = await page.evaluate(() => document.querySelector('#cv-cap-edge .grafloria-node-host[data-node-id="o1"]').getBoundingClientRect().toJSON());
+  const allText = await page.evaluate(() => { const t = document.querySelector('#cv-cap-edge .axdb-slab[data-slab-id="all"] .axdb-slab-h-text'); const cs = getComputedStyle(t); return { clipped: t.scrollWidth > t.clientWidth + 1, ellipsis: cs.textOverflow === 'ellipsis' && cs.whiteSpace === 'nowrap', title: t.getAttribute('title')?.slice(0, 20), right: t.getBoundingClientRect().right }; });
+  const allActions = await page.evaluate(() => { const a = document.querySelector('#cv-cap-edge .axdb-slab[data-slab-id="all"] .axdb-slab-h-actions'); const r = a.getBoundingClientRect(); const br = a.parentElement.getBoundingClientRect(); return { left: r.left, bandRight: br.right, right: r.right }; });
+  verdict(Math.round(one.band.height) === 16 && oneChild.height >= 16 && oneChild.top >= one.band.y + one.band.height - 0.5
+    && Math.round(two.band.height) === 22 && Math.round(all.band.height) === 44
+    && allText.clipped && allText.ellipsis && allText.title === 'Quarterly revenue by' && allText.right <= allActions.left + 0.5 && allActions.right <= allActions.bandRight + 0.5,
+    `1-row 34 px section: band ${one.band?.height}px (clamped from 22) child ${Math.round(oneChild.height)}px at ${Math.round(oneChild.top)} · 2-row: ${two.band?.height}px · narrow-all: ${all.band?.height}px text clipped=${allText.clipped} ellipsis=${allText.ellipsis} tooltip="${allText.title}" ends ${Math.round(allText.right)} before actions ${Math.round(allActions.left)} which end ${Math.round(allActions.right)} inside ${Math.round(allActions.bandRight)}`);
+}
+{
+  begin('L51-a-hover-caption-takes-no-pointer-until-it-shows-and-paints-opaque');
+  await scrollTo('cap-styled');
+  const read = () => page.evaluate(() => { const s = document.querySelector('#cv-cap-styled .axdb-slab[data-slab-id="st-c"]'); const b = s.querySelector(':scope > .axdb-slab-h'); const cs = getComputedStyle(b); return { hot: s.classList.contains('axdb-slab--hot'), op: cs.opacity, pe: cs.pointerEvents, alpha: cs.backgroundColor }; });
+  const slabC = await page.evaluate(() => document.querySelector('#cv-cap-styled .axdb-slab[data-slab-id="st-c"]').getBoundingClientRect().toJSON());
+  await page.mouse.move(5, 5); await page.waitForTimeout(200);
+  const rest = await read();
+  // a press where the hidden band sits reaches the CHILD, not the section
+  await page.evaluate(() => window.__lab['cap-styled'].handle.selectWidget(undefined));
+  await page.mouse.click(slabC.x + slabC.width / 2, slabC.y + 10); await page.waitForTimeout(300);
+  const selUnder = await page.evaluate(() => window.__lab['cap-styled'].handle.getSelectedWidget());
+  await page.mouse.move(slabC.x + slabC.width / 2, slabC.y + slabC.height - 12); await page.waitForTimeout(300);
+  const shown = await read();
+  await shot('cap-styled', 'hover-caption-opaque');
+  await page.mouse.move(5, 5); await page.waitForTimeout(300);
+  const gone = await read();
+  const opaque = /^rgb\(/.test(shown.alpha); // rgb(), not rgba(… , .05)
+  verdict(rest.op === '0' && rest.pe === 'none' && !rest.hot && selUnder === 'sc1'
+    && shown.hot && shown.op === '1' && shown.pe === 'auto' && opaque && !gone.hot && gone.op === '0',
+    `at rest: opacity ${rest.op} pointer-events ${rest.pe} · a press in the band's area selected ${selUnder} (the child, not the section) · pointer in the section: hot=${shown.hot} opacity ${shown.op} pe ${shown.pe} bg ${shown.alpha} opaque=${opaque} · pointer away: hot=${gone.hot} opacity ${gone.op}`);
+}
+{
+  begin('L52-an-rtl-tab-mirrors-to-the-trailing-edge');
+  await scrollTo('cap-rtl');
+  const a = await band('cap-rtl', 'sec-controls');
+  const inner = await childTop('cap-rtl', 'sec-controls');
+  const sane = await sanity('cap-rtl');
+  await shot('cap-rtl', 'rtl-tab-mirrored');
+  verdict(a.band && a.cls.includes('--tab') && a.dir === 'rtl'
+    && Math.abs((a.band.x + a.band.width) - (a.slab.x + a.slab.width)) < 1 && a.band.x > a.slab.x + 40
+    && inner >= a.band.y + a.band.height - 0.5 && sane.overlaps === 0,
+    `rtl tab: band ${Math.round(a.band?.x)}..${Math.round(a.band?.x + a.band?.width)} in slab ${Math.round(a.slab.x)}..${Math.round(a.slab.x + a.slab.width)} (hugs the right) · child top ${inner} vs band bottom ${Math.round(a.band?.y + a.band?.height)} ${JSON.stringify(sane)}`);
 }
 {
   begin('L43-alignment-typography-box-hover-and-design-captions');
@@ -1019,8 +1118,9 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const cTop = await childTop('cap-styled', 'st-c');
   const dTop0 = await childTop('cap-styled', 'st-d');
   await shot('cap-styled', 'styled-at-rest');
-  // hover the 'hover' band: it appears with its action
-  await page.mouse.move(c0.slab.x + c0.slab.width / 2, c0.slab.y + 12); await page.waitForTimeout(300);
+  // the pointer anywhere in the section shows the 'hover' band (the binder
+  // marks the section — the overlay takes no pointer of its own)
+  await page.mouse.move(c0.slab.x + c0.slab.width / 2, c0.slab.y + c0.slab.height - 12); await page.waitForTimeout(300);
   const c1 = await band('cap-styled', 'st-c');
   await shot('cap-styled', 'hover-caption-shown');
   await page.mouse.move(10, 10); await page.waitForTimeout(300);
@@ -1064,7 +1164,7 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
 {
   begin('L45-rtl-captions-mirror');
   await scrollTo('cap-rtl');
-  const a = await band('cap-rtl', 'sec-controls');
+  const a = await band('cap-rtl', 'sec-out'); // a plain string caption: no icon, no tab
   const b = await band('cap-rtl', 'sec-paid');
   await page.mouse.move(b.band.x + 30, b.band.y + 20); await page.waitForTimeout(300);
   const b1 = await band('cap-rtl', 'sec-paid');

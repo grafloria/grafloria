@@ -290,7 +290,7 @@ defineDemo({
     '③ Drag "Revenue by region" up onto the KPI row: the KPIs slide out of the way, nothing else changes size, and the board grows a few rows — scroll with the wheel to reach the bottom. Adds are never refused in grow mode.',
     '④ Switch to "Fit": the board keeps its height and rows squeeze so everything stays on one screen. Press "+ Add a row" a few times: each row lands while there is room; when the next would need more than the board\'s height allows, the add is refused and the message says so.',
     '⑤ Switch to "Split": the DevExpress model — every widget stretches to cover the board, a divider between two widgets drags as a percentage, dragging a widget onto another\'s edge inserts it there, "+ Add a row" halves the largest widget. "Grid" brings the cells back with the same picture.',
-    '⑥ The "Operations" row is a section with a caption the kit paints: click the band to select the section, hover it for its actions, press ⤢ and read the message. Drag "Orders today" out onto the board, or a KPI in — four columns are free. "Caption" restyles it live; Ctrl/⌘-Z undoes each change.',
+    '⑥ The "Operations" row is a section with a caption the kit paints: click the band to select the section, hover it for its actions, press ⤢ and read the message. Drag "Orders today" out onto the board, or a KPI in — four columns are free. "Caption" restyles it live; Ctrl/⌘-Z undoes each change. Every variant keeps its pixels inside the section — a header hanging over the neighbour above is the bug this replaces.',
     'Press "▶ run the scripted checks": mode, frame = container, zoom 1, the container resize, the capacity refusal, the no-overflow invariant and the section caption are all asserted.',
   ],
   reactflow: null,
@@ -336,7 +336,7 @@ defineDemo({
     // The section's caption, live: one undo step each.
     const CAPTIONS = {
       default: SPEC_INPUT.widgets.find((w) => w.id === 'ops').caption,
-      tab: { text: 'Operations', position: 'tab', icon: '▤' },
+      tab: { text: 'Operations', position: 'tab', icon: '▤' },   // a chip at the leading corner, reserved like the band
       center: { align: 'center', font: { size: 11, weight: 700, transform: 'uppercase' }, background: '#e8ecfb', border: '1px solid #3b52d9' },
       hover: { show: 'hover', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }] },
       none: false,
@@ -345,7 +345,7 @@ defineDemo({
     ctx2.caption = (mode) => {
       capSel.value = mode;
       H.setCaption('ops', CAPTIONS[mode]);
-      say({ default: 'caption: a 44 px band with a subtitle, an ⓘ and two actions — a press on it selects the section', tab: 'caption as a tab above the frame — nothing reserved inside it', center: 'caption centred, uppercase, with its own fill and rule — typography and box are options', hover: 'caption on hover only: it overlays the content, nothing reserved', none: 'no caption: the section is a bare slab again — Ctrl/⌘-Z brings it back' }[mode]);
+      say({ default: 'caption: a 44 px band with a subtitle, an ⓘ and two actions — a press on it selects the section', tab: 'caption as a tab: the same band sized to its text, at the leading corner, reserved inside the section', center: 'caption centred, uppercase, with its own fill and rule — typography and box are options', hover: 'caption on hover only: it overlays the content, nothing reserved', none: 'no caption: the section is a bare slab again — Ctrl/⌘-Z brings it back' }[mode]);
     };
     capSel.addEventListener('change', () => ctx2.caption(capSel.value));
     document.getElementById('fb-narrow').addEventListener('click', () => ctx2.narrow(!stage.classList.contains('narrow')));
@@ -589,9 +589,11 @@ defineDemo({
     // live restyles, each one undo step
     ctx2.caption('tab');
     await settle();
-    check(band().classList.contains('axdb-slab-h--tab') && band().getBoundingClientRect().bottom <= slab().getBoundingClientRect().top + 0.5, 'as a tab the band sits above the frame');
+    const tabR = band().getBoundingClientRect(), slabR = slab().getBoundingClientRect();
+    check(band().classList.contains('axdb-slab-h--tab') && tabR.width < slabR.width - 40 && Math.abs(tabR.x - slabR.x) < 1, 'a tab is the band sized to its text, at the leading corner');
+    check(tabR.top >= slabR.top - 0.5 && tabR.bottom <= slabR.bottom, 'inside its own frame — never over the widget above it');
     const ordersTab = host.querySelector('.grafloria-node-host[data-node-id="orders"]').getBoundingClientRect();
-    check(Math.abs(ordersTab.top - slab().getBoundingClientRect().top) < 1, 'and reserves nothing inside it');
+    check(ordersTab.top >= tabR.bottom - 0.5, 'and it reserves its height, like an inside band');
     ctx2.caption('center');
     await settle();
     checkEqual(getComputedStyle(band()).textTransform, 'uppercase', 'centred: uppercase from the font option');
