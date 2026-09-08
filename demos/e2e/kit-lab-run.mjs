@@ -910,6 +910,267 @@ for (const [board, pos, place] of [['grip-in-l', 'left', 'inside'], ['grip-in-c'
     `dividers=${s0.divs} · mid: date ${s0.date}→${s1.date} amount ${s0.amount}→${s1.amount} section ${s0.w}x${s0.h}→${s1.w}x${s1.h} · edge grab: date →${s2.date} section ${s2.w}x${s2.h} · handle: section →${s3.w}x${s3.h} · grid again cells ${cells0} → ${cells1} divs=${s4.divs} ${JSON.stringify(sane)}`);
 }
 
+
+// ---- SECTION CAPTIONS (0.4.22) ------------------------------------------------
+const band = (board, id) => page.evaluate(([b, id]) => {
+  const el = document.querySelector(`#cv-${b} .axdb-slab[data-slab-id="${id}"]`);
+  if (!el) return null;
+  const r = el.getBoundingClientRect().toJSON();
+  const h = el.querySelector(':scope > .axdb-slab-h');
+  if (!h) return { slab: r, band: null, selected: el.classList.contains('axdb-slab--selected') };
+  const cs = getComputedStyle(h);
+  const q = (sel) => h.querySelector(sel);
+  const rr = (n) => (n ? n.getBoundingClientRect().toJSON() : null);
+  const acts = q('.axdb-slab-h-actions');
+  return {
+    slab: r, band: rr(h), selected: el.classList.contains('axdb-slab--selected'),
+    text: q('.axdb-slab-h-text')?.textContent ?? h.textContent, textRect: rr(q('.axdb-slab-h-text')),
+    sub: q('.axdb-slab-h-sub')?.textContent ?? null, subShown: q('.axdb-slab-h-sub') ? getComputedStyle(q('.axdb-slab-h-sub')).display !== 'none' : null,
+    icon: q('.axdb-slab-h-icon')?.textContent ?? null, info: q('.axdb-slab-h-info')?.getAttribute('title') ?? null,
+    actions: [...h.querySelectorAll('.axdb-slab-h-action')].map((a) => ({ id: a.dataset.action, disabled: a.disabled, r: a.getBoundingClientRect().toJSON() })),
+    actionsOp: acts ? +getComputedStyle(acts).opacity : null, actionsShown: acts ? getComputedStyle(acts).display !== 'none' : null, actionsRect: rr(acts),
+    cls: h.className, opacity: +cs.opacity, justify: cs.justifyContent, alignItems: cs.alignItems, transform: cs.textTransform,
+    bg: cs.backgroundColor, borderBottom: cs.borderBottomWidth, fontSize: cs.fontSize, fontWeight: cs.fontWeight, fontFamily: cs.fontFamily, color: cs.color, dir: h.getAttribute('dir'),
+    aria: el.getAttribute('aria-label'),
+  };
+}, [board, id]);
+/** The topmost child host of a section, in client px. */
+const childTop = (board, id) => page.evaluate(([b, id]) => {
+  const g = window.__lab[b].api.getModel().getGroup(id);
+  const ys = [...(g?.members ?? [])].map((m) => document.querySelector(`#cv-${b} .grafloria-node-host[data-node-id="${m}"]`)?.getBoundingClientRect().y).filter((y) => y != null);
+  return ys.length ? Math.min(...ys) : null;
+}, [board, id]);
+const actionsOf = (board) => page.evaluate((b) => (window.__labActions[b] ?? []).splice(0), board);
+const selEvents = (board) => page.evaluate((b) => (window.__labSelects[b] ?? []).splice(0), board);
+const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => { const cm = window.__lab[b].api.getEngine().commandManager; for (let i = 0; i < n && cm.canUndo(); i++) await cm.undo(); }, [board, n]); await page.waitForTimeout(350); };
+
+{
+  begin('L40-a-caption-is-painted-and-its-pixels-are-reserved');
+  await scrollTo('cap-default');
+  const a = await band('cap-default', 'sec-controls');
+  const b = await band('cap-default', 'sec-paid');
+  const c = await band('cap-default', 'sec-out');
+  const aTop = await childTop('cap-default', 'sec-controls');
+  const bTop = await childTop('cap-default', 'sec-paid');
+  const cTop = await childTop('cap-default', 'sec-out');
+  const sane = await sanity('cap-default');
+  await shot('cap-default', 'captions-at-rest');
+  const okA = a?.band && Math.round(a.band.height) === 28 && a.text === 'Report controls' && Math.abs(a.band.y - a.slab.y) < 1 && Math.abs(a.band.width - a.slab.width) < 1 && aTop >= a.band.y + a.band.height - 0.5 && a.aria === 'Report controls';
+  const okB = b?.band && Math.round(b.band.height) === 44 && b.text === 'Paid business' && b.sub === 'net of refunds' && b.icon === '💰' && b.info === 'Paid invoices only, current quarter' && b.actions.length === 3 && b.actions[2].disabled && bTop >= b.band.y + b.band.height - 0.5;
+  const okC = c && c.band === null && Math.abs(cTop - c.slab.y) < 1;
+  verdict(okA && okB && okC && sane.overlaps === 0 && sane.overflow === 0,
+    `A: band ${a?.band?.width}x${a?.band?.height} "${a?.text}" aria=${a?.aria} child top ${aTop} vs band bottom ${a?.band ? a.band.y + a.band.height : '-'} · B: ${b?.band?.height}px "${b?.text}" sub="${b?.sub}" icon=${b?.icon} info="${b?.info}" actions=${b?.actions?.map((x) => x.id + (x.disabled ? '!' : ''))} child top ${bTop} · C: band=${c?.band} child top ${cTop} slab y ${c?.slab?.y} · ${JSON.stringify(sane)}`);
+}
+{
+  begin('L41-a-press-on-the-band-selects-an-action-fires-hover-reveals');
+  await scrollTo('cap-default');
+  await selEvents('cap-default'); await actionsOf('cap-default');
+  const b0 = await band('cap-default', 'sec-paid');
+  // a. the band selects the section (not the child under it)
+  await page.mouse.click(b0.textRect.x + 10, b0.textRect.y + b0.textRect.height / 2); await page.waitForTimeout(300);
+  const b1 = await band('cap-default', 'sec-paid');
+  const sel1 = await page.evaluate(() => window.__lab['cap-default'].handle.getSelectedWidget());
+  const ev1 = await selEvents('cap-default');
+  await shot('cap-default', 'band-press-selects');
+  // b. hover the band: the actions appear; press Maximize: onCaptionAction, selection unchanged
+  await page.mouse.move(b1.band.x + b1.band.width - 60, b1.band.y + 20); await page.waitForTimeout(300);
+  const b2 = await band('cap-default', 'sec-paid');
+  const max = b2.actions.find((x) => x.id === 'max');
+  await page.mouse.click(max.r.x + max.r.width / 2, max.r.y + max.r.height / 2); await page.waitForTimeout(250);
+  const acts = await actionsOf('cap-default');
+  const sel2 = await page.evaluate(() => window.__lab['cap-default'].handle.getSelectedWidget());
+  await shot('cap-default', 'actions-revealed-and-pressed');
+  // c. the disabled action is inert
+  const off = b2.actions.find((x) => x.id === 'off');
+  await page.mouse.click(off.r.x + off.r.width / 2, off.r.y + off.r.height / 2); await page.waitForTimeout(200);
+  const acts2 = await actionsOf('cap-default');
+  // d. a child press moves the selection; the actions hide when the pointer leaves an unselected band
+  const st = await rect('cap-default', 'sec-filter');
+  await page.mouse.click(st.x + st.w / 2, st.y + st.h / 2); await page.waitForTimeout(300);
+  const b3 = await band('cap-default', 'sec-paid');
+  const sel3 = await selected('cap-default');
+  const sane = await sanity('cap-default');
+  verdict(!b0.selected && b0.actionsOp === 0 && b1.selected && sel1 === 'sec-paid' && ev1.includes('main:sec-paid') && b2.actionsOp === 1 && acts.join() === 'main:sec-paid:max' && sel2 === 'sec-paid' && acts2.length === 0 && !b3.selected && b3.actionsOp === 0 && sel3.join() === 'sec-filter' && sane.overlaps === 0,
+    `rest: selected=${b0.selected} actions op=${b0.actionsOp} · band press: selected=${b1.selected} api=${sel1} events=${ev1} · hover: op=${b2.actionsOp} · Maximize: ${acts} sel=${sel2} · disabled: ${acts2.length} · child press: slab=${b3.selected} op=${b3.actionsOp} sel=${sel3} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L42-a-tab-caption-sits-above-the-frame-and-selects-it');
+  await scrollTo('cap-tab');
+  const t = await band('cap-tab', 'box');
+  const top = await childTop('cap-tab', 'box');
+  const kpi = await rect('cap-tab', 'rev');
+  const under = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('.axdb-slab-h') ? 'band' : 'other', [t.textRect.x + 4, t.textRect.y + t.textRect.height / 2]);
+  await page.mouse.click(t.textRect.x + 4, t.textRect.y + t.textRect.height / 2); await page.waitForTimeout(300);
+  const t1 = await band('cap-tab', 'box');
+  const sel = await page.evaluate(() => window.__lab['cap-tab'].handle.getSelectedWidget());
+  const sane = await sanity('cap-tab');
+  await shot('cap-tab', 'tab-caption-selected');
+  verdict(t.band && t.cls.includes('axdb-slab-h--tab') && Math.abs(t.band.y + t.band.height - t.slab.y) < 1 && t.band.width < t.slab.width - 40 && Math.abs(top - t.slab.y) < 1 && t.band.y >= kpi.bottom - 0.5 && under === 'band' && t1.selected && sel === 'box' && sane.overlaps === 0,
+    `tab: y ${t.band?.y}+${t.band?.height} vs slab y ${t.slab.y} · width ${t.band?.width} of ${t.slab.width} · child top ${top} · above KPI bottom ${kpi.bottom} · under=${under} · press: selected=${t1.selected} api=${sel} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L43-alignment-typography-box-hover-and-design-captions');
+  await scrollTo('cap-styled');
+  const a = await band('cap-styled', 'st-a');
+  const b = await band('cap-styled', 'st-b');
+  const c0 = await band('cap-styled', 'st-c');
+  const d0 = await band('cap-styled', 'st-d');
+  const bTop = await childTop('cap-styled', 'st-b');
+  const cTop = await childTop('cap-styled', 'st-c');
+  const dTop0 = await childTop('cap-styled', 'st-d');
+  await shot('cap-styled', 'styled-at-rest');
+  // hover the 'hover' band: it appears with its action
+  await page.mouse.move(c0.slab.x + c0.slab.width / 2, c0.slab.y + 12); await page.waitForTimeout(300);
+  const c1 = await band('cap-styled', 'st-c');
+  await shot('cap-styled', 'hover-caption-shown');
+  await page.mouse.move(10, 10); await page.waitForTimeout(300);
+  const c2 = await band('cap-styled', 'st-c');
+  // static: the 'design' band leaves and its rows come back; the others stay
+  await page.evaluate(() => window.__lab['cap-styled'].handle.setStatic(true)); await page.waitForTimeout(300);
+  const d1 = await band('cap-styled', 'st-d');
+  const dTop1 = await childTop('cap-styled', 'st-d');
+  const a1 = await band('cap-styled', 'st-a');
+  await shot('cap-styled', 'static-design-caption-gone');
+  await page.evaluate(() => window.__lab['cap-styled'].handle.setStatic(false)); await page.waitForTimeout(300);
+  const d2 = await band('cap-styled', 'st-d');
+  const dTop2 = await childTop('cap-styled', 'st-d');
+  const sane = await sanity('cap-styled');
+  const centred = a.textRect && Math.abs((a.textRect.x + a.textRect.width / 2) - (a.band.x + a.band.width / 2)) < 3;
+  const ended = b.textRect && Math.abs((b.textRect.x + b.textRect.width) - (b.band.x + b.band.width - 14)) < 3;
+  verdict(centred && a.transform === 'uppercase' && a.fontWeight === '700' && a.fontSize === '11px' && a.bg === 'rgb(232, 236, 251)' && a.borderBottom === '1px'
+    && ended && Math.round(b.band.height) === 40 && b.alignItems === 'flex-end' && b.textRect.y + b.textRect.height > b.band.y + b.band.height - 8 && b.fontSize === '15px' && /Georgia/.test(b.fontFamily) && b.color === 'rgb(124, 94, 0)' && Math.abs(b.band.y - b.slab.y - 4) < 1 && Math.abs(b.band.x - b.slab.x - 6) < 1 && bTop >= b.slab.y + 48 - 0.5
+    && c0.opacity === 0 && Math.abs(cTop - c0.slab.y) < 1 && c1.opacity === 1 && c2.opacity === 0
+    && d0.band && dTop0 >= d0.slab.y + 28 - 0.5 && d1.band === null && Math.abs(dTop1 - d1.slab.y) < 1 && a1.band && d2.band && dTop2 >= d2.slab.y + 28 - 0.5 && sane.overlaps === 0,
+    `A centred=${centred} ${a.transform} ${a.fontWeight} ${a.fontSize} bg=${a.bg} border=${a.borderBottom} · B end=${ended} h=${b.band?.height} align=${b.alignItems} text bottom ${b.textRect?.y + b.textRect?.height} of band bottom ${b.band?.y + b.band?.height} font ${b.fontSize} ${b.fontFamily} ${b.color} margin dy=${b.band?.y - b.slab.y} dx=${b.band?.x - b.slab.x} child top ${bTop} vs ${b.slab.y + 48} · C hover op ${c0.opacity}→${c1.opacity}→${c2.opacity} child top ${cTop} slab ${c0.slab.y} · D design: band ${!!d0.band}/${!!d1.band}/${!!d2.band} child top ${dTop0}/${dTop1}/${dTop2} slab ${d0.slab.y} static-A band ${!!a1.band} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L44-renderCaption-paints-the-band-a-button-passes-through-a-badge-selects');
+  await scrollTo('cap-custom');
+  await page.evaluate(() => { window.__labClicks['cap-custom'] = 0; });
+  const b = await band('cap-custom', 'sec-controls');
+  const parts = await page.evaluate(() => { const h = document.querySelector('#cv-cap-custom .axdb-slab[data-slab-id="sec-controls"] > .axdb-slab-h'); return { brand: h.classList.contains('brand'), badge: h.querySelector('.cap-badge')?.getBoundingClientRect().toJSON(), btn: h.querySelector('.cap-btn')?.getBoundingClientRect().toJSON(), kitText: !!h.querySelector('.axdb-slab-h-text') }; });
+  await page.mouse.click(parts.btn.x + parts.btn.width / 2, parts.btn.y + parts.btn.height / 2); await page.waitForTimeout(250);
+  const clicks = await page.evaluate(() => window.__labClicks['cap-custom']);
+  const sel1 = await page.evaluate(() => window.__lab['cap-custom'].handle.getSelectedWidget());
+  await page.mouse.click(parts.badge.x + parts.badge.width / 2, parts.badge.y + parts.badge.height / 2); await page.waitForTimeout(250);
+  const sel2 = await page.evaluate(() => window.__lab['cap-custom'].handle.getSelectedWidget());
+  const b2 = await band('cap-custom', 'sec-controls');
+  const top = await childTop('cap-custom', 'sec-controls');
+  const sane = await sanity('cap-custom');
+  await shot('cap-custom', 'custom-caption-selected');
+  verdict(b.band && parts.brand && !parts.kitText && parts.badge && parts.btn && clicks === 1 && sel1 === undefined && sel2 === 'sec-controls' && b2.selected && top >= b.band.y + b.band.height - 0.5 && sane.overlaps === 0,
+    `brand=${parts.brand} kit text=${parts.kitText} · button: clicks=${clicks} sel=${sel1} · badge: sel=${sel2} ring=${b2.selected} · child top ${top} vs band bottom ${b.band?.y + b.band?.height} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L45-rtl-captions-mirror');
+  await scrollTo('cap-rtl');
+  const a = await band('cap-rtl', 'sec-controls');
+  const b = await band('cap-rtl', 'sec-paid');
+  await page.mouse.move(b.band.x + 30, b.band.y + 20); await page.waitForTimeout(300);
+  const b1 = await band('cap-rtl', 'sec-paid');
+  const sane = await sanity('cap-rtl');
+  await shot('cap-rtl', 'rtl-captions');
+  const textAtEnd = a.textRect && a.textRect.x + a.textRect.width > a.band.x + a.band.width - 14;
+  const actionsAtStart = b1.actionsRect && b1.actionsRect.x < b1.band.x + 40 && b1.actionsRect.x < b1.textRect.x;
+  verdict(a.dir === 'rtl' && textAtEnd && actionsAtStart && b1.actionsOp === 1 && sane.overlaps === 0,
+    `dir=${a.dir} · text right edge ${a.textRect?.x + a.textRect?.width} of band right ${a.band?.x + a.band?.width} · actions x ${b1.actionsRect?.x} band x ${b1.band?.x} text x ${b1.textRect?.x} op=${b1.actionsOp} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L46-the-tight-tier-and-a-live-tier-switch-by-resize');
+  await scrollTo('cap-tight');
+  const t0 = await band('cap-tight', 'tight');
+  const r0 = await band('cap-tight', 'roomy');
+  const tTop0 = await childTop('cap-tight', 'tight');
+  await shot('cap-tight', 'tight-and-roomy');
+  // select the tight section by its band, pull its handle 3 rows down: it leaves the tight tier
+  await page.mouse.click(t0.textRect.x + 4, t0.textRect.y + t0.textRect.height / 2); await page.waitForTimeout(250);
+  const hnd = await page.evaluate(() => document.querySelector('#cv-cap-tight .axdb-slab[data-slab-id="tight"] > .axdb-rs').getBoundingClientRect().toJSON());
+  await drag(hnd.x + 12, hnd.y + 12, hnd.x + 12, hnd.y + 12 + 132, { steps: 12 });
+  const t1 = await band('cap-tight', 'tight');
+  const tTop1 = await childTop('cap-tight', 'tight');
+  const cell1 = await page.evaluate(() => window.__lab['cap-tight'].handle.widget('tight').cell);
+  await shot('cap-tight', 'tight-grown-out-of-the-tier');
+  await undoAll('cap-tight', 2);
+  const t2 = await band('cap-tight', 'tight');
+  const sane = await sanity('cap-tight');
+  verdict(t0.band && Math.round(t0.band.height) === 22 && t0.cls.includes('--tight') && t0.subShown === false && t0.actionsShown === false && tTop0 >= t0.band.y + 22 - 0.5
+    && r0.band && Math.round(r0.band.height) === 44 && r0.subShown === true && r0.actionsShown === true
+    && cell1.h >= 4 && Math.round(t1.band.height) === 44 && !t1.cls.includes('--tight') && t1.subShown === true && tTop1 >= t1.band.y + 44 - 0.5
+    && Math.round(t2.band.height) === 22 && sane.overlaps === 0,
+    `tight: ${t0.band?.height}px sub=${t0.subShown} actions=${t0.actionsShown} child top ${tTop0} · roomy: ${r0.band?.height}px sub=${r0.subShown} · after +3 rows: cell h=${cell1.h} band ${t1.band?.height}px tight=${t1.cls?.includes('--tight')} child top ${tTop1} · undo: ${t2.band?.height}px ${JSON.stringify(sane)}`);
+}
+{
+  begin('L47-nested-captions-setCaption-live-undo-and-persistence');
+  await scrollTo('cap-nested');
+  const o = await band('cap-nested', 'outer');
+  const i0 = await band('cap-nested', 'inner');
+  const kTop0 = await childTop('cap-nested', 'inner');
+  const iTop = await childTop('cap-nested', 'outer');
+  await shot('cap-nested', 'two-levels');
+  const r1 = await page.evaluate(() => { const H = window.__lab['cap-nested'].handle; const ok = H.setCaption('inner', { text: 'Renamed', subtitle: 'live', align: 'center' }); return { ok, get: H.getCaption('inner'), json: H.toJSON().views[0].widgets[0].widgets.find((w) => w.id === 'inner').caption }; });
+  await page.waitForTimeout(300);
+  const i1 = await band('cap-nested', 'inner');
+  const kTop1 = await childTop('cap-nested', 'inner');
+  await shot('cap-nested', 'inner-renamed-live');
+  await undoAll('cap-nested', 1);
+  const i2 = await band('cap-nested', 'inner');
+  const kTop2 = await childTop('cap-nested', 'inner');
+  const r2 = await page.evaluate(() => window.__lab['cap-nested'].handle.getCaption('inner'));
+  // the outer caption removed, then back by redo
+  await page.evaluate(() => window.__lab['cap-nested'].handle.setCaption('outer', false)); await page.waitForTimeout(250);
+  const o1 = await band('cap-nested', 'outer');
+  const iTop1 = await childTop('cap-nested', 'outer');
+  await page.evaluate(async () => { const cm = window.__lab['cap-nested'].api.getEngine().commandManager; await cm.undo(); }); await page.waitForTimeout(250);
+  const o2 = await band('cap-nested', 'outer');
+  // a layout switch of the inner section keeps its band
+  await page.evaluate(() => window.__lab['cap-nested'].handle.setLayout('split', 'inner')); await page.waitForTimeout(300);
+  const i3 = await band('cap-nested', 'inner');
+  const kTop3 = await childTop('cap-nested', 'inner');
+  await shot('cap-nested', 'inner-split-keeps-band');
+  await page.evaluate(() => window.__lab['cap-nested'].handle.setLayout('grid', 'inner')); await page.waitForTimeout(300);
+  const sane = await sanity('cap-nested');
+  verdict(o.band && o.text === 'Outer section' && i0.band && i0.text === 'Inner' && i0.info === 'two levels down' && i0.slab.y >= o.band.y + 28 - 0.5 && kTop0 >= i0.band.y + 28 - 0.5 && Math.abs(iTop - (o.band.y + 28)) < 1
+    && r1.ok && r1.get.text === 'Renamed' && r1.json.subtitle === 'live' && i1.text === 'Renamed' && Math.round(i1.band.height) === 44 && i1.justify === 'center' && kTop1 >= i1.band.y + 44 - 0.5
+    && i2.text === 'Inner' && Math.round(i2.band.height) === 28 && kTop2 >= i2.band.y + 28 - 0.5 && r2.text === 'Inner'
+    && o1.band === null && Math.abs(iTop1 - o1.slab.y) < 1 && o2.band
+    && i3.band && i3.text === 'Inner' && kTop3 >= i3.band.y + 28 - 0.5 && sane.overlaps === 0,
+    `outer "${o.text}" inner "${i0.text}" info="${i0.info}" inner slab y ${i0.slab.y} vs outer band bottom ${o.band?.y + 28} child top ${kTop0} · setCaption: ${JSON.stringify(r1)} band ${i1.band?.height}px justify=${i1.justify} child top ${kTop1} · undo: "${i2.text}" ${i2.band?.height}px get=${JSON.stringify(r2)} · outer off: band=${o1.band} child top ${iTop1} slab ${o1.slab.y} · undo: band=${!!o2.band} · split: "${i3.text}" child top ${kTop3} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L48-captions-on-a-fit-board-inner-and-section-resizes-stay-under-the-band');
+  await scrollTo('cap-fit');
+  const a0 = await band('cap-fit', 'sec-controls');
+  const hs0 = await heights('cap-fit');
+  const top0 = await childTop('cap-fit', 'sec-controls');
+  const sane0 = await sanity('cap-fit');
+  await shot('cap-fit', 'fit-captions-at-rest');
+  // a. a full fit board has no row to give: a child shrinks (its bottom pulled up), still under the band
+  await pullBottom('cap-fit', 'ctl-amount', -80, { steps: 10 });
+  const hs1 = await heights('cap-fit');
+  const top1 = await childTop('cap-fit', 'sec-controls');
+  const a1 = await band('cap-fit', 'sec-controls');
+  await shot('cap-fit', 'fit-child-shrunk-under-band');
+  // b. the section by its band + handle: a column narrower; the band follows the frame
+  await page.mouse.click(a1.textRect.x + 4, a1.textRect.y + a1.textRect.height / 2); await page.waitForTimeout(250);
+  const hnd = await page.evaluate(() => document.querySelector('#cv-cap-fit .axdb-slab[data-slab-id="sec-controls"] > .axdb-rs').getBoundingClientRect().toJSON());
+  const cellA = await page.evaluate(() => window.__lab['cap-fit'].handle.widget('sec-controls').cell);
+  await drag(hnd.x + 12, hnd.y + 12, hnd.x + 12 - 115, hnd.y + 12, { steps: 12 });
+  const cellB = await page.evaluate(() => window.__lab['cap-fit'].handle.widget('sec-controls').cell);
+  const a2 = await band('cap-fit', 'sec-controls');
+  const top2 = await childTop('cap-fit', 'sec-controls');
+  const sane2 = await sanity('cap-fit');
+  await shot('cap-fit', 'fit-section-narrower-band-follows');
+  await undoAll('cap-fit', 3);
+  const a3 = await band('cap-fit', 'sec-controls');
+  const hs3 = await heights('cap-fit');
+  const sane3 = await sanity('cap-fit');
+  verdict(a0.band && Math.round(a0.band.height) === 28 && top0 >= a0.band.y + 28 - 0.5 && sane0.overlaps === 0 && sane0.overflow === 0
+    && hs1['ctl-amount'] < hs0['ctl-amount'] - 40 && top1 >= a1.band.y + 28 - 0.5 && Math.abs(a1.band.height - 28) < 1
+    && cellB.w === cellA.w - 1 && Math.abs(a2.band.width - a2.slab.width) < 1 && a2.band.width < a1.band.width - 40 && a2.selected && top2 >= a2.band.y + 28 - 0.5 && sane2.overlaps === 0
+    && Math.abs(a3.band.width - a1.band.width) < 1 && hs3['ctl-amount'] === hs0['ctl-amount'] && sane3.overlaps === 0,
+    `rest: band ${a0.band?.height}px child top ${top0} ${JSON.stringify(sane0)} · amount ${hs0['ctl-amount']}→${hs1['ctl-amount']} child top ${top1} vs ${a1.band?.y + 28} · section ${cellA.w}→${cellB.w} cols, band ${a1.band?.width}→${a2.band?.width} slab ${a2.slab.width} selected=${a2.selected} child top ${top2} ${JSON.stringify(sane2)} · undo band ${a3.band?.width} amount ${hs3['ctl-amount']} ${JSON.stringify(sane3)}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

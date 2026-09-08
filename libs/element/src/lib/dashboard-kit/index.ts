@@ -49,6 +49,20 @@ export {
   type TileDelta,
 } from './grid-mapping';
 export { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID } from './styles';
+export {
+  normalizeCaption,
+  captionReserve,
+  captionBandHeight,
+  paintCaptionBand,
+  CAPTION_HEIGHT,
+  CAPTION_HEIGHT_SUBTITLE,
+  CAPTION_HEIGHT_TIGHT,
+  CAPTION_PASS_THROUGH,
+  type SectionCaption,
+  type SectionCaptionOptions,
+  type SectionCaptionAction,
+  type SectionCaptionFont,
+} from './caption';
 
 // The DATA-FIRST authoring API (the erDiagram/umlDiagram equivalent).
 export {

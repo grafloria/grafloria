@@ -80,6 +80,7 @@ import {
   type WorldRect,
 } from './grid-mapping';
 import { ensureDashboardKitStyles } from './styles';
+import { captionOfGroup, captionPainted, captionPassThrough, captionKey, captionReserve, paintCaptionBand, sizeCaptionBand } from './caption';
 
 /** The slice of a DiagramInstance the binder needs (structural, test-friendly). */
 export interface DashboardGridApi {
@@ -211,6 +212,14 @@ export interface DashboardGridOptions {
   /** Inject the hover-revealed corner resize handle into member hosts (default true). */
   /** The selection on this board changed: the selected member — a widget or a SECTION (container) — or undefined. */
   onSelect?: (id: string | undefined) => void;
+  /**
+   * SECTION CAPTIONS (0.4.22). Paint a member section's caption band yourself:
+   * the band is handed over empty, sized and themed, and keeps its press rules.
+   * Default: the kit's icon · text · subtitle · ⓘ · actions.
+   */
+  renderCaption?: (sectionId: string, host: HTMLElement) => void;
+  /** A press on a caption action button (see `SectionCaptionOptions.actions`). */
+  onCaptionAction?: (sectionId: string, actionId: string) => void;
   resizeHandles?: boolean;
   /**
    * FLUID board: the group's frame follows the CANVAS CONTAINER — width
@@ -328,6 +337,17 @@ export function ownsPress(
   const t = (ev.source as { target?: unknown } | undefined)?.target;
   if (typeof Node !== 'undefined' && t instanceof Node && !container.contains(t)) return false;
   if (hit.node && diagram.getNode(hit.node.id) !== hit.node) return false;
+  // A press on a PASS-THROUGH element of a caption band (a button, an input,
+  // anything the caption's `passThrough` names) is the content's, not any
+  // tool's: no selection, no drag, no resize — the DOM handles it.
+  if (typeof Element !== 'undefined' && t instanceof Element) {
+    const band = t.closest('.axdb-slab > .axdb-slab-h');
+    const sid = band?.parentElement?.getAttribute('data-slab-id');
+    if (band && sid) {
+      const grp = (diagram as { getGroup?(id: string): unknown }).getGroup?.(sid) as Parameters<typeof captionOfGroup>[0];
+      if (captionPassThrough(t, band, captionOfGroup(grp))) return false;
+    }
+  }
   return true;
 }
 export function gripHostOf(target: Element | null): HTMLElement | null {
@@ -911,12 +931,23 @@ export function bindDashboardGrid(
   let glideTimer: ReturnType<typeof setTimeout> | null = null;
   let ghostTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const frame = (): WorldRect => ({
-    x: group.position.x,
-    y: group.position.y,
-    width: group.size?.width ?? 0,
-    height: group.size?.height ?? 0,
-  });
+  /**
+   * OUR OWN CAPTION RESERVE: a section carrying a caption gives the band's
+   * pixels up at the top of its frame, so no child may take them — and the
+   * band is outside `containsWorld`, so a press on it is the PARENT's (it
+   * selects the section) rather than an empty press of this board.
+   */
+  const ownReserve = (): number =>
+    captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 });
+  const frame = (): WorldRect => {
+    const r = ownReserve();
+    return {
+      x: group.position.x,
+      y: group.position.y + r,
+      width: group.size?.width ?? 0,
+      height: Math.max(0, (group.size?.height ?? 0) - r),
+    };
+  };
 
   /** Entity size with GroupModel's optionality flattened away. */
   const sizeOf = (e: {
@@ -1126,6 +1157,12 @@ export function bindDashboardGrid(
       writing = false;
     }
     syncPlaceholder();
+    // The section overlays are projected chrome like the placeholder: they
+    // follow every frame write, not only a rebuild. Painted at bind time only,
+    // a section two levels down kept the geometry of its parent's placeholder
+    // frame (100 × 34) after the view board had laid the parent out (the kit
+    // lab's L47, 2026-09-08).
+    syncSlabs();
   };
 
   // -- placeholder / ghost chrome --------------------------------------------
@@ -1624,6 +1661,7 @@ export function bindDashboardGrid(
       el.classList.toggle('axdb-slab--selected', selectedId === id);
       el.classList.toggle('axdb-slab--static', isStatic);
       el.querySelector(':scope > .axdb-rs')?.classList.toggle('axdb-rs--rtl', rtl);
+      syncCaption(el, id, grp, sz.height);
     }
     for (const [id, el] of slabEls) {
       if (!seen.has(id)) {
@@ -1631,6 +1669,37 @@ export function bindDashboardGrid(
         slabEls.delete(id);
       }
     }
+  };
+
+  /**
+   * THE CAPTION BAND of a section, on its slab overlay. Painted from the
+   * group's persisted caption; repainted only when its identity changes (the
+   * options, RTL, static, the tier) so a custom `renderCaption` is not run
+   * per frame. The band takes the pointer (the slab itself does not): a press
+   * on it selects the section, an action fires, pass-through reaches content.
+   */
+  const syncCaption = (el: HTMLElement, id: string, grp: GroupModel, sectionH: number): void => {
+    const cap = captionOfGroup(grp);
+    let band = el.querySelector(':scope > .axdb-slab-h') as HTMLElement | null;
+    if (!cap || !captionPainted(cap, isStatic)) {
+      band?.remove();
+      el.removeAttribute('aria-label');
+      return;
+    }
+    const ctx = { rtl, static: isStatic, sectionH };
+    const key = captionKey(cap, ctx);
+    if (band && band.getAttribute('data-key') === key) {
+      sizeCaptionBand(band, cap, sectionH); // the tier follows the live size
+      return;
+    }
+    band?.remove();
+    band = document.createElement('div');
+    el.prepend(band);
+    const render = options.renderCaption;
+    paintCaptionBand(band, cap, { ...ctx, ...(render ? { render: (host: HTMLElement) => render(id, host) } : {}) });
+    band.setAttribute('data-key', key);
+    if (cap.text) el.setAttribute('aria-label', cap.text);
+    else el.removeAttribute('aria-label');
   };
 
   const insideMemberGroupFrame = (x: number, y: number): boolean => {
@@ -2591,6 +2660,12 @@ export function bindDashboardGrid(
       if (disposed) return false;
       if (gesture || slabGesture || forwardSlab) return true; // own the rest of an in-flight gesture
       if (!ownsPress(api.container, diagram, ev, hit)) return false;
+      // A press on one of OUR sections' caption bands is ours by the DOM: a
+      // 'tab' band sits above the frame, over the gap or the tile above,
+      // where the geometry says otherwise.
+      const bandTarget = (ev.source?.target as Element | null | undefined)?.closest?.('.axdb-slab > .axdb-slab-h');
+      const bandId = bandTarget?.parentElement?.getAttribute('data-slab-id');
+      if (bandId && (group.members ?? new Set<string>()).has(bandId)) return true;
       if (hit.node) {
         if ((group.members ?? new Set<string>()).has(hit.node.id)) return true;
         // A press on a tile that belongs to a NESTED board must reach that
@@ -2635,11 +2710,25 @@ export function bindDashboardGrid(
       // A SECTION's corner handle sits on top of whatever tile shares that
       // corner; the DOM target names the section, the hit test the tile.
       const sectionHandle = target?.closest?.('.axdb-slab > .axdb-rs') as HTMLElement | null;
-      if ((!hit.node && !onGrip) || sectionHandle) {
-        // A press on a SECTION — its empty band, its corner handle or its
-        // frame edge — selects the section; the handle or an edge resizes it.
+      // A SECTION's CAPTION BAND names its section the same way — a 'tab'
+      // band sits above the frame, over the gap or the tile above. An action
+      // button in it fires and does nothing else.
+      const captionBand = target?.closest?.('.axdb-slab > .axdb-slab-h') as HTMLElement | null;
+      const captionId = captionBand?.parentElement?.getAttribute('data-slab-id') ?? null;
+      const ownCaption = !!captionId && (group.members ?? new Set<string>()).has(captionId);
+      if (ownCaption) {
+        const action = target?.closest?.('.axdb-slab-h-action') as HTMLButtonElement | null;
+        if (action) {
+          if (!action.disabled) options.onCaptionAction?.(captionId as string, action.getAttribute('data-action') ?? '');
+          return;
+        }
+      }
+      if ((!hit.node && !onGrip) || sectionHandle || ownCaption) {
+        // A press on a SECTION — its empty band, its caption, its corner
+        // handle or its frame edge — selects the section; the handle or an
+        // edge resizes it.
         const slabHandle = target?.closest?.('.axdb-slab > .axdb-rs') as HTMLElement | null;
-        const slabId = slabHandle?.parentElement?.getAttribute('data-slab-id') ?? memberGroupAt(ev.world.x, ev.world.y);
+        const slabId = slabHandle?.parentElement?.getAttribute('data-slab-id') ?? (ownCaption ? captionId : null) ?? memberGroupAt(ev.world.x, ev.world.y);
         const grp = slabId && (group.members ?? new Set<string>()).has(slabId) ? diagram.getGroup(slabId) : undefined;
         if (slabId && grp) {
           selectWidget(slabId);
@@ -3232,6 +3321,9 @@ export function bindDashboardGrid(
       if (on === isStatic) return;
       isStatic = on;
       if (gesture) cancelActiveGesture(false);
+      // A `show: 'design'` caption leaves under static and its reserve with
+      // it (or comes back): the frame moved, re-project the tiles.
+      project();
       syncHandles();
       api.renderNow();
     },
