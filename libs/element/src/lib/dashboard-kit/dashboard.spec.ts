@@ -1814,3 +1814,20 @@ describe('item 7 — layout and sizing per container', () => {
     expect(handle.getLayout('box')).toBe('grid');
   });
 });
+
+describe('a split round trip keeps the cells it was given', () => {
+  it('14-row tiles on a fit board come back as 14-row tiles (not the base-row-height guess)', () => {
+    const { handle } = mount(dashboard({ columns: 12, widgets: [
+      { id: 'a', kind: 'kpi', span: 3, rows: 14, x: 0, y: 0 },
+      { id: 'b', kind: 'kpi', span: 5, rows: 14, x: 3, y: 0 },
+      { id: 'c', kind: 'kpi', span: 4, rows: 14, x: 8, y: 0 },
+    ] }));
+    const rowsOf = () => Object.fromEntries(handle.toJSON().views[0].widgets.map((w) => [w.id, w.rows]));
+    expect(rowsOf()).toEqual({ a: 14, b: 14, c: 14 });
+    handle.setLayout('split');
+    expect(rowsOf()).toEqual({ a: 14, b: 14, c: 14 });
+    handle.setLayout('grid');
+    expect(rowsOf()).toEqual({ a: 14, b: 14, c: 14 });
+    expect(handle.widget('b')!.cell).toEqual({ x: 3, y: 0, w: 5, h: 14 });
+  });
+});

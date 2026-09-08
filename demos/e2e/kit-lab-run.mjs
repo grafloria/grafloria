@@ -716,6 +716,48 @@ for (const [board, pos, place] of [['grip-in-l', 'left', 'inside'], ['grip-in-c'
     `slab ${c0.slab}→${c1.slab}→${c2.slab} · kpi rows ${c1.kpis}→${c2.kpis} · trend y ${c0.trendY}→${c1.trendY}→${c2.trendY} · sibling px ${Math.round(k0.h)}→${Math.round(k1.h)} ${JSON.stringify(s)}`);
 }
 
+{
+  begin('L32-one-selection-per-canvas-across-a-section-and-its-board');
+  await scrollTo('nested');
+  const cv = await page.evaluate(() => document.getElementById('cv-nested').getBoundingClientRect().toJSON());
+  await page.mouse.click(cv.x + cv.width - 8, cv.y + cv.height - 8); await page.waitForTimeout(200);
+  const click = async (id) => { const r = await rect('nested', id); await page.mouse.click(r.x + r.w / 2, r.y + r.h / 2); await page.waitForTimeout(250); return selected('nested'); };
+  const s1 = await click('n-mix');      // inside the container
+  const s2 = await click('rev');        // on the board
+  await shot('nested', 'board-tile-selected-only');
+  const s3 = await click('n-trend');    // back inside
+  await shot('nested', 'inner-tile-selected-only');
+  const api = await page.evaluate(() => { const H = window.__lab.nested.handle; H.selectWidget('cust'); const a = H.getSelectedWidget(); const inner = H.binderOf('box').getSelectedWidget(); H.focusWidget('n-mix'); return { a, inner, b: H.getSelectedWidget(), outer: H.binderOf().getSelectedWidget() }; });
+  verdict(s1.join() === 'n-mix' && s2.join() === 'rev' && s3.join() === 'n-trend' && api.a === 'cust' && api.inner === undefined && api.b === 'n-mix' && api.outer === undefined,
+    `clicks: ${s1} → ${s2} → ${s3} · API selectWidget(cust): ${api.a}/inner=${api.inner} · focusWidget(n-mix): ${api.b}/outer=${api.outer}`);
+}
+{
+  begin('L33-outside-grip-tab-fits-the-gap');
+  await scrollTo('grip-out-c');
+  const t = await rect('grip-out-c', 'trend');
+  await page.mouse.click(t.x + t.w / 2, t.y + t.h / 2); await page.waitForTimeout(250);
+  const g = await page.evaluate(() => { const h = document.querySelector('#cv-grip-out-c .grafloria-node-host[data-node-id="trend"]'); const gr = h.querySelector(':scope > .axdb-grip').getBoundingClientRect(); const hr = h.getBoundingClientRect(); const above = [...document.querySelectorAll('#cv-grip-out-c .grafloria-node-host')].filter((o) => o !== h && o.getBoundingClientRect().bottom <= hr.top + 1 && o.getBoundingClientRect().right > gr.x && o.getBoundingClientRect().x < gr.right).map((o) => ({ id: o.dataset.nodeId, bottom: o.getBoundingClientRect().bottom })); return { top: gr.top, bottom: gr.bottom, h: gr.height, hostTop: hr.top, above, gap: getComputedStyle(document.querySelector('#cv-grip-out-c .grafloria-diagram-root') || h.parentElement).getPropertyValue('--axdb-gap') }; });
+  await shot('grip-out-c', 'tab-in-the-gap');
+  const clear = g.above.every((o) => g.top >= o.bottom - 0.5);
+  verdict(g.bottom <= g.hostTop + 0.5 && clear && g.h >= 6 && g.h <= 11, `tab ${Math.round(g.top)}→${Math.round(g.bottom)} (${g.h}px) host top ${Math.round(g.hostTop)} above=${JSON.stringify(g.above.map((o) => `${o.id}@${Math.round(o.bottom)}`))} gap-var='${g.gap.trim()}'`);
+}
+
+{
+  begin('L34-split-round-trip-keeps-14-row-sections');
+  await scrollTo('panel-fit');
+  const snap = () => page.evaluate(() => { const H = window.__lab['panel-fit'].handle; const flat = (ws, p) => ws.flatMap((w) => [`${p}${w.id}@${w.x},${w.y} ${w.span}x${w.rows}`, ...(w.widgets ? flat(w.widgets, p + w.id + '/') : [])]); return flat(H.toJSON().views[0].widgets, '').join(' | '); });
+  const h0 = await heights('panel-fit'); const s0 = await snap();
+  await page.evaluate(() => window.__lab['panel-fit'].handle.setLayout('split')); await page.waitForTimeout(500);
+  const sSplit = await snap(); const hSplit = await heights('panel-fit');
+  await shot('panel-fit', 'split');
+  await page.evaluate(() => window.__lab['panel-fit'].handle.setLayout('grid')); await page.waitForTimeout(500);
+  const s1 = await snap(); const h1 = await heights('panel-fit');
+  await shot('panel-fit', 'grid-again');
+  const s = await sanity('panel-fit');
+  verdict(s1 === s0 && JSON.stringify(h1) === JSON.stringify(h0) && /sec-controls@0,0 3x14/.test(sSplit) && JSON.stringify(hSplit) === JSON.stringify(h0) && s.overlaps === 0 && s.overflow === 0,
+    `cells back=${s1 === s0} px back=${JSON.stringify(h1) === JSON.stringify(h0)} split cells: ${sSplit.slice(0, 120)}… ${JSON.stringify(s)}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

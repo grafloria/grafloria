@@ -26,7 +26,7 @@
 import { Command, type DiagramModel, type GroupModel, type NodeModel } from '@grafloria/engine';
 import { LiveRegionController, registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
 import type { DashboardGridApi, DashboardGridHandle, DashboardGridOptions } from './grid-binder';
-import { dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, pressOnDragHandle, registerBoardPeer, syncGrip, DRAG_HANDLE_CLASS, type DragHandleOption } from './grid-binder';
+import { clearOtherSelections, dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, pressOnDragHandle, registerBoardPeer, syncGrip, DRAG_HANDLE_CLASS, type BinderPeer, type DragHandleOption } from './grid-binder';
 import { cellFromGridItem, type CellRect, type WorldRect } from './grid-mapping';
 import {
   addSplitLeaf,
@@ -459,10 +459,12 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
   /** The selected widget (see grid-binder): stamped `axdb-selected`, shows the grip. */
   let selectedId: string | undefined;
   const selectWidget = (id: string | undefined): void => {
+    if (id !== undefined) clearOtherSelections(api.container, selfPeerRef);
     if (id === selectedId) return;
     selectedId = id;
     syncA11y();
   };
+  let selfPeerRef: BinderPeer | null = null;
 
   // Static boards let content be clicked — see grid-binder's staticGuard.
   const staticGuard = (e: Event): void => {
@@ -871,7 +873,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     if (!hit || disposed) return;
     if (focusedId !== hit.id || selectedId !== hit.id) {
       focusedId = hit.id;
-      selectedId = hit.id;
+      selectWidget(hit.id);
       syncA11y();
     }
   };
@@ -1006,7 +1008,25 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
 
   // -- the handle -------------------------------------------------------------
 
-  const rowsGuess = (): number => Math.max(1, Math.round(frame().height / (baseRowHeight + gap)));
+  /**
+   * The row count the tree's cells are written in. A grid-authored board (or
+   * one switched from the grid) carries its members' cells: their extent IS
+   * the row count, and switching back must return the same cells — the guess
+   * below quantised three 14-row sections on a 758-px fit board to 5 rows
+   * (base row height 130), and the grid came back with 14-row inner grids
+   * inside 5-row slabs (Quantia, Groups page, Split → Grid). The guess stays
+   * for a tree-authored board that never had cells.
+   */
+  const rowsAtBind = ((): number | undefined => {
+    let max = 0;
+    for (const id of members()) {
+      const c = persistedCell(id);
+      if (!c) return undefined;
+      max = Math.max(max, c.y + c.h);
+    }
+    return max > 0 ? max : undefined;
+  })();
+  const rowsGuess = (): number => rowsAtBind ?? Math.max(1, Math.round(frame().height / (baseRowHeight + gap)));
 
   const handle: DashboardSplitHandle = {
     sync(): void {
@@ -1055,7 +1075,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     focusWidget(id): boolean {
       if (!(group.members ?? new Set<string>()).has(id) || !diagram.getNode(id)) return false;
       focusedId = id;
-      selectedId = id;
+      selectWidget(id);
       syncA11y();
       hostOf(id)?.focus?.({ preventScroll: true });
       return true;
@@ -1182,8 +1202,13 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
 
   // A split board on a CONTAINER (item 7) sits inside a parent grid: register
   // as a peer so the parent's hitTest hands presses on our tiles to us.
-  const unregisterPeer = registerBoardPeer(api.container, {
+  const selfPeer: BinderPeer = {
     group,
+    clearSelection: () => {
+      if (selectedId === undefined) return;
+      selectedId = undefined;
+      syncA11y();
+    },
     hasItem: (id) => (group.members ?? new Set<string>()).has(id),
     memberCell: (id) => handle.cellOf(id),
     resizeMemberBy: () => ({ changed: false }),
@@ -1194,7 +1219,10 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       return f.width * f.height;
     },
     adopt: () => null,
-  });
+  };
+  const unregisterPeer = registerBoardPeer(api.container, selfPeer);
+  selfPeerRef = selfPeer;
+  api.container.style.setProperty('--axdb-gap', `${gap}px`);
   const disposeHandle = handle.dispose.bind(handle);
   handle.dispose = (): void => {
     unregisterPeer();

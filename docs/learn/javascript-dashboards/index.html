@@ -389,6 +389,14 @@ render(SPEC2, host);</pre>
       nesting from live membership — a dragged-in tile lands under its new
       parent in the snapshot, and the snapshot rebuilds through
       <code>dashboard()</code> unchanged. Nesting is exercised to two levels.</p>
+      <p><b>One selection per canvas</b> (element 0.4.18). A press, a focus or
+      <code>selectWidget</code> on any board of a canvas — a section or its parent — clears
+      the selection on every other board, so a section and its board never show two rings.
+      The outside grip tab now fits the gap between tiles: never taller than the gap less a
+      pixel, never shorter than 6 px; the board publishes its gap as <code>--axdb-gap</code>
+      on the canvas for chrome of your own that must sit between tiles. And a split board
+      writes its tree in the row count the grid had, so Grid → Split → Grid returns the same
+      cells on a fit board with many rows (before, 14-row sections came back as 5-row slabs).</p>
       <p><b>A section grows with what is pulled inside it</b> (element 0.4.17). A tile that
       spans only part of a multi-row section pushes what is below it; a row the pushed layout
       needs and the section does not hold is asked of the board, one per pointer step, and
