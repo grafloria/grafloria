@@ -194670,7 +194670,10 @@ function bindDashboardGrid(api, group, options = {}) {
   const minRowHeight = options.minRowHeight ?? 28;
   const squeeze = options.squeeze !== false;
   let float = options.float ?? false;
-  const maxRows = options.maxRows;
+  const designRows = options.maxRows;
+  let maxRows = options.maxRows;
+  const extentOf = (items) => items.reduce((m, i) => Math.max(m, i.y + i.h), 0);
+  const liveBound = (items) => designRows === void 0 ? void 0 : Math.max(designRows, extentOf(items));
   const escalate = options.escalate !== false;
   const dragOut = options.dragOut ?? "cancel";
   const wantHandles = options.resizeHandles !== false;
@@ -194686,6 +194689,7 @@ function bindDashboardGrid(api, group, options = {}) {
   let capacity;
   let sizing = options.sizing ?? "fit";
   const engineFrom = (items, pack = false, at = columns) => {
+    maxRows = liveBound(items);
     const e = new GridPackEngine(items, { columns: at, float: pack ? float : true, maxRows, capacity });
     e.float = float;
     return e;
@@ -195281,6 +195285,10 @@ function bindDashboardGrid(api, group, options = {}) {
       } else {
         engine.cancelGesture();
       }
+      if (designRows !== void 0) {
+        maxRows = liveBound(engine.getItems());
+        engine.maxRows = maxRows;
+      }
       writing = true;
       try {
         for (const [id, snap] of g.startGeom) {
@@ -195421,14 +195429,10 @@ function bindDashboardGrid(api, group, options = {}) {
     const minW = Math.max(8, columnUnitFor(gg, f.width));
     let w = Math.max(minW, right - left);
     let h = bottom - top;
-    const pulled = engine.getItem(g.id);
-    const spansStrip = !!pulled && pulled.y === 0 && pulled.h >= (maxRows ?? Infinity);
-    if (maxRows !== void 0 && escalate && spansStrip && g.kind === "resize") {
+    if (designRows !== void 0 && maxRows !== void 0 && escalate && g.kind === "resize") {
       const parent = parentPeer();
-      if (parent) {
-        const visual = boardVisualHeight();
-        const slabRows = parent.memberCell(group.id)?.h ?? 1;
-        const rowPx = visual / Math.max(1, slabRows);
+      const pulled = engine.getItem(g.id);
+      if (parent && pulled) {
         const record = (res, d) => {
           if (!res.changed || !res.cellBefore || !res.cellAfter || !res.frameBefore || !res.frameAfter)
             return;
@@ -195445,13 +195449,74 @@ function bindDashboardGrid(api, group, options = {}) {
           g.esc.rowsAdded += d;
           g.esc.cellAfter = res.cellAfter;
           g.esc.frameAfter = res.frameAfter;
-          project();
         };
-        if (h > visual + 24) {
-          record(parent.resizeMemberBy(group.id, 1), 1);
-        } else if (slabRows > Math.max(1, maxRows) && h < visual - rowPx * 0.7) {
-          record(parent.resizeMemberBy(group.id, -1), -1);
+        const setInnerRows = (n3) => {
+          maxRows = n3;
+          engine.maxRows = n3;
+        };
+        const slabRows = parent.memberCell(group.id)?.h ?? maxRows;
+        const inner = maxRows;
+        const rhNow = rowHeightFor(geom(), rows());
+        const rowPx = rhNow + gap;
+        const wantRows = Math.max(1, Math.round((h + gap) / rowPx));
+        const wantsMore = wantRows > pulled.h;
+        const wantsLess = wantRows < pulled.h;
+        const fullHeight = pulled.y === 0 && pulled.h >= inner;
+        const fullOnes = engine.getItems().filter((i) => i.y === 0 && i.h >= inner).map((i) => i.id);
+        const resizeAll = (ids, rowsTo) => {
+          for (const id of ids) {
+            const it = engine.getItem(id);
+            if (it) engine.resizeCheck(id, it.w, rowsTo);
+          }
+        };
+        let touched = false;
+        if (wantsMore) {
+          if (fullHeight) {
+            const res = parent.resizeMemberBy(group.id, 1);
+            if (res.changed) {
+              record(res, 1);
+              setInnerRows(inner + 1);
+              resizeAll(fullOnes, inner + 1);
+              touched = true;
+            }
+          } else if (!engine.resizeCheck(g.id, pulled.w, pulled.h + 1).changed) {
+            const res = parent.resizeMemberBy(group.id, 1);
+            if (res.changed) {
+              record(res, 1);
+              setInnerRows(inner + 1);
+              engine.resizeCheck(g.id, pulled.w, pulled.h + 1);
+              touched = true;
+            }
+          } else {
+            touched = true;
+          }
+        } else if (wantsLess) {
+          if (fullHeight) {
+            if (slabRows > designRows && inner > 1) {
+              resizeAll(fullOnes, inner - 1);
+              const res = parent.resizeMemberBy(group.id, -1);
+              if (res.changed) {
+                record(res, -1);
+                setInnerRows(inner - 1);
+              } else {
+                resizeAll(fullOnes, inner);
+              }
+              touched = true;
+            }
+          } else if (pulled.h > 1) {
+            engine.resizeCheck(g.id, pulled.w, pulled.h - 1);
+            const floor = Math.max(designRows, extentOf(engine.getItems()));
+            if (slabRows > floor) {
+              const res = parent.resizeMemberBy(group.id, -1);
+              if (res.changed) {
+                record(res, -1);
+                setInnerRows(inner - 1);
+              }
+            }
+            touched = true;
+          }
         }
+        if (touched) project();
       }
     }
     const fNow = frame();
@@ -198613,9 +198678,8 @@ function dashboard(options) {
         w.layout = next;
         delete w.tree;
         ctx.layoutOf.set(id, next);
-        const slabRows = binders.get(ctx.viewOfWidget.get(id) ?? "")?.cellOf(id)?.h;
-        const authored = w.maxRows ?? rowExtentOf(w.widgets ?? []);
-        bindContainer(cg, w, ctx.viewOfBoard.get(id) ?? ctx.active, Math.max(authored, slabRows ?? 0));
+        void binders.get(ctx.viewOfWidget.get(id) ?? "")?.cellOf(id);
+        bindContainer(cg, w, ctx.viewOfBoard.get(id) ?? ctx.active);
         binders.get(id)?.sync();
         if (focused) binders.get(id)?.focusWidget(focused);
         else if (selected) binders.get(id)?.selectWidget(selected);
@@ -198737,7 +198801,9 @@ function dashboard(options) {
             ...inner,
             sizing: "fit",
             designHeight: 0,
-            maxRows: innerRows ?? w.maxRows ?? rowExtentOf(w.widgets ?? []),
+            // The DESIGN: authored, else what the group was mounted with, else
+            // the children's extent — the binder's live bound follows the cells.
+            maxRows: innerRows ?? w.maxRows ?? cg.getMetadata("containerWidget")?.maxRows ?? rowExtentOf(w.widgets ?? []),
             float: false,
             escalate: w.sizing !== "fit"
           })

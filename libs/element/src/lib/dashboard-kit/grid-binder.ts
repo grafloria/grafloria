@@ -736,8 +736,18 @@ export function bindDashboardGrid(
   const minRowHeight = options.minRowHeight ?? 28;
   const squeeze = options.squeeze !== false;
   let float = options.float ?? false;
-  /** The AUTHORED bound — a nested strip's design (row-first push, escalation). */
-  const maxRows = options.maxRows;
+  /**
+   * The AUTHORED bound — a nested section's design (row-first push,
+   * escalation) — and the LIVE bound the gestures respect. A section that
+   * escalation grew holds more rows than its design; the live bound follows
+   * the members' extent on every rebuild (reload, undo, refresh), and a shrink
+   * never takes the section below `designRows`.
+   */
+  const designRows = options.maxRows;
+  let maxRows = options.maxRows;
+  const extentOf = (items: readonly GridPackItem[]): number => items.reduce((m, i) => Math.max(m, i.y + i.h), 0);
+  const liveBound = (items: readonly GridPackItem[]): number | undefined =>
+    designRows === undefined ? undefined : Math.max(designRows, extentOf(items));
   /** May a pull past the bound grow the slab in the parent? `false` = the pane is the bound. */
   const escalate = options.escalate !== false;
   const dragOut = options.dragOut ?? 'cancel';
@@ -771,6 +781,7 @@ export function bindDashboardGrid(
    * kit's documented boot contract) and turning float off.
    */
   const engineFrom = (items: GridPackItem[], pack = false, at = columns): GridPackEngine => {
+    maxRows = liveBound(items);
     const e = new GridPackEngine(items, { columns: at, float: pack ? float : true, maxRows, capacity });
     e.float = float;
     return e;
@@ -1638,6 +1649,10 @@ export function bindDashboardGrid(
       } else {
         engine.cancelGesture();
       }
+      if (designRows !== undefined) {
+        maxRows = liveBound(engine.getItems());
+        (engine as unknown as { maxRows?: number }).maxRows = maxRows;
+      }
       // Restore every pixel to its gesture-start state.
       writing = true;
       try {
@@ -1831,23 +1846,24 @@ export function bindDashboardGrid(
     // the strip's CURRENT slab rows, whatever gesture created them; the
     // ledger just accumulates this gesture's net change for the one-batch
     // commit and for Escape.
-    // ESCALATION SCALES THE WHOLE STRIP — every tile inside taller together
-    // (s21, the model the user agreed on for a KPI strip). That is only sane
-    // when the pulled tile spans the strip's full height, which every tile of
-    // a one-row strip does. A partial-height tile in a MULTI-ROW section
-    // resizes within the section and is refused past its rows: the first
-    // version compared the tile's height with the whole section and shrank a
-    // 14-row control panel to 4 rows under a 150-px pull on a one-row
-    // drop-down (Quantia, Groups page — "boom its destroyed"). And a section
-    // never shrinks below its designed rows.
-    const pulled = engine.getItem(g.id);
-    const spansStrip = !!pulled && pulled.y === 0 && pulled.h >= (maxRows ?? Infinity);
-    if (maxRows !== undefined && escalate && spansStrip && g.kind === 'resize') {
+    // NESTED ESCALATION — a section is a board one level down, and a pull
+    // inside it can need rows the section does not hold. Two shapes:
+    //  · a tile spanning the section's FULL HEIGHT (every tile of a one-row
+    //    KPI strip): the section gains a row and every full-height tile grows
+    //    with it — a row of tiles pulled taller stays a row (s21) — and gives
+    //    it back when pulled up, never below the design;
+    //  · a PARTIAL tile (a one-row control in a 14-row panel): it pushes what
+    //    is below it; a row the pushed layout needs and the section does not
+    //    hold is asked of the board, one per pointer step, and rows the
+    //    layout no longer needs go back. The board decides: grow extends, fit
+    //    squeezes or refuses. The first version grew the section only for
+    //    the full-height case and REFUSED the partial one; before that it
+    //    shrank a 14-row panel to 4 (Quantia, Groups page).
+    // The live bound `maxRows` follows the section's rows through all of it.
+    if (designRows !== undefined && maxRows !== undefined && escalate && g.kind === 'resize') {
       const parent = parentPeer();
-      if (parent) {
-        const visual = boardVisualHeight();
-        const slabRows = parent.memberCell(group.id)?.h ?? 1;
-        const rowPx = visual / Math.max(1, slabRows);
+      const pulled = engine.getItem(g.id);
+      if (parent && pulled) {
         const record = (
           res: ReturnType<BinderPeer['resizeMemberBy']>,
           d: number
@@ -1867,13 +1883,76 @@ export function bindDashboardGrid(
           g.esc.rowsAdded += d;
           g.esc.cellAfter = res.cellAfter;
           g.esc.frameAfter = res.frameAfter;
-          project();
         };
-        if (h > visual + 24) {
-          record(parent.resizeMemberBy(group.id, +1), +1);
-        } else if (slabRows > Math.max(1, maxRows) && h < visual - rowPx * 0.7) {
-          record(parent.resizeMemberBy(group.id, -1), -1);
+        const setInnerRows = (n: number): void => {
+          maxRows = n;
+          (engine as unknown as { maxRows?: number }).maxRows = n;
+        };
+        const slabRows = parent.memberCell(group.id)?.h ?? maxRows;
+        const inner = maxRows;
+        const rhNow = rowHeightFor(geom(), rows());
+        const rowPx = rhNow + gap;
+        // The SAME rounding the resize path quantises with, or the tile shrinks
+        // through that path first and the section never gets its row back.
+        const wantRows = Math.max(1, Math.round((h + gap) / rowPx));
+        const wantsMore = wantRows > pulled.h;
+        const wantsLess = wantRows < pulled.h;
+        const fullHeight = pulled.y === 0 && pulled.h >= inner;
+        const fullOnes = engine.getItems().filter((i) => i.y === 0 && i.h >= inner).map((i) => i.id);
+        const resizeAll = (ids: string[], rowsTo: number): void => {
+          for (const id of ids) {
+            const it = engine.getItem(id);
+            if (it) engine.resizeCheck(id, it.w, rowsTo);
+          }
+        };
+        let touched = false;
+        if (wantsMore) {
+          if (fullHeight) {
+            const res = parent.resizeMemberBy(group.id, +1);
+            if (res.changed) {
+              record(res, +1);
+              setInnerRows(inner + 1);
+              resizeAll(fullOnes, inner + 1);
+              touched = true;
+            }
+          } else if (!engine.resizeCheck(g.id, pulled.w, pulled.h + 1).changed) {
+            const res = parent.resizeMemberBy(group.id, +1);
+            if (res.changed) {
+              record(res, +1);
+              setInnerRows(inner + 1);
+              engine.resizeCheck(g.id, pulled.w, pulled.h + 1);
+              touched = true;
+            }
+          } else {
+            touched = true;
+          }
+        } else if (wantsLess) {
+          if (fullHeight) {
+            if (slabRows > designRows && inner > 1) {
+              resizeAll(fullOnes, inner - 1);
+              const res = parent.resizeMemberBy(group.id, -1);
+              if (res.changed) {
+                record(res, -1);
+                setInnerRows(inner - 1);
+              } else {
+                resizeAll(fullOnes, inner);
+              }
+              touched = true;
+            }
+          } else if (pulled.h > 1) {
+            engine.resizeCheck(g.id, pulled.w, pulled.h - 1);
+            const floor = Math.max(designRows, extentOf(engine.getItems()));
+            if (slabRows > floor) {
+              const res = parent.resizeMemberBy(group.id, -1);
+              if (res.changed) {
+                record(res, -1);
+                setInnerRows(inner - 1);
+              }
+            }
+            touched = true;
+          }
         }
+        if (touched) project();
       }
     }
     // The fluid preview must not outrun what the board can accept: on a

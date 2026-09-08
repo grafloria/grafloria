@@ -125,6 +125,15 @@ const PANEL = () => [
 ];
 board('panel-fit', 'multi-row section · fit board · squeeze false (Quantia Groups page)', { squeeze: false, widgets: PANEL() }, { height: 758 });
 board('panel-grow', 'multi-row section · grow board · rowHeight 34 (full-height tile escalates)', { sizing: 'grow', rowHeight: 34, widgets: PANEL() }, { height: 758 });
+board('strip', 'one-row KPI strip in a grow board (the strip model)', { sizing: 'grow', rowHeight: 60, widgets: [
+  { id: 'kpis', title: 'KPI strip', span: 12, rows: 1, x: 0, y: 0, columns: 4, widgets: [
+    { id: 's-rev', kind: 'kpi', span: 1, rows: 1, x: 0, y: 0, data: { label: 'Revenue', value: '$6.81M' } },
+    { id: 's-cust', kind: 'kpi', span: 1, rows: 1, x: 1, y: 0, data: { label: 'Customers', value: '1,284' } },
+    { id: 's-win', kind: 'kpi', span: 1, rows: 1, x: 2, y: 0, data: { label: 'Win rate', value: '27.4%' } },
+    { id: 's-nps', kind: 'kpi', span: 1, rows: 1, x: 3, y: 0, data: { label: 'NPS', value: '61' } },
+  ] },
+  { id: 's-trend', kind: 'line', span: 12, rows: 3, x: 0, y: 1, title: 'Trend', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+] });
 board('narrow', 'responsive 12→6 at 700 px · squeeze false', { squeeze: false, responsive: { breakpoints: [{ w: 700, c: 6, layout: 'move' }], columnMax: 12, layout: 'move' } });
 
 await new Promise((r) => setTimeout(r, 300));
