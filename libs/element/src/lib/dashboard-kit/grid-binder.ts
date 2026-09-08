@@ -2853,8 +2853,30 @@ export function bindDashboardGrid(
    * container; the corner handle keeps its own cursor from the stylesheet.
    */
   let hoverHost: HTMLElement | null = null;
+  /**
+   * A `show: 'hover'` caption cannot ride CSS `:hover`: the slab overlay takes
+   * no pointer (by design — it must never steal a press), and while the band
+   * is hidden it takes none either, so nothing in the section is ever hovered
+   * in CSS terms. The binder already tracks the pointer; it marks the section
+   * under it instead.
+   */
+  const markHotSection = (clientX: number, clientY: number): void => {
+    if (!slabEls.size) return;
+    for (const [id, el] of slabEls) {
+      if (!el.querySelector(':scope > .axdb-slab-h--hover')) continue;
+      const r = el.getBoundingClientRect();
+      const hot = clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+      el.classList.toggle('axdb-slab--hot', hot);
+      void id;
+    }
+  };
+  const onHoverLeave = (): void => {
+    for (const el of slabEls.values()) el.classList.remove('axdb-slab--hot');
+  };
+
   const onHover = (e: PointerEvent): void => {
     if (disposed || gesture) return;
+    markHotSection(e.clientX, e.clientY);
     // The event may target the host, its content, or (when a host's content
     // is pointer-transparent) the canvas under it — find the member host by
     // the pointer's position in that case.
@@ -2899,6 +2921,7 @@ export function bindDashboardGrid(
     else host.removeAttribute('data-axdb-edge');
   };
   api.container.addEventListener('pointermove', onHover, { passive: true });
+  api.container.addEventListener('pointerleave', onHoverLeave, { passive: true });
 
   /**
    * STATIC BOARDS LET CONTENT BE CLICKED. The renderer prevents the default of
@@ -3445,6 +3468,7 @@ export function bindDashboardGrid(
       peersOnCanvas().delete(selfPeer);
       unregisterTool();
       api.container.removeEventListener('pointermove', onHover);
+      api.container.removeEventListener('pointerleave', onHoverLeave);
       guardedLayer?.removeEventListener('pointerdown', staticGuard);
       api.container.removeEventListener('focusin', onFocusIn);
       api.container.removeEventListener('keydown', onKey);

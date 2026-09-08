@@ -393,8 +393,8 @@ render(SPEC2, host);</pre>
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
       <code>description</code> (an ⓘ with a tooltip, also the section's accessible description),
-      <code>icon</code>, <code>position: 'inside' | 'tab'</code> (a tab sits above the frame and
-      reserves nothing), <code>align</code> / <code>valign</code>, <code>height</code>,
+      <code>icon</code>, <code>position: 'inside' | 'tab'</code> (a tab is the same band sized to
+      its text, a chip at the leading corner, mirrored on RTL), <code>align</code> / <code>valign</code>, <code>height</code>,
       <code>font</code> (size, weight, family, color, uppercase), <code>padding</code> /
       <code>margin</code>, <code>background</code> / <code>border</code>,
       <code>show: 'always' | 'design' | 'hover'</code> (<code>'design'</code> disappears under
@@ -404,7 +404,11 @@ render(SPEC2, host);</pre>
       the band — buttons, inputs and <code>[data-axdb-pass]</code> by default) and
       <code>className</code>. The kit paints the band on the section's overlay, reserves its pixels
       inside the frame so no child may take them, and routes its presses: a press on the band
-      selects the section, its top edge still resizes. Typography and box are CSS variables
+      selects the section, its top edge still resizes. Both positions reserve their pixels inside the
+      section's own cell — a header that hangs over the neighbour above is the overlap bug this
+      replaces, and only <code>show: 'hover'</code> reserves nothing (it is an overlay, so it paints
+      opaque and takes no pointer at all until the pointer is in the section). A band never eats its
+      section either: it clamps so the children keep 20 px, floored at 16 px. Typography and box are CSS variables
       (<code>--axdb-caption-*</code>) a theme can set once. A section under 90 px steps the band
       down to 22 px, as a squeezed card steps its header. <code>renderCaption(widget, host)</code>
       on <code>dashboard()</code> paints the band yourself, keeping its press rules;

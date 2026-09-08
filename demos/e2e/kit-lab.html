@@ -163,7 +163,18 @@ board('cap-default', 'captions · true / rich (subtitle · ⓘ · icon · action
   { text: 'Paid business', subtitle: 'net of refunds', description: 'Paid invoices only, current quarter', icon: '💰', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }, { id: 'menu', label: 'More', icon: '⋯' }, { id: 'off', label: 'Disabled', icon: '✕', disabled: true }] },
   undefined) }, { height: 758 });
 board('cap-fit', 'captions on a fit board · squeeze false (Quantia Groups page)', { squeeze: false, widgets: CAP(true, { text: 'Paid business', subtitle: 'net of refunds' }, 'Outside') }, { height: 758 });
-board('cap-tab', "caption position 'tab' · gap 30 · grow rowHeight 60", { sizing: 'grow', rowHeight: 60, gap: 30, widgets: [...KPIS(), { id: 'box', title: 'Details', span: 12, rows: 2, x: 0, y: 1, columns: 12, caption: { position: 'tab', text: 'Details tab', icon: '▤' }, widgets: INNER() }] }, { height: 360 });
+board('cap-tab', "caption position 'tab' · ordinary gap · a chart directly above · one on the top row", { sizing: 'grow', rowHeight: 60, widgets: [
+  { id: 'top', title: 'Top tab', span: 12, rows: 1, x: 0, y: 0, columns: 12, caption: { position: 'tab', text: 'Top tabbed section', icon: '▤' }, widgets: [
+    { id: 'tp1', kind: 'kpi', span: 12, rows: 1, x: 0, y: 0, data: { label: 'On the top row', value: '1' } } ] },
+  { id: 'above', kind: 'line', span: 12, rows: 1, x: 0, y: 1, title: 'The chart above the section', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+  { id: 'box', title: 'Details', span: 12, rows: 2, x: 0, y: 2, columns: 12, caption: { position: 'tab', text: 'Details tab', icon: '▤' }, widgets: INNER() },
+] }, { height: 470 });
+board('cap-edge', 'captions at the edges · a 1-row 34 px section · a narrow section carrying everything', { sizing: 'grow', rowHeight: 34, widgets: [
+  { id: 'one', title: 'One row', caption: true, span: 4, rows: 1, x: 0, y: 0, columns: 4, widgets: [{ id: 'o1', kind: 'kpi', span: 4, rows: 1, x: 0, y: 0, data: { label: 'One', value: '1' } }] },
+  { id: 'two', title: 'Two rows', caption: true, span: 4, rows: 2, x: 4, y: 0, columns: 4, widgets: [{ id: 'o2', kind: 'kpi', span: 4, rows: 2, x: 0, y: 0, data: { label: 'Two', value: '2' } }] },
+  { id: 'all', title: 'X', span: 2, rows: 6, x: 10, y: 0, columns: 2, caption: { icon: '📊', text: 'Quarterly revenue by region and product line', subtitle: 'net of refunds and credits', description: 'Everything at once', actions: [{ id: 'a', label: 'A', icon: '⤢' }, { id: 'b', label: 'B', icon: '⋯' }] }, widgets: [{ id: 'o3', kind: 'kpi', span: 2, rows: 6, x: 0, y: 0, data: { label: 'All', value: '3' } }] },
+  { id: 'etail', kind: 'line', span: 8, rows: 4, x: 0, y: 2, title: 'Tail', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+] }, { height: 330 });
 board('cap-styled', 'captions · center+uppercase / end+valign bottom+height 40+margin / hover / design', { sizing: 'grow', rowHeight: 34, widgets: [
   { id: 'st-a', title: 'Centered', span: 3, rows: 8, x: 0, y: 0, columns: 4, caption: { align: 'center', font: { size: 11, weight: 700, transform: 'uppercase' }, background: '#e8ecfb', border: '1px solid #3b52d9' }, widgets: [{ id: 'sa1', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'A', value: '1' } }] },
   { id: 'st-b', title: 'End · bottom', span: 3, rows: 8, x: 3, y: 0, columns: 4, caption: { align: 'end', valign: 'bottom', height: 40, padding: [2, 14], margin: [4, 6], font: { size: 15, family: 'Georgia, serif', color: '#7c5e00' } }, widgets: [{ id: 'sb1', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'B', value: '2' } }] },
@@ -174,7 +185,7 @@ board('cap-custom', 'renderCaption · a badge (selects) and a button (pass-throu
   host.innerHTML = `<span class="cap-badge" style="font:600 11px ui-monospace,monospace;background:#d4b106;color:#fff;padding:2px 6px;border-radius:3px">${w.title}</span><button class="cap-btn" style="margin-inline-start:auto;font:11px system-ui">act</button>`;
   host.querySelector('.cap-btn').addEventListener('click', () => { window.__labClicks['cap-custom'] = (window.__labClicks['cap-custom'] ?? 0) + 1; });
 }, widgets: CAP({ className: 'brand' }, 'Paid', 'Outside') }, { height: 758 });
-board('cap-rtl', 'captions · rtl · actions at the start', { sizing: 'grow', rowHeight: 34, rtl: true, widgets: CAP(true, { text: 'Paid business', subtitle: 'net of refunds', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }] }, 'Outside') }, { height: 758 });
+board('cap-rtl', 'captions · rtl · actions at the start · a tab mirrored to the right', { sizing: 'grow', rowHeight: 34, rtl: true, widgets: CAP({ position: 'tab', text: 'Report controls', icon: '▤' }, { text: 'Paid business', subtitle: 'net of refunds', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }] }, 'Outside') }, { height: 758 });
 board('cap-tight', 'captions · a 2-row (78 px) section is tight · a strip too', { sizing: 'grow', rowHeight: 34, widgets: [
   { id: 'tight', title: 'Tight section', span: 6, rows: 2, x: 0, y: 0, columns: 2, caption: { subtitle: 'hidden when tight', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }] }, widgets: [
     { id: 't1', kind: 'kpi', span: 1, rows: 2, x: 0, y: 0, data: { label: 'T1', value: '1' } }, { id: 't2', kind: 'kpi', span: 1, rows: 2, x: 1, y: 0, data: { label: 'T2', value: '2' } } ] },

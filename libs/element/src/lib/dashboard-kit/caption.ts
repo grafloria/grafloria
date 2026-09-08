@@ -43,7 +43,12 @@ export interface SectionCaptionOptions {
   description?: string;
   /** A glyph before the text (emoji or short text). */
   icon?: string;
-  /** 'inside' (default): a band inside the frame, reserved. 'tab': above the frame, nothing reserved. */
+  /**
+   * 'inside' (default): a band across the top of the frame. 'tab': the same
+   * band sized to its text, a label chip at the leading corner. BOTH reserve
+   * their height inside the SECTION's own cell — a header that hangs over the
+   * neighbour above is the overlap bug this feature exists to end.
+   */
   position?: 'inside' | 'tab';
   /** Horizontal alignment (default 'start', mirrored on RTL). */
   align?: 'start' | 'center' | 'end';
@@ -78,6 +83,10 @@ export const CAPTION_HEIGHT_SUBTITLE = 44;
 export const CAPTION_HEIGHT_TIGHT = 22;
 /** A section shorter than this steps its band down to the tight tier. */
 export const CAPTION_TIGHT_BELOW = 90;
+/** A band never paints thinner than this. */
+export const CAPTION_MIN_HEIGHT = 16;
+/** …nor takes the last pixels: the children keep at least this much. */
+export const CAPTION_MIN_CONTENT = 20;
 export const CAPTION_PASS_THROUGH = 'button, a, input, select, textarea, [data-axdb-pass]';
 
 /** The caption as options, or null when there is none. `title` fills the text. */
@@ -107,16 +116,29 @@ export function captionPainted(c: SectionCaptionOptions | null, isStatic: boolea
   return !(c.show === 'design' && isStatic);
 }
 
-/** The band's height for a section of `sectionH` px. */
+/**
+ * The band's height for a section of `sectionH` px: the authored height (or
+ * the tier), CLAMPED so the children always keep `CAPTION_MIN_CONTENT` px. A
+ * one-row section used to hand its whole 34 px to a 22 px band and paint a
+ * 12 px sliver of a child.
+ */
 export function captionBandHeight(c: SectionCaptionOptions, sectionH: number): number {
-  if (sectionH > 0 && sectionH < CAPTION_TIGHT_BELOW) return CAPTION_HEIGHT_TIGHT;
-  return c.height ?? (c.subtitle ? CAPTION_HEIGHT_SUBTITLE : CAPTION_HEIGHT);
+  const want = captionTight(sectionH) ? CAPTION_HEIGHT_TIGHT : c.height ?? (c.subtitle ? CAPTION_HEIGHT_SUBTITLE : CAPTION_HEIGHT);
+  if (sectionH <= 0) return want;
+  return Math.max(CAPTION_MIN_HEIGHT, Math.min(want, sectionH - CAPTION_MIN_CONTENT));
 }
 
-/** Pixels the nested board's frame gives up at the top: the band plus its vertical margins. */
+/**
+ * Pixels the nested board's frame gives up at the top: the band plus its
+ * vertical margins. A TAB reserves too — it is a narrower band, not a header
+ * hanging over whatever the parent board put above the section (the stress
+ * page had one lying across a chart's legend, and one clipped off the top of
+ * the canvas). Only `show: 'hover'` reserves nothing: it is an overlay by
+ * definition, and it paints opaque so the content beneath stays readable.
+ */
 export function captionReserve(c: SectionCaptionOptions | null, ctx: { static: boolean; sectionH: number }): number {
   if (!c || !captionPainted(c, ctx.static)) return 0;
-  if (c.position === 'tab' || c.show === 'hover') return 0;
+  if (c.show === 'hover') return 0;
   const [mv] = pairOf(c.margin, [0, 0]);
   return captionBandHeight(c, ctx.sectionH) + 2 * mv;
 }
@@ -128,13 +150,16 @@ export function captionKey(c: SectionCaptionOptions, ctx: { rtl: boolean; static
 
 /** Is a section of `sectionH` px in the tight tier? */
 export const captionTight = (sectionH: number): boolean => sectionH > 0 && sectionH < CAPTION_TIGHT_BELOW;
+/** Where the band's box sits horizontally: a tab hugs the LEADING edge, mirrored on RTL. */
+function bandSides(c: SectionCaptionOptions, mh: number, rtl: boolean): { left: string; right: string } {
+  if (c.position !== 'tab') return { left: `${mh}px`, right: `${mh}px` };
+  return rtl ? { left: 'auto', right: `${mh}px` } : { left: `${mh}px`, right: 'auto' };
+}
 
 /** The per-sync geometry of a painted band: height and tier follow the section's live size. */
 export function sizeCaptionBand(band: HTMLElement, c: SectionCaptionOptions, sectionH: number): void {
-  const h = captionBandHeight(c, sectionH);
   band.classList.toggle('axdb-slab-h--tight', captionTight(sectionH));
-  band.style.height = `${h}px`;
-  if (c.position === 'tab') band.style.top = `${-h}px`;
+  band.style.height = `${captionBandHeight(c, sectionH)}px`;
 }
 
 /**
@@ -186,9 +211,10 @@ export function paintCaptionBand(
   if (c.className) for (const k of c.className.split(/\s+/).filter(Boolean)) band.classList.add(k);
   band.setAttribute('dir', ctx.rtl ? 'rtl' : 'ltr');
   band.style.height = `${h}px`;
-  band.style.top = c.position === 'tab' ? `${-h}px` : `${mv}px`;
-  band.style.left = `${mh}px`;
-  band.style.right = c.position === 'tab' ? 'auto' : `${mh}px`; // a tab is sized to its text
+  band.style.top = `${mv}px`;
+  const sides = bandSides(c, mh, ctx.rtl);
+  band.style.left = sides.left;
+  band.style.right = sides.right;
   const v = (name: string, value: string | undefined) => {
     if (value === undefined) band.style.removeProperty(name);
     else band.style.setProperty(name, value);
