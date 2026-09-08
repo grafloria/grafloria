@@ -1319,6 +1319,9 @@ try {
     live: Array.from(document.querySelectorAll('[aria-live]')).map((e) => e.textContent).join(' '),
     rev: window.__demoCtx.handle.widget('rev').cell,
     stops: document.querySelectorAll('.grafloria-node-host[tabindex="0"]').length,
+    // ONE tab stop PER BOARD: the view's roving stop plus one per section (a
+    // nested board rolls its own) — the fluid demo carries a captioned section.
+    boards: 1 + document.querySelectorAll('#canvas .axdb-slab').length,
   }));
   await page.focus('#fb-add');
   // The diagram root is a tab stop of its own before the board's; keep
@@ -1338,13 +1341,13 @@ try {
   await shot(page, 'after-keyboard-move-and-resize');
   const cm = () => page.evaluate(() => window.__demoCtx.instance.getEngine().commandManager.canUndo());
   const undoable = await cm();
-  const reached = s0.active === 'rev' && s0.stops === 1 && /column 1, row 1/.test(s0.label);
+  const reached = s0.active === 'rev' && s0.stops === s0.boards && /column 1, row 1/.test(s0.label);
   const moved = s1.rev.x > 0 && /moved to column/.test(s1.live);
   const resized = s2.rev.h > s1.rev.h && /resized to/.test(s2.live);
   const st = await boardState(page);
   verdict(clean && reached && moved && resized && undoable && st.overlaps === 0,
     `axe=${audits.map((a) => `${a.path.split('/').pop()}:${a.violations.length ? a.violations.join(',') : 'clean'}`).join(' ')} ` +
-    `tab-reaches-one-widget=${reached}(${s0.active},stops=${s0.stops}) arrow-moved=${moved}(x=${s1.rev.x}) ` +
+    `tab-reaches-one-widget-per-board=${reached}(${s0.active},stops=${s0.stops}/${s0.boards}) arrow-moved=${moved}(x=${s1.rev.x}) ` +
     `shift-arrow-resized=${resized}(h=${s1.rev.h}->${s2.rev.h}) announced="${s2.live.slice(0, 80)}" undoable=${undoable} overlaps=${st.overlaps}`);
   assertNoPageErrors(page);
   await page.close();
