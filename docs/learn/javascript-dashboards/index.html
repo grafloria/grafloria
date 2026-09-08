@@ -389,6 +389,14 @@ render(SPEC2, host);</pre>
       nesting from live membership — a dragged-in tile lands under its new
       parent in the snapshot, and the snapshot rebuilds through
       <code>dashboard()</code> unchanged. Nesting is exercised to two levels.</p>
+      <p><b>Resizing inside a section, every edge</b> (element 0.4.20). A tile's top or left
+      edge grows only into free cells: when the row above or the column beside it is taken the
+      pull is refused, never turned into growth at the opposite edge or a move that pushes the
+      neighbours. Only a tile's bottom edge takes rows from, or gives rows back to, its
+      section. A bounded section keeps its designed row height when its content ends higher —
+      empty rows stay empty, as in gridstack — so a tile pulled shorter follows the pointer
+      row for row. A selected section's corner handle wins a corner it shares with a child;
+      unselected, the child's own handle is there.</p>
       <p><b>A section is a thing to select and resize</b> (element 0.4.19). A press on a
       section's empty band selects the section: it wears the selection ring and, while
       selected, a corner handle; its frame edges answer the resize cursor. Drag the handle or an

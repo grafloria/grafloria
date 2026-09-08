@@ -360,9 +360,11 @@ const CSS = `
 /* SECTION CHROME: a pointer-transparent overlay on every member group. It
    wears the selection ring and, while selected, the corner handle. */
 .grafloria-html-layer > .axdb-slab { position: absolute; pointer-events: none; border-radius: var(--axdb-rs-radius, 3px); z-index: 4; }
-.grafloria-html-layer > .axdb-slab.axdb-slab--selected { box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)); }
-.grafloria-html-layer > .axdb-slab > .axdb-rs { pointer-events: auto; opacity: 0; }
-.grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { opacity: 1; }
+/* Selected, the overlay rises above the tiles so ITS corner handle wins a
+   corner it shares with a child's; unselected, its handle takes no presses. */
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected { z-index: 6; box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)); }
+.grafloria-html-layer > .axdb-slab > .axdb-rs { pointer-events: none; opacity: 0; }
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { pointer-events: auto; opacity: 1; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-rs { display: none; }
 
 /* legend chips, shared by line and donut */
