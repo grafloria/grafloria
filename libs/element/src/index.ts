@@ -653,6 +653,14 @@ export type { HandleApi } from './lib/diagram-kit';
 // ===========================================================================
 export {
   bindDashboardGrid,
+  normalizeCaption,
+  captionReserve,
+  captionBandHeight,
+  paintCaptionBand,
+  CAPTION_HEIGHT,
+  CAPTION_HEIGHT_SUBTITLE,
+  CAPTION_HEIGHT_TIGHT,
+  CAPTION_PASS_THROUGH,
   rowHeightFor,
   boardHeightFor,
   columnUnitFor,
