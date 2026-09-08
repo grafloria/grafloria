@@ -193,6 +193,16 @@ board('cap-tight', 'captions · a 2-row (78 px) section is tight · a strip too'
     { id: 'r1', kind: 'kpi', span: 1, rows: 4, x: 0, y: 0, data: { label: 'R1', value: '1' } }, { id: 'r2', kind: 'kpi', span: 1, rows: 4, x: 1, y: 0, data: { label: 'R2', value: '2' } } ] },
   { id: 'tail', kind: 'line', span: 12, rows: 4, x: 0, y: 4, title: 'Tail', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
 ] }, { height: 420 });
+board('cap-squeeze', 'captioned sections NESTED on a fit board with squeeze — the compression case', { squeeze: true, widgets: [
+  { id: 'sq-outer', title: 'Outer', caption: { subtitle: 'squeezed' }, span: 7, rows: 6, x: 0, y: 0, columns: 12, widgets: [
+    { id: 'sq-inner', title: 'Inner', caption: true, span: 6, rows: 6, x: 0, y: 0, columns: 6, widgets: [
+      { id: 'sqi1', kind: 'kpi', span: 6, rows: 3, x: 0, y: 0, data: { label: 'I1', value: '1' } },
+      { id: 'sqi2', kind: 'kpi', span: 6, rows: 3, x: 0, y: 3, data: { label: 'I2', value: '2' } } ] },
+    { id: 'sq-sib', kind: 'line', span: 6, rows: 6, x: 6, y: 0, title: 'Sibling', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+  ] },
+  { id: 'sq-side', title: 'Side', caption: { position: 'tab' }, span: 5, rows: 6, x: 7, y: 0, columns: 5, widgets: [
+    { id: 'sqs1', kind: 'kpi', span: 5, rows: 6, x: 0, y: 0, data: { label: 'S', value: '3' } } ] },
+] }, { height: 260 });
 board('cap-split', 'captioned sections on a SPLIT board · no chrome to paint them, so no reserve', { layout: 'split', sizing: 'grow', rowHeight: 50, widgets: [
   { id: 'sp-a', title: 'Captioned A', caption: { subtitle: 'sub' }, span: 6, rows: 4, x: 0, y: 0, columns: 6, widgets: [
     { id: 'spa1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'A', value: '1' } },

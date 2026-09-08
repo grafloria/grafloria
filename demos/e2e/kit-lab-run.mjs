@@ -1018,7 +1018,7 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
 }
 {
   begin('L49-no-caption-band-ever-lies-over-a-widget-that-is-not-its-own');
-  const boards = ['cap-default', 'cap-fit', 'cap-tab', 'cap-styled', 'cap-custom', 'cap-rtl', 'cap-tight', 'cap-nested', 'cap-edge'];
+  const boards = ['cap-default', 'cap-fit', 'cap-tab', 'cap-styled', 'cap-custom', 'cap-rtl', 'cap-tight', 'cap-nested', 'cap-edge', 'cap-squeeze'];
   const bad = [];
   for (const b of boards) {
     await scrollTo(b);
@@ -1056,6 +1056,7 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   }
   await shot('cap-edge', 'edge-captions');
   await shot('cap-tab', 'tab-captions');
+  await shot('cap-squeeze', 'nested-captions-squeezed');
   // a hover band is the ONE overlay: it may cover its own children, never a foreign one
   const foreign = bad.filter((x) => x.includes('FOREIGN') || x.includes('OUTSIDE') || x.includes('CHILD-OUT') || x.includes('CRUSHED'));
   verdict(foreign.length === 0, `${boards.length} captioned boards swept · offences: ${foreign.length ? foreign.join(' | ') : 'none'} (own-child overlays, allowed: ${bad.length - foreign.length})`);
