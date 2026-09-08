@@ -91,7 +91,7 @@
     <tr><td>Groups nest arbitrarily</td><td>Tabs inside a tab page work <span class="measured">(outer and inner strips both painted)</span></td><td><span class="tag t-have">HAVE</span></td></tr>
     <tr><td><b>Drop a tab on another group → two tabs</b></td><td>Not built. Pages are declared in the data.</td><td><span class="tag t-gap">GAP</span></td></tr>
     <tr><td><b>Drop near an edge → split into a new group</b></td><td>Not built for panels. The split binder already has edge insertion for <em>widgets</em>, so the model exists one level down.</td><td><span class="tag t-gap">GAP</span></td></tr>
-    <tr><td><b>Drag a tab out → it becomes its own group</b></td><td>Not built.</td><td><span class="tag t-gap">GAP</span></td></tr>
+    <tr><td><b>Drag a tab out → it becomes its own group</b></td><td>Not built. Dragging a page's CONTENT moves that widget alone and leaves the tab behind, which is correct for a widget but is not the gesture being reached for.</td><td><span class="tag t-gap">GAP</span></td></tr>
     <tr><td><b>Move a whole group among the other panes</b></td><td><b>Impossible today, and not only for tabs:</b> a section is a locked slab. <span class="measured">moveTo on a tab group → false; on a plain section → false.</span></td><td><span class="tag t-gap">GAP</span></td></tr>
     <tr><td>Reorder tabs by dragging along the bar</td><td>Not built.</td><td><span class="tag t-gap">GAP</span></td></tr>
     <tr><td>Emptying a group destroys it; the rest take the space</td><td>Not built. A container left with one page still shows a one-tab bar.</td><td><span class="tag t-gap">GAP</span></td></tr>
@@ -100,6 +100,16 @@
     <tr><td>Preview tabs (italic, replaced by the next file)</td><td>Not built — and I would not build it. It exists because an editor opens files transiently; a dashboard page is placed deliberately.</td><td><span class="tag t-part">N/A</span></td></tr>
     <tr><td>Pinned tabs, <kbd>Ctrl</kbd>+<kbd>Tab</kbd> recent-first cycling, floating windows</td><td>Not built. Low value here; listed so the omission is deliberate rather than forgotten.</td><td><span class="tag t-part">LATER</span></td></tr>
   </table></div>
+
+  <h2>Dragging content out: what actually happens</h2>
+  <p>Reported as "the content isn't dropped where I placed it, it goes to the bottom as a new row". Measured, the rule is narrower than that, and worth stating exactly because it is not a tab bug at all.</p>
+  <div class="wrap"><table>
+    <tr><th>case</th><th>result</th><th>verdict</th></tr>
+    <tr><td>A widget dragged out of a tab page to a spot where it FITS</td><td>Lands exactly there <span class="measured">(p1 0,0 3×2 → BOARD 2,0 3×2, dropped over column 2)</span>, and the placeholder previews that spot during the drag.</td><td><span class="tag t-have">CORRECT</span></td></tr>
+    <tr><td>A widget dragged out to a spot where it does NOT fit <span class="measured">(5 columns wide into a 3-wide gap)</span></td><td>Lands at the bottom as a new row <span class="measured">(→ BOARD 0,3)</span>. The placeholder does move to the bottom mid-drag, so the board is not lying — but the tile silently relocates instead of being refused or shrunk.</td><td><span class="tag t-part">SURPRISING</span></td></tr>
+    <tr><td>Same drag out of a PLAIN section (control)</td><td>Identical behaviour, so this predates tabs entirely and affects every section.</td><td><span class="tag t-part">PRE-EXISTING</span></td></tr>
+  </table></div>
+  <p class="note">VS Code never relocates a drop. It shows you the zone you are over, and dropping there either joins that group or splits it — the editor cannot "not fit". A grid can, so the kit needs a deliberate answer: refuse the drop visibly the way a full board already does, shrink the tile to the free width, or push the row below down to make room. Quietly landing at the bottom is the one option that surprises people, and it is what happens today.</p>
 
   <h2>Two defects the probe found</h2>
   <div class="bug"><b>A non-container child of a tab container is orphaned.</b> The tab system treats only children carrying <code>widgets</code> as pages, so a plain widget among them is never positioned: it paints at the board origin at its 100×60 placeholder size. <span class="measured">Measured: 'loose' at x=0, 100×60, while the two real pages tabbed correctly.</span> The same happens when <em>every</em> child is a plain widget: no strip is painted at all and the widget is stranded. The plan always said a plain child should become a one-widget page; the code does not do it yet. Until it does, this is a silent corruption of the author's layout, and it is the first thing to fix.</div>
