@@ -1080,6 +1080,26 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `a split board paints no section chrome, so its captioned sections reserve nothing: ${r.map((x) => `${x.id} band=${x.band} gap=${x.gap}px`).join(' · ')} ${JSON.stringify(sane)}`);
 }
 {
+  begin('L54-a-live-parent-layout-switch-takes-the-band-and-its-reserve-with-it');
+  await scrollTo('cap-fit');
+  const state = async () => ({
+    band: await band('cap-fit', 'sec-controls'),
+    gap: await page.evaluate(() => { const m = window.__lab['cap-fit'].api.getModel(); const g = m.getGroup('sec-controls'); const ys = [...(g.members ?? [])].map((k) => m.getNode(k)?.position.y).filter((y) => y != null); return Math.round(Math.min(...ys) - g.position.y); }),
+  });
+  const s0 = await state();
+  await page.evaluate(() => window.__lab['cap-fit'].handle.setLayout('split')); await page.waitForTimeout(600);
+  const s1 = await state();
+  const sane1 = await sanity('cap-fit');
+  await shot('cap-fit', 'parent-split-no-band-no-reserve');
+  await page.evaluate(() => window.__lab['cap-fit'].handle.setLayout('grid')); await page.waitForTimeout(600);
+  const s2 = await state();
+  const sane2 = await sanity('cap-fit');
+  await shot('cap-fit', 'parent-grid-band-and-reserve-back');
+  verdict(!!s0.band && s0.gap >= 28 && s1.band === null && s1.gap === 0 && !!s2.band && s2.gap >= 28
+    && sane1.overlaps === 0 && sane2.overlaps === 0,
+    `grid: band=${!!s0.band} reserve=${s0.gap}px · split (no section chrome): band=${s1.band} reserve=${s1.gap}px ${JSON.stringify(sane1)} · grid again: band=${!!s2.band} reserve=${s2.gap}px ${JSON.stringify(sane2)}`);
+}
+{
   begin('L50-a-short-section-clamps-its-band-and-keeps-its-children');
   await scrollTo('cap-edge');
   const one = await band('cap-edge', 'one');

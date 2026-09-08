@@ -80,7 +80,7 @@ import {
   type WorldRect,
 } from './grid-mapping';
 import { ensureDashboardKitStyles } from './styles';
-import { captionOfGroup, captionPainted, captionPassThrough, captionKey, captionReserve, paintCaptionBand, sizeCaptionBand } from './caption';
+import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCaptionBand, sectionCaptionReserve, sizeCaptionBand } from './caption';
 
 /** The slice of a DiagramInstance the binder needs (structural, test-friendly). */
 export interface DashboardGridApi {
@@ -505,14 +505,6 @@ interface GeomSnapshot {
  * the feature).
  */
 interface BinderPeer {
-  /**
-   * Does this board paint SECTION CHROME (the slab overlay that carries the
-   * ring, the corner handle and the caption band) for its member groups? Only
-   * the grid binder does. A section reserves its caption's pixels ONLY when
-   * its parent paints one — otherwise a captioned section inside a SPLIT
-   * board pushed its children down by 44 px under a band nobody drew.
-   */
-  paintsCaptions?: boolean;
   group: GroupModel;
   /** True when this board's engine holds `id` as an item (member lookup). */
   hasItem(id: string): boolean;
@@ -945,10 +937,7 @@ export function bindDashboardGrid(
    * band is outside `containsWorld`, so a press on it is the PARENT's (it
    * selects the section) rather than an empty press of this board.
    */
-  const ownReserve = (): number =>
-    parentPeer()?.paintsCaptions === true
-      ? captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 })
-      : 0;
+  const ownReserve = (): number => sectionCaptionReserve(diagram, group, isStatic);
   const frame = (): WorldRect => {
     const r = ownReserve();
     return {
@@ -1676,6 +1665,7 @@ export function bindDashboardGrid(
     for (const [id, el] of slabEls) {
       if (!seen.has(id)) {
         el.remove();
+        hoverSlabs.delete(el);
         slabEls.delete(id);
       }
     }
@@ -1693,8 +1683,15 @@ export function bindDashboardGrid(
     let band = el.querySelector(':scope > .axdb-slab-h') as HTMLElement | null;
     if (!cap || !captionPainted(cap, isStatic)) {
       band?.remove();
+      hoverSlabs.delete(el);
+      el.classList.remove('axdb-slab--hot');
       el.removeAttribute('aria-label');
       return;
+    }
+    if (cap.show === 'hover') hoverSlabs.add(el);
+    else {
+      hoverSlabs.delete(el);
+      el.classList.remove('axdb-slab--hot');
     }
     const ctx = { rtl, static: isStatic, sectionH };
     const key = captionKey(cap, ctx);
@@ -2661,7 +2658,6 @@ export function bindDashboardGrid(
     containsWorldExtended: worldInsideBoardExtended,
     frameArea: boardArea,
     adopt,
-    paintsCaptions: true, // the grid binder owns the slab overlays (syncSlabs)
   };
   peersOnCanvas().add(selfPeer);
   selfPeerRef = selfPeer;
@@ -2871,18 +2867,18 @@ export function bindDashboardGrid(
    * in CSS terms. The binder already tracks the pointer; it marks the section
    * under it instead.
    */
+  /** Only the sections carrying a `show: 'hover'` band — usually none, so the
+   *  pointer handler costs nothing on a board that has no hover caption. */
+  const hoverSlabs = new Set<HTMLElement>();
   const markHotSection = (clientX: number, clientY: number): void => {
-    if (!slabEls.size) return;
-    for (const [id, el] of slabEls) {
-      if (!el.querySelector(':scope > .axdb-slab-h--hover')) continue;
+    if (!hoverSlabs.size) return;
+    for (const el of hoverSlabs) {
       const r = el.getBoundingClientRect();
-      const hot = clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
-      el.classList.toggle('axdb-slab--hot', hot);
-      void id;
+      el.classList.toggle('axdb-slab--hot', clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom);
     }
   };
   const onHoverLeave = (): void => {
-    for (const el of slabEls.values()) el.classList.remove('axdb-slab--hot');
+    for (const el of hoverSlabs) el.classList.remove('axdb-slab--hot');
   };
 
   const onHover = (e: PointerEvent): void => {
@@ -3494,6 +3490,7 @@ export function bindDashboardGrid(
       if (glideTimer) clearTimeout(glideTimer);
       for (const el of slabEls.values()) el.remove();
       slabEls.clear();
+      hoverSlabs.clear();
       // A rebind inside the 60 ms window (a layout switch right after an undo)
       // disposed this binder with the timer pending — the host kept its
       // lifted ghost for good (visual gate, nested-containers ⑤).

@@ -110,6 +110,49 @@ export function pairOf(v: number | [number, number] | undefined, dflt: [number, 
   return typeof v === 'number' ? [v, v] : [v[0], v[1]];
 }
 
+/** The shape of the model and groups this module needs — structural, so the kit's
+ *  caption logic stays free of engine imports. */
+interface CaptionGroup {
+  id: string;
+  name?: string;
+  members?: { has(id: string): boolean } | null;
+  getMetadata(key: string): unknown;
+}
+interface CaptionDiagram {
+  getGroups?(): CaptionGroup[];
+}
+
+/**
+ * Does the board that HOLDS this section paint section chrome? Only the grid
+ * binder draws the slab overlay the band lives on, so a section inside a
+ * SPLIT board has no band — and must not reserve space for one.
+ *
+ * Read from the parent group's persisted layout rather than from the live
+ * binder registry: membership and metadata both exist before either binder is
+ * built, so the answer is the same on the first projection as on the hundredth
+ * (asking the registry made the reserve depend on which binder registered
+ * first, and a child binds BEFORE its parent).
+ */
+export function parentPaintsSectionChrome(diagram: CaptionDiagram, group: CaptionGroup): boolean {
+  const groups = diagram.getGroups?.() ?? [];
+  for (const g of groups) {
+    if (g === group || !g.members?.has(group.id)) continue;
+    const board = g.getMetadata('dashboardBoard') as { layout?: string } | undefined;
+    return (board?.layout ?? 'grid') !== 'split';
+  }
+  return false; // not a member of any board: a view, which carries no caption
+}
+
+/** A section's own caption reserve: its band's pixels, or 0 when nothing paints one. */
+export function sectionCaptionReserve(
+  diagram: CaptionDiagram,
+  group: CaptionGroup & { size?: { height: number } | null },
+  isStatic: boolean
+): number {
+  if (!parentPaintsSectionChrome(diagram, group)) return 0;
+  return captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 });
+}
+
 /** Painted at all? `show: 'design'` disappears under static. */
 export function captionPainted(c: SectionCaptionOptions | null, isStatic: boolean): boolean {
   if (!c) return false;
@@ -123,7 +166,10 @@ export function captionPainted(c: SectionCaptionOptions | null, isStatic: boolea
  * 12 px sliver of a child.
  */
 export function captionBandHeight(c: SectionCaptionOptions, sectionH: number): number {
-  const want = captionTight(sectionH) ? CAPTION_HEIGHT_TIGHT : c.height ?? (c.subtitle ? CAPTION_HEIGHT_SUBTITLE : CAPTION_HEIGHT);
+  // An authored `height` WINS over the squeezed tier — the tier is a default
+  // for a short section, not an override of what the app asked for. The clamp
+  // still protects the children either way.
+  const want = c.height ?? (sectionH > 0 && sectionH < CAPTION_TIGHT_BELOW ? CAPTION_HEIGHT_TIGHT : c.subtitle ? CAPTION_HEIGHT_SUBTITLE : CAPTION_HEIGHT);
   if (sectionH <= 0) return want;
   return Math.max(CAPTION_MIN_HEIGHT, Math.min(want, sectionH - CAPTION_MIN_CONTENT));
 }
@@ -148,8 +194,13 @@ export function captionKey(c: SectionCaptionOptions, ctx: { rtl: boolean; static
   return JSON.stringify([c, ctx.rtl, ctx.static]);
 }
 
-/** Is a section of `sectionH` px in the tight tier? */
-export const captionTight = (sectionH: number): boolean => sectionH > 0 && sectionH < CAPTION_TIGHT_BELOW;
+/**
+ * Is the band too short to carry a subtitle, actions or full-size text? Asked
+ * of the band's ACTUAL height, so an authored `height` that survives on a
+ * short section keeps its content instead of being styled as squeezed.
+ */
+export const captionTight = (c: SectionCaptionOptions, sectionH: number): boolean =>
+  captionBandHeight(c, sectionH) <= CAPTION_HEIGHT_TIGHT;
 /** Where the band's box sits horizontally: a tab hugs the LEADING edge, mirrored on RTL. */
 function bandSides(c: SectionCaptionOptions, mh: number, rtl: boolean): { left: string; right: string } {
   if (c.position !== 'tab') return { left: `${mh}px`, right: `${mh}px` };
@@ -158,7 +209,7 @@ function bandSides(c: SectionCaptionOptions, mh: number, rtl: boolean): { left: 
 
 /** The per-sync geometry of a painted band: height and tier follow the section's live size. */
 export function sizeCaptionBand(band: HTMLElement, c: SectionCaptionOptions, sectionH: number): void {
-  band.classList.toggle('axdb-slab-h--tight', captionTight(sectionH));
+  band.classList.toggle('axdb-slab-h--tight', captionTight(c, sectionH));
   band.style.height = `${captionBandHeight(c, sectionH)}px`;
 }
 
@@ -203,7 +254,7 @@ export function paintCaptionBand(
   const cls = (name: string, on: boolean) => band.classList.toggle(name, on);
   cls('axdb-slab-h--tab', c.position === 'tab');
   cls('axdb-slab-h--hover', c.show === 'hover');
-  cls('axdb-slab-h--tight', captionTight(ctx.sectionH));
+  cls('axdb-slab-h--tight', captionTight(c, ctx.sectionH));
   cls('axdb-slab-h--center', c.align === 'center');
   cls('axdb-slab-h--end', c.align === 'end');
   cls('axdb-slab-h--vtop', c.valign === 'top');
