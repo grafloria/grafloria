@@ -51,6 +51,7 @@
 <main>
   <div class="eyebrow">Grafloria Dashboards · element 0.4.22 · plan</div>
   <h1>Section captions</h1>
+  <p class="note"><b>Shipped in element 0.4.22</b> (2026-09-08): every option in "The option" below except <code>collapsible</code> / <code>collapsed</code>, with <code>renderCaption</code>, <code>onCaptionAction</code>, <code>setCaption</code> / <code>getCaption</code>, persistence through <code>toJSON()</code> and <code>fromDocument</code>. Gated by 21 unit tests (<code>dashboard.caption.spec.ts</code>) and kit-lab scenarios L40–L48, each frame looked at. One limit for now: a section whose <b>parent board</b> is in <code>split</code> layout has no slab overlay yet, so no caption there — that comes with the tab container, whose strip is the same band. One class bug found on the way: the parent's <code>project()</code> never re-synced section overlays after a frame write, so two-level sections kept bind-time chrome; fixed.</p>
   <p class="lede">A section (a container widget) paints nothing today: no header, no label, no border. This plan gives it an opt-in caption painted by the kit, on the overlay the kit already owns, with reserved space, selection and theming, so a designer never has to draw one over the kit's frame again.</p>
 
   <h2>Why the kit and not the app</h2>
