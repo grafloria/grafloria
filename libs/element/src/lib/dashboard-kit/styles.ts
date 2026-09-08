@@ -237,7 +237,10 @@ const CSS = `
   .grafloria-node-host > .axdb-grip--inside { top: 2px; }
 }
 /* OUTSIDE: a tab on the card's top edge, its corners in line with the card's. */
-.grafloria-node-host > .axdb-grip--outside { top: -11px; height: 11px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; box-shadow: 0 -1px 2px rgba(16, 24, 40, .08); }
+/* The OUTSIDE tab lives in the gap between tiles: never taller than the gap
+   less a pixel (an 11-px tab in a 10-px gap sat on the tile above), never
+   shorter than 6 px so the dots still read. */
+.grafloria-node-host > .axdb-grip--outside { top: calc(-1 * clamp(6px, var(--axdb-gap, 11px) - 1px, 11px)); height: clamp(6px, calc(var(--axdb-gap, 11px) - 1px), 11px); border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; box-shadow: 0 -1px 2px rgba(16, 24, 40, .08); }
 .grafloria-node-host > .axdb-grip--outside.axdb-grip--left { left: 10px; }
 .grafloria-node-host > .axdb-grip--outside.axdb-grip--right { right: 10px; }
 .grafloria-node-host > .axdb-grip--center { left: 50%; transform: translateX(-50%); }

@@ -194363,7 +194363,10 @@ var CSS4 = `
   .grafloria-node-host > .axdb-grip--inside { top: 2px; }
 }
 /* OUTSIDE: a tab on the card's top edge, its corners in line with the card's. */
-.grafloria-node-host > .axdb-grip--outside { top: -11px; height: 11px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; box-shadow: 0 -1px 2px rgba(16, 24, 40, .08); }
+/* The OUTSIDE tab lives in the gap between tiles: never taller than the gap
+   less a pixel (an 11-px tab in a 10-px gap sat on the tile above), never
+   shorter than 6 px so the dots still read. */
+.grafloria-node-host > .axdb-grip--outside { top: calc(-1 * clamp(6px, var(--axdb-gap, 11px) - 1px, 11px)); height: clamp(6px, calc(var(--axdb-gap, 11px) - 1px), 11px); border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; box-shadow: 0 -1px 2px rgba(16, 24, 40, .08); }
 .grafloria-node-host > .axdb-grip--outside.axdb-grip--left { left: 10px; }
 .grafloria-node-host > .axdb-grip--outside.axdb-grip--right { right: 10px; }
 .grafloria-node-host > .axdb-grip--center { left: 50%; transform: translateX(-50%); }
@@ -194568,6 +194571,9 @@ function pressOnDragHandle(sel, target, hostEl, clientX, clientY) {
 }
 var CAPTION_BAND = 28;
 var BOARD_REGISTRY = /* @__PURE__ */ new WeakMap();
+function clearOtherSelections(container, self2) {
+  for (const p of BOARD_REGISTRY.get(container) ?? []) if (p !== self2) p.clearSelection?.();
+}
 function registerBoardPeer(container, peer) {
   let set = BOARD_REGISTRY.get(container);
   if (!set) {
@@ -194949,10 +194955,12 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   let selectedId;
   const selectWidget = (id) => {
+    if (id !== void 0) clearOtherSelections(api.container, selfPeerRef);
     if (id === selectedId) return;
     selectedId = id;
     syncA11y();
   };
+  let selfPeerRef = null;
   const syncA11y = (only) => {
     if (disposed) return;
     const members = [...group.members ?? []].filter((id) => !!diagram.getNode(id));
@@ -195747,6 +195755,11 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const selfPeer = {
     group,
+    clearSelection: () => {
+      if (selectedId === void 0) return;
+      selectedId = void 0;
+      syncA11y();
+    },
     hasItem: (id) => !!engine.getItem(id),
     memberCell: (id) => {
       const it = engine.getItem(id);
@@ -195777,6 +195790,8 @@ function bindDashboardGrid(api, group, options = {}) {
     adopt
   };
   peersOnCanvas().add(selfPeer);
+  selfPeerRef = selfPeer;
+  api.container.style.setProperty("--axdb-gap", `${gap}px`);
   const tool = {
     id: `dashboard-grid:${group.id}:${++binderSeq}`,
     priority: 2,
@@ -195923,7 +195938,7 @@ function bindDashboardGrid(api, group, options = {}) {
     if (!hit || disposed) return;
     if (focusedId !== hit.id || selectedId !== hit.id) {
       focusedId = hit.id;
-      selectedId = hit.id;
+      selectWidget(hit.id);
       syncA11y();
     }
   };
@@ -196196,7 +196211,7 @@ function bindDashboardGrid(api, group, options = {}) {
     focusWidget(id) {
       if (disposed || !(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id)) return false;
       focusedId = id;
-      selectedId = id;
+      selectWidget(id);
       syncA11y();
       hostOf(id)?.focus?.({ preventScroll: true });
       return true;
@@ -196916,10 +196931,12 @@ function bindDashboardSplit(api, group, options = {}) {
   };
   let selectedId;
   const selectWidget = (id) => {
+    if (id !== void 0) clearOtherSelections(api.container, selfPeerRef);
     if (id === selectedId) return;
     selectedId = id;
     syncA11y();
   };
+  let selfPeerRef = null;
   const staticGuard = (e) => {
     if (!isStatic || disposed) return;
     const t = e.target;
@@ -197283,7 +197300,7 @@ function bindDashboardSplit(api, group, options = {}) {
     if (!hit || disposed) return;
     if (focusedId !== hit.id || selectedId !== hit.id) {
       focusedId = hit.id;
-      selectedId = hit.id;
+      selectWidget(hit.id);
       syncA11y();
     }
   };
@@ -197392,7 +197409,16 @@ function bindDashboardSplit(api, group, options = {}) {
   }) : null;
   const layerEl = htmlLayer();
   if (layerEl && hostObserver) hostObserver.observe(layerEl, { childList: true });
-  const rowsGuess = () => Math.max(1, Math.round(frame().height / (baseRowHeight + gap)));
+  const rowsAtBind = (() => {
+    let max = 0;
+    for (const id of members()) {
+      const c = persistedCell(id);
+      if (!c) return void 0;
+      max = Math.max(max, c.y + c.h);
+    }
+    return max > 0 ? max : void 0;
+  })();
+  const rowsGuess = () => rowsAtBind ?? Math.max(1, Math.round(frame().height / (baseRowHeight + gap)));
   const handle = {
     sync() {
       if (disposed) return;
@@ -197438,7 +197464,7 @@ function bindDashboardSplit(api, group, options = {}) {
     focusWidget(id) {
       if (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id)) return false;
       focusedId = id;
-      selectedId = id;
+      selectWidget(id);
       syncA11y();
       hostOf(id)?.focus?.({ preventScroll: true });
       return true;
@@ -197555,8 +197581,13 @@ function bindDashboardSplit(api, group, options = {}) {
   applyFluidFrame();
   project(reconcile2());
   api.renderNow();
-  const unregisterPeer = registerBoardPeer(api.container, {
+  const selfPeer = {
     group,
+    clearSelection: () => {
+      if (selectedId === void 0) return;
+      selectedId = void 0;
+      syncA11y();
+    },
     hasItem: (id) => (group.members ?? /* @__PURE__ */ new Set()).has(id),
     memberCell: (id) => handle.cellOf(id),
     resizeMemberBy: () => ({ changed: false }),
@@ -197567,7 +197598,10 @@ function bindDashboardSplit(api, group, options = {}) {
       return f.width * f.height;
     },
     adopt: () => null
-  });
+  };
+  const unregisterPeer = registerBoardPeer(api.container, selfPeer);
+  selfPeerRef = selfPeer;
+  api.container.style.setProperty("--axdb-gap", `${gap}px`);
   const disposeHandle = handle.dispose.bind(handle);
   handle.dispose = () => {
     unregisterPeer();

@@ -486,6 +486,13 @@ interface BinderPeer {
   group: GroupModel;
   /** True when this board's engine holds `id` as an item (member lookup). */
   hasItem(id: string): boolean;
+  /**
+   * Drop this board's selection: a press that selects a tile on ONE board of
+   * a canvas clears the others, so a section and its parent never show two
+   * rings at once (Quantia Groups page: three tiles selected across three
+   * boards after three clicks).
+   */
+  clearSelection?(): void;
   /** The member's current cell in this board (undefined when absent). */
   memberCell(id: string): CellRect | undefined;
   /**
@@ -548,6 +555,11 @@ const BOARD_REGISTRY = new WeakMap<HTMLElement, Set<BinderPeer>>();
  * unregister. A split board adopts nothing and grows no slab: its `adopt`
  * answers null and `resizeMemberBy` answers unchanged.
  */
+/** Clear the selection on every OTHER board of the canvas — one selection per canvas. */
+export function clearOtherSelections(container: HTMLElement, self: BinderPeer | null): void {
+  for (const p of BOARD_REGISTRY.get(container) ?? []) if (p !== self) p.clearSelection?.();
+}
+
 export function registerBoardPeer(container: HTMLElement, peer: BinderPeer): () => void {
   let set = BOARD_REGISTRY.get(container);
   if (!set) {
@@ -1184,10 +1196,13 @@ export function bindDashboardGrid(
    */
   let selectedId: string | undefined;
   const selectWidget = (id: string | undefined): void => {
+    if (id !== undefined) clearOtherSelections(api.container, selfPeerRef);
     if (id === selectedId) return;
     selectedId = id;
     syncA11y();
   };
+  /** Set once the peer object exists (below); `selectWidget` runs before that only on boot. */
+  let selfPeerRef: BinderPeer | null = null;
 
   const syncA11y = (only?: ReadonlySet<string>): void => {
     if (disposed) return;
@@ -2236,6 +2251,11 @@ export function bindDashboardGrid(
 
   const selfPeer: BinderPeer = {
     group,
+    clearSelection: () => {
+      if (selectedId === undefined) return;
+      selectedId = undefined;
+      syncA11y();
+    },
     hasItem: (id) => !!engine.getItem(id),
     memberCell: (id) => {
       const it = engine.getItem(id);
@@ -2270,6 +2290,9 @@ export function bindDashboardGrid(
     adopt,
   };
   peersOnCanvas().add(selfPeer);
+  selfPeerRef = selfPeer;
+  // The board's gap, for chrome that must fit BETWEEN tiles (the outside grip tab).
+  api.container.style.setProperty('--axdb-gap', `${gap}px`);
 
   const tool: CanvasTool = {
     id: `dashboard-grid:${group.id}:${++binderSeq}`,
@@ -2490,7 +2513,7 @@ export function bindDashboardGrid(
     if (!hit || disposed) return;
     if (focusedId !== hit.id || selectedId !== hit.id) {
       focusedId = hit.id;
-      selectedId = hit.id;
+      selectWidget(hit.id);
       syncA11y();
     }
   };
@@ -2832,7 +2855,7 @@ export function bindDashboardGrid(
     focusWidget(id): boolean {
       if (disposed || !(group.members ?? new Set<string>()).has(id) || !diagram.getNode(id)) return false;
       focusedId = id;
-      selectedId = id;
+      selectWidget(id);
       syncA11y();
       hostOf(id)?.focus?.({ preventScroll: true });
       return true;

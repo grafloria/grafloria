@@ -258,6 +258,23 @@ describe('dashboard() containment', () => {
   });
 });
 
+describe('one selection per canvas', () => {
+  it('selecting on the board clears the section, and the other way round', () => {
+    const { handle, api } = mount(NESTED());
+    const main = handle.binderOf('main')!;
+    const section = handle.binderOf('section')!;
+    expect(section.selectWidget('k1')).toBe(true);
+    expect(section.getSelectedWidget()).toBe('k1');
+    expect(main.selectWidget('free')).toBe(true);
+    expect(main.getSelectedWidget()).toBe('free');
+    expect(section.getSelectedWidget()).toBeUndefined();
+    expect(section.selectWidget('k2')).toBe(true);
+    expect(main.getSelectedWidget()).toBeUndefined();
+    expect(handle.getSelectedWidget()).toBe('k2');
+    expect(api.container.style.getPropertyValue('--axdb-gap')).toMatch(/px$/);
+  });
+});
+
 describe('removing a container (plan step 6, D12)', () => {
   const settle = () => new Promise<void>((r) => setTimeout(r, 0));
 
