@@ -195909,6 +195909,7 @@ function bindDashboardGrid(api, group, options = {}) {
     const minW = Math.max(8, columnUnitFor(gg, f.width));
     let w = Math.max(minW, right - left);
     let h = bottom - top;
+    let stripFollow = false;
     if (designRows !== void 0 && maxRows !== void 0 && escalate && g.kind === "resize") {
       const parent = parentPeer();
       const pulled = engine.getItem(g.id);
@@ -195939,9 +195940,14 @@ function bindDashboardGrid(api, group, options = {}) {
         const rhNow = rowHeightFor(geom(), rows());
         const rowPx = rhNow + gap;
         const wantRows = Math.max(1, Math.round((h + gap) / rowPx));
-        const wantsMore = wantRows > pulled.h;
-        const wantsLess = wantRows < pulled.h;
         const fullHeight = pulled.y === 0 && pulled.h >= inner;
+        stripFollow = fullHeight;
+        const startCell = g.startCells.get(g.id);
+        const startRowPx = startCell && startCell.h > 0 ? (g.startSize.height + gap) / startCell.h : rowPx;
+        const stripRows = startCell ? Math.max(1, startCell.h + Math.round((h - g.startSize.height) / startRowPx)) : wantRows;
+        const effWant = fullHeight ? stripRows : wantRows;
+        const wantsMore = effWant > pulled.h;
+        const wantsLess = effWant < pulled.h;
         const fullOnes = engine.getItems().filter((i) => i.y === 0 && i.h >= inner).map((i) => i.id);
         const resizeAll = (ids, rowsTo) => {
           for (const id of ids) {
@@ -196018,7 +196024,7 @@ function bindDashboardGrid(api, group, options = {}) {
       const hCells = E.n ? itemNow.y + itemNow.h : b !== void 0 ? Math.max(1, b - itemNow.y) : Infinity;
       if (hCells !== Infinity) h = Math.min(h, hCells * (rhNow + gap) - gap);
       if (!pullsX) w = itemNow.w * (cuNow + gap) - gap;
-      if (!pullsY) h = itemNow.h * (rhNow + gap) - gap;
+      if (!pullsY || stripFollow) h = itemNow.h * (rhNow + gap) - gap;
     }
     const liveRect = itemNow ? cellToRect(itemNow, fNow, ggNow, rows()) : null;
     const anchorLeft = liveRect && !E.w && !E.e ? liveRect.x : left;
