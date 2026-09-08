@@ -1696,7 +1696,11 @@ export function bindDashboardGrid(
     band = document.createElement('div');
     el.prepend(band);
     const render = options.renderCaption;
-    paintCaptionBand(band, cap, { ...ctx, ...(render ? { render: (host: HTMLElement) => render(id, host) } : {}) });
+    paintCaptionBand(band, cap, {
+      ...ctx,
+      ...(render ? { render: (host: HTMLElement) => render(id, host) } : {}),
+      onAction: (actionId: string) => options.onCaptionAction?.(id, actionId),
+    });
     band.setAttribute('data-key', key);
     if (cap.text) el.setAttribute('aria-label', cap.text);
     else el.removeAttribute('aria-label');
@@ -2716,13 +2720,8 @@ export function bindDashboardGrid(
       const captionBand = target?.closest?.('.axdb-slab > .axdb-slab-h') as HTMLElement | null;
       const captionId = captionBand?.parentElement?.getAttribute('data-slab-id') ?? null;
       const ownCaption = !!captionId && (group.members ?? new Set<string>()).has(captionId);
-      if (ownCaption) {
-        const action = target?.closest?.('.axdb-slab-h-action') as HTMLButtonElement | null;
-        if (action) {
-          if (!action.disabled) options.onCaptionAction?.(captionId as string, action.getAttribute('data-action') ?? '');
-          return;
-        }
-      }
+      // (An action button never reaches here: it is pass-through, and its own
+      // `click` fires onCaptionAction — see captionPassThrough.)
       if ((!hit.node && !onGrip) || sectionHandle || ownCaption) {
         // A press on a SECTION — its empty band, its caption, its corner
         // handle or its frame edge — selects the section; the handle or an

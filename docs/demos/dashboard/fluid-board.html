@@ -575,8 +575,7 @@ defineDemo({
     H.selectWidget(undefined);
     await settle();
     const maxBtn = band().querySelector('.axdb-slab-h-action[data-action="max"]');
-    const br = maxBtn.getBoundingClientRect();
-    for (const type of ['pointerdown', 'pointerup']) maxBtn.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: br.x + br.width / 2, clientY: br.y + br.height / 2, pointerId: 7, button: 0, isPrimary: true }));
+    maxBtn.click(); // a real button: a click from the mouse, a touch or the keyboard
     await settle();
     check(document.getElementById('fb-msg').textContent.includes('caption action "max" on ops'), 'a press on ⤢ reaches onCaptionAction');
     checkEqual(H.getSelectedWidget(), undefined, 'and selects nothing');
