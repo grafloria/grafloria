@@ -1646,9 +1646,8 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         // a child escalation grew to two rows must keep them through a
         // split → grid round trip (the visual gate caught it collapsing to one
         // inside a two-row slab).
-        const slabRows = binders.get(ctx.viewOfWidget.get(id) ?? '')?.cellOf(id)?.h;
-        const authored = w.maxRows ?? rowExtentOf(w.widgets ?? []);
-        bindContainer(cg, w, ctx.viewOfBoard.get(id) ?? ctx.active, Math.max(authored, slabRows ?? 0));
+        void binders.get(ctx.viewOfWidget.get(id) ?? '')?.cellOf(id);
+        bindContainer(cg, w, ctx.viewOfBoard.get(id) ?? ctx.active);
         binders.get(id)?.sync();
         if (focused) binders.get(id)?.focusWidget(focused);
         else if (selected) binders.get(id)?.selectWidget(selected);
@@ -1823,7 +1822,9 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             ...inner,
             sizing: 'fit',
             designHeight: 0,
-            maxRows: innerRows ?? w.maxRows ?? rowExtentOf(w.widgets ?? []),
+            // The DESIGN: authored, else what the group was mounted with, else
+            // the children's extent — the binder's live bound follows the cells.
+            maxRows: innerRows ?? w.maxRows ?? (cg.getMetadata('containerWidget') as { maxRows?: number } | undefined)?.maxRows ?? rowExtentOf(w.widgets ?? []),
             float: false,
             escalate: w.sizing !== 'fit',
           })

@@ -389,13 +389,17 @@ render(SPEC2, host);</pre>
       nesting from live membership — a dragged-in tile lands under its new
       parent in the snapshot, and the snapshot rebuilds through
       <code>dashboard()</code> unchanged. Nesting is exercised to two levels.</p>
-      <p><b>Escalation is for full-height tiles</b> (element 0.4.16). A section grows in
-      its board when a tile that spans the section's full height is pulled past its bottom —
-      every tile of a one-row KPI strip does — and every tile inside gets taller together;
-      pulled back, the section shrinks, never below its designed rows. A tile that spans only
-      part of a multi-row section resizes within the section and is refused past its rows,
-      like any bounded pull: nothing outside the section moves. Before 0.4.16 a 150 px pull on
-      a one-row control inside a 14-row panel shrank the whole panel to 4 rows.</p>
+      <p><b>A section grows with what is pulled inside it</b> (element 0.4.17). A tile that
+      spans only part of a multi-row section pushes what is below it; a row the pushed layout
+      needs and the section does not hold is asked of the board, one per pointer step, and
+      rows the layout no longer needs go back as the tile shrinks — never below the section's
+      designed rows. The board decides whether the section may grow: a grow board extends, a fit
+      board squeezes its rows, or refuses when <code>squeeze: false</code> and the frame is
+      full. A tile spanning the section's full height — every tile of a one-row KPI strip —
+      pulls the section with it as a row: every full-height tile grows a row together and the
+      cells say so, so a saved board reloads the way it looked. Before 0.4.17 a partial tile was
+      refused past the section's rows, and before 0.4.16 a 150 px pull on a one-row control
+      inside a 14-row panel shrank the whole panel to 4 rows.</p>
       <p><b>Charts on a squeezed board stay readable</b> (element 0.4.15). The built-in
       line and bar widgets tier their axes to the room they have: under 120 px of body the
       quarter ticks go, under 60 px only the minimum and maximum remain and the x labels and

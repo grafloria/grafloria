@@ -629,11 +629,12 @@ for (const [board, pos, place] of [['grip-in-l', 'left', 'inside'], ['grip-in-c'
   const inner1 = await page.evaluate(() => window.__lab['c-grow'].handle.widget('n-trend').cell.h);
   const ev = await events('c-grow');
   await shot('c-grow', 'after');
-  // The slab gains a row in the parent and every inner tile gets taller together
-  // (the inner design stays 2 rows). The parent is a GROW board, so it extends
-  // past the 430 px frame and scrolls — overflow of the frame is the point.
+  // Both inner tiles span the container's full height, so the slab gains a row
+  // in the parent and both grow a row with it (the strip model, in cells). The
+  // parent is a GROW board, so it extends past the 430 px frame and scrolls —
+  // overflow of the frame is the point.
   const s = await sanity('c-grow');
-  verdict(c1.box.h === c0.box.h + 1 && box1.h > box0.h + 100 && inner1 === 2 && t1.h > t0.h + 100 && ev.some((e) => e.type === 'commit' && e.changed) && s.overlaps === 0,
+  verdict(c1.box.h === c0.box.h + 1 && box1.h > box0.h + 100 && inner1 === 3 && t1.h > t0.h + 100 && ev.some((e) => e.type === 'commit' && e.changed) && s.overlaps === 0,
     `slab rows ${c0.box.h}→${c1.box.h} px ${Math.round(box0.h)}→${Math.round(box1.h)} inner trend rows ${inner1} px ${Math.round(t0.h)}→${Math.round(t1.h)} events=${JSON.stringify(ev)} ${JSON.stringify(s)}`);
 }
 
@@ -675,6 +676,44 @@ for (const [board, pos, place] of [['grip-in-l', 'left', 'inside'], ['grip-in-c'
   const s = await sanity('panel-grow');
   verdict(c1['sec-paid'].h > c0['sec-paid'].h && f1.h > f0.h + 60 && ch1.h > ch0.h + 60 && c2['sec-paid'].h === 14 && s.overlaps === 0,
     `paid rows ${c0['sec-paid'].h}→${c1['sec-paid'].h}→${c2['sec-paid'].h} · filter px ${Math.round(f0.h)}→${Math.round(f1.h)} chart px ${Math.round(ch0.h)}→${Math.round(ch1.h)} ${JSON.stringify(s)}`);
+}
+
+{
+  begin('L30-partial-tile-pushes-below-and-grows-the-section');
+  await scrollTo('panel-grow');
+  const cellsOf = () => page.evaluate(() => { const H = window.__lab['panel-grow'].handle; const b = H.binderOf('sec-controls'); const c = (id) => b.cellOf(id); return { slab: H.widget('sec-controls').cell.h, product: c('ctl-product').h, date: c('ctl-date').y, amount: c('ctl-amount').y, amountEnd: c('ctl-amount').y + c('ctl-amount').h }; });
+  const c0 = await cellsOf(); const p0 = await rect('panel-grow', 'ctl-product'); const a0 = await rect('panel-grow', 'ctl-amount');
+  const rs = await page.evaluate(() => document.querySelector('#cv-panel-grow .grafloria-node-host[data-node-id="ctl-product"] .axdb-rs').getBoundingClientRect().toJSON());
+  // pull the one-row Product 3 rows taller (34-px rows): what is below moves down, the section grows
+  await drag(rs.x + rs.width / 2, rs.y + rs.height / 2, rs.x + rs.width / 2, rs.y + rs.height / 2 + 3 * 44, { steps: 24, mid: async () => shot('panel-grow', 'partial-pull-mid') });
+  const c1 = await cellsOf(); const p1 = await rect('panel-grow', 'ctl-product'); const a1 = await rect('panel-grow', 'ctl-amount');
+  await shot('panel-grow', 'section-grew-by-the-push');
+  // pull it back: the rows go back to the board, the section returns to its 14-row design
+  const rs2 = await page.evaluate(() => document.querySelector('#cv-panel-grow .grafloria-node-host[data-node-id="ctl-product"] .axdb-rs').getBoundingClientRect().toJSON());
+  await drag(rs2.x + rs2.width / 2, rs2.y + rs2.height / 2, rs2.x + rs2.width / 2, rs2.y + rs2.height / 2 - 3 * 44 - 20, { steps: 24 });
+  const c2 = await cellsOf();
+  await shot('panel-grow', 'section-back-to-design');
+  // undo the two commits: the design again, then the grown state, then the design
+  const s = await sanity('panel-grow');
+  verdict(c1.product === c0.product + 3 && c1.date === c0.date + 3 && c1.amount === c0.amount + 3 && c1.slab === c0.slab + 3 && c1.amountEnd === c1.slab && Math.round(a1.h) === Math.round(a0.h) && p1.h > p0.h + 100 && c2.product === c0.product && c2.slab === c0.slab && c2.amount === c0.amount && s.overlaps === 0,
+    `product rows ${c0.product}→${c1.product}→${c2.product} · date y ${c0.date}→${c1.date}→${c2.date} · amount y ${c0.amount}→${c1.amount}→${c2.amount} (end ${c1.amountEnd}) · slab ${c0.slab}→${c1.slab}→${c2.slab} · amount px ${Math.round(a0.h)}→${Math.round(a1.h)} product px ${Math.round(p0.h)}→${Math.round(p1.h)} ${JSON.stringify(s)}`);
+}
+{
+  begin('L31-kpi-strip-grows-as-a-row-and-comes-back');
+  await scrollTo('strip');
+  const cellsOf = () => page.evaluate(() => { const H = window.__lab.strip.handle; const b = H.binderOf('kpis'); return { slab: H.widget('kpis').cell.h, kpis: ['s-rev', 's-cust', 's-win', 's-nps'].map((id) => b.cellOf(id).h), trendY: H.widget('s-trend').cell.y }; });
+  const c0 = await cellsOf(); const k0 = await rect('strip', 's-cust');
+  const rs = await page.evaluate(() => document.querySelector('#cv-strip .grafloria-node-host[data-node-id="s-rev"] .axdb-rs').getBoundingClientRect().toJSON());
+  await drag(rs.x + rs.width / 2, rs.y + rs.height / 2, rs.x + rs.width / 2, rs.y + rs.height / 2 + 75, { steps: 16, mid: async () => shot('strip', 'pull-mid') });
+  const c1 = await cellsOf(); const k1 = await rect('strip', 's-cust');
+  await shot('strip', 'row-grew-together');
+  const rs2 = await page.evaluate(() => document.querySelector('#cv-strip .grafloria-node-host[data-node-id="s-rev"] .axdb-rs').getBoundingClientRect().toJSON());
+  await drag(rs2.x + rs2.width / 2, rs2.y + rs2.height / 2, rs2.x + rs2.width / 2, rs2.y + rs2.height / 2 - 90, { steps: 16 });
+  const c2 = await cellsOf();
+  await shot('strip', 'row-back');
+  const s = await sanity('strip');
+  verdict(c0.slab === 1 && c1.slab === 2 && c1.kpis.every((h) => h === 2) && c1.trendY === c0.trendY + 1 && k1.h > k0.h + 40 && c2.slab === 1 && c2.kpis.every((h) => h === 1) && c2.trendY === c0.trendY && s.overlaps === 0,
+    `slab ${c0.slab}→${c1.slab}→${c2.slab} · kpi rows ${c1.kpis}→${c2.kpis} · trend y ${c0.trendY}→${c1.trendY}→${c2.trendY} · sibling px ${Math.round(k0.h)}→${Math.round(k1.h)} ${JSON.stringify(s)}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
