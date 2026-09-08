@@ -389,6 +389,15 @@ render(SPEC2, host);</pre>
       nesting from live membership — a dragged-in tile lands under its new
       parent in the snapshot, and the snapshot rebuilds through
       <code>dashboard()</code> unchanged. Nesting is exercised to two levels.</p>
+      <p><b>A section is a thing to select and resize</b> (element 0.4.19). A press on a
+      section's empty band selects the section: it wears the selection ring and, while
+      selected, a corner handle; its frame edges answer the resize cursor. Drag the handle or an
+      edge and the section's cell follows, floored at its children's rows and undoable as one
+      step; <code>handle.widget(sectionId).resize(span, rows)</code> does the same from code and
+      <code>selectWidget(sectionId)</code> selects it. <code>onSelect(id, viewId)</code> on
+      <code>dashboard()</code> reports every selection change — a widget, a section, or
+      <code>undefined</code> — so a designer can follow it. Grid layout only; a section under a
+      split layout is resized by its dividers.</p>
       <p><b>One selection per canvas</b> (element 0.4.18). A press, a focus or
       <code>selectWidget</code> on any board of a canvas — a section or its parent — clears
       the selection on every other board, so a section and its board never show two rings.

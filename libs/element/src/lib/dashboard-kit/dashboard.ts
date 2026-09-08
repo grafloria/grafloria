@@ -271,6 +271,12 @@ export interface DashboardOptions {
    * hook). Omit for a titled placeholder frame.
    */
   renderWidget?: (widget: DashboardWidgetSpec, host: HTMLElement) => void;
+  /**
+   * The selection changed on a board: the selected id — a widget or a SECTION
+   * (container) — or undefined when cleared, and the view it belongs to. A
+   * press on a section's empty band selects the section.
+   */
+  onSelect?: (id: string | undefined, viewId: string) => void;
   /** Fires after any committed gesture, with the view whose layout changed. */
   onLayoutChange?: (viewId: string, widgets: DashboardWidgetSpec[]) => void;
   /** Extra binder options, merged last (escape hatch to the layer below). */
@@ -1768,6 +1774,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             if (e.type === 'commit') reportChanged();
             options.binder?.onGesture?.(e);
           },
+          onSelect: (id: string | undefined) => options.onSelect?.(id, v.id),
         };
         if (viewLayout === 'split') {
           return bindDashboardSplit(a as never, g, {
@@ -1809,6 +1816,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             if (e.type === 'commit') reportChanged();
             options.binder?.onGesture?.(e);
           },
+          onSelect: (id: string | undefined) => options.onSelect?.(id, ctx.viewOfBoard.get(w.id) ?? ctx.active),
         };
         if ((ctx.layoutOf.get(w.id) ?? w.layout) === 'split') {
           // A splitter tree covering the pane; the pane's frame is the parent's

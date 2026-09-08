@@ -758,6 +758,62 @@ for (const [board, pos, place] of [['grip-in-l', 'left', 'inside'], ['grip-in-c'
     `cells back=${s1 === s0} px back=${JSON.stringify(h1) === JSON.stringify(h0)} split cells: ${sSplit.slice(0, 120)}… ${JSON.stringify(s)}`);
 }
 
+{
+  begin('L35-a-section-is-selected-by-a-press-on-its-empty-band');
+  await scrollTo('panel-grow');
+  const slab = (id) => page.evaluate((id) => { const el = document.querySelector(`#cv-panel-grow .axdb-slab[data-slab-id="${id}"]`); if (!el) return null; const r = el.getBoundingClientRect(); const rs = el.querySelector('.axdb-rs'); return { x: r.x, y: r.y, w: r.width, h: r.height, selected: el.classList.contains('axdb-slab--selected'), handleOp: rs ? +getComputedStyle(rs).opacity : null, handle: rs ? rs.getBoundingClientRect().toJSON() : null }; }, id);
+  await page.evaluate(() => { window.__labSelects['panel-grow'] = []; });
+  const s0 = await slab('sec-controls');
+  // the free column of Report controls: right of its children, mid-height
+  const amount = await rect('panel-grow', 'ctl-amount');
+  await page.mouse.click(amount.right + 30, amount.y + 40); await page.waitForTimeout(300);
+  const s1 = await slab('sec-controls');
+  const api1 = await page.evaluate(() => ({ sel: window.__lab['panel-grow'].handle.getSelectedWidget(), events: window.__labSelects['panel-grow'].slice() }));
+  await shot('panel-grow', 'section-selected');
+  // a child press moves the selection to the child; the section ring goes
+  await page.mouse.click(amount.x + amount.w / 2, amount.y + amount.h / 2); await page.waitForTimeout(300);
+  const s2 = await slab('sec-controls'); const sel2 = await selected('panel-grow');
+  // and the API can select a section too
+  const api3 = await page.evaluate(() => { const H = window.__lab['panel-grow'].handle; const ok = H.selectWidget('sec-paid'); return { ok, sel: H.getSelectedWidget(), inner: H.binderOf('sec-controls').getSelectedWidget() }; });
+  const s3 = await slab('sec-paid');
+  await shot('panel-grow', 'paid-selected-by-api');
+  verdict(s0 && !s0.selected && s0.handleOp === 0 && s1.selected && s1.handleOp === 1 && api1.sel === 'sec-controls' && api1.events.includes('main:sec-controls') && !s2.selected && sel2.join() === 'ctl-amount' && api3.ok && api3.sel === 'sec-paid' && api3.inner === undefined && s3.selected,
+    `rest: sel=${s0?.selected} handle=${s0?.handleOp} · after band press: sel=${s1?.selected} handle=${s1?.handleOp} api=${api1.sel} events=${api1.events} · child press: slab=${s2?.selected} sel=${sel2} · API sec-paid: ${JSON.stringify(api3)} slab=${s3?.selected}`);
+}
+{
+  begin('L36-a-section-resizes-by-handle-and-edge-floored-at-its-children');
+  await scrollTo('panel-grow');
+  const cellOf = (id) => page.evaluate((id) => { const c = window.__lab['panel-grow'].handle.widget(id).cell; return { x: c.x, y: c.y, w: c.w, h: c.h }; }, id);
+  const c0 = await cellOf('sec-controls'); const a0 = await rect('panel-grow', 'ctl-amount');
+  const amount = await rect('panel-grow', 'ctl-amount');
+  await page.mouse.click(amount.right + 30, amount.y + 40); await page.waitForTimeout(300);
+  const hnd = await page.evaluate(() => document.querySelector('#cv-panel-grow .axdb-slab[data-slab-id="sec-controls"] > .axdb-rs').getBoundingClientRect().toJSON());
+  // 1. corner handle: two rows taller (34-px rows + 10 gap)
+  await drag(hnd.x + hnd.width / 2, hnd.y + hnd.height / 2, hnd.x + hnd.width / 2, hnd.y + hnd.height / 2 + 2 * 44, { steps: 16, mid: async () => shot('panel-grow', 'section-handle-pull-mid') });
+  const c1 = await cellOf('sec-controls'); const a1 = await rect('panel-grow', 'ctl-amount');
+  const ev1 = await events('panel-grow');
+  await shot('panel-grow', 'section-taller');
+  // 2. pull it back well above its children's rows: floored at 14
+  const hnd2 = await page.evaluate(() => document.querySelector('#cv-panel-grow .axdb-slab[data-slab-id="sec-controls"] > .axdb-rs').getBoundingClientRect().toJSON());
+  await drag(hnd2.x + hnd2.width / 2, hnd2.y + hnd2.height / 2, hnd2.x + hnd2.width / 2, hnd2.y + hnd2.height / 2 - 6 * 44, { steps: 16 });
+  const c2 = await cellOf('sec-controls'); const a2 = await rect('panel-grow', 'ctl-amount');
+  // 3. the right EDGE (no handle): one column narrower, from the free band near the frame's right edge
+  const fr = await groupRect('panel-grow', 'sec-controls');
+  const cv = await page.evaluate(() => document.getElementById('cv-panel-grow').getBoundingClientRect().toJSON());
+  const ex = cv.x + fr.x + fr.w - 3, ey = cv.y + fr.y + fr.h / 2;
+  await page.mouse.move(ex, ey); await page.waitForTimeout(120);
+  const cursor = await page.evaluate(() => document.getElementById('cv-panel-grow').querySelector('.grafloria-diagram-root')?.style.cursor || getComputedStyle(document.getElementById('cv-panel-grow').firstElementChild).cursor);
+  await drag(ex, ey, ex - 120, ey, { steps: 12 });
+  const c3 = await cellOf('sec-controls'); const a3 = await rect('panel-grow', 'ctl-amount');
+  await shot('panel-grow', 'section-narrower-by-edge');
+  // 4. undo twice: width back, then height back to the design
+  await page.evaluate(async () => { const cm = window.__lab['panel-grow'].api.getEngine().commandManager; await cm.undo(); await cm.undo(); await cm.undo(); }); await page.waitForTimeout(500);
+  const c4 = await cellOf('sec-controls');
+  const s = await sanity('panel-grow');
+  verdict(c1.h === c0.h + 2 && a1.h > a0.h + 20 && ev1.some((e) => e.type === 'commit' && e.changed) && c2.h === 14 && Math.round(a2.h) === Math.round(a0.h) && c3.w === c0.w - 1 && c3.h === 14 && a3.w < a0.w - 40 && cursor === 'ew-resize' && c4.w === c0.w && c4.h === c0.h && s.overlaps === 0,
+    `rows ${c0.h}→${c1.h}→${c2.h} (amount px ${Math.round(a0.h)}→${Math.round(a1.h)}→${Math.round(a2.h)}) · edge cursor=${cursor} width ${c0.w}→${c3.w} (amount px w ${Math.round(a0.w)}→${Math.round(a3.w)}) · undo → ${c4.w}x${c4.h} · events=${JSON.stringify(ev1)} ${JSON.stringify(s)}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

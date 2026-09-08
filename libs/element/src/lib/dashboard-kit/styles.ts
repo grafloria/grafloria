@@ -70,7 +70,7 @@ const CSS = `
 }
 
 /* ===== corner resize handle (hover-revealed, radius-matched) ===== */
-.grafloria-node-host > .axdb-rs {
+:is(.grafloria-node-host, .axdb-slab) > .axdb-rs {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -90,7 +90,7 @@ const CSS = `
 @media (hover: none) { .grafloria-node-host > .axdb-rs { opacity: .8; } }
 .grafloria-node-host > .axdb-rs:hover { border-color: #3b52d9; }
 /* RTL boards grow leftwards, so the grab corner mirrors with them. */
-.grafloria-node-host > .axdb-rs.axdb-rs--rtl {
+:is(.grafloria-node-host, .axdb-slab) > .axdb-rs.axdb-rs--rtl {
   right: auto;
   left: 0;
   cursor: nesw-resize;
@@ -356,6 +356,14 @@ const CSS = `
 .axdb-tier-2 .axdb-yt--h, .axdb-tier-2 .axdb-yl--h,
 .axdb-tier-2 .axdb-xt, .axdb-tier-2 .axdb-vt,
 .axdb-lg--off { display: none; }
+
+/* SECTION CHROME: a pointer-transparent overlay on every member group. It
+   wears the selection ring and, while selected, the corner handle. */
+.grafloria-html-layer > .axdb-slab { position: absolute; pointer-events: none; border-radius: var(--axdb-rs-radius, 3px); z-index: 4; }
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected { box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)); }
+.grafloria-html-layer > .axdb-slab > .axdb-rs { pointer-events: auto; opacity: 0; }
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { opacity: 1; }
+.grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-rs { display: none; }
 
 /* legend chips, shared by line and donut */
 .axdb-lg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; }

@@ -275,6 +275,57 @@ describe('one selection per canvas', () => {
   });
 });
 
+describe('a section is a thing to select and resize', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const PANEL = (onSelect?: (id: string | undefined, viewId: string) => void) =>
+    dashboard({
+      columns: 12,
+      ...(onSelect ? { onSelect } : {}),
+      widgets: [
+        { id: 'box', span: 3, rows: 14, x: 0, y: 0, columns: 4, widgets: [
+          { id: 'c1', kind: 'kpi', span: 3, rows: 1, x: 0, y: 0 },
+          { id: 'c2', kind: 'kpi', span: 3, rows: 6, x: 0, y: 1 },
+          { id: 'c3', kind: 'kpi', span: 3, rows: 7, x: 0, y: 7 },
+        ] },
+        { id: 'free', kind: 'line', span: 9, rows: 14, x: 3, y: 0 },
+      ],
+    });
+
+  it('selectWidget takes a section; the slab overlay wears the ring; onSelect reports it', () => {
+    const onSelect = jest.fn();
+    const { handle, api } = mount(PANEL(onSelect));
+    expect(handle.selectWidget('box')).toBe(true);
+    expect(handle.getSelectedWidget()).toBe('box');
+    expect(onSelect).toHaveBeenCalledWith('box', 'main');
+    const slab = api.container.querySelector('.axdb-slab[data-slab-id="box"]')!;
+    expect(slab).toBeTruthy();
+    expect(slab.classList.contains('axdb-slab--selected')).toBe(true);
+    expect(slab.querySelector('.axdb-rs')).toBeTruthy();
+    // a child selection clears the section's ring (one selection per canvas)
+    expect(handle.selectWidget('c2')).toBe(true);
+    expect(slab.classList.contains('axdb-slab--selected')).toBe(false);
+    expect(onSelect).toHaveBeenCalledWith(undefined, 'main');
+    expect(onSelect).toHaveBeenLastCalledWith('c2', 'main');
+  });
+
+  it('resize() on a section commits its cell and frame as one undoable step, floored at its children', async () => {
+    const { handle, api } = mount(PANEL());
+    const cm = api.getEngine().commandManager;
+    expect(await handle.widget('box')!.resize(3, 16)).toBe(true);
+    await settle();
+    expect(handle.widget('box')!.cell).toEqual({ x: 0, y: 0, w: 3, h: 16 });
+    expect(handle.toJSON().views[0].widgets.find((w) => w.id === 'box')!.rows).toBe(16);
+    // below the children's 14 rows: refused, nothing changes
+    expect(await handle.widget('box')!.resize(3, 10)).toBe(false);
+    await settle();
+    expect(handle.widget('box')!.cell.h).toBe(16);
+    await cm.undo();
+    await settle();
+    expect(handle.widget('box')!.cell).toEqual({ x: 0, y: 0, w: 3, h: 14 });
+    expect(handle.toJSON().views[0].widgets.find((w) => w.id === 'box')!.rows).toBe(14);
+  });
+});
+
 describe('removing a container (plan step 6, D12)', () => {
   const settle = () => new Promise<void>((r) => setTimeout(r, 0));
 
