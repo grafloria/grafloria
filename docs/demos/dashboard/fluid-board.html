@@ -24,6 +24,10 @@
   #fb-bar button[aria-pressed="true"] { background: rgba(59, 82, 217, .12); border-color: #3b52d9; }
   #fb-bar .fb-sep { width: 1px; height: 18px; background: rgba(127,127,127,.3); margin: 0 4px; }
   #fb-bar .fb-lab { display: inline-flex; align-items: center; gap: 6px; }
+  /* Pinned so the toolbar cannot reflow when an option's TEXT changes: a
+     select is sized to its widest option, so renaming one shifted the whole
+     board a few px and every visual golden with it. */
+  #fb-caption { width: 190px; }
   #fb-bar select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; }
   #fb-bar select:disabled { opacity: .45; }
   #fb-bar .fb-msg { margin-left: auto; opacity: .75; font-variant-numeric: tabular-nums; }
