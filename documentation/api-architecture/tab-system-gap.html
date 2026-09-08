@@ -1,0 +1,122 @@
+<title>Tab System Gap</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #f5f6fa; --paper: #ffffff; --ink: #1b2029; --muted: #59627a; --line: #e2e6f0; --soft: #eef1f7;
+    --accent: #3b52d9; --accent-soft: #e9edfc;
+    --have: #0f7a3d; --have-soft: #e6f5ec; --partial: #9a5b00; --partial-soft: #fdf3e0; --gap: #b3123c; --gap-soft: #fdeaf0;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --ground: #11131a; --paper: #191d26; --ink: #e9ebf2; --muted: #9aa3b8; --line: #2a3040; --soft: #212633;
+    --accent: #8093f2; --accent-soft: #232a48;
+    --have: #4ade80; --have-soft: #16281d; --partial: #f0b64d; --partial-soft: #2e2513; --gap: #fb7185; --gap-soft: #331520;
+  } }
+  :root[data-theme="dark"] {
+    --ground: #11131a; --paper: #191d26; --ink: #e9ebf2; --muted: #9aa3b8; --line: #2a3040; --soft: #212633;
+    --accent: #8093f2; --accent-soft: #232a48;
+    --have: #4ade80; --have-soft: #16281d; --partial: #f0b64d; --partial-soft: #2e2513; --gap: #fb7185; --gap-soft: #331520;
+  }
+  body { background: var(--ground); color: var(--ink); font: 15px/1.55 var(--sans); }
+  main { max-width: 1060px; margin: 0 auto; padding: 40px 28px 90px; }
+  h1 { font-size: 33px; line-height: 1.15; letter-spacing: -.02em; margin: 0 0 6px; text-wrap: balance; }
+  h2 { font-size: 19px; letter-spacing: -.01em; margin: 46px 0 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .eyebrow { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .lede { color: var(--muted); font-size: 17px; max-width: 66ch; margin: 0 0 30px; }
+  p { max-width: 70ch; }
+  code { font: 12.5px var(--mono); background: var(--soft); padding: 1px 5px; border-radius: 4px; }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); background: var(--soft); }
+  tr:last-child td { border-bottom: 0; }
+  .tag { display: inline-block; font: 600 10.5px/1 var(--mono); letter-spacing: .04em; padding: 4px 7px; border-radius: 4px; white-space: nowrap; }
+  .t-have { background: var(--have-soft); color: var(--have); }
+  .t-part { background: var(--partial-soft); color: var(--partial); }
+  .t-gap { background: var(--gap-soft); color: var(--gap); }
+  .note { background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 0 8px 8px 0; max-width: 72ch; }
+  .bug { background: var(--gap-soft); border-left: 3px solid var(--gap); padding: 10px 14px; border-radius: 0 8px 8px 0; max-width: 72ch; margin: 10px 0; }
+  .measured { font: 500 12px var(--mono); color: var(--muted); }
+  figure { margin: 18px 0 0; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; }
+  figcaption b { color: var(--ink); font-weight: 600; }
+  svg { width: 100%; height: auto; display: block; }
+  ol.steps { padding-left: 20px; max-width: 72ch; } ol.steps li { margin: 7px 0; }
+  .t { font: 600 10px var(--mono); letter-spacing: .05em; text-transform: uppercase; }
+  .lbl { font: 600 11.5px var(--sans); }
+</style>
+<main>
+  <div class="eyebrow">Grafloria Dashboards · element 0.4.27 · gap analysis</div>
+  <h1>Tabs: what VS Code does, what the kit does</h1>
+  <p class="lede">Every row below was measured against element 0.4.27, not assumed. The verdicts come from driving a real browser: a probe page with eight tabs, a mixed container, a tab container on a split board, tabs nested inside a tab page, a static board, and a widget dragged in and out of an open page.</p>
+
+  <h2>The model, side by side</h2>
+  <p>VS Code's editor area is a <b>split tree of groups</b>, and each group is a tab bar over one visible editor. The kit has both halves already: <code>layout: 'split'</code> is the tree, <code>layout: 'tabs'</code> is a group. What is missing is almost entirely the <b>drag gestures that move things between them</b>.</p>
+
+  <figure>
+    <svg viewBox="0 0 560 220" role="img" aria-label="A split of two tab groups, with the drop zones VS Code uses">
+      <rect x="0" y="0" width="560" height="220" rx="6" fill="var(--soft)"/>
+      <rect x="14" y="14" width="256" height="192" rx="4" fill="var(--paper)" stroke="var(--line)"/>
+      <rect x="14" y="14" width="256" height="26" rx="4" fill="var(--soft)"/>
+      <rect x="14" y="14" width="74" height="26" fill="var(--paper)"/><rect x="14" y="38" width="74" height="2" fill="var(--accent)"/>
+      <text x="26" y="31" class="lbl" fill="var(--ink)">Sales</text>
+      <text x="100" y="31" class="lbl" fill="var(--muted)">Margin</text>
+      <text x="170" y="31" class="lbl" fill="var(--muted)">Notes</text>
+      <!-- drop zones on the right group -->
+      <rect x="290" y="14" width="256" height="192" rx="4" fill="var(--paper)" stroke="var(--line)"/>
+      <rect x="290" y="14" width="256" height="26" rx="4" fill="var(--soft)"/>
+      <text x="302" y="31" class="lbl" fill="var(--ink)">Filters</text>
+      <rect x="290" y="40" width="52" height="166" fill="var(--accent)" opacity=".16"/>
+      <rect x="494" y="40" width="52" height="166" fill="var(--accent)" opacity=".16"/>
+      <rect x="342" y="40" width="152" height="34" fill="var(--accent)" opacity=".16"/>
+      <rect x="342" y="172" width="152" height="34" fill="var(--accent)" opacity=".16"/>
+      <rect x="342" y="74" width="152" height="98" fill="var(--accent)" opacity=".30"/>
+      <text x="418" y="128" class="t" fill="var(--ink)" text-anchor="middle">COMBINE</text>
+      <text x="316" y="128" class="t" fill="var(--muted)" text-anchor="middle">SPLIT</text>
+      <text x="520" y="128" class="t" fill="var(--muted)" text-anchor="middle">SPLIT</text>
+    </svg>
+    <figcaption><b>The drop model to build.</b> Release over the centre (or the tab bar) and the two become one group with two tabs. Release over an edge fifth and it splits instead, putting the dropped panel on that side. This one gesture covers combining, tearing out and moving a group, because a drop is always "leave where I was, land where I am".</figcaption>
+  </figure>
+
+  <h2>Behaviour by behaviour</h2>
+  <div class="wrap"><table>
+    <tr><th>VS Code</th><th>element 0.4.27</th><th>verdict</th></tr>
+    <tr><td>Groups form a split tree, resized by the sash between them</td><td><code>layout: 'split'</code> panes with draggable dividers; a tab container works as a pane <span class="measured">(strip painted 579×30 on a split board)</span></td><td><span class="tag t-have">HAVE</span></td></tr>
+    <tr><td>A group shows one editor, with a bar of tabs</td><td><code>layout: 'tabs'</code>; the others are parked off-canvas keeping their size and layout</td><td><span class="tag t-have">HAVE</span></td></tr>
+    <tr><td>Click a tab to switch; arrows walk the bar</td><td>Click, <kbd>←</kbd>/<kbd>→</kbd>/Home/End, <code>activateTab()</code>, <code>onTabChange</code></td><td><span class="tag t-have">HAVE</span></td></tr>
+    <tr><td>Switching works even when nothing is editable</td><td>Verified under <code>static</code> <span class="measured">(clicked tab two, active went s1 → s2)</span></td><td><span class="tag t-have">HAVE</span></td></tr>
+    <tr><td>The open editor is remembered per group</td><td><code>active</code> is written by <code>toJSON()</code> and restored by <code>fromDocument</code> <span class="measured">(verified after activate: toJSON.active = p2)</span></td><td><span class="tag t-have">HAVE</span></td></tr>
+    <tr><td>Drag a file from the explorer into a group</td><td>A widget drags from the board into the open page and back out <span class="measured">(owner: BOARD → p1 → BOARD)</span></td><td><span class="tag t-have">HAVE</span></td></tr>
+    <tr><td>Groups nest arbitrarily</td><td>Tabs inside a tab page work <span class="measured">(outer and inner strips both painted)</span></td><td><span class="tag t-have">HAVE</span></td></tr>
+    <tr><td><b>Drop a tab on another group → two tabs</b></td><td>Not built. Pages are declared in the data.</td><td><span class="tag t-gap">GAP</span></td></tr>
+    <tr><td><b>Drop near an edge → split into a new group</b></td><td>Not built for panels. The split binder already has edge insertion for <em>widgets</em>, so the model exists one level down.</td><td><span class="tag t-gap">GAP</span></td></tr>
+    <tr><td><b>Drag a tab out → it becomes its own group</b></td><td>Not built.</td><td><span class="tag t-gap">GAP</span></td></tr>
+    <tr><td><b>Move a whole group among the other panes</b></td><td><b>Impossible today, and not only for tabs:</b> a section is a locked slab. <span class="measured">moveTo on a tab group → false; on a plain section → false.</span></td><td><span class="tag t-gap">GAP</span></td></tr>
+    <tr><td>Reorder tabs by dragging along the bar</td><td>Not built.</td><td><span class="tag t-gap">GAP</span></td></tr>
+    <tr><td>Emptying a group destroys it; the rest take the space</td><td>Not built. A container left with one page still shows a one-tab bar.</td><td><span class="tag t-gap">GAP</span></td></tr>
+    <tr><td>Close a tab (×, middle-click)</td><td>Not built. <code>closable</code> is designed in the caption plan but unimplemented.</td><td><span class="tag t-gap">GAP</span></td></tr>
+    <tr><td>Overflow: the bar scrolls, a chevron lists everything</td><td>The bar scrolls <span class="measured">(8 tabs: scrollWidth 519 vs clientWidth 383)</span> but there is no chevron and no list.</td><td><span class="tag t-part">PARTIAL</span></td></tr>
+    <tr><td>Preview tabs (italic, replaced by the next file)</td><td>Not built — and I would not build it. It exists because an editor opens files transiently; a dashboard page is placed deliberately.</td><td><span class="tag t-part">N/A</span></td></tr>
+    <tr><td>Pinned tabs, <kbd>Ctrl</kbd>+<kbd>Tab</kbd> recent-first cycling, floating windows</td><td>Not built. Low value here; listed so the omission is deliberate rather than forgotten.</td><td><span class="tag t-part">LATER</span></td></tr>
+  </table></div>
+
+  <h2>Two defects the probe found</h2>
+  <div class="bug"><b>A non-container child of a tab container is orphaned.</b> The tab system treats only children carrying <code>widgets</code> as pages, so a plain widget among them is never positioned: it paints at the board origin at its 100×60 placeholder size. <span class="measured">Measured: 'loose' at x=0, 100×60, while the two real pages tabbed correctly.</span> The same happens when <em>every</em> child is a plain widget: no strip is painted at all and the widget is stranded. The plan always said a plain child should become a one-widget page; the code does not do it yet. Until it does, this is a silent corruption of the author's layout, and it is the first thing to fix.</div>
+  <div class="bug"><b>A one-page container still shows a bar.</b> VS Code destroys a group when its last editor leaves. Combining and tearing out will produce one-page containers constantly, so the collapse rule has to land in the same round as the drag, not after it.</div>
+
+  <h2>What the drag round actually costs</h2>
+  <p>The three gestures you asked for — move a whole group, move one tab inside a group, pull a tab out into its own group — are one mechanism, not three. Each is a drop with a source and a target zone.</p>
+  <ol class="steps">
+    <li><b>Make a section draggable at all.</b> Today it is a locked slab, which is why <code>moveTo</code> refuses. This is the largest piece and it is not tab-specific: it changes what a section is on the board. Doing it unlocks moving a plain section too, which the kit has never allowed.</li>
+    <li><b>A drop-zone overlay</b> over the panel under the pointer: centre and tab bar mean combine, the outer fifth of each side means split. This is the whole VS Code feel, and the split binder already computes edge insertions for widgets, so the geometry is borrowed rather than invented.</li>
+    <li><b>Two commands, both undoable in one step:</b> <em>combine</em> converts the target section into a tab container if it is not one and moves the dropped panel in as a page; <em>tear out</em> removes a page, wraps it back into a plain section, and drops it into the board or a new split pane.</li>
+    <li><b>Collapse on empty</b> so a container with one page becomes a plain section again, and one with none disappears.</li>
+    <li><b>Reorder within the bar</b>, which is the cheap one: a drag along the strip permuting the pages array.</li>
+    <li><b>The overflow chevron</b>, so a group with many pages stays usable.</li>
+  </ol>
+  <p class="note">Order matters here. Steps 1 and 4 are prerequisites for the gesture feeling right, and step 1 touches the board's model of a section rather than the tab code. I would ship it as its own round with the section-drag gates rewritten first, then the drop zones on top, rather than bolting the gesture onto locked slabs.</p>
+
+  <h2>What I checked, and how</h2>
+  <p>Eight tabs in a narrow container for overflow; a container mixing a plain widget with two pages; a container whose children are all plain widgets; a tab container as a pane of a split board; a tab container inside a tab page; a static board; <code>moveTo</code> on both a tab group and a plain section; and a real pointer drag of a widget from the board into the open page and back. Each verdict above cites what it measured. The behaviours marked GAP were confirmed absent, not inferred from the code.</p>
+</main>
