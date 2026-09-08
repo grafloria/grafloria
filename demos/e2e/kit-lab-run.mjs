@@ -874,6 +874,42 @@ for (const [board, pos, place] of [['grip-in-l', 'left', 'inside'], ['grip-in-c'
     `under the shared corner while selected: ${under} · sec rows ${before.sec}→${after.sec}, chart rows ${before.chart}→${after.chart} · after deselect the corner belongs to: ${under2}`);
 }
 
+{
+  begin('L39-split-section-dividers-after-a-switch-and-the-section-handle');
+  await scrollTo('panel-grow');
+  const state = () => page.evaluate(() => { const H = window.__lab['panel-grow'].handle; const sec = H.widget('sec-controls').cell; const px = (id) => Math.round(document.querySelector(`#cv-panel-grow .grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect().height); return { w: sec.w, h: sec.h, date: px('ctl-date'), amount: px('ctl-amount'), divs: document.querySelectorAll('#cv-panel-grow .axdb-div').length }; });
+  const cells0 = await page.evaluate(() => { const b = window.__lab['panel-grow'].handle.binderOf('sec-controls'); return ['ctl-caption', 'ctl-product', 'ctl-date', 'ctl-amount'].map((id) => { const c = b.cellOf(id); return `${c.y}+${c.h}`; }).join(' '); });
+  await page.evaluate(() => window.__lab['panel-grow'].handle.setLayout('split', 'sec-controls')); await page.waitForTimeout(500);
+  const s0 = await state();
+  const divs = await page.evaluate(() => [...document.querySelectorAll('#cv-panel-grow .axdb-div')].map((d) => d.getBoundingClientRect().toJSON()).filter((d) => d.width > d.height).sort((a, b) => a.y - b.y));
+  const d = divs[divs.length - 1]; // between Invoice date and Invoice size
+  // a. the divider grabbed mid-width: the two panes trade height, the section keeps its cell
+  await drag(d.x + d.width / 2, d.y + d.height / 2, d.x + d.width / 2, d.y + d.height / 2 + 60, { steps: 12, mid: async () => shot('panel-grow', 'split-divider-mid') });
+  const s1 = await state();
+  // b. grabbed 3 px from the section's right edge: still the divider, never the section
+  const d2 = (await page.evaluate(() => [...document.querySelectorAll('#cv-panel-grow .axdb-div')].map((d) => d.getBoundingClientRect().toJSON()).filter((d) => d.width > d.height).sort((a, b) => a.y - b.y))).slice(-1)[0];
+  await drag(d2.x + d2.width - 3, d2.y + d2.height / 2, d2.x + d2.width - 3, d2.y + d2.height / 2 - 40, { steps: 12 });
+  const s2 = await state();
+  await shot('panel-grow', 'split-dividers-dragged');
+  // c. the section itself: selected by API (a split section has no empty band), its handle pulls it two rows taller
+  await page.evaluate(() => window.__lab['panel-grow'].handle.selectWidget('sec-controls')); await page.waitForTimeout(250);
+  const hnd = await page.evaluate(() => document.querySelector('#cv-panel-grow .axdb-slab[data-slab-id="sec-controls"] > .axdb-rs').getBoundingClientRect().toJSON());
+  await drag(hnd.x + 12, hnd.y + 12, hnd.x + 12, hnd.y + 12 + 88, { steps: 12 });
+  const s3 = await state();
+  await shot('panel-grow', 'split-section-taller');
+  // d. back to grid: the four controls' cells are what they were
+  await page.evaluate(() => window.__lab['panel-grow'].handle.setLayout('grid', 'sec-controls')); await page.waitForTimeout(500);
+  const cells1 = await page.evaluate(() => { const b = window.__lab['panel-grow'].handle.binderOf('sec-controls'); return ['ctl-caption', 'ctl-product', 'ctl-date', 'ctl-amount'].map((id) => { const c = b.cellOf(id); return `${c.y}+${c.h}`; }).join(' '); });
+  const s4 = await state();
+  await page.evaluate(async () => { const cm = window.__lab['panel-grow'].api.getEngine().commandManager; for (let i = 0; i < 4 && cm.canUndo(); i++) await cm.undo(); }); await page.waitForTimeout(400);
+  const sane = await sanity('panel-grow');
+  verdict(s0.divs >= 3 && s1.date > s0.date + 30 && s1.amount < s0.amount - 30 && s1.w === s0.w && s1.h === s0.h
+    && s2.date < s1.date - 20 && s2.w === s0.w && s2.h === s0.h
+    && s3.h === s0.h + 2 && s3.w === s0.w
+    && s4.divs === 0 && sane.overlaps === 0,
+    `dividers=${s0.divs} · mid: date ${s0.date}→${s1.date} amount ${s0.amount}→${s1.amount} section ${s0.w}x${s0.h}→${s1.w}x${s1.h} · edge grab: date →${s2.date} section ${s2.w}x${s2.h} · handle: section →${s3.w}x${s3.h} · grid again cells ${cells0} → ${cells1} divs=${s4.divs} ${JSON.stringify(sane)}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

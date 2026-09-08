@@ -389,6 +389,12 @@ render(SPEC2, host);</pre>
       nesting from live membership — a dragged-in tile lands under its new
       parent in the snapshot, and the snapshot rebuilds through
       <code>dashboard()</code> unchanged. Nesting is exercised to two levels.</p>
+      <p><b>A split section after a layout switch</b> (element 0.4.21). An empty press inside
+      a nested board's frame belongs to that board whatever the order the boards were bound in,
+      so a section switched to split keeps working dividers, and a divider grabbed near the
+      section's edge is still the divider, never a section resize. A split section is selected
+      by <code>selectWidget</code> or its label (it has no empty band) and resized by its corner
+      handle; its panes re-cover the pane.</p>
       <p><b>Resizing inside a section, every edge</b> (element 0.4.20). A tile's top or left
       edge grows only into free cells: when the row above or the column beside it is taken the
       pull is refused, never turned into growth at the opposite edge or a move that pushes the
