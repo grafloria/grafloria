@@ -176,6 +176,30 @@ describe('section captions — painting and reserving', () => {
     expect(bandOf(roomy.api)!.style.height).toBe('28px');
   });
 
+  it('an authored height wins over the squeezed tier, and still clamps', () => {
+    const short = (h: number) =>
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 34,
+        sizing: 'grow',
+        widgets: [
+          { id: 'box', title: 'S', caption: { height: h, subtitle: 'sub' }, span: 4, rows: 2, x: 0, y: 0, columns: 4, widgets: [{ id: 'c1', kind: 'kpi', span: 4, rows: 2, x: 0, y: 0 }] },
+          { id: 'free', kind: 'line', span: 8, rows: 2, x: 4, y: 0 },
+        ],
+      });
+    // a 2-row 78 px section would default to the 22 px tier; height: 40 wins…
+    const a = up(short(40));
+    expect(bandOf(a.api)!.style.height).toBe('40px');
+    expect(bandOf(a.api)!.classList.contains('axdb-slab-h--tight')).toBe(false);
+    expect(bandOf(a.api)!.querySelector('.axdb-slab-h-sub')).toBeTruthy();
+    // …but a height the section cannot afford is still clamped to 78 - 20
+    const b = up(short(120));
+    expect(bandOf(b.api)!.style.height).toBe('58px');
+  });
+
   it('align, valign, font, padding, margin, background and border land on the band', () => {
     const { api, model } = up(
       BOARD({

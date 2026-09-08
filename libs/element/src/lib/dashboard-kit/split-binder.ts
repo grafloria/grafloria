@@ -47,7 +47,7 @@ import {
   type SplitSide,
 } from './split-layout';
 import { ensureDashboardKitStyles } from './styles';
-import { captionOfGroup, captionReserve } from './caption';
+import { sectionCaptionReserve } from './caption';
 
 /** Group metadata key the tree persists under. */
 export const SPLIT_TREE_KEY = 'dashboardTree';
@@ -195,10 +195,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
    * reserves nothing until the tab-container round gives the split binder its
    * own overlays.
    */
-  const ownReserve = (): number =>
-    parentPeerOf(api.container, group.id)?.paintsCaptions === true
-      ? captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 })
-      : 0;
+  const ownReserve = (): number => sectionCaptionReserve(diagram, group, isStatic);
   const frame = (): WorldRect => {
     const r = ownReserve();
     return {
