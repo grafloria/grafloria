@@ -9,6 +9,7 @@
 //
 //   node demos/e2e/kit-lab-run.mjs            # shots to e2e/kit-lab-shots/
 //   node demos/e2e/kit-lab-run.mjs --out DIR
+//   node demos/e2e/kit-lab-run.mjs --live     # against the bundle deployed on grafloria.com
 
 import { chromium } from 'playwright';
 import { createServer } from 'http';
@@ -24,8 +25,14 @@ const OUT = outIdx >= 0 ? argv[outIdx + 1] : join(here, 'kit-lab-shots');
 mkdirSync(OUT, { recursive: true });
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+// --live: drive the lab against the bundle DEPLOYED on grafloria.com — the
+// artifact every app actually loads — instead of the local build.
+const LIVE = argv.includes('--live');
+const liveBundle = LIVE ? Buffer.from(await (await fetch('https://grafloria.com/demos/shell/grafloria.js', { cache: 'no-store' })).arrayBuffer()) : null;
+if (LIVE) console.log(`lab against the LIVE bundle: ${liveBundle.byteLength} bytes`);
 const server = createServer((req, res) => {
   const url = decodeURIComponent((req.url || '/').split('?')[0]);
+  if (liveBundle && url === '/shell/grafloria.js') { res.writeHead(200, { 'Content-Type': MIME['.js'] }); return res.end(liveBundle); }
   try { const body = readFileSync(join(root, url)); res.writeHead(200, { 'Content-Type': MIME[extname(url)] ?? 'application/octet-stream' }); res.end(body); }
   catch { res.writeHead(404); res.end(); }
 });

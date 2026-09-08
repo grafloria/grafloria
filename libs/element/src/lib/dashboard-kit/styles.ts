@@ -346,6 +346,14 @@ const CSS = `
   flex: 0 0 auto; width: auto; height: 100%; max-height: 260px; max-width: 60%; aspect-ratio: 1 / 1;
 }
 
+/* READABILITY TIERS (widgets.ts chartTier): the text is always in the DOM;
+   what a short body cannot afford is hidden, not dropped. */
+.axdb-tier-1 .axdb-yt--q, .axdb-tier-1 .axdb-yl--q,
+.axdb-tier-2 .axdb-yt--q, .axdb-tier-2 .axdb-yl--q,
+.axdb-tier-2 .axdb-yt--h, .axdb-tier-2 .axdb-yl--h,
+.axdb-tier-2 .axdb-xt, .axdb-tier-2 .axdb-vt,
+.axdb-lg--off { display: none; }
+
 /* legend chips, shared by line and donut */
 .axdb-lg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; }
 .axdb-lg--col { flex-direction: column; flex-wrap: nowrap; gap: 6px; margin-top: 0; }

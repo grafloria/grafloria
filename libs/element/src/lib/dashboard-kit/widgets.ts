@@ -168,6 +168,24 @@ const data = <T>(widget: DashboardWidgetSpec): Partial<T> =>
  * the classic 640×250 stands in, and the size watcher below repaints once the
  * real box exists.
  */
+/**
+ * READABILITY TIERS. A squeezed chart — a one-row line on a fit board, a
+ * 60-px row after a pull — piled its five y labels onto each other and, under
+ * 45 px, gave its whole body to the legend (kit lab L03/L05/L07, scenario
+ * s11/s23). The text set never changes with the box (the save/load gate's
+ * contract: a board reloaded at another size paints the same text), so the
+ * SVG carries a tier class and the stylesheet HIDES what does not fit:
+ * tier 1 drops the quarter ticks, tier 2 keeps only min and max, drops the x
+ * labels and the bar values; a legend on a body under 64 px is hidden and the
+ * chart takes the room. 0 = unmeasured (jsdom, a detached host): full tier.
+ */
+export function chartTier(bodyH: number, hasLegend: boolean): { tier: 0 | 1 | 2; legendShown: boolean } {
+  if (!bodyH) return { tier: 0, legendShown: hasLegend };
+  const legendShown = hasLegend && bodyH >= 64;
+  const h = bodyH - (legendShown ? 26 : 0);
+  return { tier: h < 60 ? 2 : h < 120 ? 1 : 0, legendShown };
+}
+
 export function chartBox(body: { clientWidth: number; clientHeight: number }, legend = false): { W: number; H: number } {
   const w = body.clientWidth || 0;
   const h = (body.clientHeight || 0) - (legend ? 26 : 0);
@@ -219,8 +237,8 @@ const srTable = (caption: string, columns: string[], rows: Array<Array<string | 
     .map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join('')}</tr>`)
     .join('')}</tbody></table>`;
 
-const legend = (items: Array<{ label: string; color: string }>, column = false): string =>
-  `<div class="axdb-lg${column ? ' axdb-lg--col' : ''}">` +
+const legend = (items: Array<{ label: string; color: string }>, column = false, off = false): string =>
+  `<div class="axdb-lg${column ? ' axdb-lg--col' : ''}${off ? ' axdb-lg--off' : ''}">` +
   items.map((i) => `<i><b style="background:${esc(i.color)}"></b>${esc(i.label)}</i>`).join('') +
   '</div>';
 
@@ -291,9 +309,11 @@ function layoutLine(widget: DashboardWidgetSpec, body: HTMLElement): void {
   if (!series.length) return empty(body);
 
   const named = series.filter((s) => s.name);
-  if (named.length) body.classList.add('axdb-has-lg');
-  const { W, H } = chartBox(body, named.length > 0);
-  const pad = { l: 34, r: 12, t: 12, b: 22 };
+  const { tier, legendShown } = chartTier(body.clientHeight || 0, named.length > 0);
+  body.classList.toggle('axdb-has-lg', legendShown);
+  const { W, H } = chartBox(body, legendShown);
+  // Tier 2 shows no x labels, so the band they lived in goes to the plot.
+  const pad = tier === 2 ? { l: 34, r: 12, t: 4, b: 6 } : { l: 34, r: 12, t: 12, b: 22 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
   const all = series.flatMap((s) => s.values);
@@ -306,10 +326,11 @@ function layoutLine(widget: DashboardWidgetSpec, body: HTMLElement): void {
   const grid = [0, 0.25, 0.5, 0.75, 1]
     .map((f) => {
       const y = pad.t + ih - f * ih;
+      const cls = f === 0.5 ? ' axdb-yt--h' : f === 0.25 || f === 0.75 ? ' axdb-yt--q' : '';
       return (
-        `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" ` +
+        `<line class="axdb-yl${cls.replace('yt', 'yl')}" x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" ` +
         `stroke="var(--axdb-grid)" stroke-width="1"></line>` +
-        `<text x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" ` +
+        `<text class="axdb-yt${cls}" x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" ` +
         `fill="var(--axdb-muted)">${esc(compact(min + f * (max - min)))}</text>`
       );
     })
@@ -324,7 +345,7 @@ function layoutLine(widget: DashboardWidgetSpec, body: HTMLElement): void {
     .slice(0, count)
     .map((l, i) =>
       i % every === 0
-        ? `<text x="${xAt(i).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" ` +
+        ? `<text class="axdb-xt" x="${xAt(i).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" ` +
           `fill="var(--axdb-muted)">${esc(l)}</text>`
         : ''
     )
@@ -363,9 +384,9 @@ function layoutLine(widget: DashboardWidgetSpec, body: HTMLElement): void {
     .join('');
 
   body.innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
+    `<svg class="axdb-tier-${tier}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
     `aria-label="${esc(titleOf(widget))}">${grid}${ticks}${marks}</svg>` +
-    (named.length ? legend(series.map((s, i) => ({ label: String(s.name ?? ''), color: colorAt(i) }))) : '') +
+    (named.length ? legend(series.map((s, i) => ({ label: String(s.name ?? ''), color: colorAt(i) })), false, !legendShown) : '') +
     srTable(
       titleOf(widget),
       ['', ...series.map((s, i) => String(s.name ?? `Series ${i + 1}`))],
@@ -388,8 +409,9 @@ function layoutBar(widget: DashboardWidgetSpec, body: HTMLElement): void {
   const bars = (Array.isArray(d.bars) ? d.bars : []).filter((b) => !!b);
   if (!bars.length) return empty(body);
 
+  const { tier } = chartTier(body.clientHeight || 0, false);
   const { W, H } = chartBox(body);
-  const pad = { l: 34, r: 12, t: 12, b: 26 };
+  const pad = tier === 2 ? { l: 34, r: 12, t: 4, b: 6 } : { l: 34, r: 12, t: 12, b: 26 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
   const max = niceMax(Math.max(...bars.map((b) => num(b.value))));
@@ -399,10 +421,11 @@ function layoutBar(widget: DashboardWidgetSpec, body: HTMLElement): void {
   const grid = [0, 0.5, 1]
     .map((f) => {
       const y = pad.t + ih - f * ih;
+      const cls = f === 0.5 ? ' axdb-yt--h' : '';
       return (
-        `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" ` +
+        `<line class="axdb-yl${cls.replace('yt', 'yl')}" x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" ` +
         `stroke="var(--axdb-grid)" stroke-width="1"></line>` +
-        `<text x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" ` +
+        `<text class="axdb-yt${cls}" x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" ` +
         `fill="var(--axdb-muted)">${esc(compact(f * max))}</text>`
       );
     })
@@ -417,16 +440,16 @@ function layoutBar(widget: DashboardWidgetSpec, body: HTMLElement): void {
       return (
         `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" ` +
         `rx="4" fill="${colorAt(i)}"></rect>` +
-        `<text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" ` +
+        `<text class="axdb-vt" x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" ` +
         `font-weight="600" fill="var(--axdb-ink)">${esc(compact(num(b.value)))}</text>` +
-        `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" ` +
+        `<text class="axdb-xt" x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" ` +
         `fill="var(--axdb-muted)">${esc(b.label ?? '')}</text>`
       );
     })
     .join('');
 
   body.innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
+    `<svg class="axdb-tier-${tier}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
     `aria-label="${esc(titleOf(widget))}">${grid}${marks}</svg>` +
     srTable(titleOf(widget), ['Category', 'Value'], bars.map((b) => [b.label ?? '', num(b.value)]));
 }
