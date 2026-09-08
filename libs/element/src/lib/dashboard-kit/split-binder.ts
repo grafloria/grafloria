@@ -47,6 +47,7 @@ import {
   type SplitSide,
 } from './split-layout';
 import { ensureDashboardKitStyles } from './styles';
+import { captionOfGroup, captionReserve } from './caption';
 
 /** Group metadata key the tree persists under. */
 export const SPLIT_TREE_KEY = 'dashboardTree';
@@ -187,12 +188,18 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
 
   // -- geometry ---------------------------------------------------------------
 
-  const frame = (): WorldRect => ({
-    x: group.position.x,
-    y: group.position.y,
-    width: group.size?.width ?? designW,
-    height: group.size?.height ?? designH,
-  });
+  /** Our own caption band's pixels, given up at the top of the pane (see grid-binder). */
+  const ownReserve = (): number =>
+    captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 });
+  const frame = (): WorldRect => {
+    const r = ownReserve();
+    return {
+      x: group.position.x,
+      y: group.position.y + r,
+      width: group.size?.width ?? designW,
+      height: Math.max(0, (group.size?.height ?? designH) - r),
+    };
+  };
 
   const containerBox = (): { w: number; h: number } => ({
     w: api.container.clientWidth || 0,

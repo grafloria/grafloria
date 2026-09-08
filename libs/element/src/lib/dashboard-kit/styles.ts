@@ -367,6 +367,61 @@ const CSS = `
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { pointer-events: auto; opacity: 1; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-rs { display: none; }
 
+/* SECTION CAPTION (0.4.22): the band on the slab. Geometry is inline (the
+   reserve and the pixels come from one function); everything visual is a
+   variable the options write and a theme may override. The band takes the
+   pointer — the slab does not — so a press on it is the section's. */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h {
+  position: absolute; box-sizing: border-box; pointer-events: auto; z-index: 1;
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  padding: var(--axdb-caption-pad, 0 10px);
+  background: var(--axdb-caption-bg, rgba(31, 36, 48, .045));
+  border-bottom: var(--axdb-caption-border, none);
+  color: var(--axdb-caption-fg, #1f2430);
+  font: var(--axdb-caption-font-weight, 600) var(--axdb-caption-font-size, 13px)/1.2 var(--axdb-caption-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
+  text-transform: var(--axdb-caption-transform, none);
+  letter-spacing: .01em;
+  border-radius: var(--axdb-rs-radius, 3px) var(--axdb-rs-radius, 3px) 0 0;
+  cursor: default; user-select: none; -webkit-user-select: none; overflow: hidden;
+  transition: opacity .12s;
+}
+/* The modifiers carry the band's own selector so they outrank its defaults. */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--center { justify-content: center; }
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--end { justify-content: flex-end; }
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--vtop { align-items: flex-start; }
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--vbottom { align-items: flex-end; }
+/* 'tab': above the frame, sized to its text */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tab { right: auto; max-width: 100%; }
+/* 'hover': an overlay that appears with the pointer or the selection */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--hover { opacity: 0; }
+.grafloria-html-layer > .axdb-slab:hover > .axdb-slab-h.axdb-slab-h--hover,
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-slab-h.axdb-slab-h--hover,
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--hover:focus-within { opacity: 1; }
+/* the tight tier: a section under 90 px */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tight { font-size: min(var(--axdb-caption-font-size, 12px), 12px); gap: 4px; }
+.axdb-slab-h--tight .axdb-slab-h-sub, .axdb-slab-h--tight .axdb-slab-h-actions { display: none; }
+.axdb-slab-h-icon { flex: none; }
+.axdb-slab-h-body { display: flex; flex-direction: column; justify-content: center; min-width: 0; flex: 0 1 auto; }
+.axdb-slab-h-text, .axdb-slab-h-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.axdb-slab-h-sub { font-size: .85em; font-weight: 500; opacity: .72; }
+.axdb-slab-h-info { flex: none; opacity: .6; font-size: .9em; cursor: help; }
+.axdb-slab-h-actions { flex: none; display: flex; gap: 2px; margin-inline-start: auto; opacity: 0; transition: opacity .12s; }
+.axdb-slab-h--center .axdb-slab-h-actions, .axdb-slab-h--end .axdb-slab-h-actions { margin-inline-start: 0; }
+.axdb-slab-h:hover > .axdb-slab-h-actions, .axdb-slab--selected > .axdb-slab-h > .axdb-slab-h-actions, .axdb-slab-h:focus-within > .axdb-slab-h-actions { opacity: 1; }
+.axdb-slab-h-action {
+  all: unset; box-sizing: border-box; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; cursor: pointer; font-size: 14px; line-height: 1; color: inherit;
+}
+.axdb-slab-h-action:hover { background: rgba(31, 36, 48, .08); }
+.axdb-slab-h-action:focus-visible { outline: 2px solid var(--axdb-accent-ring, rgba(59, 82, 217, .55)); outline-offset: -2px; }
+.axdb-slab-h-action[disabled] { opacity: .4; cursor: default; }
+.axdb-slab-h-action[disabled]:hover { background: none; }
+.grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-slab-h { cursor: default; }
+@media (prefers-color-scheme: dark) {
+  .grafloria-html-layer > .axdb-slab > .axdb-slab-h { background: var(--axdb-caption-bg, rgba(236, 238, 244, .06)); color: var(--axdb-caption-fg, #eceef4); }
+  .axdb-slab-h-action:hover { background: rgba(236, 238, 244, .1); }
+}
+
 /* legend chips, shared by line and donut */
 .axdb-lg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; }
 .axdb-lg--col { flex-direction: column; flex-wrap: nowrap; gap: 6px; margin-top: 0; }

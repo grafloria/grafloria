@@ -66,6 +66,7 @@ import { bindDashboardSplit, SPLIT_TREE_KEY, type DashboardSplitHandle } from '.
 import type { SplitNode } from './split-layout';
 import { gridItemFromCell } from './grid-mapping';
 import { ensureDashboardKitStyles } from './styles';
+import type { SectionCaption } from './caption';
 import { defaultWidgetRenderer } from './widgets';
 
 /** A widget, declared as data. */
@@ -130,6 +131,14 @@ export interface DashboardWidgetSpec {
    * `toJSON()` writes it per container.
    */
   layout?: 'grid' | 'split';
+  /**
+   * Container only: a CAPTION painted by the kit on the section's slab —
+   * `true` for the title, a string, or the full options (subtitle,
+   * description, icon, position, alignment, typography, box, show, actions,
+   * pass-through, className). Reserved inside the frame, selectable, themed,
+   * persisted by `toJSON()`; live through `setCaption()`. Default: none.
+   */
+  caption?: SectionCaption;
   /**
    * Container only, split layout: the authored splitter tree. Omit it and the
    * tree is derived from the children's cells. `toJSON()` writes it back.
@@ -277,6 +286,15 @@ export interface DashboardOptions {
    * press on a section's empty band selects the section.
    */
   onSelect?: (id: string | undefined, viewId: string) => void;
+  /**
+   * Paint a section's caption band yourself (the escape hatch `renderWidget`
+   * is for cards): the band arrives empty, sized and themed, and keeps its
+   * press rules — a press on it selects the section, a pass-through element
+   * (a button, an input, `[data-axdb-pass]`) reaches your content.
+   */
+  renderCaption?: (widget: DashboardWidgetSpec, host: HTMLElement) => void;
+  /** A press on a caption action (`caption.actions`): the section, the action id, the view. */
+  onCaptionAction?: (sectionId: string, actionId: string, viewId: string) => void;
   /** Fires after any committed gesture, with the view whose layout changed. */
   onLayoutChange?: (viewId: string, widgets: DashboardWidgetSpec[]) => void;
   /** Extra binder options, merged last (escape hatch to the layer below). */
@@ -345,6 +363,15 @@ export interface DashboardHandle {
    */
   setLayout(layout: 'grid' | 'split', viewId?: string): void;
   getLayout(viewId?: string): 'grid' | 'split';
+  /**
+   * Set a SECTION's caption live — `false` removes it, `true` is the title, a
+   * string or the options. Repaints the band, gives the reserve back or takes
+   * it, persists on the section, one undo step. False for anything that is
+   * not a container.
+   */
+  setCaption(id: string, caption: SectionCaption): boolean;
+  /** The caption as authored or last set; undefined when the section has none. */
+  getCaption(id: string): SectionCaption | undefined;
   /** Live sizing/float switches — the two prototype toggles. */
   setSizing(mode: 'fit' | 'grow'): void;
   getSizing(): 'fit' | 'grow';
@@ -754,6 +781,27 @@ export interface DashboardApiRef {
  * reads and writes is the whole reason a second handle implementation, which
  * would silently drift, is not needed.
  */
+/** `setCaption` as one history step: execute re-applies the value, undo the previous one. */
+class SetCaptionCommand extends Command {
+  constructor(
+    private sectionId: string,
+    private before: SectionCaption | undefined,
+    private after: SectionCaption,
+    private apply: (c: SectionCaption | undefined) => void
+  ) {
+    super('Set section caption');
+  }
+  override execute(): void {
+    this.apply(this.after);
+  }
+  override undo(): void {
+    this.apply(this.before);
+  }
+  override serialize() {
+    return { id: this.id, name: this.name, timestamp: this.timestamp, data: { sectionId: this.sectionId, before: this.before, after: this.after } };
+  }
+}
+
 export interface DashboardHandleContext {
   /** The views — MUTATED in place by addWidget (push) and remove (filter). */
   views: DashboardViewSpec[];
@@ -1069,6 +1117,34 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       reportChanged();
     },
     getLayout: (viewId) => ctx.layoutOf.get(viewId ?? ctx.active) ?? 'grid',
+    setCaption(id, caption) {
+      const cg = ctx.boardGroups.get(id);
+      const w = specById.get(id);
+      if (!cg || !w || !w.widgets || views.some((v) => v.id === id)) return false;
+      const before = w.caption;
+      if (JSON.stringify(before ?? null) === JSON.stringify(caption ?? null)) return true;
+      const apply = (c: SectionCaption | undefined): void => {
+        if (c === undefined) delete w.caption;
+        else w.caption = c;
+        const cw = (cg.getMetadata('containerWidget') as Record<string, unknown> | undefined) ?? {};
+        const next = { ...cw };
+        if (c === undefined) delete next['caption'];
+        else next['caption'] = c;
+        cg.setMetadata('containerWidget', next);
+        // The section's own board re-projects under its new frame; the parent
+        // repaints the slab (the band lives there).
+        binders.get(id)?.sync();
+        binders.get(viewOfWidget.get(id) ?? '')?.sync();
+        ctx.apiRef?.renderNow();
+      };
+      // Applied NOW (a caller reads the band right after), then recorded as
+      // one history step whose execute re-applies the same value.
+      apply(caption);
+      execCommand(new SetCaptionCommand(id, before, caption, apply));
+      reportChanged();
+      return true;
+    },
+    getCaption: (id) => specById.get(id)?.caption,
     setSizing(mode) {
       for (const b of binders.values()) b.setSizing(mode);
       clampCamera();
@@ -1695,6 +1771,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
               ...(w.data !== undefined ? { data: w.data } : {}),
               ...(w.layout !== undefined ? { layout: w.layout } : {}),
               ...(w.sizing !== undefined ? { sizing: w.sizing } : {}),
+              ...(w.caption !== undefined ? { caption: w.caption } : {}),
             });
             // Item 7: the container's own layout and bound, persisted like a view's.
             ctx.layoutOf.set(w.id, w.layout ?? 'grid');
@@ -1755,6 +1832,21 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
        * switched to static, RTL or drag-by-header LIVE snapped back to its
        * authored options the moment its layout changed (s34 caught it).
        */
+      /** The caption escape hatches, with the spec and the view filled in. */
+      function captionHooks(viewId: string): Pick<DashboardGridOptions, 'renderCaption' | 'onCaptionAction'> {
+        const render = options.renderCaption;
+        return {
+          ...(render
+            ? {
+                renderCaption: (sectionId: string, host: HTMLElement) => {
+                  const spec = specById.get(sectionId);
+                  if (spec) render(spec, host);
+                },
+              }
+            : {}),
+          onCaptionAction: (sectionId: string, actionId: string) => options.onCaptionAction?.(sectionId, actionId, viewId),
+        };
+      }
       function bindView(
         v: DashboardViewSpec,
         g: GroupModel,
@@ -1775,6 +1867,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             options.binder?.onGesture?.(e);
           },
           onSelect: (id: string | undefined) => options.onSelect?.(id, v.id),
+          ...captionHooks(v.id),
         };
         if (viewLayout === 'split') {
           return bindDashboardSplit(a as never, g, {
@@ -1817,6 +1910,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             options.binder?.onGesture?.(e);
           },
           onSelect: (id: string | undefined) => options.onSelect?.(id, ctx.viewOfBoard.get(w.id) ?? ctx.active),
+          ...captionHooks(ctx.viewOfBoard.get(w.id) ?? ctx.active),
         };
         if ((ctx.layoutOf.get(w.id) ?? w.layout) === 'split') {
           // A splitter tree covering the pane; the pane's frame is the parent's
