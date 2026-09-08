@@ -195421,7 +195421,9 @@ function bindDashboardGrid(api, group, options = {}) {
     const minW = Math.max(8, columnUnitFor(gg, f.width));
     let w = Math.max(minW, right - left);
     let h = bottom - top;
-    if (maxRows !== void 0 && escalate && g.kind === "resize") {
+    const pulled = engine.getItem(g.id);
+    const spansStrip = !!pulled && pulled.y === 0 && pulled.h >= (maxRows ?? Infinity);
+    if (maxRows !== void 0 && escalate && spansStrip && g.kind === "resize") {
       const parent = parentPeer();
       if (parent) {
         const visual = boardVisualHeight();
@@ -195447,7 +195449,7 @@ function bindDashboardGrid(api, group, options = {}) {
         };
         if (h > visual + 24) {
           record(parent.resizeMemberBy(group.id, 1), 1);
-        } else if (slabRows > 1 && h < visual - rowPx * 0.7) {
+        } else if (slabRows > Math.max(1, maxRows) && h < visual - rowPx * 0.7) {
           record(parent.resizeMemberBy(group.id, -1), -1);
         }
       }

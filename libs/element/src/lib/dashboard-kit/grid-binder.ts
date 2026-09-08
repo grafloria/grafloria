@@ -1831,7 +1831,18 @@ export function bindDashboardGrid(
     // the strip's CURRENT slab rows, whatever gesture created them; the
     // ledger just accumulates this gesture's net change for the one-batch
     // commit and for Escape.
-    if (maxRows !== undefined && escalate && g.kind === 'resize') {
+    // ESCALATION SCALES THE WHOLE STRIP — every tile inside taller together
+    // (s21, the model the user agreed on for a KPI strip). That is only sane
+    // when the pulled tile spans the strip's full height, which every tile of
+    // a one-row strip does. A partial-height tile in a MULTI-ROW section
+    // resizes within the section and is refused past its rows: the first
+    // version compared the tile's height with the whole section and shrank a
+    // 14-row control panel to 4 rows under a 150-px pull on a one-row
+    // drop-down (Quantia, Groups page — "boom its destroyed"). And a section
+    // never shrinks below its designed rows.
+    const pulled = engine.getItem(g.id);
+    const spansStrip = !!pulled && pulled.y === 0 && pulled.h >= (maxRows ?? Infinity);
+    if (maxRows !== undefined && escalate && spansStrip && g.kind === 'resize') {
       const parent = parentPeer();
       if (parent) {
         const visual = boardVisualHeight();
@@ -1860,7 +1871,7 @@ export function bindDashboardGrid(
         };
         if (h > visual + 24) {
           record(parent.resizeMemberBy(group.id, +1), +1);
-        } else if (slabRows > 1 && h < visual - rowPx * 0.7) {
+        } else if (slabRows > Math.max(1, maxRows) && h < visual - rowPx * 0.7) {
           record(parent.resizeMemberBy(group.id, -1), -1);
         }
       }
