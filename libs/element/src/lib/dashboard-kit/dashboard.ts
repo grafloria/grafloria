@@ -67,6 +67,7 @@ import type { SplitNode } from './split-layout';
 import { gridItemFromCell } from './grid-mapping';
 import { ensureDashboardKitStyles } from './styles';
 import type { SectionCaption } from './caption';
+import { paintTabStrip, tabStripKey, tabStripReserve, type TabsOptions } from './tabs';
 import { defaultWidgetRenderer } from './widgets';
 
 /** A widget, declared as data. */
@@ -130,7 +131,16 @@ export interface DashboardWidgetSpec {
    * always covers the pane. Switch live with `setLayout(mode, containerId)`;
    * `toJSON()` writes it per container.
    */
-  layout?: 'grid' | 'split';
+  layout?: 'grid' | 'split' | 'tabs';
+  /**
+   * TAB CONTAINER (`layout: 'tabs'`). Every child that carries `widgets` is a
+   * PAGE: one is visible at a time, and a strip of tabs across the top
+   * switches between them (DevExpress' Tab Container; VS Code's editor area
+   * is a split of these). `active` is the page showing, persisted by
+   * `toJSON()`; `tabs` styles the strip.
+   */
+  active?: string;
+  tabs?: TabsOptions;
   /**
    * Container only: a CAPTION painted by the kit on the section's slab —
    * `true` for the title, a string, or the full options (subtitle,
@@ -295,6 +305,8 @@ export interface DashboardOptions {
   renderCaption?: (widget: DashboardWidgetSpec, host: HTMLElement) => void;
   /** A press on a caption action (`caption.actions`): the section, the action id, the view. */
   onCaptionAction?: (sectionId: string, actionId: string, viewId: string) => void;
+  /** A tab container switched pages: the container, the page now showing, the view. */
+  onTabChange?: (containerId: string, pageId: string, viewId: string) => void;
   /** Fires after any committed gesture, with the view whose layout changed. */
   onLayoutChange?: (viewId: string, widgets: DashboardWidgetSpec[]) => void;
   /** Extra binder options, merged last (escape hatch to the layer below). */
@@ -362,7 +374,8 @@ export interface DashboardHandle {
    * saved document reopens in the layout it was left in.
    */
   setLayout(layout: 'grid' | 'split', viewId?: string): void;
-  getLayout(viewId?: string): 'grid' | 'split';
+  /** A container built with `layout: 'tabs'` reports 'tabs'; views never do. */
+  getLayout(viewId?: string): 'grid' | 'split' | 'tabs';
   /**
    * Set a SECTION's caption live — `false` removes it, `true` is the title, a
    * string or the options. Repaints the band, gives the reserve back or takes
@@ -372,6 +385,14 @@ export interface DashboardHandle {
   setCaption(id: string, caption: SectionCaption): boolean;
   /** The caption as authored or last set; undefined when the section has none. */
   getCaption(id: string): SectionCaption | undefined;
+  /**
+   * Show a PAGE of a tab container (`layout: 'tabs'`). False when the
+   * container or the page is not one. Persisted, so a saved board reopens on
+   * the page it was left on.
+   */
+  activateTab(containerId: string, pageId: string): boolean;
+  /** The page showing in a tab container. */
+  getActiveTab(containerId: string): string | undefined;
   /** Live sizing/float switches — the two prototype toggles. */
   setSizing(mode: 'fit' | 'grow'): void;
   getSizing(): 'fit' | 'grow';
@@ -781,6 +802,95 @@ export interface DashboardApiRef {
  * reads and writes is the whole reason a second handle implementation, which
  * would silently drift, is not needed.
  */
+/**
+ * TAB CONTAINER RUNTIME, shared by `dashboard()` and `fromDocument()`.
+ *
+ * A tab container binds no grid of its own: it positions its PAGES itself —
+ * one into its frame under the strip, the rest parked off-canvas, exactly as
+ * `showView` parks a view one level up — and paints the strip. Each page is an
+ * ordinary container with an ordinary binder, so a page can be a grid or a
+ * split, and the parent board still sees ONE member group to place and resize.
+ *
+ * Both entry points call this, so a board reloaded from a document behaves
+ * like one built from a literal (the first version lived inside `dashboard()`
+ * and `fromDocument` silently produced a tab container that never switched).
+ */
+export function attachTabsRuntime(
+  ctx: DashboardHandleContext,
+  model: { getGroup(id: string): GroupModel | undefined; runSystemWrite?(fn: () => void): void },
+  container: HTMLElement | null,
+  handle: DashboardHandle
+): void {
+  const pagesOf = (id: string): { id: string; label: string }[] => {
+    const w = ctx.specById.get(id);
+    return (w?.widgets ?? []).filter((c) => !!c.widgets).map((p) => ({ id: p.id, label: p.title ?? p.id }));
+  };
+  const isTabs = (id: string): boolean =>
+    (ctx.layoutOf.get(id) ?? ctx.specById.get(id)?.layout) === 'tabs' && pagesOf(id).length > 0;
+
+  const paintStrip = (id: string, f: { x: number; y: number; width: number }, h: number, pages: { id: string; label: string }[], active: string): void => {
+    const layer = container?.querySelector('.grafloria-html-layer') as HTMLElement | null;
+    if (!layer) return;
+    let el = ctx.tabStrips.get(id);
+    if (!el || el.parentElement !== layer) {
+      el?.remove();
+      el = document.createElement('div');
+      el.setAttribute('data-tabs-id', id);
+      layer.appendChild(el);
+      ctx.tabStrips.set(id, el);
+    }
+    el.style.position = 'absolute';
+    el.style.left = `${f.x}px`;
+    el.style.top = `${f.y}px`;
+    el.style.width = `${f.width}px`;
+    el.style.height = `${h}px`;
+    const rtl = ctx.binders.get(ctx.viewOfBoard.get(id) ?? ctx.active)?.getRtl() ?? false;
+    const key = tabStripKey(pages, active, ctx.tabsOf.get(id), rtl);
+    if (el.getAttribute('data-key') === key) return;
+    paintTabStrip(el, pages, active, ctx.tabsOf.get(id), rtl, (pid) => handle.activateTab(id, pid));
+    el.setAttribute('data-key', key);
+  };
+
+  const sync = (id: string): void => {
+    const cg = ctx.boardGroups.get(id) ?? model.getGroup(id);
+    if (!cg || !isTabs(id)) return;
+    const pages = pagesOf(id);
+    const active = ctx.activeTab.get(id) ?? pages[0].id;
+    const strip = tabStripReserve(ctx.tabsOf.get(id), pages.length);
+    const f = { x: cg.position.x, y: cg.position.y, width: cg.size?.width ?? 0, height: cg.size?.height ?? 0 };
+    const inner = { width: f.width, height: Math.max(0, f.height - strip) };
+    const write = (fn: () => void): void => (model.runSystemWrite ? model.runSystemWrite(fn) : fn());
+    write(() => {
+      for (const p of pages) {
+        const pg = model.getGroup(p.id);
+        if (!pg) continue;
+        // A PARKED page keeps its size, so its own board keeps its layout and
+        // comes back exactly as it was; only its x leaves the canvas.
+        pg.setFrame({ x: p.id === active ? f.x : OFFSCREEN_X, y: f.y + strip, width: inner.width, height: inner.height });
+      }
+    });
+    for (const p of pages) ctx.binders.get(p.id)?.sync();
+    paintStrip(id, f, strip, pages, active);
+  };
+
+  ctx.syncTabs = sync;
+  ctx.subscriptions = ctx.subscriptions ?? [];
+  for (const [id, cg] of ctx.boardGroups) {
+    if (!isTabs(id)) continue;
+    const pages = pagesOf(id);
+    if (!ctx.activeTab.has(id)) {
+      const meta = cg.getMetadata('containerWidget') as { active?: string; tabs?: TabsOptions } | undefined;
+      const want = ctx.specById.get(id)?.active ?? meta?.active;
+      ctx.activeTab.set(id, want && pages.some((p) => p.id === want) ? want : pages[0].id);
+      if (meta?.tabs && !ctx.tabsOf.has(id)) ctx.tabsOf.set(id, meta.tabs);
+    }
+    // Re-lay the pages whenever the parent moves or resizes the container.
+    const off = cg.on('bounds:changed', (() => sync(id)) as (...args: unknown[]) => void);
+    if (typeof off === 'function') ctx.subscriptions.push(off);
+    sync(id);
+  }
+}
+
 /** `setCaption` as one history step: execute re-applies the value, undo the previous one. */
 class SetCaptionCommand extends Command {
   constructor(
@@ -830,7 +940,15 @@ export interface DashboardHandleContext {
   mode: 'fluid' | 'fixed';
   overflow: 'bounded' | 'scroll';
   /** See DashboardOptions.layout — per view. */
-  layoutOf: Map<string, 'grid' | 'split'>;
+  layoutOf: Map<string, 'grid' | 'split' | 'tabs'>;
+  /** Tab containers: the page showing, the strip options, the strip element. */
+  activeTab: Map<string, string>;
+  tabsOf: Map<string, TabsOptions>;
+  tabStrips: Map<string, HTMLElement>;
+  /** Set by finalize: re-lay a tab container's pages and repaint its strip. */
+  syncTabs?: (containerId: string) => void;
+  /** Set by finalize: the user's `onTabChange`, so the handle can fire it. */
+  onTabChange?: (containerId: string, pageId: string, viewId: string) => void;
   /** Set by finalize: re-bind a VIEW's board under the given layout (setLayout). */
   rebindView?: (viewId: string, layout: 'grid' | 'split') => void;
   /**
@@ -1145,6 +1263,23 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       return true;
     },
     getCaption: (id) => specById.get(id)?.caption,
+    activateTab(containerId, pageId) {
+      const cg = ctx.boardGroups.get(containerId);
+      const w = specById.get(containerId);
+      if (!cg || !w || (ctx.layoutOf.get(containerId) ?? w.layout) !== 'tabs') return false;
+      if (!(w.widgets ?? []).some((p) => p.id === pageId && p.widgets)) return false;
+      if (ctx.activeTab.get(containerId) === pageId) return true;
+      ctx.activeTab.set(containerId, pageId);
+      w.active = pageId;
+      const cw = (cg.getMetadata('containerWidget') as Record<string, unknown> | undefined) ?? {};
+      cg.setMetadata('containerWidget', { ...cw, active: pageId });
+      ctx.syncTabs?.(containerId);
+      ctx.apiRef?.renderNow();
+      ctx.onTabChange?.(containerId, pageId, ctx.viewOfBoard.get(containerId) ?? ctx.active);
+      reportChanged();
+      return true;
+    },
+    getActiveTab: (containerId) => ctx.activeTab.get(containerId),
     setSizing(mode) {
       for (const b of binders.values()) b.setSizing(mode);
       clampCamera();
@@ -1569,6 +1704,9 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
     boardH,
     mode,
     overflow,
+    activeTab: new Map(),
+    tabsOf: new Map(),
+    tabStrips: new Map(),
     layoutOf: new Map(views.map((v) => [v.id, v.layout ?? layout])),
     optionsBase: options,
     active: views[0]?.id ?? 'main',
@@ -1641,7 +1779,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         groups.set(v.id, g);
         ctx.boardGroups.set(v.id, g);
         mountBoard(v.id, v.id, v.widgets, g);
-        binders.set(v.id, bindView(v, g, ctx.layoutOf.get(v.id) ?? layout));
+        binders.set(v.id, bindView(v, g, (ctx.layoutOf.get(v.id) as 'grid' | 'split') ?? layout));
       }
       // LIVE LAYOUT SWITCH (setLayout): keep the picture, swap the binder.
       // Either way the outgoing binder's cells are written where the grid
@@ -1734,6 +1872,12 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         if (focused) binders.get(id)?.focusWidget(focused);
         else if (selected) binders.get(id)?.selectWidget(selected);
       }
+      // (Statements must live BEFORE this return — everything below it is a
+      // hoisted function declaration, so an assignment placed there never
+      // runs. That cost me a debugging round: `ctx.syncTabs` stayed undefined
+      // and every tab switch silently did nothing.)
+      ctx.onTabChange = options.onTabChange;
+      attachTabsRuntime(ctx, model, (a as unknown as { container?: HTMLElement }).container ?? null, handle);
       ctx.attachHistory?.();
       return;
 
@@ -1796,6 +1940,21 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             boardGroup.addMember(w.id);
             ctx.boardGroups.set(w.id, cg);
             mountBoard(w.id, viewId, w.widgets, cg);
+            if (w.layout === 'tabs') {
+              // A TAB CONTAINER lays its pages out itself — one visible, the
+              // rest parked — so it binds no grid of its own. Its pages are
+              // ordinary containers with ordinary binders. The runtime that
+              // positions them is attached once, after every board is mounted.
+              const pages = (w.widgets ?? []).filter((c) => !!c.widgets);
+              const active = w.active && pages.some((p) => p.id === w.active) ? w.active : pages[0]?.id;
+              if (active) {
+                ctx.activeTab.set(w.id, active);
+                w.active = active;
+              }
+              cg.setMetadata('containerWidget', { ...(cg.getMetadata('containerWidget') as object), layout: 'tabs', ...(active ? { active } : {}), ...(w.tabs ? { tabs: w.tabs } : {}) });
+              ctx.tabsOf.set(w.id, w.tabs ?? {});
+              continue;
+            }
             bindContainer(cg, w, viewId);
             continue;
           }

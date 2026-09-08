@@ -120,19 +120,18 @@ export class FluidBoardComponent {
         { id: 'orders', kind: 'kpi', span: 4, rows: 1, data: { label: 'Orders today', value: '312', delta: 5.2 } },
         { id: 'churn',  kind: 'kpi', span: 4, rows: 1, data: { label: 'Churn', value: '1.9%', delta: -0.3 } },
       ] },
-    // THREE TAB CAPTIONS, down the right, together the board's full height.
-    // `position: 'tab'` is the same band sized to its text — a chip at the
-    // section's leading corner. It RESERVES its height inside the section's
-    // own cell, so a tab never lies over the widget above it.
-    { id: 'tab-filters', title: 'Filters', span: 3, rows: 3, x: 9, y: 0, columns: 3,
-      caption: { position: 'tab', text: 'Filters', icon: '▤' },
-      widgets: [{ id: 'f-region', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } }] },
-    { id: 'tab-alerts', title: 'Alerts', span: 3, rows: 3, x: 9, y: 3, columns: 3,
-      caption: { position: 'tab', text: 'Alerts', icon: '⚠', actions: [{ id: 'clear', label: 'Clear alerts', icon: '✕' }] },
-      widgets: [{ id: 'a-open', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Open', value: '3', delta: -2.0 } }] },
-    { id: 'tab-notes', title: 'Notes', span: 3, rows: 2, x: 9, y: 6, columns: 3,
-      caption: { position: 'tab', text: 'Notes' },
-      widgets: [{ id: 'n-last', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } }] },
+    // A TAB CONTAINER down the right, the board's full height: `layout: 'tabs'`
+    // makes every child that carries `widgets` a PAGE — one visible at a time,
+    // switched by the strip across the top. `active` is persisted by toJSON().
+    { id: 'side', title: 'Side panel', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', active: 'p-filters', widgets: [
+      { id: 'p-filters', title: 'Filters', columns: 3, widgets: [
+        { id: 'f-region', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } },
+        { id: 'f-period', kind: 'kpi', span: 3, rows: 4, x: 0, y: 4, data: { label: 'Period', value: 'Q3' } } ] },
+      { id: 'p-alerts', title: 'Alerts', columns: 3, widgets: [
+        { id: 'a-open', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Open alerts', value: '3', delta: -2.0 } } ] },
+      { id: 'p-notes', title: 'Notes', columns: 3, widgets: [
+        { id: 'n-last', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } } ] },
+    ] },
   ] }];
 
   onLayout(e: { viewId: string; widgets: unknown[] }) {
@@ -171,19 +170,18 @@ const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
         { id: 'orders', kind: 'kpi', span: 4, rows: 1, data: { label: 'Orders today', value: '312', delta: 5.2 } },
         { id: 'churn',  kind: 'kpi', span: 4, rows: 1, data: { label: 'Churn', value: '1.9%', delta: -0.3 } },
       ] },
-    // THREE TAB CAPTIONS, down the right, together the board's full height.
-    // `position: 'tab'` is the same band sized to its text — a chip at the
-    // section's leading corner. It RESERVES its height inside the section's
-    // own cell, so a tab never lies over the widget above it.
-    { id: 'tab-filters', title: 'Filters', span: 3, rows: 3, x: 9, y: 0, columns: 3,
-      caption: { position: 'tab', text: 'Filters', icon: '▤' },
-      widgets: [{ id: 'f-region', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } }] },
-    { id: 'tab-alerts', title: 'Alerts', span: 3, rows: 3, x: 9, y: 3, columns: 3,
-      caption: { position: 'tab', text: 'Alerts', icon: '⚠', actions: [{ id: 'clear', label: 'Clear alerts', icon: '✕' }] },
-      widgets: [{ id: 'a-open', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Open', value: '3', delta: -2.0 } }] },
-    { id: 'tab-notes', title: 'Notes', span: 3, rows: 2, x: 9, y: 6, columns: 3,
-      caption: { position: 'tab', text: 'Notes' },
-      widgets: [{ id: 'n-last', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } }] },
+    // A TAB CONTAINER down the right, the board's full height: `layout: 'tabs'`
+    // makes every child that carries `widgets` a PAGE — one visible at a time,
+    // switched by the strip across the top. `active` is persisted by toJSON().
+    { id: 'side', title: 'Side panel', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', active: 'p-filters', widgets: [
+      { id: 'p-filters', title: 'Filters', columns: 3, widgets: [
+        { id: 'f-region', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } },
+        { id: 'f-period', kind: 'kpi', span: 3, rows: 4, x: 0, y: 4, data: { label: 'Period', value: 'Q3' } } ] },
+      { id: 'p-alerts', title: 'Alerts', columns: 3, widgets: [
+        { id: 'a-open', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Open alerts', value: '3', delta: -2.0 } } ] },
+      { id: 'p-notes', title: 'Notes', columns: 3, widgets: [
+        { id: 'n-last', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } } ] },
+    ] },
 ] }];
 
 export function FluidBoard() {
@@ -253,19 +251,18 @@ const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
         { id: 'orders', kind: 'kpi', span: 4, rows: 1, data: { label: 'Orders today', value: '312', delta: 5.2 } },
         { id: 'churn',  kind: 'kpi', span: 4, rows: 1, data: { label: 'Churn', value: '1.9%', delta: -0.3 } },
       ] },
-    // THREE TAB CAPTIONS, down the right, together the board's full height.
-    // `position: 'tab'` is the same band sized to its text — a chip at the
-    // section's leading corner. It RESERVES its height inside the section's
-    // own cell, so a tab never lies over the widget above it.
-    { id: 'tab-filters', title: 'Filters', span: 3, rows: 3, x: 9, y: 0, columns: 3,
-      caption: { position: 'tab', text: 'Filters', icon: '▤' },
-      widgets: [{ id: 'f-region', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } }] },
-    { id: 'tab-alerts', title: 'Alerts', span: 3, rows: 3, x: 9, y: 3, columns: 3,
-      caption: { position: 'tab', text: 'Alerts', icon: '⚠', actions: [{ id: 'clear', label: 'Clear alerts', icon: '✕' }] },
-      widgets: [{ id: 'a-open', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Open', value: '3', delta: -2.0 } }] },
-    { id: 'tab-notes', title: 'Notes', span: 3, rows: 2, x: 9, y: 6, columns: 3,
-      caption: { position: 'tab', text: 'Notes' },
-      widgets: [{ id: 'n-last', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } }] },
+    // A TAB CONTAINER down the right, the board's full height: `layout: 'tabs'`
+    // makes every child that carries `widgets` a PAGE — one visible at a time,
+    // switched by the strip across the top. `active` is persisted by toJSON().
+    { id: 'side', title: 'Side panel', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', active: 'p-filters', widgets: [
+      { id: 'p-filters', title: 'Filters', columns: 3, widgets: [
+        { id: 'f-region', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } },
+        { id: 'f-period', kind: 'kpi', span: 3, rows: 4, x: 0, y: 4, data: { label: 'Period', value: 'Q3' } } ] },
+      { id: 'p-alerts', title: 'Alerts', columns: 3, widgets: [
+        { id: 'a-open', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Open alerts', value: '3', delta: -2.0 } } ] },
+      { id: 'p-notes', title: 'Notes', columns: 3, widgets: [
+        { id: 'n-last', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } } ] },
+    ] },
 ] }];
 const onLayout = (e: { viewId: string; widgets: unknown[] }) => console.log('layout changed', e.viewId, e.widgets.length, 'widgets');
 <\/script>
@@ -319,19 +316,18 @@ const SPEC_INPUT = {
         { id: 'orders', kind: 'kpi', span: 4, rows: 1, data: { label: 'Orders today', value: '312', delta: 5.2 } },
         { id: 'churn',  kind: 'kpi', span: 4, rows: 1, data: { label: 'Churn', value: '1.9%', delta: -0.3 } },
       ] },
-    // THREE TAB CAPTIONS, down the right, together the board's full height.
-    // `position: 'tab'` is the same band sized to its text — a chip at the
-    // section's leading corner. It RESERVES its height inside the section's
-    // own cell, so a tab never lies over the widget above it.
-    { id: 'tab-filters', title: 'Filters', span: 3, rows: 3, x: 9, y: 0, columns: 3,
-      caption: { position: 'tab', text: 'Filters', icon: '▤' },
-      widgets: [{ id: 'f-region', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } }] },
-    { id: 'tab-alerts', title: 'Alerts', span: 3, rows: 3, x: 9, y: 3, columns: 3,
-      caption: { position: 'tab', text: 'Alerts', icon: '⚠', actions: [{ id: 'clear', label: 'Clear alerts', icon: '✕' }] },
-      widgets: [{ id: 'a-open', kind: 'kpi', span: 3, rows: 3, x: 0, y: 0, data: { label: 'Open', value: '3', delta: -2.0 } }] },
-    { id: 'tab-notes', title: 'Notes', span: 3, rows: 2, x: 9, y: 6, columns: 3,
-      caption: { position: 'tab', text: 'Notes' },
-      widgets: [{ id: 'n-last', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } }] },
+    // A TAB CONTAINER down the right, the board's full height: `layout: 'tabs'`
+    // makes every child that carries `widgets` a PAGE — one visible at a time,
+    // switched by the strip across the top. `active` is persisted by toJSON().
+    { id: 'side', title: 'Side panel', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', active: 'p-filters', widgets: [
+      { id: 'p-filters', title: 'Filters', columns: 3, widgets: [
+        { id: 'f-region', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } },
+        { id: 'f-period', kind: 'kpi', span: 3, rows: 4, x: 0, y: 4, data: { label: 'Period', value: 'Q3' } } ] },
+      { id: 'p-alerts', title: 'Alerts', columns: 3, widgets: [
+        { id: 'a-open', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Open alerts', value: '3', delta: -2.0 } } ] },
+      { id: 'p-notes', title: 'Notes', columns: 3, widgets: [
+        { id: 'n-last', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } } ] },
+    ] },
   ],
 };
 
@@ -346,7 +342,7 @@ defineDemo({
     '③ Drag "Revenue by region" up onto the KPI row: the KPIs slide out of the way, nothing else changes size, and the board grows a few rows — scroll with the wheel to reach the bottom. Adds are never refused in grow mode.',
     '④ Switch to "Fit": the board keeps its height and rows squeeze so everything stays on one screen. Press "+ Add a row" a few times: each row lands while there is room; when the next would need more than the board\'s height allows, the add is refused and the message says so.',
     '⑤ Switch to "Split": the DevExpress model — every widget stretches to cover the board, a divider between two widgets drags as a percentage, dragging a widget onto another\'s edge inserts it there, "+ Add a row" halves the largest widget. "Grid" brings the cells back with the same picture.',
-    '⑥ Down the RIGHT, three sections carry a `position: \'tab\'` caption — Filters, Alerts and Notes — the chip form of the band. Each reserves its own height, so no chip sits over the section above it; the Alerts chip carries an action button too.',
+    '⑥ Down the RIGHT is a TAB CONTAINER (`layout: \'tabs\'`): Filters, Alerts and Notes are three PAGES of one panel, one visible at a time. Click a tab, or use the arrow keys once a tab has focus; `handle.activateTab(id, page)` does it from code and `onTabChange` reports it. The page showing is persisted by toJSON().',
     '⑦ The "Operations" row is a section with a caption the kit paints: click the band to select the section, hover it for its actions, press ⤢ and read the message. Drag "Orders today" out onto the board, or a KPI in — four columns are free. "Caption" restyles it live; Ctrl/⌘-Z undoes each change. Every variant keeps its pixels inside the section — a header hanging over the neighbour above is the bug this replaces.',
     'Press "▶ run the scripted checks": mode, frame = container, zoom 1, the container resize, the capacity refusal, the no-overflow invariant and the section caption are all asserted.',
   ],

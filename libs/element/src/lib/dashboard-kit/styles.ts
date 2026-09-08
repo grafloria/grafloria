@@ -444,6 +444,43 @@ const CSS = `
   .axdb-slab-h-action:hover { background: rgba(236, 238, 244, .1); }
 }
 
+/* TAB CONTAINER (0.4.27): a strip of pages across the container's top. The
+   strip takes the pointer (the tabs are real buttons); the pages below it are
+   ordinary boards. */
+.grafloria-html-layer > .axdb-tabs {
+  position: absolute; box-sizing: border-box; pointer-events: auto; z-index: 5;
+  display: flex; align-items: flex-end; gap: 2px; padding: 0 6px; overflow-x: auto; overflow-y: hidden;
+  background: var(--axdb-tabs-bg, rgba(31, 36, 48, .05));
+  border-bottom: 1px solid var(--axdb-tabs-line, rgba(31, 36, 48, .12));
+  border-radius: var(--axdb-rs-radius, 3px) var(--axdb-rs-radius, 3px) 0 0;
+  scrollbar-width: thin;
+}
+.axdb-tabs--center { justify-content: center; }
+.axdb-tabs--end { justify-content: flex-end; }
+.axdb-tabs--stretch > .axdb-tab { flex: 1 1 0; }
+.axdb-tab {
+  all: unset; box-sizing: border-box; flex: 0 0 auto; max-width: 200px;
+  padding: 0 12px; height: calc(100% - 4px); display: inline-flex; align-items: center;
+  font: 600 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--axdb-tabs-fg, #5a6478); cursor: pointer;
+  border-radius: var(--axdb-rs-radius, 3px) var(--axdb-rs-radius, 3px) 0 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.axdb-tab:hover { background: rgba(31, 36, 48, .06); }
+.axdb-tab:focus-visible { outline: 2px solid var(--axdb-accent-ring, rgba(59, 82, 217, .55)); outline-offset: -2px; }
+/* The active tab reads as the front page: the card's own ground, lifted. */
+.axdb-tab.axdb-tab--on {
+  background: var(--axdb-tabs-on-bg, #fff);
+  color: var(--axdb-tabs-on-fg, #1f2430);
+  box-shadow: 0 -1px 0 var(--axdb-accent, #3b52d9) inset, 0 0 0 1px rgba(31, 36, 48, .1);
+}
+@media (prefers-color-scheme: dark) {
+  .grafloria-html-layer > .axdb-tabs { background: var(--axdb-tabs-bg, rgba(236, 238, 244, .06)); border-bottom-color: var(--axdb-tabs-line, rgba(236, 238, 244, .14)); }
+  .axdb-tab { color: var(--axdb-tabs-fg, #98a1b4); }
+  .axdb-tab:hover { background: rgba(236, 238, 244, .08); }
+  .axdb-tab.axdb-tab--on { background: var(--axdb-tabs-on-bg, #1a1d25); color: var(--axdb-tabs-on-fg, #eceef4); box-shadow: 0 -1px 0 var(--axdb-accent, #7d8ff0) inset, 0 0 0 1px rgba(236, 238, 244, .14); }
+}
+
 /* legend chips, shared by line and donut */
 .axdb-lg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; }
 .axdb-lg--col { flex-direction: column; flex-wrap: nowrap; gap: 6px; margin-top: 0; }

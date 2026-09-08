@@ -86,8 +86,7 @@ import {
   type DashboardHandle,
   type DashboardHandleContext,
   type DashboardViewSpec,
-  type DashboardWidgetSpec,
-} from './dashboard-kit/dashboard';
+  type DashboardWidgetSpec, attachTabsRuntime } from './dashboard-kit/dashboard';
 
 /** Anything `DiagramSerializer.deserialize()` accepts, or the JSON string of it. */
 export type SavedDiagram =
@@ -321,8 +320,11 @@ export function fromDocument(
     // a fixed world — it stays one. Fluid is only what was saved fluid.
     mode: firstBoard?.fluid === true ? 'fluid' : 'fixed',
     overflow: firstBoard?.overflow ?? 'bounded',
+    activeTab: new Map(),
+    tabsOf: new Map(),
+    tabStrips: new Map(),
     layoutOf: new Map(
-      dashGroups.map((g) => [g.id, ((g.getMetadata('dashboardBoard') as PersistedBoard | undefined)?.layout ?? 'grid') as 'grid' | 'split'])
+      dashGroups.map((g) => [g.id, ((g.getMetadata('dashboardBoard') as PersistedBoard | undefined)?.layout ?? 'grid') as 'grid' | 'split' | 'tabs'])
     ),
     // responsive is NOT in the document (a runtime seam), so it is deliberately
     // absent from the round-trip; width/height/columns/gap/sizing/float/rtl are.
@@ -405,8 +407,14 @@ export function fromDocument(
     for (const group of groups) {
       const board = group.getMetadata('dashboardBoard') as PersistedBoard | undefined;
       if (!board) continue;
+      // A TAB CONTAINER binds no board of its own — the runtime below places
+      // its pages and paints its strip.
+      if ((board.layout as string) === 'tabs') continue;
       boards.set(group.id, bindBoard(group, board));
     }
+    // Tab containers, with the same runtime dashboard() uses — a reloaded
+    // document must switch pages exactly like a board built from a literal.
+    attachTabsRuntime(ctx, model, (a as unknown as { container?: HTMLElement }).container ?? null, handle);
     // LIVE LAYOUT SWITCH on a loaded document — the same contract dashboard()
     // finalize offers: cells persisted where the grid reads them, any tree and
     // column cache cleared, the board's `layout` flag flipped, a fresh binder.

@@ -341,6 +341,8 @@ export function ownsPress(
   // anything the caption's `passThrough` names) is the content's, not any
   // tool's: no selection, no drag, no resize — the DOM handles it.
   if (typeof Element !== 'undefined' && t instanceof Element) {
+    // A TAB STRIP is content, never a board press: its tabs are real buttons.
+    if (t.closest('.axdb-tabs')) return false;
     const band = t.closest('.axdb-slab > .axdb-slab-h');
     const sid = band?.parentElement?.getAttribute('data-slab-id');
     if (band && sid) {
