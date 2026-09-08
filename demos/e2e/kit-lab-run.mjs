@@ -814,6 +814,66 @@ for (const [board, pos, place] of [['grip-in-l', 'left', 'inside'], ['grip-in-c'
     `rows ${c0.h}→${c1.h}→${c2.h} (amount px ${Math.round(a0.h)}→${Math.round(a1.h)}→${Math.round(a2.h)}) · edge cursor=${cursor} width ${c0.w}→${c3.w} (amount px w ${Math.round(a0.w)}→${Math.round(a3.w)}) · undo → ${c4.w}x${c4.h} · events=${JSON.stringify(ev1)} ${JSON.stringify(s)}`);
 }
 
+{
+  begin('L37-resizing-items-inside-a-section-every-edge');
+  await scrollTo('panel-grow');
+  const cell = (id) => page.evaluate((id) => { const b = window.__lab['panel-grow'].handle.binderOf('sec-controls'); const c = b.cellOf(id); return { x: c.x, y: c.y, w: c.w, h: c.h }; }, id);
+  const secRows = () => page.evaluate(() => window.__lab['panel-grow'].handle.widget('sec-controls').cell.h);
+  const cells = async () => ({ caption: await cell('ctl-caption'), product: await cell('ctl-product'), date: await cell('ctl-date'), amount: await cell('ctl-amount'), sec: await secRows() });
+  const edge = async (id, side, dx, dy, label) => { const r = await rect('panel-grow', id); const x = side === 'e' ? r.right - 3 : side === 'w' ? r.x + 3 : r.x + r.w / 2; const y = side === 's' ? r.bottom - 3 : side === 'n' ? r.y + 3 : r.y + r.h / 2; await drag(x, y, x + dx, y + dy, { steps: 14, mid: label ? async () => shot('panel-grow', label) : null }); return cells(); };
+  const c0 = await cells();
+  const cu = (await rect('panel-grow', 'ctl-product')).w / 3; // an inner column, px
+  // a. Product's right edge into the free column, and back
+  const a1 = await edge('ctl-product', 'e', cu + 6, 0, 'width-into-free-column-mid');
+  const a2 = await edge('ctl-product', 'e', -(cu + 6), 0);
+  await shot('panel-grow', 'width-back');
+  // b. Invoice date's TOP edge pulled up one row (Product above it: the push goes sideways into the free column or is refused — never an overlap)
+  const b1 = await edge('ctl-date', 'n', 0, -44, 'top-edge-pull-mid');
+  await shot('panel-grow', 'top-edge-after');
+  // c. Invoice size's bottom edge up two rows: it shrinks; the section keeps its 14 designed rows
+  const cB = await cells();
+  const c1 = await edge('ctl-amount', 's', 0, -88);
+  await shot('panel-grow', 'child-shrunk');
+  // d. Invoice date's corner: one column wider and one row taller (pushes Invoice size down; the section grows a row)
+  const rsD = await page.evaluate(() => document.querySelector('#cv-panel-grow .grafloria-node-host[data-node-id="ctl-date"] .axdb-rs').getBoundingClientRect().toJSON());
+  await drag(rsD.x + 12, rsD.y + 12, rsD.x + 12 + cu, rsD.y + 12 + 44, { steps: 14, mid: async () => shot('panel-grow', 'corner-pull-mid') });
+  const d1 = await cells();
+  await shot('panel-grow', 'corner-after');
+  // e. undo exactly the commits this scenario made: back to the start
+  const commits = (await events('panel-grow')).filter((e) => e.type === 'commit' && e.changed).length;
+  await page.evaluate(async (n) => { const cm = window.__lab['panel-grow'].api.getEngine().commandManager; for (let i = 0; i < n && cm.canUndo(); i++) await cm.undo(); }, commits); await page.waitForTimeout(500);
+  const e1 = await cells();
+  const s = await sanity('panel-grow');
+  const same = (p, q) => JSON.stringify(p) === JSON.stringify(q);
+  // b: the row above Invoice date is taken, so a top-edge pull is REFUSED — nothing grows, the section stays
+  verdict(a1.product.w === 4 && a1.date.w === 3 && a2.product.w === 3 && same(a2, c0)
+    && same(b1, c0)
+    && c1.amount.h === cB.amount.h - 2 && c1.sec === 14
+    && d1.date.w === 4 && d1.date.h > c1.date.h && d1.amount.y === c1.amount.y + (d1.date.h - c1.date.h)
+    && same(e1, c0) && s.overlaps === 0,
+    `a: product w ${c0.product.w}→${a1.product.w}→${a2.product.w} · b: date ${JSON.stringify(c0.date)}→${JSON.stringify(b1.date)} product ${JSON.stringify(b1.product)} sec ${b1.sec} · c: amount h ${cB.amount.h}→${c1.amount.h} sec ${cB.sec}→${c1.sec} · d: date ${JSON.stringify(d1.date)} amount y ${c1.amount.y}→${d1.amount.y} sec ${d1.sec} · undo back=${same(e1, c0)} ${JSON.stringify(s)}`);
+}
+{
+  begin('L38-a-selected-section-owns-the-shared-corner');
+  await scrollTo('panel-grow');
+  // select Paid business; its corner handle sits on Area sales' corner — the press resizes the SECTION
+  const ch = await rect('panel-grow', 'sec-chart');
+  await page.evaluate(() => window.__lab['panel-grow'].handle.selectWidget('sec-paid')); await page.waitForTimeout(250);
+  const before = await page.evaluate(() => ({ sec: window.__lab['panel-grow'].handle.widget('sec-paid').cell.h, chart: window.__lab['panel-grow'].handle.binderOf('sec-paid').cellOf('sec-chart').h }));
+  const hnd = await page.evaluate(() => document.querySelector('#cv-panel-grow .axdb-slab[data-slab-id="sec-paid"] > .axdb-rs').getBoundingClientRect().toJSON());
+  const under = await page.evaluate(([x, y]) => { const el = document.elementFromPoint(x, y); return el?.closest('.axdb-slab') ? 'slab-handle' : el?.closest('.grafloria-node-host')?.dataset.nodeId ?? el?.className?.toString().slice(0, 30); }, [hnd.x + 12, hnd.y + 12]);
+  await drag(hnd.x + 12, hnd.y + 12, hnd.x + 12, hnd.y + 12 + 44, { steps: 12 });
+  const after = await page.evaluate(() => ({ sec: window.__lab['panel-grow'].handle.widget('sec-paid').cell.h, chart: window.__lab['panel-grow'].handle.binderOf('sec-paid').cellOf('sec-chart').h }));
+  await shot('panel-grow', 'section-owns-corner');
+  // deselect: the child's own corner is back
+  const cv = await page.evaluate(() => document.getElementById('cv-panel-grow').getBoundingClientRect().toJSON());
+  await page.mouse.click(cv.x + cv.width - 8, cv.y + cv.height - 8); await page.waitForTimeout(250);
+  const under2 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('.grafloria-node-host')?.dataset.nodeId ?? document.elementFromPoint(x, y)?.className?.toString().slice(0, 30), [ch.right - 6, ch.bottom - 6]);
+  await page.evaluate(async () => { const cm = window.__lab['panel-grow'].api.getEngine().commandManager; if (cm.canUndo()) await cm.undo(); }); await page.waitForTimeout(400);
+  verdict(under === 'slab-handle' && after.sec === before.sec + 1 && after.chart === before.chart && under2 === 'sec-chart',
+    `under the shared corner while selected: ${under} · sec rows ${before.sec}→${after.sec}, chart rows ${before.chart}→${after.chart} · after deselect the corner belongs to: ${under2}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

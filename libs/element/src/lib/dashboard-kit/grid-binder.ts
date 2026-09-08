@@ -935,7 +935,15 @@ export function bindDashboardGrid(
     rtl,
   });
 
-  const rows = (): number => Math.max(1, engine.rows());
+  /**
+   * The rows the board is laid out in. A BOUNDED board (a section) keeps its
+   * bound's rows even when its content ends higher — empty rows stay empty
+   * rows, as in gridstack — instead of stretching the rest to fill the slab:
+   * that stretch made a tile pulled shorter shrink FASTER than the pointer
+   * (each row it gave up made the remaining rows taller, so the same pixel
+   * height quantised to fewer rows on the next move — kit lab L37).
+   */
+  const rows = (): number => Math.max(1, engine.rows(), maxRows ?? 0);
 
   const htmlLayer = (): HTMLElement | null => api.container.querySelector('.grafloria-html-layer');
 
@@ -2166,6 +2174,9 @@ export function bindDashboardGrid(
               resizeAll(fullOnes, inner + 1);
               touched = true;
             }
+          } else if (!E.s) {
+            // A top-edge pull needs the row ABOVE: the anchored resize path
+            // decides it (refused when that row is taken) — never the section.
           } else if (!engine.resizeCheck(g.id, pulled.w, pulled.h + 1).changed) {
             const res = parent.resizeMemberBy(group.id, +1);
             if (res.changed) {
@@ -2190,15 +2201,21 @@ export function bindDashboardGrid(
               }
               touched = true;
             }
-          } else if (pulled.h > 1) {
-            engine.resizeCheck(g.id, pulled.w, pulled.h - 1);
+          } else if (pulled.h > 1 && E.s) {
+            // Shrink to the row the pointer asks for (one row per move lagged
+            // a fast pull and overshot a slow one), then hand every row the
+            // layout no longer needs back to the board.
+            engine.resizeCheck(g.id, pulled.w, Math.max(1, wantRows));
             const floor = Math.max(designRows, extentOf(engine.getItems()));
-            if (slabRows > floor) {
+            let slab = slabRows;
+            let bound = inner;
+            while (slab > floor) {
               const res = parent.resizeMemberBy(group.id, -1);
-              if (res.changed) {
-                record(res, -1);
-                setInnerRows(inner - 1);
-              }
+              if (!res.changed) break;
+              record(res, -1);
+              slab -= 1;
+              bound -= 1;
+              setInnerRows(bound);
             }
             touched = true;
           }
@@ -2261,8 +2278,22 @@ export function bindDashboardGrid(
       const moves = tx !== itemNow.x || ty !== itemNow.y;
       const growing = span.w > itemNow.w || span.h > itemNow.h;
       let changed = false;
-      if (moves && growing) changed = engine.moveCheck(g.id, tx, ty, { gate: false }).changed || changed;
-      changed = engine.resizeCheck(g.id, span.w, span.h).changed || changed;
+      // A north or west pull grows by MOVING the anchor first; when that move
+      // is refused (the row above is taken) the growth is refused with it —
+      // the first version fell through to a plain resize and grew the tile at
+      // the OPPOSITE edge, so pulling a control's top edge up made it taller
+      // at the bottom and pushed its section a row (kit lab L37).
+      let anchored = true;
+      if (moves && growing) {
+        // The anchor may move only into FREE cells: a move that pushes would
+        // relocate the tile (a top-edge pull sent a control to row 0 and its
+        // neighbours below it) instead of growing it.
+        const probe = { x: tx, y: ty, w: itemNow.w, h: itemNow.h };
+        const blocked = engine.getItems().some((o) => o.id !== g.id && o.x < probe.x + probe.w && probe.x < o.x + o.w && o.y < probe.y + probe.h && probe.y < o.y + o.h);
+        anchored = !blocked && engine.moveCheck(g.id, tx, ty, { gate: false }).changed;
+        changed = anchored || changed;
+      }
+      if (anchored) changed = engine.resizeCheck(g.id, span.w, span.h).changed || changed;
       if (moves && !growing) changed = engine.moveCheck(g.id, tx, ty, { gate: false }).changed || changed;
       if (changed) project();
     }
@@ -2585,7 +2616,10 @@ export function bindDashboardGrid(
       const gripHost = gripHostOf(target);
       const gripId = gripHost?.getAttribute('data-node-id') ?? null;
       const onGrip = !!gripId && (group.members ?? new Set<string>()).has(gripId);
-      if (!hit.node && !onGrip) {
+      // A SECTION's corner handle sits on top of whatever tile shares that
+      // corner; the DOM target names the section, the hit test the tile.
+      const sectionHandle = target?.closest?.('.axdb-slab > .axdb-rs') as HTMLElement | null;
+      if ((!hit.node && !onGrip) || sectionHandle) {
         // A press on a SECTION — its empty band, its corner handle or its
         // frame edge — selects the section; the handle or an edge resizes it.
         const slabHandle = target?.closest?.('.axdb-slab > .axdb-rs') as HTMLElement | null;

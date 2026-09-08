@@ -194486,9 +194486,11 @@ var CSS4 = `
 /* SECTION CHROME: a pointer-transparent overlay on every member group. It
    wears the selection ring and, while selected, the corner handle. */
 .grafloria-html-layer > .axdb-slab { position: absolute; pointer-events: none; border-radius: var(--axdb-rs-radius, 3px); z-index: 4; }
-.grafloria-html-layer > .axdb-slab.axdb-slab--selected { box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)); }
-.grafloria-html-layer > .axdb-slab > .axdb-rs { pointer-events: auto; opacity: 0; }
-.grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { opacity: 1; }
+/* Selected, the overlay rises above the tiles so ITS corner handle wins a
+   corner it shares with a child's; unselected, its handle takes no presses. */
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected { z-index: 6; box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)); }
+.grafloria-html-layer > .axdb-slab > .axdb-rs { pointer-events: none; opacity: 0; }
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { pointer-events: auto; opacity: 1; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-rs { display: none; }
 
 /* legend chips, shared by line and donut */
@@ -194780,7 +194782,7 @@ function bindDashboardGrid(api, group, options = {}) {
     designHeight: sizing === "fit" ? frame().height : designH,
     rtl
   });
-  const rows = () => Math.max(1, engine.rows());
+  const rows = () => Math.max(1, engine.rows(), maxRows ?? 0);
   const htmlLayer = () => api.container.querySelector(".grafloria-html-layer");
   const hostOf = (id) => {
     const esc3 = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
@@ -195671,6 +195673,7 @@ function bindDashboardGrid(api, group, options = {}) {
               resizeAll(fullOnes, inner + 1);
               touched = true;
             }
+          } else if (!E.s) {
           } else if (!engine.resizeCheck(g.id, pulled.w, pulled.h + 1).changed) {
             const res = parent.resizeMemberBy(group.id, 1);
             if (res.changed) {
@@ -195695,15 +195698,18 @@ function bindDashboardGrid(api, group, options = {}) {
               }
               touched = true;
             }
-          } else if (pulled.h > 1) {
-            engine.resizeCheck(g.id, pulled.w, pulled.h - 1);
+          } else if (pulled.h > 1 && E.s) {
+            engine.resizeCheck(g.id, pulled.w, Math.max(1, wantRows));
             const floor = Math.max(designRows, extentOf(engine.getItems()));
-            if (slabRows > floor) {
+            let slab = slabRows;
+            let bound2 = inner;
+            while (slab > floor) {
               const res = parent.resizeMemberBy(group.id, -1);
-              if (res.changed) {
-                record(res, -1);
-                setInnerRows(inner - 1);
-              }
+              if (!res.changed) break;
+              record(res, -1);
+              slab -= 1;
+              bound2 -= 1;
+              setInnerRows(bound2);
             }
             touched = true;
           }
@@ -195749,8 +195755,14 @@ function bindDashboardGrid(api, group, options = {}) {
       const moves = tx !== itemNow.x || ty !== itemNow.y;
       const growing = span.w > itemNow.w || span.h > itemNow.h;
       let changed = false;
-      if (moves && growing) changed = engine.moveCheck(g.id, tx, ty, { gate: false }).changed || changed;
-      changed = engine.resizeCheck(g.id, span.w, span.h).changed || changed;
+      let anchored = true;
+      if (moves && growing) {
+        const probe = { x: tx, y: ty, w: itemNow.w, h: itemNow.h };
+        const blocked = engine.getItems().some((o) => o.id !== g.id && o.x < probe.x + probe.w && probe.x < o.x + o.w && o.y < probe.y + probe.h && probe.y < o.y + o.h);
+        anchored = !blocked && engine.moveCheck(g.id, tx, ty, { gate: false }).changed;
+        changed = anchored || changed;
+      }
+      if (anchored) changed = engine.resizeCheck(g.id, span.w, span.h).changed || changed;
       if (moves && !growing) changed = engine.moveCheck(g.id, tx, ty, { gate: false }).changed || changed;
       if (changed) project();
     }
@@ -196016,7 +196028,8 @@ function bindDashboardGrid(api, group, options = {}) {
       const gripHost = gripHostOf(target);
       const gripId = gripHost?.getAttribute("data-node-id") ?? null;
       const onGrip = !!gripId && (group.members ?? /* @__PURE__ */ new Set()).has(gripId);
-      if (!hit.node && !onGrip) {
+      const sectionHandle = target?.closest?.(".axdb-slab > .axdb-rs");
+      if (!hit.node && !onGrip || sectionHandle) {
         const slabHandle = target?.closest?.(".axdb-slab > .axdb-rs");
         const slabId = slabHandle?.parentElement?.getAttribute("data-slab-id") ?? memberGroupAt(ev.world.x, ev.world.y);
         const grp = slabId && (group.members ?? /* @__PURE__ */ new Set()).has(slabId) ? diagram.getGroup(slabId) : void 0;

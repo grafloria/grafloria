@@ -315,10 +315,13 @@ describe('a section is a thing to select and resize', () => {
     await settle();
     expect(handle.widget('box')!.cell).toEqual({ x: 0, y: 0, w: 3, h: 16 });
     expect(handle.toJSON().views[0].widgets.find((w) => w.id === 'box')!.rows).toBe(16);
-    // below the children's 14 rows: refused, nothing changes
-    expect(await handle.widget('box')!.resize(3, 10)).toBe(false);
+    // below the children's 14 rows: floored at 14, never squeezing them
+    expect(await handle.widget('box')!.resize(3, 10)).toBe(true);
     await settle();
-    expect(handle.widget('box')!.cell.h).toBe(16);
+    expect(handle.widget('box')!.cell!.h).toBe(14);
+    await cm.undo();
+    await settle();
+    expect(handle.widget('box')!.cell!.h).toBe(16);
     await cm.undo();
     await settle();
     expect(handle.widget('box')!.cell).toEqual({ x: 0, y: 0, w: 3, h: 14 });
