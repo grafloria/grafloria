@@ -637,6 +637,46 @@ for (const [board, pos, place] of [['grip-in-l', 'left', 'inside'], ['grip-in-c'
     `slab rows ${c0.box.h}→${c1.box.h} px ${Math.round(box0.h)}→${Math.round(box1.h)} inner trend rows ${inner1} px ${Math.round(t0.h)}→${Math.round(t1.h)} events=${JSON.stringify(ev)} ${JSON.stringify(s)}`);
 }
 
+// ===========================================================================
+// MULTI-ROW SECTIONS (the Quantia Groups page)
+// ===========================================================================
+{
+  begin('L28-partial-tile-in-a-section-is-refused-not-scaled');
+  await scrollTo('panel-fit');
+  const before = await heights('panel-fit'); const c0 = await cells('panel-fit');
+  const slab0 = await groupRect('panel-fit', 'sec-controls');
+  const inner0 = await page.evaluate(() => Object.fromEntries(window.__lab['panel-fit'].handle.binderOf('sec-controls').saveLayout().cells));
+  // the corner of the one-row Product control, pulled 150 px — 3 rows the section does not hold
+  const rs = await page.evaluate(() => document.querySelector('#cv-panel-fit .grafloria-node-host[data-node-id="ctl-product"] .axdb-rs').getBoundingClientRect().toJSON());
+  await drag(rs.x + rs.width / 2, rs.y + rs.height / 2, rs.x + rs.width / 2, rs.y + rs.height / 2 + 150, { steps: 20, mid: async () => shot('panel-fit', 'pull-mid') });
+  const after = await heights('panel-fit'); const c1 = await cells('panel-fit');
+  const slab1 = await groupRect('panel-fit', 'sec-controls');
+  const inner1 = await page.evaluate(() => Object.fromEntries(window.__lab['panel-fit'].handle.binderOf('sec-controls').saveLayout().cells));
+  const ev = await events('panel-fit');
+  await shot('panel-fit', 'after');
+  const s = await sanity('panel-fit');
+  verdict(JSON.stringify(before) === JSON.stringify(after) && JSON.stringify(c0) === JSON.stringify(c1) && JSON.stringify(inner0) === JSON.stringify(inner1) && Math.round(slab0.h) === Math.round(slab1.h) && c1['sec-controls'].h === 14 && ev.length > 0 && ev.every((e) => !e.changed) && s.overlaps === 0 && s.overflow === 0,
+    `heights same=${JSON.stringify(before) === JSON.stringify(after)} slab rows ${c0['sec-controls'].h}→${c1['sec-controls'].h} px ${Math.round(slab0.h)}→${Math.round(slab1.h)} inner same=${JSON.stringify(inner0) === JSON.stringify(inner1)} caption ${before['ctl-caption']}→${after['ctl-caption']} amount ${before['ctl-amount']}→${after['ctl-amount']} events=${JSON.stringify(ev)} ${JSON.stringify(s)}`);
+}
+{
+  begin('L29-full-height-tile-still-escalates-and-a-shrink-stops-at-the-design');
+  await scrollTo('panel-grow');
+  const c0 = await cells('panel-grow'); const f0 = await rect('panel-grow', 'sec-filter'); const ch0 = await rect('panel-grow', 'sec-chart');
+  // Status spans all 14 rows of Paid business: pulling it past the section grows the section (the strip model)
+  const rs = await page.evaluate(() => document.querySelector('#cv-panel-grow .grafloria-node-host[data-node-id="sec-filter"] .axdb-rs').getBoundingClientRect().toJSON());
+  await drag(rs.x + rs.width / 2, rs.y + rs.height / 2, rs.x + rs.width / 2, rs.y + rs.height / 2 + 120, { steps: 16, mid: async () => shot('panel-grow', 'full-height-pull-mid') });
+  const c1 = await cells('panel-grow'); const f1 = await rect('panel-grow', 'sec-filter'); const ch1 = await rect('panel-grow', 'sec-chart');
+  await shot('panel-grow', 'section-grew');
+  // …and pulling it back well above the section shrinks it, but never below its 14 designed rows
+  const rs2 = await page.evaluate(() => document.querySelector('#cv-panel-grow .grafloria-node-host[data-node-id="sec-filter"] .axdb-rs').getBoundingClientRect().toJSON());
+  await drag(rs2.x + rs2.width / 2, rs2.y + rs2.height / 2, rs2.x + rs2.width / 2, rs2.y + rs2.height / 2 - 400, { steps: 20 });
+  const c2 = await cells('panel-grow');
+  await shot('panel-grow', 'section-back');
+  const s = await sanity('panel-grow');
+  verdict(c1['sec-paid'].h > c0['sec-paid'].h && f1.h > f0.h + 60 && ch1.h > ch0.h + 60 && c2['sec-paid'].h === 14 && s.overlaps === 0,
+    `paid rows ${c0['sec-paid'].h}→${c1['sec-paid'].h}→${c2['sec-paid'].h} · filter px ${Math.round(f0.h)}→${Math.round(f1.h)} chart px ${Math.round(ch0.h)}→${Math.round(ch1.h)} ${JSON.stringify(s)}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

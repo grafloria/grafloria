@@ -389,6 +389,13 @@ render(SPEC2, host);</pre>
       nesting from live membership — a dragged-in tile lands under its new
       parent in the snapshot, and the snapshot rebuilds through
       <code>dashboard()</code> unchanged. Nesting is exercised to two levels.</p>
+      <p><b>Escalation is for full-height tiles</b> (element 0.4.16). A section grows in
+      its board when a tile that spans the section's full height is pulled past its bottom —
+      every tile of a one-row KPI strip does — and every tile inside gets taller together;
+      pulled back, the section shrinks, never below its designed rows. A tile that spans only
+      part of a multi-row section resizes within the section and is refused past its rows,
+      like any bounded pull: nothing outside the section moves. Before 0.4.16 a 150 px pull on
+      a one-row control inside a 14-row panel shrank the whole panel to 4 rows.</p>
       <p><b>Charts on a squeezed board stay readable</b> (element 0.4.15). The built-in
       line and bar widgets tier their axes to the room they have: under 120 px of body the
       quarter ticks go, under 60 px only the minimum and maximum remain and the x labels and

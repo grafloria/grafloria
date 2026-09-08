@@ -110,6 +110,21 @@ const INNER = () => [
 board('c-split', 'container · layout split (item 7)', { sizing: 'grow', dragHandle: { grip: true, position: 'left', placement: 'inside' }, widgets: [...KPIS(), { id: 'box', span: 12, rows: 2, columns: 12, layout: 'split', widgets: INNER() }] });
 board('c-fit', 'container · sizing fit (pane is the bound) · grow board', { sizing: 'grow', widgets: [...KPIS(), { id: 'box', span: 12, rows: 2, columns: 12, sizing: 'fit', widgets: INNER() }] });
 board('c-grow', 'container · sizing grow (default: slab escalates) · grow board', { sizing: 'grow', widgets: [...KPIS(), { id: 'box', span: 12, rows: 2, columns: 12, widgets: INNER() }] });
+const PANEL = () => [
+  { id: 'sec-controls', title: 'Report controls', span: 3, rows: 14, x: 0, y: 0, columns: 4, widgets: [
+    { id: 'ctl-caption', kind: 'kpi', span: 3, rows: 1, x: 0, y: 0, data: { label: 'Caption', value: '1' } },
+    { id: 'ctl-product', kind: 'kpi', span: 3, rows: 1, x: 0, y: 1, data: { label: 'Product', value: '1' } },
+    { id: 'ctl-date', kind: 'kpi', span: 3, rows: 6, x: 0, y: 2, data: { label: 'Invoice date', value: '6' } },
+    { id: 'ctl-amount', kind: 'kpi', span: 3, rows: 6, x: 0, y: 8, data: { label: 'Invoice size', value: '6' } },
+  ] },
+  { id: 'sec-paid', title: 'Paid business', span: 5, rows: 14, x: 3, y: 0, widgets: [
+    { id: 'sec-filter', kind: 'kpi', span: 2, rows: 14, x: 0, y: 0, data: { label: 'Status', value: '14' } },
+    { id: 'sec-chart', kind: 'line', span: 3, rows: 14, x: 2, y: 0, title: 'Area sales', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+  ] },
+  { id: 'sec-outside', kind: 'line', span: 4, rows: 14, x: 8, y: 0, title: 'Sales by product', data: { series: [{ name: 's', values: [3, 2, 4, 1] }] } },
+];
+board('panel-fit', 'multi-row section · fit board · squeeze false (Quantia Groups page)', { squeeze: false, widgets: PANEL() }, { height: 758 });
+board('panel-grow', 'multi-row section · grow board · rowHeight 34 (full-height tile escalates)', { sizing: 'grow', rowHeight: 34, widgets: PANEL() }, { height: 758 });
 board('narrow', 'responsive 12→6 at 700 px · squeeze false', { squeeze: false, responsive: { breakpoints: [{ w: 700, c: 6, layout: 'move' }], columnMax: 12, layout: 'move' } });
 
 await new Promise((r) => setTimeout(r, 300));
