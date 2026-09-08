@@ -177,7 +177,7 @@ const SPEC_INPUT = {
       // 4 columns for 3 children: the free slot is what lets a dragged-in
       // tile land (a FULL bounded row correctly refuses adoption — that
       // refusal is asserted by the grid-options scenarios).
-      { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4,
+      { id: 'kpis', title: 'KPI section', caption: { subtitle: 'three KPIs in a 4-column section', description: 'Drag a tile across the edge: the section adopts it' }, span: 12, rows: 1, columns: 4,
         widgets: [
           { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
           { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
@@ -195,7 +195,7 @@ defineDemo({
   name: 'Dashboard containers',
   blurb: 'CONTAINMENT declared as data: a widget carrying `widgets` in `dashboard()` mounts as a section — a locked slab in the board with its own pack grid inside. Drag a tile across the boundary and the other grid adopts it live, in either direction; one undo restores the whole gesture, both grids at once. Resize a KPI taller than the section and the SECTION grows a row in the board (the escalation ratchet). toJSON() reports the nesting from live membership — a tile you dragged in serialises under the section, and the snapshot rebuilds through dashboard() unchanged. The hand-built version of this construct lives in dashboard/grid-options.html; this page is the same thing as one field in the data.',
   howTo: [
-    '① The blue-tinted band is the "KPI section" — a container declared in the dashboard() data with three KPI children in its own 4-column grid (one column free — room to drag into).',
+    '① The "KPI section" is a container declared in the dashboard() data with three KPI children in its own 4-column grid (one column free — room to drag into). Its header is the kit\'s `caption` (0.4.22): a 44 px band with a subtitle and an ⓘ, reserved inside the frame, a press on it selects the section.',
     '② Drag the donut ("By region") into the section: the section\'s grid makes room live around the dashed placeholder and adopts it on release. ONE undo (⌘Z) returns it to the board — both grids restored in the same step.',
     '③ Drag a KPI OUT of the section onto the board: the board adopts it, the section re-packs. One undo restores that too.',
     '④ Pull a KPI\'s bottom-right corner well below the section: the section itself GROWS a row in the board (escalation — the child never overflows the frame). Pull back up and it shrinks again.',
