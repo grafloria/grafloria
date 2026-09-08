@@ -196205,6 +196205,17 @@ function bindDashboardGrid(api, group, options = {}) {
     }
     return best;
   };
+  const placeNear = (id, x, y, w) => {
+    if (engine.moveCheck(id, x, y, { gate: false }).changed) return true;
+    const maxX = Math.max(0, columns - w);
+    for (let d = 1; d <= columns; d++) {
+      for (const cx of [x - d, x + d]) {
+        if (cx < 0 || cx > maxX) continue;
+        if (engine.moveCheck(id, cx, y, { gate: false }).changed) return true;
+      }
+    }
+    return false;
+  };
   const adopt = (node, world, pxSize) => {
     if (disposed) return null;
     const f = frame();
@@ -196236,7 +196247,7 @@ function bindDashboardGrid(api, group, options = {}) {
     adoptedGhostId = node.id;
     const tl = centredTopLeft(world.x, world.y, span);
     const cell0 = pointToCell(tl.x, tl.y, f, gg, rows(), span.w);
-    engine.moveCheck(node.id, cell0.x, cell0.y, { gate: false });
+    placeNear(node.id, cell0.x, cell0.y, span.w);
     armGlide();
     project();
     syncPlaceholder();
@@ -196247,7 +196258,7 @@ function bindDashboardGrid(api, group, options = {}) {
         if (!item) return;
         const tlm = centredTopLeft(w.x, w.y, { w: item.w, h: item.h });
         const cell = pointToCell(tlm.x, tlm.y, frame(), geom(), rows(), item.w);
-        if (engine.moveCheck(node.id, cell.x, cell.y).changed) project();
+        if (placeNear(node.id, cell.x, cell.y, item.w)) project();
         syncPlaceholder();
       },
       abort: () => {
@@ -198714,6 +198725,23 @@ function buildWidgetNode(w, rowHeight) {
   for (const p of [...node.getPorts().values()]) node.removePort(p.id);
   return node;
 }
+function wrapTabPages(ws) {
+  for (const w of ws) {
+    if (!w.widgets) continue;
+    if (w.layout === "tabs") {
+      w.widgets = w.widgets.map(
+        (c) => c.widgets ? c : {
+          id: `${c.id}__page`,
+          title: c.title ?? c.id,
+          ...w.columns !== void 0 ? { columns: w.columns } : {},
+          widgets: [{ ...c, x: 0, y: 0 }]
+        }
+      );
+    }
+    wrapTabPages(w.widgets);
+  }
+  return ws;
+}
 function cloneWidgets(ws) {
   return ws.map((w) => ({ ...w, ...w.widgets ? { widgets: cloneWidgets(w.widgets) } : {} }));
 }
@@ -199360,7 +199388,7 @@ function dashboard(options) {
   const overflow = options.overflow ?? "bounded";
   const sizing = options.sizing ?? (mode === "fluid" ? "grow" : "fit");
   const layout = options.layout ?? "grid";
-  const views = options.views ? options.views.map((v) => ({ ...v, widgets: cloneWidgets(v.widgets) })) : [{ id: "main", widgets: cloneWidgets(options.widgets ?? []) }];
+  const views = options.views ? options.views.map((v) => ({ ...v, widgets: wrapTabPages(cloneWidgets(v.widgets)) })) : [{ id: "main", widgets: wrapTabPages(cloneWidgets(options.widgets ?? [])) }];
   for (const v of views) assignCellsDeep(v.widgets, v.columns ?? columns);
   const nodes = [];
   const specById = /* @__PURE__ */ new Map();
@@ -202049,6 +202077,7 @@ export {
   SwimlaneService,
   SyncAdapter,
   SyncStateManager,
+  TAB_STRIP_HEIGHT,
   THEME_TOKENS,
   THEME_VARS,
   TOUCH_HIT_SLOP_PX,
@@ -202526,6 +202555,7 @@ export {
   pageDimensions,
   paginate,
   paintCaptionBand,
+  paintTabStrip,
   panelAdjustedInnerRect,
   parallelOffsets,
   parseColor,
@@ -202704,6 +202734,8 @@ export {
   summarise,
   supportsAnimations,
   svgToDataUri,
+  tabStripKey,
+  tabStripReserve,
   tailwindBridge,
   targetNodeIdOf,
   textAlignFor,
