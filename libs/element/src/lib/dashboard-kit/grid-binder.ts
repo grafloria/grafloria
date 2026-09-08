@@ -2189,6 +2189,19 @@ export function bindDashboardGrid(
     // ratchet's second disguise (grow committed; a fresh shrink gesture could
     // never pull low enough to ask the parent for a row back).
     let h = bottom - top;
+    /**
+     * Did the escalation below move this tile AS PART OF THE STRIP? A
+     * full-height tile shares its row count with every other full-height tile
+     * in the section, so once the strip grew, this tile's height is the
+     * strip's — not whatever its own pixels re-quantise to. Without this the
+     * gesture undid itself for its own tile and left the NEIGHBOUR grown:
+     * drag Churn's bottom 70 px and ORDERS became two rows while Churn stayed
+     * one (reported from the fluid demo). The cause is the row height
+     * changing mid-gesture: 86 px rows make +70 read as 2 rows, and the
+     * moment the section grows, rows become 108 px and the same pixels read
+     * as 1 again. See the sibling rule for the un-pulled axis below.
+     */
+    let stripFollow = false;
     // NESTED HEIGHT ESCALATION (live report: "i cant increase height"). A
     // bounded strip cannot grow a tile taller than itself — so pulling
     // clearly past its bottom GROWS THE STRIP: the slab gains a row in the
@@ -2250,9 +2263,30 @@ export function bindDashboardGrid(
         // The SAME rounding the resize path quantises with, or the tile shrinks
         // through that path first and the section never gets its row back.
         const wantRows = Math.max(1, Math.round((h + gap) / rowPx));
-        const wantsMore = wantRows > pulled.h;
-        const wantsLess = wantRows < pulled.h;
         const fullHeight = pulled.y === 0 && pulled.h >= inner;
+        // For the WHOLE gesture, not just the move that escalated: a strip
+        // tile's height is its cells. Set on every move so the tile cannot
+        // re-quantise back a row on the moves in between.
+        stripFollow = fullHeight;
+        /**
+         * A STRIP IS MEASURED FROM THE PRESS, NOT FROM ITSELF. Growing the
+         * strip changes the row height, so quantising the live pixels against
+         * the LIVE row height feeds the decision back into its own input: at
+         * 86 px rows a +80 px pull reads as 2 rows, the section grows, rows
+         * become 108 px, the same pointer now reads as 1 row, the section
+         * shrinks — and the gesture oscillates and lands wherever the last
+         * move left it (measured: +60/+70/+90 grew, +80 did nothing).
+         * Counting rows from the row height AT PRESS is monotonic in the
+         * pointer, so the strip cannot fight itself.
+         */
+        const startCell = g.startCells.get(g.id);
+        const startRowPx = startCell && startCell.h > 0 ? (g.startSize.height + gap) / startCell.h : rowPx;
+        const stripRows = startCell
+          ? Math.max(1, startCell.h + Math.round((h - g.startSize.height) / startRowPx))
+          : wantRows;
+        const effWant = fullHeight ? stripRows : wantRows;
+        const wantsMore = effWant > pulled.h;
+        const wantsLess = effWant < pulled.h;
         const fullOnes = engine.getItems().filter((i) => i.y === 0 && i.h >= inner).map((i) => i.id);
         const resizeAll = (ids: string[], rowsTo: number): void => {
           for (const id of ids) {
@@ -2346,7 +2380,11 @@ export function bindDashboardGrid(
       // pull took a 3-row donut to 5). The un-pulled axis follows the live
       // projection of its cell span instead of the start-of-gesture pixels.
       if (!pullsX) w = itemNow.w * (cuNow + gap) - gap;
-      if (!pullsY) h = itemNow.h * (rhNow + gap) - gap;
+      // …and a tile the STRIP just moved follows its cells on the pulled axis
+      // too: the strip is one row of tiles, so the dragged tile keeps the row
+      // count its peers were given rather than re-quantising against the row
+      // height the escalation itself just changed.
+      if (!pullsY || stripFollow) h = itemNow.h * (rhNow + gap) - gap;
     }
     // Anchor: the pulled edges follow w/h, the opposite ones stay put — on
     // the LIVE projection of the tile's cell, not the start-of-gesture pixels.
