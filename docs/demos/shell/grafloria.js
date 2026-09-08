@@ -195948,21 +195948,15 @@ function bindDashboardGrid(api, group, options = {}) {
         const effWant = fullHeight ? stripRows : wantRows;
         const wantsMore = effWant > pulled.h;
         const wantsLess = effWant < pulled.h;
-        const fullOnes = engine.getItems().filter((i) => i.y === 0 && i.h >= inner).map((i) => i.id);
-        const resizeAll = (ids, rowsTo) => {
-          for (const id of ids) {
-            const it = engine.getItem(id);
-            if (it) engine.resizeCheck(id, it.w, rowsTo);
-          }
-        };
         let touched = false;
         if (wantsMore) {
-          if (fullHeight) {
+          if (fullHeight && !E.s) {
+          } else if (fullHeight) {
             const res = parent.resizeMemberBy(group.id, 1);
             if (res.changed) {
               record(res, 1);
               setInnerRows(inner + 1);
-              resizeAll(fullOnes, inner + 1);
+              engine.resizeCheck(g.id, pulled.w, pulled.h + 1);
               touched = true;
             }
           } else if (!E.s) {
@@ -195980,13 +195974,17 @@ function bindDashboardGrid(api, group, options = {}) {
         } else if (wantsLess) {
           if (fullHeight) {
             if (slabRows > designRows && inner > 1) {
-              resizeAll(fullOnes, inner - 1);
-              const res = parent.resizeMemberBy(group.id, -1);
-              if (res.changed) {
+              engine.resizeCheck(g.id, pulled.w, Math.max(1, effWant));
+              const floor = Math.max(designRows, extentOf(engine.getItems()));
+              let slab = slabRows;
+              let bound2 = inner;
+              while (slab > floor) {
+                const res = parent.resizeMemberBy(group.id, -1);
+                if (!res.changed) break;
                 record(res, -1);
-                setInnerRows(inner - 1);
-              } else {
-                resizeAll(fullOnes, inner);
+                slab -= 1;
+                bound2 -= 1;
+                setInnerRows(bound2);
               }
               touched = true;
             }
