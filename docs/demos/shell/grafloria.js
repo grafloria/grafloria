@@ -194638,12 +194638,25 @@ function pairOf(v, dflt) {
   if (v === void 0) return dflt;
   return typeof v === "number" ? [v, v] : [v[0], v[1]];
 }
+function parentPaintsSectionChrome(diagram, group) {
+  const groups = diagram.getGroups?.() ?? [];
+  for (const g of groups) {
+    if (g === group || !g.members?.has(group.id)) continue;
+    const board = g.getMetadata("dashboardBoard");
+    return (board?.layout ?? "grid") !== "split";
+  }
+  return false;
+}
+function sectionCaptionReserve(diagram, group, isStatic) {
+  if (!parentPaintsSectionChrome(diagram, group)) return 0;
+  return captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 });
+}
 function captionPainted(c, isStatic) {
   if (!c) return false;
   return !(c.show === "design" && isStatic);
 }
 function captionBandHeight(c, sectionH) {
-  const want = captionTight(sectionH) ? CAPTION_HEIGHT_TIGHT : c.height ?? (c.subtitle ? CAPTION_HEIGHT_SUBTITLE : CAPTION_HEIGHT);
+  const want = c.height ?? (sectionH > 0 && sectionH < CAPTION_TIGHT_BELOW ? CAPTION_HEIGHT_TIGHT : c.subtitle ? CAPTION_HEIGHT_SUBTITLE : CAPTION_HEIGHT);
   if (sectionH <= 0) return want;
   return Math.max(CAPTION_MIN_HEIGHT, Math.min(want, sectionH - CAPTION_MIN_CONTENT));
 }
@@ -194656,13 +194669,13 @@ function captionReserve(c, ctx) {
 function captionKey(c, ctx) {
   return JSON.stringify([c, ctx.rtl, ctx.static]);
 }
-var captionTight = (sectionH) => sectionH > 0 && sectionH < CAPTION_TIGHT_BELOW;
+var captionTight = (c, sectionH) => captionBandHeight(c, sectionH) <= CAPTION_HEIGHT_TIGHT;
 function bandSides(c, mh, rtl) {
   if (c.position !== "tab") return { left: `${mh}px`, right: `${mh}px` };
   return rtl ? { left: "auto", right: `${mh}px` } : { left: `${mh}px`, right: "auto" };
 }
 function sizeCaptionBand(band, c, sectionH) {
-  band.classList.toggle("axdb-slab-h--tight", captionTight(sectionH));
+  band.classList.toggle("axdb-slab-h--tight", captionTight(c, sectionH));
   band.style.height = `${captionBandHeight(c, sectionH)}px`;
 }
 function captionPassThrough(target, band, c) {
@@ -194687,7 +194700,7 @@ function paintCaptionBand(band, c, ctx) {
   const cls = (name, on) => band.classList.toggle(name, on);
   cls("axdb-slab-h--tab", c.position === "tab");
   cls("axdb-slab-h--hover", c.show === "hover");
-  cls("axdb-slab-h--tight", captionTight(ctx.sectionH));
+  cls("axdb-slab-h--tight", captionTight(c, ctx.sectionH));
   cls("axdb-slab-h--center", c.align === "center");
   cls("axdb-slab-h--end", c.align === "end");
   cls("axdb-slab-h--vtop", c.valign === "top");
@@ -194988,7 +195001,7 @@ function bindDashboardGrid(api, group, options = {}) {
   let adoptedGhostId = null;
   let glideTimer = null;
   let ghostTimer = null;
-  const ownReserve = () => parentPeer()?.paintsCaptions === true ? captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 }) : 0;
+  const ownReserve = () => sectionCaptionReserve(diagram, group, isStatic);
   const frame = () => {
     const r = ownReserve();
     return {
@@ -195488,6 +195501,7 @@ function bindDashboardGrid(api, group, options = {}) {
     for (const [id, el2] of slabEls) {
       if (!seen.has(id)) {
         el2.remove();
+        hoverSlabs.delete(el2);
         slabEls.delete(id);
       }
     }
@@ -195497,8 +195511,16 @@ function bindDashboardGrid(api, group, options = {}) {
     let band = el2.querySelector(":scope > .axdb-slab-h");
     if (!cap || !captionPainted(cap, isStatic)) {
       band?.remove();
+      hoverSlabs.delete(el2);
+      el2.classList.remove("axdb-slab--hot");
       el2.removeAttribute("aria-label");
+      el2.removeAttribute("role");
       return;
+    }
+    if (cap.show === "hover") hoverSlabs.add(el2);
+    else {
+      hoverSlabs.delete(el2);
+      el2.classList.remove("axdb-slab--hot");
     }
     const ctx = { rtl, static: isStatic, sectionH };
     const key = captionKey(cap, ctx);
@@ -195516,8 +195538,13 @@ function bindDashboardGrid(api, group, options = {}) {
       onAction: (actionId) => options.onCaptionAction?.(id, actionId)
     });
     band.setAttribute("data-key", key);
-    if (cap.text) el2.setAttribute("aria-label", cap.text);
-    else el2.removeAttribute("aria-label");
+    if (cap.text) {
+      el2.setAttribute("role", "group");
+      el2.setAttribute("aria-label", cap.text);
+    } else {
+      el2.removeAttribute("role");
+      el2.removeAttribute("aria-label");
+    }
   };
   const insideMemberGroupFrame = (x, y) => {
     for (const id of group.members ?? []) {
@@ -196259,9 +196286,7 @@ function bindDashboardGrid(api, group, options = {}) {
     containsWorld: worldInsideBoard,
     containsWorldExtended: worldInsideBoardExtended,
     frameArea: boardArea,
-    adopt,
-    paintsCaptions: true
-    // the grid binder owns the slab overlays (syncSlabs)
+    adopt
   };
   peersOnCanvas().add(selfPeer);
   selfPeerRef = selfPeer;
@@ -196391,17 +196416,16 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const unregisterTool = registerTool(tool);
   let hoverHost = null;
+  const hoverSlabs = /* @__PURE__ */ new Set();
   const markHotSection = (clientX, clientY) => {
-    if (!slabEls.size) return;
-    for (const [id, el2] of slabEls) {
-      if (!el2.querySelector(":scope > .axdb-slab-h--hover")) continue;
+    if (!hoverSlabs.size) return;
+    for (const el2 of hoverSlabs) {
       const r = el2.getBoundingClientRect();
-      const hot = clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
-      el2.classList.toggle("axdb-slab--hot", hot);
+      el2.classList.toggle("axdb-slab--hot", clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom);
     }
   };
   const onHoverLeave = () => {
-    for (const el2 of slabEls.values()) el2.classList.remove("axdb-slab--hot");
+    for (const el2 of hoverSlabs) el2.classList.remove("axdb-slab--hot");
   };
   const onHover = (e) => {
     if (disposed || gesture) return;
@@ -196904,6 +196928,7 @@ function bindDashboardGrid(api, group, options = {}) {
       if (glideTimer) clearTimeout(glideTimer);
       for (const el2 of slabEls.values()) el2.remove();
       slabEls.clear();
+      hoverSlabs.clear();
       flushGhost();
       htmlLayer()?.classList.remove("axdb-glide");
       api.container.style.cursor = "";
@@ -197267,7 +197292,7 @@ function bindDashboardSplit(api, group, options = {}) {
   let forwardSlab = null;
   let focusedId;
   const live = liveRegionFor2(api.container);
-  const ownReserve = () => parentPeerOf(api.container, group.id)?.paintsCaptions === true ? captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 }) : 0;
+  const ownReserve = () => sectionCaptionReserve(diagram, group, isStatic);
   const frame = () => {
     const r = ownReserve();
     return {
