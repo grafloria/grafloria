@@ -2737,9 +2737,18 @@ export function bindDashboardGrid(
       // A press on one of OUR sections' caption bands is ours by the DOM: a
       // 'tab' band sits above the frame, over the gap or the tile above,
       // where the geometry says otherwise.
-      const bandTarget = (ev.source?.target as Element | null | undefined)?.closest?.('.axdb-slab > .axdb-slab-h');
-      const bandId = bandTarget?.parentElement?.getAttribute('data-slab-id');
-      if (bandId && (group.members ?? new Set<string>()).has(bandId)) return true;
+      const chrome = (ev.source?.target as Element | null | undefined)?.closest?.('.axdb-slab > .axdb-slab-h, .axdb-slab > .axdb-rs');
+      const chromeId = chrome?.parentElement?.getAttribute('data-slab-id');
+      const mine = !!chromeId && (group.members ?? new Set<string>()).has(chromeId);
+      if (mine) return true;
+      // Someone else's SECTION HANDLE is never ours to claim. A tab
+      // container's pages register before the parent board, so a page's tool
+      // won the tie for the CONTAINER's corner handle and, finding no peer to
+      // hand it to, just cleared the selection — the container could not be
+      // resized by hand at all while the API resized it fine. (Only the
+      // handle: declining every foreign band broke the press that reaches the
+      // content under a hidden `show: 'hover'` caption.)
+      if (chromeId && chrome?.classList.contains('axdb-rs')) return false;
       if (hit.node) {
         if ((group.members ?? new Set<string>()).has(hit.node.id)) return true;
         // A press on a tile that belongs to a NESTED board must reach that

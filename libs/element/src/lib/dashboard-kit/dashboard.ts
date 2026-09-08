@@ -815,6 +815,9 @@ export interface DashboardApiRef {
  * like one built from a literal (the first version lived inside `dashboard()`
  * and `fromDocument` silently produced a tab container that never switched).
  */
+const cssEscape = (v: string): string =>
+  typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(v) : v.replace(/"/g, '\\"');
+
 export function attachTabsRuntime(
   ctx: DashboardHandleContext,
   model: { getGroup(id: string): GroupModel | undefined; runSystemWrite?(fn: () => void): void },
@@ -847,7 +850,15 @@ export function attachTabsRuntime(
     const rtl = ctx.binders.get(ctx.viewOfBoard.get(id) ?? ctx.active)?.getRtl() ?? false;
     const key = tabStripKey(pages, active, ctx.tabsOf.get(id), rtl);
     if (el.getAttribute('data-key') === key) return;
-    paintTabStrip(el, pages, active, ctx.tabsOf.get(id), rtl, (pid) => handle.activateTab(id, pid));
+    paintTabStrip(
+      el,
+      pages,
+      active,
+      ctx.tabsOf.get(id),
+      rtl,
+      (pid) => handle.activateTab(id, pid),
+      () => handle.selectWidget(id)
+    );
     el.setAttribute('data-key', key);
   };
 
@@ -870,6 +881,22 @@ export function attachTabsRuntime(
       }
     });
     for (const p of pages) ctx.binders.get(p.id)?.sync();
+    // A PARKED page is off-canvas but still in the DOM: take its widgets out
+    // of the tab order and hide them from assistive tech, or a keyboard user
+    // tabs through pages nobody can see (the accessibility scenario counted
+    // five tab stops on a board with three of them hidden).
+    for (const p of pages) {
+      const pg = model.getGroup(p.id);
+      const parked = p.id !== active;
+      for (const m of pg?.members ?? []) {
+        const host = container?.querySelector(`.grafloria-node-host[data-node-id="${cssEscape(m)}"]`) as HTMLElement | null;
+        if (!host) continue;
+        if (parked) {
+          host.setAttribute('aria-hidden', 'true');
+          host.tabIndex = -1;
+        } else host.removeAttribute('aria-hidden');
+      }
+    }
     paintStrip(id, f, strip, pages, active);
   };
 
@@ -1146,9 +1173,17 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       if (!ctx.apiRef) return;
       const model = ctx.apiRef.getModel();
       for (const id of [...ctx.boardGroups.keys()]) {
+        // A TAB CONTAINER deliberately has no binder — it places its pages
+        // itself. "No binder" must not read as "needs rebinding", or every
+        // history event bound a GRID on it and laid the three pages out as
+        // cells side by side (measured: 2×2 of 216×200 after one resize).
+        if (ctx.layoutOf.get(id) === 'tabs') continue;
         if (!binders.has(id) && model.getGroup(id)) ctx.rebindContainer?.(id);
       }
       for (const b of binders.values()) b.sync();
+      // …and undo/redo of a section resize must re-place the pages under the
+      // strip, which only the tabs runtime knows how to do.
+      for (const id of ctx.layoutOf.keys()) if (ctx.layoutOf.get(id) === 'tabs') ctx.syncTabs?.(id);
       clampCamera();
       ctx.apiRef.renderNow();
       reportChanged();
@@ -1827,6 +1862,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         const g = model.getGroup(id);
         const w = specById.get(id);
         if (!g || !w || !w.widgets) return;
+        if ((ctx.layoutOf.get(id) ?? w.layout) === 'tabs') return; // places its own pages
         ctx.boardGroups.set(id, g);
         bindContainer(g, w, ctx.viewOfBoard.get(id) ?? ctx.active);
       };

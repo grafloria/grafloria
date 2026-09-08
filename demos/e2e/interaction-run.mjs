@@ -630,8 +630,10 @@ const IN_PAGE = () => {
         const dead = [];
         for (const b of buttons.slice(0, 12)) {
           // A DISABLED button is an expected no-op (execute-flow disables its
-          // bar while a run is in flight) — skip, don't judge.
-          if (b.disabled) continue;
+          // bar while a run is in flight) — skip, don't judge. So is the tab
+          // that is ALREADY selected: clicking the open page is a no-op in
+          // every tab UI there is.
+          if (b.disabled || b.getAttribute('aria-selected') === 'true') continue;
           let mutated = false;
           const mo = new MutationObserver(() => { mutated = true; });
           mo.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });

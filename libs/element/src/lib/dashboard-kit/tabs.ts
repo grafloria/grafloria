@@ -50,7 +50,8 @@ export function paintTabStrip(
   activeId: string,
   o: TabsOptions | undefined,
   rtl: boolean,
-  onPick: (id: string) => void
+  onPick: (id: string) => void,
+  onSelectContainer?: () => void
 ): void {
   const doc = strip.ownerDocument;
   strip.className = 'axdb-tabs';
@@ -61,6 +62,14 @@ export function paintTabStrip(
   strip.setAttribute('dir', rtl ? 'rtl' : 'ltr');
   strip.setAttribute('role', 'tablist');
   strip.textContent = '';
+  // The strip's EMPTY space selects the container. A tab container's pages
+  // cover it completely, so without this there is nowhere to press to select
+  // it — and an unselected section shows no corner handle, which made the
+  // container impossible to resize by hand.
+  strip.onpointerdown = (e: PointerEvent) => {
+    if ((e.target as Element | null)?.closest('.axdb-tab')) return;
+    onSelectContainer?.();
+  };
   for (const p of pages) {
     const b = doc.createElement('button');
     b.type = 'button';

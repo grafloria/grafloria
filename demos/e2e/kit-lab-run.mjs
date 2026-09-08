@@ -1114,6 +1114,34 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `boot ${s0.tabs} showing ${v0} · click Alerts → ${s1.tabs} showing ${v1} (a split page: ${divs} dividers) · ArrowRight → ${s2.tabs} showing ${v2} · back to Filters → showing ${v3} · strip ${JSON.stringify(s0.strip)} spans the slab (w${s0.slab.w}), page starts ${s0.pageTop} · onTabChange ${events} ${JSON.stringify(sane)}`);
 }
 {
+  begin('L58-a-tab-container-is-selected-by-its-strip-and-the-strip-follows-it');
+  await scrollTo('tabs');
+  const geo = () => page.evaluate(() => {
+    const r = (s) => { const b = document.querySelector(s)?.getBoundingClientRect(); return b ? { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) } : null; };
+    return { strip: r('#cv-tabs .axdb-tabs'), slab: r('#cv-tabs .axdb-slab[data-slab-id="panel"]'), kid: r('#cv-tabs .grafloria-node-host[data-node-id="pa1"]'), cell: window.__lab.tabs.handle.widget('panel').cell };
+  });
+  const aligned = (g) => g.strip && g.slab && g.strip.x === g.slab.x && g.strip.y === g.slab.y && g.strip.w === g.slab.w && g.kid.y >= g.strip.y + g.strip.h - 0.5;
+  await page.evaluate(() => window.__lab.tabs.handle.selectWidget(undefined)); await page.waitForTimeout(200);
+  const g0 = await geo();
+  // A tab container's PAGES cover it, so the strip's empty space is the only
+  // place to press it — without that it could not be selected, and an
+  // unselected section shows no corner handle, so it could not be resized.
+  await page.mouse.click(g0.strip.x + g0.strip.w - 20, g0.strip.y + g0.strip.h / 2); await page.waitForTimeout(350);
+  const sel = await page.evaluate(() => window.__lab.tabs.handle.getSelectedWidget());
+  const hnd = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-slab[data-slab-id="panel"] > .axdb-rs')?.getBoundingClientRect().toJSON() ?? null);
+  let mid = null;
+  await drag(hnd.x + 8, hnd.y + 8, hnd.x + 8 - 160, hnd.y + 8 + 60, { steps: 12, mid: async () => { mid = await geo(); await shot('tabs', 'strip-follows-mid-drag'); } });
+  const g1 = await geo();
+  await shot('tabs', 'container-resized');
+  await undoAll('tabs', 2);
+  const g2 = await geo();
+  const sane = await sanity('tabs');
+  verdict(sel === 'panel' && !!hnd && aligned(g0) && !!mid && aligned(mid) && aligned(g1)
+    && g1.cell.w < g0.cell.w && g1.cell.h > g0.cell.h && aligned(g2) && g2.cell.w === g0.cell.w && g2.cell.h === g0.cell.h
+    && sane.overlaps === 0,
+    `a press on the strip's empty space selected ${sel} · resize ${g0.cell.w}x${g0.cell.h} → ${g1.cell.w}x${g1.cell.h} → undo ${g2.cell.w}x${g2.cell.h} · the strip tracks the container at rest/mid-drag/after: ${[g0, mid, g1, g2].map((g) => (g && aligned(g) ? 'yes' : 'NO')).join('/')} (widths ${g0.strip?.w}→${mid?.strip?.w}→${g1.strip?.w}→${g2.strip?.w}) ${JSON.stringify(sane)}`);
+}
+{
   begin('L53-a-caption-reserves-only-where-something-paints-it');
   await scrollTo('cap-split');
   const r = await page.evaluate(() => {
