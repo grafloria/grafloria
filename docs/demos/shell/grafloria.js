@@ -194570,6 +194570,43 @@ var CSS4 = `
   .axdb-slab-h-action:hover { background: rgba(236, 238, 244, .1); }
 }
 
+/* TAB CONTAINER (0.4.27): a strip of pages across the container's top. The
+   strip takes the pointer (the tabs are real buttons); the pages below it are
+   ordinary boards. */
+.grafloria-html-layer > .axdb-tabs {
+  position: absolute; box-sizing: border-box; pointer-events: auto; z-index: 5;
+  display: flex; align-items: flex-end; gap: 2px; padding: 0 6px; overflow-x: auto; overflow-y: hidden;
+  background: var(--axdb-tabs-bg, rgba(31, 36, 48, .05));
+  border-bottom: 1px solid var(--axdb-tabs-line, rgba(31, 36, 48, .12));
+  border-radius: var(--axdb-rs-radius, 3px) var(--axdb-rs-radius, 3px) 0 0;
+  scrollbar-width: thin;
+}
+.axdb-tabs--center { justify-content: center; }
+.axdb-tabs--end { justify-content: flex-end; }
+.axdb-tabs--stretch > .axdb-tab { flex: 1 1 0; }
+.axdb-tab {
+  all: unset; box-sizing: border-box; flex: 0 0 auto; max-width: 200px;
+  padding: 0 12px; height: calc(100% - 4px); display: inline-flex; align-items: center;
+  font: 600 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--axdb-tabs-fg, #5a6478); cursor: pointer;
+  border-radius: var(--axdb-rs-radius, 3px) var(--axdb-rs-radius, 3px) 0 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.axdb-tab:hover { background: rgba(31, 36, 48, .06); }
+.axdb-tab:focus-visible { outline: 2px solid var(--axdb-accent-ring, rgba(59, 82, 217, .55)); outline-offset: -2px; }
+/* The active tab reads as the front page: the card's own ground, lifted. */
+.axdb-tab.axdb-tab--on {
+  background: var(--axdb-tabs-on-bg, #fff);
+  color: var(--axdb-tabs-on-fg, #1f2430);
+  box-shadow: 0 -1px 0 var(--axdb-accent, #3b52d9) inset, 0 0 0 1px rgba(31, 36, 48, .1);
+}
+@media (prefers-color-scheme: dark) {
+  .grafloria-html-layer > .axdb-tabs { background: var(--axdb-tabs-bg, rgba(236, 238, 244, .06)); border-bottom-color: var(--axdb-tabs-line, rgba(236, 238, 244, .14)); }
+  .axdb-tab { color: var(--axdb-tabs-fg, #98a1b4); }
+  .axdb-tab:hover { background: rgba(236, 238, 244, .08); }
+  .axdb-tab.axdb-tab--on { background: var(--axdb-tabs-on-bg, #1a1d25); color: var(--axdb-tabs-on-fg, #eceef4); box-shadow: 0 -1px 0 var(--axdb-accent, #7d8ff0) inset, 0 0 0 1px rgba(236, 238, 244, .14); }
+}
+
 /* legend chips, shared by line and donut */
 .axdb-lg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; }
 .axdb-lg--col { flex-direction: column; flex-wrap: nowrap; gap: 6px; margin-top: 0; }
@@ -194792,6 +194829,7 @@ function ownsPress(container, diagram, ev, hit) {
   if (typeof Node !== "undefined" && t instanceof Node && !container.contains(t)) return false;
   if (hit.node && diagram.getNode(hit.node.id) !== hit.node) return false;
   if (typeof Element !== "undefined" && t instanceof Element) {
+    if (t.closest(".axdb-tabs")) return false;
     const band = t.closest(".axdb-slab > .axdb-slab-h");
     const sid = band?.parentElement?.getAttribute("data-slab-id");
     if (band && sid) {
@@ -196303,9 +196341,11 @@ function bindDashboardGrid(api, group, options = {}) {
       if (disposed) return false;
       if (gesture || slabGesture || forwardSlab) return true;
       if (!ownsPress(api.container, diagram, ev, hit)) return false;
-      const bandTarget = ev.source?.target?.closest?.(".axdb-slab > .axdb-slab-h");
-      const bandId = bandTarget?.parentElement?.getAttribute("data-slab-id");
-      if (bandId && (group.members ?? /* @__PURE__ */ new Set()).has(bandId)) return true;
+      const chrome = ev.source?.target?.closest?.(".axdb-slab > .axdb-slab-h, .axdb-slab > .axdb-rs");
+      const chromeId = chrome?.parentElement?.getAttribute("data-slab-id");
+      const mine = !!chromeId && (group.members ?? /* @__PURE__ */ new Set()).has(chromeId);
+      if (mine) return true;
+      if (chromeId && chrome?.classList.contains("axdb-rs")) return false;
       if (hit.node) {
         if ((group.members ?? /* @__PURE__ */ new Set()).has(hit.node.id)) return true;
         for (const p of BOARD_REGISTRY.get(api.container) ?? []) {
@@ -198503,6 +198543,60 @@ var defaultWidgetRenderer = (widget, host) => {
   card(host, widget ?? { id: "" }, titleOf(widget ?? { id: "" }));
 };
 
+// libs/element/src/lib/dashboard-kit/tabs.ts
+var TAB_STRIP_HEIGHT = 30;
+function tabStripReserve(o, pageCount) {
+  if (pageCount <= 0) return 0;
+  return Math.max(18, o?.height ?? TAB_STRIP_HEIGHT);
+}
+function tabStripKey(pages, activeId, o, rtl) {
+  return JSON.stringify([pages, activeId, o ?? null, rtl]);
+}
+function paintTabStrip(strip, pages, activeId, o, rtl, onPick, onSelectContainer) {
+  const doc = strip.ownerDocument;
+  strip.className = "axdb-tabs";
+  if (o?.className) for (const c of o.className.split(/\s+/).filter(Boolean)) strip.classList.add(c);
+  strip.classList.toggle("axdb-tabs--center", o?.align === "center");
+  strip.classList.toggle("axdb-tabs--end", o?.align === "end");
+  strip.classList.toggle("axdb-tabs--stretch", o?.stretch === true);
+  strip.setAttribute("dir", rtl ? "rtl" : "ltr");
+  strip.setAttribute("role", "tablist");
+  strip.textContent = "";
+  strip.onpointerdown = (e) => {
+    if (e.target?.closest(".axdb-tab")) return;
+    onSelectContainer?.();
+  };
+  for (const p of pages) {
+    const b = doc.createElement("button");
+    b.type = "button";
+    b.className = "axdb-tab";
+    b.setAttribute("role", "tab");
+    b.setAttribute("data-tab-id", p.id);
+    b.setAttribute("aria-selected", String(p.id === activeId));
+    b.classList.toggle("axdb-tab--on", p.id === activeId);
+    b.tabIndex = p.id === activeId ? 0 : -1;
+    b.textContent = p.label;
+    b.title = p.label;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onPick(p.id);
+    });
+    b.addEventListener("keydown", (e) => {
+      const k = e.key;
+      const step = k === "ArrowRight" ? 1 : k === "ArrowLeft" ? -1 : k === "Home" ? -pages.length : k === "End" ? pages.length : 0;
+      if (!step) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const i = pages.findIndex((x) => x.id === p.id);
+      const dir = rtl && (k === "ArrowRight" || k === "ArrowLeft") ? -step : step;
+      const next = Math.max(0, Math.min(pages.length - 1, i + dir));
+      onPick(pages[next].id);
+      strip.querySelector(`[data-tab-id="${pages[next].id}"]`)?.focus();
+    });
+    strip.appendChild(b);
+  }
+}
+
 // libs/element/src/lib/dashboard-kit/dashboard.ts
 var AddWidgetCommand = class extends Command {
   /**
@@ -198666,6 +198760,90 @@ function assignCells(widgets, columns) {
     w.rows = rows;
   }
 }
+var cssEscape4 = (v) => typeof CSS !== "undefined" && CSS.escape ? CSS.escape(v) : v.replace(/"/g, '\\"');
+function attachTabsRuntime(ctx, model, container, handle) {
+  const pagesOf = (id) => {
+    const w = ctx.specById.get(id);
+    return (w?.widgets ?? []).filter((c) => !!c.widgets).map((p) => ({ id: p.id, label: p.title ?? p.id }));
+  };
+  const isTabs = (id) => (ctx.layoutOf.get(id) ?? ctx.specById.get(id)?.layout) === "tabs" && pagesOf(id).length > 0;
+  const paintStrip = (id, f, h, pages, active2) => {
+    const layer = container?.querySelector(".grafloria-html-layer");
+    if (!layer) return;
+    let el2 = ctx.tabStrips.get(id);
+    if (!el2 || el2.parentElement !== layer) {
+      el2?.remove();
+      el2 = document.createElement("div");
+      el2.setAttribute("data-tabs-id", id);
+      layer.appendChild(el2);
+      ctx.tabStrips.set(id, el2);
+    }
+    el2.style.position = "absolute";
+    el2.style.left = `${f.x}px`;
+    el2.style.top = `${f.y}px`;
+    el2.style.width = `${f.width}px`;
+    el2.style.height = `${h}px`;
+    const rtl = ctx.binders.get(ctx.viewOfBoard.get(id) ?? ctx.active)?.getRtl() ?? false;
+    const key = tabStripKey(pages, active2, ctx.tabsOf.get(id), rtl);
+    if (el2.getAttribute("data-key") === key) return;
+    paintTabStrip(
+      el2,
+      pages,
+      active2,
+      ctx.tabsOf.get(id),
+      rtl,
+      (pid) => handle.activateTab(id, pid),
+      () => handle.selectWidget(id)
+    );
+    el2.setAttribute("data-key", key);
+  };
+  const sync = (id) => {
+    const cg = ctx.boardGroups.get(id) ?? model.getGroup(id);
+    if (!cg || !isTabs(id)) return;
+    const pages = pagesOf(id);
+    const active2 = ctx.activeTab.get(id) ?? pages[0].id;
+    const strip = tabStripReserve(ctx.tabsOf.get(id), pages.length);
+    const f = { x: cg.position.x, y: cg.position.y, width: cg.size?.width ?? 0, height: cg.size?.height ?? 0 };
+    const inner = { width: f.width, height: Math.max(0, f.height - strip) };
+    const write = (fn) => model.runSystemWrite ? model.runSystemWrite(fn) : fn();
+    write(() => {
+      for (const p of pages) {
+        const pg = model.getGroup(p.id);
+        if (!pg) continue;
+        pg.setFrame({ x: p.id === active2 ? f.x : OFFSCREEN_X, y: f.y + strip, width: inner.width, height: inner.height });
+      }
+    });
+    for (const p of pages) ctx.binders.get(p.id)?.sync();
+    for (const p of pages) {
+      const pg = model.getGroup(p.id);
+      const parked = p.id !== active2;
+      for (const m of pg?.members ?? []) {
+        const host = container?.querySelector(`.grafloria-node-host[data-node-id="${cssEscape4(m)}"]`);
+        if (!host) continue;
+        if (parked) {
+          host.setAttribute("aria-hidden", "true");
+          host.tabIndex = -1;
+        } else host.removeAttribute("aria-hidden");
+      }
+    }
+    paintStrip(id, f, strip, pages, active2);
+  };
+  ctx.syncTabs = sync;
+  ctx.subscriptions = ctx.subscriptions ?? [];
+  for (const [id, cg] of ctx.boardGroups) {
+    if (!isTabs(id)) continue;
+    const pages = pagesOf(id);
+    if (!ctx.activeTab.has(id)) {
+      const meta = cg.getMetadata("containerWidget");
+      const want = ctx.specById.get(id)?.active ?? meta?.active;
+      ctx.activeTab.set(id, want && pages.some((p) => p.id === want) ? want : pages[0].id);
+      if (meta?.tabs && !ctx.tabsOf.has(id)) ctx.tabsOf.set(id, meta.tabs);
+    }
+    const off = cg.on("bounds:changed", () => sync(id));
+    if (typeof off === "function") ctx.subscriptions.push(off);
+    sync(id);
+  }
+}
 var SetCaptionCommand = class extends Command {
   constructor(sectionId, before, after, apply) {
     super("Set section caption");
@@ -198792,9 +198970,11 @@ function createDashboardHandle(ctx) {
       if (!ctx.apiRef) return;
       const model = ctx.apiRef.getModel();
       for (const id of [...ctx.boardGroups.keys()]) {
+        if (ctx.layoutOf.get(id) === "tabs") continue;
         if (!binders.has(id) && model.getGroup(id)) ctx.rebindContainer?.(id);
       }
       for (const b of binders.values()) b.sync();
+      for (const id of ctx.layoutOf.keys()) if (ctx.layoutOf.get(id) === "tabs") ctx.syncTabs?.(id);
       clampCamera();
       ctx.apiRef.renderNow();
       reportChanged();
@@ -198897,6 +199077,23 @@ function createDashboardHandle(ctx) {
       return true;
     },
     getCaption: (id) => specById.get(id)?.caption,
+    activateTab(containerId, pageId) {
+      const cg = ctx.boardGroups.get(containerId);
+      const w = specById.get(containerId);
+      if (!cg || !w || (ctx.layoutOf.get(containerId) ?? w.layout) !== "tabs") return false;
+      if (!(w.widgets ?? []).some((p) => p.id === pageId && p.widgets)) return false;
+      if (ctx.activeTab.get(containerId) === pageId) return true;
+      ctx.activeTab.set(containerId, pageId);
+      w.active = pageId;
+      const cw = cg.getMetadata("containerWidget") ?? {};
+      cg.setMetadata("containerWidget", { ...cw, active: pageId });
+      ctx.syncTabs?.(containerId);
+      ctx.apiRef?.renderNow();
+      ctx.onTabChange?.(containerId, pageId, ctx.viewOfBoard.get(containerId) ?? ctx.active);
+      reportChanged();
+      return true;
+    },
+    getActiveTab: (containerId) => ctx.activeTab.get(containerId),
     setSizing(mode) {
       for (const b of binders.values()) b.setSizing(mode);
       clampCamera();
@@ -199233,6 +199430,9 @@ function dashboard(options) {
     boardH,
     mode,
     overflow,
+    activeTab: /* @__PURE__ */ new Map(),
+    tabsOf: /* @__PURE__ */ new Map(),
+    tabStrips: /* @__PURE__ */ new Map(),
     layoutOf: new Map(views.map((v) => [v.id, v.layout ?? layout])),
     optionsBase: options,
     active: views[0]?.id ?? "main",
@@ -199328,6 +199528,7 @@ function dashboard(options) {
         const g = model.getGroup(id);
         const w = specById.get(id);
         if (!g || !w || !w.widgets) return;
+        if ((ctx.layoutOf.get(id) ?? w.layout) === "tabs") return;
         ctx.boardGroups.set(id, g);
         bindContainer(g, w, ctx.viewOfBoard.get(id) ?? ctx.active);
       };
@@ -199363,6 +199564,8 @@ function dashboard(options) {
         if (focused) binders.get(id)?.focusWidget(focused);
         else if (selected) binders.get(id)?.selectWidget(selected);
       }
+      ctx.onTabChange = options.onTabChange;
+      attachTabsRuntime(ctx, model, a.container ?? null, handle);
       ctx.attachHistory?.();
       return;
       function mountBoard(boardId, viewId, widgets, boardGroup) {
@@ -199406,6 +199609,17 @@ function dashboard(options) {
             boardGroup.addMember(w.id);
             ctx.boardGroups.set(w.id, cg);
             mountBoard(w.id, viewId, w.widgets, cg);
+            if (w.layout === "tabs") {
+              const pages = (w.widgets ?? []).filter((c) => !!c.widgets);
+              const active2 = w.active && pages.some((p) => p.id === w.active) ? w.active : pages[0]?.id;
+              if (active2) {
+                ctx.activeTab.set(w.id, active2);
+                w.active = active2;
+              }
+              cg.setMetadata("containerWidget", { ...cg.getMetadata("containerWidget"), layout: "tabs", ...active2 ? { active: active2 } : {}, ...w.tabs ? { tabs: w.tabs } : {} });
+              ctx.tabsOf.set(w.id, w.tabs ?? {});
+              continue;
+            }
             bindContainer(cg, w, viewId);
             continue;
           }
@@ -199613,6 +199827,9 @@ function fromDocument(document2, options = {}) {
     // a fixed world — it stays one. Fluid is only what was saved fluid.
     mode: firstBoard?.fluid === true ? "fluid" : "fixed",
     overflow: firstBoard?.overflow ?? "bounded",
+    activeTab: /* @__PURE__ */ new Map(),
+    tabsOf: /* @__PURE__ */ new Map(),
+    tabStrips: /* @__PURE__ */ new Map(),
     layoutOf: new Map(
       dashGroups.map((g) => [g.id, g.getMetadata("dashboardBoard")?.layout ?? "grid"])
     ),
@@ -199671,8 +199888,10 @@ function fromDocument(document2, options = {}) {
     for (const group of groups) {
       const board = group.getMetadata("dashboardBoard");
       if (!board) continue;
+      if (board.layout === "tabs") continue;
       boards.set(group.id, bindBoard(group, board));
     }
+    attachTabsRuntime(ctx, model, a.container ?? null, handle);
     ctx.rebindView = (viewId, next) => {
       const group = model.getGroup(viewId);
       const b = boards.get(viewId);
