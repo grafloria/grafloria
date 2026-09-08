@@ -257,15 +257,92 @@ getCaption(id: string): CaptionOption;</code></pre>
     <li><b>Docs and Quantia</b>: the learn page's Containers section; the Quantia prompt gains "replace the <code>.sec</code> tab with <code>caption</code> and delete the overlap".</li>
   </ol>
 
-  <h2>Decisions I need from you</h2>
-  <div class="ask">
-    <p style="margin:0 0 8px"><b>1.</b> Default position when <code>caption: true</code>: <b>inside</b> (DevExpress-like bar, my recommendation) or <b>tab</b> (Quantia's current look)?</p>
-    <p style="margin:0 0 8px"><b>2.</b> Default band height: <b>28 px</b>, the widget header's height, so a section header and a widget header line up?</p>
-    <p style="margin:0 0 8px"><b>3.</b> Dragging a section by its caption to move it: <b>not in this round</b> (sections stay locked slabs), or include it now?</p>
-    <p style="margin:0 0 8px"><b>4.</b> A collapse chevron (fold a section to its band): <b>later</b>, or now?</p>
-    <p style="margin:0 0 8px"><b>5a.</b> Typography and box (<code>font</code>, <code>padding</code>, <code>margin</code>, <code>background</code>, <code>border</code>, <code>valign</code>): as <b>options that persist</b> (my recommendation, since a designer sets them per section and saves the board) rather than CSS-only theming?</p>
-    <p style="margin:0 0 8px"><b>5.</b> First round includes <code>subtitle</code>, <code>description</code>, <code>icon</code>, <code>show</code>, <code>actions</code> + <code>onCaptionAction</code>, <code>passThrough</code>, <code>className</code>: <b>all of them</b> (my recommendation — each is a few lines on top of the band), or only text and position?</p>
-    <p style="margin:0"><b>6.</b> The same caption band for custom-rendered <b>widgets</b> (Quantia paints its own <code>.wg-hd</code> today): one header system for cards and sections, with the grip and the actions in the same place — <b>a following round</b>, or fold it in now?</p>
-  </div>
-  <p class="note" style="margin-top:18px">Nothing in this plan changes a board that does not set <code>caption</code>. Every existing section stays a bare slab.</p>
+  <h2>Defaults, decided</h2>
+  <p>Chosen against what DevExpress, Grafana, Power BI, Superset and Metabase ship, and against the kit's own widget header so a section header and a card header line up.</p>
+  <div class="wrap"><table>
+    <tr><th>option</th><th>default</th><th>why</th></tr>
+    <tr><td><code>caption</code></td><td><code>false</code></td><td>A board that does not ask for a caption is unchanged. Quantia paints its own tab today; it opts in when it drops that.</td></tr>
+    <tr><td><code>text</code></td><td>the container's <code>title</code></td><td>One source of truth; the title already names the section in the a11y tree.</td></tr>
+    <tr><td><code>position</code></td><td><code>'inside'</code></td><td>DevExpress, Grafana, Power BI and Superset all draw the title as a bar inside the frame. A tab outside the frame eats a row of the board and needs the gap to be wide enough; it stays an opt-in for apps that want Quantia's look.</td></tr>
+    <tr><td><code>height</code></td><td>28 px, 44 px with a subtitle</td><td>Grafana's header is 32 px, DevExpress' caption 30 px, the kit's widget header 28 px. Matching our own header wins: headers of a section and of its first card sit on the same rhythm.</td></tr>
+    <tr><td><code>align</code> / <code>valign</code></td><td><code>'start'</code> / <code>'center'</code></td><td>Every product left-aligns titles (mirrored on RTL) and centres them vertically in the bar; centred titles are a per-section choice, not a default.</td></tr>
+    <tr><td><code>font</code></td><td>13 px, weight 600, inherit family, ink colour, no transform</td><td>Grafana 14 px 500, DevExpress 12 px 600, Power BI 12 pt. 13 px semibold is the kit's widget header, and reads at the 28 px band with room for a 16 px action button.</td></tr>
+    <tr><td><code>padding</code> / <code>margin</code></td><td><code>[0, 10]</code> / <code>[0, 0]</code></td><td>10 px is the kit's card padding; the band touches the frame so the fill reads as part of it.</td></tr>
+    <tr><td><code>background</code> / <code>border</code></td><td>theme <code>--axdb-caption-bg</code> (a 4 % ink tint) / no rule</td><td>A soft fill separates the band without a line that competes with the frame; Grafana uses no fill and no rule, DevExpress a fill.</td></tr>
+    <tr><td><code>show</code></td><td><code>'always'</code></td><td>Only Power BI hides headers until hover, and it is the complaint most cited about its viewer: readers scan a page by its section names, and touch has no hover. <code>'design'</code> is for apps that paint their own viewer chrome.</td></tr>
+    <tr><td><code>icon</code>, <code>subtitle</code>, <code>description</code></td><td>none</td><td>Painted only when set; the description's ⓘ sits after the text, before the actions, as in Grafana.</td></tr>
+    <tr><td><code>actions</code></td><td>none</td><td>The kit ships no built-in action; a menu, maximize or remove is the app's. Painted at the end of the band, 24 px hit area each, 16 px glyph, revealed on hover and focus, always visible when the section is selected.</td></tr>
+    <tr><td><code>passThrough</code></td><td><code>'button, a, input, select, textarea, [data-axdb-pass]'</code></td><td>The interactive elements HTML already knows, plus a marker for anything else.</td></tr>
+    <tr><td>long text</td><td>ellipsis, full text in <code>title</code></td><td>DevExpress, Grafana and Superset all clip; wrapping (Power BI) changes the band height with the data.</td></tr>
+    <tr><td>under 90 px of section</td><td>band steps to 22 px, 12 px text, actions hidden</td><td>The same tiering the widget header uses when a card is squeezed.</td></tr>
+    <tr><td>collapse chevron (later)</td><td>at the start of the band</td><td>Grafana rows, macOS and every tree view put the disclosure before the label.</td></tr>
+    <tr><td>rename (later)</td><td>double-click or F2 on the band edits the text in place; <code>onCaptionChange</code></td><td>DevExpress edits the caption inline in the designer.</td></tr>
+  </table></div>
+  <p class="note" style="margin-top:14px">Rounds: <b>0.4.22</b> the caption band with every option above except collapse and rename; <b>0.4.23</b> the tab container below, which reuses the band as its strip; then collapse, rename, drag-to-move by the caption, and one header system for cards and sections.</p>
+
+  <h2>Next: a tab container</h2>
+  <p>DevExpress ships a <i>Tab Container</i> dashboard item: pages, each holding a group of items, one visible at a time. Power BI has report pages and bookmarks, Grafana has collapsible rows, Tableau has containers; only DevExpress has tabs inside the board, and Quantia replaces DevExpress. It also answers the "VS Code" layout: VS Code's editor area is a <b>split of tab groups</b>. The kit already has split; tabs as a third layout makes a split container whose panes are tab containers, which is that layout.</p>
+  <pre><code>// a container's layout gains a third mode; nothing else in the spec changes
+layout?: 'grid' | 'split' | 'tabs';
+
+{ id: 'analysis', title: 'Analysis', layout: 'tabs', active: 'sales', children: [
+    { id: 'sales',   title: 'Sales',   children: [ …widgets… ], layout: 'grid'  },   // page 1
+    { id: 'margin',  title: 'Margin',  children: [ …widgets… ], layout: 'split' },   // page 2
+    { id: 'notes',   title: 'Notes',   kind: 'text', … },                            // a plain widget becomes a one-widget page
+]}
+
+tabs?: {                      // on the container; the strip is the caption band, so the same options apply
+  position?: 'top' | 'bottom' | 'start' | 'end';   // default 'top'
+  align?: 'start' | 'center' | 'end';              // default 'start'
+  stretch?: boolean;          // tabs share the strip width equally — default false
+  closable?: boolean;         // × on each tab, fires onTabAction('close') — default false
+  reorder?: boolean;          // drag a tab along the strip — default true in design, never under static
+};
+handle.activateTab(containerId, pageId); handle.getActiveTab(containerId);
+onTabChange?(containerId, pageId, viewId);</code></pre>
+  <div class="wrap"><table>
+    <tr><th>behaviour</th><th>rule</th></tr>
+    <tr><td>pages</td><td>every direct child of a tabs container is a page; a group child is the page with its own grid or split layout, a plain widget is wrapped into a one-widget page whose label is its title</td></tr>
+    <tr><td>binding</td><td>only the active page is bound, exactly as a section is today; inactive pages keep their cells and split trees serialised and bind on activation with <code>rowsAtBind</code>; the frame is the container's slab minus the strip</td></tr>
+    <tr><td>switching</td><td>a press on a tab, arrow keys along the strip (an ARIA tablist), <code>activateTab</code>; <b>switching stays live under <code>static</code></b>, it is viewer interaction, like scrolling</td></tr>
+    <tr><td>persist</td><td><code>active</code> is written by <code>toJSON</code>; an app that does not want it persisted deletes it before saving</td></tr>
+    <tr><td>drag into a page</td><td>a widget dragged over a tab label switches to that page after 400 ms (spring-loaded, as Finder and VS Code do), then the drop adopts it into that page's grid under the existing adopt rules</td></tr>
+    <tr><td>reorder</td><td>a tab dragged along the strip reorders pages; undoable; <code>reorder: false</code> or static disables it</td></tr>
+    <tr><td>tear off (later)</td><td>a tab dragged out of the strip onto a split pane's edge docks it there as a new pane: VS Code's editor docking. Needs a drop indicator for split edges; its own round</td></tr>
+    <tr><td>resize</td><td>the tabs container resizes as a section does; every page's inner rows are floored by that page's children, so the strip's floor is the tallest page</td></tr>
+    <tr><td>selection</td><td>the strip band selects the container, a tab press activates and selects; one selection per canvas still holds</td></tr>
+    <tr><td>overflow</td><td>more tabs than the strip fits: the strip scrolls with the wheel and shows a ⌄ list at the end, as browsers do; no second row</td></tr>
+    <tr><td>a11y</td><td><code>role=tablist</code> / <code>tab</code> / <code>tabpanel</code>, <code>aria-selected</code>, the strip is one tab stop, arrows move, Home/End jump</td></tr>
+  </table></div>
+  <figure style="margin-top:14px">
+    <svg viewBox="0 0 520 220" role="img" aria-label="A split container whose two panes are tab containers, the VS Code layout">
+      <rect x="0" y="0" width="520" height="220" rx="6" fill="var(--ground)"/>
+      <!-- left pane: tabs -->
+      <rect x="14" y="14" width="300" height="192" rx="3" fill="none" stroke="var(--line)"/>
+      <rect x="14" y="14" width="300" height="28" rx="3" fill="var(--soft)"/>
+      <rect x="14" y="14" width="78" height="28" fill="var(--paper)"/>
+      <rect x="14" y="40" width="78" height="2" fill="var(--accent)"/>
+      <text x="30" y="32" class="cap" fill="var(--ink)">Sales</text>
+      <text x="108" y="32" class="cap" fill="var(--muted)">Margin</text>
+      <text x="172" y="32" class="cap" fill="var(--muted)">Notes</text>
+      <text x="296" y="33" class="cap" fill="var(--muted)" text-anchor="end">⌄</text>
+      <rect x="20" y="50" width="140" height="70" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="30" y="70" class="t" fill="var(--muted)">REVENUE</text>
+      <rect x="168" y="50" width="140" height="70" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="178" y="70" class="t" fill="var(--muted)">ORDERS</text>
+      <rect x="20" y="128" width="288" height="70" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="30" y="148" class="t" fill="var(--muted)">TREND</text>
+      <!-- divider -->
+      <rect x="320" y="14" width="6" height="192" fill="var(--line)" opacity=".6"/>
+      <!-- right pane: tabs -->
+      <rect x="332" y="14" width="174" height="192" rx="3" fill="none" stroke="var(--line)"/>
+      <rect x="332" y="14" width="174" height="28" rx="3" fill="var(--soft)"/>
+      <rect x="332" y="14" width="72" height="28" fill="var(--paper)"/>
+      <rect x="332" y="40" width="72" height="2" fill="var(--accent)"/>
+      <text x="346" y="32" class="cap" fill="var(--ink)">Filters</text>
+      <text x="418" y="32" class="cap" fill="var(--muted)">Legend</text>
+      <rect x="338" y="50" width="162" height="30" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="348" y="70" class="t" fill="var(--muted)">PRODUCT</text>
+      <rect x="338" y="88" width="162" height="30" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="348" y="108" class="t" fill="var(--muted)">REGION</text>
+      <rect x="338" y="126" width="162" height="72" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="348" y="146" class="t" fill="var(--muted)">INVOICE DATE</text>
+    </svg>
+    <figcaption><b>D · <code>layout: 'split'</code> whose panes are <code>layout: 'tabs'</code> containers.</b> The strip is the caption band of each pane; the active tab carries the accent rule; the ⌄ lists tabs the strip cannot fit. This is VS Code's editor area, and DevExpress' Tab Container inside a split.</figcaption>
+  </figure>
+  <p class="note" style="margin-top:18px">Nothing in this plan changes a board that does not set <code>caption</code> or <code>layout: 'tabs'</code>. Every existing section stays a bare slab.</p>
 </main>
