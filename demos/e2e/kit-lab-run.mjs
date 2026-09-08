@@ -1080,6 +1080,32 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `a split board paints no section chrome, so its captioned sections reserve nothing: ${r.map((x) => `${x.id} band=${x.band} gap=${x.gap}px`).join(' · ')} ${JSON.stringify(sane)}`);
 }
 {
+  begin('L56-a-strip-grows-as-ONE-at-every-pull-distance');
+  await scrollTo('strip');
+  const ids = ['s-rev', 's-cust', 's-win', 's-nps'];
+  const rowsOf = () => page.evaluate((ids) => { const b = window.__lab['strip'].handle.binderOf('kpis'); return ids.map((id) => b.cellOf(id).h); }, ids);
+  const pxOf = () => page.evaluate((ids) => ids.map((id) => Math.round(document.querySelector(`#cv-strip .grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect().height)), ids);
+  const bad = [];
+  // The defect this guards was DISTANCE-DEPENDENT: pulling one tile of a strip
+  // by 60-80 px grew its NEIGHBOURS a row and left the dragged tile behind
+  // (reported from the fluid demo: "I increase Churn and Orders grows
+  // instead"). One distance would have missed it, so sweep several.
+  for (const dy of [40, 60, 70, 80, 90, 130]) {
+    const before = await rowsOf();
+    await pullBottom('strip', 's-cust', dy, { steps: 12 });
+    const after = await rowsOf();
+    const px = await pxOf();
+    const even = after.every((r) => r === after[0]) && px.every((p) => Math.abs(p - px[0]) <= 1);
+    if (!even) bad.push(`+${dy}: rows ${before} -> ${after} px ${px}`);
+    if (dy === 70) await shot('strip', 'strip-pulled-70');
+    await undoAll('strip', 3);
+    await page.waitForTimeout(150);
+  }
+  const sane = await sanity('strip');
+  verdict(bad.length === 0 && sane.overlaps === 0,
+    `six pull distances on a 4-tile strip · every tile keeps the same rows and height: ${bad.length ? 'DIVERGED — ' + bad.join(' | ') : 'all even'} ${JSON.stringify(sane)}`);
+}
+{
   begin('L55-a-widget-still-drags-INTO-a-captioned-section-and-lands-under-the-band');
   await scrollTo('cap-default');
   const before = await page.evaluate(() => ({

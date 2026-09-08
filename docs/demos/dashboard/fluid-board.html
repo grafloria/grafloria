@@ -50,7 +50,7 @@
   <select id="fb-grip-place" disabled title="Inside the header band, or a tab above the card"><option value="inside">inside</option><option value="outside">outside</option></select>
   <span class="fb-sep"></span>
   <label class="fb-lab" title="The Operations section's caption, painted by the kit — handle.setCaption() switches it live">Caption
-    <select id="fb-caption"><option value="default">subtitle · ⓘ · actions</option><option value="tab">a tab above the frame</option><option value="center">centred · uppercase</option><option value="hover">on hover only</option><option value="none">none</option></select></label>
+    <select id="fb-caption"><option value="default">subtitle · ⓘ · actions</option><option value="tab">a tab at the corner</option><option value="center">centred · uppercase</option><option value="hover">on hover only</option><option value="none">none</option></select></label>
   <span class="fb-sep"></span>
   <button id="fb-add" title="Add a full-width KPI row — a fit board refuses once it is full">+ Add a row</button>
   <span class="fb-msg" id="fb-msg"></span>
@@ -345,7 +345,7 @@ defineDemo({
     ctx2.caption = (mode) => {
       capSel.value = mode;
       H.setCaption('ops', CAPTIONS[mode]);
-      say({ default: 'caption: a 44 px band with a subtitle, an ⓘ and two actions — a press on it selects the section', tab: 'caption as a tab: the same band sized to its text, at the leading corner, reserved inside the section', center: 'caption centred, uppercase, with its own fill and rule — typography and box are options', hover: 'caption on hover only: it overlays the content, nothing reserved', none: 'no caption: the section is a bare slab again — Ctrl/⌘-Z brings it back' }[mode]);
+      say({ default: 'caption: a 44 px band with a subtitle, an ⓘ and two actions — a press on it selects the section', tab: 'caption as a tab: the same band sized to its text, a chip at the section\'s top-left corner — it reserves its height inside the section, so it never lies over the widget above', center: 'caption centred, uppercase, with its own fill and rule — typography and box are options', hover: 'caption on hover only: it overlays the content, nothing reserved', none: 'no caption: the section is a bare slab again — Ctrl/⌘-Z brings it back' }[mode]);
     };
     capSel.addEventListener('change', () => ctx2.caption(capSel.value));
     document.getElementById('fb-narrow').addEventListener('click', () => ctx2.narrow(!stage.classList.contains('narrow')));
