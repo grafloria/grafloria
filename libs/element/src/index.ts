@@ -657,6 +657,7 @@ export {
   tabStripReserve,
   tabStripKey,
   TAB_STRIP_HEIGHT,
+  TAB_DRAG_THRESHOLD,
   normalizeCaption,
   captionReserve,
   captionBandHeight,

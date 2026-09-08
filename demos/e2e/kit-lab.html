@@ -222,6 +222,26 @@ board('near', 'a tile dropped where a LOCKED section blocks it lands beside it, 
     { id: 'n-inner', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'Inner', value: '2' } } ] },
   { id: 'n-b', kind: 'kpi', span: 12, rows: 1, x: 0, y: 2, data: { label: 'B', value: '3' } },
 ] }, { height: 300 });
+board('push', 'a tile dropped ONTO an occupied row lands where the ghost promised, pushing that row down', { sizing: 'grow', rowHeight: 60, widgets: [
+  { id: 'pu-top', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Top', value: '1' } },
+  { id: 'pu-tabs', title: 'Side', span: 6, rows: 4, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'pu-p1', title: 'Filters', columns: 6, widgets: [
+      { id: 'pu-in', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } } ] },
+    { id: 'pu-p2', title: 'Alerts', columns: 6, widgets: [
+      { id: 'pu-o', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Open', value: '3' } } ] },
+  ] },
+  { id: 'pu-mid', kind: 'kpi', span: 6, rows: 2, x: 0, y: 2, data: { label: 'Mid', value: '2' } },
+] }, { height: 380 });
+board('vert', 'a TALL tile whose rows cross a full-width locked section takes the nearest row that clears it', { sizing: 'grow', rowHeight: 44, widgets: [
+  { id: 'v-src', title: 'Source', span: 4, rows: 4, x: 0, y: 0, columns: 4, widgets: [
+    { id: 'v-in', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Inner', value: '1' } } ] },
+  { id: 'v-a', kind: 'kpi', span: 8, rows: 4, x: 4, y: 0, data: { label: 'A', value: '2' } },
+  { id: 'v-wall', title: 'Full-width section', span: 12, rows: 2, x: 0, y: 4, columns: 12, widgets: [
+    { id: 'v-w1', kind: 'kpi', span: 12, rows: 2, x: 0, y: 0, data: { label: 'Wall', value: '3' } } ] },
+  { id: 'v-b', kind: 'kpi', span: 12, rows: 2, x: 0, y: 6, data: { label: 'B', value: '4' } },
+  { id: 'v-c', kind: 'kpi', span: 12, rows: 2, x: 0, y: 8, data: { label: 'C', value: '5' } },
+  { id: 'v-d', kind: 'kpi', span: 12, rows: 2, x: 0, y: 10, data: { label: 'D', value: '6' } },
+] }, { height: 560 });
 board('cap-split', 'captioned sections on a SPLIT board · no chrome to paint them, so no reserve', { layout: 'split', sizing: 'grow', rowHeight: 50, widgets: [
   { id: 'sp-a', title: 'Captioned A', caption: { subtitle: 'sub' }, span: 6, rows: 4, x: 0, y: 0, columns: 6, widgets: [
     { id: 'spa1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'A', value: '1' } },

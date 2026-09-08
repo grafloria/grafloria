@@ -1255,6 +1255,9 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     hasItem: (id) => (group.members ?? new Set<string>()).has(id),
     memberCell: (id) => handle.cellOf(id),
     resizeMemberBy: () => ({ changed: false }),
+    // A split board has no cells to drop a torn-out page into: it refuses,
+    // and the press stays a plain tab click.
+    tearOutMember: () => false,
     containsWorld: (x, y) => worldInsideBoard(x, y),
     containsWorldExtended: (x, y) => worldInsideBoard(x, y),
     frameArea: () => {

@@ -57,6 +57,7 @@ import {
 } from '@grafloria/engine';
 import {
   bindDashboardGrid,
+  parentPeerOf,
   type DashboardGridHandle,
   type DashboardGridOptions,
   type DashboardResponsiveOptions,
@@ -851,12 +852,42 @@ export function attachTabsRuntime(
   container: HTMLElement | null,
   handle: DashboardHandle
 ): void {
+  // Pages come from LIVE membership, in the authored order, with anything that
+  // arrived later on the end. Reading the authored spec instead meant a page
+  // that LEFT the container kept its tab — a tab pointing at nothing, which is
+  // exactly the "the content is taken and the tab remains" report — and a page
+  // that arrived never got one.
   const pagesOf = (id: string): { id: string; label: string }[] => {
-    const w = ctx.specById.get(id);
-    return (w?.widgets ?? []).filter((c) => !!c.widgets).map((p) => ({ id: p.id, label: p.title ?? p.id }));
+    const cg = ctx.boardGroups.get(id) ?? model.getGroup(id);
+    const authored = (ctx.specById.get(id)?.widgets ?? []).map((c) => c.id);
+    const live = [...(cg?.members ?? [])].filter((m) => !!model.getGroup(m));
+    const rank = (pid: string): number => {
+      // A plain child is wrapped as `<id>__page`, so the authored order is
+      // keyed on the id BEFORE the wrap as well as after it.
+      const i = authored.indexOf(pid);
+      const j = i < 0 ? authored.indexOf(pid.replace(/__page$/, '')) : i;
+      return j < 0 ? Number.MAX_SAFE_INTEGER : j;
+    };
+    live.sort((a, b) => rank(a) - rank(b));
+    return live.map((pid) => ({ id: pid, label: ctx.specById.get(pid)?.title ?? pid }));
   };
   const isTabs = (id: string): boolean =>
     (ctx.layoutOf.get(id) ?? ctx.specById.get(id)?.layout) === 'tabs' && pagesOf(id).length > 0;
+
+  /**
+   * A tab dragged off its strip tears its page out onto the board that owns
+   * the container — VS Code's "drag a tab out and it becomes a group of its
+   * own". Only the board below can place it, so the gesture is handed to that
+   * binder; a container with a single page keeps it, because a tab container
+   * with no pages has nothing to show.
+   */
+  const tearOut = (containerId: string, pageId: string, ev: PointerEvent): boolean => {
+    if (!container) return false;
+    const pages = pagesOf(containerId);
+    if (pages.length <= 1) return false;
+    const label = pages.find((p) => p.id === pageId)?.label ?? pageId;
+    return parentPeerOf(container, containerId)?.tearOutMember(pageId, containerId, label, ev) === true;
+  };
 
   const paintStrip = (id: string, f: { x: number; y: number; width: number }, h: number, pages: { id: string; label: string }[], active: string): void => {
     const layer = container?.querySelector('.grafloria-html-layer') as HTMLElement | null;
@@ -884,7 +915,8 @@ export function attachTabsRuntime(
       ctx.tabsOf.get(id),
       rtl,
       (pid) => handle.activateTab(id, pid),
-      () => handle.selectWidget(id)
+      () => handle.selectWidget(id),
+      (pid, ev) => tearOut(id, pid, ev)
     );
     el.setAttribute('data-key', key);
   };
@@ -893,7 +925,12 @@ export function attachTabsRuntime(
     const cg = ctx.boardGroups.get(id) ?? model.getGroup(id);
     if (!cg || !isTabs(id)) return;
     const pages = pagesOf(id);
-    const active = ctx.activeTab.get(id) ?? pages[0].id;
+    // The page that was showing may have just been dragged out.
+    let active = ctx.activeTab.get(id) ?? pages[0].id;
+    if (!pages.some((p) => p.id === active)) {
+      active = pages[0].id;
+      ctx.activeTab.set(id, active);
+    }
     const strip = tabStripReserve(ctx.tabsOf.get(id), pages.length);
     const f = { x: cg.position.x, y: cg.position.y, width: cg.size?.width ?? 0, height: cg.size?.height ?? 0 };
     const inner = { width: f.width, height: Math.max(0, f.height - strip) };
@@ -938,9 +975,13 @@ export function attachTabsRuntime(
       ctx.activeTab.set(id, want && pages.some((p) => p.id === want) ? want : pages[0].id);
       if (meta?.tabs && !ctx.tabsOf.has(id)) ctx.tabsOf.set(id, meta.tabs);
     }
-    // Re-lay the pages whenever the parent moves or resizes the container.
-    const off = cg.on('bounds:changed', (() => sync(id)) as (...args: unknown[]) => void);
-    if (typeof off === 'function') ctx.subscriptions.push(off);
+    // Re-lay the pages whenever the parent moves or resizes the container —
+    // and whenever a page joins or leaves, so the strip always shows the pages
+    // that are actually there.
+    for (const ev of ['bounds:changed', 'member:added', 'member:removed']) {
+      const off = cg.on(ev, (() => sync(id)) as (...args: unknown[]) => void);
+      if (typeof off === 'function') ctx.subscriptions.push(off);
+    }
     sync(id);
   }
 }

@@ -113,6 +113,27 @@ const CSS = `
    (the same signal a tile ghost gives outside the board). Without this rule
    the class was set and nothing showed — a refusal a user could not see. */
 .axdb-drag-chip.axdb-out { opacity: .35; filter: grayscale(.7) drop-shadow(0 8px 14px rgba(16, 24, 40, .2)); }
+/* A tab dragged off its strip: VS Code carries the TAB, not the editor, so
+   what follows the pointer is a chip wearing the tab's own label. */
+.axdb-tab-chip {
+  padding: 5px 12px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 12px/1.4 var(--axdb-font, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+  color: var(--axdb-tabs-on-fg, #1f2430);
+  background: var(--axdb-tabs-on-bg, #fff);
+  border-radius: var(--axdb-rs-radius, 3px);
+  box-shadow: 0 0 0 1px rgba(31, 36, 48, .12);
+}
+@media (prefers-color-scheme: dark) {
+  .axdb-tab-chip {
+    color: var(--axdb-tabs-on-fg, #eceef4);
+    background: var(--axdb-tabs-on-bg, #1a1d25);
+    box-shadow: 0 0 0 1px rgba(236, 238, 244, .16);
+  }
+}
 
 /* ===========================================================================
    BUILT-IN WIDGET CARDS — what widgets.ts paints when a page writes no
