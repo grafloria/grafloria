@@ -2216,10 +2216,13 @@ export function bindDashboardGrid(
     // commit and for Escape.
     // NESTED ESCALATION — a section is a board one level down, and a pull
     // inside it can need rows the section does not hold. Two shapes:
-    //  · a tile spanning the section's FULL HEIGHT (every tile of a one-row
-    //    KPI strip): the section gains a row and every full-height tile grows
-    //    with it — a row of tiles pulled taller stays a row (s21) — and gives
-    //    it back when pulled up, never below the design;
+    //  · a tile spanning the section's FULL HEIGHT (any tile of a one-row KPI
+    //    strip): the section gains a row and THE DRAGGED TILE takes it; its
+    //    siblings keep their own cells, and the row goes back when the tile is
+    //    pulled up again, never below the design. (Until 0.4.26 every
+    //    full-height tile grew together — "a row stays a row" — but that
+    //    resized the widget NEXT to the one under the pointer, which is not
+    //    what a grid resize means.)
     //  · a PARTIAL tile (a one-row control in a 14-row panel): it pushes what
     //    is below it; a row the pushed layout needs and the section does not
     //    hold is asked of the board, one per pointer step, and rows the
