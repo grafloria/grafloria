@@ -203,6 +203,19 @@ board('cap-squeeze', 'captioned sections NESTED on a fit board with squeeze — 
   { id: 'sq-side', title: 'Side', caption: { position: 'tab' }, span: 5, rows: 6, x: 7, y: 0, columns: 5, widgets: [
     { id: 'sqs1', kind: 'kpi', span: 5, rows: 6, x: 0, y: 0, data: { label: 'S', value: '3' } } ] },
 ] }, { height: 260 });
+board('tabs', "layout: 'tabs' · three pages, one visible · the middle page is a SPLIT", { sizing: 'grow', rowHeight: 60, onTabChange: (c, p, v) => { (window.__labTabs ||= []).push(`${v}:${c}:${p}`); }, widgets: [
+  { id: 't-left', kind: 'line', span: 6, rows: 4, x: 0, y: 0, title: 'Left', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+  { id: 'panel', title: 'Side panel', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', active: 'pg-a', widgets: [
+    { id: 'pg-a', title: 'Filters', columns: 6, widgets: [
+      { id: 'pa1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } },
+      { id: 'pa2', kind: 'kpi', span: 6, rows: 2, x: 0, y: 2, data: { label: 'Period', value: 'Q3' } } ] },
+    { id: 'pg-b', title: 'Alerts', columns: 6, layout: 'split', widgets: [
+      { id: 'pb1', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0, data: { label: 'Open', value: '3' } },
+      { id: 'pb2', kind: 'kpi', span: 3, rows: 4, x: 3, y: 0, data: { label: 'Closed', value: '9' } } ] },
+    { id: 'pg-c', title: 'Notes', columns: 6, widgets: [
+      { id: 'pc1', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } } ] },
+  ] },
+] }, { height: 340 });
 board('cap-split', 'captioned sections on a SPLIT board · no chrome to paint them, so no reserve', { layout: 'split', sizing: 'grow', rowHeight: 50, widgets: [
   { id: 'sp-a', title: 'Captioned A', caption: { subtitle: 'sub' }, span: 6, rows: 4, x: 0, y: 0, columns: 6, widgets: [
     { id: 'spa1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'A', value: '1' } },

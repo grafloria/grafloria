@@ -704,6 +704,8 @@ export type {
   DashboardWidgetSpec,
   SectionCaption,
   SectionCaptionOptions,
+  TabsOptions,
+  TabPage,
   SectionCaptionAction,
   SectionCaptionFont,
   WidgetHandle,

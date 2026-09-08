@@ -389,6 +389,16 @@ render(SPEC2, host);</pre>
       nesting from live membership — a dragged-in tile lands under its new
       parent in the snapshot, and the snapshot rebuilds through
       <code>dashboard()</code> unchanged. Nesting is exercised to two levels.</p>
+      <p><b>Tab containers</b> (element 0.4.27). Give a container <code>layout: 'tabs'</code> and every child
+      carrying <code>widgets</code> becomes a PAGE: one is visible at a time, and a strip of tabs across the
+      container's top switches between them — DevExpress ships this as its Tab Container, and VS Code's editor
+      area is a split of them. <code>active</code> names the page showing and is written by <code>toJSON()</code>,
+      so a saved board reopens where it was left; <code>tabs</code> styles the strip (<code>align</code>,
+      <code>stretch</code>, <code>height</code>, <code>className</code>). A page is an ordinary container, so it
+      can be a grid or a split, and it keeps its layout while parked. Switching is a click, the arrow keys once a
+      tab has focus, or <code>handle.activateTab(containerId, pageId)</code>; <code>onTabChange</code> reports it.
+      The strip is a <code>role="tablist"</code> and takes ONE tab stop, so a board still has exactly one.
+      Dragging one panel onto another to combine them into tabs is the next round.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

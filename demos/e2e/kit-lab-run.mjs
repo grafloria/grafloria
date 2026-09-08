@@ -1068,6 +1068,52 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   verdict(foreign.length === 0, `${boards.length} captioned boards swept · offences: ${foreign.length ? foreign.join(' | ') : 'none'} (own-child overlays, allowed: ${bad.length - foreign.length})`);
 }
 {
+  begin('L57-a-tab-container-shows-one-page-at-a-time');
+  await scrollTo('tabs');
+  const onCanvas = () => page.evaluate(() => ['pa1', 'pa2', 'pb1', 'pb2', 'pc1'].filter((id) => { const h = document.querySelector(`#cv-tabs .grafloria-node-host[data-node-id="${id}"]`); return h && h.getBoundingClientRect().x > -5000; }));
+  const stripState = () => page.evaluate(() => {
+    const s = document.querySelector('#cv-tabs .axdb-tabs');
+    const r = s?.getBoundingClientRect();
+    const slab = window.__lab.tabs.api.getModel().getGroup('panel');
+    const firstKid = ['pa1', 'pb1', 'pc1'].map((id) => document.querySelector(`#cv-tabs .grafloria-node-host[data-node-id="${id}"]`)).find((h) => h && h.getBoundingClientRect().x > -5000);
+    return {
+      tabs: [...(s?.querySelectorAll('.axdb-tab') ?? [])].map((t) => `${t.textContent}${t.getAttribute('aria-selected') === 'true' ? '*' : ''}`),
+      role: s?.getAttribute('role'),
+      strip: r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } : null,
+      slab: { x: Math.round(slab.position.x), y: Math.round(slab.position.y), w: Math.round(slab.size.width) },
+      pageTop: firstKid ? Math.round(firstKid.getBoundingClientRect().top) : null,
+      active: window.__lab.tabs.handle.getActiveTab('panel'),
+    };
+  });
+  await page.evaluate(() => { window.__labTabs = []; });
+  const s0 = await stripState(); const v0 = await onCanvas();
+  await shot('tabs', 'page-one');
+  // a real click on the second tab
+  await page.click('#cv-tabs .axdb-tab[data-tab-id="pg-b"]'); await page.waitForTimeout(400);
+  const s1 = await stripState(); const v1 = await onCanvas();
+  const divs = await page.evaluate(() => document.querySelectorAll('#cv-tabs .axdb-div').length);
+  await shot('tabs', 'page-two-is-a-split');
+  // the keyboard walks the strip
+  await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tab[aria-selected="true"]').focus());
+  await page.keyboard.press('ArrowRight'); await page.waitForTimeout(350);
+  const s2 = await stripState(); const v2 = await onCanvas();
+  await shot('tabs', 'page-three-by-keyboard');
+  // back to the first page: its two widgets return exactly as they were
+  await page.click('#cv-tabs .axdb-tab[data-tab-id="pg-a"]'); await page.waitForTimeout(400);
+  const s3 = await stripState(); const v3 = await onCanvas();
+  const events = await page.evaluate(() => window.__labTabs.slice());
+  const sane = await sanity('tabs');
+  verdict(s0.role === 'tablist' && s0.tabs.join() === 'Filters*,Alerts,Notes' && v0.join() === 'pa1,pa2'
+    && s1.tabs.join() === 'Filters,Alerts*,Notes' && v1.join() === 'pb1,pb2' && divs > 0
+    && s2.tabs.join() === 'Filters,Alerts,Notes*' && v2.join() === 'pc1'
+    && s3.active === 'pg-a' && v3.join() === 'pa1,pa2'
+    // the strip spans the container and the page starts below it (the slab's x
+    // is WORLD space, the strip's is client — compare the width, not the x)
+    && s0.strip && s0.strip.w === s0.slab.w && s0.pageTop >= s0.strip.y + s0.strip.h - 0.5
+    && events.join() === 'main:panel:pg-b,main:panel:pg-c,main:panel:pg-a' && sane.overlaps === 0 && sane.overflow === 0,
+    `boot ${s0.tabs} showing ${v0} · click Alerts → ${s1.tabs} showing ${v1} (a split page: ${divs} dividers) · ArrowRight → ${s2.tabs} showing ${v2} · back to Filters → showing ${v3} · strip ${JSON.stringify(s0.strip)} spans the slab (w${s0.slab.w}), page starts ${s0.pageTop} · onTabChange ${events} ${JSON.stringify(sane)}`);
+}
+{
   begin('L53-a-caption-reserves-only-where-something-paints-it');
   await scrollTo('cap-split');
   const r = await page.evaluate(() => {
