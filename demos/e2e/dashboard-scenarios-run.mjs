@@ -820,9 +820,14 @@ try {
     const ncA = await host(page, 'Strip B');
     await shot(page, 'committed');
     const st = await boardState(page);
-    // The WHOLE section grew: the dragged tile and its siblings are both taller.
-    const grewLive = trMid.h > tr0.h + 30 && ncMid.h > nc0.h + 30;
-    const grewCommitted = trA.h > tr0.h + 30 && ncA.h > nc0.h + 30;
+    // GRID SEMANTICS: the SECTION grows to hold the tile under the pointer,
+    // and that tile alone gains the row. Its sibling keeps its own cell — it
+    // is only as tall as one row of the (now taller) section, well short of
+    // the dragged tile. Until 0.4.26 every full-height tile grew together,
+    // so pulling one KPI silently resized its neighbour ("why are both
+    // widgets aligned when I adjust one of them?").
+    const grewLive = trMid.h > tr0.h + 30 && ncMid.h < trMid.h - 30;
+    const grewCommitted = trA.h > tr0.h + 30 && ncA.h < trA.h - 30;
     // …and ONE undo restores the section exactly.
     await clickUndo(page);
     const trU = await host(page, 'Strip A');
@@ -832,7 +837,7 @@ try {
     const undone = Math.abs(trU.h - tr0.h) < 6 && Math.abs(ncU.h - nc0.h) < 6 &&
                    Math.abs(lineU.y - line0.y) < 8;
     verdict(grewLive && grewCommitted && undone && st.overlaps === 0,
-      `section-grew-live=${grewLive} committed=${grewCommitted} one-undo-restores=${undone} overlaps=${st.overlaps} (a ${tr0.h}->${trA.h}, b ${nc0.h}->${ncA.h})`);
+      `dragged-tile-grew-alone live=${grewLive} committed=${grewCommitted} one-undo-restores=${undone} overlaps=${st.overlaps} (dragged ${tr0.h}->${trA.h}, sibling ${nc0.h}->${ncA.h})`);
     assertNoPageErrors(page);
   await page.close();
   }

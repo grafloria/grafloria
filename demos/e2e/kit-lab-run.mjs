@@ -663,7 +663,9 @@ for (const [board, pos, place] of [['grip-in-l', 'left', 'inside'], ['grip-in-c'
   begin('L29-full-height-tile-still-escalates-and-a-shrink-stops-at-the-design');
   await scrollTo('panel-grow');
   const c0 = await cells('panel-grow'); const f0 = await rect('panel-grow', 'sec-filter'); const ch0 = await rect('panel-grow', 'sec-chart');
-  // Status spans all 14 rows of Paid business: pulling it past the section grows the section (the strip model)
+  // Status spans all 14 rows of Paid business: pulling it past the section
+  // grows the SECTION and Status with it. Its sibling (the chart) keeps its
+  // own 14 rows — a grid resize changes what you grabbed, nothing else.
   const rs = await page.evaluate(() => document.querySelector('#cv-panel-grow .grafloria-node-host[data-node-id="sec-filter"] .axdb-rs').getBoundingClientRect().toJSON());
   await drag(rs.x + rs.width / 2, rs.y + rs.height / 2, rs.x + rs.width / 2, rs.y + rs.height / 2 + 120, { steps: 16, mid: async () => shot('panel-grow', 'full-height-pull-mid') });
   const c1 = await cells('panel-grow'); const f1 = await rect('panel-grow', 'sec-filter'); const ch1 = await rect('panel-grow', 'sec-chart');
@@ -674,8 +676,8 @@ for (const [board, pos, place] of [['grip-in-l', 'left', 'inside'], ['grip-in-c'
   const c2 = await cells('panel-grow');
   await shot('panel-grow', 'section-back');
   const s = await sanity('panel-grow');
-  verdict(c1['sec-paid'].h > c0['sec-paid'].h && f1.h > f0.h + 60 && ch1.h > ch0.h + 60 && c2['sec-paid'].h === 14 && s.overlaps === 0,
-    `paid rows ${c0['sec-paid'].h}→${c1['sec-paid'].h}→${c2['sec-paid'].h} · filter px ${Math.round(f0.h)}→${Math.round(f1.h)} chart px ${Math.round(ch0.h)}→${Math.round(ch1.h)} ${JSON.stringify(s)}`);
+  verdict(c1['sec-paid'].h > c0['sec-paid'].h && f1.h > f0.h + 60 && ch1.h < f1.h - 60 && c2['sec-paid'].h === 14 && s.overlaps === 0,
+    `paid rows ${c0['sec-paid'].h}→${c1['sec-paid'].h}→${c2['sec-paid'].h} · DRAGGED filter px ${Math.round(f0.h)}→${Math.round(f1.h)} · sibling chart px ${Math.round(ch0.h)}→${Math.round(ch1.h)} (kept its cell) ${JSON.stringify(s)}`);
 }
 
 {
@@ -699,21 +701,25 @@ for (const [board, pos, place] of [['grip-in-l', 'left', 'inside'], ['grip-in-c'
     `product rows ${c0.product}→${c1.product}→${c2.product} · date y ${c0.date}→${c1.date}→${c2.date} · amount y ${c0.amount}→${c1.amount}→${c2.amount} (end ${c1.amountEnd}) · slab ${c0.slab}→${c1.slab}→${c2.slab} · amount px ${Math.round(a0.h)}→${Math.round(a1.h)} product px ${Math.round(p0.h)}→${Math.round(p1.h)} ${JSON.stringify(s)}`);
 }
 {
-  begin('L31-kpi-strip-grows-as-a-row-and-comes-back');
+  begin('L31-one-kpi-of-a-strip-grows-alone-and-comes-back');
   await scrollTo('strip');
   const cellsOf = () => page.evaluate(() => { const H = window.__lab.strip.handle; const b = H.binderOf('kpis'); return { slab: H.widget('kpis').cell.h, kpis: ['s-rev', 's-cust', 's-win', 's-nps'].map((id) => b.cellOf(id).h), trendY: H.widget('s-trend').cell.y }; });
   const c0 = await cellsOf(); const k0 = await rect('strip', 's-cust');
   const rs = await page.evaluate(() => document.querySelector('#cv-strip .grafloria-node-host[data-node-id="s-rev"] .axdb-rs').getBoundingClientRect().toJSON());
   await drag(rs.x + rs.width / 2, rs.y + rs.height / 2, rs.x + rs.width / 2, rs.y + rs.height / 2 + 75, { steps: 16, mid: async () => shot('strip', 'pull-mid') });
   const c1 = await cellsOf(); const k1 = await rect('strip', 's-cust');
-  await shot('strip', 'row-grew-together');
+  await shot('strip', 'one-kpi-grew');
   const rs2 = await page.evaluate(() => document.querySelector('#cv-strip .grafloria-node-host[data-node-id="s-rev"] .axdb-rs').getBoundingClientRect().toJSON());
   await drag(rs2.x + rs2.width / 2, rs2.y + rs2.height / 2, rs2.x + rs2.width / 2, rs2.y + rs2.height / 2 - 90, { steps: 16 });
   const c2 = await cellsOf();
   await shot('strip', 'row-back');
   const s = await sanity('strip');
-  verdict(c0.slab === 1 && c1.slab === 2 && c1.kpis.every((h) => h === 2) && c1.trendY === c0.trendY + 1 && k1.h > k0.h + 40 && c2.slab === 1 && c2.kpis.every((h) => h === 1) && c2.trendY === c0.trendY && s.overlaps === 0,
-    `slab ${c0.slab}→${c1.slab}→${c2.slab} · kpi rows ${c1.kpis}→${c2.kpis} · trend y ${c0.trendY}→${c1.trendY}→${c2.trendY} · sibling px ${Math.round(k0.h)}→${Math.round(k1.h)} ${JSON.stringify(s)}`);
+  // The dragged KPI (s-rev) gains the row; its three siblings keep theirs,
+  // and the section grows to hold it — the widget you grabbed is the only
+  // one that changes cells.
+  verdict(c0.slab === 1 && c1.slab === 2 && c1.kpis[0] === 2 && c1.kpis.slice(1).every((h) => h === 1)
+    && c1.trendY === c0.trendY + 1 && c2.slab === 1 && c2.kpis.every((h) => h === 1) && c2.trendY === c0.trendY && s.overlaps === 0,
+    `slab ${c0.slab}→${c1.slab}→${c2.slab} · kpi rows ${c1.kpis}→${c2.kpis} (only the dragged one grew) · trend y ${c0.trendY}→${c1.trendY}→${c2.trendY} · sibling px ${Math.round(k0.h)}→${Math.round(k1.h)} ${JSON.stringify(s)}`);
 }
 
 {
@@ -1080,30 +1086,35 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `a split board paints no section chrome, so its captioned sections reserve nothing: ${r.map((x) => `${x.id} band=${x.band} gap=${x.gap}px`).join(' · ')} ${JSON.stringify(sane)}`);
 }
 {
-  begin('L56-a-strip-grows-as-ONE-at-every-pull-distance');
+  begin('L56-a-grid-resize-changes-only-the-tile-under-the-pointer');
   await scrollTo('strip');
   const ids = ['s-rev', 's-cust', 's-win', 's-nps'];
   const rowsOf = () => page.evaluate((ids) => { const b = window.__lab['strip'].handle.binderOf('kpis'); return ids.map((id) => b.cellOf(id).h); }, ids);
   const pxOf = () => page.evaluate((ids) => ids.map((id) => Math.round(document.querySelector(`#cv-strip .grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect().height)), ids);
   const bad = [];
-  // The defect this guards was DISTANCE-DEPENDENT: pulling one tile of a strip
-  // by 60-80 px grew its NEIGHBOURS a row and left the dragged tile behind
-  // (reported from the fluid demo: "I increase Churn and Orders grows
-  // instead"). One distance would have missed it, so sweep several.
+  // TWO defects live here, and BOTH were distance-dependent — one pull length
+  // would have missed either, so sweep several. (1) Pulling one tile by
+  // 60-80 px used to grow its NEIGHBOURS a row and leave the dragged tile
+  // behind. (2) Every full-height tile then grew together, so a grid resize
+  // silently resized the widget next to the one you grabbed.
+  const dragged = 1; // s-cust
   for (const dy of [40, 60, 70, 80, 90, 130]) {
     const before = await rowsOf();
     await pullBottom('strip', 's-cust', dy, { steps: 12 });
     const after = await rowsOf();
-    const px = await pxOf();
-    const even = after.every((r) => r === after[0]) && px.every((p) => Math.abs(p - px[0]) <= 1);
-    if (!even) bad.push(`+${dy}: rows ${before} -> ${after} px ${px}`);
-    if (dy === 70) await shot('strip', 'strip-pulled-70');
+    const others = after.filter((_, i) => i !== dragged);
+    const grew = after[dragged] > before[dragged];
+    const othersHeld = others.every((r, i) => r === before.filter((_, j) => j !== dragged)[i]);
+    // Below the half-row threshold nothing moves; above it, ONLY the dragged tile does.
+    const ok = othersHeld && (dy >= 60 ? grew : true); // the half-row threshold depends on the row height
+    if (!ok) bad.push(`+${dy}: rows ${before} -> ${after}`);
+    if (dy === 70) await shot('strip', 'only-the-dragged-tile-grew');
     await undoAll('strip', 3);
     await page.waitForTimeout(150);
   }
   const sane = await sanity('strip');
   verdict(bad.length === 0 && sane.overlaps === 0,
-    `six pull distances on a 4-tile strip · every tile keeps the same rows and height: ${bad.length ? 'DIVERGED — ' + bad.join(' | ') : 'all even'} ${JSON.stringify(sane)}`);
+    `six pull distances on a 4-tile strip · only the tile under the pointer changes rows: ${bad.length ? 'WRONG — ' + bad.join(' | ') : 'every distance correct'} ${JSON.stringify(sane)}`);
 }
 {
   begin('L55-a-widget-still-drags-INTO-a-captioned-section-and-lands-under-the-band');

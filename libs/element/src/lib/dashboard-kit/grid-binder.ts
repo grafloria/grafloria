@@ -2287,21 +2287,24 @@ export function bindDashboardGrid(
         const effWant = fullHeight ? stripRows : wantRows;
         const wantsMore = effWant > pulled.h;
         const wantsLess = effWant < pulled.h;
-        const fullOnes = engine.getItems().filter((i) => i.y === 0 && i.h >= inner).map((i) => i.id);
-        const resizeAll = (ids: string[], rowsTo: number): void => {
-          for (const id of ids) {
-            const it = engine.getItem(id);
-            if (it) engine.resizeCheck(id, it.w, rowsTo);
-          }
-        };
         let touched = false;
         if (wantsMore) {
-          if (fullHeight) {
+          if (fullHeight && !E.s) {
+            // A tile that already starts at row 0 has nothing above it, so a
+            // TOP-edge pull has nowhere to go: refuse it rather than growing
+            // the tile downwards, away from the edge under the pointer. Same
+            // rule the partial path follows (0.4.20).
+          } else if (fullHeight) {
             const res = parent.resizeMemberBy(group.id, +1);
             if (res.changed) {
               record(res, +1);
               setInnerRows(inner + 1);
-              resizeAll(fullOnes, inner + 1);
+              // ONLY THE TILE UNDER THE POINTER CHANGES. The section grows to
+              // hold it and its siblings keep their own cells — a grid resize
+              // adjusts what you grabbed, nothing else. (This board used to
+              // grow EVERY full-height tile together, so pulling one KPI of a
+              // strip silently resized its neighbour too.)
+              engine.resizeCheck(g.id, pulled.w, pulled.h + 1);
               touched = true;
             }
           } else if (!E.s) {
@@ -2321,13 +2324,20 @@ export function bindDashboardGrid(
         } else if (wantsLess) {
           if (fullHeight) {
             if (slabRows > designRows && inner > 1) {
-              resizeAll(fullOnes, inner - 1);
-              const res = parent.resizeMemberBy(group.id, -1);
-              if (res.changed) {
+              // Shrink the dragged tile, then hand back only the rows the
+              // section no longer needs — a sibling still using them keeps
+              // them (the extent floor below).
+              engine.resizeCheck(g.id, pulled.w, Math.max(1, effWant));
+              const floor = Math.max(designRows, extentOf(engine.getItems()));
+              let slab = slabRows;
+              let bound = inner;
+              while (slab > floor) {
+                const res = parent.resizeMemberBy(group.id, -1);
+                if (!res.changed) break;
                 record(res, -1);
-                setInnerRows(inner - 1);
-              } else {
-                resizeAll(fullOnes, inner);
+                slab -= 1;
+                bound -= 1;
+                setInnerRows(bound);
               }
               touched = true;
             }
