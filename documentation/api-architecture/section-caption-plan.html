@@ -59,14 +59,32 @@
   <h2>The option</h2>
 <pre><code>// DashboardWidgetSpec — containers only
 caption?: false | true | string | {
-  text?: string;                       // default: the container's title
-  position?: 'inside' | 'tab';         // default 'inside'
-  align?: 'start' | 'center' | 'end';  // default 'start' (mirrored on RTL)
-  height?: number;                     // px, 'inside' only — default 28
+  text?: string;                          // default: the container's title
+  subtitle?: string;                      // muted second line (band grows to 44 px) or suffix
+  description?: string;                   // an ⓘ at the end; tooltip + accessible description
+  icon?: string;                          // a glyph before the text (emoji or data: URI); anything richer → renderCaption
+  position?: 'inside' | 'tab';            // default 'inside'
+  align?: 'start' | 'center' | 'end';     // horizontal — default 'start' (mirrored on RTL)
+  valign?: 'top' | 'center' | 'bottom';   // vertical, within the band — default 'center'
+  height?: number;                        // px, 'inside' only — default 28 (44 with a subtitle)
+  font?: { size?: number; weight?: number | string; family?: string; color?: string; transform?: 'none' | 'uppercase' };
+                                          // typography of the text; the subtitle follows at 0.85× and muted
+  padding?: number | [number, number];    // inside the band: px, or [vertical, horizontal] — default [0, 10]
+  margin?: number | [number, number];     // between the band and the section's content / frame — default [0, 0]
+  background?: string;                    // band fill; border?: string (its bottom rule) — default from the theme
+  show?: 'always' | 'design' | 'hover';   // default 'always'; 'design' hides it under static; 'hover' shows it on pointer-over
+  actions?: Array&lt;{ id: string; label: string; icon?: string; title?: string; disabled?: boolean }&gt;;
+                                          // painted at the end of the band, in order; a press fires onCaptionAction and never selects or drags
+  passThrough?: string;                   // presses inside these descendants are content, not the band's
+                                          // default 'button, a, input, select, textarea, [data-axdb-pass]'
+  className?: string;                     // your class on the band, for per-section theming
+  collapsible?: boolean;                  // LATER: a chevron; collapsed sections fold to the band
+  collapsed?: boolean;                    // LATER: persisted state
 };
 
-// dashboard() — the escape hatch, as renderWidget is for cards
-renderCaption?: (widget: DashboardWidgetSpec, host: HTMLElement) => void;
+// dashboard() — the escape hatches, as renderWidget is for cards
+renderCaption?: (widget: DashboardWidgetSpec, host: HTMLElement) => void;   // paint the band yourself; the band keeps its press semantics
+onCaptionAction?: (sectionId: string, actionId: string, viewId: string) => void;
 
 // DashboardHandle
 setCaption(id: string, caption: CaptionOption): void;   // live, undoable
@@ -80,8 +98,39 @@ getCaption(id: string): CaptionOption;</code></pre>
     <tr><td><code>{ position: 'inside' }</code></td><td>the bar</td><td><code>height</code> px reserved; the inner grid starts below it</td><td>Rows of the inner grid are laid out in the remaining height; escalation and resize floors include the band.</td></tr>
     <tr><td><code>{ position: 'tab' }</code></td><td>a small label riding the frame's top edge</td><td>none reserved</td><td>Never taller than the gap less one pixel, clamped like the outside grip tab, so it never sits on the tile above. For dense boards.</td></tr>
     <tr><td><code>{ align }</code></td><td>label at start, center or end of the band</td><td>—</td><td>Mirrored under <code>rtl</code>, exactly as the grip's <code>position</code> is.</td></tr>
-    <tr><td><code>renderCaption</code></td><td>your content in the band's host</td><td>the same reserved band</td><td>Badges, a menu button, a collapse chevron — yours; the band keeps its press semantics.</td></tr>
+    <tr><td><code>valign</code></td><td>the text sits at the top, middle or bottom of the band</td><td>—</td><td>Matters once the band is taller than the text: a 44 px band with one line, or a custom height.</td></tr>
+    <tr><td><code>font</code>, <code>padding</code>, <code>margin</code>, <code>background</code>, <code>border</code></td><td>the band's own typography and box</td><td><code>margin</code> adds to the reserved rows; <code>padding</code> stays inside the band</td><td>Every value is written to a <code>--axdb-caption-*</code> variable on the band, so they persist in <code>toJSON</code>, change live through <code>setCaption</code>, and a theme can still override them by class. The kit clamps <code>font.size</code> so the text never exceeds the band.</td></tr>
+    <tr><td><code>subtitle</code>, <code>description</code>, <code>icon</code></td><td>a muted second line; an ⓘ with a tooltip; a glyph before the text</td><td>44 px with a subtitle</td><td>The three things every dashboard product puts next to a title. The description is also the band's accessible description.</td></tr>
+    <tr><td><code>show</code></td><td>always, in design mode only, or on hover</td><td>reserved only while shown ('design': not under <code>static</code>)</td><td>Power BI shows visual headers on hover; DevExpress and Grafana always. A viewer that wants clean panels sets <code>'design'</code>.</td></tr>
+    <tr><td><code>actions</code></td><td>small buttons at the end of the band</td><td>—</td><td>Maximize, menu, refresh, remove, export — the app decides what they do through <code>onCaptionAction</code>; the kit lays them out, keeps them off the drag and select paths, and mirrors them on RTL.</td></tr>
+    <tr><td><code>passThrough</code></td><td>—</td><td>—</td><td>Presses on interactive descendants of the band (your button in <code>renderCaption</code>) reach the content and never select or resize. The same rule the caption drag handle uses for widgets.</td></tr>
+    <tr><td><code>className</code></td><td>—</td><td>—</td><td>Per-section theming without fighting the kit's selectors (a coloured band per group, as DevExpress allows).</td></tr>
+    <tr><td><code>renderCaption</code></td><td>your content in the band's host</td><td>the same reserved band</td><td>Anything the options above do not cover; the band keeps its press semantics and <code>passThrough</code>.</td></tr>
+    <tr><td><code>collapsible</code>, <code>collapsed</code> <span class="tt">(later)</span></td><td>a chevron; a folded section is its band</td><td>the slab shrinks to the band's rows and the board re-packs</td><td>Grafana rows. Persisted; undoable. A separate round because it touches the pack engine.</td></tr>
   </table></div>
+
+  <h2>What others put in a header, and what the first draft missed</h2>
+  <p>The first draft had text, position, alignment and height. That is a label, not a header. This is what the products a designer compares us with put there, and where each lands in the plan.</p>
+  <div class="wrap"><table>
+    <tr><th>element</th><th>DevExpress</th><th>Grafana</th><th>Power BI</th><th>Superset / Metabase</th><th>this plan</th></tr>
+    <tr><td>title</td><td>caption, show/hide</td><td>title</td><td>title + subtitle + divider</td><td>title</td><td><code>text</code>, <code>show</code>, <code>subtitle</code></td></tr>
+    <tr><td>description</td><td>—</td><td>ⓘ tooltip</td><td>tooltip</td><td>ⓘ tooltip</td><td><code>description</code></td></tr>
+    <tr><td>icon</td><td>—</td><td>—</td><td>—</td><td>—</td><td><code>icon</code>, or <code>renderCaption</code></td></tr>
+    <tr><td>actions</td><td>maximize, export, clear filter, drill up</td><td>⋮ menu: view, edit, share, inspect, remove</td><td>hover toolbar: focus mode, filters, drill</td><td>⋮ menu, download, fullscreen</td><td><code>actions</code> + <code>onCaptionAction</code>; the app names them</td></tr>
+    <tr><td>status</td><td>filter indicators</td><td>error / warning / streaming dot</td><td>filters-applied icon</td><td>—</td><td>your badge through <code>renderCaption</code>; a first-class <code>status</code> can follow</td></tr>
+    <tr><td>visibility</td><td>always</td><td>always (transparent option)</td><td>on hover</td><td>always</td><td><code>show: 'always' | 'design' | 'hover'</code></td></tr>
+    <tr><td>collapse</td><td>—</td><td>rows collapse to their title</td><td>—</td><td>—</td><td><code>collapsible</code>, later</td></tr>
+    <tr><td>drag handle</td><td>caption drags the item</td><td>header drags the panel</td><td>header drags</td><td>header drags</td><td>press selects now; drag-to-move a section is the next round (sections are locked slabs)</td></tr>
+    <tr><td>drop target</td><td>—</td><td>drop onto a row</td><td>—</td><td>—</td><td>later: dropping a widget onto the band adopts it into the section</td></tr>
+    <tr><td>interactive content</td><td>buttons in the caption</td><td>links, menu</td><td>toolbar</td><td>menu</td><td><code>passThrough</code>: presses on buttons and links never select or drag</td></tr>
+    <tr><td>long titles</td><td>ellipsis</td><td>ellipsis + tooltip</td><td>wrap</td><td>ellipsis</td><td>ellipsis with the full text in <code>title</code>; a subtitle gets its own line</td></tr>
+    <tr><td>alignment</td><td>caption alignment left/center/right</td><td>title alignment</td><td>title alignment + vertical alignment</td><td>—</td><td><code>align</code> × <code>valign</code></td></tr>
+    <tr><td>typography &amp; box</td><td>font, size, colour, padding</td><td>theme only</td><td>font family, size, colour, background, padding</td><td>theme only</td><td><code>font</code>, <code>padding</code>, <code>margin</code>, <code>background</code>, <code>border</code></td></tr>
+    <tr><td>per-group colour</td><td>group background</td><td>transparent toggle</td><td>—</td><td>—</td><td><code>className</code> + <code>--axdb-caption-*</code></td></tr>
+    <tr><td>squeeze</td><td>—</td><td>—</td><td>—</td><td>—</td><td>fixed pixels, never squeezed; under 90 px of section the band steps down like widget headers do (container-query tiers)</td></tr>
+    <tr><td>a11y</td><td>—</td><td>panel is a region named by its title</td><td>—</td><td>—</td><td>the band names the group (<code>aria-labelledby</code>), the description describes it, the band is the section's tab stop</td></tr>
+  </table></div>
+  <p class="note" style="margin-top:14px">Two things deliberately stay out of the kit: what an action <i>does</i> (maximize, export, filters are the app's), and chart-level status. The kit paints the header, reserves its space, routes presses and keeps the theme consistent between widget headers and section headers — that is the boundary it already draws for cards.</p>
 
   <h2>How it looks</h2>
   <div class="grid2">
@@ -152,7 +201,7 @@ getCaption(id: string): CaptionOption;</code></pre>
         <rect x="276" y="50" width="224" height="118" rx="3" fill="var(--paper)" stroke="var(--line)"/><text x="286" y="70" class="t" fill="var(--muted)">CHILDREN</text>
         <text x="282" y="186" class="dim" fill="var(--muted)">static: painted, no ring, no handle, presses reach content</text>
       </svg>
-      <figcaption><b>C · <code>renderCaption</code> and static.</b> Left: the app paints a badge and a menu into the band; the band still selects the section on press. Right: under <code>static</code> the caption is painted and inert, like a widget header.</figcaption>
+      <figcaption><b>C · <code>actions</code>, badges and static.</b> Left: a badge from <code>renderCaption</code> and a ⋯ action from <code>actions</code>; presses on them fire <code>onCaptionAction</code> and never select or resize. Right: under <code>static</code> the caption is painted and inert, like a widget header; with <code>show: 'design'</code> it is not painted at all.</figcaption>
     </figure>
     <figure>
       <svg viewBox="0 0 520 190" role="img" aria-label="Alignment and RTL">
@@ -178,6 +227,9 @@ getCaption(id: string): CaptionOption;</code></pre>
     <tr><td>split section</td><td>the band is painted the same way; the panes cover the remaining pane</td></tr>
     <tr><td>static</td><td>painted, no ring, no handle, presses pass to content</td></tr>
     <tr><td>keyboard</td><td>the band is the section's tab stop; Enter selects; arrows stay with the widgets (unchanged)</td></tr>
+    <tr><td>press on an action or a pass-through element</td><td>reaches the content; no selection, no drag, no resize; <code>onCaptionAction</code> for actions</td></tr>
+    <tr><td><code>show: 'hover'</code></td><td>the band fades in on pointer-over of the section and on keyboard focus; its space is reserved only while shown (the inner grid re-lays out, glide-animated)</td></tr>
+    <tr><td>long text</td><td>ellipsis, full text in the tooltip; a subtitle keeps its own line</td></tr>
     <tr><td>hover</td><td>the band shows a pointer cursor; the frame edges keep the resize cursors</td></tr>
     <tr><td>persistence</td><td><code>toJSON()</code> writes <code>caption</code> as given; <code>fromDocument()</code> paints it back; <code>setCaption</code> is one undoable step</td></tr>
     <tr><td>a11y</td><td>the band carries the group's accessible name; a section with <code>caption: false</code> keeps its name on the group as today</td></tr>
@@ -188,7 +240,10 @@ getCaption(id: string): CaptionOption;</code></pre>
     <dt>.axdb-slab-h</dt><dd>the band; <code>.axdb-slab-h--tab</code> for the tab variant; <code>.axdb-slab-h--start|center|end</code></dd>
     <dt>--axdb-caption-bg</dt><dd>band background (default: the widget header's soft fill)</dd>
     <dt>--axdb-caption-fg</dt><dd>band text (default <code>--axdb-ink</code>)</dd>
+    <dt>--axdb-caption-font-size / -weight / -family / -transform / -pad / -margin</dt><dd>written by the <code>font</code>, <code>padding</code> and <code>margin</code> options on the band; a theme sets the defaults on the container</dd>
     <dt>--axdb-caption-h</dt><dd>band height, mirrors the <code>height</code> option so CSS and layout agree</dd>
+    <dt>.axdb-slab-h-actions / .axdb-slab-h-action</dt><dd>the action row and each button; <code>[data-action="id"]</code> for per-action styling</dd>
+    <dt>.axdb-slab-h-sub / .axdb-slab-h-info</dt><dd>the subtitle line and the ⓘ</dd>
     <dt>--axdb-accent / --axdb-accent-ring</dt><dd>the selected band's ring and tab border, as everywhere else</dd>
   </dl>
 
@@ -207,7 +262,10 @@ getCaption(id: string): CaptionOption;</code></pre>
     <p style="margin:0 0 8px"><b>1.</b> Default position when <code>caption: true</code>: <b>inside</b> (DevExpress-like bar, my recommendation) or <b>tab</b> (Quantia's current look)?</p>
     <p style="margin:0 0 8px"><b>2.</b> Default band height: <b>28 px</b>, the widget header's height, so a section header and a widget header line up?</p>
     <p style="margin:0 0 8px"><b>3.</b> Dragging a section by its caption to move it: <b>not in this round</b> (sections stay locked slabs), or include it now?</p>
-    <p style="margin:0"><b>4.</b> A collapse chevron (fold a section to its band): <b>later</b>, or now?</p>
+    <p style="margin:0 0 8px"><b>4.</b> A collapse chevron (fold a section to its band): <b>later</b>, or now?</p>
+    <p style="margin:0 0 8px"><b>5a.</b> Typography and box (<code>font</code>, <code>padding</code>, <code>margin</code>, <code>background</code>, <code>border</code>, <code>valign</code>): as <b>options that persist</b> (my recommendation, since a designer sets them per section and saves the board) rather than CSS-only theming?</p>
+    <p style="margin:0 0 8px"><b>5.</b> First round includes <code>subtitle</code>, <code>description</code>, <code>icon</code>, <code>show</code>, <code>actions</code> + <code>onCaptionAction</code>, <code>passThrough</code>, <code>className</code>: <b>all of them</b> (my recommendation — each is a few lines on top of the band), or only text and position?</p>
+    <p style="margin:0"><b>6.</b> The same caption band for custom-rendered <b>widgets</b> (Quantia paints its own <code>.wg-hd</code> today): one header system for cards and sections, with the grip and the actions in the same place — <b>a following round</b>, or fold it in now?</p>
   </div>
   <p class="note" style="margin-top:18px">Nothing in this plan changes a board that does not set <code>caption</code>. Every existing section stays a bare slab.</p>
 </main>
