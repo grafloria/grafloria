@@ -194239,6 +194239,27 @@ var CSS4 = `
    (the same signal a tile ghost gives outside the board). Without this rule
    the class was set and nothing showed \u2014 a refusal a user could not see. */
 .axdb-drag-chip.axdb-out { opacity: .35; filter: grayscale(.7) drop-shadow(0 8px 14px rgba(16, 24, 40, .2)); }
+/* A tab dragged off its strip: VS Code carries the TAB, not the editor, so
+   what follows the pointer is a chip wearing the tab's own label. */
+.axdb-tab-chip {
+  padding: 5px 12px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 12px/1.4 var(--axdb-font, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+  color: var(--axdb-tabs-on-fg, #1f2430);
+  background: var(--axdb-tabs-on-bg, #fff);
+  border-radius: var(--axdb-rs-radius, 3px);
+  box-shadow: 0 0 0 1px rgba(31, 36, 48, .12);
+}
+@media (prefers-color-scheme: dark) {
+  .axdb-tab-chip {
+    color: var(--axdb-tabs-on-fg, #eceef4);
+    background: var(--axdb-tabs-on-bg, #1a1d25);
+    box-shadow: 0 0 0 1px rgba(236, 238, 244, .16);
+  }
+}
 
 /* ===========================================================================
    BUILT-IN WIDGET CARDS \u2014 what widgets.ts paints when a page writes no
@@ -195037,6 +195058,7 @@ function bindDashboardGrid(api, group, options = {}) {
   let writing = false;
   let placeholder = null;
   let adoptedGhostId = null;
+  let tearing = null;
   let glideTimer = null;
   let ghostTimer = null;
   const ownReserve = () => sectionCaptionReserve(diagram, group, isStatic);
@@ -195474,6 +195496,10 @@ function bindDashboardGrid(api, group, options = {}) {
     return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + boardVisualHeight();
   };
   const EDGE_GRACE = 60;
+  const worldInsideGroup = (g, x, y) => {
+    const s = sizeOf(g);
+    return x >= g.position.x && x <= g.position.x + s.width && y >= g.position.y && y <= g.position.y + s.height;
+  };
   const worldInsideBoardGrace = (x, y) => {
     if (worldInsideBoardExtended(x, y)) return true;
     const f = frame();
@@ -196124,6 +196150,14 @@ function bindDashboardGrid(api, group, options = {}) {
       const geomBefore = g.startGeom.get(g.id);
       const crossing = [
         ...sourceDisplaced,
+        // …and the TARGET board's own displaced tiles. Dropping onto an
+        // occupied row pushes that row down, and the ghost draws the pushed
+        // layout — but these commands were computed and then dropped on the
+        // floor, so nothing persisted the push. The next rebuild read the
+        // pre-drop cells, found the arriving tile overlapping them, and pushed
+        // IT to the bottom instead: the drop landed a whole row away from the
+        // ghost that promised it ("it goes in as an extra row").
+        ...fin.commands,
         new RemoveFromGroupCommand(group.id, g.id),
         new AddToGroupCommand(targetGroupId, g.id),
         ...buildCommitCommands([
@@ -196206,12 +196240,29 @@ function bindDashboardGrid(api, group, options = {}) {
     return best;
   };
   const placeNear = (id, x, y, w) => {
-    if (engine.moveCheck(id, x, y, { gate: false }).changed) return true;
+    const at = (cx, cy) => {
+      const i = engine.getItem(id);
+      return !!i && i.x === cx && i.y === cy;
+    };
     const maxX = Math.max(0, columns - w);
-    for (let d = 1; d <= columns; d++) {
-      for (const cx of [x - d, x + d]) {
-        if (cx < 0 || cx > maxX) continue;
-        if (engine.moveCheck(id, cx, y, { gate: false }).changed) return true;
+    const scanRow = (cy) => {
+      if (at(x, cy)) return true;
+      if (engine.moveCheck(id, x, cy, { gate: false }).changed) return true;
+      for (let d = 1; d <= columns; d++) {
+        for (const cx of [x - d, x + d]) {
+          if (cx < 0 || cx > maxX) continue;
+          if (at(cx, cy)) return true;
+          if (engine.moveCheck(id, cx, cy, { gate: false }).changed) return true;
+        }
+      }
+      return false;
+    };
+    if (scanRow(y)) return true;
+    const reach = Math.max(1, rows()) + 2;
+    for (let d = 1; d <= reach; d++) {
+      for (const cy of [y - d, y + d]) {
+        if (cy < 0) continue;
+        if (scanRow(cy)) return true;
       }
     }
     return false;
@@ -196290,6 +196341,7 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const selfPeer = {
     group,
+    tearOutMember: (pageId, fromGroupId, label, ev) => beginTearOut(pageId, fromGroupId, label, ev),
     clearSelection: () => {
       if (selectedId === void 0) return;
       selectedId = void 0;
@@ -196636,6 +196688,99 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   api.container.addEventListener("focusin", onFocusIn);
   api.container.addEventListener("keydown", onKey);
+  const beginTearOut = (pageId, fromGroupId, label, ev) => {
+    if (disposed || gesture || slabGesture || isStatic || tearing) return false;
+    const pg = diagram.getGroup(pageId);
+    const from = diagram.getGroup(fromGroupId);
+    if (!pg || !from || !engine.getItem(fromGroupId)) return false;
+    const size = sizeOf(pg);
+    const frameBefore = frameOfGroup(pg);
+    const cellBefore = cellFromGridItem(pg.getMetadata?.("gridItem")) ?? {
+      x: 0,
+      y: 0,
+      w: 1,
+      h: 1
+    };
+    const toWorld = (cx, cy) => {
+      const rect = api.container.getBoundingClientRect();
+      return api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
+    };
+    const first = toWorld(ev.clientX, ev.clientY);
+    const leg = adopt({ id: pageId }, first, { width: size.width, height: size.height });
+    if (!leg) return false;
+    tearing = pageId;
+    const doc = api.container.ownerDocument ?? document;
+    const chip2 = doc.createElement("div");
+    chip2.className = "axdb-drag-chip axdb-tab-chip";
+    chip2.textContent = label;
+    doc.body.appendChild(chip2);
+    const moveChip = (cx, cy) => {
+      chip2.style.left = `${cx + 6}px`;
+      chip2.style.top = `${cy + 6}px`;
+    };
+    moveChip(ev.clientX, ev.clientY);
+    armGlide();
+    api.render();
+    let last = { x: ev.clientX, y: ev.clientY };
+    const detach = () => {
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onCancel, true);
+      window.removeEventListener("keydown", onKey2, true);
+    };
+    const onMove = (e) => {
+      if (disposed) return detach();
+      last = { x: e.clientX, y: e.clientY };
+      moveChip(e.clientX, e.clientY);
+      const world = toWorld(e.clientX, e.clientY);
+      const home = worldInsideGroup(from, world.x, world.y);
+      chip2.classList.toggle("axdb-out", home || !worldInsideBoardGrace(world.x, world.y));
+      if (!home) leg.move(world);
+      api.render();
+    };
+    const finish = (commit) => {
+      detach();
+      chip2.remove();
+      tearing = null;
+      if (disposed) return;
+      const world = toWorld(last.x, last.y);
+      const home = worldInsideGroup(from, world.x, world.y);
+      if (!commit || home || !worldInsideBoardGrace(world.x, world.y)) {
+        leg.abort();
+        disarmGlideSoon();
+        api.renderNow();
+        options.onGesture?.({ type: "cancel", kind: "move", nodeId: pageId, changed: false });
+        return;
+      }
+      const fin = leg.finalize();
+      if (!fin) {
+        disarmGlideSoon();
+        api.renderNow();
+        return;
+      }
+      const changed = execute("Move tab out", [
+        ...fin.commands,
+        new SetGroupCellCommand(pageId, cellBefore, fin.cell, frameBefore, fin.rect),
+        new RemoveFromGroupCommand(fromGroupId, pageId),
+        new AddToGroupCommand(group.id, pageId)
+      ]);
+      disarmGlideSoon();
+      enforceBoardHeight();
+      persistLayouts();
+      api.renderNow();
+      options.onGesture?.({ type: "commit", kind: "move", nodeId: pageId, changed });
+    };
+    const onUp = () => finish(true);
+    const onCancel = () => finish(false);
+    const onKey2 = (e) => {
+      if (e.key === "Escape") finish(false);
+    };
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onCancel, true);
+    window.addEventListener("keydown", onKey2, true);
+    return true;
+  };
   const beginPaletteDrag = (node, spec, event) => {
     if (disposed || gesture || isStatic) return;
     const chip2 = spec.chip ?? null;
@@ -196976,6 +197121,7 @@ function bindDashboardGrid(api, group, options = {}) {
       api.container.removeEventListener("keydown", onKey);
       hostObserver.disconnect();
       containerObserver?.disconnect();
+      tearing = null;
       for (const off of subs) off();
       for (const id of group.members ?? []) hostOf(id)?.querySelector(":scope > .axdb-rs")?.remove();
       placeholder?.remove();
@@ -198245,6 +198391,9 @@ function bindDashboardSplit(api, group, options = {}) {
     hasItem: (id) => (group.members ?? /* @__PURE__ */ new Set()).has(id),
     memberCell: (id) => handle.cellOf(id),
     resizeMemberBy: () => ({ changed: false }),
+    // A split board has no cells to drop a torn-out page into: it refuses,
+    // and the press stays a plain tab click.
+    tearOutMember: () => false,
     containsWorld: (x, y) => worldInsideBoard(x, y),
     containsWorldExtended: (x, y) => worldInsideBoard(x, y),
     frameArea: () => {
@@ -198556,6 +198705,7 @@ var defaultWidgetRenderer = (widget, host) => {
 
 // libs/element/src/lib/dashboard-kit/tabs.ts
 var TAB_STRIP_HEIGHT = 30;
+var TAB_DRAG_THRESHOLD = 4;
 function tabStripReserve(o, pageCount) {
   if (pageCount <= 0) return 0;
   return Math.max(18, o?.height ?? TAB_STRIP_HEIGHT);
@@ -198563,8 +198713,9 @@ function tabStripReserve(o, pageCount) {
 function tabStripKey(pages, activeId, o, rtl) {
   return JSON.stringify([pages, activeId, o ?? null, rtl]);
 }
-function paintTabStrip(strip, pages, activeId, o, rtl, onPick, onSelectContainer) {
+function paintTabStrip(strip, pages, activeId, o, rtl, onPick, onSelectContainer, onDrag) {
   const doc = strip.ownerDocument;
+  let suppressClick = false;
   strip.className = "axdb-tabs";
   if (o?.className) for (const c of o.className.split(/\s+/).filter(Boolean)) strip.classList.add(c);
   strip.classList.toggle("axdb-tabs--center", o?.align === "center");
@@ -198588,8 +198739,34 @@ function paintTabStrip(strip, pages, activeId, o, rtl, onPick, onSelectContainer
     b.tabIndex = p.id === activeId ? 0 : -1;
     b.textContent = p.label;
     b.title = p.label;
+    b.addEventListener("pointerdown", (e) => {
+      const pe = e;
+      if (pe.button !== void 0 && pe.button > 0) return;
+      suppressClick = false;
+      if (!onDrag) return;
+      const from = { x: pe.clientX, y: pe.clientY };
+      const stop = () => {
+        doc.removeEventListener("pointermove", move, true);
+        doc.removeEventListener("pointerup", stop, true);
+        doc.removeEventListener("pointercancel", stop, true);
+      };
+      const move = (m) => {
+        const pm = m;
+        if (Math.abs(pm.clientX - from.x) < TAB_DRAG_THRESHOLD && Math.abs(pm.clientY - from.y) < TAB_DRAG_THRESHOLD)
+          return;
+        stop();
+        suppressClick = onDrag(p.id, pm) === true;
+      };
+      doc.addEventListener("pointermove", move, true);
+      doc.addEventListener("pointerup", stop, true);
+      doc.addEventListener("pointercancel", stop, true);
+    });
     b.addEventListener("click", (e) => {
       e.stopPropagation();
+      if (suppressClick) {
+        suppressClick = false;
+        return;
+      }
       onPick(p.id);
     });
     b.addEventListener("keydown", (e) => {
@@ -198791,10 +198968,25 @@ function assignCells(widgets, columns) {
 var cssEscape4 = (v) => typeof CSS !== "undefined" && CSS.escape ? CSS.escape(v) : v.replace(/"/g, '\\"');
 function attachTabsRuntime(ctx, model, container, handle) {
   const pagesOf = (id) => {
-    const w = ctx.specById.get(id);
-    return (w?.widgets ?? []).filter((c) => !!c.widgets).map((p) => ({ id: p.id, label: p.title ?? p.id }));
+    const cg = ctx.boardGroups.get(id) ?? model.getGroup(id);
+    const authored = (ctx.specById.get(id)?.widgets ?? []).map((c) => c.id);
+    const live = [...cg?.members ?? []].filter((m) => !!model.getGroup(m));
+    const rank = (pid) => {
+      const i = authored.indexOf(pid);
+      const j = i < 0 ? authored.indexOf(pid.replace(/__page$/, "")) : i;
+      return j < 0 ? Number.MAX_SAFE_INTEGER : j;
+    };
+    live.sort((a, b) => rank(a) - rank(b));
+    return live.map((pid) => ({ id: pid, label: ctx.specById.get(pid)?.title ?? pid }));
   };
   const isTabs = (id) => (ctx.layoutOf.get(id) ?? ctx.specById.get(id)?.layout) === "tabs" && pagesOf(id).length > 0;
+  const tearOut = (containerId, pageId, ev) => {
+    if (!container) return false;
+    const pages = pagesOf(containerId);
+    if (pages.length <= 1) return false;
+    const label = pages.find((p) => p.id === pageId)?.label ?? pageId;
+    return parentPeerOf(container, containerId)?.tearOutMember(pageId, containerId, label, ev) === true;
+  };
   const paintStrip = (id, f, h, pages, active2) => {
     const layer = container?.querySelector(".grafloria-html-layer");
     if (!layer) return;
@@ -198821,7 +199013,8 @@ function attachTabsRuntime(ctx, model, container, handle) {
       ctx.tabsOf.get(id),
       rtl,
       (pid) => handle.activateTab(id, pid),
-      () => handle.selectWidget(id)
+      () => handle.selectWidget(id),
+      (pid, ev) => tearOut(id, pid, ev)
     );
     el2.setAttribute("data-key", key);
   };
@@ -198829,7 +199022,11 @@ function attachTabsRuntime(ctx, model, container, handle) {
     const cg = ctx.boardGroups.get(id) ?? model.getGroup(id);
     if (!cg || !isTabs(id)) return;
     const pages = pagesOf(id);
-    const active2 = ctx.activeTab.get(id) ?? pages[0].id;
+    let active2 = ctx.activeTab.get(id) ?? pages[0].id;
+    if (!pages.some((p) => p.id === active2)) {
+      active2 = pages[0].id;
+      ctx.activeTab.set(id, active2);
+    }
     const strip = tabStripReserve(ctx.tabsOf.get(id), pages.length);
     const f = { x: cg.position.x, y: cg.position.y, width: cg.size?.width ?? 0, height: cg.size?.height ?? 0 };
     const inner = { width: f.width, height: Math.max(0, f.height - strip) };
@@ -198867,8 +199064,10 @@ function attachTabsRuntime(ctx, model, container, handle) {
       ctx.activeTab.set(id, want && pages.some((p) => p.id === want) ? want : pages[0].id);
       if (meta?.tabs && !ctx.tabsOf.has(id)) ctx.tabsOf.set(id, meta.tabs);
     }
-    const off = cg.on("bounds:changed", () => sync(id));
-    if (typeof off === "function") ctx.subscriptions.push(off);
+    for (const ev of ["bounds:changed", "member:added", "member:removed"]) {
+      const off = cg.on(ev, () => sync(id));
+      if (typeof off === "function") ctx.subscriptions.push(off);
+    }
     sync(id);
   }
 }
@@ -202077,6 +202276,7 @@ export {
   SwimlaneService,
   SyncAdapter,
   SyncStateManager,
+  TAB_DRAG_THRESHOLD,
   TAB_STRIP_HEIGHT,
   THEME_TOKENS,
   THEME_VARS,

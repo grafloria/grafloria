@@ -49,7 +49,7 @@ export {
   type TileDelta,
 } from './grid-mapping';
 export { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID } from './styles';
-export { paintTabStrip, tabStripReserve, tabStripKey, TAB_STRIP_HEIGHT, type TabsOptions, type TabPage } from './tabs';
+export { paintTabStrip, tabStripReserve, tabStripKey, TAB_STRIP_HEIGHT, TAB_DRAG_THRESHOLD, type TabsOptions, type TabPage } from './tabs';
 export {
   normalizeCaption,
   captionReserve,

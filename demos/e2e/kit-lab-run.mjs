@@ -1162,6 +1162,94 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `dragged out of the section over the LOCKED slab: ${before} → ${after} (wanted BOARD:4,0 — beside it on the same row, not a new row at the bottom) · undo → ${undone} ${JSON.stringify(sane)}`);
 }
 {
+  begin('L60-a-drop-onto-an-occupied-row-lands-where-the-ghost-promised');
+  await scrollTo('push');
+  const cells = () => page.evaluate(() => { const out = {}; const walk = (ws, p) => { for (const w of ws) { out[w.id] = { own: p, x: w.x, y: w.y }; if (w.widgets) walk(w.widgets, w.id); } }; walk(window.__lab.push.handle.toJSON().views[0].widgets, 'BOARD'); return out; });
+  const box = (o) => (o ? { x: Math.round(o.x), y: Math.round(o.y), w: Math.round(o.w ?? o.width), h: Math.round(o.h ?? o.height) } : null);
+  const before = await cells();
+  const src = await rect('push', 'pu-in');
+  const mid = await rect('push', 'pu-mid');
+  let ghost = null;
+  // drop it squarely onto the tile that owns the middle row — that row must
+  // move down, and the tile must land on the cell the ghost drew, not a row of
+  // its own at the bottom.
+  await drag(src.x + src.w / 2, src.y + src.h / 2, mid.x + mid.w / 2, mid.y + mid.h / 2, { steps: 16, mid: async () => {
+    ghost = box(await page.evaluate(() => { const p = document.querySelector('#cv-push .axdb-ph'); return p ? p.getBoundingClientRect().toJSON() : null; }));
+    await shot('push', 'ghost-promises-the-occupied-row');
+  } });
+  const after = await cells();
+  const landed = box(await rect('push', 'pu-in'));
+  const sane = await sanity('push');
+  await shot('push', 'landed-where-the-ghost-promised');
+  const same = ghost && landed && ['x', 'y', 'w', 'h'].every((k) => Math.abs(ghost[k] - landed[k]) <= 3);
+  await undoAll('push', 3);
+  const undone = await cells();
+  const back = ['pu-in', 'pu-mid', 'pu-top'].every((k) => undone[k].own === before[k].own && undone[k].x === before[k].x && undone[k].y === before[k].y);
+  verdict(before['pu-in'].own === 'pu-p1' && after['pu-in'].own === 'BOARD' && same
+    && after['pu-mid'].y > before['pu-mid'].y && after['pu-mid'].y > after['pu-in'].y
+    && back && sane.overlaps === 0,
+    `dragged out of a tab page onto the occupied row · pu-in ${before['pu-in'].own}:${before['pu-in'].x},${before['pu-in'].y} -> ${after['pu-in'].own}:${after['pu-in'].x},${after['pu-in'].y} · ghost ${JSON.stringify(ghost)} vs landed ${JSON.stringify(landed)} (${same ? 'the same cell' : 'DIFFERENT — the drop ignored its own preview'}) · pu-mid pushed ${before['pu-mid'].y} -> ${after['pu-mid'].y} · undo restores: ${back} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L61-a-tab-dragged-off-its-strip-tears-the-page-out-as-its-own-group');
+  await scrollTo('tabs');
+  const state = () => page.evaluate(() => {
+    const out = { tabs: [...document.querySelectorAll('#cv-tabs .axdb-tab')].map((t) => t.textContent), active: window.__lab.tabs.handle.getActiveTab('panel'), owners: {} };
+    const walk = (ws, p) => { for (const w of ws) { out.owners[w.id] = `${p}:${w.x},${w.y}`; if (w.widgets) walk(w.widgets, w.id); } };
+    walk(window.__lab.tabs.handle.toJSON().views[0].widgets, 'BOARD');
+    return out;
+  });
+  const before = await state();
+  const tab = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tab[data-tab-id=\"pg-c\"]').getBoundingClientRect().toJSON());
+  const left = await rect('tabs', 't-left');
+  // FIRST: a drag that ends back over its own container is a cancel — dragging
+  // a tab around its own strip must not tear the page out of it.
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, tab.x + 40, tab.y + 90, { steps: 10 });
+  const held = await state();
+  let mid = null;
+  // press the NOTES tab and carry it onto the board's left column
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, left.x + left.w / 2, left.y + left.h - 30, { steps: 18, mid: async () => {
+    mid = await page.evaluate(() => ({
+      chip: document.querySelector('.axdb-tab-chip')?.textContent ?? null,
+      ph: !!document.querySelector('#cv-tabs .axdb-ph'),
+    }));
+    await shot('tabs', 'tab-chip-follows-the-pointer');
+  } });
+  const after = await state();
+  const sane = await sanity('tabs');
+  await shot('tabs', 'the-page-became-its-own-group');
+  await undoAll('tabs', 2);
+  const undone = await state();
+  verdict(before.tabs.join(',') === 'Filters,Alerts,Notes' && mid?.chip === 'Notes' && mid?.ph === true
+    && held.tabs.join(',') === 'Filters,Alerts,Notes' && held.owners['pg-c'] === before.owners['pg-c'] && held.active === before.active
+    && after.tabs.join(',') === 'Filters,Alerts'
+    && before.owners['pg-c'].startsWith('panel:') && after.owners['pg-c'].startsWith('BOARD:')
+    && after.owners['pc1'] === 'pg-c:0,0' && sane.overlaps === 0
+    && undone.tabs.join(',') === 'Filters,Alerts,Notes' && undone.owners['pg-c'] === before.owners['pg-c'],
+    `released back over its own container: tabs ${held.tabs.join('/')} pg-c ${held.owners['pg-c']} active ${held.active} (all unchanged — a drag is not a click) · then dragged the Notes TAB onto the board · chip ${JSON.stringify(mid)} · tabs ${before.tabs.join('/')} -> ${after.tabs.join('/')} · pg-c ${before.owners['pg-c']} -> ${after.owners['pg-c']} carrying pc1 (${after.owners['pc1']}) · undo -> ${undone.tabs.join('/')} / ${undone.owners['pg-c']} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L62-a-tall-tile-blocked-by-a-full-width-section-takes-the-nearest-row');
+  await scrollTo('vert');
+  const own = () => page.evaluate(() => { const walk = (ws, p) => { for (const w of ws) { if (w.id === 'v-in') return `${p}:${w.x},${w.y}`; if (w.widgets) { const r = walk(w.widgets, w.id); if (r) return r; } } return null; }; return walk(window.__lab.vert.handle.toJSON().views[0].widgets, 'BOARD'); });
+  const before = await own();
+  const src = await rect('vert', 'v-in');
+  // aim at the tile just BELOW the wall: the dragged tile is 4 rows tall, so
+  // centring it there puts its top rows across the locked section and every
+  // column of that row is refused. Sliding sideways can never clear a wall
+  // that spans the board — it has to take a neighbouring row.
+  const b = await rect('vert', 'v-b');
+  await drag(src.x + src.w / 2, src.y + src.h / 2, b.x + b.w / 2, b.y + b.h / 2, { steps: 16 });
+  const after = await own();
+  const sane = await sanity('vert');
+  await shot('vert', 'landed-on-the-nearest-row');
+  await undoAll('vert', 3);
+  const undone = await own();
+  const row = after ? Number(after.split(',').pop()) : -1;
+  verdict(before === 'v-src:0,0' && after?.startsWith('BOARD:') && row >= 4 && row <= 7 && undone === before && sane.overlaps === 0,
+    `a 4-row tile dropped where its rows cross a FULL-WIDTH locked section: ${before} -> ${after} (wanted row 6 — the nearest row that clears the wall, not row 12 at the bottom) · undo -> ${undone} ${JSON.stringify(sane)}`);
+}
+{
   begin('L53-a-caption-reserves-only-where-something-paints-it');
   await scrollTo('cap-split');
   const r = await page.evaluate(() => {

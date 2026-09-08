@@ -557,10 +557,16 @@ interface BinderPeer {
   containsWorldExtended(x: number, y: number): boolean;
   frameArea(): number;
   adopt(
-    node: NodeModel,
+    node: { id: string },
     world: { x: number; y: number },
     pxSize: { width: number; height: number }
   ): AdoptedLeg | null;
+  /**
+   * Tear a tab page out of its container and onto THIS board, driven by the
+   * press that started on its tab. Answers false when the board will not take
+   * it, so the strip can leave the press alone.
+   */
+  tearOutMember(pageId: string, fromGroupId: string, label: string, ev: PointerEvent): boolean;
 }
 
 interface AdoptedLeg {
@@ -930,6 +936,8 @@ export function bindDashboardGrid(
   let placeholder: HTMLElement | null = null;
   /** Foreign tile currently adopted from another binder's gesture. */
   let adoptedGhostId: string | null = null;
+  /** The tab page this board is currently tearing out of a container, if any. */
+  let tearing: string | null = null;
   let glideTimer: ReturnType<typeof setTimeout> | null = null;
   let ghostTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -1582,6 +1590,11 @@ export function bindDashboardGrid(
    *  the plan prototype cannot leave its board at all (cells clamp at the
    *  edges), so a 60px slip past the frame must not dim or delete. */
   const EDGE_GRACE = 60;
+  /** A point inside a member group's own frame (its strip and its pages). */
+  const worldInsideGroup = (g: GroupModel, x: number, y: number): boolean => {
+    const s = sizeOf(g);
+    return x >= g.position.x && x <= g.position.x + s.width && y >= g.position.y && y <= g.position.y + s.height;
+  };
   const worldInsideBoardGrace = (x: number, y: number): boolean => {
     if (worldInsideBoardExtended(x, y)) return true;
     const f = frame();
@@ -2479,6 +2492,14 @@ export function bindDashboardGrid(
       const geomBefore = g.startGeom.get(g.id);
       const crossing: Command[] = [
         ...sourceDisplaced,
+        // …and the TARGET board's own displaced tiles. Dropping onto an
+        // occupied row pushes that row down, and the ghost draws the pushed
+        // layout — but these commands were computed and then dropped on the
+        // floor, so nothing persisted the push. The next rebuild read the
+        // pre-drop cells, found the arriving tile overlapping them, and pushed
+        // IT to the bottom instead: the drop landed a whole row away from the
+        // ghost that promised it ("it goes in as an extra row").
+        ...fin.commands,
         new RemoveFromGroupCommand(group.id, g.id),
         new AddToGroupCommand(targetGroupId, g.id),
         ...buildCommitCommands([
@@ -2594,19 +2615,49 @@ export function bindDashboardGrid(
    * cannot take the cell under the pointer still lands beside it.
    */
   const placeNear = (id: string, x: number, y: number, w: number): boolean => {
-    if (engine.moveCheck(id, x, y, { gate: false }).changed) return true;
+    // `changed:false` means BOTH "refused" and "it is already there", and
+    // reading the second as the first made the search walk straight past the
+    // right answer: parked on the nearest legal cell, the next pointer move
+    // re-tried the wanted cell (refused), re-tried the cell it was ON (no
+    // change, read as refused) and then took a FARTHER one — so the tile
+    // oscillated for the whole drag and settled wherever the last swing left
+    // it. Ask where the tile IS, not whether the call moved it.
+    const at = (cx: number, cy: number): boolean => {
+      const i = engine.getItem(id);
+      return !!i && i.x === cx && i.y === cy;
+    };
     const maxX = Math.max(0, columns - w);
-    for (let d = 1; d <= columns; d++) {
-      for (const cx of [x - d, x + d]) {
-        if (cx < 0 || cx > maxX) continue;
-        if (engine.moveCheck(id, cx, y, { gate: false }).changed) return true;
+    const scanRow = (cy: number): boolean => {
+      if (at(x, cy)) return true;
+      if (engine.moveCheck(id, x, cy, { gate: false }).changed) return true;
+      for (let d = 1; d <= columns; d++) {
+        for (const cx of [x - d, x + d]) {
+          if (cx < 0 || cx > maxX) continue;
+          if (at(cx, cy)) return true;
+          if (engine.moveCheck(id, cx, cy, { gate: false }).changed) return true;
+        }
+      }
+      return false;
+    };
+    if (scanRow(y)) return true;
+    // EVERY column on that row refused — which is what a locked section
+    // spanning the full width does, and there are plenty of those. Sliding
+    // sideways can never clear it, so try the rows either side, nearest first.
+    // Without this the drop either fell to the bottom of the board or, when
+    // the board had no room down there either, did nothing at all.
+    const reach = Math.max(1, rows()) + 2;
+    for (let d = 1; d <= reach; d++) {
+      for (const cy of [y - d, y + d]) {
+        if (cy < 0) continue;
+        if (scanRow(cy)) return true;
       }
     }
     return false;
   };
 
   const adopt = (
-    node: NodeModel,
+    // Only the id is used: a tab page arriving here is a GROUP, not a node.
+    node: { id: string },
     world: { x: number; y: number },
     pxSize: { width: number; height: number }
   ): AdoptedLeg | null => {
@@ -2687,6 +2738,7 @@ export function bindDashboardGrid(
 
   const selfPeer: BinderPeer = {
     group,
+    tearOutMember: (pageId, fromGroupId, label, ev) => beginTearOut(pageId, fromGroupId, label, ev),
     clearSelection: () => {
       if (selectedId === undefined) return;
       selectedId = undefined;
@@ -3170,6 +3222,118 @@ export function bindDashboardGrid(
   api.container.addEventListener('focusin', onFocusIn);
   api.container.addEventListener('keydown', onKey);
 
+  // -- tab tear-out -----------------------------------------------------------
+
+  /**
+   * A press that TRAVELLED on a tab drags the whole page onto this board, the
+   * way dragging a VS Code tab out of its group makes a group of its own. The
+   * page is a GROUP, so it rides the same `adopt` leg a widget uses — entry at
+   * the bottom, `placeNear` under the pointer, the dashed placeholder drawn
+   * from the live cell — and the commit is one batch: the cell and frame it
+   * landed on, out of the container, into this board, plus every tile this
+   * board had to push aside.
+   *
+   * Like VS Code, the page itself does not follow the pointer; a chip carrying
+   * the tab's label does, and the placeholder shows where the drop will land.
+   */
+  const beginTearOut = (pageId: string, fromGroupId: string, label: string, ev: PointerEvent): boolean => {
+    if (disposed || gesture || slabGesture || isStatic || tearing) return false;
+    const pg = diagram.getGroup(pageId);
+    const from = diagram.getGroup(fromGroupId);
+    if (!pg || !from || !engine.getItem(fromGroupId)) return false;
+    const size = sizeOf(pg);
+    const frameBefore = frameOfGroup(pg);
+    const cellBefore = cellFromGridItem(pg.getMetadata?.('gridItem') as GridItemConfig | undefined) ?? {
+      x: 0,
+      y: 0,
+      w: 1,
+      h: 1,
+    };
+    const toWorld = (cx: number, cy: number): { x: number; y: number } => {
+      const rect = api.container.getBoundingClientRect();
+      return api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
+    };
+    const first = toWorld(ev.clientX, ev.clientY);
+    const leg = adopt({ id: pageId }, first, { width: size.width, height: size.height });
+    if (!leg) return false;
+
+    tearing = pageId;
+    const doc = api.container.ownerDocument ?? document;
+    const chip = doc.createElement('div');
+    chip.className = 'axdb-drag-chip axdb-tab-chip';
+    chip.textContent = label;
+    doc.body.appendChild(chip);
+    const moveChip = (cx: number, cy: number): void => {
+      chip.style.left = `${cx + 6}px`;
+      chip.style.top = `${cy + 6}px`;
+    };
+    moveChip(ev.clientX, ev.clientY);
+    armGlide();
+    api.render();
+
+    let last = { x: ev.clientX, y: ev.clientY };
+    const detach = (): void => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onCancel, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+    const onMove = (e: PointerEvent): void => {
+      if (disposed) return detach();
+      last = { x: e.clientX, y: e.clientY };
+      moveChip(e.clientX, e.clientY);
+      const world = toWorld(e.clientX, e.clientY);
+      const home = worldInsideGroup(from, world.x, world.y);
+      // Over its own container it goes home: a tab dragged around its own
+      // strip must not tear itself out.
+      chip.classList.toggle('axdb-out', home || !worldInsideBoardGrace(world.x, world.y));
+      if (!home) leg.move(world);
+      api.render();
+    };
+    const finish = (commit: boolean): void => {
+      detach();
+      chip.remove();
+      tearing = null;
+      if (disposed) return;
+      const world = toWorld(last.x, last.y);
+      const home = worldInsideGroup(from, world.x, world.y);
+      if (!commit || home || !worldInsideBoardGrace(world.x, world.y)) {
+        leg.abort();
+        disarmGlideSoon();
+        api.renderNow();
+        options.onGesture?.({ type: 'cancel', kind: 'move', nodeId: pageId, changed: false });
+        return;
+      }
+      const fin = leg.finalize();
+      if (!fin) {
+        disarmGlideSoon();
+        api.renderNow();
+        return;
+      }
+      const changed = execute('Move tab out', [
+        ...fin.commands,
+        new SetGroupCellCommand(pageId, cellBefore, fin.cell, frameBefore, fin.rect),
+        new RemoveFromGroupCommand(fromGroupId, pageId),
+        new AddToGroupCommand(group.id, pageId),
+      ]);
+      disarmGlideSoon();
+      enforceBoardHeight();
+      persistLayouts();
+      api.renderNow();
+      options.onGesture?.({ type: 'commit', kind: 'move', nodeId: pageId, changed });
+    };
+    const onUp = (): void => finish(true);
+    const onCancel = (): void => finish(false);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') finish(false);
+    };
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onCancel, true);
+    window.addEventListener('keydown', onKey, true);
+    return true;
+  };
+
   // -- palette drag-in --------------------------------------------------------
 
   const beginPaletteDrag = (
@@ -3573,6 +3737,7 @@ export function bindDashboardGrid(
       api.container.removeEventListener('keydown', onKey);
       hostObserver.disconnect();
       containerObserver?.disconnect();
+      tearing = null;
       for (const off of subs) off();
       // The corner handles are THIS binder's affordance: a board re-bound as a
       // split layout must not keep showing a resize corner it cannot act on.

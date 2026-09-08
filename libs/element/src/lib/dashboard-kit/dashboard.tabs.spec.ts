@@ -189,6 +189,31 @@ describe('tab containers', () => {
     expect(w.size!.width).toBeGreaterThan(200);
   });
 
+  it('a wrapped plain child keeps the authored order among real pages', () => {
+    const { api } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          {
+            id: 'panel',
+            title: 'Mixed',
+            span: 12,
+            rows: 4,
+            x: 0,
+            y: 0,
+            layout: 'tabs',
+            // the PLAIN child is declared FIRST, and is wrapped as `loose__page`
+            widgets: [{ id: 'loose', kind: 'kpi', title: 'Loose', span: 6, rows: 4 }, PAGE('p-one', 'Filters', 'k-one')],
+          },
+        ],
+      })
+    );
+    expect(tabs(api).map((t) => t.label)).toEqual(['Loose', 'Filters']);
+  });
+
   it('a tab container whose children are ALL plain widgets still works', () => {
     const { api, model } = up(
       dashboard({
@@ -206,6 +231,73 @@ describe('tab containers', () => {
     );
     expect(tabs(api).map((t) => t.label)).toEqual(['One', 'Two']);
     expect(model.getNode('w1')!.size!.width).toBeGreaterThan(200);
+  });
+
+  it('the tabs come from LIVE membership, so a page that leaves takes its tab with it', () => {
+    const { api, model, handle } = up(BOARD());
+    expect(tabs(api).map((t) => t.label)).toEqual(['Filters', 'Alerts', 'Notes']);
+    // tear p-two out of the container the way a drop on the parent board does
+    model.getGroup('panel')!.removeMember('p-two');
+    expect(tabs(api).map((t) => t.label)).toEqual(['Filters', 'Notes']);
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+  });
+
+  it('a DRAG on a tab is not a click: the page does not switch', () => {
+    const { api, handle } = up(BOARD());
+    const tab = strip(api)!.querySelector('.axdb-tab[data-tab-id="p-three"]') as HTMLElement;
+    const at = (el: HTMLElement, type: string, x: number) =>
+      el.dispatchEvent(
+        Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: 10 }), { pointerId: 1 })
+      );
+    at(tab, 'pointerdown', 100);
+    at(tab, 'pointermove', 140); // well past the threshold
+    at(tab, 'pointerup', 140);
+    (tab as HTMLButtonElement).click();
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+    // …while a press that does NOT travel is still a plain click
+    const near = strip(api)!.querySelector('.axdb-tab[data-tab-id="p-two"]') as HTMLElement;
+    at(near, 'pointerdown', 60);
+    at(near, 'pointerup', 61);
+    (near as HTMLButtonElement).click();
+    expect(handle.getActiveTab('panel')).toBe('p-two');
+  });
+
+  it('a drag the board REFUSES leaves the press a plain click', () => {
+    // A split board cannot place a torn-out page, so it refuses the gesture —
+    // and a refused drag must not swallow the click, or a tab container on a
+    // split pane would stop switching pages altogether.
+    const { api, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        layout: 'split',
+        widgets: [
+          { id: 'other', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 },
+          {
+            id: 'panel',
+            title: 'Side panel',
+            span: 6,
+            rows: 4,
+            x: 6,
+            y: 0,
+            layout: 'tabs',
+            widgets: [PAGE('p-one', 'Filters', 'k-one'), PAGE('p-two', 'Alerts', 'k-two')],
+          },
+        ],
+      })
+    );
+    const tab = strip(api)!.querySelector('.axdb-tab[data-tab-id="p-two"]') as HTMLElement;
+    const at = (type: string, x: number) =>
+      tab.dispatchEvent(
+        Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: 10 }), { pointerId: 1 })
+      );
+    at('pointerdown', 100);
+    at('pointermove', 140);
+    at('pointerup', 140);
+    (tab as HTMLButtonElement).click();
+    expect(handle.getActiveTab('panel')).toBe('p-two');
   });
 
   it('a board with no tab container carries no strip at all', () => {

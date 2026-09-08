@@ -29,6 +29,13 @@ export interface TabPage {
 
 export const TAB_STRIP_HEIGHT = 30;
 
+/**
+ * Travel, in px, that turns a press on a tab from a click into a drag. VS Code
+ * uses the platform drag threshold; 4 px is the same order and keeps a shaky
+ * click a click.
+ */
+export const TAB_DRAG_THRESHOLD = 4;
+
 /** Pixels the pages give up at the top of the container. */
 export function tabStripReserve(o: TabsOptions | undefined, pageCount: number): number {
   if (pageCount <= 0) return 0;
@@ -51,9 +58,20 @@ export function paintTabStrip(
   o: TabsOptions | undefined,
   rtl: boolean,
   onPick: (id: string) => void,
-  onSelectContainer?: () => void
+  onSelectContainer?: () => void,
+  /**
+   * The tab is the PAGE's drag handle, as it is in VS Code: press one and
+   * travel, and the whole page leaves — not the widget under the pointer,
+   * which used to be the only way to drag anything out and left the tab
+   * behind pointing at an empty page.
+   */
+  onDrag?: (pageId: string, ev: PointerEvent) => boolean
 ): void {
   const doc = strip.ownerDocument;
+  // Set by a tab drag, read by the click that trails it. Strip-level so it
+  // survives between the two listeners, cleared on the next press so an
+  // aborted drag never eats a later click.
+  let suppressClick = false;
   strip.className = 'axdb-tabs';
   if (o?.className) for (const c of o.className.split(/\s+/).filter(Boolean)) strip.classList.add(c);
   strip.classList.toggle('axdb-tabs--center', o?.align === 'center');
@@ -84,8 +102,41 @@ export function paintTabStrip(
     b.tabIndex = p.id === activeId ? 0 : -1;
     b.textContent = p.label;
     b.title = p.label;
+    b.addEventListener('pointerdown', (e) => {
+      const pe = e as PointerEvent;
+      if (pe.button !== undefined && pe.button > 0) return;
+      suppressClick = false;
+      if (!onDrag) return;
+      const from = { x: pe.clientX, y: pe.clientY };
+      const stop = (): void => {
+        doc.removeEventListener('pointermove', move, true);
+        doc.removeEventListener('pointerup', stop, true);
+        doc.removeEventListener('pointercancel', stop, true);
+      };
+      const move = (m: Event): void => {
+        const pm = m as PointerEvent;
+        if (
+          Math.abs(pm.clientX - from.x) < TAB_DRAG_THRESHOLD &&
+          Math.abs(pm.clientY - from.y) < TAB_DRAG_THRESHOLD
+        )
+          return;
+        stop();
+        // A press that TRAVELLED is a drag: the click that may follow it must
+        // not also switch the page — but only if the drag was actually TAKEN.
+        // A board that cannot place the page (a split pane, a container down
+        // to its last page) refuses, and then the press is still a click.
+        suppressClick = onDrag(p.id, pm) === true;
+      };
+      doc.addEventListener('pointermove', move, true);
+      doc.addEventListener('pointerup', stop, true);
+      doc.addEventListener('pointercancel', stop, true);
+    });
     b.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (suppressClick) {
+        suppressClick = false;
+        return;
+      }
       onPick(p.id);
     });
     b.addEventListener('keydown', (e) => {
