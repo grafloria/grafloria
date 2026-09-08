@@ -389,6 +389,29 @@ render(SPEC2, host);</pre>
       nesting from live membership — a dragged-in tile lands under its new
       parent in the snapshot, and the snapshot rebuilds through
       <code>dashboard()</code> unchanged. Nesting is exercised to two levels.</p>
+      <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
+      you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
+      — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
+      <code>description</code> (an ⓘ with a tooltip, also the section's accessible description),
+      <code>icon</code>, <code>position: 'inside' | 'tab'</code> (a tab sits above the frame and
+      reserves nothing), <code>align</code> / <code>valign</code>, <code>height</code>,
+      <code>font</code> (size, weight, family, color, uppercase), <code>padding</code> /
+      <code>margin</code>, <code>background</code> / <code>border</code>,
+      <code>show: 'always' | 'design' | 'hover'</code> (<code>'design'</code> disappears under
+      <code>static</code>, <code>'hover'</code> overlays the content), <code>actions</code>
+      (buttons at the end of the band; a press fires <code>onCaptionAction(sectionId, actionId,
+      viewId)</code> and never selects), <code>passThrough</code> (a selector for content inside
+      the band — buttons, inputs and <code>[data-axdb-pass]</code> by default) and
+      <code>className</code>. The kit paints the band on the section's overlay, reserves its pixels
+      inside the frame so no child may take them, and routes its presses: a press on the band
+      selects the section, its top edge still resizes. Typography and box are CSS variables
+      (<code>--axdb-caption-*</code>) a theme can set once. A section under 90 px steps the band
+      down to 22 px, as a squeezed card steps its header. <code>renderCaption(widget, host)</code>
+      on <code>dashboard()</code> paints the band yourself, keeping its press rules;
+      <code>handle.setCaption(id, caption)</code> changes it live as one undo step,
+      <code>getCaption(id)</code> reads it, and <code>toJSON()</code> writes it beside
+      <code>layout</code> and <code>sizing</code>. Sections inside a board whose own layout is
+      <code>split</code> get their captions in the tab-container round.</p>
       <p><b>A split section after a layout switch</b> (element 0.4.21). An empty press inside
       a nested board's frame belongs to that board whatever the order the boards were bound in,
       so a section switched to split keeps working dividers, and a divider grabbed near the

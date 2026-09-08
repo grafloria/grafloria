@@ -59,7 +59,7 @@ export class ContainersBoardComponent {
     // THE CONTAINER — a widget that holds widgets: a locked slab in the board
     // with its own 4-column pack grid inside. Drag a tile across its edge and
     // the other grid adopts it live; one undo restores both grids.
-    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+    { id: 'kpis', title: 'KPI section', caption: { subtitle: 'three KPIs in a 4-column section', description: 'Drag a tile across the edge: the section adopts it' }, span: 12, rows: 1, columns: 4, widgets: [
       { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
       { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
       { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
@@ -90,7 +90,7 @@ const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
     // THE CONTAINER — a widget that holds widgets: a locked slab in the board
     // with its own 4-column pack grid inside. Drag a tile across its edge and
     // the other grid adopts it live; one undo restores both grids.
-    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+    { id: 'kpis', title: 'KPI section', caption: { subtitle: 'three KPIs in a 4-column section', description: 'Drag a tile across the edge: the section adopts it' }, span: 12, rows: 1, columns: 4, widgets: [
       { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
       { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
       { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
@@ -135,7 +135,7 @@ const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
     // THE CONTAINER — a widget that holds widgets: a locked slab in the board
     // with its own 4-column pack grid inside. Drag a tile across its edge and
     // the other grid adopts it live; one undo restores both grids.
-    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+    { id: 'kpis', title: 'KPI section', caption: { subtitle: 'three KPIs in a 4-column section', description: 'Drag a tile across the edge: the section adopts it' }, span: 12, rows: 1, columns: 4, widgets: [
       { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
       { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
       { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
