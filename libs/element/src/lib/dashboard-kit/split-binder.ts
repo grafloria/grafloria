@@ -26,7 +26,7 @@
 import { Command, type DiagramModel, type GroupModel, type NodeModel } from '@grafloria/engine';
 import { LiveRegionController, registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
 import type { DashboardGridApi, DashboardGridHandle, DashboardGridOptions } from './grid-binder';
-import { clearOtherSelections, dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, pressOnDragHandle, registerBoardPeer, syncGrip, DRAG_HANDLE_CLASS, type BinderPeer, type DragHandleOption } from './grid-binder';
+import { anyEdge, clearOtherSelections, dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, parentPeerOf, pressOnDragHandle, registerBoardPeer, syncGrip, DRAG_HANDLE_CLASS, EDGE_GRIP, type BinderPeer, type DragHandleOption, type ResizeEdges } from './grid-binder';
 import { cellFromGridItem, type CellRect, type WorldRect } from './grid-mapping';
 import {
   addSplitLeaf,
@@ -180,6 +180,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
   let designW = group.size?.width ?? 0;
   let disposed = false;
   let gesture: Gesture | null = null;
+  /** The PARENT running a resize of OUR section from a press this tool claimed. */
+  let forwardSlab: BinderPeer | null = null;
   let focusedId: string | undefined;
   const live = liveRegionFor(api.container);
 
@@ -695,7 +697,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     priority: 2,
     hitTest(ev, hit) {
       if (disposed) return false;
-      if (gesture) return true;
+      if (gesture || forwardSlab) return true;
       if (!ownsPress(api.container, diagram, ev, hit)) return false;
       if (hit.node) return (group.members ?? new Set<string>()).has(hit.node.id);
       return worldInsideBoard(ev.world.x, ev.world.y);
@@ -733,7 +735,25 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       // sits above the card's box) — see grid-binder.
       const gripId = gripHostOf(target)?.getAttribute('data-node-id') ?? null;
       const onGrip = !!gripId && (group.members ?? new Set<string>()).has(gripId);
-      if (!hit.node && !onGrip) {
+      const sectionHandle = target?.closest?.('.axdb-slab > .axdb-rs') as HTMLElement | null;
+      if ((!hit.node && !onGrip) || sectionHandle) {
+        // OUR OWN empty band or corner handle, and we are a section of a
+        // parent board: select the section there; an edge or the handle
+        // starts the section resize, which the parent runs while this tool
+        // forwards the pointer sequence (the grid binder does the same).
+        const parent = parentPeerOf(api.container, group.id);
+        if (parent?.selectMember && (sectionHandle || worldInsideBoard(ev.world.x, ev.world.y))) {
+          const own = sectionHandle?.parentElement?.getAttribute('data-slab-id') === group.id;
+          parent.selectMember(group.id);
+          if (!isStatic && parent.beginSlabResize) {
+            const f = frame();
+            const edges: ResizeEdges = own
+              ? rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false }
+              : { n: ev.world.y - f.y <= EDGE_GRIP, s: f.y + f.height - ev.world.y <= EDGE_GRIP, w: ev.world.x - f.x <= EDGE_GRIP, e: f.x + f.width - ev.world.x <= EDGE_GRIP };
+            if (anyEdge(edges) && parent.beginSlabResize(group.id, edges, ev)) forwardSlab = parent;
+          }
+          return;
+        }
         (diagram as { clearSelection?: () => void }).clearSelection?.();
         selectWidget(undefined);
         api.render();
@@ -774,12 +794,20 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       };
     },
     onPointerMove(ev) {
-      onToolMove(ev);
+      if (forwardSlab) forwardSlab.slabMove?.(ev);
+      else onToolMove(ev);
     },
     onPointerUp() {
-      onToolUp();
+      if (forwardSlab) {
+        forwardSlab.slabUp?.();
+        forwardSlab = null;
+      } else onToolUp();
     },
     onCancel() {
+      if (forwardSlab) {
+        forwardSlab.slabCancel?.();
+        forwardSlab = null;
+      }
       cancelActiveGesture();
     },
   };

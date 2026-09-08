@@ -571,6 +571,12 @@ const BOARD_REGISTRY = new WeakMap<HTMLElement, Set<BinderPeer>>();
  * unregister. A split board adopts nothing and grows no slab: its `adopt`
  * answers null and `resizeMemberBy` answers unchanged.
  */
+/** The board on the canvas that holds `groupId` as a member — a nested board's parent. */
+export function parentPeerOf(container: HTMLElement, groupId: string): BinderPeer | null {
+  for (const p of BOARD_REGISTRY.get(container) ?? []) if (p.group.id !== groupId && p.hasItem(groupId)) return p;
+  return null;
+}
+
 /** Clear the selection on every OTHER board of the canvas — one selection per canvas. */
 export function clearOtherSelections(container: HTMLElement, self: BinderPeer | null): void {
   for (const p of BOARD_REGISTRY.get(container) ?? []) if (p !== self) p.clearSelection?.();
@@ -706,9 +712,9 @@ interface GestureState {
 const DRAG_THRESHOLD = 4;
 const GLIDE_OFF_DELAY = 400;
 /** A press this close (CSS px) to a tile's border takes that edge for a resize. */
-const EDGE_GRIP = 7;
+export const EDGE_GRIP = 7;
 
-interface ResizeEdges {
+export interface ResizeEdges {
   n: boolean;
   e: boolean;
   s: boolean;
@@ -728,7 +734,7 @@ function edgesNear(host: Element, cx: number, cy: number): ResizeEdges {
   };
 }
 
-const anyEdge = (E: ResizeEdges): boolean => E.n || E.e || E.s || E.w;
+export const anyEdge = (E: ResizeEdges): boolean => E.n || E.e || E.s || E.w;
 
 /** The resize cursor for a set of edges ('' when none). */
 function cursorFor(E: ResizeEdges): string {
@@ -2598,6 +2604,16 @@ export function bindDashboardGrid(
           if (p !== selfPeer && p.hasItem(hit.node.id)) return false;
         }
         return insideMemberGroupFrame(ev.world.x, ev.world.y);
+      }
+      // An EMPTY press inside a NESTED board's frame is that board's: its
+      // dividers, its band, its own section press (which it hands back up).
+      // Ties went to the first registered tool, and a section re-bound by a
+      // layout switch registers AFTER its parent — so the parent took every
+      // divider press in a split section (dead dividers) and, near the
+      // section's edge, turned it into a section resize (the width changed
+      // while a control's height was being dragged — Quantia, Groups page).
+      for (const p of BOARD_REGISTRY.get(api.container) ?? []) {
+        if (p !== selfPeer && (group.members ?? new Set<string>()).has(p.group.id) && p.containsWorld(ev.world.x, ev.world.y)) return false;
       }
       // Claim (and deaden) empty presses inside a member group's frame so the
       // built-in group-drag cannot fight the pack layout for the KPI slab —

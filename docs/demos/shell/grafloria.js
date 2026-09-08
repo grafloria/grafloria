@@ -194581,6 +194581,10 @@ function pressOnDragHandle(sel, target, hostEl, clientX, clientY) {
 }
 var CAPTION_BAND = 28;
 var BOARD_REGISTRY = /* @__PURE__ */ new WeakMap();
+function parentPeerOf(container, groupId) {
+  for (const p of BOARD_REGISTRY.get(container) ?? []) if (p.group.id !== groupId && p.hasItem(groupId)) return p;
+  return null;
+}
 function clearOtherSelections(container, self2) {
   for (const p of BOARD_REGISTRY.get(container) ?? []) if (p !== self2) p.clearSelection?.();
 }
@@ -196020,6 +196024,9 @@ function bindDashboardGrid(api, group, options = {}) {
         }
         return insideMemberGroupFrame(ev.world.x, ev.world.y);
       }
+      for (const p of BOARD_REGISTRY.get(api.container) ?? []) {
+        if (p !== selfPeer && (group.members ?? /* @__PURE__ */ new Set()).has(p.group.id) && p.containsWorld(ev.world.x, ev.world.y)) return false;
+      }
       return insideMemberGroupFrame(ev.world.x, ev.world.y) || worldInsideBoard(ev.world.x, ev.world.y);
     },
     onPointerDown(ev, hit) {
@@ -196978,6 +196985,7 @@ function bindDashboardSplit(api, group, options = {}) {
   let designW = group.size?.width ?? 0;
   let disposed = false;
   let gesture = null;
+  let forwardSlab = null;
   let focusedId;
   const live = liveRegionFor2(api.container);
   const frame = () => ({
@@ -197397,7 +197405,7 @@ function bindDashboardSplit(api, group, options = {}) {
     priority: 2,
     hitTest(ev, hit) {
       if (disposed) return false;
-      if (gesture) return true;
+      if (gesture || forwardSlab) return true;
       if (!ownsPress(api.container, diagram, ev, hit)) return false;
       if (hit.node) return (group.members ?? /* @__PURE__ */ new Set()).has(hit.node.id);
       return worldInsideBoard(ev.world.x, ev.world.y);
@@ -197433,7 +197441,19 @@ function bindDashboardSplit(api, group, options = {}) {
       }
       const gripId = gripHostOf(target)?.getAttribute("data-node-id") ?? null;
       const onGrip = !!gripId && (group.members ?? /* @__PURE__ */ new Set()).has(gripId);
-      if (!hit.node && !onGrip) {
+      const sectionHandle = target?.closest?.(".axdb-slab > .axdb-rs");
+      if (!hit.node && !onGrip || sectionHandle) {
+        const parent = parentPeerOf(api.container, group.id);
+        if (parent?.selectMember && (sectionHandle || worldInsideBoard(ev.world.x, ev.world.y))) {
+          const own = sectionHandle?.parentElement?.getAttribute("data-slab-id") === group.id;
+          parent.selectMember(group.id);
+          if (!isStatic && parent.beginSlabResize) {
+            const f = frame();
+            const edges = own ? rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false } : { n: ev.world.y - f.y <= EDGE_GRIP, s: f.y + f.height - ev.world.y <= EDGE_GRIP, w: ev.world.x - f.x <= EDGE_GRIP, e: f.x + f.width - ev.world.x <= EDGE_GRIP };
+            if (anyEdge(edges) && parent.beginSlabResize(group.id, edges, ev)) forwardSlab = parent;
+          }
+          return;
+        }
         diagram.clearSelection?.();
         selectWidget(void 0);
         api.render();
@@ -197472,12 +197492,20 @@ function bindDashboardSplit(api, group, options = {}) {
       };
     },
     onPointerMove(ev) {
-      onToolMove(ev);
+      if (forwardSlab) forwardSlab.slabMove?.(ev);
+      else onToolMove(ev);
     },
     onPointerUp() {
-      onToolUp();
+      if (forwardSlab) {
+        forwardSlab.slabUp?.();
+        forwardSlab = null;
+      } else onToolUp();
     },
     onCancel() {
+      if (forwardSlab) {
+        forwardSlab.slabCancel?.();
+        forwardSlab = null;
+      }
       cancelActiveGesture();
     }
   };
