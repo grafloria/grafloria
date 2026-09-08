@@ -194988,7 +194988,7 @@ function bindDashboardGrid(api, group, options = {}) {
   let adoptedGhostId = null;
   let glideTimer = null;
   let ghostTimer = null;
-  const ownReserve = () => captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 });
+  const ownReserve = () => parentPeer()?.paintsCaptions === true ? captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 }) : 0;
   const frame = () => {
     const r = ownReserve();
     return {
@@ -196259,7 +196259,9 @@ function bindDashboardGrid(api, group, options = {}) {
     containsWorld: worldInsideBoard,
     containsWorldExtended: worldInsideBoardExtended,
     frameArea: boardArea,
-    adopt
+    adopt,
+    paintsCaptions: true
+    // the grid binder owns the slab overlays (syncSlabs)
   };
   peersOnCanvas().add(selfPeer);
   selfPeerRef = selfPeer;
@@ -197265,7 +197267,7 @@ function bindDashboardSplit(api, group, options = {}) {
   let forwardSlab = null;
   let focusedId;
   const live = liveRegionFor2(api.container);
-  const ownReserve = () => captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 });
+  const ownReserve = () => parentPeerOf(api.container, group.id)?.paintsCaptions === true ? captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 }) : 0;
   const frame = () => {
     const r = ownReserve();
     return {
