@@ -505,6 +505,14 @@ interface GeomSnapshot {
  * the feature).
  */
 interface BinderPeer {
+  /**
+   * Does this board paint SECTION CHROME (the slab overlay that carries the
+   * ring, the corner handle and the caption band) for its member groups? Only
+   * the grid binder does. A section reserves its caption's pixels ONLY when
+   * its parent paints one — otherwise a captioned section inside a SPLIT
+   * board pushed its children down by 44 px under a band nobody drew.
+   */
+  paintsCaptions?: boolean;
   group: GroupModel;
   /** True when this board's engine holds `id` as an item (member lookup). */
   hasItem(id: string): boolean;
@@ -938,7 +946,9 @@ export function bindDashboardGrid(
    * selects the section) rather than an empty press of this board.
    */
   const ownReserve = (): number =>
-    captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 });
+    parentPeer()?.paintsCaptions === true
+      ? captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 })
+      : 0;
   const frame = (): WorldRect => {
     const r = ownReserve();
     return {
@@ -2651,6 +2661,7 @@ export function bindDashboardGrid(
     containsWorldExtended: worldInsideBoardExtended,
     frameArea: boardArea,
     adopt,
+    paintsCaptions: true, // the grid binder owns the slab overlays (syncSlabs)
   };
   peersOnCanvas().add(selfPeer);
   selfPeerRef = selfPeer;

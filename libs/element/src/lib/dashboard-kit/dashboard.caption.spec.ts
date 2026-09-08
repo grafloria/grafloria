@@ -439,6 +439,25 @@ describe('section captions — API and persistence', () => {
     expect(dropOf(model)).toBeGreaterThanOrEqual(28);
   });
 
+  it('a section on a SPLIT board reserves nothing: no chrome paints its band there', () => {
+    const { api, model } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        layout: 'split',
+        widgets: [
+          { id: 'box', title: 'Captioned', caption: { subtitle: 'sub' }, span: 6, rows: 4, x: 0, y: 0, columns: 6, widgets: [{ id: 'c1', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 }] },
+          { id: 'free', kind: 'line', span: 6, rows: 4, x: 6, y: 0 },
+        ],
+      })
+    );
+    // the split binder paints no slab overlay, so there is no band …
+    expect(api.container.querySelector('.axdb-slab[data-slab-id="box"]')).toBeNull();
+    // … and the section must not push its children down under a band nobody drew
+    expect(model.getNode('c1')!.position.y - model.getGroup('box')!.position.y).toBeLessThan(1);
+  });
+
   it('a nested section two levels down paints its own band inside its parent section', () => {
     const { api } = up(
       dashboard({

@@ -1061,6 +1061,24 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   verdict(foreign.length === 0, `${boards.length} captioned boards swept · offences: ${foreign.length ? foreign.join(' | ') : 'none'} (own-child overlays, allowed: ${bad.length - foreign.length})`);
 }
 {
+  begin('L53-a-caption-reserves-only-where-something-paints-it');
+  await scrollTo('cap-split');
+  const r = await page.evaluate(() => {
+    const m = window.__lab['cap-split'].api.getModel();
+    const out = [];
+    for (const sid of ['sp-a', 'sp-b']) {
+      const g = m.getGroup(sid);
+      const kids = [...(g.members ?? [])].map((k) => m.getNode(k)).filter(Boolean);
+      out.push({ id: sid, gap: Math.round(Math.min(...kids.map((k) => k.position.y)) - g.position.y), band: !!document.querySelector(`#cv-cap-split .axdb-slab[data-slab-id="${sid}"] > .axdb-slab-h`) });
+    }
+    return out;
+  });
+  const sane = await sanity('cap-split');
+  await shot('cap-split', 'captions-on-a-split-board');
+  verdict(r.every((x) => x.band === false && x.gap === 0) && sane.overlaps === 0 && sane.overflow === 0,
+    `a split board paints no section chrome, so its captioned sections reserve nothing: ${r.map((x) => `${x.id} band=${x.band} gap=${x.gap}px`).join(' · ')} ${JSON.stringify(sane)}`);
+}
+{
   begin('L50-a-short-section-clamps-its-band-and-keeps-its-children');
   await scrollTo('cap-edge');
   const one = await band('cap-edge', 'one');
