@@ -677,6 +677,7 @@ export {
   buildCommitCommands,
   ensureDashboardKitStyles,
   DASHBOARD_KIT_STYLE_ID,
+  DASHBOARD_KIT_CSS,
   // The DATA-FIRST authoring API — the erDiagram()/umlDiagram() equivalent.
   dashboard,
   // …and the built-in renderers behind `kind`, so a dashboard is useful with
