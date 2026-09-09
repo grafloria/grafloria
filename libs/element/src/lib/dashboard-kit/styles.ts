@@ -65,6 +65,9 @@ const CSS = `
   z-index: 0;
   transition: none;
 }
+/* A slab move asked for a cell it cannot have (a locked section in the way): the wanted cell in the danger tone. */
+.grafloria-html-layer > .axdb-ph.axdb-ph--no { border-color: var(--axdb-danger, #b3123c); background: var(--axdb-danger-soft, rgba(179, 18, 60, .07)); }
+
 @media (prefers-color-scheme: dark) {
   .grafloria-html-layer > .axdb-ph { background: rgba(220, 225, 240, .12); border-color: rgba(220, 225, 240, .3); }
 }

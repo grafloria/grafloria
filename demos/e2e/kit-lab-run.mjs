@@ -1571,6 +1571,191 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `held: placeholder inside the page ${phInPage} ${JSON.stringify(mid)} · dropped: ${path1}, page widget ${JSON.stringify(in0)} -> ${JSON.stringify(in1)}, arrival ${JSON.stringify(b1)} (the 4-row page now reaches row ${Math.max(in1?.y + in1?.h || 0, b1?.y + b1?.h || 0)}) ${JSON.stringify(sane)} · undo -> ${path2}, ${JSON.stringify(b2)}`);
 }
 {
+  begin('L74-the-own-strip-after-a-detour-reorders-and-the-camera-stays-put');
+  await scrollTo('tabs');
+  const strips = () => page.evaluate(() => [...document.querySelectorAll('#cv-tabs .axdb-tabs[data-tabs-id="panel"] .axdb-tab')].map((t) => t.textContent));
+  const cam = () => page.evaluate(() => { const v = window.__lab.tabs.api.viewport?.getViewport?.(); return v ? Math.round(v.y) : 0; });
+  const probe = () => page.evaluate(() => ({ mark: document.querySelector('#cv-tabs .axdb-tab--drop-before')?.getAttribute('data-tab-id') ?? (document.querySelector('#cv-tabs .axdb-tabs--drop-end') ? 'end' : null), lit: !!document.querySelector('#cv-tabs .axdb-tabs--drop'), dim: !!document.querySelector('.axdb-tab-chip.axdb-out'), join: !!document.querySelector('#cv-tabs .axdb-join') }));
+  const s0 = await strips(); const cam0 = await cam();
+  const tab = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tab[data-tab-id="pg-c"]').getBoundingClientRect().toJSON());
+  const strip = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
+  const body = await rect('tabs', 'pa1');
+  let home = null, before = null, atEnd = null, cams = [];
+  // Notes: over its own page body (home), back up before Filters, then the strip's end — the camera must not move an inch
+  await page.mouse.move(tab.x + tab.width / 2, tab.y + tab.height / 2); await page.mouse.down(); await page.mouse.move(tab.x + tab.width / 2 - 8, tab.y + tab.height / 2 + 8);
+  await page.mouse.move(body.x + body.w / 2, body.y + body.h / 2, { steps: 12 }); await page.waitForTimeout(350); home = await probe(); cams.push(await cam());
+  await shot('tabs', 'over-its-own-body');
+  await page.mouse.move(strip.x + 18, strip.y + strip.height / 2, { steps: 12 }); await page.waitForTimeout(350); before = await probe(); cams.push(await cam());
+  await shot('tabs', 'back-on-the-strip-before-filters');
+  await page.mouse.move(strip.x + strip.width - 24, strip.y + strip.height / 2, { steps: 12 }); await page.waitForTimeout(350); atEnd = await probe(); cams.push(await cam());
+  await shot('tabs', 'the-strip-end');
+  await page.mouse.up(); await page.waitForTimeout(700);
+  const s1 = await strips(); const j1 = await page.evaluate(() => !!document.querySelector('#cv-tabs .axdb-join'));
+  await shot('tabs', 'reordered-to-the-end');
+  await undoAll('tabs', 1);
+  const s2 = await strips();
+  verdict(home?.dim === true && before?.mark === 'pg-a' && before?.lit === true && atEnd?.mark === 'end' && !atEnd?.join && cams.every((c) => c === cam0) && s1.join(',') === 'Filters,Alerts,Notes' && !j1 && s2.join(',') === s0.join(','),
+    `home ${JSON.stringify(home)} · before Filters ${JSON.stringify(before)} · end ${JSON.stringify(atEnd)} · camera ${cam0} -> ${cams.join('/')} · dropped ${s1.join(',')} overlay-left ${j1} · undo ${s2.join(',')}`);
+}
+{
+  begin('L75-a-tab-released-outside-the-canvas-lands-nothing');
+  await scrollTo('tabs');
+  const cv = await page.evaluate(() => document.getElementById('cv-tabs').getBoundingClientRect().toJSON());
+  const tab = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tab[data-tab-id="pg-c"]').getBoundingClientRect().toJSON());
+  const left = await rect('tabs', 't-left');
+  const strips0 = await page.evaluate(() => [...document.querySelectorAll('#cv-tabs .axdb-tabs[data-tabs-id="panel"] .axdb-tab')].map((t) => t.textContent));
+  let onBoard = null, off = null;
+  await page.mouse.move(tab.x + tab.width / 2, tab.y + tab.height / 2); await page.mouse.down(); await page.mouse.move(tab.x + tab.width / 2 - 8, tab.y + tab.height / 2 + 8);
+  await page.mouse.move(left.x + left.w / 2, left.y + left.h / 2, { steps: 12 }); await page.waitForTimeout(350);
+  onBoard = await page.evaluate(() => ({ ph: !!document.querySelector('#cv-tabs .axdb-ph'), dim: !!document.querySelector('.axdb-tab-chip.axdb-out') }));
+  await page.mouse.move(cv.x + cv.width * 0.3, cv.y + cv.height + 95, { steps: 12 }); await page.waitForTimeout(350); // below the canvas, past the 60 px grace
+  off = await page.evaluate(() => ({ ph: !!document.querySelector('#cv-tabs .axdb-ph'), dim: !!document.querySelector('.axdb-tab-chip.axdb-out'), join: !!document.querySelector('#cv-tabs .axdb-join') }));
+  await shot('tabs', 'held-above-the-canvas');
+  await page.mouse.up(); await page.waitForTimeout(700);
+  const born = await page.evaluate(() => window.__lab.tabs.handle.widget('pg-c__group')?.cell ?? null);
+  const strips1 = await page.evaluate(() => [...document.querySelectorAll('#cv-tabs .axdb-tabs[data-tabs-id="panel"] .axdb-tab')].map((t) => t.textContent));
+  const sane = await sanity('tabs');
+  await shot('tabs', 'released-outside-nothing-landed');
+  if (born) await undoAll('tabs', 1); // never leave a stray group behind for the scenarios after
+  verdict(onBoard?.ph === true && !onBoard?.dim && off?.ph === false && off?.dim === true && !off?.join && born === null && strips1.join(',') === strips0.join(',') && sane.overlaps === 0,
+    `on the board ${JSON.stringify(onBoard)} · outside ${JSON.stringify(off)} · released: group ${JSON.stringify(born)}, strip ${strips1.join(',')} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L76-side-and-bottom-docks-measure-the-board-as-it-was-and-leave-no-overlay');
+  await scrollTo('tabs');
+  const cv = await page.evaluate(() => document.getElementById('cv-tabs').getBoundingClientRect().toJSON());
+  const tab = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tab[data-tab-id="pg-c"]').getBoundingClientRect().toJSON());
+  const left = await rect('tabs', 't-left');
+  const rowsPx = 4 * 60 + 3 * 10; // the tabs board: 4 rows of 60, 10 px gaps
+  const overlay = () => page.evaluate(() => { const j = document.querySelector('#cv-tabs .axdb-join'); if (!j) return null; const r = j.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) }; });
+  await page.mouse.move(tab.x + tab.width / 2, tab.y + tab.height / 2); await page.mouse.down(); await page.mouse.move(tab.x + tab.width / 2 - 8, tab.y + tab.height / 2 + 8);
+  // park on the board first (the ghost enters and pushes), THEN the bands
+  await page.mouse.move(left.x + left.w / 2, left.y + left.h / 2, { steps: 12 }); await page.waitForTimeout(350);
+  await page.mouse.move(cv.x + 14, cv.y + cv.height * 0.45, { steps: 12 }); await page.waitForTimeout(400); const leftBand = await overlay();
+  await shot('tabs', 'left-band-after-parking');
+  await page.mouse.move(cv.x + cv.width * 0.4, cv.y + cv.height - 8, { steps: 12 }); await page.waitForTimeout(400); const bottomBand = await overlay();
+  await shot('tabs', 'bottom-band-after-parking');
+  await page.mouse.up(); await page.waitForTimeout(700);
+  const born = await page.evaluate(() => window.__lab.tabs.handle.widget('pg-c__group')?.cell ?? null);
+  const j1 = await overlay(); const sane = await sanity('tabs');
+  await shot('tabs', 'docked-at-the-bottom');
+  await undoAll('tabs', 1);
+  const j2 = await overlay(); const panel = await page.evaluate(() => window.__lab.tabs.handle.widget('panel')?.cell ?? null);
+  verdict(!!leftBand && leftBand.h <= rowsPx + 12 && leftBand.y >= cv.y && !!bottomBand && bottomBand.y <= cv.y + rowsPx + 30 && bottomBand.w >= cv.width - 40 && !!born && born.y === 4 && born.w === 12 && j1 === null && j2 === null && panel?.y === 0 && sane.overlaps === 0,
+    `left band ${JSON.stringify(leftBand)} (board rows = ${rowsPx} px) · bottom band ${JSON.stringify(bottomBand)} · docked ${JSON.stringify(born)} overlay after ${JSON.stringify(j1)} · undo overlay ${JSON.stringify(j2)} panel y ${panel?.y} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L77-a-page-travels-at-most-half-the-board-tall-and-never-lands-out-of-sight');
+  await scrollTo('tear');
+  const cv = await page.evaluate(() => document.getElementById('cv-tear').getBoundingClientRect().toJSON());
+  const tab = await page.evaluate(() => document.querySelector('#cv-tear .axdb-tab[data-tab-id="te-p1"]').getBoundingClientRect().toJSON());
+  const a = await rect('tear', 'te-a'); const wall = await rect('tear', 'te-w1');
+  const ph = () => page.evaluate(() => { const p = document.querySelector('#cv-tear .axdb-ph'); if (!p) return null; const r = p.getBoundingClientRect(); return { y: Math.round(r.y), h: Math.round(r.height) }; });
+  const dim = () => page.evaluate(() => !!document.querySelector('.axdb-tab-chip.axdb-out'));
+  await page.mouse.move(tab.x + tab.width / 2, tab.y + tab.height / 2); await page.mouse.down(); await page.mouse.move(tab.x + tab.width / 2 - 8, tab.y + tab.height / 2 + 8);
+  await page.mouse.move(a.x + a.w / 2, a.y + a.h / 2, { steps: 12 }); await page.waitForTimeout(400); const overA = await ph(); const dimA = await dim();
+  await shot('tear', 'over-A-half-the-board-tall');
+  // over the locked wall: no cell there, the only room is below the canvas — the chip dims, nothing lands
+  await page.mouse.move(wall.x + wall.w / 2, wall.y + wall.h / 2, { steps: 12 }); await page.waitForTimeout(400); const overWall = await ph(); const dimWall = await dim();
+  await shot('tear', 'over-the-wall-dimmed');
+  await page.mouse.up(); await page.waitForTimeout(700);
+  const born = await page.evaluate(() => window.__lab.tear.handle.widget('te-p1__group')?.cell ?? null);
+  const strips = await page.evaluate(() => [...document.querySelectorAll('#cv-tear .axdb-tabs[data-tabs-id="te-side"] .axdb-tab')].map((t) => t.textContent));
+  const half = 4 * 50 + 3 * 10; // 8 rows of 50 → half = 4 rows
+  verdict(!!overA && overA.h <= half + 12 && !dimA && dimWall === true && born === null && strips.join(',') === 'Filters,Alerts',
+    `over A: ghost ${JSON.stringify(overA)} (half the board = ${half} px) dim ${dimA} · over the wall: ghost ${JSON.stringify(overWall)} dim ${dimWall} · released: group ${JSON.stringify(born)}, strip ${strips.join(',')}`);
+}
+{
+  begin('L78-a-section-slides-along-its-row-and-shows-a-refused-cell');
+  await scrollTo('deep');
+  await page.click('#cv-deep .axdb-tabs[data-tabs-id="dp"] .axdb-tab[data-tab-id="dp-grid"]'); await page.waitForTimeout(300);
+  const cell = (id) => page.evaluate((id) => window.__lab.deep.handle.widget(id)?.cell ?? null, id);
+  const band = await page.evaluate(() => document.querySelector('#cv-deep .axdb-slab[data-slab-id="dp-out"] > .axdb-slab-h').getBoundingClientRect().toJSON());
+  const dp = await groupRect('deep', 'dp'); const cvd = await page.evaluate(() => document.getElementById('cv-deep').getBoundingClientRect().toJSON());
+  const s0 = await cell('dp-out');
+  const refused = () => page.evaluate(() => !!document.querySelector('#cv-deep .axdb-ph--no'));
+  // RIGHT onto the locked Deep tabs container: no legal cell on its row → the wanted cell is painted refused, the section stays
+  await page.mouse.move(band.x + band.width / 2, band.y + band.height / 2); await page.mouse.down(); await page.mouse.move(band.x + band.width / 2 + 8, band.y + band.height / 2 + 4);
+  await page.mouse.move(cvd.x + dp.x + dp.w * 0.5, band.y + band.height / 2, { steps: 14 }); await page.waitForTimeout(400);
+  const r1 = await refused(); const s1 = await cell('dp-out');
+  await shot('deep', 'section-onto-the-locked-container-refused');
+  await page.mouse.up(); await page.waitForTimeout(600);
+  const s2 = await cell('dp-out'); const r2 = await refused();
+  // DOWN into free space: it moves
+  const band2 = await page.evaluate(() => document.querySelector('#cv-deep .axdb-slab[data-slab-id="dp-out"] > .axdb-slab-h').getBoundingClientRect().toJSON());
+  await drag(band2.x + band2.width / 2, band2.y + band2.height / 2, band2.x + band2.width / 2, band2.y + band2.height / 2 + 160, { steps: 14, mid: async () => shot('deep', 'section-carried-down') });
+  const s3 = await cell('dp-out'); const sane = await sanity('deep');
+  await shot('deep', 'section-moved-down');
+  await undoAll('deep', 1);
+  const s4 = await cell('dp-out');
+  verdict(!!s0 && r1 === true && JSON.stringify(s1) === JSON.stringify(s0) && JSON.stringify(s2) === JSON.stringify(s0) && r2 === false && !!s3 && s3.y > s0.y && s3.x === 0 && sane.overlaps === 0 && JSON.stringify(s4) === JSON.stringify(s0),
+    `onto the container: refused-marker ${r1}, cell ${JSON.stringify(s0)} -> ${JSON.stringify(s1)}, after release ${JSON.stringify(s2)} marker gone ${!r2} · down: ${JSON.stringify(s3)} ${JSON.stringify(sane)} · undo ${JSON.stringify(s4)}`);
+}
+{
+  begin('L79-a-widget-out-of-an-inner-tab-page-keeps-its-gesture-and-leaves-no-placeholder');
+  await scrollTo('deep');
+  await page.click('#cv-deep .axdb-tabs[data-tabs-id="dp"] .axdb-tab[data-tab-id="dp-nested"]'); await page.waitForTimeout(400);
+  const pathOf = (id) => page.evaluate((id) => { const walk = (ws, path) => { for (const w of ws ?? []) { if (w.id === id) return [...path, w.id].join(' > '); const r = walk(w.widgets, [...path, w.id]); if (r) return r; } return null; }; return walk(window.__lab.deep.handle.toJSON().views[0].widgets, ['main']); }, id);
+  const ia = await rect('deep', 'dp-ia'); const i1 = await rect('deep', 'dp-i1'); const w1 = await rect('deep', 'dp-w1');
+  const st = () => page.evaluate(() => ({ ghost: !!document.querySelector('#cv-deep .axdb-ghost[data-node-id="dp-ia"]'), ph: document.querySelectorAll('#cv-deep .axdb-ph').length, dim: !!document.querySelector('#cv-deep .axdb-ghost.axdb-out') }));
+  await page.mouse.move(ia.x + ia.w / 2, ia.y + ia.h / 2); await page.mouse.down(); await page.mouse.move(ia.x + ia.w / 2 + 8, ia.y + ia.h / 2 + 8);
+  await page.mouse.move(i1.x + i1.w / 2, i1.y + i1.h / 2, { steps: 12 }); await page.waitForTimeout(400); const overSection = await st();
+  await shot('deep', 'IA-over-the-sibling-section-gesture-alive');
+  await page.mouse.move(w1.x + w1.w / 2, w1.y + w1.h / 2, { steps: 12 }); await page.waitForTimeout(400); const overW1 = await st();
+  await shot('deep', 'IA-over-W1-on-the-main-board');
+  await page.mouse.up(); await page.waitForTimeout(700);
+  const p1 = await pathOf('dp-ia'); const after = await st(); const sane = await sanity('deep');
+  await shot('deep', 'IA-landed-on-the-main-board');
+  await undoAll('deep', 1);
+  const p2 = await pathOf('dp-ia'); const afterUndo = await st();
+  verdict(overSection.ghost === true && overW1.ghost === true && overW1.ph === 1 && p1 === 'main > dp-ia' && after.ph === 0 && sane.overlaps === 0 && p2 === 'main > dp > dp-nested > dp-intabs > dp-ip1 > dp-ia' && afterUndo.ph === 0,
+    `over the section ${JSON.stringify(overSection)} · over W1 ${JSON.stringify(overW1)} · dropped: ${p1} ${JSON.stringify(after)} ${JSON.stringify(sane)} · undo: ${p2} ${JSON.stringify(afterUndo)}`);
+}
+{
+  begin('L80-an-inner-tab-torn-out-lands-on-the-main-board');
+  await scrollTo('deep');
+  await page.click('#cv-deep .axdb-tabs[data-tabs-id="dp"] .axdb-tab[data-tab-id="dp-nested"]'); await page.waitForTimeout(400);
+  const pathOf = (id) => page.evaluate((id) => { const walk = (ws, path) => { for (const w of ws ?? []) { if (w.id === id) return [...path, w.id].join(' > '); const r = walk(w.widgets, [...path, w.id]); if (r) return r; } return null; }; return walk(window.__lab.deep.handle.toJSON().views[0].widgets, ['main']); }, id);
+  const strips = () => page.evaluate(() => [...document.querySelectorAll('#cv-deep .axdb-tabs[data-tabs-id="dp-intabs"] .axdb-tab')].map((t) => t.textContent));
+  const tab = await page.evaluate(() => document.querySelector('#cv-deep .axdb-tab[data-tab-id="dp-ip1"]').getBoundingClientRect().toJSON());
+  const w1 = await rect('deep', 'dp-w1');
+  let mid = null;
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, w1.x + w1.w * 0.6, w1.y + w1.h * 0.4, { steps: 16, mid: async () => {
+    mid = await page.evaluate(() => { const p = document.querySelector('#cv-deep .axdb-ph'); const cv = document.getElementById('cv-deep').getBoundingClientRect(); const r = p?.getBoundingClientRect(); return { ph: r ? { x: Math.round(r.x - cv.x), y: Math.round(r.y - cv.y), w: Math.round(r.width), h: Math.round(r.height) } : null, dim: !!document.querySelector('.axdb-tab-chip.axdb-out') }; });
+    await shot('deep', 'inner-tab-held-over-the-main-board');
+  } });
+  const p1 = await pathOf('dp-ip1__group'); const s1 = await strips(); const born = await page.evaluate(() => window.__lab.deep.handle.widget('dp-ip1__group')?.cell ?? null); const sane = await sanity('deep');
+  await shot('deep', 'inner-page-now-a-group-on-the-main-board');
+  await undoAll('deep', 1);
+  const p2 = await pathOf('dp-ip1__group'); const s2 = await strips();
+  // row 0 holds W1+W2 across the six columns the page needs: the nearest room is under the Outside section
+  verdict(!!mid?.ph && !mid.dim && p1 === 'main > dp-ip1__group' && s1.join(',') === 'Inner B' && !!born && born.x === 0 && born.y >= 0 && sane.overlaps === 0 && p2 === null && s2.join(',') === 'Inner A,Inner B',
+    `held: ${JSON.stringify(mid)} · dropped: ${p1}, inner strip ${s1.join(',')}, cell ${JSON.stringify(born)} ${JSON.stringify(sane)} · undo: group ${p2}, strip ${s2.join(',')}`);
+}
+{
+  begin('L81-a-section-pulled-up-by-its-top-edge-grows-by-the-rows-travelled');
+  await scrollTo('movesec');
+  const cell = (id) => page.evaluate((id) => window.__lab.movesec.handle.widget(id)?.cell ?? null, id);
+  // move the section under B first so it has rows above it to grow into
+  const band0 = await page.evaluate(() => document.querySelector('#cv-movesec .axdb-slab[data-slab-id="ms-sec"] > .axdb-slab-h').getBoundingClientRect().toJSON());
+  const b = await rect('movesec', 'ms-b');
+  await drag(band0.x + band0.width / 2, band0.y + band0.height / 2, band0.x + band0.width / 2, b.y + b.h + 40, { steps: 14 });
+  const s0 = await cell('ms-sec');
+  const band = await page.evaluate(() => document.querySelector('#cv-movesec .axdb-slab[data-slab-id="ms-sec"] > .axdb-slab-h').getBoundingClientRect().toJSON());
+  // press the band's top 3 px (the north edge) and pull up ONE row (60 px rows, 10 px gaps)
+  await page.mouse.move(band.x + band.width / 2, band.y + 3); await page.mouse.down(); await page.mouse.move(band.x + band.width / 2, band.y - 5);
+  for (let i = 1; i <= 8; i++) { await page.mouse.move(band.x + band.width / 2, band.y + 3 - 9 * i); await page.waitForTimeout(40); }
+  await page.waitForTimeout(350); const held = await cell('ms-sec');
+  await shot('movesec', 'section-top-edge-pulled-up-one-row');
+  await page.mouse.up(); await page.waitForTimeout(600);
+  const s1 = await cell('ms-sec'); const sane = await sanity('movesec');
+  await shot('movesec', 'section-one-row-taller-from-the-top');
+  await undoAll('movesec', 2);
+  const s2 = await cell('ms-sec');
+  verdict(!!s0 && !!s1 && s1.h === s0.h + 1 && s1.y === s0.y - 1 && s1.w === s0.w && sane.overlaps === 0 && !!s2 && s2.y === 0 && s2.h === 2,
+    `before ${JSON.stringify(s0)} · held ${JSON.stringify(held)} · after ${JSON.stringify(s1)} (one row taller, top one row higher) ${JSON.stringify(sane)} · undo ×2 ${JSON.stringify(s2)}`);
+}
+{
   begin('L53-a-caption-reserves-only-where-something-paints-it');
   await scrollTo('cap-split');
   const r = await page.evaluate(() => {

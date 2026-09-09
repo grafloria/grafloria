@@ -194191,6 +194191,9 @@ var CSS4 = `
   z-index: 0;
   transition: none;
 }
+/* A slab move asked for a cell it cannot have (a locked section in the way): the wanted cell in the danger tone. */
+.grafloria-html-layer > .axdb-ph.axdb-ph--no { border-color: var(--axdb-danger, #b3123c); background: var(--axdb-danger-soft, rgba(179, 18, 60, .07)); }
+
 @media (prefers-color-scheme: dark) {
   .grafloria-html-layer > .axdb-ph { background: rgba(220, 225, 240, .12); border-color: rgba(220, 225, 240, .3); }
 }
@@ -195705,6 +195708,7 @@ function bindDashboardGrid(api, group, options = {}) {
       },
       move: false
     };
+    if (edges.n || edges.w) it.locked = false;
     capturePointer(slabGesture.pointerId);
     api.container.style.cursor = cursorFor(edges);
   };
@@ -195735,6 +195739,28 @@ function bindDashboardGrid(api, group, options = {}) {
     const it = engine.getItem(id);
     if (it) it.locked = true;
   };
+  let refusal = null;
+  const showRefusal = (cell, w, h) => {
+    const layer2 = htmlLayer();
+    if (!cell || !layer2) {
+      refusal?.remove();
+      refusal = null;
+      api.container.style.cursor = slabGesture ? "grabbing" : "";
+      return;
+    }
+    if (!refusal || refusal.parentElement !== layer2) {
+      refusal?.remove();
+      refusal = document.createElement("div");
+      refusal.className = "axdb-ph axdb-ph--no";
+      layer2.prepend(refusal);
+    }
+    const r = cellToRect({ x: cell.x, y: cell.y, w, h }, frame(), geom(), rows());
+    refusal.style.left = `${r.x}px`;
+    refusal.style.top = `${r.y}px`;
+    refusal.style.width = `${r.width}px`;
+    refusal.style.height = `${r.height}px`;
+    api.container.style.cursor = "not-allowed";
+  };
   const slabMove = (ev) => {
     const g = slabGesture;
     if (!g) return;
@@ -195749,7 +195775,14 @@ function bindDashboardGrid(api, group, options = {}) {
     const gg = geom();
     if (g.move) {
       const cell = pointToCell(ev.world.x + g.grab.dx, ev.world.y + g.grab.dy, f, gg, rows(), it.w);
-      if ((cell.x !== it.x || cell.y !== it.y) && engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed) project();
+      if (cell.x !== it.x || cell.y !== it.y) {
+        const was = { x: it.x, y: it.y };
+        const moved = engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed || placeOnRow(g.id, cell.x, cell.y, it.w);
+        if (moved) project();
+        const now3 = engine.getItem(g.id);
+        const stuck = !!now3 && now3.x === was.x && now3.y === was.y && (cell.x !== was.x || cell.y !== was.y);
+        showRefusal(stuck ? cell : null, it.w, it.h);
+      }
       syncPlaceholder();
       return;
     }
@@ -195787,9 +195820,10 @@ function bindDashboardGrid(api, group, options = {}) {
     const g = slabGesture;
     if (!g) return;
     slabGesture = null;
+    showRefusal(null, 0, 0);
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
-    if (g.move) relockSlab(g.id);
+    relockSlab(g.id);
     if (!g.started) {
       engine.endGesture();
       return;
@@ -195815,7 +195849,7 @@ function bindDashboardGrid(api, group, options = {}) {
     slabGesture = null;
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
-    if (g.move) relockSlab(g.id);
+    relockSlab(g.id);
     if (g.started) engine.cancelGesture();
     else engine.endGesture();
     project();
@@ -196510,6 +196544,14 @@ function bindDashboardGrid(api, group, options = {}) {
     return {
       groupId: group.id,
       baseline: () => startCells,
+      cell: () => {
+        const it = engine.getItem(node.id);
+        return it ? { x: it.x, y: it.y, w: it.w, h: it.h } : null;
+      },
+      rect: () => {
+        const it = engine.getItem(node.id);
+        return it ? cellToRect(it, frame(), geom(), rows()) : null;
+      },
       place: (cell) => {
         if (!engine.getItem(node.id) && !engine.add({ id: node.id, x: 0, y: engine.rows(), w: cell.w, h: cell.h })) return false;
         const it = engine.getItem(node.id);
@@ -196699,13 +196741,19 @@ function bindDashboardGrid(api, group, options = {}) {
   peersOnCanvas().add(selfPeer);
   selfPeerRef = selfPeer;
   api.container.style.setProperty("--axdb-gap", `${gap}px`);
+  let stripPress = false;
   const tool = {
     id: `dashboard-grid:${group.id}:${++binderSeq}`,
     priority: 2,
     // point-specific claim — outranks mode-style tools (see ext/tools.ts)
     hitTest(ev, hit) {
       if (disposed) return false;
-      if (gesture || slabGesture || forwardSlab) return true;
+      if (gesture || slabGesture || forwardSlab || stripPress) return true;
+      const stripEl = ev.source?.target?.closest?.(".axdb-tabs") ?? null;
+      if (stripEl) {
+        const cid = stripEl.getAttribute("data-tabs-id");
+        return !!cid && (group.members ?? /* @__PURE__ */ new Set()).has(cid) && api.container.contains(stripEl);
+      }
       if (!ownsPress(api.container, diagram, ev, hit)) return false;
       const chrome = ev.source?.target?.closest?.(".axdb-slab > .axdb-slab-h, .axdb-slab > .axdb-rs");
       const chromeId = chrome?.parentElement?.getAttribute("data-slab-id");
@@ -196727,6 +196775,10 @@ function bindDashboardGrid(api, group, options = {}) {
     onPointerDown(ev, hit) {
       if (gesture) return;
       const target = ev.source?.target ?? null;
+      if (target?.closest?.(".axdb-tabs")) {
+        stripPress = true;
+        return;
+      }
       const gripHost = gripHostOf(target);
       const gripId = gripHost?.getAttribute("data-node-id") ?? null;
       const onGrip = !!gripId && (group.members ?? /* @__PURE__ */ new Set()).has(gripId);
@@ -196812,20 +196864,37 @@ function bindDashboardGrid(api, group, options = {}) {
       };
     },
     onPointerMove(ev) {
+      if (stripPress) return;
       if (forwardSlab) forwardSlab.slabMove?.(ev);
       else if (slabGesture) slabMove(ev);
       else onToolMove(ev);
     },
     onPointerUp() {
-      if (forwardSlab) {
-        forwardSlab.slabUp?.();
-        forwardSlab = null;
-      } else if (slabGesture) slabUp();
-      else onToolUp();
+      if (stripPress) {
+        stripPress = false;
+        return;
+      }
+      try {
+        onPointerUpInner();
+      } finally {
+        flushDeferredRebuild();
+      }
     },
     onCancel() {
-      cancelActiveGesture();
+      stripPress = false;
+      try {
+        cancelActiveGesture();
+      } finally {
+        flushDeferredRebuild();
+      }
     }
+  };
+  const onPointerUpInner = () => {
+    if (forwardSlab) {
+      forwardSlab.slabUp?.();
+      forwardSlab = null;
+    } else if (slabGesture) slabUp();
+    else onToolUp();
   };
   const unregisterTool = registerTool(tool);
   let hoverHost = null;
@@ -197003,9 +197072,28 @@ function bindDashboardGrid(api, group, options = {}) {
       return api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
     };
     let leg = null;
-    const ensureLeg = (world) => {
-      if (!leg) leg = adopt({ id: plan.arrivingId }, world, plan.size, { fit: "shrink", anchor: "top" });
+    let legPeer = null;
+    const ensureLeg = (world, peer = null) => {
+      const capPx = dockSpan.h * (rowHeightFor(geom(), rows()) + gap) - gap;
+      const size = { width: plan.size.width, height: Math.min(plan.size.height, capPx) };
+      if (leg && legPeer !== peer) {
+        leg.abort();
+        leg = null;
+      }
+      if (!leg) {
+        leg = peer ? peer.adopt({ id: plan.arrivingId }, world, size, { fit: "shrink", anchor: "top" }) : adopt({ id: plan.arrivingId }, world, size, { fit: "shrink", anchor: "top" });
+        legPeer = leg ? peer : null;
+      }
       return leg;
+    };
+    const foreignAt = (wx, wy) => {
+      let best = null;
+      for (const p of peersOnCanvas()) {
+        if (p === selfPeer || plan.ownBoards.includes(p.group.id)) continue;
+        if (!p.containsWorld(wx, wy)) continue;
+        if (!best || p.frameArea() < best.frameArea()) best = p;
+      }
+      return best;
     };
     const naturalSpan = (() => {
       const sp = sizeToSpan(plan.size.width, plan.size.height, frame(), geom(), rows());
@@ -197065,10 +197153,36 @@ function bindDashboardGrid(api, group, options = {}) {
       if (rect.width <= 0 || rect.height <= 0) return { left, top, right, bottom };
       return { left: Math.max(left, rect.left), top: Math.max(top, rect.top), right: Math.min(right, rect.right), bottom: Math.min(bottom, rect.bottom) };
     };
+    const clientInsideCanvasGrace = (cx, cy) => {
+      const rect = api.container.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return true;
+      return cx >= rect.left - EDGE_GRACE && cx <= rect.right + EDGE_GRACE && cy >= rect.top - EDGE_GRACE && cy <= rect.bottom + EDGE_GRACE;
+    };
+    const baseRows = () => {
+      const b = leg?.baseline();
+      if (!b) return rowsWithout(plan.arrivingId);
+      let r = 0;
+      for (const c of b.values()) r = Math.max(r, c.y + c.h);
+      return r;
+    };
+    const worldToClient = (wx, wy) => {
+      const rect = api.container.getBoundingClientRect();
+      const o = toWorld(rect.left, rect.top);
+      const u = toWorld(rect.left + 100, rect.top + 100);
+      return { x: rect.left + (wx - o.x) * (100 / (u.x - o.x || 100)), y: rect.top + (wy - o.y) * (100 / (u.y - o.y || 100)) };
+    };
+    const landingHidden = () => {
+      const r = leg?.rect();
+      const rect = api.container.getBoundingClientRect();
+      if (!r || rect.width <= 0 || rect.height <= 0) return false;
+      const tl = worldToClient(r.x, r.y);
+      const br = worldToClient(r.x + r.width, r.y + r.height);
+      return tl.y >= rect.bottom || br.y <= rect.top || tl.x >= rect.right || br.x <= rect.left;
+    };
     const rootAt = (cx, cy) => {
       const v = visibleFrame();
       if (cx < v.left - ROOT_SIDE || cx > v.right + ROOT_SIDE || cy < v.top - ROOT_TOP || cy > v.bottom + ROOT_BOTTOM) return null;
-      const rows2 = Math.max(TEAR_OUT_MIN_ROWS, rowsWithout(plan.arrivingId));
+      const rows2 = Math.max(TEAR_OUT_MIN_ROWS, baseRows());
       const w = dockSpan.w;
       const h = dockSpan.h;
       if (cy - v.top <= ROOT_TOP) return { kind: "root", side: "top", cell: { x: 0, y: 0, w: columns, h } };
@@ -197099,6 +197213,7 @@ function bindDashboardGrid(api, group, options = {}) {
       return side === "bottom" ? { keep: { x: it.x, y: it.y, w: it.w, h: a }, born: { x: it.x, y: it.y + a, w: it.w, h: b } } : { keep: { x: it.x, y: it.y + b, w: it.w, h: a }, born: { x: it.x, y: it.y, w: it.w, h: b } };
     };
     const zoneAt = (cx, cy, world) => {
+      if (!clientInsideCanvasGrace(cx, cy)) return { kind: "off" };
       const target = targetAt(world.x, world.y);
       const home = !target && worldInsideGroup(from, world.x, world.y);
       if (target) {
@@ -197123,9 +197238,11 @@ function bindDashboardGrid(api, group, options = {}) {
         return h ? { kind: "split", target, side: d[0][0], ...h } : { kind: "join", target };
       }
       if (home) return { kind: "home" };
+      const foreign = foreignAt(world.x, world.y);
+      if (foreign && (!worldInsideBoard(world.x, world.y) || foreign.frameArea() < boardArea())) return { kind: "board", peer: foreign };
       return { kind: "board" };
     };
-    const zoneKey = (z) => JSON.stringify(z, (k, v) => k === "target" ? v.id : v);
+    const zoneKey = (z) => JSON.stringify(z, (k, v) => k === "target" ? v.id : k === "peer" ? v.group.id : v);
     let unlockedGroups = [];
     const unlockGroups = () => {
       if (unlockedGroups.length > 0) return;
@@ -197199,7 +197316,7 @@ function bindDashboardGrid(api, group, options = {}) {
     };
     const previewSplit = (z, world) => {
       const it = engine.getItem(z.target.id);
-      const l = ensureLeg(world);
+      const l = ensureLeg(world, null);
       if (!it || !l) return false;
       split = { id: z.target.id, before: { x: it.x, y: it.y, w: it.w, h: it.h }, frameBefore: frameOfGroup(z.target), keep: z.keep };
       it.locked = false;
@@ -197220,7 +197337,7 @@ function bindDashboardGrid(api, group, options = {}) {
       key = k;
       zone = z;
       if (same) {
-        if (z.kind === "board") ensureLeg(world)?.move(world);
+        if (z.kind === "board") ensureLeg(world, z.peer ?? null)?.move(world);
         return;
       }
       undoSplitPreview();
@@ -197250,7 +197367,7 @@ function bindDashboardGrid(api, group, options = {}) {
           break;
         }
         case "root": {
-          const l = ensureLeg(world);
+          const l = ensureLeg(world, null);
           if (l) {
             unlockGroups();
             l.place(z.cell);
@@ -197267,10 +197384,11 @@ function bindDashboardGrid(api, group, options = {}) {
           plan.markDrop(fromGroupId, z.index);
           break;
         case "home":
+        case "off":
           leg?.leave();
           break;
         case "board": {
-          const l = ensureLeg(world);
+          const l = ensureLeg(world, z.peer ?? null);
           l?.enter(world);
           break;
         }
@@ -197290,7 +197408,7 @@ function bindDashboardGrid(api, group, options = {}) {
       const world = toWorld(e.clientX, e.clientY);
       const z = zoneAt(e.clientX, e.clientY, world);
       applyZone(z, world);
-      chip2.classList.toggle("axdb-out", zone.kind === "home" || zone.kind === "root" && !leg || zone.kind === "board" && (!leg || !worldInsideBoardGrace(world.x, world.y)));
+      chip2.classList.toggle("axdb-out", zone.kind === "home" || zone.kind === "off" || zone.kind === "root" && !leg || zone.kind === "board" && (!leg || landingHidden()));
       api.render();
     };
     const done = (changed, kind) => {
@@ -197310,7 +197428,7 @@ function bindDashboardGrid(api, group, options = {}) {
       const world = toWorld(last.x, last.y);
       const z = commit ? zoneAt(last.x, last.y, world) : { kind: "home" };
       if (z.kind !== "root") undoInsertRows();
-      if (!commit || z.kind === "home" || z.kind === "root" && !ensureLeg(world) || z.kind === "board" && (!ensureLeg(world) || !worldInsideBoardGrace(world.x, world.y))) {
+      if (!commit || z.kind === "home" || z.kind === "off" || z.kind === "root" && !ensureLeg(world, null) || z.kind === "board" && (!ensureLeg(world, z.peer ?? null) || landingHidden())) {
         undoSplitPreview();
         leg?.abort();
         relockGroups();
@@ -197335,6 +197453,8 @@ function bindDashboardGrid(api, group, options = {}) {
       }
       if (z.kind === "split") {
         if (!split || split.id !== z.target.id || zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
+        hideOverlay();
+        plan.markDrop(null, null);
         const fin2 = leg?.finalize() ?? null;
         const it = engine.getItem(z.target.id);
         const before = split;
@@ -197358,13 +197478,15 @@ function bindDashboardGrid(api, group, options = {}) {
         return;
       }
       if (zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
+      hideOverlay();
+      plan.markDrop(null, null);
       const fin = leg?.finalize() ?? null;
       relockGroups();
       if (!fin) {
         done(false, "cancel");
         return;
       }
-      const planned = plan.commands(fin.cell, fin.rect, group.id);
+      const planned = plan.commands(fin.cell, fin.rect, leg?.groupId ?? group.id);
       done(execute(z.kind === "root" ? "Dock tab" : "Move tab out", [...fin.commands, ...groupCommands(fin), ...planned.move, ...planned.collapse]), "commit");
     };
     const onUp = () => finish(true);
@@ -197535,9 +197657,20 @@ function bindDashboardGrid(api, group, options = {}) {
     api.renderNow();
     return true;
   };
+  let rebuildDeferred = null;
+  const flushDeferredRebuild = () => {
+    if (!rebuildDeferred || gesture || slabGesture) return;
+    const { pack } = rebuildDeferred;
+    rebuildDeferred = null;
+    rebuild(pack);
+  };
   const rebuild = (pack) => {
     if (disposed) return;
-    if (gesture) cancelActiveGesture(false);
+    if (gesture || slabGesture) {
+      rebuildDeferred = { pack: pack || rebuildDeferred?.pack === true };
+      project();
+      return;
+    }
     applyFluidFrame();
     const items = [];
     for (const id of group.members ?? []) {
@@ -200165,6 +200298,7 @@ function createDashboardHandle(ctx) {
         (id) => id !== containerId && id !== pageId && (ctx.layoutOf.get(id) ?? specById.get(id)?.layout) === "tabs" && !!model.getGroup(id) && !insidePage(id)
       ),
       stripHeight: (targetId) => tabStripReserve(ctx.tabsOf.get(targetId), Math.max(1, liveCount(targetId))),
+      ownBoards: [pageId, ...[...ctx.boardGroups.keys()].filter((id) => insidePage(id))],
       stripIndex: (targetId, cx, cy) => {
         const strip = ctx.tabStrips.get(targetId);
         if (!strip) return null;
