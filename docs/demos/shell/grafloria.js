@@ -198792,9 +198792,10 @@ function bindDashboardSplit(api, group, options = {}) {
   const unregisterTool = registerTool(tool);
   let tearing = false;
   const EDGE_GRACE = 60;
+  let pendingBatch = void 0;
   const execute = (name, commands) => {
     if (commands.length === 0) return false;
-    void execCommand(new BatchCommand(name, commands));
+    pendingBatch = execCommand(new BatchCommand(name, commands));
     return true;
   };
   const beginTearOut = (pageId, fromGroupId, ev, plan) => {
@@ -198879,8 +198880,15 @@ function bindDashboardSplit(api, group, options = {}) {
     };
     const done = (changed, kind) => {
       tearing = false;
-      project(readTree());
-      api.renderNow();
+      const paint2 = () => {
+        if (disposed) return;
+        project(readTree());
+        api.renderNow();
+      };
+      paint2();
+      const p = pendingBatch;
+      pendingBatch = void 0;
+      if (p && typeof p.then === "function") void p.then(paint2, () => void 0);
       fire({ type: kind, kind: "move", nodeId: pageId, changed });
     };
     const finish = (commit) => {
@@ -200773,7 +200781,7 @@ function createDashboardHandle(ctx) {
       return true;
     },
     setSizing(mode) {
-      for (const b of binders.values()) b.setSizing(mode);
+      for (const [id, b] of binders) if (groups.has(id)) b.setSizing(mode);
       clampCamera();
       ctx.apiRef?.renderNow();
     },
