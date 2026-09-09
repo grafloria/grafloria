@@ -432,7 +432,10 @@ render(SPEC2, host);</pre>
       strip beats a band and a band beats a group's body. A docked group takes at most half the board, the way an
       edge drop splits VS Code's editor area in two, never the full height of the container it left — and a top
       dock <em>inserts</em> rows: everything beneath the band moves down as one, its arrangement intact, rather than
-      being re-packed tile by tile. The deepest target wins, so a
+      being re-packed tile by tile. A widget dragged from the board into a page's <em>body</em> joins that page's grid (element 0.4.34): a
+      page with room takes it where the pointer is, a full page squeezes its rows to make room — the tile under the
+      pointer moves aside, the way the board itself behaves — instead of refusing the drop with no sign of why. (A full
+      <em>section</em> still refuses; growing its slab for a drop is the escalation path's, a later release.) The deepest target wins, so a
       group nested inside the container the page came from is a target, not "home". The ghost enters the board only
       when the pointer is over free board space, so on a fit board nothing squeezes the moment you grab a tab, and a
       full board that refuses the ghost still lets the page join, reorder or split. A group too narrow or too short
