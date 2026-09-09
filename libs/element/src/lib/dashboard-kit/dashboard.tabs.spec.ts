@@ -390,6 +390,82 @@ describe('tab containers', () => {
     expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts']);
   });
 
+  it('a tab torn out of the one-tab group it was BORN into lands again: a fresh group id, the emptied one closes, undo x2 restores', async () => {
+    // The plan named the arriving group `${pageId}__group` — the id of the
+    // group the page was leaving when that group had been born from the same
+    // page. AddGroup threw "already exists" mid-batch, the split preview
+    // stayed applied and the chip stayed on screen (the user's live report:
+    // "once I release the tab widget disappears").
+    const { api, model, handle } = up(BOARD());
+    await dragTab(api, 'panel', 'p-three', { x: 150, y: 400 });
+    expect(stripOf(api, 'p-three__group')).toEqual(['Notes']);
+    const bornBefore = cellOf(handle, 'p-three__group')!;
+    await dragTabFrom(api, 'p-three__group', 'p-three', { x: 160, y: 410 }, { x: 900, y: 500 });
+    const groups = Array.from(api.container.querySelectorAll('.axdb-tabs')).map((s) => s.getAttribute('data-tabs-id')!);
+    const born = groups.filter((g) => g !== 'panel');
+    expect(born.length).toBe(1); // one group holds the page — the emptied one is gone
+    expect(stripOf(api, born[0])).toEqual(['Notes']);
+    expect(handle.getLayout(born[0])).toBe('tabs');
+    expect(model.getGroup(born[0])!.members!.has('p-three')).toBe(true);
+    const bornAfter = cellOf(handle, born[0])!;
+    expect(bornAfter.x !== bornBefore.x || bornAfter.y !== bornBefore.y).toBe(true); // it moved
+    expect(onCanvas(model, ['k-one', 'k-two', 'k-three'])).toEqual(['k-one', 'k-three']);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'p-three__group')).toEqual(['Notes']);
+    expect(cellOf(handle, 'p-three__group')).toEqual(bornBefore);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(api.container.querySelectorAll('.axdb-tabs').length).toBe(1);
+  });
+
+  it('SPLIT ABOVE from its own one-tab group: the target keeps the bottom half, the page takes the top in a fresh group, the empty one closes', async () => {
+    // Two 4-column groups and four free columns, so the first landing is a
+    // free cell — not a split of the left group, which would leave it too
+    // small to halve (a 3-row target joins by design).
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        widgets: [
+          { id: 'left', title: 'Left group', span: 4, rows: 6, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('l1', 'Sales', 'k-l1'), PAGE('l2', 'Margin', 'k-l2')] },
+          { id: 'right', title: 'Right group', span: 4, rows: 6, x: 4, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+        ],
+      })
+    );
+    // Notes out of the right group into the free columns
+    await dragTabFrom(api, 'right', 'r2', { x: 600, y: 10 }, { x: 1000, y: 200 });
+    expect(stripOf(api, 'r2__group')).toEqual(['Notes']);
+    const g0 = cellOf(handle, 'r2__group')!;
+    expect(g0.x).toBeGreaterThanOrEqual(8);
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 4, h: 6 });
+    const f = frameOf(model, 'left');
+    // then its only tab onto the TOP third of the left group's body
+    await dragTabFrom(api, 'r2__group', 'r2', { x: 1000, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 30 + (f.h - 30) * 0.08 });
+    const groups = Array.from(api.container.querySelectorAll('.axdb-tabs')).map((s) => s.getAttribute('data-tabs-id')!);
+    const born = groups.filter((g) => g !== 'left' && g !== 'right');
+    expect(born.length).toBe(1);
+    expect(stripOf(api, born[0])).toEqual(['Notes']);
+    expect(cellOf(handle, born[0])).toEqual({ x: 0, y: 0, w: 4, h: 3 });
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 3, w: 4, h: 3 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
+    expect(stripOf(api, 'right')).toEqual(['Filters']);
+    expect(api.container.querySelector('.axdb-tab-chip')).toBeNull();
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 4, h: 6 });
+    expect(stripOf(api, 'r2__group')).toEqual(['Notes']);
+    expect(cellOf(handle, 'r2__group')).toEqual(g0);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(api.container.querySelectorAll('.axdb-tabs').length).toBe(2);
+  });
+
   it('the torn-out group survives toJSON → dashboard() and a saved document', async () => {
     const first = up(BOARD());
     await dragTab(first.api, 'panel', 'p-two', { x: 150, y: 400 });
