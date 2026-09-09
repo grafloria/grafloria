@@ -48,7 +48,7 @@ export {
   type DashboardGridGeometry,
   type TileDelta,
 } from './grid-mapping';
-export { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID } from './styles';
+export { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID, DASHBOARD_KIT_CSS } from './styles';
 export { paintTabStrip, tabStripReserve, tabStripKey, TAB_STRIP_HEIGHT, TAB_DRAG_THRESHOLD, type TabsOptions, type TabPage } from './tabs';
 export {
   normalizeCaption,

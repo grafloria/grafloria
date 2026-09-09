@@ -29,3 +29,14 @@ describe('dashboard kit default styling', () => {
     expect(dark).toMatch(/--axdb-card: #161a22/);
   });
 });
+
+// The sheet's constant is part of the package surface: a host reads it to
+// derive or override the chrome. 0.4.36 exported it from the styles module
+// only — the raw-import check on the registry tarball found it undefined.
+describe('the kit sheet on the package index', () => {
+  it('DASHBOARD_KIT_CSS is exported from @grafloria/element', async () => {
+    const pkg = (await import('../../index')) as { DASHBOARD_KIT_CSS?: unknown };
+    expect(typeof pkg.DASHBOARD_KIT_CSS).toBe('string');
+    expect(pkg.DASHBOARD_KIT_CSS as string).toContain('--axdb-head-bg');
+  });
+});
