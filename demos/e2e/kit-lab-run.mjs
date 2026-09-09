@@ -2060,6 +2060,93 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `rest: band ${a0.band?.height}px child top ${top0} ${JSON.stringify(sane0)} · amount ${hs0['ctl-amount']}→${hs1['ctl-amount']} child top ${top1} vs ${a1.band?.y + 28} · section ${cellA.w}→${cellB.w} cols, band ${a1.band?.width}→${a2.band?.width} slab ${a2.slab.width} selected=${a2.selected} child top ${top2} ${JSON.stringify(sane2)} · undo band ${a3.band?.width} amount ${hs3['ctl-amount']} ${JSON.stringify(sane3)}`);
 }
 
+{
+  begin('L82-on-a-SPLIT-board-a-tab-torn-out-becomes-a-PANE-at-the-edge-under-the-pointer');
+  await scrollTo('sptabs');
+  const state = () => page.evaluate(() => {
+    const tabsOf = (id) => [...document.querySelectorAll(`#cv-sptabs .axdb-tabs[data-tabs-id="${id}"] .axdb-tab`)].map((t) => t.textContent);
+    const leaves = (t) => (!t ? [] : t.id ? [t.id] : t.children.flatMap(leaves));
+    const m = window.__lab.sptabs.api.getModel();
+    const g = m.getGroup('st-a2__group');
+    const w = m.getNode('st-w');
+    return { a: tabsOf('st-a'), b: tabsOf('st-b'), born: tabsOf('st-a2__group'), bornX: g ? Math.round(g.position.x) : null, bornW: g ? Math.round(g.size.width) : null, wX: Math.round(w.position.x), wW: Math.round(w.size.width), leaves: leaves(window.__lab.sptabs.handle.toJSON().views[0].tree ?? null) };
+  });
+  const before = await state();
+  const tab = await page.evaluate(() => document.querySelector('#cv-sptabs .axdb-tab[data-tab-id="st-a2"]').getBoundingClientRect().toJSON());
+  const w = await rect('sptabs', 'st-w');
+  const board = await page.evaluate(() => document.getElementById('cv-sptabs').getBoundingClientRect().toJSON());
+  let mid = null;
+  // 1. the MARGIN tab carried onto the widget's left edge, clear of the board's outer band: the page takes HALF THE WIDGET'S slot
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, w.x + 40, w.y + w.h / 2, { steps: 16, mid: async () => {
+    mid = await page.evaluate(() => { const ins = document.querySelector('#cv-sptabs .axdb-ins'); const r = ins?.getBoundingClientRect(); return { chip: document.querySelector('.axdb-tab-chip')?.textContent ?? null, out: document.querySelector('.axdb-tab-chip')?.classList.contains('axdb-out') ?? null, ins: r ? { x: Math.round(r.x), w: Math.round(r.width), h: Math.round(r.height) } : null }; });
+    await shot('sptabs', 'chip-and-insertion-line-at-the-widget-left-edge');
+  } });
+  const after = await state();
+  const sane = await sanity('sptabs');
+  await shot('sptabs', 'the-page-is-a-pane-taking-half-the-widget-slot');
+  await undoAll('sptabs', 1);
+  const undone = await state();
+  const sane2 = await sanity('sptabs');
+  // 2. the same tab carried into the board's OUTER band (18 px): the page takes a half of the WHOLE board — DevExpress's group edge, the widget drop's own rule
+  let mid2 = null;
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, w.x + 6, w.y + w.h / 2, { steps: 16, mid: async () => {
+    mid2 = await page.evaluate(() => { const ins = document.querySelector('#cv-sptabs .axdb-ins'); const r = ins?.getBoundingClientRect(); return r ? { x: Math.round(r.x), h: Math.round(r.height) } : null; });
+    await shot('sptabs', 'held-in-the-boards-outer-band');
+  } });
+  const after2 = await state();
+  const sane3 = await sanity('sptabs');
+  await shot('sptabs', 'the-page-took-half-the-whole-board');
+  await undoAll('sptabs', 1);
+  const undone2 = await state();
+  const halfWidget = after.bornW !== null && after.bornW > before.wW * 0.4 && after.bornW < before.wW * 0.6;
+  const halfBoard = after2.bornW !== null && after2.bornW > board.width * 0.4 && after2.bornW < board.width * 0.55;
+  verdict(before.a.join(',') === 'Sales,Margin' && before.leaves.join(',') === 'st-w,st-a,st-b'
+    && mid?.chip === 'Margin' && mid?.out === false && !!mid?.ins && mid.ins.w <= 6 && mid.ins.h > 100 && Math.abs(mid.ins.x - w.x) < 8
+    && after.a.join(',') === 'Sales' && after.born.join(',') === 'Margin' && after.leaves.join(',') === 'st-a2__group,st-w,st-a,st-b'
+    && after.bornX !== null && after.bornX < after.wX && halfWidget && sane.overlaps === 0 && sane.overflow === 0
+    && undone.a.join(',') === 'Sales,Margin' && undone.born.length === 0 && undone.leaves.join(',') === 'st-w,st-a,st-b' && sane2.overlaps === 0
+    && !!mid2 && mid2.h > 100 && after2.leaves.join(',') === 'st-a2__group,st-w,st-a,st-b' && halfBoard && sane3.overlaps === 0
+    && undone2.a.join(',') === 'Sales,Margin' && undone2.leaves.join(',') === 'st-w,st-a,st-b',
+    `rest: A ${before.a.join('/')} leaves ${before.leaves.join('/')} widget ${before.wW} px wide · held 40 px inside the widget's left edge: chip ${mid?.chip} dimmed ${mid?.out} insertion line ${JSON.stringify(mid?.ins)} (widget at x=${Math.round(w.x)}) · released: A ${after.a.join('/')}, born group ${after.born.join('/')} at x=${after.bornX}, ${after.bornW} px wide = half the widget's slot (${halfWidget}), left of the widget at ${after.wX}, leaves ${after.leaves.join('/')} ${JSON.stringify(sane)} · undo: A ${undone.a.join('/')} leaves ${undone.leaves.join('/')} · held 6 px inside the board's edge: line ${JSON.stringify(mid2)} → born ${after2.bornW} px wide of a ${Math.round(board.width)} px board = half the board (${halfBoard}), leaves ${after2.leaves.join('/')} ${JSON.stringify(sane3)} · undo: leaves ${undone2.leaves.join('/')}`);
+}
+{
+  begin('L83-on-a-SPLIT-board-a-tab-REORDERS-along-its-own-strip-and-JOINS-another-group-over-its-body');
+  await scrollTo('sptabs');
+  const tabsOf = (id) => page.evaluate((id) => [...document.querySelectorAll(`#cv-sptabs .axdb-tabs[data-tabs-id="${id}"] .axdb-tab`)].map((t) => t.textContent), id);
+  const leaves = () => page.evaluate(() => { const leaves = (t) => (!t ? [] : t.id ? [t.id] : t.children.flatMap(leaves)); return leaves(window.__lab.sptabs.handle.toJSON().views[0].tree ?? null); });
+  const a0 = await tabsOf('st-a'); const b0 = await tabsOf('st-b'); const l0 = await leaves();
+  // 1. REORDER: Margin dragged to the left of Sales along Group A's strip
+  const t1 = await page.evaluate(() => document.querySelector('#cv-sptabs .axdb-tab[data-tab-id="st-a1"]').getBoundingClientRect().toJSON());
+  const t2 = await page.evaluate(() => document.querySelector('#cv-sptabs .axdb-tab[data-tab-id="st-a2"]').getBoundingClientRect().toJSON());
+  let held1 = null;
+  await drag(t2.x + t2.width / 2, t2.y + t2.height / 2, t1.x + 4, t1.y + t1.height / 2, { steps: 12, mid: async () => {
+    held1 = await page.evaluate(() => ({ chip: document.querySelector('.axdb-tab-chip')?.textContent ?? null, mark: !!document.querySelector('#cv-sptabs .axdb-tabs .axdb-tab-drop, #cv-sptabs .axdb-tabs .axdb-drop-mark, #cv-sptabs .axdb-tabs [data-drop]') }));
+    await shot('sptabs', 'margin-held-before-sales-on-its-own-strip');
+  } });
+  const a1 = await tabsOf('st-a'); const l1 = await leaves();
+  await shot('sptabs', 'reordered');
+  // 2. JOIN: Group B's Notes tab released over the CENTRE of Group A's body
+  const ga = await groupRect('sptabs', 'st-a');
+  const cv = await page.evaluate(() => document.getElementById('cv-sptabs').getBoundingClientRect().toJSON());
+  const tb = await page.evaluate(() => document.querySelector('#cv-sptabs .axdb-tab[data-tab-id="st-b2"]').getBoundingClientRect().toJSON());
+  let held2 = null;
+  await drag(tb.x + tb.width / 2, tb.y + tb.height / 2, cv.x + ga.x + ga.w / 2, cv.y + ga.y + 30 + (ga.h - 30) / 2, { steps: 16, mid: async () => {
+    held2 = await page.evaluate(() => ({ chip: document.querySelector('.axdb-tab-chip')?.textContent ?? null, join: !!document.querySelector('#cv-sptabs .axdb-join'), ins: !!document.querySelector('#cv-sptabs .axdb-ins') }));
+    await shot('sptabs', 'notes-held-over-group-a-body-centre');
+  } });
+  const a2 = await tabsOf('st-a'); const b2 = await tabsOf('st-b'); const l2 = await leaves();
+  const sane = await sanity('sptabs');
+  await shot('sptabs', 'notes-joined-group-a');
+  await undoAll('sptabs', 2);
+  const a3 = await tabsOf('st-a'); const b3 = await tabsOf('st-b'); const l3 = await leaves();
+  verdict(a0.join(',') === 'Sales,Margin' && b0.join(',') === 'Filters,Notes' && l0.join(',') === 'st-w,st-a,st-b'
+    && held1?.chip === 'Margin' && a1.join(',') === 'Margin,Sales' && l1.join(',') === l0.join(',')
+    && held2?.chip === 'Notes' && held2?.join === true && held2?.ins === false
+    && a2.join(',') === 'Margin,Sales,Notes' && b2.join(',') === 'Filters' && l2.join(',') === l0.join(',') && sane.overlaps === 0
+    && a3.join(',') === 'Sales,Margin' && b3.join(',') === 'Filters,Notes' && l3.join(',') === l0.join(','),
+    `rest A ${a0.join('/')} B ${b0.join('/')} · Margin carried before Sales: chip ${held1?.chip} → A ${a1.join('/')} (tree unchanged ${l1.join('/')}) · Notes held over A's body centre: chip ${held2?.chip} join overlay ${held2?.join} insertion line ${held2?.ins} → A ${a2.join('/')} B ${b2.join('/')} leaves ${l2.join('/')} ${JSON.stringify(sane)} · two undos: A ${a3.join('/')} B ${b3.join('/')}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

@@ -23,9 +23,9 @@
  * the authored size.
  */
 
-import { Command, type DiagramModel, type GroupModel, type NodeModel } from '@grafloria/engine';
+import { BatchCommand, Command, type DiagramModel, type GroupModel, type NodeModel } from '@grafloria/engine';
 import { LiveRegionController, registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
-import type { DashboardGridApi, DashboardGridHandle, DashboardGridOptions } from './grid-binder';
+import type { DashboardGridApi, DashboardGridHandle, DashboardGridOptions, TearOutPlan } from './grid-binder';
 import { anyEdge, clearOtherSelections, dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, parentPeerOf, pressOnDragHandle, registerBoardPeer, syncGrip, DRAG_HANDLE_CLASS, EDGE_GRIP, type BinderPeer, type DragHandleOption, type ResizeEdges } from './grid-binder';
 import { cellFromGridItem, type CellRect, type WorldRect } from './grid-mapping';
 import {
@@ -825,6 +825,182 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
   };
   const unregisterTool = registerTool(tool);
 
+  // -- a tab torn out of a container on THIS board (0.4.37) --------------------
+  // The split board REFUSED every tear-out ("no cells to drop a page into"),
+  // so on a split board a tab press was a dead click — no chip, no reorder,
+  // no join. The board has a drop model of its own: a widget dropped on a
+  // pane's edge inserts there. A torn-out page uses it — the page becomes a
+  // one-tab group that IS a pane — and keeps the strip rules of the grid
+  // board: its own strip reorders, another container's strip or the centre of
+  // its body joins, the centre of its own body is home, off the canvas is
+  // nothing. One history step, like every other drop.
+  let tearing = false;
+  const EDGE_GRACE = 60;
+  const execute = (name: string, commands: Command[]): boolean => {
+    if (commands.length === 0) return false;
+    void execCommand(new BatchCommand(name, commands));
+    return true;
+  };
+  const beginTearOut = (pageId: string, fromGroupId: string, ev: PointerEvent, plan: TearOutPlan): boolean => {
+    if (disposed || isStatic || gesture || tearing) return false;
+    const from = diagram.getGroup(fromGroupId);
+    if (!from) return false;
+    const tree0 = readTree();
+    tearing = true;
+    const doc = api.container.ownerDocument ?? document;
+    const chip = doc.createElement('div');
+    chip.className = 'axdb-drag-chip axdb-tab-chip';
+    chip.textContent = plan.label;
+    doc.body.appendChild(chip);
+    const moveChip = (cx: number, cy: number): void => {
+      chip.style.left = `${cx + 6}px`;
+      chip.style.top = `${cy + 6}px`;
+    };
+    moveChip(ev.clientX, ev.clientY);
+    const layer = htmlLayer();
+    let joinEl: HTMLElement | null = null;
+    const showJoin = (r: WorldRect): void => {
+      if (!layer) return;
+      if (!joinEl) {
+        joinEl = doc.createElement('div');
+        joinEl.className = 'axdb-join';
+        layer.prepend(joinEl);
+      }
+      joinEl.style.left = `${r.x}px`;
+      joinEl.style.top = `${r.y}px`;
+      joinEl.style.width = `${r.width}px`;
+      joinEl.style.height = `${r.height}px`;
+    };
+    const hideJoin = (): void => {
+      joinEl?.remove();
+      joinEl = null;
+    };
+    type Zone =
+      | { kind: 'reorder'; index: number }
+      | { kind: 'strip'; targetId: string; index: number }
+      | { kind: 'join'; targetId: string }
+      | { kind: 'pane'; target: DropTarget }
+      | { kind: 'home' }
+      | { kind: 'off' };
+    const frameOfGroup = (g: GroupModel): WorldRect => ({ x: g.position.x, y: g.position.y, width: g.size?.width ?? 0, height: g.size?.height ?? 0 });
+    const inRect = (r: WorldRect, x: number, y: number): boolean => x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height;
+    const targets = plan.joinTargets
+      .map((id) => diagram.getGroup(id))
+      .filter((g): g is GroupModel => !!g && g.id !== fromGroupId && !plan.ownBoards.includes(g.id));
+    /** Inside the visible canvas plus a grace band; an unmeasurable container (no layout) is never off. */
+    const clientInsideCanvasGrace = (cx: number, cy: number): boolean => {
+      const rect = api.container.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return true;
+      return cx >= rect.left - EDGE_GRACE && cx <= rect.right + EDGE_GRACE && cy >= rect.top - EDGE_GRACE && cy <= rect.bottom + EDGE_GRACE;
+    };
+    /** The centre third of a container's BODY (below its strip), both axes — the grid board's join zone. */
+    const centreThird = (g: GroupModel, w: { x: number; y: number }): boolean => {
+      const f = frameOfGroup(g);
+      if (!inRect(f, w.x, w.y)) return false;
+      const top = f.y + plan.stripHeight(g.id);
+      const h = Math.max(0, f.y + f.height - top);
+      return w.x >= f.x + f.width / 3 && w.x <= f.x + (2 * f.width) / 3 && w.y >= top + h / 3 && w.y <= top + (2 * h) / 3;
+    };
+    const zoneAt = (cx: number, cy: number, w: { x: number; y: number }): Zone => {
+      if (!clientInsideCanvasGrace(cx, cy)) return { kind: 'off' };
+      const own = plan.stripIndex(fromGroupId, cx, cy);
+      if (own !== null) return { kind: 'reorder', index: own };
+      for (const t of targets) {
+        const i = plan.stripIndex(t.id, cx, cy);
+        if (i !== null) return { kind: 'strip', targetId: t.id, index: i };
+      }
+      for (const t of targets) if (centreThird(t, w)) return { kind: 'join', targetId: t.id };
+      if (centreThird(from, w)) return { kind: 'home' };
+      if (worldInsideBoard(w.x, w.y)) {
+        const t = dropTargetAt(tree0, w.x, w.y);
+        if (t) return { kind: 'pane', target: t };
+      }
+      return { kind: 'home' };
+    };
+    const apply = (z: Zone): void => {
+      plan.markDrop(z.kind === 'reorder' ? fromGroupId : z.kind === 'strip' ? z.targetId : null, z.kind === 'reorder' || z.kind === 'strip' ? z.index : null);
+      const jt = z.kind === 'join' ? diagram.getGroup(z.targetId) : undefined;
+      if (jt) showJoin(frameOfGroup(jt));
+      else hideJoin();
+      showInsertion(z.kind === 'pane' ? insertionRect(z.target.rect, z.target.side) : null);
+      chip.classList.toggle('axdb-out', z.kind === 'home' || z.kind === 'off');
+    };
+    let last = { x: ev.clientX, y: ev.clientY };
+    const detach = (): void => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onCancel, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+    const done = (changed: boolean, kind: 'commit' | 'cancel'): void => {
+      tearing = false;
+      project(readTree());
+      api.renderNow();
+      fire({ type: kind, kind: 'move', nodeId: pageId, changed });
+    };
+    const finish = (commit: boolean): void => {
+      detach();
+      chip.remove();
+      hideJoin();
+      showInsertion(null);
+      plan.markDrop(null, null);
+      if (disposed) {
+        tearing = false;
+        return;
+      }
+      const z: Zone = commit ? zoneAt(last.x, last.y, toWorld(last.x, last.y)) : { kind: 'home' };
+      if (z.kind === 'home' || z.kind === 'off') {
+        done(false, 'cancel');
+        return;
+      }
+      if (z.kind === 'reorder') {
+        const cmds = plan.reorder(z.index);
+        const changed = cmds.length > 0 && execute('Reorder tab', cmds);
+        done(changed, changed ? 'commit' : 'cancel');
+        return;
+      }
+      if (z.kind === 'strip' || z.kind === 'join') {
+        const index = z.kind === 'strip' ? z.index : plan.dropIndex(z.targetId, last.x, last.y);
+        const planned = plan.join(z.targetId, index, group.id);
+        done(execute('Move tab', [...planned.move, ...planned.collapse]), 'commit');
+        return;
+      }
+      // A PANE: the page's new group takes the named side of the target — the
+      // widget drop's own rule — and the tree swap rides in the same step as
+      // the group's birth, so one undo removes both.
+      const side = rtl && (z.target.side === 'left' || z.target.side === 'right') ? (z.target.side === 'left' ? 'right' : 'left') : z.target.side;
+      const after = normalizeSplit(insertSplitLeaf(tree0, plan.arrivingId, targetRef(z.target), side));
+      const rect = rectsOf(after).get(plan.arrivingId);
+      const cell = cellsFromSplit(after, columns, rowsGuess()).get(plan.arrivingId);
+      if (!rect || !cell) {
+        done(false, 'cancel');
+        return;
+      }
+      const planned = plan.commands(cell, rect, group.id);
+      done(execute('Move tab out', [...planned.move, new SetSplitTreeCommand(group.id, tree0, after), ...planned.collapse]), 'commit');
+      live.announce(`${plan.label} is a pane ${side === 'left' || side === 'top' ? 'before' : 'after'} ${targetName(z.target)}`, 'polite', true);
+    };
+    const onMove = (e: PointerEvent): void => {
+      if (disposed) return finish(false);
+      last = { x: e.clientX, y: e.clientY };
+      moveChip(e.clientX, e.clientY);
+      apply(zoneAt(e.clientX, e.clientY, toWorld(e.clientX, e.clientY)));
+      api.render();
+    };
+    const onUp = (): void => finish(true);
+    const onCancel = (): void => finish(false);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') finish(false);
+    };
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onCancel, true);
+    window.addEventListener('keydown', onKey, true);
+    apply(zoneAt(ev.clientX, ev.clientY, toWorld(ev.clientX, ev.clientY)));
+    api.render();
+    return true;
+  };
+
   // -- palette drag-in --------------------------------------------------------
 
   const beginPaletteDrag = (node: NodeModel, spec: { w: number; h: number; chip?: HTMLElement }, event: PointerEvent): void => {
@@ -1255,9 +1431,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     hasItem: (id) => (group.members ?? new Set<string>()).has(id),
     memberCell: (id) => handle.cellOf(id),
     resizeMemberBy: () => ({ changed: false }),
-    // A split board has no cells to drop a torn-out page into: it refuses,
-    // and the press stays a plain tab click.
-    tearOutMember: (_pageId, _fromGroupId, _ev, _plan) => false,
+    // A torn-out page becomes a PANE (0.4.37) — see beginTearOut.
+    tearOutMember: (pageId, fromGroupId, ev, plan) => beginTearOut(pageId, fromGroupId, ev, plan),
     // …and it has no cells to move a section across: a strip press stays a selection.
     dragMember: () => false,
     containsWorld: (x, y) => worldInsideBoard(x, y),
