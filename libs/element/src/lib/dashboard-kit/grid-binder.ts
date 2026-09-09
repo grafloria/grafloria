@@ -624,6 +624,8 @@ export interface TearOutPlan {
   markDrop(targetId: string | null, index: number | null): void;
   /** The tab index a CLIENT point means along `targetId`'s strip — null when the point is not over that strip. */
   stripIndex(targetId: string, clientX: number, clientY: number): number | null;
+  /** The strip's height on `targetId`, px — the band above its body. */
+  stripHeight(targetId: string): number;
   /** The commands that REORDER the page to `index` along its own strip. Empty when nothing changes. */
   reorder(index: number): Command[];
   /**
@@ -704,14 +706,24 @@ interface AdoptedLeg {
    */
   leave(): void;
   enter(world: { x: number; y: number }): void;
+  /** Put the tile at a PRESCRIBED cell (a split's half, a docking band): sized to it, unlocked tiles pushed. Answers whether it sits there. */
+  place(cell: { x: number; y: number; w: number; h: number }): boolean;
+  /** Every other tile's cell before the ghost entered — the layout a row insert translates. */
+  baseline(): Map<string, CellRect>;
   /** Undo the adoption: target board back to its pre-entry layout. */
   abort(): void;
   /**
    * Close the leg for commit: returns the target-side displaced commands, the
-   * tile's final cell and its projected rect. Null when the tile is somehow
-   * gone (treat as abort).
+   * tile's final cell and its projected rect — and the member GROUPS the
+   * adoption moved (the node commands skip groups; a dock that pushed sections
+   * commits them through these). Null when the tile is somehow gone.
    */
-  finalize(): { commands: Command[]; cell: CellRect; rect: WorldRect } | null;
+  finalize(): {
+    commands: Command[];
+    cell: CellRect;
+    rect: WorldRect;
+    groups: Array<{ id: string; cellBefore: CellRect; cellAfter: CellRect; frameBefore: WorldRect; frameAfter: WorldRect }>;
+  } | null;
 }
 
 /**
@@ -3011,6 +3023,29 @@ export function bindDashboardGrid(
     syncPlaceholder();
     return {
       groupId: group.id,
+      baseline: () => startCells,
+      place: (cell) => {
+        if (!engine.getItem(node.id) && !engine.add({ id: node.id, x: 0, y: engine.rows(), w: cell.w, h: cell.h })) return false;
+        const it = engine.getItem(node.id);
+        if (!it) return false;
+        // Shrink, move, then grow. A resize is clamped at the board's edge
+        // where the ghost SITS, so a cell wider than fits there (a full-width
+        // dock from a ghost parked mid-board) is reached by moving first —
+        // and a cell narrower than the ghost by shrinking first, so the move
+        // itself fits.
+        const w0 = Math.min(it.w, cell.w);
+        const h0 = Math.min(it.h, cell.h);
+        if (w0 !== it.w || h0 !== it.h) engine.resizeCheck(node.id, w0, h0);
+        const moved = engine.getItem(node.id);
+        if (moved && (moved.x !== cell.x || moved.y !== cell.y)) engine.moveCheck(node.id, cell.x, cell.y, { gate: false });
+        const now = engine.getItem(node.id);
+        if (now && (now.w !== cell.w || now.h !== cell.h)) engine.resizeCheck(node.id, cell.w, cell.h);
+        lastWant = null;
+        project();
+        syncPlaceholder();
+        const at = engine.getItem(node.id);
+        return !!at && at.x === cell.x && at.y === cell.y && at.w === cell.w && at.h === cell.h;
+      },
       move: (w) => {
         const item = engine.getItem(node.id);
         if (!item) return;
@@ -3057,11 +3092,26 @@ export function bindDashboardGrid(
         const cell: CellRect = { x: item.x, y: item.y, w: item.w, h: item.h };
         const rect = cellToRect(item, frame(), geom(), rows());
         const commands = buildCommitCommands(deltasSince(startCells, startGeom, node.id));
+        const groups: Array<{ id: string; cellBefore: CellRect; cellAfter: CellRect; frameBefore: WorldRect; frameAfter: WorldRect }> = [];
+        for (const [id, before] of startCells) {
+          if (!isGroupMember(id)) continue;
+          const it = engine.getItem(id);
+          const g0 = startGeom.get(id);
+          if (!it || !g0) continue;
+          if (it.x === before.x && it.y === before.y && it.w === before.w && it.h === before.h) continue;
+          groups.push({
+            id,
+            cellBefore: before,
+            cellAfter: { x: it.x, y: it.y, w: it.w, h: it.h },
+            frameBefore: { x: g0.pos.x, y: g0.pos.y, width: g0.size.width, height: g0.size.height },
+            frameAfter: cellToRect(it, frame(), geom(), rows()),
+          });
+        }
         engine.endGesture();
         adoptedGhostId = null;
         disarmGlideSoon();
         syncPlaceholder();
-        return { commands, cell, rect };
+        return { commands, cell, rect, groups };
       },
     };
   };
@@ -3621,13 +3671,36 @@ export function bindDashboardGrid(
       const rect = api.container.getBoundingClientRect();
       return api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
     };
-    const first = toWorld(ev.clientX, ev.clientY);
     // The board holds the NEW group, not the bare page: it is adopted under the
     // group's id, sized for the page plus its strip, taking the room under the
     // pointer with its top edge at the pointer — the tab is what the pointer
-    // holds, the page hangs below it.
-    const leg = adopt({ id: plan.arrivingId }, first, plan.size, { fit: 'shrink', anchor: 'top' });
-    if (!leg) return false;
+    // holds, the page hangs below it. NOT at the press: a ghost in the engine
+    // costs rows, and on a fit board every tile squeezes the moment it enters,
+    // so the ghost enters only when the pointer is over free board space, and
+    // leaves whenever it is over a strip, a group or an edge. A full board that
+    // refuses the ghost still lets the page join, reorder or split.
+    let leg: AdoptedLeg | null = null;
+    const ensureLeg = (world: { x: number; y: number }): AdoptedLeg | null => {
+      if (!leg) leg = adopt({ id: plan.arrivingId }, world, plan.size, { fit: 'shrink', anchor: 'top' });
+      return leg;
+    };
+    const naturalSpan = ((): { w: number; h: number } => {
+      const sp = sizeToSpan(plan.size.width, plan.size.height, frame(), geom(), rows());
+      return { w: Math.max(1, Math.min(columns, sp.w)), h: Math.max(TEAR_OUT_MIN_ROWS, sp.h) };
+    })();
+    // A DOCKED group takes at most HALF the board — VS Code's edge drop splits
+    // the area in two. A page as tall as the container it left would
+    // otherwise shove the whole dashboard out of view. Half of the board as
+    // it stood at the press, and of what the canvas shows, whichever is less.
+    const dockSpan = ((): { w: number; h: number } => {
+      const rows0 = rows();
+      const rect = api.container.getBoundingClientRect();
+      const rh = rowHeightFor(geom(), rows0) + gap;
+      const visible = rect.height > 0 && rh > 0 ? Math.max(1, Math.floor((rect.height + gap) / rh)) : rows0;
+      const halfRows = Math.max(TEAR_OUT_MIN_ROWS, Math.ceil(Math.min(rows0, visible) / 2));
+      const halfCols = Math.max(1, Math.ceil(columns / 2));
+      return { w: Math.min(naturalSpan.w, halfCols), h: Math.min(naturalSpan.h, halfRows) };
+    })();
 
     tearing = pageId;
     const doc = api.container.ownerDocument ?? document;
@@ -3635,45 +3708,6 @@ export function bindDashboardGrid(
     chip.className = 'axdb-drag-chip axdb-tab-chip';
     chip.textContent = plan.label;
     doc.body.appendChild(chip);
-    // Over ANOTHER tab container the page joins it instead of taking a cell:
-    // the tile leaves the board (its displaced tiles come home), the target's
-    // frame lights up and its strip marks where the tab will go.
-    const layer = htmlLayer();
-    const targets = plan.joinTargets
-      .map((id) => diagram.getGroup(id))
-      .filter((g): g is GroupModel => !!g && g.id !== fromGroupId);
-    const targetAt = (wx: number, wy: number): GroupModel | null => targets.find((t) => worldInsideGroup(t, wx, wy)) ?? null;
-    let over: GroupModel | null = null;
-    let joinEl: HTMLElement | null = null;
-    const showJoin = (g: GroupModel): void => {
-      if (!layer || g.id === fromGroupId) return; // reordering along its own strip: the mark is enough
-      if (!joinEl) {
-        joinEl = doc.createElement('div');
-        joinEl.className = 'axdb-join';
-        layer.prepend(joinEl);
-      }
-      const sz = sizeOf(g);
-      joinEl.style.left = `${g.position.x}px`;
-      joinEl.style.top = `${g.position.y}px`;
-      joinEl.style.width = `${sz.width}px`;
-      joinEl.style.height = `${sz.height}px`;
-    };
-    const hideJoin = (): void => {
-      joinEl?.remove();
-      joinEl = null;
-      plan.markDrop(null, null);
-    };
-    const setOver = (g: GroupModel | null, world: { x: number; y: number }): void => {
-      if (g === over) return;
-      over = g;
-      if (g) {
-        leg.leave();
-        showJoin(g);
-      } else {
-        hideJoin();
-        leg.enter(world);
-      }
-    };
     const moveChip = (cx: number, cy: number): void => {
       chip.style.left = `${cx + 6}px`;
       chip.style.top = `${cy + 6}px`;
@@ -3682,6 +3716,317 @@ export function bindDashboardGrid(
     armGlide();
     api.render();
 
+    // -- the drop model: where the pointer is decides what the release does --------
+    // Over ANOTHER tab container: its strip joins at a slot; the centre third of
+    // its body joins on the end; an outer third SPLITS it — the target keeps one
+    // half of its cell, the page takes the other (Lumino's thirds, VS Code's
+    // feel). Over the board's own edges the page DOCKS against the whole board.
+    // Over its own strip it reorders; over its own body it goes home. Deepest
+    // target wins, so a group inside the container the page came from is a
+    // target, not "home".
+    type Side = 'left' | 'right' | 'top' | 'bottom';
+    type Zone =
+      | { kind: 'strip'; target: GroupModel; index: number }
+      | { kind: 'join'; target: GroupModel }
+      | { kind: 'split'; target: GroupModel; side: Side; keep: CellRect; born: CellRect }
+      | { kind: 'root'; side: Side; cell: CellRect }
+      | { kind: 'reorder'; index: number }
+      | { kind: 'home' }
+      | { kind: 'board' };
+    const layer = htmlLayer();
+    const area = (g: GroupModel): number => {
+      const sz = sizeOf(g);
+      return sz.width * sz.height;
+    };
+    const targets = plan.joinTargets
+      .map((id) => diagram.getGroup(id))
+      .filter((g): g is GroupModel => !!g && g.id !== fromGroupId)
+      .sort((a, b) => area(a) - area(b));
+    // GEOMETRY MUST NOT MOVE WITH THE GHOST. On a fit board the rows squeeze
+    // while the ghost occupies some and relax when it leaves, so a target's
+    // frame changes with the very decision being made about it: a join makes
+    // the ghost leave, the frame grows, and the same pointer now reads as a
+    // split. The target and its frame are therefore anchored when the pointer
+    // enters it and kept until it leaves; the board frame is the one at press.
+    let anchor: { g: GroupModel; frame: WorldRect; stripH: number } | null = null;
+    const inRect = (r: WorldRect, wx: number, wy: number): boolean => wx >= r.x && wx <= r.x + r.width && wy >= r.y && wy <= r.y + r.height;
+    const targetAt = (wx: number, wy: number): GroupModel | null => {
+      if (anchor && inRect(anchor.frame, wx, wy)) return anchor.g;
+      const t = targets.find((x) => worldInsideGroup(x, wx, wy)) ?? null;
+      if (t) leg?.leave(); // the ghost leaves first, so the frame anchored is the relaxed one
+      anchor = t ? { g: t, frame: frameOfGroup(t), stripH: plan.stripHeight(t.id) } : null;
+      return t;
+    };
+    // THE BANDS ARE ON THE SCREEN. Dockview measures its container edges on
+    // the element, and so must we: the camera moves during the drag (the
+    // board glides, the ghost adds rows a bounded scroll answers to), so a
+    // band fixed in world space at the press drifts away from the edge the
+    // user sees. The frame is mapped to client space through the live
+    // camera and clipped to the canvas, so a scrolled board's bands sit at
+    // its VISIBLE edges.
+    const ROOT_TOP = 20;
+    const ROOT_BOTTOM = 20;
+    const ROOT_SIDE = 40;
+    const visibleFrame = (): { left: number; top: number; right: number; bottom: number } => {
+      const rect = api.container.getBoundingClientRect();
+      const o = toWorld(rect.left, rect.top);
+      const u = toWorld(rect.left + 100, rect.top + 100);
+      const sx = 100 / (u.x - o.x || 100);
+      const sy = 100 / (u.y - o.y || 100);
+      const f = frame();
+      const left = rect.left + (f.x - o.x) * sx;
+      const top = rect.top + (f.y - o.y) * sy;
+      const right = left + f.width * sx;
+      const bottom = top + f.height * sy;
+      if (rect.width <= 0 || rect.height <= 0) return { left, top, right, bottom }; // unlaid-out: nothing to clip to
+      return { left: Math.max(left, rect.left), top: Math.max(top, rect.top), right: Math.min(right, rect.right), bottom: Math.min(bottom, rect.bottom) };
+    };
+    const rootAt = (cx: number, cy: number): Zone | null => {
+      // The bands reach a little OUTSIDE the frame too: a pointer that
+      // overshoots the board's top edge by a few pixels means "the top".
+      const v = visibleFrame();
+      if (cx < v.left - ROOT_SIDE || cx > v.right + ROOT_SIDE || cy < v.top - ROOT_TOP || cy > v.bottom + ROOT_BOTTOM) return null;
+      const rows = Math.max(TEAR_OUT_MIN_ROWS, rowsWithout(plan.arrivingId));
+      const w = dockSpan.w;
+      const h = dockSpan.h;
+      if (cy - v.top <= ROOT_TOP) return { kind: 'root', side: 'top', cell: { x: 0, y: 0, w: columns, h } };
+      if (cx - v.left <= ROOT_SIDE) return { kind: 'root', side: 'left', cell: { x: 0, y: 0, w, h: rows } };
+      if (v.right - cx <= ROOT_SIDE) return { kind: 'root', side: 'right', cell: { x: Math.max(0, columns - w), y: 0, w, h: rows } };
+      if (v.bottom - cy <= ROOT_BOTTOM) return { kind: 'root', side: 'bottom', cell: { x: 0, y: rows, w: columns, h } };
+      return null;
+    };
+    const rowsWithout = (id: string): number => {
+      let r = 0;
+      for (const it of engine.getItems()) if (it.id !== id) r = Math.max(r, it.y + it.h);
+      return r;
+    };
+    /** A split being previewed: the target shrunk to its half, to be restored when the pointer leaves. */
+    let split: { id: string; before: CellRect; frameBefore: WorldRect; keep: CellRect } | null = null;
+    const halves = (target: GroupModel, side: Side): { keep: CellRect; born: CellRect } | null => {
+      // The cell to halve is the target's own — not the half it is already
+      // shrunk to while a split is being previewed.
+      const live = engine.getItem(target.id);
+      const it = split && split.id === target.id ? split.before : live;
+      if (!it || !live) return null; // a group on another board: no cell of ours to halve
+      if (side === 'left' || side === 'right') {
+        if (it.w < 2) return null;
+        const a = Math.ceil(it.w / 2);
+        const b = it.w - a;
+        return side === 'right'
+          ? { keep: { x: it.x, y: it.y, w: a, h: it.h }, born: { x: it.x + a, y: it.y, w: b, h: it.h } }
+          : { keep: { x: it.x + b, y: it.y, w: a, h: it.h }, born: { x: it.x, y: it.y, w: b, h: it.h } };
+      }
+      if (it.h < 2 * TEAR_OUT_MIN_ROWS) return null;
+      const a = Math.ceil(it.h / 2);
+      const b = it.h - a;
+      return side === 'bottom'
+        ? { keep: { x: it.x, y: it.y, w: it.w, h: a }, born: { x: it.x, y: it.y + a, w: it.w, h: b } }
+        : { keep: { x: it.x, y: it.y + b, w: it.w, h: a }, born: { x: it.x, y: it.y, w: it.w, h: b } };
+    };
+    const zoneAt = (cx: number, cy: number, world: { x: number; y: number }): Zone => {
+      const target = targetAt(world.x, world.y);
+      const home = !target && worldInsideGroup(from, world.x, world.y);
+      // A strip is the most precise target there is: anyone's wins outright.
+      if (target) {
+        const idx = plan.stripIndex(target.id, cx, cy);
+        if (idx !== null) return { kind: 'strip', target, index: idx };
+      } else if (home) {
+        const idx = plan.stripIndex(fromGroupId, cx, cy);
+        if (idx !== null) return { kind: 'reorder', index: idx };
+      }
+      // The board's own edges beat whatever sits against them — Dockview's
+      // container edges over its groups — so a group at the top of the board
+      // still leaves the top band to the board.
+      const root = rootAt(cx, cy);
+      if (root) return root;
+      if (target) {
+        const f = anchor && anchor.g === target ? anchor.frame : frameOfGroup(target);
+        const stripH = anchor && anchor.g === target ? anchor.stripH : plan.stripHeight(target.id);
+        const bodyH = Math.max(1, f.height - stripH);
+        const rx = Math.min(1, Math.max(0, (world.x - f.x) / Math.max(1, f.width)));
+        const ry = Math.min(1, Math.max(0, (world.y - f.y - stripH) / bodyH));
+        if (rx >= 1 / 3 && rx <= 2 / 3 && ry >= 1 / 3 && ry <= 2 / 3) return { kind: 'join', target };
+        const d: Array<[Side, number]> = [['left', rx], ['right', 1 - rx], ['top', ry], ['bottom', 1 - ry]];
+        d.sort((p, q) => p[1] - q[1]);
+        const h = halves(target, d[0][0]);
+        return h ? { kind: 'split', target, side: d[0][0], ...h } : { kind: 'join', target };
+      }
+      if (home) return { kind: 'home' };
+      return { kind: 'board' };
+    };
+    const zoneKey = (z: Zone): string => JSON.stringify(z, (k, v) => (k === 'target' ? (v as GroupModel).id : v));
+
+    // DOCKING PUSHES SECTIONS. A section is a locked tile so that a widget
+    // never pushes it; a group docked against the board's edge is the one
+    // gesture that must — everything below the top band moves down. For the
+    // preview every member group is unlocked; they are relocked when the
+    // pointer leaves the band, and their moved cells are committed with the
+    // dock.
+    let unlockedGroups: string[] = [];
+    const unlockGroups = (): void => {
+      if (unlockedGroups.length > 0) return;
+      for (const it of engine.getItems()) {
+        if (it.id !== plan.arrivingId && it.locked && isGroupMember(it.id)) {
+          it.locked = false;
+          unlockedGroups.push(it.id);
+        }
+      }
+    };
+    const relockGroups = (): void => {
+      for (const id of unlockedGroups) {
+        const it = engine.getItem(id);
+        if (it) it.locked = true;
+      }
+      unlockedGroups = [];
+    };
+    const groupCommands = (fin: NonNullable<ReturnType<AdoptedLeg['finalize']>>, except?: string): Command[] =>
+      fin.groups.filter((g) => g.id !== except).map((g) => new SetGroupCellCommand(g.id, g.cellBefore, g.cellAfter, g.frameBefore, g.frameAfter));
+
+    // A TOP DOCK INSERTS ROWS. The engine's push cascade resolves the band's
+    // collisions one tile at a time and scrambles what stood beneath it (the
+    // demo's KPI row came apart, two of its tiles under the chart). VS Code
+    // shoves the whole area down intact, so after the ghost takes the band
+    // every tile that stood at or below it is put back at its own column,
+    // exactly the band's height lower — a translation of a layout without
+    // overlaps has none — and comes back the same way when the pointer leaves.
+    // The layout translated is the one from BEFORE the ghost entered (the
+    // leg's baseline), not the engine's mid-gesture state: the adoption
+    // itself pushes tiles about, and a snapshot taken after it would carry
+    // that cascade into the insert.
+    let inserted: Map<string, CellRect> | null = null;
+    const insertRows = (cell: CellRect, l: AdoptedLeg): void => {
+      if (cell.w < columns) return; // a side dock has no whole rows to insert
+      inserted = l.baseline();
+      for (const [id, c] of inserted) {
+        const it = engine.getItem(id);
+        if (!it) continue;
+        it.x = c.x;
+        it.y = c.y >= cell.y ? c.y + cell.h : c.y;
+      }
+    };
+    const undoInsertRows = (): void => {
+      if (!inserted) return;
+      leg?.leave(); // the ghost frees its rows first
+      for (const [id, c] of inserted) {
+        const it = engine.getItem(id);
+        if (it) {
+          it.x = c.x;
+          it.y = c.y;
+        }
+      }
+      inserted = null;
+      project();
+    };
+
+    let joinEl: HTMLElement | null = null;
+    const showOverlay = (r: WorldRect): void => {
+      if (!layer) return;
+      if (!joinEl) {
+        joinEl = doc.createElement('div');
+        joinEl.className = 'axdb-join';
+        layer.prepend(joinEl);
+      }
+      joinEl.style.left = `${r.x}px`;
+      joinEl.style.top = `${r.y}px`;
+      joinEl.style.width = `${r.width}px`;
+      joinEl.style.height = `${r.height}px`;
+    };
+    const hideOverlay = (): void => {
+      joinEl?.remove();
+      joinEl = null;
+    };
+    const undoSplitPreview = (): void => {
+      if (!split) return;
+      const it = engine.getItem(split.id);
+      leg?.leave(); // the born half must be free before the target grows back into it
+      if (it) {
+        if (it.x !== split.before.x || it.y !== split.before.y) engine.moveCheck(split.id, split.before.x, split.before.y, { gate: false });
+        if (it.w !== split.before.w || it.h !== split.before.h) engine.resizeCheck(split.id, split.before.w, split.before.h);
+        it.locked = true;
+      }
+      split = null;
+      project();
+    };
+    const previewSplit = (z: Extract<Zone, { kind: 'split' }>, world: { x: number; y: number }): boolean => {
+      const it = engine.getItem(z.target.id);
+      const l = ensureLeg(world);
+      if (!it || !l) return false;
+      split = { id: z.target.id, before: { x: it.x, y: it.y, w: it.w, h: it.h }, frameBefore: frameOfGroup(z.target), keep: z.keep };
+      it.locked = false; // its own gesture for the moment: it may shrink and shift
+      if (it.w !== z.keep.w || it.h !== z.keep.h) engine.resizeCheck(z.target.id, z.keep.w, z.keep.h);
+      const now = engine.getItem(z.target.id);
+      if (now && (now.x !== z.keep.x || now.y !== z.keep.y)) engine.moveCheck(z.target.id, z.keep.x, z.keep.y, { gate: false });
+      const ok = l.place(z.born);
+      project();
+      placeholder?.remove(); // the accent overlay says which half; the grey placeholder under it is noise
+      placeholder = null;
+      return ok;
+    };
+    let zone: Zone = { kind: 'board' };
+    let key = zoneKey(zone);
+    const applyZone = (z: Zone, world: { x: number; y: number }): void => {
+      const k = zoneKey(z);
+      const same = k === key;
+      key = k;
+      zone = z;
+      if (same) {
+        if (z.kind === 'board') ensureLeg(world)?.move(world);
+        return;
+      }
+      undoSplitPreview();
+      undoInsertRows();
+      if (z.kind !== 'root') relockGroups();
+      plan.markDrop(null, null);
+      hideOverlay();
+      switch (z.kind) {
+        case 'strip':
+          leg?.leave();
+          showOverlay(frameOfGroup(z.target));
+          plan.markDrop(z.target.id, z.index);
+          break;
+        case 'join':
+          leg?.leave();
+          showOverlay(frameOfGroup(z.target));
+          break;
+        case 'split': {
+          if (!previewSplit(z, world)) {
+            zone = { kind: 'join', target: z.target };
+            key = zoneKey(zone);
+            leg?.leave();
+            showOverlay(frameOfGroup(z.target));
+            break;
+          }
+          showOverlay(cellToRect(z.born, frame(), geom(), rows()));
+          break;
+        }
+        case 'root': {
+          const l = ensureLeg(world);
+          if (l) {
+            unlockGroups();
+            l.place(z.cell);
+            insertRows(z.cell, l);
+            project();
+            placeholder?.remove();
+            placeholder = null;
+            showOverlay(cellToRect(z.cell, frame(), geom(), rows()));
+          }
+          break;
+        }
+        case 'reorder':
+          leg?.leave();
+          plan.markDrop(fromGroupId, z.index);
+          break;
+        case 'home':
+          leg?.leave();
+          break;
+        case 'board': {
+          const l = ensureLeg(world);
+          l?.enter(world);
+          break;
+        }
+      }
+    };
+
     let last = { x: ev.clientX, y: ev.clientY };
     const detach = (): void => {
       window.removeEventListener('pointermove', onMove, true);
@@ -3689,79 +4034,96 @@ export function bindDashboardGrid(
       window.removeEventListener('pointercancel', onCancel, true);
       window.removeEventListener('keydown', onKey, true);
     };
-    let homeIndex: number | null = null;
     const onMove = (e: PointerEvent): void => {
       if (disposed) return detach();
       last = { x: e.clientX, y: e.clientY };
       moveChip(e.clientX, e.clientY);
       const world = toWorld(e.clientX, e.clientY);
-      const home = worldInsideGroup(from, world.x, world.y);
-      // Over its OWN strip the tab reorders: the strip marks the slot and the
-      // tile leaves the board. Over its own body it goes home (a cancel).
-      homeIndex = home ? plan.stripIndex(fromGroupId, e.clientX, e.clientY) : null;
-      const target = home ? null : targetAt(world.x, world.y);
-      setOver(target ?? (homeIndex !== null ? from : null), world);
-      chip.classList.toggle('axdb-out', (home && homeIndex === null) || (!target && !home && !worldInsideBoardGrace(world.x, world.y)));
-      if (target) plan.markDrop(target.id, plan.dropIndex(target.id, e.clientX, e.clientY));
-      else if (homeIndex !== null) plan.markDrop(fromGroupId, homeIndex);
-      else if (!home) leg.move(world);
+      const z = zoneAt(e.clientX, e.clientY, world);
+      applyZone(z, world);
+      // Dimmed = a release here does nothing: home, off the board, or a board
+      // that refused the ghost (bounded and full).
+      chip.classList.toggle('axdb-out', zone.kind === 'home' || (zone.kind === 'root' && !leg) || (zone.kind === 'board' && (!leg || !worldInsideBoardGrace(world.x, world.y))));
       api.render();
     };
-    const finish = (commit: boolean): void => {
-      detach();
-      chip.remove();
-      hideJoin();
-      tearing = null;
-      if (disposed) return;
-      const world = toWorld(last.x, last.y);
-      const home = worldInsideGroup(from, world.x, world.y);
-      if (commit && home && homeIndex !== null) {
-        // REORDER along its own strip.
-        leg.abort();
-        const cmds = plan.reorder(homeIndex);
-        const changed = cmds.length > 0 ? execute('Reorder tab', cmds) : false;
-        disarmGlideSoon();
-        api.renderNow();
-        options.onGesture?.({ type: changed ? 'commit' : 'cancel', kind: 'move', nodeId: pageId, changed });
-        return;
-      }
-      const target = commit && !home ? targetAt(world.x, world.y) : null;
-      if (target) {
-        // JOIN: no cell on this board — the leg is abandoned (its displaced
-        // tiles are already home) and the page becomes the target's tab.
-        const index = plan.dropIndex(target.id, last.x, last.y);
-        leg.abort();
-        const planned = plan.join(target.id, index, group.id);
-        const changed = execute('Move tab', [...planned.move, ...planned.collapse]);
-        disarmGlideSoon();
-        enforceBoardHeight();
-        persistLayouts();
-        api.renderNow();
-        options.onGesture?.({ type: 'commit', kind: 'move', nodeId: pageId, changed });
-        return;
-      }
-      if (!commit || home || !worldInsideBoardGrace(world.x, world.y)) {
-        leg.abort();
-        disarmGlideSoon();
-        api.renderNow();
-        options.onGesture?.({ type: 'cancel', kind: 'move', nodeId: pageId, changed: false });
-        return;
-      }
-      const fin = leg.finalize();
-      if (!fin) {
-        disarmGlideSoon();
-        api.renderNow();
-        return;
-      }
-      const planned = plan.commands(fin.cell, fin.rect, group.id);
-      // The container the page left may have been holding its last page: it
-      // goes too (the plan carries the removal's settle).
-      const changed = execute('Move tab out', [...fin.commands, ...planned.move, ...planned.collapse]);
+    const done = (changed: boolean, kind: 'commit' | 'cancel'): void => {
       disarmGlideSoon();
       enforceBoardHeight();
       persistLayouts();
       api.renderNow();
-      options.onGesture?.({ type: 'commit', kind: 'move', nodeId: pageId, changed });
+      options.onGesture?.({ type: kind, kind: 'move', nodeId: pageId, changed });
+    };
+    const finish = (commit: boolean): void => {
+      detach();
+      chip.remove();
+      hideOverlay();
+      plan.markDrop(null, null);
+      tearing = null;
+      if (disposed) return;
+      const world = toWorld(last.x, last.y);
+      const z: Zone = commit ? zoneAt(last.x, last.y, world) : { kind: 'home' };
+      if (z.kind !== 'root') undoInsertRows();
+      if (!commit || z.kind === 'home' || (z.kind === 'root' && !ensureLeg(world)) || (z.kind === 'board' && (!ensureLeg(world) || !worldInsideBoardGrace(world.x, world.y)))) {
+        undoSplitPreview();
+        leg?.abort();
+        relockGroups();
+        done(false, 'cancel');
+        return;
+      }
+      if (z.kind === 'reorder') {
+        undoSplitPreview();
+        leg?.abort();
+        const cmds = plan.reorder(z.index);
+        const changed = cmds.length > 0 ? execute('Reorder tab', cmds) : false;
+        done(changed, changed ? 'commit' : 'cancel');
+        return;
+      }
+      if (z.kind === 'strip' || z.kind === 'join') {
+        // JOIN: no cell on this board — the leg is abandoned (its displaced
+        // tiles are already home) and the page becomes the target's tab.
+        undoSplitPreview();
+        const index = z.kind === 'strip' ? z.index : plan.dropIndex(z.target.id, last.x, last.y);
+        leg?.abort();
+        const planned = plan.join(z.target.id, index, group.id);
+        done(execute('Move tab', [...planned.move, ...planned.collapse]), 'commit');
+        return;
+      }
+      if (z.kind === 'split') {
+        // SPLIT: the target keeps one half of its cell, the page's new group the
+        // other. The preview already holds both in the engine; commit them.
+        if (!split || split.id !== z.target.id || zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
+        const fin = leg?.finalize() ?? null;
+        const it = engine.getItem(z.target.id);
+        const before = split;
+        if (it) it.locked = true;
+        split = null;
+        if (!fin || !before || !it) {
+          leg?.abort();
+          done(false, 'cancel');
+          return;
+        }
+        const keep: CellRect = { x: it.x, y: it.y, w: it.w, h: it.h };
+        const planned = plan.commands(fin.cell, fin.rect, group.id);
+        const changed = execute('Split group', [
+          ...fin.commands,
+          ...groupCommands(fin, z.target.id),
+          new SetGroupCellCommand(z.target.id, before.before, keep, before.frameBefore, cellToRect(keep, frame(), geom(), rows())),
+          ...planned.move,
+          ...planned.collapse,
+        ]);
+        done(changed, 'commit');
+        return;
+      }
+      // ROOT DOCK or a free cell on the board: the leg sits where it will land.
+      if (zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
+      const fin = leg?.finalize() ?? null;
+      relockGroups();
+      if (!fin) {
+        done(false, 'cancel');
+        return;
+      }
+      const planned = plan.commands(fin.cell, fin.rect, group.id);
+      done(execute(z.kind === 'root' ? 'Dock tab' : 'Move tab out', [...fin.commands, ...groupCommands(fin), ...planned.move, ...planned.collapse]), 'commit');
     };
     const onUp = (): void => finish(true);
     const onCancel = (): void => finish(false);

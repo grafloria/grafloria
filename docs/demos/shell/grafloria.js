@@ -196484,6 +196484,24 @@ function bindDashboardGrid(api, group, options = {}) {
     syncPlaceholder();
     return {
       groupId: group.id,
+      baseline: () => startCells,
+      place: (cell) => {
+        if (!engine.getItem(node.id) && !engine.add({ id: node.id, x: 0, y: engine.rows(), w: cell.w, h: cell.h })) return false;
+        const it = engine.getItem(node.id);
+        if (!it) return false;
+        const w0 = Math.min(it.w, cell.w);
+        const h0 = Math.min(it.h, cell.h);
+        if (w0 !== it.w || h0 !== it.h) engine.resizeCheck(node.id, w0, h0);
+        const moved = engine.getItem(node.id);
+        if (moved && (moved.x !== cell.x || moved.y !== cell.y)) engine.moveCheck(node.id, cell.x, cell.y, { gate: false });
+        const now3 = engine.getItem(node.id);
+        if (now3 && (now3.w !== cell.w || now3.h !== cell.h)) engine.resizeCheck(node.id, cell.w, cell.h);
+        lastWant = null;
+        project();
+        syncPlaceholder();
+        const at = engine.getItem(node.id);
+        return !!at && at.x === cell.x && at.y === cell.y && at.w === cell.w && at.h === cell.h;
+      },
       move: (w) => {
         const item = engine.getItem(node.id);
         if (!item) return;
@@ -196529,11 +196547,26 @@ function bindDashboardGrid(api, group, options = {}) {
         const cell = { x: item.x, y: item.y, w: item.w, h: item.h };
         const rect = cellToRect(item, frame(), geom(), rows());
         const commands = buildCommitCommands(deltasSince(startCells, startGeom, node.id));
+        const groups = [];
+        for (const [id, before] of startCells) {
+          if (!isGroupMember(id)) continue;
+          const it = engine.getItem(id);
+          const g0 = startGeom.get(id);
+          if (!it || !g0) continue;
+          if (it.x === before.x && it.y === before.y && it.w === before.w && it.h === before.h) continue;
+          groups.push({
+            id,
+            cellBefore: before,
+            cellAfter: { x: it.x, y: it.y, w: it.w, h: it.h },
+            frameBefore: { x: g0.pos.x, y: g0.pos.y, width: g0.size.width, height: g0.size.height },
+            frameAfter: cellToRect(it, frame(), geom(), rows())
+          });
+        }
         engine.endGesture();
         adoptedGhostId = null;
         disarmGlideSoon();
         syncPlaceholder();
-        return { commands, cell, rect };
+        return { commands, cell, rect, groups };
       }
     };
   };
@@ -196939,49 +196972,30 @@ function bindDashboardGrid(api, group, options = {}) {
       const rect = api.container.getBoundingClientRect();
       return api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
     };
-    const first = toWorld(ev.clientX, ev.clientY);
-    const leg = adopt({ id: plan.arrivingId }, first, plan.size, { fit: "shrink", anchor: "top" });
-    if (!leg) return false;
+    let leg = null;
+    const ensureLeg = (world) => {
+      if (!leg) leg = adopt({ id: plan.arrivingId }, world, plan.size, { fit: "shrink", anchor: "top" });
+      return leg;
+    };
+    const naturalSpan = (() => {
+      const sp = sizeToSpan(plan.size.width, plan.size.height, frame(), geom(), rows());
+      return { w: Math.max(1, Math.min(columns, sp.w)), h: Math.max(TEAR_OUT_MIN_ROWS, sp.h) };
+    })();
+    const dockSpan = (() => {
+      const rows0 = rows();
+      const rect = api.container.getBoundingClientRect();
+      const rh = rowHeightFor(geom(), rows0) + gap;
+      const visible2 = rect.height > 0 && rh > 0 ? Math.max(1, Math.floor((rect.height + gap) / rh)) : rows0;
+      const halfRows = Math.max(TEAR_OUT_MIN_ROWS, Math.ceil(Math.min(rows0, visible2) / 2));
+      const halfCols = Math.max(1, Math.ceil(columns / 2));
+      return { w: Math.min(naturalSpan.w, halfCols), h: Math.min(naturalSpan.h, halfRows) };
+    })();
     tearing = pageId;
     const doc = api.container.ownerDocument ?? document;
     const chip2 = doc.createElement("div");
     chip2.className = "axdb-drag-chip axdb-tab-chip";
     chip2.textContent = plan.label;
     doc.body.appendChild(chip2);
-    const layer2 = htmlLayer();
-    const targets = plan.joinTargets.map((id) => diagram.getGroup(id)).filter((g) => !!g && g.id !== fromGroupId);
-    const targetAt = (wx, wy) => targets.find((t) => worldInsideGroup(t, wx, wy)) ?? null;
-    let over = null;
-    let joinEl = null;
-    const showJoin = (g) => {
-      if (!layer2 || g.id === fromGroupId) return;
-      if (!joinEl) {
-        joinEl = doc.createElement("div");
-        joinEl.className = "axdb-join";
-        layer2.prepend(joinEl);
-      }
-      const sz = sizeOf(g);
-      joinEl.style.left = `${g.position.x}px`;
-      joinEl.style.top = `${g.position.y}px`;
-      joinEl.style.width = `${sz.width}px`;
-      joinEl.style.height = `${sz.height}px`;
-    };
-    const hideJoin = () => {
-      joinEl?.remove();
-      joinEl = null;
-      plan.markDrop(null, null);
-    };
-    const setOver = (g, world) => {
-      if (g === over) return;
-      over = g;
-      if (g) {
-        leg.leave();
-        showJoin(g);
-      } else {
-        hideJoin();
-        leg.enter(world);
-      }
-    };
     const moveChip = (cx, cy) => {
       chip2.style.left = `${cx + 6}px`;
       chip2.style.top = `${cy + 6}px`;
@@ -196989,6 +197003,249 @@ function bindDashboardGrid(api, group, options = {}) {
     moveChip(ev.clientX, ev.clientY);
     armGlide();
     api.render();
+    const layer2 = htmlLayer();
+    const area = (g) => {
+      const sz = sizeOf(g);
+      return sz.width * sz.height;
+    };
+    const targets = plan.joinTargets.map((id) => diagram.getGroup(id)).filter((g) => !!g && g.id !== fromGroupId).sort((a, b) => area(a) - area(b));
+    let anchor = null;
+    const inRect = (r, wx, wy) => wx >= r.x && wx <= r.x + r.width && wy >= r.y && wy <= r.y + r.height;
+    const targetAt = (wx, wy) => {
+      if (anchor && inRect(anchor.frame, wx, wy)) return anchor.g;
+      const t = targets.find((x) => worldInsideGroup(x, wx, wy)) ?? null;
+      if (t) leg?.leave();
+      anchor = t ? { g: t, frame: frameOfGroup(t), stripH: plan.stripHeight(t.id) } : null;
+      return t;
+    };
+    const ROOT_TOP = 20;
+    const ROOT_BOTTOM = 20;
+    const ROOT_SIDE = 40;
+    const visibleFrame = () => {
+      const rect = api.container.getBoundingClientRect();
+      const o = toWorld(rect.left, rect.top);
+      const u = toWorld(rect.left + 100, rect.top + 100);
+      const sx = 100 / (u.x - o.x || 100);
+      const sy = 100 / (u.y - o.y || 100);
+      const f = frame();
+      const left = rect.left + (f.x - o.x) * sx;
+      const top = rect.top + (f.y - o.y) * sy;
+      const right = left + f.width * sx;
+      const bottom = top + f.height * sy;
+      if (rect.width <= 0 || rect.height <= 0) return { left, top, right, bottom };
+      return { left: Math.max(left, rect.left), top: Math.max(top, rect.top), right: Math.min(right, rect.right), bottom: Math.min(bottom, rect.bottom) };
+    };
+    const rootAt = (cx, cy) => {
+      const v = visibleFrame();
+      if (cx < v.left - ROOT_SIDE || cx > v.right + ROOT_SIDE || cy < v.top - ROOT_TOP || cy > v.bottom + ROOT_BOTTOM) return null;
+      const rows2 = Math.max(TEAR_OUT_MIN_ROWS, rowsWithout(plan.arrivingId));
+      const w = dockSpan.w;
+      const h = dockSpan.h;
+      if (cy - v.top <= ROOT_TOP) return { kind: "root", side: "top", cell: { x: 0, y: 0, w: columns, h } };
+      if (cx - v.left <= ROOT_SIDE) return { kind: "root", side: "left", cell: { x: 0, y: 0, w, h: rows2 } };
+      if (v.right - cx <= ROOT_SIDE) return { kind: "root", side: "right", cell: { x: Math.max(0, columns - w), y: 0, w, h: rows2 } };
+      if (v.bottom - cy <= ROOT_BOTTOM) return { kind: "root", side: "bottom", cell: { x: 0, y: rows2, w: columns, h } };
+      return null;
+    };
+    const rowsWithout = (id) => {
+      let r = 0;
+      for (const it of engine.getItems()) if (it.id !== id) r = Math.max(r, it.y + it.h);
+      return r;
+    };
+    let split = null;
+    const halves = (target, side) => {
+      const live2 = engine.getItem(target.id);
+      const it = split && split.id === target.id ? split.before : live2;
+      if (!it || !live2) return null;
+      if (side === "left" || side === "right") {
+        if (it.w < 2) return null;
+        const a2 = Math.ceil(it.w / 2);
+        const b2 = it.w - a2;
+        return side === "right" ? { keep: { x: it.x, y: it.y, w: a2, h: it.h }, born: { x: it.x + a2, y: it.y, w: b2, h: it.h } } : { keep: { x: it.x + b2, y: it.y, w: a2, h: it.h }, born: { x: it.x, y: it.y, w: b2, h: it.h } };
+      }
+      if (it.h < 2 * TEAR_OUT_MIN_ROWS) return null;
+      const a = Math.ceil(it.h / 2);
+      const b = it.h - a;
+      return side === "bottom" ? { keep: { x: it.x, y: it.y, w: it.w, h: a }, born: { x: it.x, y: it.y + a, w: it.w, h: b } } : { keep: { x: it.x, y: it.y + b, w: it.w, h: a }, born: { x: it.x, y: it.y, w: it.w, h: b } };
+    };
+    const zoneAt = (cx, cy, world) => {
+      const target = targetAt(world.x, world.y);
+      const home = !target && worldInsideGroup(from, world.x, world.y);
+      if (target) {
+        const idx = plan.stripIndex(target.id, cx, cy);
+        if (idx !== null) return { kind: "strip", target, index: idx };
+      } else if (home) {
+        const idx = plan.stripIndex(fromGroupId, cx, cy);
+        if (idx !== null) return { kind: "reorder", index: idx };
+      }
+      const root = rootAt(cx, cy);
+      if (root) return root;
+      if (target) {
+        const f = anchor && anchor.g === target ? anchor.frame : frameOfGroup(target);
+        const stripH = anchor && anchor.g === target ? anchor.stripH : plan.stripHeight(target.id);
+        const bodyH = Math.max(1, f.height - stripH);
+        const rx = Math.min(1, Math.max(0, (world.x - f.x) / Math.max(1, f.width)));
+        const ry = Math.min(1, Math.max(0, (world.y - f.y - stripH) / bodyH));
+        if (rx >= 1 / 3 && rx <= 2 / 3 && ry >= 1 / 3 && ry <= 2 / 3) return { kind: "join", target };
+        const d = [["left", rx], ["right", 1 - rx], ["top", ry], ["bottom", 1 - ry]];
+        d.sort((p, q) => p[1] - q[1]);
+        const h = halves(target, d[0][0]);
+        return h ? { kind: "split", target, side: d[0][0], ...h } : { kind: "join", target };
+      }
+      if (home) return { kind: "home" };
+      return { kind: "board" };
+    };
+    const zoneKey = (z) => JSON.stringify(z, (k, v) => k === "target" ? v.id : v);
+    let unlockedGroups = [];
+    const unlockGroups = () => {
+      if (unlockedGroups.length > 0) return;
+      for (const it of engine.getItems()) {
+        if (it.id !== plan.arrivingId && it.locked && isGroupMember(it.id)) {
+          it.locked = false;
+          unlockedGroups.push(it.id);
+        }
+      }
+    };
+    const relockGroups = () => {
+      for (const id of unlockedGroups) {
+        const it = engine.getItem(id);
+        if (it) it.locked = true;
+      }
+      unlockedGroups = [];
+    };
+    const groupCommands = (fin, except) => fin.groups.filter((g) => g.id !== except).map((g) => new SetGroupCellCommand(g.id, g.cellBefore, g.cellAfter, g.frameBefore, g.frameAfter));
+    let inserted = null;
+    const insertRows = (cell, l) => {
+      if (cell.w < columns) return;
+      inserted = l.baseline();
+      for (const [id, c] of inserted) {
+        const it = engine.getItem(id);
+        if (!it) continue;
+        it.x = c.x;
+        it.y = c.y >= cell.y ? c.y + cell.h : c.y;
+      }
+    };
+    const undoInsertRows = () => {
+      if (!inserted) return;
+      leg?.leave();
+      for (const [id, c] of inserted) {
+        const it = engine.getItem(id);
+        if (it) {
+          it.x = c.x;
+          it.y = c.y;
+        }
+      }
+      inserted = null;
+      project();
+    };
+    let joinEl = null;
+    const showOverlay = (r) => {
+      if (!layer2) return;
+      if (!joinEl) {
+        joinEl = doc.createElement("div");
+        joinEl.className = "axdb-join";
+        layer2.prepend(joinEl);
+      }
+      joinEl.style.left = `${r.x}px`;
+      joinEl.style.top = `${r.y}px`;
+      joinEl.style.width = `${r.width}px`;
+      joinEl.style.height = `${r.height}px`;
+    };
+    const hideOverlay = () => {
+      joinEl?.remove();
+      joinEl = null;
+    };
+    const undoSplitPreview = () => {
+      if (!split) return;
+      const it = engine.getItem(split.id);
+      leg?.leave();
+      if (it) {
+        if (it.x !== split.before.x || it.y !== split.before.y) engine.moveCheck(split.id, split.before.x, split.before.y, { gate: false });
+        if (it.w !== split.before.w || it.h !== split.before.h) engine.resizeCheck(split.id, split.before.w, split.before.h);
+        it.locked = true;
+      }
+      split = null;
+      project();
+    };
+    const previewSplit = (z, world) => {
+      const it = engine.getItem(z.target.id);
+      const l = ensureLeg(world);
+      if (!it || !l) return false;
+      split = { id: z.target.id, before: { x: it.x, y: it.y, w: it.w, h: it.h }, frameBefore: frameOfGroup(z.target), keep: z.keep };
+      it.locked = false;
+      if (it.w !== z.keep.w || it.h !== z.keep.h) engine.resizeCheck(z.target.id, z.keep.w, z.keep.h);
+      const now3 = engine.getItem(z.target.id);
+      if (now3 && (now3.x !== z.keep.x || now3.y !== z.keep.y)) engine.moveCheck(z.target.id, z.keep.x, z.keep.y, { gate: false });
+      const ok = l.place(z.born);
+      project();
+      placeholder?.remove();
+      placeholder = null;
+      return ok;
+    };
+    let zone = { kind: "board" };
+    let key = zoneKey(zone);
+    const applyZone = (z, world) => {
+      const k = zoneKey(z);
+      const same = k === key;
+      key = k;
+      zone = z;
+      if (same) {
+        if (z.kind === "board") ensureLeg(world)?.move(world);
+        return;
+      }
+      undoSplitPreview();
+      undoInsertRows();
+      if (z.kind !== "root") relockGroups();
+      plan.markDrop(null, null);
+      hideOverlay();
+      switch (z.kind) {
+        case "strip":
+          leg?.leave();
+          showOverlay(frameOfGroup(z.target));
+          plan.markDrop(z.target.id, z.index);
+          break;
+        case "join":
+          leg?.leave();
+          showOverlay(frameOfGroup(z.target));
+          break;
+        case "split": {
+          if (!previewSplit(z, world)) {
+            zone = { kind: "join", target: z.target };
+            key = zoneKey(zone);
+            leg?.leave();
+            showOverlay(frameOfGroup(z.target));
+            break;
+          }
+          showOverlay(cellToRect(z.born, frame(), geom(), rows()));
+          break;
+        }
+        case "root": {
+          const l = ensureLeg(world);
+          if (l) {
+            unlockGroups();
+            l.place(z.cell);
+            insertRows(z.cell, l);
+            project();
+            placeholder?.remove();
+            placeholder = null;
+            showOverlay(cellToRect(z.cell, frame(), geom(), rows()));
+          }
+          break;
+        }
+        case "reorder":
+          leg?.leave();
+          plan.markDrop(fromGroupId, z.index);
+          break;
+        case "home":
+          leg?.leave();
+          break;
+        case "board": {
+          const l = ensureLeg(world);
+          l?.enter(world);
+          break;
+        }
+      }
+    };
     let last = { x: ev.clientX, y: ev.clientY };
     const detach = () => {
       window.removeEventListener("pointermove", onMove, true);
@@ -196996,72 +197253,89 @@ function bindDashboardGrid(api, group, options = {}) {
       window.removeEventListener("pointercancel", onCancel, true);
       window.removeEventListener("keydown", onKey2, true);
     };
-    let homeIndex = null;
     const onMove = (e) => {
       if (disposed) return detach();
       last = { x: e.clientX, y: e.clientY };
       moveChip(e.clientX, e.clientY);
       const world = toWorld(e.clientX, e.clientY);
-      const home = worldInsideGroup(from, world.x, world.y);
-      homeIndex = home ? plan.stripIndex(fromGroupId, e.clientX, e.clientY) : null;
-      const target = home ? null : targetAt(world.x, world.y);
-      setOver(target ?? (homeIndex !== null ? from : null), world);
-      chip2.classList.toggle("axdb-out", home && homeIndex === null || !target && !home && !worldInsideBoardGrace(world.x, world.y));
-      if (target) plan.markDrop(target.id, plan.dropIndex(target.id, e.clientX, e.clientY));
-      else if (homeIndex !== null) plan.markDrop(fromGroupId, homeIndex);
-      else if (!home) leg.move(world);
+      const z = zoneAt(e.clientX, e.clientY, world);
+      applyZone(z, world);
+      chip2.classList.toggle("axdb-out", zone.kind === "home" || zone.kind === "root" && !leg || zone.kind === "board" && (!leg || !worldInsideBoardGrace(world.x, world.y)));
       api.render();
     };
-    const finish = (commit) => {
-      detach();
-      chip2.remove();
-      hideJoin();
-      tearing = null;
-      if (disposed) return;
-      const world = toWorld(last.x, last.y);
-      const home = worldInsideGroup(from, world.x, world.y);
-      if (commit && home && homeIndex !== null) {
-        leg.abort();
-        const cmds = plan.reorder(homeIndex);
-        const changed2 = cmds.length > 0 ? execute("Reorder tab", cmds) : false;
-        disarmGlideSoon();
-        api.renderNow();
-        options.onGesture?.({ type: changed2 ? "commit" : "cancel", kind: "move", nodeId: pageId, changed: changed2 });
-        return;
-      }
-      const target = commit && !home ? targetAt(world.x, world.y) : null;
-      if (target) {
-        const index = plan.dropIndex(target.id, last.x, last.y);
-        leg.abort();
-        const planned2 = plan.join(target.id, index, group.id);
-        const changed2 = execute("Move tab", [...planned2.move, ...planned2.collapse]);
-        disarmGlideSoon();
-        enforceBoardHeight();
-        persistLayouts();
-        api.renderNow();
-        options.onGesture?.({ type: "commit", kind: "move", nodeId: pageId, changed: changed2 });
-        return;
-      }
-      if (!commit || home || !worldInsideBoardGrace(world.x, world.y)) {
-        leg.abort();
-        disarmGlideSoon();
-        api.renderNow();
-        options.onGesture?.({ type: "cancel", kind: "move", nodeId: pageId, changed: false });
-        return;
-      }
-      const fin = leg.finalize();
-      if (!fin) {
-        disarmGlideSoon();
-        api.renderNow();
-        return;
-      }
-      const planned = plan.commands(fin.cell, fin.rect, group.id);
-      const changed = execute("Move tab out", [...fin.commands, ...planned.move, ...planned.collapse]);
+    const done = (changed, kind) => {
       disarmGlideSoon();
       enforceBoardHeight();
       persistLayouts();
       api.renderNow();
-      options.onGesture?.({ type: "commit", kind: "move", nodeId: pageId, changed });
+      options.onGesture?.({ type: kind, kind: "move", nodeId: pageId, changed });
+    };
+    const finish = (commit) => {
+      detach();
+      chip2.remove();
+      hideOverlay();
+      plan.markDrop(null, null);
+      tearing = null;
+      if (disposed) return;
+      const world = toWorld(last.x, last.y);
+      const z = commit ? zoneAt(last.x, last.y, world) : { kind: "home" };
+      if (z.kind !== "root") undoInsertRows();
+      if (!commit || z.kind === "home" || z.kind === "root" && !ensureLeg(world) || z.kind === "board" && (!ensureLeg(world) || !worldInsideBoardGrace(world.x, world.y))) {
+        undoSplitPreview();
+        leg?.abort();
+        relockGroups();
+        done(false, "cancel");
+        return;
+      }
+      if (z.kind === "reorder") {
+        undoSplitPreview();
+        leg?.abort();
+        const cmds = plan.reorder(z.index);
+        const changed = cmds.length > 0 ? execute("Reorder tab", cmds) : false;
+        done(changed, changed ? "commit" : "cancel");
+        return;
+      }
+      if (z.kind === "strip" || z.kind === "join") {
+        undoSplitPreview();
+        const index = z.kind === "strip" ? z.index : plan.dropIndex(z.target.id, last.x, last.y);
+        leg?.abort();
+        const planned2 = plan.join(z.target.id, index, group.id);
+        done(execute("Move tab", [...planned2.move, ...planned2.collapse]), "commit");
+        return;
+      }
+      if (z.kind === "split") {
+        if (!split || split.id !== z.target.id || zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
+        const fin2 = leg?.finalize() ?? null;
+        const it = engine.getItem(z.target.id);
+        const before = split;
+        if (it) it.locked = true;
+        split = null;
+        if (!fin2 || !before || !it) {
+          leg?.abort();
+          done(false, "cancel");
+          return;
+        }
+        const keep = { x: it.x, y: it.y, w: it.w, h: it.h };
+        const planned2 = plan.commands(fin2.cell, fin2.rect, group.id);
+        const changed = execute("Split group", [
+          ...fin2.commands,
+          ...groupCommands(fin2, z.target.id),
+          new SetGroupCellCommand(z.target.id, before.before, keep, before.frameBefore, cellToRect(keep, frame(), geom(), rows())),
+          ...planned2.move,
+          ...planned2.collapse
+        ]);
+        done(changed, "commit");
+        return;
+      }
+      if (zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
+      const fin = leg?.finalize() ?? null;
+      relockGroups();
+      if (!fin) {
+        done(false, "cancel");
+        return;
+      }
+      const planned = plan.commands(fin.cell, fin.rect, group.id);
+      done(execute(z.kind === "root" ? "Dock tab" : "Move tab out", [...fin.commands, ...groupCommands(fin), ...planned.move, ...planned.collapse]), "commit");
     };
     const onUp = () => finish(true);
     const onCancel = () => finish(false);
@@ -199860,6 +200134,7 @@ function createDashboardHandle(ctx) {
       joinTargets: [...ctx.layoutOf.keys()].filter(
         (id) => id !== containerId && id !== pageId && (ctx.layoutOf.get(id) ?? specById.get(id)?.layout) === "tabs" && !!model.getGroup(id) && !insidePage(id)
       ),
+      stripHeight: (targetId) => tabStripReserve(ctx.tabsOf.get(targetId), Math.max(1, liveCount(targetId))),
       stripIndex: (targetId, cx, cy) => {
         const strip = ctx.tabStrips.get(targetId);
         if (!strip) return null;

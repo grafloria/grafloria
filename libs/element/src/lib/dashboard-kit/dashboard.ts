@@ -1673,6 +1673,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       joinTargets: [...ctx.layoutOf.keys()].filter(
         (id) => id !== containerId && id !== pageId && (ctx.layoutOf.get(id) ?? specById.get(id)?.layout) === 'tabs' && !!model!.getGroup(id) && !insidePage(id)
       ),
+      stripHeight: (targetId) => tabStripReserve(ctx.tabsOf.get(targetId), Math.max(1, liveCount(targetId))),
       stripIndex: (targetId, cx, cy) => {
         const strip = ctx.tabStrips.get(targetId);
         if (!strip) return null;

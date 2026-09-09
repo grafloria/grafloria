@@ -409,12 +409,13 @@ describe('tab containers', () => {
         { id: 'right', title: 'Right group', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
       ],
     });
-  const dragTabFrom = async (api: { container: HTMLElement }, containerId: string, pageId: string, from: { x: number; y: number }, to: { x: number; y: number }) => {
+  const dragTabFrom = async (api: { container: HTMLElement }, containerId: string, pageId: string, from: { x: number; y: number }, to: { x: number; y: number }, via: Array<{ x: number; y: number }> = []) => {
     const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
     const ev = (el: EventTarget, type: string, x: number, y: number) =>
       el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
     ev(tab, 'pointerdown', from.x, from.y);
     ev(tab, 'pointermove', from.x - 40, from.y);
+    for (const v of via) ev(window, 'pointermove', v.x, v.y);
     ev(window, 'pointermove', to.x, to.y);
     ev(window, 'pointerup', to.x, to.y);
     tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -425,8 +426,9 @@ describe('tab containers', () => {
     const { api, model, handle } = up(TWO());
     expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
     expect(handle.getActiveTab('left')).toBe('l1');
-    // the right group's Notes tab, released over the LEFT group's body
-    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 150 });
+    // the right group's Notes tab, released over the CENTRE of the left group's body (its outer thirds split)
+    const lf = (() => { const g = model.getGroup('left')!; return { x: g.position.x, y: g.position.y, w: g.size!.width, h: g.size!.height }; })();
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: lf.x + lf.w / 2, y: lf.y + 30 + (lf.h - 30) / 2 });
     expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
     expect(stripOf(api, 'right')).toEqual(['Filters']);
     expect(handle.getActiveTab('left')).toBe('r2');
@@ -455,8 +457,9 @@ describe('tab containers', () => {
 
   it('moving a group\'s LAST tab into another group closes the empty group', async () => {
     const { api, model, handle } = up(TWO());
-    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 150 });
-    await dragTabFrom(api, 'right', 'r1', { x: 700, y: 10 }, { x: 300, y: 150 });
+    const centre = () => { const g = model.getGroup('left')!; return { x: g.position.x + g.size!.width / 2, y: g.position.y + 30 + (g.size!.height - 30) / 2 }; };
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, centre());
+    await dragTabFrom(api, 'right', 'r1', { x: 700, y: 10 }, centre());
     expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes', 'Filters']);
     expect(model.getGroup('right')).toBeUndefined();
     expect(api.container.querySelector('.axdb-tabs[data-tabs-id="right"]')).toBeNull();
@@ -575,6 +578,239 @@ describe('tab containers', () => {
     // a TAB GROUP is a section too
     expect(await handle.widget('tabs')!.moveTo(6, 4)).toBe(true);
     expect(handle.widget('tabs')!.cell).toEqual({ x: 6, y: 4, w: 6, h: 4 });
+  });
+
+  // -- the drop model the docking libraries share: edge splits, root docking, deepest target wins --
+  const frameOf = (model: DiagramModel, id: string) => { const g = model.getGroup(id)!; return { x: g.position.x, y: g.position.y, w: g.size!.width, h: g.size!.height }; };
+  const cellOf = (handle: DashboardHandle, id: string) => handle.widget(id)?.cell ?? null;
+
+  it('SPLIT: a tab dropped on another group\'s RIGHT third splits it — the target keeps the left half, the page takes the right, undoable', async () => {
+    const { api, model, handle } = up(TWO());
+    const before = cellOf(handle, 'left')!;
+    expect(before).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+    const f = frameOf(model, 'left');
+    // the right third of the body, mid-height
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.9, y: f.y + 30 + (f.h - 30) * 0.5 });
+    expect(stripOf(api, 'right')).toEqual(['Filters']);
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']); // it did NOT join
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 3, h: 6 });
+    expect(cellOf(handle, 'r2__group')).toEqual({ x: 3, y: 0, w: 3, h: 6 });
+    expect(stripOf(api, 'r2__group')).toEqual(['Notes']);
+    expect(handle.getLayout('r2__group')).toBe('tabs');
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'left')).toEqual(before);
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+  });
+
+  it('SPLIT: the BOTTOM third stacks the page under the target; the top third puts it above', async () => {
+    const { api, model, handle } = up(TWO());
+    let f = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 30 + (f.h - 30) * 0.92 });
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 3 });
+    expect(cellOf(handle, 'r2__group')).toEqual({ x: 0, y: 3, w: 6, h: 3 });
+    await cm(api).undo();
+    await settle();
+    f = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 30 + (f.h - 30) * 0.08 });
+    expect(cellOf(handle, 'r2__group')).toEqual({ x: 0, y: 0, w: 6, h: 3 });
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 3, w: 6, h: 3 });
+  });
+
+  it('SPLIT: the centre third still JOINS, and a group too small to halve joins instead of splitting', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        widgets: [
+          { id: 'thin', title: 'Thin', span: 1, rows: 6, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('t1', 'One', 'k-t1')] },
+          { id: 'right', title: 'Right group', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+        ],
+      })
+    );
+    const f = frameOf(model, 'thin');
+    // aim at its right third: one column cannot be halved, so it joins
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.9, y: f.y + 30 + (f.h - 30) * 0.5 });
+    expect(stripOf(api, 'thin')).toEqual(['One', 'Notes']);
+    expect(cellOf(handle, 'thin')).toEqual({ x: 0, y: 0, w: 1, h: 6 });
+    expect(model.getGroup('r2__group')).toBeUndefined();
+  });
+
+  it('ROOT DOCK: a tab dropped on the board\'s TOP edge docks a full-width group there, pushing the rest down', async () => {
+    const { api, model, handle } = up(TWO());
+    // the board group is at (0,0); the top band is the first 20 px of the visible canvas
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 4 });
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born.x).toBe(0);
+    expect(born.y).toBe(0);
+    expect(born.w).toBe(12);
+    expect(born.h).toBeGreaterThanOrEqual(2);
+    expect(cellOf(handle, 'left')!.y).toBe(born.h);
+    expect(cellOf(handle, 'right')!.y).toBe(born.h);
+    expect(stripOf(api, 'right')).toEqual(['Filters']);
+    await cm(api).undo();
+    await settle();
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(cellOf(handle, 'left')!.y).toBe(0);
+  });
+
+  it('ROOT DOCK: the LEFT edge docks a full-height group at column 0', async () => {
+    const { api, handle } = up(TWO());
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 8, y: 200 });
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born.x).toBe(0);
+    expect(born.y).toBe(0);
+    expect(born.h).toBe(6); // as tall as the board's rows
+    expect(born.w).toBeGreaterThanOrEqual(2);
+    expect(cellOf(handle, 'left')!.y).toBeGreaterThan(0); // pushed out of the way
+  });
+
+  it('ROOT DOCK: a ghost that sat mid-board still docks FULL width — the cell is taken in an order that fits', async () => {
+    const { api, handle } = up(TWO());
+    // Held below the board first: the ghost enters at the pointer's column,
+    // well right of 0. Growing it to 12 columns THERE is clamped by the
+    // board's edge, so the dock must move it to column 0 before it grows.
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 4 }, [{ x: 800, y: 700 }]);
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born).toBeTruthy();
+    expect(born.x).toBe(0);
+    expect(born.y).toBe(0);
+    expect(born.w).toBe(12);
+    expect(cellOf(handle, 'left')!.y).toBe(born.h);
+    expect(cellOf(handle, 'right')!.y).toBe(born.h);
+  });
+
+  it('ROOT DOCK: the docked group takes at most HALF the board\'s rows — a split, not the page\'s full height', async () => {
+    const { api, handle } = up(TWO());
+    // The page is 4 rows tall plus its strip; the board is 6 rows. Docked at
+    // the top it takes 3, the way VS Code's edge drop splits the area in two.
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 4 });
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born).toBeTruthy();
+    expect(born.w).toBe(12);
+    expect(born.h).toBeGreaterThanOrEqual(2);
+    expect(born.h).toBeLessThanOrEqual(3);
+    expect(cellOf(handle, 'left')!.y).toBe(born.h);
+  });
+
+  it('ROOT DOCK: a top dock INSERTS rows — every tile keeps its column and moves down by exactly the band\'s height', async () => {
+    // The fluid-board demo's layout. The engine's push cascade resolved these
+    // collisions one tile at a time and tore the KPI row apart (two of its
+    // tiles ended under the chart); an edge dock shoves the whole area down
+    // intact, the way VS Code's does.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow', // the demo's board: full, and it grows
+        widgets: [
+          K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('win', 2, 1, 4, 0), K('nps', 2, 1, 6, 0),
+          K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          K('reps', 5, 3, 0, 4), K('funnel', 4, 3, 5, 4),
+          { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9, widgets: [K('orders', 4, 1, 0, 0)] },
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+        ],
+      })
+    );
+    const rest: Record<string, { x: number; y: number; w: number; h: number }> = {};
+    for (const id of ['rev', 'cust', 'win', 'nps', 'trend', 'mix', 'reps', 'funnel', 'ops', 'side']) rest[id] = cellOf(handle, id)!;
+    expect(rest['trend']).toEqual({ x: 0, y: 1, w: 6, h: 3 });
+    const tab = api.container.querySelector('.axdb-tabs[data-tabs-id="side"] .axdb-tab[data-tab-id="p2"]') as HTMLElement;
+    expect(tab).toBeTruthy();
+    await dragTabFrom(api, 'side', 'p2', { x: 1000, y: 10 }, { x: 400, y: 4 });
+    const born = cellOf(handle, 'p2__group')!;
+    expect(born).toBeTruthy();
+    expect(born).toEqual(expect.objectContaining({ x: 0, y: 0, w: 12 }));
+    for (const [id, c] of Object.entries(rest)) expect({ id, cell: cellOf(handle, id) }).toEqual({ id, cell: { ...c, y: c.y + born.h } });
+    await cm(api).undo();
+    await settle();
+    expect(model.getGroup('p2__group')).toBeUndefined();
+    for (const [id, c] of Object.entries(rest)) expect({ id, cell: cellOf(handle, id) }).toEqual({ id, cell: c });
+  });
+
+  it('ROOT DOCK: the bands are measured on the SCREEN — a board scrolled 30 px still docks at its visible top edge', async () => {
+    const { api, handle } = up(TWO());
+    // The camera sits 30 px down the board: the world point under a client
+    // point is 30 px lower than it reads. Measured against the frame in world
+    // space the top band would be scrolled out of reach; it is the visible
+    // canvas's top 20 px, wherever the camera is.
+    const rect = { left: 0, top: 0, right: 1200, bottom: 600, width: 1200, height: 600, x: 0, y: 0, toJSON: () => ({}) };
+    Object.defineProperty(api.container, 'getBoundingClientRect', { value: () => rect, configurable: true });
+    (api as unknown as { viewport: { clientToWorld: (x: number, y: number) => { x: number; y: number } } }).viewport.clientToWorld = (x, y) => ({ x, y: y + 30 });
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 4 });
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born).toBeTruthy();
+    expect(born.x).toBe(0);
+    expect(born.y).toBe(0);
+    expect(born.w).toBe(12);
+    expect(cellOf(handle, 'left')!.y).toBe(born.h);
+  });
+
+  it('ROOT DOCK: the top band beats the body of a group that sits against the board\'s edge (Dockview\'s container edges)', async () => {
+    const { api, model, handle } = up(TWO());
+    const f = frameOf(model, 'left');
+    // 4 px inside the left group's frame, 14 px from the board's top: the band, not a split
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 4 });
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born).toBeTruthy();
+    expect(born.w).toBe(12);
+    expect(born.y).toBe(0);
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: born.h, w: 6, h: 6 });
+  });
+
+  it('ROOT DOCK: a strip inside the top band still wins — the tab joins that group', async () => {
+    const { api, model, handle } = up(TWO());
+    const f = frameOf(model, 'left');
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="left"]') as HTMLElement;
+    const r = { left: f.x, top: f.y, right: f.x + f.w, bottom: f.y + 30, width: f.w, height: 30, x: f.x, y: f.y, toJSON: () => ({}) };
+    Object.defineProperty(strip, 'getBoundingClientRect', { value: () => r, configurable: true });
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 4 });
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+  });
+
+  it('DEEPEST WINS: a tab dropped on an inner group\'s strip INSIDE its own container joins the inner group', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        widgets: [
+          {
+            id: 'outer', title: 'Outer', span: 12, rows: 8, x: 0, y: 0, layout: 'tabs',
+            widgets: [
+              { id: 'p-host', title: 'Host', columns: 12, widgets: [
+                { id: 'inner', title: 'Inner', span: 12, rows: 6, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('i1', 'Inner A', 'k-i1'), PAGE('i2', 'Inner B', 'k-i2')] },
+              ] },
+              PAGE('p-loose', 'Loose', 'k-loose'),
+            ],
+          },
+        ],
+      })
+    );
+    expect(stripOf(api, 'outer')).toEqual(['Host', 'Loose']);
+    expect(stripOf(api, 'inner')).toEqual(['Inner A', 'Inner B']);
+    const f = frameOf(model, 'inner');
+    // release over the inner group's BODY (its strip has no client rect in jsdom): it must join it, not read as "home"
+    await dragTabFrom(api, 'outer', 'p-loose', { x: 700, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 30 + (f.h - 30) * 0.5 });
+    expect(stripOf(api, 'inner')).toEqual(['Inner A', 'Inner B', 'Loose']);
+    expect(stripOf(api, 'outer')).toEqual(['Host']);
+    expect(handle.getActiveTab('inner')).toBe('p-loose');
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'outer')).toEqual(['Host', 'Loose']);
+    expect(stripOf(api, 'inner')).toEqual(['Inner A', 'Inner B']);
   });
 
   it('a board with no tab container carries no strip at all', () => {

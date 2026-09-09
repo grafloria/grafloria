@@ -1463,6 +1463,90 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `tab group by its strip's empty space: cell ${JSON.stringify(p0)} -> ${JSON.stringify(p1)} keeping its tabs [${strips1.join(',')}] · undo -> ${JSON.stringify(p2)} ${JSON.stringify(sane2)}`);
 }
 {
+  begin('L70-a-tab-dropped-on-a-group-edge-splits-it-right-then-below');
+  await scrollTo('join');
+  const cell = (id) => page.evaluate((id) => window.__lab.join.handle.widget(id)?.cell ?? null, id);
+  const strips = () => page.evaluate(() => { const o = {}; for (const s of document.querySelectorAll('#cv-join .axdb-tabs')) o[s.getAttribute('data-tabs-id')] = [...s.querySelectorAll('.axdb-tab')].map((t) => t.textContent); return o; });
+  const gr = (id) => groupRect('join', id);
+  const cv = await page.evaluate(() => document.getElementById('cv-join').getBoundingClientRect().toJSON());
+  const l0 = await cell('j-left');
+  // 1. Notes from the right group, released on the left group's RIGHT third
+  let tab = await page.evaluate(() => document.querySelector('#cv-join .axdb-tab[data-tab-id="jr-d"]').getBoundingClientRect().toJSON());
+  let left = await gr('j-left');
+  const left0 = left; // the frame the FIRST drop was aimed at — `left` is re-read for the second
+  let mid = null;
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, cv.x + 8 + left.x + left.w * 0.9, cv.y + 8 + left.y + 30 + (left.h - 30) * 0.5, { steps: 18, mid: async () => {
+    mid = await page.evaluate(() => { const j = document.querySelector('#cv-join .axdb-join'); const r = j?.getBoundingClientRect(); return { overlay: r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } : null, ph: !!document.querySelector('#cv-join .axdb-ph') }; });
+    await shot('join', 'held-on-the-right-third');
+  } });
+  const l1 = await cell('j-left'); const n1 = await cell('jr-d__group'); const s1 = await strips();
+  const sane1 = await sanity('join');
+  await shot('join', 'split-right');
+  // 2. Filters (the right group's last tab) released on the left group's BOTTOM third: stacked under it, the right group closes
+  tab = await page.evaluate(() => document.querySelector('#cv-join .axdb-tab[data-tab-id="jr-c"]').getBoundingClientRect().toJSON());
+  left = await gr('j-left');
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, cv.x + 8 + left.x + left.w * 0.5, cv.y + 8 + left.y + 30 + (left.h - 30) * 0.92, { steps: 18, mid: async () => shot('join', 'held-on-the-bottom-third') });
+  const l2 = await cell('j-left'); const n2 = await cell('jr-c__group'); const s2 = await strips();
+  const sane2 = await sanity('join');
+  await shot('join', 'split-below-and-the-right-group-closed');
+  await undoAll('join', 2);
+  const l3 = await cell('j-left'); const s3 = await strips();
+  const halfW = l0 && l1 && n1 && l1.w + n1.w === l0.w && l1.x === l0.x && n1.x === l0.x + l1.w && l1.h === l0.h && n1.h === l0.h;
+  const halfH = l1 && l2 && n2 && l2.h + n2.h === l1.h && l2.y === l1.y && n2.y === l1.y + l2.h && l2.w === l1.w && n2.w === l1.w;
+  const overlayIsRightHalf = !!mid?.overlay && Math.abs(mid.overlay.x - (cv.x + left0.x + left0.w * 0.5)) <= left0.w * 0.12;
+  verdict(!!l0 && halfW && s1['j-left'].join(',') === 'Sales,Margin' && s1['jr-d__group'].join(',') === 'Notes' && mid?.ph === false && overlayIsRightHalf && sane1.overlaps === 0
+    && halfH && !s2['j-right'] && s2['jr-c__group'].join(',') === 'Filters' && sane2.overlaps === 0
+    && !!l3 && l3.w === l0.w && l3.h === l0.h && s3['j-right'].join(',') === 'Filters,Notes',
+    `right third: left ${JSON.stringify(l0)} -> ${JSON.stringify(l1)}, born ${JSON.stringify(n1)} (${halfW ? 'the two halves tile the old cell' : 'NOT halves'}), overlay on the right half ${overlayIsRightHalf}, no board placeholder ${mid?.ph === false} · bottom third: left -> ${JSON.stringify(l2)}, born ${JSON.stringify(n2)} (${halfH ? 'stacked under' : 'NOT stacked'}), right group ${s2['j-right'] ? 'still there' : 'closed'} · undo ×2 -> left ${JSON.stringify(l3)}, right ${s3['j-right']?.join('/')} ${JSON.stringify(sane2)}`);
+}
+{
+  begin('L71-a-tab-dropped-on-the-board-edge-docks-there-pushing-the-sections');
+  await scrollTo('tabs');
+  const cell = (id) => page.evaluate((id) => window.__lab.tabs.handle.widget(id)?.cell ?? null, id);
+  const cv = await page.evaluate(() => document.getElementById('cv-tabs').getBoundingClientRect().toJSON());
+  const p0 = await cell('panel'); const t0 = await cell('t-left');
+  const tab = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tab[data-tab-id="pg-c"]').getBoundingClientRect().toJSON());
+  let mid = null;
+  // the TOP band: within 20 px of the canvas's top edge
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, cv.x + cv.width * 0.4, cv.y + 8 + 5, { steps: 18, mid: async () => {
+    mid = await page.evaluate(() => { const j = document.querySelector('#cv-tabs .axdb-join'); const r = j?.getBoundingClientRect(); return r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } : null; });
+    await shot('tabs', 'held-on-the-top-band');
+  } });
+  const born = await cell('pg-c__group'); const p1 = await cell('panel'); const t1 = await cell('t-left');
+  const strips = await page.evaluate(() => { const o = {}; for (const s of document.querySelectorAll('#cv-tabs .axdb-tabs')) o[s.getAttribute('data-tabs-id')] = [...s.querySelectorAll('.axdb-tab')].map((t) => t.textContent); return o; });
+  const sane = await sanity('tabs');
+  await shot('tabs', 'docked-at-the-top');
+  await undoAll('tabs', 1);
+  const p2 = await cell('panel'); const t2 = await cell('t-left');
+  const bandWide = !!mid && mid.w >= cv.width - 40;
+  verdict(!!born && born.x === 0 && born.y === 0 && born.w === 12 && born.h >= 2 && !!p1 && p1.y === born.h && !!t1 && t1.y === born.h && strips['pg-c__group']?.join(',') === 'Notes' && strips['panel'].join(',') === 'Filters,Alerts' && bandWide && sane.overlaps === 0
+    && !!p2 && p2.y === p0.y && !!t2 && t2.y === t0.y,
+    `top band: born ${JSON.stringify(born)} (full width at row 0), the tab group pushed ${p0.y} -> ${p1?.y}, the chart pushed ${t0.y} -> ${t1?.y}, overlay ${JSON.stringify(mid)} · undo -> panel y ${p2?.y}, chart y ${t2?.y} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L72-deepest-target-wins-an-outer-tab-joins-an-inner-group-inside-its-own-container');
+  await scrollTo('deep');
+  await page.click('#cv-deep .axdb-tabs[data-tabs-id="dp"] .axdb-tab[data-tab-id="dp-nested"]'); await page.waitForTimeout(400);
+  const strips = () => page.evaluate(() => { const o = {}; for (const s of document.querySelectorAll('#cv-deep .axdb-tabs')) o[s.getAttribute('data-tabs-id')] = [...s.querySelectorAll('.axdb-tab')].map((t) => t.textContent); return o; });
+  const before = await strips();
+  const tab = await page.evaluate(() => document.querySelector('#cv-deep .axdb-tab[data-tab-id="dp-grid"]').getBoundingClientRect().toJSON());
+  const inner = await page.evaluate(() => document.querySelector('#cv-deep .axdb-tabs[data-tabs-id="dp-intabs"]').getBoundingClientRect().toJSON());
+  let mid = null;
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, inner.right - 30, inner.y + inner.height / 2, { steps: 18, mid: async () => {
+    mid = await page.evaluate(() => ({ overlay: !!document.querySelector('#cv-deep .axdb-join'), lit: !!document.querySelector('#cv-deep .axdb-tabs[data-tabs-id="dp-intabs"].axdb-tabs--drop'), dimmed: !!document.querySelector('.axdb-tab-chip.axdb-out') }));
+    await shot('deep', 'outer-tab-over-the-inner-strip');
+  } });
+  const after = await strips();
+  const own = await page.evaluate(() => { const walk = (ws, p) => { for (const w of ws) { if (w.id === 'dp-grid') return p; if (w.widgets) { const r = walk(w.widgets, w.id); if (r) return r; } } return null; }; return walk(window.__lab.deep.handle.toJSON().views[0].widgets, 'BOARD'); });
+  await shot('deep', 'joined-the-inner-group');
+  await undoAll('deep', 1);
+  const undone = await strips();
+  verdict(before['dp'].join(',') === 'Grid page,Split page,Nested page' && before['dp-intabs'].join(',') === 'Inner A,Inner B'
+    && !!mid && mid.lit && mid.dimmed === false && after['dp-intabs'].join(',') === 'Inner A,Inner B,Grid page' && after['dp'].join(',') === 'Split page,Nested page' && own === 'dp-intabs'
+    && undone['dp'].join(',') === 'Grid page,Split page,Nested page' && undone['dp-intabs'].join(',') === 'Inner A,Inner B',
+    `Grid page (outer) held over the INNER strip inside its own container: lit ${mid?.lit}, dimmed ${mid?.dimmed} · dropped: inner ${after['dp-intabs']?.join('/')}, outer ${after['dp']?.join('/')}, dp-grid in ${own} · undo -> outer ${undone['dp']?.join('/')}, inner ${undone['dp-intabs']?.join('/')}`);
+}
+{
   begin('L53-a-caption-reserves-only-where-something-paints-it');
   await scrollTo('cap-split');
   const r = await page.evaluate(() => {
