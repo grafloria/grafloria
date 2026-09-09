@@ -242,6 +242,26 @@ board('vert', 'a TALL tile whose rows cross a full-width locked section takes th
   { id: 'v-c', kind: 'kpi', span: 12, rows: 2, x: 0, y: 8, data: { label: 'C', value: '5' } },
   { id: 'v-d', kind: 'kpi', span: 12, rows: 2, x: 0, y: 10, data: { label: 'D', value: '6' } },
 ] }, { height: 560 });
+board('tear', 'a tab torn out of a FULL-HEIGHT panel takes the room under the pointer, not the bottom of the board', { sizing: 'grow', rowHeight: 50, widgets: [
+  { id: 'te-a', kind: 'kpi', span: 8, rows: 3, x: 0, y: 0, data: { label: 'A', value: '1' } },
+  { id: 'te-b', kind: 'kpi', span: 8, rows: 3, x: 0, y: 3, data: { label: 'B', value: '2' } },
+  { id: 'te-wall', title: 'Locked wall', span: 8, rows: 2, x: 0, y: 6, columns: 8, widgets: [
+    { id: 'te-w1', kind: 'kpi', span: 8, rows: 2, x: 0, y: 0, data: { label: 'Wall', value: '3' } } ] },
+  { id: 'te-side', title: 'Side', span: 4, rows: 8, x: 8, y: 0, columns: 4, layout: 'tabs', widgets: [
+    { id: 'te-p1', title: 'Filters', columns: 4, widgets: [
+      { id: 'te-in1', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } } ] },
+    { id: 'te-p2', title: 'Alerts', columns: 4, widgets: [
+      { id: 'te-in2', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'Open', value: '3' } } ] },
+  ] },
+] }, { height: 480 });
+board('solo', 'tearing the LAST tab out closes the empty container; undo reopens it', { sizing: 'grow', rowHeight: 60, widgets: [
+  { id: 'so-a', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'A', value: '1' } },
+  { id: 'so-tabs', title: 'Solo', span: 6, rows: 4, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'so-p', title: 'Only', columns: 6, widgets: [
+      { id: 'so-in', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'Only page', value: '1' } } ] },
+  ] },
+  { id: 'so-b', kind: 'kpi', span: 12, rows: 2, x: 0, y: 4, data: { label: 'B', value: '2' } },
+] }, { height: 420 });
 board('cap-split', 'captioned sections on a SPLIT board · no chrome to paint them, so no reserve', { layout: 'split', sizing: 'grow', rowHeight: 50, widgets: [
   { id: 'sp-a', title: 'Captioned A', caption: { subtitle: 'sub' }, span: 6, rows: 4, x: 0, y: 0, columns: 6, widgets: [
     { id: 'spa1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'A', value: '1' } },

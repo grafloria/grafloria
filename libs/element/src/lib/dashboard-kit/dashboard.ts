@@ -49,6 +49,8 @@ import {
   Command,
   GroupModel,
   NodeModel,
+  AddGroupCommand,
+  AddToGroupCommand,
   RemoveFromGroupCommand,
   RemoveGroupCommand,
   RemoveNodeCommand,
@@ -59,6 +61,7 @@ import {
   bindDashboardGrid,
   parentPeerOf,
   type DashboardGridHandle,
+  type TearOutPlan,
   type DashboardGridOptions,
   type DashboardResponsiveOptions,
 } from './grid-binder';
@@ -883,10 +886,11 @@ export function attachTabsRuntime(
    */
   const tearOut = (containerId: string, pageId: string, ev: PointerEvent): boolean => {
     if (!container) return false;
-    const pages = pagesOf(containerId);
-    if (pages.length <= 1) return false;
-    const label = pages.find((p) => p.id === pageId)?.label ?? pageId;
-    return parentPeerOf(container, containerId)?.tearOutMember(pageId, containerId, label, ev) === true;
+    if (!pagesOf(containerId).some((p) => p.id === pageId)) return false;
+    const peer = parentPeerOf(container, containerId);
+    const plan = ctx.tearOutPlan?.(containerId, pageId);
+    if (!peer || !plan) return false;
+    return peer.tearOutMember(pageId, containerId, ev, plan);
   };
 
   const paintStrip = (id: string, f: { x: number; y: number; width: number }, h: number, pages: { id: string; label: string }[], active: string): void => {
@@ -966,10 +970,13 @@ export function attachTabsRuntime(
 
   ctx.syncTabs = sync;
   ctx.subscriptions = ctx.subscriptions ?? [];
-  for (const [id, cg] of ctx.boardGroups) {
-    if (!isTabs(id)) continue;
+  const subsOf = new Map<string, Array<() => void>>();
+  const attach = (id: string): void => {
+    const cg = ctx.boardGroups.get(id) ?? model.getGroup(id);
+    if (!cg || subsOf.has(id)) return;
+    if ((ctx.layoutOf.get(id) ?? ctx.specById.get(id)?.layout) !== 'tabs') return;
     const pages = pagesOf(id);
-    if (!ctx.activeTab.has(id)) {
+    if (!ctx.activeTab.has(id) && pages.length > 0) {
       const meta = cg.getMetadata('containerWidget') as { active?: string; tabs?: TabsOptions } | undefined;
       const want = ctx.specById.get(id)?.active ?? meta?.active;
       ctx.activeTab.set(id, want && pages.some((p) => p.id === want) ? want : pages[0].id);
@@ -978,11 +985,52 @@ export function attachTabsRuntime(
     // Re-lay the pages whenever the parent moves or resizes the container —
     // and whenever a page joins or leaves, so the strip always shows the pages
     // that are actually there.
+    const offs: Array<() => void> = [];
     for (const ev of ['bounds:changed', 'member:added', 'member:removed']) {
       const off = cg.on(ev, (() => sync(id)) as (...args: unknown[]) => void);
-      if (typeof off === 'function') ctx.subscriptions.push(off);
+      if (typeof off === 'function') offs.push(off);
     }
+    subsOf.set(id, offs);
+    ctx.subscriptions?.push(() => detach(id));
     sync(id);
+  };
+  const detach = (id: string): void => {
+    for (const off of subsOf.get(id) ?? []) off();
+    subsOf.delete(id);
+    ctx.tabStrips.get(id)?.remove();
+    ctx.tabStrips.delete(id);
+  };
+  ctx.attachTabsContainer = attach;
+  ctx.detachTabsContainer = detach;
+  for (const id of ctx.boardGroups.keys()) if (isTabs(id)) attach(id);
+}
+
+/**
+ * Steps that depend on each other's RESULT — create a group, then move a page
+ * into it, then place the group on the board — run as one history step. A
+ * batch checks every member's `canExecute` before running any of them, and
+ * the second step's precondition (the group exists) is what the first step
+ * creates, so as a batch the chain is refused. This runs the chain in order
+ * and reverses it on undo, judging nothing up front.
+ */
+class SequenceCommand extends Command {
+  constructor(name: string, private steps: Command[]) {
+    super(name);
+  }
+  override execute(context: Parameters<Command['execute']>[0]): void {
+    for (const c of this.steps) c.execute(context);
+  }
+  override undo(context: Parameters<Command['undo']>[0]): void {
+    for (let i = this.steps.length - 1; i >= 0; i--) this.steps[i].undo(context);
+  }
+  override canExecute(): boolean {
+    return true;
+  }
+  override canUndo(): boolean {
+    return true;
+  }
+  override serialize() {
+    return { id: this.id, name: this.name, timestamp: this.timestamp, data: { steps: this.steps.map((c) => c.serialize()) } };
   }
 }
 
@@ -1042,6 +1090,16 @@ export interface DashboardHandleContext {
   tabStrips: Map<string, HTMLElement>;
   /** Set by finalize: re-lay a tab container's pages and repaint its strip. */
   syncTabs?: (containerId: string) => void;
+  /**
+   * Tab-container runtime hooks (attachTabsRuntime): a container created or
+   * removed AFTER boot — a page torn out into a group of its own, a container
+   * closed because its last page left — registers and unregisters through
+   * these, on execute and on undo alike.
+   */
+  attachTabsContainer?: (containerId: string) => void;
+  detachTabsContainer?: (containerId: string) => void;
+  /** The plan that makes a torn-out page a one-tab group of its own (the handle builder owns the specs and the registry). */
+  tearOutPlan?: (containerId: string, pageId: string) => TearOutPlan | null;
   /** Set by finalize: the user's `onTabChange`, so the handle can fire it. */
   onTabChange?: (containerId: string, pageId: string, viewId: string) => void;
   /** Set by finalize: re-bind a VIEW's board under the given layout (setLayout). */
@@ -1184,6 +1242,163 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     }
     entries.sort((p1, p2) => (p1.y ?? 0) - (p2.y ?? 0) || (p1.x ?? 0) - (p2.x ?? 0));
     return entries;
+  };
+
+  /**
+   * TEARING A TAB OUT — what the page becomes. VS Code: a tab dragged out of
+   * its group makes a group of its own, still wearing its tab. So the board
+   * receives a NEW one-page tab container, `<page>__group`, built exactly as
+   * mountBoard() builds an authored one (slab cell in `gridItem`, spec fields
+   * in `containerWidget`, board metadata so fromDocument() rebinds it), the
+   * page moves into it, and the handle's own registry follows — on execute and
+   * on undo. A container left with no page closes, as VS Code closes a group
+   * whose last editor leaves; undo reopens it. The board that lands it adds
+   * its own displaced-tile commands around these.
+   */
+  ctx.tearOutPlan = (containerId: string, pageId: string): TearOutPlan | null => {
+    const model = ctx.apiRef?.getModel();
+    const from = ctx.boardGroups.get(containerId);
+    const pg = ctx.boardGroups.get(pageId) ?? model?.getGroup(pageId);
+    const fromSpec = specById.get(containerId);
+    const pageSpec = specById.get(pageId);
+    if (!model || !from || !pg || !pageSpec) return null;
+    const viewId = ctx.viewOfBoard.get(containerId) ?? ctx.active;
+    const W = `${pageId}__group`;
+    const tabsOpts = ctx.tabsOf.get(containerId) ?? {};
+    const label = pageSpec.title ?? pageId;
+    const size = { width: pg.size?.width ?? 0, height: (pg.size?.height ?? 0) + tabStripReserve(tabsOpts, 1) };
+    const remaining = [...(from.members ?? [])].filter((m) => m !== pageId && !!model.getGroup(m));
+    return {
+      arrivingId: W,
+      label,
+      size,
+      commands: (cell, rect, boardId) => {
+        const fromMeta = (from.getMetadata('containerWidget') ?? {}) as { columns?: number; maxRows?: number };
+        const fromBoard = (from.getMetadata('dashboardBoard') ?? {}) as Record<string, unknown>;
+        const g = new GroupModel({ id: W, name: label });
+        g.setMetadata('frameChrome', 'none');
+        g.setMetadata('gridItem', gridItemFromCell(cell));
+        g.setMetadata('containerWidget', {
+          title: label,
+          columns: fromMeta.columns ?? cell.w,
+          maxRows: fromMeta.maxRows ?? cell.h,
+          layout: 'tabs',
+          active: pageId,
+          ...(Object.keys(tabsOpts).length ? { tabs: tabsOpts } : {}),
+        });
+        g.setMetadata('dashboardBoard', { ...fromBoard, layout: 'tabs' });
+        g.position = { x: rect.x, y: rect.y };
+        g.size = { width: rect.width, height: rect.height, depth: 0 };
+        const wSpec: DashboardWidgetSpec = {
+          id: W,
+          title: label,
+          layout: 'tabs',
+          active: pageId,
+          ...(Object.keys(tabsOpts).length ? { tabs: tabsOpts } : {}),
+          columns: fromMeta.columns ?? cell.w,
+          widgets: [pageSpec],
+        };
+        let slot = -1;
+        const born = {
+          register: (): void => {
+            const live = model.getGroup(W);
+            if (!live) return;
+            ctx.boardGroups.set(W, live);
+            ctx.layoutOf.set(W, 'tabs');
+            ctx.activeTab.set(W, pageId);
+            ctx.tabsOf.set(W, tabsOpts);
+            specById.set(W, wSpec);
+            ctx.viewOfBoard.set(W, viewId);
+            viewOfWidget.set(W, boardId);
+            viewOfWidget.set(pageId, W);
+            if (fromSpec?.widgets) {
+              const i = fromSpec.widgets.findIndex((p) => p.id === pageId);
+              if (i >= 0) {
+                slot = i;
+                fromSpec.widgets.splice(i, 1);
+              }
+            }
+            const arr = ctx.boardWidgets.get(boardId);
+            if (arr && !arr.some((w) => w.id === W)) arr.push(wSpec);
+            ctx.boardWidgets.set(W, wSpec.widgets!);
+            ctx.attachTabsContainer?.(W);
+          },
+          unregister: (): void => {
+            ctx.detachTabsContainer?.(W);
+            ctx.boardGroups.delete(W);
+            ctx.layoutOf.delete(W);
+            ctx.activeTab.delete(W);
+            ctx.tabsOf.delete(W);
+            specById.delete(W);
+            ctx.viewOfBoard.delete(W);
+            viewOfWidget.delete(W);
+            viewOfWidget.set(pageId, containerId);
+            if (fromSpec?.widgets && !fromSpec.widgets.some((p) => p.id === pageId)) {
+              fromSpec.widgets.splice(slot < 0 ? fromSpec.widgets.length : Math.min(slot, fromSpec.widgets.length), 0, pageSpec);
+            }
+            const arr = ctx.boardWidgets.get(boardId);
+            if (arr) {
+              const i = arr.findIndex((w) => w.id === W);
+              if (i >= 0) arr.splice(i, 1);
+            }
+            ctx.boardWidgets.delete(W);
+          },
+        };
+        const move: Command[] = [
+          new SequenceCommand('Move tab out', [
+            new AddGroupCommand(g),
+            new RemoveFromGroupCommand(containerId, pageId),
+            new AddToGroupCommand(W, pageId),
+            new AddToGroupCommand(boardId, W),
+            new RegisterWidgetCommand(born, 'register'),
+          ]),
+        ];
+        if (remaining.length > 0) return { move, collapse: [] };
+        // The last page left: the container closes. Its registry goes FIRST
+        // so that on undo it comes back AFTER the group and its slab do.
+        let fromSlot = -1;
+        const gone = {
+          register: (): void => {
+            const live = model.getGroup(containerId);
+            if (!live) return;
+            ctx.boardGroups.set(containerId, live);
+            ctx.layoutOf.set(containerId, 'tabs');
+            ctx.viewOfBoard.set(containerId, viewId);
+            if (fromSpec) specById.set(containerId, fromSpec);
+            const arr = ctx.boardWidgets.get(boardId);
+            if (arr && fromSpec && !arr.some((w) => w.id === containerId)) {
+              arr.splice(fromSlot < 0 ? arr.length : Math.min(fromSlot, arr.length), 0, fromSpec);
+            }
+            ctx.attachTabsContainer?.(containerId);
+          },
+          unregister: (): void => {
+            ctx.detachTabsContainer?.(containerId);
+            ctx.boardGroups.delete(containerId);
+            ctx.layoutOf.delete(containerId);
+            ctx.viewOfBoard.delete(containerId);
+            specById.delete(containerId);
+            const arr = ctx.boardWidgets.get(boardId);
+            if (arr) {
+              const i = arr.findIndex((w) => w.id === containerId);
+              if (i >= 0) {
+                fromSlot = i;
+                arr.splice(i, 1);
+              }
+            }
+          },
+        };
+        return {
+          move,
+          collapse: [
+            new SequenceCommand('Close empty tab container', [
+              new RegisterWidgetCommand(gone, 'unregister'),
+              new RemoveFromGroupCommand(boardId, containerId),
+              new RemoveGroupCommand(containerId),
+            ]),
+          ],
+        };
+      },
+    };
   };
 
   /** Bookkeeping closures for one widget, shared by the add and remove

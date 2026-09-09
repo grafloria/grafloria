@@ -559,14 +559,57 @@ interface BinderPeer {
   adopt(
     node: { id: string },
     world: { x: number; y: number },
-    pxSize: { width: number; height: number }
+    pxSize: { width: number; height: number },
+    opts?: AdoptOptions
   ): AdoptedLeg | null;
   /**
    * Tear a tab page out of its container and onto THIS board, driven by the
    * press that started on its tab. Answers false when the board will not take
    * it, so the strip can leave the press alone.
    */
-  tearOutMember(pageId: string, fromGroupId: string, label: string, ev: PointerEvent): boolean;
+  tearOutMember(pageId: string, fromGroupId: string, ev: PointerEvent, plan: TearOutPlan): boolean;
+}
+
+/**
+ * What a torn-out page becomes, decided by the dashboard handle (which owns
+ * the specs and the registry) and carried out by the board it lands on. VS
+ * Code's rule: a tab dragged out of its group makes a GROUP of its own — so
+ * the board receives a new one-page tab container, not the bare page, and the
+ * page keeps its tab.
+ */
+export interface TearOutPlan {
+  /** The id the board will hold: the new one-page tab container around the page. */
+  arrivingId: string;
+  /** What the chip that follows the pointer says. */
+  label: string;
+  /** Pixel size to arrive at — the page plus the strip the new group needs. */
+  size: { width: number; height: number };
+  /**
+   * The model and registry commands for a landing at `cell`/`rect` on
+   * `boardId`. `move` creates the group, moves the page in and registers it;
+   * `collapse` (possibly empty) removes the container the page left when it
+   * was its last page — VS Code closes an empty group.
+   */
+  commands(
+    cell: { x: number; y: number; w: number; h: number },
+    rect: { x: number; y: number; width: number; height: number },
+    boardId: string
+  ): { move: Command[]; collapse: Command[] };
+}
+
+/** A torn-out page never arrives shorter than this: a strip with no room under it is not a group. */
+export const TEAR_OUT_MIN_ROWS = 2;
+
+interface AdoptOptions {
+  /**
+   * 'shrink': take the cell under the pointer at the height that FITS there
+   * (down to TEAR_OUT_MIN_ROWS) before looking for another row — a torn-out
+   * page takes the room where it lands, the way a torn-out editor does. The
+   * default keeps the tile's size and finds the nearest cell that takes it.
+   */
+  fit?: 'shrink';
+  /** Anchor the tile's TOP edge at the pointer instead of centring it (the pointer holds a tab, the page hangs below it). */
+  anchor?: 'top';
 }
 
 interface AdoptedLeg {
@@ -2605,6 +2648,9 @@ export function bindDashboardGrid(
     return best;
   };
 
+  /** `handle.planRemoval` for local use before the handle object exists. */
+  const planRemovalOf = (id: string): Command[] => handle.planRemoval(id);
+
   /** This binder's side of an adoption: enter gateless, then live-push. */
   /**
    * Put an ARRIVING tile as close to the pointer as the board allows. The
@@ -2614,32 +2660,35 @@ export function bindDashboardGrid(
    * I put it". Slide along the row instead, nearest first, so a tile that
    * cannot take the cell under the pointer still lands beside it.
    */
-  const placeNear = (id: string, x: number, y: number, w: number): boolean => {
-    // `changed:false` means BOTH "refused" and "it is already there", and
-    // reading the second as the first made the search walk straight past the
-    // right answer: parked on the nearest legal cell, the next pointer move
-    // re-tried the wanted cell (refused), re-tried the cell it was ON (no
-    // change, read as refused) and then took a FARTHER one — so the tile
-    // oscillated for the whole drag and settled wherever the last swing left
-    // it. Ask where the tile IS, not whether the call moved it.
-    const at = (cx: number, cy: number): boolean => {
+  /**
+   * Slide along ONE row, nearest column first. `changed:false` means BOTH
+   * "refused" and "it is already there", and reading the second as the first
+   * made the search walk straight past the right answer: parked on the nearest
+   * legal cell, the next pointer move re-tried the wanted cell (refused),
+   * re-tried the cell it was ON (no change, read as refused) and then took a
+   * FARTHER one — so the tile oscillated for the whole drag and settled
+   * wherever the last swing left it. Ask where the tile IS, not whether the
+   * call moved it.
+   */
+  const placeOnRow = (id: string, x: number, y: number, w: number): boolean => {
+    const at = (cx: number): boolean => {
       const i = engine.getItem(id);
-      return !!i && i.x === cx && i.y === cy;
+      return !!i && i.x === cx && i.y === y;
     };
     const maxX = Math.max(0, columns - w);
-    const scanRow = (cy: number): boolean => {
-      if (at(x, cy)) return true;
-      if (engine.moveCheck(id, x, cy, { gate: false }).changed) return true;
-      for (let d = 1; d <= columns; d++) {
-        for (const cx of [x - d, x + d]) {
-          if (cx < 0 || cx > maxX) continue;
-          if (at(cx, cy)) return true;
-          if (engine.moveCheck(id, cx, cy, { gate: false }).changed) return true;
-        }
+    if (at(x)) return true;
+    if (engine.moveCheck(id, x, y, { gate: false }).changed) return true;
+    for (let d = 1; d <= columns; d++) {
+      for (const cx of [x - d, x + d]) {
+        if (cx < 0 || cx > maxX) continue;
+        if (at(cx)) return true;
+        if (engine.moveCheck(id, cx, y, { gate: false }).changed) return true;
       }
-      return false;
-    };
-    if (scanRow(y)) return true;
+    }
+    return false;
+  };
+  const placeNear = (id: string, x: number, y: number, w: number): boolean => {
+    if (placeOnRow(id, x, y, w)) return true;
     // EVERY column on that row refused — which is what a locked section
     // spanning the full width does, and there are plenty of those. Sliding
     // sideways can never clear it, so try the rows either side, nearest first.
@@ -2649,17 +2698,64 @@ export function bindDashboardGrid(
     for (let d = 1; d <= reach; d++) {
       for (const cy of [y - d, y + d]) {
         if (cy < 0) continue;
-        if (scanRow(cy)) return true;
+        if (placeOnRow(id, x, cy, w)) return true;
       }
     }
     return false;
+  };
+  /**
+   * Rows free at (x, y) across `w` columns before the nearest LOCKED tile
+   * below — a section is a locked tile nothing can push, so that is the hard
+   * ceiling on what can land there — capped at the natural height. 0 when the
+   * row itself lies under a locked tile.
+   */
+  const fitHeightAt = (id: string, x: number, y: number, w: number, hNatural: number): number => {
+    let limit = hNatural;
+    for (const it of engine.getItems()) {
+      if (it.id === id || !it.locked) continue;
+      if (!(it.x < x + w && x < it.x + it.w)) continue;
+      if (it.y <= y && it.y + it.h > y) return 0;
+      if (it.y > y) limit = Math.min(limit, it.y - y);
+    }
+    const b = bound();
+    if (b !== undefined) limit = Math.min(limit, Math.max(0, b - y));
+    return limit;
+  };
+  /**
+   * A TEAR-OUT takes the cell under the pointer at the height that fits there
+   * — a page dragged out of a full-height panel onto a busy board would
+   * otherwise have exactly one legal cell, below the lowest section, and the
+   * drop would land a screen away from the pointer with its placeholder out of
+   * sight. Only when nothing fits there does it fall back to the nearest row
+   * at its natural height.
+   */
+  const placeFitting = (id: string, x: number, y: number, w: number, hNatural: number): boolean => {
+    const it = engine.getItem(id);
+    if (!it) return false;
+    const hFit = fitHeightAt(id, x, y, w, hNatural);
+    if (hFit >= TEAR_OUT_MIN_ROWS) {
+      if (it.h !== hFit) engine.resizeCheck(id, w, hFit);
+      if (engine.getItem(id)?.h === hFit && placeOnRow(id, x, y, w)) return true;
+    }
+    const now = engine.getItem(id);
+    if (now && now.h !== hNatural) {
+      // Growing back where it sits may be refused; the entry row at the bottom
+      // always has room, so grow there and let placeNear bring it up.
+      engine.resizeCheck(id, w, hNatural);
+      if (engine.getItem(id)?.h !== hNatural) {
+        engine.moveCheck(id, 0, engine.rows(), { gate: false });
+        engine.resizeCheck(id, w, hNatural);
+      }
+    }
+    return placeNear(id, x, y, w);
   };
 
   const adopt = (
     // Only the id is used: a tab page arriving here is a GROUP, not a node.
     node: { id: string },
     world: { x: number; y: number },
-    pxSize: { width: number; height: number }
+    pxSize: { width: number; height: number },
+    opts: AdoptOptions = {}
   ): AdoptedLeg | null => {
     if (disposed) return null;
     const f = frame();
@@ -2692,9 +2788,17 @@ export function bindDashboardGrid(
       }
     }
     adoptedGhostId = node.id;
-    const tl = centredTopLeft(world.x, world.y, span);
-    const cell0 = pointToCell(tl.x, tl.y, f, gg, rows(), span.w);
-    placeNear(node.id, cell0.x, cell0.y, span.w);
+    const hNatural = span.h;
+    const wantedCell = (wx: number, wy: number, itemW: number, itemH: number): { x: number; y: number } => {
+      const tl = centredTopLeft(wx, wy, { w: itemW, h: opts.anchor === 'top' ? 0 : itemH });
+      return pointToCell(tl.x, tl.y, frame(), geom(), rows(), itemW);
+    };
+    const place = (cell: { x: number; y: number }, itemW: number): boolean =>
+      opts.fit === 'shrink' ? placeFitting(node.id, cell.x, cell.y, itemW, hNatural) : placeNear(node.id, cell.x, cell.y, itemW);
+    let lastWant: { x: number; y: number } | null = null;
+    const cell0 = wantedCell(world.x, world.y, span.w, span.h);
+    lastWant = cell0;
+    place(cell0, span.w);
     armGlide();
     project();
     syncPlaceholder();
@@ -2703,9 +2807,11 @@ export function bindDashboardGrid(
       move: (w) => {
         const item = engine.getItem(node.id);
         if (!item) return;
-        const tlm = centredTopLeft(w.x, w.y, { w: item.w, h: item.h });
-        const cell = pointToCell(tlm.x, tlm.y, frame(), geom(), rows(), item.w);
-        if (placeNear(node.id, cell.x, cell.y, item.w)) project();
+        const cell = wantedCell(w.x, w.y, item.w, opts.fit === 'shrink' ? hNatural : item.h);
+        // The search is worth running once per wanted cell, not per pixel.
+        if (lastWant && lastWant.x === cell.x && lastWant.y === cell.y) return;
+        lastWant = cell;
+        if (place(cell, item.w)) project();
         syncPlaceholder();
       },
       abort: () => {
@@ -2738,7 +2844,7 @@ export function bindDashboardGrid(
 
   const selfPeer: BinderPeer = {
     group,
-    tearOutMember: (pageId, fromGroupId, label, ev) => beginTearOut(pageId, fromGroupId, label, ev),
+    tearOutMember: (pageId, fromGroupId, ev, plan) => beginTearOut(pageId, fromGroupId, ev, plan),
     clearSelection: () => {
       if (selectedId === undefined) return;
       selectedId = undefined;
@@ -3236,32 +3342,27 @@ export function bindDashboardGrid(
    * Like VS Code, the page itself does not follow the pointer; a chip carrying
    * the tab's label does, and the placeholder shows where the drop will land.
    */
-  const beginTearOut = (pageId: string, fromGroupId: string, label: string, ev: PointerEvent): boolean => {
+  const beginTearOut = (pageId: string, fromGroupId: string, ev: PointerEvent, plan: TearOutPlan): boolean => {
     if (disposed || gesture || slabGesture || isStatic || tearing) return false;
-    const pg = diagram.getGroup(pageId);
     const from = diagram.getGroup(fromGroupId);
-    if (!pg || !from || !engine.getItem(fromGroupId)) return false;
-    const size = sizeOf(pg);
-    const frameBefore = frameOfGroup(pg);
-    const cellBefore = cellFromGridItem(pg.getMetadata?.('gridItem') as GridItemConfig | undefined) ?? {
-      x: 0,
-      y: 0,
-      w: 1,
-      h: 1,
-    };
+    if (!from || !diagram.getGroup(pageId) || !engine.getItem(fromGroupId)) return false;
     const toWorld = (cx: number, cy: number): { x: number; y: number } => {
       const rect = api.container.getBoundingClientRect();
       return api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
     };
     const first = toWorld(ev.clientX, ev.clientY);
-    const leg = adopt({ id: pageId }, first, { width: size.width, height: size.height });
+    // The board holds the NEW group, not the bare page: it is adopted under the
+    // group's id, sized for the page plus its strip, taking the room under the
+    // pointer with its top edge at the pointer — the tab is what the pointer
+    // holds, the page hangs below it.
+    const leg = adopt({ id: plan.arrivingId }, first, plan.size, { fit: 'shrink', anchor: 'top' });
     if (!leg) return false;
 
     tearing = pageId;
     const doc = api.container.ownerDocument ?? document;
     const chip = doc.createElement('div');
     chip.className = 'axdb-drag-chip axdb-tab-chip';
-    chip.textContent = label;
+    chip.textContent = plan.label;
     doc.body.appendChild(chip);
     const moveChip = (cx: number, cy: number): void => {
       chip.style.left = `${cx + 6}px`;
@@ -3310,12 +3411,12 @@ export function bindDashboardGrid(
         api.renderNow();
         return;
       }
-      const changed = execute('Move tab out', [
-        ...fin.commands,
-        new SetGroupCellCommand(pageId, cellBefore, fin.cell, frameBefore, fin.rect),
-        new RemoveFromGroupCommand(fromGroupId, pageId),
-        new AddToGroupCommand(group.id, pageId),
-      ]);
+      const planned = plan.commands(fin.cell, fin.rect, group.id);
+      // The container the page left may have been holding its last page: it
+      // goes too, and the tiles around its slab settle the way a removal
+      // settles them (VS Code closes a group whose last editor leaves).
+      const collapse = planned.collapse.length > 0 ? [...planRemovalOf(fromGroupId), ...planned.collapse] : [];
+      const changed = execute('Move tab out', [...fin.commands, ...planned.move, ...collapse]);
       disarmGlideSoon();
       enforceBoardHeight();
       persistLayouts();
@@ -3688,8 +3789,19 @@ export function bindDashboardGrid(
     planRemoval(id) {
       const it = engine.getItem(id);
       if (!it) return [];
+      // A float:false engine PACKS as it is built, in ARRAY order — so a tile
+      // that entered the engine last (one just adopted by a drop) is packed
+      // last, and everything above it in the array floats up through the room
+      // it occupies. The plan then "moved" tiles the removal never touched and
+      // undid the drop's own push (L64: B back onto the cell the torn-out
+      // group had just taken, and the group auto-placed into the hole the
+      // closed container left). Packing in row-then-column order is gravity,
+      // whatever order the tiles arrived in.
       const clone = new GridPackEngine(
-        engine.getItems().map((i) => ({ ...i })),
+        engine
+          .getItems()
+          .map((i) => ({ ...i }))
+          .sort((a, b) => a.y - b.y || a.x - b.x),
         { columns, float }
       );
       clone.remove(id);

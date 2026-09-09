@@ -300,6 +300,102 @@ describe('tab containers', () => {
     expect(handle.getActiveTab('panel')).toBe('p-two');
   });
 
+  // -- tearing a tab out: VS Code's "drag a tab out and it becomes a group of its own" --
+  // The board commits through the command manager, which settles a task later.
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const dragTab = async (api: { container: HTMLElement }, containerId: string, pageId: string, to: { x: number; y: number }) => {
+    const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(tab, 'pointerdown', 700, 10);
+    ev(tab, 'pointermove', 700 - 40, 10); // past the threshold: the strip hands the press to the board
+    ev(window, 'pointermove', to.x, to.y);
+    ev(window, 'pointerup', to.x, to.y);
+    tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await settle();
+  };
+  const stripOf = (api: { container: HTMLElement }, id: string) =>
+    Array.from(api.container.querySelectorAll(`.axdb-tabs[data-tabs-id="${id}"] .axdb-tab`)).map((t) => t.textContent);
+  const cm = (api: ReturnType<typeof makeApi>) => api.getEngine().commandManager;
+
+  it('a tab dragged onto the board becomes a ONE-TAB GROUP of its own, and undo puts it back', async () => {
+    const { api, model, handle } = up(BOARD());
+    await dragTab(api, 'panel', 'p-three', { x: 150, y: 400 });
+    // the page left its container and arrived inside a new tab container
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts']);
+    expect(handle.getLayout('p-three__group')).toBe('tabs');
+    expect(stripOf(api, 'p-three__group')).toEqual(['Notes']);
+    expect(handle.getActiveTab('p-three__group')).toBe('p-three');
+    expect(model.getGroup('p-three__group')!.members!.has('p-three')).toBe(true);
+    expect(model.getGroup('panel')!.members!.has('p-three')).toBe(false);
+    // its widget is on the canvas, under the new group's strip
+    const w = model.getNode('k-three')!;
+    const g = model.getGroup('p-three__group')!;
+    expect(w.position.x).toBeGreaterThan(PARKED);
+    expect(w.position.y).toBeGreaterThanOrEqual(g.position.y + 18);
+    // it serialises as a tab container holding the page, beside the one it left
+    const snap = handle.toJSON().views[0].widgets;
+    const born = snap.find((x) => x.id === 'p-three__group')!;
+    expect(born.layout).toBe('tabs');
+    expect(born.widgets?.map((p) => p.id)).toEqual(['p-three']);
+    expect(snap.find((x) => x.id === 'panel')!.widgets?.map((p) => p.id)).toEqual(['p-one', 'p-two']);
+    // ONE undo: the group is gone, the tab is back, the page is parked again
+    await cm(api).undo();
+    await settle();
+    expect(model.getGroup('p-three__group')).toBeUndefined();
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(api.container.querySelector('.axdb-tabs[data-tabs-id="p-three__group"]')).toBeNull();
+    expect(handle.toJSON().views[0].widgets.some((x) => x.id === 'p-three__group')).toBe(false);
+    expect(model.getGroup('panel')!.members!.has('p-three')).toBe(true);
+    // …and redo brings it back exactly
+    await cm(api).redo();
+    await settle();
+    expect(stripOf(api, 'p-three__group')).toEqual(['Notes']);
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts']);
+  });
+
+  it('the torn-out group survives toJSON → dashboard() and a saved document', async () => {
+    const first = up(BOARD());
+    await dragTab(first.api, 'panel', 'p-two', { x: 150, y: 400 });
+    const second = up(dashboard({ ...first.handle.toJSON() }));
+    expect(second.handle.getLayout('p-two__group')).toBe('tabs');
+    expect(stripOf(second.api, 'p-two__group')).toEqual(['Alerts']);
+    expect(stripOf(second.api, 'panel')).toEqual(['Filters', 'Notes']);
+    const json = JSON.stringify(new DiagramSerializer().serialize(first.model));
+    const loaded = fromDocument(json);
+    const api = makeApi(loaded.model as DiagramModel);
+    loaded.finalize(api);
+    mounted.push(loaded.handle as DashboardHandle);
+    expect(loaded.handle!.getLayout('p-two__group')).toBe('tabs');
+    expect(stripOf(api, 'p-two__group')).toEqual(['Alerts']);
+  });
+
+  it('tearing the LAST tab out closes the empty container, and undo reopens it', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          { id: 'free', kind: 'line', span: 6, rows: 4, x: 0, y: 0 },
+          { id: 'solo', title: 'Solo', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('p-only', 'Only', 'k-only')] },
+        ],
+      })
+    );
+    await dragTab(api, 'solo', 'p-only', { x: 150, y: 400 });
+    expect(model.getGroup('solo')).toBeUndefined();
+    expect(api.container.querySelector('.axdb-tabs[data-tabs-id="solo"]')).toBeNull();
+    expect(stripOf(api, 'p-only__group')).toEqual(['Only']);
+    expect(handle.toJSON().views[0].widgets.map((x) => x.id).sort()).toEqual(['free', 'p-only__group']);
+    await cm(api).undo();
+    await settle();
+    expect(model.getGroup('solo')!.members!.has('p-only')).toBe(true);
+    expect(stripOf(api, 'solo')).toEqual(['Only']);
+    expect(model.getGroup('p-only__group')).toBeUndefined();
+    expect(handle.toJSON().views[0].widgets.map((x) => x.id).sort()).toEqual(['free', 'solo']);
+  });
+
   it('a board with no tab container carries no strip at all', () => {
     const { api } = up(
       dashboard({ columns: 12, width: 1200, height: 600, widgets: [{ id: 'a', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0 }] })
