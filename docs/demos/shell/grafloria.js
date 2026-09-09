@@ -194720,6 +194720,7 @@ var CSS4 = `
   }
 }
 `;
+var DASHBOARD_KIT_CSS = CSS4;
 function ensureDashboardKitStyles(doc) {
   const d = doc ?? (typeof document !== "undefined" ? document : void 0);
   if (!d || d.getElementById(DASHBOARD_KIT_STYLE_ID)) return;
@@ -198789,6 +198790,158 @@ function bindDashboardSplit(api, group, options = {}) {
     }
   };
   const unregisterTool = registerTool(tool);
+  let tearing = false;
+  const EDGE_GRACE = 60;
+  const execute = (name, commands) => {
+    if (commands.length === 0) return false;
+    void execCommand(new BatchCommand(name, commands));
+    return true;
+  };
+  const beginTearOut = (pageId, fromGroupId, ev, plan) => {
+    if (disposed || isStatic || gesture || tearing) return false;
+    const from = diagram.getGroup(fromGroupId);
+    if (!from) return false;
+    const tree0 = readTree();
+    tearing = true;
+    const doc = api.container.ownerDocument ?? document;
+    const chip2 = doc.createElement("div");
+    chip2.className = "axdb-drag-chip axdb-tab-chip";
+    chip2.textContent = plan.label;
+    doc.body.appendChild(chip2);
+    const moveChip = (cx, cy) => {
+      chip2.style.left = `${cx + 6}px`;
+      chip2.style.top = `${cy + 6}px`;
+    };
+    moveChip(ev.clientX, ev.clientY);
+    const layer = htmlLayer();
+    let joinEl = null;
+    const showJoin = (r) => {
+      if (!layer) return;
+      if (!joinEl) {
+        joinEl = doc.createElement("div");
+        joinEl.className = "axdb-join";
+        layer.prepend(joinEl);
+      }
+      joinEl.style.left = `${r.x}px`;
+      joinEl.style.top = `${r.y}px`;
+      joinEl.style.width = `${r.width}px`;
+      joinEl.style.height = `${r.height}px`;
+    };
+    const hideJoin = () => {
+      joinEl?.remove();
+      joinEl = null;
+    };
+    const frameOfGroup = (g) => ({ x: g.position.x, y: g.position.y, width: g.size?.width ?? 0, height: g.size?.height ?? 0 });
+    const inRect = (r, x, y) => x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height;
+    const targets = plan.joinTargets.map((id) => diagram.getGroup(id)).filter((g) => !!g && g.id !== fromGroupId && !plan.ownBoards.includes(g.id));
+    const clientInsideCanvasGrace = (cx, cy) => {
+      const rect = api.container.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return true;
+      return cx >= rect.left - EDGE_GRACE && cx <= rect.right + EDGE_GRACE && cy >= rect.top - EDGE_GRACE && cy <= rect.bottom + EDGE_GRACE;
+    };
+    const centreThird = (g, w) => {
+      const f = frameOfGroup(g);
+      if (!inRect(f, w.x, w.y)) return false;
+      const top = f.y + plan.stripHeight(g.id);
+      const h = Math.max(0, f.y + f.height - top);
+      return w.x >= f.x + f.width / 3 && w.x <= f.x + 2 * f.width / 3 && w.y >= top + h / 3 && w.y <= top + 2 * h / 3;
+    };
+    const zoneAt = (cx, cy, w) => {
+      if (!clientInsideCanvasGrace(cx, cy)) return { kind: "off" };
+      const own = plan.stripIndex(fromGroupId, cx, cy);
+      if (own !== null) return { kind: "reorder", index: own };
+      for (const t of targets) {
+        const i = plan.stripIndex(t.id, cx, cy);
+        if (i !== null) return { kind: "strip", targetId: t.id, index: i };
+      }
+      for (const t of targets) if (centreThird(t, w)) return { kind: "join", targetId: t.id };
+      if (centreThird(from, w)) return { kind: "home" };
+      if (worldInsideBoard(w.x, w.y)) {
+        const t = dropTargetAt(tree0, w.x, w.y);
+        if (t) return { kind: "pane", target: t };
+      }
+      return { kind: "home" };
+    };
+    const apply = (z) => {
+      plan.markDrop(z.kind === "reorder" ? fromGroupId : z.kind === "strip" ? z.targetId : null, z.kind === "reorder" || z.kind === "strip" ? z.index : null);
+      const jt = z.kind === "join" ? diagram.getGroup(z.targetId) : void 0;
+      if (jt) showJoin(frameOfGroup(jt));
+      else hideJoin();
+      showInsertion(z.kind === "pane" ? insertionRect(z.target.rect, z.target.side) : null);
+      chip2.classList.toggle("axdb-out", z.kind === "home" || z.kind === "off");
+    };
+    let last = { x: ev.clientX, y: ev.clientY };
+    const detach = () => {
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onCancel, true);
+      window.removeEventListener("keydown", onKey2, true);
+    };
+    const done = (changed, kind) => {
+      tearing = false;
+      project(readTree());
+      api.renderNow();
+      fire({ type: kind, kind: "move", nodeId: pageId, changed });
+    };
+    const finish = (commit) => {
+      detach();
+      chip2.remove();
+      hideJoin();
+      showInsertion(null);
+      plan.markDrop(null, null);
+      if (disposed) {
+        tearing = false;
+        return;
+      }
+      const z = commit ? zoneAt(last.x, last.y, toWorld(last.x, last.y)) : { kind: "home" };
+      if (z.kind === "home" || z.kind === "off") {
+        done(false, "cancel");
+        return;
+      }
+      if (z.kind === "reorder") {
+        const cmds = plan.reorder(z.index);
+        const changed = cmds.length > 0 && execute("Reorder tab", cmds);
+        done(changed, changed ? "commit" : "cancel");
+        return;
+      }
+      if (z.kind === "strip" || z.kind === "join") {
+        const index = z.kind === "strip" ? z.index : plan.dropIndex(z.targetId, last.x, last.y);
+        const planned2 = plan.join(z.targetId, index, group.id);
+        done(execute("Move tab", [...planned2.move, ...planned2.collapse]), "commit");
+        return;
+      }
+      const side = rtl && (z.target.side === "left" || z.target.side === "right") ? z.target.side === "left" ? "right" : "left" : z.target.side;
+      const after = normalizeSplit(insertSplitLeaf(tree0, plan.arrivingId, targetRef(z.target), side));
+      const rect = rectsOf(after).get(plan.arrivingId);
+      const cell = cellsFromSplit(after, columns, rowsGuess()).get(plan.arrivingId);
+      if (!rect || !cell) {
+        done(false, "cancel");
+        return;
+      }
+      const planned = plan.commands(cell, rect, group.id);
+      done(execute("Move tab out", [...planned.move, new SetSplitTreeCommand(group.id, tree0, after), ...planned.collapse]), "commit");
+      live.announce(`${plan.label} is a pane ${side === "left" || side === "top" ? "before" : "after"} ${targetName(z.target)}`, "polite", true);
+    };
+    const onMove = (e) => {
+      if (disposed) return finish(false);
+      last = { x: e.clientX, y: e.clientY };
+      moveChip(e.clientX, e.clientY);
+      apply(zoneAt(e.clientX, e.clientY, toWorld(e.clientX, e.clientY)));
+      api.render();
+    };
+    const onUp = () => finish(true);
+    const onCancel = () => finish(false);
+    const onKey2 = (e) => {
+      if (e.key === "Escape") finish(false);
+    };
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onCancel, true);
+    window.addEventListener("keydown", onKey2, true);
+    apply(zoneAt(ev.clientX, ev.clientY, toWorld(ev.clientX, ev.clientY)));
+    api.render();
+    return true;
+  };
   const beginPaletteDrag = (node, spec, event) => {
     if (disposed || gesture || isStatic) return;
     const chip2 = spec.chip ?? null;
@@ -199161,9 +199314,8 @@ function bindDashboardSplit(api, group, options = {}) {
     hasItem: (id) => (group.members ?? /* @__PURE__ */ new Set()).has(id),
     memberCell: (id) => handle.cellOf(id),
     resizeMemberBy: () => ({ changed: false }),
-    // A split board has no cells to drop a torn-out page into: it refuses,
-    // and the press stays a plain tab click.
-    tearOutMember: (_pageId, _fromGroupId, _ev, _plan) => false,
+    // A torn-out page becomes a PANE (0.4.37) — see beginTearOut.
+    tearOutMember: (pageId, fromGroupId, ev, plan) => beginTearOut(pageId, fromGroupId, ev, plan),
     // …and it has no cells to move a section across: a strip press stays a selection.
     dragMember: () => false,
     containsWorld: (x, y) => worldInsideBoard(x, y),
@@ -203319,6 +203471,7 @@ export {
   CustomAnimationRegistry,
   CutCommand,
   DARK_THEME,
+  DASHBOARD_KIT_CSS,
   DASHBOARD_KIT_STYLE_ID,
   DEFAULT_ARROW_RADIUS,
   DEFAULT_ENDPOINT_RADIUS,
