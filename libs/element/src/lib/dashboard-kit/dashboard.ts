@@ -675,6 +675,28 @@ const HISTORY_EVENTS = ['command:executed', 'command:undone', 'command:redone'] 
 
 const DEFAULTS = { columns: 12, gap: 8, rowHeight: 130, width: 1180, height: 660 };
 const OFFSCREEN_X = -20000;
+
+/**
+ * Parking is a TELEPORT, never a glide. `.axdb-glide` on the html layer eases
+ * every left/top write while a gesture runs and for 400 ms past its drop; a
+ * page or a view coming back from OFFSCREEN_X under it SLID in from 20,000 px
+ * away over 280 ms (0.4.36). The class comes off for the writes, the styles
+ * are flushed so the landing becomes the before-change state, and the class
+ * goes back to whichever gesture still holds it.
+ */
+const teleport = (container: HTMLElement | null, fn: () => void): void => {
+  const layer = container?.querySelector('.grafloria-html-layer') as HTMLElement | null | undefined;
+  const held = layer?.classList.contains('axdb-glide') === true;
+  if (held) layer!.classList.remove('axdb-glide');
+  try {
+    fn();
+  } finally {
+    if (held && layer) {
+      void layer.offsetWidth; // flush: the new positions are the before-change style now
+      layer.classList.add('axdb-glide');
+    }
+  }
+};
 let autoId = 0;
 
 /** The node a widget spec becomes — one place, so addWidget() and the initial
@@ -1113,6 +1135,9 @@ export interface DashboardHandleContext {
   active: string;
   /** MUTABLE — set by the caller's finalize once the render API exists. */
   apiRef: DashboardApiRef | null;
+  /** MUTABLE — the canvas element, set with apiRef; parking a page or a view
+   *  reaches the html layer through it (see `teleport`). */
+  container: HTMLElement | null;
   /** The consumer's layout hook, if any (dashboard() passes its option). */
   onLayoutChange?: (viewId: string, widgets: DashboardWidgetSpec[]) => void;
   /**
@@ -1863,13 +1888,15 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     showView(id) {
       if (!groups.has(id)) return;
       ctx.active = id;
-      for (const [vid, g] of groups) {
-        const x = vid === id ? 0 : OFFSCREEN_X;
-        const s = g.size ?? { width: ctx.boardW, height: ctx.boardH };
-        if (g.position.x !== x) g.setFrame({ x, y: 0, width: s.width, height: s.height });
-      }
-      binders.get(id)?.sync();
-      ctx.apiRef?.renderNow();
+      teleport(ctx.container, () => {
+        for (const [vid, g] of groups) {
+          const x = vid === id ? 0 : OFFSCREEN_X;
+          const s = g.size ?? { width: ctx.boardW, height: ctx.boardH };
+          if (g.position.x !== x) g.setFrame({ x, y: 0, width: s.width, height: s.height });
+        }
+        binders.get(id)?.sync();
+        ctx.apiRef?.renderNow();
+      });
       frameView(groups.get(id)!);
     },
     widget(id) {
@@ -1954,8 +1981,10 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       w.active = pageId;
       const cw = (cg.getMetadata('containerWidget') as Record<string, unknown> | undefined) ?? {};
       cg.setMetadata('containerWidget', { ...cw, active: pageId });
-      ctx.syncTabs?.(containerId);
-      ctx.apiRef?.renderNow();
+      teleport(ctx.container, () => {
+        ctx.syncTabs?.(containerId);
+        ctx.apiRef?.renderNow();
+      });
       ctx.onTabChange?.(containerId, pageId, ctx.viewOfBoard.get(containerId) ?? ctx.active);
       reportChanged();
       return true;
@@ -2431,6 +2460,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
     optionsBase: options,
     active: views[0]?.id ?? 'main',
     apiRef: null,
+    container: null,
     onLayoutChange: options.onLayoutChange,
   };
   const { binders, groups } = ctx;
@@ -2455,6 +2485,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       const a = api as DashboardApiRef | null;
       if (!a) return;
       ctx.apiRef = a;
+      ctx.container = (a as { container?: HTMLElement }).container ?? null;
       const model = a.getModel();
       // FLUID: the board starts at the container's box when it can be measured
       // (the binder keeps it there); the authored defaults only fill in for a

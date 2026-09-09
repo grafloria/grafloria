@@ -1280,3 +1280,86 @@ describe('tab containers', () => {
     expect(api.container.querySelector('.axdb-tabs')).toBeNull();
   });
 });
+
+/**
+ * THE GLIDE AND A PAGE SWITCH (0.4.36). `.axdb-glide` on the html layer eases
+ * every left/top write for the length of a gesture and 400 ms past its drop.
+ * A plain CLICK on a widget armed it at the press (a task ahead of any
+ * displacement, deliberately) and never disarmed it — so it stayed armed for
+ * good, and the next tab switch, which brings a page back from 20,000 px off
+ * canvas, SLID the page's content in from the left over 280 ms. Two fixes: a
+ * press that never travels disarms like a drop does, and parking is a
+ * TELEPORT — the class comes off for the writes, whoever holds it.
+ */
+describe('the reflow glide and a page switch', () => {
+  const layerOf = (api: { container: HTMLElement }) => api.container.querySelector('.grafloria-html-layer') as HTMLElement;
+  const later = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+  it('a plain CLICK on a widget leaves the glide DISARMED — it stayed armed for good, and the next tab switch flew its page in', async () => {
+    const { api, model } = up(BOARD());
+    const layer = layerOf(api);
+    const tool = toolOf('main');
+    const free = model.getNode('free')!;
+    const at = { x: free.position.x + 20, y: free.position.y + 20 };
+    const hit = { node: free, empty: false };
+    tool.onPointerDown?.(tev('down', at.x, at.y), hit);
+    expect(layer.classList.contains('axdb-glide')).toBe(true); // armed at the press, as designed
+    tool.onPointerUp?.(tev('up', at.x, at.y), hit);
+    await later(450);
+    expect(layer.classList.contains('axdb-glide')).toBe(false);
+  });
+
+  it('a press CANCELLED before it travels disarms the glide too', async () => {
+    const { api, model } = up(BOARD());
+    const layer = layerOf(api);
+    const tool = toolOf('main');
+    const free = model.getNode('free')!;
+    const at = { x: free.position.x + 20, y: free.position.y + 20 };
+    tool.onPointerDown?.(tev('down', at.x, at.y), { node: free, empty: false });
+    expect(layer.classList.contains('axdb-glide')).toBe(true);
+    tool.onCancel?.();
+    await later(450);
+    expect(layer.classList.contains('axdb-glide')).toBe(false);
+  });
+
+  it('a TAB switch is a teleport: the page is painted with the glide OFF even while a gesture holds it armed, and the gesture keeps it', () => {
+    const { api, model, handle } = up(BOARD());
+    const layer = layerOf(api);
+    layer.classList.add('axdb-glide'); // as the 400 ms after a drop leave it
+    const painted: string[] = [];
+    (api as { renderNow: () => void }).renderNow = () => {
+      painted.push(layer.className);
+    };
+    expect(handle.activateTab('panel', 'p-two')).toBe(true);
+    expect(tabs(api).find((t) => t.on)?.id).toBe('p-two');
+    expect(onCanvas(model, ['k-one', 'k-two', 'k-three'])).toEqual(['k-two']);
+    expect(painted.length).toBeGreaterThan(0);
+    expect(painted.filter((c) => c.includes('axdb-glide'))).toEqual([]);
+    expect(layer.classList.contains('axdb-glide')).toBe(true);
+  });
+
+  it('a VIEW switch is a teleport too — views park the same way', () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        views: [
+          { id: 'v1', name: 'One', widgets: [{ id: 'w1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0 }] },
+          { id: 'v2', name: 'Two', widgets: [{ id: 'w2', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0 }] },
+        ],
+      })
+    );
+    const layer = layerOf(api);
+    layer.classList.add('axdb-glide');
+    const painted: string[] = [];
+    (api as { renderNow: () => void }).renderNow = () => {
+      painted.push(layer.className);
+    };
+    handle.showView('v2');
+    expect(onCanvas(model, ['w1', 'w2'])).toEqual(['w2']);
+    expect(painted.length).toBeGreaterThan(0);
+    expect(painted.filter((c) => c.includes('axdb-glide'))).toEqual([]);
+    expect(layer.classList.contains('axdb-glide')).toBe(true);
+  });
+});
