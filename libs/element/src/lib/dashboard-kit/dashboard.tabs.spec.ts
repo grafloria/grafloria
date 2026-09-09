@@ -396,6 +396,77 @@ describe('tab containers', () => {
     expect(handle.toJSON().views[0].widgets.map((x) => x.id).sort()).toEqual(['free', 'solo']);
   });
 
+  // -- dropping a tab ONTO another group: VS Code's editor moved from the right group to the left --
+  const TWO = () =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      gap: 10,
+      rowHeight: 60,
+      widgets: [
+        { id: 'left', title: 'Left group', span: 6, rows: 6, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('l1', 'Sales', 'k-l1'), PAGE('l2', 'Margin', 'k-l2')] },
+        { id: 'right', title: 'Right group', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+      ],
+    });
+  const dragTabFrom = async (api: { container: HTMLElement }, containerId: string, pageId: string, from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(tab, 'pointerdown', from.x, from.y);
+    ev(tab, 'pointermove', from.x - 40, from.y);
+    ev(window, 'pointermove', to.x, to.y);
+    ev(window, 'pointerup', to.x, to.y);
+    tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await settle();
+  };
+
+  it('a tab dropped onto ANOTHER group joins it as a tab, on the end and active, in one undoable step', async () => {
+    const { api, model, handle } = up(TWO());
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
+    expect(handle.getActiveTab('left')).toBe('l1');
+    // the right group's Notes tab, released over the LEFT group's body
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 150 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+    expect(stripOf(api, 'right')).toEqual(['Filters']);
+    expect(handle.getActiveTab('left')).toBe('r2');
+    expect(model.getGroup('left')!.members!.has('r2')).toBe(true);
+    expect(model.getGroup('right')!.members!.has('r2')).toBe(false);
+    expect(model.getGroup('r2__group')).toBeUndefined(); // it JOINED, it did not become a group of its own
+    // its widget shows inside the left group; the page it displaced is parked
+    const kr2 = model.getNode('k-r2')!;
+    const left = model.getGroup('left')!;
+    expect(kr2.position.x).toBeGreaterThan(PARKED);
+    expect(kr2.position.x).toBeLessThan(left.position.x + left.size!.width);
+    expect(onCanvas(model, ['k-l1', 'k-l2', 'k-r2'])).toEqual(['k-r2']);
+    // serialised as the left group's third page
+    const snap = handle.toJSON().views[0].widgets;
+    expect(snap.find((w) => w.id === 'left')!.widgets?.map((p) => p.id)).toEqual(['l1', 'l2', 'r2']);
+    expect(snap.find((w) => w.id === 'left')!.active).toBe('r2');
+    expect(snap.find((w) => w.id === 'right')!.widgets?.map((p) => p.id)).toEqual(['r1']);
+    // one undo puts it back — including which tab the left group was showing
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(handle.getActiveTab('left')).toBe('l1');
+    expect(model.getGroup('right')!.members!.has('r2')).toBe(true);
+  });
+
+  it('moving a group\'s LAST tab into another group closes the empty group', async () => {
+    const { api, model, handle } = up(TWO());
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 150 });
+    await dragTabFrom(api, 'right', 'r1', { x: 700, y: 10 }, { x: 300, y: 150 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes', 'Filters']);
+    expect(model.getGroup('right')).toBeUndefined();
+    expect(api.container.querySelector('.axdb-tabs[data-tabs-id="right"]')).toBeNull();
+    expect(handle.toJSON().views[0].widgets.map((w) => w.id)).toEqual(['left']);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'right')).toEqual(['Filters']);
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+  });
+
   it('a board with no tab container carries no strip at all', () => {
     const { api } = up(
       dashboard({ columns: 12, width: 1200, height: 600, widgets: [{ id: 'a', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0 }] })

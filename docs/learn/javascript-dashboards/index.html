@@ -407,8 +407,10 @@ render(SPEC2, host);</pre>
       tab leaves the strip it came from, and a container whose last page leaves closes, as a VS Code group does. All
       of it is one undoable step. The tabs a strip shows come from live membership, so the strip is always the pages
       that are actually there. Escape, or a release back over the container, cancels; a board that cannot place the
-      page (a split pane) leaves the press a plain click. Dropping a tab onto another container to combine them, and
-      reordering tabs along a strip, are the next round.</p>
+      page (a split pane) leaves the press a plain click. Drop a tab onto <em>another</em> tab container instead (0.4.31) — on its strip, between two tabs, or on
+      its body — and it joins that group as a tab there, active, the way an editor tab moves between VS Code groups:
+      while you hold, the target's frame lights up and its strip marks the slot. Reordering tabs along their own
+      strip is the next round.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

@@ -134,6 +134,28 @@ const CSS = `
     box-shadow: 0 0 0 1px rgba(236, 238, 244, .16);
   }
 }
+/* A tab held over ANOTHER group: it will join that group, not the board. The
+   group's frame lights up, and its strip marks the slot the tab will take —
+   a bar before the tab it lands in front of, or after the last one. */
+.grafloria-html-layer > .axdb-join {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 2px dashed var(--axdb-accent, #3b52d9);
+  background: var(--axdb-accent-soft, rgba(59, 82, 217, .08));
+  border-radius: var(--axdb-rs-radius, 3px);
+}
+.axdb-tabs.axdb-tabs--drop { box-shadow: inset 0 -2px 0 var(--axdb-accent, #3b52d9); }
+.axdb-tab.axdb-tab--drop-before { position: relative; }
+.axdb-tab.axdb-tab--drop-before::before {
+  content: ""; position: absolute; left: -3px; top: 4px; bottom: 4px; width: 3px;
+  border-radius: 2px; background: var(--axdb-accent, #3b52d9);
+}
+.axdb-tabs.axdb-tabs--drop-end::after {
+  content: ""; display: inline-block; width: 3px; height: 18px; margin: 0 4px;
+  border-radius: 2px; background: var(--axdb-accent, #3b52d9); vertical-align: middle; align-self: center;
+}
 
 /* ===========================================================================
    BUILT-IN WIDGET CARDS — what widgets.ts paints when a page writes no

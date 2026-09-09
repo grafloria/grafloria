@@ -194260,6 +194260,28 @@ var CSS4 = `
     box-shadow: 0 0 0 1px rgba(236, 238, 244, .16);
   }
 }
+/* A tab held over ANOTHER group: it will join that group, not the board. The
+   group's frame lights up, and its strip marks the slot the tab will take \u2014
+   a bar before the tab it lands in front of, or after the last one. */
+.grafloria-html-layer > .axdb-join {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 2px dashed var(--axdb-accent, #3b52d9);
+  background: var(--axdb-accent-soft, rgba(59, 82, 217, .08));
+  border-radius: var(--axdb-rs-radius, 3px);
+}
+.axdb-tabs.axdb-tabs--drop { box-shadow: inset 0 -2px 0 var(--axdb-accent, #3b52d9); }
+.axdb-tab.axdb-tab--drop-before { position: relative; }
+.axdb-tab.axdb-tab--drop-before::before {
+  content: ""; position: absolute; left: -3px; top: 4px; bottom: 4px; width: 3px;
+  border-radius: 2px; background: var(--axdb-accent, #3b52d9);
+}
+.axdb-tabs.axdb-tabs--drop-end::after {
+  content: ""; display: inline-block; width: 3px; height: 18px; margin: 0 4px;
+  border-radius: 2px; background: var(--axdb-accent, #3b52d9); vertical-align: middle; align-self: center;
+}
 
 /* ===========================================================================
    BUILT-IN WIDGET CARDS \u2014 what widgets.ts paints when a page writes no
@@ -196352,8 +196374,25 @@ function bindDashboardGrid(api, group, options = {}) {
         if (place(cell, item.w)) project();
         syncPlaceholder();
       },
-      abort: () => {
+      leave: () => {
+        if (!engine.getItem(node.id)) return;
         engine.remove(node.id);
+        lastWant = null;
+        project();
+        syncPlaceholder();
+      },
+      enter: (w) => {
+        if (!engine.getItem(node.id) && !engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: hNatural })) return;
+        const item = engine.getItem(node.id);
+        if (!item) return;
+        const cell = wantedCell(w.x, w.y, item.w, opts.fit === "shrink" ? hNatural : item.h);
+        lastWant = cell;
+        place(cell, item.w);
+        project();
+        syncPlaceholder();
+      },
+      abort: () => {
+        if (engine.getItem(node.id)) engine.remove(node.id);
         engine.cancelGesture();
         adoptedGhostId = null;
         disarmGlideSoon();
@@ -196745,6 +196784,40 @@ function bindDashboardGrid(api, group, options = {}) {
     chip2.className = "axdb-drag-chip axdb-tab-chip";
     chip2.textContent = plan.label;
     doc.body.appendChild(chip2);
+    const layer2 = htmlLayer();
+    const targets = plan.joinTargets.map((id) => diagram.getGroup(id)).filter((g) => !!g && g.id !== fromGroupId);
+    const targetAt = (wx, wy) => targets.find((t) => worldInsideGroup(t, wx, wy)) ?? null;
+    let over = null;
+    let joinEl = null;
+    const showJoin = (g) => {
+      if (!layer2) return;
+      if (!joinEl) {
+        joinEl = doc.createElement("div");
+        joinEl.className = "axdb-join";
+        layer2.prepend(joinEl);
+      }
+      const sz = sizeOf(g);
+      joinEl.style.left = `${g.position.x}px`;
+      joinEl.style.top = `${g.position.y}px`;
+      joinEl.style.width = `${sz.width}px`;
+      joinEl.style.height = `${sz.height}px`;
+    };
+    const hideJoin = () => {
+      joinEl?.remove();
+      joinEl = null;
+      plan.markDrop(null, null);
+    };
+    const setOver = (g, world) => {
+      if (g === over) return;
+      over = g;
+      if (g) {
+        leg.leave();
+        showJoin(g);
+      } else {
+        hideJoin();
+        leg.enter(world);
+      }
+    };
     const moveChip = (cx, cy) => {
       chip2.style.left = `${cx + 6}px`;
       chip2.style.top = `${cy + 6}px`;
@@ -196765,17 +196838,35 @@ function bindDashboardGrid(api, group, options = {}) {
       moveChip(e.clientX, e.clientY);
       const world = toWorld(e.clientX, e.clientY);
       const home = worldInsideGroup(from, world.x, world.y);
-      chip2.classList.toggle("axdb-out", home || !worldInsideBoardGrace(world.x, world.y));
-      if (!home) leg.move(world);
+      const target = home ? null : targetAt(world.x, world.y);
+      setOver(target, world);
+      chip2.classList.toggle("axdb-out", home || !target && !worldInsideBoardGrace(world.x, world.y));
+      if (target) plan.markDrop(target.id, plan.dropIndex(target.id, e.clientX, e.clientY));
+      else if (!home) leg.move(world);
       api.render();
     };
     const finish = (commit) => {
       detach();
       chip2.remove();
+      hideJoin();
       tearing = null;
       if (disposed) return;
       const world = toWorld(last.x, last.y);
       const home = worldInsideGroup(from, world.x, world.y);
+      const target = commit && !home ? targetAt(world.x, world.y) : null;
+      if (target) {
+        const index = plan.dropIndex(target.id, last.x, last.y);
+        leg.abort();
+        const planned2 = plan.join(target.id, index, group.id);
+        const collapse3 = planned2.collapse.length > 0 ? [...planRemovalOf(fromGroupId), ...planned2.collapse] : [];
+        const changed2 = execute("Move tab", [...planned2.move, ...collapse3]);
+        disarmGlideSoon();
+        enforceBoardHeight();
+        persistLayouts();
+        api.renderNow();
+        options.onGesture?.({ type: "commit", kind: "move", nodeId: pageId, changed: changed2 });
+        return;
+      }
       if (!commit || home || !worldInsideBoardGrace(world.x, world.y)) {
         leg.abort();
         disarmGlideSoon();
@@ -199316,50 +199407,139 @@ function createDashboardHandle(ctx) {
             new RegisterWidgetCommand(born, "register")
           ])
         ];
-        if (remaining.length > 0) return { move, collapse: [] };
-        let fromSlot = -1;
-        const gone = {
+        return { move, collapse: remaining.length > 0 ? [] : collapseOf(boardId) };
+      },
+      joinTargets: [...ctx.layoutOf.keys()].filter(
+        (id) => id !== containerId && id !== pageId && (ctx.layoutOf.get(id) ?? specById.get(id)?.layout) === "tabs" && !!model.getGroup(id) && !insidePage(id)
+      ),
+      dropIndex: (targetId, cx, cy) => {
+        const strip = ctx.tabStrips.get(targetId);
+        const n3 = liveCount(targetId);
+        if (!strip) return n3;
+        const r = strip.getBoundingClientRect();
+        if (r.width === 0 || cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) return n3;
+        const rtl = strip.getAttribute("dir") === "rtl";
+        let i = 0;
+        for (const t of Array.from(strip.querySelectorAll(".axdb-tab"))) {
+          const tr = t.getBoundingClientRect();
+          const mid = tr.left + tr.width / 2;
+          if (rtl ? cx < mid : cx > mid) i++;
+          else break;
+        }
+        return i;
+      },
+      markDrop: (targetId, index) => {
+        for (const [id, el2] of ctx.tabStrips) {
+          const on = id === targetId;
+          el2.classList.toggle("axdb-tabs--drop", on);
+          const tabs = Array.from(el2.querySelectorAll(".axdb-tab"));
+          tabs.forEach((t, i) => t.classList.toggle("axdb-tab--drop-before", on && index !== null && i === index));
+          el2.classList.toggle("axdb-tabs--drop-end", on && index !== null && index >= tabs.length);
+        }
+      },
+      join: (targetId, index, boardId) => {
+        const target = ctx.boardGroups.get(targetId) ?? model.getGroup(targetId);
+        const targetSpec = specById.get(targetId);
+        if (!target || !targetSpec) return { move: [], collapse: [] };
+        const prevActive = ctx.activeTab.get(targetId);
+        const cwOf = (g) => g.getMetadata("containerWidget") ?? {};
+        let slot = -1;
+        const joined = {
           register: () => {
-            const live = model.getGroup(containerId);
-            if (!live) return;
-            ctx.boardGroups.set(containerId, live);
-            ctx.layoutOf.set(containerId, "tabs");
-            ctx.viewOfBoard.set(containerId, viewId);
-            if (fromSpec) specById.set(containerId, fromSpec);
-            const arr = ctx.boardWidgets.get(boardId);
-            if (arr && fromSpec && !arr.some((w) => w.id === containerId)) {
-              arr.splice(fromSlot < 0 ? arr.length : Math.min(fromSlot, arr.length), 0, fromSpec);
+            viewOfWidget.set(pageId, targetId);
+            if (fromSpec?.widgets) {
+              const i = fromSpec.widgets.findIndex((p) => p.id === pageId);
+              if (i >= 0) {
+                slot = i;
+                fromSpec.widgets.splice(i, 1);
+              }
             }
-            ctx.attachTabsContainer?.(containerId);
+            targetSpec.widgets = targetSpec.widgets ?? [];
+            if (!targetSpec.widgets.some((p) => p.id === pageId)) {
+              targetSpec.widgets.splice(Math.max(0, Math.min(index, targetSpec.widgets.length)), 0, pageSpec);
+            }
+            ctx.boardWidgets.set(targetId, targetSpec.widgets);
+            ctx.activeTab.set(targetId, pageId);
+            targetSpec.active = pageId;
+            target.setMetadata("containerWidget", { ...cwOf(target), active: pageId });
           },
           unregister: () => {
-            ctx.detachTabsContainer?.(containerId);
-            ctx.boardGroups.delete(containerId);
-            ctx.layoutOf.delete(containerId);
-            ctx.viewOfBoard.delete(containerId);
-            specById.delete(containerId);
-            const arr = ctx.boardWidgets.get(boardId);
-            if (arr) {
-              const i = arr.findIndex((w) => w.id === containerId);
-              if (i >= 0) {
-                fromSlot = i;
-                arr.splice(i, 1);
-              }
+            viewOfWidget.set(pageId, containerId);
+            if (targetSpec.widgets) {
+              const i = targetSpec.widgets.findIndex((p) => p.id === pageId);
+              if (i >= 0) targetSpec.widgets.splice(i, 1);
+            }
+            if (fromSpec?.widgets && !fromSpec.widgets.some((p) => p.id === pageId)) {
+              fromSpec.widgets.splice(slot < 0 ? fromSpec.widgets.length : Math.min(slot, fromSpec.widgets.length), 0, pageSpec);
+            }
+            if (prevActive) {
+              ctx.activeTab.set(targetId, prevActive);
+              targetSpec.active = prevActive;
+              target.setMetadata("containerWidget", { ...cwOf(target), active: prevActive });
             }
           }
         };
-        return {
-          move,
-          collapse: [
-            new SequenceCommand("Close empty tab container", [
-              new RegisterWidgetCommand(gone, "unregister"),
-              new RemoveFromGroupCommand(boardId, containerId),
-              new RemoveGroupCommand(containerId)
-            ])
-          ]
-        };
+        const move = [
+          new SequenceCommand("Move tab", [
+            new RemoveFromGroupCommand(containerId, pageId),
+            new AddToGroupCommand(targetId, pageId),
+            new RegisterWidgetCommand(joined, "register")
+          ])
+        ];
+        return { move, collapse: remaining.length > 0 ? [] : collapseOf(boardId) };
       }
     };
+    function insidePage(id) {
+      let cur = model.getGroup(id);
+      for (let i = 0; cur && i < 32; i++) {
+        if (cur.id === pageId) return true;
+        cur = cur.parentGroupId ? model.getGroup(cur.parentGroupId) : void 0;
+      }
+      return false;
+    }
+    function liveCount(id) {
+      return [...model.getGroup(id)?.members ?? []].filter((m) => !!model.getGroup(m)).length;
+    }
+    function collapseOf(boardId) {
+      let fromSlot = -1;
+      const gone = {
+        register: () => {
+          const live = model.getGroup(containerId);
+          if (!live) return;
+          ctx.boardGroups.set(containerId, live);
+          ctx.layoutOf.set(containerId, "tabs");
+          ctx.viewOfBoard.set(containerId, viewId);
+          if (fromSpec) specById.set(containerId, fromSpec);
+          const arr = ctx.boardWidgets.get(boardId);
+          if (arr && fromSpec && !arr.some((w) => w.id === containerId)) {
+            arr.splice(fromSlot < 0 ? arr.length : Math.min(fromSlot, arr.length), 0, fromSpec);
+          }
+          ctx.attachTabsContainer?.(containerId);
+        },
+        unregister: () => {
+          ctx.detachTabsContainer?.(containerId);
+          ctx.boardGroups.delete(containerId);
+          ctx.layoutOf.delete(containerId);
+          ctx.viewOfBoard.delete(containerId);
+          specById.delete(containerId);
+          const arr = ctx.boardWidgets.get(boardId);
+          if (arr) {
+            const i = arr.findIndex((w) => w.id === containerId);
+            if (i >= 0) {
+              fromSlot = i;
+              arr.splice(i, 1);
+            }
+          }
+        }
+      };
+      return [
+        new SequenceCommand("Close empty tab container", [
+          new RegisterWidgetCommand(gone, "unregister"),
+          new RemoveFromGroupCommand(boardId, containerId),
+          new RemoveGroupCommand(containerId)
+        ])
+      ];
+    }
   };
   const registryOf = (id, boardId, spec) => {
     let slot = -1;
