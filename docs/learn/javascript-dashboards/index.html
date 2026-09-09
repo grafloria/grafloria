@@ -435,7 +435,17 @@ render(SPEC2, host);</pre>
       being re-packed tile by tile. A widget dragged from the board into a page's <em>body</em> joins that page's grid (element 0.4.34): a
       page with room takes it where the pointer is, a full page squeezes its rows to make room — the tile under the
       pointer moves aside, the way the board itself behaves — instead of refusing the drop with no sign of why. (A full
-      <em>section</em> still refuses; growing its slab for a drop is the escalation path's, a later release.) The deepest target wins, so a
+      <em>section</em> still refuses; growing its slab for a drop is the escalation path's, a later release.)</p>
+      <p><b>The identification round</b> (element 0.4.35). Every tab gesture driven along long paths with a frame every
+      few steps found a family of drifts with one root: the renderer's empty-canvas pan ran underneath every tab drag,
+      sliding the camera 10–20 px so the strip, the bands and the home test disagreed with the pointer — the board's
+      tool now claims a strip press and leaves it to the strip. With that gone: a release outside the visible canvas
+      never lands anything; side and bottom docks measure the board as it stood before the ghost entered; no accent
+      overlay survives a release; a torn-out page travels at most half the board tall and a landing that would sit
+      out of sight dims the chip and cancels; a section or tab group moved by its band slides along its row past a
+      locked neighbour and shows the refused cell when nothing is legal; a widget dragged out of an inner tab page
+      keeps its gesture through the re-layout its own crossing causes; an inner tab lands on whichever board is under
+      the pointer; a section pulled up by its top edge grows by the rows the pointer travelled. The deepest target wins, so a
       group nested inside the container the page came from is a target, not "home". The ghost enters the board only
       when the pointer is over free board space, so on a fit board nothing squeezes the moment you grab a tab, and a
       full board that refuses the ghost still lets the page join, reorder or split. A group too narrow or too short
