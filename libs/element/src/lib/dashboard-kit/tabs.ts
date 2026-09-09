@@ -84,10 +84,17 @@ export function paintTabStrip(
   // cover it completely, so without this there is nowhere to press to select
   // it — and an unselected section shows no corner handle, which made the
   // container impossible to resize by hand.
-  strip.onpointerdown = (e: PointerEvent) => {
+  // A real listener, not the `onpointerdown` IDL attribute: the attribute is
+  // not an event handler under jsdom, so the strip's empty-space press — the
+  // whole group's drag handle — could never be driven by a spec. Repaints
+  // replace the previous listener rather than stacking one per paint.
+  const withSelect = strip as HTMLElement & { __axdbSelect?: (e: Event) => void };
+  if (withSelect.__axdbSelect) strip.removeEventListener('pointerdown', withSelect.__axdbSelect);
+  withSelect.__axdbSelect = (e: Event) => {
     if ((e.target as Element | null)?.closest('.axdb-tab')) return;
-    onSelectContainer?.(e);
+    onSelectContainer?.(e as PointerEvent);
   };
+  strip.addEventListener('pointerdown', withSelect.__axdbSelect);
   for (const p of pages) {
     const b = doc.createElement('button');
     b.type = 'button';

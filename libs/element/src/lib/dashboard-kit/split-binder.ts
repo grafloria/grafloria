@@ -47,7 +47,7 @@ import {
   type SplitSide,
 } from './split-layout';
 import { ensureDashboardKitStyles } from './styles';
-import { sectionCaptionReserve } from './caption';
+import { captionKey, captionOfGroup, captionPainted, paintCaptionBand, sectionCaptionReserve, sizeCaptionBand } from './caption';
 
 /** Group metadata key the tree persists under. */
 export const SPLIT_TREE_KEY = 'dashboardTree';
@@ -71,6 +71,8 @@ export interface DashboardSplitOptions
     | 'onDropIn'
     | 'onGesture'
     | 'onSelect'
+    | 'renderCaption'
+    | 'onCaptionAction'
   > {
   /** An authored tree. Default: the persisted one, else derived from the members' cells. */
   tree?: SplitNode | null;
@@ -337,6 +339,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       writeRect(id, r);
     }
     syncDividers(tree);
+    syncSlabs();
     syncA11y();
   };
 
@@ -344,6 +347,106 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
 
   const dividerEls: HTMLElement[] = [];
   let insertion: HTMLElement | null = null;
+
+  // -- section chrome: slabs and caption bands (0.4.40) ------------------------
+  // The grid board paints a slab per member section (the selection ring, the
+  // caption band); the split board painted none, so a captioned section lost
+  // its band the moment the board switched to split and its children sat bare
+  // in the pane. The same slabs here, minus the corner handle (a divider
+  // resizes a pane); the band is the section's drag handle (beginMemberDrag).
+  const slabEls = new Map<string, HTMLElement>();
+  const hoverSlabs = new Set<HTMLElement>();
+  const syncCaption = (el: HTMLElement, id: string, grp: GroupModel, sectionH: number): void => {
+    const cap = captionOfGroup(grp);
+    let band = el.querySelector(':scope > .axdb-slab-h') as HTMLElement | null;
+    if (!cap || !captionPainted(cap, isStatic)) {
+      band?.remove();
+      hoverSlabs.delete(el);
+      el.classList.remove('axdb-slab--hot');
+      el.removeAttribute('aria-label');
+      el.removeAttribute('role');
+      return;
+    }
+    if (cap.show === 'hover') hoverSlabs.add(el);
+    else {
+      hoverSlabs.delete(el);
+      el.classList.remove('axdb-slab--hot');
+    }
+    const cctx = { rtl, static: isStatic, sectionH };
+    const key = captionKey(cap, cctx);
+    if (band && band.getAttribute('data-key') === key) {
+      sizeCaptionBand(band, cap, sectionH);
+      return;
+    }
+    band?.remove();
+    band = document.createElement('div');
+    el.prepend(band);
+    const render = options.renderCaption;
+    paintCaptionBand(band, cap, {
+      ...cctx,
+      ...(render ? { render: (host: HTMLElement) => render(id, host) } : {}),
+      onAction: (actionId: string) => options.onCaptionAction?.(id, actionId),
+    });
+    band.setAttribute('data-key', key);
+    if (cap.text) {
+      el.setAttribute('role', 'group');
+      el.setAttribute('aria-label', cap.text);
+    } else {
+      el.removeAttribute('role');
+      el.removeAttribute('aria-label');
+    }
+  };
+  const syncSlabs = (): void => {
+    if (disposed) return;
+    const layer = htmlLayer();
+    if (!layer) return;
+    const seen = new Set<string>();
+    for (const id of group.members ?? new Set<string>()) {
+      const grp = diagram.getGroup(id);
+      if (!grp || diagram.getNode(id)) continue;
+      seen.add(id);
+      let el = slabEls.get(id);
+      if (!el || el.parentElement !== layer) {
+        el?.remove();
+        el = document.createElement('div');
+        el.className = 'axdb-slab';
+        el.setAttribute('data-slab-id', id);
+        layer.appendChild(el);
+        slabEls.set(id, el);
+      }
+      const p = grp.position;
+      const sz = grp.size ?? { width: 0, height: 0 };
+      el.style.left = `${p.x}px`;
+      el.style.top = `${p.y}px`;
+      el.style.width = `${sz.width}px`;
+      el.style.height = `${sz.height}px`;
+      el.classList.toggle('axdb-slab--selected', selectedId === id);
+      el.classList.toggle('axdb-slab--static', isStatic);
+      syncCaption(el, id, grp, sz.height);
+    }
+    for (const [id, el] of slabEls) {
+      if (!seen.has(id)) {
+        el.remove();
+        hoverSlabs.delete(el);
+        slabEls.delete(id);
+      }
+    }
+  };
+  /** A `show: 'hover'` band is an overlay that takes no pointer while hidden: the board marks the section under the pointer itself. */
+  const markHotSection = (clientX: number, clientY: number): void => {
+    if (!hoverSlabs.size) return;
+    for (const el of hoverSlabs) {
+      const r = el.getBoundingClientRect();
+      el.classList.toggle('axdb-slab--hot', clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom);
+    }
+  };
+  const onHoverMove = (e: PointerEvent): void => {
+    if (disposed || gesture) return;
+    markHotSection(e.clientX, e.clientY);
+  };
+  const onHoverLeave = (): void => {
+    for (const el of hoverSlabs) el.classList.remove('axdb-slab--hot');
+  };
 
   const syncDividers = (tree: SplitNode | null): void => {
     const layer = htmlLayer();
@@ -478,6 +581,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     if (id === selectedId) return;
     selectedId = id;
     syncA11y();
+    syncSlabs();
     options.onSelect?.(id);
   };
   let selfPeerRef: BinderPeer | null = null;
@@ -505,7 +609,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     if (disposed) return;
     ensureStaticGuard();
     const order = splitLeaves(paintedTree()).filter((id) => !!diagram.getNode(id));
-    if (selectedId && !order.includes(selectedId)) selectedId = undefined;
+    // A selected SECTION (a member group) is not a tab stop, but it is a selection — keep it (0.4.40).
+    if (selectedId && !order.includes(selectedId) && !(group.members ?? new Set<string>()).has(selectedId)) selectedId = undefined;
     // No corner handles on a split board: size comes from the dividers. A host
     // that carried the grid's handle (a board switched live) sheds it here.
     for (const id of group.members ?? []) hostOf(id)?.querySelector(':scope > .axdb-rs')?.remove();
@@ -711,6 +816,10 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       if (disposed) return false;
       if (gesture || forwardSlab) return true;
       if (!ownsPress(api.container, diagram, ev, hit)) return false;
+      // A press on one of OUR sections' caption bands is ours by the DOM.
+      const chrome = (ev.source?.target as Element | null | undefined)?.closest?.('.axdb-slab > .axdb-slab-h');
+      const chromeId = chrome?.parentElement?.getAttribute('data-slab-id');
+      if (chromeId && (group.members ?? new Set<string>()).has(chromeId)) return true;
       if (hit.node) return (group.members ?? new Set<string>()).has(hit.node.id);
       return worldInsideBoard(ev.world.x, ev.world.y);
     },
@@ -748,6 +857,18 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       const gripId = gripHostOf(target)?.getAttribute('data-node-id') ?? null;
       const onGrip = !!gripId && (group.members ?? new Set<string>()).has(gripId);
       const sectionHandle = target?.closest?.('.axdb-slab > .axdb-rs') as HTMLElement | null;
+      // A SECTION's caption band: the press selects the section, a travel
+      // drags it to another pane's edge (beginMemberDrag). An action button
+      // never reaches here — it is pass-through (see ownsPress).
+      const captionBand = target?.closest?.('.axdb-slab > .axdb-slab-h') as HTMLElement | null;
+      const captionId = captionBand?.parentElement?.getAttribute('data-slab-id') ?? null;
+      if (captionId && (group.members ?? new Set<string>()).has(captionId)) {
+        selectWidget(captionId);
+        api.render();
+        const src = ev.source as { clientX?: number; clientY?: number } | undefined;
+        if (!isStatic && typeof src?.clientX === 'number' && typeof src?.clientY === 'number') beginMemberDrag(captionId, src as PointerEvent);
+        return;
+      }
       if ((!hit.node && !onGrip) || sectionHandle) {
         // OUR OWN empty band or corner handle, and we are a section of a
         // parent board: select the section there; an edge or the handle
@@ -824,6 +945,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     },
   };
   const unregisterTool = registerTool(tool);
+  api.container.addEventListener('pointermove', onHoverMove);
+  api.container.addEventListener('pointerleave', onHoverLeave);
 
   // -- a tab torn out of a container on THIS board (0.4.37) --------------------
   // The split board REFUSED every tear-out ("no cells to drop a page into"),
@@ -850,6 +973,9 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     const tree0 = readTree();
     tearing = true;
     const doc = api.container.ownerDocument ?? document;
+    const bodyUserSelect = doc.body.style.userSelect;
+    doc.body.style.userSelect = 'none';
+    doc.getSelection?.()?.removeAllRanges?.();
     const chip = doc.createElement('div');
     chip.className = 'axdb-drag-chip axdb-tab-chip';
     chip.textContent = plan.label;
@@ -958,6 +1084,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       hideJoin();
       showInsertion(null);
       plan.markDrop(null, null);
+      doc.body.style.userSelect = bodyUserSelect;
       if (disposed) {
         tearing = false;
         return;
@@ -1012,6 +1139,99 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     window.addEventListener('keydown', onKey, true);
     apply(zoneAt(ev.clientX, ev.clientY, toWorld(ev.clientX, ev.clientY)));
     api.render();
+    return true;
+  };
+
+  // -- a tab GROUP (or a section) moved by its strip's empty space (0.4.40) ----
+  // The peer answered "no cells to move a section across", so on a split
+  // board a tab group could not be moved at all — only its tabs could leave
+  // it. The board's own drop model moves it: a chip carries its name, the
+  // insertion line marks the pane edge under the pointer, release re-inserts
+  // the group there (dropped on a neighbour's far edge, the two swap sides).
+  // Nothing on the canvas moves until the release; one history step.
+  const beginMemberDrag = (id: string, ev: PointerEvent): boolean => {
+    if (disposed || isStatic || gesture || tearing) return false;
+    const tree0 = readTree();
+    if (!tree0 || !splitLeaves(tree0).includes(id)) return false;
+    const grp = diagram.getGroup(id);
+    if (!grp) return false;
+    tearing = true;
+    const doc = api.container.ownerDocument ?? document;
+    // The press came through the DOM (a strip's empty space) or a caption
+    // band, not through the renderer's guard: without this the travel
+    // selected every label it crossed (tab names, table cells).
+    ev.preventDefault?.();
+    const bodyUserSelect = doc.body.style.userSelect;
+    doc.body.style.userSelect = 'none';
+    doc.getSelection?.()?.removeAllRanges?.();
+    const meta = (grp.getMetadata('containerWidget') ?? {}) as { title?: unknown };
+    const label = typeof meta.title === 'string' && meta.title ? meta.title : grp.name || id;
+    const chip = doc.createElement('div');
+    chip.className = 'axdb-drag-chip axdb-tab-chip';
+    chip.textContent = label;
+    const moveChip = (cx: number, cy: number): void => {
+      chip.style.left = `${cx + 6}px`;
+      chip.style.top = `${cy + 6}px`;
+    };
+    const down = { x: ev.clientX, y: ev.clientY };
+    let started = false;
+    let target: DropTarget | null = null;
+    const detach = (): void => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onCancel, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+    const finish = (commit: boolean): void => {
+      detach();
+      chip.remove();
+      showInsertion(null);
+      tearing = false;
+      doc.body.style.userSelect = bodyUserSelect;
+      if (disposed || !started) return;
+      const t = commit ? target : null;
+      if (!t) {
+        api.renderNow();
+        fire({ type: 'cancel', kind: 'move', nodeId: id, changed: false });
+        return;
+      }
+      const side = rtl && (t.side === 'left' || t.side === 'right') ? (t.side === 'left' ? 'right' : 'left') : t.side;
+      const after = normalizeSplit(insertSplitLeaf(tree0, id, targetRef(t), side));
+      const changed = JSON.stringify(after) !== JSON.stringify(normalizeSplit(tree0));
+      const paint = (): void => {
+        if (disposed) return;
+        project(readTree());
+        api.renderNow();
+      };
+      const p = changed ? commitTree(tree0, after) : undefined;
+      paint();
+      if (p && typeof (p as { then?: unknown }).then === 'function') void (p as Promise<unknown>).then(paint, () => undefined);
+      if (changed) live.announce(`${label} moved ${side === 'left' || side === 'top' ? 'before' : 'after'} ${targetName(t)}`, 'polite', true);
+      fire({ type: changed ? 'commit' : 'cancel', kind: 'move', nodeId: id, changed });
+    };
+    const onMove = (e: PointerEvent): void => {
+      if (disposed) return finish(false);
+      if (!started) {
+        if (Math.abs(e.clientX - down.x) + Math.abs(e.clientY - down.y) < DRAG_THRESHOLD) return;
+        started = true;
+        doc.body.appendChild(chip);
+      }
+      moveChip(e.clientX, e.clientY);
+      const w = toWorld(e.clientX, e.clientY);
+      target = worldInsideBoard(w.x, w.y) ? dropTargetAt(tree0, w.x, w.y, id) : null;
+      showInsertion(target ? insertionRect(target.rect, target.side) : null);
+      chip.classList.toggle('axdb-out', !target);
+      api.render();
+    };
+    const onUp = (): void => finish(true);
+    const onCancel = (): void => finish(false);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') finish(false);
+    };
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onCancel, true);
+    window.addEventListener('keydown', onKey, true);
     return true;
   };
 
@@ -1420,6 +1640,11 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       for (const off of groupSubs) off();
       for (const el of dividerEls) el.remove();
       dividerEls.length = 0;
+      api.container.removeEventListener('pointermove', onHoverMove);
+      api.container.removeEventListener('pointerleave', onHoverLeave);
+      for (const el of slabEls.values()) el.remove();
+      slabEls.clear();
+      hoverSlabs.clear();
       insertion?.remove();
       insertion = null;
       api.container.style.cursor = '';
@@ -1447,8 +1672,9 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     resizeMemberBy: () => ({ changed: false }),
     // A torn-out page becomes a PANE (0.4.37) — see beginTearOut.
     tearOutMember: (pageId, fromGroupId, ev, plan) => beginTearOut(pageId, fromGroupId, ev, plan),
-    // …and it has no cells to move a section across: a strip press stays a selection.
-    dragMember: () => false,
+    // A tab group (or a section) moved by its strip's empty space becomes a
+    // pane elsewhere (0.4.40) — see beginMemberDrag.
+    dragMember: (id, ev) => beginMemberDrag(id, ev),
     containsWorld: (x, y) => worldInsideBoard(x, y),
     containsWorldExtended: (x, y) => worldInsideBoard(x, y),
     frameArea: () => {
