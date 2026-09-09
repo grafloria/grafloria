@@ -1,0 +1,318 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dashboard kit lab</title>
+<style>
+  body { margin: 0; font: 13px system-ui, sans-serif; background: #f6f7fb; color: #1f2937; }
+  .lab { padding: 16px; display: grid; gap: 16px; }
+  .card { background: #fff; border: 1px solid #e3e7f2; border-radius: 6px; overflow: hidden; }
+  .h { padding: 6px 10px; border-bottom: 1px solid #e3e7f2; font: 600 11px ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; color: #5a6478; }
+  .cv { position: relative; }
+  .log { padding: 6px 10px; font: 11px ui-monospace, monospace; color: #5a6478; min-height: 14px; white-space: pre-wrap; }
+  .my-host { height: 100%; box-sizing: border-box; padding: 8px; background: #fffbe6; border: 1px dashed #d4b106; border-radius: 3px; display: flex; flex-direction: column; }
+  .my-host .band { font: 600 11px ui-monospace, monospace; color: #7c5e00; }
+  .my-host button { margin-top: auto; align-self: flex-start; }
+  .my-handle { display: inline-block; padding: 2px 6px; background: #d4b106; color: #fff; border-radius: 3px; font: 600 10px ui-monospace, monospace; cursor: grab; }
+  .accent .cv { --axdb-accent: #c2185b; --axdb-accent-ring: rgba(194, 24, 91, .55); }
+</style>
+<div class="lab" id="lab"></div>
+<script type="module">
+import { render, dashboard } from '../shell/grafloria.js';
+
+// One KPI row + two charts: 12 columns, three rows at rowHeight 130.
+const KPIS = () => [
+  { id: 'rev',  kind: 'kpi', span: 3, rows: 1, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
+  { id: 'cust', kind: 'kpi', span: 3, rows: 1, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
+  { id: 'win',  kind: 'kpi', span: 3, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
+  { id: 'nps',  kind: 'kpi', span: 3, rows: 1, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
+];
+const CHARTS = () => [
+  { id: 'trend', kind: 'line', span: 8, rows: 2, title: 'Revenue vs target', data: { labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'], series: [{ name: 'Revenue', values: [4.1, 4.4, 4.9, 5.2, 5.9, 6.8] }, { name: 'Target', values: [4.0, 4.5, 5.0, 5.5, 6.0, 6.5] }] } },
+  { id: 'mix', kind: 'donut', span: 4, rows: 2, title: 'Revenue by region', data: { slices: [{ label: 'NA', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } },
+];
+const BOARD = () => [...KPIS(), ...CHARTS()];
+
+// A host that paints its own content — no kit header, a button, a handle span.
+const customRenderer = (w, host) => {
+  host.innerHTML = `<div class="my-host"><div class="band">${w.title ?? w.id} <span class="my-handle">⠿ handle</span></div><div class="body">${w.data?.text ?? ''}</div><button class="my-btn">Click me</button></div>`;
+  host.querySelector('.my-btn').addEventListener('click', () => { window.__labClicks[w.id] = (window.__labClicks[w.id] ?? 0) + 1; });
+};
+
+const lab = document.getElementById('lab');
+window.__lab = {};
+window.__labClicks = {};
+window.__labEvents = {};
+window.__labSelects = {};
+window.__labActions = {};
+
+/** Mount one board under a titled card. `opts` go straight to dashboard(). */
+function board(id, title, opts, { height = 430, cls = '' } = {}) {
+  const card = document.createElement('div');
+  card.className = `card ${cls}`;
+  card.innerHTML = `<div class="h">${id} · ${title}</div><div class="cv" id="cv-${id}" style="height:${height}px"></div><div class="log" id="log-${id}"></div>`;
+  lab.appendChild(card);
+  window.__labEvents[id] = [];
+  const spec = dashboard({
+    columns: 12, gap: 10, sizing: 'fit', widgets: BOARD(),
+    ...opts,
+    onSelect: (sel, view) => { (window.__labSelects[id] ||= []).push(`${view}:${sel ?? '-'}`); },
+    onCaptionAction: (sid, aid, view) => { (window.__labActions[id] ||= []).push(`${view}:${sid}:${aid}`); },
+    binder: { ...(opts.binder ?? {}), onGesture: (e) => { window.__labEvents[id].push({ type: e.type, kind: e.kind, changed: e.changed }); document.getElementById(`log-${id}`).textContent = window.__labEvents[id].map((x) => `${x.type}:${x.kind}:${x.changed}`).join('  '); } },
+  });
+  const api = render(spec, document.getElementById(`cv-${id}`));
+  api.renderNow();
+  window.__lab[id] = { handle: spec.handle, api, host: document.getElementById(`cv-${id}`) };
+  return spec.handle;
+}
+
+board('elastic', 'fit · squeeze true (default)', {});
+board('frozen', 'fit · squeeze false', { squeeze: false });
+board('floor41', 'fit · squeeze true · minRowHeight 41', { binder: { minRowHeight: 41 } });
+board('grow-frozen', 'grow · squeeze false (inert on grow)', { sizing: 'grow', squeeze: false });
+board('overfull', 'fit · squeeze false · loaded with 6 rows in 430 px', { squeeze: false, widgets: [...BOARD(), { id: 'extra1', kind: 'kpi', span: 12, rows: 1, data: { label: 'Extra 1', value: '#1' } }, { id: 'extra2', kind: 'kpi', span: 12, rows: 1, data: { label: 'Extra 2', value: '#2' } }, { id: 'extra3', kind: 'kpi', span: 12, rows: 1, data: { label: 'Extra 3', value: '#3' } }] });
+board('custom', 'custom hosts · dragHandle true (caption band)', { dragHandle: true, renderWidget: customRenderer, widgets: [
+  { id: 'c1', title: 'Alpha', span: 4, rows: 2, data: { text: 'No kit header here. The top 28 px is the caption band.' } },
+  { id: 'c2', title: 'Beta', span: 4, rows: 2, data: { text: 'Same host, second tile.' } },
+  { id: 'c3', title: 'Gamma', span: 4, rows: 2, data: { text: 'Third tile.' } },
+  { id: 'c4', title: 'Tiny', span: 3, rows: 1, data: { text: 'one-row' } },
+] }, { height: 300 });
+board('selector', 'custom hosts · dragHandle ".my-handle"', { dragHandle: '.my-handle', renderWidget: customRenderer, widgets: [
+  { id: 's1', title: 'Alpha', span: 6, rows: 2, data: { text: 'Drag only from the yellow handle.' } },
+  { id: 's2', title: 'Beta', span: 6, rows: 2, data: { text: 'Second tile.' } },
+] }, { height: 300 });
+board('static', 'static true · kit widgets', { static: true, dragHandle: { grip: true } });
+board('static-custom', 'static true · custom hosts with a button', { static: true, renderWidget: customRenderer, widgets: [
+  { id: 'b1', title: 'Alpha', span: 6, rows: 2, data: { text: 'Static: the button must still click.' } },
+  { id: 'b2', title: 'Beta', span: 6, rows: 2, data: { text: 'Second tile.' } },
+] }, { height: 300 });
+board('static-split', 'static true · split layout', { static: true, layout: 'split' });
+board('edges', 'edge cursors · one widget resizable:false', { widgets: [...KPIS().map((k, i) => (i === 0 ? { ...k, resizable: false } : k)), ...CHARTS()] });
+board('rtl', 'rtl · grip inside-left', { rtl: true, dragHandle: { grip: true, position: 'left', placement: 'inside' } });
+board('grip-in-l', 'grip inside · left', { dragHandle: { grip: true, position: 'left', placement: 'inside' } });
+board('grip-in-c', 'grip inside · center', { dragHandle: { grip: true, position: 'center', placement: 'inside' } });
+board('grip-in-r', 'grip inside · right', { dragHandle: { grip: true, position: 'right', placement: 'inside' } });
+board('grip-out-l', 'grip outside · left', { dragHandle: { grip: true, position: 'left', placement: 'outside' } });
+board('grip-out-c', 'grip outside · center', { dragHandle: { grip: true, position: 'center', placement: 'outside' } });
+board('grip-out-r', 'grip outside · right', { dragHandle: { grip: true, position: 'right', placement: 'outside' } });
+board('grip-custom', 'grip inside-left on custom hosts', { dragHandle: { grip: true, position: 'left', placement: 'inside' }, renderWidget: customRenderer, widgets: [
+  { id: 'g1', title: 'Alpha', span: 6, rows: 2, data: { text: 'Grip over a custom host.' } },
+  { id: 'g2', title: 'Beta', span: 6, rows: 2, data: { text: 'Second tile.' } },
+] }, { height: 300 });
+board('accent', 'accent themed (--axdb-accent crimson) · grip inside-right', { dragHandle: { grip: true, position: 'right', placement: 'inside' } }, { cls: 'accent' });
+board('layouts', 'selection across setLayout / setDragHandle / setStatic / setColumns', { dragHandle: { grip: true, position: 'left', placement: 'inside' } });
+board('views', 'two views · selection and view switch', { dragHandle: { grip: true }, views: [{ id: 'v1', widgets: BOARD() }, { id: 'v2', widgets: KPIS() }] });
+board('nested', 'container with children · static toggled at runtime', { dragHandle: { grip: true, position: 'left', placement: 'inside' }, widgets: [
+  ...KPIS(),
+  { id: 'box', span: 12, rows: 2, columns: 12, widgets: [
+    { id: 'n-trend', kind: 'line', span: 8, rows: 2, title: 'Inner trend', data: { labels: ['a', 'b', 'c', 'd'], series: [{ name: 'x', values: [1, 3, 2, 4] }] } },
+    { id: 'n-mix', kind: 'donut', span: 4, rows: 2, title: 'Inner mix', data: { slices: [{ label: 'A', value: 3 }, { label: 'B', value: 2 }] } },
+  ] },
+] });
+const INNER = () => [
+  { id: 'n-trend', kind: 'line', span: 8, rows: 2, title: 'Inner trend', data: { labels: ['a', 'b', 'c', 'd'], series: [{ name: 'x', values: [1, 3, 2, 4] }] } },
+  { id: 'n-mix', kind: 'donut', span: 4, rows: 2, title: 'Inner mix', data: { slices: [{ label: 'A', value: 3 }, { label: 'B', value: 2 }] } },
+];
+board('c-split', 'container · layout split (item 7)', { sizing: 'grow', dragHandle: { grip: true, position: 'left', placement: 'inside' }, widgets: [...KPIS(), { id: 'box', span: 12, rows: 2, columns: 12, layout: 'split', widgets: INNER() }] });
+board('c-fit', 'container · sizing fit (pane is the bound) · grow board', { sizing: 'grow', widgets: [...KPIS(), { id: 'box', span: 12, rows: 2, columns: 12, sizing: 'fit', widgets: INNER() }] });
+board('c-grow', 'container · sizing grow (default: slab escalates) · grow board', { sizing: 'grow', widgets: [...KPIS(), { id: 'box', span: 12, rows: 2, columns: 12, widgets: INNER() }] });
+const PANEL = () => [
+  { id: 'sec-controls', title: 'Report controls', span: 3, rows: 14, x: 0, y: 0, columns: 4, widgets: [
+    { id: 'ctl-caption', kind: 'kpi', span: 3, rows: 1, x: 0, y: 0, data: { label: 'Caption', value: '1' } },
+    { id: 'ctl-product', kind: 'kpi', span: 3, rows: 1, x: 0, y: 1, data: { label: 'Product', value: '1' } },
+    { id: 'ctl-date', kind: 'kpi', span: 3, rows: 6, x: 0, y: 2, data: { label: 'Invoice date', value: '6' } },
+    { id: 'ctl-amount', kind: 'kpi', span: 3, rows: 6, x: 0, y: 8, data: { label: 'Invoice size', value: '6' } },
+  ] },
+  { id: 'sec-paid', title: 'Paid business', span: 5, rows: 14, x: 3, y: 0, widgets: [
+    { id: 'sec-filter', kind: 'kpi', span: 2, rows: 14, x: 0, y: 0, data: { label: 'Status', value: '14' } },
+    { id: 'sec-chart', kind: 'line', span: 3, rows: 14, x: 2, y: 0, title: 'Area sales', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+  ] },
+  { id: 'sec-outside', kind: 'line', span: 4, rows: 14, x: 8, y: 0, title: 'Sales by product', data: { series: [{ name: 's', values: [3, 2, 4, 1] }] } },
+];
+board('panel-fit', 'multi-row section · fit board · squeeze false (Quantia Groups page)', { squeeze: false, widgets: PANEL() }, { height: 758 });
+board('panel-grow', 'multi-row section · grow board · rowHeight 34 (full-height tile escalates)', { sizing: 'grow', rowHeight: 34, widgets: PANEL() }, { height: 758 });
+board('strip', 'one-row KPI strip in a grow board (the strip model)', { sizing: 'grow', rowHeight: 60, widgets: [
+  { id: 'kpis', title: 'KPI strip', span: 12, rows: 1, x: 0, y: 0, columns: 4, widgets: [
+    { id: 's-rev', kind: 'kpi', span: 1, rows: 1, x: 0, y: 0, data: { label: 'Revenue', value: '$6.81M' } },
+    { id: 's-cust', kind: 'kpi', span: 1, rows: 1, x: 1, y: 0, data: { label: 'Customers', value: '1,284' } },
+    { id: 's-win', kind: 'kpi', span: 1, rows: 1, x: 2, y: 0, data: { label: 'Win rate', value: '27.4%' } },
+    { id: 's-nps', kind: 'kpi', span: 1, rows: 1, x: 3, y: 0, data: { label: 'NPS', value: '61' } },
+  ] },
+  { id: 's-trend', kind: 'line', span: 12, rows: 3, x: 0, y: 1, title: 'Trend', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+] });
+board('narrow', 'responsive 12→6 at 700 px · squeeze false', { squeeze: false, responsive: { breakpoints: [{ w: 700, c: 6, layout: 'move' }], columnMax: 12, layout: 'move' } });
+
+// ---- SECTION CAPTIONS (0.4.22) ------------------------------------------------
+const CTL = () => [
+  { id: 'ctl-caption', kind: 'kpi', span: 3, rows: 1, x: 0, y: 0, data: { label: 'Caption', value: '1' } },
+  { id: 'ctl-product', kind: 'kpi', span: 3, rows: 1, x: 0, y: 1, data: { label: 'Product', value: '1' } },
+  { id: 'ctl-date', kind: 'kpi', span: 3, rows: 6, x: 0, y: 2, data: { label: 'Invoice date', value: '6' } },
+  { id: 'ctl-amount', kind: 'kpi', span: 3, rows: 6, x: 0, y: 8, data: { label: 'Invoice size', value: '6' } },
+];
+const PAID = () => [
+  { id: 'sec-filter', kind: 'kpi', span: 2, rows: 14, x: 0, y: 0, data: { label: 'Status', value: '14' } },
+  { id: 'sec-chart', kind: 'line', span: 3, rows: 14, x: 2, y: 0, title: 'Area sales', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+];
+const CAP = (a, b, c) => [
+  { id: 'sec-controls', title: 'Report controls', span: 3, rows: 14, x: 0, y: 0, columns: 4, caption: a, widgets: CTL() },
+  { id: 'sec-paid', title: 'Paid business', span: 5, rows: 14, x: 3, y: 0, caption: b, widgets: PAID() },
+  { id: 'sec-out', title: 'Outside', span: 4, rows: 14, x: 8, y: 0, caption: c, widgets: [
+    { id: 'sec-outside', kind: 'line', span: 12, rows: 14, x: 0, y: 0, title: 'Sales by product', data: { series: [{ name: 's', values: [3, 2, 4, 1] }] } },
+  ] },
+];
+board('cap-default', 'captions · true / rich (subtitle · ⓘ · icon · actions) / none · grow rowHeight 34', { sizing: 'grow', rowHeight: 34, widgets: CAP(
+  true,
+  { text: 'Paid business', subtitle: 'net of refunds', description: 'Paid invoices only, current quarter', icon: '💰', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }, { id: 'menu', label: 'More', icon: '⋯' }, { id: 'off', label: 'Disabled', icon: '✕', disabled: true }] },
+  undefined) }, { height: 758 });
+board('cap-fit', 'captions on a fit board · squeeze false (Quantia Groups page)', { squeeze: false, widgets: CAP(true, { text: 'Paid business', subtitle: 'net of refunds' }, 'Outside') }, { height: 758 });
+board('cap-tab', "caption position 'tab' · ordinary gap · a chart directly above · one on the top row", { sizing: 'grow', rowHeight: 60, widgets: [
+  { id: 'top', title: 'Top tab', span: 12, rows: 1, x: 0, y: 0, columns: 12, caption: { position: 'tab', text: 'Top tabbed section', icon: '▤' }, widgets: [
+    { id: 'tp1', kind: 'kpi', span: 12, rows: 1, x: 0, y: 0, data: { label: 'On the top row', value: '1' } } ] },
+  { id: 'above', kind: 'line', span: 12, rows: 1, x: 0, y: 1, title: 'The chart above the section', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+  { id: 'box', title: 'Details', span: 12, rows: 2, x: 0, y: 2, columns: 12, caption: { position: 'tab', text: 'Details tab', icon: '▤' }, widgets: INNER() },
+] }, { height: 470 });
+board('cap-edge', 'captions at the edges · a 1-row 34 px section · a narrow section carrying everything', { sizing: 'grow', rowHeight: 34, widgets: [
+  { id: 'one', title: 'One row', caption: true, span: 4, rows: 1, x: 0, y: 0, columns: 4, widgets: [{ id: 'o1', kind: 'kpi', span: 4, rows: 1, x: 0, y: 0, data: { label: 'One', value: '1' } }] },
+  { id: 'two', title: 'Two rows', caption: true, span: 4, rows: 2, x: 4, y: 0, columns: 4, widgets: [{ id: 'o2', kind: 'kpi', span: 4, rows: 2, x: 0, y: 0, data: { label: 'Two', value: '2' } }] },
+  { id: 'all', title: 'X', span: 2, rows: 6, x: 10, y: 0, columns: 2, caption: { icon: '📊', text: 'Quarterly revenue by region and product line', subtitle: 'net of refunds and credits', description: 'Everything at once', actions: [{ id: 'a', label: 'A', icon: '⤢' }, { id: 'b', label: 'B', icon: '⋯' }] }, widgets: [{ id: 'o3', kind: 'kpi', span: 2, rows: 6, x: 0, y: 0, data: { label: 'All', value: '3' } }] },
+  { id: 'etail', kind: 'line', span: 8, rows: 4, x: 0, y: 2, title: 'Tail', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+] }, { height: 330 });
+board('cap-styled', 'captions · center+uppercase / end+valign bottom+height 40+margin / hover / design', { sizing: 'grow', rowHeight: 34, widgets: [
+  { id: 'st-a', title: 'Centered', span: 3, rows: 8, x: 0, y: 0, columns: 4, caption: { align: 'center', font: { size: 11, weight: 700, transform: 'uppercase' }, background: '#e8ecfb', border: '1px solid #3b52d9' }, widgets: [{ id: 'sa1', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'A', value: '1' } }] },
+  { id: 'st-b', title: 'End · bottom', span: 3, rows: 8, x: 3, y: 0, columns: 4, caption: { align: 'end', valign: 'bottom', height: 40, padding: [2, 14], margin: [4, 6], font: { size: 15, family: 'Georgia, serif', color: '#7c5e00' } }, widgets: [{ id: 'sb1', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'B', value: '2' } }] },
+  { id: 'st-c', title: 'Hover only', span: 3, rows: 8, x: 6, y: 0, columns: 4, caption: { show: 'hover', actions: [{ id: 'x', label: 'X', icon: '✕' }] }, widgets: [{ id: 'sc1', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'C', value: '3' } }] },
+  { id: 'st-d', title: 'Design only', span: 3, rows: 8, x: 9, y: 0, columns: 4, caption: { show: 'design' }, widgets: [{ id: 'sd1', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'D', value: '4' } }] },
+] }, { height: 420 });
+board('cap-custom', 'renderCaption · a badge (selects) and a button (pass-through)', { sizing: 'grow', rowHeight: 34, renderCaption: (w, host) => {
+  host.innerHTML = `<span class="cap-badge" style="font:600 11px ui-monospace,monospace;background:#d4b106;color:#fff;padding:2px 6px;border-radius:3px">${w.title}</span><button class="cap-btn" style="margin-inline-start:auto;font:11px system-ui">act</button>`;
+  host.querySelector('.cap-btn').addEventListener('click', () => { window.__labClicks['cap-custom'] = (window.__labClicks['cap-custom'] ?? 0) + 1; });
+}, widgets: CAP({ className: 'brand' }, 'Paid', 'Outside') }, { height: 758 });
+board('cap-rtl', 'captions · rtl · actions at the start · a tab mirrored to the right', { sizing: 'grow', rowHeight: 34, rtl: true, widgets: CAP({ position: 'tab', text: 'Report controls', icon: '▤' }, { text: 'Paid business', subtitle: 'net of refunds', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }] }, 'Outside') }, { height: 758 });
+board('cap-tight', 'captions · a 2-row (78 px) section is tight · a strip too', { sizing: 'grow', rowHeight: 34, widgets: [
+  { id: 'tight', title: 'Tight section', span: 6, rows: 2, x: 0, y: 0, columns: 2, caption: { subtitle: 'hidden when tight', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }] }, widgets: [
+    { id: 't1', kind: 'kpi', span: 1, rows: 2, x: 0, y: 0, data: { label: 'T1', value: '1' } }, { id: 't2', kind: 'kpi', span: 1, rows: 2, x: 1, y: 0, data: { label: 'T2', value: '2' } } ] },
+  { id: 'roomy', title: 'Roomy section', span: 6, rows: 4, x: 6, y: 0, columns: 2, caption: { subtitle: 'shown when roomy', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }] }, widgets: [
+    { id: 'r1', kind: 'kpi', span: 1, rows: 4, x: 0, y: 0, data: { label: 'R1', value: '1' } }, { id: 'r2', kind: 'kpi', span: 1, rows: 4, x: 1, y: 0, data: { label: 'R2', value: '2' } } ] },
+  { id: 'tail', kind: 'line', span: 12, rows: 4, x: 0, y: 4, title: 'Tail', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+] }, { height: 420 });
+board('cap-squeeze', 'captioned sections NESTED on a fit board with squeeze — the compression case', { squeeze: true, widgets: [
+  { id: 'sq-outer', title: 'Outer', caption: { subtitle: 'squeezed' }, span: 7, rows: 6, x: 0, y: 0, columns: 12, widgets: [
+    { id: 'sq-inner', title: 'Inner', caption: true, span: 6, rows: 6, x: 0, y: 0, columns: 6, widgets: [
+      { id: 'sqi1', kind: 'kpi', span: 6, rows: 3, x: 0, y: 0, data: { label: 'I1', value: '1' } },
+      { id: 'sqi2', kind: 'kpi', span: 6, rows: 3, x: 0, y: 3, data: { label: 'I2', value: '2' } } ] },
+    { id: 'sq-sib', kind: 'line', span: 6, rows: 6, x: 6, y: 0, title: 'Sibling', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+  ] },
+  { id: 'sq-side', title: 'Side', caption: { position: 'tab' }, span: 5, rows: 6, x: 7, y: 0, columns: 5, widgets: [
+    { id: 'sqs1', kind: 'kpi', span: 5, rows: 6, x: 0, y: 0, data: { label: 'S', value: '3' } } ] },
+] }, { height: 260 });
+board('tabs', "layout: 'tabs' · three pages, one visible · the middle page is a SPLIT", { sizing: 'grow', rowHeight: 60, onTabChange: (c, p, v) => { (window.__labTabs ||= []).push(`${v}:${c}:${p}`); }, widgets: [
+  { id: 't-left', kind: 'line', span: 6, rows: 4, x: 0, y: 0, title: 'Left', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+  { id: 'panel', title: 'Side panel', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', active: 'pg-a', widgets: [
+    { id: 'pg-a', title: 'Filters', columns: 6, widgets: [
+      { id: 'pa1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } },
+      { id: 'pa2', kind: 'kpi', span: 6, rows: 2, x: 0, y: 2, data: { label: 'Period', value: 'Q3' } } ] },
+    { id: 'pg-b', title: 'Alerts', columns: 6, layout: 'split', widgets: [
+      { id: 'pb1', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0, data: { label: 'Open', value: '3' } },
+      { id: 'pb2', kind: 'kpi', span: 3, rows: 4, x: 3, y: 0, data: { label: 'Closed', value: '9' } } ] },
+    { id: 'pg-c', title: 'Notes', columns: 6, widgets: [
+      { id: 'pc1', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } } ] },
+  ] },
+] }, { height: 340 });
+board('near', 'a tile dropped where a LOCKED section blocks it lands beside it, not at the bottom', { sizing: 'grow', rowHeight: 70, widgets: [
+  { id: 'n-a', kind: 'kpi', span: 4, rows: 2, x: 0, y: 0, data: { label: 'A (0..4)', value: '1' } },
+  { id: 'n-sec', title: 'Locked section', span: 5, rows: 2, x: 7, y: 0, columns: 5, widgets: [
+    { id: 'n-inner', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'Inner', value: '2' } } ] },
+  { id: 'n-b', kind: 'kpi', span: 12, rows: 1, x: 0, y: 2, data: { label: 'B', value: '3' } },
+] }, { height: 300 });
+board('push', 'a tile dropped ONTO an occupied row lands where the ghost promised, pushing that row down', { sizing: 'grow', rowHeight: 60, widgets: [
+  { id: 'pu-top', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Top', value: '1' } },
+  { id: 'pu-tabs', title: 'Side', span: 6, rows: 4, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'pu-p1', title: 'Filters', columns: 6, widgets: [
+      { id: 'pu-in', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } } ] },
+    { id: 'pu-p2', title: 'Alerts', columns: 6, widgets: [
+      { id: 'pu-o', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Open', value: '3' } } ] },
+  ] },
+  { id: 'pu-mid', kind: 'kpi', span: 6, rows: 2, x: 0, y: 2, data: { label: 'Mid', value: '2' } },
+] }, { height: 380 });
+board('vert', 'a TALL tile whose rows cross a full-width locked section takes the nearest row that clears it', { sizing: 'grow', rowHeight: 44, widgets: [
+  { id: 'v-src', title: 'Source', span: 4, rows: 4, x: 0, y: 0, columns: 4, widgets: [
+    { id: 'v-in', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Inner', value: '1' } } ] },
+  { id: 'v-a', kind: 'kpi', span: 8, rows: 4, x: 4, y: 0, data: { label: 'A', value: '2' } },
+  { id: 'v-wall', title: 'Full-width section', span: 12, rows: 2, x: 0, y: 4, columns: 12, widgets: [
+    { id: 'v-w1', kind: 'kpi', span: 12, rows: 2, x: 0, y: 0, data: { label: 'Wall', value: '3' } } ] },
+  { id: 'v-b', kind: 'kpi', span: 12, rows: 2, x: 0, y: 6, data: { label: 'B', value: '4' } },
+  { id: 'v-c', kind: 'kpi', span: 12, rows: 2, x: 0, y: 8, data: { label: 'C', value: '5' } },
+  { id: 'v-d', kind: 'kpi', span: 12, rows: 2, x: 0, y: 10, data: { label: 'D', value: '6' } },
+] }, { height: 560 });
+board('tear', 'a tab torn out of a FULL-HEIGHT panel takes the room under the pointer, not the bottom of the board', { sizing: 'grow', rowHeight: 50, widgets: [
+  { id: 'te-a', kind: 'kpi', span: 8, rows: 3, x: 0, y: 0, data: { label: 'A', value: '1' } },
+  { id: 'te-b', kind: 'kpi', span: 8, rows: 3, x: 0, y: 3, data: { label: 'B', value: '2' } },
+  { id: 'te-wall', title: 'Locked wall', span: 8, rows: 2, x: 0, y: 6, columns: 8, widgets: [
+    { id: 'te-w1', kind: 'kpi', span: 8, rows: 2, x: 0, y: 0, data: { label: 'Wall', value: '3' } } ] },
+  { id: 'te-side', title: 'Side', span: 4, rows: 8, x: 8, y: 0, columns: 4, layout: 'tabs', widgets: [
+    { id: 'te-p1', title: 'Filters', columns: 4, widgets: [
+      { id: 'te-in1', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } } ] },
+    { id: 'te-p2', title: 'Alerts', columns: 4, widgets: [
+      { id: 'te-in2', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'Open', value: '3' } } ] },
+  ] },
+] }, { height: 480 });
+board('solo', 'tearing the LAST tab out closes the empty container; undo reopens it', { sizing: 'grow', rowHeight: 60, widgets: [
+  { id: 'so-a', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'A', value: '1' } },
+  { id: 'so-tabs', title: 'Solo', span: 6, rows: 4, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'so-p', title: 'Only', columns: 6, widgets: [
+      { id: 'so-in', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'Only page', value: '1' } } ] },
+  ] },
+  { id: 'so-b', kind: 'kpi', span: 12, rows: 2, x: 0, y: 4, data: { label: 'B', value: '2' } },
+] }, { height: 420 });
+board('join', 'a tab dropped ONTO another group joins it — VS Code\'s editor moved from the right group into the left', { sizing: 'grow', rowHeight: 60, widgets: [
+  { id: 'j-left', title: 'Left group', span: 6, rows: 5, x: 0, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'jl-a', title: 'Sales', columns: 6, widgets: [{ id: 'jw-a', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'Sales', value: '1' } }] },
+    { id: 'jl-b', title: 'Margin', columns: 6, widgets: [{ id: 'jw-b', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'Margin', value: '2' } }] },
+  ] },
+  { id: 'j-right', title: 'Right group', span: 6, rows: 5, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'jr-c', title: 'Filters', columns: 6, widgets: [{ id: 'jw-c', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'Filters', value: '3' } }] },
+    { id: 'jr-d', title: 'Notes', columns: 6, widgets: [{ id: 'jw-d', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'Notes', value: '4' } }] },
+  ] },
+] }, { height: 380 });
+board('movesec', 'a SECTION moves as one tile by its caption band; a tab group by its strip\'s empty space', { sizing: 'grow', rowHeight: 60, widgets: [
+  { id: 'ms-sec', title: 'Movable section', caption: true, span: 6, rows: 2, x: 0, y: 0, columns: 6, widgets: [
+    { id: 'ms-in', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Inside', value: '1' } } ] },
+  { id: 'ms-a', kind: 'kpi', span: 6, rows: 2, x: 6, y: 0, data: { label: 'A', value: '2' } },
+  { id: 'ms-b', kind: 'kpi', span: 12, rows: 2, x: 0, y: 2, data: { label: 'B', value: '3' } },
+] }, { height: 380 });
+board('deep', 'what a tab PAGE can hold and take: a grid page, a SPLIT page, a page holding a section, tabs inside a page', { sizing: 'grow', rowHeight: 50, widgets: [
+  { id: 'dp-w1', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'W1', value: '1' } },
+  { id: 'dp-w2', kind: 'kpi', span: 3, rows: 2, x: 3, y: 0, data: { label: 'W2', value: '2' } },
+  { id: 'dp-out', title: 'Outside section', caption: true, span: 6, rows: 3, x: 0, y: 2, columns: 6, widgets: [
+    { id: 'dp-o1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'In the section', value: '3' } } ] },
+  { id: 'dp', title: 'Deep tabs', span: 6, rows: 6, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'dp-grid', title: 'Grid page', columns: 6, widgets: [
+      { id: 'dp-g1', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'G1', value: '4' } } ] },
+    { id: 'dp-splitpage', title: 'Split page', columns: 6, layout: 'split', widgets: [
+      { id: 'dp-s1', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0, data: { label: 'S1', value: '5' } },
+      { id: 'dp-s2', kind: 'kpi', span: 3, rows: 4, x: 3, y: 0, data: { label: 'S2', value: '6' } } ] },
+    { id: 'dp-nested', title: 'Nested page', columns: 6, widgets: [
+      { id: 'dp-inner', title: 'Inner section', caption: true, span: 6, rows: 3, x: 0, y: 0, columns: 6, widgets: [
+        { id: 'dp-i1', kind: 'kpi', span: 3, rows: 2, x: 0, y: 0, data: { label: 'I1', value: '7' } } ] },
+      { id: 'dp-intabs', title: 'Inner tabs', span: 6, rows: 3, x: 0, y: 3, columns: 6, layout: 'tabs', widgets: [
+        { id: 'dp-ip1', title: 'Inner A', columns: 6, widgets: [{ id: 'dp-ia', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'IA', value: '8' } }] },
+        { id: 'dp-ip2', title: 'Inner B', columns: 6, widgets: [{ id: 'dp-ib', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'IB', value: '9' } }] },
+      ] },
+    ] },
+  ] },
+] }, { height: 420 });
+board('cap-split', 'captioned sections on a SPLIT board · no chrome to paint them, so no reserve', { layout: 'split', sizing: 'grow', rowHeight: 50, widgets: [
+  { id: 'sp-a', title: 'Captioned A', caption: { subtitle: 'sub' }, span: 6, rows: 4, x: 0, y: 0, columns: 6, widgets: [
+    { id: 'spa1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'A', value: '1' } },
+    { id: 'spa2', kind: 'kpi', span: 6, rows: 2, x: 0, y: 2, data: { label: 'B', value: '2' } } ] },
+  { id: 'sp-b', title: 'Captioned B', caption: true, span: 6, rows: 4, x: 6, y: 0, columns: 6, widgets: [
+    { id: 'spb1', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'C', value: '3' } } ] },
+] }, { height: 300 });
+board('cap-nested', 'captions two levels down · setCaption live', { sizing: 'grow', rowHeight: 34, widgets: [
+  { id: 'outer', title: 'Outer section', span: 12, rows: 10, x: 0, y: 0, columns: 12, caption: true, widgets: [
+    { id: 'inner', title: 'Inner section', span: 6, rows: 8, x: 0, y: 0, columns: 4, caption: { text: 'Inner', description: 'two levels down' }, widgets: [{ id: 'k', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'K', value: '1' } }] },
+    { id: 'p', kind: 'line', span: 6, rows: 8, x: 6, y: 0, title: 'P', data: { series: [{ name: 's', values: [1, 4, 2, 5] }] } },
+  ] },
+] }, { height: 460 });
+
+await new Promise((r) => setTimeout(r, 300));
+window.__labReady = true;
+</script>
