@@ -35,6 +35,8 @@ const tev = (type: ToolPointerEvent['type'], x: number, y: number): ToolPointerE
 });
 
 import { fromDocument } from '../load';
+import { splitLeaves, type SplitNode } from './split-layout';
+import { SPLIT_TREE_KEY } from './split-binder';
 
 function makeApi(model: DiagramModel) {
   const bus = new EventBus();
@@ -291,17 +293,19 @@ describe('tab containers', () => {
     expect(handle.getActiveTab('panel')).toBe('p-two');
   });
 
-  it('a drag the board REFUSES leaves the press a plain click', () => {
-    // A split board cannot place a torn-out page, so it refuses the gesture —
-    // and a refused drag must not swallow the click, or a tab container on a
-    // split pane would stop switching pages altogether.
-    const { api, handle } = up(
+  it('a drag the board REFUSES (a STATIC split board) leaves the press a plain click', () => {
+    // A refused drag must not swallow the click, or a tab container on a
+    // static pane would stop switching pages altogether. (A split board that
+    // is not static places the page as a pane since 0.4.37 — see the split
+    // describe at the end.)
+    const { api, handle, model } = up(
       dashboard({
         columns: 12,
         width: 1200,
         height: 600,
         rowHeight: 60,
         layout: 'split',
+        static: true,
         widgets: [
           { id: 'other', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 },
           {
@@ -318,15 +322,18 @@ describe('tab containers', () => {
       })
     );
     const tab = strip(api)!.querySelector('.axdb-tab[data-tab-id="p-two"]') as HTMLElement;
-    const at = (type: string, x: number) =>
+    const at = (type: string, x: number, y = 10) =>
       tab.dispatchEvent(
-        Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: 10 }), { pointerId: 1 })
+        Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 })
       );
-    at('pointerdown', 100);
-    at('pointermove', 140);
-    at('pointerup', 140);
+    at('pointerdown', 700);
+    at('pointermove', 660);
+    window.dispatchEvent(Object.assign(new MouseEvent('pointermove', { bubbles: true, clientX: 30, clientY: 300 }), { pointerId: 1 }));
+    window.dispatchEvent(Object.assign(new MouseEvent('pointerup', { bubbles: true, clientX: 30, clientY: 300 }), { pointerId: 1 }));
     (tab as HTMLButtonElement).click();
     expect(handle.getActiveTab('panel')).toBe('p-two');
+    expect(model.getGroup('p-two__group')).toBeUndefined();
+    expect(api.container.querySelector('.axdb-tab-chip')).toBeNull();
   });
 
   // -- tearing a tab out: VS Code's "drag a tab out and it becomes a group of its own" --
@@ -1361,5 +1368,128 @@ describe('the reflow glide and a page switch', () => {
     expect(painted.length).toBeGreaterThan(0);
     expect(painted.filter((c) => c.includes('axdb-glide'))).toEqual([]);
     expect(layer.classList.contains('axdb-glide')).toBe(true);
+  });
+});
+
+/**
+ * TAB DRAGS ON A SPLIT BOARD (0.4.37). The split binder REFUSED every tear-out
+ * ("a split board has no cells to drop a page into"), so on the fluid demo's
+ * Split mode a tab press was a dead click — no chip, no reorder, no join. The
+ * split board has a drop model of its own (a widget dropped on a pane's edge
+ * inserts there); a torn-out page uses it: the page becomes a one-tab group
+ * that is a PANE, joins another container over its body's centre, and
+ * reorders or joins over a strip like on a grid board.
+ */
+describe('tab drags on a SPLIT board', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const stripOf = (api: { container: HTMLElement }, id: string) =>
+    Array.from(api.container.querySelectorAll(`.axdb-tabs[data-tabs-id="${id}"] .axdb-tab`)).map((t) => t.textContent);
+  const cm = (api: ReturnType<typeof makeApi>) => api.getEngine().commandManager;
+  const dragTabFrom = async (api: { container: HTMLElement }, containerId: string, pageId: string, from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(tab, 'pointerdown', from.x, from.y);
+    ev(tab, 'pointermove', from.x - 40, from.y);
+    ev(window, 'pointermove', to.x, to.y);
+    ev(window, 'pointerup', to.x, to.y);
+    tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await settle();
+  };
+  const leaves = (model: DiagramModel) => splitLeaves((model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY) ?? null) as SplitNode | null);
+  const ONE = () =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      rowHeight: 60,
+      layout: 'split',
+      widgets: [
+        { id: 'other', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 },
+        {
+          id: 'panel',
+          title: 'Side panel',
+          span: 6,
+          rows: 4,
+          x: 6,
+          y: 0,
+          layout: 'tabs',
+          widgets: [PAGE('p-one', 'Filters', 'k-one'), PAGE('p-two', 'Alerts', 'k-two'), PAGE('p-three', 'Notes', 'k-three')],
+        },
+      ],
+    });
+  const TWO = () =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      rowHeight: 60,
+      layout: 'split',
+      widgets: [
+        { id: 'left', title: 'Left group', span: 6, rows: 6, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('l1', 'Sales', 'k-l1'), PAGE('l2', 'Margin', 'k-l2')] },
+        { id: 'right', title: 'Right group', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+      ],
+    });
+
+  it('a tab dragged onto a pane\'s edge becomes a one-tab group that is a PANE there — inserted where the split board inserts a dropped widget; undo puts it back', async () => {
+    const { api, model, handle } = up(ONE());
+    expect(leaves(model)).toEqual(['other', 'panel']);
+    // released near the LEFT edge of the "other" pane
+    await dragTabFrom(api, 'panel', 'p-two', { x: 900, y: 10 }, { x: 30, y: 300 });
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Notes']);
+    const born = model.getGroup('p-two__group');
+    expect(born).toBeDefined();
+    expect(born!.members!.has('p-two')).toBe(true);
+    expect(model.getGroup('panel')!.members!.has('p-two')).toBe(false);
+    expect(handle.getLayout('p-two__group')).toBe('tabs');
+    expect(stripOf(api, 'p-two__group')).toEqual(['Alerts']);
+    // it is a LEAF of the split tree, left of the pane it was dropped on
+    expect(leaves(model)).toEqual(['p-two__group', 'other', 'panel']);
+    const other = model.getNode('other')!;
+    expect(born!.position.x).toBeLessThan(other.position.x);
+    expect(born!.size!.width).toBeGreaterThan(50);
+    // its widget shows inside the new pane
+    const k = model.getNode('k-two')!;
+    expect(k.position.x).toBeGreaterThan(PARKED);
+    expect(k.position.x).toBeGreaterThanOrEqual(born!.position.x);
+    expect(k.position.x + k.size.width).toBeLessThanOrEqual(born!.position.x + born!.size!.width + 1);
+    // serialised as a third widget of the split board
+    const snap = handle.toJSON().views[0].widgets;
+    expect(snap.find((w) => w.id === 'p-two__group')!.layout).toBe('tabs');
+    expect(snap.find((w) => w.id === 'panel')!.widgets?.map((p) => p.id)).toEqual(['p-one', 'p-three']);
+    // ONE undo: the pane is gone, the tab is back
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(model.getGroup('p-two__group')).toBeUndefined();
+    expect(leaves(model)).toEqual(['other', 'panel']);
+    expect(onCanvas(model, ['k-one', 'k-two', 'k-three'])).toEqual(['k-one']);
+  });
+
+  it('a tab dropped over the CENTRE of another container\'s body JOINS it on a split board — no new pane', async () => {
+    const { api, model, handle } = up(TWO());
+    const lf = (() => { const g = model.getGroup('left')!; return { x: g.position.x, y: g.position.y, w: g.size!.width, h: g.size!.height }; })();
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: lf.x + lf.w / 2, y: lf.y + 30 + (lf.h - 30) / 2 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+    expect(stripOf(api, 'right')).toEqual(['Filters']);
+    expect(handle.getActiveTab('left')).toBe('r2');
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(leaves(model)).toEqual(['left', 'right']);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(leaves(model)).toEqual(['left', 'right']);
+  });
+
+  it('a tab released OUTSIDE the split board cancels: nothing moves, the container keeps its page', async () => {
+    const { api, model, handle } = up(ONE());
+    await dragTabFrom(api, 'panel', 'p-two', { x: 900, y: 10 }, { x: 5000, y: 5000 });
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(model.getGroup('p-two__group')).toBeUndefined();
+    expect(leaves(model)).toEqual(['other', 'panel']);
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+    expect(api.container.querySelector('.axdb-tab-chip')).toBeNull();
+    expect(api.container.querySelector('.axdb-ins')).toBeNull();
   });
 });

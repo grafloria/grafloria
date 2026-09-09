@@ -306,6 +306,15 @@ board('cap-split', 'captioned sections on a SPLIT board · no chrome to paint th
   { id: 'sp-b', title: 'Captioned B', caption: true, span: 6, rows: 4, x: 6, y: 0, columns: 6, widgets: [
     { id: 'spb1', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'C', value: '3' } } ] },
 ] }, { height: 300 });
+board('sptabs', 'tabs on a SPLIT board (0.4.37) · a torn-out tab becomes a PANE at the edge under the pointer; a strip or a body centre joins; its own strip reorders', { layout: 'split', sizing: 'grow', rowHeight: 50, widgets: [
+  { id: 'st-w', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Widget', value: '1' } },
+  { id: 'st-a', title: 'Group A', span: 4, rows: 4, x: 4, y: 0, columns: 4, layout: 'tabs', widgets: [
+    { id: 'st-a1', title: 'Sales', columns: 4, widgets: [ { id: 'st-ka1', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Sales', value: '2' } } ] },
+    { id: 'st-a2', title: 'Margin', columns: 4, widgets: [ { id: 'st-ka2', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Margin', value: '3' } } ] } ] },
+  { id: 'st-b', title: 'Group B', span: 4, rows: 4, x: 8, y: 0, columns: 4, layout: 'tabs', widgets: [
+    { id: 'st-b1', title: 'Filters', columns: 4, widgets: [ { id: 'st-kb1', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Filters', value: '4' } } ] },
+    { id: 'st-b2', title: 'Notes', columns: 4, widgets: [ { id: 'st-kb2', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Notes', value: '5' } } ] } ] },
+] }, { height: 300 });
 board('cap-nested', 'captions two levels down · setCaption live', { sizing: 'grow', rowHeight: 34, widgets: [
   { id: 'outer', title: 'Outer section', span: 12, rows: 10, x: 0, y: 0, columns: 12, caption: true, widgets: [
     { id: 'inner', title: 'Inner section', span: 6, rows: 8, x: 0, y: 0, columns: 4, caption: { text: 'Inner', description: 'two levels down' }, widgets: [{ id: 'k', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'K', value: '1' } }] },
