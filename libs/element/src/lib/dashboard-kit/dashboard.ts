@@ -1615,6 +1615,31 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     const label = pageSpec.title ?? pageId;
     const size = { width: pg.size?.width ?? 0, height: (pg.size?.height ?? 0) + tabStripReserve(tabsOpts, 1) };
     const remaining = [...(from.members ?? [])].filter((m) => m !== pageId && !!model.getGroup(m));
+    // The page that was showing when the gesture began. Undo puts the tab
+    // back — and shows THAT page again, not the one the container switched to
+    // when the tab left (the live walk: Filters showing, tear out, undo, Alerts
+    // showing — 0.4.41). It goes FIRST in each move sequence so its undo runs
+    // LAST, after the tab is back among the pages: a sync fired in between by
+    // a neighbour's reflow would otherwise reset a page that is not there yet.
+    const showing = ctx.activeTab.get(containerId);
+    const showingAgain = (): Command =>
+      new RegisterWidgetCommand(
+        {
+          register: (): void => {},
+          unregister: (): void => {
+            const cg = ctx.boardGroups.get(containerId) ?? model.getGroup(containerId);
+            const spec = specById.get(containerId);
+            if (!showing || !cg || !spec || ctx.activeTab.get(containerId) === showing) return;
+            if (!(spec.widgets ?? []).some((p) => p.id === showing) || !cg.members?.has(showing)) return;
+            ctx.activeTab.set(containerId, showing);
+            spec.active = showing;
+            const cw = (cg.getMetadata('containerWidget') as Record<string, unknown> | undefined) ?? {};
+            cg.setMetadata('containerWidget', { ...cw, active: showing });
+            teleport(ctx.container, () => ctx.syncTabs?.(containerId));
+          },
+        },
+        'register'
+      );
     return {
       arrivingId: W,
       label,
@@ -1693,6 +1718,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         };
         const move: Command[] = [
           new SequenceCommand('Move tab out', [
+            showingAgain(),
             new AddGroupCommand(g),
             new RemoveFromGroupCommand(containerId, pageId),
             new AddToGroupCommand(W, pageId),
@@ -1769,6 +1795,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         };
         const move: Command[] = [
           new SequenceCommand('Move tab', [
+            showingAgain(),
             new RemoveFromGroupCommand(containerId, pageId),
             new AddToGroupCommand(targetId, pageId),
             new RegisterWidgetCommand(joined, 'register'),

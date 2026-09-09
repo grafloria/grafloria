@@ -2257,6 +2257,67 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `rest ${l0.join('/')} · B held by its band at A's left edge: chip ${held?.chip} line ${held?.ins} selected ${held?.selected} · released: ${l1.join('/')}, B at ${after.bx} left of A at ${after.ax}, band kept ${after.band}, child ${after.gap}px under the band ${JSON.stringify(sane)} · undo: ${l2.join('/')}`);
 }
 
+{
+  begin('L88-undo-of-a-tear-out-shows-the-page-that-was-SHOWING-before-the-drag');
+  await scrollTo('tabs');
+  const showing = () => page.evaluate(() => ({
+    on: document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"] .axdb-tab--on')?.textContent ?? null,
+    active: window.__lab.tabs.handle.getActiveTab('panel') ?? null,
+    strip: [...document.querySelectorAll('#cv-tabs .axdb-tabs[data-tabs-id="panel"] .axdb-tab')].map((t) => t.textContent).join('/'),
+    seen: ['pa1', 'pb1'].filter((id) => (document.querySelector(`#cv-tabs .grafloria-node-host[data-node-id="${id}"]`)?.getBoundingClientRect().x ?? -1e9) > -5000).join('/'),
+  }));
+  const s0 = await showing();
+  await shot('tabs', 'filters-showing-at-rest');
+  // Filters — the page that is SHOWING — torn out onto the left column
+  const tab = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tab[data-tab-id="pg-a"]').getBoundingClientRect().toJSON());
+  const left = await rect('tabs', 't-left');
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, left.x + left.w / 2, left.y + left.h - 30, { steps: 16 });
+  const s1 = await showing();
+  const born = await page.evaluate(() => [...document.querySelectorAll('#cv-tabs .axdb-tabs')].map((s) => s.getAttribute('data-tabs-id')).filter((id) => id !== 'panel'));
+  await shot('tabs', 'filters-torn-out-the-panel-shows-alerts');
+  await undoAll('tabs', 1);
+  const s2 = await showing();
+  const sane = await sanity('tabs');
+  await shot('tabs', 'undone-the-panel-shows-filters-again');
+  verdict(s0.on === 'Filters' && s0.active === 'pg-a' && s0.strip === 'Filters/Alerts/Notes' && s0.seen === 'pa1'
+    && born.length === 1 && s1.on === 'Alerts' && s1.active === 'pg-b' && s1.strip === 'Alerts/Notes' && s1.seen === 'pa1/pb1'
+    && s2.on === 'Filters' && s2.active === 'pg-a' && s2.strip === 'Filters/Alerts/Notes' && s2.seen === 'pa1' && sane.overlaps === 0,
+    `rest: ${s0.on} on (${s0.active}) strip ${s0.strip} seen ${s0.seen} · Filters torn out (${born.join(',')}): panel shows ${s1.on} (${s1.active}) strip ${s1.strip} seen ${s1.seen} · undone: panel shows ${s2.on} (${s2.active}) strip ${s2.strip} seen ${s2.seen} overlaps ${sane.overlaps}`);
+}
+
+{
+  begin('L89-undo-of-a-JOIN-shows-the-page-that-was-showing-in-the-SOURCE-and-in-the-target');
+  await scrollTo('sptabs');
+  const showing = () => page.evaluate(() => ({
+    aOn: document.querySelector('#cv-sptabs .axdb-tabs[data-tabs-id="st-a"] .axdb-tab--on')?.textContent ?? null,
+    bOn: document.querySelector('#cv-sptabs .axdb-tabs[data-tabs-id="st-b"] .axdb-tab--on')?.textContent ?? null,
+    a: window.__lab.sptabs.handle.getActiveTab('st-a') ?? null,
+    b: window.__lab.sptabs.handle.getActiveTab('st-b') ?? null,
+    seen: ['st-ka1', 'st-kb1', 'st-kb2'].filter((id) => (document.querySelector(`#cv-sptabs .grafloria-node-host[data-node-id="${id}"]`)?.getBoundingClientRect().x ?? -1e9) > -5000).join('/'),
+  }));
+  // Notes is the page SHOWING in Group B
+  await page.evaluate(() => window.__lab.sptabs.handle.activateTab('st-b', 'st-b2')); await page.waitForTimeout(300);
+  const s0 = await showing();
+  await shot('sptabs', 'notes-showing-in-group-b');
+  // Notes released over the CENTRE of Group A's body → joins A and shows there
+  const ga = await groupRect('sptabs', 'st-a');
+  const cv = await page.evaluate(() => document.getElementById('cv-sptabs').getBoundingClientRect().toJSON());
+  const tb = await page.evaluate(() => document.querySelector('#cv-sptabs .axdb-tab[data-tab-id="st-b2"]').getBoundingClientRect().toJSON());
+  await drag(tb.x + tb.width / 2, tb.y + tb.height / 2, cv.x + ga.x + ga.w / 2, cv.y + ga.y + 30 + (ga.h - 30) / 2, { steps: 16 });
+  const s1 = await showing();
+  const aStrip1 = await page.evaluate(() => [...document.querySelectorAll('#cv-sptabs .axdb-tabs[data-tabs-id="st-a"] .axdb-tab')].map((t) => t.textContent).join('/'));
+  await shot('sptabs', 'notes-joined-a-and-shows-there-b-shows-filters');
+  await undoAll('sptabs', 1);
+  const s2 = await showing();
+  const sane = await sanity('sptabs');
+  await shot('sptabs', 'undone-b-shows-notes-again-a-shows-sales');
+  await page.evaluate(() => window.__lab.sptabs.handle.activateTab('st-b', 'st-b1')); await page.waitForTimeout(200);
+  verdict(s0.aOn === 'Sales' && s0.bOn === 'Notes' && s0.a === 'st-a1' && s0.b === 'st-b2' && s0.seen === 'st-ka1/st-kb2'
+    && aStrip1 === 'Sales/Margin/Notes' && s1.aOn === 'Notes' && s1.bOn === 'Filters' && s1.a === 'st-b2' && s1.b === 'st-b1' && s1.seen === 'st-kb1/st-kb2'
+    && s2.aOn === 'Sales' && s2.bOn === 'Notes' && s2.a === 'st-a1' && s2.b === 'st-b2' && s2.seen === 'st-ka1/st-kb2' && sane.overlaps === 0,
+    `rest: A shows ${s0.aOn} (${s0.a}), B shows ${s0.bOn} (${s0.b}), seen ${s0.seen} · Notes joined A (${aStrip1}): A shows ${s1.aOn} (${s1.a}), B shows ${s1.bOn} (${s1.b}), seen ${s1.seen} · undone: A shows ${s2.aOn} (${s2.a}), B shows ${s2.bOn} (${s2.b}), seen ${s2.seen} overlaps ${sane.overlaps}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();
