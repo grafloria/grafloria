@@ -194758,8 +194758,7 @@ function parentPaintsSectionChrome(diagram, group) {
   const groups = diagram.getGroups?.() ?? [];
   for (const g of groups) {
     if (g === group || !g.members?.has(group.id)) continue;
-    const board = g.getMetadata("dashboardBoard");
-    return (board?.layout ?? "grid") !== "split";
+    return true;
   }
   return false;
 }
@@ -198370,10 +198369,103 @@ function bindDashboardSplit(api, group, options = {}) {
       writeRect(id, r);
     }
     syncDividers(tree);
+    syncSlabs();
     syncA11y();
   };
   const dividerEls = [];
   let insertion = null;
+  const slabEls = /* @__PURE__ */ new Map();
+  const hoverSlabs = /* @__PURE__ */ new Set();
+  const syncCaption = (el2, id, grp, sectionH) => {
+    const cap = captionOfGroup(grp);
+    let band = el2.querySelector(":scope > .axdb-slab-h");
+    if (!cap || !captionPainted(cap, isStatic)) {
+      band?.remove();
+      hoverSlabs.delete(el2);
+      el2.classList.remove("axdb-slab--hot");
+      el2.removeAttribute("aria-label");
+      el2.removeAttribute("role");
+      return;
+    }
+    if (cap.show === "hover") hoverSlabs.add(el2);
+    else {
+      hoverSlabs.delete(el2);
+      el2.classList.remove("axdb-slab--hot");
+    }
+    const cctx = { rtl, static: isStatic, sectionH };
+    const key = captionKey(cap, cctx);
+    if (band && band.getAttribute("data-key") === key) {
+      sizeCaptionBand(band, cap, sectionH);
+      return;
+    }
+    band?.remove();
+    band = document.createElement("div");
+    el2.prepend(band);
+    const render2 = options.renderCaption;
+    paintCaptionBand(band, cap, {
+      ...cctx,
+      ...render2 ? { render: (host) => render2(id, host) } : {},
+      onAction: (actionId) => options.onCaptionAction?.(id, actionId)
+    });
+    band.setAttribute("data-key", key);
+    if (cap.text) {
+      el2.setAttribute("role", "group");
+      el2.setAttribute("aria-label", cap.text);
+    } else {
+      el2.removeAttribute("role");
+      el2.removeAttribute("aria-label");
+    }
+  };
+  const syncSlabs = () => {
+    if (disposed) return;
+    const layer = htmlLayer();
+    if (!layer) return;
+    const seen = /* @__PURE__ */ new Set();
+    for (const id of group.members ?? /* @__PURE__ */ new Set()) {
+      const grp = diagram.getGroup(id);
+      if (!grp || diagram.getNode(id)) continue;
+      seen.add(id);
+      let el2 = slabEls.get(id);
+      if (!el2 || el2.parentElement !== layer) {
+        el2?.remove();
+        el2 = document.createElement("div");
+        el2.className = "axdb-slab";
+        el2.setAttribute("data-slab-id", id);
+        layer.appendChild(el2);
+        slabEls.set(id, el2);
+      }
+      const p = grp.position;
+      const sz = grp.size ?? { width: 0, height: 0 };
+      el2.style.left = `${p.x}px`;
+      el2.style.top = `${p.y}px`;
+      el2.style.width = `${sz.width}px`;
+      el2.style.height = `${sz.height}px`;
+      el2.classList.toggle("axdb-slab--selected", selectedId === id);
+      el2.classList.toggle("axdb-slab--static", isStatic);
+      syncCaption(el2, id, grp, sz.height);
+    }
+    for (const [id, el2] of slabEls) {
+      if (!seen.has(id)) {
+        el2.remove();
+        hoverSlabs.delete(el2);
+        slabEls.delete(id);
+      }
+    }
+  };
+  const markHotSection = (clientX, clientY) => {
+    if (!hoverSlabs.size) return;
+    for (const el2 of hoverSlabs) {
+      const r = el2.getBoundingClientRect();
+      el2.classList.toggle("axdb-slab--hot", clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom);
+    }
+  };
+  const onHoverMove = (e) => {
+    if (disposed || gesture) return;
+    markHotSection(e.clientX, e.clientY);
+  };
+  const onHoverLeave = () => {
+    for (const el2 of hoverSlabs) el2.classList.remove("axdb-slab--hot");
+  };
   const syncDividers = (tree) => {
     const layer = htmlLayer();
     for (const el2 of dividerEls) el2.remove();
@@ -198484,6 +198576,7 @@ function bindDashboardSplit(api, group, options = {}) {
     if (id === selectedId) return;
     selectedId = id;
     syncA11y();
+    syncSlabs();
     options.onSelect?.(id);
   };
   let selfPeerRef = null;
@@ -198508,7 +198601,7 @@ function bindDashboardSplit(api, group, options = {}) {
     if (disposed) return;
     ensureStaticGuard();
     const order = splitLeaves(paintedTree()).filter((id) => !!diagram.getNode(id));
-    if (selectedId && !order.includes(selectedId)) selectedId = void 0;
+    if (selectedId && !order.includes(selectedId) && !(group.members ?? /* @__PURE__ */ new Set()).has(selectedId)) selectedId = void 0;
     for (const id of group.members ?? []) hostOf(id)?.querySelector(":scope > .axdb-rs")?.remove();
     for (const id of order) {
       const host = hostOf(id);
@@ -198687,6 +198780,9 @@ function bindDashboardSplit(api, group, options = {}) {
       if (disposed) return false;
       if (gesture || forwardSlab) return true;
       if (!ownsPress(api.container, diagram, ev, hit)) return false;
+      const chrome = ev.source?.target?.closest?.(".axdb-slab > .axdb-slab-h");
+      const chromeId = chrome?.parentElement?.getAttribute("data-slab-id");
+      if (chromeId && (group.members ?? /* @__PURE__ */ new Set()).has(chromeId)) return true;
       if (hit.node) return (group.members ?? /* @__PURE__ */ new Set()).has(hit.node.id);
       return worldInsideBoard(ev.world.x, ev.world.y);
     },
@@ -198722,6 +198818,15 @@ function bindDashboardSplit(api, group, options = {}) {
       const gripId = gripHostOf(target)?.getAttribute("data-node-id") ?? null;
       const onGrip = !!gripId && (group.members ?? /* @__PURE__ */ new Set()).has(gripId);
       const sectionHandle = target?.closest?.(".axdb-slab > .axdb-rs");
+      const captionBand = target?.closest?.(".axdb-slab > .axdb-slab-h");
+      const captionId = captionBand?.parentElement?.getAttribute("data-slab-id") ?? null;
+      if (captionId && (group.members ?? /* @__PURE__ */ new Set()).has(captionId)) {
+        selectWidget(captionId);
+        api.render();
+        const src = ev.source;
+        if (!isStatic && typeof src?.clientX === "number" && typeof src?.clientY === "number") beginMemberDrag(captionId, src);
+        return;
+      }
       if (!hit.node && !onGrip || sectionHandle) {
         const parent = parentPeerOf(api.container, group.id);
         if (parent?.selectMember && (sectionHandle || worldInsideBoard(ev.world.x, ev.world.y))) {
@@ -198790,6 +198895,8 @@ function bindDashboardSplit(api, group, options = {}) {
     }
   };
   const unregisterTool = registerTool(tool);
+  api.container.addEventListener("pointermove", onHoverMove);
+  api.container.addEventListener("pointerleave", onHoverLeave);
   let tearing = false;
   const EDGE_GRACE = 60;
   let pendingBatch = void 0;
@@ -198805,6 +198912,9 @@ function bindDashboardSplit(api, group, options = {}) {
     const tree0 = readTree();
     tearing = true;
     const doc = api.container.ownerDocument ?? document;
+    const bodyUserSelect = doc.body.style.userSelect;
+    doc.body.style.userSelect = "none";
+    doc.getSelection?.()?.removeAllRanges?.();
     const chip2 = doc.createElement("div");
     chip2.className = "axdb-drag-chip axdb-tab-chip";
     chip2.textContent = plan.label;
@@ -198897,6 +199007,7 @@ function bindDashboardSplit(api, group, options = {}) {
       hideJoin();
       showInsertion(null);
       plan.markDrop(null, null);
+      doc.body.style.userSelect = bodyUserSelect;
       if (disposed) {
         tearing = false;
         return;
@@ -198948,6 +199059,88 @@ function bindDashboardSplit(api, group, options = {}) {
     window.addEventListener("keydown", onKey2, true);
     apply(zoneAt(ev.clientX, ev.clientY, toWorld(ev.clientX, ev.clientY)));
     api.render();
+    return true;
+  };
+  const beginMemberDrag = (id, ev) => {
+    if (disposed || isStatic || gesture || tearing) return false;
+    const tree0 = readTree();
+    if (!tree0 || !splitLeaves(tree0).includes(id)) return false;
+    const grp = diagram.getGroup(id);
+    if (!grp) return false;
+    tearing = true;
+    const doc = api.container.ownerDocument ?? document;
+    ev.preventDefault?.();
+    const bodyUserSelect = doc.body.style.userSelect;
+    doc.body.style.userSelect = "none";
+    doc.getSelection?.()?.removeAllRanges?.();
+    const meta = grp.getMetadata("containerWidget") ?? {};
+    const label = typeof meta.title === "string" && meta.title ? meta.title : grp.name || id;
+    const chip2 = doc.createElement("div");
+    chip2.className = "axdb-drag-chip axdb-tab-chip";
+    chip2.textContent = label;
+    const moveChip = (cx, cy) => {
+      chip2.style.left = `${cx + 6}px`;
+      chip2.style.top = `${cy + 6}px`;
+    };
+    const down = { x: ev.clientX, y: ev.clientY };
+    let started = false;
+    let target = null;
+    const detach = () => {
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onCancel, true);
+      window.removeEventListener("keydown", onKey2, true);
+    };
+    const finish = (commit) => {
+      detach();
+      chip2.remove();
+      showInsertion(null);
+      tearing = false;
+      doc.body.style.userSelect = bodyUserSelect;
+      if (disposed || !started) return;
+      const t = commit ? target : null;
+      if (!t) {
+        api.renderNow();
+        fire({ type: "cancel", kind: "move", nodeId: id, changed: false });
+        return;
+      }
+      const side = rtl && (t.side === "left" || t.side === "right") ? t.side === "left" ? "right" : "left" : t.side;
+      const after = normalizeSplit(insertSplitLeaf(tree0, id, targetRef(t), side));
+      const changed = JSON.stringify(after) !== JSON.stringify(normalizeSplit(tree0));
+      const paint2 = () => {
+        if (disposed) return;
+        project(readTree());
+        api.renderNow();
+      };
+      const p = changed ? commitTree(tree0, after) : void 0;
+      paint2();
+      if (p && typeof p.then === "function") void p.then(paint2, () => void 0);
+      if (changed) live.announce(`${label} moved ${side === "left" || side === "top" ? "before" : "after"} ${targetName(t)}`, "polite", true);
+      fire({ type: changed ? "commit" : "cancel", kind: "move", nodeId: id, changed });
+    };
+    const onMove = (e) => {
+      if (disposed) return finish(false);
+      if (!started) {
+        if (Math.abs(e.clientX - down.x) + Math.abs(e.clientY - down.y) < DRAG_THRESHOLD2) return;
+        started = true;
+        doc.body.appendChild(chip2);
+      }
+      moveChip(e.clientX, e.clientY);
+      const w = toWorld(e.clientX, e.clientY);
+      target = worldInsideBoard(w.x, w.y) ? dropTargetAt(tree0, w.x, w.y, id) : null;
+      showInsertion(target ? insertionRect(target.rect, target.side) : null);
+      chip2.classList.toggle("axdb-out", !target);
+      api.render();
+    };
+    const onUp = () => finish(true);
+    const onCancel = () => finish(false);
+    const onKey2 = (e) => {
+      if (e.key === "Escape") finish(false);
+    };
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onCancel, true);
+    window.addEventListener("keydown", onKey2, true);
     return true;
   };
   const beginPaletteDrag = (node, spec, event) => {
@@ -199302,6 +199495,11 @@ function bindDashboardSplit(api, group, options = {}) {
       for (const off of groupSubs) off();
       for (const el2 of dividerEls) el2.remove();
       dividerEls.length = 0;
+      api.container.removeEventListener("pointermove", onHoverMove);
+      api.container.removeEventListener("pointerleave", onHoverLeave);
+      for (const el2 of slabEls.values()) el2.remove();
+      slabEls.clear();
+      hoverSlabs.clear();
       insertion?.remove();
       insertion = null;
       api.container.style.cursor = "";
@@ -199324,8 +199522,9 @@ function bindDashboardSplit(api, group, options = {}) {
     resizeMemberBy: () => ({ changed: false }),
     // A torn-out page becomes a PANE (0.4.37) — see beginTearOut.
     tearOutMember: (pageId, fromGroupId, ev, plan) => beginTearOut(pageId, fromGroupId, ev, plan),
-    // …and it has no cells to move a section across: a strip press stays a selection.
-    dragMember: () => false,
+    // A tab group (or a section) moved by its strip's empty space becomes a
+    // pane elsewhere (0.4.40) — see beginMemberDrag.
+    dragMember: (id, ev) => beginMemberDrag(id, ev),
     containsWorld: (x, y) => worldInsideBoard(x, y),
     containsWorldExtended: (x, y) => worldInsideBoard(x, y),
     frameArea: () => {
@@ -199656,10 +199855,13 @@ function paintTabStrip(strip, pages, activeId, o, rtl, onPick, onSelectContainer
   strip.setAttribute("dir", rtl ? "rtl" : "ltr");
   strip.setAttribute("role", "tablist");
   strip.textContent = "";
-  strip.onpointerdown = (e) => {
+  const withSelect = strip;
+  if (withSelect.__axdbSelect) strip.removeEventListener("pointerdown", withSelect.__axdbSelect);
+  withSelect.__axdbSelect = (e) => {
     if (e.target?.closest(".axdb-tab")) return;
     onSelectContainer?.(e);
   };
+  strip.addEventListener("pointerdown", withSelect.__axdbSelect);
   for (const p of pages) {
     const b = doc.createElement("button");
     b.type = "button";
