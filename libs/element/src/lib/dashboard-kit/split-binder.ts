@@ -1258,6 +1258,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     // A split board has no cells to drop a torn-out page into: it refuses,
     // and the press stays a plain tab click.
     tearOutMember: (_pageId, _fromGroupId, _ev, _plan) => false,
+    // …and it has no cells to move a section across: a strip press stays a selection.
+    dragMember: () => false,
     containsWorld: (x, y) => worldInsideBoard(x, y),
     containsWorldExtended: (x, y) => worldInsideBoard(x, y),
     frameArea: () => {

@@ -467,6 +467,116 @@ describe('tab containers', () => {
     expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
   });
 
+  // -- the four gaps: an empty page closes · a widget dropped on a strip becomes a tab · reorder · a section moves --
+  it('GAP 1: when a page\'s last widget leaves, the page closes — and an emptied group with it', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          { id: 'free', kind: 'line', span: 6, rows: 4, x: 0, y: 0 },
+          { id: 'solo', title: 'Solo', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('p-only', 'Only', 'k-only'), PAGE('p-two', 'Two', 'k-two')] },
+        ],
+      })
+    );
+    handle.widget('k-only')!.remove();
+    await settle();
+    expect(model.getNode('k-only')).toBeUndefined();
+    expect(model.getGroup('p-only')).toBeUndefined();
+    expect(stripOf(api, 'solo')).toEqual(['Two']);
+    expect(handle.getActiveTab('solo')).toBe('p-two');
+    handle.widget('k-two')!.remove();
+    await settle();
+    expect(model.getGroup('solo')).toBeUndefined();
+    expect(api.container.querySelector('.axdb-tabs[data-tabs-id="solo"]')).toBeNull();
+    expect(handle.toJSON().views[0].widgets.map((w) => w.id)).toEqual(['free']);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'solo')).toEqual(['Two']);
+    expect(model.getNode('k-two')).toBeDefined();
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'solo')).toEqual(['Only', 'Two']);
+    expect(model.getGroup('p-only')!.members!.has('k-only')).toBe(true);
+  });
+
+  it('GAP 2: a widget moved onto a strip becomes a new tab there, active, and undo puts it back', async () => {
+    const { api, model, handle } = up(BOARD());
+    expect(await handle.moveToTab('free', 'panel', 1)).toBe(true);
+    await settle();
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'free', 'Alerts', 'Notes']);
+    expect(handle.getActiveTab('panel')).toBe('free__page');
+    expect(model.getGroup('free__page')!.members!.has('free')).toBe(true);
+    expect(model.getGroup('main')!.members!.has('free')).toBe(false);
+    expect(handle.getLayout('free__page')).toBe('grid');
+    // the widget lays out inside its new page, on the canvas
+    const w = model.getNode('free')!;
+    expect(w.position.x).toBeGreaterThan(PARKED);
+    expect(w.size!.width).toBeGreaterThan(200);
+    const snap = handle.toJSON().views[0].widgets;
+    expect(snap.map((x) => x.id)).toEqual(['panel']);
+    expect(snap[0].widgets?.map((p) => p.id)).toEqual(['p-one', 'free__page', 'p-two', 'p-three']);
+    expect(snap[0].widgets?.[1].widgets?.map((x) => x.id)).toEqual(['free']);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(model.getGroup('free__page')).toBeUndefined();
+    expect(model.getGroup('main')!.members!.has('free')).toBe(true);
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+  });
+
+  it('GAP 3: a tab reordered along its own strip keeps the order through toJSON, a saved document and undo', async () => {
+    const first = up(BOARD());
+    expect(first.handle.moveTab('panel', 'p-three', 0)).toBe(true);
+    await settle();
+    expect(stripOf(first.api, 'panel')).toEqual(['Notes', 'Filters', 'Alerts']);
+    expect(first.handle.toJSON().views[0].widgets[1].widgets?.map((p) => p.id)).toEqual(['p-three', 'p-one', 'p-two']);
+    const second = up(dashboard({ ...first.handle.toJSON() }));
+    expect(stripOf(second.api, 'panel')).toEqual(['Notes', 'Filters', 'Alerts']);
+    const json = JSON.stringify(new DiagramSerializer().serialize(first.model));
+    const loaded = fromDocument(json);
+    const api = makeApi(loaded.model as DiagramModel);
+    loaded.finalize(api);
+    mounted.push(loaded.handle as DashboardHandle);
+    expect(stripOf(api, 'panel')).toEqual(['Notes', 'Filters', 'Alerts']);
+    await cm(first.api).undo();
+    await settle();
+    expect(stripOf(first.api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(first.handle.moveTab('panel', 'nope', 0)).toBe(false);
+  });
+
+  it('GAP 4: a section moves as one tile, children with it, undoable', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          { id: 'sec', title: 'Section', span: 6, rows: 2, x: 0, y: 0, columns: 6, caption: true, widgets: [{ id: 's1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0 }] },
+          { id: 'tabs', title: 'Tabs', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('t1', 'One', 'k1')] },
+          { id: 'lone', kind: 'kpi', span: 6, rows: 2, x: 0, y: 2 },
+        ],
+      })
+    );
+    const before = { sec: { ...model.getGroup('sec')!.position }, s1: { ...model.getNode('s1')!.position } };
+    expect(await handle.widget('sec')!.moveTo(0, 2)).toBe(true);
+    expect(handle.widget('sec')!.cell).toEqual({ x: 0, y: 2, w: 6, h: 2 });
+    // the child rode along, and the tile that was there moved out of the way
+    expect(model.getNode('s1')!.position.y).toBeGreaterThan(before.s1.y);
+    expect(model.getGroup('sec')!.position.y).toBeGreaterThan(before.sec.y);
+    expect(handle.widget('lone')!.cell!.y).not.toBe(2);
+    await cm(api).undo();
+    await settle();
+    expect(handle.widget('sec')!.cell).toEqual({ x: 0, y: 0, w: 6, h: 2 });
+    expect(model.getNode('s1')!.position.y).toBe(before.s1.y);
+    // a TAB GROUP is a section too
+    expect(await handle.widget('tabs')!.moveTo(6, 4)).toBe(true);
+    expect(handle.widget('tabs')!.cell).toEqual({ x: 6, y: 4, w: 6, h: 4 });
+  });
+
   it('a board with no tab container carries no strip at all', () => {
     const { api } = up(
       dashboard({ columns: 12, width: 1200, height: 600, widgets: [{ id: 'a', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0 }] })

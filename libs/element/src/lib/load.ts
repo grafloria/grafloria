@@ -260,11 +260,19 @@ export function fromDocument(
         // the group's slab `gridItem`, its children in its own membership.
         const meta = (childGroup.getMetadata('containerWidget') ?? {}) as Partial<DashboardWidgetSpec>;
         const cell = cellFromGridItem(childGroup.getMetadata('gridItem') as never);
+        const inner = rebuildBoard(childGroup, viewId);
+        // A tab container's pages keep the order they were REORDERED into
+        // (`order` on the container), not the order they joined the group.
+        const order = (meta as { order?: string[] }).order;
+        if (Array.isArray(order)) {
+          const rank = (id: string): number => (order.indexOf(id) < 0 ? Number.MAX_SAFE_INTEGER : order.indexOf(id));
+          inner.sort((p, q) => rank(p.id) - rank(q.id));
+        }
         const ws: DashboardWidgetSpec = {
           id: childGroup.id,
           ...meta,
           ...(cell ? { x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : {}),
-          widgets: rebuildBoard(childGroup, viewId),
+          widgets: inner,
         };
         specById.set(ws.id, ws);
         viewOfWidget.set(ws.id, g.id);

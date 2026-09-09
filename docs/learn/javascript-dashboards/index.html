@@ -409,8 +409,19 @@ render(SPEC2, host);</pre>
       that are actually there. Escape, or a release back over the container, cancels; a board that cannot place the
       page (a split pane) leaves the press a plain click. Drop a tab onto <em>another</em> tab container instead (0.4.31) — on its strip, between two tabs, or on
       its body — and it joins that group as a tab there, active, the way an editor tab moves between VS Code groups:
-      while you hold, the target's frame lights up and its strip marks the slot. Reordering tabs along their own
-      strip is the next round.</p>
+      while you hold, the target's frame lights up and its strip marks the slot.</p>
+      <p><b>The unit is the page</b> (element 0.4.32). A tab and its content move together, by the tab; a widget
+      inside a page is a smaller thing and moves alone, into another page or out to the board. What reconciles
+      the two: when a page's last widget leaves, the page closes and its tab with it, and a container whose last
+      page closes goes too — so a one-widget page behaves exactly like "the widget is the tab", and a page holding
+      several behaves like the board it is. The strip means "as a tab": a widget dropped on a strip wraps into a
+      new page there, named by its title and active (<code>handle.moveToTab(widgetId, containerId, index?)</code>
+      does it from code); a tab dropped on its own strip reorders (<code>handle.moveTab(containerId, pageId,
+      index)</code>), and the order is saved with the container. A page dropped on a container's body joins what
+      is showing. And a section moves as one tile: press its caption band, or a tab group's strip on its empty
+      space, and travel — everything inside rides along, tiles in the way are pushed, and other sections still
+      refuse to be overlapped. Type never changes as a side effect of a drop; a torn-out page keeps its tab as a
+      group of its own.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
