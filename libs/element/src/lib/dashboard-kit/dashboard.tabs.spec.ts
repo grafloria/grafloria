@@ -1380,6 +1380,54 @@ describe('the reflow glide and a page switch', () => {
  * that is a PANE, joins another container over its body's centre, and
  * reorders or joins over a strip like on a grid board.
  */
+/**
+ * setSizing IS THE VIEW'S (0.4.38). The fluid demo's Fit / Grow buttons call
+ * `handle.setSizing`, and it switched EVERY binder — pages and sections too.
+ * A page's height is its container's business (it is bound fit, design
+ * height 0); switched to grow it painted its rows at the base height, so an
+ * 8-row page torn out into a 3-row group or a split pane spilled 700 px past
+ * it, across the widgets below. Nested boards keep their own sizing.
+ */
+describe('setSizing leaves nested boards alone', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  it('a page stays bounded by its container after the view switches to grow', async () => {
+    const { model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          { id: 'free', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 },
+          {
+            id: 'panel',
+            title: 'Side panel',
+            span: 6,
+            rows: 4,
+            x: 6,
+            y: 0,
+            layout: 'tabs',
+            widgets: [{ id: 'p-one', title: 'Filters', columns: 6, widgets: [{ id: 'tall', kind: 'kpi', span: 6, rows: 12, x: 0, y: 0 }] }],
+          },
+        ],
+      })
+    );
+    const inside = () => {
+      const pg = model.getGroup('p-one')!;
+      const t = model.getNode('tall')!;
+      return t.position.y + t.size.height <= pg.position.y + pg.size!.height + 1;
+    };
+    expect(inside()).toBe(true);
+    handle.setSizing('grow');
+    await settle();
+    expect(handle.getSizing()).toBe('grow');
+    expect(inside()).toBe(true);
+    handle.setSizing('fit');
+    await settle();
+    expect(inside()).toBe(true);
+  });
+});
+
 describe('tab drags on a SPLIT board', () => {
   const settle = () => new Promise<void>((r) => setTimeout(r, 0));
   const stripOf = (api: { container: HTMLElement }, id: string) =>
@@ -1434,8 +1482,8 @@ describe('tab drags on a SPLIT board', () => {
   it('a tab dragged onto a pane\'s edge becomes a one-tab group that is a PANE there — inserted where the split board inserts a dropped widget; undo puts it back', async () => {
     const { api, model, handle } = up(ONE());
     expect(leaves(model)).toEqual(['other', 'panel']);
-    // released near the LEFT edge of the "other" pane
-    await dragTabFrom(api, 'panel', 'p-two', { x: 900, y: 10 }, { x: 30, y: 300 });
+    // released 48 px inside the LEFT edge of the "other" pane — past the board's 18 px outer band
+    await dragTabFrom(api, 'panel', 'p-two', { x: 900, y: 10 }, { x: 60, y: 300 });
     expect(stripOf(api, 'panel')).toEqual(['Filters', 'Notes']);
     const born = model.getGroup('p-two__group');
     expect(born).toBeDefined();
@@ -1464,6 +1512,51 @@ describe('tab drags on a SPLIT board', () => {
     expect(model.getGroup('p-two__group')).toBeUndefined();
     expect(leaves(model)).toEqual(['other', 'panel']);
     expect(onCanvas(model, ['k-one', 'k-two', 'k-three'])).toEqual(['k-one']);
+  });
+
+  it('the pane is PAINTED from the inserted tree, not from the reconciled one — the largest leaf elsewhere is untouched, and the page fits the pane', async () => {
+    // A batch adds the group before the tree swap; the split board's
+    // member:added reconciles by halving the LARGEST leaf. The rects on the
+    // canvas must follow the tree that was set, not that interim one.
+    const { api, model } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        layout: 'split',
+        sizing: 'grow',
+        widgets: [
+          { id: 'other', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0 },
+          { id: 'big', kind: 'line', span: 6, rows: 4, x: 3, y: 0 },
+          {
+            id: 'panel',
+            title: 'Side panel',
+            span: 3,
+            rows: 4,
+            x: 9,
+            y: 0,
+            layout: 'tabs',
+            widgets: [PAGE('p-one', 'Filters', 'k-one'), { id: 'p-two', title: 'Alerts', columns: 3, widgets: [{ id: 'k-two', kind: 'kpi', span: 3, rows: 20, x: 0, y: 0 }] }],
+          },
+        ],
+      })
+    );
+    const bigBefore = { ...model.getNode('big')!.size };
+    // 48 px inside "other"'s left edge: past the board's 18 px outer band, nearest to the leaf's left side
+    await dragTabFrom(api, 'panel', 'p-two', { x: 1100, y: 10 }, { x: 60, y: 300 });
+    expect(leaves(model)).toEqual(['p-two__group', 'other', 'big', 'panel']);
+    const born = model.getGroup('p-two__group')!;
+    const other = model.getNode('other')!;
+    const big = model.getNode('big')!;
+    // the pane took HALF of "other"'s slot — "big" kept its width
+    expect(born.position.x).toBeLessThan(other.position.x);
+    expect(Math.abs(born.size!.width - other.size.width)).toBeLessThan(2);
+    expect(Math.abs(big.size.width - bigBefore.width)).toBeLessThan(8); // one more gap in the row
+    // a 20-row page inside a 600 px board: the pane is bounded, the page fits it
+    expect(born.size!.height).toBeLessThanOrEqual(600);
+    const k = model.getNode('k-two')!;
+    expect(k.position.y + k.size.height).toBeLessThanOrEqual(born.position.y + born.size!.height + 1);
   });
 
   it('a tab dropped over the CENTRE of another container\'s body JOINS it on a split board — no new pane', async () => {

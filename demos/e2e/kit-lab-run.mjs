@@ -2147,6 +2147,30 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `rest A ${a0.join('/')} B ${b0.join('/')} · Margin carried before Sales: chip ${held1?.chip} → A ${a1.join('/')} (tree unchanged ${l1.join('/')}) · Notes held over A's body centre: chip ${held2?.chip} join overlay ${held2?.join} insertion line ${held2?.ins} → A ${a2.join('/')} B ${b2.join('/')} leaves ${l2.join('/')} ${JSON.stringify(sane)} · two undos: A ${a3.join('/')} B ${b3.join('/')}`);
 }
 
+{
+  begin('L84-sizing-is-the-VIEW-s-a-tall-page-torn-out-after-setSizing-grow-stays-inside-its-pane');
+  await scrollTo('sptabs');
+  await page.evaluate(() => window.__lab.sptabs.handle.setSizing('grow')); await page.waitForTimeout(300);
+  const before = await page.evaluate(() => { const m = window.__lab.sptabs.api.getModel(); const pg = m.getGroup('st-a2'); const k = m.getNode('st-ka2'); return { pageH: Math.round(pg.size.height), kH: Math.round(k.size.height), sizing: window.__lab.sptabs.handle.getSizing() }; });
+  const tab = await page.evaluate(() => document.querySelector('#cv-sptabs .axdb-tab[data-tab-id="st-a2"]').getBoundingClientRect().toJSON());
+  const w = await rect('sptabs', 'st-w');
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, w.x + 40, w.y + w.h / 2, { steps: 16 });
+  const geo = await page.evaluate(() => { const m = window.__lab.sptabs.api.getModel(); const g = m.getGroup('st-a2__group'); const k = m.getNode('st-ka2'); return g && k ? { gTop: Math.round(g.position.y), gBottom: Math.round(g.position.y + g.size.height), kTop: Math.round(k.position.y), kBottom: Math.round(k.position.y + k.size.height), gH: Math.round(g.size.height), kH: Math.round(k.size.height) } : null; });
+  const host = await rect('sptabs', 'st-ka2');
+  const cv = await page.evaluate(() => document.getElementById('cv-sptabs').getBoundingClientRect().toJSON());
+  const sane = await sanity('sptabs');
+  await shot('sptabs', 'tall-page-inside-its-pane-after-grow');
+  await undoAll('sptabs', 1);
+  await page.evaluate(() => window.__lab.sptabs.handle.setSizing('fit')); await page.waitForTimeout(200);
+  const after = await page.evaluate(() => ({ sizing: window.__lab.sptabs.handle.getSizing(), born: !!window.__lab.sptabs.api.getModel().getGroup('st-a2__group') }));
+  // a SPLIT view reports fit whatever it was asked (the board is always covered) — the point is the PAGE's binder was not switched
+  verdict(before.kH <= before.pageH + 1
+    && !!geo && geo.kBottom <= geo.gBottom + 1 && geo.kTop >= geo.gTop - 1 && geo.gH < 400
+    && !!host && host.bottom <= cv.bottom + 1 && sane.overlaps === 0 && sane.overflow === 0
+    && after.sizing === 'fit' && !after.born,
+    `setSizing('grow') on the (split, always-fit: ${before.sizing}) view: the 12-row page still ${before.kH} px inside its ${before.pageH} px page · torn out at the widget's edge: page ${geo?.kTop}→${geo?.kBottom} inside its pane ${geo?.gTop}→${geo?.gBottom} (${geo?.gH} px tall, not the base 12 rows) · host bottom ${Math.round(host?.bottom ?? 0)} vs canvas ${Math.round(cv.bottom)} ${JSON.stringify(sane)} · undo + fit: ${after.sizing}, born ${after.born}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();
