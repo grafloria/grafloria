@@ -195052,7 +195052,22 @@ function bindDashboardGrid(api, group, options = {}) {
     e.float = float;
     return e;
   };
-  const bound = () => maxRows ?? capacity;
+  const bound = () => squeezeRoom ?? maxRows ?? capacity;
+  const setLiveBound = (n3) => {
+    maxRows = n3;
+    engine.maxRows = n3;
+  };
+  let squeezeRoom;
+  const setSqueeze = (n3) => {
+    squeezeRoom = n3;
+    engine.maxRows = n3 ?? maxRows;
+  };
+  const elasticRows = () => {
+    if (designRows === void 0) return void 0;
+    const fh = frame().height;
+    if (fh <= 0) return void 0;
+    return Math.max(1, Math.floor((fh - 2 * padding + gap) / (minRowHeight + gap)));
+  };
   const fitCapacity = () => {
     if (maxRows !== void 0 || sizing !== "fit" || overflow === "scroll" || designH <= 0) return void 0;
     const floor = squeeze ? minRowHeight : Math.max(minRowHeight, rowHeightFor(geom(), rows()));
@@ -196449,8 +196464,18 @@ function bindDashboardGrid(api, group, options = {}) {
     const b = bound();
     if (b !== void 0) span.h = Math.max(1, Math.min(b, span.h));
     engine.beginGesture();
-    const entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
+    const squeezeBefore = squeezeRoom;
+    let entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
+    if (!entered && !parentPeer()) {
+      const room = elasticRows();
+      if (room !== void 0 && room > (bound() ?? 0)) {
+        setSqueeze(room);
+        span.h = Math.max(1, Math.min(room, span.h));
+        entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
+      }
+    }
     if (!entered) {
+      setSqueeze(squeezeBefore);
       engine.endGesture();
       return null;
     }
@@ -196531,6 +196556,7 @@ function bindDashboardGrid(api, group, options = {}) {
       abort: () => {
         if (engine.getItem(node.id)) engine.remove(node.id);
         engine.cancelGesture();
+        setSqueeze(squeezeBefore);
         adoptedGhostId = null;
         disarmGlideSoon();
         project();
@@ -196563,6 +196589,10 @@ function bindDashboardGrid(api, group, options = {}) {
           });
         }
         engine.endGesture();
+        if (squeezeRoom !== void 0) {
+          squeezeRoom = void 0;
+          setLiveBound(liveBound(engine.getItems()));
+        }
         adoptedGhostId = null;
         disarmGlideSoon();
         syncPlaceholder();
@@ -200307,7 +200337,7 @@ function createDashboardHandle(ctx) {
       return makeWidgetHandle(id);
     },
     focusWidget(id) {
-      const b = binders.get(viewOfWidget.get(id) ?? "");
+      const b = binders.get(boardOfWidget(id) ?? "");
       if (!b) return false;
       if (b.focusWidget(id)) return true;
       if (!specById.has(id)) return false;
@@ -200322,7 +200352,7 @@ function createDashboardHandle(ctx) {
         for (const b2 of binders.values()) b2.selectWidget(void 0);
         return true;
       }
-      const b = binders.get(viewOfWidget.get(id) ?? "");
+      const b = binders.get(boardOfWidget(id) ?? "");
       return !!b && b.selectWidget(id);
     },
     getSelectedWidget() {
@@ -200541,15 +200571,25 @@ function createDashboardHandle(ctx) {
       ctx.hosts.clear();
     }
   };
+  const boardOfWidget = (id) => {
+    for (const [cid, g] of ctx.boardGroups) if (g.members?.has(id)) return cid;
+    const model = ctx.apiRef?.getModel();
+    if (model) {
+      for (const vid of binders.keys()) if (model.getGroup(vid)?.members?.has(id)) return vid;
+    }
+    return viewOfWidget.get(id);
+  };
   function makeWidgetHandle(id) {
     const spec = specById.get(id);
-    const viewId = viewOfWidget.get(id);
-    if (!spec || !viewId) return void 0;
-    const binder = () => binders.get(viewId);
+    if (!spec || !boardOfWidget(id)) return void 0;
+    const board = () => boardOfWidget(id) ?? "";
+    const binder = () => binders.get(board());
     const node = () => ctx.apiRef?.getModel().getNode(id);
     return {
       id,
-      viewId,
+      get viewId() {
+        return boardOfWidget(id) ?? "";
+      },
       get node() {
         return node();
       },
@@ -200600,8 +200640,8 @@ function createDashboardHandle(ctx) {
       },
       remove(displaced) {
         if (spec.widgets) {
-          const parentGroup = ctx.boardGroups.get(viewId);
-          const parentBinder = binders.get(viewId);
+          const parentGroup = ctx.boardGroups.get(board());
+          const parentBinder = binders.get(board());
           const model = ctx.apiRef?.getModel();
           if (!parentGroup || !parentBinder || !model) return;
           const cmds2 = [
@@ -200623,7 +200663,7 @@ function createDashboardHandle(ctx) {
             }
           };
           removeSubtree(id);
-          const registry6 = registryOf(id, viewId, spec);
+          const registry6 = registryOf(id, board(), spec);
           cmds2.push(...nodeRemovals, ...unregisters, new RegisterWidgetCommand(registry6, "unregister"));
           binders.get(id)?.dispose();
           binders.delete(id);
@@ -200634,12 +200674,12 @@ function createDashboardHandle(ctx) {
           return;
         }
         const n3 = node();
-        const group = ctx.boardGroups.get(viewId);
+        const group = ctx.boardGroups.get(board());
         const b = binder();
         if (!n3 || !group || !b) return;
         const survivors = displaced ?? b.planRemoval(id);
-        const registry5 = registryOf(id, viewId, spec);
-        const closing = ctx.closePageIfEmptied?.(viewId, id) ?? [];
+        const registry5 = registryOf(id, board(), spec);
+        const closing = ctx.closePageIfEmptied?.(board(), id) ?? [];
         const cmds = [
           ...survivors,
           new RemoveFromGroupCommand(group.id, id),

@@ -1875,7 +1875,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       return makeWidgetHandle(id);
     },
     focusWidget(id) {
-      const b = binders.get(viewOfWidget.get(id) ?? '');
+      const b = binders.get(boardOfWidget(id) ?? '');
       if (!b) return false;
       if (b.focusWidget(id)) return true;
       // A widget added in this same tick is not a member yet (adds commit
@@ -1890,7 +1890,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         for (const b of binders.values()) b.selectWidget(undefined);
         return true;
       }
-      const b = binders.get(viewOfWidget.get(id) ?? '');
+      const b = binders.get(boardOfWidget(id) ?? '');
       return !!b && b.selectWidget(id);
     },
     getSelectedWidget() {
@@ -2153,15 +2153,31 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     },
   };
 
+  /**
+   * The board that HOLDS a widget NOW — live membership, the way toJSON reads
+   * it. A cross-board drag moves membership through the binder's own
+   * commands, which the mount-time map never sees; a handle that kept asking
+   * the widget's FIRST board answered `cell: null` for a tile that had just
+   * been dropped into a page. The map is the fallback for a widget that is
+   * not a member yet (an add still committing).
+   */
+  const boardOfWidget = (id: string): string | undefined => {
+    for (const [cid, g] of ctx.boardGroups) if (g.members?.has(id)) return cid;
+    const model = ctx.apiRef?.getModel();
+    if (model) for (const vid of binders.keys()) if (model.getGroup(vid)?.members?.has(id)) return vid;
+    return viewOfWidget.get(id);
+  };
   function makeWidgetHandle(id: string): WidgetHandle | undefined {
     const spec = specById.get(id);
-    const viewId = viewOfWidget.get(id);
-    if (!spec || !viewId) return undefined;
-    const binder = () => binders.get(viewId);
+    if (!spec || !boardOfWidget(id)) return undefined;
+    const board = (): string => boardOfWidget(id) ?? '';
+    const binder = () => binders.get(board());
     const node = () => ctx.apiRef?.getModel().getNode(id);
     return {
       id,
-      viewId,
+      get viewId() {
+        return boardOfWidget(id) ?? '';
+      },
       get node() {
         return node();
       },
@@ -2221,8 +2237,8 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
           // the parent board and the parent's re-pack, as ONE undoable batch.
           // Undo restores the groups as fresh GroupModels, so the history
           // handler re-binds the container's grid (ctx.rebindContainer).
-          const parentGroup = ctx.boardGroups.get(viewId);
-          const parentBinder = binders.get(viewId);
+          const parentGroup = ctx.boardGroups.get(board());
+          const parentBinder = binders.get(board());
           const model = ctx.apiRef?.getModel();
           if (!parentGroup || !parentBinder || !model) return;
           // ORDER MATTERS FOR UNDO. A batch may only undo when EVERY member
@@ -2251,7 +2267,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
             }
           };
           removeSubtree(id);
-          const registry = registryOf(id, viewId, spec);
+          const registry = registryOf(id, board(), spec);
           cmds.push(...nodeRemovals, ...unregisters, new RegisterWidgetCommand(registry, 'unregister'));
           binders.get(id)?.dispose();
           binders.delete(id);
@@ -2262,7 +2278,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
           return;
         }
         const n = node();
-        const group = ctx.boardGroups.get(viewId);
+        const group = ctx.boardGroups.get(board());
         const b = binder();
         if (!n || !group || !b) return;
         // ONE undoable step, survivors' re-pack folded in — the same atomic
@@ -2274,11 +2290,11 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         // The un-registration is the LAST command so that undo — which runs
         // the batch in reverse — re-registers the spec BEFORE the node and its
         // membership come back and the painter is asked to paint it (D2).
-        const registry = registryOf(id, viewId, spec);
+        const registry = registryOf(id, board(), spec);
         // …and the page it emptied, if it was one, closes with it — in which
         // case everything rides INSIDE one sequence, or the batch could never
         // undo (a membership command cannot undo once its group is gone).
-        const closing = ctx.closePageIfEmptied?.(viewId, id) ?? [];
+        const closing = ctx.closePageIfEmptied?.(board(), id) ?? [];
         const cmds = [
           ...survivors,
           new RemoveFromGroupCommand(group.id, id),

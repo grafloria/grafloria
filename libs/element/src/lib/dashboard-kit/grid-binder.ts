@@ -995,7 +995,36 @@ export function bindDashboardGrid(
   };
 
   /** The effective row bound a gesture must respect: the strip's, else the fit capacity. */
-  const bound = (): number | undefined => maxRows ?? capacity;
+  const bound = (): number | undefined => squeezeRoom ?? maxRows ?? capacity;
+  /** Move the LIVE bound (the engine's too), the way escalation does. */
+  const setLiveBound = (n: number | undefined): void => {
+    maxRows = n;
+    (engine as unknown as { maxRows?: number }).maxRows = n;
+  };
+  /**
+   * Rows a SQUEEZE may use while a tile arrives by hand — the engine's bound
+   * only. The binder's `maxRows` also sets the GEOMETRY (`rows()`), and
+   * raising it to the room made every tile shrink to a 29-row grid the
+   * moment the ghost entered; the rows must shrink only as far as the
+   * content actually reaches.
+   */
+  let squeezeRoom: number | undefined;
+  const setSqueeze = (n: number | undefined): void => {
+    squeezeRoom = n;
+    (engine as unknown as { maxRows?: number }).maxRows = n ?? maxRows;
+  };
+  /**
+   * The rows a NESTED board's live frame holds at the row floor. A page's
+   * height is its container's and a section's is its slab's, so a full one
+   * cannot ask for room the way the main fit board does (`fitCapacity` reads
+   * the design height, which a nested board hands to its parent as 0).
+   */
+  const elasticRows = (): number | undefined => {
+    if (designRows === undefined) return undefined;
+    const fh = frame().height;
+    if (fh <= 0) return undefined;
+    return Math.max(1, Math.floor((fh - 2 * padding + gap) / (minRowHeight + gap)));
+  };
 
   /**
    * The rows the design height can hold at the row floor — what 'bounded' fit
@@ -2986,8 +3015,29 @@ export function bindDashboardGrid(
     const b = bound();
     if (b !== undefined) span.h = Math.max(1, Math.min(b, span.h));
     engine.beginGesture(); // pre-entry snapshot — abort() restores it
-    const entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
+    // A FULL nested board SQUEEZES for a tile arriving by hand, the way a fit
+    // board squeezes for its own. Its bound is the design the escalation path
+    // grows through the parent, and a page has no parent tile to grow (its
+    // height is its container's): so the rows shrink toward the floor instead
+    // of refusing the drop with no sign of why — the fluid demo's Filters page
+    // took a KPI dragged onto it and showed nothing at all. abort() puts the
+    // bound back; a commit keeps what the board then holds.
+    const squeezeBefore = squeezeRoom;
+    let entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
+    // Only a board with NO parent tile to grow through squeezes — a page. A
+    // full SECTION keeps refusing (grid-options s05: refused, then joined once
+    // a strip was removed); growing its slab for a dropped tile is the
+    // escalation path's, not a squeeze's, and is not built yet.
+    if (!entered && !parentPeer()) {
+      const room = elasticRows();
+      if (room !== undefined && room > (bound() ?? 0)) {
+        setSqueeze(room);
+        span.h = Math.max(1, Math.min(room, span.h));
+        entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
+      }
+    }
     if (!entered) {
+      setSqueeze(squeezeBefore);
       engine.endGesture();
       return null; // a bounded, full board refuses the adoption
     }
@@ -3076,6 +3126,7 @@ export function bindDashboardGrid(
       abort: () => {
         if (engine.getItem(node.id)) engine.remove(node.id);
         engine.cancelGesture(); // pre-entry layout, memory cleared
+        setSqueeze(squeezeBefore);
         adoptedGhostId = null;
         disarmGlideSoon();
         project();
@@ -3108,6 +3159,11 @@ export function bindDashboardGrid(
           });
         }
         engine.endGesture();
+        if (squeezeRoom !== undefined) {
+          // What the board now HOLDS is its bound, not the squeeze's room.
+          squeezeRoom = undefined;
+          setLiveBound(liveBound(engine.getItems()));
+        }
         adoptedGhostId = null;
         disarmGlideSoon();
         syncPlaceholder();
