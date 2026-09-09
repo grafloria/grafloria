@@ -626,6 +626,8 @@ export interface TearOutPlan {
   stripIndex(targetId: string, clientX: number, clientY: number): number | null;
   /** The strip's height on `targetId`, px — the band above its body. */
   stripHeight(targetId: string): number;
+  /** The page itself and every board inside it — never a board the page can land on. */
+  ownBoards: string[];
   /** The commands that REORDER the page to `index` along its own strip. Empty when nothing changes. */
   reorder(index: number): Command[];
   /**
@@ -710,6 +712,10 @@ interface AdoptedLeg {
   place(cell: { x: number; y: number; w: number; h: number }): boolean;
   /** Every other tile's cell before the ghost entered — the layout a row insert translates. */
   baseline(): Map<string, CellRect>;
+  /** Where the tile sits right now, or null while it is off the board. */
+  cell(): CellRect | null;
+  /** That cell in world space, by the adopting board's own geometry. */
+  rect(): WorldRect | null;
   /** Undo the adoption: target board back to its pre-entry layout. */
   abort(): void;
   /**
@@ -1973,6 +1979,12 @@ export function bindDashboardGrid(
       },
       move: false,
     };
+    // A TOP or LEFT edge moves the slab's origin, and the engine refuses to
+    // move a locked tile: the move never landed, only the resize did, and a
+    // section pulled up by its caption grew DOWNWARD a row per pointer step
+    // — 18 rows for a 2-row pull (identification round, F16). Unlocked for
+    // its own gesture, as a move is; relocked on release.
+    if (edges.n || edges.w) it.locked = false;
     capturePointer(slabGesture.pointerId);
     api.container.style.cursor = cursorFor(edges);
   };
@@ -2011,6 +2023,29 @@ export function bindDashboardGrid(
     const it = engine.getItem(id);
     if (it) it.locked = true;
   };
+  /** The cell a slab move asked for and could not have — painted so the refusal is visible; null clears it. */
+  let refusal: HTMLElement | null = null;
+  const showRefusal = (cell: { x: number; y: number } | null, w: number, h: number): void => {
+    const layer = htmlLayer();
+    if (!cell || !layer) {
+      refusal?.remove();
+      refusal = null;
+      api.container.style.cursor = slabGesture ? 'grabbing' : '';
+      return;
+    }
+    if (!refusal || refusal.parentElement !== layer) {
+      refusal?.remove();
+      refusal = document.createElement('div');
+      refusal.className = 'axdb-ph axdb-ph--no';
+      layer.prepend(refusal);
+    }
+    const r = cellToRect({ x: cell.x, y: cell.y, w, h }, frame(), geom(), rows());
+    refusal.style.left = `${r.x}px`;
+    refusal.style.top = `${r.y}px`;
+    refusal.style.width = `${r.width}px`;
+    refusal.style.height = `${r.height}px`;
+    api.container.style.cursor = 'not-allowed';
+  };
   const slabMove = (ev: ToolPointerEvent): void => {
     const g = slabGesture;
     if (!g) return;
@@ -2026,7 +2061,25 @@ export function bindDashboardGrid(
     if (g.move) {
       // The section's top-left follows the pointer by the offset it was grabbed at.
       const cell = pointToCell(ev.world.x + g.grab.dx, ev.world.y + g.grab.dy, f, gg, rows(), it.w);
-      if ((cell.x !== it.x || cell.y !== it.y) && engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed) project();
+      if (cell.x !== it.x || cell.y !== it.y) {
+        // The cell under the pointer, else the nearest legal one — a widget
+        // slides along its row past a locked tile; a section grabbed 60 px
+        // from its left edge used to have its right edge refused by the
+        // locked panel at every cell and simply not move, with nothing on
+        // screen to say why (identification round, D6/D7). When even that
+        // fails the wanted cell is painted as refused.
+        // Along its ROW only: a section dragged LEFT that wandered DOWN its
+        // column (the row search) read as the wrong tile moving.
+        const was = { x: it.x, y: it.y };
+        const moved = engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed || placeOnRow(g.id, cell.x, cell.y, it.w);
+        if (moved) project();
+        // STUCK: the pointer asks for another cell and the slab did not budge
+        // (placeOnRow counts "already on a legal cell" as placed) — paint what
+        // was asked for as refused.
+        const now = engine.getItem(g.id);
+        const stuck = !!now && now.x === was.x && now.y === was.y && (cell.x !== was.x || cell.y !== was.y);
+        showRefusal(stuck ? cell : null, it.w, it.h);
+      }
       syncPlaceholder();
       return;
     }
@@ -2066,9 +2119,10 @@ export function bindDashboardGrid(
     const g = slabGesture;
     if (!g) return;
     slabGesture = null;
+    showRefusal(null, 0, 0);
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
-    if (g.move) relockSlab(g.id);
+    relockSlab(g.id);
     if (!g.started) {
       engine.endGesture();
       return;
@@ -2094,7 +2148,7 @@ export function bindDashboardGrid(
     slabGesture = null;
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
-    if (g.move) relockSlab(g.id);
+    relockSlab(g.id);
     if (g.started) engine.cancelGesture();
     else engine.endGesture();
     project();
@@ -3074,6 +3128,14 @@ export function bindDashboardGrid(
     return {
       groupId: group.id,
       baseline: () => startCells,
+      cell: () => {
+        const it = engine.getItem(node.id);
+        return it ? { x: it.x, y: it.y, w: it.w, h: it.h } : null;
+      },
+      rect: () => {
+        const it = engine.getItem(node.id);
+        return it ? cellToRect(it, frame(), geom(), rows()) : null;
+      },
       place: (cell) => {
         if (!engine.getItem(node.id) && !engine.add({ id: node.id, x: 0, y: engine.rows(), w: cell.w, h: cell.h })) return false;
         const it = engine.getItem(node.id);
@@ -3277,12 +3339,26 @@ export function bindDashboardGrid(
   // The board's gap, for chrome that must fit BETWEEN tiles (the outside grip tab).
   api.container.style.setProperty('--axdb-gap', `${gap}px`);
 
+  /** A press on one of our containers' strips, claimed so the renderer stays out of it. */
+  let stripPress = false;
   const tool: CanvasTool = {
     id: `dashboard-grid:${group.id}:${++binderSeq}`,
     priority: 2, // point-specific claim — outranks mode-style tools (see ext/tools.ts)
     hitTest(ev, hit) {
       if (disposed) return false;
-      if (gesture || slabGesture || forwardSlab) return true; // own the rest of an in-flight gesture
+      if (gesture || slabGesture || forwardSlab || stripPress) return true; // own the rest of an in-flight gesture
+      // A press on one of OUR containers' TAB STRIPS is ours to CLAIM and then
+      // leave alone: the strip's own listeners run the click, the tab drag and
+      // the container move. Left unclaimed (ownsPress calls a strip "content")
+      // the renderer's ladder cleared the selection and armed its empty-canvas
+      // PAN, and the camera slid 10–20 px under every tab drag — the reorder
+      // mark lost after a detour, a release outside the canvas that committed,
+      // the strip end reading as the right band (identification round, 2026-09-09).
+      const stripEl = (ev.source?.target as Element | null | undefined)?.closest?.('.axdb-tabs') ?? null;
+      if (stripEl) {
+        const cid = stripEl.getAttribute('data-tabs-id');
+        return !!cid && (group.members ?? new Set<string>()).has(cid) && api.container.contains(stripEl);
+      }
       if (!ownsPress(api.container, diagram, ev, hit)) return false;
       // A press on one of OUR sections' caption bands is ours by the DOM: a
       // 'tab' band sits above the frame, over the gap or the tile above,
@@ -3334,6 +3410,10 @@ export function bindDashboardGrid(
     onPointerDown(ev, hit) {
       if (gesture) return; // mid-palette
       const target = (ev.source?.target ?? null) as Element | null;
+      if (target?.closest?.('.axdb-tabs')) {
+        stripPress = true; // claimed for the strip: nothing of ours starts
+        return;
+      }
       // A press on a painted grip names its widget by the DOM: an OUTSIDE tab
       // sits above the card's box, where the hit test sees the gap or the
       // neighbour above.
@@ -3463,20 +3543,37 @@ export function bindDashboardGrid(
       };
     },
     onPointerMove(ev) {
+      if (stripPress) return;
       if (forwardSlab) forwardSlab.slabMove?.(ev);
       else if (slabGesture) slabMove(ev);
       else onToolMove(ev);
     },
     onPointerUp() {
-      if (forwardSlab) {
-        forwardSlab.slabUp?.();
-        forwardSlab = null;
-      } else if (slabGesture) slabUp();
-      else onToolUp();
+      if (stripPress) {
+        stripPress = false;
+        return;
+      }
+      try {
+        onPointerUpInner();
+      } finally {
+        flushDeferredRebuild();
+      }
     },
     onCancel() {
-      cancelActiveGesture();
+      stripPress = false;
+      try {
+        cancelActiveGesture();
+      } finally {
+        flushDeferredRebuild();
+      }
     },
+  };
+  const onPointerUpInner = (): void => {
+    if (forwardSlab) {
+      forwardSlab.slabUp?.();
+      forwardSlab = null;
+    } else if (slabGesture) slabUp();
+    else onToolUp();
   };
 
   const unregisterTool = registerTool(tool);
@@ -3736,9 +3833,38 @@ export function bindDashboardGrid(
     // leaves whenever it is over a strip, a group or an edge. A full board that
     // refuses the ghost still lets the page join, reorder or split.
     let leg: AdoptedLeg | null = null;
-    const ensureLeg = (world: { x: number; y: number }): AdoptedLeg | null => {
-      if (!leg) leg = adopt({ id: plan.arrivingId }, world, plan.size, { fit: 'shrink', anchor: 'top' });
+    /** The board holding the leg: null = this one, else the foreign peer under the pointer. */
+    let legPeer: BinderPeer | null = null;
+    const ensureLeg = (world: { x: number; y: number }, peer: BinderPeer | null = null): AdoptedLeg | null => {
+      // The page TRAVELS at most half the board tall (the dock's measure): at
+      // its natural height — a page fills its container, eight rows on the
+      // demo — the ghost crossing the KPI row tore the whole dashboard apart
+      // on its way to a cell (identification round, D1 03–08).
+      const capPx = dockSpan.h * (rowHeightFor(geom(), rows()) + gap) - gap;
+      const size = { width: plan.size.width, height: Math.min(plan.size.height, capPx) };
+      // A different board under the pointer takes the leg over, the old one
+      // back to its pre-entry layout first. An INNER tab used to know only
+      // the board owning its container — over the main board the chip dimmed
+      // and the release did nothing (identification round, L2).
+      if (leg && legPeer !== peer) {
+        leg.abort();
+        leg = null;
+      }
+      if (!leg) {
+        leg = peer ? peer.adopt({ id: plan.arrivingId }, world, size, { fit: 'shrink', anchor: 'top' }) : adopt({ id: plan.arrivingId }, world, size, { fit: 'shrink', anchor: 'top' });
+        legPeer = leg ? peer : null;
+      }
       return leg;
+    };
+    /** The deepest OTHER board under the point that may take the page — never one of the page's own boards. */
+    const foreignAt = (wx: number, wy: number): BinderPeer | null => {
+      let best: BinderPeer | null = null;
+      for (const p of peersOnCanvas()) {
+        if (p === selfPeer || plan.ownBoards.includes(p.group.id)) continue;
+        if (!p.containsWorld(wx, wy)) continue;
+        if (!best || p.frameArea() < best.frameArea()) best = p;
+      }
+      return best;
     };
     const naturalSpan = ((): { w: number; h: number } => {
       const sp = sizeToSpan(plan.size.width, plan.size.height, frame(), geom(), rows());
@@ -3788,7 +3914,10 @@ export function bindDashboardGrid(
       | { kind: 'root'; side: Side; cell: CellRect }
       | { kind: 'reorder'; index: number }
       | { kind: 'home' }
-      | { kind: 'board' };
+      /** Free board space — this board's, or a FOREIGN board's when one lies under the pointer (deeper than this one, or outside it). */
+      | { kind: 'board'; peer?: BinderPeer }
+      /** Outside the visible canvas (plus grace): nothing lands, whatever the world point under the pointer says. */
+      | { kind: 'off' };
     const layer = htmlLayer();
     const area = (g: GroupModel): number => {
       const sz = sizeOf(g);
@@ -3837,12 +3966,55 @@ export function bindDashboardGrid(
       if (rect.width <= 0 || rect.height <= 0) return { left, top, right, bottom }; // unlaid-out: nothing to clip to
       return { left: Math.max(left, rect.left), top: Math.max(top, rect.top), right: Math.min(right, rect.right), bottom: Math.min(bottom, rect.bottom) };
     };
+    /** Inside the VISIBLE canvas plus the grace band, on the screen — a camera that moved must not turn a pointer outside the canvas into a world point inside the board. */
+    const clientInsideCanvasGrace = (cx: number, cy: number): boolean => {
+      // The CANVAS, not this board's frame: a nested page's binder runs the
+      // tear-out of the tabs inside it, and its pages must still land on the
+      // boards around it. An unmeasurable container (no layout) is never off.
+      const rect = api.container.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return true;
+      return cx >= rect.left - EDGE_GRACE && cx <= rect.right + EDGE_GRACE && cy >= rect.top - EDGE_GRACE && cy <= rect.bottom + EDGE_GRACE;
+    };
+    /**
+     * The board's rows for a dock: as they stood BEFORE the ghost entered.
+     * Read live, the ghost's own pushing inflated them on every re-entry —
+     * side docks 14, 21, 104 rows tall, a bottom dock landing at row 29.
+     */
+    const baseRows = (): number => {
+      const b = leg?.baseline();
+      if (!b) return rowsWithout(plan.arrivingId);
+      let r = 0;
+      for (const c of b.values()) r = Math.max(r, c.y + c.h);
+      return r;
+    };
+    const worldToClient = (wx: number, wy: number): { x: number; y: number } => {
+      const rect = api.container.getBoundingClientRect();
+      const o = toWorld(rect.left, rect.top);
+      const u = toWorld(rect.left + 100, rect.top + 100);
+      return { x: rect.left + (wx - o.x) * (100 / (u.x - o.x || 100)), y: rect.top + (wy - o.y) * (100 / (u.y - o.y || 100)) };
+    };
+    /**
+     * Would the page land where the user cannot see it? A cell whose room
+     * lies below the fold (the only cell left under a locked section — D1
+     * hold3) used to take the drop a screen away. Hidden = not one pixel of
+     * the cell inside the visible canvas: a landing whose top edge shows,
+     * the rest below the fold of a small canvas, is a landing the user can
+     * see and a grow board scrolls to (lab L61 dropped at the canvas foot).
+     */
+    const landingHidden = (): boolean => {
+      const r = leg?.rect();
+      const rect = api.container.getBoundingClientRect();
+      if (!r || rect.width <= 0 || rect.height <= 0) return false;
+      const tl = worldToClient(r.x, r.y);
+      const br = worldToClient(r.x + r.width, r.y + r.height);
+      return tl.y >= rect.bottom || br.y <= rect.top || tl.x >= rect.right || br.x <= rect.left;
+    };
     const rootAt = (cx: number, cy: number): Zone | null => {
       // The bands reach a little OUTSIDE the frame too: a pointer that
       // overshoots the board's top edge by a few pixels means "the top".
       const v = visibleFrame();
       if (cx < v.left - ROOT_SIDE || cx > v.right + ROOT_SIDE || cy < v.top - ROOT_TOP || cy > v.bottom + ROOT_BOTTOM) return null;
-      const rows = Math.max(TEAR_OUT_MIN_ROWS, rowsWithout(plan.arrivingId));
+      const rows = Math.max(TEAR_OUT_MIN_ROWS, baseRows());
       const w = dockSpan.w;
       const h = dockSpan.h;
       if (cy - v.top <= ROOT_TOP) return { kind: 'root', side: 'top', cell: { x: 0, y: 0, w: columns, h } };
@@ -3880,6 +4052,10 @@ export function bindDashboardGrid(
         : { keep: { x: it.x, y: it.y + b, w: it.w, h: a }, born: { x: it.x, y: it.y, w: it.w, h: b } };
     };
     const zoneAt = (cx: number, cy: number, world: { x: number; y: number }): Zone => {
+      // A pointer OUTSIDE the visible canvas is off, full stop: a camera that
+      // moved can map it to a world point inside a group, and that group
+      // took a join or a split from a release in the page header.
+      if (!clientInsideCanvasGrace(cx, cy)) return { kind: 'off' };
       const target = targetAt(world.x, world.y);
       const home = !target && worldInsideGroup(from, world.x, world.y);
       // A strip is the most precise target there is: anyone's wins outright.
@@ -3908,9 +4084,11 @@ export function bindDashboardGrid(
         return h ? { kind: 'split', target, side: d[0][0], ...h } : { kind: 'join', target };
       }
       if (home) return { kind: 'home' };
+      const foreign = foreignAt(world.x, world.y);
+      if (foreign && (!worldInsideBoard(world.x, world.y) || foreign.frameArea() < boardArea())) return { kind: 'board', peer: foreign };
       return { kind: 'board' };
     };
-    const zoneKey = (z: Zone): string => JSON.stringify(z, (k, v) => (k === 'target' ? (v as GroupModel).id : v));
+    const zoneKey = (z: Zone): string => JSON.stringify(z, (k, v) => (k === 'target' ? (v as GroupModel).id : k === 'peer' ? (v as BinderPeer).group.id : v));
 
     // DOCKING PUSHES SECTIONS. A section is a locked tile so that a widget
     // never pushes it; a group docked against the board's edge is the one
@@ -4005,7 +4183,7 @@ export function bindDashboardGrid(
     };
     const previewSplit = (z: Extract<Zone, { kind: 'split' }>, world: { x: number; y: number }): boolean => {
       const it = engine.getItem(z.target.id);
-      const l = ensureLeg(world);
+      const l = ensureLeg(world, null);
       if (!it || !l) return false;
       split = { id: z.target.id, before: { x: it.x, y: it.y, w: it.w, h: it.h }, frameBefore: frameOfGroup(z.target), keep: z.keep };
       it.locked = false; // its own gesture for the moment: it may shrink and shift
@@ -4026,7 +4204,7 @@ export function bindDashboardGrid(
       key = k;
       zone = z;
       if (same) {
-        if (z.kind === 'board') ensureLeg(world)?.move(world);
+        if (z.kind === 'board') ensureLeg(world, z.peer ?? null)?.move(world);
         return;
       }
       undoSplitPreview();
@@ -4056,7 +4234,7 @@ export function bindDashboardGrid(
           break;
         }
         case 'root': {
-          const l = ensureLeg(world);
+          const l = ensureLeg(world, null);
           if (l) {
             unlockGroups();
             l.place(z.cell);
@@ -4073,10 +4251,11 @@ export function bindDashboardGrid(
           plan.markDrop(fromGroupId, z.index);
           break;
         case 'home':
+        case 'off':
           leg?.leave();
           break;
         case 'board': {
-          const l = ensureLeg(world);
+          const l = ensureLeg(world, z.peer ?? null);
           l?.enter(world);
           break;
         }
@@ -4099,7 +4278,7 @@ export function bindDashboardGrid(
       applyZone(z, world);
       // Dimmed = a release here does nothing: home, off the board, or a board
       // that refused the ghost (bounded and full).
-      chip.classList.toggle('axdb-out', zone.kind === 'home' || (zone.kind === 'root' && !leg) || (zone.kind === 'board' && (!leg || !worldInsideBoardGrace(world.x, world.y))));
+      chip.classList.toggle('axdb-out', zone.kind === 'home' || zone.kind === 'off' || (zone.kind === 'root' && !leg) || (zone.kind === 'board' && (!leg || landingHidden())));
       api.render();
     };
     const done = (changed: boolean, kind: 'commit' | 'cancel'): void => {
@@ -4119,7 +4298,7 @@ export function bindDashboardGrid(
       const world = toWorld(last.x, last.y);
       const z: Zone = commit ? zoneAt(last.x, last.y, world) : { kind: 'home' };
       if (z.kind !== 'root') undoInsertRows();
-      if (!commit || z.kind === 'home' || (z.kind === 'root' && !ensureLeg(world)) || (z.kind === 'board' && (!ensureLeg(world) || !worldInsideBoardGrace(world.x, world.y)))) {
+      if (!commit || z.kind === 'home' || z.kind === 'off' || (z.kind === 'root' && !ensureLeg(world, null)) || (z.kind === 'board' && (!ensureLeg(world, z.peer ?? null) || landingHidden()))) {
         undoSplitPreview();
         leg?.abort();
         relockGroups();
@@ -4148,6 +4327,8 @@ export function bindDashboardGrid(
         // SPLIT: the target keeps one half of its cell, the page's new group the
         // other. The preview already holds both in the engine; commit them.
         if (!split || split.id !== z.target.id || zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
+        hideOverlay(); // a re-applied zone repaints its preview; the release is not a preview
+        plan.markDrop(null, null);
         const fin = leg?.finalize() ?? null;
         const it = engine.getItem(z.target.id);
         const before = split;
@@ -4172,13 +4353,15 @@ export function bindDashboardGrid(
       }
       // ROOT DOCK or a free cell on the board: the leg sits where it will land.
       if (zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
+      hideOverlay(); // a re-applied zone repaints its preview; the release is not a preview
+      plan.markDrop(null, null);
       const fin = leg?.finalize() ?? null;
       relockGroups();
       if (!fin) {
         done(false, 'cancel');
         return;
       }
-      const planned = plan.commands(fin.cell, fin.rect, group.id);
+      const planned = plan.commands(fin.cell, fin.rect, leg?.groupId ?? group.id);
       done(execute(z.kind === 'root' ? 'Dock tab' : 'Move tab out', [...fin.commands, ...groupCommands(fin), ...planned.move, ...planned.collapse]), 'commit');
     };
     const onUp = (): void => finish(true);
@@ -4390,9 +4573,30 @@ export function bindDashboardGrid(
 
   /** Rebuild the engine from the members' persisted cells. `pack` runs gravity
    *  over the result (boot, float→off); a plain sync keeps the cells verbatim. */
+  /**
+   * A rebuild asked for while a gesture is live waits for the gesture. The
+   * pointer's own crossing re-lays boards — adopting a widget into the Nested
+   * page moved the inner tabs container, the tabs runtime re-placed its
+   * pages, and the inner page's binder rebuilt from the model: its gesture
+   * cancelled mid-drag, the dragged widget re-added, the ghost class gone
+   * and the target's placeholder leaked through release and undo
+   * (identification round, L5). The frame change itself is answered by
+   * `onBoundsChanged` (a re-projection); the model is rebuilt afterwards.
+   */
+  let rebuildDeferred: { pack: boolean } | null = null;
+  const flushDeferredRebuild = (): void => {
+    if (!rebuildDeferred || gesture || slabGesture) return;
+    const { pack } = rebuildDeferred;
+    rebuildDeferred = null;
+    rebuild(pack);
+  };
   const rebuild = (pack: boolean): void => {
     if (disposed) return;
-    if (gesture) cancelActiveGesture(false);
+    if (gesture || slabGesture) {
+      rebuildDeferred = { pack: pack || rebuildDeferred?.pack === true };
+      project();
+      return;
+    }
     applyFluidFrame();
     const items: GridPackItem[] = [];
     for (const id of group.members ?? []) {

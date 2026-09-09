@@ -681,10 +681,14 @@ describe('tab containers', () => {
     expect(cellOf(handle, 'left')!.y).toBe(born.h);
     expect(cellOf(handle, 'right')!.y).toBe(born.h);
     expect(stripOf(api, 'right')).toEqual(['Filters']);
+    // the accent overlay is gone with the drop — it stayed painted over the
+    // board through every later gesture (identification round, D8/D9)
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
     await cm(api).undo();
     await settle();
     expect(model.getGroup('r2__group')).toBeUndefined();
     expect(cellOf(handle, 'left')!.y).toBe(0);
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
   });
 
   it('ROOT DOCK: the LEFT edge docks a full-height group at column 0', async () => {
@@ -829,6 +833,367 @@ describe('tab containers', () => {
     expect(pathOf('nps')).toBe('main > nps');
     expect(cellOf(handle, 'k1')).toEqual({ x: 0, y: 0, w: 3, h: 4 });
     expect(cellOf(handle, 'k2')).toEqual({ x: 0, y: 4, w: 3, h: 4 });
+  });
+
+  it('the board\'s tool CLAIMS a press on its container\'s tab strip and does nothing with it — the renderer must neither select nor pan under a tab drag', async () => {
+    // ownsPress declined strip presses ("a tab strip is content"), so NO tool
+    // claimed them and the renderer's ladder armed its empty-canvas pan: the
+    // camera slid 10–20 px under every tab drag (the identification round's
+    // drift family — a reorder mark lost after a detour, a release outside the
+    // canvas that committed, the strip end reading as the right band).
+    const { api, model, handle } = up(TWO());
+    const tool = toolOf('main');
+    const tab = api.container.querySelector('.axdb-tabs[data-tabs-id="left"] .axdb-tab[data-tab-id="l2"]') as HTMLElement;
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="left"]') as HTMLElement;
+    const f = frameOf(model, 'left');
+    const on = (type: ToolPointerEvent['type'], target: Element, x: number, y: number): ToolPointerEvent => ({ ...tev(type, x, y), source: { target } as unknown as PointerEvent });
+    const hit = { empty: true };
+    expect(tool.hitTest(on('down', tab, f.x + 60, f.y + 12), hit)).toBe(true);
+    expect(tool.hitTest(on('down', strip, f.x + f.w - 20, f.y + 12), hit)).toBe(true);
+    tool.onPointerDown?.(on('down', tab, f.x + 60, f.y + 12), hit);
+    tool.onPointerMove?.(on('move', tab, f.x + 120, f.y + 40), hit);
+    tool.onPointerUp?.(on('up', tab, f.x + 120, f.y + 40), hit);
+    await settle();
+    expect(api.container.querySelector('.axdb-ph')).toBeNull();
+    expect(handle.getSelectedWidget()).toBeUndefined();
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
+  });
+
+  it('a tab released OUTSIDE the canvas cancels even when the camera has shifted — the off-board test is on the screen', async () => {
+    const { api, model, handle } = up(TWO());
+    const rect = { left: 0, top: 0, right: 1200, bottom: 600, width: 1200, height: 600, x: 0, y: 0, toJSON: () => ({}) };
+    Object.defineProperty(api.container, 'getBoundingClientRect', { value: () => rect, configurable: true });
+    // camera 300 px down the board: a client point 100 px ABOVE the canvas still maps to world y 200, inside the board
+    (api as unknown as { viewport: { clientToWorld: (x: number, y: number) => { x: number; y: number } } }).viewport.clientToWorld = (x, y) => ({ x, y: y + 300 });
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: -100 }, [{ x: 400, y: 300 }]);
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+  });
+
+  it('ROOT DOCK: a side dock is as tall as the board WAS, and leaves no overlay behind — the ghost\'s own displacement inflates neither', async () => {
+    // The identification round: after the ghost had pushed tiles about, the
+    // side and bottom docks read the DISPLACED layout — overlays 1950 → 2930
+    // px tall, a bottom dock landing at row 29, a panel pushed 96 rows down —
+    // and the re-applied zone at release left its overlay painted.
+    const { api, model, handle } = up(TWO());
+    // parked mid-board first (the ghost enters and pushes), then the left band
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 8, y: 300 }, [{ x: 300, y: 300 }]);
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born).toBeTruthy();
+    expect(born.x).toBe(0);
+    expect(born.y).toBe(0);
+    expect(born.h).toBe(6); // the board's rows at the press, not after the ghost's pushing
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+    await cm(api).undo();
+    await settle();
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+  });
+
+  it('a torn-out page travels at most HALF the board tall — an 8-row ghost crossing the KPI row tore the whole dashboard apart', async () => {
+    const { api } = up(TWO());
+    // press Notes, travel past the threshold, hold below both groups on free board space
+    const tab = api.container.querySelector('.axdb-tabs[data-tabs-id="right"] .axdb-tab[data-tab-id="r2"]') as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(tab, 'pointerdown', 900, 10);
+    ev(tab, 'pointermove', 860, 10);
+    ev(window, 'pointermove', 300, 640);
+    await settle();
+    const ph = api.container.querySelector('.axdb-ph') as HTMLElement | null;
+    expect(ph).toBeTruthy();
+    // 6-row board, 60 px rows, 10 px gap: half = 3 rows = 200 px; the page's natural height is 4 rows + its strip
+    expect(parseFloat(ph!.style.height)).toBeLessThanOrEqual(3 * 70 - 10 + 1);
+    ev(window, 'pointercancel', 300, 640);
+    await settle();
+  });
+
+  it('a landing cell that would sit OFF-SCREEN dims the chip and the release cancels — nothing lands a screen away', async () => {
+    // Two full groups over a full-width locked section: the pointer over the
+    // section has no cell there, and the fallback used to grow the ghost back
+    // to its natural height BELOW the section — out of view, the drop landing
+    // where the user could not see it (identification round, D1 hold3).
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 500,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          { id: 'left', title: 'Left group', span: 6, rows: 4, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('l1', 'Sales', 'k-l1')] },
+          { id: 'right', title: 'Right group', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+          { id: 'wall', title: 'Wall', span: 12, rows: 2, x: 0, y: 4, columns: 12, widgets: [{ id: 'w1', kind: 'kpi', span: 12, rows: 2, x: 0, y: 0 }] },
+        ],
+      })
+    );
+    // the canvas ends at 420 px: the only cell left, row 6 (from 430 px), has no visible pixel
+    const rect = { left: 0, top: 0, right: 1200, bottom: 420, width: 1200, height: 420, x: 0, y: 0, toJSON: () => ({}) };
+    Object.defineProperty(api.container, 'getBoundingClientRect', { value: () => rect, configurable: true });
+    const tab = api.container.querySelector('.axdb-tabs[data-tabs-id="right"] .axdb-tab[data-tab-id="r2"]') as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(tab, 'pointerdown', 900, 10);
+    ev(tab, 'pointermove', 860, 10);
+    ev(window, 'pointermove', 300, 330); // over the wall: rows 4-5, no room above it, the only room is BELOW the visible canvas
+    await settle();
+    const chip = document.querySelector('.axdb-tab-chip') as HTMLElement | null;
+    expect(chip).toBeTruthy();
+    expect(chip!.classList.contains('axdb-out')).toBe(true);
+    ev(window, 'pointerup', 300, 330);
+    await settle();
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(cellOf(handle, 'wall')).toEqual({ x: 0, y: 4, w: 12, h: 2 });
+  });
+
+  it('a SECTION moved by its caption band slides to the nearest legal column like a widget, and a refused cell is shown', async () => {
+    // The fluid demo's Operations section (9 columns) grabbed 60 px from its
+    // left edge and carried over the chart: the cell under the pointer put
+    // its right edge into the locked side panel, E4b refused every cell and
+    // the section did not move at all — with nothing on screen to say why.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          { id: 'ops', title: 'Operations', caption: true, span: 9, rows: 1, x: 0, y: 5, columns: 9, widgets: [K('orders', 4, 1, 0, 0)] },
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1')] },
+        ],
+      })
+    );
+    const band = api.container.querySelector('.axdb-slab[data-slab-id="ops"] > .axdb-slab-h') as HTMLElement;
+    expect(band).toBeTruthy();
+    const ops = model.getGroup('ops')!;
+    const tool = toolOf('main');
+    const on = (type: ToolPointerEvent['type'], x: number, y: number): ToolPointerEvent => ({ ...tev(type, x, y), source: { target: band } as unknown as PointerEvent });
+    const hit = { empty: true };
+    // grabbed 60 px in from the section's left edge, carried up over the chart at x ≈ 380 → its left edge wants column 3, its right edge column 12: the side panel's
+    const press = { x: ops.position.x + 60, y: ops.position.y + 20 };
+    tool.onPointerDown?.(on('down', press.x, press.y), hit);
+    tool.onPointerMove?.(on('move', press.x + 30, press.y - 30), hit);
+    tool.onPointerMove?.(on('move', 380, 130), hit);
+    tool.onPointerMove?.(on('move', 381, 131), hit);
+    tool.onPointerUp?.(on('up', 381, 131), hit);
+    await settle();
+    const after = cellOf(handle, 'ops')!;
+    expect(after.x).toBe(0); // slid left off the locked panel
+    expect(after.y).toBeLessThan(5); // and moved up as asked
+    expect(after.w).toBe(9);
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 5, w: 9, h: 1 });
+  });
+
+  it('a widget dragged OUT of an inner tab page survives the re-layout its own crossing causes — the gesture lives on and the drop lands in the section', async () => {
+    // The deep lab board: IA (inside Inner A, tabs inside the Nested page)
+    // dragged over the sibling Inner section. Adopting it re-laid the Nested
+    // page, the inner tabs container moved, its pages were re-placed, the
+    // inner page's binder REBUILT and cancelled its own gesture mid-drag: the
+    // ghost class dropped, the leg's placeholder leaked through release and
+    // undo, and the widget went nowhere (identification round, L5).
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 50,
+        sizing: 'grow',
+        widgets: [
+          K('w1', 3, 2, 0, 0),
+          { id: 'dp', title: 'Deep tabs', span: 6, rows: 6, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+            { id: 'dp-nested', title: 'Nested page', columns: 6, widgets: [
+              { id: 'dp-inner', title: 'Inner section', caption: true, span: 6, rows: 3, x: 0, y: 0, columns: 6, widgets: [K('dp-i1', 3, 2, 0, 0)] },
+              { id: 'dp-intabs', title: 'Inner tabs', span: 6, rows: 3, x: 0, y: 3, columns: 6, layout: 'tabs', widgets: [
+                { id: 'dp-ip1', title: 'Inner A', columns: 6, widgets: [K('dp-ia', 3, 2, 0, 0)] }, // 3 wide: it fits beside I1 in the section
+                { id: 'dp-ip2', title: 'Inner B', columns: 6, widgets: [K('dp-ib', 6, 2, 0, 0)] },
+              ] },
+            ] },
+          ] },
+        ],
+      })
+    );
+    const pathOf = (id: string): string | null => {
+      const walk = (ws: Array<{ id: string; widgets?: unknown[] }> | undefined, path: string[]): string[] | null => {
+        for (const w of ws ?? []) {
+          if (w.id === id) return [...path, w.id];
+          const r = walk(w.widgets as Array<{ id: string; widgets?: unknown[] }> | undefined, [...path, w.id]);
+          if (r) return r;
+        }
+        return null;
+      };
+      for (const v of handle.toJSON().views) {
+        const r = walk(v.widgets as Array<{ id: string; widgets?: unknown[] }>, [v.id]);
+        if (r) return r.join(' > ');
+      }
+      return null;
+    };
+    expect(pathOf('dp-ia')).toBe('main > dp > dp-nested > dp-intabs > dp-ip1 > dp-ia');
+    const ia = model.getNode('dp-ia')!;
+    const i1 = model.getNode('dp-i1')!;
+    const sec = frameOf(model, 'dp-inner');
+    // the inner section's free right half, beside I1
+    const target = { x: sec.x + sec.w * 0.75, y: i1.position.y + i1.size.height / 2 };
+    const tool = toolOf('dp-ip1');
+    const hit = { node: ia, empty: false };
+    const from = { x: ia.position.x + 30, y: ia.position.y + 20 };
+    tool.onPointerDown?.(tev('down', from.x, from.y), hit);
+    tool.onPointerMove?.(tev('move', from.x + 20, from.y - 20), hit);
+    for (let i = 1; i <= 6; i++) tool.onPointerMove?.(tev('move', from.x + (target.x - from.x) * i / 6, from.y + (target.y - from.y) * i / 6), hit);
+    await settle();
+    // mid-drag: the widget is OFF its page (adopted elsewhere), the gesture alive
+    expect(cellOf(handle, 'dp-ia')).toBeNull();
+    tool.onPointerMove?.(tev('move', target.x + 1, target.y), hit);
+    tool.onPointerUp?.(tev('up', target.x + 1, target.y), hit);
+    await settle();
+    expect(pathOf('dp-ia')).toBe('main > dp > dp-nested > dp-inner > dp-ia');
+    expect(api.container.querySelectorAll('.axdb-ph').length).toBe(0);
+    await cm(api).undo();
+    await settle();
+    expect(pathOf('dp-ia')).toBe('main > dp > dp-nested > dp-intabs > dp-ip1 > dp-ia');
+    expect(api.container.querySelectorAll('.axdb-ph').length).toBe(0);
+  });
+
+  it('an INNER tab torn out lands on whichever board is under the pointer — the main board, not only the one owning its container', async () => {
+    // Inner A (tabs inside the Nested page of the Deep tabs container)
+    // dragged onto the main board beside W1: the tear-out only knew the
+    // board owning its container (the Nested page), so over the main board
+    // the chip dimmed and the release did nothing (identification round, L2).
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 50,
+        sizing: 'grow',
+        widgets: [
+          K('w1', 3, 2, 0, 0),
+          { id: 'dp', title: 'Deep tabs', span: 6, rows: 6, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+            { id: 'dp-nested', title: 'Nested page', columns: 6, widgets: [
+              { id: 'dp-inner', title: 'Inner section', caption: true, span: 6, rows: 3, x: 0, y: 0, columns: 6, widgets: [K('dp-i1', 3, 2, 0, 0)] },
+              { id: 'dp-intabs', title: 'Inner tabs', span: 6, rows: 3, x: 0, y: 3, columns: 6, layout: 'tabs', widgets: [
+                { id: 'dp-ip1', title: 'Inner A', columns: 6, widgets: [K('dp-ia', 3, 2, 0, 0)] },
+                { id: 'dp-ip2', title: 'Inner B', columns: 6, widgets: [K('dp-ib', 6, 2, 0, 0)] },
+              ] },
+            ] },
+          ] },
+        ],
+      })
+    );
+    const pathOf = (id: string): string | null => {
+      const walk = (ws: Array<{ id: string; widgets?: unknown[] }> | undefined, path: string[]): string[] | null => {
+        for (const w of ws ?? []) {
+          if (w.id === id) return [...path, w.id];
+          const r = walk(w.widgets as Array<{ id: string; widgets?: unknown[] }> | undefined, [...path, w.id]);
+          if (r) return r;
+        }
+        return null;
+      };
+      for (const v of handle.toJSON().views) {
+        const r = walk(v.widgets as Array<{ id: string; widgets?: unknown[] }>, [v.id]);
+        if (r) return r.join(' > ');
+      }
+      return null;
+    };
+    const tab = api.container.querySelector('.axdb-tabs[data-tabs-id="dp-intabs"] .axdb-tab[data-tab-id="dp-ip1"]') as HTMLElement;
+    expect(tab).toBeTruthy();
+    const tr = model.getGroup('dp-intabs')!.position;
+    // onto the MAIN board, the free space right of W1
+    await dragTabFrom(api, 'dp-intabs', 'dp-ip1', { x: tr.x + 40, y: tr.y + 12 }, { x: 400, y: 20 });
+    expect(pathOf('dp-ip1__group')).toBe('main > dp-ip1__group');
+    expect(pathOf('dp-ia')).toBe('main > dp-ip1__group > dp-ip1 > dp-ia');
+    expect(stripOf(api, 'dp-intabs')).toEqual(['Inner B']);
+    const born = cellOf(handle, 'dp-ip1__group')!;
+    expect(born).toBeTruthy();
+    expect(born.y).toBe(0);
+    expect(born.w).toBe(6); // the page's natural width: its container's 600 px on a 1200 px board
+    expect(cellOf(handle, 'w1')!.y).toBe(born.h); // W1 pushed under it
+    await cm(api).undo();
+    await settle();
+    expect(model.getGroup('dp-ip1__group')).toBeUndefined();
+    expect(stripOf(api, 'dp-intabs')).toEqual(['Inner A', 'Inner B']);
+  });
+
+  it('a section pulled up by its TOP edge grows by the rows the pointer travelled — not eighteen for two', async () => {
+    // The fluid demo's Operations section: its caption's top 4 px pulled up
+    // 300 px (2.3 rows of 130) grew it 1 → 3 → 8 → 18 rows (identification
+    // round, F16) — a resize that outran the pointer.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('a', 6, 2, 0, 0), K('b', 6, 2, 6, 0),
+          { id: 'ops', title: 'Operations', caption: true, span: 12, rows: 1, x: 0, y: 4, columns: 12, widgets: [K('orders', 4, 1, 0, 0)] },
+        ],
+      })
+    );
+    const band = api.container.querySelector('.axdb-slab[data-slab-id="ops"] > .axdb-slab-h') as HTMLElement;
+    expect(band).toBeTruthy();
+    const ops = model.getGroup('ops')!;
+    const tool = toolOf('main');
+    const on = (type: ToolPointerEvent['type'], x: number, y: number): ToolPointerEvent => ({ ...tev(type, x, y), source: { target: band } as unknown as PointerEvent });
+    const hit = { empty: true };
+    const x = ops.position.x + 300;
+    const y0 = ops.position.y + 3; // the top edge
+    tool.onPointerDown?.(on('down', x, y0), hit);
+    tool.onPointerMove?.(on('move', x, y0 - 10), hit);
+    // pulled up 140 px = two rows of 60 + gaps; the section should be 3 rows tall, its top two rows higher
+    for (let i = 1; i <= 7; i++) tool.onPointerMove?.(on('move', x, y0 - 20 * i), hit);
+    tool.onPointerUp?.(on('up', x, y0 - 140), hit);
+    await settle();
+    const after = cellOf(handle, 'ops')!;
+    expect(after).toBeTruthy();
+    expect(after.h).toBe(3);
+    expect(after.y).toBe(2);
+    expect(after.w).toBe(12);
+    expect(cellOf(handle, 'a')).toEqual({ x: 0, y: 0, w: 6, h: 2 });
+  });
+
+  it('ROOT DOCK: a side dock measures the board as it stood BEFORE the ghost pushed anything — parked on a tile first', async () => {
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          { id: 'side', title: 'Side', span: 3, rows: 4, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+        ],
+      })
+    );
+    // parked over the chart (the ghost enters and pushes the chart down), then the LEFT band
+    await dragTabFrom(api, 'side', 'p2', { x: 1000, y: 10 }, { x: 8, y: 200 }, [{ x: 300, y: 150 }, { x: 301, y: 151 }]);
+    const born = cellOf(handle, 'p2__group')!;
+    expect(born).toBeTruthy();
+    expect(born.x).toBe(0);
+    expect(born.y).toBe(0);
+    expect(born.h).toBe(4); // the board's four rows at the press, not the six the parked ghost made
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
   });
 
   it('ROOT DOCK: the bands are measured on the SCREEN — a board scrolled 30 px still docks at its visible top edge', async () => {
