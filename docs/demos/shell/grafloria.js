@@ -200409,7 +200409,8 @@ function createDashboardHandle(ctx) {
     const pageSpec = specById.get(pageId);
     if (!model || !from || !pg || !pageSpec) return null;
     const viewId = ctx.viewOfBoard.get(containerId) ?? ctx.active;
-    const W = `${pageId}__group`;
+    let W = `${pageId}__group`;
+    for (let n3 = 2; model.getGroup(W) || ctx.boardGroups.has(W); n3++) W = `${pageId}__group${n3}`;
     const tabsOpts = ctx.tabsOf.get(containerId) ?? {};
     const label = pageSpec.title ?? pageId;
     const size = { width: pg.size?.width ?? 0, height: (pg.size?.height ?? 0) + tabStripReserve(tabsOpts, 1) };
