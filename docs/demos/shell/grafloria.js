@@ -200617,6 +200617,25 @@ function createDashboardHandle(ctx) {
     const label = pageSpec.title ?? pageId;
     const size = { width: pg.size?.width ?? 0, height: (pg.size?.height ?? 0) + tabStripReserve(tabsOpts, 1) };
     const remaining = [...from.members ?? []].filter((m) => m !== pageId && !!model.getGroup(m));
+    const showing = ctx.activeTab.get(containerId);
+    const showingAgain = () => new RegisterWidgetCommand(
+      {
+        register: () => {
+        },
+        unregister: () => {
+          const cg = ctx.boardGroups.get(containerId) ?? model.getGroup(containerId);
+          const spec = specById.get(containerId);
+          if (!showing || !cg || !spec || ctx.activeTab.get(containerId) === showing) return;
+          if (!(spec.widgets ?? []).some((p) => p.id === showing) || !cg.members?.has(showing)) return;
+          ctx.activeTab.set(containerId, showing);
+          spec.active = showing;
+          const cw = cg.getMetadata("containerWidget") ?? {};
+          cg.setMetadata("containerWidget", { ...cw, active: showing });
+          teleport(ctx.container, () => ctx.syncTabs?.(containerId));
+        }
+      },
+      "register"
+    );
     return {
       arrivingId: W,
       label,
@@ -200695,6 +200714,7 @@ function createDashboardHandle(ctx) {
         };
         const move = [
           new SequenceCommand("Move tab out", [
+            showingAgain(),
             new AddGroupCommand(g),
             new RemoveFromGroupCommand(containerId, pageId),
             new AddToGroupCommand(W, pageId),
@@ -200770,6 +200790,7 @@ function createDashboardHandle(ctx) {
         };
         const move = [
           new SequenceCommand("Move tab", [
+            showingAgain(),
             new RemoveFromGroupCommand(containerId, pageId),
             new AddToGroupCommand(targetId, pageId),
             new RegisterWidgetCommand(joined, "register")

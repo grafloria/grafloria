@@ -472,6 +472,49 @@ describe('tab containers', () => {
     expect(api.container.querySelectorAll('.axdb-tabs').length).toBe(2);
   });
 
+  it('undo of a tear-out shows the page that was SHOWING before the drag — not the one the container switched to when it left', async () => {
+    // Filters is showing; tearing it out makes the container show Alerts. Undo
+    // put Filters back as a page but left Alerts showing (seen on the live
+    // walk: every undo ended on a different page than the rest frame).
+    const { api, handle } = up(BOARD('p-one'));
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+    await dragTab(api, 'panel', 'p-one', { x: 150, y: 400 });
+    expect(stripOf(api, 'p-one__group')).toEqual(['Filters']);
+    expect(handle.getActiveTab('panel')).toBe('p-two');
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+    expect(onCanvas(api.getModel() as DiagramModel, ['k-one', 'k-two', 'k-three'])).toEqual(['k-one']);
+  });
+
+  it('undo of a JOIN shows the page that was showing in the source before the drag', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        widgets: [
+          { id: 'left', title: 'Left group', span: 4, rows: 6, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('l1', 'Sales', 'k-l1'), PAGE('l2', 'Margin', 'k-l2')] },
+          { id: 'right', title: 'Right group', span: 4, rows: 6, x: 4, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+        ],
+      })
+    );
+    handle.activateTab('right', 'r2');
+    expect(handle.getActiveTab('right')).toBe('r2');
+    const lf = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 600, y: 10 }, { x: lf.x + lf.w * 0.5, y: lf.y + 30 + (lf.h - 30) * 0.5 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+    expect(handle.getActiveTab('right')).toBe('r1');
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(handle.getActiveTab('right')).toBe('r2');
+    expect(handle.getActiveTab('left')).toBe('l1');
+  });
+
   it('the torn-out group survives toJSON → dashboard() and a saved document', async () => {
     const first = up(BOARD());
     await dragTab(first.api, 'panel', 'p-two', { x: 150, y: 400 });
