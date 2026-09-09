@@ -2009,7 +2009,11 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       return true;
     },
     setSizing(mode) {
-      for (const b of binders.values()) b.setSizing(mode);
+      // THE VIEWS ONLY. A nested board (a page, a section) is bound fit with no
+      // design height — its height is its container's business — and switched
+      // to grow it painted its rows at the base height, 700 px past a torn-out
+      // group or a split pane (0.4.38).
+      for (const [id, b] of binders) if (groups.has(id)) b.setSizing(mode);
       clampCamera();
       ctx.apiRef?.renderNow();
     },

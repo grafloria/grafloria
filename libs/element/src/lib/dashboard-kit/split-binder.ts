@@ -836,9 +836,11 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
   // nothing. One history step, like every other drop.
   let tearing = false;
   const EDGE_GRACE = 60;
+  /** The last batch the tear-out ran — the command manager may land it after this tick, so the board re-projects when it settles. */
+  let pendingBatch: unknown = undefined;
   const execute = (name: string, commands: Command[]): boolean => {
     if (commands.length === 0) return false;
-    void execCommand(new BatchCommand(name, commands));
+    pendingBatch = execCommand(new BatchCommand(name, commands));
     return true;
   };
   const beginTearOut = (pageId: string, fromGroupId: string, ev: PointerEvent, plan: TearOutPlan): boolean => {
@@ -934,8 +936,20 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     };
     const done = (changed: boolean, kind: 'commit' | 'cancel'): void => {
       tearing = false;
-      project(readTree());
-      api.renderNow();
+      // PAINT FROM THE TREE THAT WAS SET. The batch adds the group before it
+      // swaps the tree, and the board's member:added reconciles the interim
+      // tree by halving the LARGEST leaf; when the manager lands the batch
+      // after this tick, that interim projection is what stayed on the canvas
+      // (a pane 445 px off). Project now, and again once the batch settles.
+      const paint = (): void => {
+        if (disposed) return;
+        project(readTree());
+        api.renderNow();
+      };
+      paint();
+      const p = pendingBatch;
+      pendingBatch = undefined;
+      if (p && typeof (p as { then?: unknown }).then === 'function') void (p as Promise<unknown>).then(paint, () => undefined);
       fire({ type: kind, kind: 'move', nodeId: pageId, changed });
     };
     const finish = (commit: boolean): void => {
