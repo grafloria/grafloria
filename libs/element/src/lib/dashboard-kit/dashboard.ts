@@ -1603,7 +1603,14 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     const pageSpec = specById.get(pageId);
     if (!model || !from || !pg || !pageSpec) return null;
     const viewId = ctx.viewOfBoard.get(containerId) ?? ctx.active;
-    const W = `${pageId}__group`;
+    // The new group's id. `${pageId}__group` is the usual — but when the page
+    // is leaving the very group that was BORN from it (torn out twice), that
+    // id is still taken until the emptied group closes later in the same
+    // batch: AddGroup threw "already exists" mid-batch, the split preview
+    // stayed applied and the chip stayed on screen (0.4.39). Take the next
+    // free suffix instead.
+    let W = `${pageId}__group`;
+    for (let n = 2; model.getGroup(W) || ctx.boardGroups.has(W); n++) W = `${pageId}__group${n}`;
     const tabsOpts = ctx.tabsOf.get(containerId) ?? {};
     const label = pageSpec.title ?? pageId;
     const size = { width: pg.size?.width ?? 0, height: (pg.size?.height ?? 0) + tabStripReserve(tabsOpts, 1) };

@@ -2171,6 +2171,39 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `setSizing('grow') on the (split, always-fit: ${before.sizing}) view: the 12-row page still ${before.kH} px inside its ${before.pageH} px page · torn out at the widget's edge: page ${geo?.kTop}→${geo?.kBottom} inside its pane ${geo?.gTop}→${geo?.gBottom} (${geo?.gH} px tall, not the base 12 rows) · host bottom ${Math.round(host?.bottom ?? 0)} vs canvas ${Math.round(cv.bottom)} ${JSON.stringify(sane)} · undo + fit: ${after.sizing}, born ${after.born}`);
 }
 
+{
+  begin('L85-torn-out-TWICE-a-page-leaving-the-group-born-from-it-lands-above-another-group');
+  await scrollTo('tabs');
+  const strips = () => page.evaluate(() => [...document.querySelectorAll('#cv-tabs .axdb-tabs')].map((s) => s.getAttribute('data-tabs-id') + ':' + [...s.querySelectorAll('.axdb-tab')].map((t) => t.textContent).join('/')));
+  const cell = (id) => page.evaluate((id) => window.__lab.tabs.handle.widget(id)?.cell ?? null, id);
+  const before = await strips();
+  // 1. Notes out of the panel onto the left column (L61's move)
+  const tab = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tab[data-tab-id="pg-c"]').getBoundingClientRect().toJSON());
+  const left = await rect('tabs', 't-left');
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, left.x + left.w / 2, left.y + left.h - 30, { steps: 16 });
+  const mid = await strips(); const panel0 = await cell('panel');
+  // 2. the SAME tab again, now from its own one-tab group, onto the TOP third of the panel it came from
+  const tab2 = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="pg-c__group"] .axdb-tab')?.getBoundingClientRect().toJSON() ?? null);
+  const panelRect = await page.evaluate(() => { const s = document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect(); const g = window.__lab.tabs.api.getModel().getGroup('panel'); return { x: s.x, w: s.width, bodyTop: s.bottom, bodyH: g.size.height - s.height }; });
+  let held = null;
+  if (tab2) await drag(tab2.x + tab2.width / 2, tab2.y + tab2.height / 2, panelRect.x + panelRect.w / 2, panelRect.bodyTop + panelRect.bodyH * 0.12, { steps: 16, mid: async () => { held = await page.evaluate(() => ({ chip: document.querySelector('.axdb-tab-chip')?.textContent ?? null, overlay: !!document.querySelector('#cv-tabs .axdb-join') })); await shot('tabs', 'notes-held-above-the-panel-it-came-from'); } });
+  const after = await strips(); const panel1 = await cell('panel');
+  const born = after.map((s) => s.split(':')[0]).filter((id) => id !== 'panel');
+  const bornCell = born.length === 1 ? await cell(born[0]) : null;
+  const chipLeft = await page.evaluate(() => !!document.querySelector('.axdb-tab-chip'));
+  const sane = await sanity('tabs');
+  await shot('tabs', 'notes-is-a-fresh-group-above-the-panel');
+  await undoAll('tabs', 2);
+  const undone = await strips(); const panel2 = await cell('panel');
+  verdict(before.join(' ') === 'panel:Filters/Alerts/Notes' && mid.join(' ') === 'panel:Filters/Alerts pg-c__group:Notes'
+    && held?.chip === 'Notes' && held?.overlay === true
+    && born.length === 1 && after.includes(`${born[0]}:Notes`) && after.includes('panel:Filters/Alerts')
+    && !!panel0 && !!panel1 && !!bornCell && panel1.h < panel0.h && bornCell.y < panel1.y && bornCell.x === panel1.x && bornCell.w === panel1.w
+    && !chipLeft && sane.overlaps === 0
+    && undone.join(' ') === 'panel:Filters/Alerts/Notes' && !!panel2 && panel2.h === panel0.h && panel2.y === panel0.y,
+    `rest ${before.join(' ')} · Notes torn out: ${mid.join(' ')} panel ${JSON.stringify(panel0)} · its only tab held over the panel's top third: chip ${held?.chip} overlay ${held?.overlay} · released: ${after.join(' ')} — born ${born.join('/')} at ${JSON.stringify(bornCell)} above panel ${JSON.stringify(panel1)}, chip left ${chipLeft} ${JSON.stringify(sane)} · two undos: ${undone.join(' ')} panel ${JSON.stringify(panel2)}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();
