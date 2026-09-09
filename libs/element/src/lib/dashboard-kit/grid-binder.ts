@@ -595,6 +595,23 @@ export interface TearOutPlan {
     rect: { x: number; y: number; width: number; height: number },
     boardId: string
   ): { move: Command[]; collapse: Command[] };
+  /**
+   * The tab containers the page may JOIN instead of forming a group of its
+   * own — VS Code's editor dragged from one group into another. Every one it
+   * may legally enter (not the container it left, none inside itself); the
+   * board hit-tests them against the pointer, and a release over one joins.
+   */
+  joinTargets: string[];
+  /** The tab index a release at this CLIENT point means for `targetId`: over the strip, between the tabs there; over the body, the end. */
+  dropIndex(targetId: string, clientX: number, clientY: number): number;
+  /** Paint (or, with null, clear) the insertion mark on `targetId`'s strip. */
+  markDrop(targetId: string | null, index: number | null): void;
+  /**
+   * The commands for joining `targetId` at `index`: the page becomes its tab
+   * — and the active one — and the container it left closes when it was the
+   * last page. No cell is taken on any board.
+   */
+  join(targetId: string, index: number, boardId: string): { move: Command[]; collapse: Command[] };
 }
 
 /** A torn-out page never arrives shorter than this: a strip with no room under it is not a group. */
@@ -616,6 +633,13 @@ interface AdoptedLeg {
   groupId: string;
   /** Drive the target engine from the source binder's pointer stream. */
   move(world: { x: number; y: number }): void;
+  /**
+   * Take the tile OFF the board while the pointer is somewhere the board is
+   * not the target (over a group the page will join instead); the tiles it
+   * displaced come home. `enter` puts it back at the pointer.
+   */
+  leave(): void;
+  enter(world: { x: number; y: number }): void;
   /** Undo the adoption: target board back to its pre-entry layout. */
   abort(): void;
   /**
@@ -2814,8 +2838,25 @@ export function bindDashboardGrid(
         if (place(cell, item.w)) project();
         syncPlaceholder();
       },
+      leave: () => {
+        if (!engine.getItem(node.id)) return;
+        engine.remove(node.id); // displaced tiles come home (gesture memory)
+        lastWant = null;
+        project();
+        syncPlaceholder();
+      },
+      enter: (w) => {
+        if (!engine.getItem(node.id) && !engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: hNatural })) return;
+        const item = engine.getItem(node.id);
+        if (!item) return;
+        const cell = wantedCell(w.x, w.y, item.w, opts.fit === 'shrink' ? hNatural : item.h);
+        lastWant = cell;
+        place(cell, item.w);
+        project();
+        syncPlaceholder();
+      },
       abort: () => {
-        engine.remove(node.id);
+        if (engine.getItem(node.id)) engine.remove(node.id);
         engine.cancelGesture(); // pre-entry layout, memory cleared
         adoptedGhostId = null;
         disarmGlideSoon();
@@ -3364,6 +3405,45 @@ export function bindDashboardGrid(
     chip.className = 'axdb-drag-chip axdb-tab-chip';
     chip.textContent = plan.label;
     doc.body.appendChild(chip);
+    // Over ANOTHER tab container the page joins it instead of taking a cell:
+    // the tile leaves the board (its displaced tiles come home), the target's
+    // frame lights up and its strip marks where the tab will go.
+    const layer = htmlLayer();
+    const targets = plan.joinTargets
+      .map((id) => diagram.getGroup(id))
+      .filter((g): g is GroupModel => !!g && g.id !== fromGroupId);
+    const targetAt = (wx: number, wy: number): GroupModel | null => targets.find((t) => worldInsideGroup(t, wx, wy)) ?? null;
+    let over: GroupModel | null = null;
+    let joinEl: HTMLElement | null = null;
+    const showJoin = (g: GroupModel): void => {
+      if (!layer) return;
+      if (!joinEl) {
+        joinEl = doc.createElement('div');
+        joinEl.className = 'axdb-join';
+        layer.prepend(joinEl);
+      }
+      const sz = sizeOf(g);
+      joinEl.style.left = `${g.position.x}px`;
+      joinEl.style.top = `${g.position.y}px`;
+      joinEl.style.width = `${sz.width}px`;
+      joinEl.style.height = `${sz.height}px`;
+    };
+    const hideJoin = (): void => {
+      joinEl?.remove();
+      joinEl = null;
+      plan.markDrop(null, null);
+    };
+    const setOver = (g: GroupModel | null, world: { x: number; y: number }): void => {
+      if (g === over) return;
+      over = g;
+      if (g) {
+        leg.leave();
+        showJoin(g);
+      } else {
+        hideJoin();
+        leg.enter(world);
+      }
+    };
     const moveChip = (cx: number, cy: number): void => {
       chip.style.left = `${cx + 6}px`;
       chip.style.top = `${cy + 6}px`;
@@ -3385,19 +3465,39 @@ export function bindDashboardGrid(
       moveChip(e.clientX, e.clientY);
       const world = toWorld(e.clientX, e.clientY);
       const home = worldInsideGroup(from, world.x, world.y);
+      const target = home ? null : targetAt(world.x, world.y);
+      setOver(target, world);
       // Over its own container it goes home: a tab dragged around its own
       // strip must not tear itself out.
-      chip.classList.toggle('axdb-out', home || !worldInsideBoardGrace(world.x, world.y));
-      if (!home) leg.move(world);
+      chip.classList.toggle('axdb-out', home || (!target && !worldInsideBoardGrace(world.x, world.y)));
+      if (target) plan.markDrop(target.id, plan.dropIndex(target.id, e.clientX, e.clientY));
+      else if (!home) leg.move(world);
       api.render();
     };
     const finish = (commit: boolean): void => {
       detach();
       chip.remove();
+      hideJoin();
       tearing = null;
       if (disposed) return;
       const world = toWorld(last.x, last.y);
       const home = worldInsideGroup(from, world.x, world.y);
+      const target = commit && !home ? targetAt(world.x, world.y) : null;
+      if (target) {
+        // JOIN: no cell on this board — the leg is abandoned (its displaced
+        // tiles are already home) and the page becomes the target's tab.
+        const index = plan.dropIndex(target.id, last.x, last.y);
+        leg.abort();
+        const planned = plan.join(target.id, index, group.id);
+        const collapse = planned.collapse.length > 0 ? [...planRemovalOf(fromGroupId), ...planned.collapse] : [];
+        const changed = execute('Move tab', [...planned.move, ...collapse]);
+        disarmGlideSoon();
+        enforceBoardHeight();
+        persistLayouts();
+        api.renderNow();
+        options.onGesture?.({ type: 'commit', kind: 'move', nodeId: pageId, changed });
+        return;
+      }
       if (!commit || home || !worldInsideBoardGrace(world.x, world.y)) {
         leg.abort();
         disarmGlideSoon();

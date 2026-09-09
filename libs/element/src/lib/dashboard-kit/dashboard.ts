@@ -1353,13 +1353,111 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
             new RegisterWidgetCommand(born, 'register'),
           ]),
         ];
-        if (remaining.length > 0) return { move, collapse: [] };
-        // The last page left: the container closes. Its registry goes FIRST
-        // so that on undo it comes back AFTER the group and its slab do.
+        return { move, collapse: remaining.length > 0 ? [] : collapseOf(boardId) };
+      },
+      joinTargets: [...ctx.layoutOf.keys()].filter(
+        (id) => id !== containerId && id !== pageId && (ctx.layoutOf.get(id) ?? specById.get(id)?.layout) === 'tabs' && !!model!.getGroup(id) && !insidePage(id)
+      ),
+      dropIndex: (targetId, cx, cy) => {
+        const strip = ctx.tabStrips.get(targetId);
+        const n = liveCount(targetId);
+        if (!strip) return n;
+        const r = strip.getBoundingClientRect();
+        if (r.width === 0 || cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) return n;
+        const rtl = strip.getAttribute('dir') === 'rtl';
+        let i = 0;
+        for (const t of Array.from(strip.querySelectorAll('.axdb-tab'))) {
+          const tr = t.getBoundingClientRect();
+          const mid = tr.left + tr.width / 2;
+          if (rtl ? cx < mid : cx > mid) i++;
+          else break;
+        }
+        return i;
+      },
+      markDrop: (targetId, index) => {
+        for (const [id, el] of ctx.tabStrips) {
+          const on = id === targetId;
+          el.classList.toggle('axdb-tabs--drop', on);
+          const tabs = Array.from(el.querySelectorAll('.axdb-tab'));
+          tabs.forEach((t, i) => t.classList.toggle('axdb-tab--drop-before', on && index !== null && i === index));
+          el.classList.toggle('axdb-tabs--drop-end', on && index !== null && index >= tabs.length);
+        }
+      },
+      join: (targetId, index, boardId) => {
+        const target = ctx.boardGroups.get(targetId) ?? model.getGroup(targetId);
+        const targetSpec = specById.get(targetId);
+        if (!target || !targetSpec) return { move: [], collapse: [] };
+        const prevActive = ctx.activeTab.get(targetId);
+        const cwOf = (g: GroupModel): Record<string, unknown> => (g.getMetadata('containerWidget') ?? {}) as Record<string, unknown>;
+        let slot = -1;
+        const joined = {
+          register: (): void => {
+            viewOfWidget.set(pageId, targetId);
+            if (fromSpec?.widgets) {
+              const i = fromSpec.widgets.findIndex((p) => p.id === pageId);
+              if (i >= 0) {
+                slot = i;
+                fromSpec.widgets.splice(i, 1);
+              }
+            }
+            targetSpec.widgets = targetSpec.widgets ?? [];
+            if (!targetSpec.widgets.some((p) => p.id === pageId)) {
+              targetSpec.widgets.splice(Math.max(0, Math.min(index, targetSpec.widgets.length)), 0, pageSpec);
+            }
+            ctx.boardWidgets.set(targetId, targetSpec.widgets);
+            // The moved tab is the one showing, as it is in VS Code.
+            ctx.activeTab.set(targetId, pageId);
+            targetSpec.active = pageId;
+            target.setMetadata('containerWidget', { ...cwOf(target), active: pageId });
+          },
+          unregister: (): void => {
+            viewOfWidget.set(pageId, containerId);
+            if (targetSpec.widgets) {
+              const i = targetSpec.widgets.findIndex((p) => p.id === pageId);
+              if (i >= 0) targetSpec.widgets.splice(i, 1);
+            }
+            if (fromSpec?.widgets && !fromSpec.widgets.some((p) => p.id === pageId)) {
+              fromSpec.widgets.splice(slot < 0 ? fromSpec.widgets.length : Math.min(slot, fromSpec.widgets.length), 0, pageSpec);
+            }
+            if (prevActive) {
+              ctx.activeTab.set(targetId, prevActive);
+              targetSpec.active = prevActive;
+              target.setMetadata('containerWidget', { ...cwOf(target), active: prevActive });
+            }
+          },
+        };
+        const move: Command[] = [
+          new SequenceCommand('Move tab', [
+            new RemoveFromGroupCommand(containerId, pageId),
+            new AddToGroupCommand(targetId, pageId),
+            new RegisterWidgetCommand(joined, 'register'),
+          ]),
+        ];
+        return { move, collapse: remaining.length > 0 ? [] : collapseOf(boardId) };
+      },
+    };
+
+    /** A tab container nested inside the page being moved cannot be its target. */
+    function insidePage(id: string): boolean {
+      let cur = model!.getGroup(id);
+      for (let i = 0; cur && i < 32; i++) {
+        if (cur.id === pageId) return true;
+        cur = cur.parentGroupId ? model!.getGroup(cur.parentGroupId) : undefined;
+      }
+      return false;
+    }
+    function liveCount(id: string): number {
+      return [...(model!.getGroup(id)?.members ?? [])].filter((m) => !!model!.getGroup(m)).length;
+    }
+    /**
+     * The last page left: the container closes. Its registry goes FIRST so
+     * that on undo it comes back AFTER the group and its slab do.
+     */
+    function collapseOf(boardId: string): Command[] {
         let fromSlot = -1;
         const gone = {
           register: (): void => {
-            const live = model.getGroup(containerId);
+            const live = model!.getGroup(containerId);
             if (!live) return;
             ctx.boardGroups.set(containerId, live);
             ctx.layoutOf.set(containerId, 'tabs');
@@ -1387,18 +1485,14 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
             }
           },
         };
-        return {
-          move,
-          collapse: [
-            new SequenceCommand('Close empty tab container', [
-              new RegisterWidgetCommand(gone, 'unregister'),
-              new RemoveFromGroupCommand(boardId, containerId),
-              new RemoveGroupCommand(containerId),
-            ]),
-          ],
-        };
-      },
-    };
+        return [
+          new SequenceCommand('Close empty tab container', [
+            new RegisterWidgetCommand(gone, 'unregister'),
+            new RemoveFromGroupCommand(boardId, containerId),
+            new RemoveGroupCommand(containerId),
+          ]),
+        ];
+    }
   };
 
   /** Bookkeeping closures for one widget, shared by the add and remove

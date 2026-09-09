@@ -1311,6 +1311,47 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `dragged the ONLY tab out: so-tabs ${after['so-tabs'] ?? 'GONE'} (wanted gone), so-p in ${after['so-p']}, strips ${stripsAfter.join(' ')} · placeholder ${JSON.stringify(ghost)} vs the new group's strip ${JSON.stringify(bornStrip)} (${landedWherePromised ? 'landed where promised' : 'MOVED after the drop'}) · undo -> so-tabs ${undone['so-tabs']}, so-p in ${undone['so-p']}, strips ${stripsUndone.join(' ')} ${JSON.stringify(sane)}`);
 }
 {
+  begin('L65-a-tab-dropped-onto-another-group-joins-it-where-the-strip-marks');
+  await scrollTo('join');
+  const strips = () => page.evaluate(() => { const o = {}; for (const s of document.querySelectorAll('#cv-join .axdb-tabs')) o[s.getAttribute('data-tabs-id')] = [...s.querySelectorAll('.axdb-tab')].map((t) => t.textContent); return o; });
+  const owners = () => page.evaluate(() => { const out = {}; const walk = (ws, p) => { for (const w of ws) { out[w.id] = p; if (w.widgets) walk(w.widgets, w.id); } }; walk(window.__lab.join.handle.toJSON().views[0].widgets, 'BOARD'); return out; });
+  const tabRect = (c, p) => page.evaluate(([c, p]) => document.querySelector(`#cv-join .axdb-tabs[data-tabs-id="${c}"] .axdb-tab[data-tab-id="${p}"]`).getBoundingClientRect().toJSON(), [c, p]);
+  const before = await strips();
+  // 1. the right group's NOTES tab, released on the left STRIP just before MARGIN
+  const notes = await tabRect('j-right', 'jr-d');
+  const margin = await tabRect('j-left', 'jl-b');
+  let mid = null;
+  await drag(notes.x + notes.width / 2, notes.y + notes.height / 2, margin.x + margin.width * 0.25, margin.y + margin.height / 2, { steps: 18, mid: async () => {
+    mid = await page.evaluate(() => {
+      const j = document.querySelector('#cv-join .axdb-join'); const jr = j?.getBoundingClientRect();
+      const left = document.querySelector('#cv-join .axdb-slab[data-slab-id="j-left"]')?.getBoundingClientRect() ?? document.querySelector('#cv-join .axdb-tabs[data-tabs-id="j-left"]')?.getBoundingClientRect();
+      return { overlay: jr ? { x: Math.round(jr.x), y: Math.round(jr.y), w: Math.round(jr.width) } : null, leftStrip: left ? { x: Math.round(left.x), y: Math.round(left.y), w: Math.round(left.width) } : null,
+        marked: [...document.querySelectorAll('#cv-join .axdb-tab--drop-before')].map((t) => t.textContent), stripLit: !!document.querySelector('#cv-join .axdb-tabs[data-tabs-id="j-left"].axdb-tabs--drop'), ph: !!document.querySelector('#cv-join .axdb-ph'), chip: document.querySelector('.axdb-tab-chip')?.textContent ?? null };
+    });
+    await shot('join', 'held-over-the-left-strip-before-margin');
+  } });
+  const s1 = await strips(); const o1 = await owners();
+  const active1 = await page.evaluate(() => window.__lab.join.handle.getActiveTab('j-left'));
+  await shot('join', 'notes-joined-the-left-group');
+  // 2. the right group's LAST tab, released on the left group's BODY: joins on the end, the empty right group closes
+  const filters = await tabRect('j-right', 'jr-c');
+  const leftBody = await page.evaluate(() => { const g = window.__lab.join.api.getModel().getGroup('j-left'); const cv = document.getElementById('cv-join').getBoundingClientRect(); return { x: cv.x + 8 + g.position.x + g.size.width / 2, y: cv.y + 8 + g.position.y + g.size.height * 0.6 }; });
+  await drag(filters.x + filters.width / 2, filters.y + filters.height / 2, leftBody.x, leftBody.y, { steps: 18 });
+  const s2 = await strips(); const o2 = await owners();
+  const sane = await sanity('join');
+  await shot('join', 'filters-joined-on-the-end-and-the-right-group-closed');
+  await undoAll('join', 2);
+  const s3 = await strips(); const o3 = await owners();
+  await shot('join', 'undo-twice');
+  const overlayOnLeft = !!mid?.overlay && !!mid?.leftStrip && Math.abs(mid.overlay.x - mid.leftStrip.x) <= 3 && Math.abs(mid.overlay.w - mid.leftStrip.w) <= 3;
+  verdict(before['j-left'].join(',') === 'Sales,Margin' && before['j-right'].join(',') === 'Filters,Notes'
+    && !!mid && mid.chip === 'Notes' && overlayOnLeft && mid.stripLit && mid.marked.join(',') === 'Margin' && mid.ph === false
+    && s1['j-left'].join(',') === 'Sales,Notes,Margin' && s1['j-right'].join(',') === 'Filters' && active1 === 'jr-d' && o1['jr-d'] === 'j-left' && !o1['jr-d__group']
+    && s2['j-left'].join(',') === 'Sales,Notes,Margin,Filters' && !s2['j-right'] && !o2['j-right'] && o2['jr-c'] === 'j-left' && sane.overlaps === 0
+    && s3['j-left'].join(',') === 'Sales,Margin' && s3['j-right'].join(',') === 'Filters,Notes' && o3['jr-d'] === 'j-right',
+    `held over the left strip before Margin: chip ${mid?.chip}, overlay on the left group ${overlayOnLeft}, strip lit ${mid?.stripLit}, mark before [${mid?.marked}], board placeholder ${mid?.ph} · dropped: left ${s1['j-left']?.join('/')} right ${s1['j-right']?.join('/')} active ${active1} (Notes joined the left group, no group of its own: ${!o1['jr-d__group']}) · then Filters onto the left BODY: left ${s2['j-left']?.join('/')}, right group ${o2['j-right'] ? 'still there' : 'closed'} · undo ×2: left ${s3['j-left']?.join('/')} right ${s3['j-right']?.join('/')} ${JSON.stringify(sane)}`);
+}
+{
   begin('L53-a-caption-reserves-only-where-something-paints-it');
   await scrollTo('cap-split');
   const r = await page.evaluate(() => {
