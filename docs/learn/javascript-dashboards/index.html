@@ -422,6 +422,21 @@ render(SPEC2, host);</pre>
       space, and travel — everything inside rides along, tiles in the way are pushed, and other sections still
       refuse to be overlapped. Type never changes as a side effect of a drop; a torn-out page keeps its tab as a
       group of its own.</p>
+      <p><b>The drop model the docking libraries share</b> (element 0.4.33). Over another group, where the pointer is
+      decides what the release does: the strip joins at the marked slot; the centre third of the body joins on the
+      end; an outer third <em>splits</em> the group — it keeps one half of its cell and the page's new group takes
+      the other, left, right, above or below, with the overlay showing the half being taken (Lumino's thirds,
+      VS Code's feel). The board's own edges <em>dock</em>: the top band takes a full-width group at row 0 and
+      everything below moves down, the sides take a full-height group at the edge — bands of the <em>visible</em>
+      canvas (20 px top and bottom, 40 px at the sides), so a scrolled board still docks where you see its edge; a
+      strip beats a band and a band beats a group's body. A docked group takes at most half the board, the way an
+      edge drop splits VS Code's editor area in two, never the full height of the container it left — and a top
+      dock <em>inserts</em> rows: everything beneath the band moves down as one, its arrangement intact, rather than
+      being re-packed tile by tile. The deepest target wins, so a
+      group nested inside the container the page came from is a target, not "home". The ghost enters the board only
+      when the pointer is over free board space, so on a fit board nothing squeezes the moment you grab a tab, and a
+      full board that refuses the ghost still lets the page join, reorder or split. A group too narrow or too short
+      to halve joins instead. All of it is one undoable step.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
