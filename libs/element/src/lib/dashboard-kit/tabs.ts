@@ -58,7 +58,7 @@ export function paintTabStrip(
   o: TabsOptions | undefined,
   rtl: boolean,
   onPick: (id: string) => void,
-  onSelectContainer?: () => void,
+  onSelectContainer?: (e: PointerEvent) => void,
   /**
    * The tab is the PAGE's drag handle, as it is in VS Code: press one and
    * travel, and the whole page leaves — not the widget under the pointer,
@@ -86,7 +86,7 @@ export function paintTabStrip(
   // container impossible to resize by hand.
   strip.onpointerdown = (e: PointerEvent) => {
     if ((e.target as Element | null)?.closest('.axdb-tab')) return;
-    onSelectContainer?.();
+    onSelectContainer?.(e);
   };
   for (const p of pages) {
     const b = doc.createElement('button');

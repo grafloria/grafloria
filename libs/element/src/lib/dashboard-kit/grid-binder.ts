@@ -202,6 +202,14 @@ export interface DashboardGridOptions {
    * command path, folding `displaced` into the same batch.
    */
   onDropIn?: (node: NodeModel, cell: CellRect, displaced: Command[]) => void | Promise<void>;
+  /**
+   * A member is about to LEAVE this board through a gesture (moved into
+   * another board, made a tab of its own). Answers the commands that follow
+   * it in the same batch — a tab page emptied by the move closes.
+   */
+  onMemberLeaving?: (memberId: string) => Command[];
+  /** A widget dragged over a tab STRIP becomes a new tab there: the hooks that hit-test, mark and commit it. */
+  tabDrop?: TabDropHooks;
   /** Fires after commits/cancels/removals so the page can refocus/refit/flash. */
   onGesture?: (e: {
     type: 'commit' | 'cancel' | 'remove' | 'drop-in';
@@ -568,6 +576,14 @@ interface BinderPeer {
    * it, so the strip can leave the press alone.
    */
   tearOutMember(pageId: string, fromGroupId: string, ev: PointerEvent, plan: TearOutPlan): boolean;
+  /**
+   * Drag member section `id` by a press that did not go through this board's
+   * tool (a tab container's strip is a DOM overlay): the board runs the move
+   * from the pointer sequence itself. Answers false when it cannot.
+   */
+  dragMember(id: string, ev: PointerEvent): boolean;
+  /** Start a MOVE of member section `id` from a press this board's tool routed here. */
+  beginSlabMove?(id: string, ev: ToolPointerEvent): boolean;
 }
 
 /**
@@ -606,6 +622,10 @@ export interface TearOutPlan {
   dropIndex(targetId: string, clientX: number, clientY: number): number;
   /** Paint (or, with null, clear) the insertion mark on `targetId`'s strip. */
   markDrop(targetId: string | null, index: number | null): void;
+  /** The tab index a CLIENT point means along `targetId`'s strip — null when the point is not over that strip. */
+  stripIndex(targetId: string, clientX: number, clientY: number): number | null;
+  /** The commands that REORDER the page to `index` along its own strip. Empty when nothing changes. */
+  reorder(index: number): Command[];
   /**
    * The commands for joining `targetId` at `index`: the page becomes its tab
    * — and the active one — and the container it left closes when it was the
@@ -616,6 +636,50 @@ export interface TearOutPlan {
 
 /** A torn-out page never arrives shorter than this: a strip with no room under it is not a group. */
 export const TEAR_OUT_MIN_ROWS = 2;
+
+/**
+ * Steps that depend on each other's RESULT — create a group, then move a page
+ * into it, then place the group on the board; or remove a member and then the
+ * group it emptied — run as one history step. A batch checks every member's
+ * `canExecute` before running any of them and every member's `canUndo` before
+ * undoing any, and a membership command's precondition (its group exists) is
+ * exactly what a neighbouring step creates or removes. This runs the chain in
+ * order and reverses it on undo, judging nothing up front.
+ */
+export class SequenceCommand extends Command {
+  constructor(name: string, private steps: Command[]) {
+    super(name);
+  }
+  override execute(context: Parameters<Command['execute']>[0]): void {
+    for (const c of this.steps) c.execute(context);
+  }
+  override undo(context: Parameters<Command['undo']>[0]): void {
+    for (let i = this.steps.length - 1; i >= 0; i--) this.steps[i].undo(context);
+  }
+  override canExecute(): boolean {
+    return true;
+  }
+  override canUndo(): boolean {
+    return true;
+  }
+  override serialize() {
+    return { id: this.id, name: this.name, timestamp: this.timestamp, data: { steps: this.steps.map((c) => c.serialize()) } };
+  }
+}
+
+/**
+ * A WIDGET dropped on a tab strip becomes a new tab there (a tab dropped on
+ * one joins; a widget wraps into a page of its own first). The dashboard
+ * handle owns the strips and the registry; the binder owns the gesture.
+ */
+export interface TabDropHooks {
+  /** The strip under a CLIENT point, and the tab index that point means along it. */
+  stripAt(clientX: number, clientY: number): { containerId: string; index: number } | null;
+  /** Paint (or, with null, clear) the insertion mark on a strip. */
+  markDrop(containerId: string | null, index: number | null): void;
+  /** The commands that make `widgetId` a new tab of `containerId` at `index`; `displaced` are this board's survivors. Empty = refused. */
+  dropIntoStrip(widgetId: string, containerId: string, index: number, sourceBoardId: string, displaced: Command[]): Command[];
+}
 
 interface AdoptOptions {
   /**
@@ -786,6 +850,8 @@ interface GestureState {
   removedFromBoard: boolean;
   /** Live cross-container adoption, when the pointer is over another board. */
   leg: { peer: BinderPeer; adopted: AdoptedLeg } | null;
+  /** The tab strip under the pointer, when a release would make this widget a new tab there. */
+  strip: { containerId: string; index: number } | null;
   /** Last pointer position, world coords — release semantics depend on WHERE. */
   lastWorld: { x: number; y: number } | null;
   /** Last pointer position, screen coords (for the removeZone test). */
@@ -1835,8 +1901,12 @@ export function bindDashboardGrid(
     frameBefore: WorldRect;
     /** Pointer-to-edge offset at press, so the pulled edge follows the pointer exactly. */
     grab: { dx: number; dy: number };
+    /** A MOVE of the whole section (by its caption or its strip), not a resize. */
+    move: boolean;
   }
   let slabGesture: SlabGesture | null = null;
+  /** The slab gesture as it is NOW — read through a call so a guard's narrowing does not stick. */
+  const currentSlab = (): SlabGesture | null => slabGesture;
   /** The PARENT running a resize of OUR section from a press this tool claimed. */
   let forwardSlab: BinderPeer | null = null;
   const frameOfGroup = (grp: GroupModel): WorldRect => ({ x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height });
@@ -1860,9 +1930,45 @@ export function bindDashboardGrid(
         dx: edges.e ? grp.position.x + sizeOf(grp).width - ev.world.x : edges.w ? grp.position.x - ev.world.x : 0,
         dy: edges.s ? grp.position.y + sizeOf(grp).height - ev.world.y : edges.n ? grp.position.y - ev.world.y : 0,
       },
+      move: false,
     };
     capturePointer(slabGesture.pointerId);
     api.container.style.cursor = cursorFor(edges);
+  };
+  /**
+   * MOVE a section by its caption band or its strip's empty space. A section
+   * is a LOCKED tile so that nothing pushes it; for the gesture's duration the
+   * tile is unlocked (it is the one moving), other sections stay locked and
+   * still refuse it (E4b), and every unlocked tile gets pushed the way a
+   * widget pushes it. Its children ride along: the frame moves, the nested
+   * board re-projects.
+   */
+  const beginSlabMove = (id: string, ev: ToolPointerEvent): void => {
+    const grp = diagram.getGroup(id);
+    const it = engine.getItem(id);
+    if (!grp || !it || gesture || slabGesture || isStatic) return;
+    engine.beginGesture();
+    const snap = snapshotAll();
+    it.locked = false;
+    slabGesture = {
+      id,
+      edges: NO_EDGES,
+      pointerId: typeof PointerEvent !== 'undefined' && ev.source instanceof PointerEvent ? ev.source.pointerId : null,
+      started: false,
+      downScreen: { x: ev.screen.x, y: ev.screen.y },
+      startCells: snap.cells,
+      startGeom: snap.geoms,
+      cellBefore: { x: it.x, y: it.y, w: it.w, h: it.h },
+      frameBefore: frameOfGroup(grp),
+      grab: { dx: grp.position.x - ev.world.x, dy: grp.position.y - ev.world.y },
+      move: true,
+    };
+    capturePointer(slabGesture.pointerId);
+    api.container.style.cursor = 'grabbing';
+  };
+  const relockSlab = (id: string): void => {
+    const it = engine.getItem(id);
+    if (it) it.locked = true;
   };
   const slabMove = (ev: ToolPointerEvent): void => {
     const g = slabGesture;
@@ -1876,6 +1982,13 @@ export function bindDashboardGrid(
     if (!it) return;
     const f = frame();
     const gg = geom();
+    if (g.move) {
+      // The section's top-left follows the pointer by the offset it was grabbed at.
+      const cell = pointToCell(ev.world.x + g.grab.dx, ev.world.y + g.grab.dy, f, gg, rows(), it.w);
+      if ((cell.x !== it.x || cell.y !== it.y) && engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed) project();
+      syncPlaceholder();
+      return;
+    }
     const cu = columnUnitFor(gg, f.width);
     const rh = rowHeightFor(gg, rows());
     // The grid line nearest the pointer, in cells (mirrored on RTL).
@@ -1914,6 +2027,7 @@ export function bindDashboardGrid(
     slabGesture = null;
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
+    if (g.move) relockSlab(g.id);
     if (!g.started) {
       engine.endGesture();
       return;
@@ -1927,11 +2041,11 @@ export function bindDashboardGrid(
     if (it && grp && (b.x !== it.x || b.y !== it.y || b.w !== it.w || b.h !== it.h)) {
       commands.push(new SetGroupCellCommand(g.id, b, { x: it.x, y: it.y, w: it.w, h: it.h }, g.frameBefore, frameOfGroup(grp)));
     }
-    const changed = execute('Resize section', commands);
+    const changed = execute(g.move ? 'Move section' : 'Resize section', commands);
     disarmGlideSoon();
     syncHandles();
     api.renderNow();
-    options.onGesture?.({ type: 'commit', kind: 'resize', nodeId: g.id, changed });
+    options.onGesture?.({ type: 'commit', kind: g.move ? 'move' : 'resize', nodeId: g.id, changed });
   };
   const slabCancel = (): void => {
     const g = slabGesture;
@@ -1939,6 +2053,7 @@ export function bindDashboardGrid(
     slabGesture = null;
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
+    if (g.move) relockSlab(g.id);
     if (g.started) engine.cancelGesture();
     else engine.endGesture();
     project();
@@ -2055,6 +2170,10 @@ export function bindDashboardGrid(
   };
 
   const cancelActiveGesture = (notify = true): void => {
+    if (gesture?.strip) {
+      options.tabDrop?.markDrop(null, null);
+      gesture.strip = null;
+    }
     if (forwardSlab) {
       forwardSlab.slabCancel?.();
       forwardSlab = null;
@@ -2158,6 +2277,36 @@ export function bindDashboardGrid(
 
       g.lastWorld = { x: ev.world.x, y: ev.world.y };
       g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
+      // A TAB STRIP under the pointer wins over every board: the widget will
+      // become a new tab there, so it leaves this board (survivors settle
+      // home) and the strip marks the slot.
+      if (options.tabDrop && !isStatic) {
+        const crect = api.container.getBoundingClientRect();
+        const hitStrip = options.tabDrop.stripAt(crect.left + ev.screen.x, crect.top + ev.screen.y);
+        if (hitStrip) {
+          if (g.leg) {
+            g.leg.adopted.abort();
+            g.leg = null;
+          }
+          if (!g.removedFromBoard) {
+            g.removedFromBoard = true;
+            engine.remove(g.id);
+            project();
+          }
+          hostOf(g.id)?.classList.remove('axdb-out');
+          if (!g.strip || g.strip.containerId !== hitStrip.containerId || g.strip.index !== hitStrip.index) {
+            options.tabDrop.markDrop(hitStrip.containerId, hitStrip.index);
+          }
+          g.strip = hitStrip;
+          syncPlaceholder();
+          api.render();
+          return;
+        }
+        if (g.strip) {
+          options.tabDrop.markDrop(null, null);
+          g.strip = null;
+        }
+      }
       // Deepest board under the pointer wins: the nested KPI strip beats the
       // tab that contains it; a foreign board beats "outside". Strict frames
       // first; the one-row grace band below each board (gridstack's extra
@@ -2536,6 +2685,36 @@ export function bindDashboardGrid(
       gesture = null; // a plain click — the page's own click-to-focus handles it
       return;
     }
+    if (g.strip && options.tabDrop) {
+      // -- INTO A STRIP: the widget becomes a new tab of that container ------
+      const target = g.strip;
+      g.strip = null;
+      options.tabDrop.markDrop(null, null);
+      if (g.leg) {
+        g.leg.adopted.abort();
+        g.leg = null;
+      }
+      const displaced = buildCommitCommands(deltasSince(g.startCells, g.startGeom, g.id));
+      const snap = g.startGeom.get(g.id);
+      if (snap) {
+        g.node.setPosition(snap.pos.x, snap.pos.y);
+        g.node.setSize(snap.size.width, snap.size.height, snap.size.depth ?? 0);
+      }
+      const cmds = options.tabDrop.dropIntoStrip(g.id, target.containerId, target.index, group.id, displaced);
+      if (cmds.length === 0) {
+        cancelActiveGesture();
+        return;
+      }
+      engine.endGesture();
+      cleanupGestureVisuals(g);
+      gesture = null;
+      execute('Move widget into a new tab', cmds);
+      enforceBoardHeight();
+      persistLayouts();
+      api.renderNow();
+      options.onGesture?.({ type: 'commit', kind: g.kind, nodeId: g.id, changed: true });
+      return;
+    }
     if (g.leg) {
       // -- CROSS-CONTAINER COMMIT: one batch across both boards -----------
       const fin = g.leg.adopted.finalize();
@@ -2583,7 +2762,11 @@ export function bindDashboardGrid(
           },
         ]),
       ];
-      execute('Move widget', crossing);
+      // …and whatever follows a member out of this board: an emptied page
+      // closes — in which case the membership commands ride INSIDE one
+      // sequence with it, or the batch could never undo (its group is gone).
+      const leaving = options.onMemberLeaving?.(g.id) ?? [];
+      execute('Move widget', leaving.length > 0 ? [new SequenceCommand('Move widget', [...crossing, ...leaving])] : crossing);
       engine.endGesture();
       cleanupGestureVisuals(g);
       gesture = null;
@@ -2905,6 +3088,48 @@ export function bindDashboardGrid(
       beginSlabResize(id, edges, ev);
       return slabGesture?.id === id;
     },
+    beginSlabMove: (id, ev) => {
+      if (isStatic) return false;
+      beginSlabMove(id, ev);
+      return slabGesture?.id === id;
+    },
+    dragMember: (id, ev) => {
+      if (isStatic || disposed || !engine.getItem(id) || gesture || slabGesture) return false;
+      const toTool = (e: PointerEvent): ToolPointerEvent => {
+        const rect = api.container.getBoundingClientRect();
+        const world = api.viewport?.clientToWorld ? api.viewport.clientToWorld(e.clientX, e.clientY, rect) : { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        return { world, screen: { x: e.clientX - rect.left, y: e.clientY - rect.top }, source: e } as unknown as ToolPointerEvent;
+      };
+      beginSlabMove(id, toTool(ev));
+      if (currentSlab()?.id !== id) return false;
+      const detachAll = (): void => {
+        window.removeEventListener('pointermove', onMove, true);
+        window.removeEventListener('pointerup', onUp, true);
+        window.removeEventListener('pointercancel', onCancel, true);
+        window.removeEventListener('keydown', onKey, true);
+      };
+      const onMove = (e: PointerEvent): void => {
+        if (disposed || currentSlab()?.id !== id) return detachAll();
+        slabMove(toTool(e));
+        api.render();
+      };
+      const onUp = (): void => {
+        detachAll();
+        slabUp();
+      };
+      const onCancel = (): void => {
+        detachAll();
+        slabCancel();
+      };
+      const onKey = (e: KeyboardEvent): void => {
+        if (e.key === 'Escape') onCancel();
+      };
+      window.addEventListener('pointermove', onMove, true);
+      window.addEventListener('pointerup', onUp, true);
+      window.addEventListener('pointercancel', onCancel, true);
+      window.addEventListener('keydown', onKey, true);
+      return true;
+    },
     slabMove: (ev) => slabMove(ev),
     slabUp: () => slabUp(),
     slabCancel: () => slabCancel(),
@@ -3035,6 +3260,9 @@ export function bindDashboardGrid(
             ? rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false }
             : slabEdgesNear(grp, ev.world.x, ev.world.y);
           if (anyEdge(edges)) beginSlabResize(slabId, edges, ev);
+          // The caption band is the section's handle: pressed and travelled,
+          // it moves the whole section (its inner empty space only selects).
+          else if (ownCaption) beginSlabMove(slabId, ev);
           return;
         }
         // OUR OWN empty band, and we are a section of a parent board: the
@@ -3050,6 +3278,7 @@ export function bindDashboardGrid(
               ? rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false }
               : slabEdgesNear(group, ev.world.x, ev.world.y);
             if (anyEdge(edges) && parent.beginSlabResize(group.id, edges, ev)) forwardSlab = parent;
+            else if (!anyEdge(edges) && captionId === group.id && parent.beginSlabMove?.(group.id, ev)) forwardSlab = parent;
           }
           return;
         }
@@ -3119,6 +3348,7 @@ export function bindDashboardGrid(
         spans: { w: it?.w ?? 1, h: it?.h ?? 1 },
         removedFromBoard: false,
         leg: null,
+      strip: null,
         lastWorld: null,
         lastScreen: null,
         hostEl: null,
@@ -3416,7 +3646,7 @@ export function bindDashboardGrid(
     let over: GroupModel | null = null;
     let joinEl: HTMLElement | null = null;
     const showJoin = (g: GroupModel): void => {
-      if (!layer) return;
+      if (!layer || g.id === fromGroupId) return; // reordering along its own strip: the mark is enough
       if (!joinEl) {
         joinEl = doc.createElement('div');
         joinEl.className = 'axdb-join';
@@ -3459,18 +3689,21 @@ export function bindDashboardGrid(
       window.removeEventListener('pointercancel', onCancel, true);
       window.removeEventListener('keydown', onKey, true);
     };
+    let homeIndex: number | null = null;
     const onMove = (e: PointerEvent): void => {
       if (disposed) return detach();
       last = { x: e.clientX, y: e.clientY };
       moveChip(e.clientX, e.clientY);
       const world = toWorld(e.clientX, e.clientY);
       const home = worldInsideGroup(from, world.x, world.y);
+      // Over its OWN strip the tab reorders: the strip marks the slot and the
+      // tile leaves the board. Over its own body it goes home (a cancel).
+      homeIndex = home ? plan.stripIndex(fromGroupId, e.clientX, e.clientY) : null;
       const target = home ? null : targetAt(world.x, world.y);
-      setOver(target, world);
-      // Over its own container it goes home: a tab dragged around its own
-      // strip must not tear itself out.
-      chip.classList.toggle('axdb-out', home || (!target && !worldInsideBoardGrace(world.x, world.y)));
+      setOver(target ?? (homeIndex !== null ? from : null), world);
+      chip.classList.toggle('axdb-out', (home && homeIndex === null) || (!target && !home && !worldInsideBoardGrace(world.x, world.y)));
       if (target) plan.markDrop(target.id, plan.dropIndex(target.id, e.clientX, e.clientY));
+      else if (homeIndex !== null) plan.markDrop(fromGroupId, homeIndex);
       else if (!home) leg.move(world);
       api.render();
     };
@@ -3482,6 +3715,16 @@ export function bindDashboardGrid(
       if (disposed) return;
       const world = toWorld(last.x, last.y);
       const home = worldInsideGroup(from, world.x, world.y);
+      if (commit && home && homeIndex !== null) {
+        // REORDER along its own strip.
+        leg.abort();
+        const cmds = plan.reorder(homeIndex);
+        const changed = cmds.length > 0 ? execute('Reorder tab', cmds) : false;
+        disarmGlideSoon();
+        api.renderNow();
+        options.onGesture?.({ type: changed ? 'commit' : 'cancel', kind: 'move', nodeId: pageId, changed });
+        return;
+      }
       const target = commit && !home ? targetAt(world.x, world.y) : null;
       if (target) {
         // JOIN: no cell on this board — the leg is abandoned (its displaced
@@ -3489,8 +3732,7 @@ export function bindDashboardGrid(
         const index = plan.dropIndex(target.id, last.x, last.y);
         leg.abort();
         const planned = plan.join(target.id, index, group.id);
-        const collapse = planned.collapse.length > 0 ? [...planRemovalOf(fromGroupId), ...planned.collapse] : [];
-        const changed = execute('Move tab', [...planned.move, ...collapse]);
+        const changed = execute('Move tab', [...planned.move, ...planned.collapse]);
         disarmGlideSoon();
         enforceBoardHeight();
         persistLayouts();
@@ -3513,10 +3755,8 @@ export function bindDashboardGrid(
       }
       const planned = plan.commands(fin.cell, fin.rect, group.id);
       // The container the page left may have been holding its last page: it
-      // goes too, and the tiles around its slab settle the way a removal
-      // settles them (VS Code closes a group whose last editor leaves).
-      const collapse = planned.collapse.length > 0 ? [...planRemovalOf(fromGroupId), ...planned.collapse] : [];
-      const changed = execute('Move tab out', [...fin.commands, ...planned.move, ...collapse]);
+      // goes too (the plan carries the removal's settle).
+      const changed = execute('Move tab out', [...fin.commands, ...planned.move, ...planned.collapse]);
       disarmGlideSoon();
       enforceBoardHeight();
       persistLayouts();
@@ -3567,6 +3807,7 @@ export function bindDashboardGrid(
       spans: { w: Math.max(1, spec.w), h: Math.max(1, spec.h) },
       removedFromBoard: true,
       leg: null,
+      strip: null,
       lastWorld: null,
       lastScreen: null,
       hostEl: null,
@@ -3687,7 +3928,13 @@ export function bindDashboardGrid(
     if (disposed || gesture || !engine.getItem(id)) return false;
     engine.beginGesture();
     const snap = snapshotAll();
-    if (!op()) {
+    // A section is a LOCKED tile; for ITS OWN move it is the one moving.
+    const self = engine.getItem(id);
+    const wasLocked = !!self?.locked;
+    if (self && isGroupMember(id)) self.locked = false;
+    const ok = op();
+    if (self && isGroupMember(id)) self.locked = wasLocked;
+    if (!ok) {
       engine.endGesture();
       return false;
     }
