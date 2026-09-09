@@ -194165,7 +194165,7 @@ var CSS4 = `
 .grafloria-html-layer > .grafloria-node-host:focus-visible {
   outline: 2px solid var(--axdb-accent, #3b52d9);
   outline-offset: 2px;
-  border-radius: var(--axdb-rs-radius, 3px);
+  border-radius: var(--axdb-rs-radius, 8px);
 }
 
 /* ===== the held tile: transition-exempt ghost, above everything ===== */
@@ -194183,7 +194183,7 @@ var CSS4 = `
 /* ===== the placeholder: dashed slab, truthful, never animated ===== */
 .grafloria-html-layer > .axdb-ph {
   position: absolute;
-  border-radius: var(--axdb-rs-radius, 3px);
+  border-radius: var(--axdb-rs-radius, 8px);
   background: rgba(30, 34, 45, .14);
   border: 2px dashed rgba(30, 34, 45, .28);
   box-sizing: border-box;
@@ -194208,7 +194208,7 @@ var CSS4 = `
   cursor: nwse-resize;
   border-right: 3px solid rgba(120, 130, 148, .55);
   border-bottom: 3px solid rgba(120, 130, 148, .55);
-  border-bottom-right-radius: var(--axdb-rs-radius, 3px);
+  border-bottom-right-radius: var(--axdb-rs-radius, 8px);
   opacity: 0;
   transition: opacity .12s;
   z-index: 5;
@@ -194226,7 +194226,7 @@ var CSS4 = `
   border-right: none;
   border-left: 3px solid rgba(120, 130, 148, .55);
   border-bottom-right-radius: 0;
-  border-bottom-left-radius: var(--axdb-rs-radius, 3px);
+  border-bottom-left-radius: var(--axdb-rs-radius, 8px);
 }
 
 /* ===== palette drag-in chip (screen-space clone following the cursor) ===== */
@@ -194253,14 +194253,14 @@ var CSS4 = `
   font: 500 12px/1.4 var(--axdb-font, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
   color: var(--axdb-tabs-on-fg, #1f2430);
   background: var(--axdb-tabs-on-bg, #fff);
-  border-radius: var(--axdb-rs-radius, 3px);
-  box-shadow: 0 0 0 1px rgba(31, 36, 48, .12);
+  border-radius: var(--axdb-tab-radius, 6px);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .1), 0 0 0 1px rgba(31, 36, 48, .08);
 }
 @media (prefers-color-scheme: dark) {
   .axdb-tab-chip {
     color: var(--axdb-tabs-on-fg, #eceef4);
-    background: var(--axdb-tabs-on-bg, #1a1d25);
-    box-shadow: 0 0 0 1px rgba(236, 238, 244, .16);
+    background: var(--axdb-tabs-on-bg, #232836);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .45), 0 0 0 1px rgba(236, 238, 244, .12);
   }
 }
 /* A tab held over ANOTHER group: it will join that group, not the board. The
@@ -194273,7 +194273,7 @@ var CSS4 = `
   box-sizing: border-box;
   border: 2px dashed var(--axdb-accent, #3b52d9);
   background: var(--axdb-accent-soft, rgba(59, 82, 217, .08));
-  border-radius: var(--axdb-rs-radius, 3px);
+  border-radius: var(--axdb-rs-radius, 8px);
 }
 .axdb-tabs.axdb-tabs--drop { box-shadow: inset 0 -2px 0 var(--axdb-accent, #3b52d9); }
 .axdb-tab.axdb-tab--drop-before { position: relative; }
@@ -194301,7 +194301,7 @@ var CSS4 = `
   --axdb-muted: #5a6478;
   --axdb-grid: rgba(120, 130, 148, .22);
   --axdb-card: #fff;
-  --axdb-line: #e7eaf1;
+  --axdb-line: #e5e8ef;
   --axdb-soft: rgba(120, 130, 148, .14);
   --axdb-up: #0f7a3d;     /* 5.42:1 */
   --axdb-down: #be123c;   /* 6.29:1 */
@@ -194309,17 +194309,22 @@ var CSS4 = `
      steps: every entry clears 3:1 against its card (WCAG 1.4.11). */
   --axdb-c1: #3b52d9; --axdb-c2: #0369a1; --axdb-c3: #0f766e;
   --axdb-c4: #b45309; --axdb-c5: #6d28d9; --axdb-c6: #475569;
+  /* The header band: a panel wears its title in a band across its top, the
+     way DevExpress, Grafana and Metabase panels do \u2014 tinted ground, hairline
+     below, sentence case (0.4.36; the tracked uppercase micro-label before). */
+  --axdb-head-bg: #f7f8fb;
+  --axdb-head-fg: #2a3140;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 13px 15px 12px;
+  padding: 0;
   background: var(--axdb-card);
   border: 1px solid var(--axdb-line);
-  border-radius: var(--axdb-rs-radius, 3px);
-  box-shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .05);
+  border-radius: var(--axdb-rs-radius, 8px);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   color: var(--axdb-ink);
 }
@@ -194331,25 +194336,33 @@ var CSS4 = `
    below and would lose the cascade at equal specificity \u2014 at 54 px the margin
    stayed 8 px, the body shrank to 14 px and the KPI figure hid. */
 @container axdb-tile (max-height: 90px) {
-  .axdb-widget { padding: 8px 14px 7px; }
-  .axdb-widget > .axdb-widget-h { margin-bottom: 4px; }
+  .axdb-widget > .axdb-widget-h { padding: 5px 12px; font-size: 11.5px; }
+  .axdb-widget > .axdb-widget-b { padding: 6px 12px; }
 }
+/* The row floor: the band gives way to an inline label beside the figure. */
 @container axdb-tile (max-height: 46px) {
-  .axdb-widget { padding: 4px 12px 3px; }
-  .axdb-widget > .axdb-widget-h { margin-bottom: 0; }
+  .axdb-widget > .axdb-widget-h { padding: 0 0 0 12px; background: none; border-bottom: 0; }
+  .axdb-widget > .axdb-widget-b { padding: 3px 12px; }
 }
 @container axdb-tile (max-height: 26px) {
-  .axdb-widget { padding: 2px 12px 1px; }
+  .axdb-widget > .axdb-widget-h { display: none; }
+  .axdb-widget > .axdb-widget-b { padding: 1px 12px; }
 }
 .axdb-widget-h {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  font: 600 11px/1.3 system-ui, sans-serif;
-  letter-spacing: .4px;
-  text-transform: uppercase;
-  color: var(--axdb-muted);
+  gap: 8px;
+  flex: none;
+  min-width: 0;
+  padding: 9px 14px;
+  background: var(--axdb-head-bg);
+  border-bottom: 1px solid var(--axdb-line);
+  font: 600 12.5px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: -.005em;
+  color: var(--axdb-head-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* Drag-handle mode (DevExpress drags an item by its caption): the header is
    the grip and says so with a dot pattern and a grab cursor; the body keeps
@@ -194389,7 +194402,7 @@ var CSS4 = `
 .grafloria-node-host[data-axdb-edge="nesw-resize"], .grafloria-node-host[data-axdb-edge="nesw-resize"] * { cursor: nesw-resize !important; }
 /* INSIDE: centred on the header's text line and flush with the card padding,
    per size tier (padding 13/15, then 8/14, 4/12, 2/12). */
-.grafloria-node-host > .axdb-grip--inside { top: 14px; }
+.grafloria-node-host > .axdb-grip--inside { top: 12px; }
 .grafloria-node-host > .axdb-grip--inside.axdb-grip--left { left: 15px; }
 .grafloria-node-host > .axdb-grip--inside.axdb-grip--right { right: 15px; }
 .grafloria-node-host > .axdb-grip--inside.axdb-grip--center { top: 3px; }
@@ -194398,12 +194411,18 @@ var CSS4 = `
   .grafloria-node-host > .axdb-grip--inside.axdb-grip--left { left: 14px; }
   .grafloria-node-host > .axdb-grip--inside.axdb-grip--right { right: 14px; }
   .grafloria-node-host > .axdb-grip--inside.axdb-grip--center { top: 2px; }
+  .grafloria-node-host.axdb-gp-inside.axdb-gp-left .axdb-widget > .axdb-widget-h { padding-left: 46px; }
+  .grafloria-node-host.axdb-gp-inside.axdb-gp-right .axdb-widget > .axdb-widget-h { padding-right: 46px; }
+  .grafloria-node-host.axdb-gp-inside.axdb-gp-center .axdb-widget > .axdb-widget-h { padding-top: 15px; }
 }
 @container axdb-tile (max-height: 46px) {
   .grafloria-node-host > .axdb-grip--inside { top: 5px; }
   .grafloria-node-host > .axdb-grip--inside.axdb-grip--left { left: 12px; }
   .grafloria-node-host > .axdb-grip--inside.axdb-grip--right { right: 12px; }
   .grafloria-node-host > .axdb-grip--inside.axdb-grip--center { top: 1px; }
+  .grafloria-node-host.axdb-gp-inside.axdb-gp-left .axdb-widget > .axdb-widget-h { padding-left: 44px; }
+  .grafloria-node-host.axdb-gp-inside.axdb-gp-right .axdb-widget > .axdb-widget-h { padding-right: 44px; }
+  .grafloria-node-host.axdb-gp-inside.axdb-gp-center .axdb-widget > .axdb-widget-h { padding-top: 13px; }
 }
 @container axdb-tile (max-height: 26px) {
   .grafloria-node-host > .axdb-grip--inside { top: 2px; }
@@ -194416,11 +194435,13 @@ var CSS4 = `
 .grafloria-node-host > .axdb-grip--outside.axdb-grip--left { left: 10px; }
 .grafloria-node-host > .axdb-grip--outside.axdb-grip--right { right: 10px; }
 .grafloria-node-host > .axdb-grip--center { left: 50%; transform: translateX(-50%); }
-/* The header makes room for an inside grip on its side; a centred one sits above it. */
-.grafloria-node-host.axdb-gp-inside.axdb-gp-left .axdb-widget > .axdb-widget-h { padding-left: 32px; }
-.grafloria-node-host.axdb-gp-inside.axdb-gp-right .axdb-widget > .axdb-widget-h { padding-right: 32px; }
-.grafloria-node-host.axdb-gp-inside.axdb-gp-center .axdb-widget > .axdb-widget-h { padding-top: 12px; }
-.axdb-widget-b { flex: 1; min-height: 0; position: relative; }
+/* The header makes room for an inside grip on its side \u2014 inset + the 24-px
+   grip + an 8-px gap, per tier (32 px under the band's 14-px inset hid the
+   first letter of the title) \u2014 and a centred one sits above the text. */
+.grafloria-node-host.axdb-gp-inside.axdb-gp-left .axdb-widget > .axdb-widget-h { padding-left: 47px; }
+.grafloria-node-host.axdb-gp-inside.axdb-gp-right .axdb-widget > .axdb-widget-h { padding-right: 47px; }
+.grafloria-node-host.axdb-gp-inside.axdb-gp-center .axdb-widget > .axdb-widget-h { padding-top: 17px; }
+.axdb-widget-b { flex: 1; min-height: 0; position: relative; padding: 12px 14px; }
 /* A drag across a STATIC board (nothing prevents the press's default there)
    used to select every label on it; kit cards are not prose. Tables stay
    copyable \u2014 a figure in a grid is the one thing a viewer selects. */
@@ -194486,7 +194507,7 @@ var CSS4 = `
    when the tile is wide enough. */
 @container axdb-tile (max-height: 46px) {
   .axdb-widget--kpi { flex-direction: row; align-items: center; gap: 12px; }
-  .axdb-widget--kpi > .axdb-widget-h { flex: none; }
+  .axdb-widget--kpi > .axdb-widget-h { flex: none; padding: 0 0 0 12px; background: none; border-bottom: 0; }
   /* The body is a SIZE container: in a centred row it would collapse to zero
      and every height query would fire. It takes the card's full inner height. */
   .axdb-widget--kpi > .axdb-kpi { flex: 1; align-self: stretch; }
@@ -194531,7 +194552,7 @@ var CSS4 = `
 
 /* SECTION CHROME: a pointer-transparent overlay on every member group. It
    wears the selection ring and, while selected, the corner handle. */
-.grafloria-html-layer > .axdb-slab { position: absolute; pointer-events: none; border-radius: var(--axdb-rs-radius, 3px); z-index: 4; }
+.grafloria-html-layer > .axdb-slab { position: absolute; pointer-events: none; border-radius: var(--axdb-rs-radius, 8px); z-index: 4; }
 /* Selected, the overlay rises above the tiles so ITS corner handle wins a
    corner it shares with a child's; unselected, its handle takes no presses. */
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected { z-index: 6; box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)); }
@@ -194546,16 +194567,16 @@ var CSS4 = `
 .grafloria-html-layer > .axdb-slab > .axdb-slab-h {
   position: absolute; box-sizing: border-box; pointer-events: auto; z-index: 1;
   display: flex; align-items: center; gap: 6px; min-width: 0;
-  padding: var(--axdb-caption-pad, 0 10px);
-  background: var(--axdb-caption-bg, rgba(31, 36, 48, .055));
+  padding: var(--axdb-caption-pad, 0 12px);
+  background: var(--axdb-caption-bg, rgba(31, 36, 48, .045));
   /* A hairline by default: two bands meeting (a captioned section inside a
      captioned section) read as two headers, not one grey block. */
   border-bottom: var(--axdb-caption-border, 1px solid rgba(31, 36, 48, .1));
   color: var(--axdb-caption-fg, #1f2430);
   font: var(--axdb-caption-font-weight, 600) var(--axdb-caption-font-size, 13px)/1.2 var(--axdb-caption-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
   text-transform: var(--axdb-caption-transform, none);
-  letter-spacing: .01em;
-  border-radius: var(--axdb-rs-radius, 3px) var(--axdb-rs-radius, 3px) 0 0;
+  letter-spacing: -.005em;
+  border-radius: var(--axdb-rs-radius, 8px) var(--axdb-rs-radius, 8px) 0 0;
   cursor: default; user-select: none; -webkit-user-select: none; overflow: hidden;
   transition: opacity .12s;
 }
@@ -194567,7 +194588,7 @@ var CSS4 = `
 /* 'tab': the same band sized to its text, a chip at the leading corner. It
    reserves its height like 'inside' \u2014 see captionReserve. */
 .grafloria-html-layer > .axdb-slab > .axdb-slab-h.axdb-slab-h--tab {
-  max-width: 100%; border-radius: var(--axdb-rs-radius, 3px);
+  max-width: 100%; border-radius: var(--axdb-rs-radius, 8px);
   border-bottom: var(--axdb-caption-border-tab, none);
   box-shadow: inset 0 0 0 1px rgba(31, 36, 48, .08);
 }
@@ -194591,14 +194612,14 @@ var CSS4 = `
 .axdb-slab-h-icon { flex: none; }
 .axdb-slab-h-body { display: flex; flex-direction: column; justify-content: center; min-width: 0; flex: 0 1 auto; }
 .axdb-slab-h-text, .axdb-slab-h-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.axdb-slab-h-sub { font-size: .85em; font-weight: 500; opacity: .72; }
+.axdb-slab-h-sub { font-size: .88em; font-weight: 500; opacity: .7; }
 .axdb-slab-h-info { flex: none; opacity: .6; font-size: .9em; cursor: help; }
 .axdb-slab-h-actions { flex: none; display: flex; gap: 2px; margin-inline-start: auto; opacity: 0; transition: opacity .12s; }
 .axdb-slab-h--center .axdb-slab-h-actions, .axdb-slab-h--end .axdb-slab-h-actions { margin-inline-start: 0; }
 .axdb-slab-h:hover > .axdb-slab-h-actions, .axdb-slab--selected > .axdb-slab-h > .axdb-slab-h-actions, .axdb-slab-h:focus-within > .axdb-slab-h-actions { opacity: 1; }
 .axdb-slab-h-action {
-  all: unset; box-sizing: border-box; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 4px; cursor: pointer; font-size: 14px; line-height: 1; color: inherit;
+  all: unset; box-sizing: border-box; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1; color: inherit; transition: background-color .12s;
 }
 .axdb-slab-h-action:hover { background: rgba(31, 36, 48, .08); }
 .axdb-slab-h-action:focus-visible { outline: 2px solid var(--axdb-accent-ring, rgba(59, 82, 217, .55)); outline-offset: -2px; }
@@ -194606,8 +194627,11 @@ var CSS4 = `
 .axdb-slab-h-action[disabled]:hover { background: none; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-slab-h { cursor: default; }
 @media (prefers-color-scheme: dark) {
+  /* The band sits on the PAGE, whose ground the kit does not own (a host that
+     stays light while the kit goes dark is common): a solid ink, not a tint,
+     so the light caption always reads. */
   .grafloria-html-layer > .axdb-slab > .axdb-slab-h {
-    background: var(--axdb-caption-bg, rgba(236, 238, 244, .07));
+    background: var(--axdb-caption-bg, #1b2029);
     color: var(--axdb-caption-fg, #eceef4);
     border-bottom: var(--axdb-caption-border, 1px solid rgba(236, 238, 244, .12));
   }
@@ -194621,36 +194645,42 @@ var CSS4 = `
    ordinary boards. */
 .grafloria-html-layer > .axdb-tabs {
   position: absolute; box-sizing: border-box; pointer-events: auto; z-index: 5;
-  display: flex; align-items: flex-end; gap: 2px; padding: 0 6px; overflow-x: auto; overflow-y: hidden;
-  background: var(--axdb-tabs-bg, rgba(31, 36, 48, .05));
-  border-bottom: 1px solid var(--axdb-tabs-line, rgba(31, 36, 48, .12));
-  border-radius: var(--axdb-rs-radius, 3px) var(--axdb-rs-radius, 3px) 0 0;
+  display: flex; align-items: center; gap: 2px; padding: 3px 6px; overflow-x: auto; overflow-y: hidden;
+  background: var(--axdb-tabs-bg, #f1f3f8);
+  border-bottom: 1px solid var(--axdb-tabs-line, #e5e8ef);
+  border-radius: var(--axdb-rs-radius, 8px) var(--axdb-rs-radius, 8px) 0 0;
   scrollbar-width: thin;
 }
 .axdb-tabs--center { justify-content: center; }
 .axdb-tabs--end { justify-content: flex-end; }
 .axdb-tabs--stretch > .axdb-tab { flex: 1 1 0; }
+/* A tab is a PILL on the track (a segmented control): quiet until hovered,
+   the active one lifted in the card's own ground. */
 .axdb-tab {
   all: unset; box-sizing: border-box; flex: 0 0 auto; max-width: 200px;
-  padding: 0 12px; height: calc(100% - 4px); display: inline-flex; align-items: center;
-  font: 600 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding: 0 12px; height: 100%; display: inline-flex; align-items: center;
+  font: 500 12.5px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: -.005em;
   color: var(--axdb-tabs-fg, #5a6478); cursor: pointer;
-  border-radius: var(--axdb-rs-radius, 3px) var(--axdb-rs-radius, 3px) 0 0;
+  border-radius: var(--axdb-tab-radius, 6px);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background-color .12s, color .12s, box-shadow .12s;
 }
-.axdb-tab:hover { background: rgba(31, 36, 48, .06); }
+.axdb-tab:hover { background: rgba(31, 36, 48, .06); color: var(--axdb-tabs-on-fg, #1f2430); }
 .axdb-tab:focus-visible { outline: 2px solid var(--axdb-accent-ring, rgba(59, 82, 217, .55)); outline-offset: -2px; }
-/* The active tab reads as the front page: the card's own ground, lifted. */
 .axdb-tab.axdb-tab--on {
   background: var(--axdb-tabs-on-bg, #fff);
   color: var(--axdb-tabs-on-fg, #1f2430);
-  box-shadow: 0 -1px 0 var(--axdb-accent, #3b52d9) inset, 0 0 0 1px rgba(31, 36, 48, .1);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .1), 0 0 0 1px rgba(31, 36, 48, .06);
 }
+@media (prefers-reduced-motion: reduce) { .axdb-tab { transition: none; } }
 @media (prefers-color-scheme: dark) {
-  .grafloria-html-layer > .axdb-tabs { background: var(--axdb-tabs-bg, rgba(236, 238, 244, .06)); border-bottom-color: var(--axdb-tabs-line, rgba(236, 238, 244, .14)); }
+  /* Solid for the same reason as the caption band: the track sits on the page. */
+  .grafloria-html-layer > .axdb-tabs { background: var(--axdb-tabs-bg, #1b2029); border-bottom-color: var(--axdb-tabs-line, rgba(236, 238, 244, .12)); }
   .axdb-tab { color: var(--axdb-tabs-fg, #98a1b4); }
-  .axdb-tab:hover { background: rgba(236, 238, 244, .08); }
-  .axdb-tab.axdb-tab--on { background: var(--axdb-tabs-on-bg, #1a1d25); color: var(--axdb-tabs-on-fg, #eceef4); box-shadow: 0 -1px 0 var(--axdb-accent, #7d8ff0) inset, 0 0 0 1px rgba(236, 238, 244, .14); }
+  .axdb-tab:hover { background: rgba(236, 238, 244, .08); color: var(--axdb-tabs-on-fg, #eceef4); }
+  .axdb-tab.axdb-tab--on { background: var(--axdb-tabs-on-bg, #232836); color: var(--axdb-tabs-on-fg, #eceef4); box-shadow: 0 1px 2px rgba(0, 0, 0, .45), 0 0 0 1px rgba(236, 238, 244, .1); }
 }
 
 /* legend chips, shared by line and donut */
@@ -194678,8 +194708,10 @@ var CSS4 = `
     --axdb-ink: #eceef4;
     --axdb-muted: #98a1b4;
     --axdb-grid: rgba(150, 160, 182, .2);
-    --axdb-card: #1a1d25;
-    --axdb-line: #2b3040;
+    --axdb-card: #161a22;
+    --axdb-line: #2a3040;
+    --axdb-head-bg: rgba(255, 255, 255, .035);
+    --axdb-head-fg: #e6e9f0;
     --axdb-soft: rgba(150, 160, 182, .16);
     --axdb-up: #4ade80;
     --axdb-down: #fb7185;
@@ -196878,6 +196910,7 @@ function bindDashboardGrid(api, group, options = {}) {
         onPointerUpInner();
       } finally {
         flushDeferredRebuild();
+        disarmGlideSoon();
       }
     },
     onCancel() {
@@ -196886,6 +196919,7 @@ function bindDashboardGrid(api, group, options = {}) {
         cancelActiveGesture();
       } finally {
         flushDeferredRebuild();
+        disarmGlideSoon();
       }
     }
   };
@@ -199611,6 +199645,19 @@ var SetWidgetLockCommand = class extends Command {
 var HISTORY_EVENTS = ["command:executed", "command:undone", "command:redone"];
 var DEFAULTS5 = { columns: 12, gap: 8, rowHeight: 130, width: 1180, height: 660 };
 var OFFSCREEN_X = -2e4;
+var teleport = (container, fn) => {
+  const layer = container?.querySelector(".grafloria-html-layer");
+  const held = layer?.classList.contains("axdb-glide") === true;
+  if (held) layer.classList.remove("axdb-glide");
+  try {
+    fn();
+  } finally {
+    if (held && layer) {
+      void layer.offsetWidth;
+      layer.classList.add("axdb-glide");
+    }
+  }
+};
 var autoId = 0;
 function buildWidgetNode(w, rowHeight) {
   const node = new NodeModel({
@@ -200458,13 +200505,15 @@ function createDashboardHandle(ctx) {
     showView(id) {
       if (!groups.has(id)) return;
       ctx.active = id;
-      for (const [vid, g] of groups) {
-        const x = vid === id ? 0 : OFFSCREEN_X;
-        const s = g.size ?? { width: ctx.boardW, height: ctx.boardH };
-        if (g.position.x !== x) g.setFrame({ x, y: 0, width: s.width, height: s.height });
-      }
-      binders.get(id)?.sync();
-      ctx.apiRef?.renderNow();
+      teleport(ctx.container, () => {
+        for (const [vid, g] of groups) {
+          const x = vid === id ? 0 : OFFSCREEN_X;
+          const s = g.size ?? { width: ctx.boardW, height: ctx.boardH };
+          if (g.position.x !== x) g.setFrame({ x, y: 0, width: s.width, height: s.height });
+        }
+        binders.get(id)?.sync();
+        ctx.apiRef?.renderNow();
+      });
       frameView(groups.get(id));
     },
     widget(id) {
@@ -200544,8 +200593,10 @@ function createDashboardHandle(ctx) {
       w.active = pageId;
       const cw = cg.getMetadata("containerWidget") ?? {};
       cg.setMetadata("containerWidget", { ...cw, active: pageId });
-      ctx.syncTabs?.(containerId);
-      ctx.apiRef?.renderNow();
+      teleport(ctx.container, () => {
+        ctx.syncTabs?.(containerId);
+        ctx.apiRef?.renderNow();
+      });
       ctx.onTabChange?.(containerId, pageId, ctx.viewOfBoard.get(containerId) ?? ctx.active);
       reportChanged();
       return true;
@@ -200924,6 +200975,7 @@ function dashboard(options) {
     optionsBase: options,
     active: views[0]?.id ?? "main",
     apiRef: null,
+    container: null,
     onLayoutChange: options.onLayoutChange
   };
   const { binders, groups } = ctx;
@@ -200947,6 +200999,7 @@ function dashboard(options) {
       const a = api;
       if (!a) return;
       ctx.apiRef = a;
+      ctx.container = a.container ?? null;
       const model = a.getModel();
       const box = mode === "fluid" ? { w: a.container?.clientWidth || 0, h: a.container?.clientHeight || 0 } : { w: 0, h: 0 };
       const viewW = (v) => mode === "fluid" && box.w > 0 ? box.w : v.width ?? boardW;
@@ -201347,7 +201400,8 @@ function fromDocument(document2, options = {}) {
       height: viewGroups[0]?.size?.height
     } : {},
     active: activeGroup?.id ?? "main",
-    apiRef: null
+    apiRef: null,
+    container: null
   };
   const handle = createDashboardHandle(ctx);
   const renderCustomNode = (node, host) => {
@@ -201382,6 +201436,7 @@ function fromDocument(document2, options = {}) {
       }
     }
     ctx.apiRef = a;
+    ctx.container = a.container ?? null;
     for (const group of groups) {
       const board = group.getMetadata("dashboardBoard");
       if (!board) continue;
