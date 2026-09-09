@@ -21,6 +21,12 @@ jest.mock('@grafloria/renderer', () => {
     },
   };
 });
+const splitToolOf = (groupId: string): CanvasTool => {
+  const g = globalThis as unknown as { __axdbTools?: CanvasTool[] };
+  const t = [...(g.__axdbTools ?? [])].reverse().find((x) => x.id.startsWith(`dashboard-split:${groupId}:`));
+  if (!t) throw new Error(`no split tool registered for ${groupId}`);
+  return t;
+};
 const toolOf = (groupId: string): CanvasTool => {
   const g = globalThis as unknown as { __axdbTools?: CanvasTool[] };
   const t = [...(g.__axdbTools ?? [])].reverse().find((x) => x.id.startsWith(`dashboard-grid:${groupId}:`));
@@ -1649,6 +1655,107 @@ describe('tab drags on a SPLIT board', () => {
     expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
     expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
     expect(leaves(model)).toEqual(['left', 'right']);
+  });
+
+  it('a tab GROUP moves by its strip\'s empty space on a split board — dropped on the other pane\'s edge the two swap sides; undo puts it back', async () => {
+    // The split peer answered dragMember with false ("no cells to move a
+    // section across"), so a press on the strip's empty space only selected —
+    // a tab group could not be moved at all on a split board, let alone
+    // swapped with its neighbour (the user's report). The board's own drop
+    // model moves it: the insertion line marks the pane edge, release
+    // re-inserts the group there.
+    const { api, model } = up(TWO());
+    expect(leaves(model)).toEqual(['left', 'right']);
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="right"]') as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    const lf = model.getGroup('left')!;
+    const to = { x: lf.position.x + 40, y: lf.position.y + lf.size!.height / 2 }; // the left pane's left edge, past the board's outer band
+    ev(strip, 'pointerdown', 1100, 10); // the strip itself, not a tab
+    ev(window, 'pointermove', 1060, 10);
+    ev(window, 'pointermove', to.x, to.y);
+    expect(api.container.querySelector('.axdb-ins')).not.toBeNull(); // the insertion line while held
+    ev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(leaves(model)).toEqual(['right', 'left']);
+    expect(model.getGroup('right')!.position.x).toBeLessThan(model.getGroup('left')!.position.x);
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(api.container.querySelector('.axdb-ins')).toBeNull();
+    await cm(api).undo();
+    await settle();
+    expect(leaves(model)).toEqual(['left', 'right']);
+    expect(model.getGroup('left')!.position.x).toBeLessThan(model.getGroup('right')!.position.x);
+  });
+
+  it('a tab group released over NOTHING on a split board stays put, and a static split board refuses the drag', async () => {
+    const { api, model } = up(TWO());
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="right"]') as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(strip, 'pointerdown', 1100, 10);
+    ev(window, 'pointermove', 1060, 10);
+    ev(window, 'pointermove', 5000, 5000);
+    ev(window, 'pointerup', 5000, 5000);
+    await settle();
+    expect(leaves(model)).toEqual(['left', 'right']);
+    expect(api.container.querySelector('.axdb-ins')).toBeNull();
+  });
+
+  it('a captioned SECTION on a split board paints its band, its children start below it, and the band drags the section to another pane\'s edge', async () => {
+    // "captioned sections on a SPLIT board · no chrome to paint them, so no
+    // reserve" was the 0.4.22 limitation: switching the fluid demo to Split
+    // made the Operations band vanish and its two KPIs sit bare in the pane
+    // (the user's report). The split board paints slabs and bands now, the
+    // child board reserves the band, and the band is the section's handle.
+    const { api, model } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        layout: 'split',
+        widgets: [
+          { id: 'sec', title: 'Operations', span: 6, rows: 4, x: 0, y: 0, columns: 6, caption: { subtitle: 'live since 08:00' }, widgets: [{ id: 'c1', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 }] },
+          { id: 'w', kind: 'kpi', span: 6, rows: 4, x: 6, y: 0 },
+        ],
+      })
+    );
+    const band = api.container.querySelector('.axdb-slab[data-slab-id="sec"] > .axdb-slab-h') as HTMLElement | null;
+    expect(band).not.toBeNull();
+    expect(band!.textContent).toContain('Operations');
+    expect(band!.textContent).toContain('live since 08:00');
+    const sec = model.getGroup('sec')!;
+    const c1 = model.getNode('c1')!;
+    expect(parseFloat(band!.style.height)).toBe(44); // the subtitle tier
+    expect(c1.position.y).toBeGreaterThanOrEqual(sec.position.y + 44 - 1); // the child starts under the band
+    expect(c1.position.y + c1.size.height).toBeLessThanOrEqual(sec.position.y + sec.size!.height + 1);
+    expect(leaves(model)).toEqual(['sec', 'w']);
+    // the band is the section's handle: pressed through the board's tool it selects, travelled it drags
+    const tool = splitToolOf('main');
+    const wr = model.getNode('w')!;
+    const src = { target: band, clientX: 100, clientY: 20, pointerId: 1 } as unknown as PointerEvent;
+    tool.onPointerDown?.({ ...tev('down', 100, 20), source: src } as ToolPointerEvent, { empty: true } as never);
+    expect(api.container.querySelector('.axdb-slab[data-slab-id="sec"]')!.classList.contains('axdb-slab--selected')).toBe(true);
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    const to = { x: wr.position.x + wr.size.width - 40, y: wr.position.y + wr.size.height / 2 }; // w's right edge, past the outer band
+    ev(window, 'pointermove', 140, 20);
+    ev(window, 'pointermove', to.x, to.y);
+    expect(api.container.querySelector('.axdb-ins')).not.toBeNull();
+    ev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(leaves(model)).toEqual(['w', 'sec']);
+    expect(model.getGroup('sec')!.position.x).toBeGreaterThan(model.getNode('w')!.position.x);
+    // the band followed the section to its new pane, and the child still sits under it
+    const band2 = api.container.querySelector('.axdb-slab[data-slab-id="sec"] > .axdb-slab-h') as HTMLElement;
+    expect(band2.textContent).toContain('Operations');
+    const sec2 = model.getGroup('sec')!;
+    expect(model.getNode('c1')!.position.y).toBeGreaterThanOrEqual(sec2.position.y + 44 - 1);
+    await cm(api).undo();
+    await settle();
+    expect(leaves(model)).toEqual(['sec', 'w']);
   });
 
   it('a tab released OUTSIDE the split board cancels: nothing moves, the container keeps its page', async () => {

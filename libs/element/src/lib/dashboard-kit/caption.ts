@@ -125,7 +125,7 @@ interface CaptionDiagram {
 /**
  * Does the board that HOLDS this section paint section chrome? Only the grid
  * binder draws the slab overlay the band lives on, so a section inside a
- * SPLIT board has no band — and must not reserve space for one.
+ * SPLIT board paints its bands too since 0.4.40 (it had none, and reserved none).
  *
  * Read from the parent group's persisted layout rather than from the live
  * binder registry: membership and metadata both exist before either binder is
@@ -137,8 +137,10 @@ export function parentPaintsSectionChrome(diagram: CaptionDiagram, group: Captio
   const groups = diagram.getGroups?.() ?? [];
   for (const g of groups) {
     if (g === group || !g.members?.has(group.id)) continue;
-    const board = g.getMetadata('dashboardBoard') as { layout?: string } | undefined;
-    return (board?.layout ?? 'grid') !== 'split';
+    // A grid board paints slabs and bands, and since 0.4.40 a split board
+    // paints them too (it lost the Operations band the moment the fluid demo
+    // switched to Split) — any board parent paints; only a view does not.
+    return true;
   }
   return false; // not a member of any board: a view, which carries no caption
 }

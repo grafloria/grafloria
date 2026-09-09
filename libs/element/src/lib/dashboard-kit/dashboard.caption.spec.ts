@@ -466,7 +466,7 @@ describe('section captions — API and persistence', () => {
     expect(dropOf(model)).toBeGreaterThanOrEqual(28);
   });
 
-  it('a section on a SPLIT board reserves nothing: no chrome paints its band there', () => {
+  it('a section on a SPLIT board paints its band too, and reserves it (0.4.40)', () => {
     const { api, model } = up(
       dashboard({
         columns: 12,
@@ -479,10 +479,13 @@ describe('section captions — API and persistence', () => {
         ],
       })
     );
-    // the split binder paints no slab overlay, so there is no band …
-    expect(api.container.querySelector('.axdb-slab[data-slab-id="box"]')).toBeNull();
-    // … and the section must not push its children down under a band nobody drew
-    expect(model.getNode('c1')!.position.y - model.getGroup('box')!.position.y).toBeLessThan(1);
+    // the split binder paints slabs and bands like the grid board since 0.4.40
+    // (the fluid demo lost its Operations band the moment it switched to Split)
+    const band = api.container.querySelector('.axdb-slab[data-slab-id="box"] > .axdb-slab-h') as HTMLElement | null;
+    expect(band).toBeTruthy();
+    expect(band!.textContent).toContain('Captioned');
+    // … and the children start under the band
+    expect(model.getNode('c1')!.position.y - model.getGroup('box')!.position.y).toBeGreaterThanOrEqual(44 - 1);
   });
 
   it('a nested section two levels down paints its own band inside its parent section', () => {

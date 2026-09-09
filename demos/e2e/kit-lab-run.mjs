@@ -1756,7 +1756,7 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `before ${JSON.stringify(s0)} · held ${JSON.stringify(held)} · after ${JSON.stringify(s1)} (one row taller, top one row higher) ${JSON.stringify(sane)} · undo ×2 ${JSON.stringify(s2)}`);
 }
 {
-  begin('L53-a-caption-reserves-only-where-something-paints-it');
+  begin('L53-a-captioned-section-on-a-SPLIT-board-paints-its-band-and-reserves-it');
   await scrollTo('cap-split');
   const r = await page.evaluate(() => {
     const m = window.__lab['cap-split'].api.getModel();
@@ -1764,14 +1764,15 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     for (const sid of ['sp-a', 'sp-b']) {
       const g = m.getGroup(sid);
       const kids = [...(g.members ?? [])].map((k) => m.getNode(k)).filter(Boolean);
-      out.push({ id: sid, gap: Math.round(Math.min(...kids.map((k) => k.position.y)) - g.position.y), band: !!document.querySelector(`#cv-cap-split .axdb-slab[data-slab-id="${sid}"] > .axdb-slab-h`) });
+      const band = document.querySelector(`#cv-cap-split .axdb-slab[data-slab-id="${sid}"] > .axdb-slab-h`);
+      out.push({ id: sid, gap: Math.round(Math.min(...kids.map((k) => k.position.y)) - g.position.y), band: !!band, bandH: band ? Math.round(band.getBoundingClientRect().height) : 0, text: band?.textContent?.trim().slice(0, 30) ?? '' });
     }
     return out;
   });
   const sane = await sanity('cap-split');
   await shot('cap-split', 'captions-on-a-split-board');
-  verdict(r.every((x) => x.band === false && x.gap === 0) && sane.overlaps === 0 && sane.overflow === 0,
-    `a split board paints no section chrome, so its captioned sections reserve nothing: ${r.map((x) => `${x.id} band=${x.band} gap=${x.gap}px`).join(' · ')} ${JSON.stringify(sane)}`);
+  verdict(r.every((x) => x.band === true && x.bandH >= 20 && x.gap >= x.bandH - 1) && r[0].text.startsWith('Captioned A') && sane.overlaps === 0 && sane.overflow === 0,
+    `a split board paints section bands now (0.4.40) and its children start below them: ${r.map((x) => `${x.id} band=${x.band} ${x.bandH}px "${x.text}" gap=${x.gap}px`).join(' · ')} ${JSON.stringify(sane)}`);
 }
 {
   begin('L56-a-grid-resize-changes-only-the-tile-under-the-pointer');
@@ -1830,7 +1831,7 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `moving a control inside a captioned section keeps ${after.members} members (was ${before.members}); the topmost child stays at ${Math.round(after.minTop)}, below the band's ${Math.round(b.band.y + b.band.height)}; undo restores ${restored} ${JSON.stringify(sane)}`);
 }
 {
-  begin('L54-a-live-parent-layout-switch-takes-the-band-and-its-reserve-with-it');
+  begin('L54-a-live-parent-layout-switch-keeps-the-band-and-its-reserve');
   await scrollTo('cap-fit');
   const state = async () => ({
     band: await band('cap-fit', 'sec-controls'),
@@ -1840,14 +1841,15 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   await page.evaluate(() => window.__lab['cap-fit'].handle.setLayout('split')); await page.waitForTimeout(600);
   const s1 = await state();
   const sane1 = await sanity('cap-fit');
-  await shot('cap-fit', 'parent-split-no-band-no-reserve');
+  await shot('cap-fit', 'parent-split-band-and-reserve-kept');
   await page.evaluate(() => window.__lab['cap-fit'].handle.setLayout('grid')); await page.waitForTimeout(600);
   const s2 = await state();
   const sane2 = await sanity('cap-fit');
   await shot('cap-fit', 'parent-grid-band-and-reserve-back');
-  verdict(!!s0.band && s0.gap >= 28 && s1.band === null && s1.gap === 0 && !!s2.band && s2.gap >= 28
+  // a split parent paints the band too since 0.4.40 — the reserve stays through the switch
+  verdict(!!s0.band && s0.gap >= 28 && !!s1.band && s1.gap >= 28 && !!s2.band && s2.gap >= 28
     && sane1.overlaps === 0 && sane2.overlaps === 0,
-    `grid: band=${!!s0.band} reserve=${s0.gap}px · split (no section chrome): band=${s1.band} reserve=${s1.gap}px ${JSON.stringify(sane1)} · grid again: band=${!!s2.band} reserve=${s2.gap}px ${JSON.stringify(sane2)}`);
+    `grid: band=${!!s0.band} reserve=${s0.gap}px · split (band kept): band=${s1.band} reserve=${s1.gap}px ${JSON.stringify(sane1)} · grid again: band=${!!s2.band} reserve=${s2.gap}px ${JSON.stringify(sane2)}`);
 }
 {
   begin('L50-a-short-section-clamps-its-band-and-keeps-its-children');
@@ -2202,6 +2204,57 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     && !chipLeft && sane.overlaps === 0
     && undone.join(' ') === 'panel:Filters/Alerts/Notes' && !!panel2 && panel2.h === panel0.h && panel2.y === panel0.y,
     `rest ${before.join(' ')} · Notes torn out: ${mid.join(' ')} panel ${JSON.stringify(panel0)} · its only tab held over the panel's top third: chip ${held?.chip} overlay ${held?.overlay} · released: ${after.join(' ')} — born ${born.join('/')} at ${JSON.stringify(bornCell)} above panel ${JSON.stringify(panel1)}, chip left ${chipLeft} ${JSON.stringify(sane)} · two undos: ${undone.join(' ')} panel ${JSON.stringify(panel2)}`);
+}
+
+{
+  begin('L86-on-a-SPLIT-board-a-tab-GROUP-moves-by-its-strips-empty-space-and-swaps-with-its-neighbour');
+  await scrollTo('sptabs');
+  const leaves = () => page.evaluate(() => { const leaves = (t) => (!t ? [] : t.id ? [t.id] : t.children.flatMap(leaves)); return leaves(window.__lab.sptabs.handle.toJSON().views[0].tree ?? null); });
+  const l0 = await leaves();
+  const strip = await page.evaluate(() => document.querySelector('#cv-sptabs .axdb-tabs[data-tabs-id="st-b"]').getBoundingClientRect().toJSON());
+  const a = await groupRect('sptabs', 'st-a');
+  const cv = await page.evaluate(() => document.getElementById('cv-sptabs').getBoundingClientRect().toJSON());
+  let held = null;
+  // press the EMPTY space of Group B's strip (right of its tabs), carry it 40 px inside Group A's left edge
+  await drag(strip.x + strip.width - 20, strip.y + strip.height / 2, cv.x + a.x + 40, cv.y + a.y + a.h / 2, { steps: 16, mid: async () => {
+    held = await page.evaluate(() => { const ins = document.querySelector('#cv-sptabs .axdb-ins'); return { chip: document.querySelector('.axdb-tab-chip')?.textContent ?? null, ins: ins ? Math.round(ins.getBoundingClientRect().x) : null }; });
+    await shot('sptabs', 'group-b-held-at-group-a-left-edge');
+  } });
+  const l1 = await leaves();
+  const a1 = await groupRect('sptabs', 'st-a'); const b1 = await groupRect('sptabs', 'st-b');
+  const tabsB = await page.evaluate(() => [...document.querySelectorAll('#cv-sptabs .axdb-tabs[data-tabs-id="st-b"] .axdb-tab')].map((t) => t.textContent).join('/'));
+  const sane = await sanity('sptabs');
+  await shot('sptabs', 'group-b-left-of-group-a');
+  await undoAll('sptabs', 1);
+  const l2 = await leaves();
+  verdict(l0.join(',') === 'st-w,st-a,st-b' && held?.chip === 'Group B' && held?.ins !== null && Math.abs(held.ins - (cv.x + a.x)) < 8
+    && l1.join(',') === 'st-w,st-b,st-a' && b1.x < a1.x && tabsB === 'Filters/Notes' && sane.overlaps === 0 && sane.overflow === 0
+    && l2.join(',') === 'st-w,st-a,st-b',
+    `rest ${l0.join('/')} · Group B held by its strip at A's left edge: chip ${held?.chip} insertion line x=${held?.ins} (A at ${Math.round(cv.x + a.x)}) · released: ${l1.join('/')}, B at x=${Math.round(b1.x)} left of A at ${Math.round(a1.x)}, B still ${tabsB} ${JSON.stringify(sane)} · undo: ${l2.join('/')}`);
+}
+{
+  begin('L87-on-a-SPLIT-board-a-captioned-SECTION-moves-by-its-band-and-keeps-it');
+  await scrollTo('cap-split');
+  const leaves = () => page.evaluate(() => { const leaves = (t) => (!t ? [] : t.id ? [t.id] : t.children.flatMap(leaves)); return leaves(window.__lab['cap-split'].handle.toJSON().views[0].tree ?? null); });
+  const l0 = await leaves();
+  const band = await page.evaluate(() => document.querySelector('#cv-cap-split .axdb-slab[data-slab-id="sp-b"] > .axdb-slab-h').getBoundingClientRect().toJSON());
+  const a = await groupRect('cap-split', 'sp-a');
+  const cv = await page.evaluate(() => document.getElementById('cv-cap-split').getBoundingClientRect().toJSON());
+  let held = null;
+  await drag(band.x + band.width / 2, band.y + band.height / 2, cv.x + a.x + 40, cv.y + a.y + a.h / 2, { steps: 16, mid: async () => {
+    held = await page.evaluate(() => ({ chip: document.querySelector('.axdb-tab-chip')?.textContent ?? null, ins: !!document.querySelector('#cv-cap-split .axdb-ins'), selected: !!document.querySelector('#cv-cap-split .axdb-slab[data-slab-id="sp-b"].axdb-slab--selected') }));
+    await shot('cap-split', 'captioned-b-held-by-its-band-at-a-left-edge');
+  } });
+  const l1 = await leaves();
+  const after = await page.evaluate(() => { const m = window.__lab['cap-split'].api.getModel(); const g = m.getGroup('sp-b'); const kid = m.getNode('spb1'); const band = document.querySelector('#cv-cap-split .axdb-slab[data-slab-id="sp-b"] > .axdb-slab-h'); return { bx: Math.round(g.position.x), ax: Math.round(m.getGroup('sp-a').position.x), band: !!band, gap: Math.round(kid.position.y - g.position.y) }; });
+  const sane = await sanity('cap-split');
+  await shot('cap-split', 'captioned-b-left-of-a-band-kept');
+  await undoAll('cap-split', 1);
+  const l2 = await leaves();
+  verdict(l0.join(',') === 'sp-a,sp-b' && held?.chip === 'Captioned B' && held?.ins === true && held?.selected === true
+    && l1.join(',') === 'sp-b,sp-a' && after.bx < after.ax && after.band && after.gap >= 20 && sane.overlaps === 0 && sane.overflow === 0
+    && l2.join(',') === 'sp-a,sp-b',
+    `rest ${l0.join('/')} · B held by its band at A's left edge: chip ${held?.chip} line ${held?.ins} selected ${held?.selected} · released: ${l1.join('/')}, B at ${after.bx} left of A at ${after.ax}, band kept ${after.band}, child ${after.gap}px under the band ${JSON.stringify(sane)} · undo: ${l2.join('/')}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
