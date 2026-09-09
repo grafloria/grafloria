@@ -3557,6 +3557,12 @@ export function bindDashboardGrid(
         onPointerUpInner();
       } finally {
         flushDeferredRebuild();
+        // EVERY press ends disarmed. The press armed the glide (a task ahead
+        // of any displacement — see onPointerDown); a drop disarms on its own
+        // path, but a press that never travelled — a plain CLICK — left it
+        // armed for good, and every later left/top write eased: a tab switch
+        // slid its page in from 20,000 px off canvas over 280 ms (0.4.36).
+        disarmGlideSoon();
       }
     },
     onCancel() {
@@ -3565,6 +3571,7 @@ export function bindDashboardGrid(
         cancelActiveGesture();
       } finally {
         flushDeferredRebuild();
+        disarmGlideSoon();
       }
     },
   };

@@ -354,6 +354,7 @@ export function fromDocument(
       : {},
     active: activeGroup?.id ?? 'main',
     apiRef: null,
+    container: null,
   };
   const handle = createDashboardHandle(ctx);
 
@@ -412,6 +413,7 @@ export function fromDocument(
     // work immediately — no camera move, no showView, so the paint is byte-for-
     // byte what a boards-only load produced.
     ctx.apiRef = a as unknown as DashboardApiRef;
+    ctx.container = (a as { container?: HTMLElement }).container ?? null;
     for (const group of groups) {
       const board = group.getMetadata('dashboardBoard') as PersistedBoard | undefined;
       if (!board) continue;
