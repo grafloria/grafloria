@@ -1547,6 +1547,30 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `Grid page (outer) held over the INNER strip inside its own container: lit ${mid?.lit}, dimmed ${mid?.dimmed} · dropped: inner ${after['dp-intabs']?.join('/')}, outer ${after['dp']?.join('/')}, dp-grid in ${own} · undo -> outer ${undone['dp']?.join('/')}, inner ${undone['dp-intabs']?.join('/')}`);
 }
 {
+  begin('L73-an-outside-widget-dropped-into-a-FULL-page-is-taken-the-page-squeezes-its-rows');
+  await scrollTo('solo');
+  const cell = (id) => page.evaluate((id) => window.__lab.solo.handle.widget(id)?.cell ?? null, id);
+  const pathOf = () => page.evaluate(() => { const walk = (ws, path) => { for (const w of ws ?? []) { if (w.id === 'so-b') return [...path, w.id].join(' > '); const r = walk(w.widgets, [...path, w.id]); if (r) return r; } return null; }; return walk(window.__lab.solo.handle.toJSON().views[0].widgets, ['main']); });
+  const b0 = await cell('so-b'); const in0 = await cell('so-in');
+  const host = (id) => page.evaluate((id) => document.querySelector(`#cv-solo .grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect().toJSON(), id);
+  const b = await host('so-b'); const inner = await host('so-in'); const tabs = await groupRect('solo', 'so-tabs'); const cv = await page.evaluate(() => document.getElementById('cv-solo').getBoundingClientRect().toJSON());
+  let mid = null;
+  // Onto Region... the page's only widget: the page must squeeze two rows in, not refuse with no sign of why
+  await drag(b.x + b.width / 2, b.y + b.height / 2, inner.x + inner.width / 2, inner.y + inner.height / 2, { steps: 18, mid: async () => {
+    mid = await page.evaluate(() => [...document.querySelectorAll('#cv-solo .axdb-ph')].map((p) => { const r = p.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) }; }));
+    await shot('solo', 'held-over-the-full-page');
+  } });
+  const path1 = await pathOf(); const in1 = await cell('so-in'); const b1 = await cell('so-b');
+  const sane = await sanity('solo');
+  await shot('solo', 'taken-the-page-squeezed');
+  await undoAll('solo', 1);
+  const path2 = await pathOf(); const in2 = await cell('so-in'); const b2 = await cell('so-b');
+  const phInPage = Array.isArray(mid) && mid.some((r) => r.x >= cv.x + tabs.x - 2 && r.x + r.w <= cv.x + tabs.x + tabs.w + 2 && r.y >= cv.y + tabs.y - 2 && r.h >= 20);
+  verdict(path1 === 'main > so-tabs > so-p > so-b' && !!in1 && !!b1 && (in1.y > 0 || b1.y >= in1.y + in1.h) && Math.max(in1.y + in1.h, b1.y + b1.h) > 4 && phInPage && sane.overlaps === 0
+    && path2 === 'main > so-b' && JSON.stringify(b2) === JSON.stringify(b0) && JSON.stringify(in2) === JSON.stringify(in0),
+    `held: placeholder inside the page ${phInPage} ${JSON.stringify(mid)} · dropped: ${path1}, page widget ${JSON.stringify(in0)} -> ${JSON.stringify(in1)}, arrival ${JSON.stringify(b1)} (the 4-row page now reaches row ${Math.max(in1?.y + in1?.h || 0, b1?.y + b1?.h || 0)}) ${JSON.stringify(sane)} · undo -> ${path2}, ${JSON.stringify(b2)}`);
+}
+{
   begin('L53-a-caption-reserves-only-where-something-paints-it');
   await scrollTo('cap-split');
   const r = await page.evaluate(() => {

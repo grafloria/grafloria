@@ -5,6 +5,35 @@
  */
 import { CommandManager, DiagramModel, DiagramSerializer, EventBus, NodeModel } from '@grafloria/engine';
 import { dashboard, type DashboardHandle, type DashboardSpec, type DashboardWidgetSpec } from './dashboard';
+import type { CanvasTool, ToolPointerEvent } from '@grafloria/renderer';
+
+// The binder claims widget gestures through the renderer's page-global tool
+// registry; there is no renderer here to route pointer events to it, so the
+// registration is wrapped and the tool driven directly.
+jest.mock('@grafloria/renderer', () => {
+  const actual = jest.requireActual('@grafloria/renderer');
+  return {
+    ...actual,
+    registerTool: (t: unknown) => {
+      const g = globalThis as unknown as { __axdbTools?: unknown[] };
+      g.__axdbTools = [...(g.__axdbTools ?? []), t];
+      return actual.registerTool(t);
+    },
+  };
+});
+const toolOf = (groupId: string): CanvasTool => {
+  const g = globalThis as unknown as { __axdbTools?: CanvasTool[] };
+  const t = [...(g.__axdbTools ?? [])].reverse().find((x) => x.id.startsWith(`dashboard-grid:${groupId}:`));
+  if (!t) throw new Error(`no binder tool registered for ${groupId}`);
+  return t;
+};
+const tev = (type: ToolPointerEvent['type'], x: number, y: number): ToolPointerEvent => ({
+  type,
+  world: { x, y },
+  screen: { x, y },
+  modifiers: { shift: false, ctrl: false, alt: false, meta: false },
+});
+
 import { fromDocument } from '../load';
 
 function makeApi(model: DiagramModel) {
@@ -734,6 +763,72 @@ describe('tab containers', () => {
     await settle();
     expect(model.getGroup('p2__group')).toBeUndefined();
     for (const [id, c] of Object.entries(rest)) expect({ id, cell: cellOf(handle, id) }).toEqual({ id, cell: c });
+  });
+
+  it('an OUTSIDE widget dragged into a FULL page\'s body is taken — the page squeezes its rows and the widget under the pointer moves down', async () => {
+    // The fluid demo: a 2×1 KPI dragged onto Region in the Filters page, whose
+    // two 4-row KPIs fill all 8 rows. The bound page refused the adoption and
+    // showed NOTHING; a fit board squeezes for a tile that arrives by hand.
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          { id: 'nps', kind: 'kpi', span: 2, rows: 1, x: 0, y: 0 },
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [
+            { id: 'p1', title: 'Filters', columns: 3, widgets: [{ id: 'k1', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0 }, { id: 'k2', kind: 'kpi', span: 3, rows: 4, x: 0, y: 4 }] },
+            { id: 'p2', title: 'Alerts', columns: 3, widgets: [{ id: 'k3', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0 }] },
+          ] },
+        ],
+      })
+    );
+    const pathOf = (id: string): string | null => {
+      const walk = (ws: Array<{ id: string; widgets?: unknown[] }> | undefined, path: string[]): string[] | null => {
+        for (const w of ws ?? []) {
+          if (w.id === id) return [...path, w.id];
+          const r = walk(w.widgets as Array<{ id: string; widgets?: unknown[] }> | undefined, [...path, w.id]);
+          if (r) return r;
+        }
+        return null;
+      };
+      for (const v of handle.toJSON().views) {
+        const r = walk(v.widgets as Array<{ id: string; widgets?: unknown[] }>, [v.id]);
+        if (r) return r.join(' > ');
+      }
+      return null;
+    };
+    expect(pathOf('nps')).toBe('main > nps');
+    const page = frameOf(model, 'p1');
+    const k1 = model.getNode('k1')!;
+    const overK1 = { x: k1.position.x + k1.size.width / 2, y: k1.position.y + k1.size.height / 2 };
+    expect(overK1.x).toBeGreaterThan(page.x);
+    expect(overK1.y).toBeGreaterThan(page.y);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    const hit = { node: nps, empty: false };
+    tool.onPointerDown?.(tev('down', from.x, from.y), hit);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 30), hit);
+    tool.onPointerMove?.(tev('move', overK1.x, overK1.y), hit);
+    tool.onPointerMove?.(tev('move', overK1.x + 1, overK1.y + 1), hit);
+    tool.onPointerUp?.(tev('up', overK1.x + 1, overK1.y + 1), hit);
+    await settle();
+    expect(pathOf('nps')).toBe('main > side > p1 > nps');
+    // the page took it above Region (Region moved down), and holds more rows than its 8-row design
+    const k1After = cellOf(handle, 'k1')!;
+    const npsAfter = cellOf(handle, 'nps')!;
+    expect(k1After.y).toBeGreaterThan(0);
+    expect(npsAfter.y).toBeLessThan(k1After.y);
+    expect(cellOf(handle, 'k2')!.y).toBe(k1After.y + k1After.h);
+    await cm(api).undo();
+    await settle();
+    expect(pathOf('nps')).toBe('main > nps');
+    expect(cellOf(handle, 'k1')).toEqual({ x: 0, y: 0, w: 3, h: 4 });
+    expect(cellOf(handle, 'k2')).toEqual({ x: 0, y: 4, w: 3, h: 4 });
   });
 
   it('ROOT DOCK: the bands are measured on the SCREEN — a board scrolled 30 px still docks at its visible top edge', async () => {
