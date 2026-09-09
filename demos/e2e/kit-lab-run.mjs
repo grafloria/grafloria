@@ -1194,7 +1194,7 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   begin('L61-a-tab-dragged-off-its-strip-tears-the-page-out-as-its-own-group');
   await scrollTo('tabs');
   const state = () => page.evaluate(() => {
-    const out = { tabs: [...document.querySelectorAll('#cv-tabs .axdb-tab')].map((t) => t.textContent), active: window.__lab.tabs.handle.getActiveTab('panel'), owners: {} };
+    const out = { tabs: [...document.querySelectorAll('#cv-tabs .axdb-tabs[data-tabs-id="panel"] .axdb-tab')].map((t) => t.textContent), born: [...document.querySelectorAll('#cv-tabs .axdb-tabs[data-tabs-id="pg-c__group"] .axdb-tab')].map((t) => t.textContent), active: window.__lab.tabs.handle.getActiveTab('panel'), owners: {} };
     const walk = (ws, p) => { for (const w of ws) { out.owners[w.id] = `${p}:${w.x},${w.y}`; if (w.widgets) walk(w.widgets, w.id); } };
     walk(window.__lab.tabs.handle.toJSON().views[0].widgets, 'BOARD');
     return out;
@@ -1223,10 +1223,11 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   verdict(before.tabs.join(',') === 'Filters,Alerts,Notes' && mid?.chip === 'Notes' && mid?.ph === true
     && held.tabs.join(',') === 'Filters,Alerts,Notes' && held.owners['pg-c'] === before.owners['pg-c'] && held.active === before.active
     && after.tabs.join(',') === 'Filters,Alerts'
-    && before.owners['pg-c'].startsWith('panel:') && after.owners['pg-c'].startsWith('BOARD:')
+    // VS Code: the page becomes a GROUP of its own, still wearing its tab
+    && after.born.join(',') === 'Notes' && after.owners['pg-c__group']?.startsWith('BOARD:') && after.owners['pg-c']?.startsWith('pg-c__group:')
     && after.owners['pc1'] === 'pg-c:0,0' && sane.overlaps === 0
-    && undone.tabs.join(',') === 'Filters,Alerts,Notes' && undone.owners['pg-c'] === before.owners['pg-c'],
-    `released back over its own container: tabs ${held.tabs.join('/')} pg-c ${held.owners['pg-c']} active ${held.active} (all unchanged — a drag is not a click) · then dragged the Notes TAB onto the board · chip ${JSON.stringify(mid)} · tabs ${before.tabs.join('/')} -> ${after.tabs.join('/')} · pg-c ${before.owners['pg-c']} -> ${after.owners['pg-c']} carrying pc1 (${after.owners['pc1']}) · undo -> ${undone.tabs.join('/')} / ${undone.owners['pg-c']} ${JSON.stringify(sane)}`);
+    && undone.tabs.join(',') === 'Filters,Alerts,Notes' && undone.born.length === 0 && undone.owners['pg-c'] === before.owners['pg-c'] && !undone.owners['pg-c__group'],
+    `released back over its own container: tabs ${held.tabs.join('/')} pg-c ${held.owners['pg-c']} active ${held.active} (all unchanged — a drag is not a click) · then dragged the Notes TAB onto the board · chip ${JSON.stringify(mid)} · tabs ${before.tabs.join('/')} -> ${after.tabs.join('/')} · the page became its own group: pg-c__group ${after.owners['pg-c__group']} with tabs [${after.born.join(',')}], pg-c ${after.owners['pg-c']} carrying pc1 (${after.owners['pc1']}) · undo -> ${undone.tabs.join('/')} / ${undone.owners['pg-c']} / group ${undone.owners['pg-c__group'] ?? 'gone'} ${JSON.stringify(sane)}`);
 }
 {
   begin('L62-a-tall-tile-blocked-by-a-full-width-section-takes-the-nearest-row');
@@ -1248,6 +1249,66 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const row = after ? Number(after.split(',').pop()) : -1;
   verdict(before === 'v-src:0,0' && after?.startsWith('BOARD:') && row >= 4 && row <= 7 && undone === before && sane.overlaps === 0,
     `a 4-row tile dropped where its rows cross a FULL-WIDTH locked section: ${before} -> ${after} (wanted row 6 — the nearest row that clears the wall, not row 12 at the bottom) · undo -> ${undone} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L63-a-tab-torn-out-of-a-full-height-panel-lands-under-the-pointer');
+  await scrollTo('tear');
+  const cells = () => page.evaluate(() => { const out = {}; const walk = (ws, p) => { for (const w of ws) { out[w.id] = { own: p, x: w.x, y: w.y, w: w.span, h: w.rows }; if (w.widgets) walk(w.widgets, w.id); } }; walk(window.__lab.tear.handle.toJSON().views[0].widgets, 'BOARD'); return out; });
+  const before = await cells();
+  const tab = await page.evaluate(() => document.querySelector('#cv-tear .axdb-tab[data-tab-id="te-p2"]').getBoundingClientRect().toJSON());
+  const a = await rect('tear', 'te-a');
+  // the panel is FULL HEIGHT and a locked wall spans the left column: the old
+  // rule found exactly one legal cell for an 8-row page — below the wall, off
+  // the bottom — and drew its placeholder there, out of sight
+  const to = { x: a.x + a.w / 2, y: a.y + 30 };
+  let ghost = null;
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, to.x, to.y, { steps: 18, mid: async () => {
+    ghost = await page.evaluate(() => { const p = document.querySelector('#cv-tear .axdb-ph'); const r = p?.getBoundingClientRect(); return r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } : null; });
+    await shot('tear', 'placeholder-under-the-pointer');
+  } });
+  const after = await cells();
+  const strip = await page.evaluate(() => [...document.querySelectorAll('#cv-tear .axdb-tabs[data-tabs-id="te-p2__group"] .axdb-tab')].map((t) => t.textContent));
+  const born = await groupRect('tear', 'te-p2__group');
+  const sane = await sanity('tear');
+  await shot('tear', 'landed-as-a-one-tab-group-under-the-pointer');
+  await undoAll('tear', 2);
+  const undone = await cells();
+  const nearPointer = ghost && Math.abs(ghost.y - to.y) <= 60 && ghost.x <= to.x && to.x <= ghost.x + ghost.w;
+  const g = after['te-p2__group'];
+  verdict(!!ghost && nearPointer && !!g && g.own === 'BOARD' && g.y <= 1 && g.h <= 6 && g.h >= 2 && after['te-p2']?.own === 'te-p2__group'
+    && strip.join(',') === 'Alerts' && !!born && Math.abs(born.y - (ghost?.y ?? -1) + (await page.evaluate(() => document.getElementById('cv-tear').getBoundingClientRect().y))) <= 60
+    && after['te-wall'].y >= before['te-wall'].y && sane.overlaps === 0
+    && undone['te-p2']?.own === 'te-side' && !undone['te-p2__group'],
+    `pointer at ${Math.round(to.x)},${Math.round(to.y)} · placeholder ${JSON.stringify(ghost)} (${nearPointer ? 'UNDER THE POINTER' : 'NOT under the pointer'}) · landed ${g ? `${g.own}:${g.x},${g.y} ${g.w}x${g.h} rows` : 'nowhere'} (wanted row ≤1, 2..6 rows — shrunk to the room above the wall, not the 8 it came with) · strip on the new group [${strip.join(',')}] · undo -> te-p2 in ${undone['te-p2']?.own} ${JSON.stringify(sane)}`);
+}
+{
+  begin('L64-tearing-the-last-tab-out-closes-the-empty-container');
+  await scrollTo('solo');
+  const ids = () => page.evaluate(() => { const out = {}; const walk = (ws, p) => { for (const w of ws) { out[w.id] = p; if (w.widgets) walk(w.widgets, w.id); } }; walk(window.__lab.solo.handle.toJSON().views[0].widgets, 'BOARD'); return out; });
+  const strips = () => page.evaluate(() => [...document.querySelectorAll('#cv-solo .axdb-tabs')].map((s) => `${s.getAttribute('data-tabs-id')}[${[...s.querySelectorAll('.axdb-tab')].map((t) => t.textContent).join(',')}]`));
+  const before = await ids();
+  const tab = await page.evaluate(() => document.querySelector('#cv-solo .axdb-tab[data-tab-id="so-p"]').getBoundingClientRect().toJSON());
+  const a = await rect('solo', 'so-a');
+  let ghost = null;
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, a.x + a.w / 2, a.y + a.h - 20, { steps: 16, mid: async () => {
+    ghost = await page.evaluate(() => { const p = document.querySelector('#cv-solo .axdb-ph'); const r = p?.getBoundingClientRect(); return r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } : null; });
+    await shot('solo', 'placeholder-mid-drag');
+  } });
+  const after = await ids();
+  const stripsAfter = await strips();
+  const sane = await sanity('solo');
+  // the strip element of the NEW group is where it painted: its top-left must be the placeholder's
+  const bornStrip = await page.evaluate(() => { const e = document.querySelector('#cv-solo .axdb-tabs[data-tabs-id="so-p__group"]'); const r = e?.getBoundingClientRect(); return r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width) } : null; });
+  const landedWherePromised = !!ghost && !!bornStrip && Math.abs(ghost.x - bornStrip.x) <= 3 && Math.abs(ghost.y - bornStrip.y) <= 3 && Math.abs(ghost.w - bornStrip.w) <= 3;
+  await shot('solo', 'empty-container-closed');
+  await undoAll('solo', 2);
+  const undone = await ids();
+  const stripsUndone = await strips();
+  await shot('solo', 'undo-reopened-it');
+  verdict(before['so-p'] === 'so-tabs' && !after['so-tabs'] && after['so-p'] === 'so-p__group' && stripsAfter.join(' ') === 'so-p__group[Only]'
+    && landedWherePromised
+    && sane.overlaps === 0 && undone['so-tabs'] === 'BOARD' && undone['so-p'] === 'so-tabs' && !undone['so-p__group'] && stripsUndone.join(' ') === 'so-tabs[Only]',
+    `dragged the ONLY tab out: so-tabs ${after['so-tabs'] ?? 'GONE'} (wanted gone), so-p in ${after['so-p']}, strips ${stripsAfter.join(' ')} · placeholder ${JSON.stringify(ghost)} vs the new group's strip ${JSON.stringify(bornStrip)} (${landedWherePromised ? 'landed where promised' : 'MOVED after the drop'}) · undo -> so-tabs ${undone['so-tabs']}, so-p in ${undone['so-p']}, strips ${stripsUndone.join(' ')} ${JSON.stringify(sane)}`);
 }
 {
   begin('L53-a-caption-reserves-only-where-something-paints-it');

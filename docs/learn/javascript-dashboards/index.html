@@ -398,17 +398,17 @@ render(SPEC2, host);</pre>
       can be a grid or a split, and it keeps its layout while parked. Switching is a click, the arrow keys once a
       tab has focus, or <code>handle.activateTab(containerId, pageId)</code>; <code>onTabChange</code> reports it.
       The strip is a <code>role="tablist"</code> and takes ONE tab stop, so a board still has exactly one.</p>
-      <p><b>A tab is its page's drag handle</b> (element 0.4.29). Press a tab and travel, as you would in VS
-      Code, and the whole page leaves the container: a chip carrying the tab's name follows the pointer, the
-      dashed outline shows the cell the drop will take, and on release the page becomes a group of its own on the
-      board that held the container — its tab going with it. Dragging the widget INSIDE a page used to be the
-      only way to move anything out, which moved the content and left the tab behind pointing at an empty page;
-      the tabs a strip shows now come from live membership, so a page that leaves takes its tab and a page that
-      arrives gets one. A container always keeps its last page. Escape or a release back over the container
-      cancels, and one Ctrl/⌘-Z puts everything back. The page arrives at its own size, and a section is a locked
-      tile that nothing can push — so a page as tall as the board itself can only land below the lowest section,
-      however near the pointer you release it. Making sections movable is what lifts that. Dragging one panel onto another to combine them into tabs,
-      and reordering tabs within a strip, are the next round.</p>
+      <p><b>A tab is its page's drag handle</b> (element 0.4.29, completed in 0.4.30). Press a tab and travel, as you
+      would in VS Code, and the whole page drags: a chip carrying the tab's name follows the pointer, and the dashed
+      outline shows the cell the page will take — right under the pointer, shrunk to the room there when the page is
+      taller than the free rows above the next locked section (a page torn out of a full-height panel does not have
+      to arrive full height). On release the page becomes a <em>tab container of its own</em>, <code>&lt;page&gt;__group</code>,
+      still wearing its tab, built exactly as an authored one and serialised by <code>toJSON()</code> like one; its
+      tab leaves the strip it came from, and a container whose last page leaves closes, as a VS Code group does. All
+      of it is one undoable step. The tabs a strip shows come from live membership, so the strip is always the pages
+      that are actually there. Escape, or a release back over the container, cancels; a board that cannot place the
+      page (a split pane) leaves the press a plain click. Dropping a tab onto another container to combine them, and
+      reordering tabs along a strip, are the next round.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

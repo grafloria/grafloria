@@ -194874,6 +194874,7 @@ function pressOnDragHandle(sel, target, hostEl, clientX, clientY) {
   return clientX >= hr.left && clientX <= hr.right && clientY >= hr.top && clientY <= bottom;
 }
 var CAPTION_BAND = 28;
+var TEAR_OUT_MIN_ROWS = 2;
 var BOARD_REGISTRY = /* @__PURE__ */ new WeakMap();
 function parentPeerOf(container, groupId) {
   for (const p of BOARD_REGISTRY.get(container) ?? []) if (p.group.id !== groupId && p.hasItem(groupId)) return p;
@@ -196239,35 +196240,66 @@ function bindDashboardGrid(api, group, options = {}) {
     }
     return best;
   };
-  const placeNear = (id, x, y, w) => {
-    const at = (cx, cy) => {
+  const planRemovalOf = (id) => handle.planRemoval(id);
+  const placeOnRow = (id, x, y, w) => {
+    const at = (cx) => {
       const i = engine.getItem(id);
-      return !!i && i.x === cx && i.y === cy;
+      return !!i && i.x === cx && i.y === y;
     };
     const maxX = Math.max(0, columns - w);
-    const scanRow = (cy) => {
-      if (at(x, cy)) return true;
-      if (engine.moveCheck(id, x, cy, { gate: false }).changed) return true;
-      for (let d = 1; d <= columns; d++) {
-        for (const cx of [x - d, x + d]) {
-          if (cx < 0 || cx > maxX) continue;
-          if (at(cx, cy)) return true;
-          if (engine.moveCheck(id, cx, cy, { gate: false }).changed) return true;
-        }
-      }
-      return false;
-    };
-    if (scanRow(y)) return true;
-    const reach = Math.max(1, rows()) + 2;
-    for (let d = 1; d <= reach; d++) {
-      for (const cy of [y - d, y + d]) {
-        if (cy < 0) continue;
-        if (scanRow(cy)) return true;
+    if (at(x)) return true;
+    if (engine.moveCheck(id, x, y, { gate: false }).changed) return true;
+    for (let d = 1; d <= columns; d++) {
+      for (const cx of [x - d, x + d]) {
+        if (cx < 0 || cx > maxX) continue;
+        if (at(cx)) return true;
+        if (engine.moveCheck(id, cx, y, { gate: false }).changed) return true;
       }
     }
     return false;
   };
-  const adopt = (node, world, pxSize) => {
+  const placeNear = (id, x, y, w) => {
+    if (placeOnRow(id, x, y, w)) return true;
+    const reach = Math.max(1, rows()) + 2;
+    for (let d = 1; d <= reach; d++) {
+      for (const cy of [y - d, y + d]) {
+        if (cy < 0) continue;
+        if (placeOnRow(id, x, cy, w)) return true;
+      }
+    }
+    return false;
+  };
+  const fitHeightAt = (id, x, y, w, hNatural) => {
+    let limit = hNatural;
+    for (const it of engine.getItems()) {
+      if (it.id === id || !it.locked) continue;
+      if (!(it.x < x + w && x < it.x + it.w)) continue;
+      if (it.y <= y && it.y + it.h > y) return 0;
+      if (it.y > y) limit = Math.min(limit, it.y - y);
+    }
+    const b = bound();
+    if (b !== void 0) limit = Math.min(limit, Math.max(0, b - y));
+    return limit;
+  };
+  const placeFitting = (id, x, y, w, hNatural) => {
+    const it = engine.getItem(id);
+    if (!it) return false;
+    const hFit = fitHeightAt(id, x, y, w, hNatural);
+    if (hFit >= TEAR_OUT_MIN_ROWS) {
+      if (it.h !== hFit) engine.resizeCheck(id, w, hFit);
+      if (engine.getItem(id)?.h === hFit && placeOnRow(id, x, y, w)) return true;
+    }
+    const now3 = engine.getItem(id);
+    if (now3 && now3.h !== hNatural) {
+      engine.resizeCheck(id, w, hNatural);
+      if (engine.getItem(id)?.h !== hNatural) {
+        engine.moveCheck(id, 0, engine.rows(), { gate: false });
+        engine.resizeCheck(id, w, hNatural);
+      }
+    }
+    return placeNear(id, x, y, w);
+  };
+  const adopt = (node, world, pxSize, opts = {}) => {
     if (disposed) return null;
     const f = frame();
     const gg = geom();
@@ -196296,9 +196328,16 @@ function bindDashboardGrid(api, group, options = {}) {
       }
     }
     adoptedGhostId = node.id;
-    const tl = centredTopLeft(world.x, world.y, span);
-    const cell0 = pointToCell(tl.x, tl.y, f, gg, rows(), span.w);
-    placeNear(node.id, cell0.x, cell0.y, span.w);
+    const hNatural = span.h;
+    const wantedCell = (wx, wy, itemW, itemH) => {
+      const tl = centredTopLeft(wx, wy, { w: itemW, h: opts.anchor === "top" ? 0 : itemH });
+      return pointToCell(tl.x, tl.y, frame(), geom(), rows(), itemW);
+    };
+    const place = (cell, itemW) => opts.fit === "shrink" ? placeFitting(node.id, cell.x, cell.y, itemW, hNatural) : placeNear(node.id, cell.x, cell.y, itemW);
+    let lastWant = null;
+    const cell0 = wantedCell(world.x, world.y, span.w, span.h);
+    lastWant = cell0;
+    place(cell0, span.w);
     armGlide();
     project();
     syncPlaceholder();
@@ -196307,9 +196346,10 @@ function bindDashboardGrid(api, group, options = {}) {
       move: (w) => {
         const item = engine.getItem(node.id);
         if (!item) return;
-        const tlm = centredTopLeft(w.x, w.y, { w: item.w, h: item.h });
-        const cell = pointToCell(tlm.x, tlm.y, frame(), geom(), rows(), item.w);
-        if (placeNear(node.id, cell.x, cell.y, item.w)) project();
+        const cell = wantedCell(w.x, w.y, item.w, opts.fit === "shrink" ? hNatural : item.h);
+        if (lastWant && lastWant.x === cell.x && lastWant.y === cell.y) return;
+        lastWant = cell;
+        if (place(cell, item.w)) project();
         syncPlaceholder();
       },
       abort: () => {
@@ -196341,7 +196381,7 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const selfPeer = {
     group,
-    tearOutMember: (pageId, fromGroupId, label, ev) => beginTearOut(pageId, fromGroupId, label, ev),
+    tearOutMember: (pageId, fromGroupId, ev, plan) => beginTearOut(pageId, fromGroupId, ev, plan),
     clearSelection: () => {
       if (selectedId === void 0) return;
       selectedId = void 0;
@@ -196688,31 +196728,22 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   api.container.addEventListener("focusin", onFocusIn);
   api.container.addEventListener("keydown", onKey);
-  const beginTearOut = (pageId, fromGroupId, label, ev) => {
+  const beginTearOut = (pageId, fromGroupId, ev, plan) => {
     if (disposed || gesture || slabGesture || isStatic || tearing) return false;
-    const pg = diagram.getGroup(pageId);
     const from = diagram.getGroup(fromGroupId);
-    if (!pg || !from || !engine.getItem(fromGroupId)) return false;
-    const size = sizeOf(pg);
-    const frameBefore = frameOfGroup(pg);
-    const cellBefore = cellFromGridItem(pg.getMetadata?.("gridItem")) ?? {
-      x: 0,
-      y: 0,
-      w: 1,
-      h: 1
-    };
+    if (!from || !diagram.getGroup(pageId) || !engine.getItem(fromGroupId)) return false;
     const toWorld = (cx, cy) => {
       const rect = api.container.getBoundingClientRect();
       return api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
     };
     const first = toWorld(ev.clientX, ev.clientY);
-    const leg = adopt({ id: pageId }, first, { width: size.width, height: size.height });
+    const leg = adopt({ id: plan.arrivingId }, first, plan.size, { fit: "shrink", anchor: "top" });
     if (!leg) return false;
     tearing = pageId;
     const doc = api.container.ownerDocument ?? document;
     const chip2 = doc.createElement("div");
     chip2.className = "axdb-drag-chip axdb-tab-chip";
-    chip2.textContent = label;
+    chip2.textContent = plan.label;
     doc.body.appendChild(chip2);
     const moveChip = (cx, cy) => {
       chip2.style.left = `${cx + 6}px`;
@@ -196758,12 +196789,9 @@ function bindDashboardGrid(api, group, options = {}) {
         api.renderNow();
         return;
       }
-      const changed = execute("Move tab out", [
-        ...fin.commands,
-        new SetGroupCellCommand(pageId, cellBefore, fin.cell, frameBefore, fin.rect),
-        new RemoveFromGroupCommand(fromGroupId, pageId),
-        new AddToGroupCommand(group.id, pageId)
-      ]);
+      const planned = plan.commands(fin.cell, fin.rect, group.id);
+      const collapse2 = planned.collapse.length > 0 ? [...planRemovalOf(fromGroupId), ...planned.collapse] : [];
+      const changed = execute("Move tab out", [...fin.commands, ...planned.move, ...collapse2]);
       disarmGlideSoon();
       enforceBoardHeight();
       persistLayouts();
@@ -197073,7 +197101,7 @@ function bindDashboardGrid(api, group, options = {}) {
       const it = engine.getItem(id);
       if (!it) return [];
       const clone = new GridPackEngine(
-        engine.getItems().map((i) => ({ ...i })),
+        engine.getItems().map((i) => ({ ...i })).sort((a, b) => a.y - b.y || a.x - b.x),
         { columns, float }
       );
       clone.remove(id);
@@ -198393,7 +198421,7 @@ function bindDashboardSplit(api, group, options = {}) {
     resizeMemberBy: () => ({ changed: false }),
     // A split board has no cells to drop a torn-out page into: it refuses,
     // and the press stays a plain tab click.
-    tearOutMember: () => false,
+    tearOutMember: (_pageId, _fromGroupId, _ev, _plan) => false,
     containsWorld: (x, y) => worldInsideBoard(x, y),
     containsWorldExtended: (x, y) => worldInsideBoard(x, y),
     frameArea: () => {
@@ -198982,10 +199010,11 @@ function attachTabsRuntime(ctx, model, container, handle) {
   const isTabs = (id) => (ctx.layoutOf.get(id) ?? ctx.specById.get(id)?.layout) === "tabs" && pagesOf(id).length > 0;
   const tearOut = (containerId, pageId, ev) => {
     if (!container) return false;
-    const pages = pagesOf(containerId);
-    if (pages.length <= 1) return false;
-    const label = pages.find((p) => p.id === pageId)?.label ?? pageId;
-    return parentPeerOf(container, containerId)?.tearOutMember(pageId, containerId, label, ev) === true;
+    if (!pagesOf(containerId).some((p) => p.id === pageId)) return false;
+    const peer = parentPeerOf(container, containerId);
+    const plan = ctx.tearOutPlan?.(containerId, pageId);
+    if (!peer || !plan) return false;
+    return peer.tearOutMember(pageId, containerId, ev, plan);
   };
   const paintStrip = (id, f, h, pages, active2) => {
     const layer = container?.querySelector(".grafloria-html-layer");
@@ -199055,22 +199084,58 @@ function attachTabsRuntime(ctx, model, container, handle) {
   };
   ctx.syncTabs = sync;
   ctx.subscriptions = ctx.subscriptions ?? [];
-  for (const [id, cg] of ctx.boardGroups) {
-    if (!isTabs(id)) continue;
+  const subsOf = /* @__PURE__ */ new Map();
+  const attach = (id) => {
+    const cg = ctx.boardGroups.get(id) ?? model.getGroup(id);
+    if (!cg || subsOf.has(id)) return;
+    if ((ctx.layoutOf.get(id) ?? ctx.specById.get(id)?.layout) !== "tabs") return;
     const pages = pagesOf(id);
-    if (!ctx.activeTab.has(id)) {
+    if (!ctx.activeTab.has(id) && pages.length > 0) {
       const meta = cg.getMetadata("containerWidget");
       const want = ctx.specById.get(id)?.active ?? meta?.active;
       ctx.activeTab.set(id, want && pages.some((p) => p.id === want) ? want : pages[0].id);
       if (meta?.tabs && !ctx.tabsOf.has(id)) ctx.tabsOf.set(id, meta.tabs);
     }
+    const offs = [];
     for (const ev of ["bounds:changed", "member:added", "member:removed"]) {
       const off = cg.on(ev, () => sync(id));
-      if (typeof off === "function") ctx.subscriptions.push(off);
+      if (typeof off === "function") offs.push(off);
     }
+    subsOf.set(id, offs);
+    ctx.subscriptions?.push(() => detach(id));
     sync(id);
-  }
+  };
+  const detach = (id) => {
+    for (const off of subsOf.get(id) ?? []) off();
+    subsOf.delete(id);
+    ctx.tabStrips.get(id)?.remove();
+    ctx.tabStrips.delete(id);
+  };
+  ctx.attachTabsContainer = attach;
+  ctx.detachTabsContainer = detach;
+  for (const id of ctx.boardGroups.keys()) if (isTabs(id)) attach(id);
 }
+var SequenceCommand = class extends Command {
+  constructor(name, steps) {
+    super(name);
+    this.steps = steps;
+  }
+  execute(context) {
+    for (const c of this.steps) c.execute(context);
+  }
+  undo(context) {
+    for (let i = this.steps.length - 1; i >= 0; i--) this.steps[i].undo(context);
+  }
+  canExecute() {
+    return true;
+  }
+  canUndo() {
+    return true;
+  }
+  serialize() {
+    return { id: this.id, name: this.name, timestamp: this.timestamp, data: { steps: this.steps.map((c) => c.serialize()) } };
+  }
+};
 var SetCaptionCommand = class extends Command {
   constructor(sectionId, before, after, apply) {
     super("Set section caption");
@@ -199152,6 +199217,149 @@ function createDashboardHandle(ctx) {
     }
     entries.sort((p1, p2) => (p1.y ?? 0) - (p2.y ?? 0) || (p1.x ?? 0) - (p2.x ?? 0));
     return entries;
+  };
+  ctx.tearOutPlan = (containerId, pageId) => {
+    const model = ctx.apiRef?.getModel();
+    const from = ctx.boardGroups.get(containerId);
+    const pg = ctx.boardGroups.get(pageId) ?? model?.getGroup(pageId);
+    const fromSpec = specById.get(containerId);
+    const pageSpec = specById.get(pageId);
+    if (!model || !from || !pg || !pageSpec) return null;
+    const viewId = ctx.viewOfBoard.get(containerId) ?? ctx.active;
+    const W = `${pageId}__group`;
+    const tabsOpts = ctx.tabsOf.get(containerId) ?? {};
+    const label = pageSpec.title ?? pageId;
+    const size = { width: pg.size?.width ?? 0, height: (pg.size?.height ?? 0) + tabStripReserve(tabsOpts, 1) };
+    const remaining = [...from.members ?? []].filter((m) => m !== pageId && !!model.getGroup(m));
+    return {
+      arrivingId: W,
+      label,
+      size,
+      commands: (cell, rect, boardId) => {
+        const fromMeta = from.getMetadata("containerWidget") ?? {};
+        const fromBoard = from.getMetadata("dashboardBoard") ?? {};
+        const g = new GroupModel({ id: W, name: label });
+        g.setMetadata("frameChrome", "none");
+        g.setMetadata("gridItem", gridItemFromCell(cell));
+        g.setMetadata("containerWidget", {
+          title: label,
+          columns: fromMeta.columns ?? cell.w,
+          maxRows: fromMeta.maxRows ?? cell.h,
+          layout: "tabs",
+          active: pageId,
+          ...Object.keys(tabsOpts).length ? { tabs: tabsOpts } : {}
+        });
+        g.setMetadata("dashboardBoard", { ...fromBoard, layout: "tabs" });
+        g.position = { x: rect.x, y: rect.y };
+        g.size = { width: rect.width, height: rect.height, depth: 0 };
+        const wSpec = {
+          id: W,
+          title: label,
+          layout: "tabs",
+          active: pageId,
+          ...Object.keys(tabsOpts).length ? { tabs: tabsOpts } : {},
+          columns: fromMeta.columns ?? cell.w,
+          widgets: [pageSpec]
+        };
+        let slot = -1;
+        const born = {
+          register: () => {
+            const live = model.getGroup(W);
+            if (!live) return;
+            ctx.boardGroups.set(W, live);
+            ctx.layoutOf.set(W, "tabs");
+            ctx.activeTab.set(W, pageId);
+            ctx.tabsOf.set(W, tabsOpts);
+            specById.set(W, wSpec);
+            ctx.viewOfBoard.set(W, viewId);
+            viewOfWidget.set(W, boardId);
+            viewOfWidget.set(pageId, W);
+            if (fromSpec?.widgets) {
+              const i = fromSpec.widgets.findIndex((p) => p.id === pageId);
+              if (i >= 0) {
+                slot = i;
+                fromSpec.widgets.splice(i, 1);
+              }
+            }
+            const arr = ctx.boardWidgets.get(boardId);
+            if (arr && !arr.some((w) => w.id === W)) arr.push(wSpec);
+            ctx.boardWidgets.set(W, wSpec.widgets);
+            ctx.attachTabsContainer?.(W);
+          },
+          unregister: () => {
+            ctx.detachTabsContainer?.(W);
+            ctx.boardGroups.delete(W);
+            ctx.layoutOf.delete(W);
+            ctx.activeTab.delete(W);
+            ctx.tabsOf.delete(W);
+            specById.delete(W);
+            ctx.viewOfBoard.delete(W);
+            viewOfWidget.delete(W);
+            viewOfWidget.set(pageId, containerId);
+            if (fromSpec?.widgets && !fromSpec.widgets.some((p) => p.id === pageId)) {
+              fromSpec.widgets.splice(slot < 0 ? fromSpec.widgets.length : Math.min(slot, fromSpec.widgets.length), 0, pageSpec);
+            }
+            const arr = ctx.boardWidgets.get(boardId);
+            if (arr) {
+              const i = arr.findIndex((w) => w.id === W);
+              if (i >= 0) arr.splice(i, 1);
+            }
+            ctx.boardWidgets.delete(W);
+          }
+        };
+        const move = [
+          new SequenceCommand("Move tab out", [
+            new AddGroupCommand(g),
+            new RemoveFromGroupCommand(containerId, pageId),
+            new AddToGroupCommand(W, pageId),
+            new AddToGroupCommand(boardId, W),
+            new RegisterWidgetCommand(born, "register")
+          ])
+        ];
+        if (remaining.length > 0) return { move, collapse: [] };
+        let fromSlot = -1;
+        const gone = {
+          register: () => {
+            const live = model.getGroup(containerId);
+            if (!live) return;
+            ctx.boardGroups.set(containerId, live);
+            ctx.layoutOf.set(containerId, "tabs");
+            ctx.viewOfBoard.set(containerId, viewId);
+            if (fromSpec) specById.set(containerId, fromSpec);
+            const arr = ctx.boardWidgets.get(boardId);
+            if (arr && fromSpec && !arr.some((w) => w.id === containerId)) {
+              arr.splice(fromSlot < 0 ? arr.length : Math.min(fromSlot, arr.length), 0, fromSpec);
+            }
+            ctx.attachTabsContainer?.(containerId);
+          },
+          unregister: () => {
+            ctx.detachTabsContainer?.(containerId);
+            ctx.boardGroups.delete(containerId);
+            ctx.layoutOf.delete(containerId);
+            ctx.viewOfBoard.delete(containerId);
+            specById.delete(containerId);
+            const arr = ctx.boardWidgets.get(boardId);
+            if (arr) {
+              const i = arr.findIndex((w) => w.id === containerId);
+              if (i >= 0) {
+                fromSlot = i;
+                arr.splice(i, 1);
+              }
+            }
+          }
+        };
+        return {
+          move,
+          collapse: [
+            new SequenceCommand("Close empty tab container", [
+              new RegisterWidgetCommand(gone, "unregister"),
+              new RemoveFromGroupCommand(boardId, containerId),
+              new RemoveGroupCommand(containerId)
+            ])
+          ]
+        };
+      }
+    };
   };
   const registryOf = (id, boardId, spec) => {
     let slot = -1;
