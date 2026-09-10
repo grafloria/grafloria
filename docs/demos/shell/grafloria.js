@@ -195872,6 +195872,23 @@ function bindDashboardGrid(api, group, options = {}) {
     capturePointer(slabGesture.pointerId);
     api.container.style.cursor = cursorFor(edges);
   };
+  let slabUnlocked = [];
+  const unlockOthersForSlab = (id) => {
+    slabUnlocked = [];
+    for (const o of engine.getItems()) {
+      if (o.id !== id && o.locked && isGroupMember(o.id)) {
+        o.locked = false;
+        slabUnlocked.push(o.id);
+      }
+    }
+  };
+  const relockOthersForSlab = () => {
+    for (const oid of slabUnlocked) {
+      const o = engine.getItem(oid);
+      if (o) o.locked = true;
+    }
+    slabUnlocked = [];
+  };
   const beginSlabMove = (id, ev) => {
     const grp = diagram.getGroup(id);
     const it = engine.getItem(id);
@@ -195879,6 +195896,7 @@ function bindDashboardGrid(api, group, options = {}) {
     engine.beginGesture();
     const snap = snapshotAll();
     it.locked = false;
+    unlockOthersForSlab(id);
     slabGesture = {
       id,
       edges: NO_EDGES,
@@ -195988,6 +196006,7 @@ function bindDashboardGrid(api, group, options = {}) {
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
     relockSlab(g.id);
+    relockOthersForSlab();
     if (g.move && g.started) setCarried(g.id, false);
     if (!g.started) {
       engine.endGesture();
@@ -195997,7 +196016,14 @@ function bindDashboardGrid(api, group, options = {}) {
     project();
     const it = engine.getItem(g.id);
     const grp = diagram.getGroup(g.id);
-    const commands = buildCommitCommands(deltasSince(g.startCells, g.startGeom, g.id));
+    const deltas = deltasSince(g.startCells, g.startGeom, g.id);
+    const commands = buildCommitCommands(deltas);
+    for (const d of deltas) {
+      if (!d.isGroup || d.cellBefore.x === d.cellAfter.x && d.cellBefore.y === d.cellAfter.y && d.cellBefore.w === d.cellAfter.w && d.cellBefore.h === d.cellAfter.h) continue;
+      const og = diagram.getGroup(d.id);
+      if (!og) continue;
+      commands.push(new SetGroupCellCommand(d.id, d.cellBefore, d.cellAfter, { x: d.posBefore.x, y: d.posBefore.y, width: d.sizeBefore.width, height: d.sizeBefore.height }, frameOfGroup(og)));
+    }
     const b = g.cellBefore;
     if (it && grp && (b.x !== it.x || b.y !== it.y || b.w !== it.w || b.h !== it.h)) {
       commands.push(new SetGroupCellCommand(g.id, b, { x: it.x, y: it.y, w: it.w, h: it.h }, g.frameBefore, frameOfGroup(grp)));
@@ -196015,6 +196041,7 @@ function bindDashboardGrid(api, group, options = {}) {
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
     relockSlab(g.id);
+    relockOthersForSlab();
     if (g.move && g.started) setCarried(g.id, false);
     if (g.started) engine.cancelGesture();
     else engine.endGesture();

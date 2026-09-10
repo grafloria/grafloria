@@ -1666,21 +1666,24 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `over A: ghost ${JSON.stringify(overA)} (half the board = ${half} px) dim ${dimA} · over the wall: ghost ${JSON.stringify(overWall)} dim ${dimWall} · released: group ${JSON.stringify(born)}, strip ${strips.join(',')}`);
 }
 {
-  begin('L78-a-section-slides-along-its-row-and-shows-a-refused-cell');
+  begin('L78-a-section-moved-onto-a-group-PUSHES-it-and-a-section-carried-down-lands-there');
   await scrollTo('deep');
   await page.click('#cv-deep .axdb-tabs[data-tabs-id="dp"] .axdb-tab[data-tab-id="dp-grid"]'); await page.waitForTimeout(300);
   const cell = (id) => page.evaluate((id) => window.__lab.deep.handle.widget(id)?.cell ?? null, id);
   const band = await page.evaluate(() => document.querySelector('#cv-deep .axdb-slab[data-slab-id="dp-out"] > .axdb-slab-h').getBoundingClientRect().toJSON());
   const dp = await groupRect('deep', 'dp'); const cvd = await page.evaluate(() => document.getElementById('cv-deep').getBoundingClientRect().toJSON());
-  const s0 = await cell('dp-out');
+  const s0 = await cell('dp-out'); const d0 = await cell('dp');
   const refused = () => page.evaluate(() => !!document.querySelector('#cv-deep .axdb-ph--no'));
-  // RIGHT onto the locked Deep tabs container: no legal cell on its row → the wanted cell is painted refused, the section stays
+  // RIGHT onto the Deep tabs container: a moved section pushes the group in its way (0.4.44 — it used to be refused at every cell, painted red, and the section stayed)
   await page.mouse.move(band.x + band.width / 2, band.y + band.height / 2); await page.mouse.down(); await page.mouse.move(band.x + band.width / 2 + 8, band.y + band.height / 2 + 4);
   await page.mouse.move(cvd.x + dp.x + dp.w * 0.5, band.y + band.height / 2, { steps: 14 }); await page.waitForTimeout(400);
-  const r1 = await refused(); const s1 = await cell('dp-out');
-  await shot('deep', 'section-onto-the-locked-container-refused');
+  const r1 = await refused(); const s1 = await cell('dp-out'); const d1 = await cell('dp');
+  await shot('deep', 'section-held-over-the-container-which-gives-way');
   await page.mouse.up(); await page.waitForTimeout(600);
-  const s2 = await cell('dp-out'); const r2 = await refused();
+  const s2 = await cell('dp-out'); const d2 = await cell('dp'); const r2 = await refused(); const saneA = await sanity('deep');
+  await shot('deep', 'section-landed-the-container-pushed-down');
+  await undoAll('deep', 1);
+  const s2u = await cell('dp-out'); const d2u = await cell('dp');
   // DOWN into free space: it moves
   const band2 = await page.evaluate(() => document.querySelector('#cv-deep .axdb-slab[data-slab-id="dp-out"] > .axdb-slab-h').getBoundingClientRect().toJSON());
   await drag(band2.x + band2.width / 2, band2.y + band2.height / 2, band2.x + band2.width / 2, band2.y + band2.height / 2 + 160, { steps: 14, mid: async () => shot('deep', 'section-carried-down') });
@@ -1688,8 +1691,10 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   await shot('deep', 'section-moved-down');
   await undoAll('deep', 1);
   const s4 = await cell('dp-out');
-  verdict(!!s0 && r1 === true && JSON.stringify(s1) === JSON.stringify(s0) && JSON.stringify(s2) === JSON.stringify(s0) && r2 === false && !!s3 && s3.y > s0.y && s3.x === 0 && sane.overlaps === 0 && JSON.stringify(s4) === JSON.stringify(s0),
-    `onto the container: refused-marker ${r1}, cell ${JSON.stringify(s0)} -> ${JSON.stringify(s1)}, after release ${JSON.stringify(s2)} marker gone ${!r2} · down: ${JSON.stringify(s3)} ${JSON.stringify(sane)} · undo ${JSON.stringify(s4)}`);
+  verdict(!!s0 && !!d0 && r1 === false && !!s1 && s1.x === 6 && !!d1 && d1.y >= s1.y + s1.h && !!s2 && s2.x === 6 && !!d2 && d2.y >= s2.y + s2.h && d2.x === d0.x && d2.w === d0.w && r2 === false && saneA.overlaps === 0
+    && JSON.stringify(s2u) === JSON.stringify(s0) && JSON.stringify(d2u) === JSON.stringify(d0)
+    && !!s3 && s3.y > s0.y && s3.x === 0 && sane.overlaps === 0 && JSON.stringify(s4) === JSON.stringify(s0),
+    `onto the container: refused-marker ${r1}, section ${JSON.stringify(s0)} -> ${JSON.stringify(s1)}, container ${JSON.stringify(d0)} -> ${JSON.stringify(d1)}; released ${JSON.stringify(s2)} / ${JSON.stringify(d2)} marker ${r2} overlaps ${saneA.overlaps}; undone ${JSON.stringify(s2u)} / ${JSON.stringify(d2u)} · down: ${JSON.stringify(s3)} ${JSON.stringify(sane)} · undo ${JSON.stringify(s4)}`);
 }
 {
   begin('L79-a-widget-out-of-an-inner-tab-page-keeps-its-gesture-and-leaves-no-placeholder');

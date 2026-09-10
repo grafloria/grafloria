@@ -1199,7 +1199,7 @@ describe('tab containers', () => {
     expect(cellOf(handle, 'wall')).toEqual({ x: 0, y: 4, w: 12, h: 2 });
   });
 
-  it('a SECTION moved by its caption band slides to the nearest legal column like a widget, and a refused cell is shown', async () => {
+  it('a SECTION moved by its caption band PUSHES the group in its way and lands where it was asked (0.4.44 — it used to be refused there and slide along its row)', async () => {
     // The fluid demo's Operations section (9 columns) grabbed 60 px from its
     // left edge and carried over the chart: the cell under the pointer put
     // its right edge into the locked side panel, E4b refused every cell and
@@ -1234,14 +1234,22 @@ describe('tab containers', () => {
     tool.onPointerMove?.(on('move', 381, 131), hit);
     tool.onPointerUp?.(on('up', 381, 131), hit);
     await settle();
+    // 0.4.44: the panel gives way. The section lands where it was asked —
+    // its left edge at column 3 — and the side panel is pushed below it;
+    // it used to be refused there and slid left along its row instead.
     const after = cellOf(handle, 'ops')!;
-    expect(after.x).toBe(0); // slid left off the locked panel
-    expect(after.y).toBeLessThan(5); // and moved up as asked
+    expect(after.x).toBe(3);
+    expect(after.y).toBeLessThan(5); // moved up as asked
     expect(after.w).toBe(9);
-    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    const side = cellOf(handle, 'side')!;
+    expect(side.x).toBe(9);
+    expect(side.y).toBeGreaterThanOrEqual(after.y + after.h);
+    expect(side.w).toBe(3);
+    expect(side.h).toBe(8);
     await cm(api).undo();
     await settle();
     expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 5, w: 9, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
   });
 
   it('a widget dragged OUT of an inner tab page survives the re-layout its own crossing causes — the gesture lives on and the drop lands in the section', async () => {
@@ -1953,6 +1961,8 @@ describe('tab drags on a SPLIT board', () => {
 
 describe('a tab group is ONE thing: its frame at rest, its motion when carried (0.4.43)', () => {
   const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const cellOf = (handle: DashboardHandle, id: string) => handle.widget(id)?.cell ?? null;
+  const cm = (api: ReturnType<typeof makeApi>) => api.getEngine().commandManager;
   const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
   const BOARD3 = () =>
     dashboard({
@@ -2116,6 +2126,60 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     tool.onPointerUp?.(tev('up', r.x - 200, r.y + 100), { node: null } as never);
     await settle();
     expect(handle.widget('sec')!.cell).toEqual(sc0);
+  });
+
+  it('a group dragged by its frame PUSHES the section in its way: a full-width section below cannot pin an 8-row panel to its column (the live demo showed the refusal at every cell)', async () => {
+    // The fluid demo: the side panel (3×8) at column 9, the Operations section
+    // (span 9) at row 7. Dragged left, every column overlapped the section —
+    // a LOCKED tile — so the wanted cell was painted refused all the way and
+    // the release moved nothing ("I can't drag the tab group"). Sections and
+    // groups give way to a MOVED section or group now, the way they give way
+    // to a dock; a widget still never pushes a section.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('win', 2, 1, 4, 0), K('nps', 2, 1, 6, 0),
+          K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          K('reps', 5, 3, 0, 4), K('funnel', 4, 3, 5, 4),
+          { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9, widgets: [K('orders', 4, 1, 0, 0)] },
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+        ],
+      })
+    );
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+    const tool = toolOf('main');
+    const side = model.getGroup('side')!;
+    const p = { x: side.position.x + side.size!.width / 2, y: side.position.y + 30 + 4 }; // the frame margin under the strip
+    tool.onPointerDown?.(tev('down', p.x, p.y), { node: null } as never);
+    const colW = (1200 - 11 * 10) / 12 + 10;
+    tool.onPointerMove?.(tev('move', p.x - colW * 3 + 8, p.y + 2), { node: null } as never);
+    tool.onPointerMove?.(tev('move', p.x - colW * 3, p.y), { node: null } as never);
+    // held three columns to the left: the panel has moved there and the section gave way — nothing is painted refused
+    expect(cellOf(handle, 'side')!.x).toBe(6);
+    expect(api.container.querySelector('.axdb-ph--no')).toBeNull();
+    tool.onPointerUp?.(tev('up', p.x - colW * 3, p.y), { node: null } as never);
+    await settle();
+    expect(cellOf(handle, 'side')).toEqual({ x: 6, y: 0, w: 3, h: 8 });
+    const ops = cellOf(handle, 'ops')!;
+    expect(ops.y).toBeGreaterThanOrEqual(8); // pushed below the panel, intact
+    expect(ops.w).toBe(9);
+    expect(cellOf(handle, 'orders')).toEqual({ x: 0, y: 0, w: 4, h: 1 }); // its child rode along
+    // the section is a locked tile again once the gesture is over: a widget dropped on it does not push it
+    const opsAfter = model.getGroup('ops')!;
+    expect(cellOf(handle, 'ops')).toEqual(ops);
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+    expect(opsAfter.position.y).toBeGreaterThanOrEqual(0);
   });
 
   it('a group dragged by its strip CARRIES its chrome: while it moves, its strip, slab and surface are transition-exempt together — the other groups\' are not — and the exemption lifts 60 ms after the drop', async () => {
