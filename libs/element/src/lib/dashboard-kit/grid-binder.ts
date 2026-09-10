@@ -1885,32 +1885,43 @@ export function bindDashboardGrid(
    */
   type BesideSide = 'left' | 'right' | 'top' | 'bottom';
   const BESIDE_BAND = 0.2;
+  /** The outer band of a container FRAME the point is in — null in the strip, in the middle, or outside. */
+  const bandOf = (f: WorldRect, wx: number, wy: number): BesideSide | null => {
+    if (wx < f.x || wx > f.x + f.width || wy < f.y || wy > f.y + f.height) return null;
+    const bodyY = f.y + TAB_STRIP_HEIGHT;
+    const bodyH = Math.max(1, f.height - TAB_STRIP_HEIGHT);
+    const rx = (wx - f.x) / Math.max(1, f.width);
+    const ry = (wy - bodyY) / bodyH;
+    if (ry < 0) return null; // the strip: a new tab, the strip's own business
+    if (rx >= BESIDE_BAND && rx <= 1 - BESIDE_BAND && ry >= BESIDE_BAND && ry <= 1 - BESIDE_BAND) return null; // the middle: into the page
+    const d: Array<[BesideSide, number]> = [['left', rx], ['right', 1 - rx], ['top', ry], ['bottom', 1 - ry]];
+    d.sort((a, b) => a[1] - b[1]);
+    return d[0][0];
+  };
   const besideZoneAt = (wx: number, wy: number): { id: string; side: BesideSide } | null => {
     for (const id of group.members ?? []) {
       const grp = diagram.getGroup(id);
       if (!grp || diagram.getNode(id) || !isTabsGroup(grp)) continue;
-      const p = grp.position;
-      const sz = sizeOf(grp);
-      if (wx < p.x || wx > p.x + sz.width || wy < p.y || wy > p.y + sz.height) continue;
-      const bodyY = p.y + TAB_STRIP_HEIGHT;
-      const bodyH = Math.max(1, sz.height - TAB_STRIP_HEIGHT);
-      const rx = (wx - p.x) / Math.max(1, sz.width);
-      const ry = (wy - bodyY) / bodyH;
-      if (ry < 0) return null; // the strip: a new tab, the strip's own business
-      if (rx >= BESIDE_BAND && rx <= 1 - BESIDE_BAND && ry >= BESIDE_BAND && ry <= 1 - BESIDE_BAND) return null; // the middle: into the page
-      const d: Array<[BesideSide, number]> = [['left', rx], ['right', 1 - rx], ['top', ry], ['bottom', 1 - ry]];
-      d.sort((a, b) => a[1] - b[1]);
-      return { id, side: d[0][0] };
+      const side = bandOf(frameOfGroup(grp), wx, wy);
+      if (side) return { id, side };
     }
     return null;
   };
   /** The container a BESIDE drop unlocked (and maybe shifted): relocked, and put back if asked, when the zone or the gesture ends. */
-  let beside: { id: string; from: { x: number; y: number }; vacated: { x: number; y: number } } | null = null;
+  let beside: { id: string; side: BesideSide; from: { x: number; y: number }; frame0: WorldRect; vacated: { x: number; y: number }; others: Map<string, { x: number; y: number }> } | null = null;
   const endBeside = (restore: boolean): void => {
     if (!beside) return;
     const it = engine.getItem(beside.id);
     if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false });
+    if (restore) {
+      // The sections the shift pushed come back with it.
+      for (const [oid, c] of beside.others) {
+        const o = engine.getItem(oid);
+        if (o && (o.x !== c.x || o.y !== c.y)) engine.moveCheck(oid, c.x, c.y, { gate: false });
+      }
+    }
     if (it) it.locked = true;
+    relockOthersForSlab();
     beside = null;
   };
   const applyBeside = (g: GestureState, z: { id: string; side: BesideSide }): void => {
@@ -1927,7 +1938,7 @@ export function bindDashboardGrid(
       hostOf(g.id)?.classList.remove('axdb-out');
       engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
     }
-    if (beside && beside.id !== z.id) endBeside(true);
+    if (beside && (beside.id !== z.id || beside.side !== z.side)) endBeside(true); // another container, or another side of it: start over from the rest layout
     const from = beside ? beside.from : { x: tc.x, y: tc.y };
     let cell: { x: number; y: number };
     let shiftTo: { x: number; y: number } | null = null;
@@ -1953,11 +1964,21 @@ export function bindDashboardGrid(
         cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y + tc.h };
     }
     if (shiftTo && shiftTo.x < 0) shiftTo = null; // no room even shifted: the widget goes where it can
-    if (!beside) beside = { id: z.id, from, vacated: cell };
+    if (!beside) {
+      // The other sections give way to the shift the way they give way to a
+      // moved group (0.4.44): on the demo the Operations section spans the
+      // row under the panel and a locked tile refused the shift outright.
+      // Their cells are kept so they come back if the pointer leaves.
+      const others = new Map<string, { x: number; y: number }>();
+      for (const o of engine.getItems()) if (o.id !== z.id && o.id !== g.id && isGroupMember(o.id)) others.set(o.id, { x: o.x, y: o.y });
+      const grp0 = diagram.getGroup(z.id);
+      beside = { id: z.id, side: z.side, from, frame0: grp0 ? frameOfGroup(grp0) : cellToRect({ x: from.x, y: from.y, w: tc.w, h: tc.h }, frame(), geom(), rows()), vacated: cell, others };
+      unlockOthersForSlab(z.id);
+    }
     tc.locked = false; // for the gesture: it shifts, or the ghost pushes it
-    // The ghost steps off the board while the container shifts: on a bounded
-    // board a chart as wide as the panel had its own cell as the panel's
-    // target, could not be pushed down, and the shift was refused (lab L94).
+    // The ghost steps off the board while the container shifts: the engine
+    // will not push the dragged tile, so a chart as wide as the panel had its
+    // own cell as the panel's target and the shift was refused (lab L94).
     // Then it takes the cell the shift vacated.
     if (shiftTo && (tc.x !== shiftTo.x || tc.y !== shiftTo.y)) {
       if (engine.getItem(g.id)) engine.remove(g.id);
@@ -2674,8 +2695,18 @@ export function bindDashboardGrid(
           // is what "beside" leaves under the pointer once the container has
           // shifted away (the ghost's wanted cell carries the grab offset and
           // read as "elsewhere" a move later, and the shift undid itself).
+          // "Still here" is the pointer in the SAME band of the container's
+          // ORIGINAL frame (it asked for beside from there, and the container
+          // is what moved) or over the cell the widget took: a one-row
+          // widget's cell is not where a hand hovering the band sits, and
+          // testing only that undid the shift on the next move, which pushed
+          // the widget to the bottom as the panel came back (live walk N).
+          // "Anywhere inside the original frame" is too much: a hand crossing
+          // the bottom band on its way to the middle never reached the page
+          // (lab L73) — the middle of the original frame is a zone change.
           const r = cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows());
-          const over = ev.world.x >= r.x - gap && ev.world.x <= r.x + r.width + gap && ev.world.y >= r.y - gap && ev.world.y <= r.y + r.height + gap;
+          const inR = (q: WorldRect): boolean => ev.world.x >= q.x - gap && ev.world.x <= q.x + q.width + gap && ev.world.y >= q.y - gap && ev.world.y <= q.y + q.height + gap;
+          const over = bandOf(beside.frame0, ev.world.x, ev.world.y) === beside.side || inR(r);
           if (!over) endBeside(true);
           else {
             syncPlaceholder();
