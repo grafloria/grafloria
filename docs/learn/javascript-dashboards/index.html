@@ -479,6 +479,12 @@ render(SPEC2, host);</pre>
       on grid and split boards alike; the strip's empty space, the only handle before, was one nobody found. (A widget
       dragged over a group goes <em>into</em> its page; a group is never pushed by a widget, so to put a widget beside a
       group, move the group.)</p>
+      <p><b>A moved group pushes the sections in its way</b> (element 0.4.44). With the frame as its handle the user dragged
+      the demo's side panel left and got a red cell at every step: the panel is eight rows tall, the Operations section
+      spans the row beneath it, and a section is a locked tile that a <em>moved</em> section or group was refused by too —
+      so no column to the left was legal and the release moved nothing. Sections and groups now give way to a moved
+      section or group, the way they give way to a dock, and the refusal tone is kept for what truly cannot give way. A
+      widget still never pushes a section.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

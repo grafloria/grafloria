@@ -2095,13 +2095,35 @@ export function bindDashboardGrid(
     api.container.style.cursor = cursorFor(edges);
   };
   /**
-   * MOVE a section by its caption band or its strip's empty space. A section
-   * is a LOCKED tile so that nothing pushes it; for the gesture's duration the
-   * tile is unlocked (it is the one moving), other sections stay locked and
-   * still refuse it (E4b), and every unlocked tile gets pushed the way a
-   * widget pushes it. Its children ride along: the frame moves, the nested
-   * board re-projects.
+   * MOVE a section by its caption band, its strip's empty space or its frame
+   * margin. A section is a LOCKED tile so that no WIDGET pushes it; for the
+   * gesture's duration the moving tile is unlocked, and so are the OTHER
+   * member groups (0.4.44): a moved section or group pushes the sections in
+   * its way, the way a dock does. They used to stay locked against it too
+   * (E4b), so the fluid demo's eight-row side panel, with the Operations
+   * section spanning the row beneath it, had no legal column to its left —
+   * the refusal tone at every cell, and the release moved nothing ("I can't
+   * drag the tab group"). Every unlocked tile gets pushed the way a widget
+   * pushes it; a group's children ride along: the frame moves, the nested
+   * board re-projects. The others relock on release.
    */
+  let slabUnlocked: string[] = [];
+  const unlockOthersForSlab = (id: string): void => {
+    slabUnlocked = [];
+    for (const o of engine.getItems()) {
+      if (o.id !== id && o.locked && isGroupMember(o.id)) {
+        o.locked = false;
+        slabUnlocked.push(o.id);
+      }
+    }
+  };
+  const relockOthersForSlab = (): void => {
+    for (const oid of slabUnlocked) {
+      const o = engine.getItem(oid);
+      if (o) o.locked = true;
+    }
+    slabUnlocked = [];
+  };
   const beginSlabMove = (id: string, ev: ToolPointerEvent): void => {
     const grp = diagram.getGroup(id);
     const it = engine.getItem(id);
@@ -2109,6 +2131,7 @@ export function bindDashboardGrid(
     engine.beginGesture();
     const snap = snapshotAll();
     it.locked = false;
+    unlockOthersForSlab(id);
     slabGesture = {
       id,
       edges: NO_EDGES,
@@ -2233,6 +2256,7 @@ export function bindDashboardGrid(
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
     relockSlab(g.id);
+    relockOthersForSlab();
     if (g.move && g.started) setCarried(g.id, false); // exempt through the drop write, then the glides resume
     if (!g.started) {
       engine.endGesture();
@@ -2242,7 +2266,18 @@ export function bindDashboardGrid(
     project();
     const it = engine.getItem(g.id);
     const grp = diagram.getGroup(g.id);
-    const commands = buildCommitCommands(deltasSince(g.startCells, g.startGeom, g.id));
+    const deltas = deltasSince(g.startCells, g.startGeom, g.id);
+    const commands = buildCommitCommands(deltas);
+    // The sections and groups the move PUSHED (0.4.44): the tile commit skips
+    // groups by design (a group's cell is its own command), so they are
+    // committed here the way a dock commits the groups it displaced — or the
+    // model snapped every one of them, and the mover, straight back.
+    for (const d of deltas) {
+      if (!d.isGroup || (d.cellBefore.x === d.cellAfter.x && d.cellBefore.y === d.cellAfter.y && d.cellBefore.w === d.cellAfter.w && d.cellBefore.h === d.cellAfter.h)) continue;
+      const og = diagram.getGroup(d.id);
+      if (!og) continue;
+      commands.push(new SetGroupCellCommand(d.id, d.cellBefore, d.cellAfter, { x: d.posBefore.x, y: d.posBefore.y, width: d.sizeBefore.width, height: d.sizeBefore.height }, frameOfGroup(og)));
+    }
     const b = g.cellBefore;
     if (it && grp && (b.x !== it.x || b.y !== it.y || b.w !== it.w || b.h !== it.h)) {
       commands.push(new SetGroupCellCommand(g.id, b, { x: it.x, y: it.y, w: it.w, h: it.h }, g.frameBefore, frameOfGroup(grp)));
@@ -2260,6 +2295,7 @@ export function bindDashboardGrid(
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
     relockSlab(g.id);
+    relockOthersForSlab();
     if (g.move && g.started) setCarried(g.id, false);
     if (g.started) engine.cancelGesture();
     else engine.endGesture();
