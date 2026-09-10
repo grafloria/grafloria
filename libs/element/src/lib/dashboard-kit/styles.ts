@@ -54,6 +54,31 @@ const CSS = `
 /* Outside the board: release will REMOVE — dim the ghost to say so. */
 .grafloria-html-layer > .grafloria-node-host.axdb-ghost.axdb-out { opacity: .35; filter: grayscale(.6); }
 
+/* ===== the kit's chrome glides WITH the tiles it belongs to (0.4.43) =====
+   A pushed group's strip, slab and surface used to jump to the new slot while
+   its tiles slid there: one group, two motions. */
+.grafloria-html-layer.axdb-glide > .axdb-tabs,
+.grafloria-html-layer.axdb-glide > .axdb-slab,
+.grafloria-html-layer.axdb-glide > .axdb-group-bg {
+  transition: left .28s cubic-bezier(.2, 0, .2, 1), top .28s cubic-bezier(.2, 0, .2, 1),
+              width .28s cubic-bezier(.2, 0, .2, 1), height .28s cubic-bezier(.2, 0, .2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .grafloria-html-layer.axdb-glide > .axdb-tabs,
+  .grafloria-html-layer.axdb-glide > .axdb-slab,
+  .grafloria-html-layer.axdb-glide > .axdb-group-bg { transition: none; }
+}
+
+/* ===== CARRIED (0.4.43): a group dragged by its strip or band moves as ONE thing =====
+   Its whole subtree — tiles, strips, slabs, surface — is transition-exempt like
+   the ghost and floats with it; the surface casts the shadow. */
+.grafloria-html-layer > .axdb-carried,
+.grafloria-html-layer.axdb-glide > .axdb-carried { transition: none; cursor: grabbing; }
+.grafloria-html-layer > .grafloria-node-host.axdb-carried { z-index: 30; opacity: .92; }
+.grafloria-html-layer > .axdb-group-bg.axdb-carried { z-index: 29; filter: drop-shadow(0 10px 16px rgba(16, 24, 40, .3)); }
+.grafloria-html-layer > .axdb-slab.axdb-carried { z-index: 31; }
+.grafloria-html-layer > .axdb-tabs.axdb-carried { z-index: 32; }
+
 /* ===== the placeholder: dashed slab, truthful, never animated ===== */
 .grafloria-html-layer > .axdb-ph {
   position: absolute;
@@ -433,6 +458,25 @@ const CSS = `
 .grafloria-html-layer > .axdb-slab > .axdb-rs { pointer-events: none; opacity: 0; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { pointer-events: auto; opacity: 1; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-rs { display: none; }
+
+/* GROUP FRAME (0.4.43): a TAB CONTAINER wears a frame by default — a bordered
+   slab, and a tinted surface UNDER its pages (the strip's own track colour, so
+   strip and body read as one panel). The layer is isolated so the surface can
+   sit below every tile at z -1 and still paint above the canvas. */
+.grafloria-html-layer { isolation: isolate; }
+.grafloria-html-layer > .axdb-group-bg {
+  position: absolute; pointer-events: none; z-index: -1; box-sizing: border-box;
+  border-radius: var(--axdb-rs-radius, 8px);
+  background: var(--axdb-group-bg, #f1f3f8);
+}
+.grafloria-html-layer > .axdb-slab.axdb-slab--tabs {
+  box-sizing: border-box;
+  border: 1px solid var(--axdb-group-border, var(--axdb-line, #e5e8ef));
+}
+@media (prefers-color-scheme: dark) {
+  .grafloria-html-layer > .axdb-group-bg { background: var(--axdb-group-bg, #1b2029); }
+  .grafloria-html-layer > .axdb-slab.axdb-slab--tabs { border-color: var(--axdb-group-border, rgba(236, 238, 244, .12)); }
+}
 
 /* SECTION CAPTION (0.4.22): the band on the slab. Geometry is inline (the
    reserve and the pixels come from one function); everything visual is a

@@ -194180,6 +194180,31 @@ var CSS4 = `
 /* Outside the board: release will REMOVE \u2014 dim the ghost to say so. */
 .grafloria-html-layer > .grafloria-node-host.axdb-ghost.axdb-out { opacity: .35; filter: grayscale(.6); }
 
+/* ===== the kit's chrome glides WITH the tiles it belongs to (0.4.43) =====
+   A pushed group's strip, slab and surface used to jump to the new slot while
+   its tiles slid there: one group, two motions. */
+.grafloria-html-layer.axdb-glide > .axdb-tabs,
+.grafloria-html-layer.axdb-glide > .axdb-slab,
+.grafloria-html-layer.axdb-glide > .axdb-group-bg {
+  transition: left .28s cubic-bezier(.2, 0, .2, 1), top .28s cubic-bezier(.2, 0, .2, 1),
+              width .28s cubic-bezier(.2, 0, .2, 1), height .28s cubic-bezier(.2, 0, .2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .grafloria-html-layer.axdb-glide > .axdb-tabs,
+  .grafloria-html-layer.axdb-glide > .axdb-slab,
+  .grafloria-html-layer.axdb-glide > .axdb-group-bg { transition: none; }
+}
+
+/* ===== CARRIED (0.4.43): a group dragged by its strip or band moves as ONE thing =====
+   Its whole subtree \u2014 tiles, strips, slabs, surface \u2014 is transition-exempt like
+   the ghost and floats with it; the surface casts the shadow. */
+.grafloria-html-layer > .axdb-carried,
+.grafloria-html-layer.axdb-glide > .axdb-carried { transition: none; cursor: grabbing; }
+.grafloria-html-layer > .grafloria-node-host.axdb-carried { z-index: 30; opacity: .92; }
+.grafloria-html-layer > .axdb-group-bg.axdb-carried { z-index: 29; filter: drop-shadow(0 10px 16px rgba(16, 24, 40, .3)); }
+.grafloria-html-layer > .axdb-slab.axdb-carried { z-index: 31; }
+.grafloria-html-layer > .axdb-tabs.axdb-carried { z-index: 32; }
+
 /* ===== the placeholder: dashed slab, truthful, never animated ===== */
 .grafloria-html-layer > .axdb-ph {
   position: absolute;
@@ -194559,6 +194584,25 @@ var CSS4 = `
 .grafloria-html-layer > .axdb-slab > .axdb-rs { pointer-events: none; opacity: 0; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { pointer-events: auto; opacity: 1; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-rs { display: none; }
+
+/* GROUP FRAME (0.4.43): a TAB CONTAINER wears a frame by default \u2014 a bordered
+   slab, and a tinted surface UNDER its pages (the strip's own track colour, so
+   strip and body read as one panel). The layer is isolated so the surface can
+   sit below every tile at z -1 and still paint above the canvas. */
+.grafloria-html-layer { isolation: isolate; }
+.grafloria-html-layer > .axdb-group-bg {
+  position: absolute; pointer-events: none; z-index: -1; box-sizing: border-box;
+  border-radius: var(--axdb-rs-radius, 8px);
+  background: var(--axdb-group-bg, #f1f3f8);
+}
+.grafloria-html-layer > .axdb-slab.axdb-slab--tabs {
+  box-sizing: border-box;
+  border: 1px solid var(--axdb-group-border, var(--axdb-line, #e5e8ef));
+}
+@media (prefers-color-scheme: dark) {
+  .grafloria-html-layer > .axdb-group-bg { background: var(--axdb-group-bg, #1b2029); }
+  .grafloria-html-layer > .axdb-slab.axdb-slab--tabs { border-color: var(--axdb-group-border, rgba(236, 238, 244, .12)); }
+}
 
 /* SECTION CAPTION (0.4.22): the band on the slab. Geometry is inline (the
    reserve and the pixels come from one function); everything visual is a
@@ -195616,12 +195660,91 @@ function bindDashboardGrid(api, group, options = {}) {
     }
     return null;
   };
-  const slabEdgesNear = (grp, x, y) => {
+  const slabEdgesNear = (grp, x, y, grip = edgeGripFor(grp)) => {
     const p = grp.position;
     const s = sizeOf(grp);
-    return { n: y - p.y <= EDGE_GRIP, s: p.y + s.height - y <= EDGE_GRIP, w: x - p.x <= EDGE_GRIP, e: p.x + s.width - x <= EDGE_GRIP };
+    return { n: y - p.y <= grip, s: p.y + s.height - y <= grip, w: x - p.x <= grip, e: p.x + s.width - x <= grip };
   };
   const slabEls = /* @__PURE__ */ new Map();
+  const groupBgs = /* @__PURE__ */ new Map();
+  const syncGroupBg = (layer2, id, on, x, y, w, h) => {
+    let bg = groupBgs.get(id) ?? null;
+    if (!on) {
+      bg?.remove();
+      groupBgs.delete(id);
+      return;
+    }
+    if (!bg || bg.parentElement !== layer2) {
+      bg?.remove();
+      bg = document.createElement("div");
+      bg.className = "axdb-group-bg";
+      bg.setAttribute("data-group-bg", id);
+      layer2.prepend(bg);
+      groupBgs.set(id, bg);
+    }
+    bg.style.left = `${x}px`;
+    bg.style.top = `${y}px`;
+    bg.style.width = `${w}px`;
+    bg.style.height = `${h}px`;
+  };
+  const isTabsGroup = (grp) => grp.getMetadata("containerWidget")?.layout === "tabs";
+  const TAB_FRAME_GRIP = 3;
+  const edgeGripFor = (grp) => isTabsGroup(grp) ? TAB_FRAME_GRIP : EDGE_GRIP;
+  const carriedEls = /* @__PURE__ */ new Set();
+  let carriedTimer = null;
+  const subtreeIds = (id) => {
+    const groups = [];
+    const nodes = [];
+    const queue = [id];
+    const seen = /* @__PURE__ */ new Set();
+    while (queue.length) {
+      const cur = queue.shift();
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      const grp = diagram.getGroup(cur);
+      if (grp) {
+        groups.push(cur);
+        for (const m of grp.members ?? []) queue.push(m);
+      } else if (diagram.getNode(cur)) nodes.push(cur);
+    }
+    return { groups, nodes };
+  };
+  const cssId = (id) => typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
+  const setCarried = (id, on) => {
+    const layer2 = htmlLayer();
+    if (!layer2) return;
+    if (carriedTimer) {
+      clearTimeout(carriedTimer);
+      carriedTimer = null;
+    }
+    if (on) {
+      const { groups, nodes } = subtreeIds(id);
+      const els = [];
+      for (const n3 of nodes) {
+        const h = hostOf(n3);
+        if (h) els.push(h);
+      }
+      for (const g of groups) {
+        els.push(...Array.from(layer2.querySelectorAll(`:scope > .axdb-tabs[data-tabs-id="${cssId(g)}"], :scope > .axdb-slab[data-slab-id="${cssId(g)}"], :scope > .axdb-group-bg[data-group-bg="${cssId(g)}"]`)));
+      }
+      for (const el2 of els) {
+        el2.classList.add("axdb-carried");
+        carriedEls.add(el2);
+      }
+      return;
+    }
+    carriedTimer = setTimeout(() => {
+      for (const el2 of carriedEls) el2.classList.remove("axdb-carried");
+      carriedEls.clear();
+      carriedTimer = null;
+    }, 60);
+  };
+  const flushCarried = () => {
+    if (carriedTimer) clearTimeout(carriedTimer);
+    carriedTimer = null;
+    for (const el2 of carriedEls) el2.classList.remove("axdb-carried");
+    carriedEls.clear();
+  };
   let slabLayer = null;
   const syncSlabs = () => {
     if (disposed) return;
@@ -195654,6 +195777,9 @@ function bindDashboardGrid(api, group, options = {}) {
       el2.classList.toggle("axdb-slab--selected", selectedId === id);
       el2.classList.toggle("axdb-slab--static", isStatic);
       el2.querySelector(":scope > .axdb-rs")?.classList.toggle("axdb-rs--rtl", rtl);
+      const tabs = isTabsGroup(grp);
+      el2.classList.toggle("axdb-slab--tabs", tabs);
+      syncGroupBg(layer2, id, tabs, p.x, p.y, sz.width, sz.height);
       syncCaption(el2, id, grp, sz.height);
     }
     for (const [id, el2] of slabEls) {
@@ -195661,6 +195787,8 @@ function bindDashboardGrid(api, group, options = {}) {
         el2.remove();
         hoverSlabs.delete(el2);
         slabEls.delete(id);
+        groupBgs.get(id)?.remove();
+        groupBgs.delete(id);
       }
     }
   };
@@ -195800,6 +195928,7 @@ function bindDashboardGrid(api, group, options = {}) {
       if (Math.abs(ev.screen.x - g.downScreen.x) + Math.abs(ev.screen.y - g.downScreen.y) < DRAG_THRESHOLD) return;
       g.started = true;
       armGlide();
+      if (g.move) setCarried(g.id, true);
     }
     const it = engine.getItem(g.id);
     if (!it) return;
@@ -195810,7 +195939,10 @@ function bindDashboardGrid(api, group, options = {}) {
       if (cell.x !== it.x || cell.y !== it.y) {
         const was = { x: it.x, y: it.y };
         const moved = engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed || placeOnRow(g.id, cell.x, cell.y, it.w);
-        if (moved) project();
+        if (moved) {
+          project();
+          setCarried(g.id, true);
+        }
         const now3 = engine.getItem(g.id);
         const stuck = !!now3 && now3.x === was.x && now3.y === was.y && (cell.x !== was.x || cell.y !== was.y);
         showRefusal(stuck ? cell : null, it.w, it.h);
@@ -195856,6 +195988,7 @@ function bindDashboardGrid(api, group, options = {}) {
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
     relockSlab(g.id);
+    if (g.move && g.started) setCarried(g.id, false);
     if (!g.started) {
       engine.endGesture();
       return;
@@ -195882,6 +196015,7 @@ function bindDashboardGrid(api, group, options = {}) {
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
     relockSlab(g.id);
+    if (g.move && g.started) setCarried(g.id, false);
     if (g.started) engine.cancelGesture();
     else engine.endGesture();
     project();
@@ -196828,7 +196962,7 @@ function bindDashboardGrid(api, group, options = {}) {
           if (isStatic) return;
           const edges2 = slabHandle ? rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false } : slabEdgesNear(grp, ev.world.x, ev.world.y);
           if (anyEdge(edges2)) beginSlabResize(slabId, edges2, ev);
-          else if (ownCaption) beginSlabMove(slabId, ev);
+          else if (ownCaption || isTabsGroup(grp)) beginSlabMove(slabId, ev);
           return;
         }
         const parent = parentPeer();
@@ -197906,7 +198040,10 @@ function bindDashboardGrid(api, group, options = {}) {
       for (const el2 of slabEls.values()) el2.remove();
       slabEls.clear();
       hoverSlabs.clear();
+      for (const bg of groupBgs.values()) bg.remove();
+      groupBgs.clear();
       flushGhost();
+      flushCarried();
       htmlLayer()?.classList.remove("axdb-glide");
       api.container.style.cursor = "";
     }
@@ -198382,6 +198519,37 @@ function bindDashboardSplit(api, group, options = {}) {
   let insertion = null;
   const slabEls = /* @__PURE__ */ new Map();
   const hoverSlabs = /* @__PURE__ */ new Set();
+  const memberGroupAt = (x, y) => {
+    for (const id of group.members ?? /* @__PURE__ */ new Set()) {
+      const grp = diagram.getGroup(id);
+      if (!grp || diagram.getNode(id)) continue;
+      const p = grp.position;
+      const sz = grp.size ?? { width: 0, height: 0 };
+      if (x >= p.x && x <= p.x + sz.width && y >= p.y && y <= p.y + sz.height) return id;
+    }
+    return null;
+  };
+  const groupBgs = /* @__PURE__ */ new Map();
+  const syncGroupBg = (layer, id, on, x, y, w, h) => {
+    let bg = groupBgs.get(id) ?? null;
+    if (!on) {
+      bg?.remove();
+      groupBgs.delete(id);
+      return;
+    }
+    if (!bg || bg.parentElement !== layer) {
+      bg?.remove();
+      bg = document.createElement("div");
+      bg.className = "axdb-group-bg";
+      bg.setAttribute("data-group-bg", id);
+      layer.prepend(bg);
+      groupBgs.set(id, bg);
+    }
+    bg.style.left = `${x}px`;
+    bg.style.top = `${y}px`;
+    bg.style.width = `${w}px`;
+    bg.style.height = `${h}px`;
+  };
   const syncCaption = (el2, id, grp, sectionH) => {
     const cap = captionOfGroup(grp);
     let band = el2.querySelector(":scope > .axdb-slab-h");
@@ -198448,6 +198616,9 @@ function bindDashboardSplit(api, group, options = {}) {
       el2.style.height = `${sz.height}px`;
       el2.classList.toggle("axdb-slab--selected", selectedId === id);
       el2.classList.toggle("axdb-slab--static", isStatic);
+      const tabs = grp.getMetadata("containerWidget")?.layout === "tabs";
+      el2.classList.toggle("axdb-slab--tabs", tabs);
+      syncGroupBg(layer, id, tabs, p.x, p.y, sz.width, sz.height);
       syncCaption(el2, id, grp, sz.height);
     }
     for (const [id, el2] of slabEls) {
@@ -198455,6 +198626,8 @@ function bindDashboardSplit(api, group, options = {}) {
         el2.remove();
         hoverSlabs.delete(el2);
         slabEls.delete(id);
+        groupBgs.get(id)?.remove();
+        groupBgs.delete(id);
       }
     }
   };
@@ -198834,6 +199007,18 @@ function bindDashboardSplit(api, group, options = {}) {
         return;
       }
       if (!hit.node && !onGrip || sectionHandle) {
+        if (!sectionHandle) {
+          const member = memberGroupAt(ev.world.x, ev.world.y);
+          const mg = member ? diagram.getGroup(member) : void 0;
+          if (member && mg) {
+            selectWidget(member);
+            api.render();
+            const srcM = ev.source;
+            const tabsM = mg.getMetadata("containerWidget")?.layout === "tabs";
+            if (!isStatic && tabsM && typeof srcM?.clientX === "number" && typeof srcM?.clientY === "number") beginMemberDrag(member, srcM);
+            return;
+          }
+        }
         const parent = parentPeerOf(api.container, group.id);
         if (parent?.selectMember && (sectionHandle || worldInsideBoard(ev.world.x, ev.world.y))) {
           const own = sectionHandle?.parentElement?.getAttribute("data-slab-id") === group.id;
@@ -199504,6 +199689,8 @@ function bindDashboardSplit(api, group, options = {}) {
       api.container.removeEventListener("pointermove", onHoverMove);
       api.container.removeEventListener("pointerleave", onHoverLeave);
       for (const el2 of slabEls.values()) el2.remove();
+      for (const bg of groupBgs.values()) bg.remove();
+      groupBgs.clear();
       slabEls.clear();
       hoverSlabs.clear();
       insertion?.remove();
@@ -199847,6 +200034,10 @@ function tabStripReserve(o, pageCount) {
   if (pageCount <= 0) return 0;
   return Math.max(18, o?.height ?? TAB_STRIP_HEIGHT);
 }
+var TAB_PAGE_INSET = 8;
+function tabPageInset(o) {
+  return Math.max(0, o?.inset ?? TAB_PAGE_INSET);
+}
 function tabStripKey(pages, activeId, o, rtl) {
   return JSON.stringify([pages, activeId, o ?? null, rtl]);
 }
@@ -200186,14 +200377,15 @@ function attachTabsRuntime(ctx, model, container, handle) {
     if (!pages.some((p) => p.id === active2)) active2 = pages[0].id;
     ctx.activeTab.set(id, active2);
     const strip = tabStripReserve(ctx.tabsOf.get(id), pages.length);
+    const inset = tabPageInset(ctx.tabsOf.get(id));
     const f = { x: cg.position.x, y: cg.position.y, width: cg.size?.width ?? 0, height: cg.size?.height ?? 0 };
-    const inner = { width: f.width, height: Math.max(0, f.height - strip) };
+    const inner = { width: Math.max(0, f.width - 2 * inset), height: Math.max(0, f.height - strip - 2 * inset) };
     const write = (fn) => model.runSystemWrite ? model.runSystemWrite(fn) : fn();
     write(() => {
       for (const p of pages) {
         const pg = model.getGroup(p.id);
         if (!pg) continue;
-        pg.setFrame({ x: p.id === active2 ? f.x : OFFSCREEN_X, y: f.y + strip, width: inner.width, height: inner.height });
+        pg.setFrame({ x: p.id === active2 ? f.x + inset : OFFSCREEN_X, y: f.y + strip + inset, width: inner.width, height: inner.height });
       }
     });
     for (const p of pages) ctx.binders.get(p.id)?.sync();
@@ -200621,7 +200813,8 @@ function createDashboardHandle(ctx) {
     for (let n3 = 2; model.getGroup(W) || ctx.boardGroups.has(W); n3++) W = `${pageId}__group${n3}`;
     const tabsOpts = ctx.tabsOf.get(containerId) ?? {};
     const label = pageSpec.title ?? pageId;
-    const size = { width: pg.size?.width ?? 0, height: (pg.size?.height ?? 0) + tabStripReserve(tabsOpts, 1) };
+    const inset = tabPageInset(tabsOpts);
+    const size = { width: (pg.size?.width ?? 0) + 2 * inset, height: (pg.size?.height ?? 0) + tabStripReserve(tabsOpts, 1) + 2 * inset };
     const remaining = [...from.members ?? []].filter((m) => m !== pageId && !!model.getGroup(m));
     const showing = ctx.activeTab.get(containerId);
     const showingAgain = () => new RegisterWidgetCommand(

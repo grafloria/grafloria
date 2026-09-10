@@ -465,7 +465,21 @@ render(SPEC2, host);</pre>
       insert happens on release. The bands themselves are a fifth of the body (Dockview's activation size) instead of
       a third: two thirds of every group read as "beside", and "close to the edge means beside, the content area means
       into, the header means a new tab" is the rule people bring with them.</p>
-      <p><b>Section captions</b> (element 0.4.22. A section paints nothing of its own until
+      <p><b>A group is one thing: its frame, and its motion</b> (element 0.4.43). Two more from the same user: a group dragged
+      by its strip "goes first, then the content follows" — the reflow glide is for the neighbours, and the held tile is
+      exempt, but a group has no tile of its own, so its strip jumped to the pointer while its pages' cards glided after it
+      by up to 140 px a step. Everything in a dragged group's subtree — cards, strips, slabs, the surface — is now carried
+      exempt together, through the drop write, and a pushed group's chrome glides <em>with</em> its cards instead of jumping
+      ahead of them. And a tab container wears a frame by default: a bordered slab and a tinted surface under its pages, the
+      strip's own track colour, with the pages set 8 px inside it — the user's desktop screenshot showed why the border
+      alone was not enough: it ran exactly where the cards' own borders were, so Period still read as a card of its own
+      under a strip that belonged to Region. <code>--axdb-group-bg</code> and <code>--axdb-group-border</code> restyle
+      it, <code>tabs: { inset: 0 }</code> puts the pages edge to edge, and a plain section keeps its invisible slab. The frame is
+      also the group's handle: a press on its margin — under the strip, beside the pages — selects the group and drags it,
+      on grid and split boards alike; the strip's empty space, the only handle before, was one nobody found. (A widget
+      dragged over a group goes <em>into</em> its page; a group is never pushed by a widget, so to put a widget beside a
+      group, move the group.)</p>
+      <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
       <code>description</code> (an ⓘ carrying the text as its tooltip and its accessible label),

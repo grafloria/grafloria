@@ -356,6 +356,39 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
   // resizes a pane); the band is the section's drag handle (beginMemberDrag).
   const slabEls = new Map<string, HTMLElement>();
   const hoverSlabs = new Set<HTMLElement>();
+  /** The member group (a pane's section or tab container) whose frame holds a world point. */
+  const memberGroupAt = (x: number, y: number): string | null => {
+    for (const id of group.members ?? new Set<string>()) {
+      const grp = diagram.getGroup(id);
+      if (!grp || diagram.getNode(id)) continue;
+      const p = grp.position;
+      const sz = grp.size ?? { width: 0, height: 0 };
+      if (x >= p.x && x <= p.x + sz.width && y >= p.y && y <= p.y + sz.height) return id;
+    }
+    return null;
+  };
+  /** GROUP FRAME (0.4.43): a tab container's tinted surface, under its pages — see the grid binder. */
+  const groupBgs = new Map<string, HTMLElement>();
+  const syncGroupBg = (layer: HTMLElement, id: string, on: boolean, x: number, y: number, w: number, h: number): void => {
+    let bg = groupBgs.get(id) ?? null;
+    if (!on) {
+      bg?.remove();
+      groupBgs.delete(id);
+      return;
+    }
+    if (!bg || bg.parentElement !== layer) {
+      bg?.remove();
+      bg = document.createElement('div');
+      bg.className = 'axdb-group-bg';
+      bg.setAttribute('data-group-bg', id);
+      layer.prepend(bg);
+      groupBgs.set(id, bg);
+    }
+    bg.style.left = `${x}px`;
+    bg.style.top = `${y}px`;
+    bg.style.width = `${w}px`;
+    bg.style.height = `${h}px`;
+  };
   const syncCaption = (el: HTMLElement, id: string, grp: GroupModel, sectionH: number): void => {
     const cap = captionOfGroup(grp);
     let band = el.querySelector(':scope > .axdb-slab-h') as HTMLElement | null;
@@ -422,6 +455,9 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       el.style.height = `${sz.height}px`;
       el.classList.toggle('axdb-slab--selected', selectedId === id);
       el.classList.toggle('axdb-slab--static', isStatic);
+      const tabs = (grp.getMetadata('containerWidget') as { layout?: string } | undefined)?.layout === 'tabs';
+      el.classList.toggle('axdb-slab--tabs', tabs);
+      syncGroupBg(layer, id, tabs, p.x, p.y, sz.width, sz.height);
       syncCaption(el, id, grp, sz.height);
     }
     for (const [id, el] of slabEls) {
@@ -429,6 +465,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
         el.remove();
         hoverSlabs.delete(el);
         slabEls.delete(id);
+        groupBgs.get(id)?.remove();
+        groupBgs.delete(id);
       }
     }
   };
@@ -870,6 +908,22 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
         return;
       }
       if ((!hit.node && !onGrip) || sectionHandle) {
+        // A press inside a MEMBER's frame — a tab container's margin under
+        // its strip or beside its pages, a section's empty band — selects
+        // that member; a tab container's frame is its handle (0.4.43) and
+        // drags it the way its strip's empty space does.
+        if (!sectionHandle) {
+          const member = memberGroupAt(ev.world.x, ev.world.y);
+          const mg = member ? diagram.getGroup(member) : undefined;
+          if (member && mg) {
+            selectWidget(member);
+            api.render();
+            const srcM = ev.source as { clientX?: number; clientY?: number } | undefined;
+            const tabsM = (mg.getMetadata('containerWidget') as { layout?: string } | undefined)?.layout === 'tabs';
+            if (!isStatic && tabsM && typeof srcM?.clientX === 'number' && typeof srcM?.clientY === 'number') beginMemberDrag(member, srcM as PointerEvent);
+            return;
+          }
+        }
         // OUR OWN empty band or corner handle, and we are a section of a
         // parent board: select the section there; an edge or the handle
         // starts the section resize, which the parent runs while this tool
@@ -1643,6 +1697,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       api.container.removeEventListener('pointermove', onHoverMove);
       api.container.removeEventListener('pointerleave', onHoverLeave);
       for (const el of slabEls.values()) el.remove();
+      for (const bg of groupBgs.values()) bg.remove();
+      groupBgs.clear();
       slabEls.clear();
       hoverSlabs.clear();
       insertion?.remove();
