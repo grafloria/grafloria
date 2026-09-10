@@ -81,6 +81,7 @@ import {
 } from './grid-mapping';
 import { ensureDashboardKitStyles } from './styles';
 import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCaptionBand, sectionCaptionReserve, sizeCaptionBand } from './caption';
+import { TAB_STRIP_HEIGHT } from './tabs';
 
 /** The slice of a DiagramInstance the binder needs (structural, test-friendly). */
 export interface DashboardGridApi {
@@ -1612,6 +1613,18 @@ export function bindDashboardGrid(
     return out;
   };
 
+  /** The member groups a gesture displaced, as their own cell commands — `buildCommitCommands` skips groups by design. */
+  const groupCellCommands = (deltas: TileDelta[]): Command[] => {
+    const out: Command[] = [];
+    for (const d of deltas) {
+      if (!d.isGroup || (d.cellBefore.x === d.cellAfter.x && d.cellBefore.y === d.cellAfter.y && d.cellBefore.w === d.cellAfter.w && d.cellBefore.h === d.cellAfter.h)) continue;
+      const og = diagram.getGroup(d.id);
+      if (!og) continue;
+      out.push(new SetGroupCellCommand(d.id, d.cellBefore, d.cellAfter, { x: d.posBefore.x, y: d.posBefore.y, width: d.sizeBefore.width, height: d.sizeBefore.height }, frameOfGroup(og)));
+    }
+    return out;
+  };
+
   const execute = (name: string, commands: Command[]): boolean => {
     if (commands.length === 0) return false;
     void api.getEngine().commandManager.execute(new BatchCommand(name, commands));
@@ -1860,6 +1873,104 @@ export function bindDashboardGrid(
    */
   const TAB_FRAME_GRIP = 3;
   const edgeGripFor = (grp: GroupModel): number => (isTabsGroup(grp) ? TAB_FRAME_GRIP : EDGE_GRIP);
+  /**
+   * BESIDE (0.4.45): a WIDGET dragged onto a tab container's outer band — a
+   * fifth of its body, the same bands a tab's split uses — lands next to it
+   * on that side; the middle still goes INTO its page and the strip still
+   * makes a tab. At the board's edge, where there is no room on that side,
+   * the container shifts over by the widget's span and the widget takes the
+   * edge: the fluid demo's side panel sits at the right edge, and "after it"
+   * was nowhere (the user: "if the tab is at an edge I can't add something
+   * after it"). The shift is undone if the pointer leaves the vacated cell.
+   */
+  type BesideSide = 'left' | 'right' | 'top' | 'bottom';
+  const BESIDE_BAND = 0.2;
+  const besideZoneAt = (wx: number, wy: number): { id: string; side: BesideSide } | null => {
+    for (const id of group.members ?? []) {
+      const grp = diagram.getGroup(id);
+      if (!grp || diagram.getNode(id) || !isTabsGroup(grp)) continue;
+      const p = grp.position;
+      const sz = sizeOf(grp);
+      if (wx < p.x || wx > p.x + sz.width || wy < p.y || wy > p.y + sz.height) continue;
+      const bodyY = p.y + TAB_STRIP_HEIGHT;
+      const bodyH = Math.max(1, sz.height - TAB_STRIP_HEIGHT);
+      const rx = (wx - p.x) / Math.max(1, sz.width);
+      const ry = (wy - bodyY) / bodyH;
+      if (ry < 0) return null; // the strip: a new tab, the strip's own business
+      if (rx >= BESIDE_BAND && rx <= 1 - BESIDE_BAND && ry >= BESIDE_BAND && ry <= 1 - BESIDE_BAND) return null; // the middle: into the page
+      const d: Array<[BesideSide, number]> = [['left', rx], ['right', 1 - rx], ['top', ry], ['bottom', 1 - ry]];
+      d.sort((a, b) => a[1] - b[1]);
+      return { id, side: d[0][0] };
+    }
+    return null;
+  };
+  /** The container a BESIDE drop unlocked (and maybe shifted): relocked, and put back if asked, when the zone or the gesture ends. */
+  let beside: { id: string; from: { x: number; y: number }; vacated: { x: number; y: number } } | null = null;
+  const endBeside = (restore: boolean): void => {
+    if (!beside) return;
+    const it = engine.getItem(beside.id);
+    if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false });
+    if (it) it.locked = true;
+    beside = null;
+  };
+  const applyBeside = (g: GestureState, z: { id: string; side: BesideSide }): void => {
+    const tc = engine.getItem(z.id);
+    if (!tc) return;
+    if (g.leg) {
+      g.leg.adopted.abort();
+      g.leg = null;
+    }
+    const w = g.spans.w;
+    const h = g.spans.h;
+    if (g.removedFromBoard) {
+      g.removedFromBoard = false;
+      hostOf(g.id)?.classList.remove('axdb-out');
+      engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
+    }
+    if (beside && beside.id !== z.id) endBeside(true);
+    const from = beside ? beside.from : { x: tc.x, y: tc.y };
+    let cell: { x: number; y: number };
+    let shiftTo: { x: number; y: number } | null = null;
+    switch (z.side) {
+      case 'right':
+        cell = { x: from.x + tc.w, y: from.y };
+        if (cell.x + w > columns) {
+          shiftTo = { x: columns - w - tc.w, y: from.y };
+          cell = { x: columns - w, y: from.y };
+        }
+        break;
+      case 'left':
+        cell = { x: from.x - w, y: from.y };
+        if (cell.x < 0) {
+          shiftTo = { x: w, y: from.y };
+          cell = { x: 0, y: from.y };
+        }
+        break;
+      case 'top':
+        cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y }; // the ghost takes the container's rows; the container is pushed down under it
+        break;
+      default:
+        cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y + tc.h };
+    }
+    if (shiftTo && shiftTo.x < 0) shiftTo = null; // no room even shifted: the widget goes where it can
+    if (!beside) beside = { id: z.id, from, vacated: cell };
+    tc.locked = false; // for the gesture: it shifts, or the ghost pushes it
+    // The ghost steps off the board while the container shifts: on a bounded
+    // board a chart as wide as the panel had its own cell as the panel's
+    // target, could not be pushed down, and the shift was refused (lab L94).
+    // Then it takes the cell the shift vacated.
+    if (shiftTo && (tc.x !== shiftTo.x || tc.y !== shiftTo.y)) {
+      if (engine.getItem(g.id)) engine.remove(g.id);
+      engine.moveCheck(z.id, shiftTo.x, shiftTo.y, { gate: false });
+    }
+    beside.vacated = cell;
+    if (!engine.getItem(g.id)) engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
+    if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed) {
+      const at = engine.getItem(g.id);
+      if (!at || at.x !== cell.x || at.y !== cell.y) placeNear(g.id, cell.x, cell.y, w);
+    }
+    project();
+  };
   /**
    * CARRIED (0.4.43): a group dragged by its strip or band moves as ONE thing.
    * The held TILE is transition-exempt (the ghost), but a group has no host of
@@ -2272,12 +2383,7 @@ export function bindDashboardGrid(
     // groups by design (a group's cell is its own command), so they are
     // committed here the way a dock commits the groups it displaced — or the
     // model snapped every one of them, and the mover, straight back.
-    for (const d of deltas) {
-      if (!d.isGroup || (d.cellBefore.x === d.cellAfter.x && d.cellBefore.y === d.cellAfter.y && d.cellBefore.w === d.cellAfter.w && d.cellBefore.h === d.cellAfter.h)) continue;
-      const og = diagram.getGroup(d.id);
-      if (!og) continue;
-      commands.push(new SetGroupCellCommand(d.id, d.cellBefore, d.cellAfter, { x: d.posBefore.x, y: d.posBefore.y, width: d.sizeBefore.width, height: d.sizeBefore.height }, frameOfGroup(og)));
-    }
+    commands.push(...groupCellCommands(deltas));
     const b = g.cellBefore;
     if (it && grp && (b.x !== it.x || b.y !== it.y || b.w !== it.w || b.h !== it.h)) {
       commands.push(new SetGroupCellCommand(g.id, b, { x: it.x, y: it.y, w: it.w, h: it.h }, g.frameBefore, frameOfGroup(grp)));
@@ -2390,6 +2496,8 @@ export function bindDashboardGrid(
     project();
     const deltas = deltasSince(g.startCells, g.startGeom);
     const commands = buildCommitCommands(deltas);
+    commands.push(...groupCellCommands(deltas)); // a container a BESIDE drop shifted (0.4.45)
+    endBeside(false);
     if (g.esc && g.esc.rowsAdded !== 0) {
       commands.push(
         new SetGroupCellCommand(
@@ -2433,6 +2541,7 @@ export function bindDashboardGrid(
       g.esc.peer.resizeMemberBy(group.id, -g.esc.rowsAdded); // slab back down
       g.esc = null;
     }
+    endBeside(true);
     if (g.started) {
       if (g.removedFromBoard || g.kind === 'palette') {
         // The engine cannot resurrect a removed item — rebuild from the
@@ -2548,6 +2657,30 @@ export function bindDashboardGrid(
         if (g.strip) {
           options.tabDrop.markDrop(null, null);
           g.strip = null;
+        }
+      }
+      // BESIDE a tab container (0.4.45): its outer band puts the widget next
+      // to it — at the board's edge the container shifts over to make room.
+      if (!isStatic) {
+        const z = besideZoneAt(ev.world.x, ev.world.y);
+        if (z) {
+          applyBeside(g, z);
+          syncPlaceholder();
+          return;
+        }
+        if (beside) {
+          // Off the band: the container comes back unless the POINTER is
+          // still over the cell it vacated — the widget's own landing, which
+          // is what "beside" leaves under the pointer once the container has
+          // shifted away (the ghost's wanted cell carries the grab offset and
+          // read as "elsewhere" a move later, and the shift undid itself).
+          const r = cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows());
+          const over = ev.world.x >= r.x - gap && ev.world.x <= r.x + r.width + gap && ev.world.y >= r.y - gap && ev.world.y <= r.y + r.height + gap;
+          if (!over) endBeside(true);
+          else {
+            syncPlaceholder();
+            return;
+          }
         }
       }
       // Deepest board under the pointer wins: the nested KPI strip beats the

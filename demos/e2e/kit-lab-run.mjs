@@ -2460,6 +2460,33 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `grid: margin press selected ${sel}, carried ${held.carried}, moved ${JSON.stringify(cell0)} → ${JSON.stringify(cell1)} (overlaps ${sane1.overlaps}); side margin → ${JSON.stringify(cell2)} (same size ${cell2?.w === cell0.w && cell2?.h === cell0.h}); undone ${JSON.stringify(cell3)} · split: ${l0.join('/')} → held: chip ${heldS?.chip} line ${heldS?.ins} selected ${heldS?.selected} → ${l1.join('/')} → undone ${l2.join('/')}`);
 }
 
+{
+  begin('L94-a-widget-dragged-onto-a-tab-containers-outer-band-lands-BESIDE-it-and-at-the-boards-edge-the-container-shifts-over');
+  await scrollTo('tabs');
+  const cell = (id) => page.evaluate((id) => window.__lab.tabs.handle.widget(id)?.cell ?? null, id);
+  const strips = () => page.evaluate(() => [...document.querySelectorAll('#cv-tabs .axdb-tabs')].map((s) => s.getAttribute('data-tabs-id') + ':' + [...s.querySelectorAll('.axdb-tab')].map((t) => t.textContent).join('/')));
+  const p0 = await cell('panel'); const l0 = await cell('t-left'); const s0 = await strips();
+  const ps = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
+  const g = await groupRect('tabs', 'panel');
+  const left = await rect('tabs', 't-left');
+  // the chart, six columns wide, carried onto the panel's RIGHT band: no room beyond the edge, so the panel shifts to the left and the chart takes the right — the two swap sides
+  let held = null;
+  await drag(left.x + 40, left.y + 12, ps.x + ps.width - 14, ps.bottom + (g.h - 30) * 0.5, { steps: 18, mid: async () => {
+    held = { panel: await cell('panel'), chart: await cell('t-left'), ph: await page.evaluate(() => { const p = document.querySelector('#cv-tabs .axdb-ph'); return p ? { on: getComputedStyle(p).display !== 'none', refused: p.classList.contains('axdb-ph--no') } : null; }) };
+    await shot('tabs', 'chart-held-on-the-panels-right-band-the-panel-shifted-left');
+  } });
+  const p1 = await cell('panel'); const l1 = await cell('t-left'); const s1 = await strips(); const sane = await sanity('tabs');
+  await shot('tabs', 'released-chart-right-of-the-panel');
+  await undoAll('tabs', 1);
+  const p2 = await cell('panel'); const l2 = await cell('t-left');
+  const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+  verdict(!!p0 && !!l0 && p0.x === 6 && l0.x === 0
+    && !!held?.panel && held.panel.x === 0 && !!held?.chart && held.chart.x === 6 && held.chart.y === 0 && held.ph?.on === true && held.ph?.refused === false
+    && !!p1 && p1.x === 0 && p1.y === 0 && p1.w === p0.w && p1.h === p0.h && !!l1 && l1.x === 6 && l1.y === 0 && l1.w === l0.w && l1.h === l0.h && s1.join(' ') === s0.join(' ') && sane.overlaps === 0
+    && same(p2, p0) && same(l2, l0),
+    `rest panel ${JSON.stringify(p0)} chart ${JSON.stringify(l0)} · held on the right band: panel ${JSON.stringify(held?.panel)} chart ${JSON.stringify(held?.chart)} ph ${JSON.stringify(held?.ph)} · released: panel ${JSON.stringify(p1)} chart ${JSON.stringify(l1)} strips ${s1.join(' ')} overlaps ${sane.overlaps} · undone: panel ${JSON.stringify(p2)} chart ${JSON.stringify(l2)}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

@@ -1963,6 +1963,8 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
   const settle = () => new Promise<void>((r) => setTimeout(r, 0));
   const cellOf = (handle: DashboardHandle, id: string) => handle.widget(id)?.cell ?? null;
   const cm = (api: ReturnType<typeof makeApi>) => api.getEngine().commandManager;
+  const stripOf = (api: { container: HTMLElement }, id: string) =>
+    Array.from(api.container.querySelectorAll(`.axdb-tabs[data-tabs-id="${id}"] .axdb-tab`)).map((b) => b.textContent);
   const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
   const BOARD3 = () =>
     dashboard({
@@ -2180,6 +2182,65 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
     expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
     expect(opsAfter.position.y).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a widget dragged onto a tab container\'s OUTER band lands BESIDE it — and at the board\'s edge, where there is no room, the container shifts over to make it (the side panel on the right, a widget after it)', async () => {
+    // The fluid demo: the side panel sits at the right edge, so "after it"
+    // was nowhere — a widget dragged there went into its page, or slid to
+    // the nearest legal cell on the left. The outer fifth of the container is
+    // "beside" now, like a tab's split bands; the strip is still a new tab
+    // and the middle still goes into the page.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('win', 2, 1, 4, 0), K('nps', 2, 1, 6, 0),
+          K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+        ],
+      })
+    );
+    const tool = toolOf('main');
+    const side = model.getGroup('side')!;
+    const nps = model.getNode('nps')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    // RIGHT band, no room beyond the edge: the panel shifts left by the widget's span, the widget takes the edge
+    let to = { x: side.position.x + side.size!.width - 12, y: side.position.y + 30 + 200 };
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 }); // shifted while held
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 }); // the ghost beside it, at the edge
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps } as never);
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+    expect(stripOf(api, 'side')).toEqual(['Filters', 'Alerts']); // not a tab, not adopted
+    expect(cellOf(handle, 'mix')!.y).toBeGreaterThanOrEqual(8); // pushed under the shifted panel
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    expect(cellOf(handle, 'mix')).toEqual({ x: 6, y: 1, w: 3, h: 3 });
+    // LEFT band with room: the widget lands left of the panel and the panel stays
+    const side2 = model.getGroup('side')!;
+    const nps2 = model.getNode('nps')!;
+    const from2 = { x: nps2.position.x + 20, y: nps2.position.y + 20 };
+    to = { x: side2.position.x + 12, y: side2.position.y + 30 + 200 };
+    tool.onPointerDown?.(tev('down', from2.x, from2.y), { node: nps2 } as never);
+    tool.onPointerMove?.(tev('move', from2.x + 30, from2.y + 5), { node: nps2 } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps2 } as never);
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps2 } as never);
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 7, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    expect(stripOf(api, 'side')).toEqual(['Filters', 'Alerts']);
   });
 
   it('a group dragged by its strip CARRIES its chrome: while it moves, its strip, slab and surface are transition-exempt together — the other groups\' are not — and the exemption lifts 60 ms after the drop', async () => {

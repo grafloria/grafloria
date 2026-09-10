@@ -485,6 +485,12 @@ render(SPEC2, host);</pre>
       so no column to the left was legal and the release moved nothing. Sections and groups now give way to a moved
       section or group, the way they give way to a dock, and the refusal tone is kept for what truly cannot give way. A
       widget still never pushes a section.</p>
+      <p><b>A widget beside a group, even at the board's edge</b> (element 0.4.45). "If the tab group is at an edge I can't add
+      something after it": the demo's side panel sits at the right edge, so a widget dragged there went into its page or slid
+      to the nearest cell on the left — "after it" was nowhere. A widget dragged onto a tab container's outer band, a fifth of
+      its body like a tab's split bands, now lands beside it on that side; the middle still goes into the page and the strip
+      still makes a tab. Where the board's edge leaves no room on that side, the container shifts over by the widget's span
+      and the widget takes the edge, and the shift is undone if the pointer leaves the vacated cell.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
