@@ -2202,6 +2202,7 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
         widgets: [
           K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('win', 2, 1, 4, 0), K('nps', 2, 1, 6, 0),
           K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9, widgets: [K('orders', 4, 1, 0, 0)] }, // the locked section in the panel's way — the demo's layout
           { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
         ],
       })
@@ -2217,17 +2218,46 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
     expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 }); // shifted while held
     expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 }); // the ghost beside it, at the edge
+    // a hand is never still: more moves on the same spot — the pointer is over the panel's OLD area, not over the one-row cell the widget took — keep the shift
+    tool.onPointerMove?.(tev('move', to.x + 1, to.y + 1), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
     tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps } as never);
     await settle();
     expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
     expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
     expect(stripOf(api, 'side')).toEqual(['Filters', 'Alerts']); // not a tab, not adopted
     expect(cellOf(handle, 'mix')!.y).toBeGreaterThanOrEqual(8); // pushed under the shifted panel
+    expect(cellOf(handle, 'ops')!.y).toBeGreaterThanOrEqual(8); // the section gave way to the shift, like it gives way to a moved group
+    expect(cellOf(handle, 'ops')!.w).toBe(9);
     await cm(api).undo();
     await settle();
     expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
     expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
     expect(cellOf(handle, 'mix')).toEqual({ x: 6, y: 1, w: 3, h: 3 });
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+    // THROUGH the bottom band INTO the middle: the beside the band started must let go, and the page takes the widget (lab L73)
+    {
+      const sideB = model.getGroup('side')!;
+      const npsB = model.getNode('nps')!;
+      const fromB = { x: npsB.position.x + 20, y: npsB.position.y + 20 };
+      const bottom = { x: sideB.position.x + sideB.size!.width / 2, y: sideB.position.y + 30 + (sideB.size!.height - 30) * 0.92 };
+      const middle = { x: sideB.position.x + sideB.size!.width / 2, y: sideB.position.y + 30 + (sideB.size!.height - 30) * 0.5 };
+      tool.onPointerDown?.(tev('down', fromB.x, fromB.y), { node: npsB } as never);
+      tool.onPointerMove?.(tev('move', fromB.x + 30, fromB.y + 5), { node: npsB } as never);
+      tool.onPointerMove?.(tev('move', bottom.x, bottom.y), { node: npsB } as never);
+      tool.onPointerMove?.(tev('move', middle.x, middle.y), { node: npsB } as never);
+      tool.onPointerMove?.(tev('move', middle.x + 1, middle.y), { node: npsB } as never);
+      tool.onPointerUp?.(tev('up', middle.x + 1, middle.y), { node: npsB } as never);
+      await settle();
+      expect(model.getGroup('p1')!.members?.has('nps')).toBe(true); // into the page
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+      expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 }); // the band's transient beside let the section come back
+      await cm(api).undo();
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+    }
     // LEFT band with room: the widget lands left of the panel and the panel stays
     const side2 = model.getGroup('side')!;
     const nps2 = model.getNode('nps')!;

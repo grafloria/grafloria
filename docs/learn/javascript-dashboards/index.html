@@ -490,7 +490,10 @@ render(SPEC2, host);</pre>
       to the nearest cell on the left — "after it" was nowhere. A widget dragged onto a tab container's outer band, a fifth of
       its body like a tab's split bands, now lands beside it on that side; the middle still goes into the page and the strip
       still makes a tab. Where the board's edge leaves no room on that side, the container shifts over by the widget's span
-      and the widget takes the edge, and the shift is undone if the pointer leaves the vacated cell.</p>
+      and the widget takes the edge, and the shift is undone if the pointer leaves the vacated cell. The sections in the
+      container's way give way to the shift as they do to a moved group (0.4.46): on the demo the Operations section spans
+      the row under the panel, and a locked tile refused the shift outright — the spec's fixture had left it out, the live
+      walk on the demo found it.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

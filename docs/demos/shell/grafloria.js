@@ -195790,22 +195790,24 @@ function bindDashboardGrid(api, group, options = {}) {
   const TAB_FRAME_GRIP = 3;
   const edgeGripFor = (grp) => isTabsGroup(grp) ? TAB_FRAME_GRIP : EDGE_GRIP;
   const BESIDE_BAND = 0.2;
+  const bandOf = (f, wx, wy) => {
+    if (wx < f.x || wx > f.x + f.width || wy < f.y || wy > f.y + f.height) return null;
+    const bodyY = f.y + TAB_STRIP_HEIGHT;
+    const bodyH = Math.max(1, f.height - TAB_STRIP_HEIGHT);
+    const rx = (wx - f.x) / Math.max(1, f.width);
+    const ry = (wy - bodyY) / bodyH;
+    if (ry < 0) return null;
+    if (rx >= BESIDE_BAND && rx <= 1 - BESIDE_BAND && ry >= BESIDE_BAND && ry <= 1 - BESIDE_BAND) return null;
+    const d = [["left", rx], ["right", 1 - rx], ["top", ry], ["bottom", 1 - ry]];
+    d.sort((a, b) => a[1] - b[1]);
+    return d[0][0];
+  };
   const besideZoneAt = (wx, wy) => {
     for (const id of group.members ?? []) {
       const grp = diagram.getGroup(id);
       if (!grp || diagram.getNode(id) || !isTabsGroup(grp)) continue;
-      const p = grp.position;
-      const sz = sizeOf(grp);
-      if (wx < p.x || wx > p.x + sz.width || wy < p.y || wy > p.y + sz.height) continue;
-      const bodyY = p.y + TAB_STRIP_HEIGHT;
-      const bodyH = Math.max(1, sz.height - TAB_STRIP_HEIGHT);
-      const rx = (wx - p.x) / Math.max(1, sz.width);
-      const ry = (wy - bodyY) / bodyH;
-      if (ry < 0) return null;
-      if (rx >= BESIDE_BAND && rx <= 1 - BESIDE_BAND && ry >= BESIDE_BAND && ry <= 1 - BESIDE_BAND) return null;
-      const d = [["left", rx], ["right", 1 - rx], ["top", ry], ["bottom", 1 - ry]];
-      d.sort((a, b) => a[1] - b[1]);
-      return { id, side: d[0][0] };
+      const side = bandOf(frameOfGroup(grp), wx, wy);
+      if (side) return { id, side };
     }
     return null;
   };
@@ -195814,7 +195816,14 @@ function bindDashboardGrid(api, group, options = {}) {
     if (!beside) return;
     const it = engine.getItem(beside.id);
     if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false });
+    if (restore) {
+      for (const [oid, c] of beside.others) {
+        const o = engine.getItem(oid);
+        if (o && (o.x !== c.x || o.y !== c.y)) engine.moveCheck(oid, c.x, c.y, { gate: false });
+      }
+    }
     if (it) it.locked = true;
+    relockOthersForSlab();
     beside = null;
   };
   const applyBeside = (g, z) => {
@@ -195831,7 +195840,7 @@ function bindDashboardGrid(api, group, options = {}) {
       hostOf(g.id)?.classList.remove("axdb-out");
       engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
     }
-    if (beside && beside.id !== z.id) endBeside(true);
+    if (beside && (beside.id !== z.id || beside.side !== z.side)) endBeside(true);
     const from = beside ? beside.from : { x: tc.x, y: tc.y };
     let cell;
     let shiftTo = null;
@@ -195857,7 +195866,13 @@ function bindDashboardGrid(api, group, options = {}) {
         cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y + tc.h };
     }
     if (shiftTo && shiftTo.x < 0) shiftTo = null;
-    if (!beside) beside = { id: z.id, from, vacated: cell };
+    if (!beside) {
+      const others = /* @__PURE__ */ new Map();
+      for (const o of engine.getItems()) if (o.id !== z.id && o.id !== g.id && isGroupMember(o.id)) others.set(o.id, { x: o.x, y: o.y });
+      const grp0 = diagram.getGroup(z.id);
+      beside = { id: z.id, side: z.side, from, frame0: grp0 ? frameOfGroup(grp0) : cellToRect({ x: from.x, y: from.y, w: tc.w, h: tc.h }, frame(), geom(), rows()), vacated: cell, others };
+      unlockOthersForSlab(z.id);
+    }
     tc.locked = false;
     if (shiftTo && (tc.x !== shiftTo.x || tc.y !== shiftTo.y)) {
       if (engine.getItem(g.id)) engine.remove(g.id);
@@ -196433,7 +196448,8 @@ function bindDashboardGrid(api, group, options = {}) {
         }
         if (beside) {
           const r = cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows());
-          const over = ev.world.x >= r.x - gap && ev.world.x <= r.x + r.width + gap && ev.world.y >= r.y - gap && ev.world.y <= r.y + r.height + gap;
+          const inR = (q) => ev.world.x >= q.x - gap && ev.world.x <= q.x + q.width + gap && ev.world.y >= q.y - gap && ev.world.y <= q.y + q.height + gap;
+          const over = bandOf(beside.frame0, ev.world.x, ev.world.y) === beside.side || inR(r);
           if (!over) endBeside(true);
           else {
             syncPlaceholder();
