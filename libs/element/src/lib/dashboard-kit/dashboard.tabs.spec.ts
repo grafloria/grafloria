@@ -356,6 +356,24 @@ describe('tab containers', () => {
     tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     await settle();
   };
+  /** Press a tab and carry it to `to` WITHOUT releasing — the held state is what the previews are judged on. */
+  const holdTabFrom = async (api: { container: HTMLElement }, containerId: string, pageId: string, from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(tab, 'pointerdown', from.x, from.y);
+    ev(tab, 'pointermove', from.x - 40, from.y);
+    ev(window, 'pointermove', to.x, to.y);
+    await settle();
+    return {
+      move: async (p: { x: number; y: number }) => { ev(window, 'pointermove', p.x, p.y); await settle(); },
+      release: async () => { ev(window, 'pointerup', to.x, to.y); tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); await settle(); },
+    };
+  };
+  const overlayRect = (api: { container: HTMLElement }) => {
+    const el = api.container.querySelector('.axdb-join') as HTMLElement | null;
+    return el ? { x: parseFloat(el.style.left), y: parseFloat(el.style.top), w: parseFloat(el.style.width), h: parseFloat(el.style.height) } : null;
+  };
   const stripOf = (api: { container: HTMLElement }, id: string) =>
     Array.from(api.container.querySelectorAll(`.axdb-tabs[data-tabs-id="${id}"] .axdb-tab`)).map((t) => t.textContent);
   const cm = (api: ReturnType<typeof makeApi>) => api.getEngine().commandManager;
@@ -799,6 +817,104 @@ describe('tab containers', () => {
     expect(stripOf(api, 'thin')).toEqual(['One', 'Notes']);
     expect(cellOf(handle, 'thin')).toEqual({ x: 0, y: 0, w: 1, h: 6 });
     expect(model.getGroup('r2__group')).toBeUndefined();
+  });
+
+  it('a SPLIT is previewed with an OVERLAY ONLY: the target keeps its cell while the tab is held on its LEFT band, and takes the born column on release (the put-back the user could not do)', async () => {
+    // The fluid demo after Filters was torn out beside the side panel: the page
+    // dragged back onto the panel's left band. The preview used to halve the
+    // panel live — it jumped to its other half, in one frame off the screen —
+    // so the panel ran away from under the pointer as the page approached.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('rev', 6, 2, 0, 0), K('reps', 6, 4, 0, 2),
+          { id: 'mid', title: 'Mid', span: 3, rows: 5, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('pf', 'Filters', 'k-pf')] },
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('pa', 'Alerts', 'k-pa'), PAGE('pn', 'Notes', 'k-pn')] },
+        ],
+      })
+    );
+    const side0 = cellOf(handle, 'side')!;
+    expect(side0).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    const f = frameOf(model, 'side');
+    const held = await holdTabFrom(api, 'mid', 'pf', { x: 620, y: 10 }, { x: f.x + 20, y: f.y + 30 + (f.h - 30) * 0.4 });
+    // held on the left band: the panel has NOT moved, the overlay marks the born column, no grid placeholder
+    expect(cellOf(handle, 'side')).toEqual(side0);
+    expect(frameOf(model, 'side')).toEqual(f);
+    expect(cellOf(handle, 'rev')).toEqual({ x: 0, y: 0, w: 6, h: 2 });
+    const ov = overlayRect(api)!;
+    expect(ov).not.toBeNull();
+    expect(Math.round(ov.x)).toBe(Math.round(f.x));
+    expect(ov.w).toBeLessThan(f.w / 2);
+    expect(Math.round(ov.h)).toBe(Math.round(f.h));
+    expect(api.container.querySelector('.axdb-ph')).toBeNull();
+    expect((api.container.ownerDocument.querySelector('.axdb-tab-chip') as HTMLElement).classList.contains('axdb-out')).toBe(false);
+    await held.release();
+    // released: the panel keeps its two right columns, the page's fresh group takes the left one, the emptied group closed
+    expect(cellOf(handle, 'side')).toEqual({ x: 10, y: 0, w: 2, h: 8 });
+    expect(cellOf(handle, 'pf__group')).toEqual({ x: 9, y: 0, w: 1, h: 8 });
+    expect(stripOf(api, 'pf__group')).toEqual(['Filters']);
+    expect(stripOf(api, 'side')).toEqual(['Alerts', 'Notes']);
+    expect(model.getGroup('mid')).toBeUndefined();
+    expect(cellOf(handle, 'rev')).toEqual({ x: 0, y: 0, w: 6, h: 2 });
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'side')).toEqual(side0);
+    expect(stripOf(api, 'mid')).toEqual(['Filters']);
+  });
+
+  it('the edge bands are a FIFTH of the body, not a third: a quarter of the way down a group JOINS it, 15% splits above', async () => {
+    const { api, model, handle } = up(TWO());
+    let f = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 30 + (f.h - 30) * 0.25 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+    await cm(api).undo();
+    await settle();
+    f = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 30 + (f.h - 30) * 0.15 });
+    expect(cellOf(handle, 'r2__group')).toEqual({ x: 0, y: 0, w: 6, h: 3 });
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 3, w: 6, h: 3 });
+    // and sideways: 25% in from the right edge joins, 15% splits
+    await cm(api).undo();
+    await settle();
+    f = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.75, y: f.y + 30 + (f.h - 30) * 0.5 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+    await cm(api).undo();
+    await settle();
+    f = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.85, y: f.y + 30 + (f.h - 30) * 0.5 });
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 3, h: 6 });
+    expect(cellOf(handle, 'r2__group')).toEqual({ x: 3, y: 0, w: 3, h: 6 });
+  });
+
+  it('a top DOCK is previewed with an overlay only: nothing moves while the tab is held on the board\'s top band; the rows are inserted on release', async () => {
+    const { api, model, handle } = up(TWO());
+    const f0 = frameOf(model, 'left');
+    const held = await holdTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 4 });
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+    expect(cellOf(handle, 'right')).toEqual({ x: 6, y: 0, w: 6, h: 6 });
+    expect(frameOf(model, 'left')).toEqual(f0);
+    expect(api.container.querySelector('.axdb-ph')).toBeNull();
+    const ov = overlayRect(api)!;
+    expect(ov).not.toBeNull();
+    expect(Math.round(ov.y)).toBe(Math.round(f0.y)); // the band sits on the first row, where the group still is
+    expect(ov.w).toBeGreaterThan(1100);
+    expect((api.container.ownerDocument.querySelector('.axdb-tab-chip') as HTMLElement).classList.contains('axdb-out')).toBe(false);
+    await held.release();
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born).toMatchObject({ x: 0, y: 0, w: 12 });
+    expect(cellOf(handle, 'left')!.y).toBe(born.h);
+    expect(cellOf(handle, 'right')!.y).toBe(born.h);
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
   });
 
   it('ROOT DOCK: a tab dropped on the board\'s TOP edge docks a full-width group there, pushing the rest down', async () => {

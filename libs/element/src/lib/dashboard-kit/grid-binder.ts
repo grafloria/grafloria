@@ -3959,6 +3959,12 @@ export function bindDashboardGrid(
     const ROOT_TOP = 20;
     const ROOT_BOTTOM = 20;
     const ROOT_SIDE = 40;
+    // THE EDGE BANDS ARE A FIFTH OF THE BODY — Dockview's activation size, not
+    // VS Code's third. Two thirds of every group read as "beside" under the
+    // thirds, and the user, putting a page back into the panel it came from,
+    // never found the "into": "close to the edge means beside it, the content
+    // area means inside, the header means a new tab" (0.4.42).
+    const EDGE_BAND = 0.2;
     const visibleFrame = (): { left: number; top: number; right: number; bottom: number } => {
       const rect = api.container.getBoundingClientRect();
       const o = toWorld(rect.left, rect.top);
@@ -4084,7 +4090,7 @@ export function bindDashboardGrid(
         const bodyH = Math.max(1, f.height - stripH);
         const rx = Math.min(1, Math.max(0, (world.x - f.x) / Math.max(1, f.width)));
         const ry = Math.min(1, Math.max(0, (world.y - f.y - stripH) / bodyH));
-        if (rx >= 1 / 3 && rx <= 2 / 3 && ry >= 1 / 3 && ry <= 2 / 3) return { kind: 'join', target };
+        if (rx >= EDGE_BAND && rx <= 1 - EDGE_BAND && ry >= EDGE_BAND && ry <= 1 - EDGE_BAND) return { kind: 'join', target };
         const d: Array<[Side, number]> = [['left', rx], ['right', 1 - rx], ['top', ry], ['bottom', 1 - ry]];
         d.sort((p, q) => p[1] - q[1]);
         const h = halves(target, d[0][0]);
@@ -4203,6 +4209,23 @@ export function bindDashboardGrid(
       placeholder = null;
       return ok;
     };
+    /** The band a dock is promised: the cell it takes — a BOTTOM dock's lies past the last row, so its tint sits on the board's last rows instead. */
+    const dockOverlayRect = (z: Extract<Zone, { kind: 'root' }>): WorldRect => {
+      const cell = z.side === 'bottom' ? { ...z.cell, y: Math.max(0, z.cell.y - z.cell.h) } : z.cell;
+      return cellToRect(cell, frame(), geom(), rows());
+    };
+    /** The dock, applied for real at the release: the ghost takes the band, every member group is pushed, a top dock inserts rows. */
+    const realizeDock = (z: Extract<Zone, { kind: 'root' }>, world: { x: number; y: number }): boolean => {
+      const l = ensureLeg(world, null);
+      if (!l) return false;
+      unlockGroups();
+      l.place(z.cell);
+      insertRows(z.cell, l);
+      project();
+      placeholder?.remove();
+      placeholder = null;
+      return true;
+    };
     let zone: Zone = { kind: 'board' };
     let key = zoneKey(zone);
     const applyZone = (z: Zone, world: { x: number; y: number }): void => {
@@ -4216,9 +4239,17 @@ export function bindDashboardGrid(
       }
       undoSplitPreview();
       undoInsertRows();
-      if (z.kind !== 'root') relockGroups();
+      relockGroups();
       plan.markDrop(null, null);
       hideOverlay();
+      // A PREVIEW IS AN OVERLAY. A split and a dock used to be applied LIVE
+      // while the pointer hovered — the target halved and moved to its other
+      // half, a top dock shoved every tile down — so the very group the user
+      // was entering jumped away from under the pointer (the fluid demo's
+      // side panel went off the screen in one frame as a page came back to
+      // it). VS Code, Dockview and Golden Layout tint the half or the band and
+      // move nothing until the drop; so does this now: the layout stays where
+      // the user sees it, and the halving or the row insert happens on release.
       switch (z.kind) {
         case 'strip':
           leg?.leave();
@@ -4229,30 +4260,14 @@ export function bindDashboardGrid(
           leg?.leave();
           showOverlay(frameOfGroup(z.target));
           break;
-        case 'split': {
-          if (!previewSplit(z, world)) {
-            zone = { kind: 'join', target: z.target };
-            key = zoneKey(zone);
-            leg?.leave();
-            showOverlay(frameOfGroup(z.target));
-            break;
-          }
+        case 'split':
+          leg?.leave(); // the ghost leaves first, so the half is measured on the relaxed board
           showOverlay(cellToRect(z.born, frame(), geom(), rows()));
           break;
-        }
-        case 'root': {
-          const l = ensureLeg(world, null);
-          if (l) {
-            unlockGroups();
-            l.place(z.cell);
-            insertRows(z.cell, l);
-            project();
-            placeholder?.remove();
-            placeholder = null;
-            showOverlay(cellToRect(z.cell, frame(), geom(), rows()));
-          }
+        case 'root':
+          leg?.leave();
+          showOverlay(dockOverlayRect(z));
           break;
-        }
         case 'reorder':
           leg?.leave();
           plan.markDrop(fromGroupId, z.index);
@@ -4285,7 +4300,7 @@ export function bindDashboardGrid(
       applyZone(z, world);
       // Dimmed = a release here does nothing: home, off the board, or a board
       // that refused the ghost (bounded and full).
-      chip.classList.toggle('axdb-out', zone.kind === 'home' || zone.kind === 'off' || (zone.kind === 'root' && !leg) || (zone.kind === 'board' && (!leg || landingHidden())));
+      chip.classList.toggle('axdb-out', zone.kind === 'home' || zone.kind === 'off' || (zone.kind === 'board' && (!leg || landingHidden())));
       api.render();
     };
     const done = (changed: boolean, kind: 'commit' | 'cancel'): void => {
@@ -4332,10 +4347,18 @@ export function bindDashboardGrid(
       }
       if (z.kind === 'split') {
         // SPLIT: the target keeps one half of its cell, the page's new group the
-        // other. The preview already holds both in the engine; commit them.
-        if (!split || split.id !== z.target.id || zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
-        hideOverlay(); // a re-applied zone repaints its preview; the release is not a preview
+        // other. The hover only tinted the half; the halving happens NOW.
+        hideOverlay();
         plan.markDrop(null, null);
+        if (!previewSplit(z, world)) {
+          // The half cannot be taken (a bounded board with no room for the
+          // ghost): the page joins the target instead, as it would have had
+          // the target been too small to halve.
+          leg?.abort();
+          const planned = plan.join(z.target.id, plan.dropIndex(z.target.id, last.x, last.y), group.id);
+          done(execute('Move tab', [...planned.move, ...planned.collapse]), 'commit');
+          return;
+        }
         const fin = leg?.finalize() ?? null;
         const it = engine.getItem(z.target.id);
         const before = split;
@@ -4358,8 +4381,10 @@ export function bindDashboardGrid(
         done(changed, 'commit');
         return;
       }
-      // ROOT DOCK or a free cell on the board: the leg sits where it will land.
-      if (zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
+      // ROOT DOCK: the hover only tinted the band; the ghost takes it NOW. A
+      // free cell on the board: the leg already sits where it will land.
+      if (z.kind === 'root') realizeDock(z, world);
+      else if (zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
       hideOverlay(); // a re-applied zone repaints its preview; the release is not a preview
       plan.markDrop(null, null);
       const fin = leg?.finalize() ?? null;

@@ -2318,6 +2318,49 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `rest: A shows ${s0.aOn} (${s0.a}), B shows ${s0.bOn} (${s0.b}), seen ${s0.seen} · Notes joined A (${aStrip1}): A shows ${s1.aOn} (${s1.a}), B shows ${s1.bOn} (${s1.b}), seen ${s1.seen} · undone: A shows ${s2.aOn} (${s2.a}), B shows ${s2.bOn} (${s2.b}), seen ${s2.seen} overlaps ${sane.overlaps}`);
 }
 
+{
+  begin('L90-a-page-put-BACK-into-the-panel-it-left-the-panel-stays-put-under-the-pointer-edge-band-tints-a-column-centre-joins');
+  await scrollTo('tabs');
+  const strips = () => page.evaluate(() => [...document.querySelectorAll('#cv-tabs .axdb-tabs')].map((s) => s.getAttribute('data-tabs-id') + ':' + [...s.querySelectorAll('.axdb-tab')].map((t) => t.textContent).join('/')));
+  const cell = (id) => page.evaluate((id) => window.__lab.tabs.handle.widget(id)?.cell ?? null, id);
+  const overlay = () => page.evaluate(() => { const o = document.querySelector('#cv-tabs .axdb-join'); return o ? { x: parseFloat(o.style.left), y: parseFloat(o.style.top), w: parseFloat(o.style.width), h: parseFloat(o.style.height) } : null; });
+  const chip = () => page.evaluate(() => { const c = document.querySelector('.axdb-tab-chip'); return c ? (c.classList.contains('axdb-out') ? 'dim' : c.textContent) : null; });
+  const ph = () => page.evaluate(() => { const p = document.querySelector('#cv-tabs .axdb-ph'); return !!p && getComputedStyle(p).display !== 'none'; });
+  const before = await strips(); const panelCell0 = await cell('panel'); const active0 = await page.evaluate(() => window.__lab.tabs.handle.getActiveTab('panel'));
+  // 1. Filters — the page SHOWING — torn out onto the left column (the user's first, correct move)
+  const tab = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tab[data-tab-id="pg-a"]').getBoundingClientRect().toJSON());
+  const left = await rect('tabs', 't-left');
+  await drag(tab.x + tab.width / 2, tab.y + tab.height / 2, left.x + left.w / 2, left.y + left.h - 30, { steps: 16 });
+  const out = await strips(); const panelCell1 = await cell('panel'); const panelG = await groupRect('tabs', 'panel');
+  await shot('tabs', 'filters-torn-out-beside');
+  // 2. the way back: the Filters tab from its own group, carried to the panel's LEFT band — held there
+  const tab2 = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="pg-a__group"] .axdb-tab')?.getBoundingClientRect().toJSON() ?? null);
+  const ps = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
+  const bodyH = panelG.h - 30;
+  await page.mouse.move(tab2.x + tab2.width / 2, tab2.y + tab2.height / 2); await page.mouse.down();
+  await page.mouse.move(tab2.x + tab2.width / 2 - 12, tab2.y + 30, { steps: 4 });
+  await page.mouse.move(ps.x + 20, ps.bottom + bodyH * 0.4, { steps: 14 }); await page.waitForTimeout(350);
+  const heldLeft = { cell: await cell('panel'), overlay: await overlay(), chip: await chip(), ph: await ph(), g: await groupRect('tabs', 'panel') };
+  await shot('tabs', 'held-on-the-panels-left-band-panel-still-column-tinted');
+  // 3. on to the body CENTRE: the whole panel tints (join), nothing has moved
+  await page.mouse.move(ps.x + ps.width / 2, ps.bottom + bodyH * 0.5, { steps: 12 }); await page.waitForTimeout(350);
+  const heldCentre = { cell: await cell('panel'), overlay: await overlay(), chip: await chip(), ph: await ph(), g: await groupRect('tabs', 'panel') };
+  await shot('tabs', 'held-on-the-body-centre-whole-panel-tinted');
+  await page.mouse.up(); await page.waitForTimeout(600);
+  const back = await strips(); const panelCell2 = await cell('panel'); const sane = await sanity('tabs');
+  await shot('tabs', 'put-back-joined');
+  await undoAll('tabs', 2);
+  const undone = await strips(); const panelCell3 = await cell('panel'); const active3 = await page.evaluate(() => window.__lab.tabs.handle.getActiveTab('panel'));
+  const sameRect = (a, b) => !!a && !!b && Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1 && Math.abs(a.w - b.w) < 1 && Math.abs(a.h - b.h) < 1;
+  const sameCell = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+  verdict(before.join(' ') === 'panel:Filters/Alerts/Notes' && out.join(' ') === 'panel:Alerts/Notes pg-a__group:Filters' && sameCell(panelCell1, panelCell0)
+    && sameCell(heldLeft.cell, panelCell0) && sameRect(heldLeft.g, panelG) && !!heldLeft.overlay && Math.abs(heldLeft.overlay.x - panelG.x) < 1 && heldLeft.overlay.w < panelG.w / 2 && Math.abs(heldLeft.overlay.h - panelG.h) < 1 && heldLeft.chip === 'Filters' && heldLeft.ph === false
+    && sameCell(heldCentre.cell, panelCell0) && sameRect(heldCentre.g, panelG) && !!heldCentre.overlay && Math.abs(heldCentre.overlay.w - panelG.w) < 1 && heldCentre.chip === 'Filters' && heldCentre.ph === false
+    && /^panel:(Alerts\/Notes\/Filters|Filters\/Alerts\/Notes)$/.test(back.join(' ')) && sameCell(panelCell2, panelCell0) && sane.overlaps === 0 // a container that once saved an order (an earlier scenario's reorder) keeps the page at its saved slot; otherwise the end
+    && undone.join(' ') === 'panel:Filters/Alerts/Notes' && sameCell(panelCell3, panelCell0) && active3 === active0,
+    `rest ${before.join(' ')} · torn out: ${out.join(' ')} panel ${JSON.stringify(panelCell1)} · held on the LEFT band: panel ${JSON.stringify(heldLeft.cell)} frame ${sameRect(heldLeft.g, panelG) ? 'still' : 'MOVED ' + JSON.stringify(heldLeft.g)} overlay ${JSON.stringify(heldLeft.overlay)} chip ${heldLeft.chip} ph ${heldLeft.ph} · held on the CENTRE: frame ${sameRect(heldCentre.g, panelG) ? 'still' : 'MOVED'} overlay ${JSON.stringify(heldCentre.overlay)} chip ${heldCentre.chip} · released: ${back.join(' ')} panel ${JSON.stringify(panelCell2)} overlaps ${sane.overlaps} · undone ×2: ${undone.join(' ')} active ${active3}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

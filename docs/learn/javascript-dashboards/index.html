@@ -423,10 +423,10 @@ render(SPEC2, host);</pre>
       refuse to be overlapped. Type never changes as a side effect of a drop; a torn-out page keeps its tab as a
       group of its own.</p>
       <p><b>The drop model the docking libraries share</b> (element 0.4.33). Over another group, where the pointer is
-      decides what the release does: the strip joins at the marked slot; the centre third of the body joins on the
-      end; an outer third <em>splits</em> the group — it keeps one half of its cell and the page's new group takes
-      the other, left, right, above or below, with the overlay showing the half being taken (Lumino's thirds,
-      VS Code's feel). The board's own edges <em>dock</em>: the top band takes a full-width group at row 0 and
+      decides what the release does: the strip joins at the marked slot; the middle of the body joins on the
+      end; an edge band — a fifth of the body since 0.4.42, a third before — <em>splits</em> the group: it keeps one
+      half of its cell and the page's new group takes the other, left, right, above or below, with the overlay
+      showing the half being taken (VS Code's feel; nothing moves until the release, see 0.4.42). The board's own edges <em>dock</em>: the top band takes a full-width group at row 0 and
       everything below moves down, the sides take a full-height group at the edge — bands of the <em>visible</em>
       canvas (20 px top and bottom, 40 px at the sides), so a scrolled board still docks where you see its edge; a
       strip beats a band and a band beats a group's body. A docked group takes at most half the board, the way an
@@ -456,7 +456,16 @@ render(SPEC2, host);</pre>
       <p><b>Torn out twice</b> (element 0.4.39). A page torn out of the one-tab group that had been born from it — dropped above another group, on a free cell, or against the board's edge — threw <em>Group already exists</em> mid-commit: the plan named the arriving group after the page, and that id was still the emptied group's until the same batch closed it. The batch stopped half-applied, the split preview stayed on the board and the chip stayed on the screen (found by the user on the live demo). The arriving group now takes the next free suffix, the emptied one closes, and two undos walk both tear-outs back.</p>
       <p><b>Groups and sections move on a split board, and keep their captions</b> (element 0.4.40). Two more split-board stubs: the peer answered <em>dragMember</em> with false, so a press on a strip's empty space or a caption band only selected — a tab group could not be moved or swapped with its neighbour; and the split board painted no section chrome at all, so switching the fluid demo to Split made the Operations band vanish and its two KPIs sit bare in the pane. Now a group or a section moves by its strip or its band with the board's own insertion line, dropped on a neighbour's far edge the two swap sides, and the split board paints slabs and caption bands like the grid board (the child board reserves the band). The strip's empty-space press is a real listener now, so a spec can drive it. Also fixed: the split binder's accessibility sync cleared a section's selection a line after it was made.</p>
       <p><b>Undo shows the page that was showing</b> (element 0.4.41). The live walk of every gesture — real Chrome, light and dark, a frame at each stage — ended each undo on a different page than the rest frame: Filters was on top, torn out (the container switched to Alerts as the tab left), undone, and Alerts stayed on top. Undo put the tab back and nothing put the page back. The tear-out and join plans now capture the page that was showing when the gesture began and restore it last on undo — after the tab is among the pages again, so a neighbour's reflow in between cannot reset it — for the source of a tear-out and of a join; the join target already restored its own.</p>
-      <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
+      <p><b>Previews are overlays, and the edge bands are a fifth</b> (element 0.4.42). A user tore Filters out of the
+      demo's side panel, then tried to put it back — and could not: the moment the page approached the panel, the
+      panel jumped away. The split preview was applied <em>live</em> — the target halved and moved to its other half
+      while the pointer hovered, in one frame off the screen — and a top dock shoved every tile down the same way. VS
+      Code, Dockview and Golden Layout tint the half or the band and move nothing until the drop; so does the kit now:
+      the target stays where you see it, the overlay says which half or band the page takes, and the halving or the row
+      insert happens on release. The bands themselves are a fifth of the body (Dockview's activation size) instead of
+      a third: two thirds of every group read as "beside", and "close to the edge means beside, the content area means
+      into, the header means a new tab" is the rule people bring with them.</p>
+      <p><b>Section captions</b> (element 0.4.22. A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
       <code>description</code> (an ⓘ carrying the text as its tooltip and its accessible label),

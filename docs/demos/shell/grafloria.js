@@ -197173,6 +197173,7 @@ function bindDashboardGrid(api, group, options = {}) {
     const ROOT_TOP = 20;
     const ROOT_BOTTOM = 20;
     const ROOT_SIDE = 40;
+    const EDGE_BAND = 0.2;
     const visibleFrame = () => {
       const rect = api.container.getBoundingClientRect();
       const o = toWorld(rect.left, rect.top);
@@ -197265,7 +197266,7 @@ function bindDashboardGrid(api, group, options = {}) {
         const bodyH = Math.max(1, f.height - stripH);
         const rx = Math.min(1, Math.max(0, (world.x - f.x) / Math.max(1, f.width)));
         const ry = Math.min(1, Math.max(0, (world.y - f.y - stripH) / bodyH));
-        if (rx >= 1 / 3 && rx <= 2 / 3 && ry >= 1 / 3 && ry <= 2 / 3) return { kind: "join", target };
+        if (rx >= EDGE_BAND && rx <= 1 - EDGE_BAND && ry >= EDGE_BAND && ry <= 1 - EDGE_BAND) return { kind: "join", target };
         const d = [["left", rx], ["right", 1 - rx], ["top", ry], ["bottom", 1 - ry]];
         d.sort((p, q) => p[1] - q[1]);
         const h = halves(target, d[0][0]);
@@ -197363,6 +197364,21 @@ function bindDashboardGrid(api, group, options = {}) {
       placeholder = null;
       return ok;
     };
+    const dockOverlayRect = (z) => {
+      const cell = z.side === "bottom" ? { ...z.cell, y: Math.max(0, z.cell.y - z.cell.h) } : z.cell;
+      return cellToRect(cell, frame(), geom(), rows());
+    };
+    const realizeDock = (z, world) => {
+      const l = ensureLeg(world, null);
+      if (!l) return false;
+      unlockGroups();
+      l.place(z.cell);
+      insertRows(z.cell, l);
+      project();
+      placeholder?.remove();
+      placeholder = null;
+      return true;
+    };
     let zone = { kind: "board" };
     let key = zoneKey(zone);
     const applyZone = (z, world) => {
@@ -197376,7 +197392,7 @@ function bindDashboardGrid(api, group, options = {}) {
       }
       undoSplitPreview();
       undoInsertRows();
-      if (z.kind !== "root") relockGroups();
+      relockGroups();
       plan.markDrop(null, null);
       hideOverlay();
       switch (z.kind) {
@@ -197389,30 +197405,14 @@ function bindDashboardGrid(api, group, options = {}) {
           leg?.leave();
           showOverlay(frameOfGroup(z.target));
           break;
-        case "split": {
-          if (!previewSplit(z, world)) {
-            zone = { kind: "join", target: z.target };
-            key = zoneKey(zone);
-            leg?.leave();
-            showOverlay(frameOfGroup(z.target));
-            break;
-          }
+        case "split":
+          leg?.leave();
           showOverlay(cellToRect(z.born, frame(), geom(), rows()));
           break;
-        }
-        case "root": {
-          const l = ensureLeg(world, null);
-          if (l) {
-            unlockGroups();
-            l.place(z.cell);
-            insertRows(z.cell, l);
-            project();
-            placeholder?.remove();
-            placeholder = null;
-            showOverlay(cellToRect(z.cell, frame(), geom(), rows()));
-          }
+        case "root":
+          leg?.leave();
+          showOverlay(dockOverlayRect(z));
           break;
-        }
         case "reorder":
           leg?.leave();
           plan.markDrop(fromGroupId, z.index);
@@ -197442,7 +197442,7 @@ function bindDashboardGrid(api, group, options = {}) {
       const world = toWorld(e.clientX, e.clientY);
       const z = zoneAt(e.clientX, e.clientY, world);
       applyZone(z, world);
-      chip2.classList.toggle("axdb-out", zone.kind === "home" || zone.kind === "off" || zone.kind === "root" && !leg || zone.kind === "board" && (!leg || landingHidden()));
+      chip2.classList.toggle("axdb-out", zone.kind === "home" || zone.kind === "off" || zone.kind === "board" && (!leg || landingHidden()));
       api.render();
     };
     const done = (changed, kind) => {
@@ -197486,9 +197486,14 @@ function bindDashboardGrid(api, group, options = {}) {
         return;
       }
       if (z.kind === "split") {
-        if (!split || split.id !== z.target.id || zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
         hideOverlay();
         plan.markDrop(null, null);
+        if (!previewSplit(z, world)) {
+          leg?.abort();
+          const planned3 = plan.join(z.target.id, plan.dropIndex(z.target.id, last.x, last.y), group.id);
+          done(execute("Move tab", [...planned3.move, ...planned3.collapse]), "commit");
+          return;
+        }
         const fin2 = leg?.finalize() ?? null;
         const it = engine.getItem(z.target.id);
         const before = split;
@@ -197511,7 +197516,8 @@ function bindDashboardGrid(api, group, options = {}) {
         done(changed, "commit");
         return;
       }
-      if (zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
+      if (z.kind === "root") realizeDock(z, world);
+      else if (zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
       hideOverlay();
       plan.markDrop(null, null);
       const fin = leg?.finalize() ?? null;
