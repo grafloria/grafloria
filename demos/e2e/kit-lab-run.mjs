@@ -2361,6 +2361,100 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `rest ${before.join(' ')} · torn out: ${out.join(' ')} panel ${JSON.stringify(panelCell1)} · held on the LEFT band: panel ${JSON.stringify(heldLeft.cell)} frame ${sameRect(heldLeft.g, panelG) ? 'still' : 'MOVED ' + JSON.stringify(heldLeft.g)} overlay ${JSON.stringify(heldLeft.overlay)} chip ${heldLeft.chip} ph ${heldLeft.ph} · held on the CENTRE: frame ${sameRect(heldCentre.g, panelG) ? 'still' : 'MOVED'} overlay ${JSON.stringify(heldCentre.overlay)} chip ${heldCentre.chip} · released: ${back.join(' ')} panel ${JSON.stringify(panelCell2)} overlaps ${sane.overlaps} · undone ×2: ${undone.join(' ')} active ${active3}`);
 }
 
+{
+  begin('L91-a-tab-GROUP-dragged-by-its-strip-travels-as-ONE-thing-and-wears-a-frame-at-rest');
+  await scrollTo('tabs');
+  const chrome = () => page.evaluate(() => {
+    const r = (e) => { if (!e) return null; const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; };
+    const q = (s) => document.querySelector(s);
+    const strip = q('#cv-tabs .axdb-tabs[data-tabs-id="panel"]'); const slab = q('#cv-tabs .axdb-slab[data-slab-id="panel"]'); const bg = q('#cv-tabs .axdb-group-bg[data-group-bg="panel"]');
+    const host = q('#cv-tabs .grafloria-node-host[data-node-id="pa1"]');
+    const carried = [...document.querySelectorAll('#cv-tabs .axdb-carried')].map((e) => e.classList.contains('axdb-tabs') ? 'tabs:' + e.getAttribute('data-tabs-id') : e.classList.contains('axdb-slab') ? 'slab:' + e.getAttribute('data-slab-id') : e.classList.contains('axdb-group-bg') ? 'bg:' + e.getAttribute('data-group-bg') : 'host:' + e.getAttribute('data-node-id')).sort();
+    return { strip: r(strip), slab: r(slab), bg: r(bg), host: r(host), framed: !!slab && slab.classList.contains('axdb-slab--tabs'), bgFirst: !!bg && bg.parentElement?.firstElementChild === bg, carried,
+      bgColor: bg ? getComputedStyle(bg).backgroundColor : null, slabBorder: slab ? getComputedStyle(slab).borderTopWidth + ' ' + getComputedStyle(slab).borderTopStyle : null, isolation: getComputedStyle(document.querySelector('#cv-tabs .grafloria-html-layer')).isolation };
+  });
+  const cell = () => page.evaluate(() => window.__lab.tabs.handle.widget('panel')?.cell ?? null);
+  const c0 = await chrome(); const cell0 = await cell();
+  await shot('tabs', 'rest-the-panel-wears-a-frame');
+  const sameRect = (a, b) => !!a && !!b && Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1 && Math.abs(a.w - b.w) < 1 && Math.abs(a.h - b.h) < 1;
+  // press the strip's empty space and travel left+down in 8 steps, sampling 30 ms after each step
+  const press = { x: c0.strip.x + c0.strip.w - 30, y: c0.strip.y + c0.strip.h / 2 };
+  await page.mouse.move(press.x, press.y); await page.mouse.down(); await page.waitForTimeout(60);
+  const samples = [];
+  const off0 = c0.host && c0.strip ? c0.host.y - c0.strip.y : null; // the page sits below the strip and its inset; the offset must not change while carried
+  const dx0 = c0.host && c0.strip ? c0.host.x - c0.strip.x : null; // and 8 px in from the strip's left edge (the inset)
+  for (let i = 1; i <= 8; i++) {
+    await page.mouse.move(press.x - i * 45, press.y + i * 6, { steps: 2 }); await page.waitForTimeout(30);
+    const c = await chrome();
+    samples.push({ i, lag: c.host && c.strip && off0 !== null ? Math.round(c.host.y - c.strip.y - off0) : null, dx: c.host && c.strip && dx0 !== null ? Math.round(c.host.x - c.strip.x - dx0) : null, slabLag: c.slab && c.strip ? Math.round(c.slab.y - c.strip.y) : null, bgLag: c.bg && c.strip ? Math.round(c.bg.y - c.strip.y) : null, carried: c.carried.length });
+    if (i === 4) await shot('tabs', 'mid-travel-strip-pages-frame-together');
+  }
+  const held = await chrome();
+  await page.mouse.up(); await page.waitForTimeout(250);
+  const after = await chrome(); const cell1 = await cell(); const sane = await sanity('tabs');
+  await shot('tabs', 'released');
+  await undoAll('tabs', 1);
+  const cell2 = await cell();
+  const together = samples.every((s) => s.lag !== null && Math.abs(s.lag) <= 1 && Math.abs(s.dx) <= 1 && Math.abs(s.slabLag) <= 1 && Math.abs(s.bgLag) <= 1);
+  const carriedWhileMoving = samples.slice(1).every((s) => s.carried >= 4);
+  verdict(c0.framed && c0.bgFirst && sameRect(c0.bg, c0.slab) && c0.slabBorder === '1px solid' && c0.isolation === 'isolate' && c0.bgColor !== 'rgba(0, 0, 0, 0)'
+    && together && carriedWhileMoving && held.carried.includes('tabs:panel') && held.carried.includes('slab:panel') && held.carried.includes('bg:panel') && held.carried.includes('host:pa1')
+    && after.carried.length === 0 && !!cell1 && (cell1.x !== cell0.x || cell1.y !== cell0.y) && sane.overlaps === 0
+    && !!cell2 && cell2.x === cell0.x && cell2.y === cell0.y,
+    `rest: framed ${c0.framed} bg first ${c0.bgFirst} bg==slab ${sameRect(c0.bg, c0.slab)} border ${c0.slabBorder} bg ${c0.bgColor} isolation ${c0.isolation} · travel samples (page−strip lag px, slab lag, bg lag, carried n): ${samples.map((s) => `${s.lag}/${s.slabLag}/${s.bgLag}/${s.carried}`).join(' ')} · held carried ${held.carried.join(',')} · released: carried ${after.carried.length} cell ${JSON.stringify(cell1)} overlaps ${sane.overlaps} · undone ${JSON.stringify(cell2)}`);
+}
+
+{
+  begin('L92-a-tab-GROUP-drags-by-its-FRAME-margin-on-a-grid-board-and-on-a-split-board');
+  await scrollTo('tabs');
+  const cell = () => page.evaluate(() => window.__lab.tabs.handle.widget('panel')?.cell ?? null);
+  const cell0 = await cell();
+  const g = await groupRect('tabs', 'panel');
+  const cv = await page.evaluate(() => document.getElementById('cv-tabs').getBoundingClientRect().toJSON());
+  const ps = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
+  // 1. the margin under the strip (4 px below it, mid-width): press, travel left, release
+  const p = { x: ps.x + ps.width / 2, y: ps.bottom + 4 };
+  await page.mouse.move(p.x, p.y); await page.mouse.down(); await page.waitForTimeout(80);
+  const sel = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-slab[data-slab-id="panel"]')?.classList.contains('axdb-slab--selected') ?? false);
+  await page.mouse.move(p.x - 200, p.y + 30, { steps: 10 }); await page.waitForTimeout(250);
+  const held = await page.evaluate(() => ({ carried: document.querySelectorAll('#cv-tabs .axdb-carried').length, cursor: getComputedStyle(document.getElementById('cv-tabs')).cursor }));
+  await shot('tabs', 'panel-held-by-its-margin');
+  await page.mouse.up(); await page.waitForTimeout(400);
+  const cell1 = await cell(); const sane1 = await sanity('tabs');
+  await shot('tabs', 'panel-moved-by-its-margin');
+  // 2. the side margin (5 px in from the left edge, past the 3-px edge zone): a move, not a resize
+  const g1 = await groupRect('tabs', 'panel');
+  const off = { x: ps.x - g.x, y: ps.y - g.y }; // world → client, measured on the strip at rest
+  const q = { x: off.x + g1.x + 5, y: off.y + g1.y + g1.h / 2 };
+  await page.mouse.move(q.x, q.y); await page.mouse.down(); await page.waitForTimeout(80);
+  await page.mouse.move(q.x + 240, q.y - 40, { steps: 10 }); await page.waitForTimeout(250);
+  await page.mouse.up(); await page.waitForTimeout(400);
+  const cell2 = await cell();
+  await undoAll('tabs', 2);
+  const cell3 = await cell();
+  // 3. on the SPLIT board: Group A pressed on its margin under the strip, carried to Group B's far edge → swap
+  await scrollTo('sptabs');
+  const leaves = () => page.evaluate(() => { const leaves = (t) => (!t ? [] : t.id ? [t.id] : t.children.flatMap(leaves)); return leaves(window.__lab.sptabs.handle.toJSON().views[0].tree ?? null); });
+  const l0 = await leaves();
+  const sa = await page.evaluate(() => document.querySelector('#cv-sptabs .axdb-tabs[data-tabs-id="st-a"]').getBoundingClientRect().toJSON());
+  const gb = await groupRect('sptabs', 'st-b');
+  const cvs = await page.evaluate(() => document.getElementById('cv-sptabs').getBoundingClientRect().toJSON());
+  let heldS = null;
+  await drag(sa.x + sa.width / 2, sa.bottom + 4, cvs.x + gb.x + gb.w - 30, cvs.y + gb.y + gb.h / 2, { steps: 16, mid: async () => {
+    heldS = await page.evaluate(() => ({ chip: document.querySelector('.axdb-tab-chip')?.textContent ?? null, ins: !!document.querySelector('#cv-sptabs .axdb-ins'), selected: document.querySelector('#cv-sptabs .axdb-slab[data-slab-id="st-a"]')?.classList.contains('axdb-slab--selected') ?? false }));
+    await shot('sptabs', 'group-a-held-by-its-margin-at-b-far-edge');
+  } });
+  const l1 = await leaves();
+  await shot('sptabs', 'group-a-swapped-past-b');
+  await undoAll('sptabs', 1);
+  const l2 = await leaves();
+  verdict(sel && held.carried >= 4 && !!cell1 && (cell1.x !== cell0.x || cell1.y !== cell0.y) && cell1.w === cell0.w && cell1.h === cell0.h && sane1.overlaps === 0
+    && !!cell2 && cell2.w === cell0.w && cell2.h === cell0.h && (cell2.x !== cell1.x || cell2.y !== cell1.y)
+    && !!cell3 && cell3.x === cell0.x && cell3.y === cell0.y
+    && l0.join(',') === 'st-w,st-a,st-b' && heldS?.chip === 'Group A' && heldS?.ins === true && heldS?.selected === true && l1.join(',') === 'st-w,st-b,st-a' && l2.join(',') === l0.join(','),
+    `grid: margin press selected ${sel}, carried ${held.carried}, moved ${JSON.stringify(cell0)} → ${JSON.stringify(cell1)} (overlaps ${sane1.overlaps}); side margin → ${JSON.stringify(cell2)} (same size ${cell2?.w === cell0.w && cell2?.h === cell0.h}); undone ${JSON.stringify(cell3)} · split: ${l0.join('/')} → held: chip ${heldS?.chip} line ${heldS?.ins} selected ${heldS?.selected} → ${l1.join('/')} → undone ${l2.join('/')}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

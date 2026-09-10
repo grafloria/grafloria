@@ -73,7 +73,7 @@ import type { SplitNode } from './split-layout';
 import { gridItemFromCell } from './grid-mapping';
 import { ensureDashboardKitStyles } from './styles';
 import type { SectionCaption } from './caption';
-import { paintTabStrip, tabStripKey, tabStripReserve, type TabsOptions } from './tabs';
+import { paintTabStrip, tabStripKey, tabStripReserve, type TabsOptions, tabPageInset } from './tabs';
 import { defaultWidgetRenderer } from './widgets';
 
 /** A widget, declared as data. */
@@ -980,8 +980,12 @@ export function attachTabsRuntime(
     if (!pages.some((p) => p.id === active)) active = pages[0].id;
     ctx.activeTab.set(id, active);
     const strip = tabStripReserve(ctx.tabsOf.get(id), pages.length);
+    // The pages sit INSET in the container's frame (0.4.43): below the strip
+    // and its inset, `inset` px in from the sides and the bottom, so their
+    // cards read as inside the panel rather than as loose cards under a strip.
+    const inset = tabPageInset(ctx.tabsOf.get(id));
     const f = { x: cg.position.x, y: cg.position.y, width: cg.size?.width ?? 0, height: cg.size?.height ?? 0 };
-    const inner = { width: f.width, height: Math.max(0, f.height - strip) };
+    const inner = { width: Math.max(0, f.width - 2 * inset), height: Math.max(0, f.height - strip - 2 * inset) };
     const write = (fn: () => void): void => (model.runSystemWrite ? model.runSystemWrite(fn) : fn());
     write(() => {
       for (const p of pages) {
@@ -989,7 +993,7 @@ export function attachTabsRuntime(
         if (!pg) continue;
         // A PARKED page keeps its size, so its own board keeps its layout and
         // comes back exactly as it was; only its x leaves the canvas.
-        pg.setFrame({ x: p.id === active ? f.x : OFFSCREEN_X, y: f.y + strip, width: inner.width, height: inner.height });
+        pg.setFrame({ x: p.id === active ? f.x + inset : OFFSCREEN_X, y: f.y + strip + inset, width: inner.width, height: inner.height });
       }
     });
     for (const p of pages) ctx.binders.get(p.id)?.sync();
@@ -1613,7 +1617,9 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     for (let n = 2; model.getGroup(W) || ctx.boardGroups.has(W); n++) W = `${pageId}__group${n}`;
     const tabsOpts = ctx.tabsOf.get(containerId) ?? {};
     const label = pageSpec.title ?? pageId;
-    const size = { width: pg.size?.width ?? 0, height: (pg.size?.height ?? 0) + tabStripReserve(tabsOpts, 1) };
+    // The new group is sized for the page PLUS its frame: the strip above, the inset around.
+    const inset = tabPageInset(tabsOpts);
+    const size = { width: (pg.size?.width ?? 0) + 2 * inset, height: (pg.size?.height ?? 0) + tabStripReserve(tabsOpts, 1) + 2 * inset };
     const remaining = [...(from.members ?? [])].filter((m) => m !== pageId && !!model.getGroup(m));
     // The page that was showing when the gesture began. Undo puts the tab
     // back — and shows THAT page again, not the one the container switched to

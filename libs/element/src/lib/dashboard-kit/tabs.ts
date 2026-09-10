@@ -10,6 +10,14 @@
  */
 
 export interface TabsOptions {
+  /**
+   * Pixels between the frame and the pages — left, right, bottom, and below
+   * the strip (0.4.43). The cards of a page sit INSIDE the container's tinted
+   * frame, so two cards under one tab read as one panel; a border on the
+   * cell alone ran exactly where the cards' own borders were. Default 8;
+   * 0 puts the pages edge to edge, the look before 0.4.43.
+   */
+  inset?: number;
   /** Where the strip sits. Only 'top' today; 'bottom' | 'start' | 'end' follow. */
   position?: 'top';
   /** Along the strip (default 'start', mirrored on RTL). */
@@ -40,6 +48,13 @@ export const TAB_DRAG_THRESHOLD = 4;
 export function tabStripReserve(o: TabsOptions | undefined, pageCount: number): number {
   if (pageCount <= 0) return 0;
   return Math.max(18, o?.height ?? TAB_STRIP_HEIGHT);
+}
+
+export const TAB_PAGE_INSET = 8;
+
+/** Pixels between the container's frame and its pages: left, right, bottom, and below the strip. */
+export function tabPageInset(o: TabsOptions | undefined): number {
+  return Math.max(0, o?.inset ?? TAB_PAGE_INSET);
 }
 
 /**

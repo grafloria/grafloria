@@ -1847,6 +1847,28 @@ describe('tab drags on a SPLIT board', () => {
     expect(model.getGroup('left')!.position.x).toBeLessThan(model.getGroup('right')!.position.x);
   });
 
+  it('on a SPLIT board a press on a tab container\'s frame margin selects the group and drags it too — dropped on the other pane\'s edge the two swap', async () => {
+    const { api, model } = up(TWO());
+    expect(leaves(model)).toEqual(['left', 'right']);
+    const tool = splitToolOf('main');
+    const rg = model.getGroup('right')!;
+    const p = { x: rg.position.x + rg.size!.width / 2, y: rg.position.y + 30 + 4 }; // the margin under the strip
+    const src = { target: api.container.querySelector('.grafloria-html-layer'), clientX: p.x, clientY: p.y, pointerId: 1 } as unknown as PointerEvent;
+    tool.onPointerDown?.({ ...tev('down', p.x, p.y), source: src } as ToolPointerEvent, { empty: true } as never);
+    expect(api.container.querySelector('.axdb-slab[data-slab-id="right"]')!.classList.contains('axdb-slab--selected')).toBe(true);
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    const lf = model.getGroup('left')!;
+    const to = { x: lf.position.x + 40, y: lf.position.y + lf.size!.height / 2 };
+    ev(window, 'pointermove', p.x - 40, p.y);
+    ev(window, 'pointermove', to.x, to.y);
+    expect(api.container.querySelector('.axdb-ins')).not.toBeNull();
+    ev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(leaves(model)).toEqual(['right', 'left']);
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+  });
+
   it('a tab group released over NOTHING on a split board stays put, and a static split board refuses the drag', async () => {
     const { api, model } = up(TWO());
     const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="right"]') as HTMLElement;
@@ -1926,5 +1948,202 @@ describe('tab drags on a SPLIT board', () => {
     expect(handle.getActiveTab('panel')).toBe('p-one');
     expect(api.container.querySelector('.axdb-tab-chip')).toBeNull();
     expect(api.container.querySelector('.axdb-ins')).toBeNull();
+  });
+});
+
+describe('a tab group is ONE thing: its frame at rest, its motion when carried (0.4.43)', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const BOARD3 = () =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      gap: 10,
+      rowHeight: 60,
+      widgets: [
+        K('kpi', 3, 2, 0, 0),
+        { id: 'sec', title: 'Section', span: 3, rows: 4, x: 3, y: 0, columns: 3, widgets: [K('s1', 3, 2, 0, 0)] },
+        { id: 'panel', title: 'Panel', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', active: 'pg', widgets: [
+          { id: 'pg', title: 'Filters', columns: 6, widgets: [K('w1', 6, 2, 0, 0), K('w2', 6, 2, 0, 2)] },
+          { id: 'pg2', title: 'Notes', columns: 6, widgets: [K('w3', 6, 2, 0, 0)] },
+        ] },
+      ],
+    });
+  const carried = (api: { container: HTMLElement }) =>
+    Array.from(api.container.querySelectorAll('.axdb-carried')).map((el) =>
+      el.classList.contains('axdb-tabs') ? `tabs:${el.getAttribute('data-tabs-id')}` : el.classList.contains('axdb-slab') ? `slab:${el.getAttribute('data-slab-id')}` : el.classList.contains('axdb-group-bg') ? `bg:${el.getAttribute('data-group-bg')}` : `host:${el.getAttribute('data-node-id')}`
+    ).sort();
+  const ev = (el: EventTarget, type: string, x: number, y: number) =>
+    el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+
+  it('a tab container wears a FRAME by default: a bordered slab and a tinted surface under its pages, which a plain section does not get', () => {
+    // A page torn out with two widgets under its tab read as a strip floating
+    // over two loose cards — nothing said the second card was the tab's.
+    const { api, model } = up(BOARD3());
+    const slab = api.container.querySelector('.axdb-slab[data-slab-id="panel"]') as HTMLElement | null;
+    expect(slab).not.toBeNull();
+    expect(slab!.classList.contains('axdb-slab--tabs')).toBe(true);
+    const bg = api.container.querySelector('.axdb-group-bg[data-group-bg="panel"]') as HTMLElement | null;
+    expect(bg).not.toBeNull();
+    const g = model.getGroup('panel')!;
+    expect(parseFloat(bg!.style.left)).toBe(g.position.x);
+    expect(parseFloat(bg!.style.top)).toBe(g.position.y);
+    expect(parseFloat(bg!.style.width)).toBe(g.size!.width);
+    expect(parseFloat(bg!.style.height)).toBe(g.size!.height);
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    expect(bg!.parentElement).toBe(layer);
+    // a plain section keeps its invisible slab
+    expect((api.container.querySelector('.axdb-slab[data-slab-id="sec"]') as HTMLElement).classList.contains('axdb-slab--tabs')).toBe(false);
+    expect(api.container.querySelector('.axdb-group-bg[data-group-bg="sec"]')).toBeNull();
+    // the stylesheet paints the frame, tints the surface beneath the tiles, and lets the tint sit under them
+    const css = document.getElementById('grafloria-dashboard-kit-styles')?.textContent ?? '';
+    expect(css).toContain('.axdb-slab.axdb-slab--tabs');
+    expect(css).toContain('.axdb-group-bg');
+    expect(css).toContain('isolation: isolate');
+    expect(css).toContain('--axdb-group-border');
+    expect(css).toContain('--axdb-group-bg');
+  });
+
+  it('the frame follows the group: a group torn out wears one from birth, and an emptied group takes its frame away with it', async () => {
+    const { api, model } = up(BOARD3());
+    const drag = (containerId: string, pageId: string, from: { x: number; y: number }, to: { x: number; y: number }) => {
+      const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
+      ev(tab, 'pointerdown', from.x, from.y);
+      ev(tab, 'pointermove', from.x - 40, from.y);
+      ev(window, 'pointermove', to.x, to.y);
+      ev(window, 'pointerup', to.x, to.y);
+      tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    };
+    // Notes out of the panel onto free board space
+    drag('panel', 'pg2', { x: 700, y: 10 }, { x: 150, y: 400 });
+    await settle();
+    const born = model.getGroup('pg2__group')!;
+    expect(born).toBeDefined();
+    const slab = api.container.querySelector('.axdb-slab[data-slab-id="pg2__group"]') as HTMLElement | null;
+    expect(slab?.classList.contains('axdb-slab--tabs')).toBe(true);
+    const bg = api.container.querySelector('.axdb-group-bg[data-group-bg="pg2__group"]') as HTMLElement | null;
+    expect(bg).not.toBeNull();
+    expect(parseFloat(bg!.style.top)).toBe(born.position.y);
+    // and back: its only tab rejoins the panel, the born group closes, its frame with it
+    drag('pg2__group', 'pg2', { x: 150, y: 400 }, { x: 900, y: 10 });
+    await settle();
+    expect(model.getGroup('pg2__group')).toBeUndefined();
+    expect(api.container.querySelector('.axdb-group-bg[data-group-bg="pg2__group"]')).toBeNull();
+    expect(api.container.querySelector('.axdb-slab[data-slab-id="pg2__group"]')).toBeNull();
+  });
+
+  it('a tab container\'s pages sit INSET in its frame: 8 px inside on the left, right and bottom and below the strip, so the cards read as inside the panel; `tabs: { inset: 0 }` is edge to edge', async () => {
+    // The user's desktop screenshot: Region and Period were two cards on the
+    // canvas with a strip over the first — the frame's border ran exactly
+    // where the cards' own borders were, so nothing said Period was the tab's.
+    const { api, model, handle } = up(BOARD3());
+    const panel = model.getGroup('panel')!;
+    const pg = model.getGroup('pg')!;
+    expect(pg.position.x).toBe(panel.position.x + 8);
+    expect(pg.position.y).toBe(panel.position.y + 30 + 8);
+    expect(pg.size!.width).toBe(panel.size!.width - 16);
+    expect(pg.size!.height).toBe(panel.size!.height - 30 - 16);
+    // the frame itself is still the container's whole cell
+    const bg = api.container.querySelector('.axdb-group-bg[data-group-bg="panel"]') as HTMLElement;
+    expect(parseFloat(bg.style.width)).toBe(panel.size!.width);
+    // a page's widgets live inside the page: the first card starts at the page's edge, inside the frame
+    const w1 = model.getNode('w1')!;
+    expect(w1.position.x).toBeGreaterThanOrEqual(pg.position.x);
+    expect(w1.position.x + w1.size.width).toBeLessThanOrEqual(pg.position.x + pg.size!.width + 0.5);
+    // a group torn out keeps the rule: its page sits inset in the born frame
+    const drag = (containerId: string, pageId: string, from: { x: number; y: number }, to: { x: number; y: number }) => {
+      const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
+      ev(tab, 'pointerdown', from.x, from.y);
+      ev(tab, 'pointermove', from.x - 40, from.y);
+      ev(window, 'pointermove', to.x, to.y);
+      ev(window, 'pointerup', to.x, to.y);
+      tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    };
+    drag('panel', 'pg2', { x: 700, y: 10 }, { x: 150, y: 400 });
+    await settle();
+    const born = model.getGroup('pg2__group')!;
+    const pg2 = model.getGroup('pg2')!;
+    expect(pg2.position.x).toBe(born.position.x + 8);
+    expect(pg2.position.y).toBe(born.position.y + 30 + 8);
+    expect(pg2.size!.width).toBe(born.size!.width - 16);
+    expect(handle.widget('pg2__group')?.cell?.w).toBeGreaterThanOrEqual(6); // sized for the page PLUS its frame, not the bare page
+    // and edge to edge on request
+    const flush = up(dashboard({ columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, widgets: [
+      { id: 'flat', title: 'Flat', span: 6, rows: 6, x: 0, y: 0, layout: 'tabs', tabs: { inset: 0 }, widgets: [{ id: 'fp', title: 'One', columns: 6, widgets: [K('fw', 6, 2, 0, 0)] }] },
+    ] }));
+    const flat = flush.model.getGroup('flat')!;
+    const fp = flush.model.getGroup('fp')!;
+    expect(fp.position.x).toBe(flat.position.x);
+    expect(fp.position.y).toBe(flat.position.y + 30);
+    expect(fp.size!.width).toBe(flat.size!.width);
+  });
+
+  it('a press on a tab container\'s FRAME margin selects the group and DRAGS it — the strip\'s empty space was the only handle, and nobody finds it; a plain section\'s empty band still only selects', async () => {
+    const { model, handle } = up(BOARD3());
+    const panel = model.getGroup('panel')!;
+    const cell0 = handle.widget('panel')!.cell!;
+    const tool = toolOf('main');
+    // the margin under the strip: inside the frame, clear of its 3-px edge zone, not on a page
+    const p = { x: panel.position.x + panel.size!.width / 2, y: panel.position.y + 30 + 4 };
+    tool.onPointerDown?.(tev('down', p.x, p.y), { node: null } as never);
+    expect(document.querySelector('.axdb-slab[data-slab-id="panel"]')!.classList.contains('axdb-slab--selected')).toBe(true);
+    tool.onPointerMove?.(tev('move', p.x - 200, p.y + 100), { node: null } as never);
+    tool.onPointerMove?.(tev('move', p.x - 300, p.y + 150), { node: null } as never);
+    tool.onPointerUp?.(tev('up', p.x - 300, p.y + 150), { node: null } as never);
+    await settle();
+    const cell1 = handle.widget('panel')!.cell!;
+    expect(cell1.x !== cell0.x || cell1.y !== cell0.y).toBe(true);
+    // the same press on the side margin (5 px in, past the 3-px edge zone) moves it too, not resizes it
+    const panel2 = model.getGroup('panel')!;
+    const q = { x: panel2.position.x + 5, y: panel2.position.y + panel2.size!.height / 2 };
+    tool.onPointerDown?.(tev('down', q.x, q.y), { node: null } as never);
+    tool.onPointerMove?.(tev('move', q.x + 200, q.y - 120), { node: null } as never);
+    tool.onPointerMove?.(tev('move', q.x + 300, q.y - 150), { node: null } as never);
+    tool.onPointerUp?.(tev('up', q.x + 300, q.y - 150), { node: null } as never);
+    await settle();
+    const cell2 = handle.widget('panel')!.cell!;
+    expect(cell2.w).toBe(cell0.w);
+    expect(cell2.h).toBe(cell0.h);
+    expect(cell2.x !== cell1.x || cell2.y !== cell1.y).toBe(true);
+    // a plain section: its empty band selects, a travel does not move it
+    const sec = model.getGroup('sec')!;
+    const sc0 = handle.widget('sec')!.cell!;
+    const r = { x: sec.position.x + sec.size!.width / 2, y: sec.position.y + sec.size!.height - 20 };
+    tool.onPointerDown?.(tev('down', r.x, r.y), { node: null } as never);
+    expect(document.querySelector('.axdb-slab[data-slab-id="sec"]')!.classList.contains('axdb-slab--selected')).toBe(true);
+    tool.onPointerMove?.(tev('move', r.x - 200, r.y + 100), { node: null } as never);
+    tool.onPointerUp?.(tev('up', r.x - 200, r.y + 100), { node: null } as never);
+    await settle();
+    expect(handle.widget('sec')!.cell).toEqual(sc0);
+  });
+
+  it('a group dragged by its strip CARRIES its chrome: while it moves, its strip, slab and surface are transition-exempt together — the other groups\' are not — and the exemption lifts 60 ms after the drop', async () => {
+    // The strip jumped to the pointer while the page's tiles glided after it
+    // (the reflow transition is for the NEIGHBOURS): measured on the live
+    // demo, the content trailed the strip by up to 140 px at every step.
+    const { api, model } = up(BOARD3());
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="panel"]') as HTMLElement;
+    const y0 = model.getGroup('panel')!.position.y;
+    ev(strip, 'pointerdown', 1100, 10); // the strip's empty space
+    ev(window, 'pointermove', 1100, 12); // under the drag threshold
+    expect(carried(api)).toEqual([]);
+    ev(window, 'pointermove', 1100, 200);
+    await settle();
+    expect(carried(api)).toEqual(['bg:panel', 'slab:panel', 'tabs:panel']);
+    expect(api.container.querySelector('.grafloria-html-layer')!.classList.contains('axdb-glide')).toBe(true);
+    // the group and its page moved TOGETHER
+    const panel = model.getGroup('panel')!;
+    expect(panel.position.y).toBeGreaterThan(y0);
+    expect(model.getGroup('pg')!.position.y).toBe(panel.position.y + 30 + 8); // the strip, then the inset
+    ev(window, 'pointerup', 1100, 200);
+    await settle();
+    expect(carried(api)).toEqual(['bg:panel', 'slab:panel', 'tabs:panel']); // the drop write is instant too
+    await new Promise<void>((r) => setTimeout(r, 90));
+    expect(carried(api)).toEqual([]);
+    // and the stylesheet: carried chrome does not transition, floats, and a pushed group's chrome glides WITH its tiles
+    const css = document.getElementById('grafloria-dashboard-kit-styles')?.textContent ?? '';
+    expect(css).toContain('.axdb-carried');
+    expect(css).toMatch(/\.grafloria-html-layer\.axdb-glide > \.axdb-tabs[^{]*\{[^}]*transition: left/);
   });
 });

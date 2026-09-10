@@ -1807,10 +1807,10 @@ export function bindDashboardGrid(
     return null;
   };
   /** Which of a section frame's edges a world point is within EDGE_GRIP of. */
-  const slabEdgesNear = (grp: GroupModel, x: number, y: number): ResizeEdges => {
+  const slabEdgesNear = (grp: GroupModel, x: number, y: number, grip = edgeGripFor(grp)): ResizeEdges => {
     const p = grp.position;
     const s = sizeOf(grp);
-    return { n: y - p.y <= EDGE_GRIP, s: p.y + s.height - y <= EDGE_GRIP, w: x - p.x <= EDGE_GRIP, e: p.x + s.width - x <= EDGE_GRIP };
+    return { n: y - p.y <= grip, s: p.y + s.height - y <= grip, w: x - p.x <= grip, e: p.x + s.width - x <= grip };
   };
 
   /**
@@ -1823,6 +1823,107 @@ export function bindDashboardGrid(
    * corner handle; its frame edges answer the resize cursor.
    */
   const slabEls = new Map<string, HTMLElement>();
+  /**
+   * GROUP FRAME (0.4.43): a TAB CONTAINER wears a frame by default — its slab
+   * is bordered and a tinted surface lies under its pages, first in the layer
+   * so the tiles paint over it. A page torn out with two widgets under its tab
+   * read as a strip floating over two loose cards: nothing said the second
+   * card was the tab's. A plain section keeps its invisible slab.
+   */
+  const groupBgs = new Map<string, HTMLElement>();
+  const syncGroupBg = (layer: HTMLElement, id: string, on: boolean, x: number, y: number, w: number, h: number): void => {
+    let bg = groupBgs.get(id) ?? null;
+    if (!on) {
+      bg?.remove();
+      groupBgs.delete(id);
+      return;
+    }
+    if (!bg || bg.parentElement !== layer) {
+      bg?.remove();
+      bg = document.createElement('div');
+      bg.className = 'axdb-group-bg';
+      bg.setAttribute('data-group-bg', id);
+      layer.prepend(bg);
+      groupBgs.set(id, bg);
+    }
+    bg.style.left = `${x}px`;
+    bg.style.top = `${y}px`;
+    bg.style.width = `${w}px`;
+    bg.style.height = `${h}px`;
+  };
+  const isTabsGroup = (grp: GroupModel): boolean => (grp.getMetadata('containerWidget') as { layout?: string } | undefined)?.layout === 'tabs';
+  /**
+   * A TAB CONTAINER's frame is its drag handle (0.4.43): its 8-px margin —
+   * under the strip, beside the pages — moves the group, so the edge-resize
+   * zone shrinks to 3 px there (the corner handle still resizes). A section's
+   * edges keep the full grip: its empty band is a drop target, not a handle.
+   */
+  const TAB_FRAME_GRIP = 3;
+  const edgeGripFor = (grp: GroupModel): number => (isTabsGroup(grp) ? TAB_FRAME_GRIP : EDGE_GRIP);
+  /**
+   * CARRIED (0.4.43): a group dragged by its strip or band moves as ONE thing.
+   * The held TILE is transition-exempt (the ghost), but a group has no host of
+   * its own: its strip jumped to the pointer while its pages' tiles GLIDED
+   * after it — on the live demo the content trailed the strip by up to 140 px
+   * at every step. Everything in the group's subtree — tiles, strips, slabs,
+   * the surface — is exempt for the gesture and, like the ghost, through the
+   * drop write; then the glides resume.
+   */
+  const carriedEls = new Set<Element>();
+  let carriedTimer: ReturnType<typeof setTimeout> | null = null;
+  const subtreeIds = (id: string): { groups: string[]; nodes: string[] } => {
+    const groups: string[] = [];
+    const nodes: string[] = [];
+    const queue = [id];
+    const seen = new Set<string>();
+    while (queue.length) {
+      const cur = queue.shift()!;
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      const grp = diagram.getGroup(cur);
+      if (grp) {
+        groups.push(cur);
+        for (const m of grp.members ?? []) queue.push(m);
+      } else if (diagram.getNode(cur)) nodes.push(cur);
+    }
+    return { groups, nodes };
+  };
+  const cssId = (id: string): string => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"'));
+  const setCarried = (id: string, on: boolean): void => {
+    const layer = htmlLayer();
+    if (!layer) return;
+    if (carriedTimer) {
+      clearTimeout(carriedTimer);
+      carriedTimer = null;
+    }
+    if (on) {
+      const { groups, nodes } = subtreeIds(id);
+      const els: Element[] = [];
+      for (const n of nodes) {
+        const h = hostOf(n);
+        if (h) els.push(h);
+      }
+      for (const g of groups) {
+        els.push(...Array.from(layer.querySelectorAll(`:scope > .axdb-tabs[data-tabs-id="${cssId(g)}"], :scope > .axdb-slab[data-slab-id="${cssId(g)}"], :scope > .axdb-group-bg[data-group-bg="${cssId(g)}"]`)));
+      }
+      for (const el of els) {
+        el.classList.add('axdb-carried');
+        carriedEls.add(el);
+      }
+      return;
+    }
+    carriedTimer = setTimeout(() => {
+      for (const el of carriedEls) el.classList.remove('axdb-carried');
+      carriedEls.clear();
+      carriedTimer = null;
+    }, 60);
+  };
+  const flushCarried = (): void => {
+    if (carriedTimer) clearTimeout(carriedTimer);
+    carriedTimer = null;
+    for (const el of carriedEls) el.classList.remove('axdb-carried');
+    carriedEls.clear();
+  };
   let slabLayer: HTMLElement | null = null;
   const syncSlabs = (): void => {
     if (disposed) return;
@@ -1855,6 +1956,9 @@ export function bindDashboardGrid(
       el.classList.toggle('axdb-slab--selected', selectedId === id);
       el.classList.toggle('axdb-slab--static', isStatic);
       el.querySelector(':scope > .axdb-rs')?.classList.toggle('axdb-rs--rtl', rtl);
+      const tabs = isTabsGroup(grp);
+      el.classList.toggle('axdb-slab--tabs', tabs);
+      syncGroupBg(layer, id, tabs, p.x, p.y, sz.width, sz.height);
       syncCaption(el, id, grp, sz.height);
     }
     for (const [id, el] of slabEls) {
@@ -1862,6 +1966,8 @@ export function bindDashboardGrid(
         el.remove();
         hoverSlabs.delete(el);
         slabEls.delete(id);
+        groupBgs.get(id)?.remove();
+        groupBgs.delete(id);
       }
     }
   };
@@ -2053,6 +2159,7 @@ export function bindDashboardGrid(
       if (Math.abs(ev.screen.x - g.downScreen.x) + Math.abs(ev.screen.y - g.downScreen.y) < DRAG_THRESHOLD) return;
       g.started = true;
       armGlide();
+      if (g.move) setCarried(g.id, true);
     }
     const it = engine.getItem(g.id);
     if (!it) return;
@@ -2072,7 +2179,10 @@ export function bindDashboardGrid(
         // column (the row search) read as the wrong tile moving.
         const was = { x: it.x, y: it.y };
         const moved = engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed || placeOnRow(g.id, cell.x, cell.y, it.w);
-        if (moved) project();
+        if (moved) {
+          project();
+          setCarried(g.id, true); // chrome repainted by the projection is carried too
+        }
         // STUCK: the pointer asks for another cell and the slab did not budge
         // (placeOnRow counts "already on a legal cell" as placed) — paint what
         // was asked for as refused.
@@ -2123,6 +2233,7 @@ export function bindDashboardGrid(
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
     relockSlab(g.id);
+    if (g.move && g.started) setCarried(g.id, false); // exempt through the drop write, then the glides resume
     if (!g.started) {
       engine.endGesture();
       return;
@@ -2149,6 +2260,7 @@ export function bindDashboardGrid(
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
     relockSlab(g.id);
+    if (g.move && g.started) setCarried(g.id, false);
     if (g.started) engine.cancelGesture();
     else engine.endGesture();
     project();
@@ -3448,7 +3560,11 @@ export function bindDashboardGrid(
           if (anyEdge(edges)) beginSlabResize(slabId, edges, ev);
           // The caption band is the section's handle: pressed and travelled,
           // it moves the whole section (its inner empty space only selects).
-          else if (ownCaption) beginSlabMove(slabId, ev);
+          // A TAB CONTAINER's frame is its handle (0.4.43): the margin around
+          // its pages moves the group — the strip's empty space, the only
+          // handle before, was one nobody found ("I'm not able to drag an
+          // entire tab group").
+          else if (ownCaption || isTabsGroup(grp)) beginSlabMove(slabId, ev);
           return;
         }
         // OUR OWN empty band, and we are a section of a parent board: the
@@ -4861,10 +4977,13 @@ export function bindDashboardGrid(
       for (const el of slabEls.values()) el.remove();
       slabEls.clear();
       hoverSlabs.clear();
+      for (const bg of groupBgs.values()) bg.remove();
+      groupBgs.clear();
       // A rebind inside the 60 ms window (a layout switch right after an undo)
       // disposed this binder with the timer pending — the host kept its
       // lifted ghost for good (visual gate, nested-containers ⑤).
       flushGhost();
+      flushCarried();
       htmlLayer()?.classList.remove('axdb-glide');
       api.container.style.cursor = '';
     },
