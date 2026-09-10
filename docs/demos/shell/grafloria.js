@@ -194923,6 +194923,95 @@ function paintCaptionBand(band, c, ctx) {
   }
 }
 
+// libs/element/src/lib/dashboard-kit/tabs.ts
+var TAB_STRIP_HEIGHT = 30;
+var TAB_DRAG_THRESHOLD = 4;
+function tabStripReserve(o, pageCount) {
+  if (pageCount <= 0) return 0;
+  return Math.max(18, o?.height ?? TAB_STRIP_HEIGHT);
+}
+var TAB_PAGE_INSET = 8;
+function tabPageInset(o) {
+  return Math.max(0, o?.inset ?? TAB_PAGE_INSET);
+}
+function tabStripKey(pages, activeId, o, rtl) {
+  return JSON.stringify([pages, activeId, o ?? null, rtl]);
+}
+function paintTabStrip(strip, pages, activeId, o, rtl, onPick, onSelectContainer, onDrag) {
+  const doc = strip.ownerDocument;
+  let suppressClick = false;
+  strip.className = "axdb-tabs";
+  if (o?.className) for (const c of o.className.split(/\s+/).filter(Boolean)) strip.classList.add(c);
+  strip.classList.toggle("axdb-tabs--center", o?.align === "center");
+  strip.classList.toggle("axdb-tabs--end", o?.align === "end");
+  strip.classList.toggle("axdb-tabs--stretch", o?.stretch === true);
+  strip.setAttribute("dir", rtl ? "rtl" : "ltr");
+  strip.setAttribute("role", "tablist");
+  strip.textContent = "";
+  const withSelect = strip;
+  if (withSelect.__axdbSelect) strip.removeEventListener("pointerdown", withSelect.__axdbSelect);
+  withSelect.__axdbSelect = (e) => {
+    if (e.target?.closest(".axdb-tab")) return;
+    onSelectContainer?.(e);
+  };
+  strip.addEventListener("pointerdown", withSelect.__axdbSelect);
+  for (const p of pages) {
+    const b = doc.createElement("button");
+    b.type = "button";
+    b.className = "axdb-tab";
+    b.setAttribute("role", "tab");
+    b.setAttribute("data-tab-id", p.id);
+    b.setAttribute("aria-selected", String(p.id === activeId));
+    b.classList.toggle("axdb-tab--on", p.id === activeId);
+    b.tabIndex = p.id === activeId ? 0 : -1;
+    b.textContent = p.label;
+    b.title = p.label;
+    b.addEventListener("pointerdown", (e) => {
+      const pe = e;
+      if (pe.button !== void 0 && pe.button > 0) return;
+      suppressClick = false;
+      if (!onDrag) return;
+      const from = { x: pe.clientX, y: pe.clientY };
+      const stop = () => {
+        doc.removeEventListener("pointermove", move, true);
+        doc.removeEventListener("pointerup", stop, true);
+        doc.removeEventListener("pointercancel", stop, true);
+      };
+      const move = (m) => {
+        const pm = m;
+        if (Math.abs(pm.clientX - from.x) < TAB_DRAG_THRESHOLD && Math.abs(pm.clientY - from.y) < TAB_DRAG_THRESHOLD)
+          return;
+        stop();
+        suppressClick = onDrag(p.id, pm) === true;
+      };
+      doc.addEventListener("pointermove", move, true);
+      doc.addEventListener("pointerup", stop, true);
+      doc.addEventListener("pointercancel", stop, true);
+    });
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (suppressClick) {
+        suppressClick = false;
+        return;
+      }
+      onPick(p.id);
+    });
+    b.addEventListener("keydown", (e) => {
+      const k = e.key;
+      const step = k === "ArrowRight" ? 1 : k === "ArrowLeft" ? -1 : k === "Home" ? -pages.length : k === "End" ? pages.length : 0;
+      if (!step) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const i = pages.findIndex((x) => x.id === p.id);
+      const dir = rtl && (k === "ArrowRight" || k === "ArrowLeft") ? -step : step;
+      const next = Math.max(0, Math.min(pages.length - 1, i + dir));
+      onPick(pages[next].id);
+      strip.querySelector(`[data-tab-id="${pages[next].id}"]`)?.focus();
+    });
+    strip.appendChild(b);
+  }
+}
+
 // libs/element/src/lib/dashboard-kit/grid-binder.ts
 var GRIP_CLASS = "axdb-grip";
 var DRAG_HANDLE_CLASS = "axdb-drag-handle";
@@ -195525,6 +195614,16 @@ function bindDashboardGrid(api, group, options = {}) {
     }
     return out;
   };
+  const groupCellCommands = (deltas) => {
+    const out = [];
+    for (const d of deltas) {
+      if (!d.isGroup || d.cellBefore.x === d.cellAfter.x && d.cellBefore.y === d.cellAfter.y && d.cellBefore.w === d.cellAfter.w && d.cellBefore.h === d.cellAfter.h) continue;
+      const og = diagram.getGroup(d.id);
+      if (!og) continue;
+      out.push(new SetGroupCellCommand(d.id, d.cellBefore, d.cellAfter, { x: d.posBefore.x, y: d.posBefore.y, width: d.sizeBefore.width, height: d.sizeBefore.height }, frameOfGroup(og)));
+    }
+    return out;
+  };
   const execute = (name, commands) => {
     if (commands.length === 0) return false;
     void api.getEngine().commandManager.execute(new BatchCommand(name, commands));
@@ -195690,6 +195789,88 @@ function bindDashboardGrid(api, group, options = {}) {
   const isTabsGroup = (grp) => grp.getMetadata("containerWidget")?.layout === "tabs";
   const TAB_FRAME_GRIP = 3;
   const edgeGripFor = (grp) => isTabsGroup(grp) ? TAB_FRAME_GRIP : EDGE_GRIP;
+  const BESIDE_BAND = 0.2;
+  const besideZoneAt = (wx, wy) => {
+    for (const id of group.members ?? []) {
+      const grp = diagram.getGroup(id);
+      if (!grp || diagram.getNode(id) || !isTabsGroup(grp)) continue;
+      const p = grp.position;
+      const sz = sizeOf(grp);
+      if (wx < p.x || wx > p.x + sz.width || wy < p.y || wy > p.y + sz.height) continue;
+      const bodyY = p.y + TAB_STRIP_HEIGHT;
+      const bodyH = Math.max(1, sz.height - TAB_STRIP_HEIGHT);
+      const rx = (wx - p.x) / Math.max(1, sz.width);
+      const ry = (wy - bodyY) / bodyH;
+      if (ry < 0) return null;
+      if (rx >= BESIDE_BAND && rx <= 1 - BESIDE_BAND && ry >= BESIDE_BAND && ry <= 1 - BESIDE_BAND) return null;
+      const d = [["left", rx], ["right", 1 - rx], ["top", ry], ["bottom", 1 - ry]];
+      d.sort((a, b) => a[1] - b[1]);
+      return { id, side: d[0][0] };
+    }
+    return null;
+  };
+  let beside = null;
+  const endBeside = (restore) => {
+    if (!beside) return;
+    const it = engine.getItem(beside.id);
+    if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false });
+    if (it) it.locked = true;
+    beside = null;
+  };
+  const applyBeside = (g, z) => {
+    const tc = engine.getItem(z.id);
+    if (!tc) return;
+    if (g.leg) {
+      g.leg.adopted.abort();
+      g.leg = null;
+    }
+    const w = g.spans.w;
+    const h = g.spans.h;
+    if (g.removedFromBoard) {
+      g.removedFromBoard = false;
+      hostOf(g.id)?.classList.remove("axdb-out");
+      engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
+    }
+    if (beside && beside.id !== z.id) endBeside(true);
+    const from = beside ? beside.from : { x: tc.x, y: tc.y };
+    let cell;
+    let shiftTo = null;
+    switch (z.side) {
+      case "right":
+        cell = { x: from.x + tc.w, y: from.y };
+        if (cell.x + w > columns) {
+          shiftTo = { x: columns - w - tc.w, y: from.y };
+          cell = { x: columns - w, y: from.y };
+        }
+        break;
+      case "left":
+        cell = { x: from.x - w, y: from.y };
+        if (cell.x < 0) {
+          shiftTo = { x: w, y: from.y };
+          cell = { x: 0, y: from.y };
+        }
+        break;
+      case "top":
+        cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y };
+        break;
+      default:
+        cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y + tc.h };
+    }
+    if (shiftTo && shiftTo.x < 0) shiftTo = null;
+    if (!beside) beside = { id: z.id, from, vacated: cell };
+    tc.locked = false;
+    if (shiftTo && (tc.x !== shiftTo.x || tc.y !== shiftTo.y)) {
+      if (engine.getItem(g.id)) engine.remove(g.id);
+      engine.moveCheck(z.id, shiftTo.x, shiftTo.y, { gate: false });
+    }
+    beside.vacated = cell;
+    if (!engine.getItem(g.id)) engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
+    if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed) {
+      const at = engine.getItem(g.id);
+      if (!at || at.x !== cell.x || at.y !== cell.y) placeNear(g.id, cell.x, cell.y, w);
+    }
+    project();
+  };
   const carriedEls = /* @__PURE__ */ new Set();
   let carriedTimer = null;
   const subtreeIds = (id) => {
@@ -196018,12 +196199,7 @@ function bindDashboardGrid(api, group, options = {}) {
     const grp = diagram.getGroup(g.id);
     const deltas = deltasSince(g.startCells, g.startGeom, g.id);
     const commands = buildCommitCommands(deltas);
-    for (const d of deltas) {
-      if (!d.isGroup || d.cellBefore.x === d.cellAfter.x && d.cellBefore.y === d.cellAfter.y && d.cellBefore.w === d.cellAfter.w && d.cellBefore.h === d.cellAfter.h) continue;
-      const og = diagram.getGroup(d.id);
-      if (!og) continue;
-      commands.push(new SetGroupCellCommand(d.id, d.cellBefore, d.cellAfter, { x: d.posBefore.x, y: d.posBefore.y, width: d.sizeBefore.width, height: d.sizeBefore.height }, frameOfGroup(og)));
-    }
+    commands.push(...groupCellCommands(deltas));
     const b = g.cellBefore;
     if (it && grp && (b.x !== it.x || b.y !== it.y || b.w !== it.w || b.h !== it.h)) {
       commands.push(new SetGroupCellCommand(g.id, b, { x: it.x, y: it.y, w: it.w, h: it.h }, g.frameBefore, frameOfGroup(grp)));
@@ -196102,6 +196278,8 @@ function bindDashboardGrid(api, group, options = {}) {
     project();
     const deltas = deltasSince(g.startCells, g.startGeom);
     const commands = buildCommitCommands(deltas);
+    commands.push(...groupCellCommands(deltas));
+    endBeside(false);
     if (g.esc && g.esc.rowsAdded !== 0) {
       commands.push(
         new SetGroupCellCommand(
@@ -196144,6 +196322,7 @@ function bindDashboardGrid(api, group, options = {}) {
       g.esc.peer.resizeMemberBy(group.id, -g.esc.rowsAdded);
       g.esc = null;
     }
+    endBeside(true);
     if (g.started) {
       if (g.removedFromBoard || g.kind === "palette") {
         engine.endGesture();
@@ -196243,6 +196422,23 @@ function bindDashboardGrid(api, group, options = {}) {
         if (g.strip) {
           options.tabDrop.markDrop(null, null);
           g.strip = null;
+        }
+      }
+      if (!isStatic) {
+        const z = besideZoneAt(ev.world.x, ev.world.y);
+        if (z) {
+          applyBeside(g, z);
+          syncPlaceholder();
+          return;
+        }
+        if (beside) {
+          const r = cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows());
+          const over = ev.world.x >= r.x - gap && ev.world.x <= r.x + r.width + gap && ev.world.y >= r.y - gap && ev.world.y <= r.y + r.height + gap;
+          if (!over) endBeside(true);
+          else {
+            syncPlaceholder();
+            return;
+          }
         }
       }
       const strictSelf = worldInsideBoard(ev.world.x, ev.world.y);
@@ -200053,95 +200249,6 @@ var defaultWidgetRenderer = (widget, host) => {
   }
   card(host, widget ?? { id: "" }, titleOf(widget ?? { id: "" }));
 };
-
-// libs/element/src/lib/dashboard-kit/tabs.ts
-var TAB_STRIP_HEIGHT = 30;
-var TAB_DRAG_THRESHOLD = 4;
-function tabStripReserve(o, pageCount) {
-  if (pageCount <= 0) return 0;
-  return Math.max(18, o?.height ?? TAB_STRIP_HEIGHT);
-}
-var TAB_PAGE_INSET = 8;
-function tabPageInset(o) {
-  return Math.max(0, o?.inset ?? TAB_PAGE_INSET);
-}
-function tabStripKey(pages, activeId, o, rtl) {
-  return JSON.stringify([pages, activeId, o ?? null, rtl]);
-}
-function paintTabStrip(strip, pages, activeId, o, rtl, onPick, onSelectContainer, onDrag) {
-  const doc = strip.ownerDocument;
-  let suppressClick = false;
-  strip.className = "axdb-tabs";
-  if (o?.className) for (const c of o.className.split(/\s+/).filter(Boolean)) strip.classList.add(c);
-  strip.classList.toggle("axdb-tabs--center", o?.align === "center");
-  strip.classList.toggle("axdb-tabs--end", o?.align === "end");
-  strip.classList.toggle("axdb-tabs--stretch", o?.stretch === true);
-  strip.setAttribute("dir", rtl ? "rtl" : "ltr");
-  strip.setAttribute("role", "tablist");
-  strip.textContent = "";
-  const withSelect = strip;
-  if (withSelect.__axdbSelect) strip.removeEventListener("pointerdown", withSelect.__axdbSelect);
-  withSelect.__axdbSelect = (e) => {
-    if (e.target?.closest(".axdb-tab")) return;
-    onSelectContainer?.(e);
-  };
-  strip.addEventListener("pointerdown", withSelect.__axdbSelect);
-  for (const p of pages) {
-    const b = doc.createElement("button");
-    b.type = "button";
-    b.className = "axdb-tab";
-    b.setAttribute("role", "tab");
-    b.setAttribute("data-tab-id", p.id);
-    b.setAttribute("aria-selected", String(p.id === activeId));
-    b.classList.toggle("axdb-tab--on", p.id === activeId);
-    b.tabIndex = p.id === activeId ? 0 : -1;
-    b.textContent = p.label;
-    b.title = p.label;
-    b.addEventListener("pointerdown", (e) => {
-      const pe = e;
-      if (pe.button !== void 0 && pe.button > 0) return;
-      suppressClick = false;
-      if (!onDrag) return;
-      const from = { x: pe.clientX, y: pe.clientY };
-      const stop = () => {
-        doc.removeEventListener("pointermove", move, true);
-        doc.removeEventListener("pointerup", stop, true);
-        doc.removeEventListener("pointercancel", stop, true);
-      };
-      const move = (m) => {
-        const pm = m;
-        if (Math.abs(pm.clientX - from.x) < TAB_DRAG_THRESHOLD && Math.abs(pm.clientY - from.y) < TAB_DRAG_THRESHOLD)
-          return;
-        stop();
-        suppressClick = onDrag(p.id, pm) === true;
-      };
-      doc.addEventListener("pointermove", move, true);
-      doc.addEventListener("pointerup", stop, true);
-      doc.addEventListener("pointercancel", stop, true);
-    });
-    b.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (suppressClick) {
-        suppressClick = false;
-        return;
-      }
-      onPick(p.id);
-    });
-    b.addEventListener("keydown", (e) => {
-      const k = e.key;
-      const step = k === "ArrowRight" ? 1 : k === "ArrowLeft" ? -1 : k === "Home" ? -pages.length : k === "End" ? pages.length : 0;
-      if (!step) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const i = pages.findIndex((x) => x.id === p.id);
-      const dir = rtl && (k === "ArrowRight" || k === "ArrowLeft") ? -step : step;
-      const next = Math.max(0, Math.min(pages.length - 1, i + dir));
-      onPick(pages[next].id);
-      strip.querySelector(`[data-tab-id="${pages[next].id}"]`)?.focus();
-    });
-    strip.appendChild(b);
-  }
-}
 
 // libs/element/src/lib/dashboard-kit/dashboard.ts
 var AddWidgetCommand = class extends Command {
