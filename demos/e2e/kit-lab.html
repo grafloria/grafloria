@@ -236,7 +236,7 @@ board('vert', 'a TALL tile whose rows cross a full-width locked section takes th
   { id: 'v-src', title: 'Source', span: 4, rows: 4, x: 0, y: 0, columns: 4, widgets: [
     { id: 'v-in', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Inner', value: '1' } } ] },
   { id: 'v-a', kind: 'kpi', span: 8, rows: 4, x: 4, y: 0, data: { label: 'A', value: '2' } },
-  { id: 'v-wall', title: 'Full-width section', span: 12, rows: 2, x: 0, y: 4, columns: 12, widgets: [
+  { id: 'v-wall', title: 'Full-width section', span: 12, rows: 2, x: 0, y: 4, columns: 12, sizing: 'fit', widgets: [ // FIT: a wall that cannot grow for an arrival (a GROW section would take it — D4)
     { id: 'v-w1', kind: 'kpi', span: 12, rows: 2, x: 0, y: 0, data: { label: 'Wall', value: '3' } } ] },
   { id: 'v-b', kind: 'kpi', span: 12, rows: 2, x: 0, y: 6, data: { label: 'B', value: '4' } },
   { id: 'v-c', kind: 'kpi', span: 12, rows: 2, x: 0, y: 8, data: { label: 'C', value: '5' } },
@@ -245,7 +245,7 @@ board('vert', 'a TALL tile whose rows cross a full-width locked section takes th
 board('tear', 'a tab torn out of a FULL-HEIGHT panel takes the room under the pointer, not the bottom of the board', { sizing: 'grow', rowHeight: 50, widgets: [
   { id: 'te-a', kind: 'kpi', span: 8, rows: 3, x: 0, y: 0, data: { label: 'A', value: '1' } },
   { id: 'te-b', kind: 'kpi', span: 8, rows: 3, x: 0, y: 3, data: { label: 'B', value: '2' } },
-  { id: 'te-wall', title: 'Locked wall', span: 8, rows: 2, x: 0, y: 6, columns: 8, widgets: [
+  { id: 'te-wall', title: 'Locked wall', span: 8, rows: 2, x: 0, y: 6, columns: 8, sizing: 'fit', widgets: [ // FIT: full is full — it refuses and is pushed (D2), where a GROW section grows (D4)
     { id: 'te-w1', kind: 'kpi', span: 8, rows: 2, x: 0, y: 0, data: { label: 'Wall', value: '3' } } ] },
   { id: 'te-side', title: 'Side', span: 4, rows: 8, x: 8, y: 0, columns: 4, layout: 'tabs', widgets: [
     { id: 'te-p1', title: 'Filters', columns: 4, widgets: [
@@ -358,17 +358,20 @@ board('pal', 'a PALETTE chip dragged into a tab page lands there — the drop na
   chip.addEventListener('pointerdown', press(false));
   chip2.addEventListener('pointerdown', press(true));
 }
-board('nest', 'a GROUP is dragged like a widget (tile first, 4b-ii): a tab container by its strip into a roomy section, over a full one it pushes', { sizing: 'grow', rowHeight: 50, widgets: [
+board('nest', 'a GROUP is dragged like a widget (tile first, 4b-ii): a tab container by its strip into a roomy section, over a full one it pushes; and a FULL GROW section takes a row for a widget (D4)', { sizing: 'grow', rowHeight: 50, widgets: [
   { id: 'nt-sec', title: 'Roomy section', caption: true, span: 6, rows: 6, x: 0, y: 0, columns: 6, maxRows: 6, widgets: [
     { id: 'nt-s1', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'S1', value: '1' } } ] },
   { id: 'nt-tabs', title: 'Tabs', span: 6, rows: 3, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
     { id: 'nt-p1', title: 'Filters', columns: 6, widgets: [{ id: 'nt-k1', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'K1', value: '2' } }] },
     { id: 'nt-p2', title: 'Alerts', columns: 6, widgets: [{ id: 'nt-k2', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'K2', value: '3' } }] },
   ] },
-  { id: 'nt-full', title: 'Full section', caption: true, span: 6, rows: 1, x: 6, y: 3, columns: 6, sizing: 'fit', widgets: [
+  { id: 'nt-full', title: 'Full FIT section', caption: true, span: 6, rows: 1, x: 6, y: 3, columns: 6, sizing: 'fit', widgets: [
     { id: 'nt-f1', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'F1', value: '4' } } ] },
   { id: 'nt-b', kind: 'kpi', span: 6, rows: 2, x: 6, y: 4, data: { label: 'B', value: '5' } },
-] }, { height: 420 });
+  // Directly under B, with nothing between: a widget carried down into it reaches it before anything else moves.
+  { id: 'nt-grow', title: 'Full GROW section', caption: true, span: 6, rows: 1, x: 6, y: 6, columns: 6, maxRows: 1, widgets: [
+    { id: 'nt-g1', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'G1', value: '6' } } ] },
+] }, { height: 470 });
 board('cap-nested', 'captions two levels down · setCaption live', { sizing: 'grow', rowHeight: 34, widgets: [
   { id: 'outer', title: 'Outer section', span: 12, rows: 10, x: 0, y: 0, columns: 12, caption: true, widgets: [
     { id: 'inner', title: 'Inner section', span: 6, rows: 8, x: 0, y: 0, columns: 4, caption: { text: 'Inner', description: 'two levels down' }, widgets: [{ id: 'k', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'K', value: '1' } }] },

@@ -533,6 +533,10 @@ render(SPEC2, host);</pre>
       that cannot take a group pushes it back. Two rules keep that honest: the group you are carrying is glass to the
       drop model (its own frame is under the pointer at every step), and the containers it pushes aside on the way are
       still "there" for your hand where they were, coming home when the group lands elsewhere. Undo is one step.</p>
+      <p>0.4.58 settles what a <em>full</em> container does with something you drop on it. A section's height is a tile of
+      the board it sits on, so a container that grows can ask that board for another row and take the widget; one you
+      declared <code>sizing: 'fit'</code> cannot, and keeps the older answer — a page squeezes its rows, a section refuses
+      and is pushed aside by the widget instead. The rows go back if you drag away, and the drop is one undo step.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

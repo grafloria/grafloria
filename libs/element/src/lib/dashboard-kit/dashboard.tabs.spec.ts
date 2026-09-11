@@ -1160,10 +1160,11 @@ describe('tab containers', () => {
   });
 
   it('a landing cell that would sit OFF-SCREEN dims the chip and the release cancels — nothing lands a screen away', async () => {
-    // Two full groups over a full-width locked section: the pointer over the
+    // Two full groups over a full-width FIT section: the pointer over the
     // section has no cell there, and the fallback used to grow the ghost back
     // to its natural height BELOW the section — out of view, the drop landing
     // where the user could not see it (identification round, D1 hold3).
+    // (A GROW section would take the page by growing for it — D4, step 5a.)
     const { api, model, handle } = up(
       dashboard({
         columns: 12,
@@ -1175,7 +1176,9 @@ describe('tab containers', () => {
         widgets: [
           { id: 'left', title: 'Left group', span: 6, rows: 4, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('l1', 'Sales', 'k-l1')] },
           { id: 'right', title: 'Right group', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
-          { id: 'wall', title: 'Wall', span: 12, rows: 2, x: 0, y: 4, columns: 12, widgets: [{ id: 'w1', kind: 'kpi', span: 12, rows: 2, x: 0, y: 0 }] },
+          // FIT, so it cannot grow for the arrival (D4 is a GROW container's rule): full is full,
+          // and the only cell left is below the fold — which is what this guard is about.
+          { id: 'wall', title: 'Wall', span: 12, rows: 2, x: 0, y: 4, columns: 12, sizing: 'fit', widgets: [{ id: 'w1', kind: 'kpi', span: 12, rows: 2, x: 0, y: 0 }] },
         ],
       })
     );
@@ -2887,5 +2890,121 @@ describe('TILE FIRST, step 4b-ii: a GROUP is dragged like a widget — into a pa
     await settle();
     expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: 0, w: 4, h: 1 });
     expect(on(handle, 'main', 'side')).toEqual({ x: 6, y: 0, w: 6, h: 6 });
+  });
+});
+
+describe('TILE FIRST, step 5a: the parent board is in the gesture\'s scope, and a GROW container takes rows for a tile arriving by hand (D4)', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const cm = (api: { getEngine(): { commandManager: { undo(): Promise<unknown> | void; redo(): Promise<unknown> | void } } }) => api.getEngine().commandManager;
+  const on = (handle: DashboardHandle, boardId: string, id: string) => handle.binderOf(boardId)?.cellOf(id) ?? null;
+  const pathOf = (handle: DashboardHandle, id: string): string | null => {
+    const walk = (ws: Array<{ id: string; widgets?: unknown[] }> | undefined, path: string[]): string[] | null => {
+      for (const w of ws ?? []) {
+        if (w.id === id) return [...path, w.id];
+        const r = walk(w.widgets as Array<{ id: string; widgets?: unknown[] }> | undefined, [...path, w.id]);
+        if (r) return r;
+      }
+      return null;
+    };
+    for (const v of handle.toJSON().views) {
+      const r = walk(v.widgets as Array<{ id: string; widgets?: unknown[] }>, [v.id]);
+      if (r) return r.join(' > ');
+    }
+    return null;
+  };
+  /** A section of `rows` inner rows holding one full widget, with a tile under it on the board. */
+  const board = (sectionSizing?: 'fit' | 'grow') =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 900,
+      gap: 10,
+      rowHeight: 60,
+      sizing: 'grow',
+      widgets: [
+        K('free', 4, 1, 0, 0),
+        { id: 'ops', title: 'Operations', span: 8, rows: 1, x: 4, y: 0, columns: 8, maxRows: 1, ...(sectionSizing ? { sizing: sectionSizing } : {}), widgets: [K('orders', 8, 1, 0, 0)] },
+        K('below', 12, 1, 0, 1), // directly under the section: the tile the section's growth pushes
+      ],
+    });
+
+  it('a resize that ESCALATES keeps the parent board\'s pushed tiles through a re-read and an undo', async () => {
+    // The escalation asks the parent for a row and the parent's own tiles move to make it. Only the
+    // SECTION's cell is committed — and that is enough: a rebuild reads the section at its new height
+    // and the engine pushes the tile under it again. This pins that, so a future scope cannot quietly
+    // break what the layout currently re-derives.
+    const { api, model, handle } = up(board());
+    const tool = toolOf('ops');
+    const orders = model.getNode('orders')!;
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 4, y: 0, w: 8, h: 1 });
+    expect(on(handle, 'main', 'below')).toEqual({ x: 0, y: 1, w: 12, h: 1 });
+    // pull the inner widget's bottom edge well past its row: the section asks the board for a row.
+    // The press names the CORNER HANDLE by its DOM target — jsdom gives hosts no layout, so the
+    // edge-by-geometry test can never fire here; the handle is how a real press takes s+e anyway.
+    const rs = document.createElement('div');
+    rs.className = 'axdb-rs';
+    const from = { x: orders.position.x + 40, y: orders.position.y + orders.size.height - 2 };
+    const hit = { node: orders } as never;
+    const at = (type: ToolPointerEvent['type'], x: number, y: number) => ({ ...tev(type, x, y), source: { target: rs } as unknown as PointerEvent });
+    tool.onPointerDown?.(at('down', from.x, from.y), hit);
+    tool.onPointerMove?.(at('move', from.x, from.y + 8), hit);
+    tool.onPointerMove?.(at('move', from.x, from.y + 80), hit);
+    expect(on(handle, 'main', 'ops')!.h).toBe(2); // the section grew
+    expect(on(handle, 'main', 'below')!.y).toBe(2); // and pushed the tile under it
+    tool.onPointerUp?.(at('up', from.x, from.y + 80), hit);
+    await settle();
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 4, y: 0, w: 8, h: 2 });
+    expect(on(handle, 'main', 'below')).toEqual({ x: 0, y: 2, w: 12, h: 1 });
+    handle.binderOf('main')!.sync(); // re-read the model: the push must be IN it, not only on screen
+    await settle();
+    expect(on(handle, 'main', 'below')).toEqual({ x: 0, y: 2, w: 12, h: 1 });
+    await cm(api).undo();
+    await settle();
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 4, y: 0, w: 8, h: 1 });
+    expect(on(handle, 'main', 'below')).toEqual({ x: 0, y: 1, w: 12, h: 1 });
+  });
+
+  it('a widget dropped into a FULL GROW section makes the section take a row and lands in it (D4) — one undo puts everything back', async () => {
+    const { api, model, handle } = up(board()); // grow by default: escalate
+    const tool = toolOf('main');
+    const free = model.getNode('free')!;
+    const ops = model.getGroup('ops')!;
+    const from = { x: free.position.x + 20, y: free.position.y + 20 };
+    const to = { x: ops.position.x + ops.size!.width / 2, y: ops.position.y + ops.size!.height / 2 };
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: free } as never);
+    tool.onPointerMove?.(tev('move', from.x + 20, from.y + 6), { node: free } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: free } as never);
+    expect(on(handle, 'ops', 'free')).not.toBeNull(); // the section took it, having grown for it
+    expect(on(handle, 'main', 'ops')!.h).toBe(2);
+    expect(on(handle, 'main', 'below')!.y).toBe(2); // the board's tile pushed by the growth
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: free } as never);
+    await settle();
+    expect(pathOf(handle, 'free')).toBe('main > ops > free');
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 4, y: 0, w: 8, h: 2 });
+    expect(on(handle, 'main', 'below')).toEqual({ x: 0, y: 2, w: 12, h: 1 });
+    await cm(api).undo();
+    await settle();
+    expect(pathOf(handle, 'free')).toBe('main > free');
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 4, y: 0, w: 8, h: 1 });
+    expect(on(handle, 'main', 'below')).toEqual({ x: 0, y: 1, w: 12, h: 1 });
+  });
+
+  it('a FIT section does NOT grow: it refuses and is pushed by the widget instead (D2 stands)', async () => {
+    const { model, handle } = up(board('fit'));
+    const tool = toolOf('main');
+    const free = model.getNode('free')!;
+    const ops = model.getGroup('ops')!;
+    const from = { x: free.position.x + 20, y: free.position.y + 20 };
+    const to = { x: ops.position.x + ops.size!.width / 2, y: ops.position.y + ops.size!.height / 2 };
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: free } as never);
+    tool.onPointerMove?.(tev('move', from.x + 20, from.y + 6), { node: free } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: free } as never);
+    expect(model.getGroup('ops')!.members?.has('free')).toBe(false); // refused
+    expect(on(handle, 'main', 'ops')!.h).toBe(1); // and it did NOT grow
+    expect(on(handle, 'main', 'ops')!.y).toBeGreaterThan(0); // pushed by the widget instead
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: free } as never);
+    await settle();
+    expect(pathOf(handle, 'free')).toBe('main > free');
   });
 });

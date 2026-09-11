@@ -328,11 +328,13 @@ try {
 {
   begin('s05-tile-into-bounded-section');
   const page = await freshPage(OPTS);
-  // The section is FULL (4 tiles, maxRows 1). It cannot take the panel — so the panel takes the cell under the hand on
-  // the BOARD and PUSHES the section down, the way it pushes any tile it means to (tile first, step 3: D2). It used to
-  // be refused and snap home; that left the user with nowhere to put a widget near a full section.
+  // The section is FULL (4 tiles, maxRows 1) — and it ESCALATES: board ③ exists to show a bounded strip that asks its
+  // board for a row. So a panel dropped on it makes it take one and joins it (D4, element 0.4.58). Before D4 nothing
+  // could grow for an arrival and the panel pushed the section down instead (D2) — which is still what a section
+  // declared `sizing: 'fit'` (escalate false) does, covered by the kit lab's L101.
   const share0 = await host(page, 'Share panel');
   const sB0 = await host(page, 'Strip B');
+  const sD0 = await host(page, 'Strip D');
   await page.mouse.move(share0.x + share0.w / 2, share0.y + 12);
   await page.mouse.down();
   await page.mouse.move(sB0.x + sB0.w / 2, sB0.y + sB0.h / 2, { steps: 14 });
@@ -342,14 +344,22 @@ try {
   await page.waitForTimeout(600);
   const shareA = await host(page, 'Share panel');
   const sBA = await host(page, 'Strip B');
-  const tookTheRow = !!shareA && !!sBA && Math.abs(shareA.y - sB0.y) < sB0.h && sBA.y > sB0.y + 5; // the panel where the section's row was; the section (its tiles with it) below
+  // The strip took a row for it: the panel lands in the row under the hand (the strip tiles slide along it) and the
+  // tile the row no longer fits — Strip D — moves onto the row the section just gained.
+  const sDA = await host(page, 'Strip D');
+  const grewForIt = !!shareA && !!sBA && Math.abs(shareA.y - sB0.y) < 8 && !!sDA && sDA.y > sD0.y + 5;
   const committed = await undoEnabled(page);
-  await shot(page, 'panel-on-the-board-section-pushed-down');
-  // One undo puts the section back.
-  await page.evaluate(() => window.__demoCtx.instance.getEngine().commandManager.undo());
+  await shot(page, 'panel-inside-the-section-which-took-a-row');
+  // One undo puts the row and the panel back — through the page's own Undo button, the way a person
+  // undoes: this demo binds its boards by hand, so a raw commandManager.undo() would leave their
+  // engines holding cells the model no longer has.
+  await clickUndo(page);
   await page.waitForTimeout(600);
   const sBU = await host(page, 'Strip B');
-  const restored = !!sBU && Math.abs(sBU.y - sB0.y) < 5;
+  const shareU = await host(page, 'Share panel');
+  const sDU = await host(page, 'Strip D');
+  await shot(page, 'after-undo-the-row-and-the-panel-are-back');
+  const restored = !!sBU && Math.abs(sBU.y - sB0.y) < 5 && !!sDU && Math.abs(sDU.y - sD0.y) < 6 && !!shareU && Math.abs(shareU.y - share0.y) < 8;
   // Now make room: remove one strip tile, then the panel CAN cross in.
   const sB1 = await host(page, 'Strip B');
   await page.mouse.click(sB1.x + sB1.w / 2, sB1.y + 12);
@@ -369,8 +379,8 @@ try {
   await shot(page, 'joined-section');
   const st = await boardState(page);
   verdict(
-    tookTheRow && committed && restored && !!inStrip && st.overlaps === 0,
-    `full-section-pushed=${tookTheRow} committed=${committed} undo-restores=${restored} joined-when-room=${!!inStrip} overlaps=${st.overlaps}`
+    grewForIt && committed && restored && !!inStrip && st.overlaps === 0,
+    `full-section-grew-and-took-it=${grewForIt} (panel y ${Math.round(shareA?.y ?? -1)} vs strip ${Math.round(sB0.y)}, D ${Math.round(sD0.y)}->${Math.round(sDA?.y ?? -1)}) committed=${committed} undo-restores=${restored} (panel ${Math.round(share0.y)}->${Math.round(shareU?.y ?? -1)}, B ${Math.round(sB0.y)}->${Math.round(sBU?.y ?? -1)}, D ${Math.round(sDU?.y ?? -1)}) joined-when-room=${!!inStrip} overlaps=${st.overlaps}`
   );
   assertNoPageErrors(page);
   await page.close();

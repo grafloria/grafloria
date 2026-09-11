@@ -2704,6 +2704,30 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `nested: held in the section ${JSON.stringify(held?.inSec)} (root ${JSON.stringify(held?.onRoot)}) · landed nt-tabs in ${after['nt-tabs']?.own}, K1 in ${after['nt-k1']?.own}, strip [${strips.join(',')}] ${JSON.stringify(sane)} · undo -> ${undone['nt-tabs']?.own} at ${undone['nt-tabs']?.x},${undone['nt-tabs']?.y} ‖ pushed: held tabs ${JSON.stringify(held2?.tabs)} full ${JSON.stringify(held2?.full)} taken ${held2?.taken} refusal ${held2?.ph} · released: tabs y ${after2['nt-tabs']?.y}, full y ${after2['nt-full']?.y} ${JSON.stringify(sane2)} · undo -> full y ${undone2['nt-full']?.y}`);
 }
 
+{
+  begin('L102-a-widget-dropped-on-a-FULL-GROW-section-makes-it-TAKE-A-ROW-and-lands-inside-it-D4');
+  await scrollTo('nest');
+  const cells = () => page.evaluate(() => { const out = {}; const walk = (ws, p) => { for (const w of ws) { out[w.id] = { own: p, x: w.x, y: w.y, w: w.span, h: w.rows }; if (w.widgets) walk(w.widgets, w.id); } }; walk(window.__lab.nest.handle.toJSON().views[0].widgets, 'BOARD'); return out; });
+  const before = await cells();
+  const a = await rect('nest', 'nt-b'); // the board's own widget, carried straight down into the full GROW section under it
+  const g1 = await rect('nest', 'nt-g1');
+  // D4: the section is FULL (one inner row, one full-width widget) but it GROWS — it asks its board for a row and takes the widget.
+  // A FIT section in its place refuses and is pushed instead (L101's second half).
+  let held = null;
+  await drag(a.x + a.w / 2, a.y + a.h / 2, g1.x + g1.w / 2, g1.y + g1.h / 2, { steps: 18, mid: async () => {
+    held = await page.evaluate(() => ({ inGrow: window.__lab.nest.handle.binderOf('nt-grow')?.cellOf('nt-b') ?? null, onRoot: window.__lab.nest.handle.binderOf('main')?.cellOf('nt-b') ?? null, grow: window.__lab.nest.handle.widget('nt-grow')?.cell ?? null, g1: window.__lab.nest.handle.binderOf('nt-grow')?.cellOf('nt-g1') ?? null }));
+    await shot('nest', 'widget-held-over-the-full-grow-section-which-took-a-row');
+  } });
+  const after = await cells(); const sane = await sanity('nest');
+  await shot('nest', 'widget-inside-the-grown-section');
+  await undoAll('nest', 1);
+  const undone = await cells();
+  verdict(before['nt-b'].own === 'BOARD' && before['nt-grow'].h === 1 && !!held?.inGrow && !held?.onRoot && (held.grow?.h ?? 0) >= 2
+    && after['nt-b'].own === 'nt-grow' && after['nt-grow'].h >= 2 && after['nt-g1'].own === 'nt-grow' && sane.overlaps === 0
+    && undone['nt-b'].own === 'BOARD' && undone['nt-grow'].h === 1,
+    `held: in the grow section ${JSON.stringify(held?.inGrow)} (root ${JSON.stringify(held?.onRoot)}), the section ${JSON.stringify(held?.grow)} (was h 1), its own widget still at ${JSON.stringify(held?.g1)} · landed: nt-b in ${after['nt-b'].own}, section h ${after['nt-grow'].h} ${JSON.stringify(sane)} · undo -> ${undone['nt-b'].own}, section h ${undone['nt-grow'].h}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();
