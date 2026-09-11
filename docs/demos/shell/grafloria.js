@@ -195790,17 +195790,19 @@ function bindDashboardGrid(api, group, options = {}) {
   const TAB_FRAME_GRIP = 3;
   const edgeGripFor = (grp) => isTabsGroup(grp) ? TAB_FRAME_GRIP : EDGE_GRIP;
   const BESIDE_BAND = 0.2;
-  const bandOf = (f, wx, wy) => {
+  const BESIDE_STAY = 0.05;
+  const bandOf = (f, wx, wy, band = BESIDE_BAND) => {
     if (wx < f.x || wx > f.x + f.width || wy < f.y || wy > f.y + f.height) return null;
     const bodyY = f.y + TAB_STRIP_HEIGHT;
     const bodyH = Math.max(1, f.height - TAB_STRIP_HEIGHT);
     const rx = (wx - f.x) / Math.max(1, f.width);
     const ry = (wy - bodyY) / bodyH;
     if (ry < 0) return null;
-    if (rx >= BESIDE_BAND && rx <= 1 - BESIDE_BAND && ry >= BESIDE_BAND && ry <= 1 - BESIDE_BAND) return null;
-    const d = [["left", rx], ["right", 1 - rx], ["top", ry], ["bottom", 1 - ry]];
-    d.sort((a, b) => a[1] - b[1]);
-    return d[0][0];
+    if (rx < band) return "left";
+    if (rx > 1 - band) return "right";
+    if (ry < band) return "top";
+    if (ry > 1 - band) return "bottom";
+    return null;
   };
   const besideZoneAt = (wx, wy) => {
     for (const id of group.members ?? []) {
@@ -195812,19 +195814,59 @@ function bindDashboardGrid(api, group, options = {}) {
     return null;
   };
   let beside = null;
-  const endBeside = (restore) => {
+  let besideEl = null;
+  const showBesideOverlay = (r) => {
+    const layer2 = htmlLayer();
+    if (!layer2) return;
+    if (!besideEl || besideEl.parentElement !== layer2) {
+      besideEl?.remove();
+      besideEl = document.createElement("div");
+      besideEl.className = "axdb-join";
+      layer2.prepend(besideEl);
+    }
+    besideEl.style.left = `${r.x}px`;
+    besideEl.style.top = `${r.y}px`;
+    besideEl.style.width = `${r.width}px`;
+    besideEl.style.height = `${r.height}px`;
+  };
+  const hideBesideOverlay = () => {
+    besideEl?.remove();
+    besideEl = null;
+  };
+  const endBeside = () => {
     if (!beside) return;
     const it = engine.getItem(beside.id);
-    if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false });
-    if (restore) {
-      for (const [oid, c] of beside.others) {
-        const o = engine.getItem(oid);
-        if (o && (o.x !== c.x || o.y !== c.y)) engine.moveCheck(oid, c.x, c.y, { gate: false });
-      }
-    }
     if (it) it.locked = true;
     relockOthersForSlab();
+    hideBesideOverlay();
     beside = null;
+  };
+  const besidePlan = (tc, side, w) => {
+    let cell;
+    let shiftTo = null;
+    switch (side) {
+      case "right":
+        cell = { x: tc.x + tc.w, y: tc.y };
+        if (cell.x + w > columns) {
+          shiftTo = { x: columns - w - tc.w, y: tc.y };
+          cell = { x: columns - w, y: tc.y };
+        }
+        break;
+      case "left":
+        cell = { x: tc.x - w, y: tc.y };
+        if (cell.x < 0) {
+          shiftTo = { x: w, y: tc.y };
+          cell = { x: 0, y: tc.y };
+        }
+        break;
+      case "top":
+        cell = { x: Math.max(0, Math.min(tc.x, columns - w)), y: tc.y };
+        break;
+      default:
+        cell = { x: Math.max(0, Math.min(tc.x, columns - w)), y: tc.y + tc.h };
+    }
+    if (shiftTo && shiftTo.x < 0) shiftTo = null;
+    return { cell, shiftTo };
   };
   const applyBeside = (g, z) => {
     const tc = engine.getItem(z.id);
@@ -195833,56 +195875,35 @@ function bindDashboardGrid(api, group, options = {}) {
       g.leg.adopted.abort();
       g.leg = null;
     }
+    if (!g.removedFromBoard) {
+      g.removedFromBoard = true;
+      engine.remove(g.id);
+      project();
+    }
+    hostOf(g.id)?.classList.remove("axdb-out");
+    const plan = besidePlan(tc, z.side, g.spans.w);
+    if (!beside || beside.id !== z.id || beside.side !== z.side || beside.cell.x !== plan.cell.x || beside.cell.y !== plan.cell.y) {
+      beside = { id: z.id, side: z.side, cell: plan.cell, shiftTo: plan.shiftTo };
+      showBesideOverlay(cellToRect({ x: plan.cell.x, y: plan.cell.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()));
+    }
+  };
+  const realizeBeside = (g) => {
+    if (!beside) return;
+    const tc = engine.getItem(beside.id);
+    if (!tc) return;
     const w = g.spans.w;
     const h = g.spans.h;
+    unlockOthersForSlab(beside.id);
+    tc.locked = false;
+    if (beside.shiftTo && (tc.x !== beside.shiftTo.x || tc.y !== beside.shiftTo.y)) engine.moveCheck(beside.id, beside.shiftTo.x, beside.shiftTo.y, { gate: false });
     if (g.removedFromBoard) {
       g.removedFromBoard = false;
       hostOf(g.id)?.classList.remove("axdb-out");
-      engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
     }
-    if (beside && (beside.id !== z.id || beside.side !== z.side)) endBeside(true);
-    const from = beside ? beside.from : { x: tc.x, y: tc.y };
-    let cell;
-    let shiftTo = null;
-    switch (z.side) {
-      case "right":
-        cell = { x: from.x + tc.w, y: from.y };
-        if (cell.x + w > columns) {
-          shiftTo = { x: columns - w - tc.w, y: from.y };
-          cell = { x: columns - w, y: from.y };
-        }
-        break;
-      case "left":
-        cell = { x: from.x - w, y: from.y };
-        if (cell.x < 0) {
-          shiftTo = { x: w, y: from.y };
-          cell = { x: 0, y: from.y };
-        }
-        break;
-      case "top":
-        cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y };
-        break;
-      default:
-        cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y + tc.h };
-    }
-    if (shiftTo && shiftTo.x < 0) shiftTo = null;
-    if (!beside) {
-      const others = /* @__PURE__ */ new Map();
-      for (const o of engine.getItems()) if (o.id !== z.id && o.id !== g.id && isGroupMember(o.id)) others.set(o.id, { x: o.x, y: o.y });
-      const grp0 = diagram.getGroup(z.id);
-      beside = { id: z.id, side: z.side, from, frame0: grp0 ? frameOfGroup(grp0) : cellToRect({ x: from.x, y: from.y, w: tc.w, h: tc.h }, frame(), geom(), rows()), vacated: cell, others };
-      unlockOthersForSlab(z.id);
-    }
-    tc.locked = false;
-    if (shiftTo && (tc.x !== shiftTo.x || tc.y !== shiftTo.y)) {
-      if (engine.getItem(g.id)) engine.remove(g.id);
-      engine.moveCheck(z.id, shiftTo.x, shiftTo.y, { gate: false });
-    }
-    beside.vacated = cell;
     if (!engine.getItem(g.id)) engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
-    if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed) {
+    if (!engine.moveCheck(g.id, beside.cell.x, beside.cell.y, { gate: false }).changed) {
       const at = engine.getItem(g.id);
-      if (!at || at.x !== cell.x || at.y !== cell.y) placeNear(g.id, cell.x, cell.y, w);
+      if (!at || at.x !== beside.cell.x || at.y !== beside.cell.y) placeNear(g.id, beside.cell.x, beside.cell.y, w);
     }
     project();
   };
@@ -196294,7 +196315,7 @@ function bindDashboardGrid(api, group, options = {}) {
     const deltas = deltasSince(g.startCells, g.startGeom);
     const commands = buildCommitCommands(deltas);
     commands.push(...groupCellCommands(deltas));
-    endBeside(false);
+    endBeside();
     if (g.esc && g.esc.rowsAdded !== 0) {
       commands.push(
         new SetGroupCellCommand(
@@ -196337,7 +196358,7 @@ function bindDashboardGrid(api, group, options = {}) {
       g.esc.peer.resizeMemberBy(group.id, -g.esc.rowsAdded);
       g.esc = null;
     }
-    endBeside(true);
+    endBeside();
     if (g.started) {
       if (g.removedFromBoard || g.kind === "palette") {
         engine.endGesture();
@@ -196420,6 +196441,7 @@ function bindDashboardGrid(api, group, options = {}) {
             g.leg.adopted.abort();
             g.leg = null;
           }
+          endBeside();
           if (!g.removedFromBoard) {
             g.removedFromBoard = true;
             engine.remove(g.id);
@@ -196447,14 +196469,13 @@ function bindDashboardGrid(api, group, options = {}) {
           return;
         }
         if (beside) {
-          const r = cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows());
-          const inR = (q) => ev.world.x >= q.x - gap && ev.world.x <= q.x + q.width + gap && ev.world.y >= q.y - gap && ev.world.y <= q.y + q.height + gap;
-          const over = bandOf(beside.frame0, ev.world.x, ev.world.y) === beside.side || inR(r);
-          if (!over) endBeside(true);
-          else {
+          const grp = diagram.getGroup(beside.id);
+          const stay = !!grp && bandOf(frameOfGroup(grp), ev.world.x, ev.world.y, BESIDE_BAND + BESIDE_STAY) === beside.side;
+          if (stay) {
             syncPlaceholder();
             return;
           }
+          endBeside();
         }
       }
       const strictSelf = worldInsideBoard(ev.world.x, ev.world.y);
@@ -196722,6 +196743,11 @@ function bindDashboardGrid(api, group, options = {}) {
       persistLayouts();
       api.renderNow();
       options.onGesture?.({ type: "commit", kind: g.kind, nodeId: g.id, changed: true });
+      return;
+    }
+    if (beside) {
+      realizeBeside(g);
+      commitGesture(g);
       return;
     }
     if (g.leg) {
