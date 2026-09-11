@@ -2728,6 +2728,51 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `held: in the grow section ${JSON.stringify(held?.inGrow)} (root ${JSON.stringify(held?.onRoot)}), the section ${JSON.stringify(held?.grow)} (was h 1), its own widget still at ${JSON.stringify(held?.g1)} · landed: nt-b in ${after['nt-b'].own}, section h ${after['nt-grow'].h} ${JSON.stringify(sane)} · undo -> ${undone['nt-b'].own}, section h ${undone['nt-grow'].h}`);
 }
 
+{
+  begin('L103-the-tab-strip-holds-the-hand-a-widget-aimed-at-the-tabs-does-not-flip-on-a-pixel');
+  await scrollTo('tabs');
+  const cell = (id) => page.evaluate((id) => window.__lab.tabs.handle.widget(id)?.cell ?? null, id);
+  const zone = () => page.evaluate(() => {
+    const s = document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]');
+    const slab = document.querySelector('#cv-tabs .axdb-slab[data-slab-id="panel"]');
+    return { tab: !!s && s.classList.contains('axdb-tabs--drop'), slabY: slab ? Math.round(slab.getBoundingClientRect().y) : null };
+  });
+  const strip0 = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
+  const p0 = await cell('panel');
+  const left = await rect('tabs', 't-left');
+  // The user, aiming a widget at the tabs: "it's switching so fast between having it above the entire tab group and inside
+  // as a tab". The strip owned exactly its painted box and the zone right under it shoves the container down — so a wobble
+  // of a pixel toggled a 90-px animated push, and once pushed, the strip went with it and the tabs could not be reached.
+  const mid = strip0.x + strip0.width * 0.55;
+  await page.mouse.move(left.x + 40, left.y + 12); await page.mouse.down();
+  await page.mouse.move(left.x + 60, left.y + 20, { steps: 3 });
+  await page.mouse.move(mid, strip0.y + strip0.height / 2, { steps: 10 }); await page.waitForTimeout(250);
+  const onStrip = { ...(await zone()), panel: await cell('panel') };
+  await shot('tabs', 'widget-on-the-strip-a-tab-slot');
+  await page.mouse.move(mid, strip0.bottom + 5); await page.waitForTimeout(250);
+  const overshoot = { ...(await zone()), panel: await cell('panel') };   // a few px past: STILL the tabs
+  await page.mouse.move(mid, strip0.bottom + 24); await page.waitForTimeout(400);
+  const below = { ...(await zone()), panel: await cell('panel') };        // well below: above the container, which gives way
+  await shot('tabs', 'well-below-the-strip-the-container-gives-way');
+  // …and back to where the tabs WERE while the container is still travelling: the tab zone is still there
+  await page.mouse.move(mid, strip0.y + strip0.height / 2); await page.waitForTimeout(250);
+  const back = { ...(await zone()), panel: await cell('panel') };
+  await shot('tabs', 'back-on-the-strip-the-container-comes-home');
+  await page.mouse.up(); await page.waitForTimeout(600);
+  const tabs1 = await page.evaluate(() => [...document.querySelectorAll('#cv-tabs .axdb-tabs[data-tabs-id="panel"] .axdb-tab')].map((t) => t.textContent));
+  const sane = await sanity('tabs');
+  await shot('tabs', 'released-the-widget-is-a-tab');
+  await undoAll('tabs', 2);
+  const tabs2 = await page.evaluate(() => [...document.querySelectorAll('#cv-tabs .axdb-tabs[data-tabs-id="panel"] .axdb-tab')].map((t) => t.textContent));
+  const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y;
+  verdict(onStrip.tab === true && same(onStrip.panel, p0)
+    && overshoot.tab === true && same(overshoot.panel, p0)                    // the strip keeps the hand through a small overshoot
+    && below.tab === false && !!below.panel && below.panel.y > p0.y           // well below it means ABOVE the container
+    && back.tab === true && same(back.panel, p0)                              // and the tabs are still where the hand left them
+    && tabs1.length === 4 && tabs2.length === 3 && sane.overlaps === 0,
+    `on the strip: tab ${onStrip.tab} panel ${JSON.stringify(onStrip.panel)} · +5 px: tab ${overshoot.tab} panel ${JSON.stringify(overshoot.panel)} · +24 px: tab ${below.tab} panel ${JSON.stringify(below.panel)} (slab ${below.slabY}) · back on it: tab ${back.tab} panel ${JSON.stringify(back.panel)} · released [${tabs1.join(',')}] ${JSON.stringify(sane)} · undo -> [${tabs2.join(',')}]`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

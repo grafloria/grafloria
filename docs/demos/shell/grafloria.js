@@ -196165,8 +196165,11 @@ function createTearOut(ctx, deps) {
         x: world.x,
         y: world.y,
         clientInside,
-        ownStrip: plan.stripIndex(fromGroupId, cx, cy),
-        stripOf: (id) => plan.stripIndex(id, cx, cy),
+        // A page dragged along its own strip, or over another's, keeps that
+        // strip through a small overshoot too (STRIP_STAY): the zone under a
+        // strip moves the container, and a pixel must not toggle it.
+        ownStrip: plan.stripIndex(fromGroupId, cx, cy, zone.kind === "reorder" ? STRIP_STAY : 0),
+        stripOf: (id) => plan.stripIndex(id, cx, cy, zone.kind === "strip" && zone.target.id === id ? STRIP_STAY : 0),
         root: root && root.kind === "root" ? { side: root.side } : null,
         target: target ? {
           id: target.id,
@@ -196475,6 +196478,7 @@ function registerBoardPeer(container, peer) {
   };
 }
 var DRAG_THRESHOLD = 4;
+var STRIP_STAY = 9;
 var nodeOf = (g) => g.entity;
 var binderSeq = 0;
 function bindDashboardGrid(api, group, options = {}) {
@@ -197836,7 +197840,22 @@ function bindDashboardGrid(api, group, options = {}) {
     let strip = null;
     if (options.tabDrop && !isStatic && g.kind !== "palette" && g.subject === "node") {
       const crect = api.container.getBoundingClientRect();
-      strip = options.tabDrop.stripAt(crect.left + ev.screen.x, crect.top + ev.screen.y);
+      const cx = crect.left + ev.screen.x;
+      const cy = crect.top + ev.screen.y;
+      const stay = g.strip ? STRIP_STAY : 0;
+      const held = beside?.id ?? g.strip?.containerId ?? null;
+      if (held && options.tabDrop.tabIndexAt) {
+        const grp = diagram.getGroup(held);
+        const f = beside && beside.id === held ? beside.frame0 : grp ? frameOfGroup(grp) : null;
+        if (f) {
+          const s = clientPerWorld();
+          const tol = stay / (s.y || 1);
+          const inStrip = ev.world.x >= f.x - stay / (s.x || 1) && ev.world.x <= f.x + f.width + stay / (s.x || 1) && ev.world.y >= f.y - tol && ev.world.y <= f.y + TAB_STRIP_HEIGHT + tol;
+          const idx = inStrip ? options.tabDrop.tabIndexAt(held, cx) : null;
+          if (idx !== null) strip = { containerId: held, index: idx };
+        }
+      }
+      if (!strip) strip = options.tabDrop.stripAt(cx, cy, g.strip ? { containerId: g.strip.containerId, px: stay } : void 0);
     }
     return resolve({
       x: ev.world.x,
@@ -197885,6 +197904,13 @@ function bindDashboardGrid(api, group, options = {}) {
       deepest = Math.max(deepest, tabs ? levelsInside(m) : 1 + levelsInside(m));
     }
     return deepest;
+  };
+  const clientPerWorld = () => {
+    const rect = api.container.getBoundingClientRect();
+    const toWorld = (cx, cy) => api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
+    const o = toWorld(rect.left, rect.top);
+    const u = toWorld(rect.left + 100, rect.top + 100);
+    return { x: 100 / (u.x - o.x || 100), y: 100 / (u.y - o.y || 100) };
   };
   const homeChain = () => {
     const out = /* @__PURE__ */ new Set();
@@ -201503,13 +201529,30 @@ function createDashboardHandle(ctx) {
     return [new RegisterWidgetCommand({ register: () => apply(after), unregister: () => apply(before) }, "register")];
   };
   ctx.tabDrop = {
-    stripAt: (cx, cy) => {
+    stripAt: (cx, cy, grace) => {
+      const hit = (id, el2, pad) => {
+        const r = el2.getBoundingClientRect();
+        if (r.width <= 0) return null;
+        return cx >= r.left - pad && cx <= r.right + pad && cy >= r.top - pad && cy <= r.bottom + pad ? { containerId: id, index: indexInStrip(el2, cx) } : null;
+      };
+      if (grace && grace.px > 0) {
+        const el2 = ctx.tabStrips.get(grace.containerId);
+        if (el2 && ctx.boardGroups.has(grace.containerId)) {
+          const held = hit(grace.containerId, el2, grace.px);
+          if (held) return held;
+        }
+      }
       for (const [id, el2] of ctx.tabStrips) {
         if (!ctx.boardGroups.has(id)) continue;
-        const r = el2.getBoundingClientRect();
-        if (r.width > 0 && cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) return { containerId: id, index: indexInStrip(el2, cx) };
+        const h = hit(id, el2, 0);
+        if (h) return h;
       }
       return null;
+    },
+    tabIndexAt: (containerId, cx) => {
+      const el2 = ctx.tabStrips.get(containerId);
+      if (!el2 || !ctx.boardGroups.has(containerId)) return null;
+      return indexInStrip(el2, cx);
     },
     markDrop: markTabDrop,
     dropIntoStrip: (widgetId, containerId, index, sourceBoardId, displaced) => moveWidgetToTabCommands(widgetId, containerId, index, sourceBoardId, displaced)
@@ -201641,11 +201684,11 @@ function createDashboardHandle(ctx) {
       ),
       stripHeight: (targetId) => tabStripReserve(ctx.tabsOf.get(targetId), Math.max(1, liveCount(targetId))),
       ownBoards: [pageId, ...[...ctx.boardGroups.keys()].filter((id) => insidePage(id))],
-      stripIndex: (targetId, cx, cy) => {
+      stripIndex: (targetId, cx, cy, grace = 0) => {
         const strip = ctx.tabStrips.get(targetId);
         if (!strip) return null;
         const r = strip.getBoundingClientRect();
-        if (r.width === 0 || cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) return null;
+        if (r.width === 0 || cx < r.left - grace || cx > r.right + grace || cy < r.top - grace || cy > r.bottom + grace) return null;
         return indexInStrip(strip, cx);
       },
       dropIndex: (targetId, cx, cy) => {
