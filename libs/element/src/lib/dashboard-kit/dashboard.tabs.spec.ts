@@ -1965,6 +1965,10 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
   const cm = (api: ReturnType<typeof makeApi>) => api.getEngine().commandManager;
   const stripOf = (api: { container: HTMLElement }, id: string) =>
     Array.from(api.container.querySelectorAll(`.axdb-tabs[data-tabs-id="${id}"] .axdb-tab`)).map((b) => b.textContent);
+  const overlayRect = (api: { container: HTMLElement }) => {
+    const el = api.container.querySelector('.axdb-join') as HTMLElement | null;
+    return el ? { x: parseFloat(el.style.left), y: parseFloat(el.style.top), w: parseFloat(el.style.width), h: parseFloat(el.style.height) } : null;
+  };
   const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
   const BOARD3 = () =>
     dashboard({
@@ -2216,13 +2220,21 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
     tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
     tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
-    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 }); // shifted while held
-    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 }); // the ghost beside it, at the edge
-    // a hand is never still: more moves on the same spot — the pointer is over the panel's OLD area, not over the one-row cell the widget took — keep the shift
+    // held: NOTHING moves (0.4.47) — the panel stays, an overlay marks the cell the widget will take at the edge, the grid placeholder is gone with the ghost
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+    const ov0 = overlayRect(api)!;
+    expect(ov0).not.toBeNull();
+    // column 10, where the widget lands once the panel has shifted: the widget's own width, flush with the panel's (the board's) right edge
+    expect(Math.round(ov0.w)).toBe(Math.round(nps.size!.width));
+    expect(Math.round(ov0.x + ov0.w)).toBe(Math.round(side.position.x + side.size!.width));
+    expect(Math.round(ov0.y)).toBe(Math.round(side.position.y));
+    expect(api.container.querySelector('.axdb-ph')).toBeNull();
+    // a hand is never still: more moves on the same spot keep the same promise
     tool.onPointerMove?.(tev('move', to.x + 1, to.y + 1), { node: nps } as never);
     tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
-    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
-    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    expect(overlayRect(api)).toEqual(ov0);
     tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps } as never);
     await settle();
     expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
@@ -2237,6 +2249,25 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
     expect(cellOf(handle, 'mix')).toEqual({ x: 6, y: 1, w: 3, h: 3 });
     expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+    // The CORNER just under the strip at the far right (the user's 3440-px drag): left/right bands take precedence over top/bottom, so this means RIGHT, not above
+    {
+      const sideC = model.getGroup('side')!;
+      const npsC = model.getNode('nps')!;
+      const fromC = { x: npsC.position.x + 20, y: npsC.position.y + 20 };
+      const corner = { x: sideC.position.x + sideC.size!.width - 12, y: sideC.position.y + 30 + (sideC.size!.height - 30) * 0.02 };
+      tool.onPointerDown?.(tev('down', fromC.x, fromC.y), { node: npsC } as never);
+      tool.onPointerMove?.(tev('move', fromC.x + 30, fromC.y + 5), { node: npsC } as never);
+      tool.onPointerMove?.(tev('move', corner.x, corner.y), { node: npsC } as never);
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 }); // still nothing moves while held
+      tool.onPointerUp?.(tev('up', corner.x, corner.y), { node: npsC } as never);
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 }); // after the panel, not above it
+      expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+      await cm(api).undo();
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    }
     // THROUGH the bottom band INTO the middle: the beside the band started must let go, and the page takes the widget (lab L73)
     {
       const sideB = model.getGroup('side')!;

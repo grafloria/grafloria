@@ -493,7 +493,11 @@ render(SPEC2, host);</pre>
       and the widget takes the edge, and the shift is undone if the pointer leaves the vacated cell. The sections in the
       container's way give way to the shift as they do to a moved group (0.4.46): on the demo the Operations section spans
       the row under the panel, and a locked tile refused the shift outright — the spec's fixture had left it out, the live
-      walk on the demo found it.</p>
+      walk on the demo found it. And, as with tab drops since 0.4.42, a beside hover moves nothing (0.4.47): an overlay
+      marks the cell the widget will take and the shift or push happens on release — on a 3440-px desktop the user's
+      panel jumped down as a widget crossed its top band on the way to its right edge. The left and right bands take
+      precedence in the corners, the way VS Code's do, so a one-row widget carried along the top of a tall panel to its
+      far right means "after it", not "above it".</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
