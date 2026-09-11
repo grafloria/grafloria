@@ -2184,6 +2184,45 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     expect(opsAfter.position.y).toBeGreaterThanOrEqual(0);
   });
 
+  it('a widget as WIDE as the container, carried along its top band into the corner, still turns "above" into "after" (lab L95)', async () => {
+    // The vacated cell of a top-band push is the container's whole original frame when the widget is its size, and
+    // "still over the cell the widget took" kept "above" at the corner — a different band of the original frame
+    // must win over the vacated cell.
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          { id: 'chart', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 },
+          { id: 'panel', title: 'Panel', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('q1', 'Filters', 'c1'), PAGE('q2', 'Alerts', 'c2')] },
+        ],
+      })
+    );
+    const tool = toolOf('main');
+    const panel = model.getGroup('panel')!;
+    const chart = model.getNode('chart')!;
+    const from = { x: chart.position.x + 40, y: chart.position.y + 12 };
+    const topMid = { x: panel.position.x + panel.size!.width * 0.5, y: panel.position.y + 30 + (panel.size!.height - 30) * 0.1 };
+    const corner = { x: panel.position.x + panel.size!.width - 14, y: topMid.y };
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: chart } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: chart } as never);
+    tool.onPointerMove?.(tev('move', topMid.x, topMid.y), { node: chart } as never);
+    expect(cellOf(handle, 'panel')).toEqual({ x: 6, y: 4, w: 6, h: 4 }); // above: the panel pushed down under the chart
+    expect(cellOf(handle, 'chart')).toEqual({ x: 6, y: 0, w: 6, h: 4 });
+    tool.onPointerMove?.(tev('move', corner.x, corner.y), { node: chart } as never);
+    expect(cellOf(handle, 'panel')).toEqual({ x: 0, y: 0, w: 6, h: 4 }); // right, at the edge: the two swap sides
+    expect(cellOf(handle, 'chart')).toEqual({ x: 6, y: 0, w: 6, h: 4 });
+    tool.onPointerUp?.(tev('up', corner.x, corner.y), { node: chart } as never);
+    await settle();
+    expect(cellOf(handle, 'panel')).toEqual({ x: 0, y: 0, w: 6, h: 4 });
+    expect(cellOf(handle, 'chart')).toEqual({ x: 6, y: 0, w: 6, h: 4 });
+    expect(api.container.querySelectorAll('.axdb-tabs').length).toBe(1);
+  });
+
   it('a widget dragged onto a tab container\'s OUTER band lands BESIDE it — and at the board\'s edge, where there is no room, the container shifts over to make it (the side panel on the right, a widget after it)', async () => {
     // The fluid demo: the side panel sits at the right edge, so "after it"
     // was nowhere — a widget dragged there went into its page, or slid to
@@ -2257,6 +2296,33 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
       tool.onPointerUp?.(tev('up', corner.x, corner.y), { node: npsC } as never);
       await settle();
       expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 }); // after the panel, not above it
+      expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+      await cm(api).undo();
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    }
+    // ALONG THE TOP BAND TO THE CORNER (the user's 3440-px gesture on 0.4.48): the middle of the top band pushes the panel DOWN
+    // (above), and carrying on into the right band must turn that into RIGHT — the panel back up and shifted left, the
+    // widget after it. 0.4.48 left the panel's frame stale after the restore, so the corner read "outside" and the widget
+    // ended BELOW the panel.
+    {
+      const sideT = model.getGroup('side')!;
+      const npsT = model.getNode('nps')!;
+      const fromT = { x: npsT.position.x + 20, y: npsT.position.y + 20 };
+      const topMid = { x: sideT.position.x + sideT.size!.width * 0.5, y: sideT.position.y + 30 + (sideT.size!.height - 30) * 0.02 };
+      const cornerT = { x: sideT.position.x + sideT.size!.width - 12, y: topMid.y };
+      tool.onPointerDown?.(tev('down', fromT.x, fromT.y), { node: npsT } as never);
+      tool.onPointerMove?.(tev('move', fromT.x + 30, fromT.y + 5), { node: npsT } as never);
+      tool.onPointerMove?.(tev('move', topMid.x, topMid.y), { node: npsT } as never);
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 1, w: 3, h: 8 }); // above: the panel pushed down under the widget
+      expect(cellOf(handle, 'nps')).toEqual({ x: 9, y: 0, w: 2, h: 1 });
+      tool.onPointerMove?.(tev('move', cornerT.x, cornerT.y), { node: npsT } as never);
+      expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 }); // right: back up, shifted left — in the SAME move
+      expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
+      tool.onPointerUp?.(tev('up', cornerT.x, cornerT.y), { node: npsT } as never);
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
       expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
       await cm(api).undo();
       await settle();

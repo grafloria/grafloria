@@ -498,7 +498,10 @@ render(SPEC2, host);</pre>
       widget first, and its tab behaviours sit on top of that default, not instead of it (0.4.48). What his 3440-px frame
       had actually caught was the corner: the panel was pushed down as a widget crossed its top band on the way to its
       right edge. The left and right bands now take precedence in the corners, the way VS Code's do, so a one-row widget
-      carried along the top of a tall panel to its far right means "after it", not "above it".</p>
+      carried along the top of a tall panel to its far right means "after it", not "above it". 0.4.49 closed the seam between those two bands: leaving the top band
+      restored the panel in the engine but not on the page, so the corner read as outside and the widget landed under
+      the panel; the restore now paints, the zone is read again in the same move, and a tile the kit moves on purpose
+      no longer teleports back to where a widget had pushed it.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

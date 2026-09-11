@@ -2490,6 +2490,41 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `rest panel ${JSON.stringify(p0)} chart ${JSON.stringify(l0)} · held on the right band: panel ${JSON.stringify(held?.panel)} chart ${JSON.stringify(held?.chart)} ph ${JSON.stringify(held?.ph)} overlay ${held?.overlay} slide ${JSON.stringify(held?.slide)} · released: panel ${JSON.stringify(p1)} chart ${JSON.stringify(l1)} strips ${s1.join(' ')} overlaps ${sane.overlaps} · undone: panel ${JSON.stringify(p2)} chart ${JSON.stringify(l2)}`);
 }
 
+{
+  begin('L95-a-widget-carried-along-a-tab-containers-TOP-band-to-its-corner-lands-AFTER-it-not-under-it');
+  await scrollTo('tabs');
+  const cell = (id) => page.evaluate((id) => window.__lab.tabs.handle.widget(id)?.cell ?? null, id);
+  const p0 = await cell('panel'); const l0 = await cell('t-left');
+  const ps = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
+  const g = await groupRect('tabs', 'panel');
+  const left = await rect('tabs', 't-left');
+  // the user's 3440-px gesture on 0.4.48: the chart enters the panel's TOP band in its middle (the panel is pushed down under it) and
+  // carries on along that band into the RIGHT corner — which must turn into "after it": the panel back up and shifted left, the chart at the edge
+  // a tenth of the body under the strip: the strip's DOM box is taller than its painted 30 px (the 8-px page inset rides in it), and a hand
+  // 9 px under the paint is still "on the strip" to the client-space hit test — the lab's first cut sat there and saw a tab slot, not the band
+  const yTop = ps.bottom + (g.h - 30) * 0.1;
+  await page.mouse.move(left.x + 40, left.y + 12); await page.mouse.down();
+  await page.mouse.move(left.x + 40, yTop, { steps: 6 }); // down first, so the path never crosses the strip
+  await page.mouse.move(ps.x + ps.width * 0.5, yTop, { steps: 14 }); await page.waitForTimeout(350);
+  const mid = { panel: await cell('panel'), chart: await cell('t-left') };
+  await shot('tabs', 'chart-held-on-the-panels-top-band-middle-the-panel-pushed-down');
+  await page.mouse.move(ps.x + ps.width - 14, yTop, { steps: 10 }); await page.waitForTimeout(400);
+  const corner = { panel: await cell('panel'), chart: await cell('t-left'), ph: await page.evaluate(() => { const p = document.querySelector('#cv-tabs .axdb-ph'); return p ? { on: getComputedStyle(p).display !== 'none', refused: p.classList.contains('axdb-ph--no') } : null; }) };
+  await shot('tabs', 'chart-carried-into-the-top-right-corner-the-panel-back-up-and-shifted-left');
+  await page.mouse.up(); await page.waitForTimeout(500);
+  const p1 = await cell('panel'); const l1 = await cell('t-left'); const sane = await sanity('tabs');
+  await shot('tabs', 'released-chart-after-the-panel');
+  await undoAll('tabs', 1);
+  const p2 = await cell('panel'); const l2 = await cell('t-left');
+  const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+  verdict(!!p0 && p0.x === 6 && p0.y === 0 && !!l0 && l0.x === 0
+    && !!mid.panel && mid.panel.x === 6 && mid.panel.y > 0 && !!mid.chart && mid.chart.y === 0 // the top band: the panel pushed down under the chart
+    && !!corner.panel && corner.panel.x === 0 && corner.panel.y === 0 && !!corner.chart && corner.chart.x === 6 && corner.chart.y === 0 && corner.ph?.on === true && corner.ph?.refused === false // the corner: right, not above, not under
+    && !!p1 && p1.x === 0 && p1.y === 0 && !!l1 && l1.x === 6 && l1.y === 0 && sane.overlaps === 0
+    && same(p2, p0) && same(l2, l0),
+    `rest panel ${JSON.stringify(p0)} chart ${JSON.stringify(l0)} · top band middle: panel ${JSON.stringify(mid.panel)} chart ${JSON.stringify(mid.chart)} · corner: panel ${JSON.stringify(corner.panel)} chart ${JSON.stringify(corner.chart)} ph ${JSON.stringify(corner.ph)} · released: panel ${JSON.stringify(p1)} chart ${JSON.stringify(l1)} overlaps ${sane.overlaps} · undone: panel ${JSON.stringify(p2)} chart ${JSON.stringify(l2)}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

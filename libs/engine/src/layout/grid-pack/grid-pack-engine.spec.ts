@@ -1041,6 +1041,25 @@ describe('the full gesture snapshot — Escape restores size, membership and the
   });
 });
 
+describe('a tile moved on purpose forgets where it was pushed from (tile first, step 1)', () => {
+  it('a neighbour pushed down by the mover, then moved aside deliberately, does not teleport back when its old cell frees', () => {
+    // the user's 3440-px corner on 0.4.48: the top band pushed the panel down (remembered), the right band
+    // moved it aside, and the next settle teleported it home — under the widget, which was then pushed off it
+    const e = new GridPackEngine([{ id: 'w', x: 0, y: 4, w: 2, h: 1 }, { id: 'p', x: 9, y: 0, w: 3, h: 4 }], { columns: 12, float: true });
+    e.float = false;
+    e.beginGesture();
+    expect(e.moveCheck('w', 9, 0, { gate: false }).changed).toBe(true); // w takes p's row: p pushed down (remembered at 9,0)
+    expect(cells(e, 'p')).toEqual([9, 1]);
+    expect(e.moveCheck('w', 0, 4, { gate: false }).changed).toBe(true); // w leaves: p teleports home (S2 still holds)
+    expect(cells(e, 'p')).toEqual([9, 0]);
+    expect(e.moveCheck('w', 9, 0, { gate: false }).changed).toBe(true); // pushed again
+    expect(e.moveCheck('p', 6, 0, { gate: false }).changed).toBe(true); // moved ASIDE on purpose
+    expect(e.moveCheck('w', 0, 4, { gate: false }).changed).toBe(true); // w leaves: (9,0) frees…
+    expect(cells(e, 'p')).toEqual([6, 0]); // …and p STAYS where it was put
+    e.endGesture();
+  });
+});
+
 describe('placeBeside — the one sideways primitive (tile first, step 1)', () => {
   // a 12-column board: a panel at the right edge (9..12, 8 rows), a widget to bring beside it
   // constructed the way a binder constructs: float ON so the authored gap under nps survives, gravity back on after

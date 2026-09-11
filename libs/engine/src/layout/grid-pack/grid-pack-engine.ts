@@ -433,6 +433,17 @@ export class GridPackEngine {
    * gate and swaps are skipped, push-down still applies, E4b still refuses.
    */
   moveCheck(id: string, x: number, y: number, options: MoveCheckOptions = {}): GridPackResult {
+    const r = this.moveCheckInner(id, x, y, options);
+    // A tile moved ON PURPOSE has a new home: the cell it was pushed from
+    // earlier in the gesture must not pull it back the moment that cell
+    // frees (a container pushed down by a widget's top band, then shifted
+    // aside by its right band, teleported back under the widget — tile
+    // first, step 1).
+    if (r.changed) this.memory.delete(id);
+    return r;
+  }
+
+  private moveCheckInner(id: string, x: number, y: number, options: MoveCheckOptions): GridPackResult {
     const n = this.getItem(id);
     if (!n) return { changed: false, refusedBy: 'missing' };
     if (n.locked) return { changed: false, refusedBy: 'locked' };
@@ -650,6 +661,7 @@ export class GridPackEngine {
     putBack();
     n.x = target.x;
     n.y = target.y;
+    this.memory.delete(n.id);
     this.pushDown(n);
     this.settle(n);
     const r = this.acceptWithinBound(pre);

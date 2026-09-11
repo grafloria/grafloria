@@ -140105,7 +140105,12 @@ var GridPackEngine = class _GridPackEngine {
     this.items = [];
     /** Per-gesture displaced-tile memory (S2/E2). Item id → gesture-start cell. */
     this.memory = /* @__PURE__ */ new Map();
-    /** Gesture-start snapshot of EVERY item, for cancel/Escape restore. */
+    /**
+     * Gesture-start snapshot of EVERY item — cell AND size, in board order —
+     * plus the row bound, so Escape restores a resize, a removal, an addition
+     * and a bound change as well as the cells (tile first, step 1; 0.3.7 kept
+     * x/y only and the binder rebuilt a whole engine to get the rest back).
+     */
     this.snapshot = null;
     /**
      * S4 — swap hysteresis. An accepted swap LOCKS the pair for the rest of the
@@ -140174,7 +140179,7 @@ var GridPackEngine = class _GridPackEngine {
   acceptWithinBound(pre) {
     if (this.bound !== void 0 && this.rows() > this.bound) {
       this.restoreCells(pre);
-      return { changed: false };
+      return { changed: false, refusedBy: "bound" };
     }
     this.propagateToCaches();
     return { changed: true };
@@ -140262,7 +140267,7 @@ var GridPackEngine = class _GridPackEngine {
   beginGesture() {
     this.memory.clear();
     this.swapLock = null;
-    this.snapshot = new Map(this.items.map((i) => [i.id, { x: i.x, y: i.y }]));
+    this.snapshot = { items: this.items.map((i, index) => ({ item: { ...i }, index })), maxRows: this.maxRows };
   }
   /** End a gesture: memory does NOT outlive it (E2, and the S4 swap lock). */
   endGesture() {
@@ -140270,18 +140275,43 @@ var GridPackEngine = class _GridPackEngine {
     this.swapLock = null;
     this.snapshot = null;
   }
-  /** Escape: restore every tile to its gesture-start cell. */
+  /**
+   * Escape: restore every tile to its gesture-start cell AND size, bring back
+   * the tiles removed during the gesture, drop the ones added, and restore the
+   * bound. Surviving tiles keep their object identity (a binder holds them).
+   */
   cancelGesture() {
     if (this.snapshot) {
-      for (const it of this.items) {
-        const s = this.snapshot.get(it.id);
-        if (s) {
-          it.x = s.x;
-          it.y = s.y;
+      const live = new Map(this.items.map((i) => [i.id, i]));
+      const restored = [];
+      for (const { item } of this.snapshot.items) {
+        const it = live.get(item.id);
+        if (it) {
+          it.x = item.x;
+          it.y = item.y;
+          it.w = item.w;
+          it.h = item.h;
+          restored.push(it);
+        } else {
+          restored.push({ ...item });
         }
       }
+      this.items = restored;
+      this.maxRows = this.snapshot.maxRows;
+      this.propagateToCaches();
     }
     this.endGesture();
+  }
+  /**
+   * Change the row bound — a container asking for rows on behalf of a child
+   * (tile first, step 1). Refused below the current content. Inside a gesture
+   * the change rides in the snapshot, so Escape gives the rows back.
+   */
+  setBound(rows) {
+    const r = Math.max(1, Math.round(rows));
+    if (r < this.rows()) return false;
+    this.maxRows = r;
+    return true;
   }
   // -- the core: move --------------------------------------------------------
   /**
@@ -140293,22 +140323,28 @@ var GridPackEngine = class _GridPackEngine {
    * gate and swaps are skipped, push-down still applies, E4b still refuses.
    */
   moveCheck(id, x, y, options = {}) {
+    const r = this.moveCheckInner(id, x, y, options);
+    if (r.changed) this.memory.delete(id);
+    return r;
+  }
+  moveCheckInner(id, x, y, options) {
     const n3 = this.getItem(id);
-    if (!n3 || n3.locked) return { changed: false };
+    if (!n3) return { changed: false, refusedBy: "missing" };
+    if (n3.locked) return { changed: false, refusedBy: "locked" };
     x = Math.max(0, Math.min(this._columns - n3.w, Math.round(x)));
     y = Math.max(0, Math.round(y));
-    if (n3.x === x && n3.y === y) return { changed: false };
+    if (n3.x === x && n3.y === y) return { changed: false, refusedBy: "noop" };
     const probe = { ...n3, x, y };
-    if (this.collideLocked(probe, n3)) return { changed: false };
+    if (this.collideLocked(probe, n3)) return { changed: false, refusedBy: "locked" };
     const pre = this.cellsSnapshot();
     const c = options.gate === false ? void 0 : this.collide(probe, n3);
     if (c) {
       const sameSize = !this.float && c.w === n3.w && c.h === n3.h;
       const rowSwap = !this.float && !sameSize && c.h === n3.h && c.y === n3.y;
       const colSwap = !this.float && !sameSize && c.w === n3.w && c.x === n3.x;
-      if (_GridPackEngine.penetration(n3, probe, c) <= 0.5) return { changed: false };
+      if (_GridPackEngine.penetration(n3, probe, c) <= 0.5) return { changed: false, refusedBy: "gate" };
       if ((sameSize || rowSwap || colSwap) && this.swapLock && (this.swapLock.a === n3.id && this.swapLock.b === c.id || this.swapLock.a === c.id && this.swapLock.b === n3.id) && !_GridPackEngine.deliberateReturn(probe, n3, c)) {
-        return { changed: false };
+        return { changed: false, refusedBy: "gate" };
       }
       if (sameSize || rowSwap || colSwap) this.remember(c);
       if (sameSize) {
@@ -140365,19 +140401,119 @@ var GridPackEngine = class _GridPackEngine {
    */
   resizeCheck(id, w, h) {
     const n3 = this.getItem(id);
-    if (!n3) return { changed: false };
+    if (!n3) return { changed: false, refusedBy: "missing" };
     w = _GridPackEngine.clampW(n3, Math.max(1, Math.min(this._columns - n3.x, Math.round(w))));
     h = _GridPackEngine.clampH(n3, Math.max(1, Math.round(h)));
     if (this.bound !== void 0) h = Math.min(h, Math.max(1, this.bound - n3.y));
     while (w > n3.w && this.collideLocked({ ...n3, w }, n3)) w--;
     while (h > n3.h && this.collideLocked({ ...n3, h }, n3)) h--;
-    if (w === n3.w && h === n3.h) return { changed: false };
+    if (w === n3.w && h === n3.h) return { changed: false, refusedBy: "noop" };
     const pre = this.cellsSnapshot();
     n3.w = w;
     n3.h = h;
     this.pushDown(n3);
     this.settle(n3);
     return this.acceptWithinBound(pre);
+  }
+  // -- the core: beside ------------------------------------------------------
+  /**
+   * Put `id` NEXT TO `neighbourId` on `side`, at `row` (the pointer's row,
+   * clamped to the neighbour's rows; the neighbour's own row by default) —
+   * the one sideways primitive the tile-first drag model needs (step 1).
+   *
+   * With room on that side the mover simply takes the cell. At the board's
+   * edge the neighbour SHIFTS over by the mover's span and the mover takes the
+   * edge — the fluid demo's side panel sits at the right edge and "after it"
+   * was nowhere. With no room even shifted (a full-width neighbour), the mover
+   * takes the cell and the neighbour goes DOWN under it, the way any tile
+   * gives way. Top always pushes; bottom always places.
+   *
+   * The mover steps off the board while the neighbour shifts: its own cell
+   * must not be what refuses the shift (a chart as wide as the panel, lab
+   * L94). Locked tiles refuse as everywhere; a bound rollback names itself.
+   */
+  placeBeside(id, neighbourId, side, row) {
+    const n3 = this.getItem(id);
+    const nb = this.getItem(neighbourId);
+    if (!n3 || !nb || n3 === nb) return { changed: false, refusedBy: "missing" };
+    if (n3.locked || nb.locked) return { changed: false, refusedBy: "locked" };
+    const cols = this._columns;
+    const clampX = (x) => Math.max(0, Math.min(cols - n3.w, x));
+    const rowOf = () => {
+      const lo = nb.y;
+      const hi = Math.max(nb.y, nb.y + nb.h - n3.h);
+      const r2 = row === void 0 ? nb.y : Math.round(row);
+      return Math.max(lo, Math.min(hi, r2));
+    };
+    let how = "placed";
+    let target;
+    let shiftTo = null;
+    switch (side) {
+      case "right": {
+        const y = rowOf();
+        const x = nb.x + nb.w;
+        if (x + n3.w <= cols) target = { x, y };
+        else if (cols - n3.w - nb.w >= 0) {
+          shiftTo = { x: cols - n3.w - nb.w, y: nb.y };
+          target = { x: cols - n3.w, y };
+          how = "shifted";
+        } else {
+          target = { x: clampX(x), y };
+          how = "pushed";
+        }
+        break;
+      }
+      case "left": {
+        const y = rowOf();
+        const x = nb.x - n3.w;
+        if (x >= 0) target = { x, y };
+        else if (n3.w + nb.w <= cols) {
+          shiftTo = { x: n3.w, y: nb.y };
+          target = { x: 0, y };
+          how = "shifted";
+        } else {
+          target = { x: 0, y };
+          how = "pushed";
+        }
+        break;
+      }
+      case "top":
+        target = { x: clampX(nb.x), y: nb.y };
+        how = "pushed";
+        break;
+      default:
+        target = { x: clampX(nb.x), y: nb.y + nb.h };
+    }
+    const pre = this.cellsSnapshot();
+    const idx = this.items.indexOf(n3);
+    this.items.splice(idx, 1);
+    const putBack = () => {
+      this.items.splice(idx, 0, n3);
+    };
+    if (shiftTo) {
+      const probe = { ...nb, x: shiftTo.x, y: shiftTo.y };
+      if (this.collideLocked(probe, nb)) {
+        putBack();
+        return { changed: false, refusedBy: "locked" };
+      }
+      this.remember(nb);
+      nb.x = shiftTo.x;
+      nb.y = shiftTo.y;
+      this.pushDown(nb);
+    }
+    if (this.collideLocked({ ...n3, ...target }, n3)) {
+      putBack();
+      this.restoreCells(pre);
+      return { changed: false, refusedBy: "locked" };
+    }
+    putBack();
+    n3.x = target.x;
+    n3.y = target.y;
+    this.memory.delete(n3.id);
+    this.pushDown(n3);
+    this.settle(n3);
+    const r = this.acceptWithinBound(pre);
+    return r.changed ? { changed: true, how } : r;
   }
   // -- the core: responsive column count -------------------------------------
   /**
@@ -195817,16 +195953,18 @@ function bindDashboardGrid(api, group, options = {}) {
   const endBeside = (restore) => {
     if (!beside) return;
     const it = engine.getItem(beside.id);
-    if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false });
+    let moved = false;
+    if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) moved = engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false }).changed || moved;
     if (restore) {
       for (const [oid, c] of beside.others) {
         const o = engine.getItem(oid);
-        if (o && (o.x !== c.x || o.y !== c.y)) engine.moveCheck(oid, c.x, c.y, { gate: false });
+        if (o && (o.x !== c.x || o.y !== c.y)) moved = engine.moveCheck(oid, c.x, c.y, { gate: false }).changed || moved;
       }
     }
     if (it) it.locked = true;
     relockOthersForSlab();
     beside = null;
+    if (moved) project();
   };
   const applyBeside = (g, z) => {
     const tc = engine.getItem(z.id);
@@ -196449,15 +196587,25 @@ function bindDashboardGrid(api, group, options = {}) {
           syncPlaceholder();
           return;
         }
+        let z2 = null;
         if (beside) {
           const r = cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows());
           const inR = (q) => ev.world.x >= q.x - gap && ev.world.x <= q.x + q.width + gap && ev.world.y >= q.y - gap && ev.world.y <= q.y + q.height + gap;
-          const over = bandOf(beside.frame0, ev.world.x, ev.world.y, BESIDE_BAND + BESIDE_STAY) === beside.side || inR(r);
-          if (!over) endBeside(true);
-          else {
+          const stay = bandOf(beside.frame0, ev.world.x, ev.world.y, BESIDE_BAND + BESIDE_STAY);
+          const other = bandOf(beside.frame0, ev.world.x, ev.world.y);
+          const over = stay === beside.side || !(other !== null && other !== beside.side) && inR(r);
+          if (!over) {
+            endBeside(true);
+            z2 = besideZoneAt(ev.world.x, ev.world.y);
+          } else {
             syncPlaceholder();
             return;
           }
+        }
+        if (z2) {
+          applyBeside(g, z2);
+          syncPlaceholder();
+          return;
         }
       }
       const strictSelf = worldInsideBoard(ev.world.x, ev.world.y);
