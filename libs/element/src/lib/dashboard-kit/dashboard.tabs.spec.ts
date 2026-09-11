@@ -1965,10 +1965,6 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
   const cm = (api: ReturnType<typeof makeApi>) => api.getEngine().commandManager;
   const stripOf = (api: { container: HTMLElement }, id: string) =>
     Array.from(api.container.querySelectorAll(`.axdb-tabs[data-tabs-id="${id}"] .axdb-tab`)).map((b) => b.textContent);
-  const overlayRect = (api: { container: HTMLElement }) => {
-    const el = api.container.querySelector('.axdb-join') as HTMLElement | null;
-    return el ? { x: parseFloat(el.style.left), y: parseFloat(el.style.top), w: parseFloat(el.style.width), h: parseFloat(el.style.height) } : null;
-  };
   const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
   const BOARD3 = () =>
     dashboard({
@@ -2220,21 +2216,19 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
     tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
     tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
-    // held: NOTHING moves (0.4.47) — the panel stays, an overlay marks the cell the widget will take at the edge, the grid placeholder is gone with the ghost
-    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
-    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
-    const ov0 = overlayRect(api)!;
-    expect(ov0).not.toBeNull();
-    // column 10, where the widget lands once the panel has shifted: the widget's own width, flush with the panel's (the board's) right edge
-    expect(Math.round(ov0.w)).toBe(Math.round(nps.size!.width));
-    expect(Math.round(ov0.x + ov0.w)).toBe(Math.round(side.position.x + side.size!.width));
-    expect(Math.round(ov0.y)).toBe(Math.round(side.position.y));
-    expect(api.container.querySelector('.axdb-ph')).toBeNull();
-    // a hand is never still: more moves on the same spot keep the same promise
+    // held: the panel gives way LIVE, the way any widget gives way to a dragged widget (0.4.48 — 0.4.47 had frozen it behind an overlay and the user missed the slide): shifted while held, the ghost beside it at the edge, the grid placeholder on and not refused, no overlay
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'ops')!.y).toBeGreaterThanOrEqual(8); // the section gave way with it
+    const ph0 = api.container.querySelector('.axdb-ph') as HTMLElement | null;
+    expect(ph0).not.toBeNull();
+    expect(ph0!.classList.contains('axdb-ph--no')).toBe(false);
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+    // a hand is never still: more moves on the same spot — the pointer is over the panel's OLD area, not over the one-row cell the widget took — keep the shift
     tool.onPointerMove?.(tev('move', to.x + 1, to.y + 1), { node: nps } as never);
     tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
-    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
-    expect(overlayRect(api)).toEqual(ov0);
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
     tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps } as never);
     await settle();
     expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
@@ -2258,7 +2252,8 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
       tool.onPointerDown?.(tev('down', fromC.x, fromC.y), { node: npsC } as never);
       tool.onPointerMove?.(tev('move', fromC.x + 30, fromC.y + 5), { node: npsC } as never);
       tool.onPointerMove?.(tev('move', corner.x, corner.y), { node: npsC } as never);
-      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 }); // still nothing moves while held
+      expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 }); // shifted LEFT while held — not pushed down
+      expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
       tool.onPointerUp?.(tev('up', corner.x, corner.y), { node: npsC } as never);
       await settle();
       expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 }); // after the panel, not above it
