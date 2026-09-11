@@ -358,6 +358,17 @@ board('pal', 'a PALETTE chip dragged into a tab page lands there — the drop na
   chip.addEventListener('pointerdown', press(false));
   chip2.addEventListener('pointerdown', press(true));
 }
+board('nest', 'a GROUP is dragged like a widget (tile first, 4b-ii): a tab container by its strip into a roomy section, over a full one it pushes', { sizing: 'grow', rowHeight: 50, widgets: [
+  { id: 'nt-sec', title: 'Roomy section', caption: true, span: 6, rows: 6, x: 0, y: 0, columns: 6, maxRows: 6, widgets: [
+    { id: 'nt-s1', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'S1', value: '1' } } ] },
+  { id: 'nt-tabs', title: 'Tabs', span: 6, rows: 3, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'nt-p1', title: 'Filters', columns: 6, widgets: [{ id: 'nt-k1', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'K1', value: '2' } }] },
+    { id: 'nt-p2', title: 'Alerts', columns: 6, widgets: [{ id: 'nt-k2', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'K2', value: '3' } }] },
+  ] },
+  { id: 'nt-full', title: 'Full section', caption: true, span: 6, rows: 1, x: 6, y: 3, columns: 6, sizing: 'fit', widgets: [
+    { id: 'nt-f1', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'F1', value: '4' } } ] },
+  { id: 'nt-b', kind: 'kpi', span: 6, rows: 2, x: 6, y: 4, data: { label: 'B', value: '5' } },
+] }, { height: 420 });
 board('cap-nested', 'captions two levels down · setCaption live', { sizing: 'grow', rowHeight: 34, widgets: [
   { id: 'outer', title: 'Outer section', span: 12, rows: 10, x: 0, y: 0, columns: 12, caption: true, widgets: [
     { id: 'inner', title: 'Inner section', span: 6, rows: 8, x: 0, y: 0, columns: 4, caption: { text: 'Inner', description: 'two levels down' }, widgets: [{ id: 'k', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'K', value: '1' } }] },

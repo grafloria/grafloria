@@ -1130,6 +1130,8 @@ export interface DashboardHandleContext {
   tearOutPlan?: (containerId: string, pageId: string) => TearOutPlan | null;
   /** The commands that close `boardId` when it is a tab PAGE about to lose its last member `leaving` — and its container when that was its last page. */
   closePageIfEmptied?: (boardId: string, leaving: string) => Command[];
+  /** The bookkeeping for a CONTAINER a gesture moved from one board to another (tile first, 4b-ii): its spec entry, its registry. */
+  moveContainerCommands?: (containerId: string, fromBoardId: string, toBoardId: string) => Command[];
   /** A widget dragged over a strip: hit-test, marks, and the drop that makes it a new tab. Handed to every binder. */
   tabDrop?: TabDropHooks;
   /** Set by finalize: the user's `onTabChange`, so the handle can fire it. */
@@ -1391,6 +1393,50 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
    * looked like. Undo reopens the page (its grid re-binds on the history event)
    * and then the widget comes back into it.
    */
+  /**
+   * A CONTAINER CROSSES BOARDS by hand (tile first, 4b-ii): a section carried
+   * into a page, a tab container into a section. The membership commands
+   * move it; this moves what the kit keeps beside the membership — the
+   * authored entry from the old board's list to the new one's, and which
+   * board the container is filed under — as a register/unregister pair, the
+   * way the tear-out plan files a group it creates. `toJSON()` reads the
+   * membership, so the document is right either way; the registry is what
+   * `addWidget` and the page-closing rule read.
+   */
+  ctx.moveContainerCommands = (containerId: string, fromBoardId: string, toBoardId: string): Command[] => {
+    if (!ctx.boardGroups.has(containerId)) return [];
+    const spec = specById.get(containerId);
+    const fromArr = ctx.boardWidgets.get(fromBoardId);
+    const toArr = ctx.boardWidgets.get(toBoardId);
+    const prevFiled = viewOfWidget.get(containerId);
+    let slot = -1;
+    const moved = {
+      register: (): void => {
+        viewOfWidget.set(containerId, toBoardId);
+        if (spec && fromArr) {
+          const i = fromArr.findIndex((w) => w.id === containerId);
+          if (i >= 0) {
+            slot = i;
+            fromArr.splice(i, 1);
+          }
+        }
+        if (spec && toArr && !toArr.some((w) => w.id === containerId)) toArr.push(spec);
+      },
+      unregister: (): void => {
+        if (prevFiled !== undefined) viewOfWidget.set(containerId, prevFiled);
+        else viewOfWidget.delete(containerId);
+        if (spec && toArr) {
+          const i = toArr.findIndex((w) => w.id === containerId);
+          if (i >= 0) toArr.splice(i, 1);
+        }
+        if (spec && fromArr && !fromArr.some((w) => w.id === containerId)) {
+          fromArr.splice(slot < 0 ? fromArr.length : Math.min(slot, fromArr.length), 0, spec);
+        }
+      },
+    };
+    return [new RegisterWidgetCommand(moved, 'register')];
+  };
+
   ctx.closePageIfEmptied = (boardId: string, leaving: string): Command[] => {
     const model = ctx.apiRef?.getModel();
     const pg = ctx.boardGroups.get(boardId);
@@ -2838,6 +2884,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           onSelect: (id: string | undefined) => options.onSelect?.(id, v.id),
           ...captionHooks(v.id),
           onMemberLeaving: (memberId: string) => ctx.closePageIfEmptied?.(v.id, memberId) ?? [],
+          onMemberMoving: (memberId: string, from: string, to: string) => ctx.moveContainerCommands?.(memberId, from, to) ?? [],
           ...(ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {}),
         };
         if (viewLayout === 'split') {
@@ -2884,6 +2931,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           onSelect: (id: string | undefined) => options.onSelect?.(id, ctx.viewOfBoard.get(w.id) ?? ctx.active),
           ...captionHooks(ctx.viewOfBoard.get(w.id) ?? ctx.active),
           onMemberLeaving: (memberId: string) => ctx.closePageIfEmptied?.(w.id, memberId) ?? [],
+          onMemberMoving: (memberId: string, from: string, to: string) => ctx.moveContainerCommands?.(memberId, from, to) ?? [],
           ...(ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {}),
         };
         if ((ctx.layoutOf.get(w.id) ?? w.layout) === 'split') {

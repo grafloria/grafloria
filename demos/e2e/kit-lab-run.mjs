@@ -1677,10 +1677,12 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const dp = await groupRect('deep', 'dp'); const cvd = await page.evaluate(() => document.getElementById('cv-deep').getBoundingClientRect().toJSON());
   const s0 = await cell('dp-out'); const d0 = await cell('dp');
   const refused = () => page.evaluate(() => !!document.querySelector('#cv-deep .axdb-ph--no'));
-  // RIGHT onto the Deep tabs container: a moved section pushes the group in its way (0.4.44 — it used to be refused at every cell, painted red, and the section stayed)
+  // RIGHT onto the Deep tabs container's STRIP: a moved section pushes the group in its way (0.4.44 — it used to be refused at every cell, painted red,
+  // and the section stayed). Since 4b-ii the container's PAGE BODY means "into the page" (L100); its strip and margin are the container's own
+  // tile, in the way — so the hand goes to the strip's middle row
   await startSlide('deep', '.axdb-slab[data-slab-id="dp"]', 'y'); // the container gives way with the glide, never a jump
   await page.mouse.move(band.x + band.width / 2, band.y + band.height / 2); await page.mouse.down(); await page.mouse.move(band.x + band.width / 2 + 8, band.y + band.height / 2 + 4);
-  await page.mouse.move(cvd.x + dp.x + dp.w * 0.5, band.y + band.height / 2, { steps: 14 }); await page.waitForTimeout(400);
+  await page.mouse.move(cvd.x + dp.x + dp.w * 0.5, cvd.y + dp.y + 15, { steps: 14 }); await page.waitForTimeout(400);
   const slide78 = await readSlide();
   const r1 = await refused(); const s1 = await cell('dp-out'); const d1 = await cell('dp');
   await shot('deep', 'section-held-over-the-container-which-gives-way');
@@ -2635,6 +2637,71 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     && !!own && same(landed, held.ghost) && !!a1 && a1.y === held.ghost.y + held.ghost.h && sane.overlaps === 0
     && gone === null && same(a2, a0) && same(b2, b0),
     `held: ghost ${JSON.stringify(held.ghost)} A ${JSON.stringify(held.a)} · drop ${JSON.stringify(drops)} · landed ${own} at ${JSON.stringify(landed)} (placeholder said ${JSON.stringify(held.ghost)}), A ${JSON.stringify(a1)} ${JSON.stringify(sane)} · undo -> ${own} ${gone ? 'STILL THERE' : 'gone'}, A ${JSON.stringify(a2)}, B ${JSON.stringify(b2)} (one step for the add and the push)`);
+}
+
+{
+  begin('L100-a-SECTION-carried-by-its-caption-band-INTO-a-tab-page-lands-there-with-its-child-one-step');
+  await scrollTo('deep');
+  await page.click('#cv-deep .axdb-tabs[data-tabs-id="dp"] .axdb-tab[data-tab-id="dp-grid"]'); await page.waitForTimeout(300); // the Grid page showing
+  const cells = () => page.evaluate(() => { const out = {}; const walk = (ws, p) => { for (const w of ws) { out[w.id] = { own: p, x: w.x, y: w.y, w: w.span, h: w.rows }; if (w.widgets) walk(w.widgets, w.id); } }; walk(window.__lab.deep.handle.toJSON().views[0].widgets, 'BOARD'); return out; });
+  const before = await cells();
+  const band = await page.evaluate(() => document.querySelector('#cv-deep .axdb-slab[data-slab-id="dp-out"] > .axdb-slab-h').getBoundingClientRect().toJSON());
+  const g1 = await rect('deep', 'dp-g1');
+  const pg = await groupRect('deep', 'dp-grid'); const cvd = await page.evaluate(() => document.getElementById('cv-deep').getBoundingClientRect().toJSON());
+  // the section is as wide as the page: its body reaches the tab container before the hand does and pushes it (0.4.44) — the walk reads
+  // the pushed container at REST, so the hand over the page's rest frame still means "into the page", and the container comes home
+  // by the engine's memory when the section is adopted there. G1 fills the page's two rows on the left; the hand goes to the page's free right half
+  const to = { x: cvd.x + pg.x + pg.w * 0.75, y: g1.y + g1.h / 2 };
+  let held = null;
+  await drag(band.x + band.width / 2, band.y + band.height / 2, to.x, to.y, { steps: 18, mid: async () => {
+    held = await page.evaluate(() => ({ onPage: window.__lab.deep.handle.binderOf('dp-grid')?.cellOf('dp-out') ?? null, onRoot: window.__lab.deep.handle.binderOf('main')?.cellOf('dp-out') ?? null, tabs: window.__lab.deep.handle.widget('dp')?.cell ?? null }));
+    await shot('deep', 'section-held-inside-the-grid-page');
+  } });
+  const after = await cells(); const sane = await sanity('deep');
+  await shot('deep', 'section-landed-in-the-page-with-its-child');
+  await undoAll('deep', 1);
+  const undone = await cells();
+  verdict(before['dp-out'].own === 'BOARD' && !!held?.onPage && !held?.onRoot && held.tabs?.x === 6 && held.tabs?.y === 0
+    && after['dp-out']?.own === 'dp-grid' && after['dp-o1']?.own === 'dp-out' && sane.overlaps === 0
+    && undone['dp-out']?.own === 'BOARD' && undone['dp-out'].x === 0 && undone['dp-out'].y === 2 && undone['dp-o1']?.own === 'dp-out',
+    `held: on the page ${JSON.stringify(held?.onPage)}, on the root ${JSON.stringify(held?.onRoot)}, the tab container at ${JSON.stringify(held?.tabs)} (home while the section sits in its page) · landed: dp-out in ${after['dp-out']?.own}, its child in ${after['dp-o1']?.own} ${JSON.stringify(sane)} · undo -> dp-out in ${undone['dp-out']?.own} at ${undone['dp-out']?.x},${undone['dp-out']?.y}, child in ${undone['dp-o1']?.own}`);
+}
+{
+  begin('L101-a-TAB-CONTAINER-carried-by-its-strip-into-a-roomy-SECTION-nests-there-and-over-a-FULL-section-pushes-it');
+  await scrollTo('nest');
+  const cells = () => page.evaluate(() => { const out = {}; const walk = (ws, p) => { for (const w of ws) { out[w.id] = { own: p, x: w.x, y: w.y, w: w.span, h: w.rows }; if (w.widgets) walk(w.widgets, w.id); } }; walk(window.__lab.nest.handle.toJSON().views[0].widgets, 'BOARD'); return out; });
+  const before = await cells();
+  const strip = await page.evaluate(() => document.querySelector('#cv-nest .axdb-tabs[data-tabs-id="nt-tabs"]').getBoundingClientRect().toJSON());
+  const s1 = await rect('nest', 'nt-s1');
+  // INTO the roomy section: its free rows under S1
+  const into = { x: s1.x + s1.w / 2, y: s1.bottom + 90 };
+  let held = null;
+  await drag(strip.right - 30, strip.y + strip.height / 2, into.x, into.y, { steps: 18, mid: async () => {
+    held = await page.evaluate(() => ({ inSec: window.__lab.nest.handle.binderOf('nt-sec')?.cellOf('nt-tabs') ?? null, onRoot: window.__lab.nest.handle.binderOf('main')?.cellOf('nt-tabs') ?? null }));
+    await shot('nest', 'tab-container-held-inside-the-roomy-section');
+  } });
+  const after = await cells(); const sane = await sanity('nest');
+  const strips = await page.evaluate(() => [...document.querySelectorAll('#cv-nest .axdb-tabs[data-tabs-id="nt-tabs"] .axdb-tab')].map((t) => t.textContent));
+  await shot('nest', 'tab-container-nested-in-the-section-its-strip-still-painting');
+  await undoAll('nest', 1);
+  const undone = await cells();
+  const nested = before['nt-tabs'].own === 'BOARD' && !!held?.inSec && !held?.onRoot && after['nt-tabs']?.own === 'nt-sec' && after['nt-k1']?.own === 'nt-p1' && strips.join(',') === 'Filters,Alerts' && sane.overlaps === 0 && undone['nt-tabs']?.own === 'BOARD' && undone['nt-tabs'].x === 6 && undone['nt-tabs'].y === 0;
+  // …and over the FULL section (fit, one row, full): "into" is refused, the container pushes it down on the root (D2 with a group ghost)
+  const strip2 = await page.evaluate(() => document.querySelector('#cv-nest .axdb-tabs[data-tabs-id="nt-tabs"]').getBoundingClientRect().toJSON());
+  const f1 = await rect('nest', 'nt-f1');
+  const full0 = await page.evaluate(() => window.__lab.nest.handle.widget('nt-full')?.cell ?? null);
+  let held2 = null;
+  await drag(strip2.right - 30, strip2.y + strip2.height / 2, f1.x + f1.w / 2, f1.y + f1.h / 2, { steps: 18, mid: async () => {
+    held2 = await page.evaluate(() => ({ tabs: window.__lab.nest.handle.binderOf('main')?.cellOf('nt-tabs') ?? null, full: window.__lab.nest.handle.widget('nt-full')?.cell ?? null, taken: !!window.__lab.nest.api.getModel().getGroup('nt-full')?.members?.has('nt-tabs'), ph: (() => { const p = document.querySelector('#cv-nest .axdb-ph--no'); return !!p && getComputedStyle(p).display !== 'none'; })() }));
+    await shot('nest', 'tab-container-over-the-full-section-pushing-it');
+  } });
+  const after2 = await cells(); const sane2 = await sanity('nest');
+  await shot('nest', 'released-above-the-pushed-full-section');
+  await undoAll('nest', 1);
+  const undone2 = await cells();
+  const pushed = !!full0 && full0.y === 3 && !!held2?.tabs && !held2.taken && (held2.full?.y ?? 0) > held2.tabs.y && held2.ph === false && after2['nt-tabs']?.own === 'BOARD' && after2['nt-full'].y > after2['nt-tabs'].y && sane2.overlaps === 0 && undone2['nt-full'].y === 3;
+  verdict(nested && pushed,
+    `nested: held in the section ${JSON.stringify(held?.inSec)} (root ${JSON.stringify(held?.onRoot)}) · landed nt-tabs in ${after['nt-tabs']?.own}, K1 in ${after['nt-k1']?.own}, strip [${strips.join(',')}] ${JSON.stringify(sane)} · undo -> ${undone['nt-tabs']?.own} at ${undone['nt-tabs']?.x},${undone['nt-tabs']?.y} ‖ pushed: held tabs ${JSON.stringify(held2?.tabs)} full ${JSON.stringify(held2?.full)} taken ${held2?.taken} refusal ${held2?.ph} · released: tabs y ${after2['nt-tabs']?.y}, full y ${after2['nt-full']?.y} ${JSON.stringify(sane2)} · undo -> full y ${undone2['nt-full']?.y}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);

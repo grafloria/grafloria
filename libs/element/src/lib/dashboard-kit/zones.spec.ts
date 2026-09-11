@@ -131,6 +131,25 @@ describe('zones — policy: depth, static and the ghost\'s own subtree make a co
   });
   it('a container in the ghost\'s own subtree is never entered (a container cannot be dropped into its descendant)', () => {
     expect(at(1050, 260, { ghostSubtree: new Set(['sec']) })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) });
+    // THE GHOST IS GLASS (4b-ii): a container carried by hand has its own frame under the pointer at every step. Read as a
+    // hit it answered "plain on the root" before the walk looked at the page beneath — a section could never enter a page.
+    const carried: ZoneContainer = { id: 'carried', layout: 'grid', static: false, frame: { x: 1000, y: 200, width: 150, height: 100 }, stripHeight: 0, band: 0, inner: board('carried', { x: 1000, y: 200, width: 150, height: 100 }, 1, () => []) };
+    const roots = tree();
+    const rootKids = roots[0].children;
+    roots[0].children = () => [carried, ...rootKids()]; // the ghost's frame is listed FIRST, over the page's body
+    expect(resolve({ x: 1050, y: 260, roots, strip: null, prev: null, maxDepth: 5, ghostDepth: 0, ghostSubtree: new Set(['carried']), gap: 10, homeChain: new Set() })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'sec' }) }); // through the page to the section under the pointer
+    // A CONTAINER THE GHOST PUSHED IS READ AT REST (4b-ii): the side panel pushed 300 px down by a group ghost's intent is
+    // still "there" for the hand at its rest frame, its page tested at the same displacement — so the group can enter it.
+    const pushed = tree();
+    const kids = pushed[0].children();
+    const sidePushed: ZoneContainer = { ...kids[0], frame: { ...SIDE_FRAME, y: SIDE_FRAME.y + 300 }, inner: board('p1', { ...PAGE_FRAME, y: PAGE_FRAME.y + 300 }, 1, () => []) };
+    pushed[0].children = () => [sidePushed, kids[1]];
+    const restFrames = new Map([['side', SIDE_FRAME]]);
+    expect(resolve({ x: 1050, y: 150, roots: pushed, strip: null, prev: null, maxDepth: 5, ghostDepth: 1, ghostSubtree: new Set(['carried']), gap: 10, homeChain: new Set(), restFrames })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) });
+    // without the rest frames the hand over that spot is empty root space
+    expect(resolve({ x: 1050, y: 150, roots: pushed, strip: null, prev: null, maxDepth: 5, ghostDepth: 1, ghostSubtree: new Set(['carried']), gap: 10, homeChain: new Set() })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'root' }) });
+    // …and a widget ghost (no subtree) over that same container is a hit on it, as before
+    expect(resolve({ x: 1050, y: 260, roots, strip: null, prev: null, maxDepth: 5, ghostDepth: 0, ghostSubtree: new Set(), gap: 10, homeChain: new Set() })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'carried' }) });
   });
 });
 

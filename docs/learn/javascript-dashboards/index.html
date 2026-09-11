@@ -527,6 +527,12 @@ render(SPEC2, host);</pre>
       section and the drop-in hook names the board it took. And since a chip now pushes tiles the way a dragged widget
       does, a host that adds the widget itself must keep that push: <code>addWidget(spec, boardId, { displaced })</code>
       (0.4.54) takes the drop's displaced commands into the add's own undo step.</p>
+      <p>0.4.56 lets a <em>group</em> travel the way a widget does. Carry a section by its caption band into a tab
+      page and it lands there with its children; carry a tab container by its strip's empty space into a section and
+      you have nested tabs, by hand; drop a group on a container's outer band and it lands beside it; a full section
+      that cannot take a group pushes it back. Two rules keep that honest: the group you are carrying is glass to the
+      drop model (its own frame is under the pointer at every step), and the containers it pushes aside on the way are
+      still "there" for your hand where they were, coming home when the group lands elsewhere. Undo is one step.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
