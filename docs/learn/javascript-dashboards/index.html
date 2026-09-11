@@ -524,7 +524,9 @@ render(SPEC2, host);</pre>
       drag's leg carries two more moves: a widget from a section or a page lands <em>beside</em> a container on another
       board, that container shifting over live, and a section on another board that cannot take the widget is pushed
       there rather than leaving the widget dimmed. The palette chip walks the same zones, so it drops into a page or a
-      section and the drop-in hook names the board it took.</p>
+      section and the drop-in hook names the board it took. And since a chip now pushes tiles the way a dragged widget
+      does, a host that adds the widget itself must keep that push: <code>addWidget(spec, boardId, { displaced })</code>
+      (0.4.54) takes the drop's displaced commands into the add's own undo step.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

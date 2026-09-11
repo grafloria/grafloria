@@ -2607,6 +2607,36 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `held: root cell ${JSON.stringify(held?.root)} wall ${JSON.stringify(held?.wall)} dimmed ${held?.dim} ph ${JSON.stringify(held?.ph)} · released: te-in1 ${after['te-in1'].own}:${after['te-in1'].x},${after['te-in1'].y} ${after['te-in1'].w}x${after['te-in1'].h}, wall y ${after['te-wall'].y} (the push is in the document), overlaps ${sane.overlaps} · undo -> ${undone['te-in1'].own}, wall y ${undone['te-wall'].y}`);
 }
 
+{
+  begin('L99-a-palette-chip-dropped-ONTO-a-widget-lands-where-the-placeholder-showed-when-the-host-adds-under-its-own-id-with-the-displaced-commands');
+  await scrollTo('pal');
+  const cellOf = (id) => page.evaluate((id) => window.__lab.pal.handle.widget(id)?.cell ?? null, id);
+  const chip = await page.evaluate(() => document.getElementById('pal-chip-own').getBoundingClientRect().toJSON());
+  const a = await rect('pal', 'pal-a');
+  const a0 = await cellOf('pal-a'); const b0 = await cellOf('pal-b');
+  // Quantia's path: the chip is dropped ONTO A (pushing it down, like a widget of the board would), the host mints its own
+  // widget id and hands the drop's displaced commands to addWidget. 0.4.53's first cut forgot the push on the re-read:
+  // A floated back up and the new widget auto-positioned into the hole at the left edge (Quantia's interaction e2e).
+  const to = { x: a.x + a.w * 0.6, y: a.y + a.h * 0.5 };
+  await page.mouse.move(chip.x + chip.width / 2, chip.y + chip.height / 2); await page.mouse.down();
+  await page.mouse.move(chip.x + 20, chip.y + 30, { steps: 4 });
+  await page.mouse.move(to.x, to.y, { steps: 16 }); await page.waitForTimeout(300);
+  const held = await page.evaluate(() => ({ ghost: window.__lab.pal.handle.binderOf('main')?.cellOf('pal-new-2') ?? window.__lab.pal.handle.binderOf('main')?.cellOf('pal-new-1') ?? null, a: window.__lab.pal.handle.widget('pal-a')?.cell ?? null }));
+  await shot('pal', 'own-id-chip-held-over-A-A-pushed-down');
+  await page.mouse.up(); await page.waitForTimeout(600);
+  const drops = await page.evaluate(() => (window.__labDrops ?? []).splice(0));
+  const own = await page.evaluate(() => window.__lab.pal.handle.widgetsOf().map((w) => w.id).find((id) => id.startsWith('own-')) ?? null);
+  const landed = own ? await cellOf(own) : null; const a1 = await cellOf('pal-a'); const sane = await sanity('pal');
+  await shot('pal', 'own-id-widget-where-the-placeholder-showed-A-still-under-it');
+  await undoAll('pal', 1);
+  const a2 = await cellOf('pal-a'); const b2 = await cellOf('pal-b'); const gone = own ? await cellOf(own) : null;
+  const same = (p, q) => !!p && !!q && p.x === q.x && p.y === q.y && p.w === q.w && p.h === q.h;
+  verdict(!!held.ghost && held.ghost.y === 0 && !!held.a && held.a.y > 0 && drops.length === 1 && drops[0].displaced > 0 && drops[0].boardId === 'main'
+    && !!own && same(landed, held.ghost) && !!a1 && a1.y === held.ghost.y + held.ghost.h && sane.overlaps === 0
+    && gone === null && same(a2, a0) && same(b2, b0),
+    `held: ghost ${JSON.stringify(held.ghost)} A ${JSON.stringify(held.a)} · drop ${JSON.stringify(drops)} · landed ${own} at ${JSON.stringify(landed)} (placeholder said ${JSON.stringify(held.ghost)}), A ${JSON.stringify(a1)} ${JSON.stringify(sane)} · undo -> ${own} ${gone ? 'STILL THERE' : 'gone'}, A ${JSON.stringify(a2)}, B ${JSON.stringify(b2)} (one step for the add and the push)`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();
