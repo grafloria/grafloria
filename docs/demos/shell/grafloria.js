@@ -3857,13 +3857,13 @@ var require_elk_bundled = __commonJS({
               this.id = id + 1;
               msg.id = id;
               var self2 = this;
-              return new Promise(function(resolve, reject) {
+              return new Promise(function(resolve2, reject) {
                 self2.resolvers[id] = function(err, res) {
                   if (err) {
                     self2.convertGwtStyleError(err);
                     reject(err);
                   } else {
-                    resolve(res);
+                    resolve2(res);
                   }
                 };
                 self2.worker.postMessage(msg);
@@ -109666,7 +109666,7 @@ var LayoutManager = class {
    * Uses requestAnimationFrame for smooth 60fps animation.
    */
   async animateLayout(oldPositions, newPositions, duration) {
-    return new Promise((resolve) => {
+    return new Promise((resolve2) => {
       const startTime = performance.now();
       const easeInOutCubic2 = (t) => {
         return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -109689,7 +109689,7 @@ var LayoutManager = class {
         if (progress < 1) {
           requestAnimationFrame(animate);
         } else {
-          resolve();
+          resolve2();
         }
       };
       requestAnimationFrame(animate);
@@ -115237,7 +115237,7 @@ var MacroCommand = class extends Command {
    * Sleep utility for delays
    */
   sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise((resolve2) => setTimeout(resolve2, ms));
   }
 };
 
@@ -130889,16 +130889,16 @@ var DEFAULT_SLICE_MS = 12;
 var PROGRESS_EMIT_MIN_MS = 16;
 var PROGRESS_EMIT_MIN_DELTA = 0.1;
 function yieldToEventLoop() {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     if (typeof MessageChannel !== "undefined") {
       const channel = new MessageChannel();
       channel.port1.onmessage = () => {
         channel.port1.close();
-        resolve();
+        resolve2();
       };
       channel.port2.postMessage(0);
     } else {
-      setTimeout(resolve, 0);
+      setTimeout(resolve2, 0);
     }
   });
 }
@@ -130924,7 +130924,7 @@ function defaultResolver() {
   };
 }
 function serveLayout(port, deps = {}) {
-  const resolve = deps.resolve ?? defaultResolver();
+  const resolve2 = deps.resolve ?? defaultResolver();
   const now3 = deps.now ?? (() => Date.now());
   const cancelled = /* @__PURE__ */ new Set();
   port.onmessage = (event) => {
@@ -130940,7 +130940,7 @@ function serveLayout(port, deps = {}) {
     try {
       let adapter;
       try {
-        adapter = resolve(request.algorithm);
+        adapter = resolve2(request.algorithm);
       } catch (constructionError) {
         const detail = constructionError instanceof Error ? constructionError.message : String(constructionError);
         port.postMessage({
@@ -131161,8 +131161,8 @@ var LayoutHost = class {
   run(algorithm, graph, options = {}, runOptions = {}) {
     const seq2 = ++this.seq;
     const { signal, onProgress, timeBudgetMs, sliceMs, stopAfterIteration } = runOptions;
-    return new Promise((resolve, reject) => {
-      this.pending.set(seq2, { resolve, reject, onProgress });
+    return new Promise((resolve2, reject) => {
+      this.pending.set(seq2, { resolve: resolve2, reject, onProgress });
       if (signal?.aborted) {
         this.port.postMessage({ seq: 0, kind: "cancel", target: seq2 });
       }
@@ -139358,8 +139358,8 @@ var SolverHost = class {
     return this.request({ seq: ++this.seq, kind: "incremental", changed, obstacles });
   }
   request(req) {
-    return new Promise((resolve) => {
-      this.pending.set(req.seq, (r) => resolve({ routes: new Map(r.routes), stats: r.stats }));
+    return new Promise((resolve2) => {
+      this.pending.set(req.seq, (r) => resolve2({ routes: new Map(r.routes), stats: r.stats }));
       this.port.postMessage(req);
     });
   }
@@ -140041,7 +140041,7 @@ var LayoutService = class {
         });
       }
     });
-    return new Promise((resolve) => {
+    return new Promise((resolve2) => {
       const startTime = performance.now();
       const animate = () => {
         const now3 = performance.now();
@@ -140060,7 +140060,7 @@ var LayoutService = class {
         if (progress < 1) {
           requestAnimationFrame(animate);
         } else {
-          resolve();
+          resolve2();
         }
       };
       requestAnimationFrame(animate);
@@ -162695,8 +162695,8 @@ function createDomRasterBackend() {
       const image = new g.Image();
       image.width = width;
       image.height = height;
-      await new Promise((resolve, reject) => {
-        image.onload = () => resolve();
+      await new Promise((resolve2, reject) => {
+        image.onload = () => resolve2();
         image.onerror = () => reject(new Error("[grafloria/export] the browser failed to decode the exported SVG"));
         image.src = svgToDataUri(svg);
       });
@@ -164622,7 +164622,7 @@ function printDocument(html) {
       new Error('[grafloria/export] printDocument needs a browser. In Node, export a PDF instead \u2014 export("pdf").')
     );
   }
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     const frame = doc.createElement("iframe");
     frame.setAttribute("aria-hidden", "true");
     frame.style.position = "fixed";
@@ -164639,14 +164639,14 @@ function printDocument(html) {
       }
       globalAny.setTimeout(() => {
         frame.remove();
-        resolve();
+        resolve2();
       }, 1e3);
     };
     doc.body.appendChild(frame);
     const frameDoc = frame.contentDocument ?? frame.contentWindow?.document;
     if (!frameDoc) {
       frame.remove();
-      resolve();
+      resolve2();
       return;
     }
     frameDoc.open();
@@ -185987,7 +185987,7 @@ function cancelAnimFrame(id) {
   (window.cancelAnimationFrame || window.webkitCancelAnimationFrame || window.mozCancelAnimationFrame || window.oCancelAnimationFrame || window.msCancelAnimationFrame || clearTimeout)(id);
 }
 function measureAnimationFPS(duration = 1e3) {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     let frames = 0;
     let lastTime = performance.now();
     const endTime = lastTime + duration;
@@ -185999,7 +185999,7 @@ function measureAnimationFPS(duration = 1e3) {
       } else {
         const elapsed = currentTime - lastTime;
         const fps = frames / elapsed * 1e3;
-        resolve(Math.round(fps));
+        resolve2(Math.round(fps));
       }
     }
     requestAnimFrame(countFrame);
@@ -188755,8 +188755,8 @@ function createDiagram(container, options = {}) {
   const settle = async (waits, timeoutMs) => {
     if (!(timeoutMs > 0)) return;
     let timer;
-    const deadline = new Promise((resolve) => {
-      timer = setTimeout(resolve, timeoutMs);
+    const deadline = new Promise((resolve2) => {
+      timer = setTimeout(resolve2, timeoutMs);
     });
     try {
       await Promise.race([Promise.all(waits), deadline]);
@@ -189459,7 +189459,7 @@ var ProgressiveMounter = class {
     options.onFirstPaint?.(stats);
     let fixedMs = 0;
     let marginalMs = 0;
-    return new Promise((resolve) => {
+    return new Promise((resolve2) => {
       let settled = false;
       const finish = (aborted) => {
         if (settled) return;
@@ -189468,7 +189468,7 @@ var ProgressiveMounter = class {
         stats.completeMs = now() - t0;
         this.settle = null;
         this.teardown();
-        resolve(stats);
+        resolve2(stats);
       };
       this.settle = finish;
       const step = () => {
@@ -192423,19 +192423,19 @@ var AnimationLifecycleManager = class {
    * Returns a promise that resolves when the animation ends
    */
   waitFor(animationName, element) {
-    return new Promise((resolve) => {
+    return new Promise((resolve2) => {
       if (element) {
         this.trackElement(element);
         const unsubscribe = this.onElement(element, "end", (data2) => {
           if (data2.animationName === animationName) {
             unsubscribe();
-            resolve(data2);
+            resolve2(data2);
           }
         });
       } else {
         const unsubscribe = this.on("end", animationName, (data2) => {
           unsubscribe();
-          resolve(data2);
+          resolve2(data2);
         });
       }
     });
@@ -192445,10 +192445,10 @@ var AnimationLifecycleManager = class {
    */
   waitForElement(element) {
     this.trackElement(element);
-    return new Promise((resolve) => {
+    return new Promise((resolve2) => {
       const unsubscribe = this.onElement(element, "end", (data2) => {
         unsubscribe();
-        resolve(data2);
+        resolve2(data2);
       });
     });
   }
@@ -192676,7 +192676,7 @@ var AnimationSequencer = class _AnimationSequencer {
    * Sleep for specified milliseconds
    */
   sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise((resolve2) => setTimeout(resolve2, ms));
   }
   /**
    * Pause the sequence
@@ -195148,6 +195148,98 @@ function paintTabStrip(strip, pages, activeId, o, rtl, onPick, onSelectContainer
   }
 }
 
+// libs/element/src/lib/dashboard-kit/zones.ts
+var BESIDE_BAND = 0.2;
+var BESIDE_STAY = 0.05;
+var inRect = (r, x, y, tol = 0) => x >= r.x - tol && x <= r.x + r.width + tol && y >= r.y - tol && y <= r.y + r.height + tol;
+function bandOf(f, stripHeight, x, y, band = BESIDE_BAND) {
+  if (band <= 0 || !inRect(f, x, y)) return null;
+  const bodyY = f.y + stripHeight;
+  const bodyH = Math.max(1, f.height - stripHeight);
+  const rx = (x - f.x) / Math.max(1, f.width);
+  const ry = (y - bodyY) / bodyH;
+  if (ry < 0) return null;
+  if (rx < band) return "left";
+  if (rx > 1 - band) return "right";
+  if (ry < band) return "top";
+  if (ry > 1 - band) return "bottom";
+  return null;
+}
+function boardOf(roots, containerId) {
+  const visit = (b) => {
+    for (const c of b.children()) {
+      if (c.id === containerId) return b;
+      const deeper = c.inner ? visit(c.inner) : null;
+      if (deeper) return deeper;
+    }
+    return null;
+  };
+  for (const r of roots) {
+    const found = visit(r);
+    if (found) return found;
+  }
+  return null;
+}
+function resolve(input) {
+  const { x, y } = input;
+  if (input.strip) return { kind: "strip", containerId: input.strip.containerId, index: input.strip.index };
+  if (input.prev) {
+    const p = input.prev;
+    const stripH = stripHeightOf(input.roots, p.containerId);
+    const stay = bandOf(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY);
+    const other = bandOf(p.frame0, stripH, x, y);
+    const held2 = stay === p.side || !(other !== null && other !== p.side) && inRect(p.vacated, x, y, input.gap);
+    if (held2) {
+      const board = boardOf(input.roots, p.containerId);
+      if (board) return { kind: "beside", board, containerId: p.containerId, side: p.side, kept: true };
+    }
+  }
+  const opaque = (board, c) => c.static || input.ghostSubtree.has(c.id) || board.depth + 1 + input.ghostDepth > input.maxDepth;
+  const held = input.prev;
+  const descend = (board, dx, dy) => {
+    const px2 = x + dx;
+    const py = y + dy;
+    for (const c of board.children()) {
+      const atRest = held && c.id === held.containerId ? held.frame0 : null;
+      const frame = atRest ?? c.frame;
+      const tx = atRest ? x : px2;
+      const ty = atRest ? y : py;
+      if (!inRect(frame, tx, ty)) continue;
+      const side = bandOf(frame, c.stripHeight, tx, ty, c.band);
+      if (side) return { kind: "beside", board, containerId: c.id, side, kept: false };
+      if (opaque(board, c) || !c.inner) return { kind: "plain", board, grace: false };
+      const ndx = atRest ? c.frame.x - atRest.x : dx;
+      const ndy = atRest ? c.frame.y - atRest.y : dy;
+      if (!c.inner.contains(x + ndx, y + ndy)) return { kind: "plain", board, grace: false };
+      return descend(c.inner, ndx, ndy);
+    }
+    return { kind: "plain", board, grace: false };
+  };
+  for (const root of input.roots) if (root.contains(x, y)) return descend(root, 0, 0);
+  let deepest = null;
+  const visit = (b) => {
+    if (b.containsExtended(x, y) && (!deepest || b.depth > deepest.depth)) deepest = b;
+    for (const c of b.children()) if (c.inner) visit(c.inner);
+  };
+  for (const root of input.roots) visit(root);
+  return deepest ? { kind: "plain", board: deepest, grace: true } : { kind: "off" };
+}
+function stripHeightOf(roots, containerId) {
+  const visit = (b) => {
+    for (const c of b.children()) {
+      if (c.id === containerId) return c.stripHeight;
+      const deeper = c.inner ? visit(c.inner) : null;
+      if (deeper !== null) return deeper;
+    }
+    return null;
+  };
+  for (const r of roots) {
+    const h = visit(r);
+    if (h !== null) return h;
+  }
+  return 0;
+}
+
 // libs/element/src/lib/dashboard-kit/grid-binder.ts
 var GRIP_CLASS = "axdb-grip";
 var DRAG_HANDLE_CLASS = "axdb-drag-handle";
@@ -195223,6 +195315,7 @@ var SequenceCommand = class extends Command {
   }
 };
 var BOARD_REGISTRY = /* @__PURE__ */ new WeakMap();
+var EMPTY_SUBTREE = /* @__PURE__ */ new Set();
 function parentPeerOf(container, groupId) {
   for (const p of BOARD_REGISTRY.get(container) ?? []) if (p.group.id !== groupId && p.hasItem(groupId)) return p;
   return null;
@@ -195342,6 +195435,7 @@ function bindDashboardGrid(api, group, options = {}) {
   const fluid = options.fluid === true;
   const overflow = options.overflow ?? "bounded";
   let isStatic = options.static === true;
+  const nesting = options.nesting ?? 2;
   let dragHandle = normalizeDragHandle(options.dragHandle);
   let dragSel = dragHandleSelector(dragHandle);
   api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle === true);
@@ -195925,30 +196019,6 @@ function bindDashboardGrid(api, group, options = {}) {
   const isTabsGroup = (grp) => grp.getMetadata("containerWidget")?.layout === "tabs";
   const TAB_FRAME_GRIP = 3;
   const edgeGripFor = (grp) => isTabsGroup(grp) ? TAB_FRAME_GRIP : EDGE_GRIP;
-  const BESIDE_BAND = 0.2;
-  const BESIDE_STAY = 0.05;
-  const bandOf = (f, wx, wy, band = BESIDE_BAND) => {
-    if (wx < f.x || wx > f.x + f.width || wy < f.y || wy > f.y + f.height) return null;
-    const bodyY = f.y + TAB_STRIP_HEIGHT;
-    const bodyH = Math.max(1, f.height - TAB_STRIP_HEIGHT);
-    const rx = (wx - f.x) / Math.max(1, f.width);
-    const ry = (wy - bodyY) / bodyH;
-    if (ry < 0) return null;
-    if (rx < band) return "left";
-    if (rx > 1 - band) return "right";
-    if (ry < band) return "top";
-    if (ry > 1 - band) return "bottom";
-    return null;
-  };
-  const besideZoneAt = (wx, wy) => {
-    for (const id of group.members ?? []) {
-      const grp = diagram.getGroup(id);
-      if (!grp || diagram.getNode(id) || !isTabsGroup(grp)) continue;
-      const side = bandOf(frameOfGroup(grp), wx, wy);
-      if (side) return { id, side };
-    }
-    return null;
-  };
   let beside = null;
   const endBeside = (restore) => {
     if (!beside) return;
@@ -196552,72 +196622,41 @@ function bindDashboardGrid(api, group, options = {}) {
       ghostStyleFastPath(g, desired);
       g.lastWorld = { x: ev.world.x, y: ev.world.y };
       g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
-      if (options.tabDrop && !isStatic) {
-        const crect = api.container.getBoundingClientRect();
-        const hitStrip = options.tabDrop.stripAt(crect.left + ev.screen.x, crect.top + ev.screen.y);
-        if (hitStrip) {
-          if (g.leg) {
-            g.leg.adopted.abort();
-            g.leg = null;
-          }
-          endBeside(true);
-          if (!g.removedFromBoard) {
-            g.removedFromBoard = true;
-            engine.remove(g.id);
-            project();
-          }
-          hostOf(g.id)?.classList.remove("axdb-out");
-          if (!g.strip || g.strip.containerId !== hitStrip.containerId || g.strip.index !== hitStrip.index) {
-            options.tabDrop.markDrop(hitStrip.containerId, hitStrip.index);
-          }
-          g.strip = hitStrip;
-          syncPlaceholder();
-          api.render();
-          return;
+      const z = resolveTileZone(g, ev);
+      if (z.kind === "strip" && options.tabDrop && !isStatic) {
+        if (g.leg) {
+          g.leg.adopted.abort();
+          g.leg = null;
         }
-        if (g.strip) {
-          options.tabDrop.markDrop(null, null);
-          g.strip = null;
+        endBeside(true);
+        if (!g.removedFromBoard) {
+          g.removedFromBoard = true;
+          engine.remove(g.id);
+          project();
         }
+        hostOf(g.id)?.classList.remove("axdb-out");
+        if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) {
+          options.tabDrop.markDrop(z.containerId, z.index);
+        }
+        g.strip = { containerId: z.containerId, index: z.index };
+        syncPlaceholder();
+        api.render();
+        return;
       }
-      if (!isStatic) {
-        const z = besideZoneAt(ev.world.x, ev.world.y);
-        if (z) {
-          applyBeside(g, z);
-          syncPlaceholder();
-          return;
-        }
-        let z2 = null;
-        if (beside) {
-          const r = cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows());
-          const inR = (q) => ev.world.x >= q.x - gap && ev.world.x <= q.x + q.width + gap && ev.world.y >= q.y - gap && ev.world.y <= q.y + q.height + gap;
-          const stay = bandOf(beside.frame0, ev.world.x, ev.world.y, BESIDE_BAND + BESIDE_STAY);
-          const other = bandOf(beside.frame0, ev.world.x, ev.world.y);
-          const over = stay === beside.side || !(other !== null && other !== beside.side) && inR(r);
-          if (!over) {
-            endBeside(true);
-            z2 = besideZoneAt(ev.world.x, ev.world.y);
-          } else {
-            syncPlaceholder();
-            return;
-          }
-        }
-        if (z2) {
-          applyBeside(g, z2);
-          syncPlaceholder();
-          return;
-        }
+      if (g.strip) {
+        options.tabDrop?.markDrop(null, null);
+        g.strip = null;
       }
-      const strictSelf = worldInsideBoard(ev.world.x, ev.world.y);
-      let peer = peerAt(ev.world.x, ev.world.y);
-      let inside = strictSelf;
-      if (!strictSelf && !peer) {
-        if (worldInsideBoardExtended(ev.world.x, ev.world.y)) inside = true;
-        else peer = peerAt(ev.world.x, ev.world.y, true);
-        if (!inside && !peer && worldInsideBoardGrace(ev.world.x, ev.world.y)) inside = true;
+      if (z.kind === "beside" && !isStatic && z.board.ref === selfPeer) {
+        if (!z.kept) applyBeside(g, { id: z.containerId, side: z.side });
+        syncPlaceholder();
+        return;
       }
-      const selfWins = inside && (!peer || boardArea() <= peer.frameArea());
-      if (peer && !selfWins) {
+      if (beside) endBeside(true);
+      const onSelf = z.kind !== "off" && z.kind !== "strip" && z.board.ref === selfPeer;
+      const inside = onSelf || z.kind === "off" && worldInsideBoardGrace(ev.world.x, ev.world.y);
+      const peer = !onSelf && z.kind !== "off" && z.kind !== "strip" ? z.board.ref : null;
+      if (peer) {
         if (g.leg && g.leg.peer === peer) {
           g.leg.adopted.move(ev.world);
         } else {
@@ -196971,6 +197010,61 @@ function bindDashboardGrid(api, group, options = {}) {
     }
     return set;
   };
+  const zoneRoots = () => {
+    const peers = [...peersOnCanvas()];
+    const byGroup = new Map(peers.map((p) => [p.group.id, p]));
+    const boardRef = (p, depth) => ({
+      id: p.group.id,
+      depth,
+      ref: p,
+      contains: (x, y) => p.containsWorld(x, y),
+      containsExtended: (x, y) => p.containsWorldExtended(x, y),
+      children: () => {
+        const out = [];
+        for (const id of p.group.members ?? []) {
+          const grp = diagram.getGroup(id);
+          if (!grp || diagram.getNode(id)) continue;
+          const cw = grp.getMetadata("containerWidget") ?? {};
+          const layout = cw.layout === "tabs" ? "tabs" : cw.layout === "split" ? "split" : "grid";
+          let innerPeer;
+          if (layout === "tabs") {
+            const pageId = cw.active && byGroup.has(cw.active) ? cw.active : [...grp.members ?? []].find((m) => byGroup.has(m));
+            innerPeer = pageId ? byGroup.get(pageId) : void 0;
+          } else innerPeer = byGroup.get(id);
+          out.push({
+            id,
+            layout,
+            static: innerPeer?.isStatic?.() ?? false,
+            frame: frameOfGroup(grp),
+            stripHeight: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
+            band: layout === "tabs" ? BESIDE_BAND : 0,
+            // a section's whole body is "into" (Quantia's Groups page)
+            inner: innerPeer ? boardRef(innerPeer, depth + 1) : null
+          });
+        }
+        return out;
+      }
+    });
+    return peers.filter((p) => !p.group.parentGroupId).map((p) => boardRef(p, 0));
+  };
+  const resolveTileZone = (g, ev) => {
+    let strip = null;
+    if (options.tabDrop && !isStatic) {
+      const crect = api.container.getBoundingClientRect();
+      strip = options.tabDrop.stripAt(crect.left + ev.screen.x, crect.top + ev.screen.y);
+    }
+    return resolve({
+      x: ev.world.x,
+      y: ev.world.y,
+      roots: zoneRoots(),
+      strip,
+      prev: beside ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) } : null,
+      maxDepth: nesting,
+      ghostDepth: 0,
+      ghostSubtree: EMPTY_SUBTREE,
+      gap
+    });
+  };
   const parentPeer = () => {
     for (const p of peersOnCanvas()) {
       if (p !== selfPeer && p.hasItem(group.id)) return p;
@@ -197200,6 +197294,7 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const selfPeer = {
     group,
+    isStatic: () => isStatic,
     tearOutMember: (pageId, fromGroupId, ev, plan) => beginTearOut(pageId, fromGroupId, ev, plan),
     clearSelection: () => {
       if (selectedId === void 0) return;
@@ -197686,9 +197781,9 @@ function bindDashboardGrid(api, group, options = {}) {
     };
     const targets = plan.joinTargets.map((id) => diagram.getGroup(id)).filter((g) => !!g && g.id !== fromGroupId).sort((a, b) => area(a) - area(b));
     let anchor = null;
-    const inRect = (r, wx, wy) => wx >= r.x && wx <= r.x + r.width && wy >= r.y && wy <= r.y + r.height;
+    const inRect2 = (r, wx, wy) => wx >= r.x && wx <= r.x + r.width && wy >= r.y && wy <= r.y + r.height;
     const targetAt = (wx, wy) => {
-      if (anchor && inRect(anchor.frame, wx, wy)) return anchor.g;
+      if (anchor && inRect2(anchor.frame, wx, wy)) return anchor.g;
       const t = targets.find((x) => worldInsideGroup(x, wx, wy)) ?? null;
       if (t) leg?.leave();
       anchor = t ? { g: t, frame: frameOfGroup(t), stripH: plan.stripHeight(t.id) } : null;
@@ -199524,7 +199619,7 @@ function bindDashboardSplit(api, group, options = {}) {
       joinEl = null;
     };
     const frameOfGroup = (g) => ({ x: g.position.x, y: g.position.y, width: g.size?.width ?? 0, height: g.size?.height ?? 0 });
-    const inRect = (r, x, y) => x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height;
+    const inRect2 = (r, x, y) => x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height;
     const targets = plan.joinTargets.map((id) => diagram.getGroup(id)).filter((g) => !!g && g.id !== fromGroupId && !plan.ownBoards.includes(g.id));
     const clientInsideCanvasGrace = (cx, cy) => {
       const rect = api.container.getBoundingClientRect();
@@ -199533,7 +199628,7 @@ function bindDashboardSplit(api, group, options = {}) {
     };
     const centreThird = (g, w) => {
       const f = frameOfGroup(g);
-      if (!inRect(f, w.x, w.y)) return false;
+      if (!inRect2(f, w.x, w.y)) return false;
       const top = f.y + plan.stripHeight(g.id);
       const h = Math.max(0, f.y + f.height - top);
       return w.x >= f.x + f.width / 3 && w.x <= f.x + 2 * f.width / 3 && w.y >= top + h / 3 && w.y <= top + 2 * h / 3;
@@ -200094,6 +200189,7 @@ function bindDashboardSplit(api, group, options = {}) {
   api.renderNow();
   const selfPeer = {
     group,
+    isStatic: () => isStatic,
     clearSelection: () => {
       if (selectedId === void 0) return;
       selectedId = void 0;
@@ -202077,6 +202173,7 @@ function dashboard(options) {
           rtl: live?.rtl ?? options.rtl ?? false,
           fluid: mode === "fluid",
           static: live?.static ?? options.static ?? false,
+          ...options.nesting !== void 0 ? { nesting: options.nesting } : {},
           dragHandle: live?.dragHandle ?? options.dragHandle ?? false,
           ...options.squeeze !== void 0 ? { squeeze: options.squeeze } : {},
           ...options.binder ?? {},
@@ -202119,6 +202216,7 @@ function dashboard(options) {
           rtl: vb?.getRtl() ?? options.rtl ?? false,
           static: vb?.getStatic() ?? options.static ?? false,
           dragHandle: vb?.getDragHandle() ?? options.dragHandle ?? false,
+          ...options.nesting !== void 0 ? { nesting: options.nesting } : {},
           ...options.squeeze !== void 0 ? { squeeze: options.squeeze } : {},
           onGesture: (e) => {
             if (e.type === "commit") reportChanged();
@@ -203185,9 +203283,9 @@ function applyNotationTheme(node, stencilId, scheme, api) {
   if (!want) return;
   const shape = { ...node.getMetadata?.("shape") ?? {} };
   const theme = api.getTheme?.() ?? null;
-  const resolve = (v, token) => v === "theme" ? (token === "surface" ? theme?.colors?.background?.paper : theme?.colors?.primary) ?? void 0 : v;
-  const fill = resolve(want.fill, "surface");
-  const stroke = resolve(want.stroke, "ink");
+  const resolve2 = (v, token) => v === "theme" ? (token === "surface" ? theme?.colors?.background?.paper : theme?.colors?.primary) ?? void 0 : v;
+  const fill = resolve2(want.fill, "surface");
+  const stroke = resolve2(want.stroke, "ink");
   if (fill !== void 0) shape.fill = fill;
   if (stroke !== void 0) shape.stroke = stroke;
   node.setMetadata("shape", shape);

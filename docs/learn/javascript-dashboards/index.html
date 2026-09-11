@@ -501,7 +501,12 @@ render(SPEC2, host);</pre>
       carried along the top of a tall panel to its far right means "after it", not "above it". 0.4.49 closed the seam between those two bands: leaving the top band
       restored the panel in the engine but not on the page, so the corner read as outside and the widget landed under
       the panel; the restore now paints, the zone is read again in the same move, and a tile the kit moves on purpose
-      no longer teleports back to where a widget had pushed it.</p>
+      no longer teleports back to where a widget had pushed it. From 0.4.50 the question "what does the pointer mean
+      for the dragged widget" is answered once, by a recursive walk over the boards' membership tree: the strip, then the
+      container's bands, then one level down into its active page or its own board, until the deepest board the pointer
+      may enter. A static container is never entered, and a <code>nesting</code> option (default 2) bounds how deep a
+      drop may go. This is the first kit step of the tile-first model: the same walk will carry group drags and the
+      cross-board commit in the steps after it.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
