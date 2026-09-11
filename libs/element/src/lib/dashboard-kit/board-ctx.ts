@@ -13,6 +13,13 @@ import type { DiagramModel, GridPackEngine, GroupModel, NodeModel } from '@grafl
 import type { DashboardGridGeometry, WorldRect } from './grid-mapping';
 import type { DashboardGridApi, DashboardGridOptions } from './grid-binder';
 
+/**
+ * Small overshoots CLAMP onto the board instead of counting as off-board — the
+ * plan prototype cannot leave its board at all (cells clamp at the edges), so a
+ * 60 px slip past the frame must not dim or delete.
+ */
+export const EDGE_GRACE = 60;
+
 export interface BoardCtx {
   readonly api: DashboardGridApi;
   readonly group: GroupModel;
