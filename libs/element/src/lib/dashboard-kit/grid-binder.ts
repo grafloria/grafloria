@@ -82,7 +82,7 @@ import {
 import { ensureDashboardKitStyles } from './styles';
 import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCaptionBand, sectionCaptionReserve, sizeCaptionBand } from './caption';
 import { TAB_STRIP_HEIGHT } from './tabs';
-import { BESIDE_BAND, resolve as resolveZone, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
+import { BESIDE_BAND, resolve as resolveZone, resolveTabZone, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
 
 /** The slice of a DiagramInstance the binder needs (structural, test-friendly). */
 export interface DashboardGridApi {
@@ -4321,7 +4321,7 @@ export function bindDashboardGrid(
     // thirds, and the user, putting a page back into the panel it came from,
     // never found the "into": "close to the edge means beside it, the content
     // area means inside, the header means a new tab" (0.4.42).
-    const EDGE_BAND = 0.2;
+    const EDGE_BAND = BESIDE_BAND; // one band for a tab's split and a widget's beside (zones.ts)
     const visibleFrame = (): { left: number; top: number; right: number; bottom: number } => {
       const rect = api.container.getBoundingClientRect();
       const o = toWorld(rect.left, rect.top);
@@ -4424,39 +4424,55 @@ export function bindDashboardGrid(
     const zoneAt = (cx: number, cy: number, world: { x: number; y: number }): Zone => {
       // A pointer OUTSIDE the visible canvas is off, full stop: a camera that
       // moved can map it to a world point inside a group, and that group
-      // took a join or a split from a release in the page header.
-      if (!clientInsideCanvasGrace(cx, cy)) return { kind: 'off' };
-      const target = targetAt(world.x, world.y);
-      const home = !target && worldInsideGroup(from, world.x, world.y);
-      // A strip is the most precise target there is: anyone's wins outright.
-      if (target) {
-        const idx = plan.stripIndex(target.id, cx, cy);
-        if (idx !== null) return { kind: 'strip', target, index: idx };
-      } else if (home) {
-        const idx = plan.stripIndex(fromGroupId, cx, cy);
-        if (idx !== null) return { kind: 'reorder', index: idx };
-      }
-      // The board's own edges beat whatever sits against them — Dockview's
-      // container edges over its groups — so a group at the top of the board
-      // still leaves the top band to the board.
-      const root = rootAt(cx, cy);
-      if (root) return root;
-      if (target) {
-        const f = anchor && anchor.g === target ? anchor.frame : frameOfGroup(target);
-        const stripH = anchor && anchor.g === target ? anchor.stripH : plan.stripHeight(target.id);
-        const bodyH = Math.max(1, f.height - stripH);
-        const rx = Math.min(1, Math.max(0, (world.x - f.x) / Math.max(1, f.width)));
-        const ry = Math.min(1, Math.max(0, (world.y - f.y - stripH) / bodyH));
-        if (rx >= EDGE_BAND && rx <= 1 - EDGE_BAND && ry >= EDGE_BAND && ry <= 1 - EDGE_BAND) return { kind: 'join', target };
-        const d: Array<[Side, number]> = [['left', rx], ['right', 1 - rx], ['top', ry], ['bottom', 1 - ry]];
-        d.sort((p, q) => p[1] - q[1]);
-        const h = halves(target, d[0][0]);
-        return h ? { kind: 'split', target, side: d[0][0], ...h } : { kind: 'join', target };
-      }
-      if (home) return { kind: 'home' };
+      // took a join or a split from a release in the page header. The
+      // target is looked up (and anchored) only inside it.
+      const clientInside = clientInsideCanvasGrace(cx, cy);
+      const target = clientInside ? targetAt(world.x, world.y) : null;
+      const root = clientInside ? rootAt(cx, cy) : null;
       const foreign = foreignAt(world.x, world.y);
-      if (foreign && (!worldInsideBoard(world.x, world.y) || foreign.frameArea() < boardArea())) return { kind: 'board', peer: foreign };
-      return { kind: 'board' };
+      // The ORDER is zones.ts's, shared with the split board: a strip, the
+      // board's own edges, the target's fifth or middle, home, then a board.
+      const tz = resolveTabZone({
+        x: world.x,
+        y: world.y,
+        clientInside,
+        ownStrip: plan.stripIndex(fromGroupId, cx, cy),
+        stripOf: (id) => plan.stripIndex(id, cx, cy),
+        root: root && root.kind === 'root' ? { side: root.side } : null,
+        target: target
+          ? {
+              id: target.id,
+              frame: anchor && anchor.g === target ? anchor.frame : frameOfGroup(target),
+              stripHeight: anchor && anchor.g === target ? anchor.stripH : plan.stripHeight(target.id),
+            }
+          : null,
+        home: worldInsideGroup(from, world.x, world.y) ? frameOfGroup(from) : null,
+        homeBand: 0, // on a grid board the whole source frame is home
+        band: EDGE_BAND,
+        canSplit: (_id, side) => !!target && !!halves(target, side),
+        pane: false,
+        foreign: !!foreign && (!worldInsideBoard(world.x, world.y) || foreign.frameArea() < boardArea()),
+      });
+      switch (tz.kind) {
+        case 'off':
+          return { kind: 'off' };
+        case 'strip':
+          return { kind: 'strip', target: target as GroupModel, index: tz.index };
+        case 'reorder':
+          return { kind: 'reorder', index: tz.index };
+        case 'root':
+          return root as Zone;
+        case 'join':
+          return { kind: 'join', target: target as GroupModel };
+        case 'split': {
+          const h = halves(target as GroupModel, tz.side);
+          return h ? { kind: 'split', target: target as GroupModel, side: tz.side, ...h } : { kind: 'join', target: target as GroupModel };
+        }
+        case 'home':
+          return { kind: 'home' };
+        default:
+          return tz.kind === 'board' && tz.foreign && foreign ? { kind: 'board', peer: foreign } : { kind: 'board' };
+      }
     };
     const zoneKey = (z: Zone): string => JSON.stringify(z, (k, v) => (k === 'target' ? (v as GroupModel).id : k === 'peer' ? (v as BinderPeer).group.id : v));
 

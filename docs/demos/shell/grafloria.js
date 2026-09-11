@@ -195239,6 +195239,24 @@ function stripHeightOf(roots, containerId) {
   }
   return 0;
 }
+function resolveTabZone(input) {
+  if (!input.clientInside) return { kind: "off" };
+  const { x, y } = input;
+  if (input.target) {
+    const idx = input.stripOf(input.target.id);
+    if (idx !== null) return { kind: "strip", targetId: input.target.id, index: idx };
+  } else if (input.ownStrip !== null) return { kind: "reorder", index: input.ownStrip };
+  if (input.root) return { kind: "root", side: input.root.side };
+  if (input.target) {
+    const t = input.target;
+    const side = bandOf(t.frame, t.stripHeight, x, y, input.band);
+    if (side && input.canSplit(t.id, side)) return { kind: "split", targetId: t.id, side };
+    return { kind: "join", targetId: t.id };
+  }
+  if (input.home && inRect(input.home, x, y) && !bandOf(input.home, 0, x, y, input.homeBand)) return { kind: "home" };
+  if (input.pane) return { kind: "pane" };
+  return { kind: "board", foreign: input.foreign };
+}
 
 // libs/element/src/lib/dashboard-kit/grid-binder.ts
 var GRIP_CLASS = "axdb-grip";
@@ -197792,7 +197810,7 @@ function bindDashboardGrid(api, group, options = {}) {
     const ROOT_TOP = 20;
     const ROOT_BOTTOM = 20;
     const ROOT_SIDE = 40;
-    const EDGE_BAND = 0.2;
+    const EDGE_BAND = BESIDE_BAND;
     const visibleFrame = () => {
       const rect = api.container.getBoundingClientRect();
       const o = toWorld(rect.left, rect.top);
@@ -197867,34 +197885,50 @@ function bindDashboardGrid(api, group, options = {}) {
       return side === "bottom" ? { keep: { x: it.x, y: it.y, w: it.w, h: a }, born: { x: it.x, y: it.y + a, w: it.w, h: b } } : { keep: { x: it.x, y: it.y + b, w: it.w, h: a }, born: { x: it.x, y: it.y, w: it.w, h: b } };
     };
     const zoneAt = (cx, cy, world) => {
-      if (!clientInsideCanvasGrace(cx, cy)) return { kind: "off" };
-      const target = targetAt(world.x, world.y);
-      const home = !target && worldInsideGroup(from, world.x, world.y);
-      if (target) {
-        const idx = plan.stripIndex(target.id, cx, cy);
-        if (idx !== null) return { kind: "strip", target, index: idx };
-      } else if (home) {
-        const idx = plan.stripIndex(fromGroupId, cx, cy);
-        if (idx !== null) return { kind: "reorder", index: idx };
-      }
-      const root = rootAt(cx, cy);
-      if (root) return root;
-      if (target) {
-        const f = anchor && anchor.g === target ? anchor.frame : frameOfGroup(target);
-        const stripH = anchor && anchor.g === target ? anchor.stripH : plan.stripHeight(target.id);
-        const bodyH = Math.max(1, f.height - stripH);
-        const rx = Math.min(1, Math.max(0, (world.x - f.x) / Math.max(1, f.width)));
-        const ry = Math.min(1, Math.max(0, (world.y - f.y - stripH) / bodyH));
-        if (rx >= EDGE_BAND && rx <= 1 - EDGE_BAND && ry >= EDGE_BAND && ry <= 1 - EDGE_BAND) return { kind: "join", target };
-        const d = [["left", rx], ["right", 1 - rx], ["top", ry], ["bottom", 1 - ry]];
-        d.sort((p, q) => p[1] - q[1]);
-        const h = halves(target, d[0][0]);
-        return h ? { kind: "split", target, side: d[0][0], ...h } : { kind: "join", target };
-      }
-      if (home) return { kind: "home" };
+      const clientInside = clientInsideCanvasGrace(cx, cy);
+      const target = clientInside ? targetAt(world.x, world.y) : null;
+      const root = clientInside ? rootAt(cx, cy) : null;
       const foreign = foreignAt(world.x, world.y);
-      if (foreign && (!worldInsideBoard(world.x, world.y) || foreign.frameArea() < boardArea())) return { kind: "board", peer: foreign };
-      return { kind: "board" };
+      const tz = resolveTabZone({
+        x: world.x,
+        y: world.y,
+        clientInside,
+        ownStrip: plan.stripIndex(fromGroupId, cx, cy),
+        stripOf: (id) => plan.stripIndex(id, cx, cy),
+        root: root && root.kind === "root" ? { side: root.side } : null,
+        target: target ? {
+          id: target.id,
+          frame: anchor && anchor.g === target ? anchor.frame : frameOfGroup(target),
+          stripHeight: anchor && anchor.g === target ? anchor.stripH : plan.stripHeight(target.id)
+        } : null,
+        home: worldInsideGroup(from, world.x, world.y) ? frameOfGroup(from) : null,
+        homeBand: 0,
+        // on a grid board the whole source frame is home
+        band: EDGE_BAND,
+        canSplit: (_id, side) => !!target && !!halves(target, side),
+        pane: false,
+        foreign: !!foreign && (!worldInsideBoard(world.x, world.y) || foreign.frameArea() < boardArea())
+      });
+      switch (tz.kind) {
+        case "off":
+          return { kind: "off" };
+        case "strip":
+          return { kind: "strip", target, index: tz.index };
+        case "reorder":
+          return { kind: "reorder", index: tz.index };
+        case "root":
+          return root;
+        case "join":
+          return { kind: "join", target };
+        case "split": {
+          const h = halves(target, tz.side);
+          return h ? { kind: "split", target, side: tz.side, ...h } : { kind: "join", target };
+        }
+        case "home":
+          return { kind: "home" };
+        default:
+          return tz.kind === "board" && tz.foreign && foreign ? { kind: "board", peer: foreign } : { kind: "board" };
+      }
     };
     const zoneKey = (z) => JSON.stringify(z, (k, v) => k === "target" ? v.id : k === "peer" ? v.group.id : v);
     let unlockedGroups = [];
@@ -199626,28 +199660,41 @@ function bindDashboardSplit(api, group, options = {}) {
       if (rect.width <= 0 || rect.height <= 0) return true;
       return cx >= rect.left - EDGE_GRACE && cx <= rect.right + EDGE_GRACE && cy >= rect.top - EDGE_GRACE && cy <= rect.bottom + EDGE_GRACE;
     };
-    const centreThird = (g, w) => {
-      const f = frameOfGroup(g);
-      if (!inRect2(f, w.x, w.y)) return false;
-      const top = f.y + plan.stripHeight(g.id);
-      const h = Math.max(0, f.y + f.height - top);
-      return w.x >= f.x + f.width / 3 && w.x <= f.x + 2 * f.width / 3 && w.y >= top + h / 3 && w.y <= top + 2 * h / 3;
-    };
     const zoneAt = (cx, cy, w) => {
-      if (!clientInsideCanvasGrace(cx, cy)) return { kind: "off" };
-      const own = plan.stripIndex(fromGroupId, cx, cy);
-      if (own !== null) return { kind: "reorder", index: own };
-      for (const t of targets) {
-        const i = plan.stripIndex(t.id, cx, cy);
-        if (i !== null) return { kind: "strip", targetId: t.id, index: i };
+      const clientInside = clientInsideCanvasGrace(cx, cy);
+      const target = clientInside ? targets.find((t) => inRect2(frameOfGroup(t), w.x, w.y)) ?? null : null;
+      const paneTarget = clientInside && worldInsideBoard(w.x, w.y) ? dropTargetAt(tree0, w.x, w.y) : null;
+      const tz = resolveTabZone({
+        x: w.x,
+        y: w.y,
+        clientInside,
+        ownStrip: plan.stripIndex(fromGroupId, cx, cy),
+        stripOf: (id) => plan.stripIndex(id, cx, cy),
+        root: null,
+        target: target ? { id: target.id, frame: frameOfGroup(target), stripHeight: plan.stripHeight(target.id) } : null,
+        home: inRect2(frameOfGroup(from), w.x, w.y) ? frameOfGroup(from) : null,
+        homeBand: BESIDE_BAND,
+        band: BESIDE_BAND,
+        canSplit: () => true,
+        pane: !!paneTarget,
+        foreign: false
+      });
+      switch (tz.kind) {
+        case "off":
+          return { kind: "off" };
+        case "strip":
+          return { kind: "strip", targetId: tz.targetId, index: tz.index };
+        case "reorder":
+          return { kind: "reorder", index: tz.index };
+        case "join":
+          return { kind: "join", targetId: tz.targetId };
+        case "split":
+          return { kind: "pane", target: { id: tz.targetId, side: tz.side, rect: frameOfGroup(target) } };
+        case "pane":
+          return { kind: "pane", target: paneTarget };
+        default:
+          return { kind: "home" };
       }
-      for (const t of targets) if (centreThird(t, w)) return { kind: "join", targetId: t.id };
-      if (centreThird(from, w)) return { kind: "home" };
-      if (worldInsideBoard(w.x, w.y)) {
-        const t = dropTargetAt(tree0, w.x, w.y);
-        if (t) return { kind: "pane", target: t };
-      }
-      return { kind: "home" };
     };
     const apply = (z) => {
       plan.markDrop(z.kind === "reorder" ? fromGroupId : z.kind === "strip" ? z.targetId : null, z.kind === "reorder" || z.kind === "strip" ? z.index : null);
