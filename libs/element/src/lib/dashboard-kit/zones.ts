@@ -21,6 +21,10 @@
  * descendant). The strip rows of a tab container are nobody's band, and its
  * margin (inside the frame, outside the page) is a plain cell on the parent.
  *
+ * `stripUnder` walks the same tree for the strip itself, so a tab slot and a
+ * band are decided on one set of frames — the ones the containers REST in,
+ * never the ones a preview pushed them to.
+ *
  * This module is pure geometry: no DOM, no engine, no model. The binder
  * builds the tree for each move from its peers and the model, and acts on
  * the answer.
@@ -96,13 +100,13 @@ export interface ResolveInput {
    */
   homeChain: ReadonlySet<string>;
   /**
-   * Containers of the source board as they stood when the gesture began (a
-   * GROUP ghost pushes solids with intent, 0.4.44). The hand over a pushed
-   * container's rest frame still means that container — its zones, its
-   * page tested at the displacement — or a group could never enter a
-   * container its own body reaches before the hand does: the target fled.
-   * The engine's memory brings the pushed container home when the ghost
-   * leaves the board.
+   * Containers of the source board as they stood when the gesture began. The
+   * hand over a pushed container's rest frame still means that container —
+   * its zones, its page tested at the displacement — or the target flees the
+   * hand that is aiming at it: a group could never enter a container its own
+   * body reaches first (0.4.44), and a widget aimed at a tab strip chased a
+   * strip its own preview kept shoving away (0.4.60). The engine's memory
+   * brings the pushed container home when the ghost leaves the board.
    */
   restFrames?: ReadonlyMap<string, ZoneRect>;
 }
@@ -139,6 +143,65 @@ export function bandOf(f: ZoneRect, stripHeight: number, x: number, y: number, b
   if (ry < band) return 'top';
   if (ry > 1 - band) return 'bottom';
   return null;
+}
+
+export interface StripProbe {
+  x: number;
+  y: number;
+  roots: ZoneBoard[];
+  /** The container whose strip the gesture already holds: its rows are widened by `stay`, and it wins over a neighbour's. */
+  held: string | null;
+  /** The stickiness around the held strip, in world units. */
+  stay: number;
+  /** Containers the gesture has displaced, at the frames they rest in. */
+  restFrames?: ReadonlyMap<string, ZoneRect>;
+}
+
+/**
+ * The tab strip under a pointer — WHERE THE CONTAINER RESTS, read from the
+ * same tree at the same frames as `resolve`.
+ *
+ * A strip is painted at the top of its container, so it travels with it: a
+ * beside shifts the container, a refusal pushes it, and it GLIDES home
+ * afterwards. Hit-testing the painted box therefore makes the strip a target
+ * at wherever the preview happened to put it — and a box in the air sweeps
+ * under a hand that is not moving at all and steals the zone. That is a
+ * closed loop: the tab claims the hand, the container comes home, the band
+ * under the hand claims it back, the container is pushed away, and the strip
+ * flies through the pointer again. The user met it as "it flickers between a
+ * tab and above the group; I have to go very slowly".
+ *
+ * So the rows are the container's own, at rest, on the model's frames. What
+ * a hand means never depends on what the preview did with it.
+ */
+export function stripUnder(p: StripProbe): { containerId: string } | null {
+  const { x, y } = p;
+  // Plain locals, not one object: a `let` assigned only inside the closure
+  // narrows to `never` at the return.
+  let bestId: string | null = null;
+  let bestDepth = -1;
+  let bestHeld = false;
+  const visit = (b: ZoneBoard, dx: number, dy: number): void => {
+    for (const c of b.children()) {
+      const rest = p.restFrames?.get(c.id);
+      const atRest = rest && inRect(rest, x, y) ? rest : null;
+      const frame = atRest ?? c.frame;
+      const tx = atRest ? x : x + dx;
+      const ty = atRest ? y : y + dy;
+      const held = c.id === p.held;
+      const pad = held ? p.stay : 0;
+      if (c.stripHeight > 0 && inRect({ x: frame.x, y: frame.y, width: frame.width, height: c.stripHeight }, tx, ty, pad)) {
+        if (bestId === null || held || (!bestHeld && b.depth >= bestDepth)) {
+          bestId = c.id;
+          bestDepth = b.depth;
+          bestHeld = held;
+        }
+      }
+      if (c.inner && inRect(frame, tx, ty, pad)) visit(c.inner, atRest ? c.frame.x - atRest.x : dx, atRest ? c.frame.y - atRest.y : dy);
+    }
+  };
+  for (const r of p.roots) visit(r, 0, 0);
+  return bestId === null ? null : { containerId: bestId };
 }
 
 /** The board a container sits on, found by id through the tree. */

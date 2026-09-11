@@ -1641,31 +1641,6 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
   };
 
   ctx.tabDrop = {
-    stripAt: (cx, cy, grace) => {
-      // The strip the drag already holds is tested with its box widened by
-      // `grace.px` (see STRIP_STAY): a small overshoot still means the tabs.
-      // Its own hit is checked FIRST, so a neighbour never steals it back.
-      const hit = (id: string, el: HTMLElement, pad: number): { containerId: string; index: number } | null => {
-        const r = el.getBoundingClientRect();
-        if (r.width <= 0) return null;
-        return cx >= r.left - pad && cx <= r.right + pad && cy >= r.top - pad && cy <= r.bottom + pad
-          ? { containerId: id, index: indexInStrip(el, cx) }
-          : null;
-      };
-      if (grace && grace.px > 0) {
-        const el = ctx.tabStrips.get(grace.containerId);
-        if (el && ctx.boardGroups.has(grace.containerId)) {
-          const held = hit(grace.containerId, el, grace.px);
-          if (held) return held;
-        }
-      }
-      for (const [id, el] of ctx.tabStrips) {
-        if (!ctx.boardGroups.has(id)) continue;
-        const h = hit(id, el, 0);
-        if (h) return h;
-      }
-      return null;
-    },
     tabIndexAt: (containerId, cx) => {
       const el = ctx.tabStrips.get(containerId);
       if (!el || !ctx.boardGroups.has(containerId)) return null;

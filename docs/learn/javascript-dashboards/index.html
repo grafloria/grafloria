@@ -542,6 +542,13 @@ render(SPEC2, host);</pre>
       once the container had moved, its strip went with it and the tabs were out of reach. The strip you are aiming at
       now holds your hand for a few pixels past its edge, and it is measured where the container <em>rests</em>, not
       where it has been pushed to, so it stays under your cursor while everything else gives way.</p>
+      <p>0.4.60 finishes that. Only the strip you were already on was read that way; every other one was still found by
+      hit-testing the box it is <em>painted</em> in — and that box travels. The zone under the tabs pushes the container
+      down, so the strip swept through the pointer, claimed it as a tab, brought the container home, handed the hand
+      straight back to the band below, and went round again: a hand that had stopped moving altogether watched the
+      answer change frame after frame. Every strip is now read from the model, where its container rests, and a drag's
+      own pushes are read there too. Crossing a header at hand speed changes the answer exactly twice, once on and once
+      off, and a hand that stops keeps the answer it stopped on.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

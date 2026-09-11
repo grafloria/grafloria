@@ -195179,6 +195179,33 @@ function bandOf(f, stripHeight, x, y, band = BESIDE_BAND) {
   if (ry > 1 - band) return "bottom";
   return null;
 }
+function stripUnder(p) {
+  const { x, y } = p;
+  let bestId = null;
+  let bestDepth = -1;
+  let bestHeld = false;
+  const visit = (b, dx, dy) => {
+    for (const c of b.children()) {
+      const rest = p.restFrames?.get(c.id);
+      const atRest = rest && inRect(rest, x, y) ? rest : null;
+      const frame = atRest ?? c.frame;
+      const tx = atRest ? x : x + dx;
+      const ty = atRest ? y : y + dy;
+      const held = c.id === p.held;
+      const pad = held ? p.stay : 0;
+      if (c.stripHeight > 0 && inRect({ x: frame.x, y: frame.y, width: frame.width, height: c.stripHeight }, tx, ty, pad)) {
+        if (bestId === null || held || !bestHeld && b.depth >= bestDepth) {
+          bestId = c.id;
+          bestDepth = b.depth;
+          bestHeld = held;
+        }
+      }
+      if (c.inner && inRect(frame, tx, ty, pad)) visit(c.inner, atRest ? c.frame.x - atRest.x : dx, atRest ? c.frame.y - atRest.y : dy);
+    }
+  };
+  for (const r of p.roots) visit(r, 0, 0);
+  return bestId === null ? null : { containerId: bestId };
+}
 function boardOf(roots, containerId) {
   const visit = (b) => {
     for (const c of b.children()) {
@@ -197837,37 +197864,30 @@ function bindDashboardGrid(api, group, options = {}) {
     }
   };
   const resolveTileZone = (g, ev) => {
+    const roots = zoneRoots();
+    const rests = restFramesOf(g);
     let strip = null;
-    if (options.tabDrop && !isStatic && g.kind !== "palette" && g.subject === "node") {
-      const crect = api.container.getBoundingClientRect();
-      const cx = crect.left + ev.screen.x;
-      const cy = crect.top + ev.screen.y;
-      const stay = g.strip ? STRIP_STAY : 0;
-      const held = beside?.id ?? g.strip?.containerId ?? null;
-      if (held && options.tabDrop.tabIndexAt) {
-        const grp = diagram.getGroup(held);
-        const f = beside && beside.id === held ? beside.frame0 : grp ? frameOfGroup(grp) : null;
-        if (f) {
-          const s = clientPerWorld();
-          const tol = stay / (s.y || 1);
-          const inStrip = ev.world.x >= f.x - stay / (s.x || 1) && ev.world.x <= f.x + f.width + stay / (s.x || 1) && ev.world.y >= f.y - tol && ev.world.y <= f.y + TAB_STRIP_HEIGHT + tol;
-          const idx = inStrip ? options.tabDrop.tabIndexAt(held, cx) : null;
-          if (idx !== null) strip = { containerId: held, index: idx };
-        }
+    if (options.tabDrop?.tabIndexAt && !isStatic && g.kind !== "palette" && g.subject === "node") {
+      const hit = stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / (clientPerWorld().y || 1), restFrames: rests });
+      if (hit) {
+        const grp = diagram.getGroup(hit.containerId);
+        const rest = rests.get(hit.containerId);
+        const dx = grp && rest ? (grp.position.x - rest.x) * clientPerWorld().x : 0;
+        const idx = options.tabDrop.tabIndexAt(hit.containerId, api.container.getBoundingClientRect().left + ev.screen.x + dx);
+        if (idx !== null) strip = { containerId: hit.containerId, index: idx };
       }
-      if (!strip) strip = options.tabDrop.stripAt(cx, cy, g.strip ? { containerId: g.strip.containerId, px: stay } : void 0);
     }
     return resolve({
       x: ev.world.x,
       y: ev.world.y,
-      roots: zoneRoots(),
+      roots,
       strip,
       prev: beside ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) } : g.leg?.adopted.besideState() ?? null,
       // a beside another board holds for the ghost, through its leg
       maxDepth: nesting,
       ghostDepth: g.subject === "group" ? 1 + levelsInside(g.id) : 0,
       // a group's widgets sit one board deeper than wherever it lands
-      ...g.subject === "group" ? { restFrames: restFramesOf(g) } : {},
+      restFrames: rests,
       ghostSubtree: g.subject === "group" ? descendantGroups(g.id) : EMPTY_SUBTREE,
       gap,
       homeChain: homeChain()
@@ -201529,26 +201549,6 @@ function createDashboardHandle(ctx) {
     return [new RegisterWidgetCommand({ register: () => apply(after), unregister: () => apply(before) }, "register")];
   };
   ctx.tabDrop = {
-    stripAt: (cx, cy, grace) => {
-      const hit = (id, el2, pad) => {
-        const r = el2.getBoundingClientRect();
-        if (r.width <= 0) return null;
-        return cx >= r.left - pad && cx <= r.right + pad && cy >= r.top - pad && cy <= r.bottom + pad ? { containerId: id, index: indexInStrip(el2, cx) } : null;
-      };
-      if (grace && grace.px > 0) {
-        const el2 = ctx.tabStrips.get(grace.containerId);
-        if (el2 && ctx.boardGroups.has(grace.containerId)) {
-          const held = hit(grace.containerId, el2, grace.px);
-          if (held) return held;
-        }
-      }
-      for (const [id, el2] of ctx.tabStrips) {
-        if (!ctx.boardGroups.has(id)) continue;
-        const h = hit(id, el2, 0);
-        if (h) return h;
-      }
-      return null;
-    },
     tabIndexAt: (containerId, cx) => {
       const el2 = ctx.tabStrips.get(containerId);
       if (!el2 || !ctx.boardGroups.has(containerId)) return null;

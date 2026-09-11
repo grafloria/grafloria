@@ -82,7 +82,7 @@ import {
 import { ensureDashboardKitStyles } from './styles';
 import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCaptionBand, sectionCaptionReserve, sizeCaptionBand } from './caption';
 import { TAB_STRIP_HEIGHT } from './tabs';
-import { BESIDE_BAND, resolve as resolveZone, resolveTabZone, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
+import { BESIDE_BAND, resolve as resolveZone, resolveTabZone, stripUnder, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
 import { SequenceCommand, SetGroupCellCommand, tileCommands } from './commit';
 import { EDGE_GRACE, type BoardCtx } from './board-ctx';
 import { createProjection } from './project';
@@ -604,22 +604,14 @@ export interface TearOutPlan {
  * handle owns the strips and the registry; the binder owns the gesture.
  */
 export interface TabDropHooks {
-  /**
-   * The strip under a CLIENT point, and the tab index that point means along
-   * it. `grace` widens ONE strip's box by that many pixels on every side —
-   * the strip a drag is already aiming at keeps the hand through a small
-   * overshoot, instead of handing it to the zone underneath on one pixel.
-   */
-  stripAt(clientX: number, clientY: number, grace?: { containerId: string; px: number }): { containerId: string; index: number } | null;
   /** Paint (or, with null, clear) the insertion mark on a strip. */
   markDrop(containerId: string | null, index: number | null): void;
   /**
    * Which tab slot a CLIENT x means along one named strip — the x alone, with
-   * no hit test. The binder decides WHETHER the hand is on a strip from the
-   * container's own frame (the model), because a strip element that is gliding
-   * — home after a push, or away under one — reports a box the hand is not in
-   * yet. Optional: a host with its own hooks and no such method keeps the
-   * live hit test for everything.
+   * no hit test. WHETHER the hand is on a strip at all is the zone walk's
+   * answer, from the container's frame in the model at rest: a strip element
+   * reports the box it is painted in, and a strip that has been pushed — or
+   * is gliding home from a push — is a box the hand never asked for.
    */
   tabIndexAt?(containerId: string, clientX: number): number | null;
   /** The commands that make `widgetId` a new tab of `containerId` at `index`; `displaced` are this board's survivors. Empty = refused. */
@@ -2785,57 +2777,48 @@ export function bindDashboardGrid(
   };
   /** What the pointer means for the dragged tile: the resolve over the live tree, with the beside the hand holds. */
   const resolveTileZone = (g: GestureState, ev: ToolPointerEvent) => {
+    const roots = zoneRoots();
+    // THE CONTAINERS THIS GESTURE HAS MOVED, at the frames they rest in. A
+    // drag's own pushes must never change what the hand means — settled for a
+    // group ghost in 0.4.44, and true of a widget for the same reason: the
+    // beside that a band previews SHOVES the container out from under the
+    // pointer, so read live it would answer about a container that is only
+    // there because of the answer.
+    const rests = restFramesOf(g);
     let strip: { containerId: string; index: number } | null = null;
-    if (options.tabDrop && !isStatic && g.kind !== 'palette' && g.subject === 'node') {
+    if (options.tabDrop?.tabIndexAt && !isStatic && g.kind !== 'palette' && g.subject === 'node') {
       // A group never becomes a tab: over a container's strip it is over the
       // container's margin — a cell on the parent board, pushing with intent.
-      const crect = api.container.getBoundingClientRect();
-      const cx = crect.left + ev.screen.x;
-      const cy = crect.top + ev.screen.y;
-      const stay = g.strip ? STRIP_STAY : 0;
-      // THE HELD CONTAINER'S STRIP IS READ FROM THE MODEL, AT REST — as its
-      // bands are (0.4.49). Two reasons, both measured on the live demo with
-      // a widget carried down the panel's strip: a beside SHIFTS or PUSHES the
-      // container and its strip travels with it, so tested where the DOM says
-      // it is, the tab zone runs away from the hand aiming at it (the tabs
-      // became unreachable at any height); and the DOM box GLIDES, so for a
-      // frame or two after the container is sent home the strip is still in
-      // the air and the hand falls through it.
-      const held = beside?.id ?? g.strip?.containerId ?? null;
-      if (held && options.tabDrop.tabIndexAt) {
-        const grp = diagram.getGroup(held);
-        const f = beside && beside.id === held ? beside.frame0 : grp ? frameOfGroup(grp) : null;
-        if (f) {
-          const s = clientPerWorld();
-          const tol = stay / (s.y || 1);
-          const inStrip =
-            ev.world.x >= f.x - stay / (s.x || 1) &&
-            ev.world.x <= f.x + f.width + stay / (s.x || 1) &&
-            ev.world.y >= f.y - tol &&
-            ev.world.y <= f.y + TAB_STRIP_HEIGHT + tol;
-          const idx = inStrip ? options.tabDrop.tabIndexAt(held, cx) : null;
-          if (idx !== null) strip = { containerId: held, index: idx };
-        }
+      const hit = stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / (clientPerWorld().y || 1), restFrames: rests });
+      if (hit) {
+        // The SLOT is the painted strip's business — its tabs are laid out by
+        // the browser. A container the gesture shifted sideways is painted
+        // that far from where it was measured, so the client x is carried
+        // across with it.
+        const grp = diagram.getGroup(hit.containerId);
+        const rest = rests.get(hit.containerId);
+        const dx = grp && rest ? (grp.position.x - rest.x) * clientPerWorld().x : 0;
+        const idx = options.tabDrop.tabIndexAt(hit.containerId, api.container.getBoundingClientRect().left + ev.screen.x + dx);
+        if (idx !== null) strip = { containerId: hit.containerId, index: idx };
       }
-      if (!strip) strip = options.tabDrop.stripAt(cx, cy, g.strip ? { containerId: g.strip.containerId, px: stay } : undefined);
     }
     return resolveZone({
       x: ev.world.x,
       y: ev.world.y,
-      roots: zoneRoots(),
+      roots,
       strip,
       prev: beside
         ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) }
         : (g.leg?.adopted.besideState() ?? null), // a beside another board holds for the ghost, through its leg
       maxDepth: nesting,
       ghostDepth: g.subject === 'group' ? 1 + levelsInside(g.id) : 0, // a group's widgets sit one board deeper than wherever it lands
-      ...(g.subject === 'group' ? { restFrames: restFramesOf(g) } : {}),
+      restFrames: rests,
       ghostSubtree: g.subject === 'group' ? descendantGroups(g.id) : EMPTY_SUBTREE,
       gap,
       homeChain: homeChain(),
     });
   };
-  /** This board's containers as they stood at the press: a group ghost's intent pushes never change what the hand means. */
+  /** This board's containers as they stood at the press: a gesture's own pushes never change what the hand means. */
   const restFramesOf = (g: GestureState): ReadonlyMap<string, WorldRect> => {
     const out = new Map<string, WorldRect>();
     for (const [id, snap] of g.startGeom) {

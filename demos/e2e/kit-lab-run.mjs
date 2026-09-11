@@ -2773,6 +2773,48 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `on the strip: tab ${onStrip.tab} panel ${JSON.stringify(onStrip.panel)} · +5 px: tab ${overshoot.tab} panel ${JSON.stringify(overshoot.panel)} · +24 px: tab ${below.tab} panel ${JSON.stringify(below.panel)} (slab ${below.slabY}) · back on it: tab ${back.tab} panel ${JSON.stringify(back.panel)} · released [${tabs1.join(',')}] ${JSON.stringify(sane)} · undo -> [${tabs2.join(',')}]`);
 }
 
+{
+  begin('L104-a-hand-crossing-the-tab-strip-gets-ONE-answer-a-pixel-at-a-time-and-a-still-hand-keeps-it');
+  await scrollTo('tabs');
+  // L103 pinned the BOUNDARIES with a settled hand. This pins the CROSSING.
+  // The user again: "there is a small difference between having it on top and
+  // inside the header, it flickers once I try to drag into the header and I
+  // need to be really slow." The strip was hit-tested on its painted box, and
+  // that box travels: the zone under it pushes the container down, so the
+  // strip flew through the pointer and claimed it, the container came home,
+  // the band claimed the hand back, and round again — a closed loop, at the
+  // one place a hand aiming at the tabs actually is.
+  const onTab = () => page.evaluate(() => !!document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]')?.classList.contains('axdb-tabs--drop'));
+  const strip0 = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
+  const src = await rect('tabs', 't-left');
+  const mid = strip0.x + strip0.width * 0.55;
+  const top = Math.round(strip0.y);
+  const bot = Math.round(strip0.y + strip0.height);
+  await page.mouse.move(src.x + 40, src.y + 12); await page.mouse.down();
+  await page.mouse.move(src.x + 60, src.y + 20, { steps: 3 });
+  await page.mouse.move(mid, top - 24, { steps: 8 }); await page.waitForTimeout(300);
+  const marks = [];
+  for (let y = top - 24; y <= bot + 60; y++) { await page.mouse.move(mid, y); await page.waitForTimeout(16); marks.push(await onTab()); }
+  const flips = marks.reduce((n, m, i) => n + (i > 0 && m !== marks[i - 1] ? 1 : 0), 0);
+  const entered = marks.indexOf(true), left = marks.lastIndexOf(true);
+  await shot('tabs', 'crossed-the-strip-a-pixel-at-a-time');
+  // …and now the hand stops, well below the strip, and does not move again.
+  await page.mouse.move(mid, bot + 55); await page.waitForTimeout(500);
+  const still = [];
+  for (let i = 0; i < 30; i++) { still.push(await onTab()); await page.waitForTimeout(16); }
+  await shot('tabs', 'a-still-hand-below-the-strip-keeps-one-answer');
+  await page.mouse.up(); await page.waitForTimeout(600);
+  const sane = await sanity('tabs');
+  await undoAll('tabs', 2);
+  const answers = new Set(still);
+  verdict(flips === 2                                   // one answer per pixel: on at the strip, off past it, nothing in between
+    && entered >= 0 && entered <= 25                    // the tabs are claimed at the strip's own top
+    && left - entered >= 30                             // and held all the way across it, and a little past
+    && answers.size === 1 && still[0] === false         // a hand that stopped below the strip stays below it
+    && sane.overlaps === 0,
+    `${flips} changes of answer over ${marks.length} px of a 1 px/frame hand (tabs from +${entered} to +${left} of the strip's top) · a still hand 55 px below: ${[...answers].join('/')} across ${still.length} frames · ${JSON.stringify(sane)}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();
