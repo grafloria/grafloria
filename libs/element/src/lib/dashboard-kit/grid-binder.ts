@@ -64,7 +64,7 @@ import {
   type GroupModel,
   type NodeModel,
 } from '@grafloria/engine';
-import { LiveRegionController, registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
+import { registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
 import {
   buildCommitCommands,
   cellFromGridItem,
@@ -84,6 +84,14 @@ import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCa
 import { TAB_STRIP_HEIGHT } from './tabs';
 import { BESIDE_BAND, resolve as resolveZone, resolveTabZone, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
 import { SequenceCommand, SetGroupCellCommand, tileCommands } from './commit';
+import type { BoardCtx } from './board-ctx';
+import { createProjection } from './project';
+import { cursorFor, edgesNear, EDGE_GRIP, NO_EDGES, anyEdge, type ResizeEdges } from './edges';
+import { DRAG_HANDLE_CLASS, dragHandleSelector, gripHostOf, normalizeDragHandle, pressOnDragHandle, sameDragHandle, type DragHandleOption } from './grip';
+import { createChrome, edgeGripFor, isTabsGroup } from './chrome';
+import { createKeyboard, describeCell, liveRegionFor } from './keyboard';
+export { EDGE_GRIP, anyEdge, type ResizeEdges } from './edges';
+export { GRIP_CLASS, DRAG_HANDLE_CLASS, CAPTION_BAND, normalizeDragHandle, dragHandleSelector, gripOf, syncGrip, gripHostOf, pressOnDragHandle, type DragGripOptions, type DragHandleOption } from './grip';
 export { SequenceCommand, SetGroupCellCommand } from './commit';
 
 /** The slice of a DiagramInstance the binder needs (structural, test-friendly). */
@@ -290,54 +298,6 @@ export interface DashboardGridOptions {
   squeeze?: boolean;
 }
 
-/** A painted grip: the only drag zone, placed along the card's top edge. */
-export interface DragGripOptions {
-  grip: true;
-  /** Where along the top edge. Default 'left'. */
-  position?: 'left' | 'center' | 'right';
-  /** In the header band, or a tab above the card. Default 'inside'. */
-  placement?: 'inside' | 'outside';
-}
-export type DragHandleOption = boolean | string | DragGripOptions;
-
-/** The class of the painted grip element (a child of the node host). */
-export const GRIP_CLASS = 'axdb-grip';
-/** The container class that turns the caption strip's grip dots on. */
-export const DRAG_HANDLE_CLASS = 'axdb-drag-handle';
-
-/** A `dragHandle` value with its defaults filled in — the form the handle reports. */
-export const normalizeDragHandle = (v: DragHandleOption | undefined): DragHandleOption =>
-  typeof v === 'object' && v !== null && v.grip
-    ? { grip: true, position: v.position ?? 'left', placement: v.placement ?? 'inside' }
-    : v === true ? true : typeof v === 'string' && v.length > 0 ? v : false;
-/** The selector a `dragHandle` value names — `null` when the whole card is the handle. */
-export const dragHandleSelector = (v: DragHandleOption): string | null =>
-  v === true ? '.axdb-widget-h' : typeof v === 'string' ? v : typeof v === 'object' ? '.' + GRIP_CLASS : null;
-/** The grip config of a value, or null when it paints no grip. */
-export const gripOf = (v: DragHandleOption): DragGripOptions | null => (typeof v === 'object' ? v : null);
-const sameDragHandle = (a: DragHandleOption, b: DragHandleOption): boolean => JSON.stringify(a) === JSON.stringify(b);
-
-/**
- * Paint (or remove) the grip on one host, and stamp the host with the grip's
- * placement so the header can make room for it. `movable` false = no grip.
- */
-export function syncGrip(host: HTMLElement, cfg: DragGripOptions | null, movable: boolean): void {
-  const existing = host.querySelector(':scope > .' + GRIP_CLASS);
-  host.classList.remove('axdb-gp-inside', 'axdb-gp-outside', 'axdb-gp-left', 'axdb-gp-center', 'axdb-gp-right');
-  if (!cfg || !movable) {
-    existing?.remove();
-    return;
-  }
-  const el = (existing as HTMLElement | null) ?? host.ownerDocument.createElement('div');
-  if (!existing) {
-    el.setAttribute('aria-hidden', 'true');
-    el.setAttribute('title', 'Drag');
-    host.appendChild(el);
-  }
-  el.className = `${GRIP_CLASS} ${GRIP_CLASS}--${cfg.position ?? 'left'} ${GRIP_CLASS}--${cfg.placement ?? 'inside'}`;
-  host.classList.add(`axdb-gp-${cfg.placement ?? 'inside'}`, `axdb-gp-${cfg.position ?? 'left'}`);
-}
-
 /** The member host a press on a painted grip belongs to (the grip may sit OUTSIDE the host's box). */
 /**
  * Is this press OURS? The renderer's tool registry is PAGE-GLOBAL: every
@@ -373,30 +333,6 @@ export function ownsPress(
   }
   return true;
 }
-export function gripHostOf(target: Element | null): HTMLElement | null {
-  const grip = target?.closest?.('.' + GRIP_CLASS);
-  return (grip?.closest('.grafloria-node-host') as HTMLElement | null) ?? null;
-}
-/**
- * Did a press land on the drag handle? A press INSIDE the handle element
- * always does. The default handle is a CAPTION BAR the DevExpress way: the
- * strip from the card's top edge down to the header's bottom, padding
- * included — so the pointer need not hit the header's text to grab the tile.
- */
-export function pressOnDragHandle(sel: string, target: Element | null, hostEl: HTMLElement | null, clientX: number, clientY: number): boolean {
-  const grip = target?.closest?.(sel) ?? null;
-  if (grip && (!hostEl || hostEl.contains(grip))) return true;
-  if (sel !== '.axdb-widget-h' || !hostEl) return false;
-  const hr = hostEl.getBoundingClientRect();
-  const header = hostEl.querySelector('.axdb-widget-h');
-  // A host painting its own content has no kit header: its caption is the top
-  // band of the card, so `dragHandle: true` still means something there.
-  const bottom = header ? header.getBoundingClientRect().bottom : hr.top + CAPTION_BAND;
-  return clientX >= hr.left && clientX <= hr.right && clientY >= hr.top && clientY <= bottom;
-}
-/** The caption strip of a host with no kit header, px from the card's top. */
-export const CAPTION_BAND = 28;
-
 export interface DashboardGridHandle {
   /** Rebuild the engine from the group's members + their cells, re-project pixels. */
   sync(): void;
@@ -764,31 +700,6 @@ export function registerBoardPeer(container: HTMLElement, peer: BinderPeer): () 
 export type { BinderPeer };
 
 /**
- * ONE aria-live region per canvas, shared by every board on it — the
- * renderer's own controller (coalescing, de-duplicating), so a dashboard
- * announces through the same channel a diagram does. WeakMap: the region
- * follows the container out of memory.
- */
-const LIVE_REGIONS = new WeakMap<HTMLElement, LiveRegionController>();
-function liveRegionFor(container: HTMLElement): LiveRegionController {
-  let live = LIVE_REGIONS.get(container);
-  if (!live) {
-    live = new LiveRegionController(container);
-    LIVE_REGIONS.set(container, live);
-  }
-  return live;
-}
-
-function directionName(dx: number, dy: number): string {
-  return dx < 0 ? 'left' : dx > 0 ? 'right' : dy < 0 ? 'up' : 'down';
-}
-
-/** "column 4, row 2, 3 by 1" — the cell as a person hears it (1-based). */
-function describeCell(c: CellRect): string {
-  return `column ${c.x + 1}, row ${c.y + 1}, ${c.w} by ${c.h}`;
-}
-
-/**
  * Undoable cell+frame write for a GROUP member (the strip's slab). The engine
  * has Move/Resize commands for nodes but none for a group's frame, and slab
  * cells live in group metadata — this closes nested height escalation into
@@ -839,42 +750,6 @@ interface GestureState {
 }
 
 const DRAG_THRESHOLD = 4;
-const GLIDE_OFF_DELAY = 400;
-/** A press this close (CSS px) to a tile's border takes that edge for a resize. */
-export const EDGE_GRIP = 7;
-
-export interface ResizeEdges {
-  n: boolean;
-  e: boolean;
-  s: boolean;
-  w: boolean;
-}
-const NO_EDGES: ResizeEdges = { n: false, e: false, s: false, w: false };
-
-/** Which of a host's edges a client point is within EDGE_GRIP of (none when outside). */
-function edgesNear(host: Element, cx: number, cy: number): ResizeEdges {
-  const r = host.getBoundingClientRect();
-  if (cx < r.left - 2 || cx > r.right + 2 || cy < r.top - 2 || cy > r.bottom + 2) return NO_EDGES;
-  return {
-    n: cy - r.top <= EDGE_GRIP,
-    s: r.bottom - cy <= EDGE_GRIP,
-    w: cx - r.left <= EDGE_GRIP,
-    e: r.right - cx <= EDGE_GRIP,
-  };
-}
-
-export const anyEdge = (E: ResizeEdges): boolean => E.n || E.e || E.s || E.w;
-
-/** The resize cursor for a set of edges ('' when none). */
-function cursorFor(E: ResizeEdges): string {
-  const v = E.n || E.s;
-  const h = E.e || E.w;
-  if (v && h) return (E.n && E.w) || (E.s && E.e) ? 'nwse-resize' : 'nesw-resize';
-  if (v) return 'ns-resize';
-  if (h) return 'ew-resize';
-  return '';
-}
-
 let binderSeq = 0;
 
 export function bindDashboardGrid(
@@ -1065,13 +940,10 @@ export function bindDashboardGrid(
   let disposed = false;
   /** Reentrancy guard: our own derived frame writes must not re-project. */
   let writing = false;
-  let placeholder: HTMLElement | null = null;
   /** Foreign tile currently adopted from another binder's gesture. */
   let adoptedGhostId: string | null = null;
   /** The tab page this board is currently tearing out of a container, if any. */
   let tearing: string | null = null;
-  let glideTimer: ReturnType<typeof setTimeout> | null = null;
-  let ghostTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * OUR OWN CAPTION RESERVE: a section carrying a caption gives the band's
@@ -1224,171 +1096,60 @@ export function bindDashboardGrid(
     }
   };
 
-  // -- projection: cells -> pixels -------------------------------------------
+  // -- the board, as its modules see it (tile first, step 4b-i) --------------
 
-  /** Write one member's projected rect (derived state → system write). */
-  const writeRect = (id: string, r: WorldRect): void => {
-    const node = diagram.getNode(id);
-    if (node) {
-      if (
-        Math.abs(node.position.x - r.x) > 0.25 ||
-        Math.abs(node.position.y - r.y) > 0.25 ||
-        Math.abs(node.size.width - r.width) > 0.25 ||
-        Math.abs(node.size.height - r.height) > 0.25
-      ) {
-        diagram.runSystemWrite(() => {
-          node.setPosition(r.x, r.y);
-          node.setSize(r.width, r.height, node.size.depth ?? 0);
-        });
-      }
-      return;
-    }
-    const grp = diagram.getGroup(id);
-    if (grp) {
-      const p = grp.position;
-      const s = sizeOf(grp);
-      if (
-        Math.abs(p.x - r.x) > 0.25 ||
-        Math.abs(p.y - r.y) > 0.25 ||
-        Math.abs(s.width - r.width) > 0.25 ||
-        Math.abs(s.height - r.height) > 0.25
-      ) {
-        diagram.runSystemWrite(() => grp.setFrame({ ...r }));
-      }
-    }
-  };
-
-  /** Enforce the board-frame height the sizing mode implies. */
-  const enforceBoardHeight = (): void => {
-    if (designH <= 0) return;
-    const r = rows();
-    // FIT keeps its design height, full stop — the user's rule: "the board
-    // stays the same and the widgets change size so all of them fit". Only
-    // overflow:'scroll' lets the frame EXTEND to hold the rows at the floor
-    // height (and the canvas pan). Grow extends at the base row height.
-    const target =
-      sizing === 'fit'
-        ? overflow === 'scroll'
-          ? Math.max(designH, 2 * padding + r * minRowHeight + (r - 1) * gap)
-          : designH
-        : Math.max(designH, 2 * padding + r * baseRowHeight + (r - 1) * gap);
-    const f = frame();
-    if (Math.abs(f.height - target) > 0.5) {
+  const ctx: BoardCtx = {
+    api,
+    group,
+    diagram,
+    options,
+    gap,
+    padding,
+    baseRowHeight,
+    minRowHeight,
+    overflow,
+    engine: () => engine,
+    frame,
+    geom,
+    rows,
+    sizing: () => sizing,
+    designH: () => designH,
+    rtl: () => rtl,
+    isStatic: () => isStatic,
+    disposed: () => disposed,
+    htmlLayer,
+    hostOf,
+    memberEntity,
+    sizeOf,
+    ghostId: () => adoptedGhostId ?? (gesture?.started ? gesture.id : null),
+    write: (fn) => {
       writing = true;
       try {
-        diagram.runSystemWrite(() =>
-          group.setFrame({ x: f.x, y: f.y, width: f.width, height: target })
-        );
+        fn();
       } finally {
         writing = false;
       }
-    }
+    },
   };
 
-  /** Project every member from its engine cells (the ghost is exempt). */
-  const project = (): void => {
-    enforceBoardHeight();
-    writing = true;
-    try {
-      const f = frame();
-      const g = geom();
-      const r = rows();
-      for (const item of engine.getItems()) {
-        if (gesture?.started && item.id === gesture.id) continue; // the ghost
-        if (item.id === adoptedGhostId) continue; // a ghost adopted from another binder
-        writeRect(item.id, cellToRect(item, f, g, r));
-      }
-    } finally {
-      writing = false;
-    }
-    syncPlaceholder();
-    // The section overlays are projected chrome like the placeholder: they
-    // follow every frame write, not only a rebuild. Painted at bind time only,
-    // a section two levels down kept the geometry of its parent's placeholder
-    // frame (100 × 34) after the view board had laid the parent out (the kit
-    // lab's L47, 2026-09-08).
-    syncSlabs();
-  };
+  // -- projection: cells -> pixels (project.ts) ------------------------------
 
-  // -- placeholder / ghost chrome --------------------------------------------
+  const projection = createProjection(ctx, { afterProject: () => syncSlabs() });
+  const { writeRect, enforceBoardHeight, project, syncPlaceholder, hidePlaceholder, armGlide, disarmGlideSoon, flushGhost, setGhost } = projection;
 
-  /** The placeholder exists ONLY while a gesture is live — so at any moment
-   *  the DOM holds at most one `.axdb-ph` per active gesture, not one idle
-   *  div per bound board. */
-  const syncPlaceholder = (): void => {
-    const ghostId =
-      adoptedGhostId ?? (gesture?.started && !gesture.removedFromBoard ? gesture.id : null);
-    const item = ghostId ? engine.getItem(ghostId) : undefined;
-    const live = !!item;
-    if (!live || !item) {
-      placeholder?.remove();
-      placeholder = null;
-      return;
-    }
-    const layer = htmlLayer();
-    if (!layer) return;
-    if (!placeholder || placeholder.parentElement !== layer) {
-      placeholder?.remove();
-      placeholder = document.createElement('div');
-      placeholder.className = 'axdb-ph';
-      layer.prepend(placeholder);
-    }
-    const r = cellToRect(item, frame(), geom(), rows());
-    placeholder.style.display = 'block';
-    placeholder.style.left = `${r.x}px`;
-    placeholder.style.top = `${r.y}px`;
-    placeholder.style.width = `${r.width}px`;
-    placeholder.style.height = `${r.height}px`;
-  };
+  // -- chrome: slabs, frames, captions, handles, cursors (chrome.ts) ---------
 
-  const armGlide = (): void => {
-    htmlLayer()?.classList.add('axdb-glide');
-    if (glideTimer) clearTimeout(glideTimer);
-  };
-
-  const disarmGlideSoon = (): void => {
-    if (glideTimer) clearTimeout(glideTimer);
-    glideTimer = setTimeout(() => htmlLayer()?.classList.remove('axdb-glide'), GLIDE_OFF_DELAY);
-  };
-
-  /** The host whose ghost class the pending timer will lift. */
-  let ghostHost: HTMLElement | null = null;
-  /**
-   * Lift a pending ghost NOW. One timer serves every host, so superseding it
-   * (a new gesture within 60 ms of the last drop — ③ then ④ in the
-   * nested-containers checks — or a dispose on a rebind) used to clear the
-   * timer and leave the previous tile lifted for good: a permanent drop
-   * shadow the visual gate finally caught.
-   */
-  const flushGhost = (): void => {
-    if (ghostTimer) clearTimeout(ghostTimer);
-    ghostTimer = null;
-    ghostHost?.classList.remove('axdb-ghost', 'axdb-out');
-    ghostHost = null;
-  };
-  const setGhost = (id: string, on: boolean): void => {
-    const host = hostOf(id);
-    if (!host) return;
-    if (ghostHost && ghostHost !== host) flushGhost();
-    if (on) {
-      if (ghostTimer) clearTimeout(ghostTimer);
-      ghostTimer = null;
-      host.classList.add('axdb-ghost');
-      host.classList.remove('axdb-out');
-      ghostHost = host;
-    } else {
-      host.classList.remove('axdb-out');
-      // Keep transition-exemption through the drop write so the snap into the
-      // placeholder is INSTANT (gridstack-style), then let glides resume.
-      if (ghostTimer) clearTimeout(ghostTimer);
-      ghostHost = host;
-      ghostTimer = setTimeout(() => {
-        host.classList.remove('axdb-ghost');
-        ghostTimer = null;
-        if (ghostHost === host) ghostHost = null;
-      }, 60);
-    }
-  };
+  const chrome = createChrome(ctx, {
+    selectedId: () => selectedId,
+    syncA11y: (only) => syncA11y(only),
+    grabbing: () => !!slabGesture,
+    gestureRunning: () => !!gesture,
+    memberGroupAt: (x, y) => memberGroupAt(x, y),
+    slabEdgesNear: (grp, x, y) => slabEdgesNear(grp, x, y),
+    dragHandle: () => dragHandle,
+    wantHandles,
+  });
+  const { syncSlabs, syncHandles, setCarried, flushCarried, showRefusal, ensureStaticGuard } = chrome;
 
   // -- resize handles ---------------------------------------------------------
 
@@ -1452,75 +1213,6 @@ export function bindDashboardGrid(
       host.classList.toggle('axdb-selected', id === selectedId);
     }
   };
-
-  /**
-   * The chrome on every member host: the painted grip (or none) and the corner
-   * resize handle — ONE host lookup per member, which the host observer's
-   * budget counts (a repaint of one host must cost that host's lookup, not a
-   * second pass).
-   */
-  const syncHandles = (only?: ReadonlySet<string>): void => {
-    syncA11y(only);
-    if (disposed) return;
-    ensureStaticGuard();
-    syncSlabs();
-    const grip = gripOf(dragHandle);
-    for (const id of group.members ?? []) {
-      if (only && !only.has(id)) continue;
-      const node = diagram.getNode(id);
-      if (!node) continue;
-      const host = hostOf(id);
-      if (!host) continue;
-      syncGrip(host, grip, node.state?.locked !== true && !isStatic && node.getMetadata?.('widgetMovable') !== false);
-      if (!wantHandles) continue;
-      const existing = host.querySelector(':scope > .axdb-rs');
-      if (node.state?.locked === true || isStatic || node.getMetadata?.('widgetResizable') === false) {
-        existing?.remove();
-        continue;
-      }
-      const rs = existing ?? document.createElement('div');
-      if (!existing) {
-        rs.className = 'axdb-rs';
-        rs.setAttribute('title', 'Resize');
-        host.appendChild(rs);
-      }
-      // The grab corner mirrors with the board: bottom-right LTR, bottom-left
-      // RTL — the same corner the tile actually grows from in each direction.
-      rs.classList.toggle('axdb-rs--rtl', rtl);
-    }
-  };
-
-  /**
-   * Only a HOST-LEVEL change matters: a host arriving (a mount) or a host's
-   * own children changing (a repaint that wiped the injected handle). A
-   * chart's internal churn — most of what a live dashboard mutates — targets
-   * deeper nodes and is ignored, and the hosts the records DO name are the
-   * only ones re-synced. This was members × repaints `querySelector` calls
-   * per wave (9,216 at 96 widgets, review D10); it is now proportional to the
-   * hosts that actually changed.
-   */
-  const hostObserver = new MutationObserver((records) => {
-    const touched = new Set<string>();
-    const noteHost = (el: Node | null): void => {
-      const e = el as Element | null;
-      if (e?.classList?.contains('grafloria-node-host')) {
-        const id = e.getAttribute('data-node-id');
-        if (id) touched.add(id);
-      }
-    };
-    for (const r of records) {
-      // Our own re-injected handle arriving is not a change to answer — it
-      // would echo one more pass per repaint.
-      const ownEcho =
-        r.removedNodes.length === 0 &&
-        r.addedNodes.length > 0 &&
-        Array.from(r.addedNodes).every((n) => (n as Element).classList?.contains('axdb-rs'));
-      if (ownEcho) continue;
-      noteHost(r.target);
-      r.addedNodes.forEach((n) => noteHost(n));
-    }
-    if (touched.size) syncHandles(touched);
-  });
 
   // -- gesture snapshot / commit ---------------------------------------------
 
@@ -1798,53 +1490,6 @@ export function bindDashboardGrid(
   };
 
   /**
-   * SECTION CHROME. A section (member group) paints no card of its own, so it
-   * had nothing to press: a click on its empty band cleared the selection and
-   * its frame had no handle and no edge — a section with many children could
-   * not be selected at all, and could only be resized by pulling a child
-   * (Quantia, Groups page). Every section gets a pointer-transparent overlay
-   * in the HTML layer that wears the selection ring and, while selected, the
-   * corner handle; its frame edges answer the resize cursor.
-   */
-  const slabEls = new Map<string, HTMLElement>();
-  /**
-   * GROUP FRAME (0.4.43): a TAB CONTAINER wears a frame by default — its slab
-   * is bordered and a tinted surface lies under its pages, first in the layer
-   * so the tiles paint over it. A page torn out with two widgets under its tab
-   * read as a strip floating over two loose cards: nothing said the second
-   * card was the tab's. A plain section keeps its invisible slab.
-   */
-  const groupBgs = new Map<string, HTMLElement>();
-  const syncGroupBg = (layer: HTMLElement, id: string, on: boolean, x: number, y: number, w: number, h: number): void => {
-    let bg = groupBgs.get(id) ?? null;
-    if (!on) {
-      bg?.remove();
-      groupBgs.delete(id);
-      return;
-    }
-    if (!bg || bg.parentElement !== layer) {
-      bg?.remove();
-      bg = document.createElement('div');
-      bg.className = 'axdb-group-bg';
-      bg.setAttribute('data-group-bg', id);
-      layer.prepend(bg);
-      groupBgs.set(id, bg);
-    }
-    bg.style.left = `${x}px`;
-    bg.style.top = `${y}px`;
-    bg.style.width = `${w}px`;
-    bg.style.height = `${h}px`;
-  };
-  const isTabsGroup = (grp: GroupModel): boolean => (grp.getMetadata('containerWidget') as { layout?: string } | undefined)?.layout === 'tabs';
-  /**
-   * A TAB CONTAINER's frame is its drag handle (0.4.43): its 8-px margin —
-   * under the strip, beside the pages — moves the group, so the edge-resize
-   * zone shrinks to 3 px there (the corner handle still resizes). A section's
-   * edges keep the full grip: its empty band is a drop target, not a handle.
-   */
-  const TAB_FRAME_GRIP = 3;
-  const edgeGripFor = (grp: GroupModel): number => (isTabsGroup(grp) ? TAB_FRAME_GRIP : EDGE_GRIP);
-  /**
    * BESIDE (0.4.45): a WIDGET dragged onto a tab container's outer band — a
    * fifth of its body, the same bands a tab's split uses — lands next to it
    * on that side; the middle still goes INTO its page and the strip still
@@ -1929,170 +1574,6 @@ export function bindDashboardGrid(
     }
     besideOn(g.id, g.spans, z, row);
   };
-  /**
-   * CARRIED (0.4.43): a group dragged by its strip or band moves as ONE thing.
-   * The held TILE is transition-exempt (the ghost), but a group has no host of
-   * its own: its strip jumped to the pointer while its pages' tiles GLIDED
-   * after it — on the live demo the content trailed the strip by up to 140 px
-   * at every step. Everything in the group's subtree — tiles, strips, slabs,
-   * the surface — is exempt for the gesture and, like the ghost, through the
-   * drop write; then the glides resume.
-   */
-  const carriedEls = new Set<Element>();
-  let carriedTimer: ReturnType<typeof setTimeout> | null = null;
-  const subtreeIds = (id: string): { groups: string[]; nodes: string[] } => {
-    const groups: string[] = [];
-    const nodes: string[] = [];
-    const queue = [id];
-    const seen = new Set<string>();
-    while (queue.length) {
-      const cur = queue.shift()!;
-      if (seen.has(cur)) continue;
-      seen.add(cur);
-      const grp = diagram.getGroup(cur);
-      if (grp) {
-        groups.push(cur);
-        for (const m of grp.members ?? []) queue.push(m);
-      } else if (diagram.getNode(cur)) nodes.push(cur);
-    }
-    return { groups, nodes };
-  };
-  const cssId = (id: string): string => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"'));
-  const setCarried = (id: string, on: boolean): void => {
-    const layer = htmlLayer();
-    if (!layer) return;
-    if (carriedTimer) {
-      clearTimeout(carriedTimer);
-      carriedTimer = null;
-    }
-    if (on) {
-      const { groups, nodes } = subtreeIds(id);
-      const els: Element[] = [];
-      for (const n of nodes) {
-        const h = hostOf(n);
-        if (h) els.push(h);
-      }
-      for (const g of groups) {
-        els.push(...Array.from(layer.querySelectorAll(`:scope > .axdb-tabs[data-tabs-id="${cssId(g)}"], :scope > .axdb-slab[data-slab-id="${cssId(g)}"], :scope > .axdb-group-bg[data-group-bg="${cssId(g)}"]`)));
-      }
-      for (const el of els) {
-        el.classList.add('axdb-carried');
-        carriedEls.add(el);
-      }
-      return;
-    }
-    carriedTimer = setTimeout(() => {
-      for (const el of carriedEls) el.classList.remove('axdb-carried');
-      carriedEls.clear();
-      carriedTimer = null;
-    }, 60);
-  };
-  const flushCarried = (): void => {
-    if (carriedTimer) clearTimeout(carriedTimer);
-    carriedTimer = null;
-    for (const el of carriedEls) el.classList.remove('axdb-carried');
-    carriedEls.clear();
-  };
-  let slabLayer: HTMLElement | null = null;
-  const syncSlabs = (): void => {
-    if (disposed) return;
-    const layer = slabLayer?.isConnected ? slabLayer : (slabLayer = htmlLayer());
-    if (!layer) return;
-    const seen = new Set<string>();
-    for (const id of group.members ?? []) {
-      const grp = diagram.getGroup(id);
-      if (!grp || diagram.getNode(id)) continue;
-      seen.add(id);
-      let el = slabEls.get(id);
-      if (!el || el.parentElement !== layer) {
-        el?.remove();
-        el = document.createElement('div');
-        el.className = 'axdb-slab';
-        el.setAttribute('data-slab-id', id);
-        const rs = document.createElement('div');
-        rs.className = 'axdb-rs';
-        rs.setAttribute('title', 'Resize section');
-        el.appendChild(rs);
-        layer.appendChild(el);
-        slabEls.set(id, el);
-      }
-      const p = grp.position;
-      const sz = sizeOf(grp);
-      el.style.left = `${p.x}px`;
-      el.style.top = `${p.y}px`;
-      el.style.width = `${sz.width}px`;
-      el.style.height = `${sz.height}px`;
-      el.classList.toggle('axdb-slab--selected', selectedId === id);
-      el.classList.toggle('axdb-slab--static', isStatic);
-      el.querySelector(':scope > .axdb-rs')?.classList.toggle('axdb-rs--rtl', rtl);
-      const tabs = isTabsGroup(grp);
-      el.classList.toggle('axdb-slab--tabs', tabs);
-      syncGroupBg(layer, id, tabs, p.x, p.y, sz.width, sz.height);
-      syncCaption(el, id, grp, sz.height);
-    }
-    for (const [id, el] of slabEls) {
-      if (!seen.has(id)) {
-        el.remove();
-        hoverSlabs.delete(el);
-        slabEls.delete(id);
-        groupBgs.get(id)?.remove();
-        groupBgs.delete(id);
-      }
-    }
-  };
-
-  /**
-   * THE CAPTION BAND of a section, on its slab overlay. Painted from the
-   * group's persisted caption; repainted only when its identity changes (the
-   * options, RTL, static, the tier) so a custom `renderCaption` is not run
-   * per frame. The band takes the pointer (the slab itself does not): a press
-   * on it selects the section, an action fires, pass-through reaches content.
-   */
-  const syncCaption = (el: HTMLElement, id: string, grp: GroupModel, sectionH: number): void => {
-    const cap = captionOfGroup(grp);
-    let band = el.querySelector(':scope > .axdb-slab-h') as HTMLElement | null;
-    if (!cap || !captionPainted(cap, isStatic)) {
-      band?.remove();
-      hoverSlabs.delete(el);
-      el.classList.remove('axdb-slab--hot');
-      el.removeAttribute('aria-label');
-      el.removeAttribute('role');
-      return;
-    }
-    if (cap.show === 'hover') hoverSlabs.add(el);
-    else {
-      hoverSlabs.delete(el);
-      el.classList.remove('axdb-slab--hot');
-    }
-    const ctx = { rtl, static: isStatic, sectionH };
-    const key = captionKey(cap, ctx);
-    if (band && band.getAttribute('data-key') === key) {
-      sizeCaptionBand(band, cap, sectionH); // the tier follows the live size
-      return;
-    }
-    band?.remove();
-    band = document.createElement('div');
-    el.prepend(band);
-    const render = options.renderCaption;
-    paintCaptionBand(band, cap, {
-      ...ctx,
-      ...(render ? { render: (host: HTMLElement) => render(id, host) } : {}),
-      onAction: (actionId: string) => options.onCaptionAction?.(id, actionId),
-    });
-    band.setAttribute('data-key', key);
-    // A named group, so the caption text is the section's name in the
-    // accessibility tree rather than a stray label on an unnamed div. (The
-    // band is not a tab stop yet — the actions are deliberately out of the
-    // tab order so a board keeps exactly ONE stop; see the plan.)
-    if (cap.text) {
-      el.setAttribute('role', 'group');
-      el.setAttribute('aria-label', cap.text);
-    } else {
-      el.removeAttribute('role');
-      el.removeAttribute('aria-label');
-    }
-  };
-
   const insideMemberGroupFrame = (x: number, y: number): boolean => {
     for (const id of group.members ?? []) {
       const grp = diagram.getGroup(id);
@@ -2191,29 +1672,6 @@ export function bindDashboardGrid(
     };
     capturePointer(slabGesture.pointerId);
     api.container.style.cursor = 'grabbing';
-  };
-  /** The cell a slab move asked for and could not have — painted so the refusal is visible; null clears it. */
-  let refusal: HTMLElement | null = null;
-  const showRefusal = (cell: { x: number; y: number } | null, w: number, h: number): void => {
-    const layer = htmlLayer();
-    if (!cell || !layer) {
-      refusal?.remove();
-      refusal = null;
-      api.container.style.cursor = slabGesture ? 'grabbing' : '';
-      return;
-    }
-    if (!refusal || refusal.parentElement !== layer) {
-      refusal?.remove();
-      refusal = document.createElement('div');
-      refusal.className = 'axdb-ph axdb-ph--no';
-      layer.prepend(refusal);
-    }
-    const r = cellToRect({ x: cell.x, y: cell.y, w, h }, frame(), geom(), rows());
-    refusal.style.left = `${r.x}px`;
-    refusal.style.top = `${r.y}px`;
-    refusal.style.width = `${r.width}px`;
-    refusal.style.height = `${r.height}px`;
-    api.container.style.cursor = 'not-allowed';
   };
   const slabMove = (ev: ToolPointerEvent): void => {
     const g = slabGesture;
@@ -2394,8 +1852,7 @@ export function bindDashboardGrid(
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
     g.chip?.remove();
-    placeholder?.remove();
-    placeholder = null;
+    hidePlaceholder();
   };
 
   const commitGesture = (g: GestureState): void => {
@@ -3897,229 +3354,26 @@ export function bindDashboardGrid(
 
   const unregisterTool = registerTool(tool);
 
-  /**
-   * Edge affordance: the cursor says which border a press would take, the
-   * way gridstack's invisible edge handles do. One passive listener on the
-   * container; the corner handle keeps its own cursor from the stylesheet.
-   */
-  let hoverHost: HTMLElement | null = null;
-  /**
-   * A `show: 'hover'` caption cannot ride CSS `:hover`: the slab overlay takes
-   * no pointer (by design — it must never steal a press), and while the band
-   * is hidden it takes none either, so nothing in the section is ever hovered
-   * in CSS terms. The binder already tracks the pointer; it marks the section
-   * under it instead.
-   */
-  /** Only the sections carrying a `show: 'hover'` band — usually none, so the
-   *  pointer handler costs nothing on a board that has no hover caption. */
-  const hoverSlabs = new Set<HTMLElement>();
-  const markHotSection = (clientX: number, clientY: number): void => {
-    if (!hoverSlabs.size) return;
-    for (const el of hoverSlabs) {
-      const r = el.getBoundingClientRect();
-      el.classList.toggle('axdb-slab--hot', clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom);
-    }
-  };
-  const onHoverLeave = (): void => {
-    for (const el of hoverSlabs) el.classList.remove('axdb-slab--hot');
-  };
+  api.container.addEventListener('pointermove', chrome.onHover, { passive: true });
+  api.container.addEventListener('pointerleave', chrome.onHoverLeave, { passive: true });
 
-  const onHover = (e: PointerEvent): void => {
-    if (disposed || gesture) return;
-    markHotSection(e.clientX, e.clientY);
-    // The event may target the host, its content, or (when a host's content
-    // is pointer-transparent) the canvas under it — find the member host by
-    // the pointer's position in that case.
-    let host = (e.target as Element | null)?.closest?.('.grafloria-node-host') as HTMLElement | null;
-    if (!host) {
-      for (const id of group.members ?? []) {
-        const h = hostOf(id);
-        if (!h) continue;
-        const r = h.getBoundingClientRect();
-        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
-          host = h;
-          break;
-        }
-      }
-    }
-    if (hoverHost && hoverHost !== host) {
-      hoverHost.style.cursor = '';
-      hoverHost.removeAttribute('data-axdb-edge'); // the affordance follows the pointer off a tile
-    }
-    hoverHost = host;
-    if (!host) {
-      // No tile under the pointer: a SECTION's frame edge still says resize.
-      const wpt = api.viewport?.clientToWorld ? api.viewport.clientToWorld(e.clientX, e.clientY, api.container.getBoundingClientRect()) : null;
-      const sid = wpt ? memberGroupAt(wpt.x, wpt.y) : null;
-      const grp = sid ? diagram.getGroup(sid) : undefined;
-      const c = grp && wpt && !isStatic ? cursorFor(slabEdgesNear(grp, wpt.x, wpt.y)) : '';
-      if (!slabGesture) api.container.style.cursor = c;
-      return;
-    }
-    if (!slabGesture && api.container.style.cursor) api.container.style.cursor = '';
-    const id = host.getAttribute('data-node-id') ?? '';
-    if (!(group.members ?? new Set<string>()).has(id)) return;
-    const node = diagram.getNode(id);
-    const resizable =
-      !!node && !isStatic && node.state?.locked !== true && node.getMetadata?.('widgetResizable') !== false;
-    const cursor = resizable ? cursorFor(edgesNear(host, e.clientX, e.clientY)) : '';
-    // The affordance rides on an ATTRIBUTE, not the inline style: a repaint
-    // rewrites the host's style and used to clear the cursor mid-hover, and
-    // content that sets its own cursor (a chart canvas) hid it — the
-    // stylesheet applies the attribute's cursor to the host and everything in it.
-    if (cursor) host.setAttribute('data-axdb-edge', cursor);
-    else host.removeAttribute('data-axdb-edge');
-  };
-  api.container.addEventListener('pointermove', onHover, { passive: true });
-  api.container.addEventListener('pointerleave', onHoverLeave, { passive: true });
+  // -- keyboard operation (keyboard.ts) --------------------------------------
 
-  /**
-   * STATIC BOARDS LET CONTENT BE CLICKED. The renderer prevents the default of
-   * every press a tool claims, which cancels the compatibility mouse events —
-   * a chart inside a read-only board could not be clicked. So under `static`
-   * a press inside a member's CONTENT (not on kit chrome) is stopped on the
-   * HTML layer, in the bubble phase: the content has already received it, the
-   * renderer never does, nothing is prevented.
-   */
-  const staticGuard = (e: Event): void => {
-    if (!isStatic || disposed) return;
-    const t = e.target as Element | null;
-    const host = t?.closest?.('.grafloria-node-host') as HTMLElement | null;
-    if (!host || !(group.members ?? new Set<string>()).has(host.getAttribute('data-node-id') ?? '')) return;
-    if (t?.closest?.('.axdb-rs, .axdb-grip, .axdb-div')) return;
-    e.stopPropagation();
-  };
-  let guardedLayer: HTMLElement | null = null;
-  const ensureStaticGuard = (): void => {
-    // One lookup, ever: the host observer budgets container lookups per
-    // repaint, and the layer element lives as long as the instance.
-    if (guardedLayer?.isConnected) return;
-    const layer = htmlLayer();
-    if (!layer) return;
-    guardedLayer?.removeEventListener('pointerdown', staticGuard);
-    guardedLayer = layer;
-    layer.addEventListener('pointerdown', staticGuard);
-  };
-
-  /**
-   * KEYBOARD OPERATION (WCAG 2.1.1, and the non-drag alternative 2.5.7 asks
-   * for): on a focused member, arrows move it one cell, Shift+arrows resize it
-   * one cell, Home/End jump to the first/last member. Every move and resize is
-   * the same programmatic gesture the API uses — one undoable step, reported
-   * through onLayoutChange — and every outcome is spoken: the tile's new
-   * cell, each neighbour it displaced, or why it was refused. Handled keys
-   * stop here so the renderer's own pixel nudge never fights the grid.
-   */
-  const memberHostAt = (target: EventTarget | null): { id: string; host: HTMLElement } | null => {
-    const host = (target as Element | null)?.closest?.('.grafloria-node-host') as HTMLElement | null;
-    if (!host) return null;
-    const id = host.getAttribute('data-node-id') ?? '';
-    if (!(group.members ?? new Set<string>()).has(id) || !diagram.getNode(id)) return null;
-    return { id, host };
-  };
-
-  const onFocusIn = (e: FocusEvent): void => {
-    const hit = memberHostAt(e.target);
-    if (!hit || disposed) return;
-    if (focusedId !== hit.id || selectedId !== hit.id) {
-      focusedId = hit.id;
-      selectWidget(hit.id);
-      syncA11y();
-    }
-  };
-
-  const onKey = (e: KeyboardEvent): void => {
-    if (disposed || gesture) return;
-    const hit = memberHostAt(e.target);
-    if (!hit) {
-      // Tab reaches the diagram's own root (the svg) before any widget. An
-      // arrow or Enter there hands focus to the board's tab stop, so a
-      // keyboard user is never parked on "Diagram, 8 nodes" with nowhere to go.
-      const el = e.target as Element | null;
-      const onRoot = !!el && el.tagName?.toLowerCase() === 'svg' && el.classList?.contains('grafloria-diagram');
-      if (onRoot && (e.key.startsWith('Arrow') || e.key === 'Enter' || e.key === ' ')) {
-        const members = [...(group.members ?? [])].filter((id) => !!diagram.getNode(id) && !!hostOf(id));
-        const target = focusedId && members.includes(focusedId) ? focusedId : members[0];
-        if (target && handle.focusWidget(target)) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }
-      return;
-    }
-    const members = [...(group.members ?? [])].filter((id) => !!diagram.getNode(id) && !!hostOf(id));
-    if (e.key === 'Home' || e.key === 'End') {
-      const id = e.key === 'Home' ? members[0] : members[members.length - 1];
-      if (id) handle.focusWidget(id);
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
-    const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
-    if (!arrow) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (isStatic) return; // readable, not editable
-    const node = diagram.getNode(hit.id);
-    const item = engine.getItem(hit.id);
-    if (!node || !item) return;
-    const name = nameOf(node);
-    if (node.state?.locked === true) {
-      live.announceError(`${name} is pinned`);
-      return;
-    }
-    const [dx, dy] = arrow;
-    const before = new Map(engine.getItems().map((i) => [i.id, { x: i.x, y: i.y, w: i.w, h: i.h }]));
-    const resize = e.shiftKey;
-    if (resize && node.getMetadata?.('widgetResizable') === false) {
-      live.announceError(`${name} cannot be resized`);
-      return;
-    }
-    if (!resize && node.getMetadata?.('widgetMovable') === false) {
-      live.announceError(`${name} cannot be moved`);
-      return;
-    }
-    // A one-cell keyboard step onto a neighbour would be refused by the
-    // pointer's anti-jitter gate (a 3-wide covering a third of its neighbour
-    // is not "more than half"). A key press is deliberate, so when the step
-    // is refused and a neighbour sits there, aim at the neighbour's far edge —
-    // the same swap a full drag lands on.
-    const stepOrSwap = async (): Promise<boolean> => {
-      if (await handle.moveTo(hit.id, item.x + dx, item.y + dy)) return true;
-      const probe = { x: item.x + dx, y: item.y + dy, w: item.w, h: item.h };
-      const c = engine
-        .getItems()
-        .find((o) => o.id !== hit.id && probe.x < o.x + o.w && o.x < probe.x + probe.w && probe.y < o.y + o.h && o.y < probe.y + probe.h);
-      if (!c) return false;
-      const tx = dx > 0 ? c.x + c.w - item.w : dx < 0 ? c.x : item.x;
-      const ty = dy > 0 ? c.y + c.h - item.h : dy < 0 ? c.y : item.y;
-      return handle.moveTo(hit.id, tx, ty);
-    };
-    const op = resize ? handle.resizeTo(hit.id, item.w + dx, item.h + dy) : stepOrSwap();
-    void op.then((ok) => {
-      if (disposed) return;
-      const after = engine.getItem(hit.id);
-      if (!ok || !after) {
-        live.announceError(
-          resize ? `Cannot resize ${name} that way` : `Cannot move ${name} ${directionName(dx, dy)}`
-        );
-        return;
-      }
-      const parts = [`${name} ${resize ? 'resized' : 'moved'} to ${describeCell(after)}`];
-      for (const other of engine.getItems()) {
-        if (other.id === hit.id) continue;
-        const was = before.get(other.id);
-        if (!was || (was.x === other.x && was.y === other.y)) continue;
-        const o = diagram.getNode(other.id);
-        parts.push(`${o ? nameOf(o) : other.id} moved to ${describeCell(other)}`);
-      }
-      live.announce(parts.join('. '), 'polite', true);
-      syncA11y();
-      hostOf(hit.id)?.focus?.({ preventScroll: true });
-    });
-  };
-  api.container.addEventListener('focusin', onFocusIn);
-  api.container.addEventListener('keydown', onKey);
+  const keyboard = createKeyboard(ctx, {
+    handle: () => handle,
+    live,
+    nameOf,
+    focusedId: () => focusedId,
+    setFocusedId: (id) => {
+      focusedId = id;
+    },
+    selectedId: () => selectedId,
+    selectWidget,
+    syncA11y: () => syncA11y(),
+    gestureRunning: () => !!gesture,
+  });
+  api.container.addEventListener('focusin', keyboard.onFocusIn);
+  api.container.addEventListener('keydown', keyboard.onKey);
 
   // -- tab tear-out -----------------------------------------------------------
 
@@ -4512,8 +3766,7 @@ export function bindDashboardGrid(
       if (now && (now.x !== z.keep.x || now.y !== z.keep.y)) engine.moveCheck(z.target.id, z.keep.x, z.keep.y, { gate: false });
       const ok = l.place(z.born);
       project();
-      placeholder?.remove(); // the accent overlay says which half; the grey placeholder under it is noise
-      placeholder = null;
+      hidePlaceholder(); // the accent overlay says which half; the grey placeholder under it is noise
       return ok;
     };
     /** The band a dock is promised: the cell it takes — a BOTTOM dock's lies past the last row, so its tint sits on the board's last rows instead. */
@@ -4528,8 +3781,7 @@ export function bindDashboardGrid(
       l.place(z.cell, true); // DOCKING PUSHES SECTIONS: everything below the band moves down, solid or not
       insertRows(z.cell, l);
       project();
-      placeholder?.remove();
-      placeholder = null;
+      hidePlaceholder();
       return true;
     };
     let zone: Zone = { kind: 'board' };
@@ -5124,32 +4376,18 @@ export function bindDashboardGrid(
       disposed = true;
       peersOnCanvas().delete(selfPeer);
       unregisterTool();
-      api.container.removeEventListener('pointermove', onHover);
-      api.container.removeEventListener('pointerleave', onHoverLeave);
-      guardedLayer?.removeEventListener('pointerdown', staticGuard);
-      api.container.removeEventListener('focusin', onFocusIn);
-      api.container.removeEventListener('keydown', onKey);
-      hostObserver.disconnect();
+      api.container.removeEventListener('pointermove', chrome.onHover);
+      api.container.removeEventListener('pointerleave', chrome.onHoverLeave);
+      api.container.removeEventListener('focusin', keyboard.onFocusIn);
+      api.container.removeEventListener('keydown', keyboard.onKey);
       containerObserver?.disconnect();
       tearing = null;
       for (const off of subs) off();
       // The corner handles are THIS binder's affordance: a board re-bound as a
       // split layout must not keep showing a resize corner it cannot act on.
       for (const id of group.members ?? []) hostOf(id)?.querySelector(':scope > .axdb-rs')?.remove();
-      placeholder?.remove();
-      placeholder = null;
-      if (glideTimer) clearTimeout(glideTimer);
-      for (const el of slabEls.values()) el.remove();
-      slabEls.clear();
-      hoverSlabs.clear();
-      for (const bg of groupBgs.values()) bg.remove();
-      groupBgs.clear();
-      // A rebind inside the 60 ms window (a layout switch right after an undo)
-      // disposed this binder with the timer pending — the host kept its
-      // lifted ghost for good (visual gate, nested-containers ⑤).
-      flushGhost();
-      flushCarried();
-      htmlLayer()?.classList.remove('axdb-glide');
+      chrome.dispose(); // slabs, frames, the refused cell, the carried subtree, the host observer, the static guard
+      projection.dispose(); // the placeholder, the glide timer, a pending ghost
       api.container.style.cursor = '';
     },
   };
@@ -5161,7 +4399,7 @@ export function bindDashboardGrid(
   // flash at 12).
   rebuild(true);
   const layer = htmlLayer();
-  if (layer) hostObserver.observe(layer, { childList: true, subtree: true });
+  if (layer) chrome.observe(layer);
   containerObserver?.observe(api.container);
 
   return handle;

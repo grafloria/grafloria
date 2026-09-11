@@ -195352,9 +195352,158 @@ function tileCommands(deltas) {
   return out;
 }
 
-// libs/element/src/lib/dashboard-kit/grid-binder.ts
+// libs/element/src/lib/dashboard-kit/project.ts
+var GLIDE_OFF_DELAY = 400;
+function createProjection(ctx, deps) {
+  const { api, group, diagram } = ctx;
+  let placeholder = null;
+  let glideTimer = null;
+  let ghostTimer = null;
+  let ghostHost = null;
+  const writeRect = (id, r) => {
+    const node = diagram.getNode(id);
+    if (node) {
+      if (Math.abs(node.position.x - r.x) > 0.25 || Math.abs(node.position.y - r.y) > 0.25 || Math.abs(node.size.width - r.width) > 0.25 || Math.abs(node.size.height - r.height) > 0.25) {
+        diagram.runSystemWrite(() => {
+          node.setPosition(r.x, r.y);
+          node.setSize(r.width, r.height, node.size.depth ?? 0);
+        });
+      }
+      return;
+    }
+    const grp = diagram.getGroup(id);
+    if (grp) {
+      const p = grp.position;
+      const s = ctx.sizeOf(grp);
+      if (Math.abs(p.x - r.x) > 0.25 || Math.abs(p.y - r.y) > 0.25 || Math.abs(s.width - r.width) > 0.25 || Math.abs(s.height - r.height) > 0.25) {
+        diagram.runSystemWrite(() => grp.setFrame({ ...r }));
+      }
+    }
+  };
+  const enforceBoardHeight = () => {
+    const designH = ctx.designH();
+    if (designH <= 0) return;
+    const r = ctx.rows();
+    const target = ctx.sizing() === "fit" ? ctx.overflow === "scroll" ? Math.max(designH, 2 * ctx.padding + r * ctx.minRowHeight + (r - 1) * ctx.gap) : designH : Math.max(designH, 2 * ctx.padding + r * ctx.baseRowHeight + (r - 1) * ctx.gap);
+    const f = ctx.frame();
+    if (Math.abs(f.height - target) > 0.5) {
+      ctx.write(() => diagram.runSystemWrite(() => group.setFrame({ x: f.x, y: f.y, width: f.width, height: target })));
+    }
+  };
+  const syncPlaceholder = () => {
+    const ghostId = ctx.ghostId();
+    const item = ghostId ? ctx.engine().getItem(ghostId) : void 0;
+    if (!item) {
+      placeholder?.remove();
+      placeholder = null;
+      return;
+    }
+    const layer = ctx.htmlLayer();
+    if (!layer) return;
+    if (!placeholder || placeholder.parentElement !== layer) {
+      placeholder?.remove();
+      placeholder = document.createElement("div");
+      placeholder.className = "axdb-ph";
+      layer.prepend(placeholder);
+    }
+    const r = cellToRect(item, ctx.frame(), ctx.geom(), ctx.rows());
+    placeholder.style.display = "block";
+    placeholder.style.left = `${r.x}px`;
+    placeholder.style.top = `${r.y}px`;
+    placeholder.style.width = `${r.width}px`;
+    placeholder.style.height = `${r.height}px`;
+  };
+  const hidePlaceholder = () => {
+    placeholder?.remove();
+    placeholder = null;
+  };
+  const project = () => {
+    enforceBoardHeight();
+    ctx.write(() => {
+      const f = ctx.frame();
+      const g = ctx.geom();
+      const r = ctx.rows();
+      const ghost = ctx.ghostId();
+      for (const item of ctx.engine().getItems()) {
+        if (item.id === ghost) continue;
+        writeRect(item.id, cellToRect(item, f, g, r));
+      }
+    });
+    syncPlaceholder();
+    deps.afterProject();
+  };
+  const armGlide = () => {
+    ctx.htmlLayer()?.classList.add("axdb-glide");
+    if (glideTimer) clearTimeout(glideTimer);
+  };
+  const disarmGlideSoon = () => {
+    if (glideTimer) clearTimeout(glideTimer);
+    glideTimer = setTimeout(() => ctx.htmlLayer()?.classList.remove("axdb-glide"), GLIDE_OFF_DELAY);
+  };
+  const flushGhost = () => {
+    if (ghostTimer) clearTimeout(ghostTimer);
+    ghostTimer = null;
+    ghostHost?.classList.remove("axdb-ghost", "axdb-out");
+    ghostHost = null;
+  };
+  const setGhost = (id, on) => {
+    const host = ctx.hostOf(id);
+    if (!host) return;
+    if (ghostHost && ghostHost !== host) flushGhost();
+    if (on) {
+      if (ghostTimer) clearTimeout(ghostTimer);
+      ghostTimer = null;
+      host.classList.add("axdb-ghost");
+      host.classList.remove("axdb-out");
+      ghostHost = host;
+    } else {
+      host.classList.remove("axdb-out");
+      if (ghostTimer) clearTimeout(ghostTimer);
+      ghostHost = host;
+      ghostTimer = setTimeout(() => {
+        host.classList.remove("axdb-ghost");
+        ghostTimer = null;
+        if (ghostHost === host) ghostHost = null;
+      }, 60);
+    }
+  };
+  const dispose = () => {
+    hidePlaceholder();
+    if (glideTimer) clearTimeout(glideTimer);
+    glideTimer = null;
+    flushGhost();
+    ctx.htmlLayer()?.classList.remove("axdb-glide");
+  };
+  return { writeRect, enforceBoardHeight, project, syncPlaceholder, hidePlaceholder, armGlide, disarmGlideSoon, flushGhost, setGhost, dispose };
+}
+
+// libs/element/src/lib/dashboard-kit/edges.ts
+var EDGE_GRIP = 7;
+var NO_EDGES = { n: false, e: false, s: false, w: false };
+function edgesNear(host, cx, cy) {
+  const r = host.getBoundingClientRect();
+  if (cx < r.left - 2 || cx > r.right + 2 || cy < r.top - 2 || cy > r.bottom + 2) return NO_EDGES;
+  return {
+    n: cy - r.top <= EDGE_GRIP,
+    s: r.bottom - cy <= EDGE_GRIP,
+    w: cx - r.left <= EDGE_GRIP,
+    e: r.right - cx <= EDGE_GRIP
+  };
+}
+var anyEdge = (E) => E.n || E.e || E.s || E.w;
+function cursorFor(E) {
+  const v = E.n || E.s;
+  const h = E.e || E.w;
+  if (v && h) return E.n && E.w || E.s && E.e ? "nwse-resize" : "nesw-resize";
+  if (v) return "ns-resize";
+  if (h) return "ew-resize";
+  return "";
+}
+
+// libs/element/src/lib/dashboard-kit/grip.ts
 var GRIP_CLASS = "axdb-grip";
 var DRAG_HANDLE_CLASS = "axdb-drag-handle";
+var CAPTION_BAND = 28;
 var normalizeDragHandle = (v) => typeof v === "object" && v !== null && v.grip ? { grip: true, position: v.position ?? "left", placement: v.placement ?? "inside" } : v === true ? true : typeof v === "string" && v.length > 0 ? v : false;
 var dragHandleSelector = (v) => v === true ? ".axdb-widget-h" : typeof v === "string" ? v : typeof v === "object" ? "." + GRIP_CLASS : null;
 var gripOf = (v) => typeof v === "object" ? v : null;
@@ -195375,6 +195524,466 @@ function syncGrip(host, cfg, movable) {
   el2.className = `${GRIP_CLASS} ${GRIP_CLASS}--${cfg.position ?? "left"} ${GRIP_CLASS}--${cfg.placement ?? "inside"}`;
   host.classList.add(`axdb-gp-${cfg.placement ?? "inside"}`, `axdb-gp-${cfg.position ?? "left"}`);
 }
+function gripHostOf(target) {
+  const grip = target?.closest?.("." + GRIP_CLASS);
+  return grip?.closest(".grafloria-node-host") ?? null;
+}
+function pressOnDragHandle(sel, target, hostEl, clientX, clientY) {
+  const grip = target?.closest?.(sel) ?? null;
+  if (grip && (!hostEl || hostEl.contains(grip))) return true;
+  if (sel !== ".axdb-widget-h" || !hostEl) return false;
+  const hr = hostEl.getBoundingClientRect();
+  const header = hostEl.querySelector(".axdb-widget-h");
+  const bottom = header ? header.getBoundingClientRect().bottom : hr.top + CAPTION_BAND;
+  return clientX >= hr.left && clientX <= hr.right && clientY >= hr.top && clientY <= bottom;
+}
+
+// libs/element/src/lib/dashboard-kit/chrome.ts
+var TAB_FRAME_GRIP = 3;
+var isTabsGroup = (grp) => grp.getMetadata("containerWidget")?.layout === "tabs";
+var edgeGripFor = (grp) => isTabsGroup(grp) ? TAB_FRAME_GRIP : EDGE_GRIP;
+function createChrome(ctx, deps) {
+  const { api, group, diagram, options } = ctx;
+  const slabEls = /* @__PURE__ */ new Map();
+  const groupBgs = /* @__PURE__ */ new Map();
+  const syncGroupBg = (layer, id, on, x, y, w, h) => {
+    let bg = groupBgs.get(id) ?? null;
+    if (!on) {
+      bg?.remove();
+      groupBgs.delete(id);
+      return;
+    }
+    if (!bg || bg.parentElement !== layer) {
+      bg?.remove();
+      bg = document.createElement("div");
+      bg.className = "axdb-group-bg";
+      bg.setAttribute("data-group-bg", id);
+      layer.prepend(bg);
+      groupBgs.set(id, bg);
+    }
+    bg.style.left = `${x}px`;
+    bg.style.top = `${y}px`;
+    bg.style.width = `${w}px`;
+    bg.style.height = `${h}px`;
+  };
+  const hoverSlabs = /* @__PURE__ */ new Set();
+  const markHotSection = (clientX, clientY) => {
+    if (!hoverSlabs.size) return;
+    for (const el2 of hoverSlabs) {
+      const r = el2.getBoundingClientRect();
+      el2.classList.toggle("axdb-slab--hot", clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom);
+    }
+  };
+  const onHoverLeave = () => {
+    for (const el2 of hoverSlabs) el2.classList.remove("axdb-slab--hot");
+  };
+  const syncCaption = (el2, id, grp, sectionH) => {
+    const cap = captionOfGroup(grp);
+    const isStatic = ctx.isStatic();
+    let band = el2.querySelector(":scope > .axdb-slab-h");
+    if (!cap || !captionPainted(cap, isStatic)) {
+      band?.remove();
+      hoverSlabs.delete(el2);
+      el2.classList.remove("axdb-slab--hot");
+      el2.removeAttribute("aria-label");
+      el2.removeAttribute("role");
+      return;
+    }
+    if (cap.show === "hover") hoverSlabs.add(el2);
+    else {
+      hoverSlabs.delete(el2);
+      el2.classList.remove("axdb-slab--hot");
+    }
+    const cctx = { rtl: ctx.rtl(), static: isStatic, sectionH };
+    const key = captionKey(cap, cctx);
+    if (band && band.getAttribute("data-key") === key) {
+      sizeCaptionBand(band, cap, sectionH);
+      return;
+    }
+    band?.remove();
+    band = document.createElement("div");
+    el2.prepend(band);
+    const render2 = options.renderCaption;
+    paintCaptionBand(band, cap, {
+      ...cctx,
+      ...render2 ? { render: (host) => render2(id, host) } : {},
+      onAction: (actionId) => options.onCaptionAction?.(id, actionId)
+    });
+    band.setAttribute("data-key", key);
+    if (cap.text) {
+      el2.setAttribute("role", "group");
+      el2.setAttribute("aria-label", cap.text);
+    } else {
+      el2.removeAttribute("role");
+      el2.removeAttribute("aria-label");
+    }
+  };
+  let slabLayer = null;
+  const syncSlabs = () => {
+    if (ctx.disposed()) return;
+    const layer = slabLayer?.isConnected ? slabLayer : slabLayer = ctx.htmlLayer();
+    if (!layer) return;
+    const seen = /* @__PURE__ */ new Set();
+    const selectedId = deps.selectedId();
+    const isStatic = ctx.isStatic();
+    const rtl = ctx.rtl();
+    for (const id of group.members ?? []) {
+      const grp = diagram.getGroup(id);
+      if (!grp || diagram.getNode(id)) continue;
+      seen.add(id);
+      let el2 = slabEls.get(id);
+      if (!el2 || el2.parentElement !== layer) {
+        el2?.remove();
+        el2 = document.createElement("div");
+        el2.className = "axdb-slab";
+        el2.setAttribute("data-slab-id", id);
+        const rs = document.createElement("div");
+        rs.className = "axdb-rs";
+        rs.setAttribute("title", "Resize section");
+        el2.appendChild(rs);
+        layer.appendChild(el2);
+        slabEls.set(id, el2);
+      }
+      const p = grp.position;
+      const sz = ctx.sizeOf(grp);
+      el2.style.left = `${p.x}px`;
+      el2.style.top = `${p.y}px`;
+      el2.style.width = `${sz.width}px`;
+      el2.style.height = `${sz.height}px`;
+      el2.classList.toggle("axdb-slab--selected", selectedId === id);
+      el2.classList.toggle("axdb-slab--static", isStatic);
+      el2.querySelector(":scope > .axdb-rs")?.classList.toggle("axdb-rs--rtl", rtl);
+      const tabs = isTabsGroup(grp);
+      el2.classList.toggle("axdb-slab--tabs", tabs);
+      syncGroupBg(layer, id, tabs, p.x, p.y, sz.width, sz.height);
+      syncCaption(el2, id, grp, sz.height);
+    }
+    for (const [id, el2] of slabEls) {
+      if (!seen.has(id)) {
+        el2.remove();
+        hoverSlabs.delete(el2);
+        slabEls.delete(id);
+        groupBgs.get(id)?.remove();
+        groupBgs.delete(id);
+      }
+    }
+  };
+  const carriedEls = /* @__PURE__ */ new Set();
+  let carriedTimer = null;
+  const subtreeIds = (id) => {
+    const groups = [];
+    const nodes = [];
+    const queue = [id];
+    const seen = /* @__PURE__ */ new Set();
+    while (queue.length) {
+      const cur = queue.shift();
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      const grp = diagram.getGroup(cur);
+      if (grp) {
+        groups.push(cur);
+        for (const m of grp.members ?? []) queue.push(m);
+      } else if (diagram.getNode(cur)) nodes.push(cur);
+    }
+    return { groups, nodes };
+  };
+  const cssId = (id) => typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
+  const setCarried = (id, on) => {
+    const layer = ctx.htmlLayer();
+    if (!layer) return;
+    if (carriedTimer) {
+      clearTimeout(carriedTimer);
+      carriedTimer = null;
+    }
+    if (on) {
+      const { groups, nodes } = subtreeIds(id);
+      const els = [];
+      for (const n3 of nodes) {
+        const h = ctx.hostOf(n3);
+        if (h) els.push(h);
+      }
+      for (const g of groups) {
+        els.push(...Array.from(layer.querySelectorAll(`:scope > .axdb-tabs[data-tabs-id="${cssId(g)}"], :scope > .axdb-slab[data-slab-id="${cssId(g)}"], :scope > .axdb-group-bg[data-group-bg="${cssId(g)}"]`)));
+      }
+      for (const el2 of els) {
+        el2.classList.add("axdb-carried");
+        carriedEls.add(el2);
+      }
+      return;
+    }
+    carriedTimer = setTimeout(() => {
+      for (const el2 of carriedEls) el2.classList.remove("axdb-carried");
+      carriedEls.clear();
+      carriedTimer = null;
+    }, 60);
+  };
+  const flushCarried = () => {
+    if (carriedTimer) clearTimeout(carriedTimer);
+    carriedTimer = null;
+    for (const el2 of carriedEls) el2.classList.remove("axdb-carried");
+    carriedEls.clear();
+  };
+  let refusal = null;
+  const showRefusal = (cell, w, h) => {
+    const layer = ctx.htmlLayer();
+    if (!cell || !layer) {
+      refusal?.remove();
+      refusal = null;
+      api.container.style.cursor = deps.grabbing() ? "grabbing" : "";
+      return;
+    }
+    if (!refusal || refusal.parentElement !== layer) {
+      refusal?.remove();
+      refusal = document.createElement("div");
+      refusal.className = "axdb-ph axdb-ph--no";
+      layer.prepend(refusal);
+    }
+    const r = cellToRect({ x: cell.x, y: cell.y, w, h }, ctx.frame(), ctx.geom(), ctx.rows());
+    refusal.style.left = `${r.x}px`;
+    refusal.style.top = `${r.y}px`;
+    refusal.style.width = `${r.width}px`;
+    refusal.style.height = `${r.height}px`;
+    api.container.style.cursor = "not-allowed";
+  };
+  const staticGuard = (e) => {
+    if (!ctx.isStatic() || ctx.disposed()) return;
+    const t = e.target;
+    const host = t?.closest?.(".grafloria-node-host");
+    if (!host || !(group.members ?? /* @__PURE__ */ new Set()).has(host.getAttribute("data-node-id") ?? "")) return;
+    if (t?.closest?.(".axdb-rs, .axdb-grip, .axdb-div")) return;
+    e.stopPropagation();
+  };
+  let guardedLayer = null;
+  const ensureStaticGuard = () => {
+    if (guardedLayer?.isConnected) return;
+    const layer = ctx.htmlLayer();
+    if (!layer) return;
+    guardedLayer?.removeEventListener("pointerdown", staticGuard);
+    guardedLayer = layer;
+    layer.addEventListener("pointerdown", staticGuard);
+  };
+  const syncHandles = (only) => {
+    deps.syncA11y(only);
+    if (ctx.disposed()) return;
+    ensureStaticGuard();
+    syncSlabs();
+    const grip = gripOf(deps.dragHandle());
+    const isStatic = ctx.isStatic();
+    const rtl = ctx.rtl();
+    for (const id of group.members ?? []) {
+      if (only && !only.has(id)) continue;
+      const node = diagram.getNode(id);
+      if (!node) continue;
+      const host = ctx.hostOf(id);
+      if (!host) continue;
+      syncGrip(host, grip, node.state?.locked !== true && !isStatic && node.getMetadata?.("widgetMovable") !== false);
+      if (!deps.wantHandles) continue;
+      const existing = host.querySelector(":scope > .axdb-rs");
+      if (node.state?.locked === true || isStatic || node.getMetadata?.("widgetResizable") === false) {
+        existing?.remove();
+        continue;
+      }
+      const rs = existing ?? document.createElement("div");
+      if (!existing) {
+        rs.className = "axdb-rs";
+        rs.setAttribute("title", "Resize");
+        host.appendChild(rs);
+      }
+      rs.classList.toggle("axdb-rs--rtl", rtl);
+    }
+  };
+  const hostObserver = new MutationObserver((records) => {
+    const touched = /* @__PURE__ */ new Set();
+    const noteHost = (el2) => {
+      const e = el2;
+      if (e?.classList?.contains("grafloria-node-host")) {
+        const id = e.getAttribute("data-node-id");
+        if (id) touched.add(id);
+      }
+    };
+    for (const r of records) {
+      const ownEcho = r.removedNodes.length === 0 && r.addedNodes.length > 0 && Array.from(r.addedNodes).every((n3) => n3.classList?.contains("axdb-rs"));
+      if (ownEcho) continue;
+      noteHost(r.target);
+      r.addedNodes.forEach((n3) => noteHost(n3));
+    }
+    if (touched.size) syncHandles(touched);
+  });
+  const observe = (layer) => hostObserver.observe(layer, { childList: true, subtree: true });
+  let hoverHost = null;
+  const onHover = (e) => {
+    if (ctx.disposed() || deps.gestureRunning()) return;
+    markHotSection(e.clientX, e.clientY);
+    let host = e.target?.closest?.(".grafloria-node-host");
+    if (!host) {
+      for (const id2 of group.members ?? []) {
+        const h = ctx.hostOf(id2);
+        if (!h) continue;
+        const r = h.getBoundingClientRect();
+        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+          host = h;
+          break;
+        }
+      }
+    }
+    if (hoverHost && hoverHost !== host) {
+      hoverHost.style.cursor = "";
+      hoverHost.removeAttribute("data-axdb-edge");
+    }
+    hoverHost = host;
+    const grabbing = deps.grabbing();
+    if (!host) {
+      const wpt = api.viewport?.clientToWorld ? api.viewport.clientToWorld(e.clientX, e.clientY, api.container.getBoundingClientRect()) : null;
+      const sid = wpt ? deps.memberGroupAt(wpt.x, wpt.y) : null;
+      const grp = sid ? diagram.getGroup(sid) : void 0;
+      const c = grp && wpt && !ctx.isStatic() ? cursorFor(deps.slabEdgesNear(grp, wpt.x, wpt.y)) : "";
+      if (!grabbing) api.container.style.cursor = c;
+      return;
+    }
+    if (!grabbing && api.container.style.cursor) api.container.style.cursor = "";
+    const id = host.getAttribute("data-node-id") ?? "";
+    if (!(group.members ?? /* @__PURE__ */ new Set()).has(id)) return;
+    const node = diagram.getNode(id);
+    const resizable = !!node && !ctx.isStatic() && node.state?.locked !== true && node.getMetadata?.("widgetResizable") !== false;
+    const cursor = resizable ? cursorFor(edgesNear(host, e.clientX, e.clientY)) : "";
+    if (cursor) host.setAttribute("data-axdb-edge", cursor);
+    else host.removeAttribute("data-axdb-edge");
+  };
+  const dispose = () => {
+    guardedLayer?.removeEventListener("pointerdown", staticGuard);
+    hostObserver.disconnect();
+    for (const el2 of slabEls.values()) el2.remove();
+    slabEls.clear();
+    hoverSlabs.clear();
+    for (const bg of groupBgs.values()) bg.remove();
+    groupBgs.clear();
+    refusal?.remove();
+    refusal = null;
+    flushCarried();
+  };
+  return { syncSlabs, syncHandles, observe, ensureStaticGuard, onHover, onHoverLeave, setCarried, flushCarried, showRefusal, dispose };
+}
+
+// libs/element/src/lib/dashboard-kit/keyboard.ts
+var LIVE_REGIONS = /* @__PURE__ */ new WeakMap();
+function liveRegionFor(container) {
+  let live = LIVE_REGIONS.get(container);
+  if (!live) {
+    live = new LiveRegionController(container);
+    LIVE_REGIONS.set(container, live);
+  }
+  return live;
+}
+function directionName(dx, dy) {
+  return dx < 0 ? "left" : dx > 0 ? "right" : dy < 0 ? "up" : "down";
+}
+function describeCell(c) {
+  return `column ${c.x + 1}, row ${c.y + 1}, ${c.w} by ${c.h}`;
+}
+function createKeyboard(ctx, deps) {
+  const { group, diagram } = ctx;
+  const memberHostAt = (target) => {
+    const host = target?.closest?.(".grafloria-node-host");
+    if (!host) return null;
+    const id = host.getAttribute("data-node-id") ?? "";
+    if (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id)) return null;
+    return { id, host };
+  };
+  const onFocusIn = (e) => {
+    const hit = memberHostAt(e.target);
+    if (!hit || ctx.disposed()) return;
+    if (deps.focusedId() !== hit.id || deps.selectedId() !== hit.id) {
+      deps.setFocusedId(hit.id);
+      deps.selectWidget(hit.id);
+      deps.syncA11y();
+    }
+  };
+  const onKey = (e) => {
+    if (ctx.disposed() || deps.gestureRunning()) return;
+    const handle = deps.handle();
+    const hit = memberHostAt(e.target);
+    if (!hit) {
+      const el2 = e.target;
+      const onRoot = !!el2 && el2.tagName?.toLowerCase() === "svg" && el2.classList?.contains("grafloria-diagram");
+      if (onRoot && (e.key.startsWith("Arrow") || e.key === "Enter" || e.key === " ")) {
+        const members2 = [...group.members ?? []].filter((id) => !!diagram.getNode(id) && !!ctx.hostOf(id));
+        const focused = deps.focusedId();
+        const target = focused && members2.includes(focused) ? focused : members2[0];
+        if (target && handle.focusWidget(target)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+      return;
+    }
+    const members = [...group.members ?? []].filter((id) => !!diagram.getNode(id) && !!ctx.hostOf(id));
+    if (e.key === "Home" || e.key === "End") {
+      const id = e.key === "Home" ? members[0] : members[members.length - 1];
+      if (id) handle.focusWidget(id);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (!arrow) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (ctx.isStatic()) return;
+    const engine = ctx.engine();
+    const node = diagram.getNode(hit.id);
+    const item = engine.getItem(hit.id);
+    if (!node || !item) return;
+    const name = deps.nameOf(node);
+    const live = deps.live;
+    if (node.state?.locked === true) {
+      live.announceError(`${name} is pinned`);
+      return;
+    }
+    const [dx, dy] = arrow;
+    const before = new Map(engine.getItems().map((i) => [i.id, { x: i.x, y: i.y, w: i.w, h: i.h }]));
+    const resize = e.shiftKey;
+    if (resize && node.getMetadata?.("widgetResizable") === false) {
+      live.announceError(`${name} cannot be resized`);
+      return;
+    }
+    if (!resize && node.getMetadata?.("widgetMovable") === false) {
+      live.announceError(`${name} cannot be moved`);
+      return;
+    }
+    const stepOrSwap = async () => {
+      if (await handle.moveTo(hit.id, item.x + dx, item.y + dy)) return true;
+      const probe = { x: item.x + dx, y: item.y + dy, w: item.w, h: item.h };
+      const c = engine.getItems().find((o) => o.id !== hit.id && probe.x < o.x + o.w && o.x < probe.x + probe.w && probe.y < o.y + o.h && o.y < probe.y + probe.h);
+      if (!c) return false;
+      const tx = dx > 0 ? c.x + c.w - item.w : dx < 0 ? c.x : item.x;
+      const ty = dy > 0 ? c.y + c.h - item.h : dy < 0 ? c.y : item.y;
+      return handle.moveTo(hit.id, tx, ty);
+    };
+    const op = resize ? handle.resizeTo(hit.id, item.w + dx, item.h + dy) : stepOrSwap();
+    void op.then((ok) => {
+      if (ctx.disposed()) return;
+      const after = ctx.engine().getItem(hit.id);
+      if (!ok || !after) {
+        live.announceError(resize ? `Cannot resize ${name} that way` : `Cannot move ${name} ${directionName(dx, dy)}`);
+        return;
+      }
+      const parts = [`${name} ${resize ? "resized" : "moved"} to ${describeCell(after)}`];
+      for (const other of ctx.engine().getItems()) {
+        if (other.id === hit.id) continue;
+        const was = before.get(other.id);
+        if (!was || was.x === other.x && was.y === other.y) continue;
+        const o = diagram.getNode(other.id);
+        parts.push(`${o ? deps.nameOf(o) : other.id} moved to ${describeCell(other)}`);
+      }
+      live.announce(parts.join(". "), "polite", true);
+      deps.syncA11y();
+      ctx.hostOf(hit.id)?.focus?.({ preventScroll: true });
+    });
+  };
+  return { onFocusIn, onKey };
+}
+
+// libs/element/src/lib/dashboard-kit/grid-binder.ts
 function ownsPress(container, diagram, ev, hit) {
   const t = ev.source?.target;
   if (typeof Node !== "undefined" && t instanceof Node && !container.contains(t)) return false;
@@ -195390,20 +195999,6 @@ function ownsPress(container, diagram, ev, hit) {
   }
   return true;
 }
-function gripHostOf(target) {
-  const grip = target?.closest?.("." + GRIP_CLASS);
-  return grip?.closest(".grafloria-node-host") ?? null;
-}
-function pressOnDragHandle(sel, target, hostEl, clientX, clientY) {
-  const grip = target?.closest?.(sel) ?? null;
-  if (grip && (!hostEl || hostEl.contains(grip))) return true;
-  if (sel !== ".axdb-widget-h" || !hostEl) return false;
-  const hr = hostEl.getBoundingClientRect();
-  const header = hostEl.querySelector(".axdb-widget-h");
-  const bottom = header ? header.getBoundingClientRect().bottom : hr.top + CAPTION_BAND;
-  return clientX >= hr.left && clientX <= hr.right && clientY >= hr.top && clientY <= bottom;
-}
-var CAPTION_BAND = 28;
 var TEAR_OUT_MIN_ROWS = 2;
 var BOARD_REGISTRY = /* @__PURE__ */ new WeakMap();
 var EMPTY_SUBTREE = /* @__PURE__ */ new Set();
@@ -195426,44 +196021,7 @@ function registerBoardPeer(container, peer) {
     s.delete(peer);
   };
 }
-var LIVE_REGIONS = /* @__PURE__ */ new WeakMap();
-function liveRegionFor(container) {
-  let live = LIVE_REGIONS.get(container);
-  if (!live) {
-    live = new LiveRegionController(container);
-    LIVE_REGIONS.set(container, live);
-  }
-  return live;
-}
-function directionName(dx, dy) {
-  return dx < 0 ? "left" : dx > 0 ? "right" : dy < 0 ? "up" : "down";
-}
-function describeCell(c) {
-  return `column ${c.x + 1}, row ${c.y + 1}, ${c.w} by ${c.h}`;
-}
 var DRAG_THRESHOLD = 4;
-var GLIDE_OFF_DELAY = 400;
-var EDGE_GRIP = 7;
-var NO_EDGES = { n: false, e: false, s: false, w: false };
-function edgesNear(host, cx, cy) {
-  const r = host.getBoundingClientRect();
-  if (cx < r.left - 2 || cx > r.right + 2 || cy < r.top - 2 || cy > r.bottom + 2) return NO_EDGES;
-  return {
-    n: cy - r.top <= EDGE_GRIP,
-    s: r.bottom - cy <= EDGE_GRIP,
-    w: cx - r.left <= EDGE_GRIP,
-    e: r.right - cx <= EDGE_GRIP
-  };
-}
-var anyEdge = (E) => E.n || E.e || E.s || E.w;
-function cursorFor(E) {
-  const v = E.n || E.s;
-  const h = E.e || E.w;
-  if (v && h) return E.n && E.w || E.s && E.e ? "nwse-resize" : "nesw-resize";
-  if (v) return "ns-resize";
-  if (h) return "ew-resize";
-  return "";
-}
 var binderSeq = 0;
 function bindDashboardGrid(api, group, options = {}) {
   ensureDashboardKitStyles();
@@ -195567,11 +196125,8 @@ function bindDashboardGrid(api, group, options = {}) {
   let gesture = null;
   let disposed = false;
   let writing = false;
-  let placeholder = null;
   let adoptedGhostId = null;
   let tearing = null;
-  let glideTimer = null;
-  let ghostTimer = null;
   const ownReserve = () => sectionCaptionReserve(diagram, group, isStatic);
   const frame = () => {
     const r = ownReserve();
@@ -195661,120 +196216,52 @@ function bindDashboardGrid(api, group, options = {}) {
       grp.setMetadata("gridItem", gridItemFromCell(cell));
     }
   };
-  const writeRect = (id, r) => {
-    const node = diagram.getNode(id);
-    if (node) {
-      if (Math.abs(node.position.x - r.x) > 0.25 || Math.abs(node.position.y - r.y) > 0.25 || Math.abs(node.size.width - r.width) > 0.25 || Math.abs(node.size.height - r.height) > 0.25) {
-        diagram.runSystemWrite(() => {
-          node.setPosition(r.x, r.y);
-          node.setSize(r.width, r.height, node.size.depth ?? 0);
-        });
-      }
-      return;
-    }
-    const grp = diagram.getGroup(id);
-    if (grp) {
-      const p = grp.position;
-      const s = sizeOf(grp);
-      if (Math.abs(p.x - r.x) > 0.25 || Math.abs(p.y - r.y) > 0.25 || Math.abs(s.width - r.width) > 0.25 || Math.abs(s.height - r.height) > 0.25) {
-        diagram.runSystemWrite(() => grp.setFrame({ ...r }));
-      }
-    }
-  };
-  const enforceBoardHeight = () => {
-    if (designH <= 0) return;
-    const r = rows();
-    const target = sizing === "fit" ? overflow === "scroll" ? Math.max(designH, 2 * padding + r * minRowHeight + (r - 1) * gap) : designH : Math.max(designH, 2 * padding + r * baseRowHeight + (r - 1) * gap);
-    const f = frame();
-    if (Math.abs(f.height - target) > 0.5) {
+  const ctx = {
+    api,
+    group,
+    diagram,
+    options,
+    gap,
+    padding,
+    baseRowHeight,
+    minRowHeight,
+    overflow,
+    engine: () => engine,
+    frame,
+    geom,
+    rows,
+    sizing: () => sizing,
+    designH: () => designH,
+    rtl: () => rtl,
+    isStatic: () => isStatic,
+    disposed: () => disposed,
+    htmlLayer,
+    hostOf,
+    memberEntity,
+    sizeOf,
+    ghostId: () => adoptedGhostId ?? (gesture?.started ? gesture.id : null),
+    write: (fn) => {
       writing = true;
       try {
-        diagram.runSystemWrite(
-          () => group.setFrame({ x: f.x, y: f.y, width: f.width, height: target })
-        );
+        fn();
       } finally {
         writing = false;
       }
     }
   };
-  const project = () => {
-    enforceBoardHeight();
-    writing = true;
-    try {
-      const f = frame();
-      const g = geom();
-      const r = rows();
-      for (const item of engine.getItems()) {
-        if (gesture?.started && item.id === gesture.id) continue;
-        if (item.id === adoptedGhostId) continue;
-        writeRect(item.id, cellToRect(item, f, g, r));
-      }
-    } finally {
-      writing = false;
-    }
-    syncPlaceholder();
-    syncSlabs();
-  };
-  const syncPlaceholder = () => {
-    const ghostId = adoptedGhostId ?? (gesture?.started && !gesture.removedFromBoard ? gesture.id : null);
-    const item = ghostId ? engine.getItem(ghostId) : void 0;
-    const live2 = !!item;
-    if (!live2 || !item) {
-      placeholder?.remove();
-      placeholder = null;
-      return;
-    }
-    const layer2 = htmlLayer();
-    if (!layer2) return;
-    if (!placeholder || placeholder.parentElement !== layer2) {
-      placeholder?.remove();
-      placeholder = document.createElement("div");
-      placeholder.className = "axdb-ph";
-      layer2.prepend(placeholder);
-    }
-    const r = cellToRect(item, frame(), geom(), rows());
-    placeholder.style.display = "block";
-    placeholder.style.left = `${r.x}px`;
-    placeholder.style.top = `${r.y}px`;
-    placeholder.style.width = `${r.width}px`;
-    placeholder.style.height = `${r.height}px`;
-  };
-  const armGlide = () => {
-    htmlLayer()?.classList.add("axdb-glide");
-    if (glideTimer) clearTimeout(glideTimer);
-  };
-  const disarmGlideSoon = () => {
-    if (glideTimer) clearTimeout(glideTimer);
-    glideTimer = setTimeout(() => htmlLayer()?.classList.remove("axdb-glide"), GLIDE_OFF_DELAY);
-  };
-  let ghostHost = null;
-  const flushGhost = () => {
-    if (ghostTimer) clearTimeout(ghostTimer);
-    ghostTimer = null;
-    ghostHost?.classList.remove("axdb-ghost", "axdb-out");
-    ghostHost = null;
-  };
-  const setGhost = (id, on) => {
-    const host = hostOf(id);
-    if (!host) return;
-    if (ghostHost && ghostHost !== host) flushGhost();
-    if (on) {
-      if (ghostTimer) clearTimeout(ghostTimer);
-      ghostTimer = null;
-      host.classList.add("axdb-ghost");
-      host.classList.remove("axdb-out");
-      ghostHost = host;
-    } else {
-      host.classList.remove("axdb-out");
-      if (ghostTimer) clearTimeout(ghostTimer);
-      ghostHost = host;
-      ghostTimer = setTimeout(() => {
-        host.classList.remove("axdb-ghost");
-        ghostTimer = null;
-        if (ghostHost === host) ghostHost = null;
-      }, 60);
-    }
-  };
+  const projection = createProjection(ctx, { afterProject: () => syncSlabs() });
+  const { writeRect, enforceBoardHeight, project, syncPlaceholder, hidePlaceholder, armGlide, disarmGlideSoon, flushGhost, setGhost } = projection;
+  const chrome = createChrome(ctx, {
+    selectedId: () => selectedId,
+    syncA11y: (only) => syncA11y(only),
+    grabbing: () => !!slabGesture,
+    gestureRunning: () => !!gesture,
+    memberGroupAt: (x, y) => memberGroupAt(x, y),
+    slabEdgesNear: (grp, x, y) => slabEdgesNear(grp, x, y),
+    dragHandle: () => dragHandle,
+    wantHandles
+  });
+  const { syncSlabs, syncHandles, setCarried, flushCarried, showRefusal, ensureStaticGuard } = chrome;
   const nameOf2 = (node) => {
     const title = node.getMetadata?.("widgetTitle");
     if (typeof title === "string" && title) return title;
@@ -195815,51 +196302,6 @@ function bindDashboardGrid(api, group, options = {}) {
       host.classList.toggle("axdb-selected", id === selectedId);
     }
   };
-  const syncHandles = (only) => {
-    syncA11y(only);
-    if (disposed) return;
-    ensureStaticGuard();
-    syncSlabs();
-    const grip = gripOf(dragHandle);
-    for (const id of group.members ?? []) {
-      if (only && !only.has(id)) continue;
-      const node = diagram.getNode(id);
-      if (!node) continue;
-      const host = hostOf(id);
-      if (!host) continue;
-      syncGrip(host, grip, node.state?.locked !== true && !isStatic && node.getMetadata?.("widgetMovable") !== false);
-      if (!wantHandles) continue;
-      const existing = host.querySelector(":scope > .axdb-rs");
-      if (node.state?.locked === true || isStatic || node.getMetadata?.("widgetResizable") === false) {
-        existing?.remove();
-        continue;
-      }
-      const rs = existing ?? document.createElement("div");
-      if (!existing) {
-        rs.className = "axdb-rs";
-        rs.setAttribute("title", "Resize");
-        host.appendChild(rs);
-      }
-      rs.classList.toggle("axdb-rs--rtl", rtl);
-    }
-  };
-  const hostObserver = new MutationObserver((records) => {
-    const touched = /* @__PURE__ */ new Set();
-    const noteHost = (el2) => {
-      const e = el2;
-      if (e?.classList?.contains("grafloria-node-host")) {
-        const id = e.getAttribute("data-node-id");
-        if (id) touched.add(id);
-      }
-    };
-    for (const r of records) {
-      const ownEcho = r.removedNodes.length === 0 && r.addedNodes.length > 0 && Array.from(r.addedNodes).every((n3) => n3.classList?.contains("axdb-rs"));
-      if (ownEcho) continue;
-      noteHost(r.target);
-      r.addedNodes.forEach((n3) => noteHost(n3));
-    }
-    if (touched.size) syncHandles(touched);
-  });
   const snapshotAll = () => {
     const cells = /* @__PURE__ */ new Map();
     const geoms = /* @__PURE__ */ new Map();
@@ -196052,31 +196494,6 @@ function bindDashboardGrid(api, group, options = {}) {
     const s = sizeOf(grp);
     return { n: y - p.y <= grip, s: p.y + s.height - y <= grip, w: x - p.x <= grip, e: p.x + s.width - x <= grip };
   };
-  const slabEls = /* @__PURE__ */ new Map();
-  const groupBgs = /* @__PURE__ */ new Map();
-  const syncGroupBg = (layer2, id, on, x, y, w, h) => {
-    let bg = groupBgs.get(id) ?? null;
-    if (!on) {
-      bg?.remove();
-      groupBgs.delete(id);
-      return;
-    }
-    if (!bg || bg.parentElement !== layer2) {
-      bg?.remove();
-      bg = document.createElement("div");
-      bg.className = "axdb-group-bg";
-      bg.setAttribute("data-group-bg", id);
-      layer2.prepend(bg);
-      groupBgs.set(id, bg);
-    }
-    bg.style.left = `${x}px`;
-    bg.style.top = `${y}px`;
-    bg.style.width = `${w}px`;
-    bg.style.height = `${h}px`;
-  };
-  const isTabsGroup = (grp) => grp.getMetadata("containerWidget")?.layout === "tabs";
-  const TAB_FRAME_GRIP = 3;
-  const edgeGripFor = (grp) => isTabsGroup(grp) ? TAB_FRAME_GRIP : EDGE_GRIP;
   let beside = null;
   const endBeside = (restore) => {
     if (!beside) return;
@@ -196122,148 +196539,6 @@ function bindDashboardGrid(api, group, options = {}) {
       engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
     }
     besideOn(g.id, g.spans, z, row);
-  };
-  const carriedEls = /* @__PURE__ */ new Set();
-  let carriedTimer = null;
-  const subtreeIds = (id) => {
-    const groups = [];
-    const nodes = [];
-    const queue = [id];
-    const seen = /* @__PURE__ */ new Set();
-    while (queue.length) {
-      const cur = queue.shift();
-      if (seen.has(cur)) continue;
-      seen.add(cur);
-      const grp = diagram.getGroup(cur);
-      if (grp) {
-        groups.push(cur);
-        for (const m of grp.members ?? []) queue.push(m);
-      } else if (diagram.getNode(cur)) nodes.push(cur);
-    }
-    return { groups, nodes };
-  };
-  const cssId = (id) => typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
-  const setCarried = (id, on) => {
-    const layer2 = htmlLayer();
-    if (!layer2) return;
-    if (carriedTimer) {
-      clearTimeout(carriedTimer);
-      carriedTimer = null;
-    }
-    if (on) {
-      const { groups, nodes } = subtreeIds(id);
-      const els = [];
-      for (const n3 of nodes) {
-        const h = hostOf(n3);
-        if (h) els.push(h);
-      }
-      for (const g of groups) {
-        els.push(...Array.from(layer2.querySelectorAll(`:scope > .axdb-tabs[data-tabs-id="${cssId(g)}"], :scope > .axdb-slab[data-slab-id="${cssId(g)}"], :scope > .axdb-group-bg[data-group-bg="${cssId(g)}"]`)));
-      }
-      for (const el2 of els) {
-        el2.classList.add("axdb-carried");
-        carriedEls.add(el2);
-      }
-      return;
-    }
-    carriedTimer = setTimeout(() => {
-      for (const el2 of carriedEls) el2.classList.remove("axdb-carried");
-      carriedEls.clear();
-      carriedTimer = null;
-    }, 60);
-  };
-  const flushCarried = () => {
-    if (carriedTimer) clearTimeout(carriedTimer);
-    carriedTimer = null;
-    for (const el2 of carriedEls) el2.classList.remove("axdb-carried");
-    carriedEls.clear();
-  };
-  let slabLayer = null;
-  const syncSlabs = () => {
-    if (disposed) return;
-    const layer2 = slabLayer?.isConnected ? slabLayer : slabLayer = htmlLayer();
-    if (!layer2) return;
-    const seen = /* @__PURE__ */ new Set();
-    for (const id of group.members ?? []) {
-      const grp = diagram.getGroup(id);
-      if (!grp || diagram.getNode(id)) continue;
-      seen.add(id);
-      let el2 = slabEls.get(id);
-      if (!el2 || el2.parentElement !== layer2) {
-        el2?.remove();
-        el2 = document.createElement("div");
-        el2.className = "axdb-slab";
-        el2.setAttribute("data-slab-id", id);
-        const rs = document.createElement("div");
-        rs.className = "axdb-rs";
-        rs.setAttribute("title", "Resize section");
-        el2.appendChild(rs);
-        layer2.appendChild(el2);
-        slabEls.set(id, el2);
-      }
-      const p = grp.position;
-      const sz = sizeOf(grp);
-      el2.style.left = `${p.x}px`;
-      el2.style.top = `${p.y}px`;
-      el2.style.width = `${sz.width}px`;
-      el2.style.height = `${sz.height}px`;
-      el2.classList.toggle("axdb-slab--selected", selectedId === id);
-      el2.classList.toggle("axdb-slab--static", isStatic);
-      el2.querySelector(":scope > .axdb-rs")?.classList.toggle("axdb-rs--rtl", rtl);
-      const tabs = isTabsGroup(grp);
-      el2.classList.toggle("axdb-slab--tabs", tabs);
-      syncGroupBg(layer2, id, tabs, p.x, p.y, sz.width, sz.height);
-      syncCaption(el2, id, grp, sz.height);
-    }
-    for (const [id, el2] of slabEls) {
-      if (!seen.has(id)) {
-        el2.remove();
-        hoverSlabs.delete(el2);
-        slabEls.delete(id);
-        groupBgs.get(id)?.remove();
-        groupBgs.delete(id);
-      }
-    }
-  };
-  const syncCaption = (el2, id, grp, sectionH) => {
-    const cap = captionOfGroup(grp);
-    let band = el2.querySelector(":scope > .axdb-slab-h");
-    if (!cap || !captionPainted(cap, isStatic)) {
-      band?.remove();
-      hoverSlabs.delete(el2);
-      el2.classList.remove("axdb-slab--hot");
-      el2.removeAttribute("aria-label");
-      el2.removeAttribute("role");
-      return;
-    }
-    if (cap.show === "hover") hoverSlabs.add(el2);
-    else {
-      hoverSlabs.delete(el2);
-      el2.classList.remove("axdb-slab--hot");
-    }
-    const ctx = { rtl, static: isStatic, sectionH };
-    const key = captionKey(cap, ctx);
-    if (band && band.getAttribute("data-key") === key) {
-      sizeCaptionBand(band, cap, sectionH);
-      return;
-    }
-    band?.remove();
-    band = document.createElement("div");
-    el2.prepend(band);
-    const render2 = options.renderCaption;
-    paintCaptionBand(band, cap, {
-      ...ctx,
-      ...render2 ? { render: (host) => render2(id, host) } : {},
-      onAction: (actionId) => options.onCaptionAction?.(id, actionId)
-    });
-    band.setAttribute("data-key", key);
-    if (cap.text) {
-      el2.setAttribute("role", "group");
-      el2.setAttribute("aria-label", cap.text);
-    } else {
-      el2.removeAttribute("role");
-      el2.removeAttribute("aria-label");
-    }
   };
   const insideMemberGroupFrame = (x, y) => {
     for (const id of group.members ?? []) {
@@ -196325,28 +196600,6 @@ function bindDashboardGrid(api, group, options = {}) {
     };
     capturePointer(slabGesture.pointerId);
     api.container.style.cursor = "grabbing";
-  };
-  let refusal = null;
-  const showRefusal = (cell, w, h) => {
-    const layer2 = htmlLayer();
-    if (!cell || !layer2) {
-      refusal?.remove();
-      refusal = null;
-      api.container.style.cursor = slabGesture ? "grabbing" : "";
-      return;
-    }
-    if (!refusal || refusal.parentElement !== layer2) {
-      refusal?.remove();
-      refusal = document.createElement("div");
-      refusal.className = "axdb-ph axdb-ph--no";
-      layer2.prepend(refusal);
-    }
-    const r = cellToRect({ x: cell.x, y: cell.y, w, h }, frame(), geom(), rows());
-    refusal.style.left = `${r.x}px`;
-    refusal.style.top = `${r.y}px`;
-    refusal.style.width = `${r.width}px`;
-    refusal.style.height = `${r.height}px`;
-    api.container.style.cursor = "not-allowed";
   };
   const slabMove = (ev) => {
     const g = slabGesture;
@@ -196488,8 +196741,7 @@ function bindDashboardGrid(api, group, options = {}) {
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
     g.chip?.remove();
-    placeholder?.remove();
-    placeholder = null;
+    hidePlaceholder();
   };
   const commitGesture = (g) => {
     engine.endGesture();
@@ -197373,7 +197625,7 @@ function bindDashboardGrid(api, group, options = {}) {
         window.removeEventListener("pointermove", onMove, true);
         window.removeEventListener("pointerup", onUp, true);
         window.removeEventListener("pointercancel", onCancel, true);
-        window.removeEventListener("keydown", onKey2, true);
+        window.removeEventListener("keydown", onKey, true);
       };
       const onMove = (e) => {
         if (disposed || currentSlab()?.id !== id) return detachAll();
@@ -197388,13 +197640,13 @@ function bindDashboardGrid(api, group, options = {}) {
         detachAll();
         slabCancel();
       };
-      const onKey2 = (e) => {
+      const onKey = (e) => {
         if (e.key === "Escape") onCancel();
       };
       window.addEventListener("pointermove", onMove, true);
       window.addEventListener("pointerup", onUp, true);
       window.addEventListener("pointercancel", onCancel, true);
-      window.addEventListener("keydown", onKey2, true);
+      window.addEventListener("keydown", onKey, true);
       return true;
     },
     slabMove: (ev) => slabMove(ev),
@@ -197446,11 +197698,11 @@ function bindDashboardGrid(api, group, options = {}) {
         return !!cid && (group.members ?? /* @__PURE__ */ new Set()).has(cid) && api.container.contains(stripEl);
       }
       if (!ownsPress(api.container, diagram, ev, hit)) return false;
-      const chrome = ev.source?.target?.closest?.(".axdb-slab > .axdb-slab-h, .axdb-slab > .axdb-rs");
-      const chromeId = chrome?.parentElement?.getAttribute("data-slab-id");
+      const chrome2 = ev.source?.target?.closest?.(".axdb-slab > .axdb-slab-h, .axdb-slab > .axdb-rs");
+      const chromeId = chrome2?.parentElement?.getAttribute("data-slab-id");
       const mine = !!chromeId && (group.members ?? /* @__PURE__ */ new Set()).has(chromeId);
       if (mine) return true;
-      if (chromeId && chrome?.classList.contains("axdb-rs")) return false;
+      if (chromeId && chrome2?.classList.contains("axdb-rs")) return false;
       if (hit.node) {
         if ((group.members ?? /* @__PURE__ */ new Set()).has(hit.node.id)) return true;
         for (const p of BOARD_REGISTRY.get(api.container) ?? []) {
@@ -197590,172 +197842,23 @@ function bindDashboardGrid(api, group, options = {}) {
     else onToolUp();
   };
   const unregisterTool = registerTool(tool);
-  let hoverHost = null;
-  const hoverSlabs = /* @__PURE__ */ new Set();
-  const markHotSection = (clientX, clientY) => {
-    if (!hoverSlabs.size) return;
-    for (const el2 of hoverSlabs) {
-      const r = el2.getBoundingClientRect();
-      el2.classList.toggle("axdb-slab--hot", clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom);
-    }
-  };
-  const onHoverLeave = () => {
-    for (const el2 of hoverSlabs) el2.classList.remove("axdb-slab--hot");
-  };
-  const onHover = (e) => {
-    if (disposed || gesture) return;
-    markHotSection(e.clientX, e.clientY);
-    let host = e.target?.closest?.(".grafloria-node-host");
-    if (!host) {
-      for (const id2 of group.members ?? []) {
-        const h = hostOf(id2);
-        if (!h) continue;
-        const r = h.getBoundingClientRect();
-        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
-          host = h;
-          break;
-        }
-      }
-    }
-    if (hoverHost && hoverHost !== host) {
-      hoverHost.style.cursor = "";
-      hoverHost.removeAttribute("data-axdb-edge");
-    }
-    hoverHost = host;
-    if (!host) {
-      const wpt = api.viewport?.clientToWorld ? api.viewport.clientToWorld(e.clientX, e.clientY, api.container.getBoundingClientRect()) : null;
-      const sid = wpt ? memberGroupAt(wpt.x, wpt.y) : null;
-      const grp = sid ? diagram.getGroup(sid) : void 0;
-      const c = grp && wpt && !isStatic ? cursorFor(slabEdgesNear(grp, wpt.x, wpt.y)) : "";
-      if (!slabGesture) api.container.style.cursor = c;
-      return;
-    }
-    if (!slabGesture && api.container.style.cursor) api.container.style.cursor = "";
-    const id = host.getAttribute("data-node-id") ?? "";
-    if (!(group.members ?? /* @__PURE__ */ new Set()).has(id)) return;
-    const node = diagram.getNode(id);
-    const resizable = !!node && !isStatic && node.state?.locked !== true && node.getMetadata?.("widgetResizable") !== false;
-    const cursor = resizable ? cursorFor(edgesNear(host, e.clientX, e.clientY)) : "";
-    if (cursor) host.setAttribute("data-axdb-edge", cursor);
-    else host.removeAttribute("data-axdb-edge");
-  };
-  api.container.addEventListener("pointermove", onHover, { passive: true });
-  api.container.addEventListener("pointerleave", onHoverLeave, { passive: true });
-  const staticGuard = (e) => {
-    if (!isStatic || disposed) return;
-    const t = e.target;
-    const host = t?.closest?.(".grafloria-node-host");
-    if (!host || !(group.members ?? /* @__PURE__ */ new Set()).has(host.getAttribute("data-node-id") ?? "")) return;
-    if (t?.closest?.(".axdb-rs, .axdb-grip, .axdb-div")) return;
-    e.stopPropagation();
-  };
-  let guardedLayer = null;
-  const ensureStaticGuard = () => {
-    if (guardedLayer?.isConnected) return;
-    const layer2 = htmlLayer();
-    if (!layer2) return;
-    guardedLayer?.removeEventListener("pointerdown", staticGuard);
-    guardedLayer = layer2;
-    layer2.addEventListener("pointerdown", staticGuard);
-  };
-  const memberHostAt = (target) => {
-    const host = target?.closest?.(".grafloria-node-host");
-    if (!host) return null;
-    const id = host.getAttribute("data-node-id") ?? "";
-    if (!(group.members ?? /* @__PURE__ */ new Set()).has(id) || !diagram.getNode(id)) return null;
-    return { id, host };
-  };
-  const onFocusIn = (e) => {
-    const hit = memberHostAt(e.target);
-    if (!hit || disposed) return;
-    if (focusedId !== hit.id || selectedId !== hit.id) {
-      focusedId = hit.id;
-      selectWidget(hit.id);
-      syncA11y();
-    }
-  };
-  const onKey = (e) => {
-    if (disposed || gesture) return;
-    const hit = memberHostAt(e.target);
-    if (!hit) {
-      const el2 = e.target;
-      const onRoot = !!el2 && el2.tagName?.toLowerCase() === "svg" && el2.classList?.contains("grafloria-diagram");
-      if (onRoot && (e.key.startsWith("Arrow") || e.key === "Enter" || e.key === " ")) {
-        const members2 = [...group.members ?? []].filter((id) => !!diagram.getNode(id) && !!hostOf(id));
-        const target = focusedId && members2.includes(focusedId) ? focusedId : members2[0];
-        if (target && handle.focusWidget(target)) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }
-      return;
-    }
-    const members = [...group.members ?? []].filter((id) => !!diagram.getNode(id) && !!hostOf(id));
-    if (e.key === "Home" || e.key === "End") {
-      const id = e.key === "Home" ? members[0] : members[members.length - 1];
-      if (id) handle.focusWidget(id);
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
-    const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
-    if (!arrow) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (isStatic) return;
-    const node = diagram.getNode(hit.id);
-    const item = engine.getItem(hit.id);
-    if (!node || !item) return;
-    const name = nameOf2(node);
-    if (node.state?.locked === true) {
-      live.announceError(`${name} is pinned`);
-      return;
-    }
-    const [dx, dy] = arrow;
-    const before = new Map(engine.getItems().map((i) => [i.id, { x: i.x, y: i.y, w: i.w, h: i.h }]));
-    const resize = e.shiftKey;
-    if (resize && node.getMetadata?.("widgetResizable") === false) {
-      live.announceError(`${name} cannot be resized`);
-      return;
-    }
-    if (!resize && node.getMetadata?.("widgetMovable") === false) {
-      live.announceError(`${name} cannot be moved`);
-      return;
-    }
-    const stepOrSwap = async () => {
-      if (await handle.moveTo(hit.id, item.x + dx, item.y + dy)) return true;
-      const probe = { x: item.x + dx, y: item.y + dy, w: item.w, h: item.h };
-      const c = engine.getItems().find((o) => o.id !== hit.id && probe.x < o.x + o.w && o.x < probe.x + probe.w && probe.y < o.y + o.h && o.y < probe.y + probe.h);
-      if (!c) return false;
-      const tx = dx > 0 ? c.x + c.w - item.w : dx < 0 ? c.x : item.x;
-      const ty = dy > 0 ? c.y + c.h - item.h : dy < 0 ? c.y : item.y;
-      return handle.moveTo(hit.id, tx, ty);
-    };
-    const op = resize ? handle.resizeTo(hit.id, item.w + dx, item.h + dy) : stepOrSwap();
-    void op.then((ok) => {
-      if (disposed) return;
-      const after = engine.getItem(hit.id);
-      if (!ok || !after) {
-        live.announceError(
-          resize ? `Cannot resize ${name} that way` : `Cannot move ${name} ${directionName(dx, dy)}`
-        );
-        return;
-      }
-      const parts = [`${name} ${resize ? "resized" : "moved"} to ${describeCell(after)}`];
-      for (const other of engine.getItems()) {
-        if (other.id === hit.id) continue;
-        const was = before.get(other.id);
-        if (!was || was.x === other.x && was.y === other.y) continue;
-        const o = diagram.getNode(other.id);
-        parts.push(`${o ? nameOf2(o) : other.id} moved to ${describeCell(other)}`);
-      }
-      live.announce(parts.join(". "), "polite", true);
-      syncA11y();
-      hostOf(hit.id)?.focus?.({ preventScroll: true });
-    });
-  };
-  api.container.addEventListener("focusin", onFocusIn);
-  api.container.addEventListener("keydown", onKey);
+  api.container.addEventListener("pointermove", chrome.onHover, { passive: true });
+  api.container.addEventListener("pointerleave", chrome.onHoverLeave, { passive: true });
+  const keyboard = createKeyboard(ctx, {
+    handle: () => handle,
+    live,
+    nameOf: nameOf2,
+    focusedId: () => focusedId,
+    setFocusedId: (id) => {
+      focusedId = id;
+    },
+    selectedId: () => selectedId,
+    selectWidget,
+    syncA11y: () => syncA11y(),
+    gestureRunning: () => !!gesture
+  });
+  api.container.addEventListener("focusin", keyboard.onFocusIn);
+  api.container.addEventListener("keydown", keyboard.onKey);
   const beginTearOut = (pageId, fromGroupId, ev, plan) => {
     if (disposed || gesture || slabGesture || isStatic || tearing) return false;
     const from = diagram.getGroup(fromGroupId);
@@ -198018,8 +198121,7 @@ function bindDashboardGrid(api, group, options = {}) {
       if (now3 && (now3.x !== z.keep.x || now3.y !== z.keep.y)) engine.moveCheck(z.target.id, z.keep.x, z.keep.y, { gate: false });
       const ok = l.place(z.born);
       project();
-      placeholder?.remove();
-      placeholder = null;
+      hidePlaceholder();
       return ok;
     };
     const dockOverlayRect = (z) => {
@@ -198032,8 +198134,7 @@ function bindDashboardGrid(api, group, options = {}) {
       l.place(z.cell, true);
       insertRows(z.cell, l);
       project();
-      placeholder?.remove();
-      placeholder = null;
+      hidePlaceholder();
       return true;
     };
     let zone = { kind: "board" };
@@ -198089,7 +198190,7 @@ function bindDashboardGrid(api, group, options = {}) {
       window.removeEventListener("pointermove", onMove, true);
       window.removeEventListener("pointerup", onUp, true);
       window.removeEventListener("pointercancel", onCancel, true);
-      window.removeEventListener("keydown", onKey2, true);
+      window.removeEventListener("keydown", onKey, true);
     };
     const onMove = (e) => {
       if (disposed) return detach();
@@ -198176,13 +198277,13 @@ function bindDashboardGrid(api, group, options = {}) {
     };
     const onUp = () => finish(true);
     const onCancel = () => finish(false);
-    const onKey2 = (e) => {
+    const onKey = (e) => {
       if (e.key === "Escape") finish(false);
     };
     window.addEventListener("pointermove", onMove, true);
     window.addEventListener("pointerup", onUp, true);
     window.addEventListener("pointercancel", onCancel, true);
-    window.addEventListener("keydown", onKey2, true);
+    window.addEventListener("keydown", onKey, true);
     return true;
   };
   const beginPaletteDrag = (node, spec, event) => {
@@ -198226,7 +198327,7 @@ function bindDashboardGrid(api, group, options = {}) {
     const detach = () => {
       window.removeEventListener("pointermove", onMove, true);
       window.removeEventListener("pointerup", onUp, true);
-      window.removeEventListener("keydown", onKey2, true);
+      window.removeEventListener("keydown", onKey, true);
     };
     const onMove = (e) => {
       if (gesture !== g) return detach();
@@ -198284,12 +198385,12 @@ function bindDashboardGrid(api, group, options = {}) {
       cancelActiveGesture();
     };
     const onUp = () => finish(true);
-    const onKey2 = (e) => {
+    const onKey = (e) => {
       if (e.key === "Escape") finish(false);
     };
     window.addEventListener("pointermove", onMove, true);
     window.addEventListener("pointerup", onUp, true);
-    window.addEventListener("keydown", onKey2, true);
+    window.addEventListener("keydown", onKey, true);
   };
   const subs = [
     group.on("member:added", (id) => onMemberAdded(id)),
@@ -198519,33 +198620,22 @@ function bindDashboardGrid(api, group, options = {}) {
       disposed = true;
       peersOnCanvas().delete(selfPeer);
       unregisterTool();
-      api.container.removeEventListener("pointermove", onHover);
-      api.container.removeEventListener("pointerleave", onHoverLeave);
-      guardedLayer?.removeEventListener("pointerdown", staticGuard);
-      api.container.removeEventListener("focusin", onFocusIn);
-      api.container.removeEventListener("keydown", onKey);
-      hostObserver.disconnect();
+      api.container.removeEventListener("pointermove", chrome.onHover);
+      api.container.removeEventListener("pointerleave", chrome.onHoverLeave);
+      api.container.removeEventListener("focusin", keyboard.onFocusIn);
+      api.container.removeEventListener("keydown", keyboard.onKey);
       containerObserver?.disconnect();
       tearing = null;
       for (const off of subs) off();
       for (const id of group.members ?? []) hostOf(id)?.querySelector(":scope > .axdb-rs")?.remove();
-      placeholder?.remove();
-      placeholder = null;
-      if (glideTimer) clearTimeout(glideTimer);
-      for (const el2 of slabEls.values()) el2.remove();
-      slabEls.clear();
-      hoverSlabs.clear();
-      for (const bg of groupBgs.values()) bg.remove();
-      groupBgs.clear();
-      flushGhost();
-      flushCarried();
-      htmlLayer()?.classList.remove("axdb-glide");
+      chrome.dispose();
+      projection.dispose();
       api.container.style.cursor = "";
     }
   };
   rebuild(true);
   const layer = htmlLayer();
-  if (layer) hostObserver.observe(layer, { childList: true, subtree: true });
+  if (layer) chrome.observe(layer);
   containerObserver?.observe(api.container);
   return handle;
 }
