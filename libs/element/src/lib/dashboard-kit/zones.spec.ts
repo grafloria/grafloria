@@ -63,6 +63,20 @@ describe('zones — bandOf: the outer fifth of a container, sides first', () => 
     expect(bandOf(f, 30, 150, 470)).toBe('bottom');
     expect(bandOf(f, 30, 400, 240)).toBeNull(); // outside
   });
+  it('a top and bottom band can be a FIXED DEPTH instead of a fifth of the body', () => {
+    // A fifth is the wrong unit for a tall container: the taller the panel the
+    // more of its page means "above the whole panel", and on the fluid demo's
+    // 1,110 px panel that was 216 px of what reads as content, starting right
+    // under the tabs. The sides keep the fifth — that is how a widget gets
+    // beside a full-height panel, and nobody has found it surprising.
+    expect(bandOf(f, 30, 150, 60)).toBe('top'); // the fraction, which a tab's SPLIT still uses
+    expect(bandOf(f, 30, 150, 45, BESIDE_BAND, 30)).toBe('top');
+    expect(bandOf(f, 30, 150, 65, BESIDE_BAND, 30)).toBeNull(); // 35 px under the strip: the page
+    expect(bandOf(f, 30, 150, 470, BESIDE_BAND, 30)).toBe('bottom');
+    expect(bandOf(f, 30, 150, 440, BESIDE_BAND, 30)).toBeNull();
+    expect(bandOf(f, 30, 20, 240, BESIDE_BAND, 30)).toBe('left'); // the sides are untouched
+    expect(bandOf(f, 30, 290, 45, BESIDE_BAND, 30)).toBe('right'); // …and still take the corners
+  });
   it('the left and right bands win the corners (VS Code\'s precedence)', () => {
     expect(bandOf(f, 30, 290, 35)).toBe('right'); // top-right corner → right, not top
     expect(bandOf(f, 30, 10, 475)).toBe('left'); // bottom-left corner → left
@@ -90,6 +104,13 @@ describe('zones — resolve: the walk from the roots inward', () => {
     expect(at(1190, 240)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'right' });
     expect(at(1050, 40)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' });
     expect(at(1190, 40)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'right' }); // the corner
+  });
+  it('with a fixed band depth, the rows just under the strip are the PAGE, not "above the container"', () => {
+    const roots = tree();
+    const side = roots[0].children()[0] as ZoneContainer;
+    side.bandY = 30;
+    expect(at(1050, 80, { roots })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // 50 px under the strip
+    expect(at(1050, 50, { roots })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' }); // the first 30 px still mean above it
   });
   it('the middle of a tab container descends into its ACTIVE page: a plain cell on the page\'s board', () => {
     expect(at(1050, 120)).toEqual({ kind: 'plain', board: expect.objectContaining({ id: 'p1', depth: 1 }), grace: false });
@@ -163,6 +184,15 @@ describe('zones — stickiness: a beside the hand already holds', () => {
   });
   it('over the cell the widget took — the vacated cell — the beside is kept too', () => {
     expect(at(1160, 30, { prev })).toMatchObject({ kind: 'beside', side: 'right', kept: true });
+  });
+  it('a beside with NO vacated cell is held by its band alone', () => {
+    // A vertical band is only MARKED since 0.4.61: nothing moved, so there is
+    // no cell the widget took. The cell it WOULD take is the container's own —
+    // for a widget the size of its container that is the whole panel, and
+    // borrowing it as the vacated rect held the band everywhere inside (L105).
+    const mark = { containerId: 'side', side: 'top' as const, frame0: SIDE_FRAME };
+    expect(at(1050, 50, { prev: mark })).toMatchObject({ kind: 'beside', side: 'top', kept: true }); // in the band
+    expect(at(1050, 160, { prev: mark })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // past the band: into the page
   });
   it('a DIFFERENT band of the original frame wins over the vacated cell (a widget as wide as the container)', () => {
     const wide = { ...prev, side: 'top' as const, vacated: SIDE_FRAME };

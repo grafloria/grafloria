@@ -61,6 +61,8 @@ export interface ZoneContainer {
   stripHeight: number;
   /** The outer fraction of the body that means "beside"; 0 for a container whose whole body is "into" (a section). */
   band: number;
+  /** The TOP and BOTTOM depth in world units, when it is a fixed depth rather than `band` of the body. */
+  bandY?: number;
   /** The board a descent enters: a tab container's ACTIVE page, a section's own board. Null: nothing to enter. */
   inner: ZoneBoard | null;
 }
@@ -75,7 +77,14 @@ export interface BesideMemory {
   containerId: string;
   side: BesideSide;
   frame0: ZoneRect;
-  vacated: ZoneRect;
+  /**
+   * The cell the widget TOOK, when it took one. A beside that is only MARKED
+   * (a vertical band since 0.4.61 — nothing moves until release) has none, and
+   * must not borrow one: the cell a mark would take is the container's own, so
+   * for a widget the size of its container that rect covers the whole panel
+   * and the band would then hold the hand everywhere inside it (lab L105).
+   */
+  vacated?: ZoneRect;
 }
 
 export interface ResolveInput {
@@ -130,8 +139,16 @@ const inRect = (r: ZoneRect, x: number, y: number, tol = 0): boolean =>
  * the middle, or outside. The left and right bands take the corners (VS
  * Code's precedence): a one-row widget carried along the top of a tall panel
  * to its far right means "after it", not "above it".
+ *
+ * `bandY` is the TOP and BOTTOM depth in world units. A fraction is the wrong
+ * unit there: it grows with the container, so the taller and more useful the
+ * panel, the more of its page means "above the whole panel" — 216 px of the
+ * fluid demo's panel, starting right under its tabs, which is exactly where a
+ * hand aiming into the page lands (0.4.62). The SIDES keep the fraction: that
+ * is how a widget gets beside a full-height panel, and a tab's split bands
+ * are a fifth on all four edges by design.
  */
-export function bandOf(f: ZoneRect, stripHeight: number, x: number, y: number, band = BESIDE_BAND): BesideSide | null {
+export function bandOf(f: ZoneRect, stripHeight: number, x: number, y: number, band = BESIDE_BAND, bandY?: number): BesideSide | null {
   if (band <= 0 || !inRect(f, x, y)) return null;
   const bodyY = f.y + stripHeight;
   const bodyH = Math.max(1, f.height - stripHeight);
@@ -140,8 +157,9 @@ export function bandOf(f: ZoneRect, stripHeight: number, x: number, y: number, b
   if (ry < 0) return null; // the strip: a new tab, the strip's own business
   if (rx < band) return 'left';
   if (rx > 1 - band) return 'right';
-  if (ry < band) return 'top';
-  if (ry > 1 - band) return 'bottom';
+  const depth = bandY !== undefined && bandY > 0 ? Math.min(bandY, bodyH / 2) : band * bodyH;
+  if (y - bodyY < depth) return 'top';
+  if (bodyY + bodyH - y < depth) return 'bottom';
   return null;
 }
 
@@ -232,10 +250,13 @@ export function resolve(input: ResolveInput): Zone {
   // middle of it is a zone change too (into the page).
   if (input.prev) {
     const p = input.prev;
-    const stripH = stripHeightOf(input.roots, p.containerId);
-    const stay = bandOf(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY);
-    const other = bandOf(p.frame0, stripH, x, y);
-    const held = stay === p.side || (!(other !== null && other !== p.side) && inRect(p.vacated, x, y, input.gap));
+    const c0 = containerOf(input.roots, p.containerId);
+    const stripH = c0?.stripHeight ?? 0;
+    const depth = c0?.bandY;
+    const stay = bandOf(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY, depth === undefined ? undefined : depth * (1 + BESIDE_STAY / BESIDE_BAND));
+    const other = bandOf(p.frame0, stripH, x, y, BESIDE_BAND, depth);
+    const onVacated = !!p.vacated && inRect(p.vacated, x, y, input.gap);
+    const held = stay === p.side || (!(other !== null && other !== p.side) && onVacated);
     if (held) {
       const board = boardOf(input.roots, p.containerId);
       if (board) return { kind: 'beside', board, containerId: p.containerId, side: p.side, kept: true };
@@ -276,7 +297,7 @@ export function resolve(input: ResolveInput): Zone {
       const ndx0 = atRest ? c.frame.x - atRest.x : dx;
       const ndy0 = atRest ? c.frame.y - atRest.y : dy;
       const overNested = !!c.inner && c.inner.children().some((cc) => inRect(cc.frame, x + ndx0, y + ndy0));
-      const side = overNested || input.homeChain.has(c.id) ? null : bandOf(frame, c.stripHeight, tx, ty, c.band);
+      const side = overNested || input.homeChain.has(c.id) ? null : bandOf(frame, c.stripHeight, tx, ty, c.band, c.bandY);
       if (side) return { kind: 'beside', board, containerId: c.id, side, kept: false };
       if (opaque(board, c) || !c.inner) return { kind: 'plain', board, grace: false };
       if (!c.inner.contains(x + ndx0, y + ndy0)) return { kind: 'plain', board, grace: false }; // the margin: the container's own frame
@@ -297,20 +318,21 @@ export function resolve(input: ResolveInput): Zone {
   return deepest ? { kind: 'plain', board: deepest, grace: true } : { kind: 'off' };
 }
 
-function stripHeightOf(roots: ZoneBoard[], containerId: string): number {
-  const visit = (b: ZoneBoard): number | null => {
+/** The container with this id, anywhere in the tree — its strip rows and its band depth. */
+function containerOf(roots: ZoneBoard[], containerId: string): ZoneContainer | null {
+  const visit = (b: ZoneBoard): ZoneContainer | null => {
     for (const c of b.children()) {
-      if (c.id === containerId) return c.stripHeight;
+      if (c.id === containerId) return c;
       const deeper = c.inner ? visit(c.inner) : null;
-      if (deeper !== null) return deeper;
+      if (deeper) return deeper;
     }
     return null;
   };
   for (const r of roots) {
-    const h = visit(r);
-    if (h !== null) return h;
+    const c = visit(r);
+    if (c) return c;
   }
-  return 0;
+  return null;
 }
 
 // -- TAB drags: a page torn out of its strip, over the same tree ------------

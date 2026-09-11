@@ -2363,7 +2363,7 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     const body = side.size!.height - 30;
     const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
     const mid = side.position.x + side.size!.width / 2;
-    const inTop = { x: mid, y: side.position.y + 30 + body * 0.04 };
+    const inTop = { x: mid, y: side.position.y + 30 + 8 }; // inside the fixed 30 px band (0.4.62)
     tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
     tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
     tool.onPointerMove?.(tev('move', inTop.x, inTop.y), { node: nps } as never);
@@ -2375,12 +2375,16 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     expect(api.container.querySelector('.axdb-ph')).toBeNull(); // the ghost left the board; nothing is displaced
     expect(stripOf(api, 'side')).toEqual(['Filters', 'Alerts']);
     // …and travelling DOWN the band changes nothing at all: the panel cannot run away
-    tool.onPointerMove?.(tev('move', mid, side.position.y + 30 + body * 0.1), { node: nps } as never);
-    tool.onPointerMove?.(tev('move', mid, side.position.y + 30 + body * 0.16), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', mid, side.position.y + 30 + 16), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', mid, side.position.y + 30 + 26), { node: nps } as never);
     expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
     expect(Math.round(parseFloat((api.container.querySelector('.axdb-join') as HTMLElement).style.top))).toBe(Math.round(side.position.y));
+    // …and one pixel past the band's fixed depth is the PAGE, not "above" (0.4.62)
+    tool.onPointerMove?.(tev('move', mid, side.position.y + 30 + 44), { node: nps } as never);
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+    tool.onPointerMove?.(tev('move', mid, side.position.y + 30 + 26), { node: nps } as never);
     // RELEASE: now the panel gives way, one row, and the widget takes the cell it was shown
-    tool.onPointerUp?.(tev('up', mid, side.position.y + 30 + body * 0.16), { node: nps } as never);
+    tool.onPointerUp?.(tev('up', mid, side.position.y + 30 + 26), { node: nps } as never);
     await settle();
     expect(api.container.querySelector('.axdb-join')).toBeNull();
     expect(cellOf(handle, 'nps')).toEqual({ x: 9, y: 0, w: 2, h: 1 });
@@ -2395,7 +2399,7 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
       const s2 = model.getGroup('side')!;
       const n2 = model.getNode('nps')!;
       const f2 = { x: n2.position.x + 20, y: n2.position.y + 20 };
-      const low = { x: mid, y: s2.position.y + 30 + (s2.size!.height - 30) * 0.96 };
+      const low = { x: mid, y: s2.position.y + s2.size!.height - 12 }; // inside the fixed 30 px bottom band
       tool.onPointerDown?.(tev('down', f2.x, f2.y), { node: n2 } as never);
       tool.onPointerMove?.(tev('move', f2.x + 30, f2.y + 5), { node: n2 } as never);
       tool.onPointerMove?.(tev('move', low.x, low.y), { node: n2 } as never);
@@ -3172,8 +3176,8 @@ describe('the tab strip HOLDS the hand: a widget aimed at the tabs does not flip
     const mid = r.x + r.width * 0.5;
     tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
     tool.onPointerMove?.(tev('move', nps.position.x + 40, nps.position.y + 26), hit);
-    // into the TOP BAND, well below the strip: the cell is marked and NOTHING moves
-    tool.onPointerMove?.(at(mid, r.bottom + 60), hit);
+    // into the TOP BAND, past the strip's own stay: the cell is marked and NOTHING moves
+    tool.onPointerMove?.(at(mid, r.bottom + 18), hit);
     expect(marked(api)).toBe(false);
     expect(api.container.querySelector('.axdb-join')).not.toBeNull();
     expect(on(handle, 'main', 'side')).toEqual(side0);

@@ -2816,7 +2816,7 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
 }
 
 {
-  begin('L105-a-vertical-band-marks-its-cell-and-moves-NOTHING-until-the-hand-lets-go');
+  begin('L105-a-vertical-band-is-a-FIXED-depth-marks-its-cell-and-moves-NOTHING-until-the-hand-lets-go');
   await scrollTo('tabs');
   // The user, after the drop map: "if I drag first into the content area it pushes the entire tab
   // group down and then I cannot go up to the tab header — it is not calculating the new place of
@@ -2839,16 +2839,18 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const mid = strip0.x + strip0.width * 0.55;
   await page.mouse.move(src.x + 40, src.y + 12); await page.mouse.down();
   await page.mouse.move(src.x + 60, src.y + 20, { steps: 3 });
-  await page.mouse.move(mid, strip0.bottom + 40, { steps: 8 });
+  await page.mouse.move(mid, strip0.bottom + 10, { steps: 8 });
   await page.waitForTimeout(420);
   const band = { ...(await look()), panel: await cell('panel') };
   await shot('tabs', 'in-the-top-band-the-cell-is-marked-and-the-panel-holds-still');
-  await page.mouse.move(mid, strip0.bottom + 120, { steps: 6 }); await page.waitForTimeout(420);
-  const deeper = { ...(await look()), panel: await cell('panel') };     // deeper in: still nothing moves
+  await page.mouse.move(mid, strip0.bottom + 24, { steps: 6 }); await page.waitForTimeout(420);
+  const deeper = { ...(await look()), panel: await cell('panel') };     // deeper in the band: still nothing moves
+  await page.mouse.move(mid, strip0.bottom + 70, { steps: 6 }); await page.waitForTimeout(420);
+  const past = { ...(await look()), panel: await cell('panel') };       // past the band's fixed depth: the PAGE (0.4.62)
   await page.mouse.move(mid, strip0.y + strip0.height / 2, { steps: 6 }); await page.waitForTimeout(420);
   const backOnTabs = { ...(await look()), panel: await cell('panel') }; // the tabs are exactly where they were painted
   await shot('tabs', 'back-on-the-tabs-which-never-moved');
-  await page.mouse.move(mid, strip0.bottom + 40, { steps: 6 }); await page.waitForTimeout(420);
+  await page.mouse.move(mid, strip0.bottom + 10, { steps: 6 }); await page.waitForTimeout(420);
   await page.mouse.up(); await page.waitForTimeout(700);
   const after = { ...(await look()), panel: await cell('panel'), left: await cell('t-left') };
   await shot('tabs', 'released-the-panel-gives-way-and-the-widget-is-above-it');
@@ -2858,11 +2860,12 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y;
   verdict(band.join === true && band.tab === false && same(band.panel, p0) && band.stripY === rest.stripY
     && deeper.join === true && same(deeper.panel, p0) && deeper.stripY === rest.stripY   // the panel cannot run away down the band
+    && past.join === false && same(past.panel, p0)                                       // and the band STOPS: 70 px under the tabs is the page
     && backOnTabs.tab === true && backOnTabs.join === false && same(backOnTabs.panel, p0)
     && after.join === false && !!after.panel && after.panel.y > p0.y                     // on release it finally gives way
     && !!after.left && after.left.y < after.panel.y                                      // …with the widget above it
     && sane.overlaps === 0 && same(undone, p0),
-    `at rest the strip is at ${rest.stripY} · in the band: join ${band.join} panel ${JSON.stringify(band.panel)} strip ${band.stripY} · 80 px deeper: join ${deeper.join} panel ${JSON.stringify(deeper.panel)} strip ${deeper.stripY} · back on the tabs: tab ${backOnTabs.tab} panel ${JSON.stringify(backOnTabs.panel)} · released: panel ${JSON.stringify(after.panel)} widget ${JSON.stringify(after.left)} ${JSON.stringify(sane)} · undo -> ${JSON.stringify(undone)}`);
+    `at rest the strip is at ${rest.stripY} · in the band: join ${band.join} panel ${JSON.stringify(band.panel)} strip ${band.stripY} · 24 px under: join ${deeper.join} · 70 px under (the page): join ${past.join} · back on the tabs: tab ${backOnTabs.tab} panel ${JSON.stringify(backOnTabs.panel)} · released: panel ${JSON.stringify(after.panel)} widget ${JSON.stringify(after.left)} ${JSON.stringify(sane)} · undo -> ${JSON.stringify(undone)}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);

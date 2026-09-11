@@ -2802,6 +2802,11 @@ export function bindDashboardGrid(
             frame: frameOfGroup(grp),
             stripHeight: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
             band: layout === 'tabs' ? BESIDE_BAND : 0, // a section's whole body is "into" (Quantia's Groups page)
+            // The top and bottom are a FIXED depth — one strip's worth, under
+            // the strip — not a fifth of the body, which grew with the panel
+            // until 216 px of the fluid demo's page meant "above the whole
+            // panel" (0.4.62). The sides keep the fifth.
+            bandY: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
             inner: innerPeer ? boardRef(innerPeer, depth + 1) : null,
           });
         }
@@ -2883,7 +2888,7 @@ export function bindDashboardGrid(
               containerId: pendingBeside.id,
               side: pendingBeside.side,
               frame0: (() => { const grp = diagram.getGroup(pendingBeside.id); return grp ? frameOfGroup(grp) : cellToRect({ x: pendingBeside.cell.x, y: pendingBeside.cell.y, w: pendingBeside.spans.w, h: pendingBeside.spans.h }, frame(), geom(), rows()); })(),
-              vacated: cellToRect({ x: pendingBeside.cell.x, y: pendingBeside.cell.y, w: pendingBeside.spans.w, h: pendingBeside.spans.h }, frame(), geom(), rows()),
+              // no vacated cell: nothing has moved, so the BAND alone holds the mark
             }
           : (g.leg?.adopted.besideState() ?? null), // a beside another board holds for the ghost, through its leg
       maxDepth: nesting,
