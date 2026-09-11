@@ -582,7 +582,7 @@ export interface TearOutPlan {
   /** Paint (or, with null, clear) the insertion mark on `targetId`'s strip. */
   markDrop(targetId: string | null, index: number | null): void;
   /** The tab index a CLIENT point means along `targetId`'s strip — null when the point is not over that strip. */
-  stripIndex(targetId: string, clientX: number, clientY: number): number | null;
+  stripIndex(targetId: string, clientX: number, clientY: number, grace?: number): number | null;
   /** The strip's height on `targetId`, px — the band above its body. */
   stripHeight(targetId: string): number;
   /** The page itself and every board inside it — never a board the page can land on. */
@@ -604,10 +604,24 @@ export interface TearOutPlan {
  * handle owns the strips and the registry; the binder owns the gesture.
  */
 export interface TabDropHooks {
-  /** The strip under a CLIENT point, and the tab index that point means along it. */
-  stripAt(clientX: number, clientY: number): { containerId: string; index: number } | null;
+  /**
+   * The strip under a CLIENT point, and the tab index that point means along
+   * it. `grace` widens ONE strip's box by that many pixels on every side —
+   * the strip a drag is already aiming at keeps the hand through a small
+   * overshoot, instead of handing it to the zone underneath on one pixel.
+   */
+  stripAt(clientX: number, clientY: number, grace?: { containerId: string; px: number }): { containerId: string; index: number } | null;
   /** Paint (or, with null, clear) the insertion mark on a strip. */
   markDrop(containerId: string | null, index: number | null): void;
+  /**
+   * Which tab slot a CLIENT x means along one named strip — the x alone, with
+   * no hit test. The binder decides WHETHER the hand is on a strip from the
+   * container's own frame (the model), because a strip element that is gliding
+   * — home after a push, or away under one — reports a box the hand is not in
+   * yet. Optional: a host with its own hooks and no such method keeps the
+   * live hit test for everything.
+   */
+  tabIndexAt?(containerId: string, clientX: number): number | null;
   /** The commands that make `widgetId` a new tab of `containerId` at `index`; `displaced` are this board's survivors. Empty = refused. */
   dropIntoStrip(widgetId: string, containerId: string, index: number, sourceBoardId: string, displaced: Command[]): Command[];
 }
@@ -765,6 +779,16 @@ interface GestureState {
 }
 
 const DRAG_THRESHOLD = 4;
+/**
+ * THE STRIP KEEPS THE HAND IT HAS (CSS px). A tab strip is ~30 px tall and
+ * the zone right under it moves the whole container out of the way, so at the
+ * seam a wobble of a pixel or two toggled a 90-px animated push — the user,
+ * aiming a widget at the tabs: "it's switching so fast between having it above
+ * the entire tab group or inside as a tab". Once a drag is over a strip, that
+ * strip's box counts as this much larger until the hand really leaves. A strip
+ * the drag has NOT reached gets no extra room: it never grows under the hand.
+ */
+export const STRIP_STAY = 9;
 /** The node a gesture holds — node-only paths (the pixel ghost, a resize, a strip drop, a removal) ask through this. */
 const nodeOf = (g: GestureState): NodeModel => g.entity as NodeModel;
 let binderSeq = 0;
@@ -2766,7 +2790,34 @@ export function bindDashboardGrid(
       // A group never becomes a tab: over a container's strip it is over the
       // container's margin — a cell on the parent board, pushing with intent.
       const crect = api.container.getBoundingClientRect();
-      strip = options.tabDrop.stripAt(crect.left + ev.screen.x, crect.top + ev.screen.y);
+      const cx = crect.left + ev.screen.x;
+      const cy = crect.top + ev.screen.y;
+      const stay = g.strip ? STRIP_STAY : 0;
+      // THE HELD CONTAINER'S STRIP IS READ FROM THE MODEL, AT REST — as its
+      // bands are (0.4.49). Two reasons, both measured on the live demo with
+      // a widget carried down the panel's strip: a beside SHIFTS or PUSHES the
+      // container and its strip travels with it, so tested where the DOM says
+      // it is, the tab zone runs away from the hand aiming at it (the tabs
+      // became unreachable at any height); and the DOM box GLIDES, so for a
+      // frame or two after the container is sent home the strip is still in
+      // the air and the hand falls through it.
+      const held = beside?.id ?? g.strip?.containerId ?? null;
+      if (held && options.tabDrop.tabIndexAt) {
+        const grp = diagram.getGroup(held);
+        const f = beside && beside.id === held ? beside.frame0 : grp ? frameOfGroup(grp) : null;
+        if (f) {
+          const s = clientPerWorld();
+          const tol = stay / (s.y || 1);
+          const inStrip =
+            ev.world.x >= f.x - stay / (s.x || 1) &&
+            ev.world.x <= f.x + f.width + stay / (s.x || 1) &&
+            ev.world.y >= f.y - tol &&
+            ev.world.y <= f.y + TAB_STRIP_HEIGHT + tol;
+          const idx = inStrip ? options.tabDrop.tabIndexAt(held, cx) : null;
+          if (idx !== null) strip = { containerId: held, index: idx };
+        }
+      }
+      if (!strip) strip = options.tabDrop.stripAt(cx, cy, g.strip ? { containerId: g.strip.containerId, px: stay } : undefined);
     }
     return resolveZone({
       x: ev.world.x,
@@ -2824,6 +2875,15 @@ export function bindDashboardGrid(
       deepest = Math.max(deepest, tabs ? levelsInside(m) : 1 + levelsInside(m));
     }
     return deepest;
+  };
+  /** Client pixels per world unit — the camera's scale, measured the way the tear-out measures its bands. */
+  const clientPerWorld = (): { x: number; y: number } => {
+    const rect = api.container.getBoundingClientRect();
+    const toWorld = (cx: number, cy: number): { x: number; y: number } =>
+      api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
+    const o = toWorld(rect.left, rect.top);
+    const u = toWorld(rect.left + 100, rect.top + 100);
+    return { x: 100 / (u.x - o.x || 100), y: 100 / (u.y - o.y || 100) };
   };
   /** The groups this board sits in, all the way up: their bands never apply to a tile of this board. */
   const homeChain = (): ReadonlySet<string> => {

@@ -16,6 +16,7 @@ import { AddToGroupCommand, RemoveFromGroupCommand, type Command, type GroupMode
 import { cellToRect, rowHeightFor, sizeToSpan, type CellRect, type WorldRect } from './grid-mapping';
 import { BESIDE_BAND, resolveTabZone } from './zones';
 import { type BoardCtx, EDGE_GRACE } from './board-ctx';
+import { STRIP_STAY } from './grid-binder';
 import type { AdoptedLeg, AdoptOptions, BinderPeer, TearOutPlan } from './grid-binder';
 
 /** A torn-out page never arrives shorter than this: a strip with no room under it is not a group. */
@@ -321,8 +322,11 @@ export function createTearOut(ctx: BoardCtx, deps: TearOutDeps) {
         x: world.x,
         y: world.y,
         clientInside,
-        ownStrip: plan.stripIndex(fromGroupId, cx, cy),
-        stripOf: (id) => plan.stripIndex(id, cx, cy),
+        // A page dragged along its own strip, or over another's, keeps that
+        // strip through a small overshoot too (STRIP_STAY): the zone under a
+        // strip moves the container, and a pixel must not toggle it.
+        ownStrip: plan.stripIndex(fromGroupId, cx, cy, zone.kind === 'reorder' ? STRIP_STAY : 0),
+        stripOf: (id) => plan.stripIndex(id, cx, cy, zone.kind === 'strip' && zone.target.id === id ? STRIP_STAY : 0),
         root: root && root.kind === 'root' ? { side: root.side } : null,
         target: target
           ? {

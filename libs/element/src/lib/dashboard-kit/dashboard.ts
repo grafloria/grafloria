@@ -1641,13 +1641,35 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
   };
 
   ctx.tabDrop = {
-    stripAt: (cx, cy) => {
+    stripAt: (cx, cy, grace) => {
+      // The strip the drag already holds is tested with its box widened by
+      // `grace.px` (see STRIP_STAY): a small overshoot still means the tabs.
+      // Its own hit is checked FIRST, so a neighbour never steals it back.
+      const hit = (id: string, el: HTMLElement, pad: number): { containerId: string; index: number } | null => {
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0) return null;
+        return cx >= r.left - pad && cx <= r.right + pad && cy >= r.top - pad && cy <= r.bottom + pad
+          ? { containerId: id, index: indexInStrip(el, cx) }
+          : null;
+      };
+      if (grace && grace.px > 0) {
+        const el = ctx.tabStrips.get(grace.containerId);
+        if (el && ctx.boardGroups.has(grace.containerId)) {
+          const held = hit(grace.containerId, el, grace.px);
+          if (held) return held;
+        }
+      }
       for (const [id, el] of ctx.tabStrips) {
         if (!ctx.boardGroups.has(id)) continue;
-        const r = el.getBoundingClientRect();
-        if (r.width > 0 && cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) return { containerId: id, index: indexInStrip(el, cx) };
+        const h = hit(id, el, 0);
+        if (h) return h;
       }
       return null;
+    },
+    tabIndexAt: (containerId, cx) => {
+      const el = ctx.tabStrips.get(containerId);
+      if (!el || !ctx.boardGroups.has(containerId)) return null;
+      return indexInStrip(el, cx);
     },
     markDrop: markTabDrop,
     dropIntoStrip: (widgetId, containerId, index, sourceBoardId, displaced) => moveWidgetToTabCommands(widgetId, containerId, index, sourceBoardId, displaced),
@@ -1793,11 +1815,11 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       ),
       stripHeight: (targetId) => tabStripReserve(ctx.tabsOf.get(targetId), Math.max(1, liveCount(targetId))),
       ownBoards: [pageId, ...[...ctx.boardGroups.keys()].filter((id) => insidePage(id))],
-      stripIndex: (targetId, cx, cy) => {
+      stripIndex: (targetId, cx, cy, grace = 0) => {
         const strip = ctx.tabStrips.get(targetId);
         if (!strip) return null;
         const r = strip.getBoundingClientRect();
-        if (r.width === 0 || cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) return null;
+        if (r.width === 0 || cx < r.left - grace || cx > r.right + grace || cy < r.top - grace || cy > r.bottom + grace) return null;
         return indexInStrip(strip, cx);
       },
       dropIndex: (targetId, cx, cy) => {

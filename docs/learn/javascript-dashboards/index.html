@@ -537,6 +537,11 @@ render(SPEC2, host);</pre>
       the board it sits on, so a container that grows can ask that board for another row and take the widget; one you
       declared <code>sizing: 'fit'</code> cannot, and keeps the older answer — a page squeezes its rows, a section refuses
       and is pushed aside by the widget instead. The rows go back if you drag away, and the drop is one undo step.</p>
+      <p>0.4.59 makes the tab strip easier to hit. A strip is about thirty pixels tall and the zone just below it moves
+      the whole container aside, so aiming a widget at the tabs used to flip between the two on a pixel of wobble — and
+      once the container had moved, its strip went with it and the tabs were out of reach. The strip you are aiming at
+      now holds your hand for a few pixels past its edge, and it is measured where the container <em>rests</em>, not
+      where it has been pushed to, so it stays under your cursor while everything else gives way.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

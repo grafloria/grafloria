@@ -3008,3 +3008,121 @@ describe('TILE FIRST, step 5a: the parent board is in the gesture\'s scope, and 
     expect(pathOf(handle, 'free')).toBe('main > free');
   });
 });
+
+describe('the tab strip HOLDS the hand: a widget aimed at the tabs does not flip to "above the container" on a pixel', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const on = (handle: DashboardHandle, boardId: string, id: string) => handle.binderOf(boardId)?.cellOf(id) ?? null;
+  const board = () =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      gap: 10,
+      rowHeight: 60,
+      sizing: 'grow',
+      widgets: [
+        K('nps', 2, 1, 0, 0),
+        { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0)] }] },
+      ],
+    });
+  /**
+   * The strip's painted box, stubbed: jsdom lays nothing out. It FOLLOWS the
+   * group, as the real one does — so a container the drag pushes takes its
+   * strip along, which is the whole point of the rest-geometry test below.
+   */
+  const stubStrip = (api: { container: HTMLElement }, model: DiagramModel, h = 30) => {
+    const g = model.getGroup('side')!;
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const live = () => {
+      const p = g.position;
+      const w = g.size!.width;
+      return { left: p.x, top: p.y, right: p.x + w, bottom: p.y + h, width: w, height: h, x: p.x, y: p.y, toJSON: () => ({}) };
+    };
+    Object.defineProperty(strip, 'getBoundingClientRect', { value: () => live(), configurable: true });
+    return live();
+  };
+  const marked = (api: { container: HTMLElement }) => !!api.container.querySelector('.axdb-tabs[data-tabs-id="side"].axdb-tabs--drop');
+
+  it('a hand that overshoots the strip by a few pixels is still aiming at the tabs; ten pixels below, it means above the container', async () => {
+    // Measured on the live demo before this: the strip owned exactly its painted 30 px and ONE pixel lower
+    // the panel was shoved 90 px down — so a 2 px wobble at the seam toggled a 90 px animated push
+    // ("switching so fast between having it above the entire tab group or inside as a tab").
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = { node: nps } as never;
+    const side0 = on(handle, 'main', 'side');
+    const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+    tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
+    tool.onPointerMove?.(tev('move', nps.position.x + 40, nps.position.y + 26), hit);
+    // ON the strip: a tab slot
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 15), hit);
+    expect(marked(api)).toBe(true);
+    expect(on(handle, 'main', 'side')).toEqual(side0); // the container has not moved
+    // 4 px BELOW its bottom edge: still the tabs — the strip keeps the hand it has
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.bottom + 4), hit);
+    expect(marked(api)).toBe(true);
+    expect(on(handle, 'main', 'side')).toEqual(side0);
+    // back up onto it, then well below: now it means ABOVE the container, which gives way
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.bottom + 14), hit);
+    expect(marked(api)).toBe(false);
+    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y);
+    // and coming back up to the strip takes the tabs again, with the container home
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 15), hit);
+    expect(marked(api)).toBe(true);
+    expect(on(handle, 'main', 'side')).toEqual(side0);
+    tool.onPointerUp?.(tev('up', r.x + r.width * 0.5, r.top + 15), hit);
+    await settle();
+    expect(handle.toJSON().views[0].widgets.find((w) => w.id === 'side')?.widgets?.some((p) => (p.widgets ?? []).some((c) => c.id === 'nps'))).toBe(true);
+  });
+
+  it('a container the drag PUSHED keeps its tab zone where the hand left it: the strip is read at rest, like its bands', async () => {
+    // Measured on the live demo: crossing into the top band shoved the panel 90 px down and took its
+    // strip along, so coming back up the hand met empty board at every step and the tabs were
+    // unreachable — the strip chased the pointer. The bands have been read at the container's REST
+    // frame since 0.4.49; the strip was not.
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = { node: nps } as never;
+    const side0 = on(handle, 'main', 'side');
+    const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+    const mid = r.x + r.width * 0.5;
+    tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
+    tool.onPointerMove?.(tev('move', nps.position.x + 40, nps.position.y + 26), hit);
+    // into the TOP BAND, well below the strip: the panel gives way and its strip goes down with it
+    tool.onPointerMove?.(at(mid, r.bottom + 60), hit);
+    expect(marked(api)).toBe(false);
+    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y);
+    const pushed = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]')!.getBoundingClientRect();
+    expect(pushed.top).toBeGreaterThan(r.top + 20); // the strip really did move away from the hand
+    // back up to where the tabs WERE: that is still the tab zone, and the panel comes home
+    tool.onPointerMove?.(at(mid, r.top + 15), hit);
+    expect(marked(api)).toBe(true);
+    expect(on(handle, 'main', 'side')).toEqual(side0);
+    tool.onPointerUp?.(tev('up', mid, r.top + 15), hit);
+    await settle();
+    expect(handle.toJSON().views[0].widgets.find((w) => w.id === 'side')?.widgets?.some((p) => (p.widgets ?? []).some((c) => c.id === 'nps'))).toBe(true);
+  });
+
+  it('the stickiness is the strip\'s OWN: a hand that never touched it gets no extra room', async () => {
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = { node: nps } as never;
+    const side0 = on(handle, 'main', 'side');
+    const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+    tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
+    tool.onPointerMove?.(tev('move', nps.position.x + 40, nps.position.y + 26), hit);
+    // straight to 4 px under the strip WITHOUT passing through it: the top band, not the tabs
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.bottom + 4), hit);
+    expect(marked(api)).toBe(false);
+    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y);
+    tool.onPointerUp?.(tev('up', r.x + r.width * 0.5, r.bottom + 4), hit);
+    await settle();
+  });
+});
