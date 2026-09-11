@@ -171,6 +171,7 @@
   <div class="decision"><b>D2, yours:</b> a widget that does not fit inside a fit section today slides in beside it through the nearest-cell fallback. Tile first pushes the section down instead. <b>D3:</b> beside lands at the pointer's row, not the container's top row. <b>D4:</b> a grow container takes rows when it adopts a widget; today a full page squeezes its rows instead. Fit keeps squeezing.</div>
 
   <h2>3. Steps, each shipped green</h2>
+  <div class="decision" style="background: var(--engine-soft); border-color: var(--engine);"><b>Step 1 shipped 2026-09-11 as engine 0.3.8</b> (with element 0.4.49, which requires it): result reasons, the full gesture snapshot, setBound, placeBeside, plus one rule found on the way — a tile the kit moves on purpose forgets the cell it was pushed from, or the teleport-home memory pulls a shifted panel back under the widget. Engine spec 85, kit 814, lab 101, gates green. Decisions D1 to D4 taken as recommended.</div>
   <ol class="steps">
     <li><b>Engine 0.3.8.</b> Result reasons, the full gesture snapshot, setBound, placeBeside. Spec additions after the push block and the maxRows block, mutation-proven. No kit change ships with it, so the kit's 813 tests and the lab prove nothing moved.</li>
     <li><b>zones.ts.</b> The resolve replaces the four zone computations behind the existing behaviour. The tab, beside, adoption and tear-out specs and lab scenarios L72, L73, L79, L80, L85, L90 and L94 are the guard. A three-level fixture is added here, with the depth and cycle tests.</li>
