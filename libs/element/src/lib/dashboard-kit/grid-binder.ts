@@ -1925,17 +1925,24 @@ export function bindDashboardGrid(
   const endBeside = (restore: boolean): void => {
     if (!beside) return;
     const it = engine.getItem(beside.id);
-    if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false });
+    let moved = false;
+    if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) moved = engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false }).changed || moved;
     if (restore) {
       // The sections the shift pushed come back with it.
       for (const [oid, c] of beside.others) {
         const o = engine.getItem(oid);
-        if (o && (o.x !== c.x || o.y !== c.y)) engine.moveCheck(oid, c.x, c.y, { gate: false });
+        if (o && (o.x !== c.x || o.y !== c.y)) moved = engine.moveCheck(oid, c.x, c.y, { gate: false }).changed || moved;
       }
     }
     if (it) it.locked = true;
     relockOthersForSlab();
     beside = null;
+    // The frames the zone test reads are the MODEL's: a restore that moved
+    // the container without projecting left its frame where the push had
+    // put it, so the next test read the pointer as OUTSIDE it (the user's
+    // 3440-px corner on 0.4.48: along the top band the panel was pushed
+    // down, and the corner never turned into "right").
+    if (moved) project();
   };
   const applyBeside = (g: GestureState, z: { id: string; side: BesideSide }): void => {
     const tc = engine.getItem(z.id);
@@ -2704,6 +2711,7 @@ export function bindDashboardGrid(
           syncPlaceholder();
           return;
         }
+        let z2: { id: string; side: BesideSide } | null = null;
         if (beside) {
           // Off the band: the container comes back unless the POINTER is
           // still over the cell it vacated — the widget's own landing, which
@@ -2723,12 +2731,29 @@ export function bindDashboardGrid(
           // middle of the original frame is a zone change.
           const r = cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows());
           const inR = (q: WorldRect): boolean => ev.world.x >= q.x - gap && ev.world.x <= q.x + q.width + gap && ev.world.y >= q.y - gap && ev.world.y <= q.y + q.height + gap;
-          const over = bandOf(beside.frame0, ev.world.x, ev.world.y, BESIDE_BAND + BESIDE_STAY) === beside.side || inR(r);
-          if (!over) endBeside(true);
-          else {
+          // A DIFFERENT band of the original frame wins over the vacated
+          // cell: a widget as wide as the container took the container's
+          // whole frame as its cell on a top-band push, so "over the cell"
+          // held "above" all the way into the right corner (lab L95).
+          const stay = bandOf(beside.frame0, ev.world.x, ev.world.y, BESIDE_BAND + BESIDE_STAY);
+          const other = bandOf(beside.frame0, ev.world.x, ev.world.y);
+          const over = stay === beside.side || (!(other !== null && other !== beside.side) && inR(r));
+          if (!over) {
+            endBeside(true);
+            // The container is back where it was: the pointer may be in
+            // ANOTHER of its bands now (the top band's push had carried the
+            // frame away from under a hand heading for the corner) — resolve
+            // again in this same move, or the hand rests on a stale preview.
+            z2 = besideZoneAt(ev.world.x, ev.world.y);
+          } else {
             syncPlaceholder();
             return;
           }
+        }
+        if (z2) {
+          applyBeside(g, z2);
+          syncPlaceholder();
+          return;
         }
       }
       // Deepest board under the pointer wins: the nested KPI strip beats the
