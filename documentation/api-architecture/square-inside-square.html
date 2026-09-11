@@ -49,6 +49,18 @@
   .t-engine { background: var(--engine-soft); color: var(--engine); }
   .t-lock { background: var(--lock-soft); color: var(--lock); }
   .t-hand { background: var(--hand-soft); color: var(--hand); }
+  .anim-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 12px; }
+  .anim-controls button { font: 600 12px var(--sans); color: var(--ink); background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  .anim-controls button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .anim-controls input[type=range] { flex: 1 1 220px; accent-color: var(--accent); }
+  .anim-controls .time { font: 500 11px var(--mono); color: var(--muted); min-width: 64px; }
+  .stages { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .stages span { font: 600 10.5px var(--mono); letter-spacing: .05em; padding: 4px 8px; border-radius: 4px; background: var(--soft); color: var(--muted); border: 1px solid var(--line); }
+  .stages span.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .stage-text { margin: 10px 0 0; min-height: 44px; font-size: 14px; max-width: 80ch; }
+  .stage-text b { font-weight: 600; }
+  ul.rules { margin: 12px 0 0; padding-left: 20px; max-width: 72ch; font-size: 14px; } ul.rules li { margin: 5px 0; }
+  @media (prefers-reduced-motion: reduce) { .stages span { transition: none; } }
 </style>
 <main>
   <div class="eyebrow">Grafloria Dashboards · the kit's object model · element 0.4.47</div>
@@ -243,6 +255,149 @@
     </svg>
     <figcaption><b>What "a parent behaviour, then add on top" would look like.</b> Unlock the group. The engine then pushes it exactly as it pushes B, through the same code and the same transition, so sliding needs no container code at all. Only the strip and the "into" handoff stay drawn on top, and both work by taking the dragged widget off the parent board. The sideways shift at the board edge is the one addition the engine cannot provide. One agreed behaviour changes: a widget that does not fit inside a section pushes the section down instead of sliding in beside it.</figcaption>
   </figure>
+
+  <h2>In my opinion: a widget passing through a tab group</h2>
+  <p>This is the behaviour I would build, drawn as a loop. It is not what ships today. The widget travels left to right at mid-height, climbs into the strip, comes back down and is released after the container. Press play, or drag the scrubber to hold any moment.</p>
+  <figure>
+    <svg id="pass" viewBox="0 0 720 340" role="img" aria-label="An animation: a widget dragged across a tab group container, showing the left band, into the page, the right band with the container sliding away, the strip, and the release">
+      <defs>
+        <filter id="shadow" x="-10%" y="-10%" width="130%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity=".18"/></filter>
+      </defs>
+      <rect x="12" y="12" width="696" height="316" rx="8" fill="var(--soft)" stroke="var(--line)"/>
+      <g stroke="var(--line)" opacity=".5">
+        <line x1="80" y1="14" x2="80" y2="326"/><line x1="136" y1="14" x2="136" y2="326"/><line x1="192" y1="14" x2="192" y2="326"/><line x1="248" y1="14" x2="248" y2="326"/>
+        <line x1="304" y1="14" x2="304" y2="326"/><line x1="360" y1="14" x2="360" y2="326"/><line x1="416" y1="14" x2="416" y2="326"/><line x1="472" y1="14" x2="472" y2="326"/>
+        <line x1="528" y1="14" x2="528" y2="326"/><line x1="584" y1="14" x2="584" y2="326"/><line x1="640" y1="14" x2="640" y2="326"/>
+      </g>
+      <!-- resting widgets -->
+      <g>
+        <rect x="28" y="40" width="104" height="70" rx="4" fill="var(--paper)" stroke="var(--engine)"/><rect x="28" y="40" width="104" height="20" rx="4" fill="var(--engine-soft)"/>
+        <text x="37" y="54" font-size="10" font-weight="600" fill="var(--ink)">Revenue</text><text x="37" y="92" font-size="16" font-weight="700" fill="var(--ink)">2.4M</text>
+        <rect x="144" y="40" width="104" height="70" rx="4" fill="var(--paper)" stroke="var(--engine)"/><rect x="144" y="40" width="104" height="20" rx="4" fill="var(--engine-soft)"/>
+        <text x="153" y="54" font-size="10" font-weight="600" fill="var(--ink)">Customers</text><text x="153" y="92" font-size="16" font-weight="700" fill="var(--ink)">1,208</text>
+        <rect x="28" y="122" width="220" height="100" rx="4" fill="var(--paper)" stroke="var(--engine)"/><rect x="28" y="122" width="220" height="20" rx="4" fill="var(--engine-soft)"/>
+        <text x="37" y="136" font-size="10" font-weight="600" fill="var(--ink)">Trend</text>
+        <polyline points="44,206 84,186 124,194 164,170 204,176 236,160" fill="none" stroke="var(--accent)" stroke-width="2"/>
+      </g>
+      <!-- the parent placeholder -->
+      <rect id="ph" x="264" y="40" width="104" height="70" rx="4" fill="var(--line)" opacity=".6" stroke="var(--muted)" stroke-dasharray="4 3"/>
+      <!-- the container -->
+      <g id="ctn">
+        <rect id="ctnFrame" x="0" y="0" width="312" height="232" rx="6" fill="var(--accent-soft)" stroke="var(--engine)" stroke-width="1.5"/>
+        <rect x="0" y="0" width="312" height="28" rx="6" fill="var(--soft)"/><rect x="0" y="16" width="312" height="12" fill="var(--soft)"/>
+        <line id="ctnStripLine" x1="0" y1="28" x2="312" y2="28" stroke="var(--line)"/>
+        <rect x="10" y="5" width="56" height="18" rx="9" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="38" y="18" font-size="10.5" font-weight="600" fill="var(--ink)" text-anchor="middle">Filters</text>
+        <text x="94" y="18" font-size="10.5" fill="var(--muted)" text-anchor="middle">Alerts</text>
+        <g id="slot" opacity="0"><rect x="118" y="5" width="52" height="18" rx="9" fill="none" stroke="var(--accent)" stroke-dasharray="3 2"/><text x="144" y="18" font-size="9" font-weight="600" fill="var(--accent)" text-anchor="middle">NPS</text></g>
+        <text id="notes" x="146" y="18" font-size="10.5" fill="var(--muted)" text-anchor="middle">Notes</text>
+        <rect id="inner" x="12" y="40" width="288" height="180" rx="4" fill="none" stroke="var(--muted)" stroke-dasharray="4 3"/>
+        <rect id="iph" x="24" y="52" width="104" height="60" rx="4" fill="var(--line)" opacity="0" stroke="var(--muted)" stroke-dasharray="4 3"/>
+        <g id="c1"><rect x="24" y="52" width="128" height="60" rx="4" fill="var(--paper)" stroke="var(--engine)"/><rect x="24" y="52" width="128" height="18" rx="4" fill="var(--engine-soft)"/><text x="32" y="65" font-size="9.5" font-weight="600" fill="var(--ink)">Region</text><text x="32" y="100" font-size="14" font-weight="700" fill="var(--ink)">EMEA</text></g>
+        <g id="c2"><rect x="164" y="52" width="128" height="60" rx="4" fill="var(--paper)" stroke="var(--engine)"/><rect x="164" y="52" width="128" height="18" rx="4" fill="var(--engine-soft)"/><text x="172" y="65" font-size="9.5" font-weight="600" fill="var(--ink)">Period</text><text x="172" y="100" font-size="14" font-weight="700" fill="var(--ink)">Q3</text></g>
+        <g id="c3"><rect x="24" y="124" width="268" height="60" rx="4" fill="var(--paper)" stroke="var(--engine)"/><rect x="24" y="124" width="268" height="18" rx="4" fill="var(--engine-soft)"/><text x="32" y="137" font-size="9.5" font-weight="600" fill="var(--ink)">Alerts</text><text x="32" y="166" font-size="10.5" fill="var(--muted)">3 open · 1 overdue</text></g>
+      </g>
+      <!-- the dragged widget -->
+      <g id="a">
+        <rect id="aFrame" x="0" y="0" width="104" height="70" rx="4" fill="var(--paper)" stroke="var(--engine)"/>
+        <rect x="0" y="0" width="104" height="20" rx="4" fill="var(--engine-soft)"/>
+        <text x="9" y="14" font-size="10" font-weight="600" fill="var(--ink)">NPS</text><text x="9" y="52" font-size="16" font-weight="700" fill="var(--ink)">61</text>
+      </g>
+      <g id="chip" opacity="0"><rect width="44" height="18" rx="9" fill="var(--paper)" stroke="var(--accent)" stroke-width="1.5"/><text x="22" y="12.5" text-anchor="middle" font-size="9" font-weight="600" fill="var(--accent)">NPS</text></g>
+      <!-- the pointer -->
+      <path id="cur" d="M0 0 L0 15 L4 11 L7 18 L9.5 17 L6.5 10 L11 10 Z" fill="var(--ink)" stroke="var(--paper)" stroke-width="1"/>
+      <text id="zone" x="24" y="30" class="m" font-size="9" font-weight="600" fill="var(--accent)"></text>
+    </svg>
+    <div class="anim-controls">
+      <button id="play" type="button">Pause</button>
+      <input id="scrub" type="range" min="0" max="1100" value="0" aria-label="Scrub the animation">
+      <span class="time" id="time">0.0 s / 11.0 s</span>
+    </div>
+    <div class="stages" id="stages">
+      <span data-s="OUTSIDE">OUTSIDE</span><span data-s="LEFT BAND">LEFT BAND</span><span data-s="INTO">INTO</span><span data-s="RIGHT BAND">RIGHT BAND</span><span data-s="STRIP">STRIP</span><span data-s="RELEASE">RELEASE</span>
+    </div>
+    <p class="stage-text" id="stageText"></p>
+    <figcaption><b>What the loop is showing.</b> Every movement is a glide, the container's included. The pointer decides the zone, and the placeholder always shows the landing cell in the row the pointer is in. Nothing is realized until release, and everything the hover moved slides back if the pointer leaves.</figcaption>
+    <ul class="rules">
+      <li><b>Outside and the left band:</b> the container is a tile like any other. With room beside it, nothing moves; the placeholder just appears at the pointer's row.</li>
+      <li><b>Into:</b> the widget leaves the outer board and the inner board takes it. Its cards slide to make room and the container grows. The outer board never moves.</li>
+      <li><b>Right band, no room at the edge:</b> the container gives way the way a widget would, sliding left with the glide, and the placeholder takes the edge at the pointer's row.</li>
+      <li><b>Strip:</b> the card shrinks to a chip and the tabs part to make a slot. The container stays, and the placeholder goes, because the widget is becoming a tab, not a tile.</li>
+      <li><b>Release:</b> the widget glides into its placeholder; the container stays where it slid. One undo puts both back.</li>
+    </ul>
+  </figure>
+  <script>
+  (() => {
+    const $ = (id) => document.getElementById(id);
+    const svg = $('pass'); if (!svg) return;
+    const DUR = 11;
+    // pointer keyframes: [time, x, y]
+    const KF = [[0, 316, 75], [0.4, 316, 75], [1.4, 382, 150], [2.7, 444, 150], [4.7, 632, 150], [6.2, 670, 150], [6.6, 560, 54], [7.6, 540, 54], [8.0, 655, 150], [9.0, 662, 150], [11, 662, 150]];
+    const STAGES = [[0, 'OUTSIDE'], [1.4, 'LEFT BAND'], [2.7, 'INTO'], [4.7, 'RIGHT BAND'], [6.4, 'STRIP'], [7.8, 'RIGHT BAND'], [9.0, 'RELEASE']];
+    const TEXT = {
+      'OUTSIDE': '<b>Outside.</b> NPS is lifted and is a tile like any other. The container is still; the placeholder shows the cell under the hand.',
+      'LEFT BAND': '<b>Beside, left.</b> The pointer is in the container’s outer fifth. There is room on this side, so nothing moves: the placeholder sits at the pointer’s row, left of the container.',
+      'INTO': '<b>Into the page.</b> NPS leaves the outer board and the inner board takes it. Region and Alerts slide down to make room and the container grows. The outer board never moves.',
+      'RIGHT BAND': '<b>Beside, right.</b> No room at the board edge, so the container gives way like any widget: it slides left with the glide, and the placeholder takes the edge at the pointer’s row.',
+      'STRIP': '<b>New tab.</b> The card shrinks to a chip with its name, as it does today, and the tabs part to make a slot for it. The container slides back to rest and the placeholder goes, because NPS is becoming a tab, not a tile.',
+      'RELEASE': '<b>Release.</b> NPS glides into its placeholder after the container, which stays where it slid. One undo puts both back.'
+    };
+    const ease = (u) => u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+    const pointerAt = (t) => { for (let i = 1; i < KF.length; i++) { if (t <= KF[i][0]) { const a = KF[i - 1], b = KF[i]; const u = b[0] === a[0] ? 1 : ease((t - a[0]) / (b[0] - a[0])); return { x: a[1] + (b[1] - a[1]) * u, y: a[2] + (b[2] - a[2]) * u }; } } const l = KF[KF.length - 1]; return { x: l[1], y: l[2] }; };
+    const stageAt = (t) => { let s = STAGES[0][1]; for (const [at, name] of STAGES) if (t >= at) s = name; return s; };
+    // animated values: each glides toward its target
+    const V = { ctnX: 380, ctnH: 232, innerH: 180, c1Y: 0, c3Y: 0, iph: 0, phX: 264, phY: 40, phO: 1, notesDX: 0, slot: 0, aX: 264, aY: 40, lift: 0, chip: 0 };
+    const targets = (t, stage, p) => {
+      const T = { ctnX: 380, ctnH: 232, innerH: 180, c1Y: 0, c3Y: 0, iph: 0, phX: 264, phY: 122, phO: 1, notesDX: 0, slot: 0, aX: p.x - 52, aY: p.y - 35, lift: 1, chip: 0 };
+      if (t < 0.4) { T.lift = 0; T.aX = 264; T.aY = 40; T.phY = 40; T.phO = 0; }
+      else if (stage === 'OUTSIDE') { const cy = p.y - 35; T.phY = cy < 81 ? 40 : 122; }
+      else if (stage === 'LEFT BAND') { T.phX = 264; T.phY = 122; }
+      else if (stage === 'INTO') { T.phO = 0; T.iph = 1; T.c1Y = 72; T.c3Y = 72; T.ctnH = 272; T.innerH = 220; }
+      else if (stage === 'RIGHT BAND') { T.ctnX = 264; T.phX = 588; T.phY = 122; }
+      else if (stage === 'STRIP') { T.phO = 0; T.notesDX = 60; T.slot = 1; T.chip = 1; }
+      else if (stage === 'RELEASE') { T.ctnX = 264; T.phX = 588; T.phY = 122; T.aX = 588; T.aY = 122; T.lift = 0; T.phO = t < 9.5 ? 1 : 0; }
+      return T;
+    };
+    const glide = (dt) => { const k = 1 - Math.exp(-dt / 0.13); for (const key in V) V[key] += (TGT[key] - V[key]) * k; };
+    let TGT = targets(0, 'OUTSIDE', pointerAt(0));
+    const set = (id, attr, val) => { const el = $(id); if (el) el.setAttribute(attr, val); };
+    const paint = (t, p, stage) => {
+      set('ctn', 'transform', `translate(${V.ctnX.toFixed(2)} 40)`);
+      set('ctnFrame', 'height', V.ctnH.toFixed(2)); set('inner', 'height', V.innerH.toFixed(2));
+      set('c1', 'transform', `translate(0 ${V.c1Y.toFixed(2)})`); set('c3', 'transform', `translate(0 ${V.c3Y.toFixed(2)})`);
+      set('iph', 'opacity', (V.iph * 0.6).toFixed(3));
+      set('ph', 'x', V.phX.toFixed(2)); set('ph', 'y', V.phY.toFixed(2)); set('ph', 'opacity', (V.phO * 0.6).toFixed(3));
+      set('notes', 'transform', `translate(${V.notesDX.toFixed(2)} 0)`); set('slot', 'opacity', V.slot.toFixed(3));
+      const a = $('a'); a.setAttribute('transform', `translate(${V.aX.toFixed(2)} ${V.aY.toFixed(2)})`);
+      const f = $('aFrame'); f.setAttribute('stroke', V.lift > 0.5 ? 'var(--accent)' : 'var(--engine)'); f.setAttribute('stroke-dasharray', V.lift > 0.5 ? '5 3' : 'none'); f.setAttribute('stroke-width', V.lift > 0.5 ? '1.5' : '1'); a.setAttribute('filter', V.lift > 0.5 ? 'url(#shadow)' : 'none');
+      a.setAttribute('opacity', (1 - V.chip).toFixed(3));
+      set('chip', 'transform', `translate(${(p.x + 10).toFixed(2)} ${(p.y + 8).toFixed(2)})`); set('chip', 'opacity', V.chip.toFixed(3));
+      set('cur', 'transform', `translate(${p.x.toFixed(2)} ${p.y.toFixed(2)})`);
+      const z = $('zone'); z.textContent = t < 0.4 ? 'AT REST' : t >= 9.0 ? 'RELEASED' : stage;
+      for (const el of $('stages').children) el.classList.toggle('on', el.dataset.s === stage);
+      $('stageText').innerHTML = TEXT[stage];
+      $('time').textContent = `${t.toFixed(1)} s / ${DUR.toFixed(1)} s`;
+      if (document.activeElement !== $('scrub')) $('scrub').value = Math.round(t * 100);
+    };
+    let playing = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let t = 0, last = performance.now();
+    const settle = () => { for (const key in V) V[key] = TGT[key]; };
+    const frame = (now) => {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      if (playing) { const before = t; t = (t + dt) % DUR; if (t < before) { const p0 = pointerAt(0); TGT = targets(0, 'OUTSIDE', p0); settle(); } }
+      const p = pointerAt(t); const stage = stageAt(t);
+      TGT = targets(t, stage, p);
+      if (playing) glide(dt);
+      paint(t, p, stage);
+      requestAnimationFrame(frame);
+    };
+    $('play').addEventListener('click', () => { playing = !playing; $('play').textContent = playing ? 'Pause' : 'Play'; last = performance.now(); });
+    $('scrub').addEventListener('input', (e) => { playing = false; $('play').textContent = 'Play'; t = Number(e.target.value) / 100; TGT = targets(t, stageAt(t), pointerAt(t)); settle(); });
+    $('play').textContent = playing ? 'Pause' : 'Play';
+    if (!playing) { TGT = targets(0, 'OUTSIDE', pointerAt(0)); settle(); }
+    requestAnimationFrame(frame);
+  })();
+  </script>
 
   <h2>Side by side</h2>
   <div class="wrap"><table>
