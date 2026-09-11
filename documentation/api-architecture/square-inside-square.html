@@ -1,0 +1,258 @@
+<title>Square Inside Square</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #f5f6fa; --paper: #ffffff; --ink: #1b2029; --muted: #59627a; --line: #dfe3ee; --soft: #eef1f7;
+    --accent: #3b52d9; --accent-soft: #e9edfc;
+    --lock: #b3123c; --lock-soft: #fdeaf0; --hand: #9a5b00; --hand-soft: #fdf3e0; --engine: #0f7a3d; --engine-soft: #e6f5ec;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --ground: #11131a; --paper: #191d26; --ink: #e9ebf2; --muted: #9aa3b8; --line: #2a3040; --soft: #212633;
+    --accent: #8093f2; --accent-soft: #232a48;
+    --lock: #fb7185; --lock-soft: #331520; --hand: #f0b64d; --hand-soft: #2e2513; --engine: #4ade80; --engine-soft: #16281d;
+  } }
+  :root[data-theme="dark"] {
+    --ground: #11131a; --paper: #191d26; --ink: #e9ebf2; --muted: #9aa3b8; --line: #2a3040; --soft: #212633;
+    --accent: #8093f2; --accent-soft: #232a48;
+    --lock: #fb7185; --lock-soft: #331520; --hand: #f0b64d; --hand-soft: #2e2513; --engine: #4ade80; --engine-soft: #16281d;
+  }
+  body { background: var(--ground); color: var(--ink); font: 15px/1.55 var(--sans); }
+  main { max-width: 960px; margin: 0 auto; padding: 40px 28px 90px; }
+  .eyebrow { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  h1 { font-size: 34px; line-height: 1.12; letter-spacing: -.02em; margin: 0 0 8px; text-wrap: balance; }
+  h2 { font-size: 19px; letter-spacing: -.01em; margin: 44px 0 10px; }
+  .lede { color: var(--muted); font-size: 17px; max-width: 64ch; margin: 0 0 6px; }
+  p { max-width: 70ch; }
+  blockquote { margin: 18px 0 0; padding: 12px 16px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; max-width: 70ch; font-size: 14.5px; }
+  blockquote .src { display: block; margin-top: 6px; font: 500 11px var(--mono); color: var(--muted); }
+  figure { margin: 14px 0 0; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  figcaption { font-size: 13.5px; color: var(--muted); margin-top: 10px; max-width: 80ch; }
+  figcaption b { color: var(--ink); font-weight: 600; }
+  svg { width: 100%; height: auto; display: block; }
+  svg text { font-family: var(--sans); }
+  svg .m { font-family: var(--mono); letter-spacing: .04em; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 12px 0 0; font: 500 12px var(--mono); color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 7px; border: 1px solid var(--line); }
+  .legend .l-engine::before { background: var(--engine-soft); border-color: var(--engine); }
+  .legend .l-lock::before { background: var(--lock-soft); border-color: var(--lock); }
+  .legend .l-hand::before { background: var(--hand-soft); border-color: var(--hand); }
+  .legend .l-into::before { background: var(--accent-soft); border-color: var(--accent); }
+  .wrap { overflow-x: auto; margin-top: 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); background: var(--soft); }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .tag { display: inline-block; font: 600 10.5px/1 var(--mono); letter-spacing: .04em; padding: 4px 7px; border-radius: 4px; white-space: nowrap; }
+  .t-engine { background: var(--engine-soft); color: var(--engine); }
+  .t-lock { background: var(--lock-soft); color: var(--lock); }
+  .t-hand { background: var(--hand-soft); color: var(--hand); }
+</style>
+<main>
+  <div class="eyebrow">Grafloria Dashboards · the kit's object model · element 0.4.47</div>
+  <h1>Square inside square: a widget, and a container that holds widgets</h1>
+  <p class="lede">The same board holds two different kinds of tile. One is a widget. The other is a group with a whole second board inside it, locked in place from the outside. Everything that feels "built from scratch" follows from that lock.</p>
+  <blockquote>"A widget carrying <code>widgets</code> is a CONTAINER: it mounts as a member group (a locked slab in its parent's grid, exactly like a view's board one level down) with its own nested pack grid bound on it."<span class="src">dashboard.ts, the option's own doc comment</span></blockquote>
+
+  <h2>One board, two kinds of tile</h2>
+  <figure>
+    <svg viewBox="0 0 720 330" role="img" aria-label="A grid board: three widgets on the left, a container on the right whose inside is another board with its own widgets">
+      <rect x="12" y="12" width="696" height="306" rx="8" fill="var(--soft)" stroke="var(--line)"/>
+      <g stroke="var(--line)" opacity=".6">
+        <line x1="80" y1="14" x2="80" y2="316"/><line x1="136" y1="14" x2="136" y2="316"/><line x1="192" y1="14" x2="192" y2="316"/><line x1="248" y1="14" x2="248" y2="316"/>
+        <line x1="304" y1="14" x2="304" y2="316"/><line x1="360" y1="14" x2="360" y2="316"/><line x1="416" y1="14" x2="416" y2="316"/><line x1="472" y1="14" x2="472" y2="316"/>
+        <line x1="528" y1="14" x2="528" y2="316"/><line x1="584" y1="14" x2="584" y2="316"/><line x1="640" y1="14" x2="640" y2="316"/>
+      </g>
+      <text x="24" y="30" class="m" font-size="9" fill="var(--muted)">THE PARENT BOARD · ONE GRID ENGINE</text>
+
+      <!-- widgets -->
+      <g>
+        <rect x="28" y="40" width="104" height="84" rx="4" fill="var(--paper)" stroke="var(--engine)"/>
+        <rect x="28" y="40" width="104" height="22" rx="4" fill="var(--engine-soft)"/>
+        <text x="38" y="55" font-size="10" font-weight="600" fill="var(--ink)">Revenue</text>
+        <text x="38" y="98" font-size="18" font-weight="700" fill="var(--ink)">2.4M</text>
+      </g>
+      <g>
+        <rect x="144" y="40" width="104" height="84" rx="4" fill="var(--paper)" stroke="var(--engine)"/>
+        <rect x="144" y="40" width="104" height="22" rx="4" fill="var(--engine-soft)"/>
+        <text x="154" y="55" font-size="10" font-weight="600" fill="var(--ink)">Customers</text>
+        <text x="154" y="98" font-size="18" font-weight="700" fill="var(--ink)">1,208</text>
+      </g>
+      <g>
+        <rect x="28" y="136" width="220" height="110" rx="4" fill="var(--paper)" stroke="var(--engine)"/>
+        <rect x="28" y="136" width="220" height="22" rx="4" fill="var(--engine-soft)"/>
+        <text x="38" y="151" font-size="10" font-weight="600" fill="var(--ink)">Trend</text>
+        <polyline points="44,226 84,206 124,214 164,190 204,196 236,178" fill="none" stroke="var(--accent)" stroke-width="2"/>
+      </g>
+      <text x="28" y="282" class="m" font-size="10" font-weight="600" fill="var(--engine)">A WIDGET</text>
+      <text x="28" y="298" font-size="11" fill="var(--ink)">one node · one tile · unlocked</text>
+      <text x="28" y="312" font-size="11" fill="var(--muted)">placed, pushed and animated by the engine</text>
+
+      <!-- container -->
+      <g>
+        <rect x="300" y="40" width="392" height="222" rx="6" fill="var(--accent-soft)" stroke="var(--lock)" stroke-width="1.5"/>
+        <rect x="300" y="40" width="392" height="28" rx="6" fill="var(--soft)"/>
+        <rect x="300" y="56" width="392" height="12" fill="var(--soft)"/>
+        <line x1="300" y1="68" x2="692" y2="68" stroke="var(--line)"/>
+        <rect x="310" y="45" width="56" height="18" rx="9" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="338" y="58" font-size="10.5" font-weight="600" fill="var(--ink)" text-anchor="middle">Filters</text>
+        <text x="394" y="58" font-size="10.5" fill="var(--muted)" text-anchor="middle">Alerts</text>
+        <text x="444" y="58" font-size="10.5" fill="var(--muted)" text-anchor="middle">Notes</text>
+        <!-- lock -->
+        <text x="654" y="59" class="m" font-size="9" font-weight="600" fill="var(--lock)" text-anchor="end">LOCKED</text>
+        <rect x="664" y="52" width="12" height="9" rx="2" fill="var(--lock)"/>
+        <path d="M667 52 v-3 a3 3 0 0 1 6 0 v3" fill="none" stroke="var(--lock)" stroke-width="1.5"/>
+        <!-- nested board -->
+        <rect x="312" y="80" width="368" height="154" rx="4" fill="none" stroke="var(--muted)" stroke-dasharray="4 3"/>
+        <g>
+          <rect x="324" y="92" width="172" height="62" rx="4" fill="var(--paper)" stroke="var(--engine)"/>
+          <rect x="324" y="92" width="172" height="20" rx="4" fill="var(--engine-soft)"/>
+          <text x="333" y="106" font-size="10" font-weight="600" fill="var(--ink)">Region</text>
+          <text x="333" y="142" font-size="15" font-weight="700" fill="var(--ink)">EMEA</text>
+        </g>
+        <g>
+          <rect x="508" y="92" width="160" height="62" rx="4" fill="var(--paper)" stroke="var(--engine)"/>
+          <rect x="508" y="92" width="160" height="20" rx="4" fill="var(--engine-soft)"/>
+          <text x="517" y="106" font-size="10" font-weight="600" fill="var(--ink)">Period</text>
+          <text x="517" y="142" font-size="15" font-weight="700" fill="var(--ink)">Q3</text>
+        </g>
+        <g>
+          <rect x="324" y="166" width="344" height="56" rx="4" fill="var(--paper)" stroke="var(--engine)"/>
+          <rect x="324" y="166" width="344" height="20" rx="4" fill="var(--engine-soft)"/>
+          <text x="333" y="180" font-size="10" font-weight="600" fill="var(--ink)">Alerts</text>
+          <text x="333" y="208" font-size="11" fill="var(--muted)">3 open · 1 overdue</text>
+        </g>
+        <text x="496" y="250" class="m" font-size="9.5" fill="var(--muted)" text-anchor="middle">ITS OWN BOARD · ITS OWN ENGINE · THE PARENT NEVER SEES THESE</text>
+      </g>
+      <text x="300" y="282" class="m" font-size="10" font-weight="600" fill="var(--lock)">A CONTAINER</text>
+      <text x="300" y="298" font-size="11" fill="var(--ink)">one group · a LOCKED tile outside · a whole board inside</text>
+      <text x="300" y="312" font-size="11" fill="var(--muted)">the tabs are only the inner board's layout mode</text>
+    </svg>
+    <figcaption><b>The outer square is what the parent grid knows.</b> A widget is a tile it may push. A container is a tile it is told never to touch, and behind that locked square sits a second grid engine with the children inside. The three cards in the panel are tiles of that inner engine, not of the board you are dragging on.</figcaption>
+  </figure>
+
+  <h2>Drag a widget toward each</h2>
+  <figure>
+    <svg viewBox="0 0 720 250" role="img" aria-label="Left: a dragged widget makes a neighbouring widget slide. Right: the same drag toward a container meets a lock and painted zones">
+      <defs>
+        <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/></marker>
+      </defs>
+      <!-- panel A -->
+      <rect x="12" y="12" width="336" height="226" rx="8" fill="var(--soft)" stroke="var(--line)"/>
+      <text x="28" y="34" font-size="12" font-weight="600" fill="var(--ink)">Toward a widget</text>
+      <!-- B's old place = placeholder for A -->
+      <rect x="206" y="52" width="112" height="72" rx="4" fill="var(--line)" opacity=".55" stroke="var(--muted)" stroke-dasharray="4 3"/>
+      <text x="262" y="92" class="m" font-size="9" fill="var(--muted)" text-anchor="middle">A LANDS HERE</text>
+      <!-- B sliding down: trail -->
+      <rect x="206" y="92" width="112" height="72" rx="4" fill="var(--paper)" stroke="var(--engine)" opacity=".35"/>
+      <rect x="206" y="132" width="112" height="72" rx="4" fill="var(--paper)" stroke="var(--engine)"/>
+      <rect x="206" y="132" width="112" height="22" rx="4" fill="var(--engine-soft)"/>
+      <text x="216" y="147" font-size="10" font-weight="600" fill="var(--ink)">B</text>
+      <text x="216" y="190" font-size="10" fill="var(--engine)">slides down · glide</text>
+      <!-- ghost A -->
+      <rect x="60" y="70" width="112" height="72" rx="4" fill="var(--paper)" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5 3" opacity=".95"/>
+      <rect x="60" y="70" width="112" height="22" rx="4" fill="var(--accent-soft)"/>
+      <text x="70" y="85" font-size="10" font-weight="600" fill="var(--ink)">A · dragged</text>
+      <line x1="176" y1="106" x2="200" y2="94" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arrA)"/>
+      <text x="28" y="218" font-size="11" fill="var(--ink)">The engine pushes B. The glide animates it.</text>
+      <text x="28" y="232" font-size="11" fill="var(--muted)">No kit code takes part.</text>
+
+      <!-- panel B -->
+      <rect x="372" y="12" width="336" height="226" rx="8" fill="var(--soft)" stroke="var(--line)"/>
+      <text x="388" y="34" font-size="12" font-weight="600" fill="var(--ink)">Toward a container</text>
+      <!-- container -->
+      <rect x="488" y="48" width="204" height="150" rx="6" fill="var(--accent-soft)" stroke="var(--lock)" stroke-width="1.5"/>
+      <rect x="488" y="48" width="204" height="24" rx="6" fill="var(--soft)"/>
+      <rect x="488" y="62" width="204" height="10" fill="var(--soft)"/>
+      <rect x="488" y="48" width="204" height="24" rx="6" fill="var(--accent)" opacity=".16"/>
+      <text x="496" y="64" font-size="9.5" font-weight="600" fill="var(--ink)">Filters  Alerts</text>
+      <text x="686" y="64" class="m" font-size="8.5" font-weight="600" fill="var(--accent)" text-anchor="end">STRIP = TAB</text>
+      <!-- lock -->
+      <rect x="676" y="34" width="10" height="8" rx="2" fill="var(--lock)"/>
+      <path d="M678.5 34 v-2.5 a2.5 2.5 0 0 1 5 0 v2.5" fill="none" stroke="var(--lock)" stroke-width="1.4"/>
+      <text x="672" y="41" class="m" font-size="8.5" font-weight="600" fill="var(--lock)" text-anchor="end">LOCKED</text>
+      <!-- bands (by hand) -->
+      <rect x="488" y="72" width="41" height="126" fill="var(--hand)" opacity=".16"/>
+      <rect x="651" y="72" width="41" height="126" fill="var(--hand)" opacity=".16"/>
+      <rect x="529" y="72" width="122" height="26" fill="var(--hand)" opacity=".16"/>
+      <rect x="529" y="172" width="122" height="26" fill="var(--hand)" opacity=".16"/>
+      <text x="590" y="89" class="m" font-size="8.5" font-weight="600" fill="var(--hand)" text-anchor="middle">BESIDE · BY HAND</text>
+      <text x="508" y="135" class="m" font-size="8.5" font-weight="600" fill="var(--hand)" text-anchor="middle" transform="rotate(-90 508 135)">BESIDE</text>
+      <text x="671" y="135" class="m" font-size="8.5" font-weight="600" fill="var(--hand)" text-anchor="middle" transform="rotate(90 671 135)">BESIDE</text>
+      <text x="590" y="189" class="m" font-size="8.5" font-weight="600" fill="var(--hand)" text-anchor="middle">BESIDE</text>
+      <!-- middle -->
+      <rect x="529" y="98" width="122" height="74" fill="var(--accent)" opacity=".22"/>
+      <text x="590" y="132" class="m" font-size="10" font-weight="600" fill="var(--accent)" text-anchor="middle">INTO</text>
+      <text x="590" y="146" class="m" font-size="8" fill="var(--accent)" text-anchor="middle">THE INNER BOARD ADOPTS</text>
+      <!-- ghost A -->
+      <rect x="392" y="96" width="84" height="64" rx="4" fill="var(--paper)" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5 3"/>
+      <rect x="392" y="96" width="84" height="20" rx="4" fill="var(--accent-soft)"/>
+      <text x="400" y="110" font-size="10" font-weight="600" fill="var(--ink)">A · dragged</text>
+      <line x1="470" y1="128" x2="486" y2="128" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arrA)"/>
+      <text x="388" y="218" font-size="11" fill="var(--ink)">The engine refuses to push a locked tile. It stays.</text>
+      <text x="388" y="232" font-size="11" fill="var(--muted)">The kit paints zones and moves the group itself.</text>
+    </svg>
+    <div class="legend"><span class="l-engine">engine behaviour, shared with every widget</span><span class="l-lock">the lock</span><span class="l-hand">written by hand for containers</span><span class="l-into">handoff to the inner board</span></div>
+    <figcaption><b>Why the container does not slide.</b> On the left, sliding is not a feature anyone wrote: the engine pushes the tile and one CSS transition animates it. On the right, the lock takes the container out of that path, so every response to a dragged widget had to be written again by hand: the strip, the "into" handoff, and the beside bands with their shift. Each of those was one release, and 0.4.47 froze the beside band behind an overlay, which is what you are seeing on the live page now.</figcaption>
+  </figure>
+
+  <h2>At the root: the container as a tile first</h2>
+  <figure>
+    <svg viewBox="0 0 720 290" role="img" aria-label="The container drawn as an unlocked tile: the dragged widget pushes it down like any widget, and only two zones remain drawn on top">
+      <defs>
+        <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/></marker>
+        <marker id="arrC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--hand)"/></marker>
+      </defs>
+      <rect x="12" y="12" width="696" height="266" rx="8" fill="var(--soft)" stroke="var(--line)"/>
+      <text x="28" y="34" font-size="12" font-weight="600" fill="var(--ink)">Toward a container that is a tile like any other</text>
+      <!-- placeholder for A -->
+      <rect x="300" y="40" width="112" height="84" rx="4" fill="var(--line)" opacity=".55" stroke="var(--muted)" stroke-dasharray="4 3"/>
+      <text x="356" y="86" class="m" font-size="9" fill="var(--muted)" text-anchor="middle">A LANDS HERE</text>
+      <!-- container old outline + trail -->
+      <rect x="300" y="40" width="240" height="100" rx="6" fill="none" stroke="var(--engine)" stroke-dasharray="4 3" opacity=".6"/>
+      <rect x="300" y="86" width="240" height="100" rx="6" fill="var(--accent-soft)" stroke="var(--engine)" opacity=".35"/>
+      <!-- container pushed down -->
+      <rect x="300" y="132" width="240" height="100" rx="6" fill="var(--accent-soft)" stroke="var(--engine)" stroke-width="1.5"/>
+      <rect x="300" y="132" width="240" height="22" rx="6" fill="var(--soft)"/>
+      <rect x="300" y="144" width="240" height="10" fill="var(--soft)"/>
+      <rect x="300" y="132" width="240" height="22" rx="6" fill="var(--accent)" opacity=".16"/>
+      <text x="308" y="147" font-size="9.5" font-weight="600" fill="var(--ink)">Filters  Alerts</text>
+      <text x="534" y="147" class="m" font-size="8.5" font-weight="600" fill="var(--accent)" text-anchor="end">STRIP = TAB</text>
+      <rect x="348" y="164" width="144" height="56" fill="var(--accent)" opacity=".22"/>
+      <text x="420" y="188" class="m" font-size="10" font-weight="600" fill="var(--accent)" text-anchor="middle">INTO</text>
+      <text x="420" y="201" class="m" font-size="8" fill="var(--accent)" text-anchor="middle">THE INNER BOARD ADOPTS</text>
+      <text x="300" y="248" class="m" font-size="9" font-weight="600" fill="var(--engine)">UNLOCKED · PUSHED BY THE ENGINE · SLIDES LIKE B</text>
+      <!-- ghost A -->
+      <rect x="150" y="60" width="112" height="84" rx="4" fill="var(--paper)" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5 3"/>
+      <rect x="150" y="60" width="112" height="22" rx="4" fill="var(--accent-soft)"/>
+      <text x="160" y="75" font-size="10" font-weight="600" fill="var(--ink)">A · dragged</text>
+      <line x1="266" y1="102" x2="294" y2="88" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arrB)"/>
+      <!-- the one extra: the edge shift -->
+      <rect x="600" y="40" width="96" height="60" rx="6" fill="var(--accent-soft)" stroke="var(--engine)"/>
+      <rect x="600" y="40" width="96" height="16" rx="6" fill="var(--soft)"/>
+      <rect x="600" y="48" width="96" height="8" fill="var(--soft)"/>
+      <text x="606" y="51" font-size="8" font-weight="600" fill="var(--ink)">Filters</text>
+      <line x1="596" y1="70" x2="566" y2="70" stroke="var(--hand)" stroke-width="1.5" marker-end="url(#arrC)"/>
+      <text x="648" y="118" class="m" font-size="8.5" font-weight="600" fill="var(--hand)" text-anchor="middle">THE ONE EXTRA</text>
+      <text x="648" y="130" class="m" font-size="8" fill="var(--hand)" text-anchor="middle">at the board edge it</text>
+      <text x="648" y="141" class="m" font-size="8" fill="var(--hand)" text-anchor="middle">shifts sideways to make room</text>
+      <text x="648" y="152" class="m" font-size="8" fill="var(--hand)" text-anchor="middle">(the engine only pushes down)</text>
+      <text x="28" y="262" font-size="11" fill="var(--ink)">Same push, same glide as any widget. Two zones drawn on top. One extra at the edge.</text>
+    </svg>
+    <figcaption><b>What "a parent behaviour, then add on top" would look like.</b> Unlock the group. The engine then pushes it exactly as it pushes B, through the same code and the same transition, so sliding needs no container code at all. Only the strip and the "into" handoff stay drawn on top, and both work by taking the dragged widget off the parent board. The sideways shift at the board edge is the one addition the engine cannot provide. One agreed behaviour changes: a widget that does not fit inside a section pushes the section down instead of sliding in beside it.</figcaption>
+  </figure>
+
+  <h2>Side by side</h2>
+  <div class="wrap"><table>
+    <tr><th></th><th>A widget</th><th>A container today</th><th>A container as a tile first</th></tr>
+    <tr><td>What it is</td><td>A node with one host element</td><td>A group. No card of its own; its border, background, caption and strip are overlays painted by the parent</td><td>Unchanged</td></tr>
+    <tr><td>In the parent grid</td><td><span class="tag t-engine">unlocked tile</span></td><td><span class="tag t-lock">locked tile</span> never pushed, refuses a ghost</td><td><span class="tag t-engine">unlocked tile</span></td></tr>
+    <tr><td>Its children</td><td>none</td><td>Tiles of a second engine inside it. Crossing the border is an adoption between two engines</td><td>Unchanged</td></tr>
+    <tr><td>Moving it</td><td>The tile gesture: ghost, placeholder, live push</td><td>A separate "slab" gesture from the caption, strip or frame margin, with its own unlock rules</td><td>The same tile gesture, with a group id</td></tr>
+    <tr><td>A widget dragged at it</td><td>The engine pushes it aside; the glide animates it</td><td><span class="tag t-hand">by hand</span> strip = tab, middle = into, outer fifth = beside with a shift</td><td>Pushed aside by the engine; strip and "into" drawn on top; the edge shift kept</td></tr>
+    <tr><td>Committing a move</td><td>The tile commit</td><td>The tile commit skips groups; each gesture must add a group-cell command or the move is lost on undo</td><td>One commit path for both</td></tr>
+    <tr><td>Resizing</td><td>Corner and edge grips</td><td>Slab edges; the inner board re-projects</td><td>Unchanged</td></tr>
+  </table></div>
+</main>
