@@ -95,6 +95,16 @@ export interface ResolveInput {
    * be put beside the container it is still inside.
    */
   homeChain: ReadonlySet<string>;
+  /**
+   * Containers of the source board as they stood when the gesture began (a
+   * GROUP ghost pushes solids with intent, 0.4.44). The hand over a pushed
+   * container's rest frame still means that container — its zones, its
+   * page tested at the displacement — or a group could never enter a
+   * container its own body reaches before the hand does: the target fled.
+   * The engine's memory brings the pushed container home when the ghost
+   * leaves the board.
+   */
+  restFrames?: ReadonlyMap<string, ZoneRect>;
 }
 
 export type Zone =
@@ -169,8 +179,13 @@ export function resolve(input: ResolveInput): Zone {
     }
   }
 
+  // A static container and a container too deep for the ghost are obstacles:
+  // the hand over them means a cell on their parent board. The GHOST'S OWN
+  // subtree is not an obstacle but glass: a container carried by hand has its
+  // frame under the pointer at every step, and reading it as a hit answered
+  // "plain on the parent" before the walk ever looked at the page beneath.
   const opaque = (board: ZoneBoard, c: ZoneContainer): boolean =>
-    c.static || input.ghostSubtree.has(c.id) || board.depth + 1 + input.ghostDepth > input.maxDepth;
+    c.static || board.depth + 1 + input.ghostDepth > input.maxDepth;
 
   // The container the hand holds is read at REST: its live frame is where the
   // beside pushed or shifted it, and a hand crossing from its top band to its
@@ -182,8 +197,11 @@ export function resolve(input: ResolveInput): Zone {
     const px = x + dx;
     const py = y + dy;
     for (const c of board.children()) {
-      // the held container at rest — unless the hand has left that frame for the live one
-      const atRest = held && c.id === held.containerId && inRect(held.frame0, x, y) ? held.frame0 : null;
+      if (input.ghostSubtree.has(c.id)) continue; // the carried container itself, and the boards inside it: glass
+      // the held container at rest — unless the hand has left that frame for the live one;
+      // and any container the ghost pushed, at rest the same way
+      const rest = input.restFrames?.get(c.id);
+      const atRest = rest && inRect(rest, x, y) ? rest : held && c.id === held.containerId && inRect(held.frame0, x, y) ? held.frame0 : null;
       const frame = atRest ?? c.frame;
       const tx = atRest ? x : px;
       const ty = atRest ? y : py;

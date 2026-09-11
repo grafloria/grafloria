@@ -2694,3 +2694,198 @@ describe('TILE FIRST, step 4a: one commit, and the leg carries beside and push',
     expect(onDropIn.mock.calls[0][3]).toEqual({ boardId: 'main' });
   });
 });
+
+describe('TILE FIRST, step 4b-ii: a GROUP is dragged like a widget — into a page, beside a container, pushing a full section, never into itself', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const cm = (api: { getEngine(): { commandManager: { undo(): Promise<unknown> | void; redo(): Promise<unknown> | void } } }) => api.getEngine().commandManager;
+  const on = (handle: DashboardHandle, boardId: string, id: string) => handle.binderOf(boardId)?.cellOf(id) ?? null;
+  const pathOf = (handle: DashboardHandle, id: string): string | null => {
+    const walk = (ws: Array<{ id: string; widgets?: unknown[] }> | undefined, path: string[]): string[] | null => {
+      for (const w of ws ?? []) {
+        if (w.id === id) return [...path, w.id];
+        const r = walk(w.widgets as Array<{ id: string; widgets?: unknown[] }> | undefined, [...path, w.id]);
+        if (r) return r;
+      }
+      return null;
+    };
+    for (const v of handle.toJSON().views) {
+      const r = walk(v.widgets as Array<{ id: string; widgets?: unknown[] }>, [v.id]);
+      if (r) return r.join(' > ');
+    }
+    return null;
+  };
+  const pev = (el: EventTarget, type: string, x: number, y: number) =>
+    el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+  /** A press on a section's caption band, driven through the board's tool the way the renderer routes it. */
+  const pressCaption = (api: { container: HTMLElement }, tool: CanvasTool, sectionId: string, x: number, y: number) => {
+    const band = api.container.querySelector(`.axdb-slab[data-slab-id="${sectionId}"] > .axdb-slab-h`);
+    expect(band).not.toBeNull();
+    tool.onPointerDown?.({ ...tev('down', x, y), source: { target: band } } as never, { node: undefined } as never);
+  };
+  const board = (extra: Partial<DashboardSpec> & { widgets: DashboardWidgetSpec[] }, nesting?: number) =>
+    dashboard({ columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, sizing: 'grow', ...(nesting !== undefined ? { nesting } : {}), ...extra });
+  const PAGE = (id: string, kid: string): DashboardWidgetSpec => ({ id, title: id, columns: 6, maxRows: 6, widgets: [K(kid, 3, 1, 0, 0)] });
+
+  it('a SECTION carried by its caption band into a tab PAGE lands there with its children — one step, undone as one', async () => {
+    const { api, model, handle } = up(board({ widgets: [
+      { id: 'ops', title: 'Operations', caption: true, span: 4, rows: 1, x: 0, y: 0, columns: 4, maxRows: 1, widgets: [K('orders', 2, 1, 0, 0)] },
+      { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'k1')] },
+    ] }));
+    const tool = toolOf('main');
+    const ops = model.getGroup('ops')!;
+    const side = model.getGroup('side')!;
+    const k1 = model.getNode('k1')!;
+    pressCaption(api, tool, 'ops', ops.position.x + 60, ops.position.y + 12);
+    tool.onPointerMove?.(tev('move', ops.position.x + 75, ops.position.y + 20), { node: undefined } as never);
+    // into the page's body, under its widget: the middle of the page's free rows
+    const to = { x: side.position.x + side.size!.width / 2, y: k1.position.y + k1.size.height + 120 };
+    for (let i = 1; i <= 5; i++) tool.onPointerMove?.(tev('move', ops.position.x + 75 + ((to.x - ops.position.x - 75) * i) / 5, ops.position.y + 20 + ((to.y - ops.position.y - 20) * i) / 5), { node: undefined } as never);
+    expect(on(handle, 'main', 'ops')).toBeNull(); // off the root
+    expect(on(handle, 'p1', 'ops')).not.toBeNull(); // the page took it
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: undefined } as never);
+    await settle();
+    expect(pathOf(handle, 'ops')).toBe('main > side > p1 > ops');
+    expect(pathOf(handle, 'orders')).toBe('main > side > p1 > ops > orders'); // its child came along
+    expect(handle.binderOf('ops')).toBeDefined(); // its own board still runs inside the page
+    await cm(api).undo();
+    await settle();
+    expect(pathOf(handle, 'ops')).toBe('main > ops');
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: 0, w: 4, h: 1 });
+    expect(pathOf(handle, 'orders')).toBe('main > ops > orders');
+  });
+
+  it('a TAB CONTAINER carried by its strip\'s empty space into a SECTION lands there — nested tabs by hand', async () => {
+    const { api, model, handle } = up(board({ widgets: [
+      { id: 'ops', title: 'Operations', span: 6, rows: 4, x: 0, y: 0, columns: 6, maxRows: 4, widgets: [K('orders', 2, 1, 0, 0)] },
+      { id: 'side', title: 'Side', span: 4, rows: 2, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'k1')] },
+    ] }));
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const ops = model.getGroup('ops')!;
+    const sx = ops.position.x + ops.size!.width - 30; // the strip's empty space is at its right end
+    const s = model.getGroup('side')!;
+    pev(strip, 'pointerdown', s.position.x + s.size!.width - 30, s.position.y + 12);
+    pev(window, 'pointermove', s.position.x + s.size!.width - 30, s.position.y + 30);
+    // into the section's free rows under its widget
+    const to = { x: ops.position.x + ops.size!.width * 0.6, y: ops.position.y + ops.size!.height * 0.7 };
+    for (let i = 1; i <= 5; i++) pev(window, 'pointermove', sx + ((to.x - sx) * i) / 5, s.position.y + 30 + ((to.y - s.position.y - 30) * i) / 5);
+    await settle();
+    expect(on(handle, 'main', 'side')).toBeNull();
+    expect(on(handle, 'ops', 'side')).not.toBeNull();
+    pev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(pathOf(handle, 'side')).toBe('main > ops > side');
+    expect(pathOf(handle, 'k1')).toBe('main > ops > side > p1 > k1');
+    expect(api.container.querySelector('.axdb-tabs[data-tabs-id="side"]')).not.toBeNull(); // its strip still paints
+    await cm(api).undo();
+    await settle();
+    expect(pathOf(handle, 'side')).toBe('main > side');
+    expect(on(handle, 'main', 'side')).toEqual({ x: 6, y: 0, w: 4, h: 2 });
+  });
+
+  it('a tab container dragged onto a section\'s outer band lands BESIDE it (a group ghost through the same beside)', async () => {
+    // a section's band is 0 by design (its whole body is "into"), so the beside a group gets is a TAB container's band:
+    // `panel` is the target; `ops` is a plain section standing to its left
+    const { api, model, handle } = up(board({ widgets: [
+      { id: 'ops', title: 'Operations', span: 4, rows: 4, x: 0, y: 0, columns: 4, maxRows: 4, widgets: [K('orders', 2, 1, 0, 0)] },
+      { id: 'panel', title: 'Panel', span: 4, rows: 4, x: 4, y: 0, layout: 'tabs', widgets: [PAGE('p2', 'k2')] },
+      { id: 'side', title: 'Side', span: 4, rows: 4, x: 8, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'k1')] },
+    ] }));
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const ops = model.getGroup('ops')!;
+    const s = model.getGroup('side')!;
+    expect(on(handle, 'main', 'panel')).toEqual({ x: 4, y: 0, w: 4, h: 4 });
+    const panel = model.getGroup('panel')!;
+    pev(strip, 'pointerdown', s.position.x + s.size!.width - 30, s.position.y + 12);
+    pev(window, 'pointermove', s.position.x + s.size!.width - 30, s.position.y + 30);
+    // the panel's LEFT band, at row 0: "before the panel" — the panel gives way to the right? no room on its right (side left the edge free): it shifts
+    const to = { x: panel.position.x + 12, y: panel.position.y + 30 + 40 };
+    for (let i = 1; i <= 5; i++) pev(window, 'pointermove', s.position.x + s.size!.width - 30 + ((to.x - s.position.x - s.size!.width + 30) * i) / 5, s.position.y + 30 + ((to.y - s.position.y - 30) * i) / 5);
+    await settle();
+    const held = on(handle, 'main', 'side')!;
+    expect(held).not.toBeNull();
+    expect(held.x + held.w).toBe(on(handle, 'main', 'panel')!.x); // right before the panel, wherever the panel now stands
+    pev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(on(handle, 'main', 'side')!.x + 4).toBe(on(handle, 'main', 'panel')!.x);
+    await cm(api).undo();
+    await settle();
+    expect(on(handle, 'main', 'side')).toEqual({ x: 8, y: 0, w: 4, h: 4 });
+    expect(on(handle, 'main', 'panel')).toEqual({ x: 4, y: 0, w: 4, h: 4 });
+    void ops;
+  });
+
+  it('a tab container over a FULL fit section PUSHES it (D2 with a group ghost) instead of sliding under', async () => {
+    const { api, model, handle } = up(board({ widgets: [
+      { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 0, columns: 9, sizing: 'fit', widgets: [K('orders', 9, 1, 0, 0)] }, // FULL
+      { id: 'side', title: 'Side', span: 3, rows: 4, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'k1')] },
+    ] }));
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const ops = model.getGroup('ops')!;
+    const s = model.getGroup('side')!;
+    pev(strip, 'pointerdown', s.position.x + s.size!.width - 30, s.position.y + 12);
+    pev(window, 'pointermove', s.position.x + s.size!.width - 30, s.position.y + 30);
+    const to = { x: ops.position.x + ops.size!.width / 2, y: ops.position.y + ops.size!.height / 2 };
+    for (let i = 1; i <= 5; i++) pev(window, 'pointermove', s.position.x + s.size!.width - 30 + ((to.x - s.position.x - s.size!.width + 30) * i) / 5, s.position.y + 30 + ((to.y - s.position.y - 30) * i) / 5);
+    await settle();
+    expect(model.getGroup('ops')!.members?.has('side')).toBe(false); // not taken: full
+    expect(on(handle, 'main', 'side')!.y).toBe(0);
+    expect(on(handle, 'main', 'ops')!.y).toBeGreaterThan(0); // pushed under it on the root
+    pev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(pathOf(handle, 'side')).toBe('main > side');
+    expect(on(handle, 'main', 'ops')!.y).toBeGreaterThan(0);
+    await cm(api).undo();
+    await settle();
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: 0, w: 9, h: 1 });
+    expect(on(handle, 'main', 'side')).toEqual({ x: 9, y: 0, w: 3, h: 4 });
+  });
+
+  it('a tab container carried over its OWN page moves on the root — it never enters itself', async () => {
+    const { api, model, handle } = up(board({ widgets: [
+      K('free', 3, 1, 0, 0),
+      { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'k1')] },
+    ] }));
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const s = model.getGroup('side')!;
+    const p1 = model.getGroup('p1')!;
+    pev(strip, 'pointerdown', s.position.x + s.size!.width - 30, s.position.y + 12);
+    pev(window, 'pointermove', s.position.x + s.size!.width - 30, s.position.y + 30);
+    // straight down into its own page's body
+    const to = { x: p1.position.x + p1.size!.width / 2, y: p1.position.y + p1.size!.height * 0.7 };
+    for (let i = 1; i <= 5; i++) pev(window, 'pointermove', s.position.x + s.size!.width - 30, s.position.y + 30 + ((to.y - s.position.y - 30) * i) / 5);
+    await settle();
+    expect(on(handle, 'p1', 'side')).toBeNull(); // never adopted by its own page
+    expect(on(handle, 'main', 'side')).not.toBeNull();
+    pev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(pathOf(handle, 'side')).toBe('main > side');
+    expect(pathOf(handle, 'k1')).toBe('main > side > p1 > k1');
+  });
+
+  it('the nesting bound applies to a group too: with nesting 1 a section cannot enter a page (depth 2) and snaps home', async () => {
+    const { api, model, handle } = up(board({ widgets: [
+      { id: 'ops', title: 'Operations', caption: true, span: 4, rows: 1, x: 0, y: 0, columns: 4, maxRows: 1, widgets: [K('orders', 2, 1, 0, 0)] },
+      { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'k1')] },
+    ] }, 1));
+    const tool = toolOf('main');
+    const ops = model.getGroup('ops')!;
+    const side = model.getGroup('side')!;
+    const k1 = model.getNode('k1')!;
+    pressCaption(api, tool, 'ops', ops.position.x + 60, ops.position.y + 12);
+    tool.onPointerMove?.(tev('move', ops.position.x + 75, ops.position.y + 20), { node: undefined } as never);
+    const to = { x: side.position.x + side.size!.width / 2, y: k1.position.y + k1.size.height + 120 };
+    for (let i = 1; i <= 5; i++) tool.onPointerMove?.(tev('move', ops.position.x + 75 + ((to.x - ops.position.x - 75) * i) / 5, ops.position.y + 20 + ((to.y - ops.position.y - 20) * i) / 5), { node: undefined } as never);
+    expect(on(handle, 'p1', 'ops')).toBeNull(); // too deep: refused — the page is opaque, the pointer means a cell on the ROOT
+    expect(on(handle, 'main', 'ops')).not.toBeNull(); // still a tile of the root, at the cell under the hand
+    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(0); // the panel is pushed under it: a group moved by hand pushes with intent (0.4.44)
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: undefined } as never);
+    await settle();
+    expect(pathOf(handle, 'ops')).toBe('main > ops');
+    expect(pathOf(handle, 'k1')).toBe('main > side > p1 > k1');
+    await cm(api).undo();
+    await settle();
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: 0, w: 4, h: 1 });
+    expect(on(handle, 'main', 'side')).toEqual({ x: 6, y: 0, w: 6, h: 6 });
+  });
+});

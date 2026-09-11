@@ -221,6 +221,12 @@ export interface DashboardGridOptions {
    * it in the same batch — a tab page emptied by the move closes.
    */
   onMemberLeaving?: (memberId: string) => Command[];
+  /**
+   * A member CONTAINER is moving from this board to another by a gesture
+   * (tile first, 4b-ii). Answers the commands that carry the host's own
+   * bookkeeping for it — the spec entry, the registry — in the same batch.
+   */
+  onMemberMoving?: (memberId: string, fromBoardId: string, toBoardId: string) => Command[];
   /** A widget dragged over a tab STRIP becomes a new tab there: the hooks that hit-test, mark and commit it. */
   tabDrop?: TabDropHooks;
   /** Fires after commits/cancels/removals so the page can refocus/refit/flash. */
@@ -709,7 +715,17 @@ export type { BinderPeer };
 interface GestureState {
   kind: 'move' | 'resize' | 'palette';
   id: string;
-  node: NodeModel;
+  /**
+   * What the hand holds (tile first, step 4b-ii): a WIDGET of this board (or a
+   * palette node), or a member GROUP — a section by its caption band, a tab
+   * container by its strip's empty space or its frame margin. A group takes
+   * the same path as a widget: the zone walk, a leg on another board, beside,
+   * the refused push — with intent, since a group moved by hand pushes what
+   * stands in its way (0.4.44).
+   */
+  subject: 'node' | 'group';
+  /** The node for a 'node' subject, the group for a 'group' subject. */
+  entity: NodeModel | GroupModel;
   pointerId: number | null;
   started: boolean;
   downClient: { x: number; y: number };
@@ -750,6 +766,8 @@ interface GestureState {
 }
 
 const DRAG_THRESHOLD = 4;
+/** The node a gesture holds — node-only paths (the pixel ghost, a resize, a strip drop, a removal) ask through this. */
+const nodeOf = (g: GestureState): NodeModel => g.entity as NodeModel;
 let binderSeq = 0;
 
 export function bindDashboardGrid(
@@ -1121,7 +1139,8 @@ export function bindDashboardGrid(
     hostOf,
     memberEntity,
     sizeOf,
-    ghostId: () => adoptedGhostId ?? (gesture?.started ? gesture.id : null),
+    // A NODE ghost follows the hand by pixels and gets the placeholder; a GROUP ghost (a container adopted here) is projected to its cell like any tile, carried.
+    ghostId: () => (adoptedGhostId && !diagram.getGroup(adoptedGhostId) ? adoptedGhostId : gesture?.started && gesture.subject === 'node' ? gesture.id : null),
     write: (fn) => {
       writing = true;
       try {
@@ -1567,6 +1586,12 @@ export function bindDashboardGrid(
       g.leg.adopted.abort();
       g.leg = null;
     }
+    if (g.subject === 'group' && !g.removedFromBoard && !beside) {
+      // A group ghost pushed its way here with intent: the containers it moved
+      // come home (the engine's memory) before the beside is measured on them.
+      engine.remove(g.id);
+      g.removedFromBoard = true;
+    }
     if (g.removedFromBoard) {
       g.removedFromBoard = false;
       setDim(g, false);
@@ -1608,8 +1633,8 @@ export function bindDashboardGrid(
     move: boolean;
   }
   let slabGesture: SlabGesture | null = null;
-  /** The slab gesture as it is NOW — read through a call so a guard's narrowing does not stick. */
-  const currentSlab = (): SlabGesture | null => slabGesture;
+  /** The gesture as it is NOW, for the same reason. */
+  const currentGesture = (): GestureState | null => gesture;
   /** The PARENT running a resize of OUR section from a press this tool claimed. */
   let forwardSlab: BinderPeer | null = null;
   const frameOfGroup = (grp: GroupModel): WorldRect => ({ x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height });
@@ -1655,25 +1680,44 @@ export function bindDashboardGrid(
     const grp = diagram.getGroup(id);
     const it = engine.getItem(id);
     if (!grp || !it || gesture || slabGesture || isStatic) return;
-    engine.beginGesture();
-    const snap = snapshotAll();
-    slabGesture = {
+    // A GROUP MOVE IS A GESTURE OF THE ONE MACHINE (tile first, 4b-ii): the
+    // same threshold, snapshot, zone walk, legs, beside and commit a widget
+    // gets — the group being the subject. The frame follows its cell.
+    //
+    // THE PRESS ARMS NOTHING. `beginGestureVisuals` arms the glide when the
+    // threshold is crossed, as it does for a widget: arming it here left a
+    // plain CLICK on a caption band gliding for 400 ms, and everything the
+    // page did next — a caption change, a layout switch — animated instead of
+    // landing (the gallery's fluid-board: "and the rows are back" measured a
+    // tile still travelling).
+    gesture = {
+      kind: 'move',
       id,
-      edges: NO_EDGES,
+      subject: 'group',
+      entity: grp,
       pointerId: typeof PointerEvent !== 'undefined' && ev.source instanceof PointerEvent ? ev.source.pointerId : null,
       started: false,
-      downScreen: { x: ev.screen.x, y: ev.screen.y },
-      startCells: snap.cells,
-      startGeom: snap.geoms,
-      cellBefore: { x: it.x, y: it.y, w: it.w, h: it.h },
-      frameBefore: frameOfGroup(grp),
-      grab: { dx: grp.position.x - ev.world.x, dy: grp.position.y - ev.world.y },
-      move: true,
+      downClient: { x: ev.screen.x, y: ev.screen.y },
+      downWorld: { x: ev.world.x, y: ev.world.y },
+      grab: { dx: ev.world.x - grp.position.x, dy: ev.world.y - grp.position.y },
+      startCells: new Map(),
+      startGeom: new Map(),
+      startSize: { width: sizeOf(grp).width, height: sizeOf(grp).height },
+      startPos: { x: grp.position.x, y: grp.position.y },
+      edges: NO_EDGES,
+      spans: { w: it.w, h: it.h },
+      removedFromBoard: false,
+      leg: null,
+      strip: null,
+      lastWorld: null,
+      lastScreen: null,
+      hostEl: null,
+      esc: null,
+      chip: null,
     };
-    capturePointer(slabGesture.pointerId);
-    api.container.style.cursor = 'grabbing';
   };
   const slabMove = (ev: ToolPointerEvent): void => {
+    if (gesture?.subject === 'group') return onToolMove(ev);
     const g = slabGesture;
     if (!g) return;
     if (!g.started) {
@@ -1747,6 +1791,7 @@ export function bindDashboardGrid(
     if (changed) project();
   };
   const slabUp = (): void => {
+    if (gesture?.subject === 'group') return onToolUp();
     const g = slabGesture;
     if (!g) return;
     slabGesture = null;
@@ -1770,6 +1815,7 @@ export function bindDashboardGrid(
     options.onGesture?.({ type: 'commit', kind: g.move ? 'move' : 'resize', nodeId: g.id, changed });
   };
   const slabCancel = (): void => {
+    if (gesture?.subject === 'group') return cancelActiveGesture();
     const g = slabGesture;
     if (!g) return;
     slabGesture = null;
@@ -1811,8 +1857,10 @@ export function bindDashboardGrid(
     g.started = true;
     armGlide();
     if (g.kind !== 'palette') {
-      setGhost(g.id, true);
-      g.hostEl = hostOf(g.id);
+      if (g.subject === 'node') {
+        setGhost(g.id, true);
+        g.hostEl = hostOf(g.id);
+      } else setCarried(g.id, true); // a group moves as one thing: its whole subtree is exempt from the glide
       capturePointer(g.pointerId);
       api.container.style.cursor = g.kind === 'resize' ? 'nwse-resize' : 'grabbing';
     }
@@ -1847,7 +1895,13 @@ export function bindDashboardGrid(
   };
 
   const cleanupGestureVisuals = (g: GestureState): void => {
-    if (g.kind !== 'palette') setGhost(g.id, false);
+    if (g.kind !== 'palette') {
+      if (g.subject === 'node') setGhost(g.id, false);
+      else {
+        setCarried(g.id, false); // exempt through the drop write, then the glides resume
+        showRefusal(null, 0, 0);
+      }
+    }
     disarmGlideSoon();
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
@@ -1890,7 +1944,7 @@ export function bindDashboardGrid(
     persistLayouts(); // an edit at a narrow count propagated into the wide cache
     if (changed) {
       const it = engine.getItem(g.id);
-      if (it) live.announce(`${nameOf(g.node)} ${g.kind === 'resize' ? 'resized' : 'moved'} to ${describeCell(it)}`);
+      if (it && g.subject === 'node') live.announce(`${nameOf(nodeOf(g))} ${g.kind === 'resize' ? 'resized' : 'moved'} to ${describeCell(it)}`);
     }
     syncA11y();
     api.renderNow();
@@ -1988,14 +2042,17 @@ export function bindDashboardGrid(
    */
   const moveGhost = (g: GestureState, ev: ToolPointerEvent): void => {
     const desired = { x: ev.world.x - g.grab.dx, y: ev.world.y - g.grab.dy };
-    g.node.setPosition(desired.x, desired.y);
-    ghostStyleFastPath(g, desired);
+    if (g.subject === 'node') {
+      // The pixel ghost follows the hand; a group's frame is projected from its cell, carried.
+      nodeOf(g).setPosition(desired.x, desired.y);
+      ghostStyleFastPath(g, desired);
+    }
 
     g.lastWorld = { x: ev.world.x, y: ev.world.y };
     g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
     /** The ghost's pixel size on THIS board — a palette chip has spans, not a size. */
     const pxSize = (): { width: number; height: number } => {
-      if (g.kind !== 'palette') return { width: g.node.size.width, height: g.node.size.height };
+      if (g.kind !== 'palette') return sizeOf(g.entity);
       const f = frame();
       const gg = geom();
       return { width: g.spans.w * (columnUnitFor(gg, f.width) + gap) - gap, height: g.spans.h * (rowHeightFor(gg, rows()) + gap) - gap };
@@ -2024,7 +2081,7 @@ export function bindDashboardGrid(
         project();
       }
       if (!g.leg) {
-        const adopted = peer.adopt(g.node, ev.world, pxSize(), opts);
+        const adopted = peer.adopt(g.entity, ev.world, pxSize(), opts);
         if (!adopted) return false;
         g.leg = { peer, adopted };
       }
@@ -2036,7 +2093,7 @@ export function bindDashboardGrid(
     // BEFORE any engine is asked anything. The strip still wins over every
     // board; a band's stickiness and the vacated cell still hold a beside.
     const z = resolveTileZone(g, ev);
-    if (z.kind === 'strip' && options.tabDrop && !isStatic && g.kind !== 'palette') {
+    if (z.kind === 'strip' && options.tabDrop && !isStatic && g.kind !== 'palette' && g.subject === 'node') {
       // -- INTO A STRIP: the widget becomes a new tab there, so it leaves
       // this board (survivors settle home) and the strip marks the slot.
       endBeside(true); // a band's shift gives way to the strip: the container comes back
@@ -2125,13 +2182,19 @@ export function bindDashboardGrid(
         g.leg = null;
       }
       setDim(g, false);
-      placeOnSelf(g, desired);
+      // A group moved by hand takes the cell under the hand and PUSHES what
+      // stands in its way (0.4.44) — and the zone walk reads the containers
+      // it pushed at REST, so the hand still finds their zones where they were.
+      placeOnSelf(g, desired, g.subject === 'group');
     } else {
       // -- outside every board ------------------------------------------
       leaveSelf();
       setDim(g, true);
     }
     syncPlaceholder();
+    // A carried group's slab and frame are this board's chrome, but its frame
+    // is written by whichever board holds it now: re-sync so they follow.
+    if (g.subject === 'group') syncSlabs();
   };
 
   const onToolMove = (ev: ToolPointerEvent): void => {
@@ -2403,8 +2466,8 @@ export function bindDashboardGrid(
     const anchorBottom = liveRect ? liveRect.y + liveRect.height : bottom;
     const px = E.w ? anchorRight - w : anchorLeft;
     const py = E.n ? anchorBottom - h : anchorTop;
-    g.node.setSize(w, h, g.node.size.depth ?? 0);
-    g.node.setPosition(px, py);
+    nodeOf(g).setSize(w, h, nodeOf(g).size.depth ?? 0);
+    nodeOf(g).setPosition(px, py);
     ghostStyleFastPath(g, { x: px, y: py, width: w, height: h });
     const spanF = bound() !== undefined ? frame() : f;
     const spanG = bound() !== undefined ? geom() : gg;
@@ -2458,8 +2521,8 @@ export function bindDashboardGrid(
       const displaced = tileCommands(deltasSince(g.startCells, g.startGeom, g.id));
       const snap = g.startGeom.get(g.id);
       if (snap) {
-        g.node.setPosition(snap.pos.x, snap.pos.y);
-        g.node.setSize(snap.size.width, snap.size.height, snap.size.depth ?? 0);
+        nodeOf(g).setPosition(snap.pos.x, snap.pos.y);
+        nodeOf(g).setSize(snap.size.width, snap.size.height, snap.size.depth ?? 0);
       }
       const cmds = options.tabDrop.dropIntoStrip(g.id, target.containerId, target.index, group.id, displaced);
       if (cmds.length === 0) {
@@ -2488,8 +2551,10 @@ export function bindDashboardGrid(
       writing = true;
       try {
         diagram.runSystemWrite(() => {
-          g.node.setPosition(fin.rect.x, fin.rect.y);
-          g.node.setSize(fin.rect.width, fin.rect.height, g.node.size.depth ?? 0);
+          if (g.subject === 'node') {
+            nodeOf(g).setPosition(fin.rect.x, fin.rect.y);
+            nodeOf(g).setSize(fin.rect.width, fin.rect.height, nodeOf(g).size.depth ?? 0);
+          } else (g.entity as GroupModel).setFrame({ ...fin.rect });
         });
       } finally {
         writing = false;
@@ -2497,6 +2562,34 @@ export function bindDashboardGrid(
       const sourceDisplaced = tileCommands(deltasSince(g.startCells, g.startGeom, g.id));
       const before = g.startCells.get(g.id);
       const geomBefore = g.startGeom.get(g.id);
+      // A GROUP crossing boards: its cell-and-frame command, and the host's
+      // bookkeeping for a container that changed boards (the spec entry, the
+      // registry) rides along through `onMemberMoving` (tile first, 4b-ii).
+      const own: Command[] =
+        g.subject === 'group'
+          ? [
+              new SetGroupCellCommand(
+                g.id,
+                before ?? fin.cell,
+                fin.cell,
+                geomBefore ? { x: geomBefore.pos.x, y: geomBefore.pos.y, width: geomBefore.size.width, height: geomBefore.size.height } : fin.rect,
+                fin.rect
+              ),
+              ...(options.onMemberMoving?.(g.id, group.id, targetGroupId) ?? []),
+            ]
+          : buildCommitCommands([
+              {
+                id: g.id,
+                locked: false,
+                isGroup: false,
+                cellBefore: before ?? fin.cell,
+                cellAfter: fin.cell,
+                posBefore: geomBefore?.pos ?? { x: fin.rect.x, y: fin.rect.y },
+                posAfter: { x: fin.rect.x, y: fin.rect.y },
+                sizeBefore: geomBefore?.size ?? { width: fin.rect.width, height: fin.rect.height },
+                sizeAfter: { width: fin.rect.width, height: fin.rect.height },
+              },
+            ]);
       const crossing: Command[] = [
         ...sourceDisplaced,
         // …and the TARGET board's own displaced tiles. Dropping onto an
@@ -2509,19 +2602,7 @@ export function bindDashboardGrid(
         ...fin.commands,
         new RemoveFromGroupCommand(group.id, g.id),
         new AddToGroupCommand(targetGroupId, g.id),
-        ...buildCommitCommands([
-          {
-            id: g.id,
-            locked: false,
-            isGroup: false,
-            cellBefore: before ?? fin.cell,
-            cellAfter: fin.cell,
-            posBefore: geomBefore?.pos ?? { x: fin.rect.x, y: fin.rect.y },
-            posAfter: { x: fin.rect.x, y: fin.rect.y },
-            sizeBefore: geomBefore?.size ?? { width: fin.rect.width, height: fin.rect.height },
-            sizeAfter: { width: fin.rect.width, height: fin.rect.height },
-          },
-        ]),
+        ...own,
       ];
       // …and whatever follows a member out of this board: an emptied page
       // closes — in which case the membership commands ride INSIDE one
@@ -2537,7 +2618,7 @@ export function bindDashboardGrid(
       options.onGesture?.({ type: 'commit', kind: g.kind, nodeId: g.id, changed: true });
       return;
     }
-    if (g.removedFromBoard && dragOut === 'cancel') {
+    if (g.removedFromBoard && (dragOut === 'cancel' || g.subject === 'group')) {
       // Released outside every board on a snap-home board: full restore,
       // nothing committed (the parked-outside release).
       cancelActiveGesture();
@@ -2566,8 +2647,8 @@ export function bindDashboardGrid(
       if (snap) {
         // Park the node on its start rect so the page's RemoveNodeCommand
         // captures sane geometry for undo.
-        g.node.setPosition(snap.pos.x, snap.pos.y);
-        g.node.setSize(snap.size.width, snap.size.height, snap.size.depth ?? 0);
+        nodeOf(g).setPosition(snap.pos.x, snap.pos.y);
+        nodeOf(g).setSize(snap.size.width, snap.size.height, snap.size.depth ?? 0);
       }
       engine.endGesture();
       cleanupGestureVisuals(g);
@@ -2650,6 +2731,24 @@ export function bindDashboardGrid(
       engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
       if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid }).changed) placeNear(g.id, cell.x, cell.y, g.spans.w, pushSolid);
       project();
+    } else if (g.subject === 'group') {
+      // The cell under the pointer, else the nearest legal one ALONG ITS ROW
+      // (a section dragged left that wandered down its column read as the
+      // wrong tile moving); when even that fails the wanted cell is painted
+      // as refused (identification round, D6/D7).
+      const it = engine.getItem(g.id);
+      if (!it) return;
+      const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), it.w);
+      if (cell.x === it.x && cell.y === it.y) return;
+      const was = { x: it.x, y: it.y };
+      const moved = engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid: true }).changed || placeOnRow(g.id, cell.x, cell.y, it.w, true);
+      if (moved) {
+        project();
+        setCarried(g.id, true); // chrome repainted by the projection is carried too
+      }
+      const now = engine.getItem(g.id);
+      const stuck = !!now && now.x === was.x && now.y === was.y;
+      showRefusal(stuck ? cell : null, it.w, it.h);
     } else {
       const spanW = engine.getItem(g.id)?.w ?? g.spans.w;
       const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), spanW);
@@ -2659,7 +2758,9 @@ export function bindDashboardGrid(
   /** What the pointer means for the dragged tile: the resolve over the live tree, with the beside the hand holds. */
   const resolveTileZone = (g: GestureState, ev: ToolPointerEvent) => {
     let strip: { containerId: string; index: number } | null = null;
-    if (options.tabDrop && !isStatic && g.kind !== 'palette') {
+    if (options.tabDrop && !isStatic && g.kind !== 'palette' && g.subject === 'node') {
+      // A group never becomes a tab: over a container's strip it is over the
+      // container's margin — a cell on the parent board, pushing with intent.
       const crect = api.container.getBoundingClientRect();
       strip = options.tabDrop.stripAt(crect.left + ev.screen.x, crect.top + ev.screen.y);
     }
@@ -2672,11 +2773,53 @@ export function bindDashboardGrid(
         ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) }
         : (g.leg?.adopted.besideState() ?? null), // a beside another board holds for the ghost, through its leg
       maxDepth: nesting,
-      ghostDepth: 0,
-      ghostSubtree: EMPTY_SUBTREE,
+      ghostDepth: g.subject === 'group' ? 1 + levelsInside(g.id) : 0, // a group's widgets sit one board deeper than wherever it lands
+      ...(g.subject === 'group' ? { restFrames: restFramesOf(g) } : {}),
+      ghostSubtree: g.subject === 'group' ? descendantGroups(g.id) : EMPTY_SUBTREE,
       gap,
       homeChain: homeChain(),
     });
+  };
+  /** This board's containers as they stood at the press: a group ghost's intent pushes never change what the hand means. */
+  const restFramesOf = (g: GestureState): ReadonlyMap<string, WorldRect> => {
+    const out = new Map<string, WorldRect>();
+    for (const [id, snap] of g.startGeom) {
+      if (id === g.id || !isGroupMember(id)) continue;
+      out.set(id, { x: snap.pos.x, y: snap.pos.y, width: snap.size.width, height: snap.size.height });
+    }
+    return out;
+  };
+  /** Every group under `id`, itself included — the boards a group ghost may never enter. */
+  const descendantGroups = (id: string): ReadonlySet<string> => {
+    const out = new Set<string>();
+    const queue = [id];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      if (out.has(cur)) continue;
+      const grp = diagram.getGroup(cur);
+      if (!grp) continue;
+      out.add(cur);
+      for (const m of grp.members ?? []) if (diagram.getGroup(m)) queue.push(m);
+    }
+    return out;
+  };
+  /**
+   * The container LEVELS a group carries INSIDE it: 0 for a section of
+   * widgets or a tab container of plain pages (a container and its page are
+   * one level), 1 for a section holding a section, and so on. The group's own
+   * level is the +1 above: its widgets sit one board deeper than the board it
+   * lands on. The nesting policy counts both.
+   */
+  const levelsInside = (id: string): number => {
+    const grp = diagram.getGroup(id);
+    if (!grp) return 0;
+    const tabs = isTabsGroup(grp);
+    let deepest = 0;
+    for (const m of grp.members ?? []) {
+      if (!diagram.getGroup(m)) continue;
+      deepest = Math.max(deepest, tabs ? levelsInside(m) : 1 + levelsInside(m));
+    }
+    return deepest;
   };
   /** The groups this board sits in, all the way up: their bands never apply to a tile of this board. */
   const homeChain = (): ReadonlySet<string> => {
@@ -3024,7 +3167,7 @@ export function bindDashboardGrid(
     beginSlabMove: (id, ev) => {
       if (isStatic) return false;
       beginSlabMove(id, ev);
-      return slabGesture?.id === id;
+      return gesture?.id === id;
     },
     dragMember: (id, ev) => {
       if (isStatic || disposed || !engine.getItem(id) || gesture || slabGesture) return false;
@@ -3034,7 +3177,7 @@ export function bindDashboardGrid(
         return { world, screen: { x: e.clientX - rect.left, y: e.clientY - rect.top }, source: e } as unknown as ToolPointerEvent;
       };
       beginSlabMove(id, toTool(ev));
-      if (currentSlab()?.id !== id) return false;
+      if (currentGesture()?.id !== id) return false;
       const detachAll = (): void => {
         window.removeEventListener('pointermove', onMove, true);
         window.removeEventListener('pointerup', onUp, true);
@@ -3042,7 +3185,7 @@ export function bindDashboardGrid(
         window.removeEventListener('keydown', onKey, true);
       };
       const onMove = (e: PointerEvent): void => {
-        if (disposed || currentSlab()?.id !== id) return detachAll();
+        if (disposed || currentGesture()?.id !== id) return detachAll();
         slabMove(toTool(e));
         api.render();
       };
@@ -3286,7 +3429,8 @@ export function bindDashboardGrid(
       gesture = {
         kind: isResize ? 'resize' : 'move',
         id: node.id,
-        node,
+        subject: 'node',
+        entity: node,
         pointerId:
           typeof PointerEvent !== 'undefined' && ev.source instanceof PointerEvent
             ? ev.source.pointerId
@@ -3974,7 +4118,8 @@ export function bindDashboardGrid(
     const g: GestureState = {
       kind: 'palette',
       id: node.id,
-      node,
+      subject: 'node',
+      entity: node,
       pointerId: event.pointerId ?? null,
       started: false,
       downClient: { x: event.clientX, y: event.clientY },

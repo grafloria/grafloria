@@ -195208,13 +195208,15 @@ function resolve(input) {
       if (board) return { kind: "beside", board, containerId: p.containerId, side: p.side, kept: true };
     }
   }
-  const opaque = (board, c) => c.static || input.ghostSubtree.has(c.id) || board.depth + 1 + input.ghostDepth > input.maxDepth;
+  const opaque = (board, c) => c.static || board.depth + 1 + input.ghostDepth > input.maxDepth;
   const held = input.prev;
   const descend = (board, dx, dy) => {
     const px2 = x + dx;
     const py = y + dy;
     for (const c of board.children()) {
-      const atRest = held && c.id === held.containerId && inRect(held.frame0, x, y) ? held.frame0 : null;
+      if (input.ghostSubtree.has(c.id)) continue;
+      const rest = input.restFrames?.get(c.id);
+      const atRest = rest && inRect(rest, x, y) ? rest : held && c.id === held.containerId && inRect(held.frame0, x, y) ? held.frame0 : null;
       const frame = atRest ?? c.frame;
       const tx = atRest ? x : px2;
       const ty = atRest ? y : py;
@@ -196022,6 +196024,7 @@ function registerBoardPeer(container, peer) {
   };
 }
 var DRAG_THRESHOLD = 4;
+var nodeOf = (g) => g.entity;
 var binderSeq = 0;
 function bindDashboardGrid(api, group, options = {}) {
   ensureDashboardKitStyles();
@@ -196239,7 +196242,8 @@ function bindDashboardGrid(api, group, options = {}) {
     hostOf,
     memberEntity,
     sizeOf,
-    ghostId: () => adoptedGhostId ?? (gesture?.started ? gesture.id : null),
+    // A NODE ghost follows the hand by pixels and gets the placeholder; a GROUP ghost (a container adopted here) is projected to its cell like any tile, carried.
+    ghostId: () => adoptedGhostId && !diagram.getGroup(adoptedGhostId) ? adoptedGhostId : gesture?.started && gesture.subject === "node" ? gesture.id : null,
     write: (fn) => {
       writing = true;
       try {
@@ -196533,6 +196537,10 @@ function bindDashboardGrid(api, group, options = {}) {
       g.leg.adopted.abort();
       g.leg = null;
     }
+    if (g.subject === "group" && !g.removedFromBoard && !beside) {
+      engine.remove(g.id);
+      g.removedFromBoard = true;
+    }
     if (g.removedFromBoard) {
       g.removedFromBoard = false;
       setDim(g, false);
@@ -196551,7 +196559,7 @@ function bindDashboardGrid(api, group, options = {}) {
     return false;
   };
   let slabGesture = null;
-  const currentSlab = () => slabGesture;
+  const currentGesture = () => gesture;
   let forwardSlab = null;
   const frameOfGroup = (grp) => ({ x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height });
   const beginSlabResize = (id, edges, ev) => {
@@ -196583,25 +196591,34 @@ function bindDashboardGrid(api, group, options = {}) {
     const grp = diagram.getGroup(id);
     const it = engine.getItem(id);
     if (!grp || !it || gesture || slabGesture || isStatic) return;
-    engine.beginGesture();
-    const snap = snapshotAll();
-    slabGesture = {
+    gesture = {
+      kind: "move",
       id,
-      edges: NO_EDGES,
+      subject: "group",
+      entity: grp,
       pointerId: typeof PointerEvent !== "undefined" && ev.source instanceof PointerEvent ? ev.source.pointerId : null,
       started: false,
-      downScreen: { x: ev.screen.x, y: ev.screen.y },
-      startCells: snap.cells,
-      startGeom: snap.geoms,
-      cellBefore: { x: it.x, y: it.y, w: it.w, h: it.h },
-      frameBefore: frameOfGroup(grp),
-      grab: { dx: grp.position.x - ev.world.x, dy: grp.position.y - ev.world.y },
-      move: true
+      downClient: { x: ev.screen.x, y: ev.screen.y },
+      downWorld: { x: ev.world.x, y: ev.world.y },
+      grab: { dx: ev.world.x - grp.position.x, dy: ev.world.y - grp.position.y },
+      startCells: /* @__PURE__ */ new Map(),
+      startGeom: /* @__PURE__ */ new Map(),
+      startSize: { width: sizeOf(grp).width, height: sizeOf(grp).height },
+      startPos: { x: grp.position.x, y: grp.position.y },
+      edges: NO_EDGES,
+      spans: { w: it.w, h: it.h },
+      removedFromBoard: false,
+      leg: null,
+      strip: null,
+      lastWorld: null,
+      lastScreen: null,
+      hostEl: null,
+      esc: null,
+      chip: null
     };
-    capturePointer(slabGesture.pointerId);
-    api.container.style.cursor = "grabbing";
   };
   const slabMove = (ev) => {
+    if (gesture?.subject === "group") return onToolMove(ev);
     const g = slabGesture;
     if (!g) return;
     if (!g.started) {
@@ -196661,6 +196678,7 @@ function bindDashboardGrid(api, group, options = {}) {
     if (changed) project();
   };
   const slabUp = () => {
+    if (gesture?.subject === "group") return onToolUp();
     const g = slabGesture;
     if (!g) return;
     slabGesture = null;
@@ -196682,6 +196700,7 @@ function bindDashboardGrid(api, group, options = {}) {
     options.onGesture?.({ type: "commit", kind: g.move ? "move" : "resize", nodeId: g.id, changed });
   };
   const slabCancel = () => {
+    if (gesture?.subject === "group") return cancelActiveGesture();
     const g = slabGesture;
     if (!g) return;
     slabGesture = null;
@@ -196716,8 +196735,10 @@ function bindDashboardGrid(api, group, options = {}) {
     g.started = true;
     armGlide();
     if (g.kind !== "palette") {
-      setGhost(g.id, true);
-      g.hostEl = hostOf(g.id);
+      if (g.subject === "node") {
+        setGhost(g.id, true);
+        g.hostEl = hostOf(g.id);
+      } else setCarried(g.id, true);
       capturePointer(g.pointerId);
       api.container.style.cursor = g.kind === "resize" ? "nwse-resize" : "grabbing";
     }
@@ -196736,7 +196757,13 @@ function bindDashboardGrid(api, group, options = {}) {
     g.chip?.classList.toggle("axdb-out", on);
   };
   const cleanupGestureVisuals = (g) => {
-    if (g.kind !== "palette") setGhost(g.id, false);
+    if (g.kind !== "palette") {
+      if (g.subject === "node") setGhost(g.id, false);
+      else {
+        setCarried(g.id, false);
+        showRefusal(null, 0, 0);
+      }
+    }
     disarmGlideSoon();
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
@@ -196766,7 +196793,7 @@ function bindDashboardGrid(api, group, options = {}) {
     persistLayouts();
     if (changed) {
       const it = engine.getItem(g.id);
-      if (it) live.announce(`${nameOf2(g.node)} ${g.kind === "resize" ? "resized" : "moved"} to ${describeCell(it)}`);
+      if (it && g.subject === "node") live.announce(`${nameOf2(nodeOf(g))} ${g.kind === "resize" ? "resized" : "moved"} to ${describeCell(it)}`);
     }
     syncA11y();
     api.renderNow();
@@ -196845,12 +196872,14 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const moveGhost = (g, ev) => {
     const desired = { x: ev.world.x - g.grab.dx, y: ev.world.y - g.grab.dy };
-    g.node.setPosition(desired.x, desired.y);
-    ghostStyleFastPath(g, desired);
+    if (g.subject === "node") {
+      nodeOf(g).setPosition(desired.x, desired.y);
+      ghostStyleFastPath(g, desired);
+    }
     g.lastWorld = { x: ev.world.x, y: ev.world.y };
     g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
     const pxSize = () => {
-      if (g.kind !== "palette") return { width: g.node.size.width, height: g.node.size.height };
+      if (g.kind !== "palette") return sizeOf(g.entity);
       const f = frame();
       const gg = geom();
       return { width: g.spans.w * (columnUnitFor(gg, f.width) + gap) - gap, height: g.spans.h * (rowHeightFor(gg, rows()) + gap) - gap };
@@ -196877,14 +196906,14 @@ function bindDashboardGrid(api, group, options = {}) {
         project();
       }
       if (!g.leg) {
-        const adopted = peer2.adopt(g.node, ev.world, pxSize(), opts);
+        const adopted = peer2.adopt(g.entity, ev.world, pxSize(), opts);
         if (!adopted) return false;
         g.leg = { peer: peer2, adopted };
       }
       return true;
     };
     const z = resolveTileZone(g, ev);
-    if (z.kind === "strip" && options.tabDrop && !isStatic && g.kind !== "palette") {
+    if (z.kind === "strip" && options.tabDrop && !isStatic && g.kind !== "palette" && g.subject === "node") {
       endBeside(true);
       leaveSelf();
       setDim(g, false);
@@ -196957,12 +196986,13 @@ function bindDashboardGrid(api, group, options = {}) {
         g.leg = null;
       }
       setDim(g, false);
-      placeOnSelf(g, desired);
+      placeOnSelf(g, desired, g.subject === "group");
     } else {
       leaveSelf();
       setDim(g, true);
     }
     syncPlaceholder();
+    if (g.subject === "group") syncSlabs();
   };
   const onToolMove = (ev) => {
     const g = gesture;
@@ -197115,8 +197145,8 @@ function bindDashboardGrid(api, group, options = {}) {
     const anchorBottom = liveRect ? liveRect.y + liveRect.height : bottom;
     const px2 = E.w ? anchorRight - w : anchorLeft;
     const py = E.n ? anchorBottom - h : anchorTop;
-    g.node.setSize(w, h, g.node.size.depth ?? 0);
-    g.node.setPosition(px2, py);
+    nodeOf(g).setSize(w, h, nodeOf(g).size.depth ?? 0);
+    nodeOf(g).setPosition(px2, py);
     ghostStyleFastPath(g, { x: px2, y: py, width: w, height: h });
     const spanF = bound() !== void 0 ? frame() : f;
     const spanG = bound() !== void 0 ? geom() : gg;
@@ -197160,8 +197190,8 @@ function bindDashboardGrid(api, group, options = {}) {
       const displaced = tileCommands(deltasSince(g.startCells, g.startGeom, g.id));
       const snap = g.startGeom.get(g.id);
       if (snap) {
-        g.node.setPosition(snap.pos.x, snap.pos.y);
-        g.node.setSize(snap.size.width, snap.size.height, snap.size.depth ?? 0);
+        nodeOf(g).setPosition(snap.pos.x, snap.pos.y);
+        nodeOf(g).setSize(snap.size.width, snap.size.height, snap.size.depth ?? 0);
       }
       const cmds = options.tabDrop.dropIntoStrip(g.id, target.containerId, target.index, group.id, displaced);
       if (cmds.length === 0) {
@@ -197188,8 +197218,10 @@ function bindDashboardGrid(api, group, options = {}) {
       writing = true;
       try {
         diagram.runSystemWrite(() => {
-          g.node.setPosition(fin.rect.x, fin.rect.y);
-          g.node.setSize(fin.rect.width, fin.rect.height, g.node.size.depth ?? 0);
+          if (g.subject === "node") {
+            nodeOf(g).setPosition(fin.rect.x, fin.rect.y);
+            nodeOf(g).setSize(fin.rect.width, fin.rect.height, nodeOf(g).size.depth ?? 0);
+          } else g.entity.setFrame({ ...fin.rect });
         });
       } finally {
         writing = false;
@@ -197197,6 +197229,28 @@ function bindDashboardGrid(api, group, options = {}) {
       const sourceDisplaced = tileCommands(deltasSince(g.startCells, g.startGeom, g.id));
       const before = g.startCells.get(g.id);
       const geomBefore = g.startGeom.get(g.id);
+      const own = g.subject === "group" ? [
+        new SetGroupCellCommand(
+          g.id,
+          before ?? fin.cell,
+          fin.cell,
+          geomBefore ? { x: geomBefore.pos.x, y: geomBefore.pos.y, width: geomBefore.size.width, height: geomBefore.size.height } : fin.rect,
+          fin.rect
+        ),
+        ...options.onMemberMoving?.(g.id, group.id, targetGroupId) ?? []
+      ] : buildCommitCommands([
+        {
+          id: g.id,
+          locked: false,
+          isGroup: false,
+          cellBefore: before ?? fin.cell,
+          cellAfter: fin.cell,
+          posBefore: geomBefore?.pos ?? { x: fin.rect.x, y: fin.rect.y },
+          posAfter: { x: fin.rect.x, y: fin.rect.y },
+          sizeBefore: geomBefore?.size ?? { width: fin.rect.width, height: fin.rect.height },
+          sizeAfter: { width: fin.rect.width, height: fin.rect.height }
+        }
+      ]);
       const crossing = [
         ...sourceDisplaced,
         // …and the TARGET board's own displaced tiles. Dropping onto an
@@ -197209,19 +197263,7 @@ function bindDashboardGrid(api, group, options = {}) {
         ...fin.commands,
         new RemoveFromGroupCommand(group.id, g.id),
         new AddToGroupCommand(targetGroupId, g.id),
-        ...buildCommitCommands([
-          {
-            id: g.id,
-            locked: false,
-            isGroup: false,
-            cellBefore: before ?? fin.cell,
-            cellAfter: fin.cell,
-            posBefore: geomBefore?.pos ?? { x: fin.rect.x, y: fin.rect.y },
-            posAfter: { x: fin.rect.x, y: fin.rect.y },
-            sizeBefore: geomBefore?.size ?? { width: fin.rect.width, height: fin.rect.height },
-            sizeAfter: { width: fin.rect.width, height: fin.rect.height }
-          }
-        ])
+        ...own
       ];
       const leaving = options.onMemberLeaving?.(g.id) ?? [];
       execute("Move widget", leaving.length > 0 ? [new SequenceCommand("Move widget", [...crossing, ...leaving])] : crossing);
@@ -197234,7 +197276,7 @@ function bindDashboardGrid(api, group, options = {}) {
       options.onGesture?.({ type: "commit", kind: g.kind, nodeId: g.id, changed: true });
       return;
     }
-    if (g.removedFromBoard && dragOut === "cancel") {
+    if (g.removedFromBoard && (dragOut === "cancel" || g.subject === "group")) {
       cancelActiveGesture();
       return;
     }
@@ -197248,8 +197290,8 @@ function bindDashboardGrid(api, group, options = {}) {
       const displaced = tileCommands(deltasSince(g.startCells, g.startGeom, g.id));
       const snap = g.startGeom.get(g.id);
       if (snap) {
-        g.node.setPosition(snap.pos.x, snap.pos.y);
-        g.node.setSize(snap.size.width, snap.size.height, snap.size.depth ?? 0);
+        nodeOf(g).setPosition(snap.pos.x, snap.pos.y);
+        nodeOf(g).setSize(snap.size.width, snap.size.height, snap.size.depth ?? 0);
       }
       engine.endGesture();
       cleanupGestureVisuals(g);
@@ -197319,6 +197361,20 @@ function bindDashboardGrid(api, group, options = {}) {
       engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
       if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid }).changed) placeNear(g.id, cell.x, cell.y, g.spans.w, pushSolid);
       project();
+    } else if (g.subject === "group") {
+      const it = engine.getItem(g.id);
+      if (!it) return;
+      const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), it.w);
+      if (cell.x === it.x && cell.y === it.y) return;
+      const was = { x: it.x, y: it.y };
+      const moved = engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid: true }).changed || placeOnRow(g.id, cell.x, cell.y, it.w, true);
+      if (moved) {
+        project();
+        setCarried(g.id, true);
+      }
+      const now3 = engine.getItem(g.id);
+      const stuck = !!now3 && now3.x === was.x && now3.y === was.y;
+      showRefusal(stuck ? cell : null, it.w, it.h);
     } else {
       const spanW = engine.getItem(g.id)?.w ?? g.spans.w;
       const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), spanW);
@@ -197327,7 +197383,7 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const resolveTileZone = (g, ev) => {
     let strip = null;
-    if (options.tabDrop && !isStatic && g.kind !== "palette") {
+    if (options.tabDrop && !isStatic && g.kind !== "palette" && g.subject === "node") {
       const crect = api.container.getBoundingClientRect();
       strip = options.tabDrop.stripAt(crect.left + ev.screen.x, crect.top + ev.screen.y);
     }
@@ -197339,11 +197395,45 @@ function bindDashboardGrid(api, group, options = {}) {
       prev: beside ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) } : g.leg?.adopted.besideState() ?? null,
       // a beside another board holds for the ghost, through its leg
       maxDepth: nesting,
-      ghostDepth: 0,
-      ghostSubtree: EMPTY_SUBTREE,
+      ghostDepth: g.subject === "group" ? 1 + levelsInside(g.id) : 0,
+      // a group's widgets sit one board deeper than wherever it lands
+      ...g.subject === "group" ? { restFrames: restFramesOf(g) } : {},
+      ghostSubtree: g.subject === "group" ? descendantGroups(g.id) : EMPTY_SUBTREE,
       gap,
       homeChain: homeChain()
     });
+  };
+  const restFramesOf = (g) => {
+    const out = /* @__PURE__ */ new Map();
+    for (const [id, snap] of g.startGeom) {
+      if (id === g.id || !isGroupMember(id)) continue;
+      out.set(id, { x: snap.pos.x, y: snap.pos.y, width: snap.size.width, height: snap.size.height });
+    }
+    return out;
+  };
+  const descendantGroups = (id) => {
+    const out = /* @__PURE__ */ new Set();
+    const queue = [id];
+    while (queue.length) {
+      const cur = queue.shift();
+      if (out.has(cur)) continue;
+      const grp = diagram.getGroup(cur);
+      if (!grp) continue;
+      out.add(cur);
+      for (const m of grp.members ?? []) if (diagram.getGroup(m)) queue.push(m);
+    }
+    return out;
+  };
+  const levelsInside = (id) => {
+    const grp = diagram.getGroup(id);
+    if (!grp) return 0;
+    const tabs = isTabsGroup(grp);
+    let deepest = 0;
+    for (const m of grp.members ?? []) {
+      if (!diagram.getGroup(m)) continue;
+      deepest = Math.max(deepest, tabs ? levelsInside(m) : 1 + levelsInside(m));
+    }
+    return deepest;
   };
   const homeChain = () => {
     const out = /* @__PURE__ */ new Set();
@@ -197610,7 +197700,7 @@ function bindDashboardGrid(api, group, options = {}) {
     beginSlabMove: (id, ev) => {
       if (isStatic) return false;
       beginSlabMove(id, ev);
-      return slabGesture?.id === id;
+      return gesture?.id === id;
     },
     dragMember: (id, ev) => {
       if (isStatic || disposed || !engine.getItem(id) || gesture || slabGesture) return false;
@@ -197620,7 +197710,7 @@ function bindDashboardGrid(api, group, options = {}) {
         return { world, screen: { x: e.clientX - rect.left, y: e.clientY - rect.top }, source: e };
       };
       beginSlabMove(id, toTool(ev));
-      if (currentSlab()?.id !== id) return false;
+      if (currentGesture()?.id !== id) return false;
       const detachAll = () => {
         window.removeEventListener("pointermove", onMove, true);
         window.removeEventListener("pointerup", onUp, true);
@@ -197628,7 +197718,7 @@ function bindDashboardGrid(api, group, options = {}) {
         window.removeEventListener("keydown", onKey, true);
       };
       const onMove = (e) => {
-        if (disposed || currentSlab()?.id !== id) return detachAll();
+        if (disposed || currentGesture()?.id !== id) return detachAll();
         slabMove(toTool(e));
         api.render();
       };
@@ -197784,7 +197874,8 @@ function bindDashboardGrid(api, group, options = {}) {
       gesture = {
         kind: isResize ? "resize" : "move",
         id: node.id,
-        node,
+        subject: "node",
+        entity: node,
         pointerId: typeof PointerEvent !== "undefined" && ev.source instanceof PointerEvent ? ev.source.pointerId : null,
         started: false,
         downClient: { x: ev.screen.x, y: ev.screen.y },
@@ -198298,7 +198389,8 @@ function bindDashboardGrid(api, group, options = {}) {
     const g = {
       kind: "palette",
       id: node.id,
-      node,
+      subject: "node",
+      entity: node,
       pointerId: event.pointerId ?? null,
       started: false,
       downClient: { x: event.clientX, y: event.clientY },
@@ -201107,6 +201199,39 @@ function createDashboardHandle(ctx) {
     for (const [cid, g] of ctx.boardGroups) if (ctx.layoutOf.get(cid) === "tabs" && g.members?.has(pageId)) return cid;
     return void 0;
   };
+  ctx.moveContainerCommands = (containerId, fromBoardId, toBoardId) => {
+    if (!ctx.boardGroups.has(containerId)) return [];
+    const spec = specById.get(containerId);
+    const fromArr = ctx.boardWidgets.get(fromBoardId);
+    const toArr = ctx.boardWidgets.get(toBoardId);
+    const prevFiled = viewOfWidget.get(containerId);
+    let slot = -1;
+    const moved = {
+      register: () => {
+        viewOfWidget.set(containerId, toBoardId);
+        if (spec && fromArr) {
+          const i = fromArr.findIndex((w) => w.id === containerId);
+          if (i >= 0) {
+            slot = i;
+            fromArr.splice(i, 1);
+          }
+        }
+        if (spec && toArr && !toArr.some((w) => w.id === containerId)) toArr.push(spec);
+      },
+      unregister: () => {
+        if (prevFiled !== void 0) viewOfWidget.set(containerId, prevFiled);
+        else viewOfWidget.delete(containerId);
+        if (spec && toArr) {
+          const i = toArr.findIndex((w) => w.id === containerId);
+          if (i >= 0) toArr.splice(i, 1);
+        }
+        if (spec && fromArr && !fromArr.some((w) => w.id === containerId)) {
+          fromArr.splice(slot < 0 ? fromArr.length : Math.min(slot, fromArr.length), 0, spec);
+        }
+      }
+    };
+    return [new RegisterWidgetCommand(moved, "register")];
+  };
   ctx.closePageIfEmptied = (boardId, leaving) => {
     const model = ctx.apiRef?.getModel();
     const pg = ctx.boardGroups.get(boardId);
@@ -202299,6 +202424,7 @@ function dashboard(options) {
           onSelect: (id) => options.onSelect?.(id, v.id),
           ...captionHooks(v.id),
           onMemberLeaving: (memberId) => ctx.closePageIfEmptied?.(v.id, memberId) ?? [],
+          onMemberMoving: (memberId, from, to) => ctx.moveContainerCommands?.(memberId, from, to) ?? [],
           ...ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {}
         };
         if (viewLayout === "split") {
@@ -202340,6 +202466,7 @@ function dashboard(options) {
           onSelect: (id) => options.onSelect?.(id, ctx.viewOfBoard.get(w.id) ?? ctx.active),
           ...captionHooks(ctx.viewOfBoard.get(w.id) ?? ctx.active),
           onMemberLeaving: (memberId) => ctx.closePageIfEmptied?.(w.id, memberId) ?? [],
+          onMemberMoving: (memberId, from, to) => ctx.moveContainerCommands?.(memberId, from, to) ?? [],
           ...ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {}
         };
         if ((ctx.layoutOf.get(w.id) ?? w.layout) === "split") {
