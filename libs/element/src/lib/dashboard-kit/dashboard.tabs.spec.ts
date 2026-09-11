@@ -2502,3 +2502,157 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     expect(css).toMatch(/\.grafloria-html-layer\.axdb-glide > \.axdb-tabs[^{]*\{[^}]*transition: left/);
   });
 });
+
+describe('TILE FIRST, step 4a: one commit, and the leg carries beside and push', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const cm = (api: { getEngine(): { commandManager: { undo(): Promise<unknown> | void; redo(): Promise<unknown> | void } } }) => api.getEngine().commandManager;
+  const on = (handle: DashboardHandle, boardId: string, id: string) => handle.binderOf(boardId)?.cellOf(id) ?? null;
+  const pathOf = (handle: DashboardHandle, id: string): string | null => {
+    const walk = (ws: Array<{ id: string; widgets?: unknown[] }> | undefined, path: string[]): string[] | null => {
+      for (const w of ws ?? []) {
+        if (w.id === id) return [...path, w.id];
+        const r = walk(w.widgets as Array<{ id: string; widgets?: unknown[] }> | undefined, [...path, w.id]);
+        if (r) return r;
+      }
+      return null;
+    };
+    for (const v of handle.toJSON().views) {
+      const r = walk(v.widgets as Array<{ id: string; widgets?: unknown[] }>, [v.id]);
+      if (r) return r.join(' > ');
+    }
+    return null;
+  };
+  const specOf = (handle: DashboardHandle, id: string): DashboardWidgetSpec | undefined => {
+    const find = (ws: DashboardWidgetSpec[] | undefined): DashboardWidgetSpec | undefined => {
+      for (const w of ws ?? []) {
+        if (w.id === id) return w;
+        const r = find(w.widgets);
+        if (r) return r;
+      }
+      return undefined;
+    };
+    return find(handle.toJSON().views.flatMap((v) => v.widgets));
+  };
+  /** The root grid: padding 10, rows of 60 + gap 10 — the middle of a row. */
+  const rowY = (row: number): number => 10 + row * 70 + 30;
+  const PAGE1 = (): DashboardWidgetSpec => ({ id: 'p1', title: 'Filters', columns: 6, maxRows: 4, widgets: [K('k1', 3, 1, 0, 0)] });
+  const SIDE = (): DashboardWidgetSpec => ({ id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE1()] });
+  const board = (ops: DashboardWidgetSpec, binder?: Record<string, unknown>) =>
+    dashboard({ columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, sizing: 'grow', widgets: [ops, SIDE()], ...(binder ? { binder } : {}) });
+  const drag = (tool: CanvasTool, node: NodeModel, from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const hit = { node } as never;
+    tool.onPointerDown?.(tev('down', from.x, from.y), hit);
+    tool.onPointerMove?.(tev('move', from.x + 12, from.y + 6), hit);
+    for (let i = 1; i <= 4; i++) tool.onPointerMove?.(tev('move', from.x + ((to.x - from.x) * i) / 4, from.y + ((to.y - from.y) * i) / 4), hit);
+    return hit;
+  };
+
+  it('a widget from a SECTION dragged onto a container\'s outer band on the ROOT lands beside it there: the container shifts on the root, live, and the drop commits membership, cell and shift as one step', async () => {
+    // Before the leg carried a beside, a band on another board resolved as a
+    // plain cell there: the ghost slid next to the solid panel and the panel
+    // never gave way — "after it" at the edge was nowhere, from a section.
+    const { api, model, handle } = up(board({ id: 'ops', title: 'Operations', span: 6, rows: 2, x: 0, y: 0, columns: 6, maxRows: 2, widgets: [K('orders', 2, 1, 0, 0)] })); // two inner rows: the widget is one root row tall
+    const orders = model.getNode('orders')!;
+    const side = model.getGroup('side')!;
+    const from = { x: orders.position.x + 20, y: orders.position.y + 20 };
+    const to = { x: side.position.x + side.size!.width - 12, y: rowY(3) }; // the panel's right band, at row 3 of the root
+    const hit = drag(toolOf('ops'), orders, from, to);
+    expect(on(handle, 'ops', 'orders')).toBeNull(); // off its section
+    expect(on(handle, 'main', 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 }); // the panel shifted over by the widget's span
+    expect(on(handle, 'main', 'orders')).toEqual({ x: 10, y: 3, w: 2, h: 1 }); // after it, at the pointer's row
+    toolOf('ops').onPointerUp?.(tev('up', to.x, to.y), hit);
+    await settle();
+    expect(pathOf(handle, 'orders')).toBe('main > orders');
+    expect(handle.widget('orders')!.cell).toEqual({ x: 10, y: 3, w: 2, h: 1 });
+    expect(specOf(handle, 'side')).toMatchObject({ x: 7, y: 0 }); // the shift is in the document, not only on screen
+    await cm(api).undo();
+    await settle();
+    expect(pathOf(handle, 'orders')).toBe('main > ops > orders');
+    expect(handle.widget('orders')!.cell).toEqual({ x: 0, y: 0, w: 2, h: 1 });
+    expect(on(handle, 'main', 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+  });
+
+  it('a widget from a PAGE over a FULL fit section of the ROOT pushes that section on the root (D2 through the leg) — and the push is committed, undone and redone with the drop', async () => {
+    // The refusal used to end in a dimmed ghost ("will snap home") whenever
+    // the refusing section's parent was not the widget's own board; and a
+    // target board's pushed sections were computed at the drop and dropped.
+    const { api, model, handle } = up(board({ id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 0, columns: 9, sizing: 'fit', widgets: [K('orders', 9, 1, 0, 0)] }));
+    const k1 = model.getNode('k1')!;
+    const ops = model.getGroup('ops')!;
+    const from = { x: k1.position.x + 20, y: k1.position.y + 20 };
+    const to = { x: ops.position.x + ops.size!.width / 2, y: ops.position.y + ops.size!.height / 2 }; // inside the section: "into", which it refuses
+    const hit = drag(toolOf('p1'), k1, from, to);
+    expect(model.getGroup('ops')!.members?.has('k1')).toBe(false);
+    const ghost = on(handle, 'main', 'k1');
+    expect(ghost).not.toBeNull(); // the ROOT took it, with intent
+    expect(ghost!.y).toBe(0);
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: ghost!.h, w: 9, h: 1 }); // the section pushed below it
+    expect(api.container.querySelector('.axdb-out')).toBeNull(); // not dimmed: a release lands
+    toolOf('p1').onPointerUp?.(tev('up', to.x, to.y), hit);
+    await settle();
+    expect(pathOf(handle, 'k1')).toBe('main > k1');
+    expect(specOf(handle, 'ops')).toMatchObject({ x: 0, y: ghost!.h }); // committed: the document carries the push
+    await cm(api).undo();
+    await settle();
+    expect(pathOf(handle, 'k1')).toBe('main > side > p1 > k1');
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: 0, w: 9, h: 1 });
+    await cm(api).redo();
+    await settle();
+    expect(pathOf(handle, 'k1')).toBe('main > k1');
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: ghost!.h, w: 9, h: 1 });
+  });
+
+  it('a PALETTE drag goes through the same zones: dropped inside a page it lands there, and the drop-in names the board it took', async () => {
+    // The palette gesture tested "inside this board" and nothing else: a
+    // chip carried into a page or a section could only ever land on the
+    // view, under the container it was pointing at.
+    const onDropIn = jest.fn();
+    const { api, model, handle } = up(board({ id: 'ops', title: 'Operations', span: 6, rows: 2, x: 0, y: 0, columns: 6, widgets: [K('orders', 2, 1, 0, 0)] }, { onDropIn }));
+    const binder = handle.binderOf('main')!;
+    const side = model.getGroup('side')!;
+    const node = new NodeModel({ id: 'pal', type: 'widget', position: { x: 0, y: 0 }, size: { width: 180, height: 60, depth: 0 } });
+    const pe = (type: string, x: number, y: number) => Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }) as unknown as PointerEvent;
+    binder.beginPaletteDrag(node, { w: 2, h: 1 }, pe('pointerdown', 400, 400));
+    window.dispatchEvent(pe('pointermove', 420, 410));
+    // into the page's body: the middle of the panel, below its strip
+    const into = { x: side.position.x + side.size!.width / 2, y: side.position.y + 30 + (side.size!.height - 30) / 2 };
+    for (let i = 1; i <= 4; i++) window.dispatchEvent(pe('pointermove', 420 + ((into.x - 420) * i) / 4, 410 + ((into.y - 410) * i) / 4));
+    expect(on(handle, 'main', 'pal')).toBeNull(); // not on the root
+    expect(on(handle, 'p1', 'pal')).not.toBeNull(); // the page took it
+    window.dispatchEvent(pe('pointerup', into.x, into.y));
+    await settle();
+    expect(onDropIn).toHaveBeenCalledTimes(1);
+    const [n, cell, displaced, target] = onDropIn.mock.calls[0] as [NodeModel, { x: number; y: number; w: number; h: number }, unknown[], { boardId: string }];
+    expect(n).toBe(node);
+    expect(target).toEqual({ boardId: 'p1' });
+    expect(cell.h).toBe(1);
+    expect(cell.w).toBeGreaterThanOrEqual(2); // a chip keeps its PIXEL size across boards, like a tile: two root columns are more of a page's six
+    expect(cell.w).toBeLessThanOrEqual(6);
+    expect(Array.isArray(displaced)).toBe(true);
+    expect(api.container.querySelectorAll('.axdb-ph').length).toBe(0);
+    // The dropped tile waits in the page's engine for the member the host adds — under its own id here, as
+    // Quantia's designer does — and yields its place to it: no phantom holds the cell afterwards.
+    expect(on(handle, 'p1', 'pal')).toEqual(cell);
+    const fresh = handle.addWidget({ id: 'fresh', kind: 'kpi', span: cell.w, rows: cell.h, x: cell.x, y: cell.y }, 'p1');
+    expect(fresh?.cell).toEqual(cell);
+    expect(on(handle, 'p1', 'pal')).toBeNull();
+    expect(pathOf(handle, 'fresh')).toBe('main > side > p1 > fresh');
+  });
+
+  it('a PALETTE drag dropped on the view itself still names the view', async () => {
+    const onDropIn = jest.fn();
+    const { handle } = up(board({ id: 'ops', title: 'Operations', span: 6, rows: 2, x: 0, y: 0, columns: 6, widgets: [K('orders', 2, 1, 0, 0)] }, { onDropIn }));
+    const binder = handle.binderOf('main')!;
+    const node = new NodeModel({ id: 'pal', type: 'widget', position: { x: 0, y: 0 }, size: { width: 180, height: 60, depth: 0 } });
+    const pe = (type: string, x: number, y: number) => Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }) as unknown as PointerEvent;
+    binder.beginPaletteDrag(node, { w: 2, h: 1 }, pe('pointerdown', 400, 400));
+    window.dispatchEvent(pe('pointermove', 420, 410));
+    window.dispatchEvent(pe('pointermove', 300, rowY(5))); // free root space under the section
+    expect(on(handle, 'main', 'pal')).toMatchObject({ w: 2, h: 1 });
+    window.dispatchEvent(pe('pointerup', 300, rowY(5)));
+    await settle();
+    expect(onDropIn).toHaveBeenCalledTimes(1);
+    expect(onDropIn.mock.calls[0][3]).toEqual({ boardId: 'main' });
+  });
+});

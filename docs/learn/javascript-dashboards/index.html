@@ -517,6 +517,14 @@ render(SPEC2, host);</pre>
       lands beside a panel at the hand's row through the engine's own place-beside primitive, a full section that
       cannot take a widget is pushed by it, a moved section or a dock pushes the sections in its way. Fifteen lock
       toggles and two unlock lists left the binder with it.</p>
+      <p>0.4.53 makes the commit one thing. Whatever a gesture touched — this board, the page it crossed, the section
+      that refused it — reports the tiles that moved, and one function turns them into commands, widgets and containers
+      alike; before it, six places rebuilt a container's command by hand and the cross-board drop threw the target
+      board's pushed sections away, so a section you had seen move snapped back on reload. With that in place the
+      drag's leg carries two more moves: a widget from a section or a page lands <em>beside</em> a container on another
+      board, that container shifting over live, and a section on another board that cannot take the widget is pushed
+      there rather than leaving the widget dimmed. The palette chip walks the same zones, so it drops into a page or a
+      section and the drop-in hook names the board it took.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
