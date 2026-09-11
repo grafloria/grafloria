@@ -549,6 +549,13 @@ render(SPEC2, host);</pre>
       answer change frame after frame. Every strip is now read from the model, where its container rests, and a drag's
       own pushes are read there too. Crossing a header at hand speed changes the answer exactly twice, once on and once
       off, and a hand that stops keeps the answer it stopped on.</p>
+      <p>0.4.61 removes what both of those were working around. A tab group's top and bottom bands used to shove it a
+      whole row the moment your hand entered them, while you were still holding the widget — so the tabs you were
+      aiming at moved out from under you, and following them down shoved them again. Those two bands now mark the
+      cell the widget will take and <em>move nothing</em>, exactly as a dragged tab's dock and split previews have
+      since 0.4.42; the container gives way when you let go. The left and right bands keep sliding live, because
+      sideways a full-width strip never leaves your hand. A dragged section still pushes what is in its way, live,
+      as it has since 0.4.44: that is a deliberate shove, not a preview.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

@@ -2322,8 +2322,8 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     tool.onPointerDown?.(tev('down', from.x, from.y), { node: chart } as never);
     tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: chart } as never);
     tool.onPointerMove?.(tev('move', topMid.x, topMid.y), { node: chart } as never);
-    expect(cellOf(handle, 'panel')).toEqual({ x: 6, y: 4, w: 6, h: 4 }); // above: the panel pushed down under the chart
-    expect(cellOf(handle, 'chart')).toEqual({ x: 6, y: 0, w: 6, h: 4 });
+    expect(cellOf(handle, 'panel')).toEqual({ x: 6, y: 0, w: 6, h: 4 }); // above is MARKED, not applied (0.4.61): the panel holds still until release
+    expect(api.container.querySelector('.axdb-join')).not.toBeNull();
     tool.onPointerMove?.(tev('move', corner.x, corner.y), { node: chart } as never);
     expect(cellOf(handle, 'panel')).toEqual({ x: 0, y: 0, w: 6, h: 4 }); // right, at the edge: the two swap sides
     expect(cellOf(handle, 'chart')).toEqual({ x: 6, y: 0, w: 6, h: 4 });
@@ -2332,6 +2332,83 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     expect(cellOf(handle, 'panel')).toEqual({ x: 0, y: 0, w: 6, h: 4 });
     expect(cellOf(handle, 'chart')).toEqual({ x: 6, y: 0, w: 6, h: 4 });
     expect(api.container.querySelectorAll('.axdb-tabs').length).toBe(1);
+  });
+
+  it('the TOP and BOTTOM bands move NOTHING while the hand is held: an overlay marks the cell, the container gives way on release', async () => {
+    // The user, on 0.4.60, after the drop map: "if I drag first into the
+    // content area of the tab panel it pushes the entire tab group down and
+    // then I cannot go up to the tab header, it is not calculating the new
+    // place of the header." A vertical band shoves the container down a whole
+    // row, and the tab zone is read where the container RESTS (0.4.60, which
+    // is what stopped the flicker), so the painted tabs end up a row below the
+    // only place that accepts them — and following them down pushes them
+    // again. The container must hold still until release, the way a tab's dock
+    // and split previews have since 0.4.42. The LEFT and RIGHT bands keep
+    // their live slide (0.4.48): sideways, a full-width strip never leaves the
+    // hand, and the user missed that slide the one time it was frozen.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, sizing: 'grow',
+        widgets: [
+          K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('win', 2, 1, 4, 0), K('nps', 2, 1, 6, 0),
+          K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+        ],
+      })
+    );
+    const tool = toolOf('main');
+    const side = model.getGroup('side')!;
+    const nps = model.getNode('nps')!;
+    const body = side.size!.height - 30;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    const mid = side.position.x + side.size!.width / 2;
+    const inTop = { x: mid, y: side.position.y + 30 + body * 0.04 };
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', inTop.x, inTop.y), { node: nps } as never);
+    // HELD: the panel has not budged and there is an overlay where the widget will land
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    const join = api.container.querySelector('.axdb-join') as HTMLElement | null;
+    expect(join).not.toBeNull();
+    expect(Math.round(parseFloat(join!.style.top))).toBe(Math.round(side.position.y));
+    expect(api.container.querySelector('.axdb-ph')).toBeNull(); // the ghost left the board; nothing is displaced
+    expect(stripOf(api, 'side')).toEqual(['Filters', 'Alerts']);
+    // …and travelling DOWN the band changes nothing at all: the panel cannot run away
+    tool.onPointerMove?.(tev('move', mid, side.position.y + 30 + body * 0.1), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', mid, side.position.y + 30 + body * 0.16), { node: nps } as never);
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    expect(Math.round(parseFloat((api.container.querySelector('.axdb-join') as HTMLElement).style.top))).toBe(Math.round(side.position.y));
+    // RELEASE: now the panel gives way, one row, and the widget takes the cell it was shown
+    tool.onPointerUp?.(tev('up', mid, side.position.y + 30 + body * 0.16), { node: nps } as never);
+    await settle();
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 9, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 1, w: 3, h: 8 });
+    expect(stripOf(api, 'side')).toEqual(['Filters', 'Alerts']);
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    // THE BOTTOM BAND, the same deal
+    {
+      const s2 = model.getGroup('side')!;
+      const n2 = model.getNode('nps')!;
+      const f2 = { x: n2.position.x + 20, y: n2.position.y + 20 };
+      const low = { x: mid, y: s2.position.y + 30 + (s2.size!.height - 30) * 0.96 };
+      tool.onPointerDown?.(tev('down', f2.x, f2.y), { node: n2 } as never);
+      tool.onPointerMove?.(tev('move', f2.x + 30, f2.y + 5), { node: n2 } as never);
+      tool.onPointerMove?.(tev('move', low.x, low.y), { node: n2 } as never);
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+      expect(api.container.querySelector('.axdb-join')).not.toBeNull();
+      tool.onPointerUp?.(tev('up', low.x, low.y), { node: n2 } as never);
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 9, y: 8, w: 2, h: 1 }); // under the panel
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+      await cm(api).undo();
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+    }
   });
 
   it('a widget dragged onto a tab container\'s OUTER band lands BESIDE it — and at the board\'s edge, where there is no room, the container shifts over to make it (the side panel on the right, a widget after it)', async () => {
@@ -2426,8 +2503,8 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
       tool.onPointerDown?.(tev('down', fromT.x, fromT.y), { node: npsT } as never);
       tool.onPointerMove?.(tev('move', fromT.x + 30, fromT.y + 5), { node: npsT } as never);
       tool.onPointerMove?.(tev('move', topMid.x, topMid.y), { node: npsT } as never);
-      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 1, w: 3, h: 8 }); // above: the panel pushed down under the widget
-      expect(cellOf(handle, 'nps')).toEqual({ x: 9, y: 0, w: 2, h: 1 });
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 }); // above is MARKED, not applied (0.4.61)
+      expect(api.container.querySelector('.axdb-join')).not.toBeNull();
       tool.onPointerMove?.(tev('move', cornerT.x, cornerT.y), { node: npsT } as never);
       expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 }); // right: back up, shifted left — in the SAME move
       expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
@@ -3065,11 +3142,12 @@ describe('the tab strip HOLDS the hand: a widget aimed at the tabs does not flip
     tool.onPointerMove?.(at(r.x + r.width * 0.5, r.bottom + 4), hit);
     expect(marked(api)).toBe(true);
     expect(on(handle, 'main', 'side')).toEqual(side0);
-    // back up onto it, then well below: now it means ABOVE the container, which gives way
+    // back up onto it, then well below: now it means ABOVE the container — MARKED, not applied (0.4.61)
     tool.onPointerMove?.(at(r.x + r.width * 0.5, r.bottom + 14), hit);
     expect(marked(api)).toBe(false);
-    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y);
-    // and coming back up to the strip takes the tabs again, with the container home
+    expect(api.container.querySelector('.axdb-join')).not.toBeNull();
+    expect(on(handle, 'main', 'side')).toEqual(side0); // and the container has not moved, so the tabs are still where they were
+    // and coming back up to the strip takes the tabs again
     tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 15), hit);
     expect(marked(api)).toBe(true);
     expect(on(handle, 'main', 'side')).toEqual(side0);
@@ -3078,11 +3156,12 @@ describe('the tab strip HOLDS the hand: a widget aimed at the tabs does not flip
     expect(handle.toJSON().views[0].widgets.find((w) => w.id === 'side')?.widgets?.some((p) => (p.widgets ?? []).some((c) => c.id === 'nps'))).toBe(true);
   });
 
-  it('a container the drag PUSHED keeps its tab zone where the hand left it: the strip is read at rest, like its bands', async () => {
-    // Measured on the live demo: crossing into the top band shoved the panel 90 px down and took its
-    // strip along, so coming back up the hand met empty board at every step and the tabs were
-    // unreachable — the strip chased the pointer. The bands have been read at the container's REST
-    // frame since 0.4.49; the strip was not.
+  it('the top band cannot take the tabs away: the container never moves while the hand is held, so the strip stays where it is painted', async () => {
+    // Two rounds of the same report. 0.4.59: crossing into the top band shoved the panel 90 px down
+    // and took its strip along, so coming back up the tabs were unreachable — fixed by reading the
+    // strip at the container's REST frame, as its bands have been since 0.4.49. 0.4.60 closed the
+    // flicker the painted box caused. 0.4.61 removes the cause of both: a vertical band marks its
+    // cell and moves nothing, so rest and painted position never part company.
     const { api, model, handle } = up(board());
     const r = stubStrip(api, model);
     const tool = toolOf('main');
@@ -3093,13 +3172,14 @@ describe('the tab strip HOLDS the hand: a widget aimed at the tabs does not flip
     const mid = r.x + r.width * 0.5;
     tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
     tool.onPointerMove?.(tev('move', nps.position.x + 40, nps.position.y + 26), hit);
-    // into the TOP BAND, well below the strip: the panel gives way and its strip goes down with it
+    // into the TOP BAND, well below the strip: the cell is marked and NOTHING moves
     tool.onPointerMove?.(at(mid, r.bottom + 60), hit);
     expect(marked(api)).toBe(false);
-    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y);
-    const pushed = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]')!.getBoundingClientRect();
-    expect(pushed.top).toBeGreaterThan(r.top + 20); // the strip really did move away from the hand
-    // back up to where the tabs WERE: that is still the tab zone, and the panel comes home
+    expect(api.container.querySelector('.axdb-join')).not.toBeNull();
+    expect(on(handle, 'main', 'side')).toEqual(side0);
+    const still = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]')!.getBoundingClientRect();
+    expect(still.top).toBe(r.top); // the strip is exactly where the hand last saw it
+    // back up onto the tabs: the tab zone, and they are still painted there
     tool.onPointerMove?.(at(mid, r.top + 15), hit);
     expect(marked(api)).toBe(true);
     expect(on(handle, 'main', 'side')).toEqual(side0);
@@ -3121,8 +3201,10 @@ describe('the tab strip HOLDS the hand: a widget aimed at the tabs does not flip
     // straight to 4 px under the strip WITHOUT passing through it: the top band, not the tabs
     tool.onPointerMove?.(at(r.x + r.width * 0.5, r.bottom + 4), hit);
     expect(marked(api)).toBe(false);
-    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y);
+    expect(api.container.querySelector('.axdb-join')).not.toBeNull(); // the top band, marked
+    expect(on(handle, 'main', 'side')).toEqual(side0);
     tool.onPointerUp?.(tev('up', r.x + r.width * 0.5, r.bottom + 4), hit);
     await settle();
+    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y); // …and applied on release
   });
 });

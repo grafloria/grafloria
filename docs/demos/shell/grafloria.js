@@ -196981,6 +196981,33 @@ function bindDashboardGrid(api, group, options = {}) {
     return { n: y - p.y <= grip, s: p.y + s.height - y <= grip, w: x - p.x <= grip, e: p.x + s.width - x <= grip };
   };
   let beside = null;
+  let pendingBeside = null;
+  let joinEl = null;
+  const showJoin = (r) => {
+    const layer2 = htmlLayer();
+    if (!layer2) return;
+    if (!joinEl || joinEl.parentElement !== layer2) {
+      joinEl?.remove();
+      joinEl = document.createElement("div");
+      joinEl.className = "axdb-join";
+      layer2.prepend(joinEl);
+    }
+    joinEl.style.left = `${r.x}px`;
+    joinEl.style.top = `${r.y}px`;
+    joinEl.style.width = `${r.width}px`;
+    joinEl.style.height = `${r.height}px`;
+  };
+  const endPendingBeside = () => {
+    pendingBeside = null;
+    joinEl?.remove();
+    joinEl = null;
+  };
+  const pendingCellOf = (containerId, side, spans) => {
+    const it = engine.getItem(containerId);
+    if (!it) return null;
+    const x = Math.max(0, Math.min(engine.columns - spans.w, it.x));
+    return { x, y: side === "top" ? it.y : it.y + it.h };
+  };
   const endBeside = (restore) => {
     if (!beside) return;
     const it = engine.getItem(beside.id);
@@ -197246,6 +197273,7 @@ function bindDashboardGrid(api, group, options = {}) {
         showRefusal(null, 0, 0);
       }
     }
+    endPendingBeside();
     disarmGlideSoon();
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
@@ -197282,6 +197310,7 @@ function bindDashboardGrid(api, group, options = {}) {
     options.onGesture?.({ type: "commit", kind: g.kind, nodeId: g.id, changed });
   };
   const cancelActiveGesture = (notify = true) => {
+    endPendingBeside();
     if (gesture?.strip) {
       options.tabDrop?.markDrop(null, null);
       gesture.strip = null;
@@ -197397,6 +197426,7 @@ function bindDashboardGrid(api, group, options = {}) {
     const z = resolveTileZone(g, ev);
     if (z.kind === "strip" && options.tabDrop && !isStatic && g.kind !== "palette" && g.subject === "node") {
       endBeside(true);
+      endPendingBeside();
       leaveSelf();
       setDim(g, false);
       if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) {
@@ -197411,6 +197441,19 @@ function bindDashboardGrid(api, group, options = {}) {
       options.tabDrop?.markDrop(null, null);
       g.strip = null;
     }
+    if (z.kind === "beside" && !isStatic && z.board.ref === selfPeer && g.subject === "node" && (z.side === "top" || z.side === "bottom")) {
+      if (beside) endBeside(true);
+      const cell = pendingCellOf(z.containerId, z.side, g.spans);
+      if (cell) {
+        leaveSelf();
+        setDim(g, false);
+        pendingBeside = { id: z.containerId, side: z.side, cell, spans: { ...g.spans } };
+        showJoin(cellToRect({ x: cell.x, y: cell.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()));
+        syncPlaceholder();
+        return;
+      }
+    }
+    if (pendingBeside) endPendingBeside();
     if (z.kind === "beside" && !isStatic && z.board.ref === selfPeer) {
       const row = rowOfPoint(ev.world.y);
       if (!z.kept || !beside || beside.row !== row) applyBeside(g, { id: z.containerId, side: z.side }, row);
@@ -197690,6 +197733,11 @@ function bindDashboardGrid(api, group, options = {}) {
       options.onGesture?.({ type: "commit", kind: g.kind, nodeId: g.id, changed: true });
       return;
     }
+    if (pendingBeside) {
+      const p = pendingBeside;
+      endPendingBeside();
+      applyBeside(g, { id: p.id, side: p.side }, p.cell.y);
+    }
     if (g.leg) {
       const fin = g.leg.adopted.finalize();
       if (!fin) {
@@ -197882,7 +197930,18 @@ function bindDashboardGrid(api, group, options = {}) {
       y: ev.world.y,
       roots,
       strip,
-      prev: beside ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) } : g.leg?.adopted.besideState() ?? null,
+      prev: beside ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) } : pendingBeside ? (
+        // a VERTICAL band the hand holds: the container never moved, so its own frame is the sticky one
+        {
+          containerId: pendingBeside.id,
+          side: pendingBeside.side,
+          frame0: (() => {
+            const grp = diagram.getGroup(pendingBeside.id);
+            return grp ? frameOfGroup(grp) : cellToRect({ x: pendingBeside.cell.x, y: pendingBeside.cell.y, w: pendingBeside.spans.w, h: pendingBeside.spans.h }, frame(), geom(), rows());
+          })(),
+          vacated: cellToRect({ x: pendingBeside.cell.x, y: pendingBeside.cell.y, w: pendingBeside.spans.w, h: pendingBeside.spans.h }, frame(), geom(), rows())
+        }
+      ) : g.leg?.adopted.besideState() ?? null,
       // a beside another board holds for the ghost, through its leg
       maxDepth: nesting,
       ghostDepth: g.subject === "group" ? 1 + levelsInside(g.id) : 0,
@@ -198584,6 +198643,11 @@ function bindDashboardGrid(api, group, options = {}) {
         chip2?.remove();
         return;
       }
+      if (commit && pendingBeside) {
+        const p = pendingBeside;
+        endPendingBeside();
+        applyBeside(g, { id: p.id, side: p.side }, p.cell.y);
+      } else endPendingBeside();
       if (commit && g.leg) {
         const fin = g.leg.adopted.finalize();
         const boardId = g.leg.adopted.groupId;
