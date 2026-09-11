@@ -196836,6 +196836,7 @@ function bindDashboardGrid(api, group, options = {}) {
     if (gesture && gesture.id === id) cancelActiveGesture(false);
     if (!engine.getItem(id)) return;
     engine.remove(id);
+    if (designRows !== void 0) setLiveBound(liveBound(engine.getItems()));
     project();
     api.render();
   };
@@ -197987,7 +197988,34 @@ function bindDashboardGrid(api, group, options = {}) {
         entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
       }
     }
+    let grown = null;
+    const ungrow = () => {
+      const g = grown;
+      if (!g) return;
+      g.peer.resizeMemberBy(group.id, -g.rows);
+      setLiveBound(Math.max(1, (maxRows ?? 1) - g.rows));
+      grown = null;
+    };
+    if (!entered && escalate) {
+      const parent = parentPeer();
+      let rowsAdded = 0;
+      let firstBefore = null;
+      let lastAfter = null;
+      for (let i = 0; parent && !entered && i < Math.max(1, span.h); i++) {
+        const res = parent.resizeMemberBy(group.id, 1);
+        if (!res.changed || !res.cellBefore || !res.cellAfter || !res.frameBefore || !res.frameAfter) break;
+        rowsAdded += 1;
+        firstBefore = firstBefore ?? { cell: res.cellBefore, frame: res.frameBefore };
+        lastAfter = { cell: res.cellAfter, frame: res.frameAfter };
+        setLiveBound((maxRows ?? 0) + 1);
+        entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
+      }
+      if (parent && rowsAdded > 0 && firstBefore && lastAfter) {
+        grown = { peer: parent, rows: rowsAdded, cellBefore: firstBefore.cell, frameBefore: firstBefore.frame, cellAfter: lastAfter.cell, frameAfter: lastAfter.frame };
+      }
+    }
     if (!entered) {
+      ungrow();
       setSqueeze(squeezeBefore);
       engine.endGesture();
       return null;
@@ -198093,6 +198121,7 @@ function bindDashboardGrid(api, group, options = {}) {
         beside = null;
         if (engine.getItem(node.id)) engine.remove(node.id);
         engine.cancelGesture();
+        ungrow();
         setSqueeze(squeezeBefore);
         adoptedGhostId = null;
         disarmGlideSoon();
@@ -198111,6 +198140,10 @@ function bindDashboardGrid(api, group, options = {}) {
         const cell = { x: item.x, y: item.y, w: item.w, h: item.h };
         const rect = cellToRect(item, frame(), geom(), rows());
         const commands = tileCommands(deltasSince(startCells, startGeom, node.id));
+        if (grown) {
+          commands.push(new SetGroupCellCommand(group.id, grown.cellBefore, grown.cellAfter, grown.frameBefore, grown.frameAfter));
+          grown = null;
+        }
         engine.endGesture();
         pendingDrop = node.id;
         if (squeezeRoom !== void 0) {

@@ -1340,6 +1340,12 @@ export function bindDashboardGrid(
     if (gesture && gesture.id === id) cancelActiveGesture(false);
     if (!engine.getItem(id)) return;
     engine.remove(id);
+    // THE LIVE BOUND FOLLOWS THE MEMBERS. A board that took rows from its
+    // parent to hold an arrival (D4) keeps that bound while the tile is here;
+    // when the tile leaves — an undo of the drop, a removal — the bound goes
+    // back to what the remaining tiles need, or the board stays a row taller
+    // than anything in it.
+    if (designRows !== undefined) setLiveBound(liveBound(engine.getItems()));
     project();
     api.render();
   };
@@ -2978,9 +2984,8 @@ export function bindDashboardGrid(
     const squeezeBefore = squeezeRoom;
     let entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
     // Only a board with NO parent tile to grow through squeezes — a page. A
-    // full SECTION keeps refusing (grid-options s05: refused, then joined once
-    // a strip was removed); growing its slab for a dropped tile is the
-    // escalation path's, not a squeeze's, and is not built yet.
+    // full SECTION grows instead (D4, below): its height is a tile of its
+    // parent, and the parent is what has the rows to give.
     if (!entered && !parentPeer()) {
       const room = elasticRows();
       if (room !== undefined && room > (bound() ?? 0)) {
@@ -2989,7 +2994,57 @@ export function bindDashboardGrid(
         entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
       }
     }
+    /**
+     * D4 — A GROW CONTAINER TAKES ROWS FOR A TILE ARRIVING BY HAND. A full
+     * section is bounded by the rows its slab holds on the parent board, and
+     * those rows are the parent's to give: the same escalation a RESIZE inside
+     * the section uses (`g.esc`), asked one row at a time until the tile fits
+     * or the parent refuses. A FIT container (`escalate: false`) does not
+     * grow — it squeezes if it is a page, and otherwise refuses and is pushed
+     * by the widget instead (D2), which is what `sizing: 'fit'` means.
+     *
+     * The rows go back on `abort()`; on `finalize()` the section's own cell and
+     * frame commit with the drop, and the parent's re-layout carries whatever
+     * that growth pushed (pinned by the escalation spec).
+     */
+    interface GrownRows {
+      peer: BinderPeer;
+      rows: number;
+      cellBefore: CellRect;
+      frameBefore: WorldRect;
+      cellAfter: CellRect;
+      frameAfter: WorldRect;
+    }
+    let grown: GrownRows | null = null;
+    const ungrow = (): void => {
+      const g = grown;
+      if (!g) return;
+      g.peer.resizeMemberBy(group.id, -g.rows);
+      setLiveBound(Math.max(1, (maxRows ?? 1) - g.rows));
+      grown = null;
+    };
+    if (!entered && escalate) {
+      const parent = parentPeer();
+      let rowsAdded = 0;
+      let firstBefore: { cell: CellRect; frame: WorldRect } | null = null;
+      let lastAfter: { cell: CellRect; frame: WorldRect } | null = null;
+      // At most the tile's own height in rows: past that the board is not
+      // "full", it is smaller than the thing being dropped into it.
+      for (let i = 0; parent && !entered && i < Math.max(1, span.h); i++) {
+        const res = parent.resizeMemberBy(group.id, +1);
+        if (!res.changed || !res.cellBefore || !res.cellAfter || !res.frameBefore || !res.frameAfter) break;
+        rowsAdded += 1;
+        firstBefore = firstBefore ?? { cell: res.cellBefore, frame: res.frameBefore };
+        lastAfter = { cell: res.cellAfter, frame: res.frameAfter };
+        setLiveBound((maxRows ?? 0) + 1);
+        entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
+      }
+      if (parent && rowsAdded > 0 && firstBefore && lastAfter) {
+        grown = { peer: parent, rows: rowsAdded, cellBefore: firstBefore.cell, frameBefore: firstBefore.frame, cellAfter: lastAfter.cell, frameAfter: lastAfter.frame };
+      }
+    }
     if (!entered) {
+      ungrow();
       setSqueeze(squeezeBefore);
       engine.endGesture();
       return null; // a bounded, full board refuses the adoption
@@ -3104,6 +3159,7 @@ export function bindDashboardGrid(
         beside = null; // the snapshot restores the container with everything else
         if (engine.getItem(node.id)) engine.remove(node.id);
         engine.cancelGesture(); // pre-entry layout, memory cleared
+        ungrow(); // the rows this board took from its parent for the arrival go back (D4)
         setSqueeze(squeezeBefore);
         adoptedGhostId = null;
         disarmGlideSoon();
@@ -3124,6 +3180,11 @@ export function bindDashboardGrid(
         // Widgets AND sections this board's adoption displaced, as one list: a
         // dock or a push that moved a section commits it with the drop.
         const commands = tileCommands(deltasSince(startCells, startGeom, node.id));
+        // …and the rows this board took from its parent to hold the arrival (D4).
+        if (grown) {
+          commands.push(new SetGroupCellCommand(group.id, grown.cellBefore, grown.cellAfter, grown.frameBefore, grown.frameAfter));
+          grown = null;
+        }
         engine.endGesture();
         pendingDrop = node.id; // the tile stays for the member the commit (or the host's drop-in) adds
         if (squeezeRoom !== undefined) {
