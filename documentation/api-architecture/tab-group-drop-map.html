@@ -157,20 +157,21 @@
 
 <div class="wrap">
   <header class="top">
-    <p class="eyebrow">Grafloria dashboard kit &middot; element 0.4.60 &middot; measured 12 September 2026</p>
+    <p class="eyebrow">Grafloria dashboard kit &middot; measured on 0.4.60 &middot; fixed in 0.4.61 and 0.4.62 &middot; 12 September 2026</p>
     <h1>The Tab Group Drop Map</h1>
-    <p class="sub">Every point over the fluid board&rsquo;s side panel, sampled with an independent drag of the NPS widget, reading the kit&rsquo;s own decision rather than guessing from pixels. 1,040 points on a 22&nbsp;px lattice, then one-pixel sweeps across every boundary.</p>
+    <p class="sub">Every point over the fluid board&rsquo;s side panel, sampled with an independent drag of the NPS widget, reading the kit&rsquo;s own decision rather than guessing from pixels. 1,040 points on a 22&nbsp;px lattice, then one-pixel sweeps across every boundary. Both defects it found are now fixed and live.</p>
   </header>
 
   <section>
     <div class="col">
-      <p class="lede">The tab header is a clean 30&nbsp;pixel target and it lands exactly where it is painted. Everything else about the panel&rsquo;s top is wrong, in two separate ways that compound.</p>
-      <p>Both were reported from use, and both are now measured rather than argued. The first is a design choice that has outgrown its container: a fifth of a panel&rsquo;s body means &ldquo;put this above the whole panel&rdquo;, and on a panel this tall a fifth is 216&nbsp;pixels of what looks like content. The second is the cost of the fix that stopped last night&rsquo;s flicker: the tab target is pinned to where the panel <em>rests</em>, so once the panel has been shoved aside, the tabs you can see are not the tabs you can hit.</p>
+      <p class="lede">The tab header is a clean 30&nbsp;pixel target and it lands exactly where it is painted. Everything else about the panel&rsquo;s top was wrong, in two separate ways that compounded.</p>
+      <p>Both were reported from use, and both were measured rather than argued. The first was a design choice that had outgrown its container: a fifth of a panel&rsquo;s body meant &ldquo;put this above the whole panel&rdquo;, and on a panel this tall a fifth is 216&nbsp;pixels of what looks like content. The second was the cost of the fix that stopped the flicker: the tab target is pinned to where the panel <em>rests</em>, so once the panel had been shoved aside, the tabs you could see were not the tabs you could hit.</p>
+      <p>They shared one cause &mdash; the preview moved the thing you were aiming at &mdash; and both are fixed. <strong>0.4.61</strong> stopped the vertical bands moving the panel at all until you let go. <strong>0.4.62</strong> made those bands a fixed depth instead of a fifth. The map below is drawn as the panel behaves now, with the old boundaries marked where they were.</p>
     </div>
     <div class="verdict">
-      <div class="v"><span class="n">The good news</span><p>The header accepts a drop across its full width and its full 30&nbsp;pixel height, and not one pixel outside. Target and paint agree.</p></div>
-      <div class="v"><span class="n">Problem one</span><p>216&nbsp;px directly under the tabs means &ldquo;above the panel&rdquo;. Only the middle 36% of the panel&rsquo;s body means &ldquo;into the page&rdquo;.</p></div>
-      <div class="v"><span class="n">Problem two</span><p>Using that band shoves the panel down 140&nbsp;px. The tab target does not follow it, so the visible tabs stop working.</p></div>
+      <div class="v"><span class="n">The header, unchanged</span><p>It accepts a drop across its full width and its full 30&nbsp;pixel height, and not one pixel outside. Target and paint agree.</p></div>
+      <div class="v"><span class="n">Problem one, fixed in 0.4.62</span><p>216&nbsp;px under the tabs meant &ldquo;above the panel&rdquo;. It is 30&nbsp;px now, and the body is 59% &ldquo;into the page&rdquo; instead of 36%.</p></div>
+      <div class="v"><span class="n">Problem two, fixed in 0.4.61</span><p>Using that band shoved the panel 140&nbsp;px and the tab target did not follow. The panel no longer moves until you release.</p></div>
     </div>
   </section>
 
@@ -190,25 +191,27 @@
           <!-- the panel: the give-way frame -->
           <rect x="1083" y="113" width="348" height="1110" fill="url(#hatch)"/>
           <rect x="1083" y="113" width="348" height="1110" fill="none" stroke="var(--give)" stroke-width="1.6"/>
-          <!-- into the page -->
-          <rect x="1152.6" y="358.6" width="207.8" height="647.8" fill="var(--page-soft)" stroke="var(--page)" stroke-width="1.6"/>
+          <!-- into the page, as it is now -->
+          <rect x="1152.6" y="173" width="207.8" height="1020" fill="var(--page-soft)" stroke="var(--page)" stroke-width="1.6"/>
           <!-- the header -->
           <rect x="1083" y="113" width="348" height="30" fill="var(--tab-soft)" stroke="var(--tab)" stroke-width="1.6"/>
+          <!-- where the fifth used to end -->
+          <line x1="1083" y1="359" x2="1431" y2="359" stroke="var(--give)" stroke-width="1.4" stroke-dasharray="7 6" opacity=".75"/>
+          <line x1="1083" y1="1006" x2="1431" y2="1006" stroke="var(--give)" stroke-width="1.4" stroke-dasharray="7 6" opacity=".75"/>
 
           <!-- labels -->
           <text x="1257" y="133" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="15" font-weight="600" fill="var(--tab)">A NEW TAB &middot; 30 px</text>
-
-          <text x="1257" y="228" text-anchor="middle" font-family="Bricolage Grotesque, sans-serif" font-size="27" font-weight="600" fill="var(--give)">ABOVE the panel</text>
-          <text x="1257" y="254" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="14" fill="var(--give)">216 px &middot; shoves it down 140 px</text>
+          <text x="1257" y="164" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="14" font-weight="600" fill="var(--give)">ABOVE the panel &middot; 30 px</text>
+          <text x="1257" y="345" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="var(--give)" opacity=".9">the fifth used to reach here &mdash; 216 px</text>
+          <text x="1257" y="1028" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="var(--give)" opacity=".9">&hellip;and here, at the bottom</text>
 
           <text x="1118" y="660" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="14" font-weight="600" fill="var(--give)" transform="rotate(-90 1118 660)">BESIDE &middot; 70 px</text>
           <text x="1396" y="660" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="14" font-weight="600" fill="var(--give)" transform="rotate(90 1396 660)">BESIDE &middot; 70 px</text>
 
           <text x="1257" y="655" text-anchor="middle" font-family="Bricolage Grotesque, sans-serif" font-size="27" font-weight="600" fill="var(--page)">INTO the page</text>
-          <text x="1257" y="681" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="14" fill="var(--page)">208 &times; 648 px &middot; 36% of the body</text>
+          <text x="1257" y="681" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="14" fill="var(--page)">59% of the body &middot; was 36%</text>
 
-          <text x="1257" y="1110" text-anchor="middle" font-family="Bricolage Grotesque, sans-serif" font-size="27" font-weight="600" fill="var(--give)">BELOW the panel</text>
-          <text x="1257" y="1136" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="14" fill="var(--give)">216 px</text>
+          <text x="1257" y="1215" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="14" font-weight="600" fill="var(--give)">BELOW &middot; 30 px</text>
 
           <!-- ruler -->
           <g font-family="IBM Plex Mono, monospace" font-size="12.5" fill="var(--muted)">
@@ -216,22 +219,22 @@
             <text x="1072" y="117" text-anchor="end">113</text>
             <line x1="1076" y1="143" x2="1083" y2="143" stroke="var(--muted)" stroke-width="1.2"/>
             <text x="1072" y="147" text-anchor="end">143</text>
-            <line x1="1076" y1="359" x2="1083" y2="359" stroke="var(--muted)" stroke-width="1.2"/>
-            <text x="1072" y="363" text-anchor="end">359</text>
-            <line x1="1076" y1="1006" x2="1083" y2="1006" stroke="var(--muted)" stroke-width="1.2"/>
-            <text x="1072" y="1010" text-anchor="end">1006</text>
+            <line x1="1076" y1="173" x2="1083" y2="173" stroke="var(--muted)" stroke-width="1.2"/>
+            <text x="1072" y="177" text-anchor="end">173</text>
+            <line x1="1076" y1="1193" x2="1083" y2="1193" stroke="var(--muted)" stroke-width="1.2"/>
+            <text x="1072" y="1197" text-anchor="end">1193</text>
             <line x1="1076" y1="1223" x2="1083" y2="1223" stroke="var(--muted)" stroke-width="1.2"/>
             <text x="1072" y="1227" text-anchor="end">1223</text>
           </g>
         </svg>
-        <figcaption>Drawn at true scale in page pixels. The panel is 348 &times; 1110; the viewport was 1440 &times; 1400 and the board <span class="mono">grow</span>, 8 rows.</figcaption>
+        <figcaption>Drawn at true scale in page pixels, as the panel behaves on 0.4.62. The dashed lines are where the old fifth reached. The panel is 348 &times; 1110; the viewport was 1440 &times; 1400 and the board <span class="mono">grow</span>, 8 rows.</figcaption>
       </figure>
 
       <div>
         <ul class="legend">
           <li><span class="sw" style="background: var(--tab)"></span><span><b>A new tab.</b> The widget joins the strip at the slot under the pointer. The panel does not move.</span></li>
           <li><span class="sw" style="background: var(--page)"></span><span><b>Into the page.</b> The widget is adopted by whichever tab page is showing, beside what that page already holds.</span></li>
-          <li><span class="sw" style="background: var(--give)"></span><span><b>The panel gives way.</b> The widget takes a cell on the board next to the panel &mdash; above, below, left or right &mdash; and the panel is pushed or shifted to make room, live, while you hold.</span></li>
+          <li><span class="sw" style="background: var(--give)"></span><span><b>The panel gives way.</b> The widget takes a cell on the board next to the panel &mdash; above, below, left or right. Above and below are <em>marked</em> while you hold and applied on release; left and right still slide live, because sideways the header stays under your hand.</span></li>
           <li><span class="sw" style="background: var(--plain); opacity:.55"></span><span><b>A plain board cell.</b> Nothing to do with the panel.</span></li>
         </ul>
 
@@ -240,11 +243,11 @@
             <thead><tr><th>Zone</th><th>Extent</th><th>Share of the body</th></tr></thead>
             <tbody>
               <tr><td>A new tab</td><td class="num">y 113&ndash;143, full width</td><td class="num">&mdash;</td></tr>
-              <tr><td>Above the panel</td><td class="num">y 143&ndash;359</td><td class="num">12%</td></tr>
+              <tr><td>Above the panel</td><td class="num">y 143&ndash;173</td><td class="num">2%</td></tr>
               <tr><td>Beside it, left</td><td class="num">x 1083&ndash;1153</td><td class="num">18%</td></tr>
               <tr><td>Beside it, right</td><td class="num">x 1360&ndash;1431</td><td class="num">18%</td></tr>
-              <tr><td>Below the panel</td><td class="num">y 1006&ndash;1223</td><td class="num">12%</td></tr>
-              <tr><td>Into the page</td><td class="num">the remainder</td><td class="num">36%</td></tr>
+              <tr><td>Below the panel</td><td class="num">y 1193&ndash;1223</td><td class="num">2%</td></tr>
+              <tr><td>Into the page</td><td class="num">the remainder</td><td class="num">59%</td></tr>
             </tbody>
           </table>
         </div>
@@ -253,7 +256,7 @@
   </section>
 
   <section>
-    <h2>Six findings</h2>
+    <h2>Six findings, as measured on 0.4.60</h2>
     <ol class="findings">
       <li>
         <h3>The header is honest, and that is new</h3>
@@ -309,29 +312,29 @@
   </section>
 
   <section>
-    <h2>What to change</h2>
-    <div class="col"><p>Three candidates, in the order I would take them. The first is the root fix and the second is the one you asked about; they are independent and both are small.</p></div>
+    <h2>What changed</h2>
+    <div class="col"><p>The first two shipped, in this order. The third was the simpler alternative and was not taken.</p></div>
 
     <div class="opt pick">
-      <span class="tag">Take this first</span>
+      <span class="tag">Shipped &mdash; element 0.4.61</span>
       <h3>The panel does not move until you release</h3>
-      <p>Tint the cell the widget will take and leave the panel where it is, exactly as a tab drag already does since 0.4.42 &mdash; the kit learned this lesson once, for the other gesture, after you could not put a page back into its own panel. Then the header never moves, resting and painted position are always the same, findings 4 and 5 disappear, and the rest-frame rule that killed the flicker costs nothing. The horizontal shift at the board&rsquo;s edge can keep sliding live: it moves the header sideways under a full-width target, so it never leaves the hand.</p>
+      <p>The cell the widget will take is marked with an overlay and the panel stays where it is, exactly as a tab drag has done since 0.4.42 &mdash; the kit learned this lesson once, for the other gesture, after a page could not be put back into its own panel. The header never moves now, resting and painted position are always the same, and findings 4 and 5 are gone. The horizontal shift at the board&rsquo;s edge still slides live: it moves the header sideways under a full-width target, so it never leaves the hand. Two scopes the lab insisted on: a dragged <em>section</em> keeps its live push, which is intent rather than preview, and a palette chip applies its mark in its own release path.</p>
     </div>
 
     <div class="opt pick">
-      <span class="tag">Then this</span>
+      <span class="tag">Shipped &mdash; element 0.4.62</span>
       <h3>A tab group&rsquo;s top and bottom bands become a fixed depth</h3>
-      <p>Not a fifth of the body but a constant &mdash; 24 to 32&nbsp;px, about the height of the strip itself. The content area then means &ldquo;into the page&rdquo; almost everywhere, which is what you expect from it, and &ldquo;above the panel&rdquo; is still reachable from a thin lane under the tabs. The left and right fifths can stay as they are: they are how a widget gets beside a full-height panel, and nobody has reported them surprising.</p>
+      <p>Not a fifth of the body but the strip&rsquo;s own height, 30&nbsp;px. The content area now means &ldquo;into the page&rdquo; almost everywhere, and &ldquo;above the panel&rdquo; is a thin lane under the tabs. The left and right fifths stayed: they are how a widget gets beside a full-height panel, and nobody has reported them surprising. The lab found one rule on the way &mdash; a beside that is only <em>marked</em> has no vacated cell and must not borrow the one it would take, because for a widget the size of its container that rect is the whole panel.</p>
     </div>
 
     <div class="opt">
-      <span class="tag off">The simpler alternative</span>
+      <span class="tag off">Not taken</span>
       <h3>A tab group loses its top and bottom bands entirely</h3>
-      <p>Its body means &ldquo;into the page&rdquo;, full stop, and the container matches the section that sits beside it on the same board. Cheaper to reason about and it closes finding 6 as well. The cost is that a panel occupying the full height of its column can no longer be given a neighbour above or below it &mdash; there is no board row left to point at &mdash; so the gesture would be lost, not moved.</p>
+      <p>Its body would mean &ldquo;into the page&rdquo;, full stop, matching the section beside it on the same board, and closing finding 6 as well. The cost is that a panel occupying the full height of its column could no longer be given a neighbour above or below it &mdash; there is no board row left to point at &mdash; so the gesture would be lost rather than moved. Finding 6 therefore stands: a section still has no bands at all.</p>
     </div>
   </section>
 
   <footer>
-    <p>Measured on grafloria.com and on a local build of the same commit, Chromium 1440&nbsp;&times;&nbsp;1400, light and dark. Each sample is an independent gesture: press, one pointer move to the target, read, Escape. Sampling by continuous sweep was tried first and thrown away &mdash; the intermediate pointer positions set zones of their own on the way, and the map it drew was wrong.</p>
+    <p>Measured on grafloria.com and on a local build of the same commit, Chromium 1440&nbsp;&times;&nbsp;1400, light and dark. Each sample is an independent gesture: press, one pointer move to the target, read, Escape. Sampling by continuous sweep was tried first and thrown away &mdash; the intermediate pointer positions set zones of their own on the way, and the map it drew was wrong. Verified after shipping on the deployed build: a hand parked at five heights keeps one answer and the panel never leaves its resting position, and the journey that started this &mdash; into the content area, then back up to the tabs &mdash; finds them exactly where they are painted.</p>
   </footer>
 </div>
