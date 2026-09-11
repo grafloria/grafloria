@@ -47,6 +47,14 @@ export interface GridPackItem {
   /** Pinned: never pushed, never packed, refuses the mover outright (E4b). */
   locked?: boolean;
   /**
+   * SOLID (tile first, step 3): a container. Never pushed by a PASSING tile
+   * and never packed — a widget carried over it slides aside, so the board
+   * under the hand holds still and the container's zones stay reachable —
+   * but moved by INTENT: a mover that asks `pushSolid` (a moved section, a
+   * dock, a refused adoption), `placeBeside`, or a direct move of its own.
+   */
+  solid?: boolean;
+  /**
    * Per-item SIZE LIMITS in cells (gridstack's minW/maxW/minH/maxH). A resize
    * clamps to them, and a column change scales a width only within them. They
    * never move a tile: a push or a swap is not a resize.
@@ -130,7 +138,7 @@ export interface GridPackOptions {
  * `changed:false` as "refused" when it also means "already there", and asked
  * the tile where it was instead; now every refusal names itself.
  */
-export type GridPackRefusal = 'locked' | 'bound' | 'gate' | 'noop' | 'missing';
+export type GridPackRefusal = 'locked' | 'solid' | 'bound' | 'gate' | 'noop' | 'missing';
 
 /** Result of a move/resize attempt. */
 export interface GridPackResult {
@@ -167,6 +175,14 @@ export interface MoveCheckOptions {
    * exchange). Default true.
    */
   gate?: boolean;
+  /** Push SOLID tiles in the way as if they were plain — the mover means it (a moved section, a dock, a refused adoption). Default false. */
+  pushSolid?: boolean;
+}
+
+/** Options for {@link GridPackEngine.resizeCheck}. */
+export interface ResizeCheckOptions {
+  /** Grow INTO solid tiles, pushing them, instead of clamping at them — a dock taking its band means it. Default false. */
+  pushSolid?: boolean;
 }
 
 interface GestureMemory {
@@ -453,6 +469,7 @@ export class GridPackEngine {
 
     const probe = { ...n, x, y };
     if (this.collideLocked(probe, n)) return { changed: false, refusedBy: 'locked' }; // E4b: refuse
+    if (!options.pushSolid && this.collideSolid(probe, n)) return { changed: false, refusedBy: 'solid' }; // a container holds still for a passing tile
     // maxRows: trial-run the whole op, roll back if the settled result spills.
     const pre = this.cellsSnapshot();
 
@@ -535,7 +552,7 @@ export class GridPackEngine {
 
     n.x = x;
     n.y = y;
-    this.pushDown(n);
+    this.pushDown(n, options.pushSolid === true);
     this.settle(n);
     return this.acceptWithinBound(pre);
   }
@@ -547,21 +564,22 @@ export class GridPackEngine {
    * locked tile (E4b applied to size); displaced neighbours push + settle,
    * and return when the size shrinks back (E1/S2).
    */
-  resizeCheck(id: string, w: number, h: number): GridPackResult {
+  resizeCheck(id: string, w: number, h: number, options: ResizeCheckOptions = {}): GridPackResult {
     const n = this.getItem(id);
     if (!n) return { changed: false, refusedBy: 'missing' };
     w = GridPackEngine.clampW(n, Math.max(1, Math.min(this._columns - n.x, Math.round(w))));
     h = GridPackEngine.clampH(n, Math.max(1, Math.round(h)));
     // A bounded board clamps the tile's own height outright…
     if (this.bound !== undefined) h = Math.min(h, Math.max(1, this.bound - n.y));
-    while (w > n.w && this.collideLocked({ ...n, w }, n)) w--;
-    while (h > n.h && this.collideLocked({ ...n, h }, n)) h--;
+    const wall = options.pushSolid ? (p: GridPackItem) => this.collideLocked(p, n) : (p: GridPackItem) => this.collideWall(p, n);
+    while (w > n.w && wall({ ...n, w })) w--;
+    while (h > n.h && wall({ ...n, h })) h--;
     if (w === n.w && h === n.h) return { changed: false, refusedBy: 'noop' };
     // …and rolls back wholesale when the PUSH spills a sibling past the bound.
     const pre = this.cellsSnapshot();
     n.w = w;
     n.h = h;
-    this.pushDown(n);
+    this.pushDown(n, options.pushSolid === true);
     this.settle(n);
     return this.acceptWithinBound(pre);
   }
@@ -651,7 +669,7 @@ export class GridPackEngine {
       this.remember(nb);
       nb.x = shiftTo.x;
       nb.y = shiftTo.y;
-      this.pushDown(nb);
+      this.pushDown(nb, true);
     }
     if (this.collideLocked({ ...n, ...target }, n)) {
       putBack();
@@ -662,7 +680,7 @@ export class GridPackEngine {
     n.x = target.x;
     n.y = target.y;
     this.memory.delete(n.id);
-    this.pushDown(n);
+    this.pushDown(n, true);
     this.settle(n);
     const r = this.acceptWithinBound(pre);
     return r.changed ? { changed: true, how } : r;
@@ -932,6 +950,19 @@ export class GridPackEngine {
     );
   }
 
+  private collideSolid(probe: GridPackItem, self: GridPackItem): GridPackItem | undefined {
+    return this.items.find(
+      (o) => o !== self && o.id !== self.id && !!o.solid && !o.locked && GridPackEngine.hit(probe, o)
+    );
+  }
+
+  /** A locked or a solid tile: what growth clamps at and a push without intent skips past. */
+  private collideWall(probe: GridPackItem, self: GridPackItem): GridPackItem | undefined {
+    return this.items.find(
+      (o) => o !== self && o.id !== self.id && (!!o.locked || !!o.solid) && GridPackEngine.hit(probe, o)
+    );
+  }
+
   private remember(o: GridPackItem): void {
     if (!this.memory.has(o.id)) this.memory.set(o.id, { x: o.x, y: o.y });
   }
@@ -946,10 +977,11 @@ export class GridPackEngine {
    * any locked tile it lands on (gridstack `_skipDown` — without it a push
    * cascade can bury the pinned row), recursively.
    */
-  private pushDown(placed: GridPackItem): void {
+  private pushDown(placed: GridPackItem, pushSolid = false): void {
     for (const o of this.ordered()) {
       if (o === placed) continue;
       if (o.locked) continue; // locked: never pushed
+      if (o.solid && !pushSolid) continue; // solid: pushed by intent only
       if (!GridPackEngine.hit(placed, o)) continue;
       this.remember(o);
       // A BOUNDED board displaces along the ROW first: in a one-row strip
@@ -959,16 +991,16 @@ export class GridPackEngine {
       if (this.maxRows !== undefined) {
         const rightX = placed.x + placed.w;
         const right = { ...o, x: rightX };
-        if (rightX + o.w <= this._columns && !this.collideLocked(right, o)) {
+        if (rightX + o.w <= this._columns && !this.collideLocked(right, o) && (pushSolid || !this.collideSolid(right, o))) {
           o.x = rightX;
-          this.pushDown(o);
+          this.pushDown(o, pushSolid);
           continue;
         }
       }
       o.y = placed.y + placed.h;
       let lk: GridPackItem | undefined;
-      while ((lk = this.collideLocked(o, o))) o.y = lk.y + lk.h;
-      this.pushDown(o);
+      while ((lk = pushSolid ? this.collideLocked(o, o) : this.collideWall(o, o))) o.y = lk.y + lk.h;
+      this.pushDown(o, pushSolid);
     }
   }
 
@@ -994,7 +1026,7 @@ export class GridPackEngine {
             continue;
           }
         }
-        if (!this.float) {
+        if (!this.float && !n.solid) {
           while (n.y > 0 && !this.collide({ ...n, y: n.y - 1 }, n)) {
             n.y--;
             changed = true;

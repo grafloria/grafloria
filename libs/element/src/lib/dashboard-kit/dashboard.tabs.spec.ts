@@ -1959,6 +1959,114 @@ describe('tab drags on a SPLIT board', () => {
   });
 });
 
+describe('TILE FIRST, step 3: a group is a tile the engine pushes, packs and places beside', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const cellOf = (handle: { widget(id: string): { cell?: { x: number; y: number; w: number; h: number } } | undefined }, id: string) => handle.widget(id)?.cell;
+  const cm = (api: { getEngine(): { commandManager: { undo(): Promise<unknown> | void } } }) => api.getEngine().commandManager;
+  /** The fluid layout, gravity-consistent: nothing sits under a gap. */
+  const fixture = (ops: Partial<DashboardWidgetSpec> = {}) =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      gap: 10,
+      rowHeight: 60,
+      sizing: 'grow',
+      widgets: [
+        K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('win', 2, 1, 4, 0), K('nps', 2, 1, 6, 0),
+        K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+        { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 4, columns: 9, widgets: [K('orders', 4, 1, 0, 0)], ...ops },
+        { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+      ],
+    });
+  const rowY = (api: { container: HTMLElement }, row: number): number => 10 + row * 70 + 30; // padding 10, rows of 60 + gap 10: the middle of a row
+
+  it('a widget carried over a section from OUTSIDE leaves it where it is: the widget slides aside, the section holds still', async () => {
+    // The first cut unlocked groups outright, and a widget approaching a panel from above pushed it away before the
+    // hand could reach it — the panel fled and its "into" zone was never reachable. A container is SOLID: a passing
+    // widget slides aside (as it did when the section was locked), and only intent moves it.
+    const { api, model, handle } = up(fixture());
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const ops = model.getGroup('ops')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    const to = { x: 100, y: ops.position.y - 6 }; // the pointer 6 px ABOVE the section; the ghost's cell (the grab is 20 px down) would be the section's row
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 4, w: 9, h: 1 }); // held still
+    expect(cellOf(handle, 'nps')!.y).not.toBe(4); // the widget took a cell that clears it
+    expect(api.container.querySelector('.axdb-ph--no')).toBeNull();
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps } as never);
+    await settle();
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 4, w: 9, h: 1 });
+  });
+
+  it('a section under a gap HOLDS its row: a solid tile never packs, on boot or when the board settles', async () => {
+    const { api, model, handle } = up(fixture({ y: 7 })); // rows 4–6 free above it
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 }); // the authored gap survives the boot pack
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 100, from.y + 5), { node: nps } as never); // one column over: the board settles
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+    tool.onPointerUp?.(tev('up', from.x + 100, from.y + 5), { node: nps } as never);
+    await settle();
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+  });
+
+  it('beside lands at the POINTER\'s row, and follows it along the band (D3)', async () => {
+    const { api, model, handle } = up(fixture());
+    const tool = toolOf('main');
+    const side = model.getGroup('side')!;
+    const nps = model.getNode('nps')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    const edgeX = side.position.x + side.size!.width - 12; // the panel's right band AT REST: the hand stays there while the panel shifts away
+    const band = (row: number) => ({ x: edgeX, y: rowY(api, row) });
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', band(3).x, band(3).y), { node: nps } as never);
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 }); // shifted left by the widget's span
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 3, w: 2, h: 1 }); // at the pointer's row, not the panel's top row
+    tool.onPointerMove?.(tev('move', band(5).x, band(5).y), { node: nps } as never);
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 5, w: 2, h: 1 }); // the row follows the hand
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+    tool.onPointerUp?.(tev('up', band(5).x, band(5).y), { node: nps } as never);
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 5, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+  });
+
+  it('a widget a FULL fit section cannot take PUSHES the section instead of sliding in beside it (D2)', async () => {
+    const { model, handle } = up(fixture({ sizing: 'fit', widgets: [K('orders', 9, 1, 0, 0)] })); // one row, full width: nothing fits
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const ops = model.getGroup('ops')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    const to = { x: ops.position.x + 200, y: ops.position.y + ops.size!.height / 2 }; // the pointer INSIDE the section: into it, which it refuses
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
+    expect(model.getGroup('ops')!.members?.has('nps')).toBe(false); // not taken
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 5, w: 9, h: 1 }); // pushed down: the widget takes the cell on the board
+    expect(cellOf(handle, 'nps')!.y).toBe(4);
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps } as never);
+    await settle();
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 5, w: 9, h: 1 });
+    expect(cellOf(handle, 'nps')!.y).toBe(4);
+  });
+});
+
 describe('a tab group is ONE thing: its frame at rest, its motion when carried (0.4.43)', () => {
   const settle = () => new Promise<void>((r) => setTimeout(r, 0));
   const cellOf = (handle: DashboardHandle, id: string) => handle.widget(id)?.cell ?? null;
@@ -2241,7 +2349,7 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
         widgets: [
           K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('win', 2, 1, 4, 0), K('nps', 2, 1, 6, 0),
           K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
-          { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9, widgets: [K('orders', 4, 1, 0, 0)] }, // the locked section in the panel's way — the demo's layout
+          { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9, widgets: [K('orders', 4, 1, 0, 0)] }, // the section in the panel's way — the demo's layout
           { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
         ],
       })
@@ -2257,7 +2365,7 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
     // held: the panel gives way LIVE, the way any widget gives way to a dragged widget (0.4.48 — 0.4.47 had frozen it behind an overlay and the user missed the slide): shifted while held, the ghost beside it at the edge, the grid placeholder on and not refused, no overlay
     expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
-    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 3, w: 2, h: 1 }); // at the pointer's row (D3): 200 px under the strip is row 3
     expect(cellOf(handle, 'ops')!.y).toBeGreaterThanOrEqual(8); // the section gave way with it
     const ph0 = api.container.querySelector('.axdb-ph') as HTMLElement | null;
     expect(ph0).not.toBeNull();
@@ -2267,10 +2375,10 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     tool.onPointerMove?.(tev('move', to.x + 1, to.y + 1), { node: nps } as never);
     tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
     expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
-    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 3, w: 2, h: 1 }); // at the pointer's row (D3): 200 px under the strip is row 3
     tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps } as never);
     await settle();
-    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 3, w: 2, h: 1 }); // at the pointer's row (D3): 200 px under the strip is row 3
     expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
     expect(stripOf(api, 'side')).toEqual(['Filters', 'Alerts']); // not a tab, not adopted
     expect(cellOf(handle, 'mix')!.y).toBeGreaterThanOrEqual(8); // pushed under the shifted panel
@@ -2360,7 +2468,7 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps2 } as never);
     tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps2 } as never);
     await settle();
-    expect(cellOf(handle, 'nps')).toEqual({ x: 7, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'nps')).toEqual({ x: 7, y: 3, w: 2, h: 1 }); // left of the panel, at the pointer's row (D3)
     expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
     expect(stripOf(api, 'side')).toEqual(['Filters', 'Alerts']);
   });

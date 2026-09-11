@@ -328,22 +328,31 @@ try {
 {
   begin('s05-tile-into-bounded-section');
   const page = await freshPage(OPTS);
-  // The section is FULL (4 tiles, maxRows 1) — entry must be REFUSED, snap home.
+  // The section is FULL (4 tiles, maxRows 1). It cannot take the panel — so the panel takes the cell under the hand on
+  // the BOARD and PUSHES the section down, the way it pushes any tile it means to (tile first, step 3: D2). It used to
+  // be refused and snap home; that left the user with nowhere to put a widget near a full section.
   const share0 = await host(page, 'Share panel');
-  const sB = await host(page, 'Strip B');
+  const sB0 = await host(page, 'Strip B');
   await page.mouse.move(share0.x + share0.w / 2, share0.y + 12);
   await page.mouse.down();
-  await page.mouse.move(sB.x + sB.w / 2, sB.y + sB.h / 2, { steps: 14 });
+  await page.mouse.move(sB0.x + sB0.w / 2, sB0.y + sB0.h / 2, { steps: 14 });
   await page.waitForTimeout(450);
-  await shot(page, 'over-full-section');
+  await shot(page, 'over-full-section-which-gives-way');
   await page.mouse.up();
   await page.waitForTimeout(600);
   const shareA = await host(page, 'Share panel');
-  const snapHome = Math.abs(shareA.x - share0.x) < 5 && Math.abs(shareA.y - share0.y) < 5;
-  const noCommit = !(await undoEnabled(page));
-  await shot(page, 'refused-snap-home');
+  const sBA = await host(page, 'Strip B');
+  const tookTheRow = !!shareA && !!sBA && Math.abs(shareA.y - sB0.y) < sB0.h && sBA.y > sB0.y + 5; // the panel where the section's row was; the section (its tiles with it) below
+  const committed = await undoEnabled(page);
+  await shot(page, 'panel-on-the-board-section-pushed-down');
+  // One undo puts the section back.
+  await page.evaluate(() => window.__demoCtx.instance.getEngine().commandManager.undo());
+  await page.waitForTimeout(600);
+  const sBU = await host(page, 'Strip B');
+  const restored = !!sBU && Math.abs(sBU.y - sB0.y) < 5;
   // Now make room: remove one strip tile, then the panel CAN cross in.
-  await page.mouse.click(sB.x + sB.w / 2, sB.y + 12);
+  const sB1 = await host(page, 'Strip B');
+  await page.mouse.click(sB1.x + sB1.w / 2, sB1.y + 12);
   await page.waitForTimeout(250);
   await clickRemove(page);
   const shareB0 = await host(page, 'Share panel');
@@ -360,8 +369,8 @@ try {
   await shot(page, 'joined-section');
   const st = await boardState(page);
   verdict(
-    snapHome && noCommit && !!inStrip && st.overlaps === 0,
-    `full-section-refused=${snapHome} no-commit=${noCommit} joined-when-room=${!!inStrip} overlaps=${st.overlaps}`
+    tookTheRow && committed && restored && !!inStrip && st.overlaps === 0,
+    `full-section-pushed=${tookTheRow} committed=${committed} undo-restores=${restored} joined-when-room=${!!inStrip} overlaps=${st.overlaps}`
   );
   assertNoPageErrors(page);
   await page.close();

@@ -50,7 +50,7 @@ function tree(opts: { sideStatic?: boolean; secStatic?: boolean } = {}): ZoneBoa
 }
 
 const at = (x: number, y: number, extra: Partial<Parameters<typeof resolve>[0]> = {}): Zone =>
-  resolve({ x, y, roots: tree(), strip: null, prev: null, maxDepth: 2, ghostDepth: 0, ghostSubtree: new Set(), gap: 10, ...extra });
+  resolve({ x, y, roots: tree(), strip: null, prev: null, maxDepth: 2, ghostDepth: 0, ghostSubtree: new Set(), gap: 10, homeChain: new Set(), ...extra });
 
 describe('zones — bandOf: the outer fifth of a container, sides first', () => {
   const f = { x: 0, y: 0, width: 300, height: 480 };
@@ -86,7 +86,7 @@ describe('zones — resolve: the walk from the roots inward', () => {
     expect(at(950, 15, { strip: { containerId: 'side', index: 1 } })).toEqual({ kind: 'strip', containerId: 'side', index: 1 });
   });
   it('the outer fifth of a tab container is beside it, on the container\'s OWN board', () => {
-    expect(at(920, 240)).toEqual({ kind: 'beside', board: expect.objectContaining({ id: 'root' }), containerId: 'side', side: 'left', kept: false });
+    expect(at(912, 240)).toEqual({ kind: 'beside', board: expect.objectContaining({ id: 'root' }), containerId: 'side', side: 'left', kept: false }); // (912: left of the nested section, which starts at 920)
     expect(at(1190, 240)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'right' });
     expect(at(1050, 40)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' });
     expect(at(1190, 40)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'right' }); // the corner
@@ -97,6 +97,16 @@ describe('zones — resolve: the walk from the roots inward', () => {
   it('a section has no bands: its whole body is into, at any depth', () => {
     expect(at(400, 500)).toEqual({ kind: 'plain', board: expect.objectContaining({ id: 'ops', depth: 1 }), grace: false });
     expect(at(1050, 260)).toEqual({ kind: 'plain', board: expect.objectContaining({ id: 'sec', depth: 2 }), grace: false }); // inside the page, inside the section
+  });
+  it('a band does not reach THROUGH a nested container: over the section inside the page, the walk descends', () => {
+    // the section 'sec' (920..1180) lies under the tab container's right band (1140..1200): a hand over the section is in the page
+    expect(at(1170, 260)).toEqual({ kind: 'plain', board: expect.objectContaining({ id: 'sec' }), grace: false });
+    // above the section, the same x is the band
+    expect(at(1170, 120)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'right' });
+  });
+  it('a container\'s band does not apply to a widget that lives INSIDE it: leaving its page through the fifth is a move within the page', () => {
+    expect(at(912, 100)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'left' });
+    expect(at(912, 100, { homeChain: new Set(['side']) })).toEqual({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }), grace: false });
   });
   it('the margin of a tab container — inside its frame, outside its page — is a plain cell on the PARENT board', () => {
     // just under the strip, in the 8-px inset above the page
@@ -117,7 +127,7 @@ describe('zones — policy: depth, static and the ghost\'s own subtree make a co
   it('a static container is opaque: no into, but its bands still say beside', () => {
     const roots = tree({ sideStatic: true });
     expect(at(1050, 120, { roots })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'root' }) });
-    expect(at(920, 240, { roots })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'left' });
+    expect(at(912, 240, { roots })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'left' });
   });
   it('a container in the ghost\'s own subtree is never entered (a container cannot be dropped into its descendant)', () => {
     expect(at(1050, 260, { ghostSubtree: new Set(['sec']) })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) });

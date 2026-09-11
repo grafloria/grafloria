@@ -252,7 +252,7 @@ export interface DashboardOptions {
    * so a designer/viewer pair is one flag apart. Live: `handle.setStatic()`.
    */
   static?: boolean;
-  /** The deepest board a drop may enter (a view is 0; default 2). See the grid binder's `nesting`. */
+  /** The deepest board a drop may enter (a view is 0; unbounded by default). See the grid binder's `nesting`. */
   nesting?: number;
   /**
    * DRAG HANDLE — DevExpress drags an item by its caption. `true`: the caption
