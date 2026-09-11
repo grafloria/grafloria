@@ -514,12 +514,14 @@ function boardBinderOptions(key) {
       return screen.x <= side.getBoundingClientRect().right + 8;
     },
     onRemoveRequest: (nodeId, displaced) => removeTileCmd(nodeId, displaced),
-    onDropIn: async (node, cell, displaced) => {
+    // `target.boardId` names the board the chip was dropped INTO — this board,
+    // or a page or section on it (tile first, step 4a).
+    onDropIn: async (node, cell, displaced, target) => {
       await cmd().execute(new AddNodeCommand(node));
       await cmd().execute(new BatchCommand('Add tile',
-        [new AddToGroupCommand(boards[key].id, node.id), ...displaced]));
+        [new AddToGroupCommand(target?.boardId ?? boards[key].id, node.id), ...displaced]));
       setFocus(node.id);
-      flash(`dropped into board ${key.toUpperCase()} at column ${cell.x + 1}, row ${cell.y + 1}`);
+      flash(`dropped into ${target?.boardId ?? `board ${key.toUpperCase()}`} at column ${cell.x + 1}, row ${cell.y + 1}`);
     },
     onGesture: (e) => onAnyGesture(e, `board ${key.toUpperCase()}`),
   };

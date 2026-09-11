@@ -16,7 +16,7 @@
 </style>
 <div class="lab" id="lab"></div>
 <script type="module">
-import { render, dashboard } from '../shell/grafloria.js';
+import { render, dashboard, NodeModel } from '../shell/grafloria.js';
 
 // One KPI row + two charts: 12 columns, three rows at rowHeight 130.
 const KPIS = () => [
@@ -315,6 +315,37 @@ board('sptabs', 'tabs on a SPLIT board (0.4.37) · a torn-out tab becomes a PANE
     { id: 'st-b1', title: 'Filters', columns: 4, widgets: [ { id: 'st-kb1', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Filters', value: '4' } } ] },
     { id: 'st-b2', title: 'Notes', columns: 4, widgets: [ { id: 'st-kb2', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Notes', value: '5' } } ] } ] },
 ] }, { height: 300 });
+board('pal', 'a PALETTE chip dragged into a tab page lands there — the drop names the board it took (tile first, step 4a)', { sizing: 'grow', rowHeight: 60, widgets: [
+  { id: 'pal-a', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'A', value: '1' } },
+  { id: 'pal-tabs', title: 'Side', span: 6, rows: 4, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'pal-p1', title: 'Filters', columns: 6, maxRows: 3, widgets: [
+      { id: 'pal-in', kind: 'kpi', span: 6, rows: 1, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } } ] },
+    { id: 'pal-p2', title: 'Alerts', columns: 6, widgets: [
+      { id: 'pal-o', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Open', value: '3' } } ] },
+  ] },
+  { id: 'pal-b', kind: 'kpi', span: 6, rows: 2, x: 0, y: 2, data: { label: 'B', value: '2' } },
+], binder: { onDropIn: (node, cell, displaced, target) => {
+  // The host adds the widget to the board the drop names — under the chip's own id, so the tile the drop left waiting is taken over, not doubled.
+  (window.__labDrops ||= []).push({ boardId: target?.boardId ?? null, cell });
+  window.__lab.pal.handle.addWidget({ id: node.id, kind: 'kpi', span: cell.w, rows: cell.h, x: cell.x, y: cell.y, data: { label: 'Dropped', value: '★' } }, target?.boardId);
+} } }, { height: 380 });
+{
+  const chip = document.createElement('button');
+  chip.id = 'pal-chip';
+  chip.textContent = '＋ KPI chip';
+  chip.style.cssText = 'margin-left: 12px; font: 600 11px ui-monospace, monospace; cursor: grab; text-transform: none; letter-spacing: 0;';
+  document.querySelector('#cv-pal').parentElement.querySelector('.h').appendChild(chip);
+  let n = 0;
+  chip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const binder = window.__lab.pal.handle.binderOf('main');
+    if (!binder) return;
+    const node = new NodeModel({ id: `pal-new-${++n}`, type: 'widget', position: { x: 0, y: 0 }, size: { width: 120, height: 60, depth: 0 } });
+    const c = chip.cloneNode(true);
+    c.id = '';
+    binder.beginPaletteDrag(node, { w: 2, h: 1, chip: c }, e);
+  });
+}
 board('cap-nested', 'captions two levels down · setCaption live', { sizing: 'grow', rowHeight: 34, widgets: [
   { id: 'outer', title: 'Outer section', span: 12, rows: 10, x: 0, y: 0, columns: 12, caption: true, widgets: [
     { id: 'inner', title: 'Inner section', span: 6, rows: 8, x: 0, y: 0, columns: 4, caption: { text: 'Inner', description: 'two levels down' }, widgets: [{ id: 'k', kind: 'kpi', span: 4, rows: 8, x: 0, y: 0, data: { label: 'K', value: '1' } }] },

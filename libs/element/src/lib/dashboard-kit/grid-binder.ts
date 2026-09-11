@@ -83,6 +83,8 @@ import { ensureDashboardKitStyles } from './styles';
 import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCaptionBand, sectionCaptionReserve, sizeCaptionBand } from './caption';
 import { TAB_STRIP_HEIGHT } from './tabs';
 import { BESIDE_BAND, resolve as resolveZone, resolveTabZone, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
+import { SequenceCommand, SetGroupCellCommand, tileCommands } from './commit';
+export { SequenceCommand, SetGroupCellCommand } from './commit';
 
 /** The slice of a DiagramInstance the binder needs (structural, test-friendly). */
 export interface DashboardGridApi {
@@ -200,10 +202,11 @@ export interface DashboardGridOptions {
   onRemoveRequest?: (nodeId: string, displaced: Command[]) => void | Promise<void>;
   /**
    * Page hook for palette drag-in release: add `node` (already carrying
-   * `cell` in its gridItem, already placed in the engine) through the page's
-   * command path, folding `displaced` into the same batch.
+   * `cell` in its gridItem) to `target.boardId` — this view, or a page or
+   * section the chip was dropped into (tile first, step 4a) — through the
+   * page's command path, folding `displaced` into the same batch.
    */
-  onDropIn?: (node: NodeModel, cell: CellRect, displaced: Command[]) => void | Promise<void>;
+  onDropIn?: (node: NodeModel, cell: CellRect, displaced: Command[], target: { boardId: string }) => void | Promise<void>;
   /**
    * A member is about to LEAVE this board through a gesture (moved into
    * another board, made a tab of its own). Answers the commands that follow
@@ -653,35 +656,6 @@ export interface TearOutPlan {
 /** A torn-out page never arrives shorter than this: a strip with no room under it is not a group. */
 export const TEAR_OUT_MIN_ROWS = 2;
 
-/**
- * Steps that depend on each other's RESULT — create a group, then move a page
- * into it, then place the group on the board; or remove a member and then the
- * group it emptied — run as one history step. A batch checks every member's
- * `canExecute` before running any of them and every member's `canUndo` before
- * undoing any, and a membership command's precondition (its group exists) is
- * exactly what a neighbouring step creates or removes. This runs the chain in
- * order and reverses it on undo, judging nothing up front.
- */
-export class SequenceCommand extends Command {
-  constructor(name: string, private steps: Command[]) {
-    super(name);
-  }
-  override execute(context: Parameters<Command['execute']>[0]): void {
-    for (const c of this.steps) c.execute(context);
-  }
-  override undo(context: Parameters<Command['undo']>[0]): void {
-    for (let i = this.steps.length - 1; i >= 0; i--) this.steps[i].undo(context);
-  }
-  override canExecute(): boolean {
-    return true;
-  }
-  override canUndo(): boolean {
-    return true;
-  }
-  override serialize() {
-    return { id: this.id, name: this.name, timestamp: this.timestamp, data: { steps: this.steps.map((c) => c.serialize()) } };
-  }
-}
 
 /**
  * A WIDGET dropped on a tab strip becomes a new tab there (a tab dropped on
@@ -707,12 +681,20 @@ interface AdoptOptions {
   fit?: 'shrink';
   /** Anchor the tile's TOP edge at the pointer instead of centring it (the pointer holds a tab, the page hangs below it). */
   anchor?: 'top';
+  /** Enter WITH INTENT: the tile takes the cell under the hand and pushes the solid tiles there (D2 — a section this board holds refused it). */
+  push?: boolean;
+  /** Enter BESIDE a container of this board: the container gives way, the tile takes the band's side at the pointer's row. */
+  beside?: { containerId: string; side: BesideSide };
 }
 
 interface AdoptedLeg {
   groupId: string;
-  /** Drive the target engine from the source binder's pointer stream. */
-  move(world: { x: number; y: number }): void;
+  /** Drive the target engine from the source binder's pointer stream. `push`: the tile means it — solid tiles under the wanted cell are pushed (D2). */
+  move(world: { x: number; y: number }, opts?: { push?: boolean }): void;
+  /** Put the tile BESIDE `containerId` on this board, at the row under `world` — the container shifts or the tiles behind it are pushed; a repeat at the same row is a no-op. */
+  beside(containerId: string, side: BesideSide, world: { x: number; y: number }): void;
+  /** The beside this board holds for the tile, for the zone resolve's stickiness: the container's frame at rest and the cell the tile took — null when none. */
+  besideState(): { containerId: string; side: BesideSide; frame0: WorldRect; vacated: WorldRect } | null;
   /**
    * Take the tile OFF the board while the pointer is somewhere the board is
    * not the target (over a group the page will join instead); the tiles it
@@ -731,17 +713,11 @@ interface AdoptedLeg {
   /** Undo the adoption: target board back to its pre-entry layout. */
   abort(): void;
   /**
-   * Close the leg for commit: returns the target-side displaced commands, the
-   * tile's final cell and its projected rect — and the member GROUPS the
-   * adoption moved (the node commands skip groups; a dock that pushed sections
-   * commits them through these). Null when the tile is somehow gone.
+   * Close the leg for commit: the target board's displaced commands (widgets
+   * and sections alike), the tile's final cell and its projected rect. Null
+   * when the tile is somehow gone.
    */
-  finalize(): {
-    commands: Command[];
-    cell: CellRect;
-    rect: WorldRect;
-    groups: Array<{ id: string; cellBefore: CellRect; cellAfter: CellRect; frameBefore: WorldRect; frameAfter: WorldRect }>;
-  } | null;
+  finalize(): { commands: Command[]; cell: CellRect; rect: WorldRect } | null;
 }
 
 /**
@@ -818,48 +794,6 @@ function describeCell(c: CellRect): string {
  * cells live in group metadata — this closes nested height escalation into
  * the gesture's single BatchCommand so one undo restores the strip too.
  */
-class SetGroupCellCommand extends Command {
-  constructor(
-    private groupId: string,
-    private cellBefore: CellRect,
-    private cellAfter: CellRect,
-    private frameBefore: WorldRect,
-    private frameAfter: WorldRect
-  ) {
-    super('Resize section');
-  }
-
-  private apply(context: { diagram?: unknown }, cell: CellRect, frame: WorldRect): void {
-    const diagram = context.diagram as DiagramModel | undefined;
-    const grp = diagram?.getGroup(this.groupId);
-    if (!grp) return;
-    grp.setMetadata('gridItem', gridItemFromCell(cell));
-    grp.setFrame({ ...frame });
-  }
-
-  override execute(context: { diagram?: unknown }): void {
-    this.apply(context, this.cellAfter, this.frameAfter);
-  }
-
-  override undo(context: { diagram?: unknown }): void {
-    this.apply(context, this.cellBefore, this.frameBefore);
-  }
-
-  override serialize() {
-    return {
-      id: this.id,
-      name: this.name,
-      timestamp: this.timestamp,
-      data: {
-        groupId: this.groupId,
-        cellBefore: this.cellBefore,
-        cellAfter: this.cellAfter,
-        frameBefore: this.frameBefore,
-        frameAfter: this.frameAfter,
-      },
-    };
-  }
-}
 
 interface GestureState {
   kind: 'move' | 'resize' | 'palette';
@@ -1634,18 +1568,6 @@ export function bindDashboardGrid(
     return out;
   };
 
-  /** The member groups a gesture displaced, as their own cell commands — `buildCommitCommands` skips groups by design. */
-  const groupCellCommands = (deltas: TileDelta[]): Command[] => {
-    const out: Command[] = [];
-    for (const d of deltas) {
-      if (!d.isGroup || (d.cellBefore.x === d.cellAfter.x && d.cellBefore.y === d.cellAfter.y && d.cellBefore.w === d.cellAfter.w && d.cellBefore.h === d.cellAfter.h)) continue;
-      const og = diagram.getGroup(d.id);
-      if (!og) continue;
-      out.push(new SetGroupCellCommand(d.id, d.cellBefore, d.cellAfter, { x: d.posBefore.x, y: d.posBefore.y, width: d.sizeBefore.width, height: d.sizeBefore.height }, frameOfGroup(og)));
-    }
-    return out;
-  };
-
   const execute = (name: string, commands: Command[]): boolean => {
     if (commands.length === 0) return false;
     void api.getEngine().commandManager.execute(new BatchCommand(name, commands));
@@ -1654,8 +1576,21 @@ export function bindDashboardGrid(
 
   // -- membership + bounds sync ----------------------------------------------
 
+  /**
+   * A DROP LEAVES ITS TILE IN THE ENGINE, waiting for the member the commit
+   * adds under the same id — or, for a palette drop, for whatever the host's
+   * command adds: a host that mints its own id would otherwise leave the
+   * ghost behind as a phantom holding the cell. The next member to arrive
+   * claims the phantom's place: the same id simply takes it over, another id
+   * removes it first and lands where the drop settled.
+   */
+  let pendingDrop: string | null = null;
   const onMemberAdded = (id: string): void => {
     if (disposed) return;
+    if (pendingDrop && pendingDrop !== id && engine.getItem(pendingDrop) && !(group.members ?? new Set<string>()).has(pendingDrop)) {
+      engine.remove(pendingDrop);
+    }
+    pendingDrop = null;
     if (!engine.getItem(id)) {
       const item = itemFor(id);
       let placed = engine.add(item);
@@ -1940,33 +1875,44 @@ export function bindDashboardGrid(
     const pitch = Math.max(1, r1.y - r0.y);
     return Math.max(0, Math.floor((y - r0.y) / pitch));
   };
-  const applyBeside = (g: GestureState, z: { id: string; side: BesideSide }, row: number): void => {
+  /**
+   * The ghost `id` (spanning `spans`) beside container `z.id` on THIS board at
+   * `row`: the engine shifts the container or pushes what stands behind it,
+   * and the beside is remembered for the resolve's stickiness. One function
+   * for a tile of this board and for a tile another board's gesture placed
+   * here through its leg.
+   */
+  const besideOn = (id: string, spans: { w: number; h: number }, z: { id: string; side: BesideSide }, row: number): void => {
     const tc = engine.getItem(z.id);
     if (!tc) return;
+    if (beside && (beside.id !== z.id || beside.side !== z.side)) endBeside(true); // another container, or another side of it: from the rest layout
+    if (!beside) {
+      const grp0 = diagram.getGroup(z.id);
+      beside = { id: z.id, side: z.side, from: { x: tc.x, y: tc.y }, frame0: grp0 ? frameOfGroup(grp0) : cellToRect({ x: tc.x, y: tc.y, w: tc.w, h: tc.h }, frame(), geom(), rows()), vacated: { x: tc.x, y: tc.y }, row };
+    }
+    const r = engine.placeBeside(id, z.id, z.side, row);
+    const at = engine.getItem(id);
+    if (r.changed && at) {
+      beside.vacated = { x: at.x, y: at.y };
+      beside.row = row;
+    } else if (at) {
+      // Refused (a bound): the widget goes where it can, as any refused cell does.
+      placeNear(id, at.x, at.y, spans.w);
+    }
+    project();
+  };
+  const applyBeside = (g: GestureState, z: { id: string; side: BesideSide }, row: number): void => {
+    if (!engine.getItem(z.id)) return;
     if (g.leg) {
       g.leg.adopted.abort();
       g.leg = null;
     }
     if (g.removedFromBoard) {
       g.removedFromBoard = false;
-      hostOf(g.id)?.classList.remove('axdb-out');
+      setDim(g, false);
       engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
     }
-    if (beside && (beside.id !== z.id || beside.side !== z.side)) endBeside(true); // another container, or another side of it: from the rest layout
-    if (!beside) {
-      const grp0 = diagram.getGroup(z.id);
-      beside = { id: z.id, side: z.side, from: { x: tc.x, y: tc.y }, frame0: grp0 ? frameOfGroup(grp0) : cellToRect({ x: tc.x, y: tc.y, w: tc.w, h: tc.h }, frame(), geom(), rows()), vacated: { x: tc.x, y: tc.y }, row };
-    }
-    const r = engine.placeBeside(g.id, z.id, z.side, row);
-    const at = engine.getItem(g.id);
-    if (r.changed && at) {
-      beside.vacated = { x: at.x, y: at.y };
-      beside.row = row;
-    } else if (at) {
-      // Refused (a bound): the widget goes where it can, as any refused cell does.
-      placeNear(g.id, at.x, at.y, g.spans.w);
-    }
-    project();
+    besideOn(g.id, g.spans, z, row);
   };
   /**
    * CARRIED (0.4.43): a group dragged by its strip or band moves as ONE thing.
@@ -2341,19 +2287,9 @@ export function bindDashboardGrid(
     }
     engine.endGesture();
     project();
-    const it = engine.getItem(g.id);
-    const grp = diagram.getGroup(g.id);
-    const deltas = deltasSince(g.startCells, g.startGeom, g.id);
-    const commands = buildCommitCommands(deltas);
-    // The sections and groups the move PUSHED (0.4.44): the tile commit skips
-    // groups by design (a group's cell is its own command), so they are
-    // committed here the way a dock commits the groups it displaced — or the
-    // model snapped every one of them, and the mover, straight back.
-    commands.push(...groupCellCommands(deltas));
-    const b = g.cellBefore;
-    if (it && grp && (b.x !== it.x || b.y !== it.y || b.w !== it.w || b.h !== it.h)) {
-      commands.push(new SetGroupCellCommand(g.id, b, { x: it.x, y: it.y, w: it.w, h: it.h }, g.frameBefore, frameOfGroup(grp)));
-    }
+    // The mover and the sections it PUSHED (0.4.44) commit alike: a group's
+    // cell-and-frame command comes out of the same deltas as a node's.
+    const commands = tileCommands(deltasSince(g.startCells, g.startGeom));
     const changed = execute(g.move ? 'Move section' : 'Resize section', commands);
     disarmGlideSoon();
     syncHandles();
@@ -2431,6 +2367,12 @@ export function bindDashboardGrid(
     if (rect.height !== undefined) el.style.height = `${rect.height}px`;
   };
 
+  /** "A release here lands nowhere": the ghost's host dims, and so does a palette chip (which has no host). */
+  const setDim = (g: GestureState, on: boolean): void => {
+    hostOf(g.id)?.classList.toggle('axdb-out', on);
+    g.chip?.classList.toggle('axdb-out', on);
+  };
+
   const cleanupGestureVisuals = (g: GestureState): void => {
     if (g.kind !== 'palette') setGhost(g.id, false);
     disarmGlideSoon();
@@ -2459,8 +2401,7 @@ export function bindDashboardGrid(
     gesture = null;
     project();
     const deltas = deltasSince(g.startCells, g.startGeom);
-    const commands = buildCommitCommands(deltas);
-    commands.push(...groupCellCommands(deltas)); // a container a BESIDE drop shifted (0.4.45)
+    const commands = tileCommands(deltas); // a container a BESIDE drop shifted commits with the widgets (0.4.45)
     endBeside(false);
     if (g.esc && g.esc.rowsAdded !== 0) {
       commands.push(
@@ -2497,11 +2438,11 @@ export function bindDashboardGrid(
     const g = gesture;
     if (!g) return;
     gesture = null;
-    if (g.kind !== 'palette' && g.leg) {
+    if (g.leg) {
       g.leg.adopted.abort(); // target board back to its pre-entry layout
       g.leg = null;
     }
-    if (g.kind !== 'palette' && g.esc && g.esc.rowsAdded !== 0) {
+    if (g.esc && g.esc.rowsAdded !== 0) {
       g.esc.peer.resizeMemberBy(group.id, -g.esc.rowsAdded); // slab back down
       g.esc = null;
     }
@@ -2566,6 +2507,161 @@ export function bindDashboardGrid(
     };
   };
 
+  /**
+   * THE GHOST FOLLOWS THE HAND — for a tile of this board and for a palette
+   * chip alike (tile first, step 4a): the zone under the pointer is resolved
+   * once over the boards' membership tree, and whichever board it names
+   * takes the ghost through a leg — beside a container of that board, with
+   * intent where a section of that board refused it (D2), or on a plain cell.
+   */
+  const moveGhost = (g: GestureState, ev: ToolPointerEvent): void => {
+    const desired = { x: ev.world.x - g.grab.dx, y: ev.world.y - g.grab.dy };
+    g.node.setPosition(desired.x, desired.y);
+    ghostStyleFastPath(g, desired);
+
+    g.lastWorld = { x: ev.world.x, y: ev.world.y };
+    g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
+    /** The ghost's pixel size on THIS board — a palette chip has spans, not a size. */
+    const pxSize = (): { width: number; height: number } => {
+      if (g.kind !== 'palette') return { width: g.node.size.width, height: g.node.size.height };
+      const f = frame();
+      const gg = geom();
+      return { width: g.spans.w * (columnUnitFor(gg, f.width) + gap) - gap, height: g.spans.h * (rowHeightFor(gg, rows()) + gap) - gap };
+    };
+    /** The ghost leaves THIS board's engine (survivors settle home); the old leg is closed first. */
+    const leaveSelf = (): void => {
+      if (g.leg) {
+        g.leg.adopted.abort();
+        g.leg = null;
+      }
+      if (!g.removedFromBoard) {
+        g.removedFromBoard = true;
+        engine.remove(g.id);
+        project();
+      }
+    };
+    /** A leg on `peer`, entered with `opts`; the old leg (another board's) is closed first. Answers whether the peer took the ghost. */
+    const enterLeg = (peer: BinderPeer, opts: AdoptOptions): boolean => {
+      if (g.leg && g.leg.peer !== peer) {
+        g.leg.adopted.abort();
+        g.leg = null;
+      }
+      if (!g.removedFromBoard) {
+        g.removedFromBoard = true;
+        engine.remove(g.id); // survivors settle home (gesture memory intact)
+        project();
+      }
+      if (!g.leg) {
+        const adopted = peer.adopt(g.node, ev.world, pxSize(), opts);
+        if (!adopted) return false;
+        g.leg = { peer, adopted };
+      }
+      return true;
+    };
+    // THE ZONE (tile first, step 2): one recursive resolve over the boards'
+    // membership tree — a strip slot, a cell beside a container, a plain
+    // cell on the deepest board the pointer may enter, or off — decided
+    // BEFORE any engine is asked anything. The strip still wins over every
+    // board; a band's stickiness and the vacated cell still hold a beside.
+    const z = resolveTileZone(g, ev);
+    if (z.kind === 'strip' && options.tabDrop && !isStatic && g.kind !== 'palette') {
+      // -- INTO A STRIP: the widget becomes a new tab there, so it leaves
+      // this board (survivors settle home) and the strip marks the slot.
+      endBeside(true); // a band's shift gives way to the strip: the container comes back
+      leaveSelf();
+      setDim(g, false);
+      if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) {
+        options.tabDrop.markDrop(z.containerId, z.index);
+      }
+      g.strip = { containerId: z.containerId, index: z.index };
+      syncPlaceholder();
+      api.render();
+      return;
+    }
+    if (g.strip) {
+      options.tabDrop?.markDrop(null, null);
+      g.strip = null;
+    }
+    // -- BESIDE a tab container: its outer band puts the widget next to it
+    // — at the board's edge the container shifts over to make room, live
+    // and gliding, like any widget gives way (0.4.48). On THIS board the
+    // engine is driven directly; on another board its leg drives it (4a).
+    if (z.kind === 'beside' && !isStatic && z.board.ref === selfPeer) {
+      const row = rowOfPoint(ev.world.y);
+      if (!z.kept || !beside || beside.row !== row) applyBeside(g, { id: z.containerId, side: z.side }, row);
+      syncPlaceholder();
+      return;
+    }
+    if (beside) endBeside(true); // the hand left the band: the container comes back
+    if (z.kind === 'beside' && !isStatic) {
+      const peer = z.board.ref as BinderPeer;
+      if (g.leg && g.leg.peer === peer) g.leg.adopted.beside(z.containerId, z.side, ev.world);
+      else if (enterLeg(peer, { beside: { containerId: z.containerId, side: z.side } })) g.refusedPeer = null;
+      setDim(g, !g.leg);
+      syncPlaceholder();
+      return;
+    }
+    // Last resort: the grace band — a small slip past the edge stays ON
+    // this board (the engine clamps the cell; prototype parity).
+    const onSelf = z.kind !== 'off' && z.kind !== 'strip' && z.board.ref === selfPeer;
+    const inside = onSelf || (z.kind === 'off' && worldInsideBoardGrace(ev.world.x, ev.world.y));
+    const peer = !onSelf && z.kind !== 'off' && z.kind !== 'strip' ? (z.board.ref as BinderPeer) : null;
+
+    /** A section that refused the widget is PUSHED by it on the board that holds the section (D2): this board directly, another through its leg. */
+    const pushRefused = (refused: BinderPeer): void => {
+      const parent = parentPeerOf(api.container, refused.group.id);
+      if (parent === selfPeer) {
+        if (g.leg) {
+          g.leg.adopted.abort();
+          g.leg = null;
+        }
+        placeOnSelf(g, desired, true);
+        setDim(g, false);
+      } else if (parent && g.leg && g.leg.peer === parent) {
+        g.leg.adopted.move(ev.world, { push: true });
+        setDim(g, false);
+      } else if (parent && enterLeg(parent, { push: true })) {
+        setDim(g, false);
+      } else {
+        // No board holds the refusing section (a view): dim = will snap home.
+        leaveSelf();
+        setDim(g, true);
+      }
+    };
+
+    if (peer && g.refusedPeer === peer) {
+      // -- REFUSED, PUSHED (D2): asked once; every move over it pushes.
+      pushRefused(peer);
+    } else if (peer) {
+      // -- HANDOFF: the pointer is over another board -------------------
+      if (g.leg && g.leg.peer === peer) {
+        g.leg.adopted.move(ev.world);
+      } else if (enterLeg(peer, {})) {
+        g.refusedPeer = null;
+        setDim(g, false);
+        g.leg!.adopted.move(ev.world);
+      } else {
+        // The board refused (full, fit): the widget pushes it on its parent (D2).
+        g.refusedPeer = peer;
+        pushRefused(peer);
+      }
+    } else if (inside) {
+      // -- back on (or still on) our own board --------------------------
+      g.refusedPeer = null;
+      if (g.leg) {
+        g.leg.adopted.abort();
+        g.leg = null;
+      }
+      setDim(g, false);
+      placeOnSelf(g, desired);
+    } else {
+      // -- outside every board ------------------------------------------
+      leaveSelf();
+      setDim(g, true);
+    }
+    syncPlaceholder();
+  };
+
   const onToolMove = (ev: ToolPointerEvent): void => {
     const g = gesture;
     if (!g || g.kind === 'palette') return;
@@ -2577,122 +2673,7 @@ export function bindDashboardGrid(
     }
 
     if (g.kind === 'move') {
-      const desired = { x: ev.world.x - g.grab.dx, y: ev.world.y - g.grab.dy };
-      g.node.setPosition(desired.x, desired.y);
-      ghostStyleFastPath(g, desired);
-
-      g.lastWorld = { x: ev.world.x, y: ev.world.y };
-      g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
-      // THE ZONE (tile first, step 2): one recursive resolve over the boards'
-      // membership tree — a strip slot, a cell beside a container, a plain
-      // cell on the deepest board the pointer may enter, or off — decided
-      // BEFORE any engine is asked anything. The strip still wins over every
-      // board; a band's stickiness and the vacated cell still hold a beside.
-      const z = resolveTileZone(g, ev);
-      if (z.kind === 'strip' && options.tabDrop && !isStatic) {
-        // -- INTO A STRIP: the widget becomes a new tab there, so it leaves
-        // this board (survivors settle home) and the strip marks the slot.
-        if (g.leg) {
-          g.leg.adopted.abort();
-          g.leg = null;
-        }
-        endBeside(true); // a band's shift gives way to the strip: the container comes back
-        if (!g.removedFromBoard) {
-          g.removedFromBoard = true;
-          engine.remove(g.id);
-          project();
-        }
-        hostOf(g.id)?.classList.remove('axdb-out');
-        if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) {
-          options.tabDrop.markDrop(z.containerId, z.index);
-        }
-        g.strip = { containerId: z.containerId, index: z.index };
-        syncPlaceholder();
-        api.render();
-        return;
-      }
-      if (g.strip) {
-        options.tabDrop?.markDrop(null, null);
-        g.strip = null;
-      }
-      // -- BESIDE a tab container of THIS board: its outer band puts the
-      // widget next to it — at the board's edge the container shifts over
-      // to make room, live and gliding, like any widget gives way (0.4.48).
-      // (A container on another board still resolves as a plain cell there
-      // until the gesture scope spans boards — step 3.)
-      if (z.kind === 'beside' && !isStatic && z.board.ref === selfPeer) {
-        const row = rowOfPoint(ev.world.y);
-        if (!z.kept || !beside || beside.row !== row) applyBeside(g, { id: z.containerId, side: z.side }, row);
-        syncPlaceholder();
-        return;
-      }
-      if (beside) endBeside(true); // the hand left the band: the container comes back
-      // Last resort: the grace band — a small slip past the edge stays ON
-      // this board (the engine clamps the cell; prototype parity).
-      const onSelf = z.kind !== 'off' && z.kind !== 'strip' && z.board.ref === selfPeer;
-      const inside = onSelf || (z.kind === 'off' && worldInsideBoardGrace(ev.world.x, ev.world.y));
-      const peer = !onSelf && z.kind !== 'off' && z.kind !== 'strip' ? (z.board.ref as BinderPeer) : null;
-
-      if (peer && g.refusedPeer === peer && parentPeerOf(api.container, peer.group.id) === selfPeer) {
-        // -- REFUSED, PUSHED (D2): a section of this board that cannot take
-        // the widget is pushed by it instead — the widget takes the cell
-        // under the hand on THIS board, and means it.
-        placeOnSelf(g, desired, true);
-      } else if (peer) {
-        // -- HANDOFF: the pointer is over another board -------------------
-        if (g.leg && g.leg.peer === peer) {
-          g.leg.adopted.move(ev.world);
-        } else {
-          if (g.leg) {
-            g.leg.adopted.abort();
-            g.leg = null;
-          }
-          if (!g.removedFromBoard) {
-            g.removedFromBoard = true;
-            engine.remove(g.id); // survivors settle home (gesture memory intact)
-            project();
-          }
-          const adopted = peer.adopt(g.node, ev.world, {
-            width: g.node.size.width,
-            height: g.node.size.height,
-          });
-          if (adopted) {
-            g.refusedPeer = null;
-            hostOf(g.id)?.classList.remove('axdb-out');
-            g.leg = { peer, adopted };
-            g.leg.adopted.move(ev.world);
-          } else if (parentPeerOf(api.container, peer.group.id) === selfPeer) {
-            // A section of this board refused (full, fit): the widget pushes it (D2).
-            g.refusedPeer = peer;
-            placeOnSelf(g, desired, true);
-          } else {
-            // A board deeper down refused the adoption: dim = will snap home (the N-board scope is step 4).
-            g.refusedPeer = peer;
-            hostOf(g.id)?.classList.add('axdb-out');
-          }
-        }
-      } else if (inside) {
-        // -- back on (or still on) our own board --------------------------
-        g.refusedPeer = null;
-        if (g.leg) {
-          g.leg.adopted.abort();
-          g.leg = null;
-        }
-        placeOnSelf(g, desired);
-      } else {
-        // -- outside every board ------------------------------------------
-        if (g.leg) {
-          g.leg.adopted.abort();
-          g.leg = null;
-        }
-        if (!g.removedFromBoard) {
-          g.removedFromBoard = true;
-          engine.remove(g.id); // survivors settle home; cells minted nowhere
-          hostOf(g.id)?.classList.add('axdb-out');
-          project();
-        }
-      }
-      syncPlaceholder();
+      moveGhost(g, ev);
       return;
     }
 
@@ -3002,7 +2983,7 @@ export function bindDashboardGrid(
         g.leg.adopted.abort();
         g.leg = null;
       }
-      const displaced = buildCommitCommands(deltasSince(g.startCells, g.startGeom, g.id));
+      const displaced = tileCommands(deltasSince(g.startCells, g.startGeom, g.id));
       const snap = g.startGeom.get(g.id);
       if (snap) {
         g.node.setPosition(snap.pos.x, snap.pos.y);
@@ -3041,7 +3022,7 @@ export function bindDashboardGrid(
       } finally {
         writing = false;
       }
-      const sourceDisplaced = buildCommitCommands(deltasSince(g.startCells, g.startGeom, g.id));
+      const sourceDisplaced = tileCommands(deltasSince(g.startCells, g.startGeom, g.id));
       const before = g.startCells.get(g.id);
       const geomBefore = g.startGeom.get(g.id);
       const crossing: Command[] = [
@@ -3108,7 +3089,7 @@ export function bindDashboardGrid(
     }
     if (g.removedFromBoard && dragOut === 'remove') {
       // Release OUTSIDE the board → remove via the page's atomic command path.
-      const displaced = buildCommitCommands(deltasSince(g.startCells, g.startGeom, g.id));
+      const displaced = tileCommands(deltasSince(g.startCells, g.startGeom, g.id));
       const snap = g.startGeom.get(g.id);
       if (snap) {
         // Park the node on its start rect so the page's RemoveNodeCommand
@@ -3192,7 +3173,7 @@ export function bindDashboardGrid(
   const placeOnSelf = (g: GestureState, desired: { x: number; y: number }, pushSolid = false): void => {
     if (g.removedFromBoard) {
       g.removedFromBoard = false;
-      hostOf(g.id)?.classList.remove('axdb-out');
+      setDim(g, false);
       const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), g.spans.w);
       engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
       if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid }).changed) placeNear(g.id, cell.x, cell.y, g.spans.w, pushSolid);
@@ -3206,7 +3187,7 @@ export function bindDashboardGrid(
   /** What the pointer means for the dragged tile: the resolve over the live tree, with the beside the hand holds. */
   const resolveTileZone = (g: GestureState, ev: ToolPointerEvent) => {
     let strip: { containerId: string; index: number } | null = null;
-    if (options.tabDrop && !isStatic) {
+    if (options.tabDrop && !isStatic && g.kind !== 'palette') {
       const crect = api.container.getBoundingClientRect();
       strip = options.tabDrop.stripAt(crect.left + ev.screen.x, crect.top + ev.screen.y);
     }
@@ -3215,7 +3196,9 @@ export function bindDashboardGrid(
       y: ev.world.y,
       roots: zoneRoots(),
       strip,
-      prev: beside ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) } : null,
+      prev: beside
+        ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) }
+        : (g.leg?.adopted.besideState() ?? null), // a beside another board holds for the ghost, through its leg
       maxDepth: nesting,
       ghostDepth: 0,
       ghostSubtree: EMPTY_SUBTREE,
@@ -3419,12 +3402,16 @@ export function bindDashboardGrid(
       const tl = centredTopLeft(wx, wy, { w: itemW, h: opts.anchor === 'top' ? 0 : itemH });
       return pointToCell(tl.x, tl.y, frame(), geom(), rows(), itemW);
     };
-    const place = (cell: { x: number; y: number }, itemW: number): boolean =>
-      opts.fit === 'shrink' ? placeFitting(node.id, cell.x, cell.y, itemW, hNatural) : placeNear(node.id, cell.x, cell.y, itemW);
+    const place = (cell: { x: number; y: number }, itemW: number, push = false): boolean =>
+      opts.fit === 'shrink' ? placeFitting(node.id, cell.x, cell.y, itemW, hNatural) : placeNear(node.id, cell.x, cell.y, itemW, push);
     let lastWant: { x: number; y: number } | null = null;
-    const cell0 = wantedCell(world.x, world.y, span.w, span.h);
-    lastWant = cell0;
-    place(cell0, span.w);
+    if (opts.beside) {
+      besideOn(node.id, span, { id: opts.beside.containerId, side: opts.beside.side }, rowOfPoint(world.y));
+    } else {
+      const cell0 = wantedCell(world.x, world.y, span.w, span.h);
+      lastWant = cell0;
+      place(cell0, span.w, opts.push);
+    }
     armGlide();
     project();
     syncPlaceholder();
@@ -3461,18 +3448,30 @@ export function bindDashboardGrid(
         const at = engine.getItem(node.id);
         return !!at && at.x === cell.x && at.y === cell.y && at.w === cell.w && at.h === cell.h;
       },
-      move: (w) => {
+      move: (w, o) => {
         const item = engine.getItem(node.id);
         if (!item) return;
+        if (beside) endBeside(true); // the hand left the band: the container comes back before the tile takes a plain cell
         const cell = wantedCell(w.x, w.y, item.w, opts.fit === 'shrink' ? hNatural : item.h);
         // The search is worth running once per wanted cell, not per pixel.
         if (lastWant && lastWant.x === cell.x && lastWant.y === cell.y) return;
         lastWant = cell;
-        if (place(cell, item.w)) project();
+        if (place(cell, item.w, !!o?.push)) project();
         syncPlaceholder();
       },
+      beside: (containerId, side, w) => {
+        if (!engine.getItem(node.id) && !engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: hNatural })) return;
+        const row = rowOfPoint(w.y);
+        if (beside && beside.id === containerId && beside.side === side && beside.row === row) return;
+        lastWant = null;
+        besideOn(node.id, span, { id: containerId, side }, row);
+        syncPlaceholder();
+      },
+      besideState: () =>
+        beside ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: span.w, h: hNatural }, frame(), geom(), rows()) } : null,
       leave: () => {
         if (!engine.getItem(node.id)) return;
+        endBeside(true); // a container shifted for the tile comes back by itself: the shift was deliberate, so the memory never brings it
         engine.remove(node.id); // displaced tiles come home (gesture memory)
         lastWant = null;
         project();
@@ -3489,6 +3488,7 @@ export function bindDashboardGrid(
         syncPlaceholder();
       },
       abort: () => {
+        beside = null; // the snapshot restores the container with everything else
         if (engine.getItem(node.id)) engine.remove(node.id);
         engine.cancelGesture(); // pre-entry layout, memory cleared
         setSqueeze(squeezeBefore);
@@ -3498,6 +3498,7 @@ export function bindDashboardGrid(
         syncPlaceholder();
       },
       finalize: () => {
+        endBeside(false); // the shift stays: the deltas below carry it
         const item = engine.getItem(node.id);
         if (!item) {
           engine.endGesture();
@@ -3507,23 +3508,11 @@ export function bindDashboardGrid(
         }
         const cell: CellRect = { x: item.x, y: item.y, w: item.w, h: item.h };
         const rect = cellToRect(item, frame(), geom(), rows());
-        const commands = buildCommitCommands(deltasSince(startCells, startGeom, node.id));
-        const groups: Array<{ id: string; cellBefore: CellRect; cellAfter: CellRect; frameBefore: WorldRect; frameAfter: WorldRect }> = [];
-        for (const [id, before] of startCells) {
-          if (!isGroupMember(id)) continue;
-          const it = engine.getItem(id);
-          const g0 = startGeom.get(id);
-          if (!it || !g0) continue;
-          if (it.x === before.x && it.y === before.y && it.w === before.w && it.h === before.h) continue;
-          groups.push({
-            id,
-            cellBefore: before,
-            cellAfter: { x: it.x, y: it.y, w: it.w, h: it.h },
-            frameBefore: { x: g0.pos.x, y: g0.pos.y, width: g0.size.width, height: g0.size.height },
-            frameAfter: cellToRect(it, frame(), geom(), rows()),
-          });
-        }
+        // Widgets AND sections this board's adoption displaced, as one list: a
+        // dock or a push that moved a section commits it with the drop.
+        const commands = tileCommands(deltasSince(startCells, startGeom, node.id));
         engine.endGesture();
+        pendingDrop = node.id; // the tile stays for the member the commit (or the host's drop-in) adds
         if (squeezeRoom !== undefined) {
           // What the board now HOLDS is its bound, not the squeeze's room.
           squeezeRoom = undefined;
@@ -3532,7 +3521,7 @@ export function bindDashboardGrid(
         adoptedGhostId = null;
         disarmGlideSoon();
         syncPlaceholder();
-        return { commands, cell, rect, groups };
+        return { commands, cell, rect };
       },
     };
   };
@@ -4427,15 +4416,6 @@ export function bindDashboardGrid(
     };
     const zoneKey = (z: Zone): string => JSON.stringify(z, (k, v) => (k === 'target' ? (v as GroupModel).id : k === 'peer' ? (v as BinderPeer).group.id : v));
 
-    // DOCKING PUSHES SECTIONS. A section is a locked tile so that a widget
-    // never pushes it; a group docked against the board's edge is the one
-    // gesture that must — everything below the top band moves down. For the
-    // preview every member group is unlocked; they are relocked when the
-    // pointer leaves the band, and their moved cells are committed with the
-    // dock.
-    const groupCommands = (fin: NonNullable<ReturnType<AdoptedLeg['finalize']>>, except?: string): Command[] =>
-      fin.groups.filter((g) => g.id !== except).map((g) => new SetGroupCellCommand(g.id, g.cellBefore, g.cellAfter, g.frameBefore, g.frameAfter));
-
     // A TOP DOCK INSERTS ROWS. The engine's push cascade resolves the band's
     // collisions one tile at a time and scrambles what stood beneath it (the
     // demo's KPI row came apart, two of its tiles under the chart). VS Code
@@ -4669,23 +4649,17 @@ export function bindDashboardGrid(
           return;
         }
         const fin = leg?.finalize() ?? null;
-        const it = engine.getItem(z.target.id);
-        const before = split;
+        const halved = !!split && !!engine.getItem(z.target.id);
         split = null;
-        if (!fin || !before || !it) {
+        if (!fin || !halved) {
           leg?.abort();
           done(false, 'cancel');
           return;
         }
-        const keep: CellRect = { x: it.x, y: it.y, w: it.w, h: it.h };
         const planned = plan.commands(fin.cell, fin.rect, group.id);
-        const changed = execute('Split group', [
-          ...fin.commands,
-          ...groupCommands(fin, z.target.id),
-          new SetGroupCellCommand(z.target.id, before.before, keep, before.frameBefore, cellToRect(keep, frame(), geom(), rows())),
-          ...planned.move,
-          ...planned.collapse,
-        ]);
+        // The target's halving is in the leg's own deltas: its cell at rest was
+        // snapshotted when the ghost entered, and its half is where it stands now.
+        const changed = execute('Split group', [...fin.commands, ...planned.move, ...planned.collapse]);
         done(changed, 'commit');
         return;
       }
@@ -4701,7 +4675,7 @@ export function bindDashboardGrid(
         return;
       }
       const planned = plan.commands(fin.cell, fin.rect, leg?.groupId ?? group.id);
-      done(execute(z.kind === 'root' ? 'Dock tab' : 'Move tab out', [...fin.commands, ...groupCommands(fin), ...planned.move, ...planned.collapse]), 'commit');
+      done(execute(z.kind === 'root' ? 'Dock tab' : 'Move tab out', [...fin.commands, ...planned.move, ...planned.collapse]), 'commit');
     };
     const onUp = (): void => finish(true);
     const onCancel = (): void => finish(false);
@@ -4779,39 +4753,37 @@ export function bindDashboardGrid(
           return;
         }
         beginGestureVisuals(g);
+        // The chip is held by its middle: the ghost centres under the hand.
+        const f = frame();
+        const gg = geom();
+        g.grab = { dx: (g.spans.w * (columnUnitFor(gg, f.width) + gap) - gap) / 2, dy: (g.spans.h * (rowHeightFor(gg, rows()) + gap) - gap) / 2 };
       }
       if (chip) {
         chip.style.left = `${e.clientX + 6}px`;
         chip.style.top = `${e.clientY + 6}px`;
       }
+      // THE SAME PATH AS A TILE OF THIS BOARD (tile first, step 4a): the zone
+      // under the hand names the board — this one, a page, a section — and
+      // that board takes the ghost. The palette used to test "inside this
+      // board" and nothing else, so a chip over a page landed under it.
+      const rect = api.container.getBoundingClientRect();
       const world = toWorld(e.clientX, e.clientY);
-      const inside = worldInsideBoard(world.x, world.y);
-      if (inside) {
-        const tl = centredTopLeft(world.x, world.y, g.spans);
-        const cell = pointToCell(tl.x, tl.y, frame(), geom(), rows(), g.spans.w);
-        if (g.removedFromBoard) {
-          g.removedFromBoard = false;
-          // Enter at the bottom edge (collision-free), then take the cursor
-          // cell GATELESSLY — gridstack's drag-in skips the gate on entry.
-          // A bounded board with no room refuses the entry: the chip dims to
-          // say so, and the release will snap it home.
-          const entered = engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
-          chip?.classList.toggle('axdb-out', !entered);
-          if (entered) engine.moveCheck(g.id, cell.x, cell.y, { gate: false });
-          project();
-        } else if (engine.moveCheck(g.id, cell.x, cell.y).changed) {
-          project();
-        }
-      } else if (!g.removedFromBoard) {
-        g.removedFromBoard = true;
-        chip?.classList.remove('axdb-out');
-        engine.remove(g.id); // displaced tiles come home (gesture memory)
-        project();
-      }
-      syncPlaceholder();
+      moveGhost(g, { type: 'move', world, screen: { x: e.clientX - rect.left, y: e.clientY - rect.top }, modifiers: { shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey } } as ToolPointerEvent);
       api.render();
     };
 
+    /** The drop, on whichever board holds the ghost: the node carries its cell, the host's command adds it there. */
+    const dropOn = (boardId: string, cell: CellRect, displaced: Command[]): void => {
+      node.setGridItem(gridItemFromCell(cell));
+      if (boardId === group.id) pendingDrop = g.id; // on another board its own finalize() pended it
+      engine.endGesture();
+      cleanupGestureVisuals(g);
+      gesture = null;
+      void options.onDropIn?.(node, cell, displaced, { boardId });
+      persistLayouts();
+      options.onGesture?.({ type: 'drop-in', kind: 'palette', nodeId: g.id, changed: true });
+      api.renderNow();
+    };
     const finish = (commit: boolean): void => {
       detach();
       if (gesture !== g) return;
@@ -4822,18 +4794,20 @@ export function bindDashboardGrid(
         chip?.remove();
         return;
       }
-      if (commit && !g.removedFromBoard && engine.getItem(g.id)) {
+      if (commit && g.leg) {
+        // Dropped into another board (a page, a section): its leg closes with
+        // that board's displaced tiles; this board displaced nothing.
+        const fin = g.leg.adopted.finalize();
+        const boardId = g.leg.adopted.groupId;
+        g.leg = null;
+        if (fin) {
+          dropOn(boardId, fin.cell, [...tileCommands(deltasSince(g.startCells, g.startGeom, g.id)), ...fin.commands]);
+          return;
+        }
+      } else if (commit && !g.removedFromBoard && engine.getItem(g.id)) {
         const item = engine.getItem(g.id)!;
-        const cell: CellRect = { x: item.x, y: item.y, w: item.w, h: item.h };
-        node.setGridItem(gridItemFromCell(cell));
-        const displaced = buildCommitCommands(deltasSince(g.startCells, g.startGeom, g.id));
-        engine.endGesture();
-        cleanupGestureVisuals(g);
-        gesture = null;
-        void options.onDropIn?.(node, cell, displaced);
-        persistLayouts();
-        options.onGesture?.({ type: 'drop-in', kind: 'palette', nodeId: g.id, changed: true });
-        api.renderNow();
+        endBeside(false); // a container that shifted for the chip stays shifted: its delta commits with the drop
+        dropOn(group.id, { x: item.x, y: item.y, w: item.w, h: item.h }, tileCommands(deltasSince(g.startCells, g.startGeom, g.id)));
         return;
       }
       // Abort (released outside, or Escape): restore the board.
@@ -4882,18 +4856,7 @@ export function bindDashboardGrid(
     } finally {
       writing = false;
     }
-    const commands = buildCommitCommands(deltasSince(snap.cells, snap.geoms));
-    if (isGroupMember(id)) {
-      // A SECTION: its cell lives in group metadata and its frame is written
-      // by project(); the node commands above skip groups (D5 of the review).
-      const it = engine.getItem(id);
-      const grp = diagram.getGroup(id);
-      const cb = snap.cells.get(id);
-      const gb = snap.geoms.get(id);
-      if (it && grp && cb && gb && (cb.x !== it.x || cb.y !== it.y || cb.w !== it.w || cb.h !== it.h)) {
-        commands.push(new SetGroupCellCommand(id, cb, { x: it.x, y: it.y, w: it.w, h: it.h }, { x: gb.pos.x, y: gb.pos.y, width: gb.size.width, height: gb.size.height }, frameOfGroup(grp)));
-      }
-    }
+    const commands = tileCommands(deltasSince(snap.cells, snap.geoms)); // a section's cell-and-frame command rides with the nodes'
     engine.endGesture();
     disarmGlideSoon();
     enforceBoardHeight();
@@ -4932,6 +4895,7 @@ export function bindDashboardGrid(
       return;
     }
     applyFluidFrame();
+    pendingDrop = null; // rebuilt from the members: a phantom is gone with the engine
     const items: GridPackItem[] = [];
     for (const id of group.members ?? []) {
       if (!memberEntity(id)) continue;
@@ -5129,7 +5093,7 @@ export function bindDashboardGrid(
           sizeAfter: { width: target.width, height: target.height },
         });
       }
-      return buildCommitCommands(deltas);
+      return tileCommands(deltas);
     },
     moveTo(id, x, y) {
       return programmatic('Move widget', id, () => engine.moveCheck(id, x, y, { pushSolid: isGroupMember(id) }).changed);

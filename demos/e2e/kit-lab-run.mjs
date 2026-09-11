@@ -3,7 +3,7 @@
 // dashboard-scenarios-run drives the agreed model on the demo pages. This gate
 // drives the SWITCHES the Quantia brief asked for — squeeze, the caption band,
 // static click-through, edge cursors, selection across rebinds, grip
-// placements, accent theming — on kit-lab.html, a page of 23 small boards each
+// placements, accent theming — on kit-lab.html, a page of small boards each
 // configured for one case. Every scenario is a real pointer sequence, reads the
 // board back, and shoots the board's card so the truth can be LOOKED at.
 //
@@ -2531,6 +2531,80 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     && !!p1 && p1.x === 0 && p1.y === 0 && !!l1 && l1.x === 6 && l1.y === 0 && sane.overlaps === 0
     && same(p2, p0) && same(l2, l0),
     `rest panel ${JSON.stringify(p0)} chart ${JSON.stringify(l0)} · top band middle: panel ${JSON.stringify(mid.panel)} chart ${JSON.stringify(mid.chart)} slide ${JSON.stringify(mid.slide)} · corner: panel ${JSON.stringify(corner.panel)} chart ${JSON.stringify(corner.chart)} slide ${JSON.stringify(corner.slide)} ph ${JSON.stringify(corner.ph)} · released: panel ${JSON.stringify(p1)} chart ${JSON.stringify(l1)} overlaps ${sane.overlaps} · undone: panel ${JSON.stringify(p2)} chart ${JSON.stringify(l2)}`);
+}
+
+{
+  begin('L96-a-palette-chip-dragged-into-a-tab-page-lands-there-and-the-drop-names-the-page');
+  await scrollTo('pal');
+  const own = (id) => page.evaluate((id) => { const walk = (ws, p) => { for (const w of ws) { if (w.id === id) return p; if (w.widgets) { const r = walk(w.widgets, w.id); if (r) return r; } } return null; }; return walk(window.__lab.pal.handle.toJSON().views[0].widgets, 'BOARD'); }, id);
+  const chip = await page.evaluate(() => document.getElementById('pal-chip').getBoundingClientRect().toJSON());
+  const inner = await rect('pal', 'pal-in');
+  // the palette used to test "inside THIS board" and nothing else: a chip over a page landed on the view, under the page
+  // into the page's body: under its first widget, in the middle of the page (no band, no strip)
+  const to = { x: inner.x + inner.w / 2, y: inner.bottom + 40 };
+  await page.mouse.move(chip.x + chip.width / 2, chip.y + chip.height / 2); await page.mouse.down();
+  await page.mouse.move(chip.x + 20, chip.y + 30, { steps: 4 });
+  await page.mouse.move(to.x, to.y, { steps: 16 }); await page.waitForTimeout(300);
+  const held = await page.evaluate(() => ({ onPage: window.__lab.pal.handle.binderOf('pal-p1')?.cellOf('pal-new-1') ?? null, onRoot: window.__lab.pal.handle.binderOf('main')?.cellOf('pal-new-1') ?? null, ph: !!document.querySelector('#cv-pal .axdb-ph'), dim: !!document.querySelector('.axdb-drag-chip.axdb-out') }));
+  await shot('pal', 'chip-held-inside-the-page-the-page-shows-the-placeholder');
+  await page.mouse.up(); await page.waitForTimeout(500);
+  const drops = await page.evaluate(() => (window.__labDrops ?? []).splice(0));
+  const ownAfter = await own('pal-new-1'); const sane = await sanity('pal');
+  const phantom = await page.evaluate(() => window.__lab.pal.handle.binderOf('pal-p1')?.cellOf('pal-new-1') ?? null);
+  const shown = await rect('pal', 'pal-new-1');
+  await shot('pal', 'dropped-into-the-page');
+  await undoAll('pal', 1);
+  const ownUndone = await own('pal-new-1');
+  verdict(!!held.onPage && !held.onRoot && held.ph === true && held.dim === false && drops.length === 1 && drops[0].boardId === 'pal-p1' && ownAfter === 'pal-p1' && !!phantom && !!shown && shown.y > inner.bottom && sane.overlaps === 0 && ownUndone === null,
+    `held: on the page ${JSON.stringify(held.onPage)}, on the root ${JSON.stringify(held.onRoot)}, placeholder ${held.ph}, dimmed ${held.dim} · drop ${JSON.stringify(drops)} · landed in ${ownAfter} at ${JSON.stringify(phantom)} (host ${shown ? `y ${Math.round(shown.y)} under Region's ${Math.round(inner.bottom)}` : 'MISSING'}) ${JSON.stringify(sane)} · undo -> ${ownUndone}`);
+}
+{
+  begin('L97-a-widget-from-a-SECTION-dragged-onto-a-tab-containers-band-on-the-ROOT-lands-beside-it-there');
+  await scrollTo('tear');
+  const cells = () => page.evaluate(() => { const out = {}; const walk = (ws, p) => { for (const w of ws) { out[w.id] = { own: p, x: w.x, y: w.y, w: w.span, h: w.rows }; if (w.widgets) walk(w.widgets, w.id); } }; walk(window.__lab.tear.handle.toJSON().views[0].widgets, 'BOARD'); return out; });
+  const before = await cells();
+  const w1 = await rect('tear', 'te-w1'); const g = await groupRect('tear', 'te-side'); const a = await rect('tear', 'te-a');
+  const cv = await page.evaluate(() => document.getElementById('cv-tear').getBoundingClientRect().toJSON());
+  // a band on ANOTHER board used to resolve as a plain cell there: the ghost slid next to the solid panel and nothing gave way.
+  // the panel's LEFT band (its first fifth) at the row of A: "before the panel" — there is room on its left, so the panel
+  // stays and the widget takes the band's side at the pointer's row, through the root's leg
+  const to = { x: cv.x + g.x + g.w * 0.1, y: a.y + a.h / 2 };
+  let held = null;
+  await drag(w1.x + w1.w / 2, w1.y + w1.h / 2, to.x, to.y, { steps: 18, mid: async () => {
+    held = await page.evaluate(() => ({ root: window.__lab.tear.handle.binderOf('main')?.cellOf('te-w1') ?? null, side: window.__lab.tear.handle.widget('te-side')?.cell ?? null, wall: window.__lab.tear.handle.widget('te-wall')?.cell ?? null, ph: (() => { const p = document.querySelector('#cv-tear .axdb-ph'); return p ? { refused: p.classList.contains('axdb-ph--no') } : null; })() }));
+    await shot('tear', 'held-on-the-panels-left-band-from-inside-the-wall');
+  } });
+  const after = await cells(); const sane = await sanity('tear');
+  await shot('tear', 'released-before-the-panel-on-the-root');
+  await undoAll('tear', 1);
+  const undone = await cells();
+  verdict(before['te-w1'].own === 'te-wall' && !!held?.root && held.root.x + held.root.w === 8 && held.root.y <= 2 && held.side?.x === 8 && held.side?.y === 0 && held.wall?.y === 6 && held.ph?.refused === false
+    && after['te-w1'].own === 'BOARD' && after['te-w1'].x + after['te-w1'].w === 8 && after['te-side'].x === 8 && after['te-wall'].y === 6 && sane.overlaps === 0
+    && undone['te-w1'].own === 'te-wall' && undone['te-side'].x === 8,
+    `from the wall; held: root cell ${JSON.stringify(held?.root)} panel ${JSON.stringify(held?.side)} wall ${JSON.stringify(held?.wall)} ph ${JSON.stringify(held?.ph)} · released: te-w1 ${after['te-w1'].own}:${after['te-w1'].x},${after['te-w1'].y} ${after['te-w1'].w}x${after['te-w1'].h}, panel x ${after['te-side'].x}, wall y ${after['te-wall'].y}, overlaps ${sane.overlaps} · undo -> ${undone['te-w1'].own}, panel x ${undone['te-side'].x}`);
+}
+{
+  begin('L98-a-page-widget-over-a-FULL-section-of-the-ROOT-pushes-the-section-on-the-root-D2-through-the-leg');
+  await scrollTo('tear');
+  const cells = () => page.evaluate(() => { const out = {}; const walk = (ws, p) => { for (const w of ws) { out[w.id] = { own: p, x: w.x, y: w.y, w: w.span, h: w.rows }; if (w.widgets) walk(w.widgets, w.id); } }; walk(window.__lab.tear.handle.toJSON().views[0].widgets, 'BOARD'); return out; });
+  const before = await cells();
+  const src = await rect('tear', 'te-in1'); const wall = await rect('tear', 'te-w1');
+  // the wall is FULL (its one widget fills it): "into" is refused — the widget used to dim ("will snap home") because the
+  // refusing section's parent was not the widget's own board. It pushes the wall on the ROOT now, through the root's leg
+  const to = { x: wall.x + wall.w / 2, y: wall.y + wall.h / 2 };
+  let held = null;
+  await drag(src.x + src.w / 2, src.y + 40, to.x, to.y, { steps: 18, mid: async () => {
+    held = await page.evaluate(() => ({ root: window.__lab.tear.handle.binderOf('main')?.cellOf('te-in1') ?? null, wall: window.__lab.tear.handle.widget('te-wall')?.cell ?? null, dim: !!document.querySelector('#cv-tear .axdb-out'), ph: (() => { const p = document.querySelector('#cv-tear .axdb-ph'); return p ? { refused: p.classList.contains('axdb-ph--no') } : null; })() }));
+    await shot('tear', 'held-over-the-full-wall-the-wall-pushed-down-on-the-root');
+  } });
+  const after = await cells(); const sane = await sanity('tear');
+  await shot('tear', 'released-on-the-root-above-the-pushed-wall');
+  await undoAll('tear', 1);
+  const undone = await cells();
+  verdict(before['te-in1'].own === 'te-p1' && before['te-wall'].y === 6 && !!held?.root && (held.wall?.y ?? 0) > 6 && held.dim === false && held.ph?.refused === false
+    && after['te-in1'].own === 'BOARD' && after['te-wall'].y > 6 && after['te-wall'].y >= after['te-in1'].y + after['te-in1'].h && sane.overlaps === 0
+    && undone['te-in1'].own === 'te-p1' && undone['te-wall'].y === 6,
+    `held: root cell ${JSON.stringify(held?.root)} wall ${JSON.stringify(held?.wall)} dimmed ${held?.dim} ph ${JSON.stringify(held?.ph)} · released: te-in1 ${after['te-in1'].own}:${after['te-in1'].x},${after['te-in1'].y} ${after['te-in1'].w}x${after['te-in1'].h}, wall y ${after['te-wall'].y} (the push is in the document), overlaps ${sane.overlaps} · undo -> ${undone['te-in1'].own}, wall y ${undone['te-wall'].y}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);

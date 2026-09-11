@@ -1376,7 +1376,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       const cells = cellsFromSplit(after, columns, rowsGuess());
       const cell = cells.get(node.id) ?? { x: 0, y: 0, w: Math.max(1, spec.w), h: Math.max(1, spec.h) };
       const displaced: Command[] = [new SetSplitTreeCommand(group.id, tree, normalizeSplit(after))];
-      void options.onDropIn?.(node, cell, displaced);
+      void options.onDropIn?.(node, cell, displaced, { boardId: group.id });
       fire({ type: 'drop-in', kind: 'palette', nodeId: node.id, changed: true });
     };
     window.addEventListener('pointermove', onMove, true);
