@@ -82,6 +82,7 @@ import {
 import { ensureDashboardKitStyles } from './styles';
 import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCaptionBand, sectionCaptionReserve, sizeCaptionBand } from './caption';
 import { TAB_STRIP_HEIGHT } from './tabs';
+import { BESIDE_BAND, resolve as resolveZone, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
 
 /** The slice of a DiagramInstance the binder needs (structural, test-friendly). */
 export interface DashboardGridApi {
@@ -253,6 +254,14 @@ export interface DashboardGridOptions {
    * still works. The viewer's mode — see `setStatic` for the live switch.
    */
   static?: boolean;
+  /**
+   * NESTING POLICY (tile first, step 2): the deepest board a DROP may enter,
+   * counting a view as 0 — a widget into a section is 1, into a section
+   * inside a tab page is 2. Deeper containers are opaque to a drag: the
+   * pointer over them means a cell on their parent board (or beside them).
+   * Default 2, the depth the gates exercise.
+   */
+  nesting?: number;
   /**
    * DRAG HANDLE (DevExpress drags an item by its caption; gridstack's
    * `handle`). `true` — the CAPTION STRIP is the handle (the header shows grip
@@ -565,6 +574,8 @@ interface BinderPeer {
    */
   containsWorldExtended(x: number, y: number): boolean;
   frameArea(): number;
+  /** A static board is opaque to the zone walk: never entered (tile first, step 2). */
+  isStatic?(): boolean;
   adopt(
     node: { id: string },
     world: { x: number; y: number },
@@ -740,6 +751,8 @@ interface AdoptedLeg {
  * page (review D12).
  */
 const BOARD_REGISTRY = new WeakMap<HTMLElement, Set<BinderPeer>>();
+/** A widget carries no boards: nothing for the zone walk to refuse as its own descendant. */
+const EMPTY_SUBTREE: ReadonlySet<string> = new Set();
 
 /**
  * Register a board that is NOT a grid (the split binder on a container) as a
@@ -969,6 +982,8 @@ export function bindDashboardGrid(
   const fluid = options.fluid === true;
   const overflow = options.overflow ?? 'bounded';
   let isStatic = options.static === true;
+  /** The deepest board a drop may enter — a root is 0; two levels are what the gates exercise (tile first, step 2). */
+  const nesting = options.nesting ?? 2;
   let dragHandle: DragHandleOption = normalizeDragHandle(options.dragHandle);
   let dragSel = dragHandleSelector(dragHandle);
   api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle === true);
@@ -1893,33 +1908,6 @@ export function bindDashboardGrid(
    * carried along the top of a tall panel to its far right means "after it",
    * not "above it". The shift is undone if the pointer leaves the band.
    */
-  type BesideSide = 'left' | 'right' | 'top' | 'bottom';
-  const BESIDE_BAND = 0.2;
-  /** How much wider the band is for a pointer ALREADY in it — a hand resting on the boundary must not flicker between beside and into. */
-  const BESIDE_STAY = 0.05;
-  /** The outer band of a container FRAME the point is in — null in the strip, in the middle, or outside. */
-  const bandOf = (f: WorldRect, wx: number, wy: number, band = BESIDE_BAND): BesideSide | null => {
-    if (wx < f.x || wx > f.x + f.width || wy < f.y || wy > f.y + f.height) return null;
-    const bodyY = f.y + TAB_STRIP_HEIGHT;
-    const bodyH = Math.max(1, f.height - TAB_STRIP_HEIGHT);
-    const rx = (wx - f.x) / Math.max(1, f.width);
-    const ry = (wy - bodyY) / bodyH;
-    if (ry < 0) return null; // the strip: a new tab, the strip's own business
-    if (rx < band) return 'left'; // the sides first: they take the corners
-    if (rx > 1 - band) return 'right';
-    if (ry < band) return 'top';
-    if (ry > 1 - band) return 'bottom';
-    return null; // the middle: into the page
-  };
-  const besideZoneAt = (wx: number, wy: number): { id: string; side: BesideSide } | null => {
-    for (const id of group.members ?? []) {
-      const grp = diagram.getGroup(id);
-      if (!grp || diagram.getNode(id) || !isTabsGroup(grp)) continue;
-      const side = bandOf(frameOfGroup(grp), wx, wy);
-      if (side) return { id, side };
-    }
-    return null;
-  };
   /** The container a BESIDE drop unlocked (and maybe shifted): relocked, and put back if asked, when the zone or the gesture ends. */
   let beside: { id: string; side: BesideSide; from: { x: number; y: number }; frame0: WorldRect; vacated: { x: number; y: number }; others: Map<string, { x: number; y: number }> } | null = null;
   const endBeside = (restore: boolean): void => {
@@ -2670,110 +2658,56 @@ export function bindDashboardGrid(
 
       g.lastWorld = { x: ev.world.x, y: ev.world.y };
       g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
-      // A TAB STRIP under the pointer wins over every board: the widget will
-      // become a new tab there, so it leaves this board (survivors settle
-      // home) and the strip marks the slot.
-      if (options.tabDrop && !isStatic) {
-        const crect = api.container.getBoundingClientRect();
-        const hitStrip = options.tabDrop.stripAt(crect.left + ev.screen.x, crect.top + ev.screen.y);
-        if (hitStrip) {
-          if (g.leg) {
-            g.leg.adopted.abort();
-            g.leg = null;
-          }
-          endBeside(true); // a band's shift gives way to the strip: the container comes back
-          if (!g.removedFromBoard) {
-            g.removedFromBoard = true;
-            engine.remove(g.id);
-            project();
-          }
-          hostOf(g.id)?.classList.remove('axdb-out');
-          if (!g.strip || g.strip.containerId !== hitStrip.containerId || g.strip.index !== hitStrip.index) {
-            options.tabDrop.markDrop(hitStrip.containerId, hitStrip.index);
-          }
-          g.strip = hitStrip;
-          syncPlaceholder();
-          api.render();
-          return;
+      // THE ZONE (tile first, step 2): one recursive resolve over the boards'
+      // membership tree — a strip slot, a cell beside a container, a plain
+      // cell on the deepest board the pointer may enter, or off — decided
+      // BEFORE any engine is asked anything. The strip still wins over every
+      // board; a band's stickiness and the vacated cell still hold a beside.
+      const z = resolveTileZone(g, ev);
+      if (z.kind === 'strip' && options.tabDrop && !isStatic) {
+        // -- INTO A STRIP: the widget becomes a new tab there, so it leaves
+        // this board (survivors settle home) and the strip marks the slot.
+        if (g.leg) {
+          g.leg.adopted.abort();
+          g.leg = null;
         }
-        if (g.strip) {
-          options.tabDrop.markDrop(null, null);
-          g.strip = null;
+        endBeside(true); // a band's shift gives way to the strip: the container comes back
+        if (!g.removedFromBoard) {
+          g.removedFromBoard = true;
+          engine.remove(g.id);
+          project();
         }
+        hostOf(g.id)?.classList.remove('axdb-out');
+        if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) {
+          options.tabDrop.markDrop(z.containerId, z.index);
+        }
+        g.strip = { containerId: z.containerId, index: z.index };
+        syncPlaceholder();
+        api.render();
+        return;
       }
-      // BESIDE a tab container (0.4.45): its outer band puts the widget next
-      // to it — at the board's edge the container shifts over to make room,
-      // live and gliding, like any widget gives way (0.4.48).
-      if (!isStatic) {
-        const z = besideZoneAt(ev.world.x, ev.world.y);
-        if (z) {
-          applyBeside(g, z);
-          syncPlaceholder();
-          return;
-        }
-        let z2: { id: string; side: BesideSide } | null = null;
-        if (beside) {
-          // Off the band: the container comes back unless the POINTER is
-          // still over the cell it vacated — the widget's own landing, which
-          // is what "beside" leaves under the pointer once the container has
-          // shifted away (the ghost's wanted cell carries the grab offset and
-          // read as "elsewhere" a move later, and the shift undid itself).
-          // "Still here" is the pointer in the SAME band of the container's
-          // ORIGINAL frame (it asked for beside from there, and the container
-          // is what moved; the band is a little wider for a hand already in
-          // it, so it does not flicker against "into the page" at the line)
-          // or over the cell the widget took: a one-row widget's cell is not
-          // where a hand hovering the band sits, and testing only that undid
-          // the shift on the next move, which pushed the widget to the bottom
-          // as the panel came back (live walk N). "Anywhere inside the
-          // original frame" is too much: a hand crossing the bottom band on
-          // its way to the middle never reached the page (lab L73) — the
-          // middle of the original frame is a zone change.
-          const r = cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows());
-          const inR = (q: WorldRect): boolean => ev.world.x >= q.x - gap && ev.world.x <= q.x + q.width + gap && ev.world.y >= q.y - gap && ev.world.y <= q.y + q.height + gap;
-          // A DIFFERENT band of the original frame wins over the vacated
-          // cell: a widget as wide as the container took the container's
-          // whole frame as its cell on a top-band push, so "over the cell"
-          // held "above" all the way into the right corner (lab L95).
-          const stay = bandOf(beside.frame0, ev.world.x, ev.world.y, BESIDE_BAND + BESIDE_STAY);
-          const other = bandOf(beside.frame0, ev.world.x, ev.world.y);
-          const over = stay === beside.side || (!(other !== null && other !== beside.side) && inR(r));
-          if (!over) {
-            endBeside(true);
-            // The container is back where it was: the pointer may be in
-            // ANOTHER of its bands now (the top band's push had carried the
-            // frame away from under a hand heading for the corner) — resolve
-            // again in this same move, or the hand rests on a stale preview.
-            z2 = besideZoneAt(ev.world.x, ev.world.y);
-          } else {
-            syncPlaceholder();
-            return;
-          }
-        }
-        if (z2) {
-          applyBeside(g, z2);
-          syncPlaceholder();
-          return;
-        }
+      if (g.strip) {
+        options.tabDrop?.markDrop(null, null);
+        g.strip = null;
       }
-      // Deepest board under the pointer wins: the nested KPI strip beats the
-      // tab that contains it; a foreign board beats "outside". Strict frames
-      // first; the one-row grace band below each board (gridstack's extra
-      // drag row) is consulted only when NO strict frame matched — so "under
-      // the last row" appends instead of reading as off-board.
-      const strictSelf = worldInsideBoard(ev.world.x, ev.world.y);
-      let peer = peerAt(ev.world.x, ev.world.y);
-      let inside = strictSelf;
-      if (!strictSelf && !peer) {
-        if (worldInsideBoardExtended(ev.world.x, ev.world.y)) inside = true;
-        else peer = peerAt(ev.world.x, ev.world.y, true);
-        // Last resort: the grace band — a small slip past the edge stays ON
-        // this board (the engine clamps the cell; prototype parity).
-        if (!inside && !peer && worldInsideBoardGrace(ev.world.x, ev.world.y)) inside = true;
+      // -- BESIDE a tab container of THIS board: its outer band puts the
+      // widget next to it — at the board's edge the container shifts over
+      // to make room, live and gliding, like any widget gives way (0.4.48).
+      // (A container on another board still resolves as a plain cell there
+      // until the gesture scope spans boards — step 3.)
+      if (z.kind === 'beside' && !isStatic && z.board.ref === selfPeer) {
+        if (!z.kept) applyBeside(g, { id: z.containerId, side: z.side });
+        syncPlaceholder();
+        return;
       }
-      const selfWins = inside && (!peer || boardArea() <= peer.frameArea());
+      if (beside) endBeside(true); // the hand left the band: the container comes back
+      // Last resort: the grace band — a small slip past the edge stays ON
+      // this board (the engine clamps the cell; prototype parity).
+      const onSelf = z.kind !== 'off' && z.kind !== 'strip' && z.board.ref === selfPeer;
+      const inside = onSelf || (z.kind === 'off' && worldInsideBoardGrace(ev.world.x, ev.world.y));
+      const peer = !onSelf && z.kind !== 'off' && z.kind !== 'strip' ? (z.board.ref as BinderPeer) : null;
 
-      if (peer && !selfWins) {
+      if (peer) {
         // -- HANDOFF: the pointer is over another board -------------------
         if (g.leg && g.leg.peer === peer) {
           g.leg.adopted.move(ev.world);
@@ -3285,6 +3219,70 @@ export function bindDashboardGrid(
     return set;
   };
 
+  /**
+   * The boards of this canvas as the zone walk sees them (tile first, step
+   * 2): a ROOT is a board whose group has no parent group (a view); a board's
+   * children are its member groups that are containers, each with the board a
+   * descent enters — a tab container's ACTIVE page, a section's own board —
+   * one level deeper. Built from the peers and the model on every move: a
+   * handful of groups, and the frames are live.
+   */
+  const zoneRoots = (): ZoneBoard[] => {
+    const peers = [...peersOnCanvas()];
+    const byGroup = new Map(peers.map((p) => [p.group.id, p] as const));
+    const boardRef = (p: BinderPeer, depth: number): ZoneBoard => ({
+      id: p.group.id,
+      depth,
+      ref: p,
+      contains: (x, y) => p.containsWorld(x, y),
+      containsExtended: (x, y) => p.containsWorldExtended(x, y),
+      children: () => {
+        const out: ZoneContainer[] = [];
+        for (const id of p.group.members ?? []) {
+          const grp = diagram.getGroup(id);
+          if (!grp || diagram.getNode(id)) continue;
+          const cw = (grp.getMetadata('containerWidget') ?? {}) as { layout?: string; active?: string };
+          const layout: ZoneContainer['layout'] = cw.layout === 'tabs' ? 'tabs' : cw.layout === 'split' ? 'split' : 'grid';
+          let innerPeer: BinderPeer | undefined;
+          if (layout === 'tabs') {
+            const pageId = cw.active && byGroup.has(cw.active) ? cw.active : [...(grp.members ?? [])].find((m) => byGroup.has(m));
+            innerPeer = pageId ? byGroup.get(pageId) : undefined;
+          } else innerPeer = byGroup.get(id);
+          out.push({
+            id,
+            layout,
+            static: innerPeer?.isStatic?.() ?? false,
+            frame: frameOfGroup(grp),
+            stripHeight: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
+            band: layout === 'tabs' ? BESIDE_BAND : 0, // a section's whole body is "into" (Quantia's Groups page)
+            inner: innerPeer ? boardRef(innerPeer, depth + 1) : null,
+          });
+        }
+        return out;
+      },
+    });
+    return peers.filter((p) => !p.group.parentGroupId).map((p) => boardRef(p, 0));
+  };
+  /** What the pointer means for the dragged tile: the resolve over the live tree, with the beside the hand holds. */
+  const resolveTileZone = (g: GestureState, ev: ToolPointerEvent) => {
+    let strip: { containerId: string; index: number } | null = null;
+    if (options.tabDrop && !isStatic) {
+      const crect = api.container.getBoundingClientRect();
+      strip = options.tabDrop.stripAt(crect.left + ev.screen.x, crect.top + ev.screen.y);
+    }
+    return resolveZone({
+      x: ev.world.x,
+      y: ev.world.y,
+      roots: zoneRoots(),
+      strip,
+      prev: beside ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) } : null,
+      maxDepth: nesting,
+      ghostDepth: 0,
+      ghostSubtree: EMPTY_SUBTREE,
+      gap,
+    });
+  };
+
   /** The board whose engine holds OUR group as an item (nesting parent). */
   const parentPeer = (): BinderPeer | null => {
     for (const p of peersOnCanvas()) {
@@ -3590,6 +3588,7 @@ export function bindDashboardGrid(
 
   const selfPeer: BinderPeer = {
     group,
+    isStatic: () => isStatic,
     tearOutMember: (pageId, fromGroupId, ev, plan) => beginTearOut(pageId, fromGroupId, ev, plan),
     clearSelection: () => {
       if (selectedId === undefined) return;

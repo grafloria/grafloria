@@ -252,6 +252,8 @@ export interface DashboardOptions {
    * so a designer/viewer pair is one flag apart. Live: `handle.setStatic()`.
    */
   static?: boolean;
+  /** The deepest board a drop may enter (a view is 0; default 2). See the grid binder's `nesting`. */
+  nesting?: number;
   /**
    * DRAG HANDLE — DevExpress drags an item by its caption. `true`: the caption
    * strip is the only handle (the header shows grip dots); a selector string:
@@ -2814,6 +2816,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           rtl: live?.rtl ?? options.rtl ?? false,
           fluid: mode === 'fluid',
           static: live?.static ?? options.static ?? false,
+          ...(options.nesting !== undefined ? { nesting: options.nesting } : {}),
           dragHandle: live?.dragHandle ?? options.dragHandle ?? false,
           ...(options.squeeze !== undefined ? { squeeze: options.squeeze } : {}),
           ...(options.binder ?? {}),
@@ -2861,6 +2864,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           rtl: vb?.getRtl() ?? options.rtl ?? false,
           static: vb?.getStatic() ?? options.static ?? false,
           dragHandle: vb?.getDragHandle() ?? options.dragHandle ?? false,
+          ...(options.nesting !== undefined ? { nesting: options.nesting } : {}),
           ...(options.squeeze !== undefined ? { squeeze: options.squeeze } : {}),
           onGesture: (e: Parameters<NonNullable<DashboardGridOptions['onGesture']>>[0]) => {
             if (e.type === 'commit') reportChanged();

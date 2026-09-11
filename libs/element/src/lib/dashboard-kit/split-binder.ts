@@ -1717,6 +1717,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
   // as a peer so the parent's hitTest hands presses on our tiles to us.
   const selfPeer: BinderPeer = {
     group,
+    isStatic: () => isStatic,
     clearSelection: () => {
       if (selectedId === undefined) return;
       selectedId = undefined;
