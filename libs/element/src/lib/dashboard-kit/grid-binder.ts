@@ -1883,15 +1883,15 @@ export function bindDashboardGrid(
    * was nowhere (the user: "if the tab is at an edge I can't add something
    * after it").
    *
-   * The hover MOVES NOTHING (0.4.47): the ghost leaves the board and an
-   * overlay marks the cell the widget will take — the 0.4.42 model for a
-   * tab's split and dock. The shift, or the push a top/bottom band needs,
-   * happens on release. Until then the container shifted or was pushed as
-   * the pointer entered the band, and on a 3440-px desktop the user's panel
-   * jumped DOWN as a widget crossed its top band on the way to its right.
-   * The left and right bands win the corners (VS Code's precedence): a
-   * one-row widget carried along the top of a tall panel to its far right
-   * means "after it", not "above it".
+   * The container gives way LIVE, with the glide every pushed widget gets
+   * (0.4.48): a group is a widget first, and its tab behaviours sit on top of
+   * that default. 0.4.47 had frozen the hover behind an overlay, the way a
+   * tab's split preview works, and the user missed the slide at once. What
+   * his 3440-px frame had caught was the corner: the panel was pushed DOWN
+   * as a widget crossed its top band on the way to its right — so the left
+   * and right bands win the corners (VS Code's precedence): a one-row widget
+   * carried along the top of a tall panel to its far right means "after it",
+   * not "above it". The shift is undone if the pointer leaves the band.
    */
   type BesideSide = 'left' | 'right' | 'top' | 'bottom';
   const BESIDE_BAND = 0.2;
@@ -1920,63 +1920,22 @@ export function bindDashboardGrid(
     }
     return null;
   };
-  /** The BESIDE promise the overlay shows: the cell the widget takes on release, and where the container shifts to make it (null: it is pushed, or has room). */
-  let beside: { id: string; side: BesideSide; cell: { x: number; y: number }; shiftTo: { x: number; y: number } | null } | null = null;
-  let besideEl: HTMLElement | null = null;
-  const showBesideOverlay = (r: WorldRect): void => {
-    const layer = htmlLayer();
-    if (!layer) return;
-    if (!besideEl || besideEl.parentElement !== layer) {
-      besideEl?.remove();
-      besideEl = document.createElement('div');
-      besideEl.className = 'axdb-join';
-      layer.prepend(besideEl);
-    }
-    besideEl.style.left = `${r.x}px`;
-    besideEl.style.top = `${r.y}px`;
-    besideEl.style.width = `${r.width}px`;
-    besideEl.style.height = `${r.height}px`;
-  };
-  const hideBesideOverlay = (): void => {
-    besideEl?.remove();
-    besideEl = null;
-  };
-  /** The promise withdrawn (the pointer left, the gesture ended) or kept (realized and committed): the overlay goes, the container and the others relock. */
-  const endBeside = (): void => {
+  /** The container a BESIDE drop unlocked (and maybe shifted): relocked, and put back if asked, when the zone or the gesture ends. */
+  let beside: { id: string; side: BesideSide; from: { x: number; y: number }; frame0: WorldRect; vacated: { x: number; y: number }; others: Map<string, { x: number; y: number }> } | null = null;
+  const endBeside = (restore: boolean): void => {
     if (!beside) return;
     const it = engine.getItem(beside.id);
+    if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false });
+    if (restore) {
+      // The sections the shift pushed come back with it.
+      for (const [oid, c] of beside.others) {
+        const o = engine.getItem(oid);
+        if (o && (o.x !== c.x || o.y !== c.y)) engine.moveCheck(oid, c.x, c.y, { gate: false });
+      }
+    }
     if (it) it.locked = true;
     relockOthersForSlab();
-    hideBesideOverlay();
     beside = null;
-  };
-  /** Where a widget of this span lands beside the container, and where the container goes to make room — from the layout AT REST, since nothing moves while held. */
-  const besidePlan = (tc: GridPackItem, side: BesideSide, w: number): { cell: { x: number; y: number }; shiftTo: { x: number; y: number } | null } => {
-    let cell: { x: number; y: number };
-    let shiftTo: { x: number; y: number } | null = null;
-    switch (side) {
-      case 'right':
-        cell = { x: tc.x + tc.w, y: tc.y };
-        if (cell.x + w > columns) {
-          shiftTo = { x: columns - w - tc.w, y: tc.y };
-          cell = { x: columns - w, y: tc.y };
-        }
-        break;
-      case 'left':
-        cell = { x: tc.x - w, y: tc.y };
-        if (cell.x < 0) {
-          shiftTo = { x: w, y: tc.y };
-          cell = { x: 0, y: tc.y };
-        }
-        break;
-      case 'top':
-        cell = { x: Math.max(0, Math.min(tc.x, columns - w)), y: tc.y }; // the widget takes the container's rows; the container is pushed down under it
-        break;
-      default:
-        cell = { x: Math.max(0, Math.min(tc.x, columns - w)), y: tc.y + tc.h };
-    }
-    if (shiftTo && shiftTo.x < 0) shiftTo = null; // no room even shifted: the widget goes where it can
-    return { cell, shiftTo };
   };
   const applyBeside = (g: GestureState, z: { id: string; side: BesideSide }): void => {
     const tc = engine.getItem(z.id);
@@ -1985,47 +1944,64 @@ export function bindDashboardGrid(
       g.leg.adopted.abort();
       g.leg = null;
     }
-    // The ghost leaves the board, as it does over a strip: the survivors
-    // settle home and nothing under the hand moves until the release.
-    if (!g.removedFromBoard) {
-      g.removedFromBoard = true;
-      engine.remove(g.id);
-      project();
-    }
-    hostOf(g.id)?.classList.remove('axdb-out');
-    const plan = besidePlan(tc, z.side, g.spans.w);
-    if (!beside || beside.id !== z.id || beside.side !== z.side || beside.cell.x !== plan.cell.x || beside.cell.y !== plan.cell.y) {
-      beside = { id: z.id, side: z.side, cell: plan.cell, shiftTo: plan.shiftTo };
-      showBesideOverlay(cellToRect({ x: plan.cell.x, y: plan.cell.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()));
-    }
-  };
-  /**
-   * The release: the container shifts (or is pushed) and the ghost takes the
-   * promised cell — for real now, so the commit's deltas carry both. The
-   * ghost steps back on at the bottom edge first: the engine will not push
-   * the dragged tile, so a chart as wide as the panel had its own cell as the
-   * panel's target and the shift was refused (lab L94).
-   */
-  const realizeBeside = (g: GestureState): void => {
-    if (!beside) return;
-    const tc = engine.getItem(beside.id);
-    if (!tc) return;
     const w = g.spans.w;
     const h = g.spans.h;
-    // The other sections give way to the shift the way they give way to a
-    // moved group (0.4.44): on the demo the Operations section spans the
-    // row under the panel and a locked tile refused the shift outright.
-    unlockOthersForSlab(beside.id);
-    tc.locked = false; // it shifts, or the ghost pushes it
-    if (beside.shiftTo && (tc.x !== beside.shiftTo.x || tc.y !== beside.shiftTo.y)) engine.moveCheck(beside.id, beside.shiftTo.x, beside.shiftTo.y, { gate: false });
     if (g.removedFromBoard) {
       g.removedFromBoard = false;
       hostOf(g.id)?.classList.remove('axdb-out');
+      engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
     }
+    if (beside && (beside.id !== z.id || beside.side !== z.side)) endBeside(true); // another container, or another side of it: start over from the rest layout
+    const from = beside ? beside.from : { x: tc.x, y: tc.y };
+    let cell: { x: number; y: number };
+    let shiftTo: { x: number; y: number } | null = null;
+    switch (z.side) {
+      case 'right':
+        cell = { x: from.x + tc.w, y: from.y };
+        if (cell.x + w > columns) {
+          shiftTo = { x: columns - w - tc.w, y: from.y };
+          cell = { x: columns - w, y: from.y };
+        }
+        break;
+      case 'left':
+        cell = { x: from.x - w, y: from.y };
+        if (cell.x < 0) {
+          shiftTo = { x: w, y: from.y };
+          cell = { x: 0, y: from.y };
+        }
+        break;
+      case 'top':
+        cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y }; // the ghost takes the container's rows; the container is pushed down under it
+        break;
+      default:
+        cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y + tc.h };
+    }
+    if (shiftTo && shiftTo.x < 0) shiftTo = null; // no room even shifted: the widget goes where it can
+    if (!beside) {
+      // The other sections give way to the shift the way they give way to a
+      // moved group (0.4.44): on the demo the Operations section spans the
+      // row under the panel and a locked tile refused the shift outright.
+      // Their cells are kept so they come back if the pointer leaves.
+      const others = new Map<string, { x: number; y: number }>();
+      for (const o of engine.getItems()) if (o.id !== z.id && o.id !== g.id && isGroupMember(o.id)) others.set(o.id, { x: o.x, y: o.y });
+      const grp0 = diagram.getGroup(z.id);
+      beside = { id: z.id, side: z.side, from, frame0: grp0 ? frameOfGroup(grp0) : cellToRect({ x: from.x, y: from.y, w: tc.w, h: tc.h }, frame(), geom(), rows()), vacated: cell, others };
+      unlockOthersForSlab(z.id);
+    }
+    tc.locked = false; // for the gesture: it shifts, or the ghost pushes it
+    // The ghost steps off the board while the container shifts: the engine
+    // will not push the dragged tile, so a chart as wide as the panel had its
+    // own cell as the panel's target and the shift was refused (lab L94).
+    // Then it takes the cell the shift vacated.
+    if (shiftTo && (tc.x !== shiftTo.x || tc.y !== shiftTo.y)) {
+      if (engine.getItem(g.id)) engine.remove(g.id);
+      engine.moveCheck(z.id, shiftTo.x, shiftTo.y, { gate: false });
+    }
+    beside.vacated = cell;
     if (!engine.getItem(g.id)) engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
-    if (!engine.moveCheck(g.id, beside.cell.x, beside.cell.y, { gate: false }).changed) {
+    if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed) {
       const at = engine.getItem(g.id);
-      if (!at || at.x !== beside.cell.x || at.y !== beside.cell.y) placeNear(g.id, beside.cell.x, beside.cell.y, w);
+      if (!at || at.x !== cell.x || at.y !== cell.y) placeNear(g.id, cell.x, cell.y, w);
     }
     project();
   };
@@ -2555,7 +2531,7 @@ export function bindDashboardGrid(
     const deltas = deltasSince(g.startCells, g.startGeom);
     const commands = buildCommitCommands(deltas);
     commands.push(...groupCellCommands(deltas)); // a container a BESIDE drop shifted (0.4.45)
-    endBeside();
+    endBeside(false);
     if (g.esc && g.esc.rowsAdded !== 0) {
       commands.push(
         new SetGroupCellCommand(
@@ -2599,7 +2575,7 @@ export function bindDashboardGrid(
       g.esc.peer.resizeMemberBy(group.id, -g.esc.rowsAdded); // slab back down
       g.esc = null;
     }
-    endBeside();
+    endBeside(true);
     if (g.started) {
       if (g.removedFromBoard || g.kind === 'palette') {
         // The engine cannot resurrect a removed item — rebuild from the
@@ -2698,7 +2674,7 @@ export function bindDashboardGrid(
             g.leg.adopted.abort();
             g.leg = null;
           }
-          endBeside(); // a band's promise gives way to the strip's
+          endBeside(true); // a band's shift gives way to the strip: the container comes back
           if (!g.removedFromBoard) {
             g.removedFromBoard = true;
             engine.remove(g.id);
@@ -2719,8 +2695,8 @@ export function bindDashboardGrid(
         }
       }
       // BESIDE a tab container (0.4.45): its outer band puts the widget next
-      // to it — at the board's edge the container shifts over to make room.
-      // Nothing moves while held (0.4.47): an overlay marks the cell.
+      // to it — at the board's edge the container shifts over to make room,
+      // live and gliding, like any widget gives way (0.4.48).
       if (!isStatic) {
         const z = besideZoneAt(ev.world.x, ev.world.y);
         if (z) {
@@ -2729,16 +2705,30 @@ export function bindDashboardGrid(
           return;
         }
         if (beside) {
-          // Off the band — unless the hand is resting on its boundary: the
-          // band is a little wider for a pointer already in it, so the
-          // promise does not flicker against "into the page" at the line.
-          const grp = diagram.getGroup(beside.id);
-          const stay = !!grp && bandOf(frameOfGroup(grp), ev.world.x, ev.world.y, BESIDE_BAND + BESIDE_STAY) === beside.side;
-          if (stay) {
+          // Off the band: the container comes back unless the POINTER is
+          // still over the cell it vacated — the widget's own landing, which
+          // is what "beside" leaves under the pointer once the container has
+          // shifted away (the ghost's wanted cell carries the grab offset and
+          // read as "elsewhere" a move later, and the shift undid itself).
+          // "Still here" is the pointer in the SAME band of the container's
+          // ORIGINAL frame (it asked for beside from there, and the container
+          // is what moved; the band is a little wider for a hand already in
+          // it, so it does not flicker against "into the page" at the line)
+          // or over the cell the widget took: a one-row widget's cell is not
+          // where a hand hovering the band sits, and testing only that undid
+          // the shift on the next move, which pushed the widget to the bottom
+          // as the panel came back (live walk N). "Anywhere inside the
+          // original frame" is too much: a hand crossing the bottom band on
+          // its way to the middle never reached the page (lab L73) — the
+          // middle of the original frame is a zone change.
+          const r = cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows());
+          const inR = (q: WorldRect): boolean => ev.world.x >= q.x - gap && ev.world.x <= q.x + q.width + gap && ev.world.y >= q.y - gap && ev.world.y <= q.y + q.height + gap;
+          const over = bandOf(beside.frame0, ev.world.x, ev.world.y, BESIDE_BAND + BESIDE_STAY) === beside.side || inR(r);
+          if (!over) endBeside(true);
+          else {
             syncPlaceholder();
             return;
           }
-          endBeside(); // the overlay goes; the handoff below puts the ghost back on a board
         }
       }
       // Deepest board under the pointer wins: the nested KPI strip beats the
@@ -3147,13 +3137,6 @@ export function bindDashboardGrid(
       persistLayouts();
       api.renderNow();
       options.onGesture?.({ type: 'commit', kind: g.kind, nodeId: g.id, changed: true });
-      return;
-    }
-    if (beside) {
-      // -- BESIDE A TAB CONTAINER (0.4.47): the shift or push the overlay
-      // promised happens now, and the commit below records both.
-      realizeBeside(g);
-      commitGesture(g);
       return;
     }
     if (g.leg) {

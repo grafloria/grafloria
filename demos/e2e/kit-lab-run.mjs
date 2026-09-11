@@ -2471,9 +2471,11 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const left = await rect('tabs', 't-left');
   // the chart, six columns wide, carried onto the panel's RIGHT band: no room beyond the edge, so the panel shifts to the left and the chart takes the right — the two swap sides
   let held = null;
-  await drag(left.x + 40, left.y + 12, ps.x + ps.width - 14, ps.bottom + (g.h - 30) * 0.5, { steps: 18, mid: async () => {
-    held = { panel: await cell('panel'), ph: await page.evaluate(() => { const p = document.querySelector('#cv-tabs .axdb-ph'); return p ? { on: getComputedStyle(p).display !== 'none', refused: p.classList.contains('axdb-ph--no') } : null; }), overlay: await page.evaluate(() => { const o = document.querySelector('#cv-tabs .axdb-join'); return o ? { x: parseFloat(o.style.left), w: parseFloat(o.style.width) } : null; }) };
-    await shot('tabs', 'chart-held-on-the-panels-right-band-the-panel-still-the-overlay-at-the-right');
+  // a rAF sampler on the panel's slab: the shift must be a SLIDE across frames (the glide every pushed widget gets), not a jump — 0.4.47 had frozen the panel and the user missed the slide
+  await page.evaluate(() => { window.__lab.sx = []; const el = document.querySelector('#cv-tabs .axdb-slab[data-slab-id="panel"]'); const tick = () => { window.__lab.sx.push(Math.round(el.getBoundingClientRect().x)); if (window.__lab.sx.length < 900) requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
+  await drag(left.x + 40, left.y + 12, ps.x + ps.width - 14, ps.bottom + (g.h - 30) * 0.5, { steps: 18, hold: 500, mid: async () => {
+    held = { panel: await cell('panel'), chart: await cell('t-left'), ph: await page.evaluate(() => { const p = document.querySelector('#cv-tabs .axdb-ph'); return p ? { on: getComputedStyle(p).display !== 'none', refused: p.classList.contains('axdb-ph--no') } : null; }), overlay: await page.evaluate(() => !!document.querySelector('#cv-tabs .axdb-join')), slide: await page.evaluate(() => { const xs = window.__lab.sx; const d = [...new Set(xs)]; return { distinct: d.length, first: xs[0], last: xs[xs.length - 1], x: d.slice(0, 12) }; }) };
+    await shot('tabs', 'chart-held-on-the-panels-right-band-the-panel-slid-left');
   } });
   const p1 = await cell('panel'); const l1 = await cell('t-left'); const s1 = await strips(); const sane = await sanity('tabs');
   await shot('tabs', 'released-chart-right-of-the-panel');
@@ -2481,10 +2483,11 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const p2 = await cell('panel'); const l2 = await cell('t-left');
   const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
   verdict(!!p0 && !!l0 && p0.x === 6 && l0.x === 0
-    && !!held?.panel && held.panel.x === 6 && !held?.ph?.on && !!held?.overlay && Math.abs(held.overlay.x - (g.x)) < 1 && held.overlay.w > g.w * 0.9 // 0.4.47: nothing moves while held; the overlay marks the panel's cell, which the chart takes once the panel has shifted left
+    && !!held?.panel && held.panel.x === 0 && !!held?.chart && held.chart.x === 6 && held.chart.y === 0 && held.ph?.on === true && held.ph?.refused === false && held.overlay === false
+    && !!held?.slide && held.slide.distinct >= 4 && held.slide.last < held.slide.first // 0.4.48: the panel SLID left across frames while held, like any pushed widget
     && !!p1 && p1.x === 0 && p1.y === 0 && p1.w === p0.w && p1.h === p0.h && !!l1 && l1.x === 6 && l1.y === 0 && l1.w === l0.w && l1.h === l0.h && s1.join(' ') === s0.join(' ') && sane.overlaps === 0
     && same(p2, p0) && same(l2, l0),
-    `rest panel ${JSON.stringify(p0)} chart ${JSON.stringify(l0)} · held on the right band: panel ${JSON.stringify(held?.panel)} ph ${JSON.stringify(held?.ph)} overlay ${JSON.stringify(held?.overlay)} · released: panel ${JSON.stringify(p1)} chart ${JSON.stringify(l1)} strips ${s1.join(' ')} overlaps ${sane.overlaps} · undone: panel ${JSON.stringify(p2)} chart ${JSON.stringify(l2)}`);
+    `rest panel ${JSON.stringify(p0)} chart ${JSON.stringify(l0)} · held on the right band: panel ${JSON.stringify(held?.panel)} chart ${JSON.stringify(held?.chart)} ph ${JSON.stringify(held?.ph)} overlay ${held?.overlay} slide ${JSON.stringify(held?.slide)} · released: panel ${JSON.stringify(p1)} chart ${JSON.stringify(l1)} strips ${s1.join(' ')} overlaps ${sane.overlaps} · undone: panel ${JSON.stringify(p2)} chart ${JSON.stringify(l2)}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
