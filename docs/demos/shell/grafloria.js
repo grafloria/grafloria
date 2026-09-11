@@ -195166,7 +195166,7 @@ function paintTabStrip(strip, pages, activeId, o, rtl, onPick, onSelectContainer
 var BESIDE_BAND = 0.2;
 var BESIDE_STAY = 0.05;
 var inRect = (r, x, y, tol = 0) => x >= r.x - tol && x <= r.x + r.width + tol && y >= r.y - tol && y <= r.y + r.height + tol;
-function bandOf(f, stripHeight, x, y, band = BESIDE_BAND) {
+function bandOf(f, stripHeight, x, y, band = BESIDE_BAND, bandY) {
   if (band <= 0 || !inRect(f, x, y)) return null;
   const bodyY = f.y + stripHeight;
   const bodyH = Math.max(1, f.height - stripHeight);
@@ -195175,8 +195175,9 @@ function bandOf(f, stripHeight, x, y, band = BESIDE_BAND) {
   if (ry < 0) return null;
   if (rx < band) return "left";
   if (rx > 1 - band) return "right";
-  if (ry < band) return "top";
-  if (ry > 1 - band) return "bottom";
+  const depth = bandY !== void 0 && bandY > 0 ? Math.min(bandY, bodyH / 2) : band * bodyH;
+  if (y - bodyY < depth) return "top";
+  if (bodyY + bodyH - y < depth) return "bottom";
   return null;
 }
 function stripUnder(p) {
@@ -195226,10 +195227,13 @@ function resolve(input) {
   if (input.strip) return { kind: "strip", containerId: input.strip.containerId, index: input.strip.index };
   if (input.prev) {
     const p = input.prev;
-    const stripH = stripHeightOf(input.roots, p.containerId);
-    const stay = bandOf(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY);
-    const other = bandOf(p.frame0, stripH, x, y);
-    const held2 = stay === p.side || !(other !== null && other !== p.side) && inRect(p.vacated, x, y, input.gap);
+    const c0 = containerOf(input.roots, p.containerId);
+    const stripH = c0?.stripHeight ?? 0;
+    const depth = c0?.bandY;
+    const stay = bandOf(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY, depth === void 0 ? void 0 : depth * (1 + BESIDE_STAY / BESIDE_BAND));
+    const other = bandOf(p.frame0, stripH, x, y, BESIDE_BAND, depth);
+    const onVacated = !!p.vacated && inRect(p.vacated, x, y, input.gap);
+    const held2 = stay === p.side || !(other !== null && other !== p.side) && onVacated;
     if (held2) {
       const board = boardOf(input.roots, p.containerId);
       if (board) return { kind: "beside", board, containerId: p.containerId, side: p.side, kept: true };
@@ -195251,7 +195255,7 @@ function resolve(input) {
       const ndx0 = atRest ? c.frame.x - atRest.x : dx;
       const ndy0 = atRest ? c.frame.y - atRest.y : dy;
       const overNested = !!c.inner && c.inner.children().some((cc) => inRect(cc.frame, x + ndx0, y + ndy0));
-      const side = overNested || input.homeChain.has(c.id) ? null : bandOf(frame, c.stripHeight, tx, ty, c.band);
+      const side = overNested || input.homeChain.has(c.id) ? null : bandOf(frame, c.stripHeight, tx, ty, c.band, c.bandY);
       if (side) return { kind: "beside", board, containerId: c.id, side, kept: false };
       if (opaque(board, c) || !c.inner) return { kind: "plain", board, grace: false };
       if (!c.inner.contains(x + ndx0, y + ndy0)) return { kind: "plain", board, grace: false };
@@ -195268,20 +195272,20 @@ function resolve(input) {
   for (const root of input.roots) visit(root);
   return deepest ? { kind: "plain", board: deepest, grace: true } : { kind: "off" };
 }
-function stripHeightOf(roots, containerId) {
+function containerOf(roots, containerId) {
   const visit = (b) => {
     for (const c of b.children()) {
-      if (c.id === containerId) return c.stripHeight;
+      if (c.id === containerId) return c;
       const deeper = c.inner ? visit(c.inner) : null;
-      if (deeper !== null) return deeper;
+      if (deeper) return deeper;
     }
     return null;
   };
   for (const r of roots) {
-    const h = visit(r);
-    if (h !== null) return h;
+    const c = visit(r);
+    if (c) return c;
   }
-  return 0;
+  return null;
 }
 function resolveTabZone(input) {
   if (!input.clientInside) return { kind: "off" };
@@ -197875,6 +197879,11 @@ function bindDashboardGrid(api, group, options = {}) {
             stripHeight: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
             band: layout === "tabs" ? BESIDE_BAND : 0,
             // a section's whole body is "into" (Quantia's Groups page)
+            // The top and bottom are a FIXED depth — one strip's worth, under
+            // the strip — not a fifth of the body, which grew with the panel
+            // until 216 px of the fluid demo's page meant "above the whole
+            // panel" (0.4.62). The sides keep the fifth.
+            bandY: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
             inner: innerPeer ? boardRef(innerPeer, depth + 1) : null
           });
         }
@@ -197938,8 +197947,8 @@ function bindDashboardGrid(api, group, options = {}) {
           frame0: (() => {
             const grp = diagram.getGroup(pendingBeside.id);
             return grp ? frameOfGroup(grp) : cellToRect({ x: pendingBeside.cell.x, y: pendingBeside.cell.y, w: pendingBeside.spans.w, h: pendingBeside.spans.h }, frame(), geom(), rows());
-          })(),
-          vacated: cellToRect({ x: pendingBeside.cell.x, y: pendingBeside.cell.y, w: pendingBeside.spans.w, h: pendingBeside.spans.h }, frame(), geom(), rows())
+          })()
+          // no vacated cell: nothing has moved, so the BAND alone holds the mark
         }
       ) : g.leg?.adopted.besideState() ?? null,
       // a beside another board holds for the ghost, through its leg

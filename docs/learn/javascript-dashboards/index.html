@@ -556,6 +556,12 @@ render(SPEC2, host);</pre>
       since 0.4.42; the container gives way when you let go. The left and right bands keep sliding live, because
       sideways a full-width strip never leaves your hand. A dragged section still pushes what is in its way, live,
       as it has since 0.4.44: that is a deliberate shove, not a preview.</p>
+      <p>0.4.62 gives those two bands a size that makes sense. Every container edge used to claim the outer fifth of
+      the body for &ldquo;next to it&rdquo;, and a fifth grows with the container: on a panel 1,110&nbsp;px tall that
+      was 216&nbsp;px of what reads as page content, starting right under the tabs &mdash; so aiming into the top of a
+      page meant &ldquo;above the whole panel&rdquo; instead. The top and bottom of a tab group are now a fixed depth,
+      one strip&rsquo;s worth, about thirty pixels. The body means &ldquo;into the page&rdquo; everywhere else. The
+      left and right keep the fifth, because that is how a widget gets beside a full-height panel.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
