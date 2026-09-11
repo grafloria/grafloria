@@ -140336,6 +140336,7 @@ var GridPackEngine = class _GridPackEngine {
     if (n3.x === x && n3.y === y) return { changed: false, refusedBy: "noop" };
     const probe = { ...n3, x, y };
     if (this.collideLocked(probe, n3)) return { changed: false, refusedBy: "locked" };
+    if (!options.pushSolid && this.collideSolid(probe, n3)) return { changed: false, refusedBy: "solid" };
     const pre = this.cellsSnapshot();
     const c = options.gate === false ? void 0 : this.collide(probe, n3);
     if (c) {
@@ -140389,7 +140390,7 @@ var GridPackEngine = class _GridPackEngine {
     }
     n3.x = x;
     n3.y = y;
-    this.pushDown(n3);
+    this.pushDown(n3, options.pushSolid === true);
     this.settle(n3);
     return this.acceptWithinBound(pre);
   }
@@ -140399,19 +140400,20 @@ var GridPackEngine = class _GridPackEngine {
    * locked tile (E4b applied to size); displaced neighbours push + settle,
    * and return when the size shrinks back (E1/S2).
    */
-  resizeCheck(id, w, h) {
+  resizeCheck(id, w, h, options = {}) {
     const n3 = this.getItem(id);
     if (!n3) return { changed: false, refusedBy: "missing" };
     w = _GridPackEngine.clampW(n3, Math.max(1, Math.min(this._columns - n3.x, Math.round(w))));
     h = _GridPackEngine.clampH(n3, Math.max(1, Math.round(h)));
     if (this.bound !== void 0) h = Math.min(h, Math.max(1, this.bound - n3.y));
-    while (w > n3.w && this.collideLocked({ ...n3, w }, n3)) w--;
-    while (h > n3.h && this.collideLocked({ ...n3, h }, n3)) h--;
+    const wall = options.pushSolid ? (p) => this.collideLocked(p, n3) : (p) => this.collideWall(p, n3);
+    while (w > n3.w && wall({ ...n3, w })) w--;
+    while (h > n3.h && wall({ ...n3, h })) h--;
     if (w === n3.w && h === n3.h) return { changed: false, refusedBy: "noop" };
     const pre = this.cellsSnapshot();
     n3.w = w;
     n3.h = h;
-    this.pushDown(n3);
+    this.pushDown(n3, options.pushSolid === true);
     this.settle(n3);
     return this.acceptWithinBound(pre);
   }
@@ -140499,7 +140501,7 @@ var GridPackEngine = class _GridPackEngine {
       this.remember(nb);
       nb.x = shiftTo.x;
       nb.y = shiftTo.y;
-      this.pushDown(nb);
+      this.pushDown(nb, true);
     }
     if (this.collideLocked({ ...n3, ...target }, n3)) {
       putBack();
@@ -140510,7 +140512,7 @@ var GridPackEngine = class _GridPackEngine {
     n3.x = target.x;
     n3.y = target.y;
     this.memory.delete(n3.id);
-    this.pushDown(n3);
+    this.pushDown(n3, true);
     this.settle(n3);
     const r = this.acceptWithinBound(pre);
     return r.changed ? { changed: true, how } : r;
@@ -140740,6 +140742,17 @@ var GridPackEngine = class _GridPackEngine {
       (o) => o !== self2 && o.id !== self2.id && !!o.locked && _GridPackEngine.hit(probe, o)
     );
   }
+  collideSolid(probe, self2) {
+    return this.items.find(
+      (o) => o !== self2 && o.id !== self2.id && !!o.solid && !o.locked && _GridPackEngine.hit(probe, o)
+    );
+  }
+  /** A locked or a solid tile: what growth clamps at and a push without intent skips past. */
+  collideWall(probe, self2) {
+    return this.items.find(
+      (o) => o !== self2 && o.id !== self2.id && (!!o.locked || !!o.solid) && _GridPackEngine.hit(probe, o)
+    );
+  }
   remember(o) {
     if (!this.memory.has(o.id)) this.memory.set(o.id, { x: o.x, y: o.y });
   }
@@ -140752,25 +140765,26 @@ var GridPackEngine = class _GridPackEngine {
    * any locked tile it lands on (gridstack `_skipDown` — without it a push
    * cascade can bury the pinned row), recursively.
    */
-  pushDown(placed) {
+  pushDown(placed, pushSolid = false) {
     for (const o of this.ordered()) {
       if (o === placed) continue;
       if (o.locked) continue;
+      if (o.solid && !pushSolid) continue;
       if (!_GridPackEngine.hit(placed, o)) continue;
       this.remember(o);
       if (this.maxRows !== void 0) {
         const rightX = placed.x + placed.w;
         const right = { ...o, x: rightX };
-        if (rightX + o.w <= this._columns && !this.collideLocked(right, o)) {
+        if (rightX + o.w <= this._columns && !this.collideLocked(right, o) && (pushSolid || !this.collideSolid(right, o))) {
           o.x = rightX;
-          this.pushDown(o);
+          this.pushDown(o, pushSolid);
           continue;
         }
       }
       o.y = placed.y + placed.h;
       let lk;
-      while (lk = this.collideLocked(o, o)) o.y = lk.y + lk.h;
-      this.pushDown(o);
+      while (lk = pushSolid ? this.collideLocked(o, o) : this.collideWall(o, o)) o.y = lk.y + lk.h;
+      this.pushDown(o, pushSolid);
     }
   }
   /**
@@ -140795,7 +140809,7 @@ var GridPackEngine = class _GridPackEngine {
             continue;
           }
         }
-        if (!this.float) {
+        if (!this.float && !n3.solid) {
           while (n3.y > 0 && !this.collide({ ...n3, y: n3.y - 1 }, n3)) {
             n3.y--;
             changed = true;
@@ -195200,18 +195214,19 @@ function resolve(input) {
     const px2 = x + dx;
     const py = y + dy;
     for (const c of board.children()) {
-      const atRest = held && c.id === held.containerId ? held.frame0 : null;
+      const atRest = held && c.id === held.containerId && inRect(held.frame0, x, y) ? held.frame0 : null;
       const frame = atRest ?? c.frame;
       const tx = atRest ? x : px2;
       const ty = atRest ? y : py;
       if (!inRect(frame, tx, ty)) continue;
-      const side = bandOf(frame, c.stripHeight, tx, ty, c.band);
+      const ndx0 = atRest ? c.frame.x - atRest.x : dx;
+      const ndy0 = atRest ? c.frame.y - atRest.y : dy;
+      const overNested = !!c.inner && c.inner.children().some((cc) => inRect(cc.frame, x + ndx0, y + ndy0));
+      const side = overNested || input.homeChain.has(c.id) ? null : bandOf(frame, c.stripHeight, tx, ty, c.band);
       if (side) return { kind: "beside", board, containerId: c.id, side, kept: false };
       if (opaque(board, c) || !c.inner) return { kind: "plain", board, grace: false };
-      const ndx = atRest ? c.frame.x - atRest.x : dx;
-      const ndy = atRest ? c.frame.y - atRest.y : dy;
-      if (!c.inner.contains(x + ndx, y + ndy)) return { kind: "plain", board, grace: false };
-      return descend(c.inner, ndx, ndy);
+      if (!c.inner.contains(x + ndx0, y + ndy0)) return { kind: "plain", board, grace: false };
+      return descend(c.inner, ndx0, ndy0);
     }
     return { kind: "plain", board, grace: false };
   };
@@ -195453,7 +195468,7 @@ function bindDashboardGrid(api, group, options = {}) {
   const fluid = options.fluid === true;
   const overflow = options.overflow ?? "bounded";
   let isStatic = options.static === true;
-  const nesting = options.nesting ?? 2;
+  const nesting = options.nesting ?? Number.POSITIVE_INFINITY;
   let dragHandle = normalizeDragHandle(options.dragHandle);
   let dragSel = dragHandleSelector(dragHandle);
   api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle === true);
@@ -195610,8 +195625,8 @@ function bindDashboardGrid(api, group, options = {}) {
     }
     const grp = diagram.getGroup(id);
     const cell = grp ? cellFromGridItem(grp.getMetadata?.("gridItem")) : null;
-    if (cell) return { id, ...cell, locked: true };
-    return { id, x: 0, y: 0, w: columns, h: 1, locked: true, autoPosition: true };
+    if (cell) return { id, ...cell, solid: true };
+    return { id, x: 0, y: 0, w: columns, h: 1, solid: true, autoPosition: true };
   };
   const persistAdoptedCell = (id, item) => {
     const cell = { x: item.x, y: item.y, w: item.w, h: item.h };
@@ -196042,75 +196057,40 @@ function bindDashboardGrid(api, group, options = {}) {
     if (!beside) return;
     const it = engine.getItem(beside.id);
     let moved = false;
-    if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) moved = engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false }).changed || moved;
-    if (restore) {
-      for (const [oid, c] of beside.others) {
-        const o = engine.getItem(oid);
-        if (o && (o.x !== c.x || o.y !== c.y)) moved = engine.moveCheck(oid, c.x, c.y, { gate: false }).changed || moved;
-      }
-    }
-    if (it) it.locked = true;
-    relockOthersForSlab();
+    if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) moved = engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false }).changed;
     beside = null;
     if (moved) project();
   };
-  const applyBeside = (g, z) => {
+  const rowOfPoint = (y) => {
+    const r0 = cellToRect({ x: 0, y: 0, w: 1, h: 1 }, frame(), geom(), rows());
+    const r1 = cellToRect({ x: 0, y: 1, w: 1, h: 1 }, frame(), geom(), rows());
+    const pitch = Math.max(1, r1.y - r0.y);
+    return Math.max(0, Math.floor((y - r0.y) / pitch));
+  };
+  const applyBeside = (g, z, row) => {
     const tc = engine.getItem(z.id);
     if (!tc) return;
     if (g.leg) {
       g.leg.adopted.abort();
       g.leg = null;
     }
-    const w = g.spans.w;
-    const h = g.spans.h;
     if (g.removedFromBoard) {
       g.removedFromBoard = false;
       hostOf(g.id)?.classList.remove("axdb-out");
-      engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
+      engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
     }
     if (beside && (beside.id !== z.id || beside.side !== z.side)) endBeside(true);
-    const from = beside ? beside.from : { x: tc.x, y: tc.y };
-    let cell;
-    let shiftTo = null;
-    switch (z.side) {
-      case "right":
-        cell = { x: from.x + tc.w, y: from.y };
-        if (cell.x + w > columns) {
-          shiftTo = { x: columns - w - tc.w, y: from.y };
-          cell = { x: columns - w, y: from.y };
-        }
-        break;
-      case "left":
-        cell = { x: from.x - w, y: from.y };
-        if (cell.x < 0) {
-          shiftTo = { x: w, y: from.y };
-          cell = { x: 0, y: from.y };
-        }
-        break;
-      case "top":
-        cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y };
-        break;
-      default:
-        cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y + tc.h };
-    }
-    if (shiftTo && shiftTo.x < 0) shiftTo = null;
     if (!beside) {
-      const others = /* @__PURE__ */ new Map();
-      for (const o of engine.getItems()) if (o.id !== z.id && o.id !== g.id && isGroupMember(o.id)) others.set(o.id, { x: o.x, y: o.y });
       const grp0 = diagram.getGroup(z.id);
-      beside = { id: z.id, side: z.side, from, frame0: grp0 ? frameOfGroup(grp0) : cellToRect({ x: from.x, y: from.y, w: tc.w, h: tc.h }, frame(), geom(), rows()), vacated: cell, others };
-      unlockOthersForSlab(z.id);
+      beside = { id: z.id, side: z.side, from: { x: tc.x, y: tc.y }, frame0: grp0 ? frameOfGroup(grp0) : cellToRect({ x: tc.x, y: tc.y, w: tc.w, h: tc.h }, frame(), geom(), rows()), vacated: { x: tc.x, y: tc.y }, row };
     }
-    tc.locked = false;
-    if (shiftTo && (tc.x !== shiftTo.x || tc.y !== shiftTo.y)) {
-      if (engine.getItem(g.id)) engine.remove(g.id);
-      engine.moveCheck(z.id, shiftTo.x, shiftTo.y, { gate: false });
-    }
-    beside.vacated = cell;
-    if (!engine.getItem(g.id)) engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
-    if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed) {
-      const at = engine.getItem(g.id);
-      if (!at || at.x !== cell.x || at.y !== cell.y) placeNear(g.id, cell.x, cell.y, w);
+    const r = engine.placeBeside(g.id, z.id, z.side, row);
+    const at = engine.getItem(g.id);
+    if (r.changed && at) {
+      beside.vacated = { x: at.x, y: at.y };
+      beside.row = row;
+    } else if (at) {
+      placeNear(g.id, at.x, at.y, g.spans.w);
     }
     project();
   };
@@ -196292,26 +196272,8 @@ function bindDashboardGrid(api, group, options = {}) {
       },
       move: false
     };
-    if (edges.n || edges.w) it.locked = false;
     capturePointer(slabGesture.pointerId);
     api.container.style.cursor = cursorFor(edges);
-  };
-  let slabUnlocked = [];
-  const unlockOthersForSlab = (id) => {
-    slabUnlocked = [];
-    for (const o of engine.getItems()) {
-      if (o.id !== id && o.locked && isGroupMember(o.id)) {
-        o.locked = false;
-        slabUnlocked.push(o.id);
-      }
-    }
-  };
-  const relockOthersForSlab = () => {
-    for (const oid of slabUnlocked) {
-      const o = engine.getItem(oid);
-      if (o) o.locked = true;
-    }
-    slabUnlocked = [];
   };
   const beginSlabMove = (id, ev) => {
     const grp = diagram.getGroup(id);
@@ -196319,8 +196281,6 @@ function bindDashboardGrid(api, group, options = {}) {
     if (!grp || !it || gesture || slabGesture || isStatic) return;
     engine.beginGesture();
     const snap = snapshotAll();
-    it.locked = false;
-    unlockOthersForSlab(id);
     slabGesture = {
       id,
       edges: NO_EDGES,
@@ -196336,10 +196296,6 @@ function bindDashboardGrid(api, group, options = {}) {
     };
     capturePointer(slabGesture.pointerId);
     api.container.style.cursor = "grabbing";
-  };
-  const relockSlab = (id) => {
-    const it = engine.getItem(id);
-    if (it) it.locked = true;
   };
   let refusal = null;
   const showRefusal = (cell, w, h) => {
@@ -196380,7 +196336,7 @@ function bindDashboardGrid(api, group, options = {}) {
       const cell = pointToCell(ev.world.x + g.grab.dx, ev.world.y + g.grab.dy, f, gg, rows(), it.w);
       if (cell.x !== it.x || cell.y !== it.y) {
         const was = { x: it.x, y: it.y };
-        const moved = engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed || placeOnRow(g.id, cell.x, cell.y, it.w);
+        const moved = engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid: true }).changed || placeOnRow(g.id, cell.x, cell.y, it.w, true);
         if (moved) {
           project();
           setCarried(g.id, true);
@@ -196418,7 +196374,7 @@ function bindDashboardGrid(api, group, options = {}) {
       h = floor;
     }
     let changed = false;
-    if (x !== it.x || y !== it.y) changed = engine.moveCheck(g.id, x, y, { gate: false }).changed || changed;
+    if (x !== it.x || y !== it.y) changed = engine.moveCheck(g.id, x, y, { gate: false, pushSolid: true }).changed || changed;
     if (w !== it.w || h !== it.h) changed = engine.resizeCheck(g.id, w, h).changed || changed;
     if (changed) project();
   };
@@ -196429,8 +196385,6 @@ function bindDashboardGrid(api, group, options = {}) {
     showRefusal(null, 0, 0);
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
-    relockSlab(g.id);
-    relockOthersForSlab();
     if (g.move && g.started) setCarried(g.id, false);
     if (!g.started) {
       engine.endGesture();
@@ -196459,8 +196413,6 @@ function bindDashboardGrid(api, group, options = {}) {
     slabGesture = null;
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
-    relockSlab(g.id);
-    relockOthersForSlab();
     if (g.move && g.started) setCarried(g.id, false);
     if (g.started) engine.cancelGesture();
     else engine.endGesture();
@@ -196567,17 +196519,7 @@ function bindDashboardGrid(api, group, options = {}) {
     }
     endBeside(true);
     if (g.started) {
-      if (g.removedFromBoard || g.kind === "palette") {
-        engine.endGesture();
-        const items = [];
-        for (const [id, c] of g.startCells) {
-          const lockedNode = diagram.getNode(id)?.state?.locked === true;
-          items.push({ id, ...c, locked: lockedNode || isGroupMember(id) });
-        }
-        engine = engineFrom(items);
-      } else {
-        engine.cancelGesture();
-      }
+      engine.cancelGesture();
       if (designRows !== void 0) {
         maxRows = liveBound(engine.getItems());
         engine.maxRows = maxRows;
@@ -196666,7 +196608,8 @@ function bindDashboardGrid(api, group, options = {}) {
         g.strip = null;
       }
       if (z.kind === "beside" && !isStatic && z.board.ref === selfPeer) {
-        if (!z.kept) applyBeside(g, { id: z.containerId, side: z.side });
+        const row = rowOfPoint(ev.world.y);
+        if (!z.kept || !beside || beside.row !== row) applyBeside(g, { id: z.containerId, side: z.side }, row);
         syncPlaceholder();
         return;
       }
@@ -196674,7 +196617,9 @@ function bindDashboardGrid(api, group, options = {}) {
       const onSelf = z.kind !== "off" && z.kind !== "strip" && z.board.ref === selfPeer;
       const inside = onSelf || z.kind === "off" && worldInsideBoardGrace(ev.world.x, ev.world.y);
       const peer = !onSelf && z.kind !== "off" && z.kind !== "strip" ? z.board.ref : null;
-      if (peer) {
+      if (peer && g.refusedPeer === peer && parentPeerOf(api.container, peer.group.id) === selfPeer) {
+        placeOnSelf(g, desired, true);
+      } else if (peer) {
         if (g.leg && g.leg.peer === peer) {
           g.leg.adopted.move(ev.world);
         } else {
@@ -196692,30 +196637,25 @@ function bindDashboardGrid(api, group, options = {}) {
             height: g.node.size.height
           });
           if (adopted) {
+            g.refusedPeer = null;
             hostOf(g.id)?.classList.remove("axdb-out");
             g.leg = { peer, adopted };
             g.leg.adopted.move(ev.world);
+          } else if (parentPeerOf(api.container, peer.group.id) === selfPeer) {
+            g.refusedPeer = peer;
+            placeOnSelf(g, desired, true);
           } else {
+            g.refusedPeer = peer;
             hostOf(g.id)?.classList.add("axdb-out");
           }
         }
       } else if (inside) {
+        g.refusedPeer = null;
         if (g.leg) {
           g.leg.adopted.abort();
           g.leg = null;
         }
-        if (g.removedFromBoard) {
-          g.removedFromBoard = false;
-          hostOf(g.id)?.classList.remove("axdb-out");
-          const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), g.spans.w);
-          engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
-          engine.moveCheck(g.id, cell.x, cell.y, { gate: false });
-          project();
-        } else {
-          const spanW = engine.getItem(g.id)?.w ?? g.spans.w;
-          const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), spanW);
-          if (engine.moveCheck(g.id, cell.x, cell.y).changed) project();
-        }
+        placeOnSelf(g, desired);
       } else {
         if (g.leg) {
           g.leg.adopted.abort();
@@ -197065,6 +197005,20 @@ function bindDashboardGrid(api, group, options = {}) {
     });
     return peers.filter((p) => !p.group.parentGroupId).map((p) => boardRef(p, 0));
   };
+  const placeOnSelf = (g, desired, pushSolid = false) => {
+    if (g.removedFromBoard) {
+      g.removedFromBoard = false;
+      hostOf(g.id)?.classList.remove("axdb-out");
+      const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), g.spans.w);
+      engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
+      if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid }).changed) placeNear(g.id, cell.x, cell.y, g.spans.w, pushSolid);
+      project();
+    } else {
+      const spanW = engine.getItem(g.id)?.w ?? g.spans.w;
+      const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), spanW);
+      if (engine.moveCheck(g.id, cell.x, cell.y, { pushSolid }).changed) project();
+    }
+  };
   const resolveTileZone = (g, ev) => {
     let strip = null;
     if (options.tabDrop && !isStatic) {
@@ -197080,8 +197034,18 @@ function bindDashboardGrid(api, group, options = {}) {
       maxDepth: nesting,
       ghostDepth: 0,
       ghostSubtree: EMPTY_SUBTREE,
-      gap
+      gap,
+      homeChain: homeChain()
     });
+  };
+  const homeChain = () => {
+    const out = /* @__PURE__ */ new Set();
+    let cur = group;
+    for (let i = 0; cur && i < 32; i++) {
+      out.add(cur.id);
+      cur = cur.parentGroupId ? diagram.getGroup(cur.parentGroupId) : void 0;
+    }
+    return out;
   };
   const parentPeer = () => {
     for (const p of peersOnCanvas()) {
@@ -197099,30 +197063,30 @@ function bindDashboardGrid(api, group, options = {}) {
     return best;
   };
   const planRemovalOf = (id) => handle.planRemoval(id);
-  const placeOnRow = (id, x, y, w) => {
+  const placeOnRow = (id, x, y, w, pushSolid = false) => {
     const at = (cx) => {
       const i = engine.getItem(id);
       return !!i && i.x === cx && i.y === y;
     };
     const maxX = Math.max(0, columns - w);
     if (at(x)) return true;
-    if (engine.moveCheck(id, x, y, { gate: false }).changed) return true;
+    if (engine.moveCheck(id, x, y, { gate: false, pushSolid }).changed) return true;
     for (let d = 1; d <= columns; d++) {
       for (const cx of [x - d, x + d]) {
         if (cx < 0 || cx > maxX) continue;
         if (at(cx)) return true;
-        if (engine.moveCheck(id, cx, y, { gate: false }).changed) return true;
+        if (engine.moveCheck(id, cx, y, { gate: false, pushSolid }).changed) return true;
       }
     }
     return false;
   };
-  const placeNear = (id, x, y, w) => {
-    if (placeOnRow(id, x, y, w)) return true;
+  const placeNear = (id, x, y, w, pushSolid = false) => {
+    if (placeOnRow(id, x, y, w, pushSolid)) return true;
     const reach = Math.max(1, rows()) + 2;
     for (let d = 1; d <= reach; d++) {
       for (const cy of [y - d, y + d]) {
         if (cy < 0) continue;
-        if (placeOnRow(id, x, cy, w)) return true;
+        if (placeOnRow(id, x, cy, w, pushSolid)) return true;
       }
     }
     return false;
@@ -197130,7 +197094,7 @@ function bindDashboardGrid(api, group, options = {}) {
   const fitHeightAt = (id, x, y, w, hNatural) => {
     let limit = hNatural;
     for (const it of engine.getItems()) {
-      if (it.id === id || !it.locked) continue;
+      if (it.id === id || !(it.locked || it.solid)) continue;
       if (!(it.x < x + w && x < it.x + it.w)) continue;
       if (it.y <= y && it.y + it.h > y) return 0;
       if (it.y > y) limit = Math.min(limit, it.y - y);
@@ -197220,7 +197184,7 @@ function bindDashboardGrid(api, group, options = {}) {
         const it = engine.getItem(node.id);
         return it ? cellToRect(it, frame(), geom(), rows()) : null;
       },
-      place: (cell) => {
+      place: (cell, pushSolid = false) => {
         if (!engine.getItem(node.id) && !engine.add({ id: node.id, x: 0, y: engine.rows(), w: cell.w, h: cell.h })) return false;
         const it = engine.getItem(node.id);
         if (!it) return false;
@@ -197228,9 +197192,9 @@ function bindDashboardGrid(api, group, options = {}) {
         const h0 = Math.min(it.h, cell.h);
         if (w0 !== it.w || h0 !== it.h) engine.resizeCheck(node.id, w0, h0);
         const moved = engine.getItem(node.id);
-        if (moved && (moved.x !== cell.x || moved.y !== cell.y)) engine.moveCheck(node.id, cell.x, cell.y, { gate: false });
+        if (moved && (moved.x !== cell.x || moved.y !== cell.y)) engine.moveCheck(node.id, cell.x, cell.y, { gate: false, pushSolid });
         const now3 = engine.getItem(node.id);
-        if (now3 && (now3.w !== cell.w || now3.h !== cell.h)) engine.resizeCheck(node.id, cell.w, cell.h);
+        if (now3 && (now3.w !== cell.w || now3.h !== cell.h)) engine.resizeCheck(node.id, cell.w, cell.h, { pushSolid });
         lastWant = null;
         project();
         syncPlaceholder();
@@ -197931,23 +197895,6 @@ function bindDashboardGrid(api, group, options = {}) {
       }
     };
     const zoneKey = (z) => JSON.stringify(z, (k, v) => k === "target" ? v.id : k === "peer" ? v.group.id : v);
-    let unlockedGroups = [];
-    const unlockGroups = () => {
-      if (unlockedGroups.length > 0) return;
-      for (const it of engine.getItems()) {
-        if (it.id !== plan.arrivingId && it.locked && isGroupMember(it.id)) {
-          it.locked = false;
-          unlockedGroups.push(it.id);
-        }
-      }
-    };
-    const relockGroups = () => {
-      for (const id of unlockedGroups) {
-        const it = engine.getItem(id);
-        if (it) it.locked = true;
-      }
-      unlockedGroups = [];
-    };
     const groupCommands = (fin, except) => fin.groups.filter((g) => g.id !== except).map((g) => new SetGroupCellCommand(g.id, g.cellBefore, g.cellAfter, g.frameBefore, g.frameAfter));
     let inserted = null;
     const insertRows = (cell, l) => {
@@ -197997,17 +197944,18 @@ function bindDashboardGrid(api, group, options = {}) {
       if (it) {
         if (it.x !== split.before.x || it.y !== split.before.y) engine.moveCheck(split.id, split.before.x, split.before.y, { gate: false });
         if (it.w !== split.before.w || it.h !== split.before.h) engine.resizeCheck(split.id, split.before.w, split.before.h);
-        it.locked = true;
       }
       split = null;
       project();
     };
     const previewSplit = (z, world) => {
       const it = engine.getItem(z.target.id);
+      if (!it) return false;
+      const before = { x: it.x, y: it.y, w: it.w, h: it.h };
+      const frameBefore = frameOfGroup(z.target);
       const l = ensureLeg(world, null);
-      if (!it || !l) return false;
-      split = { id: z.target.id, before: { x: it.x, y: it.y, w: it.w, h: it.h }, frameBefore: frameOfGroup(z.target), keep: z.keep };
-      it.locked = false;
+      if (!l) return false;
+      split = { id: z.target.id, before, frameBefore, keep: z.keep };
       if (it.w !== z.keep.w || it.h !== z.keep.h) engine.resizeCheck(z.target.id, z.keep.w, z.keep.h);
       const now3 = engine.getItem(z.target.id);
       if (now3 && (now3.x !== z.keep.x || now3.y !== z.keep.y)) engine.moveCheck(z.target.id, z.keep.x, z.keep.y, { gate: false });
@@ -198024,8 +197972,7 @@ function bindDashboardGrid(api, group, options = {}) {
     const realizeDock = (z, world) => {
       const l = ensureLeg(world, null);
       if (!l) return false;
-      unlockGroups();
-      l.place(z.cell);
+      l.place(z.cell, true);
       insertRows(z.cell, l);
       project();
       placeholder?.remove();
@@ -198045,7 +197992,6 @@ function bindDashboardGrid(api, group, options = {}) {
       }
       undoSplitPreview();
       undoInsertRows();
-      relockGroups();
       plan.markDrop(null, null);
       hideOverlay();
       switch (z.kind) {
@@ -198118,7 +198064,6 @@ function bindDashboardGrid(api, group, options = {}) {
       if (!commit || z.kind === "home" || z.kind === "off" || z.kind === "root" && !ensureLeg(world, null) || z.kind === "board" && (!ensureLeg(world, z.peer ?? null) || landingHidden())) {
         undoSplitPreview();
         leg?.abort();
-        relockGroups();
         done(false, "cancel");
         return;
       }
@@ -198150,7 +198095,6 @@ function bindDashboardGrid(api, group, options = {}) {
         const fin2 = leg?.finalize() ?? null;
         const it = engine.getItem(z.target.id);
         const before = split;
-        if (it) it.locked = true;
         split = null;
         if (!fin2 || !before || !it) {
           leg?.abort();
@@ -198174,7 +198118,6 @@ function bindDashboardGrid(api, group, options = {}) {
       hideOverlay();
       plan.markDrop(null, null);
       const fin = leg?.finalize() ?? null;
-      relockGroups();
       if (!fin) {
         done(false, "cancel");
         return;
@@ -198312,11 +198255,7 @@ function bindDashboardGrid(api, group, options = {}) {
     if (disposed || gesture || !engine.getItem(id)) return false;
     engine.beginGesture();
     const snap = snapshotAll();
-    const self2 = engine.getItem(id);
-    const wasLocked = !!self2?.locked;
-    if (self2 && isGroupMember(id)) self2.locked = false;
     const ok = op();
-    if (self2 && isGroupMember(id)) self2.locked = wasLocked;
     if (!ok) {
       engine.endGesture();
       return false;
@@ -198530,7 +198469,7 @@ function bindDashboardGrid(api, group, options = {}) {
       return buildCommitCommands(deltas);
     },
     moveTo(id, x, y) {
-      return programmatic("Move widget", id, () => engine.moveCheck(id, x, y).changed);
+      return programmatic("Move widget", id, () => engine.moveCheck(id, x, y, { pushSolid: isGroupMember(id) }).changed);
     },
     resizeTo(id, w, h) {
       const hh = isGroupMember(id) ? Math.max(h, innerRowsOf(id)) : h;

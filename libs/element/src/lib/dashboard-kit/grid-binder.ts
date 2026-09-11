@@ -259,7 +259,7 @@ export interface DashboardGridOptions {
    * counting a view as 0 — a widget into a section is 1, into a section
    * inside a tab page is 2. Deeper containers are opaque to a drag: the
    * pointer over them means a cell on their parent board (or beside them).
-   * Default 2, the depth the gates exercise.
+   * Unbounded by default.
    */
   nesting?: number;
   /**
@@ -721,7 +721,7 @@ interface AdoptedLeg {
   leave(): void;
   enter(world: { x: number; y: number }): void;
   /** Put the tile at a PRESCRIBED cell (a split's half, a docking band): sized to it, unlocked tiles pushed. Answers whether it sits there. */
-  place(cell: { x: number; y: number; w: number; h: number }): boolean;
+  place(cell: { x: number; y: number; w: number; h: number }, pushSolid?: boolean): boolean;
   /** Every other tile's cell before the ghost entered — the layout a row insert translates. */
   baseline(): Map<string, CellRect>;
   /** Where the tile sits right now, or null while it is off the board. */
@@ -880,6 +880,8 @@ interface GestureState {
   spans: { w: number; h: number };
   /** Drag-out: the item is currently absent from the engine. */
   removedFromBoard: boolean;
+  /** The board whose adoption refused this tile: the widget then pushes that board's container on ITS parent (D2) instead of asking again every move. */
+  refusedPeer?: BinderPeer | null;
   /** Live cross-container adoption, when the pointer is over another board. */
   leg: { peer: BinderPeer; adopted: AdoptedLeg } | null;
   /** The tab strip under the pointer, when a release would make this widget a new tab there. */
@@ -982,8 +984,8 @@ export function bindDashboardGrid(
   const fluid = options.fluid === true;
   const overflow = options.overflow ?? 'bounded';
   let isStatic = options.static === true;
-  /** The deepest board a drop may enter — a root is 0; two levels are what the gates exercise (tile first, step 2). */
-  const nesting = options.nesting ?? 2;
+  /** The deepest board a drop may enter — a root is 0. Unbounded unless asked for: three-level drops are in the specs today (tile first, step 2). */
+  const nesting = options.nesting ?? Number.POSITIVE_INFINITY;
   let dragHandle: DragHandleOption = normalizeDragHandle(options.dragHandle);
   let dragSel = dragHandleSelector(dragHandle);
   api.container.classList.toggle(DRAG_HANDLE_CLASS, dragHandle === true);
@@ -1265,9 +1267,13 @@ export function bindDashboardGrid(
     const cell = grp
       ? cellFromGridItem(grp.getMetadata?.('gridItem') as GridItemConfig | undefined)
       : null;
-    // Member groups are LOCKED slabs (see the module doc).
-    if (cell) return { id, ...cell, locked: true };
-    return { id, x: 0, y: 0, w: columns, h: 1, locked: true, autoPosition: true };
+    // A member group is a SOLID tile (tile first, step 3): a widget carried
+    // over it slides aside and it never packs — the board under the hand
+    // holds still, so its zones (into, a tab, beside) stay reachable — and
+    // it is moved by INTENT: placed beside, pushed by a moved section, a
+    // dock or a widget it refused, moved by its own gesture.
+    if (cell) return { id, ...cell, solid: true };
+    return { id, x: 0, y: 0, w: columns, h: 1, solid: true, autoPosition: true };
   };
 
   /** Persist adopted cells so save/undo round-trips them. */
@@ -1908,95 +1914,57 @@ export function bindDashboardGrid(
    * carried along the top of a tall panel to its far right means "after it",
    * not "above it". The shift is undone if the pointer leaves the band.
    */
-  /** The container a BESIDE drop unlocked (and maybe shifted): relocked, and put back if asked, when the zone or the gesture ends. */
-  let beside: { id: string; side: BesideSide; from: { x: number; y: number }; frame0: WorldRect; vacated: { x: number; y: number }; others: Map<string, { x: number; y: number }> } | null = null;
+  /**
+   * The beside the hand holds (tile first, step 3): the container's cell and
+   * frame AT REST (the resolve reads the held container at rest), the cell
+   * the widget took, and the row it took it at. The shift itself is the
+   * engine's `placeBeside`; the sections it pushed remember their cells and
+   * come back by themselves when the widget leaves (S2).
+   */
+  let beside: { id: string; side: BesideSide; from: { x: number; y: number }; frame0: WorldRect; vacated: { x: number; y: number }; row: number } | null = null;
   const endBeside = (restore: boolean): void => {
     if (!beside) return;
     const it = engine.getItem(beside.id);
     let moved = false;
-    if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) moved = engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false }).changed || moved;
-    if (restore) {
-      // The sections the shift pushed come back with it.
-      for (const [oid, c] of beside.others) {
-        const o = engine.getItem(oid);
-        if (o && (o.x !== c.x || o.y !== c.y)) moved = engine.moveCheck(oid, c.x, c.y, { gate: false }).changed || moved;
-      }
-    }
-    if (it) it.locked = true;
-    relockOthersForSlab();
+    if (it && restore && (it.x !== beside.from.x || it.y !== beside.from.y)) moved = engine.moveCheck(beside.id, beside.from.x, beside.from.y, { gate: false }).changed;
     beside = null;
     // The frames the zone test reads are the MODEL's: a restore that moved
     // the container without projecting left its frame where the push had
-    // put it, so the next test read the pointer as OUTSIDE it (the user's
-    // 3440-px corner on 0.4.48: along the top band the panel was pushed
-    // down, and the corner never turned into "right").
+    // put it (the user's 3440-px corner on 0.4.48).
     if (moved) project();
   };
-  const applyBeside = (g: GestureState, z: { id: string; side: BesideSide }): void => {
+  /** The row of this board's grid under a world y — where a beside lands (D3: the pointer's row, not the container's top). */
+  const rowOfPoint = (y: number): number => {
+    const r0 = cellToRect({ x: 0, y: 0, w: 1, h: 1 }, frame(), geom(), rows());
+    const r1 = cellToRect({ x: 0, y: 1, w: 1, h: 1 }, frame(), geom(), rows());
+    const pitch = Math.max(1, r1.y - r0.y);
+    return Math.max(0, Math.floor((y - r0.y) / pitch));
+  };
+  const applyBeside = (g: GestureState, z: { id: string; side: BesideSide }, row: number): void => {
     const tc = engine.getItem(z.id);
     if (!tc) return;
     if (g.leg) {
       g.leg.adopted.abort();
       g.leg = null;
     }
-    const w = g.spans.w;
-    const h = g.spans.h;
     if (g.removedFromBoard) {
       g.removedFromBoard = false;
       hostOf(g.id)?.classList.remove('axdb-out');
-      engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
+      engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
     }
-    if (beside && (beside.id !== z.id || beside.side !== z.side)) endBeside(true); // another container, or another side of it: start over from the rest layout
-    const from = beside ? beside.from : { x: tc.x, y: tc.y };
-    let cell: { x: number; y: number };
-    let shiftTo: { x: number; y: number } | null = null;
-    switch (z.side) {
-      case 'right':
-        cell = { x: from.x + tc.w, y: from.y };
-        if (cell.x + w > columns) {
-          shiftTo = { x: columns - w - tc.w, y: from.y };
-          cell = { x: columns - w, y: from.y };
-        }
-        break;
-      case 'left':
-        cell = { x: from.x - w, y: from.y };
-        if (cell.x < 0) {
-          shiftTo = { x: w, y: from.y };
-          cell = { x: 0, y: from.y };
-        }
-        break;
-      case 'top':
-        cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y }; // the ghost takes the container's rows; the container is pushed down under it
-        break;
-      default:
-        cell = { x: Math.max(0, Math.min(from.x, columns - w)), y: from.y + tc.h };
-    }
-    if (shiftTo && shiftTo.x < 0) shiftTo = null; // no room even shifted: the widget goes where it can
+    if (beside && (beside.id !== z.id || beside.side !== z.side)) endBeside(true); // another container, or another side of it: from the rest layout
     if (!beside) {
-      // The other sections give way to the shift the way they give way to a
-      // moved group (0.4.44): on the demo the Operations section spans the
-      // row under the panel and a locked tile refused the shift outright.
-      // Their cells are kept so they come back if the pointer leaves.
-      const others = new Map<string, { x: number; y: number }>();
-      for (const o of engine.getItems()) if (o.id !== z.id && o.id !== g.id && isGroupMember(o.id)) others.set(o.id, { x: o.x, y: o.y });
       const grp0 = diagram.getGroup(z.id);
-      beside = { id: z.id, side: z.side, from, frame0: grp0 ? frameOfGroup(grp0) : cellToRect({ x: from.x, y: from.y, w: tc.w, h: tc.h }, frame(), geom(), rows()), vacated: cell, others };
-      unlockOthersForSlab(z.id);
+      beside = { id: z.id, side: z.side, from: { x: tc.x, y: tc.y }, frame0: grp0 ? frameOfGroup(grp0) : cellToRect({ x: tc.x, y: tc.y, w: tc.w, h: tc.h }, frame(), geom(), rows()), vacated: { x: tc.x, y: tc.y }, row };
     }
-    tc.locked = false; // for the gesture: it shifts, or the ghost pushes it
-    // The ghost steps off the board while the container shifts: the engine
-    // will not push the dragged tile, so a chart as wide as the panel had its
-    // own cell as the panel's target and the shift was refused (lab L94).
-    // Then it takes the cell the shift vacated.
-    if (shiftTo && (tc.x !== shiftTo.x || tc.y !== shiftTo.y)) {
-      if (engine.getItem(g.id)) engine.remove(g.id);
-      engine.moveCheck(z.id, shiftTo.x, shiftTo.y, { gate: false });
-    }
-    beside.vacated = cell;
-    if (!engine.getItem(g.id)) engine.add({ id: g.id, x: 0, y: engine.rows(), w, h });
-    if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed) {
-      const at = engine.getItem(g.id);
-      if (!at || at.x !== cell.x || at.y !== cell.y) placeNear(g.id, cell.x, cell.y, w);
+    const r = engine.placeBeside(g.id, z.id, z.side, row);
+    const at = engine.getItem(g.id);
+    if (r.changed && at) {
+      beside.vacated = { x: at.x, y: at.y };
+      beside.row = row;
+    } else if (at) {
+      // Refused (a bound): the widget goes where it can, as any refused cell does.
+      placeNear(g.id, at.x, at.y, g.spans.w);
     }
     project();
   };
@@ -2225,12 +2193,6 @@ export function bindDashboardGrid(
       },
       move: false,
     };
-    // A TOP or LEFT edge moves the slab's origin, and the engine refuses to
-    // move a locked tile: the move never landed, only the resize did, and a
-    // section pulled up by its caption grew DOWNWARD a row per pointer step
-    // — 18 rows for a 2-row pull (identification round, F16). Unlocked for
-    // its own gesture, as a move is; relocked on release.
-    if (edges.n || edges.w) it.locked = false;
     capturePointer(slabGesture.pointerId);
     api.container.style.cursor = cursorFor(edges);
   };
@@ -2247,31 +2209,12 @@ export function bindDashboardGrid(
    * pushes it; a group's children ride along: the frame moves, the nested
    * board re-projects. The others relock on release.
    */
-  let slabUnlocked: string[] = [];
-  const unlockOthersForSlab = (id: string): void => {
-    slabUnlocked = [];
-    for (const o of engine.getItems()) {
-      if (o.id !== id && o.locked && isGroupMember(o.id)) {
-        o.locked = false;
-        slabUnlocked.push(o.id);
-      }
-    }
-  };
-  const relockOthersForSlab = (): void => {
-    for (const oid of slabUnlocked) {
-      const o = engine.getItem(oid);
-      if (o) o.locked = true;
-    }
-    slabUnlocked = [];
-  };
   const beginSlabMove = (id: string, ev: ToolPointerEvent): void => {
     const grp = diagram.getGroup(id);
     const it = engine.getItem(id);
     if (!grp || !it || gesture || slabGesture || isStatic) return;
     engine.beginGesture();
     const snap = snapshotAll();
-    it.locked = false;
-    unlockOthersForSlab(id);
     slabGesture = {
       id,
       edges: NO_EDGES,
@@ -2287,10 +2230,6 @@ export function bindDashboardGrid(
     };
     capturePointer(slabGesture.pointerId);
     api.container.style.cursor = 'grabbing';
-  };
-  const relockSlab = (id: string): void => {
-    const it = engine.getItem(id);
-    if (it) it.locked = true;
   };
   /** The cell a slab move asked for and could not have — painted so the refusal is visible; null clears it. */
   let refusal: HTMLElement | null = null;
@@ -2341,7 +2280,7 @@ export function bindDashboardGrid(
         // Along its ROW only: a section dragged LEFT that wandered DOWN its
         // column (the row search) read as the wrong tile moving.
         const was = { x: it.x, y: it.y };
-        const moved = engine.moveCheck(g.id, cell.x, cell.y, { gate: false }).changed || placeOnRow(g.id, cell.x, cell.y, it.w);
+        const moved = engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid: true }).changed || placeOnRow(g.id, cell.x, cell.y, it.w, true); // a moved section pushes the sections in its way (0.4.44)
         if (moved) {
           project();
           setCarried(g.id, true); // chrome repainted by the projection is carried too
@@ -2384,7 +2323,7 @@ export function bindDashboardGrid(
       h = floor;
     }
     let changed = false;
-    if (x !== it.x || y !== it.y) changed = engine.moveCheck(g.id, x, y, { gate: false }).changed || changed;
+    if (x !== it.x || y !== it.y) changed = engine.moveCheck(g.id, x, y, { gate: false, pushSolid: true }).changed || changed;
     if (w !== it.w || h !== it.h) changed = engine.resizeCheck(g.id, w, h).changed || changed;
     if (changed) project();
   };
@@ -2395,8 +2334,6 @@ export function bindDashboardGrid(
     showRefusal(null, 0, 0);
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
-    relockSlab(g.id);
-    relockOthersForSlab();
     if (g.move && g.started) setCarried(g.id, false); // exempt through the drop write, then the glides resume
     if (!g.started) {
       engine.endGesture();
@@ -2429,8 +2366,6 @@ export function bindDashboardGrid(
     slabGesture = null;
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
-    relockSlab(g.id);
-    relockOthersForSlab();
     if (g.move && g.started) setCarried(g.id, false);
     if (g.started) engine.cancelGesture();
     else engine.endGesture();
@@ -2572,20 +2507,10 @@ export function bindDashboardGrid(
     }
     endBeside(true);
     if (g.started) {
-      if (g.removedFromBoard || g.kind === 'palette') {
-        // The engine cannot resurrect a removed item — rebuild from the
-        // gesture-start snapshot (cells are pure data; the constructor
-        // honours legal layouts verbatim).
-        engine.endGesture();
-        const items: GridPackItem[] = [];
-        for (const [id, c] of g.startCells) {
-          const lockedNode = diagram.getNode(id)?.state?.locked === true;
-          items.push({ id, ...c, locked: lockedNode || isGroupMember(id) });
-        }
-        engine = engineFrom(items);
-      } else {
-        engine.cancelGesture();
-      }
+      // The engine's gesture snapshot restores cells, sizes AND membership
+      // (engine 0.3.8): a ghost removed mid-gesture comes back at its start
+      // cell, a palette tile added mid-gesture is gone.
+      engine.cancelGesture();
       if (designRows !== undefined) {
         maxRows = liveBound(engine.getItems());
         (engine as unknown as { maxRows?: number }).maxRows = maxRows;
@@ -2696,7 +2621,8 @@ export function bindDashboardGrid(
       // (A container on another board still resolves as a plain cell there
       // until the gesture scope spans boards — step 3.)
       if (z.kind === 'beside' && !isStatic && z.board.ref === selfPeer) {
-        if (!z.kept) applyBeside(g, { id: z.containerId, side: z.side });
+        const row = rowOfPoint(ev.world.y);
+        if (!z.kept || !beside || beside.row !== row) applyBeside(g, { id: z.containerId, side: z.side }, row);
         syncPlaceholder();
         return;
       }
@@ -2707,7 +2633,12 @@ export function bindDashboardGrid(
       const inside = onSelf || (z.kind === 'off' && worldInsideBoardGrace(ev.world.x, ev.world.y));
       const peer = !onSelf && z.kind !== 'off' && z.kind !== 'strip' ? (z.board.ref as BinderPeer) : null;
 
-      if (peer) {
+      if (peer && g.refusedPeer === peer && parentPeerOf(api.container, peer.group.id) === selfPeer) {
+        // -- REFUSED, PUSHED (D2): a section of this board that cannot take
+        // the widget is pushed by it instead — the widget takes the cell
+        // under the hand on THIS board, and means it.
+        placeOnSelf(g, desired, true);
+      } else if (peer) {
         // -- HANDOFF: the pointer is over another board -------------------
         if (g.leg && g.leg.peer === peer) {
           g.leg.adopted.move(ev.world);
@@ -2726,34 +2657,28 @@ export function bindDashboardGrid(
             height: g.node.size.height,
           });
           if (adopted) {
+            g.refusedPeer = null;
             hostOf(g.id)?.classList.remove('axdb-out');
             g.leg = { peer, adopted };
             g.leg.adopted.move(ev.world);
+          } else if (parentPeerOf(api.container, peer.group.id) === selfPeer) {
+            // A section of this board refused (full, fit): the widget pushes it (D2).
+            g.refusedPeer = peer;
+            placeOnSelf(g, desired, true);
           } else {
-            // Bounded/full board refused the adoption: dim = will snap home.
+            // A board deeper down refused the adoption: dim = will snap home (the N-board scope is step 4).
+            g.refusedPeer = peer;
             hostOf(g.id)?.classList.add('axdb-out');
           }
         }
       } else if (inside) {
         // -- back on (or still on) our own board --------------------------
+        g.refusedPeer = null;
         if (g.leg) {
           g.leg.adopted.abort();
           g.leg = null;
         }
-        if (g.removedFromBoard) {
-          g.removedFromBoard = false;
-          hostOf(g.id)?.classList.remove('axdb-out');
-          const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), g.spans.w);
-          // Re-enter at the bottom edge (collision-free), then take the cursor
-          // cell GATELESSLY — a first placement skips the anti-jitter gate.
-          engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
-          engine.moveCheck(g.id, cell.x, cell.y, { gate: false });
-          project();
-        } else {
-          const spanW = engine.getItem(g.id)?.w ?? g.spans.w;
-          const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), spanW);
-          if (engine.moveCheck(g.id, cell.x, cell.y).changed) project();
-        }
+        placeOnSelf(g, desired);
       } else {
         // -- outside every board ------------------------------------------
         if (g.leg) {
@@ -3263,6 +3188,21 @@ export function bindDashboardGrid(
     });
     return peers.filter((p) => !p.group.parentGroupId).map((p) => boardRef(p, 0));
   };
+  /** The ghost takes the cell under the hand on THIS board: re-entering at the bottom edge first (collision-free), then gatelessly; a tile already here moves through the gate. */
+  const placeOnSelf = (g: GestureState, desired: { x: number; y: number }, pushSolid = false): void => {
+    if (g.removedFromBoard) {
+      g.removedFromBoard = false;
+      hostOf(g.id)?.classList.remove('axdb-out');
+      const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), g.spans.w);
+      engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
+      if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid }).changed) placeNear(g.id, cell.x, cell.y, g.spans.w, pushSolid);
+      project();
+    } else {
+      const spanW = engine.getItem(g.id)?.w ?? g.spans.w;
+      const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), spanW);
+      if (engine.moveCheck(g.id, cell.x, cell.y, { pushSolid }).changed) project();
+    }
+  };
   /** What the pointer means for the dragged tile: the resolve over the live tree, with the beside the hand holds. */
   const resolveTileZone = (g: GestureState, ev: ToolPointerEvent) => {
     let strip: { containerId: string; index: number } | null = null;
@@ -3280,7 +3220,18 @@ export function bindDashboardGrid(
       ghostDepth: 0,
       ghostSubtree: EMPTY_SUBTREE,
       gap,
+      homeChain: homeChain(),
     });
+  };
+  /** The groups this board sits in, all the way up: their bands never apply to a tile of this board. */
+  const homeChain = (): ReadonlySet<string> => {
+    const out = new Set<string>();
+    let cur: GroupModel | undefined = group;
+    for (let i = 0; cur && i < 32; i++) {
+      out.add(cur.id);
+      cur = cur.parentGroupId ? diagram.getGroup(cur.parentGroupId) : undefined;
+    }
+    return out;
   };
 
   /** The board whose engine holds OUR group as an item (nesting parent). */
@@ -3324,25 +3275,25 @@ export function bindDashboardGrid(
    * wherever the last swing left it. Ask where the tile IS, not whether the
    * call moved it.
    */
-  const placeOnRow = (id: string, x: number, y: number, w: number): boolean => {
+  const placeOnRow = (id: string, x: number, y: number, w: number, pushSolid = false): boolean => {
     const at = (cx: number): boolean => {
       const i = engine.getItem(id);
       return !!i && i.x === cx && i.y === y;
     };
     const maxX = Math.max(0, columns - w);
     if (at(x)) return true;
-    if (engine.moveCheck(id, x, y, { gate: false }).changed) return true;
+    if (engine.moveCheck(id, x, y, { gate: false, pushSolid }).changed) return true;
     for (let d = 1; d <= columns; d++) {
       for (const cx of [x - d, x + d]) {
         if (cx < 0 || cx > maxX) continue;
         if (at(cx)) return true;
-        if (engine.moveCheck(id, cx, y, { gate: false }).changed) return true;
+        if (engine.moveCheck(id, cx, y, { gate: false, pushSolid }).changed) return true;
       }
     }
     return false;
   };
-  const placeNear = (id: string, x: number, y: number, w: number): boolean => {
-    if (placeOnRow(id, x, y, w)) return true;
+  const placeNear = (id: string, x: number, y: number, w: number, pushSolid = false): boolean => {
+    if (placeOnRow(id, x, y, w, pushSolid)) return true;
     // EVERY column on that row refused — which is what a locked section
     // spanning the full width does, and there are plenty of those. Sliding
     // sideways can never clear it, so try the rows either side, nearest first.
@@ -3352,7 +3303,7 @@ export function bindDashboardGrid(
     for (let d = 1; d <= reach; d++) {
       for (const cy of [y - d, y + d]) {
         if (cy < 0) continue;
-        if (placeOnRow(id, x, cy, w)) return true;
+        if (placeOnRow(id, x, cy, w, pushSolid)) return true;
       }
     }
     return false;
@@ -3366,7 +3317,7 @@ export function bindDashboardGrid(
   const fitHeightAt = (id: string, x: number, y: number, w: number, hNatural: number): number => {
     let limit = hNatural;
     for (const it of engine.getItems()) {
-      if (it.id === id || !it.locked) continue;
+      if (it.id === id || !(it.locked || it.solid)) continue;
       if (!(it.x < x + w && x < it.x + it.w)) continue;
       if (it.y <= y && it.y + it.h > y) return 0;
       if (it.y > y) limit = Math.min(limit, it.y - y);
@@ -3488,7 +3439,7 @@ export function bindDashboardGrid(
         const it = engine.getItem(node.id);
         return it ? cellToRect(it, frame(), geom(), rows()) : null;
       },
-      place: (cell) => {
+      place: (cell, pushSolid = false) => {
         if (!engine.getItem(node.id) && !engine.add({ id: node.id, x: 0, y: engine.rows(), w: cell.w, h: cell.h })) return false;
         const it = engine.getItem(node.id);
         if (!it) return false;
@@ -3501,9 +3452,9 @@ export function bindDashboardGrid(
         const h0 = Math.min(it.h, cell.h);
         if (w0 !== it.w || h0 !== it.h) engine.resizeCheck(node.id, w0, h0);
         const moved = engine.getItem(node.id);
-        if (moved && (moved.x !== cell.x || moved.y !== cell.y)) engine.moveCheck(node.id, cell.x, cell.y, { gate: false });
+        if (moved && (moved.x !== cell.x || moved.y !== cell.y)) engine.moveCheck(node.id, cell.x, cell.y, { gate: false, pushSolid });
         const now = engine.getItem(node.id);
-        if (now && (now.w !== cell.w || now.h !== cell.h)) engine.resizeCheck(node.id, cell.w, cell.h);
+        if (now && (now.w !== cell.w || now.h !== cell.h)) engine.resizeCheck(node.id, cell.w, cell.h, { pushSolid });
         lastWant = null;
         project();
         syncPlaceholder();
@@ -4482,23 +4433,6 @@ export function bindDashboardGrid(
     // preview every member group is unlocked; they are relocked when the
     // pointer leaves the band, and their moved cells are committed with the
     // dock.
-    let unlockedGroups: string[] = [];
-    const unlockGroups = (): void => {
-      if (unlockedGroups.length > 0) return;
-      for (const it of engine.getItems()) {
-        if (it.id !== plan.arrivingId && it.locked && isGroupMember(it.id)) {
-          it.locked = false;
-          unlockedGroups.push(it.id);
-        }
-      }
-    };
-    const relockGroups = (): void => {
-      for (const id of unlockedGroups) {
-        const it = engine.getItem(id);
-        if (it) it.locked = true;
-      }
-      unlockedGroups = [];
-    };
     const groupCommands = (fin: NonNullable<ReturnType<AdoptedLeg['finalize']>>, except?: string): Command[] =>
       fin.groups.filter((g) => g.id !== except).map((g) => new SetGroupCellCommand(g.id, g.cellBefore, g.cellAfter, g.frameBefore, g.frameAfter));
 
@@ -4562,17 +4496,22 @@ export function bindDashboardGrid(
       if (it) {
         if (it.x !== split.before.x || it.y !== split.before.y) engine.moveCheck(split.id, split.before.x, split.before.y, { gate: false });
         if (it.w !== split.before.w || it.h !== split.before.h) engine.resizeCheck(split.id, split.before.w, split.before.h);
-        it.locked = true;
       }
       split = null;
       project();
     };
     const previewSplit = (z: Extract<Zone, { kind: 'split' }>, world: { x: number; y: number }): boolean => {
       const it = engine.getItem(z.target.id);
+      if (!it) return false;
+      // The target's cell AT REST is the one the commit restores — read it
+      // BEFORE the leg enters: the arriving ghost is placed under the pointer
+      // first, and a target that is a tile like any other is pushed by it
+      // for a moment (tile first, step 3) until it takes its half below.
+      const before = { x: it.x, y: it.y, w: it.w, h: it.h };
+      const frameBefore = frameOfGroup(z.target);
       const l = ensureLeg(world, null);
-      if (!it || !l) return false;
-      split = { id: z.target.id, before: { x: it.x, y: it.y, w: it.w, h: it.h }, frameBefore: frameOfGroup(z.target), keep: z.keep };
-      it.locked = false; // its own gesture for the moment: it may shrink and shift
+      if (!l) return false;
+      split = { id: z.target.id, before, frameBefore, keep: z.keep };
       if (it.w !== z.keep.w || it.h !== z.keep.h) engine.resizeCheck(z.target.id, z.keep.w, z.keep.h);
       const now = engine.getItem(z.target.id);
       if (now && (now.x !== z.keep.x || now.y !== z.keep.y)) engine.moveCheck(z.target.id, z.keep.x, z.keep.y, { gate: false });
@@ -4591,8 +4530,7 @@ export function bindDashboardGrid(
     const realizeDock = (z: Extract<Zone, { kind: 'root' }>, world: { x: number; y: number }): boolean => {
       const l = ensureLeg(world, null);
       if (!l) return false;
-      unlockGroups();
-      l.place(z.cell);
+      l.place(z.cell, true); // DOCKING PUSHES SECTIONS: everything below the band moves down, solid or not
       insertRows(z.cell, l);
       project();
       placeholder?.remove();
@@ -4612,7 +4550,6 @@ export function bindDashboardGrid(
       }
       undoSplitPreview();
       undoInsertRows();
-      relockGroups();
       plan.markDrop(null, null);
       hideOverlay();
       // A PREVIEW IS AN OVERLAY. A split and a dock used to be applied LIVE
@@ -4696,7 +4633,6 @@ export function bindDashboardGrid(
       if (!commit || z.kind === 'home' || z.kind === 'off' || (z.kind === 'root' && !ensureLeg(world, null)) || (z.kind === 'board' && (!ensureLeg(world, z.peer ?? null) || landingHidden()))) {
         undoSplitPreview();
         leg?.abort();
-        relockGroups();
         done(false, 'cancel');
         return;
       }
@@ -4735,7 +4671,6 @@ export function bindDashboardGrid(
         const fin = leg?.finalize() ?? null;
         const it = engine.getItem(z.target.id);
         const before = split;
-        if (it) it.locked = true;
         split = null;
         if (!fin || !before || !it) {
           leg?.abort();
@@ -4761,7 +4696,6 @@ export function bindDashboardGrid(
       hideOverlay(); // a re-applied zone repaints its preview; the release is not a preview
       plan.markDrop(null, null);
       const fin = leg?.finalize() ?? null;
-      relockGroups();
       if (!fin) {
         done(false, 'cancel');
         return;
@@ -4934,12 +4868,7 @@ export function bindDashboardGrid(
     if (disposed || gesture || !engine.getItem(id)) return false;
     engine.beginGesture();
     const snap = snapshotAll();
-    // A section is a LOCKED tile; for ITS OWN move it is the one moving.
-    const self = engine.getItem(id);
-    const wasLocked = !!self?.locked;
-    if (self && isGroupMember(id)) self.locked = false;
     const ok = op();
-    if (self && isGroupMember(id)) self.locked = wasLocked;
     if (!ok) {
       engine.endGesture();
       return false;
@@ -5203,7 +5132,7 @@ export function bindDashboardGrid(
       return buildCommitCommands(deltas);
     },
     moveTo(id, x, y) {
-      return programmatic('Move widget', id, () => engine.moveCheck(id, x, y).changed);
+      return programmatic('Move widget', id, () => engine.moveCheck(id, x, y, { pushSolid: isGroupMember(id) }).changed);
     },
     resizeTo(id, w, h) {
       const hh = isGroupMember(id) ? Math.max(h, innerRowsOf(id)) : h; // a section: never below its children

@@ -509,6 +509,14 @@ render(SPEC2, host);</pre>
       cross-board commit in the steps after it. 0.4.51 put a torn-out tab's zones on the same module, for the grid and
       the split board alike, so the split board finally uses the fifth where it used a third, and a split's corner
       belongs to the side band there too.</p>
+      <p>0.4.52 is the step that changes what you feel, and it taught the model its last rule. The first cut unlocked
+      groups outright, and the lab showed a panel fleeing from a widget that approached it from above: the widget's
+      cell overlapped the panel before the hand reached it, the panel was pushed away, the hand found free space, and
+      the "into" zone was never reachable. So a container is a <em>solid</em> tile in the engine: never pushed by a
+      passing widget and never packed, which keeps the board still under your hand, but moved by intent — a widget
+      lands beside a panel at the hand's row through the engine's own place-beside primitive, a full section that
+      cannot take a widget is pushed by it, a moved section or a dock pushes the sections in its way. Fifteen lock
+      toggles and two unlock lists left the binder with it.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

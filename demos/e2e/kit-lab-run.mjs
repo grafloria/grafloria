@@ -98,6 +98,9 @@ async function drag(x0, y0, x1, y1, { steps = 14, hold = 250, settle = 500, mid 
   await page.mouse.up();
   await page.waitForTimeout(settle);
 }
+/** NEVER A JUMP: sample an element's position every animation frame from now on; `readSlide` says over how many distinct positions it travelled. */
+const startSlide = (board, selector, axis = 'y') => page.evaluate(([b, sel, ax]) => { window.__lab.slide = []; const el = document.querySelector(`#cv-${b} ${sel}`); if (!el) return; const tick = () => { const r = el.getBoundingClientRect(); window.__lab.slide.push(Math.round(ax === 'x' ? r.x : r.y)); if (window.__lab.slide.length < 900) requestAnimationFrame(tick); }; requestAnimationFrame(tick); }, [board, selector, axis]);
+const readSlide = () => page.evaluate(() => { const v = window.__lab.slide ?? []; const d = [...new Set(v)]; return { distinct: d.length, first: v[0], last: v[v.length - 1] }; });
 /** Pull a host's bottom edge down by dy. */
 async function pullBottom(board, id, dy, opts) { const r = await rect(board, id); await drag(r.x + r.w / 2, r.bottom - 3, r.x + r.w / 2, r.bottom - 3 + dy, opts); }
 /** Drag from a point inside a host (offset from its top-left) by dx, dy. */
@@ -1675,8 +1678,10 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const s0 = await cell('dp-out'); const d0 = await cell('dp');
   const refused = () => page.evaluate(() => !!document.querySelector('#cv-deep .axdb-ph--no'));
   // RIGHT onto the Deep tabs container: a moved section pushes the group in its way (0.4.44 — it used to be refused at every cell, painted red, and the section stayed)
+  await startSlide('deep', '.axdb-slab[data-slab-id="dp"]', 'y'); // the container gives way with the glide, never a jump
   await page.mouse.move(band.x + band.width / 2, band.y + band.height / 2); await page.mouse.down(); await page.mouse.move(band.x + band.width / 2 + 8, band.y + band.height / 2 + 4);
   await page.mouse.move(cvd.x + dp.x + dp.w * 0.5, band.y + band.height / 2, { steps: 14 }); await page.waitForTimeout(400);
+  const slide78 = await readSlide();
   const r1 = await refused(); const s1 = await cell('dp-out'); const d1 = await cell('dp');
   await shot('deep', 'section-held-over-the-container-which-gives-way');
   await page.mouse.up(); await page.waitForTimeout(600);
@@ -1692,6 +1697,7 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   await undoAll('deep', 1);
   const s4 = await cell('dp-out');
   verdict(!!s0 && !!d0 && r1 === false && !!s1 && s1.x === 6 && !!d1 && d1.y >= s1.y + s1.h && !!s2 && s2.x === 6 && !!d2 && d2.y >= s2.y + s2.h && d2.x === d0.x && d2.w === d0.w && r2 === false && saneA.overlaps === 0
+    && slide78.distinct >= 4 && slide78.last > slide78.first // the pushed container SLID down across frames
     && JSON.stringify(s2u) === JSON.stringify(s0) && JSON.stringify(d2u) === JSON.stringify(d0)
     && !!s3 && s3.y > s0.y && s3.x === 0 && sane.overlaps === 0 && JSON.stringify(s4) === JSON.stringify(s0),
     `onto the container: refused-marker ${r1}, section ${JSON.stringify(s0)} -> ${JSON.stringify(s1)}, container ${JSON.stringify(d0)} -> ${JSON.stringify(d1)}; released ${JSON.stringify(s2)} / ${JSON.stringify(d2)} marker ${r2} overlaps ${saneA.overlaps}; undone ${JSON.stringify(s2u)} / ${JSON.stringify(d2u)} · down: ${JSON.stringify(s3)} ${JSON.stringify(sane)} · undo ${JSON.stringify(s4)}`);
@@ -2503,13 +2509,15 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   // a tenth of the body under the strip: the strip's DOM box is taller than its painted 30 px (the 8-px page inset rides in it), and a hand
   // 9 px under the paint is still "on the strip" to the client-space hit test — the lab's first cut sat there and saw a tab slot, not the band
   const yTop = ps.bottom + (g.h - 30) * 0.1;
+  await startSlide('tabs', '.axdb-slab[data-slab-id="panel"]', 'y'); // the top band pushes the panel DOWN with the glide
   await page.mouse.move(left.x + 40, left.y + 12); await page.mouse.down();
   await page.mouse.move(left.x + 40, yTop, { steps: 6 }); // down first, so the path never crosses the strip
   await page.mouse.move(ps.x + ps.width * 0.5, yTop, { steps: 14 }); await page.waitForTimeout(350);
-  const mid = { panel: await cell('panel'), chart: await cell('t-left') };
+  const mid = { panel: await cell('panel'), chart: await cell('t-left'), slide: await readSlide() };
   await shot('tabs', 'chart-held-on-the-panels-top-band-middle-the-panel-pushed-down');
+  await startSlide('tabs', '.axdb-slab[data-slab-id="panel"]', 'x'); // the corner brings it back up and shifts it LEFT with the glide
   await page.mouse.move(ps.x + ps.width - 14, yTop, { steps: 10 }); await page.waitForTimeout(400);
-  const corner = { panel: await cell('panel'), chart: await cell('t-left'), ph: await page.evaluate(() => { const p = document.querySelector('#cv-tabs .axdb-ph'); return p ? { on: getComputedStyle(p).display !== 'none', refused: p.classList.contains('axdb-ph--no') } : null; }) };
+  const corner = { panel: await cell('panel'), chart: await cell('t-left'), slide: await readSlide(), ph: await page.evaluate(() => { const p = document.querySelector('#cv-tabs .axdb-ph'); return p ? { on: getComputedStyle(p).display !== 'none', refused: p.classList.contains('axdb-ph--no') } : null; }) };
   await shot('tabs', 'chart-carried-into-the-top-right-corner-the-panel-back-up-and-shifted-left');
   await page.mouse.up(); await page.waitForTimeout(500);
   const p1 = await cell('panel'); const l1 = await cell('t-left'); const sane = await sanity('tabs');
@@ -2518,11 +2526,11 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const p2 = await cell('panel'); const l2 = await cell('t-left');
   const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
   verdict(!!p0 && p0.x === 6 && p0.y === 0 && !!l0 && l0.x === 0
-    && !!mid.panel && mid.panel.x === 6 && mid.panel.y > 0 && !!mid.chart && mid.chart.y === 0 // the top band: the panel pushed down under the chart
-    && !!corner.panel && corner.panel.x === 0 && corner.panel.y === 0 && !!corner.chart && corner.chart.x === 6 && corner.chart.y === 0 && corner.ph?.on === true && corner.ph?.refused === false // the corner: right, not above, not under
+    && !!mid.panel && mid.panel.x === 6 && mid.panel.y > 0 && !!mid.chart && mid.chart.y === 0 && mid.slide.distinct >= 4 && mid.slide.last > mid.slide.first // the top band: the panel pushed down under the chart, SLIDING
+    && !!corner.panel && corner.panel.x === 0 && corner.panel.y === 0 && !!corner.chart && corner.chart.x === 6 && corner.chart.y === 0 && corner.ph?.on === true && corner.ph?.refused === false && corner.slide.distinct >= 4 && corner.slide.last < corner.slide.first // the corner: right, not above, not under — the panel SLID left
     && !!p1 && p1.x === 0 && p1.y === 0 && !!l1 && l1.x === 6 && l1.y === 0 && sane.overlaps === 0
     && same(p2, p0) && same(l2, l0),
-    `rest panel ${JSON.stringify(p0)} chart ${JSON.stringify(l0)} · top band middle: panel ${JSON.stringify(mid.panel)} chart ${JSON.stringify(mid.chart)} · corner: panel ${JSON.stringify(corner.panel)} chart ${JSON.stringify(corner.chart)} ph ${JSON.stringify(corner.ph)} · released: panel ${JSON.stringify(p1)} chart ${JSON.stringify(l1)} overlaps ${sane.overlaps} · undone: panel ${JSON.stringify(p2)} chart ${JSON.stringify(l2)}`);
+    `rest panel ${JSON.stringify(p0)} chart ${JSON.stringify(l0)} · top band middle: panel ${JSON.stringify(mid.panel)} chart ${JSON.stringify(mid.chart)} slide ${JSON.stringify(mid.slide)} · corner: panel ${JSON.stringify(corner.panel)} chart ${JSON.stringify(corner.chart)} slide ${JSON.stringify(corner.slide)} ph ${JSON.stringify(corner.ph)} · released: panel ${JSON.stringify(p1)} chart ${JSON.stringify(l1)} overlaps ${sane.overlaps} · undone: panel ${JSON.stringify(p2)} chart ${JSON.stringify(l2)}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);

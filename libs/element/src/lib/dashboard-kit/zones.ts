@@ -88,6 +88,13 @@ export interface ResolveInput {
   ghostSubtree: ReadonlySet<string>;
   /** The board's gap, the tolerance around the vacated cell. */
   gap: number;
+  /**
+   * The containers the dragged tile's OWN board sits in, innermost first or
+   * in any order: their bands do not apply to it. A widget leaving its page
+   * through the page's left fifth is moving within the page, not asking to
+   * be put beside the container it is still inside.
+   */
+  homeChain: ReadonlySet<string>;
 }
 
 export type Zone =
@@ -175,18 +182,24 @@ export function resolve(input: ResolveInput): Zone {
     const px = x + dx;
     const py = y + dy;
     for (const c of board.children()) {
-      const atRest = held && c.id === held.containerId ? held.frame0 : null;
+      // the held container at rest — unless the hand has left that frame for the live one
+      const atRest = held && c.id === held.containerId && inRect(held.frame0, x, y) ? held.frame0 : null;
       const frame = atRest ?? c.frame;
       const tx = atRest ? x : px;
       const ty = atRest ? y : py;
       if (!inRect(frame, tx, ty)) continue;
-      const side = bandOf(frame, c.stripHeight, tx, ty, c.band);
+      // A band does not reach THROUGH a nested container: a hand over a
+      // section inside the page is inside the page, wherever the outer
+      // container's fifth falls (the inset margin is what remains of the
+      // band there). The page's plain widgets do not stop it.
+      const ndx0 = atRest ? c.frame.x - atRest.x : dx;
+      const ndy0 = atRest ? c.frame.y - atRest.y : dy;
+      const overNested = !!c.inner && c.inner.children().some((cc) => inRect(cc.frame, x + ndx0, y + ndy0));
+      const side = overNested || input.homeChain.has(c.id) ? null : bandOf(frame, c.stripHeight, tx, ty, c.band);
       if (side) return { kind: 'beside', board, containerId: c.id, side, kept: false };
       if (opaque(board, c) || !c.inner) return { kind: 'plain', board, grace: false };
-      const ndx = atRest ? c.frame.x - atRest.x : dx;
-      const ndy = atRest ? c.frame.y - atRest.y : dy;
-      if (!c.inner.contains(x + ndx, y + ndy)) return { kind: 'plain', board, grace: false }; // the margin: the container's own frame
-      return descend(c.inner, ndx, ndy);
+      if (!c.inner.contains(x + ndx0, y + ndy0)) return { kind: 'plain', board, grace: false }; // the margin: the container's own frame
+      return descend(c.inner, ndx0, ndy0);
     }
     return { kind: 'plain', board, grace: false };
   };

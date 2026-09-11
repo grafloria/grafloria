@@ -1141,3 +1141,66 @@ describe('placeBeside — the one sideways primitive (tile first, step 1)', () =
     expect(cells(b, 'q')).toEqual([8, 0]);
   });
 });
+
+describe('solid tiles — a container is pushed by INTENT, never by a passing widget (tile first, step 3)', () => {
+  // the runaway the unlock exposed: a widget approaching a panel from above overlapped it before the pointer reached it,
+  // the panel was pushed away from under the hand, the hand found free space, the panel fled — the "into" zone was unreachable.
+  const board = () => {
+    const e = new GridPackEngine([{ id: 'w', x: 0, y: 0, w: 2, h: 1 }, { id: 'sec', x: 0, y: 4, w: 9, h: 1, solid: true }, { id: 'k', x: 0, y: 5, w: 2, h: 1 }], { columns: 12, float: true });
+    e.float = false;
+    return e;
+  };
+  it('a widget moved onto a solid tile is refused, named solid — the binder slides it aside', () => {
+    const e = board();
+    expect(e.moveCheck('w', 1, 4, { gate: false })).toEqual({ changed: false, refusedBy: 'solid' });
+    expect(cells(e, 'sec')).toEqual([0, 4]);
+    expect(cells(e, 'w')).toEqual([0, 0]);
+  });
+  it('the same move with pushSolid — a moved section, a dock, a refused adoption — pushes it like any tile', () => {
+    const e = board();
+    e.beginGesture();
+    expect(e.moveCheck('w', 1, 4, { gate: false, pushSolid: true })).toEqual({ changed: true });
+    expect(cells(e, 'sec')).toEqual([0, 5]); // pushed, and the widget under it pushed on
+    expect(cells(e, 'k')).toEqual([0, 6]);
+    e.endGesture();
+  });
+  it('a solid tile never packs: the gap above it stays through every settle', () => {
+    const e = board();
+    expect(e.moveCheck('w', 4, 0).changed).toBe(true); // any accepted op settles the board
+    expect(cells(e, 'sec')).toEqual([0, 4]); // rows 1–3 stay free above it
+    expect(cells(e, 'k')).toEqual([0, 5]);
+  });
+  it('growth clamps at a solid tile the way it clamps at a locked one', () => {
+    const e = board();
+    expect(e.resizeCheck('w', 2, 6).changed).toBe(true);
+    expect(e.getItem('w')!.h).toBe(4); // rows 0–3: the section at 4 is the wall
+  });
+  it('growth with pushSolid — a dock taking its band — pushes a solid tile instead of clamping at it', () => {
+    const e = board();
+    expect(e.resizeCheck('w', 12, 6, { pushSolid: true }).changed).toBe(true);
+    expect(e.getItem('w')).toMatchObject({ w: 12, h: 6 });
+    // both went down; the cascade lands k under w first and sends the section on below it (the engine's reading-order push)
+    expect(cells(e, 'k')).toEqual([0, 6]);
+    expect(cells(e, 'sec')).toEqual([0, 7]);
+    expect(e.hasOverlaps()).toBe(false);
+  });
+  it('placeBeside shifts a solid neighbour and pushes it with the top side — intent', () => {
+    const e = new GridPackEngine([{ id: 'nps', x: 6, y: 0, w: 2, h: 1 }, { id: 'side', x: 9, y: 0, w: 3, h: 8, solid: true }], { columns: 12, float: true });
+    e.float = false;
+    expect(e.placeBeside('nps', 'side', 'right', 2)).toEqual({ changed: true, how: 'shifted' });
+    expect(cells(e, 'side')).toEqual([7, 0]);
+    expect(e.getItem('nps')).toMatchObject({ x: 10, y: 2 });
+    const f = new GridPackEngine([{ id: 'nps', x: 6, y: 0, w: 2, h: 1 }, { id: 'side', x: 9, y: 0, w: 3, h: 8, solid: true }], { columns: 12 });
+    expect(f.placeBeside('nps', 'side', 'top')).toEqual({ changed: true, how: 'pushed' });
+    expect(cells(f, 'side')).toEqual([9, 1]);
+  });
+  it('a solid mover pushes what it lands on — a moved section pushes another section only when asked', () => {
+    const e = new GridPackEngine([{ id: 'a', x: 0, y: 0, w: 6, h: 2, solid: true }, { id: 'b', x: 0, y: 2, w: 6, h: 2, solid: true }, { id: 'k', x: 6, y: 0, w: 2, h: 1 }], { columns: 12, float: true });
+    e.float = false;
+    expect(e.moveCheck('a', 0, 1, { gate: false })).toEqual({ changed: false, refusedBy: 'solid' });
+    expect(e.moveCheck('a', 0, 1, { gate: false, pushSolid: true })).toEqual({ changed: true });
+    expect(cells(e, 'b')).toEqual([0, 3]);
+    expect(e.moveCheck('a', 6, 0, { gate: false }).changed).toBe(true); // over the plain widget k: pushed without asking
+    expect(cells(e, 'k')).toEqual([6, 2]);
+  });
+});
