@@ -195354,6 +195354,9 @@ function tileCommands(deltas) {
   return out;
 }
 
+// libs/element/src/lib/dashboard-kit/board-ctx.ts
+var EDGE_GRACE = 60;
+
 // libs/element/src/lib/dashboard-kit/project.ts
 var GLIDE_OFF_DELAY = 400;
 function createProjection(ctx, deps) {
@@ -195985,6 +195988,455 @@ function createKeyboard(ctx, deps) {
   return { onFocusIn, onKey };
 }
 
+// libs/element/src/lib/dashboard-kit/tear-out.ts
+var TEAR_OUT_MIN_ROWS = 2;
+function createTearOut(ctx, deps) {
+  const { api, group, diagram, options, gap } = ctx;
+  const { adopt, boardArea, execute, frameOfGroup, persistLayouts, project, hidePlaceholder, armGlide, disarmGlideSoon, enforceBoardHeight, busy, tearing, setTearing } = deps;
+  const eng = () => ctx.engine();
+  const frame = () => ctx.frame();
+  const geom = () => ctx.geom();
+  const rows = () => ctx.rows();
+  const columns = () => deps.columns();
+  const isStatic = () => ctx.isStatic();
+  const disposed = () => ctx.disposed();
+  const htmlLayer = () => ctx.htmlLayer();
+  const sizeOf = ctx.sizeOf;
+  const peersOnCanvas = () => deps.peersOnCanvas();
+  const selfPeer = deps.selfPeer;
+  const worldInsideBoard = (x, y) => deps.worldInsideBoard(x, y);
+  const worldInsideGroup = (g, x, y) => deps.worldInsideGroup(g, x, y);
+  const beginTearOut = (pageId, fromGroupId, ev, plan) => {
+    if (disposed() || busy() || isStatic() || tearing()) return false;
+    const from = diagram.getGroup(fromGroupId);
+    if (!from || !diagram.getGroup(pageId) || !eng().getItem(fromGroupId)) return false;
+    const toWorld = (cx, cy) => {
+      const rect = api.container.getBoundingClientRect();
+      return api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
+    };
+    let leg = null;
+    let legPeer = null;
+    const ensureLeg = (world, peer = null) => {
+      const capPx = dockSpan.h * (rowHeightFor(geom(), rows()) + gap) - gap;
+      const size = { width: plan.size.width, height: Math.min(plan.size.height, capPx) };
+      if (leg && legPeer !== peer) {
+        leg.abort();
+        leg = null;
+      }
+      if (!leg) {
+        leg = peer ? peer.adopt({ id: plan.arrivingId }, world, size, { fit: "shrink", anchor: "top" }) : adopt({ id: plan.arrivingId }, world, size, { fit: "shrink", anchor: "top" });
+        legPeer = leg ? peer : null;
+      }
+      return leg;
+    };
+    const foreignAt = (wx, wy) => {
+      let best = null;
+      for (const p of peersOnCanvas()) {
+        if (p === selfPeer() || plan.ownBoards.includes(p.group.id)) continue;
+        if (!p.containsWorld(wx, wy)) continue;
+        if (!best || p.frameArea() < best.frameArea()) best = p;
+      }
+      return best;
+    };
+    const naturalSpan = (() => {
+      const sp = sizeToSpan(plan.size.width, plan.size.height, frame(), geom(), rows());
+      return { w: Math.max(1, Math.min(columns(), sp.w)), h: Math.max(TEAR_OUT_MIN_ROWS, sp.h) };
+    })();
+    const dockSpan = (() => {
+      const rows0 = rows();
+      const rect = api.container.getBoundingClientRect();
+      const rh = rowHeightFor(geom(), rows0) + gap;
+      const visible2 = rect.height > 0 && rh > 0 ? Math.max(1, Math.floor((rect.height + gap) / rh)) : rows0;
+      const halfRows = Math.max(TEAR_OUT_MIN_ROWS, Math.ceil(Math.min(rows0, visible2) / 2));
+      const halfCols = Math.max(1, Math.ceil(columns() / 2));
+      return { w: Math.min(naturalSpan.w, halfCols), h: Math.min(naturalSpan.h, halfRows) };
+    })();
+    setTearing(pageId);
+    const doc = api.container.ownerDocument ?? document;
+    const chip2 = doc.createElement("div");
+    chip2.className = "axdb-drag-chip axdb-tab-chip";
+    chip2.textContent = plan.label;
+    doc.body.appendChild(chip2);
+    const moveChip = (cx, cy) => {
+      chip2.style.left = `${cx + 6}px`;
+      chip2.style.top = `${cy + 6}px`;
+    };
+    moveChip(ev.clientX, ev.clientY);
+    armGlide();
+    api.render();
+    const layer = htmlLayer();
+    const area = (g) => {
+      const sz = sizeOf(g);
+      return sz.width * sz.height;
+    };
+    const targets = plan.joinTargets.map((id) => diagram.getGroup(id)).filter((g) => !!g && g.id !== fromGroupId).sort((a, b) => area(a) - area(b));
+    let anchor = null;
+    const inRect2 = (r, wx, wy) => wx >= r.x && wx <= r.x + r.width && wy >= r.y && wy <= r.y + r.height;
+    const targetAt = (wx, wy) => {
+      if (anchor && inRect2(anchor.frame, wx, wy)) return anchor.g;
+      const t = targets.find((x) => worldInsideGroup(x, wx, wy)) ?? null;
+      if (t) leg?.leave();
+      anchor = t ? { g: t, frame: frameOfGroup(t), stripH: plan.stripHeight(t.id) } : null;
+      return t;
+    };
+    const ROOT_TOP = 20;
+    const ROOT_BOTTOM = 20;
+    const ROOT_SIDE = 40;
+    const EDGE_BAND = BESIDE_BAND;
+    const visibleFrame = () => {
+      const rect = api.container.getBoundingClientRect();
+      const o = toWorld(rect.left, rect.top);
+      const u = toWorld(rect.left + 100, rect.top + 100);
+      const sx = 100 / (u.x - o.x || 100);
+      const sy = 100 / (u.y - o.y || 100);
+      const f = frame();
+      const left = rect.left + (f.x - o.x) * sx;
+      const top = rect.top + (f.y - o.y) * sy;
+      const right = left + f.width * sx;
+      const bottom = top + f.height * sy;
+      if (rect.width <= 0 || rect.height <= 0) return { left, top, right, bottom };
+      return { left: Math.max(left, rect.left), top: Math.max(top, rect.top), right: Math.min(right, rect.right), bottom: Math.min(bottom, rect.bottom) };
+    };
+    const clientInsideCanvasGrace = (cx, cy) => {
+      const rect = api.container.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return true;
+      return cx >= rect.left - EDGE_GRACE && cx <= rect.right + EDGE_GRACE && cy >= rect.top - EDGE_GRACE && cy <= rect.bottom + EDGE_GRACE;
+    };
+    const baseRows = () => {
+      const b = leg?.baseline();
+      if (!b) return rowsWithout(plan.arrivingId);
+      let r = 0;
+      for (const c of b.values()) r = Math.max(r, c.y + c.h);
+      return r;
+    };
+    const worldToClient = (wx, wy) => {
+      const rect = api.container.getBoundingClientRect();
+      const o = toWorld(rect.left, rect.top);
+      const u = toWorld(rect.left + 100, rect.top + 100);
+      return { x: rect.left + (wx - o.x) * (100 / (u.x - o.x || 100)), y: rect.top + (wy - o.y) * (100 / (u.y - o.y || 100)) };
+    };
+    const landingHidden = () => {
+      const r = leg?.rect();
+      const rect = api.container.getBoundingClientRect();
+      if (!r || rect.width <= 0 || rect.height <= 0) return false;
+      const tl = worldToClient(r.x, r.y);
+      const br = worldToClient(r.x + r.width, r.y + r.height);
+      return tl.y >= rect.bottom || br.y <= rect.top || tl.x >= rect.right || br.x <= rect.left;
+    };
+    const rootAt = (cx, cy) => {
+      const v = visibleFrame();
+      if (cx < v.left - ROOT_SIDE || cx > v.right + ROOT_SIDE || cy < v.top - ROOT_TOP || cy > v.bottom + ROOT_BOTTOM) return null;
+      const rows2 = Math.max(TEAR_OUT_MIN_ROWS, baseRows());
+      const w = dockSpan.w;
+      const h = dockSpan.h;
+      if (cy - v.top <= ROOT_TOP) return { kind: "root", side: "top", cell: { x: 0, y: 0, w: columns(), h } };
+      if (cx - v.left <= ROOT_SIDE) return { kind: "root", side: "left", cell: { x: 0, y: 0, w, h: rows2 } };
+      if (v.right - cx <= ROOT_SIDE) return { kind: "root", side: "right", cell: { x: Math.max(0, columns() - w), y: 0, w, h: rows2 } };
+      if (v.bottom - cy <= ROOT_BOTTOM) return { kind: "root", side: "bottom", cell: { x: 0, y: rows2, w: columns(), h } };
+      return null;
+    };
+    const rowsWithout = (id) => {
+      let r = 0;
+      for (const it of eng().getItems()) if (it.id !== id) r = Math.max(r, it.y + it.h);
+      return r;
+    };
+    let split = null;
+    const halves = (target, side) => {
+      const live = eng().getItem(target.id);
+      const it = split && split.id === target.id ? split.before : live;
+      if (!it || !live) return null;
+      if (side === "left" || side === "right") {
+        if (it.w < 2) return null;
+        const a2 = Math.ceil(it.w / 2);
+        const b2 = it.w - a2;
+        return side === "right" ? { keep: { x: it.x, y: it.y, w: a2, h: it.h }, born: { x: it.x + a2, y: it.y, w: b2, h: it.h } } : { keep: { x: it.x + b2, y: it.y, w: a2, h: it.h }, born: { x: it.x, y: it.y, w: b2, h: it.h } };
+      }
+      if (it.h < 2 * TEAR_OUT_MIN_ROWS) return null;
+      const a = Math.ceil(it.h / 2);
+      const b = it.h - a;
+      return side === "bottom" ? { keep: { x: it.x, y: it.y, w: it.w, h: a }, born: { x: it.x, y: it.y + a, w: it.w, h: b } } : { keep: { x: it.x, y: it.y + b, w: it.w, h: a }, born: { x: it.x, y: it.y, w: it.w, h: b } };
+    };
+    const zoneAt = (cx, cy, world) => {
+      const clientInside = clientInsideCanvasGrace(cx, cy);
+      const target = clientInside ? targetAt(world.x, world.y) : null;
+      const root = clientInside ? rootAt(cx, cy) : null;
+      const foreign = foreignAt(world.x, world.y);
+      const tz = resolveTabZone({
+        x: world.x,
+        y: world.y,
+        clientInside,
+        ownStrip: plan.stripIndex(fromGroupId, cx, cy),
+        stripOf: (id) => plan.stripIndex(id, cx, cy),
+        root: root && root.kind === "root" ? { side: root.side } : null,
+        target: target ? {
+          id: target.id,
+          frame: anchor && anchor.g === target ? anchor.frame : frameOfGroup(target),
+          stripHeight: anchor && anchor.g === target ? anchor.stripH : plan.stripHeight(target.id)
+        } : null,
+        home: worldInsideGroup(from, world.x, world.y) ? frameOfGroup(from) : null,
+        homeBand: 0,
+        // on a grid board the whole source frame is home
+        band: EDGE_BAND,
+        canSplit: (_id, side) => !!target && !!halves(target, side),
+        pane: false,
+        foreign: !!foreign && (!worldInsideBoard(world.x, world.y) || foreign.frameArea() < boardArea())
+      });
+      switch (tz.kind) {
+        case "off":
+          return { kind: "off" };
+        case "strip":
+          return { kind: "strip", target, index: tz.index };
+        case "reorder":
+          return { kind: "reorder", index: tz.index };
+        case "root":
+          return root;
+        case "join":
+          return { kind: "join", target };
+        case "split": {
+          const h = halves(target, tz.side);
+          return h ? { kind: "split", target, side: tz.side, ...h } : { kind: "join", target };
+        }
+        case "home":
+          return { kind: "home" };
+        default:
+          return tz.kind === "board" && tz.foreign && foreign ? { kind: "board", peer: foreign } : { kind: "board" };
+      }
+    };
+    const zoneKey = (z) => JSON.stringify(z, (k, v) => k === "target" ? v.id : k === "peer" ? v.group.id : v);
+    let inserted = null;
+    const insertRows = (cell, l) => {
+      if (cell.w < columns()) return;
+      const base = l.baseline();
+      inserted = base;
+      for (const [id, c] of base) {
+        const it = eng().getItem(id);
+        if (!it) continue;
+        it.x = c.x;
+        it.y = c.y >= cell.y ? c.y + cell.h : c.y;
+      }
+    };
+    const undoInsertRows = () => {
+      if (!inserted) return;
+      leg?.leave();
+      for (const [id, c] of inserted) {
+        const it = eng().getItem(id);
+        if (it) {
+          it.x = c.x;
+          it.y = c.y;
+        }
+      }
+      inserted = null;
+      project();
+    };
+    let joinEl = null;
+    const showOverlay = (r) => {
+      if (!layer) return;
+      if (!joinEl) {
+        joinEl = doc.createElement("div");
+        joinEl.className = "axdb-join";
+        layer.prepend(joinEl);
+      }
+      joinEl.style.left = `${r.x}px`;
+      joinEl.style.top = `${r.y}px`;
+      joinEl.style.width = `${r.width}px`;
+      joinEl.style.height = `${r.height}px`;
+    };
+    const hideOverlay = () => {
+      joinEl?.remove();
+      joinEl = null;
+    };
+    const undoSplitPreview = () => {
+      if (!split) return;
+      const it = eng().getItem(split.id);
+      leg?.leave();
+      if (it) {
+        if (it.x !== split.before.x || it.y !== split.before.y) eng().moveCheck(split.id, split.before.x, split.before.y, { gate: false });
+        if (it.w !== split.before.w || it.h !== split.before.h) eng().resizeCheck(split.id, split.before.w, split.before.h);
+      }
+      split = null;
+      project();
+    };
+    const previewSplit = (z, world) => {
+      const it = eng().getItem(z.target.id);
+      if (!it) return false;
+      const before = { x: it.x, y: it.y, w: it.w, h: it.h };
+      const frameBefore = frameOfGroup(z.target);
+      const l = ensureLeg(world, null);
+      if (!l) return false;
+      split = { id: z.target.id, before, frameBefore, keep: z.keep };
+      if (it.w !== z.keep.w || it.h !== z.keep.h) eng().resizeCheck(z.target.id, z.keep.w, z.keep.h);
+      const now3 = eng().getItem(z.target.id);
+      if (now3 && (now3.x !== z.keep.x || now3.y !== z.keep.y)) eng().moveCheck(z.target.id, z.keep.x, z.keep.y, { gate: false });
+      const ok = l.place(z.born);
+      project();
+      hidePlaceholder();
+      return ok;
+    };
+    const dockOverlayRect = (z) => {
+      const cell = z.side === "bottom" ? { ...z.cell, y: Math.max(0, z.cell.y - z.cell.h) } : z.cell;
+      return cellToRect(cell, frame(), geom(), rows());
+    };
+    const realizeDock = (z, world) => {
+      const l = ensureLeg(world, null);
+      if (!l) return false;
+      l.place(z.cell, true);
+      insertRows(z.cell, l);
+      project();
+      hidePlaceholder();
+      return true;
+    };
+    let zone = { kind: "board" };
+    let key = zoneKey(zone);
+    const applyZone = (z, world) => {
+      const k = zoneKey(z);
+      const same = k === key;
+      key = k;
+      zone = z;
+      if (same) {
+        if (z.kind === "board") ensureLeg(world, z.peer ?? null)?.move(world);
+        return;
+      }
+      undoSplitPreview();
+      undoInsertRows();
+      plan.markDrop(null, null);
+      hideOverlay();
+      switch (z.kind) {
+        case "strip":
+          leg?.leave();
+          showOverlay(frameOfGroup(z.target));
+          plan.markDrop(z.target.id, z.index);
+          break;
+        case "join":
+          leg?.leave();
+          showOverlay(frameOfGroup(z.target));
+          break;
+        case "split":
+          leg?.leave();
+          showOverlay(cellToRect(z.born, frame(), geom(), rows()));
+          break;
+        case "root":
+          leg?.leave();
+          showOverlay(dockOverlayRect(z));
+          break;
+        case "reorder":
+          leg?.leave();
+          plan.markDrop(fromGroupId, z.index);
+          break;
+        case "home":
+        case "off":
+          leg?.leave();
+          break;
+        case "board": {
+          const l = ensureLeg(world, z.peer ?? null);
+          l?.enter(world);
+          break;
+        }
+      }
+    };
+    let last = { x: ev.clientX, y: ev.clientY };
+    const detach = () => {
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onCancel, true);
+      window.removeEventListener("keydown", onKey, true);
+    };
+    const onMove = (e) => {
+      if (disposed()) return detach();
+      last = { x: e.clientX, y: e.clientY };
+      moveChip(e.clientX, e.clientY);
+      const world = toWorld(e.clientX, e.clientY);
+      const z = zoneAt(e.clientX, e.clientY, world);
+      applyZone(z, world);
+      chip2.classList.toggle("axdb-out", zone.kind === "home" || zone.kind === "off" || zone.kind === "board" && (!leg || landingHidden()));
+      api.render();
+    };
+    const done = (changed, kind) => {
+      disarmGlideSoon();
+      enforceBoardHeight();
+      persistLayouts();
+      api.renderNow();
+      options.onGesture?.({ type: kind, kind: "move", nodeId: pageId, changed });
+    };
+    const finish = (commit) => {
+      detach();
+      chip2.remove();
+      hideOverlay();
+      plan.markDrop(null, null);
+      setTearing(null);
+      if (disposed()) return;
+      const world = toWorld(last.x, last.y);
+      const z = commit ? zoneAt(last.x, last.y, world) : { kind: "home" };
+      if (z.kind !== "root") undoInsertRows();
+      if (!commit || z.kind === "home" || z.kind === "off" || z.kind === "root" && !ensureLeg(world, null) || z.kind === "board" && (!ensureLeg(world, z.peer ?? null) || landingHidden())) {
+        undoSplitPreview();
+        leg?.abort();
+        done(false, "cancel");
+        return;
+      }
+      if (z.kind === "reorder") {
+        undoSplitPreview();
+        leg?.abort();
+        const cmds = plan.reorder(z.index);
+        const changed = cmds.length > 0 ? execute("Reorder tab", cmds) : false;
+        done(changed, changed ? "commit" : "cancel");
+        return;
+      }
+      if (z.kind === "strip" || z.kind === "join") {
+        undoSplitPreview();
+        const index = z.kind === "strip" ? z.index : plan.dropIndex(z.target.id, last.x, last.y);
+        leg?.abort();
+        const planned2 = plan.join(z.target.id, index, group.id);
+        done(execute("Move tab", [...planned2.move, ...planned2.collapse]), "commit");
+        return;
+      }
+      if (z.kind === "split") {
+        hideOverlay();
+        plan.markDrop(null, null);
+        if (!previewSplit(z, world)) {
+          leg?.abort();
+          const planned3 = plan.join(z.target.id, plan.dropIndex(z.target.id, last.x, last.y), group.id);
+          done(execute("Move tab", [...planned3.move, ...planned3.collapse]), "commit");
+          return;
+        }
+        const fin2 = leg?.finalize() ?? null;
+        const halved = !!split && !!eng().getItem(z.target.id);
+        split = null;
+        if (!fin2 || !halved) {
+          leg?.abort();
+          done(false, "cancel");
+          return;
+        }
+        const planned2 = plan.commands(fin2.cell, fin2.rect, group.id);
+        const changed = execute("Split group", [...fin2.commands, ...planned2.move, ...planned2.collapse]);
+        done(changed, "commit");
+        return;
+      }
+      if (z.kind === "root") realizeDock(z, world);
+      else if (zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
+      hideOverlay();
+      plan.markDrop(null, null);
+      const fin = leg?.finalize() ?? null;
+      if (!fin) {
+        done(false, "cancel");
+        return;
+      }
+      const planned = plan.commands(fin.cell, fin.rect, leg?.groupId ?? group.id);
+      done(execute(z.kind === "root" ? "Dock tab" : "Move tab out", [...fin.commands, ...planned.move, ...planned.collapse]), "commit");
+    };
+    const onUp = () => finish(true);
+    const onCancel = () => finish(false);
+    const onKey = (e) => {
+      if (e.key === "Escape") finish(false);
+    };
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onCancel, true);
+    window.addEventListener("keydown", onKey, true);
+    return true;
+  };
+  return beginTearOut;
+}
+
 // libs/element/src/lib/dashboard-kit/grid-binder.ts
 function ownsPress(container, diagram, ev, hit) {
   const t = ev.source?.target;
@@ -196001,7 +196453,6 @@ function ownsPress(container, diagram, ev, hit) {
   }
   return true;
 }
-var TEAR_OUT_MIN_ROWS = 2;
 var BOARD_REGISTRY = /* @__PURE__ */ new WeakMap();
 var EMPTY_SUBTREE = /* @__PURE__ */ new Set();
 function parentPeerOf(container, groupId) {
@@ -196466,7 +196917,6 @@ function bindDashboardGrid(api, group, options = {}) {
     const f = frame();
     return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + boardVisualHeight();
   };
-  const EDGE_GRACE = 60;
   const worldInsideGroup = (g, x, y) => {
     const s = sizeOf(g);
     return x >= g.position.x && x <= g.position.x + s.width && y >= g.position.y && y <= g.position.y + s.height;
@@ -197950,433 +198400,28 @@ function bindDashboardGrid(api, group, options = {}) {
   });
   api.container.addEventListener("focusin", keyboard.onFocusIn);
   api.container.addEventListener("keydown", keyboard.onKey);
-  const beginTearOut = (pageId, fromGroupId, ev, plan) => {
-    if (disposed || gesture || slabGesture || isStatic || tearing) return false;
-    const from = diagram.getGroup(fromGroupId);
-    if (!from || !diagram.getGroup(pageId) || !engine.getItem(fromGroupId)) return false;
-    const toWorld = (cx, cy) => {
-      const rect = api.container.getBoundingClientRect();
-      return api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
-    };
-    let leg = null;
-    let legPeer = null;
-    const ensureLeg = (world, peer = null) => {
-      const capPx = dockSpan.h * (rowHeightFor(geom(), rows()) + gap) - gap;
-      const size = { width: plan.size.width, height: Math.min(plan.size.height, capPx) };
-      if (leg && legPeer !== peer) {
-        leg.abort();
-        leg = null;
-      }
-      if (!leg) {
-        leg = peer ? peer.adopt({ id: plan.arrivingId }, world, size, { fit: "shrink", anchor: "top" }) : adopt({ id: plan.arrivingId }, world, size, { fit: "shrink", anchor: "top" });
-        legPeer = leg ? peer : null;
-      }
-      return leg;
-    };
-    const foreignAt = (wx, wy) => {
-      let best = null;
-      for (const p of peersOnCanvas()) {
-        if (p === selfPeer || plan.ownBoards.includes(p.group.id)) continue;
-        if (!p.containsWorld(wx, wy)) continue;
-        if (!best || p.frameArea() < best.frameArea()) best = p;
-      }
-      return best;
-    };
-    const naturalSpan = (() => {
-      const sp = sizeToSpan(plan.size.width, plan.size.height, frame(), geom(), rows());
-      return { w: Math.max(1, Math.min(columns, sp.w)), h: Math.max(TEAR_OUT_MIN_ROWS, sp.h) };
-    })();
-    const dockSpan = (() => {
-      const rows0 = rows();
-      const rect = api.container.getBoundingClientRect();
-      const rh = rowHeightFor(geom(), rows0) + gap;
-      const visible2 = rect.height > 0 && rh > 0 ? Math.max(1, Math.floor((rect.height + gap) / rh)) : rows0;
-      const halfRows = Math.max(TEAR_OUT_MIN_ROWS, Math.ceil(Math.min(rows0, visible2) / 2));
-      const halfCols = Math.max(1, Math.ceil(columns / 2));
-      return { w: Math.min(naturalSpan.w, halfCols), h: Math.min(naturalSpan.h, halfRows) };
-    })();
-    tearing = pageId;
-    const doc = api.container.ownerDocument ?? document;
-    const chip2 = doc.createElement("div");
-    chip2.className = "axdb-drag-chip axdb-tab-chip";
-    chip2.textContent = plan.label;
-    doc.body.appendChild(chip2);
-    const moveChip = (cx, cy) => {
-      chip2.style.left = `${cx + 6}px`;
-      chip2.style.top = `${cy + 6}px`;
-    };
-    moveChip(ev.clientX, ev.clientY);
-    armGlide();
-    api.render();
-    const layer2 = htmlLayer();
-    const area = (g) => {
-      const sz = sizeOf(g);
-      return sz.width * sz.height;
-    };
-    const targets = plan.joinTargets.map((id) => diagram.getGroup(id)).filter((g) => !!g && g.id !== fromGroupId).sort((a, b) => area(a) - area(b));
-    let anchor = null;
-    const inRect2 = (r, wx, wy) => wx >= r.x && wx <= r.x + r.width && wy >= r.y && wy <= r.y + r.height;
-    const targetAt = (wx, wy) => {
-      if (anchor && inRect2(anchor.frame, wx, wy)) return anchor.g;
-      const t = targets.find((x) => worldInsideGroup(x, wx, wy)) ?? null;
-      if (t) leg?.leave();
-      anchor = t ? { g: t, frame: frameOfGroup(t), stripH: plan.stripHeight(t.id) } : null;
-      return t;
-    };
-    const ROOT_TOP = 20;
-    const ROOT_BOTTOM = 20;
-    const ROOT_SIDE = 40;
-    const EDGE_BAND = BESIDE_BAND;
-    const visibleFrame = () => {
-      const rect = api.container.getBoundingClientRect();
-      const o = toWorld(rect.left, rect.top);
-      const u = toWorld(rect.left + 100, rect.top + 100);
-      const sx = 100 / (u.x - o.x || 100);
-      const sy = 100 / (u.y - o.y || 100);
-      const f = frame();
-      const left = rect.left + (f.x - o.x) * sx;
-      const top = rect.top + (f.y - o.y) * sy;
-      const right = left + f.width * sx;
-      const bottom = top + f.height * sy;
-      if (rect.width <= 0 || rect.height <= 0) return { left, top, right, bottom };
-      return { left: Math.max(left, rect.left), top: Math.max(top, rect.top), right: Math.min(right, rect.right), bottom: Math.min(bottom, rect.bottom) };
-    };
-    const clientInsideCanvasGrace = (cx, cy) => {
-      const rect = api.container.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return true;
-      return cx >= rect.left - EDGE_GRACE && cx <= rect.right + EDGE_GRACE && cy >= rect.top - EDGE_GRACE && cy <= rect.bottom + EDGE_GRACE;
-    };
-    const baseRows = () => {
-      const b = leg?.baseline();
-      if (!b) return rowsWithout(plan.arrivingId);
-      let r = 0;
-      for (const c of b.values()) r = Math.max(r, c.y + c.h);
-      return r;
-    };
-    const worldToClient = (wx, wy) => {
-      const rect = api.container.getBoundingClientRect();
-      const o = toWorld(rect.left, rect.top);
-      const u = toWorld(rect.left + 100, rect.top + 100);
-      return { x: rect.left + (wx - o.x) * (100 / (u.x - o.x || 100)), y: rect.top + (wy - o.y) * (100 / (u.y - o.y || 100)) };
-    };
-    const landingHidden = () => {
-      const r = leg?.rect();
-      const rect = api.container.getBoundingClientRect();
-      if (!r || rect.width <= 0 || rect.height <= 0) return false;
-      const tl = worldToClient(r.x, r.y);
-      const br = worldToClient(r.x + r.width, r.y + r.height);
-      return tl.y >= rect.bottom || br.y <= rect.top || tl.x >= rect.right || br.x <= rect.left;
-    };
-    const rootAt = (cx, cy) => {
-      const v = visibleFrame();
-      if (cx < v.left - ROOT_SIDE || cx > v.right + ROOT_SIDE || cy < v.top - ROOT_TOP || cy > v.bottom + ROOT_BOTTOM) return null;
-      const rows2 = Math.max(TEAR_OUT_MIN_ROWS, baseRows());
-      const w = dockSpan.w;
-      const h = dockSpan.h;
-      if (cy - v.top <= ROOT_TOP) return { kind: "root", side: "top", cell: { x: 0, y: 0, w: columns, h } };
-      if (cx - v.left <= ROOT_SIDE) return { kind: "root", side: "left", cell: { x: 0, y: 0, w, h: rows2 } };
-      if (v.right - cx <= ROOT_SIDE) return { kind: "root", side: "right", cell: { x: Math.max(0, columns - w), y: 0, w, h: rows2 } };
-      if (v.bottom - cy <= ROOT_BOTTOM) return { kind: "root", side: "bottom", cell: { x: 0, y: rows2, w: columns, h } };
-      return null;
-    };
-    const rowsWithout = (id) => {
-      let r = 0;
-      for (const it of engine.getItems()) if (it.id !== id) r = Math.max(r, it.y + it.h);
-      return r;
-    };
-    let split = null;
-    const halves = (target, side) => {
-      const live2 = engine.getItem(target.id);
-      const it = split && split.id === target.id ? split.before : live2;
-      if (!it || !live2) return null;
-      if (side === "left" || side === "right") {
-        if (it.w < 2) return null;
-        const a2 = Math.ceil(it.w / 2);
-        const b2 = it.w - a2;
-        return side === "right" ? { keep: { x: it.x, y: it.y, w: a2, h: it.h }, born: { x: it.x + a2, y: it.y, w: b2, h: it.h } } : { keep: { x: it.x + b2, y: it.y, w: a2, h: it.h }, born: { x: it.x, y: it.y, w: b2, h: it.h } };
-      }
-      if (it.h < 2 * TEAR_OUT_MIN_ROWS) return null;
-      const a = Math.ceil(it.h / 2);
-      const b = it.h - a;
-      return side === "bottom" ? { keep: { x: it.x, y: it.y, w: it.w, h: a }, born: { x: it.x, y: it.y + a, w: it.w, h: b } } : { keep: { x: it.x, y: it.y + b, w: it.w, h: a }, born: { x: it.x, y: it.y, w: it.w, h: b } };
-    };
-    const zoneAt = (cx, cy, world) => {
-      const clientInside = clientInsideCanvasGrace(cx, cy);
-      const target = clientInside ? targetAt(world.x, world.y) : null;
-      const root = clientInside ? rootAt(cx, cy) : null;
-      const foreign = foreignAt(world.x, world.y);
-      const tz = resolveTabZone({
-        x: world.x,
-        y: world.y,
-        clientInside,
-        ownStrip: plan.stripIndex(fromGroupId, cx, cy),
-        stripOf: (id) => plan.stripIndex(id, cx, cy),
-        root: root && root.kind === "root" ? { side: root.side } : null,
-        target: target ? {
-          id: target.id,
-          frame: anchor && anchor.g === target ? anchor.frame : frameOfGroup(target),
-          stripHeight: anchor && anchor.g === target ? anchor.stripH : plan.stripHeight(target.id)
-        } : null,
-        home: worldInsideGroup(from, world.x, world.y) ? frameOfGroup(from) : null,
-        homeBand: 0,
-        // on a grid board the whole source frame is home
-        band: EDGE_BAND,
-        canSplit: (_id, side) => !!target && !!halves(target, side),
-        pane: false,
-        foreign: !!foreign && (!worldInsideBoard(world.x, world.y) || foreign.frameArea() < boardArea())
-      });
-      switch (tz.kind) {
-        case "off":
-          return { kind: "off" };
-        case "strip":
-          return { kind: "strip", target, index: tz.index };
-        case "reorder":
-          return { kind: "reorder", index: tz.index };
-        case "root":
-          return root;
-        case "join":
-          return { kind: "join", target };
-        case "split": {
-          const h = halves(target, tz.side);
-          return h ? { kind: "split", target, side: tz.side, ...h } : { kind: "join", target };
-        }
-        case "home":
-          return { kind: "home" };
-        default:
-          return tz.kind === "board" && tz.foreign && foreign ? { kind: "board", peer: foreign } : { kind: "board" };
-      }
-    };
-    const zoneKey = (z) => JSON.stringify(z, (k, v) => k === "target" ? v.id : k === "peer" ? v.group.id : v);
-    let inserted = null;
-    const insertRows = (cell, l) => {
-      if (cell.w < columns) return;
-      inserted = l.baseline();
-      for (const [id, c] of inserted) {
-        const it = engine.getItem(id);
-        if (!it) continue;
-        it.x = c.x;
-        it.y = c.y >= cell.y ? c.y + cell.h : c.y;
-      }
-    };
-    const undoInsertRows = () => {
-      if (!inserted) return;
-      leg?.leave();
-      for (const [id, c] of inserted) {
-        const it = engine.getItem(id);
-        if (it) {
-          it.x = c.x;
-          it.y = c.y;
-        }
-      }
-      inserted = null;
-      project();
-    };
-    let joinEl = null;
-    const showOverlay = (r) => {
-      if (!layer2) return;
-      if (!joinEl) {
-        joinEl = doc.createElement("div");
-        joinEl.className = "axdb-join";
-        layer2.prepend(joinEl);
-      }
-      joinEl.style.left = `${r.x}px`;
-      joinEl.style.top = `${r.y}px`;
-      joinEl.style.width = `${r.width}px`;
-      joinEl.style.height = `${r.height}px`;
-    };
-    const hideOverlay = () => {
-      joinEl?.remove();
-      joinEl = null;
-    };
-    const undoSplitPreview = () => {
-      if (!split) return;
-      const it = engine.getItem(split.id);
-      leg?.leave();
-      if (it) {
-        if (it.x !== split.before.x || it.y !== split.before.y) engine.moveCheck(split.id, split.before.x, split.before.y, { gate: false });
-        if (it.w !== split.before.w || it.h !== split.before.h) engine.resizeCheck(split.id, split.before.w, split.before.h);
-      }
-      split = null;
-      project();
-    };
-    const previewSplit = (z, world) => {
-      const it = engine.getItem(z.target.id);
-      if (!it) return false;
-      const before = { x: it.x, y: it.y, w: it.w, h: it.h };
-      const frameBefore = frameOfGroup(z.target);
-      const l = ensureLeg(world, null);
-      if (!l) return false;
-      split = { id: z.target.id, before, frameBefore, keep: z.keep };
-      if (it.w !== z.keep.w || it.h !== z.keep.h) engine.resizeCheck(z.target.id, z.keep.w, z.keep.h);
-      const now3 = engine.getItem(z.target.id);
-      if (now3 && (now3.x !== z.keep.x || now3.y !== z.keep.y)) engine.moveCheck(z.target.id, z.keep.x, z.keep.y, { gate: false });
-      const ok = l.place(z.born);
-      project();
-      hidePlaceholder();
-      return ok;
-    };
-    const dockOverlayRect = (z) => {
-      const cell = z.side === "bottom" ? { ...z.cell, y: Math.max(0, z.cell.y - z.cell.h) } : z.cell;
-      return cellToRect(cell, frame(), geom(), rows());
-    };
-    const realizeDock = (z, world) => {
-      const l = ensureLeg(world, null);
-      if (!l) return false;
-      l.place(z.cell, true);
-      insertRows(z.cell, l);
-      project();
-      hidePlaceholder();
-      return true;
-    };
-    let zone = { kind: "board" };
-    let key = zoneKey(zone);
-    const applyZone = (z, world) => {
-      const k = zoneKey(z);
-      const same = k === key;
-      key = k;
-      zone = z;
-      if (same) {
-        if (z.kind === "board") ensureLeg(world, z.peer ?? null)?.move(world);
-        return;
-      }
-      undoSplitPreview();
-      undoInsertRows();
-      plan.markDrop(null, null);
-      hideOverlay();
-      switch (z.kind) {
-        case "strip":
-          leg?.leave();
-          showOverlay(frameOfGroup(z.target));
-          plan.markDrop(z.target.id, z.index);
-          break;
-        case "join":
-          leg?.leave();
-          showOverlay(frameOfGroup(z.target));
-          break;
-        case "split":
-          leg?.leave();
-          showOverlay(cellToRect(z.born, frame(), geom(), rows()));
-          break;
-        case "root":
-          leg?.leave();
-          showOverlay(dockOverlayRect(z));
-          break;
-        case "reorder":
-          leg?.leave();
-          plan.markDrop(fromGroupId, z.index);
-          break;
-        case "home":
-        case "off":
-          leg?.leave();
-          break;
-        case "board": {
-          const l = ensureLeg(world, z.peer ?? null);
-          l?.enter(world);
-          break;
-        }
-      }
-    };
-    let last = { x: ev.clientX, y: ev.clientY };
-    const detach = () => {
-      window.removeEventListener("pointermove", onMove, true);
-      window.removeEventListener("pointerup", onUp, true);
-      window.removeEventListener("pointercancel", onCancel, true);
-      window.removeEventListener("keydown", onKey, true);
-    };
-    const onMove = (e) => {
-      if (disposed) return detach();
-      last = { x: e.clientX, y: e.clientY };
-      moveChip(e.clientX, e.clientY);
-      const world = toWorld(e.clientX, e.clientY);
-      const z = zoneAt(e.clientX, e.clientY, world);
-      applyZone(z, world);
-      chip2.classList.toggle("axdb-out", zone.kind === "home" || zone.kind === "off" || zone.kind === "board" && (!leg || landingHidden()));
-      api.render();
-    };
-    const done = (changed, kind) => {
-      disarmGlideSoon();
-      enforceBoardHeight();
-      persistLayouts();
-      api.renderNow();
-      options.onGesture?.({ type: kind, kind: "move", nodeId: pageId, changed });
-    };
-    const finish = (commit) => {
-      detach();
-      chip2.remove();
-      hideOverlay();
-      plan.markDrop(null, null);
-      tearing = null;
-      if (disposed) return;
-      const world = toWorld(last.x, last.y);
-      const z = commit ? zoneAt(last.x, last.y, world) : { kind: "home" };
-      if (z.kind !== "root") undoInsertRows();
-      if (!commit || z.kind === "home" || z.kind === "off" || z.kind === "root" && !ensureLeg(world, null) || z.kind === "board" && (!ensureLeg(world, z.peer ?? null) || landingHidden())) {
-        undoSplitPreview();
-        leg?.abort();
-        done(false, "cancel");
-        return;
-      }
-      if (z.kind === "reorder") {
-        undoSplitPreview();
-        leg?.abort();
-        const cmds = plan.reorder(z.index);
-        const changed = cmds.length > 0 ? execute("Reorder tab", cmds) : false;
-        done(changed, changed ? "commit" : "cancel");
-        return;
-      }
-      if (z.kind === "strip" || z.kind === "join") {
-        undoSplitPreview();
-        const index = z.kind === "strip" ? z.index : plan.dropIndex(z.target.id, last.x, last.y);
-        leg?.abort();
-        const planned2 = plan.join(z.target.id, index, group.id);
-        done(execute("Move tab", [...planned2.move, ...planned2.collapse]), "commit");
-        return;
-      }
-      if (z.kind === "split") {
-        hideOverlay();
-        plan.markDrop(null, null);
-        if (!previewSplit(z, world)) {
-          leg?.abort();
-          const planned3 = plan.join(z.target.id, plan.dropIndex(z.target.id, last.x, last.y), group.id);
-          done(execute("Move tab", [...planned3.move, ...planned3.collapse]), "commit");
-          return;
-        }
-        const fin2 = leg?.finalize() ?? null;
-        const halved = !!split && !!engine.getItem(z.target.id);
-        split = null;
-        if (!fin2 || !halved) {
-          leg?.abort();
-          done(false, "cancel");
-          return;
-        }
-        const planned2 = plan.commands(fin2.cell, fin2.rect, group.id);
-        const changed = execute("Split group", [...fin2.commands, ...planned2.move, ...planned2.collapse]);
-        done(changed, "commit");
-        return;
-      }
-      if (z.kind === "root") realizeDock(z, world);
-      else if (zoneKey(zone) !== zoneKey(z)) applyZone(z, world);
-      hideOverlay();
-      plan.markDrop(null, null);
-      const fin = leg?.finalize() ?? null;
-      if (!fin) {
-        done(false, "cancel");
-        return;
-      }
-      const planned = plan.commands(fin.cell, fin.rect, leg?.groupId ?? group.id);
-      done(execute(z.kind === "root" ? "Dock tab" : "Move tab out", [...fin.commands, ...planned.move, ...planned.collapse]), "commit");
-    };
-    const onUp = () => finish(true);
-    const onCancel = () => finish(false);
-    const onKey = (e) => {
-      if (e.key === "Escape") finish(false);
-    };
-    window.addEventListener("pointermove", onMove, true);
-    window.addEventListener("pointerup", onUp, true);
-    window.addEventListener("pointercancel", onCancel, true);
-    window.addEventListener("keydown", onKey, true);
-    return true;
-  };
+  const beginTearOut = createTearOut(ctx, {
+    columns: () => columns,
+    adopt: (node, world, pxSize, opts) => adopt(node, world, pxSize, opts),
+    boardArea,
+    peersOnCanvas,
+    selfPeer: () => selfPeer,
+    worldInsideBoard,
+    worldInsideGroup,
+    frameOfGroup,
+    execute,
+    project,
+    hidePlaceholder,
+    armGlide,
+    disarmGlideSoon,
+    enforceBoardHeight,
+    persistLayouts,
+    busy: () => !!gesture || !!slabGesture,
+    tearing: () => tearing,
+    setTearing: (id) => {
+      tearing = id;
+    }
+  });
   const beginPaletteDrag = (node, spec, event) => {
     if (disposed || gesture || isStatic) return;
     const chip2 = spec.chip ?? null;
@@ -199766,7 +199811,7 @@ function bindDashboardSplit(api, group, options = {}) {
   api.container.addEventListener("pointermove", onHoverMove);
   api.container.addEventListener("pointerleave", onHoverLeave);
   let tearing = false;
-  const EDGE_GRACE = 60;
+  const EDGE_GRACE2 = 60;
   let pendingBatch = void 0;
   const execute = (name, commands) => {
     if (commands.length === 0) return false;
@@ -199816,7 +199861,7 @@ function bindDashboardSplit(api, group, options = {}) {
     const clientInsideCanvasGrace = (cx, cy) => {
       const rect = api.container.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return true;
-      return cx >= rect.left - EDGE_GRACE && cx <= rect.right + EDGE_GRACE && cy >= rect.top - EDGE_GRACE && cy <= rect.bottom + EDGE_GRACE;
+      return cx >= rect.left - EDGE_GRACE2 && cx <= rect.right + EDGE_GRACE2 && cy >= rect.top - EDGE_GRACE2 && cy <= rect.bottom + EDGE_GRACE2;
     };
     const zoneAt = (cx, cy, w) => {
       const clientInside = clientInsideCanvasGrace(cx, cy);
