@@ -1556,6 +1556,50 @@ export function bindDashboardGrid(
    * come back by themselves when the widget leaves (S2).
    */
   let beside: { id: string; side: BesideSide; from: { x: number; y: number }; frame0: WorldRect; vacated: { x: number; y: number }; row: number } | null = null;
+  /**
+   * A VERTICAL BESIDE, HELD BUT NOT APPLIED (0.4.61). A container's top or
+   * bottom band pushes it a whole row along its own column — and the zone walk
+   * reads the container where it RESTS (0.4.60, which is what stopped the
+   * strip flickering), so the moment the push lands, the painted tabs sit a
+   * row below the only place that accepts them, and a hand following them down
+   * pushes them again. The user met it as "it pushes the entire tab group down
+   * and then I cannot go up to the tab header".
+   *
+   * So a vertical band moves NOTHING while the hand is held: an overlay marks
+   * the cell the widget will take and the container gives way on release — the
+   * rule a tab's dock and split previews have followed since 0.4.42. The LEFT
+   * and RIGHT bands keep their live slide (0.4.48): sideways, a full-width
+   * strip never leaves the hand, and the user missed that slide the one time
+   * it was frozen.
+   */
+  let pendingBeside: { id: string; side: 'top' | 'bottom'; cell: { x: number; y: number }; spans: { w: number; h: number } } | null = null;
+  let joinEl: HTMLElement | null = null;
+  const showJoin = (r: WorldRect): void => {
+    const layer = htmlLayer();
+    if (!layer) return;
+    if (!joinEl || joinEl.parentElement !== layer) {
+      joinEl?.remove();
+      joinEl = document.createElement('div');
+      joinEl.className = 'axdb-join';
+      layer.prepend(joinEl);
+    }
+    joinEl.style.left = `${r.x}px`;
+    joinEl.style.top = `${r.y}px`;
+    joinEl.style.width = `${r.width}px`;
+    joinEl.style.height = `${r.height}px`;
+  };
+  const endPendingBeside = (): void => {
+    pendingBeside = null;
+    joinEl?.remove();
+    joinEl = null;
+  };
+  /** The cell a vertical beside would take: the container's own, or the row under it. Never the pointer's row — the container is not moving. */
+  const pendingCellOf = (containerId: string, side: 'top' | 'bottom', spans: { w: number; h: number }): { x: number; y: number } | null => {
+    const it = engine.getItem(containerId);
+    if (!it) return null;
+    const x = Math.max(0, Math.min(engine.columns - spans.w, it.x));
+    return { x, y: side === 'top' ? it.y : it.y + it.h };
+  };
   const endBeside = (restore: boolean): void => {
     if (!beside) return;
     const it = engine.getItem(beside.id);
@@ -1922,6 +1966,7 @@ export function bindDashboardGrid(
         showRefusal(null, 0, 0);
       }
     }
+    endPendingBeside();
     disarmGlideSoon();
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
@@ -1972,6 +2017,7 @@ export function bindDashboardGrid(
   };
 
   const cancelActiveGesture = (notify = true): void => {
+    endPendingBeside();
     if (gesture?.strip) {
       options.tabDrop?.markDrop(null, null);
       gesture.strip = null;
@@ -2117,6 +2163,7 @@ export function bindDashboardGrid(
       // -- INTO A STRIP: the widget becomes a new tab there, so it leaves
       // this board (survivors settle home) and the strip marks the slot.
       endBeside(true); // a band's shift gives way to the strip: the container comes back
+      endPendingBeside();
       leaveSelf();
       setDim(g, false);
       if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) {
@@ -2135,6 +2182,20 @@ export function bindDashboardGrid(
     // — at the board's edge the container shifts over to make room, live
     // and gliding, like any widget gives way (0.4.48). On THIS board the
     // engine is driven directly; on another board its leg drives it (4a).
+    if (z.kind === 'beside' && !isStatic && z.board.ref === selfPeer && g.subject === 'node' && (z.side === 'top' || z.side === 'bottom')) {
+      // -- A VERTICAL BAND: marked, not applied. Nothing moves until release.
+      if (beside) endBeside(true);
+      const cell = pendingCellOf(z.containerId, z.side, g.spans);
+      if (cell) {
+        leaveSelf();
+        setDim(g, false);
+        pendingBeside = { id: z.containerId, side: z.side, cell, spans: { ...g.spans } };
+        showJoin(cellToRect({ x: cell.x, y: cell.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()));
+        syncPlaceholder();
+        return;
+      }
+    }
+    if (pendingBeside) endPendingBeside(); // the hand left the band: the mark goes
     if (z.kind === 'beside' && !isStatic && z.board.ref === selfPeer) {
       const row = rowOfPoint(ev.world.y);
       if (!z.kept || !beside || beside.row !== row) applyBeside(g, { id: z.containerId, side: z.side }, row);
@@ -2559,6 +2620,13 @@ export function bindDashboardGrid(
       options.onGesture?.({ type: 'commit', kind: g.kind, nodeId: g.id, changed: true });
       return;
     }
+    if (pendingBeside) {
+      // -- REALIZED ON RELEASE: the container held still while the hand chose;
+      // now it gives way, and the commit below reads the settled layout.
+      const p = pendingBeside;
+      endPendingBeside();
+      applyBeside(g, { id: p.id, side: p.side }, p.cell.y);
+    }
     if (g.leg) {
       // -- CROSS-CONTAINER COMMIT: one batch across both boards -----------
       const fin = g.leg.adopted.finalize();
@@ -2809,7 +2877,15 @@ export function bindDashboardGrid(
       strip,
       prev: beside
         ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) }
-        : (g.leg?.adopted.besideState() ?? null), // a beside another board holds for the ghost, through its leg
+        : pendingBeside
+          ? // a VERTICAL band the hand holds: the container never moved, so its own frame is the sticky one
+            {
+              containerId: pendingBeside.id,
+              side: pendingBeside.side,
+              frame0: (() => { const grp = diagram.getGroup(pendingBeside.id); return grp ? frameOfGroup(grp) : cellToRect({ x: pendingBeside.cell.x, y: pendingBeside.cell.y, w: pendingBeside.spans.w, h: pendingBeside.spans.h }, frame(), geom(), rows()); })(),
+              vacated: cellToRect({ x: pendingBeside.cell.x, y: pendingBeside.cell.y, w: pendingBeside.spans.w, h: pendingBeside.spans.h }, frame(), geom(), rows()),
+            }
+          : (g.leg?.adopted.besideState() ?? null), // a beside another board holds for the ghost, through its leg
       maxDepth: nesting,
       ghostDepth: g.subject === 'group' ? 1 + levelsInside(g.id) : 0, // a group's widgets sit one board deeper than wherever it lands
       restFrames: rests,
@@ -3754,6 +3830,11 @@ export function bindDashboardGrid(
         chip?.remove();
         return;
       }
+      if (commit && pendingBeside) {
+        const p = pendingBeside;
+        endPendingBeside();
+        applyBeside(g, { id: p.id, side: p.side }, p.cell.y);
+      } else endPendingBeside();
       if (commit && g.leg) {
         // Dropped into another board (a page, a section): its leg closes with
         // that board's displaced tiles; this board displaced nothing.

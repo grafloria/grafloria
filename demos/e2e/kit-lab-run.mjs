@@ -2506,17 +2506,17 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const ps = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
   const g = await groupRect('tabs', 'panel');
   const left = await rect('tabs', 't-left');
-  // the user's 3440-px gesture on 0.4.48: the chart enters the panel's TOP band in its middle (the panel is pushed down under it) and
+  // the user's 3440-px gesture on 0.4.48: the chart enters the panel's TOP band in its middle (MARKED since 0.4.61, the panel holds still) and
   // carries on along that band into the RIGHT corner — which must turn into "after it": the panel back up and shifted left, the chart at the edge
   // a tenth of the body under the strip: the strip's DOM box is taller than its painted 30 px (the 8-px page inset rides in it), and a hand
   // 9 px under the paint is still "on the strip" to the client-space hit test — the lab's first cut sat there and saw a tab slot, not the band
   const yTop = ps.bottom + (g.h - 30) * 0.1;
-  await startSlide('tabs', '.axdb-slab[data-slab-id="panel"]', 'y'); // the top band pushes the panel DOWN with the glide
+  await startSlide('tabs', '.axdb-slab[data-slab-id="panel"]', 'y'); // …and the panel must NOT move at all while the hand is in that band
   await page.mouse.move(left.x + 40, left.y + 12); await page.mouse.down();
   await page.mouse.move(left.x + 40, yTop, { steps: 6 }); // down first, so the path never crosses the strip
   await page.mouse.move(ps.x + ps.width * 0.5, yTop, { steps: 14 }); await page.waitForTimeout(350);
-  const mid = { panel: await cell('panel'), chart: await cell('t-left'), slide: await readSlide() };
-  await shot('tabs', 'chart-held-on-the-panels-top-band-middle-the-panel-pushed-down');
+  const mid = { panel: await cell('panel'), chart: await cell('t-left'), slide: await readSlide(), join: await page.evaluate(() => !!document.querySelector('#cv-tabs .axdb-join')) };
+  await shot('tabs', 'chart-held-on-the-panels-top-band-middle-the-cell-marked-the-panel-still');
   await startSlide('tabs', '.axdb-slab[data-slab-id="panel"]', 'x'); // the corner brings it back up and shifts it LEFT with the glide
   await page.mouse.move(ps.x + ps.width - 14, yTop, { steps: 10 }); await page.waitForTimeout(400);
   const corner = { panel: await cell('panel'), chart: await cell('t-left'), slide: await readSlide(), ph: await page.evaluate(() => { const p = document.querySelector('#cv-tabs .axdb-ph'); return p ? { on: getComputedStyle(p).display !== 'none', refused: p.classList.contains('axdb-ph--no') } : null; }) };
@@ -2528,7 +2528,7 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const p2 = await cell('panel'); const l2 = await cell('t-left');
   const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
   verdict(!!p0 && p0.x === 6 && p0.y === 0 && !!l0 && l0.x === 0
-    && !!mid.panel && mid.panel.x === 6 && mid.panel.y > 0 && !!mid.chart && mid.chart.y === 0 && mid.slide.distinct >= 4 && mid.slide.last > mid.slide.first // the top band: the panel pushed down under the chart, SLIDING
+    && !!mid.panel && mid.panel.x === 6 && mid.panel.y === 0 && mid.chart === null && mid.join === true && mid.slide.distinct === 1 // the top band MARKS its cell (0.4.61): nothing moves, nothing slides
     && !!corner.panel && corner.panel.x === 0 && corner.panel.y === 0 && !!corner.chart && corner.chart.x === 6 && corner.chart.y === 0 && corner.ph?.on === true && corner.ph?.refused === false && corner.slide.distinct >= 4 && corner.slide.last < corner.slide.first // the corner: right, not above, not under — the panel SLID left
     && !!p1 && p1.x === 0 && p1.y === 0 && !!l1 && l1.x === 6 && l1.y === 0 && sane.overlaps === 0
     && same(p2, p0) && same(l2, l0),
@@ -2767,8 +2767,8 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y;
   verdict(onStrip.tab === true && same(onStrip.panel, p0)
     && overshoot.tab === true && same(overshoot.panel, p0)                    // the strip keeps the hand through a small overshoot
-    && below.tab === false && !!below.panel && below.panel.y > p0.y           // well below it means ABOVE the container
-    && back.tab === true && same(back.panel, p0)                              // and the tabs are still where the hand left them
+    && below.tab === false && same(below.panel, p0)                           // well below it means ABOVE the container — MARKED, not applied (0.4.61)
+    && back.tab === true && same(back.panel, p0)                              // and the tabs never moved, so they are still under the hand
     && tabs1.length === 4 && tabs2.length === 3 && sane.overlaps === 0,
     `on the strip: tab ${onStrip.tab} panel ${JSON.stringify(onStrip.panel)} · +5 px: tab ${overshoot.tab} panel ${JSON.stringify(overshoot.panel)} · +24 px: tab ${below.tab} panel ${JSON.stringify(below.panel)} (slab ${below.slabY}) · back on it: tab ${back.tab} panel ${JSON.stringify(back.panel)} · released [${tabs1.join(',')}] ${JSON.stringify(sane)} · undo -> [${tabs2.join(',')}]`);
 }
@@ -2813,6 +2813,56 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     && answers.size === 1 && still[0] === false         // a hand that stopped below the strip stays below it
     && sane.overlaps === 0,
     `${flips} changes of answer over ${marks.length} px of a 1 px/frame hand (tabs from +${entered} to +${left} of the strip's top) · a still hand 55 px below: ${[...answers].join('/')} across ${still.length} frames · ${JSON.stringify(sane)}`);
+}
+
+{
+  begin('L105-a-vertical-band-marks-its-cell-and-moves-NOTHING-until-the-hand-lets-go');
+  await scrollTo('tabs');
+  // The user, after the drop map: "if I drag first into the content area it pushes the entire tab
+  // group down and then I cannot go up to the tab header — it is not calculating the new place of
+  // the header." A top band shoved the container a whole row while the hand held it, and the tab
+  // zone is read where the container RESTS (0.4.60, which is what stopped the flicker), so the
+  // painted tabs ended up a row below the only place that took them — and following them down
+  // pushed them again. A vertical band now marks its cell and applies on release, the rule a tab's
+  // dock and split previews have followed since 0.4.42.
+  const cell = (id) => page.evaluate((id) => window.__lab.tabs.handle.widget(id)?.cell ?? null, id);
+  const look = () => page.evaluate(() => {
+    const s = document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]');
+    const slab = document.querySelector('#cv-tabs .axdb-slab[data-slab-id="panel"]');
+    return { tab: !!s && s.classList.contains('axdb-tabs--drop'), stripY: s ? Math.round(s.getBoundingClientRect().y) : null,
+             slabY: slab ? Math.round(slab.getBoundingClientRect().y) : null, join: !!document.querySelector('#cv-tabs .axdb-join') };
+  });
+  const strip0 = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
+  const p0 = await cell('panel');
+  const rest = await look();
+  const src = await rect('tabs', 't-left');
+  const mid = strip0.x + strip0.width * 0.55;
+  await page.mouse.move(src.x + 40, src.y + 12); await page.mouse.down();
+  await page.mouse.move(src.x + 60, src.y + 20, { steps: 3 });
+  await page.mouse.move(mid, strip0.bottom + 40, { steps: 8 });
+  await page.waitForTimeout(420);
+  const band = { ...(await look()), panel: await cell('panel') };
+  await shot('tabs', 'in-the-top-band-the-cell-is-marked-and-the-panel-holds-still');
+  await page.mouse.move(mid, strip0.bottom + 120, { steps: 6 }); await page.waitForTimeout(420);
+  const deeper = { ...(await look()), panel: await cell('panel') };     // deeper in: still nothing moves
+  await page.mouse.move(mid, strip0.y + strip0.height / 2, { steps: 6 }); await page.waitForTimeout(420);
+  const backOnTabs = { ...(await look()), panel: await cell('panel') }; // the tabs are exactly where they were painted
+  await shot('tabs', 'back-on-the-tabs-which-never-moved');
+  await page.mouse.move(mid, strip0.bottom + 40, { steps: 6 }); await page.waitForTimeout(420);
+  await page.mouse.up(); await page.waitForTimeout(700);
+  const after = { ...(await look()), panel: await cell('panel'), left: await cell('t-left') };
+  await shot('tabs', 'released-the-panel-gives-way-and-the-widget-is-above-it');
+  const sane = await sanity('tabs');
+  await undoAll('tabs', 2);
+  const undone = await cell('panel');
+  const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y;
+  verdict(band.join === true && band.tab === false && same(band.panel, p0) && band.stripY === rest.stripY
+    && deeper.join === true && same(deeper.panel, p0) && deeper.stripY === rest.stripY   // the panel cannot run away down the band
+    && backOnTabs.tab === true && backOnTabs.join === false && same(backOnTabs.panel, p0)
+    && after.join === false && !!after.panel && after.panel.y > p0.y                     // on release it finally gives way
+    && !!after.left && after.left.y < after.panel.y                                      // …with the widget above it
+    && sane.overlaps === 0 && same(undone, p0),
+    `at rest the strip is at ${rest.stripY} · in the band: join ${band.join} panel ${JSON.stringify(band.panel)} strip ${band.stripY} · 80 px deeper: join ${deeper.join} panel ${JSON.stringify(deeper.panel)} strip ${deeper.stripY} · back on the tabs: tab ${backOnTabs.tab} panel ${JSON.stringify(backOnTabs.panel)} · released: panel ${JSON.stringify(after.panel)} widget ${JSON.stringify(after.left)} ${JSON.stringify(sane)} · undo -> ${JSON.stringify(undone)}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
