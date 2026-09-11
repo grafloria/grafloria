@@ -23,6 +23,7 @@
  * the authored size.
  */
 
+import { BESIDE_BAND, resolveTabZone } from './zones';
 import { BatchCommand, Command, type DiagramModel, type GroupModel, type NodeModel } from '@grafloria/engine';
 import { LiveRegionController, registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
 import type { DashboardGridApi, DashboardGridHandle, DashboardGridOptions, TearOutPlan } from './grid-binder';
@@ -1075,29 +1076,47 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       if (rect.width <= 0 || rect.height <= 0) return true;
       return cx >= rect.left - EDGE_GRACE && cx <= rect.right + EDGE_GRACE && cy >= rect.top - EDGE_GRACE && cy <= rect.bottom + EDGE_GRACE;
     };
-    /** The centre third of a container's BODY (below its strip), both axes — the grid board's join zone. */
-    const centreThird = (g: GroupModel, w: { x: number; y: number }): boolean => {
-      const f = frameOfGroup(g);
-      if (!inRect(f, w.x, w.y)) return false;
-      const top = f.y + plan.stripHeight(g.id);
-      const h = Math.max(0, f.y + f.height - top);
-      return w.x >= f.x + f.width / 3 && w.x <= f.x + (2 * f.width) / 3 && w.y >= top + h / 3 && w.y <= top + (2 * h) / 3;
-    };
     const zoneAt = (cx: number, cy: number, w: { x: number; y: number }): Zone => {
-      if (!clientInsideCanvasGrace(cx, cy)) return { kind: 'off' };
-      const own = plan.stripIndex(fromGroupId, cx, cy);
-      if (own !== null) return { kind: 'reorder', index: own };
-      for (const t of targets) {
-        const i = plan.stripIndex(t.id, cx, cy);
-        if (i !== null) return { kind: 'strip', targetId: t.id, index: i };
+      // The ORDER is zones.ts's, shared with the grid board: a strip, the
+      // target's fifth (a pane beside it on that side, the sides taking the
+      // corners) or its middle (a join), home — the source's middle, its own
+      // edges meaning a pane beside itself — then the pane under the pointer.
+      // The fifth replaced the centre third here too (0.4.42's rule, at last
+      // on both boards).
+      const clientInside = clientInsideCanvasGrace(cx, cy);
+      const target = clientInside ? (targets.find((t) => inRect(frameOfGroup(t), w.x, w.y)) ?? null) : null;
+      const paneTarget = clientInside && worldInsideBoard(w.x, w.y) ? dropTargetAt(tree0, w.x, w.y) : null;
+      const tz = resolveTabZone({
+        x: w.x,
+        y: w.y,
+        clientInside,
+        ownStrip: plan.stripIndex(fromGroupId, cx, cy),
+        stripOf: (id) => plan.stripIndex(id, cx, cy),
+        root: null,
+        target: target ? { id: target.id, frame: frameOfGroup(target), stripHeight: plan.stripHeight(target.id) } : null,
+        home: inRect(frameOfGroup(from), w.x, w.y) ? frameOfGroup(from) : null,
+        homeBand: BESIDE_BAND,
+        band: BESIDE_BAND,
+        canSplit: () => true,
+        pane: !!paneTarget,
+        foreign: false,
+      });
+      switch (tz.kind) {
+        case 'off':
+          return { kind: 'off' };
+        case 'strip':
+          return { kind: 'strip', targetId: tz.targetId, index: tz.index };
+        case 'reorder':
+          return { kind: 'reorder', index: tz.index };
+        case 'join':
+          return { kind: 'join', targetId: tz.targetId };
+        case 'split':
+          return { kind: 'pane', target: { id: tz.targetId, side: tz.side, rect: frameOfGroup(target as GroupModel) } };
+        case 'pane':
+          return { kind: 'pane', target: paneTarget as DropTarget };
+        default:
+          return { kind: 'home' };
       }
-      for (const t of targets) if (centreThird(t, w)) return { kind: 'join', targetId: t.id };
-      if (centreThird(from, w)) return { kind: 'home' };
-      if (worldInsideBoard(w.x, w.y)) {
-        const t = dropTargetAt(tree0, w.x, w.y);
-        if (t) return { kind: 'pane', target: t };
-      }
-      return { kind: 'home' };
     };
     const apply = (z: Zone): void => {
       plan.markDrop(z.kind === 'reorder' ? fromGroupId : z.kind === 'strip' ? z.targetId : null, z.kind === 'reorder' || z.kind === 'strip' ? z.index : null);

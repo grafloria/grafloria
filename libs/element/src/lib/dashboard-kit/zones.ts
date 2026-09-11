@@ -218,3 +218,78 @@ function stripHeightOf(roots: ZoneBoard[], containerId: string): number {
   }
   return 0;
 }
+
+// -- TAB drags: a page torn out of its strip, over the same tree ------------
+
+/** A join target as the walk sees it: another tab container, its frame anchored by the binder while the pointer is inside it. */
+export interface TabTarget {
+  id: string;
+  frame: ZoneRect;
+  stripHeight: number;
+}
+
+export interface TabZoneInput {
+  x: number;
+  y: number;
+  /** Inside the visible canvas plus its grace, in CLIENT space: off otherwise, whatever the world point says. */
+  clientInside: boolean;
+  /** The source strip's slot under the pointer (client space), else null. */
+  ownStrip: number | null;
+  /** A target strip's slot under the pointer (client space), else null. */
+  stripOf(targetId: string): number | null;
+  /** The board's own edge band under the pointer (client space) — a dock; null on boards that have none. */
+  root: { side: BesideSide } | null;
+  /** The join target whose frame holds the point, or null. */
+  target: TabTarget | null;
+  /** The source group's frame, when the pointer is inside it. */
+  home: ZoneRect | null;
+  /** The source group's own band: 0 keeps its whole frame "home", a fifth lets its edges mean "beside myself". */
+  homeBand: number;
+  /** The outer fraction of a target's body that splits it (Dockview's fifth). */
+  band: number;
+  /** Whether the target can be halved on that side (a grid target too small refuses; a pane always can). */
+  canSplit(targetId: string, side: BesideSide): boolean;
+  /** A pane insertion exists under the pointer (split boards). */
+  pane: boolean;
+  /** A foreign board lies under the pointer and takes the drop (grid boards). */
+  foreign: boolean;
+}
+
+export type TabZone =
+  | { kind: 'off' }
+  | { kind: 'reorder'; index: number }
+  | { kind: 'strip'; targetId: string; index: number }
+  | { kind: 'root'; side: BesideSide }
+  | { kind: 'join'; targetId: string }
+  | { kind: 'split'; targetId: string; side: BesideSide }
+  | { kind: 'home' }
+  | { kind: 'pane' }
+  | { kind: 'board'; foreign: boolean };
+
+/**
+ * What a pointer means for a TORN-OUT PAGE, in the one order both binders
+ * use: off the canvas, then a strip (the most precise target there is —
+ * a target's, or the source's own for a reorder), then the board's own
+ * edges (Dockview's container edges beat the groups against them), then the
+ * target under the pointer — its outer fifth splits it on that side, the
+ * sides taking the corners, its middle joins it — then home, then a pane, a
+ * foreign board, or this board.
+ */
+export function resolveTabZone(input: TabZoneInput): TabZone {
+  if (!input.clientInside) return { kind: 'off' };
+  const { x, y } = input;
+  if (input.target) {
+    const idx = input.stripOf(input.target.id);
+    if (idx !== null) return { kind: 'strip', targetId: input.target.id, index: idx };
+  } else if (input.ownStrip !== null) return { kind: 'reorder', index: input.ownStrip };
+  if (input.root) return { kind: 'root', side: input.root.side };
+  if (input.target) {
+    const t = input.target;
+    const side = bandOf(t.frame, t.stripHeight, x, y, input.band);
+    if (side && input.canSplit(t.id, side)) return { kind: 'split', targetId: t.id, side };
+    return { kind: 'join', targetId: t.id };
+  }
+  if (input.home && inRect(input.home, x, y) && !bandOf(input.home, 0, x, y, input.homeBand)) return { kind: 'home' };
+  if (input.pane) return { kind: 'pane' };
+  return { kind: 'board', foreign: input.foreign };
+}

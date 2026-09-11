@@ -13,7 +13,7 @@
  *   │     └── 'sec' section inside the page, frame (920,200 260×120) with its own board
  *   └── 'ops'   section        frame (0,420 880×160), whole body = into
  */
-import { BESIDE_BAND, BESIDE_STAY, bandOf, resolve, type Zone, type ZoneBoard, type ZoneContainer } from './zones';
+import { BESIDE_BAND, BESIDE_STAY, bandOf, resolve, resolveTabZone, type TabZoneInput, type Zone, type ZoneBoard, type ZoneContainer } from './zones';
 
 interface Rect {
   x: number;
@@ -157,5 +157,44 @@ describe('zones — stickiness: a beside the hand already holds', () => {
   it('the middle of the original frame is a zone change: into the page, not the band', () => {
     const bottom = { ...prev, side: 'bottom' as const, vacated: { x: 900, y: 480, width: 80, height: 60 } };
     expect(at(1050, 120, { prev: bottom })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // (a point of the page outside the nested section)
+  });
+});
+
+describe('zones — resolveTabZone: a torn-out page, the same order on a grid and on a split board', () => {
+  const T = { id: 't', frame: { x: 600, y: 0, width: 300, height: 400 }, stripHeight: 30 };
+  const base = (over: Partial<TabZoneInput> = {}): TabZoneInput => ({
+    x: 750, y: 200, clientInside: true, ownStrip: null, stripOf: () => null, root: null, target: null,
+    home: null, homeBand: 0, band: BESIDE_BAND, canSplit: () => true, pane: false, foreign: false, ...over,
+  });
+  it('off the canvas is off, whatever the world point says', () => {
+    expect(resolveTabZone(base({ clientInside: false, target: T }))).toEqual({ kind: 'off' });
+  });
+  it('a strip is the most precise target: the target\'s wins, the source\'s own is a reorder', () => {
+    expect(resolveTabZone(base({ target: T, stripOf: (id) => (id === 't' ? 2 : null), root: { side: 'top' } }))).toEqual({ kind: 'strip', targetId: 't', index: 2 });
+    expect(resolveTabZone(base({ ownStrip: 1, home: { x: 0, y: 0, width: 300, height: 400 }, x: 100, y: 10 }))).toEqual({ kind: 'reorder', index: 1 });
+  });
+  it('the board\'s own edge band beats the group against it', () => {
+    expect(resolveTabZone(base({ target: T, root: { side: 'right' }, x: 890, y: 200 }))).toEqual({ kind: 'root', side: 'right' });
+  });
+  it('a target\'s middle joins it; its outer fifth splits it, the sides taking the corners; a split it cannot take joins', () => {
+    expect(resolveTabZone(base({ target: T, x: 750, y: 200 }))).toEqual({ kind: 'join', targetId: 't' });
+    expect(resolveTabZone(base({ target: T, x: 620, y: 200 }))).toEqual({ kind: 'split', targetId: 't', side: 'left' });
+    expect(resolveTabZone(base({ target: T, x: 750, y: 50 }))).toEqual({ kind: 'split', targetId: 't', side: 'top' });
+    expect(resolveTabZone(base({ target: T, x: 890, y: 40 }))).toEqual({ kind: 'split', targetId: 't', side: 'right' }); // the corner
+    expect(resolveTabZone(base({ target: T, x: 750, y: 10 }))).toEqual({ kind: 'join', targetId: 't' }); // the strip rows without a strip hit: the body's business
+    expect(resolveTabZone(base({ target: T, x: 620, y: 200, canSplit: () => false }))).toEqual({ kind: 'join', targetId: 't' });
+    // a fifth, not a third: rx .3 is the middle now
+    expect(resolveTabZone(base({ target: T, x: 690, y: 200 }))).toEqual({ kind: 'join', targetId: 't' });
+  });
+  it('home is the source\'s frame — whole on a grid board, its middle on a split board where its edges mean a pane beside itself', () => {
+    const H = { x: 0, y: 0, width: 300, height: 400 };
+    expect(resolveTabZone(base({ home: H, x: 20, y: 200 }))).toEqual({ kind: 'home' });
+    expect(resolveTabZone(base({ home: H, homeBand: BESIDE_BAND, x: 20, y: 200, pane: true }))).toEqual({ kind: 'pane' });
+    expect(resolveTabZone(base({ home: H, homeBand: BESIDE_BAND, x: 150, y: 200, pane: true }))).toEqual({ kind: 'home' });
+  });
+  it('past all of that: a pane where one exists, a foreign board where one lies under the pointer, else this board', () => {
+    expect(resolveTabZone(base({ pane: true }))).toEqual({ kind: 'pane' });
+    expect(resolveTabZone(base({ foreign: true }))).toEqual({ kind: 'board', foreign: true });
+    expect(resolveTabZone(base())).toEqual({ kind: 'board', foreign: false });
   });
 });

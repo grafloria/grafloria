@@ -506,7 +506,9 @@ render(SPEC2, host);</pre>
       container's bands, then one level down into its active page or its own board, until the deepest board the pointer
       may enter. A static container is never entered, and a <code>nesting</code> option (default 2) bounds how deep a
       drop may go. This is the first kit step of the tile-first model: the same walk will carry group drags and the
-      cross-board commit in the steps after it.</p>
+      cross-board commit in the steps after it. 0.4.51 put a torn-out tab's zones on the same module, for the grid and
+      the split board alike, so the split board finally uses the fifth where it used a third, and a split's corner
+      belongs to the side band there too.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
