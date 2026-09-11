@@ -1587,13 +1587,28 @@ export function bindDashboardGrid(
   let pendingDrop: string | null = null;
   const onMemberAdded = (id: string): void => {
     if (disposed) return;
-    if (pendingDrop && pendingDrop !== id && engine.getItem(pendingDrop) && !(group.members ?? new Set<string>()).has(pendingDrop)) {
-      engine.remove(pendingDrop);
+    // The cell a waiting tile held for an arriving member of ANOTHER id. The
+    // removal settles the board — the tiles the drop pushed float back into
+    // the hole — so the member cannot simply be added there: it collided and
+    // auto-positioned to the left edge (Quantia's "lands on the cell it was
+    // aimed at"). It enters at the bottom edge instead and takes the cell
+    // gatelessly, pushing them down again, all inside this one call.
+    let claim: { x: number; y: number } | null = null;
+    if (pendingDrop && pendingDrop !== id) {
+      const ph = engine.getItem(pendingDrop);
+      if (ph && !(group.members ?? new Set<string>()).has(pendingDrop)) {
+        claim = { x: ph.x, y: ph.y };
+        engine.remove(pendingDrop);
+      }
     }
     pendingDrop = null;
     if (!engine.getItem(id)) {
       const item = itemFor(id);
-      let placed = engine.add(item);
+      let placed = claim ? engine.add({ ...item, x: 0, y: engine.rows(), autoPosition: false }) : engine.add(item);
+      if (placed && claim) {
+        engine.moveCheck(id, claim.x, claim.y, { gate: false, pushSolid: !!placed.solid });
+        placed = engine.getItem(id) ?? placed;
+      }
       if (!placed && capacity !== undefined) {
         // Membership is a document fact (an undo just restored it, say); a
         // bounded board must not strand the node invisible. Lift the capacity

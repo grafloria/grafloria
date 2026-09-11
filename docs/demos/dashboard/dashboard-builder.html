@@ -667,7 +667,7 @@ function buildSpec(views) {
       // already computed. remove() folds them into its own batch; see dropIn()
       // for the one place that still has nowhere to put them.
       onRemoveRequest: (nodeId, displaced) => removeWidget(nodeId, displaced),
-      onDropIn: (node, cell, _displaced, target) => dropIn(node, cell, target),
+      onDropIn: (node, cell, displaced, target) => dropIn(node, cell, target, displaced),
       onGesture: (e) => {
         lastPaletteGestureAt = e.kind === 'palette' ? Date.now() : lastPaletteGestureAt;
         if (e.type === 'commit') {
@@ -751,12 +751,13 @@ function addWidget(kind) {
  *  the placeholder settled on. (`displaced` — the survivors this drop pushed —
  *  is the one thing the API still cannot express: addWidget() has no
  *  counterpart to remove(displaced). Unchanged from the hand-assembled page.) */
-function dropIn(node, cell, target) {
+function dropIn(node, cell, target, displaced) {
   const p = node.__palette;
   // The board the chip was dropped INTO: the view, or a page or section on it
-  // (tile first, step 4a) — addWidget takes a container id as the board.
+  // (tile first, step 4a) — addWidget takes a container id as the board. The
+  // tiles the placeholder pushed aside ride in the same undo step (0.4.54).
   const boardId = target?.boardId ?? H.activeView;
-  const w = H.addWidget({ ...p, x: cell.x, y: cell.y, span: cell.w, rows: cell.h }, boardId);
+  const w = H.addWidget({ ...p, x: cell.x, y: cell.y, span: cell.w, rows: cell.h }, boardId, { displaced });
   if (!w) return;
   setFocus(w.id);
   flash(`dropped ${p.kind} into ${boardId} at column ${cell.x + 1}, row ${cell.y + 1}`);

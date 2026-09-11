@@ -325,9 +325,13 @@ board('pal', 'a PALETTE chip dragged into a tab page lands there — the drop na
   ] },
   { id: 'pal-b', kind: 'kpi', span: 6, rows: 2, x: 0, y: 2, data: { label: 'B', value: '2' } },
 ], binder: { onDropIn: (node, cell, displaced, target) => {
-  // The host adds the widget to the board the drop names — under the chip's own id, so the tile the drop left waiting is taken over, not doubled.
-  (window.__labDrops ||= []).push({ boardId: target?.boardId ?? null, cell });
-  window.__lab.pal.handle.addWidget({ id: node.id, kind: 'kpi', span: cell.w, rows: cell.h, x: cell.x, y: cell.y, data: { label: 'Dropped', value: '★' } }, target?.boardId);
+  (window.__labDrops ||= []).push({ boardId: target?.boardId ?? null, cell, displaced: displaced.length });
+  // Two hosts. The first chip's host adds the widget under the chip's OWN id, so the tile the drop left waiting is taken
+  // over. The second chip's host mints its own id (Quantia's designer does) and passes the drop's `displaced` commands
+  // into the add's own undo step — without them the kit re-reads the board, forgets the push, and the widget
+  // auto-positions into whatever hole is left (kit 0.4.54).
+  if (node.__ownId) window.__lab.pal.handle.addWidget({ id: `own-${node.__ownId}`, kind: 'kpi', span: cell.w, rows: cell.h, x: cell.x, y: cell.y, data: { label: 'Own id', value: '◆' } }, target?.boardId, { displaced });
+  else window.__lab.pal.handle.addWidget({ id: node.id, kind: 'kpi', span: cell.w, rows: cell.h, x: cell.x, y: cell.y, data: { label: 'Dropped', value: '★' } }, target?.boardId);
 } } }, { height: 380 });
 {
   const chip = document.createElement('button');
@@ -335,16 +339,24 @@ board('pal', 'a PALETTE chip dragged into a tab page lands there — the drop na
   chip.textContent = '＋ KPI chip';
   chip.style.cssText = 'margin-left: 12px; font: 600 11px ui-monospace, monospace; cursor: grab; text-transform: none; letter-spacing: 0;';
   document.querySelector('#cv-pal').parentElement.querySelector('.h').appendChild(chip);
+  const chip2 = document.createElement('button');
+  chip2.id = 'pal-chip-own';
+  chip2.textContent = '＋ KPI (own id)';
+  chip2.style.cssText = chip.style.cssText;
+  chip.parentElement.appendChild(chip2);
   let n = 0;
-  chip.addEventListener('pointerdown', (e) => {
+  const press = (ownId) => (e) => {
     if (e.button !== 0) return;
     const binder = window.__lab.pal.handle.binderOf('main');
     if (!binder) return;
     const node = new NodeModel({ id: `pal-new-${++n}`, type: 'widget', position: { x: 0, y: 0 }, size: { width: 120, height: 60, depth: 0 } });
-    const c = chip.cloneNode(true);
+    if (ownId) node.__ownId = n;
+    const c = (ownId ? chip2 : chip).cloneNode(true);
     c.id = '';
     binder.beginPaletteDrag(node, { w: 2, h: 1, chip: c }, e);
-  });
+  };
+  chip.addEventListener('pointerdown', press(false));
+  chip2.addEventListener('pointerdown', press(true));
 }
 board('cap-nested', 'captions two levels down · setCaption live', { sizing: 'grow', rowHeight: 34, widgets: [
   { id: 'outer', title: 'Outer section', span: 12, rows: 10, x: 0, y: 0, columns: 12, caption: true, widgets: [

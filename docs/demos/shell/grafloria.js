@@ -195906,13 +195906,22 @@ function bindDashboardGrid(api, group, options = {}) {
   let pendingDrop = null;
   const onMemberAdded = (id) => {
     if (disposed) return;
-    if (pendingDrop && pendingDrop !== id && engine.getItem(pendingDrop) && !(group.members ?? /* @__PURE__ */ new Set()).has(pendingDrop)) {
-      engine.remove(pendingDrop);
+    let claim = null;
+    if (pendingDrop && pendingDrop !== id) {
+      const ph = engine.getItem(pendingDrop);
+      if (ph && !(group.members ?? /* @__PURE__ */ new Set()).has(pendingDrop)) {
+        claim = { x: ph.x, y: ph.y };
+        engine.remove(pendingDrop);
+      }
     }
     pendingDrop = null;
     if (!engine.getItem(id)) {
       const item = itemFor(id);
-      let placed = engine.add(item);
+      let placed = claim ? engine.add({ ...item, x: 0, y: engine.rows(), autoPosition: false }) : engine.add(item);
+      if (placed && claim) {
+        engine.moveCheck(id, claim.x, claim.y, { gate: false, pushSolid: !!placed.solid });
+        placed = engine.getItem(id) ?? placed;
+      }
       if (!placed && capacity !== void 0) {
         capacity = void 0;
         engine = engineFrom([...engine.getItems().map((i) => ({ ...i })), item]);
@@ -201648,7 +201657,7 @@ function createDashboardHandle(ctx) {
       ctx.apiRef?.renderNow();
     },
     getDragHandle: () => binders.get(ctx.active)?.getDragHandle() ?? (ctx.optionsBase.dragHandle ?? false),
-    addWidget(spec, viewId) {
+    addWidget(spec, viewId, opts) {
       const vid = viewId ?? ctx.active;
       const arr = ctx.boardWidgets.get(vid);
       const model = ctx.apiRef?.getModel();
@@ -201666,7 +201675,9 @@ function createDashboardHandle(ctx) {
       const existing = model.getNode(w.id);
       const node = existing ?? buildWidgetNode(w, ctx.rowHeight);
       if (w.pinned) node.setState({ locked: true });
-      execCommand(new AddWidgetCommand(node, group.id, registry5, !!existing));
+      const add = new AddWidgetCommand(node, group.id, registry5, !!existing);
+      const displaced = opts?.displaced ?? [];
+      execCommand(displaced.length > 0 ? new SequenceCommand("Add widget", [...displaced, add]) : add);
       binders.get(vid)?.sync();
       ctx.apiRef?.renderNow();
       return makeWidgetHandle(w.id);

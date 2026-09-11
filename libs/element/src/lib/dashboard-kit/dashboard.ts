@@ -437,9 +437,15 @@ export interface DashboardHandle {
   /**
    * Add a widget to a view. CREATES the node (you do not pre-build one), wires
    * its metadata, and commits node + membership as ONE undoable step.
-   * Auto-positions when the spec names no cell.
+   * Auto-positions when the spec names no cell. `opts.displaced`: the
+   * commands a palette drop handed `onDropIn` for the tiles the placeholder
+   * pushed aside — folded into the same step, so the widget lands on the cell
+   * the drop showed and undo puts the pushed tiles back with it. Left out,
+   * the board is re-read from the model and the push is forgotten: the new
+   * widget then auto-positions into whatever hole is left (Quantia's "lands
+   * on the cell it was aimed at", element 0.4.54).
    */
-  addWidget(spec: DashboardWidgetSpec, viewId?: string): WidgetHandle | undefined;
+  addWidget(spec: DashboardWidgetSpec, viewId?: string, opts?: { displaced?: Command[] }): WidgetHandle | undefined;
   /**
    * Re-read every board from the model — call after undo/redo, or any
    * out-of-band mutation, so the grid and the projection agree again.
@@ -2089,7 +2095,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       ctx.apiRef?.renderNow();
     },
     getDragHandle: () => binders.get(ctx.active)?.getDragHandle() ?? (ctx.optionsBase.dragHandle ?? false),
-    addWidget(spec, viewId) {
+    addWidget(spec, viewId, opts) {
       const vid = viewId ?? ctx.active;
       // `vid` may name a view OR a container — both are boards with a group,
       // a binder and an authored array.
@@ -2118,8 +2124,13 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       const existing = model.getNode(w.id);
       const node = existing ?? buildWidgetNode(w, ctx.rowHeight);
       if (w.pinned) node.setState({ locked: true });
-      // ONE undoable step, registration included (see AddWidgetCommand).
-      execCommand(new AddWidgetCommand(node, group.id, registry, !!existing));
+      // ONE undoable step, registration included (see AddWidgetCommand). The
+      // tiles a drop pushed aside ride in front of it, in a SEQUENCE: a batch
+      // runs its members across awaits, and the board is re-read right after
+      // this call — the pushed cells must be in the model by then.
+      const add = new AddWidgetCommand(node, group.id, registry, !!existing);
+      const displaced = opts?.displaced ?? [];
+      execCommand(displaced.length > 0 ? new SequenceCommand('Add widget', [...displaced, add]) : add);
 
       binders.get(vid)?.sync();
       ctx.apiRef?.renderNow();

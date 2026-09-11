@@ -3,7 +3,7 @@
  * carries `widgets` a PAGE: one visible at a time, a strip of tabs across the
  * top, the active page persisted. DevExpress ships this as its Tab Container.
  */
-import { CommandManager, DiagramModel, DiagramSerializer, EventBus, NodeModel } from '@grafloria/engine';
+import { CommandManager, DiagramModel, DiagramSerializer, EventBus, NodeModel, type Command } from '@grafloria/engine';
 import { dashboard, type DashboardHandle, type DashboardSpec, type DashboardWidgetSpec } from './dashboard';
 import type { CanvasTool, ToolPointerEvent } from '@grafloria/renderer';
 
@@ -2638,6 +2638,44 @@ describe('TILE FIRST, step 4a: one commit, and the leg carries beside and push',
     expect(fresh?.cell).toEqual(cell);
     expect(on(handle, 'p1', 'pal')).toBeNull();
     expect(pathOf(handle, 'fresh')).toBe('main > side > p1 > fresh');
+  });
+
+  it('a PALETTE drop that PUSHED a widget, followed by the host adding the widget under its OWN id: the new widget takes the cell the drop showed and the pushed one stays pushed', async () => {
+    // Quantia mints its own ids. The first cut removed the waiting tile
+    // before adding the host's, and the removal settled the board with
+    // gravity in between: the pushed widget floated back into the hole,
+    // the new one collided with it and auto-positioned to the left edge —
+    // "it lands on the cell it was aimed at" failed in Quantia's own e2e.
+    const onDropIn = jest.fn();
+    const { api, handle } = up(board({ id: 'ops', title: 'Operations', span: 6, rows: 2, x: 0, y: 4, columns: 6, widgets: [K('orders', 2, 1, 0, 0)] }, { onDropIn }));
+    handle.addWidget({ id: 'trend', kind: 'line', span: 6, rows: 2, x: 0, y: 0 }, 'main'); // the widget the chip is aimed at
+    await settle();
+    expect(handle.widget('trend')!.cell).toEqual({ x: 0, y: 0, w: 6, h: 2 });
+    const binder = handle.binderOf('main')!;
+    const node = new NodeModel({ id: 'pal', type: 'widget', position: { x: 0, y: 0 }, size: { width: 180, height: 60, depth: 0 } });
+    const pe = (type: string, x: number, y: number) => Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }) as unknown as PointerEvent;
+    binder.beginPaletteDrag(node, { w: 2, h: 1 }, pe('pointerdown', 400, 400));
+    window.dispatchEvent(pe('pointermove', 420, 410));
+    const aim = { x: 10 + 3 * 100 - 50 + 100, y: rowY(0) }; // over the trend's middle-right: column 3, row 0
+    window.dispatchEvent(pe('pointermove', aim.x, aim.y));
+    const shown = on(handle, 'main', 'pal')!;
+    expect(shown.y).toBe(0);
+    expect(on(handle, 'main', 'trend')!.y).toBe(1); // pushed under the chip while held
+    window.dispatchEvent(pe('pointerup', aim.x, aim.y));
+    await settle();
+    const [, cell, displaced] = onDropIn.mock.calls[0] as [NodeModel, { x: number; y: number; w: number; h: number }, Command[]];
+    expect(cell).toEqual(shown);
+    expect(displaced.length).toBeGreaterThan(0); // the trend's push, for the host's own step
+    // The host adds ITS widget at that cell, under its own id (Quantia's designer), with the push in the same step.
+    const fresh = handle.addWidget({ id: 'fresh', kind: 'kpi', span: cell.w, rows: cell.h, x: cell.x, y: cell.y }, 'main', { displaced });
+    await settle();
+    expect(fresh?.cell).toEqual(cell); // where the drop showed it, not the left edge
+    expect(on(handle, 'main', 'pal')).toBeNull();
+    expect(handle.widget('trend')!.cell!.y).toBe(cell.y + cell.h); // still pushed under it
+    await cm(api).undo();
+    await settle();
+    expect(handle.widget('fresh')).toBeUndefined();
+    expect(handle.widget('trend')!.cell).toEqual({ x: 0, y: 0, w: 6, h: 2 }); // one step: the add AND the push come back together
   });
 
   it('a PALETTE drag dropped on the view itself still names the view', async () => {
