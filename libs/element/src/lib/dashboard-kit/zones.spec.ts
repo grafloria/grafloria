@@ -13,7 +13,7 @@
  *   │     └── 'sec' section inside the page, frame (920,200 260×120) with its own board
  *   └── 'ops'   section        frame (0,420 880×160), whole body = into
  */
-import { BESIDE_BAND, BESIDE_STAY, bandOf, resolve, resolveTabZone, type TabZoneInput, type Zone, type ZoneBoard, type ZoneContainer } from './zones';
+import { BESIDE_BAND, BESIDE_STAY, bandOf, resolve, resolveTabZone, stripUnder, type TabZoneInput, type Zone, type ZoneBoard, type ZoneContainer } from './zones';
 
 interface Rect {
   x: number;
@@ -186,6 +186,41 @@ describe('zones — stickiness: a beside the hand already holds', () => {
   it('the middle of the original frame is a zone change: into the page, not the band', () => {
     const bottom = { ...prev, side: 'bottom' as const, vacated: { x: 900, y: 480, width: 80, height: 60 } };
     expect(at(1050, 120, { prev: bottom })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // (a point of the page outside the nested section)
+  });
+});
+
+describe('zones — stripUnder: the strip is a target where the container RESTS', () => {
+  const probe = (x: number, y: number, extra: Partial<Parameters<typeof stripUnder>[0]> = {}) =>
+    stripUnder({ x, y, roots: tree(), held: null, stay: 0, ...extra });
+  it('the strip rows answer with the container; its body does not', () => {
+    expect(probe(1050, 10)).toEqual({ containerId: 'side' });
+    expect(probe(1050, 29)).toEqual({ containerId: 'side' });
+    expect(probe(1050, 200)).toBeNull(); // the page
+    expect(probe(400, 10)).toBeNull(); // the board beside it
+  });
+  it('a container the gesture PUSHED answers at its rest rows — the rows it is painted in are not a target', () => {
+    // The user's report: a widget aimed at the header pushed the group down,
+    // the strip travelled under the hand, and the answer flickered every frame
+    // between a tab and above the group.
+    const roots = tree();
+    const side = roots[0].children()[0] as ZoneContainer;
+    side.frame = { ...SIDE_FRAME, y: 76 }; // pushed a row down by the top band
+    const restFrames = new Map([['side', SIDE_FRAME]]);
+    expect(probe(1050, 20, { roots, restFrames })).toEqual({ containerId: 'side' }); // where it rests
+    expect(probe(1050, 90, { roots, restFrames })).toBeNull(); // where it is drawn
+  });
+  it('the strip the hand already holds is widened by the stay, and only that one', () => {
+    expect(probe(1050, 36)).toBeNull();
+    expect(probe(1050, 36, { held: 'side', stay: 9 })).toEqual({ containerId: 'side' });
+    expect(probe(1050, 36, { held: 'other', stay: 9 })).toBeNull();
+  });
+  it('a strip deeper in the tree wins over its ancestor\'s', () => {
+    const roots = tree();
+    const page = (roots[0].children()[0] as ZoneContainer).inner as ZoneBoard;
+    const nested = page.children()[0];
+    nested.layout = 'tabs';
+    nested.stripHeight = 30;
+    expect(probe(1050, 210, { roots })).toEqual({ containerId: 'sec' });
   });
 });
 
