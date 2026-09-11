@@ -1,0 +1,185 @@
+<title>Tile First Design</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #f5f6fa; --paper: #ffffff; --ink: #1b2029; --muted: #59627a; --line: #dfe3ee; --soft: #eef1f7;
+    --accent: #3b52d9; --accent-soft: #e9edfc;
+    --lock: #b3123c; --lock-soft: #fdeaf0; --hand: #9a5b00; --hand-soft: #fdf3e0; --engine: #0f7a3d; --engine-soft: #e6f5ec;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --ground: #11131a; --paper: #191d26; --ink: #e9ebf2; --muted: #9aa3b8; --line: #2a3040; --soft: #212633;
+    --accent: #8093f2; --accent-soft: #232a48;
+    --lock: #fb7185; --lock-soft: #331520; --hand: #f0b64d; --hand-soft: #2e2513; --engine: #4ade80; --engine-soft: #16281d;
+  } }
+  :root[data-theme="dark"] {
+    --ground: #11131a; --paper: #191d26; --ink: #e9ebf2; --muted: #9aa3b8; --line: #2a3040; --soft: #212633;
+    --accent: #8093f2; --accent-soft: #232a48;
+    --lock: #fb7185; --lock-soft: #331520; --hand: #f0b64d; --hand-soft: #2e2513; --engine: #4ade80; --engine-soft: #16281d;
+  }
+  body { background: var(--ground); color: var(--ink); font: 15px/1.55 var(--sans); }
+  main { max-width: 1000px; margin: 0 auto; padding: 40px 28px 90px; }
+  .eyebrow { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  h1 { font-size: 34px; line-height: 1.12; letter-spacing: -.02em; margin: 0 0 8px; text-wrap: balance; }
+  h2 { font-size: 19px; letter-spacing: -.01em; margin: 44px 0 10px; padding-top: 16px; border-top: 1px solid var(--line); }
+  h3 { font-size: 15px; margin: 22px 0 6px; }
+  .lede { color: var(--muted); font-size: 17px; max-width: 66ch; margin: 0 0 6px; }
+  p { max-width: 72ch; }
+  code { font: 12.5px var(--mono); background: var(--soft); padding: 1px 5px; border-radius: 4px; }
+  .verdict { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin: 18px 0 0; }
+  .verdict div { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .verdict .k { font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .verdict .v { font-size: 14px; }
+  .wrap { overflow-x: auto; margin-top: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 11px; border-bottom: 1px solid var(--line); }
+  th { font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); background: var(--soft); }
+  tr:last-child td { border-bottom: 0; }
+  td.n { font-weight: 600; }
+  table.audit th:nth-child(1) { width: 22%; } table.audit th:nth-child(2) { width: 50%; } table.audit th:nth-child(3) { width: 28%; }
+  .ref { font: 500 11px var(--mono); color: var(--muted); white-space: nowrap; }
+  .tag { display: inline-block; font: 600 10.5px/1 var(--mono); letter-spacing: .04em; padding: 4px 7px; border-radius: 4px; white-space: nowrap; }
+  .t-engine { background: var(--engine-soft); color: var(--engine); }
+  .t-lock { background: var(--lock-soft); color: var(--lock); }
+  .t-hand { background: var(--hand-soft); color: var(--hand); }
+  .t-into { background: var(--accent-soft); color: var(--accent); }
+  figure { margin: 14px 0 0; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  figcaption { font-size: 13.5px; color: var(--muted); margin-top: 10px; max-width: 80ch; }
+  figcaption b { color: var(--ink); font-weight: 600; }
+  svg { width: 100%; height: auto; display: block; }
+  svg text { font-family: var(--sans); }
+  svg .m { font-family: var(--mono); letter-spacing: .04em; }
+  ol.steps, ul.plain { padding-left: 20px; max-width: 76ch; } ol.steps li, ul.plain li { margin: 7px 0; }
+  .decision { background: var(--hand-soft); border-left: 3px solid var(--hand); padding: 10px 14px; border-radius: 0 8px 8px 0; max-width: 76ch; margin: 10px 0; font-size: 14px; }
+  .decision b { color: var(--ink); }
+  pre { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font: 12.5px/1.5 var(--mono); overflow-x: auto; max-width: 100%; }
+</style>
+<main>
+  <div class="eyebrow">Grafloria Dashboards · the drag model · checked against element 0.4.47 and engine 0.3.7</div>
+  <h1>Tile first: the design, checked line by line against the code</h1>
+  <p class="lede">The plan was "a container is a tile first, zones on top, one gesture, one commit". Three readers went through the engine, the grid binder, the split binder and the container mounting before anything gets built. The model holds. Six of my assumptions did not, and the size I gave you was wrong.</p>
+
+  <div class="verdict">
+    <div><div class="k">The model</div><div class="v">Holds. A group is already an engine tile; the lock and a parallel command class are the only things that make it different.</div></div>
+    <div><div class="k">Assumptions that failed</div><div class="v">Six, all listed below with the line that contradicts them. Two are behaviour changes you decide; four are engineering the plan must include.</div></div>
+    <div><div class="k">Engine work</div><div class="v">Four small additions, each unit-tested in the engine's own spec, none of which exists today.</div></div>
+    <div><div class="k">Size</div><div class="v">Two to three weeks, not three to four days. The split binder is further behind than I assumed and the gesture machinery is four machines, not two.</div></div>
+  </div>
+
+  <h2>1. What the code does, against what the plan assumed</h2>
+  <div class="wrap"><table class="audit">
+    <tr><th>Assumed</th><th>What the code does</th><th>Consequence</th></tr>
+    <tr><td class="n">Unlock a group and the engine pushes it like a widget</td><td>True, and more: unlocked tiles are also packed. With gravity on (every board runs <code>float:false</code>), an unlocked group climbs into any space above it during a gesture. Groups skip that today only because they are locked. <span class="ref">grid-pack-engine.ts 807–831 · grid-binder.ts 952</span></td><td>Decision D1: sections and tab groups compact upward like widgets, or the engine gets a "pushable but not packed" flag.</td></tr>
+    <tr><td class="n">Escape restores everything</td><td>The engine's gesture snapshot holds x and y only. A resize is not undone by cancel, and a removed item cannot be resurrected, so the binder rebuilds a whole engine from its own snapshot on cancel. <span class="ref">grid-pack-engine.ts 148–151, 351–362 · grid-binder.ts 2580–2591</span></td><td>The engine snapshot carries w, h and membership. Cancel becomes one call per engine, which a gesture across several boards needs.</td></tr>
+    <tr><td class="n">A gesture can span N boards</td><td>One live leg at a time; a change of board aborts the previous one; the commit is hard-wired to the source board and the last target. The target board's displaced groups are computed and then dropped from the batch. <span class="ref">grid-binder.ts 2751–2759, 3163–3189, 3172 (fin.groups unused)</span></td><td>A gesture scope that records every engine it touched, cancels all of them, and commits the union of their deltas as one batch. Also fixes the dropped group displacements.</td></tr>
+    <tr><td class="n">Split boards fit the same shape</td><td>The split peer refuses adoption outright, cannot escalate, never receives the tab-drop hooks, still uses centre-third zones where the grid moved to fifths, and has no dock. <span class="ref">split-binder.ts 1718–1741, 55–79, 1079</span></td><td>Parity work is a step of its own: adopt as a pane insert, escalation forwarded to the split's parent, the hooks wired, one band constant for both binders.</td></tr>
+    <tr><td class="n">Two gesture machines to merge</td><td>Four: the tile gesture, the slab gesture for groups, the tear-out, and the palette drag. The strip's empty-space press enters through a fifth route, the member drag, with its own window listeners. <span class="ref">grid-binder.ts 851, 2190, 4159, 4749, 3593</span></td><td>The unified gesture is the largest step. It is also the one that removes the most code.</td></tr>
+    <tr><td class="n">Reuse the resize ratchet for growth on adoption</td><td>The ratchet lives inside the resize branch and carries oscillation logic measured from the press that a drop does not need. Adoption into a full page squeezes the page instead of growing it. <span class="ref">grid-binder.ts 2889–3018, 3411–3419</span></td><td>Growth on adoption is a simpler request: the rows the ghost needs beyond the bound, asked once up the chain and recorded in the scope.</td></tr>
+    <tr><td class="n">A container has its own fit or grow sizing</td><td>A container is always bound <code>sizing:'fit'</code>. Its authored sizing becomes one flag, <code>escalate</code>. There is no per-container setSizing, by design since 0.4.38. <span class="ref">dashboard.ts 2733, 2890, 2051–2058</span></td><td>The design speaks of escalate. "Grow" means "may take rows from its parent"; "fit" means "the pane is the bound".</td></tr>
+    <tr><td class="n">The deepest board under the pointer wins by containment</td><td>It wins by the smallest frame area among registered peers. <span class="ref">grid-binder.ts 3271–3281</span></td><td>The resolve walks the membership tree from the model, where every group carries its parent. Area heuristics go.</td></tr>
+    <tr><td class="n">The engine says why a move failed</td><td>Every result is <code>{ changed }</code>. The binder's nearest-cell fallback cannot tell "refused" from "already there" and asks the item where it is instead. <span class="ref">grid-pack-engine.ts 129–132 · grid-binder.ts 3295–3334</span></td><td>Results carry a reason: locked, bound, or gate.</td></tr>
+    <tr><td class="n">A board's row bound can grow</td><td><code>maxRows</code> and <code>capacity</code> are readonly; the binder casts the type away at four sites. <span class="ref">grid-binder.ts 1006–1010, 1021, 2596, 2915</span></td><td>An engine method sets the bound and records it in the gesture snapshot.</td></tr>
+    <tr><td class="n">Sideways room-making does not exist</td><td>It half exists: under <code>maxRows</code> the push goes right along the row before it goes down, but only rightward and only on bounded boards. <span class="ref">grid-pack-engine.ts 774–798</span></td><td>"Place beside" generalises what is there, in both directions, on every board, with the downward push as the fallback.</td></tr>
+    <tr><td class="n">Static is enforced everywhere</td><td>A static board can still be adopted into by another board's gesture. <span class="ref">grid-binder.ts 3384</span></td><td>The resolve treats a static container as opaque, and adopt refuses on a static board.</td></tr>
+    <tr><td class="n">A depth policy exists</td><td>None. Containers recurse without bound; the only guard is a 32-step cycle check. Two levels are tested. <span class="ref">dashboard.ts 116, 1815–1821, 2739</span></td><td>The depth limit and the cycle rule are inputs of the resolve, with a default of two and tests at three.</td></tr>
+  </table></div>
+
+  <h2>2. The design, corrected</h2>
+  <h3>Engine additions</h3>
+  <p>All four live in <code>grid-pack-engine.ts</code> and are proven in its spec the way the house does it: with a mutation the test must catch. None changes existing behaviour when unused.</p>
+  <div class="wrap"><table>
+    <tr><th>Addition</th><th>Semantics</th><th>Replaces</th></tr>
+    <tr><td class="n">Result reasons</td><td><code>moveCheck</code> and <code>resizeCheck</code> return <code>{ changed, refusedBy?: 'locked' | 'bound' | 'gate' }</code>.</td><td>The guessing in the nearest-cell fallback and the ambiguous "changed:false" comment.</td></tr>
+    <tr><td class="n">Full gesture snapshot</td><td><code>beginGesture</code> records x, y, w, h, the bound, and the item set. <code>cancelGesture</code> restores all of it, including items added or removed during the gesture.</td><td>The binder's whole-engine rebuild on cancel, and the four readonly casts.</td></tr>
+    <tr><td class="n"><code>setBound(rows)</code></td><td>Grows or shrinks the row bound inside a gesture; snapshotted like a cell.</td><td>The casts. Also the engine half of "ensure rows".</td></tr>
+    <tr><td class="n"><code>placeBeside(id, neighbour, side, row)</code></td><td>Computes the cell next to the neighbour at the given row; if it is off the board, shifts the neighbour sideways by the mover's span; if the shift has no room, falls back to the normal downward push. Returns which of the three it did.</td><td>The by-hand cell arithmetic and the sideways shift in the binder, and the rightward-only push under <code>maxRows</code> becomes a special case of it.</td></tr>
+  </table></div>
+  <div class="decision"><b>D1, yours:</b> with groups unlocked, gravity packs them upward like widgets during a gesture. That is the literal "tile first" answer and what gridstack does. If you want sections to hold their row, the engine gets one more flag, <code>packed:false</code>, meaning pushable but never climbing. Either is a one-line engine rule; the difference is felt on every board with a gap above a section.</div>
+
+  <h3>The resolve: one recursive function over the membership tree</h3>
+  <figure>
+    <svg viewBox="0 0 720 300" role="img" aria-label="Nested squares: the root board, a tab container, its active page, and a grid container inside the page; the resolve descends through the middles and answers strip or beside one level up">
+      <rect x="12" y="12" width="440" height="276" rx="8" fill="var(--soft)" stroke="var(--line)"/>
+      <text x="24" y="30" class="m" font-size="9" fill="var(--muted)">ROOT BOARD · engine 1</text>
+      <rect x="28" y="40" width="96" height="60" rx="4" fill="var(--paper)" stroke="var(--engine)"/><text x="36" y="56" font-size="10" font-weight="600" fill="var(--ink)">NPS</text>
+      <!-- A: tab container -->
+      <rect x="140" y="40" width="300" height="236" rx="6" fill="var(--accent-soft)" stroke="var(--engine)" stroke-width="1.5"/>
+      <rect x="140" y="40" width="300" height="24" rx="6" fill="var(--soft)"/><rect x="140" y="52" width="300" height="12" fill="var(--soft)"/>
+      <rect x="140" y="40" width="300" height="24" rx="6" fill="var(--accent)" opacity=".16"/>
+      <text x="148" y="56" font-size="9.5" font-weight="600" fill="var(--ink)">Filters  Alerts</text>
+      <text x="434" y="56" class="m" font-size="8.5" font-weight="600" fill="var(--accent)" text-anchor="end">STRIP → TAB IN A</text>
+      <rect x="140" y="64" width="34" height="212" fill="var(--hand)" opacity=".14"/><rect x="406" y="64" width="34" height="212" fill="var(--hand)" opacity=".14"/>
+      <text x="157" y="170" class="m" font-size="8" font-weight="600" fill="var(--hand)" text-anchor="middle" transform="rotate(-90 157 170)">BESIDE A · ON ENGINE 1</text>
+      <text x="423" y="170" class="m" font-size="8" font-weight="600" fill="var(--hand)" text-anchor="middle" transform="rotate(90 423 170)">BESIDE A · ON ENGINE 1</text>
+      <text x="290" y="82" class="m" font-size="8.5" fill="var(--muted)" text-anchor="middle">A · tab container · a tile of engine 1</text>
+      <!-- page -->
+      <rect x="182" y="90" width="216" height="176" rx="4" fill="none" stroke="var(--muted)" stroke-dasharray="4 3"/>
+      <text x="290" y="104" class="m" font-size="8.5" fill="var(--muted)" text-anchor="middle">ACTIVE PAGE · engine 2</text>
+      <rect x="192" y="112" width="70" height="44" rx="4" fill="var(--paper)" stroke="var(--engine)"/><text x="199" y="126" font-size="9" font-weight="600" fill="var(--ink)">Region</text>
+      <!-- B: grid container inside the page -->
+      <rect x="192" y="166" width="196" height="90" rx="6" fill="var(--accent-soft)" stroke="var(--engine)" stroke-width="1.5"/>
+      <text x="290" y="180" class="m" font-size="8.5" fill="var(--muted)" text-anchor="middle">B · section · a tile of engine 2</text>
+      <rect x="192" y="166" width="24" height="90" fill="var(--hand)" opacity=".14"/><rect x="364" y="166" width="24" height="90" fill="var(--hand)" opacity=".14"/>
+      <rect x="216" y="190" width="148" height="60" fill="var(--accent)" opacity=".2"/>
+      <text x="290" y="216" class="m" font-size="9" font-weight="600" fill="var(--accent)" text-anchor="middle">INTO B → PLAIN ON ENGINE 3</text>
+      <text x="290" y="230" class="m" font-size="7.5" fill="var(--accent)" text-anchor="middle">grows? ask engine 2, then 1</text>
+      <text x="204" y="211" class="m" font-size="7.5" font-weight="600" fill="var(--hand)" text-anchor="middle" transform="rotate(-90 204 211)">BESIDE B</text>
+      <!-- scope -->
+      <rect x="470" y="12" width="238" height="276" rx="8" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="484" y="32" class="m" font-size="9" font-weight="600" fill="var(--muted)">THE WALK, FOR A POINTER IN B'S MIDDLE</text>
+      <text x="484" y="56" font-size="11" fill="var(--ink)">1  root: child A contains it → A's zones</text>
+      <text x="484" y="74" font-size="11" fill="var(--ink)">2  A: not strip, not band → descend</text>
+      <text x="484" y="92" font-size="11" fill="var(--ink)">3  page: child B contains it → B's zones</text>
+      <text x="484" y="110" font-size="11" fill="var(--ink)">4  B: middle → descend</text>
+      <text x="484" y="128" font-size="11" fill="var(--ink)">5  engine 3: no child → plain cell</text>
+      <text x="484" y="160" class="m" font-size="9" font-weight="600" fill="var(--muted)">THE GESTURE SCOPE AFTERWARDS</text>
+      <text x="484" y="182" font-size="11" fill="var(--ink)">engine 1  snapshot · NPS removed · A grew?</text>
+      <text x="484" y="200" font-size="11" fill="var(--ink)">engine 2  snapshot · B grew?</text>
+      <text x="484" y="218" font-size="11" fill="var(--ink)">engine 3  snapshot · NPS placed</text>
+      <text x="484" y="246" font-size="11" fill="var(--muted)">cancel: restore 3, 2, 1</text>
+      <text x="484" y="262" font-size="11" fill="var(--muted)">release: one batch of all three</text>
+    </svg>
+    <figcaption><b>Resolve descends; strip and beside answer one level up.</b> The walk follows the model's membership tree, not the registry of boards sorted by area. A tab container has no engine of its own, so "into A" means "the active page's engine". Every engine the walk enters joins the gesture scope with its snapshot, which is what makes Escape and one undo work at any depth.</figcaption>
+  </figure>
+<pre>resolve(board, pointer, ghost, prev):
+  for C in board.childContainers:                # from the model, in membership order
+    if not C.frame.contains(pointer): continue
+    if C.static or depth(C) + ghost.depth &gt; POLICY.depth or C in ghost.subtree:
+      return beside_or_plain(board, C, pointer)  # opaque: never enter
+    z = C.zones(pointer, prev)                   # by layout: strip / band / middle; sticky at the borders
+    if z is STRIP:  return { kind: 'strip',  container: C, index }
+    if z is BESIDE: return { kind: 'beside', on: board, neighbour: C, side, row: board.rowAt(pointer) }
+    return resolve(C.innerBoard, pointer, ghost, prev)   # tabs: the active page; grid: itself; split: the pane under the pointer
+  return { kind: 'plain', on: board, cell: board.cellAt(pointer - ghost.grab) }</pre>
+  <p>Coordinate spaces stay as they are today and for the same reasons: the root's dock bands are measured on the screen, container bands in world space against a frame anchored while the pointer is inside it. Stickiness is the band plus a margin for the zone the pointer already holds, applied at every container border, so a hand resting on a nested edge never bounces between levels.</p>
+
+  <h3>The kit, module by module</h3>
+  <div class="wrap"><table>
+    <tr><th>Module</th><th>Owns</th><th>Deletes</th></tr>
+    <tr><td class="n">zones.ts</td><td><code>resolve</code>, the per-layout zone maps (grid, tabs, split), the depth policy, the cycle rule, hysteresis.</td><td>besideZoneAt, bandOf, the strip check's position in the move handler, peerAt by area, the tear-out's private zoneAt, the split binder's centreThird.</td></tr>
+    <tr><td class="n">drag.ts</td><td>One gesture for a node or a group: press routing, threshold, the carried subtree, zone enter/update/leave, release. The palette drag is the same gesture with an off-board source.</td><td>GestureState, SlabGesture, beginTearOut, beginPaletteDrag, beginMemberDrag and their window listeners; every <code>.locked</code> toggle.</td></tr>
+    <tr><td class="n">scope.ts</td><td>The engines a gesture touched, in order, each with its snapshot; cancel all; collect all deltas.</td><td>The one-leg adoption bookkeeping, the engine rebuild on cancel, the two-board commit.</td></tr>
+    <tr><td class="n">handlers.ts</td><td>plain, into, beside, strip, split-edge, dock: each moves engines and paints its own preview; none moves pixels.</td><td>applyBeside, the strip branch, previewSplit and realizeDock as separate machines.</td></tr>
+    <tr><td class="n">commit.ts</td><td>Deltas from every engine in the scope to one batch: node commands and group-cell commands together, membership changes, an emptied page's closure inside a sequence.</td><td>The "skips groups" rule and its six construction sites of the group-cell command.</td></tr>
+    <tr><td class="n">project.ts, chrome.ts</td><td>Cells to pixels, the glide and the carried exemption; slabs, backgrounds, captions, strips.</td><td>Nothing; these move out of the 5,200-line file unchanged.</td></tr>
+  </table></div>
+  <p>The split binder implements the same peer interface for real: adopt inserts a leaf under the pointer, escalation forwards to the split's own parent, the tab-drop hooks are accepted, and the band constant is shared. The grid and split binders then differ only in their engine and their zone map.</p>
+
+  <h3>Growth, per level, per mode</h3>
+  <p>When a handler needs rows a board does not have, it calls one function, ensure rows, which asks the board's container to take that many rows from its parent. Each level answers with its own flags: escalate means take them and push the neighbours; fit means re-fit if the frame allows and otherwise refuse, and a refusal turns the into zone into a tinted refusal while the ghost stays with the parent's placement. A split level forwards the request to its parent. Every accepted row is recorded in the scope, so Escape gives it back and the batch commits it. The resize ratchet keeps its own oscillation rule; only its parent call is shared.</p>
+  <div class="decision"><b>D2, yours:</b> a widget that does not fit inside a fit section today slides in beside it through the nearest-cell fallback. Tile first pushes the section down instead. <b>D3:</b> beside lands at the pointer's row, not the container's top row. <b>D4:</b> a grow container takes rows when it adopts a widget; today a full page squeezes its rows instead. Fit keeps squeezing.</div>
+
+  <h2>3. Steps, each shipped green</h2>
+  <ol class="steps">
+    <li><b>Engine 0.3.8.</b> Result reasons, the full gesture snapshot, setBound, placeBeside. Spec additions after the push block and the maxRows block, mutation-proven. No kit change ships with it, so the kit's 813 tests and the lab prove nothing moved.</li>
+    <li><b>zones.ts.</b> The resolve replaces the four zone computations behind the existing behaviour. The tab, beside, adoption and tear-out specs and lab scenarios L72, L73, L79, L80, L85, L90 and L94 are the guard. A three-level fixture is added here, with the depth and cycle tests.</li>
+    <li><b>Unlock.</b> Groups enter the engine with the user's lock only; beside goes through placeBeside; the fifteen lock toggles and the unlock lists are deleted. D1 to D3 land here. The frame sampler from L94 becomes a shared lab assertion on every push and shift scenario.</li>
+    <li><b>drag.ts, scope.ts, commit.ts.</b> The five entry routes become one gesture; the scope spans N engines; the commit unites nodes and groups and stops dropping the target board's group displacements. Property tests over random nestings up to depth three: one engine holds the ghost, no overlaps at any level, cancel restores every snapshot, commit then undo returns to it, no tile moves twice per pointer move.</li>
+    <li><b>Growth and parity.</b> Ensure rows on adoption (D4), static refuses adoption, and the split binder's peer parity. The nested mode matrix runs here: grid, tabs and split crossed with escalate on and off at two levels, plus static.</li>
+    <li><b>The file split</b> happens inside steps 2 to 5, not after: each new module is born as its old code is deleted, so grid-binder.ts ends the work as a thin binder rather than being cut up at the end.</li>
+  </ol>
+
+  <h2>4. Size</h2>
+  <p>Engine, two days. Resolve, two. Unlock and beside, two. The unified gesture with the scope and the commit, four to five: it touches about fifteen hundred lines and is where the four machines die. Growth, static and split parity, three. Nesting tests, the mode matrix and the lab, three. Twelve to seventeen working days with the gates run at every step, which is two to three weeks, not the three to four days I said first. Each step is releasable on its own and each step deletes more than it adds.</p>
+</main>
