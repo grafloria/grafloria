@@ -2511,12 +2511,12 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   // a tenth of the body under the strip: the strip's DOM box is taller than its painted 30 px (the 8-px page inset rides in it), and a hand
   // 9 px under the paint is still "on the strip" to the client-space hit test — the lab's first cut sat there and saw a tab slot, not the band
   const yTop = ps.bottom + (g.h - 30) * 0.1;
-  await startSlide('tabs', '.axdb-slab[data-slab-id="panel"]', 'y'); // …and the panel must NOT move at all while the hand is in that band
+  await startSlide('tabs', '.axdb-slab[data-slab-id="panel"]', 'y'); // the top band pushes the panel DOWN, sliding
   await page.mouse.move(left.x + 40, left.y + 12); await page.mouse.down();
   await page.mouse.move(left.x + 40, yTop, { steps: 6 }); // down first, so the path never crosses the strip
   await page.mouse.move(ps.x + ps.width * 0.5, yTop, { steps: 14 }); await page.waitForTimeout(350);
   const mid = { panel: await cell('panel'), chart: await cell('t-left'), slide: await readSlide(), join: await page.evaluate(() => !!document.querySelector('#cv-tabs .axdb-join')) };
-  await shot('tabs', 'chart-held-on-the-panels-top-band-middle-the-cell-marked-the-panel-still');
+  await shot('tabs', 'chart-held-on-the-panels-top-band-middle-the-panel-pushed-down');
   await startSlide('tabs', '.axdb-slab[data-slab-id="panel"]', 'x'); // the corner brings it back up and shifts it LEFT with the glide
   await page.mouse.move(ps.x + ps.width - 14, yTop, { steps: 10 }); await page.waitForTimeout(400);
   const corner = { panel: await cell('panel'), chart: await cell('t-left'), slide: await readSlide(), ph: await page.evaluate(() => { const p = document.querySelector('#cv-tabs .axdb-ph'); return p ? { on: getComputedStyle(p).display !== 'none', refused: p.classList.contains('axdb-ph--no') } : null; }) };
@@ -2528,7 +2528,7 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const p2 = await cell('panel'); const l2 = await cell('t-left');
   const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
   verdict(!!p0 && p0.x === 6 && p0.y === 0 && !!l0 && l0.x === 0
-    && !!mid.panel && mid.panel.x === 6 && mid.panel.y === 0 && mid.chart === null && mid.join === true && mid.slide.distinct === 1 // the top band MARKS its cell (0.4.61): nothing moves, nothing slides
+    && !!mid.panel && mid.panel.x === 6 && mid.panel.y > 0 && !!mid.chart && mid.chart.y === 0 && mid.join === false && mid.slide.distinct >= 4 // the top band pushes the panel DOWN again (0.4.66), sliding, no overlay
     && !!corner.panel && corner.panel.x === 0 && corner.panel.y === 0 && !!corner.chart && corner.chart.x === 6 && corner.chart.y === 0 && corner.ph?.on === true && corner.ph?.refused === false && corner.slide.distinct >= 4 && corner.slide.last < corner.slide.first // the corner: right, not above, not under — the panel SLID left
     && !!p1 && p1.x === 0 && p1.y === 0 && !!l1 && l1.x === 6 && l1.y === 0 && sane.overlaps === 0
     && same(p2, p0) && same(l2, l0),
@@ -2633,7 +2633,11 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   await undoAll('pal', 1);
   const a2 = await cellOf('pal-a'); const b2 = await cellOf('pal-b'); const gone = own ? await cellOf(own) : null;
   const same = (p, q) => !!p && !!q && p.x === q.x && p.y === q.y && p.w === q.w && p.h === q.h;
-  verdict(!!held.ghost && held.ghost.y === 0 && !!held.a && held.a.y > 0 && drops.length === 1 && drops[0].displaced > 0 && drops[0].boardId === 'main'
+  // The chip lands where the POINTER is, which is A's vertical centre here, not
+  // necessarily row 0: it used to pack to row 0 only because the chip happened
+  // to re-enter the board from the bottom on the way (0.4.66). What matters is
+  // that it pushes A and lands where the placeholder showed.
+  verdict(!!held.ghost && !!held.a && held.a.y > held.ghost.y && drops.length === 1 && drops[0].displaced > 0 && drops[0].boardId === 'main'
     && !!own && same(landed, held.ghost) && !!a1 && a1.y === held.ghost.y + held.ghost.h && sane.overlaps === 0
     && gone === null && same(a2, a0) && same(b2, b0),
     `held: ghost ${JSON.stringify(held.ghost)} A ${JSON.stringify(held.a)} · drop ${JSON.stringify(drops)} · landed ${own} at ${JSON.stringify(landed)} (placeholder said ${JSON.stringify(held.ghost)}), A ${JSON.stringify(a1)} ${JSON.stringify(sane)} · undo -> ${own} ${gone ? 'STILL THERE' : 'gone'}, A ${JSON.stringify(a2)}, B ${JSON.stringify(b2)} (one step for the add and the push)`);
@@ -2767,7 +2771,7 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y;
   verdict(onStrip.tab === true && same(onStrip.panel, p0)
     && overshoot.tab === true && same(overshoot.panel, p0)                    // the strip keeps the hand through a small overshoot
-    && below.tab === false && same(below.panel, p0)                           // well below it means ABOVE the container — MARKED, not applied (0.4.61)
+    && below.tab === false && !!below.panel && below.panel.y > p0.y           // past the strip it means ABOVE the container, which gives way at once (0.4.66)
     && back.tab === true && same(back.panel, p0)                              // and the tabs never moved, so they are still under the hand
     && tabs1.length === 4 && tabs2.length === 3 && sane.overlaps === 0,
     `on the strip: tab ${onStrip.tab} panel ${JSON.stringify(onStrip.panel)} · +5 px: tab ${overshoot.tab} panel ${JSON.stringify(overshoot.panel)} · +24 px: tab ${below.tab} panel ${JSON.stringify(below.panel)} (slab ${below.slabY}) · back on it: tab ${back.tab} panel ${JSON.stringify(back.panel)} · released [${tabs1.join(',')}] ${JSON.stringify(sane)} · undo -> [${tabs2.join(',')}]`);
@@ -2816,117 +2820,55 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
 }
 
 {
-  begin('L105-a-vertical-band-is-a-FIXED-depth-marks-its-cell-and-moves-NOTHING-until-the-hand-lets-go');
+  begin('L105-the-top-band-gives-way-LIVE-like-the-sides-and-the-answer-never-flickers');
   await scrollTo('tabs');
-  // The user, after the drop map: "if I drag first into the content area it pushes the entire tab
-  // group down and then I cannot go up to the tab header — it is not calculating the new place of
-  // the header." A top band shoved the container a whole row while the hand held it, and the tab
-  // zone is read where the container RESTS (0.4.60, which is what stopped the flicker), so the
-  // painted tabs ended up a row below the only place that took them — and following them down
-  // pushed them again. A vertical band now marks its cell and applies on release, the rule a tab's
-  // dock and split previews have followed since 0.4.42.
+  // The band hangs ABOVE the frame (0.4.65), so pushing the container moves it
+  // and its strip AWAY from the hand — the loop that made the answer flicker
+  // in 0.4.60 has nothing to close on. So the push comes back (0.4.66) and with
+  // it the look of every other drop on the board: the container gives way, a
+  // grey placeholder sits in the gap, no overlay, no painted lanes.
   const cell = (id) => page.evaluate((id) => window.__lab.tabs.handle.widget(id)?.cell ?? null, id);
   const look = () => page.evaluate(() => {
     const s = document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]');
     const slab = document.querySelector('#cv-tabs .axdb-slab[data-slab-id="panel"]');
+    const ph = document.querySelector('#cv-tabs .axdb-ph');
     return { tab: !!s && s.classList.contains('axdb-tabs--drop'), stripY: s ? Math.round(s.getBoundingClientRect().y) : null,
-             slabY: slab ? Math.round(slab.getBoundingClientRect().y) : null, join: !!document.querySelector('#cv-tabs .axdb-join') };
+             slabY: slab ? Math.round(slab.getBoundingClientRect().y) : null,
+             join: !!document.querySelector('#cv-tabs .axdb-join'), lanes: document.querySelectorAll('#cv-tabs .axdb-lanes').length,
+             ph: ph && ph.offsetWidth > 2 ? Math.round(ph.getBoundingClientRect().y) : null, refused: !!ph && ph.classList.contains('axdb-ph--no') };
   });
   const strip0 = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
   const p0 = await cell('panel');
-  const rest = await look();
   const src = await rect('tabs', 't-left');
   const mid = strip0.x + strip0.width * 0.55;
   await page.mouse.move(src.x + 40, src.y + 12); await page.mouse.down();
   await page.mouse.move(src.x + 60, src.y + 20, { steps: 3 });
-  await page.mouse.move(mid, strip0.bottom + 10, { steps: 8 });
-  await page.waitForTimeout(420);
+  // this panel is pressed against the top of its canvas, so the lane under the strip is the one it can offer
+  await page.mouse.move(mid, strip0.bottom + 12, { steps: 8 }); await page.waitForTimeout(420);
   const band = { ...(await look()), panel: await cell('panel') };
-  await shot('tabs', 'in-the-top-band-the-cell-is-marked-and-the-panel-holds-still');
-  await page.mouse.move(mid, strip0.bottom + 24, { steps: 6 }); await page.waitForTimeout(420);
-  const deeper = { ...(await look()), panel: await cell('panel') };     // deeper in the band: still nothing moves
-  await page.mouse.move(mid, strip0.bottom + 70, { steps: 6 }); await page.waitForTimeout(420);
-  const past = { ...(await look()), panel: await cell('panel') };       // past the band's fixed depth: the PAGE (0.4.62)
+  await shot('tabs', 'in-the-band-the-panel-gives-way-and-the-placeholder-fills-the-gap');
+  // A HAND IS NEVER STILL: wobble inside the band and the answer must not change
+  const seen = [];
+  for (const d of [0, 2, -1, 3, -2, 1, 0]) { await page.mouse.move(mid + d, strip0.bottom + 12 + d); await page.waitForTimeout(60); const l = await look(); seen.push(`${l.tab}|${l.slabY}|${l.ph}`); }
+  const steady = new Set(seen).size === 1;
   await page.mouse.move(mid, strip0.y + strip0.height / 2, { steps: 6 }); await page.waitForTimeout(420);
-  const backOnTabs = { ...(await look()), panel: await cell('panel') }; // the tabs are exactly where they were painted
-  await shot('tabs', 'back-on-the-tabs-which-never-moved');
-  await page.mouse.move(mid, strip0.bottom + 10, { steps: 6 }); await page.waitForTimeout(420);
+  const onTabs = { ...(await look()), panel: await cell('panel') };   // the tabs, and the panel comes home
+  await page.mouse.move(mid, strip0.bottom + 12, { steps: 6 }); await page.waitForTimeout(420);
   await page.mouse.up(); await page.waitForTimeout(700);
   const after = { ...(await look()), panel: await cell('panel'), left: await cell('t-left') };
-  await shot('tabs', 'released-the-panel-gives-way-and-the-widget-is-above-it');
+  await shot('tabs', 'released-the-widget-is-above-the-panel');
   const sane = await sanity('tabs');
   await undoAll('tabs', 2);
   const undone = await cell('panel');
   const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y;
-  verdict(band.join === true && band.tab === false && same(band.panel, p0) && band.stripY === rest.stripY
-    && deeper.join === true && same(deeper.panel, p0) && deeper.stripY === rest.stripY   // the panel cannot run away down the band
-    && past.join === false && same(past.panel, p0)                                       // and the band STOPS: 70 px under the tabs is the page
-    && backOnTabs.tab === true && backOnTabs.join === false && same(backOnTabs.panel, p0)
-    && after.join === false && !!after.panel && after.panel.y > p0.y                     // on release it finally gives way
-    && !!after.left && after.left.y < after.panel.y                                      // …with the widget above it
+  verdict(band.join === false && band.lanes === 0                                   // no overlay, no painted lanes
+    && band.ph !== null && band.refused === false                                   // the ordinary placeholder, as on any other drop
+    && !!band.panel && band.panel.y > p0.y                                          // …and the panel gave way at once
+    && steady                                                                        // a wobble inside the band changes nothing
+    && onTabs.tab === true && same(onTabs.panel, p0)                                // the tabs still take the hand, panel home
+    && !!after.panel && after.panel.y > p0.y && !!after.left && after.left.y < after.panel.y
     && sane.overlaps === 0 && same(undone, p0),
-    `at rest the strip is at ${rest.stripY} · in the band: join ${band.join} panel ${JSON.stringify(band.panel)} strip ${band.stripY} · 24 px under: join ${deeper.join} · 70 px under (the page): join ${past.join} · back on the tabs: tab ${backOnTabs.tab} panel ${JSON.stringify(backOnTabs.panel)} · released: panel ${JSON.stringify(after.panel)} widget ${JSON.stringify(after.left)} ${JSON.stringify(sane)} · undo -> ${JSON.stringify(undone)}`);
-}
-
-{
-  begin('L106-a-containers-bands-are-SHOWN-while-a-widget-is-over-it-so-a-fixed-depth-can-be-aimed-at');
-  await scrollTo('tabs');
-  // "Nothing moves it any more, but how can I drag something on top of the tab group?"
-  // 0.4.62 made the top and bottom a fixed 30 px — a good target and an impossible guess,
-  // since to put a widget ABOVE a panel you point just BELOW its header, inside what reads
-  // as page content. Nothing moves while the hand is held (0.4.61), so the bands can be
-  // painted and aimed at. The band you are IN still wears the dashed mark on top.
-  const look = () => page.evaluate(() => {
-    const lanesEl = document.querySelector('#cv-tabs .axdb-lanes');
-    const joinEl = document.querySelector('#cv-tabs .axdb-join');
-    const ghostEl = document.querySelector('#cv-tabs .grafloria-node-host.axdb-g') ?? document.querySelector('#cv-tabs .grafloria-node-host[data-node-id="t-left"]');
-    const zi = (e) => (e ? Number(getComputedStyle(e).zIndex) || 0 : 0);
-    const ls = [...document.querySelectorAll('#cv-tabs .axdb-lanes > .axdb-lane')];
-    return {
-      n: ls.length,
-      sides: ls.map((l) => l.getAttribute('data-lane')).sort(),
-      rects: Object.fromEntries(ls.map((l) => { const r = l.getBoundingClientRect(); return [l.getAttribute('data-lane'), { y: Math.round(r.y), h: Math.round(r.height), x: Math.round(r.x), w: Math.round(r.width) }]; })),
-      mark: !!joinEl,
-      tab: !!document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]')?.classList.contains('axdb-tabs--drop'),
-      // A lane under the widget your hand is carrying is no lane at all: the
-      // dragged ghost covers the top one almost completely (0.4.64).
-      overGhost: zi(lanesEl) > zi(ghostEl) && (!joinEl || zi(joinEl) > zi(ghostEl)),
-      zs: `lanes ${zi(lanesEl)} join ${zi(joinEl)} ghost ${zi(ghostEl)}`,
-    };
-  });
-  const strip0 = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
-  const g = await groupRect('tabs', 'panel');
-  const src = await rect('tabs', 't-left');
-  const mid = strip0.x + strip0.width * 0.55;
-  const atRest = await look();
-  await page.mouse.move(src.x + 40, src.y + 12); await page.mouse.down();
-  await page.mouse.move(src.x + 60, src.y + 20, { steps: 3 });
-  await page.mouse.move(src.x + 120, src.y + 40, { steps: 4 }); await page.waitForTimeout(300);
-  const onBoard = await look();                                   // over open board: nothing painted
-  await page.mouse.move(mid, strip0.bottom + (g.h - 30) / 2, { steps: 8 }); await page.waitForTimeout(420);
-  const inPage = await look();                                    // the middle of the page: the four bands appear, none marked
-  await shot('tabs', 'the-four-bands-shown-while-the-widget-is-over-the-page');
-  await page.mouse.move(mid, strip0.bottom + 12, { steps: 6 }); await page.waitForTimeout(420);
-  const inTop = await look();                                     // the top band: shown AND marked
-  await shot('tabs', 'the-top-band-shown-and-marked');
-  await page.mouse.move(mid, strip0.y + strip0.height / 2, { steps: 6 }); await page.waitForTimeout(420);
-  const onTabs = await look();                                    // the strip: a tab, bands still shown
-  await page.mouse.move(src.x + 120, src.y + 40, { steps: 8 }); await page.waitForTimeout(420);
-  const leftAgain = await look();                                 // off the container: gone
-  await page.mouse.up(); await page.waitForTimeout(500);
-  const after = await look();
-  const sane = await sanity('tabs');
-  const four = ['bottom', 'left', 'right', 'top', 'top-inside']; // top twice: above the frame, and under the strip as the fallback
-  const topBand = inTop.rects['top'];
-  verdict(atRest.n === 0 && onBoard.n === 0                                        // never painted outside a drag, or over open board
-    && inPage.n === 5 && JSON.stringify(inPage.sides) === JSON.stringify(four) && inPage.mark === false
-    && inTop.n === 5 && inTop.mark === true                                        // the band you are in wears the mark
-    && inTop.overGhost === true && inPage.overGhost === true                       // …and both are drawn ABOVE the widget being dragged
-    && !!topBand && Math.abs(topBand.y + topBand.h - Math.round(strip0.y)) <= 2     // the band above the frame ENDS at its top edge (0.4.65)
-    && topBand.h >= 24 && topBand.h <= 36                                          // …and is one strip's worth deep, not a fifth
-    && onTabs.tab === true && onTabs.n === 5
-    && leftAgain.n === 0 && after.n === 0 && sane.overlaps === 0,
-    `at rest ${atRest.n} · over board ${onBoard.n} · stacking ${inTop.zs} (over the ghost: ${inTop.overGhost}) · over the page ${inPage.n} [${inPage.sides}] mark ${inPage.mark} · top band ${inTop.n} mark ${inTop.mark} rect ${JSON.stringify(topBand)} (the frame's top edge is ${Math.round(strip0.y)}) · on the tabs ${onTabs.n} tab ${onTabs.tab} · left it ${leftAgain.n} · released ${after.n} · ${JSON.stringify(sane)}`);
+    `in the band: join ${band.join} lanes ${band.lanes} placeholder ${band.ph} refused ${band.refused} panel ${JSON.stringify(band.panel)} (was ${JSON.stringify(p0)}) · wobble steady ${steady} [${[...new Set(seen)].join(' / ')}] · on the tabs: tab ${onTabs.tab} panel ${JSON.stringify(onTabs.panel)} · released ${JSON.stringify(after.panel)} widget ${JSON.stringify(after.left)} ${JSON.stringify(sane)} · undo -> ${JSON.stringify(undone)}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);

@@ -194443,32 +194443,12 @@ var CSS4 = `
    a bar before the tab it lands in front of, or after the last one. */
 .grafloria-html-layer > .axdb-join {
   position: absolute;
-  z-index: 32;
+  z-index: 3;
   pointer-events: none;
   box-sizing: border-box;
   border: 2px dashed var(--axdb-accent, #3b52d9);
   background: var(--axdb-accent-soft, rgba(59, 82, 217, .08));
   border-radius: var(--axdb-rs-radius, 8px);
-}
-/* THE LANES: while a widget is held over a container, its four bands are
-   shown, so "beside it" is a place you can see and aim at rather than a
-   fixed depth you would have to guess. The band you are IN wears the dashed
-   mark (.axdb-join) on top; these only say where the edges are. */
-/* ABOVE the dragged widget (which sits at 30): the whole point of a lane is to
-   be seen at the moment the hand is in it, and the widget your hand is carrying
-   covers the top one almost completely. Both are pointer-events: none, so
-   nothing about the hit testing changes. */
-.grafloria-html-layer > .axdb-lanes { position: absolute; z-index: 31; pointer-events: none; }
-.grafloria-html-layer > .axdb-lanes > .axdb-lane {
-  position: absolute;
-  box-sizing: border-box;
-  /* A SHADED MARGIN, never a line: the dashed outline already means "the cell
-     this will take", and two dashed treatments at once read as one shape. */
-  background: var(--axdb-lane-bg, rgba(59, 82, 217, .13));
-  border-radius: 2px;
-}
-@media (prefers-color-scheme: dark) {
-  .grafloria-html-layer > .axdb-lanes > .axdb-lane { background: var(--axdb-lane-bg, rgba(134, 155, 255, .17)); }
 }
 .axdb-tabs.axdb-tabs--drop { box-shadow: inset 0 -2px 0 var(--axdb-accent, #3b52d9); }
 .axdb-tab.axdb-tab--drop-before { position: relative; }
@@ -195227,48 +195207,6 @@ function stripUnder(p) {
   };
   for (const r of p.roots) visit(r, 0, 0);
   return bestId === null ? null : { containerId: bestId };
-}
-function containerUnder(p) {
-  const { x, y } = p;
-  let best = null;
-  let bestDepth = -1;
-  const visit = (b, dx, dy) => {
-    for (const c of b.children()) {
-      if (p.ghostSubtree?.has(c.id)) continue;
-      const rest = p.restFrames?.get(c.id);
-      const atRest = rest && inRect(rest, x, y) ? rest : null;
-      const frame = atRest ?? c.frame;
-      const tx = atRest ? x : x + dx;
-      const ty = atRest ? y : y + dy;
-      const up = c.topOutside ?? 0;
-      const inOverhang = up > 0 && tx >= frame.x && tx <= frame.x + frame.width && ty < frame.y && ty >= frame.y - up;
-      if (!inRect(frame, tx, ty) && !inOverhang) continue;
-      if (c.band > 0 && !p.homeChain?.has(c.id) && b.depth >= bestDepth) {
-        best = { containerId: c.id, frame, stripHeight: c.stripHeight, band: c.band, ...c.bandY === void 0 ? {} : { bandY: c.bandY }, ...c.topOutside === void 0 ? {} : { topOutside: c.topOutside } };
-        bestDepth = b.depth;
-      }
-      if (c.inner) visit(c.inner, atRest ? c.frame.x - atRest.x : dx, atRest ? c.frame.y - atRest.y : dy);
-    }
-  };
-  for (const r of p.roots) visit(r, 0, 0);
-  return best;
-}
-function bandRects(c) {
-  const bodyY = c.frame.y + c.stripHeight;
-  const bodyH = Math.max(1, c.frame.height - c.stripHeight);
-  const w = Math.max(1, c.frame.width);
-  const side = w * c.band;
-  const depth = c.bandY !== void 0 && c.bandY > 0 ? Math.min(c.bandY, bodyH / 2) : c.band * bodyH;
-  const up = c.topOutside ?? 0;
-  return [
-    { side: "left", name: "left", rect: { x: c.frame.x, y: bodyY, width: side, height: bodyH } },
-    { side: "right", name: "right", rect: { x: c.frame.x + w - side, y: bodyY, width: side, height: bodyH } },
-    // above the frame: the whole width, since no side band is up there to take the corners
-    ...up > 0 ? [{ side: "top", name: "top", rect: { x: c.frame.x, y: c.frame.y - up, width: w, height: up } }] : [],
-    // and under the strip; the sides take the corners here (bandOf tests rx first)
-    { side: "top", name: "top-inside", rect: { x: c.frame.x + side, y: bodyY, width: w - 2 * side, height: depth } },
-    { side: "bottom", name: "bottom", rect: { x: c.frame.x + side, y: bodyY + bodyH - depth, width: w - 2 * side, height: depth } }
-  ];
 }
 function tileBand(f, stripHeight, x, y, band, bandY, topOutside, grow = 1) {
   const up = (topOutside ?? 0) * grow;
@@ -197074,68 +197012,6 @@ function bindDashboardGrid(api, group, options = {}) {
     return { n: y - p.y <= grip, s: p.y + s.height - y <= grip, w: x - p.x <= grip, e: p.x + s.width - x <= grip };
   };
   let beside = null;
-  let pendingBeside = null;
-  let joinEl = null;
-  const showJoin = (r) => {
-    const layer2 = htmlLayer();
-    if (!layer2) return;
-    if (!joinEl || joinEl.parentElement !== layer2) {
-      joinEl?.remove();
-      joinEl = document.createElement("div");
-      joinEl.className = "axdb-join";
-      layer2.prepend(joinEl);
-    }
-    joinEl.style.left = `${r.x}px`;
-    joinEl.style.top = `${r.y}px`;
-    joinEl.style.width = `${r.width}px`;
-    joinEl.style.height = `${r.height}px`;
-  };
-  let lanesEl = null;
-  const showLanes = (c) => {
-    const layer2 = htmlLayer();
-    if (!c || !layer2) {
-      lanesEl?.remove();
-      lanesEl = null;
-      return;
-    }
-    if (!lanesEl || lanesEl.parentElement !== layer2) {
-      lanesEl?.remove();
-      lanesEl = document.createElement("div");
-      lanesEl.className = "axdb-lanes";
-      layer2.prepend(lanesEl);
-    }
-    lanesEl.style.left = `${c.frame.x}px`;
-    lanesEl.style.top = `${c.frame.y}px`;
-    lanesEl.style.width = `${c.frame.width}px`;
-    lanesEl.style.height = `${c.frame.height}px`;
-    const want = bandRects(c);
-    while (lanesEl.childElementCount > want.length) lanesEl.lastElementChild?.remove();
-    while (lanesEl.childElementCount < want.length) {
-      const el2 = document.createElement("div");
-      el2.className = "axdb-lane";
-      lanesEl.appendChild(el2);
-    }
-    want.forEach((b, i) => {
-      const el2 = lanesEl.children[i];
-      el2.setAttribute("data-lane", b.name);
-      el2.style.left = `${b.rect.x - c.frame.x}px`;
-      el2.style.top = `${b.rect.y - c.frame.y}px`;
-      el2.style.width = `${b.rect.width}px`;
-      el2.style.height = `${b.rect.height}px`;
-    });
-  };
-  const endPendingBeside = () => {
-    pendingBeside = null;
-    joinEl?.remove();
-    joinEl = null;
-  };
-  const endLanes = () => showLanes(null);
-  const pendingCellOf = (containerId, side, spans) => {
-    const it = engine.getItem(containerId);
-    if (!it) return null;
-    const x = Math.max(0, Math.min(engine.columns - spans.w, it.x));
-    return { x, y: side === "top" ? it.y : it.y + it.h };
-  };
   const endBeside = (restore) => {
     if (!beside) return;
     const it = engine.getItem(beside.id);
@@ -197401,8 +197277,6 @@ function bindDashboardGrid(api, group, options = {}) {
         showRefusal(null, 0, 0);
       }
     }
-    endPendingBeside();
-    endLanes();
     disarmGlideSoon();
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
@@ -197439,8 +197313,6 @@ function bindDashboardGrid(api, group, options = {}) {
     options.onGesture?.({ type: "commit", kind: g.kind, nodeId: g.id, changed });
   };
   const cancelActiveGesture = (notify = true) => {
-    endPendingBeside();
-    endLanes();
     if (gesture?.strip) {
       options.tabDrop?.markDrop(null, null);
       gesture.strip = null;
@@ -197554,12 +197426,8 @@ function bindDashboardGrid(api, group, options = {}) {
       return true;
     };
     const z = resolveTileZone(g, ev);
-    showLanes(
-      g.subject === "node" && !isStatic ? containerUnder({ x: ev.world.x, y: ev.world.y, roots: lastRoots, restFrames: lastRests, ghostSubtree: EMPTY_SUBTREE, homeChain: homeChain() }) : null
-    );
     if (z.kind === "strip" && options.tabDrop && !isStatic && g.kind !== "palette" && g.subject === "node") {
       endBeside(true);
-      endPendingBeside();
       leaveSelf();
       setDim(g, false);
       if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) {
@@ -197574,19 +197442,6 @@ function bindDashboardGrid(api, group, options = {}) {
       options.tabDrop?.markDrop(null, null);
       g.strip = null;
     }
-    if (z.kind === "beside" && !isStatic && z.board.ref === selfPeer && g.subject === "node" && (z.side === "top" || z.side === "bottom")) {
-      if (beside) endBeside(true);
-      const cell = pendingCellOf(z.containerId, z.side, g.spans);
-      if (cell) {
-        leaveSelf();
-        setDim(g, false);
-        pendingBeside = { id: z.containerId, side: z.side, cell, spans: { ...g.spans } };
-        showJoin(cellToRect({ x: cell.x, y: cell.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()));
-        syncPlaceholder();
-        return;
-      }
-    }
-    if (pendingBeside) endPendingBeside();
     if (z.kind === "beside" && !isStatic && z.board.ref === selfPeer) {
       const row = rowOfPoint(ev.world.y);
       if (!z.kept || !beside || beside.row !== row) applyBeside(g, { id: z.containerId, side: z.side }, row);
@@ -197866,11 +197721,6 @@ function bindDashboardGrid(api, group, options = {}) {
       options.onGesture?.({ type: "commit", kind: g.kind, nodeId: g.id, changed: true });
       return;
     }
-    if (pendingBeside) {
-      const p = pendingBeside;
-      endPendingBeside();
-      applyBeside(g, { id: p.id, side: p.side }, p.cell.y);
-    }
     if (g.leg) {
       const fin = g.leg.adopted.finalize();
       if (!fin) {
@@ -198051,16 +197901,12 @@ function bindDashboardGrid(api, group, options = {}) {
     } else {
       const spanW = engine.getItem(g.id)?.w ?? g.spans.w;
       const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), spanW);
-      if (engine.moveCheck(g.id, cell.x, cell.y, { pushSolid }).changed) project();
+      if (engine.moveCheck(g.id, cell.x, cell.y, { pushSolid, ...g.kind === "palette" ? { gate: false } : {} }).changed) project();
     }
   };
-  let lastRoots = [];
-  let lastRests = /* @__PURE__ */ new Map();
   const resolveTileZone = (g, ev) => {
     const roots = zoneRoots();
     const rests = restFramesOf(g);
-    lastRoots = roots;
-    lastRests = rests;
     let strip = null;
     if (options.tabDrop?.tabIndexAt && !isStatic && g.kind !== "palette" && g.subject === "node") {
       const hit = stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / (clientPerWorld().y || 1), restFrames: rests });
@@ -198077,18 +197923,7 @@ function bindDashboardGrid(api, group, options = {}) {
       y: ev.world.y,
       roots,
       strip,
-      prev: beside ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) } : pendingBeside ? (
-        // a VERTICAL band the hand holds: the container never moved, so its own frame is the sticky one
-        {
-          containerId: pendingBeside.id,
-          side: pendingBeside.side,
-          frame0: (() => {
-            const grp = diagram.getGroup(pendingBeside.id);
-            return grp ? frameOfGroup(grp) : cellToRect({ x: pendingBeside.cell.x, y: pendingBeside.cell.y, w: pendingBeside.spans.w, h: pendingBeside.spans.h }, frame(), geom(), rows());
-          })()
-          // no vacated cell: nothing has moved, so the BAND alone holds the mark
-        }
-      ) : g.leg?.adopted.besideState() ?? null,
+      prev: beside ? { containerId: beside.id, side: beside.side, frame0: beside.frame0, vacated: cellToRect({ x: beside.vacated.x, y: beside.vacated.y, w: g.spans.w, h: g.spans.h }, frame(), geom(), rows()) } : g.leg?.adopted.besideState() ?? null,
       // a beside another board holds for the ghost, through its leg
       maxDepth: nesting,
       ghostDepth: g.subject === "group" ? 1 + levelsInside(g.id) : 0,
@@ -198790,11 +198625,6 @@ function bindDashboardGrid(api, group, options = {}) {
         chip2?.remove();
         return;
       }
-      if (commit && pendingBeside) {
-        const p = pendingBeside;
-        endPendingBeside();
-        applyBeside(g, { id: p.id, side: p.side }, p.cell.y);
-      } else endPendingBeside();
       if (commit && g.leg) {
         const fin = g.leg.adopted.finalize();
         const boardId = g.leg.adopted.groupId;

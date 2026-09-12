@@ -577,6 +577,12 @@ render(SPEC2, host);</pre>
       above a panel means above it. The lane under the tabs stays as the fallback, because a container pressed against
       the top of its canvas has no room above it to offer &mdash; both lanes are painted, and both mean the same thing.
       The tab strip&rsquo;s few pixels of stickiness now reach only down into the body, never up into that band.</p>
+      <p>0.4.66 gives the whole thing back its ordinary look. A container&rsquo;s top and bottom bands push it aside the
+      moment your hand enters them, and a plain grey placeholder fills the space that opens &mdash; the same thing that
+      happens when you hover a widget over any occupied row. The coloured overlay and the shaded lanes are gone; there
+      is nothing special to see, because the container moving <em>is</em> the feedback. That became safe once the band
+      moved above the frame in 0.4.65: pushing the container now moves it <em>away</em> from your hand rather than
+      through it, so the loop that made the answer flicker has nothing to close on. All four edges behave alike.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
