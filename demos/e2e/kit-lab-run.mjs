@@ -2877,13 +2877,21 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   // as page content. Nothing moves while the hand is held (0.4.61), so the bands can be
   // painted and aimed at. The band you are IN still wears the dashed mark on top.
   const look = () => page.evaluate(() => {
+    const lanesEl = document.querySelector('#cv-tabs .axdb-lanes');
+    const joinEl = document.querySelector('#cv-tabs .axdb-join');
+    const ghostEl = document.querySelector('#cv-tabs .grafloria-node-host.axdb-g') ?? document.querySelector('#cv-tabs .grafloria-node-host[data-node-id="t-left"]');
+    const zi = (e) => (e ? Number(getComputedStyle(e).zIndex) || 0 : 0);
     const ls = [...document.querySelectorAll('#cv-tabs .axdb-lanes > .axdb-lane')];
     return {
       n: ls.length,
       sides: ls.map((l) => l.getAttribute('data-lane')).sort(),
       rects: Object.fromEntries(ls.map((l) => { const r = l.getBoundingClientRect(); return [l.getAttribute('data-lane'), { y: Math.round(r.y), h: Math.round(r.height), x: Math.round(r.x), w: Math.round(r.width) }]; })),
-      mark: !!document.querySelector('#cv-tabs .axdb-join'),
+      mark: !!joinEl,
       tab: !!document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]')?.classList.contains('axdb-tabs--drop'),
+      // A lane under the widget your hand is carrying is no lane at all: the
+      // dragged ghost covers the top one almost completely (0.4.64).
+      overGhost: zi(lanesEl) > zi(ghostEl) && (!joinEl || zi(joinEl) > zi(ghostEl)),
+      zs: `lanes ${zi(lanesEl)} join ${zi(joinEl)} ghost ${zi(ghostEl)}`,
     };
   });
   const strip0 = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
@@ -2913,11 +2921,12 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   verdict(atRest.n === 0 && onBoard.n === 0                                        // never painted outside a drag, or over open board
     && inPage.n === 4 && JSON.stringify(inPage.sides) === JSON.stringify(four) && inPage.mark === false
     && inTop.n === 4 && inTop.mark === true                                        // the band you are in wears the mark
+    && inTop.overGhost === true && inPage.overGhost === true                       // …and both are drawn ABOVE the widget being dragged
     && !!topBand && Math.abs(topBand.y - Math.round(strip0.bottom)) <= 2           // the top band starts at the strip's bottom edge
     && topBand.h >= 24 && topBand.h <= 36                                          // …and is one strip's worth deep, not a fifth
     && onTabs.tab === true && onTabs.n === 4
     && leftAgain.n === 0 && after.n === 0 && sane.overlaps === 0,
-    `at rest ${atRest.n} · over board ${onBoard.n} · over the page ${inPage.n} [${inPage.sides}] mark ${inPage.mark} · top band ${inTop.n} mark ${inTop.mark} rect ${JSON.stringify(topBand)} (the strip ends at ${Math.round(strip0.bottom)}) · on the tabs ${onTabs.n} tab ${onTabs.tab} · left it ${leftAgain.n} · released ${after.n} · ${JSON.stringify(sane)}`);
+    `at rest ${atRest.n} · over board ${onBoard.n} · stacking ${inTop.zs} (over the ghost: ${inTop.overGhost}) · over the page ${inPage.n} [${inPage.sides}] mark ${inPage.mark} · top band ${inTop.n} mark ${inTop.mark} rect ${JSON.stringify(topBand)} (the strip ends at ${Math.round(strip0.bottom)}) · on the tabs ${onTabs.n} tab ${onTabs.tab} · left it ${leftAgain.n} · released ${after.n} · ${JSON.stringify(sane)}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);

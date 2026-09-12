@@ -567,6 +567,10 @@ render(SPEC2, host);</pre>
       widget is held over a container its four bands are now shaded, and the clear middle is the page. The band your
       hand is in still wears the dashed outline of the cell it will take. This only became possible once the container
       stopped moving while you hold a widget over it &mdash; a lane that slides away is not a lane you can aim at.</p>
+      <p>0.4.64 draws them where you can see them. The widget under your cursor is taller than the lane it is over, so
+      it covered the top one almost completely: the lane was painted, and invisible at the exact moment you needed it.
+      The lanes and the dashed outline of the cell now sit above the widget being dragged. Neither takes pointer
+      events, so nothing about where a drop lands has changed &mdash; only whether you can see it coming.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
