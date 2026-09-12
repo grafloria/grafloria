@@ -194443,7 +194443,7 @@ var CSS4 = `
    a bar before the tab it lands in front of, or after the last one. */
 .grafloria-html-layer > .axdb-join {
   position: absolute;
-  z-index: 3;
+  z-index: 32;
   pointer-events: none;
   box-sizing: border-box;
   border: 2px dashed var(--axdb-accent, #3b52d9);
@@ -194454,7 +194454,11 @@ var CSS4 = `
    shown, so "beside it" is a place you can see and aim at rather than a
    fixed depth you would have to guess. The band you are IN wears the dashed
    mark (.axdb-join) on top; these only say where the edges are. */
-.grafloria-html-layer > .axdb-lanes { position: absolute; z-index: 2; pointer-events: none; }
+/* ABOVE the dragged widget (which sits at 30): the whole point of a lane is to
+   be seen at the moment the hand is in it, and the widget your hand is carrying
+   covers the top one almost completely. Both are pointer-events: none, so
+   nothing about the hit testing changes. */
+.grafloria-html-layer > .axdb-lanes { position: absolute; z-index: 31; pointer-events: none; }
 .grafloria-html-layer > .axdb-lanes > .axdb-lane {
   position: absolute;
   box-sizing: border-box;
