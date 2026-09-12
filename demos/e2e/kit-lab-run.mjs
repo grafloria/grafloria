@@ -2916,17 +2916,17 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   await page.mouse.up(); await page.waitForTimeout(500);
   const after = await look();
   const sane = await sanity('tabs');
-  const four = ['bottom', 'left', 'right', 'top'];
+  const four = ['bottom', 'left', 'right', 'top', 'top-inside']; // top twice: above the frame, and under the strip as the fallback
   const topBand = inTop.rects['top'];
   verdict(atRest.n === 0 && onBoard.n === 0                                        // never painted outside a drag, or over open board
-    && inPage.n === 4 && JSON.stringify(inPage.sides) === JSON.stringify(four) && inPage.mark === false
-    && inTop.n === 4 && inTop.mark === true                                        // the band you are in wears the mark
+    && inPage.n === 5 && JSON.stringify(inPage.sides) === JSON.stringify(four) && inPage.mark === false
+    && inTop.n === 5 && inTop.mark === true                                        // the band you are in wears the mark
     && inTop.overGhost === true && inPage.overGhost === true                       // …and both are drawn ABOVE the widget being dragged
-    && !!topBand && Math.abs(topBand.y - Math.round(strip0.bottom)) <= 2           // the top band starts at the strip's bottom edge
+    && !!topBand && Math.abs(topBand.y + topBand.h - Math.round(strip0.y)) <= 2     // the band above the frame ENDS at its top edge (0.4.65)
     && topBand.h >= 24 && topBand.h <= 36                                          // …and is one strip's worth deep, not a fifth
-    && onTabs.tab === true && onTabs.n === 4
+    && onTabs.tab === true && onTabs.n === 5
     && leftAgain.n === 0 && after.n === 0 && sane.overlaps === 0,
-    `at rest ${atRest.n} · over board ${onBoard.n} · stacking ${inTop.zs} (over the ghost: ${inTop.overGhost}) · over the page ${inPage.n} [${inPage.sides}] mark ${inPage.mark} · top band ${inTop.n} mark ${inTop.mark} rect ${JSON.stringify(topBand)} (the strip ends at ${Math.round(strip0.bottom)}) · on the tabs ${onTabs.n} tab ${onTabs.tab} · left it ${leftAgain.n} · released ${after.n} · ${JSON.stringify(sane)}`);
+    `at rest ${atRest.n} · over board ${onBoard.n} · stacking ${inTop.zs} (over the ghost: ${inTop.overGhost}) · over the page ${inPage.n} [${inPage.sides}] mark ${inPage.mark} · top band ${inTop.n} mark ${inTop.mark} rect ${JSON.stringify(topBand)} (the frame's top edge is ${Math.round(strip0.y)}) · on the tabs ${onTabs.n} tab ${onTabs.tab} · left it ${leftAgain.n} · released ${after.n} · ${JSON.stringify(sane)}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);

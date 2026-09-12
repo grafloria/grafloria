@@ -1622,7 +1622,7 @@ export function bindDashboardGrid(
     }
     want.forEach((b, i) => {
       const el = lanesEl!.children[i] as HTMLElement;
-      el.setAttribute('data-lane', b.side);
+      el.setAttribute('data-lane', b.name);
       el.style.left = `${b.rect.x - c.frame.x}px`;
       el.style.top = `${b.rect.y - c.frame.y}px`;
       el.style.width = `${b.rect.width}px`;
@@ -2859,6 +2859,11 @@ export function bindDashboardGrid(
             // until 216 px of the fluid demo's page meant "above the whole
             // panel" (0.4.62). The sides keep the fifth.
             bandY: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
+            // …and the TOP band hangs ABOVE the frame, where a hand looking
+            // for "above this panel" actually goes (0.4.65). A panel holding
+            // the board's first row has no row above it to point at, and the
+            // lane under its header is the last place anyone would try.
+            topOutside: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
             inner: innerPeer ? boardRef(innerPeer, depth + 1) : null,
           });
         }

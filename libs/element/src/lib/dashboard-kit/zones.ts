@@ -63,6 +63,17 @@ export interface ZoneContainer {
   band: number;
   /** The TOP and BOTTOM depth in world units, when it is a fixed depth rather than `band` of the body. */
   bandY?: number;
+  /**
+   * How deep the "above me" band hangs ABOVE the frame's top edge, in world
+   * units. 0 or absent: no such band, and no inside top band either.
+   *
+   * A hand looking for "above this panel" goes above it. It used to have to go
+   * BELOW the panel's header instead, into a 30 px lane inside the body, which
+   * is the opposite of where anyone points and reachable only by being told —
+   * "try dragging nps above the tab panel, won't work" (0.4.65). The band now
+   * hangs off the top edge, and the body means the page, all of it.
+   */
+  topOutside?: number;
   /** The board a descent enters: a tab container's ACTIVE page, a section's own board. Null: nothing to enter. */
   inner: ZoneBoard | null;
 }
@@ -208,7 +219,16 @@ export function stripUnder(p: StripProbe): { containerId: string } | null {
       const ty = atRest ? y : y + dy;
       const held = c.id === p.held;
       const pad = held ? p.stay : 0;
-      if (c.stripHeight > 0 && inRect({ x: frame.x, y: frame.y, width: frame.width, height: c.stripHeight }, tx, ty, pad)) {
+      // The stay reaches DOWN into the body and out to the sides, never UP:
+      // above the strip is the band that means "above this container" (0.4.65),
+      // and a strip that kept the hand 9 px into it would eat a third of it.
+      const onStrip =
+        c.stripHeight > 0 &&
+        tx >= frame.x - pad &&
+        tx <= frame.x + frame.width + pad &&
+        ty >= frame.y &&
+        ty <= frame.y + c.stripHeight + pad;
+      if (onStrip) {
         if (bestId === null || held || (!bestHeld && b.depth >= bestDepth)) {
           bestId = c.id;
           bestDepth = b.depth;
@@ -241,6 +261,7 @@ export interface ContainerBands {
   stripHeight: number;
   band: number;
   bandY?: number;
+  topOutside?: number;
 }
 
 /**
@@ -267,9 +288,11 @@ export function containerUnder(p: ContainerProbe): ContainerBands | null {
       const frame = atRest ?? c.frame;
       const tx = atRest ? x : x + dx;
       const ty = atRest ? y : y + dy;
-      if (!inRect(frame, tx, ty)) continue;
+      const up = c.topOutside ?? 0;
+      const inOverhang = up > 0 && tx >= frame.x && tx <= frame.x + frame.width && ty < frame.y && ty >= frame.y - up;
+      if (!inRect(frame, tx, ty) && !inOverhang) continue;
       if (c.band > 0 && !p.homeChain?.has(c.id) && b.depth >= bestDepth) {
-        best = { containerId: c.id, frame, stripHeight: c.stripHeight, band: c.band, ...(c.bandY === undefined ? {} : { bandY: c.bandY }) };
+        best = { containerId: c.id, frame, stripHeight: c.stripHeight, band: c.band, ...(c.bandY === undefined ? {} : { bandY: c.bandY }), ...(c.topOutside === undefined ? {} : { topOutside: c.topOutside }) };
         bestDepth = b.depth;
       }
       if (c.inner) visit(c.inner, atRest ? c.frame.x - atRest.x : dx, atRest ? c.frame.y - atRest.y : dy);
@@ -279,20 +302,39 @@ export function containerUnder(p: ContainerProbe): ContainerBands | null {
   return best;
 }
 
-/** Where a container's four bands are, in the same world units as its frame. */
-export function bandRects(c: ContainerBands): { side: BesideSide; rect: ZoneRect }[] {
+/**
+ * Where a container's bands are, in the same world units as its frame. TOP
+ * appears twice: hanging above the frame, where a hand looking for "above it"
+ * goes, and under the strip, which is the only one a container pressed against
+ * the top of its canvas can offer. Both mean the same thing.
+ */
+export function bandRects(c: ContainerBands): { side: BesideSide; name: string; rect: ZoneRect }[] {
   const bodyY = c.frame.y + c.stripHeight;
   const bodyH = Math.max(1, c.frame.height - c.stripHeight);
   const w = Math.max(1, c.frame.width);
   const side = w * c.band;
   const depth = c.bandY !== undefined && c.bandY > 0 ? Math.min(c.bandY, bodyH / 2) : c.band * bodyH;
+  const up = c.topOutside ?? 0;
   return [
-    { side: 'left', rect: { x: c.frame.x, y: bodyY, width: side, height: bodyH } },
-    { side: 'right', rect: { x: c.frame.x + w - side, y: bodyY, width: side, height: bodyH } },
-    // the sides take the corners (bandOf tests rx first), so top and bottom stop short of them
-    { side: 'top', rect: { x: c.frame.x + side, y: bodyY, width: w - 2 * side, height: depth } },
-    { side: 'bottom', rect: { x: c.frame.x + side, y: bodyY + bodyH - depth, width: w - 2 * side, height: depth } },
+    { side: 'left', name: 'left', rect: { x: c.frame.x, y: bodyY, width: side, height: bodyH } },
+    { side: 'right', name: 'right', rect: { x: c.frame.x + w - side, y: bodyY, width: side, height: bodyH } },
+    // above the frame: the whole width, since no side band is up there to take the corners
+    ...(up > 0 ? [{ side: 'top' as BesideSide, name: 'top', rect: { x: c.frame.x, y: c.frame.y - up, width: w, height: up } }] : []),
+    // and under the strip; the sides take the corners here (bandOf tests rx first)
+    { side: 'top', name: 'top-inside', rect: { x: c.frame.x + side, y: bodyY, width: w - 2 * side, height: depth } },
+    { side: 'bottom', name: 'bottom', rect: { x: c.frame.x + side, y: bodyY + bodyH - depth, width: w - 2 * side, height: depth } },
   ];
+}
+
+/**
+ * The band a point is in for a TILE drag: the sides and the bottom as
+ * `bandOf` gives them, and "top" ONLY from the band hanging above the frame.
+ * The rows under the strip are the page.
+ */
+function tileBand(f: ZoneRect, stripHeight: number, x: number, y: number, band: number, bandY: number | undefined, topOutside: number | undefined, grow = 1): BesideSide | null {
+  const up = (topOutside ?? 0) * grow;
+  if (up > 0 && x >= f.x && x <= f.x + f.width && y < f.y && y >= f.y - up) return 'top';
+  return bandOf(f, stripHeight, x, y, band, bandY === undefined ? undefined : bandY * grow);
 }
 
 /** The board a container sits on, found by id through the tree. */
@@ -326,8 +368,9 @@ export function resolve(input: ResolveInput): Zone {
     const c0 = containerOf(input.roots, p.containerId);
     const stripH = c0?.stripHeight ?? 0;
     const depth = c0?.bandY;
-    const stay = bandOf(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY, depth === undefined ? undefined : depth * (1 + BESIDE_STAY / BESIDE_BAND));
-    const other = bandOf(p.frame0, stripH, x, y, BESIDE_BAND, depth);
+    const grow = 1 + BESIDE_STAY / BESIDE_BAND;
+    const stay = tileBand(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY, depth, c0?.topOutside, grow);
+    const other = tileBand(p.frame0, stripH, x, y, BESIDE_BAND, depth, c0?.topOutside);
     const onVacated = !!p.vacated && inRect(p.vacated, x, y, input.gap);
     const held = stay === p.side || (!(other !== null && other !== p.side) && onVacated);
     if (held) {
@@ -370,16 +413,47 @@ export function resolve(input: ResolveInput): Zone {
       const ndx0 = atRest ? c.frame.x - atRest.x : dx;
       const ndy0 = atRest ? c.frame.y - atRest.y : dy;
       const overNested = !!c.inner && c.inner.children().some((cc) => inRect(cc.frame, x + ndx0, y + ndy0));
-      const side = overNested || input.homeChain.has(c.id) ? null : bandOf(frame, c.stripHeight, tx, ty, c.band, c.bandY);
+      const side = overNested || input.homeChain.has(c.id) ? null : tileBand(frame, c.stripHeight, tx, ty, c.band, c.bandY, c.topOutside);
       if (side) return { kind: 'beside', board, containerId: c.id, side, kept: false };
       if (opaque(board, c) || !c.inner) return { kind: 'plain', board, grace: false };
       if (!c.inner.contains(x + ndx0, y + ndy0)) return { kind: 'plain', board, grace: false }; // the margin: the container's own frame
       return descend(c.inner, ndx0, ndy0);
     }
-    return { kind: 'plain', board, grace: false };
+    const over = overhang(board, dx, dy);
+    return over ?? { kind: 'plain', board, grace: false };
   };
 
+  /**
+   * The bands that hang ABOVE a container's top edge, once nothing on the
+   * board holds the point. Always a second pass: a container whose frame
+   * actually holds the hand must never lose to a neighbour's overhang. The
+   * band of a container at the board's first row hangs off the board
+   * altogether, so the grace path asks for it too.
+   */
+  function overhang(board: ZoneBoard, dx: number, dy: number): Zone | null {
+    for (const c of board.children()) {
+      if (input.ghostSubtree.has(c.id) || input.homeChain.has(c.id) || c.band <= 0) continue;
+      const rest = input.restFrames?.get(c.id);
+      const atRest = rest && inRect(rest, x, y) ? rest : null;
+      const frame = atRest ?? c.frame;
+      const tx = atRest ? x : x + dx;
+      const ty = atRest ? y : y + dy;
+      if (tileBand(frame, c.stripHeight, tx, ty, c.band, c.bandY, c.topOutside) === 'top')
+        return { kind: 'beside', board, containerId: c.id, side: 'top', kept: false };
+      const deeper = c.inner ? overhang(c.inner, atRest ? c.frame.x - atRest.x : dx, atRest ? c.frame.y - atRest.y : dy) : null;
+      if (deeper) return deeper;
+    }
+    return null;
+  }
+
   for (const root of input.roots) if (root.contains(x, y)) return descend(root, 0, 0);
+
+  // Off every board — but a container against the board's first row hangs its
+  // "above me" band into the margin above it, which is off the board too.
+  for (const root of input.roots) {
+    const over = overhang(root, 0, 0);
+    if (over) return over;
+  }
 
   // Nothing strict matched: the deepest board whose grace row holds the point.
   let deepest: ZoneBoard | null = null;

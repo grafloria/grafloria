@@ -99,18 +99,20 @@ describe('zones — resolve: the walk from the roots inward', () => {
   it('a strip hit wins over every board', () => {
     expect(at(950, 15, { strip: { containerId: 'side', index: 1 } })).toEqual({ kind: 'strip', containerId: 'side', index: 1 });
   });
-  it('the outer fifth of a tab container is beside it, on the container\'s OWN board', () => {
+  it('the outer fifth of a tab container is beside it, on the container\'s OWN board — sides and bottom; the top hangs ABOVE the frame (0.4.65)', () => {
     expect(at(912, 240)).toEqual({ kind: 'beside', board: expect.objectContaining({ id: 'root' }), containerId: 'side', side: 'left', kept: false }); // (912: left of the nested section, which starts at 920)
     expect(at(1190, 240)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'right' });
-    expect(at(1050, 40)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' });
+    expect(at(1050, 40)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' }); // under the strip: still "above it" (the fallback lane)
+    expect(at(1050, SIDE_FRAME.y - 10, { roots: (() => { const r = tree(); (r[0].children()[0] as ZoneContainer).topOutside = 30; return r; })() }))
+      .toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' }); // "above it" is above it
     expect(at(1190, 40)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'right' }); // the corner
   });
   it('with a fixed band depth, the rows just under the strip are the PAGE, not "above the container"', () => {
     const roots = tree();
     const side = roots[0].children()[0] as ZoneContainer;
     side.bandY = 30;
-    expect(at(1050, 80, { roots })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // 50 px under the strip
-    expect(at(1050, 50, { roots })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' }); // the first 30 px still mean above it
+    expect(at(1050, 80, { roots })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // 50 px under the strip: the page
+    expect(at(1050, 50, { roots })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' }); // the first 30 px: the fallback lane
   });
   it('the middle of a tab container descends into its ACTIVE page: a plain cell on the page\'s board', () => {
     expect(at(1050, 120)).toEqual({ kind: 'plain', board: expect.objectContaining({ id: 'p1', depth: 1 }), grace: false });
@@ -130,8 +132,8 @@ describe('zones — resolve: the walk from the roots inward', () => {
     expect(at(912, 100, { homeChain: new Set(['side']) })).toEqual({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }), grace: false });
   });
   it('the margin of a tab container — inside its frame, outside its page — is a plain cell on the PARENT board', () => {
-    // just under the strip, in the 8-px inset above the page
-    expect(at(1050, 34)).toMatchObject({ kind: 'beside', side: 'top' }); // the top band starts at the strip's bottom
+    // just under the strip, in the 8-px inset above the page: the fallback "above it" lane
+    expect(at(1050, 34)).toMatchObject({ kind: 'beside', side: 'top' });
     // the right inset between the page's edge and the frame, in the middle rows (the band is 0.2 → 60 px; the inset is 8 px, so it is band)
     expect(at(1195, 240)).toMatchObject({ kind: 'beside', side: 'right' });
   });
@@ -190,9 +192,11 @@ describe('zones — stickiness: a beside the hand already holds', () => {
     // no cell the widget took. The cell it WOULD take is the container's own —
     // for a widget the size of its container that is the whole panel, and
     // borrowing it as the vacated rect held the band everywhere inside (L105).
+    const roots = tree();
+    (roots[0].children()[0] as ZoneContainer).topOutside = 30;
     const mark = { containerId: 'side', side: 'top' as const, frame0: SIDE_FRAME };
-    expect(at(1050, 50, { prev: mark })).toMatchObject({ kind: 'beside', side: 'top', kept: true }); // in the band
-    expect(at(1050, 160, { prev: mark })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // past the band: into the page
+    expect(at(1050, SIDE_FRAME.y - 20, { roots, prev: mark })).toMatchObject({ kind: 'beside', side: 'top', kept: true }); // in the band, above the frame
+    expect(at(1050, 160, { roots, prev: mark })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // past the band: into the page
   });
   it('a DIFFERENT band of the original frame wins over the vacated cell (a widget as wide as the container)', () => {
     const wide = { ...prev, side: 'top' as const, vacated: SIDE_FRAME };
@@ -216,6 +220,43 @@ describe('zones — stickiness: a beside the hand already holds', () => {
   it('the middle of the original frame is a zone change: into the page, not the band', () => {
     const bottom = { ...prev, side: 'bottom' as const, vacated: { x: 900, y: 480, width: 80, height: 60 } };
     expect(at(1050, 120, { prev: bottom })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // (a point of the page outside the nested section)
+  });
+});
+
+describe('zones — the top band hangs ABOVE the container, where a hand looking for "above" goes', () => {
+  // The user: "try dragging nps above the tab panel, won't work." Measured: the
+  // panel holds the board's first row, so there is no row above it to point at,
+  // and "above it" lived in a 30 px lane BELOW its header — the opposite of
+  // where a hand goes. The band moves outside the frame: above a container
+  // means above it, and its whole body goes back to meaning the page.
+  const withTop = () => {
+    const roots = tree();
+    const side = roots[0].children()[0] as ZoneContainer;
+    side.bandY = 30;
+    side.topOutside = 30;
+    return roots;
+  };
+  it('the 30 px above the frame is "above the container"', () => {
+    const roots = withTop();
+    expect(at(1050, SIDE_FRAME.y - 4, { roots })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' });
+    expect(at(1050, SIDE_FRAME.y - 29, { roots })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' });
+    expect(at(1050, SIDE_FRAME.y - 40, { roots })).toMatchObject({ kind: 'off' }); // past it: off the board altogether
+  });
+  it('the lane under the strip stays as the fallback, for a container with no room above it', () => {
+    const roots = withTop();
+    expect(at(1050, 40, { roots })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' }); // 10 px under the strip
+    expect(at(1050, 75, { roots })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // past 30 px: the page
+  });
+  it('a container whose frame holds the point always wins over another\'s outside band', () => {
+    const roots = withTop();
+    const ops = roots[0].children()[1] as ZoneContainer;
+    ops.topOutside = 30; // ops sits at y 420; the point is inside SIDE's frame and just above OPS
+    expect(at(1050, 410, { roots })).toMatchObject({ kind: 'plain' }); // inside side's page, not "above ops"
+  });
+  it('the outside band keeps the hand the way an inside one does', () => {
+    const roots = withTop();
+    const held = { containerId: 'side', side: 'top' as const, frame0: SIDE_FRAME };
+    expect(at(1050, SIDE_FRAME.y - 33, { roots, prev: held })).toMatchObject({ kind: 'beside', side: 'top', kept: true });
   });
 });
 
@@ -246,21 +287,28 @@ describe('zones — containerUnder: whose edges the hand is over, so they can be
     expect(under(1050, 200, { roots, restFrames })?.frame).toEqual(SIDE_FRAME);
   });
   it('the band rects are exactly where bandOf decides, corners included', () => {
-    const c = { containerId: 'side', frame: SIDE_FRAME, stripHeight: 30, band: BESIDE_BAND, bandY: 30 };
-    const r = Object.fromEntries(bandRects(c).map((b) => [b.side, b.rect]));
+    const c = { containerId: 'side', frame: SIDE_FRAME, stripHeight: 30, band: BESIDE_BAND, bandY: 30, topOutside: 30 };
+    const r = Object.fromEntries(bandRects(c).map((b) => [b.name, b.rect]));
     const inside = (rect: { x: number; y: number; width: number; height: number }, x: number, y: number) =>
       x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
     for (const [side, rect] of Object.entries(r)) {
+      if (side === 'top') continue; // that one hangs outside the frame; bandOf only sees inside it
       const cx = rect.x + rect.width / 2;
       const cy = rect.y + rect.height / 2;
-      expect(bandOf(SIDE_FRAME, 30, cx, cy, BESIDE_BAND, 30)).toBe(side); // the middle of every painted lane means that lane
+      expect(bandOf(SIDE_FRAME, 30, cx, cy, BESIDE_BAND, 30)).toBe(side === 'top-inside' ? 'top' : side); // the middle of every painted lane means that lane
       expect(inside(rect, cx, cy)).toBe(true);
     }
-    // the sides own the full body height; top and bottom stop at them
+    // the sides own the full body height; the bottom stops at them
     expect(r['left'].height).toBe(450);
-    expect(r['top'].height).toBe(30);
-    expect(r['top'].x).toBe(SIDE_FRAME.x + 60);
-    expect(r['top'].width).toBe(180);
+    expect(r['bottom'].height).toBe(30);
+    // …and the TOP hangs above the frame, its whole width (nothing up there takes the corners)
+    expect(r['top']).toEqual({ x: SIDE_FRAME.x, y: SIDE_FRAME.y - 30, width: SIDE_FRAME.width, height: 30 });
+    // …and the fallback lane sits under the strip, inset by the side bands
+    expect(r['top-inside']).toEqual({ x: SIDE_FRAME.x + 60, y: SIDE_FRAME.y + 30, width: 180, height: 30 });
+    // the resolve agrees with the paint: the middle of that lane means "above it"
+    const roots = tree();
+    (roots[0].children()[0] as ZoneContainer).topOutside = 30;
+    expect(at(r['top'].x + r['top'].width / 2, r['top'].y + 15, { roots })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' });
   });
 });
 

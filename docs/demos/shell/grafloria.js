@@ -195214,7 +195214,8 @@ function stripUnder(p) {
       const ty = atRest ? y : y + dy;
       const held = c.id === p.held;
       const pad = held ? p.stay : 0;
-      if (c.stripHeight > 0 && inRect({ x: frame.x, y: frame.y, width: frame.width, height: c.stripHeight }, tx, ty, pad)) {
+      const onStrip = c.stripHeight > 0 && tx >= frame.x - pad && tx <= frame.x + frame.width + pad && ty >= frame.y && ty <= frame.y + c.stripHeight + pad;
+      if (onStrip) {
         if (bestId === null || held || !bestHeld && b.depth >= bestDepth) {
           bestId = c.id;
           bestDepth = b.depth;
@@ -195239,9 +195240,11 @@ function containerUnder(p) {
       const frame = atRest ?? c.frame;
       const tx = atRest ? x : x + dx;
       const ty = atRest ? y : y + dy;
-      if (!inRect(frame, tx, ty)) continue;
+      const up = c.topOutside ?? 0;
+      const inOverhang = up > 0 && tx >= frame.x && tx <= frame.x + frame.width && ty < frame.y && ty >= frame.y - up;
+      if (!inRect(frame, tx, ty) && !inOverhang) continue;
       if (c.band > 0 && !p.homeChain?.has(c.id) && b.depth >= bestDepth) {
-        best = { containerId: c.id, frame, stripHeight: c.stripHeight, band: c.band, ...c.bandY === void 0 ? {} : { bandY: c.bandY } };
+        best = { containerId: c.id, frame, stripHeight: c.stripHeight, band: c.band, ...c.bandY === void 0 ? {} : { bandY: c.bandY }, ...c.topOutside === void 0 ? {} : { topOutside: c.topOutside } };
         bestDepth = b.depth;
       }
       if (c.inner) visit(c.inner, atRest ? c.frame.x - atRest.x : dx, atRest ? c.frame.y - atRest.y : dy);
@@ -195256,13 +195259,21 @@ function bandRects(c) {
   const w = Math.max(1, c.frame.width);
   const side = w * c.band;
   const depth = c.bandY !== void 0 && c.bandY > 0 ? Math.min(c.bandY, bodyH / 2) : c.band * bodyH;
+  const up = c.topOutside ?? 0;
   return [
-    { side: "left", rect: { x: c.frame.x, y: bodyY, width: side, height: bodyH } },
-    { side: "right", rect: { x: c.frame.x + w - side, y: bodyY, width: side, height: bodyH } },
-    // the sides take the corners (bandOf tests rx first), so top and bottom stop short of them
-    { side: "top", rect: { x: c.frame.x + side, y: bodyY, width: w - 2 * side, height: depth } },
-    { side: "bottom", rect: { x: c.frame.x + side, y: bodyY + bodyH - depth, width: w - 2 * side, height: depth } }
+    { side: "left", name: "left", rect: { x: c.frame.x, y: bodyY, width: side, height: bodyH } },
+    { side: "right", name: "right", rect: { x: c.frame.x + w - side, y: bodyY, width: side, height: bodyH } },
+    // above the frame: the whole width, since no side band is up there to take the corners
+    ...up > 0 ? [{ side: "top", name: "top", rect: { x: c.frame.x, y: c.frame.y - up, width: w, height: up } }] : [],
+    // and under the strip; the sides take the corners here (bandOf tests rx first)
+    { side: "top", name: "top-inside", rect: { x: c.frame.x + side, y: bodyY, width: w - 2 * side, height: depth } },
+    { side: "bottom", name: "bottom", rect: { x: c.frame.x + side, y: bodyY + bodyH - depth, width: w - 2 * side, height: depth } }
   ];
+}
+function tileBand(f, stripHeight, x, y, band, bandY, topOutside, grow = 1) {
+  const up = (topOutside ?? 0) * grow;
+  if (up > 0 && x >= f.x && x <= f.x + f.width && y < f.y && y >= f.y - up) return "top";
+  return bandOf(f, stripHeight, x, y, band, bandY === void 0 ? void 0 : bandY * grow);
 }
 function boardOf(roots, containerId) {
   const visit = (b) => {
@@ -195287,8 +195298,9 @@ function resolve(input) {
     const c0 = containerOf(input.roots, p.containerId);
     const stripH = c0?.stripHeight ?? 0;
     const depth = c0?.bandY;
-    const stay = bandOf(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY, depth === void 0 ? void 0 : depth * (1 + BESIDE_STAY / BESIDE_BAND));
-    const other = bandOf(p.frame0, stripH, x, y, BESIDE_BAND, depth);
+    const grow = 1 + BESIDE_STAY / BESIDE_BAND;
+    const stay = tileBand(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY, depth, c0?.topOutside, grow);
+    const other = tileBand(p.frame0, stripH, x, y, BESIDE_BAND, depth, c0?.topOutside);
     const onVacated = !!p.vacated && inRect(p.vacated, x, y, input.gap);
     const held2 = stay === p.side || !(other !== null && other !== p.side) && onVacated;
     if (held2) {
@@ -195312,15 +195324,35 @@ function resolve(input) {
       const ndx0 = atRest ? c.frame.x - atRest.x : dx;
       const ndy0 = atRest ? c.frame.y - atRest.y : dy;
       const overNested = !!c.inner && c.inner.children().some((cc) => inRect(cc.frame, x + ndx0, y + ndy0));
-      const side = overNested || input.homeChain.has(c.id) ? null : bandOf(frame, c.stripHeight, tx, ty, c.band, c.bandY);
+      const side = overNested || input.homeChain.has(c.id) ? null : tileBand(frame, c.stripHeight, tx, ty, c.band, c.bandY, c.topOutside);
       if (side) return { kind: "beside", board, containerId: c.id, side, kept: false };
       if (opaque(board, c) || !c.inner) return { kind: "plain", board, grace: false };
       if (!c.inner.contains(x + ndx0, y + ndy0)) return { kind: "plain", board, grace: false };
       return descend(c.inner, ndx0, ndy0);
     }
-    return { kind: "plain", board, grace: false };
+    const over = overhang(board, dx, dy);
+    return over ?? { kind: "plain", board, grace: false };
   };
+  function overhang(board, dx, dy) {
+    for (const c of board.children()) {
+      if (input.ghostSubtree.has(c.id) || input.homeChain.has(c.id) || c.band <= 0) continue;
+      const rest = input.restFrames?.get(c.id);
+      const atRest = rest && inRect(rest, x, y) ? rest : null;
+      const frame = atRest ?? c.frame;
+      const tx = atRest ? x : x + dx;
+      const ty = atRest ? y : y + dy;
+      if (tileBand(frame, c.stripHeight, tx, ty, c.band, c.bandY, c.topOutside) === "top")
+        return { kind: "beside", board, containerId: c.id, side: "top", kept: false };
+      const deeper = c.inner ? overhang(c.inner, atRest ? c.frame.x - atRest.x : dx, atRest ? c.frame.y - atRest.y : dy) : null;
+      if (deeper) return deeper;
+    }
+    return null;
+  }
   for (const root of input.roots) if (root.contains(x, y)) return descend(root, 0, 0);
+  for (const root of input.roots) {
+    const over = overhang(root, 0, 0);
+    if (over) return over;
+  }
   let deepest = null;
   const visit = (b) => {
     if (b.containsExtended(x, y) && (!deepest || b.depth > deepest.depth)) deepest = b;
@@ -197085,7 +197117,7 @@ function bindDashboardGrid(api, group, options = {}) {
     }
     want.forEach((b, i) => {
       const el2 = lanesEl.children[i];
-      el2.setAttribute("data-lane", b.side);
+      el2.setAttribute("data-lane", b.name);
       el2.style.left = `${b.rect.x - c.frame.x}px`;
       el2.style.top = `${b.rect.y - c.frame.y}px`;
       el2.style.width = `${b.rect.width}px`;
@@ -197981,6 +198013,11 @@ function bindDashboardGrid(api, group, options = {}) {
             // until 216 px of the fluid demo's page meant "above the whole
             // panel" (0.4.62). The sides keep the fifth.
             bandY: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
+            // …and the TOP band hangs ABOVE the frame, where a hand looking
+            // for "above this panel" actually goes (0.4.65). A panel holding
+            // the board's first row has no row above it to point at, and the
+            // lane under its header is the last place anyone would try.
+            topOutside: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
             inner: innerPeer ? boardRef(innerPeer, depth + 1) : null
           });
         }
