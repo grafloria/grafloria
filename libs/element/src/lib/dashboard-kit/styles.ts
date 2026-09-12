@@ -167,32 +167,12 @@ const CSS = `
    a bar before the tab it lands in front of, or after the last one. */
 .grafloria-html-layer > .axdb-join {
   position: absolute;
-  z-index: 32;
+  z-index: 3;
   pointer-events: none;
   box-sizing: border-box;
   border: 2px dashed var(--axdb-accent, #3b52d9);
   background: var(--axdb-accent-soft, rgba(59, 82, 217, .08));
   border-radius: var(--axdb-rs-radius, 8px);
-}
-/* THE LANES: while a widget is held over a container, its four bands are
-   shown, so "beside it" is a place you can see and aim at rather than a
-   fixed depth you would have to guess. The band you are IN wears the dashed
-   mark (.axdb-join) on top; these only say where the edges are. */
-/* ABOVE the dragged widget (which sits at 30): the whole point of a lane is to
-   be seen at the moment the hand is in it, and the widget your hand is carrying
-   covers the top one almost completely. Both are pointer-events: none, so
-   nothing about the hit testing changes. */
-.grafloria-html-layer > .axdb-lanes { position: absolute; z-index: 31; pointer-events: none; }
-.grafloria-html-layer > .axdb-lanes > .axdb-lane {
-  position: absolute;
-  box-sizing: border-box;
-  /* A SHADED MARGIN, never a line: the dashed outline already means "the cell
-     this will take", and two dashed treatments at once read as one shape. */
-  background: var(--axdb-lane-bg, rgba(59, 82, 217, .13));
-  border-radius: 2px;
-}
-@media (prefers-color-scheme: dark) {
-  .grafloria-html-layer > .axdb-lanes > .axdb-lane { background: var(--axdb-lane-bg, rgba(134, 155, 255, .17)); }
 }
 .axdb-tabs.axdb-tabs--drop { box-shadow: inset 0 -2px 0 var(--axdb-accent, #3b52d9); }
 .axdb-tab.axdb-tab--drop-before { position: relative; }
