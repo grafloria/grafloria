@@ -571,6 +571,12 @@ render(SPEC2, host);</pre>
       it covered the top one almost completely: the lane was painted, and invisible at the exact moment you needed it.
       The lanes and the dashed outline of the cell now sit above the widget being dragged. Neither takes pointer
       events, so nothing about where a drop lands has changed &mdash; only whether you can see it coming.</p>
+      <p>0.4.65 puts &ldquo;above it&rdquo; above it. A hand looking for the place to drop a widget above a panel goes
+      above the panel; it had to go <em>below</em> the panel&rsquo;s header instead, into a lane inside the body, which
+      is the opposite of where anyone points. The band now also hangs off the container&rsquo;s top edge, so pointing
+      above a panel means above it. The lane under the tabs stays as the fallback, because a container pressed against
+      the top of its canvas has no room above it to offer &mdash; both lanes are painted, and both mean the same thing.
+      The tab strip&rsquo;s few pixels of stickiness now reach only down into the body, never up into that band.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
