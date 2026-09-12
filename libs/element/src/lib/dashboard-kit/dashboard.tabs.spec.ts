@@ -2334,6 +2334,66 @@ describe('a tab group is ONE thing: its frame at rest, its motion when carried (
     expect(api.container.querySelectorAll('.axdb-tabs').length).toBe(1);
   });
 
+  it('the container\'s bands are SHOWN while a widget is over it, and only then', async () => {
+    // "Nothing moves it any more, but how can I drag something on top of the
+    // tab group?" Since 0.4.62 the top and bottom are a fixed 30 px, which is
+    // a fine target and an impossible guess: to put a widget ABOVE a panel you
+    // point just BELOW its header, inside what reads as page content. The
+    // bands are painted now, so they can be aimed at.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, sizing: 'grow',
+        widgets: [
+          K('rev', 2, 1, 0, 0), K('nps', 2, 1, 6, 0), K('mix', 3, 3, 6, 1),
+          { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9, widgets: [K('orders', 4, 1, 0, 0)] },
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+        ],
+      })
+    );
+    const tool = toolOf('main');
+    const side = model.getGroup('side')!;
+    const nps = model.getNode('nps')!;
+    const lanes = () => api.container.querySelectorAll('.axdb-lanes > .axdb-lane');
+    const sides = () => Array.from(lanes(), (l) => l.getAttribute('data-lane')).sort();
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    const mid = side.position.x + side.size!.width / 2;
+    expect(lanes().length).toBe(0); // nothing painted at rest
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    expect(lanes().length).toBe(0); // …nor over open board
+    // into the middle of the page: the four bands appear, though this point is none of them
+    tool.onPointerMove?.(tev('move', mid, side.position.y + side.size!.height / 2), { node: nps } as never);
+    expect(lanes().length).toBe(4);
+    expect(sides()).toEqual(['bottom', 'left', 'right', 'top']);
+    expect(api.container.querySelector('.axdb-join')).toBeNull(); // shown, not marked
+    // into the top band: still shown, and NOW marked
+    tool.onPointerMove?.(tev('move', mid, side.position.y + 30 + 8), { node: nps } as never);
+    expect(lanes().length).toBe(4);
+    expect(api.container.querySelector('.axdb-join')).not.toBeNull();
+    // over the OPS section, which has no bands: nothing shown
+    tool.onPointerMove?.(tev('move', 200, model.getGroup('ops')!.position.y + 20), { node: nps } as never);
+    expect(lanes().length).toBe(0);
+    // and gone when the hand lets go
+    tool.onPointerMove?.(tev('move', mid, side.position.y + 30 + 8), { node: nps } as never);
+    expect(lanes().length).toBe(4);
+    tool.onPointerUp?.(tev('up', mid, side.position.y + 30 + 8), { node: nps } as never);
+    await settle();
+    expect(lanes().length).toBe(0);
+    await cm(api).undo();
+    await settle();
+    // a GROUP carried over the container is never shown them: it moves by intent and pushes
+    const ops = model.getGroup('ops')!;
+    const band = { x: ops.position.x + 40, y: ops.position.y + 10 };
+    tool.onPointerDown?.(tev('down', band.x, band.y), {} as never);
+    tool.onPointerMove?.(tev('move', band.x + 30, band.y + 6), {} as never);
+    tool.onPointerMove?.(tev('move', mid, side.position.y + side.size!.height / 2), {} as never);
+    expect(lanes().length).toBe(0);
+    tool.onPointerUp?.(tev('up', mid, side.position.y + side.size!.height / 2), {} as never);
+    await settle();
+    expect(handle).toBeTruthy();
+  });
+
   it('the TOP and BOTTOM bands move NOTHING while the hand is held: an overlay marks the cell, the container gives way on release', async () => {
     // The user, on 0.4.60, after the drop map: "if I drag first into the
     // content area of the tab panel it pushes the entire tab group down and

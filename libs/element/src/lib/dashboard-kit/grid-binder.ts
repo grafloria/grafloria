@@ -82,7 +82,7 @@ import {
 import { ensureDashboardKitStyles } from './styles';
 import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCaptionBand, sectionCaptionReserve, sizeCaptionBand } from './caption';
 import { TAB_STRIP_HEIGHT } from './tabs';
-import { BESIDE_BAND, resolve as resolveZone, resolveTabZone, stripUnder, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
+import { BESIDE_BAND, bandRects, containerUnder, resolve as resolveZone, resolveTabZone, stripUnder, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
 import { SequenceCommand, SetGroupCellCommand, tileCommands } from './commit';
 import { EDGE_GRACE, type BoardCtx } from './board-ctx';
 import { createProjection } from './project';
@@ -1588,11 +1588,53 @@ export function bindDashboardGrid(
     joinEl.style.width = `${r.width}px`;
     joinEl.style.height = `${r.height}px`;
   };
+  /**
+   * THE LANES a hand is over, painted. 0.4.62 made a tab group's top and
+   * bottom a fixed 30 px — a good target and an impossible guess, since to put
+   * a widget ABOVE a panel you point just BELOW its header, inside what reads
+   * as page content. Nothing moves while the hand is held (0.4.61), so the
+   * bands can be shown and aimed at. The band you are IN still wears the mark.
+   */
+  let lanesEl: HTMLElement | null = null;
+  const showLanes = (c: ReturnType<typeof containerUnder>): void => {
+    const layer = htmlLayer();
+    if (!c || !layer) {
+      lanesEl?.remove();
+      lanesEl = null;
+      return;
+    }
+    if (!lanesEl || lanesEl.parentElement !== layer) {
+      lanesEl?.remove();
+      lanesEl = document.createElement('div');
+      lanesEl.className = 'axdb-lanes';
+      layer.prepend(lanesEl);
+    }
+    lanesEl.style.left = `${c.frame.x}px`;
+    lanesEl.style.top = `${c.frame.y}px`;
+    lanesEl.style.width = `${c.frame.width}px`;
+    lanesEl.style.height = `${c.frame.height}px`;
+    const want = bandRects(c);
+    while (lanesEl.childElementCount > want.length) lanesEl.lastElementChild?.remove();
+    while (lanesEl.childElementCount < want.length) {
+      const el = document.createElement('div');
+      el.className = 'axdb-lane';
+      lanesEl.appendChild(el);
+    }
+    want.forEach((b, i) => {
+      const el = lanesEl!.children[i] as HTMLElement;
+      el.setAttribute('data-lane', b.side);
+      el.style.left = `${b.rect.x - c.frame.x}px`;
+      el.style.top = `${b.rect.y - c.frame.y}px`;
+      el.style.width = `${b.rect.width}px`;
+      el.style.height = `${b.rect.height}px`;
+    });
+  };
   const endPendingBeside = (): void => {
     pendingBeside = null;
     joinEl?.remove();
     joinEl = null;
   };
+  const endLanes = (): void => showLanes(null);
   /** The cell a vertical beside would take: the container's own, or the row under it. Never the pointer's row — the container is not moving. */
   const pendingCellOf = (containerId: string, side: 'top' | 'bottom', spans: { w: number; h: number }): { x: number; y: number } | null => {
     const it = engine.getItem(containerId);
@@ -1967,6 +2009,7 @@ export function bindDashboardGrid(
       }
     }
     endPendingBeside();
+    endLanes();
     disarmGlideSoon();
     releasePointer(g.pointerId);
     api.container.style.cursor = '';
@@ -2018,6 +2061,7 @@ export function bindDashboardGrid(
 
   const cancelActiveGesture = (notify = true): void => {
     endPendingBeside();
+    endLanes();
     if (gesture?.strip) {
       options.tabDrop?.markDrop(null, null);
       gesture.strip = null;
@@ -2159,6 +2203,14 @@ export function bindDashboardGrid(
     // BEFORE any engine is asked anything. The strip still wins over every
     // board; a band's stickiness and the vacated cell still hold a beside.
     const z = resolveTileZone(g, ev);
+    // Show the container's bands while a widget is over it: they are a fixed
+    // depth, so they must be visible to be aimed at (0.4.63). A group is never
+    // shown them — it is moved by intent and pushes what is in its way.
+    showLanes(
+      g.subject === 'node' && !isStatic
+        ? containerUnder({ x: ev.world.x, y: ev.world.y, roots: lastRoots, restFrames: lastRests, ghostSubtree: EMPTY_SUBTREE, homeChain: homeChain() })
+        : null
+    );
     if (z.kind === 'strip' && options.tabDrop && !isStatic && g.kind !== 'palette' && g.subject === 'node') {
       // -- INTO A STRIP: the widget becomes a new tab there, so it leaves
       // this board (survivors settle home) and the strip marks the slot.
@@ -2849,6 +2901,9 @@ export function bindDashboardGrid(
     }
   };
   /** What the pointer means for the dragged tile: the resolve over the live tree, with the beside the hand holds. */
+  /** The tree and the rest frames the LAST resolve used — the lanes are painted on exactly those. */
+  let lastRoots: ZoneBoard[] = [];
+  let lastRests: ReadonlyMap<string, WorldRect> = new Map();
   const resolveTileZone = (g: GestureState, ev: ToolPointerEvent) => {
     const roots = zoneRoots();
     // THE CONTAINERS THIS GESTURE HAS MOVED, at the frames they rest in. A
@@ -2858,6 +2913,8 @@ export function bindDashboardGrid(
     // pointer, so read live it would answer about a container that is only
     // there because of the answer.
     const rests = restFramesOf(g);
+    lastRoots = roots;
+    lastRests = rests;
     let strip: { containerId: string; index: number } | null = null;
     if (options.tabDrop?.tabIndexAt && !isStatic && g.kind !== 'palette' && g.subject === 'node') {
       // A group never becomes a tab: over a container's strip it is over the

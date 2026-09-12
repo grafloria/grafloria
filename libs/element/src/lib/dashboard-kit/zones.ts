@@ -222,6 +222,79 @@ export function stripUnder(p: StripProbe): { containerId: string } | null {
   return bestId === null ? null : { containerId: bestId };
 }
 
+export interface ContainerProbe {
+  x: number;
+  y: number;
+  roots: ZoneBoard[];
+  /** Containers the gesture has displaced, at the frames they rest in. */
+  restFrames?: ReadonlyMap<string, ZoneRect>;
+  /** The groups inside the dragged tile: never a target, so never lit. */
+  ghostSubtree?: ReadonlySet<string>;
+  /** The containers the dragged tile's own board sits in: their bands do not apply to it, so they are not lit either. */
+  homeChain?: ReadonlySet<string>;
+}
+
+/** A container's edges, for showing a hand what they mean. */
+export interface ContainerBands {
+  containerId: string;
+  frame: ZoneRect;
+  stripHeight: number;
+  band: number;
+  bandY?: number;
+}
+
+/**
+ * The deepest container under a pointer whose EDGES mean something — the one
+ * whose bands a drag should be shown while it is held there.
+ *
+ * `bandOf` decides; this only reports where the decision lives, on the same
+ * tree and the same frames, so a painted lane and the zone it stands for can
+ * never disagree. Without it the bands are invisible: 0.4.62 made the top and
+ * bottom a fixed 30 px, which is a fine target and an impossible guess — to
+ * put a widget ABOVE a panel you point just BELOW its header, inside what
+ * reads as page content. ("Nothing moves it any more, but how can I drag
+ * something on top of the tab group?")
+ */
+export function containerUnder(p: ContainerProbe): ContainerBands | null {
+  const { x, y } = p;
+  let best: ContainerBands | null = null;
+  let bestDepth = -1;
+  const visit = (b: ZoneBoard, dx: number, dy: number): void => {
+    for (const c of b.children()) {
+      if (p.ghostSubtree?.has(c.id)) continue;
+      const rest = p.restFrames?.get(c.id);
+      const atRest = rest && inRect(rest, x, y) ? rest : null;
+      const frame = atRest ?? c.frame;
+      const tx = atRest ? x : x + dx;
+      const ty = atRest ? y : y + dy;
+      if (!inRect(frame, tx, ty)) continue;
+      if (c.band > 0 && !p.homeChain?.has(c.id) && b.depth >= bestDepth) {
+        best = { containerId: c.id, frame, stripHeight: c.stripHeight, band: c.band, ...(c.bandY === undefined ? {} : { bandY: c.bandY }) };
+        bestDepth = b.depth;
+      }
+      if (c.inner) visit(c.inner, atRest ? c.frame.x - atRest.x : dx, atRest ? c.frame.y - atRest.y : dy);
+    }
+  };
+  for (const r of p.roots) visit(r, 0, 0);
+  return best;
+}
+
+/** Where a container's four bands are, in the same world units as its frame. */
+export function bandRects(c: ContainerBands): { side: BesideSide; rect: ZoneRect }[] {
+  const bodyY = c.frame.y + c.stripHeight;
+  const bodyH = Math.max(1, c.frame.height - c.stripHeight);
+  const w = Math.max(1, c.frame.width);
+  const side = w * c.band;
+  const depth = c.bandY !== undefined && c.bandY > 0 ? Math.min(c.bandY, bodyH / 2) : c.band * bodyH;
+  return [
+    { side: 'left', rect: { x: c.frame.x, y: bodyY, width: side, height: bodyH } },
+    { side: 'right', rect: { x: c.frame.x + w - side, y: bodyY, width: side, height: bodyH } },
+    // the sides take the corners (bandOf tests rx first), so top and bottom stop short of them
+    { side: 'top', rect: { x: c.frame.x + side, y: bodyY, width: w - 2 * side, height: depth } },
+    { side: 'bottom', rect: { x: c.frame.x + side, y: bodyY + bodyH - depth, width: w - 2 * side, height: depth } },
+  ];
+}
+
 /** The board a container sits on, found by id through the tree. */
 function boardOf(roots: ZoneBoard[], containerId: string): ZoneBoard | null {
   const visit = (b: ZoneBoard): ZoneBoard | null => {

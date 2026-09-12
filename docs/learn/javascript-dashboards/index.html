@@ -562,6 +562,11 @@ render(SPEC2, host);</pre>
       page meant &ldquo;above the whole panel&rdquo; instead. The top and bottom of a tab group are now a fixed depth,
       one strip&rsquo;s worth, about thirty pixels. The body means &ldquo;into the page&rdquo; everywhere else. The
       left and right keep the fifth, because that is how a widget gets beside a full-height panel.</p>
+      <p>0.4.63 makes those bands visible. A fixed depth is a good target and an impossible guess: to put a widget
+      <em>above</em> a panel you point just <em>below</em> its header, inside what reads as page content. So while a
+      widget is held over a container its four bands are now shaded, and the clear middle is the page. The band your
+      hand is in still wears the dashed outline of the cell it will take. This only became possible once the container
+      stopped moving while you hold a widget over it &mdash; a lane that slides away is not a lane you can aim at.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

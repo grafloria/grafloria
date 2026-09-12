@@ -194450,6 +194450,22 @@ var CSS4 = `
   background: var(--axdb-accent-soft, rgba(59, 82, 217, .08));
   border-radius: var(--axdb-rs-radius, 8px);
 }
+/* THE LANES: while a widget is held over a container, its four bands are
+   shown, so "beside it" is a place you can see and aim at rather than a
+   fixed depth you would have to guess. The band you are IN wears the dashed
+   mark (.axdb-join) on top; these only say where the edges are. */
+.grafloria-html-layer > .axdb-lanes { position: absolute; z-index: 2; pointer-events: none; }
+.grafloria-html-layer > .axdb-lanes > .axdb-lane {
+  position: absolute;
+  box-sizing: border-box;
+  /* A SHADED MARGIN, never a line: the dashed outline already means "the cell
+     this will take", and two dashed treatments at once read as one shape. */
+  background: var(--axdb-lane-bg, rgba(59, 82, 217, .13));
+  border-radius: 2px;
+}
+@media (prefers-color-scheme: dark) {
+  .grafloria-html-layer > .axdb-lanes > .axdb-lane { background: var(--axdb-lane-bg, rgba(134, 155, 255, .17)); }
+}
 .axdb-tabs.axdb-tabs--drop { box-shadow: inset 0 -2px 0 var(--axdb-accent, #3b52d9); }
 .axdb-tab.axdb-tab--drop-before { position: relative; }
 .axdb-tab.axdb-tab--drop-before::before {
@@ -195206,6 +195222,43 @@ function stripUnder(p) {
   };
   for (const r of p.roots) visit(r, 0, 0);
   return bestId === null ? null : { containerId: bestId };
+}
+function containerUnder(p) {
+  const { x, y } = p;
+  let best = null;
+  let bestDepth = -1;
+  const visit = (b, dx, dy) => {
+    for (const c of b.children()) {
+      if (p.ghostSubtree?.has(c.id)) continue;
+      const rest = p.restFrames?.get(c.id);
+      const atRest = rest && inRect(rest, x, y) ? rest : null;
+      const frame = atRest ?? c.frame;
+      const tx = atRest ? x : x + dx;
+      const ty = atRest ? y : y + dy;
+      if (!inRect(frame, tx, ty)) continue;
+      if (c.band > 0 && !p.homeChain?.has(c.id) && b.depth >= bestDepth) {
+        best = { containerId: c.id, frame, stripHeight: c.stripHeight, band: c.band, ...c.bandY === void 0 ? {} : { bandY: c.bandY } };
+        bestDepth = b.depth;
+      }
+      if (c.inner) visit(c.inner, atRest ? c.frame.x - atRest.x : dx, atRest ? c.frame.y - atRest.y : dy);
+    }
+  };
+  for (const r of p.roots) visit(r, 0, 0);
+  return best;
+}
+function bandRects(c) {
+  const bodyY = c.frame.y + c.stripHeight;
+  const bodyH = Math.max(1, c.frame.height - c.stripHeight);
+  const w = Math.max(1, c.frame.width);
+  const side = w * c.band;
+  const depth = c.bandY !== void 0 && c.bandY > 0 ? Math.min(c.bandY, bodyH / 2) : c.band * bodyH;
+  return [
+    { side: "left", rect: { x: c.frame.x, y: bodyY, width: side, height: bodyH } },
+    { side: "right", rect: { x: c.frame.x + w - side, y: bodyY, width: side, height: bodyH } },
+    // the sides take the corners (bandOf tests rx first), so top and bottom stop short of them
+    { side: "top", rect: { x: c.frame.x + side, y: bodyY, width: w - 2 * side, height: depth } },
+    { side: "bottom", rect: { x: c.frame.x + side, y: bodyY + bodyH - depth, width: w - 2 * side, height: depth } }
+  ];
 }
 function boardOf(roots, containerId) {
   const visit = (b) => {
@@ -197001,11 +197054,46 @@ function bindDashboardGrid(api, group, options = {}) {
     joinEl.style.width = `${r.width}px`;
     joinEl.style.height = `${r.height}px`;
   };
+  let lanesEl = null;
+  const showLanes = (c) => {
+    const layer2 = htmlLayer();
+    if (!c || !layer2) {
+      lanesEl?.remove();
+      lanesEl = null;
+      return;
+    }
+    if (!lanesEl || lanesEl.parentElement !== layer2) {
+      lanesEl?.remove();
+      lanesEl = document.createElement("div");
+      lanesEl.className = "axdb-lanes";
+      layer2.prepend(lanesEl);
+    }
+    lanesEl.style.left = `${c.frame.x}px`;
+    lanesEl.style.top = `${c.frame.y}px`;
+    lanesEl.style.width = `${c.frame.width}px`;
+    lanesEl.style.height = `${c.frame.height}px`;
+    const want = bandRects(c);
+    while (lanesEl.childElementCount > want.length) lanesEl.lastElementChild?.remove();
+    while (lanesEl.childElementCount < want.length) {
+      const el2 = document.createElement("div");
+      el2.className = "axdb-lane";
+      lanesEl.appendChild(el2);
+    }
+    want.forEach((b, i) => {
+      const el2 = lanesEl.children[i];
+      el2.setAttribute("data-lane", b.side);
+      el2.style.left = `${b.rect.x - c.frame.x}px`;
+      el2.style.top = `${b.rect.y - c.frame.y}px`;
+      el2.style.width = `${b.rect.width}px`;
+      el2.style.height = `${b.rect.height}px`;
+    });
+  };
   const endPendingBeside = () => {
     pendingBeside = null;
     joinEl?.remove();
     joinEl = null;
   };
+  const endLanes = () => showLanes(null);
   const pendingCellOf = (containerId, side, spans) => {
     const it = engine.getItem(containerId);
     if (!it) return null;
@@ -197278,6 +197366,7 @@ function bindDashboardGrid(api, group, options = {}) {
       }
     }
     endPendingBeside();
+    endLanes();
     disarmGlideSoon();
     releasePointer(g.pointerId);
     api.container.style.cursor = "";
@@ -197315,6 +197404,7 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const cancelActiveGesture = (notify = true) => {
     endPendingBeside();
+    endLanes();
     if (gesture?.strip) {
       options.tabDrop?.markDrop(null, null);
       gesture.strip = null;
@@ -197428,6 +197518,9 @@ function bindDashboardGrid(api, group, options = {}) {
       return true;
     };
     const z = resolveTileZone(g, ev);
+    showLanes(
+      g.subject === "node" && !isStatic ? containerUnder({ x: ev.world.x, y: ev.world.y, roots: lastRoots, restFrames: lastRests, ghostSubtree: EMPTY_SUBTREE, homeChain: homeChain() }) : null
+    );
     if (z.kind === "strip" && options.tabDrop && !isStatic && g.kind !== "palette" && g.subject === "node") {
       endBeside(true);
       endPendingBeside();
@@ -197920,9 +198013,13 @@ function bindDashboardGrid(api, group, options = {}) {
       if (engine.moveCheck(g.id, cell.x, cell.y, { pushSolid }).changed) project();
     }
   };
+  let lastRoots = [];
+  let lastRests = /* @__PURE__ */ new Map();
   const resolveTileZone = (g, ev) => {
     const roots = zoneRoots();
     const rests = restFramesOf(g);
+    lastRoots = roots;
+    lastRests = rests;
     let strip = null;
     if (options.tabDrop?.tabIndexAt && !isStatic && g.kind !== "palette" && g.subject === "node") {
       const hit = stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / (clientPerWorld().y || 1), restFrames: rests });
