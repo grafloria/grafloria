@@ -174,6 +174,22 @@ const CSS = `
   background: var(--axdb-accent-soft, rgba(59, 82, 217, .08));
   border-radius: var(--axdb-rs-radius, 8px);
 }
+/* THE LANES: while a widget is held over a container, its four bands are
+   shown, so "beside it" is a place you can see and aim at rather than a
+   fixed depth you would have to guess. The band you are IN wears the dashed
+   mark (.axdb-join) on top; these only say where the edges are. */
+.grafloria-html-layer > .axdb-lanes { position: absolute; z-index: 2; pointer-events: none; }
+.grafloria-html-layer > .axdb-lanes > .axdb-lane {
+  position: absolute;
+  box-sizing: border-box;
+  /* A SHADED MARGIN, never a line: the dashed outline already means "the cell
+     this will take", and two dashed treatments at once read as one shape. */
+  background: var(--axdb-lane-bg, rgba(59, 82, 217, .13));
+  border-radius: 2px;
+}
+@media (prefers-color-scheme: dark) {
+  .grafloria-html-layer > .axdb-lanes > .axdb-lane { background: var(--axdb-lane-bg, rgba(134, 155, 255, .17)); }
+}
 .axdb-tabs.axdb-tabs--drop { box-shadow: inset 0 -2px 0 var(--axdb-accent, #3b52d9); }
 .axdb-tab.axdb-tab--drop-before { position: relative; }
 .axdb-tab.axdb-tab--drop-before::before {

@@ -2868,6 +2868,58 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `at rest the strip is at ${rest.stripY} · in the band: join ${band.join} panel ${JSON.stringify(band.panel)} strip ${band.stripY} · 24 px under: join ${deeper.join} · 70 px under (the page): join ${past.join} · back on the tabs: tab ${backOnTabs.tab} panel ${JSON.stringify(backOnTabs.panel)} · released: panel ${JSON.stringify(after.panel)} widget ${JSON.stringify(after.left)} ${JSON.stringify(sane)} · undo -> ${JSON.stringify(undone)}`);
 }
 
+{
+  begin('L106-a-containers-bands-are-SHOWN-while-a-widget-is-over-it-so-a-fixed-depth-can-be-aimed-at');
+  await scrollTo('tabs');
+  // "Nothing moves it any more, but how can I drag something on top of the tab group?"
+  // 0.4.62 made the top and bottom a fixed 30 px — a good target and an impossible guess,
+  // since to put a widget ABOVE a panel you point just BELOW its header, inside what reads
+  // as page content. Nothing moves while the hand is held (0.4.61), so the bands can be
+  // painted and aimed at. The band you are IN still wears the dashed mark on top.
+  const look = () => page.evaluate(() => {
+    const ls = [...document.querySelectorAll('#cv-tabs .axdb-lanes > .axdb-lane')];
+    return {
+      n: ls.length,
+      sides: ls.map((l) => l.getAttribute('data-lane')).sort(),
+      rects: Object.fromEntries(ls.map((l) => { const r = l.getBoundingClientRect(); return [l.getAttribute('data-lane'), { y: Math.round(r.y), h: Math.round(r.height), x: Math.round(r.x), w: Math.round(r.width) }]; })),
+      mark: !!document.querySelector('#cv-tabs .axdb-join'),
+      tab: !!document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]')?.classList.contains('axdb-tabs--drop'),
+    };
+  });
+  const strip0 = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
+  const g = await groupRect('tabs', 'panel');
+  const src = await rect('tabs', 't-left');
+  const mid = strip0.x + strip0.width * 0.55;
+  const atRest = await look();
+  await page.mouse.move(src.x + 40, src.y + 12); await page.mouse.down();
+  await page.mouse.move(src.x + 60, src.y + 20, { steps: 3 });
+  await page.mouse.move(src.x + 120, src.y + 40, { steps: 4 }); await page.waitForTimeout(300);
+  const onBoard = await look();                                   // over open board: nothing painted
+  await page.mouse.move(mid, strip0.bottom + (g.h - 30) / 2, { steps: 8 }); await page.waitForTimeout(420);
+  const inPage = await look();                                    // the middle of the page: the four bands appear, none marked
+  await shot('tabs', 'the-four-bands-shown-while-the-widget-is-over-the-page');
+  await page.mouse.move(mid, strip0.bottom + 12, { steps: 6 }); await page.waitForTimeout(420);
+  const inTop = await look();                                     // the top band: shown AND marked
+  await shot('tabs', 'the-top-band-shown-and-marked');
+  await page.mouse.move(mid, strip0.y + strip0.height / 2, { steps: 6 }); await page.waitForTimeout(420);
+  const onTabs = await look();                                    // the strip: a tab, bands still shown
+  await page.mouse.move(src.x + 120, src.y + 40, { steps: 8 }); await page.waitForTimeout(420);
+  const leftAgain = await look();                                 // off the container: gone
+  await page.mouse.up(); await page.waitForTimeout(500);
+  const after = await look();
+  const sane = await sanity('tabs');
+  const four = ['bottom', 'left', 'right', 'top'];
+  const topBand = inTop.rects['top'];
+  verdict(atRest.n === 0 && onBoard.n === 0                                        // never painted outside a drag, or over open board
+    && inPage.n === 4 && JSON.stringify(inPage.sides) === JSON.stringify(four) && inPage.mark === false
+    && inTop.n === 4 && inTop.mark === true                                        // the band you are in wears the mark
+    && !!topBand && Math.abs(topBand.y - Math.round(strip0.bottom)) <= 2           // the top band starts at the strip's bottom edge
+    && topBand.h >= 24 && topBand.h <= 36                                          // …and is one strip's worth deep, not a fifth
+    && onTabs.tab === true && onTabs.n === 4
+    && leftAgain.n === 0 && after.n === 0 && sane.overlaps === 0,
+    `at rest ${atRest.n} · over board ${onBoard.n} · over the page ${inPage.n} [${inPage.sides}] mark ${inPage.mark} · top band ${inTop.n} mark ${inTop.mark} rect ${JSON.stringify(topBand)} (the strip ends at ${Math.round(strip0.bottom)}) · on the tabs ${onTabs.n} tab ${onTabs.tab} · left it ${leftAgain.n} · released ${after.n} · ${JSON.stringify(sane)}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

@@ -13,7 +13,7 @@
  *   │     └── 'sec' section inside the page, frame (920,200 260×120) with its own board
  *   └── 'ops'   section        frame (0,420 880×160), whole body = into
  */
-import { BESIDE_BAND, BESIDE_STAY, bandOf, resolve, resolveTabZone, stripUnder, type TabZoneInput, type Zone, type ZoneBoard, type ZoneContainer } from './zones';
+import { BESIDE_BAND, BESIDE_STAY, bandOf, bandRects, containerUnder, resolve, resolveTabZone, stripUnder, type TabZoneInput, type Zone, type ZoneBoard, type ZoneContainer } from './zones';
 
 interface Rect {
   x: number;
@@ -216,6 +216,51 @@ describe('zones — stickiness: a beside the hand already holds', () => {
   it('the middle of the original frame is a zone change: into the page, not the band', () => {
     const bottom = { ...prev, side: 'bottom' as const, vacated: { x: 900, y: 480, width: 80, height: 60 } };
     expect(at(1050, 120, { prev: bottom })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // (a point of the page outside the nested section)
+  });
+});
+
+describe('zones — containerUnder: whose edges the hand is over, so they can be shown', () => {
+  const under = (x: number, y: number, extra: Partial<Parameters<typeof containerUnder>[0]> = {}) =>
+    containerUnder({ x, y, roots: tree(), ...extra });
+  it('reports the container the pointer is inside, and nothing outside one', () => {
+    expect(under(1050, 200)?.containerId).toBe('side');
+    expect(under(1050, 10)?.containerId).toBe('side'); // the strip rows are still its frame
+    expect(under(400, 200)).toBeNull(); // empty root board
+    expect(under(400, 500)?.containerId).toBeUndefined(); // the ops SECTION has no bands (band 0), so nothing to show
+  });
+  it('a nested container wins over the one it sits in', () => {
+    const roots = tree();
+    const page = (roots[0].children()[0] as ZoneContainer).inner as ZoneBoard;
+    page.children()[0].band = BESIDE_BAND;
+    expect(under(1050, 250, { roots })?.containerId).toBe('sec');
+  });
+  it('the ghost\'s own subtree and its home chain are never shown', () => {
+    expect(under(1050, 200, { ghostSubtree: new Set(['side']) })).toBeNull();
+    expect(under(1050, 200, { homeChain: new Set(['side']) })).toBeNull();
+  });
+  it('a container the gesture pushed is reported where it RESTS', () => {
+    const roots = tree();
+    const side = roots[0].children()[0] as ZoneContainer;
+    side.frame = { ...SIDE_FRAME, y: 76 };
+    const restFrames = new Map([['side', SIDE_FRAME]]);
+    expect(under(1050, 200, { roots, restFrames })?.frame).toEqual(SIDE_FRAME);
+  });
+  it('the band rects are exactly where bandOf decides, corners included', () => {
+    const c = { containerId: 'side', frame: SIDE_FRAME, stripHeight: 30, band: BESIDE_BAND, bandY: 30 };
+    const r = Object.fromEntries(bandRects(c).map((b) => [b.side, b.rect]));
+    const inside = (rect: { x: number; y: number; width: number; height: number }, x: number, y: number) =>
+      x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
+    for (const [side, rect] of Object.entries(r)) {
+      const cx = rect.x + rect.width / 2;
+      const cy = rect.y + rect.height / 2;
+      expect(bandOf(SIDE_FRAME, 30, cx, cy, BESIDE_BAND, 30)).toBe(side); // the middle of every painted lane means that lane
+      expect(inside(rect, cx, cy)).toBe(true);
+    }
+    // the sides own the full body height; top and bottom stop at them
+    expect(r['left'].height).toBe(450);
+    expect(r['top'].height).toBe(30);
+    expect(r['top'].x).toBe(SIDE_FRAME.x + 60);
+    expect(r['top'].width).toBe(180);
   });
 });
 
