@@ -157,7 +157,7 @@
 
 <div class="wrap">
   <header class="top">
-    <p class="eyebrow">Grafloria dashboard kit &middot; measured on 0.4.60 &middot; fixed in 0.4.61 and 0.4.62 &middot; 12 September 2026</p>
+    <p class="eyebrow">Grafloria dashboard kit &middot; measured on 0.4.60 &middot; fixed in 0.4.61, 0.4.62 and 0.4.63 &middot; 12 September 2026</p>
     <h1>The Tab Group Drop Map</h1>
     <p class="sub">Every point over the fluid board&rsquo;s side panel, sampled with an independent drag of the NPS widget, reading the kit&rsquo;s own decision rather than guessing from pixels. 1,040 points on a 22&nbsp;px lattice, then one-pixel sweeps across every boundary. Both defects it found are now fixed and live.</p>
   </header>
@@ -166,7 +166,7 @@
     <div class="col">
       <p class="lede">The tab header is a clean 30&nbsp;pixel target and it lands exactly where it is painted. Everything else about the panel&rsquo;s top was wrong, in two separate ways that compounded.</p>
       <p>Both were reported from use, and both were measured rather than argued. The first was a design choice that had outgrown its container: a fifth of a panel&rsquo;s body meant &ldquo;put this above the whole panel&rdquo;, and on a panel this tall a fifth is 216&nbsp;pixels of what looks like content. The second was the cost of the fix that stopped the flicker: the tab target is pinned to where the panel <em>rests</em>, so once the panel had been shoved aside, the tabs you could see were not the tabs you could hit.</p>
-      <p>They shared one cause &mdash; the preview moved the thing you were aiming at &mdash; and both are fixed. <strong>0.4.61</strong> stopped the vertical bands moving the panel at all until you let go. <strong>0.4.62</strong> made those bands a fixed depth instead of a fifth. The map below is drawn as the panel behaves now, with the old boundaries marked where they were.</p>
+      <p>They shared one cause &mdash; the preview moved the thing you were aiming at &mdash; and both are fixed. <strong>0.4.61</strong> stopped the vertical bands moving the panel at all until you let go. <strong>0.4.62</strong> made those bands a fixed depth instead of a fifth. That left a third problem, raised immediately: a fixed depth is a good target and an impossible guess, since to put a widget <em>above</em> a panel you point just <em>below</em> its header. So <strong>0.4.63</strong> paints the bands while you drag. The map below is drawn as the panel behaves now, with the old boundaries marked where they were.</p>
     </div>
     <div class="verdict">
       <div class="v"><span class="n">The header, unchanged</span><p>It accepts a drop across its full width and its full 30&nbsp;pixel height, and not one pixel outside. Target and paint agree.</p></div>
@@ -236,6 +236,7 @@
           <li><span class="sw" style="background: var(--page)"></span><span><b>Into the page.</b> The widget is adopted by whichever tab page is showing, beside what that page already holds.</span></li>
           <li><span class="sw" style="background: var(--give)"></span><span><b>The panel gives way.</b> The widget takes a cell on the board next to the panel &mdash; above, below, left or right. Above and below are <em>marked</em> while you hold and applied on release; left and right still slide live, because sideways the header stays under your hand.</span></li>
           <li><span class="sw" style="background: var(--plain); opacity:.55"></span><span><b>A plain board cell.</b> Nothing to do with the panel.</span></li>
+          <li><span class="sw" style="background: var(--tab); opacity:.35"></span><span><b>And you can see all of it.</b> Since 0.4.63 the four bands are shaded while a widget is held over the container, with the clear middle meaning the page, so none of this has to be guessed.</span></li>
         </ul>
 
         <div class="scroll">
@@ -327,6 +328,12 @@
       <p>Not a fifth of the body but the strip&rsquo;s own height, 30&nbsp;px. The content area now means &ldquo;into the page&rdquo; almost everywhere, and &ldquo;above the panel&rdquo; is a thin lane under the tabs. The left and right fifths stayed: they are how a widget gets beside a full-height panel, and nobody has reported them surprising. The lab found one rule on the way &mdash; a beside that is only <em>marked</em> has no vacated cell and must not borrow the one it would take, because for a widget the size of its container that rect is the whole panel.</p>
     </div>
 
+    <div class="opt pick">
+      <span class="tag">Shipped &mdash; element 0.4.63</span>
+      <h3>And the bands are painted, so they can be aimed at</h3>
+      <p>A fixed depth solved the surprise and created a new one: nobody would guess that the way to put a widget above a panel is to point just below its header. While a widget is held over a container its four bands are now shaded, and the clear middle is the page. The band your hand is in still wears the dashed outline of the cell it will take. This only became possible once the container stopped moving, since a lane that slides away is not a lane you can aim at. The lanes are computed from the same tree and the same frames the drop decision uses, so a painted lane and the zone it stands for cannot disagree.</p>
+    </div>
+
     <div class="opt">
       <span class="tag off">Not taken</span>
       <h3>A tab group loses its top and bottom bands entirely</h3>
@@ -335,6 +342,7 @@
   </section>
 
   <footer>
-    <p>Measured on grafloria.com and on a local build of the same commit, Chromium 1440&nbsp;&times;&nbsp;1400, light and dark. Each sample is an independent gesture: press, one pointer move to the target, read, Escape. Sampling by continuous sweep was tried first and thrown away &mdash; the intermediate pointer positions set zones of their own on the way, and the map it drew was wrong. Verified after shipping on the deployed build: a hand parked at five heights keeps one answer and the panel never leaves its resting position, and the journey that started this &mdash; into the content area, then back up to the tabs &mdash; finds them exactly where they are painted.</p>
+    <p>Measured on grafloria.com and on a local build of the same commit, Chromium 1440&nbsp;&times;&nbsp;1400, light and dark. Each sample is an independent gesture: press, one pointer move to the target, read, Escape. Sampling by continuous sweep was tried first and thrown away &mdash; the intermediate pointer positions set zones of their own on the way, and the map it drew was wrong.</p>
+    <p><b>Then tested exhaustively, on the deployed build.</b> 252 real drops on a 44&nbsp;&times;&nbsp;62&nbsp;px lattice covering the panel, its margins and the board around it. At every point: hold, read what the kit shows, release, measure what it did, undo, and check the board came back byte for byte. What was shown is what happened at all 252, with no overlap left behind, no undo that failed, and no page error. Every outcome that pushes the panel was shown before it happened, and the lanes appeared on exactly the 144 points over the container and on none of the 108 outside it.</p>
   </footer>
 </div>
