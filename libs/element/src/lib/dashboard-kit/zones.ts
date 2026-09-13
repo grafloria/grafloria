@@ -346,7 +346,18 @@ export function resolve(input: ResolveInput): Zone {
       const side = overNested || input.homeChain.has(c.id) ? null : tileBand(frame, c.stripHeight, tx, ty, c.band, c.bandY, c.topOutside);
       if (side) return { kind: 'beside', board, containerId: c.id, side, kept: false };
       if (opaque(board, c) || !c.inner) return { kind: 'plain', board, grace: false };
-      if (!c.inner.contains(x + ndx0, y + ndy0)) return { kind: 'plain', board, grace: false }; // the margin: the container's own frame
+      // The margin — inside the frame, outside the inner board — is the
+      // container's own tile, in the way. Except a tab container's 8-px inset
+      // UNDER ITS STRIP for a plain widget: a widget can never land on the
+      // parent board there, the container being solid to it, so "the parent's"
+      // was a refusal flashed for 8 px on the way up out of the page (0.4.68);
+      // that inset is the page's. The strip rows stay the tile's (a carried
+      // GROUP on the strip pushes the container, 0.4.44), and so does the
+      // inset for a group: strip and inset push, the page body nests.
+      if (!c.inner.contains(x + ndx0, y + ndy0)) {
+        const insetUnderStrip = c.layout === 'tabs' && ty >= frame.y + c.stripHeight && input.ghostSubtree.size === 0;
+        if (!insetUnderStrip) return { kind: 'plain', board, grace: false };
+      }
       return descend(c.inner, ndx0, ndy0);
     }
     const over = overhang(board, dx, dy);

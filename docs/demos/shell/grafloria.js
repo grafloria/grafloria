@@ -195270,7 +195270,10 @@ function resolve(input) {
       const side = overNested || input.homeChain.has(c.id) ? null : tileBand(frame, c.stripHeight, tx, ty, c.band, c.bandY, c.topOutside);
       if (side) return { kind: "beside", board, containerId: c.id, side, kept: false };
       if (opaque(board, c) || !c.inner) return { kind: "plain", board, grace: false };
-      if (!c.inner.contains(x + ndx0, y + ndy0)) return { kind: "plain", board, grace: false };
+      if (!c.inner.contains(x + ndx0, y + ndy0)) {
+        const insetUnderStrip = c.layout === "tabs" && ty >= frame.y + c.stripHeight && input.ghostSubtree.size === 0;
+        if (!insetUnderStrip) return { kind: "plain", board, grace: false };
+      }
       return descend(c.inner, ndx0, ndy0);
     }
     const over = overhang(board, dx, dy);

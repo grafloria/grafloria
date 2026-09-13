@@ -2807,6 +2807,23 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const still = [];
   for (let i = 0; i < 30; i++) { still.push(await onTab()); await page.waitForTimeout(16); }
   await shot('tabs', 'a-still-hand-below-the-strip-keeps-one-answer');
+  // …and the way UP, out of the page for the tabs (0.4.68): the 8 px inset
+  // between the strip and the page used to read "the parent board", i.e. the
+  // root placeholder over the panel's own cell — a refusal flashed for 8 px.
+  // Going down the strip's stay covers those rows; only the way up shows it.
+  const panelRest = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-slab[data-slab-id="panel"]').getBoundingClientRect().top);
+  const lookUp = () => page.evaluate((panelRest) => {
+    const tab = !!document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]')?.classList.contains('axdb-tabs--drop');
+    const slab = document.querySelector('#cv-tabs .axdb-slab[data-slab-id="panel"]').getBoundingClientRect().top;
+    const phs = Array.from(document.querySelectorAll('#cv-tabs .axdb-ph'), (p) => p.getBoundingClientRect()).filter((r) => r.width > 2 && r.height > 2);
+    if (tab) return 'tab';
+    if (slab > panelRest + 2) return 'band';
+    if (phs.some((r) => Math.abs(r.top - panelRest) <= 3)) return 'parent'; // the root placeholder over the panel's own cell: a refusal
+    return 'page';
+  }, panelRest);
+  const ups = [];
+  for (let y = bot + 60; y >= top - 24; y--) { await page.mouse.move(mid, y); await page.waitForTimeout(16); const a = await lookUp(); if (ups[ups.length - 1] !== a) ups.push(a); }
+  await shot('tabs', 'back-up-out-of-the-page-page-then-tabs-nothing-between');
   await page.mouse.up(); await page.waitForTimeout(600);
   const sane = await sanity('tabs');
   await undoAll('tabs', 2);
@@ -2815,8 +2832,9 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     && entered >= 0 && entered <= 25                    // the tabs are claimed at the strip's own top
     && left - entered >= 30                             // and held all the way across it, and a little past
     && answers.size === 1 && still[0] === false         // a hand that stopped below the strip stays below it
+    && JSON.stringify(ups) === JSON.stringify(['page', 'tab', 'band']) // and the way up: page, tabs, the band above — never the parent's refusal
     && sane.overlaps === 0,
-    `${flips} changes of answer over ${marks.length} px of a 1 px/frame hand (tabs from +${entered} to +${left} of the strip's top) · a still hand 55 px below: ${[...answers].join('/')} across ${still.length} frames · ${JSON.stringify(sane)}`);
+    `${flips} changes of answer over ${marks.length} px of a 1 px/frame hand (tabs from +${entered} to +${left} of the strip's top) · a still hand 55 px below: ${[...answers].join('/')} across ${still.length} frames · the way up: ${ups.join(' → ')} · ${JSON.stringify(sane)}`);
 }
 
 {

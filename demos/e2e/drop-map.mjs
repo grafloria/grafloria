@@ -38,6 +38,13 @@ const held = () => page.evaluate(() => {
     // the LEFT and RIGHT bands promise by sliding the panel, not by marking
     slabTop: Math.round(parseFloat(slab.style.top)),
     slabLeft: Math.round(parseFloat(slab.style.left)),
+    // since 0.4.66 the grey placeholder is the whole promise for any widget drop: the cell it will take, wherever that is
+    ph: (() => {
+      const p = [...document.querySelectorAll('.axdb-ph')].find((e) => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4 && getComputedStyle(e).display !== 'none'; });
+      if (!p) return null;
+      const r = p.getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), refused: p.classList.contains('axdb-ph--no') };
+    })(),
   };
 });
 
@@ -52,12 +59,18 @@ const x0 = arg('x0', S.x - 130), x1 = arg('x1', S.right + 8), dx = arg('dx', 44)
 const y0 = arg('y0', S.y - 70), y1 = arg('y1', S.bottom + 70), dy = arg('dy', 70);
 const rows = [];
 let n = 0, bad = 0;
-for (let y = y0; y <= y1; y += dy) {
+// the lattice, plus the band ABOVE the frame (0.4.65: one strip's worth) and the strip's own middle — a 70 px lattice steps over both
+const ys = [...new Set([...Array.from({ length: Math.floor((y1 - y0) / dy) + 1 }, (_, i) => y0 + i * dy), S.y - 15, S.y + 15])].sort((a, b) => a - b);
+for (const y of ys) {
   for (let x = x0; x <= x1; x += dx) {
     const before = await snap();
     await page.mouse.move(N0.x + N0.w / 2, N0.y + N0.h / 2);
     await page.mouse.down();
     await page.mouse.move(N0.x + N0.w / 2 + 22, N0.y + N0.h / 2 + 10, { steps: 2 });
+    // A target above the strip is reached from above, the way a hand reaches it: one hop straight up from
+    // the widget's cell CROSSES the strip and stops within a strip's height of it, which 0.4.67 reads —
+    // rightly — as the tabs. A target under the strip is reached from under it (the widget sits there).
+    if (y < S.y) await page.mouse.move(x, y - 40);
     await page.mouse.move(x, y);
     await page.waitForTimeout(130);
     const shown = await held();
@@ -79,12 +92,14 @@ for (let y = y0; y <= y1; y += dy) {
     else if (after.nps.y >= after.side.bottom - 6 && after.nps.right > after.side.x + 6 && after.nps.x < after.side.right - 6) did = 'below';
     else if (panelMoved) did = 'beside';
     else if (moved) did = 'board';
-    // WHAT WAS PROMISED, and whether the drop kept it
-    const promised = shown.tab ? 'a new tab' : shown.mark ? 'above/below (marked)' : shown.slid ? 'beside (the panel slid)' : 'the page or the board';
+    // WHAT WAS PROMISED, and whether the drop kept it: a tab, or the placeholder's cell (0.4.66: the grey cell is the
+    // whole feedback, wherever it is — the panel sliding or pushed down beside it is the same promise), or nothing
+    const ph = shown.ph && !shown.ph.refused ? shown.ph : null;
+    const landedOnPh = !!ph && !!after.nps && Math.abs(after.nps.x - ph.x) <= 10 && Math.abs(after.nps.y - ph.y) <= 10;
+    const promised = shown.tab ? 'a new tab' : ph ? `the placeholder's cell at ${ph.x},${ph.y}${shown.slid ? ' (the panel slid)' : ''}` : shown.ph?.refused ? 'refused' : 'nothing';
     const agrees = shown.tab ? did === 'tab'
-      : shown.mark ? (did === 'above' || did === 'below')  // the marked cell, taken
-      : shown.slid ? did === 'beside'
-      : (did === 'page' || did === 'board' || did === 'nothing');
+      : ph ? landedOnPh && did !== 'tab'                   // it lands where the grey cell was
+      : did === 'nothing';                                 // nothing shown, nothing done
     // put it back
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
     await page.waitForTimeout(420);
