@@ -320,7 +320,28 @@ board('spdrop', 'a WIDGET over a tab group on a SPLIT board (0.4.69) · the stri
   { id: 'sd-a', title: 'Group A', span: 8, rows: 6, x: 4, y: 0, columns: 6, layout: 'tabs', widgets: [
     { id: 'sd-a1', title: 'Sales', columns: 6, widgets: [ { id: 'sd-ka1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Sales', value: '2' } } ] },
     { id: 'sd-a2', title: 'Margin', columns: 6, widgets: [ { id: 'sd-ka2', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Margin', value: '3' } } ] } ] },
-] }, { height: 360 });
+], binder: { onDropIn: (node, cell, displaced, target) => {
+  (window.__labDrops ||= []).push({ boardId: target?.boardId ?? null, cell, displaced: displaced.length });
+  window.__lab.spdrop.handle.addWidget({ id: node.id, kind: 'kpi', span: cell.w, rows: cell.h, x: cell.x, y: cell.y, data: { label: 'Dropped', value: '★' } }, target?.boardId, { displaced });
+} } }, { height: 360 });
+{
+  // a palette chip for the SPLIT board (0.4.70): a chip dragged into a tab page there lands in the page
+  const chip = document.createElement('button');
+  chip.id = 'spdrop-chip';
+  chip.textContent = '＋ KPI chip';
+  chip.style.cssText = 'margin-left: 12px; font: 600 11px ui-monospace, monospace; cursor: grab; text-transform: none; letter-spacing: 0;';
+  document.querySelector('#cv-spdrop').parentElement.querySelector('.h').appendChild(chip);
+  let n = 0;
+  chip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const binder = window.__lab.spdrop.handle.binderOf('main');
+    if (!binder) return;
+    const node = new NodeModel({ id: `sd-new-${++n}`, type: 'widget', position: { x: 0, y: 0 }, size: { width: 120, height: 60, depth: 0 } });
+    const c = chip.cloneNode(true);
+    c.id = '';
+    binder.beginPaletteDrag(node, { w: 2, h: 1, chip: c }, e);
+  });
+}
 board('pal', 'a PALETTE chip dragged into a tab page lands there — the drop names the board it took (tile first, step 4a)', { sizing: 'grow', rowHeight: 60, widgets: [
   { id: 'pal-a', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'A', value: '1' } },
   { id: 'pal-tabs', title: 'Side', span: 6, rows: 4, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
