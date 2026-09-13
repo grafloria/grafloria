@@ -670,6 +670,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       ghostSubtree: EMPTY_SUBTREE,
       gap,
       homeChain: homeChain(),
+      // the widget where it is painted under the hand (0.4.73): under a strip, "above" only while its top edge hangs above the frame
+      ghost: g.node ? { x: g.node.position.x, y: g.node.position.y, width: g.node.size.width, height: g.node.size.height } : undefined,
     });
   };
   /** The widget's NATURAL size for a board that adopts it: its authored cell at this board's units, not the pane it was stretched over. */

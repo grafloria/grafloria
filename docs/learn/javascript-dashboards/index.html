@@ -613,6 +613,12 @@ render(SPEC2, host);</pre>
       pane of that page where the page&rsquo;s own insertion line shows &mdash; from a grid board and from a split board alike.
       And the gap between two panes is no longer a dead zone: a drop there used to snap home, because nothing was under the
       pointer; it now means the nearest pane&rsquo;s edge.</p>
+      <p>0.4.73 lets the card decide &ldquo;above&rdquo;. The band above a panel&rsquo;s frame needs the pointer above the frame, and
+      on a panel at the board&rsquo;s first row that is the toolbar; a hand holds the card by its middle, so when the card visibly
+      hangs over the panel&rsquo;s top edge the pointer is under the header, which meant the page. The rows under the header now
+      mean above while the card&rsquo;s top edge is above the frame &mdash; the panel gives way live &mdash; and the page once the whole
+      card is inside. The header itself is still a tab. A card shorter than two headers, grabbed in its middle, cannot show that
+      overhang; for it, above is still the band above the frame.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

@@ -299,6 +299,25 @@ describe('zones — the top band hangs ABOVE the container, where a hand looking
     const held = { containerId: 'side', side: 'top' as const, frame0: SIDE_FRAME };
     expect(at(1190, SIDE_FRAME.y - 10, { roots, prev: held })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'right', kept: false });
   });
+  it('the rows under the strip mean ABOVE while the dragged tile\'s top edge hangs above the frame — the card, not the pointer (0.4.73)', () => {
+    // The user, on 0.4.72: "I can't drop anything on top of the tab panel, it's
+    // not pushing it." The band above the frame is 30 px above a panel on the
+    // board's first row — 10 px inside the canvas, the rest in the toolbar —
+    // and a hand holds the CARD, grabbed in its middle: when the card visibly
+    // hangs over the panel's top edge, the pointer is under the header, which
+    // meant the page. So the rows under the strip answer "above" while the
+    // tile's top edge is above the frame's top; a tile wholly inside means the
+    // page, and the strip is still the tabs.
+    const roots = withTop();
+    const hanging = { x: 1000, y: -40, width: 200, height: 130 }; // the card's top 40 px above the frame
+    const inside = { x: 1000, y: 10, width: 200, height: 130 }; // the whole card under the frame's top
+    expect(at(1050, 40, { roots, ghost: hanging })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' }); // 10 px under the strip
+    expect(at(1050, 55, { roots, ghost: hanging })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'top' }); // 25 px under it: still the band
+    expect(at(1050, 80, { roots, ghost: hanging })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // past the band: the page, whatever hangs
+    expect(at(1050, 40, { roots, ghost: inside })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // the card inside: the page
+    expect(at(1050, 40, { roots })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // no card known: the page
+    expect(at(1190, 40, { roots, ghost: hanging })).toMatchObject({ kind: 'beside', containerId: 'side', side: 'right' }); // the sides keep the corners
+  });
   it('a held "above" does not swallow the page: the vacated cell keeps the beside beside the frame, never inside its body', () => {
     // The cell the widget took for an "above" is the container's own rest
     // rows, so "over the vacated cell" used to hold the beside 130 px into

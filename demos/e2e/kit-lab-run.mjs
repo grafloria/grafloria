@@ -3180,6 +3180,7 @@ const sdShown = () => page.evaluate(() => {
   const s3 = await state(); const sane3 = await sanity('tabs');
   await undoAll('tabs', 1);
   const s4 = await state();
+  await page.click('#cv-tabs .axdb-tabs[data-tabs-id="panel"] .axdb-tab[data-tab-id="pg-a"]'); await page.waitForTimeout(300); // Filters showing again for the scenarios after this one
   verdict(s0.page.join(',') === 'pb1,pb2' && s0.onRoot && held?.ins !== null && Math.abs(held.ins - pb1.right) <= 8 && held?.dimmed === false && held?.tab === false
     && s1.page.join(',') === 'pb1,t-left,pb2' && s1.inPage && !s1.onRoot && sane1.overlaps === 0
     && s2.page.join(',') === 'pb1,pb2' && s2.onRoot
@@ -3209,6 +3210,51 @@ const sdShown = () => page.evaluate(() => {
     && s1.root.join(',') === 'ss-a' && s1.page.join(',') === promised && s1.inPage && sane.overlaps === 0
     && s2.root.join(',') === 'ss-w,ss-a' && s2.page.join(',') === 'ss-p1,ss-p2' && !s2.inPage,
     `rest root ${s0.root.join('/')} page ${s0.page.join('/')} · held at x=${Math.round(to.x)} over the page's right pane (live ${live ? `${Math.round(live.x)}..${Math.round(live.right)}` : '?'}): the line at ${held?.ins} = its ${side} edge (${Math.round(edge)}), height ${held?.insH} · released: root ${s1.root.join('/')} page ${s1.page.join('/')} (promised ${promised}) in the page ${s1.inPage} ${JSON.stringify(sane)} · undo: root ${s2.root.join('/')} page ${s2.page.join('/')}`);
+}
+
+{
+  begin('L116-a-card-grabbed-in-its-MIDDLE-that-hangs-over-the-panels-top-edge-means-ABOVE-the-panel-gives-way-a-card-inside-means-the-page');
+  await scrollTo('pal');
+  // The user, on 0.4.72: "I can't drop anything on top of the tab panel, it's
+  // not pushing it." The band above the frame needs the POINTER above the
+  // frame; a hand holds the CARD by its middle, and when the card visibly
+  // hangs over the panel's top edge the pointer is under the header — the
+  // page, since 0.4.67. Now the rows under the strip mean above while the
+  // card's top edge is above the frame; the card wholly inside is the page.
+  // (The pal board: a two-row card, and a Filters page with two rows of room.)
+  const cell = (id) => page.evaluate((id) => window.__lab.pal.handle.widget(id)?.cell ?? null, id);
+  const look = () => page.evaluate(() => {
+    const slab = document.querySelector('#cv-pal .axdb-slab[data-slab-id="pal-tabs"]');
+    return { tab: !!document.querySelector('#cv-pal .axdb-tabs[data-tabs-id="pal-tabs"]')?.classList.contains('axdb-tabs--drop'), slabTop: Math.round(parseFloat(slab.style.top)), onPage: window.__lab.pal.handle.binderOf('pal-p1')?.cellOf('pal-a') ?? null };
+  });
+  const strip0 = await page.evaluate(() => document.querySelector('#cv-pal .axdb-tabs[data-tabs-id="pal-tabs"]').getBoundingClientRect().toJSON());
+  const p0 = await cell('pal-tabs'); const a0 = await cell('pal-a');
+  const rest = await look();
+  const src = await rect('pal', 'pal-a'); // a two-row card
+  const mid = strip0.x + strip0.width * 0.55;
+  const journey = async (grabDy, label) => {
+    await page.mouse.move(src.x + 40, src.y + grabDy); await page.mouse.down();
+    await page.mouse.move(src.x + 60, src.y + grabDy + 6, { steps: 3 });
+    await page.mouse.move(strip0.x - 60, strip0.bottom + 10, { steps: 8 }); // beside the panel, level with a point just under the strip — no crossing
+    await page.mouse.move(mid, strip0.bottom + 10, { steps: 6 }); await page.waitForTimeout(450); // 10 px under the strip
+    const under = { ...(await look()), panel: await cell('pal-tabs'), cardTop: (await rect('pal', 'pal-a')).y };
+    await shot('pal', `${label}-held-10px-under-the-strip`);
+    await page.mouse.move(mid, strip0.bottom + 110, { steps: 6 }); await page.waitForTimeout(450); // the card's top edge now inside the frame
+    const inside = { ...(await look()), panel: await cell('pal-tabs'), cardTop: (await rect('pal', 'pal-a')).y };
+    await shot('pal', `${label}-held-110px-under-the-strip`);
+    await page.keyboard.press('Escape'); await page.mouse.up(); await page.waitForTimeout(400);
+    return { under, inside };
+  };
+  const middle = await journey(Math.round(src.h / 2), 'middle-grab'); // the card's top ~66 px above the pointer: over the frame's top while the hand is under the strip
+  const top = await journey(12, 'top-grab'); // the card's top 12 px above the pointer: inside the frame at the same hand position
+  const sane = await sanity('pal');
+  const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y;
+  verdict(!!p0 && !!a0 && rest.tab === false
+    && middle.under.cardTop < strip0.y && middle.under.tab === false && middle.under.panel.y > p0.y && middle.under.slabTop > rest.slabTop && middle.under.onPage === null // the card hangs over the top: ABOVE, the panel gave way live
+    && middle.inside.cardTop > strip0.y && same(middle.inside.panel, p0) && middle.inside.onPage !== null // wholly inside: the page, the panel home
+    && top.under.cardTop > strip0.y && top.under.tab === false && same(top.under.panel, p0) && top.under.onPage !== null // a top grab at the same hand: the page, nothing gave way
+    && same(await cell('pal-tabs'), p0) && same(await cell('pal-a'), a0) && sane.overlaps === 0,
+    `strip top ${Math.round(strip0.y)} · MIDDLE grab, hand 10 px under the strip: card top ${Math.round(middle.under.cardTop)} → tab ${middle.under.tab}, panel ${JSON.stringify(middle.under.panel)} (rest ${JSON.stringify(p0)}), slab ${rest.slabTop}→${middle.under.slabTop}, on the page ${JSON.stringify(middle.under.onPage)}; hand 110 px under: card top ${Math.round(middle.inside.cardTop)}, panel ${JSON.stringify(middle.inside.panel)}, on the page ${JSON.stringify(middle.inside.onPage)} · TOP grab, hand 10 px under: card top ${Math.round(top.under.cardTop)}, panel ${JSON.stringify(top.under.panel)}, on the page ${JSON.stringify(top.under.onPage)} · ${JSON.stringify(sane)}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);

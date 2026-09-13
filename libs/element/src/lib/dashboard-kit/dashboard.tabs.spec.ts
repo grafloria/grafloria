@@ -3181,6 +3181,63 @@ describe('the tab strip HOLDS the hand: a widget aimed at the tabs does not flip
     expect(handle.toJSON().views[0].widgets.find((w) => w.id === 'side')?.widgets?.some((p) => (p.widgets ?? []).some((c) => c.id === 'nps'))).toBe(true);
   });
 
+  it('a widget grabbed in its MIDDLE, held so the card hangs over the panel\'s top edge, means ABOVE — the panel gives way; grabbed at its top edge, the same pointer means the page (0.4.73)', () => {
+    // a THREE-row card (180 px): grabbed in its middle the top edge clears the frame while the hand is under the header;
+    // a card shorter than two strips cannot do that — for those, "above" is the band above the frame
+    const tall = () =>
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('nps', 2, 3, 0, 0),
+          { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0)] }] },
+        ],
+      });
+    const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+    {
+      const { api, model, handle } = up(tall());
+      const r = stubStrip(api, model);
+      const tool = toolOf('main');
+      const nps = model.getNode('nps')!;
+      const hit = { node: nps } as never;
+      const side0 = on(handle, 'main', 'side');
+      const mid = r.x + r.width * 0.5;
+      // grabbed 90 px below the card's top edge (its middle), coming in from the left, level with a point just under the strip
+      tool.onPointerDown?.(tev('down', nps.position.x + 40, nps.position.y + 90), hit);
+      tool.onPointerMove?.(tev('move', nps.position.x + 60, nps.position.y + 96), hit);
+      tool.onPointerMove?.(at(r.x - 60, r.bottom + 10), hit); // beside the panel, no crossing
+      tool.onPointerMove?.(at(mid, r.bottom + 10), hit); // 10 px under the strip: the card's top edge is 50 px ABOVE the frame
+      expect(marked(api)).toBe(false);
+      expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y); // the panel gave way: ABOVE
+      tool.onPointerMove?.(at(mid, r.bottom + 100), hit); // the card wholly inside (its top 10 px under the frame's top): the page, the panel home
+      expect(on(handle, 'main', 'side')).toEqual(side0);
+      expect(on(handle, 'p1', 'nps')).not.toBeNull();
+      tool.onPointerUp?.(at(mid, r.bottom + 100), hit);
+    }
+    {
+      // the same card grabbed near its TOP edge: the same pointer leaves the card inside the panel — the page
+      const { api, model, handle } = up(tall());
+      const r = stubStrip(api, model);
+      const tool = toolOf('main');
+      const nps = model.getNode('nps')!;
+      const hit = { node: nps } as never;
+      const side0 = on(handle, 'main', 'side');
+      const mid = r.x + r.width * 0.5;
+      tool.onPointerDown?.(tev('down', nps.position.x + 40, nps.position.y + 10), hit);
+      tool.onPointerMove?.(tev('move', nps.position.x + 60, nps.position.y + 16), hit);
+      tool.onPointerMove?.(at(r.x - 60, r.bottom + 10), hit);
+      tool.onPointerMove?.(at(mid, r.bottom + 10), hit); // the card's top edge is 30 px UNDER the frame's top
+      expect(marked(api)).toBe(false);
+      expect(on(handle, 'main', 'side')).toEqual(side0); // nothing gave way
+      expect(on(handle, 'p1', 'nps')).not.toBeNull(); // the page took it
+      tool.onPointerUp?.(at(mid, r.bottom + 10), hit);
+    }
+  });
+
   it('a hand that CROSSES the strip between two events is on the tabs, if it landed near them', async () => {
     // The user, coming down from above the panel at hand speed: "it's not
     // passing by the tab header — it drops directly to inside or outside."
