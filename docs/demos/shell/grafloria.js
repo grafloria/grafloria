@@ -199665,6 +199665,116 @@ function bindDashboardSplit(api, group, options = {}) {
     g.leg.adopted.abort();
     g.leg = null;
   };
+  const zoneTarget = (g, z, world, inside, px2) => {
+    if (z.kind === "strip") {
+      endLeg(g);
+      g.beside = null;
+      if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) options.tabDrop?.markDrop(z.containerId, z.index);
+      g.strip = { containerId: z.containerId, index: z.index };
+      return null;
+    }
+    endStrip(g);
+    const peer = z.kind === "plain" ? z.board.ref ?? null : null;
+    if (z.kind === "beside") {
+      endLeg(g);
+      const grp = diagram.getGroup(z.containerId);
+      const rect = rectsOf(g.liveTree).get(z.containerId) ?? (grp ? frameOfGroupW(grp) : null);
+      if (!rect) return null;
+      g.beside = z.kept && g.beside ? g.beside : { containerId: z.containerId, side: z.side, frame0: rect };
+      return { id: z.containerId, side: z.side, rect };
+    }
+    g.beside = null;
+    if (peer && peer !== selfPeerRef) {
+      if (g.leg && g.leg.peer !== peer) endLeg(g);
+      if (!g.leg) {
+        const adopted = peer.adopt({ id: g.id }, world, px2, {});
+        if (adopted) g.leg = { peer, adopted };
+      }
+      if (g.leg) {
+        g.leg.adopted.move(world);
+        return null;
+      }
+    } else endLeg(g);
+    return inside ? dropTargetAt(g.liveTree, world.x, world.y, g.id) : null;
+  };
+  const adoptPane = (node, world, opts = {}) => {
+    if (disposed || isStatic) return null;
+    const tree = readTree();
+    if (tree && splitLeaves(tree).includes(node.id)) return null;
+    const whole = { path: [], side: "top", rect: frame() };
+    const state = { target: null };
+    const targetAt = (w) => !worldInsideBoard(w.x, w.y) ? null : tree ? dropTargetAt(tree, w.x, w.y) : whole;
+    const paint2 = () => {
+      showInsertion(state.target ? insertionRect(state.target.rect, state.target.side) : null);
+      api.render();
+    };
+    const after = () => {
+      if (!state.target) return null;
+      if (!tree) return normalizeSplit(addSplitLeaf(null, node.id, frame(), gap, padding));
+      const t = state.target;
+      const side = rtl && (t.side === "left" || t.side === "right") ? t.side === "left" ? "right" : "left" : t.side;
+      return normalizeSplit(insertSplitLeaf(tree, node.id, targetRef(t), side));
+    };
+    const cellOf = () => {
+      const t = after();
+      return t ? cellsFromSplit(t, columns, rowsGuess()).get(node.id) ?? null : null;
+    };
+    const rectOf = () => {
+      const t = after();
+      return t ? rectsOf(t).get(node.id) ?? null : null;
+    };
+    const besideOn = (containerId, side) => {
+      const rect = rectsOf(tree).get(containerId);
+      if (!rect) return;
+      state.target = { id: containerId, side, rect };
+      paint2();
+    };
+    if (opts.beside) besideOn(opts.beside.containerId, opts.beside.side);
+    else {
+      state.target = targetAt(world);
+      paint2();
+    }
+    return {
+      groupId: group.id,
+      move: (w) => {
+        state.target = targetAt(w);
+        paint2();
+      },
+      beside: (containerId, side) => besideOn(containerId, side),
+      besideState: () => {
+        const t = state.target;
+        if (!t || !("id" in t) || !diagram.getGroup(t.id)) return null;
+        return { containerId: t.id, side: t.side, frame0: t.rect };
+      },
+      leave: () => {
+        state.target = null;
+        paint2();
+      },
+      enter: (w) => {
+        state.target = targetAt(w);
+        paint2();
+      },
+      place: () => false,
+      // a pane is the tree's to size: no prescribed cell here
+      baseline: () => tree ? cellsFromSplit(tree, columns, rowsGuess()) : /* @__PURE__ */ new Map(),
+      cell: () => cellOf(),
+      rect: () => rectOf(),
+      abort: () => {
+        state.target = null;
+        showInsertion(null);
+        api.render();
+      },
+      finalize: () => {
+        const t = after();
+        const cell = cellOf();
+        const rect = rectOf();
+        state.target = null;
+        showInsertion(null);
+        if (!t || !cell || !rect) return null;
+        return { commands: [new SetSplitTreeCommand(group.id, tree, t)], cell, rect };
+      }
+    };
+  };
   const nameOf2 = (id) => {
     const node = diagram.getNode(id);
     const title = node?.getMetadata?.("widgetTitle");
@@ -199826,39 +199936,7 @@ function bindDashboardSplit(api, group, options = {}) {
     const inside = worldInsideBoard(ev.world.x, ev.world.y);
     const prev = prevWorld;
     prevWorld = { x: ev.world.x, y: ev.world.y };
-    const z = tileZone(g, ev, prev);
-    let t = null;
-    if (z.kind === "strip") {
-      endLeg(g);
-      g.beside = null;
-      if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) options.tabDrop?.markDrop(z.containerId, z.index);
-      g.strip = { containerId: z.containerId, index: z.index };
-    } else {
-      endStrip(g);
-      const peer = z.kind === "plain" ? z.board.ref ?? null : null;
-      if (z.kind === "beside") {
-        endLeg(g);
-        const grp = diagram.getGroup(z.containerId);
-        const rect = rectsOf(g.liveTree).get(z.containerId) ?? (grp ? frameOfGroupW(grp) : null);
-        if (rect) {
-          g.beside = z.kept && g.beside ? g.beside : { containerId: z.containerId, side: z.side, frame0: rect };
-          t = { id: z.containerId, side: z.side, rect };
-        }
-      } else if (peer && peer !== selfPeerRef) {
-        g.beside = null;
-        if (g.leg && g.leg.peer !== peer) endLeg(g);
-        if (!g.leg) {
-          const adopted = peer.adopt({ id: g.id }, ev.world, pxSizeOf(g), {});
-          if (adopted) g.leg = { peer, adopted };
-        }
-        if (g.leg) g.leg.adopted.move(ev.world);
-        else t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
-      } else {
-        g.beside = null;
-        endLeg(g);
-        t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
-      }
-    }
+    const t = zoneTarget(g, tileZone(g, ev, prev), ev.world, inside, pxSizeOf(g));
     g.target = t ? targetOf(t) : null;
     showInsertion(t ? insertionRect(t.rect, t.side) : null);
     const out = !inside && !t && !g.strip && !g.leg && options.dragOut === "remove" && (!options.removeZone || options.removeZone({ x: ev.screen.x, y: ev.screen.y }, { x: ev.world.x, y: ev.world.y }));
@@ -200434,6 +200512,9 @@ function bindDashboardSplit(api, group, options = {}) {
       window.removeEventListener("pointermove", onMove, true);
       window.removeEventListener("pointerup", onUp, true);
     };
+    const f0 = frame();
+    const colW0 = Math.max(1, (f0.width - 2 * padding - (columns - 1) * gap) / columns);
+    const chipPx = { width: Math.max(1, spec.w * (colW0 + gap) - gap), height: Math.max(1, spec.h * (baseRowHeight + gap) - gap) };
     const onMove = (e) => {
       if (gesture !== g) return detach();
       if (chip2) {
@@ -200441,10 +200522,12 @@ function bindDashboardSplit(api, group, options = {}) {
         chip2.style.top = `${e.clientY + 6}px`;
       }
       const w = toWorld(e.clientX, e.clientY);
-      const t = worldInsideBoard(w.x, w.y) ? dropTargetAt(g.liveTree, w.x, w.y) : null;
+      const inside = worldInsideBoard(w.x, w.y);
+      const ev = { type: "move", world: w, screen: { x: e.clientX, y: e.clientY }, modifiers: { shift: false, ctrl: false, alt: false, meta: false } };
+      const t = zoneTarget(g, tileZone(g, ev, null), w, inside, chipPx);
       g.target = t ? targetOf(t) : null;
       showInsertion(t ? insertionRect(t.rect, t.side) : null);
-      chip2?.classList.toggle("axdb-out", !t && !!g.liveTree);
+      chip2?.classList.toggle("axdb-out", !t && !g.leg && !!g.liveTree);
       api.render();
     };
     const onUp = () => {
@@ -200452,6 +200535,19 @@ function bindDashboardSplit(api, group, options = {}) {
       if (gesture !== g) return;
       gesture = null;
       teardownGesture(g);
+      if (g.leg) {
+        const leg = g.leg;
+        g.leg = null;
+        const fin = leg.adopted.finalize();
+        if (!fin) {
+          api.renderNow();
+          fire({ type: "cancel", kind: "palette", nodeId: node.id, changed: false });
+          return;
+        }
+        void options.onDropIn?.(node, fin.cell, fin.commands, { boardId: leg.adopted.groupId });
+        fire({ type: "drop-in", kind: "palette", nodeId: node.id, changed: true });
+        return;
+      }
       const tree2 = g.liveTree;
       const after = g.target ? insertSplitLeaf(tree2, node.id, targetRef(g.target), g.target.side) : tree2 ? null : addSplitLeaf(null, node.id, frame(), gap, padding);
       if (!after) {
@@ -200791,7 +200887,8 @@ function bindDashboardSplit(api, group, options = {}) {
       const f = frame();
       return f.width * f.height;
     },
-    adopt: () => null
+    // A tile from another board lands as a PANE where the line shows (0.4.70) — see adoptPane.
+    adopt: (node, world, _px, opts) => adoptPane(node, world, opts)
   };
   const unregisterPeer = registerBoardPeer(api.container, selfPeer);
   selfPeerRef = selfPeer;

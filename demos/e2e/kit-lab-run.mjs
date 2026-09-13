@@ -3055,6 +3055,66 @@ const sdShown = () => page.evaluate(() => {
     `coming down 40 px a step: ${at40.join(' → ')} · 60 px a step: ${at60.join(' → ')} · board at rest ${l1.join('/')} ${JSON.stringify(sane)}`);
 }
 
+{
+  begin('L111-on-a-SPLIT-board-a-widget-dragged-OUT-of-a-page-becomes-a-pane-where-the-line-showed');
+  await scrollTo('spdrop');
+  // Measured live on 0.4.69: a widget dragged out of the Filters page in split
+  // mode got no line and no placeholder anywhere on the board, the ghost
+  // dimmed, every release snapped home — the split peer refused to adopt.
+  const l0 = await sdLeaves();
+  const inner = await rect('spdrop', 'sd-ka1');
+  const w = await rect('spdrop', 'sd-w');
+  const wRest = { ...w };
+  let held = null;
+  // out of the Sales page onto the RIGHT half of the widget pane: the line on that pane's right edge
+  await drag(inner.x + inner.w / 2, inner.y + 14, w.x + w.w * 0.8, w.y + w.h / 2, { steps: 16, mid: async () => {
+    held = { ...(await sdShown()), dimmed: await page.evaluate(() => !!document.querySelector('#cv-spdrop .grafloria-node-host.axdb-out')) };
+    await shot('spdrop', 'page-widget-held-over-the-widget-pane-the-line-on-its-right-edge');
+  } });
+  const l1 = await sdLeaves(); const sane = await sanity('spdrop');
+  const where = await page.evaluate(() => { const m = window.__lab.spdrop.api.getModel(); return { board: !!m.getGroup('main')?.members?.has('sd-ka1'), page: !!m.getGroup('sd-a1')?.members?.has('sd-ka1'), pageAlive: !!m.getGroup('sd-a1'), tabs: [...document.querySelectorAll('#cv-spdrop .axdb-tabs[data-tabs-id="sd-a"] .axdb-tab')].map((t) => t.textContent.trim()) }; });
+  const kr = await rect('spdrop', 'sd-ka1');
+  await shot('spdrop', 'the-page-widget-is-a-pane-after-the-widget-pane');
+  await undoAll('spdrop', 1);
+  const l2 = await sdLeaves();
+  const back = await page.evaluate(() => { const m = window.__lab.spdrop.api.getModel(); return { board: !!m.getGroup('main')?.members?.has('sd-ka1'), page: !!m.getGroup('sd-a1')?.members?.has('sd-ka1'), tabs: [...document.querySelectorAll('#cv-spdrop .axdb-tabs[data-tabs-id="sd-a"] .axdb-tab')].map((t) => t.textContent.trim()) }; });
+  // the Sales page held ONE widget: emptied, it closes and its tab goes (0.4.32) — the container keeps its Margin page
+  verdict(l0.join(',') === 'sd-w,sd-a' && held?.ins !== null && Math.abs(held.ins - (wRest.x + wRest.w)) <= 6 && held?.ph === false && held?.tab === false && held?.dimmed === false
+    && l1.join(',') === 'sd-w,sd-ka1,sd-a' && where.board && !where.page && where.tabs.join('/') === 'Margin' && !!kr && kr.x > wRest.x + wRest.w * 0.5 && sane.overlaps === 0
+    && l2.join(',') === 'sd-w,sd-a' && !back.board && back.page && back.tabs.join('/') === 'Sales/Margin',
+    `rest ${l0.join('/')} · held over the widget pane: ${JSON.stringify(held)} (its right edge at ${Math.round(wRest.x + wRest.w)}) · released: leaves ${l1.join('/')}, on the board ${where.board}, on the page ${where.page}, tabs ${where.tabs.join('/')} (the emptied Sales page closed), painted at x=${kr ? Math.round(kr.x) : null} ${JSON.stringify(sane)} · undo: ${l2.join('/')} on the page ${back.page}, tabs ${back.tabs.join('/')}`);
+}
+{
+  begin('L112-on-a-SPLIT-board-a-PALETTE-chip-dragged-into-a-tab-page-lands-there-and-the-drop-names-the-page');
+  await scrollTo('spdrop');
+  await page.evaluate(() => { window.__labDrops = []; });
+  const l0 = await sdLeaves();
+  const chip = await page.evaluate(() => document.getElementById('spdrop-chip').getBoundingClientRect().toJSON());
+  const a = await groupRect('spdrop', 'sd-a');
+  const cv = await page.evaluate(() => document.getElementById('cv-spdrop').getBoundingClientRect().toJSON());
+  const strip = await page.evaluate(() => document.querySelector('#cv-spdrop .axdb-tabs[data-tabs-id="sd-a"]').getBoundingClientRect().toJSON());
+  const to = { x: cv.x + a.x + a.w / 2, y: cv.y + a.y + a.h * 0.6 };
+  await page.mouse.move(chip.x + chip.width / 2, chip.y + chip.height / 2); await page.mouse.down();
+  await page.mouse.move(chip.x + 20, chip.y + 30, { steps: 4 });
+  // over the strip first: a chip is never a tab (the grid's rule too)
+  await page.mouse.move(strip.x + strip.width * 0.6, strip.y + strip.height / 2, { steps: 10 }); await page.waitForTimeout(200);
+  const onStrip = await sdShown();
+  // then into the page's body: the page's own placeholder, no line
+  await page.mouse.move(to.x, to.y, { steps: 10 }); await page.waitForTimeout(300);
+  const held = { ...(await sdShown()), onPage: await page.evaluate(() => window.__lab.spdrop.handle.binderOf('sd-a1')?.cellOf('sd-new-1') ?? null), dimmed: await page.evaluate(() => !!document.querySelector('.axdb-drag-chip.axdb-out')) };
+  await shot('spdrop', 'chip-held-over-the-sales-page-its-placeholder');
+  await page.mouse.up(); await page.waitForTimeout(700);
+  const drops = await page.evaluate(() => window.__labDrops);
+  const l1 = await sdLeaves(); const sane = await sanity('spdrop');
+  const landed = await page.evaluate(() => { const m = window.__lab.spdrop.api.getModel(); return { page: !!m.getGroup('sd-a1')?.members?.has('sd-new-1'), board: !!m.getGroup('main')?.members?.has('sd-new-1') }; });
+  await shot('spdrop', 'the-chip-landed-in-the-sales-page');
+  await undoAll('spdrop', 1);
+  const gone = await page.evaluate(() => !window.__lab.spdrop.api.getModel().getNode('sd-new-1'));
+  verdict(l0.join(',') === 'sd-w,sd-a' && onStrip.tab === false && held.tab === false && held.ins === null && held.ph === true && held.onPage !== null && held.dimmed === false
+    && drops.length === 1 && drops[0].boardId === 'sd-a1' && landed.page && !landed.board && l1.join(',') === 'sd-w,sd-a' && sane.overlaps === 0 && gone,
+    `rest ${l0.join('/')} · over the strip: tab ${onStrip.tab} · held over the page: ${JSON.stringify(held)} · drop-in ${JSON.stringify(drops)} · landed on the page ${landed.page} / the board ${landed.board}, tree ${l1.join('/')} ${JSON.stringify(sane)} · undo removed it ${gone}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

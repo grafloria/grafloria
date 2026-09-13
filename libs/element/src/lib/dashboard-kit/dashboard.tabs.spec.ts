@@ -3367,4 +3367,97 @@ describe('on a SPLIT board a widget finds a tab container\'s zones: its strip ma
     expect(marked(api)).toBe(false);
     tool.onPointerUp?.(at(mid, r.bottom + 200), hit);
   });
+
+  it('a widget dragged OUT of a page onto the split board becomes a pane where the line showed — the split board ADOPTS (0.4.70)', async () => {
+    // Measured live on 0.4.69: a widget dragged out of the Filters page in
+    // split mode got no line and no placeholder anywhere on the board, the
+    // ghost dimmed, and every release snapped home — the split peer's
+    // `adopt` answered null, so a widget could never leave a page there.
+    // Two widgets on the page: the page is the unit, and a page emptied by the
+    // drag closes with its container (0.4.32) — which is right, and not this test.
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        layout: 'split',
+        widgets: [
+          K('nps', 6, 6, 0, 0),
+          { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0), K('k2', 3, 1, 3, 0)] }] },
+        ],
+      })
+    );
+    stubStrip(api, model);
+    const tool = toolOf('p1');
+    const k1 = model.getNode('k1')!;
+    const nps = model.getNode('nps')!;
+    const hit = { node: k1 } as never;
+    tool.onPointerDown?.(tev('down', k1.position.x + 10, k1.position.y + 10), hit);
+    tool.onPointerMove?.(at(k1.position.x + 30, k1.position.y + 20), hit);
+    // onto the RIGHT half of the nps pane: the split board's line on nps's right edge
+    const to = { x: nps.position.x + nps.size.width * 0.8, y: nps.position.y + nps.size.height * 0.5 };
+    tool.onPointerMove?.(at(to.x, to.y), hit);
+    const l = line(api);
+    expect(l).not.toBeNull();
+    expect(Math.round(parseFloat(l!.style.left))).toBe(Math.round(nps.position.x + nps.size.width - 2));
+    expect(api.container.querySelector('.axdb-out')).toBeNull(); // not dimmed: a release lands
+    tool.onPointerUp?.(at(to.x, to.y), hit);
+    await settle();
+    expect(leaves(model)).toEqual(['nps', 'k1', 'side']);
+    expect(model.getGroup('main')!.members?.has('k1')).toBe(true);
+    expect(model.getGroup('p1')!.members?.has('k1')).toBe(false);
+    expect(model.getGroup('p1')!.members?.has('k2')).toBe(true); // the page stays, with its other widget
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(leaves(model).sort()).toEqual(['nps', 'side']);
+    expect(model.getGroup('p1')!.members?.has('k1')).toBe(true);
+  });
+
+  it('a PALETTE chip on a split board goes through the same zones: into a page it lands there and the drop names the page; on a pane edge, the line as before (0.4.70)', async () => {
+    const onDropIn = jest.fn();
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        layout: 'split',
+        widgets: [
+          K('nps', 6, 6, 0, 0),
+          { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0)] }] },
+        ],
+        binder: { onDropIn },
+      })
+    );
+    const r = stubStrip(api, model);
+    const binder = handle.binderOf('main')!;
+    const node = new NodeModel({ id: 'pal', type: 'widget', position: { x: 0, y: 0 }, size: { width: 180, height: 60, depth: 0 } });
+    const pe = (type: string, x: number, y: number) => Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }) as unknown as PointerEvent;
+    binder.beginPaletteDrag(node, { w: 2, h: 1 }, pe('pointerdown', 100, 400));
+    window.dispatchEvent(pe('pointermove', 120, 410));
+    // over the strip: a chip never becomes a tab (the grid's rule too) — and no line either
+    window.dispatchEvent(pe('pointermove', r.x + r.width * 0.5, r.top + 15));
+    expect(marked(api)).toBe(false);
+    // into the page's body: the page holds the chip's tile, no line
+    window.dispatchEvent(pe('pointermove', r.x + r.width * 0.5, r.top + 250));
+    expect(on(handle, 'p1', 'pal')).not.toBeNull();
+    expect(line(api)).toBeNull();
+    // out again onto the nps pane's edge: the line, the page lets go
+    window.dispatchEvent(pe('pointermove', 100, 300));
+    expect(on(handle, 'p1', 'pal')).toBeNull();
+    expect(line(api)).not.toBeNull();
+    // and back into the page for the drop
+    window.dispatchEvent(pe('pointermove', r.x + r.width * 0.5, r.top + 250));
+    window.dispatchEvent(pe('pointerup', r.x + r.width * 0.5, r.top + 250));
+    await settle();
+    expect(onDropIn).toHaveBeenCalledTimes(1);
+    const [n, cell, , target] = onDropIn.mock.calls[0] as [NodeModel, { x: number; y: number; w: number; h: number }, unknown[], { boardId: string }];
+    expect(n.id).toBe('pal');
+    expect(target.boardId).toBe('p1');
+    expect(cell.w).toBeGreaterThan(0);
+    expect(leaves(model).sort()).toEqual(['nps', 'side']); // the split tree is untouched: the page took it
+  });
 });

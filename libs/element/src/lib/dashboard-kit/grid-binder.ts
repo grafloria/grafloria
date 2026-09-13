@@ -641,7 +641,7 @@ export interface AdoptedLeg {
   /** Put the tile BESIDE `containerId` on this board, at the row under `world` — the container shifts or the tiles behind it are pushed; a repeat at the same row is a no-op. */
   beside(containerId: string, side: BesideSide, world: { x: number; y: number }): void;
   /** The beside this board holds for the tile, for the zone resolve's stickiness: the container's frame at rest and the cell the tile took — null when none. */
-  besideState(): { containerId: string; side: BesideSide; frame0: WorldRect; vacated: WorldRect } | null;
+  besideState(): { containerId: string; side: BesideSide; frame0: WorldRect; vacated?: WorldRect } | null;
   /**
    * Take the tile OFF the board while the pointer is somewhere the board is
    * not the target (over a group the page will join instead); the tiles it

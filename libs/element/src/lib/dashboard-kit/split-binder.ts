@@ -26,7 +26,7 @@
 import { BESIDE_BAND, resolveTabZone, resolve as resolveZone, stripCrossing, stripUnder, type BesideSide, type Zone as WalkZone, type ZoneBoard } from './zones';
 import { AddToGroupCommand, BatchCommand, Command, RemoveFromGroupCommand, type DiagramModel, type GroupModel, type NodeModel } from '@grafloria/engine';
 import { LiveRegionController, registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
-import type { AdoptedLeg, DashboardGridApi, DashboardGridHandle, DashboardGridOptions, TearOutPlan } from './grid-binder';
+import type { AdoptOptions, AdoptedLeg, DashboardGridApi, DashboardGridHandle, DashboardGridOptions, TearOutPlan } from './grid-binder';
 import { anyEdge, clearOtherSelections, clientPerWorldOf, dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, parentPeerOf, peersOnCanvasOf, pressOnDragHandle, registerBoardPeer, syncGrip, zoneRootsOf, DRAG_HANDLE_CLASS, EDGE_GRIP, STRIP_STAY, type BinderPeer, type DragHandleOption, type ResizeEdges } from './grid-binder';
 import { buildCommitCommands, cellFromGridItem, type CellRect, type WorldRect } from './grid-mapping';
 import { SequenceCommand } from './commit';
@@ -673,6 +673,140 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     g.leg.adopted.abort();
     g.leg = null;
   };
+  /**
+   * What the zone means for the pane under the hand — the one step the widget
+   * drag and the palette drag share (0.4.70): a strip marks its slot (a
+   * widget's, never a chip's — the walk answers no strip for a chip); a band
+   * beside a container is a pane on that side, this board's line; a plain
+   * cell on a NESTED board, or on the board holding this one, hands the tile
+   * to that board through a leg (its own placeholder), a board that refuses
+   * leaving the split rule to answer; anything else is the nearest edge of
+   * the pane under the pointer. Answers the insertion target, or null.
+   */
+  const zoneTarget = (g: Gesture, z: WalkZone, world: { x: number; y: number }, inside: boolean, px: { width: number; height: number }): DropTarget | null => {
+    if (z.kind === 'strip') {
+      endLeg(g);
+      g.beside = null;
+      if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) options.tabDrop?.markDrop(z.containerId, z.index);
+      g.strip = { containerId: z.containerId, index: z.index };
+      return null;
+    }
+    endStrip(g);
+    const peer = z.kind === 'plain' ? ((z.board.ref as BinderPeer | undefined) ?? null) : null;
+    if (z.kind === 'beside') {
+      endLeg(g);
+      const grp = diagram.getGroup(z.containerId);
+      const rect = rectsOf(g.liveTree).get(z.containerId) ?? (grp ? frameOfGroupW(grp) : null);
+      if (!rect) return null;
+      g.beside = z.kept && g.beside ? g.beside : { containerId: z.containerId, side: z.side, frame0: rect };
+      return { id: z.containerId, side: z.side, rect };
+    }
+    g.beside = null;
+    if (peer && peer !== selfPeerRef) {
+      if (g.leg && g.leg.peer !== peer) endLeg(g);
+      if (!g.leg) {
+        const adopted = peer.adopt({ id: g.id }, world, px, {});
+        if (adopted) g.leg = { peer, adopted };
+      }
+      if (g.leg) {
+        g.leg.adopted.move(world);
+        return null;
+      }
+    } else endLeg(g);
+    return inside ? dropTargetAt(g.liveTree, world.x, world.y, g.id) : null;
+  };
+
+  // -- the split board as an adoption TARGET (0.4.70) ----------------------------
+
+  /**
+   * A tile from ANOTHER board — a widget leaving a page or a section, a
+   * palette chip — held over this board through a leg. Measured live on
+   * 0.4.69: a widget dragged out of the Filters page in split mode got no
+   * line and no placeholder anywhere, the ghost dimmed, every release
+   * snapped home — this peer's `adopt` answered null. The leg's promise is
+   * the insertion line on the nearest edge of the pane under the pointer;
+   * nothing moves until the release (the split model's rule); `finalize`
+   * answers the tree with the new pane, so the source's commit carries it. A
+   * beside on a container of this board is a pane on that side of it. An
+   * empty board takes the tile as its whole.
+   */
+  const adoptPane = (node: { id: string }, world: { x: number; y: number }, opts: AdoptOptions = {}): AdoptedLeg | null => {
+    if (disposed || isStatic) return null;
+    const tree = readTree();
+    if (tree && splitLeaves(tree).includes(node.id)) return null; // a pane of this board never adopts itself
+    const whole: DropTarget = { path: [], side: 'top', rect: frame() };
+    const state: { target: DropTarget | null } = { target: null };
+    const targetAt = (w: { x: number; y: number }): DropTarget | null => (!worldInsideBoard(w.x, w.y) ? null : tree ? dropTargetAt(tree, w.x, w.y) : whole);
+    const paint = (): void => {
+      showInsertion(state.target ? insertionRect(state.target.rect, state.target.side) : null);
+      api.render();
+    };
+    const after = (): SplitNode | null => {
+      if (!state.target) return null;
+      if (!tree) return normalizeSplit(addSplitLeaf(null, node.id, frame(), gap, padding));
+      const t = state.target;
+      const side = rtl && (t.side === 'left' || t.side === 'right') ? (t.side === 'left' ? 'right' : 'left') : t.side;
+      return normalizeSplit(insertSplitLeaf(tree, node.id, targetRef(t), side));
+    };
+    const cellOf = (): CellRect | null => {
+      const t = after();
+      return t ? (cellsFromSplit(t, columns, rowsGuess()).get(node.id) ?? null) : null;
+    };
+    const rectOf = (): WorldRect | null => {
+      const t = after();
+      return t ? (rectsOf(t).get(node.id) ?? null) : null;
+    };
+    const besideOn = (containerId: string, side: BesideSide): void => {
+      const rect = rectsOf(tree).get(containerId);
+      if (!rect) return;
+      state.target = { id: containerId, side, rect };
+      paint();
+    };
+    if (opts.beside) besideOn(opts.beside.containerId, opts.beside.side);
+    else {
+      state.target = targetAt(world);
+      paint();
+    }
+    return {
+      groupId: group.id,
+      move: (w) => {
+        state.target = targetAt(w);
+        paint();
+      },
+      beside: (containerId, side) => besideOn(containerId, side),
+      besideState: () => {
+        const t = state.target;
+        if (!t || !('id' in t) || !diagram.getGroup(t.id)) return null;
+        return { containerId: t.id, side: t.side, frame0: t.rect };
+      },
+      leave: () => {
+        state.target = null;
+        paint();
+      },
+      enter: (w) => {
+        state.target = targetAt(w);
+        paint();
+      },
+      place: () => false, // a pane is the tree's to size: no prescribed cell here
+      baseline: () => (tree ? cellsFromSplit(tree, columns, rowsGuess()) : new Map<string, CellRect>()),
+      cell: () => cellOf(),
+      rect: () => rectOf(),
+      abort: () => {
+        state.target = null;
+        showInsertion(null);
+        api.render();
+      },
+      finalize: () => {
+        const t = after();
+        const cell = cellOf();
+        const rect = rectOf();
+        state.target = null;
+        showInsertion(null);
+        if (!t || !cell || !rect) return null;
+        return { commands: [new SetSplitTreeCommand(group.id, tree, t)], cell, rect };
+      },
+    };
+  };
 
   // -- a11y -------------------------------------------------------------------
 
@@ -872,45 +1006,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     const inside = worldInsideBoard(ev.world.x, ev.world.y);
     const prev = prevWorld;
     prevWorld = { x: ev.world.x, y: ev.world.y };
-    const z = tileZone(g, ev, prev);
-    let t: DropTarget | null = null;
-    if (z.kind === 'strip') {
-      // -- INTO A STRIP: the strip marks the slot; nothing else is painted.
-      endLeg(g);
-      g.beside = null;
-      if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) options.tabDrop?.markDrop(z.containerId, z.index);
-      g.strip = { containerId: z.containerId, index: z.index };
-    } else {
-      endStrip(g);
-      const peer = z.kind === 'plain' ? (z.board.ref as BinderPeer | undefined) ?? null : null;
-      if (z.kind === 'beside') {
-        // -- BESIDE a container: a pane on that side of it — the split board's own line.
-        endLeg(g);
-        const grp = diagram.getGroup(z.containerId);
-        const rect = rectsOf(g.liveTree).get(z.containerId) ?? (grp ? frameOfGroupW(grp) : null);
-        if (rect) {
-          g.beside = z.kept && g.beside ? g.beside : { containerId: z.containerId, side: z.side, frame0: rect };
-          t = { id: z.containerId, side: z.side, rect };
-        }
-      } else if (peer && peer !== selfPeerRef) {
-        // -- INTO a nested board (a page, a section) — or out onto the board
-        // that holds this one: that board holds the widget through a leg and
-        // paints its own placeholder. A board that refuses (full, fit) leaves
-        // the split rule to answer.
-        g.beside = null;
-        if (g.leg && g.leg.peer !== peer) endLeg(g);
-        if (!g.leg) {
-          const adopted = peer.adopt({ id: g.id }, ev.world, pxSizeOf(g), {});
-          if (adopted) g.leg = { peer, adopted };
-        }
-        if (g.leg) g.leg.adopted.move(ev.world);
-        else t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
-      } else {
-        g.beside = null;
-        endLeg(g);
-        t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
-      }
-    }
+    const t = zoneTarget(g, tileZone(g, ev, prev), ev.world, inside, pxSizeOf(g));
     g.target = t ? targetOf(t) : null;
     showInsertion(t ? insertionRect(t.rect, t.side) : null);
     const out =
@@ -1572,6 +1668,11 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       window.removeEventListener('pointermove', onMove, true);
       window.removeEventListener('pointerup', onUp, true);
     };
+    // The chip's size in this board's units — what a page or a section that
+    // adopts it makes its tile from (the grid board does the same, 0.4.53).
+    const f0 = frame();
+    const colW0 = Math.max(1, (f0.width - 2 * padding - (columns - 1) * gap) / columns);
+    const chipPx = { width: Math.max(1, spec.w * (colW0 + gap) - gap), height: Math.max(1, spec.h * (baseRowHeight + gap) - gap) };
     const onMove = (e: PointerEvent): void => {
       if (gesture !== g) return detach();
       if (chip) {
@@ -1579,10 +1680,15 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
         chip.style.top = `${e.clientY + 6}px`;
       }
       const w = toWorld(e.clientX, e.clientY);
-      const t = worldInsideBoard(w.x, w.y) ? dropTargetAt(g.liveTree, w.x, w.y) : null;
+      const inside = worldInsideBoard(w.x, w.y);
+      // Through the zones (0.4.70): a page or a section takes the chip through
+      // a leg and shows its own placeholder; a container's band means a pane
+      // beside it; a chip never becomes a tab (the grid's rule too).
+      const ev = { type: 'move', world: w, screen: { x: e.clientX, y: e.clientY }, modifiers: { shift: false, ctrl: false, alt: false, meta: false } } as unknown as ToolPointerEvent;
+      const t = zoneTarget(g, tileZone(g, ev, null), w, inside, chipPx);
       g.target = t ? targetOf(t) : null;
       showInsertion(t ? insertionRect(t.rect, t.side) : null);
-      chip?.classList.toggle('axdb-out', !t && !!g.liveTree);
+      chip?.classList.toggle('axdb-out', !t && !g.leg && !!g.liveTree);
       api.render();
     };
     const onUp = (): void => {
@@ -1590,6 +1696,21 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       if (gesture !== g) return;
       gesture = null;
       teardownGesture(g);
+      if (g.leg) {
+        // Dropped into another board (a page, a section): its leg closes with
+        // that board's displaced tiles; this tree is untouched.
+        const leg = g.leg;
+        g.leg = null;
+        const fin = leg.adopted.finalize();
+        if (!fin) {
+          api.renderNow();
+          fire({ type: 'cancel', kind: 'palette', nodeId: node.id, changed: false });
+          return;
+        }
+        void options.onDropIn?.(node, fin.cell, fin.commands, { boardId: leg.adopted.groupId });
+        fire({ type: 'drop-in', kind: 'palette', nodeId: node.id, changed: true });
+        return;
+      }
       const tree = g.liveTree;
       const after = g.target
         ? insertSplitLeaf(tree, node.id, targetRef(g.target), g.target.side)
@@ -1985,7 +2106,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       const f = frame();
       return f.width * f.height;
     },
-    adopt: () => null,
+    // A tile from another board lands as a PANE where the line shows (0.4.70) — see adoptPane.
+    adopt: (node, world, _px, opts) => adoptPane(node, world, opts),
   };
   const unregisterPeer = registerBoardPeer(api.container, selfPeer);
   selfPeerRef = selfPeer;
