@@ -131,9 +131,18 @@ describe('zones — resolve: the walk from the roots inward', () => {
     expect(at(912, 100)).toMatchObject({ kind: 'beside', containerId: 'side', side: 'left' });
     expect(at(912, 100, { homeChain: new Set(['side']) })).toEqual({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }), grace: false });
   });
-  it('the margin of a tab container — inside its frame, outside its page — is a plain cell on the PARENT board', () => {
-    // just under the strip, in the 8-px inset above the page: the container's own margin, so its PARENT takes it
-    expect(at(1050, 34)).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'root' }) });
+  it('the inset under a tab container\'s strip — inside its frame, above its page — is the PAGE\'s (0.4.68)', () => {
+    // The 8-px inset between the strip and the page used to be "the container's
+    // own margin, so its parent takes it" — but a widget can never land on the
+    // parent board there (the container is solid to a passing widget), so the
+    // answer was a refusal, flashed for 8 px on the way up out of the page
+    // once 0.4.67 stopped the inside lane from masking it (the crawl's 7th change).
+    expect(at(1050, 34)).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) });
+    expect(at(1050, 31)).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // the first row under the strip too
+    // the strip rows a strip hit did not claim stay the container's own tile (a GROUP dragged onto the strip pushes it — L78)…
+    expect(at(1050, 20)).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'root' }) });
+    // …and so does the inset for a carried GROUP: strip and inset push, the page body nests (0.4.56)
+    expect(at(1050, 34, { ghostSubtree: new Set(['ops']) })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'root' }) });
     // the right inset between the page's edge and the frame, in the middle rows (the band is 0.2 → 60 px; the inset is 8 px, so it is band)
     expect(at(1195, 240)).toMatchObject({ kind: 'beside', side: 'right' });
   });
