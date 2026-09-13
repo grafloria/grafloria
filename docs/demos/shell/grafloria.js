@@ -199593,6 +199593,17 @@ function bindDashboardSplit(api, group, options = {}) {
         break;
       }
     }
+    if (!leaf) {
+      let best = null;
+      for (const [id, r2] of rectsOf(tree)) {
+        if (id === exclude) continue;
+        const dx = wx < r2.x ? r2.x - wx : wx > r2.x + r2.width ? wx - r2.x - r2.width : 0;
+        const dy = wy < r2.y ? r2.y - wy : wy > r2.y + r2.height ? wy - r2.y - r2.height : 0;
+        const d2 = Math.hypot(dx, dy);
+        if (d2 <= gap + 4 && (!best || d2 < best.d)) best = { id, rect: r2, d: d2 };
+      }
+      if (best) leaf = { id: best.id, rect: best.rect };
+    }
     if (!leaf) return null;
     const leafPath = pathToLeaf(tree, leaf.id) ?? [];
     const groups = groupRectsOf(tree, frame(), gap, padding, rtl).filter((g) => g.path.length < leafPath.length && g.path.every((i, k) => leafPath[k] === i)).sort((a, b) => a.path.length - b.path.length);
@@ -200093,9 +200104,9 @@ function bindDashboardSplit(api, group, options = {}) {
       ]);
       const crossing = [
         new SetSplitTreeCommand(group.id, g.startTree, normalizeSplit(g.liveTree)),
-        ...fin.commands,
         new RemoveFromGroupCommand(group.id, g.id),
         new AddToGroupCommand(leg.adopted.groupId, g.id),
+        ...fin.commands,
         ...own
       ];
       const leaving = options.onMemberLeaving?.(g.id) ?? [];

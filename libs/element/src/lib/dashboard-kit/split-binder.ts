@@ -580,6 +580,21 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
         break;
       }
     }
+    if (!leaf) {
+      // The GAP between two panes: nothing is under the pointer, so a drop
+      // there used to snap home — a dead zone the width of a divider. The
+      // nearest pane's edge is a hand's width away, and that is what it
+      // means (0.4.72). Ties go to the first pane in tree order.
+      let best: { id: string; rect: WorldRect; d: number } | null = null;
+      for (const [id, r] of rectsOf(tree)) {
+        if (id === exclude) continue;
+        const dx = wx < r.x ? r.x - wx : wx > r.x + r.width ? wx - r.x - r.width : 0;
+        const dy = wy < r.y ? r.y - wy : wy > r.y + r.height ? wy - r.y - r.height : 0;
+        const d = Math.hypot(dx, dy);
+        if (d <= gap + 4 && (!best || d < best.d)) best = { id, rect: r, d };
+      }
+      if (best) leaf = { id: best.id, rect: best.rect };
+    }
     if (!leaf) return null;
     const leafPath = pathToLeaf(tree, leaf.id) ?? [];
     // Ancestors first (the root is path []), outermost wins.
@@ -1193,11 +1208,19 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
           sizeAfter: { width: fin.rect.width, height: fin.rect.height },
         },
       ]);
+      // THE MEMBERSHIP LANDS BEFORE THE TARGET'S TREE SWAP. A split target's
+      // `fin.commands` is its tree with the new pane; written first, a sync of
+      // that board mid-batch (the container it sits in resized when this pane
+      // left) reconciles a leaf that is not a member yet OUT, and the later
+      // member:added puts it back by halving the largest pane — measured on
+      // L115: the line promised "after p2", the widget landed left of it. The
+      // tear-out met the same class (0.4.38): add the member, then the swap
+      // wins. A grid target's displaced tiles do not care about the order.
       const crossing: Command[] = [
         new SetSplitTreeCommand(group.id, g.startTree, normalizeSplit(g.liveTree)),
-        ...fin.commands,
         new RemoveFromGroupCommand(group.id, g.id),
         new AddToGroupCommand(leg.adopted.groupId, g.id),
+        ...fin.commands,
         ...own,
       ];
       // …and whatever follows a member out of this board: an emptied split

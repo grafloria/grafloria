@@ -3514,3 +3514,98 @@ describe('on a SPLIT board a widget finds a tab container\'s zones: its strip ma
     expect(Math.round(model.getGroup('ops')!.size!.height)).toBe(Math.round(h0));
   });
 });
+
+describe('a tab PAGE laid out as a SPLIT takes a widget too — from a grid board and from a split board — and the gap between two panes is not a dead zone (0.4.72)', () => {
+  // The user: "tab should allow both layouts, grow and split — did you try that
+  // inside it as well?" Measured on the lab's tabs board: a widget dragged into
+  // a split page became a pane of the page (0.4.70's adoptPane, never pinned),
+  // and a drop on the 10 px gap between two panes snapped home — nothing under
+  // the pointer, so no target. The gap now means the nearest pane's edge.
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+  const line = (api: { container: HTMLElement }) => api.container.querySelector('.axdb-ins') as HTMLElement | null;
+  const leavesOf = (model: DiagramModel, groupId: string) => splitLeaves((model.getGroup(groupId)!.getMetadata(SPLIT_TREE_KEY) as SplitNode | null) ?? null);
+  const stubStrip = (api: { container: HTMLElement }, model: DiagramModel, h = 30) => {
+    const g = model.getGroup('side')!;
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const live = () => { const p = g.position; const w = g.size!.width; return { left: p.x, top: p.y, right: p.x + w, bottom: p.y + h, width: w, height: h, x: p.x, y: p.y, toJSON: () => ({}) }; };
+    Object.defineProperty(strip, 'getBoundingClientRect', { value: () => live(), configurable: true });
+    return live();
+  };
+  const SIDE = (pageLayout: 'grid' | 'split'): DashboardWidgetSpec => ({ id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Alerts', columns: 6, layout: pageLayout, widgets: [K('pb1', 3, 4, 0, 0), K('pb2', 3, 4, 3, 0)] }] });
+  const drag = (tool: CanvasTool, node: NodeModel) => { const hit = { node } as never; tool.onPointerDown?.(tev('down', node.position.x + 12, node.position.y + 12), hit); tool.onPointerMove?.(at(node.position.x + 32, node.position.y + 22), hit); return hit; };
+
+  it('from a GRID board: over a split page the page\'s own line shows, and the widget becomes a pane of the page — one undo', async () => {
+    const { api, model } = up(dashboard({ columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, sizing: 'grow', widgets: [K('nps', 2, 1, 0, 0), SIDE('split')] }));
+    stubStrip(api, model);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const pb2 = model.getNode('pb2')!;
+    const hit = drag(tool, nps);
+    // the right pane's inner third — inside the page, clear of the container's fifth (118 px on this fixture): the line on pb2's LEFT edge
+    const to = { x: pb2.position.x + pb2.size.width * 0.3, y: pb2.position.y + pb2.size.height * 0.5 };
+    tool.onPointerMove?.(at(to.x, to.y), hit);
+    expect(line(api)).not.toBeNull();
+    expect(api.container.querySelector('.axdb-out')).toBeNull();
+    tool.onPointerUp?.(at(to.x, to.y), hit);
+    await settle();
+    expect(model.getGroup('p1')!.members?.has('nps')).toBe(true);
+    expect(model.getGroup('main')!.members?.has('nps')).toBe(false);
+    expect(leavesOf(model, 'p1')).toEqual(['pb1', 'nps', 'pb2']);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(model.getGroup('main')!.members?.has('nps')).toBe(true);
+    expect(leavesOf(model, 'p1')).toEqual(['pb1', 'pb2']);
+  });
+
+  it('from a SPLIT board: the same, through the same leg', async () => {
+    const { api, model } = up(dashboard({ columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, layout: 'split', widgets: [K('nps', 6, 6, 0, 0), SIDE('split')] }));
+    stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const nps = model.getNode('nps')!;
+    const pb2 = model.getNode('pb2')!;
+    const hit = drag(tool, nps);
+    const to = { x: pb2.position.x + pb2.size.width * 0.3, y: pb2.position.y + pb2.size.height * 0.5 };
+    tool.onPointerMove?.(at(to.x, to.y), hit);
+    expect(line(api)).not.toBeNull();
+    tool.onPointerUp?.(at(to.x, to.y), hit);
+    await settle();
+    expect(model.getGroup('p1')!.members?.has('nps')).toBe(true);
+    expect(leavesOf(model, 'p1')).toEqual(['pb1', 'nps', 'pb2']);
+    expect(leavesOf(model, 'main')).toEqual(['side']);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(leavesOf(model, 'main').sort()).toEqual(['nps', 'side']);
+    expect(leavesOf(model, 'p1')).toEqual(['pb1', 'pb2']);
+  });
+
+  it('the GAP between two panes means the nearest pane\'s edge, on a split board and inside a split page alike', async () => {
+    const { api, model } = up(dashboard({ columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, layout: 'split', widgets: [K('a', 4, 6, 0, 0), K('b', 4, 6, 4, 0), SIDE('split')] }));
+    stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const b = model.getNode('b')!;
+    const h2 = drag(tool, model.getNode('a')!);
+    // exactly in the gap between b and the side panel: nothing is under the pointer, but the nearest edge is b's right edge
+    const side = model.getGroup('side')!;
+    const gapX = (b.position.x + b.size.width + side.position.x) / 2;
+    tool.onPointerMove?.(at(gapX, b.position.y + b.size.height * 0.5), h2);
+    const l = line(api);
+    expect(l).not.toBeNull();
+    tool.onPointerUp?.(at(gapX, b.position.y + b.size.height * 0.5), h2);
+    await settle();
+    expect(leavesOf(model, 'main')).toEqual(['b', 'a', 'side']); // a landed after b, where the line was
+    await api.getEngine().commandManager.undo();
+    await settle();
+    // and inside the split page: the gap between pb1 and pb2
+    const pb1 = model.getNode('pb1')!;
+    const pb2 = model.getNode('pb2')!;
+    const h3 = drag(tool, model.getNode('a')!);
+    const gx = (pb1.position.x + pb1.size.width + pb2.position.x) / 2;
+    tool.onPointerMove?.(at(gx, pb1.position.y + pb1.size.height * 0.5), h3);
+    expect(line(api)).not.toBeNull();
+    tool.onPointerUp?.(at(gx, pb1.position.y + pb1.size.height * 0.5), h3);
+    await settle();
+    expect(leavesOf(model, 'p1')).toEqual(['pb1', 'a', 'pb2']);
+  });
+});
