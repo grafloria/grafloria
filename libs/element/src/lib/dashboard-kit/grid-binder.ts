@@ -510,6 +510,13 @@ interface BinderPeer {
     cellAfter?: CellRect;
     frameBefore?: WorldRect;
     frameAfter?: WorldRect;
+    /**
+     * The parent's OWN commit for the growth so far, when a cell command
+     * cannot carry it — a SPLIT parent's tree with the pane's new share
+     * (0.4.71). Supersedes what an earlier ask answered; the arriving
+     * board's `finalize` carries it instead of a `SetGroupCellCommand`.
+     */
+    commands?: Command[];
   };
   containsWorld(x: number, y: number): boolean;
   /**
@@ -3096,6 +3103,8 @@ export function bindDashboardGrid(
       frameBefore: WorldRect;
       cellAfter: CellRect;
       frameAfter: WorldRect;
+      /** A split parent's own commit for the rows (its tree); a grid parent's growth is a cell command. */
+      commands?: Command[];
     }
     let grown: GrownRows | null = null;
     const ungrow = (): void => {
@@ -3110,6 +3119,7 @@ export function bindDashboardGrid(
       let rowsAdded = 0;
       let firstBefore: { cell: CellRect; frame: WorldRect } | null = null;
       let lastAfter: { cell: CellRect; frame: WorldRect } | null = null;
+      let parentCommands: Command[] | undefined;
       // At most the tile's own height in rows: past that the board is not
       // "full", it is smaller than the thing being dropped into it.
       for (let i = 0; parent && !entered && i < Math.max(1, span.h); i++) {
@@ -3118,11 +3128,12 @@ export function bindDashboardGrid(
         rowsAdded += 1;
         firstBefore = firstBefore ?? { cell: res.cellBefore, frame: res.frameBefore };
         lastAfter = { cell: res.cellAfter, frame: res.frameAfter };
+        if (res.commands) parentCommands = res.commands; // the latest ask's answer carries every row so far
         setLiveBound((maxRows ?? 0) + 1);
         entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
       }
       if (parent && rowsAdded > 0 && firstBefore && lastAfter) {
-        grown = { peer: parent, rows: rowsAdded, cellBefore: firstBefore.cell, frameBefore: firstBefore.frame, cellAfter: lastAfter.cell, frameAfter: lastAfter.frame };
+        grown = { peer: parent, rows: rowsAdded, cellBefore: firstBefore.cell, frameBefore: firstBefore.frame, cellAfter: lastAfter.cell, frameAfter: lastAfter.frame, ...(parentCommands ? { commands: parentCommands } : {}) };
       }
     }
     if (!entered) {
@@ -3264,7 +3275,8 @@ export function bindDashboardGrid(
         const commands = tileCommands(deltasSince(startCells, startGeom, node.id));
         // …and the rows this board took from its parent to hold the arrival (D4).
         if (grown) {
-          commands.push(new SetGroupCellCommand(group.id, grown.cellBefore, grown.cellAfter, grown.frameBefore, grown.frameAfter));
+          // A grid parent's rows are the section's cell; a split parent's are its tree (0.4.71).
+          commands.push(...(grown.commands ?? [new SetGroupCellCommand(group.id, grown.cellBefore, grown.cellAfter, grown.frameBefore, grown.frameAfter)]));
           grown = null;
         }
         engine.endGesture();

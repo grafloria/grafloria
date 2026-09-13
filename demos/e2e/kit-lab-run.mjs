@@ -3115,6 +3115,44 @@ const sdShown = () => page.evaluate(() => {
     `rest ${l0.join('/')} · over the strip: tab ${onStrip.tab} · held over the page: ${JSON.stringify(held)} · drop-in ${JSON.stringify(drops)} · landed on the page ${landed.page} / the board ${landed.board}, tree ${l1.join('/')} ${JSON.stringify(sane)} · undo removed it ${gone}`);
 }
 
+{
+  begin('L113-on-a-SPLIT-board-a-FULL-grow-section-takes-a-ROW-for-a-widget-its-pane-grows-into-its-column');
+  await scrollTo('spgrow');
+  // Measured live on 0.4.70: the fluid demo's Operations section refused a
+  // widget in split mode and the line beside it answered — a pane could not
+  // ask for rows. Now the section's pane grows into its column sibling, the
+  // way a grow section takes a row from a grid parent (D4, 0.4.58).
+  const leaves = () => page.evaluate(() => { const leaves = (t) => (!t ? [] : t.id ? [t.id] : t.children.flatMap(leaves)); return leaves(window.__lab.spgrow.handle.toJSON().views[0].tree ?? null); });
+  const opsH = () => page.evaluate(() => Math.round(window.__lab.spgrow.api.getModel().getGroup('sg-ops').size.height));
+  const shown = () => page.evaluate(() => {
+    const ins = document.querySelector('#cv-spgrow .axdb-ins');
+    const ph = [...document.querySelectorAll('#cv-spgrow .axdb-ph')].find((e) => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4 && getComputedStyle(e).display !== 'none'; });
+    return { ins: !!ins, ph: !!ph, refused: !!ph && ph.classList.contains('axdb-ph--no'), onOps: window.__lab.spgrow.handle.binderOf('sg-ops')?.cellOf('sg-w') ?? null };
+  });
+  const l0 = await leaves(); const h0 = await opsH();
+  const w = await rect('spgrow', 'sg-w');
+  const ops = await groupRect('spgrow', 'sg-ops');
+  const cv = await page.evaluate(() => document.getElementById('cv-spgrow').getBoundingClientRect().toJSON());
+  let held = null; let hHeld = null;
+  await startSlide('spgrow', '.axdb-slab[data-slab-id="sg-ops"]', 'y');
+  // the widget pane, into the section's body under its widget: the section grows a row for it
+  await drag(w.x + w.w / 2, w.y + w.h / 2, cv.x + ops.x + ops.w / 2, cv.y + ops.y + ops.h * 0.92, { steps: 16, mid: async () => {
+    held = await shown(); hHeld = await opsH();
+    await shot('spgrow', 'widget-held-in-the-full-section-which-grew-a-row');
+  } });
+  const slide = await readSlide();
+  const l1 = await leaves(); const h1 = await opsH(); const sane = await sanity('spgrow');
+  const where = await page.evaluate(() => { const m = window.__lab.spgrow.api.getModel(); return { ops: !!m.getGroup('sg-ops')?.members?.has('sg-w'), board: !!m.getGroup('main')?.members?.has('sg-w') }; });
+  await shot('spgrow', 'the-widget-lives-in-the-section-a-row-taller');
+  await undoAll('spgrow', 1);
+  const l2 = await leaves(); const h2 = await opsH();
+  const back = await page.evaluate(() => { const m = window.__lab.spgrow.api.getModel(); return { ops: !!m.getGroup('sg-ops')?.members?.has('sg-w'), board: !!m.getGroup('main')?.members?.has('sg-w') }; });
+  verdict(l0.join(',') === 'sg-w,sg-x,sg-ops' && held?.onOps !== null && held?.ph === true && held?.refused === false && held?.ins === false && hHeld >= h0 + 50
+    && l1.join(',') === 'sg-x,sg-ops' && where.ops && !where.board && h1 >= h0 + 50 && sane.overlaps === 0 && sane.overflow === 0
+    && l2.join(',') === 'sg-w,sg-x,sg-ops' && !back.ops && back.board && Math.abs(h2 - h0) <= 1,
+    `rest ${l0.join('/')} section ${h0} px · held: ${JSON.stringify(held)} section ${hHeld} px (grew ${hHeld - h0}) slide ${JSON.stringify(slide)} · released: ${l1.join('/')}, in the section ${where.ops}, section ${h1} px ${JSON.stringify(sane)} · undo: ${l2.join('/')} section ${h2} px, back on the board ${back.board}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

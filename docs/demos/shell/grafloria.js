@@ -198125,17 +198125,19 @@ function bindDashboardGrid(api, group, options = {}) {
       let rowsAdded = 0;
       let firstBefore = null;
       let lastAfter = null;
+      let parentCommands;
       for (let i = 0; parent && !entered && i < Math.max(1, span.h); i++) {
         const res = parent.resizeMemberBy(group.id, 1);
         if (!res.changed || !res.cellBefore || !res.cellAfter || !res.frameBefore || !res.frameAfter) break;
         rowsAdded += 1;
         firstBefore = firstBefore ?? { cell: res.cellBefore, frame: res.frameBefore };
         lastAfter = { cell: res.cellAfter, frame: res.frameAfter };
+        if (res.commands) parentCommands = res.commands;
         setLiveBound((maxRows ?? 0) + 1);
         entered = engine.add({ id: node.id, x: 0, y: engine.rows(), w: span.w, h: span.h });
       }
       if (parent && rowsAdded > 0 && firstBefore && lastAfter) {
-        grown = { peer: parent, rows: rowsAdded, cellBefore: firstBefore.cell, frameBefore: firstBefore.frame, cellAfter: lastAfter.cell, frameAfter: lastAfter.frame };
+        grown = { peer: parent, rows: rowsAdded, cellBefore: firstBefore.cell, frameBefore: firstBefore.frame, cellAfter: lastAfter.cell, frameAfter: lastAfter.frame, ...parentCommands ? { commands: parentCommands } : {} };
       }
     }
     if (!entered) {
@@ -198265,7 +198267,7 @@ function bindDashboardGrid(api, group, options = {}) {
         const rect = cellToRect(item, frame(), geom(), rows());
         const commands = tileCommands(deltasSince(startCells, startGeom, node.id));
         if (grown) {
-          commands.push(new SetGroupCellCommand(group.id, grown.cellBefore, grown.cellAfter, grown.frameBefore, grown.frameAfter));
+          commands.push(...grown.commands ?? [new SetGroupCellCommand(group.id, grown.cellBefore, grown.cellAfter, grown.frameBefore, grown.frameAfter)]);
           grown = null;
         }
         engine.endGesture();
@@ -199383,7 +199385,7 @@ function bindDashboardSplit(api, group, options = {}) {
     const grp = diagram.getGroup(id);
     if (grp) diagram.runSystemWrite(() => grp.setFrame({ ...r }));
   };
-  const paintedTree = () => gesture?.started ? gesture.liveTree : readTree();
+  const paintedTree = () => gesture?.started ? gesture.liveTree : grown?.tree ?? readTree();
   const project = (tree = paintedTree()) => {
     const rects = rectsOf(tree);
     for (const [id, r] of rects) {
@@ -199774,6 +199776,76 @@ function bindDashboardSplit(api, group, options = {}) {
         return { commands: [new SetSplitTreeCommand(group.id, tree, t)], cell, rect };
       }
     };
+  };
+  let grown = null;
+  class GrownTreeCommand extends SetSplitTreeCommand {
+    execute(context) {
+      super.execute(context);
+      grown = null;
+      if (!disposed) project(readTree());
+      api.render();
+    }
+    undo(context) {
+      super.undo(context);
+      grown = null;
+      if (!disposed) project(readTree());
+      api.render();
+    }
+  }
+  const resizePaneBy = (id, dRows) => {
+    if (disposed || isStatic || !Number.isFinite(dRows) || dRows === 0) return { changed: false };
+    const base = grown?.id === id ? grown.base : readTree();
+    if (!base) return { changed: false };
+    const rowsNow = grown?.id === id ? grown.rows : 0;
+    const rowsNext = rowsNow + dRows;
+    const paintFor = (tree2) => {
+      project(tree2 ?? readTree());
+      api.render();
+    };
+    const frameOf2 = (tree2) => rectsOf(tree2).get(id);
+    const cellOf = (tree2) => cellsFromSplit(tree2, columns, rowsGuess()).get(id);
+    if (rowsNext <= 0) {
+      const before = grown?.tree ?? base;
+      grown = null;
+      paintFor(null);
+      const fb2 = frameOf2(before);
+      const fa2 = frameOf2(base);
+      const cb2 = cellOf(before);
+      const ca2 = cellOf(base);
+      return rowsNow > 0 && fb2 && fa2 && cb2 && ca2 ? { changed: true, cellBefore: cb2, cellAfter: ca2, frameBefore: fb2, frameAfter: fa2 } : { changed: false };
+    }
+    const path = pathToLeaf(base, id);
+    if (!path) return { changed: false };
+    let groupPath = null;
+    let childIndex = -1;
+    for (let depth = path.length - 1; depth >= 0 && !groupPath; depth--) {
+      const gp = path.slice(0, depth);
+      const g = nodeAt(base, gp);
+      if (isSplitGroup(g) && g.dir === "column" && g.children.length > 1) {
+        groupPath = gp;
+        childIndex = path[depth];
+      }
+    }
+    if (!groupPath) return { changed: false };
+    const group0 = nodeAt(base, groupPath);
+    if (!isSplitGroup(group0)) return { changed: false };
+    const key = groupPath.join("/");
+    const divider = dividersOf(base, frame(), gap, padding, rtl).find((d) => d.path.join("/") === key);
+    if (!divider || divider.length <= 0) return { changed: false };
+    const px2 = rowsNext * (baseRowHeight + gap);
+    const fraction = px2 / divider.length;
+    const last = childIndex === group0.children.length - 1;
+    const tree = moveSplitDivider(base, groupPath, last ? childIndex - 1 : childIndex, last ? -fraction : fraction);
+    const fb = frameOf2(grown?.id === id ? grown.tree : base);
+    const f0 = frameOf2(base);
+    const fa = frameOf2(tree);
+    const cb = cellOf(grown?.id === id ? grown.tree : base);
+    const ca = cellOf(tree);
+    if (!fb || !f0 || !fa || !cb || !ca) return { changed: false };
+    if (fa.height < f0.height + px2 - 1) return { changed: false };
+    grown = { id, base, tree, rows: rowsNext };
+    paintFor(tree);
+    return { changed: true, cellBefore: cb, cellAfter: ca, frameBefore: fb, frameAfter: fa, commands: [new GrownTreeCommand(group.id, base, normalizeSplit(tree))] };
   };
   const nameOf2 = (id) => {
     const node = diagram.getNode(id);
@@ -200875,7 +200947,8 @@ function bindDashboardSplit(api, group, options = {}) {
     },
     hasItem: (id) => (group.members ?? /* @__PURE__ */ new Set()).has(id),
     memberCell: (id) => handle.cellOf(id),
-    resizeMemberBy: () => ({ changed: false }),
+    // A section pane grows a row for a tile arriving by hand (D4 on a split board, 0.4.71) — see resizePaneBy.
+    resizeMemberBy: (id, dRows) => resizePaneBy(id, dRows),
     // A torn-out page becomes a PANE (0.4.37) — see beginTearOut.
     tearOutMember: (pageId, fromGroupId, ev, plan) => beginTearOut(pageId, fromGroupId, ev, plan),
     // A tab group (or a section) moved by its strip's empty space becomes a

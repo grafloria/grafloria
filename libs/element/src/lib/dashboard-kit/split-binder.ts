@@ -38,7 +38,9 @@ import {
   dividersOf,
   groupRectsOf,
   insertSplitLeaf,
+  isSplitGroup,
   moveSplitDivider,
+  nodeAt,
   normalizeSplit,
   pathToLeaf,
   projectSplit,
@@ -343,8 +345,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     if (grp) diagram.runSystemWrite(() => grp.setFrame({ ...r }));
   };
 
-  /** The tree currently PAINTED — the gesture's live tree while one runs. */
-  const paintedTree = (): SplitNode | null => (gesture?.started ? gesture.liveTree : readTree());
+  /** The tree currently PAINTED — the gesture's live tree while one runs, else a pane grown for an arriving tile (0.4.71), else the persisted one. */
+  const paintedTree = (): SplitNode | null => (gesture?.started ? gesture.liveTree : (grown?.tree ?? readTree()));
 
   const project = (tree: SplitNode | null = paintedTree()): void => {
     const rects = rectsOf(tree);
@@ -806,6 +808,95 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
         return { commands: [new SetSplitTreeCommand(group.id, tree, t)], cell, rect };
       },
     };
+  };
+
+  // -- D4 on a split board (0.4.71): a section pane GROWS for a tile arriving by hand ------
+
+  /**
+   * The rows a nested GROW board asks its parent for (the grid binder's D4
+   * loop, one at a time). Measured live on 0.4.70: the fluid demo's
+   * Operations section refused a widget in split mode and the line beside it
+   * answered — a pane could not ask for rows. A pane's height is a share of
+   * its COLUMN, so the row comes from the divider above or below it: the
+   * pane's subtree in the nearest column ancestor grows by one row's pixels
+   * and that sibling gives them (never below the divider's floor — then the
+   * ask is refused, as a full grid parent refuses). The grown tree is painted
+   * live, so the section's frame follows and its board can take the tile;
+   * the commit is this board's own tree command, handed back for the
+   * arriving board's `finalize` to carry; a negative ask gives the rows
+   * back, and at zero the persisted tree paints again, exactly.
+   */
+  let grown: { id: string; base: SplitNode; tree: SplitNode; rows: number } | null = null;
+  class GrownTreeCommand extends SetSplitTreeCommand {
+    override execute(context: { diagram?: unknown }): void {
+      super.execute(context);
+      grown = null;
+      if (!disposed) project(readTree());
+      api.render();
+    }
+    override undo(context: { diagram?: unknown }): void {
+      super.undo(context);
+      grown = null;
+      if (!disposed) project(readTree());
+      api.render();
+    }
+  }
+  const resizePaneBy = (id: string, dRows: number): ReturnType<BinderPeer['resizeMemberBy']> => {
+    if (disposed || isStatic || !Number.isFinite(dRows) || dRows === 0) return { changed: false };
+    const base = grown?.id === id ? grown.base : readTree();
+    if (!base) return { changed: false };
+    const rowsNow = grown?.id === id ? grown.rows : 0;
+    const rowsNext = rowsNow + dRows;
+    const paintFor = (tree: SplitNode | null): void => {
+      project(tree ?? readTree());
+      api.render();
+    };
+    const frameOf = (tree: SplitNode): WorldRect | undefined => rectsOf(tree).get(id);
+    const cellOf = (tree: SplitNode): CellRect | undefined => cellsFromSplit(tree, columns, rowsGuess()).get(id);
+    if (rowsNext <= 0) {
+      // every row given back: the persisted tree, exactly
+      const before = grown?.tree ?? base;
+      grown = null;
+      paintFor(null);
+      const fb = frameOf(before);
+      const fa = frameOf(base);
+      const cb = cellOf(before);
+      const ca = cellOf(base);
+      return rowsNow > 0 && fb && fa && cb && ca ? { changed: true, cellBefore: cb, cellAfter: ca, frameBefore: fb, frameAfter: fa } : { changed: false };
+    }
+    const path = pathToLeaf(base, id);
+    if (!path) return { changed: false };
+    // the nearest COLUMN ancestor: the pane's subtree there is what grows
+    let groupPath: number[] | null = null;
+    let childIndex = -1;
+    for (let depth = path.length - 1; depth >= 0 && !groupPath; depth--) {
+      const gp = path.slice(0, depth);
+      const g = nodeAt(base, gp);
+      if (isSplitGroup(g) && g.dir === 'column' && g.children.length > 1) {
+        groupPath = gp;
+        childIndex = path[depth];
+      }
+    }
+    if (!groupPath) return { changed: false }; // the pane already spans the board's height: nobody to take a row from
+    const group0 = nodeAt(base, groupPath);
+    if (!isSplitGroup(group0)) return { changed: false };
+    const key = groupPath.join('/');
+    const divider = dividersOf(base, frame(), gap, padding, rtl).find((d) => d.path.join('/') === key);
+    if (!divider || divider.length <= 0) return { changed: false };
+    const px = rowsNext * (baseRowHeight + gap);
+    const fraction = px / divider.length;
+    const last = childIndex === group0.children.length - 1;
+    const tree = moveSplitDivider(base, groupPath, last ? childIndex - 1 : childIndex, last ? -fraction : fraction);
+    const fb = frameOf(grown?.id === id ? grown.tree : base);
+    const f0 = frameOf(base);
+    const fa = frameOf(tree);
+    const cb = cellOf(grown?.id === id ? grown.tree : base);
+    const ca = cellOf(tree);
+    if (!fb || !f0 || !fa || !cb || !ca) return { changed: false };
+    if (fa.height < f0.height + px - 1) return { changed: false }; // the sibling has no row to give (the divider's floor)
+    grown = { id, base, tree, rows: rowsNext };
+    paintFor(tree);
+    return { changed: true, cellBefore: cb, cellAfter: ca, frameBefore: fb, frameAfter: fa, commands: [new GrownTreeCommand(group.id, base, normalizeSplit(tree))] };
   };
 
   // -- a11y -------------------------------------------------------------------
@@ -2094,7 +2185,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     },
     hasItem: (id) => (group.members ?? new Set<string>()).has(id),
     memberCell: (id) => handle.cellOf(id),
-    resizeMemberBy: () => ({ changed: false }),
+    // A section pane grows a row for a tile arriving by hand (D4 on a split board, 0.4.71) — see resizePaneBy.
+    resizeMemberBy: (id, dRows) => resizePaneBy(id, dRows),
     // A torn-out page becomes a PANE (0.4.37) — see beginTearOut.
     tearOutMember: (pageId, fromGroupId, ev, plan) => beginTearOut(pageId, fromGroupId, ev, plan),
     // A tab group (or a section) moved by its strip's empty space becomes a

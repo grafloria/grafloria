@@ -3460,4 +3460,57 @@ describe('on a SPLIT board a widget finds a tab container\'s zones: its strip ma
     expect(cell.w).toBeGreaterThan(0);
     expect(leaves(model).sort()).toEqual(['nps', 'side']); // the split tree is untouched: the page took it
   });
+
+  it('a FULL GROW section on a split board takes a ROW for a widget arriving by hand — its pane grows into its column sibling (D4 on a split board, 0.4.71), one undo', async () => {
+    // Measured live on 0.4.70: the fluid demo's Operations section refused a
+    // widget in split mode and the line beside it answered instead — a pane
+    // cannot ask a grid parent for rows, and the split peer's resizeMemberBy
+    // answered "unchanged". A pane's height is a share of its column: growing
+    // it means moving the divider above it, the siblings giving the row.
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 800,
+        gap: 10,
+        rowHeight: 60,
+        layout: 'split',
+        widgets: [
+          K('nps', 6, 6, 0, 0),
+          { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0), K('k2', 3, 1, 3, 0)] }] },
+          { id: 'ops', title: 'Operations', span: 12, rows: 2, x: 0, y: 6, columns: 12, widgets: [K('orders', 12, 2, 0, 0)] }, // FULL: one widget covers its two rows
+        ],
+      })
+    );
+    stubStrip(api, model);
+    const tree0 = model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY) as SplitNode;
+    expect(splitLeaves(tree0)).toEqual(['nps', 'side', 'ops']);
+    const ops = model.getGroup('ops')!;
+    const h0 = ops.size!.height;
+    const tool = toolOf('p1');
+    const k1 = model.getNode('k1')!;
+    const hit = { node: k1 } as never;
+    tool.onPointerDown?.(tev('down', k1.position.x + 10, k1.position.y + 10), hit);
+    tool.onPointerMove?.(at(k1.position.x + 30, k1.position.y + 20), hit);
+    // into the section's body, under its widget: full — it grows a row and takes the tile
+    const to = { x: ops.position.x + ops.size!.width * 0.5, y: ops.position.y + ops.size!.height * 0.9 };
+    tool.onPointerMove?.(at(to.x, to.y), hit);
+    expect(on(handle, 'ops', 'k1')).not.toBeNull(); // the section holds the ghost…
+    expect(line(api)).toBeNull(); // …not the split board's line
+    expect(model.getGroup('ops')!.size!.height).toBeGreaterThan(h0 + 60); // its pane grew by a row (60 + the gap)
+    tool.onPointerUp?.(at(to.x, to.y), hit);
+    await settle();
+    expect(model.getGroup('ops')!.members?.has('k1')).toBe(true);
+    expect(model.getGroup('p1')!.members?.has('k1')).toBe(false);
+    const tree1 = model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY) as SplitNode;
+    expect(splitLeaves(tree1)).toEqual(['nps', 'side', 'ops']); // the tree kept its panes — only the weights moved
+    expect(JSON.stringify(tree1)).not.toBe(JSON.stringify(tree0));
+    expect(model.getGroup('ops')!.size!.height).toBeGreaterThan(h0 + 60);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(model.getGroup('p1')!.members?.has('k1')).toBe(true);
+    expect(model.getGroup('ops')!.members?.has('k1')).toBe(false);
+    expect(JSON.stringify(model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY))).toBe(JSON.stringify(tree0));
+    expect(Math.round(model.getGroup('ops')!.size!.height)).toBe(Math.round(h0));
+  });
 });

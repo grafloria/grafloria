@@ -605,6 +605,10 @@ render(SPEC2, host);</pre>
       line and no placeholder anywhere &mdash; the ghost dimmed and every release snapped home, because the split board
       refused to adopt. Now it takes the widget as a pane where the insertion line shows, in one undoable step with the
       page it left; and a palette chip goes through the same zones there, landing in the page it is dropped into.</p>
+      <p>0.4.71 lets a <b>full section pane grow</b> for a widget on a split board. A pane&rsquo;s height is a share of its
+      column, so a section that is full cannot ask a grid for rows the way it does on a grid board (0.4.58); it now asks the
+      column: the pane grows by one row and the panes above it give the height, live while you hold, committed with the drop
+      as one undoable step. Until then the section refused the widget and the line beside it answered.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
