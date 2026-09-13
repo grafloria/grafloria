@@ -609,6 +609,10 @@ render(SPEC2, host);</pre>
       column, so a section that is full cannot ask a grid for rows the way it does on a grid board (0.4.58); it now asks the
       column: the pane grows by one row and the panes above it give the height, live while you hold, committed with the drop
       as one undoable step. Until then the section refused the widget and the line beside it answered.</p>
+      <p>0.4.72 pins the other page layout. A tab page can be a <b>split</b> itself, and a widget carried into one becomes a
+      pane of that page where the page&rsquo;s own insertion line shows &mdash; from a grid board and from a split board alike.
+      And the gap between two panes is no longer a dead zone: a drop there used to snap home, because nothing was under the
+      pointer; it now means the nearest pane&rsquo;s edge.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

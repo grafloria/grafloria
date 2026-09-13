@@ -3153,6 +3153,64 @@ const sdShown = () => page.evaluate(() => {
     `rest ${l0.join('/')} section ${h0} px · held: ${JSON.stringify(held)} section ${hHeld} px (grew ${hHeld - h0}) slide ${JSON.stringify(slide)} · released: ${l1.join('/')}, in the section ${where.ops}, section ${h1} px ${JSON.stringify(sane)} · undo: ${l2.join('/')} section ${h2} px, back on the board ${back.board}`);
 }
 
+// -- 0.4.72: a tab page laid out as a SPLIT takes a widget too; the gap between two panes is the nearest edge --
+{
+  begin('L114-a-widget-from-a-GRID-board-goes-INTO-a-tab-groups-SPLIT-page-as-a-pane-and-the-gap-between-panes-is-not-dead');
+  await scrollTo('tabs');
+  // The user: "tab should allow both layouts, grow and split — did you try that
+  // inside it as well?" Measured before this: a widget dragged into the Alerts
+  // page (a split of pb1 | pb2) became a pane there since 0.4.70, unpinned;
+  // and a drop on the 10 px gap between the two panes snapped home.
+  await page.click('#cv-tabs .axdb-tabs[data-tabs-id="panel"] .axdb-tab[data-tab-id="pg-b"]'); await page.waitForTimeout(400);
+  const state = () => page.evaluate(() => { const m = window.__lab.tabs.api.getModel(); const leaves = (t) => (!t ? [] : t.id ? [t.id] : t.children.flatMap(leaves)); return { page: leaves(m.getGroup('pg-b')?.getMetadata('dashboardTree') ?? null), onRoot: !!m.getGroup('main')?.members?.has('t-left'), inPage: !!m.getGroup('pg-b')?.members?.has('t-left') }; });
+  const shown = () => page.evaluate(() => { const ins = document.querySelector('#cv-tabs .axdb-ins'); const r = ins?.getBoundingClientRect(); return { ins: r ? Math.round(r.x) : null, dimmed: !!document.querySelector('#cv-tabs .grafloria-node-host.axdb-out'), tab: !!document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]')?.classList.contains('axdb-tabs--drop') }; });
+  const s0 = await state();
+  const left = await rect('tabs', 't-left'); const pb1 = await rect('tabs', 'pb1'); const pb2 = await rect('tabs', 'pb2');
+  // 1. into the left pane's inner half: the page's line on pb1's right edge; released, the chart is a pane between pb1 and pb2
+  let held = null;
+  await drag(left.x + left.w / 2, left.y + 16, pb1.x + pb1.w * 0.7, pb1.y + pb1.h * 0.5, { steps: 14, mid: async () => { held = await shown(); await shot('tabs', 'chart-held-over-the-split-page-the-pages-line'); } });
+  const s1 = await state(); const sane1 = await sanity('tabs');
+  await shot('tabs', 'the-chart-is-a-pane-of-the-split-page');
+  await undoAll('tabs', 1);
+  const s2 = await state();
+  // 2. the GAP between the two panes: the nearest edge, not a dead zone
+  const pb1b = await rect('tabs', 'pb1'); const pb2b = await rect('tabs', 'pb2');
+  let heldGap = null;
+  await drag(left.x + left.w / 2, left.y + 16, (pb1b.right + pb2b.x) / 2, pb1b.y + pb1b.h * 0.5, { steps: 14, mid: async () => { heldGap = await shown(); } });
+  const s3 = await state(); const sane3 = await sanity('tabs');
+  await undoAll('tabs', 1);
+  const s4 = await state();
+  verdict(s0.page.join(',') === 'pb1,pb2' && s0.onRoot && held?.ins !== null && Math.abs(held.ins - pb1.right) <= 8 && held?.dimmed === false && held?.tab === false
+    && s1.page.join(',') === 'pb1,t-left,pb2' && s1.inPage && !s1.onRoot && sane1.overlaps === 0
+    && s2.page.join(',') === 'pb1,pb2' && s2.onRoot
+    && heldGap?.ins !== null && s3.page.join(',') === 'pb1,t-left,pb2' && s3.inPage && sane3.overlaps === 0 && s4.page.join(',') === 'pb1,pb2' && s4.onRoot,
+    `rest ${s0.page.join('/')} · held over pb1's inner half: ${JSON.stringify(held)} (pb1's right edge at ${Math.round(pb1.right)}) · released: page ${s1.page.join('/')}, in the page ${s1.inPage} ${JSON.stringify(sane1)} · undo ${s2.page.join('/')} · the GAP: ${JSON.stringify(heldGap)} → ${s3.page.join('/')} ${JSON.stringify(sane3)} · undo ${s4.page.join('/')}`);
+}
+{
+  begin('L115-on-a-SPLIT-board-a-widget-goes-INTO-a-tab-groups-SPLIT-page-as-a-pane');
+  await scrollTo('spsplit');
+  const state = () => page.evaluate(() => { const m = window.__lab.spsplit.api.getModel(); const leaves = (t) => (!t ? [] : t.id ? [t.id] : t.children.flatMap(leaves)); return { root: leaves(window.__lab.spsplit.handle.toJSON().views[0].tree ?? null), page: leaves(m.getGroup('ss-a1')?.getMetadata('dashboardTree') ?? null), inPage: !!m.getGroup('ss-a1')?.members?.has('ss-w') }; });
+  const shown = () => page.evaluate(() => { const ins = document.querySelector('#cv-spsplit .axdb-ins'); const r = ins?.getBoundingClientRect(); return { ins: r ? Math.round(r.x) : null, insH: r ? Math.round(r.height) : null, tab: !!document.querySelector('#cv-spsplit .axdb-tabs[data-tabs-id="ss-a"]')?.classList.contains('axdb-tabs--drop'), ph: !!document.querySelector('#cv-spsplit .axdb-ph') }; });
+  const s0 = await state();
+  const w = await rect('spsplit', 'ss-w'); const p1 = await rect('spsplit', 'ss-p1'); const p2 = await rect('spsplit', 'ss-p2');
+  let held = null; let live = null;
+  // into the split page's right pane: the PAGE's line on the nearer edge of that pane AS IT IS WHILE HELD — the container
+  // widens the moment the widget's pane leaves the outer tree, so the same pointer sits elsewhere in the widened pane
+  const to = { x: p2.x + p2.w * 0.3, y: p2.y + p2.h * 0.5 };
+  await drag(w.x + w.w / 2, w.y + w.h / 2, to.x, to.y, { steps: 14, mid: async () => { held = await shown(); live = await rect('spsplit', 'ss-p2'); await shot('spsplit', 'widget-held-over-the-split-page-on-a-split-board'); } });
+  const side = live && to.x < live.x + live.w / 2 ? 'left' : 'right';
+  const edge = live ? (side === 'left' ? live.x : live.right) : NaN;
+  const promised = side === 'left' ? 'ss-p1,ss-w,ss-p2' : 'ss-p1,ss-p2,ss-w';
+  const s1 = await state(); const sane = await sanity('spsplit');
+  await shot('spsplit', 'the-widget-is-a-pane-of-the-split-page');
+  await undoAll('spsplit', 1);
+  const s2 = await state();
+  verdict(s0.root.join(',') === 'ss-w,ss-a' && s0.page.join(',') === 'ss-p1,ss-p2' && held?.ins !== null && Math.abs(held.ins - edge) <= 8 && held?.insH !== null && live && held.insH <= live.h + 4 && held?.tab === false
+    && s1.root.join(',') === 'ss-a' && s1.page.join(',') === promised && s1.inPage && sane.overlaps === 0
+    && s2.root.join(',') === 'ss-w,ss-a' && s2.page.join(',') === 'ss-p1,ss-p2' && !s2.inPage,
+    `rest root ${s0.root.join('/')} page ${s0.page.join('/')} · held at x=${Math.round(to.x)} over the page's right pane (live ${live ? `${Math.round(live.x)}..${Math.round(live.right)}` : '?'}): the line at ${held?.ins} = its ${side} edge (${Math.round(edge)}), height ${held?.insH} · released: root ${s1.root.join('/')} page ${s1.page.join('/')} (promised ${promised}) in the page ${s1.inPage} ${JSON.stringify(sane)} · undo: root ${s2.root.join('/')} page ${s2.page.join('/')}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();
