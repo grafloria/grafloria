@@ -1616,6 +1616,59 @@ try {
 }
 
 } finally {
+
+{
+  begin('s36-inside-the-selection-a-sections-or-a-pages-layout-switches-live');
+  // The user: "if I selected a tab or a group that can have other widgets I would have an option to change its layout,
+  // grid or split." The "Inside …" control resolves the selection to the container that holds it — a section, a tab
+  // group's active page, the page a widget sits in — and switches its layout with handle.setLayout(mode, containerId).
+  const page = await freshPage('/dashboard/fluid-board.html');
+  const control = () => page.evaluate(() => ({ name: document.getElementById('fb-sel-name').textContent, grid: document.getElementById('fb-sel-grid').getAttribute('aria-pressed'), split: document.getElementById('fb-sel-split').getAttribute('aria-pressed'), disabled: document.getElementById('fb-sel-split').disabled }));
+  const layoutOf = (id) => page.evaluate((id) => window.__demoCtx.handle.getLayout(id), id);
+  const rects = (ids) => page.evaluate((ids) => Object.fromEntries(ids.map((id) => { const r = document.querySelector(`.grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect(); return [id, { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) }]; })), ids);
+  const sanity = () => page.evaluate(() => { const hosts = [...document.querySelectorAll('.grafloria-node-host')].filter((h) => { const r = h.getBoundingClientRect(); return r.width > 4 && r.x > -5000; }); let overlaps = 0; const rs = hosts.map((h) => h.getBoundingClientRect()); for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) { const a = rs[i], b = rs[j]; if (a.x < b.right - 4 && b.x < a.right - 4 && a.y < b.bottom - 4 && b.y < a.bottom - 4) overlaps++; } return { count: hosts.length, overlaps }; });
+  const c0 = await control(); // nothing selected: the control is disabled
+  // A. the Operations section by its caption band → "Operations", Grid pressed; Split → a splitter tree INSIDE it: its two widgets share the whole section
+  await page.click('.axdb-slab[data-slab-id="ops"] > .axdb-slab-h'); await page.waitForTimeout(300);
+  const c1 = await control();
+  const ops0 = await rects(['orders', 'churn']);
+  const slab = await page.evaluate(() => document.querySelector('.axdb-slab[data-slab-id="ops"]').getBoundingClientRect().toJSON());
+  await page.click('#fb-sel-split'); await page.waitForTimeout(600);
+  const c2 = await control(); const lOps = await layoutOf('ops');
+  const ops1 = await rects(['orders', 'churn']);
+  await shot(page, 'operations-split-inside');
+  const covers = ops1.orders.w + ops1.churn.w > slab.width * 0.85 && ops1.orders.w > ops0.orders.w + 40;
+  await page.click('#fb-sel-grid'); await page.waitForTimeout(600);
+  const ops2 = await rects(['orders', 'churn']); const lOps2 = await layoutOf('ops');
+  // B. the Alerts tab → "Side panel › Alerts", Grid; Split → the page's widgets cover the page; the Filters tab → the control follows, Filters still grid
+  await page.click('.axdb-tabs[data-tabs-id="side"] .axdb-tab[data-tab-id="p-alerts"]'); await page.waitForTimeout(350);
+  const c3 = await control();
+  const alertsIds = await page.evaluate(() => window.__demoCtx.handle.toJSON().views[0].widgets.find((w) => w.id === 'side').widgets.find((p) => p.id === 'p-alerts').widgets.map((w) => w.id));
+  const al0 = await rects(alertsIds);
+  await page.click('#fb-sel-split'); await page.waitForTimeout(600);
+  const c4 = await control(); const lAlerts = await layoutOf('p-alerts');
+  const al1 = await rects(alertsIds);
+  const pageBox = await page.evaluate(() => { const s = document.querySelector('.axdb-slab[data-slab-id="side"]').getBoundingClientRect(); return { w: s.width, h: s.height }; });
+  // the page's one widget already filled it as a grid; as a split it is the whole pane — the page is covered either way
+  const alertsCover = Object.values(al1).reduce((a, r) => a + r.w * r.h, 0) > 0.8 * (pageBox.w - 16) * (pageBox.h - 30 - 16) && Object.values(al1).reduce((a, r) => a + r.w * r.h, 0) >= Object.values(al0).reduce((a, r) => a + r.w * r.h, 0) * 0.95;
+  await shot(page, 'alerts-page-split-inside');
+  await page.click('.axdb-tabs[data-tabs-id="side"] .axdb-tab[data-tab-id="p-filters"]'); await page.waitForTimeout(350);
+  const c5 = await control(); const lFilters = await layoutOf('p-filters');
+  // C. a widget INSIDE the Filters page → the page; a widget of the view → nothing to switch (the view has its own buttons)
+  await page.click('.grafloria-node-host[data-node-id="f-region"]'); await page.waitForTimeout(300);
+  const c6 = await control();
+  await page.click('.grafloria-node-host[data-node-id="rev"]'); await page.waitForTimeout(300);
+  const c7 = await control();
+  const sane = await sanity();
+  verdict(c0.disabled && c1.name === 'Operations' && c1.grid === 'true' && !c1.disabled
+    && c2.split === 'true' && lOps === 'split' && covers
+    && lOps2 === 'grid' && ops2.orders.w === ops0.orders.w && ops2.orders.x === ops0.orders.x
+    && c3.name === 'Side panel › Alerts' && c3.grid === 'true' && c4.split === 'true' && lAlerts === 'split' && alertsCover
+    && c5.name === 'Side panel › Filters' && c5.grid === 'true' && lFilters === 'grid'
+    && c6.name === 'Side panel › Filters' && c7.disabled && c7.name === 'nothing selected' && sane.overlaps === 0,
+    `rest: ${JSON.stringify(c0)} · Operations selected: ${JSON.stringify(c1)} · Split inside: layout ${lOps}, orders ${ops0.orders.w}→${ops1.orders.w} px, the pair covers the ${Math.round(slab.width)} px section ${covers} · Grid back: ${lOps2}, orders at ${ops2.orders.x} w ${ops2.orders.w} (was ${ops0.orders.x} w ${ops0.orders.w}) · Alerts tab: ${JSON.stringify(c3)} · Split inside: ${lAlerts}, ${alertsIds.length} widgets cover the page ${alertsCover} · Filters tab: ${JSON.stringify(c5)} layout ${lFilters} · a widget inside Filters: ${c6.name} · a view widget: ${JSON.stringify(c7)} · ${JSON.stringify(sane)}`);
+}
+
   await browser.close();
   server.close();
 }

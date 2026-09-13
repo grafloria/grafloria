@@ -3609,3 +3609,49 @@ describe('a tab PAGE laid out as a SPLIT takes a widget too — from a grid boar
     expect(leavesOf(model, 'p1')).toEqual(['pb1', 'a', 'pb2']);
   });
 });
+
+describe('a container\'s layout is the handle\'s to read and to switch — a section, and a tab PAGE (0.4.73)', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const board = (pageLayout: 'grid' | 'split') =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      gap: 10,
+      rowHeight: 60,
+      sizing: 'grow',
+      widgets: [
+        K('nps', 2, 1, 0, 0),
+        { id: 'ops', title: 'Operations', span: 6, rows: 2, x: 0, y: 2, columns: 6, widgets: [K('orders', 3, 2, 0, 0), K('churn', 3, 2, 3, 0)] },
+        { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, layout: pageLayout, widgets: [K('pb1', 3, 4, 0, 0), K('pb2', 3, 4, 3, 0)] }] },
+      ],
+    });
+
+  it('getLayout reads an AUTHORED container layout, not only one switched live', () => {
+    const { handle } = up(board('split'));
+    expect(handle.getLayout('p1')).toBe('split');
+    expect(handle.getLayout('ops')).toBe('grid');
+    expect(handle.getLayout('side')).toBe('tabs');
+    expect(handle.getLayout()).toBe('grid'); // the view
+  });
+
+  it('setLayout switches a tab PAGE live, both ways, and the section beside it — the widgets keep their cells across the round trip', async () => {
+    const { model, handle } = up(board('grid'));
+    const cells0 = { pb1: handle.widget('pb1')!.cell, pb2: handle.widget('pb2')!.cell };
+    handle.setLayout('split', 'p1');
+    await settle();
+    expect(handle.getLayout('p1')).toBe('split');
+    expect((model.getGroup('p1')!.getMetadata('containerWidget') as { layout?: string }).layout).toBe('split');
+    expect(splitLeaves((model.getGroup('p1')!.getMetadata(SPLIT_TREE_KEY) as SplitNode | null) ?? null).sort()).toEqual(['pb1', 'pb2']); // a tree from the cells
+    handle.setLayout('grid', 'p1');
+    await settle();
+    expect(handle.getLayout('p1')).toBe('grid');
+    expect(handle.widget('pb1')!.cell).toEqual(cells0.pb1);
+    expect(handle.widget('pb2')!.cell).toEqual(cells0.pb2);
+    handle.setLayout('split', 'ops');
+    await settle();
+    expect(handle.getLayout('ops')).toBe('split');
+    expect(handle.getLayout()).toBe('grid'); // the view is untouched
+  });
+});
