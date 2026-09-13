@@ -82,7 +82,7 @@ import {
 import { ensureDashboardKitStyles } from './styles';
 import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCaptionBand, sectionCaptionReserve, sizeCaptionBand } from './caption';
 import { TAB_STRIP_HEIGHT } from './tabs';
-import { BESIDE_BAND, resolve as resolveZone, resolveTabZone, stripUnder, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
+import { BESIDE_BAND, resolve as resolveZone, resolveTabZone, stripCrossing, stripUnder, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
 import { SequenceCommand, SetGroupCellCommand, tileCommands } from './commit';
 import { EDGE_GRACE, type BoardCtx } from './board-ctx';
 import { createProjection } from './project';
@@ -709,6 +709,84 @@ export function registerBoardPeer(container: HTMLElement, peer: BinderPeer): () 
   };
 }
 export type { BinderPeer };
+
+/** The peers registered on a canvas (the set is created on first ask): the boards the zone walk sees. */
+export function peersOnCanvasOf(container: HTMLElement): Set<BinderPeer> {
+  let set = BOARD_REGISTRY.get(container);
+  if (!set) {
+    set = new Set();
+    BOARD_REGISTRY.set(container, set);
+  }
+  return set;
+}
+
+/** Client pixels per world unit on a canvas: a zoomed camera makes a 9 px stay fewer world units. */
+export function clientPerWorldOf(api: Pick<DashboardGridApi, 'container' | 'viewport'>): { x: number; y: number } {
+  const rect = api.container.getBoundingClientRect();
+  const toWorld = (cx: number, cy: number): { x: number; y: number } =>
+    api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
+  const o = toWorld(rect.left, rect.top);
+  const u = toWorld(rect.left + 100, rect.top + 100);
+  return { x: 100 / (u.x - o.x || 100), y: 100 / (u.y - o.y || 100) };
+}
+
+/**
+ * The boards of a canvas as the zone walk sees them (tile first, step 2): a
+ * ROOT is a board whose group has no parent group (a view); a board's children
+ * are its member groups that are containers, each with the board a descent
+ * enters — a tab container's ACTIVE page, a section's own board — one level
+ * deeper. Built from the peers and the model on every move: a handful of
+ * groups, and the frames are live. One builder for the grid AND the split
+ * board (0.4.69): what a hand means over a tab group must not depend on which
+ * layout the board under it runs.
+ */
+export function zoneRootsOf(peers: Iterable<BinderPeer>, diagram: DiagramModel): ZoneBoard[] {
+  const list = [...peers];
+  const byGroup = new Map(list.map((p) => [p.group.id, p] as const));
+  const frameOf = (grp: GroupModel): WorldRect => ({ x: grp.position.x, y: grp.position.y, width: grp.size?.width ?? 0, height: grp.size?.height ?? 0 });
+  const boardRef = (p: BinderPeer, depth: number): ZoneBoard => ({
+    id: p.group.id,
+    depth,
+    ref: p,
+    contains: (x, y) => p.containsWorld(x, y),
+    containsExtended: (x, y) => p.containsWorldExtended(x, y),
+    children: () => {
+      const out: ZoneContainer[] = [];
+      for (const id of p.group.members ?? []) {
+        const grp = diagram.getGroup(id);
+        if (!grp || diagram.getNode(id)) continue;
+        const cw = (grp.getMetadata('containerWidget') ?? {}) as { layout?: string; active?: string };
+        const layout: ZoneContainer['layout'] = cw.layout === 'tabs' ? 'tabs' : cw.layout === 'split' ? 'split' : 'grid';
+        let innerPeer: BinderPeer | undefined;
+        if (layout === 'tabs') {
+          const pageId = cw.active && byGroup.has(cw.active) ? cw.active : [...(grp.members ?? [])].find((m) => byGroup.has(m));
+          innerPeer = pageId ? byGroup.get(pageId) : undefined;
+        } else innerPeer = byGroup.get(id);
+        out.push({
+          id,
+          layout,
+          static: innerPeer?.isStatic?.() ?? false,
+          frame: frameOf(grp),
+          stripHeight: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
+          band: layout === 'tabs' ? BESIDE_BAND : 0, // a section's whole body is "into" (Quantia's Groups page)
+          // The top and bottom are a FIXED depth — one strip's worth, under
+          // the strip — not a fifth of the body, which grew with the panel
+          // until 216 px of the fluid demo's page meant "above the whole
+          // panel" (0.4.62). The sides keep the fifth.
+          bandY: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
+          // …and the TOP band hangs ABOVE the frame, where a hand looking
+          // for "above this panel" actually goes (0.4.65). A panel holding
+          // the board's first row has no row above it to point at, and the
+          // lane under its header is the last place anyone would try.
+          topOutside: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
+          inner: innerPeer ? boardRef(innerPeer, depth + 1) : null,
+        });
+      }
+      return out;
+    },
+  });
+  return list.filter((p) => !p.group.parentGroupId).map((p) => boardRef(p, 0));
+}
 
 /**
  * Undoable cell+frame write for a GROUP member (the strip's slab). The engine
@@ -2693,69 +2771,10 @@ export function bindDashboardGrid(
     return f.width * boardVisualHeight();
   };
 
-  const peersOnCanvas = (): Set<BinderPeer> => {
-    let set = BOARD_REGISTRY.get(api.container);
-    if (!set) {
-      set = new Set();
-      BOARD_REGISTRY.set(api.container, set);
-    }
-    return set;
-  };
+  const peersOnCanvas = (): Set<BinderPeer> => peersOnCanvasOf(api.container);
 
-  /**
-   * The boards of this canvas as the zone walk sees them (tile first, step
-   * 2): a ROOT is a board whose group has no parent group (a view); a board's
-   * children are its member groups that are containers, each with the board a
-   * descent enters — a tab container's ACTIVE page, a section's own board —
-   * one level deeper. Built from the peers and the model on every move: a
-   * handful of groups, and the frames are live.
-   */
-  const zoneRoots = (): ZoneBoard[] => {
-    const peers = [...peersOnCanvas()];
-    const byGroup = new Map(peers.map((p) => [p.group.id, p] as const));
-    const boardRef = (p: BinderPeer, depth: number): ZoneBoard => ({
-      id: p.group.id,
-      depth,
-      ref: p,
-      contains: (x, y) => p.containsWorld(x, y),
-      containsExtended: (x, y) => p.containsWorldExtended(x, y),
-      children: () => {
-        const out: ZoneContainer[] = [];
-        for (const id of p.group.members ?? []) {
-          const grp = diagram.getGroup(id);
-          if (!grp || diagram.getNode(id)) continue;
-          const cw = (grp.getMetadata('containerWidget') ?? {}) as { layout?: string; active?: string };
-          const layout: ZoneContainer['layout'] = cw.layout === 'tabs' ? 'tabs' : cw.layout === 'split' ? 'split' : 'grid';
-          let innerPeer: BinderPeer | undefined;
-          if (layout === 'tabs') {
-            const pageId = cw.active && byGroup.has(cw.active) ? cw.active : [...(grp.members ?? [])].find((m) => byGroup.has(m));
-            innerPeer = pageId ? byGroup.get(pageId) : undefined;
-          } else innerPeer = byGroup.get(id);
-          out.push({
-            id,
-            layout,
-            static: innerPeer?.isStatic?.() ?? false,
-            frame: frameOfGroup(grp),
-            stripHeight: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
-            band: layout === 'tabs' ? BESIDE_BAND : 0, // a section's whole body is "into" (Quantia's Groups page)
-            // The top and bottom are a FIXED depth — one strip's worth, under
-            // the strip — not a fifth of the body, which grew with the panel
-            // until 216 px of the fluid demo's page meant "above the whole
-            // panel" (0.4.62). The sides keep the fifth.
-            bandY: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
-            // …and the TOP band hangs ABOVE the frame, where a hand looking
-            // for "above this panel" actually goes (0.4.65). A panel holding
-            // the board's first row has no row above it to point at, and the
-            // lane under its header is the last place anyone would try.
-            topOutside: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
-            inner: innerPeer ? boardRef(innerPeer, depth + 1) : null,
-          });
-        }
-        return out;
-      },
-    });
-    return peers.filter((p) => !p.group.parentGroupId).map((p) => boardRef(p, 0));
-  };
+  /** The boards of this canvas as the zone walk sees them — see `zoneRootsOf`. */
+  const zoneRoots = (): ZoneBoard[] => zoneRootsOf(peersOnCanvas(), diagram);
   /** The ghost takes the cell under the hand on THIS board: re-entering at the bottom edge first (collision-free), then gatelessly; a tile already here moves through the gate. */
   const placeOnSelf = (g: GestureState, desired: { x: number; y: number }, pushSolid = false): void => {
     if (g.removedFromBoard) {
@@ -2813,42 +2832,10 @@ export function bindDashboardGrid(
       // A group never becomes a tab: over a container's strip it is over the
       // container's margin — a cell on the parent board, pushing with intent.
       const scaleY = clientPerWorld().y || 1;
-      let hit = stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / scaleY, restFrames: rests });
-      if (!hit && prevWorld && !g.strip) {
-        // A HAND MOVES FASTER THAN A STRIP IS TALL. (Only for a hand ARRIVING:
-        // one already holding the strip leaves it by the stay, which reaches
-        // down and never up — the band above must stay reachable.) The strip is 30 px and a
-        // hand covers 40 to 80 px between events, so testing only where the
-        // pointer LANDS skips it — the user, coming down from above the panel:
-        // "it's not passing by the tab header, it drops directly to inside or
-        // outside." The segment it travelled is tested too, in steps of half a
-        // strip: crossing the rows and landing within one strip's height of
-        // them means the tabs. Flying far past them does not — a fast drag
-        // into the page must never snag on the header.
-        const dx = ev.world.x - prevWorld.x;
-        const dy = ev.world.y - prevWorld.y;
-        const n = Math.ceil(Math.hypot(dx, dy) / (TAB_STRIP_HEIGHT / 2));
-        let crossed: string | null = null;
-        for (let i = 1; i < n && !crossed; i++) crossed = stripUnder({ x: prevWorld.x + (dx * i) / n, y: prevWorld.y + (dy * i) / n, roots, held: null, stay: 0, restFrames: rests })?.containerId ?? null;
-        if (crossed) {
-          const grp = diagram.getGroup(crossed);
-          const f = rests.get(crossed) ?? (grp ? frameOfGroup(grp) : null);
-          if (f) {
-            const top = f.y;
-            const bottom = f.y + TAB_STRIP_HEIGHT;
-            // A CROSSING is the two events on OPPOSITE sides of the rows — a
-            // hand that swept along the tabs from beside the panel and ended
-            // above it did not cross them, it went past them. And the sides
-            // still take the corners (0.4.47): a hand landing in the outer
-            // fifth meant "after it", whatever it crossed on the way.
-            const through = (prevWorld.y < top && ev.world.y > bottom) || (prevWorld.y > bottom && ev.world.y < top);
-            const away = ev.world.y < top ? top - ev.world.y : ev.world.y > bottom ? ev.world.y - bottom : 0;
-            const rx = (ev.world.x - f.x) / Math.max(1, f.width);
-            const inSideBand = rx < BESIDE_BAND || rx > 1 - BESIDE_BAND;
-            if (through && !inSideBand && ev.world.x >= f.x && ev.world.x <= f.x + f.width && away <= TAB_STRIP_HEIGHT / scaleY) hit = { containerId: crossed };
-          }
-        }
-      }
+      // …and the segment the hand TRAVELLED, for a hand arriving faster than a strip is tall (0.4.67; `stripCrossing`).
+      const hit =
+        stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / scaleY, restFrames: rests }) ??
+        (prevWorld && !g.strip ? stripCrossing({ prev: prevWorld, cur: ev.world, roots, restFrames: rests, stripHeight: TAB_STRIP_HEIGHT, band: BESIDE_BAND, reach: TAB_STRIP_HEIGHT / scaleY }) : null);
       if (hit) {
         // The SLOT is the painted strip's business — its tabs are laid out by
         // the browser. A container the gesture shifted sideways is painted
@@ -2919,14 +2906,7 @@ export function bindDashboardGrid(
     return deepest;
   };
   /** Client pixels per world unit — the camera's scale, measured the way the tear-out measures its bands. */
-  const clientPerWorld = (): { x: number; y: number } => {
-    const rect = api.container.getBoundingClientRect();
-    const toWorld = (cx: number, cy: number): { x: number; y: number } =>
-      api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
-    const o = toWorld(rect.left, rect.top);
-    const u = toWorld(rect.left + 100, rect.top + 100);
-    return { x: 100 / (u.x - o.x || 100), y: 100 / (u.y - o.y || 100) };
-  };
+  const clientPerWorld = (): { x: number; y: number } => clientPerWorldOf(api);
   /** The groups this board sits in, all the way up: their bands never apply to a tile of this board. */
   const homeChain = (): ReadonlySet<string> => {
     const out = new Set<string>();

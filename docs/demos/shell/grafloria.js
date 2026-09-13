@@ -195208,6 +195208,27 @@ function stripUnder(p) {
   for (const r of p.roots) visit(r, 0, 0);
   return bestId === null ? null : { containerId: bestId };
 }
+function stripCrossing(p) {
+  const dx = p.cur.x - p.prev.x;
+  const dy = p.cur.y - p.prev.y;
+  const n3 = Math.ceil(Math.hypot(dx, dy) / Math.max(1, p.stripHeight / 2));
+  let crossed = null;
+  for (let i = 1; i < n3 && !crossed; i++) {
+    crossed = stripUnder({ x: p.prev.x + dx * i / n3, y: p.prev.y + dy * i / n3, roots: p.roots, held: null, stay: 0, restFrames: p.restFrames })?.containerId ?? null;
+  }
+  if (!crossed) return null;
+  const f = p.restFrames?.get(crossed) ?? containerOf(p.roots, crossed)?.frame;
+  if (!f) return null;
+  const top = f.y;
+  const bottom = f.y + p.stripHeight;
+  const through = p.prev.y < top && p.cur.y > bottom || p.prev.y > bottom && p.cur.y < top;
+  const away = p.cur.y < top ? top - p.cur.y : p.cur.y > bottom ? p.cur.y - bottom : 0;
+  const band = p.band ?? BESIDE_BAND;
+  const rx = (p.cur.x - f.x) / Math.max(1, f.width);
+  const inSideBand = rx < band || rx > 1 - band;
+  const inside = p.cur.x >= f.x && p.cur.x <= f.x + f.width;
+  return through && !inSideBand && inside && away <= (p.reach ?? p.stripHeight) ? { containerId: crossed } : null;
+}
 function tileBand(f, stripHeight, x, y, band, bandY, topOutside, grow = 1) {
   const up = (topOutside ?? 0) * grow;
   if (up > 0 && x >= f.x && x <= f.x + f.width && y < f.y && y >= f.y - up) {
@@ -196543,6 +196564,69 @@ function registerBoardPeer(container, peer) {
     s.delete(peer);
   };
 }
+function peersOnCanvasOf(container) {
+  let set = BOARD_REGISTRY.get(container);
+  if (!set) {
+    set = /* @__PURE__ */ new Set();
+    BOARD_REGISTRY.set(container, set);
+  }
+  return set;
+}
+function clientPerWorldOf(api) {
+  const rect = api.container.getBoundingClientRect();
+  const toWorld = (cx, cy) => api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
+  const o = toWorld(rect.left, rect.top);
+  const u = toWorld(rect.left + 100, rect.top + 100);
+  return { x: 100 / (u.x - o.x || 100), y: 100 / (u.y - o.y || 100) };
+}
+function zoneRootsOf(peers, diagram) {
+  const list2 = [...peers];
+  const byGroup = new Map(list2.map((p) => [p.group.id, p]));
+  const frameOf2 = (grp) => ({ x: grp.position.x, y: grp.position.y, width: grp.size?.width ?? 0, height: grp.size?.height ?? 0 });
+  const boardRef = (p, depth) => ({
+    id: p.group.id,
+    depth,
+    ref: p,
+    contains: (x, y) => p.containsWorld(x, y),
+    containsExtended: (x, y) => p.containsWorldExtended(x, y),
+    children: () => {
+      const out = [];
+      for (const id of p.group.members ?? []) {
+        const grp = diagram.getGroup(id);
+        if (!grp || diagram.getNode(id)) continue;
+        const cw = grp.getMetadata("containerWidget") ?? {};
+        const layout = cw.layout === "tabs" ? "tabs" : cw.layout === "split" ? "split" : "grid";
+        let innerPeer;
+        if (layout === "tabs") {
+          const pageId = cw.active && byGroup.has(cw.active) ? cw.active : [...grp.members ?? []].find((m) => byGroup.has(m));
+          innerPeer = pageId ? byGroup.get(pageId) : void 0;
+        } else innerPeer = byGroup.get(id);
+        out.push({
+          id,
+          layout,
+          static: innerPeer?.isStatic?.() ?? false,
+          frame: frameOf2(grp),
+          stripHeight: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
+          band: layout === "tabs" ? BESIDE_BAND : 0,
+          // a section's whole body is "into" (Quantia's Groups page)
+          // The top and bottom are a FIXED depth — one strip's worth, under
+          // the strip — not a fifth of the body, which grew with the panel
+          // until 216 px of the fluid demo's page meant "above the whole
+          // panel" (0.4.62). The sides keep the fifth.
+          bandY: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
+          // …and the TOP band hangs ABOVE the frame, where a hand looking
+          // for "above this panel" actually goes (0.4.65). A panel holding
+          // the board's first row has no row above it to point at, and the
+          // lane under its header is the last place anyone would try.
+          topOutside: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
+          inner: innerPeer ? boardRef(innerPeer, depth + 1) : null
+        });
+      }
+      return out;
+    }
+  });
+  return list2.filter((p) => !p.group.parentGroupId).map((p) => boardRef(p, 0));
+}
 var DRAG_THRESHOLD = 4;
 var STRIP_STAY = 9;
 var nodeOf = (g) => g.entity;
@@ -197832,61 +197916,8 @@ function bindDashboardGrid(api, group, options = {}) {
     const f = frame();
     return f.width * boardVisualHeight();
   };
-  const peersOnCanvas = () => {
-    let set = BOARD_REGISTRY.get(api.container);
-    if (!set) {
-      set = /* @__PURE__ */ new Set();
-      BOARD_REGISTRY.set(api.container, set);
-    }
-    return set;
-  };
-  const zoneRoots = () => {
-    const peers = [...peersOnCanvas()];
-    const byGroup = new Map(peers.map((p) => [p.group.id, p]));
-    const boardRef = (p, depth) => ({
-      id: p.group.id,
-      depth,
-      ref: p,
-      contains: (x, y) => p.containsWorld(x, y),
-      containsExtended: (x, y) => p.containsWorldExtended(x, y),
-      children: () => {
-        const out = [];
-        for (const id of p.group.members ?? []) {
-          const grp = diagram.getGroup(id);
-          if (!grp || diagram.getNode(id)) continue;
-          const cw = grp.getMetadata("containerWidget") ?? {};
-          const layout = cw.layout === "tabs" ? "tabs" : cw.layout === "split" ? "split" : "grid";
-          let innerPeer;
-          if (layout === "tabs") {
-            const pageId = cw.active && byGroup.has(cw.active) ? cw.active : [...grp.members ?? []].find((m) => byGroup.has(m));
-            innerPeer = pageId ? byGroup.get(pageId) : void 0;
-          } else innerPeer = byGroup.get(id);
-          out.push({
-            id,
-            layout,
-            static: innerPeer?.isStatic?.() ?? false,
-            frame: frameOfGroup(grp),
-            stripHeight: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
-            band: layout === "tabs" ? BESIDE_BAND : 0,
-            // a section's whole body is "into" (Quantia's Groups page)
-            // The top and bottom are a FIXED depth — one strip's worth, under
-            // the strip — not a fifth of the body, which grew with the panel
-            // until 216 px of the fluid demo's page meant "above the whole
-            // panel" (0.4.62). The sides keep the fifth.
-            bandY: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
-            // …and the TOP band hangs ABOVE the frame, where a hand looking
-            // for "above this panel" actually goes (0.4.65). A panel holding
-            // the board's first row has no row above it to point at, and the
-            // lane under its header is the last place anyone would try.
-            topOutside: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
-            inner: innerPeer ? boardRef(innerPeer, depth + 1) : null
-          });
-        }
-        return out;
-      }
-    });
-    return peers.filter((p) => !p.group.parentGroupId).map((p) => boardRef(p, 0));
-  };
+  const peersOnCanvas = () => peersOnCanvasOf(api.container);
+  const zoneRoots = () => zoneRootsOf(peersOnCanvas(), diagram);
   const placeOnSelf = (g, desired, pushSolid = false) => {
     if (g.removedFromBoard) {
       g.removedFromBoard = false;
@@ -197921,27 +197952,7 @@ function bindDashboardGrid(api, group, options = {}) {
     let strip = null;
     if (options.tabDrop?.tabIndexAt && !isStatic && g.kind !== "palette" && g.subject === "node") {
       const scaleY = clientPerWorld().y || 1;
-      let hit = stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / scaleY, restFrames: rests });
-      if (!hit && prevWorld && !g.strip) {
-        const dx = ev.world.x - prevWorld.x;
-        const dy = ev.world.y - prevWorld.y;
-        const n3 = Math.ceil(Math.hypot(dx, dy) / (TAB_STRIP_HEIGHT / 2));
-        let crossed = null;
-        for (let i = 1; i < n3 && !crossed; i++) crossed = stripUnder({ x: prevWorld.x + dx * i / n3, y: prevWorld.y + dy * i / n3, roots, held: null, stay: 0, restFrames: rests })?.containerId ?? null;
-        if (crossed) {
-          const grp = diagram.getGroup(crossed);
-          const f = rests.get(crossed) ?? (grp ? frameOfGroup(grp) : null);
-          if (f) {
-            const top = f.y;
-            const bottom = f.y + TAB_STRIP_HEIGHT;
-            const through = prevWorld.y < top && ev.world.y > bottom || prevWorld.y > bottom && ev.world.y < top;
-            const away = ev.world.y < top ? top - ev.world.y : ev.world.y > bottom ? ev.world.y - bottom : 0;
-            const rx = (ev.world.x - f.x) / Math.max(1, f.width);
-            const inSideBand = rx < BESIDE_BAND || rx > 1 - BESIDE_BAND;
-            if (through && !inSideBand && ev.world.x >= f.x && ev.world.x <= f.x + f.width && away <= TAB_STRIP_HEIGHT / scaleY) hit = { containerId: crossed };
-          }
-        }
-      }
+      const hit = stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / scaleY, restFrames: rests }) ?? (prevWorld && !g.strip ? stripCrossing({ prev: prevWorld, cur: ev.world, roots, restFrames: rests, stripHeight: TAB_STRIP_HEIGHT, band: BESIDE_BAND, reach: TAB_STRIP_HEIGHT / scaleY }) : null);
       if (hit) {
         const grp = diagram.getGroup(hit.containerId);
         const rest = rests.get(hit.containerId);
@@ -197998,13 +198009,7 @@ function bindDashboardGrid(api, group, options = {}) {
     }
     return deepest;
   };
-  const clientPerWorld = () => {
-    const rect = api.container.getBoundingClientRect();
-    const toWorld = (cx, cy) => api.viewport?.clientToWorld ? api.viewport.clientToWorld(cx, cy, rect) : { x: cx - rect.left, y: cy - rect.top };
-    const o = toWorld(rect.left, rect.top);
-    const u = toWorld(rect.left + 100, rect.top + 100);
-    return { x: 100 / (u.x - o.x || 100), y: 100 / (u.y - o.y || 100) };
-  };
+  const clientPerWorld = () => clientPerWorldOf(api);
   const homeChain = () => {
     const out = /* @__PURE__ */ new Set();
     let cur = group;
@@ -199608,6 +199613,58 @@ function bindDashboardSplit(api, group, options = {}) {
     const f = frame();
     return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + f.height;
   };
+  const frameOfGroupW = (grp) => ({ x: grp.position.x, y: grp.position.y, width: grp.size?.width ?? 0, height: grp.size?.height ?? 0 });
+  const EMPTY_SUBTREE2 = /* @__PURE__ */ new Set();
+  const homeChain = () => {
+    const out = /* @__PURE__ */ new Set();
+    let cur = group;
+    for (let i = 0; cur && i < 32; i++) {
+      out.add(cur.id);
+      cur = cur.parentGroupId ? diagram.getGroup(cur.parentGroupId) : void 0;
+    }
+    return out;
+  };
+  const tileZone = (g, ev, prev) => {
+    const roots = zoneRootsOf(peersOnCanvasOf(api.container), diagram);
+    let strip = null;
+    if (options.tabDrop?.tabIndexAt && !isStatic && g.kind === "move" && g.node) {
+      const scaleY = clientPerWorldOf(api).y || 1;
+      const hit = stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / scaleY }) ?? (prev && !g.strip ? stripCrossing({ prev, cur: ev.world, roots, stripHeight: TAB_STRIP_HEIGHT, band: BESIDE_BAND, reach: TAB_STRIP_HEIGHT / scaleY }) : null);
+      if (hit) {
+        const idx = options.tabDrop.tabIndexAt(hit.containerId, api.container.getBoundingClientRect().left + ev.screen.x);
+        if (idx !== null) strip = { containerId: hit.containerId, index: idx };
+      }
+    }
+    return resolve({
+      x: ev.world.x,
+      y: ev.world.y,
+      roots,
+      strip,
+      prev: g.beside ?? g.leg?.adopted.besideState() ?? null,
+      maxDepth: options.nesting ?? 2,
+      ghostDepth: 0,
+      ghostSubtree: EMPTY_SUBTREE2,
+      gap,
+      homeChain: homeChain()
+    });
+  };
+  const pxSizeOf = (g) => {
+    const cell = persistedCell(g.id);
+    const f = frame();
+    const colW = Math.max(1, (f.width - 2 * padding - (columns - 1) * gap) / columns);
+    if (cell) return { width: Math.max(1, cell.w * (colW + gap) - gap), height: Math.max(1, cell.h * (baseRowHeight + gap) - gap) };
+    return g.node ? { width: g.node.size.width, height: g.node.size.height } : { width: colW, height: baseRowHeight };
+  };
+  const endStrip = (g) => {
+    if (!g.strip) return;
+    options.tabDrop?.markDrop(null, null);
+    g.strip = null;
+  };
+  const endLeg = (g) => {
+    if (!g.leg) return;
+    g.leg.adopted.abort();
+    g.leg = null;
+  };
   const nameOf2 = (id) => {
     const node = diagram.getNode(id);
     const title = node?.getMetadata?.("widgetTitle");
@@ -199633,6 +199690,7 @@ function bindDashboardSplit(api, group, options = {}) {
     options.onSelect?.(id);
   };
   let selfPeerRef = null;
+  let prevWorld = null;
   const staticGuard = (e) => {
     if (!isStatic || disposed) return;
     const t = e.target;
@@ -199731,6 +199789,7 @@ function bindDashboardSplit(api, group, options = {}) {
   };
   const beginMoveVisuals = (g) => {
     g.started = true;
+    prevWorld = null;
     g.liveTree = removeSplitLeaf(g.startTree, g.id);
     g.hostEl = hostOf(g.id);
     g.hostEl?.classList.add("axdb-ghost");
@@ -199765,10 +199824,44 @@ function bindDashboardSplit(api, group, options = {}) {
       diagram.runSystemWrite(() => g.node.setPosition(x, y));
     }
     const inside = worldInsideBoard(ev.world.x, ev.world.y);
-    const t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
+    const prev = prevWorld;
+    prevWorld = { x: ev.world.x, y: ev.world.y };
+    const z = tileZone(g, ev, prev);
+    let t = null;
+    if (z.kind === "strip") {
+      endLeg(g);
+      g.beside = null;
+      if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) options.tabDrop?.markDrop(z.containerId, z.index);
+      g.strip = { containerId: z.containerId, index: z.index };
+    } else {
+      endStrip(g);
+      const peer = z.kind === "plain" ? z.board.ref ?? null : null;
+      if (z.kind === "beside") {
+        endLeg(g);
+        const grp = diagram.getGroup(z.containerId);
+        const rect = rectsOf(g.liveTree).get(z.containerId) ?? (grp ? frameOfGroupW(grp) : null);
+        if (rect) {
+          g.beside = z.kept && g.beside ? g.beside : { containerId: z.containerId, side: z.side, frame0: rect };
+          t = { id: z.containerId, side: z.side, rect };
+        }
+      } else if (peer && peer !== selfPeerRef) {
+        g.beside = null;
+        if (g.leg && g.leg.peer !== peer) endLeg(g);
+        if (!g.leg) {
+          const adopted = peer.adopt({ id: g.id }, ev.world, pxSizeOf(g), {});
+          if (adopted) g.leg = { peer, adopted };
+        }
+        if (g.leg) g.leg.adopted.move(ev.world);
+        else t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
+      } else {
+        g.beside = null;
+        endLeg(g);
+        t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
+      }
+    }
     g.target = t ? targetOf(t) : null;
     showInsertion(t ? insertionRect(t.rect, t.side) : null);
-    const out = !inside && options.dragOut === "remove" && (!options.removeZone || options.removeZone({ x: ev.screen.x, y: ev.screen.y }, { x: ev.world.x, y: ev.world.y }));
+    const out = !inside && !t && !g.strip && !g.leg && options.dragOut === "remove" && (!options.removeZone || options.removeZone({ x: ev.screen.x, y: ev.screen.y }, { x: ev.world.x, y: ev.world.y }));
     g.out = out;
     g.hostEl?.classList.toggle("axdb-out", out);
     api.render();
@@ -199788,6 +199881,78 @@ function bindDashboardSplit(api, group, options = {}) {
       project(readTree());
       api.renderNow();
       fire({ type: changed ? "commit" : "cancel", kind: "resize", nodeId: g.id, changed });
+      return;
+    }
+    const paint2 = () => {
+      if (disposed) return;
+      project(readTree());
+      api.renderNow();
+    };
+    const settle = () => {
+      paint2();
+      void Promise.resolve(pendingBatch).then(paint2, () => void 0);
+    };
+    if (g.strip && options.tabDrop) {
+      const target = g.strip;
+      g.strip = null;
+      options.tabDrop.markDrop(null, null);
+      const without = new SetSplitTreeCommand(group.id, g.startTree, normalizeSplit(g.liveTree));
+      const cmds = options.tabDrop.dropIntoStrip(g.id, target.containerId, target.index, group.id, [without]);
+      if (cmds.length === 0) {
+        project(g.startTree);
+        api.renderNow();
+        fire({ type: "cancel", kind: "move", nodeId: g.id, changed: false });
+        return;
+      }
+      execute("Move widget into a new tab", cmds);
+      settle();
+      live.announce(`${nameOf2(g.id)} became a tab of ${nameOf2(target.containerId)}`, "polite", true);
+      fire({ type: "commit", kind: "move", nodeId: g.id, changed: true });
+      return;
+    }
+    if (g.leg) {
+      const leg = g.leg;
+      g.leg = null;
+      const fin = leg.adopted.finalize();
+      if (!fin) {
+        project(g.startTree);
+        api.renderNow();
+        fire({ type: "cancel", kind: "move", nodeId: g.id, changed: false });
+        return;
+      }
+      const node = g.node;
+      if (node) {
+        diagram.runSystemWrite(() => {
+          node.setPosition(fin.rect.x, fin.rect.y);
+          node.setSize(fin.rect.width, fin.rect.height, node.size.depth ?? 0);
+        });
+      }
+      const geom0 = g.startGeom ?? { pos: { x: fin.rect.x, y: fin.rect.y }, size: { width: fin.rect.width, height: fin.rect.height } };
+      const own = buildCommitCommands([
+        {
+          id: g.id,
+          locked: false,
+          isGroup: false,
+          cellBefore: persistedCell(g.id) ?? fin.cell,
+          cellAfter: fin.cell,
+          posBefore: geom0.pos,
+          posAfter: { x: fin.rect.x, y: fin.rect.y },
+          sizeBefore: geom0.size,
+          sizeAfter: { width: fin.rect.width, height: fin.rect.height }
+        }
+      ]);
+      const crossing = [
+        new SetSplitTreeCommand(group.id, g.startTree, normalizeSplit(g.liveTree)),
+        ...fin.commands,
+        new RemoveFromGroupCommand(group.id, g.id),
+        new AddToGroupCommand(leg.adopted.groupId, g.id),
+        ...own
+      ];
+      const leaving = options.onMemberLeaving?.(g.id) ?? [];
+      execute("Move widget", leaving.length > 0 ? [new SequenceCommand("Move widget", [...crossing, ...leaving])] : crossing);
+      settle();
+      live.announce(`${nameOf2(g.id)} moved into ${nameOf2(leg.adopted.groupId)}`, "polite", true);
+      fire({ type: "commit", kind: "move", nodeId: g.id, changed: true });
       return;
     }
     if (g.out && options.onRemoveRequest) {
@@ -199817,6 +199982,8 @@ function bindDashboardSplit(api, group, options = {}) {
     if (!g) return;
     gesture = null;
     teardownGesture(g);
+    endStrip(g);
+    endLeg(g);
     if (g.kind === "palette") {
       api.renderNow();
       fire({ type: "cancel", kind: "palette", nodeId: g.id, changed: false });
@@ -199862,6 +200029,10 @@ function bindDashboardSplit(api, group, options = {}) {
           out: false,
           chip: null,
           esc: null,
+          strip: null,
+          leg: null,
+          beside: null,
+          startGeom: null,
           hostEl: null,
           pointerId: typeof PointerEvent !== "undefined" && ev.source instanceof PointerEvent ? ev.source.pointerId : null
         };
@@ -199937,6 +200108,10 @@ function bindDashboardSplit(api, group, options = {}) {
         out: false,
         chip: null,
         esc: null,
+        strip: null,
+        leg: null,
+        beside: null,
+        startGeom: { pos: { x: node.position.x, y: node.position.y }, size: { width: node.size.width, height: node.size.height } },
         hostEl: null,
         pointerId: typeof PointerEvent !== "undefined" && ev.source instanceof PointerEvent ? ev.source.pointerId : null
       };
@@ -200246,6 +200421,10 @@ function bindDashboardSplit(api, group, options = {}) {
       out: false,
       chip: chip2,
       esc: null,
+      strip: null,
+      leg: null,
+      beside: null,
+      startGeom: null,
       hostEl: null,
       pointerId: null
     };

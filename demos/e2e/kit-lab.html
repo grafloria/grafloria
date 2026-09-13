@@ -315,6 +315,12 @@ board('sptabs', 'tabs on a SPLIT board (0.4.37) · a torn-out tab becomes a PANE
     { id: 'st-b1', title: 'Filters', columns: 4, widgets: [ { id: 'st-kb1', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Filters', value: '4' } } ] },
     { id: 'st-b2', title: 'Notes', columns: 4, widgets: [ { id: 'st-kb2', kind: 'kpi', span: 4, rows: 4, x: 0, y: 0, data: { label: 'Notes', value: '5' } } ] } ] },
 ] }, { height: 300 });
+board('spdrop', 'a WIDGET over a tab group on a SPLIT board (0.4.69) · the strip makes it a tab, the page takes it, the fifth means a pane beside', { layout: 'split', sizing: 'grow', rowHeight: 50, widgets: [
+  { id: 'sd-w', kind: 'kpi', span: 4, rows: 2, x: 0, y: 0, data: { label: 'Widget', value: '1' } },
+  { id: 'sd-a', title: 'Group A', span: 8, rows: 6, x: 4, y: 0, columns: 6, layout: 'tabs', widgets: [
+    { id: 'sd-a1', title: 'Sales', columns: 6, widgets: [ { id: 'sd-ka1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Sales', value: '2' } } ] },
+    { id: 'sd-a2', title: 'Margin', columns: 6, widgets: [ { id: 'sd-ka2', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Margin', value: '3' } } ] } ] },
+] }, { height: 360 });
 board('pal', 'a PALETTE chip dragged into a tab page lands there — the drop names the board it took (tile first, step 4a)', { sizing: 'grow', rowHeight: 60, widgets: [
   { id: 'pal-a', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'A', value: '1' } },
   { id: 'pal-tabs', title: 'Side', span: 6, rows: 4, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [

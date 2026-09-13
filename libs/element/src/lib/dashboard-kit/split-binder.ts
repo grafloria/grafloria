@@ -23,12 +23,14 @@
  * the authored size.
  */
 
-import { BESIDE_BAND, resolveTabZone } from './zones';
-import { BatchCommand, Command, type DiagramModel, type GroupModel, type NodeModel } from '@grafloria/engine';
+import { BESIDE_BAND, resolveTabZone, resolve as resolveZone, stripCrossing, stripUnder, type BesideSide, type Zone as WalkZone, type ZoneBoard } from './zones';
+import { AddToGroupCommand, BatchCommand, Command, RemoveFromGroupCommand, type DiagramModel, type GroupModel, type NodeModel } from '@grafloria/engine';
 import { LiveRegionController, registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
-import type { DashboardGridApi, DashboardGridHandle, DashboardGridOptions, TearOutPlan } from './grid-binder';
-import { anyEdge, clearOtherSelections, dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, parentPeerOf, pressOnDragHandle, registerBoardPeer, syncGrip, DRAG_HANDLE_CLASS, EDGE_GRIP, type BinderPeer, type DragHandleOption, type ResizeEdges } from './grid-binder';
-import { cellFromGridItem, type CellRect, type WorldRect } from './grid-mapping';
+import type { AdoptedLeg, DashboardGridApi, DashboardGridHandle, DashboardGridOptions, TearOutPlan } from './grid-binder';
+import { anyEdge, clearOtherSelections, clientPerWorldOf, dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, parentPeerOf, peersOnCanvasOf, pressOnDragHandle, registerBoardPeer, syncGrip, zoneRootsOf, DRAG_HANDLE_CLASS, EDGE_GRIP, STRIP_STAY, type BinderPeer, type DragHandleOption, type ResizeEdges } from './grid-binder';
+import { buildCommitCommands, cellFromGridItem, type CellRect, type WorldRect } from './grid-mapping';
+import { SequenceCommand } from './commit';
+import { TAB_STRIP_HEIGHT } from './tabs';
 import {
   addSplitLeaf,
   cellsFromSplit,
@@ -70,6 +72,9 @@ export interface DashboardSplitOptions
     | 'removeZone'
     | 'onRemoveRequest'
     | 'onDropIn'
+    | 'tabDrop'
+    | 'onMemberLeaving'
+    | 'nesting'
     | 'onGesture'
     | 'onSelect'
     | 'renderCaption'
@@ -164,6 +169,14 @@ interface Gesture {
   hostEl: HTMLElement | null;
   /** The pointer captured on the container, so a release outside the canvas still arrives. */
   pointerId: number | null;
+  /** Move: the strip the widget will join as a new tab (0.4.69). */
+  strip: { containerId: string; index: number } | null;
+  /** Move: the nested board — a tab page, a section — holding the widget for the drop, through its leg (0.4.69). */
+  leg: { peer: BinderPeer; adopted: AdoptedLeg } | null;
+  /** Move: the container band the hand holds, for the zone walk's stickiness. */
+  beside: { containerId: string; side: BesideSide; frame0: WorldRect } | null;
+  /** Move: the widget's geometry at the press, for a commit onto another board. */
+  startGeom: { pos: { x: number; y: number }; size: { width: number; height: number } } | null;
 }
 
 export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, options: DashboardSplitOptions = {}): DashboardSplitHandle {
@@ -594,6 +607,73 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + f.height;
   };
 
+  // -- the tab-group zones on a split board (0.4.69) ----------------------------
+
+  const frameOfGroupW = (grp: GroupModel): WorldRect => ({ x: grp.position.x, y: grp.position.y, width: grp.size?.width ?? 0, height: grp.size?.height ?? 0 });
+  const EMPTY_SUBTREE: ReadonlySet<string> = new Set();
+  /** This board's group and its ancestors: a container's band never applies to a widget that lives inside it. */
+  const homeChain = (): ReadonlySet<string> => {
+    const out = new Set<string>();
+    let cur: GroupModel | undefined = group;
+    for (let i = 0; cur && i < 32; i++) {
+      out.add(cur.id);
+      cur = cur.parentGroupId ? diagram.getGroup(cur.parentGroupId) : undefined;
+    }
+    return out;
+  };
+  /**
+   * The zone under the hand for a widget of this board — the SAME walk the
+   * grid board runs (zones.ts), over the same tree of boards: a strip slot
+   * (with the crossing rule for a hand arriving faster than a strip is
+   * tall), a band beside a container, a plain cell on the deepest board the
+   * pointer may enter, or off. Nothing on a split board is pushed, so no
+   * container is read at rest.
+   */
+  const tileZone = (g: Gesture, ev: ToolPointerEvent, prev: { x: number; y: number } | null): WalkZone => {
+    const roots: ZoneBoard[] = zoneRootsOf(peersOnCanvasOf(api.container), diagram);
+    let strip: { containerId: string; index: number } | null = null;
+    if (options.tabDrop?.tabIndexAt && !isStatic && g.kind === 'move' && g.node) {
+      const scaleY = clientPerWorldOf(api).y || 1;
+      const hit =
+        stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / scaleY }) ??
+        (prev && !g.strip ? stripCrossing({ prev, cur: ev.world, roots, stripHeight: TAB_STRIP_HEIGHT, band: BESIDE_BAND, reach: TAB_STRIP_HEIGHT / scaleY }) : null);
+      if (hit) {
+        const idx = options.tabDrop.tabIndexAt(hit.containerId, api.container.getBoundingClientRect().left + ev.screen.x);
+        if (idx !== null) strip = { containerId: hit.containerId, index: idx };
+      }
+    }
+    return resolveZone({
+      x: ev.world.x,
+      y: ev.world.y,
+      roots,
+      strip,
+      prev: g.beside ?? g.leg?.adopted.besideState() ?? null,
+      maxDepth: options.nesting ?? 2,
+      ghostDepth: 0,
+      ghostSubtree: EMPTY_SUBTREE,
+      gap,
+      homeChain: homeChain(),
+    });
+  };
+  /** The widget's NATURAL size for a board that adopts it: its authored cell at this board's units, not the pane it was stretched over. */
+  const pxSizeOf = (g: Gesture): { width: number; height: number } => {
+    const cell = persistedCell(g.id);
+    const f = frame();
+    const colW = Math.max(1, (f.width - 2 * padding - (columns - 1) * gap) / columns);
+    if (cell) return { width: Math.max(1, cell.w * (colW + gap) - gap), height: Math.max(1, cell.h * (baseRowHeight + gap) - gap) };
+    return g.node ? { width: g.node.size.width, height: g.node.size.height } : { width: colW, height: baseRowHeight };
+  };
+  const endStrip = (g: Gesture): void => {
+    if (!g.strip) return;
+    options.tabDrop?.markDrop(null, null);
+    g.strip = null;
+  };
+  const endLeg = (g: Gesture): void => {
+    if (!g.leg) return;
+    g.leg.adopted.abort();
+    g.leg = null;
+  };
+
   // -- a11y -------------------------------------------------------------------
 
   const nameOf = (id: string): string => {
@@ -624,6 +704,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     options.onSelect?.(id);
   };
   let selfPeerRef: BinderPeer | null = null;
+  /** The previous move event's world point: the segment a hand travelled, for a strip it stepped over. */
+  let prevWorld: { x: number; y: number } | null = null;
 
   // Static boards let content be clicked — see grid-binder's staticGuard.
   const staticGuard = (e: Event): void => {
@@ -744,6 +826,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
 
   const beginMoveVisuals = (g: Gesture): void => {
     g.started = true;
+    prevWorld = null;
     g.liveTree = removeSplitLeaf(g.startTree, g.id); // the siblings take the slot at once
     g.hostEl = hostOf(g.id);
     g.hostEl?.classList.add('axdb-ghost');
@@ -773,18 +856,68 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       api.render();
       return;
     }
-    // MOVE: the ghost follows the pointer; the target is the nearest edge under it.
+    // MOVE: the ghost follows the pointer. What the hand means is the ZONE
+    // WALK's answer first (0.4.69, the grid board's since 0.4.50): a tab
+    // container's strip makes the widget a tab, its page takes the widget
+    // through a leg, its outer fifth means a pane beside it — and only then
+    // the split board's own rule, the nearest edge of the pane under the
+    // pointer. Measured before this on the fluid demo in split mode: the
+    // header was never a tab target, the page never took a widget, and
+    // "above" claimed the upper half of the panel's body.
     if (g.node) {
       const x = ev.world.x - g.grab.dx;
       const y = ev.world.y - g.grab.dy;
       diagram.runSystemWrite(() => g.node!.setPosition(x, y));
     }
     const inside = worldInsideBoard(ev.world.x, ev.world.y);
-    const t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
+    const prev = prevWorld;
+    prevWorld = { x: ev.world.x, y: ev.world.y };
+    const z = tileZone(g, ev, prev);
+    let t: DropTarget | null = null;
+    if (z.kind === 'strip') {
+      // -- INTO A STRIP: the strip marks the slot; nothing else is painted.
+      endLeg(g);
+      g.beside = null;
+      if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) options.tabDrop?.markDrop(z.containerId, z.index);
+      g.strip = { containerId: z.containerId, index: z.index };
+    } else {
+      endStrip(g);
+      const peer = z.kind === 'plain' ? (z.board.ref as BinderPeer | undefined) ?? null : null;
+      if (z.kind === 'beside') {
+        // -- BESIDE a container: a pane on that side of it — the split board's own line.
+        endLeg(g);
+        const grp = diagram.getGroup(z.containerId);
+        const rect = rectsOf(g.liveTree).get(z.containerId) ?? (grp ? frameOfGroupW(grp) : null);
+        if (rect) {
+          g.beside = z.kept && g.beside ? g.beside : { containerId: z.containerId, side: z.side, frame0: rect };
+          t = { id: z.containerId, side: z.side, rect };
+        }
+      } else if (peer && peer !== selfPeerRef) {
+        // -- INTO a nested board (a page, a section) — or out onto the board
+        // that holds this one: that board holds the widget through a leg and
+        // paints its own placeholder. A board that refuses (full, fit) leaves
+        // the split rule to answer.
+        g.beside = null;
+        if (g.leg && g.leg.peer !== peer) endLeg(g);
+        if (!g.leg) {
+          const adopted = peer.adopt({ id: g.id }, ev.world, pxSizeOf(g), {});
+          if (adopted) g.leg = { peer, adopted };
+        }
+        if (g.leg) g.leg.adopted.move(ev.world);
+        else t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
+      } else {
+        g.beside = null;
+        endLeg(g);
+        t = inside ? dropTargetAt(g.liveTree, ev.world.x, ev.world.y, g.id) : null;
+      }
+    }
     g.target = t ? targetOf(t) : null;
     showInsertion(t ? insertionRect(t.rect, t.side) : null);
     const out =
       !inside &&
+      !t &&
+      !g.strip &&
+      !g.leg &&
       options.dragOut === 'remove' &&
       (!options.removeZone || options.removeZone({ x: ev.screen.x, y: ev.screen.y }, { x: ev.world.x, y: ev.world.y }));
     g.out = out;
@@ -807,6 +940,87 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       project(readTree());
       api.renderNow();
       fire({ type: changed ? 'commit' : 'cancel', kind: 'resize', nodeId: g.id, changed });
+      return;
+    }
+    const paint = (): void => {
+      if (disposed) return;
+      project(readTree());
+      api.renderNow();
+    };
+    const settle = (): void => {
+      paint();
+      void Promise.resolve(pendingBatch).then(paint, () => undefined);
+    };
+    if (g.strip && options.tabDrop) {
+      // -- INTO A STRIP: the widget becomes a new tab of that container and
+      // its pane leaves this tree — the tree-without-it rides as the source's
+      // "displaced", the way a grid's survivors do (0.4.69). One history step.
+      const target = g.strip;
+      g.strip = null;
+      options.tabDrop.markDrop(null, null);
+      const without = new SetSplitTreeCommand(group.id, g.startTree, normalizeSplit(g.liveTree));
+      const cmds = options.tabDrop.dropIntoStrip(g.id, target.containerId, target.index, group.id, [without]);
+      if (cmds.length === 0) {
+        project(g.startTree);
+        api.renderNow();
+        fire({ type: 'cancel', kind: 'move', nodeId: g.id, changed: false });
+        return;
+      }
+      execute('Move widget into a new tab', cmds);
+      settle();
+      live.announce(`${nameOf(g.id)} became a tab of ${nameOf(target.containerId)}`, 'polite', true);
+      fire({ type: 'commit', kind: 'move', nodeId: g.id, changed: true });
+      return;
+    }
+    if (g.leg) {
+      // -- ONTO ANOTHER BOARD (a page, a section, the board holding this one):
+      // one batch across both — this tree without the pane, the target's
+      // displaced tiles, the membership, the widget's cell and frame there.
+      const leg = g.leg;
+      g.leg = null;
+      const fin = leg.adopted.finalize();
+      if (!fin) {
+        project(g.startTree);
+        api.renderNow();
+        fire({ type: 'cancel', kind: 'move', nodeId: g.id, changed: false });
+        return;
+      }
+      const node = g.node;
+      if (node) {
+        diagram.runSystemWrite(() => {
+          node.setPosition(fin.rect.x, fin.rect.y);
+          node.setSize(fin.rect.width, fin.rect.height, node.size.depth ?? 0);
+        });
+      }
+      const geom0 = g.startGeom ?? { pos: { x: fin.rect.x, y: fin.rect.y }, size: { width: fin.rect.width, height: fin.rect.height } };
+      const own = buildCommitCommands([
+        {
+          id: g.id,
+          locked: false,
+          isGroup: false,
+          cellBefore: persistedCell(g.id) ?? fin.cell,
+          cellAfter: fin.cell,
+          posBefore: geom0.pos,
+          posAfter: { x: fin.rect.x, y: fin.rect.y },
+          sizeBefore: geom0.size,
+          sizeAfter: { width: fin.rect.width, height: fin.rect.height },
+        },
+      ]);
+      const crossing: Command[] = [
+        new SetSplitTreeCommand(group.id, g.startTree, normalizeSplit(g.liveTree)),
+        ...fin.commands,
+        new RemoveFromGroupCommand(group.id, g.id),
+        new AddToGroupCommand(leg.adopted.groupId, g.id),
+        ...own,
+      ];
+      // …and whatever follows a member out of this board: an emptied split
+      // page closes — inside one sequence with the move, or the batch could
+      // never undo (its group is gone).
+      const leaving = options.onMemberLeaving?.(g.id) ?? [];
+      execute('Move widget', leaving.length > 0 ? [new SequenceCommand('Move widget', [...crossing, ...leaving])] : crossing);
+      settle();
+      live.announce(`${nameOf(g.id)} moved into ${nameOf(leg.adopted.groupId)}`, 'polite', true);
+      fire({ type: 'commit', kind: 'move', nodeId: g.id, changed: true });
       return;
     }
     if (g.out && options.onRemoveRequest) {
@@ -838,6 +1052,8 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     if (!g) return;
     gesture = null;
     teardownGesture(g);
+    endStrip(g);
+    endLeg(g);
     if (g.kind === 'palette') {
       api.renderNow();
       fire({ type: 'cancel', kind: 'palette', nodeId: g.id, changed: false });
@@ -885,6 +1101,10 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
           out: false,
           chip: null,
           esc: null,
+          strip: null,
+          leg: null,
+          beside: null,
+          startGeom: null,
           hostEl: null,
           pointerId: typeof PointerEvent !== 'undefined' && ev.source instanceof PointerEvent ? ev.source.pointerId : null,
         };
@@ -977,6 +1197,10 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
         out: false,
         chip: null,
         esc: null,
+        strip: null,
+        leg: null,
+        beside: null,
+        startGeom: { pos: { x: node.position.x, y: node.position.y }, size: { width: node.size.width, height: node.size.height } },
         hostEl: null,
         pointerId: typeof PointerEvent !== 'undefined' && ev.source instanceof PointerEvent ? ev.source.pointerId : null,
       };
@@ -1335,6 +1559,10 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       out: false,
       chip,
       esc: null,
+      strip: null,
+      leg: null,
+      beside: null,
+      startGeom: null,
       hostEl: null,
       pointerId: null,
     };

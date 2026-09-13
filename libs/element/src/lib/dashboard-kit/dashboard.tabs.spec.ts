@@ -42,7 +42,7 @@ const tev = (type: ToolPointerEvent['type'], x: number, y: number): ToolPointerE
 
 import { fromDocument } from '../load';
 import { splitLeaves, type SplitNode } from './split-layout';
-import { SPLIT_TREE_KEY } from './split-binder';
+import { SPLIT_TREE_KEY, type DashboardSplitHandle } from './split-binder';
 
 function makeApi(model: DiagramModel) {
   const bus = new EventBus();
@@ -3243,5 +3243,128 @@ describe('the tab strip HOLDS the hand: a widget aimed at the tabs does not flip
     tool.onPointerUp?.(tev('up', r.x + r.width * 0.5, r.top - 4), hit);
     await settle();
     expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y);
+  });
+});
+
+describe('on a SPLIT board a widget finds a tab container\'s zones: its strip makes a tab, its page takes it, its fifth means a pane beside (0.4.69)', () => {
+  // Measured on the fluid demo in split mode before this: a widget over the
+  // tab group got only the nearest-edge insertion line — the header was never
+  // a tab target (over it: "a pane ABOVE"), the body's middle was never "into
+  // the page" (it read left / right), and "above" claimed the upper half.
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const on = (handle: DashboardHandle, boardId: string, id: string) => handle.binderOf(boardId)?.cellOf(id) ?? null;
+  const board = () =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      gap: 10,
+      rowHeight: 60,
+      layout: 'split',
+      widgets: [
+        K('nps', 6, 6, 0, 0),
+        { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0)] }] },
+      ],
+    });
+  const stubStrip = (api: { container: HTMLElement }, model: DiagramModel, h = 30) => {
+    const g = model.getGroup('side')!;
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const live = () => {
+      const p = g.position;
+      const w = g.size!.width;
+      return { left: p.x, top: p.y, right: p.x + w, bottom: p.y + h, width: w, height: h, x: p.x, y: p.y, toJSON: () => ({}) };
+    };
+    Object.defineProperty(strip, 'getBoundingClientRect', { value: () => live(), configurable: true });
+    return live();
+  };
+  const marked = (api: { container: HTMLElement }) => !!api.container.querySelector('.axdb-tabs[data-tabs-id="side"].axdb-tabs--drop');
+  const line = (api: { container: HTMLElement }) => api.container.querySelector('.axdb-ins') as HTMLElement | null;
+  const leaves = (model: DiagramModel) => splitLeaves(model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY) as SplitNode | null);
+  const pagesOf = (model: DiagramModel) => [...(model.getGroup('side')!.members ?? [])].filter((m) => !!model.getGroup(m));
+  const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+  const start = (tool: CanvasTool, nps: NodeModel) => {
+    const hit = { node: nps } as never;
+    tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
+    tool.onPointerMove?.(at(nps.position.x + 40, nps.position.y + 30), hit);
+    return hit;
+  };
+
+  it('over the STRIP the widget becomes a new tab of the container, and its pane leaves the tree — one undo', async () => {
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = start(tool, nps);
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 15), hit);
+    expect(marked(api)).toBe(true);
+    expect(line(api)).toBeNull(); // the strip's mark is the whole feedback: no insertion line under it
+    tool.onPointerUp?.(at(r.x + r.width * 0.5, r.top + 15), hit);
+    await settle();
+    expect(marked(api)).toBe(false);
+    expect(pagesOf(model)).toEqual(['p1', 'nps__page']);
+    expect(leaves(model)).toEqual(['side']);
+    expect(handle.getActiveTab('side')).toBe('nps__page');
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(pagesOf(model)).toEqual(['p1']);
+    expect(leaves(model).sort()).toEqual(['nps', 'side']);
+  });
+
+  it('over the PAGE\'s body the page takes the widget (its placeholder shows the cell), and its pane leaves the tree — one undo', async () => {
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = start(tool, nps);
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 250), hit);
+    expect(marked(api)).toBe(false);
+    expect(line(api)).toBeNull(); // the page's own placeholder is the promise, not a line
+    expect(on(handle, 'p1', 'nps')).not.toBeNull(); // the page's board holds the ghost
+    tool.onPointerUp?.(at(r.x + r.width * 0.5, r.top + 250), hit);
+    await settle();
+    expect(model.getGroup('p1')!.members?.has('nps')).toBe(true);
+    expect(model.getGroup('main')!.members?.has('nps')).toBe(false);
+    expect(leaves(model)).toEqual(['side']);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(model.getGroup('p1')!.members?.has('nps')).toBe(false);
+    expect(model.getGroup('main')!.members?.has('nps')).toBe(true);
+    expect(leaves(model).sort()).toEqual(['nps', 'side']);
+  });
+
+  it('over the container\'s outer FIFTH the widget becomes a pane beside it — the split board\'s own insertion line, as before', async () => {
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = start(tool, nps);
+    tool.onPointerMove?.(at(r.right - 10, r.top + 250), hit); // the right fifth, mid-height
+    expect(marked(api)).toBe(false);
+    expect(on(handle, 'p1', 'nps')).toBeNull(); // not the page's
+    const l = line(api);
+    expect(l).not.toBeNull();
+    expect(Math.round(parseFloat(l!.style.left))).toBe(Math.round(r.right - 2)); // on the container's right edge
+    tool.onPointerUp?.(at(r.right - 10, r.top + 250), hit);
+    await settle();
+    expect(leaves(model)).toEqual(['side', 'nps']); // after it
+    expect(model.getGroup('main')!.members?.has('nps')).toBe(true);
+  });
+
+  it('a hand that CROSSES the strip between two events is on the tabs here too (0.4.67\'s rule, shared)', () => {
+    const { api, model } = up(board());
+    const r = stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = start(tool, nps);
+    const mid = r.x + r.width * 0.5;
+    tool.onPointerMove?.(at(mid, r.top - 20), hit); // above the frame: the band above it, a pane above
+    expect(marked(api)).toBe(false);
+    expect(line(api)).not.toBeNull();
+    tool.onPointerMove?.(at(mid, r.bottom + 10), hit); // ONE event to 10 px under the strip: crossed — the tabs
+    expect(marked(api)).toBe(true);
+    tool.onPointerMove?.(at(mid, r.bottom + 200), hit); // far into the page: left the tabs behind
+    expect(marked(api)).toBe(false);
+    tool.onPointerUp?.(at(mid, r.bottom + 200), hit);
   });
 });
