@@ -13,7 +13,7 @@
  *   │     └── 'sec' section inside the page, frame (920,200 260×120) with its own board
  *   └── 'ops'   section        frame (0,420 880×160), whole body = into
  */
-import { BESIDE_BAND, BESIDE_STAY, bandOf, resolve, resolveTabZone, stripUnder, type TabZoneInput, type Zone, type ZoneBoard, type ZoneContainer } from './zones';
+import { BESIDE_BAND, BESIDE_STAY, bandOf, resolve, resolveTabZone, stripCrossing, stripUnder, type TabZoneInput, type Zone, type ZoneBoard, type ZoneContainer } from './zones';
 
 interface Rect {
   x: number;
@@ -229,6 +229,33 @@ describe('zones — stickiness: a beside the hand already holds', () => {
   it('the middle of the original frame is a zone change: into the page, not the band', () => {
     const bottom = { ...prev, side: 'bottom' as const, vacated: { x: 900, y: 480, width: 80, height: 60 } };
     expect(at(1050, 120, { prev: bottom })).toMatchObject({ kind: 'plain', board: expect.objectContaining({ id: 'p1' }) }); // (a point of the page outside the nested section)
+  });
+});
+
+describe('zones — a hand moves faster than a strip is tall: the segment it travelled is tested (0.4.67, shared by both boards in 0.4.69)', () => {
+  // The user, coming down from above the panel at hand speed: "it's not
+  // passing by the tab header — it drops directly to inside or outside." A
+  // strip is 30 px and a hand covers 40 to 80 px between events, so the point
+  // it LANDS on never samples the tabs. A crossing — the two events on
+  // opposite sides of the strip's rows — that stops within one strip's
+  // height of them means the tabs. The grid binder had this inline; the
+  // split board needs the same answer, so it is a pure helper now.
+  const roots = () => tree();
+  const cross = (prev: { x: number; y: number }, cur: { x: number; y: number }) =>
+    stripCrossing({ prev, cur, roots: roots(), stripHeight: 30, band: BESIDE_BAND, reach: 30 })?.containerId ?? null;
+  it('down through the strip, landing within a strip\'s height under it: the tabs', () => {
+    expect(cross({ x: 1050, y: -20 }, { x: 1050, y: 50 })).toBe('side');
+  });
+  it('up through the strip from the page, landing within a strip\'s height above it: the tabs too', () => {
+    expect(cross({ x: 1050, y: 60 }, { x: 1050, y: -15 })).toBe('side');
+  });
+  it('flying far past the strip is not a crossing that means the tabs — a fast drag into the page must not snag on the header', () => {
+    expect(cross({ x: 1050, y: -20 }, { x: 1050, y: 90 })).toBeNull();
+  });
+  it('a sweep ALONG the strip rows is not a crossing; and the sides keep the corners', () => {
+    expect(cross({ x: 850, y: 10 }, { x: 1050, y: 10 })).toBeNull(); // same rows, both events: went past, not through
+    expect(cross({ x: 1190, y: -20 }, { x: 1190, y: 50 })).toBeNull(); // the right fifth: "after it", whatever it crossed
+    expect(cross({ x: 1050, y: -20 }, { x: 850, y: 50 })).toBeNull(); // landed beside the panel altogether
   });
 });
 

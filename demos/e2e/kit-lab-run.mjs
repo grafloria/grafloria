@@ -2935,6 +2935,126 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     `coming down 40 px a step: ${at40.join(' → ')} · 60 px a step: ${at60.join(' → ')} · panel back at ${JSON.stringify(await cell('panel'))} ${JSON.stringify(sane)}`);
 }
 
+// -- 0.4.69: the tab-group zones on a SPLIT board -------------------------------
+// The user, after the grid board's header was fixed: "now we need to do it in
+// split mode." Measured before this on the fluid demo in split mode: a widget
+// over the tab group got only the nearest-edge insertion line — the header was
+// never a tab target, the body's middle was never "into the page", and "above"
+// claimed the upper half of the body. The split binder now runs the same zone
+// walk as the grid: strip → a tab, the page's body → the page (its own grey
+// placeholder), the outer fifth → a pane beside (the split board's own line).
+const spLeaves = () => page.evaluate(() => { const leaves = (t) => (!t ? [] : t.id ? [t.id] : t.children.flatMap(leaves)); return leaves(window.__lab.sptabs.handle.toJSON().views[0].tree ?? null); });
+const spTabs = (id) => page.evaluate((id) => [...document.querySelectorAll(`#cv-sptabs .axdb-tabs[data-tabs-id="${id}"] .axdb-tab`)].map((t) => t.textContent.trim()), id);
+const spShown = () => page.evaluate(() => {
+  const ins = document.querySelector('#cv-sptabs .axdb-ins');
+  const ph = [...document.querySelectorAll('#cv-sptabs .axdb-ph')].find((e) => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4 && getComputedStyle(e).display !== 'none'; });
+  return { tab: !!document.querySelector('#cv-sptabs .axdb-tabs[data-tabs-id="st-a"]')?.classList.contains('axdb-tabs--drop'), ins: ins ? Math.round(ins.getBoundingClientRect().x) : null, insW: ins ? Math.round(ins.getBoundingClientRect().width) : null, ph: !!ph };
+});
+{
+  begin('L107-on-a-SPLIT-board-a-WIDGET-dropped-on-a-tab-groups-STRIP-becomes-a-tab');
+  await scrollTo('sptabs');
+  const l0 = await spLeaves(); const t0 = await spTabs('st-a');
+  const strip = await page.evaluate(() => document.querySelector('#cv-sptabs .axdb-tabs[data-tabs-id="st-a"]').getBoundingClientRect().toJSON());
+  const w = await rect('sptabs', 'st-w');
+  let held = null;
+  await drag(w.x + w.w / 2, w.y + w.h / 2, strip.x + strip.width * 0.6, strip.y + strip.height / 2, { steps: 14, mid: async () => {
+    held = await spShown();
+    await shot('sptabs', 'widget-held-on-group-a-strip-the-slot-marked');
+  } });
+  const l1 = await spLeaves(); const t1 = await spTabs('st-a'); const sane = await sanity('sptabs');
+  const inPage = await page.evaluate(() => { const m = window.__lab.sptabs.api.getModel(); const pg = m.getGroup('st-w__page'); return !!pg && !!pg.members?.has('st-w') && !!m.getGroup('st-a')?.members?.has('st-w__page'); });
+  await shot('sptabs', 'the-widget-is-a-tab-of-group-a');
+  await undoAll('sptabs', 1);
+  const l2 = await spLeaves(); const t2 = await spTabs('st-a');
+  verdict(l0.join(',') === 'st-w,st-a,st-b' && t0.length === 2 && held?.tab === true && held?.ins === null && held?.ph === false
+    && l1.join(',') === 'st-a,st-b' && t1.length === 3 && inPage && sane.overlaps === 0
+    && l2.join(',') === 'st-w,st-a,st-b' && t2.length === 2,
+    `rest ${l0.join('/')} tabs ${t0.join('/')} · held on the strip: ${JSON.stringify(held)} · released: leaves ${l1.join('/')}, tabs ${t1.join('/')}, the widget wrapped in its own page inside A: ${inPage} ${JSON.stringify(sane)} · undo: ${l2.join('/')} tabs ${t2.join('/')}`);
+}
+const sdLeaves = () => page.evaluate(() => { const leaves = (t) => (!t ? [] : t.id ? [t.id] : t.children.flatMap(leaves)); return leaves(window.__lab.spdrop.handle.toJSON().views[0].tree ?? null); });
+const sdShown = () => page.evaluate(() => {
+  const ins = document.querySelector('#cv-spdrop .axdb-ins');
+  const ph = [...document.querySelectorAll('#cv-spdrop .axdb-ph')].find((e) => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4 && getComputedStyle(e).display !== 'none'; });
+  return { tab: !!document.querySelector('#cv-spdrop .axdb-tabs[data-tabs-id="sd-a"]')?.classList.contains('axdb-tabs--drop'), ins: ins ? Math.round(ins.getBoundingClientRect().x) : null, insW: ins ? Math.round(ins.getBoundingClientRect().width) : null, ph: !!ph };
+});
+{
+  begin('L108-on-a-SPLIT-board-a-WIDGET-dropped-in-a-tab-groups-PAGE-lands-in-the-page');
+  await scrollTo('spdrop');
+  const l0 = await sdLeaves();
+  const a = await groupRect('spdrop', 'sd-a');
+  const cv = await page.evaluate(() => document.getElementById('cv-spdrop').getBoundingClientRect().toJSON());
+  const w = await rect('spdrop', 'sd-w');
+  let held = null;
+  await drag(w.x + w.w / 2, w.y + w.h / 2, cv.x + a.x + a.w / 2, cv.y + a.y + a.h * 0.6, { steps: 14, mid: async () => {
+    held = { ...(await sdShown()), onPage: await page.evaluate(() => window.__lab.spdrop.handle.binderOf('sd-a1')?.cellOf('sd-w') ?? null) };
+    await shot('spdrop', 'widget-held-over-group-a-page-the-pages-placeholder');
+  } });
+  const l1 = await sdLeaves(); const sane = await sanity('spdrop');
+  const inPage = await page.evaluate(() => { const m = window.__lab.spdrop.api.getModel(); return { page: !!m.getGroup('sd-a1')?.members?.has('sd-w'), board: !!m.getGroup('main')?.members?.has('sd-w') }; });
+  const wr = await rect('spdrop', 'sd-w'); const ar = await groupRect('spdrop', 'sd-a');
+  const insideA = !!wr && wr.x >= cv.x + ar.x - 2 && wr.right <= cv.x + ar.x + ar.w + 2 && wr.y >= cv.y + ar.y + 28 && wr.bottom <= cv.y + ar.y + ar.h + 2;
+  await shot('spdrop', 'the-widget-lives-in-the-page');
+  await undoAll('spdrop', 1);
+  const l2 = await sdLeaves();
+  const back = await page.evaluate(() => { const m = window.__lab.spdrop.api.getModel(); return { page: !!m.getGroup('sd-a1')?.members?.has('sd-w'), board: !!m.getGroup('main')?.members?.has('sd-w') }; });
+  verdict(l0.join(',') === 'sd-w,sd-a' && held?.tab === false && held?.ins === null && held?.ph === true && held?.onPage !== null
+    && l1.join(',') === 'sd-a' && inPage.page && !inPage.board && insideA && sane.overlaps === 0
+    && l2.join(',') === 'sd-w,sd-a' && !back.page && back.board,
+    `rest ${l0.join('/')} · held over the page: ${JSON.stringify(held)} · released: leaves ${l1.join('/')}, member of the page ${inPage.page} / of the board ${inPage.board}, painted inside A ${insideA} ${JSON.stringify(sane)} · undo: ${l2.join('/')} ${JSON.stringify(back)}`);
+}
+{
+  begin('L109-on-a-SPLIT-board-a-WIDGET-on-a-tab-groups-outer-FIFTH-becomes-a-pane-beside-it');
+  await scrollTo('sptabs');
+  const l0 = await spLeaves();
+  const a = await groupRect('sptabs', 'st-a');
+  const cv = await page.evaluate(() => document.getElementById('cv-sptabs').getBoundingClientRect().toJSON());
+  const w = await rect('sptabs', 'st-w');
+  let held = null;
+  await drag(w.x + w.w / 2, w.y + w.h / 2, cv.x + a.x + a.w - 10, cv.y + a.y + a.h * 0.6, { steps: 14, mid: async () => {
+    held = await spShown();
+    await shot('sptabs', 'widget-held-on-group-a-right-fifth-the-line-on-its-edge');
+  } });
+  const l1 = await spLeaves(); const sane = await sanity('sptabs');
+  await shot('sptabs', 'the-widget-is-a-pane-after-group-a');
+  await undoAll('sptabs', 1);
+  const l2 = await spLeaves();
+  verdict(l0.join(',') === 'st-w,st-a,st-b' && held?.tab === false && held?.ph === false && held?.ins !== null && Math.abs(held.ins - (cv.x + a.x + a.w)) <= 6
+    && l1.join(',') === 'st-a,st-w,st-b' && sane.overlaps === 0 && l2.join(',') === 'st-w,st-a,st-b',
+    `rest ${l0.join('/')} · held on A's right fifth: ${JSON.stringify(held)} (A's right edge at ${Math.round(cv.x + a.x + a.w)}) · released: ${l1.join('/')} ${JSON.stringify(sane)} · undo: ${l2.join('/')}`);
+}
+{
+  begin('L110-on-a-SPLIT-board-coming-DOWN-at-hand-speed-passes-through-the-tab-header');
+  await scrollTo('spdrop');
+  const l0 = await sdLeaves();
+  const strip = await page.evaluate(() => document.querySelector('#cv-spdrop .axdb-tabs[data-tabs-id="sd-a"]').getBoundingClientRect().toJSON());
+  const a = await groupRect('spdrop', 'sd-a');
+  const cv = await page.evaluate(() => document.getElementById('cv-spdrop').getBoundingClientRect().toJSON());
+  const w = await rect('spdrop', 'sd-w');
+  const mid = strip.x + strip.width * 0.55;
+  const journey = async (step) => {
+    await page.mouse.move(w.x + w.w / 2, w.y + w.h / 2); await page.mouse.down();
+    await page.mouse.move(w.x + w.w / 2 + 20, w.y + w.h / 2 + 8, { steps: 3 });
+    await page.mouse.move(cv.x + a.x - 30, strip.y - 8, { steps: 8 }); // up and left, off the board
+    await page.mouse.move(mid, strip.y - 8); await page.waitForTimeout(250);            // along the top, above the frame
+    const answers = [];
+    for (let y = strip.y - 8; y <= strip.bottom + 130; y += step) {
+      await page.mouse.move(mid, y); await page.waitForTimeout(50);
+      const s = await sdShown();
+      const ans = s.tab ? 'tab' : s.ph ? 'page' : s.ins !== null ? 'above' : 'none';
+      if (answers[answers.length - 1] !== ans) answers.push(ans);
+    }
+    await page.keyboard.press('Escape'); await page.mouse.up(); await page.waitForTimeout(400);
+    return answers;
+  };
+  const at40 = await journey(40);
+  const at60 = await journey(60);
+  const l1 = await sdLeaves(); const sane = await sanity('spdrop');
+  await shot('spdrop', 'after-two-hand-speed-journeys-the-board-at-rest');
+  const ok = (x) => JSON.stringify(x) === JSON.stringify(['above', 'tab', 'page']);
+  verdict(ok(at40) && ok(at60) && l1.join(',') === l0.join(',') && sane.overlaps === 0,
+    `coming down 40 px a step: ${at40.join(' → ')} · 60 px a step: ${at60.join(' → ')} · board at rest ${l1.join('/')} ${JSON.stringify(sane)}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

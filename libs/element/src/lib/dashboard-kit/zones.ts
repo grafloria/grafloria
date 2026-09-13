@@ -242,6 +242,58 @@ export function stripUnder(p: StripProbe): { containerId: string } | null {
   return bestId === null ? null : { containerId: bestId };
 }
 
+export interface CrossingProbe {
+  /** The previous pointer event's point and this one's, in world units. */
+  prev: { x: number; y: number };
+  cur: { x: number; y: number };
+  roots: ZoneBoard[];
+  /** Containers the gesture has displaced, at the frames they rest in. */
+  restFrames?: ReadonlyMap<string, ZoneRect>;
+  /** A strip's rows, in world units. */
+  stripHeight: number;
+  /** The outer fraction of a container that is its side bands: those keep their corners. Default BESIDE_BAND. */
+  band?: number;
+  /** How far past the rows a landing may be and still mean the tabs, in world units. Default: one strip's height. */
+  reach?: number;
+}
+
+/**
+ * A HAND MOVES FASTER THAN A STRIP IS TALL. The strip is 30 px and a hand
+ * covers 40 to 80 px between pointer events, so testing only where the pointer
+ * LANDS skips it — the user, coming down from above the panel: "it's not
+ * passing by the tab header, it drops directly to inside or outside." The
+ * segment the hand travelled is tested too, in steps of half a strip: a
+ * CROSSING — the two events on opposite sides of a strip's rows — that lands
+ * within one strip's height of them means the tabs. Flying far past them does
+ * not (a fast drag into the page must never snag on the header), a sweep
+ * ALONG the rows is not a crossing, and the sides still take the corners
+ * (0.4.47): a hand landing in the outer fifth meant "after it", whatever it
+ * crossed on the way. Only for a hand ARRIVING: one already holding a strip
+ * leaves it by the stay. The grid board had this inline (0.4.67); the split
+ * board asks the same question, so it is one helper (0.4.69).
+ */
+export function stripCrossing(p: CrossingProbe): { containerId: string } | null {
+  const dx = p.cur.x - p.prev.x;
+  const dy = p.cur.y - p.prev.y;
+  const n = Math.ceil(Math.hypot(dx, dy) / Math.max(1, p.stripHeight / 2));
+  let crossed: string | null = null;
+  for (let i = 1; i < n && !crossed; i++) {
+    crossed = stripUnder({ x: p.prev.x + (dx * i) / n, y: p.prev.y + (dy * i) / n, roots: p.roots, held: null, stay: 0, restFrames: p.restFrames })?.containerId ?? null;
+  }
+  if (!crossed) return null;
+  const f = p.restFrames?.get(crossed) ?? containerOf(p.roots, crossed)?.frame;
+  if (!f) return null;
+  const top = f.y;
+  const bottom = f.y + p.stripHeight;
+  const through = (p.prev.y < top && p.cur.y > bottom) || (p.prev.y > bottom && p.cur.y < top);
+  const away = p.cur.y < top ? top - p.cur.y : p.cur.y > bottom ? p.cur.y - bottom : 0;
+  const band = p.band ?? BESIDE_BAND;
+  const rx = (p.cur.x - f.x) / Math.max(1, f.width);
+  const inSideBand = rx < band || rx > 1 - band;
+  const inside = p.cur.x >= f.x && p.cur.x <= f.x + f.width;
+  return through && !inSideBand && inside && away <= (p.reach ?? p.stripHeight) ? { containerId: crossed } : null;
+}
+
 /**
  * The band a point is in for a TILE drag: the sides and the bottom as
  * `bandOf` gives them, and "top" ONLY from the band hanging above the frame.
