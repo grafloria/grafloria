@@ -3181,6 +3181,51 @@ describe('the tab strip HOLDS the hand: a widget aimed at the tabs does not flip
     expect(handle.toJSON().views[0].widgets.find((w) => w.id === 'side')?.widgets?.some((p) => (p.widgets ?? []).some((c) => c.id === 'nps'))).toBe(true);
   });
 
+  it('a hand that CROSSES the strip between two events is on the tabs, if it landed near them', async () => {
+    // The user, coming down from above the panel at hand speed: "it's not
+    // passing by the tab header — it drops directly to inside or outside."
+    // A strip is 30 px tall and a hand moves 40 to 80 px between events, so
+    // sampling only where the pointer LANDS skips it. The segment the hand
+    // travelled is tested too: crossing the strip's rows and landing within
+    // one strip's height of them means the tabs. Flying far past them does
+    // not — a fast drag into the page must not snag on the header.
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = { node: nps } as never;
+    const side0 = on(handle, 'main', 'side');
+    const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+    const mid = r.x + r.width * 0.5;
+    tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
+    tool.onPointerMove?.(tev('move', nps.position.x + 40, nps.position.y + 26), hit);
+    // above the panel: the band (30 px deep), the panel gives way
+    tool.onPointerMove?.(at(mid, r.top - 20), hit);
+    expect(marked(api)).toBe(false);
+    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y);
+    // ONE event to 10 px under the strip: the hand crossed it — the tabs, and the panel comes home
+    tool.onPointerMove?.(at(mid, r.bottom + 10), hit);
+    expect(marked(api)).toBe(true);
+    expect(on(handle, 'main', 'side')).toEqual(side0);
+    // ONE event far into the page: it left the tabs behind
+    tool.onPointerMove?.(at(mid, r.bottom + 200), hit);
+    expect(marked(api)).toBe(false);
+    expect(on(handle, 'main', 'side')).toEqual(side0); // the page: nothing pushed
+    // coming back UP in one event, from the page to just above the frame: crossed again — the tabs
+    tool.onPointerMove?.(at(mid, r.bottom + 40), hit);
+    tool.onPointerMove?.(at(mid, r.top - 12), hit);
+    expect(marked(api)).toBe(true);
+    // and a flick from above straight to deep in the page never snags
+    tool.onPointerMove?.(at(mid, r.top - 20), hit);
+    tool.onPointerMove?.(at(mid, r.bottom + 220), hit);
+    expect(marked(api)).toBe(false);
+    tool.onPointerUp?.(tev('up', mid, r.bottom + 220), hit);
+    await settle();
+    const pages = handle.toJSON().views[0].widgets.find((w) => w.id === 'side')?.widgets ?? [];
+    expect(pages.map((p) => p.id)).toEqual(['p1']); // no new tab was made…
+    expect((pages[0].widgets ?? []).some((c) => c.id === 'nps')).toBe(true); // …the flick landed INTO the page under the hand
+  });
+
   it('the stickiness is the strip\'s OWN: a hand that never touched it gets no extra room', async () => {
     const { api, model, handle } = up(board());
     const r = stubStrip(api, model);

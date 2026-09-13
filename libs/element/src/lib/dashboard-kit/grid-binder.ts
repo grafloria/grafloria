@@ -1655,6 +1655,8 @@ export function bindDashboardGrid(
   let slabGesture: SlabGesture | null = null;
   /** The gesture as it is NOW, for the same reason. */
   const currentGesture = (): GestureState | null => gesture;
+  /** Where the hand was at the PREVIOUS move event — the strip is tested along the segment between the two. */
+  let prevWorld: { x: number; y: number } | null = null;
   /** The PARENT running a resize of OUR section from a press this tool claimed. */
   let forwardSlab: BinderPeer | null = null;
   const frameOfGroup = (grp: GroupModel): WorldRect => ({ x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height });
@@ -1870,6 +1872,7 @@ export function bindDashboardGrid(
   // -- the gesture machine ----------------------------------------------------
 
   const beginGestureVisuals = (g: GestureState): void => {
+    prevWorld = null;
     engine.beginGesture();
     const snap = snapshotAll();
     g.startCells = snap.cells;
@@ -2068,6 +2071,7 @@ export function bindDashboardGrid(
       ghostStyleFastPath(g, desired);
     }
 
+    prevWorld = g.lastWorld;
     g.lastWorld = { x: ev.world.x, y: ev.world.y };
     g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
     /** The ghost's pixel size on THIS board — a palette chip has spans, not a size. */
@@ -2808,7 +2812,43 @@ export function bindDashboardGrid(
     if (options.tabDrop?.tabIndexAt && !isStatic && g.kind !== 'palette' && g.subject === 'node') {
       // A group never becomes a tab: over a container's strip it is over the
       // container's margin — a cell on the parent board, pushing with intent.
-      const hit = stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / (clientPerWorld().y || 1), restFrames: rests });
+      const scaleY = clientPerWorld().y || 1;
+      let hit = stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / scaleY, restFrames: rests });
+      if (!hit && prevWorld && !g.strip) {
+        // A HAND MOVES FASTER THAN A STRIP IS TALL. (Only for a hand ARRIVING:
+        // one already holding the strip leaves it by the stay, which reaches
+        // down and never up — the band above must stay reachable.) The strip is 30 px and a
+        // hand covers 40 to 80 px between events, so testing only where the
+        // pointer LANDS skips it — the user, coming down from above the panel:
+        // "it's not passing by the tab header, it drops directly to inside or
+        // outside." The segment it travelled is tested too, in steps of half a
+        // strip: crossing the rows and landing within one strip's height of
+        // them means the tabs. Flying far past them does not — a fast drag
+        // into the page must never snag on the header.
+        const dx = ev.world.x - prevWorld.x;
+        const dy = ev.world.y - prevWorld.y;
+        const n = Math.ceil(Math.hypot(dx, dy) / (TAB_STRIP_HEIGHT / 2));
+        let crossed: string | null = null;
+        for (let i = 1; i < n && !crossed; i++) crossed = stripUnder({ x: prevWorld.x + (dx * i) / n, y: prevWorld.y + (dy * i) / n, roots, held: null, stay: 0, restFrames: rests })?.containerId ?? null;
+        if (crossed) {
+          const grp = diagram.getGroup(crossed);
+          const f = rests.get(crossed) ?? (grp ? frameOfGroup(grp) : null);
+          if (f) {
+            const top = f.y;
+            const bottom = f.y + TAB_STRIP_HEIGHT;
+            // A CROSSING is the two events on OPPOSITE sides of the rows — a
+            // hand that swept along the tabs from beside the panel and ended
+            // above it did not cross them, it went past them. And the sides
+            // still take the corners (0.4.47): a hand landing in the outer
+            // fifth meant "after it", whatever it crossed on the way.
+            const through = (prevWorld.y < top && ev.world.y > bottom) || (prevWorld.y > bottom && ev.world.y < top);
+            const away = ev.world.y < top ? top - ev.world.y : ev.world.y > bottom ? ev.world.y - bottom : 0;
+            const rx = (ev.world.x - f.x) / Math.max(1, f.width);
+            const inSideBand = rx < BESIDE_BAND || rx > 1 - BESIDE_BAND;
+            if (through && !inSideBand && ev.world.x >= f.x && ev.world.x <= f.x + f.width && away <= TAB_STRIP_HEIGHT / scaleY) hit = { containerId: crossed };
+          }
+        }
+      }
       if (hit) {
         // The SLOT is the painted strip's business — its tabs are laid out by
         // the browser. A container the gesture shifted sideways is painted

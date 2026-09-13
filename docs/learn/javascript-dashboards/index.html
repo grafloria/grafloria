@@ -583,6 +583,14 @@ render(SPEC2, host);</pre>
       is nothing special to see, because the container moving <em>is</em> the feedback. That became safe once the band
       moved above the frame in 0.4.65: pushing the container now moves it <em>away</em> from your hand rather than
       through it, so the loop that made the answer flicker has nothing to close on. All four edges behave alike.</p>
+      <p>0.4.67 is for the hand, not the crawl. Coming down onto a panel from above, the header was never on the way:
+      a tab strip is 30&nbsp;px tall and a hand covers 40 to 80&nbsp;px between two mouse events, so the pointer was above
+      the strip in one event and under it in the next, and the answer went straight from &ldquo;above the panel&rdquo; to
+      &ldquo;into the page&rdquo;. The kit now tests the segment the hand <em>travelled</em>, not only the point it landed
+      on &mdash; a hand that crossed the strip and stopped within a strip&rsquo;s height of it is on the tabs &mdash; and under
+      the strip is the page, plainly; the second &ldquo;above&rdquo; lane that sat there hid the miss. Measured at 40 and
+      60&nbsp;px a step the journey down reads above, tab, page; at 80&nbsp;px a step, a flick, it still passes through, which
+      is what a flick means.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
