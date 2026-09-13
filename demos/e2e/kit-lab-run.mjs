@@ -2510,7 +2510,7 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   // carries on along that band into the RIGHT corner — which must turn into "after it": the panel back up and shifted left, the chart at the edge
   // a tenth of the body under the strip: the strip's DOM box is taller than its painted 30 px (the 8-px page inset rides in it), and a hand
   // 9 px under the paint is still "on the strip" to the client-space hit test — the lab's first cut sat there and saw a tab slot, not the band
-  const yTop = ps.bottom + (g.h - 30) * 0.1;
+  const yTop = ps.y - 6; // the band ABOVE the frame (10 px of it are inside this canvas)
   await startSlide('tabs', '.axdb-slab[data-slab-id="panel"]', 'y'); // the top band pushes the panel DOWN, sliding
   await page.mouse.move(left.x + 40, left.y + 12); await page.mouse.down();
   await page.mouse.move(left.x + 40, yTop, { steps: 6 }); // down first, so the path never crosses the strip
@@ -2755,8 +2755,8 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   await shot('tabs', 'widget-on-the-strip-a-tab-slot');
   await page.mouse.move(mid, strip0.bottom + 5); await page.waitForTimeout(250);
   const overshoot = { ...(await zone()), panel: await cell('panel') };   // a few px past: STILL the tabs
-  await page.mouse.move(mid, strip0.bottom + 24); await page.waitForTimeout(400);
-  const below = { ...(await zone()), panel: await cell('panel') };        // well below: above the container, which gives way
+  await page.mouse.move(mid, strip0.y - 6); await page.waitForTimeout(400);
+  const below = { ...(await zone()), panel: await cell('panel') };        // ABOVE the frame: the band, which gives way (0.4.67: under the strip is the page)
   await shot('tabs', 'well-below-the-strip-the-container-gives-way');
   // …and back to where the tabs WERE while the container is still travelling: the tab zone is still there
   await page.mouse.move(mid, strip0.y + strip0.height / 2); await page.waitForTimeout(250);
@@ -2843,17 +2843,17 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
   const mid = strip0.x + strip0.width * 0.55;
   await page.mouse.move(src.x + 40, src.y + 12); await page.mouse.down();
   await page.mouse.move(src.x + 60, src.y + 20, { steps: 3 });
-  // this panel is pressed against the top of its canvas, so the lane under the strip is the one it can offer
-  await page.mouse.move(mid, strip0.bottom + 12, { steps: 8 }); await page.waitForTimeout(420);
+  // this panel is pressed against the top of its canvas: 10 px of the band above it are reachable, and that is enough
+  await page.mouse.move(mid, strip0.y - 6, { steps: 8 }); await page.waitForTimeout(420);
   const band = { ...(await look()), panel: await cell('panel') };
   await shot('tabs', 'in-the-band-the-panel-gives-way-and-the-placeholder-fills-the-gap');
   // A HAND IS NEVER STILL: wobble inside the band and the answer must not change
   const seen = [];
-  for (const d of [0, 2, -1, 3, -2, 1, 0]) { await page.mouse.move(mid + d, strip0.bottom + 12 + d); await page.waitForTimeout(60); const l = await look(); seen.push(`${l.tab}|${l.slabY}|${l.ph}`); }
+  for (const d of [0, 2, -1, 3, -2, 1, 0]) { await page.mouse.move(mid + d, strip0.y - 6 + d); await page.waitForTimeout(60); const l = await look(); seen.push(`${l.tab}|${l.slabY}|${l.ph}`); }
   const steady = new Set(seen).size === 1;
   await page.mouse.move(mid, strip0.y + strip0.height / 2, { steps: 6 }); await page.waitForTimeout(420);
   const onTabs = { ...(await look()), panel: await cell('panel') };   // the tabs, and the panel comes home
-  await page.mouse.move(mid, strip0.bottom + 12, { steps: 6 }); await page.waitForTimeout(420);
+  await page.mouse.move(mid, strip0.y - 6, { steps: 6 }); await page.waitForTimeout(420);
   await page.mouse.up(); await page.waitForTimeout(700);
   const after = { ...(await look()), panel: await cell('panel'), left: await cell('t-left') };
   await shot('tabs', 'released-the-widget-is-above-the-panel');
@@ -2869,6 +2869,52 @@ const undoAll = async (board, n = 6) => { await page.evaluate(async ([b, n]) => 
     && !!after.panel && after.panel.y > p0.y && !!after.left && after.left.y < after.panel.y
     && sane.overlaps === 0 && same(undone, p0),
     `in the band: join ${band.join} lanes ${band.lanes} placeholder ${band.ph} refused ${band.refused} panel ${JSON.stringify(band.panel)} (was ${JSON.stringify(p0)}) · wobble steady ${steady} [${[...new Set(seen)].join(' / ')}] · on the tabs: tab ${onTabs.tab} panel ${JSON.stringify(onTabs.panel)} · released ${JSON.stringify(after.panel)} widget ${JSON.stringify(after.left)} ${JSON.stringify(sane)} · undo -> ${JSON.stringify(undone)}`);
+}
+
+{
+  begin('L106-coming-DOWN-from-above-at-hand-speed-passes-through-the-tab-header');
+  await scrollTo('tabs');
+  // The user: "it works very good from the side, but going from outside to
+  // inside from the top it's not passing by the tab header — it drops directly
+  // to inside or outside." A strip is 30 px and a hand covers 40 to 80 px
+  // between events, so sampling only where the pointer LANDS skipped it, and
+  // a lane under the strip meaning "above" too made the miss invisible: the
+  // answer read above, above, page. Now the segment the hand travelled is
+  // tested (a crossing that lands within a strip's height means the tabs) and
+  // under the strip is the page — so the journey down is above, tab, page.
+  const cell = (id) => page.evaluate((id) => window.__lab.tabs.handle.widget(id)?.cell ?? null, id);
+  const look = () => page.evaluate(() => {
+    const s = document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]');
+    const slab = document.querySelector('#cv-tabs .axdb-slab[data-slab-id="panel"]');
+    return { tab: !!s && s.classList.contains('axdb-tabs--drop'), slabY: Math.round(parseFloat(slab.style.top)) };
+  });
+  const strip0 = await page.evaluate(() => document.querySelector('#cv-tabs .axdb-tabs[data-tabs-id="panel"]').getBoundingClientRect().toJSON());
+  const p0 = await cell('panel');
+  const rest = await look();
+  const src = await rect('tabs', 't-left');
+  const mid = strip0.x + strip0.width * 0.55;
+  const journey = async (step) => {
+    await page.mouse.move(src.x + 40, src.y + 12); await page.mouse.down();
+    await page.mouse.move(src.x + 60, src.y + 20, { steps: 3 });
+    await page.mouse.move(mid, strip0.y - 8, { steps: 8 }); await page.waitForTimeout(300);
+    const answers = [];
+    for (let y = strip0.y - 8; y <= strip0.bottom + 130; y += step) {
+      await page.mouse.move(mid, y); await page.waitForTimeout(50);
+      const l = await look();
+      const a = l.tab ? 'tab' : l.slabY > rest.slabY ? 'above' : 'page';
+      if (answers[answers.length - 1] !== a) answers.push(a);
+    }
+    await page.keyboard.press('Escape'); await page.mouse.up(); await page.waitForTimeout(400);
+    return answers;
+  };
+  const at40 = await journey(40);
+  const at60 = await journey(60);
+  await shot('tabs', 'coming-down-at-hand-speed-the-header-is-on-the-way');
+  const sane = await sanity('tabs');
+  const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y;
+  const ok = (a) => JSON.stringify(a) === JSON.stringify(['above', 'tab', 'page']);
+  verdict(ok(at40) && ok(at60) && same(await cell('panel'), p0) && sane.overlaps === 0,
+    `coming down 40 px a step: ${at40.join(' → ')} · 60 px a step: ${at60.join(' → ')} · panel back at ${JSON.stringify(await cell('panel'))} ${JSON.stringify(sane)}`);
 }
 
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);

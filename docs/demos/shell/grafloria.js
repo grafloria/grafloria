@@ -195210,8 +195210,12 @@ function stripUnder(p) {
 }
 function tileBand(f, stripHeight, x, y, band, bandY, topOutside, grow = 1) {
   const up = (topOutside ?? 0) * grow;
-  if (up > 0 && x >= f.x && x <= f.x + f.width && y < f.y && y >= f.y - up) return "top";
-  return bandOf(f, stripHeight, x, y, band, bandY === void 0 ? void 0 : bandY * grow);
+  if (up > 0 && x >= f.x && x <= f.x + f.width && y < f.y && y >= f.y - up) {
+    const rx = (x - f.x) / Math.max(1, f.width);
+    return rx < band ? "left" : rx > 1 - band ? "right" : "top";
+  }
+  const side = bandOf(f, stripHeight, x, y, band, bandY === void 0 ? void 0 : bandY * grow);
+  return side === "top" ? null : side;
 }
 function boardOf(roots, containerId) {
   const visit = (b) => {
@@ -195239,7 +195243,8 @@ function resolve(input) {
     const grow = 1 + BESIDE_STAY / BESIDE_BAND;
     const stay = tileBand(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY, depth, c0?.topOutside, grow);
     const other = tileBand(p.frame0, stripH, x, y, BESIDE_BAND, depth, c0?.topOutside);
-    const onVacated = !!p.vacated && inRect(p.vacated, x, y, input.gap);
+    const insideBody = inRect(p.frame0, x, y) && y >= p.frame0.y + stripH;
+    const onVacated = !!p.vacated && !insideBody && inRect(p.vacated, x, y, input.gap);
     const held2 = stay === p.side || !(other !== null && other !== p.side) && onVacated;
     if (held2) {
       const board = boardOf(input.roots, p.containerId);
@@ -195279,8 +195284,8 @@ function resolve(input) {
       const frame = atRest ?? c.frame;
       const tx = atRest ? x : x + dx;
       const ty = atRest ? y : y + dy;
-      if (tileBand(frame, c.stripHeight, tx, ty, c.band, c.bandY, c.topOutside) === "top")
-        return { kind: "beside", board, containerId: c.id, side: "top", kept: false };
+      const side = tileBand(frame, c.stripHeight, tx, ty, c.band, c.bandY, c.topOutside);
+      if (side) return { kind: "beside", board, containerId: c.id, side, kept: false };
       const deeper = c.inner ? overhang(c.inner, atRest ? c.frame.x - atRest.x : dx, atRest ? c.frame.y - atRest.y : dy) : null;
       if (deeper) return deeper;
     }
@@ -197073,6 +197078,7 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   let slabGesture = null;
   const currentGesture = () => gesture;
+  let prevWorld = null;
   let forwardSlab = null;
   const frameOfGroup = (grp) => ({ x: grp.position.x, y: grp.position.y, width: sizeOf(grp).width, height: sizeOf(grp).height });
   const beginSlabResize = (id, edges, ev) => {
@@ -197241,6 +197247,7 @@ function bindDashboardGrid(api, group, options = {}) {
     }
   };
   const beginGestureVisuals = (g) => {
+    prevWorld = null;
     engine.beginGesture();
     const snap = snapshotAll();
     g.startCells = snap.cells;
@@ -197389,6 +197396,7 @@ function bindDashboardGrid(api, group, options = {}) {
       nodeOf(g).setPosition(desired.x, desired.y);
       ghostStyleFastPath(g, desired);
     }
+    prevWorld = g.lastWorld;
     g.lastWorld = { x: ev.world.x, y: ev.world.y };
     g.lastScreen = { x: ev.screen.x, y: ev.screen.y };
     const pxSize = () => {
@@ -197909,7 +197917,28 @@ function bindDashboardGrid(api, group, options = {}) {
     const rests = restFramesOf(g);
     let strip = null;
     if (options.tabDrop?.tabIndexAt && !isStatic && g.kind !== "palette" && g.subject === "node") {
-      const hit = stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / (clientPerWorld().y || 1), restFrames: rests });
+      const scaleY = clientPerWorld().y || 1;
+      let hit = stripUnder({ x: ev.world.x, y: ev.world.y, roots, held: g.strip?.containerId ?? null, stay: STRIP_STAY / scaleY, restFrames: rests });
+      if (!hit && prevWorld && !g.strip) {
+        const dx = ev.world.x - prevWorld.x;
+        const dy = ev.world.y - prevWorld.y;
+        const n3 = Math.ceil(Math.hypot(dx, dy) / (TAB_STRIP_HEIGHT / 2));
+        let crossed = null;
+        for (let i = 1; i < n3 && !crossed; i++) crossed = stripUnder({ x: prevWorld.x + dx * i / n3, y: prevWorld.y + dy * i / n3, roots, held: null, stay: 0, restFrames: rests })?.containerId ?? null;
+        if (crossed) {
+          const grp = diagram.getGroup(crossed);
+          const f = rests.get(crossed) ?? (grp ? frameOfGroup(grp) : null);
+          if (f) {
+            const top = f.y;
+            const bottom = f.y + TAB_STRIP_HEIGHT;
+            const through = prevWorld.y < top && ev.world.y > bottom || prevWorld.y > bottom && ev.world.y < top;
+            const away = ev.world.y < top ? top - ev.world.y : ev.world.y > bottom ? ev.world.y - bottom : 0;
+            const rx = (ev.world.x - f.x) / Math.max(1, f.width);
+            const inSideBand = rx < BESIDE_BAND || rx > 1 - BESIDE_BAND;
+            if (through && !inSideBand && ev.world.x >= f.x && ev.world.x <= f.x + f.width && away <= TAB_STRIP_HEIGHT / scaleY) hit = { containerId: crossed };
+          }
+        }
+      }
       if (hit) {
         const grp = diagram.getGroup(hit.containerId);
         const rest = rests.get(hit.containerId);
