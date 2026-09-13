@@ -2869,7 +2869,15 @@ export function bindDashboardGrid(
       ghostSubtree: g.subject === 'group' ? descendantGroups(g.id) : EMPTY_SUBTREE,
       gap,
       homeChain: homeChain(),
+      // the tile where it is painted under the hand — the rows under a strip mean "above" only while its top edge hangs above the frame (0.4.73)
+      ghost: ghostRect(g),
     });
+  };
+  /** The dragged tile's rect as painted: a node (or a chip's node) at the pointer minus the grab, a group at its live frame. */
+  const ghostRect = (g: GestureState): WorldRect => {
+    const e = g.entity as NodeModel | GroupModel;
+    const sz = sizeOf(e);
+    return { x: e.position.x, y: e.position.y, width: sz.width, height: sz.height };
   };
   /** This board's containers as they stood at the press: a gesture's own pushes never change what the hand means. */
   const restFramesOf = (g: GestureState): ReadonlyMap<string, WorldRect> => {

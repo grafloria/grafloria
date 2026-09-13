@@ -120,6 +120,14 @@ export interface ResolveInput {
    */
   homeChain: ReadonlySet<string>;
   /**
+   * The dragged tile's rect, where it is painted under the hand (the pointer
+   * minus the grab). The rows under a strip mean "above the container" only
+   * while this tile's top edge hangs above the frame's top (0.4.73): a hand
+   * holds the CARD, and a card that visibly sticks out above a panel goes
+   * above it, whatever the pointer is under. Absent, those rows are the page.
+   */
+  ghost?: ZoneRect;
+  /**
    * Containers of the source board as they stood when the gesture began. The
    * hand over a pushed container's rest frame still means that container —
    * its zones, its page tested at the displacement — or the target flees the
@@ -302,7 +310,7 @@ export function stripCrossing(p: CrossingProbe): { containerId: string } | null 
  * the answer never changed across the header and the tabs looked skipped.
  * One place means above: above (0.4.67).
  */
-function tileBand(f: ZoneRect, stripHeight: number, x: number, y: number, band: number, bandY: number | undefined, topOutside: number | undefined, grow = 1): BesideSide | null {
+function tileBand(f: ZoneRect, stripHeight: number, x: number, y: number, band: number, bandY: number | undefined, topOutside: number | undefined, grow = 1, ghost?: ZoneRect): BesideSide | null {
   const up = (topOutside ?? 0) * grow;
   if (up > 0 && x >= f.x && x <= f.x + f.width && y < f.y && y >= f.y - up) {
     // the sides take the corners here too (0.4.48's precedence): a widget
@@ -311,7 +319,12 @@ function tileBand(f: ZoneRect, stripHeight: number, x: number, y: number, band: 
     return rx < band ? 'left' : rx > 1 - band ? 'right' : 'top';
   }
   const side = bandOf(f, stripHeight, x, y, band, bandY === undefined ? undefined : bandY * grow);
-  return side === 'top' ? null : side;
+  // The rows under the strip: "above" only while the dragged CARD's top edge
+  // hangs above the frame's top — what a hand holding the card in its middle
+  // sees when it puts the card on top of the panel (0.4.73). A card wholly
+  // inside the frame means the page (0.4.67).
+  if (side === 'top') return ghost && ghost.y < f.y ? 'top' : null;
+  return side;
 }
 
 /** The board a container sits on, found by id through the tree. */
@@ -346,8 +359,8 @@ export function resolve(input: ResolveInput): Zone {
     const stripH = c0?.stripHeight ?? 0;
     const depth = c0?.bandY;
     const grow = 1 + BESIDE_STAY / BESIDE_BAND;
-    const stay = tileBand(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY, depth, c0?.topOutside, grow);
-    const other = tileBand(p.frame0, stripH, x, y, BESIDE_BAND, depth, c0?.topOutside);
+    const stay = tileBand(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY, depth, c0?.topOutside, grow, input.ghost);
+    const other = tileBand(p.frame0, stripH, x, y, BESIDE_BAND, depth, c0?.topOutside, 1, input.ghost);
     // The cell an "above" took is the container's own rest rows, so "over the
     // vacated cell" would hold the beside 130 px into what is the PAGE — a
     // fast hand then saw no change at all across the header. Inside the body
@@ -378,6 +391,9 @@ export function resolve(input: ResolveInput): Zone {
   const descend = (board: ZoneBoard, dx: number, dy: number): Zone => {
     const px = x + dx;
     const py = y + dy;
+    // the dragged tile's rect in this board's space: shifted with the point when a live frame is tested, as is at rest
+    const ghostIn = (atRest: ZoneRect | null): ZoneRect | undefined =>
+      !input.ghost ? undefined : atRest ? input.ghost : { ...input.ghost, x: input.ghost.x + dx, y: input.ghost.y + dy };
     for (const c of board.children()) {
       if (input.ghostSubtree.has(c.id)) continue; // the carried container itself, and the boards inside it: glass
       // the held container at rest — unless the hand has left that frame for the live one;
@@ -395,7 +411,7 @@ export function resolve(input: ResolveInput): Zone {
       const ndx0 = atRest ? c.frame.x - atRest.x : dx;
       const ndy0 = atRest ? c.frame.y - atRest.y : dy;
       const overNested = !!c.inner && c.inner.children().some((cc) => inRect(cc.frame, x + ndx0, y + ndy0));
-      const side = overNested || input.homeChain.has(c.id) ? null : tileBand(frame, c.stripHeight, tx, ty, c.band, c.bandY, c.topOutside);
+      const side = overNested || input.homeChain.has(c.id) ? null : tileBand(frame, c.stripHeight, tx, ty, c.band, c.bandY, c.topOutside, 1, ghostIn(atRest));
       if (side) return { kind: 'beside', board, containerId: c.id, side, kept: false };
       if (opaque(board, c) || !c.inner) return { kind: 'plain', board, grace: false };
       // The margin — inside the frame, outside the inner board — is the

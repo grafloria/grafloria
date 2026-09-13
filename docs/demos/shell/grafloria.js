@@ -195229,14 +195229,15 @@ function stripCrossing(p) {
   const inside = p.cur.x >= f.x && p.cur.x <= f.x + f.width;
   return through && !inSideBand && inside && away <= (p.reach ?? p.stripHeight) ? { containerId: crossed } : null;
 }
-function tileBand(f, stripHeight, x, y, band, bandY, topOutside, grow = 1) {
+function tileBand(f, stripHeight, x, y, band, bandY, topOutside, grow = 1, ghost) {
   const up = (topOutside ?? 0) * grow;
   if (up > 0 && x >= f.x && x <= f.x + f.width && y < f.y && y >= f.y - up) {
     const rx = (x - f.x) / Math.max(1, f.width);
     return rx < band ? "left" : rx > 1 - band ? "right" : "top";
   }
   const side = bandOf(f, stripHeight, x, y, band, bandY === void 0 ? void 0 : bandY * grow);
-  return side === "top" ? null : side;
+  if (side === "top") return ghost && ghost.y < f.y ? "top" : null;
+  return side;
 }
 function boardOf(roots, containerId) {
   const visit = (b) => {
@@ -195262,8 +195263,8 @@ function resolve(input) {
     const stripH = c0?.stripHeight ?? 0;
     const depth = c0?.bandY;
     const grow = 1 + BESIDE_STAY / BESIDE_BAND;
-    const stay = tileBand(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY, depth, c0?.topOutside, grow);
-    const other = tileBand(p.frame0, stripH, x, y, BESIDE_BAND, depth, c0?.topOutside);
+    const stay = tileBand(p.frame0, stripH, x, y, BESIDE_BAND + BESIDE_STAY, depth, c0?.topOutside, grow, input.ghost);
+    const other = tileBand(p.frame0, stripH, x, y, BESIDE_BAND, depth, c0?.topOutside, 1, input.ghost);
     const insideBody = inRect(p.frame0, x, y) && y >= p.frame0.y + stripH;
     const onVacated = !!p.vacated && !insideBody && inRect(p.vacated, x, y, input.gap);
     const held2 = stay === p.side || !(other !== null && other !== p.side) && onVacated;
@@ -195277,6 +195278,7 @@ function resolve(input) {
   const descend = (board, dx, dy) => {
     const px2 = x + dx;
     const py = y + dy;
+    const ghostIn = (atRest) => !input.ghost ? void 0 : atRest ? input.ghost : { ...input.ghost, x: input.ghost.x + dx, y: input.ghost.y + dy };
     for (const c of board.children()) {
       if (input.ghostSubtree.has(c.id)) continue;
       const rest = input.restFrames?.get(c.id);
@@ -195288,7 +195290,7 @@ function resolve(input) {
       const ndx0 = atRest ? c.frame.x - atRest.x : dx;
       const ndy0 = atRest ? c.frame.y - atRest.y : dy;
       const overNested = !!c.inner && c.inner.children().some((cc) => inRect(cc.frame, x + ndx0, y + ndy0));
-      const side = overNested || input.homeChain.has(c.id) ? null : tileBand(frame, c.stripHeight, tx, ty, c.band, c.bandY, c.topOutside);
+      const side = overNested || input.homeChain.has(c.id) ? null : tileBand(frame, c.stripHeight, tx, ty, c.band, c.bandY, c.topOutside, 1, ghostIn(atRest));
       if (side) return { kind: "beside", board, containerId: c.id, side, kept: false };
       if (opaque(board, c) || !c.inner) return { kind: "plain", board, grace: false };
       if (!c.inner.contains(x + ndx0, y + ndy0)) {
@@ -197974,8 +197976,15 @@ function bindDashboardGrid(api, group, options = {}) {
       restFrames: rests,
       ghostSubtree: g.subject === "group" ? descendantGroups(g.id) : EMPTY_SUBTREE,
       gap,
-      homeChain: homeChain()
+      homeChain: homeChain(),
+      // the tile where it is painted under the hand — the rows under a strip mean "above" only while its top edge hangs above the frame (0.4.73)
+      ghost: ghostRect(g)
     });
+  };
+  const ghostRect = (g) => {
+    const e = g.entity;
+    const sz = sizeOf(e);
+    return { x: e.position.x, y: e.position.y, width: sz.width, height: sz.height };
   };
   const restFramesOf = (g) => {
     const out = /* @__PURE__ */ new Map();
@@ -199658,7 +199667,9 @@ function bindDashboardSplit(api, group, options = {}) {
       ghostDepth: 0,
       ghostSubtree: EMPTY_SUBTREE2,
       gap,
-      homeChain: homeChain()
+      homeChain: homeChain(),
+      // the widget where it is painted under the hand (0.4.73): under a strip, "above" only while its top edge hangs above the frame
+      ghost: g.node ? { x: g.node.position.x, y: g.node.position.y, width: g.node.size.width, height: g.node.size.height } : void 0
     });
   };
   const pxSizeOf = (g) => {
