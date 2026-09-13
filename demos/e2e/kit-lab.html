@@ -342,6 +342,12 @@ board('spdrop', 'a WIDGET over a tab group on a SPLIT board (0.4.69) · the stri
     binder.beginPaletteDrag(node, { w: 2, h: 1, chip: c }, e);
   });
 }
+board('spgrow', 'D4 on a SPLIT board (0.4.71) · a FULL grow section takes a row for a widget arriving by hand: its pane grows into its column sibling', { layout: 'split', sizing: 'grow', rowHeight: 50, widgets: [
+  { id: 'sg-w', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'Widget', value: '1' } },
+  { id: 'sg-x', kind: 'kpi', span: 6, rows: 4, x: 6, y: 0, data: { label: 'Other', value: '2' } },
+  { id: 'sg-ops', title: 'Operations', caption: true, span: 12, rows: 2, x: 0, y: 4, columns: 12, widgets: [
+    { id: 'sg-o1', kind: 'kpi', span: 12, rows: 1, x: 0, y: 0, data: { label: 'Orders', value: '312' } } ] },
+] }, { height: 420 });
 board('pal', 'a PALETTE chip dragged into a tab page lands there — the drop names the board it took (tile first, step 4a)', { sizing: 'grow', rowHeight: 60, widgets: [
   { id: 'pal-a', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'A', value: '1' } },
   { id: 'pal-tabs', title: 'Side', span: 6, rows: 4, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
