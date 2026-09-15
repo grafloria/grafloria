@@ -43,7 +43,7 @@ const held = () => page.evaluate(() => {
       const p = [...document.querySelectorAll('.axdb-ph')].find((e) => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4 && getComputedStyle(e).display !== 'none'; });
       if (!p) return null;
       const r = p.getBoundingClientRect();
-      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), refused: p.classList.contains('axdb-ph--no') };
+      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), refused: !!document.querySelector('.axdb-ph--no') }; // the refused cell is its OWN element since 0.4.74 — the grey placeholder stays the promise
     })(),
   };
 });
@@ -94,9 +94,9 @@ for (const y of ys) {
     else if (moved) did = 'board';
     // WHAT WAS PROMISED, and whether the drop kept it: a tab, or the placeholder's cell (0.4.66: the grey cell is the
     // whole feedback, wherever it is — the panel sliding or pushed down beside it is the same promise), or nothing
-    const ph = shown.ph && !shown.ph.refused ? shown.ph : null;
+    const ph = shown.ph ?? null; // the grey placeholder is the promise even while a refused cell is shown (0.4.74): the tile lands there
     const landedOnPh = !!ph && !!after.nps && Math.abs(after.nps.x - ph.x) <= 10 && Math.abs(after.nps.y - ph.y) <= 10;
-    const promised = shown.tab ? 'a new tab' : ph ? `the placeholder's cell at ${ph.x},${ph.y}${shown.slid ? ' (the panel slid)' : ''}` : shown.ph?.refused ? 'refused' : 'nothing';
+    const promised = shown.tab ? 'a new tab' : ph ? `the placeholder's cell at ${ph.x},${ph.y}${shown.slid ? ' (the panel slid)' : ''}${ph.refused ? ' (a refused cell shown)' : ''}` : 'nothing';
     const agrees = shown.tab ? did === 'tab'
       : ph ? landedOnPh && did !== 'tab'                   // it lands where the grey cell was
       : did === 'nothing';                                 // nothing shown, nothing done
