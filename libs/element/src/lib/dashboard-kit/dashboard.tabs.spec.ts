@@ -2000,7 +2000,7 @@ describe('TILE FIRST, step 3: a group is a tile the engine pushes, packs and pla
     tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
     expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 4, w: 9, h: 1 }); // held still
     expect(cellOf(handle, 'nps')!.y).not.toBe(4); // the widget took a cell that clears it
-    expect(api.container.querySelector('.axdb-ph--no')).toBeNull();
+    expect(api.container.querySelector('.axdb-ph--no')).not.toBeNull(); // 0.4.74: the cell under the hand IS refused and says so; the grey placeholder beside the section still says where it lands
     tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps } as never);
     await settle();
     expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 4, w: 9, h: 1 });
@@ -3710,5 +3710,155 @@ describe('a container\'s layout is the handle\'s to read and to switch — a sec
     await settle();
     expect(handle.getLayout('ops')).toBe('split');
     expect(handle.getLayout()).toBe('grid'); // the view is untouched
+  });
+});
+
+describe('a refused drop shows itself where the hand is: the red dashed cell and a not-allowed cursor (0.4.74)', () => {
+  // Quantia, on a FULL fit board: hovering a full fit section during a drag
+  // produced no class change, no shadow, no cursor, no message — the only cue
+  // was the grey placeholder staying in the tile's own column at the other end
+  // of the screen. A group's refused cell has been painted red since the
+  // identification round; a widget's is now, and the cursor says not-allowed.
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+  const refused = (api: { container: HTMLElement }) => api.container.querySelector('.axdb-ph--no') as HTMLElement | null;
+  it('over a full fit section on a full fit board, the wanted cell is painted refused; back home it clears; the release changes nothing', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 150, // exactly two rows of 60 with a 10 gap and 10 padding: full
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'fit',
+        squeeze: false, // frozen rows, as Quantia runs its boards: full is full
+        widgets: [K('w', 6, 2, 0, 0), { id: 'ops', title: 'Operations', span: 6, rows: 2, x: 6, y: 0, columns: 6, sizing: 'fit', widgets: [K('o1', 6, 2, 0, 0)] }],
+      })
+    );
+    const tool = toolOf('main');
+    const w = model.getNode('w')!;
+    const ops = model.getGroup('ops')!;
+    const hit = { node: w } as never;
+    const w0 = handle.widget('w')!.cell;
+    const ops0 = handle.widget('ops')!.cell;
+    const home = { x: w.position.x, y: w.position.y }; // the node's position is the GHOST's once the drag starts
+    tool.onPointerDown?.(tev('down', home.x + 30, home.y + 20), hit);
+    tool.onPointerMove?.(at(home.x + 50, home.y + 28), hit);
+    const into = { x: ops.position.x + ops.size!.width * 0.5, y: ops.position.y + ops.size!.height * 0.6 };
+    const unchanged = (): void => {
+      expect(handle.widget('w')!.cell).toEqual(w0); // nowhere to go: the tile stayed
+      expect(handle.widget('ops')!.cell).toEqual(ops0); // the section could not be pushed either — and, the same size, is NOT swapped with it
+    };
+    tool.onPointerMove?.(at(into.x, into.y), hit);
+    unchanged();
+    expect(refused(api)).not.toBeNull(); // …and the hand is told so, where it is
+    expect(api.container.style.cursor).toBe('not-allowed');
+    // the red cell is its OWN element: `.axdb-ph` is the grey placeholder alone — the promise of where the tile lands
+    const phs = api.container.querySelectorAll('.axdb-ph');
+    expect(phs.length).toBe(1);
+    expect(phs[0].classList.contains('axdb-ph--no')).toBe(false);
+    tool.onPointerMove?.(at(home.x + 50, home.y + 28), hit); // back over its own cell
+    unchanged();
+    expect(refused(api)).toBeNull();
+    expect(api.container.style.cursor).not.toBe('not-allowed');
+    tool.onPointerMove?.(at(into.x, into.y), hit); // over it again: still refused, still not swapped
+    unchanged();
+    expect(refused(api)).not.toBeNull();
+    tool.onPointerUp?.(at(into.x, into.y), hit);
+    await new Promise<void>((r) => setTimeout(r, 0));
+    expect(refused(api)).toBeNull();
+    unchanged();
+    expect(api.getEngine().commandManager.canUndo()).toBe(false); // nothing to undo: no step was recorded
+  });
+  it('the red cell CLEARS when the hand moves on — to a strip, into another board, off the board — and returns when it comes back', () => {
+    // The lab, on the first cut of the cue: a red cell painted while the widget passed the solid panel stayed
+    // painted on the strip (L67), rode along into the panel's corner (L95) and sat on the panel's cell for the
+    // whole way up out of the page (L104) — only placeOnSelf ever cleared it. Every branch of a move clears it.
+    const { api, model } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 320,
+        gap: 10,
+        rowHeight: 60,
+        widgets: [
+          K('w', 3, 2, 0, 0),
+          // roomy pages: the page must TAKE the widget for the leg branch to be the one under test
+          { id: 'panel', title: 'Side panel', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p-one', title: 'Filters', columns: 6, widgets: [K('k-one', 2, 1, 0, 0)] }, { id: 'p-two', title: 'Alerts', columns: 6, widgets: [K('k-two', 2, 1, 0, 0)] }] },
+        ],
+      })
+    );
+    const tool = toolOf('main');
+    const w = model.getNode('w')!;
+    const panel = model.getGroup('panel')!;
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="panel"]') as HTMLElement;
+    Object.defineProperty(strip, 'getBoundingClientRect', {
+      value: () => ({ left: panel.position.x, top: panel.position.y, right: panel.position.x + panel.size!.width, bottom: panel.position.y + 30, width: panel.size!.width, height: 30, x: panel.position.x, y: panel.position.y, toJSON: () => ({}) }),
+      configurable: true,
+    });
+    const hit = { node: w } as never;
+    const home = { x: w.position.x, y: w.position.y };
+    const layer = () => api.container.querySelector('.grafloria-html-layer') as HTMLElement;
+    const cue = () => ({ red: !!refused(api), cls: layer().classList.contains('axdb-refused') });
+    tool.onPointerDown?.(tev('down', home.x + 30, home.y + 20), hit);
+    tool.onPointerMove?.(at(home.x + 50, home.y + 28), hit);
+    // the gap just left of the panel, at its third row — clear of the strip's stickiness: the pointer is on the
+    // root board, the wanted cell is the SOLID panel's
+    const gap = { x: panel.position.x - 4, y: panel.position.y + 150 };
+    tool.onPointerMove?.(at(gap.x, gap.y), hit);
+    expect(cue()).toEqual({ red: true, cls: true });
+    // on to the strip: a tab-to-be, nothing is refused
+    tool.onPointerMove?.(at(panel.position.x + 60, panel.position.y + 15), hit);
+    expect(api.container.querySelector('.axdb-tabs[data-tabs-id="panel"].axdb-tabs--drop')).not.toBeNull();
+    expect(cue()).toEqual({ red: false, cls: false });
+    tool.onPointerMove?.(at(gap.x, gap.y), hit); // back: the cue returns
+    expect(cue()).toEqual({ red: true, cls: true });
+    // into the page: another board takes the ghost
+    tool.onPointerMove?.(at(panel.position.x + panel.size!.width * 0.5, panel.position.y + panel.size!.height * 0.6), hit);
+    expect(cue()).toEqual({ red: false, cls: false });
+    tool.onPointerMove?.(at(gap.x, gap.y), hit);
+    expect(cue()).toEqual({ red: true, cls: true });
+    // off the board
+    tool.onPointerMove?.(at(gap.x, home.y + 900), hit);
+    expect(cue()).toEqual({ red: false, cls: false });
+    tool.onPointerMove?.(at(home.x + 50, home.y + 28), hit); // home again, then released: nothing painted, nothing moved
+    tool.onPointerUp?.(at(home.x + 50, home.y + 28), hit);
+    expect(cue()).toEqual({ red: false, cls: false });
+  });
+  it('half over a same-size neighbour is NOT a refusal: the anti-jitter gate holds the tile, nothing is painted red; deeper, they swap', () => {
+    // The first cut painted every refused moveCheck red — the gate's "not deep enough yet" included — and the
+    // gallery's dashboard-builder check plus six scenario probes read that as the placeholder.
+    const { api, model, handle } = up(dashboard({ columns: 12, width: 1200, height: 400, gap: 10, rowHeight: 60, widgets: [K('a', 4, 2, 0, 0), K('b', 4, 2, 4, 0)] }));
+    const tool = toolOf('main');
+    const a = model.getNode('a')!;
+    const hit = { node: a } as never;
+    const home = { x: a.position.x, y: a.position.y };
+    const col = (c: number) => 10 + c * ((1200 - 20 - 11 * 10) / 12 + 10); // the world x of column c's left edge
+    tool.onPointerDown?.(tev('down', home.x + 30, home.y + 20), hit);
+    tool.onPointerMove?.(at(home.x + 50, home.y + 28), hit);
+    tool.onPointerMove?.(at(col(1) + 30, home.y + 20), hit); // the ghost's cell one column right: it covers a quarter of b — the gate refuses
+    expect(handle.widget('a')!.cell).toEqual({ x: 0, y: 0, w: 4, h: 2 });
+    expect(handle.widget('b')!.cell).toEqual({ x: 4, y: 0, w: 4, h: 2 });
+    expect(refused(api)).toBeNull(); // not a refusal: the grey placeholder says it lands home
+    expect(api.container.style.cursor).not.toBe('not-allowed');
+    tool.onPointerMove?.(at(col(3) + 30, home.y + 20), hit); // three columns right: three quarters of b — they swap
+    expect(handle.widget('a')!.cell).toEqual({ x: 4, y: 0, w: 4, h: 2 });
+    expect(handle.widget('b')!.cell).toEqual({ x: 0, y: 0, w: 4, h: 2 });
+    expect(refused(api)).toBeNull();
+    tool.onPointerUp?.(at(col(3) + 30, home.y + 20), hit);
+  });
+  it('a ghost hanging past the right edge is not painted refused: it already sits in the last legal column', () => {
+    const { api, model, handle } = up(dashboard({ columns: 12, width: 1200, height: 150, gap: 10, rowHeight: 60, sizing: 'fit', squeeze: false, widgets: [K('w', 6, 2, 6, 0)] }));
+    const tool = toolOf('main');
+    const w = model.getNode('w')!;
+    const hit = { node: w } as never;
+    const home = { x: w.position.x, y: w.position.y };
+    tool.onPointerDown?.(tev('down', home.x + 30, home.y + 20), hit);
+    tool.onPointerMove?.(at(home.x + 50, home.y + 28), hit);
+    tool.onPointerMove?.(at(home.x + 180, home.y + 28), hit); // 150 px right: the wanted column rounds past the board (7 of 12 for a span of 6)
+    expect(handle.widget('w')!.cell).toEqual({ x: 6, y: 0, w: 6, h: 2 });
+    expect(refused(api)).toBeNull(); // the engine clamps to column 6 — its own cell; nothing was refused
+    expect(api.container.style.cursor).not.toBe('not-allowed');
+    tool.onPointerUp?.(at(home.x + 180, home.y + 28), hit);
   });
 });
