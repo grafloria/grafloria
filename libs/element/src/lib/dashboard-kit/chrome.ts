@@ -305,15 +305,23 @@ export function createChrome(ctx: BoardCtx, deps: ChromeDeps): Chrome {
     if (!cell || !layer) {
       refusal?.remove();
       refusal = null;
+      layer?.classList.remove('axdb-refused');
       api.container.style.cursor = deps.grabbing() ? 'grabbing' : '';
       return;
     }
     if (!refusal || refusal.parentElement !== layer) {
       refusal?.remove();
       refusal = document.createElement('div');
-      refusal.className = 'axdb-ph axdb-ph--no';
+      // Its own class, NOT `axdb-ph`: the grey placeholder is the promise of
+      // where the tile lands and everything that reads `.axdb-ph` — the
+      // gallery's "placeholder shows EXACTLY the engine's cell" check, the
+      // scenario probes, a host's own gates — must never find this instead.
+      refusal.className = 'axdb-ph--no';
       layer.prepend(refusal);
     }
+    // The held tile is what sits under the pointer, with a grabbing cursor of
+    // its own — the container's not-allowed was never seen (lab L118, 0.4.74).
+    layer.classList.add('axdb-refused');
     const r = cellToRect({ x: cell.x, y: cell.y, w, h }, ctx.frame(), ctx.geom(), ctx.rows());
     refusal.style.left = `${r.x}px`;
     refusal.style.top = `${r.y}px`;

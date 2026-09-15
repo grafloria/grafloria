@@ -1261,7 +1261,7 @@ export function bindDashboardGrid(
   const chrome = createChrome(ctx, {
     selectedId: () => selectedId,
     syncA11y: (only) => syncA11y(only),
-    grabbing: () => !!slabGesture,
+    grabbing: () => !!slabGesture || (!!gesture && gesture.kind !== 'resize'), // a widget drag too: the cue's cursor comes and goes mid-drag (0.4.74)
     gestureRunning: () => !!gesture,
     memberGroupAt: (x, y) => memberGroupAt(x, y),
     slabEdgesNear: (grp, x, y) => slabEdgesNear(grp, x, y),
@@ -2003,12 +2003,10 @@ export function bindDashboardGrid(
   };
 
   const cleanupGestureVisuals = (g: GestureState): void => {
+    showRefusal(null, 0, 0); // a widget's refused cell too (0.4.74), and a chip's
     if (g.kind !== 'palette') {
       if (g.subject === 'node') setGhost(g.id, false);
-      else {
-        setCarried(g.id, false); // exempt through the drop write, then the glides resume
-        showRefusal(null, 0, 0);
-      }
+      else setCarried(g.id, false); // exempt through the drop write, then the glides resume
     }
     disarmGlideSoon();
     releasePointer(g.pointerId);
@@ -2206,8 +2204,9 @@ export function bindDashboardGrid(
       // -- INTO A STRIP: the widget becomes a new tab there, so it leaves
       // this board (survivors settle home) and the strip marks the slot.
       endBeside(true); // a band's shift gives way to the strip: the container comes back
-        leaveSelf();
+      leaveSelf();
       setDim(g, false);
+      showRefusal(null, 0, 0); // whatever the last cell said, a tab slot is not refused (lab L67, 0.4.74)
       if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) {
         options.tabDrop.markDrop(z.containerId, z.index);
       }
@@ -2227,6 +2226,7 @@ export function bindDashboardGrid(
     if (z.kind === 'beside' && !isStatic && z.board.ref === selfPeer) {
       const row = rowOfPoint(ev.world.y);
       if (!z.kept || !beside || beside.row !== row) applyBeside(g, { id: z.containerId, side: z.side }, row);
+      showRefusal(null, 0, 0); // a band is an answer, never a refusal — the red cell from the way here goes (lab L95/L104, 0.4.74)
       syncPlaceholder();
       return;
     }
@@ -2235,6 +2235,7 @@ export function bindDashboardGrid(
       const peer = z.board.ref as BinderPeer;
       if (g.leg && g.leg.peer === peer) g.leg.adopted.beside(z.containerId, z.side, ev.world);
       else if (enterLeg(peer, { beside: { containerId: z.containerId, side: z.side } })) g.refusedPeer = null;
+      showRefusal(null, 0, 0);
       setDim(g, !g.leg);
       syncPlaceholder();
       return;
@@ -2257,12 +2258,15 @@ export function bindDashboardGrid(
         setDim(g, false);
       } else if (parent && g.leg && g.leg.peer === parent) {
         g.leg.adopted.move(ev.world, { push: true });
+        showRefusal(null, 0, 0); // the parent's leg paints its own answer
         setDim(g, false);
       } else if (parent && enterLeg(parent, { push: true })) {
+        showRefusal(null, 0, 0);
         setDim(g, false);
       } else {
         // No board holds the refusing section (a view): dim = will snap home.
         leaveSelf();
+        showRefusal(null, 0, 0);
         setDim(g, true);
       }
     };
@@ -2274,9 +2278,11 @@ export function bindDashboardGrid(
       // -- HANDOFF: the pointer is over another board -------------------
       if (g.leg && g.leg.peer === peer) {
         g.leg.adopted.move(ev.world);
+        showRefusal(null, 0, 0); // that board's binder paints its own answer
       } else if (enterLeg(peer, {})) {
         g.refusedPeer = null;
         setDim(g, false);
+        showRefusal(null, 0, 0);
         g.leg!.adopted.move(ev.world);
       } else {
         // The board refused (full, fit): the widget pushes it on its parent (D2).
@@ -2298,6 +2304,7 @@ export function bindDashboardGrid(
     } else {
       // -- outside every board ------------------------------------------
       leaveSelf();
+      showRefusal(null, 0, 0); // off the board nothing is refused: release removes
       setDim(g, true);
     }
     syncPlaceholder();
@@ -2789,8 +2796,17 @@ export function bindDashboardGrid(
       setDim(g, false);
       const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), g.spans.w);
       engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
-      if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid }).changed) placeNear(g.id, cell.x, cell.y, g.spans.w, pushSolid);
+      const first = engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid });
+      if (!first.changed) placeNear(g.id, cell.x, cell.y, g.spans.w, pushSolid);
       project();
+      // A re-entry whose wanted cell was refused — a full fit section on a
+      // board with no row to give (Quantia, 0.4.74) — lands wherever placeNear
+      // found room, its own old cell included: the grey placeholder says where,
+      // and the red cell under the hand says the cell it asked for is refused.
+      const now = engine.getItem(g.id);
+      const want = clampWanted(cell, g.spans.w, g.spans.h);
+      const atWanted = !!now && now.x === want.x && now.y === want.y;
+      showRefusal(!first.changed && hardRefusal(first.refusedBy) && !atWanted ? want : null, g.spans.w, g.spans.h);
     } else if (g.subject === 'group') {
       // The cell under the pointer, else the nearest legal one ALONG ITS ROW
       // (a section dragged left that wandered down its column read as the
@@ -2821,8 +2837,49 @@ export function bindDashboardGrid(
       // expects it to follow the pointer. The engine documents `gate: false`
       // as exactly this mode. Found when the vertical bands stopped lifting
       // the chip off the board mid-path, which had been hiding it (L99).
-      if (engine.moveCheck(g.id, cell.x, cell.y, { pushSolid, ...(g.kind === 'palette' ? { gate: false } : {}) }).changed) project();
+      const it = engine.getItem(g.id);
+      // A PUSH WITH INTENT (D2, `pushSolid`) is a push, never a swap: the
+      // re-entry above already moves with the gate off, and with it on the
+      // engine's same-size exchange (S1) took over from the second move on —
+      // a widget the size of the full section it hovered was painted refused
+      // for one frame and swapped with the section on the next (0.4.74).
+      const r = engine.moveCheck(g.id, cell.x, cell.y, { pushSolid, ...(g.kind === 'palette' || pushSolid ? { gate: false } : {}) });
+      const want = it ? clampWanted(cell, it.w, it.h) : cell;
+      if (r.changed) {
+        project();
+        showRefusal(null, 0, 0);
+      } else if (it && hardRefusal(r.refusedBy) && (want.x !== it.x || want.y !== it.y)) {
+        // REFUSED, AND SAID SO WHERE THE HAND IS (0.4.74). Quantia, on a full
+        // fit board: hovering a full fit section changed no class, no cursor,
+        // no message — the engine refused the wanted cell (a solid tile it may
+        // not push, a bound with no row to give), the ghost stayed at its last
+        // legal cell, and the only cue was the grey placeholder wherever that
+        // was. A group's refused cell has been painted red since the
+        // identification round; a widget's is now, with the not-allowed
+        // cursor — the grey placeholder still says where it WILL land (beside
+        // a solid section, 0.4.52; its own cell). A wanted cell that is the
+        // tile's own is not a refusal — judged where the ENGINE would put it:
+        // `pointToCell` does not clamp, so a ghost hanging past the right edge
+        // asked for column 9 of 12 while it already sat in the last legal one.
+        // And only a HARD refusal is one: the anti-jitter gate ("not deep
+        // enough into that neighbour yet") holds the tile where the grey
+        // placeholder says it lands — the first cut painted THAT red on every
+        // half-way hover, and the gallery's "placeholder shows EXACTLY the
+        // engine's cell" check plus six scenario probes read the red cell as
+        // the placeholder.
+        showRefusal(want, it.w, it.h);
+      } else showRefusal(null, 0, 0);
     }
+  };
+  /** A refusal that means "this cell cannot be taken": a pinned tile, a solid container, a bound with no row — not the anti-jitter gate. */
+  const hardRefusal = (why: string | undefined): boolean => why === 'locked' || why === 'solid' || why === 'bound';
+  /** The wanted cell as the engine clamps it: inside the columns, and above a bounded board's floor. */
+  const clampWanted = (cell: { x: number; y: number }, w: number, h: number): { x: number; y: number } => {
+    const b = bound();
+    return {
+      x: Math.max(0, Math.min(columns - w, cell.x)),
+      y: Math.max(0, b === undefined ? cell.y : Math.min(Math.max(0, b - h), cell.y)),
+    };
   };
   /** What the pointer means for the dragged tile: the resolve over the live tree, with the beside the hand holds. */
   const resolveTileZone = (g: GestureState, ev: ToolPointerEvent) => {

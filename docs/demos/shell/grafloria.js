@@ -194329,6 +194329,10 @@ var CSS4 = `
 }
 /* Outside the board: release will REMOVE \u2014 dim the ghost to say so. */
 .grafloria-html-layer > .grafloria-node-host.axdb-ghost.axdb-out { opacity: .35; filter: grayscale(.6); }
+/* A refused cell says so on the HELD tile as well (0.4.74): the container's
+   not-allowed cursor sits under the card the hand holds and is never seen. */
+.grafloria-html-layer.axdb-refused > .grafloria-node-host.axdb-ghost, .grafloria-html-layer.axdb-refused > .grafloria-node-host.axdb-ghost *,
+.grafloria-html-layer.axdb-refused > .axdb-carried, .grafloria-html-layer.axdb-refused > .axdb-carried * { cursor: not-allowed !important; }
 
 /* ===== the kit's chrome glides WITH the tiles it belongs to (0.4.43) =====
    A pushed group's strip, slab and surface used to jump to the new slot while
@@ -194356,7 +194360,8 @@ var CSS4 = `
 .grafloria-html-layer > .axdb-tabs.axdb-carried { z-index: 32; }
 
 /* ===== the placeholder: dashed slab, truthful, never animated ===== */
-.grafloria-html-layer > .axdb-ph {
+/* .axdb-ph--no is the REFUSED cell (its own element, never .axdb-ph): the same dashed slab in the danger colour. */
+.grafloria-html-layer > .axdb-ph, .grafloria-html-layer > .axdb-ph--no {
   position: absolute;
   border-radius: var(--axdb-rs-radius, 8px);
   background: rgba(30, 34, 45, .14);
@@ -194367,7 +194372,7 @@ var CSS4 = `
   transition: none;
 }
 /* A slab move asked for a cell it cannot have (a locked section in the way): the wanted cell in the danger tone. */
-.grafloria-html-layer > .axdb-ph.axdb-ph--no { border-color: var(--axdb-danger, #b3123c); background: var(--axdb-danger-soft, rgba(179, 18, 60, .07)); }
+.grafloria-html-layer > .axdb-ph--no { border-color: var(--axdb-danger, #b3123c); background: var(--axdb-danger-soft, rgba(179, 18, 60, .07)); }
 
 @media (prefers-color-scheme: dark) {
   .grafloria-html-layer > .axdb-ph { background: rgba(220, 225, 240, .12); border-color: rgba(220, 225, 240, .3); }
@@ -195294,8 +195299,8 @@ function resolve(input) {
       if (side) return { kind: "beside", board, containerId: c.id, side, kept: false };
       if (opaque(board, c) || !c.inner) return { kind: "plain", board, grace: false };
       if (!c.inner.contains(x + ndx0, y + ndy0)) {
-        const insetUnderStrip = c.layout === "tabs" && ty >= frame.y + c.stripHeight && input.ghostSubtree.size === 0;
-        if (!insetUnderStrip) return { kind: "plain", board, grace: false };
+        const widgetInMargin = input.ghostSubtree.size === 0 && (c.layout !== "tabs" || ty >= frame.y + c.stripHeight);
+        if (!widgetInMargin) return { kind: "plain", board, grace: false };
       }
       return descend(c.inner, ndx0, ndy0);
     }
@@ -195823,15 +195828,17 @@ function createChrome(ctx, deps) {
     if (!cell || !layer) {
       refusal?.remove();
       refusal = null;
+      layer?.classList.remove("axdb-refused");
       api.container.style.cursor = deps.grabbing() ? "grabbing" : "";
       return;
     }
     if (!refusal || refusal.parentElement !== layer) {
       refusal?.remove();
       refusal = document.createElement("div");
-      refusal.className = "axdb-ph axdb-ph--no";
+      refusal.className = "axdb-ph--no";
       layer.prepend(refusal);
     }
+    layer.classList.add("axdb-refused");
     const r = cellToRect({ x: cell.x, y: cell.y, w, h }, ctx.frame(), ctx.geom(), ctx.rows());
     refusal.style.left = `${r.x}px`;
     refusal.style.top = `${r.y}px`;
@@ -196865,7 +196872,8 @@ function bindDashboardGrid(api, group, options = {}) {
   const chrome = createChrome(ctx, {
     selectedId: () => selectedId,
     syncA11y: (only) => syncA11y(only),
-    grabbing: () => !!slabGesture,
+    grabbing: () => !!slabGesture || !!gesture && gesture.kind !== "resize",
+    // a widget drag too: the cue's cursor comes and goes mid-drag (0.4.74)
     gestureRunning: () => !!gesture,
     memberGroupAt: (x, y) => memberGroupAt(x, y),
     slabEdgesNear: (grp, x, y) => slabEdgesNear(grp, x, y),
@@ -197366,12 +197374,10 @@ function bindDashboardGrid(api, group, options = {}) {
     g.chip?.classList.toggle("axdb-out", on);
   };
   const cleanupGestureVisuals = (g) => {
+    showRefusal(null, 0, 0);
     if (g.kind !== "palette") {
       if (g.subject === "node") setGhost(g.id, false);
-      else {
-        setCarried(g.id, false);
-        showRefusal(null, 0, 0);
-      }
+      else setCarried(g.id, false);
     }
     disarmGlideSoon();
     releasePointer(g.pointerId);
@@ -197527,6 +197533,7 @@ function bindDashboardGrid(api, group, options = {}) {
       endBeside(true);
       leaveSelf();
       setDim(g, false);
+      showRefusal(null, 0, 0);
       if (!g.strip || g.strip.containerId !== z.containerId || g.strip.index !== z.index) {
         options.tabDrop.markDrop(z.containerId, z.index);
       }
@@ -197542,6 +197549,7 @@ function bindDashboardGrid(api, group, options = {}) {
     if (z.kind === "beside" && !isStatic && z.board.ref === selfPeer) {
       const row = rowOfPoint(ev.world.y);
       if (!z.kept || !beside || beside.row !== row) applyBeside(g, { id: z.containerId, side: z.side }, row);
+      showRefusal(null, 0, 0);
       syncPlaceholder();
       return;
     }
@@ -197550,6 +197558,7 @@ function bindDashboardGrid(api, group, options = {}) {
       const peer2 = z.board.ref;
       if (g.leg && g.leg.peer === peer2) g.leg.adopted.beside(z.containerId, z.side, ev.world);
       else if (enterLeg(peer2, { beside: { containerId: z.containerId, side: z.side } })) g.refusedPeer = null;
+      showRefusal(null, 0, 0);
       setDim(g, !g.leg);
       syncPlaceholder();
       return;
@@ -197568,11 +197577,14 @@ function bindDashboardGrid(api, group, options = {}) {
         setDim(g, false);
       } else if (parent && g.leg && g.leg.peer === parent) {
         g.leg.adopted.move(ev.world, { push: true });
+        showRefusal(null, 0, 0);
         setDim(g, false);
       } else if (parent && enterLeg(parent, { push: true })) {
+        showRefusal(null, 0, 0);
         setDim(g, false);
       } else {
         leaveSelf();
+        showRefusal(null, 0, 0);
         setDim(g, true);
       }
     };
@@ -197581,9 +197593,11 @@ function bindDashboardGrid(api, group, options = {}) {
     } else if (peer) {
       if (g.leg && g.leg.peer === peer) {
         g.leg.adopted.move(ev.world);
+        showRefusal(null, 0, 0);
       } else if (enterLeg(peer, {})) {
         g.refusedPeer = null;
         setDim(g, false);
+        showRefusal(null, 0, 0);
         g.leg.adopted.move(ev.world);
       } else {
         g.refusedPeer = peer;
@@ -197599,6 +197613,7 @@ function bindDashboardGrid(api, group, options = {}) {
       placeOnSelf(g, desired, g.subject === "group");
     } else {
       leaveSelf();
+      showRefusal(null, 0, 0);
       setDim(g, true);
     }
     syncPlaceholder();
@@ -197926,8 +197941,13 @@ function bindDashboardGrid(api, group, options = {}) {
       setDim(g, false);
       const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), g.spans.w);
       engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
-      if (!engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid }).changed) placeNear(g.id, cell.x, cell.y, g.spans.w, pushSolid);
+      const first = engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid });
+      if (!first.changed) placeNear(g.id, cell.x, cell.y, g.spans.w, pushSolid);
       project();
+      const now3 = engine.getItem(g.id);
+      const want = clampWanted(cell, g.spans.w, g.spans.h);
+      const atWanted = !!now3 && now3.x === want.x && now3.y === want.y;
+      showRefusal(!first.changed && hardRefusal(first.refusedBy) && !atWanted ? want : null, g.spans.w, g.spans.h);
     } else if (g.subject === "group") {
       const it = engine.getItem(g.id);
       if (!it) return;
@@ -197945,8 +197965,24 @@ function bindDashboardGrid(api, group, options = {}) {
     } else {
       const spanW = engine.getItem(g.id)?.w ?? g.spans.w;
       const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), spanW);
-      if (engine.moveCheck(g.id, cell.x, cell.y, { pushSolid, ...g.kind === "palette" ? { gate: false } : {} }).changed) project();
+      const it = engine.getItem(g.id);
+      const r = engine.moveCheck(g.id, cell.x, cell.y, { pushSolid, ...g.kind === "palette" || pushSolid ? { gate: false } : {} });
+      const want = it ? clampWanted(cell, it.w, it.h) : cell;
+      if (r.changed) {
+        project();
+        showRefusal(null, 0, 0);
+      } else if (it && hardRefusal(r.refusedBy) && (want.x !== it.x || want.y !== it.y)) {
+        showRefusal(want, it.w, it.h);
+      } else showRefusal(null, 0, 0);
     }
+  };
+  const hardRefusal = (why) => why === "locked" || why === "solid" || why === "bound";
+  const clampWanted = (cell, w, h) => {
+    const b = bound();
+    return {
+      x: Math.max(0, Math.min(columns - w, cell.x)),
+      y: Math.max(0, b === void 0 ? cell.y : Math.min(Math.max(0, b - h), cell.y))
+    };
   };
   const resolveTileZone = (g, ev) => {
     const roots = zoneRoots();

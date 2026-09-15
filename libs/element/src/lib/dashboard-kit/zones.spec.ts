@@ -259,6 +259,29 @@ describe('zones — a hand moves faster than a strip is tall: the segment it tra
   });
 });
 
+describe('zones — a section\'s caption band is INTO the section for a widget (0.4.74)', () => {
+  // Quantia, driving its Groups page on 0.4.73: "a drop on a section's caption
+  // band does nothing at all" — 6 px into the 28 px band, release, nothing
+  // moved, no undo step. The band is the section's margin (inside its frame,
+  // outside its board), and for a widget the margin meant the parent board —
+  // a cell the solid section refuses, silently. A widget over a section's
+  // margin now means the section (a tab container's inset under its strip
+  // has meant the page since 0.4.68); a carried GROUP still pushes.
+  const capped = () => {
+    const opsInner = board('ops', { x: OPS_FRAME.x, y: OPS_FRAME.y + 28, width: OPS_FRAME.width, height: OPS_FRAME.height - 28 }, 1, () => []);
+    const ops: ZoneContainer = { id: 'ops', layout: 'grid', static: false, frame: OPS_FRAME, stripHeight: 0, band: 0, inner: opsInner };
+    const root = board('root', { x: 0, y: 0, width: 1200, height: 600 }, 0, () => [ops]);
+    return [root];
+  };
+  it('6 px into the band: the section\'s board, not the parent\'s cell it would refuse', () => {
+    expect(at(400, OPS_FRAME.y + 6, { roots: capped() })).toEqual({ kind: 'plain', board: expect.objectContaining({ id: 'ops' }), grace: false });
+    expect(at(400, OPS_FRAME.y + 60, { roots: capped() })).toEqual({ kind: 'plain', board: expect.objectContaining({ id: 'ops' }), grace: false }); // the body, as before
+  });
+  it('a carried group over the band still means the parent board: it pushes the section (0.4.44)', () => {
+    expect(at(400, OPS_FRAME.y + 6, { roots: capped(), ghostSubtree: new Set(['other']) })).toEqual({ kind: 'plain', board: expect.objectContaining({ id: 'root' }), grace: false });
+  });
+});
+
 describe('zones — the top band hangs ABOVE the container, where a hand looking for "above" goes', () => {
   // The user: "try dragging nps above the tab panel, won't work." Measured: the
   // panel holds the board's first row, so there is no row above it to point at,

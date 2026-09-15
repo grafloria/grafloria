@@ -3257,6 +3257,62 @@ const sdShown = () => page.evaluate(() => {
     `strip top ${Math.round(strip0.y)} · MIDDLE grab, hand 10 px under the strip: card top ${Math.round(middle.under.cardTop)} → tab ${middle.under.tab}, panel ${JSON.stringify(middle.under.panel)} (rest ${JSON.stringify(p0)}), slab ${rest.slabTop}→${middle.under.slabTop}, on the page ${JSON.stringify(middle.under.onPage)}; hand 110 px under: card top ${Math.round(middle.inside.cardTop)}, panel ${JSON.stringify(middle.inside.panel)}, on the page ${JSON.stringify(middle.inside.onPage)} · TOP grab, hand 10 px under: card top ${Math.round(top.under.cardTop)}, panel ${JSON.stringify(top.under.panel)}, on the page ${JSON.stringify(top.under.onPage)} · ${JSON.stringify(sane)}`);
 }
 
+{
+  begin('L117-a-widget-dropped-on-a-sections-CAPTION-BAND-goes-INTO-the-section');
+  await scrollTo('nest');
+  // Quantia on 0.4.73: "a drop on a section's caption band does nothing at all" — the band was the section's margin,
+  // a parent cell the solid section refused, silently. It is the section now (a group dragged there still pushes).
+  const cell = (id) => page.evaluate((id) => window.__lab.nest.handle.widget(id)?.cell ?? null, id);
+  const parentOf = (id) => page.evaluate((id) => { const walk = (ws, p) => { for (const w of ws ?? []) { if (w.id === id) return p; const r = walk(w.widgets, w.id); if (r) return r; } return null; }; return walk(window.__lab.nest.handle.toJSON().views[0].widgets, 'BOARD'); }, id);
+  await page.click('#cv-nest .axdb-tabs[data-tabs-id="nt-tabs"] .axdb-tab[data-tab-id="nt-p1"]'); await page.waitForTimeout(300);
+  const p0 = await parentOf('nt-k1'); const s0 = await cell('nt-sec');
+  const band = await page.evaluate(() => document.querySelector('#cv-nest .axdb-slab[data-slab-id="nt-sec"] > .axdb-slab-h').getBoundingClientRect().toJSON());
+  const k = await rect('nest', 'nt-k1');
+  let held = null;
+  // the Filters page's KPI, carried by its header onto the section's caption band, 6 px in
+  await drag(k.x + k.w / 2, k.y + 12, band.x + band.width * 0.5, band.y + 6, { steps: 14, mid: async () => {
+    held = await page.evaluate(() => ({ onSec: window.__lab.nest.handle.binderOf('nt-sec')?.cellOf('nt-k1') ?? null, refused: !!document.querySelector('#cv-nest .axdb-ph--no'), dimmed: !!document.querySelector('#cv-nest .grafloria-node-host.axdb-out') }));
+    await shot('nest', 'kpi-held-on-the-sections-caption-band-the-sections-placeholder');
+  } });
+  const p1 = await parentOf('nt-k1'); const s1 = await cell('nt-sec'); const sane = await sanity('nest');
+  await shot('nest', 'the-kpi-lives-in-the-section');
+  await undoAll('nest', 1);
+  const p2 = await parentOf('nt-k1');
+  verdict(p0 === 'nt-p1' && held?.onSec !== null && held?.refused === false && held?.dimmed === false && p1 === 'nt-sec' && !!s1 && s1.x === s0.x && s1.y === s0.y && sane.overlaps === 0 && p2 === 'nt-p1',
+    `rest: nt-k1 in ${p0} · held 6 px into the band: on the section ${JSON.stringify(held?.onSec)}, refused ${held?.refused}, dimmed ${held?.dimmed} · released: in ${p1}, the section at ${JSON.stringify(s1)} (was ${JSON.stringify(s0)}) ${JSON.stringify(sane)} · undo: in ${p2}`);
+}
+{
+  begin('L118-a-drop-the-section-refuses-and-the-board-cannot-push-shows-the-RED-cell-and-a-not-allowed-cursor-where-the-hand-is');
+  await scrollTo('refuse');
+  // Quantia on 0.4.73: on a full fit board, hovering a full fit section gave no class change, no shadow, no cursor,
+  // no message — the only cue was the grey placeholder staying at the other end of the screen.
+  const cell = (id) => page.evaluate((id) => window.__lab.refuse.handle.widget(id)?.cell ?? null, id);
+  // the cursor is read UNDER THE POINTER — the held card sits there with a grabbing cursor of its own, and the
+  // container's not-allowed (the first cut) was never the one a hand saw
+  const look = (x, y) => page.evaluate(([x, y]) => { const no = document.querySelector('#cv-refuse .axdb-ph--no'); const r = no?.getBoundingClientRect(); const el = document.elementFromPoint(x, y); return { refused: !!no, at: r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width) } : null, cursor: el ? getComputedStyle(el).cursor : '', under: el?.className?.toString().slice(0, 40) ?? '' }; }, [x, y]);
+  const w0 = await cell('rf-w'); const s0 = await cell('rf-sec');
+  const w = await rect('refuse', 'rf-w'); const sec = await groupRect('refuse', 'rf-sec');
+  const cv = await page.evaluate(() => document.getElementById('cv-refuse').getBoundingClientRect().toJSON());
+  let held = null; let back = null;
+  await page.mouse.move(w.x + w.w / 2, w.y + 16); await page.mouse.down(); await page.mouse.move(w.x + w.w / 2 + 20, w.y + 26, { steps: 3 });
+  const over = { x: cv.x + sec.x + sec.w / 2, y: cv.y + sec.y + sec.h * 0.7 };
+  const homeAt = { x: w.x + w.w / 2 + 20, y: w.y + 26 };
+  await page.mouse.move(over.x, over.y, { steps: 12 }); await page.waitForTimeout(400);
+  held = { ...(await look(over.x, over.y)), w: await cell('rf-w'), sec: await cell('rf-sec') };
+  await shot('refuse', 'widget-held-over-the-full-section-the-red-cell-and-the-cursor');
+  await page.mouse.move(homeAt.x, homeAt.y, { steps: 12 }); await page.waitForTimeout(400); // back over its own cell
+  back = await look(homeAt.x, homeAt.y);
+  await page.mouse.move(over.x, over.y, { steps: 12 }); await page.waitForTimeout(300);
+  await page.mouse.up(); await page.waitForTimeout(500);
+  const after = { ...(await look(over.x, over.y)), w: await cell('rf-w'), sec: await cell('rf-sec'), canUndo: await page.evaluate(() => window.__lab.refuse.api.getEngine().commandManager.canUndo()) };
+  const sane = await sanity('refuse');
+  const same = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y;
+  verdict(held.refused && held.cursor === 'not-allowed' && held.at && held.at.x >= cv.x + sec.x - 4 && same(held.w, w0) && same(held.sec, s0)
+    && !back.refused && back.cursor !== 'not-allowed'
+    && !after.refused && after.cursor !== 'not-allowed' && same(after.w, w0) && same(after.sec, s0) && !after.canUndo && sane.overlaps === 0,
+    `held over the full section: red cell ${held.refused} at ${JSON.stringify(held.at)} (the section from x ${Math.round(cv.x + sec.x)}), cursor under the hand "${held.cursor}" (on ${held.under}), widget ${JSON.stringify(held.w)} section ${JSON.stringify(held.sec)} · back home: red ${back.refused}, cursor "${back.cursor}" · released over it: red ${after.refused}, cursor "${after.cursor}", widget ${JSON.stringify(after.w)} section ${JSON.stringify(after.sec)}, undo available ${after.canUndo} ${JSON.stringify(sane)}`);
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

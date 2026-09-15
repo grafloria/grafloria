@@ -174,7 +174,9 @@ const H = SPEC.handle;                 // the live handle — every edit goes th
           cursor). A selector: your own element inside the card.
           <code>{ grip: true, position: 'left' | 'center' | 'right', placement: 'inside' | 'outside' }</code>:
           a painted grip along the top edge, in the header band (the header makes room)
-          or a tab above the card like the DevExpress item bar; it shows on the selected
+          or a tab above the card like the DevExpress item bar &mdash; a 24 &times; 9 px target, so moving a tile is
+          select, find the tab, drag; caption drag offers the whole 28 px header, roughly forty times the area, for
+          the same gesture. The grip shows on the selected
           widget only (a press selects, a void click clears; it fades in over 120 ms, so a
           gate that reads its opacity should wait). A host that paints its own content and
           has no kit header gets the top 28 px of the card as its caption. <code>false</code>: the
@@ -534,8 +536,9 @@ render(SPEC2, host);</pre>
       drop model (its own frame is under the pointer at every step), and the containers it pushes aside on the way are
       still "there" for your hand where they were, coming home when the group lands elsewhere. Undo is one step.</p>
       <p>0.4.58 settles what a <em>full</em> container does with something you drop on it. A section's height is a tile of
-      the board it sits on, so a container that grows can ask that board for another row and take the widget; one you
-      declared <code>sizing: 'fit'</code> cannot, and keeps the older answer — a page squeezes its rows, a section refuses
+      the board it sits on, so a container that grows can ask that board for another row and take the widget &mdash; if the
+      board has one to give: a <code>fit</code> board that is already full has none, and the growing section then refuses
+      exactly as a fit one does. One you declared <code>sizing: 'fit'</code> cannot ask at all, and keeps the older answer — a page squeezes its rows, a section refuses
       and is pushed aside by the widget instead. The rows go back if you drag away, and the drop is one undo step.</p>
       <p>0.4.59 makes the tab strip easier to hit. A strip is about thirty pixels tall and the zone just below it moves
       the whole container aside, so aiming a widget at the tabs used to flip between the two on a pixel of wobble — and
@@ -573,8 +576,10 @@ render(SPEC2, host);</pre>
       events, so nothing about where a drop lands has changed &mdash; only whether you can see it coming.</p>
       <p>0.4.65 puts &ldquo;above it&rdquo; above it. A hand looking for the place to drop a widget above a panel goes
       above the panel; it had to go <em>below</em> the panel&rsquo;s header instead, into a lane inside the body, which
-      is the opposite of where anyone points. The band now also hangs off the container&rsquo;s top edge, so pointing
-      above a panel means above it. The lane under the tabs stays as the fallback, because a container pressed against
+      is the opposite of where anyone points. The band now also hangs off a <em>tab group&rsquo;s</em> top edge, so pointing
+      above a panel means above it. (A section has no bands at all: its whole body means into it, and the board&rsquo;s own
+      cells around it are how a widget lands beside, above or below it &mdash; a section pinned to the board&rsquo;s first
+      row has nothing above it to offer.) The lane under the tabs stays as the fallback, because a container pressed against
       the top of its canvas has no room above it to offer &mdash; both lanes are painted, and both mean the same thing.
       The tab strip&rsquo;s few pixels of stickiness now reach only down into the body, never up into that band.</p>
       <p>0.4.66 gives the whole thing back its ordinary look. A container&rsquo;s top and bottom bands push it aside the
@@ -619,6 +624,13 @@ render(SPEC2, host);</pre>
       mean above while the card&rsquo;s top edge is above the frame &mdash; the panel gives way live &mdash; and the page once the whole
       card is inside. The header itself is still a tab. A card shorter than two headers, grabbed in its middle, cannot show that
       overhang; for it, above is still the band above the frame.</p>
+      <p>0.4.74 answers two things Quantia measured on its own boards. A drop on a section&rsquo;s <b>caption band</b> used to do
+      nothing at all &mdash; the band is the section&rsquo;s margin, a cell on the parent board that the solid section refused,
+      silently; for a widget it now means the section (a carried group still pushes). And a drop the board cannot take &mdash;
+      a full fit section on a full fit board &mdash; now says so where the hand is: the wanted cell is painted as the red
+      dashed refusal and the cursor on the card you hold reads not-allowed, the way a group&rsquo;s refused cell has since the identification
+      round, instead of the only cue being a grey placeholder left at the other end of the board. A push with intent is a push,
+      never a swap: a widget the size of the section it hovers is refused on a full board, not exchanged with it.</p>
       <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
       you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
       — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),

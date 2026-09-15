@@ -53,6 +53,10 @@ const CSS = `
 }
 /* Outside the board: release will REMOVE — dim the ghost to say so. */
 .grafloria-html-layer > .grafloria-node-host.axdb-ghost.axdb-out { opacity: .35; filter: grayscale(.6); }
+/* A refused cell says so on the HELD tile as well (0.4.74): the container's
+   not-allowed cursor sits under the card the hand holds and is never seen. */
+.grafloria-html-layer.axdb-refused > .grafloria-node-host.axdb-ghost, .grafloria-html-layer.axdb-refused > .grafloria-node-host.axdb-ghost *,
+.grafloria-html-layer.axdb-refused > .axdb-carried, .grafloria-html-layer.axdb-refused > .axdb-carried * { cursor: not-allowed !important; }
 
 /* ===== the kit's chrome glides WITH the tiles it belongs to (0.4.43) =====
    A pushed group's strip, slab and surface used to jump to the new slot while
@@ -80,7 +84,8 @@ const CSS = `
 .grafloria-html-layer > .axdb-tabs.axdb-carried { z-index: 32; }
 
 /* ===== the placeholder: dashed slab, truthful, never animated ===== */
-.grafloria-html-layer > .axdb-ph {
+/* .axdb-ph--no is the REFUSED cell (its own element, never .axdb-ph): the same dashed slab in the danger colour. */
+.grafloria-html-layer > .axdb-ph, .grafloria-html-layer > .axdb-ph--no {
   position: absolute;
   border-radius: var(--axdb-rs-radius, 8px);
   background: rgba(30, 34, 45, .14);
@@ -91,7 +96,7 @@ const CSS = `
   transition: none;
 }
 /* A slab move asked for a cell it cannot have (a locked section in the way): the wanted cell in the danger tone. */
-.grafloria-html-layer > .axdb-ph.axdb-ph--no { border-color: var(--axdb-danger, #b3123c); background: var(--axdb-danger-soft, rgba(179, 18, 60, .07)); }
+.grafloria-html-layer > .axdb-ph--no { border-color: var(--axdb-danger, #b3123c); background: var(--axdb-danger-soft, rgba(179, 18, 60, .07)); }
 
 @media (prefers-color-scheme: dark) {
   .grafloria-html-layer > .axdb-ph { background: rgba(220, 225, 240, .12); border-color: rgba(220, 225, 240, .3); }
