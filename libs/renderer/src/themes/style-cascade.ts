@@ -60,6 +60,13 @@ export interface CascadeOptions {
    * it would defeat the theme fallback and the CSS-variable scoping).
    */
   includeThemeBase?: boolean;
+  /**
+   * LINKS ONLY — the `highlightConnected` layer for a line touching the
+   * selection. It sits over the link's own style and its hover, and UNDER a
+   * selected or highlighted link's state: a line the user selected keeps the
+   * selection's look.
+   */
+  connection?: Partial<LinkStyle>;
 }
 
 /** Style keys that address the registry/DOM rather than a paint value. */
@@ -218,11 +225,16 @@ export function resolveLinkStyle(
   theme: Theme,
   options: CascadeOptions = {}
 ): Partial<LinkStyle> {
+  const state = linkStateStyle(link, theme);
+  const connection = options.connection;
+  const stateWins = link.state === 'selected' || link.state === 'highlighted';
   return {
     ...(options.includeThemeBase ? linkThemeBase(theme) : undefined),
     ...linkTypeDefaults(theme, link),
     ...resolveStyleClasses<LinkStyle>(link.style?.styleClass),
     ...declared(link.style),
-    ...linkStateStyle(link, theme),
+    ...(connection && stateWins ? connection : undefined),
+    ...state,
+    ...(connection && !stateWins ? connection : undefined),
   };
 }

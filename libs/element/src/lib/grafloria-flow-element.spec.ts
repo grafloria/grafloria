@@ -75,6 +75,30 @@ describe('<grafloria-flow>', () => {
     expect(el.diagram!.getModel().getNodes().map((n) => n.id)).toEqual(['a']);
   });
 
+  it('highlight-connected: the selected node brings its lines forward — set at mount, and switched live', () => {
+    // renderer 0.4.7's `highlightConnected`, as an attribute: present = on, "trace" follows every path,
+    // a number is the depth, "false" (or removing it) turns it off.
+    const edges = [{ id: 'ab', source: 'a', target: 'b' }];
+    const el = mount(`<grafloria-flow highlight-connected nodes='${JSON.stringify(NODES)}' edges='${JSON.stringify(edges)}'></grafloria-flow>`);
+    const model = el.diagram!.getModel();
+    model.selectNode(model.getNode('a')!);
+    el.diagram!.renderNow();
+    const role = () => el.querySelector('[data-link-id="ab"]')?.getAttribute('data-connected') ?? null;
+    expect(el.diagram!.getHighlightConnected()).toBe(true);
+    expect(role()).toBe('out');
+    el.setAttribute('highlight-connected', 'trace');
+    expect(el.diagram!.getHighlightConnected()).toEqual({ depth: Infinity });
+    el.setAttribute('highlight-connected', '3');
+    expect(el.diagram!.getHighlightConnected()).toEqual({ depth: 3 });
+    el.setAttribute('highlight-connected', 'false');
+    el.diagram!.renderNow();
+    expect(el.diagram!.getHighlightConnected()).toBe(false);
+    expect(role()).toBeNull();
+    el.setAttribute('highlight-connected', '');
+    el.removeAttribute('highlight-connected');
+    expect(el.diagram!.getHighlightConnected()).toBe(false);
+  });
+
   it('ignores a malformed JSON attribute instead of taking the page down', () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 

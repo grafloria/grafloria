@@ -685,7 +685,46 @@ export interface SVGRendererConfig {
    * whole engine without touching a node template.
    */
   tokenBridge?: TokenBridge;
+
+  /**
+   * Select a node and its lines come forward: the lines coming INTO it and going
+   * OUT of it are drawn in the page's ink (outgoing dashed), and every other line
+   * fades back — the flow-editor look (Google's Opal draws a workflow this way).
+   * Off by default. `true` for the defaults, or {@link HighlightConnectedOptions}.
+   *
+   * View state only, derived from the selection every frame: nothing is written
+   * to the model, so it records no undo step, never syncs to a collaborator, and
+   * an export draws the diagram without it. Switch it live with
+   * `instance.setHighlightConnected()`.
+   */
+  highlightConnected?: boolean | HighlightConnectedOptions;
 }
+
+/** How `highlightConnected` draws the selected nodes' lines. Every field is optional. */
+export interface HighlightConnectedOptions {
+  /**
+   * How far the highlight follows the graph from the selected nodes. `1` (the
+   * default) marks only the lines that touch them; `2` also the lines one node
+   * further upstream and downstream; `Infinity` traces every path in and out.
+   */
+  depth?: number;
+  /** The colour of a highlighted line. Default: the theme's primary text colour. */
+  stroke?: string;
+  /** The width of a highlighted line. Default 2.5 (a line is 2). */
+  strokeWidth?: number;
+  /** How a line going OUT of the selection is drawn. Default `'dashed'`. */
+  outgoing?: 'dashed' | 'solid';
+  /** Opacity of every other line while a node is selected. Default 0.4 — faded, still legible; `1` leaves them alone. */
+  dimOpacity?: number;
+}
+
+/**
+ * A line's part in the selection's neighbourhood, as `highlightConnected` draws it:
+ * `'in'` ends at a selected node (or upstream of one), `'out'` starts at one (or
+ * downstream), `'both'` runs between two, `'dim'` is every other line. Emitted as
+ * `data-connected` on the line's group.
+ */
+export type LinkConnection = 'in' | 'out' | 'both' | 'dim';
 
 /**
  * Canvas Renderer Configuration

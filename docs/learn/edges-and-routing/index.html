@@ -142,6 +142,28 @@
       unrelated edges cross you can render jump-overs via the renderer config's jump
       styles.</p>
 
+      <h2>The selected node's lines</h2>
+      <p>Turn on <code>highlightConnected</code> and selecting a node brings its lines forward:
+      the lines coming into it are drawn solid in the page's ink, the lines going out of it
+      dashed, and every other line fades back — the way flow editors such as Google's Opal
+      show what a step reads and what it feeds. Off by default. It is view state, derived from
+      the selection on every frame: nothing is written to the model, so it adds no undo step,
+      never syncs to a collaborator, and an export draws the diagram without it.</p>
+<pre data-lang="typescript">createDiagram(el, { highlightConnected: true });                 // incoming solid, outgoing dashed, the rest at 0.4
+render(spec, el, { highlightConnected: { depth: Infinity } });   // trace every path in and out, not just the lines it touches
+diagram.setHighlightConnected({ outgoing: 'solid', dimOpacity: 1, stroke: '#dc2626' });   // live, any time
+
+// React and Vue: through the renderer config the wrappers already forward
+&lt;GrafloriaFlow rendererConfig={{ highlightConnected: true }} /&gt;          // React
+&lt;GrafloriaFlow :renderer-config="{ highlightConnected: true }" /&gt;      // Vue
+&lt;grafloria-diagram-canvas [rendererConfig]="{ highlightConnected: true }" /&gt;   // Angular
+// the web component: present = on, "trace", a depth, or "false"
+&lt;grafloria-flow highlight-connected="trace"&gt;&lt;/grafloria-flow&gt;</pre>
+      <p>Each line's group carries <code>data-connected="in | out | both | dim"</code> and the
+      classes <code>link-connected</code> / <code>link-dimmed</code> for your own CSS. A line
+      you selected keeps the selection's look.</p>
+      <p><a class="demo-link" href="../../demos/edges/highlight-connected.html">Live: highlight connected lines →</a></p>
+
       <h2>Reconnecting and editing</h2>
       <p>Drag an edge's endpoint and drop it on another port — validators run again (see
       <a href="../ports-and-validation/">Ports &amp; validation</a>; the candidate carries

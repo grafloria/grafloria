@@ -28,6 +28,8 @@ import type {
   RendererCapabilities,
   ExportFormat,
   ExportOptions,
+  HighlightConnectedOptions,
+  LinkConnection,
 } from '../types';
 // Deterministic headless export (VNode → standalone SVG → PNG/JPEG/WebP). The
 // serializer is the DOM-less sibling of vnode/patch.ts and consumes the very same
@@ -689,6 +691,12 @@ export class SVGRenderer implements IRenderer {
   // it is the only link between its pair). Kept so renderLink and the arrow
   // maths agree with the pre-pass.
   private frameSeparation = new Map<string, number>();
+  /**
+   * `highlightConnected`: each line's part in the selection's neighbourhood,
+   * derived from the selection at the start of every frame. Empty when the
+   * option is off, nothing is selected, or the frame is an export.
+   */
+  private frameConnections = new Map<string, LinkConnection>();
 
   // Wave 4: signature of everything that affects a link's RENDERED output but
   // does not live on the link (its routed points, its jumps, its optimizer label
@@ -807,6 +815,9 @@ export class SVGRenderer implements IRenderer {
       colorMode: config.colorMode ?? undefined,
       themes: config.themes ?? DEFAULT_THEME_SET,
       tokenBridge: config.tokenBridge ?? undefined,
+      // Off unless asked: a diagram that did not opt in must not change its
+      // picture when a node is clicked.
+      highlightConnected: config.highlightConnected ?? false,
     } as Required<SVGRendererConfig>;
 
     // Card 5: the optimizer's jump-ownership mode comes from renderer config.
@@ -1096,6 +1107,10 @@ export class SVGRenderer implements IRenderer {
     // the layers below populates it (via the style-computation resolvers); the
     // deduped `<defs>` block is assembled from it once the layers are built.
     this.frameDefs.clear();
+
+    // highlightConnected: over the WHOLE diagram, not the visible links — a trace
+    // runs through lines that are scrolled off-screen.
+    this.computeFrameConnections(diagram);
 
     // Render layers
     const linksLayer = this.renderLinksLayer(visibleLinks, lod);
@@ -1433,6 +1448,109 @@ export class SVGRenderer implements IRenderer {
   /**
    * Set theme and update rendering
    */
+  /**
+   * Switch `highlightConnected` live: `false` turns it off, `true` takes the
+   * defaults, an object tunes it. The next frame redraws every line.
+   */
+  setHighlightConnected(value: boolean | HighlightConnectedOptions | undefined): void {
+    this.config.highlightConnected = value ?? false;
+    // The options (colour, width, dash) are not part of a line's cache key — the
+    // role is — so a change of options drops every cached line.
+    this.vnodeCache.clear();
+    this.invalidateFrame();
+  }
+
+  getHighlightConnected(): boolean | HighlightConnectedOptions {
+    return this.config.highlightConnected;
+  }
+
+  /** The option with its defaults filled in, or null when it is off. */
+  private highlightOptions(): Required<HighlightConnectedOptions> | null {
+    const v = this.config.highlightConnected;
+    if (!v) return null;
+    const o = typeof v === 'object' ? v : {};
+    return {
+      depth: o.depth === undefined || !(o.depth >= 1) ? 1 : o.depth,
+      stroke: o.stroke ?? this.theme.colors.text.primary,
+      strokeWidth: o.strokeWidth ?? 2.5,
+      outgoing: o.outgoing ?? 'dashed',
+      dimOpacity: o.dimOpacity ?? 0.4,
+    };
+  }
+
+  /**
+   * Each line's part in the selection's neighbourhood. Depth 1 reads a line's
+   * two ends; a deeper trace walks the graph upstream from the selection
+   * (marking lines `in`) and downstream (marking them `out`), `depth` hops each
+   * way. O(lines) per frame when on, nothing when off.
+   */
+  private computeFrameConnections(diagram: DiagramModel): void {
+    this.frameConnections.clear();
+    const opts = this.exporting ? null : this.highlightOptions();
+    if (!opts) return;
+    const selected = new Set<string>();
+    for (const n of diagram.getNodes()) if (n.isSelected()) selected.add(n.id);
+    if (selected.size === 0) return;
+    const links = diagram.getLinks();
+    const inbound = new Set<string>();
+    const outbound = new Set<string>();
+    if (opts.depth <= 1) {
+      for (const l of links) {
+        if (l.targetNodeId !== undefined && selected.has(l.targetNodeId)) inbound.add(l.id);
+        if (l.sourceNodeId !== undefined && selected.has(l.sourceNodeId)) outbound.add(l.id);
+      }
+    } else {
+      const bySource = new Map<string, LinkModel[]>();
+      const byTarget = new Map<string, LinkModel[]>();
+      for (const l of links) {
+        if (l.sourceNodeId !== undefined) (bySource.get(l.sourceNodeId) ?? bySource.set(l.sourceNodeId, []).get(l.sourceNodeId)!).push(l);
+        if (l.targetNodeId !== undefined) (byTarget.get(l.targetNodeId) ?? byTarget.set(l.targetNodeId, []).get(l.targetNodeId)!).push(l);
+      }
+      const walk = (
+        from: Map<string, LinkModel[]>,
+        next: (l: LinkModel) => string | undefined,
+        marked: Set<string>
+      ): void => {
+        const seen = new Set(selected);
+        let frontier = [...selected];
+        for (let hop = 0; hop < opts.depth && frontier.length > 0; hop++) {
+          const ahead: string[] = [];
+          for (const id of frontier) {
+            for (const l of from.get(id) ?? []) {
+              marked.add(l.id);
+              const n = next(l);
+              if (n !== undefined && !seen.has(n)) {
+                seen.add(n);
+                ahead.push(n);
+              }
+            }
+          }
+          frontier = ahead;
+        }
+      };
+      walk(byTarget, (l) => l.sourceNodeId, inbound);
+      walk(bySource, (l) => l.targetNodeId, outbound);
+    }
+    for (const l of links) {
+      const i = inbound.has(l.id);
+      const o = outbound.has(l.id);
+      this.frameConnections.set(l.id, i && o ? 'both' : o ? 'out' : i ? 'in' : 'dim');
+    }
+  }
+
+  /** The cascade layer for a line of the selection; undefined for any other line. */
+  private connectionStyle(link: LinkModel): Partial<LinkStyle> | undefined {
+    const role = this.frameConnections.get(link.id);
+    if (role === undefined || role === 'dim') return undefined;
+    const opts = this.highlightOptions();
+    if (!opts) return undefined;
+    return {
+      stroke: opts.stroke,
+      strokeWidth: opts.strokeWidth,
+      ...(role === 'out' && opts.outgoing === 'dashed' ? { strokeDasharray: '7 5' } : {}),
+    };
+  }
+
   setTheme(theme: Theme): void {
     this.theme = theme;
 
@@ -1893,6 +2011,8 @@ export class SVGRenderer implements IRenderer {
   private linkPaintLiterals(link: LinkModel): { stroke?: string; strokeWidth: number } {
     const resolved = resolveLinkStyle(link, this.theme, {
       includeThemeBase: !this.config.useCSSMode,
+      // …so the arrowhead, painted from these literals, takes the line's ink too.
+      connection: this.connectionStyle(link),
     });
 
     const literal = (value: unknown): string | number | undefined => {
@@ -2410,11 +2530,15 @@ export class SVGRenderer implements IRenderer {
    */
   private renderLinksLayer(links: LinkModel[], lod: LODLevel): VNode {
     // Sort links: default/hovered first, then selected/highlighted on top
-    const sortedLinks = [...links].sort((a, b) => {
-      const aOrder = (a.state === 'selected' || a.state === 'highlighted') ? 1 : 0;
-      const bOrder = (b.state === 'selected' || b.state === 'highlighted') ? 1 : 0;
-      return aOrder - bOrder;
-    });
+    // …and with highlightConnected, a dimmed line under the rest and a line of
+    // the selection over them: its ink must not be crossed by a faded line.
+    const connections = this.frameConnections;
+    const order = (l: LinkModel): number => {
+      if (l.state === 'selected' || l.state === 'highlighted') return 3;
+      const c = connections.get(l.id);
+      return c === undefined ? 1 : c === 'dim' ? 0 : 2;
+    };
+    const sortedLinks = [...links].sort((a, b) => order(a) - order(b));
 
     // Pre-pass: route every auto-routed link and sync its points BEFORE any
     // link builds its VNode. Jump-point detection reads other links' points,
@@ -6373,7 +6497,10 @@ export class SVGRenderer implements IRenderer {
     // legacy data.label mirror, a spec reconcile or a document restore, and a
     // fix that has to intercept all five is a fix that will miss the sixth. A
     // key cannot miss one — if the name is different, the key is different.
-    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}`;
+    // …and so is the line's part in the selection (highlightConnected): a new
+    // selection changes the picture of lines whose own model never changed.
+    const connection = this.frameConnections.get(link.id);
+    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}${connection ? `|${connection}` : ''}`;
     // Paint-server links bypass the cache so their `<defs>` entry is re-registered
     // every frame (a cache hit would skip style computation and orphan url(#…)).
     const usesPaintServer = this.linkUsesPaintServer(link);
@@ -6718,7 +6845,17 @@ export class SVGRenderer implements IRenderer {
       type: 'g',
       key: `link-${link.id}`,
       props: {
-        className: 'link-group',
+        className:
+          connection === undefined
+            ? 'link-group'
+            : connection === 'dim'
+              ? 'link-group link-dimmed'
+              : `link-group link-connected link-connected-${connection}`,
+        ...(connection !== undefined ? { 'data-connected': connection } : {}),
+        // A faded line fades WHOLE — its arrowhead and label with it.
+        ...(connection === 'dim' && (this.highlightOptions()?.dimOpacity ?? 1) < 1
+          ? { style: { opacity: this.highlightOptions()!.dimOpacity } }
+          : {}),
         // Wave 3 (Edges & links): identify the link in the DOM. VNode `key` is
         // a VDOM-reconciliation concept and is NOT emitted as an attribute, so
         // without this there is no way to find a link's RENDERED <path> — which
@@ -7059,6 +7196,7 @@ export class SVGRenderer implements IRenderer {
   private resolvedLinkStyle(link: LinkModel): Partial<LinkStyle> {
     const resolved = resolveLinkStyle(link, this.theme, {
       includeThemeBase: !this.config.useCSSMode,
+      connection: this.connectionStyle(link),
     });
     const { style, themeBound } = this.materializeThemeRefs<LinkStyle>(
       resolved,
@@ -7070,7 +7208,8 @@ export class SVGRenderer implements IRenderer {
     // that draws one is theme-bound, `themeRef` or not. (Found by reading the
     // arrow path, not by assuming: `color: styles.stroke || theme.colors.link.default`.)
     const drawsArrow = link.style.arrowHead?.type !== 'none' || !!link.style.arrowTail;
-    if (themeBound || drawsArrow || this.linkDrawsThemeLiteral(link)) {
+    // A line of the selection is painted with the theme's ink: a theme swap must repaint it.
+    if (themeBound || drawsArrow || this.linkDrawsThemeLiteral(link) || this.frameConnections.has(link.id)) {
       this.themeBoundLinks.add(link.id);
     } else {
       this.themeBoundLinks.delete(link.id);

@@ -100627,12 +100627,17 @@ function linkStateStyle(link, theme) {
   return {};
 }
 function resolveLinkStyle(link, theme, options = {}) {
+  const state = linkStateStyle(link, theme);
+  const connection = options.connection;
+  const stateWins = link.state === "selected" || link.state === "highlighted";
   return {
     ...options.includeThemeBase ? linkThemeBase(theme) : void 0,
     ...linkTypeDefaults(theme, link),
     ...resolveStyleClasses(link.style?.styleClass),
     ...declared(link.style),
-    ...linkStateStyle(link, theme)
+    ...connection && stateWins ? connection : void 0,
+    ...state,
+    ...connection && !stateWins ? connection : void 0
   };
 }
 
@@ -171842,6 +171847,12 @@ var _SVGRenderer = class _SVGRenderer {
     // it is the only link between its pair). Kept so renderLink and the arrow
     // maths agree with the pre-pass.
     this.frameSeparation = /* @__PURE__ */ new Map();
+    /**
+     * `highlightConnected`: each line's part in the selection's neighbourhood,
+     * derived from the selection at the start of every frame. Empty when the
+     * option is off, nothing is selected, or the frame is an export.
+     */
+    this.frameConnections = /* @__PURE__ */ new Map();
     // Wave 4: signature of everything that affects a link's RENDERED output but
     // does not live on the link (its routed points, its jumps, its optimizer label
     // offsets). See markLinksWhoseFrameChanged — this is what makes the link VNode
@@ -171945,7 +171956,10 @@ var _SVGRenderer = class _SVGRenderer {
       // given and watch nothing", which is exactly the pre-Wave-4 behaviour.
       colorMode: config.colorMode ?? void 0,
       themes: config.themes ?? DEFAULT_THEME_SET,
-      tokenBridge: config.tokenBridge ?? void 0
+      tokenBridge: config.tokenBridge ?? void 0,
+      // Off unless asked: a diagram that did not opt in must not change its
+      // picture when a node is clicked.
+      highlightConnected: config.highlightConnected ?? false
     };
     if (this.config.jumpOwnership !== "both") {
       this.edgeOptimizer = new EdgeOptimizer({ jumpOwnership: this.config.jumpOwnership });
@@ -172107,6 +172121,7 @@ var _SVGRenderer = class _SVGRenderer {
     this.lastNodeCount = visibleNodes.length;
     this.lastLinkCount = visibleLinks.length;
     this.frameDefs.clear();
+    this.computeFrameConnections(diagram);
     const linksLayer = this.renderLinksLayer(visibleLinks, lod);
     const nodesLayer = this.renderNodesLayer(visibleNodes, lod);
     const connectionPreviewLayer = this.renderConnectionPreviewLayer();
@@ -172305,6 +172320,98 @@ var _SVGRenderer = class _SVGRenderer {
   /**
    * Set theme and update rendering
    */
+  /**
+   * Switch `highlightConnected` live: `false` turns it off, `true` takes the
+   * defaults, an object tunes it. The next frame redraws every line.
+   */
+  setHighlightConnected(value) {
+    this.config.highlightConnected = value ?? false;
+    this.vnodeCache.clear();
+    this.invalidateFrame();
+  }
+  getHighlightConnected() {
+    return this.config.highlightConnected;
+  }
+  /** The option with its defaults filled in, or null when it is off. */
+  highlightOptions() {
+    const v = this.config.highlightConnected;
+    if (!v) return null;
+    const o = typeof v === "object" ? v : {};
+    return {
+      depth: o.depth === void 0 || !(o.depth >= 1) ? 1 : o.depth,
+      stroke: o.stroke ?? this.theme.colors.text.primary,
+      strokeWidth: o.strokeWidth ?? 2.5,
+      outgoing: o.outgoing ?? "dashed",
+      dimOpacity: o.dimOpacity ?? 0.4
+    };
+  }
+  /**
+   * Each line's part in the selection's neighbourhood. Depth 1 reads a line's
+   * two ends; a deeper trace walks the graph upstream from the selection
+   * (marking lines `in`) and downstream (marking them `out`), `depth` hops each
+   * way. O(lines) per frame when on, nothing when off.
+   */
+  computeFrameConnections(diagram) {
+    this.frameConnections.clear();
+    const opts = this.exporting ? null : this.highlightOptions();
+    if (!opts) return;
+    const selected = /* @__PURE__ */ new Set();
+    for (const n3 of diagram.getNodes()) if (n3.isSelected()) selected.add(n3.id);
+    if (selected.size === 0) return;
+    const links = diagram.getLinks();
+    const inbound = /* @__PURE__ */ new Set();
+    const outbound = /* @__PURE__ */ new Set();
+    if (opts.depth <= 1) {
+      for (const l of links) {
+        if (l.targetNodeId !== void 0 && selected.has(l.targetNodeId)) inbound.add(l.id);
+        if (l.sourceNodeId !== void 0 && selected.has(l.sourceNodeId)) outbound.add(l.id);
+      }
+    } else {
+      const bySource = /* @__PURE__ */ new Map();
+      const byTarget = /* @__PURE__ */ new Map();
+      for (const l of links) {
+        if (l.sourceNodeId !== void 0) (bySource.get(l.sourceNodeId) ?? bySource.set(l.sourceNodeId, []).get(l.sourceNodeId)).push(l);
+        if (l.targetNodeId !== void 0) (byTarget.get(l.targetNodeId) ?? byTarget.set(l.targetNodeId, []).get(l.targetNodeId)).push(l);
+      }
+      const walk3 = (from, next, marked) => {
+        const seen = new Set(selected);
+        let frontier = [...selected];
+        for (let hop = 0; hop < opts.depth && frontier.length > 0; hop++) {
+          const ahead = [];
+          for (const id of frontier) {
+            for (const l of from.get(id) ?? []) {
+              marked.add(l.id);
+              const n3 = next(l);
+              if (n3 !== void 0 && !seen.has(n3)) {
+                seen.add(n3);
+                ahead.push(n3);
+              }
+            }
+          }
+          frontier = ahead;
+        }
+      };
+      walk3(byTarget, (l) => l.sourceNodeId, inbound);
+      walk3(bySource, (l) => l.targetNodeId, outbound);
+    }
+    for (const l of links) {
+      const i = inbound.has(l.id);
+      const o = outbound.has(l.id);
+      this.frameConnections.set(l.id, i && o ? "both" : o ? "out" : i ? "in" : "dim");
+    }
+  }
+  /** The cascade layer for a line of the selection; undefined for any other line. */
+  connectionStyle(link) {
+    const role = this.frameConnections.get(link.id);
+    if (role === void 0 || role === "dim") return void 0;
+    const opts = this.highlightOptions();
+    if (!opts) return void 0;
+    return {
+      stroke: opts.stroke,
+      strokeWidth: opts.strokeWidth,
+      ...role === "out" && opts.outgoing === "dashed" ? { strokeDasharray: "7 5" } : {}
+    };
+  }
   setTheme(theme) {
     this.theme = theme;
     if (this.config.useCSSMode) {
@@ -172651,7 +172758,9 @@ var _SVGRenderer = class _SVGRenderer {
    */
   linkPaintLiterals(link) {
     const resolved2 = resolveLinkStyle(link, this.theme, {
-      includeThemeBase: !this.config.useCSSMode
+      includeThemeBase: !this.config.useCSSMode,
+      // …so the arrowhead, painted from these literals, takes the line's ink too.
+      connection: this.connectionStyle(link)
     });
     const literal = (value) => {
       if (isThemeRef(value)) return resolveThemeRef(themeRefToken(value), this.theme);
@@ -173011,11 +173120,13 @@ var _SVGRenderer = class _SVGRenderer {
    * FIXED: Sort links so selected/highlighted links render on top
    */
   renderLinksLayer(links, lod) {
-    const sortedLinks = [...links].sort((a, b) => {
-      const aOrder = a.state === "selected" || a.state === "highlighted" ? 1 : 0;
-      const bOrder = b.state === "selected" || b.state === "highlighted" ? 1 : 0;
-      return aOrder - bOrder;
-    });
+    const connections = this.frameConnections;
+    const order = (l) => {
+      if (l.state === "selected" || l.state === "highlighted") return 3;
+      const c = connections.get(l.id);
+      return c === void 0 ? 1 : c === "dim" ? 0 : 2;
+    };
+    const sortedLinks = [...links].sort((a, b) => order(a) - order(b));
     this.frameRoutes.clear();
     this.frameVolatileRoutes.clear();
     this.frameMotionPartition = null;
@@ -175899,7 +176010,8 @@ var _SVGRenderer = class _SVGRenderer {
    * Render single link (Option 2: Enhanced with arrows and labels)
    */
   renderLink(link, lod) {
-    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}`;
+    const connection = this.frameConnections.get(link.id);
+    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}${connection ? `|${connection}` : ""}`;
     const usesPaintServer = this.linkUsesPaintServer(link);
     if (this.config.enableCaching && !link.isDirty && !usesPaintServer) {
       const cached = this.vnodeCache.get(cacheKey);
@@ -176124,7 +176236,10 @@ var _SVGRenderer = class _SVGRenderer {
       type: "g",
       key: `link-${link.id}`,
       props: {
-        className: "link-group",
+        className: connection === void 0 ? "link-group" : connection === "dim" ? "link-group link-dimmed" : `link-group link-connected link-connected-${connection}`,
+        ...connection !== void 0 ? { "data-connected": connection } : {},
+        // A faded line fades WHOLE — its arrowhead and label with it.
+        ...connection === "dim" && (this.highlightOptions()?.dimOpacity ?? 1) < 1 ? { style: { opacity: this.highlightOptions().dimOpacity } } : {},
         // Wave 3 (Edges & links): identify the link in the DOM. VNode `key` is
         // a VDOM-reconciliation concept and is NOT emitted as an attribute, so
         // without this there is no way to find a link's RENDERED <path> — which
@@ -176394,14 +176509,15 @@ var _SVGRenderer = class _SVGRenderer {
   }
   resolvedLinkStyle(link) {
     const resolved2 = resolveLinkStyle(link, this.theme, {
-      includeThemeBase: !this.config.useCSSMode
+      includeThemeBase: !this.config.useCSSMode,
+      connection: this.connectionStyle(link)
     });
     const { style, themeBound } = this.materializeThemeRefs(
       resolved2,
       _SVGRenderer.LINK_VAR_SAFE
     );
     const drawsArrow = link.style.arrowHead?.type !== "none" || !!link.style.arrowTail;
-    if (themeBound || drawsArrow || this.linkDrawsThemeLiteral(link)) {
+    if (themeBound || drawsArrow || this.linkDrawsThemeLiteral(link) || this.frameConnections.has(link.id)) {
       this.themeBoundLinks.add(link.id);
     } else {
       this.themeBoundLinks.delete(link.id);
@@ -188541,6 +188657,7 @@ function createDiagram(container, options = {}) {
       colorMode: options.colorMode ?? options.renderer?.colorMode,
       themes: options.themes,
       tokenBridge: options.tokenBridge,
+      highlightConnected: options.highlightConnected ?? options.renderer?.highlightConnected,
       // "My picture improved with no model change — repaint me." Fired by the
       // async route solver's refinements and by motion-stable routing's settle
       // frame (a tween's provisional routes re-deciding once motion stops).
@@ -189059,6 +189176,11 @@ function createDiagram(container, options = {}) {
       renderer.setTokenBridge(bridge);
       scheduler.schedule();
     },
+    setHighlightConnected(value) {
+      renderer.setHighlightConnected(value);
+      scheduler.schedule();
+    },
+    getHighlightConnected: () => renderer.getHighlightConnected(),
     // THE ONLY ASYNC EXPORT ENTRY POINT — and it always was one. `IRenderer.export`
     // has returned a Promise since the seam existed, so an ASYNC custom-node painter
     // needs no new public method: this is where waiting for one belongs. The two
@@ -193070,7 +193192,8 @@ var GrafloriaFlowElement = class extends HTMLElementBase {
       "min-zoom",
       "max-zoom",
       "pan",
-      "wheel-zoom"
+      "wheel-zoom",
+      "highlight-connected"
     ];
   }
   // -- properties (the rich path) ---------------------------------------------
@@ -193132,6 +193255,9 @@ var GrafloriaFlowElement = class extends HTMLElementBase {
       case "zoom":
         if (this.instance && next !== null) this.instance.viewport.setZoom(Number(next));
         return;
+      case "highlight-connected":
+        this.instance?.setHighlightConnected?.(this.highlightConnected());
+        return;
       default:
         return;
     }
@@ -193153,8 +193279,22 @@ var GrafloriaFlowElement = class extends HTMLElementBase {
       zoom: this.hasAttribute("zoom") ? Number(this.getAttribute("zoom")) : void 0,
       minZoom: this.hasAttribute("min-zoom") ? Number(this.getAttribute("min-zoom")) : void 0,
       maxZoom: this.hasAttribute("max-zoom") ? Number(this.getAttribute("max-zoom")) : void 0,
+      highlightConnected: this.highlightConnected(),
       renderCustomNode: (node, element) => this.renderCustomNode(node, element)
     };
+  }
+  /**
+   * `highlight-connected` — the selected node's lines come forward. Present (or
+   * any value but these) = on; `"trace"` follows every path in and out; a number
+   * is the depth; `"false"` or no attribute = off.
+   */
+  highlightConnected() {
+    const v = this.getAttribute("highlight-connected");
+    if (v === null || v.trim().toLowerCase() === "false") return false;
+    const t = v.trim().toLowerCase();
+    if (t === "trace") return { depth: Infinity };
+    const n3 = Number(t);
+    return t !== "" && Number.isFinite(n3) && n3 >= 1 ? { depth: n3 } : true;
   }
   /**
    * Custom nodes, two ways and no framework: a registered renderer
