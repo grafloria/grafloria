@@ -10,7 +10,7 @@ import type {
   ImportTextResult,
 } from '@grafloria/engine';
 import type { Theme } from '../types/theme.types';
-import type { SVGRendererConfig } from '../types/renderer.interface';
+import type { HighlightConnectedOptions, SVGRendererConfig } from '../types/renderer.interface';
 import type { Rectangle } from '../types/geometry.types';
 import type { ExportFormat, ExportOptions } from '../types/renderer.interface';
 import type { ColorMode, ThemeSet } from '../themes/color-mode';
@@ -117,6 +117,14 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * anything set here, and `instanceId` is omitted because hydration owns it.
    */
   renderer?: Omit<SVGRendererConfig, 'instanceId'>;
+
+  /**
+   * Select a node and its lines come forward — incoming solid, outgoing dashed,
+   * in the page's ink — while every other line fades back. Off by default; see
+   * {@link HighlightConnectedOptions}. Wins over `renderer.highlightConnected`.
+   * Switch it live with `setHighlightConnected()`.
+   */
+  highlightConnected?: boolean | HighlightConnectedOptions;
 
   zoom?: number;
   minZoom?: number;
@@ -264,6 +272,14 @@ export interface DiagramInstance {
   getColorMode(): ColorMode | undefined;
   /** Re-point Grafloria's CSS variables at the host design system's tokens. */
   setTokenBridge(bridge: TokenBridge | null | undefined): void;
+
+  /**
+   * Turn the selected nodes' line highlight on (`true`, or options) or off
+   * (`false`) — see `CreateDiagramOptions.highlightConnected`. Repaints.
+   */
+  setHighlightConnected(value: boolean | HighlightConnectedOptions): void;
+  /** The current `highlightConnected` setting (`false` when off). */
+  getHighlightConnected(): boolean | HighlightConnectedOptions;
 
   /**
    * Export the CURRENT view. `'svg'` returns SVG source; `'png' | 'jpeg' |
@@ -485,6 +501,7 @@ export function createDiagram(
       colorMode: options.colorMode ?? options.renderer?.colorMode,
       themes: options.themes,
       tokenBridge: options.tokenBridge,
+      highlightConnected: options.highlightConnected ?? options.renderer?.highlightConnected,
       // "My picture improved with no model change — repaint me." Fired by the
       // async route solver's refinements and by motion-stable routing's settle
       // frame (a tween's provisional routes re-deciding once motion stops).
@@ -1566,6 +1583,11 @@ export function createDiagram(
       renderer.setTokenBridge(bridge);
       scheduler.schedule();
     },
+    setHighlightConnected(value) {
+      renderer.setHighlightConnected(value);
+      scheduler.schedule();
+    },
+    getHighlightConnected: () => renderer.getHighlightConnected(),
 
     // THE ONLY ASYNC EXPORT ENTRY POINT — and it always was one. `IRenderer.export`
     // has returned a Promise since the seam existed, so an ASYNC custom-node painter

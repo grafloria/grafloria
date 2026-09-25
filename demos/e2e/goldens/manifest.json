@@ -295,6 +295,16 @@
     "showcase": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/edges__floating-edges.showcase.png"
   },
   {
+    "rel": "edges/highlight-connected.html",
+    "slug": "edges__highlight-connected",
+    "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/edges__highlight-connected.boot.png",
+    "after": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/edges__highlight-connected.after.png",
+    "reactflow": null,
+    "pro": false,
+    "pageErrors": [],
+    "error": null
+  },
+  {
     "rel": "edges/jump-overs.html",
     "slug": "edges__jump-overs",
     "boot": "/var/folders/pd/8g99tsp56714y1x3d39xqs180000gn/T/grafloria-visual-a/edges__jump-overs.boot.png",

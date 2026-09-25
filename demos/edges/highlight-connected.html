@@ -1,0 +1,246 @@
+<meta charset="utf-8">
+<title>Highlight connected lines — Grafloria</title>
+<meta name="description" content="Select a node and its lines come forward: incoming solid, outgoing dashed, the rest faded. One option, highlightConnected, and a trace mode that follows the whole path.">
+<link rel="canonical" href="https://grafloria.com/demos/edges/highlight-connected.html">
+<meta property="og:title" content="Highlight connected lines — Grafloria">
+<meta property="og:description" content="Select a node and its lines come forward: incoming solid, outgoing dashed, the rest faded. One option, highlightConnected, and a trace mode that follows the whole path.">
+<meta property="og:url" content="https://grafloria.com/demos/edges/highlight-connected.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/edges/highlight-connected.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/edges/highlight-connected.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  #canvas { height: calc(100vh - 122px); position: relative; background: #f1f1f1; }
+  /* The control bar: a row above the canvas, so it never covers a step. */
+  #hc-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding: 8px 12px; border-bottom: 1px solid var(--gf-line, #e5e7eb);
+    background: #fff;
+    font: 500 12.5px ui-sans-serif, system-ui, sans-serif; color: var(--gf-ink, #111827);
+  }
+  #hc-bar label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+  #hc-bar .seg { display: inline-flex; border: 1px solid var(--gf-line, #e5e7eb); border-radius: 7px; overflow: hidden; }
+  #hc-bar .seg button {
+    border: 0; background: none; padding: 4px 10px; cursor: pointer; white-space: nowrap;
+    font: 600 12px ui-sans-serif, system-ui, sans-serif; color: var(--gf-mut, #6b7280);
+  }
+  #hc-bar .seg button + button { border-left: 1px solid var(--gf-line, #e5e7eb); }
+  #hc-bar .seg button.on { background: var(--gf-ink, #111827); color: #fff; }
+  #hc-bar .seg button:focus-visible, #hc-bar input:focus-visible { outline: 2px solid var(--gf-accent, #2563eb); outline-offset: 2px; }
+  #hc-bar .seg[aria-disabled="true"] { opacity: .45; pointer-events: none; }
+  #hc-code { font: 12px ui-monospace, Menlo, monospace; color: var(--gf-mut, #6b7280); white-space: nowrap; }
+
+  /* The step cards — a flow editor's: a coloured header band, then what the step does. */
+  .hc-card {
+    box-sizing: border-box; width: 100%; height: 100%; overflow: hidden;
+    border-radius: 12px; background: #fff; border: 1px solid #e3e5e8;
+    font: 14px ui-sans-serif, system-ui, sans-serif; color: #1f2328;
+  }
+  .hc-head { display: flex; align-items: center; gap: 9px; height: 48px; padding: 0 18px; font-weight: 600; font-size: 16px; }
+  .hc-glyph { width: 18px; text-align: center; font-size: 15px; }
+  .hc-body { padding: 12px 18px; line-height: 1.6; color: #30343a; }
+  .hc-card.k-input .hc-head { background: #f1fcaa; }
+  .hc-card.k-step .hc-head { background: #c9d8fb; }
+  .hc-card.k-output .hc-head { background: #c8f5d2; }
+  /* The selected step: a heavy ink frame, like the reference. */
+  .grafloria-node-host[data-selected="true"] .hc-card,
+  [data-selected="true"] .hc-card { border: 3px solid #111827; }
+</style>
+<header id="demo-head"></header>
+<div id="hc-bar">
+  <label><input type="checkbox" id="hc-on" checked> Highlight the selected step’s lines</label>
+  <span class="seg" id="hc-depth" role="group" aria-label="How far to follow">
+    <button type="button" data-depth="1" class="on" aria-pressed="true">Its own lines</button>
+    <button type="button" data-depth="trace" aria-pressed="false">Trace the path</button>
+  </span>
+  <span class="seg" id="hc-out" role="group" aria-label="Outgoing lines">
+    <button type="button" data-out="dashed" class="on" aria-pressed="true">Outgoing dashed</button>
+    <button type="button" data-out="solid" aria-pressed="false">Solid</button>
+  </span>
+  <code id="hc-code"></code>
+</div>
+<div id="canvas"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+
+// A seven-step ad-campaign flow — two inputs, a research step, two generators,
+// a video step and the campaign. Select a step and its lines come forward.
+const card = (kind, glyph, title, body) => ({
+  tag: 'div', className: 'hc-card k-' + kind,
+  children: [
+    { tag: 'div', className: 'hc-head', children: [{ tag: 'span', className: 'hc-glyph', text: glyph }, { tag: 'span', text: title }] },
+    { tag: 'div', className: 'hc-body', text: body },
+  ],
+});
+const PORT = { shape: 'circle', size: 10 };
+// Ports sit on the header band's centre line, left in and right out.
+const ports = (id, w, ins, outs) => [
+  ...(ins ? [{ id: id + '_in', side: 'left', type: 'input', shape: PORT, layout: { strategy: 'absolute', args: { units: 'px', x: 0, y: 24 } } }] : []),
+  ...(outs ? [{ id: id + '_out', side: 'right', type: 'output', shape: PORT, layout: { strategy: 'absolute', args: { units: 'px', x: w, y: 24 } } }] : []),
+];
+const N = (id, x, y, w, h, kind, glyph, title, body, ins, outs) => ({
+  id, position: { x, y }, size: { width: w, height: h },
+  metadata: { html: { content: card(kind, glyph, title, body), padding: 0 } },
+  shape: { type: 'rect', fill: 'none', stroke: 'none' },
+  style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+  ports: ports(id, w, ins, outs),
+});
+const LINE = { stroke: '#9aa0a6', strokeWidth: 1.6, arrowHead: { type: 'arrow', size: 7, filled: false } };
+const E = (s, t) => ({ id: `${s}-${t}`, source: s, target: t, sourceHandle: s + '_out', targetHandle: t + '_in', type: 'bezier', style: LINE });
+
+const SPEC = {
+  nodes: [
+    N('name',      100, 490, 300, 104, 'input',  '☰', 'Product Name',          'Enter the name of product', false, true),
+    N('audience',  100, 850, 300, 104, 'input',  '☰', 'Describe Target Audience', 'Describe the target audience', false, true),
+    N('research',  580, 270, 300, 150, 'step',   '✦', 'Research Product',      'Research the product’s specifications and value proposition using web search.', true, true),
+    N('adtext',    930, 498, 300, 154, 'step',   '≡', 'Generate Ad Text',      'Generate the ad text based on the product’s specifications and the target audience.', true, true),
+    N('videodesc', 930, 850, 300, 154, 'step',   '≡', 'Generate Video Description', 'Generate the video description based on the product’s specifications.', true, true),
+    N('video',    1290, 498, 300, 128, 'step',   '▶', 'Generate Video',        'Generate the video based on the video description.', true, true),
+    N('campaign', 1650, 498, 300, 128, 'output', '▦', 'Generate Ad Campaign',  'Combine the ad text and the video into an HTML webpage.', true, false),
+  ],
+  edges: [
+    E('name', 'research'), E('name', 'adtext'), E('name', 'videodesc'),
+    E('research', 'adtext'), E('research', 'videodesc'),
+    E('audience', 'adtext'), E('audience', 'videodesc'),
+    E('adtext', 'video'), E('videodesc', 'video'),
+    E('video', 'campaign'),
+  ],
+};
+const LINKS = SPEC.edges.map((e) => e.id);
+
+defineDemo({
+  name: 'Highlight connected lines',
+  blurb: 'Select a node and its lines come forward: incoming solid, outgoing dashed, the rest faded. One option, highlightConnected, and a trace mode that follows the whole path.',
+  howTo: [
+    '"Generate Ad Text" starts selected: the three lines coming into it are dark and solid, the line going out to "Generate Video" is dark and dashed, and every other line has faded back.',
+    'Click any other step: its own lines come forward instead. Click the empty canvas and every line returns to normal. Shift-click a second step to see both steps’ lines at once.',
+    'Press "Trace the path": the highlight follows every path into the selected step and every path out of it, not just the lines that touch it. Select "Research Product" to see what it feeds all the way to the campaign.',
+    'Switch "Outgoing" to Solid, or untick the box to turn the highlight off. The code on the right shows the option each choice sets.',
+    'In your own app it is one option: createDiagram(el, { highlightConnected: true }), render(spec, el, { highlightConnected: { depth: Infinity } }), or <grafloria-flow highlight-connected="trace">. Nothing is written to the model, so it adds no undo step.',
+  ],
+
+  async setup(ctx) {
+    const state = { on: true, depth: 1, outgoing: 'dashed' };
+    const option = () => (!state.on ? false
+      : state.depth === 1 && state.outgoing === 'dashed' ? true
+      : { ...(state.depth !== 1 ? { depth: Infinity } : {}), ...(state.outgoing !== 'dashed' ? { outgoing: state.outgoing } : {}) });
+    const api = render(SPEC, ctx.host, { highlightConnected: option(), interaction: { portVisibility: 'always' } });
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    // The bar is page chrome above the canvas (it never covers a step). A second
+    // setup replaces the first one's listeners instead of stacking on them.
+    const bar = document.getElementById('hc-bar');
+    bar._wired?.abort();
+    bar._wired = new AbortController();
+    const signal = bar._wired.signal;
+    const code = bar.querySelector('#hc-code');
+    const apply = () => {
+      const o = option();
+      api.setHighlightConnected(o);
+      code.textContent = 'highlightConnected: ' + (typeof o === 'object' ? JSON.stringify(o).replace('null', 'Infinity').replace(/"(\w+)":/g, '$1: ') : String(o));
+      for (const seg of bar.querySelectorAll('.seg')) seg.setAttribute('aria-disabled', String(!state.on));
+      api.renderNow();
+    };
+    const pick = (group, attr, value) => {
+      for (const b of bar.querySelectorAll(`#${group} button`)) {
+        const on = b.getAttribute(attr) === value;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
+      }
+    };
+    bar.querySelector('#hc-on').addEventListener('change', (e) => { state.on = e.target.checked; apply(); }, { signal });
+    bar.querySelector('#hc-depth').addEventListener('click', (e) => {
+      const v = e.target.closest('button')?.getAttribute('data-depth');
+      if (!v) return;
+      state.depth = v === 'trace' ? Infinity : 1;
+      pick('hc-depth', 'data-depth', v);
+      apply();
+    }, { signal });
+    bar.querySelector('#hc-out').addEventListener('click', (e) => {
+      const v = e.target.closest('button')?.getAttribute('data-out');
+      if (!v) return;
+      state.outgoing = v;
+      pick('hc-out', 'data-out', v);
+      apply();
+    }, { signal });
+    ctx.selectOnly = (...ids) => {
+      const model = ctx.diagram;
+      model.clearSelection();
+      for (const id of ids) model.addToSelection(model.getNode(id));
+      api.renderNow();
+    };
+    ctx.reset = () => {
+      const box = bar.querySelector('#hc-on');
+      if (!box.checked) box.click();
+      bar.querySelector('#hc-depth [data-depth="1"]').click();
+      bar.querySelector('#hc-out [data-out="dashed"]').click();
+      ctx.selectOnly('adtext');
+    };
+    api.fitView(40);
+    apply();
+    ctx.selectOnly('adtext');
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    const group = (id) => host.querySelector(`[data-link-id="${id}"]`);
+    const role = (id) => group(id)?.getAttribute('data-connected') ?? null;
+    const path = (id) => group(id)?.querySelector('path.diagram-link');
+    const roles = () => Object.fromEntries(LINKS.map((id) => [id, role(id)]));
+    ctx.reset();
+    ctx.instance.fitView(40);
+    ctx.instance.renderNow();
+    await ctx.tick();
+
+    // 1. At rest: "Generate Ad Text" is selected — three lines in, one out, six faded.
+    const r = roles();
+    const ins = LINKS.filter((id) => r[id] === 'in'), outs = LINKS.filter((id) => r[id] === 'out'), dims = LINKS.filter((id) => r[id] === 'dim');
+    check(ins.sort().join() === 'audience-adtext,name-adtext,research-adtext', `the lines INTO Generate Ad Text should be "in", got [${ins}]`);
+    check(outs.join() === 'adtext-video', `the line OUT of Generate Ad Text should be "out", got [${outs}]`);
+    check(dims.length === 6, `the six other lines should be dimmed, got ${dims.length}: [${dims}]`);
+
+    // 2. Painted, not only labelled: ink, dashes, and a faded group (arrowhead included).
+    const inkIn = getComputedStyle(path('name-adtext')).stroke;
+    check(inkIn === 'rgb(17, 24, 39)', `an incoming line should be drawn in the page ink, got ${inkIn}`);
+    check(getComputedStyle(path('name-adtext')).strokeDasharray === 'none', 'an incoming line should be solid');
+    const dash = getComputedStyle(path('adtext-video')).strokeDasharray;
+    check(dash && dash !== 'none', `the outgoing line should be dashed, got "${dash}"`);
+    const faded = parseFloat(getComputedStyle(group('video-campaign')).opacity);
+    check(faded > 0.2 && faded < 0.6, `a line away from the selection should fade (opacity ≈ .4), got ${faded}`);
+    check(getComputedStyle(group('name-adtext')).opacity === '1', 'a line of the selection must not fade');
+    check(getComputedStyle(path('video-campaign')).stroke !== inkIn, 'a faded line keeps its own colour');
+
+    // 3. A new selection moves the highlight; an empty selection clears it.
+    ctx.selectOnly('campaign');
+    check(role('video-campaign') === 'in' && role('name-adtext') === 'dim', `selecting the campaign should bring ITS line forward (video-campaign=${role('video-campaign')}, name-adtext=${role('name-adtext')})`);
+    ctx.diagram.clearSelection();
+    ctx.instance.renderNow();
+    check(LINKS.every((id) => role(id) === null), 'with nothing selected every line should be as it was');
+    check(getComputedStyle(group('video-campaign')).opacity === '1', 'with nothing selected nothing is faded');
+
+    // 4. Trace the path: every path in and out of Research Product.
+    ctx.selectOnly('research');
+    document.querySelector('#hc-depth [data-depth="trace"]').click();
+    const t = roles();
+    check(t['name-research'] === 'in', `trace: the line into Research Product should be "in", got ${t['name-research']}`);
+    check(['research-adtext', 'research-videodesc', 'adtext-video', 'videodesc-video', 'video-campaign'].every((id) => t[id] === 'out'),
+      `trace: everything downstream of Research Product should be "out", got ${JSON.stringify(t)}`);
+    check(t['audience-adtext'] === 'dim' && t['name-adtext'] === 'dim', 'trace: lines that do not lie on a path through the selection stay dimmed');
+    check(document.querySelector('#hc-code').textContent.includes('depth: Infinity'), `the code readout should show the trace option, got "${document.querySelector('#hc-code').textContent}"`);
+
+    // 5. Solid outgoing lines, then off altogether.
+    document.querySelector('#hc-out [data-out="solid"]').click();
+    check(getComputedStyle(path('research-adtext')).strokeDasharray === 'none', 'Outgoing: Solid should draw the outgoing lines solid');
+    document.querySelector('#hc-on').click();
+    check(LINKS.every((id) => role(id) === null), 'unticking the box should return every line to normal');
+    check(document.querySelector('#hc-code').textContent === 'highlightConnected: false', 'the readout should say it is off');
+
+    // 6. View state only: nothing was written to the model.
+    check(ctx.diagram.getLinks().every((l) => l.state === 'default'), 'the highlight must never write a link state into the model');
+
+    ctx.reset();
+  },
+});
+</script>

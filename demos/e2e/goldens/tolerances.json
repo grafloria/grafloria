@@ -251,6 +251,14 @@
     "tolerancePct": 0.02,
     "measuredJitterPct": 0
   },
+  "edges__highlight-connected.after.png": {
+    "tolerancePct": 0.02,
+    "measuredJitterPct": 0
+  },
+  "edges__highlight-connected.boot.png": {
+    "tolerancePct": 0.02,
+    "measuredJitterPct": 0
+  },
   "edges__jump-overs.after.png": {
     "tolerancePct": 0.02,
     "measuredJitterPct": 0
