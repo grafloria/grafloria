@@ -119,8 +119,9 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
   renderer?: Omit<SVGRendererConfig, 'instanceId'>;
 
   /**
-   * Select a node and its lines come forward — incoming solid, outgoing dashed,
-   * in the page's ink — while every other line fades back. Off by default; see
+   * Select a node and its lines come forward in the page's ink while every other
+   * line fades back; a line of the selection that runs across another node is
+   * lifted above the cards and drawn dashed. Off by default; see
    * {@link HighlightConnectedOptions}. Wins over `renderer.highlightConnected`.
    * Switch it live with `setHighlightConnected()`.
    */
@@ -525,6 +526,29 @@ export function createDiagram(
   // exactly what it did before this line existed.
   if (options.viewLifecycle) renderer.setViewLifecycle(options.viewLifecycle);
   const patcher = new VNodePatcher({ document: doc });
+  // highlightConnected: the lines of the selection that cross a card are drawn
+  // AGAIN above every card — in an overlay at the end of the HTML layer, which
+  // sits over the SVG and over custom-node hosts and carries the camera. Its own
+  // patcher, so the SVG layer's per-frame stats stay the SVG layer's.
+  const overlayPatcher = new VNodePatcher({ document: doc });
+  let overlayHost: HTMLElement | null = null;
+  const syncLineOverlay = (): void => {
+    const tree = renderer.getLineOverlay();
+    if (!tree) {
+      overlayHost?.remove();
+      overlayHost = null;
+      return;
+    }
+    if (!overlayHost || overlayHost.parentNode !== layers.html) {
+      overlayHost = doc.createElement('div');
+      overlayHost.className = 'grafloria-line-overlay';
+      overlayHost.setAttribute('aria-hidden', 'true');
+      // z-index 1: above node hosts appended after it (they carry none).
+      overlayHost.setAttribute('style', 'position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:1');
+      layers.html.appendChild(overlayHost);
+    }
+    overlayPatcher.reconcile(overlayHost, tree);
+  };
 
   // -- events -----------------------------------------------------------------
   const listeners = new Map<string, Set<Listener>>();
@@ -1431,6 +1455,7 @@ export function createDiagram(
     layers.html.setAttribute('style', htmlLayerStyle(htmlTransform));
     patcher.reconcile(layers.svg, vnode);
     syncCustomNodes();
+    syncLineOverlay();
 
     lastViewportKey = viewportKey();
     lastFrameHadPreview = isConnectionPreviewActive();

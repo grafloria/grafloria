@@ -171853,6 +171853,14 @@ var _SVGRenderer = class _SVGRenderer {
      * option is off, nothing is selected, or the frame is an export.
      */
     this.frameConnections = /* @__PURE__ */ new Map();
+    /**
+     * The lines of the selection that run ACROSS another node this frame — drawn
+     * dashed and lifted above the cards (`getLineOverlay`). Decided after the
+     * routing pre-pass, from the painted geometry, before any line is styled.
+     */
+    this.frameCrossings = /* @__PURE__ */ new Set();
+    /** This frame's lifted lines (path + arrowheads), for the overlay above the HTML layer. */
+    this.frameOverlay = [];
     // Wave 4: signature of everything that affects a link's RENDERED output but
     // does not live on the link (its routed points, its jumps, its optimizer label
     // offsets). See markLinksWhoseFrameChanged — this is what makes the link VNode
@@ -172341,7 +172349,8 @@ var _SVGRenderer = class _SVGRenderer {
       depth: o.depth === void 0 || !(o.depth >= 1) ? 1 : o.depth,
       stroke: o.stroke ?? this.theme.colors.text.primary,
       strokeWidth: o.strokeWidth ?? 2.5,
-      outgoing: o.outgoing ?? "dashed",
+      // Solid: the reference draws in AND out alike; its dashes mark a line crossing a card.
+      outgoing: o.outgoing ?? "solid",
       dimOpacity: o.dimOpacity ?? 0.4
     };
   }
@@ -172353,6 +172362,8 @@ var _SVGRenderer = class _SVGRenderer {
    */
   computeFrameConnections(diagram) {
     this.frameConnections.clear();
+    this.frameCrossings.clear();
+    this.frameOverlay = [];
     const opts = this.exporting ? null : this.highlightOptions();
     if (!opts) return;
     const selected = /* @__PURE__ */ new Set();
@@ -172406,11 +172417,107 @@ var _SVGRenderer = class _SVGRenderer {
     if (role === void 0 || role === "dim") return void 0;
     const opts = this.highlightOptions();
     if (!opts) return void 0;
+    const dashed = this.frameCrossings.has(link.id) || role === "out" && opts.outgoing === "dashed";
     return {
       stroke: opts.stroke,
       strokeWidth: opts.strokeWidth,
-      ...role === "out" && opts.outgoing === "dashed" ? { strokeDasharray: "7 5" } : {}
+      ...dashed ? { strokeDasharray: "7 5" } : {}
     };
+  }
+  /**
+   * Which lines of the selection run ACROSS a node they do not connect — the
+   * reference's "Generate Ad Text → Generate Ad Campaign" straight through
+   * "Generate Video". At rest the router already detours a line around a card
+   * (computeAutoRoute), so this is the line a card is being DRAGGED over — the
+   * chord motion-stable routing keeps until the settle frame — and any route
+   * that found no detour. Read from `link.points`, which the routing pre-pass
+   * has just set to this frame's PAINTED geometry (flattened), so the answer is
+   * this frame's, never the last one's. Only the selection's lines are tested:
+   * a handful, each against the nodes its bounds reach.
+   */
+  computeFrameCrossings(links) {
+    this.frameCrossings.clear();
+    if (this.frameConnections.size === 0) return;
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+    const INSET = 2;
+    for (const link of links) {
+      const role = this.frameConnections.get(link.id);
+      if (role === void 0 || role === "dim") continue;
+      const pts = link.points;
+      if (!pts || pts.length < 2) continue;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      const own = /* @__PURE__ */ new Set();
+      for (const id of [link.sourceNodeId, link.targetNodeId]) {
+        let n3 = id !== void 0 ? diagram.getNode(id) : void 0;
+        while (n3) {
+          own.add(n3.id);
+          n3 = n3.getParent();
+        }
+      }
+      const candidates = diagram.getVisibleNodes({ x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) });
+      const crosses = candidates.some((n3) => {
+        if (own.has(n3.id) || !n3.size || n3.state?.visible === false) return false;
+        const at = n3.getWorldPosition?.() ?? n3.position;
+        const r = { minX: at.x + INSET, minY: at.y + INSET, maxX: at.x + n3.size.width - INSET, maxY: at.y + n3.size.height - INSET };
+        if (r.maxX <= r.minX || r.maxY <= r.minY) return false;
+        for (let i = 1; i < pts.length; i++) if (this.segmentIntersectsRect(pts[i - 1], pts[i], r)) return true;
+        return false;
+      });
+      if (crosses) this.frameCrossings.add(link.id);
+    }
+  }
+  /**
+   * The lifted lines, as an `<svg>` in WORLD coordinates for the overlay the
+   * instance keeps at the end of the HTML layer — above SVG nodes and HTML
+   * custom nodes alike, moved by the same camera transform. `null` when
+   * `highlightConnected` is off; an empty `<svg>` when nothing is lifted.
+   */
+  getLineOverlay() {
+    if (!this.highlightOptions()) return null;
+    return {
+      type: "svg",
+      key: "grafloria-line-overlay",
+      props: {
+        width: 1,
+        height: 1,
+        style: { position: "absolute", left: "0px", top: "0px", overflow: "visible", pointerEvents: "none" }
+      },
+      children: this.frameOverlay
+    };
+  }
+  /** A crossing line's path and arrowheads, copied from its own VNode for the overlay. */
+  liftLine(linkVNode) {
+    const out = [];
+    const id = String(linkVNode.props["data-link-id"] ?? "");
+    for (const c of linkVNode.children ?? []) {
+      if (!c || typeof c !== "object") continue;
+      const cls = String(c.props?.className ?? "");
+      if (c.type === "path" && /(^|\s)diagram-link(\s|$)/.test(cls)) {
+        out.push({
+          type: "path",
+          key: `overlay-${id}-path`,
+          props: {
+            d: c.props.d,
+            fill: "none",
+            style: c.props.style,
+            stroke: c.props.stroke,
+            className: "grafloria-line-overlay-path",
+            "data-link-id": id
+          },
+          children: []
+        });
+      } else if (/(^|\s)arrow(\s|$)/.test(cls)) {
+        out.push({ ...c, key: `overlay-${id}-${c.key ?? out.length}` });
+      }
+    }
+    return out;
   }
   setTheme(theme) {
     this.theme = theme;
@@ -173178,7 +173285,15 @@ var _SVGRenderer = class _SVGRenderer {
       this.frameLabelOffsets.clear();
     }
     this.markLinksWhoseFrameChanged(sortedLinks);
+    this.computeFrameCrossings(sortedLinks);
     const children = sortedLinks.map((link) => this.renderLink(link, lod));
+    this.frameOverlay = [];
+    if (this.frameCrossings.size > 0) {
+      for (const vnode of children) {
+        const id = vnode.props?.["data-link-id"];
+        if (typeof id === "string" && this.frameCrossings.has(id)) this.frameOverlay.push(...this.liftLine(vnode));
+      }
+    }
     return {
       type: "g",
       key: "links-layer",
@@ -176011,7 +176126,8 @@ var _SVGRenderer = class _SVGRenderer {
    */
   renderLink(link, lod) {
     const connection = this.frameConnections.get(link.id);
-    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}${connection ? `|${connection}` : ""}`;
+    const crossing = this.frameCrossings.has(link.id);
+    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}${connection ? `|${connection}` : ""}${crossing ? "~x" : ""}`;
     const usesPaintServer = this.linkUsesPaintServer(link);
     if (this.config.enableCaching && !link.isDirty && !usesPaintServer) {
       const cached = this.vnodeCache.get(cacheKey);
@@ -176236,8 +176352,9 @@ var _SVGRenderer = class _SVGRenderer {
       type: "g",
       key: `link-${link.id}`,
       props: {
-        className: connection === void 0 ? "link-group" : connection === "dim" ? "link-group link-dimmed" : `link-group link-connected link-connected-${connection}`,
+        className: connection === void 0 ? "link-group" : connection === "dim" ? "link-group link-dimmed" : `link-group link-connected link-connected-${connection}${crossing ? " link-crossing" : ""}`,
         ...connection !== void 0 ? { "data-connected": connection } : {},
+        ...crossing ? { "data-crossing": "true" } : {},
         // A faded line fades WHOLE — its arrowhead and label with it.
         ...connection === "dim" && (this.highlightOptions()?.dimOpacity ?? 1) < 1 ? { style: { opacity: this.highlightOptions().dimOpacity } } : {},
         // Wave 3 (Edges & links): identify the link in the DOM. VNode `key` is
@@ -188677,6 +188794,24 @@ function createDiagram(container, options = {}) {
   renderer.applyInstanceScope(layers.root);
   if (options.viewLifecycle) renderer.setViewLifecycle(options.viewLifecycle);
   const patcher = new VNodePatcher({ document: doc });
+  const overlayPatcher = new VNodePatcher({ document: doc });
+  let overlayHost = null;
+  const syncLineOverlay = () => {
+    const tree = renderer.getLineOverlay();
+    if (!tree) {
+      overlayHost?.remove();
+      overlayHost = null;
+      return;
+    }
+    if (!overlayHost || overlayHost.parentNode !== layers.html) {
+      overlayHost = doc.createElement("div");
+      overlayHost.className = "grafloria-line-overlay";
+      overlayHost.setAttribute("aria-hidden", "true");
+      overlayHost.setAttribute("style", "position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:1");
+      layers.html.appendChild(overlayHost);
+    }
+    overlayPatcher.reconcile(overlayHost, tree);
+  };
   const listeners3 = /* @__PURE__ */ new Map();
   const emit = (event, payload) => {
     const set = listeners3.get(event);
@@ -189059,6 +189194,7 @@ function createDiagram(container, options = {}) {
     layers.html.setAttribute("style", htmlLayerStyle(htmlTransform));
     patcher.reconcile(layers.svg, vnode);
     syncCustomNodes();
+    syncLineOverlay();
     lastViewportKey = viewportKey();
     lastFrameHadPreview = isConnectionPreviewActive();
     lastFrameEpoch = getMutationEpoch();

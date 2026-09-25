@@ -688,8 +688,11 @@ export interface SVGRendererConfig {
 
   /**
    * Select a node and its lines come forward: the lines coming INTO it and going
-   * OUT of it are drawn in the page's ink (outgoing dashed), and every other line
-   * fades back — the flow-editor look (Google's Opal draws a workflow this way).
+   * OUT of it are drawn in the page's ink, and every other line fades back — the
+   * flow-editor look (Google's Opal draws a workflow this way). A line of the
+   * selection that runs ACROSS another node is lifted above the cards and drawn
+   * dashed, so it does not read as a connection to that node; its group carries
+   * `data-crossing="true"`.
    * Off by default. `true` for the defaults, or {@link HighlightConnectedOptions}.
    *
    * View state only, derived from the selection every frame: nothing is written
@@ -712,7 +715,11 @@ export interface HighlightConnectedOptions {
   stroke?: string;
   /** The width of a highlighted line. Default 2.5 (a line is 2). */
   strokeWidth?: number;
-  /** How a line going OUT of the selection is drawn. Default `'dashed'`. */
+  /**
+   * How a line going OUT of the selection is drawn. Default `'solid'`, like the
+   * lines coming in; `'dashed'` adds a direction cue. (A line crossing a card is
+   * dashed either way.)
+   */
   outgoing?: 'dashed' | 'solid';
   /** Opacity of every other line while a node is selected. Default 0.4 — faded, still legible; `1` leaves them alone. */
   dimOpacity?: number;

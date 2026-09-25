@@ -2,8 +2,11 @@
  * HIGHLIGHT THE LINES OF THE SELECTED NODE (renderer 0.4.7).
  *
  * The look of a flow editor like Google's Opal: select a node and the lines that
- * touch it come forward — incoming solid, outgoing dashed, both in the page's ink
- * — while every other line fades back. Opt-in (`highlightConnected`), because a
+ * touch it come forward in the page's ink while every other line fades back. A
+ * line of the selection that runs ACROSS another node is lifted above the cards
+ * and drawn dashed, so it cannot be mistaken for a connection to that node
+ * (renderer 0.4.8 — 0.4.7 dashed every outgoing line, a misreading of the
+ * reference: its one dashed line was the one crossing a card). Opt-in (`highlightConnected`), because a
  * diagram that did not ask for it must not change its picture when a node is
  * clicked. It is VIEW state derived from the selection each frame: nothing is
  * written to the model, so it creates no undo step and never syncs to a peer.
@@ -104,7 +107,7 @@ describe('highlightConnected — the selected node brings its lines forward', ()
     });
   });
 
-  it('paints them: the page ink and a heavier stroke, outgoing dashed, the rest faded', () => {
+  it('paints them: the page ink and a heavier stroke, in AND out solid, the rest faded', () => {
     diagram = createDiagram(container, { nodes: NODES, edges: EDGES, highlightConnected: true });
     select('adtext');
     const ink = '#111827'; // the light theme's primary text colour
@@ -114,7 +117,7 @@ describe('highlightConnected — the selected node brings its lines forward', ()
     expect(inStyle).not.toContain('stroke-dasharray');
     const outStyle = path('adtext-video')!.getAttribute('style') ?? '';
     expect(outStyle).toContain(`stroke: ${ink}`);
-    expect(outStyle).toMatch(/stroke-dasharray: \d/);
+    expect(outStyle).not.toContain('stroke-dasharray'); // nothing crosses it: solid
     // Dimmed on the GROUP, so its arrowhead and label fade with it.
     expect(group('video-campaign')!.style.opacity).toBe('0.4');
     expect(group('name-adtext')!.style.opacity).toBe('');
@@ -164,15 +167,16 @@ describe('highlightConnected — the selected node brings its lines forward', ()
     });
   });
 
-  it('options: a colour, solid outgoing lines, and no dimming', () => {
+  it('options: a colour, dashed outgoing lines as a direction cue, and no dimming', () => {
     diagram = createDiagram(container, {
       nodes: NODES,
       edges: EDGES,
-      highlightConnected: { stroke: '#dc2626', outgoing: 'solid', dimOpacity: 1 },
+      highlightConnected: { stroke: '#dc2626', outgoing: 'dashed', dimOpacity: 1 },
     });
     select('adtext');
     expect(path('adtext-video')!.getAttribute('style') ?? '').toContain('stroke: #dc2626');
-    expect(path('adtext-video')!.getAttribute('style') ?? '').not.toContain('stroke-dasharray');
+    expect(path('adtext-video')!.getAttribute('style') ?? '').toMatch(/stroke-dasharray: \d/);
+    expect(path('name-adtext')!.getAttribute('style') ?? '').not.toContain('stroke-dasharray');
     expect(group('video-campaign')!.style.opacity).toBe('');
   });
 
@@ -207,6 +211,115 @@ describe('highlightConnected — the selected node brings its lines forward', ()
     diagram.renderNow();
     expect(role('adtext-video')).toBe('out');
     expect(path('adtext-video')!.getAttribute('style') ?? '').toContain('stroke: #2563eb'); // the theme's selected link
+  });
+
+  describe('a line that runs ACROSS another node is lifted above the cards and drawn dashed', () => {
+    // a → c, with b dragged across it — the reference's "Generate Ad Text → Generate Ad Campaign"
+    // straight through "Generate Video". At rest Grafloria's router detours a line AROUND a card, so a
+    // line crosses one while a card is dragged over it (motion-stable routing keeps the chord until the
+    // first still frame) or when no detour is found.
+    const NODES4: NodeSpec[] = [box('a', 0, 300), box('b', 400, 520), box('c', 800, 300), box('d', 400, 800)];
+    const EDGES4 = [
+      { id: 'a-c', source: 'a', target: 'c' },
+      { id: 'a-d', source: 'a', target: 'd' },
+    ];
+    const overlay = () => container.querySelector('.grafloria-html-layer .grafloria-line-overlay') as HTMLElement | null;
+    const overlayPaths = () => Array.from(overlay()?.querySelectorAll('path.grafloria-line-overlay-path') ?? []);
+    /** Drag b up onto the a → c line, one frame per step, and stop ON it (b is still "in motion"). */
+    const dragOntoLine = () => {
+      const b = diagram!.getModel().getNode('b')!;
+      for (const y of [460, 400, 340, 300]) {
+        b.setPosition(400, y);
+        diagram!.renderNow();
+      }
+    };
+    /** The first still frame — the one the renderer schedules itself to settle the route. */
+    const settle = async () => {
+      await Promise.resolve();
+      diagram!.renderNow();
+      diagram!.renderNow();
+    };
+
+    it('at rest the router takes the line AROUND a card: nothing crosses, nothing is lifted', () => {
+      diagram = createDiagram(container, { nodes: [box('a', 0, 300), box('b', 400, 300), box('c', 800, 300)], edges: EDGES4.slice(0, 1), highlightConnected: true });
+      select('a');
+      expect(role('a-c')).toBe('out');
+      expect(group('a-c')!.getAttribute('data-crossing')).toBeNull();
+      expect(path('a-c')!.getAttribute('style') ?? '').not.toContain('stroke-dasharray');
+      expect(overlayPaths()).toHaveLength(0);
+    });
+
+    it('a line BENT BY HAND across a card is lifted at rest — the reference exactly', () => {
+      // the router takes lines around cards on its own; a line the user bent across one stays where it was put
+      diagram = createDiagram(container, {
+        nodes: [box('a', 0, 300), box('b', 400, 300), box('c', 800, 300)],
+        edges: [{ id: 'a-c', source: 'a', target: 'c', points: [{ x: 160, y: 330 }, { x: 480, y: 330 }, { x: 800, y: 330 }], metadata: { hasManualWaypoints: true } }],
+        highlightConnected: true,
+      });
+      select('a');
+      expect(group('a-c')!.getAttribute('data-crossing')).toBe('true');
+      expect(path('a-c')!.getAttribute('style') ?? '').toMatch(/stroke-dasharray: \d/);
+      expect(overlayPaths()).toHaveLength(1);
+      diagram.getModel().clearSelection();
+      diagram.renderNow();
+      expect(group('a-c')!.getAttribute('data-crossing')).toBeNull(); // not a line of the selection now
+      expect(path('a-c')!.getAttribute('style') ?? '').not.toContain('stroke-dasharray');
+    });
+
+    it('a card dragged over a line of the selection: the line is dashed, marked, and drawn again ON TOP in the HTML layer', () => {
+      diagram = createDiagram(container, { nodes: NODES4, edges: EDGES4, highlightConnected: true });
+      select('a');
+      expect(group('a-c')!.getAttribute('data-crossing')).toBeNull();
+      dragOntoLine();
+      expect(group('a-c')!.getAttribute('class')).toContain('link-crossing');
+      expect(group('a-c')!.getAttribute('data-crossing')).toBe('true');
+      expect(path('a-c')!.getAttribute('style') ?? '').toMatch(/stroke-dasharray: \d/);
+      expect(group('a-d')!.getAttribute('data-crossing')).toBeNull(); // a → d crosses nothing: solid, not lifted
+      expect(path('a-d')!.getAttribute('style') ?? '').not.toContain('stroke-dasharray');
+      const o = overlay();
+      expect(o).not.toBeNull();
+      expect(o!.parentElement!.classList.contains('grafloria-html-layer')).toBe(true);
+      expect(o!.getAttribute('aria-hidden')).toBe('true');
+      expect(o!.style.pointerEvents).toBe('none');
+      const lifted = overlayPaths();
+      expect(lifted).toHaveLength(1);
+      expect(lifted[0].getAttribute('d')).toBe(path('a-c')!.getAttribute('d')); // the same line, above every card
+      expect(lifted[0].getAttribute('style') ?? '').toMatch(/stroke-dasharray: \d/);
+      expect(lifted[0].getAttribute('fill')).toBe('none');
+    });
+
+    it('when the card stops, the router takes the line around it: solid again, the lift gone (no stale cached picture)', async () => {
+      diagram = createDiagram(container, { nodes: NODES4, edges: EDGES4, highlightConnected: true });
+      select('a');
+      dragOntoLine();
+      expect(group('a-c')!.getAttribute('data-crossing')).toBe('true');
+      await settle();
+      expect(group('a-c')!.getAttribute('data-crossing')).toBeNull();
+      expect(path('a-c')!.getAttribute('style') ?? '').not.toContain('stroke-dasharray');
+      expect(overlayPaths()).toHaveLength(0);
+    });
+
+    it('only lines of the selection are lifted: a faded line under a dragged card stays under it', () => {
+      diagram = createDiagram(container, { nodes: NODES4, edges: EDGES4, highlightConnected: true });
+      select('d');
+      dragOntoLine();
+      expect(role('a-c')).toBe('dim');
+      expect(group('a-c')!.getAttribute('data-crossing')).toBeNull();
+      expect(overlayPaths()).toHaveLength(0);
+    });
+
+    it('nothing selected, or the option off: no lift and no overlay', () => {
+      diagram = createDiagram(container, { nodes: NODES4, edges: EDGES4, highlightConnected: true });
+      select('a');
+      dragOntoLine();
+      expect(overlayPaths()).toHaveLength(1);
+      diagram.getModel().clearSelection();
+      diagram.renderNow();
+      expect(overlayPaths()).toHaveLength(0);
+      diagram.setHighlightConnected(false);
+      diagram.renderNow();
+      expect(overlay()).toBeNull();
+    });
   });
 
   it('is never written to the model: no undo step, and an export draws the diagram, not the highlight', async () => {

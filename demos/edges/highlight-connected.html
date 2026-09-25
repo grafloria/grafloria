@@ -1,9 +1,9 @@
 <meta charset="utf-8">
 <title>Highlight connected lines — Grafloria</title>
-<meta name="description" content="Select a node and its lines come forward: incoming solid, outgoing dashed, the rest faded. One option, highlightConnected, and a trace mode that follows the whole path.">
+<meta name="description" content="Select a node and its lines come forward in ink while the rest fade; a line crossing a card is lifted above it and dashed. One option, highlightConnected, and a trace mode that follows the whole path.">
 <link rel="canonical" href="https://grafloria.com/demos/edges/highlight-connected.html">
 <meta property="og:title" content="Highlight connected lines — Grafloria">
-<meta property="og:description" content="Select a node and its lines come forward: incoming solid, outgoing dashed, the rest faded. One option, highlightConnected, and a trace mode that follows the whole path.">
+<meta property="og:description" content="Select a node and its lines come forward in ink while the rest fade; a line crossing a card is lifted above it and dashed. One option, highlightConnected, and a trace mode that follows the whole path.">
 <meta property="og:url" content="https://grafloria.com/demos/edges/highlight-connected.html">
 <meta property="og:image" content="https://grafloria.com/demos/thumbs/edges/highlight-connected.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -54,8 +54,8 @@
     <button type="button" data-depth="trace" aria-pressed="false">Trace the path</button>
   </span>
   <span class="seg" id="hc-out" role="group" aria-label="Outgoing lines">
-    <button type="button" data-out="dashed" class="on" aria-pressed="true">Outgoing dashed</button>
-    <button type="button" data-out="solid" aria-pressed="false">Solid</button>
+    <button type="button" data-out="solid" class="on" aria-pressed="true">Outgoing solid</button>
+    <button type="button" data-out="dashed" aria-pressed="false">Dashed</button>
   </span>
   <code id="hc-code"></code>
 </div>
@@ -74,9 +74,11 @@ const card = (kind, glyph, title, body) => ({
   ],
 });
 const PORT = { shape: 'circle', size: 10 };
-// Ports sit on the header band's centre line, left in and right out.
-const ports = (id, w, ins, outs) => [
-  ...(ins ? [{ id: id + '_in', side: 'left', type: 'input', shape: PORT, layout: { strategy: 'absolute', args: { units: 'px', x: 0, y: 24 } } }] : []),
+// Ports sit on the header band's centre line, left in and right out — or, for
+// a step fed from below, in at the middle of its bottom edge.
+const ports = (id, w, h, ins, outs) => [
+  ...(ins === 'bottom' ? [{ id: id + '_in', side: 'bottom', type: 'input', shape: PORT, layout: { strategy: 'absolute', args: { units: 'px', x: w / 2, y: h } } }]
+    : ins ? [{ id: id + '_in', side: 'left', type: 'input', shape: PORT, layout: { strategy: 'absolute', args: { units: 'px', x: 0, y: 24 } } }] : []),
   ...(outs ? [{ id: id + '_out', side: 'right', type: 'output', shape: PORT, layout: { strategy: 'absolute', args: { units: 'px', x: w, y: 24 } } }] : []),
 ];
 const N = (id, x, y, w, h, kind, glyph, title, body, ins, outs) => ({
@@ -84,7 +86,7 @@ const N = (id, x, y, w, h, kind, glyph, title, body, ins, outs) => ({
   metadata: { html: { content: card(kind, glyph, title, body), padding: 0 } },
   shape: { type: 'rect', fill: 'none', stroke: 'none' },
   style: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
-  ports: ports(id, w, ins, outs),
+  ports: ports(id, w, h, ins, outs),
 });
 const LINE = { stroke: '#9aa0a6', strokeWidth: 1.6, arrowHead: { type: 'arrow', size: 7, filled: false } };
 const E = (s, t) => ({ id: `${s}-${t}`, source: s, target: t, sourceHandle: s + '_out', targetHandle: t + '_in', type: 'bezier', style: LINE });
@@ -96,14 +98,20 @@ const SPEC = {
     N('research',  580, 270, 300, 150, 'step',   '✦', 'Research Product',      'Research the product’s specifications and value proposition using web search.', true, true),
     N('adtext',    930, 498, 300, 154, 'step',   '≡', 'Generate Ad Text',      'Generate the ad text based on the product’s specifications and the target audience.', true, true),
     N('videodesc', 930, 850, 300, 154, 'step',   '≡', 'Generate Video Description', 'Generate the video description based on the product’s specifications.', true, true),
-    N('video',    1290, 498, 300, 128, 'step',   '▶', 'Generate Video',        'Generate the video based on the video description.', true, true),
+    N('video',    1290, 498, 300, 128, 'step',   '▶', 'Generate Video',        'Generate the video based on the video description.', 'bottom', true),
     N('campaign', 1650, 498, 300, 128, 'output', '▦', 'Generate Ad Campaign',  'Combine the ad text and the video into an HTML webpage.', true, false),
   ],
   edges: [
     E('name', 'research'), E('name', 'adtext'), E('name', 'videodesc'),
     E('research', 'adtext'), E('research', 'videodesc'),
     E('audience', 'adtext'), E('audience', 'videodesc'),
-    E('adtext', 'video'), E('videodesc', 'video'),
+    // The campaign combines the ad text and the video: Ad Text feeds it directly,
+    // past "Generate Video", which is fed from below by the video description.
+    // That line carries a HAND-PLACED bend on its own row, so it runs straight
+    // across "Generate Video" the way the reference draws it — left to itself,
+    // the router would take it around the card.
+    { ...E('adtext', 'campaign'), points: [{ x: 1230, y: 522 }, { x: 1440, y: 522 }, { x: 1650, y: 522 }], metadata: { hasManualWaypoints: true } },
+    E('videodesc', 'video'),
     E('video', 'campaign'),
   ],
 };
@@ -111,20 +119,21 @@ const LINKS = SPEC.edges.map((e) => e.id);
 
 defineDemo({
   name: 'Highlight connected lines',
-  blurb: 'Select a node and its lines come forward: incoming solid, outgoing dashed, the rest faded. One option, highlightConnected, and a trace mode that follows the whole path.',
+  blurb: 'Select a node and its lines come forward in ink while the rest fade; a line crossing a card is lifted above it and dashed. One option, highlightConnected, and a trace mode that follows the whole path.',
   howTo: [
-    '"Generate Ad Text" starts selected: the three lines coming into it are dark and solid, the line going out to "Generate Video" is dark and dashed, and every other line has faded back.',
+    '"Generate Ad Text" starts selected: the three lines coming into it are dark and solid, and every other line has faded back. Its line to "Generate Ad Campaign" runs straight ACROSS "Generate Video", so it is drawn dashed and ABOVE that card: it passes over the card, it does not connect to it.',
+    'That line has a hand-placed bend on its own row, like the reference. Grafloria\'s router takes lines around cards by itself, so the lift is for the lines that still cross one: a line bent by hand, or one with no way around.',
     'Click any other step: its own lines come forward instead. Click the empty canvas and every line returns to normal. Shift-click a second step to see both steps’ lines at once.',
     'Press "Trace the path": the highlight follows every path into the selected step and every path out of it, not just the lines that touch it. Select "Research Product" to see what it feeds all the way to the campaign.',
-    'Switch "Outgoing" to Solid, or untick the box to turn the highlight off. The code on the right shows the option each choice sets.',
+    'Switch outgoing lines to Dashed for a direction cue, or untick the box to turn the highlight off. The code on the right shows the option each choice sets.',
     'In your own app it is one option: createDiagram(el, { highlightConnected: true }), render(spec, el, { highlightConnected: { depth: Infinity } }), or <grafloria-flow highlight-connected="trace">. Nothing is written to the model, so it adds no undo step.',
   ],
 
   async setup(ctx) {
-    const state = { on: true, depth: 1, outgoing: 'dashed' };
+    const state = { on: true, depth: 1, outgoing: 'solid' };
     const option = () => (!state.on ? false
-      : state.depth === 1 && state.outgoing === 'dashed' ? true
-      : { ...(state.depth !== 1 ? { depth: Infinity } : {}), ...(state.outgoing !== 'dashed' ? { outgoing: state.outgoing } : {}) });
+      : state.depth === 1 && state.outgoing === 'solid' ? true
+      : { ...(state.depth !== 1 ? { depth: Infinity } : {}), ...(state.outgoing !== 'solid' ? { outgoing: state.outgoing } : {}) });
     const api = render(SPEC, ctx.host, { highlightConnected: option(), interaction: { portVisibility: 'always' } });
     ctx.instance = api;
     ctx.diagram = api.getModel();
@@ -174,7 +183,7 @@ defineDemo({
       const box = bar.querySelector('#hc-on');
       if (!box.checked) box.click();
       bar.querySelector('#hc-depth [data-depth="1"]').click();
-      bar.querySelector('#hc-out [data-out="dashed"]').click();
+      bar.querySelector('#hc-out [data-out="solid"]').click();
       ctx.selectOnly('adtext');
     };
     api.fitView(40);
@@ -198,46 +207,62 @@ defineDemo({
     const r = roles();
     const ins = LINKS.filter((id) => r[id] === 'in'), outs = LINKS.filter((id) => r[id] === 'out'), dims = LINKS.filter((id) => r[id] === 'dim');
     check(ins.sort().join() === 'audience-adtext,name-adtext,research-adtext', `the lines INTO Generate Ad Text should be "in", got [${ins}]`);
-    check(outs.join() === 'adtext-video', `the line OUT of Generate Ad Text should be "out", got [${outs}]`);
+    check(outs.join() === 'adtext-campaign', `the line OUT of Generate Ad Text should be "out", got [${outs}]`);
     check(dims.length === 6, `the six other lines should be dimmed, got ${dims.length}: [${dims}]`);
 
-    // 2. Painted, not only labelled: ink, dashes, and a faded group (arrowhead included).
+    // 2. Painted, not only labelled: ink, in AND out solid, a faded group (arrowhead included).
     const inkIn = getComputedStyle(path('name-adtext')).stroke;
     check(inkIn === 'rgb(17, 24, 39)', `an incoming line should be drawn in the page ink, got ${inkIn}`);
     check(getComputedStyle(path('name-adtext')).strokeDasharray === 'none', 'an incoming line should be solid');
-    const dash = getComputedStyle(path('adtext-video')).strokeDasharray;
-    check(dash && dash !== 'none', `the outgoing line should be dashed, got "${dash}"`);
+    check(getComputedStyle(path('adtext-campaign')).stroke === inkIn, 'the outgoing line should be drawn in the page ink too');
+    check(getComputedStyle(path('research-adtext')).strokeDasharray === 'none', 'a line of the selection that crosses no card is solid');
     const faded = parseFloat(getComputedStyle(group('video-campaign')).opacity);
     check(faded > 0.2 && faded < 0.6, `a line away from the selection should fade (opacity ≈ .4), got ${faded}`);
     check(getComputedStyle(group('name-adtext')).opacity === '1', 'a line of the selection must not fade');
     check(getComputedStyle(path('video-campaign')).stroke !== inkIn, 'a faded line keeps its own colour');
 
-    // 3. A new selection moves the highlight; an empty selection clears it.
+    // 3. The line that runs ACROSS Generate Video (its hand-placed bend keeps it on the row) is dashed and
+    //    lifted ABOVE the cards; the other lines of the selection are not.
+    check(group('adtext-campaign').getAttribute('data-crossing') === 'true', 'the line from Generate Ad Text to the campaign crosses Generate Video and should be marked so');
+    const lineDash = getComputedStyle(path('adtext-campaign')).strokeDasharray;
+    check(lineDash && lineDash !== 'none', `a line crossing a card should be dashed, got "${lineDash}"`);
+    check(group('name-adtext').getAttribute('data-crossing') === null, 'a line that crosses no card is not lifted');
+    const lifted = document.querySelectorAll('.grafloria-html-layer .grafloria-line-overlay path.grafloria-line-overlay-path');
+    check(lifted.length === 1 && lifted[0].getAttribute('d') === path('adtext-campaign').getAttribute('d'), `the crossing line should be drawn again above the cards, got ${lifted.length} lifted path(s)`);
+    const over = document.querySelector('.grafloria-line-overlay');
+    const cardHost = host.querySelector('[data-node-id="video"]');
+    check(!!over && !!cardHost && (over.compareDocumentPosition(cardHost) & Node.DOCUMENT_POSITION_PRECEDING) !== 0, 'the lifted line should sit AFTER (above) the card it crosses');
+
+    // 4. A new selection moves the highlight; an empty selection clears it.
     ctx.selectOnly('campaign');
-    check(role('video-campaign') === 'in' && role('name-adtext') === 'dim', `selecting the campaign should bring ITS line forward (video-campaign=${role('video-campaign')}, name-adtext=${role('name-adtext')})`);
+    check(role('video-campaign') === 'in' && role('adtext-campaign') === 'in' && role('name-adtext') === 'dim', `selecting the campaign should bring ITS two lines forward (video-campaign=${role('video-campaign')}, adtext-campaign=${role('adtext-campaign')}, name-adtext=${role('name-adtext')})`);
     ctx.diagram.clearSelection();
     ctx.instance.renderNow();
     check(LINKS.every((id) => role(id) === null), 'with nothing selected every line should be as it was');
     check(getComputedStyle(group('video-campaign')).opacity === '1', 'with nothing selected nothing is faded');
 
-    // 4. Trace the path: every path in and out of Research Product.
+    // 5. Trace the path: every path in and out of Research Product.
     ctx.selectOnly('research');
     document.querySelector('#hc-depth [data-depth="trace"]').click();
     const t = roles();
     check(t['name-research'] === 'in', `trace: the line into Research Product should be "in", got ${t['name-research']}`);
-    check(['research-adtext', 'research-videodesc', 'adtext-video', 'videodesc-video', 'video-campaign'].every((id) => t[id] === 'out'),
+    check(['research-adtext', 'research-videodesc', 'adtext-campaign', 'videodesc-video', 'video-campaign'].every((id) => t[id] === 'out'),
       `trace: everything downstream of Research Product should be "out", got ${JSON.stringify(t)}`);
     check(t['audience-adtext'] === 'dim' && t['name-adtext'] === 'dim', 'trace: lines that do not lie on a path through the selection stay dimmed');
     check(document.querySelector('#hc-code').textContent.includes('depth: Infinity'), `the code readout should show the trace option, got "${document.querySelector('#hc-code').textContent}"`);
 
-    // 5. Solid outgoing lines, then off altogether.
+    // 6. Dashed outgoing lines as a direction cue, back to solid, then off altogether.
+    document.querySelector('#hc-out [data-out="dashed"]').click();
+    const cue = getComputedStyle(path('research-adtext')).strokeDasharray;
+    check(cue && cue !== 'none', `Outgoing: Dashed should dash the outgoing lines, got "${cue}"`);
+    check(getComputedStyle(path('name-research')).strokeDasharray === 'none', 'Outgoing: Dashed leaves the incoming lines solid');
     document.querySelector('#hc-out [data-out="solid"]').click();
-    check(getComputedStyle(path('research-adtext')).strokeDasharray === 'none', 'Outgoing: Solid should draw the outgoing lines solid');
+    check(getComputedStyle(path('research-adtext')).strokeDasharray === 'none', 'Outgoing: Solid draws them solid again');
     document.querySelector('#hc-on').click();
     check(LINKS.every((id) => role(id) === null), 'unticking the box should return every line to normal');
     check(document.querySelector('#hc-code').textContent === 'highlightConnected: false', 'the readout should say it is off');
 
-    // 6. View state only: nothing was written to the model.
+    // 7. View state only: nothing was written to the model.
     check(ctx.diagram.getLinks().every((l) => l.state === 'default'), 'the highlight must never write a link state into the model');
 
     ctx.reset();
