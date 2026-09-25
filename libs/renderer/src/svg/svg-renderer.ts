@@ -205,6 +205,7 @@ import { buildHtmlForeignObject, hasHtmlContent } from './html-node';
 // Phase 1.1: Arrow type rendering
 import { ArrowRenderer } from './ArrowRenderer';
 
+
 // Phase 1.2: Label rendering
 import { LabelRenderer } from './LabelRenderer';
 
@@ -697,6 +698,14 @@ export class SVGRenderer implements IRenderer {
    * option is off, nothing is selected, or the frame is an export.
    */
   private frameConnections = new Map<string, LinkConnection>();
+  /**
+   * The lines of the selection that run ACROSS another node this frame — drawn
+   * dashed and lifted above the cards (`getLineOverlay`). Decided after the
+   * routing pre-pass, from the painted geometry, before any line is styled.
+   */
+  private frameCrossings = new Set<string>();
+  /** This frame's lifted lines (path + arrowheads), for the overlay above the HTML layer. */
+  private frameOverlay: VNode[] = [];
 
   // Wave 4: signature of everything that affects a link's RENDERED output but
   // does not live on the link (its routed points, its jumps, its optimizer label
@@ -1473,7 +1482,8 @@ export class SVGRenderer implements IRenderer {
       depth: o.depth === undefined || !(o.depth >= 1) ? 1 : o.depth,
       stroke: o.stroke ?? this.theme.colors.text.primary,
       strokeWidth: o.strokeWidth ?? 2.5,
-      outgoing: o.outgoing ?? 'dashed',
+      // Solid: the reference draws in AND out alike; its dashes mark a line crossing a card.
+      outgoing: o.outgoing ?? 'solid',
       dimOpacity: o.dimOpacity ?? 0.4,
     };
   }
@@ -1486,6 +1496,8 @@ export class SVGRenderer implements IRenderer {
    */
   private computeFrameConnections(diagram: DiagramModel): void {
     this.frameConnections.clear();
+    this.frameCrossings.clear();
+    this.frameOverlay = [];
     const opts = this.exporting ? null : this.highlightOptions();
     if (!opts) return;
     const selected = new Set<string>();
@@ -1544,11 +1556,111 @@ export class SVGRenderer implements IRenderer {
     if (role === undefined || role === 'dim') return undefined;
     const opts = this.highlightOptions();
     if (!opts) return undefined;
+    const dashed = this.frameCrossings.has(link.id) || (role === 'out' && opts.outgoing === 'dashed');
     return {
       stroke: opts.stroke,
       strokeWidth: opts.strokeWidth,
-      ...(role === 'out' && opts.outgoing === 'dashed' ? { strokeDasharray: '7 5' } : {}),
+      ...(dashed ? { strokeDasharray: '7 5' } : {}),
     };
+  }
+
+  /**
+   * Which lines of the selection run ACROSS a node they do not connect — the
+   * reference's "Generate Ad Text → Generate Ad Campaign" straight through
+   * "Generate Video". At rest the router already detours a line around a card
+   * (computeAutoRoute), so this is the line a card is being DRAGGED over — the
+   * chord motion-stable routing keeps until the settle frame — and any route
+   * that found no detour. Read from `link.points`, which the routing pre-pass
+   * has just set to this frame's PAINTED geometry (flattened), so the answer is
+   * this frame's, never the last one's. Only the selection's lines are tested:
+   * a handful, each against the nodes its bounds reach.
+   */
+  private computeFrameCrossings(links: LinkModel[]): void {
+    this.frameCrossings.clear();
+    if (this.frameConnections.size === 0) return;
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+    const INSET = 2; // a line grazing a card's edge is not across it
+    for (const link of links) {
+      const role = this.frameConnections.get(link.id);
+      if (role === undefined || role === 'dim') continue;
+      const pts = link.points;
+      if (!pts || pts.length < 2) continue;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      // Its own ends, and anything that contains them, are not "another node".
+      const own = new Set<string>();
+      for (const id of [link.sourceNodeId, link.targetNodeId]) {
+        let n = id !== undefined ? diagram.getNode(id) : undefined;
+        while (n) {
+          own.add(n.id);
+          n = n.getParent();
+        }
+      }
+      const candidates = diagram.getVisibleNodes({ x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) });
+      const crosses = candidates.some((n) => {
+        if (own.has(n.id) || !n.size || n.state?.visible === false) return false;
+        const at = n.getWorldPosition?.() ?? n.position; // a node in a group is placed relative to it
+        const r = { minX: at.x + INSET, minY: at.y + INSET, maxX: at.x + n.size.width - INSET, maxY: at.y + n.size.height - INSET };
+        if (r.maxX <= r.minX || r.maxY <= r.minY) return false;
+        for (let i = 1; i < pts.length; i++) if (this.segmentIntersectsRect(pts[i - 1], pts[i], r)) return true;
+        return false;
+      });
+      if (crosses) this.frameCrossings.add(link.id);
+    }
+  }
+
+  /**
+   * The lifted lines, as an `<svg>` in WORLD coordinates for the overlay the
+   * instance keeps at the end of the HTML layer — above SVG nodes and HTML
+   * custom nodes alike, moved by the same camera transform. `null` when
+   * `highlightConnected` is off; an empty `<svg>` when nothing is lifted.
+   */
+  getLineOverlay(): VNode | null {
+    if (!this.highlightOptions()) return null;
+    return {
+      type: 'svg',
+      key: 'grafloria-line-overlay',
+      props: {
+        width: 1,
+        height: 1,
+        style: { position: 'absolute', left: '0px', top: '0px', overflow: 'visible', pointerEvents: 'none' },
+      },
+      children: this.frameOverlay,
+    };
+  }
+
+  /** A crossing line's path and arrowheads, copied from its own VNode for the overlay. */
+  private liftLine(linkVNode: VNode): VNode[] {
+    const out: VNode[] = [];
+    const id = String(linkVNode.props['data-link-id'] ?? '');
+    for (const c of linkVNode.children ?? []) {
+      if (!c || typeof c !== 'object') continue;
+      const cls = String(c.props?.className ?? '');
+      if (c.type === 'path' && /(^|\s)diagram-link(\s|$)/.test(cls)) {
+        out.push({
+          type: 'path',
+          key: `overlay-${id}-path`,
+          props: {
+            d: c.props.d,
+            fill: 'none',
+            style: c.props.style,
+            stroke: c.props.stroke,
+            className: 'grafloria-line-overlay-path',
+            'data-link-id': id,
+          },
+          children: [],
+        });
+      } else if (/(^|\s)arrow(\s|$)/.test(cls)) {
+        out.push({ ...c, key: `overlay-${id}-${c.key ?? out.length}` });
+      }
+    }
+    return out;
   }
 
   setTheme(theme: Theme): void {
@@ -2708,7 +2820,18 @@ export class SVGRenderer implements IRenderer {
     // bug: jump arcs already had exactly this problem before Wave 4.)
     this.markLinksWhoseFrameChanged(sortedLinks);
 
+    // highlightConnected: which of the selection's lines cross a card — now,
+    // with the geometry final and before any line is styled.
+    this.computeFrameCrossings(sortedLinks);
+
     const children = sortedLinks.map(link => this.renderLink(link, lod));
+    this.frameOverlay = [];
+    if (this.frameCrossings.size > 0) {
+      for (const vnode of children) {
+        const id = vnode.props?.['data-link-id'];
+        if (typeof id === 'string' && this.frameCrossings.has(id)) this.frameOverlay.push(...this.liftLine(vnode));
+      }
+    }
 
     return {
       type: 'g',
@@ -6500,7 +6623,8 @@ export class SVGRenderer implements IRenderer {
     // …and so is the line's part in the selection (highlightConnected): a new
     // selection changes the picture of lines whose own model never changed.
     const connection = this.frameConnections.get(link.id);
-    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}${connection ? `|${connection}` : ''}`;
+    const crossing = this.frameCrossings.has(link.id);
+    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}${connection ? `|${connection}` : ''}${crossing ? '~x' : ''}`;
     // Paint-server links bypass the cache so their `<defs>` entry is re-registered
     // every frame (a cache hit would skip style computation and orphan url(#…)).
     const usesPaintServer = this.linkUsesPaintServer(link);
@@ -6850,8 +6974,9 @@ export class SVGRenderer implements IRenderer {
             ? 'link-group'
             : connection === 'dim'
               ? 'link-group link-dimmed'
-              : `link-group link-connected link-connected-${connection}`,
+              : `link-group link-connected link-connected-${connection}${crossing ? ' link-crossing' : ''}`,
         ...(connection !== undefined ? { 'data-connected': connection } : {}),
+        ...(crossing ? { 'data-crossing': 'true' } : {}),
         // A faded line fades WHOLE — its arrowhead and label with it.
         ...(connection === 'dim' && (this.highlightOptions()?.dimOpacity ?? 1) < 1
           ? { style: { opacity: this.highlightOptions()!.dimOpacity } }
