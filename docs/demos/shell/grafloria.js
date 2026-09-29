@@ -106015,6 +106015,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
   getPointAtPosition(t) {
     if (this.points.length < 2) return null;
     t = Math.max(0, Math.min(1, t));
+    if (this.pathType === "direct" && this.points.length > 2) return this.polylineAt(t).point;
     if (this.pathType === "direct") {
       const from = this.points[0];
       const to = this.points[this.points.length - 1];
@@ -106024,7 +106025,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
       };
     }
     const totalLength = this.getTotalLength();
-    if (this.segments.length > 0 && totalLength > 0) {
+    if (this.segments.length > 0 && totalLength > 0 && this.segmentsTracePoints()) {
       const targetLength = totalLength * t;
       let currentLength = 0;
       for (const segment of this.segments) {
@@ -106037,23 +106038,52 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
       }
       return this.points[this.points.length - 1] || null;
     }
+    return this.polylineAt(t).point;
+  }
+  /**
+   * Do `segments` still trace `points`, corner for corner? The renderer writes a
+   * line's painted points straight onto `points` every frame (no setPoints, so no
+   * change event) and leaves `segments` as they were; when the two disagree, the
+   * points are where the line is.
+   */
+  segmentsTracePoints() {
+    const segs = this.segments;
+    const pts = this.points;
+    if (segs.length === 0 || segs.length !== pts.length - 1) return false;
+    const same = (a, b) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01;
+    if (!same(segs[0].from, pts[0])) return false;
+    for (let i = 0; i < segs.length; i++) if (!same(segs[i].to, pts[i + 1])) return false;
+    return true;
+  }
+  /**
+   * The point `t` of the way along the `points` polyline (by arc length), and
+   * the direction of the run it lands on. `points` is the painted geometry the
+   * renderer syncs, so this is where the line really is.
+   */
+  polylineAt(t) {
+    const pts = this.points;
     let polyLength = 0;
-    for (let i = 0; i < this.points.length - 1; i++) {
-      polyLength += Math.hypot(this.points[i + 1].x - this.points[i].x, this.points[i + 1].y - this.points[i].y);
+    for (let i = 0; i < pts.length - 1; i++) {
+      polyLength += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
     }
-    if (polyLength <= 0) return { ...this.points[0] };
+    const dir = (a, b) => {
+      const len2 = Math.hypot(b.x - a.x, b.y - a.y);
+      return len2 > 0 ? { x: (b.x - a.x) / len2, y: (b.y - a.y) / len2 } : { x: 1, y: 0 };
+    };
+    if (polyLength <= 0) return { point: { ...pts[0] }, tangent: { x: 1, y: 0 } };
     let remaining = polyLength * t;
-    for (let i = 0; i < this.points.length - 1; i++) {
-      const a = this.points[i];
-      const b = this.points[i + 1];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i];
+      const b = pts[i + 1];
       const segLen = Math.hypot(b.x - a.x, b.y - a.y);
-      if (remaining <= segLen) {
-        const st = segLen > 0 ? remaining / segLen : 0;
-        return { x: a.x + (b.x - a.x) * st, y: a.y + (b.y - a.y) * st };
+      if (segLen > 0 && remaining <= segLen) {
+        const st = remaining / segLen;
+        return { point: { x: a.x + (b.x - a.x) * st, y: a.y + (b.y - a.y) * st }, tangent: dir(a, b) };
       }
       remaining -= segLen;
     }
-    return { ...this.points[this.points.length - 1] };
+    const n3 = pts.length;
+    return { point: { ...pts[n3 - 1] }, tangent: dir(pts[n3 - 2], pts[n3 - 1]) };
   }
   /**
    * Get total path length
@@ -106106,6 +106136,10 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
    * Returns normalized direction vector
    */
   getTangentAt(t) {
+    if (this.pathType === "direct" && this.points.length > 2) return this.polylineAt(Math.max(0, Math.min(1, t))).tangent;
+    if (this.pathType !== "direct" && this.points.length >= 2 && this.segments.length > 0 && !this.segmentsTracePoints()) {
+      return this.polylineAt(Math.max(0, Math.min(1, t))).tangent;
+    }
     if (this.segments.length === 0) return null;
     t = Math.max(0, Math.min(1, t));
     if (this.pathType === "direct" && this.points.length >= 2) {
@@ -119555,7 +119589,9 @@ var DEFAULT_INTERACTION_CONFIG = {
     symmetricControls: false
   },
   // wave12/connect-ergonomics — all three opt-in so steady-state is untouched.
-  enableGroupDrag: false,
+  // A zone is a container you can pick up: on by default (it used to pan the
+  // canvas, and a diagram that declared zones got no way to move one).
+  enableGroupDrag: true,
   enableProximityConnect: false,
   proximityConnectRadius: 0,
   // 0 → fall back to DEFAULT_SNAP_CONFIG.proximityConnectRadius
@@ -119564,7 +119600,8 @@ var DEFAULT_INTERACTION_CONFIG = {
   // DRAG-ATTACH on contextual-zoom + LINK-SELECT-SPAN on layout-portfolio), and
   // changes the feel for every embedder. The Visio editor surface enables it.
   enableHelperLines: false,
-  enableGroupMembershipOnDrop: false,
+  // …and a box dropped out of a zone leaves it, dropped into one joins it.
+  enableGroupMembershipOnDrop: true,
   enableInPlaceTextEdit: false,
   enableKeyboardNudge: false,
   enableEasyConnect: false,
@@ -131217,6 +131254,9 @@ function stripNonClonable(options) {
 }
 
 // libs/engine/src/engine/DiagramEngine.ts
+function isRoutingObstacle(node) {
+  return node.getMetadata("shape")?.type !== "text";
+}
 var DiagramEngine = class {
   constructor(config = {}) {
     // Shape "masters" for stencils / the palette
@@ -132476,6 +132516,7 @@ var DiagramEngine = class {
    * Register a node as an obstacle in the routing engine
    */
   registerNodeAsObstacle(node) {
+    if (!isRoutingObstacle(node)) return;
     const obstacle = {
       id: node.id,
       x: node.position.x,
@@ -132519,7 +132560,7 @@ var DiagramEngine = class {
       for (const memberId of g.members) hidden.add(memberId);
     }
     for (const node of this.diagram.getNodes()) {
-      if (hidden.has(node.id)) {
+      if (hidden.has(node.id) || !isRoutingObstacle(node)) {
         this.routingEngine.removeObstacle(node.id);
       } else {
         this.routingEngine.updateObstacle({
@@ -132553,6 +132594,10 @@ var DiagramEngine = class {
    * Also invalidates all links so they recalculate paths with new obstacle positions
    */
   updateNodeObstacle(node) {
+    if (!isRoutingObstacle(node)) {
+      this.routingEngine.removeObstacle(node.id);
+      return;
+    }
     const obstacle = {
       id: node.id,
       x: node.position.x,
@@ -132590,6 +132635,11 @@ var DiagramEngine = class {
         );
         this.diagramDisposers.push(
           node.on("change:size", () => {
+            this.updateNodeObstacle(node);
+          })
+        );
+        this.diagramDisposers.push(
+          node.on("change:metadata.shape", () => {
             this.updateNodeObstacle(node);
           })
         );
@@ -132640,6 +132690,11 @@ var DiagramEngine = class {
       );
       this.diagramDisposers.push(
         node.on("change:size", () => {
+          this.updateNodeObstacle(node);
+        })
+      );
+      this.diagramDisposers.push(
+        node.on("change:metadata.shape", () => {
           this.updateNodeObstacle(node);
         })
       );
@@ -141282,6 +141337,11 @@ var GroupMembershipService = class {
     result.fromGroupId = currentGroup?.id;
     result.toGroupId = target?.id;
     if ((target?.id ?? void 0) === (currentGroup?.id ?? void 0)) {
+      this.clearHover();
+      return result;
+    }
+    if (currentGroup && currentGroup.constrainChildren === true) {
+      result.rejected = true;
       this.clearHover();
       return result;
     }
@@ -169298,6 +169358,23 @@ var ArrowRenderer = class {
 // libs/renderer/src/svg/LabelRenderer.ts
 var DEFAULT_HTML_LABEL_WIDTH = 120;
 var DEFAULT_HTML_LABEL_HEIGHT = 28;
+function alongPolyline(pts, t) {
+  if (pts.length < 2) return null;
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) total += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+  if (total <= 0) return { point: { ...pts[0] }, angle: 0 };
+  let remaining = total * Math.max(0, Math.min(1, t));
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const len2 = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len2 > 0 && (remaining <= len2 || i === pts.length - 2)) {
+      const u = Math.min(1, remaining / len2);
+      return { point: { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u }, angle: Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI };
+    }
+    remaining -= len2;
+  }
+  return { point: { ...pts[pts.length - 1] }, angle: 0 };
+}
 var LabelRenderer = class {
   constructor() {
     this.defaultFontSize = 12;
@@ -169314,14 +169391,15 @@ var LabelRenderer = class {
    */
   renderLabel(label, link, context = {}) {
     const position = linkLabelPosition(label);
-    const point = link.getPointAtPosition(position);
+    const along = context.path ? alongPolyline(context.path, position) : null;
+    const point = along ? along.point : link.getPointAtPosition(position);
     if (!point) {
       return null;
     }
     const offset = context.offset ?? label.offset ?? { x: 0, y: 0 };
     const finalX = point.x + offset.x;
     const finalY = point.y + offset.y;
-    const rotation2 = this.resolveRotation(label, link, position);
+    const rotation2 = this.resolveRotation(label, link, position, along?.angle);
     if (label.template) {
       const template = getLabelTemplate(label.template);
       if (template) {
@@ -169429,9 +169507,9 @@ var LabelRenderer = class {
     };
   }
   /** Resolve `rotation: 'auto' | number` against the path, honouring keepUpright. */
-  resolveRotation(label, link, position) {
+  resolveRotation(label, link, position, paintedAngle) {
     if (label.rotation === "auto") {
-      const angle = link.getAngleAt(position);
+      const angle = paintedAngle ?? link.getAngleAt(position);
       if (angle === null) return void 0;
       let rotation2 = angle;
       if (label.rotationOffset) {
@@ -171956,6 +172034,9 @@ var AnimationService = class {
 };
 
 // libs/renderer/src/svg/svg-renderer.ts
+function isTextNote(node) {
+  return node.getMetadata("shape")?.type === "text";
+}
 function polylineTangentAt(points, t) {
   if (!points || points.length < 2) return null;
   const lens = [];
@@ -173650,7 +173731,10 @@ var _SVGRenderer = class _SVGRenderer {
     }
     this.invalidateStaleRoutes();
     for (const link of sortedLinks) {
-      if (this.linkHasManualWaypoints(link)) continue;
+      if (this.linkHasManualWaypoints(link)) {
+        this.settleManualWaypoints(link);
+        continue;
+      }
       const endpoints = this.getLinkEndpoints(link);
       if (!endpoints) continue;
       const key = this.routeKey(link, endpoints, routingLod);
@@ -175839,10 +175923,39 @@ var _SVGRenderer = class _SVGRenderer {
    * Decided per frame from the path's tangent where the label lands, so the
    * label follows the line when a box moves. Undefined = the label's own offset.
    */
-  placedLabelOffset(link, label) {
+  /**
+   * A label placed above/below a BENT line rides the middle of its longest
+   * straight run — where a person drawing it would write it — instead of half
+   * way along its length, which is often a corner. Only for the default
+   * position (0.5) on straight-run lines (direct / orthogonal); a straight line's
+   * longest run is the whole line, so nothing moves there.
+   */
+  onLongestRun(link, label, painted) {
+    const placement = link.getMetadata("labelPlacement");
+    if (placement !== "above" && placement !== "below") return label;
+    if (label.position !== void 0 && label.position !== 0.5) return label;
+    if (link.pathType !== "direct" && link.pathType !== "orthogonal") return label;
+    const pts = painted ?? link.points;
+    if (!pts || pts.length < 3) return label;
+    let total = 0;
+    let best = { from: 0, len: -1 };
+    let level = { from: 0, len: -1 };
+    for (let i = 0; i < pts.length - 1; i++) {
+      const dx = pts[i + 1].x - pts[i].x;
+      const dy = pts[i + 1].y - pts[i].y;
+      const len2 = Math.hypot(dx, dy);
+      if (len2 > best.len) best = { from: total, len: len2 };
+      if (Math.abs(dy) < 0.5 && len2 > level.len) level = { from: total, len: len2 };
+      total += len2;
+    }
+    if (total <= 0) return label;
+    const run = level.len > 0 ? level : best;
+    return { ...label, position: (run.from + run.len / 2) / total };
+  }
+  placedLabelOffset(link, label, painted) {
     const placement = link.getMetadata("labelPlacement");
     if (placement !== "above" && placement !== "below") return void 0;
-    const tangent = polylineTangentAt(link.points, typeof label.position === "number" ? label.position : 0.5) ?? link.getTangentAt(0.5);
+    const tangent = polylineTangentAt(painted ?? link.points, typeof label.position === "number" ? label.position : 0.5) ?? link.getTangentAt(0.5);
     if (!tangent) return void 0;
     const len2 = Math.hypot(tangent.x, tangent.y) || 1;
     let nx = -tangent.y / len2;
@@ -175856,8 +175969,10 @@ var _SVGRenderer = class _SVGRenderer {
       ny = -ny;
     }
     const fontSize = label.style?.fontSize ?? 12;
-    const lines = Math.max(1, String(label.text).split("\n").length);
-    const d = lines * fontSize * 1.2 / 2 + 5;
+    const textLines2 = String(label.text).split("\n");
+    const halfHeight = Math.max(1, textLines2.length) * fontSize * 1.2 / 2;
+    const halfWidth = Math.max(...textLines2.map((l) => l.length)) * fontSize * 0.6 / 2;
+    const d = Math.abs(ny) >= Math.abs(nx) ? halfHeight + 5 : halfWidth + 5;
     return { x: (label.offset?.x ?? 0) + nx * d, y: (label.offset?.y ?? 0) + ny * d };
   }
   /**
@@ -176781,7 +176896,7 @@ var _SVGRenderer = class _SVGRenderer {
           const sourceNodeId = link.sourceNodeId || link.source;
           const targetNodeId = link.targetNodeId || link.target;
           segmentObstacles = currentDiagram.getNodes().filter(
-            (node) => node.id !== sourceNodeId && node.id !== targetNodeId
+            (node) => node.id !== sourceNodeId && node.id !== targetNodeId && !isTextNote(node)
           ).map((node) => ({
             id: node.id,
             x: node.position.x,
@@ -176998,10 +177113,12 @@ var _SVGRenderer = class _SVGRenderer {
           const labelVNodes = [];
           if (link.labels && link.labels.length > 0) {
             link.labels.forEach((label2) => {
-              const offset = this.placedLabelOffset(link, label2) ?? this.frameLabelOffsets.get(`${link.id}::${label2.id}`);
-              const labelVNode = this.labelRenderer.renderLabel(label2, link, {
+              const placed = this.onLongestRun(link, label2, points);
+              const offset = this.placedLabelOffset(link, placed, points) ?? this.frameLabelOffsets.get(`${link.id}::${label2.id}`);
+              const labelVNode = this.labelRenderer.renderLabel(placed, link, {
                 offset,
-                theme: this.theme
+                theme: this.theme,
+                path: points
               });
               if (labelVNode) {
                 labelVNodes.push(labelVNode);
@@ -178195,6 +178312,41 @@ var _SVGRenderer = class _SVGRenderer {
    * interaction layer), never inferred from point count — auto-routed
    * orthogonal paths also have >2 points.
    */
+  /**
+   * A hand-bent line whose box moved: its ends re-attach to the ports where
+   * they are NOW, and on a right-angle line the bend next to a moved end slides
+   * with it so that run stays square (a line leaving a box's top keeps its first
+   * run vertical). Bends next to an end that did not move are the author's and
+   * stay exactly where they were.
+   *
+   * This used to happen only inside `renderLink` — after the frame signature
+   * had compared the line's stored points, which nothing had refreshed, so the
+   * line was served from the cache: drawn where it was, both ends in the air.
+   */
+  settleManualWaypoints(link) {
+    const endpoints = this.getLinkEndpoints(link);
+    const old = link.points;
+    if (!endpoints || !old || old.length < 3) return;
+    const start = { ...endpoints.start };
+    const end = { ...endpoints.end };
+    const bends = old.slice(1, -1).map((p) => ({ ...p }));
+    const moved = (a, b) => Math.abs(a.x - b.x) > 0.01 || Math.abs(a.y - b.y) > 0.01;
+    const upright = (a, b) => Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) >= 0.5;
+    const level = (a, b) => Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) >= 0.5;
+    if (this.isOrthogonalRouting(link)) {
+      const n3 = old.length;
+      if (moved(start, old[0])) {
+        if (upright(old[0], old[1])) bends[0].x = start.x;
+        else if (level(old[0], old[1])) bends[0].y = start.y;
+      }
+      if (moved(end, old[n3 - 1])) {
+        const last = bends[bends.length - 1];
+        if (upright(old[n3 - 2], old[n3 - 1])) last.x = end.x;
+        else if (level(old[n3 - 2], old[n3 - 1])) last.y = end.y;
+      }
+    }
+    this.syncLinkPoints(link, [start, ...bends, end]);
+  }
   linkHasManualWaypoints(link) {
     return link.getMetadata("hasManualWaypoints") === true && !!link.points && link.points.length > 2;
   }
@@ -178309,7 +178461,7 @@ var _SVGRenderer = class _SVGRenderer {
         height: node.size.height
       };
       all.push(rect);
-      if (!group.hiddenByCollapse.has(node.id)) routing.push(rect);
+      if (!group.hiddenByCollapse.has(node.id) && !isTextNote(node)) routing.push(rect);
     }
     for (const block of group.groupBlocks) routing.push(block);
     this.frameObstacleCache = {
@@ -178822,6 +178974,7 @@ var _SVGRenderer = class _SVGRenderer {
     if (!points || points.length < 2) return false;
     const inset = 1;
     for (const node of nodes) {
+      if (isTextNote(node)) continue;
       const rect = {
         minX: node.position.x + inset,
         minY: node.position.y + inset,
@@ -197589,8 +197742,13 @@ var DRAG_THRESHOLD = 4;
 var STRIP_STAY = 9;
 var nodeOf = (g) => g.entity;
 var binderSeq = 0;
+function claimContainerGestures(api) {
+  const engine = api.getEngine();
+  engine.setInteractionConfig?.({ enableGroupDrag: false, enableGroupMembershipOnDrop: false });
+}
 function bindDashboardGrid(api, group, options = {}) {
   ensureDashboardKitStyles();
+  claimContainerGestures(api);
   const diagram = api.getModel();
   const maxColumns = options.columns ?? 12;
   let columns = maxColumns;
@@ -200264,6 +200422,7 @@ var binderSeq2 = 0;
 function bindDashboardSplit(api, group, options = {}) {
   const diagram = api.getModel();
   ensureDashboardKitStyles(api.container.ownerDocument ?? document);
+  claimContainerGestures(api);
   const columns = options.columns ?? 12;
   const gap = options.gap ?? 12;
   const padding = options.padding ?? gap;
