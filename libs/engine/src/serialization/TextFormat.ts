@@ -36,6 +36,13 @@ export interface ExportTextOptions {
    * Mermaid and imports are best-effort DSL parses (the lossy boundary).
    */
   lossless?: boolean;
+  /**
+   * Write every node's and zone's exact position and size as
+   * `%%grafloria:at id x,y WxH` (default false). The sidecar already carries
+   * them; this is for a READABLE body that redraws the same picture on its own
+   * — the way an AI-drawn diagram is written for Grafloria.
+   */
+  positions?: boolean;
 }
 
 export interface ImportTextOptions extends DiagramLoadOptions {
@@ -95,7 +102,7 @@ export function exportDiagramText(
   options: ExportTextOptions = {}
 ): string {
   const dsl = new DSL({ autoLayout: false });
-  const body = dsl.generate(diagram, { preserveIds: true, includeComments: false });
+  const body = dsl.generate(diagram, { preserveIds: true, includeComments: false, positions: options.positions === true });
   if (options.lossless === false) {
     return body;
   }
@@ -138,8 +145,11 @@ export function sanitizeForSidecar(doc: SerializedDiagram): SerializedDiagram {
   const links = ((doc.links as unknown as Array<Record<string, unknown>>) ?? []).map((l) => {
     const cleaned = stripState({ ...l });
     // Emptied, not deleted: LinkModel.fromJSON expects the array to exist. The
-    // routing pre-pass rebuilds the real polyline on the first frame.
-    cleaned['points'] = [];
+    // routing pre-pass rebuilds the real polyline on the first frame. A line
+    // bent BY HAND is the exception: its points are the user's bends, not
+    // derived state — stripped, every exported diagram lost them.
+    const meta = cleaned['metadata'] as Record<string, unknown> | undefined;
+    if (meta?.['hasManualWaypoints'] !== true) cleaned['points'] = [];
     return cleaned;
   });
   return { ...doc, nodes, links } as unknown as SerializedDiagram;

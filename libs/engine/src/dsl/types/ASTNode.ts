@@ -12,6 +12,7 @@ export type DiagramType = 'flowchart' | 'bpmn' | 'erd' | 'classDiagram';
  * Node shape type mapping to Mermaid syntax
  */
 export type NodeShape =
+  | 'text'               // @{ shape: text } — words, no box
   | 'rectangle'          // [text]
   | 'rounded-rectangle'  // (text)
   | 'stadium'            // ([text])
@@ -164,6 +165,8 @@ export interface LinkStyleNode extends ASTNode {
   type: 'LinkStyle';
   indices: number[] | 'default';
   properties: StyleProperties;
+  /** `interpolate <curve>` — linear, step, stepBefore, stepAfter, basis, … */
+  interpolate?: string;
 }
 
 /** `click a "https://…" "tooltip"` — a node's navigation target. */
@@ -181,7 +184,8 @@ export interface ClickNode extends ASTNode {
  */
 export interface GrafloriaDirectiveNode extends ASTNode {
   type: 'GrafloriaDirective';
-  target: 'node' | 'edge';
+  /** node / edge / group properties, or `at` — an exact position and size. */
+  target: 'node' | 'edge' | 'group' | 'at';
   ids: string[];
   properties: Record<string, string>;
 }

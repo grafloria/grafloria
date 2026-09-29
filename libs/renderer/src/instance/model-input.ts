@@ -1,4 +1,4 @@
-import { GroupModel, LinkModel, NodeModel, PortModel } from '@grafloria/engine';
+import { GroupModel, LinkModel, NodeModel, PortModel, ensureSideAnchorPort } from '@grafloria/engine';
 import type {
   DiagramModel,
   LabelStyle,
@@ -409,8 +409,9 @@ export function resolvePortId(
 
   if (handle) {
     if (node.getPort(handle)) return handle;
-    const anchor = parseSideAnchor(handle);
-    if (anchor) return ensureAnchorPort(node, anchor.side, anchor.at, handle);
+    // `'right@36'` — a point along a side (engine/ports/side-anchor).
+    const anchored = ensureSideAnchorPort(node, handle);
+    if (anchored) return anchored;
     if ((PORT_SIDES as readonly string[]).includes(handle)) {
       const port = node.getPortBySide(handle as (typeof PORT_SIDES)[number]);
       if (port) return port.id;
@@ -420,33 +421,6 @@ export function resolvePortId(
   }
 
   return node.getPortBySide(fallbackSide)?.id;
-}
-
-/**
- * `'right@36'`, `'bottom@138'`, `'left@50%'` → a side and a point along it: px
- * from the side's start (top for left/right, left for top/bottom) or a percent.
- */
-export function parseSideAnchor(handle: string): { side: (typeof PORT_SIDES)[number]; at: { px?: number; pct?: number } } | null {
-  const m = /^(top|right|bottom|left)@(-?\d+(?:\.\d+)?)(%|px)?$/.exec(handle.trim());
-  if (!m) return null;
-  const v = Number(m[2]);
-  return { side: m[1] as (typeof PORT_SIDES)[number], at: m[3] === '%' ? { pct: v } : { px: v } };
-}
-
-/**
- * The hidden port a `side@offset` handle names — created once per node and
- * handle, then re-used (a re-applied spec must not grow a second one). Placed
- * as a FRACTION of the node box, so it stays on its side when the node resizes.
- */
-function ensureAnchorPort(node: NodeModel, side: (typeof PORT_SIDES)[number], at: { px?: number; pct?: number }, handle: string): string {
-  const id = `${node.id}__${handle.trim()}`;
-  if (node.getPort(id)) return id;
-  const along = side === 'left' || side === 'right' ? node.size.height : node.size.width;
-  const f = at.pct !== undefined ? at.pct / 100 : along > 0 ? (at.px ?? 0) / along : 0.5;
-  const t = Math.max(0, Math.min(1, f));
-  const xy = side === 'left' ? { x: 0, y: t } : side === 'right' ? { x: 1, y: t } : side === 'top' ? { x: t, y: 0 } : { x: t, y: 1 };
-  node.addPort(buildPort(node.id, { id, side, type: 'bi', visible: false, layout: { strategy: 'absolute', args: { ...xy, units: 'fraction' } } } as PortSpec, 0));
-  return id;
 }
 
 /** Build a fresh `LinkModel` from a spec. Returns null when an endpoint is unresolvable. */

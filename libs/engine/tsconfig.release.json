@@ -8,5 +8,6 @@
     "baseUrl": ".",
     "paths": {},
     "module": "es2020"
-  }
+  },
+  "exclude": ["src/**/*.spec.ts", "src/**/test-*.ts", "**/*.test.ts", "src/__mocks__/**"]
 }
