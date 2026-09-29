@@ -525,8 +525,10 @@ export class DSLGenerator {
       'asymmetric': { opening: '>', closing: ']' },
       'rhombus': { opening: '{', closing: '}' },
       'hexagon': { opening: '{{', closing: '}}' },
-      'trapezoid': { opening: '[/', closing: '/]' },
-      'trapezoid-alt': { opening: '[\\', closing: '\\]' },
+      'trapezoid': { opening: '[/', closing: '\\]' },
+      'trapezoid-alt': { opening: '[\\', closing: '/]' },
+      'parallelogram': { opening: '[/', closing: '/]' },
+      'parallelogram-alt': { opening: '[\\', closing: '\\]' },
     };
 
     return brackets[shape] || brackets['rectangle'];

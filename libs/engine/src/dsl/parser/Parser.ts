@@ -58,6 +58,7 @@ const V11_SHAPE_MAP: Record<string, NodeShape> = {
   hexagon: 'hexagon', hex: 'hexagon', prepare: 'hexagon',
   trapezoid: 'trapezoid', 'trap-b': 'trapezoid', 'manual-input': 'trapezoid',
   'trapezoid-alt': 'trapezoid-alt', 'trap-t': 'trapezoid-alt',
+  'lean-r': 'parallelogram', 'in-out': 'parallelogram', 'lean-l': 'parallelogram-alt', 'out-in': 'parallelogram-alt',
   // v11's text block: words on the canvas, no box.
   text: 'text',
 };
@@ -268,11 +269,36 @@ export class Parser {
     let prevGroup = firstGroup;
 
     while (this.isLinkToken()) {
-      const linkToken = this.advance();
-      const linkType = this.getLinkType(linkToken.type);
+      let linkToken = this.advance();
 
       let label: string | undefined;
-      if (this.match(TokenType.PIPE)) {
+      // Mermaid's other label spelling — the text BETWEEN the dashes:
+      // `A -- text --> B`, `A -. text .-> B`, `A == text ==> B`. The opener is a
+      // bare `--` / `-.` / `==`; the next link token on the line closes the label
+      // and says what the line is.
+      const opener =
+        (linkToken.type === TokenType.LINE && linkToken.value === '--') ||
+        (linkToken.type === TokenType.DOTTED_LINE && linkToken.value === '-.') ||
+        (linkToken.type === TokenType.THICK_LINE && linkToken.value === '==');
+      if (opener) {
+        let close = this.current;
+        while (close < this.tokens.length && this.tokens[close]!.type !== TokenType.NEWLINE && !this.isLinkTokenAt(close)) close++;
+        if (close > this.current && close < this.tokens.length && this.isLinkTokenAt(close)) {
+          let text = '';
+          let lastEnd = -1;
+          for (let i = this.current; i < close; i++) {
+            const t = this.tokens[i]!;
+            text += (lastEnd >= 0 && t.startIndex > lastEnd ? ' ' : '') + t.value;
+            lastEnd = t.endIndex;
+          }
+          label = text.trim();
+          this.current = close;
+          linkToken = this.advance();
+        }
+      }
+      const linkType = this.getLinkType(linkToken.type);
+
+      if (label === undefined && this.match(TokenType.PIPE)) {
         label = this.parseTextUntil(TokenType.PIPE);
         this.consume(TokenType.PIPE, 'Expected closing "|"');
       }
@@ -684,11 +710,16 @@ export class Parser {
       return { shape: 'hexagon', label };
     }
 
-    // [/text/] or [\text\] - trapezoid
+    // The slash shapes, told apart by their pair of slashes (Mermaid):
+    // [/ \] trapezoid, [\ /] inverted trapezoid, [/ /] and [\ \] parallelograms.
     if (this.match(TokenType.TRAPEZOID_OPEN)) {
+      const open = this.previous().value;
       const label = this.parseTextUntil(TokenType.TRAPEZOID_CLOSE);
+      const close = this.currentToken().value;
       this.consume(TokenType.TRAPEZOID_CLOSE, 'Expected trapezoid close');
-      return { shape: 'trapezoid', label };
+      const fwd = open === '[/';
+      const shape: NodeShape = fwd ? (close === '/]' ? 'parallelogram' : 'trapezoid') : close === '/]' ? 'trapezoid-alt' : 'parallelogram-alt';
+      return { shape, label };
     }
 
     // >text] - asymmetric
@@ -753,6 +784,16 @@ export class Parser {
       default:
         return 'arrow';
     }
+  }
+
+  /** Is the token at `i` a link token? */
+  private isLinkTokenAt(i: number): boolean {
+    const t = this.tokens[i];
+    return !!t && [
+      TokenType.ARROW, TokenType.LINE, TokenType.DOTTED_ARROW, TokenType.DOTTED_LINE,
+      TokenType.THICK_ARROW, TokenType.THICK_LINE, TokenType.BIDIRECTIONAL,
+      TokenType.CIRCLE_EDGE, TokenType.CROSS_EDGE,
+    ].includes(t.type);
   }
 
   /**

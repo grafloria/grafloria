@@ -857,6 +857,8 @@ export class ASTTransformer {
       'hexagon': 'flowchart:preparation',
       'trapezoid': 'flowchart:manual-input',
       'trapezoid-alt': 'flowchart:manual-input',
+      'parallelogram': 'flowchart:data',
+      'parallelogram-alt': 'flowchart:data',
     };
 
     return shapeToType[shape] || 'flowchart:process';
@@ -871,15 +873,19 @@ export class ASTTransformer {
       'text': { type: 'text' },
       'rectangle': { type: 'rect' },
       'rounded-rectangle': { type: 'rect', cornerRadius: 10 },
-      'stadium': { type: 'ellipse' }, // Stadium is essentially a tall ellipse
-      'subroutine': { type: 'rect', cornerRadius: 5 },
-      'cylindrical': { type: 'ellipse' }, // Cylinder approximated as ellipse
+      // The renderer's shape registry draws these as what they are (it used to
+      // approximate: a database as an ellipse, a trapezoid as a rect).
+      'stadium': { type: 'stadium' },
+      'subroutine': { type: 'subroutine' },
+      'cylindrical': { type: 'cylinder' },
       'circle': { type: 'circle' },
-      'asymmetric': { type: 'rect' }, // Document shape - fallback to rect for now
+      'asymmetric': { type: 'rect' }, // Mermaid's flag — no registry shape yet
       'rhombus': { type: 'diamond' },
       'hexagon': { type: 'hexagon' },
-      'trapezoid': { type: 'rect' }, // Trapezoid - fallback to rect for now
-      'trapezoid-alt': { type: 'rect' }, // Trapezoid alt - fallback to rect for now
+      'trapezoid': { type: 'trapezoid' }, // [/ \] — wide bottom
+      'trapezoid-alt': { type: 'trapezoid-bottom' }, // [\ /] — wide top
+      'parallelogram': { type: 'parallelogram' }, // [/ /] — leans right
+      'parallelogram-alt': { type: 'parallelogram-top' }, // [\ \] — leans left
     };
 
     return shapeMapping[shape] || { type: 'rect' };

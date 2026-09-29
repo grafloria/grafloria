@@ -358,23 +358,22 @@ export class Lexer {
   }
 
   /**
-   * Scan equals combinations: ==>, ===
+   * Scan equals combinations: `==>` thick arrow (Mermaid's own spelling — only
+   * `===>` used to lex, so `A ==> B` drew nothing), `===` or longer a thick line,
+   * and a bare `==` — the opener of an inline label, `A == text ==> B`.
    */
-  private scanEquals(start: number, startColumn: number): void {
-    if (this.peek() === '=' && this.peekNext() === '=') {
-      this.advance(); // second =
-      this.advance(); // third =
-
-      if (this.peek() === '>') {
-        // Thick arrow: ==>
-        this.advance(); // >
-        this.addToken(TokenType.THICK_ARROW, '==>', start, this.position);
-      } else {
-        // Thick line: ===
-        this.addToken(TokenType.THICK_LINE, '===', start, this.position);
-      }
+  private scanEquals(start: number, _startColumn: number): void {
+    let count = 1;
+    while (this.peek() === '=') {
+      this.advance();
+      count++;
+    }
+    if (count >= 2 && this.peek() === '>') {
+      this.advance();
+      this.addToken(TokenType.THICK_ARROW, this.input.substring(start, this.position), start, this.position);
+    } else if (count >= 2) {
+      this.addToken(TokenType.THICK_LINE, this.input.substring(start, this.position), start, this.position);
     } else {
-      // Single = (unknown)
       this.addToken(TokenType.UNKNOWN, '=', start, this.position);
     }
   }
@@ -383,6 +382,17 @@ export class Lexer {
    * Scan dot (for dotted lines) - already handled in scanDash
    */
   private scanDot(start: number, startColumn: number): void {
+    // `.->` / `.-` close a dotted inline label: `A -. note .-> B`.
+    if (this.peek() === '-') {
+      this.advance();
+      if (this.peek() === '>') {
+        this.advance();
+        this.addToken(TokenType.DOTTED_ARROW, '.->', start, this.position);
+      } else {
+        this.addToken(TokenType.DOTTED_LINE, '.-', start, this.position);
+      }
+      return;
+    }
     this.addToken(TokenType.UNKNOWN, '.', start, this.position);
   }
 
