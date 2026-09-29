@@ -137,6 +137,12 @@ diagram.addLink(new LinkModel({
       Grafloria-adjacent settings (label, shape styling, port groups). In the framework spec
       layer, <code>label: 'Intake'</code> and <code>data: { label: 'Intake' }</code> are the
       convenient front doors to the same places.</p>
+      <p>A box can carry a <b>subtitle</b> — <code>sublabel: 'sherkety-erp-api'</code>, or
+      <code>{ text, fontFamily: 'mono', color }</code> — drawn smaller and muted under a
+      semi-bold name. <code>shape: { type: 'text' }</code> is a note: words with no box, never
+      clipped. A node's own <code>style.color</code>, <code>fontSize</code>,
+      <code>fontWeight</code> and <code>fontFamily</code> style its label, and
+      <code>style.shadow: false</code> draws a flat box.</p>
 
       <h2>Ports — four by default, precise on demand</h2>
       <p>Every node is born with <b>four deterministic bi-directional ports</b> (top, right,

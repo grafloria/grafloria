@@ -133,6 +133,41 @@ const text = exportDiagramText(diagram);</pre>
       <b>legible for everyone else</b>: hand-arrange a diagram, export, commit, re-import —
       your arrangement survives, and GitHub still previews the file.</p>
 
+      <h2>The look of an AI-drawn diagram</h2>
+      <p>The diagrams Claude and ChatGPT hand-write as SVG — tinted zones with a caption in a
+      corner, a bold name over a muted line, coloured labels riding their lines, a red note —
+      can be written as Mermaid for Grafloria. The body stays Mermaid any renderer accepts:
+      the look is <code>style</code>, <code>classDef</code> and <code>linkStyle</code>,
+      <code>&lt;b&gt;Name&lt;/b&gt;&lt;br/&gt;subtitle</code> labels (or <code>**Name**</code>, or a
+      markdown string), a <code>&lt;code&gt;</code> subtitle for monospace, and v11's
+      <code>@{ shape: text }</code> for a note. What Mermaid has no word for rides in
+      <code>%%grafloria:</code> comments other renderers ignore.</p>
+<pre data-lang="mermaid">flowchart LR
+  customer["&lt;b&gt;Customer&lt;/b&gt;&lt;br/&gt;phone or browser"]
+  subgraph ours["OUR SIDE · MUST NEVER SEE A CARD"]
+    api["&lt;b&gt;Our API&lt;/b&gt;&lt;br/&gt;&lt;code&gt;sherkety-erp-api&lt;/code&gt;"]
+  end
+  note@{ shape: text, label: "if someone swaps the link…" }
+  customer -.->|"card typed as a&lt;br/&gt;#quot;bank account#quot;"| api
+  classDef box fill:#fff,stroke:#d0d5dd,shadow:none,rx:4
+  style ours fill:#f3f4f6,stroke:#d7dbe0,stroke-dasharray:5 4,color:#4b5563,font-weight:bold,letter-spacing:1px
+  linkStyle 0 interpolate stepBefore stroke:#cf222e,color:#cf222e,font-weight:bold
+  %% exact position and size — a node or a subgraph
+  %%grafloria:at customer 20,78 150x292
+  %% where a zone's caption sits
+  %%grafloria:group ours caption:bottom-left
+  %% every edge's default, then one edge's own
+  %%grafloria:edge * * label:above
+  %%grafloria:edge customer api from:right@240, to:left@54, label:below, via:300 318</pre>
+      <p><code>from:</code>/<code>to:</code> pin a line's ends to a point along a side
+      (<code>right@36</code> is 36&nbsp;px down the right side, <code>left@50%</code> halfway);
+      <code>label:</code> puts the label above or below its line, with no box;
+      <code>via:</code> lists the bends. <code>linkStyle … color:</code> colours the label,
+      <code>interpolate stepBefore</code> draws right angles, and <code>shadow:none</code> makes a
+      flat box. <code>exportDiagramText(diagram, { lossless: false, positions: true })</code>
+      writes all of it back, so a diagram built on the canvas exports to the same kind of text.</p>
+      <p><a class="demo-link" href="../../demos/diagrams/ai-style-diagram.html">Live: the same diagram from the native API and from Mermaid →</a></p>
+
       <h2>Text and canvas, live</h2>
       <p>The framework surfaces wire both directions into the live canvas —
       <code>instance.exportText()</code> / <code>instance.loadText(text)</code> (React/Vue) and
