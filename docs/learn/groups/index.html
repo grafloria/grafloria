@@ -131,7 +131,15 @@ await engine.expandGroup('ingest-stage');     // everything returns exactly wher
       <p>A group declared in the render spec is a <b>zone</b>: a tinted region around some
       boxes with a small caption in a corner — no title band. <code>bounds</code> pins its
       frame; without it the frame is fitted around <code>children</code> with
-      <code>padding</code>. The children become its members, so dragging the zone brings them.</p>
+      <code>padding</code>. The children become its members.</p>
+      <p>A zone is a container you can pick up. Press its caption or its empty tint and drag:
+      the zone moves with every box in it, and their lines follow (empty canvas outside a
+      zone still pans). Drag a box out of a zone and it leaves; drop one inside and it joins.
+      Both are on by default; a host that draws frames purely as decoration turns them off:</p>
+<pre data-lang="typescript">api.getEngine().setInteractionConfig({
+  enableGroupDrag: false,              // a press on a zone pans the canvas instead
+  enableGroupMembershipOnDrop: false,  // dropping a box never changes its zone
+});</pre>
 <pre data-lang="typescript">const api = render({
   nodes, edges,
   groups: [{

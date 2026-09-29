@@ -62,21 +62,21 @@ export default {
       label: 'if someone swaps the link, the customer lands here (M1)', style: { color: BAD, fontWeight: '700', fontSize: 11 } },
   ],
   edges: [
-    { source: 'customer', target: 'page', sourceHandle: 'right@36', targetHandle: 'left@36', type: 'direct', style: line(GOOD),
+    { source: 'customer', target: 'page', sourceHandle: 'right@36', targetHandle: 'left@36', type: 'orthogonal', style: line(GOOD),
       label: 'card number and CVV', labelPlacement: 'above', labelStyle: { color: GOOD, fontWeight: '700', fontSize: 11 } },
-    { source: 'page', target: 'wallets', sourceHandle: 'right@36', targetHandle: 'left@36', type: 'direct', style: line(LINE),
+    { source: 'page', target: 'wallets', sourceHandle: 'right@36', targetHandle: 'left@36', type: 'orthogonal', style: line(LINE),
       label: 'adds money', labelPlacement: 'above', labelStyle: small },
     { source: 'api', target: 'wallets', sourceHandle: 'top@170', targetHandle: 'bottom@138', type: 'orthogonal',
       waypoints: [{ x: 580, y: 204 }, { x: 850, y: 204 }], style: line(LINE),
       label: 'asks HealthPay to move money', labelPlacement: 'above', labelStyle: small },
-    { source: 'api', target: 'db', sourceHandle: 'right@36', targetHandle: 'left@36', type: 'direct', style: line(LINE),
+    { source: 'api', target: 'db', sourceHandle: 'right@36', targetHandle: 'left@36', type: 'orthogonal', style: line(LINE),
       label: 'saves keys', labelPlacement: 'above', labelStyle: small },
-    { source: 'api', target: 'customer', sourceHandle: 'left@24', targetHandle: 'right@210', type: 'direct', style: line(LINE),
+    { source: 'api', target: 'customer', sourceHandle: 'left@24', targetHandle: 'right@210', type: 'orthogonal', style: line(LINE),
       label: 'sends the payment link', labelPlacement: 'above', labelStyle: small },
-    { source: 'customer', target: 'api', sourceHandle: 'right@240', targetHandle: 'left@54', type: 'direct',
+    { source: 'customer', target: 'api', sourceHandle: 'right@240', targetHandle: 'left@54', type: 'orthogonal',
       style: line(BAD, { strokeDasharray: '5 4' }), label: 'card typed as a\n"bank account" (H1)',
       labelPlacement: 'below', labelStyle: { color: BAD, fontWeight: '700', fontSize: 11 } },
-    { source: 'customer', target: 'fake', sourceHandle: 'bottom@75', targetHandle: 'top@75', type: 'direct',
+    { source: 'customer', target: 'fake', sourceHandle: 'bottom@75', targetHandle: 'top@75', type: 'orthogonal',
       style: line(BAD, { strokeDasharray: '5 4' }) },
   ],
 };
@@ -106,9 +106,9 @@ export default {
   style note color:#cf222e,font-weight:bold,font-size:11px
   style hp fill:#e9f2f3,stroke:#7aabb3,stroke-dasharray:5 4,color:#2a7a86,font-weight:bold,letter-spacing:1px
   style ours fill:#f3f4f6,stroke:#d7dbe0,color:#4b5563,font-weight:bold,letter-spacing:1px
+  linkStyle default interpolate stepBefore
   linkStyle 0 stroke:#1a7f37,color:#1a7f37,font-weight:bold,font-size:11px,stroke-width:1.5px
   linkStyle 1,2,3,4 stroke:#6b7785,color:#5f6b7a,font-size:11px,stroke-width:1.5px
-  linkStyle 2 interpolate stepBefore stroke:#6b7785
   linkStyle 5,6 stroke:#cf222e,color:#cf222e,font-weight:bold,font-size:11px,stroke-width:1.5px
   %% Grafloria layout — comments any other Mermaid renderer ignores
   %%grafloria:at customer 20,78 150x292
@@ -151,7 +151,8 @@ defineDemo({
     'This is a card-payment review diagram in the style AI tools draw as hand-written SVG: two tinted zones with small captions in a corner, boxes with a bold name over a muted line (one of them monospace), coloured labels riding just over or under their lines, a red note beside the fake page.',
     'Switch "Drawn from" to Grafloria Mermaid: the same picture, parsed from the Mermaid text below. It is still Mermaid any renderer accepts — the look is style / classDef / linkStyle, <b>…</b><br/>… labels and v11 @{ shape: text } — and everything Mermaid has no word for (exact positions, a line leaving a box 36 px down its side, labels above or below, the elbow\'s bends, a caption in the bottom corner) rides in %%grafloria: comments other renderers ignore.',
     'Read the native source: every part of the look is one field — sublabel, shape: "text", groups with style and labelPlacement, handles like "right@36", labelPlacement and labelStyle, waypoints, style.shadow: false.',
-    'It is a real diagram, not a picture: drag a box and its lines follow from the same anchors; select one and edit it; export it back to Mermaid text and it comes back the same.',
+    'It is a real diagram, not a picture. Pick a zone up by its caption or its tinted space: it moves with its boxes. Drag a box out of a zone and it leaves it; drop it into one and it joins. Lines stay on the same spot of each box and turn corners to follow; their labels ride along.',
+    'Ports stay out of sight until you draw a line (portVisibility: "hidden"): this diagram is read far more than it is wired.',
   ],
 
   async setup(ctx) {
@@ -177,6 +178,20 @@ defineDemo({
     };
     ctx.show = show;
     seg.onclick = (e) => { const v = e.target.closest('button')?.getAttribute('data-src'); if (v) show(v); };
+    // A diagram to read: ports appear only while a line is being drawn.
+    api.getEngine().setInteractionConfig({ portVisibility: 'hidden' });
+    // Real pointer events at WORLD points — what a hand does, for the assert.
+    ctx.fire = (type, w) => {
+      const c = api.viewport.worldToClient(w.x, w.y, ctx.host.getBoundingClientRect());
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type], { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    ctx.dragFrom = async (w, dx, dy) => {
+      ctx.fire('mousedown', w);
+      for (let i = 1; i <= 6; i++) ctx.fire('mousemove', { x: w.x + (dx * i) / 6, y: w.y + (dy * i) / 6 });
+      ctx.fire('mouseup', { x: w.x + dx, y: w.y + dy });
+      api.renderNow();
+      for (let i = 0; i < 6; i++) await ctx.tick(10);
+    };
     await show('native');
     // 1:1, the 960 × 480 drawing centred in the canvas — the scale it was drawn at.
     const r = ctx.host.getBoundingClientRect();
@@ -226,6 +241,67 @@ defineDemo({
     };
     await check3('native');
     await check3('mermaid');
+
+    // BEHAVIOUR — the page was once only LOOKED at; these are the gestures that
+    // broke it. Both sources, from a fresh drawing each time.
+    const moves = async (which) => {
+      await ctx.show(which);
+      await ctx.tick();
+      const m = ctx.instance.getModel();
+      const tag = `[${which} · drag]`;
+      const link = (s, t) => m.getLinks().find((l) => l.sourceNodeId === s && l.targetNodeId === t);
+      const near = (a, b, tol = 1.5) => Math.abs(a - b) <= tol;
+      // every line touching a box starts / ends on its outline
+      const attached = (id) => {
+        const n = m.getNode(id);
+        const on = (p) => p.x >= n.position.x - 2 && p.x <= n.position.x + n.size.width + 2 && p.y >= n.position.y - 2 && p.y <= n.position.y + n.size.height + 2;
+        for (const l of m.getLinks()) {
+          if (l.sourceNodeId === id) check(on(l.points[0]), `${tag} a line from "${id}" must start on it, starts at ${JSON.stringify(l.points[0])}`);
+          if (l.targetNodeId === id) check(on(l.points[l.points.length - 1]), `${tag} a line into "${id}" must end on it, ends at ${JSON.stringify(l.points[l.points.length - 1])}`);
+        }
+      };
+      // every label sits on (or just off) its line
+      const labelsOnLines = () => {
+        for (const l of m.getLinks()) {
+          const g = host.querySelector(`[data-link-id="${l.id}"] .link-label-group`);
+          if (!g) continue;
+          const t = /translate\(\s*([-\d.]+)[ ,]+([-\d.]+)/.exec(g.getAttribute('transform') ?? '');
+          const p = { x: Number(t[1]), y: Number(t[2]) };
+          let best = Infinity;
+          for (let i = 0; i < l.points.length - 1; i++) {
+            const a = l.points[i], b = l.points[i + 1];
+            const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1;
+            const u = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L));
+            best = Math.min(best, Math.hypot(a.x + u * dx - p.x, a.y + u * dy - p.y));
+          }
+          check(best < 30, `${tag} the label "${l.getLabel()?.split('\n')[0]}" must ride its line, ${Math.round(best)} px off`);
+        }
+      };
+
+      // 1. a zone picked up by its tint carries its boxes; the canvas does not pan
+      const hp0 = m.getGroup('hp').getOuterBounds();
+      const page0 = { ...m.getNode('page').position }, cust0 = { ...m.getNode('customer').position };
+      await ctx.dragFrom({ x: hp0.x + 12, y: hp0.y + hp0.height - 10 }, 40, -30);
+      const page1 = m.getNode('page').position;
+      check(near(page1.x, page0.x + 40) && near(page1.y, page0.y - 30), `${tag} dragging the HealthPay zone must carry its boxes, page at ${JSON.stringify(page1)}`);
+      check(near(m.getGroup('hp').getOuterBounds().x, hp0.x + 40), `${tag} the zone itself must move`);
+      check(near(m.getNode('customer').position.x, cust0.x) && near(m.getNode('customer').position.y, cust0.y), `${tag} a box outside the zone must stay put (the canvas must not pan)`);
+      attached('page'); attached('wallets');
+
+      // 2. "Our API" dragged out of its zone leaves it, and keeps every line
+      const a0 = { ...m.getNode('api').position };
+      await ctx.dragFrom({ x: a0.x + 105, y: a0.y + 36 }, -40, 150);
+      const a1 = m.getNode('api').position;
+      check(near(a1.x, a0.x - 40) && near(a1.y, a0.y + 150), `${tag} "Our API" must move with the hand, at ${JSON.stringify(a1)}`);
+      check(!m.getGroup('ours').members.has('api'), `${tag} dropped outside its zone, "Our API" must leave it`);
+      attached('api');
+      const elbow = link('api', 'wallets').points;
+      check(near(elbow[0].x, a1.x + 170) && near(elbow[0].y, a1.y), `${tag} the elbow line must leave "Our API" at top@170, starts at ${JSON.stringify(elbow[0])}`);
+      check(near(elbow[1].x, elbow[0].x), `${tag} the elbow's first run must stay vertical`);
+      labelsOnLines();
+    };
+    await moves('native');
+    await moves('mermaid');
     // the Mermaid on the page is Mermaid: every Grafloria-only word lives in a %% comment
     check(mermaidText.split('\n').every((l) => !/grafloria/i.test(l) || l.trim().startsWith('%%')), 'every Grafloria-only line of the Mermaid source should be a %% comment');
     await ctx.show('native');

@@ -149,6 +149,15 @@
       <code>labelPlacement: 'above' | 'below'</code> puts the label just off its line with no
       box, and <code>labelStyle</code> gives it its own colour and weight.
       <code>waypoints</code> are the bends a line must take — the router keeps them.</p>
+      <p>When a box moves, its lines move with it. An anchor stays the same point on the box
+      (<code>'right@36'</code> is 36&nbsp;px down its right side wherever the box goes). A
+      hand-bent line keeps its bends and re-attaches its ends; on a right-angle line the bend
+      next to the moved end slides with it, so that run stays square. Give lines
+      <code>type: 'orthogonal'</code> (Mermaid: <code>linkStyle default interpolate stepBefore</code>)
+      and a line that was straight between two aligned boxes turns a corner when one moves,
+      instead of going diagonal. A label placed above or below rides the middle of the line's
+      longest level run, where you would write it. A text note (<code>shape: { type: 'text' }</code>)
+      is words, not a box: lines pass it rather than detour round it.</p>
 <pre data-lang="typescript">{ source: 'api', target: 'wallets', sourceHandle: 'top@170', targetHandle: 'bottom@138',
   type: 'orthogonal', waypoints: [{ x: 580, y: 204 }, { x: 850, y: 204 }],
   label: 'asks HealthPay to move money', labelPlacement: 'above',
