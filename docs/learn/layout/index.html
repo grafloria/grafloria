@@ -100,7 +100,7 @@
 <pre data-lang="typescript">await engine.layout('elk');                                   // opinionated default
 await engine.layout('dagre', { direction: 'TB', rankSpacing: 80 });
 await engine.layout();                                        // 'auto' — picks for you</pre>
-      <p>Registered names: <code>auto</code>, <code>elk</code>, <code>dagre</code>,
+      <p>Registered names: <code>auto</code>, <code>architecture</code>, <code>elk</code>, <code>dagre</code>,
       <code>layered</code>, <code>tree</code>, <code>grid</code>, <code>circular</code>,
       <code>radial</code>, <code>force</code>, <code>spectral</code>, <code>community</code>.
       An unknown name throws with the list of registered ones — no silent no-op.
@@ -112,12 +112,42 @@ await engine.layout();                                        // 'auto' — pick
         <tr><th>Graph</th><th>Reach for</th><th>Why</th></tr>
         <tr><td>Flowcharts, pipelines, DAGs</td><td><code>elk</code> or <code>layered</code>/<code>dagre</code></td>
             <td>layered ranking, few crossings; ELK handles ports and nesting best</td></tr>
+        <tr><td>Architecture and system diagrams with zones</td><td><code>architecture</code></td>
+            <td>regions on a grid, boxes sized to their words in rows, straight lines, bends in the gutters</td></tr>
         <tr><td>Hierarchies, org charts</td><td><code>tree</code></td><td>parent-centered, tidy</td></tr>
         <tr><td>Networks, clusters</td><td><code>force</code>, <code>community</code>, <code>spectral</code></td>
             <td>physical spread; community detection groups related nodes</td></tr>
         <tr><td>Catalogs, galleries</td><td><code>grid</code>, <code>circular</code>, <code>radial</code></td><td>uniform placement</td></tr>
         <tr><td>Don't want to think</td><td><code>auto</code></td><td>classification + dispatch</td></tr>
       </table></div>
+
+      <h2>Architecture — a composition, not a ranking</h2>
+      <p>The diagrams AI tools hand-draw as SVG — a user on the left, "their side" and "our side"
+      as tinted zones, a name over a muted line in every box — are not graphs to rank. Layered,
+      ELK and dagre draw them correctly and badly: zones packed over their captions, lines
+      U-turning, labels on labels. <code>architecture</code> composes instead:</p>
+      <ul>
+        <li><b>Regions on a grid.</b> Children go into columns along the flow; zones joined by a
+        line that names a cross side (<code>from:top</code>) stack, the upper one where it says.</li>
+        <li><b>Boxes sized to their words</b>, sharing a width down a column and a height along a
+        row; stacked zones share one column grid, so the box over a box lines up.</li>
+        <li><b>Straight lines.</b> A box that talks to several stacked boxes spans them; every line
+        gets anchors at a height both its boxes cover, several lines between one pair spread out;
+        a line that cannot run straight bends in the gutter between the zones.</li>
+        <li><b>Room for words.</b> A gap is as wide as the widest label crossing it; a zone keeps a
+        band for its caption; a note with <code>near</code> sits beside what it is about.</li>
+      </ul>
+<pre data-lang="typescript">render({ nodes, edges, groups, layout: 'architecture' }, el);   // on mount — nodes need no position
+await engine.layout('architecture');                            // any time, any diagram
+&lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} layout="architecture" /&gt;   // React (Vue, Angular: same prop)
+
+// the relations it reads — none of them a coordinate
+{ id: 'hp', children: ['page', 'wallets'], direction: 'LR' }         // a zone lays its boxes in a row
+{ source: 'api', target: 'wallets', sourceHandle: 'top' }            // the wallets sit ABOVE the API
+{ id: 'note', shape: { type: 'text' }, near: { target: 'fake', side: 'right' } }</pre>
+      <p>In Mermaid it is one comment: <code>%%grafloria:layout architecture</code> — see
+      <a href="../mermaid-and-the-dsl/#architecture">the Mermaid page</a>.</p>
+<p><a class="demo-link" href="../../demos/diagrams/architecture-layout.html">Live: the same text, architecture vs layered →</a></p>
 
       <h2>The cost model — why ELK doesn't bloat you</h2>
       <p>ELK is the best layered engine available and also ~1.4&nbsp;MB minified. Grafloria
