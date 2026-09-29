@@ -47,11 +47,18 @@ export interface PanelImage {
   height?: number;
 }
 
-/** A small icon — a raster href OR an emoji/text glyph — pinned to a corner. */
+/** A small icon — a raster href, an emoji/text glyph, or a built-in line icon — pinned to a corner. */
 export interface PanelIcon {
   href?: string;
   /** Emoji or short glyph, used when `href` is absent. */
   glyph?: string;
+  /**
+   * A built-in line icon, used when there is no href or glyph: one of
+   * {@link BUILTIN_ICONS} (`cloud`, `database`, `disk`, `internet`, `server` —
+   * Mermaid architecture-beta's own). Drawn as our paths in the node's ink; an
+   * unknown name draws nothing.
+   */
+  name?: string;
   /** Box size in px. Default 18. */
   size?: number;
   /** Corner to pin to. Default 'tl'. */
@@ -82,6 +89,28 @@ export interface PanelSpec {
   /** Per-row height in px. Default 18. */
   rowHeight?: number;
 }
+
+/**
+ * Grafloria's line icons, 24×24, stroked (never filled). Drawn by hand for this
+ * library — the five Mermaid architecture-beta names. An href icon must be a
+ * raster data URI (SVG data URIs are refused: SVG can carry script), so vector
+ * icons are these paths, not user data.
+ */
+export const BUILTIN_ICONS: Readonly<Record<string, readonly string[]>> = {
+  cloud: ['M7 18.5h10.2a4.3 4.3 0 0 0 .5-8.57A6.2 6.2 0 0 0 5.9 9.1 4.7 4.7 0 0 0 7 18.5z'],
+  database: [
+    'M4.5 6c0-1.66 3.36-3 7.5-3s7.5 1.34 7.5 3-3.36 3-7.5 3-7.5-1.34-7.5-3z',
+    'M4.5 6v12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6',
+    'M4.5 12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3',
+  ],
+  disk: ['M3.5 14h17v4.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z', 'M3.5 14l3-8.5h11l3 8.5', 'M16.5 17h.01'],
+  internet: [
+    'M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18z',
+    'M3 12h18',
+    'M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9c-2.4-2.5-3.6-5.5-3.6-9S9.6 5.5 12 3z',
+  ],
+  server: ['M4 4h16v7H4z', 'M4 13h16v7H4z', 'M7.5 7.5h.01', 'M7.5 16.5h.01'],
+};
 
 const DEFAULT_HEADER_HEIGHT = 22;
 const DEFAULT_IMAGE_HEIGHT = 48;
@@ -333,6 +362,18 @@ export function renderNodePanel(
           fontSize: size,
         })
       );
+    } else if (panel.icon.name && BUILTIN_ICONS[panel.icon.name]) {
+      const k = Math.round((size / 24) * 10000) / 10000;
+      out.push({
+        type: 'g',
+        key: `panel-icon-${ctx.nodeId}`,
+        props: { className: 'panel-icon', transform: `translate(${pos.x}, ${pos.y}) scale(${k})`, pointerEvents: 'none' },
+        children: BUILTIN_ICONS[panel.icon.name]!.map((d, i) => ({
+          type: 'path',
+          key: `panel-icon-${ctx.nodeId}-${i}`,
+          props: { d, fill: 'none', stroke: ctx.bodyTextColor, strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        })),
+      });
     }
   }
 

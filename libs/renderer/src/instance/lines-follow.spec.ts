@@ -90,6 +90,20 @@ describe('lines follow their boxes', () => {
       expect(pts('yes')).toContainEqual([360, 420]);
     });
 
+    it('a SHORT square end run is drawn as it is — not re-routed round the box to make a longer stub', () => {
+      // a line from a box's bottom to a small dot 32 px below: bends in the 16 px gutter
+      make([box('api', 0, 0, 120, 56), { ...box('j', 60, 88, 10, 10), label: '' }], [
+        { id: 'short', source: 'api', target: 'j', sourceHandle: 'bottom@30', targetHandle: 'top@5', type: 'orthogonal', waypoints: [{ x: 30, y: 72 }, { x: 65, y: 72 }] },
+      ]);
+      const d = container.querySelector('[data-link-id="short"] path:not(.link-hit-area)')!.getAttribute('d') ?? '';
+      const nums = (d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+      const ys = nums.filter((_, i) => i % 2 === 1), xs = nums.filter((_, i) => i % 2 === 0);
+      // it stays between the two boxes: never above the box it leaves, never past the dot it enters
+      expect(Math.min(...ys)).toBeGreaterThanOrEqual(56 - 0.5);
+      expect(Math.max(...ys)).toBeLessThanOrEqual(88 + 0.5);
+      expect(Math.max(...xs)).toBeLessThanOrEqual(70 + 0.5);
+    });
+
     it('keeps its bends where they were when nothing at its ends moved', () => {
       make(NODES, [ELBOW]);
       move('api', 410, 264); // same place
