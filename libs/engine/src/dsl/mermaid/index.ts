@@ -52,3 +52,27 @@ export {
   type MermaidStateTransition,
   type StateKind,
 } from './MermaidState';
+
+export {
+  parseMermaidBlock,
+  blockModelToFlowchart,
+  applyBlockGrid,
+  generateBlockFromDiagram,
+  type MermaidBlockModel,
+  type BlockCell,
+  type BlockGridSpec,
+} from './MermaidBlock';
+
+export {
+  parseMermaidArchitecture,
+  architectureModelToFlowchart,
+  applyArchitectureModel,
+  generateArchitectureFromDiagram,
+  ARCHITECTURE_ICONS,
+  type MermaidArchitectureModel,
+  type MermaidArchGroup,
+  type MermaidArchService,
+  type MermaidArchJunction,
+  type MermaidArchEdge,
+  type ArchSide,
+} from './MermaidArchitecture';

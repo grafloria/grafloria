@@ -51,6 +51,14 @@ import {
   parseMermaidState,
   stateModelToDiagram,
   generateStateFromDiagram,
+  parseMermaidBlock,
+  blockModelToFlowchart,
+  applyBlockGrid,
+  generateBlockFromDiagram,
+  parseMermaidArchitecture,
+  architectureModelToFlowchart,
+  applyArchitectureModel,
+  generateArchitectureFromDiagram,
 } from './mermaid';
 
 // Advanced features (Phase 4)
@@ -206,6 +214,22 @@ export class DSL {
           'stateDiagram-v2',
           startTime
         );
+      }
+      // block-beta: the grid is its own; every block, edge and style is the
+      // flowchart grammar — parsed as flowchart text, then the grid laid on.
+      if (diagramType === 'block-beta') {
+        const model = parseMermaidBlock(text);
+        const flow = this.parseDetailed(blockModelToFlowchart(model));
+        applyBlockGrid(flow.diagram, model);
+        return this.finishGraphType(flow.diagram, 'block-beta', startTime);
+      }
+      // architecture-beta: groups and services are flowchart subgraphs and nodes;
+      // the sides every line names are the layout's relations.
+      if (diagramType === 'architecture-beta') {
+        const model = parseMermaidArchitecture(text);
+        const flow = this.parseDetailed(architectureModelToFlowchart(model));
+        applyArchitectureModel(flow.diagram, model);
+        return this.finishGraphType(flow.diagram, 'architecture-beta', startTime);
       }
 
       // Recognised Mermaid type we do not yet parse (sequence, gantt, pie, …):
@@ -418,6 +442,8 @@ export class DSL {
     if (graphType === 'stateDiagram' || graphType === 'stateDiagram-v2') {
       return generateStateFromDiagram(diagram);
     }
+    if (graphType === 'block-beta') return generateBlockFromDiagram(diagram);
+    if (graphType === 'architecture-beta') return generateArchitectureFromDiagram(diagram);
 
     const text = this.generator.generate(diagram, options);
 

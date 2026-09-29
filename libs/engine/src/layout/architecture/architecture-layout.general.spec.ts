@@ -221,5 +221,16 @@ describe('the architecture layout, in general', () => {
       expectClean(d);
     });
   });
+
+  it('a box alone in its column lines up with the one box it talks to — its line runs straight', () => {
+    const d = arch(`flowchart LR
+  g[Gateway] --> w
+  subgraph c[Cloud]
+    w[Web app] --> x[API]
+  end`);
+    const cy = (id: string) => R(d, id).y + R(d, id).h / 2;
+    expect(cy('g')).toBeCloseTo(cy('w'), 0);
+    expectClean(d);
+  });
 });
 
