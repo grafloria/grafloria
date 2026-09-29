@@ -73,7 +73,7 @@ export class Parser {
     this.tokens = tokens.filter(t =>
       t.type !== TokenType.WHITESPACE &&
       // Keep ONLY the Tier-2 extension comments; ordinary %% comments still drop.
-      (t.type !== TokenType.COMMENT || /^%%grafloria:(node|edge|group|at)\b/.test(t.value))
+      (t.type !== TokenType.COMMENT || /^%%grafloria:(node|edge|group|at|layout|near)\b/.test(t.value))
     );
     this.current = 0;
 
@@ -376,6 +376,16 @@ export class Parser {
         continue;
       }
 
+      // Mermaid's own spelling: `direction LR` as a statement inside the body.
+      if (this.check(TokenType.IDENTIFIER) && this.peek().value === 'direction') {
+        this.advance();
+        if (this.match(TokenType.TD, TokenType.TB, TokenType.BT, TokenType.RL, TokenType.LR)) {
+          direction = this.previous().value.toUpperCase() as Direction;
+        }
+        this.skipLine();
+        continue;
+      }
+
       const before = this.current;
       try {
         const statement = this.parseStatement();
@@ -524,6 +534,20 @@ export class Parser {
         properties['h'] = at[5];
       }
       return { type: 'GrafloriaDirective', target: 'at', ids: [at[1]], properties, location: this.getLocation(this.previous(), this.previous()) };
+    }
+    // `%%grafloria:layout <name>` — how the diagram is arranged (`architecture`:
+    // regions on a grid, boxes in rows, lines straight where boxes line up).
+    const lay = value.match(/^%%grafloria:layout\s+([A-Za-z][\w-]*)\s*$/);
+    if (lay) {
+      return { type: 'GrafloriaDirective', target: 'layout', ids: [lay[1]], properties: {}, location: this.getLocation(this.previous(), this.previous()) };
+    }
+    // `%%grafloria:near <id> <target> [right|left|above|below] [gap]` — a relation,
+    // not a coordinate: a note placed beside the thing it is about.
+    const near = value.match(/^%%grafloria:near\s+(\S+)\s+(\S+)(?:\s+(right|left|above|below))?(?:\s+(\d+(?:\.\d+)?))?\s*$/);
+    if (near) {
+      const properties: Record<string, string> = { side: near[3] ?? 'right' };
+      if (near[4] !== undefined) properties['gap'] = near[4];
+      return { type: 'GrafloriaDirective', target: 'near', ids: [near[1], near[2]], properties, location: this.getLocation(this.previous(), this.previous()) };
     }
     const m = value.match(/^%%grafloria:(node|edge|group)\s+(.+)$/);
     if (!m) return null;

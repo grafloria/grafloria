@@ -12,6 +12,7 @@ import { GroupModel } from '../../models/GroupModel';
 import { assignRanks, placeByRank } from '../mermaid/layout';
 import { readMermaidLabel } from '../mermaid/rich-label';
 import { ensureSideAnchorPort } from '../../ports/side-anchor';
+import { layoutArchitecture } from '../../layout/architecture/architecture-layout';
 import {
   DiagramNode,
   StatementNode,
@@ -66,6 +67,8 @@ export class ASTTransformer {
    * direction used to lay out identically left-to-right, so TD/TB read as LR.
    */
   private flowAxis: 'x' | 'y' = 'x';
+  /** `%%grafloria:at` pins, re-applied after a requested layout so they still win. */
+  private atDirectives: GrafloriaDirectiveNode[] = [];
 
   /**
    * Transform AST into DiagramModel
@@ -82,6 +85,7 @@ export class ASTTransformer {
 
     this.nodeSpacing = nodeSpacing;
     this.nextAutoPosition = { ...startPosition };
+    this.atDirectives = [];
 
     // Create diagram
     const diagram = new DiagramModel(diagramName);
@@ -129,6 +133,15 @@ export class ASTTransformer {
     for (const group of diagram.getGroups()) {
       if (group.parentGroupId || group.size) continue;
       group.fitToContents(diagram, { mode: 'exact', deepRecursive: true });
+    }
+
+    // Phase 5: `%%grafloria:layout architecture` — the author asked for the
+    // composition (regions on a grid, boxes in rows, lines straight where boxes
+    // line up), so the whole drawing is arranged; an exact `%%grafloria:at`
+    // still wins for the node or zone it names.
+    if (diagram.getMetadata('layout') === 'architecture') {
+      layoutArchitecture(diagram);
+      for (const st of this.atDirectives) this.applyGrafloriaAt(st, diagram);
     }
 
     return diagram;
@@ -271,7 +284,12 @@ export class ASTTransformer {
       else if (directive(st, 'group')) this.applyGrafloriaGroup(st, diagram);
       // Positions and sizes BEFORE the edge directives: an anchor along a side
       // is placed as a fraction of the node's final size.
-      else if (directive(st, 'at')) this.applyGrafloriaAt(st, diagram);
+      else if (directive(st, 'at')) {
+        this.atDirectives.push(st);
+        this.applyGrafloriaAt(st, diagram);
+      }
+      else if (directive(st, 'layout')) diagram.setMetadata('layout', (st as GrafloriaDirectiveNode).ids[0]);
+      else if (directive(st, 'near')) this.applyGrafloriaNear(st, diagram);
     }
     for (const st of statements) {
       if (st.type === 'LinkStyle') this.applyLinkStyle(st as LinkStyleNode, diagram);
@@ -319,6 +337,16 @@ export class ASTTransformer {
       group.setMetadata('frameStyle', frame);
       group.headerHeight = 0;
     }
+  }
+
+  /** `%%grafloria:near note fake right` — a note placed beside what it is about (a relation, not a coordinate). */
+  private applyGrafloriaNear(node: GrafloriaDirectiveNode, diagram: DiagramModel): void {
+    const [id, target] = node.ids;
+    const n = id ? diagram.getNode(id) : undefined;
+    if (!n || !target) return;
+    const near: Record<string, unknown> = { target, side: node.properties['side'] ?? 'right' };
+    if (node.properties['gap'] !== undefined) near['gap'] = Number(node.properties['gap']);
+    n.setMetadata('near', near);
   }
 
   /** `%%grafloria:at customer 20,78 150x292` — an exact position (and size), node or zone. */
@@ -412,14 +440,22 @@ export class ASTTransformer {
         if (p['speed']) anim['speed'] = p['speed'];
         link.updateStyle({ animation: anim } as never);
       }
+      // `from:right@36` pins a point along a side; a PLAIN side (`from:bottom`)
+      // is a relation — the line leaves that side — kept as a hint (a layout
+      // reads it: the target is below) and drawn from the side's middle.
+      const plain = (v: string | undefined) => (v === 'top' || v === 'right' || v === 'bottom' || v === 'left' ? v : undefined);
       if (p['from'] && link.sourceNodeId) {
         const n = diagram.getNode(link.sourceNodeId);
-        const port = n ? ensureSideAnchorPort(n, p['from']) : null;
+        const side = plain(p['from']);
+        if (side) link.setMetadata('sourceSide', side);
+        const port = n ? ensureSideAnchorPort(n, side ? `${side}@50%` : p['from']) : null;
         if (port) link.setSourcePort(port, link.sourceNodeId);
       }
       if (p['to'] && link.targetNodeId) {
         const n = diagram.getNode(link.targetNodeId);
-        const port = n ? ensureSideAnchorPort(n, p['to']) : null;
+        const side = plain(p['to']);
+        if (side) link.setMetadata('targetSide', side);
+        const port = n ? ensureSideAnchorPort(n, side ? `${side}@50%` : p['to']) : null;
         if (port) link.setTargetPort(port, link.targetNodeId);
       }
       if (p['label'] === 'above' || p['label'] === 'below' || p['label'] === 'on') {
@@ -638,11 +674,31 @@ export class ASTTransformer {
     const group = new GroupModel({ id: groupId, name: readMermaidLabel(astSubgraph.label || astSubgraph.id || groupId, false).text });
     diagram.addGroup(group);
 
+    // Nested subgraphs are zones INSIDE this one (their groups exist: nodes and
+    // nested subgraphs were processed first) — and a box one of them holds is
+    // theirs, not this zone's, even when an edge here names it (`gw --> app`).
+    const nested = astSubgraph.statements
+      .filter((st): st is SubgraphNode => st.type === 'Subgraph')
+      .map((st) => diagram.getGroup(st.id ?? ''))
+      .filter((g): g is GroupModel => !!g);
+    const heldBelow = (id: string): boolean => {
+      const stack = [...nested];
+      while (stack.length) {
+        const g = stack.pop()!;
+        if (g.members.has(id)) return true;
+        for (const m of g.members) {
+          const child = diagram.getGroup(m);
+          if (child) stack.push(child);
+        }
+      }
+      return false;
+    };
     const memberIds = new Set<string>();
     this.collectDirectNodeIds(astSubgraph.statements, memberIds);
     for (const id of memberIds) {
-      if (diagram.getNode(id)) group.addMember(id, diagram);
+      if (diagram.getNode(id) && !heldBelow(id)) group.addMember(id, diagram);
     }
+    for (const child of nested) group.addMember(child.id, diagram);
 
     if (astSubgraph.direction) {
       group.setMetadata('direction', astSubgraph.direction);
@@ -896,5 +952,6 @@ export class ASTTransformer {
   resetAutoPosition(startPosition: { x: number; y: number }): void {
     this.nextAutoPosition = { ...startPosition };
     this.nodePositions.clear();
+    this.atDirectives = [];
   }
 }

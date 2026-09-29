@@ -76,10 +76,11 @@ describe('Card 0 — the unified layout API', () => {
       // The full portfolio after Wave 7: the five legacy adapters (Card 0 made them
       // reachable), the Card-2 portfolio (tree/grid/circular/radial, and a `force`
       // that overrides the raw adapter), our layered Sugiyama engine (Cards 1 & 5),
-      // and the `auto` bake-off (Card 7b) — which is a REGISTERED LAYOUT, not a
-      // second entry point beside the registry.
+      // the `auto` bake-off (Card 7b) — which is a REGISTERED LAYOUT, not a
+      // second entry point beside the registry — and `architecture`, the
+      // composition that draws the AI-diagram look from structure alone.
       expect(engine.getLayoutRegistry().names()).toEqual([
-        'auto', 'circular', 'community', 'dagre', 'elk', 'force',
+        'architecture', 'auto', 'circular', 'community', 'dagre', 'elk', 'force',
         'grid', 'layered', 'radial', 'spectral', 'tree',
       ]);
       engine.destroy();

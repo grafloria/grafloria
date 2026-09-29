@@ -221,6 +221,8 @@ export class DSLGenerator {
       const pad = '  '.repeat(depth);
       const name = group.name && group.name !== group.id ? `["${this.labelMarkup(group.name).replace(/"/g, '#quot;')}"]` : '';
       lines.push(`${pad}subgraph ${this.sanitizeId(group.id)}${name}`);
+      const dir = group.getMetadata('direction');
+      if (typeof dir === 'string' && /^(TB|TD|BT|RL|LR)$/i.test(dir)) lines.push(`${pad}  direction ${dir.toUpperCase()}`);
       for (const child of groups.filter((g) => g.parentGroupId === group.id)) writeGroup(child, depth + 1);
       for (const id of group.members) {
         const node = diagram.getNode(id);
@@ -405,6 +407,9 @@ export class DSLGenerator {
    */
   private generateGrafloriaDirectives(diagram: DiagramModel): string[] {
     const lines: string[] = [];
+    // How the drawing is arranged, when the author asked for a layout by name.
+    const layout = diagram.getMetadata('layout');
+    if (typeof layout === 'string' && /^[A-Za-z][\w-]*$/.test(layout)) lines.push(`%%grafloria:layout ${layout}`);
     for (const node of diagram.getNodes()) {
       const status = (node.state as { status?: string } | undefined)?.status;
       if (status && status !== 'idle') {
@@ -416,6 +421,15 @@ export class DSLGenerator {
       if (anim?.type && anim.type !== 'none') {
         let line = `%%grafloria:edge ${link.sourceNodeId} ${link.targetNodeId} animation:${anim.type}`;
         if (anim.speed) line += `,speed:${anim.speed}`;
+        lines.push(line);
+      }
+    }
+    // A note beside what it is about — a relation, not a coordinate.
+    for (const node of diagram.getNodes()) {
+      const near = node.getMetadata('near') as { target?: string; side?: string; gap?: number } | undefined;
+      if (near?.target) {
+        let line = `%%grafloria:near ${this.sanitizeId(node.id)} ${this.sanitizeId(near.target)} ${near.side ?? 'right'}`;
+        if (typeof near.gap === 'number') line += ` ${near.gap}`;
         lines.push(line);
       }
     }
@@ -440,13 +454,20 @@ export class DSLGenerator {
       const props: string[] = [];
       const handle = (portId: string | undefined, nodeId: string | undefined) =>
         portId && nodeId && isSideAnchorPort(portId) && portId.startsWith(`${nodeId}__`) ? portId.slice(nodeId.length + 2) : undefined;
-      const from = handle(link.sourcePortId, link.sourceNodeId);
-      const to = handle(link.targetPortId, link.targetNodeId);
+      // A layout that anchored this line chose its points and bends; only the
+      // side the AUTHOR named (a relation: `from:bottom`) is theirs to keep.
+      const byLayout = link.getMetadata('layoutAnchored') === true;
+      const sideOf = (end: 'sourceSide' | 'targetSide') => {
+        const v = link.getMetadata(end);
+        return v === 'top' || v === 'right' || v === 'bottom' || v === 'left' ? v : undefined;
+      };
+      const from = sideOf('sourceSide') ?? (byLayout ? undefined : handle(link.sourcePortId, link.sourceNodeId));
+      const to = sideOf('targetSide') ?? (byLayout ? undefined : handle(link.targetPortId, link.targetNodeId));
       if (from) props.push(`from:${from}`);
       if (to) props.push(`to:${to}`);
       const placement = link.getMetadata('labelPlacement');
       if (placement === 'above' || placement === 'below') props.push(`label:${placement}`);
-      if (link.getMetadata('hasManualWaypoints') === true && link.points.length > 2) {
+      if (!byLayout && link.getMetadata('hasManualWaypoints') === true && link.points.length > 2) {
         props.push(`via:${link.points.slice(1, -1).map((p) => `${Math.round(p.x * 100) / 100} ${Math.round(p.y * 100) / 100}`).join(' ')}`);
       }
       if (props.length > 0) lines.push(`%%grafloria:edge ${this.sanitizeId(link.sourceNodeId ?? '')} ${this.sanitizeId(link.targetNodeId ?? '')} ${props.join(', ')}`);

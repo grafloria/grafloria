@@ -184,8 +184,9 @@ export interface ClickNode extends ASTNode {
  */
 export interface GrafloriaDirectiveNode extends ASTNode {
   type: 'GrafloriaDirective';
-  /** node / edge / group properties, or `at` — an exact position and size. */
-  target: 'node' | 'edge' | 'group' | 'at';
+  /** node / edge / group properties, `at` — an exact position and size, `layout` — how
+   *  the diagram is arranged, `near` — a note placed beside its target. */
+  target: 'node' | 'edge' | 'group' | 'at' | 'layout' | 'near';
   ids: string[];
   properties: Record<string, string>;
 }
