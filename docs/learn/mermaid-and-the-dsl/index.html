@@ -168,6 +168,42 @@ const text = exportDiagramText(diagram);</pre>
       writes all of it back, so a diagram built on the canvas exports to the same kind of text.</p>
       <p><a class="demo-link" href="../../demos/diagrams/ai-style-diagram.html">Live: the same diagram from the native API and from Mermaid →</a></p>
 
+      <h2 id="architecture">The same look with no coordinates</h2>
+      <p>Pinning every box is exact, and it is geometry by hand. One comment asks for the
+      <a href="../layout/#architecture">architecture layout</a> instead: zones become regions on a
+      grid, boxes are sized to their words and aligned in rows, lines run straight where boxes
+      line up and bend in the gutters. What the text then carries is structure and a few
+      <b>relations</b> — none of them a number:</p>
+<pre data-lang="mermaid">flowchart LR
+  %%grafloria:layout architecture
+  customer["&lt;b&gt;Customer&lt;/b&gt;&lt;br/&gt;phone or browser"]
+  subgraph hp["HEALTHPAY'S SIDE · CARDS ARE TYPED HERE"]
+    direction LR
+    page["&lt;b&gt;HealthPay payment page&lt;/b&gt;&lt;br/&gt;the card is typed here"]
+    wallets["&lt;b&gt;HealthPay wallets&lt;/b&gt;&lt;br/&gt;hold the customer's money"]
+  end
+  subgraph ours["OUR SIDE · MUST NEVER SEE A CARD"]
+    direction LR
+    api["&lt;b&gt;Our API&lt;/b&gt;&lt;br/&gt;&lt;code&gt;sherkety-erp-api&lt;/code&gt;"]
+  end
+  fake["&lt;b&gt;Fake card page&lt;/b&gt;&lt;br/&gt;not HealthPay's"]
+  note@{ shape: text, label: "if someone swaps the link, the customer lands here (M1)" }
+  customer --&gt;|card number and CVV| page --&gt;|adds money| wallets
+  api --&gt;|asks HealthPay to move money| wallets
+  customer -.-&gt; fake
+  %% the wallets sit ABOVE the API: the line leaves the API's top
+  %%grafloria:edge api wallets from:top, to:bottom
+  %% the fake page hangs BELOW the customer
+  %%grafloria:edge customer fake from:bottom, to:top
+  %% a note beside what it warns about
+  %%grafloria:near note fake right</pre>
+      <p><code>direction LR</code> inside a subgraph (Mermaid's own) lays the zone's boxes in a
+      row. A plain side in <code>from:</code>/<code>to:</code> says which way a line leaves — so
+      where its target sits — and <code>near</code> places a note. An exact
+      <code>%%grafloria:at</code> still wins for the box it names. Export writes the relations and
+      the layout back, never the pixels the layout chose.</p>
+      <p><a class="demo-link" href="../../demos/diagrams/architecture-layout.html">Live: edit the text, the drawing re-composes →</a></p>
+
       <h2>Text and canvas, live</h2>
       <p>The framework surfaces wire both directions into the live canvas —
       <code>instance.exportText()</code> / <code>instance.loadText(text)</code> (React/Vue) and
