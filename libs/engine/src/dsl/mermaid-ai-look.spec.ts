@@ -34,16 +34,16 @@ export const HEALTHPAY_MERMAID = `flowchart LR
   api -->|sends the payment link| customer
   customer -.->|"card typed as a<br/>#quot;bank account#quot; (H1)"| api
   customer -.-> fake
-  classDef box fill:#ffffff,stroke:#d0d5dd,shadow:none,rx:4
-  classDef bad fill:#fdecec,stroke:#e5a0a0,shadow:none,rx:4
+  classDef box fill:#ffffff,stroke:#d0d5dd,shadow:none,rx:4,font-size:13px
+  classDef bad fill:#fdecec,stroke:#e5a0a0,shadow:none,rx:4,font-size:13px
   class customer,page,wallets,api,db box
   style note color:#cf222e,font-weight:bold,font-size:11px
   style hp fill:#e9f2f3,stroke:#7aabb3,stroke-dasharray:5 4,color:#2a7a86,font-weight:bold,letter-spacing:1px
   style ours fill:#f3f4f6,stroke:#d7dbe0,color:#4b5563,font-weight:bold,letter-spacing:1px
-  linkStyle 0 stroke:#1a7f37,color:#1a7f37,font-weight:bold
-  linkStyle 1,2,3,4 stroke:#6b7785,color:#5f6b7a
+  linkStyle 0 stroke:#1a7f37,color:#1a7f37,font-weight:bold,font-size:11px,stroke-width:1.5px
+  linkStyle 1,2,3,4 stroke:#6b7785,color:#5f6b7a,font-size:11px,stroke-width:1.5px
   linkStyle 2 interpolate stepBefore stroke:#6b7785
-  linkStyle 5,6 stroke:#cf222e,color:#cf222e,font-weight:bold
+  linkStyle 5,6 stroke:#cf222e,color:#cf222e,font-weight:bold,font-size:11px,stroke-width:1.5px
   %% Grafloria layout — comments any other Mermaid renderer ignores
   %%grafloria:at customer 20,78 150x292
   %%grafloria:at page 410,78 210x72
@@ -192,6 +192,20 @@ describe("Grafloria's Mermaid draws the AI-diagram look", () => {
 
     it('classDef rx rounds a box', () => {
       expect(d.getNode('page')!.style.borderRadius).toBe(4);
+    });
+
+    it('font-size sets the size: 13 px names from classDef, 11 px line labels from linkStyle', () => {
+      expect(d.getNode('customer')!.style.fontSize).toBe(13);
+      expect(d.getNode('fake')!.style.fontSize).toBe(13);
+      expect(link('customer', 'page').labels[0].style?.fontSize).toBe(11);
+      expect(link('page', 'wallets').labels[0].style?.fontSize).toBe(11);
+      expect(link('customer', 'api').labels[0].style?.fontSize).toBe(11);
+    });
+
+    it('linkStyle stroke-width:1.5px draws the hairline an AI diagram uses', () => {
+      for (const [s, t] of [['customer', 'page'], ['page', 'wallets'], ['api', 'wallets'], ['customer', 'fake']]) {
+        expect(link(s, t).style.strokeWidth).toBe(1.5);
+      }
     });
 
     it('linkStyle colour and weight reach the LABEL, stroke reaches the line; -.-> stays dashed', () => {

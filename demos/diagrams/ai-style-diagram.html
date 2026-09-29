@@ -100,16 +100,16 @@ export default {
   api -->|sends the payment link| customer
   customer -.->|"card typed as a<br/>#quot;bank account#quot; (H1)"| api
   customer -.-> fake
-  classDef box fill:#ffffff,stroke:#d0d5dd,shadow:none,rx:4
-  classDef bad fill:#fdecec,stroke:#e5a0a0,shadow:none,rx:4
+  classDef box fill:#ffffff,stroke:#d0d5dd,shadow:none,rx:4,font-size:13px
+  classDef bad fill:#fdecec,stroke:#e5a0a0,shadow:none,rx:4,font-size:13px
   class customer,page,wallets,api,db box
   style note color:#cf222e,font-weight:bold,font-size:11px
   style hp fill:#e9f2f3,stroke:#7aabb3,stroke-dasharray:5 4,color:#2a7a86,font-weight:bold,letter-spacing:1px
   style ours fill:#f3f4f6,stroke:#d7dbe0,color:#4b5563,font-weight:bold,letter-spacing:1px
-  linkStyle 0 stroke:#1a7f37,color:#1a7f37,font-weight:bold
-  linkStyle 1,2,3,4 stroke:#6b7785,color:#5f6b7a
+  linkStyle 0 stroke:#1a7f37,color:#1a7f37,font-weight:bold,font-size:11px,stroke-width:1.5px
+  linkStyle 1,2,3,4 stroke:#6b7785,color:#5f6b7a,font-size:11px,stroke-width:1.5px
   linkStyle 2 interpolate stepBefore stroke:#6b7785
-  linkStyle 5,6 stroke:#cf222e,color:#cf222e,font-weight:bold
+  linkStyle 5,6 stroke:#cf222e,color:#cf222e,font-weight:bold,font-size:11px,stroke-width:1.5px
   %% Grafloria layout — comments any other Mermaid renderer ignores
   %%grafloria:at customer 20,78 150x292
   %%grafloria:at page 410,78 210x72
@@ -229,6 +229,12 @@ defineDemo({
     // the Mermaid on the page is Mermaid: every Grafloria-only word lives in a %% comment
     check(mermaidText.split('\n').every((l) => !/grafloria/i.test(l) || l.trim().startsWith('%%')), 'every Grafloria-only line of the Mermaid source should be a %% comment');
     await ctx.show('native');
+  },
+
+  // The Mermaid drawing gets its own golden: the same picture, from the text.
+  async showcase(ctx) {
+    await ctx.show('mermaid');
+    await ctx.tick();
   },
 });
 </script>
