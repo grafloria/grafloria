@@ -870,12 +870,27 @@ export const STRIP_STAY = 9;
 const nodeOf = (g: GestureState): NodeModel => g.entity as NodeModel;
 let binderSeq = 0;
 
+/**
+ * A dashboard's container gestures are the KIT's. Boards, tab groups and pages
+ * are diagram groups, and the kit decides every press, drag and drop on them —
+ * which board a widget lands on, a tab group moved by its strip, a pane torn
+ * out at an edge. The diagram's generic group gestures (pick a zone up; drop a
+ * box out of a zone and it leaves) are on by default for plain diagrams, and on
+ * a board the generic zone drag grabbed presses the kit owns. Called wherever a
+ * group becomes a board, so no host has to know the two flag names.
+ */
+export function claimContainerGestures(api: DashboardGridApi): void {
+  const engine = api.getEngine() as { setInteractionConfig?(config: Record<string, unknown>): void };
+  engine.setInteractionConfig?.({ enableGroupDrag: false, enableGroupMembershipOnDrop: false });
+}
+
 export function bindDashboardGrid(
   api: DashboardGridApi,
   group: GroupModel,
   options: DashboardGridOptions = {}
 ): DashboardGridHandle {
   ensureDashboardKitStyles();
+  claimContainerGestures(api);
 
   const diagram = api.getModel();
   /** The DECLARED count — the board's authored width, and the responsive cap. */

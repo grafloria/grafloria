@@ -27,7 +27,7 @@ import { BESIDE_BAND, resolveTabZone, resolve as resolveZone, stripCrossing, str
 import { AddToGroupCommand, BatchCommand, Command, RemoveFromGroupCommand, type DiagramModel, type GroupModel, type NodeModel } from '@grafloria/engine';
 import { LiveRegionController, registerTool, type CanvasTool, type ToolPointerEvent } from '@grafloria/renderer';
 import type { AdoptOptions, AdoptedLeg, DashboardGridApi, DashboardGridHandle, DashboardGridOptions, TearOutPlan } from './grid-binder';
-import { anyEdge, clearOtherSelections, clientPerWorldOf, dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, parentPeerOf, peersOnCanvasOf, pressOnDragHandle, registerBoardPeer, syncGrip, zoneRootsOf, DRAG_HANDLE_CLASS, EDGE_GRIP, STRIP_STAY, type BinderPeer, type DragHandleOption, type ResizeEdges } from './grid-binder';
+import { anyEdge, claimContainerGestures, clearOtherSelections, clientPerWorldOf, dragHandleSelector, gripHostOf, gripOf, normalizeDragHandle, ownsPress, parentPeerOf, peersOnCanvasOf, pressOnDragHandle, registerBoardPeer, syncGrip, zoneRootsOf, DRAG_HANDLE_CLASS, EDGE_GRIP, STRIP_STAY, type BinderPeer, type DragHandleOption, type ResizeEdges } from './grid-binder';
 import { buildCommitCommands, cellFromGridItem, type CellRect, type WorldRect } from './grid-mapping';
 import { SequenceCommand } from './commit';
 import { TAB_STRIP_HEIGHT } from './tabs';
@@ -184,6 +184,7 @@ interface Gesture {
 export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, options: DashboardSplitOptions = {}): DashboardSplitHandle {
   const diagram = api.getModel();
   ensureDashboardKitStyles(api.container.ownerDocument ?? document);
+  claimContainerGestures(api);
 
   const columns = options.columns ?? 12;
   const gap = options.gap ?? 12;
