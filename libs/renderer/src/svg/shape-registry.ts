@@ -1188,8 +1188,23 @@ export function defaultInnerRect(width: number, height: number): InnerRect {
   return { x: pad, y: pad, w: width - 2 * pad, h: height - 2 * pad };
 }
 
-// Register the five built-ins.
-for (const def of [RectShape, CircleShape, EllipseShape, DiamondShape, HexagonShape]) {
+/**
+ * 'text' — a NOTE on the canvas: words with no box (the free annotations of the
+ * diagrams AI tools draw: "if someone swaps the link, the customer lands here").
+ * The rect's geometry, so it hit-tests, selects, drags and takes ports like any
+ * node; the style cascade paints its body transparent, and its label box is the
+ * whole node — the label engine draws it start-aligned and unclipped.
+ */
+const TextShape: ShapeDefinition = {
+  ...RectShape,
+  type: 'text',
+  innerRect(width, height) {
+    return { x: 0, y: 0, w: width, h: height };
+  },
+};
+
+// Register the five built-ins, and the text note.
+for (const def of [RectShape, CircleShape, EllipseShape, DiamondShape, HexagonShape, TextShape]) {
   registry.set(def.type, def);
 }
 

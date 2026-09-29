@@ -163,6 +163,16 @@ function shapeMetadataStyle(node: NodeModel): Partial<NodeStyle> {
   } as Partial<NodeStyle>);
 }
 
+/**
+ * A 'text' node is words with no box: its body is transparent, borderless and
+ * shadowless unless the node itself sets a fill or stroke (a highlighted note).
+ */
+function shapeKindStyle(node: NodeModel): Partial<NodeStyle> {
+  const shape = node.getMetadata?.('shape') as { type?: string } | undefined;
+  if (shape?.type !== 'text') return {};
+  return { fill: 'transparent', stroke: 'none', strokeWidth: 0, shadow: false };
+}
+
 /** Resolve a node's effective style. ONE ordered spread — see the header. */
 export function resolveNodeStyle(
   node: NodeModel,
@@ -172,6 +182,7 @@ export function resolveNodeStyle(
   return {
     ...(options.includeThemeBase ? nodeThemeBase(theme) : undefined),
     ...nodeTypeDefaults(theme, node.type),
+    ...shapeKindStyle(node),
     ...resolveStyleClasses<NodeStyle>(node.style?.styleClass),
     // element-inline: the entity's own props, from BOTH places they can live.
     // The typed `node.style` wins over the legacy `metadata.shape` paints.

@@ -100,6 +100,18 @@ export interface PortSpec {
 }
 
 /** A node, as a host hands it in. */
+/** A node's second line, when it needs its own font or colour. See `NodeSpec.sublabel`. */
+export interface NodeSublabel {
+  text: string;
+  /** A CSS font stack, or `'mono'` for a monospace one. */
+  fontFamily?: string;
+  /** px. Default: 0.85 of the label's size. */
+  fontSize?: number;
+  /** Default: the theme's secondary text colour. */
+  color?: string;
+  fontWeight?: string | number;
+}
+
 export interface NodeSpec {
   id?: string;
   /** Engine node type. Default `'rect'`. */
@@ -110,6 +122,14 @@ export interface NodeSpec {
   data?: Record<string, any>;
   /** Convenience for `metadata.label`. */
   label?: string;
+  /**
+   * A second, smaller, muted line under the label — the name-and-description
+   * box of the diagrams AI tools draw ("Our API" / "sherkety-erp-api"). With a
+   * sublabel the label is drawn semi-bold (a `style.fontWeight` still wins).
+   * An object sets the line's own font (`'mono'` = a monospace stack), size and
+   * colour. Stored on `metadata.sublabel`, so it serializes with the node.
+   */
+  sublabel?: string | NodeSublabel;
   /** Convenience for `metadata.shape` (fill / stroke / cornerRadius / …). */
   shape?: Record<string, any>;
   style?: Partial<NodeStyle>;
@@ -291,6 +311,7 @@ export function applyNodeSpec(node: NodeModel, spec: NodeSpec): void {
   if (spec.data) node.data = { ...spec.data };
   if (spec.style) node.style = { ...node.style, ...spec.style };
   if (spec.label !== undefined) node.setMetadata('label', spec.label);
+  if (spec.sublabel !== undefined) node.setMetadata('sublabel', spec.sublabel);
   if (spec.shape !== undefined) node.setMetadata('shape', spec.shape);
   if (spec.custom !== undefined) node.setMetadata('useHTMLLayer', spec.custom);
   if (spec.metadata) {
@@ -464,6 +485,8 @@ export function toNodeSpec(node: NodeModel): NodeSpec {
 
   const label = node.getLabel();
   if (label !== undefined) spec.label = label;
+  const sublabel = node.getMetadata('sublabel') as NodeSpec['sublabel'] | undefined;
+  if (sublabel !== undefined) spec.sublabel = sublabel;
 
   const shape = node.getMetadata('shape');
   if (shape !== undefined) spec.shape = shape;

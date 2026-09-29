@@ -183,6 +183,32 @@ import {
 // ellipsis / shape-fit) — the same code path link labels render through.
 import { renderTextBlock, wrapText } from './text-block';
 
+/** A label's inline typography — the only keys a node can set on its text. */
+interface LabelCss {
+  fill?: string;
+  fontSize?: string;
+  fontWeight?: string;
+  fontFamily?: string;
+  fontStyle?: string;
+  textDecoration?: string;
+}
+
+/** The monospace stack the `'mono'` keyword names (a subtitle like "sherkety-erp-api"). */
+const MONO_STACK = "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace";
+/** A font family as written by a user: `'mono'` is a keyword, anything else a CSS stack. */
+function fontStackFor(family: string): string {
+  return family.trim().toLowerCase() === 'mono' || family.trim().toLowerCase() === 'monospace' ? MONO_STACK : family;
+}
+/** `metadata.sublabel` — a string, or `{ text, fontFamily, fontSize, color, fontWeight }` — normalised; null when absent or empty. */
+function readSublabel(meta: unknown): { text: string; fontFamily?: string; fontSize?: number; color?: string; fontWeight?: string | number } | null {
+  if (typeof meta === 'string') return meta ? { text: meta } : null;
+  if (meta && typeof meta === 'object' && typeof (meta as { text?: unknown }).text === 'string') {
+    const m = meta as { text: string; fontFamily?: string; fontSize?: number; color?: string; fontWeight?: string | number };
+    return m.text ? m : null;
+  }
+  return null;
+}
+
 // Wave 5 Card 7: content-aware auto-sizing (opt-in via metadata.sizing.auto).
 import { autoSizeNode, type AutoSizeOptions } from './auto-size';
 import { isAutoSized } from './node-sizing';
@@ -2090,6 +2116,8 @@ export class SVGRenderer implements IRenderer {
   /** Did a theme LAYER (state / type-default) contribute a literal to this node? */
   private drawsThemeLiteral(node: NodeModel): boolean {
     if (!this.config.useCSSMode) return true; // no stylesheet: everything is baked
+    // A subtitle paints the theme's secondary text colour as a literal.
+    if (readSublabel(node.getMetadata('sublabel'))) return true;
     const state = node.state;
     if (state.selected || state.highlighted || state.hovered || !state.enabled || state.error) {
       return true;
@@ -4767,8 +4795,10 @@ export class SVGRenderer implements IRenderer {
               } as VNode,
             ]
           : []),
-        // Drop shadow (Phase 3.1: Shape-aware)
-        ...(this.lodAllows('shadows', lod) ? [this.renderShadow(node, isHovered)] : []),
+        // Drop shadow (Phase 3.1: Shape-aware). `style.shadow: false` turns it
+        // OFF — it used to add nothing and remove nothing, so a flat box (and a
+        // text note) still wore a blurred grey slab under it.
+        ...(this.lodAllows('shadows', lod) && this.resolvedNodeStyle(node).shadow !== false ? [this.renderShadow(node, isHovered)] : []),
         // Node shape (Phase 3.1: Shape-based rendering)
         this.renderNodeShape(node, styles, isHovered),
         // Card 5: composite panel overlay (header band / image / rows / badges /
@@ -5423,6 +5453,7 @@ export class SVGRenderer implements IRenderer {
       return this.renderNodeLabelBelow(node);
     }
     const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
+    if (shapeConfig.type === 'text') return this.renderTextNoteLabel(node);
     const { width, height } = node.size;
     // Card 5: when the node carries a composite panel, keep the label out of the
     // panel's header/image (top) and row (bottom) bands.
@@ -5434,16 +5465,22 @@ export class SVGRenderer implements IRenderer {
     );
 
     const label = String(node.getLabel());
+    // THE NODE'S OWN TYPOGRAPHY. `style.color`, `fontSize`, `fontWeight`,
+    // `fontFamily` were declared on NodeStyle and read by nothing — a caption
+    // styled teal, bold and 11 px drew in the theme's ink at 14 px. Resolved
+    // through the cascade (so a Mermaid `classDef … color:` lands too) and
+    // emitted as an inline style, which beats the `.diagram-label` rule.
+    const typo = this.nodeTextStyle(node);
+    const sublabel = readSublabel(node.getMetadata('sublabel'));
     // SHRINK-TO-FIT (Visio does this too). `wrapText` can only break on spaces
     // and hyphens, so a single long token — "Decision" in a diamond's 50px inner
     // box, "Connector" in a 36px circle — stayed one over-wide line and the clip
     // path sheared it ("Decisior", "nnec"). Scale the font down just enough for
     // the widest unbreakable token to fit, with a legibility floor.
-    const baseFont = this.theme.typography.fontSize.md as number;
+    const baseFont = typo.fontSize ?? (this.theme.typography.fontSize.md as number);
     const fontSize = fitFontSize(label, inner.w, baseFont);
     const shrunk = fontSize < baseFont;
     const lineHeight = fontSize * 1.2;
-    const maxLines = Math.max(1, Math.floor(inner.h / lineHeight));
     const clipId = `node-clip-${node.id}`;
 
     const clip: VNode = {
@@ -5458,16 +5495,28 @@ export class SVGRenderer implements IRenderer {
       ],
     };
 
+    // A NAME OVER A SUBTITLE — the box of the diagrams AI tools draw. The pair
+    // is laid out as one block centred in the inner rect: the name semi-bold,
+    // the subtitle smaller and muted, a small gap between.
+    const subFont = sublabel ? fitFontSize(sublabel.text, inner.w, sublabel.fontSize ?? Math.round(fontSize * 0.85)) : 0;
+    const subLineHeight = subFont * 1.2;
+    const GAP = sublabel ? 3 : 0;
+    const titleLines = Math.max(1, Math.min(wrapText(label, inner.w, fontSize).length, Math.floor((inner.h - (sublabel ? subLineHeight + GAP : 0)) / lineHeight)));
+    const subLines = sublabel ? Math.max(1, Math.min(wrapText(sublabel.text, inner.w, subFont).length, Math.floor((inner.h - titleLines * lineHeight - GAP) / subLineHeight))) : 0;
+    const titleH = titleLines * lineHeight;
+    const blockH = titleH + (sublabel ? GAP + subLines * subLineHeight : 0);
+    const top = inner.y + (inner.h - blockH) / 2;
+
     const text = renderTextBlock({
       text: label,
       x: inner.x + inner.w / 2,
-      y: inner.y + inner.h / 2,
+      y: sublabel ? top + titleH / 2 : inner.y + inner.h / 2,
       maxWidth: inner.w,
       align: 'middle',
       valign: 'middle',
       fontSize,
       lineHeight: 1.2,
-      maxLines,
+      maxLines: sublabel ? titleLines : Math.max(1, Math.floor(inner.h / lineHeight)),
       clipId,
       nonInteractive: true,
       // CSS mode lets `.diagram-label` drive font/fill; programmatic mode emits them.
@@ -5476,20 +5525,104 @@ export class SVGRenderer implements IRenderer {
       // geometry, not theming, so it MUST be emitted inline or the label keeps
       // the stylesheet's size and overflows exactly as before.
       emitFontSize: !this.config.useCSSMode || shrunk,
-      color: this.config.useCSSMode ? undefined : (this.theme.colors.text.primary as string),
-      fontWeight: this.config.useCSSMode ? undefined : (this.theme.typography.fontWeight.medium as number),
+      color: this.config.useCSSMode ? undefined : (typo.style.fill ?? (this.theme.colors.text.primary as string)),
+      fontWeight: this.config.useCSSMode ? undefined : (typo.style.fontWeight ?? (sublabel ? 600 : (this.theme.typography.fontWeight.medium as number))),
     });
 
     // A shrink must WIN over `.diagram-label`'s font-size: `fontSize` is emitted
     // as an SVG presentation attribute, and any CSS rule outranks those — which
     // is why emitting it alone left the label at the stylesheet size and still
-    // clipped. An inline style beats the class.
-    if (shrunk) {
+    // clipped. An inline style beats the class. The node's own typography rides
+    // the same inline style, for the same reason.
+    const inline: LabelCss = { ...typo.style };
+    if (shrunk) inline.fontSize = `${fontSize}px`;
+    if (sublabel && inline.fontWeight === undefined) inline.fontWeight = '600';
+    if (Object.keys(inline).length > 0) {
       const props = text.props as Record<string, unknown>;
-      props['style'] = { ...(props['style'] as object ?? {}), fontSize: `${fontSize}px` };
+      props['style'] = { ...((props['style'] as object) ?? {}), ...inline };
     }
+    if (!sublabel) return [clip, text];
 
-    return [clip, text];
+    const subColor = sublabel.color ?? (this.theme.colors.text.secondary as string);
+    const sub = renderTextBlock({
+      text: sublabel.text,
+      x: inner.x + inner.w / 2,
+      y: top + titleH + GAP + (subLines * subLineHeight) / 2,
+      maxWidth: inner.w,
+      align: 'middle',
+      valign: 'middle',
+      fontSize: subFont,
+      lineHeight: 1.2,
+      maxLines: subLines,
+      clipId,
+      nonInteractive: true,
+      className: 'diagram-sublabel',
+      emitFontSize: true,
+      color: subColor,
+    });
+    // Inline, always: no stylesheet rule owns a subtitle, and the theme's label
+    // rule must not repaint it in the name's ink.
+    (sub.props as Record<string, unknown>)['style'] = {
+      fill: subColor,
+      fontSize: `${subFont}px`,
+      ...(sublabel.fontFamily ? { fontFamily: fontStackFor(sublabel.fontFamily) } : {}),
+      ...(sublabel.fontWeight !== undefined ? { fontWeight: String(sublabel.fontWeight) } : {}),
+    };
+    return [clip, text, sub];
+  }
+
+  /**
+   * A 'text' note's words: from its left edge by default (`metadata.textAlign`
+   * centres or right-aligns), vertically centred, wrapped to its width — and
+   * never clipped, shrunk or cut to "…": a note has no silhouette to escape.
+   */
+  private renderTextNoteLabel(node: NodeModel): VNode[] {
+    const { width, height } = node.size;
+    const typo = this.nodeTextStyle(node);
+    const fontSize = typo.fontSize ?? (this.theme.typography.fontSize.md as number);
+    const a = node.getMetadata('textAlign');
+    const align: 'start' | 'middle' | 'end' = a === 'center' || a === 'middle' ? 'middle' : a === 'end' || a === 'right' ? 'end' : 'start';
+    const text = renderTextBlock({
+      text: String(node.getLabel()),
+      x: align === 'start' ? 0 : align === 'middle' ? width / 2 : width,
+      y: height / 2,
+      // One line unless the text breaks itself ('\n'), like an SVG <text>: the
+      // width estimate (0.6 em a glyph) runs long, and a note wrapped by a guess
+      // is a note broken in the wrong place.
+      maxWidth: undefined,
+      align,
+      valign: 'middle',
+      fontSize,
+      lineHeight: 1.2,
+      nonInteractive: true,
+      className: this.config.useCSSMode ? 'diagram-label' : undefined,
+      emitFontSize: !this.config.useCSSMode,
+      color: this.config.useCSSMode ? undefined : (typo.style.fill ?? (this.theme.colors.text.primary as string)),
+      fontWeight: this.config.useCSSMode ? undefined : typo.style.fontWeight,
+    });
+    if (Object.keys(typo.style).length > 0) {
+      const props = text.props as Record<string, unknown>;
+      props['style'] = { ...((props['style'] as object) ?? {}), ...typo.style };
+    }
+    return [text];
+  }
+
+  /**
+   * A node's own typography — color, size, weight, family, style, decoration —
+   * as an inline CSS object for its label, from the resolved cascade (inline
+   * style, classDef, type defaults). Only what the node actually sets.
+   */
+  private nodeTextStyle(node: NodeModel): { style: LabelCss; fontSize?: number } {
+    const st = this.resolvedNodeStyle(node) as Partial<NodeStyle>;
+    const out: LabelCss = {};
+    if (typeof st.color === 'string' && st.color) out.fill = st.color;
+    const size = typeof st.fontSize === 'number' && st.fontSize > 0 ? st.fontSize : undefined;
+    if (size !== undefined) out.fontSize = `${size}px`;
+    if (st.fontWeight !== undefined && st.fontWeight !== '') out.fontWeight = String(st.fontWeight);
+    if (st.fontFamily) out.fontFamily = fontStackFor(st.fontFamily);
+    if (st.fontStyle) out.fontStyle = st.fontStyle;
+    if (st.textDecoration) out.textDecoration = st.textDecoration;
+    return { style: out, fontSize: size };
   }
 
   /** Gap between a silhouette's bottom edge and its below-label (px). */
