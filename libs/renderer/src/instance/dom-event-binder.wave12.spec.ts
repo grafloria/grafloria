@@ -112,8 +112,9 @@ describe('wave12 gap 1 — group drag carries members', () => {
     expect(h.events.some((e) => e.event === 'nodes:change')).toBe(true);
   });
 
-  it('OFF (default): the same press-drag inside a frame moves nothing (RED without the flag)', () => {
-    h = harness(); // enableGroupDrag defaults false
+  const pressDragOneMemberFrame = (flag?: boolean) => {
+    h = harness();
+    if (flag !== undefined) h.engine.setInteractionConfig({ enableGroupDrag: flag } as never);
     applyNodes(h.model, [{ id: 'm1', position: { x: 400, y: 200 }, size: { width: 100, height: 50 } }]);
     const g = new GroupModel({ name: 'P' });
     h.model.addGroup(g);
@@ -124,8 +125,18 @@ describe('wave12 gap 1 — group drag carries members', () => {
     h.container.dispatchEvent(mouse('mousedown', pressPoint));
     h.container.dispatchEvent(mouse('mousemove', { clientX: pressPoint.clientX + 120, clientY: pressPoint.clientY }));
     h.container.dispatchEvent(mouse('mouseup', { clientX: pressPoint.clientX + 120, clientY: pressPoint.clientY }));
+    return { before, after: h.model.getNode('m1')!.position };
+  };
 
-    expect(h.model.getNode('m1')!.position).toEqual(before);
+  it('OFF: the same press-drag inside a frame moves nothing (RED without the flag)', () => {
+    const { before, after } = pressDragOneMemberFrame(false);
+    expect(after).toEqual(before);
+  });
+
+  it('ON BY DEFAULT: a press-drag inside a frame carries its member (it used to pan the canvas)', () => {
+    const { before, after } = pressDragOneMemberFrame();
+    expect(after.x).toBeCloseTo(before.x + 120);
+    expect(after.y).toBeCloseTo(before.y);
   });
 
   it('commits as ONE undoable step — undo restores every member and the frame', async () => {

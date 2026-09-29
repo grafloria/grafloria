@@ -32,6 +32,32 @@ export interface LabelRenderContext {
    */
   offset?: Point;
   theme?: Theme;
+  /**
+   * The line AS PAINTED, when that is not `link.points`: a hand-bent right-angle
+   * line stores its bends and is drawn with the jogs between them, so a label
+   * placed on the stored points sat off the drawn line. The renderer passes the
+   * painted polyline; the label is placed (and turned) along it.
+   */
+  path?: ReadonlyArray<Point>;
+}
+
+/** The point `t` of the way along a polyline (by length) and the direction of the run it lands on. */
+function alongPolyline(pts: ReadonlyArray<Point>, t: number): { point: Point; angle: number } | null {
+  if (pts.length < 2) return null;
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) total += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+  if (total <= 0) return { point: { ...pts[0] }, angle: 0 };
+  let remaining = total * Math.max(0, Math.min(1, t));
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len > 0 && (remaining <= len || i === pts.length - 2)) {
+      const u = Math.min(1, remaining / len);
+      return { point: { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u }, angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI };
+    }
+    remaining -= len;
+  }
+  return { point: { ...pts[pts.length - 1] }, angle: 0 };
 }
 
 /**
@@ -65,8 +91,9 @@ export class LabelRenderer {
   renderLabel(label: LinkLabel, link: LinkModel, context: LabelRenderContext = {}): VNode | null {
     const position = linkLabelPosition(label);
 
-    // Get position on path
-    const point = link.getPointAtPosition(position);
+    // Get position on path — the painted one when the renderer handed it over
+    const along = context.path ? alongPolyline(context.path, position) : null;
+    const point = along ? along.point : link.getPointAtPosition(position);
     if (!point) {
       return null; // No valid position
     }
@@ -77,7 +104,7 @@ export class LabelRenderer {
     const finalY = point.y + offset.y;
 
     // Calculate rotation
-    const rotation = this.resolveRotation(label, link, position);
+    const rotation = this.resolveRotation(label, link, position, along?.angle);
 
     // --- Card 5: an author TEMPLATE replaces everything below ---------------
     if (label.template) {
@@ -219,10 +246,11 @@ export class LabelRenderer {
   private resolveRotation(
     label: LinkLabel,
     link: LinkModel,
-    position: number
+    position: number,
+    paintedAngle?: number
   ): number | undefined {
     if (label.rotation === 'auto') {
-      const angle = link.getAngleAt(position);
+      const angle = paintedAngle ?? link.getAngleAt(position);
       if (angle === null) return undefined;
 
       let rotation = angle;

@@ -184,6 +184,11 @@ import {
 // ellipsis / shape-fit) — the same code path link labels render through.
 import { renderTextBlock, wrapText } from './text-block';
 
+/** A 'text' note: words on the canvas with no box of their own. */
+function isTextNote(node: NodeModel): boolean {
+  return (node.getMetadata('shape') as { type?: string } | undefined)?.type === 'text';
+}
+
 /** The direction of a polyline at fraction `t` of its length; null for fewer than two distinct points. */
 function polylineTangentAt(points: Array<{ x: number; y: number }> | undefined, t: number): { x: number; y: number } | null {
   if (!points || points.length < 2) return null;
@@ -2786,7 +2791,12 @@ export class SVGRenderer implements IRenderer {
     // of them is weaker, is how you get a route that "hasn't changed" and is wrong anyway.
     // The spec still counts routes per link across a whole mount and pins it at one.
     for (const link of sortedLinks) {
-      if (this.linkHasManualWaypoints(link)) continue;
+      if (this.linkHasManualWaypoints(link)) {
+        // Not routed — but its ends are still decided HERE, with every other
+        // line's geometry, so the frame signature below sees them move.
+        this.settleManualWaypoints(link);
+        continue;
+      }
 
       const endpoints = this.getLinkEndpoints(link);
       if (!endpoints) continue;
@@ -5686,13 +5696,45 @@ export class SVGRenderer implements IRenderer {
    * Decided per frame from the path's tangent where the label lands, so the
    * label follows the line when a box moves. Undefined = the label's own offset.
    */
-  private placedLabelOffset(link: LinkModel, label: LinkLabel): { x: number; y: number } | undefined {
+  /**
+   * A label placed above/below a BENT line rides the middle of its longest
+   * straight run — where a person drawing it would write it — instead of half
+   * way along its length, which is often a corner. Only for the default
+   * position (0.5) on straight-run lines (direct / orthogonal); a straight line's
+   * longest run is the whole line, so nothing moves there.
+   */
+  private onLongestRun(link: LinkModel, label: LinkLabel, painted?: ReadonlyArray<{ x: number; y: number }>): LinkLabel {
+    const placement = link.getMetadata('labelPlacement');
+    if (placement !== 'above' && placement !== 'below') return label;
+    if (label.position !== undefined && label.position !== 0.5) return label;
+    if (link.pathType !== 'direct' && link.pathType !== 'orthogonal') return label;
+    const pts = painted ?? link.points;
+    if (!pts || pts.length < 3) return label;
+    // Words run level: the longest LEVEL run wins; only a line with none falls
+    // back to its longest run of any direction.
+    let total = 0;
+    let best = { from: 0, len: -1 };
+    let level = { from: 0, len: -1 };
+    for (let i = 0; i < pts.length - 1; i++) {
+      const dx = pts[i + 1].x - pts[i].x;
+      const dy = pts[i + 1].y - pts[i].y;
+      const len = Math.hypot(dx, dy);
+      if (len > best.len) best = { from: total, len };
+      if (Math.abs(dy) < 0.5 && len > level.len) level = { from: total, len };
+      total += len;
+    }
+    if (total <= 0) return label;
+    const run = level.len > 0 ? level : best;
+    return { ...label, position: (run.from + run.len / 2) / total };
+  }
+
+  private placedLabelOffset(link: LinkModel, label: LinkLabel, painted?: ReadonlyArray<{ x: number; y: number }>): { x: number; y: number } | undefined {
     const placement = link.getMetadata('labelPlacement');
     if (placement !== 'above' && placement !== 'below') return undefined;
     // The PAINTED polyline's direction where the label lands (`link.points` is
     // the painted geometry, flattened — the model's own tangent needs segments,
     // which a routed link does not carry).
-    const tangent = polylineTangentAt(link.points, typeof label.position === 'number' ? label.position : 0.5) ?? link.getTangentAt(0.5);
+    const tangent = polylineTangentAt((painted ?? link.points) as Array<{ x: number; y: number }>, typeof label.position === 'number' ? label.position : 0.5) ?? link.getTangentAt(0.5);
     if (!tangent) return undefined;
     const len = Math.hypot(tangent.x, tangent.y) || 1;
     let nx = -tangent.y / len;
@@ -5707,8 +5749,13 @@ export class SVGRenderer implements IRenderer {
       ny = -ny;
     }
     const fontSize = label.style?.fontSize ?? 12;
-    const lines = Math.max(1, String(label.text).split('\n').length);
-    const d = (lines * fontSize * 1.2) / 2 + 5;
+    const textLines = String(label.text).split('\n');
+    // Clear the line by half the label's extent ACROSS it: its height beside a
+    // level run, its width beside an upright one (a word written next to an
+    // upright line must not be struck through by it). Width is estimated.
+    const halfHeight = (Math.max(1, textLines.length) * fontSize * 1.2) / 2;
+    const halfWidth = (Math.max(...textLines.map((l) => l.length)) * fontSize * 0.6) / 2;
+    const d = Math.abs(ny) >= Math.abs(nx) ? halfHeight + 5 : halfWidth + 5;
     return { x: (label.offset?.x ?? 0) + nx * d, y: (label.offset?.y ?? 0) + ny * d };
   }
 
@@ -7000,7 +7047,7 @@ export class SVGRenderer implements IRenderer {
 
           segmentObstacles = currentDiagram.getNodes()
             .filter((node: NodeModel) =>
-              node.id !== sourceNodeId && node.id !== targetNodeId
+              node.id !== sourceNodeId && node.id !== targetNodeId && !isTextNote(node)
             )
             .map((node: NodeModel) => ({
               id: node.id,
@@ -7319,10 +7366,14 @@ export class SVGRenderer implements IRenderer {
                   // IS the author's offset, so nothing moves.
                   // An explicit above/below placement wins: the optimizer's entry is
                   // the label's own offset unless it opted into autoOffset.
-                  const offset = this.placedLabelOffset(link, label) ?? this.frameLabelOffsets.get(`${link.id}::${label.id}`);
-                  const labelVNode = this.labelRenderer.renderLabel(label, link, {
+                  // The line AS PAINTED: for a hand-bent right-angle line that is
+                  // not its stored points (the jogs between its bends are drawn).
+                  const placed = this.onLongestRun(link, label, points);
+                  const offset = this.placedLabelOffset(link, placed, points) ?? this.frameLabelOffsets.get(`${link.id}::${label.id}`);
+                  const labelVNode = this.labelRenderer.renderLabel(placed, link, {
                     offset,
                     theme: this.theme,
+                    path: points,
                   });
                   if (labelVNode) {
                     labelVNodes.push(labelVNode);
@@ -8880,6 +8931,46 @@ export class SVGRenderer implements IRenderer {
    * interaction layer), never inferred from point count — auto-routed
    * orthogonal paths also have >2 points.
    */
+  /**
+   * A hand-bent line whose box moved: its ends re-attach to the ports where
+   * they are NOW, and on a right-angle line the bend next to a moved end slides
+   * with it so that run stays square (a line leaving a box's top keeps its first
+   * run vertical). Bends next to an end that did not move are the author's and
+   * stay exactly where they were.
+   *
+   * This used to happen only inside `renderLink` — after the frame signature
+   * had compared the line's stored points, which nothing had refreshed, so the
+   * line was served from the cache: drawn where it was, both ends in the air.
+   */
+  private settleManualWaypoints(link: LinkModel): void {
+    const endpoints = this.getLinkEndpoints(link);
+    const old = link.points;
+    if (!endpoints || !old || old.length < 3) return;
+    const start = { ...endpoints.start };
+    const end = { ...endpoints.end };
+    const bends = old.slice(1, -1).map((p) => ({ ...p }));
+    type P = { x: number; y: number };
+    const moved = (a: P, b: P) => Math.abs(a.x - b.x) > 0.01 || Math.abs(a.y - b.y) > 0.01;
+    // (a zero-length run — a placeholder end sitting on its bend — is neither)
+    const upright = (a: P, b: P) => Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) >= 0.5;
+    const level = (a: P, b: P) => Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) >= 0.5;
+    // Only a run that WAS square is kept square: a run the author left slanted
+    // (the painter draws the jogs between their bends) keeps its bend.
+    if (this.isOrthogonalRouting(link)) {
+      const n = old.length;
+      if (moved(start, old[0])) {
+        if (upright(old[0], old[1])) bends[0].x = start.x;
+        else if (level(old[0], old[1])) bends[0].y = start.y;
+      }
+      if (moved(end, old[n - 1])) {
+        const last = bends[bends.length - 1];
+        if (upright(old[n - 2], old[n - 1])) last.x = end.x;
+        else if (level(old[n - 2], old[n - 1])) last.y = end.y;
+      }
+    }
+    this.syncLinkPoints(link, [start, ...bends, end]);
+  }
+
   private linkHasManualWaypoints(link: LinkModel): boolean {
     return link.getMetadata('hasManualWaypoints') === true &&
       !!link.points && link.points.length > 2;
@@ -9043,7 +9134,9 @@ export class SVGRenderer implements IRenderer {
         height: node.size.height,
       };
       all.push(rect);
-      if (!group.hiddenByCollapse.has(node.id)) routing.push(rect);
+      // A text note is words with no box: a line may pass it (it used to
+      // detour round an invisible rectangle).
+      if (!group.hiddenByCollapse.has(node.id) && !isTextNote(node)) routing.push(rect);
     }
     for (const block of group.groupBlocks) routing.push(block);
 
@@ -9727,6 +9820,7 @@ export class SVGRenderer implements IRenderer {
     if (!points || points.length < 2) return false;
     const inset = 1;
     for (const node of nodes) {
+      if (isTextNote(node)) continue; // words, no body to cross
       const rect = {
         minX: node.position.x + inset,
         minY: node.position.y + inset,
