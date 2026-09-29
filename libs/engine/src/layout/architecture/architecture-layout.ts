@@ -45,6 +45,19 @@ export interface ArchitectureLayoutOptions {
   measureText?: MeasureText;
   /** Space around the whole drawing. */
   margin?: number;
+  /**
+   * Smaller boxes, tighter gaps — a block diagram's grid. Default: the diagram's
+   * `metadata.layoutCompact`.
+   */
+  compact?: boolean;
+}
+
+/** A container laid out as an explicit grid (Mermaid block-beta): cells in reading order. */
+export interface ArchitectureGrid {
+  /** Cells to a row; absent = all in one row. */
+  columns?: number;
+  /** A block (node or zone id) or a hole (no id), each `span` cells wide. */
+  cells: Array<{ id?: string; span?: number }>;
 }
 
 export interface ArchitectureLayoutResult {
@@ -97,6 +110,8 @@ interface ZoneBlock {
   size: Sz;
   pad: { l: number; r: number; t: number; b: number };
   plan?: Plan;
+  /** An explicit grid (block-beta) instead of the ranked composition. */
+  grid?: ArchitectureGrid;
 }
 type Block = LeafBlock | ZoneBlock;
 
@@ -133,6 +148,8 @@ class ArchitectureComposer {
   private readonly margin: number;
   private readonly rootAxis: Axis;
   private readonly rootReverse: boolean;
+  /** The spacing this run uses: the composition's, or a block grid's compact one. */
+  private readonly k: typeof K;
   /** Every block's parent: a node's innermost zone, a zone's parent zone, else ROOT. */
   private readonly parentOf = new Map<string, string>();
   private readonly blocks = new Map<string, Block>();
@@ -146,6 +163,10 @@ class ArchitectureComposer {
     const dir = options.direction ?? String(diagram.getMetadata('direction') ?? 'LR');
     this.rootAxis = axisOf(dir);
     this.rootReverse = reversedOf(dir);
+    const compact = options.compact ?? diagram.getMetadata('layoutCompact') === true;
+    this.k = compact
+      ? { ...K, boxPadX: 22, boxPadY: 10, minBoxW: 64, minBoxH: 40, zonePadSide: 12, zonePadPlain: 12, zoneCaptionBand: 34, gapFlow: 32, gapCrossLeaf: 24, gapCrossZone: 24, labelPad: 12 }
+      : K;
   }
 
   run(): ArchitectureLayoutResult {
@@ -194,7 +215,8 @@ class ArchitectureComposer {
       this.parentOf.set(n.id, best ? best.id : ROOT);
     }
 
-    const root: ZoneBlock = { kind: 'zone', id: ROOT, decl: 0, axis: this.rootAxis, reverse: this.rootReverse, children: [], size: { w: 0, h: 0 }, pad: { l: 0, r: 0, t: 0, b: 0 } };
+    const rootGrid = this.diagram.getMetadata('grid') as ArchitectureGrid | undefined;
+    const root: ZoneBlock = { kind: 'zone', id: ROOT, decl: 0, axis: this.rootAxis, reverse: this.rootReverse, children: [], size: { w: 0, h: 0 }, pad: { l: 0, r: 0, t: 0, b: 0 }, ...(rootGrid?.cells ? { grid: rootGrid } : {}) };
     const zones = new Map<string, ZoneBlock>([[ROOT, root]]);
     const zoneOf = (id: string): ZoneBlock => {
       const existing = zones.get(id);
@@ -205,7 +227,7 @@ class ArchitectureComposer {
       const frame = (g.getMetadata('frameStyle') ?? {}) as { labelPlacement?: string };
       const captionAtBottom = /^bottom/.test(String(frame.labelPlacement ?? ''));
       const hasCaption = !!(g.name && g.name.trim());
-      const band = hasCaption ? K.zoneCaptionBand : K.zonePadPlain;
+      const band = hasCaption ? this.k.zoneCaptionBand : this.k.zonePadPlain;
       const z: ZoneBlock = {
         kind: 'zone',
         id,
@@ -213,9 +235,10 @@ class ArchitectureComposer {
         decl: Number.MAX_SAFE_INTEGER,
         axis: typeof dir === 'string' && dir ? axisOf(dir) : parent.axis,
         reverse: typeof dir === 'string' && dir ? reversedOf(dir) : parent.reverse,
+        ...((g.getMetadata('grid') as ArchitectureGrid | undefined)?.cells ? { grid: g.getMetadata('grid') as ArchitectureGrid } : {}),
         children: [],
         size: { w: 0, h: 0 },
-        pad: { l: K.zonePadSide, r: K.zonePadSide, t: captionAtBottom ? K.zonePadPlain : band, b: captionAtBottom ? band : K.zonePadPlain },
+        pad: { l: this.k.zonePadSide, r: this.k.zonePadSide, t: captionAtBottom ? this.k.zonePadPlain : band, b: captionAtBottom ? band : this.k.zonePadPlain },
       };
       zones.set(id, z);
       parent.children.push(z);
@@ -227,7 +250,7 @@ class ArchitectureComposer {
     nodes.forEach((n, i) => {
       const near = n.getMetadata('near') as { target?: string; side?: string; gap?: number } | undefined;
       if (near?.target && (this.diagram.getNode(near.target) || this.diagram.getGroup(near.target))) {
-        this.notes.push({ node: n, target: near.target, side: near.side ?? 'right', gap: near.gap ?? K.nearGap });
+        this.notes.push({ node: n, target: near.target, side: near.side ?? 'right', gap: near.gap ?? this.k.nearGap });
         return;
       }
       const leaf: LeafBlock = { kind: 'node', id: n.id, node: n, decl: i, size: this.leafSize(n) };
@@ -253,6 +276,8 @@ class ArchitectureComposer {
 
   /** A box sized to its words: a name (bold when a subtitle follows), a subtitle, padding. */
   private leafSize(n: NodeModel): Sz {
+    // a node that keeps its size (a junction's dot) is never resized
+    if ((n.getMetadata('sizing') as { fixed?: boolean } | undefined)?.fixed === true) return { w: n.size.width, h: n.size.height };
     const style = (n.style ?? {}) as { fontSize?: number | string; fontWeight?: string | number; fontFamily?: string };
     const fs = Number(style.fontSize) || 14;
     const label = String(n.getLabel() ?? n.id);
@@ -272,15 +297,25 @@ class ArchitectureComposer {
       const subLines = sub.text.split('\n');
       const family = sub.fontFamily === 'mono' ? 'monospace' : sub.fontFamily;
       w = Math.max(w, widestLine(subLines, { size: subFs, weight: sub.fontWeight, family }, this.measure));
-      h += 4 + subLines.length * subFs * K.labelLine;
+      h += 4 + subLines.length * subFs * this.k.labelLine;
     }
-    w += 2 * K.boxPadX;
-    h += 2 * K.boxPadY;
+    w += 2 * this.k.boxPadX;
+    h += 2 * this.k.boxPadY;
+    // room for a panel icon in the corner
+    const icon = (n.getMetadata('panel') as { icon?: { size?: number } } | undefined)?.icon;
+    if (icon) w += (icon.size ?? 18) + 8;
     if (shape && SHAPES_NEEDING_ROOM.has(shape)) {
       w *= 1.4;
       h *= 1.4;
     }
-    return { w: Math.ceil(Math.max(w, K.minBoxW)), h: Math.ceil(Math.max(h, K.minBoxH)) };
+    // a cylinder's rims take height from its words
+    if (shape === 'cylinder' || shape === 'database') h += 16;
+    return { w: Math.ceil(Math.max(w, this.k.minBoxW)), h: Math.ceil(Math.max(h, this.k.minBoxH)) };
+  }
+
+  /** A node that keeps its size (`metadata.sizing.fixed` — a junction's dot). */
+  private fixed(b: Block): boolean {
+    return b.kind === 'node' && (b.node.getMetadata('sizing') as { fixed?: boolean } | undefined)?.fixed === true;
   }
 
   /** The child of container `z` that holds `id` (a node or zone), or undefined. */
@@ -303,6 +338,12 @@ class ArchitectureComposer {
     const port = end === 'source' ? l.sourcePortId : l.targetPortId;
     if (isSideAnchorPort(port)) return parseSideAnchor(port!.split('__')[1] ?? '')?.side;
     return undefined;
+  }
+
+  /** Does the line name a side that points BACK along the flow (its target comes first)? */
+  private flowsBackward(l: LinkModel, a: Axis): boolean {
+    const [lo, hi] = a === 'x' ? (['left', 'right'] as const) : (['top', 'bottom'] as const);
+    return this.sideHint(l, 'source') === lo || this.sideHint(l, 'target') === hi;
   }
 
   /** For a line in a container flowing along `a`: does it say its source is across-BEFORE or across-AFTER its target? */
@@ -335,7 +376,9 @@ class ArchitectureComposer {
       const rel = this.crossRelation(l, z.axis);
       if (rel === 'after') across.push([b, a]);
       else if (rel === 'before') across.push([a, b]);
-      else flow.push([a, b]);
+      // a side that points BACK along the flow (`db:L -- R:server` in LR: the
+      // server is to the left) puts the target first
+      else flow.push(this.flowsBackward(l, z.axis) ? [b, a] : [a, b]);
     }
 
     // stacks: children joined across the flow
@@ -416,6 +459,10 @@ class ArchitectureComposer {
   private position(z: ZoneBlock): void {
     const plan = z.plan!;
     for (const c of z.children) if (c.kind === 'zone') this.position(c);
+    if (z.grid) {
+      this.arrangeGrid(z);
+      return;
+    }
     this.wrapLoose(z);
 
     // stacked zones in one column line their columns up
@@ -440,6 +487,86 @@ class ArchitectureComposer {
       for (const q of zs) q.size = sz(f, cOf(q.size, z.axis), z.axis);
     }
     this.arrange(z);
+  }
+
+  /**
+   * An explicit GRID (Mermaid block-beta): cells in reading order, `columns` to a
+   * row, a cell `span` wide, holes where a cell has no block. A column shares one
+   * width and a row one height, and every block FILLS its cell (a spanning block
+   * covers its columns and the gaps between them). A gap widens for a label that
+   * has to fit between two neighbours.
+   */
+  private arrangeGrid(z: ZoneBlock): void {
+    const plan = z.plan!;
+    const grid = z.grid!;
+    const kids = new Map(z.children.map((b) => [b.id, b] as const));
+    const cells = grid.cells.map((c) => ({ id: c.id, span: Math.max(1, Math.floor(c.span ?? 1)) }));
+    const listed = new Set(cells.map((c) => c.id).filter((id): id is string => !!id));
+    for (const b of z.children) if (!listed.has(b.id)) cells.push({ id: b.id, span: 1 }); // named only by an edge: last
+    const N = Math.max(1, grid.columns ?? cells.reduce((t, c) => t + c.span, 0));
+
+    type Placed = { b: Block; row: number; col: number; span: number };
+    const placed: Placed[] = [];
+    let row = 0, col = 0, lastRow = 0;
+    for (const cell of cells) {
+      const span = Math.min(cell.span, N);
+      if (col + span > N) { row++; col = 0; }
+      const b = cell.id ? kids.get(cell.id) : undefined;
+      if (b) placed.push({ b, row, col, span });
+      lastRow = row;
+      col += span;
+      if (col >= N) { row++; col = 0; }
+    }
+    const rows = cells.length ? lastRow + 1 : 0;
+    const colW = new Array<number>(N).fill(0);
+    const rowH = new Array<number>(rows).fill(0);
+    for (const p of placed) {
+      if (p.span === 1) colW[p.col] = Math.max(colW[p.col]!, p.b.size.w);
+      rowH[p.row] = Math.max(rowH[p.row]!, p.b.size.h);
+    }
+    const gapX = colW.map((_, j) => (j === 0 ? 0 : this.k.gapFlow));
+    const gapY = rowH.map((_, r) => (r === 0 ? 0 : this.k.gapCrossLeaf));
+    const at = new Map(placed.map((p) => [p.b.id, p] as const));
+    for (const { a, b, link } of plan.links) {
+      const pa = at.get(z.children[a]!.id), pb = at.get(z.children[b]!.id);
+      if (!pa || !pb) continue;
+      const m = this.labelMetrics(link);
+      if (m.w === 0) continue;
+      if (pa.row === pb.row) {
+        const [l, r] = pa.col < pb.col ? [pa, pb] : [pb, pa];
+        if (l.col + l.span === r.col) gapX[r.col] = Math.max(gapX[r.col]!, m.w + 2 * this.k.labelPad);
+      } else {
+        const [u, d] = pa.row < pb.row ? [pa, pb] : [pb, pa];
+        if (u.row + 1 === d.row) gapY[d.row] = Math.max(gapY[d.row]!, m.h + 2 * this.k.labelPad);
+      }
+    }
+    const spanW = (p: Placed) => {
+      let w = 0;
+      for (let j = p.col; j < p.col + p.span; j++) w += colW[j]! + (j > p.col ? gapX[j]! : 0);
+      return w;
+    };
+    for (const p of placed) if (p.span > 1) {
+      const short = p.b.size.w - spanW(p);
+      if (short > 0) for (let j = p.col; j < p.col + p.span; j++) colW[j] = colW[j]! + short / p.span;
+    }
+    for (let j = 0; j < N; j++) if (colW[j] === 0) colW[j] = this.k.minBoxW;
+    for (let r = 0; r < rows; r++) if (rowH[r] === 0) rowH[r] = this.k.minBoxH;
+    const xAt: number[] = [], yAt: number[] = [];
+    colW.forEach((_, j) => xAt.push(j === 0 ? 0 : xAt[j - 1]! + colW[j - 1]! + gapX[j]!));
+    rowH.forEach((_, r) => yAt.push(r === 0 ? 0 : yAt[r - 1]! + rowH[r - 1]! + gapY[r]!));
+    for (const p of placed) {
+      const w = spanW(p), h = rowH[p.row]!;
+      if (p.b.kind === 'node' && this.fixed(p.b)) {
+        // a fixed node sits in the middle of its cell
+        plan.rel.set(p.b.id, { x: xAt[p.col]! + (w - p.b.size.w) / 2, y: yAt[p.row]! + (h - p.b.size.h) / 2 });
+        continue;
+      }
+      p.b.size = p.b.kind === 'node' ? { w, h } : { w: Math.max(p.b.size.w, w), h: Math.max(p.b.size.h, h) };
+      plan.rel.set(p.b.id, { x: xAt[p.col]!, y: yAt[p.row]! });
+    }
+    plan.columns = [z.children];
+    plan.content = rows ? { w: xAt[N - 1]! + colW[N - 1]!, h: yAt[rows - 1]! + rowH[rows - 1]! } : { w: 0, h: 0 };
+    this.sizeZone(z);
   }
 
   /**
@@ -476,15 +603,16 @@ class ArchitectureComposer {
     const cols = plan.columns;
 
     // boxes in a column share its width; boxes in a row share their height
+    // (a node that keeps its size — a junction's dot — stays out of both)
     for (let r = 0; r < cols.length; r++) {
-      const leaves = cols[r]!.filter((b): b is LeafBlock => b.kind === 'node');
+      const leaves = cols[r]!.filter((b): b is LeafBlock => b.kind === 'node' && !this.fixed(b));
       const shared = plan.sharedColF?.[r];
       const f = Math.max(shared ?? 0, ...leaves.map((b) => fOf(b.size, a)));
       if (leaves.length && (cols[r]!.every((b) => b.kind === 'node'))) for (const b of leaves) b.size = sz(f, cOf(b.size, a), a);
     }
     const rows = Math.max(0, ...cols.map((c) => c.length));
     for (let i = 0; i < rows; i++) {
-      const leaves = cols.map((c) => c[i]).filter((b): b is LeafBlock => !!b && b.kind === 'node');
+      const leaves = cols.map((c) => c[i]).filter((b): b is LeafBlock => !!b && b.kind === 'node' && !this.fixed(b));
       if (leaves.length < 2) continue;
       const c = Math.max(...leaves.map((b) => cOf(b.size, a)));
       for (const b of leaves) b.size = sz(fOf(b.size, a), c, a);
@@ -496,10 +624,10 @@ class ArchitectureComposer {
     plan.colF = cols.map((c, r) => Math.max(plan.sharedColF?.[r] ?? 0, ...c.map((b) => fOf(b.size, a))));
     plan.gapF = cols.map((_, r) => {
       if (r === 0) return 0;
-      let need = K.gapFlow;
+      let need = this.k.gapFlow;
       for (const { a: i, b: j, link } of plan.links) {
         const ri = colIndex.get(z.children[i]!.id)!, rj = colIndex.get(z.children[j]!.id)!;
-        if (Math.min(ri, rj) === r - 1 && Math.max(ri, rj) === r) need = Math.max(need, this.labelExtent(link, a) + 2 * K.labelPad);
+        if (Math.min(ri, rj) === r - 1 && Math.max(ri, rj) === r) need = Math.max(need, this.labelExtent(link, a) + 2 * this.k.labelPad);
       }
       return Math.max(need, plan.sharedGapF?.[r] ?? 0);
     });
@@ -522,7 +650,7 @@ class ArchitectureComposer {
     // a box that talks to several boxes stacked beside it spans them
     cols.forEach((col, r) => {
       col.forEach((b, i) => {
-        if (b.kind !== 'node') return;
+        if (b.kind !== 'node' || this.fixed(b)) return;
         const span = this.spanFor(z, b, colIndex, r);
         if (!span) return;
         const cKey = a === 'x' ? 'y' : 'x';
@@ -533,6 +661,28 @@ class ArchitectureComposer {
         plan.rel.set(b.id, a === 'x' ? { x: p.x, y: span.start } : { x: span.start, y: p.y });
         if (i + 1 < col.length) stackCol(r, i + 1);
       });
+    });
+
+    // a box ALONE in its column that talks to exactly one box beside it lines up
+    // with that box, so the line between them runs straight
+    cols.forEach((col, r) => {
+      const b = col[0];
+      if (col.length !== 1 || !b || b.kind !== 'node' || this.fixed(b)) return;
+      const partners = new Set<string>();
+      for (const l of this.diagram.getLinks()) {
+        const other = l.sourceNodeId === b.id ? l.targetNodeId : l.targetNodeId === b.id ? l.sourceNodeId : undefined;
+        if (!other || other === b.id) continue;
+        const blk = this.childOf(z, other);
+        const rc = blk ? colIndex.get(blk.id) : undefined;
+        if (rc !== undefined && Math.abs(rc - r) === 1) partners.add(other);
+      }
+      if (partners.size !== 1) return;
+      const t = this.rectIn(z, [...partners][0]!);
+      if (!t) return;
+      const cKey = a === 'x' ? 'y' : 'x';
+      const tc = (a === 'x' ? t.y + t.h / 2 : t.x + t.w / 2) - cOf(b.size, a) / 2;
+      const p = plan.rel.get(b.id)!;
+      plan.rel.set(b.id, cKey === 'y' ? { x: p.x, y: Math.max(0, tc) } : { x: Math.max(0, tc), y: p.y });
     });
 
     // the content box, then the zone around it
@@ -551,10 +701,16 @@ class ArchitectureComposer {
       }
     }
     plan.content = sz(fMax, cMax, a);
+    this.sizeZone(z);
+  }
+
+  /** A zone's frame: its content, its padding and caption band — never narrower than its caption. */
+  private sizeZone(z: ZoneBlock): void {
+    const plan = z.plan!;
     if (z.id !== ROOT) {
       // a zone is never narrower than its own caption
       const caption = this.captionWidth(z);
-      z.size = { w: Math.max(plan.content.w + z.pad.l + z.pad.r, caption + 2 * K.zonePadSide), h: plan.content.h + z.pad.t + z.pad.b };
+      z.size = { w: Math.max(plan.content.w + z.pad.l + z.pad.r, caption + 2 * this.k.zonePadSide), h: plan.content.h + z.pad.t + z.pad.b };
     }
   }
 
@@ -568,7 +724,7 @@ class ArchitectureComposer {
 
   /** The gap between two stacked children: more between zones, and room for a label bent in it. */
   private crossGap(z: ZoneBlock, upper: Block, lower: Block): number {
-    let gap = upper.kind === 'zone' || lower.kind === 'zone' ? K.gapCrossZone : K.gapCrossLeaf;
+    let gap = upper.kind === 'zone' || lower.kind === 'zone' ? this.k.gapCrossZone : this.k.gapCrossLeaf;
     let label = 0;
     for (const { a, b, link } of z.plan!.links) {
       const ids = [z.children[a]!.id, z.children[b]!.id];
@@ -597,7 +753,7 @@ class ArchitectureComposer {
     const style = (label?.style ?? {}) as { fontSize?: number; fontWeight?: string | number; fontFamily?: string };
     const fs = Number(style.fontSize) || 12;
     const lines = text.split('\n');
-    return { w: widestLine(lines, { size: fs, weight: style.fontWeight, family: style.fontFamily }, this.measure), h: lines.length * fs * K.labelLine };
+    return { w: widestLine(lines, { size: fs, weight: style.fontWeight, family: style.fontFamily }, this.measure), h: lines.length * fs * this.k.labelLine };
   }
 
   /** The cross-axis span a box should cover: the boxes it talks to, when ≥ 2 sit in ONE column beside it. */
@@ -773,7 +929,7 @@ class ArchitectureComposer {
           // author's relation (`from:bottom`), never these pixels
           link.setMetadata('layoutAnchored', true);
         };
-        if (hi - lo >= K.minOverlap) {
+        if (hi - lo >= this.k.minOverlap) {
           // straight: spread the bundle over the shared stretch
           const at = lo + ((k + 1) * (hi - lo)) / (jobs.length + 1);
           setEnds(level ? at - s.y : at - s.x, level ? at - t.y : at - t.x);
