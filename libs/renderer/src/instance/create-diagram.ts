@@ -1,4 +1,5 @@
-import { DiagramEngine, getMutationEpoch, exportDiagramText, importDiagramText, CommentStore } from '@grafloria/engine';
+import { DiagramEngine, getMutationEpoch, exportDiagramText, importDiagramText, CommentStore, layoutArchitecture } from '@grafloria/engine';
+import type { MeasureText } from '@grafloria/engine';
 import { CommentOverlayController } from '../comments/comment-overlay';
 import type {
   DiagramModel,
@@ -133,6 +134,16 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * Switch it live with `setHighlightConnected()`.
    */
   highlightConnected?: boolean | HighlightConnectedOptions;
+
+  /**
+   * Arrange the diagram on mount. `'architecture'` composes it the way AI tools
+   * hand-draw one: zones as regions on a grid, boxes sized to their words and
+   * aligned in rows, lines straight where boxes line up and bent in the gutters,
+   * a node's `near` note beside its target. Positions in the spec are not needed
+   * (and are overridden). The same layout runs from Mermaid with
+   * `%%grafloria:layout architecture`, or later with `engine.layout('architecture')`.
+   */
+  layout?: 'architecture';
 
   zoom?: number;
   minZoom?: number;
@@ -467,6 +478,7 @@ export function createDiagram(
   // Zones after their boxes (membership needs the nodes), before the lines.
   if (options.groups) applyGroups(model, options.groups);
   if (options.edges) applyEdges(model, options.edges);
+  if (options.layout === 'architecture') layoutArchitecture(model, { measureText: canvasTextMeasure() });
 
   // -- camera -----------------------------------------------------------------
   const rect0 = container.getBoundingClientRect();
@@ -1836,3 +1848,29 @@ function ensureLayers(
 
   return { root, svg, html };
 }
+
+/**
+ * Measure text with a real canvas, in the theme's faces, so a composing layout
+ * sizes boxes to the words as they will actually draw. Undefined where there is
+ * no canvas (a server, jsdom) — the layout then estimates.
+ */
+function canvasTextMeasure(): MeasureText | undefined {
+  if (typeof document === 'undefined') return undefined;
+  if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent ?? '')) return undefined;
+  let ctx: CanvasRenderingContext2D | null = null;
+  try {
+    ctx = document.createElement('canvas').getContext('2d');
+  } catch {
+    return undefined;
+  }
+  if (!ctx) return undefined;
+  const c = ctx;
+  return (text, font) => {
+    const family = /mono/i.test(font.family ?? '')
+      ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+      : font.family ?? 'Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    c.font = `${font.weight ?? 400} ${font.size}px ${family}`;
+    return c.measureText(text).width + (font.letterSpacing ?? 0) * Array.from(text).length;
+  };
+}
+
