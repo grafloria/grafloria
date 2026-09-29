@@ -1,4 +1,4 @@
-import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, ProximityPreview, LODLevel, LODFeature, Shadow, GroupModel } from '@grafloria/engine';
+import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, LinkLabel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, ProximityPreview, LODLevel, LODFeature, Shadow, GroupModel } from '@grafloria/engine';
 // Value import: the ONE definition of "where does a label sit along the path"
 // (slot vs position), shared by the model, this renderer and the edge optimizer.
 import { linkLabelPosition, DiagramSerializer, debugLog } from '@grafloria/engine';
@@ -182,6 +182,32 @@ import {
 // Node label engine: shared, link-agnostic text-block core (wrap / multi-line /
 // ellipsis / shape-fit) — the same code path link labels render through.
 import { renderTextBlock, wrapText } from './text-block';
+
+/** A port a `side@offset` edge handle created (`<node>__right@36`). */
+function isSideAnchorPort(portId: string | undefined): boolean {
+  return !!portId && /__(top|right|bottom|left)@-?\d/.test(portId);
+}
+
+/** The direction of a polyline at fraction `t` of its length; null for fewer than two distinct points. */
+function polylineTangentAt(points: Array<{ x: number; y: number }> | undefined, t: number): { x: number; y: number } | null {
+  if (!points || points.length < 2) return null;
+  const lens: number[] = [];
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    const l = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    lens.push(l);
+    total += l;
+  }
+  if (total <= 0) return null;
+  let target = Math.max(0, Math.min(1, t)) * total;
+  for (let i = 0; i < lens.length; i++) {
+    if (lens[i] > 0 && (target <= lens[i] || i === lens.length - 1)) {
+      return { x: points[i + 1].x - points[i].x, y: points[i + 1].y - points[i].y };
+    }
+    target -= lens[i];
+  }
+  return null;
+}
 
 /** A label's inline typography — the only keys a node can set on its text. */
 interface LabelCss {
@@ -3183,6 +3209,10 @@ export class SVGRenderer implements IRenderer {
       // Self-loops are not a "bundle" — they nest concentrically instead (see
       // selfLoopIndex), so they must not consume lanes in the pair map.
       if (link.isSelfLoop()) continue;
+      // A line pinned to a `side@offset` anchor was PLACED — "sends the payment
+      // link" at one height, the red "card typed as…" 30 px under it. Fanning
+      // them as a bundle bowed both into a V between their own anchors.
+      if (isSideAnchorPort(link.sourcePortId) || isSideAnchorPort(link.targetPortId)) continue;
       const key = link.getNodePairKey();
       if (!key) continue;
       const bucket = groups.get(key);
@@ -4341,10 +4371,91 @@ export class SVGRenderer implements IRenderer {
     };
   }
 
+  /**
+   * A zone's frame: its own fill, border, dash and radius, and its caption in a
+   * corner in its own typography — no title band. The caption is inset 16 px
+   * from the side and sits ~20 px in from the top (or bottom) edge, where the
+   * diagrams it imitates put it.
+   */
+  private renderZoneFrame(group: GroupModel, bounds: Rectangle, z: Record<string, unknown> & { labelPlacement?: string }): VNode {
+    const c = this.theme.colors;
+    const str = (k: string): string | undefined => (typeof z[k] === 'string' && z[k] ? (z[k] as string) : undefined);
+    const num = (k: string): number | undefined => (typeof z[k] === 'number' && Number.isFinite(z[k] as number) ? (z[k] as number) : undefined);
+    const radius = num('borderRadius') ?? 6;
+    const frameRect: VNode = {
+      type: 'rect',
+      key: `group-frame-rect-${group.id}`,
+      props: {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        rx: radius,
+        ry: radius,
+        fill: str('fill') ?? 'none',
+        stroke: str('stroke') ?? (c.node.default.stroke as string),
+        strokeWidth: num('strokeWidth') ?? 1,
+        ...(str('strokeDasharray') ? { strokeDasharray: str('strokeDasharray') } : {}),
+        className: 'group-frame-rect group-zone-rect',
+        'aria-hidden': 'true',
+      },
+    };
+    const placement = z.labelPlacement ?? 'top-left';
+    const bottom = placement.startsWith('bottom');
+    const align: 'start' | 'middle' | 'end' = placement.endsWith('left') ? 'start' : placement.endsWith('right') ? 'end' : 'middle';
+    const fontSize = num('fontSize') ?? 11;
+    const INSET_X = 16;
+    const INSET_Y = 12 + fontSize * 0.7;
+    const style: Record<string, string> = {
+      fill: str('color') ?? (c.text.secondary as string),
+      fontSize: `${fontSize}px`,
+      fontWeight: z['fontWeight'] !== undefined ? String(z['fontWeight']) : '600',
+      ...(str('fontFamily') ? { fontFamily: fontStackFor(str('fontFamily')!) } : {}),
+      ...(num('letterSpacing') !== undefined ? { letterSpacing: `${num('letterSpacing')}px` } : {}),
+      ...(str('textTransform') ? { textTransform: str('textTransform')! } : {}),
+    };
+    const children: VNode[] = [frameRect];
+    if (group.name) {
+      children.push({
+        type: 'text',
+        key: `group-frame-label-${group.id}`,
+        props: {
+          x: align === 'start' ? bounds.x + INSET_X : align === 'end' ? bounds.x + bounds.width - INSET_X : bounds.x + bounds.width / 2,
+          y: bottom ? bounds.y + bounds.height - INSET_Y : bounds.y + INSET_Y,
+          textAnchor: align,
+          dominantBaseline: 'central',
+          fontFamily: this.theme.typography.fontFamily.default,
+          className: 'group-frame-label group-zone-label',
+          textContent: group.name,
+          style,
+          'aria-hidden': 'true',
+        },
+      });
+    }
+    return {
+      type: 'g',
+      key: `group-frame-${group.id}`,
+      props: {
+        className: 'group-frame group-zone',
+        role: 'graphics-object',
+        'aria-roledescription': 'Group',
+        'aria-label': group.name,
+        'data-group-id': group.id,
+        'data-collapsed': 'false',
+      },
+      children,
+    };
+  }
+
   /** One group's frame + label band, themed and accessible. */
   private renderGroupFrame(group: GroupModel, bounds: Rectangle, parent?: GroupModel): VNode {
     const c = this.theme.colors;
     const collapsed = group.isCollapsed;
+    // A ZONE — a group with a frame of its own (`metadata.frameStyle`, set from
+    // the spec's `groups[].style`): the tinted, captioned region of the diagrams
+    // AI tools draw. Collapsed, it falls back to the theme frame.
+    const zone = group.getMetadata?.('frameStyle') as (Record<string, unknown> & { labelPlacement?: string }) | undefined;
+    if (zone && !collapsed) return this.renderZoneFrame(group, bounds, zone);
 
     // A LANE is an internal band of its pool, not an independent framed group.
     // Giving each lane its own full 1.5px rounded outline stacked TWO strokes on
@@ -5569,6 +5680,40 @@ export class SVGRenderer implements IRenderer {
       ...(sublabel.fontWeight !== undefined ? { fontWeight: String(sublabel.fontWeight) } : {}),
     };
     return [clip, text, sub];
+  }
+
+  /**
+   * `metadata.labelPlacement: 'above' | 'below'` — the label just off its line,
+   * on the side the line's normal points "up" (negative y; on a vertical run,
+   * negative x — left), or the other side for 'below'. The gap clears half the
+   * label's height plus 5 px, so a two-line label hangs clear of the stroke.
+   * Decided per frame from the path's tangent where the label lands, so the
+   * label follows the line when a box moves. Undefined = the label's own offset.
+   */
+  private placedLabelOffset(link: LinkModel, label: LinkLabel): { x: number; y: number } | undefined {
+    const placement = link.getMetadata('labelPlacement');
+    if (placement !== 'above' && placement !== 'below') return undefined;
+    // The PAINTED polyline's direction where the label lands (`link.points` is
+    // the painted geometry, flattened — the model's own tangent needs segments,
+    // which a routed link does not carry).
+    const tangent = polylineTangentAt(link.points, typeof label.position === 'number' ? label.position : 0.5) ?? link.getTangentAt(0.5);
+    if (!tangent) return undefined;
+    const len = Math.hypot(tangent.x, tangent.y) || 1;
+    let nx = -tangent.y / len;
+    let ny = tangent.x / len;
+    // "up": the normal with negative y; on a vertical run, the one pointing left.
+    if (ny > 1e-6 || (Math.abs(ny) <= 1e-6 && nx > 0)) {
+      nx = -nx;
+      ny = -ny;
+    }
+    if (placement === 'below') {
+      nx = -nx;
+      ny = -ny;
+    }
+    const fontSize = label.style?.fontSize ?? 12;
+    const lines = Math.max(1, String(label.text).split('\n').length);
+    const d = (lines * fontSize * 1.2) / 2 + 5;
+    return { x: (label.offset?.x ?? 0) + nx * d, y: (label.offset?.y ?? 0) + ny * d };
   }
 
   /**
@@ -7172,7 +7317,9 @@ export class SVGRenderer implements IRenderer {
                   // Wave 4 — Card 7: the optimizer's placement, when it placed
                   // this one. For a label that did not opt into `autoOffset` this
                   // IS the author's offset, so nothing moves.
-                  const offset = this.frameLabelOffsets.get(`${link.id}::${label.id}`);
+                  // An explicit above/below placement wins: the optimizer's entry is
+                  // the label's own offset unless it opted into autoOffset.
+                  const offset = this.placedLabelOffset(link, label) ?? this.frameLabelOffsets.get(`${link.id}::${label.id}`);
                   const labelVNode = this.labelRenderer.renderLabel(label, link, {
                     offset,
                     theme: this.theme,

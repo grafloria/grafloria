@@ -5,8 +5,7 @@ import type {
   EdgeSpec,
   NodeSpec,
   StaticRenderOptions,
-  StaticRenderResult,
-} from '@grafloria/renderer';
+  StaticRenderResult, GroupSpec } from '@grafloria/renderer';
 import { defineGrafloriaFlow } from './grafloria-flow-element';
 import type { DashboardSpec } from './dashboard-kit';
 import { registerNodeType, registeredNodeTypes, getNodeType } from './node-type-registry';
@@ -44,6 +43,8 @@ import type { NodeTypeRenderer } from './node-type-registry';
 export interface DiagramSpec {
   nodes?: NodeSpec[];
   edges?: EdgeSpec[];
+  /** Zones around some boxes, each with its own frame and caption. See `GroupSpec`. */
+  groups?: GroupSpec[];
 }
 
 /**
@@ -99,6 +100,7 @@ export function render(
     ...options,
     nodes: parsed.nodes ?? [],
     edges: parsed.edges ?? [],
+    ...(parsed.groups ? { groups: parsed.groups } : {}),
     // Wire the global registry in, so `registerNodeType` works for the tiny API
     // exactly as it does for `<grafloria-flow>` — unless the caller supplies their
     // own. A KIT SPEC may also carry its own painter (dashboard() does: every

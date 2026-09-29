@@ -269,7 +269,7 @@ export class LabelRenderer {
     fontFamily: string | undefined,
     color: string
   ): VNode {
-    return renderTextBlock({
+    const block = renderTextBlock({
       text: label.text,
       x: 0,
       y: 0,
@@ -278,9 +278,24 @@ export class LabelRenderer {
       valign: label.textBaseline ?? 'middle',
       fontSize,
       fontFamily,
+      // LabelStyle has always declared weight, style and decoration; nothing
+      // drew them — a bold green "card number and CVV" rendered regular.
+      fontWeight: label.style?.fontWeight,
       color,
       className: 'link-label-text',
     });
+    if (label.style?.fontStyle || label.style?.textDecoration) {
+      const props = block.props as Record<string, unknown>;
+      if (label.style.fontStyle) props['fontStyle'] = label.style.fontStyle;
+      if (label.style.textDecoration) props['textDecoration'] = label.style.textDecoration;
+    }
+    // The label's own family as an INLINE style: an attribute loses to the
+    // stylesheet's `.link-label-text` rule.
+    if (fontFamily) {
+      const props = block.props as Record<string, unknown>;
+      props['style'] = { ...((props['style'] as object) ?? {}), fontFamily };
+    }
+    return block;
   }
 
   /**
