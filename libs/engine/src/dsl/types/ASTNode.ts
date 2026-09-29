@@ -22,8 +22,10 @@ export type NodeShape =
   | 'asymmetric'         // >text]
   | 'rhombus'            // {text}
   | 'hexagon'            // {{text}}
-  | 'trapezoid'          // [/text/]
-  | 'trapezoid-alt';     // [\text\]
+  | 'trapezoid'          // [/text\]  — wide bottom
+  | 'trapezoid-alt'      // [\text/]  — wide top
+  | 'parallelogram'      // [/text/]  — leans right
+  | 'parallelogram-alt'; // [\text\]  — leans left
 
 /**
  * Link/Edge type mapping

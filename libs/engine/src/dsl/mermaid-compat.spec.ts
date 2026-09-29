@@ -89,7 +89,7 @@ describe('Mermaid compat — Phase 1: flowchart base', () => {
   it.each([
     ['stadium', 'a([A])', 'stadium'],
     ['subroutine', 'a[[A]]', 'subroutine'],
-    ['parallelogram', 'a[/A/]', 'trapezoid'],
+    ['parallelogram', 'a[/A/]', 'parallelogram'], // was read as a trapezoid: Mermaid's slashes name the shape
     ['trapezoid', 'a[/A\\]', 'trapezoid'],
   ])('shape %s parses (was a lexer throw: no compound close token)', (_name, token, shape) => {
     const r = imp(`flowchart LR\n  ${token} --> b`);
