@@ -18,6 +18,7 @@ import { MotionTracker } from './motion-tracker';
 import { SelectionToolsController } from '../interaction/selection-tools';
 import { QualityGovernor, type GovernorState } from '../perf/quality-governor';
 import { RouteSolverBridge, type RouteSolverStats } from './route-solver-bridge';
+import { isSideAnchorPort } from '@grafloria/engine';
 import type {
   IRenderer,
   PerformanceMetrics,
@@ -182,11 +183,6 @@ import {
 // Node label engine: shared, link-agnostic text-block core (wrap / multi-line /
 // ellipsis / shape-fit) — the same code path link labels render through.
 import { renderTextBlock, wrapText } from './text-block';
-
-/** A port a `side@offset` edge handle created (`<node>__right@36`). */
-function isSideAnchorPort(portId: string | undefined): boolean {
-  return !!portId && /__(top|right|bottom|left)@-?\d/.test(portId);
-}
 
 /** The direction of a polyline at fraction `t` of its length; null for fewer than two distinct points. */
 function polylineTangentAt(points: Array<{ x: number; y: number }> | undefined, t: number): { x: number; y: number } | null {
@@ -7103,7 +7099,11 @@ export class SVGRenderer implements IRenderer {
       type: 'arrow',
       size: 10,
       filled: true,
-      color: this.config.useCSSMode
+      // The line's OWN colour when it has one (its style, a classDef, a state,
+      // the selection's ink): the theme variable first meant a green line kept
+      // a grey head, because `var(--link-stroke, green)` always resolves the
+      // variable. The variable only when the colour IS the theme's.
+      color: this.config.useCSSMode && !linkLiterals.stroke
         ? `var(${THEME_VARS['link.stroke'].cssVar}, ${arrowLiteral})`
         : arrowLiteral,
     };

@@ -162,5 +162,18 @@ describe('a line label above or below its line, in its own colour — and anchor
     expect(p[p.length - 1]).toEqual([850, 150]);
     expect(diagram!.getModel().getLink('up')!.getMetadata('hasManualWaypoints')).toBe(true);
   });
+
+  it("a line's own colour reaches its default arrowhead (it used to stay the theme's grey)", () => {
+    make([{ id: 'g', source: 'customer', target: 'page', sourceHandle: 'right@36', targetHandle: 'left@36', type: 'direct', style: { stroke: '#1a7f37' } }]);
+    const head = container.querySelector('[data-link-id="g"] .arrow') as SVGElement;
+    expect(head).not.toBeNull();
+    expect(head.style.fill).toBe('#1a7f37');
+  });
+
+  it('a line with no colour of its own keeps the themed arrowhead', () => {
+    make([{ id: 'p', source: 'customer', target: 'page', sourceHandle: 'right@36', targetHandle: 'left@36', type: 'direct' }]);
+    const head = container.querySelector('[data-link-id="p"] .arrow') as SVGElement;
+    expect(head.getAttribute('style') ?? '').toContain('var(');
+  });
 });
 

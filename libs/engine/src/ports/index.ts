@@ -11,3 +11,4 @@ export * from './port-groups';
 export * from './port-type-registry';
 export * from './connection-rules';
 export * from './dynamic-ports';
+export * from './side-anchor';

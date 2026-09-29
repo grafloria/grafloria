@@ -58,6 +58,8 @@ const V11_SHAPE_MAP: Record<string, NodeShape> = {
   hexagon: 'hexagon', hex: 'hexagon', prepare: 'hexagon',
   trapezoid: 'trapezoid', 'trap-b': 'trapezoid', 'manual-input': 'trapezoid',
   'trapezoid-alt': 'trapezoid-alt', 'trap-t': 'trapezoid-alt',
+  // v11's text block: words on the canvas, no box.
+  text: 'text',
 };
 
 export class Parser {
@@ -71,7 +73,7 @@ export class Parser {
     this.tokens = tokens.filter(t =>
       t.type !== TokenType.WHITESPACE &&
       // Keep ONLY the Tier-2 extension comments; ordinary %% comments still drop.
-      (t.type !== TokenType.COMMENT || /^%%grafloria:(node|edge)\b/.test(t.value))
+      (t.type !== TokenType.COMMENT || /^%%grafloria:(node|edge|group|at)\b/.test(t.value))
     );
     this.current = 0;
 
@@ -473,8 +475,15 @@ export class Parser {
         indices.push(parseInt(this.consume(TokenType.NUMBER, 'Expected link index').value, 10));
       }
     }
+    // Mermaid's `linkStyle 2 interpolate stepBefore stroke:…` — the curve of
+    // the line, before its CSS.
+    let interpolate: string | undefined;
+    if (this.check(TokenType.IDENTIFIER) && this.peek().value === 'interpolate') {
+      this.advance();
+      if (this.check(TokenType.IDENTIFIER)) interpolate = this.advance().value;
+    }
     const properties = this.parseStyleProperties();
-    return { type: 'LinkStyle', indices, properties, location: this.getLocation(start, this.previous()) };
+    return { type: 'LinkStyle', indices, properties, ...(interpolate ? { interpolate } : {}), location: this.getLocation(start, this.previous()) };
   }
 
   /**
@@ -505,9 +514,20 @@ export class Parser {
    * malformed one is simply ignored, never garbage).
    */
   private parseGrafloriaComment(value: string): GrafloriaDirectiveNode | null {
-    const m = value.match(/^%%grafloria:(node|edge)\s+(.+)$/);
+    // `%%grafloria:at <id> <x>,<y> [<w>x<h>]` — an exact position (and size),
+    // for a node or a subgraph's frame.
+    const at = value.match(/^%%grafloria:at\s+(\S+)\s+(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?))?\s*$/);
+    if (at) {
+      const properties: Record<string, string> = { x: at[2], y: at[3] };
+      if (at[4] !== undefined) {
+        properties['w'] = at[4];
+        properties['h'] = at[5];
+      }
+      return { type: 'GrafloriaDirective', target: 'at', ids: [at[1]], properties, location: this.getLocation(this.previous(), this.previous()) };
+    }
+    const m = value.match(/^%%grafloria:(node|edge|group)\s+(.+)$/);
     if (!m) return null;
-    const target = m[1] as 'node' | 'edge';
+    const target = m[1] as 'node' | 'edge' | 'group';
     const parts = m[2].trim().split(/\s+/);
     const idCount = target === 'edge' ? 2 : 1;
     if (parts.length < idCount) return null;
@@ -533,23 +553,31 @@ export class Parser {
       const propName = this.advance().value;
       this.consume(TokenType.COLON, 'Expected ":" after property name');
 
-      let propValue: string;
-      if (this.check(TokenType.STRING)) {
-        propValue = this.advance().value;
-      } else if (this.check(TokenType.NUMBER)) {
-        propValue = this.advance().value;
-      } else if (this.check(TokenType.IDENTIFIER)) {
-        propValue = this.advance().value;
-      } else {
-        // Try to parse color or other value
-        propValue = this.advance().value;
+      // A value runs to the next comma or the end of the line, and may be
+      // several tokens: `stroke-dasharray:5 4`, `font-size:11px`,
+      // `font-family:Menlo, monospace` would stop at the comma — as Mermaid's
+      // own classDef does. Tokens that touched in the source are rejoined
+      // without a space; separated ones keep one.
+      let propValue = '';
+      let lastEnd = -1;
+      while (
+        !this.isAtEnd() &&
+        !this.check(TokenType.COMMA) &&
+        !this.check(TokenType.NEWLINE) &&
+        !this.check(TokenType.SEMICOLON) &&
+        !this.check(TokenType.COMMENT)
+      ) {
+        const t = this.advance();
+        propValue += (lastEnd >= 0 && t.startIndex > lastEnd ? ' ' : '') + t.value;
+        lastEnd = t.endIndex;
       }
 
       // Convert kebab-case to camelCase
       const camelCaseName = propName.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
 
       // Convert numeric strings to numbers for certain properties
-      if (camelCaseName === 'strokeWidth' || camelCaseName === 'opacity') {
+      if (camelCaseName === 'strokeWidth' || camelCaseName === 'opacity' || camelCaseName === 'fontSize' || camelCaseName === 'letterSpacing' || camelCaseName === 'rx') {
+        // `11px`, `1px`, `2` — a length is its number.
         properties[camelCaseName] = parseFloat(propValue);
       } else {
         properties[camelCaseName] = propValue;

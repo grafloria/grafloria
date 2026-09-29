@@ -10,6 +10,8 @@ import { NodeModel } from '../../models/NodeModel';
 import { LinkModel } from '../../models/LinkModel';
 import { GroupModel } from '../../models/GroupModel';
 import { assignRanks, placeByRank } from '../mermaid/layout';
+import { readMermaidLabel } from '../mermaid/rich-label';
+import { ensureSideAnchorPort } from '../../ports/side-anchor';
 import {
   DiagramNode,
   StatementNode,
@@ -251,19 +253,86 @@ export class ASTTransformer {
    * depend on link order.
    */
   private applyDirectives(statements: StatementNode[], diagram: DiagramModel): void {
+    const directive = (st: StatementNode, target: GrafloriaDirectiveNode['target']): st is GrafloriaDirectiveNode =>
+      st.type === 'GrafloriaDirective' && (st as GrafloriaDirectiveNode).target === target;
     for (const st of statements) {
       if (st.type === 'Style') this.applyStyle(st as StyleNode, diagram);
       else if (st.type === 'ClassApplication') this.applyClass(st as ClassApplicationNode, diagram);
       else if (st.type === 'Click') this.applyClick(st as ClickNode, diagram);
-      else if (st.type === 'GrafloriaDirective' && (st as GrafloriaDirectiveNode).target === 'node') {
-        this.applyGrafloriaNode(st as GrafloriaDirectiveNode, diagram);
-      }
+      else if (directive(st, 'node')) this.applyGrafloriaNode(st, diagram);
+      else if (directive(st, 'group')) this.applyGrafloriaGroup(st, diagram);
+      // Positions and sizes BEFORE the edge directives: an anchor along a side
+      // is placed as a fraction of the node's final size.
+      else if (directive(st, 'at')) this.applyGrafloriaAt(st, diagram);
     }
     for (const st of statements) {
       if (st.type === 'LinkStyle') this.applyLinkStyle(st as LinkStyleNode, diagram);
-      else if (st.type === 'GrafloriaDirective' && (st as GrafloriaDirectiveNode).target === 'edge') {
-        this.applyGrafloriaEdge(st as GrafloriaDirectiveNode, diagram);
-      }
+    }
+    // `%%grafloria:edge * * …` is every edge's DEFAULT — applied first, so a
+    // directive for one edge wins wherever it appears in the text.
+    const edges = statements.filter((st): st is GrafloriaDirectiveNode => directive(st, 'edge'));
+    for (const st of edges) if (st.ids[0] === '*' && st.ids[1] === '*') this.applyGrafloriaEdge(st, diagram);
+    for (const st of edges) if (!(st.ids[0] === '*' && st.ids[1] === '*')) this.applyGrafloriaEdge(st, diagram);
+  }
+
+  /**
+   * A label, read the way Mermaid means it: a bold first line over more lines
+   * is a name and a subtitle (`metadata.sublabel`), `<br/>` a line break,
+   * `#quot;` a quote. See dsl/mermaid/rich-label.
+   */
+  private applyRichLabel(node: NodeModel, raw: string): void {
+    const rich = readMermaidLabel(raw, true);
+    node.setLabel(rich.text);
+    node.setMetadata('sublabel', rich.sublabel);
+  }
+
+  /**
+   * A zone's frame from Mermaid style properties — `style <subgraph> …`,
+   * `classDef` + `class <subgraph>`. Merged into `metadata.frameStyle` (the
+   * renderer's zone frame); a zone's caption lives in its padding, so no band.
+   */
+  private applyFrameStyle(group: GroupModel, properties: StyleProperties): void {
+    const frame = { ...((group.getMetadata('frameStyle') as Record<string, unknown> | undefined) ?? { labelPlacement: 'top-left' }) };
+    const copy = ['fill', 'stroke', 'strokeWidth', 'strokeDasharray', 'color', 'fontWeight', 'fontSize', 'fontFamily', 'letterSpacing', 'textTransform'];
+    for (const key of copy) if (properties[key] !== undefined && properties[key] !== '') frame[key] = properties[key];
+    if (typeof properties['rx'] === 'number') frame['borderRadius'] = properties['rx'];
+    group.setMetadata('frameStyle', frame);
+    group.headerHeight = 0;
+  }
+
+  /** `%%grafloria:group ours caption:bottom-left` — where a zone's caption sits. */
+  private applyGrafloriaGroup(node: GrafloriaDirectiveNode, diagram: DiagramModel): void {
+    const group = diagram.getGroup(node.ids[0]);
+    if (!group) return;
+    const caption = node.properties['caption'];
+    if (caption) {
+      const frame = { ...((group.getMetadata('frameStyle') as Record<string, unknown> | undefined) ?? {}) };
+      frame['labelPlacement'] = caption;
+      group.setMetadata('frameStyle', frame);
+      group.headerHeight = 0;
+    }
+  }
+
+  /** `%%grafloria:at customer 20,78 150x292` — an exact position (and size), node or zone. */
+  private applyGrafloriaAt(node: GrafloriaDirectiveNode, diagram: DiagramModel): void {
+    const id = node.ids[0];
+    const x = Number(node.properties['x']);
+    const y = Number(node.properties['y']);
+    const w = node.properties['w'] !== undefined ? Number(node.properties['w']) : undefined;
+    const h = node.properties['h'] !== undefined ? Number(node.properties['h']) : undefined;
+    const target = diagram.getNode(id);
+    if (target) {
+      target.setPosition(x, y);
+      if (w !== undefined && h !== undefined) target.setSize(w, h);
+      return;
+    }
+    const group = diagram.getGroup(id);
+    if (group) {
+      const width = w ?? group.getOuterBounds().width;
+      const height = h ?? group.getOuterBounds().height;
+      group.position = { x, y };
+      group.size = { width, height, depth: 0 };
+      group.bounds = { x, y, width, height };
     }
   }
 
@@ -275,6 +344,10 @@ export class ASTTransformer {
     for (const id of node.ids) {
       const target = diagram.getNode(id);
       if (target) this.applyStyleToNode(target, props);
+      else {
+        const group = diagram.getGroup(id);
+        if (group) this.applyFrameStyle(group, props);
+      }
     }
   }
 
@@ -282,8 +355,14 @@ export class ASTTransformer {
   private applyLinkStyle(node: LinkStyleNode, diagram: DiagramModel): void {
     const links = diagram.getLinks();
     const targets = node.indices === 'default' ? links.map((_, i) => i) : node.indices;
+    // The curve, in Grafloria's path types: `linear` is straight, the `step`
+    // family is right angles, every smooth d3 curve is a smooth one.
+    const curve = node.interpolate?.toLowerCase();
+    const pathType = !curve ? undefined : curve === 'linear' ? 'direct' : curve.startsWith('step') ? 'orthogonal' : 'smooth';
     for (const i of targets) {
-      if (links[i]) this.applyStyleToLink(links[i], node.properties);
+      if (!links[i]) continue;
+      this.applyStyleToLink(links[i], node.properties);
+      if (pathType && links[i].pathType !== pathType) links[i].setPathType(pathType as never);
     }
   }
 
@@ -304,15 +383,57 @@ export class ASTTransformer {
     }
   }
 
-  /** `%%grafloria:edge a b animation:flow` — Grafloria-only edge animation. */
+  /**
+   * `%%grafloria:edge a b …` — Grafloria-only edge properties:
+   *   animation:flow, speed:…        the edge animation
+   *   from:right@36, to:left@36      ends pinned to a point along a side
+   *   label:above | below | on       where the label sits (above/below: no box)
+   *   via:580 204 850 204            the bends — manual waypoints
+   * `* *` names every edge.
+   */
   private applyGrafloriaEdge(node: GrafloriaDirectiveNode, diagram: DiagramModel): void {
     const [source, target] = node.ids;
-    const link = diagram.getLinks().find((l) => l.sourceNodeId === source && l.targetNodeId === target);
-    if (!link) return;
-    if (node.properties['animation']) {
-      const anim: Record<string, string> = { type: node.properties['animation'] };
-      if (node.properties['speed']) anim['speed'] = node.properties['speed'];
-      link.updateStyle({ animation: anim } as never);
+    const every = source === '*' && target === '*';
+    const links = every
+      ? diagram.getLinks()
+      : diagram.getLinks().filter((l) => l.sourceNodeId === source && l.targetNodeId === target).slice(0, 1);
+    const p = node.properties;
+    for (const link of links) {
+      if (p['animation']) {
+        const anim: Record<string, string> = { type: p['animation'] };
+        if (p['speed']) anim['speed'] = p['speed'];
+        link.updateStyle({ animation: anim } as never);
+      }
+      if (p['from'] && link.sourceNodeId) {
+        const n = diagram.getNode(link.sourceNodeId);
+        const port = n ? ensureSideAnchorPort(n, p['from']) : null;
+        if (port) link.setSourcePort(port, link.sourceNodeId);
+      }
+      if (p['to'] && link.targetNodeId) {
+        const n = diagram.getNode(link.targetNodeId);
+        const port = n ? ensureSideAnchorPort(n, p['to']) : null;
+        if (port) link.setTargetPort(port, link.targetNodeId);
+      }
+      if (p['label'] === 'above' || p['label'] === 'below' || p['label'] === 'on') {
+        link.setMetadata('labelPlacement', p['label'] === 'on' ? undefined : p['label']);
+        // Off the line, a label has no box of its own.
+        for (const label of link.labels) {
+          const style = { ...(label.style ?? {}) } as Record<string, unknown>;
+          if (p['label'] === 'on') delete style['background'];
+          else style['background'] = 'none';
+          label.style = style;
+        }
+      }
+      if (p['via']) {
+        const nums = p['via'].trim().split(/[\s,]+/).map(Number).filter((v) => Number.isFinite(v));
+        const pts: Array<{ x: number; y: number }> = [];
+        for (let i = 0; i + 1 < nums.length; i += 2) pts.push({ x: nums[i], y: nums[i + 1] });
+        if (pts.length > 0) {
+          // The ends are placeholders; the renderer refreshes them from the ports.
+          link.setPoints([{ ...pts[0] }, ...pts, { ...pts[pts.length - 1] }]);
+          link.setMetadata('hasManualWaypoints', true);
+        }
+      }
     }
   }
 
@@ -332,7 +453,7 @@ export class ASTTransformer {
       // (metadata.label — what the renderer and a11y read) and mirrors the
       // legacy data.label slot; see DiagramEntity.setLabel.
       if (astNode.label) {
-        node.setLabel(astNode.label);
+        this.applyRichLabel(node, astNode.label);
       }
       return node;
     }
@@ -362,7 +483,7 @@ export class ASTTransformer {
     // Set label through the canon (metadata.label + legacy mirror) — a parsed
     // node must carry its label where the renderer reads it, or Mermaid-loaded
     // diagrams draw unlabeled and read to screen readers as '<type> node'.
-    node.setLabel(astNode.label || astNode.id);
+    this.applyRichLabel(node, astNode.label || astNode.id);
 
     // Store shape information for DSL
     node.setMetadata('dslShape', astNode.shape);
@@ -455,13 +576,15 @@ export class ASTTransformer {
     // Set label if provided — canonical write, same reasoning as node labels
     // (svg-renderer reads link.getMetadata('label') for the edge label).
     if (astEdge.label) {
-      link.setLabel(astEdge.label);
+      // `<br/>` and `#quot;` read as a line break and a quote, not as text.
+      const text = readMermaidLabel(astEdge.label, false).text;
+      link.setLabel(text);
       // …and ALSO as a real link label. `setLabel` only writes `metadata.label`
       // (plus the legacy data mirror), but the SVG renderer paints from the
       // `labels[]` array — so every Mermaid edge label (`-->|yes|`) parsed
       // correctly, was stored on the link, and then never appeared. That left
       // branch edges looking like unexplained stray lines.
-      if (!link.labels?.length) link.addLabel({ text: astEdge.label, slot: 'center' });
+      if (!link.labels?.length) link.addLabel({ text, slot: 'center' });
     }
 
     // Store link type information
@@ -504,7 +627,7 @@ export class ASTTransformer {
 
     // The group and its membership.
     const groupId = astSubgraph.id || `subgraph-${diagram.getGroups().length + 1}`;
-    const group = new GroupModel({ id: groupId, name: astSubgraph.label || astSubgraph.id || groupId });
+    const group = new GroupModel({ id: groupId, name: readMermaidLabel(astSubgraph.label || astSubgraph.id || groupId, false).text });
     diagram.addGroup(group);
 
     const memberIds = new Set<string>();
@@ -540,6 +663,12 @@ export class ASTTransformer {
   private applyStyle(styleNode: StyleNode, diagram: DiagramModel): void {
     const node = diagram.getNode(styleNode.targetId);
     if (!node) {
+      // `style <subgraph> …` styles the ZONE.
+      const group = diagram.getGroup(styleNode.targetId);
+      if (group) {
+        this.applyFrameStyle(group, styleNode.properties);
+        return;
+      }
       console.warn(`Style target node not found: ${styleNode.targetId}`);
       return;
     }
@@ -575,6 +704,13 @@ export class ASTTransformer {
     if (properties.strokeDasharray) {
       node.style.strokeDasharray = properties.strokeDasharray;
     }
+    // Typography and the flat look — CSS properties Mermaid passes through
+    // (and any other renderer ignores), read by Grafloria.
+    if (properties['fontWeight'] !== undefined && properties['fontWeight'] !== '') node.style.fontWeight = String(properties['fontWeight']);
+    if (typeof properties['fontSize'] === 'number' && Number.isFinite(properties['fontSize'])) node.style.fontSize = properties['fontSize'];
+    if (properties['fontFamily']) node.style.fontFamily = String(properties['fontFamily']);
+    if (typeof properties['rx'] === 'number') node.style.borderRadius = properties['rx'];
+    if (properties['shadow'] === 'none' || properties['shadow'] === 'false') node.style.shadow = false;
 
     // Paints must ALSO ride the shape-config metadata — that is where the SVG
     // renderer reads fill/stroke for the shape (node.style alone renders
@@ -596,12 +732,26 @@ export class ASTTransformer {
   private applyStyleToLink(link: LinkModel, properties: StyleProperties): void {
     if (properties.stroke) {
       link.style.stroke = properties.stroke;
+      // The head is the line's: a green line with a grey arrowhead reads as two things.
+      if (link.style.arrowHead && typeof link.style.arrowHead === 'object') {
+        link.style.arrowHead = { ...link.style.arrowHead, color: properties.stroke } as never;
+      }
     }
     if (properties.strokeWidth !== undefined) {
       link.style.strokeWidth = properties.strokeWidth;
     }
     if (properties.strokeDasharray) {
       link.style.strokeDasharray = properties.strokeDasharray;
+    }
+    // `linkStyle n color:…` is the LABEL's colour in Mermaid; weight, size and
+    // family go with it. They land on the link's labels.
+    const labelStyle: Record<string, unknown> = {};
+    if (properties.color) labelStyle['color'] = properties.color;
+    if (properties['fontWeight'] !== undefined && properties['fontWeight'] !== '') labelStyle['fontWeight'] = String(properties['fontWeight']);
+    if (typeof properties['fontSize'] === 'number' && Number.isFinite(properties['fontSize'])) labelStyle['fontSize'] = properties['fontSize'];
+    if (properties['fontFamily']) labelStyle['fontFamily'] = String(properties['fontFamily']);
+    if (Object.keys(labelStyle).length > 0) {
+      for (const label of link.labels) label.style = { ...(label.style ?? {}), ...labelStyle } as never;
     }
   }
 
@@ -631,6 +781,7 @@ export class ASTTransformer {
    */
   private getNodeTypeFromShape(shape: NodeShape): string {
     const shapeToType: Record<NodeShape, string> = {
+      'text': 'text',
       'rectangle': 'flowchart:process',
       'rounded-rectangle': 'flowchart:terminator',
       'stadium': 'flowchart:terminator',
@@ -653,6 +804,7 @@ export class ASTTransformer {
    */
   private getShapeConfigFromDSLShape(shape: NodeShape): { type: string; cornerRadius?: number } {
     const shapeMapping: Record<NodeShape, { type: string; cornerRadius?: number }> = {
+      'text': { type: 'text' },
       'rectangle': { type: 'rect' },
       'rounded-rectangle': { type: 'rect', cornerRadius: 10 },
       'stadium': { type: 'ellipse' }, // Stadium is essentially a tall ellipse
@@ -688,6 +840,10 @@ export class ASTTransformer {
 
       case 'hexagon':
         return { width: 140, height: 80 };
+
+      case 'text':
+        // A note is a line of words, not a box.
+        return { width: 240, height: 24 };
 
       default:
         return defaultSize;
