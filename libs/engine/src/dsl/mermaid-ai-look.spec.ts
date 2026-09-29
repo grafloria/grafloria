@@ -40,9 +40,9 @@ export const HEALTHPAY_MERMAID = `flowchart LR
   style note color:#cf222e,font-weight:bold,font-size:11px
   style hp fill:#e9f2f3,stroke:#7aabb3,stroke-dasharray:5 4,color:#2a7a86,font-weight:bold,letter-spacing:1px
   style ours fill:#f3f4f6,stroke:#d7dbe0,color:#4b5563,font-weight:bold,letter-spacing:1px
+  linkStyle default interpolate stepBefore
   linkStyle 0 stroke:#1a7f37,color:#1a7f37,font-weight:bold,font-size:11px,stroke-width:1.5px
   linkStyle 1,2,3,4 stroke:#6b7785,color:#5f6b7a,font-size:11px,stroke-width:1.5px
-  linkStyle 2 interpolate stepBefore stroke:#6b7785
   linkStyle 5,6 stroke:#cf222e,color:#cf222e,font-weight:bold,font-size:11px,stroke-width:1.5px
   %% Grafloria layout — comments any other Mermaid renderer ignores
   %%grafloria:at customer 20,78 150x292
@@ -180,9 +180,13 @@ describe("Grafloria's Mermaid draws the AI-diagram look", () => {
       expect(p).toContainEqual([850, 204]);
     });
 
-    it('linkStyle … interpolate stepBefore draws right angles (Mermaid\'s own word for it)', () => {
-      expect(link('api', 'wallets').pathType).toBe('orthogonal');
-      expect(link('page', 'wallets').pathType).not.toBe('orthogonal');
+    it('linkStyle default interpolate stepBefore draws EVERY line with right angles (Mermaid\'s own words) — a moved box gets an elbow, not a diagonal', () => {
+      for (const l of d.getLinks()) expect(l.pathType).toBe('orthogonal');
+    });
+
+    it('linkStyle <n> interpolate … reaches that one line only', () => {
+      const m = imp('flowchart LR\n  a --> b\n  b --> c\n  linkStyle 1 interpolate stepBefore');
+      expect(m.getLinks().map((l) => l.pathType === 'orthogonal')).toEqual([false, true]);
     });
 
     it('the arrowhead takes the linkStyle stroke — a green line has a green head', () => {

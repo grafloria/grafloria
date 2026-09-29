@@ -94,6 +94,27 @@ describe('GroupMembershipService (Wave-2)', () => {
       await commandManager.undo();
       expect(group.members.has('n1')).toBe(true);
     });
+
+    it('a group that CONFINES its children (constrainChildren) cannot be left by a drop — its extent reels the member back', async () => {
+      // Drop-to-leave is on by default now; a confining container ("you cannot
+      // leave") must win over it, or the drop detaches what the clamp keeps in.
+      const node = makeNode('n1', 50, 50);
+      diagram.addNode(node);
+      const group = makeGroup('g1', { x: 0, y: 0, width: 200, height: 200 });
+      group.constrainChildren = true;
+      diagram.addGroup(group);
+      group.addMember('n1', diagram);
+      const other = makeGroup('g2', { x: 400, y: 400, width: 200, height: 200 });
+      diagram.addGroup(other);
+
+      for (const at of [{ x: 900, y: 900 }, { x: 500, y: 500 }]) { // outside everything; inside another group
+        const result = await service.handleNodeDragEnd('n1', at);
+        expect(result.changed).toBe(false);
+        expect(result.rejected).toBe(true);
+        expect(group.members.has('n1')).toBe(true);
+        expect(other.members.has('n1')).toBe(false);
+      }
+    });
   });
 
   describe('reparent between groups', () => {

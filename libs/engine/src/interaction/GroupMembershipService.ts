@@ -208,6 +208,15 @@ export class GroupMembershipService {
       return result;
     }
 
+    // A group that CONFINES its children cannot be left by a drop: its extent
+    // reels the member back in ("you cannot leave"), so leaving is vetoed here
+    // rather than detaching what the clamp is about to keep.
+    if (currentGroup && currentGroup.constrainChildren === true) {
+      result.rejected = true;
+      this.clearHover();
+      return result;
+    }
+
     // Validate the destination before mutating anything.
     if (target && !target.canAddMember(nodeId, this.diagram)) {
       result.rejected = true;
