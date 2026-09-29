@@ -142,6 +142,18 @@
       unrelated edges cross you can render jump-overs via the renderer config's jump
       styles.</p>
 
+      <h2>Anchors, label placement, bends</h2>
+      <p>A handle can name a point along a side, so several lines leave one tall box at
+      different heights: <code>'right@36'</code> is 36&nbsp;px down the right side,
+      <code>'bottom@138'</code> 138&nbsp;px along the bottom, <code>'left@50%'</code> halfway.
+      <code>labelPlacement: 'above' | 'below'</code> puts the label just off its line with no
+      box, and <code>labelStyle</code> gives it its own colour and weight.
+      <code>waypoints</code> are the bends a line must take — the router keeps them.</p>
+<pre data-lang="typescript">{ source: 'api', target: 'wallets', sourceHandle: 'top@170', targetHandle: 'bottom@138',
+  type: 'orthogonal', waypoints: [{ x: 580, y: 204 }, { x: 850, y: 204 }],
+  label: 'asks HealthPay to move money', labelPlacement: 'above',
+  labelStyle: { color: '#5f6b7a', fontSize: 11 } }</pre>
+
       <h2>The selected node's lines</h2>
       <p>Turn on <code>highlightConnected</code> and selecting a node brings its lines forward:
       the lines coming into it and going out of it are drawn in the page's ink, and every other

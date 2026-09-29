@@ -127,6 +127,25 @@ await engine.expandGroup('ingest-stage');     // everything returns exactly wher
       swimlanes, BPMN pools and stage-based pipelines behave — moving a lane moves its
       contents; growing content grows the lane.</p>
 
+      <h2>Zones — a frame of your own</h2>
+      <p>A group declared in the render spec is a <b>zone</b>: a tinted region around some
+      boxes with a small caption in a corner — no title band. <code>bounds</code> pins its
+      frame; without it the frame is fitted around <code>children</code> with
+      <code>padding</code>. The children become its members, so dragging the zone brings them.</p>
+<pre data-lang="typescript">const api = render({
+  nodes, edges,
+  groups: [{
+    id: 'ours', label: 'OUR SIDE · MUST NEVER SEE A CARD', children: ['api', 'db'],
+    bounds: { x: 380, y: 236, width: 566, height: 150 },
+    labelPlacement: 'bottom-left',          // top-left (default), top, top-right, bottom-…
+    style: { fill: '#f3f4f6', stroke: '#d7dbe0', strokeDasharray: '5 4',
+             color: '#4b5563', fontWeight: '700', letterSpacing: 1 },
+  }],
+}, el);
+api.setGroups([...]);                       // reconcile later, like setNodes</pre>
+      <p>A Mermaid <code>subgraph</code> is the same zone: <code>style &lt;subgraph&gt; …</code>
+      styles its frame, and a subgraph no directive pins is fitted around its nodes.</p>
+
       <h2>Frameless groups — layout without chrome</h2>
 <pre data-lang="typescript">const g = diagram.getGroup('kpi-row');
 g.setMetadata('frameChrome', 'none');    // no border, no header — pure layout container</pre>

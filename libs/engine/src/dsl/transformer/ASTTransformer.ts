@@ -123,6 +123,14 @@ export class ASTTransformer {
     // because they reference nodes/links/classDefs that must already exist.
     this.applyDirectives(this.flattenStatements(ast.statements), diagram);
 
+    // Phase 4: a subgraph means "a box around these nodes". One whose frame no
+    // `%%grafloria:at` pinned is fitted around its members (deepest first) —
+    // without this it had no size at all and drew nothing.
+    for (const group of diagram.getGroups()) {
+      if (group.parentGroupId || group.size) continue;
+      group.fitToContents(diagram, { mode: 'exact', deepRecursive: true });
+    }
+
     return diagram;
   }
 

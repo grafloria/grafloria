@@ -127,6 +127,21 @@ describe("Grafloria's Mermaid draws the AI-diagram look", () => {
       expect(d.getGroup('ours')!.getMetadata('frameStyle')).toEqual(expect.objectContaining({ labelPlacement: 'bottom-left' }));
     });
 
+    it('a subgraph with no pinned frame is FITTED around its members (it used to have no size, so it drew nothing)', () => {
+      const m = imp('flowchart LR\n  subgraph pipeline\n    Extract --> Transform --> Load\n  end\n  Load --> Warehouse');
+      const g = m.getGroup('pipeline')!;
+      const b = g.getOuterBounds();
+      expect(b.width).toBeGreaterThan(0);
+      for (const id of ['Extract', 'Transform', 'Load']) {
+        const n = m.getNode(id)!;
+        expect(n.position.x).toBeGreaterThanOrEqual(b.x);
+        expect(n.position.y).toBeGreaterThanOrEqual(b.y);
+        expect(n.position.x + n.size.width).toBeLessThanOrEqual(b.x + b.width);
+        expect(n.position.y + n.size.height).toBeLessThanOrEqual(b.y + b.height);
+      }
+      expect(m.getNode('Warehouse')!.position.x + 1).toBeGreaterThan(b.x + b.width); // outside the zone
+    });
+
     it('%%grafloria:at pins a zone’s frame too', () => {
       const hp = d.getGroup('hp')!;
       expect(hp.getOuterBounds()).toEqual({ x: 380, y: 36, width: 566, height: 138 });

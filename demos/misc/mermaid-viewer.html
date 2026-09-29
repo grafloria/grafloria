@@ -105,7 +105,9 @@ const EXAMPLES = {
 // silently degraded `Start([Start])` into `Start[Start]` and washed the colours
 // out of the source. Carrying the model itself is the fix that has no next
 // casualty.
-const modelParts = (model) => ({ nodes: model.getNodes(), edges: model.getLinks() });
+// …and the GROUPS: a subgraph is a zone, and it travels in neither nodes nor
+// edges — handed only those two, every subgraph was parsed and never drawn.
+const modelParts = (model) => ({ nodes: model.getNodes(), edges: model.getLinks(), groups: model.getGroups() });
 
 defineDemo({
   name: 'Mermaid viewer',
@@ -157,7 +159,7 @@ defineDemo({
         if (r.unsupported) {
           status.className = 'bad';
           status.textContent = `unsupported diagram type: ${r.unsupported}`;
-          if (api) { api.setNodes([]); api.setEdges([]); api.renderNow(); }
+          if (api) { api.setGroups([]); api.setNodes([]); api.setEdges([]); api.renderNow(); }
           return r;
         }
         const parts = modelParts(r.diagram);
@@ -172,8 +174,10 @@ defineDemo({
           // leaves the existing object alone, so re-applying edited text would
           // otherwise keep the STALE nodes for every id that still exists.
           api.setEdges([]);
+          api.setGroups([]);
           api.setNodes([]);
           api.setNodes(parts.nodes);
+          api.setGroups(parts.groups);
           api.setEdges(parts.edges);
         }
         api.renderNow();
