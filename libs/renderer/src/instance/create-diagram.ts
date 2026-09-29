@@ -2,6 +2,7 @@ import { DiagramEngine, getMutationEpoch, exportDiagramText, importDiagramText, 
 import { CommentOverlayController } from '../comments/comment-overlay';
 import type {
   DiagramModel,
+  GroupModel,
   LinkModel,
   LODLevel,
   NodeModel,
@@ -33,8 +34,8 @@ import type { CanvasRect, Unsubscribe } from '../viewport/viewport-controller';
 import { RenderScheduler } from './render-scheduler';
 import { DomEventBinder } from './dom-event-binder';
 import type { DomEventBinderOptions } from './dom-event-binder';
-import { applyEdges, applyNodes, toNodeSpec, toEdgeSpec } from './model-input';
-import type { EdgeSpec, NodeSpec } from './model-input';
+import { applyEdges, applyGroups, applyNodes, toNodeSpec, toEdgeSpec } from './model-input';
+import type { EdgeSpec, GroupSpec, NodeSpec } from './model-input';
 import {
   HTML_LAYER_CLASS,
   INSTANCE_ATTR,
@@ -93,6 +94,12 @@ export type DiagramEventHandler<K extends DiagramEventName> = (
 export interface CreateDiagramOptions extends DomEventBinderOptions {
   nodes?: NodeInput[];
   edges?: EdgeInput[];
+  /**
+   * Zones: groups around some boxes, each with a frame of its own — fill,
+   * border, dash, a caption in a corner (the tinted regions of the diagrams AI
+   * tools draw). A live `GroupModel` passes through. See {@link GroupSpec}.
+   */
+  groups?: Array<GroupSpec | GroupModel>;
   theme?: Theme;
 
   /**
@@ -248,6 +255,8 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
 export interface DiagramInstance {
   setNodes(nodes: NodeInput[]): void;
   setEdges(edges: EdgeInput[]): void;
+  /** Reconcile the zones (groups) — add, restyle, remove. Removing a zone keeps its boxes. */
+  setGroups(groups: Array<GroupSpec | GroupModel>): void;
   getModel(): DiagramModel;
   getEngine(): DiagramEngine;
   /** The comment store, when `comments` was enabled; `null` otherwise. */
@@ -455,6 +464,8 @@ export function createDiagram(
   // really wants to clear the diagram passes `nodes: []` explicitly, which still
   // works.
   if (options.nodes) applyNodes(model, options.nodes);
+  // Zones after their boxes (membership needs the nodes), before the lines.
+  if (options.groups) applyGroups(model, options.groups);
   if (options.edges) applyEdges(model, options.edges);
 
   // -- camera -----------------------------------------------------------------
@@ -1568,6 +1579,12 @@ export function createDiagram(
     },
     setEdges(edges) {
       if (applyEdges(model, edges)) scheduler.schedule();
+    },
+    setGroups(groups) {
+      if (applyGroups(model, groups)) {
+        renderer.invalidateFrame();
+        scheduler.schedule();
+      }
     },
     getModel: () => model,
     getEngine: () => engine,

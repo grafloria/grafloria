@@ -123,6 +123,12 @@ export const BASE_STYLE_RULES: readonly StyleRule[] = [
       fill: themeVar('label.color'),
     },
   },
+  // A node's subtitle and a line's label speak in the theme's face too. With no
+  // rule they inherited the HOST PAGE's font — serif on a page that set none —
+  // beside a sans-serif name. Their own family (a `'mono'` subtitle, a label's
+  // `fontFamily`) rides an inline style, which beats these.
+  { selector: '.diagram-sublabel', decls: { 'font-family': themeVar('label.fontFamily') } },
+  { selector: '.link-label-text', decls: { 'font-family': themeVar('label.fontFamily') } },
 
   // ---- Ports -------------------------------------------------------------
   {
