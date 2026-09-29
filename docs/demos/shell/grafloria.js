@@ -99644,6 +99644,12 @@ var BASE_STYLE_RULES = [
       fill: themeVar("label.color")
     }
   },
+  // A node's subtitle and a line's label speak in the theme's face too. With no
+  // rule they inherited the HOST PAGE's font — serif on a page that set none —
+  // beside a sans-serif name. Their own family (a `'mono'` subtitle, a label's
+  // `fontFamily`) rides an inline style, which beats these.
+  { selector: ".diagram-sublabel", decls: { "font-family": themeVar("label.fontFamily") } },
+  { selector: ".link-label-text", decls: { "font-family": themeVar("label.fontFamily") } },
   // ---- Ports -------------------------------------------------------------
   {
     selector: ".port-input",
@@ -100591,10 +100597,16 @@ function shapeMetadataStyle(node) {
     opacity: shape["opacity"]
   });
 }
+function shapeKindStyle(node) {
+  const shape = node.getMetadata?.("shape");
+  if (shape?.type !== "text") return {};
+  return { fill: "transparent", stroke: "none", strokeWidth: 0, shadow: false };
+}
 function resolveNodeStyle(node, theme, options = {}) {
   return {
     ...options.includeThemeBase ? nodeThemeBase(theme) : void 0,
     ...nodeTypeDefaults(theme, node.type),
+    ...shapeKindStyle(node),
     ...resolveStyleClasses(node.style?.styleClass),
     // element-inline: the entity's own props, from BOTH places they can live.
     // The typed `node.style` wins over the legacy `metadata.shape` paints.
@@ -133814,7 +133826,9 @@ var V11_SHAPE_MAP = {
   "trap-b": "trapezoid",
   "manual-input": "trapezoid",
   "trapezoid-alt": "trapezoid-alt",
-  "trap-t": "trapezoid-alt"
+  "trap-t": "trapezoid-alt",
+  // v11's text block: words on the canvas, no box.
+  text: "text"
 };
 var Parser = class {
   constructor() {
@@ -133827,7 +133841,7 @@ var Parser = class {
   parse(tokens) {
     this.tokens = tokens.filter(
       (t) => t.type !== "WHITESPACE" /* WHITESPACE */ && // Keep ONLY the Tier-2 extension comments; ordinary %% comments still drop.
-      (t.type !== "COMMENT" /* COMMENT */ || /^%%grafloria:(node|edge)\b/.test(t.value))
+      (t.type !== "COMMENT" /* COMMENT */ || /^%%grafloria:(node|edge|group|at)\b/.test(t.value))
     );
     this.current = 0;
     return this.parseDiagram();
@@ -134154,8 +134168,13 @@ var Parser = class {
         indices.push(parseInt(this.consume("NUMBER" /* NUMBER */, "Expected link index").value, 10));
       }
     }
+    let interpolate;
+    if (this.check("IDENTIFIER" /* IDENTIFIER */) && this.peek().value === "interpolate") {
+      this.advance();
+      if (this.check("IDENTIFIER" /* IDENTIFIER */)) interpolate = this.advance().value;
+    }
     const properties = this.parseStyleProperties();
-    return { type: "LinkStyle", indices, properties, location: this.getLocation(start, this.previous()) };
+    return { type: "LinkStyle", indices, properties, ...interpolate ? { interpolate } : {}, location: this.getLocation(start, this.previous()) };
   }
   /**
    * Parse `click a "https://…" "tooltip"` — a node's navigation target. The
@@ -134182,7 +134201,16 @@ var Parser = class {
    * malformed one is simply ignored, never garbage).
    */
   parseGrafloriaComment(value) {
-    const m = value.match(/^%%grafloria:(node|edge)\s+(.+)$/);
+    const at = value.match(/^%%grafloria:at\s+(\S+)\s+(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?))?\s*$/);
+    if (at) {
+      const properties2 = { x: at[2], y: at[3] };
+      if (at[4] !== void 0) {
+        properties2["w"] = at[4];
+        properties2["h"] = at[5];
+      }
+      return { type: "GrafloriaDirective", target: "at", ids: [at[1]], properties: properties2, location: this.getLocation(this.previous(), this.previous()) };
+    }
+    const m = value.match(/^%%grafloria:(node|edge|group)\s+(.+)$/);
     if (!m) return null;
     const target = m[1];
     const parts = m[2].trim().split(/\s+/);
@@ -134206,18 +134234,15 @@ var Parser = class {
       if (!this.check("IDENTIFIER" /* IDENTIFIER */)) break;
       const propName = this.advance().value;
       this.consume("COLON" /* COLON */, 'Expected ":" after property name');
-      let propValue;
-      if (this.check("STRING" /* STRING */)) {
-        propValue = this.advance().value;
-      } else if (this.check("NUMBER" /* NUMBER */)) {
-        propValue = this.advance().value;
-      } else if (this.check("IDENTIFIER" /* IDENTIFIER */)) {
-        propValue = this.advance().value;
-      } else {
-        propValue = this.advance().value;
+      let propValue = "";
+      let lastEnd = -1;
+      while (!this.isAtEnd() && !this.check("COMMA" /* COMMA */) && !this.check("NEWLINE" /* NEWLINE */) && !this.check("SEMICOLON" /* SEMICOLON */) && !this.check("COMMENT" /* COMMENT */)) {
+        const t = this.advance();
+        propValue += (lastEnd >= 0 && t.startIndex > lastEnd ? " " : "") + t.value;
+        lastEnd = t.endIndex;
       }
       const camelCaseName = propName.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
-      if (camelCaseName === "strokeWidth" || camelCaseName === "opacity") {
+      if (camelCaseName === "strokeWidth" || camelCaseName === "opacity" || camelCaseName === "fontSize" || camelCaseName === "letterSpacing" || camelCaseName === "rx") {
         properties[camelCaseName] = parseFloat(propValue);
       } else {
         properties[camelCaseName] = propValue;
@@ -134521,6 +134546,61 @@ function rankLayout(nodes, edges, options = {}) {
   );
 }
 
+// libs/engine/src/dsl/mermaid/rich-label.ts
+var NAMED = { quot: '"', amp: "&", lt: "<", gt: ">", apos: "'", nbsp: "\xA0" };
+function decodeLabelEntities(s) {
+  return s.replace(/[#&]#?x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/[#&]#?(\d+);/g, (_, d) => String.fromCodePoint(Number(d))).replace(/[#&]([a-z]+);/gi, (m, n3) => NAMED[n3.toLowerCase()] ?? m);
+}
+var BOLD = /^(?:\*\*(.+)\*\*|__(.+)__|<b>(.+)<\/b>|<strong>(.+)<\/strong>)$/i;
+var CODE = /^(?:<code>(.+)<\/code>|`(.+)`)$/i;
+function plain(s) {
+  return s.replace(/<[^>]+>/g, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/__(.+?)__/g, "$1").replace(/(^|[^*])\*(?!\s)([^*]+?)\*(?!\*)/g, "$1$2").replace(/`([^`]+)`/g, "$1");
+}
+function readMermaidLabel(raw, splitTitle) {
+  let s = raw.trim();
+  if (s.length >= 2 && s.startsWith("`") && s.endsWith("`")) s = s.slice(1, -1);
+  s = s.replace(/<br\s*\/?>/gi, "\n");
+  const lines = decodeLabelEntities(s).split("\n").map((l) => l.trim()).filter((l, i, all) => l !== "" || i > 0 && i < all.length - 1);
+  if (splitTitle && lines.length >= 2) {
+    const b = BOLD.exec(lines[0]);
+    if (b) {
+      const title = plain(b[1] ?? b[2] ?? b[3] ?? b[4] ?? "");
+      const rest = lines.slice(1);
+      const code = rest.length === 1 ? CODE.exec(rest[0]) : null;
+      if (code) return { text: title, sublabel: { text: plain(code[1] ?? code[2] ?? ""), fontFamily: "mono" } };
+      return { text: title, sublabel: rest.map(plain).join("\n") };
+    }
+  }
+  return { text: lines.map(plain).join("\n") };
+}
+
+// libs/engine/src/ports/side-anchor.ts
+function parseSideAnchor(handle) {
+  const m = /^(top|right|bottom|left)@(-?\d+(?:\.\d+)?)(%|px)?$/.exec(handle.trim());
+  if (!m) return null;
+  const v = Number(m[2]);
+  return { side: m[1], at: m[3] === "%" ? { pct: v } : { px: v } };
+}
+function sideAnchorPortId(nodeId, handle) {
+  return `${nodeId}__${handle.trim()}`;
+}
+function isSideAnchorPort(portId) {
+  return !!portId && /__(top|right|bottom|left)@-?\d/.test(portId);
+}
+function ensureSideAnchorPort(node, handle) {
+  const anchor = parseSideAnchor(handle);
+  if (!anchor) return null;
+  const id = sideAnchorPortId(node.id, handle);
+  if (node.getPort(id)) return id;
+  const { side, at } = anchor;
+  const along = side === "left" || side === "right" ? node.size.height : node.size.width;
+  const f = at.pct !== void 0 ? at.pct / 100 : along > 0 ? (at.px ?? 0) / along : 0.5;
+  const t = Math.max(0, Math.min(1, f));
+  const xy = side === "left" ? { x: 0, y: t } : side === "right" ? { x: 1, y: t } : side === "top" ? { x: t, y: 0 } : { x: t, y: 1 };
+  node.addPort(new PortModel({ id, type: "bi", side, index: 0, visible: false, layout: { strategy: "absolute", args: { ...xy, units: "fraction" } } }));
+  return id;
+}
+
 // libs/engine/src/dsl/transformer/ASTTransformer.ts
 var ASTTransformer = class {
   constructor() {
@@ -134563,6 +134643,10 @@ var ASTTransformer = class {
       this.applyRankPlacement(diagram, startPosition);
     }
     this.applyDirectives(this.flattenStatements(ast.statements), diagram);
+    for (const group of diagram.getGroups()) {
+      if (group.parentGroupId || group.size) continue;
+      group.fitToContents(diagram, { mode: "exact", deepRecursive: true });
+    }
     return diagram;
   }
   /**
@@ -134648,19 +134732,77 @@ var ASTTransformer = class {
    * depend on link order.
    */
   applyDirectives(statements, diagram) {
+    const directive = (st, target) => st.type === "GrafloriaDirective" && st.target === target;
     for (const st of statements) {
       if (st.type === "Style") this.applyStyle(st, diagram);
       else if (st.type === "ClassApplication") this.applyClass(st, diagram);
       else if (st.type === "Click") this.applyClick(st, diagram);
-      else if (st.type === "GrafloriaDirective" && st.target === "node") {
-        this.applyGrafloriaNode(st, diagram);
-      }
+      else if (directive(st, "node")) this.applyGrafloriaNode(st, diagram);
+      else if (directive(st, "group")) this.applyGrafloriaGroup(st, diagram);
+      else if (directive(st, "at")) this.applyGrafloriaAt(st, diagram);
     }
     for (const st of statements) {
       if (st.type === "LinkStyle") this.applyLinkStyle(st, diagram);
-      else if (st.type === "GrafloriaDirective" && st.target === "edge") {
-        this.applyGrafloriaEdge(st, diagram);
-      }
+    }
+    const edges = statements.filter((st) => directive(st, "edge"));
+    for (const st of edges) if (st.ids[0] === "*" && st.ids[1] === "*") this.applyGrafloriaEdge(st, diagram);
+    for (const st of edges) if (!(st.ids[0] === "*" && st.ids[1] === "*")) this.applyGrafloriaEdge(st, diagram);
+  }
+  /**
+   * A label, read the way Mermaid means it: a bold first line over more lines
+   * is a name and a subtitle (`metadata.sublabel`), `<br/>` a line break,
+   * `#quot;` a quote. See dsl/mermaid/rich-label.
+   */
+  applyRichLabel(node, raw) {
+    const rich = readMermaidLabel(raw, true);
+    node.setLabel(rich.text);
+    node.setMetadata("sublabel", rich.sublabel);
+  }
+  /**
+   * A zone's frame from Mermaid style properties — `style <subgraph> …`,
+   * `classDef` + `class <subgraph>`. Merged into `metadata.frameStyle` (the
+   * renderer's zone frame); a zone's caption lives in its padding, so no band.
+   */
+  applyFrameStyle(group, properties) {
+    const frame = { ...group.getMetadata("frameStyle") ?? { labelPlacement: "top-left" } };
+    const copy = ["fill", "stroke", "strokeWidth", "strokeDasharray", "color", "fontWeight", "fontSize", "fontFamily", "letterSpacing", "textTransform"];
+    for (const key of copy) if (properties[key] !== void 0 && properties[key] !== "") frame[key] = properties[key];
+    if (typeof properties["rx"] === "number") frame["borderRadius"] = properties["rx"];
+    group.setMetadata("frameStyle", frame);
+    group.headerHeight = 0;
+  }
+  /** `%%grafloria:group ours caption:bottom-left` — where a zone's caption sits. */
+  applyGrafloriaGroup(node, diagram) {
+    const group = diagram.getGroup(node.ids[0]);
+    if (!group) return;
+    const caption = node.properties["caption"];
+    if (caption) {
+      const frame = { ...group.getMetadata("frameStyle") ?? {} };
+      frame["labelPlacement"] = caption;
+      group.setMetadata("frameStyle", frame);
+      group.headerHeight = 0;
+    }
+  }
+  /** `%%grafloria:at customer 20,78 150x292` — an exact position (and size), node or zone. */
+  applyGrafloriaAt(node, diagram) {
+    const id = node.ids[0];
+    const x = Number(node.properties["x"]);
+    const y = Number(node.properties["y"]);
+    const w = node.properties["w"] !== void 0 ? Number(node.properties["w"]) : void 0;
+    const h = node.properties["h"] !== void 0 ? Number(node.properties["h"]) : void 0;
+    const target = diagram.getNode(id);
+    if (target) {
+      target.setPosition(x, y);
+      if (w !== void 0 && h !== void 0) target.setSize(w, h);
+      return;
+    }
+    const group = diagram.getGroup(id);
+    if (group) {
+      const width = w ?? group.getOuterBounds().width;
+      const height = h ?? group.getOuterBounds().height;
+      group.position = { x, y };
+      group.size = { width, height, depth: 0 };
+      group.bounds = { x, y, width, height };
     }
   }
   /** `class a,b hot` — resolve the classDef and apply it to each node. */
@@ -134671,14 +134813,22 @@ var ASTTransformer = class {
     for (const id of node.ids) {
       const target = diagram.getNode(id);
       if (target) this.applyStyleToNode(target, props);
+      else {
+        const group = diagram.getGroup(id);
+        if (group) this.applyFrameStyle(group, props);
+      }
     }
   }
   /** `linkStyle 0,2 …` — style links by insertion index (or 'default' = all). */
   applyLinkStyle(node, diagram) {
     const links = diagram.getLinks();
     const targets = node.indices === "default" ? links.map((_, i) => i) : node.indices;
+    const curve = node.interpolate?.toLowerCase();
+    const pathType = !curve ? void 0 : curve === "linear" ? "direct" : curve.startsWith("step") ? "orthogonal" : "smooth";
     for (const i of targets) {
-      if (links[i]) this.applyStyleToLink(links[i], node.properties);
+      if (!links[i]) continue;
+      this.applyStyleToLink(links[i], node.properties);
+      if (pathType && links[i].pathType !== pathType) links[i].setPathType(pathType);
     }
   }
   /** `click a "url" "tip"` — the node's navigation target (metadata, not a node). */
@@ -134696,15 +134846,53 @@ var ASTTransformer = class {
       target.setState({ status: node.properties["status"], animateStatus: true });
     }
   }
-  /** `%%grafloria:edge a b animation:flow` — Grafloria-only edge animation. */
+  /**
+   * `%%grafloria:edge a b …` — Grafloria-only edge properties:
+   *   animation:flow, speed:…        the edge animation
+   *   from:right@36, to:left@36      ends pinned to a point along a side
+   *   label:above | below | on       where the label sits (above/below: no box)
+   *   via:580 204 850 204            the bends — manual waypoints
+   * `* *` names every edge.
+   */
   applyGrafloriaEdge(node, diagram) {
     const [source, target] = node.ids;
-    const link = diagram.getLinks().find((l) => l.sourceNodeId === source && l.targetNodeId === target);
-    if (!link) return;
-    if (node.properties["animation"]) {
-      const anim = { type: node.properties["animation"] };
-      if (node.properties["speed"]) anim["speed"] = node.properties["speed"];
-      link.updateStyle({ animation: anim });
+    const every = source === "*" && target === "*";
+    const links = every ? diagram.getLinks() : diagram.getLinks().filter((l) => l.sourceNodeId === source && l.targetNodeId === target).slice(0, 1);
+    const p = node.properties;
+    for (const link of links) {
+      if (p["animation"]) {
+        const anim = { type: p["animation"] };
+        if (p["speed"]) anim["speed"] = p["speed"];
+        link.updateStyle({ animation: anim });
+      }
+      if (p["from"] && link.sourceNodeId) {
+        const n3 = diagram.getNode(link.sourceNodeId);
+        const port = n3 ? ensureSideAnchorPort(n3, p["from"]) : null;
+        if (port) link.setSourcePort(port, link.sourceNodeId);
+      }
+      if (p["to"] && link.targetNodeId) {
+        const n3 = diagram.getNode(link.targetNodeId);
+        const port = n3 ? ensureSideAnchorPort(n3, p["to"]) : null;
+        if (port) link.setTargetPort(port, link.targetNodeId);
+      }
+      if (p["label"] === "above" || p["label"] === "below" || p["label"] === "on") {
+        link.setMetadata("labelPlacement", p["label"] === "on" ? void 0 : p["label"]);
+        for (const label of link.labels) {
+          const style = { ...label.style ?? {} };
+          if (p["label"] === "on") delete style["background"];
+          else style["background"] = "none";
+          label.style = style;
+        }
+      }
+      if (p["via"]) {
+        const nums = p["via"].trim().split(/[\s,]+/).map(Number).filter((v) => Number.isFinite(v));
+        const pts = [];
+        for (let i = 0; i + 1 < nums.length; i += 2) pts.push({ x: nums[i], y: nums[i + 1] });
+        if (pts.length > 0) {
+          link.setPoints([{ ...pts[0] }, ...pts, { ...pts[pts.length - 1] }]);
+          link.setMetadata("hasManualWaypoints", true);
+        }
+      }
     }
   }
   /**
@@ -134714,7 +134902,7 @@ var ASTTransformer = class {
     let node = diagram.getNode(astNode.id);
     if (node) {
       if (astNode.label) {
-        node.setLabel(astNode.label);
+        this.applyRichLabel(node, astNode.label);
       }
       return node;
     }
@@ -134732,7 +134920,7 @@ var ASTTransformer = class {
       position,
       size
     });
-    node.setLabel(astNode.label || astNode.id);
+    this.applyRichLabel(node, astNode.label || astNode.id);
     node.setMetadata("dslShape", astNode.shape);
     const shapeConfig = this.getShapeConfigFromDSLShape(astNode.shape);
     node.setMetadata("shape", shapeConfig);
@@ -134798,8 +134986,9 @@ var ASTTransformer = class {
       return null;
     }
     if (astEdge.label) {
-      link.setLabel(astEdge.label);
-      if (!link.labels?.length) link.addLabel({ text: astEdge.label, slot: "center" });
+      const text = readMermaidLabel(astEdge.label, false).text;
+      link.setLabel(text);
+      if (!link.labels?.length) link.addLabel({ text, slot: "center" });
     }
     link.setMetadata("dslLinkType", astEdge.linkType);
     if (astEdge.style) {
@@ -134823,7 +135012,7 @@ var ASTTransformer = class {
       }
     }
     const groupId = astSubgraph.id || `subgraph-${diagram.getGroups().length + 1}`;
-    const group = new GroupModel({ id: groupId, name: astSubgraph.label || astSubgraph.id || groupId });
+    const group = new GroupModel({ id: groupId, name: readMermaidLabel(astSubgraph.label || astSubgraph.id || groupId, false).text });
     diagram.addGroup(group);
     const memberIds = /* @__PURE__ */ new Set();
     this.collectDirectNodeIds(astSubgraph.statements, memberIds);
@@ -134855,6 +135044,11 @@ var ASTTransformer = class {
   applyStyle(styleNode, diagram) {
     const node = diagram.getNode(styleNode.targetId);
     if (!node) {
+      const group = diagram.getGroup(styleNode.targetId);
+      if (group) {
+        this.applyFrameStyle(group, styleNode.properties);
+        return;
+      }
       console.warn(`Style target node not found: ${styleNode.targetId}`);
       return;
     }
@@ -134887,6 +135081,11 @@ var ASTTransformer = class {
     if (properties.strokeDasharray) {
       node.style.strokeDasharray = properties.strokeDasharray;
     }
+    if (properties["fontWeight"] !== void 0 && properties["fontWeight"] !== "") node.style.fontWeight = String(properties["fontWeight"]);
+    if (typeof properties["fontSize"] === "number" && Number.isFinite(properties["fontSize"])) node.style.fontSize = properties["fontSize"];
+    if (properties["fontFamily"]) node.style.fontFamily = String(properties["fontFamily"]);
+    if (typeof properties["rx"] === "number") node.style.borderRadius = properties["rx"];
+    if (properties["shadow"] === "none" || properties["shadow"] === "false") node.style.shadow = false;
     const shapeConfig = { ...node.getMetadata("shape") };
     if (properties.fill) shapeConfig["fill"] = properties.fill;
     if (properties.stroke) shapeConfig["stroke"] = properties.stroke;
@@ -134900,12 +135099,23 @@ var ASTTransformer = class {
   applyStyleToLink(link, properties) {
     if (properties.stroke) {
       link.style.stroke = properties.stroke;
+      if (link.style.arrowHead && typeof link.style.arrowHead === "object") {
+        link.style.arrowHead = { ...link.style.arrowHead, color: properties.stroke };
+      }
     }
     if (properties.strokeWidth !== void 0) {
       link.style.strokeWidth = properties.strokeWidth;
     }
     if (properties.strokeDasharray) {
       link.style.strokeDasharray = properties.strokeDasharray;
+    }
+    const labelStyle = {};
+    if (properties.color) labelStyle["color"] = properties.color;
+    if (properties["fontWeight"] !== void 0 && properties["fontWeight"] !== "") labelStyle["fontWeight"] = String(properties["fontWeight"]);
+    if (typeof properties["fontSize"] === "number" && Number.isFinite(properties["fontSize"])) labelStyle["fontSize"] = properties["fontSize"];
+    if (properties["fontFamily"]) labelStyle["fontFamily"] = String(properties["fontFamily"]);
+    if (Object.keys(labelStyle).length > 0) {
+      for (const label of link.labels) label.style = { ...label.style ?? {}, ...labelStyle };
     }
   }
   /**
@@ -134930,6 +135140,7 @@ var ASTTransformer = class {
    */
   getNodeTypeFromShape(shape) {
     const shapeToType = {
+      "text": "text",
       "rectangle": "flowchart:process",
       "rounded-rectangle": "flowchart:terminator",
       "stadium": "flowchart:terminator",
@@ -134950,6 +135161,7 @@ var ASTTransformer = class {
    */
   getShapeConfigFromDSLShape(shape) {
     const shapeMapping = {
+      "text": { type: "text" },
       "rectangle": { type: "rect" },
       "rounded-rectangle": { type: "rect", cornerRadius: 10 },
       "stadium": { type: "ellipse" },
@@ -134980,6 +135192,8 @@ var ASTTransformer = class {
         return { width: 140, height: 80 };
       case "hexagon":
         return { width: 140, height: 80 };
+      case "text":
+        return { width: 240, height: 24 };
       default:
         return defaultSize;
     }
@@ -135622,6 +135836,9 @@ var DiagramAnalyzer = class {
 // libs/engine/src/dsl/generator/DSLGenerator.ts
 var DSLGenerator = class {
   constructor() {
+    /** The links in the order they were written — what `linkStyle <n>` counts. */
+    this.edgeOrder = [];
+    this.positions = false;
     this.analyzer = new DiagramAnalyzer();
   }
   /**
@@ -135635,6 +135852,8 @@ var DSLGenerator = class {
       includeSubgraphs = false
     } = options;
     this.analysis = this.analyzer.analyze(diagram);
+    this.edgeOrder = [];
+    this.positions = options.positions === true;
     const lines = [];
     if (includeComments) {
       lines.push("%% Generated from DiagramModel");
@@ -135644,7 +135863,7 @@ var DSLGenerator = class {
     const diagramDeclaration = this.generateDiagramDeclaration();
     lines.push(diagramDeclaration);
     lines.push("");
-    const statements = this.generateStatements(diagram, preserveIds, includeSubgraphs);
+    const statements = diagram.getGroups().length > 0 ? this.generateGroupedStatements(diagram, preserveIds) : this.generateStatements(diagram, preserveIds, includeSubgraphs);
     lines.push(...statements);
     if (includeStyles) {
       const styles = this.generateStyles(diagram);
@@ -135708,6 +135927,7 @@ var DSLGenerator = class {
         if (edgeDef) {
           lines.push(`  ${edgeDef}`);
           processedLinks.add(link.id);
+          this.edgeOrder.push(link);
         }
       }
     }
@@ -135726,7 +135946,50 @@ var DSLGenerator = class {
         if (edgeDef) {
           lines.push(`  ${edgeDef}`);
           processedLinks.add(link.id);
+          this.edgeOrder.push(link);
         }
+      }
+    }
+    return lines;
+  }
+  /**
+   * Nodes inside their zones — `subgraph id["name"] … end` for every group,
+   * nested groups inside their parents — then the ungrouped nodes, then every
+   * edge. Used when the diagram HAS groups; a diagram without keeps the
+   * interleaved order above, byte for byte.
+   */
+  generateGroupedStatements(diagram, preserveIds) {
+    const lines = [];
+    const groups = diagram.getGroups();
+    const byId2 = new Map(groups.map((g) => [g.id, g]));
+    const placed = /* @__PURE__ */ new Set();
+    const writeGroup = (group, depth) => {
+      const pad = "  ".repeat(depth);
+      const name = group.name && group.name !== group.id ? `["${this.labelMarkup(group.name).replace(/"/g, "#quot;")}"]` : "";
+      lines.push(`${pad}subgraph ${this.sanitizeId(group.id)}${name}`);
+      for (const child of groups.filter((g) => g.parentGroupId === group.id)) writeGroup(child, depth + 1);
+      for (const id of group.members) {
+        const node = diagram.getNode(id);
+        if (!node || placed.has(id)) continue;
+        const def = this.generateNodeDefinition(node, preserveIds);
+        if (def) lines.push(`${pad}  ${def}`);
+        placed.add(id);
+      }
+      lines.push(`${pad}end`);
+    };
+    for (const node of diagram.getNodes()) {
+      const inGroup = groups.some((g) => g.members.has(node.id));
+      if (inGroup) continue;
+      const def = this.generateNodeDefinition(node, preserveIds);
+      if (def) lines.push(`  ${def}`);
+      placed.add(node.id);
+    }
+    for (const group of groups) if (!group.parentGroupId || !byId2.has(group.parentGroupId)) writeGroup(group, 1);
+    for (const link of diagram.getLinks()) {
+      const def = this.generateEdgeDefinition(link, diagram, preserveIds);
+      if (def) {
+        lines.push(`  ${def}`);
+        this.edgeOrder.push(link);
       }
     }
     return lines;
@@ -135739,8 +136002,23 @@ var DSLGenerator = class {
     const label = node.getLabel() ?? node.id;
     const shapeMetadata = this.analysis?.nodeMetadata.get(node.id);
     const shape = shapeMetadata?.shape || "rectangle";
+    const shapeType = node.getMetadata("shape")?.type;
+    if (shapeType === "text" || shape === "text") {
+      return `${nodeId}@{ shape: text, label: "${this.labelMarkup(label).replace(/"/g, "#quot;")}" }`;
+    }
     const { opening, closing } = this.getShapeBrackets(shape);
-    return `${nodeId}${opening}${this.escapeLabel(label, closing)}${closing}`;
+    const sub = node.getMetadata("sublabel");
+    const subText = typeof sub === "string" ? sub : sub?.text;
+    if (subText) {
+      const mono = typeof sub === "object" && (sub.fontFamily === "mono" || sub.fontFamily === "monospace");
+      const rich = `<b>${this.labelMarkup(label)}</b><br/>${mono ? `<code>${this.labelMarkup(subText)}</code>` : this.labelMarkup(subText)}`;
+      return `${nodeId}${opening}"${rich.replace(/"/g, "#quot;")}"${closing}`;
+    }
+    return `${nodeId}${opening}${this.escapeLabel(this.labelMarkup(label), closing)}${closing}`;
+  }
+  /** A label's line breaks as `<br/>` — the form every Mermaid renderer reads. */
+  labelMarkup(text) {
+    return String(text).replace(/\n/g, "<br/>");
   }
   /**
    * Quote a label whose content would break the surrounding syntax — brackets,
@@ -135749,7 +136027,7 @@ var DSLGenerator = class {
    * Plain labels pass through untouched, so existing bodies do not churn.
    */
   escapeLabel(label, closing) {
-    const needsQuoting = /[[\](){}"|]/.test(label) || label !== label.trim() || closing.length > 0 && label.includes(closing);
+    const needsQuoting = /[[\](){}"|<>]/.test(label) || label !== label.trim() || closing.length > 0 && label.includes(closing);
     if (!needsQuoting) return label;
     return `"${label.replace(/"/g, "#quot;")}"`;
   }
@@ -135768,7 +136046,9 @@ var DSLGenerator = class {
     const linkSyntax = this.getLinkSyntax(linkType);
     const label = link.getLabel();
     if (label) {
-      return `${sourceId} ${linkSyntax.split(">")[0]}>|${label}|${linkSyntax.split(">")[1] || ""} ${targetId}`;
+      const text = this.labelMarkup(label);
+      const written = /["|<>]/.test(text) ? `"${text.replace(/"/g, "#quot;")}"` : text;
+      return `${sourceId} ${linkSyntax.split(">")[0]}>|${written}|${linkSyntax.split(">")[1] || ""} ${targetId}`;
     }
     return `${sourceId} ${linkSyntax} ${targetId}`;
   }
@@ -135782,14 +136062,38 @@ var DSLGenerator = class {
     }
     const nodes = diagram.getNodes();
     for (const node of nodes) {
-      if (node.getMetadata("dslStyled") && node.style) {
+      if ((node.getMetadata("dslStyled") || this.hasLookStyle(node)) && node.style) {
         const styleProps = this.formatStyleProperties(node.style);
         if (styleProps) {
           lines.push(`  style ${this.sanitizeId(node.id)} ${styleProps}`);
         }
       }
     }
+    for (const group of diagram.getGroups()) {
+      const frame = group.getMetadata("frameStyle");
+      if (!frame) continue;
+      const props = this.formatStyleProperties({ ...frame, rx: frame["borderRadius"] });
+      if (props) lines.push(`  style ${this.sanitizeId(group.id)} ${props}`);
+    }
+    this.edgeOrder.forEach((link, i) => {
+      const own = {};
+      if (link.style?.stroke && typeof link.style.stroke === "string") own["stroke"] = link.style.stroke;
+      if (link.style?.strokeWidth !== void 0 && link.style.strokeWidth !== 2) own["strokeWidth"] = link.style.strokeWidth;
+      const labelStyle = link.labels?.[0]?.style;
+      if (labelStyle?.["color"]) own["color"] = labelStyle["color"];
+      if (labelStyle?.["fontWeight"]) own["fontWeight"] = labelStyle["fontWeight"];
+      if (labelStyle?.["fontSize"]) own["fontSize"] = labelStyle["fontSize"];
+      const props = this.formatStyleProperties(own);
+      const step = link.pathType === "orthogonal" ? "interpolate stepBefore " : "";
+      if (props || step) lines.push(`  linkStyle ${i} ${step}${props}`.trimEnd());
+    });
     return lines;
+  }
+  /** A node that carries the AI-diagram look — typography or the flat box. */
+  hasLookStyle(node) {
+    const st = node.style;
+    if (!st) return false;
+    return st["fontWeight"] !== void 0 || st["fontSize"] !== void 0 || st["fontFamily"] !== void 0 || st["shadow"] === false || st["color"] !== void 0;
   }
   /**
    * Tier-2 extension directives (%%grafloria:node status / %%grafloria:edge animation)
@@ -135813,6 +136117,34 @@ var DSLGenerator = class {
         lines.push(line);
       }
     }
+    for (const group of diagram.getGroups()) {
+      const placement = group.getMetadata("frameStyle")?.labelPlacement;
+      if (placement && placement !== "top-left") lines.push(`%%grafloria:group ${this.sanitizeId(group.id)} caption:${placement}`);
+    }
+    if (this.positions) {
+      const n3 = (v) => Math.round(v * 100) / 100;
+      for (const node of diagram.getNodes()) {
+        lines.push(`%%grafloria:at ${this.sanitizeId(node.id)} ${n3(node.position.x)},${n3(node.position.y)} ${n3(node.size.width)}x${n3(node.size.height)}`);
+      }
+      for (const group of diagram.getGroups()) {
+        const b = group.getOuterBounds();
+        if (b.width > 0 && b.height > 0) lines.push(`%%grafloria:at ${this.sanitizeId(group.id)} ${n3(b.x)},${n3(b.y)} ${n3(b.width)}x${n3(b.height)}`);
+      }
+    }
+    for (const link of diagram.getLinks()) {
+      const props = [];
+      const handle = (portId, nodeId) => portId && nodeId && isSideAnchorPort(portId) && portId.startsWith(`${nodeId}__`) ? portId.slice(nodeId.length + 2) : void 0;
+      const from = handle(link.sourcePortId, link.sourceNodeId);
+      const to = handle(link.targetPortId, link.targetNodeId);
+      if (from) props.push(`from:${from}`);
+      if (to) props.push(`to:${to}`);
+      const placement = link.getMetadata("labelPlacement");
+      if (placement === "above" || placement === "below") props.push(`label:${placement}`);
+      if (link.getMetadata("hasManualWaypoints") === true && link.points.length > 2) {
+        props.push(`via:${link.points.slice(1, -1).map((p) => `${Math.round(p.x * 100) / 100} ${Math.round(p.y * 100) / 100}`).join(" ")}`);
+      }
+      if (props.length > 0) lines.push(`%%grafloria:edge ${this.sanitizeId(link.sourceNodeId ?? "")} ${this.sanitizeId(link.targetNodeId ?? "")} ${props.join(", ")}`);
+    }
     return lines;
   }
   /**
@@ -135835,6 +136167,13 @@ var DSLGenerator = class {
     if (style.color) {
       props.push(`color:${style.color}`);
     }
+    if (style.fontWeight !== void 0 && style.fontWeight !== "") props.push(`font-weight:${style.fontWeight}`);
+    if (typeof style.fontSize === "number") props.push(`font-size:${style.fontSize}px`);
+    if (style.fontFamily) props.push(`font-family:${style.fontFamily}`);
+    if (typeof style.letterSpacing === "number") props.push(`letter-spacing:${style.letterSpacing}px`);
+    if (typeof style.rx === "number") props.push(`rx:${style.rx}`);
+    else if (typeof style.borderRadius === "number") props.push(`rx:${style.borderRadius}`);
+    if (style.shadow === false) props.push("shadow:none");
     return props.join(",");
   }
   /**
@@ -135842,6 +136181,9 @@ var DSLGenerator = class {
    */
   getShapeBrackets(shape) {
     const brackets = {
+      // A text note is written `id@{ shape: text, label: "…" }` (see
+      // generateNodeDefinition); brackets are only its fallback.
+      "text": { opening: "[", closing: "]" },
       "rectangle": { opening: "[", closing: "]" },
       "rounded-rectangle": { opening: "(", closing: ")" },
       "stadium": { opening: "([", closing: "])" },
@@ -136615,9 +136957,9 @@ function parseMermaidClass(text) {
     }
     if (/^note\b/.test(line)) {
       const forMatch = line.match(/^note\s+for\s+([A-Za-z0-9_\u00C0-\uFFFF]+)\s+"([^"]*)"/);
-      const plain = line.match(/^note\s+"([^"]*)"/);
+      const plain2 = line.match(/^note\s+"([^"]*)"/);
       if (forMatch) notes.push({ for: forMatch[1], text: forMatch[2] });
-      else if (plain) notes.push({ text: plain[1] });
+      else if (plain2) notes.push({ text: plain2[1] });
       continue;
     }
     const annotation = line.match(ANNOTATION_RE);
@@ -138090,7 +138432,7 @@ function stripGrafloriaSidecar(text) {
 }
 function exportDiagramText(diagram, options = {}) {
   const dsl = new DSL({ autoLayout: false });
-  const body = dsl.generate(diagram, { preserveIds: true, includeComments: false });
+  const body = dsl.generate(diagram, { preserveIds: true, includeComments: false, positions: options.positions === true });
   if (options.lossless === false) {
     return body;
   }
@@ -138114,7 +138456,8 @@ function sanitizeForSidecar(doc) {
   const nodes = (doc.nodes ?? []).map(stripState);
   const links = (doc.links ?? []).map((l) => {
     const cleaned = stripState({ ...l });
-    cleaned["points"] = [];
+    const meta = cleaned["metadata"];
+    if (meta?.["hasManualWaypoints"] !== true) cleaned["points"] = [];
     return cleaned;
   });
   return { ...doc, nodes, links };
@@ -160865,6 +161208,8 @@ function humaniseType(type) {
 }
 function nodeRoleDescription(node) {
   const type = (node.type || "").toLowerCase();
+  const shape = node.getMetadata?.("shape");
+  if (shape?.type === "text" && (!type || type === "rect" || type === "default" || type === "node")) return "Text";
   return NODE_ROLEDESCRIPTIONS[type] ?? humaniseType(node.type);
 }
 function edgeRoleDescription(link) {
@@ -162760,7 +163105,7 @@ function num3(value) {
   const rounded = Number(value.toFixed(3));
   return Object.is(rounded, -0) ? "0" : String(rounded);
 }
-var NAMED = {
+var NAMED2 = {
   black: "#000000",
   white: "#ffffff",
   red: "#ff0000",
@@ -162774,7 +163119,7 @@ function parsePdfColor(value) {
   const text = value.trim().toLowerCase();
   if (text === "" || text === "none" || text === "transparent") return null;
   if (text.startsWith("url(")) return null;
-  const rgb255 = parseColor(NAMED[text] ?? text);
+  const rgb255 = parseColor(NAMED2[text] ?? text);
   if (!rgb255) return null;
   return { r: rgb255.r / 255, g: rgb255.g / 255, b: rgb255.b / 255 };
 }
@@ -165974,7 +166319,14 @@ function defaultInnerRect(width, height) {
   const pad = Math.max(0, Math.min(8, width / 2 - 1, height / 2 - 1));
   return { x: pad, y: pad, w: width - 2 * pad, h: height - 2 * pad };
 }
-for (const def of [RectShape, CircleShape, EllipseShape, DiamondShape, HexagonShape]) {
+var TextShape = {
+  ...RectShape,
+  type: "text",
+  innerRect(width, height) {
+    return { x: 0, y: 0, w: width, h: height };
+  }
+};
+for (const def of [RectShape, CircleShape, EllipseShape, DiamondShape, HexagonShape, TextShape]) {
   registry3.set(def.type, def);
 }
 for (const def of [
@@ -169110,7 +169462,7 @@ var LabelRenderer = class {
    * origin (0,0); the enclosing <g> carries the position + rotation transform.
    */
   renderText(label, fontSize, fontFamily, color) {
-    return renderTextBlock({
+    const block = renderTextBlock({
       text: label.text,
       x: 0,
       y: 0,
@@ -169119,9 +169471,22 @@ var LabelRenderer = class {
       valign: label.textBaseline ?? "middle",
       fontSize,
       fontFamily,
+      // LabelStyle has always declared weight, style and decoration; nothing
+      // drew them — a bold green "card number and CVV" rendered regular.
+      fontWeight: label.style?.fontWeight,
       color,
       className: "link-label-text"
     });
+    if (label.style?.fontStyle || label.style?.textDecoration) {
+      const props = block.props;
+      if (label.style.fontStyle) props["fontStyle"] = label.style.fontStyle;
+      if (label.style.textDecoration) props["textDecoration"] = label.style.textDecoration;
+    }
+    if (fontFamily) {
+      const props = block.props;
+      props["style"] = { ...props["style"] ?? {}, fontFamily };
+    }
+    return block;
   }
   /**
    * Estimate text width (approximate)
@@ -171591,6 +171956,37 @@ var AnimationService = class {
 };
 
 // libs/renderer/src/svg/svg-renderer.ts
+function polylineTangentAt(points, t) {
+  if (!points || points.length < 2) return null;
+  const lens = [];
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    const l = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    lens.push(l);
+    total += l;
+  }
+  if (total <= 0) return null;
+  let target = Math.max(0, Math.min(1, t)) * total;
+  for (let i = 0; i < lens.length; i++) {
+    if (lens[i] > 0 && (target <= lens[i] || i === lens.length - 1)) {
+      return { x: points[i + 1].x - points[i].x, y: points[i + 1].y - points[i].y };
+    }
+    target -= lens[i];
+  }
+  return null;
+}
+var MONO_STACK = "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace";
+function fontStackFor(family) {
+  return family.trim().toLowerCase() === "mono" || family.trim().toLowerCase() === "monospace" ? MONO_STACK : family;
+}
+function readSublabel(meta) {
+  if (typeof meta === "string") return meta ? { text: meta } : null;
+  if (meta && typeof meta === "object" && typeof meta.text === "string") {
+    const m = meta;
+    return m.text ? m : null;
+  }
+  return null;
+}
 var GRAFLORIA_BASE_STYLE_ID = "grafloria-renderer-styles";
 var GRAFLORIA_INSTANCE_STYLE_PREFIX = "grafloria-renderer-theme-";
 var GRAFLORIA_INSTANCE_OVERRIDE_PREFIX = "grafloria-renderer-overrides-";
@@ -172836,6 +173232,7 @@ var _SVGRenderer = class _SVGRenderer {
   /** Did a theme LAYER (state / type-default) contribute a literal to this node? */
   drawsThemeLiteral(node) {
     if (!this.config.useCSSMode) return true;
+    if (readSublabel(node.getMetadata("sublabel"))) return true;
     const state = node.state;
     if (state.selected || state.highlighted || state.hovered || !state.enabled || state.error) {
       return true;
@@ -173559,6 +173956,7 @@ var _SVGRenderer = class _SVGRenderer {
     const groups = /* @__PURE__ */ new Map();
     for (const link of diagram.getLinks()) {
       if (link.isSelfLoop()) continue;
+      if (isSideAnchorPort(link.sourcePortId) || isSideAnchorPort(link.targetPortId)) continue;
       const key = link.getNodePairKey();
       if (!key) continue;
       const bucket = groups.get(key);
@@ -174441,10 +174839,87 @@ var _SVGRenderer = class _SVGRenderer {
       children: frames
     };
   }
+  /**
+   * A zone's frame: its own fill, border, dash and radius, and its caption in a
+   * corner in its own typography — no title band. The caption is inset 16 px
+   * from the side and sits ~20 px in from the top (or bottom) edge, where the
+   * diagrams it imitates put it.
+   */
+  renderZoneFrame(group, bounds, z) {
+    const c = this.theme.colors;
+    const str = (k) => typeof z[k] === "string" && z[k] ? z[k] : void 0;
+    const num5 = (k) => typeof z[k] === "number" && Number.isFinite(z[k]) ? z[k] : void 0;
+    const radius = num5("borderRadius") ?? 6;
+    const frameRect = {
+      type: "rect",
+      key: `group-frame-rect-${group.id}`,
+      props: {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        rx: radius,
+        ry: radius,
+        fill: str("fill") ?? "none",
+        stroke: str("stroke") ?? c.node.default.stroke,
+        strokeWidth: num5("strokeWidth") ?? 1,
+        ...str("strokeDasharray") ? { strokeDasharray: str("strokeDasharray") } : {},
+        className: "group-frame-rect group-zone-rect",
+        "aria-hidden": "true"
+      }
+    };
+    const placement = z.labelPlacement ?? "top-left";
+    const bottom = placement.startsWith("bottom");
+    const align = placement.endsWith("left") ? "start" : placement.endsWith("right") ? "end" : "middle";
+    const fontSize = num5("fontSize") ?? 11;
+    const INSET_X = 16;
+    const INSET_Y = 12 + fontSize * 0.7;
+    const style = {
+      fill: str("color") ?? c.text.secondary,
+      fontSize: `${fontSize}px`,
+      fontWeight: z["fontWeight"] !== void 0 ? String(z["fontWeight"]) : "600",
+      ...str("fontFamily") ? { fontFamily: fontStackFor(str("fontFamily")) } : {},
+      ...num5("letterSpacing") !== void 0 ? { letterSpacing: `${num5("letterSpacing")}px` } : {},
+      ...str("textTransform") ? { textTransform: str("textTransform") } : {}
+    };
+    const children = [frameRect];
+    if (group.name) {
+      children.push({
+        type: "text",
+        key: `group-frame-label-${group.id}`,
+        props: {
+          x: align === "start" ? bounds.x + INSET_X : align === "end" ? bounds.x + bounds.width - INSET_X : bounds.x + bounds.width / 2,
+          y: bottom ? bounds.y + bounds.height - INSET_Y : bounds.y + INSET_Y,
+          textAnchor: align,
+          dominantBaseline: "central",
+          fontFamily: this.theme.typography.fontFamily.default,
+          className: "group-frame-label group-zone-label",
+          textContent: group.name,
+          style,
+          "aria-hidden": "true"
+        }
+      });
+    }
+    return {
+      type: "g",
+      key: `group-frame-${group.id}`,
+      props: {
+        className: "group-frame group-zone",
+        role: "graphics-object",
+        "aria-roledescription": "Group",
+        "aria-label": group.name,
+        "data-group-id": group.id,
+        "data-collapsed": "false"
+      },
+      children
+    };
+  }
   /** One group's frame + label band, themed and accessible. */
   renderGroupFrame(group, bounds, parent) {
     const c = this.theme.colors;
     const collapsed = group.isCollapsed;
+    const zone = group.getMetadata?.("frameStyle");
+    if (zone && !collapsed) return this.renderZoneFrame(group, bounds, zone);
     const laneRole = !collapsed && group.laneConfig?.role === "lane" && parent ? group.laneConfig : null;
     const radius = laneRole ? 0 : this.theme.effects.borderRadius.md;
     const bandHeight = Math.min(
@@ -174816,8 +175291,10 @@ var _SVGRenderer = class _SVGRenderer {
             }
           }
         ] : [],
-        // Drop shadow (Phase 3.1: Shape-aware)
-        ...this.lodAllows("shadows", lod) ? [this.renderShadow(node, isHovered)] : [],
+        // Drop shadow (Phase 3.1: Shape-aware). `style.shadow: false` turns it
+        // OFF — it used to add nothing and remove nothing, so a flat box (and a
+        // text note) still wore a blurred grey slab under it.
+        ...this.lodAllows("shadows", lod) && this.resolvedNodeStyle(node).shadow !== false ? [this.renderShadow(node, isHovered)] : [],
         // Node shape (Phase 3.1: Shape-based rendering)
         this.renderNodeShape(node, styles, isHovered),
         // Card 5: composite panel overlay (header band / image / rows / badges /
@@ -175265,6 +175742,7 @@ var _SVGRenderer = class _SVGRenderer {
       return this.renderNodeLabelBelow(node);
     }
     const shapeConfig = node.getMetadata("shape") || { type: "rect" };
+    if (shapeConfig.type === "text") return this.renderTextNoteLabel(node);
     const { width, height } = node.size;
     const inner = panelAdjustedInnerRect(
       node,
@@ -175273,11 +175751,12 @@ var _SVGRenderer = class _SVGRenderer {
       height
     );
     const label = String(node.getLabel());
-    const baseFont = this.theme.typography.fontSize.md;
+    const typo = this.nodeTextStyle(node);
+    const sublabel = readSublabel(node.getMetadata("sublabel"));
+    const baseFont = typo.fontSize ?? this.theme.typography.fontSize.md;
     const fontSize = fitFontSize(label, inner.w, baseFont);
     const shrunk = fontSize < baseFont;
     const lineHeight = fontSize * 1.2;
-    const maxLines = Math.max(1, Math.floor(inner.h / lineHeight));
     const clipId = `node-clip-${node.id}`;
     const clip = {
       type: "clipPath",
@@ -175290,16 +175769,24 @@ var _SVGRenderer = class _SVGRenderer {
         }
       ]
     };
+    const subFont = sublabel ? fitFontSize(sublabel.text, inner.w, sublabel.fontSize ?? Math.round(fontSize * 0.85)) : 0;
+    const subLineHeight = subFont * 1.2;
+    const GAP = sublabel ? 3 : 0;
+    const titleLines = Math.max(1, Math.min(wrapText(label, inner.w, fontSize).length, Math.floor((inner.h - (sublabel ? subLineHeight + GAP : 0)) / lineHeight)));
+    const subLines = sublabel ? Math.max(1, Math.min(wrapText(sublabel.text, inner.w, subFont).length, Math.floor((inner.h - titleLines * lineHeight - GAP) / subLineHeight))) : 0;
+    const titleH = titleLines * lineHeight;
+    const blockH = titleH + (sublabel ? GAP + subLines * subLineHeight : 0);
+    const top = inner.y + (inner.h - blockH) / 2;
     const text = renderTextBlock({
       text: label,
       x: inner.x + inner.w / 2,
-      y: inner.y + inner.h / 2,
+      y: sublabel ? top + titleH / 2 : inner.y + inner.h / 2,
       maxWidth: inner.w,
       align: "middle",
       valign: "middle",
       fontSize,
       lineHeight: 1.2,
-      maxLines,
+      maxLines: sublabel ? titleLines : Math.max(1, Math.floor(inner.h / lineHeight)),
       clipId,
       nonInteractive: true,
       // CSS mode lets `.diagram-label` drive font/fill; programmatic mode emits them.
@@ -175308,14 +175795,122 @@ var _SVGRenderer = class _SVGRenderer {
       // geometry, not theming, so it MUST be emitted inline or the label keeps
       // the stylesheet's size and overflows exactly as before.
       emitFontSize: !this.config.useCSSMode || shrunk,
-      color: this.config.useCSSMode ? void 0 : this.theme.colors.text.primary,
-      fontWeight: this.config.useCSSMode ? void 0 : this.theme.typography.fontWeight.medium
+      color: this.config.useCSSMode ? void 0 : typo.style.fill ?? this.theme.colors.text.primary,
+      fontWeight: this.config.useCSSMode ? void 0 : typo.style.fontWeight ?? (sublabel ? 600 : this.theme.typography.fontWeight.medium)
     });
-    if (shrunk) {
+    const inline = { ...typo.style };
+    if (shrunk) inline.fontSize = `${fontSize}px`;
+    if (sublabel && inline.fontWeight === void 0) inline.fontWeight = "600";
+    if (Object.keys(inline).length > 0) {
       const props = text.props;
-      props["style"] = { ...props["style"] ?? {}, fontSize: `${fontSize}px` };
+      props["style"] = { ...props["style"] ?? {}, ...inline };
     }
-    return [clip, text];
+    if (!sublabel) return [clip, text];
+    const subColor = sublabel.color ?? this.theme.colors.text.secondary;
+    const sub = renderTextBlock({
+      text: sublabel.text,
+      x: inner.x + inner.w / 2,
+      y: top + titleH + GAP + subLines * subLineHeight / 2,
+      maxWidth: inner.w,
+      align: "middle",
+      valign: "middle",
+      fontSize: subFont,
+      lineHeight: 1.2,
+      maxLines: subLines,
+      clipId,
+      nonInteractive: true,
+      className: "diagram-sublabel",
+      emitFontSize: true,
+      color: subColor
+    });
+    sub.props["style"] = {
+      fill: subColor,
+      fontSize: `${subFont}px`,
+      ...sublabel.fontFamily ? { fontFamily: fontStackFor(sublabel.fontFamily) } : {},
+      ...sublabel.fontWeight !== void 0 ? { fontWeight: String(sublabel.fontWeight) } : {}
+    };
+    return [clip, text, sub];
+  }
+  /**
+   * `metadata.labelPlacement: 'above' | 'below'` — the label just off its line,
+   * on the side the line's normal points "up" (negative y; on a vertical run,
+   * negative x — left), or the other side for 'below'. The gap clears half the
+   * label's height plus 5 px, so a two-line label hangs clear of the stroke.
+   * Decided per frame from the path's tangent where the label lands, so the
+   * label follows the line when a box moves. Undefined = the label's own offset.
+   */
+  placedLabelOffset(link, label) {
+    const placement = link.getMetadata("labelPlacement");
+    if (placement !== "above" && placement !== "below") return void 0;
+    const tangent = polylineTangentAt(link.points, typeof label.position === "number" ? label.position : 0.5) ?? link.getTangentAt(0.5);
+    if (!tangent) return void 0;
+    const len2 = Math.hypot(tangent.x, tangent.y) || 1;
+    let nx = -tangent.y / len2;
+    let ny = tangent.x / len2;
+    if (ny > 1e-6 || Math.abs(ny) <= 1e-6 && nx > 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    if (placement === "below") {
+      nx = -nx;
+      ny = -ny;
+    }
+    const fontSize = label.style?.fontSize ?? 12;
+    const lines = Math.max(1, String(label.text).split("\n").length);
+    const d = lines * fontSize * 1.2 / 2 + 5;
+    return { x: (label.offset?.x ?? 0) + nx * d, y: (label.offset?.y ?? 0) + ny * d };
+  }
+  /**
+   * A 'text' note's words: from its left edge by default (`metadata.textAlign`
+   * centres or right-aligns), vertically centred, wrapped to its width — and
+   * never clipped, shrunk or cut to "…": a note has no silhouette to escape.
+   */
+  renderTextNoteLabel(node) {
+    const { width, height } = node.size;
+    const typo = this.nodeTextStyle(node);
+    const fontSize = typo.fontSize ?? this.theme.typography.fontSize.md;
+    const a = node.getMetadata("textAlign");
+    const align = a === "center" || a === "middle" ? "middle" : a === "end" || a === "right" ? "end" : "start";
+    const text = renderTextBlock({
+      text: String(node.getLabel()),
+      x: align === "start" ? 0 : align === "middle" ? width / 2 : width,
+      y: height / 2,
+      // One line unless the text breaks itself ('\n'), like an SVG <text>: the
+      // width estimate (0.6 em a glyph) runs long, and a note wrapped by a guess
+      // is a note broken in the wrong place.
+      maxWidth: void 0,
+      align,
+      valign: "middle",
+      fontSize,
+      lineHeight: 1.2,
+      nonInteractive: true,
+      className: this.config.useCSSMode ? "diagram-label" : void 0,
+      emitFontSize: !this.config.useCSSMode,
+      color: this.config.useCSSMode ? void 0 : typo.style.fill ?? this.theme.colors.text.primary,
+      fontWeight: this.config.useCSSMode ? void 0 : typo.style.fontWeight
+    });
+    if (Object.keys(typo.style).length > 0) {
+      const props = text.props;
+      props["style"] = { ...props["style"] ?? {}, ...typo.style };
+    }
+    return [text];
+  }
+  /**
+   * A node's own typography — color, size, weight, family, style, decoration —
+   * as an inline CSS object for its label, from the resolved cascade (inline
+   * style, classDef, type defaults). Only what the node actually sets.
+   */
+  nodeTextStyle(node) {
+    const st = this.resolvedNodeStyle(node);
+    const out = {};
+    if (typeof st.color === "string" && st.color) out.fill = st.color;
+    const size = typeof st.fontSize === "number" && st.fontSize > 0 ? st.fontSize : void 0;
+    if (size !== void 0) out.fontSize = `${size}px`;
+    if (st.fontWeight !== void 0 && st.fontWeight !== "") out.fontWeight = String(st.fontWeight);
+    if (st.fontFamily) out.fontFamily = fontStackFor(st.fontFamily);
+    if (st.fontStyle) out.fontStyle = st.fontStyle;
+    if (st.textDecoration) out.textDecoration = st.textDecoration;
+    return { style: out, fontSize: size };
   }
   /**
    * Paint a node's caption BELOW its silhouette (`metadata.labelPlacement:
@@ -176256,7 +176851,11 @@ var _SVGRenderer = class _SVGRenderer {
       type: "arrow",
       size: 10,
       filled: true,
-      color: this.config.useCSSMode ? `var(${THEME_VARS["link.stroke"].cssVar}, ${arrowLiteral})` : arrowLiteral
+      // The line's OWN colour when it has one (its style, a classDef, a state,
+      // the selection's ink): the theme variable first meant a green line kept
+      // a grey head, because `var(--link-stroke, green)` always resolves the
+      // variable. The variable only when the colour IS the theme's.
+      color: this.config.useCSSMode && !linkLiterals.stroke ? `var(${THEME_VARS["link.stroke"].cssVar}, ${arrowLiteral})` : arrowLiteral
     };
     const arrowTailStyle = link.style.arrowTail;
     const arrowData = this.calculateArrowPositionAndAngle(
@@ -176399,7 +176998,7 @@ var _SVGRenderer = class _SVGRenderer {
           const labelVNodes = [];
           if (link.labels && link.labels.length > 0) {
             link.labels.forEach((label2) => {
-              const offset = this.frameLabelOffsets.get(`${link.id}::${label2.id}`);
+              const offset = this.placedLabelOffset(link, label2) ?? this.frameLabelOffsets.get(`${link.id}::${label2.id}`);
               const labelVNode = this.labelRenderer.renderLabel(label2, link, {
                 offset,
                 theme: this.theme
@@ -188519,6 +189118,7 @@ function applyNodeSpec(node, spec) {
   if (spec.data) node.data = { ...spec.data };
   if (spec.style) node.style = { ...node.style, ...spec.style };
   if (spec.label !== void 0) node.setMetadata("label", spec.label);
+  if (spec.sublabel !== void 0) node.setMetadata("sublabel", spec.sublabel);
   if (spec.shape !== void 0) node.setMetadata("shape", spec.shape);
   if (spec.custom !== void 0) node.setMetadata("useHTMLLayer", spec.custom);
   if (spec.metadata) {
@@ -188537,6 +189137,8 @@ function resolvePortId(diagram, nodeOrPortId, handle, fallbackSide) {
   }
   if (handle) {
     if (node.getPort(handle)) return handle;
+    const anchored = ensureSideAnchorPort(node, handle);
+    if (anchored) return anchored;
     if (PORT_SIDES.includes(handle)) {
       const port = node.getPortBySide(handle);
       if (port) return port.id;
@@ -188567,10 +189169,22 @@ function applyEdgeSpec(link, spec) {
   if (spec.style) link.updateStyle(spec.style);
   if (spec.data) link.data = { ...spec.data };
   if (spec.label !== void 0) link.setMetadata("label", spec.label);
+  if (spec.labelPlacement !== void 0) link.setMetadata("labelPlacement", spec.labelPlacement === "on" ? void 0 : spec.labelPlacement);
+  const text = spec.label ?? link.getLabel();
+  if (text !== void 0 && text !== "" && (spec.labelPlacement !== void 0 || spec.labelStyle !== void 0)) {
+    const offLine = spec.labelPlacement === "above" || spec.labelPlacement === "below";
+    link.setLabels([{ id: `${link.id}-label`, text: String(text), position: 0.5, offset: { x: 0, y: 0 }, style: { ...offLine ? { background: "none" } : {}, ...spec.labelStyle ?? {} } }]);
+  }
   if (spec.metadata) {
     for (const [key, value] of Object.entries(spec.metadata)) link.setMetadata(key, value);
   }
   if (spec.points) link.setPoints(spec.points);
+  if (spec.waypoints && spec.waypoints.length > 0) {
+    const first = spec.waypoints[0];
+    const last = spec.waypoints[spec.waypoints.length - 1];
+    link.setPoints([{ ...first }, ...spec.waypoints.map((p) => ({ ...p })), { ...last }]);
+    link.setMetadata("hasManualWaypoints", true);
+  }
   if (spec.selected !== void 0) {
     const want = spec.selected ? "selected" : "default";
     if (link.state !== want) link.setState(want);
@@ -188619,6 +189233,8 @@ function toNodeSpec(node) {
   if (data2 && Object.keys(data2).length > 0) spec.data = { ...data2 };
   const label = node.getLabel();
   if (label !== void 0) spec.label = label;
+  const sublabel = node.getMetadata("sublabel");
+  if (sublabel !== void 0) spec.sublabel = sublabel;
   const shape = node.getMetadata("shape");
   if (shape !== void 0) spec.shape = shape;
   if (node.getMetadata("useHTMLLayer")) spec.custom = true;
@@ -188674,6 +189290,55 @@ function applyEdges(diagram, specs) {
     }
   }
   return changed;
+}
+function isGroupModel(value) {
+  return value instanceof GroupModel;
+}
+function applyGroups(diagram, specs) {
+  const seen = /* @__PURE__ */ new Set();
+  let changed = false;
+  for (const spec of specs) {
+    if (isGroupModel(spec)) {
+      seen.add(spec.id);
+      if (!diagram.getGroup(spec.id)) {
+        diagram.addGroup(spec);
+        changed = true;
+      }
+      continue;
+    }
+    seen.add(spec.id);
+    let group = diagram.getGroup(spec.id);
+    if (!group) {
+      group = new GroupModel({ id: spec.id, name: spec.label ?? "" });
+      diagram.addGroup(group);
+    }
+    applyGroupSpec(diagram, group, spec);
+    changed = true;
+  }
+  for (const group of diagram.getGroups()) {
+    if (!seen.has(group.id)) {
+      diagram.removeGroup(group.id);
+      changed = true;
+    }
+  }
+  return changed;
+}
+function applyGroupSpec(diagram, group, spec) {
+  group.name = spec.label ?? "";
+  const styled = spec.style !== void 0 || spec.labelPlacement !== void 0;
+  group.setMetadata("frameStyle", styled ? { ...spec.style ?? {}, labelPlacement: spec.labelPlacement ?? "top-left" } : void 0);
+  if (styled) group.headerHeight = 0;
+  const wanted = new Set(spec.children ?? []);
+  for (const id of [...group.members]) if (!wanted.has(id)) group.removeMember(id, diagram);
+  for (const id of wanted) if (!group.members.has(id) && diagram.getNode(id)) group.addMember(id, diagram);
+  if (spec.bounds) {
+    group.position = { x: spec.bounds.x, y: spec.bounds.y };
+    group.size = { width: spec.bounds.width, height: spec.bounds.height, depth: 0 };
+    group.bounds = { ...spec.bounds };
+  } else {
+    group.padding = spec.padding ?? 20;
+    group.fitToContents(diagram, { mode: "exact" });
+  }
 }
 
 // libs/renderer/src/lazy/host-culling.ts
@@ -188747,6 +189412,7 @@ function createDiagram(container, options = {}) {
   );
   const model = engine.getDiagram() ?? engine.createDiagram("grafloria");
   if (options.nodes) applyNodes(model, options.nodes);
+  if (options.groups) applyGroups(model, options.groups);
   if (options.edges) applyEdges(model, options.edges);
   const rect0 = container.getBoundingClientRect();
   const viewport = new ViewportController({
@@ -189276,6 +189942,12 @@ function createDiagram(container, options = {}) {
     },
     setEdges(edges) {
       if (applyEdges(model, edges)) scheduler.schedule();
+    },
+    setGroups(groups) {
+      if (applyGroups(model, groups)) {
+        renderer.invalidateFrame();
+        scheduler.schedule();
+      }
     },
     getModel: () => model,
     getEngine: () => engine,
@@ -193517,6 +194189,7 @@ function render(spec, target, options = {}) {
     ...options,
     nodes: parsed.nodes ?? [],
     edges: parsed.edges ?? [],
+    ...parsed.groups ? { groups: parsed.groups } : {},
     // Wire the global registry in, so `registerNodeType` works for the tiny API
     // exactly as it does for `<grafloria-flow>` — unless the caller supplies their
     // own. A KIT SPEC may also carry its own painter (dashboard() does: every
@@ -205749,6 +206422,7 @@ export {
   applyEdgeSpec,
   applyEdges,
   applyEntitySet,
+  applyGroups,
   applyMatrix,
   applyNodePreset,
   applyNodeSpec,
@@ -205935,6 +206609,7 @@ export {
   ensureJoinGuidanceStyles,
   ensureMotionPreferenceStyles,
   ensureScreenLayer,
+  ensureSideAnchorPort,
   ensureStencilKitStyles,
   entityOf,
   erDiagram,
@@ -206083,11 +206758,13 @@ export {
   isEditableArtifact,
   isExternalUrl,
   isForeignObject,
+  isGroupModel,
   isLinkModel,
   isNodeDefinition,
   isNodeModel,
   isOpaqueVNode,
   isPointInShape,
+  isSideAnchorPort,
   isSteppable,
   isStyleNode,
   isSubgraph,
@@ -206193,6 +206870,7 @@ export {
   parseMermaidEr,
   parseMermaidState,
   parsePath,
+  parseSideAnchor,
   parseTransform,
   parseValidationPath,
   parseViewBox2 as parseViewBox,
@@ -206341,6 +207019,7 @@ export {
   setNodePortGroups,
   shadcnBridge,
   shouldSimplifyAnimations,
+  sideAnchorPortId,
   sideHandleYieldsToPort,
   sideNormal,
   sideTangent,

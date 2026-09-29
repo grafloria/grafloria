@@ -15,25 +15,25 @@
   <url><loc>https://grafloria.com/learn/angular/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/collaboration/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/commands-and-undo/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
-  <url><loc>https://grafloria.com/learn/edges-and-routing/</loc><lastmod>2026-09-25</lastmod><priority>0.8</priority></url>
+  <url><loc>https://grafloria.com/learn/edges-and-routing/</loc><lastmod>2026-09-29</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/events-and-interaction/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/export/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/faq/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
-  <url><loc>https://grafloria.com/learn/groups/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
+  <url><loc>https://grafloria.com/learn/groups/</loc><lastmod>2026-09-29</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/javascript-custom-nodes/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/javascript-dashboards/</loc><lastmod>2026-09-15</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/javascript-element-vs-render/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/javascript/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/kits/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/layout/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
-  <url><loc>https://grafloria.com/learn/mermaid-and-the-dsl/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
+  <url><loc>https://grafloria.com/learn/mermaid-and-the-dsl/</loc><lastmod>2026-09-29</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/ports-and-validation/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/react-custom-nodes/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/react-dashboards/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/react-state-and-data/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/react/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/the-instance/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
-  <url><loc>https://grafloria.com/learn/the-model/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
+  <url><loc>https://grafloria.com/learn/the-model/</loc><lastmod>2026-09-29</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/theming/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/vue-custom-nodes/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/vue-dashboards/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
@@ -71,6 +71,7 @@
   <url><loc>https://grafloria.com/demos/dashboard/fluid-board.html</loc><lastmod>2026-09-15</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/dashboard/grid-options.html</loc><lastmod>2026-09-11</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/dashboard/nested-containers.html</loc><lastmod>2026-09-08</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/diagrams/ai-style-diagram.html</loc><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/class-uml.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/er-advanced.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/erd-editor.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
@@ -91,7 +92,7 @@
   <url><loc>https://grafloria.com/demos/edges/edge-types.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/edges/editable-edge.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/edges/floating-edges.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/demos/edges/highlight-connected.html</loc><lastmod>2026-09-25</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/edges/highlight-connected.html</loc><lastmod>2026-09-26</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/edges/jump-overs.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/edges/parallel-links-and-self-loops.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/edges/reconnect-edge.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
