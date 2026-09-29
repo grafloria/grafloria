@@ -45,6 +45,11 @@ export interface DiagramSpec {
   edges?: EdgeSpec[];
   /** Zones around some boxes, each with its own frame and caption. See `GroupSpec`. */
   groups?: GroupSpec[];
+  /**
+   * `'architecture'`: compose the drawing — zones as regions, boxes sized to their
+   * words in rows, straight lines where boxes line up. Positions are not needed.
+   */
+  layout?: 'architecture';
 }
 
 /**
@@ -101,6 +106,7 @@ export function render(
     nodes: parsed.nodes ?? [],
     edges: parsed.edges ?? [],
     ...(parsed.groups ? { groups: parsed.groups } : {}),
+    ...(parsed.layout ? { layout: parsed.layout } : {}),
     // Wire the global registry in, so `registerNodeType` works for the tiny API
     // exactly as it does for `<grafloria-flow>` — unless the caller supplies their
     // own. A KIT SPEC may also carry its own painter (dashboard() does: every

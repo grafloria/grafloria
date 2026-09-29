@@ -142,6 +142,8 @@ export interface GroupSpec {
   style?: GroupFrameStyle;
   /** Default 'top-left'. */
   labelPlacement?: GroupLabelPlacement;
+  /** How the zone lays its boxes out under a composing layout: `'LR'` a row, `'TB'` a column. */
+  direction?: 'LR' | 'RL' | 'TB' | 'TD' | 'BT';
 }
 
 /** A node's second line, when it needs its own font or colour. See `NodeSpec.sublabel`. */
@@ -160,7 +162,12 @@ export interface NodeSpec {
   id?: string;
   /** Engine node type. Default `'rect'`. */
   type?: string;
-  position: { x: number; y: number };
+  /**
+   * Where the box sits. Optional: absent, a new box starts at the origin and an
+   * existing one stays put — and a composing layout (`layout: 'architecture'`)
+   * places it anyway.
+   */
+  position?: { x: number; y: number };
   size?: { width: number; height: number };
   /** Free-form user payload — passed straight to custom node components. */
   data?: Record<string, any>;
@@ -174,6 +181,12 @@ export interface NodeSpec {
    * colour. Stored on `metadata.sublabel`, so it serializes with the node.
    */
   sublabel?: string | NodeSublabel;
+  /**
+   * A note placed BESIDE what it is about — a relation, not a coordinate: the
+   * architecture layout puts this box to the `side` of `target` (a node or zone),
+   * `gap` px away. Stored on `metadata.near`.
+   */
+  near?: { target: string; side?: 'right' | 'left' | 'above' | 'below'; gap?: number } | null;
   /** Convenience for `metadata.shape` (fill / stroke / cornerRadius / …). */
   shape?: Record<string, any>;
   style?: Partial<NodeStyle>;
@@ -304,7 +317,7 @@ export function buildNode(spec: NodeSpec, index: number): NodeModel {
   const node = new NodeModel({
     id,
     type: spec.type ?? 'rect',
-    position: { ...spec.position },
+    position: { ...(spec.position ?? { x: 0, y: 0 }) },
     size: spec.size ? { ...spec.size } : undefined,
   });
 
@@ -365,7 +378,7 @@ export function buildPort(nodeId: string, spec: PortSpec, index: number): PortMo
 
 /** Apply the mutable parts of a spec onto an existing node (the update path). */
 export function applyNodeSpec(node: NodeModel, spec: NodeSpec): void {
-  if (node.position.x !== spec.position.x || node.position.y !== spec.position.y) {
+  if (spec.position && (node.position.x !== spec.position.x || node.position.y !== spec.position.y)) {
     node.setPosition(spec.position.x, spec.position.y);
   }
   if (spec.size && (node.size.width !== spec.size.width || node.size.height !== spec.size.height)) {
@@ -376,6 +389,7 @@ export function applyNodeSpec(node: NodeModel, spec: NodeSpec): void {
   if (spec.style) node.style = { ...node.style, ...spec.style };
   if (spec.label !== undefined) node.setMetadata('label', spec.label);
   if (spec.sublabel !== undefined) node.setMetadata('sublabel', spec.sublabel);
+  if (spec.near !== undefined) node.setMetadata('near', spec.near ? { ...spec.near } : undefined);
   if (spec.shape !== undefined) node.setMetadata('shape', spec.shape);
   if (spec.custom !== undefined) node.setMetadata('useHTMLLayer', spec.custom);
   if (spec.metadata) {
@@ -468,6 +482,11 @@ export function buildEdge(
 /** Apply the mutable parts of an edge spec onto an existing link. */
 export function applyEdgeSpec(link: LinkModel, spec: EdgeSpec): void {
   if (spec.type && link.pathType !== spec.type) link.setPathType(spec.type);
+  // A PLAIN side handle ('bottom') is also a relation a composing layout reads —
+  // the line leaves that side, so its target sits that way (Mermaid: `from:bottom`).
+  const plainSide = (h: string | undefined) => (h === 'top' || h === 'right' || h === 'bottom' || h === 'left' ? h : undefined);
+  if (plainSide(spec.sourceHandle)) link.setMetadata('sourceSide', plainSide(spec.sourceHandle));
+  if (plainSide(spec.targetHandle)) link.setMetadata('targetSide', plainSide(spec.targetHandle));
   // Router/connector go through the SETTERS, not assignment: `setRouter` drops
   // the stale polyline (it belongs to the old router) and both track the change,
   // which is what invalidates the link's cached VNode.
@@ -570,6 +589,8 @@ export function toNodeSpec(node: NodeModel): NodeSpec {
   if (label !== undefined) spec.label = label;
   const sublabel = node.getMetadata('sublabel') as NodeSpec['sublabel'] | undefined;
   if (sublabel !== undefined) spec.sublabel = sublabel;
+  const near = node.getMetadata('near') as NodeSpec['near'] | undefined;
+  if (near) spec.near = { ...near };
 
   const shape = node.getMetadata('shape');
   if (shape !== undefined) spec.shape = shape;
@@ -692,6 +713,7 @@ function applyGroupSpec(diagram: DiagramModel, group: GroupModel, spec: GroupSpe
   group.setMetadata('frameStyle', styled ? { ...(spec.style ?? {}), labelPlacement: spec.labelPlacement ?? 'top-left' } : undefined);
   // A zone's caption lives in its padding, not in a title band.
   if (styled) group.headerHeight = 0;
+  if (spec.direction !== undefined) group.setMetadata('direction', spec.direction);
   const wanted = new Set(spec.children ?? []);
   for (const id of [...group.members]) if (!wanted.has(id)) group.removeMember(id, diagram);
   for (const id of wanted) if (!group.members.has(id) && diagram.getNode(id)) group.addMember(id, diagram);
