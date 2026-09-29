@@ -10,7 +10,7 @@
 <link rel="alternate icon" href="../favicon-32.png">
 <link rel="apple-touch-icon" href="../apple-touch-icon.png">
 <meta property="og:title" content="Mermaid text, on a canvas you can edit">
-<meta property="og:description" content="Paste Mermaid, get a real editable diagram. Edit the diagram, get Mermaid back. Four diagram types, verified against real mermaid v11 in CI.">
+<meta property="og:description" content="Paste Mermaid, get a real editable diagram. Edit the diagram, get Mermaid back. Six diagram types, verified against real mermaid v11 in CI.">
 <meta property="og:url" content="https://grafloria.com/mermaid/">
 <meta property="og:image" content="https://grafloria.com/og-image.png">
 <meta property="og:image:width" content="1280">
@@ -217,9 +217,9 @@
     </p>
 
     <!-- ============================ COVERAGE ========================== -->
-    <h2>Four diagram types, read <i>and</i> written</h2>
+    <h2>Six diagram types, read <i>and</i> written</h2>
     <p class="sub">
-      Mermaid has grown past 29 diagram types. Grafloria speaks four of them — the graph-family
+      Mermaid has grown past 29 diagram types. Grafloria speaks six of them — the graph-family
       ones people actually paste into an editor — and every one is a matched
       <b>parser + model + generator</b>, because a type that parses but cannot re-emit itself
       loses everything on first save. The rest fail safe (below), which we consider far better
@@ -229,9 +229,27 @@
       <div class="card on">
         <span class="chip">read + write</span>
         <h3>flowchart / graph</h3>
-        <p>The full base grammar plus Mermaid-native styling: all node shapes, glued and spaced
-        edges, edge labels, <code>subgraph</code> → real groups, <code>style</code>,
-        <code>classDef</code>, <code>:::</code>, <code>click</code> and <code>direction</code>.</p>
+        <p>The full base grammar plus Mermaid-native styling: all node shapes (a database is a
+        cylinder, trapezoids and parallelograms are what their slashes say), glued and spaced
+        edges, edge labels in both spellings (<code>--&gt;|text|</code> and <code>-- text --&gt;</code>),
+        <code>subgraph</code> → real groups with their own <code>direction</code>, <code>style</code>,
+        <code>classDef</code>, <code>:::</code> and <code>click</code>.</p>
+      </div>
+      <div class="card on">
+        <span class="chip">read + write</span>
+        <h3>architecture-beta</h3>
+        <p>Groups (nested with <code>in</code>), services with their icons, junctions, and lines that
+        name their sides — <code>db:L -- R:server</code> puts the server to the database's left.
+        Those sides ARE the layout: groups become regions, services line up, lines run straight.
+        Arrows at either end, <code>-[label]-</code>, <code>{group}</code> edges.</p>
+      </div>
+      <div class="card on">
+        <span class="chip">read + write</span>
+        <h3>block-beta</h3>
+        <p>The grid: <code>columns N</code>, blocks filling rows, <code>:N</code> spans,
+        <code>space</code> holes, <code>block … end</code> nesting a grid of its own, block arrows,
+        every flowchart shape, edges, <code>style</code> and <code>classDef</code> — each block
+        filling its cell, lines straight between neighbours.</p>
       </div>
       <div class="card on">
         <span class="chip">read + write</span>
@@ -342,6 +360,21 @@
       list, so here is the list.
     </p>
     <div class="gaps">
+      <details>
+        <summary><span class="tag">architecture-beta</span> three known losses</summary>
+        <ul>
+          <li>Iconify icons (<code>logos:aws-lambda</code>) are kept and written back, but drawn with no icon: Grafloria draws the five built-ins (cloud, database, disk, internet, server) and fetches nothing.</li>
+          <li>A <code>{group}</code> edge is kept and written back, but it attaches to the service, not to the edge of its group.</li>
+          <li>The picture is Grafloria's composition, not Mermaid's force layout — the same relations, a different (straighter) arrangement. That one is by design.</li>
+        </ul>
+      </details>
+      <details>
+        <summary><span class="tag">block-beta</span> two known losses</summary>
+        <ul>
+          <li>A block arrow draws as its label and an arrow glyph pointing its way, not as an arrow-shaped block; it writes back as the block arrow it was.</li>
+          <li>Styles changed on the canvas are not written back — the <code>style</code> / <code>classDef</code> lines that come out are the ones that went in.</li>
+        </ul>
+      </details>
       <details>
         <summary><span class="tag">erDiagram</span> three known losses</summary>
         <ul>

@@ -1,0 +1,193 @@
+<meta charset="utf-8">
+<title>Mermaid architecture &amp; block diagrams — Grafloria</title>
+<meta name="description" content="Mermaid's architecture-beta and block-beta, read by Grafloria: groups as regions, services placed where their sided lines say, a block grid with spans and holes — laid out, editable, written back as the same Mermaid.">
+<link rel="canonical" href="https://grafloria.com/demos/diagrams/mermaid-architecture-block.html">
+<meta property="og:title" content="Mermaid architecture &amp; block diagrams — Grafloria">
+<meta property="og:description" content="Mermaid's architecture-beta and block-beta, read and laid out by Grafloria, written back as the same Mermaid.">
+<meta property="og:url" content="https://grafloria.com/demos/diagrams/mermaid-architecture-block.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/diagrams/mermaid-architecture-block.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/diagrams/mermaid-architecture-block.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  #mb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--gf-line, #e5e7eb); background: #fff; font: 500 12.5px ui-sans-serif, system-ui, sans-serif; color: var(--gf-ink, #111827); }
+  #mb-bar .seg { display: inline-flex; border: 1px solid var(--gf-line, #e5e7eb); border-radius: 7px; overflow: hidden; }
+  #mb-bar .seg button { border: 0; background: none; padding: 4px 11px; cursor: pointer; white-space: nowrap; font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--gf-mut, #6b7280); }
+  #mb-bar .seg button + button { border-left: 1px solid var(--gf-line, #e5e7eb); }
+  #mb-bar .seg button.on { background: var(--gf-ink, #111827); color: #fff; }
+  #mb-bar .seg button:focus-visible { outline: 2px solid var(--gf-accent, #2563eb); outline-offset: 2px; }
+  #mb-note { color: var(--gf-mut, #6b7280); }
+  #mb-note.err { color: #b42318; }
+  #canvas { height: 540px; background: #fff; }
+  #mb-src { display: block; box-sizing: border-box; width: 100%; min-height: 380px; margin: 0; padding: 14px 18px; border: 0; border-top: 1px solid var(--gf-line, #e5e7eb); background: #f8fafc; color: #1f2937; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; overflow: auto; resize: vertical; tab-size: 4; }
+  #mb-src:focus-visible { outline: 2px solid var(--gf-accent, #2563eb); outline-offset: -2px; }
+</style>
+<header id="demo-head"></header>
+<div id="mb-bar">
+  <span>Mermaid</span>
+  <span class="seg" id="mb-type" role="group" aria-label="Mermaid diagram type">
+    <button type="button" data-type="arch" class="on" aria-pressed="true">architecture-beta</button>
+    <button type="button" data-type="block" aria-pressed="false">block-beta</button>
+  </span>
+  <span id="mb-note" role="status">Real Mermaid syntax, laid out by Grafloria. Edit it — the drawing follows.</span>
+</div>
+<div id="canvas"></div>
+<textarea id="mb-src" spellcheck="false" aria-label="Mermaid source"></textarea>
+<script type="text/plain" id="src-arch">architecture-beta
+    service internet(internet)[Internet]
+    group cloud(cloud)[Cloud]
+    service web(server)[Web app] in cloud
+    service api(server)[API] in cloud
+    group data(database)[Data tier] in cloud
+    service db(database)[Postgres] in data
+    service cache(disk)[Redis cache] in data
+    junction j in cloud
+
+    internet:R --> L:web
+    web:R -[HTTPS]-> L:api
+    api:B -- T:j
+    j:B --> T:db
+    db:R -- L:cache</script>
+<script type="text/plain" id="src-block">block-beta
+columns 3
+doc>"Document"]:3
+space down1<[" "]>(down) space
+
+block:e:3
+       l["left"]
+       m("A wide one in the middle")
+       r["right"]
+end
+space down2<[" "]>(down) space
+db[("DB")]:3
+space:3
+D space C
+db --> D
+C --> db
+D --> C
+style m fill:#d6d,stroke:#333,stroke-width:4px</script>
+<script type="module">
+import { render, importDiagramText, exportDiagramText } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+
+const srcEl = document.getElementById('mb-src');
+const note = document.getElementById('mb-note');
+const seg = document.getElementById('mb-type');
+const NOTE = note.textContent;
+const SOURCES = { arch: document.getElementById('src-arch').textContent, block: document.getElementById('src-block').textContent };
+
+defineDemo({
+  name: 'Mermaid architecture & block diagrams',
+  blurb: "Mermaid's architecture-beta and block-beta, read by Grafloria: groups as regions, services placed where their sided lines say, a block grid with spans and holes — laid out, editable, and written back as the same Mermaid.",
+  howTo: [
+    'architecture-beta: every line names its sides — web:R -[HTTPS]-> L:api leaves the web app on its right and enters the API on its left, so the API sits to its right. Grafloria reads those sides as the layout: groups become regions, services line up, lines run straight; the icons (internet, server, database, disk, cloud) are drawn.',
+    'block-beta: blocks fill rows of `columns 3`; `:3` spans a row, `space` leaves a hole, block … end nests a grid, block arrows point the way. Styles and classDef come through.',
+    'Edit either text: add a service to a group (… in data), a line with its sides, a block to the grid. The drawing re-composes as you type.',
+    'Both write back as themselves: export gives architecture-beta or block-beta text that real Mermaid accepts, not a flowchart.',
+  ],
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: [], edges: [] }, ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+    const api = ctx.instance;
+    api.getEngine().setInteractionConfig({ portVisibility: 'hidden' });
+    ctx.draw = () => {
+      let d;
+      try {
+        d = importDiagramText(srcEl.value).diagram;
+      } catch (e) {
+        note.textContent = `That text does not parse yet (${e && e.message ? e.message : e}) — the last drawing stays.`;
+        note.classList.add('err');
+        return false;
+      }
+      note.textContent = NOTE;
+      note.classList.remove('err');
+      ctx.imported = d;
+      api.setEdges([]); api.setGroups([]); api.setNodes([]);
+      api.setNodes(d.getNodes()); api.setGroups(d.getGroups()); api.setEdges(d.getLinks());
+      api.renderNow();
+      api.fitView(32);
+      api.renderNow();
+      return true;
+    };
+    ctx.show = (type) => {
+      ctx.type = type;
+      srcEl.value = SOURCES[type].trim();
+      for (const b of seg.querySelectorAll('button')) {
+        const on = b.getAttribute('data-type') === type;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
+      }
+      ctx.draw();
+    };
+    seg.onclick = (e) => { const v = e.target.closest('button')?.getAttribute('data-type'); if (v) ctx.show(v); };
+    let timer = 0;
+    srcEl.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => ctx.draw(), 300); });
+    ctx.show('arch');
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = () => ctx.instance.getModel();
+    const R = (id) => {
+      const n = m().getNode(id);
+      if (n) return { x: n.position.x, y: n.position.y, w: n.size.width, h: n.size.height };
+      const b = m().getGroup(id).getOuterBounds();
+      return { x: b.x, y: b.y, w: b.width, h: b.height };
+    };
+    const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const clean = (tag) => {
+      const ids = m().getNodes().map((n) => n.id);
+      for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+        check(!overlaps(R(ids[i]), R(ids[j])), `${tag} "${ids[i]}" and "${ids[j]}" must not overlap`);
+      }
+    };
+    const inside = (id, g) => { const r = R(id), f = R(g); return r.x >= f.x && r.y >= f.y && r.x + r.w <= f.x + f.w && r.y + r.h <= f.y + f.h; };
+
+    // architecture-beta: the sides are the layout
+    ctx.show('arch');
+    check(m().getGroup('cloud') && m().getGroup('data'), 'the groups must come through');
+    check(inside('web', 'cloud') && inside('db', 'data') && inside('data', 'cloud'), 'services and the inner group must sit inside their groups');
+    check(R('internet').x + R('internet').w < R('web').x, 'internet:R --> L:web — the web app must be to the RIGHT of the internet');
+    check(R('web').x + R('web').w < R('api').x, 'web:R --> L:api — the API must be to the RIGHT of the web app');
+    check(R('db').y > R('api').y + R('api').h, 'api:B … T:db — the database must be BELOW the API');
+    check(R('db').x + R('db').w < R('cache').x, 'db:R -- L:cache — the cache must be to the RIGHT of the database');
+    check(R('j').w <= 16, 'a junction must be a small dot');
+    check(!!ctx.host.querySelector('[data-node-id="db"] .panel-icon path'), 'the database icon must be drawn');
+    const https = m().getLinks().find((l) => l.sourceNodeId === 'web' && l.targetNodeId === 'api');
+    check(https && https.getLabel() === 'HTTPS', 'the -[HTTPS]-> label must come through');
+    clean('[architecture]');
+    const archOut = exportDiagramText(ctx.imported, { lossless: false });
+    check(/^architecture-beta/.test(archOut.trim()) && /web:R -\[HTTPS\]-> L:api/.test(archOut), 'it must write back as architecture-beta, sides and label included');
+
+    // edit: a new service in the data tier, right of the cache
+    const before = srcEl.value;
+    srcEl.value = before + '\n    service queue(disk)[Job queue] in data\n    cache:R -- L:queue';
+    srcEl.dispatchEvent(new Event('input'));
+    for (let i = 0; i < 40 && !m().getNode('queue'); i++) await ctx.tick(20);
+    check(!!m().getNode('queue') && inside('queue', 'data'), 'an edit must re-draw, the new service inside its group');
+    check(R('queue').x > R('cache').x + R('cache').w, 'cache:R -- L:queue — the new service must be to the RIGHT of the cache');
+    clean('[after an edit]');
+
+    // block-beta: the grid
+    ctx.show('block');
+    check(Math.abs(R('doc').x - R('db').x) < 1 && Math.abs(R('doc').w - R('db').w) < 1, 'doc:3 and db:3 must span the whole row');
+    check(Math.abs(R('D').x - R('db').x) < 1 && R('C').x + R('C').w - (R('db').x + R('db').w) < 1, 'D and C must sit in the first and last columns (space between)');
+    check(inside('l', 'e') && inside('m', 'e') && inside('r', 'e'), 'the nested block must hold its blocks');
+    const dn = m().getNode('down1');
+    check(dn && dn.getLabel() === '↓', 'a block arrow must point its way');
+    check(m().getNode('m').style.fill === '#d6d', 'the style line must come through');
+    clean('[block]');
+    const blockOut = exportDiagramText(ctx.imported, { lossless: false });
+    check(/^block-beta/.test(blockOut.trim()) && /db\[\("DB"\)\]:3/.test(blockOut) && /down1<\[" "\]>\(down\)/.test(blockOut), 'it must write back as block-beta, spans and arrows included');
+
+    ctx.show('arch');
+  },
+
+  // The block grid gets its own frame.
+  async showcase(ctx) {
+    ctx.show('block');
+    await ctx.tick();
+  },
+});
+</script>

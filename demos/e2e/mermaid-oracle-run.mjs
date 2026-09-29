@@ -48,6 +48,22 @@ const CASES = {
   'flow inline class + link':
     'flowchart LR\n  a:::hot-->b\n  classDef hot fill:#fa0\n  click a "https://example.com"',
 
+  // ── flowchart: the other label spelling, thick arrows, the slash shapes ──
+  'flow inline labels': 'flowchart LR\n  a -- writes --> b\n  b -- "twice, quoted" --> c\n  c -. note .-> d\n  d == big ==> e\n  e ==> f',
+  'flow slash shapes': 'flowchart LR\n  a[/Wide bottom\\] --> b[\\Wide top/] --> c[/In or out/] --> d[\\Lean left\\] --> e[(DB)]',
+
+  // ── architecture-beta: groups, services, junctions, sided edges ─────────
+  'architecture docs':
+    'architecture-beta\n    group api(cloud)[API]\n\n    service db(database)[Database] in api\n    service disk1(disk)[Storage] in api\n    service disk2(disk)[Storage] in api\n    service server(server)[Server] in api\n\n    db:L -- R:server\n    disk1:T -- B:server\n    disk2:T -- B:db',
+  'architecture arrows+labels':
+    'architecture-beta\n  service internet(internet)[Internet]\n  group cloud(cloud)[Cloud]\n  service web(server)[Web app] in cloud\n  group data(database)[Data tier] in cloud\n  service db(database)[Postgres] in data\n  junction j in cloud\n  internet:R --> L:web\n  web:B -[writes]- T:j\n  j:B <--> T:db\n  web{group}:R --> L:db{group}',
+
+  // ── block-beta: the grid ────────────────────────────────────────────────
+  'block docs':
+    'block-beta\ncolumns 3\ndoc>"Document"]:3\nspace down1<[" "]>(down) space\n\nblock:e:3\n       l["left"]\n       m("A wide one in the middle")\n       r["right"]\nend\nspace down2<[" "]>(down) space\ndb[("DB")]:3\nspace:3\nD space C\ndb --> D\nC --> db\nD --> C\nstyle m fill:#d6d,stroke:#333,stroke-width:4px',
+  'block spans+nested+labels':
+    'block-beta\n  columns 3\n  a["Frontend"] b["API"] c[("Database")]\n  d["Cache layer"]:2 e["Queue"]\n  block:grp:3\n    columns 2\n    x y\n  end\n  a --> b\n  b -- "writes" --> c\n  d -.-> e\n  classDef hot fill:#fca\n  class e hot',
+
   // ── erDiagram (Phase 3) ─────────────────────────────────────────────────
   'er minimal': 'erDiagram\n    CUSTOMER ||--o{ ORDER : places',
   'er attributes':
