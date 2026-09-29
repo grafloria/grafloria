@@ -138,6 +138,13 @@ describe('Mermaid block-beta', () => {
       for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) expect(overlaps(R(g, ids[i]!), R(g, ids[j]!))).toBe(false);
     });
 
+    it('a block is wide enough for its words by the RENDERER\'s own wrap rule — never cut to "…"', () => {
+      // Mermaid's docs example: this one was drawn "A wide one in the…"
+      const g = imp('block-beta\n  block:e:3\n    l["left"]\n    m("A wide one in the middle")\n    r["right"]\n  end');
+      const label = 'A wide one in the middle';
+      expect(R(g, 'm').w - 16).toBeGreaterThanOrEqual(label.length * 14 * 0.6);
+    });
+
     it('without columns every block sits in one row', () => {
       const g = imp('block-beta\n  a b c');
       expect(new Set(['a', 'b', 'c'].map((id) => Math.round(R(g, id).y))).size).toBe(1);

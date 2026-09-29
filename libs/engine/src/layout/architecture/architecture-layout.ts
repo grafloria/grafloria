@@ -301,6 +301,12 @@ class ArchitectureComposer {
     }
     w += 2 * this.k.boxPadX;
     h += 2 * this.k.boxPadY;
+    // The renderer word-wraps a label by ITS rule — 0.6 em a character inside an
+    // 8 px inset — and cuts what no longer fits to "…", even when the words would
+    // draw narrower. A composed box is never narrower than that rule needs.
+    const rendererNeeds = (ls: string[], size: number) => Math.max(0, ...ls.map((l) => l.length)) * size * 0.6 + 16;
+    w = Math.max(w, rendererNeeds(lines, fs));
+    if (sub?.text) w = Math.max(w, rendererNeeds(sub.text.split('\n'), sub.fontSize ?? Math.round(fs * 0.85)));
     // room for a panel icon in the corner
     const icon = (n.getMetadata('panel') as { icon?: { size?: number } } | undefined)?.icon;
     if (icon) w += (icon.size ?? 18) + 8;
