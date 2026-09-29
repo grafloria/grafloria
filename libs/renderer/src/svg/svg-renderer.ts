@@ -7064,7 +7064,28 @@ export class SVGRenderer implements IRenderer {
           const isFirstSegment = i === 0;
           const isLastSegment = i === points.length - 2;
 
-          if (isFirstSegment || isLastSegment) {
+          // An end run that is ALREADY square and heads the right way — out of
+          // its source's side, or into its target's side — is drawn as it is.
+          // Routing it again to guarantee a longer port stub sent a 16 px run
+          // round the whole box (a junction dot under an API box).
+          const squareRun = (a: { x: number; y: number }, b: { x: number; y: number }, dir: string | undefined, leaving: boolean): boolean => {
+            if (!dir) return false;
+            const [from, to] = leaving ? [a, b] : [b, a]; // measured from the port outward
+            const dx = to.x - from.x, dy = to.y - from.y;
+            if (dir === 'top') return Math.abs(dx) < 0.5 && dy < 0;
+            if (dir === 'bottom') return Math.abs(dx) < 0.5 && dy > 0;
+            if (dir === 'left') return Math.abs(dy) < 0.5 && dx < 0;
+            if (dir === 'right') return Math.abs(dy) < 0.5 && dx > 0;
+            return false;
+          };
+          const straightEnd =
+            (isFirstSegment || isLastSegment) &&
+            (!isFirstSegment || squareRun(start, end, sourceDirection, true)) &&
+            (!isLastSegment || squareRun(start, end, targetDirection, false));
+          if (straightEnd) {
+            if (i === 0) allRoutedPoints.push(start);
+            allRoutedPoints.push(end);
+          } else if (isFirstSegment || isLastSegment) {
             // Use routing engine for port connections (perpendicular to ports)
             // FIXED: Enable obstacle avoidance to prevent penetrating nodes during drag
             const segmentSourceDir = isFirstSegment ? sourceDirection : undefined;
