@@ -147,7 +147,12 @@ await engine.layout('architecture');                            // any time, any
 { id: 'note', shape: { type: 'text' }, near: { target: 'fake', side: 'right' } }</pre>
       <p>In Mermaid it is one comment: <code>%%grafloria:layout architecture</code> — see
       <a href="../mermaid-and-the-dsl/#architecture">the Mermaid page</a>.</p>
+      <p>RL and BT run the flow backwards (a container's content mirrors along its own flow);
+      four or more boxes with no line between them wrap into a grid in reading order. Mermaid's
+      <code>architecture-beta</code> (its lines name their sides) and <code>block-beta</code> (an
+      explicit grid, <code>columns N</code>, spans and holes) import straight into this layout.</p>
 <p><a class="demo-link" href="../../demos/diagrams/architecture-layout.html">Live: the same text, architecture vs layered →</a></p>
+<p><a class="demo-link" href="../../demos/diagrams/mermaid-architecture-block.html">Live: Mermaid architecture-beta and block-beta →</a></p>
 
       <h2>The cost model — why ELK doesn't bloat you</h2>
       <p>ELK is the best layered engine available and also ~1.4&nbsp;MB minified. Grafloria

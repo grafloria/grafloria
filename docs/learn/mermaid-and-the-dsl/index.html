@@ -114,10 +114,12 @@ result.diagram.getNodes()[0].type;               // 'flowchart:process' — type
 
       <h2>Supported types — and the honest line</h2>
       <p><code>flowchart</code>/<code>graph</code>, <code>erDiagram</code>,
-      <code>classDiagram</code>, <code>stateDiagram</code>/<code>stateDiagram-v2</code>. These
-      four are verified against real Mermaid by a CI oracle — the same text rendered by
-      Mermaid itself and by Grafloria, compared structurally. Everything else is refused
-      loudly rather than rendered wrongly:</p>
+      <code>classDiagram</code>, <code>stateDiagram</code>/<code>stateDiagram-v2</code>,
+      <code>architecture-beta</code> and <code>block-beta</code>. These six are verified against
+      real Mermaid by a CI oracle — real Mermaid must accept both the text and what Grafloria
+      writes back. <code>architecture-beta</code>'s sided lines and <code>block-beta</code>'s grid
+      are laid out by the <a href="../layout/#architecture">architecture layout</a>. Everything else
+      is refused loudly rather than rendered wrongly:</p>
 <pre data-lang="typescript">const r = importDiagramText('sequenceDiagram\n  A-&gt;&gt;B: hi');
 r.unsupported;   // 'sequenceDiagram' — check this field; there is no silent wrong guess</pre>
 <p><a class="demo-link" href="../../mermaid/">The full Mermaid compatibility story →</a></p>
@@ -203,6 +205,7 @@ const text = exportDiagramText(diagram);</pre>
       <code>%%grafloria:at</code> still wins for the box it names. Export writes the relations and
       the layout back, never the pixels the layout chose.</p>
       <p><a class="demo-link" href="../../demos/diagrams/architecture-layout.html">Live: edit the text, the drawing re-composes →</a></p>
+      <p><a class="demo-link" href="../../demos/diagrams/mermaid-architecture-block.html">Live: Mermaid's own architecture-beta and block-beta →</a></p>
 
       <h2>Text and canvas, live</h2>
       <p>The framework surfaces wire both directions into the live canvas —
