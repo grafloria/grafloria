@@ -159,6 +159,14 @@ export interface SnapGuideSegment {
   label?: string;
 }
 
+/**
+ * A text note (shape 'text') is words on the canvas with no box: lines may pass
+ * it. Every other node is a wall the router plans round.
+ */
+function isRoutingObstacle(node: NodeModel): boolean {
+  return (node.getMetadata('shape') as { type?: string } | undefined)?.type !== 'text';
+}
+
 export class DiagramEngine {
   // Core systems
   readonly eventBus: EventBus;
@@ -1771,6 +1779,7 @@ export class DiagramEngine {
    * Register a node as an obstacle in the routing engine
    */
   private registerNodeAsObstacle(node: NodeModel): void {
+    if (!isRoutingObstacle(node)) return;
     const obstacle = {
       id: node.id,
       x: node.position.x,
@@ -1815,9 +1824,9 @@ export class DiagramEngine {
       for (const memberId of g.members) hidden.add(memberId);
     }
 
-    // hidden members: out of the map; visible ones: (re)registered
+    // hidden members and notes: out of the map; visible boxes: (re)registered
     for (const node of this.diagram.getNodes()) {
-      if (hidden.has(node.id)) {
+      if (hidden.has(node.id) || !isRoutingObstacle(node)) {
         this.routingEngine.removeObstacle(node.id);
       } else {
         this.routingEngine.updateObstacle({
@@ -1858,6 +1867,10 @@ export class DiagramEngine {
    * Also invalidates all links so they recalculate paths with new obstacle positions
    */
   private updateNodeObstacle(node: NodeModel): void {
+    if (!isRoutingObstacle(node)) {
+      this.routingEngine.removeObstacle(node.id);
+      return;
+    }
     const obstacle = {
       id: node.id,
       x: node.position.x,
@@ -1911,6 +1924,12 @@ export class DiagramEngine {
         );
         this.diagramDisposers.push(
           node.on('change:size', () => {
+            this.updateNodeObstacle(node);
+          })
+        );
+        // A box that becomes a note (or back) leaves (or rejoins) the map.
+        this.diagramDisposers.push(
+          node.on('change:metadata.shape', () => {
             this.updateNodeObstacle(node);
           })
         );
@@ -1978,6 +1997,11 @@ export class DiagramEngine {
       );
       this.diagramDisposers.push(
         node.on('change:size', () => {
+          this.updateNodeObstacle(node);
+        })
+      );
+      this.diagramDisposers.push(
+        node.on('change:metadata.shape', () => {
           this.updateNodeObstacle(node);
         })
       );

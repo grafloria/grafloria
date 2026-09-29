@@ -971,6 +971,10 @@ export class LinkModel extends DiagramEntity {
 
     t = Math.max(0, Math.min(1, t));
 
+    // A 'direct' line the router BENT (a detour round a box) is its points, not
+    // its chord: the chord's middle is open space off the line.
+    if (this.pathType === 'direct' && this.points.length > 2) return this.polylineAt(t).point;
+
     if (this.pathType === 'direct') {
       const from = this.points[0]!;
       const to = this.points[this.points.length - 1]!;
@@ -985,7 +989,7 @@ export class LinkModel extends DiagramEntity {
     // the points polyline so consumers (e.g. label placement) still get a
     // real on-path position instead of the endpoint.
     const totalLength = this.getTotalLength();
-    if (this.segments.length > 0 && totalLength > 0) {
+    if (this.segments.length > 0 && totalLength > 0 && this.segmentsTracePoints()) {
       const targetLength = totalLength * t;
       let currentLength = 0;
 
@@ -1001,24 +1005,55 @@ export class LinkModel extends DiagramEntity {
     }
 
     // Polyline fallback: arc-length interpolation over points
+    return this.polylineAt(t).point;
+  }
+
+  /**
+   * Do `segments` still trace `points`, corner for corner? The renderer writes a
+   * line's painted points straight onto `points` every frame (no setPoints, so no
+   * change event) and leaves `segments` as they were; when the two disagree, the
+   * points are where the line is.
+   */
+  private segmentsTracePoints(): boolean {
+    const segs = this.segments;
+    const pts = this.points;
+    if (segs.length === 0 || segs.length !== pts.length - 1) return false;
+    const same = (a: Point, b: Point) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01;
+    if (!same(segs[0]!.from, pts[0]!)) return false;
+    for (let i = 0; i < segs.length; i++) if (!same(segs[i]!.to, pts[i + 1]!)) return false;
+    return true;
+  }
+
+  /**
+   * The point `t` of the way along the `points` polyline (by arc length), and
+   * the direction of the run it lands on. `points` is the painted geometry the
+   * renderer syncs, so this is where the line really is.
+   */
+  private polylineAt(t: number): { point: Point; tangent: Point } {
+    const pts = this.points;
     let polyLength = 0;
-    for (let i = 0; i < this.points.length - 1; i++) {
-      polyLength += Math.hypot(this.points[i + 1]!.x - this.points[i]!.x, this.points[i + 1]!.y - this.points[i]!.y);
+    for (let i = 0; i < pts.length - 1; i++) {
+      polyLength += Math.hypot(pts[i + 1]!.x - pts[i]!.x, pts[i + 1]!.y - pts[i]!.y);
     }
-    if (polyLength <= 0) return { ...this.points[0]! };
+    const dir = (a: Point, b: Point): Point => {
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      return len > 0 ? { x: (b.x - a.x) / len, y: (b.y - a.y) / len } : { x: 1, y: 0 };
+    };
+    if (polyLength <= 0) return { point: { ...pts[0]! }, tangent: { x: 1, y: 0 } };
 
     let remaining = polyLength * t;
-    for (let i = 0; i < this.points.length - 1; i++) {
-      const a = this.points[i]!;
-      const b = this.points[i + 1]!;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]!;
+      const b = pts[i + 1]!;
       const segLen = Math.hypot(b.x - a.x, b.y - a.y);
-      if (remaining <= segLen) {
-        const st = segLen > 0 ? remaining / segLen : 0;
-        return { x: a.x + (b.x - a.x) * st, y: a.y + (b.y - a.y) * st };
+      if (segLen > 0 && remaining <= segLen) {
+        const st = remaining / segLen;
+        return { point: { x: a.x + (b.x - a.x) * st, y: a.y + (b.y - a.y) * st }, tangent: dir(a, b) };
       }
       remaining -= segLen;
     }
-    return { ...this.points[this.points.length - 1]! };
+    const n = pts.length;
+    return { point: { ...pts[n - 1]! }, tangent: dir(pts[n - 2]!, pts[n - 1]!) };
   }
 
   /**
@@ -1089,6 +1124,13 @@ export class LinkModel extends DiagramEntity {
    * Returns normalized direction vector
    */
   getTangentAt(t: number): Point | null {
+    // A bent 'direct' line: the run the point lands on (see getPointAtPosition).
+    if (this.pathType === 'direct' && this.points.length > 2) return this.polylineAt(Math.max(0, Math.min(1, t))).tangent;
+    // Points the renderer moved under stale segments: the points are the line.
+    if (this.pathType !== 'direct' && this.points.length >= 2 && this.segments.length > 0 && !this.segmentsTracePoints()) {
+      return this.polylineAt(Math.max(0, Math.min(1, t))).tangent;
+    }
+
     if (this.segments.length === 0) return null;
 
     t = Math.max(0, Math.min(1, t));

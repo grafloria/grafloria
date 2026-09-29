@@ -179,10 +179,10 @@ export interface InteractionConfig {
    * subflow: the container and every member node (recursively through nested
    * groups) translate by the same delta, committed as ONE undoable step.
    *
-   * Opt-in (default false) so steady-state is untouched: with it off, a press on
-   * a group's empty frame area still falls through to clear-selection exactly as
-   * before. A press on a MEMBER NODE always drags that node (the node wins the
-   * priority ladder) regardless of this flag.
+   * Default true (it was opt-in, and a press on a zone panned the whole canvas).
+   * Off, a press on a group's empty frame area falls through to clear-selection
+   * and the empty-canvas pan. A press on a MEMBER NODE always drags that node
+   * (the node wins the priority ladder) regardless of this flag.
    */
   enableGroupDrag: boolean;
 
@@ -217,9 +217,9 @@ export interface InteractionConfig {
    * so it then moves with its container. `GroupMembershipService` always had
    * the full drop logic — hit-test, per-group `canAddMember` veto, coordinate
    * translation, undoable Add/RemoveFromGroupCommand — and nothing ever called
-   * it, so a drag into a container only changed x/y. Default false (opt-in),
-   * like every other gesture in this block: turning it on globally changes what
-   * an existing drag MEANS for any host that draws frames decoratively.
+   * it, so a drag into a container only changed x/y. Default true: a box dragged
+   * out of a zone stayed its member, drawn outside a frame that still owned it.
+   * A host that draws frames purely decoratively turns it off.
    */
   enableGroupMembershipOnDrop: boolean;
 
@@ -418,7 +418,9 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
     symmetricControls: false,
   },
   // wave12/connect-ergonomics — all three opt-in so steady-state is untouched.
-  enableGroupDrag: false,
+  // A zone is a container you can pick up: on by default (it used to pan the
+  // canvas, and a diagram that declared zones got no way to move one).
+  enableGroupDrag: true,
   enableProximityConnect: false,
   proximityConnectRadius: 0, // 0 → fall back to DEFAULT_SNAP_CONFIG.proximityConnectRadius
   // Kept opt-in at the library level: a global default-on regresses the drag
@@ -426,7 +428,8 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
   // DRAG-ATTACH on contextual-zoom + LINK-SELECT-SPAN on layout-portfolio), and
   // changes the feel for every embedder. The Visio editor surface enables it.
   enableHelperLines: false,
-  enableGroupMembershipOnDrop: false,
+  // …and a box dropped out of a zone leaves it, dropped into one joins it.
+  enableGroupMembershipOnDrop: true,
   enableInPlaceTextEdit: false,
   enableKeyboardNudge: false,
   enableEasyConnect: false,
