@@ -38891,7 +38891,7 @@ var require_elk_bundled = __commonJS({
               a.Db |= b;
             }
             function sec(a, b, c, d, e, f) {
-              var g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               k = d;
               if (b.j && b.o) {
                 n10 = JD(sjb(a.f, b.A), 60);
@@ -38908,9 +38908,9 @@ var require_elk_bundled = __commonJS({
               } else {
                 j = c.a.c;
               }
-              q = j - p;
+              q10 = j - p;
               i10 = $wnd.Math.max(2, l - k);
-              h = q / i10;
+              h = q10 / i10;
               o10 = p + h;
               for (m = k; m < l; ++m) {
                 g10 = JD(f.Xb(m), 134);
@@ -42981,7 +42981,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function Kib(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               n10 = b.length;
               i10 = n10;
               gEb(0, b.length);
@@ -42995,12 +42995,12 @@ var require_elk_bundled = __commonJS({
               }
               f = (Vib(), Uib)[10];
               e = n10 / f | 0;
-              q = n10 % f;
-              q != 0 && ++e;
+              q10 = n10 % f;
+              q10 != 0 && ++e;
               h = SC(cE, Nxe, 30, e, 15, 1);
               c = Tib[8];
               g10 = 0;
-              o10 = m + (q == 0 ? f : q);
+              o10 = m + (q10 == 0 ? f : q10);
               for (p = m; p < i10; p = o10, o10 = p + f) {
                 d = keb((fEb(p, o10, b.length), b.substr(p, o10 - p)), oxe, iwe);
                 j = (hjb(), ljb(h, h, g10, c));
@@ -43164,12 +43164,12 @@ var require_elk_bundled = __commonJS({
               b.k && Vfb(b.d, new j2b());
             }
             function l2c(a, b, c, d, e, f) {
-              var g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               m = f;
               h = (d + e) / 2 + m;
-              q = c * $wnd.Math.cos(h);
+              q10 = c * $wnd.Math.cos(h);
               r = c * $wnd.Math.sin(h);
-              s = q - b.g / 2;
+              s = q10 - b.g / 2;
               t = r - b.f / 2;
               Jyd(b, s);
               Kyd(b, t);
@@ -44305,14 +44305,14 @@ var require_elk_bundled = __commonJS({
               return null;
             }
             function fEd(a, b, c, d, e) {
-              var f, g10, h, i10, j, k, l, m, n10, p, q, r, s, t, u, v;
+              var f, g10, h, i10, j, k, l, m, n10, p, q10, r, s, t, u, v;
               n10 = IEd(a, FHd(b), e);
               Nzd(n10, DDd(e, DJe));
               o = null;
               p = e;
-              q = CDd(p, GJe);
+              q10 = CDd(p, GJe);
               r = new xFd(n10);
-              kEd(r.a, q);
+              kEd(r.a, q10);
               s = CDd(p, "endPoint");
               t = new FFd(n10);
               mEd(t.a, s);
@@ -46429,12 +46429,12 @@ var require_elk_bundled = __commonJS({
               e || (EDb(d.c, g10), true);
             }
             function s0c(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               l = a.a.i + a.a.g / 2;
               m = a.a.i + a.a.g / 2;
               o10 = b.i + b.g / 2;
-              q = b.j + b.f / 2;
-              h = new Uid(o10, q);
+              q10 = b.j + b.f / 2;
+              h = new Uid(o10, q10);
               j = JD(Mxd(b, (cmd(), vld)), 8);
               j.a = j.a + l;
               j.b = j.b + m;
@@ -46579,7 +46579,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function gLc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               c = XGb(new ZGb(), a.f);
               j = a.i[b.c.i.p];
               n10 = a.i[b.d.i.p];
@@ -46591,7 +46591,7 @@ var require_elk_bundled = __commonJS({
               n10.b || (l += m.n.b);
               k = YD($wnd.Math.max(0, h - l));
               g10 = YD($wnd.Math.max(0, l - h));
-              o10 = (p = $wnd.Math.max(1, JD(CNb(b, (pyc(), Dxc)), 15).a), q = UKc(b.c.i.k, b.d.i.k), p * q);
+              o10 = (p = $wnd.Math.max(1, JD(CNb(b, (pyc(), Dxc)), 15).a), q10 = UKc(b.c.i.k, b.d.i.k), p * q10);
               e = jGb(mGb(lGb(kGb(nGb(new oGb(), o10), g10), c), JD(sjb(a.k, b.c), 126)));
               f = jGb(mGb(lGb(kGb(nGb(new oGb(), o10), k), c), JD(sjb(a.k, b.d), 126)));
               d = new BLc(e, f);
@@ -46957,10 +46957,10 @@ var require_elk_bundled = __commonJS({
               return false;
             }
             function ZDc(a, b, c, d, e) {
-              var f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               m = new zmb();
               r = Tx(d);
-              q = b * a.a;
+              q10 = b * a.a;
               l = 0;
               o10 = 0;
               f = new vsb();
@@ -46985,7 +46985,7 @@ var require_elk_bundled = __commonJS({
                   k += o10 * a.b;
                   p += a.e[i10.p];
                 }
-                if (!i10 || r.a.gc() == 0 || s >= q && a.e[i10.p] > o10 * a.b || t >= c * q) {
+                if (!i10 || r.a.gc() == 0 || s >= q10 && a.e[i10.p] > o10 * a.b || t >= c * q10) {
                   EDb(m.c, h);
                   h = new zmb();
                   xe(g10, f);
@@ -48421,7 +48421,7 @@ var require_elk_bundled = __commonJS({
               return b.a;
             }
             function m7b(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D;
               v = a.c;
               w = b.c;
               c = smb(v.a, a, 0);
@@ -48444,7 +48444,7 @@ var require_elk_bundled = __commonJS({
                 OWb(e, C);
               }
               XYb(b, c, v);
-              for (i10 = r, m = 0, q = i10.length; m < q; ++m) {
+              for (i10 = r, m = 0, q10 = i10.length; m < q10; ++m) {
                 e = i10[m];
                 PWb(e, u);
               }
@@ -49157,13 +49157,13 @@ var require_elk_bundled = __commonJS({
               return true;
             }
             function GOc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               b.Tg("Orthogonal edge routing", 1);
               j = gfb(MD(CNb(a, (pyc(), Vxc))));
               c = gfb(MD(CNb(a, Lxc)));
               d = gfb(MD(CNb(a, Oxc)));
               m = new EQc(0, c);
-              q = 0;
+              q10 = 0;
               g10 = new fkb(a.b, 0);
               h = null;
               k = null;
@@ -49173,10 +49173,10 @@ var require_elk_bundled = __commonJS({
                 k = g10.b < g10.d.gc() ? (ZDb(g10.b < g10.d.gc()), JD(g10.d.Xb(g10.c = g10.b++), 26)) : null;
                 l = !k ? null : k.a;
                 if (h) {
-                  fYb(h, q);
-                  q += h.c.a;
+                  fYb(h, q10);
+                  q10 += h.c.a;
                 }
-                p = !h ? q : q + d;
+                p = !h ? q10 : q10 + d;
                 o10 = DQc(m, a, i10, l, p);
                 e = !h || Wq(i10, (QOc(), OOc));
                 f = !k || Wq(l, (QOc(), OOc));
@@ -49185,12 +49185,12 @@ var require_elk_bundled = __commonJS({
                   !!h && (n10 += d);
                   !!k && (n10 += d);
                   n10 < j && !e && !f && (n10 = j);
-                  q += n10;
-                } else !e && !f && (q += j);
+                  q10 += n10;
+                } else !e && !f && (q10 += j);
                 h = k;
                 i10 = l;
               } while (k);
-              a.f.a = q;
+              a.f.a = q10;
               b.Ug();
             }
             function oge(a, b) {
@@ -49339,7 +49339,7 @@ var require_elk_bundled = __commonJS({
               } while (l);
             }
             function b5c(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C;
               g10 = a.f;
               m = b.f;
               h = g10 == (q7c(), l7c) || g10 == n7c;
@@ -49360,7 +49360,7 @@ var require_elk_bundled = __commonJS({
                   l = b;
                   k = a;
                 }
-                f = (q = c.j + c.f, r = l.e + d.f, s = $wnd.Math.max(q, r), t = s - $wnd.Math.min(c.j, l.e), u = l.d + d.g - c.i, u * t);
+                f = (q10 = c.j + c.f, r = l.e + d.f, s = $wnd.Math.max(q10, r), t = s - $wnd.Math.min(c.j, l.e), u = l.d + d.g - c.i, u * t);
                 e = (v = c.i + c.g, w = k.d + d.g, A = $wnd.Math.max(v, w), B = A - $wnd.Math.min(c.i, k.d), C = k.e + d.f - c.j, B * C);
                 return f <= e ? a.f == m7c ? a : b : a.f == l7c ? a : b;
               }
@@ -49779,7 +49779,7 @@ var require_elk_bundled = __commonJS({
               return a.g;
             }
             function vKc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A;
               d = gfb(MD(CNb(b, (pyc(), $wc))));
               v = JD(CNb(b, Zxc), 15).a;
               m = 4;
@@ -49792,8 +49792,8 @@ var require_elk_bundled = __commonJS({
                 f = i10 != 1;
                 l = i10 != 0;
                 A = 0;
-                for (q = a.a, s = 0, u = q.length; s < u; ++s) {
-                  o10 = q[s];
+                for (q10 = a.a, s = 0, u = q10.length; s < u; ++s) {
+                  o10 = q10[s];
                   o10.f = null;
                   wKc(a, o10, f, l, d);
                   A += $wnd.Math.abs(o10.a);
@@ -49918,7 +49918,7 @@ var require_elk_bundled = __commonJS({
               JD(g10, 521).b = c.a;
             }
             function xnc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               if (c.dc()) {
                 return;
               }
@@ -49932,9 +49932,9 @@ var require_elk_bundled = __commonJS({
                   d.Ob() ? o10 = JD(d.Pb(), 15).a : o10 = b.f + 1;
                 }
                 if (h != m) {
-                  q = JD(rmb(a.b, h), 26);
+                  q10 = JD(rmb(a.b, h), 26);
                   n10 = JD(rmb(a.b, m), 26);
-                  p = Uu(q.a);
+                  p = Uu(q10.a);
                   for (l = new Ymb(p); l.a < l.c.c.length; ) {
                     k = JD(Wmb(l), 9);
                     XYb(k, n10.a.c.length, n10);
@@ -49998,7 +49998,7 @@ var require_elk_bundled = __commonJS({
               c.Ug();
             }
             function wkc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               g10 = b.b;
               k = g10.o;
               i10 = g10.d;
@@ -50009,8 +50009,8 @@ var require_elk_bundled = __commonJS({
               tYb(h, i10.d, i10.c, i10.a, i10.b);
               m = skc(b, d, e, j);
               for (r = new Ymb(b.d); r.a < r.c.c.length; ) {
-                q = JD(Wmb(r), 108);
-                for (o10 = q.f.a.ec().Jc(); o10.Ob(); ) {
+                q10 = JD(Wmb(r), 108);
+                for (o10 = q10.f.a.ec().Jc(); o10.Ob(); ) {
                   n10 = JD(o10.Pb(), 342);
                   f = n10.a;
                   l = qkc(n10);
@@ -50020,9 +50020,9 @@ var require_elk_bundled = __commonJS({
                   xe(f.a, c);
                   kCb(new xCb(null, new lwb(c, 16)), new Akc(k, h));
                 }
-                p = q.i;
+                p = q10.i;
                 if (p) {
-                  vkc(q, p, m, e);
+                  vkc(q10, p, m, e);
                   t = new Vid(p.g);
                   xkc(k, h, t);
                   Cid(t, p.j);
@@ -50319,7 +50319,7 @@ var require_elk_bundled = __commonJS({
               this.o = false;
             }
             function oD(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G;
               c = a.l & 8191;
               d = a.l >> 13 | (a.m & 15) << 9;
               e = a.m >> 4 & 8191;
@@ -50354,11 +50354,11 @@ var require_elk_bundled = __commonJS({
               n10 = B & bye;
               o10 = (C & 511) << 13;
               m = n10 + o10;
-              q = B >> 22;
+              q10 = B >> 22;
               r = C >> 9;
               s = (D & 262143) << 4;
               t = (F & 31) << 17;
-              p = q + r + s + t;
+              p = q10 + r + s + t;
               v = D >> 18;
               w = F >> 5;
               A = (G & 4095) << 8;
@@ -50413,7 +50413,7 @@ var require_elk_bundled = __commonJS({
               egd(a, uHe, sHe, jHd(Sbd));
             }
             function nCc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               c.Tg("Interactive cycle breaking", 1);
               l = new zmb();
               for (n10 = new Ymb(b.a); n10.a < n10.c.c.length; ) {
@@ -50426,8 +50426,8 @@ var require_elk_bundled = __commonJS({
                     d = JD(Wmb(f), 17);
                     p = d.d.i;
                     if (p != m) {
-                      q = RYb(p).a;
-                      q < o10 && (EDb(l.c, d), true);
+                      q10 = RYb(p).a;
+                      q10 < o10 && (EDb(l.c, d), true);
                     }
                   }
                 }
@@ -50527,7 +50527,7 @@ var require_elk_bundled = __commonJS({
               return c;
             }
             function tCc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               b.Tg(ZEe, 1);
               n10 = new zmb();
               k = $wnd.Math.max(a.a.c.length, JD(CNb(a, (_rc(), xrc)), 15).a);
@@ -50541,8 +50541,8 @@ var require_elk_bundled = __commonJS({
                   l = JD(m.Pb(), 12);
                   for (g10 = new Ymb(l.g); g10.a < g10.c.c.length; ) {
                     e = JD(Wmb(g10), 17);
-                    q = e.d.i;
-                    j = h ? hCc(d, q, c, k) : iCc(d, q, k);
+                    q10 = e.d.i;
+                    j = h ? hCc(d, q10, c, k) : iCc(d, q10, k);
                     j < i10 && (EDb(n10.c, e), true);
                   }
                 }
@@ -50604,7 +50604,7 @@ var require_elk_bundled = __commonJS({
               Iec(a, d);
             }
             function rWb(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v;
               i10 = new zmb();
               for (f = new Ymb(b.a); f.a < f.c.c.length; ) {
                 e = JD(Wmb(f), 9);
@@ -50620,7 +50620,7 @@ var require_elk_bundled = __commonJS({
                     }
                   }
                   j = null;
-                  for (o10 = iYb(g10.e), p = 0, q = o10.length; p < q; ++p) {
+                  for (o10 = iYb(g10.e), p = 0, q10 = o10.length; p < q10; ++p) {
                     n10 = o10[p];
                     if (!dYb(n10.c.i, c)) {
                       r = mWb(a, b, c, n10, n10.d, (sAc(), pAc), j);
@@ -50673,7 +50673,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function qrd(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               l = new Vid(JD(Mxd(a, (Kjd(), Ejd)), 8));
               l.a = $wnd.Math.max(l.a - c.b - c.c, 0);
               l.b = $wnd.Math.max(l.b - c.d - c.a, 0);
@@ -50688,15 +50688,15 @@ var require_elk_bundled = __commonJS({
               m = JD(Mxd(a, zjd), 327);
               switch (m.g) {
                 case 3:
-                  q = nrd(h, b, l.a, l.b, (j = d, _Db(e), e, j));
+                  q10 = nrd(h, b, l.a, l.b, (j = d, _Db(e), e, j));
                   break;
                 case 1:
-                  q = mrd(h, b, l.a, l.b, (k = d, _Db(e), e, k));
+                  q10 = mrd(h, b, l.a, l.b, (k = d, _Db(e), e, k));
                   break;
                 default:
-                  q = ord(h, b, l.a, l.b, (i10 = d, _Db(e), e, i10));
+                  q10 = ord(h, b, l.a, l.b, (i10 = d, _Db(e), e, i10));
               }
-              f = new Ird(q);
+              f = new Ird(q10);
               p = rrd(f, b, c, l.a, l.b, d, (_Db(e), e));
               Nsd(a, p.a, p.b, false, true);
             }
@@ -50803,7 +50803,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function ord(a, b, c, d, e) {
-              var f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               h = SC(aE, tye, 30, a.c.length, 15, 1);
               m = new Kvb(new Zrd());
               Dvb(m, a);
@@ -50828,8 +50828,8 @@ var require_elk_bundled = __commonJS({
                   j = 0;
                   lnb(h, h.length, 0);
                 } else {
-                  q = m.b.c.length == 0 ? null : rmb(m.b, 0);
-                  q != null && Jvb(m, 0);
+                  q10 = m.b.c.length == 0 ? null : rmb(m.b, 0);
+                  q10 != null && Jvb(m, 0);
                   j > 0 && (h[j] = h[j - 1]);
                   h[j] += Drd(g10) * Crd(g10);
                   ++j;
@@ -50930,10 +50930,10 @@ var require_elk_bundled = __commonJS({
               }
             }
             function DQb(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               j = AQb(b);
-              q = JD(CNb(b, (pyc(), bwc)), 302);
-              Vfb(j, new KQb(q));
+              q10 = JD(CNb(b, (pyc(), bwc)), 302);
+              Vfb(j, new KQb(q10));
               r = JD(CNb(b, Vvc), 303);
               Vfb(j, new MQb(r));
               p = 0;
@@ -50974,7 +50974,7 @@ var require_elk_bundled = __commonJS({
               c.Ug();
             }
             function fYb(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               f = 0;
               g10 = 0;
               for (j = new Ymb(a.a); j.a < j.c.c.length; ) {
@@ -51005,14 +51005,14 @@ var require_elk_bundled = __commonJS({
                     }
                     d + l == 0 ? o10 = 0.5 : o10 = l / (d + l);
                 }
-                q = a.c;
+                q10 = a.c;
                 k = h.o.a;
-                r = (q.a - k) * o10;
+                r = (q10.a - k) * o10;
                 o10 > 0.5 ? r -= g10 * 2 * (o10 - 0.5) : o10 < 0.5 && (r += f * 2 * (0.5 - o10));
                 e = h.d.b;
                 r < e && (r = e);
                 p = h.d.c;
-                r > q.a - p - k && (r = q.a - p - k);
+                r > q10.a - p - k && (r = q10.a - p - k);
                 h.n.a = b + r;
               }
             }
@@ -51061,7 +51061,7 @@ var require_elk_bundled = __commonJS({
               return c;
             }
             function mmc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               m = new zmb();
               e = new zmb();
               p = null;
@@ -51078,17 +51078,17 @@ var require_elk_bundled = __commonJS({
               t = lmc(a);
               for (k = 0; k < e.c.length; ++k) {
                 n10 = null;
-                q = zmc(($Db(0, e.c.length), JD(e.c[0], 657)));
+                q10 = zmc(($Db(0, e.c.length), JD(e.c[0], 657)));
                 c = null;
                 d = mye;
                 for (l = 1; l < a.b.c.length; ++l) {
-                  r = q ? $wnd.Math.abs(q.b - l) : $wnd.Math.abs(l - n10.b) + 1;
+                  r = q10 ? $wnd.Math.abs(q10.b - l) : $wnd.Math.abs(l - n10.b) + 1;
                   o10 = n10 ? $wnd.Math.abs(l - n10.b) : r + 1;
                   if (o10 < r) {
                     j = n10;
                     i10 = o10;
                   } else {
-                    j = q;
+                    j = q10;
                     i10 = r;
                   }
                   s = (u = gfb(MD(CNb(a, (pyc(), jyc)))), t[l] + $wnd.Math.pow(i10, u));
@@ -51097,9 +51097,9 @@ var require_elk_bundled = __commonJS({
                     c = j;
                     c.c = l;
                   }
-                  if (!!q && l == q.b) {
-                    n10 = q;
-                    q = umc(q);
+                  if (!!q10 && l == q10.b) {
+                    n10 = q10;
+                    q10 = umc(q10);
                   }
                 }
                 if (c) {
@@ -51815,7 +51815,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function Xmc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               k = gfb(MD(CNb(a, (pyc(), Nxc))));
               d = gfb(MD(CNb(a, eyc)));
               m = new mtd();
@@ -51824,17 +51824,17 @@ var require_elk_bundled = __commonJS({
               r = j.d;
               p = j.c.i;
               s = j.d.i;
-              q = I$b(p.c);
+              q10 = I$b(p.c);
               t = I$b(s.c);
               e = new zmb();
-              for (l = q; l <= t; l++) {
+              for (l = q10; l <= t; l++) {
                 h = new _Yb(a);
                 ZYb(h, (jZb(), eZb));
                 FNb(h, (_rc(), zrc), j);
                 FNb(h, sxc, (tod(), ood));
                 FNb(h, Pxc, m);
                 n10 = JD(rmb(a.b, l), 26);
-                l == q ? XYb(h, n10.a.c.length - c, n10) : YYb(h, n10);
+                l == q10 ? XYb(h, n10.a.c.length - c, n10) : YYb(h, n10);
                 u = gfb(MD(CNb(j, swc)));
                 if (u < 0) {
                   u = 0;
@@ -51863,7 +51863,7 @@ var require_elk_bundled = __commonJS({
               return e;
             }
             function LNc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               p = b.b.c.length;
               if (p < 3) {
                 return;
@@ -51889,9 +51889,9 @@ var require_elk_bundled = __commonJS({
                       s = JD(rmb(c.a, h), 9);
                       if (!KNc(a, s, d + 1, d)) {
                         for (r = JD(rmb(a.c.b, s.p), 16).Jc(); r.Ob(); ) {
-                          q = JD(r.Pb(), 49);
-                          e = a.c.e[JD(q.a, 9).p];
-                          (e < f || e > g10) && ssb(a.b, JD(q.b, 17));
+                          q10 = JD(r.Pb(), 49);
+                          e = a.c.e[JD(q10.a, 9).p];
+                          (e < f || e > g10) && ssb(a.b, JD(q10.b, 17));
                         }
                       }
                       ++h;
@@ -51902,7 +51902,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function F8b(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               i10 = JD(WYb(a, (ipd(), hpd)).Jc().Pb(), 12).e;
               n10 = JD(WYb(a, Pod).Jc().Pb(), 12).g;
               h = i10.c.length;
@@ -51926,16 +51926,16 @@ var require_elk_bundled = __commonJS({
                   l = JD(Wmb(m), 70);
                   EDb(r.c, l);
                 }
-                q = JD(CNb(p, (pyc(), Ewc)), 79);
+                q10 = JD(CNb(p, (pyc(), Ewc)), 79);
                 g10 = JD(CNb(e, Ewc), 79);
                 if (g10) {
-                  if (!q) {
-                    q = new fjd();
-                    FNb(p, Ewc, q);
+                  if (!q10) {
+                    q10 = new fjd();
+                    FNb(p, Ewc, q10);
                   }
                   for (k = lub(g10, 0); k.b != k.d.c; ) {
                     j = JD(Aub(k), 8);
-                    fub(q, new Vid(j));
+                    fub(q10, new Vid(j));
                   }
                 }
               }
@@ -52225,7 +52225,7 @@ var require_elk_bundled = __commonJS({
               this.a > 0 ? TFc(this, this.f / this.a) : LFc(b.g, b.d[0]).a != null && LFc(c.g, c.d[0]).a != null ? TFc(this, (gfb(LFc(b.g, b.d[0]).a) + gfb(LFc(c.g, c.d[0]).a)) / 2) : LFc(b.g, b.d[0]).a != null ? TFc(this, LFc(b.g, b.d[0]).a) : LFc(c.g, c.d[0]).a != null && TFc(this, LFc(c.g, c.d[0]).a);
             }
             function I5c(a, b, c, d, e, f, g10, h) {
-              var i10, j, k, l, m, n10, o10, p, q, r;
+              var i10, j, k, l, m, n10, o10, p, q10, r;
               o10 = false;
               j = b7c(c.q, b.f + b.b - c.q.f);
               n10 = d.f > b.b && h;
@@ -52236,8 +52236,8 @@ var require_elk_bundled = __commonJS({
               }
               if (n10) {
                 m = 0;
-                for (q = new Ymb(b.d); q.a < q.c.c.length; ) {
-                  p = JD(Wmb(q), 320);
+                for (q10 = new Ymb(b.d); q10.a < q10.c.c.length; ) {
+                  p = JD(Wmb(q10), 320);
                   m += b7c(p, d.f) + g10;
                 }
                 r = e - m;
@@ -52360,7 +52360,7 @@ var require_elk_bundled = __commonJS({
               c.Ug();
             }
             function uhe(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               g10 = c.Jk();
               if (RD(g10, 104) && (JD(g10, 20).Bb & rye) != 0) {
                 m = JD(c.kd(), 52);
@@ -52372,12 +52372,12 @@ var require_elk_bundled = __commonJS({
                   if (Svd(a.e)) {
                     d = zfe((gle(), ele), a.e.Ah(), g10);
                     if (d != qZd(a.e.Ah(), a.c)) {
-                      q = kle(a.e.Ah(), g10);
+                      q10 = kle(a.e.Ah(), g10);
                       h = 0;
                       f = JD(a.g, 123);
                       for (i10 = 0; i10 < b; ++i10) {
                         e = f[i10];
-                        q.$l(e.Jk()) && ++h;
+                        q10.$l(e.Jk()) && ++h;
                       }
                       l = new gme(a.e, 9, d, m, p, h, false);
                       l.lj(new K4d(a.e, 9, a.c, c, k, b, false));
@@ -52451,7 +52451,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function hYb(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               m = new Vid(a.o);
               r = b.a / m.a;
               h = b.b / m.b;
@@ -52482,14 +52482,14 @@ var require_elk_bundled = __commonJS({
                 i10 = JD(Wmb(j), 70);
                 k = i10.n.a + i10.o.a / 2;
                 l = i10.n.b + i10.o.b / 2;
-                q = k / m.a;
+                q10 = k / m.a;
                 g10 = l / m.b;
-                if (q + g10 >= 1) {
-                  if (q - g10 > 0 && l >= 0) {
+                if (q10 + g10 >= 1) {
+                  if (q10 - g10 > 0 && l >= 0) {
                     i10.n.a += p;
                     i10.n.b += f * g10;
-                  } else if (q - g10 < 0 && k >= 0) {
-                    i10.n.a += p * q;
+                  } else if (q10 - g10 < 0 && k >= 0) {
+                    i10.n.a += p * q10;
                     i10.n.b += f;
                   }
                 }
@@ -52499,16 +52499,16 @@ var require_elk_bundled = __commonJS({
               FNb(a, (pyc(), cxc), (Rpd(), d = JD(Keb(c3), 10), new _rb(d, JD(BDb(d, d.length), 10), 0)));
             }
             function qEc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               c.Tg("Network simplex layering", 1);
               a.b = b;
               r = JD(CNb(b, (pyc(), Zxc)), 15).a * 4;
-              q = a.b.a;
-              if (q.c.length < 1) {
+              q10 = a.b.a;
+              if (q10.c.length < 1) {
                 c.Ug();
                 return;
               }
-              f = mEc(a, q);
+              f = mEc(a, q10);
               p = null;
               for (e = lub(f, 0); e.b != e.d.c; ) {
                 d = JD(Aub(e), 16);
@@ -52533,7 +52533,7 @@ var require_elk_bundled = __commonJS({
                   }
                 }
               }
-              q.c.length = 0;
+              q10.c.length = 0;
               a.a = null;
               a.b = null;
               a.c = null;
@@ -52674,7 +52674,7 @@ var require_elk_bundled = __commonJS({
               uA(a);
             }
             function ePc(a, b, c, d, e) {
-              var f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               t = Ux(a);
               i10 = new zmb();
               f = a.c.length;
@@ -52718,14 +52718,14 @@ var require_elk_bundled = __commonJS({
                   i10.c.length = 0;
                 }
               }
-              q = a.c.length + 1;
+              q10 = a.c.length + 1;
               for (m = new Ymb(a); m.a < m.c.c.length; ) {
                 l = JD(Wmb(m), 117);
-                l.g < f && (l.g = l.g + q);
+                l.g < f && (l.g = l.g + q10);
               }
             }
             function OHc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               j = dFe;
               i10 = cFe;
               r = new zmb();
@@ -52734,16 +52734,16 @@ var require_elk_bundled = __commonJS({
                 e = new zmb();
                 for (h = new Yr(Dr(PYb(n10).a.Jc(), new Dl())); Wr(h); ) {
                   f = JD(Xr(h), 17);
-                  q = f.d.i;
+                  q10 = f.d.i;
                   p = f.c.i;
-                  q.c.p == c && (EDb(e.c, q), true);
+                  q10.c.p == c && (EDb(e.c, q10), true);
                   p.c.p == c && (EDb(e.c, p), true);
                 }
                 for (g10 = new Yr(Dr(SYb(n10).a.Jc(), new Dl())); Wr(g10); ) {
                   f = JD(Xr(g10), 17);
-                  q = f.d.i;
+                  q10 = f.d.i;
                   p = f.c.i;
-                  q.c.p == c && (EDb(e.c, q), true);
+                  q10.c.p == c && (EDb(e.c, q10), true);
                   p.c.p == c && (EDb(e.c, p), true);
                 }
                 if (e.c.length == 0) {
@@ -52802,7 +52802,7 @@ var require_elk_bundled = __commonJS({
               a.e.wg();
             }
             function qWb(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               if (!deb(LD(CNb(c, (pyc(), Awc))))) {
                 return;
               }
@@ -52822,12 +52822,12 @@ var require_elk_bundled = __commonJS({
                       vjb(a.b, o10, n10);
                       nmb(b.a, n10);
                     }
-                    q = i10.d;
-                    p = JD(sjb(a.b, q), 9);
+                    q10 = i10.d;
+                    p = JD(sjb(a.b, q10), 9);
                     if (!p) {
-                      p = XXb(q, (tod(), rod), q.j, 1, null, null, q.o, JD(CNb(b, ewc), 87), b);
-                      FNb(p, (_rc(), zrc), q);
-                      vjb(a.b, q, p);
+                      p = XXb(q10, (tod(), rod), q10.j, 1, null, null, q10.o, JD(CNb(b, ewc), 87), b);
+                      FNb(p, (_rc(), zrc), q10);
+                      vjb(a.b, q10, p);
                       nmb(b.a, p);
                     }
                     d = iWb(i10);
@@ -52840,7 +52840,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function pWb(a, b, c, d, e) {
-              var f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               f = new zmb();
               for (j = new Ymb(d); j.a < j.c.c.length; ) {
                 h = JD(Wmb(j), 447);
@@ -52848,10 +52848,10 @@ var require_elk_bundled = __commonJS({
                 if (h.f == (sAc(), qAc)) {
                   for (o10 = new Ymb(h.e); o10.a < o10.c.c.length; ) {
                     n10 = JD(Wmb(o10), 17);
-                    q = n10.d.i;
-                    if (OYb(q) == b) {
+                    q10 = n10.d.i;
+                    if (OYb(q10) == b) {
                       gWb(a, b, h, n10, h.b, n10.d);
-                    } else if (!c || dYb(q, c)) {
+                    } else if (!c || dYb(q10, c)) {
                       hWb(a, b, h, d, n10);
                     } else {
                       m = mWb(a, b, c, n10, h.b, qAc, g10);
@@ -52882,7 +52882,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function zSc(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               e = JD(CNb(a, (bXc(), UWc)), 19);
               j = iwe;
               k = iwe;
@@ -52907,8 +52907,8 @@ var require_elk_bundled = __commonJS({
                   Fxd(f, r);
                 }
               }
-              for (q = lub(a.a, 0); q.b != q.d.c; ) {
-                p = JD(Aub(q), 65);
+              for (q10 = lub(a.a, 0); q10.b != q10.d.c; ) {
+                p = JD(Aub(q10), 65);
                 d = JD(CNb(p, UWc), 74);
                 if (d) {
                   b = p.a;
@@ -53207,7 +53207,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function G7c(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s;
               j = mye;
               k = mye;
               h = nye;
@@ -53228,14 +53228,14 @@ var require_elk_bundled = __commonJS({
                 c = JD(aNd(d), 74);
                 g10 = JHd(c);
                 o10 = KHd(c);
-                q = LHd(c);
+                q10 = LHd(c);
                 p = new Uid(o10.i + o10.g / 2, o10.j + o10.f / 2);
-                f = new Uid(q.i + q.g / 2, q.j + q.f / 2);
+                f = new Uid(q10.i + q10.g / 2, q10.j + q10.f / 2);
                 r = Rid(new Uid(f.a, f.b), p);
                 aid(r, o10.g, o10.f);
                 Cid(p, r);
                 s = Rid(new Uid(p.a, p.b), f);
-                aid(s, q.g, q.f);
+                aid(s, q10.g, q10.f);
                 Cid(f, s);
                 Rzd(g10, p.a, p.b);
                 Kzd(g10, f.a, f.b);
@@ -53275,8 +53275,8 @@ var require_elk_bundled = __commonJS({
               return new Ztd(Qfb(e), (ceb(), i10 ? true : false));
             }
             function _gc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w;
-              if (m = a.c[b], n10 = a.c[c], (o10 = JD(CNb(m, (_rc(), mrc)), 16), !!o10 && o10.gc() != 0 && o10.Gc(n10)) || (p = m.k != (jZb(), eZb) && n10.k != eZb, q = JD(CNb(m, lrc), 9), r = JD(CNb(n10, lrc), 9), s = q != r, t = !!q && q != m || !!r && r != n10, u = ahc(m, (ipd(), Qod)), v = ahc(n10, fpd), t = t | (ahc(m, fpd) || ahc(n10, Qod)), w = t && s || u || v, p && w) || m.k == (jZb(), hZb) && n10.k == gZb || n10.k == (jZb(), hZb) && m.k == gZb) {
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w;
+              if (m = a.c[b], n10 = a.c[c], (o10 = JD(CNb(m, (_rc(), mrc)), 16), !!o10 && o10.gc() != 0 && o10.Gc(n10)) || (p = m.k != (jZb(), eZb) && n10.k != eZb, q10 = JD(CNb(m, lrc), 9), r = JD(CNb(n10, lrc), 9), s = q10 != r, t = !!q10 && q10 != m || !!r && r != n10, u = ahc(m, (ipd(), Qod)), v = ahc(n10, fpd), t = t | (ahc(m, fpd) || ahc(n10, Qod)), w = t && s || u || v, p && w) || m.k == (jZb(), hZb) && n10.k == gZb || n10.k == (jZb(), hZb) && m.k == gZb) {
                 return false;
               }
               k = a.c[b];
@@ -53319,12 +53319,12 @@ var require_elk_bundled = __commonJS({
               FNb(b, Jrc, ted(a.a, b));
             }
             function DQc(a, b, c, d, e) {
-              var f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               l = new nsb();
               g10 = new zmb();
               BQc(a, c, a.d.zg(), g10, l);
               BQc(a, d, a.d.Ag(), g10, l);
-              a.b = 0.2 * (p = CQc(jCb(new xCb(null, new lwb(g10, 16)), new IQc())), q = CQc(jCb(new xCb(null, new lwb(g10, 16)), new KQc())), $wnd.Math.min(p, q));
+              a.b = 0.2 * (p = CQc(jCb(new xCb(null, new lwb(g10, 16)), new IQc())), q10 = CQc(jCb(new xCb(null, new lwb(g10, 16)), new KQc())), $wnd.Math.min(p, q10));
               f = 0;
               for (h = 0; h < g10.c.length - 1; h++) {
                 i10 = ($Db(h, g10.c.length), JD(g10.c[h], 117));
@@ -53349,7 +53349,7 @@ var require_elk_bundled = __commonJS({
               return n10 + 1;
             }
             function dZc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               l = JD(yr((g10 = lub(new QTc(b).a.d, 0), new TTc(g10))), 41);
               o10 = l ? JD(CNb(l, (bXc(), OWc)), 41) : null;
               e = 1;
@@ -53379,8 +53379,8 @@ var require_elk_bundled = __commonJS({
                     r = n10 / k;
                     j = b;
                     while (j != d) {
-                      q = gfb(MD(CNb(j, WWc))) + n10;
-                      FNb(j, WWc, q);
+                      q10 = gfb(MD(CNb(j, WWc))) + n10;
+                      FNb(j, WWc, q10);
                       p = gfb(MD(CNb(j, TWc))) + n10;
                       FNb(j, TWc, p);
                       n10 -= r;
@@ -53617,7 +53617,7 @@ var require_elk_bundled = __commonJS({
               this.s = vHc(this.k);
             }
             function vGc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               b.Tg("Interactive crossing minimization", 1);
               g10 = 0;
               for (f = new Ymb(a.b); f.a < f.c.c.length; ) {
@@ -53625,8 +53625,8 @@ var require_elk_bundled = __commonJS({
                 d.p = g10++;
               }
               m = UWb(a);
-              q = new tIc(m.length);
-              jKc(new Knb(WC(OC(RX, 1), owe, 223, 0, [q])), m);
+              q10 = new tIc(m.length);
+              jKc(new Knb(WC(OC(RX, 1), owe, 223, 0, [q10])), m);
               p = 0;
               g10 = 0;
               for (e = new Ymb(a.b); e.a < e.c.c.length; ) {
@@ -53655,7 +53655,7 @@ var require_elk_bundled = __commonJS({
                 }
                 Wnb();
                 xmb(d.a, new AGc(r));
-                SEc(q, m, g10, true);
+                SEc(q10, m, g10, true);
                 ++g10;
               }
               b.Ug();
@@ -53867,7 +53867,7 @@ var require_elk_bundled = __commonJS({
               Fhb(c, 0, a.b, 0, k);
             }
             function RKc(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               for (d = new Ymb(a.e.b); d.a < d.c.c.length; ) {
                 c = JD(Wmb(d), 26);
                 for (f = new Ymb(c.a); f.a < f.c.c.length; ) {
@@ -53890,8 +53890,8 @@ var require_elk_bundled = __commonJS({
                     }
                     for (h = new Ymb(e.b); h.a < h.c.c.length; ) {
                       g10 = JD(Wmb(h), 70);
-                      q = JD(CNb(e, Wwc), 24);
-                      q.Gc((Xnd(), Und)) ? g10.n.b += r : q.Gc(Vnd) && (g10.n.b += r / 2);
+                      q10 = JD(CNb(e, Wwc), 24);
+                      q10.Gc((Xnd(), Und)) ? g10.n.b += r : q10.Gc(Vnd) && (g10.n.b += r / 2);
                     }
                     (m == kzc || m == jzc) && TYb(e, (ipd(), fpd)).Ic(new jMc(r));
                   }
@@ -54538,7 +54538,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function klc(a, b, c, d, e) {
-              var f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               s = JD(eCb(uCb(hCb(new xCb(null, new lwb(b.d, 16)), new olc(c)), new qlc(c)), PAb(new fBb(), new dBb(), new lBb(), WC(OC(HL, 1), gxe, 132, 0, [(TAb(), RAb)]))), 16);
               l = iwe;
               k = oxe;
@@ -54557,14 +54557,14 @@ var require_elk_bundled = __commonJS({
                 t = SC(cE, Nxe, 30, e.length, 15, 1);
                 mnb(t, t.length);
                 for (r = s.Jc(); r.Ob(); ) {
-                  q = JD(r.Pb(), 108);
-                  f = JD(sjb(a.b, q), 172);
+                  q10 = JD(r.Pb(), 108);
+                  f = JD(sjb(a.b, q10), 172);
                   j = 0;
                   for (p = l; p <= k; p++) {
                     f[p] && (j = $wnd.Math.max(j, d[p]));
                   }
-                  if (q.i) {
-                    n10 = q.i.c;
+                  if (q10.i) {
+                    n10 = q10.i.c;
                     u = new vsb();
                     for (m = 0; m < e.length; m++) {
                       e[n10][m] && ssb(u, Qfb(t[m]));
@@ -54573,11 +54573,11 @@ var require_elk_bundled = __commonJS({
                       ++j;
                     }
                   }
-                  ihc(q, c, j);
+                  ihc(q10, c, j);
                   for (o10 = l; o10 <= k; o10++) {
                     f[o10] && (d[o10] = j + 1);
                   }
-                  !!q.i && (t[q.i.c] = j);
+                  !!q10.i && (t[q10.i.c] = j);
                 }
               }
             }
@@ -54705,7 +54705,7 @@ var require_elk_bundled = __commonJS({
               b == (Qmd(), Omd) ? Oxd(f, lwc, Omd) : Oxd(f, lwc, null);
             }
             function xKc(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s;
               n10 = b.c.length;
               m = 0;
               for (l = new Ymb(a.b); l.a < l.c.c.length; ) {
@@ -54714,10 +54714,10 @@ var require_elk_bundled = __commonJS({
                 if (r.c.length == 0) {
                   continue;
                 }
-                q = new Ymb(r);
+                q10 = new Ymb(r);
                 j = 0;
                 s = null;
-                e = JD(Wmb(q), 9);
+                e = JD(Wmb(q10), 9);
                 f = null;
                 while (e) {
                   f = JD(rmb(b, e.p), 264);
@@ -54750,8 +54750,8 @@ var require_elk_bundled = __commonJS({
                     }
                   }
                   o10 = null;
-                  if (q.a < q.c.c.length) {
-                    o10 = JD(Wmb(q), 9);
+                  if (q10.a < q10.c.c.length) {
+                    o10 = JD(Wmb(q10), 9);
                     p = JD(rmb(b, o10.p), 264);
                     JD(rmb(c, e.p), 16).Ec(p);
                     wmb(d, o10.p, Qfb(JD(rmb(d, o10.p), 15).a + 1));
@@ -54765,7 +54765,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function T1b(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D;
               h = JD(sjb(b.c, a), 460);
               s = b.a.c;
               i10 = b.a.c + b.a.b;
@@ -54775,7 +54775,7 @@ var require_elk_bundled = __commonJS({
               p = new Uid(s, C);
               t = new Uid(i10, D);
               e = (s + i10) / 2;
-              q = new Uid(e, C);
+              q10 = new Uid(e, C);
               u = new Uid(e, D);
               f = U1b(a, C, D);
               w = CZb(b.B);
@@ -54813,11 +54813,11 @@ var require_elk_bundled = __commonJS({
                 }
               }
               n10 && o10 && fub(a.a, A);
-              n10 || ajd(a.a, WC(OC(F2, 1), Lwe, 8, 0, [p, q]));
+              n10 || ajd(a.a, WC(OC(F2, 1), Lwe, 8, 0, [p, q10]));
               o10 || ajd(a.a, WC(OC(F2, 1), Lwe, 8, 0, [u, t]));
             }
             function z0c(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B;
               if (c.c.length != 0) {
                 o10 = new zmb();
                 for (n10 = new Ymb(c); n10.a < n10.c.c.length; ) {
@@ -54844,11 +54844,11 @@ var require_elk_bundled = __commonJS({
                   for (k = l.a.ec().Jc(); k.Ob(); ) {
                     j = JD(k.Pb(), 19);
                     p = a.f;
-                    q = p.i + p.g / 2;
+                    q10 = p.i + p.g / 2;
                     r = p.j + p.f / 2;
                     s = j.i + j.g / 2;
                     t = j.j + j.f / 2;
-                    u = s - q;
+                    u = s - q10;
                     v = t - r;
                     w = $wnd.Math.sqrt(u * u + v * v);
                     A = u / w;
@@ -54940,7 +54940,7 @@ var require_elk_bundled = __commonJS({
               return null;
             }
             function Tke(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w;
               for (l = new Ytb(new Rtb(a)); l.c != l.d.a.d; ) {
                 k = Xtb(l);
                 h = JD(k.d, 57);
@@ -54959,10 +54959,10 @@ var require_elk_bundled = __commonJS({
                         if (c) {
                           n10 = JD(h.Jh(j), 164);
                           d = c.gc();
-                          for (q = 0, o10 = n10.gc(); q < o10; ++q) {
-                            m = n10.Rl(q);
+                          for (q10 = 0, o10 = n10.gc(); q10 < o10; ++q10) {
+                            m = n10.Rl(q10);
                             if (RD(m, 104)) {
-                              t = n10.Sl(q);
+                              t = n10.Sl(q10);
                               e = ytb(a, t);
                               if (e == null && t != null) {
                                 s = JD(m, 20);
@@ -54981,7 +54981,7 @@ var require_elk_bundled = __commonJS({
                                 }
                               }
                             } else {
-                              c.Ml(n10.Rl(q), n10.Sl(q));
+                              c.Ml(n10.Rl(q10), n10.Sl(q10));
                             }
                           }
                         }
@@ -55054,13 +55054,13 @@ var require_elk_bundled = __commonJS({
               c.Ug();
             }
             function hid(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               i10 = a;
               k = Rid(new Uid(b.a, b.b), a);
               j = c;
               l = Rid(new Uid(d.a, d.b), c);
               m = i10.a;
-              q = i10.b;
+              q10 = i10.b;
               o10 = j.a;
               s = j.b;
               n10 = k.a;
@@ -55073,8 +55073,8 @@ var require_elk_bundled = __commonJS({
               if ($wnd.Math.abs(0 - e) <= gFe || 0 == e || isNaN(0) && isNaN(e)) {
                 return false;
               }
-              g10 = 1 / e * ((m - o10) * r - (q - s) * n10);
-              h = 1 / e * -(-(m - o10) * t + (q - s) * p);
+              g10 = 1 / e * ((m - o10) * r - (q10 - s) * n10);
+              h = 1 / e * -(-(m - o10) * t + (q10 - s) * p);
               f = (null, Wy(gFe), ($wnd.Math.abs(0 - g10) <= gFe || 0 == g10 || isNaN(0) && isNaN(g10) ? 0 : 0 < g10 ? -1 : 0 > g10 ? 1 : geb(isNaN(0), isNaN(g10))) < 0 && (null, Wy(gFe), ($wnd.Math.abs(g10 - 1) <= gFe || g10 == 1 || isNaN(g10) && isNaN(1) ? 0 : g10 < 1 ? -1 : g10 > 1 ? 1 : geb(isNaN(g10), isNaN(1))) < 0) && (null, Wy(gFe), ($wnd.Math.abs(0 - h) <= gFe || 0 == h || isNaN(0) && isNaN(h) ? 0 : 0 < h ? -1 : 0 > h ? 1 : geb(isNaN(0), isNaN(h))) < 0) && (null, Wy(gFe), ($wnd.Math.abs(h - 1) <= gFe || h == 1 || isNaN(h) && isNaN(1) ? 0 : h < 1 ? -1 : h > 1 ? 1 : geb(isNaN(h), isNaN(1))) < 0));
               return f;
             }
@@ -55321,7 +55321,7 @@ var require_elk_bundled = __commonJS({
               return a;
             }
             function Hmc(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               l = a.b;
               k = new fkb(l, 0);
               ekb(k, new J$b(a));
@@ -55330,14 +55330,14 @@ var require_elk_bundled = __commonJS({
               while (k.b < k.d.gc()) {
                 j = (ZDb(k.b < k.d.gc()), JD(k.d.Xb(k.c = k.b++), 26));
                 p = ($Db(g10, l.c.length), JD(l.c[g10], 26));
-                q = Uu(j.a);
-                r = q.c.length;
-                for (o10 = new Ymb(q); o10.a < o10.c.c.length; ) {
+                q10 = Uu(j.a);
+                r = q10.c.length;
+                for (o10 = new Ymb(q10); o10.a < o10.c.c.length; ) {
                   m = JD(Wmb(o10), 9);
                   YYb(m, p);
                 }
                 if (s) {
-                  for (n10 = $u(q).Jc(); n10.Ob(); ) {
+                  for (n10 = $u(q10).Jc(); n10.Ob(); ) {
                     m = JD(n10.Pb(), 9);
                     for (f = new Ymb(Uu(PYb(m))); f.a < f.c.c.length; ) {
                       e = JD(Wmb(f), 17);
@@ -55354,8 +55354,8 @@ var require_elk_bundled = __commonJS({
                   }
                   s = false;
                 } else {
-                  if (q.c.length != 0) {
-                    b = ($Db(0, q.c.length), JD(q.c[0], 9));
+                  if (q10.c.length != 0) {
+                    b = ($Db(0, q10.c.length), JD(q10.c[0], 9));
                     if (b.k == (jZb(), bZb)) {
                       s = true;
                       g10 = -1;
@@ -55511,7 +55511,7 @@ var require_elk_bundled = __commonJS({
               c.Ug();
             }
             function wHb(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               l = new tJb(a);
               SKb(l, !(b == (kmd(), jmd) || b == fmd));
               k = l.a;
@@ -55531,8 +55531,8 @@ var require_elk_bundled = __commonJS({
                 j = fIb(k, n10, NHb);
                 !!j && (m.b = $wnd.Math.max(m.b, j.gf()));
               }
-              for (o10 = WC(OC(hN, 1), gxe, 240, 0, [NHb, OHb, PHb]), q = 0, s = o10.length; q < s; ++q) {
-                n10 = o10[q];
+              for (o10 = WC(OC(hN, 1), gxe, 240, 0, [NHb, OHb, PHb]), q10 = 0, s = o10.length; q10 < s; ++q10) {
+                n10 = o10[q10];
                 j = fIb(k, n10, PHb);
                 !!j && (m.c = $wnd.Math.max(m.c, j.gf()));
               }
@@ -55657,7 +55657,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function eLb(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               k = JD(JD(Qc(a.r, b), 24), 85);
               if (k.gc() <= 2 || b == (ipd(), Pod) || b == (ipd(), hpd)) {
                 iLb(a, b);
@@ -55667,7 +55667,7 @@ var require_elk_bundled = __commonJS({
               c = b == (ipd(), Qod) ? (dMb(), cMb) : (dMb(), _Lb);
               r = b == Qod ? (mJb(), jJb) : (mJb(), lJb);
               d = NLb(SLb(c), a.s);
-              q = b == Qod ? mye : nye;
+              q10 = b == Qod ? mye : nye;
               for (j = k.Jc(); j.Ob(); ) {
                 h = JD(j.Pb(), 116);
                 if (!h.c || h.c.d.c.length <= 0) {
@@ -55689,10 +55689,10 @@ var require_elk_bundled = __commonJS({
                 l.f = r;
                 IIb(l, (vIb(), uIb));
                 nmb(d.d, new jMb(m, LLb(d, m)));
-                q = b == Qod ? $wnd.Math.min(q, n10.b) : $wnd.Math.max(q, n10.b + h.b.Kf().b);
+                q10 = b == Qod ? $wnd.Math.min(q10, n10.b) : $wnd.Math.max(q10, n10.b + h.b.Kf().b);
               }
-              q += b == Qod ? -a.t : a.t;
-              MLb((d.e = q, d));
+              q10 += b == Qod ? -a.t : a.t;
+              MLb((d.e = q10, d));
               for (i10 = k.Jc(); i10.Ob(); ) {
                 h = JD(i10.Pb(), 116);
                 if (!h.c || h.c.d.c.length <= 0) {
@@ -55704,7 +55704,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function tWb(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               e = new zmb();
               for (p = new Ymb(b.a); p.a < p.c.c.length; ) {
                 o10 = JD(Wmb(p), 9);
@@ -55717,25 +55717,25 @@ var require_elk_bundled = __commonJS({
                     s = JD(CNb(o10, (pyc(), sxc)), 103);
                     m = JD(CNb(o10, vxc), 185).Gc((Hod(), Dod));
                     for (r = new Ymb(o10.j); r.a < r.c.c.length; ) {
-                      q = JD(Wmb(r), 12);
-                      f = JD(sjb(a.b, q), 9);
+                      q10 = JD(Wmb(r), 12);
+                      f = JD(sjb(a.b, q10), 9);
                       if (!f) {
-                        f = XXb(q, s, q.j, -(q.e.c.length - q.g.c.length), null, new Sid(), q.o, JD(CNb(n10, ewc), 87), n10);
-                        FNb(f, zrc, q);
-                        vjb(a.b, q, f);
+                        f = XXb(q10, s, q10.j, -(q10.e.c.length - q10.g.c.length), null, new Sid(), q10.o, JD(CNb(n10, ewc), 87), n10);
+                        FNb(f, zrc, q10);
+                        vjb(a.b, q10, f);
                         nmb(n10.a, f);
                       }
                       g10 = JD(rmb(f.j, 0), 12);
-                      for (k = new Ymb(q.f); k.a < k.c.c.length; ) {
+                      for (k = new Ymb(q10.f); k.a < k.c.c.length; ) {
                         j = JD(Wmb(k), 70);
                         h = new nYb();
                         h.o.a = j.o.a;
                         h.o.b = j.o.b;
                         nmb(g10.f, h);
                         if (!m) {
-                          t = q.j;
+                          t = q10.j;
                           l = 0;
-                          Jod(JD(CNb(o10, vxc), 24)) && (l = zsd(j.n, j.o, q.o, 0, t));
+                          Jod(JD(CNb(o10, vxc), 24)) && (l = zsd(j.n, j.o, q10.o, 0, t));
                           s == (tod(), rod) || (ipd(), Uod).Gc(t) ? h.o.a = l : h.o.b = l;
                         }
                       }
@@ -55793,7 +55793,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function A2b(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               for (o10 = new Ymb(a); o10.a < o10.c.c.length; ) {
                 n10 = JD(Wmb(o10), 9);
                 B2b(n10.n);
@@ -55801,8 +55801,8 @@ var require_elk_bundled = __commonJS({
                 C2b(n10.f);
                 F2b(n10);
                 H2b(n10);
-                for (q = new Ymb(n10.j); q.a < q.c.c.length; ) {
-                  p = JD(Wmb(q), 12);
+                for (q10 = new Ymb(n10.j); q10.a < q10.c.c.length; ) {
+                  p = JD(Wmb(q10), 12);
                   B2b(p.n);
                   B2b(p.a);
                   B2b(p.o);
@@ -56000,7 +56000,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function wKc(a, b, c, d, e) {
-              var f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w;
+              var f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w;
               w = 0;
               n10 = 0;
               for (l = new Ymb(b.e); l.a < l.c.c.length; ) {
@@ -56019,9 +56019,9 @@ var require_elk_bundled = __commonJS({
                       p = f.d;
                       o10 = p.i;
                       if (b != a.a[o10.p]) {
-                        q = $wnd.Math.max(JD(CNb(o10, sKc), 15).a, JD(CNb(o10, tKc), 15).a);
+                        q10 = $wnd.Math.max(JD(CNb(o10, sKc), 15).a, JD(CNb(o10, tKc), 15).a);
                         v = JD(CNb(f, (pyc(), Dxc)), 15).a;
-                        if (v >= j && v >= q) {
+                        if (v >= j && v >= q10) {
                           m += o10.n.b + p.n.b + p.a.b - u;
                           ++h;
                         }
@@ -56034,9 +56034,9 @@ var require_elk_bundled = __commonJS({
                       p = f.c;
                       o10 = p.i;
                       if (b != a.a[o10.p]) {
-                        q = $wnd.Math.max(JD(CNb(o10, sKc), 15).a, JD(CNb(o10, tKc), 15).a);
+                        q10 = $wnd.Math.max(JD(CNb(o10, sKc), 15).a, JD(CNb(o10, tKc), 15).a);
                         v = JD(CNb(f, (pyc(), Dxc)), 15).a;
-                        if (v >= j && v >= q) {
+                        if (v >= j && v >= q10) {
                           m += o10.n.b + p.n.b + p.a.b - u;
                           ++h;
                         }
@@ -56150,7 +56150,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function EYc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w;
               c.Tg(PFe, 1);
               m = (bXc(), IWc);
               a.a == (dYc(), aYc) && (m = GWc);
@@ -56185,8 +56185,8 @@ var require_elk_bundled = __commonJS({
                   for (t = lub(d, 0); t.b != t.d.c; ) {
                     s = JD(Aub(t), 41);
                     for (r = lub(u.d, 0); r.b != r.d.c; ) {
-                      q = JD(Aub(r), 65);
-                      q.c == s && (iub(n10, q, n10.c.b, n10.c), true);
+                      q10 = JD(Aub(r), 65);
+                      q10.c == s && (iub(n10, q10, n10.c.b, n10.c), true);
                     }
                   }
                   qub(u.d);
@@ -56244,7 +56244,7 @@ var require_elk_bundled = __commonJS({
               return k;
             }
             function o6b(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               b.Tg("Inverted port preprocessing", 1);
               k = a.b;
               j = new fkb(k, 0);
@@ -56275,8 +56275,8 @@ var require_elk_bundled = __commonJS({
                       m6b(a, p, d, t);
                     }
                   }
-                  for (q = VYb(l, qAc, hpd).Jc(); q.Ob(); ) {
-                    p = JD(q.Pb(), 12);
+                  for (q10 = VYb(l, qAc, hpd).Jc(); q10.Ob(); ) {
+                    p = JD(q10.Pb(), 12);
                     i10 = p.g;
                     h = JD(ymb(i10, SC(CP, kBe, 17, i10.c.length, 0, 1)), 324);
                     for (e = h, f = 0, g10 = e.length; f < g10; ++f) {
@@ -56319,9 +56319,9 @@ var require_elk_bundled = __commonJS({
               }
             }
             function m0b(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               p = a.n;
-              q = a.o;
+              q10 = a.o;
               m = a.d;
               l = gfb(MD($Ac(a, (pyc(), Hxc))));
               if (b) {
@@ -56332,9 +56332,9 @@ var require_elk_bundled = __commonJS({
                   k += g10.o.a;
                   n10 = $wnd.Math.max(n10, g10.o.b);
                 }
-                r = p.a - (k - q.a) / 2;
+                r = p.a - (k - q10.a) / 2;
                 f = p.b - m.d + n10;
-                d = q.a / (b.gc() + 1);
+                d = q10.a / (b.gc() + 1);
                 e = d;
                 for (h = b.Jc(); h.Ob(); ) {
                   g10 = JD(h.Pb(), 9);
@@ -56361,9 +56361,9 @@ var require_elk_bundled = __commonJS({
                   k += g10.o.a;
                   n10 = $wnd.Math.max(n10, g10.o.b);
                 }
-                r = p.a - (k - q.a) / 2;
-                f = p.b + q.b + m.a - n10;
-                d = q.a / (c.gc() + 1);
+                r = p.a - (k - q10.a) / 2;
+                f = p.b + q10.b + m.a - n10;
+                d = q10.a / (c.gc() + 1);
                 e = d;
                 for (h = c.Jc(); h.Ob(); ) {
                   g10 = JD(h.Pb(), 9);
@@ -56376,7 +56376,7 @@ var require_elk_bundled = __commonJS({
                   o10 = JD(CNb(g10, (_rc(), Tqc)), 12);
                   if (o10.e.c.length + o10.g.c.length == 1) {
                     o10.n.a = e - o10.a.a;
-                    o10.n.b = q.b;
+                    o10.n.b = q10.b;
                     HZb(o10, a);
                   }
                   e += d;
@@ -56384,12 +56384,12 @@ var require_elk_bundled = __commonJS({
               }
             }
             function yRc(a, b, c, d, e, f, g10) {
-              var h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               m = null;
               d == (QRc(), ORc) ? m = b : d == PRc && (m = c);
               for (p = m.a.ec().Jc(); p.Ob(); ) {
                 o10 = JD(p.Pb(), 12);
-                q = $id(WC(OC(F2, 1), Lwe, 8, 0, [o10.i.n, o10.n, o10.a])).b;
+                q10 = $id(WC(OC(F2, 1), Lwe, 8, 0, [o10.i.n, o10.n, o10.a])).b;
                 t = new vsb();
                 h = new vsb();
                 for (j = new d$b(o10.b); Vmb(j.a) || Vmb(j.b); ) {
@@ -56400,10 +56400,10 @@ var require_elk_bundled = __commonJS({
                   if (smb(f, i10, 0) != -1) {
                     i10.d == o10 ? r = i10.c : r = i10.d;
                     s = $id(WC(OC(F2, 1), Lwe, 8, 0, [r.i.n, r.n, r.a])).b;
-                    if ($wnd.Math.abs(s - q) < 0.2) {
+                    if ($wnd.Math.abs(s - q10) < 0.2) {
                       continue;
                     }
-                    s < q ? b.a._b(r) ? ssb(t, new Ztd(ORc, i10)) : ssb(t, new Ztd(PRc, i10)) : b.a._b(r) ? ssb(h, new Ztd(ORc, i10)) : ssb(h, new Ztd(PRc, i10));
+                    s < q10 ? b.a._b(r) ? ssb(t, new Ztd(ORc, i10)) : ssb(t, new Ztd(PRc, i10)) : b.a._b(r) ? ssb(h, new Ztd(ORc, i10)) : ssb(h, new Ztd(PRc, i10));
                   }
                 }
                 if (t.a.gc() > 1) {
@@ -56476,17 +56476,17 @@ var require_elk_bundled = __commonJS({
               }
             }
             function d_b(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               i10 = new Uid(d.i + d.g / 2, d.j + d.f / 2);
               n10 = S$b(d);
               o10 = JD(Mxd(b, (pyc(), sxc)), 103);
-              q = JD(Mxd(d, xxc), 64);
+              q10 = JD(Mxd(d, xxc), 64);
               if (!FQd(Lxd(d), rxc)) {
-                d.i == 0 && d.j == 0 ? p = 0 : p = wsd(d, q);
+                d.i == 0 && d.j == 0 ? p = 0 : p = wsd(d, q10);
                 Oxd(d, rxc, p);
               }
               j = new Uid(b.g, b.f);
-              e = XXb(d, o10, q, n10, j, i10, new Uid(d.g, d.f), JD(CNb(c, ewc), 87), c);
+              e = XXb(d, o10, q10, n10, j, i10, new Uid(d.g, d.f), JD(CNb(c, ewc), 87), c);
               FNb(e, (_rc(), zrc), d);
               f = JD(rmb(e.j, 0), 12);
               GZb(f, a_b(d));
@@ -56499,8 +56499,8 @@ var require_elk_bundled = __commonJS({
                   nmb(f.f, m);
                   if (!l) {
                     k = 0;
-                    Jod(JD(Mxd(b, vxc), 24)) && (k = zsd(new Uid(g10.i, g10.j), new Uid(g10.g, g10.f), new Uid(d.g, d.f), 0, q));
-                    switch (q.g) {
+                    Jod(JD(Mxd(b, vxc), 24)) && (k = zsd(new Uid(g10.i, g10.j), new Uid(g10.g, g10.f), new Uid(d.g, d.f), 0, q10));
+                    switch (q10.g) {
                       case 2:
                       case 4:
                         m.o.a = k;
@@ -56553,7 +56553,7 @@ var require_elk_bundled = __commonJS({
               return j;
             }
             function yEd(a, b, c, d, e, f) {
-              var g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H;
+              var g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H;
               F = sjb(a.g, e);
               if (F == null) {
                 F = new mC();
@@ -56588,8 +56588,8 @@ var require_elk_bundled = __commonJS({
               w = !!s;
               w && vDd(a.a, D, xJe, ZDd(a, Izd(e)));
               k = (!e.e && (e.e = new Tje(b4, e, 10, 9)), e.e).i == 0;
-              q = !k;
-              if (q) {
+              q10 = !k;
+              if (q10) {
                 C = new EB();
                 h = new nGd(a, C);
                 Vfb((!e.e && (e.e = new Tje(b4, e, 10, 9)), e.e), h);
@@ -56605,7 +56605,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function p0b(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               b.Tg("Comment pre-processing", 1);
               c = 0;
               i10 = new Ymb(a.a);
@@ -56644,8 +56644,8 @@ var require_elk_bundled = __commonJS({
                         f.c.e.c.length == 0 || (EDb(r.c, f), true);
                       }
                     }
-                    for (q = new Ymb(r); q.a < q.c.c.length; ) {
-                      p = JD(Wmb(q), 17);
+                    for (q10 = new Ymb(r); q10.a < q10.c.c.length; ) {
+                      p = JD(Wmb(q10), 17);
                       NWb(p, true);
                     }
                   }
@@ -56655,17 +56655,17 @@ var require_elk_bundled = __commonJS({
               b.Ug();
             }
             function jud(a, b, c, d, e) {
-              var f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D;
+              var f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D;
               t = 0;
               o10 = 0;
               n10 = 0;
               m = 1;
               for (s = new cNd((!a.a && (a.a = new x6d(f4, a, 10, 11)), a.a)); s.e != s.i.gc(); ) {
-                q = JD(aNd(s), 19);
-                m += Br(new Yr(Dr(AHd(q).a.Jc(), new Dl())));
-                B = q.g;
+                q10 = JD(aNd(s), 19);
+                m += Br(new Yr(Dr(AHd(q10).a.Jc(), new Dl())));
+                B = q10.g;
                 o10 = $wnd.Math.max(o10, B);
-                l = q.f;
+                l = q10.f;
                 n10 = $wnd.Math.max(n10, l);
                 t += B * l;
               }
@@ -56675,11 +56675,11 @@ var require_elk_bundled = __commonJS({
               i10 = $wnd.Math.max(f * c, o10);
               h = $wnd.Math.max(f / c, n10);
               for (r = new cNd((!a.a && (a.a = new x6d(f4, a, 10, 11)), a.a)); r.e != r.i.gc(); ) {
-                q = JD(aNd(r), 19);
-                C = e.b + (dwb(b, 26) * Iye + dwb(b, 27) * Jye) * (i10 - q.g);
-                D = e.b + (dwb(b, 26) * Iye + dwb(b, 27) * Jye) * (h - q.f);
-                Jyd(q, C);
-                Kyd(q, D);
+                q10 = JD(aNd(r), 19);
+                C = e.b + (dwb(b, 26) * Iye + dwb(b, 27) * Jye) * (i10 - q10.g);
+                D = e.b + (dwb(b, 26) * Iye + dwb(b, 27) * Jye) * (h - q10.f);
+                Jyd(q10, C);
+                Kyd(q10, D);
               }
               A = i10 + (e.b + e.c);
               w = h + (e.d + e.a);
@@ -56835,7 +56835,7 @@ var require_elk_bundled = __commonJS({
               c > 0 && (JD(prb(a.b, b), 129).a.b = c);
             }
             function Z$b(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               n10 = 0;
               d = new vsb();
               for (f = new cNd((!b.a && (b.a = new x6d(f4, b, 10, 11)), b.a)); f.e != f.i.gc(); ) {
@@ -56859,28 +56859,28 @@ var require_elk_bundled = __commonJS({
                   Oxd(i10, yrc, Qfb(n10));
                   ++n10;
                 }
-                q = KHd(i10);
+                q10 = KHd(i10);
                 r = LHd(i10);
-                m = deb(LD(Mxd(q, (pyc(), Awc))));
+                m = deb(LD(Mxd(q10, (pyc(), Awc))));
                 p = !deb(LD(Mxd(i10, gxc)));
                 o10 = m && szd(i10) && deb(LD(Mxd(i10, Bwc)));
-                g10 = zCd(q) == b && zCd(q) == zCd(r);
-                h = (zCd(q) == b && r == b) ^ (zCd(r) == b && q == b);
+                g10 = zCd(q10) == b && zCd(q10) == zCd(r);
+                h = (zCd(q10) == b && r == b) ^ (zCd(r) == b && q10 == b);
                 p && !o10 && (h || g10) && c_b(a, i10, b, c);
               }
               if (zCd(b)) {
                 for (j = new cNd(yCd(zCd(b))); j.e != j.i.gc(); ) {
                   i10 = JD(aNd(j), 74);
-                  q = KHd(i10);
-                  if (q == b && szd(i10)) {
-                    o10 = deb(LD(Mxd(q, (pyc(), Awc)))) && deb(LD(Mxd(i10, Bwc)));
+                  q10 = KHd(i10);
+                  if (q10 == b && szd(i10)) {
+                    o10 = deb(LD(Mxd(q10, (pyc(), Awc)))) && deb(LD(Mxd(i10, Bwc)));
                     o10 && c_b(a, i10, b, c);
                   }
                 }
               }
             }
             function t3b(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F;
               w = new zmb();
               for (o10 = new Ymb(a.b); o10.a < o10.c.c.length; ) {
                 n10 = JD(Wmb(o10), 26);
@@ -56937,8 +56937,8 @@ var require_elk_bundled = __commonJS({
                   EDb(w.c, p);
                 }
               }
-              for (q = new Ymb(w); q.a < q.c.c.length; ) {
-                p = JD(Wmb(q), 9);
+              for (q10 = new Ymb(w); q10.a < q10.c.c.length; ) {
+                p = JD(Wmb(q10), 9);
                 YYb(p, null);
               }
             }
@@ -57274,7 +57274,7 @@ var require_elk_bundled = __commonJS({
             }
             function wre(a) {
               ure();
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               if (a == null) return null;
               l = a.length * 8;
               if (l == 0) {
@@ -57300,10 +57300,10 @@ var require_elk_bundled = __commonJS({
                 j = (b & 3) << 24 >> 24;
                 o10 = (b & -128) == 0 ? b >> 2 << 24 >> 24 : (b >> 2 ^ 192) << 24 >> 24;
                 p = (c & -128) == 0 ? c >> 4 << 24 >> 24 : (c >> 4 ^ 240) << 24 >> 24;
-                q = (d & -128) == 0 ? d >> 6 << 24 >> 24 : (d >> 6 ^ 252) << 24 >> 24;
+                q10 = (d & -128) == 0 ? d >> 6 << 24 >> 24 : (d >> 6 ^ 252) << 24 >> 24;
                 f[g10++] = tre[o10];
                 f[g10++] = tre[p | j << 4];
-                f[g10++] = tre[k << 2 | q];
+                f[g10++] = tre[k << 2 | q10];
                 f[g10++] = tre[d & 63];
               }
               if (h == 8) {
@@ -57375,7 +57375,7 @@ var require_elk_bundled = __commonJS({
               return true;
             }
             function G_b(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               e = CNb(b, (_rc(), zrc));
               if (!RD(e, 209)) {
                 return;
@@ -57405,14 +57405,14 @@ var require_elk_bundled = __commonJS({
                   Hyd(d, s.a, s.b);
                 }
                 for (r = new Ymb(i10.j); r.a < r.c.c.length; ) {
-                  q = JD(Wmb(r), 12);
-                  kCb(hCb(new xCb(null, new lwb(q.g, 16)), new N_b(i10)), new P_b(c));
+                  q10 = JD(Wmb(r), 12);
+                  kCb(hCb(new xCb(null, new lwb(q10.g, 16)), new N_b(i10)), new P_b(c));
                 }
               }
               if (p) {
                 for (r = new Ymb(p.j); r.a < r.c.c.length; ) {
-                  q = JD(Wmb(r), 12);
-                  kCb(hCb(new xCb(null, new lwb(q.g, 16)), new R_b(p)), new T_b(c));
+                  q10 = JD(Wmb(r), 12);
+                  kCb(hCb(new xCb(null, new lwb(q10.g, 16)), new R_b(p)), new T_b(c));
                 }
               }
               t = JD(Mxd(o10, lwc), 225);
@@ -57621,7 +57621,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function eVc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               if (b.b != 0) {
                 n10 = new rub();
                 h = null;
@@ -57636,8 +57636,8 @@ var require_elk_bundled = __commonJS({
                   }
                   o10 != null ? h = o10 + hVc(i10++, d) : h = hVc(i10++, d);
                   FNb(r, NWc, h);
-                  for (q = (e = lub(new QTc(r).a.d, 0), new TTc(e)); zub(q.a); ) {
-                    p = JD(Aub(q.a), 65).c;
+                  for (q10 = (e = lub(new QTc(r).a.d, 0), new TTc(e)); zub(q10.a); ) {
+                    p = JD(Aub(q10.a), 65).c;
                     iub(n10, p, n10.c.b, n10.c);
                     FNb(p, NWc, h);
                   }
@@ -57662,21 +57662,21 @@ var require_elk_bundled = __commonJS({
               }
             }
             function KCc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               c.Tg("Breadth first model order layering", 1);
               a.a = b;
-              q = new zmb();
+              q10 = new zmb();
               for (p = new Ymb(a.a.a); p.a < p.c.c.length; ) {
                 n10 = JD(Wmb(p), 9);
-                n10.k == (jZb(), gZb) && (EDb(q.c, n10), true);
+                n10.k == (jZb(), gZb) && (EDb(q10.c, n10), true);
               }
               Wnb();
-              xmb(q, new PCc());
+              xmb(q10, new PCc());
               i10 = true;
               e = new J$b(a.a);
               d = null;
               nmb(a.a.b, e);
-              for (o10 = new Ymb(q); o10.a < o10.c.c.length; ) {
+              for (o10 = new Ymb(q10); o10.a < o10.c.c.length; ) {
                 n10 = JD(Wmb(o10), 9);
                 if (i10) {
                   YYb(n10, e);
@@ -57783,7 +57783,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function I_c(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C;
               b.Tg("Calculate Graph Size", 1);
               b.bh(a, VFe);
               l = cFe;
@@ -57803,20 +57803,20 @@ var require_elk_bundled = __commonJS({
                 k = $wnd.Math.max(k, t + h + i10.a);
               }
               r = JD(Mxd(a, (cmd(), $kd)), 100);
-              q = new Uid(l - r.b, m - r.d);
+              q10 = new Uid(l - r.b, m - r.d);
               B = j - l + (r.b + r.c);
               g10 = k - m + (r.d + r.a);
               if (deb(LD(Mxd(a, (L1c(), r1c))))) {
                 u = JD(Mxd(a, (f_c(), e_c)), 19);
                 v = JD(Mxd(u, Lkd), 125);
-                w = u.i + u.g / 2 + (v.b + v.c) / 2 - q.a;
-                A = u.j + u.f / 2 + (v.d + v.a) / 2 - q.b;
+                w = u.i + u.g / 2 + (v.b + v.c) / 2 - q10.a;
+                A = u.j + u.f / 2 + (v.d + v.a) / 2 - q10.b;
                 e = B - w;
                 f = g10 - A;
                 if (e < B / 2) {
                   c = e - w;
                   B += c;
-                  q.a -= c;
+                  q10.a -= c;
                 } else {
                   c = w - e;
                   B += c;
@@ -57824,7 +57824,7 @@ var require_elk_bundled = __commonJS({
                 if (f < g10 / 2) {
                   d = f - A;
                   g10 += d;
-                  q.b -= d;
+                  q10.b -= d;
                 } else {
                   d = A - f;
                   g10 += d;
@@ -57832,8 +57832,8 @@ var require_elk_bundled = __commonJS({
               }
               for (o10 = new cNd((!a.a && (a.a = new x6d(f4, a, 10, 11)), a.a)); o10.e != o10.i.gc(); ) {
                 n10 = JD(aNd(o10), 19);
-                Jyd(n10, n10.i - q.a);
-                Kyd(n10, n10.j - q.b);
+                Jyd(n10, n10.i - q10.a);
+                Kyd(n10, n10.j - q10.b);
               }
               if (!deb(LD(Mxd(a, Tkd)))) {
                 Iyd(a, B);
@@ -57903,9 +57903,9 @@ var require_elk_bundled = __commonJS({
               }
             }
             function VOc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               c.Tg("Polyline edge routing", 1);
-              q = gfb(MD(CNb(b, (pyc(), nwc))));
+              q10 = gfb(MD(CNb(b, (pyc(), nwc))));
               n10 = gfb(MD(CNb(b, Vxc)));
               e = gfb(MD(CNb(b, Lxc)));
               d = $wnd.Math.min(1, e / n10);
@@ -57944,7 +57944,7 @@ var require_elk_bundled = __commonJS({
                     case 1:
                     case 3:
                     case 5:
-                      XOc(a, l, t, q);
+                      XOc(a, l, t, q10);
                   }
                   k = $wnd.Math.max(k, j);
                 }
@@ -58000,7 +58000,7 @@ var require_elk_bundled = __commonJS({
               return b;
             }
             function dAd(b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               n10 = c.length;
               if (n10 > 0) {
                 j = (gEb(0, c.length), c.charCodeAt(0));
@@ -58050,8 +58050,8 @@ var require_elk_bundled = __commonJS({
                     }
                   }
                   o10 = Jgb("%", o10) ? null : jTd(o10);
-                  for (q = K3d(b.Dh()); q.Ob(); ) {
-                    p = f4d(q);
+                  for (q10 = K3d(b.Dh()); q10.Ob(); ) {
+                    p = f4d(q10);
                     if (RD(p, 199)) {
                       g10 = JD(p, 199);
                       s = g10.ve();
@@ -58066,7 +58066,7 @@ var require_elk_bundled = __commonJS({
               return Vvd(b, c);
             }
             function Xfc(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s;
               k = new nsb();
               i10 = new Np();
               for (d = new Ymb(a.a.a.b); d.a < d.c.c.length; ) {
@@ -58105,11 +58105,11 @@ var require_elk_bundled = __commonJS({
                         l = JD(m.Pb(), 60);
                         if (l.d.c < b.d.c) {
                           n10 = a.c[l.a.d];
-                          q = a.c[b.a.d];
-                          if (n10 == q) {
+                          q10 = a.c[b.a.d];
+                          if (n10 == q10) {
                             continue;
                           }
-                          jGb(mGb(lGb(nGb(kGb(new oGb(), 1), 100), n10), q));
+                          jGb(mGb(lGb(nGb(kGb(new oGb(), 1), 100), n10), q10));
                         }
                       }
                     }
@@ -58118,11 +58118,11 @@ var require_elk_bundled = __commonJS({
                         l = JD(m.Pb(), 60);
                         if (l.d.c > b.d.c) {
                           n10 = a.c[b.a.d];
-                          q = a.c[l.a.d];
-                          if (n10 == q) {
+                          q10 = a.c[l.a.d];
+                          if (n10 == q10) {
                             continue;
                           }
-                          jGb(mGb(lGb(nGb(kGb(new oGb(), 1), 100), n10), q));
+                          jGb(mGb(lGb(nGb(kGb(new oGb(), 1), 100), n10), q10));
                         }
                       }
                     }
@@ -58131,7 +58131,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function dLb(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w;
               m = JD(JD(Qc(a.r, b), 24), 85);
               if (b == (ipd(), Pod) || b == hpd) {
                 hLb(a, b);
@@ -58150,7 +58150,7 @@ var require_elk_bundled = __commonJS({
                 if (!j.c || j.c.d.c.length <= 0) {
                   continue;
                 }
-                q = j.b.Kf();
+                q10 = j.b.Kf();
                 p = j.e;
                 n10 = j.c;
                 o10 = n10.i;
@@ -58159,9 +58159,9 @@ var require_elk_bundled = __commonJS({
                 bvb(u, Fze);
                 n10.f = u;
                 IIb(n10, (vIb(), uIb));
-                o10.c = p.a - (o10.b - q.a) / 2;
+                o10.c = p.a - (o10.b - q10.a) / 2;
                 v = $wnd.Math.min(e, p.a);
-                w = $wnd.Math.max(r, p.a + q.a);
+                w = $wnd.Math.max(r, p.a + q10.a);
                 o10.c < v ? o10.c = v : o10.c + o10.b > w && (o10.c = w - o10.b);
                 nmb(g10.d, new jMb(o10, LLb(g10, o10)));
                 s = b == Qod ? $wnd.Math.max(s, p.b + j.b.Kf().b) : $wnd.Math.min(s, p.b);
@@ -58279,15 +58279,15 @@ var require_elk_bundled = __commonJS({
               egd(a, rGe, dGe, jHd(r1c));
             }
             function Nsd(a, b, c, d, e) {
-              var f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w;
-              q = new Uid(a.g, a.f);
+              var f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w;
+              q10 = new Uid(a.g, a.f);
               p = Esd(a);
               p.a = $wnd.Math.max(p.a, b);
               p.b = $wnd.Math.max(p.b, c);
-              w = p.a / q.a;
-              k = p.b / q.b;
-              u = p.a - q.a;
-              i10 = p.b - q.b;
+              w = p.a / q10.a;
+              k = p.b / q10.b;
+              u = p.a - q10.a;
+              i10 = p.b - q10.b;
               if (d) {
                 g10 = !zCd(a) ? JD(Mxd(a, (cmd(), okd)), 87) : JD(Mxd(zCd(a), (cmd(), okd)), 87);
                 h = XD(Mxd(a, (cmd(), mld))) === XD((tod(), ood));
@@ -58321,8 +58321,8 @@ var require_elk_bundled = __commonJS({
                   l = JD(aNd(m), 158);
                   n10 = l.i + l.g / 2;
                   o10 = l.j + l.f / 2;
-                  v = n10 / q.a;
-                  j = o10 / q.b;
+                  v = n10 / q10.a;
+                  j = o10 / q10.b;
                   if (v + j >= 1) {
                     if (v - j > 0 && o10 >= 0) {
                       Jyd(l, l.i + u);
@@ -58598,13 +58598,13 @@ var require_elk_bundled = __commonJS({
               }
             }
             function JNc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B;
               t = b.c.length;
               e = new dNc(a.a, c, null, null);
               B = SC(aE, tye, 30, t, 15, 1);
               p = SC(aE, tye, 30, t, 15, 1);
               o10 = SC(aE, tye, 30, t, 15, 1);
-              q = 0;
+              q10 = 0;
               for (h = 0; h < t; h++) {
                 p[h] = iwe;
                 o10[h] = oxe;
@@ -58612,7 +58612,7 @@ var require_elk_bundled = __commonJS({
               for (i10 = 0; i10 < t; i10++) {
                 d = ($Db(i10, b.c.length), JD(b.c[i10], 188));
                 B[i10] = bNc(d);
-                B[q] > B[i10] && (q = i10);
+                B[q10] > B[i10] && (q10 = i10);
                 for (l = new Ymb(a.a.b); l.a < l.c.c.length; ) {
                   k = JD(Wmb(l), 26);
                   for (s = new Ymb(k.a); s.a < s.c.c.length; ) {
@@ -58625,7 +58625,7 @@ var require_elk_bundled = __commonJS({
               }
               A = SC(aE, tye, 30, t, 15, 1);
               for (j = 0; j < t; j++) {
-                ($Db(j, b.c.length), JD(b.c[j], 188)).o == (pNc(), nNc) ? A[j] = p[q] - p[j] : A[j] = o10[q] - o10[j];
+                ($Db(j, b.c.length), JD(b.c[j], 188)).o == (pNc(), nNc) ? A[j] = p[q10] - p[j] : A[j] = o10[q10] - o10[j];
               }
               f = SC(aE, tye, 30, t, 15, 1);
               for (n10 = new Ymb(a.a.b); n10.a < n10.c.c.length; ) {
@@ -58696,7 +58696,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function BDc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s;
               b.Tg("Interactive node layering", 1);
               c = new zmb();
               for (m = new Ymb(a.a); m.a < m.c.c.length; ) {
@@ -58707,20 +58707,20 @@ var require_elk_bundled = __commonJS({
                 s = new fkb(c, 0);
                 d = null;
                 while (s.b < s.d.gc()) {
-                  q = (ZDb(s.b < s.d.gc()), JD(s.d.Xb(s.c = s.b++), 571));
-                  if (q.c >= h) {
+                  q10 = (ZDb(s.b < s.d.gc()), JD(s.d.Xb(s.c = s.b++), 571));
+                  if (q10.c >= h) {
                     ZDb(s.b > 0);
                     s.a.Xb(s.c = --s.b);
                     break;
-                  } else if (q.a > i10) {
+                  } else if (q10.a > i10) {
                     if (!d) {
-                      nmb(q.b, k);
-                      q.c = $wnd.Math.min(q.c, i10);
-                      q.a = $wnd.Math.max(q.a, h);
-                      d = q;
+                      nmb(q10.b, k);
+                      q10.c = $wnd.Math.min(q10.c, i10);
+                      q10.a = $wnd.Math.max(q10.a, h);
+                      d = q10;
                     } else {
-                      pmb(d.b, q.b);
-                      d.a = $wnd.Math.max(d.a, q.a);
+                      pmb(d.b, q10.b);
+                      d.a = $wnd.Math.max(d.a, q10.a);
                       $jb(s);
                     }
                   }
@@ -58736,11 +58736,11 @@ var require_elk_bundled = __commonJS({
               g10 = a.b;
               j = 0;
               for (r = new Ymb(c); r.a < r.c.c.length; ) {
-                q = JD(Wmb(r), 571);
+                q10 = JD(Wmb(r), 571);
                 e = new J$b(a);
                 e.p = j++;
                 EDb(g10.c, e);
-                for (n10 = new Ymb(q.b); n10.a < n10.c.c.length; ) {
+                for (n10 = new Ymb(q10.b); n10.a < n10.c.c.length; ) {
                   k = JD(Wmb(n10), 9);
                   YYb(k, e);
                   k.p = 0;
@@ -58799,22 +58799,22 @@ var require_elk_bundled = __commonJS({
               c.Ug();
             }
             function ZVb(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C;
               b.Tg("Compound graph postprocessor", 1);
               c = deb(LD(CNb(a, (pyc(), dyc))));
               h = JD(CNb(a, (_rc(), Xqc)), 231);
               k = new vsb();
               for (r = h.ec().Jc(); r.Ob(); ) {
-                q = JD(r.Pb(), 17);
-                g10 = new Bmb(h.cc(q));
+                q10 = JD(r.Pb(), 17);
+                g10 = new Bmb(h.cc(q10));
                 Wnb();
                 xmb(g10, new CWb(a));
                 v = xWb(($Db(0, g10.c.length), JD(g10.c[0], 253)));
                 A = yWb(JD(rmb(g10, g10.c.length - 1), 253));
                 t = v.i;
                 dYb(A.i, t) ? s = t.e : s = OYb(t);
-                l = $Vb(q, g10);
-                qub(q.a);
+                l = $Vb(q10, g10);
+                qub(q10.a);
                 m = null;
                 for (f = new Ymb(g10); f.a < f.c.c.length; ) {
                   e = JD(Wmb(f), 253);
@@ -58832,9 +58832,9 @@ var require_elk_bundled = __commonJS({
                     d.b == 0 ? o10 = w : o10 = (ZDb(d.b != 0), JD(d.a.a.c, 8));
                     B = $wnd.Math.abs(m.a - o10.a) > hAe;
                     C = $wnd.Math.abs(m.b - o10.b) > hAe;
-                    (!c && B && C || c && (B || C)) && fub(q.a, u);
+                    (!c && B && C || c && (B || C)) && fub(q10.a, u);
                   }
-                  xe(q.a, d);
+                  xe(q10.a, d);
                   d.b == 0 ? m = u : m = (ZDb(d.b != 0), JD(d.c.b.c, 8));
                   _Vb(n10, l, p);
                   if (yWb(e) == A) {
@@ -58842,13 +58842,13 @@ var require_elk_bundled = __commonJS({
                       p = new Sid();
                       WXb(p, OYb(A.i), s);
                     }
-                    FNb(q, Vrc, p);
+                    FNb(q10, Vrc, p);
                   }
-                  aWb(n10, q, s);
+                  aWb(n10, q10, s);
                   k.a.yc(n10, k);
                 }
-                OWb(q, v);
-                PWb(q, A);
+                OWb(q10, v);
+                PWb(q10, A);
               }
               for (j = k.a.ec().Jc(); j.Ob(); ) {
                 i10 = JD(j.Pb(), 17);
@@ -58888,7 +58888,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function gNb(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               if (a.gc() == 1) {
                 return JD(a.Xb(0), 238);
               } else if (a.gc() <= 0) {
@@ -58921,9 +58921,9 @@ var require_elk_bundled = __commonJS({
               s = 0;
               for (f = a.Jc(); f.Ob(); ) {
                 c = JD(f.Pb(), 238);
-                q = Rid(Eid(JD(CNb(c, (zPb(), vPb)), 8)), JD(CNb(c, wPb), 8));
-                h = $wnd.Math.max(h, q.a);
-                s += q.a * q.b;
+                q10 = Rid(Eid(JD(CNb(c, (zPb(), vPb)), 8)), JD(CNb(c, wPb), 8));
+                h = $wnd.Math.max(h, q10.a);
+                s += q10.a * q10.b;
               }
               h = $wnd.Math.max(h, $wnd.Math.sqrt(s) * gfb(MD(CNb(p, (oPb(), POb)))));
               r = gfb(MD(CNb(p, hPb)));
@@ -58933,22 +58933,22 @@ var require_elk_bundled = __commonJS({
               b = r;
               for (d = a.Jc(); d.Ob(); ) {
                 c = JD(d.Pb(), 238);
-                q = Rid(Eid(JD(CNb(c, (zPb(), vPb)), 8)), JD(CNb(c, wPb), 8));
-                if (t + q.a > h) {
+                q10 = Rid(Eid(JD(CNb(c, (zPb(), vPb)), 8)), JD(CNb(c, wPb), 8));
+                if (t + q10.a > h) {
                   t = 0;
                   u += g10 + r;
                   g10 = 0;
                 }
                 fNb(p, c, t, u);
-                b = $wnd.Math.max(b, t + q.a);
-                g10 = $wnd.Math.max(g10, q.b);
-                t += q.a + r;
+                b = $wnd.Math.max(b, t + q10.a);
+                g10 = $wnd.Math.max(g10, q10.b);
+                t += q10.a + r;
               }
               return p;
             }
             function vre(a) {
               ure();
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               if (a == null) return null;
               f = Ygb(a);
               o10 = yre(f);
@@ -58990,18 +58990,18 @@ var require_elk_bundled = __commonJS({
               if (sre[i10] == -1 || sre[j] == -1) {
                 if (i10 == 61 && j == 61) {
                   if ((c & 15) != 0) return null;
-                  q = SC($D, fJe, 30, n10 * 3 + 1, 15, 1);
-                  Fhb(l, 0, q, 0, n10 * 3);
-                  q[m] = (b << 2 | c >> 4) << 24 >> 24;
-                  return q;
+                  q10 = SC($D, fJe, 30, n10 * 3 + 1, 15, 1);
+                  Fhb(l, 0, q10, 0, n10 * 3);
+                  q10[m] = (b << 2 | c >> 4) << 24 >> 24;
+                  return q10;
                 } else if (i10 != 61 && j == 61) {
                   d = sre[i10];
                   if ((d & 3) != 0) return null;
-                  q = SC($D, fJe, 30, n10 * 3 + 2, 15, 1);
-                  Fhb(l, 0, q, 0, n10 * 3);
-                  q[m++] = (b << 2 | c >> 4) << 24 >> 24;
-                  q[m] = ((c & 15) << 4 | d >> 2 & 15) << 24 >> 24;
-                  return q;
+                  q10 = SC($D, fJe, 30, n10 * 3 + 2, 15, 1);
+                  Fhb(l, 0, q10, 0, n10 * 3);
+                  q10[m++] = (b << 2 | c >> 4) << 24 >> 24;
+                  q10[m] = ((c & 15) << 4 | d >> 2 & 15) << 24 >> 24;
+                  return q10;
                 } else {
                   return null;
                 }
@@ -59015,7 +59015,7 @@ var require_elk_bundled = __commonJS({
               return l;
             }
             function u9b(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v;
               b.Tg(HBe, 1);
               o10 = JD(CNb(a, (pyc(), lwc)), 225);
               for (e = new Ymb(a.b); e.a < e.c.c.length; ) {
@@ -59033,19 +59033,19 @@ var require_elk_bundled = __commonJS({
                       k.g.c.length == 0 || y9b(k);
                     }
                   } else if (RD(CNb(f, (_rc(), zrc)), 17)) {
-                    q = JD(CNb(f, zrc), 17);
+                    q10 = JD(CNb(f, zrc), 17);
                     r = JD(WYb(f, (ipd(), hpd)).Jc().Pb(), 12);
                     s = JD(WYb(f, Pod).Jc().Pb(), 12);
                     t = JD(CNb(r, zrc), 12);
                     u = JD(CNb(s, zrc), 12);
-                    OWb(q, u);
-                    PWb(q, t);
+                    OWb(q10, u);
+                    PWb(q10, t);
                     v = new Vid(s.i.n);
                     v.a = $id(WC(OC(F2, 1), Lwe, 8, 0, [u.i.n, u.n, u.a])).a;
-                    fub(q.a, v);
+                    fub(q10.a, v);
                     v = new Vid(r.i.n);
                     v.a = $id(WC(OC(F2, 1), Lwe, 8, 0, [t.i.n, t.n, t.a])).a;
-                    fub(q.a, v);
+                    fub(q10.a, v);
                   } else {
                     if (f.j.c.length >= 2) {
                       p = true;
@@ -59075,7 +59075,7 @@ var require_elk_bundled = __commonJS({
               b.Ug();
             }
             function wNc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v;
               for (h = new Ymb(a.a.b); h.a < h.c.c.length; ) {
                 f = JD(Wmb(h), 26);
                 for (t = new Ymb(f.a); t.a < t.c.c.length; ) {
@@ -59121,13 +59121,13 @@ var require_elk_bundled = __commonJS({
                       for (k = j; k <= e; k++) {
                         if (b.a[u.p] == u) {
                           r = JD(l.Xb(k), 49);
-                          q = JD(r.a, 9);
-                          if (!tsb(c, r.b) && n10 < a.b.e[q.p]) {
-                            b.a[q.p] = u;
-                            b.g[u.p] = b.g[q.p];
+                          q10 = JD(r.a, 9);
+                          if (!tsb(c, r.b) && n10 < a.b.e[q10.p]) {
+                            b.a[q10.p] = u;
+                            b.g[u.p] = b.g[q10.p];
                             b.a[u.p] = b.g[u.p];
                             b.f[b.g[u.p].p] = (ceb(), deb(b.f[b.g[u.p].p]) & u.k == (jZb(), eZb) ? true : false);
-                            n10 = a.b.e[q.p];
+                            n10 = a.b.e[q10.p];
                           }
                         }
                       }
@@ -59137,7 +59137,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function VKc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B;
               t = a.c[($Db(0, b.c.length), JD(b.c[0], 17)).p];
               A = a.c[($Db(1, b.c.length), JD(b.c[1], 17)).p];
               if (t.a.e.e - t.a.a - (t.b.e.e - t.b.a) == 0 && A.a.e.e - A.a.a - (A.b.e.e - A.b.a) == 0) {
@@ -59147,22 +59147,22 @@ var require_elk_bundled = __commonJS({
               if (!RD(r, 9)) {
                 return false;
               }
-              q = JD(r, 9);
-              v = a.i[q.p];
-              w = !q.c ? -1 : smb(q.c.a, q, 0);
+              q10 = JD(r, 9);
+              v = a.i[q10.p];
+              w = !q10.c ? -1 : smb(q10.c.a, q10, 0);
               f = mye;
               if (w > 0) {
-                e = JD(rmb(q.c.a, w - 1), 9);
+                e = JD(rmb(q10.c.a, w - 1), 9);
                 g10 = a.i[e.p];
-                B = $wnd.Math.ceil(UAc(a.n, e, q));
-                f = v.a.e - q.d.d - (g10.a.e + e.o.b + e.d.a) - B;
+                B = $wnd.Math.ceil(UAc(a.n, e, q10));
+                f = v.a.e - q10.d.d - (g10.a.e + e.o.b + e.d.a) - B;
               }
               j = mye;
-              if (w < q.c.a.c.length - 1) {
-                i10 = JD(rmb(q.c.a, w + 1), 9);
+              if (w < q10.c.a.c.length - 1) {
+                i10 = JD(rmb(q10.c.a, w + 1), 9);
                 k = a.i[i10.p];
-                B = $wnd.Math.ceil(UAc(a.n, i10, q));
-                j = k.a.e - i10.d.d - (v.a.e + q.o.b + q.d.a) - B;
+                B = $wnd.Math.ceil(UAc(a.n, i10, q10));
+                j = k.a.e - i10.d.d - (v.a.e + q10.o.b + q10.d.a) - B;
               }
               if (c && (Sy(), Wy(gFe), $wnd.Math.abs(f - j) <= gFe || f == j || isNaN(f) && isNaN(j))) {
                 return true;
@@ -59310,7 +59310,7 @@ var require_elk_bundled = __commonJS({
               egd(a, mAe, HAe, mPb);
             }
             function dmc(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               n10 = JD(rmb(($Db(0, b.c.length), JD(b.c[0], 26)).a, d), 9);
               c > 0 && YYb(n10, ($Db(c, b.c.length), JD(b.c[c], 26)));
               f = 0;
@@ -59346,9 +59346,9 @@ var require_elk_bundled = __commonJS({
                 }
                 for (j = 0; j <= c; j++) {
                   if (g10) {
-                    q = new _Yb(a);
-                    ZYb(q, (jZb(), fZb));
-                    d + 1 > ($Db(j, b.c.length), JD(b.c[j], 26)).a.c.length ? YYb(q, ($Db(j, b.c.length), JD(b.c[j], 26))) : XYb(q, d + 1, ($Db(j, b.c.length), JD(b.c[j], 26)));
+                    q10 = new _Yb(a);
+                    ZYb(q10, (jZb(), fZb));
+                    d + 1 > ($Db(j, b.c.length), JD(b.c[j], 26)).a.c.length ? YYb(q10, ($Db(j, b.c.length), JD(b.c[j], 26))) : XYb(q10, d + 1, ($Db(j, b.c.length), JD(b.c[j], 26)));
                   }
                 }
                 g10 && (f += 1);
@@ -59523,7 +59523,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function q0b(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s;
               m = false;
               l = false;
               if (vod(JD(CNb(d, (pyc(), sxc)), 103))) {
@@ -59531,8 +59531,8 @@ var require_elk_bundled = __commonJS({
                 h = false;
                 t: for (o10 = new Ymb(d.j); o10.a < o10.c.c.length; ) {
                   n10 = JD(Wmb(o10), 12);
-                  for (q = Gl(yl(WC(OC(VI, 1), owe, 22, 0, [new LZb(n10), new TZb(n10)]))); Wr(q); ) {
-                    p = JD(Xr(q), 12);
+                  for (q10 = Gl(yl(WC(OC(VI, 1), owe, 22, 0, [new LZb(n10), new TZb(n10)]))); Wr(q10); ) {
+                    p = JD(Xr(q10), 12);
                     if (!deb(LD(CNb(p.i, zvc)))) {
                       if (n10.j == (ipd(), Qod)) {
                         g10 = true;
@@ -59605,7 +59605,7 @@ var require_elk_bundled = __commonJS({
               qub(b.a);
             }
             function aEc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H, I;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H, I;
               c.Tg("MinWidth layering", 1);
               n10 = b.b;
               A = b.a;
@@ -59660,10 +59660,10 @@ var require_elk_bundled = __commonJS({
                   C = ZDc(a, F, d, A, w);
                   r = gfb(MD(C.a));
                   m = JD(C.b, 16);
-                  q = m.gc();
-                  if (r < p || r == p && q < o10) {
+                  q10 = m.gc();
+                  if (r < p || r == p && q10 < o10) {
                     p = r;
-                    o10 = q;
+                    o10 = q10;
                     g10 = m;
                   }
                 }
@@ -59682,7 +59682,7 @@ var require_elk_bundled = __commonJS({
               c.Ug();
             }
             function F9b(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A;
               b.Tg(HBe, 1);
               p = new zmb();
               w = new zmb();
@@ -59713,8 +59713,8 @@ var require_elk_bundled = __commonJS({
                     ++r;
                     FNb(d, lrc, k);
                     g10 = JD(rmb(d.j, 0), 12);
-                    q = JD(CNb(g10, zrc), 12);
-                    deb(LD(CNb(q, xvc))) || JD(CNb(d, mrc), 16).Ec(A);
+                    q10 = JD(CNb(g10, zrc), 12);
+                    deb(LD(CNb(q10, xvc))) || JD(CNb(d, mrc), 16).Ec(A);
                   }
                   qub(u);
                   for (t = WYb(k, fpd).Jc(); t.Ob(); ) {
@@ -59729,8 +59729,8 @@ var require_elk_bundled = __commonJS({
                     XYb(d, ++r, i10);
                     FNb(d, lrc, k);
                     g10 = JD(rmb(d.j, 0), 12);
-                    q = JD(CNb(g10, zrc), 12);
-                    deb(LD(CNb(q, xvc))) || JD(CNb(v, mrc), 16).Ec(d);
+                    q10 = JD(CNb(g10, zrc), 12);
+                    deb(LD(CNb(q10, xvc))) || JD(CNb(v, mrc), 16).Ec(d);
                   }
                   c.c.length == 0 || FNb(k, Pqc, c);
                 }
@@ -59738,7 +59738,7 @@ var require_elk_bundled = __commonJS({
               b.Ug();
             }
             function prd(a, b, c, d, e, f, g10) {
-              var h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H, I;
+              var h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H, I;
               n10 = 0;
               D = 0;
               for (i10 = new Ymb(a); i10.a < i10.c.c.length; ) {
@@ -59807,10 +59807,10 @@ var require_elk_bundled = __commonJS({
                   Gyd(h, u);
                   p = u;
                   if (j.b == r) {
-                    q = k - H - c.c;
+                    q10 = k - H - c.c;
                     t = h.g;
-                    Iyd(h, q);
-                    Ssd(h, new Uid(q, p), new Uid(t, s));
+                    Iyd(h, q10);
+                    Ssd(h, new Uid(q10, p), new Uid(t, s));
                   }
                   H += h.g + b;
                 }
@@ -59818,7 +59818,7 @@ var require_elk_bundled = __commonJS({
               return new Uid(k, F);
             }
             function FRc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G;
               c.Tg("Spline edge routing", 1);
               if (b.b.c.length == 0) {
                 b.f.a = 0;
@@ -59840,20 +59840,20 @@ var require_elk_bundled = __commonJS({
               o10 = JD(rmb(b.b, b.b.c.length - 1), 26);
               l = Wq(o10.a, OOc);
               p = new Ymb(b.b);
-              q = null;
+              q10 = null;
               G = 0;
               do {
                 t = p.a < p.c.c.length ? JD(Wmb(p), 26) : null;
-                tRc(a, q, t);
+                tRc(a, q10, t);
                 wRc(a);
                 C = xvb(UBb(nCb(hCb(new xCb(null, new lwb(a.i, 16)), new WRc()), new YRc())));
                 F = 0;
                 u = G;
-                m = !q || k && q == i10;
+                m = !q10 || k && q10 == i10;
                 n10 = !t || l && t == o10;
                 if (C > 0) {
                   j = 0;
-                  !!q && (j += h);
+                  !!q10 && (j += h);
                   j += (C - 1) * g10;
                   !!t && (j += h);
                   B && !!t && (j = $wnd.Math.max(j, uRc(t, g10, s, A)));
@@ -59869,12 +59869,12 @@ var require_elk_bundled = __commonJS({
                   v.a.c = G;
                   v.a.b = u - G;
                   v.F = F;
-                  v.p = !q;
+                  v.p = !q10;
                 }
                 pmb(a.a, a.i);
                 G = u;
                 !!t && (G += t.c.a);
-                q = t;
+                q10 = t;
                 m = n10;
               } while (t);
               for (e = new Ymb(a.j); e.a < e.c.c.length; ) {
@@ -59889,14 +59889,14 @@ var require_elk_bundled = __commonJS({
               c.Ug();
             }
             function W3b(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D;
               a.b = b;
               a.a = JD(CNb(b, (pyc(), wwc)), 15).a;
               a.c = JD(CNb(b, ywc), 15).a;
               a.c == 0 && (a.c = iwe);
-              q = new fkb(b.b, 0);
-              while (q.b < q.d.gc()) {
-                p = (ZDb(q.b < q.d.gc()), JD(q.d.Xb(q.c = q.b++), 26));
+              q10 = new fkb(b.b, 0);
+              while (q10.b < q10.d.gc()) {
+                p = (ZDb(q10.b < q10.d.gc()), JD(q10.d.Xb(q10.c = q10.b++), 26));
                 h = new zmb();
                 k = -1;
                 u = -1;
@@ -59911,7 +59911,7 @@ var require_elk_bundled = __commonJS({
                 }
                 B = new zmb();
                 for (j = 0; j < k; ++j) {
-                  mmb(B, 0, (ZDb(q.b > 0), q.a.Xb(q.c = --q.b), C = new J$b(a.b), ekb(q, C), ZDb(q.b < q.d.gc()), q.d.Xb(q.c = q.b++), C));
+                  mmb(B, 0, (ZDb(q10.b > 0), q10.a.Xb(q10.c = --q10.b), C = new J$b(a.b), ekb(q10, C), ZDb(q10.b < q10.d.gc()), q10.d.Xb(q10.c = q10.b++), C));
                 }
                 for (g10 = new Ymb(h); g10.a < g10.c.c.length; ) {
                   e = JD(Wmb(g10), 49);
@@ -59926,7 +59926,7 @@ var require_elk_bundled = __commonJS({
                 }
                 c = new zmb();
                 for (i10 = 0; i10 < u; ++i10) {
-                  nmb(c, (D = new J$b(a.b), ekb(q, D), D));
+                  nmb(c, (D = new J$b(a.b), ekb(q10, D), D));
                 }
                 for (f = new Ymb(h); f.a < f.c.c.length; ) {
                   e = JD(Wmb(f), 49);
@@ -59947,7 +59947,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function vMd(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               p = a.i != 0;
               t = false;
               r = null;
@@ -59967,9 +59967,9 @@ var require_elk_bundled = __commonJS({
                       for (i10 = k; --i10 >= 0; ) {
                         if (n10 != null ? pb(n10, o10[i10]) : XD(n10) === XD(o10[i10])) {
                           if (r.length <= d) {
-                            q = r;
+                            q10 = r;
                             r = SC(cE, Nxe, 30, 2 * r.length, 15, 1);
-                            Fhb(q, 0, r, 0, d);
+                            Fhb(q10, 0, r, 0, d);
                           }
                           r[d++] = e;
                           VHd(u, o10[i10]);
@@ -59986,9 +59986,9 @@ var require_elk_bundled = __commonJS({
                   o10 = u.g;
                   k = d;
                   if (d > r.length) {
-                    q = r;
+                    q10 = r;
                     r = SC(cE, Nxe, 30, d, 15, 1);
-                    Fhb(q, 0, r, 0, d);
+                    Fhb(q10, 0, r, 0, d);
                   }
                   if (d > 0) {
                     t = true;
@@ -60003,9 +60003,9 @@ var require_elk_bundled = __commonJS({
                       for (e = k; --e >= d; ) {
                         SId(j, e);
                       }
-                      q = r;
+                      q10 = r;
                       r = SC(cE, Nxe, 30, d, 15, 1);
-                      Fhb(q, 0, r, 0, d);
+                      Fhb(q10, 0, r, 0, d);
                     }
                     b = j;
                   }
@@ -60048,18 +60048,18 @@ var require_elk_bundled = __commonJS({
               }
             }
             function $Ub(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               c = new fVb(b);
               c.a || TUb(b);
               j = SUb(b);
               i10 = new Np();
-              q = new tVb();
+              q10 = new tVb();
               for (p = new Ymb(b.a); p.a < p.c.c.length; ) {
                 o10 = JD(Wmb(p), 9);
                 for (e = new Yr(Dr(SYb(o10).a.Jc(), new Dl())); Wr(e); ) {
                   d = JD(Xr(e), 17);
                   if (d.c.i.k == (jZb(), cZb) || d.d.i.k == cZb) {
-                    k = ZUb(a, d, j, q);
+                    k = ZUb(a, d, j, q10);
                     Rc(i10, XUb(k.d), k.a);
                   }
                 }
@@ -60067,9 +60067,9 @@ var require_elk_bundled = __commonJS({
               g10 = new zmb();
               for (t = JD(CNb(c.c, (_rc(), arc)), 24).Jc(); t.Ob(); ) {
                 s = JD(t.Pb(), 64);
-                n10 = q.c[s.g];
-                m = q.b[s.g];
-                h = q.a[s.g];
+                n10 = q10.c[s.g];
+                m = q10.b[s.g];
+                h = q10.a[s.g];
                 f = null;
                 r = null;
                 switch (s.g) {
@@ -60171,7 +60171,7 @@ var require_elk_bundled = __commonJS({
               bOc(a.e, b);
             }
             function vHc(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C;
               c = gfb(MD(CNb(a.a.j, (pyc(), Xvc))));
               if (c < -1 || !a.a.i || uod(JD(CNb(a.a.o, sxc), 103)) || TYb(a.a.o, (ipd(), Pod)).gc() < 2 && TYb(a.a.o, hpd).gc() < 2) {
                 return true;
@@ -60230,11 +60230,11 @@ var require_elk_bundled = __commonJS({
                 t.c.length = 0;
               }
               b = v + u;
-              q = b == 0 ? mye : (v - u) / b;
-              return q >= c;
+              q10 = b == 0 ? mye : (v - u) / b;
+              return q10 >= c;
             }
             function BKc(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D;
               for (t = a.a, u = 0, v = t.length; u < v; ++u) {
                 s = t[u];
                 j = iwe;
@@ -60245,11 +60245,11 @@ var require_elk_bundled = __commonJS({
                   if (g10 > 0) {
                     l = JD(rmb(m.c.a, g10 - 1), 9);
                     B = UAc(a.b, m, l);
-                    q = m.n.b - m.d.d - (l.n.b + l.o.b + l.d.a + B);
+                    q10 = m.n.b - m.d.d - (l.n.b + l.o.b + l.d.a + B);
                   } else {
-                    q = m.n.b - m.d.d;
+                    q10 = m.n.b - m.d.d;
                   }
-                  j = $wnd.Math.min(q, j);
+                  j = $wnd.Math.min(q10, j);
                   if (g10 < m.c.a.c.length - 1) {
                     l = JD(rmb(m.c.a, g10 + 1), 9);
                     B = UAc(a.b, m, l);
@@ -60298,7 +60298,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function TEd(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G;
               t = b;
               s = new Np();
               u = new Np();
@@ -60328,14 +60328,14 @@ var require_elk_bundled = __commonJS({
                 D = JD(F.Pb(), 171);
                 f = JD(Qc(u, D), 24);
                 for (r = f.Jc(); r.Ob(); ) {
-                  q = r.Pb();
-                  v = JD(uo(a.f, q), 171);
+                  q10 = r.Pb();
+                  v = JD(uo(a.f, q10), 171);
                   if (v) {
                     l = (!D.g && (D.g = new Tje(b4, D, 9, 10)), D.g);
                     VHd(l, v);
                   } else {
                     g10 = DDd(t, DJe);
-                    m = JJe + q + KJe + g10;
+                    m = JJe + q10 + KJe + g10;
                     n10 = m + IJe;
                     throw Zcb(new GDd(n10));
                   }
@@ -60351,7 +60351,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function s4b(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               d = new zmb();
               e = iwe;
               f = iwe;
@@ -60412,12 +60412,12 @@ var require_elk_bundled = __commonJS({
                   h = JD(Wmb(i10), 17);
                   if (c) {
                     j = JD(nub(h.a), 8);
-                    q = h.a.b == 0 ? CZb(h.d) : JD(jub(h.a), 8);
-                    q.b >= j.b ? OWb(h, r) : OWb(h, n10);
+                    q10 = h.a.b == 0 ? CZb(h.d) : JD(jub(h.a), 8);
+                    q10.b >= j.b ? OWb(h, r) : OWb(h, n10);
                   } else {
                     j = JD(oub(h.a), 8);
-                    q = h.a.b == 0 ? CZb(h.c) : JD(kub(h.a), 8);
-                    q.b >= j.b ? PWb(h, r) : PWb(h, n10);
+                    q10 = h.a.b == 0 ? CZb(h.c) : JD(kub(h.a), 8);
+                    q10.b >= j.b ? PWb(h, r) : PWb(h, n10);
                   }
                   l = JD(CNb(h, (pyc(), Ewc)), 79);
                   !!l && ye(l, j, true);
@@ -60611,7 +60611,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function rrd(a, b, c, d, e, f, g10) {
-              var h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H, I;
+              var h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H, I;
               p = 0;
               D = 0;
               for (j = new Ymb(a.b); j.a < j.c.c.length; ) {
@@ -60620,8 +60620,8 @@ var require_elk_bundled = __commonJS({
                 p = $wnd.Math.max(p, Drd(i10));
                 D += Drd(i10) * Crd(i10);
               }
-              q = D / a.b.c.length;
-              C = krd(a.b, q);
+              q10 = D / a.b.c.length;
+              C = krd(a.b, q10);
               D += a.b.c.length * C;
               p = $wnd.Math.max(p, $wnd.Math.sqrt(D * g10)) + c.b;
               H = c.b;
@@ -60775,11 +60775,11 @@ var require_elk_bundled = __commonJS({
               a.pb = oBd(a, 61);
             }
             function t2b(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               s = 0;
               if (b.f.a == 0) {
-                for (q = new Ymb(a); q.a < q.c.c.length; ) {
-                  o10 = JD(Wmb(q), 9);
+                for (q10 = new Ymb(a); q10.a < q10.c.c.length; ) {
+                  o10 = JD(Wmb(q10), 9);
                   s = $wnd.Math.max(s, o10.n.a + o10.o.a + o10.d.c);
                 }
               } else {
@@ -60842,11 +60842,11 @@ var require_elk_bundled = __commonJS({
               }
             }
             function w2b(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               s = 0;
               if (b.f.b == 0) {
-                for (q = new Ymb(a); q.a < q.c.c.length; ) {
-                  o10 = JD(Wmb(q), 9);
+                for (q10 = new Ymb(a); q10.a < q10.c.c.length; ) {
+                  o10 = JD(Wmb(q10), 9);
                   s = $wnd.Math.max(s, o10.n.b + o10.o.b + o10.d.a);
                 }
               } else {
@@ -60909,7 +60909,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function kmc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H;
               s = new fkb(a.b, 0);
               k = b.Jc();
               o10 = 0;
@@ -60955,9 +60955,9 @@ var require_elk_bundled = __commonJS({
                     FNb(d, sxc, qod);
                     YYb(d, f);
                     ZYb(d, bZb);
-                    q = new JZb();
-                    HZb(q, d);
-                    IZb(q, hpd);
+                    q10 = new JZb();
+                    HZb(q10, d);
+                    IZb(q10, hpd);
                     F = new JZb();
                     HZb(F, d);
                     IZb(F, Pod);
@@ -60967,7 +60967,7 @@ var require_elk_bundled = __commonJS({
                     FNb(w, (_rc(), yrc), JD(CNb(B, yrc), 15));
                     H = new SWb();
                     OWb(H, D);
-                    PWb(H, q);
+                    PWb(H, q10);
                     FNb(H, yrc, JD(CNb(B, yrc), 15));
                     OWb(B, F);
                     h = new qmc(g10, d, w, H, B);
@@ -60991,7 +60991,7 @@ var require_elk_bundled = __commonJS({
               return Qfb(v);
             }
             function xec(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               p = new zmb();
               for (m = new Ymb(a.d.b); m.a < m.c.c.length; ) {
                 l = JD(Wmb(m), 26);
@@ -61007,16 +61007,16 @@ var require_elk_bundled = __commonJS({
                       b = JD(Aub(d), 8);
                       c = null;
                       if (g10.c.j == (ipd(), Qod)) {
-                        q = new bgc(b, new Uid(b.a, e.d.d), e, g10);
-                        q.f.a = true;
-                        q.a = g10.c;
-                        EDb(p.c, q);
+                        q10 = new bgc(b, new Uid(b.a, e.d.d), e, g10);
+                        q10.f.a = true;
+                        q10.a = g10.c;
+                        EDb(p.c, q10);
                       }
                       if (g10.c.j == fpd) {
-                        q = new bgc(b, new Uid(b.a, e.d.d + e.d.a), e, g10);
-                        q.f.d = true;
-                        q.a = g10.c;
-                        EDb(p.c, q);
+                        q10 = new bgc(b, new Uid(b.a, e.d.d + e.d.a), e, g10);
+                        q10.f.d = true;
+                        q10.a = g10.c;
+                        EDb(p.c, q10);
                       }
                       while (d.b != d.d.c) {
                         c = JD(Aub(d), 8);
@@ -61055,16 +61055,16 @@ var require_elk_bundled = __commonJS({
                     if (g10.a.b != 0) {
                       b = JD(kub(g10.a), 8);
                       if (g10.d.j == (ipd(), Qod)) {
-                        q = new bgc(b, new Uid(b.a, e.d.d), e, g10);
-                        q.f.a = true;
-                        q.a = g10.d;
-                        EDb(p.c, q);
+                        q10 = new bgc(b, new Uid(b.a, e.d.d), e, g10);
+                        q10.f.a = true;
+                        q10.a = g10.d;
+                        EDb(p.c, q10);
                       }
                       if (g10.d.j == fpd) {
-                        q = new bgc(b, new Uid(b.a, e.d.d + e.d.a), e, g10);
-                        q.f.d = true;
-                        q.a = g10.d;
-                        EDb(p.c, q);
+                        q10 = new bgc(b, new Uid(b.a, e.d.d + e.d.a), e, g10);
+                        q10.f.d = true;
+                        q10.a = g10.d;
+                        EDb(p.c, q10);
                       }
                     }
                   }
@@ -61262,13 +61262,13 @@ var require_elk_bundled = __commonJS({
               return f;
             }
             function HRc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F;
               C = new rub();
               w = new rub();
-              q = -1;
+              q10 = -1;
               for (i10 = new Ymb(a); i10.a < i10.c.c.length; ) {
                 g10 = JD(Wmb(i10), 134);
-                g10.s = q--;
+                g10.s = q10--;
                 k = 0;
                 t = 0;
                 for (f = new Ymb(g10.t); f.a < f.c.c.length; ) {
@@ -61346,12 +61346,12 @@ var require_elk_bundled = __commonJS({
               }
             }
             function C9b(a, b, c, d, e) {
-              var f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F;
+              var f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F;
               p = new Amb(b.b);
               u = new Amb(b.b);
               m = new Amb(b.b);
               B = new Amb(b.b);
-              q = new Amb(b.b);
+              q10 = new Amb(b.b);
               for (A = lub(b, 0); A.b != A.d.c; ) {
                 v = JD(Aub(A), 12);
                 for (h = new Ymb(v.g); h.a < h.c.c.length; ) {
@@ -61361,13 +61361,13 @@ var require_elk_bundled = __commonJS({
                       EDb(B.c, f);
                       continue;
                     } else if (v.j == (ipd(), Qod) && f.d.j == fpd) {
-                      EDb(q.c, f);
+                      EDb(q10.c, f);
                       continue;
                     }
                   }
                 }
               }
-              for (i10 = new Ymb(q); i10.a < i10.c.c.length; ) {
+              for (i10 = new Ymb(q10); i10.a < i10.c.c.length; ) {
                 f = JD(Wmb(i10), 17);
                 D9b(a, f, c, d, (ipd(), Pod));
               }
@@ -61412,7 +61412,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function ysd(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               m = mye;
               n10 = mye;
               k = 0;
@@ -61433,11 +61433,11 @@ var require_elk_bundled = __commonJS({
               for (g10 = new cNd((!a.b && (a.b = new x6d(c4, a, 12, 3)), a.b)); g10.e != g10.i.gc(); ) {
                 f = JD(aNd(g10), 74);
                 for (r = new cNd((!f.a && (f.a = new x6d(b4, f, 6, 6)), f.a)); r.e != r.i.gc(); ) {
-                  q = JD(aNd(r), 171);
-                  o10 = q.j;
-                  d = q.b;
-                  p = q.k;
-                  e = q.c;
+                  q10 = JD(aNd(r), 171);
+                  o10 = q10.j;
+                  d = q10.b;
+                  p = q10.k;
+                  e = q10.c;
                   m = $wnd.Math.min(m, o10);
                   m = $wnd.Math.min(m, d);
                   k = $wnd.Math.max(k, o10);
@@ -61446,7 +61446,7 @@ var require_elk_bundled = __commonJS({
                   n10 = $wnd.Math.min(n10, e);
                   l = $wnd.Math.max(l, p);
                   l = $wnd.Math.max(l, e);
-                  for (c = new cNd((!q.a && (q.a = new S$d(_3, q, 5)), q.a)); c.e != c.i.gc(); ) {
+                  for (c = new cNd((!q10.a && (q10.a = new S$d(_3, q10, 5)), q10.a)); c.e != c.i.gc(); ) {
                     b = JD(aNd(c), 373);
                     m = $wnd.Math.min(m, b.a);
                     k = $wnd.Math.max(k, b.a);
@@ -61459,7 +61459,7 @@ var require_elk_bundled = __commonJS({
               Oxd(a, ikd, l - n10);
             }
             function oNb(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H, I;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H, I;
               n10 = JD(CNb(a, (zPb(), xPb)), 19);
               t = iwe;
               u = iwe;
@@ -61509,8 +61509,8 @@ var require_elk_bundled = __commonJS({
               for (h = new Ymb(a.d); h.a < h.c.c.length; ) {
                 g10 = JD(Wmb(h), 448);
                 o10 = JD(CNb(g10, xPb), 158);
-                q = Cid(new Vid(g10.d), C);
-                Hyd(o10, q.a, q.b);
+                q10 = Cid(new Vid(g10.d), C);
+                Hyd(o10, q10.a, q10.b);
               }
               I = r - t + (D.b + D.c);
               k = s - u + (D.d + D.a);
@@ -61519,16 +61519,16 @@ var require_elk_bundled = __commonJS({
               Oxd(n10, ikd, k - (D.d + D.a));
             }
             function rDc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               c.Tg("Depth first model order layering", 1);
               a.d = b;
-              q = new zmb();
+              q10 = new zmb();
               for (p = new Ymb(a.d.a); p.a < p.c.c.length; ) {
                 n10 = JD(Wmb(p), 9);
-                n10.k == (jZb(), gZb) && (EDb(q.c, n10), true);
+                n10.k == (jZb(), gZb) && (EDb(q10.c, n10), true);
               }
               Wnb();
-              xmb(q, new wDc());
+              xmb(q10, new wDc());
               g10 = true;
               a.b = new J$b(a.d);
               a.a = null;
@@ -61536,7 +61536,7 @@ var require_elk_bundled = __commonJS({
               a.b.p = 0;
               a.c = 0;
               a.f = new rub();
-              for (o10 = new Ymb(q); o10.a < o10.c.c.length; ) {
+              for (o10 = new Ymb(q10); o10.a < o10.c.c.length; ) {
                 n10 = JD(Wmb(o10), 9);
                 if (g10) {
                   YYb(n10, a.b);
@@ -61661,7 +61661,7 @@ var require_elk_bundled = __commonJS({
               c.Ug();
             }
             function vUb(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D;
               l = xUb(rUb(a, (ipd(), Vod)), b);
               o10 = wUb(rUb(a, Wod), b);
               u = wUb(rUb(a, cpd), b);
@@ -61677,13 +61677,13 @@ var require_elk_bundled = __commonJS({
               A = wUb(rUb(a, Tod), b);
               D = yUb(rUb(a, apd), b);
               n10 = yUb(rUb(a, Yod), b);
-              q = wUb(rUb(a, Zod), b);
+              q10 = wUb(rUb(a, Zod), b);
               c = jid(WC(OC(aE, 1), tye, 30, 15, [s.a, B.a, w.a, D.a]));
-              d = jid(WC(OC(aE, 1), tye, 30, 15, [o10.a, l.a, u.a, q.a]));
+              d = jid(WC(OC(aE, 1), tye, 30, 15, [o10.a, l.a, u.a, q10.a]));
               e = r.a;
               f = jid(WC(OC(aE, 1), tye, 30, 15, [p.a, m.a, v.a, n10.a]));
               j = jid(WC(OC(aE, 1), tye, 30, 15, [s.b, o10.b, p.b, t.b]));
-              i10 = jid(WC(OC(aE, 1), tye, 30, 15, [B.b, l.b, m.b, q.b]));
+              i10 = jid(WC(OC(aE, 1), tye, 30, 15, [B.b, l.b, m.b, q10.b]));
               k = C.b;
               h = jid(WC(OC(aE, 1), tye, 30, 15, [w.b, u.b, v.b, A.b]));
               nUb(rUb(a, Vod), c + e, j + k);
@@ -61705,7 +61705,7 @@ var require_elk_bundled = __commonJS({
               return g10;
             }
             function YEd(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H, I, J, K10;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H, I, J, K10;
               D = null;
               G = b;
               F = HEd(a, EHd(c), G);
@@ -61723,8 +61723,8 @@ var require_elk_bundled = __commonJS({
               }
               if (!!I && !$ub(QCd(I), H)) {
                 i10 = DDd(G, DJe);
-                q = "The source port of an edge must be a port of the edge's source node (edge id: '" + i10;
-                r = q + IJe;
+                q10 = "The source port of an edge must be a port of the edge's source node (edge id: '" + i10;
+                r = q10 + IJe;
                 throw Zcb(new GDd(r));
               }
               B = (!F.b && (F.b = new Tje(a4, F, 4, 7)), F.b);
@@ -61764,7 +61764,7 @@ var require_elk_bundled = __commonJS({
               return D;
             }
             function jEb(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D;
               s = new Uid(mye, mye);
               b = new Uid(nye, nye);
               for (B = new Ymb(a); B.a < B.c.c.length; ) {
@@ -61795,8 +61795,8 @@ var require_elk_bundled = __commonJS({
                 c.c.length = 0;
                 for (u = new Ymb(f); u.a < u.c.c.length; ) {
                   t = JD(Wmb(u), 322);
-                  for (q = new Ymb(t.e); q.a < q.c.c.length; ) {
-                    o10 = JD(Wmb(q), 180);
+                  for (q10 = new Ymb(t.e); q10.a < q10.c.c.length; ) {
+                    o10 = JD(Wmb(q10), 180);
                     g10 = true;
                     for (i10 = new Ymb(f); i10.a < i10.c.c.length; ) {
                       h = JD(Wmb(i10), 322);
@@ -61968,7 +61968,7 @@ var require_elk_bundled = __commonJS({
               return f;
             }
             function cmc(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v;
               e = 1;
               n10 = new zmb();
               for (d = 0; d < a.b.c.length; d++) {
@@ -62000,10 +62000,10 @@ var require_elk_bundled = __commonJS({
                   }
                   e += b - 1;
                   s = ($Db(0, u.c.length), JD(u.c[0], 26)).a.c.length;
-                  for (f = 0, q = 0, v = 0; f < s; ++f, ++q, v++) {
-                    o10 = JD(rmb(($Db(0, u.c.length), JD(u.c[0], 26)).a, q), 9);
+                  for (f = 0, q10 = 0, v = 0; f < s; ++f, ++q10, v++) {
+                    o10 = JD(rmb(($Db(0, u.c.length), JD(u.c[0], 26)).a, q10), 9);
                     if (o10.k != (jZb(), fZb)) {
-                      q += dmc(a, u, v % b, q);
+                      q10 += dmc(a, u, v % b, q10);
                     } else {
                       f -= 1;
                       v -= 1;
@@ -62026,7 +62026,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function yAd(b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               if (d == null) {
                 return null;
               }
@@ -62063,9 +62063,9 @@ var require_elk_bundled = __commonJS({
                 }
                 return r;
               }
-              q = Jfe(ele, c).Kl();
-              if (!q.dc()) {
-                for (p = q.Jc(); p.Ob(); ) {
+              q10 = Jfe(ele, c).Kl();
+              if (!q10.dc()) {
+                for (p = q10.Jc(); p.Ob(); ) {
                   o10 = JD(p.Pb(), 160);
                   try {
                     r = o10.hk().ti().qi(o10, d);
@@ -62186,7 +62186,7 @@ var require_elk_bundled = __commonJS({
               Rc(oUb, Zod, Zod);
             }
             function RUb(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B;
               a.d = new Uid(mye, mye);
               a.c = new Uid(nye, nye);
               for (m = b.Jc(); m.Ob(); ) {
@@ -62214,8 +62214,8 @@ var require_elk_bundled = __commonJS({
                 e = JD(Wmb(g10), 847);
                 u = IRb(a.b, e);
                 eYb(e.c, u.a, u.b);
-                for (q = new Ymb(e.c.a); q.a < q.c.c.length; ) {
-                  p = JD(Wmb(q), 9);
+                for (q10 = new Ymb(e.c.a); q10.a < q10.c.c.length; ) {
+                  p = JD(Wmb(q10), 9);
                   if (p.k == (jZb(), cZb)) {
                     r = VUb(a, p.n, JD(CNb(p, (_rc(), drc)), 64));
                     Cid(Lid(p.n), r);
@@ -62368,7 +62368,7 @@ var require_elk_bundled = __commonJS({
               return b;
             }
             function P1b(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C;
               if (b.dc()) {
                 return;
               }
@@ -62382,8 +62382,8 @@ var require_elk_bundled = __commonJS({
               }
               hub(e, $id(WC(OC(F2, 1), Lwe, 8, 0, [o10.i.n, o10.n, o10.a])));
               if ((ipd(), _od).Gc(o10.j)) {
-                q = gfb(MD(CNb(o10, (_rc(), Rrc))));
-                l = new Uid($id(WC(OC(F2, 1), Lwe, 8, 0, [o10.i.n, o10.n, o10.a])).a, q);
+                q10 = gfb(MD(CNb(o10, (_rc(), Rrc))));
+                l = new Uid($id(WC(OC(F2, 1), Lwe, 8, 0, [o10.i.n, o10.n, o10.a])).a, q10);
                 iub(e, l, e.c.b, e.c);
               }
               k = null;
@@ -62407,8 +62407,8 @@ var require_elk_bundled = __commonJS({
               }
               p = h.d;
               if (_od.Gc(p.j)) {
-                q = gfb(MD(CNb(p, (_rc(), Rrc))));
-                l = new Uid($id(WC(OC(F2, 1), Lwe, 8, 0, [p.i.n, p.n, p.a])).a, q);
+                q10 = gfb(MD(CNb(p, (_rc(), Rrc))));
+                l = new Uid($id(WC(OC(F2, 1), Lwe, 8, 0, [p.i.n, p.n, p.a])).a, q10);
                 iub(e, l, e.c.b, e.c);
               }
               hub(e, $id(WC(OC(F2, 1), Lwe, 8, 0, [p.i.n, p.n, p.a])));
@@ -62417,7 +62417,7 @@ var require_elk_bundled = __commonJS({
               xe(h.a, dRc(n10));
             }
             function iud(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H, I, J, K10, L, M, N, O, P;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H, I, J, K10, L, M, N, O, P;
               t = JD(PId((!a.b && (a.b = new Tje(a4, a, 4, 7)), a.b), 0), 83);
               v = t.mh();
               w = t.nh();
@@ -62452,12 +62452,12 @@ var require_elk_bundled = __commonJS({
                 }
               }
               g10 = JD(PId((!a.a && (a.a = new x6d(b4, a, 6, 6)), a.a), 0), 171);
-              q = H;
-              H > v + u ? q = v + u : H < v - u && (q = v - u);
+              q10 = H;
+              H > v + u ? q10 = v + u : H < v - u && (q10 = v - u);
               r = I;
               I > w + p ? r = w + p : I < w - p && (r = w - p);
-              q > v - u && q < v + u && r > w - p && r < w + p && (q = v + u);
-              Szd(g10, q);
+              q10 > v - u && q10 < v + u && r > w - p && r < w + p && (q10 = v + u);
+              Szd(g10, q10);
               Tzd(g10, r);
               B = v;
               v > H + G ? B = H + G : v < H - G && (B = H - G);
@@ -62469,13 +62469,13 @@ var require_elk_bundled = __commonJS({
               rMd((!g10.a && (g10.a = new S$d(_3, g10, 5)), g10.a));
               f = cwb(b, 5);
               t == F && ++f;
-              L = B - q;
+              L = B - q10;
               O = C - r;
               J = $wnd.Math.sqrt(L * L + O * O);
               l = J * 0.20000000298023224;
               M = L / (f + 1);
               P = O / (f + 1);
-              K10 = q;
+              K10 = q10;
               N = r;
               for (k = 0; k < f; k++) {
                 K10 += M;
@@ -62492,7 +62492,7 @@ var require_elk_bundled = __commonJS({
             }
             function Yib(a, b) {
               Vib();
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H;
               B = a.e;
               o10 = a.d;
               e = a.a;
@@ -62552,11 +62552,11 @@ var require_elk_bundled = __commonJS({
                     A = udb(pdb(r, 32));
                   }
                   s = udb(A);
-                  q = c;
+                  q10 = c;
                   do {
                     u[--c] = 48 + s % 10 & zxe;
                   } while ((s = s / 10 | 0) != 0 && c != 0);
-                  d = 9 - q + c;
+                  d = 9 - q10 + c;
                   for (i10 = 0; i10 < d && c > 0; i10++) {
                     u[--c] = 48;
                   }
@@ -62613,7 +62613,7 @@ var require_elk_bundled = __commonJS({
               return v.a;
             }
             function H7c(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w;
               a.c = b;
               a.g = new nsb();
               c = (rud(), new Fud(a.c));
@@ -62660,9 +62660,9 @@ var require_elk_bundled = __commonJS({
                   Bid(w, ($wnd.Math.random() - 0.5) * hAe, ($wnd.Math.random() - 0.5) * hAe);
                 }
                 p = JD(Mxd(k, (cmd(), Lkd)), 125);
-                q = new JMb(w, new wid(w.a - n10 - a.j / 2 - p.b, w.b - m - a.j / 2 - p.d, k.g + a.j + (p.b + p.c), k.f + a.j + (p.d + p.a)));
-                nmb(a.d.i, q);
-                vjb(a.g, w, new Ztd(q, k));
+                q10 = new JMb(w, new wid(w.a - n10 - a.j / 2 - p.b, w.b - m - a.j / 2 - p.d, k.g + a.j + (p.b + p.c), k.f + a.j + (p.d + p.a)));
+                nmb(a.d.i, q10);
+                vjb(a.g, w, new Ztd(q10, k));
               }
               switch (u.g) {
                 case 0:
@@ -62670,9 +62670,9 @@ var require_elk_bundled = __commonJS({
                     a.d.d = JD(rmb(a.d.i, 0), 68);
                   } else {
                     for (s = new Ymb(a.d.i); s.a < s.c.c.length; ) {
-                      q = JD(Wmb(s), 68);
-                      o10 = JD(JD(sjb(a.g, q.a), 49).b, 19).ih();
-                      o10 != null && Jgb(o10, t) && (a.d.d = q);
+                      q10 = JD(Wmb(s), 68);
+                      o10 = JD(JD(sjb(a.g, q10.a), 49).b, 19).ih();
+                      o10 != null && Jgb(o10, t) && (a.d.d = q10);
                     }
                   }
                   break;
@@ -62683,11 +62683,11 @@ var require_elk_bundled = __commonJS({
                   Bid(e, a.c.i, a.c.j);
                   f = mye;
                   for (r = new Ymb(a.d.i); r.a < r.c.c.length; ) {
-                    q = JD(Wmb(r), 68);
-                    j = Fid(q.a, e);
+                    q10 = JD(Wmb(r), 68);
+                    j = Fid(q10.a, e);
                     if (j < f) {
                       f = j;
-                      a.d.d = q;
+                      a.d.d = q10;
                     }
                   }
                   break;
@@ -62726,7 +62726,7 @@ var require_elk_bundled = __commonJS({
               egd(a, QGe, EGe, jHd(G4c));
             }
             function _Bc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H, I, J, K10, L;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H, I, J, K10, L;
               c.Tg("Greedy cycle removal", 1);
               a.b = b;
               t = b.a;
@@ -62802,8 +62802,8 @@ var require_elk_bundled = __commonJS({
               for (j = 0; j < t.c.length; j++) {
                 a.c[j] < 0 && (a.c[j] += H);
               }
-              for (q = new Ymb(t); q.a < q.c.c.length; ) {
-                p = JD(Wmb(q), 9);
+              for (q10 = new Ymb(t); q10.a < q10.c.c.length; ) {
+                p = JD(Wmb(q10), 9);
                 F = kYb(p.j);
                 for (A = F, B = 0, D = A.length; B < D; ++B) {
                   w = A[B];
@@ -62826,7 +62826,7 @@ var require_elk_bundled = __commonJS({
               c.Ug();
             }
             function Dsd(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w;
               v = JD(PId((!a.a && (a.a = new x6d(b4, a, 6, 6)), a.a), 0), 171);
               k = new fjd();
               u = new nsb();
@@ -62840,15 +62840,15 @@ var require_elk_bundled = __commonJS({
                   throw Zcb(new yfb(CIe + (!a.a && (a.a = new x6d(b4, a, 6, 6)), a.a).i));
                 }
                 if (n10 != a) {
-                  q = JD(PId((!n10.a && (n10.a = new x6d(b4, n10, 6, 6)), n10.a), 0), 171);
-                  iub(d, q, d.c.b, d.c);
-                  p = JD(Wd(Msb(u.f, q)), 13);
+                  q10 = JD(PId((!n10.a && (n10.a = new x6d(b4, n10, 6, 6)), n10.a), 0), 171);
+                  iub(d, q10, d.c.b, d.c);
+                  p = JD(Wd(Msb(u.f, q10)), 13);
                   if (!p) {
-                    p = Gsd(q);
-                    Nsb(u.f, q, p);
+                    p = Gsd(q10);
+                    Nsb(u.f, q10, p);
                   }
                   l = c ? Rid(new Vid(JD(rmb(w, w.c.length - 1), 8)), JD(rmb(p, p.c.length - 1), 8)) : Rid(new Vid(($Db(0, w.c.length), JD(w.c[0], 8))), ($Db(0, p.c.length), JD(p.c[0], 8)));
-                  Nsb(m.f, q, l);
+                  Nsb(m.f, q10, l);
                 }
               }
               if (d.b != 0) {
@@ -62857,12 +62857,12 @@ var require_elk_bundled = __commonJS({
                   s = JD(rmb(w, c ? w.c.length - 1 - j : j), 8);
                   e = lub(d, 0);
                   while (e.b != e.d.c) {
-                    q = JD(Aub(e), 171);
-                    p = JD(Wd(Msb(u.f, q)), 13);
+                    q10 = JD(Aub(e), 171);
+                    p = JD(Wd(Msb(u.f, q10)), 13);
                     if (p.c.length <= j) {
                       Cub(e);
                     } else {
-                      t = Cid(new Vid(JD(rmb(p, c ? p.c.length - 1 - j : j), 8)), JD(Wd(Msb(m.f, q)), 8));
+                      t = Cid(new Vid(JD(rmb(p, c ? p.c.length - 1 - j : j), 8)), JD(Wd(Msb(m.f, q10)), 8));
                       if (s.a != t.a || s.b != t.b) {
                         f = s.a - r.a;
                         h = s.b - r.b;
@@ -62879,7 +62879,7 @@ var require_elk_bundled = __commonJS({
               return k;
             }
             function DYc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D;
               c.Tg(PFe, 1);
               D = JD(eCb(hCb(new xCb(null, new lwb(b, 16)), new RYc()), PAb(new fBb(), new dBb(), new lBb(), WC(OC(HL, 1), gxe, 132, 0, [(TAb(), RAb)]))), 16);
               k = JD(eCb(hCb(new xCb(null, new lwb(b, 16)), new TYc(b)), PAb(new fBb(), new dBb(), new lBb(), WC(OC(HL, 1), gxe, 132, 0, [RAb]))), 16);
@@ -62937,33 +62937,33 @@ var require_elk_bundled = __commonJS({
                 DYc(a, d, c.dh(1 / l.length | 0));
                 Wnb();
                 Pub(d, new vHd((bXc(), VWc)));
-                q = new rub();
+                q10 = new rub();
                 for (u = lub(d, 0); u.b != u.d.c; ) {
                   t = JD(Aub(u), 41);
                   for (s = lub(v.d, 0); s.b != s.d.c; ) {
                     r = JD(Aub(s), 65);
-                    r.c == t && (iub(q, r, q.c.b, q.c), true);
+                    r.c == t && (iub(q10, r, q10.c.b, q10.c), true);
                   }
                 }
                 qub(v.d);
-                xe(v.d, q);
+                xe(v.d, q10);
               }
               c.Ug();
             }
             function i6c(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               t = gfb(MD(Mxd(b, (R3c(), Q3c))));
               n10 = gfb(MD(Mxd(b, O3c)));
               m = gfb(MD(Mxd(b, L3c)));
               z7c((!b.a && (b.a = new x6d(f4, b, 10, 11)), b.a));
               r = R5c((!b.a && (b.a = new x6d(f4, b, 10, 11)), b.a), t, a.b);
-              for (q = 0; q < r.c.length; q++) {
-                i10 = ($Db(q, r.c.length), JD(r.c[q], 189));
-                if (q != 0) {
-                  o10 = ($Db(q - 1, r.c.length), JD(r.c[q - 1], 189));
+              for (q10 = 0; q10 < r.c.length; q10++) {
+                i10 = ($Db(q10, r.c.length), JD(r.c[q10], 189));
+                if (q10 != 0) {
+                  o10 = ($Db(q10 - 1, r.c.length), JD(r.c[q10 - 1], 189));
                   E7c(i10, o10.f + o10.b + a.b);
                 }
-                p = G5c(q, r, t, a.b, deb(LD(Mxd(b, (U4c(), I4c)))));
+                p = G5c(q10, r, t, a.b, deb(LD(Mxd(b, (U4c(), I4c)))));
                 if (deb(LD(p.b))) {
                   for (f = new Ymb(i10.a); f.a < f.c.c.length; ) {
                     e = JD(Wmb(f), 175);
@@ -62973,12 +62973,12 @@ var require_elk_bundled = __commonJS({
                   }
                   i10.d = new zmb();
                   i10.e = t;
-                  --q;
+                  --q10;
                 } else {
                   h6c(a, i10);
-                  if (q + 1 < r.c.length) {
-                    a.e = $wnd.Math.max(i10.e + a.b + JD(rmb(($Db(q + 1, r.c.length), JD(r.c[q + 1], 189)).a, 0), 175).r - t, a.c);
-                    a.f = $wnd.Math.min(i10.e + a.b + JD(rmb(($Db(q + 1, r.c.length), JD(r.c[q + 1], 189)).a, 0), 175).r - t, a.d);
+                  if (q10 + 1 < r.c.length) {
+                    a.e = $wnd.Math.max(i10.e + a.b + JD(rmb(($Db(q10 + 1, r.c.length), JD(r.c[q10 + 1], 189)).a, 0), 175).r - t, a.c);
+                    a.f = $wnd.Math.min(i10.e + a.b + JD(rmb(($Db(q10 + 1, r.c.length), JD(r.c[q10 + 1], 189)).a, 0), 175).r - t, a.d);
                     if (i10.d.c.length != 0) {
                       a.c = $wnd.Math.max(a.c, JD(rmb(i10.d, i10.d.c.length - 1), 320).d + (i10.d.c.length <= 1 ? 0 : a.b));
                       a.d = $wnd.Math.min(a.c, JD(rmb(i10.d, i10.d.c.length - 1), 320).d + (i10.d.c.length <= 1 ? 0 : a.b));
@@ -63006,7 +63006,7 @@ var require_elk_bundled = __commonJS({
               return new j7c(a.a, u, s.b + d, (q7c(), p7c));
             }
             function b3b(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G;
               A = JD(CNb(a, (pyc(), sxc)), 103);
               if (!(A != (tod(), rod) && A != sod)) {
                 return;
@@ -63023,8 +63023,8 @@ var require_elk_bundled = __commonJS({
               for (b = 0; b < n10; b++) {
                 c = ($Db(b, o10.c.length), JD(o10.c[b], 26));
                 B = ($Db(b, k.c.length), JD(k.c[b], 93));
-                q = new nsb();
-                EDb(k.c, q);
+                q10 = new nsb();
+                EDb(k.c, q10);
                 D = ($Db(b, p.c.length), JD(p.c[b], 16));
                 s = new zmb();
                 EDb(p.c, s);
@@ -63054,10 +63054,10 @@ var require_elk_bundled = __commonJS({
                     if (!Z2b(G)) {
                       continue;
                     }
-                    r = JD(sjb(q, CNb(G, (_rc(), zrc))), 9);
+                    r = JD(sjb(q10, CNb(G, (_rc(), zrc))), 9);
                     if (!r) {
                       r = Y2b(a, G);
-                      vjb(q, CNb(G, zrc), r);
+                      vjb(q10, CNb(G, zrc), r);
                       EDb(s.c, r);
                     }
                     PWb(h, JD(rmb(r.j, 0), 12));
@@ -63092,7 +63092,7 @@ var require_elk_bundled = __commonJS({
               FNb(a, (_rc(), brc), w);
             }
             function DKc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H, I, J, K10;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H, I, J, K10;
               I = new zmb();
               for (o10 = new Ymb(b.b); o10.a < o10.c.c.length; ) {
                 m = JD(Wmb(o10), 26);
@@ -63149,10 +63149,10 @@ var require_elk_bundled = __commonJS({
               for (i10 = 0; i10 < J.length; i10++) {
                 j[i10] == 0 && (EDb(t.c, J[i10]), true);
               }
-              q = SC(cE, Nxe, 30, J.length, 15, 1);
+              q10 = SC(cE, Nxe, 30, J.length, 15, 1);
               while (t.c.length != 0) {
                 H = JD(tmb(t, 0), 264);
-                q[H.b] = s++;
+                q10[H.b] = s++;
                 while (!w[H.b].dc()) {
                   K10 = JD(w[H.b].ed(0), 264);
                   --j[K10.b];
@@ -63162,7 +63162,7 @@ var require_elk_bundled = __commonJS({
               a.a = SC(TX, fFe, 264, J.length, 0, 1);
               for (f = 0; f < J.length; f++) {
                 p = J[f];
-                G = q[f];
+                G = q10[f];
                 a.a[G] = p;
                 p.b = G;
                 for (v = new Ymb(p.e); v.a < v.c.c.length; ) {
@@ -63173,7 +63173,7 @@ var require_elk_bundled = __commonJS({
               return a.a;
             }
             function G5c(a, b, c, d, e) {
-              var f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               p = false;
               i10 = false;
               m = a + 1;
@@ -63203,8 +63203,8 @@ var require_elk_bundled = __commonJS({
                 }
                 k = null;
                 k = (r = null, g10 < o10.a.c.length - 1 ? r = JD(rmb(o10.a, g10 + 1), 175) : m < b.c.length && ($Db(m, b.c.length), JD(b.c[m], 189)).a.c.length != 0 && (r = JD(rmb(($Db(m, b.c.length), JD(b.c[m], 189)).a, 0), 175)), r);
-                q = false;
-                !!k && (q = !pb(k.j, o10));
+                q10 = false;
+                !!k && (q10 = !pb(k.j, o10));
                 if (k) {
                   if (k.b.c.length != 0 && !deb(LD(JD(rmb(k.b, 0), 19).mf((U4c(), z4c))))) {
                     O6c(f, c - f.s);
@@ -63225,11 +63225,11 @@ var require_elk_bundled = __commonJS({
                     --g10;
                     continue;
                   }
-                  if (!deb(LD(JD(rmb(k.b, 0), 19).mf((U4c(), z4c)))) && H5c(b, o10, f, k, q, c, m, d)) {
+                  if (!deb(LD(JD(rmb(k.b, 0), 19).mf((U4c(), z4c)))) && H5c(b, o10, f, k, q10, c, m, d)) {
                     p = true;
                     continue;
                   }
-                  if (q) {
+                  if (q10) {
                     n10 = o10.b;
                     l = k.f;
                     if (!deb(LD(JD(rmb(k.b, 0), 19).mf(z4c))) && I5c(b, o10, f, k, c, m, d, e)) {
@@ -63396,7 +63396,7 @@ var require_elk_bundled = __commonJS({
               a.c = d;
             }
             function _Tc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               c.Tg("Process compaction", 1);
               if (!deb(LD(CNb(b, (UXc(), qXc))))) {
                 return;
@@ -63415,25 +63415,25 @@ var require_elk_bundled = __commonJS({
                   l = 0;
                   m = 0;
                   if (d) {
-                    q = d.e;
+                    q10 = d.e;
                     switch (e.g) {
                       case 2:
-                        l = q.a - n10 - i10.f.a;
+                        l = q10.a - n10 - i10.f.a;
                         p.e.a - n10 - i10.f.a < l && (l = p.e.a - n10 - i10.f.a);
                         m = l + i10.f.a;
                         break;
                       case 1:
-                        l = q.a + d.f.a + n10;
+                        l = q10.a + d.f.a + n10;
                         p.e.a + n10 > l && (l = p.e.a + p.f.a + n10);
                         m = l + i10.f.a;
                         break;
                       case 4:
-                        l = q.b - n10 - i10.f.b;
+                        l = q10.b - n10 - i10.f.b;
                         p.e.b - n10 - i10.f.b < l && (l = p.e.b - n10 - i10.f.b);
                         m = l + i10.f.b;
                         break;
                       case 3:
-                        l = q.b + d.f.b + n10;
+                        l = q10.b + d.f.b + n10;
                         p.e.b + n10 > l && (l = p.e.b + p.f.b + n10);
                         m = l + i10.f.b;
                     }
@@ -63481,7 +63481,7 @@ var require_elk_bundled = __commonJS({
               c.Ug();
             }
             function $Cc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v;
               c.Tg("Coffman-Graham Layering", 1);
               if (b.a.c.length == 0) {
                 c.Ug();
@@ -63523,10 +63523,10 @@ var require_elk_bundled = __commonJS({
                   if (a.a[e.p]) {
                     continue;
                   }
-                  q = e.d.i;
-                  --a.b[q.p];
-                  Rc(a.c, q, Qfb(a.f[s.p]));
-                  a.b[q.p] == 0 && (eEb(Gvb(o10, q), zye), true);
+                  q10 = e.d.i;
+                  --a.b[q10.p];
+                  Rc(a.c, q10, Qfb(a.f[s.p]));
+                  a.b[q10.p] == 0 && (eEb(Gvb(o10, q10), zye), true);
                 }
               }
               n10 = new Kvb(new hDc(a));
@@ -63662,7 +63662,7 @@ var require_elk_bundled = __commonJS({
               return h;
             }
             function Q8b(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               u = false;
               do {
                 u = false;
@@ -63678,8 +63678,8 @@ var require_elk_bundled = __commonJS({
                     }
                     t = true;
                     for (r = 0; r < e.b; r++) {
-                      q = JD(au(e, r), 9);
-                      DNb(q, yrc) && (b && JD(CNb(l, yrc), 15).a < JD(CNb(q, yrc), 15).a || !b && JD(CNb(l, yrc), 15).a > JD(CNb(q, yrc), 15).a) && (t = false);
+                      q10 = JD(au(e, r), 9);
+                      DNb(q10, yrc) && (b && JD(CNb(l, yrc), 15).a < JD(CNb(q10, yrc), 15).a || !b && JD(CNb(l, yrc), 15).a > JD(CNb(q10, yrc), 15).a) && (t = false);
                     }
                     if (!t) {
                       continue;
@@ -64027,7 +64027,7 @@ var require_elk_bundled = __commonJS({
               return new gTd(g10, l, d, e, b, n10, j, f);
             }
             function ylc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               if (qjb(a.b, b)) {
                 if (tsb(JD(sjb(a.b, b), 47), c)) {
                   return 1;
@@ -64081,8 +64081,8 @@ var require_elk_bundled = __commonJS({
                   l = m.i;
                   n10 = o10.i;
                   if (!!l && l == n10) {
-                    for (q = new Ymb(l.j); q.a < q.c.c.length; ) {
-                      p = JD(Wmb(q), 12);
+                    for (q10 = new Ymb(l.j); q10.a < q10.c.c.length; ) {
+                      p = JD(Wmb(q10), 12);
                       if (p == m) {
                         Blc(a, c, b);
                         return -1;
@@ -64255,7 +64255,7 @@ var require_elk_bundled = __commonJS({
               Rc(EVb, _od, cpd);
             }
             function MNc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w;
               c.Tg("Brandes & Koepf node placement", 1);
               a.a = b;
               a.c = VNc(b);
@@ -64267,63 +64267,63 @@ var require_elk_bundled = __commonJS({
               w = null;
               r = null;
               s = null;
-              q = (bk(4, fxe), new Amb(4));
+              q10 = (bk(4, fxe), new Amb(4));
               switch (JD(CNb(b, Ywc), 284).g) {
                 case 3:
                   r = new dNc(b, a.c.d, (pNc(), nNc), (hNc(), fNc));
-                  EDb(q.c, r);
+                  EDb(q10.c, r);
                   break;
                 case 1:
                   s = new dNc(b, a.c.d, (pNc(), oNc), (hNc(), fNc));
-                  EDb(q.c, s);
+                  EDb(q10.c, s);
                   break;
                 case 4:
                   v = new dNc(b, a.c.d, (pNc(), nNc), (hNc(), gNc));
-                  EDb(q.c, v);
+                  EDb(q10.c, v);
                   break;
                 case 2:
                   w = new dNc(b, a.c.d, (pNc(), oNc), (hNc(), gNc));
-                  EDb(q.c, w);
+                  EDb(q10.c, w);
                   break;
                 default:
                   r = new dNc(b, a.c.d, (pNc(), nNc), (hNc(), fNc));
                   s = new dNc(b, a.c.d, oNc, fNc);
                   v = new dNc(b, a.c.d, nNc, gNc);
                   w = new dNc(b, a.c.d, oNc, gNc);
-                  EDb(q.c, v);
-                  EDb(q.c, w);
-                  EDb(q.c, r);
-                  EDb(q.c, s);
+                  EDb(q10.c, v);
+                  EDb(q10.c, w);
+                  EDb(q10.c, r);
+                  EDb(q10.c, s);
               }
               e = new xNc(b, a.c);
-              for (h = new Ymb(q); h.a < h.c.c.length; ) {
+              for (h = new Ymb(q10); h.a < h.c.c.length; ) {
                 f = JD(Wmb(h), 188);
                 wNc(e, f, a.b);
                 vNc(f);
               }
               m = new CNc(b, a.c);
-              for (i10 = new Ymb(q); i10.a < i10.c.c.length; ) {
+              for (i10 = new Ymb(q10); i10.a < i10.c.c.length; ) {
                 f = JD(Wmb(i10), 188);
                 zNc(m, f);
               }
               if (c.$g()) {
-                for (j = new Ymb(q); j.a < j.c.c.length; ) {
+                for (j = new Ymb(q10); j.a < j.c.c.length; ) {
                   f = JD(Wmb(j), 188);
                   c.ah(f + " size is " + bNc(f));
                 }
               }
               l = null;
               if (a.d) {
-                k = JNc(a, q, a.c.d);
+                k = JNc(a, q10, a.c.d);
                 INc(b, k, c) && (l = k);
               }
               if (!l) {
-                for (j = new Ymb(q); j.a < j.c.c.length; ) {
+                for (j = new Ymb(q10); j.a < j.c.c.length; ) {
                   f = JD(Wmb(j), 188);
                   INc(b, f, c) && (!l || bNc(l) > bNc(f)) && (l = f);
                 }
               }
-              !l && (l = ($Db(0, q.c.length), JD(q.c[0], 188)));
+              !l && (l = ($Db(0, q10.c.length), JD(q10.c[0], 188)));
               for (p = new Ymb(b.b); p.a < p.c.c.length; ) {
                 o10 = JD(Wmb(p), 26);
                 for (u = new Ymb(o10.a); u.a < u.c.c.length; ) {
@@ -64337,7 +64337,7 @@ var require_elk_bundled = __commonJS({
                 c.ah("Classes: " + PNc(l, c));
                 c.ah("Marked edges: " + a.b);
               }
-              for (g10 = new Ymb(q); g10.a < g10.c.c.length; ) {
+              for (g10 = new Ymb(q10); g10.a < g10.c.c.length; ) {
                 f = JD(Wmb(g10), 188);
                 f.g = null;
                 f.b = null;
@@ -64352,7 +64352,7 @@ var require_elk_bundled = __commonJS({
               c.Ug();
             }
             function Alc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D;
               if (b.k == (jZb(), eZb) && c.k == gZb) {
                 f = JD(rmb(JD(gvb(iCb(hCb(new xCb(null, new lwb(b.j, 16)), new Klc()))), 12).e, 0), 17).c;
                 e = f.i;
@@ -64403,7 +64403,7 @@ var require_elk_bundled = __commonJS({
                 v = JD(rmb(JD(gvb(iCb(hCb(new xCb(null, new lwb(c.j, 16)), new Mlc()))), 12).g, 0), 17).d;
                 w = u.i;
                 A = v.i;
-                q = c.c.p;
+                q10 = c.c.p;
                 s = false;
                 t = false;
                 j = b;
@@ -64415,10 +64415,10 @@ var require_elk_bundled = __commonJS({
                   l = true;
                   j = p;
                 }
-                if (w.c.p == q) {
+                if (w.c.p == q10) {
                   s = true;
                   r = w;
-                } else if (A.c.p == q) {
+                } else if (A.c.p == q10) {
                   t = true;
                   r = A;
                 }
@@ -64461,7 +64461,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function rSc(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G;
               if (a.c.length == 1) {
                 nSc(($Db(0, a.c.length), JD(a.c[0], 121)));
                 return $Db(0, a.c.length), JD(a.c[0], 121);
@@ -64476,12 +64476,12 @@ var require_elk_bundled = __commonJS({
                 m = oxe;
                 n10 = oxe;
                 for (r = lub(g10.b, 0); r.b != r.d.c; ) {
-                  q = JD(Aub(r), 41);
-                  s += JD(CNb(q, (UXc(), IXc)), 15).a;
-                  o10 = $wnd.Math.min(o10, q.e.a);
-                  p = $wnd.Math.min(p, q.e.b);
-                  m = $wnd.Math.max(m, q.e.a + q.f.a);
-                  n10 = $wnd.Math.max(n10, q.e.b + q.f.b);
+                  q10 = JD(Aub(r), 41);
+                  s += JD(CNb(q10, (UXc(), IXc)), 15).a;
+                  o10 = $wnd.Math.min(o10, q10.e.a);
+                  p = $wnd.Math.min(p, q10.e.b);
+                  m = $wnd.Math.max(m, q10.e.a + q10.f.a);
+                  n10 = $wnd.Math.max(n10, q10.e.b + q10.f.b);
                 }
                 FNb(g10, (UXc(), IXc), Qfb(s));
                 FNb(g10, (bXc(), DWc), new Uid(o10, p));
@@ -64634,17 +64634,17 @@ var require_elk_bundled = __commonJS({
               }
             }
             function _$b(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H;
               h = new rub();
               A = JD(CNb(c, (pyc(), ewc)), 87);
-              q = 0;
+              q10 = 0;
               d = new vsb();
               xe(h, (!b.a && (b.a = new x6d(f4, b, 10, 11)), b.a));
               while (h.b != 0) {
                 l = JD(h.b == 0 ? null : (ZDb(h.b != 0), pub(h, h.a.a)), 19);
                 k = zCd(l);
                 if (b_b(k) && !deb(LD(Mxd(l, Pvc)))) {
-                  Oxd(l, (_rc(), yrc), Qfb(q++));
+                  Oxd(l, (_rc(), yrc), Qfb(q10++));
                   Nxd(l, Nvc) && ssb(d, JD(Mxd(l, Nvc), 15));
                 }
                 s = !deb(LD(Mxd(l, gxc)));
@@ -64675,16 +64675,16 @@ var require_elk_bundled = __commonJS({
                   }
                 }
               }
-              FNb(c, (_rc(), xrc), Qfb(q));
+              FNb(c, (_rc(), xrc), Qfb(q10));
               FNb(c, Sqc, Qfb(d.a.gc()));
-              q = 0;
+              q10 = 0;
               iub(h, b, h.c.b, h.c);
               while (h.b != 0) {
                 g10 = JD(h.b == 0 ? null : (ZDb(h.b != 0), pub(h, h.a.a)), 19);
                 for (j = new cNd((!g10.b && (g10.b = new x6d(c4, g10, 12, 3)), g10.b)); j.e != j.i.gc(); ) {
                   i10 = JD(aNd(j), 74);
                   T$b(i10);
-                  b_b(b) && Oxd(i10, yrc, Qfb(q++));
+                  b_b(b) && Oxd(i10, yrc, Qfb(q10++));
                   F = BHd(JD(PId((!i10.b && (i10.b = new Tje(a4, i10, 4, 7)), i10.b), 0), 83));
                   G = BHd(JD(PId((!i10.c && (i10.c = new Tje(a4, i10, 5, 8)), i10.c), 0), 83));
                   if (deb(LD(Mxd(i10, gxc))) || deb(LD(Mxd(F, gxc))) || deb(LD(Mxd(G, gxc)))) {
@@ -64784,7 +64784,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function DA(a, b, c, d, e, f) {
-              var g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               switch (b) {
                 case 71:
                   h = d.q.getFullYear() - Mxe >= -1900 ? 1 : 0;
@@ -64831,8 +64831,8 @@ var require_elk_bundled = __commonJS({
                   c == 5 ? vhb(a, WC(OC(hJ, 1), Lwe, 2, 6, ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"])[p]) : c == 4 ? vhb(a, WC(OC(hJ, 1), Lwe, 2, 6, [Axe, Bxe, Cxe, Dxe, Exe, Fxe, Gxe, Hxe, Ixe, Jxe, Kxe, Lxe])[p]) : c == 3 ? vhb(a, WC(OC(hJ, 1), Lwe, 2, 6, ["Jan", "Feb", "Mar", "Apr", Exe, "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])[p]) : MA(a, p + 1, c);
                   break;
                 case 81:
-                  q = d.q.getMonth() / 3 | 0;
-                  c < 4 ? vhb(a, WC(OC(hJ, 1), Lwe, 2, 6, ["Q1", "Q2", "Q3", "Q4"])[q]) : vhb(a, WC(OC(hJ, 1), Lwe, 2, 6, ["1st quarter", "2nd quarter", "3rd quarter", "4th quarter"])[q]);
+                  q10 = d.q.getMonth() / 3 | 0;
+                  c < 4 ? vhb(a, WC(OC(hJ, 1), Lwe, 2, 6, ["Q1", "Q2", "Q3", "Q4"])[q10]) : vhb(a, WC(OC(hJ, 1), Lwe, 2, 6, ["1st quarter", "2nd quarter", "3rd quarter", "4th quarter"])[q10]);
                   break;
                 case 100:
                   r = d.q.getDate();
@@ -64861,7 +64861,7 @@ var require_elk_bundled = __commonJS({
               return true;
             }
             function c_b(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H;
               T$b(b);
               i10 = JD(PId((!b.b && (b.b = new Tje(a4, b, 4, 7)), b.b), 0), 83);
               k = JD(PId((!b.c && (b.c = new Tje(a4, b, 5, 8)), b.c), 0), 83);
@@ -64929,16 +64929,16 @@ var require_elk_bundled = __commonJS({
               for (m = new cNd((!b.n && (b.n = new x6d(e4, b, 1, 7)), b.n)); m.e != m.i.gc(); ) {
                 l = JD(aNd(m), 158);
                 if (!deb(LD(Mxd(l, gxc))) && !!l.a) {
-                  q = e_b(l);
-                  nmb(p.b, q);
-                  switch (JD(CNb(q, jwc), 281).g) {
+                  q10 = e_b(l);
+                  nmb(p.b, q10);
+                  switch (JD(CNb(q10, jwc), 281).g) {
                     case 1:
                     case 2:
                       n10.Ec((aqc(), Upc));
                       break;
                     case 0:
                       n10.Ec((aqc(), Spc));
-                      FNb(q, jwc, (Gmd(), Dmd));
+                      FNb(q10, jwc, (Gmd(), Dmd));
                   }
                 }
               }
@@ -64957,16 +64957,16 @@ var require_elk_bundled = __commonJS({
               return p;
             }
             function qZc(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H, I;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H, I;
               C = 0;
               D = 0;
               A = new nsb();
               v = JD(evb(oCb(lCb(new xCb(null, new lwb(a.b, 16)), new g$c()), new KZc())), 15).a + 1;
               B = SC(cE, Nxe, 30, v, 15, 1);
-              q = SC(cE, Nxe, 30, v, 15, 1);
+              q10 = SC(cE, Nxe, 30, v, 15, 1);
               for (p = 0; p < v; p++) {
                 B[p] = 0;
-                q[p] = 0;
+                q10[p] = 0;
               }
               i10 = JD(eCb(gCb(new xCb(null, new lwb(a.a, 16))), PAb(new fBb(), new dBb(), new lBb(), WC(OC(HL, 1), gxe, 132, 0, [(TAb(), RAb)]))), 16);
               for (k = i10.Jc(); k.Ob(); ) {
@@ -65045,8 +65045,8 @@ var require_elk_bundled = __commonJS({
                   sZc(j);
                 } else if (u < 0) {
                   ++B[G];
-                  ++q[I];
-                  F = nZc(j, b, a, new Ztd(Qfb(C), Qfb(D)), c, d, new Ztd(Qfb(q[I]), Qfb(B[G])));
+                  ++q10[I];
+                  F = nZc(j, b, a, new Ztd(Qfb(C), Qfb(D)), c, d, new Ztd(Qfb(q10[I]), Qfb(B[G])));
                   C = JD(F.a, 15).a;
                   D = JD(F.b, 15).a;
                 }
@@ -65231,7 +65231,7 @@ var require_elk_bundled = __commonJS({
               a.K = oBd(a, 52);
             }
             function Hcd(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               Ecd(a, b);
               if ((!b.e && (b.e = new Tje(c4, b, 7, 4)), b.e).i != 0) {
                 h = new zmb();
@@ -65244,10 +65244,10 @@ var require_elk_bundled = __commonJS({
                 for (o10 = 0; o10 < h.c.length - 1; o10++) {
                   Dcd(($Db(0, h.c.length), JD(h.c[0], 19)), ($Db(o10, h.c.length), JD(h.c[o10], 19)), ($Db(o10 + 1, h.c.length), JD(h.c[o10 + 1], 19)));
                 }
-                q = (($Db(0, h.c.length), JD(h.c[0], 19)).mh() + ($Db(0, h.c.length), JD(h.c[0], 19)).lh() / 2 + JD(rmb(h, h.c.length - 1), 19).mh() + JD(rmb(h, h.c.length - 1), 19).lh() / 2 - b.g) / 2 - b.i;
+                q10 = (($Db(0, h.c.length), JD(h.c[0], 19)).mh() + ($Db(0, h.c.length), JD(h.c[0], 19)).lh() / 2 + JD(rmb(h, h.c.length - 1), 19).mh() + JD(rmb(h, h.c.length - 1), 19).lh() / 2 - b.g) / 2 - b.i;
                 for (g10 = new Ymb(h); g10.a < g10.c.c.length; ) {
                   e = JD(Wmb(g10), 19);
-                  Jyd(e, e.i - q);
+                  Jyd(e, e.i - q10);
                   Oxd(e, (tbd(), jbd), JD(Mxd(e, kbd), 107).a);
                 }
                 m = 0;
@@ -65287,7 +65287,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function Icd(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C;
               Ecd(a, b);
               if ((!b.e && (b.e = new Tje(c4, b, 7, 4)), b.e).i != 0) {
                 g10 = new zmb();
@@ -65301,12 +65301,12 @@ var require_elk_bundled = __commonJS({
                   Dcd(($Db(0, g10.c.length), JD(g10.c[0], 19)), ($Db(l, g10.c.length), JD(g10.c[l], 19)), ($Db(l + 1, g10.c.length), JD(g10.c[l + 1], 19)));
                 }
                 v = 0;
-                q = 0;
+                q10 = 0;
                 r = 0;
-                while (v < g10.c.length && ($Db(v, g10.c.length), JD(g10.c[v], 19)).nh() >= q) {
-                  if (($Db(v, g10.c.length), JD(g10.c[v], 19)).nh() > q) {
+                while (v < g10.c.length && ($Db(v, g10.c.length), JD(g10.c[v], 19)).nh() >= q10) {
+                  if (($Db(v, g10.c.length), JD(g10.c[v], 19)).nh() > q10) {
                     r = v;
-                    q = ($Db(v, g10.c.length), JD(g10.c[v], 19)).nh();
+                    q10 = ($Db(v, g10.c.length), JD(g10.c[v], 19)).nh();
                   }
                   v += 1;
                 }
@@ -65320,8 +65320,8 @@ var require_elk_bundled = __commonJS({
                         B = JD(($Db(j, g10.c.length), JD(g10.c[j], 19)).mf((tbd(), rbd)), 107);
                         C = ($Db(j, g10.c.length), JD(g10.c[j], 19)).mh() + B.c;
                         w = ($Db(m, g10.c.length), JD(g10.c[m], 19)).mh() + ($Db(m, g10.c.length), JD(g10.c[m], 19)).lh() / 2;
-                        while (!!B && B.a < q) {
-                          t = w - b.g / 2 + (w - C) * (b.j + b.f - q) / (q - B.a);
+                        while (!!B && B.a < q10) {
+                          t = w - b.g / 2 + (w - C) * (b.j + b.f - q10) / (q10 - B.a);
                           c = $wnd.Math.max(c, t);
                           B = B.b;
                           !!B && (C += B.c);
@@ -65336,8 +65336,8 @@ var require_elk_bundled = __commonJS({
                         o10 = JD(($Db(j, g10.c.length), JD(g10.c[j], 19)).mf((tbd(), kbd)), 107);
                         p = ($Db(j, g10.c.length), JD(g10.c[j], 19)).mh() + o10.c;
                         w = ($Db(m, g10.c.length), JD(g10.c[m], 19)).mh() + ($Db(m, g10.c.length), JD(g10.c[m], 19)).lh() / 2;
-                        while (!!o10 && o10.a < q) {
-                          t = w - b.g / 2 + (w - p) * (b.j + b.f - q) / (q - o10.a);
+                        while (!!o10 && o10.a < q10) {
+                          t = w - b.g / 2 + (w - p) * (b.j + b.f - q10) / (q10 - o10.a);
                           c = $wnd.Math.min(c, t);
                           o10 = o10.b;
                           !!o10 && (p += o10.c);
@@ -65435,7 +65435,7 @@ var require_elk_bundled = __commonJS({
               }
             }
             function Slc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w;
               g10 = b;
               m = c;
               if (qjb(a.a, g10)) {
@@ -65475,22 +65475,22 @@ var require_elk_bundled = __commonJS({
               if (g10.e.c.length != 0 && m.e.c.length != 0) {
                 (g10.j == (ipd(), hpd) && m.j == hpd || g10.j == Qod && m.j == Qod || g10.j == fpd && m.j == fpd) && (w = -w);
                 k = JD(rmb(g10.e, 0), 17).c;
-                q = JD(rmb(m.e, 0), 17).c;
+                q10 = JD(rmb(m.e, 0), 17).c;
                 i10 = k.i;
-                o10 = q.i;
+                o10 = q10.i;
                 if (i10 == o10) {
                   for (t = new Ymb(i10.j); t.a < t.c.c.length; ) {
                     s = JD(Wmb(t), 12);
                     if (k == s) {
                       Tlc(a, m, g10, w);
                       return -w;
-                    } else if (q == s) {
+                    } else if (q10 == s) {
                       Tlc(a, g10, m, w);
                       return w;
                     }
                   }
                 }
-                if (k.i.k == (jZb(), eZb) && q.i.k == eZb && i10.c.p == o10.c.p && i10.c.p == g10.i.c.p) {
+                if (k.i.k == (jZb(), eZb) && q10.i.k == eZb && i10.c.p == o10.c.p && i10.c.p == g10.i.c.p) {
                   u = i10.c;
                   e = Qlc(u, i10, o10);
                   if (e != 0) {
@@ -65870,7 +65870,7 @@ var require_elk_bundled = __commonJS({
               k5b = new g6b("DIRECTION_POSTPROCESSOR", 57);
             }
             function VJc(a, b, c) {
-              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H, I, J, K10, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, $, ab, bb, cb, db, eb, fb, gb, hb, ib, jb, kb, lb;
+              var d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H, I, J, K10, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, $, ab, bb, cb, db, eb, fb, gb, hb, ib, jb, kb, lb;
               cb = 0;
               for (H = b, K10 = 0, N = H.length; K10 < N; ++K10) {
                 F = H[K10];
@@ -66043,8 +66043,8 @@ var require_elk_bundled = __commonJS({
               }
               snb(ab, 0, ab.length, null);
               Q = 0;
-              for (q = 0; q < ab.length; q++) {
-                switch (ab[q].d.g) {
+              for (q10 = 0; q10 < ab.length; q10++) {
+                switch (ab[q10].d.g) {
                   case 0:
                     ++Q;
                     break;
@@ -66534,7 +66534,7 @@ var require_elk_bundled = __commonJS({
               toe(a);
             }
             function ied(a, b, c, d) {
-              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D, F, G, H, I, J, K10, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, $, ab, bb;
+              var e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D, F, G, H, I, J, K10, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, $, ab, bb;
               if (d.Zg()) {
                 return Wnb(), Wnb(), Tnb;
               }
@@ -66567,8 +66567,8 @@ var require_elk_bundled = __commonJS({
                     eed(K10);
                     Y = XD(Mxd(K10, ykd)) === XD(wnd);
                     if (Y || Nxd(K10, bkd) && !qfd(e, Mxd(K10, yld))) {
-                      q = ied(a, K10, c, d);
-                      pmb(t, q);
+                      q10 = ied(a, K10, c, d);
+                      pmb(t, q10);
                       Oxd(K10, ykd, wnd);
                       tsd(K10);
                     } else {
@@ -66672,8 +66672,8 @@ var require_elk_bundled = __commonJS({
                   }
                   for (l = new cNd((!b.a && (b.a = new x6d(f4, b, 10, 11)), b.a)); l.e != l.i.gc(); ) {
                     k = JD(aNd(l), 19);
-                    q = ied(a, k, c, d);
-                    pmb(t, q);
+                    q10 = ied(a, k, c, d);
+                    pmb(t, q10);
                     tsd(k);
                   }
                 }
@@ -75560,7 +75560,7 @@ var require_elk_bundled = __commonJS({
               CUb(this, a);
             };
             _.Cf = function FUb(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t;
               this.a.c.length = 0;
               b.a.c.length = 0;
               if (a.dc()) {
@@ -75584,8 +75584,8 @@ var require_elk_bundled = __commonJS({
                 if (lmd(JD(CNb(b, (cmd(), okd)), 87))) {
                   p.a = t.a;
                   for (r = new Tv(Pc(Fc(h.b).a).a.kc()); r.b.Ob(); ) {
-                    q = JD(Sv(r.b.Pb()), 24);
-                    if (q.Gc((ipd(), Qod))) {
+                    q10 = JD(Sv(r.b.Pb()), 24);
+                    if (q10.Gc((ipd(), Qod))) {
                       p.a = s.a;
                       break;
                     }
@@ -75593,8 +75593,8 @@ var require_elk_bundled = __commonJS({
                 } else if (mmd(JD(CNb(b, okd), 87))) {
                   p.b = t.b;
                   for (r = new Tv(Pc(Fc(h.b).a).a.kc()); r.b.Ob(); ) {
-                    q = JD(Sv(r.b.Pb()), 24);
-                    if (q.Gc((ipd(), hpd))) {
+                    q10 = JD(Sv(r.b.Pb()), 24);
+                    if (q10.Gc((ipd(), hpd))) {
                       p.b = s.b;
                       break;
                     }
@@ -75606,8 +75606,8 @@ var require_elk_bundled = __commonJS({
                   s.a = p.a + k.a;
                   o10.a = $wnd.Math.max(o10.a, s.a);
                   for (r = new Tv(Pc(Fc(h.b).a).a.kc()); r.b.Ob(); ) {
-                    q = JD(Sv(r.b.Pb()), 24);
-                    if (q.Gc((ipd(), fpd))) {
+                    q10 = JD(Sv(r.b.Pb()), 24);
+                    if (q10.Gc((ipd(), fpd))) {
                       t.a = p.a + k.a;
                       break;
                     }
@@ -75619,8 +75619,8 @@ var require_elk_bundled = __commonJS({
                   s.b = p.b + k.b;
                   o10.b = $wnd.Math.max(o10.b, s.b);
                   for (r = new Tv(Pc(Fc(h.b).a).a.kc()); r.b.Ob(); ) {
-                    q = JD(Sv(r.b.Pb()), 24);
-                    if (q.Gc((ipd(), Pod))) {
+                    q10 = JD(Sv(r.b.Pb()), 24);
+                    if (q10.Gc((ipd(), Pod))) {
                       t.b = p.b + k.b;
                       break;
                     }
@@ -78442,7 +78442,7 @@ var require_elk_bundled = __commonJS({
             var MV = Qeb(QBe, "ICutIndexCalculator/ManualCutIndexCalculator", 808);
             Ddb(810, 1, {}, unc);
             _.mg = function vnc(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u;
               u = (b.n == null && cnc(b), b.n);
               i10 = (b.d == null && cnc(b), b.d);
               t = SC(aE, tye, 30, u.length, 15, 1);
@@ -78458,7 +78458,7 @@ var require_elk_bundled = __commonJS({
               c = new zmb();
               for (m = $wnd.Math.max(0, e - g10); m <= $wnd.Math.min(b.f - 1, e + g10); m++) {
                 p = r / (m + 1);
-                q = 0;
+                q10 = 0;
                 k = 1;
                 f = new zmb();
                 s = nye;
@@ -78470,11 +78470,11 @@ var require_elk_bundled = __commonJS({
                   h = (b.g == null && (b.g = Zmc(b, new jnc())), gfb(b.g));
                 } else {
                   while (k < b.f) {
-                    if (t[k - 1] - q >= p) {
+                    if (t[k - 1] - q10 >= p) {
                       nmb(f, Qfb(k));
                       s = $wnd.Math.max(s, t[k - 1] - l);
                       h += o10;
-                      q += t[k - 1] - q;
+                      q10 += t[k - 1] - q10;
                       l = t[k - 1];
                       o10 = i10[k];
                     }
@@ -81668,7 +81668,7 @@ var require_elk_bundled = __commonJS({
             var W2c;
             Ddb(1098, 207, Xze, Y2c);
             _.kf = function $2c(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D;
               b.Tg("Rectangle Packing", 1);
               l = JD(Mxd(a, (U4c(), K4c)), 100);
               i10 = deb(LD(Mxd(a, C4c)));
@@ -81717,14 +81717,14 @@ var require_elk_bundled = __commonJS({
                 n10.If(a, b.dh(j));
                 ++A;
               }
-              q = 0;
+              q10 = 0;
               p = 0;
               for (s = new cNd(t); s.e != s.i.gc(); ) {
                 r = JD(aNd(s), 19);
-                q = $wnd.Math.max(q, r.i + r.g);
+                q10 = $wnd.Math.max(q10, r.i + r.g);
                 p = $wnd.Math.max(p, r.j + r.f);
               }
-              Ssd(a, new Uid(gfb(MD(Mxd(a, (R3c(), I3c)))), gfb(MD(Mxd(a, H3c)))), new Uid(q, p));
+              Ssd(a, new Uid(gfb(MD(Mxd(a, (R3c(), I3c)))), gfb(MD(Mxd(a, H3c)))), new Uid(q10, p));
               Z2c(t, l);
               i10 || Nsd(a, gfb(MD(Mxd(a, I3c))) + (l.b + l.c), gfb(MD(Mxd(a, H3c))) + (l.d + l.a), false, true);
               deb(LD(Mxd(a, F4c))) || wEb((d = new xEb((rud(), new Fud(a))), d));
@@ -83150,7 +83150,7 @@ var require_elk_bundled = __commonJS({
             var f3 = Reb(MHe, "TopdownSizeApproximator/1", 978, j3, null, null);
             Ddb(979, 290, AIe, Eqd);
             _.Sg = function Fqd(b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B, C, D;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B, C, D;
               c = JD(Mxd(b, (cmd(), yld)), 144);
               A = (hvd(), o10 = new ECd(), o10);
               Fxd(A, b);
@@ -83177,10 +83177,10 @@ var require_elk_bundled = __commonJS({
                   Fxd(u, k);
                 }
               }
-              q = JD(utd(c.f), 207);
+              q10 = JD(utd(c.f), 207);
               try {
-                q.kf(A, new Itd());
-                vtd(c.f, q);
+                q10.kf(A, new Itd());
+                vtd(c.f, q10);
               } catch (a) {
                 a = Ycb(a);
                 if (RD(a, 102)) {
@@ -83465,36 +83465,36 @@ var require_elk_bundled = __commonJS({
             var G3 = Qeb(REe, "ExclusiveBounds/ExclusiveLowerBound", 332);
             Ddb(1100, 207, Xze, ktd);
             _.kf = function ltd(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r, s, t, u, v, w, A, B;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r, s, t, u, v, w, A, B;
               b.Tg("Fixed Layout", 1);
               f = JD(Mxd(a, (cmd(), tkd)), 225);
               l = 0;
               m = 0;
               for (s = new cNd((!a.a && (a.a = new x6d(f4, a, 10, 11)), a.a)); s.e != s.i.gc(); ) {
-                q = JD(aNd(s), 19);
-                B = JD(Mxd(q, (nnd(), mnd)), 8);
+                q10 = JD(aNd(s), 19);
+                B = JD(Mxd(q10, (nnd(), mnd)), 8);
                 if (B) {
-                  Hyd(q, B.a, B.b);
-                  if (JD(Mxd(q, hnd), 185).Gc((Rpd(), Npd))) {
-                    n10 = JD(Mxd(q, jnd), 8);
-                    n10.a > 0 && n10.b > 0 && Nsd(q, n10.a, n10.b, true, true);
+                  Hyd(q10, B.a, B.b);
+                  if (JD(Mxd(q10, hnd), 185).Gc((Rpd(), Npd))) {
+                    n10 = JD(Mxd(q10, jnd), 8);
+                    n10.a > 0 && n10.b > 0 && Nsd(q10, n10.a, n10.b, true, true);
                   }
                 }
-                l = $wnd.Math.max(l, q.i + q.g);
-                m = $wnd.Math.max(m, q.j + q.f);
-                for (j = new cNd((!q.n && (q.n = new x6d(e4, q, 1, 7)), q.n)); j.e != j.i.gc(); ) {
+                l = $wnd.Math.max(l, q10.i + q10.g);
+                m = $wnd.Math.max(m, q10.j + q10.f);
+                for (j = new cNd((!q10.n && (q10.n = new x6d(e4, q10, 1, 7)), q10.n)); j.e != j.i.gc(); ) {
                   h = JD(aNd(j), 158);
                   B = JD(Mxd(h, mnd), 8);
                   !!B && Hyd(h, B.a, B.b);
-                  l = $wnd.Math.max(l, q.i + h.i + h.g);
-                  m = $wnd.Math.max(m, q.j + h.j + h.f);
+                  l = $wnd.Math.max(l, q10.i + h.i + h.g);
+                  m = $wnd.Math.max(m, q10.j + h.j + h.f);
                 }
-                for (v = new cNd((!q.c && (q.c = new x6d(g4, q, 9, 9)), q.c)); v.e != v.i.gc(); ) {
+                for (v = new cNd((!q10.c && (q10.c = new x6d(g4, q10, 9, 9)), q10.c)); v.e != v.i.gc(); ) {
                   u = JD(aNd(v), 127);
                   B = JD(Mxd(u, mnd), 8);
                   !!B && Hyd(u, B.a, B.b);
-                  w = q.i + u.i;
-                  A = q.j + u.j;
+                  w = q10.i + u.i;
+                  A = q10.j + u.j;
                   l = $wnd.Math.max(l, w + u.g);
                   m = $wnd.Math.max(m, A + u.f);
                   for (i10 = new cNd((!u.n && (u.n = new x6d(e4, u, 1, 7)), u.n)); i10.e != i10.i.gc(); ) {
@@ -83505,13 +83505,13 @@ var require_elk_bundled = __commonJS({
                     m = $wnd.Math.max(m, A + h.j + h.f);
                   }
                 }
-                for (e = new Yr(Dr(AHd(q).a.Jc(), new Dl())); Wr(e); ) {
+                for (e = new Yr(Dr(AHd(q10).a.Jc(), new Dl())); Wr(e); ) {
                   c = JD(Xr(e), 74);
                   k = jtd(c);
                   l = $wnd.Math.max(l, k.a);
                   m = $wnd.Math.max(m, k.b);
                 }
-                for (d = new Yr(Dr(zHd(q).a.Jc(), new Dl())); Wr(d); ) {
+                for (d = new Yr(Dr(zHd(q10).a.Jc(), new Dl())); Wr(d); ) {
                   c = JD(Xr(d), 74);
                   if (zCd(KHd(c)) != a) {
                     k = jtd(c);
@@ -83522,8 +83522,8 @@ var require_elk_bundled = __commonJS({
               }
               if (f == (Qmd(), Mmd)) {
                 for (r = new cNd((!a.a && (a.a = new x6d(f4, a, 10, 11)), a.a)); r.e != r.i.gc(); ) {
-                  q = JD(aNd(r), 19);
-                  for (d = new Yr(Dr(AHd(q).a.Jc(), new Dl())); Wr(d); ) {
+                  q10 = JD(aNd(r), 19);
+                  for (d = new Yr(Dr(AHd(q10).a.Jc(), new Dl())); Wr(d); ) {
                     c = JD(Xr(d), 74);
                     g10 = Csd(c);
                     g10.b == 0 ? Oxd(c, Jkd, null) : Oxd(c, Jkd, g10);
@@ -92945,7 +92945,7 @@ var require_elk_bundled = __commonJS({
               }
             };
             _.pi = function Jbe(a) {
-              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q;
+              var b, c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10;
               switch (a.G == -1 && (a.G = (m = wYd(a), m ? a$d(m.si(), a) : -1)), a.G) {
                 case 0:
                   return c = new hYd(), c;
@@ -92976,7 +92976,7 @@ var require_elk_bundled = __commonJS({
                 case 18:
                   return i10 = new n3d(), i10;
                 case 19:
-                  return q = new Wae(), q;
+                  return q10 = new Wae(), q10;
                 default:
                   throw Zcb(new yfb(gJe + a.zb + dJe));
               }
@@ -94983,7 +94983,7 @@ var require_elk_bundled = __commonJS({
               }
             };
             _.qi = function poe(a, b) {
-              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q, r;
+              var c, d, e, f, g10, h, i10, j, k, l, m, n10, o10, p, q10, r;
               switch (a.fk()) {
                 case 5:
                 case 52:
@@ -95060,7 +95060,7 @@ var require_elk_bundled = __commonJS({
                 case 44:
                   return b == null ? null : new Cib((p = ive(b, true), p.length > 0 && (gEb(0, p.length), p.charCodeAt(0) == 43) ? (gEb(1, p.length + 1), p.substr(1)) : p));
                 case 45:
-                  return b == null ? null : new Cib((q = ive(b, true), q.length > 0 && (gEb(0, q.length), q.charCodeAt(0) == 43) ? (gEb(1, q.length + 1), q.substr(1)) : q));
+                  return b == null ? null : new Cib((q10 = ive(b, true), q10.length > 0 && (gEb(0, q10.length), q10.charCodeAt(0) == 43) ? (gEb(1, q10.length + 1), q10.substr(1)) : q10));
                 case 46:
                   return ive(b, false);
                 case 47:
@@ -107984,12 +107984,12 @@ function normalizePoints(points) {
   const out = [];
   for (const p of points) {
     if (!p || !isFinite(p.x) || !isFinite(p.y)) continue;
-    const q = { x: round(p.x, COORD_DP), y: round(p.y, COORD_DP) };
+    const q2 = { x: round(p.x, COORD_DP), y: round(p.y, COORD_DP) };
     if (p.pressure !== void 0 && isFinite(p.pressure)) {
       const clamped = p.pressure < 0 ? 0 : p.pressure > 1 ? 1 : p.pressure;
-      q.pressure = round(clamped, PRESSURE_DP);
+      q2.pressure = round(clamped, PRESSURE_DP);
     }
-    out.push(q);
+    out.push(q2);
   }
   return out;
 }
@@ -116424,7 +116424,7 @@ var DistributeCommand = class extends MultiNodeArrangeCommand {
       y: n3.position.y,
       pos: horiz ? n3.position.x : n3.position.y,
       size: horiz ? n3.size.width : n3.size.height
-    })).sort((p, q) => p.pos - q.pos);
+    })).sort((p, q2) => p.pos - q2.pos);
     const first = b[0];
     const last = b[b.length - 1];
     const span = last.pos + last.size - first.pos;
@@ -121066,14 +121066,14 @@ var _OrthogonalRouter = class _OrthogonalRouter {
       const perpendicular = v.x !== 0 ? seg.y === 0 : seg.x === 0;
       if (perpendicular && along >= jetty) return pts2;
       let rest = pts2.slice(1);
-      const onStubSegment = (q) => {
+      const onStubSegment = (q2) => {
         if (v.x !== 0) {
-          if (q.y !== anchor.y) return false;
-          const t2 = (q.x - anchor.x) * v.x;
+          if (q2.y !== anchor.y) return false;
+          const t2 = (q2.x - anchor.x) * v.x;
           return t2 >= 0 && t2 <= jetty;
         }
-        if (q.x !== anchor.x) return false;
-        const t = (q.y - anchor.y) * v.y;
+        if (q2.x !== anchor.x) return false;
+        const t = (q2.y - anchor.y) * v.y;
         return t >= 0 && t <= jetty;
       };
       while (rest.length > 1 && onStubSegment(rest[0])) rest = rest.slice(1);
@@ -121311,17 +121311,17 @@ var _OrthogonalRouter = class _OrthogonalRouter {
     if (points.length <= 2) return points;
     const out = [points[0]];
     for (let i = 1; i < points.length; i++) {
-      const q = points[i];
+      const q2 = points[i];
       while (out.length >= 2) {
         const a = out[out.length - 2];
         const b = out[out.length - 1];
-        const cross3 = (b.x - a.x) * (q.y - b.y) - (b.y - a.y) * (q.x - b.x);
+        const cross3 = (b.x - a.x) * (q2.y - b.y) - (b.y - a.y) * (q2.x - b.x);
         if (Math.abs(cross3) < 1e-6) out.pop();
         else break;
       }
       const tail = out[out.length - 1];
-      if (Math.abs(q.x - tail.x) > 1e-9 || Math.abs(q.y - tail.y) > 1e-9) {
-        out.push(q);
+      if (Math.abs(q2.x - tail.x) > 1e-9 || Math.abs(q2.y - tail.y) > 1e-9) {
+        out.push(q2);
       }
     }
     return out;
@@ -129859,9 +129859,9 @@ function transpose(layers, adj, stats) {
         let vu = 0;
         let below = 0;
         let belowOrEq = 0;
-        for (const q of pv) {
-          while (below < pu.length && pu[below] < q) below++;
-          while (belowOrEq < pu.length && pu[belowOrEq] <= q) belowOrEq++;
+        for (const q2 of pv) {
+          while (below < pu.length && pu[below] < q2) below++;
+          while (belowOrEq < pu.length && pu[belowOrEq] <= q2) belowOrEq++;
           vu += below;
           uv += pu.length - belowOrEq;
         }
@@ -130237,6 +130237,7 @@ var cOf = (s, a) => a === "x" ? s.h : s.w;
 var sz = (f, c, a) => a === "x" ? { w: f, h: c } : { w: c, h: f };
 var pt = (f, c, a) => a === "x" ? { x: f, y: c } : { x: c, y: f };
 var axisOf = (dir) => /^(TB|TD|BT)$/i.test(dir.trim()) ? "y" : "x";
+var reversedOf = (dir) => /^(RL|BT)$/i.test(dir.trim());
 var opposite = (s) => s === "left" ? "right" : s === "right" ? "left" : s === "top" ? "bottom" : "top";
 var SHAPES_NEEDING_ROOM = /* @__PURE__ */ new Set(["diamond", "rhombus", "circle", "ellipse", "hexagon", "decision", "doublecircle"]);
 function layoutArchitecture(diagram, options = {}) {
@@ -130253,7 +130254,11 @@ var ArchitectureComposer = class {
     this.notes = [];
     this.measure = options.measureText ?? estimateTextWidth;
     this.margin = options.margin ?? 20;
-    this.rootAxis = axisOf(options.direction ?? String(diagram.getMetadata("direction") ?? "LR"));
+    const dir = options.direction ?? String(diagram.getMetadata("direction") ?? "LR");
+    this.rootAxis = axisOf(dir);
+    this.rootReverse = reversedOf(dir);
+    const compact2 = options.compact ?? diagram.getMetadata("layoutCompact") === true;
+    this.k = compact2 ? { ...K, boxPadX: 22, boxPadY: 10, minBoxW: 64, minBoxH: 40, zonePadSide: 12, zonePadPlain: 12, zoneCaptionBand: 34, gapFlow: 32, gapCrossLeaf: 24, gapCrossZone: 24, labelPad: 12 } : K;
   }
   run() {
     const root = this.buildTree();
@@ -130300,7 +130305,8 @@ var ArchitectureComposer = class {
       for (const g of groups) if (g.members.has(n3.id) && (!best || depth(g) > depth(best))) best = g;
       this.parentOf.set(n3.id, best ? best.id : ROOT);
     }
-    const root = { kind: "zone", id: ROOT, decl: 0, axis: this.rootAxis, children: [], size: { w: 0, h: 0 }, pad: { l: 0, r: 0, t: 0, b: 0 } };
+    const rootGrid = this.diagram.getMetadata("grid");
+    const root = { kind: "zone", id: ROOT, decl: 0, axis: this.rootAxis, reverse: this.rootReverse, children: [], size: { w: 0, h: 0 }, pad: { l: 0, r: 0, t: 0, b: 0 }, ...rootGrid?.cells ? { grid: rootGrid } : {} };
     const zones = /* @__PURE__ */ new Map([[ROOT, root]]);
     const zoneOf = (id) => {
       const existing = zones.get(id);
@@ -130311,16 +130317,18 @@ var ArchitectureComposer = class {
       const frame = g.getMetadata("frameStyle") ?? {};
       const captionAtBottom = /^bottom/.test(String(frame.labelPlacement ?? ""));
       const hasCaption = !!(g.name && g.name.trim());
-      const band = hasCaption ? K.zoneCaptionBand : K.zonePadPlain;
+      const band = hasCaption ? this.k.zoneCaptionBand : this.k.zonePadPlain;
       const z = {
         kind: "zone",
         id,
         group: g,
         decl: Number.MAX_SAFE_INTEGER,
         axis: typeof dir === "string" && dir ? axisOf(dir) : parent.axis,
+        reverse: typeof dir === "string" && dir ? reversedOf(dir) : parent.reverse,
+        ...g.getMetadata("grid")?.cells ? { grid: g.getMetadata("grid") } : {},
         children: [],
         size: { w: 0, h: 0 },
-        pad: { l: K.zonePadSide, r: K.zonePadSide, t: captionAtBottom ? K.zonePadPlain : band, b: captionAtBottom ? band : K.zonePadPlain }
+        pad: { l: this.k.zonePadSide, r: this.k.zonePadSide, t: captionAtBottom ? this.k.zonePadPlain : band, b: captionAtBottom ? band : this.k.zonePadPlain }
       };
       zones.set(id, z);
       parent.children.push(z);
@@ -130331,7 +130339,7 @@ var ArchitectureComposer = class {
     nodes.forEach((n3, i) => {
       const near = n3.getMetadata("near");
       if (near?.target && (this.diagram.getNode(near.target) || this.diagram.getGroup(near.target))) {
-        this.notes.push({ node: n3, target: near.target, side: near.side ?? "right", gap: near.gap ?? K.nearGap });
+        this.notes.push({ node: n3, target: near.target, side: near.side ?? "right", gap: near.gap ?? this.k.nearGap });
         return;
       }
       const leaf = { kind: "node", id: n3.id, node: n3, decl: i, size: this.leafSize(n3) };
@@ -130354,6 +130362,7 @@ var ArchitectureComposer = class {
   }
   /** A box sized to its words: a name (bold when a subtitle follows), a subtitle, padding. */
   leafSize(n3) {
+    if (n3.getMetadata("sizing")?.fixed === true) return { w: n3.size.width, h: n3.size.height };
     const style = n3.style ?? {};
     const fs = Number(style.fontSize) || 14;
     const label = String(n3.getLabel() ?? n3.id);
@@ -130373,15 +130382,25 @@ var ArchitectureComposer = class {
       const subLines = sub.text.split("\n");
       const family = sub.fontFamily === "mono" ? "monospace" : sub.fontFamily;
       w = Math.max(w, widestLine(subLines, { size: subFs, weight: sub.fontWeight, family }, this.measure));
-      h += 4 + subLines.length * subFs * K.labelLine;
+      h += 4 + subLines.length * subFs * this.k.labelLine;
     }
-    w += 2 * K.boxPadX;
-    h += 2 * K.boxPadY;
+    w += 2 * this.k.boxPadX;
+    h += 2 * this.k.boxPadY;
+    const rendererNeeds = (ls, size) => Math.max(0, ...ls.map((l) => l.length)) * size * 0.6 + 16;
+    w = Math.max(w, rendererNeeds(lines, fs));
+    if (sub?.text) w = Math.max(w, rendererNeeds(sub.text.split("\n"), sub.fontSize ?? Math.round(fs * 0.85)));
+    const icon = n3.getMetadata("panel")?.icon;
+    if (icon) w += (icon.size ?? 18) + 8;
     if (shape && SHAPES_NEEDING_ROOM.has(shape)) {
       w *= 1.4;
       h *= 1.4;
     }
-    return { w: Math.ceil(Math.max(w, K.minBoxW)), h: Math.ceil(Math.max(h, K.minBoxH)) };
+    if (shape === "cylinder" || shape === "database") h += 16;
+    return { w: Math.ceil(Math.max(w, this.k.minBoxW)), h: Math.ceil(Math.max(h, this.k.minBoxH)) };
+  }
+  /** A node that keeps its size (`metadata.sizing.fixed` — a junction's dot). */
+  fixed(b) {
+    return b.kind === "node" && b.node.getMetadata("sizing")?.fixed === true;
   }
   /** The child of container `z` that holds `id` (a node or zone), or undefined. */
   childOf(z, id) {
@@ -130402,6 +130421,11 @@ var ArchitectureComposer = class {
     const port = end === "source" ? l.sourcePortId : l.targetPortId;
     if (isSideAnchorPort(port)) return parseSideAnchor(port.split("__")[1] ?? "")?.side;
     return void 0;
+  }
+  /** Does the line name a side that points BACK along the flow (its target comes first)? */
+  flowsBackward(l, a) {
+    const [lo, hi] = a === "x" ? ["left", "right"] : ["top", "bottom"];
+    return this.sideHint(l, "source") === lo || this.sideHint(l, "target") === hi;
   }
   /** For a line in a container flowing along `a`: does it say its source is across-BEFORE or across-AFTER its target? */
   crossRelation(l, a) {
@@ -130430,7 +130454,7 @@ var ArchitectureComposer = class {
       const rel = this.crossRelation(l, z.axis);
       if (rel === "after") across.push([b, a]);
       else if (rel === "before") across.push([a, b]);
-      else flow.push([a, b]);
+      else flow.push(this.flowsBackward(l, z.axis) ? [b, a] : [a, b]);
     }
     const parent = kids.map((_, i) => i);
     const find = (i) => parent[i] === i ? i : parent[i] = find(parent[i]);
@@ -130447,7 +130471,7 @@ var ArchitectureComposer = class {
       const out = [];
       const ready = members.filter((m) => inDeg.get(m) === 0);
       while (ready.length) {
-        ready.sort((p, q) => kids[p].decl - kids[q].decl);
+        ready.sort((p, q2) => kids[p].decl - kids[q2].decl);
         const m = ready.shift();
         out.push(m);
         for (const [u, v] of across) if (u === m && inDeg.has(v)) {
@@ -130458,7 +130482,7 @@ var ArchitectureComposer = class {
       for (const m of members) if (!out.includes(m)) out.push(m);
       ordered.push(out);
     }
-    ordered.sort((p, q) => kids[p[0]].decl - kids[q[0]].decl);
+    ordered.sort((p, q2) => kids[p[0]].decl - kids[q2[0]].decl);
     const stackOf = /* @__PURE__ */ new Map();
     ordered.forEach((st, si) => st.forEach((m) => stackOf.set(m, si)));
     const edges = /* @__PURE__ */ new Map();
@@ -130471,7 +130495,7 @@ var ArchitectureComposer = class {
     const state = /* @__PURE__ */ new Map();
     const dfs = (s) => {
       state.set(s, 1);
-      for (const t of [...edges.get(s) ?? []].sort((p, q) => p - q)) {
+      for (const t of [...edges.get(s) ?? []].sort((p, q2) => p - q2)) {
         if (state.get(t) === 1) continue;
         kept.set(s, [...kept.get(s) ?? [], t]);
         if (!state.has(t)) dfs(t);
@@ -130505,26 +130529,139 @@ var ArchitectureComposer = class {
   position(z) {
     const plan = z.plan;
     for (const c of z.children) if (c.kind === "zone") this.position(c);
+    if (z.grid) {
+      this.arrangeGrid(z);
+      return;
+    }
+    this.wrapLoose(z);
     for (const col of plan.columns) {
       const zs = col.filter((b) => b.kind === "zone");
       if (zs.length < 2) continue;
       const n3 = zs[0].plan.columns.length;
-      if (zs.some((q) => q.plan.columns.length !== n3 || q.axis !== zs[0].axis)) continue;
-      const colF = Array.from({ length: n3 }, (_, j) => Math.max(...zs.map((q) => q.plan.colF[j])));
-      const gapF = Array.from({ length: n3 }, (_, j) => Math.max(...zs.map((q) => q.plan.gapF[j] ?? 0)));
-      for (const q of zs) {
-        q.plan.sharedColF = colF;
-        q.plan.sharedGapF = gapF;
-        this.arrange(q);
+      if (zs.some((q2) => q2.plan.columns.length !== n3 || q2.axis !== zs[0].axis)) continue;
+      const colF = Array.from({ length: n3 }, (_, j) => Math.max(...zs.map((q2) => q2.plan.colF[j])));
+      const gapF = Array.from({ length: n3 }, (_, j) => Math.max(...zs.map((q2) => q2.plan.gapF[j] ?? 0)));
+      for (const q2 of zs) {
+        q2.plan.sharedColF = colF;
+        q2.plan.sharedGapF = gapF;
+        this.arrange(q2);
       }
     }
     for (const col of plan.columns) {
       const zs = col.filter((b) => b.kind === "zone");
       if (zs.length < 2) continue;
-      const f = Math.max(...zs.map((q) => fOf(q.size, z.axis)));
-      for (const q of zs) q.size = sz(f, cOf(q.size, z.axis), z.axis);
+      const f = Math.max(...zs.map((q2) => fOf(q2.size, z.axis)));
+      for (const q2 of zs) q2.size = sz(f, cOf(q2.size, z.axis), z.axis);
     }
     this.arrange(z);
+  }
+  /**
+   * An explicit GRID (Mermaid block-beta): cells in reading order, `columns` to a
+   * row, a cell `span` wide, holes where a cell has no block. A column shares one
+   * width and a row one height, and every block FILLS its cell (a spanning block
+   * covers its columns and the gaps between them). A gap widens for a label that
+   * has to fit between two neighbours.
+   */
+  arrangeGrid(z) {
+    const plan = z.plan;
+    const grid = z.grid;
+    const kids = new Map(z.children.map((b) => [b.id, b]));
+    const cells = grid.cells.map((c) => ({ id: c.id, span: Math.max(1, Math.floor(c.span ?? 1)) }));
+    const listed = new Set(cells.map((c) => c.id).filter((id) => !!id));
+    for (const b of z.children) if (!listed.has(b.id)) cells.push({ id: b.id, span: 1 });
+    const N = Math.max(1, grid.columns ?? cells.reduce((t, c) => t + c.span, 0));
+    const placed = [];
+    let row = 0, col = 0, lastRow = 0;
+    for (const cell of cells) {
+      const span = Math.min(cell.span, N);
+      if (col + span > N) {
+        row++;
+        col = 0;
+      }
+      const b = cell.id ? kids.get(cell.id) : void 0;
+      if (b) placed.push({ b, row, col, span });
+      lastRow = row;
+      col += span;
+      if (col >= N) {
+        row++;
+        col = 0;
+      }
+    }
+    const rows = cells.length ? lastRow + 1 : 0;
+    const colW = new Array(N).fill(0);
+    const rowH = new Array(rows).fill(0);
+    for (const p of placed) {
+      if (p.span === 1) colW[p.col] = Math.max(colW[p.col], p.b.size.w);
+      rowH[p.row] = Math.max(rowH[p.row], p.b.size.h);
+    }
+    const gapX = colW.map((_, j) => j === 0 ? 0 : this.k.gapFlow);
+    const gapY = rowH.map((_, r) => r === 0 ? 0 : this.k.gapCrossLeaf);
+    const at = new Map(placed.map((p) => [p.b.id, p]));
+    for (const { a, b, link } of plan.links) {
+      const pa = at.get(z.children[a].id), pb = at.get(z.children[b].id);
+      if (!pa || !pb) continue;
+      const m = this.labelMetrics(link);
+      if (m.w === 0) continue;
+      if (pa.row === pb.row) {
+        const [l, r] = pa.col < pb.col ? [pa, pb] : [pb, pa];
+        if (l.col + l.span === r.col) gapX[r.col] = Math.max(gapX[r.col], m.w + 2 * this.k.labelPad);
+      } else {
+        const [u, d] = pa.row < pb.row ? [pa, pb] : [pb, pa];
+        if (u.row + 1 === d.row) gapY[d.row] = Math.max(gapY[d.row], m.h + 2 * this.k.labelPad);
+      }
+    }
+    const spanW = (p) => {
+      let w = 0;
+      for (let j = p.col; j < p.col + p.span; j++) w += colW[j] + (j > p.col ? gapX[j] : 0);
+      return w;
+    };
+    for (const p of placed) if (p.span > 1) {
+      const short = p.b.size.w - spanW(p);
+      if (short > 0) for (let j = p.col; j < p.col + p.span; j++) colW[j] = colW[j] + short / p.span;
+    }
+    for (let j = 0; j < N; j++) if (colW[j] === 0) colW[j] = this.k.minBoxW;
+    for (let r = 0; r < rows; r++) if (rowH[r] === 0) rowH[r] = this.k.minBoxH;
+    const xAt = [], yAt = [];
+    colW.forEach((_, j) => xAt.push(j === 0 ? 0 : xAt[j - 1] + colW[j - 1] + gapX[j]));
+    rowH.forEach((_, r) => yAt.push(r === 0 ? 0 : yAt[r - 1] + rowH[r - 1] + gapY[r]));
+    for (const p of placed) {
+      const w = spanW(p), h = rowH[p.row];
+      if (p.b.kind === "node" && this.fixed(p.b)) {
+        plan.rel.set(p.b.id, { x: xAt[p.col] + (w - p.b.size.w) / 2, y: yAt[p.row] + (h - p.b.size.h) / 2 });
+        continue;
+      }
+      p.b.size = p.b.kind === "node" ? { w, h } : { w: Math.max(p.b.size.w, w), h: Math.max(p.b.size.h, h) };
+      plan.rel.set(p.b.id, { x: xAt[p.col], y: yAt[p.row] });
+    }
+    plan.columns = [z.children];
+    plan.content = rows ? { w: xAt[N - 1] + colW[N - 1], h: yAt[rows - 1] + rowH[rows - 1] } : { w: 0, h: 0 };
+    this.sizeZone(z);
+  }
+  /**
+   * Four or more children with no line to a sibling are a SET, not a sequence:
+   * wrapped into a grid (about 16:9 across the page) in reading order, after
+   * whatever the lines already arranged — never a tower down one column.
+   */
+  wrapLoose(z) {
+    const plan = z.plan;
+    const linked = /* @__PURE__ */ new Set();
+    for (const { a: a2, b } of plan.links) {
+      linked.add(a2);
+      linked.add(b);
+    }
+    const loose = z.children.filter((_, i) => !linked.has(i));
+    if (loose.length < 4) return;
+    const looseIds = new Set(loose.map((b) => b.id));
+    const base = plan.columns.map((col) => col.filter((b) => !looseIds.has(b.id))).filter((col) => col.length > 0);
+    const a = z.axis;
+    const avgF = loose.reduce((t, b) => t + fOf(b.size, a), 0) / loose.length;
+    const avgC = loose.reduce((t, b) => t + cOf(b.size, a), 0) / loose.length;
+    const across = a === "x" ? 16 / 9 : 9 / 16;
+    const k = Math.max(base.length, 1, Math.round(Math.sqrt(loose.length * (avgC / Math.max(1, avgF)) * across)));
+    const cols = base.map((c) => [...c]);
+    while (cols.length < k) cols.push([]);
+    loose.forEach((b, i) => cols[i % k].push(b));
+    plan.columns = cols;
   }
   /** Arrange one container's children (their sizes known) and size the container. */
   arrange(z) {
@@ -130532,14 +130669,14 @@ var ArchitectureComposer = class {
     const a = z.axis;
     const cols = plan.columns;
     for (let r = 0; r < cols.length; r++) {
-      const leaves = cols[r].filter((b) => b.kind === "node");
+      const leaves = cols[r].filter((b) => b.kind === "node" && !this.fixed(b));
       const shared = plan.sharedColF?.[r];
       const f = Math.max(shared ?? 0, ...leaves.map((b) => fOf(b.size, a)));
       if (leaves.length && cols[r].every((b) => b.kind === "node")) for (const b of leaves) b.size = sz(f, cOf(b.size, a), a);
     }
     const rows = Math.max(0, ...cols.map((c) => c.length));
     for (let i = 0; i < rows; i++) {
-      const leaves = cols.map((c2) => c2[i]).filter((b) => !!b && b.kind === "node");
+      const leaves = cols.map((c2) => c2[i]).filter((b) => !!b && b.kind === "node" && !this.fixed(b));
       if (leaves.length < 2) continue;
       const c = Math.max(...leaves.map((b) => cOf(b.size, a)));
       for (const b of leaves) b.size = sz(fOf(b.size, a), c, a);
@@ -130549,10 +130686,10 @@ var ArchitectureComposer = class {
     plan.colF = cols.map((c, r) => Math.max(plan.sharedColF?.[r] ?? 0, ...c.map((b) => fOf(b.size, a))));
     plan.gapF = cols.map((_, r) => {
       if (r === 0) return 0;
-      let need = K.gapFlow;
+      let need = this.k.gapFlow;
       for (const { a: i, b: j, link } of plan.links) {
         const ri = colIndex.get(z.children[i].id), rj = colIndex.get(z.children[j].id);
-        if (Math.min(ri, rj) === r - 1 && Math.max(ri, rj) === r) need = Math.max(need, this.labelExtent(link, a) + 2 * K.labelPad);
+        if (Math.min(ri, rj) === r - 1 && Math.max(ri, rj) === r) need = Math.max(need, this.labelExtent(link, a) + 2 * this.k.labelPad);
       }
       return Math.max(need, plan.sharedGapF?.[r] ?? 0);
     });
@@ -130571,7 +130708,7 @@ var ArchitectureComposer = class {
     cols.forEach((_, r) => stackCol(r));
     cols.forEach((col, r) => {
       col.forEach((b, i) => {
-        if (b.kind !== "node") return;
+        if (b.kind !== "node" || this.fixed(b)) return;
         const span = this.spanFor(z, b, colIndex, r);
         if (!span) return;
         const cKey = a === "x" ? "y" : "x";
@@ -130583,16 +130720,47 @@ var ArchitectureComposer = class {
         if (i + 1 < col.length) stackCol(r, i + 1);
       });
     });
+    cols.forEach((col, r) => {
+      const b = col[0];
+      if (col.length !== 1 || !b || b.kind !== "node" || this.fixed(b)) return;
+      const partners = /* @__PURE__ */ new Set();
+      for (const l of this.diagram.getLinks()) {
+        const other = l.sourceNodeId === b.id ? l.targetNodeId : l.targetNodeId === b.id ? l.sourceNodeId : void 0;
+        if (!other || other === b.id) continue;
+        const blk = this.childOf(z, other);
+        const rc = blk ? colIndex.get(blk.id) : void 0;
+        if (rc !== void 0 && Math.abs(rc - r) === 1) partners.add(other);
+      }
+      if (partners.size !== 1) return;
+      const t = this.rectIn(z, [...partners][0]);
+      if (!t) return;
+      const cKey = a === "x" ? "y" : "x";
+      const tc = (a === "x" ? t.y + t.h / 2 : t.x + t.w / 2) - cOf(b.size, a) / 2;
+      const p = plan.rel.get(b.id);
+      plan.rel.set(b.id, cKey === "y" ? { x: p.x, y: Math.max(0, tc) } : { x: Math.max(0, tc), y: p.y });
+    });
     let fMax = 0, cMax = 0;
     for (const col of cols) for (const b of col) {
       const p = plan.rel.get(b.id);
       fMax = Math.max(fMax, (a === "x" ? p.x : p.y) + fOf(b.size, a));
       cMax = Math.max(cMax, (a === "x" ? p.y : p.x) + cOf(b.size, a));
     }
+    if (z.reverse) {
+      for (const col of cols) for (const b of col) {
+        const p = plan.rel.get(b.id);
+        if (a === "x") plan.rel.set(b.id, { x: fMax - p.x - b.size.w, y: p.y });
+        else plan.rel.set(b.id, { x: p.x, y: fMax - p.y - b.size.h });
+      }
+    }
     plan.content = sz(fMax, cMax, a);
+    this.sizeZone(z);
+  }
+  /** A zone's frame: its content, its padding and caption band — never narrower than its caption. */
+  sizeZone(z) {
+    const plan = z.plan;
     if (z.id !== ROOT) {
       const caption = this.captionWidth(z);
-      z.size = { w: Math.max(plan.content.w + z.pad.l + z.pad.r, caption + 2 * K.zonePadSide), h: plan.content.h + z.pad.t + z.pad.b };
+      z.size = { w: Math.max(plan.content.w + z.pad.l + z.pad.r, caption + 2 * this.k.zonePadSide), h: plan.content.h + z.pad.t + z.pad.b };
     }
   }
   /** How wide a zone's caption draws, in its own typography (captions are often spaced capitals). */
@@ -130604,7 +130772,7 @@ var ArchitectureComposer = class {
   }
   /** The gap between two stacked children: more between zones, and room for a label bent in it. */
   crossGap(z, upper, lower) {
-    let gap = upper.kind === "zone" || lower.kind === "zone" ? K.gapCrossZone : K.gapCrossLeaf;
+    let gap = upper.kind === "zone" || lower.kind === "zone" ? this.k.gapCrossZone : this.k.gapCrossLeaf;
     let label = 0;
     for (const { a, b, link } of z.plan.links) {
       const ids = [z.children[a].id, z.children[b].id];
@@ -130630,7 +130798,7 @@ var ArchitectureComposer = class {
     const style = label?.style ?? {};
     const fs = Number(style.fontSize) || 12;
     const lines = text.split("\n");
-    return { w: widestLine(lines, { size: fs, weight: style.fontWeight, family: style.fontFamily }, this.measure), h: lines.length * fs * K.labelLine };
+    return { w: widestLine(lines, { size: fs, weight: style.fontWeight, family: style.fontFamily }, this.measure), h: lines.length * fs * this.k.labelLine };
   }
   /** The cross-axis span a box should cover: the boxes it talks to, when ≥ 2 sit in ONE column beside it. */
   spanFor(z, b, colIndex, r) {
@@ -130778,7 +130946,7 @@ var ArchitectureComposer = class {
           if (tp2) link.setTargetPort(tp2, tNode.id);
           link.setMetadata("layoutAnchored", true);
         };
-        if (hi - lo >= K.minOverlap) {
+        if (hi - lo >= this.k.minOverlap) {
           const at = lo + (k + 1) * (hi - lo) / (jobs.length + 1);
           setEnds(level ? at - s.y : at - s.x, level ? at - t.y : at - t.x);
           return;
@@ -134369,18 +134537,21 @@ var Lexer = class {
     }
   }
   /**
-   * Scan equals combinations: ==>, ===
+   * Scan equals combinations: `==>` thick arrow (Mermaid's own spelling — only
+   * `===>` used to lex, so `A ==> B` drew nothing), `===` or longer a thick line,
+   * and a bare `==` — the opener of an inline label, `A == text ==> B`.
    */
-  scanEquals(start, startColumn) {
-    if (this.peek() === "=" && this.peekNext() === "=") {
+  scanEquals(start, _startColumn) {
+    let count2 = 1;
+    while (this.peek() === "=") {
       this.advance();
+      count2++;
+    }
+    if (count2 >= 2 && this.peek() === ">") {
       this.advance();
-      if (this.peek() === ">") {
-        this.advance();
-        this.addToken("THICK_ARROW" /* THICK_ARROW */, "==>", start, this.position);
-      } else {
-        this.addToken("THICK_LINE" /* THICK_LINE */, "===", start, this.position);
-      }
+      this.addToken("THICK_ARROW" /* THICK_ARROW */, this.input.substring(start, this.position), start, this.position);
+    } else if (count2 >= 2) {
+      this.addToken("THICK_LINE" /* THICK_LINE */, this.input.substring(start, this.position), start, this.position);
     } else {
       this.addToken("UNKNOWN" /* UNKNOWN */, "=", start, this.position);
     }
@@ -134389,6 +134560,16 @@ var Lexer = class {
    * Scan dot (for dotted lines) - already handled in scanDash
    */
   scanDot(start, startColumn) {
+    if (this.peek() === "-") {
+      this.advance();
+      if (this.peek() === ">") {
+        this.advance();
+        this.addToken("DOTTED_ARROW" /* DOTTED_ARROW */, ".->", start, this.position);
+      } else {
+        this.addToken("DOTTED_LINE" /* DOTTED_LINE */, ".-", start, this.position);
+      }
+      return;
+    }
     this.addToken("UNKNOWN" /* UNKNOWN */, ".", start, this.position);
   }
   /**
@@ -134565,6 +134746,10 @@ var V11_SHAPE_MAP = {
   "manual-input": "trapezoid",
   "trapezoid-alt": "trapezoid-alt",
   "trap-t": "trapezoid-alt",
+  "lean-r": "parallelogram",
+  "in-out": "parallelogram",
+  "lean-l": "parallelogram-alt",
+  "out-in": "parallelogram-alt",
   // v11's text block: words on the canvas, no box.
   text: "text"
 };
@@ -134736,10 +134921,27 @@ var Parser = class {
     const allRefs = [...firstGroup];
     let prevGroup = firstGroup;
     while (this.isLinkToken()) {
-      const linkToken = this.advance();
-      const linkType = this.getLinkType(linkToken.type);
+      let linkToken = this.advance();
       let label;
-      if (this.match("PIPE" /* PIPE */)) {
+      const opener = linkToken.type === "LINE" /* LINE */ && linkToken.value === "--" || linkToken.type === "DOTTED_LINE" /* DOTTED_LINE */ && linkToken.value === "-." || linkToken.type === "THICK_LINE" /* THICK_LINE */ && linkToken.value === "==";
+      if (opener) {
+        let close = this.current;
+        while (close < this.tokens.length && this.tokens[close].type !== "NEWLINE" /* NEWLINE */ && !this.isLinkTokenAt(close)) close++;
+        if (close > this.current && close < this.tokens.length && this.isLinkTokenAt(close)) {
+          let text = "";
+          let lastEnd = -1;
+          for (let i = this.current; i < close; i++) {
+            const t = this.tokens[i];
+            text += (lastEnd >= 0 && t.startIndex > lastEnd ? " " : "") + t.value;
+            lastEnd = t.endIndex;
+          }
+          label = text.trim();
+          this.current = close;
+          linkToken = this.advance();
+        }
+      }
+      const linkType = this.getLinkType(linkToken.type);
+      if (label === void 0 && this.match("PIPE" /* PIPE */)) {
         label = this.parseTextUntil("PIPE" /* PIPE */);
         this.consume("PIPE" /* PIPE */, 'Expected closing "|"');
       }
@@ -135061,9 +135263,13 @@ var Parser = class {
       return { shape: "hexagon", label };
     }
     if (this.match("TRAPEZOID_OPEN" /* TRAPEZOID_OPEN */)) {
+      const open = this.previous().value;
       const label = this.parseTextUntil("TRAPEZOID_CLOSE" /* TRAPEZOID_CLOSE */);
+      const close = this.currentToken().value;
       this.consume("TRAPEZOID_CLOSE" /* TRAPEZOID_CLOSE */, "Expected trapezoid close");
-      return { shape: "trapezoid", label };
+      const fwd = open === "[/";
+      const shape = fwd ? close === "/]" ? "parallelogram" : "trapezoid" : close === "/]" ? "trapezoid-alt" : "parallelogram-alt";
+      return { shape, label };
     }
     if (this.match("ASYMMETRIC_OPEN" /* ASYMMETRIC_OPEN */)) {
       const label = this.parseTextUntil("SQUARE_CLOSE" /* SQUARE_CLOSE */);
@@ -135114,6 +135320,21 @@ var Parser = class {
       default:
         return "arrow";
     }
+  }
+  /** Is the token at `i` a link token? */
+  isLinkTokenAt(i) {
+    const t = this.tokens[i];
+    return !!t && [
+      "ARROW" /* ARROW */,
+      "LINE" /* LINE */,
+      "DOTTED_ARROW" /* DOTTED_ARROW */,
+      "DOTTED_LINE" /* DOTTED_LINE */,
+      "THICK_ARROW" /* THICK_ARROW */,
+      "THICK_LINE" /* THICK_LINE */,
+      "BIDIRECTIONAL" /* BIDIRECTIONAL */,
+      "CIRCLE_EDGE" /* CIRCLE_EDGE */,
+      "CROSS_EDGE" /* CROSS_EDGE */
+    ].includes(t.type);
   }
   /**
    * Check if current token is a link token
@@ -135919,7 +136140,9 @@ var ASTTransformer = class {
       "rhombus": "flowchart:decision",
       "hexagon": "flowchart:preparation",
       "trapezoid": "flowchart:manual-input",
-      "trapezoid-alt": "flowchart:manual-input"
+      "trapezoid-alt": "flowchart:manual-input",
+      "parallelogram": "flowchart:data",
+      "parallelogram-alt": "flowchart:data"
     };
     return shapeToType[shape] || "flowchart:process";
   }
@@ -135932,20 +136155,24 @@ var ASTTransformer = class {
       "text": { type: "text" },
       "rectangle": { type: "rect" },
       "rounded-rectangle": { type: "rect", cornerRadius: 10 },
-      "stadium": { type: "ellipse" },
-      // Stadium is essentially a tall ellipse
-      "subroutine": { type: "rect", cornerRadius: 5 },
-      "cylindrical": { type: "ellipse" },
-      // Cylinder approximated as ellipse
+      // The renderer's shape registry draws these as what they are (it used to
+      // approximate: a database as an ellipse, a trapezoid as a rect).
+      "stadium": { type: "stadium" },
+      "subroutine": { type: "subroutine" },
+      "cylindrical": { type: "cylinder" },
       "circle": { type: "circle" },
       "asymmetric": { type: "rect" },
-      // Document shape - fallback to rect for now
+      // Mermaid's flag — no registry shape yet
       "rhombus": { type: "diamond" },
       "hexagon": { type: "hexagon" },
-      "trapezoid": { type: "rect" },
-      // Trapezoid - fallback to rect for now
-      "trapezoid-alt": { type: "rect" }
-      // Trapezoid alt - fallback to rect for now
+      "trapezoid": { type: "trapezoid" },
+      // [/ \] — wide bottom
+      "trapezoid-alt": { type: "trapezoid-bottom" },
+      // [\ /] — wide top
+      "parallelogram": { type: "parallelogram" },
+      // [/ /] — leans right
+      "parallelogram-alt": { type: "parallelogram-top" }
+      // [\ \] — leans left
     };
     return shapeMapping[shape] || { type: "rect" };
   }
@@ -136979,8 +137206,10 @@ var DSLGenerator = class {
       "asymmetric": { opening: ">", closing: "]" },
       "rhombus": { opening: "{", closing: "}" },
       "hexagon": { opening: "{{", closing: "}}" },
-      "trapezoid": { opening: "[/", closing: "/]" },
-      "trapezoid-alt": { opening: "[\\", closing: "\\]" }
+      "trapezoid": { opening: "[/", closing: "\\]" },
+      "trapezoid-alt": { opening: "[\\", closing: "/]" },
+      "parallelogram": { opening: "[/", closing: "/]" },
+      "parallelogram-alt": { opening: "[\\", closing: "\\]" }
     };
     return brackets[shape] || brackets["rectangle"];
   }
@@ -138395,6 +138624,352 @@ function generateStateFromDiagram(diagram) {
   return generateMermaidState(stateModelFromDiagram(diagram));
 }
 
+// libs/engine/src/dsl/mermaid/MermaidBlock.ts
+var DIRECTIVE = /^(style|classDef|class|linkStyle|click)\s/;
+var ARROW_GLYPH = { right: "\u2192", left: "\u2190", up: "\u2191", down: "\u2193", x: "\u2194", y: "\u2195" };
+function splitTokens(line) {
+  const out = [];
+  let cur = "";
+  let depth = 0;
+  let quote = false;
+  for (const ch of line) {
+    if (ch === '"') quote = !quote;
+    if (!quote) {
+      if ("([{<".includes(ch)) depth++;
+      else if (")]}>".includes(ch)) depth = Math.max(0, depth - 1);
+    }
+    if (!quote && depth === 0 && /\s/.test(ch)) {
+      if (cur) out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+function isEdgeLine(line) {
+  const bare = line.replace(/"[^"]*"/g, '""').replace(/\[[^\]]*\]|\([^)]*\)|\{[^}]*\}/g, "");
+  return /--|==|-\.|~~~/.test(bare);
+}
+function parseMermaidBlock(text) {
+  const hints = text.split("\n").map((l) => l.trim()).filter((l) => /^%%grafloria:/.test(l));
+  const root = { cells: [], passthrough: [] };
+  const stack = [root];
+  let anon = 0;
+  for (const { text: line } of significantLines(text, ["block-beta", "block"])) {
+    const top = stack[stack.length - 1];
+    const cols = /^columns\s+(\d+|auto)$/i.exec(line);
+    if (cols) {
+      top.columns = cols[1].toLowerCase() === "auto" ? void 0 : Number(cols[1]);
+      continue;
+    }
+    const block = /^block(?::([A-Za-z_][\w-]*))?(?::(\d+))?$/.exec(line);
+    if (block) {
+      const group = { kind: "group", id: block[1] ?? `block_${++anon}`, span: block[2] ? Number(block[2]) : 1, cells: [] };
+      top.cells.push(group);
+      stack.push(group);
+      continue;
+    }
+    if (line === "end") {
+      if (stack.length > 1) stack.pop();
+      continue;
+    }
+    if (DIRECTIVE.test(line) || isEdgeLine(line)) {
+      root.passthrough.push(line);
+      continue;
+    }
+    for (const raw of splitTokens(line)) {
+      const space = /^space(?::(\d+))?$/.exec(raw);
+      if (space) {
+        top.cells.push({ kind: "space", span: space[1] ? Number(space[1]) : 1 });
+        continue;
+      }
+      const spanned = /^(.*?[^:]):(\d+)$/.exec(raw);
+      let token = spanned ? spanned[1] : raw;
+      const span = spanned ? Number(spanned[2]) : 1;
+      const id = /^([A-Za-z0-9_][\w-]*)/.exec(token)?.[1];
+      if (!id) continue;
+      const arrow = /^([\w-]+)<\[(.*)\]>\((\w+)\)$/.exec(token);
+      if (arrow) {
+        const label = arrow[2].replace(/^"|"$/g, "").trim();
+        const glyph = ARROW_GLYPH[arrow[3].toLowerCase()] ?? "\u2192";
+        const text2 = label ? `${label} ${glyph}` : glyph;
+        top.cells.push({ kind: "block", id, token: `${arrow[1]}@{ shape: text, label: "${text2.replace(/"/g, "#quot;")}" }`, span, raw: token });
+        continue;
+      }
+      top.cells.push({ kind: "block", id, token, span });
+    }
+  }
+  root.passthrough.push(...hints);
+  return root;
+}
+function blockModelToFlowchart(model) {
+  const lines = ["flowchart LR"];
+  const walk3 = (cells, pad) => {
+    for (const c of cells) {
+      if (c.kind === "block") lines.push(`${pad}${c.token}`);
+      else if (c.kind === "group") {
+        lines.push(`${pad}subgraph ${c.id}`);
+        walk3(c.cells, pad + "  ");
+        lines.push(`${pad}end`);
+      }
+    }
+  };
+  walk3(model.cells, "  ");
+  for (const l of model.passthrough) lines.push(`  ${l}`);
+  return lines.join("\n");
+}
+function applyBlockGrid(diagram, model) {
+  const toSpec = (columns, cells) => ({
+    ...columns !== void 0 ? { columns } : {},
+    cells: cells.map((c) => c.kind === "space" ? { span: c.span } : { id: c.id, span: c.span })
+  });
+  diagram.setMetadata("grid", toSpec(model.columns, model.cells));
+  const walk3 = (cells) => {
+    for (const c of cells) {
+      if (c.kind === "block") {
+        const n3 = diagram.getNode(c.id);
+        if (n3) {
+          n3.setMetadata("blockToken", c.raw ?? c.token);
+          n3.setMetadata("blockLabel", n3.getLabel());
+          if (c.raw) {
+            n3.setMetadata("blockArrow", true);
+            n3.setMetadata("textAlign", "center");
+            if ((n3.getLabel() ?? "").length <= 1) n3.style.fontSize = 22;
+          }
+        }
+      } else if (c.kind === "group") {
+        const g = diagram.getGroup(c.id);
+        if (g) {
+          g.setMetadata("grid", toSpec(c.columns, c.cells));
+          g.name = "";
+          if (!g.getMetadata("frameStyle")) g.setMetadata("frameStyle", { fill: "#f8fafc", stroke: "#cbd5e1", borderRadius: 4 });
+          g.headerHeight = 0;
+        }
+        walk3(c.cells);
+      }
+    }
+  };
+  walk3(model.cells);
+  diagram.setMetadata("blockStyleLines", model.passthrough.filter((l) => DIRECTIVE.test(l)));
+  diagram.setMetadata("diagramType", "block-beta");
+  diagram.setMetadata("layout", "architecture");
+  diagram.setMetadata("layoutCompact", true);
+  layoutArchitecture(diagram);
+}
+var LINK_SYNTAX = {
+  arrow: "-->",
+  line: "---",
+  "dotted-arrow": "-.->",
+  "dotted-line": "-.-",
+  "thick-arrow": "==>",
+  "thick-line": "===",
+  bidirectional: "<-->"
+};
+function edgeLine(l) {
+  if (!l.sourceNodeId || !l.targetNodeId) return null;
+  const type = l.getMetadata("dslLinkType") ?? (l.style?.strokeDasharray ? "dotted-arrow" : "arrow");
+  const arrow = LINK_SYNTAX[type] ?? "-->";
+  const label = l.getLabel();
+  if (label && arrow === "-->") return `${l.sourceNodeId} -- "${label.replace(/"/g, "#quot;")}" --> ${l.targetNodeId}`;
+  if (label) return `${l.sourceNodeId} ${arrow}|"${label.replace(/"/g, "#quot;")}"| ${l.targetNodeId}`;
+  return `${l.sourceNodeId} ${arrow} ${l.targetNodeId}`;
+}
+function generateBlockFromDiagram(diagram) {
+  const lines = ["block-beta"];
+  const placed = /* @__PURE__ */ new Set();
+  const token = (id) => {
+    const n3 = diagram.getNode(id);
+    if (!n3) return null;
+    placed.add(id);
+    const raw = n3.getMetadata("blockToken");
+    const label = n3.getLabel() ?? id;
+    if (raw && n3.getMetadata("blockLabel") === label) return raw;
+    return label === id ? id : `${id}["${label.replace(/"/g, "#quot;")}"]`;
+  };
+  const emit = (grid, pad, members) => {
+    if (grid?.columns !== void 0) lines.push(`${pad}columns ${grid.columns}`);
+    const cells = [...grid?.cells ?? []];
+    for (const n3 of diagram.getNodes()) {
+      const inHere = members ? members.has(n3.id) : !diagram.getGroups().some((g) => g.members.has(n3.id));
+      if (inHere && !cells.some((c) => c.id === n3.id)) cells.push({ id: n3.id, span: 1 });
+    }
+    const N = grid?.columns ?? Number.MAX_SAFE_INTEGER;
+    let row = [];
+    let used = 0;
+    const flush = () => {
+      if (row.length) lines.push(pad + row.join(" "));
+      row = [];
+      used = 0;
+    };
+    for (const c of cells) {
+      if (used + c.span > N) flush();
+      const g = c.id ? diagram.getGroup(c.id) : void 0;
+      if (g) {
+        flush();
+        lines.push(`${pad}block:${g.id}${c.span > 1 ? `:${c.span}` : ""}`);
+        emit(g.getMetadata("grid"), pad + "  ", g.members);
+        lines.push(`${pad}end`);
+        continue;
+      }
+      const t = c.id ? token(c.id) : `space${c.span > 1 ? `:${c.span}` : ""}`;
+      if (!t) continue;
+      row.push(c.id && c.span > 1 ? `${t}:${c.span}` : t);
+      used += c.span;
+      if (used >= N) flush();
+    }
+    flush();
+  };
+  emit(diagram.getMetadata("grid"), "  ");
+  for (const l of diagram.getLinks()) {
+    const e = edgeLine(l);
+    if (e) lines.push(`  ${e}`);
+  }
+  for (const s of diagram.getMetadata("blockStyleLines") ?? []) lines.push(`  ${s}`);
+  return lines.join("\n") + "\n";
+}
+
+// libs/engine/src/dsl/mermaid/MermaidArchitecture.ts
+var ARCHITECTURE_ICONS = ["cloud", "database", "disk", "internet", "server"];
+var DECL = /^(group|service)\s+([\w-]+)(?:\(([^)]*)\))?(?:\[([^\]]*)\])?(?:\s+in\s+([\w-]+))?$/;
+var JUNCTION = /^junction\s+([\w-]+)(?:\s+in\s+([\w-]+))?$/;
+var EDGE = /^([\w-]+)(\{group\})?\s*:\s*([TBLR])\s+(<)?-(?:-|\[([^\]]*)\]-)(>)?\s+([TBLR])\s*:\s*([\w-]+)(\{group\})?$/;
+var SIDE = { T: "top", B: "bottom", L: "left", R: "right" };
+var LETTER = { top: "T", bottom: "B", left: "L", right: "R" };
+function parseMermaidArchitecture(text) {
+  const model = { groups: [], services: [], junctions: [], edges: [] };
+  for (const { text: line } of significantLines(text, "architecture-beta")) {
+    const decl = DECL.exec(line);
+    if (decl) {
+      const item = { id: decl[2] };
+      if (decl[3]) item.icon = decl[3].trim();
+      if (decl[4] !== void 0) item.title = decl[4].trim();
+      if (decl[5]) item.parent = decl[5];
+      (decl[1] === "group" ? model.groups : model.services).push(item);
+      continue;
+    }
+    const j = JUNCTION.exec(line);
+    if (j) {
+      model.junctions.push(j[2] ? { id: j[1], parent: j[2] } : { id: j[1] });
+      continue;
+    }
+    const e = EDGE.exec(line);
+    if (e) {
+      const edge = { from: e[1], fromSide: e[3], to: e[8], toSide: e[7], arrowFrom: !!e[4], arrowTo: !!e[6] };
+      if (e[5] !== void 0) edge.label = e[5].trim();
+      if (e[2]) edge.fromGroup = true;
+      if (e[9]) edge.toGroup = true;
+      model.edges.push(edge);
+    }
+  }
+  return model;
+}
+var q = (s) => `"${s.replace(/"/g, "#quot;")}"`;
+function architectureModelToFlowchart(model) {
+  const lines = ["flowchart LR"];
+  const inGroup = (parent, pad) => {
+    for (const g of model.groups.filter((x) => x.parent === parent)) {
+      lines.push(`${pad}subgraph ${g.id}[${q(g.title ?? g.id)}]`);
+      inGroup(g.id, pad + "  ");
+      lines.push(`${pad}end`);
+    }
+    for (const s of model.services.filter((x) => x.parent === parent)) lines.push(`${pad}${s.id}[${q(s.title ?? s.id)}]`);
+    for (const j of model.junctions.filter((x) => x.parent === parent)) lines.push(`${pad}${j.id}((" "))`);
+  };
+  inGroup(void 0, "  ");
+  for (const e of model.edges) {
+    const arrow = e.arrowFrom && e.arrowTo ? "<-->" : e.arrowTo ? "-->" : "---";
+    lines.push(`  ${e.from} ${arrow}${e.label ? `|${q(e.label)}|` : ""} ${e.to}`);
+  }
+  return lines.join("\n");
+}
+var ARROW = { type: "arrow", size: 8, filled: true };
+function applyArchitectureModel(diagram, model) {
+  for (const g of model.groups) {
+    const group = diagram.getGroup(g.id);
+    if (!group) continue;
+    group.name = g.title ?? g.id;
+    if (g.icon) group.setMetadata("icon", g.icon);
+    group.setMetadata("frameStyle", { fill: "#f8fafc", stroke: "#94a3b8", strokeDasharray: "6 4", borderRadius: 6, color: "#334155", fontWeight: "600", fontSize: 12 });
+    group.headerHeight = 0;
+  }
+  for (const s of model.services) {
+    const node = diagram.getNode(s.id);
+    if (!node) continue;
+    if (s.icon) {
+      node.setMetadata("icon", s.icon);
+      if (ARCHITECTURE_ICONS.includes(s.icon)) node.setMetadata("panel", { icon: { name: s.icon, size: 20, corner: "tl" } });
+    }
+  }
+  for (const j of model.junctions) {
+    const node = diagram.getNode(j.id);
+    if (!node) continue;
+    node.setLabel("");
+    node.setMetadata("junction", true);
+    node.setMetadata("sizing", { fixed: true });
+    node.setSize(10, 10);
+  }
+  const links = diagram.getLinks();
+  model.edges.forEach((e, i) => {
+    const link = links[i];
+    if (!link) return;
+    link.setMetadata("sourceSide", SIDE[e.fromSide]);
+    link.setMetadata("targetSide", SIDE[e.toSide]);
+    if (e.fromGroup) link.setMetadata("fromGroup", true);
+    if (e.toGroup) link.setMetadata("toGroup", true);
+    link.updateStyle({ arrowHead: e.arrowTo ? { ...ARROW } : { type: "none" }, arrowTail: e.arrowFrom ? { ...ARROW } : { type: "none" } });
+  });
+  diagram.setMetadata("diagramType", "architecture-beta");
+  diagram.setMetadata("direction", "LR");
+  diagram.setMetadata("layout", "architecture");
+  layoutArchitecture(diagram);
+}
+function inferSide(diagram, l, end) {
+  const named = l.getMetadata(end === "source" ? "sourceSide" : "targetSide");
+  if (named && LETTER[named]) return LETTER[named];
+  const a = diagram.getNode((end === "source" ? l.sourceNodeId : l.targetNodeId) ?? "");
+  const b = diagram.getNode((end === "source" ? l.targetNodeId : l.sourceNodeId) ?? "");
+  if (!a || !b) return end === "source" ? "R" : "L";
+  const dx = b.position.x + b.size.width / 2 - (a.position.x + a.size.width / 2);
+  const dy = b.position.y + b.size.height / 2 - (a.position.y + a.size.height / 2);
+  return Math.abs(dx) >= Math.abs(dy) ? dx >= 0 ? "R" : "L" : dy >= 0 ? "B" : "T";
+}
+function generateArchitectureFromDiagram(diagram) {
+  const lines = ["architecture-beta"];
+  const title = (s) => s.replace(/[[\]]/g, "");
+  const groups = diagram.getGroups();
+  const depth = (id) => id ? 1 + depth(diagram.getGroup(id)?.parentGroupId) : 0;
+  for (const g of [...groups].sort((a, b) => depth(a.parentGroupId) - depth(b.parentGroupId))) {
+    const icon = g.getMetadata("icon") ?? "cloud";
+    lines.push(`  group ${g.id}(${icon})[${title(g.name || g.id)}]${g.parentGroupId ? ` in ${g.parentGroupId}` : ""}`);
+  }
+  const parentOf = (id) => {
+    let best;
+    for (const g of groups) if (g.members.has(id) && (!best || depth(g.id) > depth(best))) best = g.id;
+    return best;
+  };
+  for (const n3 of diagram.getNodes()) {
+    const inG = parentOf(n3.id);
+    const where = inG ? ` in ${inG}` : "";
+    if (n3.getMetadata("junction") === true) lines.push(`  junction ${n3.id}${where}`);
+    else lines.push(`  service ${n3.id}(${n3.getMetadata("icon") ?? "server"})[${title(n3.getLabel() ?? n3.id)}]${where}`);
+  }
+  for (const l of diagram.getLinks()) {
+    if (!l.sourceNodeId || !l.targetNodeId) continue;
+    const head = l.style?.arrowHead;
+    const tail = l.style?.arrowTail;
+    const to = head !== void 0 && head.type !== "none";
+    const from = tail !== void 0 && tail.type !== "none";
+    const label = l.getLabel();
+    const mid = label ? `-[${title(label)}]-` : "--";
+    const fg = l.getMetadata("fromGroup") === true ? "{group}" : "";
+    const tg = l.getMetadata("toGroup") === true ? "{group}" : "";
+    lines.push(`  ${l.sourceNodeId}${fg}:${inferSide(diagram, l, "source")} ${from ? "<" : ""}${mid}${to ? ">" : ""} ${inferSide(diagram, l, "target")}:${l.targetNodeId}${tg}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
 // libs/engine/src/dsl/advanced/StyleParser.ts
 var StyleParser = class {
   /**
@@ -138775,6 +139350,18 @@ var _DSL = class _DSL {
           startTime
         );
       }
+      if (diagramType === "block-beta") {
+        const model = parseMermaidBlock(text);
+        const flow = this.parseDetailed(blockModelToFlowchart(model));
+        applyBlockGrid(flow.diagram, model);
+        return this.finishGraphType(flow.diagram, "block-beta", startTime);
+      }
+      if (diagramType === "architecture-beta") {
+        const model = parseMermaidArchitecture(text);
+        const flow = this.parseDetailed(architectureModelToFlowchart(model));
+        applyArchitectureModel(flow.diagram, model);
+        return this.finishGraphType(flow.diagram, "architecture-beta", startTime);
+      }
       if (diagramType !== "flowchart") {
         const empty2 = new DiagramModel("Unsupported diagram");
         empty2.setMetadata("diagramType", diagramType);
@@ -138937,6 +139524,8 @@ var _DSL = class _DSL {
     if (graphType === "stateDiagram" || graphType === "stateDiagram-v2") {
       return generateStateFromDiagram(diagram);
     }
+    if (graphType === "block-beta") return generateBlockFromDiagram(diagram);
+    if (graphType === "architecture-beta") return generateArchitectureFromDiagram(diagram);
     const text = this.generator.generate(diagram, options);
     if (this.options.debug) {
       debugLog(`[DSL] Generated ${text.split("\n").length} lines of DSL text`);
@@ -169004,6 +169593,21 @@ function autoSizeDiagram(nodes, opts = {}) {
 }
 
 // libs/renderer/src/svg/panel.ts
+var BUILTIN_ICONS = {
+  cloud: ["M7 18.5h10.2a4.3 4.3 0 0 0 .5-8.57A6.2 6.2 0 0 0 5.9 9.1 4.7 4.7 0 0 0 7 18.5z"],
+  database: [
+    "M4.5 6c0-1.66 3.36-3 7.5-3s7.5 1.34 7.5 3-3.36 3-7.5 3-7.5-1.34-7.5-3z",
+    "M4.5 6v12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6",
+    "M4.5 12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3"
+  ],
+  disk: ["M3.5 14h17v4.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z", "M3.5 14l3-8.5h11l3 8.5", "M16.5 17h.01"],
+  internet: [
+    "M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18z",
+    "M3 12h18",
+    "M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9c-2.4-2.5-3.6-5.5-3.6-9S9.6 5.5 12 3z"
+  ],
+  server: ["M4 4h16v7H4z", "M4 13h16v7H4z", "M7.5 7.5h.01", "M7.5 16.5h.01"]
+};
 var DEFAULT_HEADER_HEIGHT = 22;
 var DEFAULT_IMAGE_HEIGHT = 48;
 var DEFAULT_ROW_HEIGHT = 18;
@@ -169179,6 +169783,18 @@ function renderNodePanel(node, width, height, ctx) {
           fontSize: size
         })
       );
+    } else if (panel.icon.name && BUILTIN_ICONS[panel.icon.name]) {
+      const k = Math.round(size / 24 * 1e4) / 1e4;
+      out.push({
+        type: "g",
+        key: `panel-icon-${ctx.nodeId}`,
+        props: { className: "panel-icon", transform: `translate(${pos.x}, ${pos.y}) scale(${k})`, pointerEvents: "none" },
+        children: BUILTIN_ICONS[panel.icon.name].map((d, i) => ({
+          type: "path",
+          key: `panel-icon-${ctx.nodeId}-${i}`,
+          props: { d, fill: "none", stroke: ctx.bodyTextColor, strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" }
+        }))
+      });
     }
   }
   if (panel.badges && panel.badges.length > 0) {
@@ -170762,15 +171378,15 @@ function pointAtPositionOnPolyline(points, t) {
   }
   return { ...points[points.length - 1] };
 }
-function projectOntoSegment(q, a, b) {
+function projectOntoSegment(q2, a, b) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const lenSq = dx * dx + dy * dy;
-  let s = lenSq === 0 ? 0 : ((q.x - a.x) * dx + (q.y - a.y) * dy) / lenSq;
+  let s = lenSq === 0 ? 0 : ((q2.x - a.x) * dx + (q2.y - a.y) * dy) / lenSq;
   s = Math.max(0, Math.min(1, s));
   const cx = a.x + s * dx;
   const cy = a.y + s * dy;
-  return { distance: Math.hypot(q.x - cx, q.y - cy), s };
+  return { distance: Math.hypot(q2.x - cx, q2.y - cy), s };
 }
 function hitTestLink(options, query, tolerance) {
   const { points } = options;
@@ -171287,9 +171903,9 @@ function segmentIntersectsRect(a, b, rect) {
   const minY = rect.y;
   const maxX = rect.x + rect.width;
   const maxY = rect.y + rect.height;
-  const clip = (p, q) => {
-    if (p === 0) return q >= 0;
-    const r = q / p;
+  const clip = (p, q2) => {
+    if (p === 0) return q2 >= 0;
+    const r = q2 / p;
     if (p < 0) {
       if (r > t1) return false;
       if (r > t0) t0 = r;
@@ -174536,7 +175152,7 @@ var _SVGRenderer = class _SVGRenderer {
    * like no cache at all, and says nothing while it does it.
    */
   routeKey(link, endpoints, routingLod) {
-    const q = (v) => Math.round(v * 100);
+    const q2 = (v) => Math.round(v * 100);
     const sep = this.frameSeparation.get(link.id) ?? 0;
     const jetty = link.style?.jetty ?? "-";
     const isLoop = link.isSelfLoop();
@@ -174544,10 +175160,10 @@ var _SVGRenderer = class _SVGRenderer {
       // Which ROUTER produced this answer, not just what it was given. A coarse
       // far-zoom line and a real A* route share every other input.
       routingLod ? "a*" : "coarse",
-      q(endpoints.start.x),
-      q(endpoints.start.y),
-      q(endpoints.end.x),
-      q(endpoints.end.y),
+      q2(endpoints.start.x),
+      q2(endpoints.start.y),
+      q2(endpoints.end.x),
+      q2(endpoints.end.y),
       endpoints.sourceDirection ?? "-",
       endpoints.targetDirection ?? "-",
       this.routerForLink(link),
@@ -177641,7 +178257,21 @@ var _SVGRenderer = class _SVGRenderer {
           const end = points[i + 1];
           const isFirstSegment = i === 0;
           const isLastSegment = i === points.length - 2;
-          if (isFirstSegment || isLastSegment) {
+          const squareRun = (a, b, dir, leaving) => {
+            if (!dir) return false;
+            const [from, to] = leaving ? [a, b] : [b, a];
+            const dx = to.x - from.x, dy = to.y - from.y;
+            if (dir === "top") return Math.abs(dx) < 0.5 && dy < 0;
+            if (dir === "bottom") return Math.abs(dx) < 0.5 && dy > 0;
+            if (dir === "left") return Math.abs(dy) < 0.5 && dx < 0;
+            if (dir === "right") return Math.abs(dy) < 0.5 && dx > 0;
+            return false;
+          };
+          const straightEnd = (isFirstSegment || isLastSegment) && (!isFirstSegment || squareRun(start, end, sourceDirection, true)) && (!isLastSegment || squareRun(start, end, targetDirection, false));
+          if (straightEnd) {
+            if (i === 0) allRoutedPoints.push(start);
+            allRoutedPoints.push(end);
+          } else if (isFirstSegment || isLastSegment) {
             const segmentSourceDir = isFirstSegment ? sourceDirection : void 0;
             const segmentTargetDir = isLastSegment ? targetDirection : void 0;
             const segmentRoute = routingEngine.route({
@@ -178991,7 +179621,7 @@ var _SVGRenderer = class _SVGRenderer {
       const lo = bendPrev + 1 + (i === 0 ? startReserve : 0);
       const hi = segLen - bendNext - 1 - (i === n3 - 2 ? endReserve : 0);
       const merged = [];
-      const cuts = intersections.filter((it) => (it.segmentIndex ?? 0) === i && it.t1 > 0 && it.t1 < 1).map((it) => ({ s: it.t1 * segLen - half, e: it.t1 * segLen + half })).sort((p, q) => p.s - q.s);
+      const cuts = intersections.filter((it) => (it.segmentIndex ?? 0) === i && it.t1 > 0 && it.t1 < 1).map((it) => ({ s: it.t1 * segLen - half, e: it.t1 * segLen + half })).sort((p, q2) => p.s - q2.s);
       for (const c of cuts) {
         if (hi - lo < 3) continue;
         const width = Math.min(c.e - c.s, hi - lo);
@@ -179650,29 +180280,29 @@ var _SVGRenderer = class _SVGRenderer {
     const ortho = [pts[0]];
     for (let i = 1; i < pts.length; i++) {
       const prev = ortho[ortho.length - 1];
-      const q = pts[i];
-      const dx = Math.abs(q.x - prev.x);
-      const dy = Math.abs(q.y - prev.y);
+      const q2 = pts[i];
+      const dx = Math.abs(q2.x - prev.x);
+      const dy = Math.abs(q2.y - prev.y);
       if (dx > EPS3 && dy > EPS3) {
         const before = ortho.length >= 2 ? ortho[ortho.length - 2] : null;
         const prevHorizontal = before ? Math.abs(prev.y - before.y) <= EPS3 : dx >= dy;
-        ortho.push(prevHorizontal ? { x: q.x, y: prev.y } : { x: prev.x, y: q.y });
+        ortho.push(prevHorizontal ? { x: q2.x, y: prev.y } : { x: prev.x, y: q2.y });
       }
-      ortho.push({ x: q.x, y: q.y });
+      ortho.push({ x: q2.x, y: q2.y });
     }
     const merged = [ortho[0]];
     for (let i = 1; i < ortho.length; i++) {
-      const q = ortho[i];
+      const q2 = ortho[i];
       while (merged.length >= 2) {
         const a = merged[merged.length - 2];
         const b = merged[merged.length - 1];
-        const sameH = Math.abs(b.y - a.y) <= EPS3 && Math.abs(q.y - b.y) <= EPS3;
-        const sameV = Math.abs(b.x - a.x) <= EPS3 && Math.abs(q.x - b.x) <= EPS3;
+        const sameH = Math.abs(b.y - a.y) <= EPS3 && Math.abs(q2.y - b.y) <= EPS3;
+        const sameV = Math.abs(b.x - a.x) <= EPS3 && Math.abs(q2.x - b.x) <= EPS3;
         if (sameH || sameV) merged.pop();
         else break;
       }
-      if (Math.abs(q.x - merged[merged.length - 1].x) > EPS3 || Math.abs(q.y - merged[merged.length - 1].y) > EPS3) {
-        merged.push(q);
+      if (Math.abs(q2.x - merged[merged.length - 1].x) > EPS3 || Math.abs(q2.y - merged[merged.length - 1].y) > EPS3) {
+        merged.push(q2);
       }
     }
     return merged;
@@ -179734,9 +180364,9 @@ var _SVGRenderer = class _SVGRenderer {
     let t0 = 0, t1 = 1;
     const dx = b.x - a.x;
     const dy = b.y - a.y;
-    const clip = (p, q) => {
-      if (p === 0) return q >= 0;
-      const r = q / p;
+    const clip = (p, q2) => {
+      if (p === 0) return q2 >= 0;
+      const r = q2 / p;
       if (p < 0) {
         if (r > t1) return false;
         if (r > t0) t0 = r;
@@ -181022,16 +181652,16 @@ function createSharpBackend(sharp) {
       const targetWidth = Math.max(1, Math.round(width));
       const targetHeight = Math.max(1, Math.round(height));
       let pipeline = sharp(utf8.encode(svg), { density: 72 }).resize(targetWidth, targetHeight);
-      const q = quality === void 0 ? void 0 : Math.round(quality * 100);
+      const q2 = quality === void 0 ? void 0 : Math.round(quality * 100);
       switch (mimeType) {
         case "image/png":
           pipeline = pipeline.png();
           break;
         case "image/jpeg":
-          pipeline = pipeline.flatten({ background: "#ffffff" }).jpeg({ quality: q });
+          pipeline = pipeline.flatten({ background: "#ffffff" }).jpeg({ quality: q2 });
           break;
         case "image/webp":
-          pipeline = pipeline.webp({ quality: q });
+          pipeline = pipeline.webp({ quality: q2 });
           break;
         default:
           throw new Error(`[grafloria/export] the sharp backend cannot produce ${mimeType}`);
@@ -201096,7 +201726,7 @@ function splitFromCells(cells) {
       if (a > lo) lines.add(a);
       if (b < hi) lines.add(b);
     }
-    return [...lines].filter((line) => list2.every((i) => axis === "y" ? i.y >= line || i.y + i.h <= line : i.x >= line || i.x + i.w <= line)).sort((p, q) => p - q);
+    return [...lines].filter((line) => list2.every((i) => axis === "y" ? i.y >= line || i.y + i.h <= line : i.x >= line || i.x + i.w <= line)).sort((p, q2) => p - q2);
   };
   const build = (list2, prefer) => {
     if (list2.length === 1) return { id: list2[0].id, weight: 1 };
@@ -201115,7 +201745,7 @@ function splitFromCells(cells) {
       }
       return children.length === 1 ? children[0] : { dir: axis === "y" ? "column" : "row", weight: 1, children };
     }
-    const sorted = [...list2].sort((p, q) => p.x - q.x || p.y - q.y);
+    const sorted = [...list2].sort((p, q2) => p.x - q2.x || p.y - q2.y);
     return { dir: "row", weight: 1, children: sorted.map((i) => ({ id: i.id, weight: i.w })) };
   };
   return collapse(build(items, "y"));
@@ -203887,7 +204517,7 @@ function createDashboardHandle(ctx) {
     after.splice(to, 0, pageId);
     const apply = (order) => {
       const rank = (id) => order.indexOf(id) < 0 ? Number.MAX_SAFE_INTEGER : order.indexOf(id);
-      containerSpec.widgets.sort((p, q) => rank(p.id) - rank(q.id));
+      containerSpec.widgets.sort((p, q2) => rank(p.id) - rank(q2.id));
       container.setMetadata("containerWidget", { ...container.getMetadata("containerWidget") ?? {}, order });
       ctx.syncTabs?.(containerId);
     };
@@ -205010,7 +205640,7 @@ function fromDocument(document2, options = {}) {
         const order = meta.order;
         if (Array.isArray(order)) {
           const rank = (id) => order.indexOf(id) < 0 ? Number.MAX_SAFE_INTEGER : order.indexOf(id);
-          inner.sort((p, q) => rank(p.id) - rank(q.id));
+          inner.sort((p, q2) => rank(p.id) - rank(q2.id));
         }
         const ws2 = {
           id: childGroup.id,
@@ -206259,9 +206889,9 @@ function bindStencilPalette(api, hosts, options = {}) {
   }
   renderList();
   return {
-    setSearch(q) {
-      query = (q ?? "").trim().toLowerCase();
-      if (input) input.value = q ?? "";
+    setSearch(q2) {
+      query = (q2 ?? "").trim().toLowerCase();
+      if (input) input.value = q2 ?? "";
       renderList();
     },
     place,
@@ -206938,6 +207568,7 @@ export {
   ALWAYS_SAFE_MODE,
   ANCHORS,
   ANY_PORT_TYPE,
+  ARCHITECTURE_ICONS,
   ASTTransformer,
   AStarHeuristic,
   AStarRouter,
@@ -206967,6 +207598,7 @@ export {
   BASE_STYLE_RULES,
   BPMNTypes,
   BRIDGEABLE_TOKENS,
+  BUILTIN_ICONS,
   BUILT_IN_WIDGET_KINDS,
   BadgeLabel,
   BarChart,
@@ -207335,6 +207967,8 @@ export {
   analyseGraphShape,
   analyseTopology,
   angleAt,
+  applyArchitectureModel,
+  applyBlockGrid,
   applyEdgeSpec,
   applyEdges,
   applyEntitySet,
@@ -207348,6 +207982,7 @@ export {
   applySpread,
   applyWorkflowPreset,
   arcToCubics,
+  architectureModelToFlowchart,
   arePortDataTypesCompatible,
   assertEngineCompatible,
   assertThemeContrast,
@@ -207368,6 +208003,7 @@ export {
   bindPresence,
   bindShapeDataPanel,
   bindStencilPalette,
+  blockModelToFlowchart,
   boardHeightFor,
   boundsIntersect,
   boundsOfPoints,
@@ -207572,7 +208208,9 @@ export {
   formatSnapshot,
   fromAdapter,
   fromDocument,
+  generateArchitectureFromDiagram,
   generateBaseStyleSheet,
+  generateBlockFromDiagram,
   generateClassFromDiagram,
   generateContrastPreferenceBlock,
   generateErFromDiagram,
@@ -207784,6 +208422,8 @@ export {
   parseDashArray,
   parseInlineStyle,
   parseMentions,
+  parseMermaidArchitecture,
+  parseMermaidBlock,
   parseMermaidClass,
   parseMermaidEr,
   parseMermaidState,
