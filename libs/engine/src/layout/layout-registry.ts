@@ -67,6 +67,7 @@ import { circularLayout, forceLayout, gridLayout, radialLayout } from './portfol
 import { treeLayout, type FlowDirection } from './tree-layout';
 // Wave 7 Cards 1 & 5: our own layered (Sugiyama) engine.
 import { createLayeredLayout } from './sugiyama/layered-layout';
+import { layoutArchitecture } from './architecture/architecture-layout';
 
 /**
  * The one options schema. Adapter-specific knobs still ride in `options`, but
@@ -190,6 +191,14 @@ export interface RegisteredLayout {
    *     host tell the two apart instead of guessing.
    */
   readonly adapter?: LayoutAdapter;
+
+  /**
+   * The layout arranges CONTAINERS itself — zones are part of its composition
+   * (the architecture layout puts regions on a grid and sizes their frames), so
+   * `engine.layout()` must not hand it to the nested-container path, which lays
+   * out one container at a time with some other engine.
+   */
+  readonly handlesContainers?: boolean;
 }
 
 /** How a layout engine reports back. */
@@ -544,6 +553,26 @@ export function createPortfolioLayouts(): RegisteredLayout[] {
 }
 
 /**
+ * `architecture` — a composition, not a ranking: regions on a grid, boxes sized
+ * to their words and aligned in rows, lines straight where boxes line up, bends
+ * in the gutters. It writes sizes, zone frames, anchors and bends as well as
+ * positions, so it runs inline (no adapter: nothing to ship to a worker) and
+ * owns its containers.
+ */
+export function createArchitectureLayout(): RegisteredLayout {
+  return {
+    name: 'architecture',
+    handlesContainers: true,
+    async apply(diagram: DiagramModel, options: UnifiedLayoutOptions): Promise<LayoutResult> {
+      const started = Date.now();
+      const measureText = (options as { measureText?: import('./architecture/text-metrics').MeasureText }).measureText;
+      const r = layoutArchitecture(diagram, { direction: options.direction, measureText });
+      return { nodePositions: r.nodePositions, bounds: r.bounds, metadata: { algorithm: 'architecture', executionTime: Date.now() - started } };
+    },
+  };
+}
+
+/**
  * The registry `engine.layout()` runs against.
  *
  * Registration order is the override order, and it is deliberate:
@@ -570,6 +599,7 @@ export function createDefaultLayoutRegistry(): LayoutRegistry {
     registry.register(layout);
   }
   registry.register(createLayeredLayout('layered'));
+  registry.register(createArchitectureLayout());
   registry.register(createAutoLayout(registry));
   return registry;
 }

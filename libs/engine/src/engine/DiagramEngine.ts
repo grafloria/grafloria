@@ -2338,7 +2338,9 @@ export class DiagramEngine {
     // single group frame, so every container is left behind pointing at where
     // its members used to be. Opt out with `nested: false`.
     const hasGroups = this.diagram.getGroups().length > 0;
-    if ((options.nested ?? hasGroups) && hasGroups) {
+    // A layout that composes its containers itself (architecture) is never
+    // handed to the per-container path.
+    if ((options.nested ?? hasGroups) && hasGroups && !registered.handlesContainers) {
       const result = await new CompoundLayoutService(this.diagram, {
         defaultAlgorithm: name,
         adapters: this.getLayoutRegistry().adapters(),
