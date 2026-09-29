@@ -143,5 +143,83 @@ describe('the architecture layout, in general', () => {
     expect(Math.abs(at(l.targetPortId, 'b') - b.position.y - b.size.height / 2)).toBeLessThanOrEqual(1); // anchors land on whole px
     expect(b.size.height).toBeGreaterThan(70);
   });
+
+  describe('RL and BT run the flow backwards', () => {
+    it('flowchart RL: the first box is on the RIGHT, and lines still run straight', () => {
+      const d = arch(`flowchart RL
+  a[Alpha] --> b[Beta] --> c[Gamma]`);
+      expect(R(d, 'a').x).toBeGreaterThan(R(d, 'b').x + R(d, 'b').w);
+      expect(R(d, 'b').x).toBeGreaterThan(R(d, 'c').x + R(d, 'c').w);
+      const l = d.getLinks()[0]!;
+      expect(l.sourcePortId).toMatch(/__left@/);
+      expect(l.targetPortId).toMatch(/__right@/);
+      expectClean(d);
+    });
+
+    it('flowchart BT: the first box is at the BOTTOM', () => {
+      const d = arch(`flowchart BT
+  a[Alpha] --> b[Beta]`);
+      expect(R(d, 'b').y + R(d, 'b').h).toBeLessThan(R(d, 'a').y);
+      expectClean(d);
+    });
+
+    it('a zone with direction RL reverses its own row only', () => {
+      const d = arch(`flowchart LR
+  user[User] --> first
+  subgraph z[Zone]
+    direction RL
+    first[First] --> second[Second]
+  end`);
+      expect(R(d, 'user').x + R(d, 'user').w).toBeLessThan(R(d, 'z').x);
+      expect(R(d, 'first').x).toBeGreaterThan(R(d, 'second').x + R(d, 'second').w);
+      expectClean(d);
+    });
+  });
+
+  describe('many unconnected boxes wrap into a grid', () => {
+    const six = `flowchart LR
+  subgraph svc[Services]
+    s1[Auth] 
+    s2[Billing]
+    s3[Search]
+    s4[Mail]
+    s5[Files]
+    s6[Reports]
+  end`;
+
+    it('six loose boxes in a zone make a grid, not a tower — in reading order', () => {
+      const d = arch(six);
+      const xs = new Set(['s1', 's2', 's3', 's4', 's5', 's6'].map((id) => Math.round(R(d, id).x)));
+      expect(xs.size).toBeGreaterThanOrEqual(2);
+      expect(xs.size).toBeLessThanOrEqual(3);
+      expect(R(d, 's1').y).toBeCloseTo(R(d, 's2').y, 0); // first row: s1, s2
+      expect(R(d, 's1').x).toBeLessThan(R(d, 's2').x);
+      expect(R(d, 's3').y).toBeGreaterThan(R(d, 's1').y); // then the next row
+      const frame = R(d, 'svc');
+      expect(frame.w).toBeGreaterThan(frame.h * 0.6); // not a tall thin tower
+      expectClean(d);
+    });
+
+    it('three loose boxes still stack (a grid only when it helps)', () => {
+      const d = arch(`flowchart LR
+  a[One]
+  b[Two]
+  c[Three]`);
+      expect(new Set(['a', 'b', 'c'].map((id) => Math.round(R(d, id).x))).size).toBe(1);
+    });
+
+    it('loose boxes beside connected ones fill the grid after them', () => {
+      const d = arch(`flowchart LR
+  subgraph z[Zone]
+    a[A] --> b[B]
+    c[C]
+    d1[D]
+    e[E]
+    f[F]
+  end`);
+      expect(R(d, 'a').x).toBeLessThan(R(d, 'b').x);
+      expectClean(d);
+    });
+  });
 });
 

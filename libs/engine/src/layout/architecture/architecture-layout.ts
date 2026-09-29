@@ -25,8 +25,11 @@
  * cannot run straight bends in the gutter between the regions it joins. A note
  * with `metadata.near` is placed beside its target.
  *
- * Writes sizes, positions, zone frames, anchors and bends into the model. RL and
- * BT are drawn as LR and TB (mirroring is a later card).
+ * RL and BT run a container's flow backwards (its content is mirrored along its
+ * own flow axis, captions stay put). Four or more boxes with no line to a sibling
+ * wrap into a grid in reading order instead of a tower.
+ *
+ * Writes sizes, positions, zone frames, anchors and bends into the model.
  */
 import type { DiagramModel } from '../../models/DiagramModel';
 import type { NodeModel } from '../../models/NodeModel';
@@ -88,6 +91,8 @@ interface ZoneBlock {
   group?: GroupModel;
   decl: number;
   axis: Axis;
+  /** RL / BT: the flow runs backwards along `axis`. */
+  reverse: boolean;
   children: Block[];
   size: Sz;
   pad: { l: number; r: number; t: number; b: number };
@@ -114,6 +119,7 @@ const cOf = (s: Sz, a: Axis) => (a === 'x' ? s.h : s.w);
 const sz = (f: number, c: number, a: Axis): Sz => (a === 'x' ? { w: f, h: c } : { w: c, h: f });
 const pt = (f: number, c: number, a: Axis): Pt => (a === 'x' ? { x: f, y: c } : { x: c, y: f });
 const axisOf = (dir: string): Axis => (/^(TB|TD|BT)$/i.test(dir.trim()) ? 'y' : 'x');
+const reversedOf = (dir: string): boolean => /^(RL|BT)$/i.test(dir.trim());
 const opposite = (s: AnchorSide): AnchorSide => (s === 'left' ? 'right' : s === 'right' ? 'left' : s === 'top' ? 'bottom' : 'top');
 const SHAPES_NEEDING_ROOM = new Set(['diamond', 'rhombus', 'circle', 'ellipse', 'hexagon', 'decision', 'doublecircle']);
 
@@ -126,6 +132,7 @@ class ArchitectureComposer {
   private readonly measure: MeasureText;
   private readonly margin: number;
   private readonly rootAxis: Axis;
+  private readonly rootReverse: boolean;
   /** Every block's parent: a node's innermost zone, a zone's parent zone, else ROOT. */
   private readonly parentOf = new Map<string, string>();
   private readonly blocks = new Map<string, Block>();
@@ -136,7 +143,9 @@ class ArchitectureComposer {
   constructor(private readonly diagram: DiagramModel, options: ArchitectureLayoutOptions) {
     this.measure = options.measureText ?? estimateTextWidth;
     this.margin = options.margin ?? 20;
-    this.rootAxis = axisOf(options.direction ?? String(diagram.getMetadata('direction') ?? 'LR'));
+    const dir = options.direction ?? String(diagram.getMetadata('direction') ?? 'LR');
+    this.rootAxis = axisOf(dir);
+    this.rootReverse = reversedOf(dir);
   }
 
   run(): ArchitectureLayoutResult {
@@ -185,7 +194,7 @@ class ArchitectureComposer {
       this.parentOf.set(n.id, best ? best.id : ROOT);
     }
 
-    const root: ZoneBlock = { kind: 'zone', id: ROOT, decl: 0, axis: this.rootAxis, children: [], size: { w: 0, h: 0 }, pad: { l: 0, r: 0, t: 0, b: 0 } };
+    const root: ZoneBlock = { kind: 'zone', id: ROOT, decl: 0, axis: this.rootAxis, reverse: this.rootReverse, children: [], size: { w: 0, h: 0 }, pad: { l: 0, r: 0, t: 0, b: 0 } };
     const zones = new Map<string, ZoneBlock>([[ROOT, root]]);
     const zoneOf = (id: string): ZoneBlock => {
       const existing = zones.get(id);
@@ -203,6 +212,7 @@ class ArchitectureComposer {
         group: g,
         decl: Number.MAX_SAFE_INTEGER,
         axis: typeof dir === 'string' && dir ? axisOf(dir) : parent.axis,
+        reverse: typeof dir === 'string' && dir ? reversedOf(dir) : parent.reverse,
         children: [],
         size: { w: 0, h: 0 },
         pad: { l: K.zonePadSide, r: K.zonePadSide, t: captionAtBottom ? K.zonePadPlain : band, b: captionAtBottom ? band : K.zonePadPlain },
@@ -406,6 +416,7 @@ class ArchitectureComposer {
   private position(z: ZoneBlock): void {
     const plan = z.plan!;
     for (const c of z.children) if (c.kind === 'zone') this.position(c);
+    this.wrapLoose(z);
 
     // stacked zones in one column line their columns up
     for (const col of plan.columns) {
@@ -429,6 +440,33 @@ class ArchitectureComposer {
       for (const q of zs) q.size = sz(f, cOf(q.size, z.axis), z.axis);
     }
     this.arrange(z);
+  }
+
+  /**
+   * Four or more children with no line to a sibling are a SET, not a sequence:
+   * wrapped into a grid (about 16:9 across the page) in reading order, after
+   * whatever the lines already arranged — never a tower down one column.
+   */
+  private wrapLoose(z: ZoneBlock): void {
+    const plan = z.plan!;
+    const linked = new Set<number>();
+    for (const { a, b } of plan.links) {
+      linked.add(a);
+      linked.add(b);
+    }
+    const loose = z.children.filter((_, i) => !linked.has(i));
+    if (loose.length < 4) return;
+    const looseIds = new Set(loose.map((b) => b.id));
+    const base = plan.columns.map((col) => col.filter((b) => !looseIds.has(b.id))).filter((col) => col.length > 0);
+    const a = z.axis;
+    const avgF = loose.reduce((t, b) => t + fOf(b.size, a), 0) / loose.length;
+    const avgC = loose.reduce((t, b) => t + cOf(b.size, a), 0) / loose.length;
+    const across = a === 'x' ? 16 / 9 : 9 / 16; // the page's width:height, seen along the flow
+    const k = Math.max(base.length, 1, Math.round(Math.sqrt(loose.length * (avgC / Math.max(1, avgF)) * across)));
+    const cols = base.map((c) => [...c]);
+    while (cols.length < k) cols.push([]);
+    loose.forEach((b, i) => cols[i % k]!.push(b));
+    plan.columns = cols;
   }
 
   /** Arrange one container's children (their sizes known) and size the container. */
@@ -503,6 +541,14 @@ class ArchitectureComposer {
       const p = plan.rel.get(b.id)!;
       fMax = Math.max(fMax, (a === 'x' ? p.x : p.y) + fOf(b.size, a));
       cMax = Math.max(cMax, (a === 'x' ? p.y : p.x) + cOf(b.size, a));
+    }
+    // RL / BT: the same arrangement, run backwards along the flow
+    if (z.reverse) {
+      for (const col of cols) for (const b of col) {
+        const p = plan.rel.get(b.id)!;
+        if (a === 'x') plan.rel.set(b.id, { x: fMax - p.x - b.size.w, y: p.y });
+        else plan.rel.set(b.id, { x: p.x, y: fMax - p.y - b.size.h });
+      }
     }
     plan.content = sz(fMax, cMax, a);
     if (z.id !== ROOT) {
