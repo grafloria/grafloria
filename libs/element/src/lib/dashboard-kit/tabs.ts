@@ -28,6 +28,18 @@ export interface TabsOptions {
   height?: number;
   /** Your class on the strip, for per-container theming. */
   className?: string;
+  /**
+   * No strip at all (0.4.83) — DevExpress's tab container with
+   * ShowCaption="false". Nothing is reserved for it (the pages fill the frame,
+   * less `inset`) and nothing is on screen: no element, so no paint, no tab
+   * stop and nothing to press. Pages are switched from code —
+   * `handle.activateTab()`, `getActiveTab()` and `onTabChange` work as with a
+   * visible strip. In edit mode the whole container means "into the active
+   * page"; dragging a tab, tearing one out and dropping onto the strip need a
+   * strip, so they are unavailable while it is hidden. Meant for a read-only
+   * viewer: a designer leaves it off so the author can reach every page.
+   */
+  hidden?: boolean;
 }
 
 export interface TabPage {
@@ -44,9 +56,9 @@ export const TAB_STRIP_HEIGHT = 30;
  */
 export const TAB_DRAG_THRESHOLD = 4;
 
-/** Pixels the pages give up at the top of the container. */
+/** Pixels the pages give up at the top of the container: nothing for a hidden strip, never under 18 for a visible one. */
 export function tabStripReserve(o: TabsOptions | undefined, pageCount: number): number {
-  if (pageCount <= 0) return 0;
+  if (pageCount <= 0 || o?.hidden === true) return 0;
   return Math.max(18, o?.height ?? TAB_STRIP_HEIGHT);
 }
 

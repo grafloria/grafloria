@@ -762,8 +762,12 @@ export function zoneRootsOf(peers: Iterable<BinderPeer>, diagram: DiagramModel):
       for (const id of p.group.members ?? []) {
         const grp = diagram.getGroup(id);
         if (!grp || diagram.getNode(id)) continue;
-        const cw = (grp.getMetadata('containerWidget') ?? {}) as { layout?: string; active?: string };
+        const cw = (grp.getMetadata('containerWidget') ?? {}) as { layout?: string; active?: string; tabs?: { hidden?: boolean } };
         const layout: ZoneContainer['layout'] = cw.layout === 'tabs' ? 'tabs' : cw.layout === 'split' ? 'split' : 'grid';
+        // A tab container with its strip HIDDEN has no strip to drop on and no
+        // header to read "above this panel" from: like a section, its whole
+        // body means "into" — the active page.
+        const strip = layout === 'tabs' && cw.tabs?.hidden !== true;
         let innerPeer: BinderPeer | undefined;
         if (layout === 'tabs') {
           const pageId = cw.active && byGroup.has(cw.active) ? cw.active : [...(grp.members ?? [])].find((m) => byGroup.has(m));
@@ -774,18 +778,18 @@ export function zoneRootsOf(peers: Iterable<BinderPeer>, diagram: DiagramModel):
           layout,
           static: innerPeer?.isStatic?.() ?? false,
           frame: frameOf(grp),
-          stripHeight: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
-          band: layout === 'tabs' ? BESIDE_BAND : 0, // a section's whole body is "into" (Quantia's Groups page)
+          stripHeight: strip ? TAB_STRIP_HEIGHT : 0,
+          band: strip ? BESIDE_BAND : 0, // a section's whole body is "into" (Quantia's Groups page)
           // The top and bottom are a FIXED depth — one strip's worth, under
           // the strip — not a fifth of the body, which grew with the panel
           // until 216 px of the fluid demo's page meant "above the whole
           // panel" (0.4.62). The sides keep the fifth.
-          bandY: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
+          bandY: strip ? TAB_STRIP_HEIGHT : 0,
           // …and the TOP band hangs ABOVE the frame, where a hand looking
           // for "above this panel" actually goes (0.4.65). A panel holding
           // the board's first row has no row above it to point at, and the
           // lane under its header is the last place anyone would try.
-          topOutside: layout === 'tabs' ? TAB_STRIP_HEIGHT : 0,
+          topOutside: strip ? TAB_STRIP_HEIGHT : 0,
           inner: innerPeer ? boardRef(innerPeer, depth + 1) : null,
         });
       }

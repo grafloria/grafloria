@@ -1021,7 +1021,12 @@ export function attachTabsRuntime(
         } else host.removeAttribute('aria-hidden');
       }
     }
-    paintStrip(id, f, strip, pages, active);
+    // A HIDDEN strip is not on screen at all: no element, so nothing painted,
+    // no tab stop and nothing to press. Pages switch from code (activateTab).
+    if (ctx.tabsOf.get(id)?.hidden === true) {
+      ctx.tabStrips.get(id)?.remove();
+      ctx.tabStrips.delete(id);
+    } else paintStrip(id, f, strip, pages, active);
   };
 
   ctx.syncTabs = sync;
