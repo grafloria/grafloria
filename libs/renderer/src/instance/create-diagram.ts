@@ -1539,6 +1539,23 @@ export function createDiagram(
   onModel('group:added', () => scheduler.schedule());
   onModel('group:removed', () => scheduler.schedule());
   onModel('group:changed', () => scheduler.schedule());
+  // Ink paints too. The draw tool asks for its own repaint, so the pen always
+  // looked fine — but ink added IN CODE (a saved board, seeded strokes, a
+  // collaborator's stroke through applyIncremental) stayed invisible until an
+  // unrelated event happened to render.
+  onModel('stroke:added', () => scheduler.schedule());
+  onModel('stroke:removed', () => scheduler.schedule());
+  onModel('strokes:cleared', () => scheduler.schedule());
+  // …and so do the bulk clears, which emit only their `*:cleared` event.
+  onModel('nodes:cleared', () => {
+    scheduler.schedule();
+    emit('nodes:change', { nodes: model.getNodes() });
+  });
+  onModel('links:cleared', () => {
+    scheduler.schedule();
+    emit('edges:change', { edges: model.getLinks() });
+  });
+  onModel('groups:cleared', () => scheduler.schedule());
   onModel('selection:changed', () => {
     scheduler.schedule();
     emit('selection:change', {
