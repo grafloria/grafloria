@@ -120,10 +120,10 @@ function workspace(major, grafloriaAngular) {
       writeFileSync(file, readFileSync(file, 'utf8').replace(/(\n\s*selector: '[^']+',)/, '$1\n  standalone: true,'));
     }
   }
-  if (major >= 20) {
-    const cfg = join(dir, 'src', 'app', 'app.config.ts');
-    writeFileSync(cfg, readFileSync(cfg, 'utf8').replaceAll('provideExperimentalZonelessChangeDetection', 'provideZonelessChangeDetection'));
-  }
+  // Zoneless is `provideZonelessChangeDetection` from 20, `provideExperimental…` before.
+  const cfg = join(dir, 'src', 'app', 'app.config.ts');
+  const src = readFileSync(cfg, 'utf8').replaceAll('provideExperimentalZonelessChangeDetection', 'provideZonelessChangeDetection');
+  writeFileSync(cfg, major >= 20 ? src : src.replaceAll('provideZonelessChangeDetection', 'provideExperimentalZonelessChangeDetection'));
   return { dir, core, ts };
 }
 
