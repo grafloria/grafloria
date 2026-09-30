@@ -17,6 +17,11 @@ const shapeOf = (line: string) => {
 describe('flowchart shapes map to the registry shapes that draw them', () => {
   it('[( )] is a database cylinder', () => expect(shapeOf('a[(Orders DB)]')).toBe('cylinder'));
   it('([ ]) is a stadium', () => expect(shapeOf('a([Start])')).toBe('stadium'));
+  it('a stadium is a wide, short pill by default — its words get room between the round ends', () => {
+    // the pill's text area is its width minus its height: 120×80 left 40 px ("Order received" drawn tiny)
+    const n = importDiagramText('flowchart LR\n  a([Order received])').diagram.getNodes()[0]!;
+    expect(n.size.width - n.size.height).toBeGreaterThanOrEqual(100);
+  });
   it('[[ ]] is a subroutine', () => expect(shapeOf('a[[Call it]]')).toBe('subroutine'));
   it('[/ \\] is a trapezoid, [\\ /] the inverted one', () => {
     expect(shapeOf('a[/Wide bottom\\]')).toBe('trapezoid');

@@ -911,6 +911,11 @@ export class ASTTransformer {
       case 'hexagon':
         return { width: 140, height: 80 };
 
+      case 'stadium':
+        // A pill: its words sit between the round ends (width minus height),
+        // so it is wide and short — 120×80 left them 40 px.
+        return { width: 160, height: 56 };
+
       case 'text':
         // A note is a line of words, not a box.
         return { width: 240, height: 24 };
