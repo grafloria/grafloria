@@ -14,7 +14,12 @@ import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
 
 const FW = process.argv[2];
-if (!['angular', 'react', 'vue'].includes(FW)) throw new Error('usage: variant-run.mjs <angular|react|vue>');
+if (!['angular', 'react', 'vue'].includes(FW)) throw new Error('usage: variant-run.mjs <angular|react|vue> [--origin https://grafloria.com]');
+// `--origin <site>` drives the DEPLOYED variant (<site>/demos-<fw>/) against the
+// deployed JS gallery (<site>/demos/) instead of the local builds: what the host
+// serves is not always what was built (see gallery-run.mjs --origin).
+const originIdx = process.argv.indexOf('--origin');
+const LIVE = originIdx >= 0 ? String(process.argv[originIdx + 1] ?? '').replace(/\/$/, '') : null;
 // Angular (devkit) nests under browser/; the esbuild apps output flat.
 const READY = { angular: '__ngDemoReady', react: '__reactDemoReady', vue: '__vueDemoReady' }[FW];
 const PORT = { angular: 4327, react: 4328, vue: 4329 }[FW];
@@ -47,7 +52,10 @@ const server = createServer(async (req, res) => {
     res.writeHead(404); res.end();
   }
 });
-await new Promise((r) => server.listen(PORT, r));
+if (!LIVE) await new Promise((r) => server.listen(PORT, r));
+const APP_BASE = LIVE ? `${LIVE}/demos-${FW}/` : `http://localhost:${PORT}/`;
+const REF_BASE = LIVE ? `${LIVE}/demos` : `http://localhost:${PORT + 100}`;
+if (LIVE) console.log(`${FW} against ${APP_BASE}\n`);
 
 const browser = await chromium.launch();
 let failed = 0;
@@ -66,7 +74,7 @@ const galleryServer = createServer(async (req, res) => {
     res.writeHead(404); res.end();
   }
 });
-await new Promise((r) => galleryServer.listen(PORT + 100, r));
+if (!LIVE) await new Promise((r) => galleryServer.listen(PORT + 100, r));
 
 const COUNT = () => document.querySelectorAll('svg g, svg rect, svg path, foreignObject, .grafloria-html-layer *').length;
 // The KIND of thing painted. A paint count cannot tell a dashboard from a
@@ -88,7 +96,7 @@ for (const route of ROUTES) {
   let ref = 0, refKind = 'other';
   try {
     const rp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-    await rp.goto(`http://localhost:${PORT + 100}/${route}.html`, { waitUntil: 'networkidle' });
+    await rp.goto(`${REF_BASE}/${route}.html`, { waitUntil: 'networkidle' });
     await rp.waitForFunction(() => window.__demoReady === true, { timeout: 15000 });
     await rp.waitForTimeout(400);
     ref = await rp.evaluate(COUNT);
@@ -100,7 +108,7 @@ for (const route of ROUTES) {
   page.on('pageerror', (e) => errs.push(String(e).slice(0, 140)));
   let painted = 0, kind = 'other';
   try {
-    await page.goto(`http://localhost:${PORT}/#/${route}`, { waitUntil: 'networkidle' });
+    await page.goto(`${APP_BASE}#/${route}`, { waitUntil: 'networkidle' });
     await page.waitForFunction((flag) => window[flag] === true, READY, { timeout: 15000 });
     await page.waitForTimeout(400);
     painted = await page.evaluate(COUNT);
@@ -124,8 +132,10 @@ for (const route of ROUTES) {
   await page.close();
 }
 await browser.close();
-server.close();
-galleryServer.close();
+if (!LIVE) {
+  server.close();
+  galleryServer.close();
+}
 
 console.log(`\n${FW}: ${ROUTES.length - failed}/${ROUTES.length} routes pass`);
 process.exit(failed ? 1 : 0);
