@@ -174,5 +174,14 @@ defineDemo({
     api.fitView?.(40);
     await ctx.tick();
   },
+
+  // The card's picture: close enough to read — a dense corner of the 900-node grid.
+  async showcase(ctx) {
+    const vp = ctx.instance.viewport;
+    vp.setZoom(0.75);
+    vp.setViewport({ ...vp.getViewport(), x: -20, y: -20 });
+    ctx.instance.renderNow();
+    await ctx.tick();
+  },
 });
 </script>

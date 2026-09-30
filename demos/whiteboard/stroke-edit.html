@@ -176,5 +176,24 @@ defineDemo({
     const restyled = path.getAttribute('stroke') === '#e11d48' || path.getAttribute('fill') === '#e11d48';
     check(restyled, `restyle should reach the pixels: stroke=${path.getAttribute('stroke')} fill=${path.getAttribute('fill')}`);
   },
+
+  // The card's picture: ink drawn with the pen, then one stroke picked up with
+  // the edit tool — selected, ready to move or restyle.
+  async showcase(ctx) {
+    gesture(ctx.host, { x: 120, y: 140 }, { x: 520, y: 180 }, 24);
+    gesture(ctx.host, { x: 140, y: 280 }, { x: 560, y: 260 }, 24);
+    gesture(ctx.host, { x: 160, y: 400 }, { x: 600, y: 380 }, 24);
+    await ctx.tick();
+    document.getElementById('btn-edit').click();
+    const mid = ctx.diagram.getStrokes()[1].getPoints();
+    const p = mid[Math.floor(mid.length / 2)];
+    const rect = ctx.host.getBoundingClientRect();
+    const fire = (type, buttons) => ctx.host.dispatchEvent(new PointerEvent(type, {
+      pointerType: 'mouse', button: 0, buttons, bubbles: true, clientX: rect.left + p.x, clientY: rect.top + p.y,
+    }));
+    fire('pointerdown', 1);
+    fire('pointerup', 0);
+    await ctx.tick();
+  },
 });
 </script>

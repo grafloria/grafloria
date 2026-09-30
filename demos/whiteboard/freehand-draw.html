@@ -82,5 +82,13 @@ defineDemo({
       'anonymous ink must be aria-hidden (decorative, not announced to a screen reader)'
     );
   },
+
+  // The card's picture: a few strokes of real ink.
+  async showcase(ctx) {
+    gesture(ctx.host, { x: 140, y: 150 }, { x: 640, y: 130 }, 40);
+    gesture(ctx.host, { x: 160, y: 250 }, { x: 600, y: 330 }, 40);
+    gesture(ctx.host, { x: 180, y: 420 }, { x: 680, y: 300 }, 40);
+    await ctx.tick();
+  },
 });
 </script>

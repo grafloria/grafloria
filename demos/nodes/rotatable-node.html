@@ -110,5 +110,12 @@ defineDemo({
     check(Math.abs(rotateOf(g()) - node.rotation) < 0.01,
       `the SVG transform (${rotateOf(g())}) did not track the gesture rotation (${node.rotation})`);
   },
+
+  // The card's picture: the node turned part-way round.
+  async showcase(ctx) {
+    ctx.diagram.getNode('n').setRotation(-18);
+    ctx.instance.renderNow();
+    await ctx.tick();
+  },
 });
 </script>

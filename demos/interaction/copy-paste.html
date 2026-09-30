@@ -129,5 +129,15 @@ defineDemo({
 
     ctx.report(`orig=${orig.id}  copy1=${c1.id}  copy2=${c2.id}  (+2 via ⌘C/⌘V ×2 = 5 nodes, all at distinct spots)`);
   },
+
+  // The card's picture: the original and two pasted copies, cascading.
+  async showcase(ctx) {
+    ctx.engine.selectNodes(['orig']);
+    await ctx.engine.copy();
+    await ctx.engine.paste({ offset: { x: 60, y: 60 } });
+    await ctx.engine.paste({ offset: { x: 120, y: 120 } });
+    ctx.instance.renderNow();
+    await ctx.tick();
+  },
 });
 </script>
