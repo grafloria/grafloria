@@ -24,3 +24,6 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: node demos/e2e/gallery-run.mjs --origin https://grafloria.com/demos
+      # Every page of the site, as a reader opens it: no errors, no missing file,
+      # no example stuck loading, no link to nowhere.
+      - run: node demos/e2e/site-run.mjs
