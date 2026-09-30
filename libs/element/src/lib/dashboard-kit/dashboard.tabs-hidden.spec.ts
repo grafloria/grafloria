@@ -235,6 +235,40 @@ describe('a tab container with its strip hidden', () => {
     expect(pages).toEqual(['p-one', 'p-two', 'p-three']);
   });
 
+  it('a tab from ANOTHER container, released over a hidden one, joins it as a page and shows — the hidden one still has no strip', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        widgets: [
+          { id: 'left', title: 'Left', span: 6, rows: 6, x: 0, y: 0, layout: 'tabs', tabs: { hidden: true }, widgets: [PAGE('l1', 'Sales', 'k-l1'), PAGE('l2', 'Margin', 'k-l2')] },
+          { id: 'right', title: 'Right', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+        ],
+      } as never)
+    );
+    const lf = frameOf(model, 'left');
+    const tab = api.container.querySelector('.axdb-tabs[data-tabs-id="right"] .axdb-tab[data-tab-id="r2"]') as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    const to = { x: lf.x + lf.w / 2, y: lf.y + lf.h / 2 };
+    ev(tab, 'pointerdown', 900, 10);
+    ev(tab, 'pointermove', 860, 10);
+    ev(window, 'pointermove', to.x, to.y);
+    ev(window, 'pointerup', to.x, to.y);
+    tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await settle();
+    const snap = handle.toJSON().views[0].widgets;
+    expect(snap.find((w) => w.id === 'left')!.widgets?.map((p) => p.id)).toEqual(['l1', 'l2', 'r2']);
+    expect(snap.find((w) => w.id === 'right')!.widgets?.map((p) => p.id)).toEqual(['r1']);
+    expect(handle.getActiveTab('left')).toBe('r2');
+    expect(onCanvas(model, ['k-l1', 'k-l2', 'k-r2'])).toEqual(['k-r2']);
+    expect(api.container.querySelector('[data-tabs-id="left"]')).toBeNull();
+    expect(frameOf(model, 'r2').y).toBe(frameOf(model, 'left').y + 8);
+  });
+
   it('unset, a container measures and paints as before: the strip is there and the page starts below it', () => {
     const { api, model } = up(BOARD(undefined));
     const f = frameOf(model, 'panel');
