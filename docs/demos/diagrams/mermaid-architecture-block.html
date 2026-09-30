@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <title>Mermaid architecture &amp; block diagrams — Grafloria</title>
-<meta name="description" content="Mermaid's architecture-beta and block-beta, read by Grafloria: groups as regions, services placed where their sided lines say, a block grid with spans and holes — laid out, editable, written back as the same Mermaid.">
+<meta name="description" content="Mermaid's architecture-beta and block-beta, read by Grafloria: groups as regions, services placed where their sided lines say, a block grid with spans and holes, a classic 3-tier application with security down every layer — laid out, editable, written back as the same Mermaid.">
 <link rel="canonical" href="https://grafloria.com/demos/diagrams/mermaid-architecture-block.html">
 <meta property="og:title" content="Mermaid architecture &amp; block diagrams — Grafloria">
 <meta property="og:description" content="Mermaid's architecture-beta and block-beta, read and laid out by Grafloria, written back as the same Mermaid.">
@@ -28,6 +28,7 @@
   <span class="seg" id="mb-type" role="group" aria-label="Mermaid diagram type">
     <button type="button" data-type="arch" class="on" aria-pressed="true">architecture-beta</button>
     <button type="button" data-type="block" aria-pressed="false">block-beta</button>
+    <button type="button" data-type="tiers" aria-pressed="false">3-tier app</button>
   </span>
   <span id="mb-note" role="status">Real Mermaid syntax, laid out by Grafloria. Edit it — the drawing follows.</span>
 </div>
@@ -66,6 +67,41 @@ db --> D
 C --> db
 D --> C
 style m fill:#d6d,stroke:#333,stroke-width:4px</script>
+<script type="text/plain" id="src-tiers">block-beta
+columns 4
+block:app["Application"]:3
+    columns 1
+    block:ui["Presentation layer"]
+        columns 3
+        web["Web app"] mobile["Mobile app"] admin["Admin portal"]
+    end
+    block:bll["Business logic layer"]
+        columns 4
+        orders["Orders"] billing["Billing"] rules["Business rules"] flows["Workflows"]
+    end
+    block:dal["Data access layer"]
+        columns 3
+        repos["Repositories"] orm["ORM / unit of work"] agents["Service agents"]
+    end
+end
+block:sec["Security"]
+    columns 1
+    authn["Authentication"] authz["Authorization"] valid["Input validation"] crypto["Encryption"] audit["Audit log"]
+end
+block:data["Data"]:4
+    columns 4
+    db[("SQL database")] cache[("Cache")] files[("File storage")] ext["External APIs"]
+end
+classDef front fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
+classDef logic fill:#dcfce7,stroke:#16a34a,color:#14532d
+classDef access fill:#ede9fe,stroke:#7c3aed,color:#3b0764
+classDef store fill:#f1f5f9,stroke:#475569,color:#1e293b
+classDef guard fill:#fef3c7,stroke:#d97706,color:#78350f
+class web,mobile,admin front
+class orders,billing,rules,flows logic
+class repos,orm,agents access
+class db,cache,files,ext store
+class authn,authz,valid,crypto,audit guard</script>
 <script type="module">
 import { render, importDiagramText, exportDiagramText } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
@@ -74,16 +110,17 @@ const srcEl = document.getElementById('mb-src');
 const note = document.getElementById('mb-note');
 const seg = document.getElementById('mb-type');
 const NOTE = note.textContent;
-const SOURCES = { arch: document.getElementById('src-arch').textContent, block: document.getElementById('src-block').textContent };
+const SOURCES = Object.fromEntries(['arch', 'block', 'tiers'].map((t) => [t, document.getElementById(`src-${t}`).textContent]));
 
 defineDemo({
   name: 'Mermaid architecture & block diagrams',
-  blurb: "Mermaid's architecture-beta and block-beta, read by Grafloria: groups as regions, services placed where their sided lines say, a block grid with spans and holes — laid out, editable, and written back as the same Mermaid.",
+  blurb: "Mermaid's architecture-beta and block-beta, read by Grafloria: groups as regions, services placed where their sided lines say, a block grid with spans and holes, a classic 3-tier application with security down every layer — laid out, editable, and written back as the same Mermaid.",
   howTo: [
     'architecture-beta: every line names its sides — web:R -[HTTPS]-> L:api leaves the web app on its right and enters the API on its left, so the API sits to its right. Grafloria reads those sides as the layout: groups become regions, services line up, lines run straight; the icons (internet, server, database, disk, cloud) are drawn.',
     'block-beta: blocks fill rows of `columns 3`; `:3` spans a row, `space` leaves a hole, block … end nests a grid, block arrows point the way. Styles and classDef come through.',
-    'Edit either text: add a service to a group (… in data), a line with its sides, a block to the grid. The drawing re-composes as you type.',
-    'Both write back as themselves: export gives architecture-beta or block-beta text that real Mermaid accepts, not a flowchart.',
+    '3-tier app: the classic layered picture in block-beta. block:ui["Presentation layer"] names a layer and draws its caption; the layers stack inside the application, their blocks one width and filling each layer edge to edge, and the Security column runs the full height beside all of them. classDef tints each layer.',
+    'Edit any of them: add a service to a group (… in data), a line with its sides, a block to a layer (it takes its share of the width). The drawing re-composes as you type.',
+    'Each writes back as itself: export gives architecture-beta or block-beta text that real Mermaid accepts, layer names included — not a flowchart.',
   ],
 
   async setup(ctx) {
@@ -180,8 +217,30 @@ defineDemo({
     clean('[block]');
     const blockOut = exportDiagramText(ctx.imported, { lossless: false });
     check(/^block-beta/.test(blockOut.trim()) && /db\[\("DB"\)\]:3/.test(blockOut) && /down1<\[" "\]>\(down\)/.test(blockOut), 'it must write back as block-beta, spans and arrows included');
+    check(['l', 'm', 'r'].every((id) => Math.abs(R(id).w - R('m').w) < 1), 'the cells of a grid must be one width, as Mermaid draws them');
 
-    ctx.show('arch');
+    // the 3-tier app: named layers, stacked, a Security column down all of them
+    ctx.show('tiers');
+    const LAYERS = { ui: ['web', 'mobile', 'admin'], bll: ['orders', 'billing', 'rules', 'flows'], dal: ['repos', 'orm', 'agents'] };
+    const NAMES = { ui: 'Presentation layer', bll: 'Business logic layer', dal: 'Data access layer' };
+    const drawn = [...ctx.host.querySelectorAll('text')].map((t) => t.textContent);
+    for (const [layer, ids] of Object.entries(LAYERS)) {
+      check(m().getGroup(layer)?.name === NAMES[layer] && drawn.includes(NAMES[layer]), `the ${layer} layer must carry and draw its name "${NAMES[layer]}"`);
+      for (const id of ids) check(inside(id, layer), `"${id}" must sit inside the ${layer} layer`);
+      const f = R(layer), first = R(ids[0]), last = R(ids[ids.length - 1]);
+      check(Math.abs((first.x - f.x) - (f.x + f.w - last.x - last.w)) < 1, `the ${layer} layer's blocks must fill it edge to edge`);
+      check(ids.every((id) => Math.abs(R(id).w - first.w) < 1), `the ${layer} layer's blocks must be one width`);
+      check(inside(layer, 'app'), `the ${layer} layer must sit inside the application`);
+    }
+    check(R('ui').y + R('ui').h < R('bll').y && R('bll').y + R('bll').h < R('dal').y, 'the layers must stack: presentation, business logic, data access');
+    const app = R('app'), sec = R('sec');
+    check(sec.x > app.x + app.w && Math.abs(sec.y - app.y) < 1 && Math.abs(sec.y + sec.h - (app.y + app.h)) < 1, 'Security must run beside the application, the full height of its layers');
+    check(Math.abs((sec.y + sec.h - R('audit').y - R('audit').h) - (R('authn').x - sec.x)) < 1, 'the security blocks must spread down the whole column');
+    check(R('data').y > app.y + app.h && Math.abs(R('data').w - (sec.x + sec.w - app.x)) < 1, 'the data row must run under the application and Security both');
+    check(m().getNode('orders').style.fill === '#dcfce7' && m().getNode('authn').style.fill === '#fef3c7', 'classDef / class must tint each layer');
+    clean('[3-tier]');
+    const tiersOut = exportDiagramText(ctx.imported, { lossless: false });
+    check(/^block-beta/.test(tiersOut.trim()) && /block:app\["Application"\]:3/.test(tiersOut) && /block:ui\["Presentation layer"\]/.test(tiersOut), 'it must write back as block-beta, the layer names included');
   },
 
   // The block grid gets its own frame.
