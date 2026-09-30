@@ -3313,6 +3313,58 @@ const sdShown = () => page.evaluate(() => {
     `held over the full section: red cell ${held.refused} at ${JSON.stringify(held.at)} (the section from x ${Math.round(cv.x + sec.x)}), cursor under the hand "${held.cursor}" (on ${held.under}), widget ${JSON.stringify(held.w)} section ${JSON.stringify(held.sec)} · back home: red ${back.refused}, cursor "${back.cursor}" · released over it: red ${after.refused}, cursor "${after.cursor}", widget ${JSON.stringify(after.w)} section ${JSON.stringify(after.sec)}, undo available ${after.canUndo} ${JSON.stringify(sane)}`);
 }
 
+{
+  begin('L119-a-tab-container-with-its-strip-hidden-has-no-band-and-switches-from-code');
+  // the band a VISIBLE strip reserves, measured on the tabs board: first widget top − frame top
+  await scrollTo('tabs');
+  await page.evaluate(() => window.__lab.tabs.handle.activateTab('panel', 'pg-a')); await page.waitForTimeout(300);
+  const visibleOffset = await page.evaluate(() => {
+    const cv = document.getElementById('cv-tabs');
+    const slab = cv.querySelector('.axdb-slab[data-slab-id="panel"]').getBoundingClientRect();
+    return Math.round(cv.querySelector('.grafloria-node-host[data-node-id="pa1"]').getBoundingClientRect().top - slab.top);
+  });
+  await scrollTo('tabshid');
+  const state = () => page.evaluate(() => {
+    const cv = document.getElementById('cv-tabshid');
+    const lab = window.__lab.tabshid;
+    const slab = cv.querySelector('.axdb-slab[data-slab-id="th-panel"]')?.getBoundingClientRect();
+    const showing = ['tha1', 'tha2', 'thb1', 'th-free'].filter((id) => { const h = cv.querySelector(`.grafloria-node-host[data-node-id="${id}"]`); if (!h || !slab) return false; const r = h.getBoundingClientRect(); return r.x > -5000 && r.x >= slab.x - 1 && r.right <= slab.right + 1; });
+    const tops = showing.map((id) => cv.querySelector(`.grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect().top);
+    const pathOf = (id) => { const walk = (ws, path) => { for (const w of ws ?? []) { if (w.id === id) return [...path, w.id]; const r = walk(w.widgets, [...path, w.id]); if (r) return r; } return null; }; for (const v of lab.handle.toJSON().views) { const r = walk(v.widgets, [v.id]); if (r) return r.join('>'); } return null; };
+    return {
+      strips: cv.querySelectorAll('.axdb-tabs, .axdb-tab, [role="tablist"], [role="tab"]').length,
+      offset: slab && tops.length ? Math.round(Math.min(...tops) - slab.top) : null,
+      slab: slab ? { x: Math.round(slab.x), y: Math.round(slab.y), w: Math.round(slab.width), h: Math.round(slab.height) } : null,
+      showing, active: lab.handle.getActiveTab('th-panel'), free: pathOf('th-free'),
+      pages: lab.handle.toJSON().views[0].widgets.find((w) => w.id === 'th-panel').widgets.map((p) => p.id),
+      hidden: lab.handle.toJSON().views[0].widgets.find((w) => w.id === 'th-panel').tabs?.hidden === true,
+    };
+  });
+  await page.evaluate(() => { window.__labTabsHid = []; });
+  const s0 = await state();
+  await shot('tabshid', 'no-strip-the-first-page-fills-the-frame');
+  // a page switch from CODE — there is no tab to click
+  const switched = await page.evaluate(() => window.__lab.tabshid.handle.activateTab('th-panel', 'th-b')); await page.waitForTimeout(400);
+  const s1 = await state();
+  await shot('tabshid', 'the-second-page-shown-from-code');
+  // a REAL drag: the free KPI released over the rows a visible strip would occupy
+  const from = await rect('tabshid', 'th-free');
+  const cv = await page.evaluate(() => { const r = document.getElementById('cv-tabshid').getBoundingClientRect(); return { x: r.x, y: r.y }; });
+  const to = { x: s1.slab.x + s1.slab.w / 2, y: s1.slab.y + 14 };
+  await drag(from.x + from.w / 2, from.y + from.h / 2, to.x, to.y, { steps: 18, hold: 350, settle: 700 });
+  const s2 = await state();
+  await shot('tabshid', 'a-widget-dropped-where-the-strip-would-be-joins-the-active-page');
+  const evs = await page.evaluate(() => window.__labTabsHid.slice());
+  const sane = await sanity('tabshid');
+  verdict(s0.strips === 0 && s0.hidden && s0.active === 'th-a' && s0.showing.join() === 'tha1,tha2' && s0.offset === visibleOffset - 30
+    && switched === true && s1.strips === 0 && s1.active === 'th-b' && s1.showing.join() === 'thb1' && s1.offset === s0.offset
+    && evs.join() === 'main:th-panel:th-b'
+    && s2.free === 'main>th-panel>th-b>th-free' && s2.pages.join() === 'th-a,th-b' && s2.strips === 0 && s2.active === 'th-b'
+    && sane.overlaps === 0 && sane.overflow === 0,
+    `no strip element (${s0.strips}) · hidden in toJSON ${s0.hidden} · first page ${s0.showing} starts ${s0.offset} px under the frame (a visible strip: ${visibleOffset} = ${s0.offset} + 30) · activateTab from code → ${switched}, showing ${s1.showing} at ${s1.offset} px, onTabChange ${evs} · the free KPI dropped at the top of the frame → ${s2.free}, pages still ${s2.pages} ${JSON.stringify(sane)}`);
+  void cv;
+}
+
 if (errs.length) verdict(false, `uncaught page errors: ${errs.join(' | ')}`);
 } finally {
   await browser.close();

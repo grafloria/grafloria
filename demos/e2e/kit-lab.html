@@ -216,6 +216,17 @@ board('tabs', "layout: 'tabs' · three pages, one visible · the middle page is 
       { id: 'pc1', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } } ] },
   ] },
 ] }, { height: 340 });
+board('tabshid', "layout: 'tabs' with tabs: { hidden: true } · no strip, the pages fill the frame, switched from code", { sizing: 'grow', rowHeight: 60, onTabChange: (c, p, v) => { (window.__labTabsHid ||= []).push(`${v}:${c}:${p}`); }, widgets: [
+  { id: 'th-free', kind: 'kpi', span: 2, rows: 1, x: 0, y: 0, data: { label: 'Drag me in', value: '7' } },
+  { id: 'th-left', kind: 'line', span: 6, rows: 3, x: 0, y: 1, title: 'Left', data: { series: [{ name: 's', values: [2, 3, 1, 4] }] } },
+  { id: 'th-panel', title: 'Hidden strip', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', tabs: { hidden: true }, active: 'th-a', widgets: [
+    { id: 'th-a', title: 'Filters', columns: 6, widgets: [
+      { id: 'tha1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } },
+      { id: 'tha2', kind: 'kpi', span: 6, rows: 2, x: 0, y: 2, data: { label: 'Period', value: 'Q3' } } ] },
+    { id: 'th-b', title: 'Alerts', columns: 6, widgets: [
+      { id: 'thb1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0, data: { label: 'Open alerts', value: '3' } } ] },
+  ] },
+] }, { height: 340 });
 board('near', 'a tile dropped where a LOCKED section blocks it lands beside it, not at the bottom', { sizing: 'grow', rowHeight: 70, widgets: [
   { id: 'n-a', kind: 'kpi', span: 4, rows: 2, x: 0, y: 0, data: { label: 'A (0..4)', value: '1' } },
   { id: 'n-sec', title: 'Locked section', span: 5, rows: 2, x: 7, y: 0, columns: 5, widgets: [
