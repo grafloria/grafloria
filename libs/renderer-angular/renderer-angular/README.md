@@ -10,6 +10,8 @@ Grafloria Diagrams is an MIT JavaScript diagram library for flowcharts, workflow
 npm install @grafloria/angular @grafloria/renderer @grafloria/engine
 ```
 
+**Angular 18.1 to 22.** Every major in that range is installed (no `--legacy-peer-deps`), built and driven in a browser by [`tools/conformance/angular/matrix.mjs`](https://github.com/grafloria/grafloria/blob/main/tools/conformance/angular/matrix.mjs) before the range is claimed. The package is built with Angular 19 in partial-Ivy mode, so your own Angular links it.
+
 ## The canvas
 
 ```ts
