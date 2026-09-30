@@ -197640,7 +197640,7 @@ function paintCaptionBand(band, c, ctx) {
 var TAB_STRIP_HEIGHT = 30;
 var TAB_DRAG_THRESHOLD = 4;
 function tabStripReserve(o, pageCount) {
-  if (pageCount <= 0) return 0;
+  if (pageCount <= 0 || o?.hidden === true) return 0;
   return Math.max(18, o?.height ?? TAB_STRIP_HEIGHT);
 }
 var TAB_PAGE_INSET = 8;
@@ -199163,6 +199163,7 @@ function zoneRootsOf(peers, diagram) {
         if (!grp || diagram.getNode(id)) continue;
         const cw = grp.getMetadata("containerWidget") ?? {};
         const layout = cw.layout === "tabs" ? "tabs" : cw.layout === "split" ? "split" : "grid";
+        const strip = layout === "tabs" && cw.tabs?.hidden !== true;
         let innerPeer;
         if (layout === "tabs") {
           const pageId = cw.active && byGroup.has(cw.active) ? cw.active : [...grp.members ?? []].find((m) => byGroup.has(m));
@@ -199173,19 +199174,19 @@ function zoneRootsOf(peers, diagram) {
           layout,
           static: innerPeer?.isStatic?.() ?? false,
           frame: frameOf2(grp),
-          stripHeight: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
-          band: layout === "tabs" ? BESIDE_BAND : 0,
+          stripHeight: strip ? TAB_STRIP_HEIGHT : 0,
+          band: strip ? BESIDE_BAND : 0,
           // a section's whole body is "into" (Quantia's Groups page)
           // The top and bottom are a FIXED depth — one strip's worth, under
           // the strip — not a fifth of the body, which grew with the panel
           // until 216 px of the fluid demo's page meant "above the whole
           // panel" (0.4.62). The sides keep the fifth.
-          bandY: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
+          bandY: strip ? TAB_STRIP_HEIGHT : 0,
           // …and the TOP band hangs ABOVE the frame, where a hand looking
           // for "above this panel" actually goes (0.4.65). A panel holding
           // the board's first row has no row above it to point at, and the
           // lane under its header is the last place anyone would try.
-          topOutside: layout === "tabs" ? TAB_STRIP_HEIGHT : 0,
+          topOutside: strip ? TAB_STRIP_HEIGHT : 0,
           inner: innerPeer ? boardRef(innerPeer, depth + 1) : null
         });
       }
@@ -204171,7 +204172,10 @@ function attachTabsRuntime(ctx, model, container, handle) {
         } else host.removeAttribute("aria-hidden");
       }
     }
-    paintStrip(id, f, strip, pages, active2);
+    if (ctx.tabsOf.get(id)?.hidden === true) {
+      ctx.tabStrips.get(id)?.remove();
+      ctx.tabStrips.delete(id);
+    } else paintStrip(id, f, strip, pages, active2);
   };
   ctx.syncTabs = sync;
   ctx.subscriptions = ctx.subscriptions ?? [];
