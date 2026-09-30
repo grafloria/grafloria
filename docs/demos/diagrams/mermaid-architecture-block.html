@@ -19,7 +19,8 @@
   #mb-note { color: var(--gf-mut, #6b7280); }
   #mb-note.err { color: #b42318; }
   #canvas { height: 540px; background: #fff; }
-  #mb-src { display: block; box-sizing: border-box; width: 100%; min-height: 380px; margin: 0; padding: 14px 18px; border: 0; border-top: 1px solid var(--gf-line, #e5e7eb); background: #f8fafc; color: #1f2937; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; overflow: auto; resize: vertical; tab-size: 4; }
+  #mb-code { height: 460px; border-top: 1px solid var(--gf-line, #e5e7eb); background: #fff; }
+  #mb-src { display: block; box-sizing: border-box; width: 100%; height: 100%; margin: 0; padding: 14px 18px; border: 0; background: #f8fafc; color: #1f2937; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; overflow: auto; resize: none; tab-size: 4; }
   #mb-src:focus-visible { outline: 2px solid var(--gf-accent, #2563eb); outline-offset: -2px; }
 </style>
 <header id="demo-head"></header>
@@ -33,7 +34,7 @@
   <span id="mb-note" role="status">Real Mermaid syntax, laid out by Grafloria. Edit it — the drawing follows.</span>
 </div>
 <div id="canvas"></div>
-<textarea id="mb-src" spellcheck="false" aria-label="Mermaid source"></textarea>
+<div id="mb-code"><textarea id="mb-src" spellcheck="false" aria-label="Mermaid source"></textarea></div>
 <script type="text/plain" id="src-arch">architecture-beta
     service internet(internet)[Internet]
     group cloud(cloud)[Cloud]
@@ -50,61 +51,62 @@
     j:B --> T:db
     db:R -- L:cache</script>
 <script type="text/plain" id="src-block">block-beta
-columns 3
-doc>"Document"]:3
-space down1<[" "]>(down) space
+    columns 3
+    doc>"Document"]:3
+    space down1<[" "]>(down) space
 
-block:e:3
-       l["left"]
-       m("A wide one in the middle")
-       r["right"]
-end
-space down2<[" "]>(down) space
-db[("DB")]:3
-space:3
-D space C
-db --> D
-C --> db
-D --> C
-style m fill:#d6d,stroke:#333,stroke-width:4px</script>
+    block:e:3
+        l["left"]
+        m("A wide one in the middle")
+        r["right"]
+    end
+    space down2<[" "]>(down) space
+    db[("DB")]:3
+    space:3
+    D space C
+    db --> D
+    C --> db
+    D --> C
+    style m fill:#d6d,stroke:#333,stroke-width:4px</script>
 <script type="text/plain" id="src-tiers">block-beta
-columns 4
-block:app["Application"]:3
-    columns 1
-    block:ui["Presentation layer"]
-        columns 3
-        web["Web app"] mobile["Mobile app"] admin["Admin portal"]
-    end
-    block:bll["Business logic layer"]
-        columns 4
-        orders["Orders"] billing["Billing"] rules["Business rules"] flows["Workflows"]
-    end
-    block:dal["Data access layer"]
-        columns 3
-        repos["Repositories"] orm["ORM / unit of work"] agents["Service agents"]
-    end
-end
-block:sec["Security"]
-    columns 1
-    authn["Authentication"] authz["Authorization"] valid["Input validation"] crypto["Encryption"] audit["Audit log"]
-end
-block:data["Data"]:4
     columns 4
-    db[("SQL database")] cache[("Cache")] files[("File storage")] ext["External APIs"]
-end
-classDef front fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
-classDef logic fill:#dcfce7,stroke:#16a34a,color:#14532d
-classDef access fill:#ede9fe,stroke:#7c3aed,color:#3b0764
-classDef store fill:#f1f5f9,stroke:#475569,color:#1e293b
-classDef guard fill:#fef3c7,stroke:#d97706,color:#78350f
-class web,mobile,admin front
-class orders,billing,rules,flows logic
-class repos,orm,agents access
-class db,cache,files,ext store
-class authn,authz,valid,crypto,audit guard</script>
+    block:app["Application"]:3
+        columns 1
+        block:ui["Presentation layer"]
+            columns 3
+            web["Web app"] mobile["Mobile app"] admin["Admin portal"]
+        end
+        block:bll["Business logic layer"]
+            columns 4
+            orders["Orders"] billing["Billing"] rules["Business rules"] flows["Workflows"]
+        end
+        block:dal["Data access layer"]
+            columns 3
+            repos["Repositories"] orm["ORM / unit of work"] agents["Service agents"]
+        end
+    end
+    block:sec["Security"]
+        columns 1
+        authn["Authentication"] authz["Authorization"] valid["Input validation"] crypto["Encryption"] audit["Audit log"]
+    end
+    block:data["Data"]:4
+        columns 4
+        db[("SQL database")] cache[("Cache")] files[("File storage")] ext["External APIs"]
+    end
+    classDef front fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
+    classDef logic fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef access fill:#ede9fe,stroke:#7c3aed,color:#3b0764
+    classDef store fill:#f1f5f9,stroke:#475569,color:#1e293b
+    classDef guard fill:#fef3c7,stroke:#d97706,color:#78350f
+    class web,mobile,admin front
+    class orders,billing,rules,flows logic
+    class repos,orm,agents access
+    class db,cache,files,ext store
+    class authn,authz,valid,crypto,audit guard</script>
 <script type="module">
 import { render, importDiagramText, exportDiagramText } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { mountCodeEditor } from '../shell/code-editor.js';
 
 const srcEl = document.getElementById('mb-src');
 const note = document.getElementById('mb-note');
@@ -147,9 +149,22 @@ defineDemo({
       api.renderNow();
       return true;
     };
+    // The source reads as code — coloured the way the JavaScript and Angular
+    // tabs are. The textarea stays canonical underneath (every edit mirrors into
+    // it), so the drawing reads `srcEl.value` either way.
+    let timer = 0;
+    const schedule = () => { clearTimeout(timer); timer = setTimeout(() => ctx.draw(), 300); };
+    ctx.editor = await mountCodeEditor(srcEl, { language: 'mermaid', onChange: schedule });
+    srcEl.addEventListener('input', schedule);
+    /** Write the source as a person would see it typed: both surfaces, then a re-draw. */
+    ctx.edit = (text) => {
+      ctx.editor.setValue(text);
+      if (!ctx.editor.monaco) srcEl.dispatchEvent(new Event('input'));
+    };
     ctx.show = (type) => {
       ctx.type = type;
-      srcEl.value = SOURCES[type].trim();
+      ctx.editor.setValue(SOURCES[type].trim());
+      clearTimeout(timer); // the tab draws now, not after the typing pause
       for (const b of seg.querySelectorAll('button')) {
         const on = b.getAttribute('data-type') === type;
         b.classList.toggle('on', on);
@@ -158,8 +173,6 @@ defineDemo({
       ctx.draw();
     };
     seg.onclick = (e) => { const v = e.target.closest('button')?.getAttribute('data-type'); if (v) ctx.show(v); };
-    let timer = 0;
-    srcEl.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => ctx.draw(), 300); });
     ctx.show('arch');
     await ctx.tick();
   },
@@ -181,6 +194,35 @@ defineDemo({
     };
     const inside = (id, g) => { const r = R(id), f = R(g); return r.x >= f.x && r.y >= f.y && r.x + r.w <= f.x + f.w && r.y + r.h <= f.y + f.h; };
 
+    // the source is coloured like code — asked of Monaco's own tokenizer, word by word
+    check(ctx.editor.monaco ? !!document.querySelector('#mb-code .monaco-editor') && getComputedStyle(srcEl).display === 'none' : getComputedStyle(srcEl).display !== 'none',
+      'the source must show in the coloured editor (or, if it never loads, in the plain textarea)');
+    if (ctx.editor.monaco) {
+      const typeAt = (line, word, from = 0) => {
+        const i = line.indexOf(word, from);
+        let type = '';
+        for (const t of window.monaco.editor.tokenize(line, 'mermaid')[0]) if (t.offset <= i) type = t.type;
+        return type.replace(/\.mermaid$/, '');
+      };
+      const svc = '    service web(server)[Web app] in cloud';
+      const edge = '    web:R -[HTTPS]-> L:api';
+      for (const [line, word, want, from] of [
+        ['architecture-beta', 'architecture-beta', 'keyword'],
+        [svc, 'service', 'keyword'], [svc, 'server', 'type'], [svc, 'in', 'keyword', svc.indexOf(']')],
+        ['    group data(database)[Data tier] in cloud', 'group', 'keyword'],
+        ['    junction j in cloud', 'junction', 'keyword'],
+        [edge, ':R', 'type'], [edge, 'L:', 'type'], [edge, '-[', 'operator'], [edge, 'HTTPS', 'string'], [edge, ']->', 'operator'],
+        ['block-beta', 'block-beta', 'keyword'], ['    columns 4', 'columns', 'keyword'],
+        ['    block:app["Application"]:3', 'block', 'keyword'], ['    block:app["Application"]:3', '"Application"', 'string'],
+        ['    space down1<[" "]>(down) space', 'space', 'keyword'],
+        ['    classDef guard fill:#fef3c7,stroke:#d97706', 'classDef', 'keyword'],
+      ]) check(typeAt(line, word, from) === want, `"${word.trim()}" in \`${line.trim()}\` must be coloured as ${want}, not "${typeAt(line, word, from)}"`);
+      // a word inside a label is text, never a keyword
+      check(typeAt('    a[Log in to the service] --> b', 'in') !== 'keyword' && typeAt('    a[Log in to the service] --> b', 'service') !== 'keyword', 'words inside a label must stay text');
+      // an identifier is ONE word: no digit or keyword coloured inside it
+      check(typeAt('    space down1<[" "]>(down) space', '1') !== 'number' && typeAt('    weekend --> b', 'end') !== 'keyword', 'an identifier must stay one word (down1, weekend)');
+    }
+
     // architecture-beta: the sides are the layout
     ctx.show('arch');
     check(m().getGroup('cloud') && m().getGroup('data'), 'the groups must come through');
@@ -199,8 +241,7 @@ defineDemo({
 
     // edit: a new service in the data tier, right of the cache
     const before = srcEl.value;
-    srcEl.value = before + '\n    service queue(disk)[Job queue] in data\n    cache:R -- L:queue';
-    srcEl.dispatchEvent(new Event('input'));
+    ctx.edit(before + '\n    service queue(disk)[Job queue] in data\n    cache:R -- L:queue');
     for (let i = 0; i < 40 && !m().getNode('queue'); i++) await ctx.tick(20);
     check(!!m().getNode('queue') && inside('queue', 'data'), 'an edit must re-draw, the new service inside its group');
     check(R('queue').x > R('cache').x + R('cache').w, 'cache:R -- L:queue — the new service must be to the RIGHT of the cache');

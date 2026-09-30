@@ -53,15 +53,33 @@ function registerMermaid(monaco) {
     tokenizer: {
       root: [
         [/%%.*$/, 'comment'],
-        [/\b(flowchart|graph|sequenceDiagram|classDiagram|erDiagram|stateDiagram(-v2)?|journey|gantt|pie)\b/, 'keyword'],
+        [/\b(flowchart|graph|sequenceDiagram|classDiagram|erDiagram|stateDiagram(-v2)?|journey|gantt|pie|mindmap|timeline|gitGraph|quadrantChart|requirementDiagram|architecture-beta|block-beta|sankey-beta|xychart-beta|packet-beta|kanban)\b/, 'keyword'],
+        // architecture-beta declarations and block-beta grid words, where a statement starts
+        [/^(\s*)(service|group|junction|columns|block)\b/, ['', 'keyword']],
         [/\b(subgraph|end|direction|class|classDef|style|click|linkStyle)\b/, 'keyword'],
+        [/\bspace\b(?=(:\d+)?(\s|$))/, 'keyword'],                 // block-beta: a hole in the grid
+        [/\bin(?=\s+[\w-]+\s*$)/, 'keyword'],                     // … in cloud
         [/\b(TD|TB|BT|LR|RL)\b/, 'type'],
+        [/:[TBLR]\b|\b[TBLR]:/, 'type'],                          // architecture sides  web:R --> L:api
+        // any other word is ONE token — left to the per-character default, a rule
+        // matched from inside it (`down1` → a number 1, `weekend` → keyword end)
+        [/[A-Za-z_]\w*/, ''],
+        [/(\()(cloud|database|disk|internet|server)(\))/, ['delimiter.bracket', 'type', 'delimiter.bracket']],
+        [/(>)(\()(up|down|left|right|x|y)(\))/, ['delimiter.bracket', 'delimiter.bracket', 'type', 'delimiter.bracket']],
+        [/\{group\}/, 'keyword'],
+        [/(<?-)(\[)([^\]]*)(\])(->?)/, ['operator', 'operator', 'string', 'operator', 'operator']], // -[HTTPS]->
         [/\|[^|]*\|/, 'string'],            // edge label  -->|yes|
-        [/--+>|==+>|-\.-+>|--+|===+/, 'operator'],
+        [/<?(--+>|==+>|-\.-+>|--+|===+)/, 'operator'],
         [/"[^"]*"/, 'string'],
+        // an unquoted label is words, not syntax: `[Log in]` must not colour `in`
+        [/[[({](?=[^"[({])/, { token: 'delimiter.bracket', next: '@label' }],
         [/[[\](){}]/, 'delimiter.bracket'],
         [/#[0-9a-fA-F]{3,8}\b/, 'number'],  // style fill:#c8e6c9
         [/\b\d+\b/, 'number'],
+      ],
+      label: [
+        [/[^\])}]+/, ''],
+        [/[\])}]/, { token: 'delimiter.bracket', next: '@pop' }],
       ],
     },
   });
