@@ -94,29 +94,16 @@ const CAT_COLOR = {
 const CATEGORY_ORDER = Object.keys(CATEGORY_LABEL);
 
 // NEW badge — a DATED, curatorial overlay, not part of the auto-discovery. These
-// are the pages created or reworked in the 2026-07 React-Flow-parity wave; the
-// badge just helps a visitor find them. Clear this set once the wave is old news.
+// are the pages created in the 2026-09 wave (the dashboards' fluid board, the
+// connected-path highlight, the AI-style and architecture diagrams, Mermaid
+// architecture & block). The July React-Flow-parity wave that held it before is
+// old news. Clear this set once this wave is too.
 const NEW_DEMOS = new Set([
-  'nodes/delete-middle-node.html',
-  'nodes/drag-handle.html',
-  'nodes/intersections.html',
-  'nodes/node-resizer.html',
-  'nodes/node-resize-gesture.html',
-  'nodes/node-toolbar.html',
-  'nodes/proximity-connect.html',
-  'nodes/node-position-animation.html',
-  'nodes/stress-test.html',
-  'nodes/updating-nodes.html',
-  'edges/animating-edges.html',
-  'interaction/computing-flows.html',
-  'interaction/connection-events.html',
-  'grouping/parent-child.html',
-  'diagrams/scrollable-cards.html',
-  'interaction/n8n-workflow.html',
-  'collab/conflict-resolution.html',
-  'diagrams/erd-editor.html',
-  'dashboard/dashboard-builder.html',
-  'dashboard/grid-options.html',
+  'dashboard/fluid-board.html',
+  'edges/highlight-connected.html',
+  'diagrams/ai-style-diagram.html',
+  'diagrams/architecture-layout.html',
+  'diagrams/mermaid-architecture-block.html',
 ]);
 const isNewDemo = (rel) => NEW_DEMOS.has(rel.split(sep).join('/'));
 
