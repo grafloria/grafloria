@@ -399,7 +399,11 @@ render(SPEC2, host);</pre>
       <code>stretch</code>, <code>height</code>, <code>className</code>). A page is an ordinary container, so it
       can be a grid or a split, and it keeps its layout while parked. Switching is a click, the arrow keys once a
       tab has focus, or <code>handle.activateTab(containerId, pageId)</code>; <code>onTabChange</code> reports it.
-      The strip is a <code>role="tablist"</code> and takes ONE tab stop, so a board still has exactly one.</p>
+      The strip is a <code>role="tablist"</code> and takes ONE tab stop, so a board still has exactly one.
+      <code>tabs: { hidden: true }</code> (element 0.4.83) takes the strip away altogether, as DevExpress's
+      <code>ShowCaption="false"</code> does: nothing is reserved for it and nothing is on screen, the pages fill
+      the frame less <code>inset</code>, and the host switches pages with <code>activateTab()</code>. It is meant
+      for a read-only viewer; a designer leaves it off so the author can reach every page.</p>
       <p><b>A tab is its page's drag handle</b> (element 0.4.29, completed in 0.4.30). Press a tab and travel, as you
       would in VS Code, and the whole page drags: a chip carrying the tab's name follows the pointer, and the dashed
       outline shows the cell the page will take — right under the pointer, shrunk to the room there when the page is
