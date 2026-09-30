@@ -110931,6 +110931,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     if (this.blocksDocumentWrite()) return;
     this.nodes.clear();
     this.portIndex.clear();
+    this.nodeSpatialIndex.clear();
     this.detachedAnchors.clear();
     this.emitOrQueue("nodes:cleared");
   }
@@ -111024,7 +111025,12 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
    */
   clearLinks() {
     if (this.blocksDocumentWrite()) return;
+    for (const link of this.links.values()) {
+      this.getPortById(link.sourcePortId)?.removeConnection(link.id);
+      this.getPortById(link.targetPortId)?.removeConnection(link.id);
+    }
     this.links.clear();
+    this.linkSpatialIndex.clear();
     this.emitOrQueue("links:cleared");
   }
   /**
@@ -112220,6 +112226,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
    * During batch mode, events are queued instead of fired immediately
    */
   emitOrQueue(eventType, data2) {
+    if (eventType !== "dirty:cleared") bumpMutationEpoch();
     const batching = this.isBatching();
     if (batching) {
       this._pendingEvents.push({ type: eventType, data: data2 });
@@ -191476,6 +191483,18 @@ function createDiagram(container, options = {}) {
   onModel("group:added", () => scheduler.schedule());
   onModel("group:removed", () => scheduler.schedule());
   onModel("group:changed", () => scheduler.schedule());
+  onModel("stroke:added", () => scheduler.schedule());
+  onModel("stroke:removed", () => scheduler.schedule());
+  onModel("strokes:cleared", () => scheduler.schedule());
+  onModel("nodes:cleared", () => {
+    scheduler.schedule();
+    emit("nodes:change", { nodes: model.getNodes() });
+  });
+  onModel("links:cleared", () => {
+    scheduler.schedule();
+    emit("edges:change", { edges: model.getLinks() });
+  });
+  onModel("groups:cleared", () => scheduler.schedule());
   onModel("selection:changed", () => {
     scheduler.schedule();
     emit("selection:change", {

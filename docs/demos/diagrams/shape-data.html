@@ -106,5 +106,11 @@ defineDemo({
 
     ctx.instance.renderNow();
   },
+
+  // The card's picture: a shape selected, its master's data fields in the panel.
+  async showcase(ctx) {
+    ctx.diagram.selectNode(ctx.diagram.getNode(ctx.b.id));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  },
 });
 </script>
