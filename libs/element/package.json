@@ -1,12 +1,12 @@
 {
   "name": "@grafloria/element",
-  "version": "0.4.80",
+  "version": "0.4.81",
   "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "peerDependencies": {
-    "@grafloria/engine": "^0.3.14",
-    "@grafloria/renderer": "^0.4.13"
+    "@grafloria/engine": "^0.3.15",
+    "@grafloria/renderer": "^0.4.14"
   },
   "dependencies": {
     "tslib": "^2.3.0"
