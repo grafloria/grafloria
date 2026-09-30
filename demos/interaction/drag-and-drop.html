@@ -122,5 +122,14 @@ defineDemo({
     model.getNode(n1.id).setPosition(0, 0);
     check(n2.position.x === n2Before.x && n2.position.y === n2Before.y, 'moving the first node moved the second — they are not independent');
   },
+
+  // The card's picture: four palette items dropped onto the canvas.
+  async showcase(ctx) {
+    const r = ctx.host.getBoundingClientRect();
+    for (const [kind, x, y] of [['source', 200, 150], ['filter', 420, 150], ['transform', 640, 150], ['sink', 420, 300]]) {
+      await ctx.dropAt(kind, r.left + x, r.top + y);
+    }
+    await ctx.tick();
+  },
 });
 </script>
