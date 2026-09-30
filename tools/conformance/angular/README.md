@@ -1,6 +1,6 @@
 # Angular conformance harness
 
-A real `ng new`-shaped Angular 19 app consuming the PUBLISHED @grafloria
+A real `ng new`-shaped Angular 22 app consuming the PUBLISHED @grafloria
 packages (or local tarballs) — the acceptance gate for the Angular-native
 experience. It exercises, in a real browser:
 
@@ -11,7 +11,7 @@ experience. It exercises, in a real browser:
 - `[layout]` / `applyLayout('elk')` — verifies the elkjs LAZY CHUNK is not
   fetched at boot and IS fetched on first layout
 - `snapshot()` / `loadSnapshot()` round-trip
-- `provideExperimentalZonelessChangeDetection()` throughout
+- `provideZonelessChangeDetection()` throughout (zone.js not loaded)
 
 Run:
 
