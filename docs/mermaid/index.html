@@ -468,13 +468,14 @@
     const d = r.diagram;
     // Hand the renderer the parsed models themselves — projecting them down to a
     // spec tuple is what silently drops shapes and styles on the way through.
-    const parts = { nodes: d.getNodes(), edges: d.getLinks() };
+    // Groups too: a subgraph's zone, an architecture group, a nested block.
+    const parts = { nodes: d.getNodes(), edges: d.getLinks(), groups: d.getGroups() };
     if (!api) {
       cv.querySelector('.skel')?.remove();
       api = render(parts, cv);
     } else {
-      api.setEdges([]); api.setNodes([]);
-      api.setNodes(parts.nodes); api.setEdges(parts.edges);
+      api.setEdges([]); api.setGroups([]); api.setNodes([]);
+      api.setNodes(parts.nodes); api.setGroups(parts.groups); api.setEdges(parts.edges);
     }
     // No layout pass and no route-clearing workaround here any more: the
     // parser itself now places by RANK (a branch reads as a branch), and the
