@@ -79,6 +79,18 @@ const out = await p.evaluate(() => {
     scoped: { viewBox: scoped.viewBox, svg: scoped.svg },
     ids: { got: overview.sort(), expected: expected.sort() },
     fullWidth: full.viewBox.width,
+    // What the SCREEN shows for every header drawn: its own text through its own
+    // computed text-transform. The check compares the file to this, not to a
+    // literal — the kit's styling changes (element 0.4.36 dropped the uppercase
+    // widget titles) and a literal went stale while the export stayed right.
+    shown: [...document.querySelectorAll('.grafloria-node-host th, .grafloria-node-host .axdb-widget-h')]
+      .filter((e) => e.getClientRects().length > 0)
+      .map((e) => {
+        const raw = [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.nodeValue).join('').trim();
+        const tt = getComputedStyle(e).textTransform;
+        return { raw, tt, shown: tt === 'uppercase' ? raw.toUpperCase() : tt === 'lowercase' ? raw.toLowerCase() : raw };
+      })
+      .filter((h) => h.raw),
   };
 });
 
@@ -118,8 +130,16 @@ check('table cell text is present', svg.includes('A. Farouk') && svg.includes('J
 
 // text-transform is applied by the RENDERER and never written back to the DOM: the text
 // node says 'Quota', the screen says 'QUOTA'. Capturing nodeValue verbatim would make
-// every widget title in the file subtly but visibly wrong.
-check('headers carry their text-transform', svg.includes('QUOTA') && svg.includes('TOTAL REVENUE'));
+// every header in the file subtly but visibly wrong — so each header must be in the file
+// exactly as the screen shows it, and at least one must actually be transformed.
+const xml = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const unshown = out.shown.filter((h) => !svg.includes(xml(h.shown)));
+const transformed = out.shown.filter((h) => h.shown !== h.raw);
+check(
+  'headers carry their text-transform — the file says what the screen shows',
+  out.shown.length > 0 && transformed.length > 0 && unshown.length === 0,
+  unshown.length ? `not as shown: ${unshown.slice(0, 4).map((h) => `"${h.shown}" (${h.tt})`).join(', ')}` : `${out.shown.length} headers, ${transformed.length} transformed (e.g. "${transformed[0]?.raw}" → "${transformed[0]?.shown}")`
+);
 
 // -- fidelity of the file ----------------------------------------------------
 check(
