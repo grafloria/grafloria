@@ -1,7 +1,7 @@
 import { debugLog } from '../util/debug';
 // DiagramModel - Root container for all diagram entities
 
-import { DiagramEntity } from './DiagramEntity';
+import { DiagramEntity, bumpMutationEpoch } from './DiagramEntity';
 import { ReadonlyLock } from './readonly-lock'; // Wave 9 — Card 7
 import { NodeModel, SerializedNode, type DetachedParentAnchor } from './NodeModel';
 import { LinkModel, SerializedLink } from './LinkModel';
@@ -754,6 +754,9 @@ export class DiagramModel extends DiagramEntity {
     if (this.blocksDocumentWrite()) return;
     this.nodes.clear();
     this.portIndex.clear();
+    // …and the culling index, or getVisibleNodes() keeps handing the renderer
+    // nodes the model no longer has (clear() does this; clearNodes did not).
+    this.nodeSpatialIndex.clear();
     // Wholesale reset: no nodes remain to read a frozen frame through.
     this.detachedAnchors.clear();
     this.emitOrQueue('nodes:cleared');
@@ -901,7 +904,15 @@ export class DiagramModel extends DiagramEntity {
    */
   clearLinks(): void {
     if (this.blocksDocumentWrite()) return;
+    // What removeLink() does per link: free the ports' connection budget and drop
+    // the link from the culling index — else it stays on screen, and a port with
+    // maxConnections stays "full" of links that no longer exist.
+    for (const link of this.links.values()) {
+      this.getPortById(link.sourcePortId)?.removeConnection(link.id);
+      this.getPortById(link.targetPortId)?.removeConnection(link.id);
+    }
     this.links.clear();
+    this.linkSpatialIndex.clear();
     this.emitOrQueue('links:cleared');
   }
 
@@ -2377,6 +2388,12 @@ export class DiagramModel extends DiagramEntity {
    * During batch mode, events are queued instead of fired immediately
    */
   private emitOrQueue(eventType: string, data?: any): void {
+    // Every model event but the renderer's own "I drew you" is a change to the
+    // picture, so it moves the global mutation epoch and the frame gate opens. A
+    // bulk clear (clearNodes/Links/Groups/Strokes) empties a collection with no
+    // entity marking itself dirty: the epoch stood still, the scheduled frame was
+    // skipped, and the cleared things stayed on screen. Err toward the wasted frame.
+    if (eventType !== 'dirty:cleared') bumpMutationEpoch();
     const batching = this.isBatching();
     if (batching) {
       // Queue event for later
