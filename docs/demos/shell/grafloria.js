@@ -136187,6 +136187,8 @@ var ASTTransformer = class {
         return { width: 140, height: 80 };
       case "hexagon":
         return { width: 140, height: 80 };
+      case "stadium":
+        return { width: 160, height: 56 };
       case "text":
         return { width: 240, height: 24 };
       default:
