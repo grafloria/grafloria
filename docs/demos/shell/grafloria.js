@@ -2673,18 +2673,18 @@ var require_resolve_conflicts = __commonJS({
       });
     }
     function mergeEntries(target, source) {
-      let sum2 = 0;
+      let sum3 = 0;
       let weight = 0;
       if (target.weight) {
-        sum2 += target.barycenter * target.weight;
+        sum3 += target.barycenter * target.weight;
         weight += target.weight;
       }
       if (source.weight) {
-        sum2 += source.barycenter * source.weight;
+        sum3 += source.barycenter * source.weight;
         weight += source.weight;
       }
       target.vs = source.vs.concat(target.vs);
-      target.barycenter = sum2 / weight;
+      target.barycenter = sum3 / weight;
       target.weight = weight;
       target.i = Math.min(source.i, target.i);
       source.merged = true;
@@ -2701,19 +2701,19 @@ var require_sort = __commonJS({
       let parts = util.partition(entries, (entry) => {
         return Object.hasOwn(entry, "barycenter");
       });
-      let sortable = parts.lhs, unsortable = parts.rhs.sort((a, b) => b.i - a.i), vs = [], sum2 = 0, weight = 0, vsIndex = 0;
+      let sortable = parts.lhs, unsortable = parts.rhs.sort((a, b) => b.i - a.i), vs = [], sum3 = 0, weight = 0, vsIndex = 0;
       sortable.sort(compareWithBias(!!biasRight));
       vsIndex = consumeUnsortable(vs, unsortable, vsIndex);
       sortable.forEach((entry) => {
         vsIndex += entry.vs.length;
         vs.push(entry.vs);
-        sum2 += entry.barycenter * entry.weight;
+        sum3 += entry.barycenter * entry.weight;
         weight += entry.weight;
         vsIndex = consumeUnsortable(vs, unsortable, vsIndex);
       });
       let result = { vs: vs.flat(true) };
       if (weight) {
-        result.barycenter = sum2 / weight;
+        result.barycenter = sum3 / weight;
         result.weight = weight;
       }
       return result;
@@ -3189,9 +3189,9 @@ var require_bk = __commonJS({
       return (g, v, w) => {
         let vLabel = g.node(v);
         let wLabel = g.node(w);
-        let sum2 = 0;
+        let sum3 = 0;
         let delta;
-        sum2 += vLabel.width / 2;
+        sum3 += vLabel.width / 2;
         if (Object.hasOwn(vLabel, "labelpos")) {
           switch (vLabel.labelpos.toLowerCase()) {
             case "l":
@@ -3203,12 +3203,12 @@ var require_bk = __commonJS({
           }
         }
         if (delta) {
-          sum2 += reverseSep ? delta : -delta;
+          sum3 += reverseSep ? delta : -delta;
         }
         delta = 0;
-        sum2 += (vLabel.dummy ? edgeSep : nodeSep) / 2;
-        sum2 += (wLabel.dummy ? edgeSep : nodeSep) / 2;
-        sum2 += wLabel.width / 2;
+        sum3 += (vLabel.dummy ? edgeSep : nodeSep) / 2;
+        sum3 += (wLabel.dummy ? edgeSep : nodeSep) / 2;
+        sum3 += wLabel.width / 2;
         if (Object.hasOwn(wLabel, "labelpos")) {
           switch (wLabel.labelpos.toLowerCase()) {
             case "l":
@@ -3220,10 +3220,10 @@ var require_bk = __commonJS({
           }
         }
         if (delta) {
-          sum2 += reverseSep ? delta : -delta;
+          sum3 += reverseSep ? delta : -delta;
         }
         delta = 0;
-        return sum2;
+        return sum3;
       };
     }
     function width(g, v) {
@@ -106090,7 +106090,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
    */
   getTotalLength() {
     return this.segments.reduce(
-      (sum2, segment) => sum2 + this.getSegmentLength(segment),
+      (sum3, segment) => sum3 + this.getSegmentLength(segment),
       0
     );
   }
@@ -108300,7 +108300,7 @@ var SpatialIndex = class {
       cellSizes.push(cellSet.size);
     });
     const maxEntitiesPerCell = cellSizes.length > 0 ? Math.max(...cellSizes) : 0;
-    const averageEntitiesPerCell = cellSizes.length > 0 ? cellSizes.reduce((sum2, size) => sum2 + size, 0) / cellSizes.length : 0;
+    const averageEntitiesPerCell = cellSizes.length > 0 ? cellSizes.reduce((sum3, size) => sum3 + size, 0) / cellSizes.length : 0;
     return {
       entities: this.entities.size,
       cells: this.grid.size,
@@ -124915,17 +124915,17 @@ var PortAwareLayoutManager = class {
     const barycenters = /* @__PURE__ */ new Map();
     for (const port of ports) {
       const connectedPorts = this.getConnectedPorts(port.id, links);
-      let sum2 = 0;
+      let sum3 = 0;
       let counted = 0;
       for (const connectedPortId of connectedPorts) {
         const partner = portsById.get(connectedPortId);
         if (!partner) continue;
         const nodePos = nodePositions.get(partner.nodeId);
         if (!nodePos) continue;
-        sum2 += side === "left" || side === "right" ? nodePos.y : nodePos.x;
+        sum3 += side === "left" || side === "right" ? nodePos.y : nodePos.x;
         counted++;
       }
-      barycenters.set(port.id, counted > 0 ? sum2 / counted : 0);
+      barycenters.set(port.id, counted > 0 ? sum3 / counted : 0);
     }
     return [...ports].sort((a, b) => {
       const bcA = barycenters.get(a.id) ?? 0;
@@ -126244,9 +126244,9 @@ var DagreLayoutAdapter = class {
             bary.set(node.id, pos.get(node.id) ?? 0.5);
             return;
           }
-          let sum2 = 0;
-          ns.forEach((id) => sum2 += pos.get(id) ?? 0.5);
-          bary.set(node.id, sum2 / ns.length);
+          let sum3 = 0;
+          ns.forEach((id) => sum3 += pos.get(id) ?? 0.5);
+          bary.set(node.id, sum3 / ns.length);
         });
         layer.sort((a, b) => (bary.get(a.id) ?? 0.5) - (bary.get(b.id) ?? 0.5));
         refresh(layer);
@@ -127039,7 +127039,7 @@ function packBoxes(boxes, options = {}) {
   const aspectRatio = options.aspectRatio ?? DEFAULT_ASPECT_RATIO;
   const offsets = /* @__PURE__ */ new Map();
   if (boxes.length === 0) return offsets;
-  const totalArea = boxes.reduce((sum2, b) => sum2 + (b.width + spacing) * (b.height + spacing), 0);
+  const totalArea = boxes.reduce((sum3, b) => sum3 + (b.width + spacing) * (b.height + spacing), 0);
   const widest = Math.max(...boxes.map((b) => b.width));
   const targetWidth = Math.max(widest, Math.sqrt(totalArea * aspectRatio));
   const sorted = [...boxes].sort(
@@ -127847,11 +127847,11 @@ var Matrix = class _Matrix {
 };
 var VectorOps = class {
   static dot(a, b) {
-    let sum2 = 0;
+    let sum3 = 0;
     for (let i = 0; i < a.length; i++) {
-      sum2 += a[i] * b[i];
+      sum3 += a[i] * b[i];
     }
-    return sum2;
+    return sum3;
   }
   static norm(v) {
     return Math.sqrt(this.dot(v, v));
@@ -127940,21 +127940,21 @@ var SpectralLayoutAdapter = class {
       const temp = new Matrix(n3, n3, 0);
       for (let i = 0; i < n3; i++) {
         for (let j = 0; j < n3; j++) {
-          let sum2 = 0;
+          let sum3 = 0;
           for (let k = 0; k < n3; k++) {
-            sum2 += D_inv_sqrt.get(i, k) * laplacian.get(k, j);
+            sum3 += D_inv_sqrt.get(i, k) * laplacian.get(k, j);
           }
-          temp.set(i, j, sum2);
+          temp.set(i, j, sum3);
         }
       }
       L = new Matrix(n3, n3, 0);
       for (let i = 0; i < n3; i++) {
         for (let j = 0; j < n3; j++) {
-          let sum2 = 0;
+          let sum3 = 0;
           for (let k = 0; k < n3; k++) {
-            sum2 += temp.get(i, k) * D_inv_sqrt.get(k, j);
+            sum3 += temp.get(i, k) * D_inv_sqrt.get(k, j);
           }
-          L.set(i, j, sum2);
+          L.set(i, j, sum3);
         }
       }
     }
@@ -129524,7 +129524,7 @@ function radialLayout(nodes, links, options = {}) {
     const kids = children.get(id) ?? [];
     leaves.set(
       id,
-      kids.length === 0 ? 1 : kids.reduce((sum2, kid) => sum2 + (leaves.get(kid) ?? 1), 0)
+      kids.length === 0 ? 1 : kids.reduce((sum3, kid) => sum3 + (leaves.get(kid) ?? 1), 0)
     );
   }
   const perDepth = /* @__PURE__ */ new Map();
@@ -129540,7 +129540,7 @@ function radialLayout(nodes, links, options = {}) {
   let previous = Math.max(rootSize.width, rootSize.height) / 2;
   for (let d = 1; d <= maxDepth; d++) {
     const onRing = perDepth.get(d) ?? [];
-    const needed = onRing.reduce((sum2, n3) => sum2 + slotOf(n3, nodeSpacing), 0) / (2 * Math.PI);
+    const needed = onRing.reduce((sum3, n3) => sum3 + slotOf(n3, nodeSpacing), 0) / (2 * Math.PI);
     const tallest = Math.max(0, ...onRing.map((n3) => Math.max(nodeSize(n3).width, nodeSize(n3).height)));
     const radius = Math.max(previous + rankSpacing + tallest / 2, needed);
     radii.set(d, radius);
@@ -129555,7 +129555,7 @@ function radialLayout(nodes, links, options = {}) {
     angles.set(id, (start + end) / 2);
     const kids = children.get(id) ?? [];
     if (kids.length === 0) continue;
-    const total = kids.reduce((sum2, kid) => sum2 + (leaves.get(kid) ?? 1), 0);
+    const total = kids.reduce((sum3, kid) => sum3 + (leaves.get(kid) ?? 1), 0);
     let cursor = start;
     for (const kid of kids) {
       const share = (leaves.get(kid) ?? 1) / total * (end - start);
@@ -130232,6 +130232,7 @@ var K = {
   minOverlap: 12
 };
 var ROOT = "\0architecture-root";
+var sum = (xs) => xs.reduce((t, v) => t + v, 0);
 var fOf = (s, a) => a === "x" ? s.w : s.h;
 var cOf = (s, a) => a === "x" ? s.h : s.w;
 var sz = (f, c, a) => a === "x" ? { w: f, h: c } : { w: c, h: f };
@@ -130557,10 +130558,11 @@ var ArchitectureComposer = class {
   }
   /**
    * An explicit GRID (Mermaid block-beta): cells in reading order, `columns` to a
-   * row, a cell `span` wide, holes where a cell has no block. A column shares one
-   * width and a row one height, and every block FILLS its cell (a spanning block
-   * covers its columns and the gaps between them). A gap widens for a label that
-   * has to fit between two neighbours.
+   * row, a cell `span` wide, holes where a cell has no block. Every cell is ONE
+   * width, the widest block's (Mermaid sizes a grid's cells alike), a row shares
+   * one height, and every block FILLS its cell (a spanning block covers its
+   * columns and the gaps between them). A gap widens for a label that has to fit
+   * between two neighbours.
    */
   arrangeGrid(z) {
     const plan = z.plan;
@@ -130615,27 +130617,52 @@ var ArchitectureComposer = class {
       for (let j = p.col; j < p.col + p.span; j++) w += colW[j] + (j > p.col ? gapX[j] : 0);
       return w;
     };
+    colW.fill(Math.max(0, ...colW) || this.k.minBoxW);
     for (const p of placed) if (p.span > 1) {
       const short = p.b.size.w - spanW(p);
-      if (short > 0) for (let j = p.col; j < p.col + p.span; j++) colW[j] = colW[j] + short / p.span;
+      if (short > 0) colW.fill(colW[0] + short / p.span);
     }
-    for (let j = 0; j < N; j++) if (colW[j] === 0) colW[j] = this.k.minBoxW;
     for (let r = 0; r < rows; r++) if (rowH[r] === 0) rowH[r] = this.k.minBoxH;
+    z.gridPlan = { placed, colW, rowH, gapX, gapY };
+    plan.columns = [z.children];
+    plan.content = rows ? { w: sum(colW) + sum(gapX), h: sum(rowH) + sum(gapY) } : { w: 0, h: 0 };
+    this.sizeZone(z);
+    this.fillGrid(z, z.id === ROOT ? plan.content : z.size);
+  }
+  /**
+   * Lay a grid's blocks out to FILL `size`, its frame: extra width shared by its
+   * columns, extra height by its rows — Mermaid's block layout grows children to
+   * fit the same way. A nested grid handed a bigger cell (a column stretched to
+   * the height of the layers beside it, a layer as wide as the widest) fills it
+   * in turn, all the way down.
+   */
+  fillGrid(z, size) {
+    const plan = z.plan;
+    const { placed, colW, rowH, gapX, gapY } = z.gridPlan;
+    if (!rowH.length) return;
+    const pad = z.id === ROOT ? { l: 0, r: 0, t: 0, b: 0 } : z.pad;
+    const extraW = size.w - pad.l - pad.r - (sum(colW) + sum(gapX));
+    const extraH = size.h - pad.t - pad.b - (sum(rowH) + sum(gapY));
+    if (extraW > 0.5) colW.forEach((w, j) => colW[j] = w + extraW / colW.length);
+    if (extraH > 0.5) rowH.forEach((h, r) => rowH[r] = h + extraH / rowH.length);
     const xAt = [], yAt = [];
     colW.forEach((_, j) => xAt.push(j === 0 ? 0 : xAt[j - 1] + colW[j - 1] + gapX[j]));
     rowH.forEach((_, r) => yAt.push(r === 0 ? 0 : yAt[r - 1] + rowH[r - 1] + gapY[r]));
     for (const p of placed) {
-      const w = spanW(p), h = rowH[p.row];
+      let w = 0;
+      for (let j = p.col; j < p.col + p.span; j++) w += colW[j] + (j > p.col ? gapX[j] : 0);
+      const h = rowH[p.row];
       if (p.b.kind === "node" && this.fixed(p.b)) {
         plan.rel.set(p.b.id, { x: xAt[p.col] + (w - p.b.size.w) / 2, y: yAt[p.row] + (h - p.b.size.h) / 2 });
         continue;
       }
-      p.b.size = p.b.kind === "node" ? { w, h } : { w: Math.max(p.b.size.w, w), h: Math.max(p.b.size.h, h) };
+      if (p.b.kind === "node") p.b.size = { w, h };
+      else if (p.b.gridPlan) this.fillGrid(p.b, { w: Math.max(p.b.size.w, w), h: Math.max(p.b.size.h, h) });
+      else p.b.size = { w: Math.max(p.b.size.w, w), h: Math.max(p.b.size.h, h) };
       plan.rel.set(p.b.id, { x: xAt[p.col], y: yAt[p.row] });
     }
-    plan.columns = [z.children];
-    plan.content = rows ? { w: xAt[N - 1] + colW[N - 1], h: yAt[rows - 1] + rowH[rows - 1] } : { w: 0, h: 0 };
-    this.sizeZone(z);
+    plan.content = { w: sum(colW) + sum(gapX), h: sum(rowH) + sum(gapY) };
+    if (z.id !== ROOT) z.size = { w: Math.max(size.w, plan.content.w + pad.l + pad.r), h: Math.max(size.h, plan.content.h + pad.t + pad.b) };
   }
   /**
    * Four or more children with no line to a sibling are a SET, not a sequence:
@@ -135495,7 +135522,7 @@ function placeByRank(nodes, ranks, options = {}) {
   }
   let order = [...bands.keys()].sort((a, b) => a - b);
   if (reversed) order = order.reverse();
-  const crossTotal = (band) => band.reduce((sum2, n3) => sum2 + across(n3), 0) + (band.length - 1) * crossGap;
+  const crossTotal = (band) => band.reduce((sum3, n3) => sum3 + across(n3), 0) + (band.length - 1) * crossGap;
   const widest = Math.max(...order.map((r) => crossTotal(bands.get(r))));
   const positions = /* @__PURE__ */ new Map();
   let alongCursor = vertical ? start.y : start.x;
@@ -138393,7 +138420,7 @@ function layoutStateModel(model, nodes, start) {
       const regions = childrenOf(state.id).filter((s) => s.region);
       const bands = regions.map((r) => measure2(r));
       const bandWidth = Math.max(...bands.map((b) => b.width), 0);
-      const stacked = bands.reduce((sum2, b) => sum2 + b.height, 0) + Math.max(0, bands.length - 1) * BAND_GAP;
+      const stacked = bands.reduce((sum3, b) => sum3 + b.height, 0) + Math.max(0, bands.length - 1) * BAND_GAP;
       size = {
         width: bandWidth + 2 * STATE_PAD,
         height: stacked + 2 * STATE_PAD + STATE_HEADER
@@ -138666,9 +138693,13 @@ function parseMermaidBlock(text) {
       top.columns = cols[1].toLowerCase() === "auto" ? void 0 : Number(cols[1]);
       continue;
     }
-    const block = /^block(?::([A-Za-z_][\w-]*))?(?::(\d+))?$/.exec(line);
+    const block = /^block(?::([A-Za-z_][\w-]*)([[({]+"([^"]*)"[\])}]+)?)?(?::(\d+))?$/.exec(line);
     if (block) {
-      const group = { kind: "group", id: block[1] ?? `block_${++anon}`, span: block[2] ? Number(block[2]) : 1, cells: [] };
+      const group = { kind: "group", id: block[1] ?? `block_${++anon}`, span: block[4] ? Number(block[4]) : 1, cells: [] };
+      if (block[2]) {
+        group.label = block[3];
+        group.labelToken = block[2];
+      }
       top.cells.push(group);
       stack.push(group);
       continue;
@@ -138712,7 +138743,7 @@ function blockModelToFlowchart(model) {
     for (const c of cells) {
       if (c.kind === "block") lines.push(`${pad}${c.token}`);
       else if (c.kind === "group") {
-        lines.push(`${pad}subgraph ${c.id}`);
+        lines.push(`${pad}subgraph ${c.id}${c.label ? `["${c.label.replace(/"/g, "#quot;")}"]` : ""}`);
         walk3(c.cells, pad + "  ");
         lines.push(`${pad}end`);
       }
@@ -138745,8 +138776,14 @@ function applyBlockGrid(diagram, model) {
         const g = diagram.getGroup(c.id);
         if (g) {
           g.setMetadata("grid", toSpec(c.columns, c.cells));
-          g.name = "";
-          if (!g.getMetadata("frameStyle")) g.setMetadata("frameStyle", { fill: "#f8fafc", stroke: "#cbd5e1", borderRadius: 4 });
+          g.name = c.label ?? "";
+          if (c.labelToken) {
+            g.setMetadata("blockLabel", c.label);
+            g.setMetadata("blockLabelToken", c.labelToken);
+          }
+          if (!g.getMetadata("frameStyle")) {
+            g.setMetadata("frameStyle", c.label ? { fill: "#f8fafc", stroke: "#cbd5e1", borderRadius: 4, color: "#334155", fontWeight: "600", fontSize: 12 } : { fill: "#f8fafc", stroke: "#cbd5e1", borderRadius: 4 });
+          }
           g.headerHeight = 0;
         }
         walk3(c.cells);
@@ -138810,7 +138847,10 @@ function generateBlockFromDiagram(diagram) {
       const g = c.id ? diagram.getGroup(c.id) : void 0;
       if (g) {
         flush();
-        lines.push(`${pad}block:${g.id}${c.span > 1 ? `:${c.span}` : ""}`);
+        const name = g.name?.trim();
+        const token2 = g.getMetadata("blockLabelToken");
+        const label = !name ? "" : token2 && g.getMetadata("blockLabel") === name ? token2 : `["${name.replace(/"/g, "#quot;")}"]`;
+        lines.push(`${pad}block:${g.id}${label}${c.span > 1 ? `:${c.span}` : ""}`);
         emit(g.getMetadata("grid"), pad + "  ", g.members);
         lines.push(`${pad}end`);
         continue;
@@ -167437,7 +167477,7 @@ var DocumentShape = pathShape(
   { innerRect: (w, h) => ({ x: 0.08 * w, y: 0.08 * h, w: 0.84 * w, h: 0.72 * h }) }
 );
 function cylinderRy(w, h) {
-  return Math.min(h / 2, w / 2 / (2.5 + w / h));
+  return Math.min(h / 5, w / 2 / (2.5 + w / h));
 }
 var CylinderShape = {
   ...pathShape(
@@ -167449,7 +167489,15 @@ var CylinderShape = {
       const body = h - 2 * ry;
       return `M ${r3(x0)},${r3(y0 + ry)} a ${r3(rx)},${r3(ry)} 0 0 0 ${r3(w)} 0 a ${r3(rx)},${r3(ry)} 0 0 0 ${r3(-w)} 0 l 0 ${r3(body)} a ${r3(rx)},${r3(ry)} 0 0 0 ${r3(w)} 0 l 0 ${r3(-body)}`;
     },
-    { innerRect: (w, h) => ({ x: 0.1 * w, y: 0.28 * h, w: 0.8 * w, h: 0.5 * h }) }
+    {
+      // the label sits on the BODY: from the rim's front seam (2·ry) down to where
+      // the base arc meets the sides (h − ry) — its middle at h/2 + ry/2, as
+      // Mermaid offsets a cylinder's label; a fixed 28–78 % band put it on the seam
+      innerRect: (w, h) => {
+        const ry = cylinderRy(w, h);
+        return { x: 0.1 * w, y: 2 * ry, w: 0.8 * w, h: h - 3 * ry };
+      }
+    }
   ),
   // Card 7 — geometry-true anchors. Ports ride the cylinder's real geometry: the
   // top port sits on the FRONT RIM SEAM (the visible top edge of the body, at
@@ -168264,7 +168312,7 @@ function nudgePortLabels(centres, heights, gap = 2) {
     }
     previousBottom = wanted + nudges[i] + half;
   }
-  const mean = nudges.reduce((sum2, n3) => sum2 + n3, 0) / count2;
+  const mean = nudges.reduce((sum3, n3) => sum3 + n3, 0) / count2;
   return nudges.map((n3) => n3 - mean);
 }
 function portLabelWidth(spec, fontSize) {
@@ -194483,7 +194531,7 @@ var AnimationPerformanceService = class {
    */
   updateMetrics(currentFps, frameTime) {
     const monitoringDuration = (performance.now() - this.startTime) / 1e3;
-    const averageFps = this.fpsHistory.length > 0 ? this.fpsHistory.reduce((sum2, fps) => sum2 + fps, 0) / this.fpsHistory.length : 0;
+    const averageFps = this.fpsHistory.length > 0 ? this.fpsHistory.reduce((sum3, fps) => sum3 + fps, 0) / this.fpsHistory.length : 0;
     const minFps = this.fpsHistory.length > 0 ? Math.min(...this.fpsHistory) : 0;
     const maxFps = this.fpsHistory.length > 0 ? Math.max(...this.fpsHistory) : 0;
     const frameDrops = this.fpsHistory.filter((fps) => fps < this.thresholds.minFps).length;
@@ -201507,7 +201555,7 @@ function nodeAt(root, path) {
   }
   return n3;
 }
-var sum = (children) => children.reduce((s, c) => s + Math.max(0, c.weight), 0) || 1;
+var sum2 = (children) => children.reduce((s, c) => s + Math.max(0, c.weight), 0) || 1;
 function projectSplit(root, frame, gap = 0, padding = 0, rtl = false) {
   const out = /* @__PURE__ */ new Map();
   if (!root) return out;
@@ -201524,7 +201572,7 @@ function projectSplit(root, frame, gap = 0, padding = 0, rtl = false) {
     }
     const n3 = node.children.length;
     if (!n3) return;
-    const total = sum(node.children);
+    const total = sum2(node.children);
     const along = node.dir === "row" ? r.width : r.height;
     const free = Math.max(0, along - gap * (n3 - 1));
     let cursor = 0;
@@ -201553,7 +201601,7 @@ function groupRectsOf(root, frame, gap = 0, padding = 0, rtl = false) {
     out.push({ path, dir: node.dir, rect: { ...r } });
     const n3 = node.children.length;
     if (!n3) return;
-    const total = sum(node.children);
+    const total = sum2(node.children);
     const along = node.dir === "row" ? r.width : r.height;
     const free = Math.max(0, along - gap * (n3 - 1));
     let cursor = 0;
@@ -201583,7 +201631,7 @@ function dividersOf(root, frame, gap = 0, padding = 0, rtl = false) {
     if (!isSplitGroup(node)) return;
     const n3 = node.children.length;
     if (!n3) return;
-    const total = sum(node.children);
+    const total = sum2(node.children);
     const along = node.dir === "row" ? r.width : r.height;
     const free = Math.max(0, along - gap * (n3 - 1));
     let cursor = 0;
@@ -201669,10 +201717,10 @@ function collapse(node) {
   if (kids.length === 0) return null;
   if (kids.length === 1) return { ...kids[0], weight: node.weight };
   const flat = [];
-  const total = sum(kids);
+  const total = sum2(kids);
   for (const k of kids) {
     if (isSplitGroup(k) && k.dir === node.dir) {
-      const inner = sum(k.children);
+      const inner = sum2(k.children);
       for (const g of k.children) flat.push({ ...g, weight: k.weight / total * (g.weight / inner) * total });
     } else flat.push(k);
   }
@@ -201695,7 +201743,7 @@ function moveSplitDivider(root, path, index, fraction, min = 0.05) {
   const tree = cloneSplit(root);
   const group = nodeAt(tree, path);
   if (!isSplitGroup(group) || index < 0 || index >= group.children.length - 1) return tree;
-  const total = sum(group.children);
+  const total = sum2(group.children);
   const a = group.children[index];
   const b = group.children[index + 1];
   const fa = a.weight / total;
@@ -201708,7 +201756,7 @@ function moveSplitDivider(root, path, index, fraction, min = 0.05) {
 }
 function normalizeSplit(root) {
   if (!root || !isSplitGroup(root)) return root;
-  const total = sum(root.children);
+  const total = sum2(root.children);
   return {
     dir: root.dir,
     weight: root.weight,
