@@ -12,7 +12,8 @@
  *     a --> b
  *
  * Blocks fill rows left to right, `columns N` to a row; `:N` spans N cells;
- * `space[:N]` leaves holes; `block[:id[:N]] … end` nests a grid of its own.
+ * `space[:N]` leaves holes; `block[:id["Label"][:N]] … end` nests a grid of its own
+ * (a label is its caption).
  *
  * Everything that is not the GRID — a block's shape and label, edges, `style`,
  * `classDef`, `class` — is the flowchart grammar already. So the parser splits
@@ -30,7 +31,8 @@ export type BlockCell =
   /** `token` is what the flowchart grammar reads; `raw` is what was written (a block arrow differs). */
   | { kind: 'block'; id: string; token: string; span: number; raw?: string }
   | { kind: 'space'; span: number }
-  | { kind: 'group'; id: string; span: number; columns?: number; cells: BlockCell[] };
+  /** A nested block; `label` from `block:id["Label"]`, `labelToken` its brackets as written. */
+  | { kind: 'group'; id: string; span: number; columns?: number; cells: BlockCell[]; label?: string; labelToken?: string };
 
 export interface MermaidBlockModel {
   /** Blocks to a row; undefined = `auto` (one row). */
@@ -91,9 +93,14 @@ export function parseMermaidBlock(text: string): MermaidBlockModel {
       top.columns = cols[1]!.toLowerCase() === 'auto' ? undefined : Number(cols[1]);
       continue;
     }
-    const block = /^block(?::([A-Za-z_][\w-]*))?(?::(\d+))?$/.exec(line);
+    // block[:id[<shape>"Label"<shape>]][:N] — Mermaid takes a label only after an id, quoted, before the span
+    const block = /^block(?::([A-Za-z_][\w-]*)([[({]+"([^"]*)"[\])}]+)?)?(?::(\d+))?$/.exec(line);
     if (block) {
-      const group: BlockCell = { kind: 'group', id: block[1] ?? `block_${++anon}`, span: block[2] ? Number(block[2]) : 1, cells: [] };
+      const group: BlockCell = { kind: 'group', id: block[1] ?? `block_${++anon}`, span: block[4] ? Number(block[4]) : 1, cells: [] };
+      if (block[2]) {
+        group.label = block[3]!;
+        group.labelToken = block[2];
+      }
       top.cells.push(group);
       stack.push(group);
       continue;
@@ -141,7 +148,7 @@ export function blockModelToFlowchart(model: MermaidBlockModel): string {
     for (const c of cells) {
       if (c.kind === 'block') lines.push(`${pad}${c.token}`);
       else if (c.kind === 'group') {
-        lines.push(`${pad}subgraph ${c.id}`);
+        lines.push(`${pad}subgraph ${c.id}${c.label ? `["${c.label.replace(/"/g, '#quot;')}"]` : ''}`);
         walk(c.cells, pad + '  ');
         lines.push(`${pad}end`);
       }
@@ -180,8 +187,17 @@ export function applyBlockGrid(diagram: DiagramModel, model: MermaidBlockModel):
         const g = diagram.getGroup(c.id);
         if (g) {
           g.setMetadata('grid', toSpec(c.columns, c.cells));
-          g.name = ''; // a nested block has no caption
-          if (!g.getMetadata('frameStyle')) g.setMetadata('frameStyle', { fill: '#f8fafc', stroke: '#cbd5e1', borderRadius: 4 });
+          // a nested block is captioned only when it is labelled: block:ui["Presentation layer"]
+          g.name = c.label ?? '';
+          if (c.labelToken) {
+            g.setMetadata('blockLabel', c.label);
+            g.setMetadata('blockLabelToken', c.labelToken);
+          }
+          if (!g.getMetadata('frameStyle')) {
+            g.setMetadata('frameStyle', c.label
+              ? { fill: '#f8fafc', stroke: '#cbd5e1', borderRadius: 4, color: '#334155', fontWeight: '600', fontSize: 12 }
+              : { fill: '#f8fafc', stroke: '#cbd5e1', borderRadius: 4 });
+          }
           g.headerHeight = 0;
         }
         walk(c.cells);
@@ -250,7 +266,10 @@ export function generateBlockFromDiagram(diagram: DiagramModel): string {
       const g = c.id ? diagram.getGroup(c.id) : undefined;
       if (g) {
         flush();
-        lines.push(`${pad}block:${g.id}${c.span > 1 ? `:${c.span}` : ''}`);
+        const name = g.name?.trim();
+        const token = g.getMetadata('blockLabelToken') as string | undefined;
+        const label = !name ? '' : token && g.getMetadata('blockLabel') === name ? token : `["${name.replace(/"/g, '#quot;')}"]`;
+        lines.push(`${pad}block:${g.id}${label}${c.span > 1 ? `:${c.span}` : ''}`);
         emit(g.getMetadata('grid') as BlockGridSpec | undefined, pad + '  ', g.members);
         lines.push(`${pad}end`);
         continue;

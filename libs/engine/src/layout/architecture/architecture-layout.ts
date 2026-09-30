@@ -112,8 +112,18 @@ interface ZoneBlock {
   plan?: Plan;
   /** An explicit grid (block-beta) instead of the ranked composition. */
   grid?: ArchitectureGrid;
+  /** The grid as placed: which cell each block is in, and the tracks it can grow. */
+  gridPlan?: GridPlan;
 }
 type Block = LeafBlock | ZoneBlock;
+
+interface GridPlan {
+  placed: Array<{ b: Block; row: number; col: number; span: number }>;
+  colW: number[];
+  rowH: number[];
+  gapX: number[];
+  gapY: number[];
+}
 
 interface Plan {
   columns: Block[][];
@@ -129,6 +139,7 @@ interface Plan {
   sharedGapF?: number[];
 }
 
+const sum = (xs: number[]) => xs.reduce((t, v) => t + v, 0);
 const fOf = (s: Sz, a: Axis) => (a === 'x' ? s.w : s.h);
 const cOf = (s: Sz, a: Axis) => (a === 'x' ? s.h : s.w);
 const sz = (f: number, c: number, a: Axis): Sz => (a === 'x' ? { w: f, h: c } : { w: c, h: f });
@@ -497,10 +508,11 @@ class ArchitectureComposer {
 
   /**
    * An explicit GRID (Mermaid block-beta): cells in reading order, `columns` to a
-   * row, a cell `span` wide, holes where a cell has no block. A column shares one
-   * width and a row one height, and every block FILLS its cell (a spanning block
-   * covers its columns and the gaps between them). A gap widens for a label that
-   * has to fit between two neighbours.
+   * row, a cell `span` wide, holes where a cell has no block. Every cell is ONE
+   * width, the widest block's (Mermaid sizes a grid's cells alike), a row shares
+   * one height, and every block FILLS its cell (a spanning block covers its
+   * columns and the gaps between them). A gap widens for a label that has to fit
+   * between two neighbours.
    */
   private arrangeGrid(z: ZoneBlock): void {
     const plan = z.plan!;
@@ -551,28 +563,54 @@ class ArchitectureComposer {
       for (let j = p.col; j < p.col + p.span; j++) w += colW[j]! + (j > p.col ? gapX[j]! : 0);
       return w;
     };
+    colW.fill(Math.max(0, ...colW) || this.k.minBoxW);
     for (const p of placed) if (p.span > 1) {
       const short = p.b.size.w - spanW(p);
-      if (short > 0) for (let j = p.col; j < p.col + p.span; j++) colW[j] = colW[j]! + short / p.span;
+      if (short > 0) colW.fill(colW[0]! + short / p.span);
     }
-    for (let j = 0; j < N; j++) if (colW[j] === 0) colW[j] = this.k.minBoxW;
     for (let r = 0; r < rows; r++) if (rowH[r] === 0) rowH[r] = this.k.minBoxH;
+    z.gridPlan = { placed, colW, rowH, gapX, gapY };
+    plan.columns = [z.children];
+    plan.content = rows ? { w: sum(colW) + sum(gapX), h: sum(rowH) + sum(gapY) } : { w: 0, h: 0 };
+    this.sizeZone(z); // its own frame: never narrower than its caption
+    this.fillGrid(z, z.id === ROOT ? plan.content : z.size);
+  }
+
+  /**
+   * Lay a grid's blocks out to FILL `size`, its frame: extra width shared by its
+   * columns, extra height by its rows — Mermaid's block layout grows children to
+   * fit the same way. A nested grid handed a bigger cell (a column stretched to
+   * the height of the layers beside it, a layer as wide as the widest) fills it
+   * in turn, all the way down.
+   */
+  private fillGrid(z: ZoneBlock, size: Sz): void {
+    const plan = z.plan!;
+    const { placed, colW, rowH, gapX, gapY } = z.gridPlan!;
+    if (!rowH.length) return;
+    const pad = z.id === ROOT ? { l: 0, r: 0, t: 0, b: 0 } : z.pad;
+    const extraW = size.w - pad.l - pad.r - (sum(colW) + sum(gapX));
+    const extraH = size.h - pad.t - pad.b - (sum(rowH) + sum(gapY));
+    if (extraW > 0.5) colW.forEach((w, j) => (colW[j] = w + extraW / colW.length));
+    if (extraH > 0.5) rowH.forEach((h, r) => (rowH[r] = h + extraH / rowH.length));
     const xAt: number[] = [], yAt: number[] = [];
     colW.forEach((_, j) => xAt.push(j === 0 ? 0 : xAt[j - 1]! + colW[j - 1]! + gapX[j]!));
     rowH.forEach((_, r) => yAt.push(r === 0 ? 0 : yAt[r - 1]! + rowH[r - 1]! + gapY[r]!));
     for (const p of placed) {
-      const w = spanW(p), h = rowH[p.row]!;
+      let w = 0;
+      for (let j = p.col; j < p.col + p.span; j++) w += colW[j]! + (j > p.col ? gapX[j]! : 0);
+      const h = rowH[p.row]!;
       if (p.b.kind === 'node' && this.fixed(p.b)) {
         // a fixed node sits in the middle of its cell
         plan.rel.set(p.b.id, { x: xAt[p.col]! + (w - p.b.size.w) / 2, y: yAt[p.row]! + (h - p.b.size.h) / 2 });
         continue;
       }
-      p.b.size = p.b.kind === 'node' ? { w, h } : { w: Math.max(p.b.size.w, w), h: Math.max(p.b.size.h, h) };
+      if (p.b.kind === 'node') p.b.size = { w, h };
+      else if (p.b.gridPlan) this.fillGrid(p.b, { w: Math.max(p.b.size.w, w), h: Math.max(p.b.size.h, h) });
+      else p.b.size = { w: Math.max(p.b.size.w, w), h: Math.max(p.b.size.h, h) };
       plan.rel.set(p.b.id, { x: xAt[p.col]!, y: yAt[p.row]! });
     }
-    plan.columns = [z.children];
-    plan.content = rows ? { w: xAt[N - 1]! + colW[N - 1]!, h: yAt[rows - 1]! + rowH[rows - 1]! } : { w: 0, h: 0 };
-    this.sizeZone(z);
+    plan.content = { w: sum(colW) + sum(gapX), h: sum(rowH) + sum(gapY) };
+    if (z.id !== ROOT) z.size = { w: Math.max(size.w, plan.content.w + pad.l + pad.r), h: Math.max(size.h, plan.content.h + pad.t + pad.b) };
   }
 
   /**
