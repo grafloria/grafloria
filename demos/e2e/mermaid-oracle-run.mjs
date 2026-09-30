@@ -37,6 +37,9 @@ const BUNDLE = join(tmpdir(), 'mermaid-oracle-grafloria.js');
 
 // Real hand-written Mermaid a visitor might paste. Grouped by diagram type so a
 // failure names the family it belongs to.
+/** A demo's Mermaid source, read from the page itself so the gate and the demo cannot drift. */
+const demoSource = (page, id) => new RegExp(`<script type="text/plain" id="${id}">([\\s\\S]*?)</script>`).exec(readFileSync(join(HERE, '..', page), 'utf8'))[1].trim();
+
 const CASES = {
   // ── flowchart: base + the Tier-1 styling channel (Phases 1–2) ────────────
   'flow base': 'flowchart TD\n  a-->b-->c',
@@ -63,6 +66,8 @@ const CASES = {
     'block-beta\ncolumns 3\ndoc>"Document"]:3\nspace down1<[" "]>(down) space\n\nblock:e:3\n       l["left"]\n       m("A wide one in the middle")\n       r["right"]\nend\nspace down2<[" "]>(down) space\ndb[("DB")]:3\nspace:3\nD space C\ndb --> D\nC --> db\nD --> C\nstyle m fill:#d6d,stroke:#333,stroke-width:4px',
   'block spans+nested+labels':
     'block-beta\n  columns 3\n  a["Frontend"] b["API"] c[("Database")]\n  d["Cache layer"]:2 e["Queue"]\n  block:grp:3\n    columns 2\n    x y\n  end\n  a --> b\n  b -- "writes" --> c\n  d -.-> e\n  classDef hot fill:#fca\n  class e hot',
+  // labelled nested blocks, as the 3-tier demo writes them
+  'block labelled layers (3-tier demo)': demoSource('diagrams/mermaid-architecture-block.html', 'src-tiers'),
 
   // ── erDiagram (Phase 3) ─────────────────────────────────────────────────
   'er minimal': 'erDiagram\n    CUSTOMER ||--o{ ORDER : places',
