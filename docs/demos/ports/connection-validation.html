@@ -90,5 +90,18 @@ defineDemo({
     status.textContent = `output→input: ${ctx.diagram.getLinks().length} link (accepted)`;
     check(ctx.diagram.getLinks().length === 1, `the valid connection was not made (${ctx.diagram.getLinks().length} links)`);
   },
+
+  // The card's picture: the valid output→input connection made, framed close
+  // (fitView stops at 1:1 — it never magnifies; these three nodes want nearer).
+  async showcase(ctx) {
+    await ctx.drag('ao', 'bi');
+    const ns = ctx.diagram.getNodes();
+    const x = Math.min(...ns.map((n) => n.position.x)), y = Math.min(...ns.map((n) => n.position.y));
+    const w = Math.max(...ns.map((n) => n.position.x + n.size.width)) - x;
+    const h = Math.max(...ns.map((n) => n.position.y + n.size.height)) - y;
+    ctx.instance.viewport.fitToBounds({ x, y, width: w, height: h }, 80, { maxZoom: 2 });
+    ctx.instance.renderNow();
+    await ctx.tick();
+  },
 });
 </script>

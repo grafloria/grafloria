@@ -73,5 +73,13 @@ defineDemo({
     const painted = ctx.host.querySelectorAll('[data-node-id]');
     check(painted.length === 1, `expected 1 node in the DOM, found ${painted.length}`);
   },
+
+  // The card's picture: three boxes dragged out with the tool.
+  async showcase(ctx) {
+    gesture(ctx.host, { x: 120, y: 100 }, { x: 360, y: 240 }, 12);
+    gesture(ctx.host, { x: 420, y: 140 }, { x: 640, y: 300 }, 12);
+    gesture(ctx.host, { x: 200, y: 300 }, { x: 460, y: 420 }, 12);
+    await ctx.tick();
+  },
 });
 </script>
