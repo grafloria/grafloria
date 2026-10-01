@@ -39,6 +39,10 @@ export function Flow() {
   `useEdgesState`, `useSelection`, `useOnSelectionChange`, `useViewport`.
 - **`layout`** — declarative auto-layout by registry name or `{ name, options }`;
   re-runs on value change, never on data change. ELK loads lazily.
+- **`highlighterConfig`** — the outline layer: outlines around the hovered node,
+  the selected node, nodes with a validation issue, and valid connection
+  targets. Off by default; `true` turns every kind on, an object picks kinds
+  (`{ showValidation: false }` keeps hover and selection only). Follows the prop live.
 - **Ports — no `<Handle>` needed.** React Flow requires `<Handle>` components
   because handles ARE its port system. Grafloria's ports are model anatomy:
   declare them on the spec and the core renders, positions, and wires them —

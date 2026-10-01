@@ -45,6 +45,10 @@ export class FlowComponent {
 - `[(nodes)]` / `[(edges)]` — two-way model signals; drags, connects, and edits
   round-trip into your arrays. `(modelChange)` emits a replayable delta.
 - `[(viewport)]` / `[(zoom)]` — the camera, two-way.
+- `[highlighterConfig]` — the outline layer: outlines around the hovered node,
+  the selected node, nodes with a validation issue, and valid connection
+  targets. On by default; `false` turns it off with no CSS, an object picks
+  kinds (`{ showValidation: false }` keeps hover and selection only).
 
 ## Custom nodes are `ng-template`s
 
