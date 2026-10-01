@@ -238,6 +238,19 @@ describe('DiagramCanvasComponent — wave4/interaction (Cards 5-7)', () => {
       expect(hover).toHaveLength(1);
       expect(hover[0]!.getAttribute('x')).toBe('98'); // padded by 2
     });
+
+    test('highlighterConfig=false hides overlay decorations (no host CSS)', () => {
+      fixture.componentRef.setInput('highlighterConfig', false);
+      fixture.detectChanges();
+
+      const node = addNode(100, 100);
+      node.setState({ hovered: true });
+      diagram.selectNode(node);
+      paint();
+
+      expect(overlay('.grafloria-highlighter-hover')).toHaveLength(0);
+      expect(overlay('.grafloria-highlighter-selection')).toHaveLength(0);
+    });
   });
 
   // ==========================================================================
