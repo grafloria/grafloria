@@ -59,6 +59,7 @@ import {
   type NodeSpec,
   type EdgeSpec,
   type Theme,
+  type HighlighterConfig,
 } from '@grafloria/renderer';
 
 export interface GrafloriaLayoutRequest {
@@ -133,6 +134,13 @@ export const GrafloriaFlow = defineComponent({
     interaction: { type: Object as PropType<Record<string, unknown>>, default: undefined },
     /** Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables. */
     tokenBridge: { type: Object as PropType<unknown>, default: undefined },
+    /**
+     * The outline layer Angular's canvas draws: outlines around the hovered node,
+     * the selected node, nodes with a validation issue, and valid connection
+     * targets. `true` turns every kind on; an object turns kinds on or off one by
+     * one. Off when unset. Live: follows the prop by value.
+     */
+    highlighterConfig: { type: [Boolean, Object] as PropType<boolean | Partial<HighlighterConfig>>, default: undefined },
   },
   emits: [
     'update:nodes',
@@ -237,6 +245,7 @@ export const GrafloriaFlow = defineComponent({
         renderer: props.rendererConfig as never,
         interaction: props.interaction,
         tokenBridge: props.tokenBridge as never,
+        highlighterConfig: props.highlighterConfig,
         renderCustomNode: (node: NodeModel, element: HTMLElement) => {
           const entry: MountedNode = { node, element };
           mounted.set(node.id, entry);
@@ -300,6 +309,11 @@ export const GrafloriaFlow = defineComponent({
     watch(
       () => (props.plugins === undefined ? undefined : JSON.stringify(props.plugins)),
       (key) => attachPlugins(key === undefined ? undefined : JSON.parse(key))
+    );
+    // The outline layer follows the prop by VALUE (an inline object is fine).
+    watch(
+      () => JSON.stringify(props.highlighterConfig ?? false),
+      (key) => instance.value?.setHighlighterConfig(JSON.parse(key) as boolean | Partial<HighlighterConfig>)
     );
     // Layout re-runs on VALUE change only (JSON key), never on node data.
     watch(

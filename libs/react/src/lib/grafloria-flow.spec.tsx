@@ -27,6 +27,23 @@ const NODES: NodeSpec[] = [
 ];
 
 describe('<GrafloriaFlow>', () => {
+  it('highlighterConfig: off unless set; on, it outlines the selection; it follows the prop live', async () => {
+    let instance: DiagramInstance | undefined;
+    const { container, rerender } = render(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} />);
+    await waitFor(() => expect(instance).toBeDefined());
+    const outlines = (kind: string) => container.querySelectorAll(`.grafloria-highlighter-${kind}`).length;
+    act(() => { instance!.getModel().selectNode(instance!.getModel().getNode('a')!); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 40)); });
+    expect(outlines('selection')).toBe(0); // unset: no outline layer, as before
+    rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlighterConfig />);
+    await waitFor(() => expect(outlines('selection')).toBe(1));
+    rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlighterConfig={{ showSelection: false }} />);
+    await waitFor(() => expect(outlines('selection')).toBe(0));
+    expect(outlines('validation')).toBeGreaterThan(0); // the other kinds stay on
+    rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlighterConfig={false} />);
+    await waitFor(() => expect(container.querySelectorAll('.grafloria-highlighter').length).toBe(0));
+  });
+
   it('mounts a real diagram into the DOM', async () => {
     const { container } = render(<GrafloriaFlow defaultNodes={NODES} />);
 

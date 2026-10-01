@@ -19,7 +19,7 @@ export interface GrafloriaCollabOptions {
   [option: string]: unknown;
 }
 import { createDiagram, loadCanvasPlugins, bindPresence } from '@grafloria/renderer';
-import type { CanvasPluginOptions, BindPresenceOptions, PresenceBinding } from '@grafloria/renderer';
+import type { CanvasPluginOptions, BindPresenceOptions, PresenceBinding, HighlighterConfig } from '@grafloria/renderer';
 import type {
   CreateDiagramOptions,
   DiagramInstance,
@@ -142,6 +142,13 @@ export interface GrafloriaFlowProps {
   interaction?: Record<string, unknown>;
   /** Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables. */
   tokenBridge?: unknown;
+  /**
+   * The outline layer Angular's canvas draws: outlines around the hovered node,
+   * the selected node, nodes with a validation issue, and valid connection
+   * targets. `true` turns every kind on; an object turns kinds on or off one by
+   * one. Off when unset. Live: follows the prop by value.
+   */
+  highlighterConfig?: boolean | Partial<HighlighterConfig>;
 
   className?: string;
   style?: CSSProperties;
@@ -208,6 +215,7 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
       renderer: callbacks.current.rendererConfig as never,
       interaction: callbacks.current.interaction,
       tokenBridge: callbacks.current.tokenBridge as never,
+      highlighterConfig: callbacks.current.highlighterConfig,
 
       // Blocker #4, from React's side: the core hands us an element, we render a
       // PORTAL into it. Portals keep the node component inside this React tree —
@@ -322,6 +330,22 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
       dispose?.();
     };
   }, [instance, pluginsKey]);
+
+  // -- the outline layer, live ------------------------------------------------
+  // By VALUE, like `layout`, so an inline object does not re-apply every render.
+  // The first value went in with createDiagram(); only a CHANGE is applied here.
+  const highlighterKey = JSON.stringify(props.highlighterConfig ?? false);
+  const appliedHighlighter = useRef<string | null>(null);
+  useEffect(() => {
+    if (!instance) return;
+    if (appliedHighlighter.current === null) {
+      appliedHighlighter.current = highlighterKey;
+      return;
+    }
+    if (appliedHighlighter.current === highlighterKey) return;
+    appliedHighlighter.current = highlighterKey;
+    instance.setHighlighterConfig(JSON.parse(highlighterKey) as boolean | Partial<HighlighterConfig>);
+  }, [instance, highlighterKey]);
 
   // -- declarative layout -----------------------------------------------------
   // Runs when the `layout` prop (by VALUE, so inline objects are fine) or the
