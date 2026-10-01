@@ -1,0 +1,220 @@
+<title>PR #4 · highlighterConfig</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* A review sheet: one canvas shot twice, the overlay kinds named in the colours they draw in. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #18202c;
+  --muted: #5a6474;
+  --line: #dde2ea;
+  --accent: #2457d6;
+  --good: #1a7f43;
+  --good-bg: #e6f4ec;
+  --ov-validation: #e8930c;
+  --ov-hover: #4f8ff5;
+  --ov-selection: #e8930c;
+  --code-bg: #f6f8fb;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11151c; --surface: #181e27; --ink: #e6ebf2; --muted: #9aa5b5; --line: #2a3340;
+    --accent: #7ea4ff; --good: #5fd08f; --good-bg: #16301f; --code-bg: #141a22;
+    --ov-validation: #f2a83b; --ov-hover: #7eaefc; --ov-selection: #f2a83b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11151c; --surface: #181e27; --ink: #e6ebf2; --muted: #9aa5b5; --line: #2a3340;
+  --accent: #7ea4ff; --good: #5fd08f; --good-bg: #16301f; --code-bg: #141a22;
+  --ov-validation: #f2a83b; --ov-hover: #7eaefc; --ov-selection: #f2a83b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.6 var(--font-body); }
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 20px; padding-block: 32px 64px; display: grid; gap: 40px; }
+h1, h2 { text-wrap: balance; margin: 0; line-height: 1.25; }
+h1 { font-size: 1.75rem; font-weight: 700; }
+h2 { font-size: 1.2rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+code, pre { font-family: var(--font-mono); font-size: 0.86em; }
+:not(pre) > code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+a { color: var(--accent); }
+a:focus-visible, input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.eyebrow { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+header { display: grid; gap: 12px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--muted); font-size: 0.9rem; }
+.verdict { display: inline-flex; align-items: center; gap: 8px; width: fit-content; background: var(--good-bg); color: var(--good); border-radius: 999px; padding: 4px 12px; font-weight: 600; font-size: 0.9rem; }
+.verdict::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+
+section { display: grid; gap: 16px; }
+.lede { color: var(--muted); }
+
+/* the comparison */
+.compare { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); max-width: 100%; aspect-ratio: 1604 / 806; }
+.compare img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.compare .after { clip-path: inset(0 0 0 var(--cut, 50%)); }
+.compare .seam { position: absolute; top: 0; bottom: 0; left: var(--cut, 50%); width: 2px; background: var(--accent); transform: translateX(-1px); pointer-events: none; }
+.compare .tag { position: absolute; top: 10px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 4px; background: var(--ink); color: var(--surface); }
+.compare .tag.l { left: 10px; } .compare .tag.r { right: 10px; }
+.slider { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; font-size: 0.85rem; color: var(--muted); }
+.slider input { width: 100%; accent-color: var(--accent); }
+
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+figure { margin: 0; display: grid; gap: 10px; min-width: 0; }
+figure img { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+figcaption { display: grid; gap: 8px; }
+figcaption b { font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; background: var(--surface); font-variant-numeric: tabular-nums; }
+.chip i { width: 12px; height: 8px; border: 2px solid currentColor; border-radius: 2px; }
+.chip.validation i { color: var(--ov-validation); }
+.chip.hover i { color: var(--ov-hover); }
+.chip.selection i { color: var(--ov-selection); border-style: dotted; }
+.chip.zero { color: var(--muted); }
+
+.code { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.code > div { display: grid; gap: 8px; align-content: start; min-width: 0; }
+pre { margin: 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; line-height: 1.55; }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+td.result { white-space: nowrap; font-weight: 600; color: var(--good); }
+td.result.wait { color: var(--muted); font-weight: 500; }
+
+ul.notes { margin: 0; padding-left: 20px; display: grid; gap: 8px; max-width: 72ch; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Pull request review · grafloria/grafloria</span>
+    <h1>#4 · Turn the canvas overlays off with one input</h1>
+    <div class="meta">
+      <span>by sea-wave (Gal Gur-Arie)</span>
+      <span>1 commit · 2 files · +51 lines</span>
+      <span>@grafloria/angular</span>
+      <span>Reviewed 1 Oct 2026</span>
+    </div>
+    <span class="verdict">Recommend merging</span>
+  </header>
+
+  <section aria-labelledby="what">
+    <h2 id="what">What it does</h2>
+    <p>The Angular canvas draws an extra layer of outlines on top of the diagram: an orange box around nodes with a validation issue, a blue box around the node under the mouse, an orange dotted box around the selected node, and green boxes on valid targets while you draw a connection. Until now there was no setting for it, so an app that did not want them had to hide them with forced CSS. The pull request adds a <code>[highlighterConfig]</code> input: <code>false</code> turns the whole layer off, an object turns kinds on or off one by one.</p>
+  </section>
+
+  <section aria-labelledby="look">
+    <h2 id="look">The same canvas, before and after</h2>
+    <p class="lede">Both shots are the same app built with the pull request, in the same state: <b>Load</b> clicked to select it, the mouse resting on <b>Transform</b>. The only difference is the input. Drag the slider to compare in place.</p>
+    <div class="compare" id="cmp" style="--cut: 50%">
+      <img src="before.png" alt="Before: orange outlines around Extract and Transform, a blue hover outline on Transform, an orange dotted selection outline around Load">
+      <img class="after" src="after.png" alt="After: the same diagram with no extra outlines; Load still shows its own selection border, handles and toolbar">
+      <span class="seam" aria-hidden="true"></span>
+      <span class="tag l">Before</span>
+      <span class="tag r">After</span>
+    </div>
+    <label class="slider" for="cut"><span>Before</span><input id="cut" type="range" min="0" max="100" value="50" aria-label="Compare before and after"><span>After</span></label>
+
+    <div class="pair">
+      <figure>
+        <img src="before.png" alt="Before: default overlays on">
+        <figcaption>
+          <b>Before: default, overlays on</b>
+          <div class="chips">
+            <span class="chip validation"><i></i>validation · 3</span>
+            <span class="chip hover"><i></i>hover · 1</span>
+            <span class="chip selection"><i></i>selection · 1</span>
+          </div>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="after.png" alt="After: highlighterConfig false, overlays off">
+        <figcaption>
+          <b>After: <code>[highlighterConfig]="false"</code></b>
+          <div class="chips">
+            <span class="chip validation zero"><i></i>validation · 0</span>
+            <span class="chip hover zero"><i></i>hover · 0</span>
+            <span class="chip selection zero"><i></i>selection · 0</span>
+          </div>
+        </figcaption>
+      </figure>
+    </div>
+    <p class="lede">Counts are the overlay elements on the page in each shot. What stays matters as much as what goes: <b>Load</b> still shows that it is selected, with its own dashed border, resize handles and toolbar. Only the extra outline layer is gone, so users can still see what they selected.</p>
+  </section>
+
+  <section aria-labelledby="code">
+    <h2 id="code">What it replaces in an app</h2>
+    <div class="code">
+      <div>
+        <span class="eyebrow">Before: forced CSS in the host component</span>
+        <pre>/* No canvas input for HighlighterController */
+:host ::ng-deep {
+  .grafloria-highlighter-validation,
+  .grafloria-highlighter-hover,
+  .grafloria-highlighter-selection,
+  .grafloria-highlighter-connect-target {
+    display: none !important;
+    pointer-events: none !important;
+  }
+}</pre>
+      </div>
+      <div>
+        <span class="eyebrow">After: one binding</span>
+        <pre>&lt;grafloria-diagram-canvas
+  [highlighterConfig]="false"&gt;
+&lt;/grafloria-diagram-canvas&gt;
+
+&lt;!-- or keep some kinds --&gt;
+&lt;grafloria-diagram-canvas
+  [highlighterConfig]="{ showHover: false }"&gt;
+&lt;/grafloria-diagram-canvas&gt;</pre>
+      </div>
+    </div>
+    <p class="lede">The CSS version still drew the outlines and then hid them, and it depended on internal class names that could change. The input tells the canvas not to draw them at all.</p>
+  </section>
+
+  <section aria-labelledby="checked">
+    <h2 id="checked">What I checked</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Read the code</td><td class="result">Correct</td><td>The two names it imports are public in <code>@grafloria/renderer</code>, the four settings match the renderer's exactly, and nothing else in the component configures this layer, so the input cannot overwrite another setting.</td></tr>
+          <tr><td>Angular package tests</td><td class="result">665 pass</td><td>The whole suite, including the new test.</td></tr>
+          <tr><td>Does the new test catch a broken version?</td><td class="result">Yes</td><td>With the "off" values flipped back to on, the test fails: it finds the selection outline still drawn.</td></tr>
+          <tr><td>Release build of the package</td><td class="result">Builds</td><td>The same partial-Ivy build that is published to npm.</td></tr>
+          <tr><td>In a real browser</td><td class="result">Works</td><td>The screenshots above: overlays drawn by default, none with <code>false</code>, no page errors.</td></tr>
+          <tr><td>Angular demo app, 106 routes</td><td class="result" id="routes-result">106 / 106</td><td>Every Angular demo, built from the pull request, paints, throws nothing, and matches its JavaScript original.</td></tr>
+          <tr><td>Merges onto main</td><td class="result">Clean</td><td>Based on the current main, no conflicts.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="notes">
+    <h2 id="notes">Notes</h2>
+    <ul class="notes">
+      <li>An object is applied on top of the defaults, not on top of the previous value. So <code>{ showHover: false }</code> means "everything on except hover". That is a sensible rule, and the comment on the input says so.</li>
+      <li>The test covers <code>false</code>. Validation, connect-target and the object form are not tested separately; they go through the same call, so this is minor.</li>
+      <li>It is Angular-only. React and Vue have no equivalent input yet; that can follow separately and does not block this.</li>
+      <li>The Angular README lists the canvas inputs. If you merge, I will add one line for <code>[highlighterConfig]</code> and publish <code>@grafloria/angular</code> 0.13.6 so people can use it.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+  const cmp = document.getElementById('cmp');
+  const cut = document.getElementById('cut');
+  const set = () => cmp.style.setProperty('--cut', cut.value + '%');
+  cut.addEventListener('input', set);
+  set();
+</script>
