@@ -33,6 +33,45 @@ describe('GrafloriaFlow (Vue)', () => {
     host.remove();
   });
 
+  it('highlighterConfig: off unless set; on, it outlines the selection; it follows the prop live', async () => {
+    let instance: any = null;
+    const cfg = ref<boolean | Record<string, boolean> | undefined>(undefined);
+    app = createApp(
+      defineComponent({
+        setup() {
+          return () =>
+            h(GrafloriaFlow, {
+              defaultNodes: [
+                { id: 'a', position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
+                { id: 'b', position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
+              ] as NodeSpec[],
+              highlighterConfig: cfg.value,
+              onInit: (i: unknown) => (instance = i),
+            });
+        },
+      })
+    );
+    app.mount(host);
+    await flush();
+    const outlines = (kind: string) => host.querySelectorAll(`.grafloria-highlighter-${kind}`).length;
+    instance.getModel().selectNode(instance.getModel().getNode('a'));
+    await flush();
+    expect(outlines('selection')).toBe(0); // unset: no outline layer, as before
+    cfg.value = true;
+    await nextTick();
+    await flush();
+    expect(outlines('selection')).toBe(1);
+    cfg.value = { showSelection: false };
+    await nextTick();
+    await flush();
+    expect(outlines('selection')).toBe(0);
+    expect(outlines('validation')).toBeGreaterThan(0); // the other kinds stay on
+    cfg.value = false;
+    await nextTick();
+    await flush();
+    expect(host.querySelectorAll('.grafloria-highlighter').length).toBe(0);
+  });
+
   it('mounts, creates an instance, and renders the diagram SVG', async () => {
     let instance: any = null;
     app = createApp(
