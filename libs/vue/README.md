@@ -41,6 +41,10 @@ const edges = ref<EdgeSpec[]>([{ source: 'a', target: 'b' }]);
   `{ name, options }`; re-runs on value change, never on data change;
   `@layout-done` fires after. ELK loads lazily (~1.4 MB you don't ship unless
   a layout runs).
+- **`highlighterConfig`** — the outline layer: outlines around the hovered node,
+  the selected node, nodes with a validation issue, and valid connection
+  targets. Off by default; `true` turns every kind on, an object picks kinds
+  (`{ showValidation: false }` keeps hover and selection only). Follows the prop live.
 - **Events** — `@init` (the `DiagramInstance`), `@selection-change`,
   `@connect`, `@node-click`, `@edge-click`.
 - **Template ref API** — `getInstance()`, `applyLayout()`, `exportSvg()`,
