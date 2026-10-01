@@ -30,6 +30,7 @@ import type { FrameCoverage } from '../svg/svg-renderer';
 import type { DiagramRegistry } from '../ext/diagram-registry';
 import { VNodePatcher } from '../vnode/patch';
 import { InteractionController } from '../interaction/interaction-controller';
+import { HighlighterController, DEFAULT_HIGHLIGHTER_CONFIG, type Highlighter, type HighlighterConfig } from '../interaction/highlighters';
 import { ViewportController } from '../viewport/viewport-controller';
 import type { CanvasRect, Unsubscribe } from '../viewport/viewport-controller';
 import { RenderScheduler } from './render-scheduler';
@@ -134,6 +135,17 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * Switch it live with `setHighlightConnected()`.
    */
   highlightConnected?: boolean | HighlightConnectedOptions;
+
+  /**
+   * The OUTLINE LAYER Angular's canvas draws: an outline around the hovered node,
+   * the selected node, nodes with a validation issue, and the valid targets while
+   * a connection is drawn. `true` turns every kind on; an object turns kinds on or
+   * off one by one, over the defaults ({@link HighlighterConfig}). Off when unset,
+   * so an existing app is unchanged. Validation outlines include the engine's
+   * warnings, an unregistered node type among them; `{ showValidation: false }`
+   * keeps only hover and selection. Switch it live with `setHighlighterConfig()`.
+   */
+  highlighterConfig?: boolean | Partial<HighlighterConfig>;
 
   /**
    * Arrange the diagram on mount. `'architecture'` composes it the way AI tools
@@ -299,6 +311,11 @@ export interface DiagramInstance {
    * (`false`) — see `CreateDiagramOptions.highlightConnected`. Repaints.
    */
   setHighlightConnected(value: boolean | HighlightConnectedOptions): void;
+  /**
+   * Turn the outline layer on (`true`, or an object of kinds) or off (`false`) —
+   * see `CreateDiagramOptions.highlighterConfig`. Repaints.
+   */
+  setHighlighterConfig(value: boolean | Partial<HighlighterConfig>): void;
   /** The current `highlightConnected` setting (`false` when off). */
   getHighlightConnected(): boolean | HighlightConnectedOptions;
 
@@ -572,6 +589,72 @@ export function createDiagram(
     }
     overlayPatcher.reconcile(overlayHost, tree);
   };
+
+  // -- the outline layer (highlighterConfig) ------------------------------------
+  // The same controller Angular's canvas uses, so the outlines are the same ones;
+  // drawn like the line overlay, in world units inside the HTML layer, which
+  // carries the camera — a pan or zoom moves them with the picture for free.
+  const highlighter = new HighlighterController();
+  let highlighterOn = false;
+  const highlighterPatcher = new VNodePatcher({ document: doc });
+  let highlighterHost: HTMLElement | null = null;
+  /** The colours of Angular's canvas, as presentation attributes so a host's CSS on the class wins. */
+  const OUTLINE_STROKE: Record<string, string> = {
+    hover: '#60a5fa',
+    selection: '#3b82f6',
+    'connect-target': '#10b981',
+    error: '#ef4444',
+    warning: '#f59e0b',
+  };
+  const outlineVNode = (h: Highlighter): VNode => {
+    const stroke = OUTLINE_STROKE[h.kind === 'validation' ? (h.severity ?? 'warning') : h.kind] ?? '#3b82f6';
+    const common = {
+      className: h.className,
+      fill: 'none',
+      stroke,
+      'vector-effect': 'non-scaling-stroke',
+      ...(h.kind === 'selection' ? { strokeDasharray: '4 3' } : {}),
+      ...(h.kind === 'hover' ? { opacity: 0.9 } : {}),
+      ...(h.severity ? { 'data-severity': h.severity } : {}),
+    };
+    const title: VNode[] = h.message ? [{ type: 'title', key: `${h.id}-t`, props: { textContent: h.message }, children: [] }] : [];
+    if (h.bounds) {
+      const b = h.bounds;
+      const rotate = h.rotation ? { transform: `rotate(${h.rotation}, ${b.x + b.width / 2}, ${b.y + b.height / 2})` } : {};
+      return { type: 'rect', key: h.id, props: { ...common, ...rotate, x: b.x, y: b.y, width: b.width, height: b.height, strokeWidth: 2 }, children: title };
+    }
+    return { type: 'polyline', key: h.id, props: { ...common, points: (h.points ?? []).map((p) => `${p.x},${p.y}`).join(' '), strokeWidth: 6 }, children: title };
+  };
+  const syncHighlighterOverlay = (): void => {
+    if (!highlighterOn) {
+      highlighterHost?.remove();
+      highlighterHost = null;
+      return;
+    }
+    if (!highlighterHost || highlighterHost.parentNode !== layers.html) {
+      highlighterHost = doc.createElement('div');
+      highlighterHost.className = 'grafloria-highlighter-overlay';
+      highlighterHost.setAttribute('aria-hidden', 'true');
+      // z-index 2: above the cards and above the line overlay (1).
+      highlighterHost.setAttribute('style', 'position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:2');
+      layers.html.appendChild(highlighterHost);
+    }
+    highlighterPatcher.reconcile(highlighterHost, {
+      type: 'svg',
+      key: 'grafloria-highlighter-overlay',
+      props: { width: 1, height: 1, style: { position: 'absolute', left: '0px', top: '0px', overflow: 'visible', pointerEvents: 'none' } },
+      children: highlighter.compute(engine).map(outlineVNode),
+    });
+  };
+  /** Apply a setting; the next frame draws it (validation is refreshed when the layer comes on). */
+  const applyHighlighterConfig = (value: boolean | Partial<HighlighterConfig> | undefined): void => {
+    const was = highlighterOn;
+    highlighterOn = value !== undefined && value !== false;
+    highlighter.updateConfig({ ...DEFAULT_HIGHLIGHTER_CONFIG, ...(typeof value === 'object' ? value : {}) });
+    if (highlighterOn && !was) highlighter.refreshValidation(engine);
+    if (!highlighterOn) highlighter.clearValidation();
+  };
+  applyHighlighterConfig(options.highlighterConfig);
 
   // -- events -----------------------------------------------------------------
   const listeners = new Map<string, Set<Listener>>();
@@ -1479,6 +1562,7 @@ export function createDiagram(
     patcher.reconcile(layers.svg, vnode);
     syncCustomNodes();
     syncLineOverlay();
+    syncHighlighterOverlay();
 
     lastViewportKey = viewportKey();
     lastFrameHadPreview = isConnectionPreviewActive();
@@ -1556,6 +1640,16 @@ export function createDiagram(
     emit('edges:change', { edges: model.getLinks() });
   });
   onModel('groups:cleared', () => scheduler.schedule());
+  // The outline layer's validation is refreshed when the STRUCTURE changes — a
+  // node, link or group added, removed or cleared — as Angular's canvas does
+  // after a structural command. Never per frame: validateDiagram() walks it all.
+  for (const ev of ['node:added', 'node:removed', 'link:added', 'link:removed', 'group:added', 'group:removed', 'nodes:cleared', 'links:cleared', 'groups:cleared']) {
+    onModel(ev, () => {
+      if (!highlighterOn) return;
+      highlighter.refreshValidation(engine);
+      scheduler.schedule();
+    });
+  }
   onModel('selection:changed', () => {
     scheduler.schedule();
     emit('selection:change', {
@@ -1656,6 +1750,12 @@ export function createDiagram(
     },
     setHighlightConnected(value) {
       renderer.setHighlightConnected(value);
+      scheduler.schedule();
+    },
+    setHighlighterConfig(value) {
+      applyHighlighterConfig(value);
+      // nothing in the model changed, so the frame gate must be told
+      renderer.invalidateFrame();
       scheduler.schedule();
     },
     getHighlightConnected: () => renderer.getHighlightConnected(),
