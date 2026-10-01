@@ -114,6 +114,8 @@ import {
   type ProximityCandidate,
   HighlighterController,
   type Highlighter,
+  type HighlighterConfig,
+  DEFAULT_HIGHLIGHTER_CONFIG,
   KeyboardNavigationController,
   // wave6/a11y (card 4): focus containment. The camera maths stays in
   // ViewportController — this host only PLANS with it and applies the delta.
@@ -777,6 +779,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /** Card 5: double-click a node to edit its label in place. */
   readonly enableInPlaceEditing = input(true);
 
+  /**
+   * Hover / selection / validation / connect-target overlay decorations (the
+   * `.grafloria-highlighter-*` layer). `false` hides all kinds — no host CSS
+   * required. `true` (default) shows all. Pass a partial {@link HighlighterConfig}
+   * to toggle individual kinds or padding.
+   */
+  readonly highlighterConfig = input<boolean | Partial<HighlighterConfig>>(true);
+
   private readonly selectionTools = new SelectionToolsController();
   private readonly snapController = new SnapController();
   private readonly highlighterController = new HighlighterController();
@@ -994,6 +1004,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     effect(() => {
       const bounds = this.canvasBounds();
       untracked(() => this.snapController.updateConfig({ keepInBounds: bounds ?? null }));
+    });
+
+    effect(() => {
+      const cfg = this.highlighterConfig();
+      untracked(() => {
+        this.applyHighlighterConfigFromInput(cfg);
+        this.scheduleRender();
+      });
     });
 
     effect(() => {
@@ -1467,6 +1485,26 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       this.liveMessage = announcement.message;
       this.livePoliteness = announcement.politeness;
       this.cdr.markForCheck();
+    });
+  }
+
+  private applyHighlighterConfigFromInput(value: boolean | Partial<HighlighterConfig>): void {
+    if (value === false) {
+      this.highlighterController.updateConfig({
+        showHover: false,
+        showSelection: false,
+        showValidation: false,
+        showConnectTargets: false,
+      });
+      return;
+    }
+    if (value === true) {
+      this.highlighterController.updateConfig({ ...DEFAULT_HIGHLIGHTER_CONFIG });
+      return;
+    }
+    this.highlighterController.updateConfig({
+      ...DEFAULT_HIGHLIGHTER_CONFIG,
+      ...value,
     });
   }
 
