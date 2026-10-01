@@ -191057,6 +191057,64 @@ function createDiagram(container, options = {}) {
     }
     overlayPatcher.reconcile(overlayHost, tree);
   };
+  const highlighter = new HighlighterController();
+  let highlighterOn = false;
+  const highlighterPatcher = new VNodePatcher({ document: doc });
+  let highlighterHost = null;
+  const OUTLINE_STROKE = {
+    hover: "#60a5fa",
+    selection: "#3b82f6",
+    "connect-target": "#10b981",
+    error: "#ef4444",
+    warning: "#f59e0b"
+  };
+  const outlineVNode = (h) => {
+    const stroke = OUTLINE_STROKE[h.kind === "validation" ? h.severity ?? "warning" : h.kind] ?? "#3b82f6";
+    const common = {
+      className: h.className,
+      fill: "none",
+      stroke,
+      "vector-effect": "non-scaling-stroke",
+      ...h.kind === "selection" ? { strokeDasharray: "4 3" } : {},
+      ...h.kind === "hover" ? { opacity: 0.9 } : {},
+      ...h.severity ? { "data-severity": h.severity } : {}
+    };
+    const title = h.message ? [{ type: "title", key: `${h.id}-t`, props: { textContent: h.message }, children: [] }] : [];
+    if (h.bounds) {
+      const b = h.bounds;
+      const rotate = h.rotation ? { transform: `rotate(${h.rotation}, ${b.x + b.width / 2}, ${b.y + b.height / 2})` } : {};
+      return { type: "rect", key: h.id, props: { ...common, ...rotate, x: b.x, y: b.y, width: b.width, height: b.height, strokeWidth: 2 }, children: title };
+    }
+    return { type: "polyline", key: h.id, props: { ...common, points: (h.points ?? []).map((p) => `${p.x},${p.y}`).join(" "), strokeWidth: 6 }, children: title };
+  };
+  const syncHighlighterOverlay = () => {
+    if (!highlighterOn) {
+      highlighterHost?.remove();
+      highlighterHost = null;
+      return;
+    }
+    if (!highlighterHost || highlighterHost.parentNode !== layers.html) {
+      highlighterHost = doc.createElement("div");
+      highlighterHost.className = "grafloria-highlighter-overlay";
+      highlighterHost.setAttribute("aria-hidden", "true");
+      highlighterHost.setAttribute("style", "position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:2");
+      layers.html.appendChild(highlighterHost);
+    }
+    highlighterPatcher.reconcile(highlighterHost, {
+      type: "svg",
+      key: "grafloria-highlighter-overlay",
+      props: { width: 1, height: 1, style: { position: "absolute", left: "0px", top: "0px", overflow: "visible", pointerEvents: "none" } },
+      children: highlighter.compute(engine).map(outlineVNode)
+    });
+  };
+  const applyHighlighterConfig = (value) => {
+    const was = highlighterOn;
+    highlighterOn = value !== void 0 && value !== false;
+    highlighter.updateConfig({ ...DEFAULT_HIGHLIGHTER_CONFIG, ...typeof value === "object" ? value : {} });
+    if (highlighterOn && !was) highlighter.refreshValidation(engine);
+    if (!highlighterOn) highlighter.clearValidation();
+  };
+  applyHighlighterConfig(options.highlighterConfig);
   const listeners3 = /* @__PURE__ */ new Map();
   const emit = (event, payload) => {
     const set = listeners3.get(event);
@@ -191440,6 +191498,7 @@ function createDiagram(container, options = {}) {
     patcher.reconcile(layers.svg, vnode);
     syncCustomNodes();
     syncLineOverlay();
+    syncHighlighterOverlay();
     lastViewportKey = viewportKey();
     lastFrameHadPreview = isConnectionPreviewActive();
     lastFrameEpoch = getMutationEpoch();
@@ -191495,6 +191554,13 @@ function createDiagram(container, options = {}) {
     emit("edges:change", { edges: model.getLinks() });
   });
   onModel("groups:cleared", () => scheduler.schedule());
+  for (const ev of ["node:added", "node:removed", "link:added", "link:removed", "group:added", "group:removed", "nodes:cleared", "links:cleared", "groups:cleared"]) {
+    onModel(ev, () => {
+      if (!highlighterOn) return;
+      highlighter.refreshValidation(engine);
+      scheduler.schedule();
+    });
+  }
   onModel("selection:changed", () => {
     scheduler.schedule();
     emit("selection:change", {
@@ -191577,6 +191643,11 @@ function createDiagram(container, options = {}) {
     },
     setHighlightConnected(value) {
       renderer.setHighlightConnected(value);
+      scheduler.schedule();
+    },
+    setHighlighterConfig(value) {
+      applyHighlighterConfig(value);
+      renderer.invalidateFrame();
       scheduler.schedule();
     },
     getHighlightConnected: () => renderer.getHighlightConnected(),
