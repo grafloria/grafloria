@@ -131,14 +131,24 @@ export function renderToStaticSVG(options: StaticRenderOptions = {}): StaticRend
   // the SAME tree the browser produces — which is the whole point.
   const renderer = new SVGRenderer(engine, { instanceId }, options.theme);
   const vnode = renderer.render(viewport.getRenderViewport(), viewport.getZoom());
-  // A static artifact must SIZE ITSELF: the live path leaves width/height to the
-  // host's CSS, but an email, a README or a bare <img> cannot add CSS — without
-  // these the svg renders 0×0 (the audit's "blank page with a stray dot").
-  vnode.props = { ...vnode.props, width: options.width ?? 800, height: options.height ?? 600 };
   // ONE serializer, in DOM fidelity: the snapshot must describe exactly the DOM the
   // client's VNodePatcher would build, or hydration rebuilds the tree and flashes.
   // (The same function in 'file' fidelity is what `export/` uses for standalone SVG.)
-  const svg = serializeVNode(vnode, { fidelity: 'dom', standalone: options.standalone });
+  //
+  // TWO strings from it. `html` is what the client ADOPTS, so it carries the live
+  // path's root exactly — no width/height; an outer <svg> without them fills its
+  // full-size layer. The patcher adopts attributes, it does not strip them: a
+  // fixed size here outlived hydration, and once the camera synced to a container
+  // larger than the server's canvas the browser letterboxed the picture and drags
+  // ran at half speed (found by the Qwik SSR demo, 900×420 into 1020×800).
+  const live = serializeVNode(vnode, { fidelity: 'dom', standalone: options.standalone });
+  // `svg` stands ALONE, so it must SIZE ITSELF: an email, a README or a bare <img>
+  // cannot add CSS — without these it renders 0×0 (the audit's "blank page with
+  // a stray dot").
+  const svg = serializeVNode(
+    { ...vnode, props: { ...vnode.props, width: options.width ?? 800, height: options.height ?? 600 } },
+    { fidelity: 'dom', standalone: options.standalone }
+  );
   const css = renderer.getStyleSheet();
 
   renderer.dispose();
@@ -152,7 +162,7 @@ export function renderToStaticSVG(options: StaticRenderOptions = {}): StaticRend
     viewport: { x: viewport.getViewport().x, y: viewport.getViewport().y },
   };
 
-  return { html: wrapInLayers(svg, instanceId), svg, css, snapshot };
+  return { html: wrapInLayers(live, instanceId), svg, css, snapshot };
 }
 
 /** The markup `createDiagram()`'s `ensureLayers()` builds — as a string. */
