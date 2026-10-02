@@ -3,6 +3,8 @@ import { Routes } from '@angular/router';
 /** One route per demo, mirroring the gallery's <category>/<name> paths so the
  *  shell can map a JS demo page to its Angular twin mechanically. */
 export const routes: Routes = [
+  // The front door: every demo, by category.
+  { path: '', pathMatch: 'full', loadComponent: () => import('./demos-index.component').then((m) => m.DemosIndexComponent) },
   { path: 'nodes/custom-nodes', loadComponent: () => import('./demos/custom-nodes/custom-nodes.component').then((m) => m.CustomNodesComponent) },
   { path: 'nodes/html-nodes', loadComponent: () => import('./demos/html-nodes/html-nodes.component').then((m) => m.HtmlNodesComponent) },
   { path: 'nodes/node-resizer', loadComponent: () => import('./demos/node-resizer/node-resizer.component').then((m) => m.NodeResizerComponent) },
