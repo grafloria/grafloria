@@ -104,6 +104,7 @@ const NEW_DEMOS = new Set([
   'diagrams/ai-style-diagram.html',
   'diagrams/architecture-layout.html',
   'diagrams/mermaid-architecture-block.html',
+  'interaction/chatbot-flow.html',
 ]);
 const isNewDemo = (rel) => NEW_DEMOS.has(rel.split(sep).join('/'));
 
@@ -114,7 +115,7 @@ const esc = (s) =>
 // so the flagships are never buried below alphabetical A-Z. Keys are `cat/name`.
 const FEATURED = [
   'diagrams/visio-editor', 'misc/drawio-import',
-  'interaction/n8n-workflow', 'dashboard/dashboard-builder', 'diagrams/erd-editor',
+  'interaction/n8n-workflow', 'interaction/chatbot-flow', 'dashboard/dashboard-builder', 'diagrams/erd-editor',
   'diagrams/class-uml', 'collab/two-tabs-live', 'edges/edge-routing',
   'styling/turbo-flow', 'interaction/execute-flow', 'grouping/swimlanes',
   'collab/comments', 'nodes/shapes', 'layout/off-thread-layout',
