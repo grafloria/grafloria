@@ -25,6 +25,11 @@ export default defineConfig({
   root: here,
   server: { port: 4290, strictPort: false },
   resolve: {
+    // Source before output: a checkout that has built a release carries
+    // compiled `.js` beside every `.ts` (gitignored), and Vite's default order
+    // would serve those — stale the moment a source changes (found when an
+    // SSR fix "did not work" here while its own tests passed).
+    extensions: ['.ts', '.tsx', '.mts', '.mjs', '.js', '.jsx', '.json'],
     alias: [
       // The workspace libraries, straight from source — no build step, and
       // edits to libs/qwik hot-reload into the page.
