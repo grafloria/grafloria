@@ -424,8 +424,10 @@ npm i @grafloria/engine @grafloria/renderer`,
   const EXT_LANG = { ts: 'typescript', tsx: 'typescript', js: 'javascript', html: 'html', vue: 'html', css: 'css' };
   function loadMonaco() {
     if (M.ready) return M.ready;
+    // Shared with code-editor.js: a second loader.js on the page throws.
+    if (window.__grafloriaMonaco) return (M.ready = window.__grafloriaMonaco);
     const CDN = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
-    M.ready = new Promise((resolve, reject) => {
+    M.ready = window.__grafloriaMonaco = new Promise((resolve, reject) => {
       window.MonacoEnvironment = {
         // A BLOB worker (page origin) can importScripts the CDN's CORS-enabled
         // worker; a data: worker has an opaque origin and is blocked.

@@ -17,10 +17,14 @@
 const CDN = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
 let loading = null;
 
-/** Load Monaco once per page. Resolves to `monaco`, or null if it never came. */
+/** Load Monaco once per page. Resolves to `monaco`, or null if it never came.
+ *  The promise lives on `window` because the demo shell's source drawer loads
+ *  Monaco too: two injected loader.js scripts throw "_amdLoaderGlobal has
+ *  already been declared". */
 function loadMonaco() {
   if (loading) return loading;
-  loading = new Promise((resolve, reject) => {
+  if (window.__grafloriaMonaco) return (loading = window.__grafloriaMonaco);
+  loading = window.__grafloriaMonaco = new Promise((resolve, reject) => {
     if (window.monaco) return resolve(window.monaco);
     // A BLOB worker (page origin) can importScripts the CDN's CORS-enabled
     // worker; a data: worker has an opaque origin and is blocked.
