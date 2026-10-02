@@ -1,4 +1,4 @@
-import { AfterViewInit, Component } from '@angular/core';
+import { AfterViewInit, Component, viewChild } from '@angular/core';
 import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
 
@@ -13,10 +13,15 @@ import { markReady } from '../demo-ready';
   `,
 })
 export class EditableEdgeComponent implements AfterViewInit {
+  canvas = viewChild.required(DiagramCanvasComponent);
   nodes = [
     { id: 'a', position: { x: 120, y: 180 }, size: { width: 150, height: 70 }, data: { label: 'A' } },
     { id: 'b', position: { x: 620, y: 180 }, size: { width: 150, height: 70 }, data: { label: 'B' } },
   ];
   edges = [{ id: 'e1', source: 'a', target: 'b' }];
-  ngAfterViewInit() { markReady(); }
+  ngAfterViewInit() {
+    // Waypoint editing is opt-in: without it a click on the wire drops nothing.
+    this.canvas().activeEngine()?.setInteractionConfig({ enableWaypointEditing: true, showWaypointHandles: true });
+    markReady();
+  }
 }
