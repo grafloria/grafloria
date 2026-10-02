@@ -70,7 +70,7 @@ const ssr = renderToStaticSVG({ nodes, edges, width: 800, height: 600 });
 
 `renderToStaticSVG()` runs the real engine and the real renderer in Node, with no DOM, and returns the exact markup `createDiagram()` would have mounted plus a hydration snapshot. The component emits that markup verbatim, and on the client the visible task **adopts** the existing DOM via `createDiagram({ hydrate })` rather than rebuilding it: no flash, no re-layout.
 
-React Flow cannot do this at all — it is `'use client'`-only. The React binding in this repo can, but React still walks the tree again to hydrate. Qwik *resumes*, so a server-rendered Grafloria diagram costs **no component JavaScript** until someone interacts with it.
+The React binding in this repo does the same, but React still walks the tree again to hydrate. Qwik *resumes*: there is no hydration pass. The diagram's script starts as soon as the page is ready — deliberately, so `onInit$` fires and `useGrafloria()` returns the instance before anyone touches it — and it adopts the server's DOM instead of redrawing it.
 
 Put `ssr.css` in your document head; the client re-injects identical content under the same ids, so nothing repaints.
 
