@@ -85,6 +85,21 @@ export const BASE_STYLE_RULES: readonly StyleRule[] = [
       'stroke-width': themeVar('node.selected.strokeWidth'),
     },
   },
+  // `style.selection`: a node whose selection is its BORDER keeps the base fill;
+  // one whose selection is the RING keeps its whole body. Added specificity, not
+  // a rewritten `.selected`, so a host's own `.selected` rule still works.
+  {
+    selector: '.diagram-node.selected.selected-border',
+    decls: { fill: themeVar('node.fill') },
+  },
+  {
+    selector: '.diagram-node.selected.selected-ring',
+    decls: {
+      fill: themeVar('node.fill'),
+      stroke: themeVar('node.stroke'),
+      'stroke-width': themeVar('node.strokeWidth'),
+    },
+  },
 
   // ---- Links -------------------------------------------------------------
   {

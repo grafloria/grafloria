@@ -1422,15 +1422,21 @@ function mergeInlineStyle(existing: unknown, hoisted: string): string {
   return [...parts, hoisted].join('; ');
 }
 
-/** Selection-highlight VNode: the outline grown by `padding`, plus baseProps. */
+/**
+ * Selection-highlight VNode: the outline grown by `padding`, plus baseProps.
+ * `radius` is the corner of the GROWN outline — the renderer passes the node's
+ * own corner + padding, so the ring stays concentric with a rounded card; 6 is
+ * the corner a node that declares none has always had.
+ */
 export function buildShapeSelection(
   def: ShapeDefinition,
   width: number,
   height: number,
   padding: number,
-  baseProps: Record<string, any>
+  baseProps: Record<string, any>,
+  radius = 6
 ): VNode {
-  const spec = def.outline(width, height, { grow: padding, radius: 6, radiusY: true });
+  const spec = def.outline(width, height, { grow: padding, radius, radiusY: true });
   return { type: spec.el, props: { ...spec.geom, ...baseProps } };
 }
 

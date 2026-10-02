@@ -97,5 +97,5 @@ export {
 export type { NamedStyle } from './style-registry';
 
 // The style cascade: theme < type-default < named-class < element-inline < state
-export { CASCADE_ORDER, resolveNodeStyle, resolveLinkStyle, linkTypeKey } from './style-cascade';
+export { CASCADE_ORDER, resolveNodeStyle, resolveNodeSelectionLook, resolveLinkStyle, linkTypeKey } from './style-cascade';
 export type { CascadeLayer, CascadeOptions } from './style-cascade';

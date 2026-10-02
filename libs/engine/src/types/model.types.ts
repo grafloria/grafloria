@@ -45,8 +45,24 @@ export interface NodeBehavior {
   };
 }
 
+/**
+ * How a selected node shows it is selected.
+ * - `'both'` (default): the body takes the theme's selected colours AND a ring
+ *   is drawn 3px outside it.
+ * - `'border'`: only the node's own border changes (the selected colour, 2px);
+ *   its fill stays and no ring is drawn — the card look.
+ * - `'ring'`: only the ring; the body keeps its own paint.
+ */
+export type NodeSelectionLook = 'both' | 'border' | 'ring';
+
 export interface NodeStyle {
   shape?: string; // Shape type (rectangle, circle, diamond, etc.)
+  /**
+   * How this node shows it is selected — see {@link NodeSelectionLook}. A style
+   * property like any other: set it per node, in a named style, per node type
+   * (`theme.nodes[type]`) or theme-wide (`theme.nodes.default`).
+   */
+  selection?: NodeSelectionLook;
   /**
    * Extra CSS class(es) put verbatim on the rendered element, alongside
    * `diagram-node` and the state classes. Purely a hook for host CSS — the
