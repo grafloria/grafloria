@@ -1,0 +1,1 @@
+import{v as a}from"./core.min-BYz3EHBQ.js";import{x as m}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const p=s=>{const[o,t]=a();o.value++,t.value=`${o.value} · ${s}`};export{m as _hW,p as s_uDHpU8xTaj8};

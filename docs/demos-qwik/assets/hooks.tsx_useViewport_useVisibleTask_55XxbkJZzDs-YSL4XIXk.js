@@ -1,0 +1,1 @@
+import{v as i}from"./core.min-BYz3EHBQ.js";import{x as w}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const c=({track:r,cleanup:s})=>{const[n,a]=i(),o=r(()=>a.value);if(!o)return;const t=()=>{const e=o.viewport.getViewport();n.value={zoom:o.viewport.getZoom(),x:e.x,y:e.y}};t(),s(o.on("viewport:change",t))};export{w as _hW,c as s_55XxbkJZzDs};

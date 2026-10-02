@@ -1,0 +1,1 @@
+import{m as r}from"./ready-C4_3DsUA.js";import{x as s}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const i=o=>{o.getEngine().setInteractionConfig({portVisibility:"always"}),o.renderNow(),r()};export{s as _hW,i as s_oucS6HNtde0};

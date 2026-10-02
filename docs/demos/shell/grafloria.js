@@ -180729,6 +180729,7 @@ var CommentPanelView = class {
       }
     });
     container.appendChild(this.root);
+    this.update();
   }
   getElement() {
     return this.root;
@@ -190952,7 +190953,12 @@ function applyNodes(diagram, specs) {
   specs.forEach((spec, index) => {
     if (isNodeModel(spec)) {
       seen.add(spec.id);
-      if (!diagram.getNode(spec.id)) {
+      const current = diagram.getNode(spec.id);
+      if (current && current !== spec) {
+        diagram.removeNode(current.id);
+        diagram.addNode(spec);
+        changed = true;
+      } else if (!current) {
         diagram.addNode(spec);
         changed = true;
       }
@@ -191021,7 +191027,12 @@ function applyEdges(diagram, specs) {
   specs.forEach((spec, index) => {
     if (isLinkModel(spec)) {
       seen.add(spec.id);
-      if (!diagram.getLink(spec.id)) {
+      const current = diagram.getLink(spec.id);
+      if (current && current !== spec) {
+        diagram.removeLink(current.id);
+        diagram.addLink(spec);
+        changed = true;
+      } else if (!current) {
         diagram.addLink(spec);
         changed = true;
       }
@@ -191851,7 +191862,9 @@ function createDiagram(container, options = {}) {
         if (!wanted.has(existing.id)) model.removeGroup(existing.id);
       }
       for (const group of incoming) {
-        if (!model.getGroup(group.id)) model.addGroup(group);
+        const current = model.getGroup(group.id);
+        if (current && current !== group) model.removeGroup(current.id);
+        if (model.getGroup(group.id) !== group) model.addGroup(group);
       }
       scheduler.schedule();
       return result;

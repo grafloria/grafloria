@@ -1,0 +1,1 @@
+import{m as o}from"./ready-C4_3DsUA.js";import{x as g}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const a=e=>{const r=e.getModel().getNode("grip");r&&(r.setParent("win"),r.setPosition(0,0),r.setBehavior({dragHandler:{isDragHandler:!0}}),e.renderNow()),o()};export{g as _hW,a as s_FHiRj3OzEcA};

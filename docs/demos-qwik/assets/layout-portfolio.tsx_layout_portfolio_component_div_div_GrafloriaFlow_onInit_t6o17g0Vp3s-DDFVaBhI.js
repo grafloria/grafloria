@@ -1,0 +1,1 @@
+import{v as a,Q as s}from"./core.min-BYz3EHBQ.js";import{x as v}from"./core.min-BYz3EHBQ.js";import{m}from"./ready-C4_3DsUA.js";import"./preloader-D7tuiBjF.js";const n=async o=>{const[r,t]=a();r.value=s(o),await t("tree"),m()};export{v as _hW,n as s_t6o17g0Vp3s};

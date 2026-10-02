@@ -270,8 +270,8 @@ function buildCodePanel(spec) {
   const routeKey = location.pathname.replace(/.*\/([^/]+\/[^/]+)\.html$/, '$1');
   // Each framework may ship a REAL implementation of this demo under
   // ../../demos-<fw>/. The tab shows its actual source files; the pill runs it.
-  const FW_APPS = { angular: '../../demos-angular/', react: '../../demos-react/', vue: '../../demos-vue/' };
-  const fwFiles = { angular: null, react: null, vue: null };   // [{name,text}] per fw
+  const FW_APPS = { angular: '../../demos-angular/', react: '../../demos-react/', vue: '../../demos-vue/', qwik: '../../demos-qwik/' };
+  const fwFiles = { angular: null, react: null, vue: null, qwik: null };   // [{name,text}] per fw
   let fwFileIdx = 0;
   const variantReady = Promise.all(Object.keys(FW_APPS).map((fw) =>
     fetch(FW_APPS[fw] + 'sources.json')
@@ -285,6 +285,7 @@ function buildCodePanel(spec) {
     { key: 'angular', label: 'Angular' },
     { key: 'react',   label: 'React' },
     { key: 'vue',     label: 'Vue' },
+    { key: 'qwik',    label: 'Qwik' },
     { key: 'install', label: 'Install' },
   ];
 
@@ -352,11 +353,25 @@ const onInit = (instance) => {};
 <template>
   <GrafloriaFlow v-model:nodes="nodes" v-model:edges="edges" @init="onInit" />
 </template>`,
+    qwik: spec.code?.qwik ?? blockCode('qwik') ?? `// npm i @grafloria/qwik
+import { component$, $ } from '@builder.io/qwik';
+import { GrafloriaFlow, type DiagramInstance } from '@grafloria/qwik';
+
+// Use this demo's exact nodes/edges — copy them from the JavaScript tab.
+const nodes = [/* ... */];
+const edges = [/* ... */];
+
+export default component$(() => (
+  // \`instance\` from onInit$ is the same object the JavaScript tab drives.
+  <GrafloriaFlow defaultNodes={nodes} defaultEdges={edges}
+    onInit$={$((instance: DiagramInstance) => {})} />
+));`,
     install: `# pick your dialect — one engine underneath all of them
 npm i @grafloria/element            # plain web component <grafloria-flow>
 npm i @grafloria/angular   # Angular
 npm i @grafloria/react              # React
 npm i @grafloria/vue                # Vue 3
+npm i @grafloria/qwik               # Qwik
 
 # headless (Node, workers, server-side export)
 npm i @grafloria/engine @grafloria/renderer`,
@@ -367,6 +382,7 @@ npm i @grafloria/engine @grafloria/renderer`,
     angular: '<b>Same engine, Angular dialect.</b> The mount is Angular signals + banana-boxes; every instance call from the JavaScript tab works identically here.',
     react: '<b>Same engine, React dialect.</b> The mount is React; every instance call from the JavaScript tab works identically on the <code>onInit</code> instance.',
     vue: '<b>Same engine, Vue dialect.</b> The mount is Vue 3; every instance call from the JavaScript tab works identically on the <code>@init</code> instance.',
+    qwik: '<b>Same engine, Qwik dialect.</b> The mount is a Qwik component; every instance call from the JavaScript tab works identically on the <code>onInit$</code> instance.',
     install: '<b>All packages are MIT.</b> Dual CJS + ESM builds; the element registers <code>&lt;grafloria-flow&gt;</code> on import.',
   };
 
@@ -509,7 +525,7 @@ npm i @grafloria/engine @grafloria/renderer`,
       else view.innerHTML = highlight(samples[t]);
     }
 
-    const fwLabel = { angular: 'Angular', react: 'React', vue: 'Vue' }[t];
+    const fwLabel = { angular: 'Angular', react: 'React', vue: 'Vue', qwik: 'Qwik' }[t];
     note.innerHTML = realFw
       ? '<b>This is a real ' + fwLabel + ' app.</b> The files below are the actual compiled-and-gated source of the ' + fwLabel + ' implementation running when the ' + fwLabel + ' pill is active. <a href="' + FW_APPS[t] + 'index.html#/' + routeKey + '" target="_blank" rel="noopener">Open it standalone ↗</a>'
       : NOTES[t];
@@ -563,7 +579,7 @@ npm i @grafloria/engine @grafloria/renderer`,
     if (!fwFiles[fw]) return;
     if (variantOverlay && variantFw !== fw) { variantOverlay.remove(); variantOverlay = null; }
     variantFw = fw;
-    const label = { angular: 'Angular', react: 'React', vue: 'Vue' }[fw];
+    const label = { angular: 'Angular', react: 'React', vue: 'Vue', qwik: 'Qwik' }[fw];
     if (!variantOverlay) {
       variantOverlay = document.createElement('div');
       variantOverlay.className = 'gfc-overlay gfc-variant';
@@ -731,6 +747,7 @@ export function defineDemo(spec) {
             <button data-fw="angular" role="tab">Angular</button>
             <button data-fw="react" role="tab">React</button>
             <button data-fw="vue" role="tab">Vue</button>
+            <button data-fw="qwik" role="tab">Qwik</button>
           </div>`;
       const codeBtn = navigator.webdriver ? '' : `
             <button class="code-toggle" id="gf-code-toggle">&lsaquo;/&rsaquo; Code</button>`;

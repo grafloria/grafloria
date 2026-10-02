@@ -1,0 +1,1 @@
+import{v as s,Q as i}from"./core.min-BYz3EHBQ.js";import{x as p}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const e=o=>{const[t]=s();t.value=i(o)};export{p as _hW,e as s_KiBiJU50ktQ};

@@ -1,0 +1,1 @@
+import{v as a}from"./core.min-BYz3EHBQ.js";import{x as l}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const c=({track:o})=>{const[s,n]=a(),t=o(()=>n.static),e=o(()=>s.value);t===void 0||!e||e.getStatic()===t||e.setStatic(t)};export{l as _hW,c as s_CFROEFslR1o};

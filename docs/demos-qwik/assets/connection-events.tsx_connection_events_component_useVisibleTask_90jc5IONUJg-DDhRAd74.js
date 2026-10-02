@@ -1,0 +1,1 @@
+import{v as t}from"./core.min-BYz3EHBQ.js";import{x as f}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const a=({cleanup:o})=>{const[r]=t();o(()=>r.value?.forEach(s=>s?.()))};export{f as _hW,a as s_90jc5IONUJg};

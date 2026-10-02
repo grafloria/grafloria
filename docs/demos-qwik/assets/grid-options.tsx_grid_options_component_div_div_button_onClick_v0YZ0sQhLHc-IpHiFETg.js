@@ -1,0 +1,1 @@
+import{v as t}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const r=async()=>{const[n,o,e,s]=t(),a=e.value?.getEngine().commandManager;a?.canUndo()&&(await a.undo(),n.value?.handle.refresh()),await s(),await o("undo")};export{r as s_v0YZ0sQhLHc};

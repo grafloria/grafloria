@@ -1,0 +1,1 @@
+import{v as a}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const v=(r,e)=>{const[o,t]=a();o.value=e.value,t.value?.getModel().getNode("a")?.setMetadata("shape",{type:"rect",fill:e.value,stroke:"#334155"}),t.value?.renderNow()};export{v as s_gYjptwXZbzo};
