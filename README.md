@@ -4,7 +4,7 @@
 
 <h1 align="center">Grafloria</h1>
 
-<p align="center"><b>Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React and Vue bindings, one document format and one undo stack.</b></p>
+<p align="center"><b>Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React, Vue and Qwik bindings, one document format and one undo stack.</b></p>
 
 <table align="center"><tr>
 <td valign="top" width="50%">
@@ -12,7 +12,7 @@
 ### Grafloria Diagrams
 Grafloria Diagrams is an MIT JavaScript diagram library for flowcharts, workflow editors, UML and ER diagrams, with obstacle-avoiding routing, auto-layout, undo and real-time collaboration built in.
 
-**[grafloria.com/diagrams](https://grafloria.com/diagrams/)** · [React](https://grafloria.com/react/) · [Angular](https://grafloria.com/angular/) · [Vue](https://grafloria.com/vue/) · [JavaScript](https://grafloria.com/javascript/) · [Mermaid](https://grafloria.com/mermaid/)
+**[grafloria.com/diagrams](https://grafloria.com/diagrams/)** · [React](https://grafloria.com/react/) · [Angular](https://grafloria.com/angular/) · [Vue](https://grafloria.com/vue/) · [Qwik](https://grafloria.com/qwik/) · [JavaScript](https://grafloria.com/javascript/) · [Mermaid](https://grafloria.com/mermaid/)
 
 </td><td valign="top" width="50%">
 
@@ -46,6 +46,7 @@ published packages before it is published. Machine-readable full text:
 | `@grafloria/angular` | Angular components, directives, and services |
 | `@grafloria/canvas-ng` | Angular canvas integration |
 | `@grafloria/vue` | Vue 3 bindings — `v-model` data, slot-based custom nodes |
+| `@grafloria/qwik` | Qwik bindings — QRL callbacks, component custom nodes, SSR + **resumability** (no hydration pass) |
 
 All packages are on npm under the [`@grafloria`](https://www.npmjs.com/org/grafloria) scope — ESM for bundlers (tree-shakeable) plus CJS for Node.
 
@@ -70,6 +71,76 @@ Simple data rides on attributes (JSON strings); rich data goes in as properties
 (`el.nodes = [...]`) — the standard custom-element contract every framework's template
 binding already targets. Custom node templates are `<template data-node-type="…">`
 children. Every capability has a working page in the demo gallery.
+
+## Server rendering (SSR)
+
+A Grafloria diagram renders **in Node, with no DOM**, and the browser then
+**adopts** that markup instead of rebuilding it — no flash, no re-layout. Two
+functions, both from `@grafloria/renderer` (and re-exported by
+`@grafloria/element`, `@grafloria/react` and `@grafloria/qwik`):
+
+```ts
+// --- server ---------------------------------------------------------------
+import { renderToStaticSVG } from '@grafloria/renderer';
+
+const { html, css, snapshot } = renderToStaticSVG({
+  nodes, edges, width: 900, height: 520, fitView: true,
+});
+// `html` is exactly the markup createDiagram() would have mounted. Send it
+// inside your container, and `css` in a <style> in the document head — the
+// client re-injects identical content under the same ids, so nothing repaints.
+
+// --- client ---------------------------------------------------------------
+import { createDiagram } from '@grafloria/renderer';
+
+container.innerHTML = html;                 // already there if the server sent it
+createDiagram(container, { nodes, edges, hydrate: snapshot });
+// → patcher.stats.created === 0, removed === 0. The server's DOM nodes are the
+//   live ones; nothing was torn down and rebuilt under the user.
+```
+
+The render is **deterministic**: node/edge ids fall back to `node-<i>` rather
+than a nanoid, auto-created ports get stable `<nodeId>__<side>` names, and the
+camera (size, zoom, origin) travels in the snapshot. Server and client
+therefore produce byte-identical VNode trees, which is what makes *adoption*
+safe instead of a rebuild.
+
+The result also stands alone: `svg` is just the `<svg>`, for an `<img>`, an
+email or a README thumbnail.
+
+**Scope, stated plainly.** Custom / HTML-layer nodes are not server-rendered —
+they are framework components and the server has no framework. They mount on
+the client, inside the (empty, correctly transformed) HTML layer the SSR markup
+already carries. Everything the SVG renderer draws — nodes, ports, edges,
+labels, arrows, routing — is in the snapshot, which is the part that would
+otherwise re-layout.
+
+### Per framework
+
+| | how you turn it on |
+| --- | --- |
+| `@grafloria/qwik` | `<GrafloriaFlow ssr={{ html, snapshot }} />`. Qwik **resumes** rather than hydrating, so a server-rendered diagram costs *no component JavaScript* until someone interacts with it. |
+| `@grafloria/react` | `<GrafloriaFlow ssr={…} />` — adopts the same server DOM, but React still walks the tree to hydrate it. |
+| anything else | the two-call form above; `@grafloria/element` also re-exports it as `Grafloria.renderStatic()`. |
+
+For comparison: React Flow cannot do this at all (it is `'use client'`-only),
+and Mermaid server-renders something that can never become interactive.
+
+### Run the SSR demo
+
+[`apps/demos-qwik/`](apps/demos-qwik/) is a working Qwik SSR app over the real
+library — six routes, server-rendered per request:
+
+```sh
+npm ci
+npx vite --config apps/demos-qwik/vite.config.ts --mode ssr   # → localhost:4290
+```
+
+**`--mode ssr` is required.** Qwik's Vite plugin only starts its dev SSR server
+in that mode; without the flag it falls back to a client-only mount (which is
+also worth looking at — it is the React/Vue comparison). The `ssr-resumable`
+route is the end-to-end proof: view source and the laid-out diagram is already
+there, before any JavaScript has run.
 
 ## The demo gallery is the documentation
 
@@ -141,6 +212,13 @@ every gallery demo as a real component in that framework, ~100 routes each, live
 [grafloria.com/demos-angular](https://grafloria.com/demos-angular/) (and `-react`, `-vue`) —
 plus an Angular showcase app in [`apps/renderer-demo/`](apps/renderer-demo/) and architecture
 notes in [`documentation/`](documentation/).
+
+[`apps/demos-qwik/`](apps/demos-qwik/) is the odd one out and deliberately so: a
+Vite app rather than a one-shot esbuild bundle, because Qwik's optimizer is what
+turns `component$`, `$()` and every QRL into loadable segments — so the library
+has to go through a real Qwik build, which is exactly what a consumer does. It
+is also where SSR is exercised end to end (see
+[Server rendering](#server-rendering-ssr)).
 
 ```sh
 npx nx run-many -t test       # all unit tests
