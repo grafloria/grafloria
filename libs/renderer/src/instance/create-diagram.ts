@@ -1782,9 +1782,9 @@ export function createDiagram(
       // label/shape/custom — and nothing else — so loading a saved document into
       // a FRESH canvas silently dropped custom ports, node and link styles, and
       // every metadata key but `label`. (Loading into the same instance that
-      // still held those node objects looked lossless, because applyNodes
-      // updates existing models in place; the loss only showed up in the case
-      // that matters, opening a file.) applyNodes/applyEdges already accept live
+      // still held those node objects looked lossless; the loss only showed up
+      // in the case that matters, opening a file.) A model under an id already
+      // on the canvas REPLACES the old one — edited text must show its edits. applyNodes/applyEdges already accept live
       // models through their isNodeModel branch, so nothing about the reconciler
       // required the projection — and exportText's own contract promises a
       // "lossless sidecar … feed the result back to loadText for a full
@@ -1801,7 +1801,9 @@ export function createDiagram(
         if (!wanted.has(existing.id)) model.removeGroup(existing.id);
       }
       for (const group of incoming) {
-        if (!model.getGroup(group.id)) model.addGroup(group);
+        const current = model.getGroup(group.id);
+        if (current && current !== group) model.removeGroup(current.id);
+        if (model.getGroup(group.id) !== group) model.addGroup(group);
       }
 
       scheduler.schedule();

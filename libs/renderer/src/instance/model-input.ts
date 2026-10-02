@@ -537,7 +537,15 @@ export function applyNodes(diagram: DiagramModel, specs: Array<NodeSpec | NodeMo
   specs.forEach((spec, index) => {
     if (isNodeModel(spec)) {
       seen.add(spec.id);
-      if (!diagram.getNode(spec.id)) {
+      const current = diagram.getNode(spec.id);
+      // A DIFFERENT model under an id already on the canvas replaces it: these
+      // models are the truth. Adding only missing ids left an existing node on
+      // its old object — loadText of edited text kept the old label.
+      if (current && current !== spec) {
+        diagram.removeNode(current.id);
+        diagram.addNode(spec);
+        changed = true;
+      } else if (!current) {
         diagram.addNode(spec);
         changed = true;
       }
@@ -632,7 +640,13 @@ export function applyEdges(diagram: DiagramModel, specs: Array<EdgeSpec | LinkMo
   specs.forEach((spec, index) => {
     if (isLinkModel(spec)) {
       seen.add(spec.id);
-      if (!diagram.getLink(spec.id)) {
+      const current = diagram.getLink(spec.id);
+      // Same rule as nodes: a different model under a known id replaces it.
+      if (current && current !== spec) {
+        diagram.removeLink(current.id);
+        diagram.addLink(spec);
+        changed = true;
+      } else if (!current) {
         diagram.addLink(spec);
         changed = true;
       }
