@@ -4475,6 +4475,10 @@ export class SVGRenderer implements IRenderer {
     // (leading edge of every lane after the first).
     const laneRole = !collapsed && group.laneConfig?.role === 'lane' && parent ? group.laneConfig : null;
     const radius = laneRole ? 0 : this.theme.effects.borderRadius.md;
+    // A lane's FILLS (wash + label band) stay inside the pool's border: drawn
+    // edge to edge after the pool, they covered the inner half of its 1.5px
+    // stroke, and the border thinned to a notch beside every lane's title strip.
+    const fillBox = laneRole && parent ? insetWithin(bounds, parent.getOuterBounds(), 0.75) : bounds;
 
     // Label band height: honour an authored header, else a readable default.
     const bandHeight = Math.min(
@@ -4492,10 +4496,10 @@ export class SVGRenderer implements IRenderer {
       type: 'rect',
       key: `group-frame-rect-${group.id}`,
       props: {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
+        x: fillBox.x,
+        y: fillBox.y,
+        width: fillBox.width,
+        height: fillBox.height,
         rx: radius,
         ry: radius,
         fill: surface,
@@ -4576,10 +4580,10 @@ export class SVGRenderer implements IRenderer {
       type: 'rect',
       key: `group-frame-band-${group.id}`,
       props: {
-        x: bounds.x,
-        y: bounds.y,
-        width: sideStrip > 0 ? sideStrip : bounds.width,
-        height: sideStrip > 0 ? bounds.height : bandHeight,
+        x: fillBox.x,
+        y: fillBox.y,
+        width: sideStrip > 0 ? sideStrip : fillBox.width,
+        height: sideStrip > 0 ? bounds.height : Math.min(bandHeight, fillBox.height),
         rx: radius,
         ry: radius,
         fill: surface,
@@ -9951,4 +9955,20 @@ export class SVGRenderer implements IRenderer {
       t0 < t1;
     return hit ? { t0, t1 } : null;
   }
+}
+
+/**
+ * `box` clipped to stay `inset` inside `outer` — so a child's fill never paints
+ * over the inner half of the parent's border stroke.
+ */
+function insetWithin(
+  box: { x: number; y: number; width: number; height: number },
+  outer: { x: number; y: number; width: number; height: number },
+  inset: number
+): { x: number; y: number; width: number; height: number } {
+  const left = Math.max(box.x, outer.x + inset);
+  const top = Math.max(box.y, outer.y + inset);
+  const right = Math.min(box.x + box.width, outer.x + outer.width - inset);
+  const bottom = Math.min(box.y + box.height, outer.y + outer.height - inset);
+  return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 }
