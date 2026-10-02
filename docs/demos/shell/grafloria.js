@@ -99608,6 +99608,21 @@ var BASE_STYLE_RULES = [
       "stroke-width": themeVar("node.selected.strokeWidth")
     }
   },
+  // `style.selection`: a node whose selection is its BORDER keeps the base fill;
+  // one whose selection is the RING keeps its whole body. Added specificity, not
+  // a rewritten `.selected`, so a host's own `.selected` rule still works.
+  {
+    selector: ".diagram-node.selected.selected-border",
+    decls: { fill: themeVar("node.fill") }
+  },
+  {
+    selector: ".diagram-node.selected.selected-ring",
+    decls: {
+      fill: themeVar("node.fill"),
+      stroke: themeVar("node.stroke"),
+      "stroke-width": themeVar("node.strokeWidth")
+    }
+  },
   // ---- Links -------------------------------------------------------------
   {
     selector: ".diagram-link",
@@ -100563,11 +100578,14 @@ function nodeTypeDefaults(theme, type) {
   if (!type || type === "default") return {};
   return declared(theme.nodes[type]);
 }
-function nodeStateStyle(node, theme) {
+function nodeStateStyle(node, theme, look) {
   const c = theme.colors.node;
   const state = node.state;
-  if (state.selected) {
+  if (state.selected && look === "both") {
     return { fill: c.selected.fill, stroke: c.selected.stroke, strokeWidth: 2 };
+  }
+  if (state.selected && look === "border") {
+    return { stroke: c.selected.stroke, strokeWidth: 2 };
   }
   if (state.highlighted) {
     return { fill: c.highlighted.fill, stroke: c.highlighted.stroke, strokeWidth: 2 };
@@ -100603,6 +100621,10 @@ function shapeKindStyle(node) {
   return { fill: "transparent", stroke: "none", strokeWidth: 0, shadow: false };
 }
 function resolveNodeStyle(node, theme, options = {}) {
+  const below = belowStateNodeStyle(node, theme, options);
+  return { ...below, ...nodeStateStyle(node, theme, selectionLookOf(below, theme)) };
+}
+function belowStateNodeStyle(node, theme, options) {
   return {
     ...options.includeThemeBase ? nodeThemeBase(theme) : void 0,
     ...nodeTypeDefaults(theme, node.type),
@@ -100611,9 +100633,12 @@ function resolveNodeStyle(node, theme, options = {}) {
     // element-inline: the entity's own props, from BOTH places they can live.
     // The typed `node.style` wins over the legacy `metadata.shape` paints.
     ...shapeMetadataStyle(node),
-    ...declared(node.style),
-    ...nodeStateStyle(node, theme)
+    ...declared(node.style)
   };
+}
+var selectionLookOf = (below, theme) => below.selection ?? theme.nodes.default.selection ?? "both";
+function resolveNodeSelectionLook(node, theme) {
+  return selectionLookOf(belowStateNodeStyle(node, theme, {}), theme);
 }
 function linkThemeBase(theme) {
   return declared({
@@ -167873,8 +167898,8 @@ function mergeInlineStyle(existing, hoisted) {
   const parts = Object.entries(existing).filter(([, v]) => v !== null && v !== void 0).map(([k, v]) => `${k.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()}: ${v}`);
   return [...parts, hoisted].join("; ");
 }
-function buildShapeSelection(def, width, height, padding, baseProps) {
-  const spec = def.outline(width, height, { grow: padding, radius: 6, radiusY: true });
+function buildShapeSelection(def, width, height, padding, baseProps, radius = 6) {
+  const spec = def.outline(width, height, { grow: padding, radius, radiusY: true });
   return { type: spec.el, props: { ...spec.geom, ...baseProps } };
 }
 function buildShapeShadow(def, width, height, offset, borderRadius, baseProps) {
@@ -176756,8 +176781,9 @@ var _SVGRenderer = class _SVGRenderer {
         ...this.nodeAriaProps(node)
       },
       children: [
-        // Selection highlight (Phase 3.1: Shape-aware)
-        ...isSelected ? [this.renderSelectionHighlight(node)] : [],
+        // Selection highlight (Phase 3.1: Shape-aware) — unless the node's
+        // selection look is its border alone (`style.selection: 'border'`).
+        ...isSelected && resolveNodeSelectionLook(node, this.theme) !== "border" ? [this.renderSelectionHighlight(node)] : [],
         // wave6/a11y (card 7 / WCAG 1.4.1): status must not be colour-ALONE.
         ...this.renderStateAffordances(node),
         // Phase 2: Connection target highlight (rendered behind the node)
@@ -176785,6 +176811,8 @@ var _SVGRenderer = class _SVGRenderer {
         ...this.lodAllows("shadows", lod) && this.resolvedNodeStyle(node).shadow !== false ? [this.renderShadow(node, isHovered)] : [],
         // Node shape (Phase 3.1: Shape-based rendering)
         this.renderNodeShape(node, styles, isHovered),
+        // Far zoom: an HTML card over an invisible shape keeps a silhouette.
+        ...!this.lodAllows("decorations", lod) && hasHtmlContent(node) && this.bodyPaintsNothing(styles) ? [this.renderHtmlSilhouette(node)] : [],
         // Card 5: composite panel overlay (header band / image / rows / badges /
         // icon), drawn ON TOP of the base shape so it composes with any silhouette.
         ...this.lodAllows("decorations", lod) ? this.renderPanelOverlay(node) : [],
@@ -176887,25 +176915,10 @@ var _SVGRenderer = class _SVGRenderer {
         ...this.nodeAriaProps(node)
       },
       children: [
-        // Selection highlight (rendered behind foreignObject)
-        ...isSelected ? [
-          {
-            type: "rect",
-            props: {
-              x: -3,
-              y: -3,
-              width: node.size.width + 6,
-              height: node.size.height + 6,
-              fill: "none",
-              stroke: this.theme.colors.primary,
-              strokeWidth: 3,
-              strokeDasharray: "5,5",
-              rx: 6,
-              ry: 6,
-              className: "selection-highlight"
-            }
-          }
-        ] : [],
+        // Selection highlight (rendered behind foreignObject) — the same ring
+        // as a plain node's, so it follows the node's corners; none when the
+        // selection look is 'border' (the component paints its own border).
+        ...isSelected && resolveNodeSelectionLook(node, this.theme) !== "border" ? [this.renderSelectionHighlight(node)] : [],
         // Connection target highlight
         ...isConnectionTarget ? [
           {
@@ -177497,6 +177510,7 @@ var _SVGRenderer = class _SVGRenderer {
     const shapeConfig = node.getMetadata("shape") || { type: "rect" };
     const { width, height } = node.size;
     const padding = 3;
+    const corner = this.nodeCornerRadius(node);
     const baseProps = {
       fill: "none",
       stroke: this.theme.colors.primary,
@@ -177504,7 +177518,65 @@ var _SVGRenderer = class _SVGRenderer {
       strokeDasharray: "5,5",
       className: "selection-highlight"
     };
-    return buildShapeSelection(getShape(shapeConfig.type), width, height, padding, baseProps);
+    return buildShapeSelection(
+      getShape(shapeConfig.type),
+      width,
+      height,
+      padding,
+      baseProps,
+      corner !== void 0 ? corner + padding : void 0
+    );
+  }
+  /**
+   * The corner radius the author gave this node's BODY, or undefined when
+   * they gave none. `shape.cornerRadius` first — it wins the body's rx (the
+   * shape registry defers rx/ry over the styles) — then `borderRadius` from
+   * the style cascade WITHOUT the theme base, so an undeclared node keeps the
+   * outline and shadow it always had. One answer for every layer that traces
+   * the node's outline: selection ring, drop shadow, far-zoom silhouette.
+   */
+  nodeCornerRadius(node) {
+    const shape = node.getMetadata("shape");
+    if (typeof shape?.cornerRadius === "number") return shape.cornerRadius;
+    const r = resolveNodeStyle(node, this.theme, { includeThemeBase: false }).borderRadius;
+    return typeof r === "number" ? r : void 0;
+  }
+  /**
+   * True when the node's resolved body paints nothing at all — no fill, no
+   * visible stroke. An UNSET paint is not invisible: the theme stylesheet
+   * paints it.
+   */
+  bodyPaintsNothing(styles) {
+    const clear = (v) => typeof v === "string" && (v === "none" || v === "transparent" || /^rgba\([^)]*,\s*0(\.0+)?\s*\)$/.test(v.replace(/\s+/g, " ")));
+    return clear(styles.fill) && (clear(styles.stroke) || styles.strokeWidth === 0);
+  }
+  /**
+   * Far zoom drops an HTML node's rich body and leaves "just its silhouette".
+   * When the HTML painted the card over an INVISIBLE shape (the usual way to
+   * build a card), that silhouette was nothing: the boxes vanished and only
+   * the lines stayed. Stand in for it with a plain box in the theme's node
+   * colours, rounded like the node.
+   */
+  renderHtmlSilhouette(node) {
+    const { width, height } = node.size;
+    const r = this.nodeCornerRadius(node) ?? 4;
+    const d = this.theme.nodes.default;
+    return {
+      type: "rect",
+      props: {
+        x: 0,
+        y: 0,
+        width,
+        height,
+        rx: r,
+        ry: r,
+        fill: d.fill,
+        stroke: d.stroke,
+        strokeWidth: d.strokeWidth ?? 1,
+        className: "html-node-silhouette",
+        pointerEvents: "none"
+      }
+    };
   }
   /**
    * resize-ux: the PAINTED resize affordances — React Flow NodeResizer parity.
@@ -177612,7 +177684,7 @@ var _SVGRenderer = class _SVGRenderer {
       width,
       height,
       offset,
-      node.style.borderRadius ?? 4,
+      this.nodeCornerRadius(node) ?? 4,
       baseProps
     );
   }
@@ -178781,7 +178853,11 @@ var _SVGRenderer = class _SVGRenderer {
   computeNodeStylesCSS(node) {
     const style = this.resolvedNodeStyle(node);
     const classes = ["diagram-node"];
-    if (node.state.selected) classes.push("selected");
+    if (node.state.selected) {
+      classes.push("selected");
+      const look = resolveNodeSelectionLook(node, this.theme);
+      if (look !== "both") classes.push(`selected-${look}`);
+    }
     if (node.state.highlighted) classes.push("highlighted");
     if (node.state.hovered) classes.push("hovered");
     if (!node.state.enabled) classes.push("disabled");
@@ -208668,6 +208744,7 @@ export {
   resolveLinkNodeIds,
   resolveLinkStyle,
   resolveNodeAnimationConflict,
+  resolveNodeSelectionLook,
   resolveNodeStyle,
   resolvePortConfig,
   resolvePortConstraint,
