@@ -109,6 +109,7 @@ import {
   linkTypeKey,
   onStyleRegistryChange,
   resolveLinkStyle,
+  resolveNodeSelectionLook,
   resolveNodeStyle,
 } from '../themes';
 // Wave 4 — colorMode (system auto-detection + hot-swap), theme-bound properties,
@@ -4887,8 +4888,9 @@ export class SVGRenderer implements IRenderer {
         ...this.nodeAriaProps(node),
       },
       children: [
-        // Selection highlight (Phase 3.1: Shape-aware)
-        ...(isSelected ? [this.renderSelectionHighlight(node)] : []),
+        // Selection highlight (Phase 3.1: Shape-aware) — unless the node's
+        // selection look is its border alone (`style.selection: 'border'`).
+        ...(isSelected && resolveNodeSelectionLook(node, this.theme) !== 'border' ? [this.renderSelectionHighlight(node)] : []),
         // wave6/a11y (card 7 / WCAG 1.4.1): status must not be colour-ALONE.
         ...this.renderStateAffordances(node),
         // Phase 2: Connection target highlight (rendered behind the node)
@@ -4918,6 +4920,10 @@ export class SVGRenderer implements IRenderer {
         ...(this.lodAllows('shadows', lod) && this.resolvedNodeStyle(node).shadow !== false ? [this.renderShadow(node, isHovered)] : []),
         // Node shape (Phase 3.1: Shape-based rendering)
         this.renderNodeShape(node, styles, isHovered),
+        // Far zoom: an HTML card over an invisible shape keeps a silhouette.
+        ...(!this.lodAllows('decorations', lod) && hasHtmlContent(node) && this.bodyPaintsNothing(styles)
+          ? [this.renderHtmlSilhouette(node)]
+          : []),
         // Card 5: composite panel overlay (header band / image / rows / badges /
         // icon), drawn ON TOP of the base shape so it composes with any silhouette.
         ...(this.lodAllows('decorations', lod) ? this.renderPanelOverlay(node) : []),
@@ -5065,26 +5071,11 @@ export class SVGRenderer implements IRenderer {
         ...this.nodeAriaProps(node),
       },
       children: [
-        // Selection highlight (rendered behind foreignObject)
-        ...(isSelected
-          ? [
-              {
-                type: 'rect',
-                props: {
-                  x: -3,
-                  y: -3,
-                  width: node.size.width + 6,
-                  height: node.size.height + 6,
-                  fill: 'none',
-                  stroke: this.theme.colors.primary,
-                  strokeWidth: 3,
-                  strokeDasharray: '5,5',
-                  rx: 6,
-                  ry: 6,
-                  className: 'selection-highlight',
-                },
-              } as VNode,
-            ]
+        // Selection highlight (rendered behind foreignObject) — the same ring
+        // as a plain node's, so it follows the node's corners; none when the
+        // selection look is 'border' (the component paints its own border).
+        ...(isSelected && resolveNodeSelectionLook(node, this.theme) !== 'border'
+          ? [this.renderSelectionHighlight(node)]
           : []),
         // Connection target highlight
         ...(isConnectionTarget
@@ -5909,6 +5900,10 @@ export class SVGRenderer implements IRenderer {
     const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
     const { width, height } = node.size;
     const padding = 3;
+    // Concentric with the node's own corners: a 12px card gets a 15px ring
+    // 3px out. It was a fixed 6 — a rounded card wore a squarish ring that
+    // did not follow its border (live report on the chatbot demo).
+    const corner = this.nodeCornerRadius(node);
 
     const baseProps = {
       fill: 'none',
@@ -5919,7 +5914,58 @@ export class SVGRenderer implements IRenderer {
     };
 
     // Selection highlight = the shape outline grown by `padding` (registry).
-    return buildShapeSelection(getShape(shapeConfig.type), width, height, padding, baseProps);
+    return buildShapeSelection(
+      getShape(shapeConfig.type), width, height, padding, baseProps,
+      corner !== undefined ? corner + padding : undefined
+    );
+  }
+
+  /**
+   * The corner radius the author gave this node's BODY, or undefined when
+   * they gave none. `shape.cornerRadius` first — it wins the body's rx (the
+   * shape registry defers rx/ry over the styles) — then `borderRadius` from
+   * the style cascade WITHOUT the theme base, so an undeclared node keeps the
+   * outline and shadow it always had. One answer for every layer that traces
+   * the node's outline: selection ring, drop shadow, far-zoom silhouette.
+   */
+  private nodeCornerRadius(node: NodeModel): number | undefined {
+    const shape = node.getMetadata('shape') as { cornerRadius?: unknown } | undefined;
+    if (typeof shape?.cornerRadius === 'number') return shape.cornerRadius;
+    const r = resolveNodeStyle(node, this.theme, { includeThemeBase: false }).borderRadius;
+    return typeof r === 'number' ? r : undefined;
+  }
+
+  /**
+   * True when the node's resolved body paints nothing at all — no fill, no
+   * visible stroke. An UNSET paint is not invisible: the theme stylesheet
+   * paints it.
+   */
+  private bodyPaintsNothing(styles: { fill?: unknown; stroke?: unknown; strokeWidth?: unknown }): boolean {
+    const clear = (v: unknown) =>
+      typeof v === 'string' && (v === 'none' || v === 'transparent' || /^rgba\([^)]*,\s*0(\.0+)?\s*\)$/.test(v.replace(/\s+/g, ' ')));
+    return clear(styles.fill) && (clear(styles.stroke) || styles.strokeWidth === 0);
+  }
+
+  /**
+   * Far zoom drops an HTML node's rich body and leaves "just its silhouette".
+   * When the HTML painted the card over an INVISIBLE shape (the usual way to
+   * build a card), that silhouette was nothing: the boxes vanished and only
+   * the lines stayed. Stand in for it with a plain box in the theme's node
+   * colours, rounded like the node.
+   */
+  private renderHtmlSilhouette(node: NodeModel): VNode {
+    const { width, height } = node.size;
+    const r = this.nodeCornerRadius(node) ?? 4;
+    const d = this.theme.nodes.default;
+    return {
+      type: 'rect',
+      props: {
+        x: 0, y: 0, width, height, rx: r, ry: r,
+        fill: d.fill, stroke: d.stroke, strokeWidth: d.strokeWidth ?? 1,
+        className: 'html-node-silhouette',
+        pointerEvents: 'none',
+      },
+    };
   }
 
   /**
@@ -6040,7 +6086,7 @@ export class SVGRenderer implements IRenderer {
       width,
       height,
       offset,
-      (node.style.borderRadius ?? 4) as number,
+      this.nodeCornerRadius(node) ?? 4,
       baseProps
     );
   }
@@ -7701,7 +7747,12 @@ export class SVGRenderer implements IRenderer {
     const style = this.resolvedNodeStyle(node);
     const classes = ['diagram-node'];
 
-    if (node.state.selected) classes.push('selected');
+    if (node.state.selected) {
+      classes.push('selected');
+      // `style.selection`: lets the stylesheet fallback paint only what the look allows.
+      const look = resolveNodeSelectionLook(node, this.theme);
+      if (look !== 'both') classes.push(`selected-${look}`);
+    }
     // Attention emphasis (Card 1). Emitted alongside `selected`; selection wins
     // — in the cascade's state layer, and in the stylesheet fallback (where the
     // `.highlighted` rule is authored BEFORE `.selected`).

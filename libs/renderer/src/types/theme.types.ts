@@ -308,6 +308,8 @@ export interface NodeStyleTheme {
   borderRadius: number;
   shadow: boolean;
   opacity: number;
+  /** How a selected node shows it — 'both' (default), 'border' or 'ring'. */
+  selection?: 'both' | 'border' | 'ring';
 }
 
 /**
