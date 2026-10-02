@@ -16,12 +16,12 @@
   <url><loc>https://grafloria.com/learn/collaboration/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/commands-and-undo/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/edges-and-routing/</loc><lastmod>2026-09-29</lastmod><priority>0.8</priority></url>
-  <url><loc>https://grafloria.com/learn/events-and-interaction/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
+  <url><loc>https://grafloria.com/learn/events-and-interaction/</loc><lastmod>2026-09-30</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/export/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/faq/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/groups/</loc><lastmod>2026-09-29</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/javascript-custom-nodes/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
-  <url><loc>https://grafloria.com/learn/javascript-dashboards/</loc><lastmod>2026-09-15</lastmod><priority>0.8</priority></url>
+  <url><loc>https://grafloria.com/learn/javascript-dashboards/</loc><lastmod>2026-09-30</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/javascript-element-vs-render/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/javascript/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
   <url><loc>https://grafloria.com/learn/kits/</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
@@ -55,7 +55,7 @@
   <url><loc>https://grafloria.com/blog/draggable-edges-that-stay-routed/</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/fluid-boards-split-layout-and-a-drag-grip/</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/obstacle-avoiding-edge-routing/</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
-  <url><loc>https://grafloria.com/blog/the-angular-diagram-library-graveyard/</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/blog/the-angular-diagram-library-graveyard/</loc><lastmod>2026-09-30</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/the-benchmark-that-flattered-us/</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/ways-a-diagram-can-lie/</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/blog/when-mermaid-diagrams-grow-up/</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
@@ -106,6 +106,7 @@
   <url><loc>https://grafloria.com/demos/grouping/selection-grouping.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/grouping/sub-flow.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/grouping/swimlanes.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/chatbot-flow.html</loc><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/computing-flows.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/connection-events.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/context-menu.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>

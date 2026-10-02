@@ -142,6 +142,24 @@ import { LIGHT_THEME, DARK_THEME } from '@grafloria/react';
       and exposes <code>--grafloria-*</code> variables — there is no stylesheet you must
       import, in any framework.</div>
 
+      <h2>How a selected node looks</h2>
+      <p>By default a selected node does two things: its body takes the theme's selected
+      colours, and a ring is drawn 3px outside it. For card-style nodes the ring is one
+      rectangle too many, so <code>style.selection</code> picks the look:</p>
+<pre data-lang="typescript">{ id: 'step', position: { x: 60, y: 80 },
+  shape: { type: 'rect', cornerRadius: 12 },
+  style: { selection: 'border' } }   // 'both' (default) · 'border' · 'ring'</pre>
+      <ul>
+        <li><b><code>'both'</code></b> — the selected fill and border, plus the ring.</li>
+        <li><b><code>'border'</code></b> — only the node's own border changes; its fill stays and there is no ring.</li>
+        <li><b><code>'ring'</code></b> — only the ring; the body keeps its own paint.</li>
+      </ul>
+      <p>It is a style property like any other, so it follows the cascade: set it on one node,
+      in a named style (<code>defineStyle('card', { selection: 'border' })</code>), per node
+      type, or for every node with <code>theme.nodes.default.selection</code>. The ring and the
+      border both follow the node's rounded corners. See it on the
+      <a href="../../demos/interaction/chatbot-flow.html">ManyChat-style chatbot builder</a>.</p>
+
       <h2>Where next</h2>
       <ul>
         <li><a href="../export/">Export</a> — exports honor the active theme.</li>
