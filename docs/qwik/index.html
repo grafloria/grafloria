@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vue diagram library — Grafloria</title>
-<meta name="description" content="An MIT Vue 3 diagram library: v-model nodes and edges, slot-based custom nodes, composables. Routing, auto-layout, undo, collaboration and vector export built in.">
-<link rel="canonical" href="https://grafloria.com/vue/">
+<title>Qwik diagram library — Grafloria</title>
+<meta name="description" content="An MIT Qwik diagram library: QRL callbacks, Qwik components as custom nodes, server rendering that resumes. Routing, auto-layout, undo, collaboration and vector export built in.">
+<link rel="canonical" href="https://grafloria.com/qwik/">
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="../favicon-32.png">
 <link rel="apple-touch-icon" href="../apple-touch-icon.png">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Grafloria","alternateName":"@grafloria/vue","url":"https://grafloria.com/vue/","description":"Vue 3 diagram library \u2014 v-model bindings and slot-defined custom nodes.","applicationCategory":"DeveloperApplication","operatingSystem":"Web","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"installUrl":"https://www.npmjs.com/package/@grafloria/vue","softwareHelp":"https://grafloria.com/learn/vue/","sameAs":["https://github.com/grafloria/grafloria","https://www.npmjs.com/package/@grafloria/vue"]}</script>
-<meta property="og:title" content="Vue diagram library — Grafloria">
-<meta property="og:description" content="An MIT Vue 3 diagram library: v-model nodes and edges, slot-based custom nodes, composables. Routing, auto-layout, undo, collaboration and vector export built in.">
-<meta property="og:url" content="https://grafloria.com/vue/">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Grafloria","alternateName":"@grafloria/qwik","url":"https://grafloria.com/qwik/","description":"Qwik diagram library \u2014 QRL callbacks, component custom nodes, server rendering that resumes.","applicationCategory":"DeveloperApplication","operatingSystem":"Web","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"installUrl":"https://www.npmjs.com/package/@grafloria/qwik","softwareHelp":"https://github.com/grafloria/grafloria/tree/main/libs/qwik#readme","sameAs":["https://github.com/grafloria/grafloria","https://www.npmjs.com/package/@grafloria/qwik"]}</script>
+<meta property="og:title" content="Qwik diagram library — Grafloria">
+<meta property="og:description" content="An MIT Qwik diagram library: QRL callbacks, Qwik components as custom nodes, server rendering that resumes. Routing, auto-layout, undo, collaboration and vector export built in.">
+<meta property="og:url" content="https://grafloria.com/qwik/">
 <meta property="og:image" content="https://grafloria.com/og-image.png">
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="640">
@@ -127,36 +127,38 @@
       <nav class="fw-chips" aria-label="Frameworks">
       <a href="../react/">React</a>
       <a href="../angular/">Angular</a>
-      <a href="../vue/" aria-current="page">Vue</a>
-      <a href="../qwik/">Qwik</a>
+      <a href="../vue/">Vue</a>
+      <a href="../qwik/" aria-current="page">Qwik</a>
       <a href="../javascript/">JavaScript</a>
       </nav>
-      <h1>The Vue diagram library with the batteries included</h1>
-      <p class="lede">Node editors and flow charts as <b>Vue 3 components</b> — <code>v-model:nodes</code>/<code>v-model:edges</code>, slot-based custom nodes (<code>#node-&lt;type&gt;</code>), provider composables. Underneath: obstacle-avoiding routing, ELK auto-layout, undo/redo, CRDT collaboration and SVG/PNG/PDF export. MIT, no Pro tier.</p>
-      <div class="install">npm install <b>@grafloria/vue</b> @grafloria/renderer @grafloria/engine</div>
+      <h1>The Qwik diagram library that renders on the server</h1>
+      <p class="lede">Node editors and flow charts as <b>Qwik components</b> — QRL callbacks (<code>onInit$</code>, <code>onNodesChange$</code>), your own <code>component$</code> as a custom node, hooks for selection and viewport. The server sends the finished diagram in the HTML, and the browser <b>resumes</b> it instead of redrawing it. Underneath: obstacle-avoiding routing, ELK auto-layout, undo/redo, CRDT collaboration and SVG/PNG/PDF export. MIT, no Pro tier.</p>
+      <div class="install">npm install <b>@grafloria/qwik</b> @grafloria/renderer @grafloria/engine @grafloria/element</div>
     </div>
 
     <div class="hero">
       <div class="codecard">
-        <div class="bar">Flow.vue</div>
-        <pre><span class="c">&lt;script setup&gt;</span>
-<span class="k">import</span> { ref } <span class="k">from</span> <span class="s">'vue'</span>;
-<span class="k">import</span> { GrafloriaFlow } <span class="k">from</span> <span class="s">'@grafloria/vue'</span>;
+        <div class="bar">flow.tsx</div>
+        <pre><span class="k">import</span> { component$, $ } <span class="k">from</span> <span class="s">'@builder.io/qwik'</span>;
+<span class="k">import</span> { GrafloriaFlow, <span class="k">type</span> NodeProps } <span class="k">from</span> <span class="s">'@grafloria/qwik'</span>;
 
-<span class="k">const</span> nodes = ref([
-  { id: <span class="s">'a'</span>, type: <span class="s">'job'</span>, position: { x: 0, y: 0 }, data: { title: <span class="s">'Extract'</span> } },
-  { id: <span class="s">'b'</span>, position: { x: 260, y: 0 }, label: <span class="s">'Load'</span> },
-]);
-<span class="k">const</span> edges = ref([{ source: <span class="s">'a'</span>, target: <span class="s">'b'</span> }]);
-<span class="c">&lt;/script&gt;</span>
+<span class="c">// Your own Qwik component draws the 'job' nodes.</span>
+<span class="k">const</span> Job = component$((p: NodeProps&lt;{ title: string }&gt;) =&gt; (
+  &lt;div class=<span class="s">"job-card"</span>&gt;{p.data.title}&lt;/div&gt;
+));
 
-<span class="c">&lt;template&gt;</span>
-  &lt;<span class="k">GrafloriaFlow</span> v-model:nodes=<span class="s">"nodes"</span> v-model:edges=<span class="s">"edges"</span> layout=<span class="s">"elk"</span>&gt;
-    &lt;<span class="k">template</span> #node-job=<span class="s">"{ data }"</span>&gt;
-      &lt;div class=<span class="s">"job-card"</span>&gt;{{ data.title }}&lt;/div&gt;
-    &lt;/<span class="k">template</span>&gt;
-  &lt;/<span class="k">GrafloriaFlow</span>&gt;
-<span class="c">&lt;/template&gt;</span></pre>
+<span class="k">export const</span> Flow = component$(() =&gt; (
+  &lt;<span class="k">GrafloriaFlow</span>
+    nodes={[
+      { id: <span class="s">'a'</span>, type: <span class="s">'job'</span>, position: { x: 0, y: 0 }, data: { title: <span class="s">'Extract'</span> } },
+      { id: <span class="s">'b'</span>, position: { x: 260, y: 0 }, label: <span class="s">'Load'</span> },
+    ]}
+    edges={[{ source: <span class="s">'a'</span>, target: <span class="s">'b'</span> }]}
+    nodeTypes={{ job: Job }}
+    layout=<span class="s">"elk"</span>
+    onNodeClick$={$(({ node }) =&gt; console.log(node.id))}
+  /&gt;
+));</pre>
       </div>
       <div class="livecard">
         <div class="bar"><span class="dot"></span>live — the same engine this binding wraps, drag anything</div>
@@ -167,44 +169,44 @@
     <h2>Why teams pick it</h2>
     <div class="grid3">
       <div class="card">
-        <h3>Idiomatic Vue 3</h3>
-        <p><code>v-model</code> for controlled nodes and edges, named slots per node type with full slot props, provider composables for selection and viewport — reads like every other Vue component you own.</p>
+        <h3>Idiomatic Qwik</h3>
+        <p>Every callback is a QRL, so it loads lazily. Custom nodes are plain <code>component$</code>s keyed by node type, and <code>&lt;GrafloriaProvider&gt;</code> with <code>useGrafloria()</code>, <code>useSelection()</code> and <code>useViewport()</code> lets a toolbar or inspector drive the canvas.</p>
+      </div>
+      <div class="card">
+        <h3>Server-rendered, then resumed</h3>
+        <p><code>renderToStaticSVG()</code> runs the real renderer in Node with no DOM. Pass the result as <code>ssr</code>: the page is correct before any script runs, and the browser adopts that markup with no hydration pass and no re-layout.</p>
       </div>
       <div class="card">
         <h3>The hard parts are library code</h3>
-        <p>Obstacle-avoiding orthogonal routing with jump-overs, ELK/dagre/force layout in a worker, one-gesture-one-undo command history, drag-and-pack dashboard kit, UML/ER kits.</p>
-      </div>
-      <div class="card">
-        <h3>One engine, four surfaces</h3>
-        <p>The identical JSON spec drives Vue, React, Angular and the plain web component — and the same model exports to Mermaid text, SVG, PNG and true-vector PDF, in the browser or in Node.</p>
+        <p>Obstacle-avoiding orthogonal routing with jump-overs, ELK/dagre/force layout in a worker, one-gesture-one-undo command history, the drag-and-pack dashboard kit, UML/ER kits.</p>
       </div>
     </div>
 
     <div class="callout">
-      <h3>Coming from Vue Flow?</h3>
-      <p>Vue Flow gives Vue developers the familiar React-Flow-style canvas and does it well. As with its sibling, the editor extras around it — automatic layout, undo, exports, collaboration — are yours to assemble. Grafloria ships them as MIT library features, with the same engine available if your team also touches React or Angular. Our broader field-by-field table is on the <a href="../compare/#diagrams">comparison page</a>.</p>
+      <h3>Server rendering in three lines</h3>
+      <p><code>const ssr = renderToStaticSVG({ nodes, edges, width: 900, height: 420, fitView: true });</code> on the server, <code>&lt;GrafloriaFlow nodes={nodes} edges={edges} ssr={ssr} /&gt;</code> in the component, and <code>ssr.css</code> in the document head. The diagram&rsquo;s script starts once the page is ready, so <code>onInit$</code> fires and the hooks have the instance before anyone touches it. Custom nodes are framework components, so they mount in the browser, inside the layer the server already sent.</p>
     </div>
 
     <div class="callout">
-      <h3>npm&rsquo;s &ldquo;unpacked size&rdquo; is not what ships</h3>
-      <p>npm&rsquo;s <i>unpacked size</i> is uncompressed ESM source plus full TypeScript declarations. What your users download, measured worst-case &mdash; the <b>entire</b> public surface of <code>@grafloria/vue</code>, esbuild minify&nbsp;+ splitting: <b>334&nbsp;KB gzipped</b> eager, with the ELK layout engine in a lazy chunk that downloads only if you invoke it. That covers the renderer, undo, export, Mermaid import and validation &mdash; about the cost of one charting library. Every package README carries a two-minute reproduction script.</p>
+      <h3>One engine, five surfaces</h3>
+      <p>The identical JSON spec drives Qwik, React, Angular, Vue and the plain web component — and the same model exports to Mermaid text, SVG, PNG and true-vector PDF, in the browser or in Node. Move a diagram between apps without rewriting it.</p>
     </div>
 
-    <h2>Every demo, in your framework</h2>
-    <p class="sub">The gallery is the documentation: every demo is a real, clickable page, and our CI
-    drives each one with real pointer events so the examples can't rot — and each one available in this framework’s own idiom, source shown.
-    <a href="../demos-vue/"><b>Vue demos — every gallery page as a real SFC →</b></a></p>
+    <h2>See it running</h2>
+    <p class="sub">The Qwik demos are a Qwik app, server-rendered per request — six pages, from a plain flow to custom nodes, hooks and server rendering with resume. Clone the repository, then run
+    <code>npx vite --config apps/demos-qwik/vite.config.ts --mode ssr</code>.
+    <a href="https://github.com/grafloria/grafloria/tree/main/apps/demos-qwik" target="_blank" rel="noopener"><b>The Qwik demos on GitHub →</b></a></p>
 
     <div class="cta">
-      <a class="btn primary" href="../demos-vue/">Open the demos</a>
-      <a class="btn ghost" href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">Get the packages</a>
+      <a class="btn primary" href="https://github.com/grafloria/grafloria/tree/main/libs/qwik#readme" target="_blank" rel="noopener">Read the guide</a>
+      <a class="btn ghost" href="https://www.npmjs.com/package/@grafloria/qwik" target="_blank" rel="noopener">Get the package</a>
     </div>
 
     <p class="fine">
-      Grafloria is MIT — every feature, no commercial tier. React, Next.js, Angular, Vue, React Flow,
-      Vue Flow, ngx-vflow, JointJS and Drawflow are trademarks of their respective owners; comparative
-      references only, no affiliation implied. Corrections welcome via
-      <a href="https://github.com/grafloria/grafloria/issues">GitHub issues</a>.
+      Grafloria is MIT — every feature, no commercial tier. A custom node renders in its own Qwik
+      container, so it cannot read contexts from the surrounding app; feed it through <code>node.data</code>.
+      Qwik, React, Angular and Vue are trademarks of their respective owners; no affiliation implied.
+      Corrections welcome via <a href="https://github.com/grafloria/grafloria/issues">GitHub issues</a>.
     </p>
   </div>
 </main>
@@ -219,7 +221,7 @@
 
 <script type="module">
   // One live canvas, lazily: the shared demo bundle, loaded on first scroll into view.
-  const NODES = [{"id": "a", "position": {"x": 40, "y": 60}, "size": {"width": 165, "height": 56}, "label": "useProducts()", "style": {"fill": "#ecfdf5", "stroke": "#059669", "strokeWidth": 1.5}}, {"id": "b", "position": {"x": 255, "y": 165}, "size": {"width": 165, "height": 56}, "label": "<Pinia Store>", "style": {"fill": "#fef9c3", "stroke": "#a16207", "strokeWidth": 1.5}}, {"id": "c", "position": {"x": 470, "y": 60}, "size": {"width": 165, "height": 56}, "label": "<CartView />", "style": {"fill": "#eef2ff", "stroke": "#3B52D9", "strokeWidth": 1.5}}];
+  const NODES = [{"id": "a", "position": {"x": 40, "y": 60}, "size": {"width": 165, "height": 56}, "label": "routeLoader$()", "style": {"fill": "#ecfdf5", "stroke": "#059669", "strokeWidth": 1.5}}, {"id": "b", "position": {"x": 255, "y": 165}, "size": {"width": 175, "height": 56}, "label": "renderToStaticSVG()", "style": {"fill": "#fef9c3", "stroke": "#a16207", "strokeWidth": 1.5}}, {"id": "c", "position": {"x": 470, "y": 60}, "size": {"width": 200, "height": 56}, "label": "<GrafloriaFlow ssr />", "style": {"fill": "#eef2ff", "stroke": "#3B52D9", "strokeWidth": 1.5}}];
   const EDGES = [{ source: NODES[0].id, target: NODES[1].id }, { source: NODES[1].id, target: NODES[2].id }];
   const host = document.getElementById('fw-live');
   const boot = async () => {
