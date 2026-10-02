@@ -61,6 +61,13 @@ import {
   type SyncTransport,
   // Tier 3 tail: anchored comments.
   CommentStore,
+  // Group rules on a node drag — the same answers the shared binder asks.
+  GroupMembershipService,
+  memberConfinement,
+  clampBoxInto,
+  containingGroup,
+  poolOfLane,
+  laneAtPoint,
 } from '@grafloria/engine';
 
 /** The uniform collab contract every Grafloria wrapper shares. */
@@ -873,6 +880,13 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private isDraggingNode = false;
   private draggedNodes: Map<string, { startX: number; startY: number; startZ?: number }> =
     new Map();
+  /**
+   * Where each dragged member must stay (its confining group's extent; a lane
+   * member's whole pool) — captured at drag start. This canvas drives its own
+   * pointer pipeline, so it asks the engine's rules itself: before, a lane member
+   * left its pool and a drop on another lane did not move it there.
+   */
+  private dragConfine = new Map<string, { x: number; y: number; width: number; height: number } | null>();
 
   /**
    * wave3/interaction: the last command dispatched by a gesture/keybinding.
@@ -1842,6 +1856,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.isDraggingNode = true;
     this.syncSnapScale(); // snap slack is screen-px, so it depends on the zoom
     this.draggedNodes.clear();
+    this.dragConfine.clear();
     diagram.getSelectedNodes().forEach((node) => {
       if (node.isDraggable()) {
         this.draggedNodes.set(node.id, {
@@ -1849,6 +1864,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
           startY: node.position.y,
           startZ: node.position.z,
         });
+        this.dragConfine.set(node.id, memberConfinement(diagram, node.id));
       }
     });
     if (this.containerRef?.nativeElement) {
@@ -1889,7 +1905,13 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.draggedNodes.forEach((initialPos, nodeId) => {
       const node = diagram.getNode(nodeId);
       if (node) {
-        node.setPosition(initialPos.startX + dx, initialPos.startY + dy);
+        let x = initialPos.startX + dx;
+        let y = initialPos.startY + dy;
+        // `constrainChildren`: a member stays inside its confining group (a lane
+        // member inside its pool's lanes) however far the pointer goes.
+        const confine = this.dragConfine.get(nodeId);
+        if (confine) ({ x, y } = clampBoxInto(confine, x, y, node.size.width, node.size.height));
+        node.setPosition(x, y);
       }
     });
 
@@ -1931,6 +1953,10 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private endNodeDrag(): void {
     const diagram = this.eng?.getDiagram();
     const moves: Array<{ nodeId: string; from: Point; to: Point }> = [];
+    // The lane a member was dropped in decides where it settles — BEFORE the
+    // move is recorded, so undo/redo replay the position the user saw.
+    if (diagram) this.settleIntoLanes(diagram);
+    const dropped = [...this.draggedNodes.keys()];
 
     if (diagram) {
       this.draggedNodes.forEach((start, nodeId) => {
@@ -1979,6 +2005,47 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     }
 
     this.executeCommand(command);
+    if (diagram && moves.length > 0) this.applyMembershipOnDrop(diagram, dropped);
+  }
+
+  /** A lane member settles fully inside the lane its centre landed in. */
+  private settleIntoLanes(diagram: DiagramModel): void {
+    this.draggedNodes.forEach((_start, nodeId) => {
+      const node = diagram.getNode(nodeId);
+      const group = node ? containingGroup(diagram, nodeId) : undefined;
+      const pool = group ? poolOfLane(diagram, group) : undefined;
+      if (!node || !pool) return;
+      const lane = laneAtPoint(diagram, pool, {
+        x: node.position.x + node.size.width / 2,
+        y: node.position.y + node.size.height / 2,
+      });
+      if (!lane) return;
+      const p = clampBoxInto(lane.getInnerBounds(), node.position.x, node.position.y, node.size.width, node.size.height);
+      if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
+    });
+  }
+
+  /**
+   * A single dropped node may change WHAT CONTAINS it: into the group (or lane)
+   * under its centre, out of a group that does not confine it. The engine's
+   * GroupMembershipService decides, exactly as for every other host.
+   */
+  private applyMembershipOnDrop(diagram: DiagramModel, nodeIds: string[]): void {
+    if (nodeIds.length !== 1 || diagram.isReadonly()) return;
+    if ((this.eng.getInteractionConfig?.() as { enableGroupMembershipOnDrop?: boolean } | undefined)?.enableGroupMembershipOnDrop === false) return;
+    if (diagram.getGroups().length === 0) return;
+    const node = diagram.getNode(nodeIds[0]!);
+    if (!node) return;
+    const service = new GroupMembershipService({ diagram, dispatcher: this.eng.commandManager });
+    service.refresh();
+    void Promise.resolve(
+      service.handleNodeDragEnd(node.id, { x: node.position.x + node.size.width / 2, y: node.position.y + node.size.height / 2 })
+    ).then((result) => {
+      if (result?.changed) {
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   /** One node's gesture-committed move (opts out of CommandManager merging). */
