@@ -14,7 +14,8 @@ export default function EditableEdgeDemo() {
   useEffect(() => markReady(), []);
   return (
     <div style={{ height: '100vh' }}>
-      <GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} />
+      <GrafloriaFlow defaultNodes={nodes} defaultEdges={edges}
+        interaction={{ enableWaypointEditing: true, showWaypointHandles: true }} />
     </div>
   );
 }

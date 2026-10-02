@@ -39,7 +39,9 @@ const HOST_CSS = `
   background-color: #f4f5f8;
   background-image: radial-gradient(circle, #d5d9e2 1.1px, transparent 1.1px);
   background-size: 22px 22px; }
-#n8n-canvas > .grafloria-flow, #n8n-canvas > div { display: block; height: 100%; }
+/* Only the flow fills the canvas: a bare "> div" also stretched the HUD, legend,
+   run bar and log panel to full height, and a white panel covered the graph. */
+#n8n-canvas > .grafloria-flow { display: block; height: 100%; }
 /* Status badges sit half-out of the card's top-right corner, n8n-style. */
 #n8n-canvas foreignObject { overflow: visible; }
 
@@ -285,6 +287,7 @@ export default function N8nWorkflowDemo() {
 
         <div id="n8n-canvas" ref={canvasHost} className={c.logsOpen ? 'logs-open' : undefined} onDoubleClick={onDblClick}>
           <GrafloriaFlow defaultNodes={SPEC.nodes} defaultEdges={SPEC.edges} onInit={onInit}
+            interaction={{ portVisibility: 'always' }}
             style={{ display: 'block', height: '100%', width: '100%' }} />
 
           <div id="n8n-hud">{c.hudText}</div>

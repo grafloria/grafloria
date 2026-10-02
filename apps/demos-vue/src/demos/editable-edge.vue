@@ -15,6 +15,7 @@ onMounted(() => markReady());
 
 <template>
   <div style="height:100vh">
-    <GrafloriaFlow :default-nodes="nodes" :default-edges="edges" />
+    <GrafloriaFlow :default-nodes="nodes" :default-edges="edges"
+      :interaction="{ enableWaypointEditing: true, showWaypointHandles: true }" />
   </div>
 </template>
