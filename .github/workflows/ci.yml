@@ -65,6 +65,9 @@ jobs:
       # component$ and QRLs loadable), driven page by page in a browser —
       # including server rendering and resume.
       - run: node demos/e2e/qwik-run.mjs
+      # …and every gallery demo as a Qwik component, like React/Vue/Angular above.
+      - run: npx vite build --config apps/demos-qwik/vite.gallery.config.ts
+      - run: node demos/e2e/variant-run.mjs qwik
       - run: node demos/e2e/interaction-run.mjs
       - run: node demos/e2e/table-editing-run.mjs
       # The master-sheet covenant: every stencil master placed and measured as
