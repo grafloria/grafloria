@@ -250,3 +250,59 @@ describe('hydration — no flash, no re-layout', () => {
     diagram.dispose();
   });
 });
+
+// The server's canvas is rarely the browser's container. The Qwik SSR demo
+// renders 900×420 into a 1020×800 box: the adopted <svg> kept the server's
+// width="900" height="420" (the patcher adopts, it does not strip), while the
+// camera synced its viewBox to the real container — two aspect ratios, so the
+// browser letterboxed the picture to 58% and every drag moved the node at about
+// half the pointer's speed. The adoptable `html` must be the markup the CLIENT
+// builds (no fixed size; CSS fills the layer); only the standalone `svg` sizes
+// itself, for an <img>, an email or a README.
+describe('hydration — the server canvas is not the browser container', () => {
+  const sized = (w: number, h: number): HTMLElement => {
+    const el = document.createElement('div');
+    el.getBoundingClientRect = () => ({ left: 0, top: 0, width: w, height: h, right: w, bottom: h }) as DOMRect;
+    document.body.appendChild(el);
+    return el;
+  };
+  const render = () => renderToStaticSVG({ nodes: NODES, edges: EDGES, width: 900, height: 420, fitView: true, instanceId: 'grafloria-sz' });
+
+  it('`html` carries the svg the client builds — no fixed size — while `svg` still sizes itself', () => {
+    const server = render();
+    const host = document.createElement('div');
+    host.innerHTML = server.html;
+    const adoptable = host.querySelector('svg')!;
+    expect(adoptable.hasAttribute('width')).toBe(false);
+    expect(adoptable.hasAttribute('height')).toBe(false);
+    const standalone = parseSvg(server.svg);
+    expect(standalone.getAttribute('width')).toBe('900');
+    expect(standalone.getAttribute('height')).toBe('420');
+  });
+
+  it('adopted into a bigger container, the root svg matches a fresh mount and its viewBox follows the container 1:1', () => {
+    const server = render();
+    const container = sized(1020, 800);
+    container.innerHTML = server.html;
+    const diagram = createDiagram(container, { nodes: NODES, edges: EDGES, hydrate: server.snapshot });
+    const fresh = sized(1020, 800);
+    const control = createDiagram(fresh, { nodes: NODES, edges: EDGES });
+    const names = (el: Element) => Array.from(el.attributes).map((a) => a.name).sort();
+    const adopted = container.querySelector('svg')!;
+    expect(names(adopted)).toEqual(names(fresh.querySelector('svg')!));
+
+    // What the ResizeObserver does once the browser has laid the container out.
+    diagram.viewport.syncCanvasSize({ width: 1020, height: 800 } as DOMRect);
+    diagram.renderNow();
+    const [, , vbw, vbh] = adopted.getAttribute('viewBox')!.split(/\s+/).map(Number);
+    const zoom = diagram.viewport.getZoom();
+    // The painted scale IS the camera's zoom: a pointer move of d px moves a node d px.
+    expect(vbw! * zoom).toBeCloseTo(1020, 3);
+    expect(vbh! * zoom).toBeCloseTo(800, 3);
+
+    diagram.dispose();
+    control.dispose();
+    container.remove();
+    fresh.remove();
+  });
+});
