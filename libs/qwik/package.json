@@ -1,0 +1,51 @@
+{
+  "name": "@grafloria/qwik",
+  "version": "0.10.5",
+  "description": "Qwik bindings for Grafloria Diagrams and Grafloria Dashboards — an MIT diagram and dashboard engine: routing, auto-layout, undo, collaboration and dashboard layouts, server-rendered and resumable in Qwik.",
+  "license": "MIT",
+  "author": "Ramy Othman",
+  "homepage": "https://grafloria.com/qwik/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/grafloria/grafloria.git",
+    "directory": "libs/qwik"
+  },
+  "bugs": {
+    "url": "https://github.com/grafloria/grafloria/issues"
+  },
+  "keywords": [
+    "diagram",
+    "flowchart",
+    "graph",
+    "node-editor",
+    "qwik",
+    "resumable",
+    "ssr",
+    "svg",
+    "layout",
+    "dashboard",
+    "dashboard-layout",
+    "workflow-editor"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "sideEffects": false,
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
+  "peerDependencies": {
+    "@grafloria/engine": "^0.3.0",
+    "@grafloria/renderer": "^0.4.16",
+    "@builder.io/qwik": "^1.5.0",
+    "@grafloria/element": "^0.4.3"
+  },
+  "files": [
+    "src/**/*.js",
+    "src/**/*.d.ts"
+  ],
+  "type": "module"
+}
