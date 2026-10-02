@@ -1,6 +1,9 @@
 import type { DiagramEngine, LinkModel, NodeModel, GroupModel } from '@grafloria/engine';
 // wave12/connect-ergonomics (gap 1): the ONE undoable step a subflow drag commits.
-import { MoveGroupCommand, MoveNodeCommand, MacroCommand, GroupMembershipService } from '@grafloria/engine';
+import {
+  MoveGroupCommand, MoveNodeCommand, MacroCommand, GroupMembershipService,
+  memberConfinement, clampBoxInto, containingGroup, poolOfLane, laneAtPoint,
+} from '@grafloria/engine';
 import type { Command } from '@grafloria/engine';
 import type { GroupFrameSnapshot, GroupNodeMove, GroupFrameMove } from '@grafloria/engine';
 import type { InteractionController } from '../interaction/interaction-controller';
@@ -117,6 +120,12 @@ interface NodeDragState {
    * position makes leaving a snapline land exactly back under the pointer.
    */
   snapAnchor?: { x: number; y: number };
+  /**
+   * Where each dragged member must stay (its confining group's extent; a lane
+   * member's whole pool), captured once when the drag commits — the frames do
+   * not move during a node drag. Absent / null entry = free.
+   */
+  confine?: Map<string, { x: number; y: number; width: number; height: number } | null>;
 }
 
 /**
@@ -959,7 +968,9 @@ export class DomEventBinder {
       const group = this.findGroupAtPoint(diagram, worldX, worldY);
       if (group) {
         event.preventDefault();
-        this.pressGroup(group, diagram, event, worldX, worldY);
+        // A lane is a band of its pool, not a free frame: grabbing it moves the
+        // whole pool (its lanes stay tiled and their members ride along).
+        this.pressGroup(poolOfLane(diagram, group) ?? group, diagram, event, worldX, worldY);
         return;
       }
     }
@@ -1283,6 +1294,9 @@ export class DomEventBinder {
       const drag = this.nodeDrag;
       const moved = drag.committed;
       this.nodeDrag = null;
+      // A lane member settles fully inside the lane it was dropped in, BEFORE the
+      // move is recorded, so undo/redo replay the position the user saw.
+      if (moved && engine) this.settleIntoLanes(engine, drag);
       // wave12: record the completed drag as one undoable step BEFORE anything else.
       if (moved && engine) this.commitNodeMove(engine, drag);
       // T8/visio: the drop may also change WHAT CONTAINS the node.
@@ -1706,9 +1720,11 @@ export class DomEventBinder {
       // has moved yet on this frame (the delta is applied after this block), so these
       // are the true start positions.
       drag.startPositions = new Map();
+      drag.confine = new Map();
       for (const id of drag.nodeIds) {
         const n = diagram.getNode(id);
         if (n) drag.startPositions.set(id, { x: n.position.x, y: n.position.y, z: n.position.z });
+        drag.confine.set(id, memberConfinement(diagram, id));
       }
     }
 
@@ -1732,6 +1748,9 @@ export class DomEventBinder {
         node.setPosition(node.position.x + dx, node.position.y + dy);
       }
     }
+    // `constrainChildren`, honoured at last: a member of a confining group stays
+    // inside it (a lane member inside its pool's lanes) while the pointer roams.
+    this.confineDraggedNodes(drag, diagram);
 
     // Node geometry moved ⇒ the port hit cache is stale.
     this.host.interaction.invalidatePortHitCache();
@@ -2075,6 +2094,46 @@ export class DomEventBinder {
       );
       return result.box;
     };
+  }
+
+  /** Keep each dragged member inside the rectangle that confines it. */
+  private confineDraggedNodes(
+    drag: NodeDragState,
+    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>
+  ): void {
+    if (!drag.confine) return;
+    for (const id of drag.nodeIds) {
+      const rect = drag.confine.get(id);
+      if (!rect) continue;
+      const node = diagram.getNode(id);
+      if (!node || node.state.locked) continue;
+      const p = clampBoxInto(rect, node.position.x, node.position.y, node.size.width, node.size.height);
+      if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
+    }
+  }
+
+  /**
+   * A lane member is let go: it belongs to the lane its CENTRE landed in (the
+   * membership service makes that so on drop), so move it fully inside that
+   * lane's band — a box straddling two lanes reads as belonging to neither.
+   */
+  private settleIntoLanes(engine: DiagramEngine, drag: NodeDragState): void {
+    const diagram = engine.getDiagram();
+    if (!diagram) return;
+    for (const id of drag.nodeIds) {
+      const node = diagram.getNode(id);
+      if (!node || node.state.locked) continue;
+      const group = containingGroup(diagram, id);
+      const pool = group ? poolOfLane(diagram, group) : undefined;
+      if (!pool) continue;
+      const lane = laneAtPoint(diagram, pool, {
+        x: node.position.x + node.size.width / 2,
+        y: node.position.y + node.size.height / 2,
+      });
+      if (!lane) continue;
+      const p = clampBoxInto(lane.getInnerBounds(), node.position.x, node.position.y, node.size.width, node.size.height);
+      if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
+    }
   }
 
   private applyMembershipOnDrop(engine: DiagramEngine, drag: NodeDragState): void {

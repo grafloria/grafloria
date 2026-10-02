@@ -13,6 +13,7 @@
 // the affected groups' derived bounds. `translateOnReparent` is the single seam
 // where a relative-coordinate model would translate; here it is the identity.
 
+import { areSiblingLanes } from './confinement';
 import type { Point } from '../types/geometry.types';
 import type { DiagramModel } from '../models/DiagramModel';
 import type { GroupModel } from '../models/GroupModel';
@@ -210,8 +211,14 @@ export class GroupMembershipService {
 
     // A group that CONFINES its children cannot be left by a drop: its extent
     // reels the member back in ("you cannot leave"), so leaving is vetoed here
-    // rather than detaching what the clamp is about to keep.
-    if (currentGroup && currentGroup.constrainChildren === true) {
+    // rather than detaching what the clamp is about to keep. The one way out is
+    // into a SIBLING LANE of the same pool — a lane confines to its pool's lane
+    // area, and moving between lanes is the point of having them.
+    if (
+      currentGroup &&
+      currentGroup.constrainChildren === true &&
+      !areSiblingLanes(this.diagram, currentGroup, target)
+    ) {
       result.rejected = true;
       this.clearHover();
       return result;
