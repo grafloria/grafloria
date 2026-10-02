@@ -1,0 +1,1 @@
+import{v as r}from"./core.min-BYz3EHBQ.js";import{x as n}from"./core.min-BYz3EHBQ.js";import{m as a}from"./ready-C4_3DsUA.js";import"./preloader-D7tuiBjF.js";const i=()=>{const[o]=r();o.value="drive with a finger (or DevTools touch emulation): pan, pinch, tap, drag",a()};export{n as _hW,i as s_xIbW90djUCQ};

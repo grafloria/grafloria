@@ -1,0 +1,1 @@
+import{v as a,Q as e}from"./core.min-BYz3EHBQ.js";import{x as u}from"./core.min-BYz3EHBQ.js";import{m as s}from"./ready-C4_3DsUA.js";import"./preloader-D7tuiBjF.js";const h=o=>{const[m,t]=a();m.value=e(o);const r=o.metrics();r&&(t.value=`fluid · grow · ${Math.round(r.frame.width)}×${Math.round(r.frame.height)} px · ${r.rows} rows`),s()};export{u as _hW,h as s_6gtme0M2uCM};

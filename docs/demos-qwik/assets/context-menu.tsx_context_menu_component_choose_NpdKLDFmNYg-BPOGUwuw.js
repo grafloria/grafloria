@@ -1,0 +1,1 @@
+import{v as s}from"./core.min-BYz3EHBQ.js";import{x as u}from"./core.min-BYz3EHBQ.js";import{_auto_act as p}from"./context-menu-D39rD90e.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const v=async o=>{const[e,r,a]=s(),t=e.value;t&&a.value&&await p(t,a.value,o),r.value=!1};export{u as _hW,v as s_NpdKLDFmNYg};

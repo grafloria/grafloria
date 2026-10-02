@@ -1,0 +1,1 @@
+import{v as s}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const v=(i,a)=>{const[e,t]=s();t.value=Number(a.value);const o=e.value?.getModel().getNode("a");o?.setSize(t.value,o.size.height),e.value?.renderNow()};export{v as s_mQMFpf035aI};
