@@ -175,3 +175,25 @@ describe('CommentPanelView — it drives the real store', () => {
     expect(panel.getRebuildCount()).toBe(rebuilds + 1);
   });
 });
+
+// A panel opened on a store that ALREADY has threads must show them at once. The
+// constructor never painted — it waited for the next store change — so every
+// framework's comments demo opened on "No comments yet." beside a pinned thread.
+describe('a panel opened on existing threads', () => {
+  it('shows them immediately, without waiting for the store to change', () => {
+    const engine = new DiagramEngine();
+    const diagram = engine.createDiagram('existing')!;
+    const n = new NodeModel({ type: 'process', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } });
+    (n as unknown as { id: string }).id = 'n1';
+    diagram.addNode(n);
+    const store = new CommentStore(diagram, { viewer: 'ada' });
+    store.createThread({ kind: 'node', id: 'n1' }, 'already here before the panel');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const panel = new CommentPanelView(host, store);
+    expect(panel.getElement().textContent).toContain('already here before the panel');
+    // the empty state is HIDDEN (it stays in the markup for the next empty moment)
+    const empty = Array.from(panel.getElement().querySelectorAll('p')).find((p) => p.textContent === 'No comments yet.')!;
+    expect(empty.hidden).toBe(true);
+  });
+});
