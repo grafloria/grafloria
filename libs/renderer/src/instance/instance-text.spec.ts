@@ -41,4 +41,26 @@ describe('instance text round-trip', () => {
     expect(result.source).toBe('sidecar');
     instance.dispose();
   });
+
+  // The mermaid-text demo: edit a label in the text, press Load — the canvas
+  // kept the old label. loadText hands the reconciler MODELS, and its model
+  // branch only added ids it did not have; a node already on the canvas kept
+  // its old object, old label and all.
+  it('loadText updates a node and a link that are ALREADY on the canvas', () => {
+    const instance = createDiagram(container, { nodes: [], edges: [] });
+    instance.loadText('flowchart LR\n  work[Work] -->|then| done[Done]');
+    const model = instance.getModel();
+    expect(model.getNode('work')?.getLabel()).toBe('Work');
+
+    instance.loadText('flowchart LR\n  work[Labor] -->|after| done[Done]');
+    expect(model.getNodes().map((n) => n.id).sort()).toEqual(['done', 'work']);
+    expect(model.getNode('work')?.getLabel()).toBe('Labor');
+    expect(model.getLinks()).toHaveLength(1);
+    const link = model.getLinks()[0]!;
+    expect(JSON.stringify(link.labels ?? link.getMetadata?.('label') ?? '')).toContain('after');
+    // still wired: both ends resolve to live nodes
+    expect(model.getNodeByPortId(link.sourcePortId)?.id).toBe('work');
+    expect(model.getNodeByPortId(link.targetPortId)?.id).toBe('done');
+    instance.dispose();
+  });
 });
