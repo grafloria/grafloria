@@ -10,7 +10,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const FW = process.argv[2];
-if (!['angular', 'react', 'vue'].includes(FW)) throw new Error('usage: bake-variant-sources.mjs <angular|react|vue>');
+if (!['angular', 'react', 'vue', 'qwik'].includes(FW)) throw new Error('usage: bake-variant-sources.mjs <angular|react|vue|qwik>');
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = join(root, 'apps', `demos-${FW}`);
@@ -26,7 +26,9 @@ if (FW === 'angular') {
   pairs = [...rc.matchAll(/path: '([^']+)',\s*loadComponent: \(\) => import\('\.\/demos\/([^/]+)\//g)]
     .map((m) => ({ route: m[1], dir: join(APP, 'src', 'app', 'demos', m[2]) }));
 } else {
-  const rc = readFileSync(join(APP, 'src', 'routes.ts'), 'utf8');
+  // The Qwik app's gallery lives in apps/demos-qwik/gallery/ (its src/ is the
+  // server-rendered showcase).
+  const rc = readFileSync(join(APP, FW === 'qwik' ? 'gallery' : 'src', 'routes.ts'), 'utf8');
   // 'cat/name': () => import('./demos/<file>')  — file may be .tsx or .vue
   pairs = [...rc.matchAll(/'([\w-]+\/[\w-]+)':\s*\(\) => import\('\.\/demos\/([\w.-]+)'\)/g)]
     .map((m) => ({ route: m[1], file: m[2] }));
@@ -60,7 +62,7 @@ for (const p of pairs) {
     sources[p.route] = files;
   } else {
     // react/vue: one file per demo (a .tsx or a .vue SFC). Resolve the exact name.
-    const base = join(APP, 'src', 'demos');
+    const base = join(APP, FW === 'qwik' ? 'gallery' : 'src', 'demos');
     let file = p.file;
     if (!existsSync(join(base, file))) {
       for (const ext of ['.tsx', '.ts', '.vue']) { if (existsSync(join(base, file + ext))) { file = file + ext; break; } }

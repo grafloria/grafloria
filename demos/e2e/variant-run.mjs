@@ -14,15 +14,15 @@ import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
 
 const FW = process.argv[2];
-if (!['angular', 'react', 'vue'].includes(FW)) throw new Error('usage: variant-run.mjs <angular|react|vue> [--origin https://grafloria.com]');
+if (!['angular', 'react', 'vue', 'qwik'].includes(FW)) throw new Error('usage: variant-run.mjs <angular|react|vue|qwik> [--origin https://grafloria.com]');
 // `--origin <site>` drives the DEPLOYED variant (<site>/demos-<fw>/) against the
 // deployed JS gallery (<site>/demos/) instead of the local builds: what the host
 // serves is not always what was built (see gallery-run.mjs --origin).
 const originIdx = process.argv.indexOf('--origin');
 const LIVE = originIdx >= 0 ? String(process.argv[originIdx + 1] ?? '').replace(/\/$/, '') : null;
 // Angular (devkit) nests under browser/; the esbuild apps output flat.
-const READY = { angular: '__ngDemoReady', react: '__reactDemoReady', vue: '__vueDemoReady' }[FW];
-const PORT = { angular: 4327, react: 4328, vue: 4329 }[FW];
+const READY = { angular: '__ngDemoReady', react: '__reactDemoReady', vue: '__vueDemoReady', qwik: '__qwikDemoReady' }[FW];
+const PORT = { angular: 4327, react: 4328, vue: 4329, qwik: 4330 }[FW];
 const here = dirname(fileURLToPath(import.meta.url));
 const APP = join(here, '..', '..', 'apps', `demos-${FW}`);
 const DIST = FW === 'angular'
@@ -32,9 +32,13 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 
 // The routes ARE the app's route table — keep in lockstep with app.routes.ts.
 // (A route added there but not here still gates via the count check below.)
+// (The Qwik app's gallery lives in apps/demos-qwik/gallery/ — the folder's src/
+// is its server-rendered showcase.)
 const routesFile = FW === 'angular'
   ? join(APP, 'src', 'app', 'app.routes.ts')
-  : join(APP, 'src', 'routes.ts');
+  : FW === 'qwik'
+    ? join(APP, 'gallery', 'routes.ts')
+    : join(APP, 'src', 'routes.ts');
 const routesSrc = await readFile(routesFile, 'utf8');
 const ROUTES = FW === 'angular'
   ? [...routesSrc.matchAll(/path: '([^']+)'/g)].map((m) => m[1])
