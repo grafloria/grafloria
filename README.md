@@ -119,12 +119,10 @@ otherwise re-layout.
 
 | | how you turn it on |
 | --- | --- |
-| `@grafloria/qwik` | `<GrafloriaFlow ssr={{ html, snapshot }} />`. Qwik **resumes** rather than hydrating, so a server-rendered diagram costs *no component JavaScript* until someone interacts with it. |
+| `@grafloria/qwik` | `<GrafloriaFlow ssr={{ html, snapshot }} />`. Qwik **resumes** rather than hydrating: the page is correct from the server's HTML, and the diagram's script starts once the page is ready, with no hydration pass over the tree. |
 | `@grafloria/react` | `<GrafloriaFlow ssr={…} />` — adopts the same server DOM, but React still walks the tree to hydrate it. |
 | anything else | the two-call form above; `@grafloria/element` also re-exports it as `Grafloria.renderStatic()`. |
 
-For comparison: React Flow cannot do this at all (it is `'use client'`-only),
-and Mermaid server-renders something that can never become interactive.
 
 ### Run the SSR demo
 

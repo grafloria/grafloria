@@ -23,8 +23,10 @@
  * `createDiagram({ hydrate })` instead of rebuilding it.
  *
  * The React wrapper does the same trick but still pays for a hydration pass
- * over the tree. Qwik RESUMES: a server-rendered Grafloria diagram costs no
- * component JavaScript at all until the user actually interacts with it.
+ * over the tree. Qwik RESUMES: there is no hydration pass. The visible task
+ * runs on document-ready (see visible-task-options.ts for why), so the
+ * diagram's script loads with the page, not on first interaction — what
+ * resuming saves is re-walking the component tree.
  *
  * ```tsx
  * const ssr = renderToStaticSVG({ nodes, edges, width: 800, height: 600 });
