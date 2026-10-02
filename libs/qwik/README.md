@@ -76,7 +76,9 @@ Put `ssr.css` in your document head; the client re-injects identical content und
 
 Custom nodes are not server-rendered — they are framework components and the server has no framework. They mount on the client inside the (empty, correctly transformed) HTML layer the SSR markup already carries.
 
-**See it running.** [`apps/demos-qwik`](https://github.com/grafloria/grafloria/tree/main/apps/demos-qwik) in the repository is a Qwik SSR app over this package; its `ssr-resumable` route is the end-to-end proof (view source and the laid-out diagram is already in the HTML). Clone, then:
+**Every gallery demo, in Qwik:** [grafloria.com/demos-qwik](https://grafloria.com/demos-qwik/) — the Qwik version of each of the 100+ gallery pages, source shown; on any gallery page, the **Qwik** button runs it in place.
+
+**Server rendering, end to end.** [`apps/demos-qwik`](https://github.com/grafloria/grafloria/tree/main/apps/demos-qwik) in the repository is a Qwik SSR app over this package; its `ssr-resumable` route is the end-to-end proof (view source and the laid-out diagram is already in the HTML). Clone, then:
 
 ```sh
 npx vite --config apps/demos-qwik/vite.config.ts --mode ssr
@@ -84,7 +86,7 @@ npx vite --config apps/demos-qwik/vite.config.ts --mode ssr
 
 `--mode ssr` is required — Qwik's Vite plugin only starts its dev SSR server in that mode.
 
-## Two Qwik-specific rules
+## Three Qwik-specific rules
 
 **1. Live objects must be `noSerialize()`d.** Qwik serializes the state a component closes over so the page can resume. A transport holds sockets; a `CommentStore` holds subscribers; neither survives JSON. Mark them:
 
@@ -101,6 +103,18 @@ const collab = useSignal(
 The `DiagramInstance` the wrapper hands you is already `noSerialize`d; it comes back `undefined` after a resume, which is correct, because a resumed page builds a fresh instance.
 
 **2. Custom nodes are their own Qwik container.** Qwik has no portal primitive, so `nodeTypes` components are mounted with Qwik's `render()` into the host element the core creates. That creates a *separate* container, which means **a custom node cannot read contexts provided by the surrounding app** — including router contexts. This is intended behaviour for `render()` upstream, not a bug in this wrapper. Keep custom nodes self-contained and feed them through `node.data`. The same applies to `widgetTypes` on `<GrafloriaDashboard>`.
+
+**3. A client-only app must load Qwik's event loader.** Qwik dispatches DOM events (`onClick$`, `onInput$`, …) through a tiny loader script. A server-rendered page carries it automatically; an app that only calls `render()` in the browser does not, and every handler is then silently dead — buttons and inputs do nothing, with no error. Add it once before rendering:
+
+```ts
+import { render } from '@builder.io/qwik';
+import { QWIK_LOADER } from '@builder.io/qwik/loader';
+
+const loader = document.createElement('script');
+loader.textContent = QWIK_LOADER;
+document.head.appendChild(loader);
+render(document.getElementById('app')!, <App />);
+```
 
 ## Qwik version
 
