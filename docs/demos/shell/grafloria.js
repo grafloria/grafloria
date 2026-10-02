@@ -142618,6 +142618,64 @@ var GridPackEngine = class _GridPackEngine {
   }
 };
 
+// libs/engine/src/interaction/confinement.ts
+function containingGroup(diagram, nodeId) {
+  for (const group of diagram.getGroups()) {
+    if (group.members.has(nodeId)) return group;
+  }
+  return void 0;
+}
+function poolOfLane(diagram, lane) {
+  if (lane.laneConfig?.role !== "lane" || !lane.parentGroupId) return void 0;
+  const pool = diagram.getGroup(lane.parentGroupId);
+  return pool?.laneConfig?.role === "pool" ? pool : void 0;
+}
+function lanesOfPool(diagram, pool) {
+  return (pool.laneConfig?.laneOrder ?? []).map((id) => diagram.getGroup(id)).filter((g) => !!g);
+}
+function laneAtPoint(diagram, pool, point) {
+  for (const lane of lanesOfPool(diagram, pool)) {
+    const r = lane.getOuterBounds();
+    if (point.x >= r.x && point.x <= r.x + r.width && point.y >= r.y && point.y <= r.y + r.height) {
+      return lane;
+    }
+  }
+  return void 0;
+}
+function areSiblingLanes(diagram, from, to) {
+  if (!to || from === to) return false;
+  const pool = poolOfLane(diagram, from);
+  return !!pool && poolOfLane(diagram, to) === pool;
+}
+function memberConfinement(diagram, nodeId) {
+  const group = containingGroup(diagram, nodeId);
+  if (!group || group.constrainChildren !== true) return null;
+  const pool = poolOfLane(diagram, group);
+  if (pool) {
+    const lanes = lanesOfPool(diagram, pool);
+    if (lanes.length > 0) {
+      let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+      for (const lane of lanes) {
+        const r = lane.getInnerBounds();
+        left = Math.min(left, r.x);
+        top = Math.min(top, r.y);
+        right = Math.max(right, r.x + r.width);
+        bottom = Math.max(bottom, r.y + r.height);
+      }
+      return { x: left, y: top, width: right - left, height: bottom - top };
+    }
+  }
+  return group.getInnerBounds();
+}
+function clampBoxInto(rect, x, y, width, height) {
+  const maxX = Math.max(rect.x, rect.x + rect.width - width);
+  const maxY = Math.max(rect.y, rect.y + rect.height - height);
+  return {
+    x: Math.min(Math.max(x, rect.x), maxX),
+    y: Math.min(Math.max(y, rect.y), maxY)
+  };
+}
+
 // libs/engine/src/interaction/GroupMembershipService.ts
 var GroupMembershipService = class {
   constructor(options) {
@@ -142734,7 +142792,7 @@ var GroupMembershipService = class {
       this.clearHover();
       return result;
     }
-    if (currentGroup && currentGroup.constrainChildren === true) {
+    if (currentGroup && currentGroup.constrainChildren === true && !areSiblingLanes(this.diagram, currentGroup, target)) {
       result.rejected = true;
       this.clearHover();
       return result;
@@ -176435,6 +176493,7 @@ var _SVGRenderer = class _SVGRenderer {
     if (zone && !collapsed) return this.renderZoneFrame(group, bounds, zone);
     const laneRole = !collapsed && group.laneConfig?.role === "lane" && parent ? group.laneConfig : null;
     const radius = laneRole ? 0 : this.theme.effects.borderRadius.md;
+    const fillBox = laneRole && parent ? insetWithin(bounds, parent.getOuterBounds(), 0.75) : bounds;
     const bandHeight = Math.min(
       group.headerHeight > 0 ? group.headerHeight : 24,
       bounds.height
@@ -176446,10 +176505,10 @@ var _SVGRenderer = class _SVGRenderer {
       type: "rect",
       key: `group-frame-rect-${group.id}`,
       props: {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
+        x: fillBox.x,
+        y: fillBox.y,
+        width: fillBox.width,
+        height: fillBox.height,
         rx: radius,
         ry: radius,
         fill: surface,
@@ -176510,10 +176569,10 @@ var _SVGRenderer = class _SVGRenderer {
       type: "rect",
       key: `group-frame-band-${group.id}`,
       props: {
-        x: bounds.x,
-        y: bounds.y,
-        width: sideStrip > 0 ? sideStrip : bounds.width,
-        height: sideStrip > 0 ? bounds.height : bandHeight,
+        x: fillBox.x,
+        y: fillBox.y,
+        width: sideStrip > 0 ? sideStrip : fillBox.width,
+        height: sideStrip > 0 ? bounds.height : Math.min(bandHeight, fillBox.height),
         rx: radius,
         ry: radius,
         fill: surface,
@@ -180551,6 +180610,13 @@ _SVGRenderer.LINK_VAR_SAFE = /* @__PURE__ */ new Set([
 /** Gap between a silhouette's bottom edge and its below-label (px). */
 _SVGRenderer.BELOW_LABEL_GAP = 5;
 var SVGRenderer = _SVGRenderer;
+function insetWithin(box, outer, inset) {
+  const left = Math.max(box.x, outer.x + inset);
+  const top = Math.max(box.y, outer.y + inset);
+  const right = Math.min(box.x + box.width, outer.x + outer.width - inset);
+  const bottom = Math.min(box.y + box.height, outer.y + outer.height - inset);
+  return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
 
 // libs/renderer/src/svg/notation-shapes.ts
 var DOUBLE_INSET = 5;
@@ -189576,7 +189642,7 @@ var DomEventBinder = class {
       const group = this.findGroupAtPoint(diagram, worldX, worldY);
       if (group) {
         event.preventDefault();
-        this.pressGroup(group, diagram, event, worldX, worldY);
+        this.pressGroup(poolOfLane(diagram, group) ?? group, diagram, event, worldX, worldY);
         return;
       }
     }
@@ -189816,6 +189882,7 @@ var DomEventBinder = class {
       const drag = this.nodeDrag;
       const moved = drag.committed;
       this.nodeDrag = null;
+      if (moved && engine) this.settleIntoLanes(engine, drag);
       if (moved && engine) this.commitNodeMove(engine, drag);
       if (moved && engine) this.applyMembershipOnDrop(engine, drag);
       const connected = moved ? this.commitProximityConnection() : false;
@@ -190099,9 +190166,11 @@ var DomEventBinder = class {
       }
       drag.committed = true;
       drag.startPositions = /* @__PURE__ */ new Map();
+      drag.confine = /* @__PURE__ */ new Map();
       for (const id of drag.nodeIds) {
         const n3 = diagram.getNode(id);
         if (n3) drag.startPositions.set(id, { x: n3.position.x, y: n3.position.y, z: n3.position.z });
+        drag.confine.set(id, memberConfinement(diagram, id));
       }
     }
     const { x: worldX, y: worldY } = this.toWorld(event);
@@ -190118,6 +190187,7 @@ var DomEventBinder = class {
         node.setPosition(node.position.x + dx, node.position.y + dy);
       }
     }
+    this.confineDraggedNodes(drag, diagram);
     this.host.interaction.invalidatePortHitCache();
     this.updateProximityPreview(drag.nodeIds);
     this.host.requestRender();
@@ -190394,6 +190464,41 @@ var DomEventBinder = class {
       );
       return result.box;
     };
+  }
+  /** Keep each dragged member inside the rectangle that confines it. */
+  confineDraggedNodes(drag, diagram) {
+    if (!drag.confine) return;
+    for (const id of drag.nodeIds) {
+      const rect = drag.confine.get(id);
+      if (!rect) continue;
+      const node = diagram.getNode(id);
+      if (!node || node.state.locked) continue;
+      const p = clampBoxInto(rect, node.position.x, node.position.y, node.size.width, node.size.height);
+      if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
+    }
+  }
+  /**
+   * A lane member is let go: it belongs to the lane its CENTRE landed in (the
+   * membership service makes that so on drop), so move it fully inside that
+   * lane's band — a box straddling two lanes reads as belonging to neither.
+   */
+  settleIntoLanes(engine, drag) {
+    const diagram = engine.getDiagram();
+    if (!diagram) return;
+    for (const id of drag.nodeIds) {
+      const node = diagram.getNode(id);
+      if (!node || node.state.locked) continue;
+      const group = containingGroup(diagram, id);
+      const pool = group ? poolOfLane(diagram, group) : void 0;
+      if (!pool) continue;
+      const lane = laneAtPoint(diagram, pool, {
+        x: node.position.x + node.size.width / 2,
+        y: node.position.y + node.size.height / 2
+      });
+      if (!lane) continue;
+      const p = clampBoxInto(lane.getInnerBounds(), node.position.x, node.position.y, node.size.width, node.size.height);
+      if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
+    }
   }
   applyMembershipOnDrop(engine, drag) {
     if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return;
@@ -191893,8 +191998,11 @@ function renderToStaticSVG(options = {}) {
   }
   const renderer = new SVGRenderer(engine, { instanceId }, options.theme);
   const vnode = renderer.render(viewport.getRenderViewport(), viewport.getZoom());
-  vnode.props = { ...vnode.props, width: options.width ?? 800, height: options.height ?? 600 };
-  const svg = serializeVNode(vnode, { fidelity: "dom", standalone: options.standalone });
+  const live = serializeVNode(vnode, { fidelity: "dom", standalone: options.standalone });
+  const svg = serializeVNode(
+    { ...vnode, props: { ...vnode.props, width: options.width ?? 800, height: options.height ?? 600 } },
+    { fidelity: "dom", standalone: options.standalone }
+  );
   const css = renderer.getStyleSheet();
   renderer.dispose();
   engine.destroy();
@@ -191905,7 +192013,7 @@ function renderToStaticSVG(options = {}) {
     zoom: viewport.getZoom(),
     viewport: { x: viewport.getViewport().x, y: viewport.getViewport().y }
   };
-  return { html: wrapInLayers(svg, instanceId), svg, css, snapshot };
+  return { html: wrapInLayers(live, instanceId), svg, css, snapshot };
 }
 function wrapInLayers(svg, instanceId) {
   return `<div class="${ROOT_CLASS}" style="${ROOT_STYLE}" data-grafloria-instance="${instanceId}"><div class="${SVG_LAYER_CLASS}" style="${SVG_LAYER_STYLE}">${svg}</div><div class="${HTML_LAYER_CLASS}" style="${htmlLayerStyle(
@@ -208204,6 +208312,7 @@ export {
   arcToCubics,
   architectureModelToFlowchart,
   arePortDataTypesCompatible,
+  areSiblingLanes,
   assertEngineCompatible,
   assertThemeContrast,
   assessLabelClearance,
@@ -208270,6 +208379,7 @@ export {
   childrenByParent,
   circlePath,
   circularLayout,
+  clampBoxInto,
   clampOutputSize,
   clampSizeToConstraints,
   clampToBox,
@@ -208295,6 +208405,7 @@ export {
   computeBreaks,
   connectionValidatorCount,
   constraintsForStrategy,
+  containingGroup,
   contentBounds,
   contrastRatio,
   contrastingTextColor,
@@ -208551,6 +208662,8 @@ export {
   isValidId,
   isValidStatus,
   isValidUUID,
+  laneAtPoint,
+  lanesOfPool,
   layoutArchitecture,
   layoutArea,
   layoutService,
@@ -208587,6 +208700,7 @@ export {
   measureMovement,
   measurePanelReserve,
   meetsContrast,
+  memberConfinement,
   mentionIds,
   mentionKey,
   mergeObstacles,
@@ -208662,6 +208776,7 @@ export {
   pointInPath,
   pointToCell,
   polyPath,
+  poolOfLane,
   portGroupRegistry,
   portLabelGeometry,
   portLabelWidth,

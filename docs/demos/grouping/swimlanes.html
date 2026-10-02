@@ -1,89 +1,212 @@
 <meta charset="utf-8">
 <title>Swimlanes — Grafloria</title>
-<meta name="description" content="Pools and weighted lanes that tile a frame and keep their nodes in-lane — a full containment model, reachable now that SwimlaneService is on the public embed.">
+<meta name="description" content="A pool of weighted lanes you can work in by hand: drag tickets between lanes, drop new ones in, and they never leave the pool. Grab a lane to move the whole pool.">
 <link rel="canonical" href="https://grafloria.com/demos/grouping/swimlanes.html">
 <meta property="og:title" content="Swimlanes — Grafloria">
-<meta property="og:description" content="Pools and weighted lanes that tile a frame and keep their nodes in-lane — a full containment model, reachable now that SwimlaneService is on the public embed.">
+<meta property="og:description" content="A pool of weighted lanes you can work in by hand: drag tickets between lanes, drop new ones in, and they never leave the pool. Grab a lane to move the whole pool.">
 <meta property="og:url" content="https://grafloria.com/demos/grouping/swimlanes.html">
 <meta property="og:image" content="https://grafloria.com/demos/thumbs/grouping/swimlanes.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://grafloria.com/demos/thumbs/grouping/swimlanes.png">
 <link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  #lane-bar { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid rgba(127,127,127,.2);
+    font: 13px/1.3 system-ui, sans-serif; color: #475066; }
+  #lane-bar button { border: 1px solid #c9cfda; background: #fff; border-radius: 7px; padding: 6px 12px; cursor: pointer;
+    font: 500 13px/1.2 system-ui, sans-serif; color: #2b3242; }
+  #lane-bar button:hover { border-color: #8d97aa; }
+  #lane-bar .sp { flex: 1; }
+  #lane-log { font-variant-numeric: tabular-nums; }
+  @media (prefers-color-scheme: dark) {
+    #lane-bar { color: #aab2c2; }
+    #lane-bar button { background: #22252d; border-color: #3a3f4b; color: #e6e9ef; }
+  }
+</style>
 <header id="demo-head"></header>
+<div id="lane-bar">
+  <button id="add-lane" type="button">+ Add lane</button>
+  <button id="reset" type="button">Reset</button>
+  <span class="sp"></span>
+  <span id="lane-log" aria-live="polite">Drag a ticket between lanes.</span>
+</div>
 <div id="canvas"></div>
 <script type="module">
 import { render, SwimlaneService } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
+// A pool is a group that tiles its LANE groups into bands; every lane confines
+// its tickets. Under a real hand that means: a ticket moves from lane to lane
+// (and belongs to the lane it lands in), it cannot be dragged out of the pool,
+// and grabbing a lane moves the whole pool with everything in it.
+
+const TICKETS = [
+  { id: 'login', label: 'Login page', lane: 0, x: 140 },
+  { id: 'pdf', label: 'Export to PDF', lane: 0, x: 330 },
+  { id: 'search', label: 'Search API', lane: 1, x: 140 },
+  { id: 'billing', label: 'Billing fix', lane: 1, x: 420 },
+  { id: 'emails', label: 'Onboarding emails', lane: 2, x: 140 },
+];
+const LANES = [
+  { name: 'Backlog', weight: 1 },
+  { name: 'In progress', weight: 2 },
+  { name: 'Done', weight: 1 },
+];
+const POOL = { x: 60, y: 40, width: 980, height: 480 };
+const SIZE = { width: 172, height: 46 };
+
 defineDemo({
   name: 'Swimlanes',
-  blurb: 'Pools and weighted lanes that tile a frame and keep their nodes in-lane — a full containment model, reachable now that SwimlaneService is on the public embed.',
+  blurb: 'A pool of weighted lanes you can work in by hand: drag tickets between lanes, drop new ones in, and they never leave the pool. Grab a lane to move the whole pool.',
   howTo: [
-    'See the "Delivery" pool tiled into three labelled lanes — Backlog, In progress, Done — with no gaps: each band starts exactly where the previous one ends.',
-    'Compare the bands: the weight-2 "In progress" lane is exactly twice as tall as the two weight-1 lanes.',
-    'Find the "ticket" node floating to the right of the pool, outside every lane.',
-    'Open the DevTools console and run `await __demo.run()`: the ticket is added to the "In progress" lane and clamped into that band — it ends up inside the middle lane.',
+    'Read the "Delivery" pool: three lanes — Backlog, In progress (weight 2, so twice as tall) and Done — each titled with how many tickets it holds.',
+    'Drag "Search API" down into Done and let go: the Done count goes up, In progress goes down, and the ticket settles fully inside the Done band even if you dropped it across the line.',
+    'Try to drag any ticket out of the pool, past its bottom or right edge: it stops at the edge. A lane keeps its tickets inside the pool.',
+    'Drag the "New ticket" card on the right into any lane: it joins that lane and the count updates.',
+    'Grab an empty part of a lane (not a ticket) and drag: the whole pool moves, its lanes stay tiled and every ticket rides along.',
+    'Press "+ Add lane": a new lane appears and the bands re-tile to share the pool. "Reset" puts everything back.',
   ],
   reactflow: null,
 
   async setup(ctx) {
-    const api = render({
-      nodes: [
-        { id: 'task', position: { x: 1090, y: 300 }, size: { width: 120, height: 50 }, label: 'ticket' }, // right of the pool, fully in-frame
-      ],
-      edges: [],
-    }, ctx.host);
+    const api = render({ nodes: [], edges: [] }, ctx.host);
     ctx.instance = api;
     ctx.diagram = api.getModel();
+    const model = ctx.diagram;
+    const log = document.getElementById('lane-log');
+    let svc, pool, lanes, extra = 0;
 
-    // Three lanes with weights 1:2:1 — the middle lane is twice as tall.
-    const svc = new SwimlaneService(ctx.diagram);
-    const { pool, lanes } = svc.createPool({
-      name: 'Delivery',
-      orientation: 'horizontal',
-      bounds: { x: 60, y: 60, width: 1000, height: 480 },
-      lanes: [
-        { name: 'Backlog', weight: 1 },
-        { name: 'In progress', weight: 2 },
-        { name: 'Done', weight: 1 },
-      ],
-      headerSize: 40,
+    // Each lane's title carries its live count ("In progress · 2").
+    const relabel = () => {
+      for (const lane of svc.getLanes(pool)) {
+        const base = lane.getMetadata('baseName');
+        const count = [...lane.members].filter((id) => model.getNode(id)).length;
+        const name = `${base} · ${count}`;
+        if (lane.name !== name) { lane.name = name; lane.setMetadata('count', count); }
+      }
+      api.renderNow();
+    };
+    const laneOf = (id) => svc.getLanes(pool).find((l) => l.members.has(id));
+
+    const build = () => {
+      for (const n of [...model.getNodes()]) model.removeNode(n.id);
+      for (const g of [...model.getGroups()]) model.removeGroup(g.id);
+      extra = 0;
+      svc = new SwimlaneService(model);
+      ({ pool, lanes } = svc.createPool({
+        name: 'Delivery', orientation: 'horizontal', bounds: { ...POOL }, lanes: LANES, headerSize: 40,
+      }));
+      lanes.forEach((l, i) => l.setMetadata('baseName', LANES[i].name));
+      api.setNodes([
+        ...TICKETS.map((t) => {
+          const band = lanes[t.lane].getOuterBounds();
+          return { id: t.id, position: { x: POOL.x + t.x, y: band.y + band.height / 2 - SIZE.height / 2 + 6 }, size: { ...SIZE }, label: t.label };
+        }),
+        { id: 'new', position: { x: POOL.x + POOL.width + 40, y: POOL.y + 200 }, size: { ...SIZE }, label: 'New ticket' },
+      ]);
+      for (const t of TICKETS) lanes[t.lane].addMember(t.id, model);
+      ctx.svc = svc; ctx.pool = pool; ctx.lanes = lanes;
+      relabel();
+      api.fitView(40);
+      api.renderNow();
+      log.textContent = 'Drag a ticket between lanes.';
+    };
+    build();
+
+    // A drop can change which lane holds a ticket: refresh the counts and say so.
+    let before = new Map();
+    const snapshot = () => new Map(model.getNodes().map((n) => [n.id, laneOf(n.id)?.getMetadata('baseName') ?? null]));
+    before = snapshot();
+    api.on('nodes:change', () => setTimeout(() => {
+      const now = snapshot();
+      for (const [id, lane] of now) {
+        if (before.get(id) !== lane && lane) {
+          log.textContent = `"${model.getNode(id).getLabel?.() ?? id}" is now in ${lane}.`;
+        }
+      }
+      before = now;
+      relabel();
+    }, 0));
+
+    document.getElementById('add-lane').addEventListener('click', () => {
+      extra += 1;
+      const name = extra === 1 ? 'Review' : `Lane ${LANES.length + extra}`;
+      const lane = svc.addLane(pool, { name, weight: 1 }, svc.getLanes(pool).length - 1);
+      lane.setMetadata('baseName', name);
+      relabel();
+      log.textContent = `Added the "${name}" lane — the bands re-tiled.`;
     });
-    ctx.svc = svc; ctx.pool = pool; ctx.lanes = lanes;
-    api.renderNow();
+    document.getElementById('reset').addEventListener('click', () => { build(); before = snapshot(); });
+
+    // For the checks: a hand-speed drag in world coordinates.
+    ctx.drag = async (from, to) => {
+      const rect = ctx.host.getBoundingClientRect();
+      const fire = (type, w) => {
+        const c = api.viewport.worldToClient(w.x, w.y, rect);
+        const target = document.elementFromPoint(c.x, c.y) || ctx.host;
+        target.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0, buttons: type === 'pointerup' ? 0 : 1 }));
+      };
+      fire('pointermove', from); fire('pointerdown', from);
+      for (let i = 1; i <= 8; i++) fire('pointermove', { x: from.x + ((to.x - from.x) * i) / 8, y: from.y + ((to.y - from.y) * i) / 8 });
+      fire('pointerup', to);
+      await new Promise((r) => setTimeout(r, 30));
+      api.renderNow();
+    };
+    ctx.laneOf = laneOf;
+    ctx.reset = () => { build(); before = snapshot(); };
     await ctx.tick();
   },
 
   async assert(ctx) {
-    const svc = ctx.svc, pool = ctx.pool, m = ctx.diagram;
-
-    // 1. It is a pool of three lanes.
-    check(svc.isPool(pool), 'createPool did not produce a pool');
+    ctx.reset();
+    const m = ctx.diagram, svc = ctx.svc, pool = ctx.pool;
+    const centre = (id) => { const n = m.getNode(id); return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 }; };
     const lanes = svc.getLanes(pool);
+
+    // 1. A pool of three lanes that TILE it, weighted 1:2:1.
     check(lanes.length === 3, `expected 3 lanes, got ${lanes.length}`);
-    for (const l of lanes) check(svc.isLane(l), 'a lane is not tagged as a lane');
+    const H = lanes.map((l) => l.getOuterBounds().height);
+    check(Math.abs(H[1] - 2 * H[0]) < 2 && Math.abs(H[0] - H[2]) < 2, `lanes should be weighted 1:2:1, got ${H.map(Math.round).join(':')}`);
+    check(lanes[0].name === 'Backlog · 2' && lanes[1].name === 'In progress · 2', `lane titles should carry counts, got "${lanes[0].name}", "${lanes[1].name}"`);
 
-    // 2. THE TEETH: the lanes TILE the pool along the cross axis, weighted 1:2:1.
-    //    Horizontal orientation ⇒ lanes are stacked bands sharing the full width,
-    //    so the cross axis is height. The middle band must be ~2× the outer bands.
+    // 2. A real drag from In progress into Done: it belongs to Done, fully inside it.
+    const done = lanes[2].getOuterBounds();
+    await ctx.drag(centre('search'), { x: centre('search').x, y: done.y + 10 });
+    await new Promise((r) => setTimeout(r, 30));
+    check(ctx.laneOf('search') === lanes[2], `"Search API" should now be in Done, it is in ${ctx.laneOf('search')?.name}`);
+    const s = m.getNode('search'), di = lanes[2].getInnerBounds();
+    check(s.position.y >= di.y - 0.5 && s.position.y + s.size.height <= di.y + di.height + 0.5, 'the moved ticket should sit fully inside Done');
+    check(lanes[2].name === 'Done · 2', `the Done count should update, got "${lanes[2].name}"`);
+
+    // 3. Dragged far out of the pool, a ticket stops at the edge and stays in a lane.
+    const p = pool.getOuterBounds();
+    await ctx.drag(centre('login'), { x: p.x + p.width + 400, y: p.y + p.height + 300 });
+    const lg = m.getNode('login');
+    check(lg.position.x + lg.size.width <= p.x + p.width + 1 && lg.position.y + lg.size.height <= p.y + p.height + 1, 'a ticket left the pool');
+    check(!!ctx.laneOf('login'), 'a ticket dragged at the edge should still belong to a lane');
+
+    // 4. The new ticket dropped into Backlog joins it.
+    const bl = lanes[0].getOuterBounds();
+    await ctx.drag(centre('new'), { x: bl.x + 600, y: bl.y + bl.height / 2 });
+    await new Promise((r) => setTimeout(r, 30));
+    check(ctx.laneOf('new') === lanes[0], `"New ticket" should join Backlog, it is in ${ctx.laneOf('new')?.name ?? 'no lane'}`);
+
+    // 5. Grabbing a lane moves the whole pool — lanes tiled, tickets along.
+    const p0 = pool.getOuterBounds(), e0 = { ...m.getNode('emails').position };
+    const empty = { x: done.x + done.width - 60, y: done.y + done.height - 12 };
+    await ctx.drag(empty, { x: empty.x - 40, y: empty.y - 30 });
+    const p1 = pool.getOuterBounds();
+    check(Math.abs(p1.x - (p0.x - 40)) < 1 && Math.abs(p1.y - (p0.y - 30)) < 1, `the pool should move by the drag, moved ${Math.round(p1.x - p0.x)},${Math.round(p1.y - p0.y)}`);
     const b = lanes.map((l) => l.getOuterBounds());
-    const H = b.map((r) => r.height);
-    check(Math.abs(H[1] - 2 * H[0]) < 2, `the weight-2 lane should be ~twice the weight-1 lane (${H[0].toFixed(0)} vs ${H[1].toFixed(0)})`);
-    check(Math.abs(H[0] - H[2]) < 2, `the two weight-1 lanes should match (${H[0].toFixed(0)} vs ${H[2].toFixed(0)})`);
-    // Bands are contiguous — each starts where the previous ended (no gaps/overlap).
-    check(Math.abs(b[1].y - (b[0].y + b[0].height)) < 2, 'lanes 0 and 1 are not contiguous');
-    check(Math.abs(b[2].y - (b[1].y + b[1].height)) < 2, 'lanes 1 and 2 are not contiguous');
+    check(Math.abs(b[1].y - (b[0].y + b[0].height)) < 1 && Math.abs(b[2].y - (b[1].y + b[1].height)) < 1, 'the lanes stopped tiling after the pool moved');
+    check(Math.abs(m.getNode('emails').position.x - (e0.x - 40)) < 1, 'a ticket did not ride along with its pool');
 
-    // 3. A node dropped into a lane is CONSTRAINED into that lane's band. The ticket
-    //    starts at (900,700) — well below the pool — and is clamped back inside.
-    const lane = lanes[1];
-    lane.addMember('task', m);
-    const clamped = lane.clampChildToExtent('task', m);
-    check(clamped, 'clampChildToExtent should have moved the out-of-lane node');
-    const t = m.getNode('task'), lb = lane.getOuterBounds();
-    check(t.position.y >= lb.y - 1 && t.position.y + t.size.height <= lb.y + lb.height + 1,
-      `the ticket should be clamped inside lane 2 [${lb.y.toFixed(0)}..${(lb.y + lb.height).toFixed(0)}], y=${t.position.y.toFixed(0)}`);
-    check(lane.members.has('task'), 'the ticket is not a member of the lane');
+    // 6. + Add lane re-tiles four bands.
+    document.getElementById('add-lane').click();
+    const four = svc.getLanes(pool);
+    check(four.length === 4, `expected 4 lanes after "+ Add lane", got ${four.length}`);
+    const fb = four.map((l) => l.getOuterBounds());
+    check(fb.every((r, i) => i === 0 || Math.abs(r.y - (fb[i - 1].y + fb[i - 1].height)) < 1), 'four lanes should tile the pool');
+    ctx.reset();
   },
 });
 </script>
