@@ -105,5 +105,17 @@ export const ROUTES: Record<string, () => Promise<{ default: React.ComponentType
   'diagrams/scrollable-cards': () => import('./demos/scrollable-cards'),
   'diagrams/table-er': () => import('./demos/table-er'),
   'diagrams/uml-relationships': () => import('./demos/uml-relationships'),
+  'diagrams/ai-style-diagram': () => import('./demos/ai-style-diagram'),
+  'diagrams/architecture-layout': () => import('./demos/architecture-layout'),
+  'diagrams/mermaid-architecture-block': () => import('./demos/mermaid-architecture-block'),
+  'diagrams/query-builder': () => import('./demos/query-builder'),
+  'diagrams/shape-data': () => import('./demos/shape-data'),
+  'diagrams/stencil-palette': () => import('./demos/stencil-palette'),
+  'diagrams/visio-editor': () => import('./demos/visio-editor'),
+  'edges/highlight-connected': () => import('./demos/highlight-connected'),
+  'grouping/drop-to-contain': () => import('./demos/drop-to-contain'),
+  'interaction/chatbot-flow': () => import('./demos/chatbot-flow'),
+  'misc/drawio-import': () => import('./demos/drawio-import'),
+  'nodes/edit-label': () => import('./demos/edit-label'),
 };
 import type React from 'react';
