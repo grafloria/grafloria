@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ComponentType, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { createSyncSession } from '@grafloria/engine';
-import type { CommentStore, LinkModel, NodeModel, SyncAdapter, SyncTransport } from '@grafloria/engine';
+import type { CommentStore, GroupModel, LinkModel, NodeModel, SyncAdapter, SyncTransport } from '@grafloria/engine';
 
 /** The uniform collab contract every Grafloria wrapper shares. */
 export interface GrafloriaCollabOptions {
@@ -19,7 +19,7 @@ export interface GrafloriaCollabOptions {
   [option: string]: unknown;
 }
 import { createDiagram, loadCanvasPlugins, bindPresence } from '@grafloria/renderer';
-import type { CanvasPluginOptions, BindPresenceOptions, PresenceBinding, HighlighterConfig } from '@grafloria/renderer';
+import type { CanvasPluginOptions, BindPresenceOptions, PresenceBinding, HighlighterConfig, HighlightConnectedOptions, GroupSpec } from '@grafloria/renderer';
 import type {
   CreateDiagramOptions,
   DiagramInstance,
@@ -74,11 +74,17 @@ export interface GrafloriaFlowProps {
   nodes?: NodeSpec[];
   /** Controlled edges. */
   edges?: EdgeSpec[];
+  /**
+   * Controlled groups — zones around some nodes (a spec's `groups`, or the live
+   * GroupModels of a loaded document). Reconciled like `nodes`.
+   */
+  groups?: Array<GroupSpec | GroupModel>;
 
   // -- model (uncontrolled) --------------------------------------------------
   /** Uncontrolled nodes — the instance owns them from here on. */
   defaultNodes?: NodeSpec[];
   defaultEdges?: EdgeSpec[];
+  defaultGroups?: Array<GroupSpec | GroupModel>;
 
   // -- callbacks -------------------------------------------------------------
   onNodesChange?: (nodes: NodeModel[]) => void;
@@ -149,6 +155,12 @@ export interface GrafloriaFlowProps {
    * one. Off when unset. Live: follows the prop by value.
    */
   highlighterConfig?: boolean | Partial<HighlighterConfig>;
+  /**
+   * Bring the selected nodes' lines forward and fade the rest: `true`, or
+   * options (depth, stroke, outgoing, dimOpacity). Off when unset. Live: follows
+   * the prop by value.
+   */
+  highlightConnected?: boolean | HighlightConnectedOptions;
 
   className?: string;
   style?: CSSProperties;
@@ -166,6 +178,7 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
   const {
     nodes,
     edges,
+    groups,
     defaultNodes,
     defaultEdges,
     nodeTypes,
@@ -200,6 +213,7 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     const options: CreateDiagramOptions = {
       nodes: callbacks.current.nodes ?? callbacks.current.defaultNodes ?? [],
       edges: callbacks.current.edges ?? callbacks.current.defaultEdges ?? [],
+      groups: callbacks.current.groups ?? callbacks.current.defaultGroups,
       theme: callbacks.current.theme,
       fitView: callbacks.current.fitView,
       enablePan: callbacks.current.enablePan,
@@ -216,6 +230,7 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
       interaction: callbacks.current.interaction,
       tokenBridge: callbacks.current.tokenBridge as never,
       highlighterConfig: callbacks.current.highlighterConfig,
+      highlightConnected: callbacks.current.highlightConnected,
 
       // Blocker #4, from React's side: the core hands us an element, we render a
       // PORTAL into it. Portals keep the node component inside this React tree —
@@ -302,6 +317,12 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     instance.setEdges(edges);
   }, [instance, edges]);
 
+  // After nodes: a group's children must be on the canvas to join it.
+  useEffect(() => {
+    if (!instance || !groups) return;
+    instance.setGroups(groups);
+  }, [instance, groups]);
+
   useEffect(() => {
     if (!instance || !props.theme) return;
     instance.setTheme(props.theme);
@@ -346,6 +367,23 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     appliedHighlighter.current = highlighterKey;
     instance.setHighlighterConfig(JSON.parse(highlighterKey) as boolean | Partial<HighlighterConfig>);
   }, [instance, highlighterKey]);
+
+  // -- the selection's line highlight, live ---------------------------------------
+  // Same by-VALUE rule; the first value went in with createDiagram(). The key
+  // only DETECTS a change — the prop itself is applied, because JSON turns
+  // `depth: Infinity` (trace every path) into null.
+  const highlightKey = JSON.stringify(props.highlightConnected ?? false);
+  const appliedHighlight = useRef<string | null>(null);
+  useEffect(() => {
+    if (!instance) return;
+    if (appliedHighlight.current === null) {
+      appliedHighlight.current = highlightKey;
+      return;
+    }
+    if (appliedHighlight.current === highlightKey) return;
+    appliedHighlight.current = highlightKey;
+    instance.setHighlightConnected(callbacks.current.highlightConnected ?? false);
+  }, [instance, highlightKey]);
 
   // -- declarative layout -----------------------------------------------------
   // Runs when the `layout` prop (by VALUE, so inline objects are fine) or the

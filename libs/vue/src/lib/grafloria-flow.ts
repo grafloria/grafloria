@@ -34,7 +34,7 @@ import {
 } from 'vue';
 import { inject } from 'vue';
 import { createSyncSession } from '@grafloria/engine';
-import type { NodeModel, LinkModel, DiagramEngine, SyncAdapter, SyncTransport } from '@grafloria/engine';
+import type { NodeModel, LinkModel, GroupModel, DiagramEngine, SyncAdapter, SyncTransport } from '@grafloria/engine';
 import { GRAFLORIA_STORE } from './composables';
 
 /** The uniform collab contract every Grafloria wrapper shares. */
@@ -60,6 +60,8 @@ import {
   type EdgeSpec,
   type Theme,
   type HighlighterConfig,
+  type HighlightConnectedOptions,
+  type GroupSpec,
 } from '@grafloria/renderer';
 
 export interface GrafloriaLayoutRequest {
@@ -86,9 +88,15 @@ export const GrafloriaFlow = defineComponent({
     nodes: { type: Array as PropType<NodeSpec[]>, default: undefined },
     /** Controlled edges — `v-model:edges`. */
     edges: { type: Array as PropType<EdgeSpec[]>, default: undefined },
+    /**
+     * Controlled groups — zones around some nodes (a spec's `groups`, or the live
+     * GroupModels of a loaded document). Reconciled like `nodes`.
+     */
+    groups: { type: Array as PropType<Array<GroupSpec | GroupModel>>, default: undefined },
     /** Uncontrolled initial data. */
     defaultNodes: { type: Array as PropType<NodeSpec[]>, default: undefined },
     defaultEdges: { type: Array as PropType<EdgeSpec[]>, default: undefined },
+    defaultGroups: { type: Array as PropType<Array<GroupSpec | GroupModel>>, default: undefined },
     theme: { type: Object as PropType<Theme>, default: undefined },
     /**
      * Declarative auto-layout — any engine registry name ('elk', 'dagre',
@@ -141,6 +149,12 @@ export const GrafloriaFlow = defineComponent({
      * one. Off when unset. Live: follows the prop by value.
      */
     highlighterConfig: { type: [Boolean, Object] as PropType<boolean | Partial<HighlighterConfig>>, default: undefined },
+    /**
+     * Bring the selected nodes' lines forward and fade the rest: `true`, or
+     * options (depth, stroke, outgoing, dimOpacity). Off when unset. Live:
+     * follows the prop by value.
+     */
+    highlightConnected: { type: [Boolean, Object] as PropType<boolean | HighlightConnectedOptions>, default: undefined },
   },
   emits: [
     'update:nodes',
@@ -232,6 +246,7 @@ export const GrafloriaFlow = defineComponent({
       const inst = createDiagram(el, {
         nodes: withSlotCustom(props.nodes ?? props.defaultNodes) ?? [],
         edges: props.edges ?? props.defaultEdges ?? [],
+        groups: props.groups ?? props.defaultGroups,
         theme: props.theme,
         fitView: props.fitView,
         enablePan: props.enablePan,
@@ -246,6 +261,7 @@ export const GrafloriaFlow = defineComponent({
         interaction: props.interaction,
         tokenBridge: props.tokenBridge as never,
         highlighterConfig: props.highlighterConfig,
+        highlightConnected: props.highlightConnected,
         renderCustomNode: (node: NodeModel, element: HTMLElement) => {
           const entry: MountedNode = { node, element };
           mounted.set(node.id, entry);
@@ -301,6 +317,12 @@ export const GrafloriaFlow = defineComponent({
       }
     );
     watch(
+      () => props.groups,
+      (next) => {
+        if (next && instance.value) instance.value.setGroups(next);
+      }
+    );
+    watch(
       () => props.theme,
       (next) => {
         if (next && instance.value) instance.value.setTheme(next);
@@ -314,6 +336,12 @@ export const GrafloriaFlow = defineComponent({
     watch(
       () => JSON.stringify(props.highlighterConfig ?? false),
       (key) => instance.value?.setHighlighterConfig(JSON.parse(key) as boolean | Partial<HighlighterConfig>)
+    );
+    // …and so does the selection's line highlight. The key only DETECTS a
+    // change; the prop itself is applied (JSON turns `depth: Infinity` into null).
+    watch(
+      () => JSON.stringify(props.highlightConnected ?? false),
+      () => instance.value?.setHighlightConnected(props.highlightConnected ?? false)
     );
     // Layout re-runs on VALUE change only (JSON key), never on node data.
     watch(

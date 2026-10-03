@@ -8,7 +8,7 @@ export type {
 } from './lib/grafloria-flow';
 
 // Re-export the shared spec vocabulary so Qwik apps need one import site.
-export type { NodeSpec, EdgeSpec, DiagramInstance, Theme } from '@grafloria/renderer';
+export type { NodeSpec, EdgeSpec, GroupSpec, HighlightConnectedOptions, DiagramInstance, Theme } from '@grafloria/renderer';
 export { LIGHT_THEME, DARK_THEME } from '@grafloria/renderer';
 // SSR: the server half of the resumable story. `renderToStaticSVG()` runs the
 // real renderer in Node with no DOM; hand its result to `<GrafloriaFlow ssr>`.
