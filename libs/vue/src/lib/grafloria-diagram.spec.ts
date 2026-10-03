@@ -1,5 +1,5 @@
 /** <GrafloriaDiagram> (Vue) — the generic kit host, proven with ER + UML kits. */
-import { createApp, defineComponent, h } from 'vue';
+import { createApp, defineComponent, h, ref } from 'vue';
 import { GrafloriaDiagram } from './grafloria-diagram';
 import { erDiagram, umlDiagram } from '@grafloria/element';
 
@@ -45,5 +45,46 @@ describe('<GrafloriaDiagram> (Vue)', () => {
     expect(host.textContent).toContain('+ speak(): void');
     app.unmount();
     host.remove();
+  });
+
+  const table = (name: string) => erDiagram({
+    entities: [{ id: 'T', name, position: { x: 40, y: 40 }, columns: [{ name: 'id', type: 'int', pk: true }] }],
+    relationships: [],
+  });
+  const mountWith = (name: ReturnType<typeof ref<string>>, tick: ReturnType<typeof ref<number>>, ready: jest.Mock) => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const app = createApp(defineComponent({
+      // `tick` re-renders the parent, building an equal spec again
+      setup: () => () => (void tick.value, h(GrafloriaDiagram, { onReady: ready, spec: table(name.value!) })),
+    }));
+    app.mount(host);
+    return { host, done: () => { app.unmount(); host.remove(); } };
+  };
+
+  it('follows a CHANGED spec: the new diagram replaces the old one', async () => {
+    const name = ref('Products'), tick = ref(0), ready = jest.fn();
+    const { host, done } = mountWith(name, tick, ready);
+    await flush();
+    expect(ready).toHaveBeenCalledTimes(1);
+    name.value = 'Orders';
+    await flush();
+    expect(ready).toHaveBeenCalledTimes(2);
+    ready.mock.calls[1][0].renderNow();
+    expect(host.textContent).toContain('Orders');
+    expect(host.textContent).not.toContain('Products');
+    done();
+  });
+
+  it('an equal spec built again on a re-render does NOT remount', async () => {
+    const name = ref('Products'), tick = ref(0), ready = jest.fn();
+    const { done } = mountWith(name, tick, ready);
+    await flush();
+    tick.value++;
+    await flush();
+    tick.value++;
+    await flush();
+    expect(ready).toHaveBeenCalledTimes(1);
+    done();
   });
 });

@@ -3,8 +3,10 @@ import AutoLayout from './auto-layout';
 import CustomNodes from './custom-nodes';
 import EditorChrome from './editor-chrome';
 import HelloFlow from './hello-flow';
+import SpecSwap from './spec-swap';
 import SsrResumable from './ssr-resumable';
 import ToolbarAndHooks from './toolbar-and-hooks';
+import ZonesAndHighlight from './zones-and-highlight';
 
 export interface DemoEntry {
   slug: string;
@@ -48,6 +50,18 @@ export const DEMOS: DemoEntry[] = [
     title: 'Toolbar & hooks',
     blurb: 'Provider, selection, viewport — QRL handlers.',
     component: ToolbarAndHooks,
+  },
+  {
+    slug: 'zones-and-highlight',
+    title: 'Zones & highlight',
+    blurb: '`groups` and `highlightConnected`, followed live.',
+    component: ZonesAndHighlight,
+  },
+  {
+    slug: 'spec-swap',
+    title: 'Spec swap',
+    blurb: '`<GrafloriaDiagram>` follows its spec by value.',
+    component: SpecSwap,
   },
   {
     slug: 'ssr-resumable',

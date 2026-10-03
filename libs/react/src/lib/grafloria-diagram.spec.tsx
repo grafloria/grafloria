@@ -30,6 +30,41 @@ describe('<GrafloriaDiagram>', () => {
     expect(container.textContent).toContain('sku');
   });
 
+  const table = (name: string) => erDiagram({
+    entities: [{ id: 'T', name, position: { x: 40, y: 40 }, columns: [{ name: 'id', type: 'int', pk: true }] }],
+    relationships: [],
+  });
+
+  it('follows a CHANGED spec: the new diagram replaces the old one', async () => {
+    const ready = jest.fn();
+    const { container, rerender } = render(<GrafloriaDiagram onReady={ready} spec={table('Products')} />);
+    await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+    rerender(<GrafloriaDiagram onReady={ready} spec={table('Orders')} />);
+    await waitFor(() => expect(ready).toHaveBeenCalledTimes(2));
+    ready.mock.calls[1][0].renderNow();
+    expect(container.textContent).toContain('Orders');
+    expect(container.textContent).not.toContain('Products');
+  });
+
+  it('an equal spec built again on a re-render does NOT remount (inline specs are fine)', async () => {
+    const ready = jest.fn();
+    const { rerender } = render(<GrafloriaDiagram onReady={ready} spec={table('Products')} />);
+    await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+    rerender(<GrafloriaDiagram onReady={ready} spec={table('Products')} />);
+    rerender(<GrafloriaDiagram onReady={ready} spec={table('Products')} />);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(ready).toHaveBeenCalledTimes(1);
+  });
+
+  it('follows changed options too', async () => {
+    const ready = jest.fn();
+    const { rerender } = render(<GrafloriaDiagram onReady={ready} spec={table('Products')} options={{}} />);
+    await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+    rerender(<GrafloriaDiagram onReady={ready} spec={table('Products')} options={{ highlightConnected: true }} />);
+    await waitFor(() => expect(ready).toHaveBeenCalledTimes(2));
+    expect(ready.mock.calls[1][0].getHighlightConnected()).toBeTruthy();
+  });
+
   it('renders a UML class diagram from pure data', async () => {
     let instance: any = null;
     const { container } = render(

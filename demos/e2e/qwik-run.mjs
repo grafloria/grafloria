@@ -12,6 +12,8 @@
 //   DRAG-1:1     a node follows the pointer at full speed
 //   CUSTOM       Qwik components render as the custom nodes, wired to lines
 //   HOOKS        the toolbar drives the canvas through the provider and hooks
+//   ZONES/LINES  `groups` and `highlightConnected` go in at mount and follow live
+//   SPEC         <GrafloriaDiagram> replaces its diagram on a changed spec, not an equal one
 //   SSR          the server's HTML already contains the laid-out diagram, and
 //                the adopted <svg> leaves its size to the container (a fixed
 //                server size made every drag run at half speed — the bug the
@@ -119,6 +121,38 @@ try {
       await page.getByRole('button', { name: 'Export SVG' }).click();
       await page.waitForFunction(() => /bytes of SVG/.test(document.body.textContent), null, { timeout: 10000 }).catch(() => {});
       check('toolbar-and-hooks', 'HOOKS-EXPORT', /bytes of SVG/.test(await readout()), 'Export SVG through useGrafloria()');
+    } },
+    { slug: 'zones-and-highlight', nodes: 4, links: 3, extra: async (page) => {
+      const frames = () => page.evaluate(() => document.querySelectorAll('[data-group-id="warehouse"]').length);
+      const dimmed = () => page.evaluate(() => document.querySelectorAll('.link-dimmed').length);
+      check('zones-and-highlight', 'GROUPS-IN', (await frames()) > 0, 'the groups prop drew its zone at mount');
+      await page.locator('svg [data-node-id="order"]').click();
+      await page.waitForTimeout(300);
+      const lit = await dimmed();
+      check('zones-and-highlight', 'HIGHLIGHT-ON', lit > 0, `${lit} lines faded with "Order placed" selected`);
+      await page.locator('#toggle-highlight').click();
+      await page.waitForTimeout(300);
+      check('zones-and-highlight', 'HIGHLIGHT-LIVE', (await dimmed()) === 0, 'highlightConnected={false} restored every line');
+      await page.locator('#toggle-zone').click();
+      await page.waitForTimeout(300);
+      check('zones-and-highlight', 'GROUPS-LIVE', (await frames()) === 0, 'groups={[]} removed the zone');
+      await page.locator('#toggle-zone').click();
+      await page.waitForTimeout(300);
+    } },
+    { slug: 'spec-swap', nodes: 3, links: 2, extra: async (page) => {
+      const readies = async () => Number((/ready (\d+)/.exec(await page.locator('#ready-count').textContent()) || [])[1]);
+      const labels = () => page.evaluate(() => [...document.querySelectorAll('svg [data-node-id] text')].map((t) => t.textContent).join(' '));
+      const first = await readies();
+      await page.locator('#swap-spec').click();
+      await page.waitForTimeout(400);
+      const swapped = await labels();
+      check('spec-swap', 'SPEC-CHANGE', /Enrich/.test(swapped) && !/Clean/.test(swapped) && (await readies()) === first + 1,
+        `labels after the swap: ${swapped.slice(0, 60)}; ready ${first} → ${await readies()}`);
+      const before = await readies();
+      await page.locator('#rerender').click();
+      await page.locator('#rerender').click();
+      await page.waitForTimeout(400);
+      check('spec-swap', 'SPEC-EQUAL', (await readies()) === before, `an equal spec on re-render: ready ${before} → ${await readies()}`);
     } },
     { slug: 'ssr-resumable', nodes: 4, links: 3, extra: async (page, serverHtml) => {
       check('ssr-resumable', 'SSR-HTML', /data-node-id="/.test(serverHtml) && /<svg/.test(serverHtml), 'the diagram is in the server HTML, before any script');

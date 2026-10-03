@@ -70,4 +70,49 @@ describe('<grafloria-diagram> — the generic kit host', () => {
     expect(el.textContent).toContain('+ speak(): void');
     fixture.destroy();
   });
+  const table = (name: string) => erDiagram({
+    entities: [{ id: 'T', name, position: { x: 40, y: 40 }, columns: [{ name: 'id', type: 'int', pk: true }] }],
+    relationships: [],
+  });
+
+  it('follows a CHANGED spec: the new diagram replaces the old one', async () => {
+    @Component({
+      imports: [GrafloriaDiagramComponent],
+      template: `<grafloria-diagram style="display:block;width:800px;height:600px" [spec]="spec" (ready)="ready = ready + 1" />`,
+    })
+    class SwapHost {
+      spec = table('Products');
+      ready = 0;
+    }
+    await TestBed.configureTestingModule({ imports: [SwapHost] }).compileComponents();
+    const fixture = TestBed.createComponent(SwapHost);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.ready).toBe(1);
+    fixture.componentInstance.spec = table('Orders');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.ready).toBe(2);
+    fixture.debugElement.query(By.directive(GrafloriaDiagramComponent)).componentInstance.getInstance()!.renderNow();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('Orders');
+    expect(el.textContent).not.toContain('Products');
+    fixture.destroy();
+  });
+
+  it('an equal spec built again does NOT remount', async () => {
+    @Component({
+      imports: [GrafloriaDiagramComponent],
+      template: `<grafloria-diagram style="display:block;width:800px;height:600px" [spec]="spec" (ready)="ready = ready + 1" />`,
+    })
+    class SameHost {
+      spec = table('Products');
+      ready = 0;
+    }
+    await TestBed.configureTestingModule({ imports: [SameHost] }).compileComponents();
+    const fixture = TestBed.createComponent(SameHost);
+    fixture.detectChanges();
+    fixture.componentInstance.spec = table('Products');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.ready).toBe(1);
+    fixture.destroy();
+  });
 });
