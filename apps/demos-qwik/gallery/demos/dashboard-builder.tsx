@@ -107,6 +107,10 @@ export default component$(() => {
   useStyles$(CSS);
   // The board controller and its spec are not data: noSerialize.
   const board = useSignal<NoSerialize<DashboardBuilder>>(() => noSerialize(new DashboardBuilder()));
+  // The FIRST spec mounts the canvas; after that the board owns it (Load
+  // rebuilds its spec and reconciles the live instance itself), so the host is
+  // never handed a replacement — GrafloriaDiagram would remount on one.
+  const mount = useSignal(() => noSerialize({ spec: board.value!.spec, options: board.value!.renderOptions }));
   const canvas = useSignal<HTMLElement>();
   const ui = useSignal<BuilderUi>(() => board.value!.snapshot());
 
@@ -168,7 +172,7 @@ export default component$(() => {
             corner, drag OUT to remove. Click a tile to focus it, then use the toolbar.</div>
         </aside>
         <div class="db-canvas" ref={canvas}>
-          <GrafloriaDiagram spec={board.value!.spec} options={board.value!.renderOptions}
+          <GrafloriaDiagram spec={mount.value!.spec} options={mount.value!.options}
             onReady$={$((api: DiagramInstance) => {
               board.value?.attach(api, canvas.value!, (s) => { ui.value = s; });
               markReady();

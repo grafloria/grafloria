@@ -1,4 +1,4 @@
-import { component$, $, noSerialize, useSignal, useStore, type NoSerialize } from '@builder.io/qwik';
+import { component$, $, useStore } from '@builder.io/qwik';
 import { GrafloriaFlow, type DiagramInstance } from '@grafloria/qwik';
 import { markReady } from '../ready';
 
@@ -100,11 +100,6 @@ const optionFor = (s: BarState): HighlightOption => (!s.on ? false
   : { ...(s.depth !== 1 ? { depth: Infinity } : {}), ...(s.outgoing !== 'solid' ? { outgoing: 'dashed' as const } : {}) });
 const readout = (o: HighlightOption) =>
   'highlightConnected: ' + (typeof o === 'object' ? JSON.stringify(o).replace('null', 'Infinity').replace(/"(\w+)":/g, '$1: ') : String(o));
-/** Each choice applies the option to the live canvas right away, as the JS page does. */
-const apply = (api: DiagramInstance | undefined, s: BarState) => {
-  api?.setHighlightConnected(optionFor(s));
-  api?.renderNow();
-};
 const selectOnly = (api: DiagramInstance, ...ids: string[]) => {
   const model = api.getModel();
   model.clearSelection();
@@ -116,8 +111,6 @@ const selectOnly = (api: DiagramInstance, ...ids: string[]) => {
  *  crossing a card is lifted above it and dashed. One option,
  *  highlightConnected, and a trace mode that follows the whole path. */
 export default component$(() => {
-  // The live instance is not data: noSerialize keeps it out of Qwik's state.
-  const api = useSignal<NoSerialize<DiagramInstance>>();
   const bar = useStore<BarState>({ on: true, depth: 1, outgoing: 'solid' });
 
   return (
@@ -125,26 +118,26 @@ export default component$(() => {
       <style dangerouslySetInnerHTML={HOST_CSS} />
       <div id="hc-bar">
         <label><input type="checkbox" id="hc-on" checked={bar.on}
-          onChange$={(_, el) => { bar.on = el.checked; apply(api.value, bar); }} /> Highlight the selected step’s lines</label>
+          onChange$={(_, el) => { bar.on = el.checked; }} /> Highlight the selected step’s lines</label>
         <span class="seg" id="hc-depth" role="group" aria-label="How far to follow" aria-disabled={String(!bar.on)}>
           <button type="button" data-depth="1" class={bar.depth === 1 ? 'on' : ''} aria-pressed={String(bar.depth === 1)}
-            onClick$={() => { bar.depth = 1; apply(api.value, bar); }}>Its own lines</button>
+            onClick$={() => { bar.depth = 1; }}>Its own lines</button>
           <button type="button" data-depth="trace" class={bar.depth === 'trace' ? 'on' : ''} aria-pressed={String(bar.depth === 'trace')}
-            onClick$={() => { bar.depth = 'trace'; apply(api.value, bar); }}>Trace the path</button>
+            onClick$={() => { bar.depth = 'trace'; }}>Trace the path</button>
         </span>
         <span class="seg" id="hc-out" role="group" aria-label="Outgoing lines" aria-disabled={String(!bar.on)}>
           <button type="button" data-out="solid" class={bar.outgoing === 'solid' ? 'on' : ''} aria-pressed={String(bar.outgoing === 'solid')}
-            onClick$={() => { bar.outgoing = 'solid'; apply(api.value, bar); }}>Outgoing solid</button>
+            onClick$={() => { bar.outgoing = 'solid'; }}>Outgoing solid</button>
           <button type="button" data-out="dashed" class={bar.outgoing === 'dashed' ? 'on' : ''} aria-pressed={String(bar.outgoing === 'dashed')}
-            onClick$={() => { bar.outgoing = 'dashed'; apply(api.value, bar); }}>Dashed</button>
+            onClick$={() => { bar.outgoing = 'dashed'; }}>Dashed</button>
         </span>
         <code id="hc-code">{readout(optionFor(bar))}</code>
       </div>
       <div id="hc-canvas">
+        {/* The bar's choices are Qwik state; the canvas follows the highlightConnected prop. */}
         <GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} interaction={{ portVisibility: 'always' }}
+          highlightConnected={optionFor(bar)}
           onInit$={$((instance: DiagramInstance) => {
-            api.value = noSerialize(instance);
-            instance.setHighlightConnected(optionFor(bar));
             instance.fitView(40);
             instance.renderNow();
             selectOnly(instance, 'adtext');

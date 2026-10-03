@@ -15,8 +15,8 @@ const nodes = [
  *  drag into a frame used to change x/y and nothing else.
  *  Drag "invoice" into "Billing" and it joins; drag the frame and it follows;
  *  drop it into "Archive" and it moves over in one gesture; drop it on empty
- *  canvas and it unembeds. Ctrl/⌘+Z steps back through membership changes
- *  and moves alike (one undo stack). */
+ *  canvas and it unembeds. One Ctrl/⌘+Z takes back a whole drop — the
+ *  move and the change of container together. */
 export default component$(() => (
   <div style={{ height: '100vh' }}>
     <GrafloriaFlow defaultNodes={nodes} defaultEdges={[]} onInit$={$(async (instance: DiagramInstance) => {
