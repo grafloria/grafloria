@@ -1,6 +1,6 @@
 {
   "name": "@grafloria/qwik",
-  "version": "0.10.5",
+  "version": "0.10.6",
   "description": "Qwik bindings for Grafloria Diagrams and Grafloria Dashboards — an MIT diagram and dashboard engine: routing, auto-layout, undo, collaboration and dashboard layouts, server-rendered and resumable in Qwik.",
   "license": "MIT",
   "author": "Ramy Othman",
