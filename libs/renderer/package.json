@@ -1,17 +1,17 @@
 {
   "name": "@grafloria/renderer",
-  "version": "0.4.18",
+  "version": "0.4.19",
   "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "peerDependencies": {
-    "@grafloria/engine": "^0.3.17"
+    "@grafloria/engine": "^0.3.18"
   },
   "dependencies": {
     "tslib": "^2.3.0",
     "eventemitter3": "^5.0.1"
   },
-  "description": "SVG renderer for the Grafloria diagram engine \u2014 interaction, theming, accessibility, and SVG/PNG/PDF vector export",
+  "description": "SVG renderer for the Grafloria diagram engine — interaction, theming, accessibility, and SVG/PNG/PDF vector export",
   "license": "MIT",
   "author": "Ramy Othman",
   "homepage": "https://grafloria.com",
