@@ -133,6 +133,7 @@ export default {
 <script type="module">
 import { render, importDiagramText } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { highlightBlock } from '../shell/code-editor.js';
 
 // The source text on the page IS the source that runs: the native spec is
 // loaded as a module from the text shown, the Mermaid is parsed from it.
@@ -169,6 +170,8 @@ defineDemo({
       api.setNodes(parts.nodes); api.setGroups(parts.groups); api.setEdges(parts.edges);
       api.renderNow();
       src.textContent = which === 'mermaid' ? mermaidText.trim() : nativeText.trim();
+      // Coloured as what it is: Mermaid, or the JavaScript spec.
+      void highlightBlock(src, which === 'mermaid' ? 'mermaid' : 'javascript');
       for (const b of seg.querySelectorAll('button')) {
         const on = b.getAttribute('data-src') === which;
         b.classList.toggle('on', on);

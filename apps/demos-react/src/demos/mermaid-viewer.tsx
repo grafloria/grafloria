@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { GrafloriaFlow } from '@grafloria/react';
 import { importDiagramText } from '@grafloria/element';
 import { markReady } from '../ready';
+import { mountCodeEditor } from '../code-editor';
 
 /** Mermaid viewer: paste Mermaid text and see it rendered. importDiagramText()
  *  parses the source into a model; the canvas renders the reconciled spec.
@@ -81,6 +82,10 @@ export default function MermaidViewerDemo() {
   };
 
   useEffect(() => { renderText(EXAMPLES['flowchart']); markReady(); }, []);
+  // The source reads as Mermaid: the gallery's editor colours it, and the
+  // textarea underneath stays the state onChange keeps.
+  const source = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { void mountCodeEditor(source.current, { language: 'mermaid' }); }, []);
 
   const load = (t: string) => { setType(t); const src = EXAMPLES[t]; setText(src); renderText(src); };
   const apply = () => renderText(text);
@@ -107,7 +112,7 @@ export default function MermaidViewerDemo() {
           <GrafloriaFlow nodes={nodes as never} edges={edges as never} style={{ display: 'block', height: '100%' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0, borderLeft: '1px solid rgba(127,127,127,.25)' }}>
-          <textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false}
+          <textarea ref={source} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false}
             style={{ width: '100%', height: '100%', boxSizing: 'border-box', border: 0, padding: '10px 14px', font: '12px/1.5 ui-monospace,Menlo,monospace', resize: 'none', color: 'inherit', background: 'transparent' }} />
         </div>
       </div>

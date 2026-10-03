@@ -13,6 +13,12 @@
 //     const ed = await mountCodeEditor(document.getElementById('text'));
 //     ed.setValue(src);          // programmatic write (both surfaces)
 //     ed.getValue();             // always the live text
+//
+// Framework apps (React, Vue, Angular, Qwik) mount it over the textarea they
+// already bind: each keystroke lands in the textarea as a real `input` event,
+// which is what onChange / v-model / ngModel / onInput$ listen for, and a value
+// the framework writes into the textarea (another example picked) shows in the
+// editor. `highlightBlock(pre, 'mermaid')` colours read-only text in place.
 
 const CDN = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
 let loading = null;
@@ -61,6 +67,23 @@ function registerMermaid(monaco) {
         // architecture-beta declarations and block-beta grid words, where a statement starts
         [/^(\s*)(service|group|junction|columns|block)\b/, ['', 'keyword']],
         [/\b(subgraph|end|direction|class|classDef|style|click|linkStyle)\b/, 'keyword'],
+        // sequence / state / gantt statements
+        // (at a statement's start, and never where a node's name begins an edge:
+        // `note --> x` or `note@{ … }` in a flowchart is a node called note)
+        [/^(\s*)([Nn]ote)(?=\s+(left of|right of|over)\b)/, ['', 'keyword']],
+        [/^(\s*)(participant|actor|activate|deactivate|loop|alt|opt|par|critical|break|rect|title|section|dateFormat|state|namespace)(?=\s+[^-=.>|&\s])/, ['', 'keyword']],
+        [/^(\s*)(else|and|autonumber)(?=\s|$)/, ['', 'keyword']],
+        [/\b(left of|right of|over)\b/, 'keyword'],
+        [/\[\*\]/, 'type'],                                       // state start / end
+        // ER keys and the attribute / member types
+        [/\b(PK|FK|UK)\b/, 'type'],
+        [/\b(string|int|integer|float|double|decimal|bool|boolean|date|datetime|timestamp|text|varchar|char|uuid|json|void|long|number|String|Integer|Boolean|List)\b/, 'type'],
+        // ER cardinality  ||--o{  }|..|{   and class relations  <|--  *--  o--  ..>
+        [/(\|\||\|o|o\||\}\||\|\{|\}o|o\{)(--|\.\.)(\|\||\|o|o\||\}\||\|\{|\}o|o\{)/, 'operator'],
+        [/<\|--|--\|>|<\|\.\.|\.\.\|>|\*--|--\*|o--|--o(?=\s)|\.\.>|<\.\./, 'operator'],
+        // sequence messages  ->>  -->>  -x  --x  -)  --)
+        [/--?>>|--?[x)](?=\s)/, 'operator'],
+        [/^(\s*)([+\-#~])(?=\w)/, ['', 'operator']],                // class member visibility
         [/\bspace\b(?=(:\d+)?(\s|$))/, 'keyword'],                 // block-beta: a hole in the grid
         [/\bin(?=\s+[\w-]+\s*$)/, 'keyword'],                     // … in cloud
         [/\b(TD|TB|BT|LR|RL)\b/, 'type'],
@@ -91,9 +114,19 @@ function registerMermaid(monaco) {
 
 /**
  * Mount a coloured editor over `textarea`. Always resolves — with Monaco when
- * it loads, with a textarea-backed shim otherwise.
+ * it loads, with a textarea-backed shim otherwise. Options: `language`,
+ * `onChange`, `readOnly`, and `host` (an empty element to mount into, styled
+ * `display:none` until the editor arrives — required on a Qwik page).
  */
-export async function mountCodeEditor(textarea, { language = 'mermaid', onChange, readOnly = false } = {}) {
+export function mountCodeEditor(textarea, options = {}) {
+  // One editor per textarea, however often a framework's effect runs.
+  if (textarea?.__gfCodeEditor) return textarea.__gfCodeEditor;
+  const mounted = mount(textarea, options);
+  if (textarea) textarea.__gfCodeEditor = mounted;
+  return mounted;
+}
+
+async function mount(textarea, { language = 'mermaid', onChange, readOnly = false, host: into } = {}) {
   const fallback = {
     monaco: false,
     getValue: () => textarea.value,
@@ -109,11 +142,20 @@ export async function mountCodeEditor(textarea, { language = 'mermaid', onChange
   try {
     if (language === 'mermaid') registerMermaid(monaco);
 
-    const host = document.createElement('div');
-    host.className = 'gf-code-editor';
-    // Inherit the textarea's box so the demo's own layout still governs size.
-    host.style.cssText = 'width:100%;height:100%;min-height:0;';
-    textarea.parentElement.insertBefore(host, textarea);
+    // `host`: an empty element of the page's own to mount into. A Qwik page
+    // needs one — Qwik re-reads a parent's DOM children on re-render and would
+    // remove an editor inserted beside its textarea; a childless element's
+    // inside it leaves alone. Otherwise the editor goes just before the textarea.
+    let host = into;
+    if (host) {
+      host.style.display = 'block';
+    } else {
+      host = document.createElement('div');
+      // Inherit the textarea's box so the demo's own layout still governs size.
+      host.style.cssText = 'width:100%;height:100%;min-height:0;';
+      textarea.parentElement.insertBefore(host, textarea);
+    }
+    host.classList.add('gf-code-editor');
     textarea.style.display = 'none';
 
     const dark = matchMedia('(prefers-color-scheme: dark)').matches;
@@ -132,15 +174,35 @@ export async function mountCodeEditor(textarea, { language = 'mermaid', onChange
       padding: { top: 10 },
     });
 
-    // The textarea remains canonical — mirror every edit into it.
+    // The textarea remains canonical — mirror every edit into it. The write goes
+    // through the prototype setter, under any framework's own value tracking
+    // (React's), so the `input` event that follows reads as a real change.
+    const proto = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    let echo = false;
     editor.onDidChangeModelContent(() => {
-      textarea.value = editor.getValue();
+      if (echo) return;
+      proto.set.call(textarea, editor.getValue());
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
       onChange?.(textarea.value);
+    });
+    // …and the other way: a value written INTO the textarea (a framework
+    // re-rendering it, a demo's own code) shows in the editor.
+    const inner = Object.getOwnPropertyDescriptor(textarea, 'value') ?? proto;
+    Object.defineProperty(textarea, 'value', {
+      configurable: true,
+      get() { return inner.get.call(this); },
+      set(v) {
+        inner.set.call(this, v);
+        const text = String(v ?? '');
+        if (editor.getValue() !== text) { echo = true; editor.setValue(text); echo = false; }
+      },
     });
 
     return {
       monaco: true,
       getValue: () => editor.getValue(),
+      // An explicit write is an edit: it reports through onChange and `input`,
+      // as a keystroke does. (A value set on the textarea updates quietly.)
       setValue: (v) => {
         if (editor.getValue() !== v) editor.setValue(v);
         textarea.value = v;
@@ -149,6 +211,27 @@ export async function mountCodeEditor(textarea, { language = 'mermaid', onChange
     };
   } catch {
     textarea.style.display = '';
+    if (into) into.style.display = 'none';
     return fallback;
+  }
+}
+
+/**
+ * Colour read-only text in place — a `<pre>` or `<code>` showing Mermaid (or
+ * any Monaco language). Call again after changing its text. Leaves the plain
+ * text as it is when Monaco never arrives.
+ */
+export async function highlightBlock(el, language = 'mermaid') {
+  if (!el) return false;
+  const monaco = await loadMonaco();
+  if (!monaco) return false;
+  try {
+    if (language === 'mermaid') registerMermaid(monaco);
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    el.setAttribute('data-lang', language);
+    await monaco.editor.colorizeElement(el, { theme: dark ? 'vs-dark' : 'vs', tabSize: 2 });
+    return true;
+  } catch {
+    return false;
   }
 }

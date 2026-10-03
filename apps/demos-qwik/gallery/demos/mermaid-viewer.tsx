@@ -1,7 +1,8 @@
-import { component$, $, useSignal } from '@builder.io/qwik';
+import { component$, $, useSignal, useVisibleTask$ } from '@builder.io/qwik';
 import { GrafloriaFlow, type NodeSpec, type EdgeSpec } from '@grafloria/qwik';
 import { importDiagramText } from '@grafloria/element';
 import { markReady } from '../ready';
+import { mountCodeEditor } from '../code-editor';
 
 /** Mermaid viewer: paste Mermaid text and see it rendered. importDiagramText()
  *  parses the source into a model; the canvas renders the reconciled spec.
@@ -82,6 +83,11 @@ function parse(src: string): Parsed {
 const ctl = { font: 'inherit', color: 'inherit', background: 'transparent', border: '1px solid rgba(127,127,127,.4)', borderRadius: '6px', padding: '4px 10px' };
 
 export default component$(() => {
+  // The source reads as Mermaid: the gallery's editor colours it, mounted in
+  // an empty host (Qwik leaves a childless element's inside alone).
+  const source = useSignal<HTMLTextAreaElement>();
+  const editorHost = useSignal<HTMLDivElement>();
+  useVisibleTask$(() => { void mountCodeEditor(source.value, { language: 'mermaid', host: editorHost.value }); });
   const type = useSignal('flowchart');
   const text = useSignal(EXAMPLES['flowchart']!);
   const parsed = useSignal<Parsed>(() => parse(EXAMPLES['flowchart']!));
@@ -113,7 +119,8 @@ export default component$(() => {
             onInit$={$(() => markReady())} />
         </div>
         <div style={{ flex: '1', minWidth: '0', borderLeft: '1px solid rgba(127,127,127,.25)' }}>
-          <textarea value={text.value} onInput$={(_, el) => { text.value = el.value; }} spellcheck={false}
+          <div ref={editorHost} style={{ display: 'none', height: '100%' }} />
+          <textarea ref={source} value={text.value} onInput$={(_, el) => { text.value = el.value; }} spellcheck={false}
             style={{ width: '100%', height: '100%', boxSizing: 'border-box', border: '0', padding: '10px 14px', font: '12px/1.5 ui-monospace,Menlo,monospace', resize: 'none', color: 'inherit', background: 'transparent' }} />
         </div>
       </div>

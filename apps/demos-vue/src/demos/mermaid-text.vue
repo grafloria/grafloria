@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { GrafloriaFlow } from '@grafloria/vue';
 import type { DiagramInstance } from '@grafloria/vue';
 import { markReady } from '../ready';
+import { mountCodeEditor } from '../code-editor';
 
 // Diagram-as-text: exportText() writes Mermaid-style text from the live canvas;
 // loadText() reconciles edited text back INTO the same instance — positions
 // survive through the lossless sidecar.
 const text = ref('');
+// The text reads as Mermaid: the gallery's editor colours it over the textarea.
+const source = ref<HTMLTextAreaElement>();
+onMounted(() => { void mountCodeEditor(source.value, { language: 'mermaid' }); });
 let instance: DiagramInstance | null = null;
 const nodes = [
   { id: 'start', position: { x: 80, y: 60 },  size: { width: 140, height: 60 }, data: { label: 'Start' } },
@@ -41,7 +45,9 @@ function onInit(inst: DiagramInstance) {
         <button @click="exportText" style="padding:6px 14px; border-radius:7px; border:0; background:#3B52D9; color:#fff; font-weight:600; cursor:pointer">⇢ Export</button>
         <button @click="loadText" style="padding:6px 14px; border-radius:7px; border:1px solid #94A5F0; background:#EEF1FE; color:#3B52D9; font-weight:600; cursor:pointer">⇠ Load</button>
       </div>
-      <textarea v-model="text" style="flex:1; font:12.5px/1.6 ui-monospace, Menlo, monospace; border:1px solid #E3E7F2; border-radius:8px; padding:10px; resize:none"></textarea>
+      <div style="flex:1; min-height:0; border:1px solid #E3E7F2; border-radius:8px; overflow:hidden">
+        <textarea ref="source" v-model="text" spellcheck="false" style="width:100%; height:100%; box-sizing:border-box; font:12.5px/1.6 ui-monospace, Menlo, monospace; border:0; padding:10px; resize:none"></textarea>
+      </div>
     </div>
   </div>
 </template>
