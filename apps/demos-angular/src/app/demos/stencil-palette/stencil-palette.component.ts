@@ -1,7 +1,7 @@
 import { Component, OnDestroy } from '@angular/core';
 import { GrafloriaDiagramComponent } from '@grafloria/angular';
 import { registerStencils, bindStencilPalette, type RenderSpec } from '@grafloria/element';
-import { registerNotationShapes, type DiagramInstance } from '@grafloria/renderer';
+import type { DiagramInstance } from '@grafloria/renderer';
 import { markReady } from '../demo-ready';
 
 /** Stencil palette (Visio-style): drag a shape out of a categorized stencil
@@ -27,12 +27,6 @@ export class StencilPaletteComponent implements OnDestroy {
   private handle?: ReturnType<typeof bindStencilPalette>;
 
   onReady(api: DiagramInstance, rail: HTMLElement, canvas: HTMLElement) {
-    // The notation silhouettes (Delay, Display, OR, summing junction, …) are
-    // registered by the renderer's entry file as a side effect, and this app's
-    // build drops that call (it imports src/index.ts; package.json's sideEffects
-    // names only src/index.js) — so they would draw as plain rectangles here,
-    // in the palette and on the canvas. Registering again is a no-op elsewhere.
-    registerNotationShapes();
 
     // Every built-in master behind engine.templateRegistry, so NodeFactory can
     // stamp any of them by id.

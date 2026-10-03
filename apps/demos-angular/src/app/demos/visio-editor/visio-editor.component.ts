@@ -1,7 +1,7 @@
 import { Component, OnDestroy, ViewEncapsulation, signal } from '@angular/core';
 import { GrafloriaDiagramComponent } from '@grafloria/angular';
 import type { RenderSpec } from '@grafloria/element';
-import { registerNotationShapes, type DiagramInstance } from '@grafloria/renderer';
+import type { DiagramInstance } from '@grafloria/renderer';
 import { markReady } from '../demo-ready';
 import {
   BAR, VISIO_NODES, VISIO_EDGES, VisioEditor, barDisabled, initialUi, type VisioUi,
@@ -40,12 +40,6 @@ export class VisioEditorComponent implements OnDestroy {
   ctl: VisioEditor | null = null;
 
   onReady(instance: DiagramInstance, canvas: HTMLElement, rail: HTMLElement, panel: HTMLElement): void {
-    // The notation silhouettes (Delay, Display, OR, summing junction, …) are
-    // registered by the renderer's entry file as a side effect, and this app's
-    // build drops that call (it imports src/index.ts; package.json's sideEffects
-    // names only src/index.js) — they would draw as plain rectangles, in the
-    // rail and on the canvas. Registering again is a no-op elsewhere.
-    registerNotationShapes();
     this.ctl = new VisioEditor(instance, { canvas, rail, panel }, (next) => this.ui.set(next));
     void this.ctl.init().then(() => markReady());
   }
