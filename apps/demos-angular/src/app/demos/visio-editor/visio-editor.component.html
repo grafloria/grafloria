@@ -1,0 +1,45 @@
+<div id="vs-shell">
+  <div id="vs-bar">
+    @for (item of bar; track $index) {
+      @switch (item.kind) {
+        @case ('sep') { <span class="sep"></span> }
+        @case ('toggle') {
+          <button class="toggle" [title]="$any(item).title" [attr.aria-pressed]="ui()[$any(item).toggle] ? 'true' : 'false'"
+            (click)="ctl?.toggle($any(item).toggle)">{{ $any(item).label }}</button>
+        }
+        @default {
+          <button [title]="$any(item).title" [disabled]="barDisabled(item, ui())"
+            (click)="ctl?.run($any(item).action)">{{ $any(item).label }}</button>
+        }
+      }
+    }
+    <span class="hint">drag a shape from the rail →</span>
+  </div>
+
+  <div id="vs-body">
+    <div id="vs-rail" #rail></div>
+    <div id="vs-canvas" #canvas (contextmenu)="onContextMenu($event)">
+      <grafloria-diagram [spec]="spec" (ready)="onReady($event, canvas, rail, panel)"
+        style="display:block; width:100%; height:100%" />
+
+      <!-- ZOOM CLUSTER — bottom-right, the Visio/Figma convention: − % + fit.
+           The % readout doubles as reset-to-100%. -->
+      <div id="vs-zoom">
+        <button title="Zoom out (Ctrl/⌘ −)" (click)="ctl?.zoomOut()">−</button>
+        <button id="vs-zoom-pct" title="Zoom level — click to reset to 100% (Ctrl/⌘ 0)"
+          (click)="ctl?.zoomReset()">{{ ui().zoomPct }}</button>
+        <button title="Zoom in (Ctrl/⌘ =)" (click)="ctl?.zoomIn()">＋</button>
+        <button title="Fit the diagram in view (Ctrl/⌘+Shift+F)" (click)="ctl?.fit()">⤢</button>
+      </div>
+
+      <!-- CONTEXT MENU — whatever is under the pointer: node / edge / canvas. -->
+      <div id="vs-menu" [class.open]="!!ui().menu"
+        [style.left.px]="ui().menu?.x" [style.top.px]="ui().menu?.y">
+        @for (m of ui().menu?.items ?? []; track m.label; let i = $index) {
+          <button [disabled]="!m.enabled" (click)="ctl?.runMenuItem(i)">{{ m.label }}</button>
+        }
+      </div>
+    </div>
+    <div id="vs-panel" #panel></div>
+  </div>
+</div>
