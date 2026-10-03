@@ -179,7 +179,7 @@ const CSS = `
 .cv-sp { flex: 1; }
 #cv-saved { font-size: 12.5px; color: #3f8f5a; }
 #cv-saved.dirty { color: #b7791f; }
-.cv-btn { border: 1px solid #2f7cf6; color: #2f7cf6; background: #fff; border-radius: 7px; padding: 7px 13px; cursor: pointer;
+.cv-btn { border: 1px solid #2f7cf6; color: #2f7cf6; background: #fff; border-radius: 7px; padding: 7px 13px; cursor: pointer; white-space: nowrap;
   font: 500 13px/1.2 system-ui, sans-serif; }
 .cv-btn[aria-pressed="true"] { background: #eaf2ff; }
 .cv-btn.primary { background: #2f7cf6; color: #fff; }
