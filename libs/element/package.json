@@ -46,6 +46,7 @@
     "src/**/*.d.ts"
   ],
   "sideEffects": [
-    "./src/index.js"
+    "./src/index.js",
+    "./src/index.ts"
   ]
 }

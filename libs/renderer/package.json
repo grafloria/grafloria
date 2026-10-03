@@ -40,7 +40,8 @@
   },
   "module": "./src/index.js",
   "sideEffects": [
-    "./src/index.js"
+    "./src/index.js",
+    "./src/index.ts"
   ],
   "files": [
     "src/**/*.js",
