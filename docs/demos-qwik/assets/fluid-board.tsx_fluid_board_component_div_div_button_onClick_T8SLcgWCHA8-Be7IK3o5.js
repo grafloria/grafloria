@@ -1,1 +1,0 @@
-import{v as r}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const e=()=>{const[o]=r();o.value=!o.value};export{e as s_T8SLcgWCHA8};

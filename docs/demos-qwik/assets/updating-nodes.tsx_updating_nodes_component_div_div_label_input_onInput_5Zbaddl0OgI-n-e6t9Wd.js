@@ -1,1 +1,0 @@
-import{v as l}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const r=(o,e)=>{const[a,t]=l();t.value=e.value,a.value?.getModel().getNode("a")?.setMetadata("label",e.value),a.value?.renderNow()};export{r as s_5Zbaddl0OgI};

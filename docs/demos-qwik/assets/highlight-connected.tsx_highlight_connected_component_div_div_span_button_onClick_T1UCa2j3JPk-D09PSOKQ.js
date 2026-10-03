@@ -1,0 +1,1 @@
+import{v as a}from"./core.min-e2MmCxtB.js";import{_auto_apply as t}from"./highlight-connected-DdhnfHi1.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const e=()=>{const[o,p]=a();p.depth=1,t(o.value,p)};export{e as s_T1UCa2j3JPk};

@@ -1,0 +1,1 @@
+import{m as o}from"./ready-C4_3DsUA.js";import{x as s}from"./core.min-e2MmCxtB.js";import"./preloader-D7tuiBjF.js";const n=e=>{e.getEngine().setInteractionConfig({enableEasyConnect:!0}),e.renderNow(),o()};export{s as _hW,n as s_xY0Q1LnBOFQ};

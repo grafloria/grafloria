@@ -1,1 +1,0 @@
-import{v as p}from"./core.min-BYz3EHBQ.js";import{_auto_CAPTIONS as r,_auto_CAPTION_SAYS as _}from"./fluid-board-BZl3W59a.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const S=(m,t)=>{const[a,e,s]=p(),o=t.value;return a.value=o,e.value?.setCaption("ops",r[o]),s(_[o])};export{S as s_LQYpQhetYqI};

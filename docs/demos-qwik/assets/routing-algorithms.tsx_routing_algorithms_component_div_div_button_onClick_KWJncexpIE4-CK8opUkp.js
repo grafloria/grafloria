@@ -1,1 +1,0 @@
-import{v as r}from"./core.min-BYz3EHBQ.js";import{_auto_build as u,_auto_readoutOf as s}from"./routing-algorithms-CTcIxW1Y.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const p=()=>{const[t,a,o]=r(),e=t.value;e&&(o.value=!o.value,e.setNodes(u(o.value?46:0)),e.renderNow(),a.value=s(e))};export{p as s_KWJncexpIE4};

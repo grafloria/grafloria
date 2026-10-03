@@ -1,0 +1,1 @@
+import{v as t}from"./core.min-e2MmCxtB.js";import{_auto_apply as a}from"./highlight-connected-DdhnfHi1.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const e=()=>{const[p,o]=t();o.outgoing="dashed",a(p.value,o)};export{e as s_0dft0cpqfzo};

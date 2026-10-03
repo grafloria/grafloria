@@ -1,1 +1,0 @@
-import{v as s}from"./core.min-BYz3EHBQ.js";import{x as m}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const a=e=>{const[o]=s();e.key==="Escape"&&o.value?.isHistoryOpen&&o.value.toggleHistory(!1)};export{m as _hW,a as s_0Kkv7u2DmyI};

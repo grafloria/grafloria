@@ -19,7 +19,10 @@
   #al-note { color: var(--gf-mut, #6b7280); }
   #al-note.err { color: #b42318; }
   #canvas { height: 540px; background: #fff; }
-  #al-src { display: block; box-sizing: border-box; width: 100%; min-height: 360px; margin: 0; padding: 14px 18px; border: 0; border-top: 1px solid var(--gf-line, #e5e7eb); background: #f8fafc; color: #1f2937; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; overflow: auto; resize: vertical; tab-size: 2; }
+  /* The source box: the gallery's editor mounts in it (Mermaid colouring); the
+     textarea is the fallback and stays the value the page reads. */
+  #al-src-box { height: 420px; border-top: 1px solid var(--gf-line, #e5e7eb); background: #f8fafc; }
+  #al-src { display: block; box-sizing: border-box; width: 100%; height: 100%; margin: 0; padding: 14px 18px; border: 0; background: #f8fafc; color: #1f2937; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; overflow: auto; resize: vertical; tab-size: 2; }
   #al-src:focus-visible { outline: 2px solid var(--gf-accent, #2563eb); outline-offset: -2px; }
 </style>
 <header id="demo-head"></header>
@@ -33,7 +36,7 @@
 </div>
 <div id="canvas"></div>
 <label for="al-src" class="visually-hidden" style="position:absolute;left:-9999px">Grafloria Mermaid source</label>
-<textarea id="al-src" spellcheck="false" aria-label="Grafloria Mermaid source">flowchart LR
+<div id="al-src-box"><textarea id="al-src" spellcheck="false" aria-label="Grafloria Mermaid source">flowchart LR
   %%grafloria:layout architecture
   customer[&quot;&lt;b&gt;Customer&lt;/b&gt;&lt;br/&gt;phone or browser&quot;]
   subgraph hp[&quot;HEALTHPAY&#x27;S SIDE · CARDS ARE TYPED HERE&quot;]
@@ -71,10 +74,11 @@
   %%grafloria:edge api wallets from:top, to:bottom
   %%grafloria:edge customer fake from:bottom, to:top
   %%grafloria:near note fake right
-</textarea>
+</textarea></div>
 <script type="module">
 import { render, importDiagramText } from '../shell/grafloria.js';
 import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { mountCodeEditor } from '../shell/code-editor.js';
 
 const srcEl = document.getElementById('al-src');
 const note = document.getElementById('al-note');
@@ -129,6 +133,9 @@ defineDemo({
     let timer = 0;
     srcEl.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => ctx.draw(), 300); });
     await ctx.draw('architecture');
+    // Mermaid colouring over the textarea; its keystrokes arrive as the input
+    // events the redraw above listens for.
+    void mountCodeEditor(srcEl, { language: 'mermaid' });
     await ctx.tick();
   },
 

@@ -1,1 +1,0 @@
-import{v as a}from"./core.min-BYz3EHBQ.js";import{x as d}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const u=({track:t})=>{const[n,r]=a(),e=t(()=>r.layout),o=t(()=>n.value);if(!(e===void 0||!o))for(const s of o.views)o.getLayout(s)!==e&&o.setLayout(e,s)};export{d as _hW,u as s_legrCZLx8YQ};

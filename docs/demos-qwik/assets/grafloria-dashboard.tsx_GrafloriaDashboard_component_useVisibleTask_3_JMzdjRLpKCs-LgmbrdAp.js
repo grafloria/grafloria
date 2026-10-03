@@ -1,0 +1,1 @@
+import{v as t}from"./core.min-e2MmCxtB.js";import{x as g}from"./core.min-e2MmCxtB.js";import"./preloader-D7tuiBjF.js";const a=({track:o})=>{const[s,i]=t(),e=o(()=>i.sizing),n=o(()=>s.value);e===void 0||!n||n.getSizing()===e||n.setSizing(e)};export{g as _hW,a as s_JMzdjRLpKCs};

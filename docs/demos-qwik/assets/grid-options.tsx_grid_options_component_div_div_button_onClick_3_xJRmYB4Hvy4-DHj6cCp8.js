@@ -1,0 +1,1 @@
+import{v as r}from"./core.min-e2MmCxtB.js";import"./preloader-D7tuiBjF.js";const o=async()=>{const[e,d,a,n]=r(),t=a.value?e.value?.handle.widget(a.value):void 0;t&&(t.remove(),e.value?.handle.selectWidget(void 0),await n(),await d("removed widget (survivors re-packed)"))};export{o as s_xJRmYB4Hvy4};
