@@ -102,4 +102,24 @@ describe('DiagramCanvasComponent — swimlanes under a hand', () => {
     expect(fullyInside('n', g.getInnerBounds())).toBe(true);
     expect(g.members.has('n')).toBe(true);
   });
+  test('a drop from one group into another is ONE undo step', async () => {
+    addNode('n', 200, 200);
+    const billing = new GroupModel({ id: 'billing', name: 'billing' });
+    const archive = new GroupModel({ id: 'archive', name: 'archive' });
+    diagram.addGroup(billing);
+    diagram.addGroup(archive);
+    billing.setFrame({ x: 150, y: 150, width: 250, height: 200 });
+    archive.setFrame({ x: 480, y: 150, width: 250, height: 200 });
+    billing.addMember('n', diagram);
+    paint();
+    drag('n', { x: 600, y: 250 });
+    for (let i = 0; i < 5; i++) await flush();
+    expect(archive.members.has('n')).toBe(true);
+    expect(billing.members.has('n')).toBe(false);
+
+    await engine.undo();
+    expect(billing.members.has('n')).toBe(true);
+    expect(archive.members.has('n')).toBe(false);
+    expect(diagram.getNode('n')!.position.x).toBeCloseTo(200, 0);
+  });
 });
