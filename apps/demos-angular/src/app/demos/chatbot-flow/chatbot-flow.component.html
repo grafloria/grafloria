@@ -1,0 +1,158 @@
+<div id="stage" #stage>
+  <!-- ---- the left step editor ---- -->
+  <aside id="side" aria-label="Step editor">
+    @if (c.step; as step) {
+      <div class="sd-top">
+        <span class="sd-kind">{{ c.kindLabel }}</span>
+        <input class="sd-title" data-field="title" [value]="step.title" aria-label="Step name" (input)="c.edit('title', val($event))">
+        @if (step.kind === 'message') { <span class="sd-sub">Send <b>within 24 hour window</b></span> }
+      </div>
+      <div class="sd-pad">
+        @if (step.kind === 'message') {
+          @for (b of step.blocks; track b.id) {
+            <div class="sd-block">
+              <div class="sd-bh">
+                <span>{{ blockName(b.kind) }}</span>
+                <button class="sd-ib" data-act="rm-block" title="Remove this block" aria-label="Remove block" (click)="c.removeBlock(b.id)">×</button>
+              </div>
+              @switch (b.kind) {
+                @case ('text') {
+                  <textarea dir="auto" data-field="text" [attr.data-block]="b.id" aria-label="Message text" placeholder="Enter your text…"
+                    [value]="b.text" (input)="c.edit('text', val($event), b.id)"></textarea>
+                  <div class="sd-btns">
+                    @for (btn of b.buttons; track btn.id) {
+                      <div class="sd-btn">
+                        <input dir="auto" data-field="btn" [attr.data-block]="b.id" [attr.data-btn]="btn.id" [value]="btn.title" aria-label="Button title"
+                          (input)="c.edit('btn', val($event), b.id, btn.id)">
+                        <button class="sd-ib" data-act="btn-url" [attr.aria-pressed]="!!btn.url"
+                          [title]="btn.url ? 'Make it a step button' : 'Make it a link button'" (click)="c.toggleUrl(b.id, btn.id)">↗</button>
+                        <button class="sd-ib" data-act="rm-btn" title="Remove button" aria-label="Remove button" (click)="c.removeButton(b.id, btn.id)">×</button>
+                      </div>
+                    }
+                  </div>
+                  <button class="sd-add" data-act="add-btn" (click)="c.addButton(b.id)">+ Add Button</button>
+                }
+                @case ('collect') {
+                  <div class="sd-row">Wait for
+                    <select data-field="collect" aria-label="Field to collect" (input)="c.edit('collect', val($event), b.id)">
+                      @for (f of fields; track f) { <option [selected]="f === b.field">{{ f }}</option> }
+                    </select> from contact</div>
+                }
+                @case ('delay') {
+                  <div class="sd-row">Show typing for
+                    <input type="number" min="1" max="20" data-field="secs" aria-label="Seconds" [value]="c.secsValue(b)"
+                      (input)="c.edit('secs', val($event), b.id)"> sec</div>
+                }
+                @default {
+                  <div class="sd-row">
+                    <input data-field="caption" aria-label="Image caption" placeholder="Caption" [value]="b.caption ?? ''"
+                      (input)="c.edit('caption', val($event), b.id)">
+                  </div>
+                }
+              }
+            </div>
+          }
+          <div class="sd-label">Add one of the content blocks:</div>
+          <div class="sd-pal">
+            <button data-act="add-block" data-kind="text" (click)="c.addBlock('text')"><span class="ico">≡</span><b>Text</b><small>Add simple text and buttons</small></button>
+            <button data-act="add-block" data-kind="image" (click)="c.addBlock('image')"><span class="ico">▣</span><b>Image</b><small>Boost engagement with visuals</small></button>
+            <button data-act="add-block" data-kind="delay" (click)="c.addBlock('delay')"><span class="ico">◷</span><b>Delay</b><small>Wait a few seconds between texts</small></button>
+            <button data-act="add-block" data-kind="collect" (click)="c.addBlock('collect')"><span class="ico">▭</span><b>Data Collection</b><small>Collect emails, phones and more</small></button>
+          </div>
+        } @else if (step.kind === 'actions') {
+          @for (a of step.actions; track a.id) {
+            <div class="sd-block">
+              <div class="sd-bh"><span>Action</span>
+                <button class="sd-ib" data-act="rm-action" aria-label="Remove action" (click)="c.removeAction(a.id)">×</button></div>
+              <div class="sd-row"><input data-field="a-label" [value]="a.label" aria-label="Action" (input)="c.edit('a-label', val($event), undefined, a.id)"></div>
+              <div class="sd-row"><input data-field="a-sub" [value]="a.sub" aria-label="Detail" (input)="c.edit('a-sub', val($event), undefined, a.id)"></div>
+            </div>
+          }
+          <button class="sd-add" data-act="add-action" (click)="c.addAction()">+ Action</button>
+        } @else {
+          @for (t of step.triggers; track $index) {
+            <div class="sd-block"><div class="sd-bh"><span>Trigger</span></div>
+              <div class="sd-row">{{ t.label }}</div></div>
+          }
+          <button class="sd-add" data-act="add-trigger" (click)="c.addTrigger()">+ New Trigger</button>
+        }
+        @if (c.showNext) {
+          <button class="sd-next" data-act="next" (click)="c.chooseNext(rect($event))">Choose Next Step</button>
+        }
+        @if (step.kind !== 'trigger') {
+          <button class="sd-del" data-act="del" (click)="c.deleteStep()">Delete step</button>
+        }
+      </div>
+    } @else {
+      <div class="sd-empty">
+        <h2>Default Reply</h2>
+        <div class="sd-stat"><div><b>{{ c.stepCount }}</b>steps</div><div><b>{{ c.linkCount }}</b>connections</div></div>
+        <ul><li>Click a step to edit it here.</li><li>Drag from a dot to a card to connect them.</li>
+          <li>Let go of a line on empty canvas to add the next step.</li><li>Press Preview to talk to the bot.</li></ul>
+      </div>
+    }
+  </aside>
+
+  <!-- ---- the flow canvas and the chrome over it ---- -->
+  <div id="canvas">
+    <grafloria-diagram [spec]="spec" [options]="options" (ready)="onReady($event)"
+      style="display:block; width:100%; height:100%" />
+
+    <div class="cv-top">
+      <span class="cv-crumb">Automations › <b>Default Reply</b></span><span class="cv-live">LIVE</span>
+      <span class="cv-sp"></span>
+      <span id="cv-saved" [class.dirty]="c.dirty">{{ c.savedText }}</span>
+      <button class="cv-btn" id="cv-tidy" title="Lay the flow out left to right" (click)="c.tidy()">Tidy up</button>
+      <button class="cv-btn" id="cv-preview" [attr.aria-pressed]="c.previewOn" (click)="c.togglePreview()">Preview</button>
+      <button class="cv-btn primary" id="cv-publish" [disabled]="c.publishDisabled" (click)="c.publish()">Publish</button>
+    </div>
+    <div class="cv-hint" id="cv-hint" [hidden]="!!c.selected">Select a step to edit it in the sidebar</div>
+    <button id="cv-fab" title="Add a step" aria-label="Add a step" (click)="c.fab(rect($event))">+</button>
+    <div class="cv-zoom">
+      <button id="cv-zin" title="Zoom in" aria-label="Zoom in" (click)="c.zoomIn()">+</button>
+      <button id="cv-zout" title="Zoom out" aria-label="Zoom out" (click)="c.zoomOut()">−</button>
+    </div>
+    <div id="mc-menu" [hidden]="!c.menuOpen" role="menu" [style.left.px]="c.menuLeft" [style.top.px]="c.menuTop">
+      <div class="mh">Choose next step</div>
+      <button data-kind="message" role="menuitem" (click)="c.pickMenu('message')"><span class="dot" style="background:linear-gradient(135deg,#1aa3ff,#0a62f5)"></span>Send Message</button>
+      <button data-kind="actions" role="menuitem" (click)="c.pickMenu('actions')"><span class="dot" style="background:#fdeaa5"></span>Actions</button>
+    </div>
+
+    <!-- ---- the Preview: the bot, run for real, beside the canvas ---- -->
+    <div id="pv" [hidden]="!c.previewOn">
+      <div class="pv-head"><span class="mc-ch"></span>
+        <div><div class="pv-name">Atlas Business Hub</div><div class="pv-sub">Preview · Messenger</div></div>
+        <span class="sp"></span>
+        <button id="pv-restart" (click)="c.start()">Restart</button>
+        <button id="pv-close" aria-label="Close preview" (click)="c.setPreview(false)">×</button>
+      </div>
+      <div id="pv-chat" aria-live="polite">
+        @for (it of c.chat; track it.id) {
+          @switch (it.kind) {
+            @case ('typing') { <div class="pv-typing"><i></i><i></i><i></i></div> }
+            @case ('btns') {
+              <div class="pv-btns">
+                @for (b of it.buttons; track $index; let i = $index) {
+                  <button type="button" [class.chosen]="b.chosen" (click)="c.tap(it.id, i)">{{ b.label }}</button>
+                }
+              </div>
+            }
+            @case ('sys') { <div class="pv-sys" [class.act]="it.act">{{ it.text }}</div> }
+            @default { <div [class]="'pv-msg ' + it.cls">{{ it.text }}</div> }
+          }
+        }
+      </div>
+      <div class="pv-foot">
+        <div class="pv-wait" id="pv-wait" [hidden]="!c.waiting">
+          <span id="pv-wait-t">{{ c.waitText }}</span>
+          <button id="pv-noreply" (click)="c.noReply()">No reply (24 h)</button>
+        </div>
+        <form class="pv-in" id="pv-form" (submit)="$event.preventDefault(); c.submit()">
+          <input id="pv-input" [placeholder]="c.inputPlaceholder" [disabled]="!c.waiting" autocomplete="off"
+            [value]="c.pvText" (input)="c.setPvText(val($event))">
+          <button id="pv-send" [disabled]="!c.waiting">Send</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
