@@ -1,0 +1,187 @@
+<div id="stage" #stage>
+  <div class="ma-top">
+    <div class="ma-tb-group">
+      <button class="ma-ib" id="ma-undo" title="Undo (⌘Z / Ctrl+Z)" aria-label="Undo" [disabled]="!ui.canUndo" (click)="c.undo()"><span class="ma-ico ma-i-undo"></span></button>
+      <button class="ma-ib" id="ma-redo" title="Redo (⇧⌘Z / Ctrl+Shift+Z)" aria-label="Redo" [disabled]="!ui.canRedo" (click)="c.redo()"><span class="ma-ico ma-i-redo"></span></button>
+      <span class="ma-sep"></span>
+      <button class="ma-tb" id="ma-save" title="Save to this browser" (click)="c.save()">Save</button>
+      <button class="ma-tb" id="ma-load" title="Load the saved version" (click)="c.load()">Load</button>
+      <button class="ma-tb" id="ma-new" title="Start from a trigger" (click)="c.askNew()">New</button>
+    </div>
+    <div class="ma-title-wrap">
+      <input id="ma-title" aria-label="Automation name" autocomplete="off" spellcheck="false" [value]="ui.title"
+        (input)="c.renameTitle(val($event))" (change)="c.commitLive()" (keydown.enter)="blur($event)">
+      <span class="ma-status" [class.live]="ui.live" id="ma-status">{{ ui.status }}</span>
+    </div>
+    <div class="ma-tb-group right">
+      <button class="ma-tb primary" id="ma-test" (click)="c.openTestDialog()"><span class="ma-ico ma-i-play" style="width:13px;height:13px"></span>Test flow</button>
+      <button class="ma-tb" id="ma-publish" (click)="c.publish()">Publish</button>
+    </div>
+  </div>
+
+  <div id="canvas">
+    <grafloria-diagram [spec]="spec" [options]="options" (ready)="onReady($event)" style="display:block;height:100%;width:100%"></grafloria-diagram>
+
+    <!-- The navigator: the minimap (moved in by the controller), fit-all, fit-width, zoom. -->
+    <div class="ma-nav" aria-label="Navigator">
+      <div class="ma-nav-map" id="ma-nav-map" [hidden]="!ui.mapShown"><div class="ma-nav-mini"></div></div>
+      <div class="ma-nav-row">
+        <button class="ma-ib" id="ma-fit" title="Fit the whole automation" aria-label="Fit the whole automation" (click)="c.fitAll()"><span class="ma-ico ma-i-fit"></span></button>
+        <button class="ma-ib" id="ma-fitw" title="Fit the width, from the top" aria-label="Fit the width" (click)="c.fitWidth()"><span class="ma-ico ma-i-fitw"></span></button>
+        <input type="range" id="ma-zoom" min="20" max="200" step="5" [value]="ui.zoom" aria-label="Zoom" (input)="c.setZoom(+val($event))">
+        <span id="ma-zoom-pct">{{ ui.zoom }}%</span>
+        <button class="ma-ib" id="ma-map" title="Show or hide the minimap" aria-label="Show or hide the minimap" [attr.aria-pressed]="ui.mapShown"
+          (click)="c.toggleMap()"><span class="ma-ico ma-i-map"></span></button>
+      </div>
+    </div>
+
+    <!-- The step menu a "+" (or "Add criteria") opens: search, ↑ ↓, Enter. -->
+    <div id="ma-menu" [hidden]="!ui.menu" role="dialog" aria-label="Choose a step" [style.left.px]="ui.menu?.left" [style.top.px]="ui.menu?.top">
+      <div class="ma-menu-search"><span class="ma-ico ma-i-search"></span>
+        <input id="ma-menu-q" [placeholder]="ui.menu?.placeholder ?? 'Search steps…'" autocomplete="off" spellcheck="false" aria-label="Search steps"
+          [value]="ui.menu?.q ?? ''" (input)="c.setMenuQuery(val($event))" (keydown)="c.menuKey($event)"></div>
+      <div class="ma-menu-list" id="ma-menu-list" role="listbox">
+        @for (g of ui.menu?.groups ?? []; track g.group) {
+          <div class="ma-menu-h" [hidden]="g.hidden">{{ g.group }}</div>
+          @for (it of g.items; track it.key) {
+            <button class="ma-mi" [class.active]="it.active" role="option" [attr.data-key]="it.key" [attr.data-search]="it.search"
+              [hidden]="it.hidden" (click)="c.pickMenu(it.key)">
+              <span class="ma-tile {{ 't-' + it.tone }}"><span class="ma-ico {{ 'ma-i-' + it.icon }}"></span></span><span><b>{{ it.label }}</b><small>{{ it.desc }}</small></span></button>
+          }
+        }
+      </div>
+      <div class="ma-menu-empty" id="ma-menu-empty" [hidden]="!ui.menu?.empty">No step matches.</div>
+    </div>
+
+    <!-- Delete a Branch (keep which path?), start a new automation, or pick a test contact. -->
+    <div id="ma-dialog" [hidden]="!ui.dialog" (click)="onDialogClick($event)">
+      <div class="ma-dlg" role="dialog" aria-modal="true" id="ma-dlg" [attr.data-kind]="ui.dialog?.kind ?? null">
+        @if (ui.dialog; as d) {
+          @if (d.kind === 'delete') {
+            <h3>Delete “{{ d.title }}”?</h3>
+            <p>{{ d.text }}</p>
+            <div class="ma-dlg-list">
+              @for (pk of d.picks; track pk.armId; let first = $first) {
+                <button class="ma-pick" data-act="keep" [attr.data-arm]="pk.armId" [attr.data-focus]="first ? '' : null" (click)="c.dialogAct('keep', pk.armId)">
+                  <span class="ma-tile sm t-amber"><span class="ma-ico ma-i-fork"></span></span><span><b>Keep the {{ pk.label }} path</b><small>{{ pk.sub }}</small></span></button>
+              }
+            </div>
+            <div class="ma-dlg-actions"><button class="ma-btn" data-act="cancel" (click)="c.dialogAct('cancel')">Cancel</button>
+              <button class="ma-btn danger" data-act="all" (click)="c.dialogAct('all')">{{ d.allLabel }}</button></div>
+          } @else if (d.kind === 'new') {
+            <h3>Start a new automation?</h3><p>The canvas is cleared down to a bare trigger. Undo brings this one back.</p>
+            <div class="ma-dlg-actions"><button class="ma-btn" data-act="cancel" (click)="c.dialogAct('cancel')">Cancel</button>
+              <button class="ma-btn primary" data-act="new" data-focus (click)="c.dialogAct('new')">Start new</button></div>
+          } @else if (d.kind === 'test') {
+            <h3>Test flow</h3><p>Pick a sample contact. A token walks the automation exactly as they would — delays fast-forward, nothing is sent.</p>
+            <div class="ma-dlg-list">
+              @for (ct of d.contacts; track ct.id) {
+                <button class="ma-pick" data-act="pick" [attr.data-id]="ct.id" [attr.aria-pressed]="ct.id === d.picked" (click)="c.dialogAct('pick', ct.id)">
+                  <span class="ma-av">{{ ct.initials }}</span><span><b>{{ ct.name }}</b><small>{{ ct.company }} · {{ ct.blurb }}</small></span></button>
+              }
+            </div>
+            <div class="ma-dlg-actions"><button class="ma-btn" data-act="cancel" (click)="c.dialogAct('cancel')">Cancel</button>
+              <button class="ma-btn primary" data-act="run" data-focus (click)="c.dialogAct('run')">Run test</button></div>
+          }
+        }
+      </div>
+    </div>
+    <div id="ma-toast" [hidden]="!ui.toast" role="status">{{ ui.toast }}</div>
+  </div>
+
+  <!-- The right-hand panel: the automation overview, a step's form, or the test run.
+       Tracked by `rev`, so it re-renders exactly where the JS page re-renders its HTML. -->
+  <aside id="ma-panel" aria-label="Step properties" (input)="c.panelInput($event.target, false)" (change)="c.panelInput($event.target, true)">
+    @for (p of [ui.panel]; track p.rev) {
+      @if (p.view === 'overview') {
+        <div class="ma-p-head" [attr.data-rev]="p.rev"><span class="ma-tile t-indigo"><span class="ma-ico ma-i-automation"></span></span>
+          <div><div class="ma-p-name">Automation</div><div class="ma-p-kind">Select a step to configure it</div></div></div>
+        <div class="ma-p-body">
+          <div class="ma-stats"><div><b>{{ p.steps }}</b>steps</div><div><b>{{ p.paths }}</b>paths</div><div><b>{{ p.wait }}</b>longest wait</div></div>
+          <label class="ma-f"><span class="ma-f-l">{{ p.description.label }}</span>
+            <textarea data-k="description" rows="3" [value]="p.description.value"></textarea>
+            <span class="ma-f-h"><span class="ma-ico ma-i-bulb"></span><span>{{ p.description.hint }}</span></span></label>
+          <ul class="ma-tips">
+            <li>Click a <b>step</b> to edit it here.</li>
+            <li>Press <b>+</b> on a line to insert a step there; the dashed <b>+</b> beside a Branch adds a path.</li>
+            <li><b>Delete</b> removes the selected step; <b>⌘Z</b> / <b>Ctrl+Z</b> undoes.</li>
+            <li><b>Test flow</b> walks a sample contact through it.</li>
+          </ul>
+        </div>
+      } @else if (p.view === 'run') {
+        <div class="ma-p-head" [attr.data-rev]="p.rev"><span class="ma-tile t-indigo"><span class="ma-ico ma-i-play"></span></span>
+          <div><div class="ma-p-name">Test run</div><div class="ma-p-kind">Simulated — nothing is sent</div></div></div>
+        <div class="ma-p-body">
+          <div class="ma-run-who"><span class="ma-av">{{ p.contact.initials }}</span>
+            <div><b>{{ p.contact.name }}</b><small>{{ p.contact.company }} · {{ p.contact.blurb }}</small></div></div>
+          <div class="ma-clock"><span class="ma-ico ma-i-clock"></span><span id="ma-clock">{{ p.clock }}</span>
+            <span class="ma-run-state" [class.done]="p.done" id="ma-run-state">{{ p.state }}</span></div>
+          <div class="ma-run-actions">
+            <button class="ma-btn primary" data-act="run-again" (click)="c.panelAct('run-again')">Run again</button>
+            <button class="ma-btn" data-act="run-pick" (click)="c.panelAct('run-pick')">Another contact</button>
+            <button class="ma-btn" data-act="run-exit" (click)="c.panelAct('run-exit')">Exit test</button>
+          </div>
+          <ol class="ma-log" id="ma-log" aria-live="polite">
+            @for (r of p.log; track r.n) {
+              <li [attr.data-kind]="r.kind"><span class="ma-tile sm {{ 't-' + r.tone }}"><span class="ma-ico {{ 'ma-i-' + r.icon }}"></span></span>
+                <div><div class="ma-log-t">{{ r.clock }}</div>{{ r.text }}</div></li>
+            }
+          </ol>
+        </div>
+      } @else if (p.view === 'step') {
+        <div class="ma-p-head" [attr.data-rev]="p.rev"><span class="ma-tile {{ 't-' + p.tone }}"><span class="ma-ico {{ 'ma-i-' + p.icon }}"></span></span>
+          <div><div class="ma-p-name">{{ p.name }}</div><div class="ma-p-kind">{{ p.sub }}</div></div></div>
+        <div class="ma-p-sec">{{ p.sec }}</div>
+        <div class="ma-p-body" [attr.data-step]="p.stepId">
+          @for (f of p.fields; track f.key) {
+            <label class="ma-f"><span class="ma-f-l">{{ f.label }}</span>
+              @if (f.type === 'select') {
+                <select [attr.data-k]="f.key">
+                  @for (o of f.options; track o[0]) { <option [value]="o[0]" [selected]="o[0] === f.value">{{ o[1] }}</option> }
+                </select>
+              } @else if (f.type === 'textarea') {
+                <textarea [attr.data-k]="f.key" rows="3" [value]="f.value"></textarea>
+              } @else {
+                <input [attr.data-k]="f.key" [type]="f.type === 'number' ? 'number' : 'text'" [attr.min]="f.min ?? null" [value]="f.value"
+                  [attr.placeholder]="f.placeholder ?? null" autocomplete="off">
+              }
+              <span class="ma-f-h"><span class="ma-ico ma-i-bulb"></span><span>{{ f.hint }}</span></span></label>
+          }
+          @if (p.delay; as dl) {
+            <div class="ma-f"><span class="ma-f-l">Wait for</span><div class="ma-pair">
+              <input data-k="amount" type="number" min="1" [value]="dl.amount" aria-label="Amount">
+              <select data-k="unit" aria-label="Unit">@for (u of units; track u) { <option [selected]="u === dl.unit">{{ u }}</option> }</select></div>
+              <span class="ma-f-h"><span class="ma-ico ma-i-bulb"></span><span>How long the contact waits here. A Test flow fast-forwards it.</span></span></div>
+          }
+          @if (p.arms; as arms) {
+            <div class="ma-f"><span class="ma-f-l">Paths</span><div class="ma-arms">
+              @for (a of arms; track a.id) {
+                <div class="ma-arm">
+                  <input [attr.data-arm]="a.id" data-ak="label" [value]="a.label" aria-label="Path name">
+                  @if (a.isDefault) {
+                    <span class="ma-arm-any">any other value</span>
+                  } @else {
+                    <select [attr.data-arm]="a.id" data-ak="value" aria-label="Value">
+                      @for (o of a.options; track o[0]) { <option [value]="o[0]" [selected]="o[0] === a.value">{{ o[1] }}</option> }
+                    </select>
+                  }
+                  @if (a.removable) {
+                    <button class="ma-x" data-act="rm-arm" [attr.data-arm]="a.id" title="Remove this path and its steps" [attr.aria-label]="'Remove the ' + a.label + ' path'"
+                      (click)="c.panelAct('rm-arm', a.id)"><span class="ma-ico ma-i-close"></span></button>
+                  } @else {
+                    <span></span>
+                  }
+                </div>
+              }
+            </div>
+              <span class="ma-f-h"><span class="ma-ico ma-i-bulb"></span><span>A contact takes the first path whose value matches; “any other value” catches everyone else.</span></span>
+              <button class="ma-add" data-act="add-arm" (click)="c.panelAct('add-arm')">+ Add a path</button></div>
+          }
+          @if (p.del) {
+            <button class="ma-del" data-act="delete" (click)="c.panelAct('delete')"><span class="ma-ico ma-i-trash"></span>{{ p.del }}</button>
+          }
+        </div>
+      }
+    }
+  </aside>
+</div>
