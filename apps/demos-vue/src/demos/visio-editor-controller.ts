@@ -254,16 +254,13 @@ export class VisioEditor {
   fit(): void { this.api.fitView(); this.api.renderNow(); }
 
   // ── the toolbar ──────────────────────────────────────────────────────────
-  /** A bar button. Exactly like the JS page's mk(), EVERY action — Undo and
-   *  Redo included — runs only while something is selected. */
+  /** A bar button. Like the JS page's mk(): an action runs while something is
+   *  selected — except Undo and Redo, which act with nothing selected too. */
   async run(action: BarAction): Promise<void> {
     const ids = this.selectedIds();
     const cm = this.engine.commandManager;
     const later = () => setTimeout(() => this.syncBar(), 0);
-    if (!ids.length) {
-      if (action === 'undo' || action === 'redo') later();
-      return;
-    }
+    if (!ids.length && action !== 'undo' && action !== 'redo') return;
     switch (action) {
       case 'left': case 'right': case 'top': case 'bottom': case 'center-y': case 'center-x':
         await cm.execute(new AlignCommand(ids, action)); break;
