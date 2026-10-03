@@ -172,6 +172,10 @@ async function mount(textarea, { language = 'mermaid', onChange, readOnly = fals
       tabSize: 2,
       renderLineHighlight: 'none',
       padding: { top: 10 },
+      // Sticky scroll throws "Illegal value for lineNumber" when the text shrinks
+      // twice in quick succession (the query builder's SQL on a busy machine);
+      // a short code box has no scopes worth pinning anyway.
+      stickyScroll: { enabled: false },
     });
 
     // The textarea remains canonical — mirror every edit into it. The write goes
