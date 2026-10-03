@@ -1,0 +1,1 @@
+import{v as s}from"./core.min-DSxUtzo6.js";import{x as u}from"./core.min-DSxUtzo6.js";import{m as n}from"./ready-C4_3DsUA.js";import"./preloader-D7tuiBjF.js";const v=t=>{const[a,e,r]=s(),o=a.value;o.onChange=m=>{r.value=m},o.init(t,e.value).then(()=>n())};export{u as _hW,v as s_jV4cpf421Ig};

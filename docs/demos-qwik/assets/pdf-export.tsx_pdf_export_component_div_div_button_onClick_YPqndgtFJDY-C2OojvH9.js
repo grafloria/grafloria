@@ -1,0 +1,1 @@
+import{v as o}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const c=async()=>{const[e,n]=o(),t=await e.value.export("pdf"),a=document.createElement("a");a.href=t,a.download="diagram.pdf",a.click(),n.value=`diagram.pdf saved (${Math.round(t.length*3/4/1024)} KB)`};export{c as s_YPqndgtFJDY};

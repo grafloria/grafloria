@@ -1,0 +1,1 @@
+import{v as i}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const n=()=>{const[a,o,r,s,e]=i();return s.value=e.id,a.value?.handle.showView(e.id),Promise.all([r(),o(`view: ${e.name}`)])};export{n as s_he1JpM0ZSzc};

@@ -1,1 +1,0 @@
-import{v as n}from"./core.min-e2MmCxtB.js";import{x as s}from"./core.min-e2MmCxtB.js";import"./preloader-D7tuiBjF.js";const i=e=>{const[t,o]=n();o.value=e,t.value?.getModel().getLink("e1")?.updateStyle({template:e||void 0}),t.value?.renderNow()};export{s as _hW,i as s_PcoQn0qAweE};

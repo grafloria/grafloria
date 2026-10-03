@@ -1,1 +1,0 @@
-import{_ as t}from"./preload-helper-D57DdDQb.js";import{y as o,L as r}from"./core.min-e2MmCxtB.js";import"./preloader-D7tuiBjF.js";const i=o(r(()=>t(()=>import("./stencil-palette.tsx_stencil_palette_component_jcO0fllTKgw-D96G5kg3.js"),[],import.meta.url),"s_jcO0fllTKgw"));export{i as default};

@@ -1,1 +1,0 @@
-import{v as m,Q as s}from"./core.min-e2MmCxtB.js";import{x as v}from"./core.min-e2MmCxtB.js";import{m as t}from"./ready-C4_3DsUA.js";import"./preloader-D7tuiBjF.js";const p=o=>{const[r]=m();r.value=s(o),t()};export{v as _hW,p as s_nR0rL42eJ28};

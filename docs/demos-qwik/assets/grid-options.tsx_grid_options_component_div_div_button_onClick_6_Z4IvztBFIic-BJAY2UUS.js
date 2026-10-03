@@ -1,1 +1,0 @@
-import{v as s}from"./core.min-e2MmCxtB.js";import"./preloader-D7tuiBjF.js";const c=async()=>{const[t,e,a,o]=s();t.value?.handle.setRtl(!a.value),await o(),await e(a.value?"RTL on: the same cells, mirrored":"RTL off")};export{c as s_Z4IvztBFIic};

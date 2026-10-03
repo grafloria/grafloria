@@ -1,0 +1,1 @@
+import{v as r}from"./core.min-DSxUtzo6.js";import{x as f}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const p=({track:e})=>{const[s,n]=r(),t=e(()=>n.theme),o=e(()=>s.value);!t||!o||o.setTheme(t)};export{f as _hW,p as s_EC26ucU2Kv4};

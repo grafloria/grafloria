@@ -1,0 +1,1 @@
+import{v as t}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const r=()=>{const[a,e]=t();a.value="split",e("split: the board is always covered — drag a divider (a percentage), drag a widget onto an edge, add one and it halves the largest")};export{r as s_1fOrj0FdFAY};

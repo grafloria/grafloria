@@ -1,0 +1,1 @@
+import{m as t}from"./ready-C4_3DsUA.js";import{x as i}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const n=e=>{e.getEngine().setInteractionConfig({enableInPlaceTextEdit:!0}),e.renderNow(),t()};export{i as _hW,n as s_1pyDtyMq2ls};

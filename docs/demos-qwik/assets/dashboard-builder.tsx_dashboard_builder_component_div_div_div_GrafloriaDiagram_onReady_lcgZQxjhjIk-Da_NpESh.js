@@ -1,1 +1,0 @@
-import{v as e}from"./core.min-e2MmCxtB.js";import{x}from"./core.min-e2MmCxtB.js";import{m as s}from"./ready-C4_3DsUA.js";import"./preloader-D7tuiBjF.js";const i=a=>{const[o,r,t]=e();o.value?.attach(a,r.value,m=>{t.value=m}),s()};export{x as _hW,i as s_lcgZQxjhjIk};

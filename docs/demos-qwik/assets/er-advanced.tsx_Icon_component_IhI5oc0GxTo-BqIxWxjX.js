@@ -1,1 +1,0 @@
-import{I as t,R as e}from"./core.min-e2MmCxtB.js";import"./preloader-D7tuiBjF.js";const i=o=>t("svg",null,{width:"42",height:"18",viewBox:"0 0 42 18",fill:"none",stroke:"#64748b","stroke-width":"1.4",dangerouslySetInnerHTML:e(n=>n.d,[o])},null,3,"gh_0");export{i as s_IhI5oc0GxTo};
