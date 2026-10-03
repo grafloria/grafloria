@@ -1,7 +1,8 @@
-import { AfterViewInit, Component, viewChild } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/angular';
 import { markReady } from '../demo-ready';
+import { mountCodeEditor } from '../../code-editor';
 
 /** Diagram-as-text: exportText() writes Mermaid-style text from the live
  *  canvas; loadText() reconciles edited text back INTO the same instance —
@@ -13,6 +14,8 @@ import { markReady } from '../demo-ready';
 })
 export class MermaidTextComponent implements AfterViewInit {
   canvas = viewChild.required(DiagramCanvasComponent);
+  // The text reads as Mermaid: the gallery's editor colours it over the textarea.
+  source = viewChild<ElementRef<HTMLTextAreaElement>>('source');
   text = '';
   nodes = [
     { id: 'start', position: { x: 80, y: 60 },  size: { width: 140, height: 60 }, data: { label: 'Start' } },
@@ -25,5 +28,9 @@ export class MermaidTextComponent implements AfterViewInit {
   ];
   export() { this.text = this.canvas().exportText(); }
   load() { this.canvas().loadText(this.text); }
-  ngAfterViewInit() { this.export(); markReady(); }
+  ngAfterViewInit() {
+    this.export();
+    void mountCodeEditor(this.source()?.nativeElement, { language: 'mermaid' });
+    markReady();
+  }
 }
