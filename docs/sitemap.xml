@@ -74,6 +74,7 @@
   <url><loc>https://grafloria.com/demos/diagrams/ai-style-diagram.html</loc><lastmod>2026-09-29</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/architecture-layout.html</loc><lastmod>2026-09-29</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/class-uml.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/diagrams/data-modeling.html</loc><lastmod>2026-10-03</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/er-advanced.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/erd-editor.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/diagrams/mermaid-architecture-block.html</loc><lastmod>2026-09-30</lastmod><priority>0.6</priority></url>
@@ -118,6 +119,7 @@
   <url><loc>https://grafloria.com/demos/interaction/execute-flow.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/helper-lines.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/keyboard-a11y.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/marketing-automation.html</loc><lastmod>2026-10-03</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/marquee-select.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/n8n-workflow.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/parent-move.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
@@ -127,6 +129,7 @@
   <url><loc>https://grafloria.com/demos/interaction/touch-device.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/undo-redo.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/validation.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/workflow-builder.html</loc><lastmod>2026-10-03</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/layout/auto-layout.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/layout/dagre-tree.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/layout/dynamic-layouting.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
