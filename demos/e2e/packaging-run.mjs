@@ -203,7 +203,7 @@ console.log(JSON.stringify({ missing, drew, kit }));
   // executed for its effect must not claim `sideEffects: false`. Check the rule
   // rather than the one instance, so the next registration cannot ship broken.
   console.log('\npackaging: sideEffects honesty across packages');
-  for (const pkg of ['engine', 'renderer', 'element', 'react', 'vue']) {
+  for (const pkg of ['engine', 'renderer', 'element', 'react', 'vue', 'qwik', 'dashboard']) {
     const dir = join(REPO, 'libs', pkg);
     let pkgJson, entry;
     try {
@@ -221,6 +221,17 @@ console.log(JSON.stringify({ missing, drew, kit }));
       hasTopLevelCall && claimsNone,
       false
     );
+    // …and a sideEffects LIST must name the source entry as well as the built
+    // one: the demo apps build from src/index.ts, and the Angular build dropped
+    // renderer's notation-shape registration because only src/index.js was
+    // listed (13 shapes drew as plain rectangles there, 2026-10-03).
+    if (hasTopLevelCall && Array.isArray(pkgJson.sideEffects)) {
+      check(
+        `${pkg}: its sideEffects list names src/index.ts too, so a build from source keeps the call`,
+        pkgJson.sideEffects.some((f) => /(^|\/)src\/index\.ts$/.test(f)),
+        true
+      );
+    }
   }
 } finally {
   rmSync(work, { recursive: true, force: true });
