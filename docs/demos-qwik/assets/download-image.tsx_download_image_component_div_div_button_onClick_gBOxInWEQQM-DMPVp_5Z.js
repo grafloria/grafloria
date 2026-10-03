@@ -1,0 +1,1 @@
+import{v as t}from"./core.min-e2MmCxtB.js";import{_auto_download as r}from"./download-image-_RmllgKC.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const i=async()=>{const[o,n]=t(),a=await o.value.export("png",{scale:2});r(a,"diagram.png"),n.value=`diagram.png saved (${Math.round(a.length*3/4/1024)} KB)`};export{i as s_gBOxInWEQQM};

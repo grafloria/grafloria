@@ -1,1 +1,0 @@
-import{v as l}from"./core.min-e2MmCxtB.js";import{x as i}from"./core.min-e2MmCxtB.js";import{_auto_targetOf as s}from"./fluid-board-BJttA7vF.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const v=r=>{const[a,t,o]=l();t.value=r.detail;const e=a.value;o.value=e?s(e,t.value):null};export{i as _hW,v as s_rr7O4cnNWnQ};

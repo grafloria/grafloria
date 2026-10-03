@@ -1,1 +1,0 @@
-import{v as u}from"./core.min-e2MmCxtB.js";import{_auto_A as t,_auto_B as e,_auto_O as _,_auto_readoutOf as i}from"./edge-routing-CnN8vShu.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const m=()=>{const[o,r,s]=u(),a=r.value;a&&(o.value=!o.value,a.setNodes(o.value?[t,e,_]:[t,e]),a.renderNow(),s.value=i(a))};export{m as s_kUTW5Y9u2Kc};

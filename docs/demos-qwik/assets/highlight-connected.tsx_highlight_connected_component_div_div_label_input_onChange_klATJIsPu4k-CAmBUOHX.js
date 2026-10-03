@@ -1,1 +1,0 @@
-import{v as r}from"./core.min-e2MmCxtB.js";import{_auto_apply as t}from"./highlight-connected-DdhnfHi1.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const l=(m,p)=>{const[a,o]=r();o.on=p.checked,t(a.value,o)};export{l as s_klATJIsPu4k};

@@ -1,0 +1,1 @@
+import{v as p}from"./core.min-e2MmCxtB.js";import{x as d}from"./core.min-e2MmCxtB.js";import{_auto_readoutOf as s}from"./expand-collapse-BGDOUJsx.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const l=()=>{const[t,a,e,u]=p(),r=e.value,o=a.value;!r||!o||(t.value?.expand(o),u.value=s(r,o))};export{d as _hW,l as s_r0u3vwugorc};
