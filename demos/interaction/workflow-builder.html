@@ -1,0 +1,1582 @@
+<meta charset="utf-8">
+<title>Workflow automation builder — Grafloria</title>
+<meta name="description" content="Build a GitLab deployment workflow: add steps with +, edit them in a side panel, undo anything, then press Test workflow to watch the run pick its branch.">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/workflow-builder.html">
+<meta property="og:title" content="Workflow automation builder — Grafloria">
+<meta property="og:description" content="Build a GitLab deployment workflow: add steps with +, edit them in a side panel, undo anything, then press Test workflow to watch the run pick its branch.">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/workflow-builder.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/workflow-builder.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/workflow-builder.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  /* ---- page tokens (light), redefined for dark below --------------------- */
+  #stage {
+    --wf-bg: #f4f5f8; --wf-dot: #d8dce4; --wf-panel: #ffffff; --wf-line: #e3e6ee; --wf-field: #d7dce6;
+    --wf-ink: #1e2332; --wf-mut: #687083; --wf-faint: #9aa2b3;
+    --wf-accent: #3B52D9; --wf-accent-wash: #eef1fe; --wf-accent-line: #c9d1fb;
+    --wf-tile: #ffffff; --wf-tile-ring: #e0e4ec; --wf-ok: #16a34a; --wf-bad: #dc2626; --wf-run: #f59e0b;
+    --wf-note: #fff5d1; --wf-note-line: #eedb93; --wf-note-ink: #4b3f10; --wf-note-mut: #6e5f2a;
+    --wf-shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 12px rgba(16,24,40,.07);
+    display: grid; grid-template-rows: 52px 1fr; height: calc(100vh - 96px); min-height: 560px; container-type: inline-size;
+    color: var(--wf-ink); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wf-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; min-height: 0; position: relative; }
+  #canvas { height: 100%; position: relative; overflow: hidden; background-color: var(--wf-bg);
+    background-image: radial-gradient(circle, var(--wf-dot) 1px, transparent 1px); background-size: 22px 22px; }
+  #canvas foreignObject { overflow: visible; }
+  /* The step's SHAPE is only a hit area: the HTML draws the tile, and selection
+     is the tile's own ring (the theme also tints a hovered body). */
+  #canvas rect.diagram-node, #canvas rect.diagram-node.selected { fill: transparent !important; stroke: transparent !important; }
+  #canvas circle.port { fill: var(--wf-panel); stroke: var(--wf-accent); stroke-width: 1.5px; transition-property: r, stroke-width, opacity !important; }
+  #canvas circle.port.port-input.port-highlighted { fill: var(--wf-accent); }
+
+  /* ---- a step, painted inside its node's foreignObject --------------------- */
+  .wf-node { position: relative; width: 100%; height: 100%; color: var(--wf-ink);
+    font: 11px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: normal; text-align: left; }
+  .wf-tile { position: absolute; inset: 0; box-sizing: border-box; border-radius: 50%; background: var(--wf-tile);
+    border: 1px solid var(--wf-tile-ring); box-shadow: var(--wf-shadow); display: flex; align-items: center; justify-content: center; }
+  .wf-trigger .wf-tile { border-radius: 17px; }
+  .wf-logic .wf-tile { border-radius: 24px; background: var(--wf-accent-wash); border-color: var(--wf-accent-line); }
+  .wf-ph .wf-tile { background: transparent; border: 1.5px dashed #aeb7c8; box-shadow: none; color: var(--wf-accent); font: 300 26px/1 system-ui; }
+  .wf-ic { display: block; width: 27px; height: 27px; background: center / contain no-repeat; flex: none; }
+  .wf-logic .wf-ic { width: 22px; height: 22px; }
+  .wf-sel .wf-tile { border-color: var(--wf-accent); box-shadow: 0 0 0 3px rgba(59,82,217,.22), var(--wf-shadow); }
+  .wf-bolt { position: absolute; left: -19px; top: 50%; transform: translateY(-50%); color: var(--wf-faint); font-size: 12px; }
+  .wf-label { position: absolute; left: 50%; top: calc(100% + 7px); width: 170px; transform: translateX(-50%);
+    text-align: center; pointer-events: auto; cursor: default; }
+  .wf-app-name { font-size: 10.5px; color: var(--wf-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 14px; }
+  .wf-sum { font-size: 11.5px; font-weight: 550; line-height: 15px; color: var(--wf-ink); overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+  .wf-ph .wf-sum { color: var(--wf-accent); }
+  .wf-plus { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; box-sizing: border-box; border-radius: 50%;
+    background: var(--wf-panel); border: 1px solid #c3cad8; color: var(--wf-mut); font: 600 13px/14px system-ui, sans-serif;
+    text-align: center; pointer-events: auto; cursor: pointer; user-select: none; }
+  .wf-plus:hover { background: var(--wf-accent); border-color: var(--wf-accent); color: #fff; }
+  .wf-out-label { position: absolute; transform: translateY(-100%); font-size: 10px; line-height: 12px; color: var(--wf-mut); white-space: nowrap;
+    background: var(--wf-bg); padding: 0 3px; margin-left: -3px; border-radius: 4px; }
+  /* run states */
+  .wf-badge { position: absolute; top: -5px; right: -5px; width: 17px; height: 17px; box-sizing: border-box; border-radius: 50%;
+    color: #fff; font: 700 10px/17px system-ui, sans-serif; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+  .st-success .wf-badge { background: var(--wf-ok); }
+  .st-failed .wf-badge { background: var(--wf-bad); }
+  .st-stopped .wf-badge { background: #7b8496; }
+  .st-running .wf-badge { background: var(--wf-panel); border: 3px solid rgba(245,158,11,.3); border-top-color: var(--wf-run); animation: wfspin .7s linear infinite; box-shadow: none; }
+  .st-running .wf-tile { border-color: var(--wf-run); animation: wfpulse 1.1s ease-in-out infinite; }
+  .st-success .wf-tile { border-color: #9fd8b0; }
+  .st-failed .wf-tile { border-color: var(--wf-bad); box-shadow: 0 0 0 3px rgba(220,38,38,.18); }
+  @keyframes wfspin { to { transform: rotate(360deg); } }
+  @keyframes wfpulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(245,158,11,.25); } 50% { box-shadow: 0 0 0 7px rgba(245,158,11,.12); } }
+
+  /* ---- sticky notes: a layer UNDER the diagram, carrying the camera -------- */
+  .wf-notes { position: absolute; top: 0; left: 0; transform-origin: 0 0; pointer-events: none; }
+  .wf-note { position: absolute; box-sizing: border-box; border-radius: 14px; background: var(--wf-note);
+    border: 1px solid var(--wf-note-line); padding: 14px 18px; color: var(--wf-note-ink); }
+  .wf-note.sel { outline: 2px solid var(--wf-accent); outline-offset: 3px; }
+  .wf-note-h { display: flex; align-items: center; gap: 7px; margin: 0 0 5px; font: 650 13px/1.3 system-ui, sans-serif; }
+  .wf-note-h::before { content: ""; width: 9px; height: 9px; border-radius: 2px; background: #e9b928; transform: rotate(45deg); flex: none; }
+  .wf-note-t { font: 11.5px/1.5 system-ui, sans-serif; white-space: pre-wrap; color: var(--wf-note-mut); max-width: 324px; }
+
+  /* ---- top bar --------------------------------------------------------------- */
+  .wf-top { display: flex; align-items: center; gap: 6px; padding: 0 12px; background: var(--wf-panel); border-bottom: 1px solid var(--wf-line); min-width: 0; }
+  .wf-ib { width: 32px; height: 32px; border: none; background: none; border-radius: 8px; color: var(--wf-ink); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .wf-ib:hover:not(:disabled) { background: var(--wf-accent-wash); }
+  .wf-ib:disabled { opacity: .3; cursor: default; }
+  .wf-ib svg { width: 18px; height: 18px; }
+  .wf-sep { width: 1px; height: 22px; background: var(--wf-line); margin: 0 4px; flex: none; }
+  .wf-tb { border: 1px solid var(--wf-field); background: var(--wf-panel); border-radius: 8px; padding: 6px 11px; cursor: pointer;
+    font: 500 13px/1.2 system-ui, sans-serif; color: var(--wf-ink); white-space: nowrap; flex: none; }
+  .wf-tb:hover { border-color: #b6bfce; }
+  .wf-tb.primary { background: var(--wf-accent); border-color: var(--wf-accent); color: #fff; }
+  .wf-tb:disabled { opacity: .45; cursor: default; }
+  .wf-title { flex: 1; min-width: 80px; text-align: center; font: 650 15px/1.2 system-ui, sans-serif; color: var(--wf-ink);
+    border: 1px solid transparent; background: transparent; padding: 6px 8px; border-radius: 8px; text-overflow: ellipsis; }
+  .wf-title:hover, .wf-title:focus { border-color: var(--wf-field); outline: none; }
+  .wf-state { font-size: 12px; color: var(--wf-mut); white-space: nowrap; flex: none; }
+  .wf-state.dirty { color: #b26a00; }
+
+  /* ---- the right-hand property panel ------------------------------------------ */
+  #panel { border-left: 1px solid var(--wf-line); background: var(--wf-panel); overflow-y: auto; min-width: 0; display: flex; flex-direction: column; }
+  .pn-empty { margin: auto; padding: 28px 24px; text-align: center; color: var(--wf-mut); display: grid; gap: 10px; justify-items: center; }
+  .pn-empty svg { width: 34px; height: 34px; color: var(--wf-faint); }
+  .pn-empty b { color: var(--wf-ink); font-weight: 600; font-size: 13.5px; }
+  .pn-empty ul { margin: 6px 0 0; padding: 0 0 0 16px; text-align: left; display: grid; gap: 5px; font-size: 12px; }
+  .pn-head { display: flex; gap: 12px; align-items: center; padding: 16px 18px 14px; border-bottom: 1px solid var(--wf-line); }
+  .pn-tile { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--wf-tile-ring); background: var(--wf-tile);
+    display: flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; }
+  .pn-tile.sq { border-radius: 12px; } .pn-tile.logic { background: var(--wf-accent-wash); border-color: var(--wf-accent-line); }
+  .pn-tile .wf-ic { width: 22px; height: 22px; }
+  .pn-kind { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--wf-mut); font-weight: 600; }
+  .pn-title { font: 600 15px/1.3 system-ui, sans-serif; }
+  .pn-body { padding: 14px 18px 20px; display: grid; gap: 12px; align-content: start; }
+  .pn-field { display: grid; gap: 5px; font-size: 12px; color: var(--wf-mut); font-weight: 500; }
+  .pn-field input, .pn-field select, .pn-field textarea, .pn-rule input, .pn-rule select, .pn-out input {
+    font: 13px/1.35 system-ui, sans-serif; color: var(--wf-ink); background: var(--wf-panel); border: 1px solid var(--wf-field);
+    border-radius: 8px; padding: 7px 9px; min-width: 0; box-sizing: border-box; width: 100%; }
+  .pn-field textarea { min-height: 76px; resize: vertical; }
+  .pn-req::after { content: " *"; color: var(--wf-bad); }
+  .pn-sec { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--wf-mut); font-weight: 600; margin-top: 4px; }
+  .pn-out { display: grid; gap: 6px; padding: 9px; border: 1px solid var(--wf-line); border-radius: 10px; }
+  .pn-out-h { display: grid; grid-template-columns: minmax(0, 1fr) 28px; gap: 6px; }
+  .pn-rule { display: grid; grid-template-columns: minmax(0, 1fr) 52px 62px; gap: 6px; align-items: center; }
+  .pn-rule span { font-size: 12px; color: var(--wf-mut); grid-column: span 3; }
+  .pn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pn-btn { border: 1px solid var(--wf-field); background: var(--wf-panel); border-radius: 8px; padding: 6px 10px; cursor: pointer;
+    font: 500 12px/1.2 system-ui, sans-serif; color: var(--wf-ink); }
+  .pn-btn:hover { border-color: var(--wf-accent); color: var(--wf-accent); }
+  .pn-x { width: 28px; height: 28px; padding: 0; color: var(--wf-mut); }
+  .pn-del { color: var(--wf-bad); border-color: #f0c7c7; justify-self: start; margin-top: 6px; }
+  .pn-del:hover { border-color: var(--wf-bad); color: var(--wf-bad); }
+  .pn-hint { font-size: 12px; color: var(--wf-mut); margin: 0; line-height: 1.5; }
+  .pn-end { display: flex; gap: 10px; align-items: center; padding: 9px 10px; border: 1px solid var(--wf-line); border-radius: 10px; }
+  .pn-end .pn-tile { width: 32px; height: 32px; } .pn-end .wf-ic { width: 18px; height: 18px; }
+  .pn-end b { display: block; font-weight: 600; } .pn-end small { color: var(--wf-mut); }
+  .pn-arrow { text-align: center; color: var(--wf-faint); font-size: 16px; line-height: 1; }
+  .pn-picks { display: grid; gap: 6px; }
+  .pn-pick { display: flex; gap: 10px; align-items: center; text-align: left; border: 1px solid var(--wf-line); background: var(--wf-panel);
+    border-radius: 10px; padding: 8px 10px; cursor: pointer; color: var(--wf-ink); font: 500 12.5px/1.3 system-ui, sans-serif; }
+  .pn-pick:hover { border-color: var(--wf-accent); }
+  .pn-pick .wf-ic { width: 20px; height: 20px; }
+  .pn-pick small { display: block; color: var(--wf-mut); font-weight: 400; }
+
+  /* ---- canvas chrome: menu, run log, navigator, toast ------------------------- */
+  .wf-menu { position: absolute; z-index: 20; width: 300px; max-height: 410px; display: flex; flex-direction: column;
+    background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 12px; box-shadow: 0 14px 36px rgba(16,24,40,.18); overflow: hidden; }
+  .wf-menu[hidden] { display: none; }
+  .mn-search { margin: 10px; padding: 8px 10px; border: 1px solid var(--wf-field); border-radius: 8px; font: 13px/1.3 system-ui, sans-serif;
+    color: var(--wf-ink); background: var(--wf-panel); outline: none; }
+  .mn-search:focus { border-color: var(--wf-accent); }
+  .mn-list { overflow-y: auto; padding: 0 6px 8px; }
+  .mn-cat { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--wf-mut); padding: 8px 8px 4px; }
+  .mn-item { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: none; text-align: left; padding: 6px 8px;
+    border-radius: 8px; cursor: pointer; color: var(--wf-ink); font: 12.5px/1.25 system-ui, sans-serif; }
+  .mn-item.on, .mn-item:hover { background: var(--wf-accent-wash); }
+  .mn-ic { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--wf-tile-ring); background: var(--wf-tile);
+    display: flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; }
+  .mn-ic .wf-ic { width: 16px; height: 16px; }
+  .mn-item small { display: block; color: var(--wf-mut); font-size: 10.5px; }
+  .mn-none { padding: 14px 10px; color: var(--wf-mut); font-size: 12.5px; }
+
+  .wf-run { position: absolute; left: 14px; top: 14px; z-index: 9; width: 330px; max-width: calc(100% - 28px); max-height: calc(100% - 200px);
+    display: flex; flex-direction: column; background: var(--wf-panel); border: 1px solid var(--wf-line); border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(16,24,40,.16); font-size: 12px; }
+  .wf-run[hidden] { display: none; }
+  .rn-head { display: flex; align-items: center; gap: 8px; padding: 9px 10px 9px 14px; border-bottom: 1px solid var(--wf-line); }
+  .rn-head b { font-size: 13px; }
+  .rn-chip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #fff3d6; color: #9a5b00; }
+  .rn-chip.ok { background: #dcf5e4; color: #146c34; } .rn-chip.bad { background: #fde2e2; color: #a61b1b; } .rn-chip.idle { background: #eceef3; color: #586073; }
+  .rn-head .sp { flex: 1; }
+  .rn-head button { border: 1px solid var(--wf-field); background: var(--wf-panel); border-radius: 7px; padding: 4px 9px; cursor: pointer; font: 500 12px/1.2 system-ui, sans-serif; color: var(--wf-ink); }
+  .rn-head button[hidden] { display: none; }
+  .rn-in { display: grid; grid-template-columns: 1fr 104px; gap: 8px; padding: 9px 14px; border-bottom: 1px solid var(--wf-line); }
+  .rn-in label { display: grid; gap: 3px; color: var(--wf-mut); font-size: 11px; }
+  .rn-in input, .rn-in select { font: 12.5px/1.3 system-ui, sans-serif; border: 1px solid var(--wf-field); border-radius: 7px; padding: 5px 7px;
+    color: var(--wf-ink); background: var(--wf-panel); min-width: 0; }
+  .rn-log { list-style: none; margin: 0; padding: 5px 0; overflow-y: auto; min-height: 40px; max-height: 164px; font-size: 11.5px; line-height: 1.4; }
+  .rn-log li { display: grid; grid-template-columns: 14px 18px 1fr; gap: 7px; align-items: start; padding: 4px 12px; }
+  .rn-log .rn-st { width: 14px; height: 14px; margin-top: 2px; border-radius: 50%; box-sizing: border-box; color: #fff; font: 700 9px/14px system-ui; text-align: center; }
+  .rn-log .success .rn-st { background: var(--wf-ok); } .rn-log .failed .rn-st { background: var(--wf-bad); } .rn-log .stopped .rn-st { background: #7b8496; }
+  .rn-log .running .rn-st { border: 2px solid rgba(245,158,11,.3); border-top-color: var(--wf-run); animation: wfspin .7s linear infinite; }
+  .rn-log .wf-ic { width: 16px; height: 16px; margin-top: 1px; }
+  .rn-log b { font-weight: 600; } .rn-log .rn-msg { color: var(--wf-mut); overflow-wrap: anywhere; }
+  .rn-log .note { grid-template-columns: 1fr; color: var(--wf-mut); }
+
+  .wf-nav { position: absolute; left: 14px; bottom: 14px; z-index: 8; width: 244px; background: var(--wf-panel); border: 1px solid var(--wf-line);
+    border-radius: 12px; box-shadow: 0 8px 24px rgba(16,24,40,.13); overflow: hidden; }
+  .wf-mm { position: relative; height: 128px; border-bottom: 1px solid var(--wf-line); background: var(--wf-bg); }
+  .wf-mm[hidden] { display: none; }
+  .wf-nav-bar { display: flex; align-items: center; gap: 4px; padding: 5px 8px; }
+  .wf-nav-bar .wf-ib { width: 28px; height: 28px; }
+  .wf-nav-bar .wf-ib svg { width: 16px; height: 16px; }
+  .wf-nav-bar .wf-ib[aria-pressed="true"] { color: var(--wf-accent); }
+  .wf-nav-bar .wf-flash { background: var(--wf-accent-wash); }
+  .wf-zoom { flex: 1; min-width: 0; accent-color: var(--wf-accent); }
+  .wf-zoom-v { width: 38px; text-align: right; font: 12px/1 system-ui, sans-serif; color: var(--wf-mut); font-variant-numeric: tabular-nums; }
+
+  .wf-toast { position: absolute; left: 50%; top: 14px; z-index: 30; transform: translate(-50%, -8px); opacity: 0; pointer-events: none;
+    background: #1e2332; color: #fff; padding: 9px 14px; border-radius: 10px; font: 500 12.5px/1.3 system-ui, sans-serif;
+    box-shadow: 0 10px 24px rgba(16,24,40,.25); transition: opacity .18s, transform .18s; max-width: 80%; text-align: center; }
+  .wf-toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+  #wf-measure { position: absolute; left: -10000px; top: 0; visibility: hidden; pointer-events: none; }
+
+  /* A narrow stage (the gallery's side panels open): the canvas takes the whole
+     width and the property panel slides over it only while something is selected. */
+  @container (max-width: 1060px) {
+    .wf-body { grid-template-columns: minmax(0, 1fr); }
+    #panel { position: absolute; top: 0; right: 0; bottom: 0; width: 280px; z-index: 12; box-shadow: -10px 0 28px rgba(16,24,40,.14); transition: transform .18s ease, visibility .18s; }
+    #panel.pn-idle { transform: translateX(100%); visibility: hidden; }
+    .wf-state { display: none; }
+  }
+  @container (max-width: 760px) {
+    .wf-nav { width: 200px; } .wf-mm { height: 92px; }
+    .wf-top .wf-tb { padding: 6px 8px; }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    #stage {
+      --wf-bg: #14161b; --wf-dot: #262a33; --wf-panel: #1b1e25; --wf-line: #2b2f39; --wf-field: #363b47;
+      --wf-ink: #e7eaf1; --wf-mut: #9ba3b5; --wf-faint: #6c7486;
+      --wf-accent: #8b9cf2; --wf-accent-wash: #232a44; --wf-accent-line: #3b4677;
+      --wf-tile: #f4f6fa; --wf-tile-ring: #3a3f4b; --wf-note: #2f2a17; --wf-note-line: #5a4d1d; --wf-note-ink: #f1e3b0; --wf-note-mut: #cdbf8d;
+      --wf-shadow: 0 1px 2px rgba(0,0,0,.35), 0 4px 12px rgba(0,0,0,.3);
+    }
+    .wf-logic .wf-tile { background: #dfe4fb; border-color: #5d6bb3; }
+    .wf-plus { border-color: #4a5060; }
+    .wf-ph .wf-tile { border-color: #5a6274; }
+    .wf-toast { background: #eef0f6; color: #1e2332; }
+    .rn-chip { background: #3d2f12; color: #f5c56b; } .rn-chip.ok { background: #153321; color: #7fd69c; } .rn-chip.bad { background: #3a1717; color: #f19a9a; } .rn-chip.idle { background: #2a2e38; color: #a3aab8; }
+    .pn-del { border-color: #5a2a2a; }
+    .wf-tb.primary { background: #4f63e3; border-color: #4f63e3; }
+  }
+  @media (prefers-reduced-motion: reduce) { .st-running .wf-tile, .st-running .wf-badge, .rn-log .running .rn-st { animation: none; } }
+</style>
+<header id="demo-head"></header>
+<div id="stage">
+  <div class="wf-top">
+    <button class="wf-ib" id="wf-undo" title="Undo (Ctrl/⌘+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+    <button class="wf-ib" id="wf-redo" title="Redo (Ctrl/⌘+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+    <span class="wf-sep"></span>
+    <button class="wf-tb" id="wf-save" title="Save this workflow in your browser">Save</button>
+    <button class="wf-tb" id="wf-load" title="Load the workflow you saved">Load</button>
+    <button class="wf-tb" id="wf-new" title="Start a blank workflow">New</button>
+    <input class="wf-title" id="wf-title" aria-label="Workflow name" spellcheck="false">
+    <span class="wf-state" id="wf-state">Not saved yet</span>
+    <button class="wf-tb" id="wf-test" title="Run the workflow with a sample commit">▷ Test workflow</button>
+    <button class="wf-tb primary" id="wf-publish">Publish</button>
+  </div>
+  <div class="wf-body">
+    <div id="canvas"></div>
+    <aside id="panel" aria-label="Step properties"></aside>
+  </div>
+</div>
+<script type="module">
+import { render, NodeModel, LinkModel, PortModel, GroupModel, Command, DiagramSerializer, createMiniMap } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { iconCss } from './workflow-builder-icons.js';
+import { ACTIONS, CATEGORIES, HEALTH, PLACEHOLDER, outputsOf, newStepData, missingField, sampleWorkflow } from './workflow-builder-catalog.js';
+import { layoutFlow, visualBox, noteFrame, LAYOUT } from './workflow-builder-layout.js';
+import { TILE, kindOf, isLogic, portIdOf, appNameOf, summaryOf, iconOf, geomOf, stepContent, portList, portConfig, DARK, lineStyle, esc, tileHtml, fieldHtml, outHtml } from './workflow-builder-steps.js';
+
+// A workflow automation builder on the Grafloria engine.
+//
+//   • Steps are NODES whose `data` is the step ({ action, props, outputs }): the
+//     tile, its two-line label, its ports and its "+" buttons are all painted
+//     from that data, so the model is the only truth. Save writes the ENGINE's
+//     JSON; Load reads it back through DiagramSerializer.
+//   • Every edit is ONE undo step on the engine's own command stack: drags,
+//     group drags, connects and reconnects are the engine's commands; the
+//     page's edits (add, delete, property edits, layout) push a DocCommand that
+//     holds the workflow before and after. So Ctrl/⌘+Z undoes either kind.
+//   • "+" on an output inserts a step there and the flow re-arranges itself
+//     (workflow-builder-layout.js) with an animated move.
+//   • A sticky note is an engine GROUP: its members ride along when the note is
+//     dragged (the engine's group drag). The note itself is drawn on a layer
+//     UNDER the diagram that carries the camera transform.
+//   • Test workflow walks the links from the trigger: the Condition evaluates
+//     its rule on the sample commit, the Switch evaluates its rules on the
+//     simulated health metrics, and only the chosen output's lines run.
+
+document.head.insertAdjacentHTML('beforeend', `<style>${iconCss()}</style>`);
+
+const portModel = (p) => new PortModel({ ...portConfig(p), isConnectableStart: p.type === 'output', isConnectableEnd: p.type === 'input',
+  allowSelfLink: false, allowDuplicateLinks: false });
+
+const FRAME_STYLE = { fill: 'none', stroke: 'none', color: 'transparent', labelPlacement: 'top-left' };
+const clone = (v) => JSON.parse(JSON.stringify(v));
+const newId = () => 's' + Date.now().toString(36).slice(-5) + Math.floor(Math.random() * 1296).toString(36);
+const isTextEntry = (t) => !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''));
+
+/** One undo step for a page edit: the workflow before and after. */
+class DocCommand extends Command {
+  constructor(name, before, after, apply) { super(name); this.before = before; this.after = after; this.apply = apply; this.fresh = true; }
+  execute() { if (this.fresh) { this.fresh = false; return; } this.apply(this.after); }
+  undo() { this.apply(this.before); }
+  redo() { this.apply(this.after); }
+  serialize() { return { id: this.id, name: this.name, timestamp: this.timestamp, data: { before: this.before, after: this.after } }; }
+}
+
+defineDemo({
+  name: 'Workflow automation builder',
+  blurb: 'A deployment-automation builder: a GitLab push runs through a Condition and a health-check Switch to Kubernetes, Datadog, PagerDuty, Jira, ServiceNow and Slack steps. Add steps with the "+" on any output (the flow re-arranges itself), edit each step in the side panel, group a sub-flow in a sticky note, undo anything, save and load, and press Test workflow to watch the run take the branch its rules decide.',
+  howTo: [
+    'Read the sample left to right: a GitLab push, a Condition with true / false outputs, a staging deploy, and a Switch named "Health check" whose four outputs (healthy / degraded / failed / else) lead into the yellow sticky note.',
+    'Press the small "+" on any output dot: a searchable menu opens, grouped Triggers / Logic / Deploy / Monitoring / Incidents / Tickets / Messaging. Type "slack" and pick it — the step is inserted right after that output and the whole flow slides into a new left-to-right arrangement with no overlaps.',
+    'Click a step: the right panel shows its type, icon and a form for that action (GitLab project and branch, Condition field / operator / value, Kubernetes cluster and environment, Switch rules per output…). Type in it and the label on the canvas changes as you type.',
+    'Press Ctrl/⌘+Z to undo that edit (⇧ for redo) — or use the arrows in the top bar. Adding, deleting, moving, connecting and editing are all one undo step each.',
+    'Select a step and press Delete (or "Delete step" in the panel). Click a line to see "from → to" in the panel and delete it, or drag either end of the selected line onto another dot to reconnect it. Drag a new line from an output dot and let go on empty canvas to add a step there.',
+    'Drag the sticky note by its header: every step inside it moves with it. Drag a step into or out of the note to change what the note holds.',
+    'Press "▷ Test workflow": the run starts at the trigger, each step spins then turns green, the active line animates, the Condition follows the branch its rule picks for the sample commit and the Switch follows the output the simulated health result picks. Change the commit message or the health result in the run card and press Run again; Stop halts a run.',
+    'Save keeps the workflow in your browser, Load brings it back, New starts a blank canvas with a "Choose a trigger" step, and Publish confirms with the step count. The navigator bottom-left has a minimap, a zoom slider, Fit and Fit width.',
+  ],
+
+  async setup(ctx) {
+    const host = ctx.host;
+    const stage = document.getElementById('stage');
+    const panel = document.getElementById('panel');
+    const $ = (id) => document.getElementById(id);
+
+    // ---- keyboard: Delete through the page (one undo step, with re-arrangement) ------------
+    // Registered BEFORE render(): a key event dispatched AT window runs window's
+    // listeners in registration order, and the engine's own Delete must not run
+    // first (it would skip the chain-healing and the re-arrangement).
+    let keysReady = false;
+    window.addEventListener('keydown', (e) => {
+      if (!keysReady || isTextEntry(e.target)) return;
+      if (e.key === 'Escape') { lastUp = null; if (!menu.hidden) { closeMenu(); e.stopImmediatePropagation(); } return; }
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const nodes = model.getSelectedNodes(), link = model.getLinks().find((l) => l.state === 'selected');
+      if (S.sel?.type === 'note') deleteNote(S.sel.id);
+      else if (nodes.length) deleteSteps(nodes.map((n) => n.id));
+      else if (link) deleteLink(link.id);
+      else return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
+
+    const api = render({ nodes: [], edges: [] }, host, { interaction: { portVisibility: 'always', connectionLineStyle: 'bezier' } });
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    const model = ctx.diagram, engine = ctx.engine, cm = engine.commandManager;
+    api.animations.updateConfig({ respectBatteryStatus: false, batterySavingMode: false });
+    // Labels and "+" buttons stay drawn at every zoom: widen every LOD tier.
+    try {
+      const cfg = model.getLODConfig(), all = new Set();
+      for (const t of cfg.tiers) for (const f of t.features) all.add(f);
+      for (const t of cfg.tiers) for (const f of all) t.features.add(f);
+      model.setLODConfig(cfg);
+    } catch { /* an engine without LOD config draws everything anyway */ }
+
+    // ---- chrome over the canvas ------------------------------------------------
+    host.insertAdjacentHTML('beforeend', `
+      <div class="wf-menu" id="wf-menu" hidden role="dialog" aria-label="Add a step">
+        <input class="mn-search" id="mn-search" placeholder="Search apps and actions…" autocomplete="off" spellcheck="false">
+        <div class="mn-list" id="mn-list" role="listbox"></div>
+      </div>
+      <div class="wf-run" id="wf-run" hidden>
+        <div class="rn-head"><b>Test run</b><span class="rn-chip idle" id="rn-chip">Ready</span><span class="sp"></span>
+          <button id="rn-stop" hidden>Stop</button><button id="rn-again">Run again</button><button id="rn-close" aria-label="Close the run log">×</button></div>
+        <div class="rn-in">
+          <label>Sample commit message<input id="rn-msg" value="release: v2.14.0 faster checkout totals" spellcheck="false"></label>
+          <label>Health check result<select id="rn-health">${Object.entries(HEALTH).map(([k, h]) => `<option value="${k}"${k === 'degraded' ? ' selected' : ''}>${h.label}</option>`).join('')}</select></label>
+        </div>
+        <ol class="rn-log" id="rn-log" aria-live="polite"></ol>
+      </div>
+      <div class="wf-nav" id="wf-nav">
+        <div class="wf-mm" id="wf-mm"></div>
+        <div class="wf-nav-bar">
+          <button class="wf-ib" id="wf-fit" title="Fit the whole workflow" aria-label="Fit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+          <button class="wf-ib" id="wf-fitw" title="Fit the width" aria-label="Fit width"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M21 5v14M7 12h10M10 9l-3 3 3 3M14 9l3 3-3 3"/></svg></button>
+          <input class="wf-zoom" id="wf-zoom" type="range" min="20" max="200" step="1" aria-label="Zoom">
+          <span class="wf-zoom-v" id="wf-zoom-v">100%</span>
+          <button class="wf-ib" id="wf-mmt" title="Show or hide the minimap" aria-label="Minimap" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
+        </div>
+      </div>
+      <div class="wf-toast" id="wf-toast" role="status"></div>`);
+    for (const el of host.querySelectorAll('.wf-menu, .wf-run, .wf-nav')) {
+      for (const t of ['pointerdown', 'mousedown', 'wheel', 'dblclick']) el.addEventListener(t, (e) => e.stopPropagation());
+    }
+    const measureHost = document.createElement('div');
+    measureHost.id = 'wf-measure';
+    stage.appendChild(measureHost);
+
+    // ---- state -------------------------------------------------------------------
+    const S = { title: '', sel: null, editBefore: null, dirty: false, savedAt: null };
+    ctx.S = S;
+    ctx.animMs = 380;
+    ctx.runSpeed = 1;
+    const toast = (text) => {
+      const t = $('wf-toast');
+      t.textContent = text; t.classList.add('on');
+      clearTimeout(toast.timer);
+      toast.timer = setTimeout(() => t.classList.remove('on'), 2600);
+    };
+    ctx.toast = toast;
+
+    // ---- painting a step: content, size and ports follow node.data ----------------
+    const RUN = { token: 0, status: new Map(), running: false, done: null };
+    ctx.RUN = RUN;
+    function paint(id) {
+      const node = model.getNode(id);
+      if (!node || !node.data?.action) return;
+      const data = node.data, g = geomOf(data);
+      node.setMetadata('html', { content: stepContent(id, data, { sel: S.sel?.type === 'step' && S.sel.id === id, status: RUN.status.get(id) }), padding: 0, style: { overflow: 'visible' } });
+      if (node.size.width !== g.w || node.size.height !== g.h) node.setSize(g.w, g.h);
+      const want = portList(id, data), keep = new Set(want.map((p) => p.id));
+      for (const port of [...node.getPorts()]) {
+        if (keep.has(port.id)) continue;
+        for (const l of model.getLinks()) if (l.sourcePortId === port.id || l.targetPortId === port.id) model.removeLink(l.id);
+        node.removePort(port.id);
+      }
+      for (const p of want) {
+        const have = node.getPort(p.id), a = have?.layout?.args;
+        if (have && a && a.x === p.x && a.y === p.y) continue;
+        if (have) node.removePort(p.id);   // re-seat under the SAME id: its lines stay on it
+        node.addPort(portModel(p));
+      }
+    }
+    const paintAll = () => { for (const n of model.getNodes()) paint(n.id); };
+    function buildNode(step) {
+      const g = geomOf(step.data);
+      const node = new NodeModel({ id: step.id, type: 'rect', position: { x: step.x, y: step.y }, size: { width: g.w, height: g.h } });
+      node.ports.clear();
+      node.data = clone(step.data);
+      node.setMetadata('shape', { type: 'rect' });
+      node.behavior.resizable = false;
+      node.style = { ...node.style, selection: 'border' };
+      return node;
+    }
+    function addLink(id, s, t) {
+      const src = model.getNodeByPortId(s), tgt = model.getNodeByPortId(t);
+      if (!src || !tgt) return null;
+      const l = new LinkModel(s, t, 'bezier');
+      l.id = id;
+      l.sourceNodeId = src.id; l.targetNodeId = tgt.id;
+      l.updateStyle(lineStyle());
+      model.addLink(l);
+      return l;
+    }
+    ctx.paint = paint;
+
+    // ---- the document: the workflow as plain data ---------------------------------
+    const docOf = (m, title) => ({
+      v: 1, title,
+      steps: m.getNodes().filter((n) => n.data?.action).map((n) => ({ id: n.id, x: Math.round(n.position.x), y: Math.round(n.position.y), data: clone(n.data) })),
+      links: m.getLinks().map((l) => ({ id: l.id, s: l.sourcePortId, t: l.targetPortId })),
+      notes: m.getGroups().filter((g) => g.getMetadata('note')).map((g) => ({ id: g.id, ...clone(g.getMetadata('note')),
+        members: [...g.members].filter((id) => m.getNode(id)), frame: { ...g.getOuterBounds() } })),
+    });
+    const docFromModel = () => docOf(model, S.title);
+    ctx.docFromModel = docFromModel;
+
+    function applyDoc(doc) {
+      cancelTween();
+      stopRun(true);
+      closeMenu();
+      const wantLinks = new Map(doc.links.map((l) => [l.id, l]));
+      for (const l of [...model.getLinks()]) {
+        const w = wantLinks.get(l.id);
+        if (!w || w.s !== l.sourcePortId || w.t !== l.targetPortId) model.removeLink(l.id);
+      }
+      const wantSteps = new Set(doc.steps.map((s) => s.id));
+      for (const n of [...model.getNodes()]) if (!wantSteps.has(n.id)) model.removeNode(n.id);
+      for (const s of doc.steps) {
+        const node = model.getNode(s.id);
+        if (!node) model.addNode(buildNode(s));
+        else {
+          node.data = clone(s.data);
+          if (node.position.x !== s.x || node.position.y !== s.y) node.setPosition(s.x, s.y);
+        }
+        paint(s.id);
+      }
+      for (const l of doc.links) if (!model.getLink(l.id)) addLink(l.id, l.s, l.t);
+      const wantNotes = new Map(doc.notes.map((n) => [n.id, n]));
+      for (const g of [...model.getGroups()]) if (!wantNotes.has(g.id)) model.removeGroup(g.id);
+      for (const nt of doc.notes) {
+        let g = model.getGroup(nt.id);
+        if (!g) {
+          g = new GroupModel({ id: nt.id, name: nt.title });
+          g.headerHeight = 0;
+          model.addGroup(g);
+          g.setMetadata('frameStyle', { ...FRAME_STYLE });
+        }
+        g.name = nt.title;
+        g.setMetadata('note', { title: nt.title, text: nt.text });
+        for (const m of [...g.members]) if (!nt.members.includes(m)) g.removeMember(m, model);
+        for (const m of nt.members) if (model.getNode(m) && !g.members.has(m)) g.addMember(m, model);
+        if (nt.frame && !nt.members.length) g.setFrame(nt.frame);
+      }
+      S.title = doc.title ?? S.title;
+      $('wf-title').value = S.title;
+      if (S.sel && !selectionExists(S.sel)) S.sel = null;
+      refreshFrames();
+      paintAll();
+      api.renderNow();
+      renderPanel();
+      syncHistory();
+    }
+    ctx.applyDoc = applyDoc;
+
+    const sameDoc = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    function commit(name, before, after = docFromModel()) {
+      if (sameDoc(before, after)) return;
+      void cm.execute(new DocCommand(name, before, after, applyDoc)).then(syncHistory);
+      markDirty();
+    }
+    const markDirty = () => { S.dirty = true; const st = $('wf-state'); st.textContent = 'Unsaved changes'; st.classList.add('dirty'); };
+    function syncHistory() { $('wf-undo').disabled = !cm.canUndo(); $('wf-redo').disabled = !cm.canRedo(); }
+    for (const ev of ['command:executed', 'command:undone', 'command:redone', 'command:history:cleared']) {
+      engine.eventBus.on(ev, (p) => {
+        syncHistory();
+        if (ev === 'command:history:cleared') return;
+        markDirty();
+        const native = !(p?.command instanceof DocCommand);
+        if (native) scheduleFrames();
+        // An undo/redo, or an engine gesture (reconnect, membership) the panel shows.
+        if (ev !== 'command:executed' || (native && S.sel?.type !== 'step')) renderPanel();
+      });
+    }
+
+    // ---- sticky notes: frames + the layer under the diagram -------------------------
+    const root = host.querySelector('.grafloria-diagram-root');
+    const noteLayer = document.createElement('div');
+    noteLayer.className = 'wf-notes';
+    root.insertBefore(noteLayer, root.firstChild);
+    const headerCache = new Map();
+    const noteHeader = (nt) => {
+      const key = `${nt.title}\u0000${nt.text}`;
+      if (!headerCache.has(key)) {
+        measureHost.innerHTML = `<div class="wf-note" style="width:${LAYOUT.minNoteWidth}px"><div class="wf-note-h">${esc(nt.title)}</div><div class="wf-note-t">${esc(nt.text)}</div></div>`;
+        const h = measureHost.firstChild.getBoundingClientRect().height;
+        headerCache.set(key, Math.ceil(h + 6));
+      }
+      return headerCache.get(key);
+    };
+    const boxOf = (node) => ({ ...geomOf(node.data), x: node.position.x, y: node.position.y, id: node.id });
+    ctx.boxOf = (id) => { const n = model.getNode(id); return n ? visualBox(boxOf(n)) : null; };
+    function refreshFrames() {
+      // While a step is being dragged its note keeps its frame: the engine decides
+      // on drop whether the step left (or joined) the note by that frame.
+      const dragging = api.getDraggingNodeIds?.().length > 0;
+      for (const g of model.getGroups()) {
+        const nt = g.getMetadata('note');
+        if (!nt || dragging) continue;
+        const boxes = [...g.members].map((id) => model.getNode(id)).filter((n) => n?.data?.action).map((n) => visualBox(boxOf(n)));
+        const f = noteFrame(boxes, noteHeader(nt));
+        if (!f) continue;
+        const o = g.getOuterBounds();
+        if (Math.abs(o.x - f.x) > 0.5 || Math.abs(o.y - f.y) > 0.5 || Math.abs(o.width - f.width) > 0.5 || Math.abs(o.height - f.height) > 0.5) g.setFrame(f);
+      }
+      renderNotes();
+      miniRefresh();
+    }
+    ctx.refreshFrames = refreshFrames;
+    function renderNotes() {
+      noteLayer.style.transform = api.viewport.getHtmlLayerTransform();
+      const groups = model.getGroups().filter((g) => g.getMetadata('note'));
+      const seen = new Set();
+      for (const g of groups) {
+        seen.add(g.id);
+        let el = noteLayer.querySelector(`[data-note="${CSS.escape(g.id)}"]`);
+        if (!el) {
+          el = document.createElement('div');
+          el.className = 'wf-note';
+          el.dataset.note = g.id;
+          el.innerHTML = '<div class="wf-note-h"></div><div class="wf-note-t"></div>';
+          noteLayer.appendChild(el);
+        }
+        const f = g.getOuterBounds(), nt = g.getMetadata('note');
+        Object.assign(el.style, { left: f.x + 'px', top: f.y + 'px', width: f.width + 'px', height: f.height + 'px' });
+        el.firstChild.textContent = nt.title;
+        el.lastChild.textContent = nt.text;
+        el.classList.toggle('sel', S.sel?.type === 'note' && S.sel.id === g.id);
+      }
+      for (const el of [...noteLayer.children]) if (!seen.has(el.dataset.note)) el.remove();
+    }
+    let frameRaf = 0;
+    function scheduleFrames() {
+      if (frameRaf) return;
+      frameRaf = requestAnimationFrame(() => { frameRaf = 0; refreshFrames(); });
+    }
+    model.on('node:changed', scheduleFrames);
+    model.on('group:changed', scheduleFrames);
+    model.on('node:removed', scheduleFrames);
+    model.on('link:added', scheduleFrames);
+    model.on('link:removed', scheduleFrames);
+    api.on('viewport:change', ({ zoom }) => {
+      noteLayer.style.transform = api.viewport.getHtmlLayerTransform();
+      $('wf-zoom').value = String(Math.round(zoom * 100));
+      $('wf-zoom-v').textContent = Math.round(zoom * 100) + '%';
+    });
+
+    // ---- the automatic left-to-right arrangement -----------------------------------
+    function computeLayout() {
+      const nodes = model.getNodes().filter((n) => n.data?.action).map((n) => ({ ...boxOf(n), first: ['trigger', 'placeholder'].includes(kindOf(n.data)) }));
+      const links = model.getLinks().map((l, i) => {
+        const src = model.getNodeByPortId(l.sourcePortId);
+        const outIdx = src?.data ? outputsOf(src.data).findIndex((o) => portIdOf(src.id, src.data, o) === l.sourcePortId) : 0;
+        return { from: l.sourceNodeId, to: l.targetNodeId, order: Math.max(0, outIdx) * 1000 + i };
+      });
+      const notes = model.getGroups().filter((g) => g.getMetadata('note')).map((g) => ({ id: g.id, members: [...g.members], header: noteHeader(g.getMetadata('note')) }));
+      return layoutFlow({ nodes, links, notes }).pos;
+    }
+    let tween = null;
+    ctx.layoutDone = Promise.resolve();
+    function cancelTween() { if (!tween) return; cancelAnimationFrame(tween.raf); const t = tween; tween = null; t.resolve(); }
+    function settle() {
+      if (!tween) return;
+      const t = tween;
+      for (const [id, p] of t.to) model.getNode(id)?.setPosition(p.x, p.y);
+      cancelTween();
+      refreshFrames();
+    }
+    ctx.settle = settle;
+    function animateTo(target) {
+      cancelTween();
+      const from = new Map(), to = new Map();
+      for (const [id, p] of target) {
+        const n = model.getNode(id);
+        if (!n) continue;
+        from.set(id, { x: n.position.x, y: n.position.y });
+        to.set(id, p);
+      }
+      const ms = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ctx.animMs;
+      if (!ms) { for (const [id, p] of to) model.getNode(id).setPosition(p.x, p.y); refreshFrames(); api.renderNow(); return (ctx.layoutDone = Promise.resolve()); }
+      ctx.layoutDone = new Promise((resolve) => {
+        const t0 = performance.now();
+        tween = { to, resolve, raf: 0 };
+        const step = (now) => {
+          if (!tween || tween.to !== to) return;
+          const k = Math.min(1, (now - t0) / ms), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+          for (const [id, p] of to) {
+            const a = from.get(id), n = model.getNode(id);
+            if (n) n.setPosition(Math.round(a.x + (p.x - a.x) * e), Math.round(a.y + (p.y - a.y) * e));
+          }
+          refreshFrames();
+          if (k < 1) tween.raf = requestAnimationFrame(step);
+          else { tween = null; resolve(); }
+        };
+        tween.raf = requestAnimationFrame(step);
+      });
+      return ctx.layoutDone;
+    }
+    const withPositions = (doc, pos) => ({ ...doc, steps: doc.steps.map((s) => (pos.has(s.id) ? { ...s, x: pos.get(s.id).x, y: pos.get(s.id).y } : s)) });
+    /** Commit an edit already applied to the model, then slide the flow into its new arrangement. */
+    function commitWithLayout(name, before) {
+      const target = computeLayout();
+      commit(name, before, withPositions(docFromModel(), target));
+      return animateTo(target);
+    }
+    ctx.computeLayout = computeLayout;
+
+    // ---- selection -----------------------------------------------------------------
+    function selectionExists(sel) {
+      if (sel.type === 'step') return !!model.getNode(sel.id);
+      if (sel.type === 'link') return !!model.getLink(sel.id);
+      if (sel.type === 'note') return !!model.getGroup(sel.id);
+      return true;
+    }
+    function setSel(next) {
+      const prev = S.sel;
+      S.sel = next;
+      if (prev?.type === 'step') paint(prev.id);
+      if (next?.type === 'step') paint(next.id);
+      renderNotes();
+      api.renderNow();
+      if (S.editBefore) { commit('Edit', S.editBefore); S.editBefore = null; }
+      renderPanel();
+    }
+    api.on('selection:change', ({ nodes, edges }) => {
+      if (nodes.length === 1) {
+        setSel({ type: 'step', id: nodes[0].id });
+        if (nodes[0].data?.action === PLACEHOLDER) openMenuAtStep(nodes[0].id, { mode: 'trigger', nodeId: nodes[0].id });
+      } else if (nodes.length > 1) setSel({ type: 'multi', ids: nodes.map((n) => n.id) });
+      else if (edges.length === 1) setSel({ type: 'link', id: edges[0].id });
+      else if (S.sel?.type !== 'note') setSel(null);
+    });
+    function selectStep(id) {
+      model.clearSelection();
+      for (const l of model.getLinks()) if (l.state === 'selected') l.setState('default');
+      const n = model.getNode(id);
+      if (n) model.selectNode(n);
+      api.renderNow();
+    }
+    ctx.selectStep = selectStep;
+    function selectNote(id) {
+      const prev = S.sel;
+      S.sel = { type: 'note', id };
+      if (prev?.type === 'step') paint(prev.id);
+      model.clearSelection();
+      for (const l of model.getLinks()) if (l.state === 'selected') l.setState('default');
+      setSel({ type: 'note', id });
+    }
+
+    // ---- the property panel ------------------------------------------------------------
+    function renderPanel() {
+      const sel = S.sel;
+      panel.classList.toggle('pn-idle', !sel || !selectionExists(sel));
+      if (sel?.type === 'step' && model.getNode(sel.id)) {
+        const node = model.getNode(sel.id), data = node.data, a = ACTIONS[data.action], kind = kindOf(data);
+        if (kind === 'placeholder') {
+          panel.innerHTML = `<div class="pn-head">${tileHtml(data)}<div><div class="pn-kind">Start here</div><div class="pn-title">Choose a trigger</div></div></div>
+            <div class="pn-body"><p class="pn-hint">A workflow starts with the event that sets it off. Pick one:</p>
+            <div class="pn-picks">${Object.entries(ACTIONS).filter(([, x]) => x.kind === 'trigger').map(([k, x]) => `<button class="pn-pick" data-act="pick-trigger" data-action="${k}"><span class="wf-ic ic-${x.icon}"></span><span>${esc(x.label)}<small>${esc(x.app)}</small></span></button>`).join('')}</div></div>`;
+          return;
+        }
+        const outs = outputsOf(data);
+        panel.innerHTML = `<div class="pn-head">${tileHtml(data)}<div><div class="pn-kind">${esc(a.cat === 'Triggers' ? 'Trigger' : a.cat === 'Logic' ? 'Logic' : 'Action')} · ${esc(a.app)}</div><div class="pn-title">${esc(a.label)}</div></div></div>
+          <div class="pn-body">
+            ${a.fields.map((f) => fieldHtml(f, data.props[f.key] ?? '')).join('')}
+            ${kind === 'switch' ? `<div class="pn-sec">Outputs and their rules</div>${data.outputs.map(outHtml).join('')}
+              <button class="pn-btn" data-act="add-out">+ Add output</button>` : ''}
+            <div class="pn-sec">Next step</div>
+            <div class="pn-row">${outs.map((o) => `<button class="pn-btn" data-act="add-after" data-port="${portIdOf(node.id, data, o)}">+ After ${esc(o.label || a.app)}</button>`).join('')}</div>
+            <button class="pn-btn pn-del" data-act="del-step">Delete step</button>
+          </div>`;
+        return;
+      }
+      if (sel?.type === 'link' && model.getLink(sel.id)) {
+        const l = model.getLink(sel.id), s = model.getNode(l.sourceNodeId), t = model.getNode(l.targetNodeId);
+        const outLabel = s?.data ? outputsOf(s.data).find((o) => portIdOf(s.id, s.data, o) === l.sourcePortId)?.label : '';
+        const end = (n, sub) => (n?.data ? `<div class="pn-end">${tileHtml(n.data)}<div><b>${esc(appNameOf(n.data))}</b><small>${esc(summaryOf(n.data))}${sub ? ` · ${esc(sub)}` : ''}</small></div></div>` : '');
+        panel.innerHTML = `<div class="pn-head"><div><div class="pn-kind">Line</div><div class="pn-title">${esc(appNameOf(s?.data ?? {}))} → ${esc(appNameOf(t?.data ?? {}))}</div></div></div>
+          <div class="pn-body">${end(s, outLabel ? `output “${outLabel}”` : 'output')}<div class="pn-arrow">↓</div>${end(t, 'input')}
+            <p class="pn-hint">Drag either end of the highlighted line onto another dot to reconnect it.</p>
+            <button class="pn-btn pn-del" data-act="del-link">Delete line</button></div>`;
+        return;
+      }
+      if (sel?.type === 'note' && model.getGroup(sel.id)) {
+        const g = model.getGroup(sel.id), nt = g.getMetadata('note');
+        panel.innerHTML = `<div class="pn-head"><div><div class="pn-kind">Sticky note</div><div class="pn-title">${g.members.size} step${g.members.size === 1 ? '' : 's'} inside</div></div></div>
+          <div class="pn-body"><label class="pn-field"><span>Title</span><input data-note="title" value="${esc(nt.title)}" spellcheck="false"></label>
+            <label class="pn-field"><span>Text</span><textarea data-note="text" rows="6">${esc(nt.text)}</textarea></label>
+            <p class="pn-hint">Drag the note by its header and its steps come along. Drag a step in or out of it to change what it holds.</p>
+            <button class="pn-btn pn-del" data-act="del-note">Delete note (keep its steps)</button></div>`;
+        return;
+      }
+      if (sel?.type === 'multi') {
+        panel.innerHTML = `<div class="pn-empty"><b>${sel.ids.length} steps selected</b><span>Press Delete to remove them, or click one step to edit it.</span></div>`;
+        return;
+      }
+      const steps = model.getNodes().filter((n) => n.data?.action && n.data.action !== PLACEHOLDER).length;
+      panel.innerHTML = `<div class="pn-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 9 5 12 1.8-5.2L21 14z"/><path d="M7.2 2.2 8 5.1M5.1 8 2.2 7.2M14 4.1 12 6M6 12l-1.9 2"/></svg>
+        <b>Select a step or a line to edit it</b><span>${steps} steps · ${model.getLinks().length} lines</span>
+        <ul><li>“+” on a dot adds the next step.</li><li>Drag a line from a dot to a step, or to empty canvas.</li><li>Ctrl/⌘+Z undoes, ⇧ redoes.</li></ul></div>`;
+    }
+    ctx.renderPanel = renderPanel;
+
+    panel.addEventListener('input', (e) => {
+      const t = e.target, sel = S.sel;
+      if (!sel) return;
+      if (!S.editBefore) S.editBefore = docFromModel();
+      if (sel.type === 'note') {
+        const g = model.getGroup(sel.id);
+        if (!g || !t.dataset.note) return;
+        g.setMetadata('note', { ...g.getMetadata('note'), [t.dataset.note]: t.value });
+        if (t.dataset.note === 'title') g.name = t.value;
+        refreshFrames();
+        return;
+      }
+      if (sel.type !== 'step') return;
+      const node = model.getNode(sel.id);
+      if (!node) return;
+      const data = node.data;
+      if (t.dataset.k) {
+        const f = ACTIONS[data.action].fields.find((x) => x.key === t.dataset.k);
+        data.props[t.dataset.k] = f?.type === 'number' ? Number(t.value) : t.value;
+      } else if (t.dataset.out != null) {
+        const o = data.outputs[Number(t.dataset.out)];
+        if (!o) return;
+        if (t.dataset.ok === 'label') o.label = t.value;
+        else if (o.rule) o.rule[t.dataset.ok] = t.dataset.ok === 'value' ? Number(t.value) : t.value;
+      } else return;
+      paint(node.id);
+      scheduleFrames();
+      api.renderNow();
+    });
+    panel.addEventListener('change', () => {
+      if (S.editBefore) { commit('Edit properties', S.editBefore); S.editBefore = null; }
+    });
+    panel.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-act]');
+      if (!b) return;
+      const act = b.dataset.act, sel = S.sel;
+      if (S.editBefore) { commit('Edit properties', S.editBefore); S.editBefore = null; }
+      if (act === 'pick-trigger' && sel?.type === 'step') replacePlaceholder(sel.id, b.dataset.action);
+      else if (act === 'add-after') { const r = b.getBoundingClientRect(); openMenu(r.left - 310, r.top, { mode: 'insert', port: b.dataset.port }); }
+      else if (act === 'del-step' && sel?.type === 'step') deleteSteps([sel.id]);
+      else if (act === 'del-link' && sel?.type === 'link') deleteLink(sel.id);
+      else if (act === 'del-note' && sel?.type === 'note') deleteNote(sel.id);
+      else if ((act === 'add-out' || act === 'rm-out') && sel?.type === 'step') {
+        const node = model.getNode(sel.id), before = docFromModel(), outs = node.data.outputs;
+        if (act === 'add-out') outs.splice(outs.length - 1, 0, { id: 'o' + Math.random().toString(36).slice(2, 6), label: `output ${outs.length}`, rule: { metric: 'latency_p95', op: '>', value: 1500 } });
+        else if (outs.filter((o) => o.rule).length > 1) outs.splice(Number(b.dataset.out), 1);
+        paint(node.id);
+        commitWithLayout(act === 'add-out' ? 'Add output' : 'Remove output', before);
+        renderPanel();
+      }
+    });
+
+    // ---- edits ------------------------------------------------------------------------
+    const stepNode = (id, data, x, y) => { const n = buildNode({ id, x, y, data }); model.addNode(n); paint(id); return n; };
+    const noteOfStep = (id) => model.getGroups().find((g) => g.getMetadata('note') && g.members.has(id));
+    /** "+" (splice: the new step takes over the port's lines) or a line dropped on canvas (a new branch). */
+    function insertAfter(portId, action, { splice = true, world = null } = {}) {
+      settle(); stopRun(true);
+      const src = model.getNodeByPortId(portId);
+      if (!src) return null;
+      const before = docFromModel();
+      const id = newId(), data = newStepData(action);
+      const at = world ?? { x: src.position.x + src.size.width + 90, y: src.position.y };
+      stepNode(id, data, Math.round(at.x), Math.round(at.y));
+      const old = splice ? model.getLinks().filter((l) => l.sourcePortId === portId) : [];
+      for (const l of old) model.removeLink(l.id);
+      addLink(newId(), portId, `${id}__in`);
+      const firstOut = outputsOf(data)[0];
+      for (const l of old) if (firstOut) addLink(newId(), portIdOf(id, data, firstOut), l.targetPortId);
+      noteOfStep(src.id)?.addMember(id, model);
+      ctx.lastInserted = id;
+      selectStep(id);
+      commitWithLayout(`Add ${ACTIONS[action].app}`, before).then(() => reveal(id));
+      return id;
+    }
+    function replacePlaceholder(phId, action) {
+      settle(); stopRun(true);
+      const ph = model.getNode(phId);
+      if (!ph) return;
+      const before = docFromModel(), id = newId(), data = newStepData(action);
+      stepNode(id, data, ph.position.x, ph.position.y);
+      for (const l of model.getLinks().filter((x) => x.sourceNodeId === phId)) addLink(newId(), `${id}__out`, l.targetPortId);
+      model.removeNode(phId);
+      closeMenu();
+      selectStep(id);
+      commitWithLayout(`Choose ${ACTIONS[action].app}`, before);
+    }
+    function deleteSteps(ids) {
+      settle(); stopRun(true);
+      const before = docFromModel();
+      for (const id of ids) {
+        const node = model.getNode(id);
+        if (!node) continue;
+        const kind = kindOf(node.data);
+        const ins = model.getLinks().filter((l) => l.targetNodeId === id);
+        const outs = model.getLinks().filter((l) => l.sourceNodeId === id);
+        // A one-in, one-out step heals the chain: its predecessor takes its lines.
+        if (kind === 'app' && ins.length === 1) for (const l of outs) addLink(newId(), ins[0].sourcePortId, l.targetPortId);
+        // The trigger leaves a "Choose a trigger" step that keeps its lines.
+        if (kind === 'trigger') {
+          const ph = newId();
+          stepNode(ph, { action: PLACEHOLDER, props: {} }, node.position.x, node.position.y);
+          for (const l of outs) addLink(newId(), `${ph}__out`, l.targetPortId);
+        }
+        for (const g of model.getGroups()) g.members.has(id) && g.removeMember(id, model);
+        model.removeNode(id);
+      }
+      if (!model.getNodes().length) stepNode(newId(), { action: PLACEHOLDER, props: {} }, 0, 0);
+      setSel(null);
+      commitWithLayout(ids.length > 1 ? `Delete ${ids.length} steps` : 'Delete step', before);
+    }
+    function deleteLink(id) {
+      settle(); stopRun(true);
+      const before = docFromModel();
+      model.removeLink(id);
+      setSel(null);
+      commit('Delete line', before);
+      api.renderNow();
+    }
+    function deleteNote(id) {
+      settle();
+      const before = docFromModel();
+      model.removeGroup(id);
+      setSel(null);
+      commit('Delete note', before);
+      refreshFrames();
+    }
+    ctx.insertAfter = insertAfter;
+    ctx.deleteSteps = deleteSteps;
+
+    // A line someone drew by hand: style it like the others.
+    api.on('connect', ({ link }) => setTimeout(() => { if (model.getLink(link.id) && !RUN.running) { link.pathType = 'bezier'; link.updateStyle(lineStyle()); } api.renderNow(); }, 0));
+
+    // ---- the action menu ----------------------------------------------------------------
+    const menu = $('wf-menu'), search = $('mn-search'), list = $('mn-list');
+    let menuCtx = null, menuItems = [], menuOn = 0;
+    function renderMenu() {
+      const q = search.value.trim().toLowerCase();
+      const cats = menuCtx?.mode === 'trigger' ? ['Triggers'] : CATEGORIES.filter((c) => c !== 'Triggers');
+      menuItems = [];
+      let html = '';
+      for (const c of cats) {
+        const items = Object.entries(ACTIONS).filter(([, a]) => a.cat === c && (!q || `${a.app} ${a.label} ${c}`.toLowerCase().includes(q)));
+        if (!items.length) continue;
+        html += `<div class="mn-cat">${c}</div>`;
+        for (const [k, a] of items) {
+          html += `<button class="mn-item" role="option" data-action="${k}"><span class="mn-ic"><span class="wf-ic ic-${a.icon}"></span></span><span><small>${esc(a.app)}</small>${esc(a.label)}</span></button>`;
+          menuItems.push(k);
+        }
+      }
+      list.innerHTML = html || '<div class="mn-none">No action matches that search.</div>';
+      menuOn = Math.min(menuOn, Math.max(0, menuItems.length - 1));
+      list.querySelectorAll('.mn-item').forEach((b, i) => b.classList.toggle('on', i === menuOn));
+    }
+    function openMenu(clientX, clientY, mctx) {
+      const r = host.getBoundingClientRect();
+      menuCtx = mctx; menuOn = 0; search.value = '';
+      renderMenu();
+      menu.hidden = false;
+      // Below the click when the full list fits, else growing UP from it (its
+      // height changes as you search, so the anchored edge must stay put).
+      const mw = menu.offsetWidth, room = r.height - (clientY - r.top);
+      menu.style.left = Math.round(Math.min(Math.max(8, clientX - r.left), r.width - mw - 8)) + 'px';
+      if (room >= 420 || clientY - r.top < 420) { menu.style.bottom = ''; menu.style.top = Math.round(Math.min(Math.max(8, clientY - r.top), r.height - 418)) + 'px'; }
+      else { menu.style.top = ''; menu.style.bottom = Math.round(Math.max(8, r.bottom - clientY - 24)) + 'px'; }
+      search.focus({ preventScroll: true });
+    }
+    function openMenuAtStep(stepId, mctx) {
+      const n = model.getNode(stepId), r = host.getBoundingClientRect();
+      const c = api.viewport.worldToClient(n.position.x + n.size.width + 24, n.position.y, r);
+      openMenu(c.x, c.y, mctx);
+    }
+    function closeMenu() { menu.hidden = true; menuCtx = null; }
+    ctx.openMenu = openMenu;
+    function pick(action) {
+      const m = menuCtx;
+      closeMenu();
+      if (!m || !ACTIONS[action]) return;
+      if (m.mode === 'trigger') replacePlaceholder(m.nodeId, action);
+      else insertAfter(m.port, action, { splice: m.mode === 'insert', world: m.world ?? null });
+    }
+    search.addEventListener('input', () => { menuOn = 0; renderMenu(); });
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        menuOn = (menuOn + (e.key === 'ArrowDown' ? 1 : -1) + menuItems.length) % Math.max(1, menuItems.length);
+        list.querySelectorAll('.mn-item').forEach((b, i) => { b.classList.toggle('on', i === menuOn); if (i === menuOn) b.scrollIntoView({ block: 'nearest' }); });
+      } else if (e.key === 'Enter' && menuItems[menuOn]) { e.preventDefault(); pick(menuItems[menuOn]); }
+      else if (e.key === 'Escape') closeMenu();
+    });
+    list.addEventListener('click', (e) => { const b = e.target.closest('.mn-item'); if (b) pick(b.dataset.action); });
+    document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target) && !e.target.closest?.('[data-act="add-after"]')) closeMenu(); }, true);
+
+    // ---- pointer: the "+" buttons, note clicks, a line let go on empty canvas ---------------
+    const toWorld = (cx, cy) => api.viewport.clientToWorld(cx, cy, host.getBoundingClientRect());
+    const plusPort = (el) => [...(el?.closest?.('.wf-plus')?.classList ?? [])].find((c) => c.startsWith('wfp-'))?.slice(4) ?? null;
+    let plusDown = null, press = null, lastUp = null;
+    host.addEventListener('pointerdown', (e) => {
+      settle();
+      const pid = plusPort(e.target);
+      if (pid) { e.stopPropagation(); e.preventDefault(); plusDown = pid; return; }
+      const w = toWorld(e.clientX, e.clientY);
+      const onSomething = !!model.getNodeAtPosition(w.x, w.y) || !!api.interaction.getState().hoveredPort
+        || !!api.interaction.getLinkAtPosition(w.x, w.y, engine) || !!e.target.closest?.('.wf-label, [data-node-id] foreignObject *');
+      press = { x: e.clientX, y: e.clientY, w, onSomething };
+    }, true);
+    host.addEventListener('mousedown', (e) => { if (plusPort(e.target)) e.stopPropagation(); }, true);
+    host.addEventListener('click', (e) => { if (plusPort(e.target)) e.stopPropagation(); }, true);
+    window.addEventListener('pointerup', (e) => {
+      lastUp = { x: e.clientX, y: e.clientY, t: performance.now() };
+      const pid = plusDown && plusPort(document.elementFromPoint(e.clientX, e.clientY) || e.target) === plusDown ? plusDown : null;
+      plusDown = null;
+      if (pid) {
+        e.stopPropagation();
+        const r = document.querySelector(`.wfp-${CSS.escape(pid)}`)?.getBoundingClientRect();
+        openMenu((r?.right ?? e.clientX) + 6, (r?.top ?? e.clientY) - 12, { mode: 'insert', port: pid });
+        return;
+      }
+      const p = press;
+      press = null;
+      if (!p || p.onSomething || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4 || !host.contains(e.target)) return;
+      const note = model.getGroups().find((g) => {
+        if (!g.getMetadata('note')) return false;
+        const f = g.getOuterBounds();
+        return p.w.x >= f.x && p.w.x <= f.x + f.width && p.w.y >= f.y && p.w.y <= f.y + f.height;
+      });
+      if (note) selectNote(note.id);
+      else if (S.sel?.type === 'note') setSel(null);
+    }, true);
+    engine.eventBus.on('connection:cancel', (p) => setTimeout(() => {
+      const src = p?.sourcePort?.id;
+      if (!src || !lastUp || performance.now() - lastUp.t > 400 || !src.includes('__') || src.endsWith('__in')) return;
+      const w = toWorld(lastUp.x, lastUp.y);
+      const r = host.getBoundingClientRect();
+      if (lastUp.x < r.left || lastUp.x > r.right || lastUp.y < r.top || lastUp.y > r.bottom) return;
+      const over = model.getNodes().filter((n) => { const b = visualBox(boxOf(n)); return w.x >= b.x0 && w.x <= b.x1 && w.y >= b.y0 && w.y <= b.y1; }).pop();
+      const fromNode = model.getNodeByPortId(src);
+      if (over && over !== fromNode && over.getPort(`${over.id}__in`)) {
+        if (!model.getLinks().some((l) => l.sourcePortId === src && l.targetPortId === `${over.id}__in`)) {
+          void engine.addLink({ sourcePortId: src, targetPortId: `${over.id}__in`, type: 'bezier' }).then((l) => { l?.updateStyle?.(lineStyle()); api.renderNow(); }).catch(() => {});
+        }
+        return;
+      }
+      if (!over) openMenu(lastUp.x + 6, lastUp.y - 12, { mode: 'branch', port: src, world: { x: w.x, y: w.y - 28 } });
+    }, 0));
+
+    // ---- Test workflow: walk the links, evaluate the rules ---------------------------------
+    const runCard = $('wf-run'), logEl = $('rn-log'), chip = $('rn-chip');
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const setStatus = (id, st) => { if (st) RUN.status.set(id, st); else RUN.status.delete(id); paint(id); };
+    const setChip = (text, cls) => { chip.textContent = text; chip.className = 'rn-chip ' + (cls || ''); };
+    function resetRun() {
+      const had = [...RUN.status.keys()];
+      RUN.status.clear();
+      for (const id of had) paint(id);
+      for (const l of model.getLinks()) l.updateStyle(lineStyle());
+      logEl.innerHTML = '';
+      api.renderNow();
+      miniRefresh();
+    }
+    function stopRun(silent) {
+      if (!RUN.running) { if (silent && RUN.status.size) resetRun(); return; }
+      RUN.token++;
+      RUN.running = false;
+      for (const [id, st] of RUN.status) if (st === 'running') setStatus(id, 'stopped');
+      for (const l of model.getLinks()) if (l.style?.animation?.type === 'flow') l.updateStyle(lineStyle());
+      for (const li of logEl.querySelectorAll('li.running')) { li.className = 'stopped'; li.querySelector('.rn-msg').textContent = 'Stopped before it finished'; li.querySelector('.rn-st').textContent = '■'; }
+      setChip('Stopped', 'idle');
+      $('rn-stop').hidden = true; $('rn-again').hidden = false;
+      if (silent) resetRun();
+      RUN.resolve?.();
+    }
+    ctx.stopRun = () => stopRun(false);
+    const logRow = (data, name) => {
+      const li = document.createElement('li');
+      li.className = 'running';
+      li.innerHTML = `<span class="rn-st"></span><span class="wf-ic ic-${iconOf(data)}"></span><div><b>${esc(name)}</b> <span class="rn-msg">Running…</span></div>`;
+      logEl.appendChild(li);
+      logEl.scrollTop = logEl.scrollHeight;
+      return (st, msg) => { li.className = st; li.querySelector('.rn-st').textContent = st === 'success' ? '✓' : st === 'failed' ? '!' : ''; li.querySelector('.rn-msg').textContent = msg; };
+    };
+    const note = (text) => { const li = document.createElement('li'); li.className = 'note'; li.textContent = text; logEl.appendChild(li); };
+    async function runWorkflow() {
+      settle();
+      stopRun(true);
+      resetRun();
+      closeMenu();
+      runCard.hidden = false;
+      const token = ++RUN.token;
+      RUN.running = true;
+      RUN.done = new Promise((r) => { RUN.resolve = r; });
+      ctx.runDone = RUN.done;
+      setChip('Running', '');
+      $('rn-stop').hidden = false; $('rn-again').hidden = true;
+      const trig = model.getNodes().find((n) => kindOf(n.data ?? {}) === 'trigger' && !model.getLinks().some((l) => l.targetNodeId === n.id));
+      let failed = false;
+      if (!trig) {
+        note('This workflow has no trigger yet: choose one first.');
+        failed = true;
+      } else {
+        const sim = { commit: { message: $('rn-msg').value, branch: trig.data.props.branch || 'main', author: 'maya.k' }, health: $('rn-health').value };
+        note(`Sample commit by maya.k on ${sim.commit.branch} · health check will report “${HEALTH[sim.health].label}”`);
+        const visited = new Set();
+        const visit = async (id, via) => {
+          if (token !== RUN.token || visited.has(id)) return;
+          visited.add(id);
+          const node = model.getNode(id);
+          if (!node?.data?.action || node.data.action === PLACEHOLDER) return;
+          const data = node.data, a = ACTIONS[data.action];
+          if (via) via.updateStyle(lineStyle('active'));
+          setStatus(id, 'running');
+          const row = logRow(data, `${a.app} · ${summaryOf(data)}`);
+          reveal(id);
+          api.renderNow();
+          await sleep(620 * ctx.runSpeed);
+          if (token !== RUN.token) return;
+          if (via && model.getLink(via.id)) via.updateStyle(lineStyle('done'));
+          const miss = missingField(data);
+          if (miss) { setStatus(id, 'failed'); row('failed', `${miss.label} is empty — fill it in the panel`); failed = true; return; }
+          let res;
+          try { res = a.run(data.props, sim, outputsOf(data)) || {}; } catch (err) { res = { msg: String(err?.message || err) }; }
+          setStatus(id, 'success');
+          row('success', res.msg || 'Done');
+          const outs = outputsOf(data).filter((o) => !isLogic(data) || o.id === res.out);
+          for (const o of outs) {
+            const pid = portIdOf(id, data, o);
+            for (const l of model.getLinks().filter((x) => x.sourcePortId === pid)) await visit(l.targetNodeId, l);
+          }
+        };
+        await visit(trig.id, null);
+      }
+      if (token !== RUN.token) return;
+      RUN.running = false;
+      setChip(failed ? 'Failed' : 'Succeeded', failed ? 'bad' : 'ok');
+      $('rn-stop').hidden = true; $('rn-again').hidden = false;
+      miniRefresh();
+      RUN.resolve();
+    }
+    ctx.runWorkflow = runWorkflow;
+    $('wf-test').addEventListener('click', () => { void runWorkflow(); });
+    $('rn-again').addEventListener('click', () => { void runWorkflow(); });
+    $('rn-stop').addEventListener('click', () => stopRun(false));
+    $('rn-close').addEventListener('click', () => { stopRun(true); runCard.hidden = true; });
+    // Pan (briefly animated) until a step sits inside the free part of the canvas.
+    let panJob = 0;
+    function reveal(id) {
+      const n = model.getNode(id);
+      if (!n) return;
+      const r = host.getBoundingClientRect(), vp = api.viewport, z = vp.getZoom(), b = visualBox(boxOf(n));
+      const a = vp.worldToClient(b.x0, b.y0, r), c = vp.worldToClient(b.x1, b.y1, r);
+      const free = { left: r.left + 24, right: r.right - 24, top: r.top + 24, bottom: r.bottom - 24 };
+      if (a.x >= free.left && c.x <= free.right && a.y >= free.top && c.y <= free.bottom) return;
+      const dx = ((a.x + c.x) / 2 - (free.left + free.right) / 2) / z, dy = ((a.y + c.y) / 2 - (free.top + free.bottom) / 2) / z;
+      const from = vp.getViewport(), t0 = performance.now(), dur = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 300, job = ++panJob;
+      const step = (now) => {
+        if (job !== panJob) return;
+        const k = dur ? Math.min(1, (now - t0) / dur) : 1, e = 1 - Math.pow(1 - k, 3);
+        vp.setViewport({ ...from, x: from.x + dx * e, y: from.y + dy * e });
+        if (k < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+
+    // ---- top bar -------------------------------------------------------------------------
+    const KEY = 'grafloria-demo-workflow-builder';
+    const stepCount = () => model.getNodes().filter((n) => n.data?.action && n.data.action !== PLACEHOLDER).length;
+    $('wf-undo').addEventListener('click', async () => { settle(); await engine.undo(); syncHistory(); api.renderNow(); });
+    $('wf-redo').addEventListener('click', async () => { settle(); await engine.redo(); syncHistory(); api.renderNow(); });
+    $('wf-save').addEventListener('click', () => {
+      settle();
+      const json = JSON.stringify({ title: S.title, savedAt: Date.now(), diagram: engine.serialize() });
+      try { localStorage.setItem(KEY, json); } catch { toast('Your browser refused to store it (private mode?)'); return; }
+      S.dirty = false;
+      S.savedAt = Date.now();
+      const st = $('wf-state');
+      st.textContent = `Saved ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      st.classList.remove('dirty');
+      toast(`Saved “${S.title}” · ${stepCount()} steps`);
+    });
+    $('wf-load').addEventListener('click', () => {
+      settle();
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { saved = null; }
+      if (!saved?.diagram) { toast('Nothing saved yet: press Save first'); return; }
+      const temp = new DiagramSerializer().deserialize(saved.diagram);
+      const doc = docOf(temp, saved.title || 'Untitled workflow');
+      const before = docFromModel();
+      setSel(null);
+      applyDoc(doc);
+      commit('Load', before, doc);
+      frame();
+      toast(`Loaded “${doc.title}” · ${doc.steps.filter((s) => s.data.action !== PLACEHOLDER).length} steps`);
+    });
+    $('wf-new').addEventListener('click', () => {
+      settle();
+      const before = docFromModel();
+      setSel(null);
+      const doc = { v: 1, title: 'Untitled workflow', steps: [{ id: newId(), x: 0, y: 0, data: { action: PLACEHOLDER, props: {} } }], links: [], notes: [] };
+      applyDoc(doc);
+      commit('New workflow', before, doc);
+      api.viewport.setZoom(1);
+      const c = api.viewport.getViewport();
+      api.viewport.setViewport({ ...c, x: TILE / 2 - c.width / 2, y: TILE / 2 + 20 - c.height / 2 });
+      toast('A blank workflow: click “Choose a trigger” to start');
+    });
+    $('wf-title').addEventListener('input', (e) => { if (!S.editBefore) S.editBefore = docFromModel(); S.title = e.target.value; });
+    $('wf-title').addEventListener('change', () => { if (S.editBefore) { commit('Rename', S.editBefore); S.editBefore = null; } });
+    $('wf-title').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
+    $('wf-publish').addEventListener('click', () => {
+      settle();
+      const n = stepCount();
+      toast(n ? `Published “${S.title}” · ${n} step${n === 1 ? '' : 's'} are live` : 'Nothing to publish yet: choose a trigger first');
+    });
+
+    // ---- navigator: minimap, zoom slider, fit, fit width ----------------------------------
+    const mm = createMiniMap($('wf-mm'), api.viewport, () => model, {
+      placement: 'top-left', offset: 0, width: 242, height: 128, padding: 70, showLinks: true,
+      panelBackground: 'transparent', panelBorder: 'transparent', ariaLabel: 'Workflow minimap',
+      maskColor: 'rgba(59,82,217,0.06)', maskStroke: 'rgba(59,82,217,0.85)',
+      nodeColor: (n) => ({ running: '#f59e0b', success: '#16a34a', failed: '#dc2626' })[RUN.status.get(n.id)] ?? (DARK.matches ? '#646d82' : '#aab2c3'),
+    });
+    mm.portal.element.style.borderRadius = '0';
+    mm.portal.element.style.boxShadow = 'none';
+    const mmNotes = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    mm.element.insertBefore(mmNotes, mm.element.firstChild);
+    let mmRaf = 0;
+    function miniRefresh() {
+      if (mmRaf) return;
+      mmRaf = requestAnimationFrame(() => {
+        mmRaf = 0;
+        mm.refresh();
+        mmNotes.replaceChildren(...model.getGroups().filter((g) => g.getMetadata('note')).map((g) => {
+          const f = g.getOuterBounds(), r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          for (const [k, v] of Object.entries({ x: f.x, y: f.y, width: f.width, height: f.height, rx: 10, fill: DARK.matches ? '#4a4120' : '#f8e7a6' })) r.setAttribute(k, String(v));
+          return r;
+        }));
+      });
+    }
+    const flash = (b) => { b.classList.add('wf-flash'); setTimeout(() => b.classList.remove('wf-flash'), 260); };
+    const contentBounds = () => {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const n of model.getNodes()) { if (!n.data?.action) continue; const b = visualBox(boxOf(n)); x0 = Math.min(x0, b.x0); y0 = Math.min(y0, b.y0); x1 = Math.max(x1, b.x1); y1 = Math.max(y1, b.y1); }
+      for (const g of model.getGroups()) { const f = g.getOuterBounds(); x0 = Math.min(x0, f.x); y0 = Math.min(y0, f.y); x1 = Math.max(x1, f.x + f.width); y1 = Math.max(y1, f.y + f.height); }
+      return Number.isFinite(x0) ? { x: x0, y: y0, width: x1 - x0, height: y1 - y0 } : null;
+    };
+    const frame = () => {
+      const b = contentBounds(), r = host.getBoundingClientRect();
+      if (!b) return;
+      const z = Math.min(1.25, (r.width - 80) / b.width, (r.height - 80) / b.height);
+      api.viewport.setZoom(z);
+      const c = api.viewport.getViewport();
+      api.viewport.setViewport({ ...c, x: b.x + b.width / 2 - c.width / 2, y: b.y + b.height / 2 - c.height / 2 });
+      api.renderNow();
+    };
+    ctx.frame = frame;
+    $('wf-fit').addEventListener('click', (e) => { flash(e.currentTarget); frame(); });
+    $('wf-fitw').addEventListener('click', (e) => {
+      flash(e.currentTarget);
+      const b = contentBounds(), r = host.getBoundingClientRect();
+      if (!b) return;
+      const z = api.viewport.setZoom(Math.min(2, (r.width - 48) / b.width));
+      // Centred when it fits the height too, else its top edge just under the canvas top.
+      const c = api.viewport.getViewport(), cy = b.height * z <= r.height - 48 ? b.y + b.height / 2 : b.y - 24 / z + r.height / z / 2;
+      api.viewport.setViewport({ ...c, x: b.x + b.width / 2 - c.width / 2, y: cy - c.height / 2 });
+      api.renderNow();
+    });
+    $('wf-zoom').addEventListener('input', (e) => { api.viewport.setZoom(Number(e.target.value) / 100); api.renderNow(); });
+    $('wf-mmt').addEventListener('click', (e) => {
+      const on = $('wf-mm').hidden;
+      $('wf-mm').hidden = !on;
+      e.currentTarget.setAttribute('aria-pressed', String(on));
+      if (on) miniRefresh();
+    });
+    DARK.addEventListener?.('change', () => { for (const l of model.getLinks()) if (!RUN.status.size) l.updateStyle(lineStyle()); miniRefresh(); api.renderNow(); });
+
+    // ---- a fresh sample, for the camera and the checks --------------------------------------
+    ctx.reset = () => {
+      settle(); stopRun(true);
+      runCard.hidden = true;
+      closeMenu();
+      model.clearSelection();
+      S.sel = null; S.editBefore = null;
+      const doc = sampleWorkflow();
+      applyDoc(doc);
+      const pos = computeLayout();
+      for (const [id, p] of pos) model.getNode(id).setPosition(p.x, p.y);
+      refreshFrames();
+      cm.clear();
+      syncHistory();
+      frame();
+      renderPanel();
+      S.dirty = false;
+      const st = $('wf-state'); st.textContent = S.savedAt ? st.textContent : 'Not saved yet'; st.classList.remove('dirty');
+    };
+    // The money shot: the run held on the degraded path.
+    ctx.stageRun = (health, upTo) => {
+      resetRun();
+      runCard.hidden = false;
+      $('rn-health').value = health;
+      const path = ['push', 'cond', 'stage', 'health', upTo];
+      note(`Sample commit by maya.k on main · health check will report “${HEALTH[health].label}”`);
+      path.forEach((id, i) => {
+        const n = model.getNode(id), last = i === path.length - 1;
+        setStatus(id, last ? 'running' : 'success');
+        const row = logRow(n.data, `${ACTIONS[n.data.action].app} · ${summaryOf(n.data)}`);
+        if (!last) row('success', ACTIONS[n.data.action].run(n.data.props, { commit: { message: $('rn-msg').value, branch: 'main', author: 'maya.k' }, health }, outputsOf(n.data)).msg);
+        if (i) {
+          const l = model.getLinks().find((x) => x.sourceNodeId === path[i - 1] && x.targetNodeId === id);
+          l?.updateStyle(lineStyle(last ? 'active' : 'done'));
+        }
+      });
+      setChip('Running', '');
+      $('rn-stop').hidden = false; $('rn-again').hidden = true;
+      miniRefresh();
+      api.renderNow();
+    };
+    keysReady = true;
+    ctx.reset();
+    await ctx.tick();
+  },
+
+  async showcase(ctx) {
+    ctx.reset();
+    ctx.selectStep('health');
+    ctx.stageRun('degraded', 'pd_slow');
+    ctx.frame();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host, m = ctx.diagram, api = ctx.instance, cm = ctx.engine.commandManager;
+    const raf = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const $ = (id) => document.getElementById(id);
+    ctx.runSpeed = 0.03;
+    ctx.reset();
+    await raf();
+
+    // ---- helpers: REAL events at real points --------------------------------------
+    let down = false;
+    const fire = (type, c, target) => {
+      if (type === 'pointerdown') down = true;
+      const buttons = type === 'pointerup' ? 0 : type === 'pointerdown' ? 1 : down ? 1 : 0;
+      if (type === 'pointerup') down = false;
+      (target || document.elementFromPoint(c.x, c.y) || host).dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0, buttons }));
+    };
+    const centre = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    /** Press and release ON an element, after proving it is the topmost thing there. */
+    const tap = async (el, what) => {
+      check(!!el, `${what}: not on the page`);
+      const c = centre(el), hit = document.elementFromPoint(c.x, c.y);
+      check(hit && (hit === el || el.contains(hit)), `${what}: something else sits on top of it (${hit?.className || hit?.tagName})`);
+      fire('pointermove', c); fire('pointerdown', c); fire('pointerup', c);
+      hit.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: c.x, clientY: c.y }));
+      await raf();
+    };
+    const wc = (x, y) => api.viewport.worldToClient(x, y, host.getBoundingClientRect());
+    /** Click a step where a visitor would: its tile. */
+    const tapStep = async (id) => {
+      const n = m.getNode(id);
+      const c = wc(n.position.x + n.size.width / 2, n.position.y + n.size.height / 2);
+      fire('pointermove', c); fire('pointerdown', c); fire('pointerup', c);
+      await raf();
+    };
+    // A hand's drag: each move lands in its own animation frame.
+    const drag = async (from, to, steps = 6) => {
+      fire('pointermove', from); fire('pointerdown', from);
+      for (let i = 1; i <= steps; i++) { fire('pointermove', { x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps }); await raf(); }
+      fire('pointerup', to);
+      await wait(20); await raf();
+    };
+    const key = async (k, mods = {}) => { window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...mods })); await wait(40); await raf(); };
+    const undo = () => key('z', { ctrlKey: true });
+    const redo = () => key('z', { ctrlKey: true, shiftKey: true });
+    const label = (id) => host.querySelector(`[data-node-id="${id}"] .wf-sum`)?.textContent ?? null;
+    const linkFrom = (pid) => m.getLinks().filter((l) => l.sourcePortId === pid);
+    const portC = (pid) => { const el = host.querySelector(`circle.port[data-port-id="${pid}"]`); return el ? centre(el) : null; };
+    const boxes = () => m.getNodes().map((n) => ({ id: n.id, ...ctx.boxOf(n.id) }));
+    const overlaps = () => {
+      const b = boxes(), hits = [];
+      for (let i = 0; i < b.length; i++) for (let j = i + 1; j < b.length; j++) {
+        const p = b[i], q = b[j];
+        if (p.x0 < q.x1 - 1 && q.x0 < p.x1 - 1 && p.y0 < q.y1 - 1 && q.y0 < p.y1 - 1) hits.push(`${p.id}×${q.id}`);
+      }
+      return hits;
+    };
+    const noteClean = () => {
+      const bad = [];
+      for (const g of m.getGroups()) {
+        const f = g.getOuterBounds();
+        for (const b of boxes()) {
+          const inside = b.x0 >= f.x - 1 && b.x1 <= f.x + f.width + 1 && b.y0 >= f.y - 1 && b.y1 <= f.y + f.height + 1;
+          const touches = b.x0 < f.x + f.width && f.x < b.x1 && b.y0 < f.y + f.height && f.y < b.y1;
+          if (g.members.has(b.id) && !inside) bad.push(`${b.id} sticks out of the note`);
+          if (!g.members.has(b.id) && touches) bad.push(`${b.id} is under the note but not in it`);
+        }
+      }
+      return bad;
+    };
+    const menuPick = async (query, action) => {
+      const menu = $('wf-menu');
+      check(!menu.hidden, `the action menu did not open (to pick ${action})`);
+      const s = $('mn-search');
+      s.value = query; s.dispatchEvent(new Event('input', { bubbles: true }));
+      await raf();
+      const items = [...menu.querySelectorAll('.mn-item')].map((b) => b.dataset.action);
+      check(items.includes(action) && items.every((a) => a.toLowerCase().includes(query.split(' ')[0]) || menu.textContent.toLowerCase().includes(query)), `searching "${query}" did not narrow the menu to it: [${items}]`);
+      await tap(menu.querySelector(`.mn-item[data-action="${action}"]`), `menu item ${action}`);
+      await ctx.layoutDone; await raf();
+    };
+
+    // 1. The sample: a GitLab push → Condition → deploys → Switch → responses, in a note.
+    check(m.getNodes().length === 16 && m.getLinks().length === 15, `the sample has ${m.getNodes().length} steps / ${m.getLinks().length} lines, expected 16 / 15`);
+    check(m.getGroups().length === 1 && m.getGroups()[0].members.size === 10, 'the sticky note should hold the 10 response steps');
+    check(['cond__true', 'cond__false'].every((p) => linkFrom(p).length === 1), 'the Condition must have a true and a false output in use');
+    check(['healthy', 'degraded', 'failed', 'else'].every((o) => linkFrom(`health__o_${o}`).length === 1), 'the Switch must route healthy / degraded / failed / else');
+    check([...host.querySelectorAll('[data-node-id="health"] .wf-out-label')].map((e) => e.textContent).join(',') === 'healthy,degraded,failed,else', 'the Switch outputs are not labelled on the canvas');
+    check(host.querySelectorAll('.wf-plus').length >= 19, `every output needs a "+" (found ${host.querySelectorAll('.wf-plus').length})`);
+    check(getComputedStyle(host.querySelector('[data-node-id="push"] .wf-ic')).backgroundImage.startsWith('url('), 'the GitLab tile has no icon');
+    check(label('push') === 'checkout-api / main' && host.querySelector('[data-node-id="push"] .wf-app-name').textContent === 'GitLab', 'the trigger label is not "GitLab / checkout-api / main"');
+    check(overlaps().length === 0, `the sample layout overlaps: ${overlaps().join(', ')}`);
+    check(noteClean().length === 0, `the note frame is wrong: ${noteClean().join('; ')}`);
+    for (const l of m.getLinks()) check(m.getNode(l.targetNodeId).position.x > m.getNode(l.sourceNodeId).position.x, `line ${l.id} runs right-to-left`);
+    check(host.querySelector('.wf-note')?.textContent.includes('After the health check'), 'the sticky note is not drawn');
+    check(!!host.querySelector('.grafloria-minimap svg rect[data-node-id]'), 'the navigator minimap shows no steps');
+    check($('panel').textContent.includes('Select a step or a line to edit it'), 'the empty panel should invite a selection');
+
+    // 2. "+" on an output + the searchable menu: a step inserted AFTER that port, laid out.
+    await tap(host.querySelector('.wfp-dd_dev__out'), 'the "+" of Datadog · Dev build deployed');
+    const cats = [...$('wf-menu').querySelectorAll('.mn-cat')].map((e) => e.textContent);
+    check(cats.join(',') === 'Logic,Deploy,Monitoring,Incidents,Tickets,Messaging', `the menu is not grouped by category: ${cats}`);
+    const ddX = m.getNode('dd_dev').position.x;
+    await menuPick('slack', 'slack.message');
+    const slack = ctx.lastInserted;
+    check(m.getNodes().length === 17 && !!m.getNode(slack), 'picking Slack did not add a step');
+    check(linkFrom('dd_dev__out').some((l) => l.targetPortId === `${slack}__in`), 'the new step is not connected after the port whose "+" was pressed');
+    check(m.getNode(slack).position.x > ddX + 100, 'the new step was not placed to the right');
+    check(overlaps().length === 0, `after adding a step the layout overlaps: ${overlaps().join(', ')}`);
+    check(ctx.S.sel?.id === slack && $('panel').querySelector('input[data-k="channel"]'), 'the new step is not selected in the panel');
+
+    // 2b. "+" on a CONNECTED output splices the step in, and the flow re-arranges (animated).
+    const stageX = m.getNode('stage').position.x;
+    await tap(host.querySelector('.wfp-cond__true'), 'the "+" of the Condition\'s true output');
+    const s = $('mn-search'); s.value = 'wait'; s.dispatchEvent(new Event('input', { bubbles: true })); await raf();
+    // keyboard: the first match is highlighted, Enter picks it
+    check($('wf-menu').querySelector('.mn-item.on')?.dataset.action === 'logic.delay', 'the menu does not highlight the first match');
+    s.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); await raf();
+    await wait(90);
+    const midX = m.getNode('stage').position.x;
+    await ctx.layoutDone; await raf();
+    const delay = ctx.lastInserted, stageX2 = m.getNode('stage').position.x;
+    check(linkFrom('cond__true').length === 1 && linkFrom('cond__true')[0].targetPortId === `${delay}__in`, 'true → Wait missing (the step was not spliced in)');
+    check(linkFrom(`${delay}__out`).some((l) => l.targetPortId === 'stage__in'), 'Wait → staging deploy missing (the old line was not handed on)');
+    check(stageX2 > stageX + 100, 'the downstream steps did not move right to make room');
+    check(midX > stageX + 2 && midX < stageX2 - 2, `the re-arrangement was not animated (staging x ${stageX} → ${midX} mid-way → ${stageX2})`);
+    check(overlaps().length === 0 && noteClean().length === 0, `after a splice: ${[...overlaps(), ...noteClean()].join(', ')}`);
+
+    // 3. Property panel: edits show live on the canvas and are one undo step.
+    await tapStep(slack);
+    const ch = $('panel').querySelector('input[data-k="channel"]');
+    check(!!ch && $('panel').querySelector('.pn-title').textContent === 'Send message', 'clicking the Slack step did not open its form');
+    ch.focus(); ch.value = '#dev-builds'; ch.dispatchEvent(new Event('input', { bubbles: true })); await raf();
+    check(label(slack) === '#dev-builds', `typing a channel did not update the label live (${label(slack)})`);
+    ch.dispatchEvent(new Event('change', { bubbles: true })); ch.blur(); await wait(20);
+    await undo();
+    check(label(slack) === '#deployments', `Ctrl+Z did not undo the property edit (${label(slack)})`);
+    check($('panel').querySelector('input[data-k="channel"]')?.value === '#deployments', 'the panel still shows the undone value');
+    await redo();
+    check(label(slack) === '#dev-builds', 'Ctrl+Shift+Z did not redo the property edit');
+    // a select edits live too: Kubernetes environment
+    await tapStep('dev');
+    const env = $('panel').querySelector('select[data-k="environment"]');
+    env.value = 'staging'; env.dispatchEvent(new Event('input', { bubbles: true })); env.dispatchEvent(new Event('change', { bubbles: true })); await raf();
+    check(label('dev') === 'Deploy to staging', `changing the environment did not relabel the step (${label('dev')})`);
+    await undo();
+    check(label('dev') === 'Deploy to development', 'undo did not restore the environment');
+
+    // 4. Delete a step with the keyboard: its line goes, the chain heals; undo brings it back.
+    await tapStep('dd_prod');
+    check(ctx.S.sel?.id === 'dd_prod', 'clicking a step did not select it');
+    await key('Delete');
+    check(!m.getNode('dd_prod') && !m.getLinks().some((l) => l.sourceNodeId === 'dd_prod' || l.targetNodeId === 'dd_prod'), 'Delete did not remove the step and its lines');
+    check(linkFrom('prod__out').some((l) => l.targetPortId === 'slack_rel__in'), 'deleting a middle step did not reconnect its neighbours');
+    await ctx.layoutDone;
+    check(overlaps().length === 0 && noteClean().length === 0, 'after a delete the layout overlaps');
+    await undo(); await raf();
+    check(!!m.getNode('dd_prod') && linkFrom('dd_prod__out').length === 1 && linkFrom('prod__out')[0].targetPortId === 'dd_prod__in', 'undo did not restore the deleted step and its lines');
+
+    // 5. A line: select it, read "from → to", then reconnect its end by hand; undo.
+    api.fitView(40); api.renderNow(); await raf();
+    const l9 = m.getLink('l9');
+    const path = host.querySelector('[data-link-id="l9"] path.diagram-link');
+    const mid = path.getPointAtLength(path.getTotalLength() / 2);
+    const mc = wc(mid.x, mid.y);
+    fire('pointermove', mc, host); fire('pointerdown', mc, host); fire('pointerup', mc, host); await raf();
+    check(l9.state === 'selected' && ctx.S.sel?.type === 'link', 'clicking a line did not select it');
+    check(/PagerDuty → Jira/.test($('panel').textContent), `the line panel does not say "PagerDuty → Jira": ${$('panel').querySelector('.pn-title')?.textContent}`);
+    api.renderNow(); await raf();
+    const endP = path.getPointAtLength(path.getTotalLength());
+    const to = portC('jira_ops__in');
+    await drag(wc(endP.x, endP.y), to);
+    check(m.getLink('l9')?.targetPortId === 'jira_ops__in', `dragging the line's end onto another input did not reconnect it (${m.getLink('l9')?.targetPortId})`);
+    await undo();
+    check(m.getLink('l9')?.targetPortId === 'jira_slow__in', 'undo did not put the reconnected line back');
+    // Delete removes a selected line too (and undo brings it back).
+    fire('pointermove', mc, host); fire('pointerdown', mc, host); fire('pointerup', mc, host); await raf();
+    check(m.getLink('l9')?.state === 'selected', 'could not reselect the line');
+    await key('Delete');
+    check(!m.getLink('l9'), 'Delete did not remove the selected line');
+    await undo();
+    check(m.getLink('l9')?.targetPortId === 'jira_slow__in', 'undo did not restore the deleted line');
+
+    // 6. A line let go on EMPTY canvas opens the menu there and adds a branch.
+    const centreOn = (id, z = 1) => {
+      const n = m.getNode(id), c = api.viewport.getViewport();
+      api.viewport.setZoom(z);
+      api.viewport.setViewport({ ...c, x: n.position.x + n.size.width / 2 - c.width / 2, y: n.position.y + n.size.height / 2 - c.height / 2 });
+      api.renderNow();
+    };
+    centreOn('slack_rel'); await raf();
+    const from = portC('slack_rel__out');
+    await drag(from, { x: from.x + 150, y: from.y - 70 });
+    await wait(30);
+    check(!$('wf-menu').hidden, 'letting go of a line on empty canvas did not open the menu');
+    await menuPick('email', 'gmail.send');
+    const mail = ctx.lastInserted;
+    check(linkFrom('slack_rel__out').some((l) => l.targetPortId === `${mail}__in`), 'the step added from a dropped line is not connected to it');
+    check(m.getGroups()[0].members.has(mail), 'a step added after a note member did not join the note');
+    check(overlaps().length === 0 && noteClean().length === 0, `after a branch: ${[...overlaps(), ...noteClean()].join(', ')}`);
+    await undo();
+    check(!m.getNode(mail), 'undo did not remove the branch step');
+
+    // 7. Drag the sticky note by its header: its steps ride along, one undo step.
+    ctx.frame(); await raf();
+    const g = m.getGroups()[0], f0 = g.getOuterBounds(), p0 = { ...m.getNode('prod').position }, out0 = { ...m.getNode('dev').position };
+    await drag(wc(f0.x + f0.width - 30, f0.y + 14), wc(f0.x + f0.width + 50, f0.y + 64));
+    await raf();
+    const p1 = m.getNode('prod').position, dx = p1.x - p0.x, dy = p1.y - p0.y;
+    check(Math.abs(dx - 80) < 3 && Math.abs(dy - 50) < 3, `dragging the note did not carry its steps (moved ${dx.toFixed(0)},${dy.toFixed(0)})`);
+    check(Math.abs(g.getOuterBounds().x - f0.x - 80) < 3, 'the note itself did not move');
+    check(m.getNode('dev').position.x === out0.x, 'a step outside the note moved with it');
+    await undo(); await raf();
+    check(Math.abs(m.getNode('prod').position.x - p0.x) < 1, 'undo did not put the note and its steps back');
+    // Drag a step OUT of the note: it leaves the note and the frame shrinks; undo.
+    ctx.frame(); await raf();
+    const jo = m.getNode('jira_ops'), jc = wc(jo.position.x + 28, jo.position.y + 28), fb = g.getOuterBounds();
+    await drag(jc, wc(jo.position.x + 28, fb.y + fb.height + 140));
+    await wait(30); await raf(); await raf();
+    check(!g.members.has('jira_ops'), 'dragging a step out of the note did not take it out');
+    check(g.getOuterBounds().y + g.getOuterBounds().height < m.getNode('jira_ops').position.y, 'the note frame did not let go of the step');
+    await undo(); await raf(); await raf();
+    check(g.members.has('jira_ops') && noteClean().length === 0, 'undo did not put the step back in the note');
+    // click the note → its editor
+    const f1 = g.getOuterBounds(), nc = wc(f1.x + f1.width - 30, f1.y + 14);
+    fire('pointermove', nc); fire('pointerdown', nc); fire('pointerup', nc); await raf();
+    check(ctx.S.sel?.type === 'note' && $('panel').querySelector('textarea[data-note="text"]'), 'clicking the note did not open its editor');
+
+    // 8. Test workflow: the Condition and the Switch take the branch their rules pick.
+    await tap($('wf-test'), 'Test workflow');
+    check(!$('wf-run').hidden && $('rn-chip').textContent === 'Running', 'Test workflow did not start a run');
+    await ctx.runDone; await raf();
+    const st = (id) => ctx.RUN.status.get(id) ?? 'idle';
+    check($('rn-chip').textContent === 'Succeeded', `the run did not succeed (${$('rn-chip').textContent})`);
+    for (const id of ['push', 'cond', delay, 'stage', 'health', 'pd_slow', 'jira_slow']) check(st(id) === 'success', `${id} should have run (degraded path), it is ${st(id)}`);
+    for (const id of ['dev', 'dd_dev', slack, 'prod', 'dd_prod', 'rollback', 'pd_down', 'snow', 'cw', 'jira_ops']) check(st(id) === 'idle', `${id} should NOT have run on the degraded path, it is ${st(id)}`);
+    check(host.querySelector('[data-node-id="pd_slow"] .wf-node').classList.contains('st-success'), 'a finished step does not show its success badge');
+    check(linkFrom('health__o_degraded')[0].style.stroke === '#16a34a' && linkFrom('health__o_healthy')[0].style.stroke !== '#16a34a', 'only the taken output\'s line should light up');
+    check(/error rate 3\.2%.*degraded/.test($('rn-log').textContent) && /contains “release” → true/.test($('rn-log').textContent), 'the run log does not explain the Condition and the Switch');
+    // Run again with other inputs: the false branch and the healthy route.
+    $('rn-msg').value = 'fix: typo in the footer';
+    await tap($('rn-again'), 'Run again');
+    await ctx.runDone; await raf();
+    check(st('dev') === 'success' && st('dd_dev') === 'success' && st(slack) === 'success' && st('stage') === 'idle' && st('health') === 'idle', 'a commit without "release" did not take the false branch (or the second run did not reset)');
+    $('rn-msg').value = 'release: v2.15.0'; $('rn-health').value = 'healthy';
+    await tap($('rn-again'), 'Run again');
+    await ctx.runDone; await raf();
+    check(st('prod') === 'success' && st('slack_rel') === 'success' && st('pd_slow') === 'idle' && st('dev') === 'idle', 'a healthy result did not route to production');
+    // A step with an empty required field FAILS, and the run says so.
+    await tapStep('slack_rel');
+    const ch2 = $('panel').querySelector('input[data-k="channel"]');
+    ch2.value = ''; ch2.dispatchEvent(new Event('input', { bubbles: true })); ch2.dispatchEvent(new Event('change', { bubbles: true }));
+    await tap($('wf-test'), 'Test workflow');
+    await ctx.runDone; await raf();
+    check(st('slack_rel') === 'failed' && $('rn-chip').textContent === 'Failed' && /Channel is empty/.test($('rn-log').textContent), 'a step missing its channel did not fail the run');
+    await undo();
+    // Stop halts a run.
+    ctx.runSpeed = 1;
+    await tap($('wf-test'), 'Test workflow');
+    await wait(900);
+    await tap($('rn-stop'), 'Stop');
+    check($('rn-chip').textContent === 'Stopped' && [...ctx.RUN.status.values()].includes('stopped') && st('pd_slow') === 'idle' && st('prod') === 'idle', 'Stop did not halt the run');
+    ctx.runSpeed = 0.03;
+    await tap($('rn-close'), 'close the run log');
+
+    // 9. Save → change → Load restores the saved workflow (engine JSON in localStorage).
+    await tap($('wf-save'), 'Save');
+    const saved = JSON.parse(localStorage.getItem('grafloria-demo-workflow-builder'));
+    check(saved?.diagram?.nodes?.length === m.getNodes().length, 'Save did not store the engine JSON');
+    const nBefore = m.getNodes().length;
+    await tapStep('snow'); await key('Delete');
+    check(!m.getNode('snow'), 'precondition: the step was not deleted');
+    await tap($('wf-load'), 'Load');
+    check(m.getNodes().length === nBefore && label('snow') === 'Checkout release rolled back' && m.getGroups()[0].members.has('snow'), 'Load did not restore the saved workflow');
+    check(m.getLinks().length === saved.diagram.links.length, 'Load lost lines');
+
+    // 10. New: one "Choose a trigger" step; pick a trigger from it; undo back.
+    await tap($('wf-new'), 'New');
+    check(m.getNodes().length === 1 && label(m.getNodes()[0].id) === 'Choose a trigger', 'New did not leave a single "Choose a trigger" step');
+    await tapStep(m.getNodes()[0].id);
+    await wait(20);
+    check(!$('wf-menu').hidden && [...$('wf-menu').querySelectorAll('.mn-cat')].map((e) => e.textContent).join() === 'Triggers', 'the placeholder did not offer the triggers');
+    await menuPick('gitlab', 'gitlab.push');
+    check(m.getNodes().length === 1 && m.getNodes()[0].data.action === 'gitlab.push', 'choosing a trigger did not replace the placeholder');
+    await undo(); await undo();
+    check(m.getNodes().length === nBefore, 'undoing New did not bring the workflow back');
+
+    // 11. Publish says how many steps went live.
+    await tap($('wf-publish'), 'Publish');
+    check(new RegExp(`${nBefore} steps are live`).test($('wf-toast').textContent), `Publish did not confirm the step count (${$('wf-toast').textContent})`);
+
+    // 12. Navigator: fit width fills the canvas width, the slider zooms.
+    await tap($('wf-fitw'), 'Fit width');
+    const z1 = api.viewport.getZoom();
+    const zoom = $('wf-zoom'); zoom.value = '120'; zoom.dispatchEvent(new Event('input', { bubbles: true })); await raf();
+    check(Math.abs(api.viewport.getZoom() - 1.2) < 0.01 && Math.abs(z1 - 1.2) > 0.02, 'the zoom slider did not zoom');
+    await tap($('wf-fit'), 'Fit');
+    check($('wf-zoom-v').textContent === Math.round(api.viewport.getZoom() * 100) + '%', 'the zoom readout does not follow the camera');
+
+    ctx.runSpeed = 1;
+    ctx.reset();
+  },
+});
+</script>
