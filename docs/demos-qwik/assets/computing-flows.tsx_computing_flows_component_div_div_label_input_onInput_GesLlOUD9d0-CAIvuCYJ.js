@@ -1,1 +1,0 @@
-import{v as i}from"./core.min-BYz3EHBQ.js";import{_auto_propagate as p}from"./computing-flows-BzOqt7sY.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const v=(s,o)=>{const[a,r]=i(),t=r.value;if(!t)return;const e=Number(o.value);t.getModel().getNode("in").data.value=Number.isFinite(e)?e:0,a.value=p(t)};export{v as s_GesLlOUD9d0};

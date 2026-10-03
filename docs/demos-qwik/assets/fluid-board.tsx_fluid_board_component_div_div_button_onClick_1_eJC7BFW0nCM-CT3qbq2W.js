@@ -1,1 +1,0 @@
-import{v as t}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const r=()=>{const[e,s]=t();s.value="fit",e("fit: the board keeps its height, rows squeeze — bounded")};export{r as s_eJC7BFW0nCM};

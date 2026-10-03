@@ -1,0 +1,1 @@
+import{v as m}from"./core.min-e2MmCxtB.js";import{x as n}from"./core.min-e2MmCxtB.js";import"./preloader-D7tuiBjF.js";const l=({track:e,cleanup:t})=>{const[o,r,a,u]=m();if(e(()=>a.value),!u.value)return;const i=setTimeout(()=>void r(o.value),300);t(()=>clearTimeout(i))};export{n as _hW,l as s_0Xje5UuY3HE};

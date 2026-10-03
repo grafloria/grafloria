@@ -1,0 +1,1 @@
+import{v as n}from"./core.min-e2MmCxtB.js";import{x as l}from"./core.min-e2MmCxtB.js";import"./preloader-D7tuiBjF.js";const p=async()=>{const[o,t]=n(),e=t.value?.getEngine();e&&o.value&&await e.collapseGroup(o.value,{proxyLabel:a=>`${a.count}×`})};export{l as _hW,p as s_Htyk70Rw4Fg};

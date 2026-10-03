@@ -1,1 +1,0 @@
-import{v as r}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const n=()=>{const[o,e]=r();e.value="grow",o("grow: rows keep 130 px, the board extends — wheel to scroll")};export{n as s_ODhor5gnCYc};

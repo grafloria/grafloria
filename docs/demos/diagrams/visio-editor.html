@@ -389,6 +389,11 @@ defineDemo({
       const menu = document.createElement('div');
       menu.id = 'vs-menu';
       canvasEl.appendChild(menu);
+      // Like the zoom cluster: a press on the menu must not reach the canvas
+      // below, or its marquee clears the selection before Duplicate runs on it.
+      for (const type of ['pointerdown', 'mousedown']) {
+        menu.addEventListener(type, (e) => e.stopPropagation());
+      }
       const close = () => menu.classList.remove('open');
       const item = (label, run, enabled = true) => {
         const b = document.createElement('button');
@@ -450,10 +455,11 @@ defineDemo({
 
     // T3 — the align/distribute toolbar over the live selection.
     const selected = () => ctx.diagram.getSelectedNodes().map((n) => n.id);
-    const mk = (label, title, run) => {
+    // `anySelection`: the button acts with nothing selected too (Undo, Redo).
+    const mk = (label, title, run, { anySelection = false } = {}) => {
       const b = document.createElement('button');
       b.textContent = label; b.title = title;
-      b.addEventListener('click', () => { const ids = selected(); if (ids.length) void run(ids); });
+      b.addEventListener('click', () => { const ids = selected(); if (ids.length || anySelection) void run(ids); });
       bar.appendChild(b);
       return b;
     };
@@ -484,10 +490,10 @@ defineDemo({
     const ungroupBtn = mk('⊟ Ungroup', 'Dissolve the selected shape’s group (Ctrl/⌘+Shift+G)',
       () => ctx.ungroupSelection());
     bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
-    const undoBtn = mk('↶ Undo', 'Undo the last edit', () => ctx.engine.commandManager.undo());
+    const undoBtn = mk('↶ Undo', 'Undo the last edit', () => ctx.engine.commandManager.undo(), { anySelection: true });
     // Redo lives beside Undo, synced to canRedo the same way (the keyboard
     // chord always worked; the BUTTON is what the audit found missing).
-    const redoBtn = mk('↷ Redo', 'Redo the undone edit (Ctrl/⌘+Y)', () => ctx.engine.commandManager.redo());
+    const redoBtn = mk('↷ Redo', 'Redo the undone edit (Ctrl/⌘+Y)', () => ctx.engine.commandManager.redo(), { anySelection: true });
     undoBtn.addEventListener('click', () => setTimeout(syncBar, 0));
     redoBtn.addEventListener('click', () => setTimeout(syncBar, 0));
     function syncBar() {

@@ -1,1 +1,0 @@
-import{_ as r}from"./preload-helper-D57DdDQb.js";import{y as o,L as t}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const i=o(t(()=>r(()=>import("./freehand-draw.tsx_freehand_draw_component_0602uLzi2QA-B7KKoROf.js"),[],import.meta.url),"s_0602uLzi2QA"));export{i as default};

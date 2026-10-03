@@ -1,1 +1,0 @@
-import{v as t}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const e=()=>{const[o]=t();return o.value?.onCloseLogs()};export{e as s_bpbuLJpwd1E};

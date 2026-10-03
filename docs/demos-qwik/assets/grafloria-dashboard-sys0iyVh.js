@@ -1,0 +1,1 @@
+import{_ as r}from"./preload-helper-D57DdDQb.js";import{y as o,L as a}from"./core.min-e2MmCxtB.js";const s=o(a(()=>r(()=>import("./grafloria-dashboard.tsx_GrafloriaDashboard_component_DUOMMFPzTlA-x9Y9nq8R.js"),[],import.meta.url),"s_DUOMMFPzTlA"));export{s as G};

@@ -1,0 +1,1 @@
+import{v as o}from"./core.min-e2MmCxtB.js";import{_auto_apply as t}from"./highlight-connected-DdhnfHi1.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const s=()=>{const[a,p]=o();p.depth="trace",t(a.value,p)};export{s as s_BW06iaTgNSg};

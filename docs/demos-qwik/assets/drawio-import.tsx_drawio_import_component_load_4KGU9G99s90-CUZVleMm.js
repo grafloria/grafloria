@@ -1,0 +1,1 @@
+import{v as a}from"./core.min-e2MmCxtB.js";import{x as m}from"./core.min-e2MmCxtB.js";import"./preloader-D7tuiBjF.js";const p=async o=>{const[t,s]=a();s.value=o,await t(o)};export{m as _hW,p as s_4KGU9G99s90};

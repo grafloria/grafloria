@@ -1,1 +1,0 @@
-import{v as p}from"./core.min-BYz3EHBQ.js";import{x as n}from"./core.min-BYz3EHBQ.js";import{_auto_readoutOf as u}from"./expand-collapse-fMIQkkrY.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const v=()=>{const[t,a,e,s]=p(),r=e.value,o=a.value;!r||!o||(t.value?.collapse(o),s.value=u(r,o))};export{n as _hW,v as s_dbsdakt9oNw};

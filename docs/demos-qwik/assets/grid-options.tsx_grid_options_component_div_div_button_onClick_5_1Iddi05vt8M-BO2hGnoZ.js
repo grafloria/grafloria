@@ -1,1 +1,0 @@
-import{v as r}from"./core.min-BYz3EHBQ.js";import"./preloader-D7tuiBjF.js";const h=async()=>{const[i,s,o,a]=r(),t=i.value?.handle;if(!t)return;const e=o.value==="fit"?"grow":"fit";t.setSizing(e),e==="fit"&&t.fit(),await a(),await s(e==="fit"?"FIT: the board keeps its height — rows squeeze":"GROW: rows keep their height — the board extends")};export{h as s_1Iddi05vt8M};
