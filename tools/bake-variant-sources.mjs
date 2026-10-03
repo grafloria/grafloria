@@ -61,13 +61,29 @@ for (const p of pairs) {
     });
     sources[p.route] = files;
   } else {
-    // react/vue: one file per demo (a .tsx or a .vue SFC). Resolve the exact name.
+    // react/vue/qwik: the demo file (a .tsx or a .vue SFC). Resolve the exact name.
     const base = join(APP, FW === 'qwik' ? 'gallery' : 'src', 'demos');
     let file = p.file;
     if (!existsSync(join(base, file))) {
       for (const ext of ['.tsx', '.ts', '.vue']) { if (existsSync(join(base, file + ext))) { file = file + ext; break; } }
     }
-    sources[p.route] = [{ name: file, text: readFileSync(join(base, file), 'utf8') }];
+    // …plus the helper modules beside it that it imports (`from './x'`, and
+    // theirs in turn): a demo whose controller lives in a sibling file shows it
+    // in the drawer too, as an Angular demo's folder does.
+    const files = [];
+    const seen = new Set();
+    const visit = (name) => {
+      if (seen.has(name)) return;
+      seen.add(name);
+      const text = readFileSync(join(base, name), 'utf8');
+      files.push({ name, text });
+      for (const m of text.matchAll(/(?:from|import)\s+['"]\.\/([\w.-]+)['"]/g)) {
+        const dep = [m[1], `${m[1]}.ts`, `${m[1]}.tsx`].find((n) => existsSync(join(base, n)) && !n.endsWith('.vue'));
+        if (dep && !/\.worker\./.test(dep)) visit(dep);
+      }
+    };
+    visit(file);
+    sources[p.route] = files;
   }
 }
 
