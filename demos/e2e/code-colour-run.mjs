@@ -30,6 +30,7 @@ const PAGES = [
   { route: 'diagrams/architecture-layout', kind: 'editor' },
   { route: 'diagrams/query-builder', kind: 'editor' },
   { route: 'misc/drawio-import', kind: 'editor' },
+  { route: 'diagrams/data-modeling', kind: 'editor' },
   { route: 'diagrams/ai-style-diagram', kind: 'block', then: /Mermaid/ },
 ];
 
