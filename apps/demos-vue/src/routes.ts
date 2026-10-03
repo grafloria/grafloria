@@ -118,4 +118,7 @@ export const ROUTES: Record<string, () => Promise<{ default: Component }>> = {
   'interaction/chatbot-flow': () => import('./demos/chatbot-flow.vue'),
   'misc/drawio-import': () => import('./demos/drawio-import.vue'),
   'nodes/edit-label': () => import('./demos/edit-label.vue'),
+  'interaction/workflow-builder': () => import('./demos/workflow-builder.vue'),
+  'interaction/marketing-automation': () => import('./demos/marketing-automation.vue'),
+  'diagrams/data-modeling': () => import('./demos/data-modeling.vue'),
 };

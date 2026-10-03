@@ -123,4 +123,7 @@ export const routes: Routes = [
   { path: 'interaction/chatbot-flow', loadComponent: () => import('./demos/chatbot-flow/chatbot-flow.component').then((m) => m.ChatbotFlowComponent) },
   { path: 'misc/drawio-import', loadComponent: () => import('./demos/drawio-import/drawio-import.component').then((m) => m.DrawioImportComponent) },
   { path: 'nodes/edit-label', loadComponent: () => import('./demos/edit-label/edit-label.component').then((m) => m.EditLabelComponent) },
+  { path: 'interaction/workflow-builder', loadComponent: () => import('./demos/workflow-builder/workflow-builder.component').then((m) => m.WorkflowBuilderComponent) },
+  { path: 'interaction/marketing-automation', loadComponent: () => import('./demos/marketing-automation/marketing-automation.component').then((m) => m.MarketingAutomationComponent) },
+  { path: 'diagrams/data-modeling', loadComponent: () => import('./demos/data-modeling/data-modeling.component').then((m) => m.DataModelingComponent) },
 ];

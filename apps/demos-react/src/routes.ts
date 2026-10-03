@@ -117,5 +117,8 @@ export const ROUTES: Record<string, () => Promise<{ default: React.ComponentType
   'interaction/chatbot-flow': () => import('./demos/chatbot-flow'),
   'misc/drawio-import': () => import('./demos/drawio-import'),
   'nodes/edit-label': () => import('./demos/edit-label'),
+  'interaction/workflow-builder': () => import('./demos/workflow-builder'),
+  'interaction/marketing-automation': () => import('./demos/marketing-automation'),
+  'diagrams/data-modeling': () => import('./demos/data-modeling'),
 };
 import type React from 'react';
