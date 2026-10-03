@@ -51,6 +51,7 @@ import {
 import { createSyncSession } from '@grafloria/engine';
 import type {
   CommentStore,
+  GroupModel,
   LinkModel,
   NodeModel,
   SyncAdapter,
@@ -68,6 +69,8 @@ import {
   type CreateDiagramOptions,
   type DiagramInstance,
   type EdgeSpec,
+  type GroupSpec,
+  type HighlightConnectedOptions,
   type HighlighterConfig,
   type HydrationSnapshot,
   type NodeSpec,
@@ -122,10 +125,16 @@ export interface GrafloriaFlowProps {
   // -- model (controlled) ----------------------------------------------------
   nodes?: NodeSpec[];
   edges?: EdgeSpec[];
+  /**
+   * Controlled groups — zones around some nodes (a spec's `groups`, or the live
+   * GroupModels of a loaded document). Reconciled like `nodes`.
+   */
+  groups?: Array<GroupSpec | GroupModel>;
 
   // -- model (uncontrolled) --------------------------------------------------
   defaultNodes?: NodeSpec[];
   defaultEdges?: EdgeSpec[];
+  defaultGroups?: Array<GroupSpec | GroupModel>;
 
   // -- callbacks (QRLs — the `$` is what makes them lazily loadable) ---------
   onInit$?: QRL<(instance: DiagramInstance) => void>;
@@ -198,6 +207,12 @@ export interface GrafloriaFlowProps {
    * Follows the prop by VALUE.
    */
   highlighterConfig?: boolean | Partial<HighlighterConfig>;
+  /**
+   * Bring the selected nodes' lines forward and fade the rest: `true`, or
+   * options (depth, stroke, outgoing, dimOpacity). Off when unset. Follows the
+   * prop by VALUE.
+   */
+  highlightConnected?: boolean | HighlightConnectedOptions;
 
   class?: string;
   style?: Record<string, string | number>;
@@ -234,6 +249,7 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
     const options: CreateDiagramOptions = {
       nodes: withCustomFlag(props.nodes ?? props.defaultNodes, nodeTypes) ?? [],
       edges: props.edges ?? props.defaultEdges ?? [],
+      groups: props.groups ?? props.defaultGroups,
       theme: props.theme,
       fitView: props.fitView,
       enablePan: props.enablePan,
@@ -250,6 +266,7 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
       interaction: props.interaction,
       tokenBridge: props.tokenBridge as never,
       highlighterConfig: props.highlighterConfig,
+      highlightConnected: props.highlightConnected,
 
       // Qwik has no portal primitive, so a custom node is mounted with Qwik's
       // own `render()` into the host element the core hands us.
@@ -352,6 +369,15 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
     instance.setEdges(next);
   }, MOUNT_EAGERLY);
 
+  // After nodes: a group's children must be on the canvas to join it.
+  // eslint-disable-next-line qwik/no-use-visible-task
+  useVisibleTask$(({ track }) => {
+    const next = track(() => props.groups);
+    const instance = track(() => instanceRef.value);
+    if (!next || !instance) return;
+    instance.setGroups(next);
+  }, MOUNT_EAGERLY);
+
   // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(({ track }) => {
     const theme = track(() => props.theme);
@@ -369,6 +395,17 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
     instance.setHighlighterConfig(
       JSON.parse(key) as boolean | Partial<HighlighterConfig>
     );
+  }, MOUNT_EAGERLY);
+
+  // -- the selection's line highlight, live -------------------------------------
+  // Tracks the PROP (by value), so a signal flipping it re-applies. The key only
+  // DETECTS a change; the prop itself is applied (JSON turns Infinity into null).
+  // eslint-disable-next-line qwik/no-use-visible-task
+  useVisibleTask$(({ track }) => {
+    track(() => JSON.stringify(props.highlightConnected ?? false));
+    const instance = track(() => instanceRef.value);
+    if (!instance) return;
+    instance.setHighlightConnected(props.highlightConnected ?? false);
   }, MOUNT_EAGERLY);
 
   // -- canvas plugins (minimap / controls / background) -----------------------

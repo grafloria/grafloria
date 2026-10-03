@@ -33,6 +33,59 @@ describe('GrafloriaFlow (Vue)', () => {
     host.remove();
   });
 
+  const TWO: NodeSpec[] = [
+    { id: 'a', position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
+    { id: 'b', position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
+  ];
+
+  it('highlightConnected: goes in at mount and follows the prop live', async () => {
+    let instance: any = null;
+    const hc = ref<unknown>(true);
+    app = createApp(defineComponent({
+      setup: () => () => h(GrafloriaFlow, { defaultNodes: TWO, highlightConnected: hc.value as never, onInit: (i: unknown) => (instance = i) }),
+    }));
+    app.mount(host);
+    await flush();
+    expect(instance.getHighlightConnected()).toBeTruthy();
+    hc.value = { depth: 2 };
+    await flush();
+    expect(instance.getHighlightConnected()).toEqual(expect.objectContaining({ depth: 2 }));
+    hc.value = { depth: Infinity }; // must arrive as Infinity — JSON would make it null
+    await flush();
+    expect(instance.getHighlightConnected().depth).toBe(Infinity);
+    hc.value = false;
+    await flush();
+    expect(instance.getHighlightConnected()).toBe(false);
+  });
+
+  it('groups: zones go in at mount (a loaded document keeps them) and follow the prop', async () => {
+    let instance: any = null;
+    const zone = { id: 'zone', label: 'Zone', children: ['a', 'b'] };
+    const groups = ref<unknown[]>([zone]);
+    app = createApp(defineComponent({
+      setup: () => () => h(GrafloriaFlow, { nodes: TWO, groups: groups.value as never, onInit: (i: unknown) => (instance = i) }),
+    }));
+    app.mount(host);
+    await flush();
+    expect(instance.getModel().getGroup('zone')?.members.has('b')).toBe(true);
+    groups.value = [{ ...zone, children: ['a'] }];
+    await flush();
+    expect(instance.getModel().getGroup('zone')?.members.has('b')).toBe(false);
+    groups.value = [];
+    await flush();
+    expect(instance.getModel().getGroup('zone')).toBeUndefined();
+  });
+
+  it('defaultGroups: zones go in once; the instance owns them after', async () => {
+    let instance: any = null;
+    app = createApp(defineComponent({
+      setup: () => () => h(GrafloriaFlow, { defaultNodes: TWO, defaultGroups: [{ id: 'zone', children: ['a'] }] as never, onInit: (i: unknown) => (instance = i) }),
+    }));
+    app.mount(host);
+    await flush();
+    expect(instance.getModel().getGroup('zone')?.members.has('a')).toBe(true);
+  });
+
   it('highlighterConfig: off unless set; on, it outlines the selection; it follows the prop live', async () => {
     let instance: any = null;
     const cfg = ref<boolean | Record<string, boolean> | undefined>(undefined);

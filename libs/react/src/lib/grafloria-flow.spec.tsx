@@ -44,6 +44,39 @@ describe('<GrafloriaFlow>', () => {
     await waitFor(() => expect(container.querySelectorAll('.grafloria-highlighter').length).toBe(0));
   });
 
+  it('highlightConnected: goes in at mount and follows the prop live', async () => {
+    let instance: DiagramInstance | undefined;
+    const { rerender } = render(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlightConnected />);
+    await waitFor(() => expect(instance).toBeDefined());
+    expect(instance!.getHighlightConnected()).toBeTruthy();
+    rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlightConnected={{ depth: 2 }} />);
+    await waitFor(() => expect(instance!.getHighlightConnected()).toEqual(expect.objectContaining({ depth: 2 })));
+    // Infinity (trace every path) must arrive as Infinity — JSON would make it null
+    rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlightConnected={{ depth: Infinity }} />);
+    await waitFor(() => expect((instance!.getHighlightConnected() as { depth?: number }).depth).toBe(Infinity));
+    rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlightConnected={false} />);
+    await waitFor(() => expect(instance!.getHighlightConnected()).toBe(false));
+  });
+
+  it('groups: zones go in at mount (a loaded document keeps them) and follow the prop', async () => {
+    let instance: DiagramInstance | undefined;
+    const zone = { id: 'zone', label: 'Zone', children: ['a', 'b'] };
+    const { rerender } = render(<GrafloriaFlow nodes={NODES} groups={[zone]} onInit={(i) => (instance = i)} />);
+    await waitFor(() => expect(instance).toBeDefined());
+    expect(instance!.getModel().getGroup('zone')?.members.has('b')).toBe(true);
+    rerender(<GrafloriaFlow nodes={NODES} groups={[{ ...zone, children: ['a'] }]} onInit={(i) => (instance = i)} />);
+    await waitFor(() => expect(instance!.getModel().getGroup('zone')?.members.has('b')).toBe(false));
+    rerender(<GrafloriaFlow nodes={NODES} groups={[]} onInit={(i) => (instance = i)} />);
+    await waitFor(() => expect(instance!.getModel().getGroup('zone')).toBeUndefined());
+  });
+
+  it('defaultGroups: zones go in once; the instance owns them after', async () => {
+    let instance: DiagramInstance | undefined;
+    render(<GrafloriaFlow defaultNodes={NODES} defaultGroups={[{ id: 'zone', children: ['a'] }]} onInit={(i) => (instance = i)} />);
+    await waitFor(() => expect(instance).toBeDefined());
+    expect(instance!.getModel().getGroup('zone')?.members.has('a')).toBe(true);
+  });
+
   it('mounts a real diagram into the DOM', async () => {
     const { container } = render(<GrafloriaFlow defaultNodes={NODES} />);
 
