@@ -1,1 +1,0 @@
-import{v as r}from"./core.min-e2MmCxtB.js";import{x as f}from"./core.min-e2MmCxtB.js";import"./preloader-D7tuiBjF.js";const p=({track:e})=>{const[s,n]=r(),t=e(()=>n.theme),o=e(()=>s.value);!t||!o||o.setTheme(t)};export{f as _hW,p as s_nCI5ay0GcUA};

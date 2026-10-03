@@ -142767,12 +142767,14 @@ var GroupMembershipService = class {
     }
   }
   /**
-   * Handle a node drag-end at `point`: re-parent the node into the group under
-   * the cursor, or unembed it when dropped outside every group. No-op when the
-   * node is already in the target group. Rejected (no change) when the target
-   * group's validation/cycle rules veto the node.
+   * Decide what a drop at `point` does to what contains `nodeId` — WITHOUT doing
+   * it: the commands that leave the current group and/or join the one under the
+   * point, in order. A host that records the drop as ONE undo step folds them
+   * into the move's own command, runs it, then calls {@link finishDrop}. No
+   * commands when the node stays where it is or the drop is vetoed (`rejected`:
+   * a confining group, or the target's validation/cycle rules).
    */
-  async handleNodeDragEnd(nodeId, point) {
+  planNodeDrop(nodeId, point) {
     const result = {
       nodeId,
       commands: [],
@@ -142780,46 +142782,51 @@ var GroupMembershipService = class {
       rejected: false
     };
     const node = this.diagram.getNode(nodeId);
-    if (!node) {
-      this.clearHover();
-      return result;
-    }
+    if (!node) return result;
     const currentGroup = this.getContainingGroup(nodeId);
     const target = this.hitTestGroup(point);
     result.fromGroupId = currentGroup?.id;
     result.toGroupId = target?.id;
-    if ((target?.id ?? void 0) === (currentGroup?.id ?? void 0)) {
-      this.clearHover();
-      return result;
-    }
+    if ((target?.id ?? void 0) === (currentGroup?.id ?? void 0)) return result;
     if (currentGroup && currentGroup.constrainChildren === true && !areSiblingLanes(this.diagram, currentGroup, target)) {
       result.rejected = true;
-      this.clearHover();
       return result;
     }
     if (target && !target.canAddMember(nodeId, this.diagram)) {
       result.rejected = true;
-      this.clearHover();
       return result;
     }
-    if (currentGroup) {
-      const remove = new RemoveFromGroupCommand(currentGroup.id, nodeId);
-      await this.dispatch(remove);
-      result.commands.push(remove);
-    }
+    if (currentGroup) result.commands.push(new RemoveFromGroupCommand(currentGroup.id, nodeId));
     if (target) {
       this.translateOnReparent(node, currentGroup, target);
-      const add = new AddToGroupCommand(target.id, nodeId);
-      await this.dispatch(add);
-      result.commands.push(add);
-      target.calculateBounds(this.diagram);
-    }
-    if (currentGroup) {
-      currentGroup.calculateBounds(this.diagram);
+      result.commands.push(new AddToGroupCommand(target.id, nodeId));
     }
     result.changed = result.commands.length > 0;
-    this.clearHover();
     return result;
+  }
+  /**
+   * After a planned drop's commands have run: refresh both groups' derived
+   * bounds (one gained a member, one lost one) and clear the hover highlight.
+   */
+  finishDrop(plan) {
+    if (plan.changed) {
+      if (plan.toGroupId) this.diagram.getGroup(plan.toGroupId)?.calculateBounds(this.diagram);
+      if (plan.fromGroupId) this.diagram.getGroup(plan.fromGroupId)?.calculateBounds(this.diagram);
+    }
+    this.clearHover();
+  }
+  /**
+   * Handle a node drag-end at `point`: re-parent the node into the group under
+   * the cursor, or unembed it when dropped outside every group. No-op when the
+   * node is already in the target group. Rejected (no change) when the target
+   * group's validation/cycle rules veto the node. Each command is dispatched on
+   * its own — see {@link planNodeDrop} to record the drop as one step instead.
+   */
+  async handleNodeDragEnd(nodeId, point) {
+    const plan = this.planNodeDrop(nodeId, point);
+    for (const command of plan.commands) await this.dispatch(command);
+    this.finishDrop(plan);
+    return plan;
   }
   /**
    * Coordinate translation seam for reparenting. In the engine's ABSOLUTE model
@@ -189884,8 +189891,7 @@ var DomEventBinder = class {
       const moved = drag.committed;
       this.nodeDrag = null;
       if (moved && engine) this.settleIntoLanes(engine, drag);
-      if (moved && engine) this.commitNodeMove(engine, drag);
-      if (moved && engine) this.applyMembershipOnDrop(engine, drag);
+      if (moved && engine) this.commitDrop(engine, drag);
       const connected = moved ? this.commitProximityConnection() : false;
       if (moved) this.emitNodesChange();
       if (connected) this.emitEdgesChange();
@@ -190501,13 +190507,18 @@ var DomEventBinder = class {
       if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
     }
   }
-  applyMembershipOnDrop(engine, drag) {
-    if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return;
-    if (drag.nodeIds.length !== 1 || this.isReadonly()) return;
+  /**
+   * What the drop does to what contains the dragged node — PLANNED, not done:
+   * the leave/join commands ride in the drop's own undo step (see commitDrop).
+   * Null when drop-to-join is off, several nodes moved, or the node is locked.
+   */
+  planMembershipOnDrop(engine, drag) {
+    if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return null;
+    if (drag.nodeIds.length !== 1 || this.isReadonly()) return null;
     const diagram = engine.getDiagram();
-    if (!diagram) return;
+    if (!diagram) return null;
     const node = diagram.getNode(drag.nodeIds[0]);
-    if (!node || node.state.locked) return;
+    if (!node || node.state.locked) return null;
     if (!this.membership || this.membership.diagram !== diagram) {
       this.membership = {
         diagram,
@@ -190520,17 +190531,13 @@ var DomEventBinder = class {
       x: node.position.x + node.size.width / 2,
       y: node.position.y + node.size.height / 2
     };
-    void Promise.resolve(service.handleNodeDragEnd(node.id, point)).then((result) => {
-      if (result?.changed) {
-        this.emitNodesChange();
-        this.host.requestRender();
-      }
-    });
+    return { service, plan: service.planNodeDrop(node.id, point) };
   }
-  commitNodeMove(engine, drag) {
-    if (!drag.committed || !drag.startPositions) return;
+  /** One MoveNodeCommand per dragged node that actually moved (FROM → TO). */
+  moveSteps(engine, drag) {
+    if (!drag.committed || !drag.startPositions) return [];
     const diagram = engine.getDiagram();
-    if (!diagram) return;
+    if (!diagram) return [];
     const steps = [];
     for (const id of drag.nodeIds) {
       const node = diagram.getNode(id);
@@ -190547,16 +190554,32 @@ var DomEventBinder = class {
         )
       );
     }
-    if (steps.length === 0) return;
-    let command;
-    if (steps.length === 1) {
-      command = steps[0];
-    } else {
-      const macro = new MacroCommand("Move nodes");
-      for (const s of steps) macro.addStep(s);
-      command = macro;
-    }
-    void engine.commandManager.execute(command);
+    return steps;
+  }
+  /** Run `steps` through the command manager as ONE history entry. */
+  executeAsOneStep(engine, name, steps) {
+    if (steps.length === 0) return Promise.resolve();
+    if (steps.length === 1) return Promise.resolve(engine.commandManager.execute(steps[0]));
+    const macro = new MacroCommand(name);
+    for (const step of steps) macro.addStep(step);
+    return Promise.resolve(engine.commandManager.execute(macro));
+  }
+  /** A completed drop: the move plus any membership change, one undo step. */
+  commitDrop(engine, drag) {
+    const membership = this.planMembershipOnDrop(engine, drag);
+    const steps = [...this.moveSteps(engine, drag), ...membership?.plan.commands ?? []];
+    void this.executeAsOneStep(engine, membership?.plan.changed ? "Move into group" : "Move nodes", steps).then(() => {
+      if (!membership) return;
+      membership.service.finishDrop(membership.plan);
+      if (membership.plan.changed) {
+        this.emitNodesChange();
+        this.host.requestRender();
+      }
+    });
+  }
+  /** The move alone, one undo step (a drag the pointer abandoned mid-way). */
+  commitNodeMove(engine, drag) {
+    void this.executeAsOneStep(engine, "Move nodes", this.moveSteps(engine, drag));
   }
   /**
    * End a group drag: commit the whole gesture as ONE undoable MoveGroupCommand
