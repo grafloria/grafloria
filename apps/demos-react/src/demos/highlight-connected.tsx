@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { GrafloriaFlow } from '@grafloria/react';
 import type { DiagramInstance } from '@grafloria/react';
 import { markReady } from '../ready';
@@ -112,22 +112,14 @@ const selectOnly = (api: DiagramInstance, ...ids: string[]) => {
  *  crossing a card is lifted above it and dashed. One option,
  *  highlightConnected, and a trace mode that follows the whole path. */
 export default function HighlightConnectedDemo() {
-  const api = useRef<DiagramInstance | null>(null);
   const [bar, setBar] = useState<BarState>({ on: true, depth: 1, outgoing: 'solid' });
   const option = optionFor(bar);
 
-  // The handler applies the option to the live canvas right away (as the JS
-  // page does) and keeps the bar's state in React for its own paint.
-  const change = (next: Partial<BarState>) => {
-    const s = { ...bar, ...next };
-    setBar(s);
-    api.current?.setHighlightConnected(optionFor(s));
-    api.current?.renderNow();
-  };
+  // The bar's choices are React state; the canvas follows the
+  // highlightConnected prop.
+  const change = (next: Partial<BarState>) => setBar({ ...bar, ...next });
 
   const onInit = (instance: DiagramInstance) => {
-    api.current = instance;
-    instance.setHighlightConnected(optionFor(bar));
     instance.fitView(40);
     instance.renderNow();
     selectOnly(instance, 'adtext');
@@ -150,7 +142,8 @@ export default function HighlightConnectedDemo() {
         <code id="hc-code">{readout(option)}</code>
       </div>
       <div id="hc-canvas">
-        <GrafloriaFlow defaultNodes={nodes as never} defaultEdges={edges as never} interaction={{ portVisibility: 'always' }} onInit={onInit} />
+        <GrafloriaFlow defaultNodes={nodes as never} defaultEdges={edges as never} interaction={{ portVisibility: 'always' }}
+          highlightConnected={option} onInit={onInit} />
       </div>
     </div>
   );

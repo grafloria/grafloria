@@ -71,13 +71,12 @@ const readout = (o: HighlightOption) =>
 
 let api: DiagramInstance | null = null;
 const bar = reactive<BarState>({ on: true, depth: 1, outgoing: 'solid' });
-const code = computed(() => readout(optionFor(bar)));
+const option = computed(() => optionFor(bar));
+const code = computed(() => readout(option.value));
 
-// Each choice applies the option to the live canvas right away, as the JS page does.
+// The bar's choices are reactive state; the canvas follows the highlightConnected prop.
 function change(next: Partial<BarState>) {
   Object.assign(bar, next);
-  api?.setHighlightConnected(optionFor(bar));
-  api?.renderNow();
 }
 
 function onToggle(e: Event) {
@@ -94,7 +93,6 @@ function selectOnly(...ids: string[]) {
 
 function onInit(inst: DiagramInstance) {
   api = inst;
-  inst.setHighlightConnected(optionFor(bar));
   inst.fitView(40);
   inst.renderNow();
   selectOnly('adtext');
@@ -117,7 +115,8 @@ function onInit(inst: DiagramInstance) {
       <code id="hc-code">{{ code }}</code>
     </div>
     <div id="hc-canvas">
-      <GrafloriaFlow :default-nodes="nodes" :default-edges="edges" :interaction="interaction" @init="onInit" />
+      <GrafloriaFlow :default-nodes="nodes" :default-edges="edges" :interaction="interaction"
+        :highlight-connected="option" @init="onInit" />
     </div>
   </div>
 </template>
