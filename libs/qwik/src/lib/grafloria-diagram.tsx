@@ -10,7 +10,8 @@
  *
  * Takes any kit spec — `erDiagram(...)`, `umlDiagram(...)`, `dashboard(...)` —
  * or DSL text, and renders it. All DOM work happens in `useVisibleTask$`, so
- * the component is server-safe.
+ * the component is server-safe. A CHANGED spec (or options) replaces the
+ * diagram and fires `onReady$` again; an equal one built again does not.
  */
 import {
   component$,
@@ -23,6 +24,7 @@ import {
 import { render as renderSpec, type RenderOptions, type RenderSpec } from '@grafloria/element';
 import type { DiagramInstance } from '@grafloria/renderer';
 import { MOUNT_EAGERLY } from './visible-task-options';
+import { specKey } from './spec-key';
 
 export interface GrafloriaDiagramProps {
   /** Any kit spec — erDiagram(...), umlDiagram(...), dashboard(...), or DSL text. */
@@ -37,22 +39,30 @@ export interface GrafloriaDiagramProps {
 export const GrafloriaDiagram = component$<GrafloriaDiagramProps>((props) => {
   const containerRef = useSignal<HTMLElement>();
   const instanceRef = useSignal<NoSerialize<DiagramInstance>>();
+  const mountedKey = useSignal('');
 
+  // Mount, and remount when the spec or options change by VALUE.
   // eslint-disable-next-line qwik/no-use-visible-task
-  useVisibleTask$(({ cleanup }) => {
+  useVisibleTask$(({ track }) => {
+    const spec = track(() => props.spec);
+    const options = track(() => props.options);
     const container = containerRef.value;
     if (!container) return;
+    const key = specKey(spec, options);
+    if (instanceRef.value && key === mountedKey.value) return;
 
-    const instance = renderSpec(
-      props.spec,
-      container,
-      props.options ?? {}
-    ) as DiagramInstance;
+    instanceRef.value?.dispose();
+    mountedKey.value = key;
+    const instance = renderSpec(spec, container, options ?? {}) as DiagramInstance;
     instanceRef.value = noSerialize(instance);
     void props.onReady$?.(instance);
+  }, MOUNT_EAGERLY);
 
+  // Dispose on unmount only — a re-run of the task above must not.
+  // eslint-disable-next-line qwik/no-use-visible-task
+  useVisibleTask$(({ cleanup }) => {
     cleanup(() => {
-      instance.dispose();
+      instanceRef.value?.dispose();
       instanceRef.value = undefined;
     });
   }, MOUNT_EAGERLY);

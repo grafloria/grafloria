@@ -3,13 +3,16 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  OnChanges,
   OnDestroy,
+  SimpleChanges,
   inject,
   input,
   output,
 } from '@angular/core';
 import { render, type RenderSpec, type RenderOptions } from '@grafloria/element';
 import type { DiagramInstance } from '@grafloria/renderer';
+import { specKey } from '../spec-key';
 
 /**
  * `<grafloria-diagram>` — the generic kit host. Any kit spec renders:
@@ -31,7 +34,7 @@ import type { DiagramInstance } from '@grafloria/renderer';
   styles: [':host { display: block; position: relative; }'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class GrafloriaDiagramComponent implements AfterViewInit, OnDestroy {
+export class GrafloriaDiagramComponent implements AfterViewInit, OnChanges, OnDestroy {
   /** Any kit spec — `erDiagram(...)`, `umlDiagram(...)`, `dashboard(...)`, or DSL text. */
   readonly spec = input.required<RenderSpec>();
   /** Options passed through to the underlying `createDiagram`. */
@@ -41,8 +44,21 @@ export class GrafloriaDiagramComponent implements AfterViewInit, OnDestroy {
 
   private readonly hostRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private instance?: DiagramInstance;
+  private mountedKey = '';
 
   ngAfterViewInit(): void {
+    this.mount();
+  }
+
+  /** A CHANGED spec or options replaces the diagram; an equal new one does not. */
+  ngOnChanges(changes: SimpleChanges): void {
+    if (!this.instance || !(changes['spec'] || changes['options'])) return;
+    if (specKey(this.spec(), this.options()) !== this.mountedKey) this.mount();
+  }
+
+  private mount(): void {
+    this.instance?.dispose();
+    this.mountedKey = specKey(this.spec(), this.options());
     this.instance = render(this.spec(), this.hostRef.nativeElement, this.options());
     this.ready.emit(this.instance);
   }
