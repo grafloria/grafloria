@@ -45,6 +45,16 @@ const edges = ref<EdgeSpec[]>([{ source: 'a', target: 'b' }]);
   the selected node, nodes with a validation issue, and valid connection
   targets. Off by default; `true` turns every kind on, an object picks kinds
   (`{ showValidation: false }` keeps hover and selection only). Follows the prop live.
+- **`highlightConnected`** — select a node and its lines come forward in ink
+  while the rest fade: `true`, or `{ depth, stroke, outgoing, dimOpacity }`
+  (`depth: Infinity` traces every path in and out). Off by default; follows
+  the prop live.
+- **`groups` / `defaultGroups`** — zones around some nodes: a spec's `groups`,
+  or the live GroupModels of a loaded document (`fromDocument()`), reconciled
+  like `nodes`.
+- **`<GrafloriaDiagram spec>`** — hosts any kit spec. A CHANGED spec (or
+  options) replaces the diagram; an equal one built again on a re-render does
+  not, so `spec={erDiagram({ … })}` written inline is fine.
 - **Events** — `@init` (the `DiagramInstance`), `@selection-change`,
   `@connect`, `@node-click`, `@edge-click`.
 - **Template ref API** — `getInstance()`, `applyLayout()`, `exportSvg()`,

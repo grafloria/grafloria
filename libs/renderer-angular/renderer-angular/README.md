@@ -49,6 +49,9 @@ export class FlowComponent {
   the selected node, nodes with a validation issue, and valid connection
   targets. On by default; `false` turns it off with no CSS, an object picks
   kinds (`{ showValidation: false }` keeps hover and selection only).
+- `<grafloria-diagram [spec] [options] (ready)>` — hosts any kit spec through the
+  full renderer. A CHANGED spec (or options) replaces the diagram and emits
+  `ready` again; an equal one built again does not.
 
 ## Custom nodes are `ng-template`s
 
