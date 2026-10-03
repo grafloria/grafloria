@@ -1993,19 +1993,31 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       return; // click, or a drag that returned to its origin → no history entry
     }
 
+    // …and so does any change of WHAT CONTAINS the node: planned here, run in
+    // the same step (a drop out of a group used to take two Ctrl+Z presses).
+    const membership = diagram && moves.length > 0 ? this.planMembershipOnDrop(diagram, dropped) : null;
+    const memberCommands = membership?.plan.commands ?? [];
+
     let command: Command;
     if (moves.length === 0 && linkCommand) {
       command = linkCommand;
-    } else if (moves.length === 1 && !linkCommand) {
+    } else if (moves.length === 1 && !linkCommand && memberCommands.length === 0) {
       command = this.buildMoveCommand(moves[0]);
     } else {
       const macro = this.buildMoveMacro(moves);
       if (linkCommand) macro.addStep(linkCommand);
+      for (const step of memberCommands) macro.addStep(step);
       command = macro;
     }
 
-    this.executeCommand(command);
-    if (diagram && moves.length > 0) this.applyMembershipOnDrop(diagram, dropped);
+    void this.executeCommand(command).then(() => {
+      if (!membership) return;
+      membership.service.finishDrop(membership.plan);
+      if (membership.plan.changed) {
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   /** A lane member settles fully inside the lane its centre landed in. */
@@ -2028,24 +2040,22 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /**
    * A single dropped node may change WHAT CONTAINS it: into the group (or lane)
    * under its centre, out of a group that does not confine it. The engine's
-   * GroupMembershipService decides, exactly as for every other host.
+   * GroupMembershipService decides, exactly as for every other host — PLANNED
+   * here, so the drop's own undo step carries the change.
    */
-  private applyMembershipOnDrop(diagram: DiagramModel, nodeIds: string[]): void {
-    if (nodeIds.length !== 1 || diagram.isReadonly()) return;
-    if ((this.eng.getInteractionConfig?.() as { enableGroupMembershipOnDrop?: boolean } | undefined)?.enableGroupMembershipOnDrop === false) return;
-    if (diagram.getGroups().length === 0) return;
+  private planMembershipOnDrop(
+    diagram: DiagramModel,
+    nodeIds: string[]
+  ): { service: GroupMembershipService; plan: ReturnType<GroupMembershipService['planNodeDrop']> } | null {
+    if (nodeIds.length !== 1 || diagram.isReadonly()) return null;
+    if ((this.eng.getInteractionConfig?.() as { enableGroupMembershipOnDrop?: boolean } | undefined)?.enableGroupMembershipOnDrop === false) return null;
+    if (diagram.getGroups().length === 0) return null;
     const node = diagram.getNode(nodeIds[0]!);
-    if (!node) return;
+    if (!node) return null;
     const service = new GroupMembershipService({ diagram, dispatcher: this.eng.commandManager });
     service.refresh();
-    void Promise.resolve(
-      service.handleNodeDragEnd(node.id, { x: node.position.x + node.size.width / 2, y: node.position.y + node.size.height / 2 })
-    ).then((result) => {
-      if (result?.changed) {
-        this.renderDiagram();
-        this.cdr.markForCheck();
-      }
-    });
+    const plan = service.planNodeDrop(node.id, { x: node.position.x + node.size.width / 2, y: node.position.y + node.size.height / 2 });
+    return { service, plan };
   }
 
   /** One node's gesture-committed move (opts out of CommandManager merging). */

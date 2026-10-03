@@ -74,6 +74,43 @@ describe('GroupMembershipService (Wave-2)', () => {
     });
   });
 
+  describe('planNodeDrop — decide without doing', () => {
+    it('plans leave-then-join and changes nothing until the commands run', async () => {
+      const node = makeNode('n1', 50, 50);
+      diagram.addNode(node);
+      const from = makeGroup('from', { x: 0, y: 0, width: 200, height: 200 });
+      const to = makeGroup('to', { x: 400, y: 0, width: 200, height: 200 });
+      diagram.addGroup(from);
+      diagram.addGroup(to);
+      from.addMember('n1', diagram);
+      service.refresh();
+
+      const plan = service.planNodeDrop('n1', { x: 500, y: 100 });
+
+      expect(plan.changed).toBe(true);
+      expect(plan.commands.map((c) => c.constructor)).toEqual([RemoveFromGroupCommand, AddToGroupCommand]);
+      expect(from.members.has('n1')).toBe(true); // nothing done yet
+      expect(to.members.has('n1')).toBe(false);
+      expect(commandManager.canUndo()).toBe(false);
+
+      for (const command of plan.commands) await command.execute({ diagram, eventBus });
+      service.finishDrop(plan);
+      expect(to.members.has('n1')).toBe(true);
+      expect(from.members.has('n1')).toBe(false);
+    });
+
+    it('plans nothing for a drop back into the same group', () => {
+      diagram.addNode(makeNode('n1', 50, 50));
+      const g = makeGroup('g', { x: 0, y: 0, width: 200, height: 200 });
+      diagram.addGroup(g);
+      g.addMember('n1', diagram);
+      service.refresh();
+      const plan = service.planNodeDrop('n1', { x: 120, y: 120 });
+      expect(plan.changed).toBe(false);
+      expect(plan.commands).toHaveLength(0);
+    });
+  });
+
   describe('drag-out', () => {
     it('dispatches a RemoveFromGroupCommand when dragged outside its group', async () => {
       const node = makeNode('n1', 50, 50);

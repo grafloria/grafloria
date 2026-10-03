@@ -1297,10 +1297,10 @@ export class DomEventBinder {
       // A lane member settles fully inside the lane it was dropped in, BEFORE the
       // move is recorded, so undo/redo replay the position the user saw.
       if (moved && engine) this.settleIntoLanes(engine, drag);
-      // wave12: record the completed drag as one undoable step BEFORE anything else.
-      if (moved && engine) this.commitNodeMove(engine, drag);
-      // T8/visio: the drop may also change WHAT CONTAINS the node.
-      if (moved && engine) this.applyMembershipOnDrop(engine, drag);
+      // wave12 + T8/visio: record the completed drag — and any change of WHAT
+      // CONTAINS the node that the drop makes — as ONE undoable step (a drop out
+      // of a group used to take two Ctrl+Z presses, into another group three).
+      if (moved && engine) this.commitDrop(engine, drag);
       // wave12 (gap 2): a drag that ended near a compatible port auto-links on drop.
       const connected = moved ? this.commitProximityConnection() : false;
       if (moved) this.emitNodesChange();
@@ -2136,14 +2136,22 @@ export class DomEventBinder {
     }
   }
 
-  private applyMembershipOnDrop(engine: DiagramEngine, drag: NodeDragState): void {
-    if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return;
-    if (drag.nodeIds.length !== 1 || this.isReadonly()) return;
+  /**
+   * What the drop does to what contains the dragged node — PLANNED, not done:
+   * the leave/join commands ride in the drop's own undo step (see commitDrop).
+   * Null when drop-to-join is off, several nodes moved, or the node is locked.
+   */
+  private planMembershipOnDrop(
+    engine: DiagramEngine,
+    drag: NodeDragState
+  ): { service: GroupMembershipService; plan: ReturnType<GroupMembershipService['planNodeDrop']> } | null {
+    if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return null;
+    if (drag.nodeIds.length !== 1 || this.isReadonly()) return null;
 
     const diagram = engine.getDiagram();
-    if (!diagram) return;
+    if (!diagram) return null;
     const node = diagram.getNode(drag.nodeIds[0]);
-    if (!node || node.state.locked) return;
+    if (!node || node.state.locked) return null;
 
     if (!this.membership || this.membership.diagram !== diagram) {
       this.membership = {
@@ -2161,18 +2169,14 @@ export class DomEventBinder {
       x: node.position.x + node.size.width / 2,
       y: node.position.y + node.size.height / 2,
     };
-    void Promise.resolve(service.handleNodeDragEnd(node.id, point)).then((result) => {
-      if (result?.changed) {
-        this.emitNodesChange();
-        this.host.requestRender();
-      }
-    });
+    return { service, plan: service.planNodeDrop(node.id, point) };
   }
 
-  private commitNodeMove(engine: DiagramEngine, drag: NodeDragState): void {
-    if (!drag.committed || !drag.startPositions) return;
+  /** One MoveNodeCommand per dragged node that actually moved (FROM → TO). */
+  private moveSteps(engine: DiagramEngine, drag: NodeDragState): Command[] {
+    if (!drag.committed || !drag.startPositions) return [];
     const diagram = engine.getDiagram();
-    if (!diagram) return;
+    if (!diagram) return [];
 
     const steps: Command[] = [];
     for (const id of drag.nodeIds) {
@@ -2189,17 +2193,35 @@ export class DomEventBinder {
         )
       );
     }
-    if (steps.length === 0) return;
+    return steps;
+  }
 
-    let command: Command;
-    if (steps.length === 1) {
-      command = steps[0];
-    } else {
-      const macro = new MacroCommand('Move nodes');
-      for (const s of steps) macro.addStep(s);
-      command = macro;
-    }
-    void engine.commandManager.execute(command);
+  /** Run `steps` through the command manager as ONE history entry. */
+  private executeAsOneStep(engine: DiagramEngine, name: string, steps: Command[]): Promise<void> {
+    if (steps.length === 0) return Promise.resolve();
+    if (steps.length === 1) return Promise.resolve(engine.commandManager.execute(steps[0]));
+    const macro = new MacroCommand(name);
+    for (const step of steps) macro.addStep(step);
+    return Promise.resolve(engine.commandManager.execute(macro));
+  }
+
+  /** A completed drop: the move plus any membership change, one undo step. */
+  private commitDrop(engine: DiagramEngine, drag: NodeDragState): void {
+    const membership = this.planMembershipOnDrop(engine, drag);
+    const steps = [...this.moveSteps(engine, drag), ...(membership?.plan.commands ?? [])];
+    void this.executeAsOneStep(engine, membership?.plan.changed ? 'Move into group' : 'Move nodes', steps).then(() => {
+      if (!membership) return;
+      membership.service.finishDrop(membership.plan);
+      if (membership.plan.changed) {
+        this.emitNodesChange();
+        this.host.requestRender();
+      }
+    });
+  }
+
+  /** The move alone, one undo step (a drag the pointer abandoned mid-way). */
+  private commitNodeMove(engine: DiagramEngine, drag: NodeDragState): void {
+    void this.executeAsOneStep(engine, 'Move nodes', this.moveSteps(engine, drag));
   }
 
   /**
