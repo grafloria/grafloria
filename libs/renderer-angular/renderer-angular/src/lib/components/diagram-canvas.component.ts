@@ -80,6 +80,16 @@ export interface GrafloriaCollabOptions {
   [option: string]: unknown;
 }
 
+/**
+ * Payload of `(selectionChange)`: the selected nodes and edges after the change
+ * — the same shape React's `onSelectionChange`, Vue's `selectionChange` and
+ * Qwik's `onSelectionChange$` hand their callbacks.
+ */
+export interface SelectionChange {
+  nodes: NodeModel[];
+  edges: LinkModel[];
+}
+
 /** Request shape for the declarative `[layout]` input / `applyLayout()`. */
 export interface GrafloriaLayoutRequest {
   /** Registry layout name: 'elk' | 'dagre' | 'force' | 'tree' | 'grid' | 'auto' | … */
@@ -669,6 +679,17 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    * `[edges]` is not echoed back at you.
    */
   readonly modelChange = output<DiagramIncremental>();
+
+  /**
+   * The selection changed: the selected nodes and edges AFTER the change. Same
+   * name and payload as React's `onSelectionChange`, Vue's `selectionChange`
+   * and Qwik's `onSelectionChange$`. Emitted once per real change, whatever
+   * made it (a click, a marquee, the keyboard, the model API): a burst of model
+   * events — a click deselects, then selects — is coalesced into one emission
+   * with the final selection, and a change that leaves the selection as it was
+   * (re-clicking the selected node, dragging it) emits nothing.
+   */
+  readonly selectionChange = output<SelectionChange>();
 
   // ==========================================================================
   // Derived / internal state
@@ -1409,6 +1430,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     if (diagram) {
       this.capture = beginIncrementalCapture(diagram);
     }
+    // The selection the canvas starts with is not a change.
+    this.lastSelectionKey = diagram ? this.selectionKey(diagram) : '';
 
     this.scheduleRender();
   }
@@ -2924,6 +2947,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
           ({ newDiagram }: { oldDiagram: DiagramModel | null; newDiagram: DiagramModel | null }) => {
             // Re-subscribe to the new diagram's events
             this.subscribeToDiagramEvents(newDiagram);
+            this.lastSelectionKey = newDiagram ? this.selectionKey(newDiagram) : '';
             // The capture is bound to a specific diagram — rebind it too.
             this.capture?.stop();
             this.capture = newDiagram ? beginIncrementalCapture(newDiagram) : null;
@@ -2986,6 +3010,67 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     ] as const) {
       this.engineSubscriptions.push(diagram.on(event, onMutation));
     }
+
+    // (selectionChange): every event that can change WHAT is selected — the
+    // model's selection API, a node/link state change (marquee, link click,
+    // node.setSelected), a selected entity being removed.
+    const onSelection = () => this.scheduleSelectionCheck();
+    for (const event of [
+      'selection:changed',
+      'node:changed',
+      'node:removed',
+      'nodes:cleared',
+      'link:changed',
+      'link:removed',
+      'links:cleared',
+    ] as const) {
+      this.engineSubscriptions.push(diagram.on(event, onSelection));
+    }
+  }
+
+  /** The selection last reported (or the one the canvas started with). */
+  private lastSelectionKey = '';
+  private selectionCheckQueued = false;
+
+  /** Order-insensitive identity of the current selection. */
+  private selectionKey(diagram: DiagramModel): string {
+    const nodes = diagram.getSelectedNodes().map((node) => node.id).sort();
+    const edges = diagram
+      .getLinks()
+      .filter((link) => link.state === 'selected')
+      .map((link) => link.id)
+      .sort();
+    return `${nodes.join('\u0000')}|${edges.join('\u0000')}`;
+  }
+
+  /** Coalesce a burst of model events into ONE selection check. */
+  private scheduleSelectionCheck(): void {
+    if (this.selectionCheckQueued || this.destroyed) {
+      return;
+    }
+    this.selectionCheckQueued = true;
+    queueMicrotask(() => {
+      this.selectionCheckQueued = false;
+      if (!this.destroyed) {
+        this.emitSelectionIfChanged();
+      }
+    });
+  }
+
+  private emitSelectionIfChanged(): void {
+    const diagram = this.eng?.getDiagram();
+    if (!diagram) {
+      return;
+    }
+    const key = this.selectionKey(diagram);
+    if (key === this.lastSelectionKey) {
+      return;
+    }
+    this.lastSelectionKey = key;
+    this.selectionChange.emit({
+      nodes: diagram.getSelectedNodes(),
+      edges: diagram.getLinks().filter((link) => link.state === 'selected'),
+    });
   }
 
   /**
