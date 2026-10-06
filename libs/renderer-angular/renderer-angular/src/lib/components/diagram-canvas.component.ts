@@ -119,7 +119,6 @@ import {
   type AlignmentGuide,
   type SpacingGuide,
   type ProximityCandidate,
-  HighlighterController,
   type Highlighter,
   type HighlighterConfig,
   DEFAULT_HIGHLIGHTER_CONFIG,
@@ -182,6 +181,7 @@ import {
   MarqueeSelection,
   ToolInteractionMode,
 } from '../interaction';
+import { CanvasHighlighterController } from '../interaction/canvas-highlighter';
 // Wave 3 (Edges & links): path-anchored edge toolbar. The canvas only HOSTS it
 // (picks the target link, forwards viewport/zoom) — all toolbar logic lives in
 // the component.
@@ -802,7 +802,9 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   private readonly selectionTools = new SelectionToolsController();
   private readonly snapController = new SnapController();
-  private readonly highlighterController = new HighlighterController();
+  // Not the bare HighlighterController: built-in shape types (`rect`, the
+  // default type of every node spec) are not flagged as unregistered.
+  private readonly highlighterController = new CanvasHighlighterController();
   private readonly keyboardNav = new KeyboardNavigationController();
   private readonly inPlaceEditor = new InPlaceTextEditor();
 
