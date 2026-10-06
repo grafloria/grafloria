@@ -1370,6 +1370,12 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
     this.initializeRenderer();
     this.initializeToolManager();
+    // The interaction controller reads the engine's config AND bridges the
+    // `registerConnectionValidator` registry into the engine's validator list
+    // (once per engine). The JS canvas does this at mount; here it used to run
+    // only on `config:interaction-changed`, so a registered policy never vetoed
+    // a dragged wire until something called setInteractionConfig.
+    this.interactionHandler.syncWithEngineConfig(engine);
     // wave4/interaction: selection tools / snapping / highlighters / keyboard nav.
     // Their previous call sites (ngAfterViewInit + ngOnChanges) were deleted by the
     // signal rewrite, so attachEngine — the single place an engine is wired — owns
