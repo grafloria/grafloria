@@ -280,6 +280,46 @@ describe('BroadcastChannelTransport — against the REAL BroadcastChannel', () =
     late.dispose();
   });
 
+  it('a session never closes the transport it was HANDED: a remount on the same one syncs again', async () => {
+    // React StrictMode (on by default in Vite and Next dev) mounts, cleans up and mounts
+    // again. The binding's cleanup is `leave()` + `dispose()`, and `dispose()` used to call
+    // `transport.close()` — permanently closing a BroadcastChannelTransport the CALLER made,
+    // so the second mount joined a dead channel and nothing ever synced, with no error.
+    // The session did not create the transport; it must not destroy it.
+    const room = `grafloria-test-${Math.random().toString(36).slice(2)}`;
+    const callersTransport = new BroadcastChannelTransport({ name: room, actor: 'tab-1' });
+
+    // first mount, then StrictMode's cleanup
+    const first = createSyncSession(seeded(), callersTransport, { actor: 'tab-1', batch: { intervalMs: 5 } });
+    first.join();
+    first.leave();
+    first.dispose();
+
+    // second mount: a NEW diagram and session, the SAME transport object
+    const remounted = createSyncSession(seeded(), callersTransport, { actor: 'tab-1', batch: { intervalMs: 5 } });
+    remounted.join();
+    expect(callersTransport.status).toBe('connected');
+
+    const other = createSyncSession(
+      seeded(),
+      new BroadcastChannelTransport({ name: room, actor: 'tab-2' }),
+      { actor: 'tab-2', batch: { intervalMs: 5 } }
+    );
+    other.join();
+
+    // both directions, through the remounted session
+    other.diagram.getNode('n1')!.setPosition(31, 62);
+    await until(() => remounted.diagram.getNode('n1')!.position.x === 31);
+    remounted.diagram.getNode('n1')!.setPosition(93, 124);
+    await until(() => other.diagram.getNode('n1')!.position.x === 93);
+
+    remounted.dispose();
+    other.dispose();
+    // Still the caller's to close — and closing it is their call, not the session's.
+    expect(callersTransport.status).toBe('disconnected');
+    callersTransport.close();
+  });
+
   it('carries LIVE CURSORS between tabs — and never puts one in the op log', async () => {
     const room = `grafloria-test-${Math.random().toString(36).slice(2)}`;
     const mk = (actor: string): SyncAdapter => {

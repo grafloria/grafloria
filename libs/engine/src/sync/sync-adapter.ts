@@ -592,6 +592,20 @@ export class SyncAdapter {
     this.awarenessPending = false;
   }
 
+  /**
+   * Stop for good: leave (which DISCONNECTS the transport), drop every timer and
+   * unsubscribe from the transport.
+   *
+   * It does NOT close the transport. The session was handed that transport; it did not
+   * create it, so it is not the session's to destroy. This used to call
+   * `transport.close()`, and that broke collaboration under React StrictMode — on by
+   * default in Vite and Next dev — where a component mounts, cleans up and mounts again:
+   * the cleanup permanently closed the caller's `BroadcastChannelTransport`, and the
+   * second mount joined a dead channel. Nothing synced, and nothing said why.
+   *
+   * A disconnected transport holds no socket or channel and can be joined again by a new
+   * session. Call `transport.close()` yourself when the transport itself is done.
+   */
   dispose(): void {
     if (this.disposed) return;
     if (this.joined) this.leave();
@@ -600,7 +614,6 @@ export class SyncAdapter {
     this.batcher?.dispose();
     for (const u of this.unsubs) u();
     this.unsubs.length = 0;
-    this.transport.close();
   }
 }
 

@@ -1,5 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { useState } from 'react';
+import { StrictMode, useState } from 'react';
 import type { NodeModel } from '@grafloria/engine';
 import { renderToStaticSVG } from '@grafloria/renderer';
 import type { DiagramInstance, NodeSpec } from '@grafloria/renderer';
@@ -480,6 +480,41 @@ describe('collab — two flows over a MemoryHub', () => {
     await waitFor(() => {
       const nodeB = b!.getModel().getNode(nodeA.id)!;
       expect({ x: nodeB.position.x, y: nodeB.position.y }).toEqual({ x: 333, y: 77 });
+    });
+  });
+});
+
+describe('collab under React StrictMode', () => {
+  it('the double mount does not kill the caller\'s transport: the panes still sync', async () => {
+    // StrictMode mounts, runs the cleanup, and mounts again. The cleanup used to dispose
+    // the session, and dispose closed the transport the CALLER created — so the real
+    // mount joined a dead channel and nothing ever synced, with no error anywhere.
+    const { MemoryHub } = require('@grafloria/engine');
+    const hub = new MemoryHub();
+    const transportA = hub.connect('actor-a');
+    const transportB = hub.connect('actor-b');
+    let a: DiagramInstance | undefined;
+    let b: DiagramInstance | undefined;
+    render(
+      <StrictMode>
+        <GrafloriaFlow defaultNodes={NODES} onInit={(i) => (a = i)}
+          collab={{ transport: transportA, actor: 'actor-a', batch: false }} />
+        <GrafloriaFlow defaultNodes={NODES} onInit={(i) => (b = i)}
+          collab={{ transport: transportB, actor: 'actor-b', batch: false }} />
+      </StrictMode>
+    );
+    await waitFor(() => expect(a && b).toBeTruthy());
+    expect(transportA.status).toBe('connected');
+
+    a!.getModel().getNode('a')!.setPosition(321, 54);
+    await waitFor(() => {
+      const nodeB = b!.getModel().getNode('a')!;
+      expect({ x: nodeB.position.x, y: nodeB.position.y }).toEqual({ x: 321, y: 54 });
+    });
+    b!.getModel().getNode('b')!.setPosition(12, 34);
+    await waitFor(() => {
+      const nodeA = a!.getModel().getNode('b')!;
+      expect({ x: nodeA.position.x, y: nodeA.position.y }).toEqual({ x: 12, y: 34 });
     });
   });
 });
