@@ -24,3 +24,4 @@ export * from './edge-optimizer'; // Wave 4 Card 7 - diagram-wide incremental la
 export * from './edge-templates'; // Wave 4 Card 5 - link/label templates + custom markers
 export * from './route-memo'; // Wave 8 Card 6 - incremental routing: re-route only what changed
 export * from './route-solver-bridge'; // Wave 8 Card 6 - the render loop driving the off-thread global solver
+export * from './group-frame-bounds'; // fit-to-content: the group frames the canvas draws

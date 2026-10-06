@@ -53,6 +53,7 @@ import { filterTreeByIds } from '../export/scope';
 import { collectAssetUrls, inlineAssets } from '../export/assets';
 import { customNodeVNodes, filterCaptures } from '../export/custom-nodes';
 import { exportPdf, type PdfExportResult } from '../export/pdf/pdf-export';
+import { groupFrameRects } from './group-frame-bounds';
 import { paginate, type Page, type PaginationOptions } from '../export/pagination';
 
 /** One paginated tile: its grid position, its world window, and the SVG for it. */
@@ -2587,6 +2588,14 @@ export class SVGRenderer implements IRenderer {
           maxX = Math.max(maxX, point.x);
           maxY = Math.max(maxY, point.y);
         }
+      }
+      // Group frames reach past their members; a frame outside this window
+      // would be culled from the export.
+      for (const frame of groupFrameRects(diagram, { captionFontSize: this.theme.typography.fontSize.sm })) {
+        minX = Math.min(minX, frame.x);
+        minY = Math.min(minY, frame.y);
+        maxX = Math.max(maxX, frame.x + frame.width);
+        maxY = Math.max(maxY, frame.y + frame.height);
       }
     }
 

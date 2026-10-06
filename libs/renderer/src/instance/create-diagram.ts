@@ -53,6 +53,7 @@ import { isBrowser } from '../platform';
 import { HtmlHostCuller } from '../lazy/host-culling';
 import type { HostCullOptions } from '../lazy/host-culling';
 import type { ViewLifecycle } from '../lazy/view-lifecycle';
+import { groupFrameRects } from '../svg/group-frame-bounds';
 
 /**
  * `createDiagram()` — the headless instance factory.
@@ -1890,10 +1891,14 @@ export function createDiagram(
 }
 
 
-/** World bounding box of every visible node, or null when there is nothing to fit. */
+/**
+ * World bounding box of what the canvas draws — every visible node, every routed
+ * link waypoint, every group frame with its caption — or null when there is
+ * nothing to fit.
+ */
 export function contentBounds(model: DiagramModel): Rectangle | null {
   const nodes = model.getNodes().filter((n: NodeModel) => n.state?.visible !== false);
-  if (nodes.length === 0) return null;
+  if (nodes.length === 0 && groupFrameRects(model).length === 0) return null;
 
   let left = Infinity;
   let top = Infinity;
@@ -1918,6 +1923,16 @@ export function contentBounds(model: DiagramModel): Rectangle | null {
       right = Math.max(right, p.x);
       bottom = Math.max(bottom, p.y);
     }
+  }
+
+  // Group and lane FRAMES, captions included. A frame reaches past its members
+  // (padding, an authored size, a pool's empty bands and title strip); fitting to
+  // nodes and links alone clipped a lane pool at the viewport edge.
+  for (const frame of groupFrameRects(model)) {
+    left = Math.min(left, frame.x);
+    top = Math.min(top, frame.y);
+    right = Math.max(right, frame.x + frame.width);
+    bottom = Math.max(bottom, frame.y + frame.height);
   }
 
   if (!isFinite(left) || !isFinite(top)) return null;

@@ -173,6 +173,8 @@ import {
   type TouchGestureHost,
   type TouchGestureOptions,
 } from '@grafloria/renderer';
+// Fit-to-content measures the group and lane frames the shared renderer draws.
+import { groupFrameRects } from '@grafloria/renderer';
 import { VNodeRendererService } from '../services/vnode-renderer.service';
 import { InteractionHandlerService } from '../services/interaction-handler.service';
 import { ComponentRendererService } from '../services/component-renderer.service';
@@ -3216,7 +3218,9 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Fit every node in the diagram into view (Shift+1).
+   * Fit every node in the diagram into view (Shift+1) — and every group and lane
+   * FRAME, captions included: a frame reaches past its members (a pool's title
+   * strip and empty lanes), and fitting to node boxes alone clipped it.
    * Picks the largest zoom (within [minZoom, maxZoom]) at which the content's
    * bounding box fits inside the canvas with `padding` screen px to spare, then
    * centres the viewport on that box.
@@ -3224,7 +3228,18 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   fitToContent(padding = 40): void {
     const diagram = this.eng?.getDiagram();
     if (!diagram) return;
-    this.fitBounds(this.boundsOf(diagram.getNodes()), padding);
+    const nodes = this.boundsOf(diagram.getNodes());
+    let bounds = nodes;
+    const fontSize = this.theme()?.typography?.fontSize?.sm;
+    for (const frame of groupFrameRects(diagram, { captionFontSize: fontSize })) {
+      bounds = {
+        left: Math.min(bounds?.left ?? Infinity, frame.x),
+        top: Math.min(bounds?.top ?? Infinity, frame.y),
+        right: Math.max(bounds?.right ?? -Infinity, frame.x + frame.width),
+        bottom: Math.max(bounds?.bottom ?? -Infinity, frame.y + frame.height),
+      };
+    }
+    this.fitBounds(bounds, padding);
   }
 
   /** Fit the CURRENT SELECTION into view (Shift+2); falls back to everything. */
