@@ -190,9 +190,9 @@ export class ArrowRenderer {
       case 'one':
         return this.renderOneArrow(size, color, width, transform);
       case 'zero-or-one':
-        return this.renderZeroOrOneArrow(size, color, width, transform);
+        return this.renderZeroOrOneArrow(size, color, width, transform, backgroundColor);
       case 'zero-or-many':
-        return this.renderZeroOrManyArrow(size, color, width, transform);
+        return this.renderZeroOrManyArrow(size, color, width, transform, backgroundColor);
       case 'one-or-many':
         return this.renderOneOrManyArrow(size, color, width, transform);
 
@@ -414,8 +414,54 @@ export class ArrowRenderer {
     };
   }
 
+  // -------------------------------------------------------------------------
+  // ERD (crow's-foot / Information Engineering) cardinality markers.
+  //
+  // Local frame: +x points INTO the entity and the renderer puts x = tipOffset
+  // on the link's endpoint (the entity's edge). The notation reads outward from
+  // the entity: the symbol touching it is the MAXIMUM (foot = many, bar = one),
+  // the symbol beyond it the MINIMUM (circle = zero, bar = one).
+  //
+  // The foot used to be drawn the other way round — three lines meeting ON the
+  // entity and spreading away from it — which reads as a plain arrowhead.
+  // -------------------------------------------------------------------------
+
   /**
-   * ERD crow-foot arrow (one-to-many relationship)
+   * The three prongs of a crow's foot: they meet at the origin, out on the line,
+   * and fan out to touch the entity at x = size (the tip offset of this family).
+   */
+  private crowFootProngs(size: number, color: string, width: number): VNode[] {
+    const spread = size * 0.6;
+    return [-spread, 0, spread].map(y => ({
+      type: 'line',
+      props: { x1: 0, y1: 0, x2: size, y2: y, style: { stroke: color, strokeWidth: width } },
+    }));
+  }
+
+  /** A bar across the line at local x (the "one" symbol). */
+  private erBar(x: number, size: number, color: string, width: number): VNode {
+    return {
+      type: 'line',
+      props: {
+        x1: x, y1: -size / 2, x2: x, y2: size / 2,
+        style: { stroke: color, strokeWidth: width * 2 }, // Thicker line for emphasis
+      },
+    };
+  }
+
+  /**
+   * The "zero" circle centred at local x. Filled with the background so the
+   * line it sits on does not run through it.
+   */
+  private erCircle(cx: number, size: number, color: string, width: number, bg: string): VNode {
+    return {
+      type: 'circle',
+      props: { cx, cy: 0, r: size / 3, style: { fill: bg, stroke: color, strokeWidth: width } },
+    };
+  }
+
+  /**
+   * ERD crow-foot arrow (many): three prongs fanning out at the entity.
    */
   private renderCrowFootArrow(
     size: number,
@@ -429,43 +475,14 @@ export class ArrowRenderer {
         transform,
         className: 'arrow arrow-crow-foot'
       },
-      children: [
-        {
-          type: 'line',
-          props: {
-            x1: 0,
-            y1: -size,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: 'line',
-          props: {
-            x1: 0,
-            y1: 0,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: 'line',
-          props: {
-            x1: 0,
-            y1: size,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        }
-      ]
+      children: this.crowFootProngs(size, color, width),
     };
   }
 
   /**
-   * ERD one arrow (exactly one - vertical bar)
+   * ERD one arrow (exactly one): a bar across the line, half a size out from
+   * the entity. On the edge itself (x = 0, where it was) it lay along the
+   * entity's border and the border hid it.
    */
   private renderOneArrow(
     size: number,
@@ -473,28 +490,23 @@ export class ArrowRenderer {
     width: number,
     transform: string
   ): VNode {
+    const bar = this.erBar(-size / 2, size, color, width);
     return {
-      type: 'line',
-      props: {
-        x1: 0,
-        y1: -size / 2,
-        x2: 0,
-        y2: size / 2,
-        style: { stroke: color, strokeWidth: width * 2 }, // Thicker line for emphasis
-        transform,
-        className: 'arrow arrow-one'
-      }
+      ...bar,
+      props: { ...bar.props, transform, className: 'arrow arrow-one' },
     };
   }
 
   /**
-   * ERD zero-or-one arrow (circle + bar)
+   * ERD zero-or-one arrow: the bar (max one) near the entity, the circle
+   * (min zero) beyond it.
    */
   private renderZeroOrOneArrow(
     size: number,
     color: string,
     width: number,
-    transform: string
+    transform: string,
+    bg: string = 'white'
   ): VNode {
     return {
       type: 'g',
@@ -503,38 +515,22 @@ export class ArrowRenderer {
         className: 'arrow arrow-zero-or-one'
       },
       children: [
-        {
-          type: 'circle',
-          props: {
-            cx: -size,
-            cy: 0,
-            r: size / 3,
-            fill: 'none',
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: 'line',
-          props: {
-            x1: 0,
-            y1: -size / 2,
-            x2: 0,
-            y2: size / 2,
-            style: { stroke: color, strokeWidth: width * 2 }
-          }
-        }
+        this.erCircle(-size * 1.25, size, color, width, bg),
+        this.erBar(-size / 2, size, color, width),
       ]
     };
   }
 
   /**
-   * ERD zero-or-many arrow (circle + crow-foot)
+   * ERD zero-or-many arrow: the foot (max many) at the entity, the circle
+   * (min zero) beyond where its prongs meet.
    */
   private renderZeroOrManyArrow(
     size: number,
     color: string,
     width: number,
-    transform: string
+    transform: string,
+    bg: string = 'white'
   ): VNode {
     return {
       type: 'g',
@@ -543,52 +539,15 @@ export class ArrowRenderer {
         className: 'arrow arrow-zero-or-many'
       },
       children: [
-        {
-          type: 'circle',
-          props: {
-            cx: -size * 1.5,
-            cy: 0,
-            r: size / 3,
-            fill: 'none',
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: 'line',
-          props: {
-            x1: 0,
-            y1: -size,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: 'line',
-          props: {
-            x1: 0,
-            y1: 0,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: 'line',
-          props: {
-            x1: 0,
-            y1: size,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        }
+        this.erCircle(-size * 0.75, size, color, width, bg),
+        ...this.crowFootProngs(size, color, width),
       ]
     };
   }
 
   /**
-   * ERD one-or-many arrow (bar + crow-foot)
+   * ERD one-or-many arrow: the foot (max many) at the entity, the bar
+   * (min one) beyond where its prongs meet.
    */
   private renderOneOrManyArrow(
     size: number,
@@ -603,46 +562,8 @@ export class ArrowRenderer {
         className: 'arrow arrow-one-or-many'
       },
       children: [
-        {
-          type: 'line',
-          props: {
-            x1: -size,
-            y1: -size / 2,
-            x2: -size,
-            y2: size / 2,
-            style: { stroke: color, strokeWidth: width * 2 }
-          }
-        },
-        {
-          type: 'line',
-          props: {
-            x1: 0,
-            y1: -size,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: 'line',
-          props: {
-            x1: 0,
-            y1: 0,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: 'line',
-          props: {
-            x1: 0,
-            y1: size,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        }
+        this.erBar(-size * 0.4, size, color, width),
+        ...this.crowFootProngs(size, color, width),
       ]
     };
   }
@@ -821,8 +742,8 @@ export class ArrowRenderer {
         y1: -size / 2,
         x2: 0,
         y2: size / 2,
-        stroke: color,
-        strokeWidth: width * 2,
+        // Through STYLE like every other marker: the colour may be a var().
+        style: { stroke: color, strokeWidth: width * 2 },
         transform,
         className: 'arrow arrow-bar'
       }
@@ -843,8 +764,8 @@ export class ArrowRenderer {
         cx: 0,
         cy: 0,
         r: size / 2,
-        fill: color,
-        stroke: 'none',
+        // Through STYLE like every other marker: the colour may be a var().
+        style: { fill: color, stroke: 'none' },
         transform,
         className: 'arrow arrow-dot'
       }
