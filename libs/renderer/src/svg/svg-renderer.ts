@@ -6596,6 +6596,24 @@ export class SVGRenderer implements IRenderer {
       return `L${x} ${y}`;
     }
 
+    // A SLANTED corner (an `avoid`/A* route, a hand-placed bend): the branches
+    // below assume one horizontal and one vertical segment, and at a slanted
+    // corner they stepped off the route with an axis-aligned stub — a hook at
+    // every corner. Back off along each segment instead, curving through the
+    // corner; for an axis-aligned corner this is the same geometry.
+    const axisA = a.x === x || a.y === y;
+    const axisC = c.x === x || c.y === y;
+    if (!axisA || !axisC) {
+      const dA = this.distance(a, b);
+      const dC = this.distance(b, c);
+      if (dA === 0 || dC === 0 || bendSize <= 0) return `L${x} ${y}`;
+      const p1x = x + ((a.x - x) / dA) * bendSize;
+      const p1y = y + ((a.y - y) / dA) * bendSize;
+      const p2x = x + ((c.x - x) / dC) * bendSize;
+      const p2y = y + ((c.y - y) / dC) * bendSize;
+      return `L ${p1x},${p1y}Q ${x},${y} ${p2x},${p2y}`;
+    }
+
     // First segment is horizontal
     if (a.y === y) {
       const xDir = a.x < c.x ? -1 : 1;
@@ -9393,9 +9411,14 @@ export class SVGRenderer implements IRenderer {
       }
     }
 
-    // Fallback: simple orthogonal routing
+    // Fallback when the chosen router found nothing (an `avoid` search that ran
+    // out of budget, a custom router that gave up). The orthogonal OBSTACLE
+    // router first: the fallback used to be `orthogonal` with avoidance OFF, so
+    // a failed `avoid` drew a straight line through the very wall it was asked
+    // to avoid. The non-avoiding route is only the last resort.
     if (!routedPath) {
-      routedPath = routeWith('orthogonal', false);
+      if (algorithm !== 'orthogonal') routedPath = routeWith('orthogonal', true);
+      if (!routedPath) routedPath = routeWith('orthogonal', false);
       usedOrthogonal = !!routedPath;
     }
 
