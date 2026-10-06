@@ -411,16 +411,28 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     [style]
   );
 
+  // SSR: the server markup, as ONE object for the life of the component.
+  //
+  // React 19 re-applies a prop whose IDENTITY changed — for `dangerouslySetInnerHTML`
+  // that means re-writing `innerHTML`. A fresh `{ __html }` on every render therefore
+  // replaced the server SVG on the first re-render after mount (setInstance causes one),
+  // throwing away the very DOM the effect had just ADOPTED: the instance kept painting a
+  // detached tree, so clicks did not select and drags moved nodes nobody could see.
+  // Frozen at the first render, it is hydrated once and never written again — after
+  // mount the instance owns that DOM, and a later `ssr` value (a new object built inline,
+  // or new markup) must not overwrite it.
+  const [ssrMarkup] = useState(() => (ssr ? { __html: ssr.html } : undefined));
+
   const content = (
     <>
       <div
         ref={containerRef}
         className={['grafloria-flow', className].filter(Boolean).join(' ')}
         style={rootStyle}
-        // SSR: emit the server's markup verbatim. React does not diff inside
-        // dangerouslySetInnerHTML, so hydration leaves it alone and the effect
-        // above adopts it — that is the whole no-flash trick.
-        {...(ssr ? { dangerouslySetInnerHTML: { __html: ssr.html } } : {})}
+        // SSR: emit the server's markup verbatim. Hydration keeps it (the same
+        // string the server wrote), the effect above adopts it, and the frozen
+        // object above means React never re-writes it — the whole no-flash trick.
+        {...(ssrMarkup ? { dangerouslySetInnerHTML: ssrMarkup } : {})}
       />
       {portals.map((portal) => (
         <NodePortalHost

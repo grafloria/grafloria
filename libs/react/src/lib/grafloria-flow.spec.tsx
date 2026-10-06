@@ -257,6 +257,64 @@ describe('<GrafloriaFlow>', () => {
   });
 
   describe('SSR + hydration (Card 6)', () => {
+    it('a REAL hydrateRoot keeps the server SVG, and the instance paints the DOM the user sees', async () => {
+      // The round trip a Next/Remix page does: renderToString on the server, hydrateRoot on
+      // the client. React 19 re-applies an object prop whose IDENTITY changed, so a fresh
+      // `{ __html }` on every render made it re-write innerHTML on the first re-render after
+      // mount — replacing the SVG the effect had just adopted. The instance kept painting
+      // the detached original: clicks did not select and drags moved nodes nobody saw.
+      const { renderToString } = require('react-dom/server');
+      const { hydrateRoot } = require('react-dom/client');
+      const ssr = renderToStaticSVG({ nodes: NODES, width: WIDTH, height: HEIGHT, instanceId: 'grafloria-react-hydrate' });
+
+      let instance: DiagramInstance | undefined;
+      let bump: (() => void) | undefined;
+      function Page() {
+        const [n, setN] = useState(0);
+        bump = () => setN((v) => v + 1);
+        return (
+          <div data-renders={n}>
+            <GrafloriaFlow nodes={NODES} ssr={{ html: ssr.html, snapshot: ssr.snapshot }} onInit={(i) => (instance = i)} />
+          </div>
+        );
+      }
+
+      const host = document.createElement('div');
+      host.innerHTML = renderToString(<Page />);
+      document.body.appendChild(host);
+      const serverSvg = host.querySelector('svg');
+      expect(serverSvg).toBeTruthy();
+
+      const errors: unknown[][] = [];
+      const spy = jest.spyOn(console, 'error').mockImplementation((...args) => { errors.push(args); });
+      let root: { unmount(): void } | undefined;
+      try {
+        await act(async () => {
+          root = hydrateRoot(host, <Page />, { onRecoverableError: (e: unknown) => errors.push(['recoverable', e]) });
+        });
+        await waitFor(() => expect(instance).toBeDefined());
+        // a parent re-render — every app has them
+        await act(async () => { bump!(); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+
+        // React kept the server markup: the very same element is still in the document…
+        expect(host.querySelector('svg')).toBe(serverSvg);
+        expect(serverSvg!.isConnected).toBe(true);
+        // …and it is the one the instance paints into: a model change shows up in it.
+        const nodeA = () => host.querySelector('[data-node-id="a"]')!.outerHTML;
+        const before = nodeA();
+        act(() => { instance!.getModel().getNode('a')!.setPosition(333, 222); instance!.renderNow(); });
+        expect(nodeA()).not.toBe(before);
+        expect(instance!.patcher.stats.created).toBe(0);
+        // …with no hydration complaint from React.
+        expect(errors).toEqual([]);
+      } finally {
+        spy.mockRestore();
+        act(() => root?.unmount());
+        host.remove();
+      }
+    });
+
     it('hydrates the server SVG without recreating a single DOM node', async () => {
       const ssr = renderToStaticSVG({
         nodes: NODES,
