@@ -35,7 +35,7 @@ import {
 import { inject } from 'vue';
 import { createSyncSession } from '@grafloria/engine';
 import type { NodeModel, LinkModel, GroupModel, DiagramEngine, SyncAdapter, SyncTransport } from '@grafloria/engine';
-import { GRAFLORIA_STORE } from './composables';
+import { GRAFLORIA_STORE, type SelectionChange } from './composables';
 
 /** The uniform collab contract every Grafloria wrapper shares. */
 export interface GrafloriaCollabOptions {
@@ -164,17 +164,20 @@ export const GrafloriaFlow = defineComponent({
      */
     highlightConnected: { type: [Boolean, Object] as PropType<boolean | HighlightConnectedOptions>, default: undefined },
   },
-  emits: [
-    'update:nodes',
-    'update:edges',
-    'init',
-    'selectionChange',
-    'connect',
-    'nodeClick',
-    'edgeClick',
-    'layoutDone',
-    'collabReady',
-  ],
+  // Typed with their payloads, so `vue-tsc` checks a template handler (and `tsc` an
+  // `h()` one) against what the component really hands it. The functions are only
+  // type carriers; returning true means "always valid" at runtime.
+  emits: {
+    'update:nodes': (_nodes: NodeSpec[]) => true,
+    'update:edges': (_edges: EdgeSpec[]) => true,
+    init: (_instance: DiagramInstance) => true,
+    selectionChange: (_change: SelectionChange) => true,
+    connect: (_change: { link: LinkModel }) => true,
+    nodeClick: (_change: { node: NodeModel; world: { x: number; y: number } }) => true,
+    edgeClick: (_change: { edge: LinkModel; world: { x: number; y: number } }) => true,
+    layoutDone: (_result: unknown) => true,
+    collabReady: (_session: SyncAdapter) => true,
+  },
   setup(props, { emit, slots, expose }) {
     const container = ref<HTMLElement | null>(null);
     const instance = shallowRef<DiagramInstance | null>(null);
@@ -291,10 +294,10 @@ export const GrafloriaFlow = defineComponent({
         inst.on('edges:change', ({ edges: next }: { edges: LinkModel[] }) => {
           if (props.edges !== undefined) emit('update:edges', next.map((e) => toEdgeSpec(e)));
         }),
-        inst.on('selection:change', (change: unknown) => emit('selectionChange', change)),
-        inst.on('connect', (change: unknown) => emit('connect', change)),
-        inst.on('node:click', (change: unknown) => emit('nodeClick', change)),
-        inst.on('edge:click', (change: unknown) => emit('edgeClick', change))
+        inst.on('selection:change', (change) => emit('selectionChange', change)),
+        inst.on('connect', (change) => emit('connect', change)),
+        inst.on('node:click', (change) => emit('nodeClick', change)),
+        inst.on('edge:click', (change) => emit('edgeClick', change))
       );
 
       emit('init', inst);

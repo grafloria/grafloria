@@ -25,7 +25,8 @@ export const GrafloriaDiagram = defineComponent({
      */
     colorMode: { type: String as PropType<ColorMode>, default: undefined },
   },
-  emits: ['ready'],
+  // Typed with its payload (see GrafloriaFlow's emits).
+  emits: { ready: (_instance: DiagramInstance) => true },
   setup(props, { emit, expose }) {
     const container = ref<HTMLElement | null>(null);
     let instance: DiagramInstance | null = null;

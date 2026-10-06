@@ -16,7 +16,8 @@ export const GrafloriaCommentPanel = defineComponent({
     store: { type: Object as PropType<CommentStore>, required: true },
     options: { type: Object as PropType<CommentPanelOptions>, default: () => ({}) },
   },
-  emits: ['select'],
+  // Typed with its payload: the selected thread's id, or null when none is.
+  emits: { select: (_threadId: string | null) => true },
   setup(props, { emit, expose }) {
     const container = ref<HTMLElement | null>(null);
     let panel: CommentPanelView | null = null;

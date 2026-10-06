@@ -62,7 +62,12 @@ export const GrafloriaDashboard = defineComponent({
     /** Static board: the viewer's mode — no drag, no resize, no handles. */
     static: { type: Boolean, default: undefined },
   },
-  emits: ['update:activeView', 'ready', 'layoutChange'],
+  // Typed with their payloads (see GrafloriaFlow's emits).
+  emits: {
+    'update:activeView': (_view: string) => true,
+    ready: (_handle: DashboardHandle) => true,
+    layoutChange: (_change: { viewId: string; widgets: DashboardWidgetSpec[] }) => true,
+  },
   setup(props, { emit, slots, expose }) {
     const container = ref<HTMLElement | null>(null);
     const handle = shallowRef<DashboardHandle | null>(null);
