@@ -13,11 +13,12 @@
  * server HTML carries the listener map, so the diagram below costs zero
  * component JavaScript until the user touches it.
  */
+import { component$ } from '@builder.io/qwik';
 import { renderToString } from '@builder.io/qwik/server';
 import { renderToStaticSVG } from '@grafloria/renderer';
 import type { NodeSpec } from '@grafloria/renderer';
 import { GrafloriaFlow } from './grafloria-flow';
-import { GrafloriaProvider } from './hooks';
+import { GrafloriaProvider, useSelection, useViewport } from './hooks';
 
 const NODES: NodeSpec[] = [
   { id: 'a', position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
@@ -85,5 +86,42 @@ describe('<GrafloriaFlow> on the server', () => {
     });
     expect(ssr.html).toContain('grafloria-html-layer');
     expect(ssr.html).not.toContain('data-node-id="c"');
+  });
+});
+
+describe('hooks outside a provider', () => {
+  it('warn ONCE in development, naming the provider to add (and still render)', async () => {
+    // A hook with no <GrafloriaProvider> above it falls back to a signal that never
+    // fills — correct, but it used to say nothing, so a forgotten provider looked like
+    // a broken toolbar.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const Lost = component$(() => {
+        useViewport();
+        return <span>lost</span>;
+      });
+      const out = await html(<div><Lost /><Lost /></div>);
+      expect(out).toContain('lost');
+      const ours = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('useViewport()'));
+      expect(ours).toHaveLength(1);
+      expect(ours[0]).toContain('<GrafloriaProvider>');
+      expect(ours[0]).toContain('@grafloria/qwik');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('say nothing inside a GrafloriaProvider', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const Toolbar = component$(() => {
+        useSelection();
+        return <span>ok</span>;
+      });
+      await html(<GrafloriaProvider><Toolbar /><GrafloriaFlow nodes={NODES} /></GrafloriaProvider>);
+      expect(warn.mock.calls.filter((c) => String(c[0]).includes('GrafloriaProvider'))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

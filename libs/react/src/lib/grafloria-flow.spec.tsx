@@ -6,7 +6,7 @@ import type { DiagramInstance, NodeSpec } from '@grafloria/renderer';
 import { GrafloriaFlow } from './grafloria-flow';
 import type { NodeProps } from './grafloria-flow';
 import { GrafloriaProvider } from './context';
-import { useGrafloria, useEdgesState, useNodesState, useOnSelectionChange } from './hooks';
+import { useGrafloria, useEdgesState, useNodesState, useOnSelectionChange, useSelection, useViewport } from './hooks';
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -380,6 +380,44 @@ describe('colorMode prop', () => {
 });
 
 describe('hooks', () => {
+  it('a hook used outside any provider warns ONCE in development, naming the provider to add', () => {
+    // It still returns null — no behaviour change — but it used to say nothing at all, so
+    // a toolbar that forgot <GrafloriaProvider> just never came alive.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      function Lost() {
+        useViewport();
+        return <div />;
+      }
+      const { rerender } = render(<Lost />);
+      rerender(<Lost />);
+      render(<Lost />);
+      const ours = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('useViewport()'));
+      expect(ours).toHaveLength(1);
+      expect(ours[0]).toContain('<GrafloriaProvider>');
+      expect(ours[0]).toContain('@grafloria/react');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('no warning inside a provider, or among <GrafloriaFlow>\'s own children', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      function Toolbar() {
+        useSelection();
+        useOnSelectionChange(() => undefined);
+        return <div />;
+      }
+      render(<GrafloriaProvider><Toolbar /><GrafloriaFlow defaultNodes={NODES} /></GrafloriaProvider>);
+      render(<GrafloriaFlow defaultNodes={NODES}><Toolbar /></GrafloriaFlow>);
+      await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+      expect(warn.mock.calls.filter((c) => String(c[0]).includes('GrafloriaProvider'))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('useGrafloria reaches the instance from a SIBLING of the canvas via the provider', async () => {
     function Toolbar() {
       const grafloria = useGrafloria();

@@ -62,20 +62,53 @@ export const GrafloriaProvider = component$(() => {
 });
 
 /**
- * The live `DiagramInstance` signal. Falls back to a component-local signal
- * when there is no `<GrafloriaProvider>` above, so the hook is always safe to
- * call — it simply never fills in without a provider or a sibling flow.
+ * Development builds only: `process.env.NODE_ENV` is replaced by Vite (and every
+ * other bundler) in a production build; with no bundler at all, reading `process`
+ * throws and we count that as development too.
  */
-export function useGrafloria(): GrafloriaStore {
+const IS_DEV = (() => {
+  try {
+    return process.env['NODE_ENV'] !== 'production';
+  } catch {
+    return true;
+  }
+})();
+const warned = new Set<string>();
+
+/**
+ * The provided store, or a component-local signal that will never fill. The
+ * fallback is correct but silent — a toolbar that forgot the provider just never
+ * came alive — so say so, once per hook, in development (on the server during SSR,
+ * in the browser otherwise). No behaviour change.
+ */
+function useStore(hook: string): GrafloriaStore {
   // Both hooks run unconditionally: Qwik, like React, requires a stable order.
   const local = useSignal<NoSerialize<DiagramInstance>>();
   const provided = useContext(GRAFLORIA_STORE, null);
+  if (!provided && IS_DEV && !warned.has(hook)) {
+    warned.add(hook);
+    console.warn(
+      `[grafloria] ${hook} was called outside a <GrafloriaProvider>, so it has no diagram ` +
+        `to reach and its signal will stay undefined. Wrap this component and its ` +
+        `<GrafloriaFlow> in <GrafloriaProvider> from @grafloria/qwik.`
+    );
+  }
   return provided ?? local;
+}
+
+/**
+ * The live `DiagramInstance` signal. Falls back to a component-local signal
+ * when there is no `<GrafloriaProvider>` above, so the hook is always safe to
+ * call — it simply never fills in without a provider (and says so once, in
+ * development).
+ */
+export function useGrafloria(): GrafloriaStore {
+  return useStore('useGrafloria()');
 }
 
 /** The current selection as reactive state (for an inspector panel). */
 export function useSelection(): Signal<SelectionChange> {
-  const store = useGrafloria();
+  const store = useStore('useSelection()');
   const selection = useSignal<SelectionChange>({ nodes: [], edges: [] });
 
   // eslint-disable-next-line qwik/no-use-visible-task
@@ -99,7 +132,7 @@ export function useSelection(): Signal<SelectionChange> {
 
 /** The live camera (zoom + world origin) as reactive state. */
 export function useViewport(): Signal<{ zoom: number; x: number; y: number }> {
-  const store = useGrafloria();
+  const store = useStore('useViewport()');
   const state = useSignal({ zoom: 1, x: 0, y: 0 });
 
   // eslint-disable-next-line qwik/no-use-visible-task
@@ -126,7 +159,7 @@ export function useViewport(): Signal<{ zoom: number; x: number; y: number }> {
  * `useOnSelectionChange$(...)` at the call site.
  */
 export function useOnSelectionChangeQrl(handler: QRL<(change: SelectionChange) => void>): void {
-  const store = useGrafloria();
+  const store = useStore('useOnSelectionChange$()');
 
   // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(({ track, cleanup }) => {

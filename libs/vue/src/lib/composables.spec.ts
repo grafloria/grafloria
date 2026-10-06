@@ -35,6 +35,48 @@ describe('Vue composables', () => {
     host.remove();
   });
 
+  it('a composable used outside any provider warns ONCE in development, naming the provider', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const Lost = defineComponent({
+        setup() {
+          useViewport();
+          return () => h('div');
+        },
+      });
+      app = createApp(defineComponent({ setup: () => () => h('div', [h(Lost), h(Lost)]) }));
+      app.mount(host);
+      await flush();
+      const ours = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('useViewport()'));
+      expect(ours).toHaveLength(1);
+      expect(ours[0]).toContain('<GrafloriaProvider>');
+      expect(ours[0]).toContain('@grafloria/vue');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('no warning inside a GrafloriaProvider', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const Toolbar = defineComponent({
+        setup() {
+          useSelection();
+          useOnSelectionChange(() => undefined);
+          return () => h('div');
+        },
+      });
+      app = createApp(defineComponent({
+        setup: () => () => h(GrafloriaProvider, null, { default: () => [h(Toolbar), h(GrafloriaFlow, { defaultNodes: NODES })] }),
+      }));
+      app.mount(host);
+      await flush();
+      expect(warn.mock.calls.filter((c) => String(c[0]).includes('GrafloriaProvider'))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('useGrafloria() reaches the instance from a SIBLING inside GrafloriaProvider', async () => {
     let sawInstance: unknown = null;
     const Toolbar = defineComponent({
