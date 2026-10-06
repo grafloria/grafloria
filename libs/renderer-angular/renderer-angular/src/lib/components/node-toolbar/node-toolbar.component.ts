@@ -425,6 +425,11 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
 
   private destroy$ = new Subject<void>();
   private positionUpdatePending = false;
+  /**
+   * Queued work (the first-paint timer, a frame) can outlive the toolbar;
+   * running it then emitted on destroyed outputs (NG0953).
+   */
+  private destroyed = false;
   private eventListeners: Array<{ event: string; handler: Function }> = [];
   private lastKnownPosition = { x: 0, y: 0 };
   private selectionUnsubscribe?: () => void;
@@ -566,6 +571,7 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.destroyed = true;
     this.cleanup();
   }
 
@@ -683,7 +689,7 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
    * Schedule a position update (throttled)
    */
   private schedulePositionUpdate() {
-    if (this.positionUpdatePending) {
+    if (this.positionUpdatePending || this.destroyed) {
       return;
     }
 
@@ -698,6 +704,7 @@ export class NodeToolbarComponent implements OnInit, OnChanges, OnDestroy {
    * Update toolbar position with error handling (Phase 2: Positioning Strategies)
    */
   updatePosition() {
+    if (this.destroyed) return;
     try {
       if (!this.toolbarRef || !this.node) {
         return;

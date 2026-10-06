@@ -9,6 +9,7 @@ import {
   HostListener,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
+  DestroyRef,
   createComponent,
   EnvironmentInjector,
   inject,
@@ -483,7 +484,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // plugin → canvas: minimap clicks and control buttons mutate the camera;
     // reflect into the two-way model signals so the SVG viewBox follows.
     cam.onChange((state) => {
-      if (this.syncingCamera) return;
+      // Writing the zoom/viewport models after destroy would emit NG0953.
+      if (this.syncingCamera || this.destroyed) return;
       this.syncingCamera = true;
       try {
         this.zoom.set(state.zoom);
@@ -518,7 +520,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     if (!engine || !req) return undefined;
     const { name, options } = typeof req === 'string' ? { name: req, options: {} } : req;
     const result = await engine.layout(name, options ?? {});
-    this.layoutDone.emit(result);
+    // The layout may outlive the canvas (an @if removed it mid-flight).
+    if (!this.destroyed) this.layoutDone.emit(result);
     return result;
   }
 
@@ -1020,6 +1023,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private readonly handleRegistry = inject(HandleRegistryService);
 
   constructor() {
+    // Outputs and model() signals are marked destroyed BEFORE ngOnDestroy runs,
+    // and any later emit()/set() warns NG0953. Flip `destroyed` at that same
+    // moment so everything that guards on it (queued frames, awaited layouts,
+    // the public camera API, the plugins camera) goes quiet in time.
+    inject(DestroyRef).onDestroy(() => {
+      this.destroyed = true;
+    });
+
     // --- engine lifecycle: renderer + tools + subscriptions follow the engine ---
     // wave4/interaction: keep-in-bounds is a live input — push every change into
     // the SnapController (ngOnChanges used to do this).
@@ -1330,6 +1341,9 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    * `nodes` / `edges` arrays for whichever collections the host actually bound.
    */
   private flushModelEmit(): void {
+    if (this.destroyed) {
+      return; // outputs and models are dead — emitting would warn NG0953
+    }
     const diagram = this.eng?.getDiagram();
     if (!diagram || !this.capture) {
       return;
@@ -3061,7 +3075,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    */
   zoomAtClient(targetZoom: number, clientX: number, clientY: number): void {
     const diagram = this.eng?.getDiagram();
-    if (!diagram) {
+    if (!diagram || this.destroyed) {
       return;
     }
 
@@ -3170,7 +3184,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     padding: number
   ): void {
     const diagram = this.eng?.getDiagram();
-    if (!diagram || !bounds) {
+    if (!diagram || !bounds || this.destroyed) {
       return;
     }
 
@@ -3203,7 +3217,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   /** Pan by a SCREEN-px delta (wheel scroll); world delta = px / zoom. */
   private panByScreen(dxPx: number, dyPx: number): void {
-    if (!dxPx && !dyPx) {
+    if ((!dxPx && !dyPx) || this.destroyed) {
       return;
     }
     const diagram = this.eng?.getDiagram();
@@ -3222,6 +3236,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   /** Move the viewport origin, keeping the object identity churn in one place. */
   private setViewportOrigin(x: number, y: number): void {
+    if (this.destroyed) return; // a model write after destroy emits NG0953
     this.viewport.set({ ...this.viewport(), x, y });
   }
 
@@ -3343,6 +3358,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    * — not a rect the host could actually use for a minimap/overview.
    */
   private emitViewportChanged(): void {
+    if (this.destroyed) return;
     this.viewportChanged.emit(this.getViewBox());
   }
 
@@ -3483,7 +3499,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    */
   private touchCameraSyncOut(): void {
     const cam = this.touchCamera;
-    if (!cam) {
+    if (!cam || this.destroyed) {
       return;
     }
     const before = this.viewport();
