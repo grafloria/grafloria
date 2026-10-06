@@ -3259,22 +3259,51 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    * still, so this happened on literally any diagram bigger than the viewport.
    *
    * The camera maths is NOT reimplemented here. A `ViewportController` is seeded
-   * from this component's viewport signal — which already follows its exact
-   * coordinate contract — asked to PLAN the move, and the resulting world delta
-   * is applied through the host's own pan setter. Zoom-out-to-fit likewise goes
-   * through `fitToBounds`.
+   * from this component's camera — origin from the viewport signal, size from
+   * the CANVAS in CSS px, the same contract getViewBox() paints with — asked to
+   * PLAN the move, and the resulting world delta is applied through the host's
+   * own pan setter. Zoom-out-to-fit likewise goes through `fitToBounds`.
+   *
+   * WHEN it acts — the zoomed-in drag bug. This runs on every painted frame,
+   * and it used to move the camera whenever the focused entity was not fully
+   * inside the padded view. A pointer press on a node also focuses it, and
+   * after a Fit (40 px padding < the 48 px containment band) or a zoom-in the
+   * pressed node is usually inside that band — so the camera panned mid-drag.
+   * The drag measures its delta in WORLD units from the press point, so every
+   * pan was added to the node's model position: dragging 80 px down after Fit
+   * moved the node UP, and the view ran away. It also pulled the camera back
+   * after any wheel scroll away from a keyboard-focused node. So containment
+   * now acts only when the FOCUS moves (a new entity, or the focused one moved)
+   * and the keyboard moved it — never because the camera moved, and never for
+   * a focus a pointer press put there (the user is looking at it).
+   *
+   * The camera size bug: the controller was seeded with the viewport signal's
+   * width/height (800 × 600 unless bound), not the canvas size, so its idea of
+   * "visible" disagreed with the picture at any zoom ≠ 1 or any canvas that is
+   * not 800 × 600.
    */
   private containFocus(): void {
     if (!this.enableKeyboardNavigation()) return;
 
     const ring = this.focusRing;
-    if (!ring) return;
+    if (!ring) {
+      this.lastFocusRingKey = null;
+      return;
+    }
 
     const bounds = ring.bounds ?? boundsOfPoints(ring.points ?? []);
     if (!bounds) return;
 
+    // Focus ring geometry is in WORLD units (constant padding), so a pan or
+    // zoom leaves this key alone: only a focus move changes it.
+    const key = `${ring.type}:${ring.id}:${bounds.x},${bounds.y},${bounds.width},${bounds.height}`;
+    if (key === this.lastFocusRingKey) return;
+    this.lastFocusRingKey = key;
+    if (!this.focusFromKeyboard) return;
+
+    const { width, height } = this.canvasPixelSize();
     const camera = new ViewportController({
-      viewport: { ...this.viewport() },
+      viewport: { x: this.viewport().x, y: this.viewport().y, width, height },
       zoom: this.zoom(),
       minZoom: this.minZoom(),
       maxZoom: this.maxZoom(),
@@ -3295,6 +3324,12 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
     this.scheduleRender();
   }
+
+  /** The focus ring containment last looked at (see containFocus). */
+  private lastFocusRingKey: string | null = null;
+
+  /** Did the keyboard (Tab, arrows, nudge) make the latest focus move? */
+  private focusFromKeyboard = false;
 
   private clampZoom(zoom: number): number {
     return Math.max(this.minZoom(), Math.min(this.maxZoom(), zoom));
@@ -4014,6 +4049,9 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         // wave4/interaction (Card 7): pointer selection is announced too, and the
         // keyboard focus follows the pointer — so Tab resumes from what you clicked.
         if (this.enableKeyboardNavigation()) {
+          // A pointer put the focus here: the user can see what they pressed, so
+          // focus containment must not move the camera for it (see containFocus).
+          this.focusFromKeyboard = false;
           this.keyboardNav.setFocus({ type: 'node', id: clickedNode.id });
           this.keyboardNav.announceSelection(this.eng);
         }
@@ -4705,6 +4743,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // keyboard connect flow. Runs after the accelerators so Ctrl+A etc. keep
     // their meaning, and before Delete/Escape so a connect flow can absorb Escape.
     if (this.enableKeyboardNavigation() && this.handleKeyboardNavigation(event)) {
+      // The keyboard moved the focus (or what it rests on): keep it in view.
+      this.focusFromKeyboard = true;
       return;
     }
 
