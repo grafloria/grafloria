@@ -18,15 +18,20 @@
 //
 //   node demos/e2e/packaging-run.mjs
 //
-// Runs in ~1-2 minutes: it builds each package the way the release does, packs
+// Runs in a few minutes: it builds each package the way the release does, packs
 // it, installs the tarballs into a throwaway project, then bundles an entry with
-// esbuild in production mode and checks the behaviour survived.
+// esbuild in production mode and checks the behaviour survived. @grafloria/qwik
+// goes further: its tarball is installed into a real Qwik + Vite app, which is
+// driven in a browser through the DEV server and through a production build.
 
-import { execSync } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync, readdirSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { createServer } from 'node:http';
+import { createServer as createNetServer } from 'node:net';
+import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { chromium } from 'playwright';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const work = mkdtempSync(join(tmpdir(), 'grafloria-packaging-'));
@@ -113,6 +118,13 @@ try {
     const out = run('npm pack --pack-destination ' + work, join(REPO, 'libs', pkg));
     tarballs.push(join(work, out.trim().split('\n').pop()));
   }
+
+  // @grafloria/qwik is built by the Qwik OPTIMIZER, not by tsc — see
+  // libs/qwik/build-release.mjs. It runs after the three above are packed, and it
+  // cannot clobber them anyway: its declarations are written outside the tree.
+  run(`node ${join(REPO, 'libs', 'qwik', 'build-release.mjs')}`, REPO);
+  const qwikPacked = run('npm pack --pack-destination ' + work, join(REPO, 'libs', 'qwik'));
+  const qwikTarball = join(work, qwikPacked.trim().split('\n').pop());
 
   // -- a throwaway consumer, installing those tarballs ------------------------
   const consumer = join(work, 'consumer');
@@ -233,8 +245,151 @@ console.log(JSON.stringify({ missing, drew, kit }));
       );
     }
   }
+
+  // -- 3. @grafloria/qwik in a consumer's Qwik + Vite app: dev AND build ---------
+  // @grafloria/qwik@0.10.6 shipped plain tsc output: raw `component$`/`$()` under a
+  // name a consumer's Qwik optimizer never transforms, and no `qwik` field. Vite's
+  // dev server pre-bundled it with esbuild and the app died with "Optimizer should
+  // replace all usages of $()" — while a production build, and every gate here,
+  // stayed green: the demos alias the package to its SOURCE. So this installs the
+  // packed tarball into a real Qwik app and drives it, in dev and in a build.
+  await checkQwikConsumer([...tarballs, qwikTarball]);
 } finally {
   rmSync(work, { recursive: true, force: true });
+}
+
+async function checkQwikConsumer(packed) {
+  console.log('\npackaging: @grafloria/qwik in a Qwik + Vite app (dev server, then production build)');
+  const qc = join(work, 'qwik-consumer');
+  mkdirSync(join(qc, 'src'), { recursive: true });
+  writeFileSync(join(qc, 'package.json'), JSON.stringify({ name: 'qwik-consumer', private: true, type: 'module' }, null, 2));
+  writeFileSync(join(qc, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ES2020', module: 'ESNext', moduleResolution: 'Bundler', jsx: 'react-jsx', jsxImportSource: '@builder.io/qwik', strict: true, skipLibCheck: true } }));
+  writeFileSync(join(qc, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"><title>qwik consumer</title></head><body><div id="app"></div><script type="module" src="/src/main.tsx"></script></body></html>');
+  // What the Qwik quick start plus our README tell a reader to write.
+  writeFileSync(join(qc, 'vite.config.mjs'), `import { qwikVite } from '@builder.io/qwik/optimizer';
+import { grafloriaQwik } from '@grafloria/qwik/vite';
+export default { plugins: [qwikVite({ csr: true }), grafloriaQwik()], logLevel: 'warn' };
+`);
+  writeFileSync(join(qc, 'src', 'main.tsx'), `import { render, component$ } from '@builder.io/qwik';
+import { QWIK_LOADER } from '@builder.io/qwik/loader';
+import { GrafloriaFlow, GrafloriaProvider, useGrafloria, useOnSelectionChange$ } from '@grafloria/qwik';
+const s = document.createElement('script'); s.textContent = QWIK_LOADER; document.head.appendChild(s);
+const nodes = [
+  { id: 'a', position: { x: 40, y: 60 }, size: { width: 160, height: 60 }, label: 'Plan' },
+  { id: 'b', position: { x: 300, y: 60 }, size: { width: 160, height: 60 }, label: 'Ship' },
+];
+const edges = [{ id: 'e', source: 'a', target: 'b' }];
+const Toolbar = component$(() => {
+  const store = useGrafloria();
+  useOnSelectionChange$((c) => { (window as any).__sel = c.nodes.length; });
+  return <button id="zoom" onClick$={() => { store.value?.viewport.zoomBy(0.2); store.value?.render(); }}>Zoom</button>;
+});
+const App = component$(() => (
+  <GrafloriaProvider>
+    <Toolbar />
+    <GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} style={{ height: '300px' }} onInit$={() => { (window as any).__ready = true; }} />
+  </GrafloriaProvider>
+));
+render(document.getElementById('app')!, <App />);
+`);
+  run(`npm i --no-audit --no-fund vite@6.2.7 @builder.io/qwik@1.20.1 ${packed.map((t) => JSON.stringify(t)).join(' ')}`, qc);
+
+  // The structure a consumer's qwikVite() keys on: a `qwik` field naming the
+  // optimizer's *.qwik.mjs build, which is also what the package's import resolves to.
+  const qdir = join(qc, 'node_modules', '@grafloria', 'qwik');
+  const qpkg = JSON.parse(readFileSync(join(qdir, 'package.json'), 'utf8'));
+  check('qwik: package.json "qwik" names a shipped *.qwik.mjs file', /\.qwik\.[mc]?js$/.test(qpkg.qwik ?? '') && existsSync(join(qdir, qpkg.qwik)), true);
+  check('qwik: the package\'s import entry IS that file', qpkg.exports?.['.']?.import === qpkg.qwik && qpkg.module === qpkg.qwik, true);
+
+  const vite = join(qc, 'node_modules', 'vite', 'bin', 'vite.js');
+  const browser = await chromium.launch();
+  try {
+    // dev: Vite's dependency optimizer is exactly what the broken package fell over in
+    const devPort = await freePort();
+    const dev = spawn('node', [vite, '--config', 'vite.config.mjs', '--port', String(devPort), '--strictPort'], { cwd: qc, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    let devLog = '';
+    dev.stdout.on('data', (d) => { devLog += d; });
+    dev.stderr.on('data', (d) => { devLog += d; });
+    try {
+      await waitForServer(`http://localhost:${devPort}/`, () => devLog, dev);
+      reportQwik('dev', await driveQwikPage(browser, `http://localhost:${devPort}/`));
+    } finally {
+      try { process.kill(-dev.pid, 'SIGTERM'); } catch { /* gone */ }
+    }
+
+    // build: what ships, served as static files
+    run(`node ${JSON.stringify(vite)} build --config vite.config.mjs`, qc);
+    const server = await serveStatic(join(qc, 'dist'));
+    try {
+      reportQwik('build', await driveQwikPage(browser, `http://localhost:${server.address().port}/`));
+    } finally {
+      server.close();
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+function reportQwik(label, r) {
+  check(`qwik ${label}: the flow mounts and draws both nodes`, `${r.ready}/${r.nodes}`, 'true/2');
+  check(`qwik ${label}: useGrafloria() drives the canvas (zoom)`, r.zoomed, true);
+  check(`qwik ${label}: useOnSelectionChange$() fires on a click`, r.selection, 1);
+  check(`qwik ${label}: the console is clean`, r.errors.length === 0 ? 'clean' : r.errors.join(' | ').slice(0, 300), 'clean');
+}
+
+async function driveQwikPage(browser, url) {
+  const page = await browser.newPage({ viewport: { width: 900, height: 500 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message.slice(0, 200)));
+  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text().slice(0, 200)}`); });
+  try {
+    await page.goto(url, { waitUntil: 'load', timeout: 120000 });
+    // A first dev visit may optimize dependencies and reload once; wait it out.
+    await page.waitForFunction(() => window.__ready === true, null, { timeout: 90000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    const ready = await page.evaluate(() => window.__ready === true);
+    const nodes = await page.locator('svg [data-node-id]').count();
+    const width = () => page.locator('svg [data-node-id="a"]').boundingBox().then((b) => b?.width ?? 0).catch(() => 0);
+    const w0 = await width();
+    await page.click('#zoom', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const w1 = await width();
+    await page.locator('svg [data-node-id="b"]').click({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const selection = await page.evaluate(() => window.__sel ?? null);
+    return { ready, nodes, zoomed: w1 > w0 + 1, selection, errors };
+  } finally {
+    await page.close();
+  }
+}
+
+function freePort() {
+  return new Promise((resolve) => {
+    const s = createNetServer();
+    s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
+  });
+}
+
+async function waitForServer(url, log, child) {
+  for (let i = 0; i < 120; i++) {
+    // A server that died (a config it cannot load, say) will never answer: say so now.
+    if (child.exitCode !== null) break;
+    try { if ((await fetch(url)).ok) return; } catch { /* not yet */ }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`the consumer's dev server never answered on ${url}\n${log().slice(-2000)}`);
+}
+
+function serveStatic(dir) {
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
+  const server = createServer((req, res) => {
+    const path = decodeURIComponent(req.url.split('?')[0]);
+    const file = join(dir, path.endsWith('/') ? path + 'index.html' : path);
+    if (!file.startsWith(dir) || !existsSync(file)) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { 'content-type': types[extname(file)] ?? 'application/octet-stream' });
+    res.end(readFileSync(file));
+  });
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
 console.log('');

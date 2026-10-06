@@ -64,6 +64,21 @@ export default component$(() => {
 
 MIT © [Grafloria](https://github.com/grafloria/grafloria)
 
+## Vite setup — one line
+
+Add `grafloriaQwik()` next to `qwikVite()`:
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+import { qwikVite } from '@builder.io/qwik/optimizer';
+import { grafloriaQwik } from '@grafloria/qwik/vite';
+
+export default defineConfig({ plugins: [qwikVite(), grafloriaQwik()] });
+```
+
+This package is a Qwik library (its `qwik` field makes your optimizer compile it), so Vite's dev server does not pre-bundle it — nor anything it imports. The engine, renderer and element depend on CommonJS packages a browser cannot load raw, and without the plugin the dev server fails with `…eventemitter3/index.js does not provide an export named 'default'`. The plugin only adds them to `optimizeDeps.include`; production builds work either way.
+
 ## Server rendering, and why Qwik gets the best version of it
 
 Every DOM touch in this wrapper happens inside `useVisibleTask$`, which never runs on the server. So the component renders server-side with no `window` anywhere — and you can go further and put the **real diagram** in that HTML:
@@ -96,7 +111,7 @@ npx vite --config apps/demos-qwik/vite.config.ts --mode ssr
 
 `--mode ssr` is required — Qwik's Vite plugin only starts its dev SSR server in that mode.
 
-## Three Qwik-specific rules
+## Four Qwik-specific rules
 
 **1. Live objects must be `noSerialize()`d.** Qwik serializes the state a component closes over so the page can resume. A transport holds sockets; a `CommentStore` holds subscribers; neither survives JSON. Mark them:
 
@@ -125,6 +140,14 @@ loader.textContent = QWIK_LOADER;
 document.head.appendChild(loader);
 render(document.getElementById('app')!, <App />);
 ```
+
+**4. Kit specs go through `spec$`.** `erDiagram()`, `umlDiagram()` and `dashboard()` return specs that carry functions, and Qwik cannot serialize a function into server-rendered HTML. Hand `<GrafloriaDiagram>` a QRL that builds the spec in the browser:
+
+```tsx
+<GrafloriaDiagram key={schemaVersion} spec$={() => erDiagram({ entities, relationships })} />
+```
+
+A `$` prop is fixed for the life of a Qwik component, so the spec is built once, at mount — change `key` to rebuild it from new data. Plain-data specs (`{ nodes, edges }`) can still go in `spec`.
 
 ## Qwik version
 

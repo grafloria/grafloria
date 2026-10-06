@@ -30,9 +30,23 @@
   "publishConfig": {
     "access": "public"
   },
-  "main": "./src/index.js",
-  "module": "./src/index.js",
+  "main": "./lib/index.qwik.mjs",
+  "module": "./lib/index.qwik.mjs",
+  "qwik": "./lib/index.qwik.mjs",
   "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./lib/index.qwik.mjs",
+      "default": "./lib/index.qwik.mjs"
+    },
+    "./vite": {
+      "types": "./vite.d.ts",
+      "import": "./vite.mjs",
+      "default": "./vite.mjs"
+    },
+    "./package.json": "./package.json"
+  },
   "sideEffects": false,
   "dependencies": {
     "tslib": "^2.3.0"
@@ -44,8 +58,11 @@
     "@grafloria/element": "^0.4.3"
   },
   "files": [
-    "src/**/*.js",
-    "src/**/*.d.ts"
+    "lib/index.qwik.mjs",
+    "lib/index.qwik.mjs.map",
+    "src/**/*.d.ts",
+    "vite.mjs",
+    "vite.d.ts"
   ],
   "type": "module"
 }

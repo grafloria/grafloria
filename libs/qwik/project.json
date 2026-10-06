@@ -23,6 +23,11 @@
         "command": "npx tsc -p libs/qwik/tsconfig.esm.json --module es2022 --moduleResolution bundler --outDir dist/libs/qwik/esm --rootDir libs/qwik --declaration false --declarationMap false --incremental false"
       }
     },
+    "build-release": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/lib"],
+      "options": { "command": "node libs/qwik/build-release.mjs" }
+    },
     "test": {
       "executor": "@nx/jest:jest",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],

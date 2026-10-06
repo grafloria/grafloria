@@ -66,6 +66,8 @@ demos/shell/grafloria.js
 libs/*/src/**/*.js
 libs/*/src/**/*.d.ts
 libs/*/src/**/*.js.map
+# …except @grafloria/qwik's JavaScript, which the Qwik optimizer writes here
+libs/qwik/lib/
 benchmarks/node_modules/
 benchmarks/dist/
 benchmarks/results.json
