@@ -116,6 +116,73 @@ export function resolveCssVars(
 }
 
 /**
+ * Substitute every `var(--name[, fallback])` in a CSS value through `lookup`.
+ *
+ * Unlike {@link resolveCssVars} (written for our own stylesheet, whose fallbacks are
+ * plain literals) this parses BALANCED parentheses, because an element's inline paint
+ * can carry `var(--grafloria-link-stroke, rgb(107, 114, 128))` — and a fallback that is
+ * itself a `var()`. A name `lookup` cannot answer falls back to the var()'s fallback;
+ * a name with neither is listed in `unresolved` and the value is not returned.
+ */
+export function substituteCssVars(
+  value: string,
+  lookup: (name: string) => string | undefined
+): { value?: string; unresolved: string[] } {
+  const unresolved: string[] = [];
+
+  const resolveFrom = (input: string, depth: number): string => {
+    if (depth > 8) {
+      unresolved.push(input);
+      return '';
+    }
+    let out = '';
+    let i = 0;
+    while (i < input.length) {
+      const at = input.indexOf('var(', i);
+      if (at < 0) {
+        out += input.slice(i);
+        break;
+      }
+      out += input.slice(i, at);
+      // Find the matching close paren of this var( … ).
+      let level = 0;
+      let end = -1;
+      for (let j = at + 3; j < input.length; j++) {
+        if (input[j] === '(') level++;
+        else if (input[j] === ')') {
+          level--;
+          if (level === 0) {
+            end = j;
+            break;
+          }
+        }
+      }
+      if (end < 0) {
+        unresolved.push(input.slice(at));
+        return '';
+      }
+      const inner = input.slice(at + 4, end);
+      const comma = inner.indexOf(',');
+      const name = (comma < 0 ? inner : inner.slice(0, comma)).trim();
+      const fallback = comma < 0 ? undefined : inner.slice(comma + 1).trim();
+      const found = lookup(name);
+      if (found !== undefined && found.trim() !== '') {
+        out += resolveFrom(found.trim(), depth + 1);
+      } else if (fallback !== undefined && fallback !== '') {
+        out += resolveFrom(fallback, depth + 1);
+      } else {
+        unresolved.push(name);
+      }
+      i = end + 1;
+    }
+    return out;
+  };
+
+  const out = resolveFrom(value, 0).trim();
+  return unresolved.length > 0 ? { unresolved } : { value: out, unresolved };
+}
+
+/**
  * Resolves an element's class list to the concrete presentation attributes the
  * renderer's stylesheet would have painted, for THIS theme.
  */

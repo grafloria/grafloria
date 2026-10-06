@@ -1891,6 +1891,26 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * Reads this diagram's CSS custom properties as the browser resolved them — on its
+   * root `<svg>`, so variables set on the host (a token bridge) are inherited in.
+   * `undefined` without a DOM, or when the diagram is not mounted: the PDF painter then
+   * uses the theme's token values and the var() fallbacks.
+   */
+  private liveCssVarReader(): ((name: string) => string | undefined) | undefined {
+    if (typeof document === 'undefined' || typeof getComputedStyle !== 'function') return undefined;
+    let root: Element | null = null;
+    try {
+      const scope = `[${GRAFLORIA_INSTANCE_ATTR}="${this.instanceId}"]`;
+      root = document.querySelector(`svg${scope}`) ?? document.querySelector(scope);
+    } catch {
+      return undefined;
+    }
+    if (!root) return undefined;
+    const computed = getComputedStyle(root);
+    return (name: string) => computed.getPropertyValue(name).trim() || undefined;
+  }
+
+  /**
    * The instance-scope prop for a root VNode. Emitted in CSS mode only:
    * programmatic mode injects no stylesheet, so scoping it would make its
    * elements match ANOTHER instance's shared rules with no variables defined.
@@ -2412,6 +2432,9 @@ export class SVGRenderer implements IRenderer {
       // default light theme — or, in CSS mode, against nothing at all, and every link
       // loses its stroke and every node its fill.
       theme: this.theme,
+      // …and the live CSS variables, for paint that is a var() (the line markers):
+      // a token bridge's value only exists in the DOM.
+      resolveVar: this.liveCssVarReader(),
       padding,
       viewBox: options.viewport,
       backgroundColor: options.backgroundColor,
@@ -2479,6 +2502,7 @@ export class SVGRenderer implements IRenderer {
 
     const result = exportPdf(tree, {
       theme: this.theme,
+      resolveVar: this.liveCssVarReader(),
       padding,
       backgroundColor: options.backgroundColor,
       pageNumbers: true,
