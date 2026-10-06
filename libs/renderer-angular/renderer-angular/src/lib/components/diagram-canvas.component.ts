@@ -147,6 +147,12 @@ import {
   CommentOverlayController,
   type PresenceBinding,
   type BindPresenceOptions,
+  // The tool registry (`registerTool`): a registered tool gets first refusal on
+  // a gesture, exactly as in DomEventBinder and the TouchGestureController.
+  resolveTool,
+  type CanvasTool,
+  type ToolHitContext,
+  type ToolPointerEvent as CanvasToolPointerEvent,
 } from '@grafloria/renderer';
 // wave14/ng-touch: the SHARED touch gesture brain (wave 9) — the same class the
 // framework-free DomEventBinder instantiates, so Angular gets pan / pinch / tap /
@@ -3580,6 +3586,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       this.forwardTouchEvent('cancel', event);
       return;
     }
+    // The OS took the pointer away: a registered tool's gesture is over.
+    if (this.cancelActiveTool()) {
+      this.scheduleRender();
+      this.cdr.markForCheck();
+    }
     this.onMouseLeave();
   }
 
@@ -3593,6 +3604,96 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     if (pointerType === 'touch' || (this.touchGestures?.activePointerCount ?? 0) > 0) {
       event.preventDefault();
     }
+  }
+
+  // --- registered tools (`registerTool`) on the mouse/pen path ---------------
+
+  /** The registered tool that claimed the current gesture (owns move/up). */
+  private activeTool?: CanvasTool;
+  /** What that gesture landed on, resolved once at the press. */
+  private activeToolHit?: ToolHitContext;
+
+  /**
+   * Offer a press to the tool registry. Returns true when a tool claimed it —
+   * the tool then owns the whole gesture and none of the built-in ladder runs.
+   * With no tool registered (or none claiming) this is a no-op, so the ladder
+   * below is unchanged.
+   */
+  private claimForRegisteredTool(
+    event: MouseEvent,
+    worldX: number,
+    worldY: number,
+    diagram: DiagramModel
+  ): boolean {
+    // A gesture whose release never reached us (released outside the canvas)
+    // must not leak into this one.
+    this.cancelActiveTool();
+    if (diagram.isReadonly()) {
+      return false;
+    }
+    const toolEvent = this.toCanvasToolEvent('down', event, worldX, worldY);
+    const toolHit = this.toCanvasToolHit(worldX, worldY, diagram);
+    const tool = resolveTool(toolEvent, toolHit);
+    if (!tool) {
+      return false;
+    }
+    event.preventDefault();
+    this.activeTool = tool;
+    this.activeToolHit = toolHit;
+    tool.onPointerDown?.(toolEvent, toolHit);
+    this.scheduleRender();
+    this.cdr.markForCheck();
+    return true;
+  }
+
+  /** Cancel the claiming tool's gesture, if any. True when one was cancelled. */
+  private cancelActiveTool(): boolean {
+    const tool = this.activeTool;
+    if (!tool) {
+      return false;
+    }
+    try {
+      tool.onCancel?.();
+    } finally {
+      this.activeTool = undefined;
+      this.activeToolHit = undefined;
+    }
+    return true;
+  }
+
+  /** A DOM event in the tool contract's two coordinate spaces. */
+  private toCanvasToolEvent(
+    type: CanvasToolPointerEvent['type'],
+    event: MouseEvent,
+    worldX: number,
+    worldY: number
+  ): CanvasToolPointerEvent {
+    const { screenX, screenY } = this.clientToScreen(event.clientX, event.clientY);
+    return {
+      type,
+      world: { x: worldX, y: worldY },
+      screen: { x: screenX, y: screenY },
+      modifiers: {
+        shift: event.shiftKey,
+        ctrl: event.ctrlKey,
+        alt: event.altKey,
+        meta: event.metaKey,
+      },
+      source: event,
+    };
+  }
+
+  /** What the press landed on — the same shape DomEventBinder hands tools. */
+  private toCanvasToolHit(worldX: number, worldY: number, diagram: DiagramModel): ToolHitContext {
+    const state = this.interactionHandler.getState();
+    const node = diagram.getNodeAtPosition(worldX, worldY) ?? undefined;
+    return {
+      node,
+      link: state.hoveredLink ?? undefined,
+      port: state.hoveredPort ?? undefined,
+      empty: !node && !state.hoveredLink && !state.hoveredPort,
+      nodeWasSelected: node ? node.isSelected() : false,
+    };
   }
 
   // --- compat-mouse dedupe: the legacy mouse listeners -----------------------
@@ -3660,6 +3761,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     if (event.button === 0 && !this.spaceKeyPressed) {
       // Convert client coordinates to world coordinates
       const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
+
+      // A REGISTERED TOOL (`registerTool`) gets first refusal on the gesture —
+      // the same rung DomEventBinder runs for mouse/pen and the shared
+      // TouchGestureController runs for touch. Until this rung existed only
+      // touch reached the registry, so a mouse or pen drew nothing.
+      if (this.claimForRegisteredTool(event, worldX, worldY, diagram)) {
+        return;
+      }
 
       // wave4/interaction (Card 5): the floating tool layer is drawn ON TOP of
       // everything, so it gets the first look at the press — otherwise a resize
@@ -3973,6 +4082,19 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // wave3/interaction: remember the cursor so paste can drop at it.
     this.lastPointerClient = { x: event.clientX, y: event.clientY };
 
+    // A registered tool that claimed this gesture owns every move until the
+    // release. Checked before panning so a tool can pan itself.
+    if (this.activeTool) {
+      const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
+      this.activeTool.onPointerMove?.(
+        this.toCanvasToolEvent('move', event, worldX, worldY),
+        this.activeToolHit ?? { empty: true }
+      );
+      this.scheduleRender();
+      this.cdr.markForCheck();
+      return;
+    }
+
     // Handle panning
     if (this.isPanning) {
       // Calculate pan delta in world-space coordinates
@@ -4116,6 +4238,24 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    */
   onMouseUp(event: MouseEvent): void {
     if (event.button === 1 || event.button === 0) {
+      // Hand the gesture's end to the registered tool that claimed it, then
+      // release it — in a `finally`, so a throwing tool cannot wedge the canvas
+      // into swallowing every later gesture (DomEventBinder does the same).
+      if (this.activeTool) {
+        const tool = this.activeTool;
+        const hit = this.activeToolHit ?? { empty: true };
+        const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
+        try {
+          tool.onPointerUp?.(this.toCanvasToolEvent('up', event, worldX, worldY), hit);
+        } finally {
+          this.activeTool = undefined;
+          this.activeToolHit = undefined;
+          this.scheduleRender();
+          this.cdr.markForCheck();
+        }
+        return;
+      }
+
       // wave4/interaction (Card 5): commit a resize / rotate / vertex gesture as
       // ONE undo entry.
       if (this.selectionTools.isActive()) {
@@ -4544,6 +4684,15 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
     // Never steal keys from a text field (incl. the inline link-label editor).
     if (this.isTextInput(event.target)) {
+      return;
+    }
+
+    // Escape cancels a registered tool's in-flight gesture, and is CONSUMED:
+    // a second Escape (no gesture left) clears the selection as usual.
+    if (event.key === 'Escape' && this.cancelActiveTool()) {
+      event.preventDefault();
+      this.scheduleRender();
+      this.cdr.markForCheck();
       return;
     }
 
@@ -5042,6 +5191,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.touchGestures?.reset();
     this.touchGestures = null;
     this.touchCamera = null;
+    // …and a registered tool's half-drawn gesture (its overlay, its state).
+    this.cancelActiveTool();
 
     // wave4/interaction: drop the announcement subscription and the keyboard
     // controller's listeners (a leaked listener would keep the component alive).

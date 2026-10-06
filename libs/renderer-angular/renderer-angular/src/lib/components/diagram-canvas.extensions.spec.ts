@@ -12,11 +12,30 @@
  */
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DiagramEngine, DiagramModel } from '@grafloria/engine';
-import { buildNode, registerConnectionValidator } from '@grafloria/renderer';
+import {
+  buildNode,
+  registerConnectionValidator,
+  registerTool,
+  type CanvasTool,
+  type ToolHitContext,
+  type ToolPointerEvent,
+} from '@grafloria/renderer';
 import { DiagramCanvasComponent } from './diagram-canvas.component';
+
+/** jsdom has no PointerEvent; the component reads MouseEvent fields + pointerType. */
+class FakePointerEvent extends MouseEvent {
+  readonly pointerId: number;
+  readonly pointerType: string;
+  constructor(type: string, init: MouseEventInit & { pointerId?: number; pointerType?: string }) {
+    super(type, { bubbles: true, cancelable: true, ...init });
+    this.pointerId = init.pointerId ?? 1;
+    this.pointerType = init.pointerType ?? 'mouse';
+  }
+}
 
 describe('DiagramCanvasComponent — extension registries', () => {
   let fixture: ComponentFixture<DiagramCanvasComponent>;
+  let component: DiagramCanvasComponent;
   let engine: DiagramEngine;
   let diagram: DiagramModel;
   let host: HTMLElement;
@@ -36,6 +55,7 @@ describe('DiagramCanvasComponent — extension registries', () => {
 
   function mount(): void {
     fixture = TestBed.createComponent(DiagramCanvasComponent);
+    component = fixture.componentInstance;
     fixture.componentRef.setInput('engine', engine);
     fixture.componentRef.setInput('viewport', { x: 0, y: 0, width: 800, height: 600 });
     fixture.componentRef.setInput('zoom', 1);
@@ -45,6 +65,25 @@ describe('DiagramCanvasComponent — extension registries', () => {
 
   function mouse(type: 'mousedown' | 'mousemove' | 'mouseup', x: number, y: number): void {
     host.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, button: 0, buttons: type === 'mouseup' ? 0 : 1, bubbles: true }));
+  }
+
+  /** Drive the component's pointer pipeline (what a real browser calls). */
+  function pointer(
+    type: 'pointerdown' | 'pointermove' | 'pointerup',
+    x: number,
+    y: number,
+    pointerType: 'mouse' | 'pen' | 'touch'
+  ): void {
+    const event = new FakePointerEvent(type, {
+      clientX: x,
+      clientY: y,
+      button: 0,
+      buttons: type === 'pointerup' ? 0 : 1,
+      pointerType,
+    }) as unknown as PointerEvent;
+    if (type === 'pointerdown') component.onPointerDown(event);
+    else if (type === 'pointermove') component.onPointerMove(event);
+    else component.onPointerUp(event);
   }
 
   // ==========================================================================
@@ -157,6 +196,176 @@ describe('DiagramCanvasComponent — extension registries', () => {
       expect(diagram.getLinks()).toHaveLength(0);
       fixture.destroy();
       second.destroy();
+    });
+  });
+
+  // ==========================================================================
+  // registerTool
+  // ==========================================================================
+
+  describe('registerTool', () => {
+    interface Recorded {
+      type: string;
+      world: { x: number; y: number };
+      pointerType?: string;
+      hit?: ToolHitContext;
+    }
+
+    /** A pen-like tool: claims every press on empty canvas, records what it sees. */
+    function recordingTool(claim: (hit: ToolHitContext) => boolean = (hit) => hit.empty): {
+      tool: CanvasTool;
+      seen: Recorded[];
+    } {
+      const seen: Recorded[] = [];
+      const rec = (event: ToolPointerEvent, hit?: ToolHitContext): void => {
+        seen.push({
+          type: event.type,
+          world: { ...event.world },
+          pointerType: (event.source as PointerEvent | undefined)?.pointerType,
+          hit,
+        });
+      };
+      const tool: CanvasTool = {
+        id: 'test-pen',
+        priority: 1,
+        hitTest: (_event, hit) => claim(hit),
+        onPointerDown: (event, hit) => rec(event, hit),
+        onPointerMove: (event) => rec(event),
+        onPointerUp: (event) => rec(event),
+        onCancel: () => seen.push({ type: 'cancel', world: { x: NaN, y: NaN } }),
+      };
+      return { tool, seen };
+    }
+
+    function stroke(pointerType: 'mouse' | 'pen' | 'touch'): void {
+      pointer('pointerdown', 400, 300, pointerType);
+      pointer('pointermove', 450, 330, pointerType);
+      pointer('pointermove', 500, 360, pointerType);
+      pointer('pointerup', 500, 360, pointerType);
+    }
+
+    for (const pointerType of ['mouse', 'pen'] as const) {
+      test(`a ${pointerType} drag reaches the registered tool (down → move → up)`, () => {
+        const { tool, seen } = recordingTool();
+        disposers.push(registerTool(tool));
+        mount();
+
+        stroke(pointerType);
+
+        expect(seen.map((e) => e.type)).toEqual(['down', 'move', 'move', 'up']);
+        expect(seen[0]!.world).toEqual({ x: 400, y: 300 });
+        expect(seen[3]!.world).toEqual({ x: 500, y: 360 });
+        expect(seen[0]!.pointerType).toBe(pointerType);
+        // The tool OWNED the gesture: the built-in marquee never armed.
+        expect(component.marquee()).toBeNull();
+      });
+    }
+
+    test('control: a touch drag reaches the registered tool too', () => {
+      const { tool, seen } = recordingTool();
+      disposers.push(registerTool(tool));
+      mount();
+
+      stroke('touch');
+
+      expect(seen.map((e) => e.type)).toEqual(['down', 'move', 'move', 'up']);
+    });
+
+    test('legacy mouse events (no PointerEvent support) reach the tool as well', () => {
+      const { tool, seen } = recordingTool();
+      disposers.push(registerTool(tool));
+      mount();
+
+      mouse('mousedown', 400, 300);
+      mouse('mousemove', 480, 340);
+      mouse('mouseup', 480, 340);
+
+      expect(seen.map((e) => e.type)).toEqual(['down', 'move', 'up']);
+    });
+
+    test('a tool that declines leaves the built-in ladder untouched (node drag moves the node)', () => {
+      const { tool, seen } = recordingTool(() => false);
+      disposers.push(registerTool(tool));
+      const node = buildNode({ id: 'n', position: { x: 100, y: 100 }, size: { width: 160, height: 80 } } as never, 0);
+      diagram.addNode(node);
+      mount();
+
+      pointer('pointerdown', 180, 140, 'mouse');
+      pointer('pointermove', 230, 160, 'mouse');
+      pointer('pointermove', 280, 180, 'mouse');
+      pointer('pointerup', 280, 180, 'mouse');
+
+      expect(seen).toEqual([]);
+      expect({ x: node.position.x, y: node.position.y }).toEqual({ x: 200, y: 140 });
+    });
+
+    test('the hit context names the node under the press', () => {
+      const { tool, seen } = recordingTool(() => true);
+      disposers.push(registerTool(tool));
+      const node = buildNode({ id: 'n', position: { x: 100, y: 100 }, size: { width: 160, height: 80 } } as never, 0);
+      diagram.addNode(node);
+      mount();
+
+      pointer('pointerdown', 180, 140, 'mouse');
+      pointer('pointerup', 180, 140, 'mouse');
+
+      expect(seen[0]!.hit?.node?.id).toBe('n');
+      expect(seen[0]!.hit?.empty).toBe(false);
+      // The tool owned the press: the node was not selected by the ladder.
+      expect(node.isSelected()).toBe(false);
+    });
+
+    test('world coordinates follow the camera at zoom ≠ 1', () => {
+      const { tool, seen } = recordingTool();
+      disposers.push(registerTool(tool));
+      mount();
+      fixture.componentRef.setInput('zoom', 2);
+      fixture.componentRef.setInput('viewport', { x: 100, y: 50, width: 800, height: 600 });
+      fixture.detectChanges();
+
+      pointer('pointerdown', 400, 300, 'pen');
+      pointer('pointerup', 400, 300, 'pen');
+
+      // Centre-anchored viewBox: world = centre + (screen − canvasCentre) / zoom
+      expect(seen[0]!.world).toEqual({ x: 100 + 400 + (400 - 400) / 2, y: 50 + 300 + (300 - 300) / 2 });
+    });
+
+    test('Escape mid-gesture cancels the tool, and the release is not delivered', () => {
+      const { tool, seen } = recordingTool();
+      disposers.push(registerTool(tool));
+      mount();
+
+      pointer('pointerdown', 400, 300, 'mouse');
+      pointer('pointermove', 450, 320, 'mouse');
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      pointer('pointermove', 470, 330, 'mouse');
+      pointer('pointerup', 470, 330, 'mouse');
+
+      expect(seen.map((e) => e.type)).toEqual(['down', 'move', 'cancel']);
+    });
+
+    test('a pointercancel cancels the tool', () => {
+      const { tool, seen } = recordingTool();
+      disposers.push(registerTool(tool));
+      mount();
+
+      pointer('pointerdown', 400, 300, 'pen');
+      component.onPointerCancel(
+        new FakePointerEvent('pointercancel', { clientX: 400, clientY: 300, pointerType: 'pen' }) as unknown as PointerEvent
+      );
+
+      expect(seen.map((e) => e.type)).toEqual(['down', 'cancel']);
+    });
+
+    test('a read-only diagram does not hand gestures to tools', () => {
+      const { tool, seen } = recordingTool();
+      disposers.push(registerTool(tool));
+      diagram.setReadonly(true);
+      mount();
+
+      stroke('mouse');
+
+      expect(seen).toEqual([]);
     });
   });
 });
