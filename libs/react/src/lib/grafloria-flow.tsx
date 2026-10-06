@@ -21,6 +21,7 @@ export interface GrafloriaCollabOptions {
 import { createDiagram, loadCanvasPlugins, bindPresence } from '@grafloria/renderer';
 import type { CanvasPluginOptions, BindPresenceOptions, PresenceBinding, HighlighterConfig, HighlightConnectedOptions, GroupSpec } from '@grafloria/renderer';
 import type {
+  ColorMode,
   CreateDiagramOptions,
   DiagramInstance,
   EdgeSpec,
@@ -99,6 +100,13 @@ export interface GrafloriaFlowProps {
   /** Custom node components, keyed by node `type`. */
   nodeTypes?: NodeTypes;
   theme?: Theme;
+  /**
+   * `'light'` or `'dark'` pins the built-in light/dark theme; `'system'` follows the
+   * OS (and its high-contrast setting). Applied at mount; a change applies live, with
+   * no remount. While a mode is set, the `theme` prop does not override it — the same
+   * rule as Angular's `colorMode` input. Removing the prop keeps the last mode.
+   */
+  colorMode?: ColorMode;
   fitView?: boolean;
 
   // -- interaction (forwarded to the binder) ---------------------------------
@@ -215,6 +223,7 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
       edges: callbacks.current.edges ?? callbacks.current.defaultEdges ?? [],
       groups: callbacks.current.groups ?? callbacks.current.defaultGroups,
       theme: callbacks.current.theme,
+      colorMode: callbacks.current.colorMode,
       fitView: callbacks.current.fitView,
       enablePan: callbacks.current.enablePan,
       enableZoom: callbacks.current.enableZoom,
@@ -324,9 +333,17 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
   }, [instance, groups]);
 
   useEffect(() => {
-    if (!instance || !props.theme) return;
+    // A colour mode decides the theme while it is set (light/dark/the OS); a stray
+    // `theme` must not fight it.
+    if (!instance || !props.theme || callbacks.current.colorMode) return;
     instance.setTheme(props.theme);
   }, [instance, props.theme]);
+
+  // The first mode went in with createDiagram(); only a CHANGE is applied here.
+  useEffect(() => {
+    if (!instance || !props.colorMode || instance.getColorMode() === props.colorMode) return;
+    instance.setColorMode(props.colorMode);
+  }, [instance, props.colorMode]);
 
   // -- canvas plugins (minimap / controls / background) -----------------------
   const pluginsKey = props.plugins === undefined ? undefined : JSON.stringify(props.plugins);

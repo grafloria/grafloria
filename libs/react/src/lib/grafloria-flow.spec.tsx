@@ -342,6 +342,43 @@ describe('<GrafloriaFlow>', () => {
   });
 });
 
+/** The CSS variable block THIS instance injected — where a theme actually lands. */
+function themeCss(container: Element): string {
+  const id = container.querySelector('svg')?.getAttribute('data-grafloria-instance');
+  return (id && document.head.querySelector(`style[id$="${id}"]`)?.textContent) || '';
+}
+// The block names its theme: `/* Grafloria Renderer Theme: Dark (instance …) */`.
+const DARK = 'Theme: Dark';
+
+describe('colorMode prop', () => {
+  it('applies at mount and follows the prop live, without remounting', async () => {
+    let instance: DiagramInstance | undefined;
+    const onInit = jest.fn((i: DiagramInstance) => (instance = i));
+    const { container, rerender } = render(<GrafloriaFlow defaultNodes={NODES} colorMode="dark" onInit={onInit} />);
+    await waitFor(() => expect(instance).toBeDefined());
+    expect(instance!.getColorMode()).toBe('dark');
+    expect(themeCss(container)).toContain(DARK);
+
+    rerender(<GrafloriaFlow defaultNodes={NODES} colorMode="light" onInit={onInit} />);
+    await waitFor(() => expect(instance!.getColorMode()).toBe('light'));
+    expect(themeCss(container)).toContain('Theme: Light');
+    rerender(<GrafloriaFlow defaultNodes={NODES} colorMode="system" onInit={onInit} />);
+    await waitFor(() => expect(instance!.getColorMode()).toBe('system'));
+    expect(onInit).toHaveBeenCalledTimes(1); // one instance the whole time
+  });
+
+  it('a theme prop does not fight the colour mode', async () => {
+    const { LIGHT_THEME } = require('@grafloria/renderer');
+    let instance: DiagramInstance | undefined;
+    const { container } = render(
+      <GrafloriaFlow defaultNodes={NODES} theme={LIGHT_THEME} colorMode="dark" onInit={(i) => (instance = i)} />
+    );
+    await waitFor(() => expect(instance).toBeDefined());
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(themeCss(container)).toContain(DARK);
+  });
+});
+
 describe('hooks', () => {
   it('useGrafloria reaches the instance from a SIBLING of the canvas via the provider', async () => {
     function Toolbar() {

@@ -10,7 +10,7 @@
  */
 import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch, type PropType } from 'vue';
 import { render as renderSpec, type RenderSpec, type RenderOptions } from '@grafloria/element';
-import type { DiagramInstance } from '@grafloria/renderer';
+import type { ColorMode, DiagramInstance } from '@grafloria/renderer';
 import { specKey } from './spec-key';
 
 export const GrafloriaDiagram = defineComponent({
@@ -19,6 +19,11 @@ export const GrafloriaDiagram = defineComponent({
     /** Any kit spec — erDiagram(...), umlDiagram(...), dashboard(...), or DSL text. */
     spec: { type: [Object, String] as PropType<RenderSpec>, required: true },
     options: { type: Object as PropType<RenderOptions>, default: () => ({}) },
+    /**
+     * `'light'`, `'dark'` or `'system'` (follow the OS). Applied at mount; a change
+     * applies live — unlike changed `options`, it does not replace the diagram.
+     */
+    colorMode: { type: String as PropType<ColorMode>, default: undefined },
   },
   emits: ['ready'],
   setup(props, { emit, expose }) {
@@ -30,7 +35,10 @@ export const GrafloriaDiagram = defineComponent({
       if (!container.value) return;
       instance?.dispose();
       mountedKey = specKey(props.spec, props.options);
-      instance = renderSpec(props.spec, container.value, props.options) as DiagramInstance;
+      instance = renderSpec(props.spec, container.value, {
+        ...props.options,
+        ...(props.colorMode ? { colorMode: props.colorMode } : {}),
+      }) as DiagramInstance;
       emit('ready', instance);
     };
 
@@ -40,6 +48,14 @@ export const GrafloriaDiagram = defineComponent({
       () => [props.spec, props.options],
       () => {
         if (instance && specKey(props.spec, props.options) !== mountedKey) mount();
+      }
+    );
+
+    // Live colour mode: one call on the instance, never a remount.
+    watch(
+      () => props.colorMode,
+      (next) => {
+        if (next && instance && instance.getColorMode() !== next) instance.setColorMode(next);
       }
     );
 

@@ -65,6 +65,7 @@ import {
   toNodeSpec,
   type BindPresenceOptions,
   type CanvasPluginOptions,
+  type ColorMode,
   type CanvasPlugins,
   type CreateDiagramOptions,
   type DiagramInstance,
@@ -151,6 +152,13 @@ export interface GrafloriaFlowProps {
   /** Custom node components, keyed by node `type`. */
   nodeTypes?: NodeTypes;
   theme?: Theme;
+  /**
+   * `'light'` or `'dark'` pins the built-in light/dark theme; `'system'` follows the
+   * OS (and its high-contrast setting). Applied at mount; a change applies live, with
+   * no remount. While a mode is set, `theme` does not override it — the same rule as
+   * Angular's `colorMode` input. Removing the prop keeps the last mode.
+   */
+  colorMode?: ColorMode;
   fitView?: boolean;
 
   // -- interaction -----------------------------------------------------------
@@ -251,6 +259,7 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
       edges: props.edges ?? props.defaultEdges ?? [],
       groups: props.groups ?? props.defaultGroups,
       theme: props.theme,
+      colorMode: props.colorMode,
       fitView: props.fitView,
       enablePan: props.enablePan,
       enableZoom: props.enableZoom,
@@ -382,8 +391,18 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
   useVisibleTask$(({ track }) => {
     const theme = track(() => props.theme);
     const instance = track(() => instanceRef.value);
-    if (!theme || !instance) return;
+    // A colour mode decides the theme while it is set; a stray theme must not fight it.
+    if (!theme || !instance || props.colorMode) return;
     instance.setTheme(theme);
+  }, MOUNT_EAGERLY);
+
+  // The first mode went in with createDiagram(); only a CHANGE is applied here.
+  // eslint-disable-next-line qwik/no-use-visible-task
+  useVisibleTask$(({ track }) => {
+    const mode = track(() => props.colorMode);
+    const instance = track(() => instanceRef.value);
+    if (!mode || !instance || instance.getColorMode() === mode) return;
+    instance.setColorMode(mode);
   }, MOUNT_EAGERLY);
 
   // -- the outline layer, live ------------------------------------------------

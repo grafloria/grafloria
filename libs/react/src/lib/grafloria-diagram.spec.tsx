@@ -65,6 +65,17 @@ describe('<GrafloriaDiagram>', () => {
     expect(ready.mock.calls[1][0].getHighlightConnected()).toBeTruthy();
   });
 
+  it('colorMode: applies at mount and follows the prop live, without remounting', async () => {
+    const ready = jest.fn();
+    const { rerender } = render(<GrafloriaDiagram onReady={ready} spec={table('Products')} colorMode="dark" />);
+    await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+    const instance = ready.mock.calls[0][0];
+    expect(instance.getColorMode()).toBe('dark');
+    rerender(<GrafloriaDiagram onReady={ready} spec={table('Products')} colorMode="light" />);
+    await waitFor(() => expect(instance.getColorMode()).toBe('light'));
+    expect(ready).toHaveBeenCalledTimes(1);
+  });
+
   it('renders a UML class diagram from pure data', async () => {
     let instance: any = null;
     const { container } = render(

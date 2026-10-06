@@ -22,7 +22,7 @@ import {
   type QRL,
 } from '@builder.io/qwik';
 import { render as renderSpec, type RenderOptions, type RenderSpec } from '@grafloria/element';
-import type { DiagramInstance } from '@grafloria/renderer';
+import type { ColorMode, DiagramInstance } from '@grafloria/renderer';
 import { MOUNT_EAGERLY } from './visible-task-options';
 import { specKey } from './spec-key';
 
@@ -32,6 +32,11 @@ export interface GrafloriaDiagramProps {
   options?: RenderOptions;
   /** Fires once the kit has rendered, with the live instance. */
   onReady$?: QRL<(instance: DiagramInstance) => void>;
+  /**
+   * `'light'`, `'dark'` or `'system'` (follow the OS). Applied at mount; a change
+   * applies live — unlike changed `options`, it does not replace the diagram.
+   */
+  colorMode?: ColorMode;
   class?: string;
   style?: Record<string, string | number>;
 }
@@ -53,9 +58,23 @@ export const GrafloriaDiagram = component$<GrafloriaDiagramProps>((props) => {
 
     instanceRef.value?.dispose();
     mountedKey.value = key;
-    const instance = renderSpec(spec, container, options ?? {}) as DiagramInstance;
+    // Read, not tracked: a colour-mode change is applied live below, never by a remount.
+    const colorMode = props.colorMode;
+    const instance = renderSpec(spec, container, {
+      ...(options ?? {}),
+      ...(colorMode ? { colorMode } : {}),
+    }) as DiagramInstance;
     instanceRef.value = noSerialize(instance);
     void props.onReady$?.(instance);
+  }, MOUNT_EAGERLY);
+
+  // Live colour mode: one call on the instance, never a remount.
+  // eslint-disable-next-line qwik/no-use-visible-task
+  useVisibleTask$(({ track }) => {
+    const mode = track(() => props.colorMode);
+    const instance = track(() => instanceRef.value);
+    if (!mode || !instance || instance.getColorMode() === mode) return;
+    instance.setColorMode(mode);
   }, MOUNT_EAGERLY);
 
   // Dispose on unmount only — a re-run of the task above must not.

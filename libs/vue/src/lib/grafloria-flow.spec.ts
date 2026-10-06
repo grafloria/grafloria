@@ -38,6 +38,42 @@ describe('GrafloriaFlow (Vue)', () => {
     { id: 'b', position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
   ];
 
+  /** The CSS block THIS instance injected; it names its theme (`Theme: Dark (instance …)`). */
+  const themeCss = (): string => {
+    const id = host.querySelector('svg')?.getAttribute('data-grafloria-instance');
+    return (id && document.head.querySelector(`style[id$="${id}"]`)?.textContent) || '';
+  };
+
+  it('colorMode: applies at mount and follows the prop live, without remounting', async () => {
+    const instances: any[] = [];
+    const mode = ref<'light' | 'dark' | 'system'>('dark');
+    app = createApp(defineComponent({
+      setup: () => () => h(GrafloriaFlow, { defaultNodes: TWO, colorMode: mode.value, onInit: (i: unknown) => instances.push(i) }),
+    }));
+    app.mount(host);
+    await flush();
+    expect(instances[0].getColorMode()).toBe('dark');
+    expect(themeCss()).toContain('Theme: Dark');
+    mode.value = 'light';
+    await flush();
+    expect(instances[0].getColorMode()).toBe('light');
+    expect(themeCss()).toContain('Theme: Light');
+    mode.value = 'system';
+    await flush();
+    expect(instances[0].getColorMode()).toBe('system');
+    expect(instances).toHaveLength(1);
+  });
+
+  it('colorMode: a theme prop does not fight it', async () => {
+    const { LIGHT_THEME } = require('@grafloria/renderer');
+    app = createApp(defineComponent({
+      setup: () => () => h(GrafloriaFlow, { defaultNodes: TWO, theme: LIGHT_THEME, colorMode: 'dark' }),
+    }));
+    app.mount(host);
+    await flush();
+    expect(themeCss()).toContain('Theme: Dark');
+  });
+
   it('highlightConnected: goes in at mount and follows the prop live', async () => {
     let instance: any = null;
     const hc = ref<unknown>(true);

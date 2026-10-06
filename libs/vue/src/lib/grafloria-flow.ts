@@ -59,6 +59,7 @@ import {
   type NodeSpec,
   type EdgeSpec,
   type Theme,
+  type ColorMode,
   type HighlighterConfig,
   type HighlightConnectedOptions,
   type GroupSpec,
@@ -98,6 +99,13 @@ export const GrafloriaFlow = defineComponent({
     defaultEdges: { type: Array as PropType<EdgeSpec[]>, default: undefined },
     defaultGroups: { type: Array as PropType<Array<GroupSpec | GroupModel>>, default: undefined },
     theme: { type: Object as PropType<Theme>, default: undefined },
+    /**
+     * `'light'` or `'dark'` pins the built-in light/dark theme; `'system'` follows
+     * the OS (and its high-contrast setting). Applied at mount; a change applies
+     * live, with no remount. While a mode is set, `theme` does not override it —
+     * the same rule as Angular's `colorMode` input. Removing it keeps the last mode.
+     */
+    colorMode: { type: String as PropType<ColorMode>, default: undefined },
     /**
      * Declarative auto-layout — any engine registry name ('elk', 'dagre',
      * 'force', 'tree', 'grid', 'auto', …) or `{ name, options }`. Re-runs when
@@ -248,6 +256,7 @@ export const GrafloriaFlow = defineComponent({
         edges: props.edges ?? props.defaultEdges ?? [],
         groups: props.groups ?? props.defaultGroups,
         theme: props.theme,
+        colorMode: props.colorMode,
         fitView: props.fitView,
         enablePan: props.enablePan,
         enableZoom: props.enableZoom,
@@ -325,7 +334,15 @@ export const GrafloriaFlow = defineComponent({
     watch(
       () => props.theme,
       (next) => {
-        if (next && instance.value) instance.value.setTheme(next);
+        // A colour mode decides the theme while it is set; a stray theme must not fight it.
+        if (next && instance.value && !props.colorMode) instance.value.setTheme(next);
+      }
+    );
+    watch(
+      () => props.colorMode,
+      (next) => {
+        const inst = instance.value;
+        if (next && inst && inst.getColorMode() !== next) inst.setColorMode(next);
       }
     );
     watch(

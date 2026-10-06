@@ -87,4 +87,24 @@ describe('<GrafloriaDiagram> (Vue)', () => {
     expect(ready).toHaveBeenCalledTimes(1);
     done();
   });
+
+  it('colorMode: applies at mount and follows the prop live, without remounting', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const ready: any[] = [];
+    const mode = ref<'light' | 'dark'>('dark');
+    const spec = erDiagram({ entities: [{ id: 'T', name: 'T', position: { x: 40, y: 40 }, columns: [{ name: 'id', type: 'int', pk: true }] }], relationships: [] });
+    const app = createApp(defineComponent({
+      setup: () => () => h(GrafloriaDiagram, { spec, colorMode: mode.value, onReady: (i: any) => ready.push(i) }),
+    }));
+    app.mount(host);
+    await flush();
+    expect(ready[0].getColorMode()).toBe('dark');
+    mode.value = 'light';
+    await flush();
+    expect(ready[0].getColorMode()).toBe('light');
+    expect(ready).toHaveLength(1);
+    app.unmount();
+    host.remove();
+  });
 });
