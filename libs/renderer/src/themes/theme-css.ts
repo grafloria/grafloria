@@ -187,11 +187,20 @@ export const BASE_STYLE_RULES: readonly StyleRule[] = [
 ];
 
 /**
+ * Drop CSS comments from what ships. The comments below are for maintainers; the
+ * stylesheet is also inlined into exported and server-rendered SVG, where a `<` in
+ * a comment opens a tag and the browser swallows every rule after it.
+ */
+function stripCssComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
  * Structural rules: cursors, transitions, hit-target sizes. No theme values, so
  * they are emitted verbatim (and unscoped, exactly as before) — `@keyframes`
  * cannot be scoped anyway.
  */
-const STATIC_CSS = `
+const STATIC_CSS = stripCssComments(`
 /* The diagram root is keyboard-focusable (tabindex=0, the a11y entry point),
    and every node/link group carries tabindex=-1 for programmatic keyboard
    navigation — which ALSO makes them mouse-focusable, so a click on a link's
@@ -289,7 +298,7 @@ svg.grafloria-diagram text {
   pointer-events: none;
   transition: opacity 0.2s ease;
 }
-`.trim();
+`);
 
 /** `[data-grafloria-instance="grafloria-3"]` — selects one diagram's root (and scoped hosts). */
 export function instanceScopeSelector(instanceId: string): string {
