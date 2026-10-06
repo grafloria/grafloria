@@ -1641,6 +1641,10 @@ export function createDiagram(
     emit('edges:change', { edges: model.getLinks() });
   });
   onModel('groups:cleared', () => scheduler.schedule());
+  // Comment pins paint too. The overlay drops the cached frame on every store
+  // change, but dropping the cache paints nothing: a new thread showed no pin
+  // (and a resolved one kept its pin) until an unrelated hover repainted.
+  if (commentStore) unsubs.push(commentStore.onChange(() => scheduler.schedule()));
   // The outline layer's validation is refreshed when the STRUCTURE changes — a
   // node, link or group added, removed or cleared — as Angular's canvas does
   // after a structural command. Never per frame: validateDiagram() walks it all.
