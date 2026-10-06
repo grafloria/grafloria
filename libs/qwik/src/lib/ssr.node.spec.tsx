@@ -13,11 +13,13 @@
  * server HTML carries the listener map, so the diagram below costs zero
  * component JavaScript until the user touches it.
  */
-import { component$ } from '@builder.io/qwik';
+import { $, component$, noSerialize } from '@builder.io/qwik';
+import { erDiagram } from '@grafloria/element';
 import { renderToString } from '@builder.io/qwik/server';
 import { renderToStaticSVG } from '@grafloria/renderer';
 import type { NodeSpec } from '@grafloria/renderer';
 import { GrafloriaFlow } from './grafloria-flow';
+import { GrafloriaDiagram } from './grafloria-diagram';
 import { GrafloriaProvider, useSelection, useViewport } from './hooks';
 
 const NODES: NodeSpec[] = [
@@ -123,5 +125,34 @@ describe('hooks outside a provider', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+describe('<GrafloriaDiagram> kit specs on the server', () => {
+  // Every kit spec (erDiagram, umlDiagram, dashboard) carries functions — a painter, a
+  // finalize hook — and Qwik cannot serialize a function into server-rendered HTML.
+  const kit = () =>
+    erDiagram({
+      entities: [{ id: 'T', name: 'Orders', position: { x: 40, y: 40 }, columns: [{ name: 'id', type: 'int', pk: true }] }],
+      relationships: [],
+    });
+
+  it('a spec carrying functions fails with an error that says what to do', async () => {
+    // It used to fail deep in Qwik's serializer: "Value cannot be serialized in _.finalize".
+    await expect(html(<GrafloriaDiagram spec={kit()} />)).rejects.toThrow(/spec\$=\{\(\) => /);
+    await expect(html(<GrafloriaDiagram spec={kit()} />)).rejects.toThrow(/spec\.finalize/);
+    // noSerialize() does not help under SSR — the spec would come back undefined on resume
+    // and nothing would draw — so it gets the same guidance instead of a blank box.
+    await expect(html(<GrafloriaDiagram spec={noSerialize(kit()) as never} />)).rejects.toThrow(/spec\$/);
+  });
+
+  it('spec$ — the spec is BUILT in the browser — server-renders a kit diagram', async () => {
+    const out = await html(<GrafloriaDiagram spec$={$(() => kit())} />);
+    expect(out).toContain('grafloria-diagram');
+  });
+
+  it('a plain-data spec still server-renders as before', async () => {
+    const out = await html(<GrafloriaDiagram spec={{ nodes: NODES, edges: [] }} />);
+    expect(out).toContain('grafloria-diagram');
   });
 });
