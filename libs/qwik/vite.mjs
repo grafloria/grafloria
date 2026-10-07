@@ -1,5 +1,5 @@
 /**
- * `@grafloria/qwik/vite` — OPTIONAL since the release after 0.10.6. A Vite config
+ * `@grafloria/qwik/vite` — OPTIONAL since 0.11.0. A Vite config
  * needs nothing for Grafloria: `qwikVite()` (plus `qwikCity()` in a Qwik City app)
  * is the whole setup.
  *

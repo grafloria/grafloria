@@ -1,15 +1,15 @@
 {
   "name": "@grafloria/react",
-  "version": "0.10.6",
+  "version": "0.11.0",
   "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "peerDependencies": {
-    "@grafloria/engine": "^0.3.0",
-    "@grafloria/renderer": "^0.4.16",
+    "@grafloria/engine": "^0.4.0",
+    "@grafloria/renderer": "^0.5.0",
     "react": "^17.0.0 || ^18.0.0 || ^19.0.0",
     "react-dom": "^17.0.0 || ^18.0.0 || ^19.0.0",
-    "@grafloria/element": "^0.4.3"
+    "@grafloria/element": "^0.5.0"
   },
   "dependencies": {
     "tslib": "^2.3.0"
