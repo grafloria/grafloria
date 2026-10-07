@@ -20,6 +20,8 @@ import {
   BatchCommand,
   type Stencil,
   type NodeTemplate,
+  type DiagramEngine,
+  type DiagramModel,
 } from '@grafloria/engine';
 import { getShape } from '@grafloria/renderer';
 import { ensureStencilKitStyles } from './styles';
@@ -29,12 +31,22 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 /** The MIME the palette drags with — namespaced so a page's other DnD is untouched. */
 const DND_TYPE = 'application/x-grafloria-master';
 
-/** The bits of a diagram instance the palette needs (kept structural so any
- *  host — element, React, Vue — satisfies it without importing a class). */
+/**
+ * What the palette needs from a diagram: its engine (a drop runs as one
+ * undoable command), its model, and the viewport that turns the drop point
+ * into world coordinates. A `DiagramInstance` is all of this, so pass the
+ * instance itself.
+ */
 export interface StencilPaletteApi {
-  getEngine(): any;
-  getModel(): any;
-  viewport: { clientToWorld(x: number, y: number, rect: { left: number; top: number; width: number; height: number }): { x: number; y: number } };
+  getEngine: () => DiagramEngine;
+  getModel: () => DiagramModel;
+  viewport: {
+    clientToWorld(
+      x: number,
+      y: number,
+      rect: { left: number; top: number; width: number; height: number }
+    ): { x: number; y: number };
+  };
 }
 
 export interface StencilPaletteOptions {

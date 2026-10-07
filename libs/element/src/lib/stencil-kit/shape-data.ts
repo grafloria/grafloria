@@ -38,6 +38,8 @@ import {
   SetNodeStyleCommand,
   UpdateLinkStyleCommand,
 } from '@grafloria/engine';
+import type { DiagramEngine, DiagramModel } from '@grafloria/engine';
+import type { DiagramEventMap } from '@grafloria/renderer';
 import { erTable, umlClass } from '../diagram-kit';
 import { ensureStencilKitStyles } from './styles';
 
@@ -50,10 +52,19 @@ interface SchemaProp {
   description?: string;
 }
 
+/**
+ * What the panel needs from a diagram: its engine (every edit runs as an
+ * undoable command), its model (the selection), and a subscription to
+ * selection changes that returns its unsubscribe function. A
+ * `DiagramInstance` is all of this, so pass the instance itself.
+ */
 export interface ShapeDataPanelApi {
-  getEngine(): any;
-  getModel(): any;
-  on(event: string, handler: (payload: any) => void): () => void;
+  getEngine: () => DiagramEngine;
+  getModel: () => DiagramModel;
+  on: (
+    event: 'selection:change',
+    handler: (change: DiagramEventMap['selection:change']) => void
+  ) => () => void;
 }
 
 export interface ShapeDataPanelOptions {
