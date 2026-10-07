@@ -1931,6 +1931,22 @@ export function createDiagram(
         if (model.getGroup(group.id) !== group) model.addGroup(group);
       }
 
+      // Whiteboard ink is outside nodes/edges/groups too. Replaced like them:
+      // loading a DIFFERENT diagram left the old one's ink drawn over it, and the
+      // ink in the loaded text's lossless sidecar never came back. Plain text
+      // carries none, so it clears the ink. Through removeStroke/addStroke (not
+      // clearStrokes), so undo, collab capture and the repaint all see it.
+      const incomingInk = result.diagram.getStrokes();
+      const wantedInk = new Set(incomingInk.map((stroke) => stroke.id));
+      for (const existing of model.getStrokes()) {
+        if (!wantedInk.has(existing.id)) model.removeStroke(existing.id);
+      }
+      for (const stroke of incomingInk) {
+        const current = model.getStroke(stroke.id);
+        if (current && current !== stroke) model.removeStroke(current.id);
+        if (model.getStroke(stroke.id) !== stroke) model.addStroke(stroke);
+      }
+
       // …and neither does the DIAGRAM TYPE. exportText picks its grammar by the
       // model's `diagramType` (and the ER/class/state/block generators read
       // diagram-level keys of their own), so an erDiagram, stateDiagram,
