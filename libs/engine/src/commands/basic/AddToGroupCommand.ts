@@ -8,15 +8,14 @@ import type { GroupFrameSnapshot } from './MoveGroupCommand';
  *
  * A member that joins from outside the frame is taken in: the frame grows (it
  * never shrinks) to contain the member plus the group's padding and header
- * band, and each enclosing group grows to contain the grown frame. A group
- * with no frame yet gets one fitted around its members. Undo removes the
- * member and puts every frame back exactly as it was.
+ * band, and each enclosing group grows to contain the grown frame —
+ * `GroupModel.addMember` does that itself, on every path. On top of it, a
+ * group with no frame yet gets one fitted around its members here. Undo
+ * removes the member and puts every frame back exactly as it was.
  *
- * Frames that something else owns are left alone: a collapsed group, a layout
- * container (`setLayout`), a swimlane or pool (`laneConfig`), a group that
- * confines its members (`constrainChildren`: its frame is the extent they are
- * kept inside), and a group drawn without a frame
- * (`metadata.frameChrome === 'none'`, as dashboard boards are).
+ * Frames that something else owns are left alone (see
+ * `GroupModel.ownsItsFrame`): a collapsed group, a layout container, a lane
+ * or pool, a confining group, and a group drawn without a frame.
  */
 export class AddToGroupCommand extends Command {
   /** The frames this execution changed, outermost last, for undo. */
@@ -41,9 +40,18 @@ export class AddToGroupCommand extends Command {
     }
 
     const joined = !group.members.has(this.entityId);
+    // Snapshot BEFORE addMember: the model grows the frames as the member joins.
+    const before = joined ? frameChain(diagram, group) : [];
     group.addMember(this.entityId);
     this.refitted = [];
-    if (joined && group.members.has(this.entityId)) this.refit(diagram, group);
+    if (!joined || !group.members.has(this.entityId)) return;
+    // A group with no frame yet: the model leaves it to whoever fits it; a
+    // deliberate join through the command gives it one.
+    if (!group.size && group.ownsItsFrame()) group.growToFitMembers(diagram);
+    for (const snap of before) {
+      const now = diagram.getGroup(snap.groupId);
+      if (now && !sameFrame(now, snap.before)) this.refitted.push(snap);
+    }
   }
 
   override undo(context: CommandContext): void {
@@ -66,24 +74,6 @@ export class AddToGroupCommand extends Command {
       });
     }
     this.refitted = [];
-  }
-
-  /** Grow `group`, then each enclosing group, to contain what is inside it. */
-  private refit(diagram: DiagramModel, group: GroupModel): void {
-    const seen = new Set<string>();
-    let current: GroupModel | undefined = group;
-    while (current && !seen.has(current.id)) {
-      seen.add(current.id);
-      if (!ownsItsFrame(current)) break;
-      const before: GroupFrameSnapshot = {
-        position: { ...current.position },
-        size: current.size ? { ...current.size } : undefined,
-        bounds: current.bounds ? { ...current.bounds } : undefined,
-      };
-      if (!current.growToFitMembers(diagram)) break;
-      this.refitted.push({ groupId: current.id, before });
-      current = current.parentGroupId ? diagram.getGroup(current.parentGroupId) : undefined;
-    }
   }
 
   override canExecute(context: CommandContext): boolean {
@@ -133,13 +123,40 @@ export class AddToGroupCommand extends Command {
   }
 }
 
-/** Whether a new member may grow this group's frame (see the class comment). */
-function ownsItsFrame(group: GroupModel): boolean {
+/** `group` and each enclosing group, with their frames as they are now. */
+function frameChain(
+  diagram: DiagramModel,
+  group: GroupModel
+): Array<{ groupId: string; before: GroupFrameSnapshot }> {
+  const out: Array<{ groupId: string; before: GroupFrameSnapshot }> = [];
+  const seen = new Set<string>();
+  let current: GroupModel | undefined = group;
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    out.push({
+      groupId: current.id,
+      before: {
+        position: { ...current.position },
+        size: current.size ? { ...current.size } : undefined,
+        bounds: current.bounds ? { ...current.bounds } : undefined,
+      },
+    });
+    current = current.parentGroupId ? diagram.getGroup(current.parentGroupId) : undefined;
+  }
+  return out;
+}
+
+function sameFrame(group: GroupModel, frame: GroupFrameSnapshot): boolean {
+  const s = group.size;
+  const b = group.bounds;
   return (
-    !group.isCollapsed &&
-    !group.hasLayout() &&
-    !group.laneConfig &&
-    group.constrainChildren !== true &&
-    group.getMetadata('frameChrome') !== 'none'
+    group.position.x === frame.position.x &&
+    group.position.y === frame.position.y &&
+    s?.width === frame.size?.width &&
+    s?.height === frame.size?.height &&
+    b?.x === frame.bounds?.x &&
+    b?.y === frame.bounds?.y &&
+    b?.width === frame.bounds?.width &&
+    b?.height === frame.bounds?.height
   );
 }

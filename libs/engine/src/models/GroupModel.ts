@@ -398,7 +398,57 @@ export class GroupModel extends DiagramEntity {
     // changes. This used to require an explicit `autoLayout` metadata flag, which
     // meant the default behaviour of a layout container was "do nothing".
     this.requestLayout(dm);
+
+    // A member that joins from outside the frame is taken in — HERE, so every path
+    // (AddToGroupCommand, a drop, setGroups(), a kit or host calling this directly)
+    // behaves the same. Only the command used to do it.
+    if (dm) this.growFramesToTakeIn(dm, entityId);
   }
+
+  /**
+   * Whether a joining member may grow this group's frame. Frames that something
+   * else owns are left alone: a collapsed group, a layout container
+   * (`setLayout`), a swimlane or pool (`laneConfig`), a group that confines its
+   * members (`constrainChildren`: its frame is the extent they are kept inside),
+   * and a group drawn without a frame (`metadata.frameChrome === 'none'`, as
+   * dashboard boards are).
+   */
+  ownsItsFrame(): boolean {
+    return (
+      !this.isCollapsed &&
+      !this.hasLayout() &&
+      !this.laneConfig &&
+      this.constrainChildren !== true &&
+      this.getMetadata('frameChrome') !== 'none'
+    );
+  }
+
+  /**
+   * Take a joining member in: when it reaches outside this frame, grow the frame
+   * (grow-only, to the members plus padding and header band — an authored frame
+   * keeps its size and is only ever extended), then the enclosing frame if the
+   * grown one now reaches outside it, and so on. A member already inside the
+   * frame changes nothing, so an importer's or author's exact frame is left as
+   * it was drawn. Frames that are not their own (see {@link ownsItsFrame}) and
+   * a group with NO frame yet (left to whoever fits it: an importer, a layout,
+   * `fitToContents`) are not touched. Not during a system write: a remote or
+   * replayed membership arrives with the frame its origin computed.
+   */
+  private growFramesToTakeIn(dm: DiagramModel, memberId: string): void {
+    if (dm.inSystemWrite?.() || dm.blocksDocumentWrite?.()) return;
+    let reach = extentOf(dm, memberId);
+    const seen = new Set<string>();
+    let current: GroupModel | undefined = this;
+    while (reach && current && !seen.has(current.id)) {
+      seen.add(current.id);
+      if (!current.size || !current.ownsItsFrame()) return;
+      if (rectContains(current.getOuterBounds(), reach)) return;
+      if (!current.growToFitMembers(dm)) return;
+      reach = current.getOuterBounds();
+      current = current.parentGroupId ? dm.getGroup(current.parentGroupId) : undefined;
+    }
+  }
+
 
   /**
    * Remove member from group. When the member is a group whose parent is this
@@ -1874,4 +1924,28 @@ export class GroupModel extends DiagramEntity {
 
     return group;
   }
+}
+
+/** World rectangle of a member: a node's global bounds, a group's outer frame. */
+function extentOf(dm: DiagramModel, id: string): GroupRect | undefined {
+  const node = dm.getNode(id);
+  if (node) {
+    const b = node.getGlobalBounds();
+    return { x: b.left, y: b.top, width: b.right - b.left, height: b.bottom - b.top };
+  }
+  const group = dm.getGroup(id);
+  if (group) {
+    const r = group.getOuterBounds();
+    return r.width > 0 || r.height > 0 ? r : undefined;
+  }
+  return undefined;
+}
+
+function rectContains(outer: GroupRect, inner: GroupRect): boolean {
+  return (
+    inner.x >= outer.x &&
+    inner.y >= outer.y &&
+    inner.x + inner.width <= outer.x + outer.width &&
+    inner.y + inner.height <= outer.y + outer.height
+  );
 }
