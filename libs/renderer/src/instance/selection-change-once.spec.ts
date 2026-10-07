@@ -152,6 +152,25 @@ describe('selection:change fires once per gesture, with the final selection', ()
     }
   });
 
+  it('a click on the node that is already the selection emits nothing (no change)', () => {
+    click(160, 130);
+    seen.length = 0;
+    click(160, 130);
+    expect(seen).toEqual([]);
+  });
+
+  it('a click on empty canvas with nothing selected emits nothing', () => {
+    click(700, 550);
+    expect(seen).toEqual([]);
+  });
+
+  it('programmatic selectNode(a) then selectNode(b): a, then b — never an empty selection between', () => {
+    const model = diagram.getModel();
+    model.selectNode(model.getNode('a')!);
+    model.selectNode(model.getNode('b')!);
+    expect(seen).toEqual([{ n: ['a'], e: [] }, { n: ['b'], e: [] }]);
+  });
+
   it('programmatic selectNode / clearSelection still emit, synchronously, once each', () => {
     const model = diagram.getModel();
     model.selectNode(model.getNode('b')!);

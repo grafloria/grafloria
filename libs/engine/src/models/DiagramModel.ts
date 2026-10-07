@@ -1412,16 +1412,18 @@ export class DiagramModel extends DiagramEntity {
       return;
     }
 
-    // Clear previous selection
-    this.clearSelection();
+    // ONE event with the final selection. Going through clearSelection() emitted
+    // its own event first, so a listener saw a → ∅ → b; and re-selecting the
+    // node that was already the selection emitted twice for no change at all.
+    const deselected = this.getSelectedNodes().filter((other) => other !== node);
+    const wasSelected = node.isSelected();
+    deselected.forEach((other) => other.setSelected(false));
+    if (!wasSelected) node.setSelected(true);
+    if (wasSelected && deselected.length === 0) return;
 
-    // Select the node
-    node.setSelected(true);
-
-    // Emit selection changed event
     this.emitOrQueue('selection:changed', {
-      selected: [node],
-      deselected: []
+      selected: wasSelected ? [] : [node],
+      deselected
     });
   }
 

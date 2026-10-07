@@ -688,13 +688,21 @@ export function createDiagram(
   // only OWED; it is paid once, with the selection as it then stands, when the
   // outermost batch closes. Outside any gesture — selectNode()/clearSelection()
   // from code — it emits immediately, as it always did.
+  //
+  // A gesture that ends where it started — a click on the node that already is
+  // the selection, a click on empty canvas with nothing selected — owes nothing:
+  // the selection is compared with the one the gesture began with, and only a
+  // real change is announced.
   let selectionBatchDepth = 0;
   let selectionOwed = false;
+  let selectionAtGestureStart = '';
+  const selectedEdges = (): LinkModel[] => model.getLinks().filter((l: LinkModel) => l.state === 'selected');
+  const selectionKey = (): string =>
+    model.getSelectedNodes().map((n: NodeModel) => n.id).join('\u0000') +
+    '\u0001' +
+    selectedEdges().map((l: LinkModel) => l.id).join('\u0000');
   const emitSelectionNow = (): void => {
-    emit('selection:change', {
-      nodes: model.getSelectedNodes(),
-      edges: model.getLinks().filter((l: LinkModel) => l.state === 'selected'),
-    });
+    emit('selection:change', { nodes: model.getSelectedNodes(), edges: selectedEdges() });
   };
   const announceSelection = (): void => {
     if (selectionBatchDepth > 0) selectionOwed = true;
@@ -743,6 +751,7 @@ export function createDiagram(
       // route it through the gate (its payload is re-read at emit time).
       emit: (event, payload) => (event === 'selection:change' ? announceSelection() : emit(event, payload)),
       beginSelectionBatch: () => {
+        if (selectionBatchDepth === 0) selectionAtGestureStart = selectionKey();
         selectionBatchDepth++;
       },
       endSelectionBatch: () => {
@@ -750,7 +759,7 @@ export function createDiagram(
         selectionBatchDepth--;
         if (selectionBatchDepth === 0 && selectionOwed) {
           selectionOwed = false;
-          emitSelectionNow();
+          if (selectionKey() !== selectionAtGestureStart) emitSelectionNow();
         }
       },
     },
