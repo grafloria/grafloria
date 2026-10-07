@@ -17,24 +17,37 @@
  * A node whose `type` is `job` renders through `#node-job`; `#node` (no type)
  * is the wildcard for any custom node without an exact slot. Slot content is
  * real Vue — reactivity, components, and event handlers all work, rendered
- * into the engine's HTML layer with Vue's low-level `render()`.
+ * into the engine's HTML layer with Vue's low-level `render()` under this
+ * component's app context: `inject` (app-level and from the components above
+ * the flow), globally registered components, plugins' global properties and
+ * `useGrafloria()` all work inside a node.
+ *
+ * Children in the default slot render after the canvas and reach the instance
+ * through the composables (`useGrafloria()`, `useSelection()`, …) without a
+ * `<GrafloriaProvider>`. Inside a provider the flow publishes to that one, so its
+ * siblings see the instance too.
  */
 import {
   defineComponent,
+  getCurrentInstance,
   h,
+  inject,
   isProxy,
+  mergeProps,
   onBeforeUnmount,
   onMounted,
+  provide,
   ref,
   render as vueRender,
   shallowRef,
   toRaw,
   watch,
+  type AppContext,
   type PropType,
+  type ShallowRef,
   type Slots,
   type VNode,
 } from 'vue';
-import { inject } from 'vue';
 import { createSyncSession } from '@grafloria/engine';
 import type { NodeModel, LinkModel, GroupModel, DiagramEngine, SyncAdapter, SyncTransport } from '@grafloria/engine';
 import { GRAFLORIA_STORE, type SelectionChange } from './composables';
@@ -90,13 +103,45 @@ const isPlainSpec = (value: unknown): boolean => {
 /** The array's items as plain data, so no reactive proxy ends up inside the canvas. */
 const rawList = <T>(list: readonly T[] | undefined): T[] | undefined => (list ? [...toRaw(list)] : undefined);
 
+/**
+ * The root of one custom node's slot content. A component (not a bare element) so
+ * that the app context set on its vnode is inherited by every component below it,
+ * and so the slot is invoked inside a render function, which tracks what it reads.
+ */
+const NodeSlotHost = defineComponent({
+  name: 'GrafloriaNodeSlot',
+  props: {
+    content: { type: Function as PropType<(p: NodeSlotProps) => VNode[]>, required: true },
+    context: { type: Object as PropType<NodeSlotProps>, required: true },
+  },
+  setup: (props) => () => h('div', { style: 'width:100%;height:100%' }, props.content(props.context)),
+});
+
 interface MountedNode {
   node: NodeModel;
   element: HTMLElement;
 }
 
+/**
+ * The app context a custom node's slot content is rendered with. A programmatic
+ * `render()` root has none, so it is given the flow's (components, directives,
+ * config and global properties), with the provides swapped for the ones the flow
+ * itself sees — its ancestors', the app's and its store — so `inject` inside a node
+ * finds what it would find beside the flow. Call in `setup`, after the flow's `provide`.
+ */
+function nodeSlotAppContext(store: ShallowRef<DiagramInstance | null>): AppContext | null {
+  const owner = getCurrentInstance();
+  if (!owner) return null;
+  // `provides` is the object Vue's own `inject` walks; read it where it exists.
+  const own = (owner as unknown as { provides?: AppContext['provides'] }).provides;
+  const provides = own ?? Object.assign(Object.create(owner.appContext.provides), { [GRAFLORIA_STORE as symbol]: store });
+  return { ...owner.appContext, provides };
+}
+
 export const GrafloriaFlow = defineComponent({
   name: 'GrafloriaFlow',
+  // Attributes go on the canvas element, also when default-slot children render beside it.
+  inheritAttrs: false,
   props: {
     /** Controlled nodes — `v-model:nodes`. */
     nodes: { type: Array as PropType<NodeSpec[]>, default: undefined },
@@ -191,12 +236,16 @@ export const GrafloriaFlow = defineComponent({
     layoutDone: (_result: unknown) => true,
     collabReady: (_session: SyncAdapter) => true,
   },
-  setup(props, { emit, slots, expose }) {
+  setup(props, { emit, slots, expose, attrs }) {
     const container = ref<HTMLElement | null>(null);
     const instance = shallowRef<DiagramInstance | null>(null);
-    // Publish to the nearest <GrafloriaProvider>, if any, so useGrafloria()
-    // works from siblings (toolbars, inspectors).
-    const providedStore = inject(GRAFLORIA_STORE, undefined);
+    // Publish to the nearest <GrafloriaProvider>, so useGrafloria() works from
+    // siblings (toolbars, inspectors) — or, with none above, provide our own store
+    // so it works for our children and custom nodes without one.
+    const outerStore = inject(GRAFLORIA_STORE, undefined);
+    const store: ShallowRef<DiagramInstance | null> = outerStore ?? shallowRef<DiagramInstance | null>(null);
+    if (!outerStore) provide(GRAFLORIA_STORE, store);
+    const slotAppContext = nodeSlotAppContext(store);
     const mounted = new Map<string, MountedNode>();
     const offs: Array<() => void> = [];
     /** The arrays this canvas last emitted through `update:nodes` / `update:edges`. */
@@ -231,7 +280,10 @@ export const GrafloriaFlow = defineComponent({
         data: ((entry.node as any).data ?? {}) as Record<string, unknown>,
         engine: inst.getEngine(),
       };
-      vueRender(h('div', { style: 'width:100%;height:100%' }, slot(ctx)), entry.element);
+      // A separate render root starts with no app context of its own; give it ours.
+      const vnode = h(NodeSlotHost, { content: slot, context: ctx });
+      if (slotAppContext) vnode.appContext = slotAppContext;
+      vueRender(vnode, entry.element);
     };
 
     const repaintSlots = (): void => {
@@ -297,6 +349,7 @@ export const GrafloriaFlow = defineComponent({
         },
       } as any);
       instance.value = inst;
+      store.value = inst;
       // createDiagram paints synchronously DURING the call above, so
       // renderCustomNode fired before `instance.value` existed and paintSlot
       // bailed — paint every mounted host now that the instance is available.
@@ -323,7 +376,6 @@ export const GrafloriaFlow = defineComponent({
       );
 
       emit('init', inst);
-      if (providedStore) providedStore.value = inst;
       if (props.collab) {
         const { transport, actor, presence: presenceOpt, ...rest } = props.collab;
         session = createSyncSession(inst.getModel(), transport, { actor, ...rest } as never);
@@ -412,9 +464,9 @@ export const GrafloriaFlow = defineComponent({
       for (const off of offs) off();
       for (const entry of mounted.values()) vueRender(null, entry.element);
       mounted.clear();
+      if (store.value === instance.value) store.value = null;
       instance.value?.dispose();
       instance.value = null;
-      if (providedStore) providedStore.value = null;
     });
 
     expose({
@@ -431,11 +483,17 @@ export const GrafloriaFlow = defineComponent({
       fitView: (padding?: number) => instance.value?.fitView(padding),
     });
 
-    return () =>
-      h('div', {
-        ref: container,
-        class: 'grafloria-flow',
-        style: 'width:100%;height:100%;position:relative',
-      });
+    return () => {
+      const canvas = h(
+        'div',
+        mergeProps(
+          { ref: container, class: 'grafloria-flow', style: 'width:100%;height:100%;position:relative' },
+          attrs
+        )
+      );
+      // Only a flow WITH children renders a fragment; one without keeps its single root.
+      const children = slots['default']?.();
+      return children ? [canvas, children] : canvas;
+    };
   },
 });

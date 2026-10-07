@@ -41,7 +41,13 @@ const edges = ref<EdgeSpec[]>([{ source: 'a', target: 'b' }]);
   uncontrolled use.
 - **Custom nodes are slots** — `#node-<type>` renders every node of that
   `type` (declaring the slot is the whole opt-in); `#node` is the wildcard.
-  Real Vue inside: reactivity, components, event handlers.
+  Real Vue inside: reactivity, components, event handlers — and the app
+  context: `inject`, globally registered components, plugins and
+  `useGrafloria()` all work inside a node.
+- **Children reach the instance** — components in `<GrafloriaFlow>`'s default
+  slot render after the canvas and can call `useGrafloria()` / `useSelection()`
+  with no provider. Wrap the flow and its siblings in `<GrafloriaProvider>` for
+  a toolbar outside the flow; the flow then publishes to that provider.
 - **`layout`** — `'elk' | 'dagre' | 'force' | 'tree' | 'grid' | 'auto' | …` or
   `{ name, options }`; re-runs on value change, never on data change;
   `@layout-done` fires after. ELK loads lazily (~1.4 MB you don't ship unless
