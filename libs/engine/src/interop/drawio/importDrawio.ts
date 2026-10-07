@@ -220,6 +220,11 @@ const CONSUMED_STYLE_KEYS = new Set([
   'edgeLabel',
   'labelPosition',
   'verticalLabelPosition',
+  // Connection constraints: they choose the side an edge leaves / enters.
+  'exitX',
+  'exitY',
+  'entryX',
+  'entryY',
   ...Object.keys(SHAPE_MAP),
 ]);
 
@@ -690,6 +695,18 @@ function buildDiagram(model: XmlElement, warnings: string[]): DiagramModel {
     }
     link.setMetadata('drawioId', cell.id);
 
+    // THE SIDES draw.io would use. createSmartLink picks ports from the two
+    // shapes' relative positions; draw.io lets the author decide — a fixed
+    // connection point (exitX/exitY, entryX/entryY) pins the side, and with
+    // waypoints the edge leaves TOWARD the first and enters FROM the last
+    // (mxGraph's segment connector). Spliced between ports chosen the other
+    // way, an authored detour doubled back on itself into a dead-end stub
+    // (the docs' "yes" edge left the diamond's right side and snaked in).
+    retargetTerminal(diagram, link, 'source', source,
+      constraintSide(style, 'exit') ?? (absWaypoints.length > 0 ? sideFacing(source, absWaypoints[0]) : undefined));
+    retargetTerminal(diagram, link, 'target', target,
+      constraintSide(style, 'entry') ?? (absWaypoints.length > 0 ? sideFacing(target, absWaypoints[absWaypoints.length - 1]) : undefined));
+
     const labelCell = findEdgeLabelChild(cell.id, cells);
     const labelText = cell.value || labelCell?.value || '';
     if (labelText) link.setLabel(labelText);
@@ -750,6 +767,80 @@ function installAnchorLifecycle(diagram: DiagramModel): void {
       if (n.getMetadata('drawioContainerAnchor') === group.id) diagram.removeNode(n.id);
     }
   }) as never);
+}
+
+type Side = 'left' | 'right' | 'top' | 'bottom';
+
+/**
+ * The side a fixed connection constraint sits on (`exitX=0.5;exitY=0` → top), or
+ * undefined when the edge has none. A point on the box edge names its side; one
+ * inside the box takes the nearest side.
+ */
+function constraintSide(
+  style: ReturnType<typeof parseStyle>,
+  which: 'exit' | 'entry'
+): Side | undefined {
+  const fx = Number.parseFloat(style.tokens.get(`${which}X`) ?? '');
+  const fy = Number.parseFloat(style.tokens.get(`${which}Y`) ?? '');
+  if (!Number.isFinite(fx) || !Number.isFinite(fy)) return undefined;
+  const distances: Array<[Side, number]> = [
+    ['left', fx],
+    ['right', 1 - fx],
+    ['top', fy],
+    ['bottom', 1 - fy],
+  ];
+  return distances.reduce((best, d) => (d[1] < best[1] ? d : best))[0];
+}
+
+/**
+ * The side of `node` an orthogonal edge uses to reach `hint` (its adjacent
+ * waypoint), as draw.io's segment connector does: a hint within the box's
+ * horizontal span is reached vertically (top or bottom), one within its vertical
+ * span horizontally (left or right). A diagonal hint takes the dominant axis.
+ */
+function sideFacing(node: NodeModel, hint: Point): Side {
+  const left = node.position.x;
+  const top = node.position.y;
+  const right = left + node.size.width;
+  const bottom = top + node.size.height;
+  const withinX = hint.x >= left && hint.x <= right;
+  const withinY = hint.y >= top && hint.y <= bottom;
+  if (withinX && !withinY) return hint.y < top ? 'top' : 'bottom';
+  if (withinY && !withinX) return hint.x < left ? 'left' : 'right';
+  const dx = (hint.x - (left + right) / 2) / (node.size.width || 1);
+  const dy = (hint.y - (top + bottom) / 2) / (node.size.height || 1);
+  return Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : dy < 0 ? 'top' : 'bottom';
+}
+
+/**
+ * Point one end of `link` at `node`'s port on `side`, keeping the ports'
+ * connection bookkeeping straight. A no-op without a side, or when the node has
+ * no port there (a 1×1 synthesized anchor keeps the port it was given).
+ */
+function retargetTerminal(
+  diagram: DiagramModel,
+  link: LinkModel,
+  end: 'source' | 'target',
+  node: NodeModel,
+  side: Side | undefined
+): void {
+  if (!side) return;
+  if (node.getMetadata('drawioContainerAnchor') !== undefined || node.getMetadata('drawioPointAnchor') !== undefined) return;
+  const port = node.getPortBySide(side);
+  const currentId = end === 'source' ? link.sourcePortId : link.targetPortId;
+  if (!port || port.id === currentId) return;
+  diagram.getPortById(currentId)?.removeConnection(link.id);
+  if (end === 'source') link.setSourcePort(port.id, node.id);
+  else link.setTargetPort(port.id, node.id);
+  port.addConnection(link.id, end);
+  // The provisional polyline belongs to the old ports: re-anchor its ends.
+  const at = port.getAbsolutePosition(node.getBoundingBox());
+  const pts = link.points.map((p) => ({ ...p }));
+  if (pts.length >= 2) {
+    if (end === 'source') pts[0] = at;
+    else pts[pts.length - 1] = at;
+    link.setPoints(pts);
+  }
 }
 
 /** The closest point ON the PERIMETER of a rectangle to `toward` (inside or out). */
