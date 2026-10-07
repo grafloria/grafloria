@@ -4,13 +4,12 @@
   "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
+  "scripts": {
+    "prepack": "node ../../tools/vendor-esm-deps.mjs ."
+  },
   "dependencies": {
-    "elkjs": "^0.9.3",
-    "eventemitter3": "^5.0.1",
     "nanoid": "^5.0.0",
     "uuid": "^9.0.1",
-    "@dagrejs/dagre": "^1.1.5",
-    "lemonadejs": "^5.1.1",
     "tslib": "^2.3.0"
   },
   "devDependencies": {
@@ -44,10 +43,13 @@
     "access": "public"
   },
   "module": "./src/index.js",
+  "qwik": "./src/index.js",
   "sideEffects": false,
   "files": [
     "src/**/*.js",
     "src/**/*.d.ts",
+    "vendor/*.js",
+    "vendor/*.d.ts",
     "!src/__mocks__/**",
     "!src/**/*-demo.*",
     "!src/**/*-test.*",

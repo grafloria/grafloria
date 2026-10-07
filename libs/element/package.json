@@ -41,6 +41,7 @@
     "access": "public"
   },
   "module": "./src/index.js",
+  "qwik": "./src/index.js",
   "files": [
     "src/**/*.js",
     "src/**/*.d.ts"

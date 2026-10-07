@@ -39,6 +39,7 @@
     "access": "public"
   },
   "module": "./src/index.js",
+  "qwik": "./src/index.js",
   "sideEffects": [
     "./src/index.js",
     "./src/index.ts"

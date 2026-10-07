@@ -39,8 +39,8 @@ Worst case, importing the **entire** public surface of `@grafloria/engine`
 
 | | minified | gzipped |
 |---|---|---|
-| eager bundle | 921 KB | **228 KB** |
-| elkjs — lazy chunk, downloads **only** if ELK layout is invoked | 1,423 KB | 432 KB |
+| eager bundle | 991 KB | **251 KB** |
+| elkjs — lazy chunk, downloads **only** if ELK layout is invoked | 1,441 KB | 436 KB |
 
 A real app importing only what it uses ships less. Reproduce it in two minutes:
 
@@ -56,5 +56,18 @@ chunk and inflates the number by ~1.4 MB. Real app bundlers (Angular CLI,
 Vite, Next.js) split by default. Since engine 0.3.0 / renderer 0.4.0 /
 element 0.4.0 the packages are **pure ESM** — every bundler tree-shakes them,
 and Node ≥ 20.19 can `require()` them too.
+
+## Third-party code
+
+Everything a browser loads from this package is a plain ES module, so it also runs
+unbundled (Vite's dev server, import maps). Four dependencies only ship CommonJS or
+UMD builds, so the package carries ES module copies of them in `vendor/`, each with
+its licence at the top of the file:
+[eventemitter3](https://github.com/primus/eventemitter3) (MIT),
+[@dagrejs/dagre](https://github.com/dagrejs/dagre) and
+[@dagrejs/graphlib](https://github.com/dagrejs/graphlib) (MIT),
+[lemonadejs](https://github.com/lemonadejs/lemonadejs) (MIT) and
+[elkjs](https://github.com/kieler/elkjs) (**EPL-2.0** — `vendor/elk.js`, unchanged
+apart from the ES module wrapper; its source is at that link).
 
 MIT © [Grafloria](https://github.com/grafloria/grafloria)
