@@ -8,6 +8,7 @@ import type {
   StaticRenderResult, GroupSpec } from '@grafloria/renderer';
 import { defineGrafloriaFlow } from './grafloria-flow-element';
 import type { DashboardSpec } from './dashboard-kit';
+import type { LoadedDiagramSpec } from './load';
 import { registerNodeType, registeredNodeTypes, getNodeType } from './node-type-registry';
 import type { NodeTypeRenderer } from './node-type-registry';
 
@@ -63,9 +64,12 @@ export interface KitDiagramSpec {
   finalize?: (api: unknown) => void;
 }
 
-// A kit spec (dashboard(), erDiagram(), umlDiagram(), …) IS a render spec —
-// `render(kit({…}), host)` is the documented one-liner, so the type says so.
-export type RenderSpec = DiagramSpec | DashboardSpec | KitDiagramSpec | string;
+/**
+ * Everything `render()` mounts: a plain {@link DiagramSpec}, a kit spec
+ * (`dashboard()`, `erDiagram()`, `umlDiagram()`, …), a reopened document from
+ * `fromDocument()`, or the JSON string of a plain spec.
+ */
+export type RenderSpec = DiagramSpec | DashboardSpec | KitDiagramSpec | LoadedDiagramSpec | string;
 
 export type RenderOptions = Omit<CreateDiagramOptions, 'nodes' | 'edges'>;
 
