@@ -54,6 +54,7 @@ import { HtmlHostCuller } from '../lazy/host-culling';
 import type { HostCullOptions } from '../lazy/host-culling';
 import type { ViewLifecycle } from '../lazy/view-lifecycle';
 import { groupFrameRects } from '../svg/group-frame-bounds';
+import { ShapeAwareHighlighterController } from './highlighter-overlay';
 
 /**
  * `createDiagram()` — the headless instance factory.
@@ -601,7 +602,9 @@ export function createDiagram(
   // The same controller Angular's canvas uses, so the outlines are the same ones;
   // drawn like the line overlay, in world units inside the HTML layer, which
   // carries the camera — a pan or zoom moves them with the picture for free.
-  const highlighter = new HighlighterController();
+  // Shape-aware: built-in shapes (`rect`, `ellipse`, …) are not flagged as
+  // unregistered types — see ShapeAwareHighlighterController.
+  const highlighter: HighlighterController = new ShapeAwareHighlighterController();
   let highlighterOn = false;
   const highlighterPatcher = new VNodePatcher({ document: doc });
   let highlighterHost: HTMLElement | null = null;

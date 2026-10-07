@@ -22,6 +22,13 @@ function makeContainer(): HTMLElement {
   return el;
 }
 const tick = () => jest.advanceTimersByTime(32);
+/**
+ * A type nothing knows — no TypeRegistry entry and no renderer shape — so the
+ * engine's "not registered" warning is real. (These specs used `rect`, the
+ * default type, until built-in shapes stopped being flagged: a type the renderer
+ * draws is not an unknown type.)
+ */
+const UNKNOWN_TYPE = 'no-such-node-type';
 
 describe('the outline layer (highlighterConfig) on createDiagram', () => {
   let container: HTMLElement;
@@ -30,8 +37,8 @@ describe('the outline layer (highlighterConfig) on createDiagram', () => {
   const mount = (extra: Record<string, unknown> = {}) => {
     diagram = createDiagram(container, {
       nodes: [
-        { id: 'a', position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
-        { id: 'b', position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
+        { id: 'a', type: UNKNOWN_TYPE, position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
+        { id: 'b', type: UNKNOWN_TYPE, position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
       ],
       edges: [{ source: 'a', target: 'b' }],
       ...extra,
@@ -105,7 +112,7 @@ describe('the outline layer (highlighterConfig) on createDiagram', () => {
     diagram.setHighlighterConfig(true);
     tick();
     expect(outlines('validation')).toHaveLength(2);
-    diagram.getModel().addNode(new NodeModel({ id: 'c', type: 'rect', position: { x: 100, y: 300 }, size: { width: 120, height: 60, depth: 0 } }));
+    diagram.getModel().addNode(new NodeModel({ id: 'c', type: UNKNOWN_TYPE, position: { x: 100, y: 300 }, size: { width: 120, height: 60, depth: 0 } }));
     tick();
     expect(outlines('validation')).toHaveLength(3);
     diagram.getModel().removeNode('c');
