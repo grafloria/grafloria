@@ -69,6 +69,7 @@ import type {
   LinkModel,
   NodeModel,
   SerializedDiagramData,
+  StrokeModel,
 } from '@grafloria/engine';
 import { getNodeType } from './node-type-registry';
 import { bindRowInteractions } from './diagram-kit/rows';
@@ -117,6 +118,10 @@ export interface LoadedDiagramSpec {
   nodes: NodeModel[];
   edges: LinkModel[];
   renderCustomNode: (node: NodeModel, host: HTMLElement) => void;
+  /**
+   * Puts back what `nodes`/`edges` do not carry — groups, whiteboard strokes,
+   * kit wiring — on the mounted instance. `render()` calls it for you.
+   */
   finalize: (api: unknown) => void;
   /** The deserialized model — the escape hatch, available before any render. */
   readonly model: DiagramModel;
@@ -384,6 +389,12 @@ export function fromDocument(
       for (const group of groups) {
         if (!live.getGroup?.(group.id)) live.addGroup?.(group);
       }
+      // -- whiteboard ink -------------------------------------------------------
+      // Strokes are saved in the document's `strokes`, outside nodes/edges as
+      // well, so they come back here too — a reopened board keeps its ink.
+      for (const stroke of model.getStrokes()) {
+        if (!live.getStroke?.(stroke.id)) live.addStroke?.(stroke);
+      }
     }
 
     if (options.interactive === false) return;
@@ -486,6 +497,8 @@ interface FinalizeApi {
   getModel?: () => {
     getGroup?: (id: string) => GroupModel | undefined;
     addGroup?: (g: GroupModel) => void;
+    getStroke?: (id: string) => StrokeModel | undefined;
+    addStroke?: (s: StrokeModel) => void;
   };
 }
 
