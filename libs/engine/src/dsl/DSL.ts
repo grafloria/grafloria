@@ -103,6 +103,13 @@ export interface ParseResult {
   layoutSuggestion?: LayoutSuggestion;
 
   /**
+   * Lines the flowchart parser could not read and SKIPPED. It recovers line by
+   * line (one bad line must not lose the diagram), so `parse()` never throws for
+   * these — read them here, or use `validate()`. Empty for the other grammars.
+   */
+  errors?: string[];
+
+  /**
    * Parse statistics
    */
   stats: {
@@ -333,6 +340,7 @@ export class DSL {
         ast,
         tokens,
         layoutSuggestion,
+        errors: this.parser.getErrors().map((e) => e.message),
         stats: {
           nodeCount,
           linkCount,
@@ -350,31 +358,85 @@ export class DSL {
   }
 
   /**
-   * Validate DSL text without creating a diagram
+   * Validate DSL text without creating a diagram.
+   *
+   * Stricter than `parse()`, on purpose: `parse()` is best-effort (it skips a line it
+   * cannot read, and takes a body with no header as a flowchart), while this answers
+   * "is this text what it claims to be?" — so a caller can refuse it before it replaces
+   * anything. Reported: empty text, a first line that is not a diagram type (`flowchrt`),
+   * and every line the flowchart parser had to skip.
    */
   validate(text: string): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
+    const header = this.headerLine(text);
+    if (!header) {
+      return { valid: false, errors: ['The text is empty — there is no diagram in it.'] };
+    }
+    const firstWord = header.text.split(/[\s:]/)[0];
+    if (!DSL.isDiagramHeader(firstWord)) {
+      return {
+        valid: false,
+        errors: [
+          `Line ${header.line}: "${firstWord}" is not a diagram type. Mermaid text starts with ` +
+            `one: ${DSL.SUPPORTED_TEXT_TYPES.join(', ')}.`,
+        ],
+      };
+    }
+
+    // The graph-family grammars (erDiagram, classDiagram, …) are line-oriented
+    // parsers of their own; only flowchart text goes through this token parser.
+    if (this.detectDiagramType(text) !== 'flowchart') return { valid: true, errors };
 
     try {
-      // Tokenize
       this.lexer = new Lexer(text);
       const tokens = this.lexer.tokenize();
-
-      // Parse
       this.parser.parse(tokens);
-
-      return { valid: true, errors: [] };
+      for (const error of this.parser.getErrors()) errors.push(error.message);
     } catch (error) {
-      if (error instanceof ParseError) {
-        errors.push(
-          `Line ${error.line}, Column ${error.column}: ${error.message}`
-        );
-      } else if (error instanceof Error) {
-        errors.push(error.message);
-      }
-
-      return { valid: false, errors };
+      errors.push(error instanceof Error ? error.message : String(error));
     }
+    return { valid: errors.length === 0, errors };
+  }
+
+  /** The diagram types the text format reads and writes back (the canvas round-trips these). */
+  static readonly SUPPORTED_TEXT_TYPES: readonly string[] = [
+    'flowchart',
+    'graph',
+    'erDiagram',
+    'classDiagram',
+    'stateDiagram',
+    'stateDiagram-v2',
+    'block-beta',
+    'architecture-beta',
+  ];
+
+  /** Is this first word a diagram header the DSL recognises (parsed or not)? */
+  private static isDiagramHeader(word: string): boolean {
+    const lower = word.toLowerCase();
+    return (
+      lower === 'flowchart' ||
+      lower === 'graph' ||
+      lower === 'erdiagram' ||
+      lower === 'classdiagram' ||
+      lower === 'bpmn' ||
+      lower === 'erd' ||
+      DSL.KNOWN_DIAGRAM_TYPES[lower] !== undefined
+    );
+  }
+
+  /** The header line (1-based) — the first line that is not blank, a comment or frontmatter. */
+  private headerLine(text: string): { text: string; line: number } | null {
+    let inFrontmatter = false;
+    const lines = text.replace(/\r\n?/g, '\n').split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      if (line === '---') { inFrontmatter = !inFrontmatter; continue; }
+      if (inFrontmatter) continue;
+      if (line.startsWith('%%')) continue;
+      return { text: line, line: i + 1 };
+    }
+    return null;
   }
 
   /**

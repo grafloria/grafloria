@@ -66,11 +66,24 @@ const V11_SHAPE_MAP: Record<string, NodeShape> = {
 export class Parser {
   private tokens: Token[] = [];
   private current: number = 0;
+  /** The lines the last parse() could not read and skipped — see getErrors(). */
+  private errors: ParseError[] = [];
+
+  /**
+   * The errors the last `parse()` RECOVERED from. The parser skips an unreadable
+   * line rather than abort the whole diagram (and never manufactures nodes from
+   * it), so `parse()` does not throw for them — which used to mean nobody heard
+   * about them at all: `flowchart\n a[[[ -->` parsed "cleanly" to nothing.
+   */
+  getErrors(): ParseError[] {
+    return [...this.errors];
+  }
 
   /**
    * Parse tokens into an AST
    */
   parse(tokens: Token[]): DiagramNode {
+    this.errors = [];
     this.tokens = tokens.filter(t =>
       t.type !== TokenType.WHITESPACE &&
       // Keep ONLY the Tier-2 extension comments; ordinary %% comments still drop.
@@ -90,6 +103,12 @@ export class Parser {
     // Parse diagram type and direction
     let diagramType: DiagramType = 'flowchart';
     let direction: Direction | undefined;
+
+    // The header is the first MEANINGFUL line. A leading blank line or comment
+    // (`%%{init: …}%%`, a title comment) leaves a NEWLINE token in front of it, and
+    // the header used to go unrecognised — then skipped as a bad statement, taking
+    // its direction with it.
+    this.consumeNewlines();
 
     if (this.match(TokenType.FLOWCHART, TokenType.GRAPH)) {
       diagramType = 'flowchart';
@@ -114,8 +133,9 @@ export class Parser {
     const statements: StatementNode[] = [];
 
     while (!this.isAtEnd()) {
-      // Skip empty lines
-      if (this.match(TokenType.NEWLINE)) {
+      // Skip empty lines — and `;`, Mermaid's optional statement terminator
+      // (`A --> B;`), which is a separator, not a statement.
+      if (this.match(TokenType.NEWLINE, TokenType.SEMICOLON)) {
         continue;
       }
 
@@ -132,6 +152,7 @@ export class Parser {
         // whole diagram, and must not leave debris. Skip to the next newline.
         // (docs/MERMAID-GAP-ANALYSIS.md Phase 0 — "never manufacture nodes".)
         if (error instanceof ParseError) {
+          this.errors.push(error);
           this.skipLine();
         } else {
           throw error;
@@ -176,6 +197,12 @@ export class Parser {
         case 'linkStyle': return this.parseLinkStyle();
         case 'click': return this.parseClick();
         case 'direction': this.skipLine(); return null;
+        // Accessibility metadata: valid Mermaid that draws nothing. Read as a
+        // statement it used to manufacture a node called "accTitle".
+        case 'accTitle':
+        case 'accDescr':
+          this.skipAccessibilityDirective();
+          return null;
       }
     }
 
@@ -187,7 +214,15 @@ export class Parser {
 
     if (firstGroup.length === 0) {
       // Not a node/edge start — skip the whole line rather than a single token,
-      // so partial debris cannot leak into the model.
+      // so partial debris cannot leak into the model. Recorded, not thrown: the
+      // rest of the diagram still parses, and getErrors() says what was dropped.
+      if (!this.isAtEnd() && !this.check(TokenType.NEWLINE)) {
+        const token = this.currentToken();
+        this.errors.push(new ParseError(
+          `Unexpected "${token.value}" — not a node or an edge; the line was skipped`,
+          token, token.line, token.column
+        ));
+      }
       this.skipLine();
       return null;
     }
@@ -888,6 +923,16 @@ export class Parser {
   }
 
   /** Consume everything up to (not including) the next newline. */
+  /** `accTitle: …`, `accDescr: …`, or the block form `accDescr { … }` (to its `}`). */
+  private skipAccessibilityDirective(): void {
+    this.advance(); // the keyword
+    if (this.peek().value === '{') {
+      while (!this.isAtEnd() && this.peek().value !== '}') this.advance();
+      if (!this.isAtEnd()) this.advance(); // the closing brace
+    }
+    this.skipLine();
+  }
+
   private skipLine(): void {
     while (!this.isAtEnd() && !this.check(TokenType.NEWLINE)) {
       this.advance();
@@ -897,7 +942,10 @@ export class Parser {
   /**
    * Get source location from start and end tokens
    */
-  private getLocation(start: Token, end: Token): SourceLocation {
+  private getLocation(start: Token, end: Token | undefined): SourceLocation {
+    // `end` is `previous()`, which is undefined when nothing was consumed — empty
+    // text, whose only token is EOF, crashed here with a TypeError.
+    end = end ?? start;
     return {
       start: {
         line: start.line,

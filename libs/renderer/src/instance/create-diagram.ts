@@ -1,4 +1,4 @@
-import { DiagramEngine, getMutationEpoch, exportDiagramText, importDiagramText, CommentStore, layoutArchitecture } from '@grafloria/engine';
+import { DiagramEngine, getMutationEpoch, exportDiagramText, importDiagramText, CommentStore, layoutArchitecture, DSL, stripGrafloriaSidecar, adoptTextGrammarMetadata } from '@grafloria/engine';
 import type { MeasureText } from '@grafloria/engine';
 import { CommentOverlayController } from '../comments/comment-overlay';
 import type {
@@ -401,7 +401,13 @@ export interface DiagramInstance {
   /**
    * Parse Mermaid-compatible text (sidecar-aware) and reconcile it INTO the
    * live diagram through the same spec reconciler `setNodes`/`setEdges` use —
-   * listeners, plugins, and the renderer all stay attached.
+   * listeners, plugins, and the renderer all stay attached. The diagram type
+   * comes along, so `exportText` writes it back in the grammar it came in.
+   *
+   * THROWS — and leaves the canvas exactly as it was — when the text is empty,
+   * is a Mermaid type the canvas cannot draw (`sequenceDiagram`, `gantt`, …), or
+   * has a line the parser could not read (a typo'd header, a broken shape). The
+   * message names the line.
    */
   loadText(text: string, options?: ImportTextOptions): ImportTextResult;
 
@@ -1777,7 +1783,31 @@ export function createDiagram(
 
     exportText: (textOptions) => exportDiagramText(model, textOptions),
     loadText: (text, textOptions) => {
+      // REFUSE what cannot be read, before anything is applied: the canvas must
+      // be left exactly as it was. The parser recovers line by line, so the
+      // import itself never fails — `flowchart\n a[[[ -->` parsed to an empty
+      // diagram, "loaded", and wiped the canvas; a header typo became a node;
+      // empty text died in the lexer with a TypeError.
+      const refuse = (why: string): never => {
+        throw new Error(`loadText: ${why} The canvas was left unchanged.`);
+      };
+      if (typeof text !== 'string' || stripGrafloriaSidecar(text).trim() === '') {
+        refuse('the text is empty — there is no diagram in it. (To clear the canvas, call setNodes([]) and setEdges([]).)');
+      }
       const result = importDiagramText(text, textOptions);
+      if (result.unsupported) {
+        refuse(
+          `"${result.unsupported}" diagrams cannot be drawn on the canvas. ` +
+            `Supported: ${DSL.SUPPORTED_TEXT_TYPES.join(', ')}.`
+        );
+      }
+      if (result.source === 'text') {
+        // The body was parsed (no sidecar, or it was hand-edited): it must be
+        // what it claims to be, every line of it.
+        const body = stripGrafloriaSidecar(text.replace(/\r\n?/g, '\n'));
+        const check = new DSL({ autoLayout: false }).validate(body);
+        if (!check.valid) refuse(`the text has errors — ${check.errors.join(' ')}`);
+      }
       // Reconcile INTO the live model (never swap it): applyNodes/applyEdges
       // are full reconcilers, so removals happen and every listener, plugin,
       // and renderer binding stays attached to the same DiagramModel.
@@ -1810,6 +1840,13 @@ export function createDiagram(
         if (current && current !== group) model.removeGroup(current.id);
         if (model.getGroup(group.id) !== group) model.addGroup(group);
       }
+
+      // …and neither does the DIAGRAM TYPE. exportText picks its grammar by the
+      // model's `diagramType` (and the ER/class/state/block generators read
+      // diagram-level keys of their own), so an erDiagram, stateDiagram,
+      // block-beta or architecture-beta loaded here exported as a flowchart,
+      // and a classDiagram lost its members.
+      adoptTextGrammarMetadata(model, result.diagram);
 
       scheduler.schedule();
       return result;
