@@ -2,8 +2,9 @@ import { DiagramEngine } from '@grafloria/engine';
 import type { Theme } from '../types/theme.types';
 import { SVGRenderer } from '../svg/svg-renderer';
 import { ViewportController } from '../viewport/viewport-controller';
-import { applyEdges, applyNodes } from '../instance/model-input';
-import type { EdgeSpec, NodeSpec } from '../instance/model-input';
+import { applyEdges, applyGroups, applyNodes } from '../instance/model-input';
+import type { EdgeSpec, GroupSpec, NodeSpec } from '../instance/model-input';
+import { contentBounds } from '../instance/content-bounds';
 import {
   HTML_LAYER_CLASS,
   ROOT_CLASS,
@@ -54,6 +55,8 @@ import { serializeVNode } from '../export/vnode-serializer';
 export interface StaticRenderOptions {
   nodes?: NodeSpec[];
   edges?: EdgeSpec[];
+  /** Group / lane frames, as `render()` and `setGroups()` take them. */
+  groups?: GroupSpec[];
   theme?: Theme;
   /** Canvas width in CSS px. Default 800. */
   width?: number;
@@ -110,6 +113,8 @@ export function renderToStaticSVG(options: StaticRenderOptions = {}): StaticRend
 
   applyNodes(model, options.nodes ?? []);
   applyEdges(model, options.edges ?? []);
+  // After nodes, as on the client: a group's children must exist to join it.
+  if (options.groups) applyGroups(model, options.groups);
 
   const viewport = new ViewportController({
     viewport: {
@@ -122,7 +127,9 @@ export function renderToStaticSVG(options: StaticRenderOptions = {}): StaticRend
   });
 
   if (options.fitView) {
-    const bounds = contentBoundsOf(model);
+    // The live fitView()'s own bounds: nodes, routed waypoints AND group/lane
+    // frames with their captions. Counting nodes alone clipped a lane's frame.
+    const bounds = contentBounds(model);
     if (bounds) viewport.fitToBounds(bounds, options.fitPadding ?? 40);
   }
 
@@ -175,23 +182,4 @@ function wrapInLayers(svg: string, instanceId: string): string {
     )}"></div>` +
     `</div>`
   );
-}
-
-function contentBoundsOf(
-  model: ReturnType<DiagramEngine['createDiagram']>
-): { x: number; y: number; width: number; height: number } | null {
-  const nodes = model.getNodes();
-  if (nodes.length === 0) return null;
-
-  let left = Infinity;
-  let top = Infinity;
-  let right = -Infinity;
-  let bottom = -Infinity;
-  for (const node of nodes) {
-    left = Math.min(left, node.position.x);
-    top = Math.min(top, node.position.y);
-    right = Math.max(right, node.position.x + node.size.width);
-    bottom = Math.max(bottom, node.position.y + node.size.height);
-  }
-  return { x: left, y: top, width: right - left, height: bottom - top };
 }
