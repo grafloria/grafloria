@@ -559,6 +559,81 @@ export class DiagramModel extends DiagramEntity {
    * UNLESS someone better owns that invariant — see {@link linkIntegrityOwner}.
    */
   removeNode(nodeId: string): NodeModel | undefined {
+    return this.detachNode(nodeId);
+  }
+
+  /**
+   * Swap the live model under `next.id` for `next`, KEEPING the links attached
+   * to it. (An id not on the canvas is simply added.)
+   *
+   * `removeNode(id); addNode(next)` is not a swap: the removal cascades the
+   * node's links, so handing `setNodes()` a reloaded document's models deleted
+   * every edge of every node it replaced. Here each attached link is rebound to
+   * `next`'s ports instead — the SAME port id when `next` has it (a reloaded
+   * document keeps its port ids), else the first port on the same side. A link
+   * whose port has no counterpart on `next` goes, exactly as a removal takes it.
+   *
+   * Observable as what it is: `node:removed` + `node:added` for the node (one
+   * change-log entry each, so collab peers and change capture replay the swap).
+   * A link that keeps its port id is left alone — no event, no op. A link that
+   * moves to another port id is taken out and put back on its new port
+   * (`link:removed` + `link:added`): rebinding it in place would leave it, for a
+   * moment, on a port no node owns, and a collab replica quarantines exactly
+   * such a link, where a port write can no longer reach it.
+   */
+  replaceNode(next: NodeModel): void {
+    if (this.blocksDocumentWrite()) return;
+    const current = this.nodes.get(next.id);
+    if (!current) {
+      this.addNode(next);
+      return;
+    }
+    if (current === next) return;
+
+    // Plan while `current`'s ports are still indexed. `undefined` = not this
+    // node's end (left alone); `null` = no counterpart on `next` (the link goes).
+    const counterpart = (portId: string): string | null | undefined => {
+      const old = current.getPort(portId);
+      if (!old) return undefined;
+      if (next.getPort(portId)) return portId;
+      return next.getPortBySide(old.side)?.id ?? null;
+    };
+    const kept: LinkModel[] = [];
+    const moved: Array<{ link: LinkModel; source?: string; target?: string }> = [];
+    for (const link of this.getLinksForNode(current.id)) {
+      const source = counterpart(link.sourcePortId);
+      const target = counterpart(link.targetPortId);
+      if (source === null || target === null) {
+        this.removeLink(link.id);
+      } else if ((source ?? link.sourcePortId) === link.sourcePortId && (target ?? link.targetPortId) === link.targetPortId) {
+        // installLink's mirror: the old model's ports stop counting this link.
+        current.getPort(link.sourcePortId)?.removeConnection(link.id);
+        current.getPort(link.targetPortId)?.removeConnection(link.id);
+        kept.push(link);
+      } else {
+        this.removeLink(link.id);
+        moved.push({ link, source, target });
+      }
+    }
+
+    this.detachNode(current.id, new Set(kept.map((link) => link.id)));
+    this.installNode(next);
+
+    for (const link of kept) {
+      next.getPort(link.sourcePortId)?.restoreConnection(link.id, 'source');
+      next.getPort(link.targetPortId)?.restoreConnection(link.id, 'target');
+      // The geometry hangs off the new model now: routing and renderers redo it.
+      link.markDirty('node-replaced');
+    }
+    for (const { link, source, target } of moved) {
+      if (source !== undefined) link.setSourcePort(source, next.id);
+      if (target !== undefined) link.setTargetPort(target, next.id);
+      this.addLink(link);
+    }
+  }
+
+  /** removeNode() — sparing the links in `keep`, which a swap rebinds itself. */
+  private detachNode(nodeId: string, keep?: ReadonlySet<string>): NodeModel | undefined {
     if (this.blocksDocumentWrite()) return undefined;
     const node = this.nodes.get(nodeId);
     if (node) {
@@ -598,7 +673,7 @@ export class DiagramModel extends DiagramEntity {
       // resolves them to release the ports' connection bookkeeping.
       if (this.linkIntegrityOwner === 'model') {
         for (const link of this.getLinksForNode(nodeId)) {
-          this.removeLink(link.id);
+          if (!keep?.has(link.id)) this.removeLink(link.id);
         }
       }
 

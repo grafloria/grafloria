@@ -518,10 +518,11 @@ export function applyNodes(diagram: DiagramModel, specs: Array<NodeSpec | NodeMo
       const current = diagram.getNode(spec.id);
       // A DIFFERENT model under an id already on the canvas replaces it: these
       // models are the truth. Adding only missing ids left an existing node on
-      // its old object — loadText of edited text kept the old label.
+      // its old object — loadText of edited text kept the old label. A SWAP, not
+      // remove + add: the removal cascades the node's links, so a reloaded
+      // document's models (setNodes(fromDocument(json).nodes)) lost every edge.
       if (current && current !== spec) {
-        diagram.removeNode(current.id);
-        diagram.addNode(spec);
+        diagram.replaceNode(spec);
         changed = true;
       } else if (!current) {
         diagram.addNode(spec);
