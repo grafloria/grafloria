@@ -36,9 +36,9 @@ export const erdMultivaluedAttributeTemplate: NodeTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "type": "double-ellipse",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 4,
       "opacity": 1
     },

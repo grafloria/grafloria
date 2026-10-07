@@ -1,0 +1,32 @@
+import { component$, $ } from '@builder.io/qwik';
+import { GrafloriaFlow, type NodeProps } from '@grafloria/qwik';
+import { markReady } from '../ready';
+
+interface CardData { title: string; owner: string; status: string }
+
+const nodes = [
+  { id: 'a', type: 'card', custom: true, position: { x: 80, y: 90 },  size: { width: 230, height: 110 },
+    data: { title: 'Build', owner: 'CI', status: 'passing' } },
+  { id: 'b', type: 'card', custom: true, position: { x: 430, y: 90 }, size: { width: 230, height: 110 },
+    data: { title: 'Deploy', owner: 'CD', status: 'ready' } },
+];
+const edges = [{ id: 'e1', source: 'a', target: 'b' }];
+
+/** Custom nodes THE QWIK WAY: a component per node type, wired through
+ *  nodeTypes — the node still hit-tests, routes and drags like any other. */
+const Card = component$(({ data }: NodeProps<CardData>) => (
+  <div style={{ height: '100%', background: '#fff', border: '1.5px solid #94A5F0', borderRadius: '12px',
+                padding: '10px 14px', boxShadow: '0 2px 10px rgba(35,42,61,.08)', fontFamily: 'inherit', boxSizing: 'border-box' }}>
+    <div style={{ fontWeight: 700 }}>{data.title}</div>
+    <div style={{ fontSize: '12px', color: '#5A6478' }}>owner: {data.owner}</div>
+    <span style={{ fontSize: '11px', fontWeight: 600, color: '#059669', background: '#ecfdf5',
+                   borderRadius: '999px', padding: '1px 8px' }}>{data.status}</span>
+  </div>
+));
+
+export default component$(() => (
+  <div style={{ height: '100vh' }}>
+    <GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} nodeTypes={{ card: Card as never }}
+      onInit$={$(() => markReady())} />
+  </div>
+));

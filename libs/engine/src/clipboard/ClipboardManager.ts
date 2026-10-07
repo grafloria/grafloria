@@ -79,7 +79,7 @@ export class ClipboardManager {
    * Repeat-pasting the same copy must cascade — the clipboard's serialized
    * positions are frozen at copy time, so a constant default offset lands
    * every paste on the exact same pixels and "paste" appears to work only
-   * once (live report). Each PasteCommand claims its slot once (stable
+   * once. Each PasteCommand claims its slot once (stable
    * across redo); a new copy() resets the cascade.
    */
   claimPasteSlot(): number {

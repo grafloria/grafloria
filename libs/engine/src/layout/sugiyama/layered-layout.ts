@@ -19,7 +19,7 @@ import {
 } from './sugiyama';
 
 export interface LayeredLayoutOptions extends UnifiedLayoutOptions {
-  /** Card 5. Honoured DURING ranking/ordering — not clamped afterwards. */
+  /** Honoured DURING ranking/ordering — not clamped afterwards. */
   semantic?: SemanticConstraints;
   /** Ordering/coordinate sweeps. */
   iterations?: number;

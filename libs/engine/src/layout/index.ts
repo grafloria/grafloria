@@ -70,6 +70,12 @@ export * from './sugiyama/sugiyama'; // Wave 7 Cards 1 & 5
 export * from './sugiyama/layered-layout'; // Wave 7 Cards 1 & 5
 export * from './incremental/mental-map'; // Wave 7 Card 6
 
+// The architecture layout: the AI-diagram look (regions, rows, straight lines) from structure alone
+export * from './architecture/architecture-layout';
+// types only: the renderer has an `estimateTextWidth` of its own, and the element
+// package re-exports both — the estimator stays internal to the layout
+export type { MeasureText, TextFont } from './architecture/text-metrics';
+
 // Wave 7 Card 7: port/label-aware layout + auto-algorithm selection
 export * from './port-label-bridge';
 export * from './layout-quality-extended';

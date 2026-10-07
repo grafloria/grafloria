@@ -1,0 +1,112 @@
+<div id="dm-studio" #studio>
+  <div class="dm-bar" role="toolbar" aria-label="Data modeling tools">
+    <button class="tb" id="tb-table" title="Add a table (T)" (click)="c.addTable()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="10" height="9" rx="1.5"/><path d="M1.5 5.5h10M5 5.5v6"/><path d="M13 9.5v5M10.5 12h5" stroke-linecap="round"/></svg><span class="lbl">Table</span><kbd>T</kbd></button>
+    <button class="tb" id="tb-group" title="Add a group (G) — wraps the selected tables" (click)="c.addGroup()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2.4 1.8"><rect x="1.5" y="2.5" width="13" height="11" rx="3"/></svg><span class="lbl">Group</span><kbd>G</kbd></button>
+    <button class="tb" id="tb-note" title="Add a note (N)" (click)="c.addNote()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2.5 2.5h11v7l-4 4h-7z"/><path d="M9.5 13.5v-4h4M5 6h6M5 8.5h3"/></svg><span class="lbl">Note</span><kbd>N</kbd></button>
+    <span class="tb-sep"></span>
+    <button class="tb icon" id="tb-undo" title="Undo (Ctrl/⌘ Z)" aria-label="Undo" [disabled]="!c.canUndo" (click)="c.undo()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3 2.5 6l3 3"/><path d="M2.5 6h7a4 4 0 0 1 0 8H7"/></svg></button>
+    <button class="tb icon" id="tb-redo" title="Redo (Ctrl/⌘ ⇧ Z)" aria-label="Redo" [disabled]="!c.canRedo" (click)="c.redo()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 3l3 3-3 3"/><path d="M13.5 6h-7a4 4 0 0 0 0 8H9"/></svg></button>
+    <span class="tb-sep"></span>
+    <label class="tb-search" title="Search tables and columns — Enter jumps to the next match"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg><input id="tb-search" type="search" placeholder="Search tables, columns" autocomplete="off" spellcheck="false"
+      [value]="c.search" (input)="c.setSearch(val($event))" (keydown)="onSearchKey($event)"><span class="n" id="tb-search-n">{{ c.searchCount }}</span></label>
+    <button class="tb icon" id="tb-fit" title="Fit the schema in view" aria-label="Fit" (click)="c.fit()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 5.5V2h3.5M14 5.5V2h-3.5M2 10.5V14h3.5M14 10.5V14h-3.5"/></svg></button>
+    <span class="tb-sp"></span>
+    <div class="dialects" role="tablist" aria-label="SQL dialect" id="tb-dialects">
+      @for (d of dialects; track d.id) {
+        <button role="tab" [class]="d.id" [attr.data-dialect]="d.id" [attr.aria-selected]="d.id === c.view.dialect" [title]="'Write the SQL for ' + d.label"
+          (click)="c.setDialect(d.id)"><svg viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="icon[d.id]" /></svg>{{ d.label }}</button>
+      }
+    </div>
+    <span class="tb-sep"></span>
+    <button class="tb" id="tb-import" title="Import CREATE TABLE statements" (click)="c.openImport()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M2.5 11v2.5h11V11"/></svg><span class="lbl">Import</span></button>
+    <button class="tb" id="tb-export" title="Download the DDL as a .sql file" (click)="c.exportDDL()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10V2M5 5l3-3 3 3"/><path d="M2.5 11v2.5h11V11"/></svg><span class="lbl">Export</span></button>
+    <button class="tb primary" id="tb-run" title="Build the schema in a real in-browser database and run the query" (click)="c.runQuery()"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 2.8v10.4L13 8z"/></svg>Run SQL</button>
+  </div>
+  <div class="dm-main" [class.side-off]="!c.sideOpen">
+    <div id="dm-board" #board>
+      <grafloria-diagram [spec]="spec" [options]="options" (ready)="onReady($event)" style="display:block;width:100%;height:100%" />
+      <div class="dm-toast" [class.show]="c.toastShow" id="dm-toast" role="status" aria-live="polite">{{ c.toastMsg }}</div>
+      <button class="dm-side-show" id="side-show" title="Show the SQL, relationships and query runner" (click)="c.setSide(true)">‹ SQL</button>
+    </div>
+    <aside id="dm-side" aria-label="SQL, relationships and the query runner">
+      <div class="dm-tabs" role="tablist">
+        <button role="tab" id="tab-sql" data-pane="sql" [attr.aria-selected]="c.view.pane === 'sql'" (click)="c.showPane('sql')">SQL</button>
+        <button role="tab" id="tab-rels" data-pane="rels" [attr.aria-selected]="c.view.pane === 'rels'" (click)="c.showPane('rels')">Relationships <span class="pill" id="rels-n">{{ c.relCount }}</span></button>
+        <button role="tab" id="tab-run" data-pane="run" [attr.aria-selected]="c.view.pane === 'run'" (click)="c.showPane('run')">Run SQL</button>
+        <span class="sp"></span><button class="dm-side-x" id="side-hide" title="Hide the panel — more room for the board" aria-label="Hide the side panel" (click)="c.setSide(false)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"/></svg></button>
+      </div>
+      <section class="dm-pane" id="pane-sql" [hidden]="c.view.pane !== 'sql'">
+        <div class="dm-pane-head"><span id="sql-head"><b>{{ c.sqlHead.label }}</b>{{ c.sqlHead.rest }}</span><span class="sp"></span><button class="sb" id="sql-copy" title="Copy the DDL" (click)="c.copySQL()">Copy</button></div>
+        <div class="dm-code"><textarea id="sql-text" #sqlTa spellcheck="false" readonly aria-label="Generated DDL" [value]="c.sql"></textarea></div>
+      </section>
+      <section class="dm-pane" id="pane-rels" [hidden]="c.view.pane !== 'rels'">
+        <div class="dm-pane-head"><span>Every foreign key — click one to find it on the board.</span></div>
+        <div class="dm-rels" id="rels-list" (click)="c.relsClick($event.target)">
+          @for (r of c.rels; track r.id) {
+            <div class="dm-rel" [class.sel]="r.selected" [attr.data-rel]="r.id">
+              <div class="dm-rel-line"><span class="dm-rel-txt"><span class="t">{{ r.ft }}</span>.<span class="c">{{ r.fc }}</span> → <span class="t">{{ r.tt }}</span>.<span class="c">{{ r.tc }}</span>{{ ' ' }}<span class="card">({{ r.card }})</span></span>
+                <button class="act" data-ract="edit" title="Edit cardinality and ON DELETE" [attr.aria-label]="'Edit ' + r.name"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 2.5l3 3-8 8H2.5v-3z"/></svg></button>
+                <button class="act del" data-ract="del" title="Delete this foreign key" [attr.aria-label]="'Delete ' + r.name"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.6h10M6.4 4.6V3h3.2v1.6M4.6 4.6l.7 8.4h5.4l.7-8.4"/></svg></button></div>
+              <div class="dm-rel-sub">{{ r.sub }}</div>
+              @if (r.editing) {
+                <div class="dm-rel-edit">
+                  <label [for]="'rc-' + r.id">Cardinality</label><select [id]="'rc-' + r.id" data-rfield="card" (change)="c.relChange(r.id, 'card', val($event))"><option value="N:1" [selected]="r.card === 'N:1'">Many to one (N:1)</option><option value="1:1" [selected]="r.card === '1:1'">One to one (1:1)</option></select>
+                  <label [for]="'rd-' + r.id">On delete</label><select [id]="'rd-' + r.id" data-rfield="onDelete" (change)="c.relChange(r.id, 'onDelete', val($event))">@for (o of onDelete; track o) {<option [selected]="o === r.onDelete">{{ o }}</option>}</select>
+                  @if (r.warn) { <span class="dm-warn">{{ r.warn }}</span> }
+                </div>
+              } @else if (r.warn) {
+                <div class="dm-rel-sub"><span class="dm-warn">{{ r.warn }}</span></div>
+              }
+            </div>
+          } @empty {
+            <div class="empty">No foreign keys yet. Hover a table and drag the blue grip at a row's edge onto a column of another table.</div>
+          }
+        </div>
+      </section>
+      <section class="dm-pane dm-run" id="pane-run" [hidden]="c.view.pane !== 'run'">
+        <div class="dm-run-top">
+          <div class="dm-engines" id="run-engines">
+            @for (k of engineKinds; track k) {
+              <button [class]="k" [attr.data-engine]="k" [attr.aria-pressed]="c.runEng === k" [title]="'Run on ' + engines[k].label + ' (' + engines[k].lib + ')'"
+                (click)="c.pickEngine(k)"><svg viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="icon[k]" /></svg>{{ engines[k].label }}</button>
+            }
+          </div>
+          <div class="dm-note-mysql" id="run-mysql" [hidden]="!c.mysqlNote"><span><b>MySQL has no in-browser engine.</b> Your schema can run on SQLite or PostgreSQL instead — same tables, same keys, each in its own SQL:</span>
+            <div><button class="sb" data-run-on="sqlite" (click)="c.runOn('sqlite')">Run on SQLite</button><button class="sb" data-run-on="postgresql" (click)="c.runOn('postgresql')">Run on PostgreSQL</button></div></div>
+          <div [class]="'dm-status ' + c.status.cls" id="run-status"><i></i><span>{{ c.status.text }}</span></div>
+        </div>
+        <div class="dm-q"><textarea id="run-query" #runTa spellcheck="false" aria-label="Your query" [value]="c.query" (input)="c.setQuery(val($event))"></textarea></div>
+        <div class="dm-run-actions"><button class="sb primary" id="run-go" [disabled]="c.runGoDisabled" (click)="c.runQuery()">▶ Run</button><button class="sb" id="run-sample" title="Put the sample query back" (click)="c.sampleQuery()">Sample query</button><span class="hint" id="run-hint">{{ c.runHint }}</span></div>
+        <div class="dm-result" id="run-result">
+          @switch (res.kind) {
+            @case ('idle') { <div class="idle">{{ resultIdle }}</div> }
+            @case ('loading') { <div class="idle"><span class="bar"></span>Loading the database engine — {{ res.lib }} from {{ res.host }}. This happens once per visit; after that every run is instant.</div> }
+            @case ('error') { <div class="err"><b>{{ res.title }}</b><code>{{ res.msg }}</code></div> }
+            @default {
+              <div class="meta"><b>{{ res.head }}</b>{{ res.rest }}</div>
+              @if (!res.columns.length) {
+                <div class="idle">The statement ran and returned no rows.</div>
+              } @else {
+                <table>
+                  <thead><tr>@for (col of res.columns; track $index) {<th>{{ col }}</th>}</tr></thead>
+                  <tbody>@for (row of res.rows; track $index) {<tr>@for (cell of row; track $index) {<td [class]="cell.cls" [attr.title]="cell.title || null">{{ cell.text }}</td>}</tr>}</tbody>
+                </table>
+              }
+            }
+          }
+        </div>
+      </section>
+    </aside>
+  </div>
+  <div class="dm-modal" id="dm-import" [hidden]="!c.impOpen" (pointerdown)="onModalDown($event)">
+    <div class="dm-dialog" role="dialog" aria-modal="true" aria-labelledby="imp-title">
+      <header><h2 id="imp-title">Import DDL</h2><p>Paste CREATE TABLE statements from SQLite, PostgreSQL or MySQL. Primary keys, UNIQUE, NOT NULL, REFERENCES and FOREIGN KEY become cards and lines.</p></header>
+      <div class="box"><textarea id="imp-text" #impTa spellcheck="false" aria-label="DDL to import" [value]="c.impText" (input)="c.setImpText(val($event))"></textarea></div>
+      <div class="opts"><label><input type="radio" name="imp-mode" value="replace" [checked]="c.impMode === 'replace'" (change)="c.setImpMode('replace')"> Replace the current schema</label><label><input type="radio" name="imp-mode" value="add" [checked]="c.impMode === 'add'" (change)="c.setImpMode('add')"> Add next to it</label></div>
+      <div class="msg" [class.bad]="c.impBad" id="imp-msg">{{ c.impMsg }}</div>
+      <footer><button class="sb" id="imp-cancel" (click)="c.closeImport()">Cancel</button><button class="sb primary" id="imp-go" (click)="c.importGo()">Import</button></footer>
+    </div>
+  </div>
+  <!-- The board's popovers and inline editors — the controller's, so this stays empty here. -->
+  <div class="dm-layer" #layer></div>
+</div>

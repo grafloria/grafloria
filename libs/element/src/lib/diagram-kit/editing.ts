@@ -79,7 +79,81 @@ function umlSection(cls: UmlClassSpec, rowIndex: number): { section: 'attributes
  * Mount a focused `<input>` over `targetEl`, prefilled with `value`. Commits on
  * Enter/blur, cancels on Escape. Returns the input (already in the DOM).
  */
-function openInlineEditor(api: EditApi, targetEl: Element, value: string, onCommit: (next: string) => void): HTMLInputElement {
+/**
+ * The inline editor currently open, if any.
+ *
+ * The editor is mounted in the renderer's WORLD layer, not inside the card, so
+ * it does not die when the card re-renders. That is what lets it survive a
+ * re-render mid-edit — and it is also why deleting the very row being edited
+ * used to leave a stray input floating over the canvas: the row vanished, the
+ * portal did not. Any structural edit now dismisses it first.
+ */
+let activeEditor: { cancel: () => void } | null = null;
+
+/** Dismiss any open inline editor WITHOUT committing. */
+export function dismissInlineEditor(): void {
+  const open = activeEditor;
+  activeEditor = null;
+  open?.cancel();
+}
+
+/** A stable address for a cell, so it can be found again after a re-render. */
+interface CellAddr { nodeId: string; rowIndex: number; kind: 'name' | 'type' }
+
+function addrOf(el: Element): CellAddr | null {
+  const loc = locate(el);
+  if (!loc || loc.rowIndex < 0) return null;
+  const kind = el.closest('.axk-ty') ? 'type' : 'name';
+  return { nodeId: loc.nodeId, rowIndex: loc.rowIndex, kind };
+}
+
+/** The cell `dir` steps away in reading order (name → type → next row's name). */
+function neighbourCell(el: Element, dir: 1 | -1): CellAddr | null {
+  const a = addrOf(el);
+  if (!a) return null;
+  if (dir === 1) {
+    return a.kind === 'name'
+      ? { ...a, kind: 'type' }
+      : { ...a, rowIndex: a.rowIndex + 1, kind: 'name' };
+  }
+  return a.kind === 'type'
+    ? { ...a, kind: 'name' }
+    : { ...a, rowIndex: a.rowIndex - 1, kind: 'type' };
+}
+
+/** The same column, one row down. */
+function cellBelow(el: Element): CellAddr | null {
+  const a = addrOf(el);
+  return a ? { ...a, rowIndex: a.rowIndex + 1 } : null;
+}
+
+/** Re-open the editor at an address, if that cell still exists. */
+function reopenAt(api: EditApi, addr: CellAddr): void {
+  const card = api.container.querySelector(`[data-node-id="${cssEscape(addr.nodeId)}"]`);
+  const row = card?.querySelectorAll('.axk-row, .axk-member')[addr.rowIndex] as Element | undefined;
+  const cell = row?.querySelector(addr.kind === 'type' ? '.axk-ty' : '.axk-col');
+  if (cell) beginRename(api, cell);
+}
+
+/** First occurrence wins, order preserved. */
+function dedupe(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+/** SQL-ish column types offered when editing a type cell. */
+export const ER_TYPE_SUGGESTIONS = [
+  'uuid', 'int', 'bigint', 'smallint', 'serial', 'decimal', 'numeric', 'real', 'double',
+  'varchar', 'text', 'char', 'boolean', 'date', 'time', 'timestamp', 'timestamptz',
+  'json', 'jsonb', 'bytea', 'enum',
+];
+
+function openInlineEditor(
+  api: EditApi,
+  targetEl: Element,
+  value: string,
+  onCommit: (next: string) => void,
+  suggestions?: readonly string[]
+): HTMLInputElement {
   const container = api.container;
   const doc = container.ownerDocument;
   const input = doc.createElement('input');
@@ -88,36 +162,74 @@ function openInlineEditor(api: EditApi, targetEl: Element, value: string, onComm
   input.spellcheck = false;
   input.setAttribute('autocomplete', 'off');
 
-  const rect = targetEl.getBoundingClientRect();
-  const zoom = api.viewport?.getZoom?.() ?? 1;
-  const layer = container.querySelector('.grafloria-html-layer') as HTMLElement | null;
-
-  let portal: { element: HTMLElement; dispose(): void } | null = null;
-  if (layer && api.viewport?.clientToWorld && rect.width > 0) {
-    // World-space: place the input at the target's world position; the layer's
-    // camera transform scales it, so its px width is divided by the zoom.
-    const world = api.viewport.clientToWorld(rect.left, rect.top, container.getBoundingClientRect());
-    input.style.cssText = `width:${rect.width / zoom}px;height:${rect.height / zoom}px;`;
-    try {
-      portal = createViewportPortal(layer, { x: world.x, y: world.y, className: 'axk-edit-portal' });
-      portal.element.appendChild(input);
-    } catch {
-      portal = null;
+  // A type is a choice, not free prose. `<datalist>` gives a real combobox —
+  // the browser filters the list AS YOU TYPE and still allows a value that is
+  // not in it, which is what a schema editor needs (custom/domain types).
+  let listEl: HTMLDataListElement | null = null;
+  if (suggestions?.length) {
+    listEl = doc.createElement('datalist');
+    listEl.id = `axk-types-${Math.random().toString(36).slice(2, 8)}`;
+    for (const t of suggestions) {
+      const opt = doc.createElement('option');
+      opt.value = t;
+      listEl.appendChild(opt);
     }
-  }
-  if (!portal) {
-    // Fallback: absolute in the container (jsdom / no world layer).
-    const host = container.getBoundingClientRect();
-    input.style.cssText =
-      `position:absolute;left:${rect.left - host.left}px;top:${rect.top - host.top}px;` +
-      (rect.width ? `width:${rect.width}px;height:${rect.height}px;` : 'min-width:120px;');
-    container.appendChild(input);
+    doc.body.appendChild(listEl);
+    input.setAttribute('list', listEl.id);
   }
 
+  // POSITIONING — screen space, deliberately.
+  //
+  // This used to mount the input in the renderer's world layer through a
+  // viewport portal so it would scale and pan with the canvas. That produced a
+  // steady trickle of defects: the caret landed between two rows (world/zoom
+  // maths compounding with the card's own scroll offset), and — because the
+  // world layer carries a CSS transform — the browser refused to place the
+  // native <datalist> popup, so the type dropdown never opened.
+  //
+  // An inline editor lives for a few seconds. Pinning it over the cell's actual
+  // screen rect is exact by construction (no maths to get wrong) and keeps it
+  // out of any transformed ancestor, which is what the native popup needs. The
+  // cost is that it does not follow a pan mid-edit; that is a fair trade for an
+  // editor that is reliably WHERE THE CELL IS.
+  const rect = targetEl.getBoundingClientRect();
+  const host = container.getBoundingClientRect();
+
+  const minW = suggestions?.length ? 132 : 72;
+  let w = Math.max(rect.width, minW);
+  let left = rect.left;
+  // Never spill past the card: slide left to fit, shrink only if the card is
+  // narrower than the floor.
+  const card = targetEl.closest('.axk-entity, .axk-uml') as HTMLElement | null;
+  if (card) {
+    const cb = card.getBoundingClientRect();
+    const pad = 4;
+    if (w > cb.width - pad * 2) w = cb.width - pad * 2;
+    const overflow = left + w - (cb.right - pad);
+    if (overflow > 0) left -= overflow;
+    if (left < cb.left + pad) left = cb.left + pad;
+  }
+
+  // `position: fixed` keys off the viewport, exactly like getBoundingClientRect,
+  // so no ancestor offset or scroll correction can drift it.
+  input.style.cssText =
+    `position:fixed;left:${Math.round(left)}px;top:${Math.round(rect.top)}px;` +
+    `width:${Math.round(w)}px;height:${Math.round(rect.height)}px;z-index:2147483000;`;
+  void host; // container rect intentionally unused: fixed positioning needs none
+  // Mounted on the CONTAINER, not document.body: hosts (and the kit's own
+  // tests) look the editor up inside the diagram container, and moving it out
+  // silently broke every one of those lookups. `position: fixed` still keys off
+  // the viewport, so it stays exact — the point was only ever to escape the
+  // world layer's CSS transform, which is a descendant of the container.
+  container.appendChild(input);
+
+  /** Guards double-settling (blur fires after Enter/Escape already handled it). */
   let done = false;
+  const self: { cancel: () => void } = { cancel: () => undefined };
   const cleanup = () => {
-    if (portal) portal.dispose();
-    else input.remove();
+    if (activeEditor === self) activeEditor = null;
+    listEl?.remove();
+    input.remove();
   };
   const commit = () => {
     if (done) return;
@@ -133,6 +245,20 @@ function openInlineEditor(api: EditApi, targetEl: Element, value: string, onComm
   };
 
   input.addEventListener('keydown', (e) => {
+    // Keyboard navigation: TAB walks the cells (name → type → next row's name,
+    // Shift+Tab back). Enter deliberately does NOT move — it commits and
+    // closes, which is what every other inline editor in the app does and what
+    // a user pressing Enter to "finish" expects. Navigation belongs on Tab.
+    if (e.key === 'Tab') {
+      const next = neighbourCell(targetEl, e.shiftKey ? -1 : 1);
+      if (next) {
+        e.preventDefault();
+        commit();
+        // Re-open on the next cell after the card has re-rendered.
+        setTimeout(() => reopenAt(api, next), 0);
+        return;
+      }
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       commit();
@@ -142,9 +268,20 @@ function openInlineEditor(api: EditApi, targetEl: Element, value: string, onComm
     }
     e.stopPropagation();
   });
+  // Registered AFTER commit/cancel exist so a structural edit can dismiss it.
+  self.cancel = cancel;
+  activeEditor = self;
+
   input.addEventListener('blur', commit);
   // Don't let a click INSIDE the input bubble to the canvas (deselect / pan).
-  input.addEventListener('mousedown', (e) => e.stopPropagation());
+  // Keep the canvas binder OUT of the editor. It listens on POINTER events and
+  // preventDefaults them to own the gesture — which also suppressed the native
+  // <datalist> popup, so the type dropdown either never opened or flashed open
+  // and shut. Guarding `mousedown` alone was not enough: pointerdown fires
+  // first and is what the binder acts on.
+  for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick']) {
+    input.addEventListener(type, (e) => e.stopPropagation());
+  }
 
   // Focus after mount so select() works.
   setTimeout(() => {
@@ -176,8 +313,35 @@ function beginRename(api: EditApi, target: Element): void {
     return;
   }
 
-  // ER column rename.
-  const colEl = target.closest('.axk-col');
+  // ER column. Which CELL was double-clicked decides what gets edited and where
+  // the input is mounted: the name span (`.axk-col`) and the type span
+  // (`.axk-ty`) are SIBLINGS inside `.axk-row`. Editing only ever handled the
+  // name and always anchored to it, so double-clicking a type either did
+  // nothing or dropped the caret over the name — the wrong field in the wrong
+  // place. A double-click anywhere else on the row falls back to the name,
+  // anchored to the name cell, so the gesture is predictable everywhere.
+  const typeEl = target.closest('.axk-ty');
+  if (typeEl && rowIndex >= 0) {
+    const ent = kitEntity(api, nodeId);
+    if (!ent) return;
+    openInlineEditor(
+      api,
+      typeEl,
+      ent.columns[rowIndex]?.type ?? '',
+      (type) => {
+        const columns = ent.columns.map((c, i) => (i === rowIndex ? { ...c, type } : c));
+        void updateEntity(api as never, nodeId, { columns });
+      },
+      // Offer the types already used in THIS diagram first, then the standards —
+      // a schema is usually internally consistent, so what you just typed
+      // elsewhere is the likeliest next value.
+      dedupe([...ent.columns.map((c) => c.type).filter(Boolean) as string[], ...ER_TYPE_SUGGESTIONS])
+    );
+    return;
+  }
+
+  const rowEl = target.closest('.axk-row');
+  const colEl = target.closest('.axk-col') ?? rowEl?.querySelector('.axk-col') ?? null;
   if (colEl && rowIndex >= 0) {
     const ent = kitEntity(api, nodeId);
     if (!ent) return;
@@ -269,6 +433,12 @@ export function bindCardEditing(api: EditApi): CardEditingHandle {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
     // Claim control clicks BEFORE row-selection / canvas handlers see them.
+    // An open editor is dismissed first: its row may be the one being removed,
+    // and committing a rename into a structural change is a race even when it
+    // is not (the card re-renders under the caret).
+    if (target.closest('.axk-col-del') || target.closest('.axk-entity-add') || target.closest('.axk-uml-add')) {
+      dismissInlineEditor();
+    }
     if (handleDelete(api, target) || handleAdd(api, target)) {
       event.preventDefault();
       event.stopPropagation();
@@ -283,6 +453,8 @@ export function bindCardEditing(api: EditApi): CardEditingHandle {
       target.closest('.axk-entity-head') ||
       target.closest('.axk-uml-name') ||
       target.closest('.axk-col') ||
+      target.closest('.axk-ty') ||
+      target.closest('.axk-row') ||
       target.closest('.axk-member')
     ) {
       event.preventDefault();
@@ -291,11 +463,26 @@ export function bindCardEditing(api: EditApi): CardEditingHandle {
     }
   };
 
+  // A control press must dismiss the editor BEFORE the browser's focus change
+  // fires `blur` → `commit`. Doing it on `click` was too late: the rename had
+  // already landed, so deleting the row you were editing renamed it first and
+  // then removed a shifted index. preventDefault keeps focus in place too.
+  const onMouseDownCapture = (event: MouseEvent) => {
+    const t = event.target instanceof Element ? event.target : null;
+    if (!t) return;
+    if (t.closest('.axk-col-del') || t.closest('.axk-entity-add') || t.closest('.axk-uml-add')) {
+      dismissInlineEditor();
+      event.preventDefault();
+    }
+  };
+
+  container.addEventListener('mousedown', onMouseDownCapture, true);
   container.addEventListener('click', onClickCapture, true);
   container.addEventListener('dblclick', onDblClickCapture, true);
 
   const handle: CardEditingHandle = {
     dispose() {
+      container.removeEventListener('mousedown', onMouseDownCapture, true);
       container.removeEventListener('click', onClickCapture, true);
       container.removeEventListener('dblclick', onDblClickCapture, true);
       if (bindings.get(container) === handle) bindings.delete(container);

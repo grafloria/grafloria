@@ -1,0 +1,1149 @@
+<meta charset="utf-8">
+<title>ManyChat-style chatbot builder — Grafloria</title>
+<meta name="description" content="A ManyChat-style chatbot builder: every button has its own connection dot, replies branch orange and red, and Preview runs the bot along the lines you drew.">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/chatbot-flow.html">
+<meta property="og:title" content="ManyChat-style chatbot builder — Grafloria">
+<meta property="og:description" content="A ManyChat-style chatbot builder: every button has its own connection dot, replies branch orange and red, and Preview runs the bot along the lines you drew.">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/chatbot-flow.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/chatbot-flow.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/chatbot-flow.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  /* ---- the builder: a step editor on the left, the flow canvas on the right -- */
+  #stage { display: grid; grid-template-columns: 300px 1fr; height: calc(100vh - 150px); min-height: 520px; }
+  #canvas { height: 100%; position: relative; overflow: hidden; background-color: #f2f3f5;
+    background-image: radial-gradient(circle, #dde0e6 1px, transparent 1px); background-size: 24px 24px; }
+  #canvas foreignObject { overflow: visible; }
+  /* The node's SHAPE is the card: a 12px-rounded box (shape.cornerRadius), so
+     a far zoom that drops the HTML still shows the card. The HTML only draws
+     what is inside. Selected, a card changes its BORDER only — no extra ring —
+     because every step says `style: { selection: 'border' }`. The fill is
+     pinned because the theme also tints a HOVERED body, and these cards keep
+     their colour. */
+  #canvas rect.diagram-node { fill: #fff !important; stroke: #e3e6eb; stroke-width: 1px; }
+
+  /* ---- a step card, painted inside each node's foreignObject ---------------- */
+  .mc-card { box-sizing: border-box; width: 100%; height: 100%; display: flex; flex-direction: column;
+    background: transparent; color: #1f2430; border: 1px solid transparent; border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(16,24,40,.05), 0 3px 8px rgba(16,24,40,.05);
+    font: 12px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif;
+    letter-spacing: normal; text-align: left; overflow: hidden; }
+  /* The step the Preview is running: a green glow, apart from selection's blue border. */
+  .mc-card.mc-run { box-shadow: 0 0 0 3px rgba(34,177,76,.45), 0 4px 14px rgba(34,177,76,.2); }
+  .mc-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px 6px; flex: none; }
+  .mc-ch { width: 22px; height: 22px; border-radius: 50%; flex: none; position: relative;
+    background: linear-gradient(135deg, #1aa3ff, #0a62f5); }
+  .mc-ch::before { content: ""; position: absolute; left: 5px; top: 6px; width: 12px; height: 9px;
+    border-radius: 6px 6px 6px 2px; background: #fff; }
+  .mc-ch::after { content: ""; position: absolute; left: 8px; top: 9px; width: 6px; height: 3px;
+    border-left: 2px solid #0a62f5; border-bottom: 2px solid #0a62f5; transform: skewX(-25deg); opacity: .9; }
+  .mc-chan { font-size: 9.5px; color: #8a92a3; line-height: 1.2; }
+  .mc-title { font-size: 12.5px; font-weight: 600; color: #1f2430; line-height: 1.25;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mc-body { padding: 2px 12px 4px; display: flex; flex-direction: column; gap: 6px; }
+  .mc-bubble { background: #f3f4f7; border-radius: 10px; padding: 8px 9px; display: flex; flex-direction: column; gap: 5px; }
+  .mc-text { white-space: pre-wrap; unicode-bidi: plaintext; text-align: start; font-size: 11.5px; color: #2b303b;
+    overflow-wrap: anywhere; }
+  .mc-text.mc-empty { color: #a3aab8; font-style: italic; }
+  .mc-link { color: #2f7cf6; }
+  .mc-btn { background: #fff; border: 1px solid #e6e8ed; border-radius: 7px; padding: 6px 12px;
+    text-align: center; font-weight: 500; font-size: 11.5px; color: #1f2430; unicode-bidi: plaintext;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
+  .mc-btn.mc-url { color: #2f7cf6; padding-right: 26px; padding-left: 26px; }
+  .mc-url-ico { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #f5a524; }
+  .mc-wait { display: flex; align-items: center; gap: 7px; background: #efefff; color: #4b47d6;
+    border-radius: 8px; padding: 7px 10px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mc-wait-ico { width: 14px; height: 14px; border: 1.6px solid #6461ea; border-radius: 50%; flex: none; box-sizing: border-box; }
+  .mc-delay { display: flex; align-items: center; gap: 7px; color: #5b6272; font-size: 11px; padding: 2px 2px; }
+  .mc-delay-ico { width: 12px; height: 12px; border: 1.5px solid #8a92a3; border-radius: 50%; flex: none; box-sizing: border-box; position: relative; }
+  .mc-img { height: 74px; border-radius: 10px; background: linear-gradient(135deg, #dbe7ff, #f2e6ff);
+    display: flex; align-items: flex-end; padding: 7px 9px; box-sizing: border-box; color: #4a4f5c; font-size: 11px; }
+  .mc-foot { margin-top: auto; padding: 2px 0 8px; display: flex; flex-direction: column; }
+  .mc-out { text-align: right; padding: 3px 14px 3px 12px; font-size: 10.5px; color: #7d8596; white-space: nowrap; }
+  .mc-out.mc-reply { color: #b7791f; }
+  .mc-out.mc-noreply { color: #6b7280; }
+
+  /* trigger card */
+  .mc-head-trig { font-weight: 600; font-size: 12px; color: #1f2430; padding-top: 10px; }
+  .mc-bolt { color: #1f2430; font-size: 13px; }
+  .mc-trig-chip { display: flex; gap: 8px; align-items: center; background: #e4f7e8; border-radius: 9px; padding: 7px 9px; }
+  .mc-trig-chip .mc-ch { width: 18px; height: 18px; }
+  .mc-trig-chip .mc-ch::before { left: 4px; top: 5px; width: 10px; height: 7px; }
+  .mc-trig-chip .mc-ch::after { left: 6px; top: 7px; width: 5px; height: 2px; border-width: 1.5px; }
+  .mc-trig-l { font-size: 11px; color: #1d4d2b; font-weight: 500; line-height: 1.25; }
+  .mc-trig-s { font-size: 9.5px; color: #4f7a5c; }
+  .mc-new-trig { border: 1px dashed #c9cfda; border-radius: 9px; text-align: center; padding: 7px 0; color: #2f7cf6; font-size: 11px; }
+
+  /* actions card */
+  .mc-head-act { background: #fdeaa5; color: #5e4500; font-weight: 600; padding: 7px 12px; margin-bottom: 6px; }
+  .mc-action { padding: 2px 0; }
+  .mc-a-l { font-size: 11px; color: #5b6272; }
+  .mc-a-s { font-size: 11px; color: #1f2430; }
+
+  /* The dots. The theme colours .port-input/.port-output in CSS, which beats a
+     glyph's own attributes, so the page names its four kinds here. The input
+     stays invisible until a line is dragged: you drop on the whole card. */
+  /* A dot re-seated on a taller card must move WITH its line, not glide 0.2s
+     behind it: only its hover growth animates. */
+  #canvas circle.port { stroke: #fff; stroke-width: 1.5px; transition-property: r, stroke-width, opacity !important; }
+  #canvas circle.port[data-port-id*="__b_"] { fill: #7d8698; }
+  #canvas circle.port[data-port-id$="__next"], #canvas circle.port[data-port-id$="__then"] { fill: #fff; stroke: #7d8698; }
+  #canvas circle.port[data-port-id$="__reply"] { fill: #f5a524; }
+  #canvas circle.port[data-port-id$="__noreply"] { fill: #ef4444; }
+  #canvas circle.port.port-input { fill: transparent; stroke: transparent; }
+  #canvas circle.port.port-input.port-highlighted { fill: #22b14c; stroke: #fff; }
+  #canvas circle.port.port-output:hover { stroke: #2f7cf6; stroke-width: 2.5px; }
+
+  /* hidden twin the page measures cards in, so every port lands on its row */
+  #mc-measure { position: absolute; left: -10000px; top: 0; visibility: hidden; pointer-events: none; }
+  #mc-measure .mc-card { height: auto; }
+
+  /* ---- the left step editor --------------------------------------------------- */
+  #side { border-right: 1px solid #e3e6eb; background: #fff; overflow-y: auto; color: #1f2430;
+    font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
+  .sd-top { padding: 14px 16px 12px; background: #f6f7f9; border-bottom: 1px solid #eceef2; display: grid; gap: 4px; }
+  .sd-kind { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: #8a92a3; font-weight: 600; }
+  .sd-title { font: 600 16px/1.3 system-ui, sans-serif; border: 1px solid transparent; background: transparent;
+    padding: 3px 6px; margin-left: -7px; border-radius: 6px; color: inherit; width: 100%; box-sizing: border-box; }
+  .sd-title:hover, .sd-title:focus { border-color: #d5d9e1; background: #fff; outline: none; }
+  .sd-sub { font-size: 12px; color: #5b6272; }
+  .sd-sub b { color: #2f7cf6; font-weight: 500; }
+  .sd-pad { padding: 14px 16px; display: grid; gap: 12px; align-content: start; }
+  .sd-block { border: 1px solid #e6e8ed; border-radius: 10px; padding: 10px; display: grid; gap: 8px; background: #fafbfc; }
+  .sd-bh { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 600;
+    color: #5b6272; text-transform: uppercase; letter-spacing: .05em; }
+  .sd-block textarea { width: 100%; box-sizing: border-box; min-height: 92px; resize: vertical; border: 1px solid #dfe3ea;
+    border-radius: 8px; padding: 8px 9px; font: 12.5px/1.5 system-ui, "Noto Sans Arabic", sans-serif; color: inherit; background: #fff; }
+  .sd-block input, .sd-block select { border: 1px solid #dfe3ea; border-radius: 7px; padding: 6px 8px; font: 12.5px/1.3 system-ui, sans-serif;
+    color: inherit; background: #fff; min-width: 0; }
+  .sd-btns { display: grid; gap: 6px; }
+  .sd-btn { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
+  .sd-btn input { text-align: center; }
+  .sd-row { display: flex; gap: 8px; align-items: center; font-size: 12.5px; }
+  .sd-row input[type=number] { width: 58px; }
+  .sd-row input:not([type]) { flex: 1; }
+  .sd-ib { border: 1px solid #dfe3ea; background: #fff; border-radius: 7px; width: 28px; height: 28px; cursor: pointer;
+    color: #5b6272; font-size: 13px; line-height: 1; }
+  .sd-ib:hover { border-color: #b9c0cc; color: #1f2430; }
+  .sd-ib[aria-pressed="true"] { border-color: #f5a524; color: #b7791f; background: #fff8eb; }
+  .sd-add { border: 1px dashed #c3c9d4; background: #fff; color: #2f7cf6; border-radius: 8px; padding: 7px; cursor: pointer;
+    font: 500 12.5px/1.2 system-ui, sans-serif; }
+  .sd-add:hover { border-color: #2f7cf6; }
+  .sd-label { font-size: 12px; color: #5b6272; padding-top: 4px; }
+  .sd-pal { display: grid; gap: 8px; }
+  .sd-pal button { display: grid; grid-template-columns: 30px 1fr; grid-template-rows: auto auto; column-gap: 8px; text-align: left;
+    border: 1px dashed #c3c9d4; background: #fff; border-radius: 10px; padding: 8px 10px; cursor: pointer; color: inherit; }
+  .sd-pal button:hover { border-color: #2f7cf6; background: #f7faff; }
+  .sd-pal .ico { grid-row: span 2; align-self: center; font-size: 17px; color: #5b6272; text-align: center; }
+  .sd-pal b { font-weight: 500; font-size: 13px; }
+  .sd-pal small { color: #8a92a3; font-size: 11.5px; }
+  .sd-next { border: 1px dashed #8fb6f7; background: #f5f9ff; color: #2f7cf6; border-radius: 10px; padding: 10px; cursor: pointer;
+    font: 500 13px/1.2 system-ui, sans-serif; }
+  .sd-next:hover { background: #ebf3ff; }
+  .sd-del { border: none; background: none; color: #d93636; cursor: pointer; font: 500 12.5px/1.2 system-ui, sans-serif; justify-self: start; padding: 4px 0; }
+  .sd-empty { padding: 18px 16px; display: grid; gap: 12px; color: #5b6272; font-size: 13px; }
+  .sd-empty h2 { margin: 0; font: 600 15px/1.3 system-ui, sans-serif; color: #1f2430; }
+  .sd-empty ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .sd-stat { display: flex; gap: 10px; }
+  .sd-stat div { flex: 1; border: 1px solid #e6e8ed; border-radius: 10px; padding: 8px 10px; font-variant-numeric: tabular-nums; }
+  .sd-stat b { display: block; font-size: 18px; color: #1f2430; }
+
+  /* ---- canvas chrome: the top bar, the + button, zoom, the next-step menu ---- */
+  .cv-top { position: absolute; left: 0; right: 0; top: 0; height: 46px; z-index: 6; display: flex; align-items: center; gap: 10px;
+    padding: 0 14px; background: #fff; border-bottom: 1px solid #e6e8ed; font: 13px/1.2 system-ui, sans-serif; color: #5b6272; }
+  .cv-crumb b { color: #1f2430; font-weight: 600; }
+  .cv-live { background: #e5383b; color: #fff; font: 700 10px/1 system-ui, sans-serif; letter-spacing: .05em; padding: 4px 6px; border-radius: 4px; }
+  .cv-sp { flex: 1; }
+  #cv-saved { font-size: 12.5px; color: #3f8f5a; }
+  #cv-saved.dirty { color: #b7791f; }
+  .cv-btn { border: 1px solid #2f7cf6; color: #2f7cf6; background: #fff; border-radius: 7px; padding: 7px 13px; cursor: pointer; white-space: nowrap;
+    font: 500 13px/1.2 system-ui, sans-serif; }
+  .cv-btn[aria-pressed="true"] { background: #eaf2ff; }
+  .cv-btn.primary { background: #2f7cf6; color: #fff; }
+  .cv-btn:disabled { opacity: .45; cursor: default; }
+  #cv-fab { position: absolute; right: 22px; top: 62px; z-index: 6; width: 46px; height: 46px; border-radius: 50%; border: none;
+    background: #2f7cf6; color: #fff; font: 300 28px/1 system-ui, sans-serif; cursor: pointer; box-shadow: 0 6px 16px rgba(47,124,246,.35); }
+  .cv-zoom { position: absolute; right: 22px; bottom: 22px; z-index: 6; display: grid; gap: 6px; }
+  .cv-zoom button { width: 34px; height: 34px; border: 1px solid #dfe3ea; background: #fff; border-radius: 8px; cursor: pointer;
+    color: #3c4250; font: 500 16px/1 system-ui, sans-serif; }
+  .cv-hint[hidden] { display: none; }
+  .cv-hint { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); z-index: 5; background: #e9ecf1; color: #5b6272;
+    font: 12px/1.2 system-ui, sans-serif; padding: 6px 12px; border-radius: 7px; pointer-events: none; white-space: nowrap; }
+  #mc-menu { position: absolute; z-index: 20; width: 230px; background: #fff; border: 1px solid #e3e6eb; border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(16,24,40,.16); padding: 8px; display: grid; gap: 4px; font: 13px/1.3 system-ui, sans-serif; }
+  #mc-menu[hidden] { display: none; }
+  #mc-menu .mh { font-size: 11px; font-weight: 600; color: #8a92a3; text-transform: uppercase; letter-spacing: .05em; padding: 4px 6px 6px; }
+  #mc-menu button { display: flex; align-items: center; gap: 9px; border: none; background: none; text-align: left; padding: 8px 8px;
+    border-radius: 8px; cursor: pointer; color: #1f2430; font: inherit; }
+  #mc-menu button:hover, #mc-menu button:focus-visible { background: #f2f5fa; outline: none; }
+  #mc-menu .dot { width: 22px; height: 22px; border-radius: 6px; flex: none; }
+
+  /* ---- the Preview: the bot, run for real, beside the canvas ----------------- */
+  #pv { position: absolute; right: 14px; top: 58px; bottom: 14px; width: 330px; z-index: 8; display: flex; flex-direction: column;
+    background: #fff; border: 1px solid #e3e6eb; border-radius: 16px; box-shadow: 0 16px 40px rgba(16,24,40,.18); overflow: hidden;
+    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", "Noto Sans Arabic", sans-serif; color: #1f2430; }
+  #pv[hidden] { display: none; }
+  .pv-head { display: flex; align-items: center; gap: 9px; padding: 11px 12px; border-bottom: 1px solid #eceef2; }
+  .pv-head .mc-ch { width: 30px; height: 30px; }
+  .pv-head .mc-ch::before { left: 7px; top: 9px; width: 16px; height: 12px; }
+  .pv-head .mc-ch::after { left: 11px; top: 13px; width: 8px; height: 4px; }
+  .pv-name { font-weight: 600; font-size: 13.5px; }
+  .pv-sub { font-size: 11px; color: #8a92a3; }
+  .pv-head .sp { flex: 1; }
+  .pv-head button { border: 1px solid #dfe3ea; background: #fff; border-radius: 7px; padding: 5px 9px; cursor: pointer; font: 500 12px/1.2 system-ui, sans-serif; color: #3c4250; }
+  #pv-chat { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 6px; background: #fafbfc; }
+  .pv-msg { max-width: 82%; padding: 8px 11px; border-radius: 16px; white-space: pre-wrap; unicode-bidi: plaintext; text-align: start;
+    overflow-wrap: anywhere; font-size: 12.5px; }
+  .pv-bot { align-self: flex-start; background: #eceef2; border-bottom-left-radius: 5px; }
+  .pv-user { align-self: flex-end; background: #0a7cff; color: #fff; border-bottom-right-radius: 5px; }
+  .pv-sys { align-self: center; font-size: 11px; color: #8a92a3; text-align: center; padding: 2px 8px; }
+  .pv-sys.act { color: #9a6b00; background: #fff6dc; border-radius: 8px; padding: 4px 9px; }
+  .pv-btns { align-self: flex-start; display: grid; gap: 5px; width: 74%; margin-bottom: 4px; }
+  .pv-btns button { border: 1px solid #cfd8e6; background: #fff; color: #0a62f5; border-radius: 16px; padding: 7px 10px; cursor: pointer;
+    font: 500 12.5px/1.2 system-ui, "Noto Sans Arabic", sans-serif; unicode-bidi: plaintext; }
+  .pv-btns button.chosen { background: #e8f1ff; border-color: #8fb6f7; }
+  .pv-img { align-self: flex-start; width: 70%; height: 110px; border-radius: 14px; background: linear-gradient(135deg, #dbe7ff, #f2e6ff);
+    display: flex; align-items: flex-end; padding: 8px 10px; box-sizing: border-box; font-size: 11.5px; color: #4a4f5c; }
+  .pv-typing { align-self: flex-start; background: #eceef2; border-radius: 16px; padding: 10px 12px; display: flex; gap: 4px; }
+  .pv-typing i { width: 6px; height: 6px; border-radius: 50%; background: #9aa1ae; animation: pvdot 1s infinite; }
+  .pv-typing i:nth-child(2) { animation-delay: .15s; } .pv-typing i:nth-child(3) { animation-delay: .3s; }
+  @keyframes pvdot { 0%, 60%, 100% { opacity: .35; } 30% { opacity: 1; } }
+  .pv-foot { border-top: 1px solid #eceef2; padding: 9px 10px; display: grid; gap: 7px; }
+  .pv-wait { font-size: 11.5px; color: #4b47d6; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .pv-wait[hidden] { display: none; }
+  .pv-wait button { border: 1px solid #f3b4b4; color: #c53030; background: #fff; border-radius: 7px; padding: 4px 8px; cursor: pointer; font: 500 11.5px/1.2 system-ui, sans-serif; }
+  .pv-in { display: flex; gap: 6px; }
+  .pv-in input { flex: 1; border: 1px solid #dfe3ea; border-radius: 18px; padding: 8px 12px; font: 13px/1.2 system-ui, sans-serif; min-width: 0; }
+  .pv-in button { border: none; background: #0a7cff; color: #fff; border-radius: 18px; padding: 0 14px; cursor: pointer; font: 600 12.5px/1 system-ui, sans-serif; }
+  .pv-in button:disabled, .pv-in input:disabled { opacity: .5; cursor: default; }
+
+  @media (prefers-color-scheme: dark) {
+    #canvas { background-color: #15171c; background-image: radial-gradient(circle, #262a33 1px, transparent 1px); }
+    .mc-card { color: #e6e9ef; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+    #canvas rect.diagram-node { fill: #22252d !important; stroke: #343844; }
+    .mc-title, .mc-head-trig, .mc-bolt, .mc-a-s { color: #eef0f4; }
+    .mc-bubble { background: #2c3039; }
+    .mc-text { color: #d9dde5; }
+    .mc-btn { background: #22252d; border-color: #3a3f4b; color: #e6e9ef; }
+    .mc-wait { background: #2b2b4d; color: #b5b3ff; }
+    .mc-delay, .mc-a-l { color: #a3aab8; }
+    .mc-trig-chip { background: #1e3a28; } .mc-trig-l { color: #c4ecd0; } .mc-trig-s { color: #8fbf9e; }
+    .mc-new-trig { border-color: #3a3f4b; }
+    .mc-head-act { background: #4a3b10; color: #f8dd8a; }
+    .mc-out { color: #9aa1ae; } .mc-out.mc-reply { color: #e0a43a; }
+    #canvas circle.port { stroke: #22252d; }
+    #canvas circle.port[data-port-id$="__next"], #canvas circle.port[data-port-id$="__then"] { fill: #22252d; stroke: #9aa1ae; }
+    #canvas circle.port.port-input { fill: transparent; stroke: transparent; }
+    #side { background: #1b1d23; border-right-color: #2c2f38; color: #e6e9ef; }
+    .sd-top { background: #20232a; border-bottom-color: #2c2f38; }
+    .sd-sub, .sd-label, .sd-bh, .sd-empty { color: #a3aab8; }
+    .sd-block { background: #20232a; border-color: #2f333d; }
+    .sd-block textarea, .sd-block input, .sd-block select, .sd-ib, .sd-add, .sd-pal button { background: #191b21; border-color: #343844; color: #e6e9ef; }
+    .sd-title:hover, .sd-title:focus { background: #191b21; border-color: #343844; }
+    .sd-next { background: #1c2536; border-color: #33507d; }
+    .sd-empty h2, .sd-stat b { color: #eef0f4; } .sd-stat div { border-color: #2f333d; }
+    .cv-top { background: #1b1d23; border-bottom-color: #2c2f38; color: #a3aab8; }
+    .cv-crumb b { color: #eef0f4; }
+    .cv-btn { background: #1b1d23; } .cv-btn[aria-pressed="true"] { background: #1c2a44; }
+    .cv-zoom button { background: #22252d; border-color: #343844; color: #d9dde5; }
+    .cv-hint { background: #23262e; color: #a3aab8; }
+    #mc-menu, #pv { background: #22252d; border-color: #343844; color: #e6e9ef; }
+    #mc-menu button { color: #e6e9ef; } #mc-menu button:hover { background: #2c3039; }
+    .pv-head { border-bottom-color: #2f333d; } .pv-foot { border-top-color: #2f333d; }
+    .pv-head button, .pv-in input { background: #191b21; border-color: #343844; color: #e6e9ef; }
+    #pv-chat { background: #1d2026; } .pv-bot, .pv-typing { background: #2c3039; color: #e6e9ef; }
+    .pv-btns button { background: #22252d; border-color: #3a4a66; color: #8fb6f7; }
+    .pv-btns button.chosen { background: #1c2a44; }
+    .pv-sys.act { background: #3a3013; color: #f0cf74; }
+    .pv-wait button { background: #2a1d1f; border-color: #6b2b2b; color: #f19a9a; }
+  }
+  @media (prefers-reduced-motion: reduce) { .pv-typing i { animation: none; } }
+</style>
+<header id="demo-head"></header>
+<div id="stage">
+  <aside id="side" aria-label="Step editor"></aside>
+  <div id="canvas"></div>
+</div>
+<script type="module">
+import { render, PortModel, LinkModel, NodeModel } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+
+// A ManyChat-style chatbot builder on the Grafloria engine.
+//
+//   • Every STEP is an HTML card. Every button on a message has its OWN output
+//     port, pinned to that button's row: the page measures the card in a hidden
+//     twin and places each port at the row's centre, so a line always leaves
+//     the button it belongs to — and moves with it when the card grows.
+//   • A step that waits for a reply grows two more outputs: "Action on reply"
+//     (orange) and "If contact has not responded" (red), plus "Next Step".
+//   • Select a card and edit it on the left: the text, the buttons, the blocks.
+//     The card re-measures and its ports follow on every keystroke.
+//   • Drag a line from any dot and drop it anywhere on a card — the engine's
+//     smart auto-connect lands it on the card's input. Drop it on empty canvas
+//     and the page offers to create the next step right there.
+//   • Preview runs the bot for real: it walks the same links you drew.
+
+// ---- the flow: steps + links, as plain data --------------------------------
+const W = { trigger: 232, message: 252, actions: 214 };
+const URL_BOOK = 'https://example.com/book';
+const FLOW0 = () => ({
+  steps: [
+    { id: 'trigger', kind: 'trigger', title: 'When…', x: 40, y: 70,
+      triggers: [{ label: 'User sends a direct message', sub: 'Default reply' }] },
+    { id: 'welcome', kind: 'message', title: 'Default Reply', x: 340, y: 40, blocks: [
+      { id: 't', kind: 'text', text: 'Hi there! 👋 Thanks for reaching out to Atlas Business Hub. Please choose your language:\n\nأهلاً بك! 👋 شكراً لتواصلك مع أطلس لخدمات الأعمال. من فضلك اختر لغتك:',
+        buttons: [{ id: 'en', title: 'English' }, { id: 'ar', title: 'العربية' }] },
+    ] },
+    { id: 'en_menu', kind: 'message', title: 'Send Message', x: 680, y: 150, blocks: [
+      { id: 'd', kind: 'delay', secs: 2 },
+      { id: 't', kind: 'text', text: 'Welcome! 🙌 We help you start and run your business:\n• Company registration\n• Virtual office\n• Website & online store\n• Accounting software\n\nShall we call you, or would you like to book a time yourself?',
+        buttons: [{ id: 'phone', title: 'Call me back' }, { id: 'book', title: 'Book a call', url: URL_BOOK }] },
+    ] },
+    { id: 'ar_menu', kind: 'message', title: 'Send Message #4', x: 420, y: 470, blocks: [
+      { id: 't', kind: 'text', text: 'أهلاً بك! 🙌 نساعدك على تأسيس شركتك وإدارتها:\n• تسجيل الشركات\n• مكتب افتراضي\n• المواقع والمتاجر الإلكترونية\n• برامج المحاسبة\n\nهل تفضل أن نتصل بك، أم تحجز موعداً بنفسك؟',
+        buttons: [{ id: 'phone', title: 'اتصلوا بي' }, { id: 'book', title: 'احجز مكالمة', url: URL_BOOK }] },
+    ] },
+    { id: 'en_ask', kind: 'message', title: 'Send Message #2', x: 1010, y: 210, blocks: [
+      { id: 't', kind: 'text', text: 'Please send your phone number and we\'ll call you within 24 hours.', buttons: [] },
+      { id: 'c', kind: 'collect', field: 'Phone' },
+    ] },
+    { id: 'en_retry', kind: 'message', title: 'Send Message #3', x: 1340, y: 40, blocks: [
+      { id: 't', kind: 'text', text: 'Still there? 🙂 Send your number any time, or book a call here: ' + URL_BOOK, buttons: [] },
+    ] },
+    { id: 'en_actions', kind: 'actions', title: 'Actions', x: 1340, y: 260,
+      actions: [{ id: 'a1', label: 'Notify assignees', sub: '2 people via e-mail' }, { id: 'a2', label: 'Add tag', sub: 'Lead · call back' }] },
+    { id: 'en_thanks', kind: 'message', title: 'Send Message #1', x: 1340, y: 420, blocks: [
+      { id: 't', kind: 'text', text: 'Thank you! A member of our team will call you within 24 hours. Have a great day!', buttons: [] },
+    ] },
+    { id: 'ar_ask', kind: 'message', title: 'Send Message #5', x: 760, y: 640, blocks: [
+      { id: 't', kind: 'text', text: 'من فضلك أرسل رقم هاتفك وسنتصل بك خلال ٢٤ ساعة.', buttons: [] },
+      { id: 'c', kind: 'collect', field: 'Phone' },
+    ] },
+    { id: 'ar_retry', kind: 'message', title: 'Send Message #7', x: 1090, y: 600, blocks: [
+      { id: 't', kind: 'text', text: 'هل ما زلت هنا؟ 🙂 أرسل رقمك في أي وقت، أو احجز مكالمة من هنا: ' + URL_BOOK, buttons: [] },
+    ] },
+    { id: 'ar_actions', kind: 'actions', title: 'Actions #1', x: 1090, y: 790,
+      actions: [{ id: 'a1', label: 'Notify assignees', sub: '2 people via e-mail' }, { id: 'a2', label: 'Add tag', sub: 'Lead · call back' }] },
+    { id: 'ar_thanks', kind: 'message', title: 'Send Message #6', x: 1090, y: 950, blocks: [
+      { id: 't', kind: 'text', text: 'شكراً لك! سيتصل بك أحد أعضاء فريقنا خلال ٢٤ ساعة. يوماً سعيداً!', buttons: [] },
+    ] },
+  ],
+  links: [
+    ['trigger__then', 'welcome'], ['welcome__b_en', 'en_menu'], ['welcome__b_ar', 'ar_menu'],
+    ['en_menu__b_phone', 'en_ask'], ['ar_menu__b_phone', 'ar_ask'],
+    ['en_ask__reply', 'en_actions'], ['en_ask__noreply', 'en_retry'], ['en_ask__next', 'en_thanks'],
+    ['ar_ask__reply', 'ar_actions'], ['ar_ask__noreply', 'ar_retry'], ['ar_ask__next', 'ar_thanks'],
+  ],
+});
+
+// ---- ports: which kind each one is, and how it and its line look ------------
+const portKind = (pid) => pid.endsWith('__in') ? 'in' : pid.endsWith('__noreply') ? 'noreply'
+  : pid.endsWith('__reply') ? 'reply' : pid.includes('__b_') ? 'button' : 'next';
+const PORT_STYLE = {
+  in:      { fill: '#ffffff', stroke: '#9aa3b5', strokeWidth: 1.5 },
+  button:  { fill: '#7d8698', stroke: '#ffffff', strokeWidth: 1.5 },
+  next:    { fill: '#ffffff', stroke: '#7d8698', strokeWidth: 1.5 },
+  reply:   { fill: '#f5a524', stroke: '#ffffff', strokeWidth: 1.5 },
+  noreply: { fill: '#ef4444', stroke: '#ffffff', strokeWidth: 1.5 },
+};
+const LINE = { grey: '#9aa3b5', reply: '#f5a524', noreply: '#ef4444' };
+const lineColor = (srcPid) => { const k = portKind(srcPid); return k === 'reply' ? LINE.reply : k === 'noreply' ? LINE.noreply : LINE.grey; };
+const lineStyle = (srcPid, running) => ({
+  stroke: running ? '#2f7cf6' : lineColor(srcPid), strokeWidth: running ? 2.4 : 1.6,
+  arrowHead: { type: 'arrow', size: 7, filled: true, color: running ? '#2f7cf6' : lineColor(srcPid) },
+  animation: running ? { type: 'flow', speed: 'fast', direction: 'forward' } : { type: 'none' },
+});
+
+// ---- a step → its card (structured, sanitised HTML; `port` marks a row) -----
+const textRuns = (text) => {
+  const parts = String(text).split(/(https?:\/\/\S+)/g).filter((p) => p !== '');
+  return parts.map((p) => /^https?:\/\//.test(p) ? { tag: 'span', className: 'mc-link', text: p } : { tag: 'span', text: p });
+};
+const head = (step, chan) => ({ tag: 'div', className: 'mc-head', children: [
+  { tag: 'span', className: 'mc-ch' },
+  { tag: 'div', children: [{ tag: 'div', className: 'mc-chan', text: chan }, { tag: 'div', className: 'mc-title', text: step.title || 'Untitled' }] },
+] });
+const outRow = (pid, cls, text) => ({ tag: 'div', className: 'mc-out ' + cls, text, port: pid });
+
+function cardContent(step, flags = {}) {
+  const cls = 'mc-card' + (flags.sel ? ' mc-sel' : '') + (flags.run ? ' mc-run' : '');
+  if (step.kind === 'trigger') {
+    return { tag: 'div', className: cls + ' mc-trig', children: [
+      { tag: 'div', className: 'mc-head mc-head-trig', children: [{ tag: 'span', className: 'mc-bolt', text: '⚡' }, { tag: 'span', text: step.title }] },
+      { tag: 'div', className: 'mc-body', children: [
+        ...step.triggers.map((t) => ({ tag: 'div', className: 'mc-trig-chip', children: [
+          { tag: 'span', className: 'mc-ch' },
+          { tag: 'div', children: [{ tag: 'div', className: 'mc-trig-l', text: t.label }, { tag: 'div', className: 'mc-trig-s', text: t.sub }] },
+        ] })),
+        { tag: 'div', className: 'mc-new-trig', text: '+ New Trigger' },
+      ] },
+      { tag: 'div', className: 'mc-foot', children: [outRow(step.id + '__then', 'mc-next', 'Then')] },
+    ] };
+  }
+  if (step.kind === 'actions') {
+    return { tag: 'div', className: cls + ' mc-act', children: [
+      { tag: 'div', className: 'mc-head-act', text: '⚡ ' + (step.title || 'Actions') },
+      { tag: 'div', className: 'mc-body', children: step.actions.length
+        ? step.actions.map((a) => ({ tag: 'div', className: 'mc-action', children: [
+            { tag: 'div', className: 'mc-a-l', text: a.label }, { tag: 'div', className: 'mc-a-s', text: a.sub }] }))
+        : [{ tag: 'div', className: 'mc-a-l', text: 'No actions yet' }] },
+      { tag: 'div', className: 'mc-foot', children: [outRow(step.id + '__next', 'mc-next', 'Next Step')] },
+    ] };
+  }
+  const body = [];
+  for (const b of step.blocks) {
+    if (b.kind === 'text') {
+      body.push({ tag: 'div', className: 'mc-bubble', children: [
+        b.text.trim() ? { tag: 'div', className: 'mc-text', children: textRuns(b.text) } : { tag: 'div', className: 'mc-text mc-empty', text: 'Enter your text…' },
+        ...b.buttons.map((btn) => btn.url
+          ? { tag: 'div', className: 'mc-btn mc-url', children: [{ tag: 'span', text: btn.title || 'Button' }, { tag: 'span', className: 'mc-url-ico', text: '↗' }] }
+          : { tag: 'div', className: 'mc-btn', text: btn.title || 'Button', port: `${step.id}__b_${btn.id}` }),
+      ] });
+    } else if (b.kind === 'collect') {
+      body.push({ tag: 'div', className: 'mc-wait', children: [{ tag: 'span', className: 'mc-wait-ico' }, { tag: 'span', text: `Waiting for ${b.field} from contact…` }] });
+    } else if (b.kind === 'delay') {
+      body.push({ tag: 'div', className: 'mc-delay', children: [{ tag: 'span', className: 'mc-delay-ico' }, { tag: 'span', text: `Typing… ${b.secs} sec` }] });
+    } else if (b.kind === 'image') {
+      body.push({ tag: 'div', className: 'mc-img', text: '🖼  ' + (b.caption || 'Image') });
+    }
+  }
+  const collects = step.blocks.some((b) => b.kind === 'collect');
+  return { tag: 'div', className: cls + ' mc-msg', children: [
+    head(step, 'Messenger'),
+    { tag: 'div', className: 'mc-body', children: body },
+    { tag: 'div', className: 'mc-foot', children: [
+      ...(collects ? [outRow(step.id + '__reply', 'mc-reply', '⚡ Action on reply'), outRow(step.id + '__noreply', 'mc-noreply', 'If contact has not responded')] : []),
+      outRow(step.id + '__next', 'mc-next', 'Next Step'),
+    ] },
+  ] };
+}
+// The renderer drops keys it does not know, but strip `port` anyway — the
+// model stores exactly what it renders.
+const stripPorts = (n) => { const { port, children, ...rest } = n; return children ? { ...rest, children: children.map(stripPorts) } : rest; };
+
+// ---- measuring: the card's height, and the centre of every port row ---------
+let measureHost = null;
+const toDom = (n) => {
+  const el = document.createElement(n.tag);
+  if (n.className) el.className = n.className;
+  if (n.port) el.dataset.port = n.port;
+  if (n.children) for (const c of n.children) el.appendChild(toDom(c));
+  else if (n.text != null) el.textContent = n.text;
+  return el;
+};
+function measure(step) {
+  if (!measureHost) { measureHost = document.createElement('div'); measureHost.id = 'mc-measure'; document.body.appendChild(measureHost); }
+  const w = W[step.kind];
+  measureHost.style.width = w + 'px';
+  measureHost.replaceChildren(toDom(cardContent(step)));
+  const card = measureHost.firstChild, top = card.getBoundingClientRect().top;
+  const h = Math.ceil(card.getBoundingClientRect().height);
+  const rows = {};
+  for (const el of card.querySelectorAll('[data-port]')) {
+    const r = el.getBoundingClientRect();
+    rows[el.dataset.port] = Math.round(r.top - top + r.height / 2);
+  }
+  return { w, h, rows };
+}
+// The ports a measured step needs: one input on the header, one output per row.
+function portList(step, m) {
+  const out = [];
+  if (step.kind !== 'trigger') out.push({ id: step.id + '__in', type: 'input', side: 'left', x: 0, y: 23 });
+  for (const [pid, y] of Object.entries(m.rows)) {
+    out.push({ id: pid, type: 'output', side: 'right', x: m.w, y });
+  }
+  return out;
+}
+const portConfig = (p) => ({
+  id: p.id, type: p.type, side: p.side,
+  shape: { shape: 'circle', size: 12 },
+  layout: { strategy: 'absolute', args: { units: 'px', x: p.x, y: p.y } },
+  style: PORT_STYLE[portKind(p.id)],
+});
+const portSpec = (p) => ({ ...portConfig(p), gating: { isConnectableStart: p.type === 'output', isConnectableEnd: p.type === 'input' } });
+const portModel = (p) => new PortModel({ ...portConfig(p), isConnectableStart: p.type === 'output', isConnectableEnd: p.type === 'input' });
+
+function nodeSpec(step, flags) {
+  const m = measure(step);
+  return {
+    id: step.id, position: { x: step.x, y: step.y }, size: { width: m.w, height: m.h },
+    metadata: { html: { content: stripPorts(cardContent(step, flags)), padding: 0 } },
+    shape: { type: 'rect', cornerRadius: 12 },
+    style: { selection: 'border' },   // selected = the card's own border, no ring
+    ports: portList(step, m).map(portSpec),
+  };
+}
+
+defineDemo({
+  name: 'ManyChat-style chatbot builder',
+  blurb: 'A ManyChat-style chatbot builder: message cards whose every button owns its own connection dot, orange and red branches for "on reply" and "no reply", a step editor that re-measures the card as you type, and a Preview that runs the bot along the lines you drew.',
+  howTo: [
+    'Read the flow left to right: the trigger ("User sends a direct message") leads to a welcome message with an English and an العربية button. Each button has its own dot on its own row, and its line goes to that language\'s menu.',
+    'Click "Send Message #2": its card turns green and the editor on the left shows it. Type in the text box: the card grows as you type and every dot below the text moves down with its row.',
+    'Still on that card, press "+ Add Button" and type a title: a new button row appears with its own dot. Press ↗ on a button to turn it into a link button (no dot, an orange link icon), or × to remove it.',
+    'Drag a line from any dot and drop it anywhere on another card — no need to hit the small input dot. Drag from the same dot to a different card and the old line is replaced: one button, one next step.',
+    'Drag a line from a dot and let go on empty canvas: a menu offers "Send Message" or "Actions", and the new step appears where you let go, already connected.',
+    'Look at the orange and red lines on "Send Message #2": a step that waits for a reply has "Action on reply" (orange, here it notifies your team) and "If contact has not responded" (red, a reminder), plus "Next Step".',
+    'Press Preview: the bot runs in a chat beside the canvas, following your lines. Pick English, then "Call me back"; type something that is not a phone number to see the retry, then a real one to see the actions run and the thank-you arrive. Restart and try العربية with "No reply" to follow the red line.',
+    'Use the left editor\'s content blocks to add Text, Image, Delay or Data Collection to a message, or the blue + to add a new step. "Tidy up" lays the whole flow out left to right.',
+  ],
+
+  async setup(ctx) {
+    const host = ctx.host;
+    const flow = FLOW0();
+    const steps = new Map(flow.steps.map((s) => [s.id, s]));
+    let seq = 8;            // "Send Message #n" for new steps
+    let selected = null;    // selected step id
+    let running = null;     // the step the Preview is on
+    let runningLink = null;
+
+    const api = render({
+      nodes: flow.steps.map((s) => nodeSpec(s)),
+      edges: flow.links.map(([src, tgt], i) => ({ id: 'l' + i, source: src.split('__')[0], target: tgt, sourceHandle: src,
+        targetHandle: tgt + '__in', type: 'bezier', style: lineStyle(src) })),
+    }, host, { interaction: { portVisibility: 'always' } });
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    const model = ctx.diagram, engine = ctx.engine;
+    // ManyChat keeps a card's words at every zoom: widen every level-of-detail
+    // tier to draw everything (a bot is tens of steps, not thousands).
+    try {
+      const cfg = model.getLODConfig();
+      const all = new Set();
+      for (const t of cfg.tiers) for (const f of t.features) all.add(f);
+      for (const t of cfg.tiers) for (const f of all) t.features.add(f);
+      model.setLODConfig(cfg);
+    } catch { /* an engine without LOD config draws everything anyway */ }
+    for (const n of model.getNodes()) n.behavior.resizable = false;
+
+    // ---- repaint: content, size and ports follow the step's data ------------
+    const paint = (id) => {
+      const step = steps.get(id), node = model.getNode(id);
+      if (!step || !node) return;
+      const m = measure(step);
+      node.setMetadata('html', { content: stripPorts(cardContent(step, { sel: id === selected, run: id === running })), padding: 0 });
+      if (node.size.width !== m.w || node.size.height !== m.h) node.setSize(m.w, m.h);
+      const want = portList(step, m), keep = new Set(want.map((p) => p.id));
+      for (const port of node.getPorts()) {
+        if (keep.has(port.id)) continue;
+        for (const l of model.getLinks()) if (l.sourcePortId === port.id || l.targetPortId === port.id) model.removeLink(l.id);
+        node.removePort(port.id);
+      }
+      for (const p of want) {
+        const have = node.getPort(p.id);
+        if (!have) { node.addPort(portModel(p)); continue; }
+        const a = have.layout && have.layout.args;
+        if (!a || a.x !== p.x || a.y !== p.y) {
+          // Re-seat a moved port under the SAME id, so its lines stay attached.
+          node.removePort(p.id);
+          node.addPort(portModel(p));
+        }
+      }
+    };
+    const paintAll = () => { for (const id of steps.keys()) paint(id); api.renderNow(); };
+    ctx.paint = paint;
+    ctx.steps = steps;
+
+    const outLink = (pid) => model.getLinks().find((l) => l.sourcePortId === pid) || null;
+    const stepOf = (l) => model.getNodeByPortId(l.targetPortId)?.id;
+    const connect = (srcPid, tgtId) => {
+      for (const l of model.getLinks()) if (l.sourcePortId === srcPid) model.removeLink(l.id);
+      const l = new LinkModel(srcPid, tgtId + '__in', 'bezier');
+      l.sourceNodeId = model.getNodeByPortId(srcPid)?.id;
+      l.targetNodeId = tgtId;
+      l.updateStyle(lineStyle(srcPid));
+      model.addLink(l);
+      return l;
+    };
+    ctx.connect = connect;
+    ctx.outLink = outLink;
+
+    // ---- the chrome over the canvas ------------------------------------------
+    host.insertAdjacentHTML('beforeend', `
+      <div class="cv-top">
+        <span class="cv-crumb">Automations › <b>Default Reply</b></span><span class="cv-live">LIVE</span>
+        <span class="cv-sp"></span>
+        <span id="cv-saved">✓ Saved</span>
+        <button class="cv-btn" id="cv-tidy" title="Lay the flow out left to right">Tidy up</button>
+        <button class="cv-btn" id="cv-preview" aria-pressed="false">Preview</button>
+        <button class="cv-btn primary" id="cv-publish" disabled>Publish</button>
+      </div>
+      <div class="cv-hint" id="cv-hint">Select a step to edit it in the sidebar</div>
+      <button id="cv-fab" title="Add a step" aria-label="Add a step">+</button>
+      <div class="cv-zoom"><button id="cv-zin" title="Zoom in" aria-label="Zoom in">+</button><button id="cv-zout" title="Zoom out" aria-label="Zoom out">−</button></div>
+      <div id="mc-menu" hidden role="menu">
+        <div class="mh">Choose next step</div>
+        <button data-kind="message" role="menuitem"><span class="dot" style="background:linear-gradient(135deg,#1aa3ff,#0a62f5)"></span>Send Message</button>
+        <button data-kind="actions" role="menuitem"><span class="dot" style="background:#fdeaa5"></span>Actions</button>
+      </div>
+      <div id="pv" hidden>
+        <div class="pv-head"><span class="mc-ch"></span><div><div class="pv-name">Atlas Business Hub</div><div class="pv-sub">Preview · Messenger</div></div>
+          <span class="sp"></span><button id="pv-restart">Restart</button><button id="pv-close" aria-label="Close preview">×</button></div>
+        <div id="pv-chat" aria-live="polite"></div>
+        <div class="pv-foot">
+          <div class="pv-wait" id="pv-wait" hidden><span id="pv-wait-t">Waiting for your reply…</span><button id="pv-noreply">No reply (24 h)</button></div>
+          <form class="pv-in" id="pv-form"><input id="pv-input" placeholder="Type a message…" disabled autocomplete="off"><button id="pv-send" disabled>Send</button></form>
+        </div>
+      </div>`);
+    const $ = (id) => document.getElementById(id);
+    for (const el of host.querySelectorAll('.cv-top, #cv-fab, .cv-zoom, #mc-menu, #pv')) {
+      for (const t of ['pointerdown', 'wheel', 'dblclick']) el.addEventListener(t, (e) => e.stopPropagation());
+    }
+    const savedEl = $('cv-saved'), publishBtn = $('cv-publish');
+    const markDirty = () => { savedEl.textContent = '● Unsaved changes'; savedEl.classList.add('dirty'); publishBtn.disabled = false; };
+    publishBtn.addEventListener('click', () => {
+      savedEl.textContent = '✓ Published'; savedEl.classList.remove('dirty'); publishBtn.disabled = true;
+    });
+
+    // ---- frame the flow -------------------------------------------------------
+    const frame = () => { api.fitView(60); api.renderNow(); };
+    frame();
+    $('cv-zin').addEventListener('click', () => { api.viewport.setZoom(api.viewport.getZoom() * 1.2); api.renderNow(); });
+    $('cv-zout').addEventListener('click', () => { api.viewport.setZoom(api.viewport.getZoom() / 1.2); api.renderNow(); });
+    $('cv-tidy').addEventListener('click', async () => {
+      await engine.layout('dagre', { direction: 'LR', nodeSpacing: 36, rankSpacing: 90 });
+      frame(); markDirty();
+    });
+
+    // ---- selection drives the editor -----------------------------------------
+    const side = document.getElementById('side');
+    const select = (id) => {
+      const prev = selected;
+      selected = id && steps.has(id) ? id : null;
+      if (prev && prev !== selected) paint(prev);
+      if (selected) paint(selected);
+      api.renderNow();
+      $('cv-hint').hidden = !!selected;
+      renderSide();
+    };
+    api.on('selection:change', ({ nodes }) => select(nodes.length === 1 ? nodes[0].id : null));
+    ctx.select = (id) => { model.clearSelection?.(); const n = model.getNode(id); if (n) model.selectNode(n); else select(null); api.renderNow(); };
+    // A deleted step keeps its data aside, so an undo brings back a card the
+    // editor and the Preview still understand.
+    const removed = new Map();
+    model.on('node:removed', (n) => {
+      if (!n || !steps.has(n.id)) return;
+      removed.set(n.id, steps.get(n.id));
+      steps.delete(n.id);
+      if (selected === n.id) select(null);
+    });
+    model.on('node:added', (n) => { if (n && removed.has(n.id)) { steps.set(n.id, removed.get(n.id)); removed.delete(n.id); } });
+
+    // ---- the line a button draws: one next step per output --------------------
+    api.on('connect', ({ link }) => setTimeout(() => {
+      for (const l of model.getLinks()) if (l !== link && l.sourcePortId === link.sourcePortId) model.removeLink(l.id);
+      link.pathType = 'bezier';
+      link.updateStyle(lineStyle(link.sourcePortId));
+      api.renderNow(); markDirty();
+    }, 0));
+
+    // ---- new steps -------------------------------------------------------------
+    const newStep = (kind, x, y) => {
+      const id = 's' + Date.now().toString(36) + Math.floor(Math.random() * 1e4);
+      const step = kind === 'actions'
+        ? { id, kind, title: 'Actions', x, y, actions: [{ id: 'a1', label: 'Notify assignees', sub: '1 person via e-mail' }] }
+        : { id, kind: 'message', title: `Send Message #${seq++}`, x, y, blocks: [{ id: 't', kind: 'text', text: '', buttons: [] }] };
+      steps.set(id, step);
+      const spec = nodeSpec(step);
+      const node = new NodeModel({ id, type: 'rect', position: { x, y }, size: spec.size });
+      node.ports.clear();
+      for (const p of portList(step, measure(step))) node.addPort(portModel(p));
+      for (const [k, v] of Object.entries(spec.metadata)) node.setMetadata(k, v);
+      node.setMetadata('shape', spec.shape);
+      node.behavior.resizable = false;
+      node.style = { ...node.style, ...spec.style };
+      model.addNode(node);
+      markDirty();
+      return step;
+    };
+    ctx.newStep = newStep;
+
+    // ---- "Choose next step": from the sidebar, the + button, or a line let go on empty canvas
+    const menu = $('mc-menu');
+    let menuCtx = null;
+    const openMenu = (clientX, clientY, mctx) => {
+      const r = host.getBoundingClientRect();
+      menuCtx = mctx;
+      menu.style.left = Math.min(Math.max(8, clientX - r.left), r.width - 240) + 'px';
+      menu.style.top = Math.min(Math.max(54, clientY - r.top), r.height - 140) + 'px';
+      menu.hidden = false;
+      menu.querySelector('button').focus({ preventScroll: true });
+    };
+    const closeMenu = () => { menu.hidden = true; menuCtx = null; };
+    ctx.openMenu = openMenu;
+    menu.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-kind]');
+      if (!b || !menuCtx) return;
+      const { world, from } = menuCtx;
+      closeMenu();
+      const step = newStep(b.dataset.kind, Math.round(world.x), Math.round(world.y - 24));
+      if (from) connect(from, step.id);
+      api.renderNow();
+      ctx.select(step.id);
+    });
+    document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target)) closeMenu(); }, true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+    const viewCentre = () => {
+      const r = host.getBoundingClientRect();
+      return api.viewport.clientToWorld(r.left + r.width / 2 - 110, r.top + r.height / 2 - 60, r);
+    };
+    $('cv-fab').addEventListener('click', (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      openMenu(r.left - 236, r.bottom + 8, { world: viewCentre(), from: null });
+    });
+    // Where a dragged line is let go decides what it means. The engine connects
+    // a drop ON (or near) an input dot by itself; the page adds ManyChat's two
+    // other answers: over a card's BODY, connect to that card; over empty
+    // canvas, offer to create the next step right there.
+    let lastUp = null;
+    window.addEventListener('pointerup', (e) => { lastUp = { x: e.clientX, y: e.clientY }; }, true);
+    engine.eventBus.on('connection:cancel', (p) => setTimeout(() => {
+      const src = p?.sourcePort?.id;
+      if (!src || !lastUp || portKind(src) === 'in') return;
+      const r = host.getBoundingClientRect();
+      const w = api.viewport.clientToWorld(lastUp.x, lastUp.y, r);
+      const over = model.getNodes().filter((n) => w.x >= n.position.x && w.x <= n.position.x + n.size.width && w.y >= n.position.y && w.y <= n.position.y + n.size.height).pop();
+      if (!over) { openMenu(lastUp.x, lastUp.y, { world: w, from: src }); return; }
+      const fromNode = model.getNodeByPortId(src);
+      if (over === fromNode || !over.getPort(over.id + '__in')) return;
+      connect(src, over.id);
+      api.renderNow(); markDirty();
+    }, 0));
+
+    // ---- the step editor -------------------------------------------------------
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    const blockHtml = (b) => {
+      const rm = `<button class="sd-ib" data-act="rm-block" data-block="${b.id}" title="Remove this block" aria-label="Remove block">×</button>`;
+      if (b.kind === 'text') return `<div class="sd-block"><div class="sd-bh"><span>Text</span>${rm}</div>
+        <textarea dir="auto" data-field="text" data-block="${b.id}" aria-label="Message text" placeholder="Enter your text…">${esc(b.text)}</textarea>
+        <div class="sd-btns">${b.buttons.map((btn) => `<div class="sd-btn">
+          <input dir="auto" data-field="btn" data-block="${b.id}" data-btn="${btn.id}" value="${esc(btn.title)}" aria-label="Button title">
+          <button class="sd-ib" data-act="btn-url" data-block="${b.id}" data-btn="${btn.id}" aria-pressed="${!!btn.url}" title="${btn.url ? 'Make it a step button' : 'Make it a link button'}">↗</button>
+          <button class="sd-ib" data-act="rm-btn" data-block="${b.id}" data-btn="${btn.id}" title="Remove button" aria-label="Remove button">×</button></div>`).join('')}</div>
+        <button class="sd-add" data-act="add-btn" data-block="${b.id}">+ Add Button</button></div>`;
+      if (b.kind === 'collect') return `<div class="sd-block"><div class="sd-bh"><span>Data collection</span>${rm}</div>
+        <div class="sd-row">Wait for <select data-field="collect" data-block="${b.id}" aria-label="Field to collect">
+          ${['Phone', 'Email', 'Text'].map((f) => `<option${f === b.field ? ' selected' : ''}>${f}</option>`).join('')}</select> from contact</div></div>`;
+      if (b.kind === 'delay') return `<div class="sd-block"><div class="sd-bh"><span>Delay</span>${rm}</div>
+        <div class="sd-row">Show typing for <input type="number" min="1" max="20" data-field="secs" data-block="${b.id}" value="${b.secs}" aria-label="Seconds"> sec</div></div>`;
+      return `<div class="sd-block"><div class="sd-bh"><span>Image</span>${rm}</div>
+        <div class="sd-row"><input data-field="caption" data-block="${b.id}" value="${esc(b.caption)}" aria-label="Image caption" placeholder="Caption"></div></div>`;
+    };
+    function renderSide() {
+      const step = selected && steps.get(selected);
+      if (!step) {
+        side.innerHTML = `<div class="sd-empty"><h2>Default Reply</h2>
+          <div class="sd-stat"><div><b>${steps.size}</b>steps</div><div><b>${model.getLinks().length}</b>connections</div></div>
+          <ul><li>Click a step to edit it here.</li><li>Drag from a dot to a card to connect them.</li>
+          <li>Let go of a line on empty canvas to add the next step.</li><li>Press Preview to talk to the bot.</li></ul></div>`;
+        return;
+      }
+      const kindLabel = step.kind === 'trigger' ? 'Trigger' : step.kind === 'actions' ? 'Actions' : 'Send Message';
+      let body = '';
+      if (step.kind === 'message') {
+        body = step.blocks.map(blockHtml).join('') + `<div class="sd-label">Add one of the content blocks:</div>
+          <div class="sd-pal">
+            <button data-act="add-block" data-kind="text"><span class="ico">≡</span><b>Text</b><small>Add simple text and buttons</small></button>
+            <button data-act="add-block" data-kind="image"><span class="ico">▣</span><b>Image</b><small>Boost engagement with visuals</small></button>
+            <button data-act="add-block" data-kind="delay"><span class="ico">◷</span><b>Delay</b><small>Wait a few seconds between texts</small></button>
+            <button data-act="add-block" data-kind="collect"><span class="ico">▭</span><b>Data Collection</b><small>Collect emails, phones and more</small></button>
+          </div>`;
+      } else if (step.kind === 'actions') {
+        body = step.actions.map((a) => `<div class="sd-block"><div class="sd-bh"><span>Action</span>
+            <button class="sd-ib" data-act="rm-action" data-action="${a.id}" aria-label="Remove action">×</button></div>
+          <div class="sd-row"><input data-field="a-label" data-action="${a.id}" value="${esc(a.label)}" aria-label="Action"></div>
+          <div class="sd-row"><input data-field="a-sub" data-action="${a.id}" value="${esc(a.sub)}" aria-label="Detail"></div></div>`).join('')
+          + `<button class="sd-add" data-act="add-action">+ Action</button>`;
+      } else {
+        body = step.triggers.map((t) => `<div class="sd-block"><div class="sd-bh"><span>Trigger</span></div>
+          <div class="sd-row">${esc(t.label)}</div></div>`).join('')
+          + `<button class="sd-add" data-act="add-trigger">+ New Trigger</button>`;
+      }
+      side.innerHTML = `<div class="sd-top"><span class="sd-kind">${kindLabel}</span>
+          <input class="sd-title" data-field="title" value="${esc(step.title)}" aria-label="Step name">
+          ${step.kind === 'message' ? '<span class="sd-sub">Send <b>within 24 hour window</b></span>' : ''}</div>
+        <div class="sd-pad">${body}
+          ${step.kind !== 'trigger' || !outLink(step.id + '__then') ? '<button class="sd-next" data-act="next">Choose Next Step</button>' : ''}
+          ${step.kind !== 'trigger' ? '<button class="sd-del" data-act="del">Delete step</button>' : ''}</div>`;
+    }
+    ctx.renderSide = renderSide;
+    const blockOf = (step, id) => step.blocks?.find((b) => b.id === id);
+    const uid = () => Math.random().toString(36).slice(2, 7);
+    const changed = (rerenderSide) => { paint(selected); api.renderNow(); markDirty(); if (rerenderSide) renderSide(); };
+    side.addEventListener('input', (e) => {
+      const step = selected && steps.get(selected), t = e.target;
+      if (!step || !t.dataset.field) return;
+      const f = t.dataset.field, b = blockOf(step, t.dataset.block);
+      if (f === 'title') step.title = t.value;
+      else if (f === 'text' && b) b.text = t.value;
+      else if (f === 'btn' && b) b.buttons.find((x) => x.id === t.dataset.btn).title = t.value;
+      else if (f === 'collect' && b) b.field = t.value;
+      else if (f === 'secs' && b) b.secs = Math.max(1, Math.min(20, Number(t.value) || 1));
+      else if (f === 'caption' && b) b.caption = t.value;
+      else if (f === 'a-label' || f === 'a-sub') {
+        const a = step.actions.find((x) => x.id === t.dataset.action);
+        if (a) a[f === 'a-label' ? 'label' : 'sub'] = t.value;
+      }
+      changed(false);
+    });
+    side.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-act]');
+      const step = selected && steps.get(selected);
+      if (!btn || !step) return;
+      const act = btn.dataset.act, b = blockOf(step, btn.dataset.block);
+      if (act === 'add-btn' && b) { b.buttons.push({ id: uid(), title: 'Button ' + (b.buttons.length + 1) }); changed(true);
+        const inputs = side.querySelectorAll(`input[data-block="${b.id}"][data-field="btn"]`); inputs[inputs.length - 1]?.select(); }
+      else if (act === 'rm-btn' && b) { b.buttons = b.buttons.filter((x) => x.id !== btn.dataset.btn); changed(true); }
+      else if (act === 'btn-url' && b) { const x = b.buttons.find((y) => y.id === btn.dataset.btn); x.url = x.url ? undefined : URL_BOOK; changed(true); }
+      else if (act === 'rm-block') { step.blocks = step.blocks.filter((x) => x.id !== btn.dataset.block); changed(true); }
+      else if (act === 'add-block') {
+        const k = btn.dataset.kind;
+        if (k === 'collect' && step.blocks.some((x) => x.kind === 'collect')) return;
+        step.blocks.push(k === 'text' ? { id: uid(), kind: 'text', text: '', buttons: [] } : k === 'image' ? { id: uid(), kind: 'image', caption: 'Our office' }
+          : k === 'delay' ? { id: uid(), kind: 'delay', secs: 2 } : { id: uid(), kind: 'collect', field: 'Email' });
+        changed(true);
+      }
+      else if (act === 'add-action') { step.actions.push({ id: uid(), label: 'Add tag', sub: 'New lead' }); changed(true); }
+      else if (act === 'rm-action') { step.actions = step.actions.filter((x) => x.id !== btn.dataset.action); changed(true); }
+      else if (act === 'add-trigger') { step.triggers.push({ label: 'User comments on a post', sub: 'Any post' }); changed(true); }
+      else if (act === 'next') {
+        const node = model.getNode(step.id), from = step.kind === 'trigger' ? step.id + '__then' : step.id + '__next';
+        const r = btn.getBoundingClientRect();
+        openMenu(r.right + 12, r.top - 40, { world: { x: node.position.x + node.size.width + 90, y: node.position.y + 24 }, from });
+      }
+      // Through the engine's command stack, so ⌘Z / Ctrl+Z brings the step back.
+      else if (act === 'del') { engine.removeNode(step.id).then(() => { api.renderNow(); markDirty(); }); }
+    });
+    renderSide();
+    model.on('link:added', () => { if (!selected) renderSide(); });
+    model.on('link:removed', () => { if (!selected) renderSide(); });
+
+    // ---- Preview: the bot, run along the links ---------------------------------
+    const pv = $('pv'), chat = $('pv-chat'), pvBtn = $('cv-preview');
+    const input = $('pv-input'), send = $('pv-send'), waitBar = $('pv-wait');
+    const P = { token: 0, waiting: null };
+    ctx.P = P;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    ctx.pvSpeed = 1;
+    const scroll = () => { chat.scrollTop = chat.scrollHeight; };
+    const bubble = (cls, text) => { const d = document.createElement('div'); d.className = 'pv-msg ' + cls; d.textContent = text; chat.appendChild(d); scroll(); return d; };
+    const sys = (text, act) => { const d = document.createElement('div'); d.className = 'pv-sys' + (act ? ' act' : ''); d.textContent = text; chat.appendChild(d); scroll(); };
+    const isArabic = (s) => /[؀-ۿ]/.test(s);
+    // Pan (briefly animated) until a card sits inside the free part of the canvas.
+    let panAnim = 0;
+    const reveal = (id) => {
+      const node = model.getNode(id);
+      if (!node) return;
+      const r = host.getBoundingClientRect(), vp = api.viewport, z = vp.getZoom();
+      const a = vp.worldToClient(node.position.x, node.position.y, r);
+      const b = vp.worldToClient(node.position.x + node.size.width, node.position.y + node.size.height, r);
+      const free = { left: r.left + 24, right: r.right - (pv.hidden ? 24 : 372), top: r.top + 64, bottom: r.bottom - 24 };
+      if (a.x >= free.left && b.x <= free.right && a.y >= free.top && b.y <= free.bottom) return;
+      const tx = (free.left + free.right) / 2, ty = Math.min((free.top + free.bottom) / 2, free.top + (b.y - a.y) / 2);
+      const dx = ((a.x + b.x) / 2 - tx) / z, dy = ((a.y + b.y) / 2 - ty) / z;
+      const from = vp.getViewport(), t0 = performance.now(), dur = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 320;
+      const job = ++panAnim;
+      const step = (now) => {
+        if (job !== panAnim) return;
+        const k = dur ? Math.min(1, (now - t0) / dur) : 1, e = 1 - Math.pow(1 - k, 3);
+        vp.setViewport({ ...from, x: from.x + dx * e, y: from.y + dy * e });
+        api.renderNow();
+        if (k < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    };
+    ctx.reveal = reveal;
+    const setRunning = (id, link) => {
+      const prev = running;
+      running = id;
+      if (prev) paint(prev);
+      if (id) { paint(id); reveal(id); }
+      if (runningLink && model.getLink?.(runningLink.id) !== undefined) runningLink.updateStyle(lineStyle(runningLink.sourcePortId));
+      runningLink = link || null;
+      if (runningLink) runningLink.updateStyle(lineStyle(runningLink.sourcePortId, true));
+      api.renderNow();
+    };
+    const setWaiting = (w) => {
+      P.waiting = w;
+      input.disabled = send.disabled = !w;
+      waitBar.hidden = !w;
+      requestAnimationFrame(scroll);   // the wait bar changes the chat's height
+      if (w) { $('pv-wait-t').textContent = `Waiting for your ${w.field.toLowerCase()}…`; input.placeholder = w.field === 'Phone' ? '+20 100 123 4567' : 'Type your reply…'; input.focus({ preventScroll: true }); }
+      else input.placeholder = 'Type a message…';
+    };
+    const typing = async (ms, t) => {
+      const d = document.createElement('div'); d.className = 'pv-typing'; d.innerHTML = '<i></i><i></i><i></i>';
+      chat.appendChild(d); scroll();
+      await sleep(ms * ctx.pvSpeed); d.remove();
+      return t === P.token;
+    };
+    const endFlow = () => sys('— end of this flow —');
+    const follow = async (pid, t) => {
+      const l = outLink(pid);
+      if (!l) return false;
+      await go(stepOf(l), t, l);
+      return true;
+    };
+    async function go(id, t, link) {
+      if (t !== P.token) return;
+      const step = steps.get(id);
+      if (!step) { endFlow(); return; }
+      setRunning(id, link);
+      if (step.kind === 'trigger') { if (!(await follow(id + '__then', t))) endFlow(); return; }
+      if (step.kind === 'actions') {
+        for (const a of step.actions) sys(`⚡ ${a.label} · ${a.sub}`, true);
+        await sleep(300 * ctx.pvSpeed);
+        await follow(id + '__next', t);
+        return;
+      }
+      let waitsForTap = false;
+      for (const b of step.blocks) {
+        if (t !== P.token) return;
+        if (b.kind === 'delay') { if (!(await typing(Math.min(1400, b.secs * 350), t))) return; }
+        else if (b.kind === 'image') bubble('pv-img', '🖼  ' + (b.caption || 'Image'));
+        else if (b.kind === 'text') {
+          if (!(await typing(420, t))) return;
+          if (b.text.trim()) bubble('pv-bot', b.text);
+          if (b.buttons.length) {
+            const row = document.createElement('div'); row.className = 'pv-btns';
+            for (const btn of b.buttons) {
+              const el = document.createElement('button');
+              el.type = 'button'; el.textContent = (btn.url ? '↗ ' : '') + (btn.title || 'Button');
+              el.addEventListener('click', async () => {
+                el.classList.add('chosen');
+                bubble('pv-user', btn.title || 'Button');
+                if (btn.url) { sys(`Opens ${btn.url.replace(/^https?:\/\//, '')} in the browser`); return; }
+                setWaiting(null);
+                const tok = ++P.token;
+                if (!(await follow(`${id}__b_${btn.id}`, tok))) endFlow();
+              });
+              row.appendChild(el);
+            }
+            chat.appendChild(row); scroll();
+            if (b.buttons.some((x) => !x.url)) waitsForTap = true;
+          }
+        } else if (b.kind === 'collect') {
+          setWaiting({ stepId: id, field: b.field, ar: step.blocks.some((x) => x.kind === 'text' && isArabic(x.text)) });
+          return;
+        }
+      }
+      // Next Step fires once the message has gone out.
+      if (await follow(id + '__next', t)) return;
+      if (!waitsForTap) endFlow();
+    }
+    const VALID = { Phone: /^\+?[\d\s()-]{7,}$/, Email: /^\S+@\S+\.\S+$/, Text: /\S/ };
+    $('pv-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const w = P.waiting, text = input.value.trim();
+      if (!w || !text) return;
+      input.value = '';
+      bubble('pv-user', text);
+      const t = P.token;
+      if (!VALID[w.field].test(text)) {
+        if (!(await typing(380, t))) return;
+        bubble('pv-bot', w.ar ? 'يبدو أن هذا ليس رقم هاتف صحيحاً، حاول مرة أخرى.' : `That doesn't look like a valid ${w.field.toLowerCase()} — please try again.`);
+        return;
+      }
+      setWaiting(null);
+      const reply = outLink(w.stepId + '__reply');
+      if (reply) await go(stepOf(reply), t, reply);
+      if (t !== P.token) return;
+      if (!(await follow(w.stepId + '__next', t))) endFlow();
+    });
+    $('pv-noreply').addEventListener('click', async () => {
+      const w = P.waiting;
+      if (!w) return;
+      setWaiting(null);
+      sys('⏱ 24 hours pass with no reply');
+      if (!(await follow(w.stepId + '__noreply', P.token))) endFlow();
+    });
+    const start = () => {
+      const t = ++P.token;
+      chat.replaceChildren();
+      setWaiting(null);
+      bubble('pv-user', 'Hi!');
+      return go('trigger', t);
+    };
+    ctx.pvStart = start;
+    const setPreview = (on) => {
+      pv.hidden = !on;
+      pvBtn.setAttribute('aria-pressed', String(on));
+      if (on) return start();
+      P.token++; setWaiting(null); setRunning(null);
+    };
+    ctx.setPreview = setPreview;
+    pvBtn.addEventListener('click', () => setPreview(pv.hidden));
+    $('pv-close').addEventListener('click', () => setPreview(false));
+    $('pv-restart').addEventListener('click', () => start());
+
+    // A fresh flow, for the checks and the camera.
+    ctx.reset = () => {
+      setPreview(false);
+      closeMenu();
+      ctx.select(null);
+      const fresh = FLOW0();
+      removed.clear();
+      steps.clear();
+      for (const s of fresh.steps) steps.set(s.id, s);
+      api.setNodes(fresh.steps.map((s) => nodeSpec(s)));
+      api.setEdges(fresh.links.map(([src, tgt], i) => ({ id: 'l' + i, source: src.split('__')[0], target: tgt, sourceHandle: src,
+        targetHandle: tgt + '__in', type: 'bezier', style: lineStyle(src) })));
+      for (const n of model.getNodes()) n.behavior.resizable = false;
+      paintAll();
+      frame();
+      savedEl.textContent = '✓ Saved'; savedEl.classList.remove('dirty'); publishBtn.disabled = true;
+      renderSide();
+    };
+    await ctx.tick();
+  },
+
+  // The money shot: a step selected in the editor, the Preview mid-conversation.
+  async showcase(ctx) {
+    ctx.reset();
+    ctx.pvSpeed = 0;
+    ctx.select('en_ask');
+    await ctx.setPreview(true);
+    const tap = (label) => [...document.querySelectorAll('#pv-chat .pv-btns button')].find((b) => b.textContent.includes(label))?.click();
+    tap('English');
+    await new Promise((r) => setTimeout(r, 60));
+    tap('Call me back');
+    await new Promise((r) => setTimeout(r, 60));
+    ctx.pvSpeed = 1;
+    ctx.instance.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    ctx.reset();
+    const m = ctx.diagram, api = ctx.instance, host = ctx.host;
+    const raf = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    await raf();
+
+    // 1. The flow drew: 12 steps, 11 lines, every line on its named port.
+    check(m.getNodes().length === 12, `expected 12 steps, got ${m.getNodes().length}`);
+    check(m.getLinks().length === 11, `expected 11 lines, got ${m.getLinks().length}`);
+
+    // 2. THE TEETH: each button's dot sits on that button's row, on screen.
+    const rowCentreY = (nodeId, text) => {
+      const el = [...host.querySelectorAll(`[data-node-id="${nodeId}"] .mc-btn`)].find((b) => b.textContent.trim() === text);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return r.top + r.height / 2;
+    };
+    // Where the dot is PAINTED — what a user aims at, in client pixels.
+    const dotAt = (pid) => {
+      const el = host.querySelector(`circle.port[data-port-id="${pid}"]`);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    };
+    const portY = (pid) => dotAt(pid)?.y ?? NaN;
+    for (const [nid, label, pid] of [['welcome', 'English', 'welcome__b_en'], ['welcome', 'العربية', 'welcome__b_ar'], ['en_menu', 'Call me back', 'en_menu__b_phone']]) {
+      const ry = rowCentreY(nid, label);
+      check(ry !== null, `the "${label}" button row is not on the ${nid} card`);
+      const dy = Math.abs(ry - portY(pid));
+      check(dy <= 3, `the dot for "${label}" is ${dy.toFixed(1)}px off its row`);
+    }
+    check(m.getNode('en_menu').getPort('en_menu__b_book') === undefined, 'a link button must not have a dot');
+
+    // 2b. Zoomed far out, the cards are still there — not just their lines.
+    const z0 = api.viewport.getZoom();
+    api.viewport.setZoom(0.25); api.renderNow(); await raf();
+    const fill = getComputedStyle(host.querySelector('[data-node-id="welcome"] rect.diagram-node')).fill;
+    check(fill !== 'none' && !/rgba\(\d+, \d+, \d+, 0\)/.test(fill), `at 25% the card body paints nothing (${fill})`);
+    check(host.querySelectorAll('[data-node-id] foreignObject').length === 12, 'at 25% the cards lost their words');
+    api.viewport.setZoom(z0); api.renderNow(); await raf();
+
+    // 3. Branch colours: on reply = orange, no reply = red.
+    check(ctx.outLink('en_ask__reply').style.stroke === '#f5a524', 'the "Action on reply" line is not orange');
+    check(ctx.outLink('en_ask__noreply').style.stroke === '#ef4444', 'the "not responded" line is not red');
+
+    // 4. The editor: select, type, the card grows and the dots below follow.
+    ctx.select('en_ask');
+    await raf();
+    // style.selection 'border': the card's own rounded border changes — no extra ring.
+    check(!host.querySelector('[data-node-id="en_ask"] rect.selection-highlight'), 'a selected card drew an extra ring');
+    const selBody = host.querySelector('[data-node-id="en_ask"] rect.diagram-node');
+    const sb = getComputedStyle(selBody);
+    check(selBody.classList.contains('selected') && sb.strokeWidth === '2px', `the selected card's border did not change (stroke-width ${sb.strokeWidth})`);
+    check(sb.stroke !== getComputedStyle(host.querySelector('[data-node-id="en_thanks"] rect.diagram-node')).stroke, 'the selected border looks like an unselected one');
+    check(Number(selBody.getAttribute('rx')) === 12, 'the selected border is not the card\'s rounded edge');
+    const ta = document.querySelector('#side textarea[data-field="text"]');
+    check(!!ta, 'selecting a message did not open its text in the editor');
+    const h0 = m.getNode('en_ask').size.height, next0 = portY('en_ask__next');
+    ta.value += '\n\nOur team answers Sunday to Thursday, 9:00–17:00.\nWe never share your number.';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    api.renderNow(); await raf();
+    const h1 = m.getNode('en_ask').size.height;
+    check(h1 > h0 + 20, `typing did not grow the card (${h0} → ${h1})`);
+    check(portY('en_ask__next') > next0 + 20, 'the Next Step dot did not move down with its row');
+    check(host.querySelector('[data-node-id="en_ask"] .mc-text').textContent.includes('Sunday to Thursday'), 'the card does not show the typed text');
+    check(ctx.outLink('en_ask__next') !== null, 're-seating the moved dot dropped its line');
+
+    // 5. + Add Button: a new row with its own dot.
+    document.querySelector('#side button[data-act="add-btn"]').click();
+    api.renderNow(); await raf();
+    const newBtnPort = m.getNode('en_ask').getPorts().find((p) => p.id.startsWith('en_ask__b_'));
+    check(!!newBtnPort, 'adding a button did not add its dot');
+
+    // 6. Connect from the new dot with a REAL drag, dropped on a card's BODY.
+    const fire = (type, c) => {
+      const ev = { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0, buttons: type === 'pointerup' ? 0 : 1 };
+      (document.elementFromPoint(c.x, c.y) || host).dispatchEvent(new PointerEvent(type, ev));
+    };
+    const from = dotAt(newBtnPort.id);
+    const tr = host.querySelector('[data-node-id="en_thanks"] .mc-card').getBoundingClientRect();
+    const drop = { x: tr.left + tr.width * 0.6, y: tr.top + tr.height * 0.6 };   // the BODY, far from its input
+    fire('pointermove', from); fire('pointerdown', from);
+    fire('pointermove', { x: from.x + 20, y: from.y + 10 });
+    fire('pointermove', drop); fire('pointermove', { x: drop.x + 1, y: drop.y });
+    fire('pointerup', drop);
+    await wait(20); api.renderNow(); await raf();
+    const made = ctx.outLink(newBtnPort.id);
+    check(!!made && made.targetPortId === 'en_thanks__in', `dropping on the card body did not connect to its input (${made ? made.targetPortId : 'no line'})`);
+
+    // 7. One button, one next step: a new line from the same dot replaces the old.
+    ctx.connect(newBtnPort.id, 'en_retry');
+    check(m.getLinks().filter((l) => l.sourcePortId === newBtnPort.id).length === 1, 'a dot ended up with two lines');
+
+    // 8. Remove the button: its dot and its line go with it.
+    const rm = [...document.querySelectorAll('#side button[data-act="rm-btn"]')].pop();
+    rm.click(); api.renderNow(); await raf();
+    check(!m.getNode('en_ask').getPort(newBtnPort.id), 'removing the button left its dot');
+    check(!m.getLinks().some((l) => l.sourcePortId === newBtnPort.id), 'removing the button left its line');
+
+    // 9. Preview walks the drawn lines: English → Call me back → retry → phone → actions → thanks.
+    ctx.reset();
+    ctx.pvSpeed = 0;
+    await ctx.setPreview(true);
+    const chatText = () => document.getElementById('pv-chat').textContent;
+    const tap = async (label) => {
+      const b = [...document.querySelectorAll('#pv-chat .pv-btns button')].find((x) => x.textContent.includes(label));
+      check(!!b, `the Preview has no "${label}" button`);
+      b?.click(); await wait(30);
+    };
+    check(chatText().includes('choose your language'), 'the Preview did not send the welcome message');
+    await tap('English');
+    check(chatText().includes('Company registration'), 'tapping English did not follow its line to the English menu');
+    await tap('Call me back');
+    check(ctx.P.waiting && ctx.P.waiting.field === 'Phone', 'the Preview is not waiting for a phone number');
+    const say = async (text) => { const i = document.getElementById('pv-input'); i.value = text; document.getElementById('pv-form').requestSubmit(); await wait(30); };
+    await say('call me maybe');
+    check(chatText().includes("doesn't look like a valid phone"), 'an invalid phone was accepted');
+    await say('+20 100 123 4567');
+    check(chatText().includes('Notify assignees'), 'a valid reply did not run the "Action on reply" step');
+    check(chatText().includes('call you within 24 hours. Have a great day'), 'the reply did not continue to Next Step');
+    // Arabic, and the red line.
+    await ctx.pvStart(); await wait(30);
+    await tap('العربية');
+    await tap('اتصلوا بي');
+    document.getElementById('pv-noreply').click(); await wait(30);
+    check(chatText().includes('هل ما زلت هنا'), 'No reply did not follow the red "not responded" line');
+    ctx.pvSpeed = 1;
+    ctx.reset();
+  },
+});
+</script>

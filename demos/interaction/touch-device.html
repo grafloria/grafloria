@@ -1,16 +1,24 @@
 <meta charset="utf-8">
 <title>Touch device — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Pan, pinch-zoom, tap-to-select and one-finger node drag — all from real touch PointerEvents through the same pipeline a phone uses.">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/touch-device.html">
+<meta property="og:title" content="Touch device — Grafloria">
+<meta property="og:description" content="Pan, pinch-zoom, tap-to-select and one-finger node drag — all from real touch PointerEvents through the same pipeline a phone uses.">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/touch-device.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/touch-device.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/touch-device.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .85; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
-  #canvas { height: calc(100vh - 168px); touch-action: none; }
+  #canvas { height: calc(100vh - 108px); touch-action: none; }
 </style>
 <header id="demo-head"></header>
 <div id="readout"></div>
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // Real finger input, driven with real PointerEvents (pointerType:'touch'). The binder
 // forks touch pointers to the gesture controller, so one finger pans, one finger on a

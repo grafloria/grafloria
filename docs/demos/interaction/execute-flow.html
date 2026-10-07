@@ -1,6 +1,14 @@
 <meta charset="utf-8">
 <title>Execute flow (node statuses) — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Run the workflow like n8n: nodes pulse while running, the active wire animates in your chosen style (marching ants / flow / pulse / dash flow, any speed,…">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/execute-flow.html">
+<meta property="og:title" content="Execute flow (node statuses) — Grafloria">
+<meta property="og:description" content="Run the workflow like n8n: nodes pulse while running, the active wire animates in your chosen style (marching ants / flow / pulse / dash flow, any speed,…">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/execute-flow.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/execute-flow.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/execute-flow.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #bar, #bar2 { display: flex; gap: 8px; padding: 8px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; flex-wrap: wrap; }
   #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
@@ -10,7 +18,7 @@
   #bar2 label { display: inline-flex; gap: 5px; align-items: center; font: 12px/1.6 inherit; opacity: .9; }
   #bar2 select { font: inherit; color: inherit; background: transparent; border: 1px solid rgba(127,127,127,.4); border-radius: 5px; padding: 2px 4px; }
   #bar2 .sep { width: 1px; align-self: stretch; background: rgba(127,127,127,.3); margin: 0 4px; }
-  #canvas { height: calc(100vh - 196px); }
+  #canvas { height: calc(100vh - 136px); }
 </style>
 <header id="demo-head"></header>
 <div id="bar">
@@ -51,7 +59,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // n8n-style flow execution over the SHIPPED status machinery: every node
 // carries `state.status` ('idle' | 'pending' | 'running' | 'completed' |

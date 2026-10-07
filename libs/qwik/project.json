@@ -1,0 +1,37 @@
+{
+  "name": "qwik",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/qwik/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/qwik",
+        "main": "libs/qwik/src/index.ts",
+        "tsConfig": "libs/qwik/tsconfig.lib.json",
+        "assets": ["libs/qwik/README.md"]
+      }
+    },
+    "build-esm": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "outputs": ["{workspaceRoot}/dist/libs/qwik/esm"],
+      "options": {
+        "command": "npx tsc -p libs/qwik/tsconfig.esm.json --module es2022 --moduleResolution bundler --outDir dist/libs/qwik/esm --rootDir libs/qwik --declaration false --declarationMap false --incremental false"
+      }
+    },
+    "build-release": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/lib"],
+      "options": { "command": "node libs/qwik/build-release.mjs" }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": { "jestConfig": "libs/qwik/jest.config.ts" }
+    }
+  }
+}

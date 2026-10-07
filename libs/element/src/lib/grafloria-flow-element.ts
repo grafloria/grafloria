@@ -18,7 +18,7 @@ import { getNodeType, renderFromTemplate } from './node-type-registry';
  * reach the long tail those libraries cannot.
  *
  * ```html
- * <grafloria-flow theme="dark" fit-view
+ * <grafloria-flow theme="dark" fit-view highlight-connected
  *             nodes='[{"id":"a","position":{"x":0,"y":0},"label":"A"}]'
  *             edges='[{"source":"a","target":"b"}]'>
  *   <template data-node-type="card">
@@ -87,6 +87,7 @@ export class GrafloriaFlowElement extends HTMLElementBase {
       'max-zoom',
       'pan',
       'wheel-zoom',
+      'highlight-connected',
     ];
   }
 
@@ -172,6 +173,10 @@ export class GrafloriaFlowElement extends HTMLElementBase {
       case 'zoom':
         if (this.instance && next !== null) this.instance.viewport.setZoom(Number(next));
         return;
+      case 'highlight-connected':
+        // `?.()`: a renderer older than 0.4.7 has no such method — the attribute is then inert, never a throw.
+        this.instance?.setHighlightConnected?.(this.highlightConnected());
+        return;
       default:
         // pan / wheel-zoom / readonly / min-zoom / max-zoom are read at mount:
         // they configure the event binder, which is created once. Changing them
@@ -204,8 +209,23 @@ export class GrafloriaFlowElement extends HTMLElementBase {
       maxZoom: this.hasAttribute('max-zoom')
         ? Number(this.getAttribute('max-zoom'))
         : undefined,
+      highlightConnected: this.highlightConnected(),
       renderCustomNode: (node, element) => this.renderCustomNode(node, element),
     };
+  }
+
+  /**
+   * `highlight-connected` — the selected node's lines come forward. Present (or
+   * any value but these) = on; `"trace"` follows every path in and out; a number
+   * is the depth; `"false"` or no attribute = off.
+   */
+  private highlightConnected(): boolean | { depth: number } {
+    const v = this.getAttribute('highlight-connected');
+    if (v === null || v.trim().toLowerCase() === 'false') return false;
+    const t = v.trim().toLowerCase();
+    if (t === 'trace') return { depth: Infinity };
+    const n = Number(t);
+    return t !== '' && Number.isFinite(n) && n >= 1 ? { depth: n } : true;
   }
 
   /**

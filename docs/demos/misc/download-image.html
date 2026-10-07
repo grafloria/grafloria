@@ -1,11 +1,19 @@
 <meta charset="utf-8">
 <title>Download image — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="PNG and SVG straight from the VNode tree — labels, arrowheads and shadows included — and the raster is provably not blank and not black.">
+<link rel="canonical" href="https://grafloria.com/demos/misc/download-image.html">
+<meta property="og:title" content="Download image — Grafloria">
+<meta property="og:description" content="PNG and SVG straight from the VNode tree — labels, arrowheads and shadows included — and the raster is provably not blank and not black.">
+<meta property="og:url" content="https://grafloria.com/demos/misc/download-image.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/misc/download-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/misc/download-image.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   .bar { display: flex; gap: 8px; align-items: center; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); flex-wrap: wrap; }
   .bar button { padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
   .note { font-size: 12px; opacity: .75; margin-left: auto; }
-  #canvas { height: calc(100vh - 210px); }
+  #canvas { height: calc(100vh - 150px); }
   code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
 </style>
 <header id="demo-head"></header>
@@ -17,7 +25,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 const SHADOW = { offsetX: 3, offsetY: 4, blur: 5, color: '#1e293b' };
 const SPEC = {

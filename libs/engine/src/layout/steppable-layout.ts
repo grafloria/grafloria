@@ -34,8 +34,7 @@ import { LayoutAdapter, LayoutOptions, LayoutResult } from './layout-adapter.int
  *
  * Pure and synchronous by construction: no DOM, no clock, no `Math.random()`.
  * That is what lets the identical object run on the main thread and inside a
- * Worker and produce byte-identical coordinates — the property Card 0 bought
- * and this card must not spend.
+ * Worker and produce byte-identical coordinates.
  */
 export interface LayoutRun {
   /** Iterations completed so far. */

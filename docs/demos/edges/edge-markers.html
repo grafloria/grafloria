@@ -1,12 +1,20 @@
 <meta charset="utf-8">
 <title>Edge markers — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
-<style>#canvas { height: calc(100vh - 140px); }</style>
+<meta name="description" content="Eight built-in arrowheads + a custom one via registerMarker() + explicit none — each asserted to render the exact head it asked for.">
+<link rel="canonical" href="https://grafloria.com/demos/edges/edge-markers.html">
+<meta property="og:title" content="Edge markers — Grafloria">
+<meta property="og:description" content="Eight built-in arrowheads + a custom one via registerMarker() + explicit none — each asserted to render the exact head it asked for.">
+<meta property="og:url" content="https://grafloria.com/demos/edges/edge-markers.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/edges/edge-markers.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/edges/edge-markers.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>#canvas { height: calc(100vh - 80px); }</style>
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">
 import { render, registerMarker, unregisterMarker } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // Eight built-in arrowheads, one AUTHOR-DEFINED marker (registerMarker), and one
 // explicit `none`. Each arrowhead renders as its own <g class="arrow arrow-TYPE">

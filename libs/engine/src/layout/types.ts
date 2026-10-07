@@ -126,17 +126,17 @@ export interface LayoutConfiguration {
   animationDuration?: number;
 
   /**
-   * Viewport for viewport-aware layout (Phase 0.5)
+   * Viewport for viewport-aware layout
    */
   viewport?: Rectangle;
 
   /**
-   * Margins around content (Phase 0.5)
+   * Margins around content
    */
   margins?: number;
 
   /**
-   * Shorthand for hierarchical direction (Phase 0.5)
+   * Shorthand for hierarchical direction
    */
   direction?: 'TB' | 'BT' | 'LR' | 'RL';
 }

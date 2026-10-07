@@ -1,12 +1,20 @@
 <meta charset="utf-8">
 <title>Dark mode — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Light, dark — and system, where an OS accessibility preference upgrades us to high-contrast instead of flashing light at the user.">
+<link rel="canonical" href="https://grafloria.com/demos/styling/dark-mode.html">
+<meta property="og:title" content="Dark mode — Grafloria">
+<meta property="og:description" content="Light, dark — and system, where an OS accessibility preference upgrades us to high-contrast instead of flashing light at the user.">
+<meta property="og:url" content="https://grafloria.com/demos/styling/dark-mode.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/styling/dark-mode.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/styling/dark-mode.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   .bar { display: flex; gap: 8px; align-items: center; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); flex-wrap: wrap; }
   .bar button { padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
   .bar button[aria-pressed="true"] { background: #2563eb; border-color: #2563eb; color: #fff; }
   .note { font-size: 12px; opacity: .75; margin-left: auto; }
-  #canvas { height: calc(100vh - 160px); }
+  #canvas { height: calc(100vh - 100px); }
   code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
 </style>
 <header id="demo-head"></header>
@@ -34,7 +42,7 @@ import {
   HIGH_CONTRAST_LIGHT_THEME, HIGH_CONTRAST_DARK_THEME,
   MEDIA_PREFERS_DARK, MEDIA_PREFERS_CONTRAST,
 } from '../shell/grafloria.js';
-import { defineDemo, check, checkChanged } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check, checkChanged } from '../shell/demo.js?v=drawer4';
 
 // ---------------------------------------------------------------------------
 // The OS is the input to this feature, and a demo that cannot vary its input

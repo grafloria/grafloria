@@ -126,9 +126,7 @@ export interface LayoutResultMessage {
    *
    * Not decoration: `quality` only exists when the caller asked for it with
    * `calculateQuality`, and a result message that dropped it would make that
-   * option silently do nothing on the worker path while working inline — the
-   * single most common bug shape in this codebase, and one this card exists to
-   * stop repeating.
+   * option silently do nothing on the worker path while working inline.
    */
   metadata?: LayoutResult['metadata'];
   quality?: LayoutResult['quality'];
@@ -647,6 +645,20 @@ export class LayoutHost {
       resolve: (r: HostLayoutResult) => void;
       reject: (e: Error) => void;
       onProgress?: (p: LayoutProgress) => void;
+      /**
+       * Unhooks this run's `abort` listener. Carried on the entry because the
+       * listener is registered in `run()` and has to be removed wherever the run
+       * SETTLES, which is a different function entirely.
+       *
+       * Without it, every completed layout left its listener on the caller's
+       * AbortSignal — and a signal is usually one long-lived controller reused
+       * across many runs, so the listeners accumulated (25 completed layouts,
+       * 25 listeners, none removed). Each closure captures `this`, so the signal
+       * then pinned the host, the engine, the model and the detached container:
+       * eight mount/layout/dispose cycles kept all eight engines and all eight
+       * host elements alive through forced GC.
+       */
+      releaseAbort?: () => void;
     }
   >();
   private readonly port: LayoutPort;
@@ -685,6 +697,8 @@ export class LayoutHost {
       }
 
       this.pending.delete(message.seq);
+      // Settled — take this run's abort listener back off the caller's signal.
+      entry.releaseAbort?.();
 
       if (message.kind === 'error') {
         entry.reject(new Error(message.message));
@@ -728,11 +742,18 @@ export class LayoutHost {
         this.port.postMessage({ seq: 0, kind: 'cancel', target: seq });
       }
 
-      signal?.addEventListener('abort', () => {
+      // NAMED, so it can be removed again when the run settles — an anonymous
+      // arrow here is a listener nobody can ever take off.
+      const onAbort = (): void => {
         if (this.pending.has(seq)) {
           this.port.postMessage({ seq: 0, kind: 'cancel', target: seq });
         }
-      });
+      };
+      if (signal) {
+        signal.addEventListener('abort', onAbort);
+        const entry = this.pending.get(seq);
+        if (entry) entry.releaseAbort = () => signal.removeEventListener('abort', onAbort);
+      }
 
       this.port.postMessage({
         seq,

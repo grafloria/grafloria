@@ -29,7 +29,7 @@ function snapshotLabels(labels: readonly LinkLabel[]): LinkLabel[] {
 }
 
 /**
- * Wave 4 (Edges & links), Card 5 — where each of the three edge label SLOTS sits
+ * Where each of the three edge label SLOTS sits
  * along the path.
  *
  * Pulled IN from the endpoints on purpose: at exactly 0 and 1 a slot label would
@@ -65,11 +65,9 @@ export function linkLabelPosition(
 }
 
 /**
- * Wave 5 (Edge routing) — Card 0. `pathType` conflated two independent choices:
- * WHERE the line goes (routing geometry) and HOW the polyline is drawn
- * (connector rendering). They are now two orthogonal, per-link, serializable
- * settings, with `pathType` kept as the back-compat shorthand that derives both
- * when the explicit fields are absent.
+ * WHERE the line goes (routing geometry), independent of HOW the polyline is
+ * drawn (the connector). Both are per-link, serializable settings; `pathType`
+ * is the shorthand that derives both when the explicit fields are absent.
  *
  * Router names resolve against the engine's RoutingEngine registry, so a custom
  * registered router is addressable per link by its registration name.
@@ -95,9 +93,9 @@ export interface SerializedLink extends SerializedEntity {
   sourceNodeId?: string;
   targetNodeId?: string;
   pathType: 'direct' | 'orthogonal' | 'smooth' | 'bezier';
-  /** Card 0: explicit routing geometry; absent = derived from pathType. */
+  /** Explicit routing geometry; absent = derived from pathType. */
   router?: LinkRouterName;
-  /** Card 0: explicit polyline rendering; absent = derived from pathType. */
+  /** Explicit polyline rendering; absent = derived from pathType. */
   connector?: LinkConnectorName;
   points: Point[];
   segments: PathSegment[];
@@ -109,12 +107,10 @@ export interface SerializedLink extends SerializedEntity {
 
 export class LinkModel extends DiagramEntity {
   /**
-   * Wave 9 — Card 7. Back-reference to the owning diagram, set by
-   * `DiagramModel.installLink`. NodeModel has had one since Phase 1.6a; LinkModel
-   * did not, so a LinkModel mutator could not see the document's read-only lock —
-   * and waypoints, control points, labels and reconnection are ALL LinkModel
-   * mutators. Without this, read-only would have been unenforceable on exactly the
-   * edits the interaction controller performs most.
+   * Back-reference to the owning diagram, set by
+   * `DiagramModel.installLink`, as on NodeModel. It is how a LinkModel mutator
+   * (waypoints, control points, labels, reconnection) sees the document's
+   * read-only lock.
    *
    * NON-ENUMERABLE (defined in the constructor, mirroring NodeModel): an enumerable
    * back-reference to the diagram would make every LinkModel a circular object and
@@ -131,12 +127,12 @@ export class LinkModel extends DiagramEntity {
   // Path
   pathType: 'direct' | 'orthogonal' | 'smooth' | 'bezier' = 'smooth';
   /**
-   * Card 0: WHERE the line goes. When unset, derived from pathType — see
+   * WHERE the line goes. When unset, derived from pathType — see
    * {@link effectiveRouter}. Setting it does NOT touch pathType, so legacy
    * consumers keep working; the explicit field simply wins.
    */
   router?: LinkRouterName;
-  /** Card 0: HOW the polyline is drawn. Unset = derived from pathType. */
+  /** HOW the polyline is drawn. Unset = derived from pathType. */
   connector?: LinkConnectorName;
   points: Point[] = [];
   segments: PathSegment[] = [];
@@ -202,7 +198,7 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Wave 4 (Edges & links) — Card 4: is this link a SELF-LOOP, i.e. do both
+   * Is this link a SELF-LOOP, i.e. do both
    * ends live on the same node?
    *
    * Reads the cached owning-node ids, which `DiagramModel.installLink` backfills
@@ -219,7 +215,7 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Wave 4 — Card 4: the unordered node pair this link connects, as a stable
+   * The unordered node pair this link connects, as a stable
    * key. UNORDERED on purpose: A→B and B→A are the same visual bundle and must
    * fan out together, or a bidirectional pair would draw both links on the same
    * centre line. Returns null when the owning nodes are unknown.
@@ -275,7 +271,7 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Card 0: set the routing geometry explicitly. Clears the cached route the
+   * Set the routing geometry explicitly. Clears the cached route the
    * same way setPathType does — the old polyline belongs to the old router.
    */
   setRouter(router: LinkRouterName | undefined): void {
@@ -289,7 +285,7 @@ export class LinkModel extends DiagramEntity {
     this.trackChange('router', old, router);
   }
 
-  /** Card 0: set the polyline rendering explicitly. Pure re-render; the routed
+  /** Set the polyline rendering explicitly. Pure re-render; the routed
    * points are still valid, so the cache is NOT cleared. */
   setConnector(connector: LinkConnectorName | undefined): void {
     if (this.writeBlocked()) return;
@@ -320,10 +316,8 @@ export class LinkModel extends DiagramEntity {
    * explicitly axis-aligned ROUTER, else derived from pathType.
    *
    * The router rung exists because `{ router: 'orthogonal' }` with the default
-   * pathType used to draw a smooth SPLINE through Manhattan waypoints — the
-   * route was orthogonal, the picture was wavy (the screenshot audit caught the
-   * demo's own readout saying "orthogonal" over a curve). Asking for an
-   * axis-aligned router IS asking for axis-aligned rendering; rounded corners
+   * pathType would otherwise draw a smooth SPLINE through Manhattan waypoints.
+   * Asking for an axis-aligned router IS asking for axis-aligned rendering; rounded corners
    * are that family's standard look. An explicit `connector` still overrides.
    */
   effectiveConnector(): LinkConnectorName {
@@ -629,14 +623,12 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Wave 3 (Edges & links): the curve tightness of a smooth/bezier link.
+   * The curve tightness of a smooth/bezier link.
    *
    * `style.curvature` is a multiplier of the endpoint distance for the
-   * control-point offset. It used to be DEAD (declared on LinkStyle, read by
-   * nobody); it is now the single knob both this model and the SVG renderer
-   * read, so a per-link value produces the same curve whichever produced the
-   * path. Default 0.5 = the historical hardcoded factor; negatives are clamped
-   * to 0 (a straight chord).
+   * control-point offset, read by both this model and the SVG renderer, so a
+   * per-link value produces the same curve whichever produced the path.
+   * Default 0.5; negatives are clamped to 0 (a straight chord).
    */
   static readonly DEFAULT_CURVATURE = 0.5;
 
@@ -670,11 +662,10 @@ export class LinkModel extends DiagramEntity {
   /**
    * Add label
    *
-   * Wave 4 (Card 5): `position` is no longer required when the label names a
-   * `slot` — and every other LinkLabel field (html, template, slot, autoOffset,
-   * rotation…) is now carried through instead of being silently dropped. The old
-   * body hand-copied five fields, so a label created here could not be an HTML
-   * label, could not auto-rotate and could not opt into auto-placement.
+   * `position` is optional when the label names a `slot`, and every other
+   * LinkLabel field (html, template, slot, autoOffset, rotation…) is carried
+   * through, so a label created here can be an HTML label, auto-rotate and opt
+   * into auto-placement.
    */
   addLabel(
     label: Partial<LinkLabel> & { text: string } & (
@@ -760,12 +751,9 @@ export class LinkModel extends DiagramEntity {
   /**
    * REPLACE the whole label collection — the write `addLabel`/`updateLabel` cannot express.
    *
-   * `SetLinkLabelsCommand` used to do this by assigning `link.labels` directly on BOTH
-   * execute and undo. A plain field write does not pass `trackChange()` — the one funnel
-   * collab captures from — so the command emitted ZERO ops in BOTH directions: authoring
-   * a link's labels was invisible to every other peer, and so was taking it back. (The
-   * `UpdateLinkStyleCommand` defect at least emitted one op on execute; this emitted none
-   * at all.) `replaceStyle` is the same seam for the same reason.
+   * The write goes through `trackChange()` — the one funnel collab captures from — so
+   * setting a link's labels, and undoing it, reaches every peer. Assign through this,
+   * never to `link.labels` directly. `replaceStyle` is the same seam for the same reason.
    */
   setLabels(labels: LinkLabel[]): void {
     if (this.writeBlocked()) return;
@@ -826,11 +814,9 @@ export class LinkModel extends DiagramEntity {
    * REPLACE the whole style object — the write `updateStyle` cannot express.
    *
    * `updateStyle` merges, so it can never REMOVE a key; restoring a snapshot has to
-   * assign wholesale. `UpdateLinkStyleCommand.undo()` used to do that with a direct
-   * field write (`link.style = restored`), which never passes `trackChange()` — the
-   * single funnel collab captures from. Measured: execute emitted 1 op, undo emitted 0,
-   * so every peer kept the styled link forever while the author saw it correctly
-   * reverted. See collab/style-undo.spec.ts.
+   * assign wholesale. This does, through `trackChange()` — the single funnel collab
+   * captures from — so restoring a style (as `UpdateLinkStyleCommand.undo()` does)
+   * reaches every peer. Never write `link.style` directly.
    */
   replaceStyle(style: Partial<LinkStyle>): void {
     if (this.writeBlocked()) return;
@@ -858,7 +844,7 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Phase 1: Reconnect source endpoint to new port
+   * Reconnect source endpoint to new port
    * Used for link reconnection workflow
    */
   reconnectSource(newPortId: string, newNodeId?: string): void {
@@ -886,7 +872,7 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Phase 1: Reconnect target endpoint to new port
+   * Reconnect target endpoint to new port
    * Used for link reconnection workflow
    */
   reconnectTarget(newPortId: string, newNodeId?: string): void {
@@ -914,7 +900,7 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Phase 1: Get source endpoint position
+   * Get source endpoint position
    * Returns the first point in the path (source end)
    */
   getSourceEndpoint(): Point {
@@ -922,7 +908,7 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Phase 1: Get target endpoint position
+   * Get target endpoint position
    * Returns the last point in the path (target end)
    */
   getTargetEndpoint(): Point {
@@ -930,7 +916,7 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Phase 1: Select source endpoint handle
+   * Select source endpoint handle
    */
   selectSourceEndpoint(): void {
     this.isSourceEndpointSelected = true;
@@ -939,7 +925,7 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Phase 1: Select target endpoint handle
+   * Select target endpoint handle
    */
   selectTargetEndpoint(): void {
     this.isTargetEndpointSelected = true;
@@ -948,7 +934,7 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Phase 1: Deselect all endpoint handles
+   * Deselect all endpoint handles
    */
   deselectEndpoints(): void {
     this.isSourceEndpointSelected = false;
@@ -957,7 +943,7 @@ export class LinkModel extends DiagramEntity {
   }
 
   /**
-   * Phase 1: Check if any endpoint is selected
+   * Check if any endpoint is selected
    */
   hasSelectedEndpoint(): boolean {
     return this.isSourceEndpointSelected || this.isTargetEndpointSelected;
@@ -970,6 +956,10 @@ export class LinkModel extends DiagramEntity {
     if (this.points.length < 2) return null;
 
     t = Math.max(0, Math.min(1, t));
+
+    // A 'direct' line the router BENT (a detour round a box) is its points, not
+    // its chord: the chord's middle is open space off the line.
+    if (this.pathType === 'direct' && this.points.length > 2) return this.polylineAt(t).point;
 
     if (this.pathType === 'direct') {
       const from = this.points[0]!;
@@ -985,7 +975,7 @@ export class LinkModel extends DiagramEntity {
     // the points polyline so consumers (e.g. label placement) still get a
     // real on-path position instead of the endpoint.
     const totalLength = this.getTotalLength();
-    if (this.segments.length > 0 && totalLength > 0) {
+    if (this.segments.length > 0 && totalLength > 0 && this.segmentsTracePoints()) {
       const targetLength = totalLength * t;
       let currentLength = 0;
 
@@ -1001,24 +991,55 @@ export class LinkModel extends DiagramEntity {
     }
 
     // Polyline fallback: arc-length interpolation over points
+    return this.polylineAt(t).point;
+  }
+
+  /**
+   * Do `segments` still trace `points`, corner for corner? The renderer writes a
+   * line's painted points straight onto `points` every frame (no setPoints, so no
+   * change event) and leaves `segments` as they were; when the two disagree, the
+   * points are where the line is.
+   */
+  private segmentsTracePoints(): boolean {
+    const segs = this.segments;
+    const pts = this.points;
+    if (segs.length === 0 || segs.length !== pts.length - 1) return false;
+    const same = (a: Point, b: Point) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01;
+    if (!same(segs[0]!.from, pts[0]!)) return false;
+    for (let i = 0; i < segs.length; i++) if (!same(segs[i]!.to, pts[i + 1]!)) return false;
+    return true;
+  }
+
+  /**
+   * The point `t` of the way along the `points` polyline (by arc length), and
+   * the direction of the run it lands on. `points` is the painted geometry the
+   * renderer syncs, so this is where the line really is.
+   */
+  private polylineAt(t: number): { point: Point; tangent: Point } {
+    const pts = this.points;
     let polyLength = 0;
-    for (let i = 0; i < this.points.length - 1; i++) {
-      polyLength += Math.hypot(this.points[i + 1]!.x - this.points[i]!.x, this.points[i + 1]!.y - this.points[i]!.y);
+    for (let i = 0; i < pts.length - 1; i++) {
+      polyLength += Math.hypot(pts[i + 1]!.x - pts[i]!.x, pts[i + 1]!.y - pts[i]!.y);
     }
-    if (polyLength <= 0) return { ...this.points[0]! };
+    const dir = (a: Point, b: Point): Point => {
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      return len > 0 ? { x: (b.x - a.x) / len, y: (b.y - a.y) / len } : { x: 1, y: 0 };
+    };
+    if (polyLength <= 0) return { point: { ...pts[0]! }, tangent: { x: 1, y: 0 } };
 
     let remaining = polyLength * t;
-    for (let i = 0; i < this.points.length - 1; i++) {
-      const a = this.points[i]!;
-      const b = this.points[i + 1]!;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]!;
+      const b = pts[i + 1]!;
       const segLen = Math.hypot(b.x - a.x, b.y - a.y);
-      if (remaining <= segLen) {
-        const st = segLen > 0 ? remaining / segLen : 0;
-        return { x: a.x + (b.x - a.x) * st, y: a.y + (b.y - a.y) * st };
+      if (segLen > 0 && remaining <= segLen) {
+        const st = remaining / segLen;
+        return { point: { x: a.x + (b.x - a.x) * st, y: a.y + (b.y - a.y) * st }, tangent: dir(a, b) };
       }
       remaining -= segLen;
     }
-    return { ...this.points[this.points.length - 1]! };
+    const n = pts.length;
+    return { point: { ...pts[n - 1]! }, tangent: dir(pts[n - 2]!, pts[n - 1]!) };
   }
 
   /**
@@ -1089,6 +1110,13 @@ export class LinkModel extends DiagramEntity {
    * Returns normalized direction vector
    */
   getTangentAt(t: number): Point | null {
+    // A bent 'direct' line: the run the point lands on (see getPointAtPosition).
+    if (this.pathType === 'direct' && this.points.length > 2) return this.polylineAt(Math.max(0, Math.min(1, t))).tangent;
+    // Points the renderer moved under stale segments: the points are the line.
+    if (this.pathType !== 'direct' && this.points.length >= 2 && this.segments.length > 0 && !this.segmentsTracePoints()) {
+      return this.polylineAt(Math.max(0, Math.min(1, t))).tangent;
+    }
+
     if (this.segments.length === 0) return null;
 
     t = Math.max(0, Math.min(1, t));

@@ -37,9 +37,9 @@ export const erdIsaTemplate: NodeTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "type": "triangle",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },

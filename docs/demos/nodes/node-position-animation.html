@@ -1,12 +1,20 @@
 <meta charset="utf-8">
 <title>Node position animation — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Eight nodes tween between layouts — grid · ring · row — by writing node.position every frame on an ease-out curve (pure userland — no animation API needed).">
+<link rel="canonical" href="https://grafloria.com/demos/nodes/node-position-animation.html">
+<meta property="og:title" content="Node position animation — Grafloria">
+<meta property="og:description" content="Eight nodes tween between layouts — grid · ring · row — by writing node.position every frame on an ease-out curve (pure userland — no animation API needed).">
+<meta property="og:url" content="https://grafloria.com/demos/nodes/node-position-animation.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/nodes/node-position-animation.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/nodes/node-position-animation.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #ctrl { display: flex; gap: 16px; align-items: center; padding: 10px 24px; font: 12px/1.5 system-ui, sans-serif; border-bottom: 1px solid rgba(127,127,127,.25); }
   #btn-layout { font: 12px system-ui, sans-serif; padding: 4px 12px; border: 1px solid rgba(127,127,127,.5); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
   #btn-layout:hover { border-color: rgba(127,127,127,.9); }
   #ctrl-readout { opacity: .7; }
-  #canvas { height: calc(100vh - 190px); }
+  #canvas { height: calc(100vh - 130px); }
 </style>
 <header id="demo-head"></header>
 <div id="ctrl">
@@ -16,7 +24,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // The engine moves a node when you write node.position and repaint. To ANIMATE a
 // node between two layouts you drive that write every frame, easing the position

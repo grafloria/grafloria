@@ -839,3 +839,368 @@ describe('saveLayout — saving on a phone saves the desktop layout', () => {
     expect(saved.items.find((i) => i.id === 'late')).toBeDefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// `capacity` — a row bound WITHOUT the strip's row-first push. The dashboard
+// kit's bounded fit mode: a fit board never changes size, so past its row floor
+// it refuses. The board still pushes DOWN like an unbounded one; only an op
+// whose settled result needs a row past the capacity is rolled back.
+// ---------------------------------------------------------------------------
+describe('GridPackEngine — capacity (bounded fit)', () => {
+  it('pushes DOWN, not along the row — the main board keeps its feel', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'a', x: 0, y: 0, w: 6, h: 1 },
+        { id: 'b', x: 0, y: 1, w: 3, h: 1 },
+      ],
+      { columns: 12, capacity: 3 }
+    );
+    expect(e.moveCheck('a', 0, 1).changed).toBe(true);
+    // b was displaced BELOW a (row 2), not shifted right along row 1.
+    expect(e.getItem('b')).toMatchObject({ x: 0, y: 2 });
+    expect(e.hasOverlaps()).toBe(false);
+  });
+
+  it('refuses a push whose settled result would need a row past the capacity', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'a', x: 0, y: 0, w: 12, h: 1 },
+        { id: 'b', x: 0, y: 1, w: 12, h: 1 },
+      ],
+      { columns: 12, capacity: 2 }
+    );
+    // Growing a to two rows would push b to row 2 — one past the capacity.
+    expect(e.resizeCheck('a', 12, 2).changed).toBe(false);
+    expect(e.getItem('a')).toMatchObject({ h: 1 });
+    expect(e.getItem('b')).toMatchObject({ y: 1 });
+    // A same-size swap needs no new row and still works.
+    expect(e.moveCheck('a', 0, 1).changed).toBe(true);
+    expect(e.getItem('a')!.y).toBe(1);
+  });
+
+  it('add() returns null when nothing can fit, and a legal add still lands', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'a', x: 0, y: 0, w: 12, h: 1 },
+        { id: 'b', x: 0, y: 1, w: 6, h: 1 },
+      ],
+      { columns: 12, capacity: 2 }
+    );
+    expect(e.add({ id: 'c', x: 0, y: 0, w: 6, h: 1, autoPosition: true })).toMatchObject({ x: 6, y: 1 });
+    expect(e.add({ id: 'd', x: 0, y: 0, w: 12, h: 1, autoPosition: true })).toBeNull();
+    expect(e.getItems().map((i) => i.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('maxRows wins when both are given — the strip semantics are untouched', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'a', x: 0, y: 0, w: 6, h: 1 },
+        { id: 'b', x: 6, y: 0, w: 3, h: 1 },
+      ],
+      { columns: 12, maxRows: 1, capacity: 5 }
+    );
+    expect(e.moveCheck('a', 3, 0).changed).toBe(true);
+    // The strip's row swap: b takes the left, a follows — no new row minted.
+    expect(e.getItem('b')).toMatchObject({ x: 0, y: 0 });
+    expect(e.getItem('a')).toMatchObject({ x: 3, y: 0 });
+    expect(e.rows()).toBe(1);
+  });
+});
+
+describe('GridPackEngine — per-item size limits', () => {
+  it('a resize clamps to minW/maxW/minH/maxH', () => {
+    const e = new GridPackEngine([{ id: 'a', x: 0, y: 0, w: 6, h: 2, minW: 3, maxW: 8, minH: 1, maxH: 3 }], { columns: 12 });
+    expect(e.resizeCheck('a', 1, 1).changed).toBe(true);
+    expect(e.getItem('a')).toMatchObject({ w: 3, h: 1 });
+    expect(e.resizeCheck('a', 12, 9).changed).toBe(true);
+    expect(e.getItem('a')).toMatchObject({ w: 8, h: 3 });
+    // Already at the limit: asking past it again is a no-op.
+    expect(e.resizeCheck('a', 12, 9).changed).toBe(false);
+  });
+
+  it('a column change scales a width only within its limits', () => {
+    const e = new GridPackEngine([{ id: 'a', x: 0, y: 0, w: 6, h: 1, minW: 4 }], { columns: 12 });
+    e.setColumns(6); // 6 → 3 by ratio, but never below minW
+    expect(e.getItem('a')!.w).toBe(4);
+  });
+
+  it('limits never move a tile — a push is not a resize', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'a', x: 0, y: 0, w: 6, h: 1 },
+        { id: 'b', x: 0, y: 1, w: 6, h: 1, minW: 6, maxW: 6 },
+      ],
+      { columns: 12 }
+    );
+    expect(e.resizeCheck('a', 6, 2).changed).toBe(true);
+    expect(e.getItem('b')).toMatchObject({ x: 0, y: 2, w: 6 });
+  });
+});
+
+// -- TILE FIRST, step 1: the four engine additions the drag model needs ------
+//
+// Each block below was written RED against 0.3.7 and is mutation-proven the
+// way the rest of this file is: the comment on each test names the stub that
+// would pass a weaker assertion.
+
+describe('result reasons — a refusal says why (tile first, step 1)', () => {
+  it('a move onto a locked tile is refused as locked; a locked mover too', () => {
+    const e = seeded();
+    // a mover onto the pinned row: E4b refuses, and now says so
+    expect(e.moveCheck('t5', 0, 3)).toEqual({ changed: false, refusedBy: 'locked' });
+    // the locked tile itself cannot be move-checked
+    expect(e.moveCheck('pin', 0, 4)).toEqual({ changed: false, refusedBy: 'locked' });
+  });
+
+  it('asking for the cell a tile already holds is a noop, not a refusal — the binder stops guessing', () => {
+    const e = seeded();
+    expect(e.moveCheck('t1', 0, 0)).toEqual({ changed: false, refusedBy: 'noop' });
+    // a stub returning { changed: false } alone fails: `refusedBy` is required on every refusal
+  });
+
+  it('the anti-jitter gate and a bound rollback are named', () => {
+    const e = seeded();
+    e.beginGesture();
+    // t1 (3×1) onto t5 (8×2): 3 of 16 cells — the gate refuses
+    expect(e.moveCheck('t1', 0, 1)).toEqual({ changed: false, refusedBy: 'gate' });
+    e.endGesture();
+    const b = new GridPackEngine([{ id: 'a', x: 0, y: 0, w: 12, h: 1 }, { id: 'b', x: 0, y: 1, w: 12, h: 1 }], { columns: 12, maxRows: 2 });
+    // growing a would push b past the bound: the whole op rolls back, named
+    expect(b.resizeCheck('a', 12, 2)).toEqual({ changed: false, refusedBy: 'bound' });
+    expect(cells(b, 'b')).toEqual([0, 1]);
+  });
+
+  it('an unknown id is missing, and an accepted change carries no reason', () => {
+    const e = seeded();
+    expect(e.moveCheck('nope', 0, 0)).toEqual({ changed: false, refusedBy: 'missing' });
+    expect(e.moveCheck('t1', 0, 5)).toEqual({ changed: true }); // into free space under the pinned row
+  });
+});
+
+describe('the full gesture snapshot — Escape restores size, membership and the bound (tile first, step 1)', () => {
+  it('a resize inside a gesture is undone by cancel', () => {
+    const e = seeded();
+    e.beginGesture();
+    expect(e.resizeCheck('t1', 6, 1).changed).toBe(true); // t2 pushed
+    e.cancelGesture();
+    expect(e.getItem('t1')).toMatchObject({ x: 0, y: 0, w: 3, h: 1 });
+    expect(cells(e, 't2')).toEqual([3, 0]);
+    // 0.3.7 restored x/y only and left t1 six wide
+  });
+
+  it('a tile removed during the gesture comes back at its gesture-start cell', () => {
+    const e = seeded();
+    e.beginGesture();
+    e.remove('t2');
+    expect(e.getItem('t2')).toBeUndefined();
+    e.moveCheck('t3', 3, 0); // t3 slid into the hole
+    e.cancelGesture();
+    expect(e.getItem('t2')).toMatchObject({ x: 3, y: 0, w: 3, h: 1 });
+    expect(cells(e, 't3')).toEqual([6, 0]);
+    expect(e.hasOverlaps()).toBe(false);
+  });
+
+  it('a tile added during the gesture is gone after cancel', () => {
+    const e = seeded();
+    e.beginGesture();
+    e.add({ id: 'ghost', x: 0, y: 0, w: 3, h: 1 }); // t1 pushed
+    e.cancelGesture();
+    expect(e.getItem('ghost')).toBeUndefined();
+    expect(cells(e, 't1')).toEqual([0, 0]);
+  });
+
+  it('endGesture keeps everything, including a removal and a resize', () => {
+    const e = seeded();
+    e.beginGesture();
+    e.remove('t4');
+    e.resizeCheck('t3', 6, 1);
+    e.endGesture();
+    expect(e.getItem('t4')).toBeUndefined();
+    expect(e.getItem('t3')!.w).toBe(6);
+  });
+
+  it('a bound set inside a gesture is restored by cancel and kept by end', () => {
+    const e = new GridPackEngine([{ id: 'a', x: 0, y: 0, w: 12, h: 1 }], { columns: 12, maxRows: 1 });
+    e.beginGesture();
+    expect(e.setBound(3)).toBe(true);
+    expect(e.maxRows).toBe(3);
+    expect(e.resizeCheck('a', 12, 3).changed).toBe(true);
+    e.cancelGesture();
+    expect(e.maxRows).toBe(1);
+    expect(e.getItem('a')!.h).toBe(1);
+    e.beginGesture();
+    e.setBound(2);
+    e.endGesture();
+    expect(e.maxRows).toBe(2);
+  });
+
+  it('setBound below the content is refused and changes nothing', () => {
+    const e = new GridPackEngine([{ id: 'a', x: 0, y: 0, w: 12, h: 2 }], { columns: 12, maxRows: 2 });
+    expect(e.setBound(1)).toBe(false);
+    expect(e.maxRows).toBe(2);
+  });
+});
+
+describe('a tile moved on purpose forgets where it was pushed from (tile first, step 1)', () => {
+  it('a neighbour pushed down by the mover, then moved aside deliberately, does not teleport back when its old cell frees', () => {
+    // the user's 3440-px corner on 0.4.48: the top band pushed the panel down (remembered), the right band
+    // moved it aside, and the next settle teleported it home — under the widget, which was then pushed off it
+    const e = new GridPackEngine([{ id: 'w', x: 0, y: 4, w: 2, h: 1 }, { id: 'p', x: 9, y: 0, w: 3, h: 4 }], { columns: 12, float: true });
+    e.float = false;
+    e.beginGesture();
+    expect(e.moveCheck('w', 9, 0, { gate: false }).changed).toBe(true); // w takes p's row: p pushed down (remembered at 9,0)
+    expect(cells(e, 'p')).toEqual([9, 1]);
+    expect(e.moveCheck('w', 0, 4, { gate: false }).changed).toBe(true); // w leaves: p teleports home (S2 still holds)
+    expect(cells(e, 'p')).toEqual([9, 0]);
+    expect(e.moveCheck('w', 9, 0, { gate: false }).changed).toBe(true); // pushed again
+    expect(e.moveCheck('p', 6, 0, { gate: false }).changed).toBe(true); // moved ASIDE on purpose
+    expect(e.moveCheck('w', 0, 4, { gate: false }).changed).toBe(true); // w leaves: (9,0) frees…
+    expect(cells(e, 'p')).toEqual([6, 0]); // …and p STAYS where it was put
+    e.endGesture();
+  });
+});
+
+describe('placeBeside — the one sideways primitive (tile first, step 1)', () => {
+  // a 12-column board: a panel at the right edge (9..12, 8 rows), a widget to bring beside it
+  // constructed the way a binder constructs: float ON so the authored gap under nps survives, gravity back on after
+  const gapped = (items: GridPackItem[], opts: { columns: number; maxRows?: number } = { columns: 12 }): GridPackEngine => {
+    const e = new GridPackEngine(items, { ...opts, float: true });
+    e.float = false;
+    return e;
+  };
+  const board = () =>
+    gapped([
+      { id: 'nps', x: 6, y: 0, w: 2, h: 1 },
+      { id: 'side', x: 9, y: 0, w: 3, h: 8 },
+      { id: 'ops', x: 0, y: 7, w: 9, h: 1 },
+    ]);
+
+  it('right of a panel with room: placed, nothing moves', () => {
+    const e = new GridPackEngine([{ id: 'w', x: 0, y: 0, w: 2, h: 1 }, { id: 'p', x: 4, y: 0, w: 3, h: 4 }], { columns: 12 });
+    expect(e.placeBeside('w', 'p', 'right', 0)).toEqual({ changed: true, how: 'placed' });
+    expect(e.getItem('w')).toMatchObject({ x: 7, y: 0 });
+    expect(cells(e, 'p')).toEqual([4, 0]);
+  });
+
+  it('right of a panel at the board edge: the panel shifts left by the mover, the mover takes the edge', () => {
+    const e = board();
+    e.beginGesture();
+    expect(e.placeBeside('nps', 'side', 'right', 0)).toEqual({ changed: true, how: 'shifted' });
+    expect(e.getItem('side')).toMatchObject({ x: 7, y: 0, w: 3, h: 8 });
+    expect(e.getItem('nps')).toMatchObject({ x: 10, y: 0 });
+    expect(e.getItem('ops')!.y).toBeGreaterThanOrEqual(8); // the section in the shift's way is pushed, not refused
+    expect(e.hasOverlaps()).toBe(false);
+    e.cancelGesture();
+    expect(cells(e, 'side')).toEqual([9, 0]);
+    expect(cells(e, 'ops')).toEqual([0, 7]);
+  });
+
+  it('the mover\'s own cell never blocks the shift — a chart as wide as the panel swaps sides with it (lab L94)', () => {
+    const e = new GridPackEngine([{ id: 'chart', x: 0, y: 0, w: 6, h: 4 }, { id: 'panel', x: 6, y: 0, w: 6, h: 4 }], { columns: 12 });
+    expect(e.placeBeside('chart', 'panel', 'right', 0)).toEqual({ changed: true, how: 'shifted' });
+    expect(cells(e, 'panel')).toEqual([0, 0]);
+    expect(cells(e, 'chart')).toEqual([6, 0]);
+    // a stub that shifts before stepping the mover aside is refused by its own cell and reports 'pushed'
+  });
+
+  it('the row is the pointer\'s row, clamped to the panel\'s rows', () => {
+    const e = board();
+    expect(e.placeBeside('nps', 'side', 'right', 3)).toEqual({ changed: true, how: 'shifted' });
+    expect(e.getItem('nps')).toMatchObject({ x: 10, y: 3 });
+    const f = board();
+    f.placeBeside('nps', 'side', 'right', 40); // past the panel: its last row that still fits the mover
+    expect(f.getItem('nps')).toMatchObject({ x: 10, y: 7 });
+  });
+
+  it('left with no room and no space to shift: falls back to the push', () => {
+    const e = gapped([{ id: 'w', x: 0, y: 4, w: 12, h: 1 }, { id: 'p', x: 0, y: 0, w: 12, h: 3 }]);
+    // a full-width panel at the left edge: the mover is as wide as the board, nothing can shift
+    expect(e.placeBeside('w', 'p', 'left', 0)).toEqual({ changed: true, how: 'pushed' });
+    expect(cells(e, 'w')).toEqual([0, 0]);
+    expect(cells(e, 'p')).toEqual([0, 1]);
+  });
+
+  it('top pushes the panel down under the mover; bottom lands under it', () => {
+    const e = board();
+    expect(e.placeBeside('nps', 'side', 'top')).toEqual({ changed: true, how: 'pushed' });
+    expect(e.getItem('nps')).toMatchObject({ x: 9, y: 0 });
+    expect(cells(e, 'side')).toEqual([9, 1]);
+    const f = board();
+    expect(f.placeBeside('nps', 'side', 'bottom')).toEqual({ changed: true, how: 'placed' });
+    expect(f.getItem('nps')).toMatchObject({ x: 9, y: 8 });
+  });
+
+  it('a locked neighbour refuses, and a bound rollback names itself', () => {
+    const e = new GridPackEngine([{ id: 'w', x: 0, y: 0, w: 2, h: 1 }, { id: 'p', x: 10, y: 0, w: 2, h: 2, locked: true }], { columns: 12 });
+    expect(e.placeBeside('w', 'p', 'right', 0)).toEqual({ changed: false, refusedBy: 'locked' });
+    expect(cells(e, 'p')).toEqual([10, 0]);
+    const b = new GridPackEngine([{ id: 'w', x: 0, y: 0, w: 2, h: 1 }, { id: 'p', x: 10, y: 0, w: 2, h: 1 }, { id: 'q', x: 8, y: 0, w: 2, h: 1 }], { columns: 12, maxRows: 1 });
+    // shifting p left lands on q, which cannot go down on a one-row board
+    expect(b.placeBeside('w', 'p', 'right', 0).changed).toBe(false);
+    expect(cells(b, 'p')).toEqual([10, 0]);
+    expect(cells(b, 'q')).toEqual([8, 0]);
+  });
+});
+
+describe('solid tiles — a container is pushed by INTENT, never by a passing widget (tile first, step 3)', () => {
+  // the runaway the unlock exposed: a widget approaching a panel from above overlapped it before the pointer reached it,
+  // the panel was pushed away from under the hand, the hand found free space, the panel fled — the "into" zone was unreachable.
+  const board = () => {
+    const e = new GridPackEngine([{ id: 'w', x: 0, y: 0, w: 2, h: 1 }, { id: 'sec', x: 0, y: 4, w: 9, h: 1, solid: true }, { id: 'k', x: 0, y: 5, w: 2, h: 1 }], { columns: 12, float: true });
+    e.float = false;
+    return e;
+  };
+  it('a widget moved onto a solid tile is refused, named solid — the binder slides it aside', () => {
+    const e = board();
+    expect(e.moveCheck('w', 1, 4, { gate: false })).toEqual({ changed: false, refusedBy: 'solid' });
+    expect(cells(e, 'sec')).toEqual([0, 4]);
+    expect(cells(e, 'w')).toEqual([0, 0]);
+  });
+  it('the same move with pushSolid — a moved section, a dock, a refused adoption — pushes it like any tile', () => {
+    const e = board();
+    e.beginGesture();
+    expect(e.moveCheck('w', 1, 4, { gate: false, pushSolid: true })).toEqual({ changed: true });
+    expect(cells(e, 'sec')).toEqual([0, 5]); // pushed, and the widget under it pushed on
+    expect(cells(e, 'k')).toEqual([0, 6]);
+    e.endGesture();
+  });
+  it('a solid tile never packs: the gap above it stays through every settle', () => {
+    const e = board();
+    expect(e.moveCheck('w', 4, 0).changed).toBe(true); // any accepted op settles the board
+    expect(cells(e, 'sec')).toEqual([0, 4]); // rows 1–3 stay free above it
+    expect(cells(e, 'k')).toEqual([0, 5]);
+  });
+  it('growth clamps at a solid tile the way it clamps at a locked one', () => {
+    const e = board();
+    expect(e.resizeCheck('w', 2, 6).changed).toBe(true);
+    expect(e.getItem('w')!.h).toBe(4); // rows 0–3: the section at 4 is the wall
+  });
+  it('growth with pushSolid — a dock taking its band — pushes a solid tile instead of clamping at it', () => {
+    const e = board();
+    expect(e.resizeCheck('w', 12, 6, { pushSolid: true }).changed).toBe(true);
+    expect(e.getItem('w')).toMatchObject({ w: 12, h: 6 });
+    // both went down; the cascade lands k under w first and sends the section on below it (the engine's reading-order push)
+    expect(cells(e, 'k')).toEqual([0, 6]);
+    expect(cells(e, 'sec')).toEqual([0, 7]);
+    expect(e.hasOverlaps()).toBe(false);
+  });
+  it('placeBeside shifts a solid neighbour and pushes it with the top side — intent', () => {
+    const e = new GridPackEngine([{ id: 'nps', x: 6, y: 0, w: 2, h: 1 }, { id: 'side', x: 9, y: 0, w: 3, h: 8, solid: true }], { columns: 12, float: true });
+    e.float = false;
+    expect(e.placeBeside('nps', 'side', 'right', 2)).toEqual({ changed: true, how: 'shifted' });
+    expect(cells(e, 'side')).toEqual([7, 0]);
+    expect(e.getItem('nps')).toMatchObject({ x: 10, y: 2 });
+    const f = new GridPackEngine([{ id: 'nps', x: 6, y: 0, w: 2, h: 1 }, { id: 'side', x: 9, y: 0, w: 3, h: 8, solid: true }], { columns: 12 });
+    expect(f.placeBeside('nps', 'side', 'top')).toEqual({ changed: true, how: 'pushed' });
+    expect(cells(f, 'side')).toEqual([9, 1]);
+  });
+  it('a solid mover pushes what it lands on — a moved section pushes another section only when asked', () => {
+    const e = new GridPackEngine([{ id: 'a', x: 0, y: 0, w: 6, h: 2, solid: true }, { id: 'b', x: 0, y: 2, w: 6, h: 2, solid: true }, { id: 'k', x: 6, y: 0, w: 2, h: 1 }], { columns: 12, float: true });
+    e.float = false;
+    expect(e.moveCheck('a', 0, 1, { gate: false })).toEqual({ changed: false, refusedBy: 'solid' });
+    expect(e.moveCheck('a', 0, 1, { gate: false, pushSolid: true })).toEqual({ changed: true });
+    expect(cells(e, 'b')).toEqual([0, 3]);
+    expect(e.moveCheck('a', 6, 0, { gate: false }).changed).toBe(true); // over the plain widget k: pushed without asking
+    expect(cells(e, 'k')).toEqual([6, 2]);
+  });
+});

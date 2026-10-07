@@ -1,16 +1,24 @@
 <meta charset="utf-8">
 <title>Dynamic (mental-map) layouting — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Mental-map-preserving incremental layout: add a node and the rest barely move.">
+<link rel="canonical" href="https://grafloria.com/demos/layout/dynamic-layouting.html">
+<meta property="og:title" content="Dynamic (mental-map) layouting — Grafloria">
+<meta property="og:description" content="Mental-map-preserving incremental layout: add a node and the rest barely move.">
+<meta property="og:url" content="https://grafloria.com/demos/layout/dynamic-layouting.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/layout/dynamic-layouting.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/layout/dynamic-layouting.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
-  #canvas { height: calc(100vh - 168px); }
+  #canvas { height: calc(100vh - 108px); }
 </style>
 <header id="demo-head"></header>
 <div id="readout"></div>
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 import { overlaps, center } from './_layout-lib.js';
 
 // A layered pipeline. We lay it out, remember where everything is, then ADD one

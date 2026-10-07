@@ -19,12 +19,22 @@
 import type { NodeModel } from '@grafloria/engine';
 import type { VNode } from '../types/vnode.types';
 
-export type PanelCorner = 'tl' | 'tr' | 'bl' | 'br';
+/** Icon/badge anchor: a corner, or `'c'` — dead centre of the node body
+ *  (a BPMN event's trigger glyph sits in the middle of its circle). */
+export type PanelCorner = 'tl' | 'tr' | 'bl' | 'br' | 'c';
 
 /** A header band across the top of the node (ERD/UML title row). */
 export interface PanelHeader {
   text?: string;
-  /** Band height in px. Default 22. */
+  /**
+   * STACKED header lines — the UML classifier convention of a «stereotype»
+   * over the name. Wins over `text` when present; the band grows to hold
+   * every line, and each line is fitted to the band width (shrunk, never
+   * clipped: «enumeration» over a 120px card used to paint "umeration»
+   * Enumera" cut off at both edges).
+   */
+  lines?: string[];
+  /** Band height in px. Default 22, or 16/line + 4 when `lines` stack. */
   height?: number;
   fill?: string;
   textColor?: string;
@@ -37,11 +47,18 @@ export interface PanelImage {
   height?: number;
 }
 
-/** A small icon — a raster href OR an emoji/text glyph — pinned to a corner. */
+/** A small icon — a raster href, an emoji/text glyph, or a built-in line icon — pinned to a corner. */
 export interface PanelIcon {
   href?: string;
   /** Emoji or short glyph, used when `href` is absent. */
   glyph?: string;
+  /**
+   * A built-in line icon, used when there is no href or glyph: one of
+   * {@link BUILTIN_ICONS} (`cloud`, `database`, `disk`, `internet`, `server` —
+   * Mermaid architecture-beta's own). Drawn as our paths in the node's ink; an
+   * unknown name draws nothing.
+   */
+  name?: string;
   /** Box size in px. Default 18. */
   size?: number;
   /** Corner to pin to. Default 'tl'. */
@@ -73,11 +90,60 @@ export interface PanelSpec {
   rowHeight?: number;
 }
 
+/**
+ * Grafloria's line icons, 24×24, stroked (never filled). Drawn by hand for this
+ * library — the five Mermaid architecture-beta names. An href icon must be a
+ * raster data URI (SVG data URIs are refused: SVG can carry script), so vector
+ * icons are these paths, not user data.
+ */
+export const BUILTIN_ICONS: Readonly<Record<string, readonly string[]>> = {
+  cloud: ['M7 18.5h10.2a4.3 4.3 0 0 0 .5-8.57A6.2 6.2 0 0 0 5.9 9.1 4.7 4.7 0 0 0 7 18.5z'],
+  database: [
+    'M4.5 6c0-1.66 3.36-3 7.5-3s7.5 1.34 7.5 3-3.36 3-7.5 3-7.5-1.34-7.5-3z',
+    'M4.5 6v12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6',
+    'M4.5 12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3',
+  ],
+  disk: ['M3.5 14h17v4.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z', 'M3.5 14l3-8.5h11l3 8.5', 'M16.5 17h.01'],
+  internet: [
+    'M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18z',
+    'M3 12h18',
+    'M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9c-2.4-2.5-3.6-5.5-3.6-9S9.6 5.5 12 3z',
+  ],
+  server: ['M4 4h16v7H4z', 'M4 13h16v7H4z', 'M7.5 7.5h.01', 'M7.5 16.5h.01'],
+};
+
 const DEFAULT_HEADER_HEIGHT = 22;
 const DEFAULT_IMAGE_HEIGHT = 48;
 const DEFAULT_ROW_HEIGHT = 18;
 const DEFAULT_ICON_SIZE = 18;
 const DEFAULT_FONT_SIZE = 12;
+const HEADER_LINE_HEIGHT = 16;
+const MIN_HEADER_FONT_PX = 8;
+
+/** The header's lines, whether given as `lines` or a single `text`. */
+function headerLines(header: PanelHeader): string[] {
+  if (header.lines && header.lines.length > 0) return header.lines;
+  return header.text ? [header.text] : [];
+}
+
+/** The header band's height: explicit, or grown to hold its stacked lines. */
+function headerHeight(header: PanelHeader): number {
+  if (header.height !== undefined) return header.height;
+  const n = headerLines(header).length;
+  return n > 1 ? n * HEADER_LINE_HEIGHT + 4 : DEFAULT_HEADER_HEIGHT;
+}
+
+/**
+ * The font size at which one UNWRAPPABLE header line fits `maxWidth`. Same
+ * 0.6em average-glyph estimate the label engine uses; the floor keeps a very
+ * long line legible-and-shrunk rather than invisible (past it the band is
+ * simply too small for the name, and clipping at 8px beats 3px noise).
+ */
+function fitHeaderLine(line: string, maxWidth: number, base: number): number {
+  if (!line || !isFinite(maxWidth) || maxWidth <= 0) return base;
+  const needed = maxWidth / (line.length * 0.6);
+  return needed >= base ? base : Math.max(MIN_HEADER_FONT_PX, Math.floor(needed));
+}
 
 /** Read a node's panel spec, or null when it has none. */
 export function getNodePanel(node: NodeModel): PanelSpec | null {
@@ -131,8 +197,8 @@ export function measurePanelReserve(
   let width = 0;
 
   if (panel.header) {
-    top += panel.header.height ?? DEFAULT_HEADER_HEIGHT;
-    width = Math.max(width, estimate(panel.header.text));
+    top += headerHeight(panel.header);
+    for (const line of headerLines(panel.header)) width = Math.max(width, estimate(line));
   }
   if (panel.image) top += panel.image.height ?? DEFAULT_IMAGE_HEIGHT;
   if (panel.rows && panel.rows.length > 0) {
@@ -184,7 +250,8 @@ export function renderNodePanel(
 
   // ── header band ──────────────────────────────────────────────────────────
   if (panel.header) {
-    const h = panel.header.height ?? DEFAULT_HEADER_HEIGHT;
+    const header = panel.header;
+    const h = headerHeight(header);
     out.push({
       type: 'rect',
       key: `panel-header-bg-${ctx.nodeId}`,
@@ -193,24 +260,32 @@ export function renderNodePanel(
         y: 0,
         width,
         height: h,
-        fill: panel.header.fill ?? ctx.headerFill,
+        fill: header.fill ?? ctx.headerFill,
         className: 'panel-header',
         pointerEvents: 'none',
       },
     });
-    if (panel.header.text) {
+    const lines = headerLines(header);
+    const lineH = lines.length > 0 ? h / lines.length : h;
+    lines.forEach((line, i) => {
+      // A stacked stereotype line reads smaller and lighter than the name —
+      // the UML card convention («interface» over Interface).
+      const stereo = lines.length > 1 && i < lines.length - 1;
+      const base = stereo ? ctx.fontSize - 2 : ctx.fontSize;
       out.push(
-        textVNode(`panel-header-text-${ctx.nodeId}`, {
-          text: panel.header.text,
+        textVNode(`panel-header-text-${ctx.nodeId}${lines.length > 1 ? `-${i}` : ''}`, {
+          text: line,
           x: width / 2,
-          y: h / 2,
+          y: lineH * (i + 0.5),
           align: 'middle',
-          fill: panel.header.textColor ?? ctx.headerTextColor,
-          fontSize: ctx.fontSize,
-          fontWeight: 600,
+          fill: header.textColor ?? ctx.headerTextColor,
+          // A header line cannot wrap; it shrinks to its band instead of
+          // painting past the card's edges.
+          fontSize: fitHeaderLine(line, width - 10, base),
+          fontWeight: stereo ? 400 : 600,
         })
       );
-    }
+    });
     cursorY += h;
   }
 
@@ -287,6 +362,18 @@ export function renderNodePanel(
           fontSize: size,
         })
       );
+    } else if (panel.icon.name && BUILTIN_ICONS[panel.icon.name]) {
+      const k = Math.round((size / 24) * 10000) / 10000;
+      out.push({
+        type: 'g',
+        key: `panel-icon-${ctx.nodeId}`,
+        props: { className: 'panel-icon', transform: `translate(${pos.x}, ${pos.y}) scale(${k})`, pointerEvents: 'none' },
+        children: BUILTIN_ICONS[panel.icon.name]!.map((d, i) => ({
+          type: 'path',
+          key: `panel-icon-${ctx.nodeId}-${i}`,
+          props: { d, fill: 'none', stroke: ctx.bodyTextColor, strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        })),
+      });
     }
   }
 
@@ -356,7 +443,7 @@ export function panelAdjustedInnerRect(
   const rowHeight = panel.rowHeight ?? DEFAULT_ROW_HEIGHT;
   let top = 0;
   let bottom = 0;
-  if (panel.header) top += panel.header.height ?? DEFAULT_HEADER_HEIGHT;
+  if (panel.header) top += headerHeight(panel.header);
   if (panel.image) top += panel.image.height ?? DEFAULT_IMAGE_HEIGHT;
   if (panel.rows && panel.rows.length > 0) bottom += panel.rows.length * rowHeight;
 
@@ -367,7 +454,7 @@ export function panelAdjustedInnerRect(
   return { x: inner.x, y: bandTop, w: inner.w, h };
 }
 
-/** Position a `bw × bh` box in one of the four corners (2px inset). */
+/** Position a `bw × bh` box in one of the four corners (2px inset) or centred. */
 function cornerBox(
   corner: PanelCorner,
   width: number,
@@ -387,6 +474,8 @@ function cornerBox(
       return { x: inset, y: bottom };
     case 'br':
       return { x: right, y: bottom };
+    case 'c':
+      return { x: (width - bw) / 2, y: (height - bh) / 2 };
   }
 }
 

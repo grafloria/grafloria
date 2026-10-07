@@ -16,8 +16,7 @@ import { isValidConnection } from '../ext/tools';
 
 /**
  * SnapController — alignment snaplines, equal-spacing guides, grid snap,
- * keep-in-bounds, magnetic snap-to-port and proximity connect (Card 6,
- * wave4/interaction).
+ * keep-in-bounds, magnetic snap-to-port and proximity connect.
  *
  * Framework-agnostic and pure w.r.t. the geometry it is handed: `computeSnap`
  * takes the moving box + the boxes it may align to and returns the corrected box
@@ -115,19 +114,12 @@ export interface ProximityCandidate {
 /**
  * Can ports `a` (on `nodeA`) and `b` (on `nodeB`) be linked?
  *
- * The ONE rule shared by proximity connect (Card 6) and keyboard connect
- * (Card 7), so the two can never disagree about what is legal.
+ * The ONE rule shared by proximity connect and keyboard connect, so the two can
+ * never disagree about what is legal. It delegates to `evaluatePortConnection`,
+ * the engine-side validator the connection drag also runs through, so a port you
+ * can drag to is a port the magnet snaps to.
  *
- * Wave 6: it no longer OWNS that rule — it delegates to
- * `evaluatePortConnection`, the engine-side validator the connection drag also
- * runs through. Before wave 6 this function was one of THREE disagreeing copies
- * (the others: `PortModel.canConnectTo` and
- * `ConnectionStateManager.isValidConnection`), and the drift was real: this one
- * rejected duplicates and honoured `node.behavior.connectable`, the drag checked
- * neither; the drag ignored `maxConnections`, this one never heard of it. A port
- * you could legally drag to was one the magnet refused to snap to.
- *
- * `rejectDuplicatesByDefault` preserves this call site's own historical stance:
+ * `rejectDuplicatesByDefault` is this call site's own stance:
  * auto-linking a duplicate because a node drifted near is never what the user
  * meant, whatever the port's `allowDuplicateLinks` says.
  *
@@ -581,13 +573,11 @@ export class SnapController {
   /**
    * World position of a port — THE one the port is actually drawn at.
    *
-   * BUG (wave 6): this used `port.getAbsolutePosition(node.getBoundingBox())`,
-   * which walks the BOUNDING BOX and lands on an edge midpoint — blind to the
-   * node's silhouette and to how many ports share the side. The renderer draws
-   * ports with `getPortPositionForShape`. So on a circle, a diamond, a hexagon,
-   * a cylinder — or ANY side carrying more than one port — the magnet was
-   * snapping to a point several pixels away from the port you could see, and
-   * proximity-connect measured its radius from the wrong place.
+   * The same shape-aware position the renderer draws ports at
+   * (`getPortPositionForShape`), not the bounding-box edge midpoint
+   * (`port.getAbsolutePosition`). So on a circle, a diamond, a hexagon, a
+   * cylinder — or any side carrying more than one port — the magnet snaps to
+   * the port you can see, and proximity-connect measures from it.
    */
   portPosition(node: NodeModel, port: PortModel): Point {
     return portWorldPosition(port, node);

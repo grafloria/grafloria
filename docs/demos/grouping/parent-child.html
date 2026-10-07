@@ -1,18 +1,26 @@
 <meta charset="utf-8">
 <title>Parent &amp; child — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Drop the child into the container to attach it. While attached, an out-of-bounds drag is reeled back to the container’s extent on release, and dragging the…">
+<link rel="canonical" href="https://grafloria.com/demos/grouping/parent-child.html">
+<meta property="og:title" content="Parent &amp;amp; child — Grafloria">
+<meta property="og:description" content="Drop the child into the container to attach it. While attached, an out-of-bounds drag is reeled back to the container’s extent on release, and dragging the…">
+<meta property="og:url" content="https://grafloria.com/demos/grouping/parent-child.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/grouping/parent-child.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/grouping/parent-child.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #strip { display: flex; gap: 14px; align-items: center; padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .9; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
   #pc-detach { font: 12px ui-monospace, monospace; padding: 3px 10px; border: 1px solid rgba(127,127,127,.5); border-radius: 5px; background: transparent; color: inherit; cursor: pointer; }
   #pc-detach:hover { border-color: rgba(127,127,127,.9); }
-  #canvas { height: calc(100vh - 168px); }
+  #canvas { height: calc(100vh - 108px); }
 </style>
 <header id="demo-head"></header>
 <div id="strip"><button id="pc-detach">Detach child</button><span id="readout"></span></div>
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // Dynamic grouping, hands-on — React Flow's parent-child story on Grafloria's
 // membership model. RF gives children a parentId and relative coordinates;

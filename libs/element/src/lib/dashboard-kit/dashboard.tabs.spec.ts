@@ -1,0 +1,3864 @@
+/**
+ * TAB CONTAINERS (element 0.4.27) — `layout: 'tabs'` makes every child that
+ * carries `widgets` a PAGE: one visible at a time, a strip of tabs across the
+ * top, the active page persisted. DevExpress ships this as its Tab Container.
+ */
+import { CommandManager, DiagramModel, DiagramSerializer, EventBus, NodeModel, type Command } from '@grafloria/engine';
+import { dashboard, type DashboardHandle, type DashboardSpec, type DashboardWidgetSpec } from './dashboard';
+import type { CanvasTool, ToolPointerEvent } from '@grafloria/renderer';
+
+// The binder claims widget gestures through the renderer's page-global tool
+// registry; there is no renderer here to route pointer events to it, so the
+// registration is wrapped and the tool driven directly.
+jest.mock('@grafloria/renderer', () => {
+  const actual = jest.requireActual('@grafloria/renderer');
+  return {
+    ...actual,
+    registerTool: (t: unknown) => {
+      const g = globalThis as unknown as { __axdbTools?: unknown[] };
+      g.__axdbTools = [...(g.__axdbTools ?? []), t];
+      return actual.registerTool(t);
+    },
+  };
+});
+const splitToolOf = (groupId: string): CanvasTool => {
+  const g = globalThis as unknown as { __axdbTools?: CanvasTool[] };
+  const t = [...(g.__axdbTools ?? [])].reverse().find((x) => x.id.startsWith(`dashboard-split:${groupId}:`));
+  if (!t) throw new Error(`no split tool registered for ${groupId}`);
+  return t;
+};
+const toolOf = (groupId: string): CanvasTool => {
+  const g = globalThis as unknown as { __axdbTools?: CanvasTool[] };
+  const t = [...(g.__axdbTools ?? [])].reverse().find((x) => x.id.startsWith(`dashboard-grid:${groupId}:`));
+  if (!t) throw new Error(`no binder tool registered for ${groupId}`);
+  return t;
+};
+const tev = (type: ToolPointerEvent['type'], x: number, y: number): ToolPointerEvent => ({
+  type,
+  world: { x, y },
+  screen: { x, y },
+  modifiers: { shift: false, ctrl: false, alt: false, meta: false },
+});
+
+import { fromDocument } from '../load';
+import { splitLeaves, type SplitNode } from './split-layout';
+import { SPLIT_TREE_KEY, type DashboardSplitHandle } from './split-binder';
+
+function makeApi(model: DiagramModel) {
+  const bus = new EventBus();
+  const manager = new CommandManager({ diagram: model, eventBus: bus });
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const layer = document.createElement('div');
+  layer.className = 'grafloria-html-layer';
+  container.appendChild(layer);
+  return {
+    getModel: () => model,
+    getEngine: () => ({ commandManager: manager, eventBus: bus }),
+    container,
+    render: () => undefined,
+    renderNow: () => undefined,
+    viewport: { fitToBounds: () => undefined, clientToWorld: (x: number, y: number) => ({ x, y }) },
+  };
+}
+
+function mount(spec: DashboardSpec) {
+  const model = new DiagramModel('dash');
+  for (const n of spec.nodes) {
+    const raw = n as { id: string; position: { x: number; y: number }; size: { width: number; height: number }; metadata: Record<string, unknown> };
+    const node = new NodeModel({ id: raw.id, type: 'widget', position: { ...raw.position }, size: { ...raw.size, depth: 0 } });
+    for (const [k, v] of Object.entries(raw.metadata)) node.setMetadata(k, v);
+    model.addNode(node);
+  }
+  const api = makeApi(model);
+  spec.finalize(api);
+  return { model, api, handle: spec.handle as DashboardHandle };
+}
+
+const PAGE = (id: string, title: string, kid: string): DashboardWidgetSpec => ({
+  id,
+  title,
+  columns: 6,
+  widgets: [{ id: kid, kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 }],
+});
+
+const BOARD = (active?: string, onTabChange?: (c: string, p: string, v: string) => void) =>
+  dashboard({
+    columns: 12,
+    width: 1200,
+    height: 600,
+    gap: 10,
+    rowHeight: 60,
+    ...(onTabChange ? { onTabChange } : {}),
+    widgets: [
+      { id: 'free', kind: 'line', span: 6, rows: 4, x: 0, y: 0 },
+      {
+        id: 'panel',
+        title: 'Side panel',
+        span: 6,
+        rows: 4,
+        x: 6,
+        y: 0,
+        layout: 'tabs',
+        ...(active ? { active } : {}),
+        widgets: [PAGE('p-one', 'Filters', 'k-one'), PAGE('p-two', 'Alerts', 'k-two'), PAGE('p-three', 'Notes', 'k-three')],
+      },
+    ],
+  });
+
+const PARKED = -10000;
+const onCanvas = (model: DiagramModel, ids: string[]) => ids.filter((id) => (model.getNode(id)?.position.x ?? PARKED) > PARKED);
+const strip = (api: { container: HTMLElement }) => api.container.querySelector('.axdb-tabs[data-tabs-id="panel"]') as HTMLElement | null;
+const tabs = (api: { container: HTMLElement }) =>
+  Array.from(strip(api)?.querySelectorAll('.axdb-tab') ?? []).map((t) => ({
+    id: t.getAttribute('data-tab-id'),
+    label: t.textContent,
+    on: t.getAttribute('aria-selected') === 'true',
+  }));
+
+const mounted: DashboardHandle[] = [];
+const up = (spec: DashboardSpec) => {
+  const m = mount(spec);
+  mounted.push(m.handle);
+  return m;
+};
+afterEach(() => {
+  for (const h of mounted.splice(0)) h.dispose();
+  document.body.innerHTML = '';
+});
+
+describe('tab containers', () => {
+  it('mounts one page at a time, with a tab per page', () => {
+    const { api, model, handle } = up(BOARD());
+    expect(tabs(api).map((t) => t.label)).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(tabs(api).filter((t) => t.on).map((t) => t.id)).toEqual(['p-one']);
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+    // only the active page's widget is on the canvas; the rest are parked
+    expect(onCanvas(model, ['k-one', 'k-two', 'k-three'])).toEqual(['k-one']);
+    expect(strip(api)!.getAttribute('role')).toBe('tablist');
+  });
+
+  it('honours an authored `active`, and falls back to the first page when it is not one', () => {
+    expect(up(BOARD('p-three')).handle.getActiveTab('panel')).toBe('p-three');
+    expect(up(BOARD('nope')).handle.getActiveTab('panel')).toBe('p-one');
+  });
+
+  it('a click on a tab switches the page and reports it', () => {
+    const onTabChange = jest.fn();
+    const { api, model, handle } = up(BOARD(undefined, onTabChange));
+    (strip(api)!.querySelector('.axdb-tab[data-tab-id="p-two"]') as HTMLButtonElement).click();
+    expect(handle.getActiveTab('panel')).toBe('p-two');
+    expect(onCanvas(model, ['k-one', 'k-two', 'k-three'])).toEqual(['k-two']);
+    expect(tabs(api).filter((t) => t.on).map((t) => t.id)).toEqual(['p-two']);
+    expect(onTabChange).toHaveBeenCalledWith('panel', 'p-two', 'main');
+    // …and the same page again is a no-op, not a second report
+    (strip(api)!.querySelector('.axdb-tab[data-tab-id="p-two"]') as HTMLButtonElement).click();
+    expect(onTabChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('activateTab drives it from code and refuses what is not a page', () => {
+    const { model, handle } = up(BOARD());
+    expect(handle.activateTab('panel', 'p-three')).toBe(true);
+    expect(onCanvas(model, ['k-one', 'k-two', 'k-three'])).toEqual(['k-three']);
+    expect(handle.activateTab('panel', 'k-one')).toBe(false); // a widget, not a page
+    expect(handle.activateTab('panel', 'nope')).toBe(false);
+    expect(handle.activateTab('free', 'p-one')).toBe(false); // not a tab container
+    expect(handle.getActiveTab('panel')).toBe('p-three');
+    expect(handle.getActiveTab('free')).toBeUndefined();
+  });
+
+  it('the page showing survives toJSON → dashboard() and a serialized document', () => {
+    const first = up(BOARD());
+    first.handle.activateTab('panel', 'p-two');
+    const snap = first.handle.toJSON();
+    const panel = snap.views[0].widgets.find((w) => w.id === 'panel')!;
+    expect(panel.layout).toBe('tabs');
+    expect(panel.active).toBe('p-two');
+    expect(panel.widgets?.map((p) => p.id)).toEqual(['p-one', 'p-two', 'p-three']);
+
+    const second = up(dashboard({ ...snap }));
+    expect(second.handle.getActiveTab('panel')).toBe('p-two');
+    expect(onCanvas(second.model, ['k-one', 'k-two', 'k-three'])).toEqual(['k-two']);
+
+    const json = JSON.stringify(new DiagramSerializer().serialize(first.model));
+    const loaded = fromDocument(json);
+    const api = makeApi(loaded.model as DiagramModel);
+    loaded.finalize(api);
+    mounted.push(loaded.handle as DashboardHandle);
+    expect(loaded.handle!.getActiveTab('panel')).toBe('p-two');
+    expect(loaded.handle!.getLayout('panel')).toBe('tabs');
+  });
+
+  it('the strip is one tab stop: only the active tab is reachable by Tab', () => {
+    const { api } = up(BOARD('p-two'));
+    const stops = Array.from(strip(api)!.querySelectorAll('.axdb-tab')).map((t) => (t as HTMLButtonElement).tabIndex);
+    expect(stops).toEqual([-1, 0, -1]);
+  });
+
+  it('a plain widget among the pages becomes a page of its own', () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          {
+            id: 'panel',
+            title: 'Mixed',
+            span: 12,
+            rows: 4,
+            x: 0,
+            y: 0,
+            layout: 'tabs',
+            widgets: [PAGE('p-one', 'Filters', 'k-one'), { id: 'loose', kind: 'kpi', title: 'Loose', span: 6, rows: 4 }],
+          },
+        ],
+      })
+    );
+    // it gets a tab of its own, named by its title…
+    expect(tabs(api).map((t) => t.label)).toEqual(['Filters', 'Loose']);
+    // …and it is laid out like any page instead of being stranded at the
+    // board origin at its placeholder size, which is what used to happen
+    expect(handle.activateTab('panel', 'loose__page')).toBe(true);
+    const w = model.getNode('loose')!;
+    expect(w.position.x).toBeGreaterThan(PARKED);
+    expect(w.size!.width).toBeGreaterThan(200);
+  });
+
+  it('a wrapped plain child keeps the authored order among real pages', () => {
+    const { api } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          {
+            id: 'panel',
+            title: 'Mixed',
+            span: 12,
+            rows: 4,
+            x: 0,
+            y: 0,
+            layout: 'tabs',
+            // the PLAIN child is declared FIRST, and is wrapped as `loose__page`
+            widgets: [{ id: 'loose', kind: 'kpi', title: 'Loose', span: 6, rows: 4 }, PAGE('p-one', 'Filters', 'k-one')],
+          },
+        ],
+      })
+    );
+    expect(tabs(api).map((t) => t.label)).toEqual(['Loose', 'Filters']);
+  });
+
+  it('a tab container whose children are ALL plain widgets still works', () => {
+    const { api, model } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          { id: 'panel', title: 'All plain', span: 12, rows: 4, x: 0, y: 0, layout: 'tabs', widgets: [
+            { id: 'w1', kind: 'kpi', title: 'One', span: 12, rows: 4 },
+            { id: 'w2', kind: 'kpi', title: 'Two', span: 12, rows: 4 },
+          ] },
+        ],
+      })
+    );
+    expect(tabs(api).map((t) => t.label)).toEqual(['One', 'Two']);
+    expect(model.getNode('w1')!.size!.width).toBeGreaterThan(200);
+  });
+
+  it('the tabs come from LIVE membership, so a page that leaves takes its tab with it', () => {
+    const { api, model, handle } = up(BOARD());
+    expect(tabs(api).map((t) => t.label)).toEqual(['Filters', 'Alerts', 'Notes']);
+    // tear p-two out of the container the way a drop on the parent board does
+    model.getGroup('panel')!.removeMember('p-two');
+    expect(tabs(api).map((t) => t.label)).toEqual(['Filters', 'Notes']);
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+  });
+
+  it('a DRAG on a tab is not a click: the page does not switch', () => {
+    const { api, handle } = up(BOARD());
+    const tab = strip(api)!.querySelector('.axdb-tab[data-tab-id="p-three"]') as HTMLElement;
+    const at = (el: HTMLElement, type: string, x: number) =>
+      el.dispatchEvent(
+        Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: 10 }), { pointerId: 1 })
+      );
+    at(tab, 'pointerdown', 100);
+    at(tab, 'pointermove', 140); // well past the threshold
+    at(tab, 'pointerup', 140);
+    (tab as HTMLButtonElement).click();
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+    // …while a press that does NOT travel is still a plain click
+    const near = strip(api)!.querySelector('.axdb-tab[data-tab-id="p-two"]') as HTMLElement;
+    at(near, 'pointerdown', 60);
+    at(near, 'pointerup', 61);
+    (near as HTMLButtonElement).click();
+    expect(handle.getActiveTab('panel')).toBe('p-two');
+  });
+
+  it('a drag the board REFUSES (a STATIC split board) leaves the press a plain click', () => {
+    // A refused drag must not swallow the click, or a tab container on a
+    // static pane would stop switching pages altogether. (A split board that
+    // is not static places the page as a pane since 0.4.37 — see the split
+    // describe at the end.)
+    const { api, handle, model } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        layout: 'split',
+        static: true,
+        widgets: [
+          { id: 'other', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 },
+          {
+            id: 'panel',
+            title: 'Side panel',
+            span: 6,
+            rows: 4,
+            x: 6,
+            y: 0,
+            layout: 'tabs',
+            widgets: [PAGE('p-one', 'Filters', 'k-one'), PAGE('p-two', 'Alerts', 'k-two')],
+          },
+        ],
+      })
+    );
+    const tab = strip(api)!.querySelector('.axdb-tab[data-tab-id="p-two"]') as HTMLElement;
+    const at = (type: string, x: number, y = 10) =>
+      tab.dispatchEvent(
+        Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 })
+      );
+    at('pointerdown', 700);
+    at('pointermove', 660);
+    window.dispatchEvent(Object.assign(new MouseEvent('pointermove', { bubbles: true, clientX: 30, clientY: 300 }), { pointerId: 1 }));
+    window.dispatchEvent(Object.assign(new MouseEvent('pointerup', { bubbles: true, clientX: 30, clientY: 300 }), { pointerId: 1 }));
+    (tab as HTMLButtonElement).click();
+    expect(handle.getActiveTab('panel')).toBe('p-two');
+    expect(model.getGroup('p-two__group')).toBeUndefined();
+    expect(api.container.querySelector('.axdb-tab-chip')).toBeNull();
+  });
+
+  // -- tearing a tab out: VS Code's "drag a tab out and it becomes a group of its own" --
+  // The board commits through the command manager, which settles a task later.
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const dragTab = async (api: { container: HTMLElement }, containerId: string, pageId: string, to: { x: number; y: number }) => {
+    const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(tab, 'pointerdown', 700, 10);
+    ev(tab, 'pointermove', 700 - 40, 10); // past the threshold: the strip hands the press to the board
+    ev(window, 'pointermove', to.x, to.y);
+    ev(window, 'pointerup', to.x, to.y);
+    tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await settle();
+  };
+  /** Press a tab and carry it to `to` WITHOUT releasing — the held state is what the previews are judged on. */
+  const holdTabFrom = async (api: { container: HTMLElement }, containerId: string, pageId: string, from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(tab, 'pointerdown', from.x, from.y);
+    ev(tab, 'pointermove', from.x - 40, from.y);
+    ev(window, 'pointermove', to.x, to.y);
+    await settle();
+    return {
+      move: async (p: { x: number; y: number }) => { ev(window, 'pointermove', p.x, p.y); await settle(); },
+      release: async () => { ev(window, 'pointerup', to.x, to.y); tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); await settle(); },
+    };
+  };
+  const overlayRect = (api: { container: HTMLElement }) => {
+    const el = api.container.querySelector('.axdb-join') as HTMLElement | null;
+    return el ? { x: parseFloat(el.style.left), y: parseFloat(el.style.top), w: parseFloat(el.style.width), h: parseFloat(el.style.height) } : null;
+  };
+  const stripOf = (api: { container: HTMLElement }, id: string) =>
+    Array.from(api.container.querySelectorAll(`.axdb-tabs[data-tabs-id="${id}"] .axdb-tab`)).map((t) => t.textContent);
+  const cm = (api: ReturnType<typeof makeApi>) => api.getEngine().commandManager;
+
+  it('a tab dragged onto the board becomes a ONE-TAB GROUP of its own, and undo puts it back', async () => {
+    const { api, model, handle } = up(BOARD());
+    await dragTab(api, 'panel', 'p-three', { x: 150, y: 400 });
+    // the page left its container and arrived inside a new tab container
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts']);
+    expect(handle.getLayout('p-three__group')).toBe('tabs');
+    expect(stripOf(api, 'p-three__group')).toEqual(['Notes']);
+    expect(handle.getActiveTab('p-three__group')).toBe('p-three');
+    expect(model.getGroup('p-three__group')!.members!.has('p-three')).toBe(true);
+    expect(model.getGroup('panel')!.members!.has('p-three')).toBe(false);
+    // its widget is on the canvas, under the new group's strip
+    const w = model.getNode('k-three')!;
+    const g = model.getGroup('p-three__group')!;
+    expect(w.position.x).toBeGreaterThan(PARKED);
+    expect(w.position.y).toBeGreaterThanOrEqual(g.position.y + 18);
+    // it serialises as a tab container holding the page, beside the one it left
+    const snap = handle.toJSON().views[0].widgets;
+    const born = snap.find((x) => x.id === 'p-three__group')!;
+    expect(born.layout).toBe('tabs');
+    expect(born.widgets?.map((p) => p.id)).toEqual(['p-three']);
+    expect(snap.find((x) => x.id === 'panel')!.widgets?.map((p) => p.id)).toEqual(['p-one', 'p-two']);
+    // ONE undo: the group is gone, the tab is back, the page is parked again
+    await cm(api).undo();
+    await settle();
+    expect(model.getGroup('p-three__group')).toBeUndefined();
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(api.container.querySelector('.axdb-tabs[data-tabs-id="p-three__group"]')).toBeNull();
+    expect(handle.toJSON().views[0].widgets.some((x) => x.id === 'p-three__group')).toBe(false);
+    expect(model.getGroup('panel')!.members!.has('p-three')).toBe(true);
+    // …and redo brings it back exactly
+    await cm(api).redo();
+    await settle();
+    expect(stripOf(api, 'p-three__group')).toEqual(['Notes']);
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts']);
+  });
+
+  it('a tab torn out of the one-tab group it was BORN into lands again: a fresh group id, the emptied one closes, undo x2 restores', async () => {
+    // The plan named the arriving group `${pageId}__group` — the id of the
+    // group the page was leaving when that group had been born from the same
+    // page. AddGroup threw "already exists" mid-batch, the split preview
+    // stayed applied and the chip stayed on screen (the user's live report:
+    // "once I release the tab widget disappears").
+    const { api, model, handle } = up(BOARD());
+    await dragTab(api, 'panel', 'p-three', { x: 150, y: 400 });
+    expect(stripOf(api, 'p-three__group')).toEqual(['Notes']);
+    const bornBefore = cellOf(handle, 'p-three__group')!;
+    await dragTabFrom(api, 'p-three__group', 'p-three', { x: 160, y: 410 }, { x: 900, y: 500 });
+    const groups = Array.from(api.container.querySelectorAll('.axdb-tabs')).map((s) => s.getAttribute('data-tabs-id')!);
+    const born = groups.filter((g) => g !== 'panel');
+    expect(born.length).toBe(1); // one group holds the page — the emptied one is gone
+    expect(stripOf(api, born[0])).toEqual(['Notes']);
+    expect(handle.getLayout(born[0])).toBe('tabs');
+    expect(model.getGroup(born[0])!.members!.has('p-three')).toBe(true);
+    const bornAfter = cellOf(handle, born[0])!;
+    expect(bornAfter.x !== bornBefore.x || bornAfter.y !== bornBefore.y).toBe(true); // it moved
+    expect(onCanvas(model, ['k-one', 'k-two', 'k-three'])).toEqual(['k-one', 'k-three']);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'p-three__group')).toEqual(['Notes']);
+    expect(cellOf(handle, 'p-three__group')).toEqual(bornBefore);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(api.container.querySelectorAll('.axdb-tabs').length).toBe(1);
+  });
+
+  it('SPLIT ABOVE from its own one-tab group: the target keeps the bottom half, the page takes the top in a fresh group, the empty one closes', async () => {
+    // Two 4-column groups and four free columns, so the first landing is a
+    // free cell — not a split of the left group, which would leave it too
+    // small to halve (a 3-row target joins by design).
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        widgets: [
+          { id: 'left', title: 'Left group', span: 4, rows: 6, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('l1', 'Sales', 'k-l1'), PAGE('l2', 'Margin', 'k-l2')] },
+          { id: 'right', title: 'Right group', span: 4, rows: 6, x: 4, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+        ],
+      })
+    );
+    // Notes out of the right group into the free columns
+    await dragTabFrom(api, 'right', 'r2', { x: 600, y: 10 }, { x: 1000, y: 200 });
+    expect(stripOf(api, 'r2__group')).toEqual(['Notes']);
+    const g0 = cellOf(handle, 'r2__group')!;
+    expect(g0.x).toBeGreaterThanOrEqual(8);
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 4, h: 6 });
+    const f = frameOf(model, 'left');
+    // then its only tab onto the TOP third of the left group's body
+    await dragTabFrom(api, 'r2__group', 'r2', { x: 1000, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 30 + (f.h - 30) * 0.08 });
+    const groups = Array.from(api.container.querySelectorAll('.axdb-tabs')).map((s) => s.getAttribute('data-tabs-id')!);
+    const born = groups.filter((g) => g !== 'left' && g !== 'right');
+    expect(born.length).toBe(1);
+    expect(stripOf(api, born[0])).toEqual(['Notes']);
+    expect(cellOf(handle, born[0])).toEqual({ x: 0, y: 0, w: 4, h: 3 });
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 3, w: 4, h: 3 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
+    expect(stripOf(api, 'right')).toEqual(['Filters']);
+    expect(api.container.querySelector('.axdb-tab-chip')).toBeNull();
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 4, h: 6 });
+    expect(stripOf(api, 'r2__group')).toEqual(['Notes']);
+    expect(cellOf(handle, 'r2__group')).toEqual(g0);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(api.container.querySelectorAll('.axdb-tabs').length).toBe(2);
+  });
+
+  it('undo of a tear-out shows the page that was SHOWING before the drag — not the one the container switched to when it left', async () => {
+    // Filters is showing; tearing it out makes the container show Alerts. Undo
+    // put Filters back as a page but left Alerts showing (seen on the live
+    // walk: every undo ended on a different page than the rest frame).
+    const { api, handle } = up(BOARD('p-one'));
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+    await dragTab(api, 'panel', 'p-one', { x: 150, y: 400 });
+    expect(stripOf(api, 'p-one__group')).toEqual(['Filters']);
+    expect(handle.getActiveTab('panel')).toBe('p-two');
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+    expect(onCanvas(api.getModel() as DiagramModel, ['k-one', 'k-two', 'k-three'])).toEqual(['k-one']);
+  });
+
+  it('undo of a JOIN shows the page that was showing in the source before the drag', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        widgets: [
+          { id: 'left', title: 'Left group', span: 4, rows: 6, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('l1', 'Sales', 'k-l1'), PAGE('l2', 'Margin', 'k-l2')] },
+          { id: 'right', title: 'Right group', span: 4, rows: 6, x: 4, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+        ],
+      })
+    );
+    handle.activateTab('right', 'r2');
+    expect(handle.getActiveTab('right')).toBe('r2');
+    const lf = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 600, y: 10 }, { x: lf.x + lf.w * 0.5, y: lf.y + 30 + (lf.h - 30) * 0.5 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+    expect(handle.getActiveTab('right')).toBe('r1');
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(handle.getActiveTab('right')).toBe('r2');
+    expect(handle.getActiveTab('left')).toBe('l1');
+  });
+
+  it('the torn-out group survives toJSON → dashboard() and a saved document', async () => {
+    const first = up(BOARD());
+    await dragTab(first.api, 'panel', 'p-two', { x: 150, y: 400 });
+    const second = up(dashboard({ ...first.handle.toJSON() }));
+    expect(second.handle.getLayout('p-two__group')).toBe('tabs');
+    expect(stripOf(second.api, 'p-two__group')).toEqual(['Alerts']);
+    expect(stripOf(second.api, 'panel')).toEqual(['Filters', 'Notes']);
+    const json = JSON.stringify(new DiagramSerializer().serialize(first.model));
+    const loaded = fromDocument(json);
+    const api = makeApi(loaded.model as DiagramModel);
+    loaded.finalize(api);
+    mounted.push(loaded.handle as DashboardHandle);
+    expect(loaded.handle!.getLayout('p-two__group')).toBe('tabs');
+    expect(stripOf(api, 'p-two__group')).toEqual(['Alerts']);
+  });
+
+  it('tearing the LAST tab out closes the empty container, and undo reopens it', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          { id: 'free', kind: 'line', span: 6, rows: 4, x: 0, y: 0 },
+          { id: 'solo', title: 'Solo', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('p-only', 'Only', 'k-only')] },
+        ],
+      })
+    );
+    await dragTab(api, 'solo', 'p-only', { x: 150, y: 400 });
+    expect(model.getGroup('solo')).toBeUndefined();
+    expect(api.container.querySelector('.axdb-tabs[data-tabs-id="solo"]')).toBeNull();
+    expect(stripOf(api, 'p-only__group')).toEqual(['Only']);
+    expect(handle.toJSON().views[0].widgets.map((x) => x.id).sort()).toEqual(['free', 'p-only__group']);
+    await cm(api).undo();
+    await settle();
+    expect(model.getGroup('solo')!.members!.has('p-only')).toBe(true);
+    expect(stripOf(api, 'solo')).toEqual(['Only']);
+    expect(model.getGroup('p-only__group')).toBeUndefined();
+    expect(handle.toJSON().views[0].widgets.map((x) => x.id).sort()).toEqual(['free', 'solo']);
+  });
+
+  // -- dropping a tab ONTO another group: VS Code's editor moved from the right group to the left --
+  const TWO = () =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      gap: 10,
+      rowHeight: 60,
+      widgets: [
+        { id: 'left', title: 'Left group', span: 6, rows: 6, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('l1', 'Sales', 'k-l1'), PAGE('l2', 'Margin', 'k-l2')] },
+        { id: 'right', title: 'Right group', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+      ],
+    });
+  const dragTabFrom = async (api: { container: HTMLElement }, containerId: string, pageId: string, from: { x: number; y: number }, to: { x: number; y: number }, via: Array<{ x: number; y: number }> = []) => {
+    const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(tab, 'pointerdown', from.x, from.y);
+    ev(tab, 'pointermove', from.x - 40, from.y);
+    for (const v of via) ev(window, 'pointermove', v.x, v.y);
+    ev(window, 'pointermove', to.x, to.y);
+    ev(window, 'pointerup', to.x, to.y);
+    tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await settle();
+  };
+
+  it('a tab dropped onto ANOTHER group joins it as a tab, on the end and active, in one undoable step', async () => {
+    const { api, model, handle } = up(TWO());
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
+    expect(handle.getActiveTab('left')).toBe('l1');
+    // the right group's Notes tab, released over the CENTRE of the left group's body (its outer thirds split)
+    const lf = (() => { const g = model.getGroup('left')!; return { x: g.position.x, y: g.position.y, w: g.size!.width, h: g.size!.height }; })();
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: lf.x + lf.w / 2, y: lf.y + 30 + (lf.h - 30) / 2 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+    expect(stripOf(api, 'right')).toEqual(['Filters']);
+    expect(handle.getActiveTab('left')).toBe('r2');
+    expect(model.getGroup('left')!.members!.has('r2')).toBe(true);
+    expect(model.getGroup('right')!.members!.has('r2')).toBe(false);
+    expect(model.getGroup('r2__group')).toBeUndefined(); // it JOINED, it did not become a group of its own
+    // its widget shows inside the left group; the page it displaced is parked
+    const kr2 = model.getNode('k-r2')!;
+    const left = model.getGroup('left')!;
+    expect(kr2.position.x).toBeGreaterThan(PARKED);
+    expect(kr2.position.x).toBeLessThan(left.position.x + left.size!.width);
+    expect(onCanvas(model, ['k-l1', 'k-l2', 'k-r2'])).toEqual(['k-r2']);
+    // serialised as the left group's third page
+    const snap = handle.toJSON().views[0].widgets;
+    expect(snap.find((w) => w.id === 'left')!.widgets?.map((p) => p.id)).toEqual(['l1', 'l2', 'r2']);
+    expect(snap.find((w) => w.id === 'left')!.active).toBe('r2');
+    expect(snap.find((w) => w.id === 'right')!.widgets?.map((p) => p.id)).toEqual(['r1']);
+    // one undo puts it back — including which tab the left group was showing
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(handle.getActiveTab('left')).toBe('l1');
+    expect(model.getGroup('right')!.members!.has('r2')).toBe(true);
+  });
+
+  it('moving a group\'s LAST tab into another group closes the empty group', async () => {
+    const { api, model, handle } = up(TWO());
+    const centre = () => { const g = model.getGroup('left')!; return { x: g.position.x + g.size!.width / 2, y: g.position.y + 30 + (g.size!.height - 30) / 2 }; };
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, centre());
+    await dragTabFrom(api, 'right', 'r1', { x: 700, y: 10 }, centre());
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes', 'Filters']);
+    expect(model.getGroup('right')).toBeUndefined();
+    expect(api.container.querySelector('.axdb-tabs[data-tabs-id="right"]')).toBeNull();
+    expect(handle.toJSON().views[0].widgets.map((w) => w.id)).toEqual(['left']);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'right')).toEqual(['Filters']);
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+  });
+
+  // -- the four gaps: an empty page closes · a widget dropped on a strip becomes a tab · reorder · a section moves --
+  it('GAP 1: when a page\'s last widget leaves, the page closes — and an emptied group with it', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          { id: 'free', kind: 'line', span: 6, rows: 4, x: 0, y: 0 },
+          { id: 'solo', title: 'Solo', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('p-only', 'Only', 'k-only'), PAGE('p-two', 'Two', 'k-two')] },
+        ],
+      })
+    );
+    handle.widget('k-only')!.remove();
+    await settle();
+    expect(model.getNode('k-only')).toBeUndefined();
+    expect(model.getGroup('p-only')).toBeUndefined();
+    expect(stripOf(api, 'solo')).toEqual(['Two']);
+    expect(handle.getActiveTab('solo')).toBe('p-two');
+    handle.widget('k-two')!.remove();
+    await settle();
+    expect(model.getGroup('solo')).toBeUndefined();
+    expect(api.container.querySelector('.axdb-tabs[data-tabs-id="solo"]')).toBeNull();
+    expect(handle.toJSON().views[0].widgets.map((w) => w.id)).toEqual(['free']);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'solo')).toEqual(['Two']);
+    expect(model.getNode('k-two')).toBeDefined();
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'solo')).toEqual(['Only', 'Two']);
+    expect(model.getGroup('p-only')!.members!.has('k-only')).toBe(true);
+  });
+
+  it('GAP 2: a widget moved onto a strip becomes a new tab there, active, and undo puts it back', async () => {
+    const { api, model, handle } = up(BOARD());
+    expect(await handle.moveToTab('free', 'panel', 1)).toBe(true);
+    await settle();
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'free', 'Alerts', 'Notes']);
+    expect(handle.getActiveTab('panel')).toBe('free__page');
+    expect(model.getGroup('free__page')!.members!.has('free')).toBe(true);
+    expect(model.getGroup('main')!.members!.has('free')).toBe(false);
+    expect(handle.getLayout('free__page')).toBe('grid');
+    // the widget lays out inside its new page, on the canvas
+    const w = model.getNode('free')!;
+    expect(w.position.x).toBeGreaterThan(PARKED);
+    expect(w.size!.width).toBeGreaterThan(200);
+    const snap = handle.toJSON().views[0].widgets;
+    expect(snap.map((x) => x.id)).toEqual(['panel']);
+    expect(snap[0].widgets?.map((p) => p.id)).toEqual(['p-one', 'free__page', 'p-two', 'p-three']);
+    expect(snap[0].widgets?.[1].widgets?.map((x) => x.id)).toEqual(['free']);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(model.getGroup('free__page')).toBeUndefined();
+    expect(model.getGroup('main')!.members!.has('free')).toBe(true);
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+  });
+
+  it('GAP 3: a tab reordered along its own strip keeps the order through toJSON, a saved document and undo', async () => {
+    const first = up(BOARD());
+    expect(first.handle.moveTab('panel', 'p-three', 0)).toBe(true);
+    await settle();
+    expect(stripOf(first.api, 'panel')).toEqual(['Notes', 'Filters', 'Alerts']);
+    expect(first.handle.toJSON().views[0].widgets[1].widgets?.map((p) => p.id)).toEqual(['p-three', 'p-one', 'p-two']);
+    const second = up(dashboard({ ...first.handle.toJSON() }));
+    expect(stripOf(second.api, 'panel')).toEqual(['Notes', 'Filters', 'Alerts']);
+    const json = JSON.stringify(new DiagramSerializer().serialize(first.model));
+    const loaded = fromDocument(json);
+    const api = makeApi(loaded.model as DiagramModel);
+    loaded.finalize(api);
+    mounted.push(loaded.handle as DashboardHandle);
+    expect(stripOf(api, 'panel')).toEqual(['Notes', 'Filters', 'Alerts']);
+    await cm(first.api).undo();
+    await settle();
+    expect(stripOf(first.api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(first.handle.moveTab('panel', 'nope', 0)).toBe(false);
+  });
+
+  it('GAP 4: a section moves as one tile, children with it, undoable', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          { id: 'sec', title: 'Section', span: 6, rows: 2, x: 0, y: 0, columns: 6, caption: true, widgets: [{ id: 's1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0 }] },
+          { id: 'tabs', title: 'Tabs', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('t1', 'One', 'k1')] },
+          { id: 'lone', kind: 'kpi', span: 6, rows: 2, x: 0, y: 2 },
+        ],
+      })
+    );
+    const before = { sec: { ...model.getGroup('sec')!.position }, s1: { ...model.getNode('s1')!.position } };
+    expect(await handle.widget('sec')!.moveTo(0, 2)).toBe(true);
+    expect(handle.widget('sec')!.cell).toEqual({ x: 0, y: 2, w: 6, h: 2 });
+    // the child rode along, and the tile that was there moved out of the way
+    expect(model.getNode('s1')!.position.y).toBeGreaterThan(before.s1.y);
+    expect(model.getGroup('sec')!.position.y).toBeGreaterThan(before.sec.y);
+    expect(handle.widget('lone')!.cell!.y).not.toBe(2);
+    await cm(api).undo();
+    await settle();
+    expect(handle.widget('sec')!.cell).toEqual({ x: 0, y: 0, w: 6, h: 2 });
+    expect(model.getNode('s1')!.position.y).toBe(before.s1.y);
+    // a TAB GROUP is a section too
+    expect(await handle.widget('tabs')!.moveTo(6, 4)).toBe(true);
+    expect(handle.widget('tabs')!.cell).toEqual({ x: 6, y: 4, w: 6, h: 4 });
+  });
+
+  // -- the drop model the docking libraries share: edge splits, root docking, deepest target wins --
+  const frameOf = (model: DiagramModel, id: string) => { const g = model.getGroup(id)!; return { x: g.position.x, y: g.position.y, w: g.size!.width, h: g.size!.height }; };
+  const cellOf = (handle: DashboardHandle, id: string) => handle.widget(id)?.cell ?? null;
+
+  it('SPLIT: a tab dropped on another group\'s RIGHT third splits it — the target keeps the left half, the page takes the right, undoable', async () => {
+    const { api, model, handle } = up(TWO());
+    const before = cellOf(handle, 'left')!;
+    expect(before).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+    const f = frameOf(model, 'left');
+    // the right third of the body, mid-height
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.9, y: f.y + 30 + (f.h - 30) * 0.5 });
+    expect(stripOf(api, 'right')).toEqual(['Filters']);
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']); // it did NOT join
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 3, h: 6 });
+    expect(cellOf(handle, 'r2__group')).toEqual({ x: 3, y: 0, w: 3, h: 6 });
+    expect(stripOf(api, 'r2__group')).toEqual(['Notes']);
+    expect(handle.getLayout('r2__group')).toBe('tabs');
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'left')).toEqual(before);
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+  });
+
+  it('SPLIT: the BOTTOM third stacks the page under the target; the top third puts it above', async () => {
+    const { api, model, handle } = up(TWO());
+    let f = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 30 + (f.h - 30) * 0.92 });
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 3 });
+    expect(cellOf(handle, 'r2__group')).toEqual({ x: 0, y: 3, w: 6, h: 3 });
+    await cm(api).undo();
+    await settle();
+    f = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 30 + (f.h - 30) * 0.08 });
+    expect(cellOf(handle, 'r2__group')).toEqual({ x: 0, y: 0, w: 6, h: 3 });
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 3, w: 6, h: 3 });
+  });
+
+  it('SPLIT: the centre third still JOINS, and a group too small to halve joins instead of splitting', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        widgets: [
+          { id: 'thin', title: 'Thin', span: 1, rows: 6, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('t1', 'One', 'k-t1')] },
+          { id: 'right', title: 'Right group', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+        ],
+      })
+    );
+    const f = frameOf(model, 'thin');
+    // aim at its right third: one column cannot be halved, so it joins
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.9, y: f.y + 30 + (f.h - 30) * 0.5 });
+    expect(stripOf(api, 'thin')).toEqual(['One', 'Notes']);
+    expect(cellOf(handle, 'thin')).toEqual({ x: 0, y: 0, w: 1, h: 6 });
+    expect(model.getGroup('r2__group')).toBeUndefined();
+  });
+
+  it('a SPLIT is previewed with an OVERLAY ONLY: the target keeps its cell while the tab is held on its LEFT band, and takes the born column on release (the put-back the user could not do)', async () => {
+    // The fluid demo after Filters was torn out beside the side panel: the page
+    // dragged back onto the panel's left band. The preview used to halve the
+    // panel live — it jumped to its other half, in one frame off the screen —
+    // so the panel ran away from under the pointer as the page approached.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('rev', 6, 2, 0, 0), K('reps', 6, 4, 0, 2),
+          { id: 'mid', title: 'Mid', span: 3, rows: 5, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('pf', 'Filters', 'k-pf')] },
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('pa', 'Alerts', 'k-pa'), PAGE('pn', 'Notes', 'k-pn')] },
+        ],
+      })
+    );
+    const side0 = cellOf(handle, 'side')!;
+    expect(side0).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    const f = frameOf(model, 'side');
+    const held = await holdTabFrom(api, 'mid', 'pf', { x: 620, y: 10 }, { x: f.x + 20, y: f.y + 30 + (f.h - 30) * 0.4 });
+    // held on the left band: the panel has NOT moved, the overlay marks the born column, no grid placeholder
+    expect(cellOf(handle, 'side')).toEqual(side0);
+    expect(frameOf(model, 'side')).toEqual(f);
+    expect(cellOf(handle, 'rev')).toEqual({ x: 0, y: 0, w: 6, h: 2 });
+    const ov = overlayRect(api)!;
+    expect(ov).not.toBeNull();
+    expect(Math.round(ov.x)).toBe(Math.round(f.x));
+    expect(ov.w).toBeLessThan(f.w / 2);
+    expect(Math.round(ov.h)).toBe(Math.round(f.h));
+    expect(api.container.querySelector('.axdb-ph')).toBeNull();
+    expect((api.container.ownerDocument.querySelector('.axdb-tab-chip') as HTMLElement).classList.contains('axdb-out')).toBe(false);
+    await held.release();
+    // released: the panel keeps its two right columns, the page's fresh group takes the left one, the emptied group closed
+    expect(cellOf(handle, 'side')).toEqual({ x: 10, y: 0, w: 2, h: 8 });
+    expect(cellOf(handle, 'pf__group')).toEqual({ x: 9, y: 0, w: 1, h: 8 });
+    expect(stripOf(api, 'pf__group')).toEqual(['Filters']);
+    expect(stripOf(api, 'side')).toEqual(['Alerts', 'Notes']);
+    expect(model.getGroup('mid')).toBeUndefined();
+    expect(cellOf(handle, 'rev')).toEqual({ x: 0, y: 0, w: 6, h: 2 });
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'side')).toEqual(side0);
+    expect(stripOf(api, 'mid')).toEqual(['Filters']);
+  });
+
+  it('the edge bands are a FIFTH of the body, not a third: a quarter of the way down a group JOINS it, 15% splits above', async () => {
+    const { api, model, handle } = up(TWO());
+    let f = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 30 + (f.h - 30) * 0.25 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+    await cm(api).undo();
+    await settle();
+    f = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 30 + (f.h - 30) * 0.15 });
+    expect(cellOf(handle, 'r2__group')).toEqual({ x: 0, y: 0, w: 6, h: 3 });
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 3, w: 6, h: 3 });
+    // and sideways: 25% in from the right edge joins, 15% splits
+    await cm(api).undo();
+    await settle();
+    f = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.75, y: f.y + 30 + (f.h - 30) * 0.5 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+    await cm(api).undo();
+    await settle();
+    f = frameOf(model, 'left');
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.85, y: f.y + 30 + (f.h - 30) * 0.5 });
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 3, h: 6 });
+    expect(cellOf(handle, 'r2__group')).toEqual({ x: 3, y: 0, w: 3, h: 6 });
+  });
+
+  it('a top DOCK is previewed with an overlay only: nothing moves while the tab is held on the board\'s top band; the rows are inserted on release', async () => {
+    const { api, model, handle } = up(TWO());
+    const f0 = frameOf(model, 'left');
+    const held = await holdTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 4 });
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+    expect(cellOf(handle, 'right')).toEqual({ x: 6, y: 0, w: 6, h: 6 });
+    expect(frameOf(model, 'left')).toEqual(f0);
+    expect(api.container.querySelector('.axdb-ph')).toBeNull();
+    const ov = overlayRect(api)!;
+    expect(ov).not.toBeNull();
+    expect(Math.round(ov.y)).toBe(Math.round(f0.y)); // the band sits on the first row, where the group still is
+    expect(ov.w).toBeGreaterThan(1100);
+    expect((api.container.ownerDocument.querySelector('.axdb-tab-chip') as HTMLElement).classList.contains('axdb-out')).toBe(false);
+    await held.release();
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born).toMatchObject({ x: 0, y: 0, w: 12 });
+    expect(cellOf(handle, 'left')!.y).toBe(born.h);
+    expect(cellOf(handle, 'right')!.y).toBe(born.h);
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+  });
+
+  it('ROOT DOCK: a tab dropped on the board\'s TOP edge docks a full-width group there, pushing the rest down', async () => {
+    const { api, model, handle } = up(TWO());
+    // the board group is at (0,0); the top band is the first 20 px of the visible canvas
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 4 });
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born.x).toBe(0);
+    expect(born.y).toBe(0);
+    expect(born.w).toBe(12);
+    expect(born.h).toBeGreaterThanOrEqual(2);
+    expect(cellOf(handle, 'left')!.y).toBe(born.h);
+    expect(cellOf(handle, 'right')!.y).toBe(born.h);
+    expect(stripOf(api, 'right')).toEqual(['Filters']);
+    // the accent overlay is gone with the drop — it stayed painted over the
+    // board through every later gesture (identification round, D8/D9)
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+    await cm(api).undo();
+    await settle();
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(cellOf(handle, 'left')!.y).toBe(0);
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+  });
+
+  it('ROOT DOCK: the LEFT edge docks a full-height group at column 0', async () => {
+    const { api, handle } = up(TWO());
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 8, y: 200 });
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born.x).toBe(0);
+    expect(born.y).toBe(0);
+    expect(born.h).toBe(6); // as tall as the board's rows
+    expect(born.w).toBeGreaterThanOrEqual(2);
+    expect(cellOf(handle, 'left')!.y).toBeGreaterThan(0); // pushed out of the way
+  });
+
+  it('ROOT DOCK: a ghost that sat mid-board still docks FULL width — the cell is taken in an order that fits', async () => {
+    const { api, handle } = up(TWO());
+    // Held below the board first: the ghost enters at the pointer's column,
+    // well right of 0. Growing it to 12 columns THERE is clamped by the
+    // board's edge, so the dock must move it to column 0 before it grows.
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 4 }, [{ x: 800, y: 700 }]);
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born).toBeTruthy();
+    expect(born.x).toBe(0);
+    expect(born.y).toBe(0);
+    expect(born.w).toBe(12);
+    expect(cellOf(handle, 'left')!.y).toBe(born.h);
+    expect(cellOf(handle, 'right')!.y).toBe(born.h);
+  });
+
+  it('ROOT DOCK: the docked group takes at most HALF the board\'s rows — a split, not the page\'s full height', async () => {
+    const { api, handle } = up(TWO());
+    // The page is 4 rows tall plus its strip; the board is 6 rows. Docked at
+    // the top it takes 3, the way VS Code's edge drop splits the area in two.
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 4 });
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born).toBeTruthy();
+    expect(born.w).toBe(12);
+    expect(born.h).toBeGreaterThanOrEqual(2);
+    expect(born.h).toBeLessThanOrEqual(3);
+    expect(cellOf(handle, 'left')!.y).toBe(born.h);
+  });
+
+  it('ROOT DOCK: a top dock INSERTS rows — every tile keeps its column and moves down by exactly the band\'s height', async () => {
+    // The fluid-board demo's layout. The engine's push cascade resolved these
+    // collisions one tile at a time and tore the KPI row apart (two of its
+    // tiles ended under the chart); an edge dock shoves the whole area down
+    // intact, the way VS Code's does.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow', // the demo's board: full, and it grows
+        widgets: [
+          K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('win', 2, 1, 4, 0), K('nps', 2, 1, 6, 0),
+          K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          K('reps', 5, 3, 0, 4), K('funnel', 4, 3, 5, 4),
+          { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9, widgets: [K('orders', 4, 1, 0, 0)] },
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+        ],
+      })
+    );
+    const rest: Record<string, { x: number; y: number; w: number; h: number }> = {};
+    for (const id of ['rev', 'cust', 'win', 'nps', 'trend', 'mix', 'reps', 'funnel', 'ops', 'side']) rest[id] = cellOf(handle, id)!;
+    expect(rest['trend']).toEqual({ x: 0, y: 1, w: 6, h: 3 });
+    const tab = api.container.querySelector('.axdb-tabs[data-tabs-id="side"] .axdb-tab[data-tab-id="p2"]') as HTMLElement;
+    expect(tab).toBeTruthy();
+    await dragTabFrom(api, 'side', 'p2', { x: 1000, y: 10 }, { x: 400, y: 4 });
+    const born = cellOf(handle, 'p2__group')!;
+    expect(born).toBeTruthy();
+    expect(born).toEqual(expect.objectContaining({ x: 0, y: 0, w: 12 }));
+    for (const [id, c] of Object.entries(rest)) expect({ id, cell: cellOf(handle, id) }).toEqual({ id, cell: { ...c, y: c.y + born.h } });
+    await cm(api).undo();
+    await settle();
+    expect(model.getGroup('p2__group')).toBeUndefined();
+    for (const [id, c] of Object.entries(rest)) expect({ id, cell: cellOf(handle, id) }).toEqual({ id, cell: c });
+  });
+
+  it('an OUTSIDE widget dragged into a FULL page\'s body is taken — the page squeezes its rows and the widget under the pointer moves down', async () => {
+    // The fluid demo: a 2×1 KPI dragged onto Region in the Filters page, whose
+    // two 4-row KPIs fill all 8 rows. The bound page refused the adoption and
+    // showed NOTHING; a fit board squeezes for a tile that arrives by hand.
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          { id: 'nps', kind: 'kpi', span: 2, rows: 1, x: 0, y: 0 },
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [
+            { id: 'p1', title: 'Filters', columns: 3, widgets: [{ id: 'k1', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0 }, { id: 'k2', kind: 'kpi', span: 3, rows: 4, x: 0, y: 4 }] },
+            { id: 'p2', title: 'Alerts', columns: 3, widgets: [{ id: 'k3', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0 }] },
+          ] },
+        ],
+      })
+    );
+    const pathOf = (id: string): string | null => {
+      const walk = (ws: Array<{ id: string; widgets?: unknown[] }> | undefined, path: string[]): string[] | null => {
+        for (const w of ws ?? []) {
+          if (w.id === id) return [...path, w.id];
+          const r = walk(w.widgets as Array<{ id: string; widgets?: unknown[] }> | undefined, [...path, w.id]);
+          if (r) return r;
+        }
+        return null;
+      };
+      for (const v of handle.toJSON().views) {
+        const r = walk(v.widgets as Array<{ id: string; widgets?: unknown[] }>, [v.id]);
+        if (r) return r.join(' > ');
+      }
+      return null;
+    };
+    expect(pathOf('nps')).toBe('main > nps');
+    const page = frameOf(model, 'p1');
+    const k1 = model.getNode('k1')!;
+    const overK1 = { x: k1.position.x + k1.size.width / 2, y: k1.position.y + k1.size.height / 2 };
+    expect(overK1.x).toBeGreaterThan(page.x);
+    expect(overK1.y).toBeGreaterThan(page.y);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    const hit = { node: nps, empty: false };
+    tool.onPointerDown?.(tev('down', from.x, from.y), hit);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 30), hit);
+    tool.onPointerMove?.(tev('move', overK1.x, overK1.y), hit);
+    tool.onPointerMove?.(tev('move', overK1.x + 1, overK1.y + 1), hit);
+    tool.onPointerUp?.(tev('up', overK1.x + 1, overK1.y + 1), hit);
+    await settle();
+    expect(pathOf('nps')).toBe('main > side > p1 > nps');
+    // the page took it above Region (Region moved down), and holds more rows than its 8-row design
+    const k1After = cellOf(handle, 'k1')!;
+    const npsAfter = cellOf(handle, 'nps')!;
+    expect(k1After.y).toBeGreaterThan(0);
+    expect(npsAfter.y).toBeLessThan(k1After.y);
+    expect(cellOf(handle, 'k2')!.y).toBe(k1After.y + k1After.h);
+    await cm(api).undo();
+    await settle();
+    expect(pathOf('nps')).toBe('main > nps');
+    expect(cellOf(handle, 'k1')).toEqual({ x: 0, y: 0, w: 3, h: 4 });
+    expect(cellOf(handle, 'k2')).toEqual({ x: 0, y: 4, w: 3, h: 4 });
+  });
+
+  it('the board\'s tool CLAIMS a press on its container\'s tab strip and does nothing with it — the renderer must neither select nor pan under a tab drag', async () => {
+    // ownsPress declined strip presses ("a tab strip is content"), so NO tool
+    // claimed them and the renderer's ladder armed its empty-canvas pan: the
+    // camera slid 10–20 px under every tab drag (the identification round's
+    // drift family — a reorder mark lost after a detour, a release outside the
+    // canvas that committed, the strip end reading as the right band).
+    const { api, model, handle } = up(TWO());
+    const tool = toolOf('main');
+    const tab = api.container.querySelector('.axdb-tabs[data-tabs-id="left"] .axdb-tab[data-tab-id="l2"]') as HTMLElement;
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="left"]') as HTMLElement;
+    const f = frameOf(model, 'left');
+    const on = (type: ToolPointerEvent['type'], target: Element, x: number, y: number): ToolPointerEvent => ({ ...tev(type, x, y), source: { target } as unknown as PointerEvent });
+    const hit = { empty: true };
+    expect(tool.hitTest(on('down', tab, f.x + 60, f.y + 12), hit)).toBe(true);
+    expect(tool.hitTest(on('down', strip, f.x + f.w - 20, f.y + 12), hit)).toBe(true);
+    tool.onPointerDown?.(on('down', tab, f.x + 60, f.y + 12), hit);
+    tool.onPointerMove?.(on('move', tab, f.x + 120, f.y + 40), hit);
+    tool.onPointerUp?.(on('up', tab, f.x + 120, f.y + 40), hit);
+    await settle();
+    expect(api.container.querySelector('.axdb-ph')).toBeNull();
+    expect(handle.getSelectedWidget()).toBeUndefined();
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
+  });
+
+  it('a tab released OUTSIDE the canvas cancels even when the camera has shifted — the off-board test is on the screen', async () => {
+    const { api, model, handle } = up(TWO());
+    const rect = { left: 0, top: 0, right: 1200, bottom: 600, width: 1200, height: 600, x: 0, y: 0, toJSON: () => ({}) };
+    Object.defineProperty(api.container, 'getBoundingClientRect', { value: () => rect, configurable: true });
+    // camera 300 px down the board: a client point 100 px ABOVE the canvas still maps to world y 200, inside the board
+    (api as unknown as { viewport: { clientToWorld: (x: number, y: number) => { x: number; y: number } } }).viewport.clientToWorld = (x, y) => ({ x, y: y + 300 });
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: -100 }, [{ x: 400, y: 300 }]);
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+  });
+
+  it('ROOT DOCK: a side dock is as tall as the board WAS, and leaves no overlay behind — the ghost\'s own displacement inflates neither', async () => {
+    // The identification round: after the ghost had pushed tiles about, the
+    // side and bottom docks read the DISPLACED layout — overlays 1950 → 2930
+    // px tall, a bottom dock landing at row 29, a panel pushed 96 rows down —
+    // and the re-applied zone at release left its overlay painted.
+    const { api, model, handle } = up(TWO());
+    // parked mid-board first (the ghost enters and pushes), then the left band
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 8, y: 300 }, [{ x: 300, y: 300 }]);
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born).toBeTruthy();
+    expect(born.x).toBe(0);
+    expect(born.y).toBe(0);
+    expect(born.h).toBe(6); // the board's rows at the press, not after the ghost's pushing
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+    await cm(api).undo();
+    await settle();
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+  });
+
+  it('a torn-out page travels at most HALF the board tall — an 8-row ghost crossing the KPI row tore the whole dashboard apart', async () => {
+    const { api } = up(TWO());
+    // press Notes, travel past the threshold, hold below both groups on free board space
+    const tab = api.container.querySelector('.axdb-tabs[data-tabs-id="right"] .axdb-tab[data-tab-id="r2"]') as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(tab, 'pointerdown', 900, 10);
+    ev(tab, 'pointermove', 860, 10);
+    ev(window, 'pointermove', 300, 640);
+    await settle();
+    const ph = api.container.querySelector('.axdb-ph') as HTMLElement | null;
+    expect(ph).toBeTruthy();
+    // 6-row board, 60 px rows, 10 px gap: half = 3 rows = 200 px; the page's natural height is 4 rows + its strip
+    expect(parseFloat(ph!.style.height)).toBeLessThanOrEqual(3 * 70 - 10 + 1);
+    ev(window, 'pointercancel', 300, 640);
+    await settle();
+  });
+
+  it('a landing cell that would sit OFF-SCREEN dims the chip and the release cancels — nothing lands a screen away', async () => {
+    // Two full groups over a full-width FIT section: the pointer over the
+    // section has no cell there, and the fallback used to grow the ghost back
+    // to its natural height BELOW the section — out of view, the drop landing
+    // where the user could not see it (identification round, D1 hold3).
+    // (A GROW section would take the page by growing for it — D4, step 5a.)
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 500,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          { id: 'left', title: 'Left group', span: 6, rows: 4, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('l1', 'Sales', 'k-l1')] },
+          { id: 'right', title: 'Right group', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+          // FIT, so it cannot grow for the arrival (D4 is a GROW container's rule): full is full,
+          // and the only cell left is below the fold — which is what this guard is about.
+          { id: 'wall', title: 'Wall', span: 12, rows: 2, x: 0, y: 4, columns: 12, sizing: 'fit', widgets: [{ id: 'w1', kind: 'kpi', span: 12, rows: 2, x: 0, y: 0 }] },
+        ],
+      })
+    );
+    // the canvas ends at 420 px: the only cell left, row 6 (from 430 px), has no visible pixel
+    const rect = { left: 0, top: 0, right: 1200, bottom: 420, width: 1200, height: 420, x: 0, y: 0, toJSON: () => ({}) };
+    Object.defineProperty(api.container, 'getBoundingClientRect', { value: () => rect, configurable: true });
+    const tab = api.container.querySelector('.axdb-tabs[data-tabs-id="right"] .axdb-tab[data-tab-id="r2"]') as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(tab, 'pointerdown', 900, 10);
+    ev(tab, 'pointermove', 860, 10);
+    ev(window, 'pointermove', 300, 330); // over the wall: rows 4-5, no room above it, the only room is BELOW the visible canvas
+    await settle();
+    const chip = document.querySelector('.axdb-tab-chip') as HTMLElement | null;
+    expect(chip).toBeTruthy();
+    expect(chip!.classList.contains('axdb-out')).toBe(true);
+    ev(window, 'pointerup', 300, 330);
+    await settle();
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(cellOf(handle, 'wall')).toEqual({ x: 0, y: 4, w: 12, h: 2 });
+  });
+
+  it('a SECTION moved by its caption band PUSHES the group in its way and lands where it was asked (0.4.44 — it used to be refused there and slide along its row)', async () => {
+    // The fluid demo's Operations section (9 columns) grabbed 60 px from its
+    // left edge and carried over the chart: the cell under the pointer put
+    // its right edge into the locked side panel, E4b refused every cell and
+    // the section did not move at all — with nothing on screen to say why.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          { id: 'ops', title: 'Operations', caption: true, span: 9, rows: 1, x: 0, y: 5, columns: 9, widgets: [K('orders', 4, 1, 0, 0)] },
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1')] },
+        ],
+      })
+    );
+    const band = api.container.querySelector('.axdb-slab[data-slab-id="ops"] > .axdb-slab-h') as HTMLElement;
+    expect(band).toBeTruthy();
+    const ops = model.getGroup('ops')!;
+    const tool = toolOf('main');
+    const on = (type: ToolPointerEvent['type'], x: number, y: number): ToolPointerEvent => ({ ...tev(type, x, y), source: { target: band } as unknown as PointerEvent });
+    const hit = { empty: true };
+    // grabbed 60 px in from the section's left edge, carried up over the chart at x ≈ 380 → its left edge wants column 3, its right edge column 12: the side panel's
+    const press = { x: ops.position.x + 60, y: ops.position.y + 20 };
+    tool.onPointerDown?.(on('down', press.x, press.y), hit);
+    tool.onPointerMove?.(on('move', press.x + 30, press.y - 30), hit);
+    tool.onPointerMove?.(on('move', 380, 130), hit);
+    tool.onPointerMove?.(on('move', 381, 131), hit);
+    tool.onPointerUp?.(on('up', 381, 131), hit);
+    await settle();
+    // 0.4.44: the panel gives way. The section lands where it was asked —
+    // its left edge at column 3 — and the side panel is pushed below it;
+    // it used to be refused there and slid left along its row instead.
+    const after = cellOf(handle, 'ops')!;
+    expect(after.x).toBe(3);
+    expect(after.y).toBeLessThan(5); // moved up as asked
+    expect(after.w).toBe(9);
+    const side = cellOf(handle, 'side')!;
+    expect(side.x).toBe(9);
+    expect(side.y).toBeGreaterThanOrEqual(after.y + after.h);
+    expect(side.w).toBe(3);
+    expect(side.h).toBe(8);
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 5, w: 9, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+  });
+
+  it('a widget dragged OUT of an inner tab page survives the re-layout its own crossing causes — the gesture lives on and the drop lands in the section', async () => {
+    // The deep lab board: IA (inside Inner A, tabs inside the Nested page)
+    // dragged over the sibling Inner section. Adopting it re-laid the Nested
+    // page, the inner tabs container moved, its pages were re-placed, the
+    // inner page's binder REBUILT and cancelled its own gesture mid-drag: the
+    // ghost class dropped, the leg's placeholder leaked through release and
+    // undo, and the widget went nowhere (identification round, L5).
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 50,
+        sizing: 'grow',
+        widgets: [
+          K('w1', 3, 2, 0, 0),
+          { id: 'dp', title: 'Deep tabs', span: 6, rows: 6, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+            { id: 'dp-nested', title: 'Nested page', columns: 6, widgets: [
+              { id: 'dp-inner', title: 'Inner section', caption: true, span: 6, rows: 3, x: 0, y: 0, columns: 6, widgets: [K('dp-i1', 3, 2, 0, 0)] },
+              { id: 'dp-intabs', title: 'Inner tabs', span: 6, rows: 3, x: 0, y: 3, columns: 6, layout: 'tabs', widgets: [
+                { id: 'dp-ip1', title: 'Inner A', columns: 6, widgets: [K('dp-ia', 3, 2, 0, 0)] }, // 3 wide: it fits beside I1 in the section
+                { id: 'dp-ip2', title: 'Inner B', columns: 6, widgets: [K('dp-ib', 6, 2, 0, 0)] },
+              ] },
+            ] },
+          ] },
+        ],
+      })
+    );
+    const pathOf = (id: string): string | null => {
+      const walk = (ws: Array<{ id: string; widgets?: unknown[] }> | undefined, path: string[]): string[] | null => {
+        for (const w of ws ?? []) {
+          if (w.id === id) return [...path, w.id];
+          const r = walk(w.widgets as Array<{ id: string; widgets?: unknown[] }> | undefined, [...path, w.id]);
+          if (r) return r;
+        }
+        return null;
+      };
+      for (const v of handle.toJSON().views) {
+        const r = walk(v.widgets as Array<{ id: string; widgets?: unknown[] }>, [v.id]);
+        if (r) return r.join(' > ');
+      }
+      return null;
+    };
+    expect(pathOf('dp-ia')).toBe('main > dp > dp-nested > dp-intabs > dp-ip1 > dp-ia');
+    const ia = model.getNode('dp-ia')!;
+    const i1 = model.getNode('dp-i1')!;
+    const sec = frameOf(model, 'dp-inner');
+    // the inner section's free right half, beside I1
+    const target = { x: sec.x + sec.w * 0.75, y: i1.position.y + i1.size.height / 2 };
+    const tool = toolOf('dp-ip1');
+    const hit = { node: ia, empty: false };
+    const from = { x: ia.position.x + 30, y: ia.position.y + 20 };
+    tool.onPointerDown?.(tev('down', from.x, from.y), hit);
+    tool.onPointerMove?.(tev('move', from.x + 20, from.y - 20), hit);
+    for (let i = 1; i <= 6; i++) tool.onPointerMove?.(tev('move', from.x + (target.x - from.x) * i / 6, from.y + (target.y - from.y) * i / 6), hit);
+    await settle();
+    // mid-drag: the widget is OFF its page (adopted elsewhere), the gesture alive
+    expect(cellOf(handle, 'dp-ia')).toBeNull();
+    tool.onPointerMove?.(tev('move', target.x + 1, target.y), hit);
+    tool.onPointerUp?.(tev('up', target.x + 1, target.y), hit);
+    await settle();
+    expect(pathOf('dp-ia')).toBe('main > dp > dp-nested > dp-inner > dp-ia');
+    expect(api.container.querySelectorAll('.axdb-ph').length).toBe(0);
+    await cm(api).undo();
+    await settle();
+    expect(pathOf('dp-ia')).toBe('main > dp > dp-nested > dp-intabs > dp-ip1 > dp-ia');
+    expect(api.container.querySelectorAll('.axdb-ph').length).toBe(0);
+  });
+
+  it('an INNER tab torn out lands on whichever board is under the pointer — the main board, not only the one owning its container', async () => {
+    // Inner A (tabs inside the Nested page of the Deep tabs container)
+    // dragged onto the main board beside W1: the tear-out only knew the
+    // board owning its container (the Nested page), so over the main board
+    // the chip dimmed and the release did nothing (identification round, L2).
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 50,
+        sizing: 'grow',
+        widgets: [
+          K('w1', 3, 2, 0, 0),
+          { id: 'dp', title: 'Deep tabs', span: 6, rows: 6, x: 6, y: 0, columns: 6, layout: 'tabs', widgets: [
+            { id: 'dp-nested', title: 'Nested page', columns: 6, widgets: [
+              { id: 'dp-inner', title: 'Inner section', caption: true, span: 6, rows: 3, x: 0, y: 0, columns: 6, widgets: [K('dp-i1', 3, 2, 0, 0)] },
+              { id: 'dp-intabs', title: 'Inner tabs', span: 6, rows: 3, x: 0, y: 3, columns: 6, layout: 'tabs', widgets: [
+                { id: 'dp-ip1', title: 'Inner A', columns: 6, widgets: [K('dp-ia', 3, 2, 0, 0)] },
+                { id: 'dp-ip2', title: 'Inner B', columns: 6, widgets: [K('dp-ib', 6, 2, 0, 0)] },
+              ] },
+            ] },
+          ] },
+        ],
+      })
+    );
+    const pathOf = (id: string): string | null => {
+      const walk = (ws: Array<{ id: string; widgets?: unknown[] }> | undefined, path: string[]): string[] | null => {
+        for (const w of ws ?? []) {
+          if (w.id === id) return [...path, w.id];
+          const r = walk(w.widgets as Array<{ id: string; widgets?: unknown[] }> | undefined, [...path, w.id]);
+          if (r) return r;
+        }
+        return null;
+      };
+      for (const v of handle.toJSON().views) {
+        const r = walk(v.widgets as Array<{ id: string; widgets?: unknown[] }>, [v.id]);
+        if (r) return r.join(' > ');
+      }
+      return null;
+    };
+    const tab = api.container.querySelector('.axdb-tabs[data-tabs-id="dp-intabs"] .axdb-tab[data-tab-id="dp-ip1"]') as HTMLElement;
+    expect(tab).toBeTruthy();
+    const tr = model.getGroup('dp-intabs')!.position;
+    // onto the MAIN board, the free space right of W1
+    await dragTabFrom(api, 'dp-intabs', 'dp-ip1', { x: tr.x + 40, y: tr.y + 12 }, { x: 400, y: 20 });
+    expect(pathOf('dp-ip1__group')).toBe('main > dp-ip1__group');
+    expect(pathOf('dp-ia')).toBe('main > dp-ip1__group > dp-ip1 > dp-ia');
+    expect(stripOf(api, 'dp-intabs')).toEqual(['Inner B']);
+    const born = cellOf(handle, 'dp-ip1__group')!;
+    expect(born).toBeTruthy();
+    expect(born.y).toBe(0);
+    expect(born.w).toBe(6); // the page's natural width: its container's 600 px on a 1200 px board
+    expect(cellOf(handle, 'w1')!.y).toBe(born.h); // W1 pushed under it
+    await cm(api).undo();
+    await settle();
+    expect(model.getGroup('dp-ip1__group')).toBeUndefined();
+    expect(stripOf(api, 'dp-intabs')).toEqual(['Inner A', 'Inner B']);
+  });
+
+  it('a section pulled up by its TOP edge grows by the rows the pointer travelled — not eighteen for two', async () => {
+    // The fluid demo's Operations section: its caption's top 4 px pulled up
+    // 300 px (2.3 rows of 130) grew it 1 → 3 → 8 → 18 rows (identification
+    // round, F16) — a resize that outran the pointer.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('a', 6, 2, 0, 0), K('b', 6, 2, 6, 0),
+          { id: 'ops', title: 'Operations', caption: true, span: 12, rows: 1, x: 0, y: 4, columns: 12, widgets: [K('orders', 4, 1, 0, 0)] },
+        ],
+      })
+    );
+    const band = api.container.querySelector('.axdb-slab[data-slab-id="ops"] > .axdb-slab-h') as HTMLElement;
+    expect(band).toBeTruthy();
+    const ops = model.getGroup('ops')!;
+    const tool = toolOf('main');
+    const on = (type: ToolPointerEvent['type'], x: number, y: number): ToolPointerEvent => ({ ...tev(type, x, y), source: { target: band } as unknown as PointerEvent });
+    const hit = { empty: true };
+    const x = ops.position.x + 300;
+    const y0 = ops.position.y + 3; // the top edge
+    tool.onPointerDown?.(on('down', x, y0), hit);
+    tool.onPointerMove?.(on('move', x, y0 - 10), hit);
+    // pulled up 140 px = two rows of 60 + gaps; the section should be 3 rows tall, its top two rows higher
+    for (let i = 1; i <= 7; i++) tool.onPointerMove?.(on('move', x, y0 - 20 * i), hit);
+    tool.onPointerUp?.(on('up', x, y0 - 140), hit);
+    await settle();
+    const after = cellOf(handle, 'ops')!;
+    expect(after).toBeTruthy();
+    expect(after.h).toBe(3);
+    expect(after.y).toBe(2);
+    expect(after.w).toBe(12);
+    expect(cellOf(handle, 'a')).toEqual({ x: 0, y: 0, w: 6, h: 2 });
+  });
+
+  it('ROOT DOCK: a side dock measures the board as it stood BEFORE the ghost pushed anything — parked on a tile first', async () => {
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          { id: 'side', title: 'Side', span: 3, rows: 4, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+        ],
+      })
+    );
+    // parked over the chart (the ghost enters and pushes the chart down), then the LEFT band
+    await dragTabFrom(api, 'side', 'p2', { x: 1000, y: 10 }, { x: 8, y: 200 }, [{ x: 300, y: 150 }, { x: 301, y: 151 }]);
+    const born = cellOf(handle, 'p2__group')!;
+    expect(born).toBeTruthy();
+    expect(born.x).toBe(0);
+    expect(born.y).toBe(0);
+    expect(born.h).toBe(4); // the board's four rows at the press, not the six the parked ghost made
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+  });
+
+  it('ROOT DOCK: the bands are measured on the SCREEN — a board scrolled 30 px still docks at its visible top edge', async () => {
+    const { api, handle } = up(TWO());
+    // The camera sits 30 px down the board: the world point under a client
+    // point is 30 px lower than it reads. Measured against the frame in world
+    // space the top band would be scrolled out of reach; it is the visible
+    // canvas's top 20 px, wherever the camera is.
+    const rect = { left: 0, top: 0, right: 1200, bottom: 600, width: 1200, height: 600, x: 0, y: 0, toJSON: () => ({}) };
+    Object.defineProperty(api.container, 'getBoundingClientRect', { value: () => rect, configurable: true });
+    (api as unknown as { viewport: { clientToWorld: (x: number, y: number) => { x: number; y: number } } }).viewport.clientToWorld = (x, y) => ({ x, y: y + 30 });
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: 300, y: 4 });
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born).toBeTruthy();
+    expect(born.x).toBe(0);
+    expect(born.y).toBe(0);
+    expect(born.w).toBe(12);
+    expect(cellOf(handle, 'left')!.y).toBe(born.h);
+  });
+
+  it('ROOT DOCK: the top band beats the body of a group that sits against the board\'s edge (Dockview\'s container edges)', async () => {
+    const { api, model, handle } = up(TWO());
+    const f = frameOf(model, 'left');
+    // 4 px inside the left group's frame, 14 px from the board's top: the band, not a split
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 4 });
+    const born = cellOf(handle, 'r2__group')!;
+    expect(born).toBeTruthy();
+    expect(born.w).toBe(12);
+    expect(born.y).toBe(0);
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: born.h, w: 6, h: 6 });
+  });
+
+  it('ROOT DOCK: a strip inside the top band still wins — the tab joins that group', async () => {
+    const { api, model, handle } = up(TWO());
+    const f = frameOf(model, 'left');
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="left"]') as HTMLElement;
+    const r = { left: f.x, top: f.y, right: f.x + f.w, bottom: f.y + 30, width: f.w, height: 30, x: f.x, y: f.y, toJSON: () => ({}) };
+    Object.defineProperty(strip, 'getBoundingClientRect', { value: () => r, configurable: true });
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 4 });
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+    expect(cellOf(handle, 'left')).toEqual({ x: 0, y: 0, w: 6, h: 6 });
+  });
+
+  it('DEEPEST WINS: a tab dropped on an inner group\'s strip INSIDE its own container joins the inner group', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        widgets: [
+          {
+            id: 'outer', title: 'Outer', span: 12, rows: 8, x: 0, y: 0, layout: 'tabs',
+            widgets: [
+              { id: 'p-host', title: 'Host', columns: 12, widgets: [
+                { id: 'inner', title: 'Inner', span: 12, rows: 6, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('i1', 'Inner A', 'k-i1'), PAGE('i2', 'Inner B', 'k-i2')] },
+              ] },
+              PAGE('p-loose', 'Loose', 'k-loose'),
+            ],
+          },
+        ],
+      })
+    );
+    expect(stripOf(api, 'outer')).toEqual(['Host', 'Loose']);
+    expect(stripOf(api, 'inner')).toEqual(['Inner A', 'Inner B']);
+    const f = frameOf(model, 'inner');
+    // release over the inner group's BODY (its strip has no client rect in jsdom): it must join it, not read as "home"
+    await dragTabFrom(api, 'outer', 'p-loose', { x: 700, y: 10 }, { x: f.x + f.w * 0.5, y: f.y + 30 + (f.h - 30) * 0.5 });
+    expect(stripOf(api, 'inner')).toEqual(['Inner A', 'Inner B', 'Loose']);
+    expect(stripOf(api, 'outer')).toEqual(['Host']);
+    expect(handle.getActiveTab('inner')).toBe('p-loose');
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'outer')).toEqual(['Host', 'Loose']);
+    expect(stripOf(api, 'inner')).toEqual(['Inner A', 'Inner B']);
+  });
+
+  it('a board with no tab container carries no strip at all', () => {
+    const { api } = up(
+      dashboard({ columns: 12, width: 1200, height: 600, widgets: [{ id: 'a', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0 }] })
+    );
+    expect(api.container.querySelector('.axdb-tabs')).toBeNull();
+  });
+});
+
+/**
+ * THE GLIDE AND A PAGE SWITCH (0.4.36). `.axdb-glide` on the html layer eases
+ * every left/top write for the length of a gesture and 400 ms past its drop.
+ * A plain CLICK on a widget armed it at the press (a task ahead of any
+ * displacement, deliberately) and never disarmed it — so it stayed armed for
+ * good, and the next tab switch, which brings a page back from 20,000 px off
+ * canvas, SLID the page's content in from the left over 280 ms. Two fixes: a
+ * press that never travels disarms like a drop does, and parking is a
+ * TELEPORT — the class comes off for the writes, whoever holds it.
+ */
+describe('the reflow glide and a page switch', () => {
+  const layerOf = (api: { container: HTMLElement }) => api.container.querySelector('.grafloria-html-layer') as HTMLElement;
+  const later = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+  it('a plain CLICK on a widget leaves the glide DISARMED — it stayed armed for good, and the next tab switch flew its page in', async () => {
+    const { api, model } = up(BOARD());
+    const layer = layerOf(api);
+    const tool = toolOf('main');
+    const free = model.getNode('free')!;
+    const at = { x: free.position.x + 20, y: free.position.y + 20 };
+    const hit = { node: free, empty: false };
+    tool.onPointerDown?.(tev('down', at.x, at.y), hit);
+    expect(layer.classList.contains('axdb-glide')).toBe(true); // armed at the press, as designed
+    tool.onPointerUp?.(tev('up', at.x, at.y), hit);
+    await later(450);
+    expect(layer.classList.contains('axdb-glide')).toBe(false);
+  });
+
+  it('a press CANCELLED before it travels disarms the glide too', async () => {
+    const { api, model } = up(BOARD());
+    const layer = layerOf(api);
+    const tool = toolOf('main');
+    const free = model.getNode('free')!;
+    const at = { x: free.position.x + 20, y: free.position.y + 20 };
+    tool.onPointerDown?.(tev('down', at.x, at.y), { node: free, empty: false });
+    expect(layer.classList.contains('axdb-glide')).toBe(true);
+    tool.onCancel?.();
+    await later(450);
+    expect(layer.classList.contains('axdb-glide')).toBe(false);
+  });
+
+  it('a TAB switch is a teleport: the page is painted with the glide OFF even while a gesture holds it armed, and the gesture keeps it', () => {
+    const { api, model, handle } = up(BOARD());
+    const layer = layerOf(api);
+    layer.classList.add('axdb-glide'); // as the 400 ms after a drop leave it
+    const painted: string[] = [];
+    (api as { renderNow: () => void }).renderNow = () => {
+      painted.push(layer.className);
+    };
+    expect(handle.activateTab('panel', 'p-two')).toBe(true);
+    expect(tabs(api).find((t) => t.on)?.id).toBe('p-two');
+    expect(onCanvas(model, ['k-one', 'k-two', 'k-three'])).toEqual(['k-two']);
+    expect(painted.length).toBeGreaterThan(0);
+    expect(painted.filter((c) => c.includes('axdb-glide'))).toEqual([]);
+    expect(layer.classList.contains('axdb-glide')).toBe(true);
+  });
+
+  it('a VIEW switch is a teleport too — views park the same way', () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        views: [
+          { id: 'v1', name: 'One', widgets: [{ id: 'w1', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0 }] },
+          { id: 'v2', name: 'Two', widgets: [{ id: 'w2', kind: 'kpi', span: 6, rows: 2, x: 0, y: 0 }] },
+        ],
+      })
+    );
+    const layer = layerOf(api);
+    layer.classList.add('axdb-glide');
+    const painted: string[] = [];
+    (api as { renderNow: () => void }).renderNow = () => {
+      painted.push(layer.className);
+    };
+    handle.showView('v2');
+    expect(onCanvas(model, ['w1', 'w2'])).toEqual(['w2']);
+    expect(painted.length).toBeGreaterThan(0);
+    expect(painted.filter((c) => c.includes('axdb-glide'))).toEqual([]);
+    expect(layer.classList.contains('axdb-glide')).toBe(true);
+  });
+});
+
+/**
+ * TAB DRAGS ON A SPLIT BOARD (0.4.37). The split binder REFUSED every tear-out
+ * ("a split board has no cells to drop a page into"), so on the fluid demo's
+ * Split mode a tab press was a dead click — no chip, no reorder, no join. The
+ * split board has a drop model of its own (a widget dropped on a pane's edge
+ * inserts there); a torn-out page uses it: the page becomes a one-tab group
+ * that is a PANE, joins another container over its body's centre, and
+ * reorders or joins over a strip like on a grid board.
+ */
+/**
+ * setSizing IS THE VIEW'S (0.4.38). The fluid demo's Fit / Grow buttons call
+ * `handle.setSizing`, and it switched EVERY binder — pages and sections too.
+ * A page's height is its container's business (it is bound fit, design
+ * height 0); switched to grow it painted its rows at the base height, so an
+ * 8-row page torn out into a 3-row group or a split pane spilled 700 px past
+ * it, across the widgets below. Nested boards keep their own sizing.
+ */
+describe('setSizing leaves nested boards alone', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  it('a page stays bounded by its container after the view switches to grow', async () => {
+    const { model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        widgets: [
+          { id: 'free', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 },
+          {
+            id: 'panel',
+            title: 'Side panel',
+            span: 6,
+            rows: 4,
+            x: 6,
+            y: 0,
+            layout: 'tabs',
+            widgets: [{ id: 'p-one', title: 'Filters', columns: 6, widgets: [{ id: 'tall', kind: 'kpi', span: 6, rows: 12, x: 0, y: 0 }] }],
+          },
+        ],
+      })
+    );
+    const inside = () => {
+      const pg = model.getGroup('p-one')!;
+      const t = model.getNode('tall')!;
+      return t.position.y + t.size.height <= pg.position.y + pg.size!.height + 1;
+    };
+    expect(inside()).toBe(true);
+    handle.setSizing('grow');
+    await settle();
+    expect(handle.getSizing()).toBe('grow');
+    expect(inside()).toBe(true);
+    handle.setSizing('fit');
+    await settle();
+    expect(inside()).toBe(true);
+  });
+});
+
+describe('tab drags on a SPLIT board', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const stripOf = (api: { container: HTMLElement }, id: string) =>
+    Array.from(api.container.querySelectorAll(`.axdb-tabs[data-tabs-id="${id}"] .axdb-tab`)).map((t) => t.textContent);
+  const cm = (api: ReturnType<typeof makeApi>) => api.getEngine().commandManager;
+  const dragTabFrom = async (api: { container: HTMLElement }, containerId: string, pageId: string, from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(tab, 'pointerdown', from.x, from.y);
+    ev(tab, 'pointermove', from.x - 40, from.y);
+    ev(window, 'pointermove', to.x, to.y);
+    ev(window, 'pointerup', to.x, to.y);
+    tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await settle();
+  };
+  const leaves = (model: DiagramModel) => splitLeaves((model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY) ?? null) as SplitNode | null);
+  const ONE = () =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      rowHeight: 60,
+      layout: 'split',
+      widgets: [
+        { id: 'other', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 },
+        {
+          id: 'panel',
+          title: 'Side panel',
+          span: 6,
+          rows: 4,
+          x: 6,
+          y: 0,
+          layout: 'tabs',
+          widgets: [PAGE('p-one', 'Filters', 'k-one'), PAGE('p-two', 'Alerts', 'k-two'), PAGE('p-three', 'Notes', 'k-three')],
+        },
+      ],
+    });
+  const TWO = () =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      rowHeight: 60,
+      layout: 'split',
+      widgets: [
+        { id: 'left', title: 'Left group', span: 6, rows: 6, x: 0, y: 0, layout: 'tabs', widgets: [PAGE('l1', 'Sales', 'k-l1'), PAGE('l2', 'Margin', 'k-l2')] },
+        { id: 'right', title: 'Right group', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('r1', 'Filters', 'k-r1'), PAGE('r2', 'Notes', 'k-r2')] },
+      ],
+    });
+
+  it('a tab dragged onto a pane\'s edge becomes a one-tab group that is a PANE there — inserted where the split board inserts a dropped widget; undo puts it back', async () => {
+    const { api, model, handle } = up(ONE());
+    expect(leaves(model)).toEqual(['other', 'panel']);
+    // released 48 px inside the LEFT edge of the "other" pane — past the board's 18 px outer band
+    await dragTabFrom(api, 'panel', 'p-two', { x: 900, y: 10 }, { x: 60, y: 300 });
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Notes']);
+    const born = model.getGroup('p-two__group');
+    expect(born).toBeDefined();
+    expect(born!.members!.has('p-two')).toBe(true);
+    expect(model.getGroup('panel')!.members!.has('p-two')).toBe(false);
+    expect(handle.getLayout('p-two__group')).toBe('tabs');
+    expect(stripOf(api, 'p-two__group')).toEqual(['Alerts']);
+    // it is a LEAF of the split tree, left of the pane it was dropped on
+    expect(leaves(model)).toEqual(['p-two__group', 'other', 'panel']);
+    const other = model.getNode('other')!;
+    expect(born!.position.x).toBeLessThan(other.position.x);
+    expect(born!.size!.width).toBeGreaterThan(50);
+    // its widget shows inside the new pane
+    const k = model.getNode('k-two')!;
+    expect(k.position.x).toBeGreaterThan(PARKED);
+    expect(k.position.x).toBeGreaterThanOrEqual(born!.position.x);
+    expect(k.position.x + k.size.width).toBeLessThanOrEqual(born!.position.x + born!.size!.width + 1);
+    // serialised as a third widget of the split board
+    const snap = handle.toJSON().views[0].widgets;
+    expect(snap.find((w) => w.id === 'p-two__group')!.layout).toBe('tabs');
+    expect(snap.find((w) => w.id === 'panel')!.widgets?.map((p) => p.id)).toEqual(['p-one', 'p-three']);
+    // ONE undo: the pane is gone, the tab is back
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(model.getGroup('p-two__group')).toBeUndefined();
+    expect(leaves(model)).toEqual(['other', 'panel']);
+    expect(onCanvas(model, ['k-one', 'k-two', 'k-three'])).toEqual(['k-one']);
+  });
+
+  it('the pane is PAINTED from the inserted tree, not from the reconciled one — the largest leaf elsewhere is untouched, and the page fits the pane', async () => {
+    // A batch adds the group before the tree swap; the split board's
+    // member:added reconciles by halving the LARGEST leaf. The rects on the
+    // canvas must follow the tree that was set, not that interim one.
+    const { api, model } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        rowHeight: 60,
+        layout: 'split',
+        sizing: 'grow',
+        widgets: [
+          { id: 'other', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0 },
+          { id: 'big', kind: 'line', span: 6, rows: 4, x: 3, y: 0 },
+          {
+            id: 'panel',
+            title: 'Side panel',
+            span: 3,
+            rows: 4,
+            x: 9,
+            y: 0,
+            layout: 'tabs',
+            widgets: [PAGE('p-one', 'Filters', 'k-one'), { id: 'p-two', title: 'Alerts', columns: 3, widgets: [{ id: 'k-two', kind: 'kpi', span: 3, rows: 20, x: 0, y: 0 }] }],
+          },
+        ],
+      })
+    );
+    const bigBefore = { ...model.getNode('big')!.size };
+    // 48 px inside "other"'s left edge: past the board's 18 px outer band, nearest to the leaf's left side
+    await dragTabFrom(api, 'panel', 'p-two', { x: 1100, y: 10 }, { x: 60, y: 300 });
+    expect(leaves(model)).toEqual(['p-two__group', 'other', 'big', 'panel']);
+    const born = model.getGroup('p-two__group')!;
+    const other = model.getNode('other')!;
+    const big = model.getNode('big')!;
+    // the pane took HALF of "other"'s slot — "big" kept its width
+    expect(born.position.x).toBeLessThan(other.position.x);
+    expect(Math.abs(born.size!.width - other.size.width)).toBeLessThan(2);
+    expect(Math.abs(big.size.width - bigBefore.width)).toBeLessThan(8); // one more gap in the row
+    // a 20-row page inside a 600 px board: the pane is bounded, the page fits it
+    expect(born.size!.height).toBeLessThanOrEqual(600);
+    const k = model.getNode('k-two')!;
+    expect(k.position.y + k.size.height).toBeLessThanOrEqual(born.position.y + born.size!.height + 1);
+  });
+
+  it('a tab dropped over the CENTRE of another container\'s body JOINS it on a split board — no new pane', async () => {
+    const { api, model, handle } = up(TWO());
+    const lf = (() => { const g = model.getGroup('left')!; return { x: g.position.x, y: g.position.y, w: g.size!.width, h: g.size!.height }; })();
+    await dragTabFrom(api, 'right', 'r2', { x: 900, y: 10 }, { x: lf.x + lf.w / 2, y: lf.y + 30 + (lf.h - 30) / 2 });
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin', 'Notes']);
+    expect(stripOf(api, 'right')).toEqual(['Filters']);
+    expect(handle.getActiveTab('left')).toBe('r2');
+    expect(model.getGroup('r2__group')).toBeUndefined();
+    expect(leaves(model)).toEqual(['left', 'right']);
+    await cm(api).undo();
+    await settle();
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(leaves(model)).toEqual(['left', 'right']);
+  });
+
+  it('a tab GROUP moves by its strip\'s empty space on a split board — dropped on the other pane\'s edge the two swap sides; undo puts it back', async () => {
+    // The split peer answered dragMember with false ("no cells to move a
+    // section across"), so a press on the strip's empty space only selected —
+    // a tab group could not be moved at all on a split board, let alone
+    // swapped with its neighbour (the user's report). The board's own drop
+    // model moves it: the insertion line marks the pane edge, release
+    // re-inserts the group there.
+    const { api, model } = up(TWO());
+    expect(leaves(model)).toEqual(['left', 'right']);
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="right"]') as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    const lf = model.getGroup('left')!;
+    const to = { x: lf.position.x + 40, y: lf.position.y + lf.size!.height / 2 }; // the left pane's left edge, past the board's outer band
+    ev(strip, 'pointerdown', 1100, 10); // the strip itself, not a tab
+    ev(window, 'pointermove', 1060, 10);
+    ev(window, 'pointermove', to.x, to.y);
+    expect(api.container.querySelector('.axdb-ins')).not.toBeNull(); // the insertion line while held
+    ev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(leaves(model)).toEqual(['right', 'left']);
+    expect(model.getGroup('right')!.position.x).toBeLessThan(model.getGroup('left')!.position.x);
+    expect(stripOf(api, 'left')).toEqual(['Sales', 'Margin']);
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+    expect(api.container.querySelector('.axdb-ins')).toBeNull();
+    await cm(api).undo();
+    await settle();
+    expect(leaves(model)).toEqual(['left', 'right']);
+    expect(model.getGroup('left')!.position.x).toBeLessThan(model.getGroup('right')!.position.x);
+  });
+
+  it('on a SPLIT board a press on a tab container\'s frame margin selects the group and drags it too — dropped on the other pane\'s edge the two swap', async () => {
+    const { api, model } = up(TWO());
+    expect(leaves(model)).toEqual(['left', 'right']);
+    const tool = splitToolOf('main');
+    const rg = model.getGroup('right')!;
+    const p = { x: rg.position.x + rg.size!.width / 2, y: rg.position.y + 30 + 4 }; // the margin under the strip
+    const src = { target: api.container.querySelector('.grafloria-html-layer'), clientX: p.x, clientY: p.y, pointerId: 1 } as unknown as PointerEvent;
+    tool.onPointerDown?.({ ...tev('down', p.x, p.y), source: src } as ToolPointerEvent, { empty: true } as never);
+    expect(api.container.querySelector('.axdb-slab[data-slab-id="right"]')!.classList.contains('axdb-slab--selected')).toBe(true);
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    const lf = model.getGroup('left')!;
+    const to = { x: lf.position.x + 40, y: lf.position.y + lf.size!.height / 2 };
+    ev(window, 'pointermove', p.x - 40, p.y);
+    ev(window, 'pointermove', to.x, to.y);
+    expect(api.container.querySelector('.axdb-ins')).not.toBeNull();
+    ev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(leaves(model)).toEqual(['right', 'left']);
+    expect(stripOf(api, 'right')).toEqual(['Filters', 'Notes']);
+  });
+
+  it('a tab group released over NOTHING on a split board stays put, and a static split board refuses the drag', async () => {
+    const { api, model } = up(TWO());
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="right"]') as HTMLElement;
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    ev(strip, 'pointerdown', 1100, 10);
+    ev(window, 'pointermove', 1060, 10);
+    ev(window, 'pointermove', 5000, 5000);
+    ev(window, 'pointerup', 5000, 5000);
+    await settle();
+    expect(leaves(model)).toEqual(['left', 'right']);
+    expect(api.container.querySelector('.axdb-ins')).toBeNull();
+  });
+
+  it('a captioned SECTION on a split board paints its band, its children start below it, and the band drags the section to another pane\'s edge', async () => {
+    // "captioned sections on a SPLIT board · no chrome to paint them, so no
+    // reserve" was the 0.4.22 limitation: switching the fluid demo to Split
+    // made the Operations band vanish and its two KPIs sit bare in the pane
+    // (the user's report). The split board paints slabs and bands now, the
+    // child board reserves the band, and the band is the section's handle.
+    const { api, model } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        layout: 'split',
+        widgets: [
+          { id: 'sec', title: 'Operations', span: 6, rows: 4, x: 0, y: 0, columns: 6, caption: { subtitle: 'live since 08:00' }, widgets: [{ id: 'c1', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 }] },
+          { id: 'w', kind: 'kpi', span: 6, rows: 4, x: 6, y: 0 },
+        ],
+      })
+    );
+    const band = api.container.querySelector('.axdb-slab[data-slab-id="sec"] > .axdb-slab-h') as HTMLElement | null;
+    expect(band).not.toBeNull();
+    expect(band!.textContent).toContain('Operations');
+    expect(band!.textContent).toContain('live since 08:00');
+    const sec = model.getGroup('sec')!;
+    const c1 = model.getNode('c1')!;
+    expect(parseFloat(band!.style.height)).toBe(44); // the subtitle tier
+    expect(c1.position.y).toBeGreaterThanOrEqual(sec.position.y + 44 - 1); // the child starts under the band
+    expect(c1.position.y + c1.size.height).toBeLessThanOrEqual(sec.position.y + sec.size!.height + 1);
+    expect(leaves(model)).toEqual(['sec', 'w']);
+    // the band is the section's handle: pressed through the board's tool it selects, travelled it drags
+    const tool = splitToolOf('main');
+    const wr = model.getNode('w')!;
+    const src = { target: band, clientX: 100, clientY: 20, pointerId: 1 } as unknown as PointerEvent;
+    tool.onPointerDown?.({ ...tev('down', 100, 20), source: src } as ToolPointerEvent, { empty: true } as never);
+    expect(api.container.querySelector('.axdb-slab[data-slab-id="sec"]')!.classList.contains('axdb-slab--selected')).toBe(true);
+    const ev = (el: EventTarget, type: string, x: number, y: number) =>
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+    const to = { x: wr.position.x + wr.size.width - 40, y: wr.position.y + wr.size.height / 2 }; // w's right edge, past the outer band
+    ev(window, 'pointermove', 140, 20);
+    ev(window, 'pointermove', to.x, to.y);
+    expect(api.container.querySelector('.axdb-ins')).not.toBeNull();
+    ev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(leaves(model)).toEqual(['w', 'sec']);
+    expect(model.getGroup('sec')!.position.x).toBeGreaterThan(model.getNode('w')!.position.x);
+    // the band followed the section to its new pane, and the child still sits under it
+    const band2 = api.container.querySelector('.axdb-slab[data-slab-id="sec"] > .axdb-slab-h') as HTMLElement;
+    expect(band2.textContent).toContain('Operations');
+    const sec2 = model.getGroup('sec')!;
+    expect(model.getNode('c1')!.position.y).toBeGreaterThanOrEqual(sec2.position.y + 44 - 1);
+    await cm(api).undo();
+    await settle();
+    expect(leaves(model)).toEqual(['sec', 'w']);
+  });
+
+  it('a tab released OUTSIDE the split board cancels: nothing moves, the container keeps its page', async () => {
+    const { api, model, handle } = up(ONE());
+    await dragTabFrom(api, 'panel', 'p-two', { x: 900, y: 10 }, { x: 5000, y: 5000 });
+    expect(stripOf(api, 'panel')).toEqual(['Filters', 'Alerts', 'Notes']);
+    expect(model.getGroup('p-two__group')).toBeUndefined();
+    expect(leaves(model)).toEqual(['other', 'panel']);
+    expect(handle.getActiveTab('panel')).toBe('p-one');
+    expect(api.container.querySelector('.axdb-tab-chip')).toBeNull();
+    expect(api.container.querySelector('.axdb-ins')).toBeNull();
+  });
+});
+
+describe('TILE FIRST, step 3: a group is a tile the engine pushes, packs and places beside', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const cellOf = (handle: { widget(id: string): { cell?: { x: number; y: number; w: number; h: number } } | undefined }, id: string) => handle.widget(id)?.cell;
+  const cm = (api: { getEngine(): { commandManager: { undo(): Promise<unknown> | void } } }) => api.getEngine().commandManager;
+  /** The fluid layout, gravity-consistent: nothing sits under a gap. */
+  const fixture = (ops: Partial<DashboardWidgetSpec> = {}) =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      gap: 10,
+      rowHeight: 60,
+      sizing: 'grow',
+      widgets: [
+        K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('win', 2, 1, 4, 0), K('nps', 2, 1, 6, 0),
+        K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+        { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 4, columns: 9, widgets: [K('orders', 4, 1, 0, 0)], ...ops },
+        { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+      ],
+    });
+  const rowY = (api: { container: HTMLElement }, row: number): number => 10 + row * 70 + 30; // padding 10, rows of 60 + gap 10: the middle of a row
+
+  it('a widget carried over a section from OUTSIDE leaves it where it is: the widget slides aside, the section holds still', async () => {
+    // The first cut unlocked groups outright, and a widget approaching a panel from above pushed it away before the
+    // hand could reach it — the panel fled and its "into" zone was never reachable. A container is SOLID: a passing
+    // widget slides aside (as it did when the section was locked), and only intent moves it.
+    const { api, model, handle } = up(fixture());
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const ops = model.getGroup('ops')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    const to = { x: 100, y: ops.position.y - 6 }; // the pointer 6 px ABOVE the section; the ghost's cell (the grab is 20 px down) would be the section's row
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 4, w: 9, h: 1 }); // held still
+    expect(cellOf(handle, 'nps')!.y).not.toBe(4); // the widget took a cell that clears it
+    expect(api.container.querySelector('.axdb-ph--no')).not.toBeNull(); // 0.4.74: the cell under the hand IS refused and says so; the grey placeholder beside the section still says where it lands
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps } as never);
+    await settle();
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 4, w: 9, h: 1 });
+  });
+
+  it('a section under a gap HOLDS its row: a solid tile never packs, on boot or when the board settles', async () => {
+    const { api, model, handle } = up(fixture({ y: 7 })); // rows 4–6 free above it
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 }); // the authored gap survives the boot pack
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 100, from.y + 5), { node: nps } as never); // one column over: the board settles
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+    tool.onPointerUp?.(tev('up', from.x + 100, from.y + 5), { node: nps } as never);
+    await settle();
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+  });
+
+  it('beside lands at the POINTER\'s row, and follows it along the band (D3)', async () => {
+    const { api, model, handle } = up(fixture());
+    const tool = toolOf('main');
+    const side = model.getGroup('side')!;
+    const nps = model.getNode('nps')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    const edgeX = side.position.x + side.size!.width - 12; // the panel's right band AT REST: the hand stays there while the panel shifts away
+    const band = (row: number) => ({ x: edgeX, y: rowY(api, row) });
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', band(3).x, band(3).y), { node: nps } as never);
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 }); // shifted left by the widget's span
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 3, w: 2, h: 1 }); // at the pointer's row, not the panel's top row
+    tool.onPointerMove?.(tev('move', band(5).x, band(5).y), { node: nps } as never);
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 5, w: 2, h: 1 }); // the row follows the hand
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+    tool.onPointerUp?.(tev('up', band(5).x, band(5).y), { node: nps } as never);
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 5, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+  });
+
+  it('a widget a FULL fit section cannot take PUSHES the section instead of sliding in beside it (D2)', async () => {
+    const { model, handle } = up(fixture({ sizing: 'fit', widgets: [K('orders', 9, 1, 0, 0)] })); // one row, full width: nothing fits
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const ops = model.getGroup('ops')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    const to = { x: ops.position.x + 200, y: ops.position.y + ops.size!.height / 2 }; // the pointer INSIDE the section: into it, which it refuses
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
+    expect(model.getGroup('ops')!.members?.has('nps')).toBe(false); // not taken
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 5, w: 9, h: 1 }); // pushed down: the widget takes the cell on the board
+    expect(cellOf(handle, 'nps')!.y).toBe(4);
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps } as never);
+    await settle();
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 5, w: 9, h: 1 });
+    expect(cellOf(handle, 'nps')!.y).toBe(4);
+  });
+});
+
+describe('a tab group is ONE thing: its frame at rest, its motion when carried (0.4.43)', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const cellOf = (handle: DashboardHandle, id: string) => handle.widget(id)?.cell ?? null;
+  const cm = (api: ReturnType<typeof makeApi>) => api.getEngine().commandManager;
+  const stripOf = (api: { container: HTMLElement }, id: string) =>
+    Array.from(api.container.querySelectorAll(`.axdb-tabs[data-tabs-id="${id}"] .axdb-tab`)).map((b) => b.textContent);
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const BOARD3 = () =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      gap: 10,
+      rowHeight: 60,
+      widgets: [
+        K('kpi', 3, 2, 0, 0),
+        { id: 'sec', title: 'Section', span: 3, rows: 4, x: 3, y: 0, columns: 3, widgets: [K('s1', 3, 2, 0, 0)] },
+        { id: 'panel', title: 'Panel', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', active: 'pg', widgets: [
+          { id: 'pg', title: 'Filters', columns: 6, widgets: [K('w1', 6, 2, 0, 0), K('w2', 6, 2, 0, 2)] },
+          { id: 'pg2', title: 'Notes', columns: 6, widgets: [K('w3', 6, 2, 0, 0)] },
+        ] },
+      ],
+    });
+  const carried = (api: { container: HTMLElement }) =>
+    Array.from(api.container.querySelectorAll('.axdb-carried')).map((el) =>
+      el.classList.contains('axdb-tabs') ? `tabs:${el.getAttribute('data-tabs-id')}` : el.classList.contains('axdb-slab') ? `slab:${el.getAttribute('data-slab-id')}` : el.classList.contains('axdb-group-bg') ? `bg:${el.getAttribute('data-group-bg')}` : `host:${el.getAttribute('data-node-id')}`
+    ).sort();
+  const ev = (el: EventTarget, type: string, x: number, y: number) =>
+    el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+
+  it('a tab container wears a FRAME by default: a bordered slab and a tinted surface under its pages, which a plain section does not get', () => {
+    // A page torn out with two widgets under its tab read as a strip floating
+    // over two loose cards — nothing said the second card was the tab's.
+    const { api, model } = up(BOARD3());
+    const slab = api.container.querySelector('.axdb-slab[data-slab-id="panel"]') as HTMLElement | null;
+    expect(slab).not.toBeNull();
+    expect(slab!.classList.contains('axdb-slab--tabs')).toBe(true);
+    const bg = api.container.querySelector('.axdb-group-bg[data-group-bg="panel"]') as HTMLElement | null;
+    expect(bg).not.toBeNull();
+    const g = model.getGroup('panel')!;
+    expect(parseFloat(bg!.style.left)).toBe(g.position.x);
+    expect(parseFloat(bg!.style.top)).toBe(g.position.y);
+    expect(parseFloat(bg!.style.width)).toBe(g.size!.width);
+    expect(parseFloat(bg!.style.height)).toBe(g.size!.height);
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    expect(bg!.parentElement).toBe(layer);
+    // a plain section keeps its invisible slab
+    expect((api.container.querySelector('.axdb-slab[data-slab-id="sec"]') as HTMLElement).classList.contains('axdb-slab--tabs')).toBe(false);
+    expect(api.container.querySelector('.axdb-group-bg[data-group-bg="sec"]')).toBeNull();
+    // the stylesheet paints the frame, tints the surface beneath the tiles, and lets the tint sit under them
+    const css = document.getElementById('grafloria-dashboard-kit-styles')?.textContent ?? '';
+    expect(css).toContain('.axdb-slab.axdb-slab--tabs');
+    expect(css).toContain('.axdb-group-bg');
+    expect(css).toContain('isolation: isolate');
+    expect(css).toContain('--axdb-group-border');
+    expect(css).toContain('--axdb-group-bg');
+  });
+
+  it('the frame follows the group: a group torn out wears one from birth, and an emptied group takes its frame away with it', async () => {
+    const { api, model } = up(BOARD3());
+    const drag = (containerId: string, pageId: string, from: { x: number; y: number }, to: { x: number; y: number }) => {
+      const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
+      ev(tab, 'pointerdown', from.x, from.y);
+      ev(tab, 'pointermove', from.x - 40, from.y);
+      ev(window, 'pointermove', to.x, to.y);
+      ev(window, 'pointerup', to.x, to.y);
+      tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    };
+    // Notes out of the panel onto free board space
+    drag('panel', 'pg2', { x: 700, y: 10 }, { x: 150, y: 400 });
+    await settle();
+    const born = model.getGroup('pg2__group')!;
+    expect(born).toBeDefined();
+    const slab = api.container.querySelector('.axdb-slab[data-slab-id="pg2__group"]') as HTMLElement | null;
+    expect(slab?.classList.contains('axdb-slab--tabs')).toBe(true);
+    const bg = api.container.querySelector('.axdb-group-bg[data-group-bg="pg2__group"]') as HTMLElement | null;
+    expect(bg).not.toBeNull();
+    expect(parseFloat(bg!.style.top)).toBe(born.position.y);
+    // and back: its only tab rejoins the panel, the born group closes, its frame with it
+    drag('pg2__group', 'pg2', { x: 150, y: 400 }, { x: 900, y: 10 });
+    await settle();
+    expect(model.getGroup('pg2__group')).toBeUndefined();
+    expect(api.container.querySelector('.axdb-group-bg[data-group-bg="pg2__group"]')).toBeNull();
+    expect(api.container.querySelector('.axdb-slab[data-slab-id="pg2__group"]')).toBeNull();
+  });
+
+  it('a tab container\'s pages sit INSET in its frame: 8 px inside on the left, right and bottom and below the strip, so the cards read as inside the panel; `tabs: { inset: 0 }` is edge to edge', async () => {
+    // The user's desktop screenshot: Region and Period were two cards on the
+    // canvas with a strip over the first — the frame's border ran exactly
+    // where the cards' own borders were, so nothing said Period was the tab's.
+    const { api, model, handle } = up(BOARD3());
+    const panel = model.getGroup('panel')!;
+    const pg = model.getGroup('pg')!;
+    expect(pg.position.x).toBe(panel.position.x + 8);
+    expect(pg.position.y).toBe(panel.position.y + 30 + 8);
+    expect(pg.size!.width).toBe(panel.size!.width - 16);
+    expect(pg.size!.height).toBe(panel.size!.height - 30 - 16);
+    // the frame itself is still the container's whole cell
+    const bg = api.container.querySelector('.axdb-group-bg[data-group-bg="panel"]') as HTMLElement;
+    expect(parseFloat(bg.style.width)).toBe(panel.size!.width);
+    // a page's widgets live inside the page: the first card starts at the page's edge, inside the frame
+    const w1 = model.getNode('w1')!;
+    expect(w1.position.x).toBeGreaterThanOrEqual(pg.position.x);
+    expect(w1.position.x + w1.size.width).toBeLessThanOrEqual(pg.position.x + pg.size!.width + 0.5);
+    // a group torn out keeps the rule: its page sits inset in the born frame
+    const drag = (containerId: string, pageId: string, from: { x: number; y: number }, to: { x: number; y: number }) => {
+      const tab = api.container.querySelector(`.axdb-tabs[data-tabs-id="${containerId}"] .axdb-tab[data-tab-id="${pageId}"]`) as HTMLElement;
+      ev(tab, 'pointerdown', from.x, from.y);
+      ev(tab, 'pointermove', from.x - 40, from.y);
+      ev(window, 'pointermove', to.x, to.y);
+      ev(window, 'pointerup', to.x, to.y);
+      tab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    };
+    drag('panel', 'pg2', { x: 700, y: 10 }, { x: 150, y: 400 });
+    await settle();
+    const born = model.getGroup('pg2__group')!;
+    const pg2 = model.getGroup('pg2')!;
+    expect(pg2.position.x).toBe(born.position.x + 8);
+    expect(pg2.position.y).toBe(born.position.y + 30 + 8);
+    expect(pg2.size!.width).toBe(born.size!.width - 16);
+    expect(handle.widget('pg2__group')?.cell?.w).toBeGreaterThanOrEqual(6); // sized for the page PLUS its frame, not the bare page
+    // and edge to edge on request
+    const flush = up(dashboard({ columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, widgets: [
+      { id: 'flat', title: 'Flat', span: 6, rows: 6, x: 0, y: 0, layout: 'tabs', tabs: { inset: 0 }, widgets: [{ id: 'fp', title: 'One', columns: 6, widgets: [K('fw', 6, 2, 0, 0)] }] },
+    ] }));
+    const flat = flush.model.getGroup('flat')!;
+    const fp = flush.model.getGroup('fp')!;
+    expect(fp.position.x).toBe(flat.position.x);
+    expect(fp.position.y).toBe(flat.position.y + 30);
+    expect(fp.size!.width).toBe(flat.size!.width);
+  });
+
+  it('a press on a tab container\'s FRAME margin selects the group and DRAGS it — the strip\'s empty space was the only handle, and nobody finds it; a plain section\'s empty band still only selects', async () => {
+    const { model, handle } = up(BOARD3());
+    const panel = model.getGroup('panel')!;
+    const cell0 = handle.widget('panel')!.cell!;
+    const tool = toolOf('main');
+    // the margin under the strip: inside the frame, clear of its 3-px edge zone, not on a page
+    const p = { x: panel.position.x + panel.size!.width / 2, y: panel.position.y + 30 + 4 };
+    tool.onPointerDown?.(tev('down', p.x, p.y), { node: null } as never);
+    expect(document.querySelector('.axdb-slab[data-slab-id="panel"]')!.classList.contains('axdb-slab--selected')).toBe(true);
+    tool.onPointerMove?.(tev('move', p.x - 200, p.y + 100), { node: null } as never);
+    tool.onPointerMove?.(tev('move', p.x - 300, p.y + 150), { node: null } as never);
+    tool.onPointerUp?.(tev('up', p.x - 300, p.y + 150), { node: null } as never);
+    await settle();
+    const cell1 = handle.widget('panel')!.cell!;
+    expect(cell1.x !== cell0.x || cell1.y !== cell0.y).toBe(true);
+    // the same press on the side margin (5 px in, past the 3-px edge zone) moves it too, not resizes it
+    const panel2 = model.getGroup('panel')!;
+    const q = { x: panel2.position.x + 5, y: panel2.position.y + panel2.size!.height / 2 };
+    tool.onPointerDown?.(tev('down', q.x, q.y), { node: null } as never);
+    tool.onPointerMove?.(tev('move', q.x + 200, q.y - 120), { node: null } as never);
+    tool.onPointerMove?.(tev('move', q.x + 300, q.y - 150), { node: null } as never);
+    tool.onPointerUp?.(tev('up', q.x + 300, q.y - 150), { node: null } as never);
+    await settle();
+    const cell2 = handle.widget('panel')!.cell!;
+    expect(cell2.w).toBe(cell0.w);
+    expect(cell2.h).toBe(cell0.h);
+    expect(cell2.x !== cell1.x || cell2.y !== cell1.y).toBe(true);
+    // a plain section: its empty band selects, a travel does not move it
+    const sec = model.getGroup('sec')!;
+    const sc0 = handle.widget('sec')!.cell!;
+    const r = { x: sec.position.x + sec.size!.width / 2, y: sec.position.y + sec.size!.height - 20 };
+    tool.onPointerDown?.(tev('down', r.x, r.y), { node: null } as never);
+    expect(document.querySelector('.axdb-slab[data-slab-id="sec"]')!.classList.contains('axdb-slab--selected')).toBe(true);
+    tool.onPointerMove?.(tev('move', r.x - 200, r.y + 100), { node: null } as never);
+    tool.onPointerUp?.(tev('up', r.x - 200, r.y + 100), { node: null } as never);
+    await settle();
+    expect(handle.widget('sec')!.cell).toEqual(sc0);
+  });
+
+  it('a group dragged by its frame PUSHES the section in its way: a full-width section below cannot pin an 8-row panel to its column (the live demo showed the refusal at every cell)', async () => {
+    // The fluid demo: the side panel (3×8) at column 9, the Operations section
+    // (span 9) at row 7. Dragged left, every column overlapped the section —
+    // a LOCKED tile — so the wanted cell was painted refused all the way and
+    // the release moved nothing ("I can't drag the tab group"). Sections and
+    // groups give way to a MOVED section or group now, the way they give way
+    // to a dock; a widget still never pushes a section.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('win', 2, 1, 4, 0), K('nps', 2, 1, 6, 0),
+          K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          K('reps', 5, 3, 0, 4), K('funnel', 4, 3, 5, 4),
+          { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9, widgets: [K('orders', 4, 1, 0, 0)] },
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+        ],
+      })
+    );
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+    const tool = toolOf('main');
+    const side = model.getGroup('side')!;
+    const p = { x: side.position.x + side.size!.width / 2, y: side.position.y + 30 + 4 }; // the frame margin under the strip
+    tool.onPointerDown?.(tev('down', p.x, p.y), { node: null } as never);
+    const colW = (1200 - 11 * 10) / 12 + 10;
+    tool.onPointerMove?.(tev('move', p.x - colW * 3 + 8, p.y + 2), { node: null } as never);
+    tool.onPointerMove?.(tev('move', p.x - colW * 3, p.y), { node: null } as never);
+    // held three columns to the left: the panel has moved there and the section gave way — nothing is painted refused
+    expect(cellOf(handle, 'side')!.x).toBe(6);
+    expect(api.container.querySelector('.axdb-ph--no')).toBeNull();
+    tool.onPointerUp?.(tev('up', p.x - colW * 3, p.y), { node: null } as never);
+    await settle();
+    expect(cellOf(handle, 'side')).toEqual({ x: 6, y: 0, w: 3, h: 8 });
+    const ops = cellOf(handle, 'ops')!;
+    expect(ops.y).toBeGreaterThanOrEqual(8); // pushed below the panel, intact
+    expect(ops.w).toBe(9);
+    expect(cellOf(handle, 'orders')).toEqual({ x: 0, y: 0, w: 4, h: 1 }); // its child rode along
+    // the section is a locked tile again once the gesture is over: a widget dropped on it does not push it
+    const opsAfter = model.getGroup('ops')!;
+    expect(cellOf(handle, 'ops')).toEqual(ops);
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+    expect(opsAfter.position.y).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a widget as WIDE as the container, carried along its top band into the corner, still turns "above" into "after" (lab L95)', async () => {
+    // The vacated cell of a top-band push is the container's whole original frame when the widget is its size, and
+    // "still over the cell the widget took" kept "above" at the corner — a different band of the original frame
+    // must win over the vacated cell.
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          { id: 'chart', kind: 'kpi', span: 6, rows: 4, x: 0, y: 0 },
+          { id: 'panel', title: 'Panel', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('q1', 'Filters', 'c1'), PAGE('q2', 'Alerts', 'c2')] },
+        ],
+      })
+    );
+    const tool = toolOf('main');
+    const panel = model.getGroup('panel')!;
+    const chart = model.getNode('chart')!;
+    const from = { x: chart.position.x + 40, y: chart.position.y + 12 };
+    const topMid = { x: panel.position.x + panel.size!.width * 0.5, y: panel.position.y - 12 }; // the band hangs above the frame (0.4.65)
+    const corner = { x: panel.position.x + panel.size!.width - 14, y: panel.position.y + 30 + (panel.size!.height - 30) * 0.1 };
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: chart } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: chart } as never);
+    tool.onPointerMove?.(tev('move', topMid.x, topMid.y), { node: chart } as never);
+    expect(cellOf(handle, 'panel')).toEqual({ x: 6, y: 4, w: 6, h: 4 }); // above: the panel gives way LIVE again (0.4.66)
+    expect(cellOf(handle, 'chart')).toEqual({ x: 6, y: 0, w: 6, h: 4 });
+    tool.onPointerMove?.(tev('move', corner.x, corner.y), { node: chart } as never);
+    expect(cellOf(handle, 'panel')).toEqual({ x: 0, y: 0, w: 6, h: 4 }); // right, at the edge: the two swap sides
+    expect(cellOf(handle, 'chart')).toEqual({ x: 6, y: 0, w: 6, h: 4 });
+    tool.onPointerUp?.(tev('up', corner.x, corner.y), { node: chart } as never);
+    await settle();
+    expect(cellOf(handle, 'panel')).toEqual({ x: 0, y: 0, w: 6, h: 4 });
+    expect(cellOf(handle, 'chart')).toEqual({ x: 6, y: 0, w: 6, h: 4 });
+    expect(api.container.querySelectorAll('.axdb-tabs').length).toBe(1);
+  });
+
+  it('the TOP and BOTTOM bands give way LIVE, like the sides: the container moves and the placeholder fills the gap', async () => {
+    // Three rounds got here. The band used to sit BELOW the tabs, so pushing
+    // the container moved its strip toward the hand and the answer flickered
+    // (0.4.60/0.4.61, which froze the push to stop it). The band hangs ABOVE
+    // the frame now (0.4.65), so the push moves the container AWAY from the
+    // hand and the loop has nothing to close on — which lets the push come
+    // back, and with it the ordinary look of every other drop on the board:
+    // the tiles give way, a grey placeholder sits in the gap. No overlay, no
+    // painted lanes, nothing to learn ("it should be transparent… it should
+    // push the control down and put the placing gray one, like the other
+    // normal cases").
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, sizing: 'grow',
+        widgets: [
+          K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('win', 2, 1, 4, 0), K('nps', 2, 1, 6, 0),
+          K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+        ],
+      })
+    );
+    const tool = toolOf('main');
+    const side = model.getGroup('side')!;
+    const nps = model.getNode('nps')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    const mid = side.position.x + side.size!.width / 2;
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', mid, side.position.y - 8), { node: nps } as never);
+    // HELD: the container has already given way, and the ghost holds the cell it opened
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 1, w: 3, h: 8 });
+    expect(cellOf(handle, 'nps')).toEqual({ x: 9, y: 0, w: 2, h: 1 });
+    expect(api.container.querySelector('.axdb-join')).toBeNull(); // no overlay
+    expect(api.container.querySelectorAll('.axdb-lanes').length).toBe(0); // and no painted lanes
+    const ph = api.container.querySelector('.axdb-ph') as HTMLElement | null;
+    expect(ph).not.toBeNull(); // the ordinary placeholder, as on any other drop
+    expect(ph!.classList.contains('axdb-ph--no')).toBe(false);
+    // …and the hand can leave again: the container comes home
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    tool.onPointerMove?.(tev('move', mid, side.position.y - 8), { node: nps } as never);
+    tool.onPointerUp?.(tev('up', mid, side.position.y - 8), { node: nps } as never);
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 9, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 1, w: 3, h: 8 });
+    expect(stripOf(api, 'side')).toEqual(['Filters', 'Alerts']); // not a tab
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    // THE BOTTOM BAND, the same deal
+    {
+      const s2 = model.getGroup('side')!;
+      const n2 = model.getNode('nps')!;
+      const f2 = { x: n2.position.x + 20, y: n2.position.y + 20 };
+      const low = { x: mid, y: s2.position.y + s2.size!.height - 12 };
+      tool.onPointerDown?.(tev('down', f2.x, f2.y), { node: n2 } as never);
+      tool.onPointerMove?.(tev('move', f2.x + 30, f2.y + 5), { node: n2 } as never);
+      tool.onPointerMove?.(tev('move', low.x, low.y), { node: n2 } as never);
+      expect(api.container.querySelector('.axdb-join')).toBeNull();
+      tool.onPointerUp?.(tev('up', low.x, low.y), { node: n2 } as never);
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 9, y: 8, w: 2, h: 1 }); // under the panel
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+      await cm(api).undo();
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+    }
+  });
+
+  it('a widget dragged onto a tab container\'s OUTER band lands BESIDE it — and at the board\'s edge, where there is no room, the container shifts over to make it (the side panel on the right, a widget after it)', async () => {
+    // The fluid demo: the side panel sits at the right edge, so "after it"
+    // was nowhere — a widget dragged there went into its page, or slid to
+    // the nearest legal cell on the left. The outer fifth of the container is
+    // "beside" now, like a tab's split bands; the strip is still a new tab
+    // and the middle still goes into the page.
+    const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('rev', 2, 1, 0, 0), K('cust', 2, 1, 2, 0), K('win', 2, 1, 4, 0), K('nps', 2, 1, 6, 0),
+          K('trend', 6, 3, 0, 1), K('mix', 3, 3, 6, 1),
+          { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9, widgets: [K('orders', 4, 1, 0, 0)] }, // the section in the panel's way — the demo's layout
+          { id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'Filters', 'k1'), PAGE('p2', 'Alerts', 'k2')] },
+        ],
+      })
+    );
+    const tool = toolOf('main');
+    const side = model.getGroup('side')!;
+    const nps = model.getNode('nps')!;
+    const from = { x: nps.position.x + 20, y: nps.position.y + 20 };
+    // RIGHT band, no room beyond the edge: the panel shifts left by the widget's span, the widget takes the edge
+    let to = { x: side.position.x + side.size!.width - 12, y: side.position.y + 30 + 200 };
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', from.x + 30, from.y + 5), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
+    // held: the panel gives way LIVE, the way any widget gives way to a dragged widget (0.4.48 — 0.4.47 had frozen it behind an overlay and the user missed the slide): shifted while held, the ghost beside it at the edge, the grid placeholder on and not refused, no overlay
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 3, w: 2, h: 1 }); // at the pointer's row (D3): 200 px under the strip is row 3
+    expect(cellOf(handle, 'ops')!.y).toBeGreaterThanOrEqual(8); // the section gave way with it
+    const ph0 = api.container.querySelector('.axdb-ph') as HTMLElement | null;
+    expect(ph0).not.toBeNull();
+    expect(ph0!.classList.contains('axdb-ph--no')).toBe(false);
+    expect(api.container.querySelector('.axdb-join')).toBeNull();
+    // a hand is never still: more moves on the same spot — the pointer is over the panel's OLD area, not over the one-row cell the widget took — keep the shift
+    tool.onPointerMove?.(tev('move', to.x + 1, to.y + 1), { node: nps } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps } as never);
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 3, w: 2, h: 1 }); // at the pointer's row (D3): 200 px under the strip is row 3
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps } as never);
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 3, w: 2, h: 1 }); // at the pointer's row (D3): 200 px under the strip is row 3
+    expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+    expect(stripOf(api, 'side')).toEqual(['Filters', 'Alerts']); // not a tab, not adopted
+    expect(cellOf(handle, 'mix')!.y).toBeGreaterThanOrEqual(8); // pushed under the shifted panel
+    expect(cellOf(handle, 'ops')!.y).toBeGreaterThanOrEqual(8); // the section gave way to the shift, like it gives way to a moved group
+    expect(cellOf(handle, 'ops')!.w).toBe(9);
+    await cm(api).undo();
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    expect(cellOf(handle, 'mix')).toEqual({ x: 6, y: 1, w: 3, h: 3 });
+    expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 });
+    // The CORNER just under the strip at the far right (the user's 3440-px drag): left/right bands take precedence over top/bottom, so this means RIGHT, not above
+    {
+      const sideC = model.getGroup('side')!;
+      const npsC = model.getNode('nps')!;
+      const fromC = { x: npsC.position.x + 20, y: npsC.position.y + 20 };
+      const corner = { x: sideC.position.x + sideC.size!.width - 12, y: sideC.position.y + 30 + (sideC.size!.height - 30) * 0.02 };
+      tool.onPointerDown?.(tev('down', fromC.x, fromC.y), { node: npsC } as never);
+      tool.onPointerMove?.(tev('move', fromC.x + 30, fromC.y + 5), { node: npsC } as never);
+      tool.onPointerMove?.(tev('move', corner.x, corner.y), { node: npsC } as never);
+      expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 }); // shifted LEFT while held — not pushed down
+      expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
+      tool.onPointerUp?.(tev('up', corner.x, corner.y), { node: npsC } as never);
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 }); // after the panel, not above it
+      expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+      await cm(api).undo();
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    }
+    // ALONG THE TOP BAND TO THE CORNER (the user's 3440-px gesture on 0.4.48): the middle of the top band pushes the panel DOWN
+    // (above), and carrying on into the right band must turn that into RIGHT — the panel back up and shifted left, the
+    // widget after it. 0.4.48 left the panel's frame stale after the restore, so the corner read "outside" and the widget
+    // ended BELOW the panel.
+    {
+      const sideT = model.getGroup('side')!;
+      const npsT = model.getNode('nps')!;
+      const fromT = { x: npsT.position.x + 20, y: npsT.position.y + 20 };
+      const topMid = { x: sideT.position.x + sideT.size!.width * 0.5, y: sideT.position.y - 12 }; // above the frame (0.4.65)
+      const cornerT = { x: sideT.position.x + sideT.size!.width - 12, y: sideT.position.y + 30 + (sideT.size!.height - 30) * 0.02 };
+      tool.onPointerDown?.(tev('down', fromT.x, fromT.y), { node: npsT } as never);
+      tool.onPointerMove?.(tev('move', fromT.x + 30, fromT.y + 5), { node: npsT } as never);
+      tool.onPointerMove?.(tev('move', topMid.x, topMid.y), { node: npsT } as never);
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 1, w: 3, h: 8 }); // above: the panel pushed down under the widget
+      expect(cellOf(handle, 'nps')).toEqual({ x: 9, y: 0, w: 2, h: 1 });
+      tool.onPointerMove?.(tev('move', cornerT.x, cornerT.y), { node: npsT } as never);
+      expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 }); // right: back up, shifted left — in the SAME move
+      expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
+      tool.onPointerUp?.(tev('up', cornerT.x, cornerT.y), { node: npsT } as never);
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 10, y: 0, w: 2, h: 1 });
+      expect(cellOf(handle, 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 });
+      await cm(api).undo();
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    }
+    // THROUGH the bottom band INTO the middle: the beside the band started must let go, and the page takes the widget (lab L73)
+    {
+      const sideB = model.getGroup('side')!;
+      const npsB = model.getNode('nps')!;
+      const fromB = { x: npsB.position.x + 20, y: npsB.position.y + 20 };
+      const bottom = { x: sideB.position.x + sideB.size!.width / 2, y: sideB.position.y + 30 + (sideB.size!.height - 30) * 0.92 };
+      const middle = { x: sideB.position.x + sideB.size!.width / 2, y: sideB.position.y + 30 + (sideB.size!.height - 30) * 0.5 };
+      tool.onPointerDown?.(tev('down', fromB.x, fromB.y), { node: npsB } as never);
+      tool.onPointerMove?.(tev('move', fromB.x + 30, fromB.y + 5), { node: npsB } as never);
+      tool.onPointerMove?.(tev('move', bottom.x, bottom.y), { node: npsB } as never);
+      tool.onPointerMove?.(tev('move', middle.x, middle.y), { node: npsB } as never);
+      tool.onPointerMove?.(tev('move', middle.x + 1, middle.y), { node: npsB } as never);
+      tool.onPointerUp?.(tev('up', middle.x + 1, middle.y), { node: npsB } as never);
+      await settle();
+      expect(model.getGroup('p1')!.members?.has('nps')).toBe(true); // into the page
+      expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+      expect(cellOf(handle, 'ops')).toEqual({ x: 0, y: 7, w: 9, h: 1 }); // the band's transient beside let the section come back
+      await cm(api).undo();
+      await settle();
+      expect(cellOf(handle, 'nps')).toEqual({ x: 6, y: 0, w: 2, h: 1 });
+    }
+    // LEFT band with room: the widget lands left of the panel and the panel stays
+    const side2 = model.getGroup('side')!;
+    const nps2 = model.getNode('nps')!;
+    const from2 = { x: nps2.position.x + 20, y: nps2.position.y + 20 };
+    to = { x: side2.position.x + 12, y: side2.position.y + 30 + 200 };
+    tool.onPointerDown?.(tev('down', from2.x, from2.y), { node: nps2 } as never);
+    tool.onPointerMove?.(tev('move', from2.x + 30, from2.y + 5), { node: nps2 } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: nps2 } as never);
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: nps2 } as never);
+    await settle();
+    expect(cellOf(handle, 'nps')).toEqual({ x: 7, y: 3, w: 2, h: 1 }); // left of the panel, at the pointer's row (D3)
+    expect(cellOf(handle, 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+    expect(stripOf(api, 'side')).toEqual(['Filters', 'Alerts']);
+  });
+
+  it('a group dragged by its strip CARRIES its chrome: while it moves, its strip, slab and surface are transition-exempt together — the other groups\' are not — and the exemption lifts 60 ms after the drop', async () => {
+    // The strip jumped to the pointer while the page's tiles glided after it
+    // (the reflow transition is for the NEIGHBOURS): measured on the live
+    // demo, the content trailed the strip by up to 140 px at every step.
+    const { api, model } = up(BOARD3());
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="panel"]') as HTMLElement;
+    const y0 = model.getGroup('panel')!.position.y;
+    ev(strip, 'pointerdown', 1100, 10); // the strip's empty space
+    ev(window, 'pointermove', 1100, 12); // under the drag threshold
+    expect(carried(api)).toEqual([]);
+    ev(window, 'pointermove', 1100, 200);
+    await settle();
+    expect(carried(api)).toEqual(['bg:panel', 'slab:panel', 'tabs:panel']);
+    expect(api.container.querySelector('.grafloria-html-layer')!.classList.contains('axdb-glide')).toBe(true);
+    // the group and its page moved TOGETHER
+    const panel = model.getGroup('panel')!;
+    expect(panel.position.y).toBeGreaterThan(y0);
+    expect(model.getGroup('pg')!.position.y).toBe(panel.position.y + 30 + 8); // the strip, then the inset
+    ev(window, 'pointerup', 1100, 200);
+    await settle();
+    expect(carried(api)).toEqual(['bg:panel', 'slab:panel', 'tabs:panel']); // the drop write is instant too
+    await new Promise<void>((r) => setTimeout(r, 90));
+    expect(carried(api)).toEqual([]);
+    // and the stylesheet: carried chrome does not transition, floats, and a pushed group's chrome glides WITH its tiles
+    const css = document.getElementById('grafloria-dashboard-kit-styles')?.textContent ?? '';
+    expect(css).toContain('.axdb-carried');
+    expect(css).toMatch(/\.grafloria-html-layer\.axdb-glide > \.axdb-tabs[^{]*\{[^}]*transition: left/);
+  });
+});
+
+describe('TILE FIRST, step 4a: one commit, and the leg carries beside and push', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const cm = (api: { getEngine(): { commandManager: { undo(): Promise<unknown> | void; redo(): Promise<unknown> | void } } }) => api.getEngine().commandManager;
+  const on = (handle: DashboardHandle, boardId: string, id: string) => handle.binderOf(boardId)?.cellOf(id) ?? null;
+  const pathOf = (handle: DashboardHandle, id: string): string | null => {
+    const walk = (ws: Array<{ id: string; widgets?: unknown[] }> | undefined, path: string[]): string[] | null => {
+      for (const w of ws ?? []) {
+        if (w.id === id) return [...path, w.id];
+        const r = walk(w.widgets as Array<{ id: string; widgets?: unknown[] }> | undefined, [...path, w.id]);
+        if (r) return r;
+      }
+      return null;
+    };
+    for (const v of handle.toJSON().views) {
+      const r = walk(v.widgets as Array<{ id: string; widgets?: unknown[] }>, [v.id]);
+      if (r) return r.join(' > ');
+    }
+    return null;
+  };
+  const specOf = (handle: DashboardHandle, id: string): DashboardWidgetSpec | undefined => {
+    const find = (ws: DashboardWidgetSpec[] | undefined): DashboardWidgetSpec | undefined => {
+      for (const w of ws ?? []) {
+        if (w.id === id) return w;
+        const r = find(w.widgets);
+        if (r) return r;
+      }
+      return undefined;
+    };
+    return find(handle.toJSON().views.flatMap((v) => v.widgets));
+  };
+  /** The root grid: padding 10, rows of 60 + gap 10 — the middle of a row. */
+  const rowY = (row: number): number => 10 + row * 70 + 30;
+  const PAGE1 = (): DashboardWidgetSpec => ({ id: 'p1', title: 'Filters', columns: 6, maxRows: 4, widgets: [K('k1', 3, 1, 0, 0)] });
+  const SIDE = (): DashboardWidgetSpec => ({ id: 'side', title: 'Side', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', widgets: [PAGE1()] });
+  const board = (ops: DashboardWidgetSpec, binder?: Record<string, unknown>) =>
+    dashboard({ columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, sizing: 'grow', widgets: [ops, SIDE()], ...(binder ? { binder } : {}) });
+  const drag = (tool: CanvasTool, node: NodeModel, from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const hit = { node } as never;
+    tool.onPointerDown?.(tev('down', from.x, from.y), hit);
+    tool.onPointerMove?.(tev('move', from.x + 12, from.y + 6), hit);
+    for (let i = 1; i <= 4; i++) tool.onPointerMove?.(tev('move', from.x + ((to.x - from.x) * i) / 4, from.y + ((to.y - from.y) * i) / 4), hit);
+    return hit;
+  };
+
+  it('a widget from a SECTION dragged onto a container\'s outer band on the ROOT lands beside it there: the container shifts on the root, live, and the drop commits membership, cell and shift as one step', async () => {
+    // Before the leg carried a beside, a band on another board resolved as a
+    // plain cell there: the ghost slid next to the solid panel and the panel
+    // never gave way — "after it" at the edge was nowhere, from a section.
+    const { api, model, handle } = up(board({ id: 'ops', title: 'Operations', span: 6, rows: 2, x: 0, y: 0, columns: 6, maxRows: 2, widgets: [K('orders', 2, 1, 0, 0)] })); // two inner rows: the widget is one root row tall
+    const orders = model.getNode('orders')!;
+    const side = model.getGroup('side')!;
+    const from = { x: orders.position.x + 20, y: orders.position.y + 20 };
+    const to = { x: side.position.x + side.size!.width - 12, y: rowY(3) }; // the panel's right band, at row 3 of the root
+    const hit = drag(toolOf('ops'), orders, from, to);
+    expect(on(handle, 'ops', 'orders')).toBeNull(); // off its section
+    expect(on(handle, 'main', 'side')).toEqual({ x: 7, y: 0, w: 3, h: 8 }); // the panel shifted over by the widget's span
+    expect(on(handle, 'main', 'orders')).toEqual({ x: 10, y: 3, w: 2, h: 1 }); // after it, at the pointer's row
+    toolOf('ops').onPointerUp?.(tev('up', to.x, to.y), hit);
+    await settle();
+    expect(pathOf(handle, 'orders')).toBe('main > orders');
+    expect(handle.widget('orders')!.cell).toEqual({ x: 10, y: 3, w: 2, h: 1 });
+    expect(specOf(handle, 'side')).toMatchObject({ x: 7, y: 0 }); // the shift is in the document, not only on screen
+    await cm(api).undo();
+    await settle();
+    expect(pathOf(handle, 'orders')).toBe('main > ops > orders');
+    expect(handle.widget('orders')!.cell).toEqual({ x: 0, y: 0, w: 2, h: 1 });
+    expect(on(handle, 'main', 'side')).toEqual({ x: 9, y: 0, w: 3, h: 8 });
+  });
+
+  it('a widget from a PAGE over a FULL fit section of the ROOT pushes that section on the root (D2 through the leg) — and the push is committed, undone and redone with the drop', async () => {
+    // The refusal used to end in a dimmed ghost ("will snap home") whenever
+    // the refusing section's parent was not the widget's own board; and a
+    // target board's pushed sections were computed at the drop and dropped.
+    const { api, model, handle } = up(board({ id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 0, columns: 9, sizing: 'fit', widgets: [K('orders', 9, 1, 0, 0)] }));
+    const k1 = model.getNode('k1')!;
+    const ops = model.getGroup('ops')!;
+    const from = { x: k1.position.x + 20, y: k1.position.y + 20 };
+    const to = { x: ops.position.x + ops.size!.width / 2, y: ops.position.y + ops.size!.height / 2 }; // inside the section: "into", which it refuses
+    const hit = drag(toolOf('p1'), k1, from, to);
+    expect(model.getGroup('ops')!.members?.has('k1')).toBe(false);
+    const ghost = on(handle, 'main', 'k1');
+    expect(ghost).not.toBeNull(); // the ROOT took it, with intent
+    expect(ghost!.y).toBe(0);
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: ghost!.h, w: 9, h: 1 }); // the section pushed below it
+    expect(api.container.querySelector('.axdb-out')).toBeNull(); // not dimmed: a release lands
+    toolOf('p1').onPointerUp?.(tev('up', to.x, to.y), hit);
+    await settle();
+    expect(pathOf(handle, 'k1')).toBe('main > k1');
+    expect(specOf(handle, 'ops')).toMatchObject({ x: 0, y: ghost!.h }); // committed: the document carries the push
+    await cm(api).undo();
+    await settle();
+    expect(pathOf(handle, 'k1')).toBe('main > side > p1 > k1');
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: 0, w: 9, h: 1 });
+    await cm(api).redo();
+    await settle();
+    expect(pathOf(handle, 'k1')).toBe('main > k1');
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: ghost!.h, w: 9, h: 1 });
+  });
+
+  it('a PALETTE drag goes through the same zones: dropped inside a page it lands there, and the drop-in names the board it took', async () => {
+    // The palette gesture tested "inside this board" and nothing else: a
+    // chip carried into a page or a section could only ever land on the
+    // view, under the container it was pointing at.
+    const onDropIn = jest.fn();
+    const { api, model, handle } = up(board({ id: 'ops', title: 'Operations', span: 6, rows: 2, x: 0, y: 0, columns: 6, widgets: [K('orders', 2, 1, 0, 0)] }, { onDropIn }));
+    const binder = handle.binderOf('main')!;
+    const side = model.getGroup('side')!;
+    const node = new NodeModel({ id: 'pal', type: 'widget', position: { x: 0, y: 0 }, size: { width: 180, height: 60, depth: 0 } });
+    const pe = (type: string, x: number, y: number) => Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }) as unknown as PointerEvent;
+    binder.beginPaletteDrag(node, { w: 2, h: 1 }, pe('pointerdown', 400, 400));
+    window.dispatchEvent(pe('pointermove', 420, 410));
+    // into the page's body: the middle of the panel, below its strip
+    const into = { x: side.position.x + side.size!.width / 2, y: side.position.y + 30 + (side.size!.height - 30) / 2 };
+    for (let i = 1; i <= 4; i++) window.dispatchEvent(pe('pointermove', 420 + ((into.x - 420) * i) / 4, 410 + ((into.y - 410) * i) / 4));
+    expect(on(handle, 'main', 'pal')).toBeNull(); // not on the root
+    expect(on(handle, 'p1', 'pal')).not.toBeNull(); // the page took it
+    window.dispatchEvent(pe('pointerup', into.x, into.y));
+    await settle();
+    expect(onDropIn).toHaveBeenCalledTimes(1);
+    const [n, cell, displaced, target] = onDropIn.mock.calls[0] as [NodeModel, { x: number; y: number; w: number; h: number }, unknown[], { boardId: string }];
+    expect(n).toBe(node);
+    expect(target).toEqual({ boardId: 'p1' });
+    expect(cell.h).toBe(1);
+    expect(cell.w).toBeGreaterThanOrEqual(2); // a chip keeps its PIXEL size across boards, like a tile: two root columns are more of a page's six
+    expect(cell.w).toBeLessThanOrEqual(6);
+    expect(Array.isArray(displaced)).toBe(true);
+    expect(api.container.querySelectorAll('.axdb-ph').length).toBe(0);
+    // The dropped tile waits in the page's engine for the member the host adds — under its own id here, as
+    // Quantia's designer does — and yields its place to it: no phantom holds the cell afterwards.
+    expect(on(handle, 'p1', 'pal')).toEqual(cell);
+    const fresh = handle.addWidget({ id: 'fresh', kind: 'kpi', span: cell.w, rows: cell.h, x: cell.x, y: cell.y }, 'p1');
+    expect(fresh?.cell).toEqual(cell);
+    expect(on(handle, 'p1', 'pal')).toBeNull();
+    expect(pathOf(handle, 'fresh')).toBe('main > side > p1 > fresh');
+  });
+
+  it('a PALETTE drop that PUSHED a widget, followed by the host adding the widget under its OWN id: the new widget takes the cell the drop showed and the pushed one stays pushed', async () => {
+    // Quantia mints its own ids. The first cut removed the waiting tile
+    // before adding the host's, and the removal settled the board with
+    // gravity in between: the pushed widget floated back into the hole,
+    // the new one collided with it and auto-positioned to the left edge —
+    // "it lands on the cell it was aimed at" failed in Quantia's own e2e.
+    const onDropIn = jest.fn();
+    const { api, handle } = up(board({ id: 'ops', title: 'Operations', span: 6, rows: 2, x: 0, y: 4, columns: 6, widgets: [K('orders', 2, 1, 0, 0)] }, { onDropIn }));
+    handle.addWidget({ id: 'trend', kind: 'line', span: 6, rows: 2, x: 0, y: 0 }, 'main'); // the widget the chip is aimed at
+    await settle();
+    expect(handle.widget('trend')!.cell).toEqual({ x: 0, y: 0, w: 6, h: 2 });
+    const binder = handle.binderOf('main')!;
+    const node = new NodeModel({ id: 'pal', type: 'widget', position: { x: 0, y: 0 }, size: { width: 180, height: 60, depth: 0 } });
+    const pe = (type: string, x: number, y: number) => Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }) as unknown as PointerEvent;
+    binder.beginPaletteDrag(node, { w: 2, h: 1 }, pe('pointerdown', 400, 400));
+    window.dispatchEvent(pe('pointermove', 420, 410));
+    const aim = { x: 10 + 3 * 100 - 50 + 100, y: rowY(0) }; // over the trend's middle-right: column 3, row 0
+    window.dispatchEvent(pe('pointermove', aim.x, aim.y));
+    const shown = on(handle, 'main', 'pal')!;
+    expect(shown.y).toBe(0);
+    expect(on(handle, 'main', 'trend')!.y).toBe(1); // pushed under the chip while held
+    window.dispatchEvent(pe('pointerup', aim.x, aim.y));
+    await settle();
+    const [, cell, displaced] = onDropIn.mock.calls[0] as [NodeModel, { x: number; y: number; w: number; h: number }, Command[]];
+    expect(cell).toEqual(shown);
+    expect(displaced.length).toBeGreaterThan(0); // the trend's push, for the host's own step
+    // The host adds ITS widget at that cell, under its own id (Quantia's designer), with the push in the same step.
+    const fresh = handle.addWidget({ id: 'fresh', kind: 'kpi', span: cell.w, rows: cell.h, x: cell.x, y: cell.y }, 'main', { displaced });
+    await settle();
+    expect(fresh?.cell).toEqual(cell); // where the drop showed it, not the left edge
+    expect(on(handle, 'main', 'pal')).toBeNull();
+    expect(handle.widget('trend')!.cell!.y).toBe(cell.y + cell.h); // still pushed under it
+    await cm(api).undo();
+    await settle();
+    expect(handle.widget('fresh')).toBeUndefined();
+    expect(handle.widget('trend')!.cell).toEqual({ x: 0, y: 0, w: 6, h: 2 }); // one step: the add AND the push come back together
+  });
+
+  it('a PALETTE drag dropped on the view itself still names the view', async () => {
+    const onDropIn = jest.fn();
+    const { handle } = up(board({ id: 'ops', title: 'Operations', span: 6, rows: 2, x: 0, y: 0, columns: 6, widgets: [K('orders', 2, 1, 0, 0)] }, { onDropIn }));
+    const binder = handle.binderOf('main')!;
+    const node = new NodeModel({ id: 'pal', type: 'widget', position: { x: 0, y: 0 }, size: { width: 180, height: 60, depth: 0 } });
+    const pe = (type: string, x: number, y: number) => Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }) as unknown as PointerEvent;
+    binder.beginPaletteDrag(node, { w: 2, h: 1 }, pe('pointerdown', 400, 400));
+    window.dispatchEvent(pe('pointermove', 420, 410));
+    window.dispatchEvent(pe('pointermove', 300, rowY(5))); // free root space under the section
+    expect(on(handle, 'main', 'pal')).toMatchObject({ w: 2, h: 1 });
+    window.dispatchEvent(pe('pointerup', 300, rowY(5)));
+    await settle();
+    expect(onDropIn).toHaveBeenCalledTimes(1);
+    expect(onDropIn.mock.calls[0][3]).toEqual({ boardId: 'main' });
+  });
+});
+
+describe('TILE FIRST, step 4b-ii: a GROUP is dragged like a widget — into a page, beside a container, pushing a full section, never into itself', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const cm = (api: { getEngine(): { commandManager: { undo(): Promise<unknown> | void; redo(): Promise<unknown> | void } } }) => api.getEngine().commandManager;
+  const on = (handle: DashboardHandle, boardId: string, id: string) => handle.binderOf(boardId)?.cellOf(id) ?? null;
+  const pathOf = (handle: DashboardHandle, id: string): string | null => {
+    const walk = (ws: Array<{ id: string; widgets?: unknown[] }> | undefined, path: string[]): string[] | null => {
+      for (const w of ws ?? []) {
+        if (w.id === id) return [...path, w.id];
+        const r = walk(w.widgets as Array<{ id: string; widgets?: unknown[] }> | undefined, [...path, w.id]);
+        if (r) return r;
+      }
+      return null;
+    };
+    for (const v of handle.toJSON().views) {
+      const r = walk(v.widgets as Array<{ id: string; widgets?: unknown[] }>, [v.id]);
+      if (r) return r.join(' > ');
+    }
+    return null;
+  };
+  const pev = (el: EventTarget, type: string, x: number, y: number) =>
+    el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }));
+  /** A press on a section's caption band, driven through the board's tool the way the renderer routes it. */
+  const pressCaption = (api: { container: HTMLElement }, tool: CanvasTool, sectionId: string, x: number, y: number) => {
+    const band = api.container.querySelector(`.axdb-slab[data-slab-id="${sectionId}"] > .axdb-slab-h`);
+    expect(band).not.toBeNull();
+    tool.onPointerDown?.({ ...tev('down', x, y), source: { target: band } } as never, { node: undefined } as never);
+  };
+  const board = (extra: Partial<DashboardSpec> & { widgets: DashboardWidgetSpec[] }, nesting?: number) =>
+    dashboard({ columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, sizing: 'grow', ...(nesting !== undefined ? { nesting } : {}), ...extra });
+  const PAGE = (id: string, kid: string): DashboardWidgetSpec => ({ id, title: id, columns: 6, maxRows: 6, widgets: [K(kid, 3, 1, 0, 0)] });
+
+  it('a SECTION carried by its caption band into a tab PAGE lands there with its children — one step, undone as one', async () => {
+    const { api, model, handle } = up(board({ widgets: [
+      { id: 'ops', title: 'Operations', caption: true, span: 4, rows: 1, x: 0, y: 0, columns: 4, maxRows: 1, widgets: [K('orders', 2, 1, 0, 0)] },
+      { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'k1')] },
+    ] }));
+    const tool = toolOf('main');
+    const ops = model.getGroup('ops')!;
+    const side = model.getGroup('side')!;
+    const k1 = model.getNode('k1')!;
+    pressCaption(api, tool, 'ops', ops.position.x + 60, ops.position.y + 12);
+    tool.onPointerMove?.(tev('move', ops.position.x + 75, ops.position.y + 20), { node: undefined } as never);
+    // into the page's body, under its widget: the middle of the page's free rows
+    const to = { x: side.position.x + side.size!.width / 2, y: k1.position.y + k1.size.height + 120 };
+    for (let i = 1; i <= 5; i++) tool.onPointerMove?.(tev('move', ops.position.x + 75 + ((to.x - ops.position.x - 75) * i) / 5, ops.position.y + 20 + ((to.y - ops.position.y - 20) * i) / 5), { node: undefined } as never);
+    expect(on(handle, 'main', 'ops')).toBeNull(); // off the root
+    expect(on(handle, 'p1', 'ops')).not.toBeNull(); // the page took it
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: undefined } as never);
+    await settle();
+    expect(pathOf(handle, 'ops')).toBe('main > side > p1 > ops');
+    expect(pathOf(handle, 'orders')).toBe('main > side > p1 > ops > orders'); // its child came along
+    expect(handle.binderOf('ops')).toBeDefined(); // its own board still runs inside the page
+    await cm(api).undo();
+    await settle();
+    expect(pathOf(handle, 'ops')).toBe('main > ops');
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: 0, w: 4, h: 1 });
+    expect(pathOf(handle, 'orders')).toBe('main > ops > orders');
+  });
+
+  it('a TAB CONTAINER carried by its strip\'s empty space into a SECTION lands there — nested tabs by hand', async () => {
+    const { api, model, handle } = up(board({ widgets: [
+      { id: 'ops', title: 'Operations', span: 6, rows: 4, x: 0, y: 0, columns: 6, maxRows: 4, widgets: [K('orders', 2, 1, 0, 0)] },
+      { id: 'side', title: 'Side', span: 4, rows: 2, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'k1')] },
+    ] }));
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const ops = model.getGroup('ops')!;
+    const sx = ops.position.x + ops.size!.width - 30; // the strip's empty space is at its right end
+    const s = model.getGroup('side')!;
+    pev(strip, 'pointerdown', s.position.x + s.size!.width - 30, s.position.y + 12);
+    pev(window, 'pointermove', s.position.x + s.size!.width - 30, s.position.y + 30);
+    // into the section's free rows under its widget
+    const to = { x: ops.position.x + ops.size!.width * 0.6, y: ops.position.y + ops.size!.height * 0.7 };
+    for (let i = 1; i <= 5; i++) pev(window, 'pointermove', sx + ((to.x - sx) * i) / 5, s.position.y + 30 + ((to.y - s.position.y - 30) * i) / 5);
+    await settle();
+    expect(on(handle, 'main', 'side')).toBeNull();
+    expect(on(handle, 'ops', 'side')).not.toBeNull();
+    pev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(pathOf(handle, 'side')).toBe('main > ops > side');
+    expect(pathOf(handle, 'k1')).toBe('main > ops > side > p1 > k1');
+    expect(api.container.querySelector('.axdb-tabs[data-tabs-id="side"]')).not.toBeNull(); // its strip still paints
+    await cm(api).undo();
+    await settle();
+    expect(pathOf(handle, 'side')).toBe('main > side');
+    expect(on(handle, 'main', 'side')).toEqual({ x: 6, y: 0, w: 4, h: 2 });
+  });
+
+  it('a tab container dragged onto a section\'s outer band lands BESIDE it (a group ghost through the same beside)', async () => {
+    // a section's band is 0 by design (its whole body is "into"), so the beside a group gets is a TAB container's band:
+    // `panel` is the target; `ops` is a plain section standing to its left
+    const { api, model, handle } = up(board({ widgets: [
+      { id: 'ops', title: 'Operations', span: 4, rows: 4, x: 0, y: 0, columns: 4, maxRows: 4, widgets: [K('orders', 2, 1, 0, 0)] },
+      { id: 'panel', title: 'Panel', span: 4, rows: 4, x: 4, y: 0, layout: 'tabs', widgets: [PAGE('p2', 'k2')] },
+      { id: 'side', title: 'Side', span: 4, rows: 4, x: 8, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'k1')] },
+    ] }));
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const ops = model.getGroup('ops')!;
+    const s = model.getGroup('side')!;
+    expect(on(handle, 'main', 'panel')).toEqual({ x: 4, y: 0, w: 4, h: 4 });
+    const panel = model.getGroup('panel')!;
+    pev(strip, 'pointerdown', s.position.x + s.size!.width - 30, s.position.y + 12);
+    pev(window, 'pointermove', s.position.x + s.size!.width - 30, s.position.y + 30);
+    // the panel's LEFT band, at row 0: "before the panel" — the panel gives way to the right? no room on its right (side left the edge free): it shifts
+    const to = { x: panel.position.x + 12, y: panel.position.y + 30 + 40 };
+    for (let i = 1; i <= 5; i++) pev(window, 'pointermove', s.position.x + s.size!.width - 30 + ((to.x - s.position.x - s.size!.width + 30) * i) / 5, s.position.y + 30 + ((to.y - s.position.y - 30) * i) / 5);
+    await settle();
+    const held = on(handle, 'main', 'side')!;
+    expect(held).not.toBeNull();
+    expect(held.x + held.w).toBe(on(handle, 'main', 'panel')!.x); // right before the panel, wherever the panel now stands
+    pev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(on(handle, 'main', 'side')!.x + 4).toBe(on(handle, 'main', 'panel')!.x);
+    await cm(api).undo();
+    await settle();
+    expect(on(handle, 'main', 'side')).toEqual({ x: 8, y: 0, w: 4, h: 4 });
+    expect(on(handle, 'main', 'panel')).toEqual({ x: 4, y: 0, w: 4, h: 4 });
+    void ops;
+  });
+
+  it('a tab container over a FULL fit section PUSHES it (D2 with a group ghost) instead of sliding under', async () => {
+    const { api, model, handle } = up(board({ widgets: [
+      { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 0, columns: 9, sizing: 'fit', widgets: [K('orders', 9, 1, 0, 0)] }, // FULL
+      { id: 'side', title: 'Side', span: 3, rows: 4, x: 9, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'k1')] },
+    ] }));
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const ops = model.getGroup('ops')!;
+    const s = model.getGroup('side')!;
+    pev(strip, 'pointerdown', s.position.x + s.size!.width - 30, s.position.y + 12);
+    pev(window, 'pointermove', s.position.x + s.size!.width - 30, s.position.y + 30);
+    const to = { x: ops.position.x + ops.size!.width / 2, y: ops.position.y + ops.size!.height / 2 };
+    for (let i = 1; i <= 5; i++) pev(window, 'pointermove', s.position.x + s.size!.width - 30 + ((to.x - s.position.x - s.size!.width + 30) * i) / 5, s.position.y + 30 + ((to.y - s.position.y - 30) * i) / 5);
+    await settle();
+    expect(model.getGroup('ops')!.members?.has('side')).toBe(false); // not taken: full
+    expect(on(handle, 'main', 'side')!.y).toBe(0);
+    expect(on(handle, 'main', 'ops')!.y).toBeGreaterThan(0); // pushed under it on the root
+    pev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(pathOf(handle, 'side')).toBe('main > side');
+    expect(on(handle, 'main', 'ops')!.y).toBeGreaterThan(0);
+    await cm(api).undo();
+    await settle();
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: 0, w: 9, h: 1 });
+    expect(on(handle, 'main', 'side')).toEqual({ x: 9, y: 0, w: 3, h: 4 });
+  });
+
+  it('a tab container carried over its OWN page moves on the root — it never enters itself', async () => {
+    const { api, model, handle } = up(board({ widgets: [
+      K('free', 3, 1, 0, 0),
+      { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'k1')] },
+    ] }));
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const s = model.getGroup('side')!;
+    const p1 = model.getGroup('p1')!;
+    pev(strip, 'pointerdown', s.position.x + s.size!.width - 30, s.position.y + 12);
+    pev(window, 'pointermove', s.position.x + s.size!.width - 30, s.position.y + 30);
+    // straight down into its own page's body
+    const to = { x: p1.position.x + p1.size!.width / 2, y: p1.position.y + p1.size!.height * 0.7 };
+    for (let i = 1; i <= 5; i++) pev(window, 'pointermove', s.position.x + s.size!.width - 30, s.position.y + 30 + ((to.y - s.position.y - 30) * i) / 5);
+    await settle();
+    expect(on(handle, 'p1', 'side')).toBeNull(); // never adopted by its own page
+    expect(on(handle, 'main', 'side')).not.toBeNull();
+    pev(window, 'pointerup', to.x, to.y);
+    await settle();
+    expect(pathOf(handle, 'side')).toBe('main > side');
+    expect(pathOf(handle, 'k1')).toBe('main > side > p1 > k1');
+  });
+
+  it('the nesting bound applies to a group too: with nesting 1 a section cannot enter a page (depth 2) and snaps home', async () => {
+    const { api, model, handle } = up(board({ widgets: [
+      { id: 'ops', title: 'Operations', caption: true, span: 4, rows: 1, x: 0, y: 0, columns: 4, maxRows: 1, widgets: [K('orders', 2, 1, 0, 0)] },
+      { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [PAGE('p1', 'k1')] },
+    ] }, 1));
+    const tool = toolOf('main');
+    const ops = model.getGroup('ops')!;
+    const side = model.getGroup('side')!;
+    const k1 = model.getNode('k1')!;
+    pressCaption(api, tool, 'ops', ops.position.x + 60, ops.position.y + 12);
+    tool.onPointerMove?.(tev('move', ops.position.x + 75, ops.position.y + 20), { node: undefined } as never);
+    const to = { x: side.position.x + side.size!.width / 2, y: k1.position.y + k1.size.height + 120 };
+    for (let i = 1; i <= 5; i++) tool.onPointerMove?.(tev('move', ops.position.x + 75 + ((to.x - ops.position.x - 75) * i) / 5, ops.position.y + 20 + ((to.y - ops.position.y - 20) * i) / 5), { node: undefined } as never);
+    expect(on(handle, 'p1', 'ops')).toBeNull(); // too deep: refused — the page is opaque, the pointer means a cell on the ROOT
+    expect(on(handle, 'main', 'ops')).not.toBeNull(); // still a tile of the root, at the cell under the hand
+    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(0); // the panel is pushed under it: a group moved by hand pushes with intent (0.4.44)
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: undefined } as never);
+    await settle();
+    expect(pathOf(handle, 'ops')).toBe('main > ops');
+    expect(pathOf(handle, 'k1')).toBe('main > side > p1 > k1');
+    await cm(api).undo();
+    await settle();
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 0, y: 0, w: 4, h: 1 });
+    expect(on(handle, 'main', 'side')).toEqual({ x: 6, y: 0, w: 6, h: 6 });
+  });
+});
+
+describe('TILE FIRST, step 5a: the parent board is in the gesture\'s scope, and a GROW container takes rows for a tile arriving by hand (D4)', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const cm = (api: { getEngine(): { commandManager: { undo(): Promise<unknown> | void; redo(): Promise<unknown> | void } } }) => api.getEngine().commandManager;
+  const on = (handle: DashboardHandle, boardId: string, id: string) => handle.binderOf(boardId)?.cellOf(id) ?? null;
+  const pathOf = (handle: DashboardHandle, id: string): string | null => {
+    const walk = (ws: Array<{ id: string; widgets?: unknown[] }> | undefined, path: string[]): string[] | null => {
+      for (const w of ws ?? []) {
+        if (w.id === id) return [...path, w.id];
+        const r = walk(w.widgets as Array<{ id: string; widgets?: unknown[] }> | undefined, [...path, w.id]);
+        if (r) return r;
+      }
+      return null;
+    };
+    for (const v of handle.toJSON().views) {
+      const r = walk(v.widgets as Array<{ id: string; widgets?: unknown[] }>, [v.id]);
+      if (r) return r.join(' > ');
+    }
+    return null;
+  };
+  /** A section of `rows` inner rows holding one full widget, with a tile under it on the board. */
+  const board = (sectionSizing?: 'fit' | 'grow') =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 900,
+      gap: 10,
+      rowHeight: 60,
+      sizing: 'grow',
+      widgets: [
+        K('free', 4, 1, 0, 0),
+        { id: 'ops', title: 'Operations', span: 8, rows: 1, x: 4, y: 0, columns: 8, maxRows: 1, ...(sectionSizing ? { sizing: sectionSizing } : {}), widgets: [K('orders', 8, 1, 0, 0)] },
+        K('below', 12, 1, 0, 1), // directly under the section: the tile the section's growth pushes
+      ],
+    });
+
+  it('a resize that ESCALATES keeps the parent board\'s pushed tiles through a re-read and an undo', async () => {
+    // The escalation asks the parent for a row and the parent's own tiles move to make it. Only the
+    // SECTION's cell is committed — and that is enough: a rebuild reads the section at its new height
+    // and the engine pushes the tile under it again. This pins that, so a future scope cannot quietly
+    // break what the layout currently re-derives.
+    const { api, model, handle } = up(board());
+    const tool = toolOf('ops');
+    const orders = model.getNode('orders')!;
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 4, y: 0, w: 8, h: 1 });
+    expect(on(handle, 'main', 'below')).toEqual({ x: 0, y: 1, w: 12, h: 1 });
+    // pull the inner widget's bottom edge well past its row: the section asks the board for a row.
+    // The press names the CORNER HANDLE by its DOM target — jsdom gives hosts no layout, so the
+    // edge-by-geometry test can never fire here; the handle is how a real press takes s+e anyway.
+    const rs = document.createElement('div');
+    rs.className = 'axdb-rs';
+    const from = { x: orders.position.x + 40, y: orders.position.y + orders.size.height - 2 };
+    const hit = { node: orders } as never;
+    const at = (type: ToolPointerEvent['type'], x: number, y: number) => ({ ...tev(type, x, y), source: { target: rs } as unknown as PointerEvent });
+    tool.onPointerDown?.(at('down', from.x, from.y), hit);
+    tool.onPointerMove?.(at('move', from.x, from.y + 8), hit);
+    tool.onPointerMove?.(at('move', from.x, from.y + 80), hit);
+    expect(on(handle, 'main', 'ops')!.h).toBe(2); // the section grew
+    expect(on(handle, 'main', 'below')!.y).toBe(2); // and pushed the tile under it
+    tool.onPointerUp?.(at('up', from.x, from.y + 80), hit);
+    await settle();
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 4, y: 0, w: 8, h: 2 });
+    expect(on(handle, 'main', 'below')).toEqual({ x: 0, y: 2, w: 12, h: 1 });
+    handle.binderOf('main')!.sync(); // re-read the model: the push must be IN it, not only on screen
+    await settle();
+    expect(on(handle, 'main', 'below')).toEqual({ x: 0, y: 2, w: 12, h: 1 });
+    await cm(api).undo();
+    await settle();
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 4, y: 0, w: 8, h: 1 });
+    expect(on(handle, 'main', 'below')).toEqual({ x: 0, y: 1, w: 12, h: 1 });
+  });
+
+  it('a widget dropped into a FULL GROW section makes the section take a row and lands in it (D4) — one undo puts everything back', async () => {
+    const { api, model, handle } = up(board()); // grow by default: escalate
+    const tool = toolOf('main');
+    const free = model.getNode('free')!;
+    const ops = model.getGroup('ops')!;
+    const from = { x: free.position.x + 20, y: free.position.y + 20 };
+    const to = { x: ops.position.x + ops.size!.width / 2, y: ops.position.y + ops.size!.height / 2 };
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: free } as never);
+    tool.onPointerMove?.(tev('move', from.x + 20, from.y + 6), { node: free } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: free } as never);
+    expect(on(handle, 'ops', 'free')).not.toBeNull(); // the section took it, having grown for it
+    expect(on(handle, 'main', 'ops')!.h).toBe(2);
+    expect(on(handle, 'main', 'below')!.y).toBe(2); // the board's tile pushed by the growth
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: free } as never);
+    await settle();
+    expect(pathOf(handle, 'free')).toBe('main > ops > free');
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 4, y: 0, w: 8, h: 2 });
+    expect(on(handle, 'main', 'below')).toEqual({ x: 0, y: 2, w: 12, h: 1 });
+    await cm(api).undo();
+    await settle();
+    expect(pathOf(handle, 'free')).toBe('main > free');
+    expect(on(handle, 'main', 'ops')).toEqual({ x: 4, y: 0, w: 8, h: 1 });
+    expect(on(handle, 'main', 'below')).toEqual({ x: 0, y: 1, w: 12, h: 1 });
+  });
+
+  it('a FIT section does NOT grow: it refuses and is pushed by the widget instead (D2 stands)', async () => {
+    const { model, handle } = up(board('fit'));
+    const tool = toolOf('main');
+    const free = model.getNode('free')!;
+    const ops = model.getGroup('ops')!;
+    const from = { x: free.position.x + 20, y: free.position.y + 20 };
+    const to = { x: ops.position.x + ops.size!.width / 2, y: ops.position.y + ops.size!.height / 2 };
+    tool.onPointerDown?.(tev('down', from.x, from.y), { node: free } as never);
+    tool.onPointerMove?.(tev('move', from.x + 20, from.y + 6), { node: free } as never);
+    tool.onPointerMove?.(tev('move', to.x, to.y), { node: free } as never);
+    expect(model.getGroup('ops')!.members?.has('free')).toBe(false); // refused
+    expect(on(handle, 'main', 'ops')!.h).toBe(1); // and it did NOT grow
+    expect(on(handle, 'main', 'ops')!.y).toBeGreaterThan(0); // pushed by the widget instead
+    tool.onPointerUp?.(tev('up', to.x, to.y), { node: free } as never);
+    await settle();
+    expect(pathOf(handle, 'free')).toBe('main > free');
+  });
+});
+
+describe('the tab strip HOLDS the hand: a widget aimed at the tabs does not flip to "above the container" on a pixel', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const on = (handle: DashboardHandle, boardId: string, id: string) => handle.binderOf(boardId)?.cellOf(id) ?? null;
+  const board = () =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      gap: 10,
+      rowHeight: 60,
+      sizing: 'grow',
+      widgets: [
+        K('nps', 2, 1, 0, 0),
+        { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0)] }] },
+      ],
+    });
+  /**
+   * The strip's painted box, stubbed: jsdom lays nothing out. It FOLLOWS the
+   * group, as the real one does — so a container the drag pushes takes its
+   * strip along, which is the whole point of the rest-geometry test below.
+   */
+  const stubStrip = (api: { container: HTMLElement }, model: DiagramModel, h = 30) => {
+    const g = model.getGroup('side')!;
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const live = () => {
+      const p = g.position;
+      const w = g.size!.width;
+      return { left: p.x, top: p.y, right: p.x + w, bottom: p.y + h, width: w, height: h, x: p.x, y: p.y, toJSON: () => ({}) };
+    };
+    Object.defineProperty(strip, 'getBoundingClientRect', { value: () => live(), configurable: true });
+    return live();
+  };
+  const marked = (api: { container: HTMLElement }) => !!api.container.querySelector('.axdb-tabs[data-tabs-id="side"].axdb-tabs--drop');
+
+  it('a hand that overshoots the strip by a few pixels is still aiming at the tabs; ten pixels below, it means above the container', async () => {
+    // Measured on the live demo before this: the strip owned exactly its painted 30 px and ONE pixel lower
+    // the panel was shoved 90 px down — so a 2 px wobble at the seam toggled a 90 px animated push
+    // ("switching so fast between having it above the entire tab group or inside as a tab").
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = { node: nps } as never;
+    const side0 = on(handle, 'main', 'side');
+    const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+    tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
+    tool.onPointerMove?.(tev('move', nps.position.x + 40, nps.position.y + 26), hit);
+    // ON the strip: a tab slot
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 15), hit);
+    expect(marked(api)).toBe(true);
+    expect(on(handle, 'main', 'side')).toEqual(side0); // the container has not moved
+    // 4 px BELOW its bottom edge: still the tabs — the strip keeps the hand it has
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.bottom + 4), hit);
+    expect(marked(api)).toBe(true);
+    expect(on(handle, 'main', 'side')).toEqual(side0);
+    // back up onto it, then ABOVE the frame: that is where "above the container" lives (0.4.65), and it gives way LIVE (0.4.66)
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top - 12), hit);
+    expect(marked(api)).toBe(false);
+    expect(api.container.querySelector('.axdb-join')).toBeNull(); // no overlay: the ordinary placeholder does the telling
+    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y);
+    // and coming back up to the strip takes the tabs again
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 15), hit);
+    expect(marked(api)).toBe(true);
+    expect(on(handle, 'main', 'side')).toEqual(side0);
+    tool.onPointerUp?.(tev('up', r.x + r.width * 0.5, r.top + 15), hit);
+    await settle();
+    expect(handle.toJSON().views[0].widgets.find((w) => w.id === 'side')?.widgets?.some((p) => (p.widgets ?? []).some((c) => c.id === 'nps'))).toBe(true);
+  });
+
+  it('the top band cannot take the tabs away: it hangs ABOVE the frame, so the push moves the container away from the hand, never through it', async () => {
+    // Two rounds of the same report. 0.4.59: crossing into the top band shoved the panel 90 px down
+    // and took its strip along, so coming back up the tabs were unreachable — fixed by reading the
+    // strip at the container's REST frame, as its bands have been since 0.4.49. 0.4.60 closed the
+    // flicker the painted box caused. 0.4.61 removes the cause of both: a vertical band marks its
+    // cell and moves nothing, so rest and painted position never part company.
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = { node: nps } as never;
+    const side0 = on(handle, 'main', 'side');
+    const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+    const mid = r.x + r.width * 0.5;
+    tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
+    tool.onPointerMove?.(tev('move', nps.position.x + 40, nps.position.y + 26), hit);
+    // into the TOP BAND, which hangs above the frame: the container gives way, DOWNWARD, away from the hand
+    tool.onPointerMove?.(at(mid, r.top - 14), hit);
+    expect(marked(api)).toBe(false);
+    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y);
+    const pushed = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]')!.getBoundingClientRect();
+    expect(pushed.top).toBeGreaterThanOrEqual(r.top); // it moved DOWN, never up through the hand
+    // back up onto the tabs' resting rows: the tab zone, and the container comes home
+    tool.onPointerMove?.(at(mid, r.top + 15), hit);
+    expect(marked(api)).toBe(true);
+    expect(on(handle, 'main', 'side')).toEqual(side0);
+    tool.onPointerUp?.(tev('up', mid, r.top + 15), hit);
+    await settle();
+    expect(handle.toJSON().views[0].widgets.find((w) => w.id === 'side')?.widgets?.some((p) => (p.widgets ?? []).some((c) => c.id === 'nps'))).toBe(true);
+  });
+
+  it('a widget grabbed in its MIDDLE, held so the card hangs over the panel\'s top edge, means ABOVE — the panel gives way; grabbed at its top edge, the same pointer means the page (0.4.73)', () => {
+    // a THREE-row card (180 px): grabbed in its middle the top edge clears the frame while the hand is under the header;
+    // a card shorter than two strips cannot do that — for those, "above" is the band above the frame
+    const tall = () =>
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'grow',
+        widgets: [
+          K('nps', 2, 3, 0, 0),
+          { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0)] }] },
+        ],
+      });
+    const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+    {
+      const { api, model, handle } = up(tall());
+      const r = stubStrip(api, model);
+      const tool = toolOf('main');
+      const nps = model.getNode('nps')!;
+      const hit = { node: nps } as never;
+      const side0 = on(handle, 'main', 'side');
+      const mid = r.x + r.width * 0.5;
+      // grabbed 90 px below the card's top edge (its middle), coming in from the left, level with a point just under the strip
+      tool.onPointerDown?.(tev('down', nps.position.x + 40, nps.position.y + 90), hit);
+      tool.onPointerMove?.(tev('move', nps.position.x + 60, nps.position.y + 96), hit);
+      tool.onPointerMove?.(at(r.x - 60, r.bottom + 10), hit); // beside the panel, no crossing
+      tool.onPointerMove?.(at(mid, r.bottom + 10), hit); // 10 px under the strip: the card's top edge is 50 px ABOVE the frame
+      expect(marked(api)).toBe(false);
+      expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y); // the panel gave way: ABOVE
+      tool.onPointerMove?.(at(mid, r.bottom + 100), hit); // the card wholly inside (its top 10 px under the frame's top): the page, the panel home
+      expect(on(handle, 'main', 'side')).toEqual(side0);
+      expect(on(handle, 'p1', 'nps')).not.toBeNull();
+      tool.onPointerUp?.(at(mid, r.bottom + 100), hit);
+    }
+    {
+      // the same card grabbed near its TOP edge: the same pointer leaves the card inside the panel — the page
+      const { api, model, handle } = up(tall());
+      const r = stubStrip(api, model);
+      const tool = toolOf('main');
+      const nps = model.getNode('nps')!;
+      const hit = { node: nps } as never;
+      const side0 = on(handle, 'main', 'side');
+      const mid = r.x + r.width * 0.5;
+      tool.onPointerDown?.(tev('down', nps.position.x + 40, nps.position.y + 10), hit);
+      tool.onPointerMove?.(tev('move', nps.position.x + 60, nps.position.y + 16), hit);
+      tool.onPointerMove?.(at(r.x - 60, r.bottom + 10), hit);
+      tool.onPointerMove?.(at(mid, r.bottom + 10), hit); // the card's top edge is 30 px UNDER the frame's top
+      expect(marked(api)).toBe(false);
+      expect(on(handle, 'main', 'side')).toEqual(side0); // nothing gave way
+      expect(on(handle, 'p1', 'nps')).not.toBeNull(); // the page took it
+      tool.onPointerUp?.(at(mid, r.bottom + 10), hit);
+    }
+  });
+
+  it('a hand that CROSSES the strip between two events is on the tabs, if it landed near them', async () => {
+    // The user, coming down from above the panel at hand speed: "it's not
+    // passing by the tab header — it drops directly to inside or outside."
+    // A strip is 30 px tall and a hand moves 40 to 80 px between events, so
+    // sampling only where the pointer LANDS skips it. The segment the hand
+    // travelled is tested too: crossing the strip's rows and landing within
+    // one strip's height of them means the tabs. Flying far past them does
+    // not — a fast drag into the page must not snag on the header.
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = { node: nps } as never;
+    const side0 = on(handle, 'main', 'side');
+    const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+    const mid = r.x + r.width * 0.5;
+    tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
+    tool.onPointerMove?.(tev('move', nps.position.x + 40, nps.position.y + 26), hit);
+    // above the panel: the band (30 px deep), the panel gives way
+    tool.onPointerMove?.(at(mid, r.top - 20), hit);
+    expect(marked(api)).toBe(false);
+    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y);
+    // ONE event to 10 px under the strip: the hand crossed it — the tabs, and the panel comes home
+    tool.onPointerMove?.(at(mid, r.bottom + 10), hit);
+    expect(marked(api)).toBe(true);
+    expect(on(handle, 'main', 'side')).toEqual(side0);
+    // ONE event far into the page: it left the tabs behind
+    tool.onPointerMove?.(at(mid, r.bottom + 200), hit);
+    expect(marked(api)).toBe(false);
+    expect(on(handle, 'main', 'side')).toEqual(side0); // the page: nothing pushed
+    // coming back UP in one event, from the page to just above the frame: crossed again — the tabs
+    tool.onPointerMove?.(at(mid, r.bottom + 40), hit);
+    tool.onPointerMove?.(at(mid, r.top - 12), hit);
+    expect(marked(api)).toBe(true);
+    // and a flick from above straight to deep in the page never snags
+    tool.onPointerMove?.(at(mid, r.top - 20), hit);
+    tool.onPointerMove?.(at(mid, r.bottom + 220), hit);
+    expect(marked(api)).toBe(false);
+    tool.onPointerUp?.(tev('up', mid, r.bottom + 220), hit);
+    await settle();
+    const pages = handle.toJSON().views[0].widgets.find((w) => w.id === 'side')?.widgets ?? [];
+    expect(pages.map((p) => p.id)).toEqual(['p1']); // no new tab was made…
+    expect((pages[0].widgets ?? []).some((c) => c.id === 'nps')).toBe(true); // …the flick landed INTO the page under the hand
+  });
+
+  it('the stickiness is the strip\'s OWN: a hand that never touched it gets no extra room', async () => {
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = { node: nps } as never;
+    const side0 = on(handle, 'main', 'side');
+    const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+    tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
+    tool.onPointerMove?.(tev('move', nps.position.x + 40, nps.position.y + 26), hit);
+    // straight to 4 px ABOVE the strip WITHOUT passing through it: the top band, not the tabs
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top - 4), hit);
+    expect(marked(api)).toBe(false);
+    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y); // it gives way at once, like any other drop
+    tool.onPointerUp?.(tev('up', r.x + r.width * 0.5, r.top - 4), hit);
+    await settle();
+    expect(on(handle, 'main', 'side')!.y).toBeGreaterThan(side0!.y);
+  });
+});
+
+describe('on a SPLIT board a widget finds a tab container\'s zones: its strip makes a tab, its page takes it, its fifth means a pane beside (0.4.69)', () => {
+  // Measured on the fluid demo in split mode before this: a widget over the
+  // tab group got only the nearest-edge insertion line — the header was never
+  // a tab target (over it: "a pane ABOVE"), the body's middle was never "into
+  // the page" (it read left / right), and "above" claimed the upper half.
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const on = (handle: DashboardHandle, boardId: string, id: string) => handle.binderOf(boardId)?.cellOf(id) ?? null;
+  const board = () =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      gap: 10,
+      rowHeight: 60,
+      layout: 'split',
+      widgets: [
+        K('nps', 6, 6, 0, 0),
+        { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0)] }] },
+      ],
+    });
+  const stubStrip = (api: { container: HTMLElement }, model: DiagramModel, h = 30) => {
+    const g = model.getGroup('side')!;
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const live = () => {
+      const p = g.position;
+      const w = g.size!.width;
+      return { left: p.x, top: p.y, right: p.x + w, bottom: p.y + h, width: w, height: h, x: p.x, y: p.y, toJSON: () => ({}) };
+    };
+    Object.defineProperty(strip, 'getBoundingClientRect', { value: () => live(), configurable: true });
+    return live();
+  };
+  const marked = (api: { container: HTMLElement }) => !!api.container.querySelector('.axdb-tabs[data-tabs-id="side"].axdb-tabs--drop');
+  const line = (api: { container: HTMLElement }) => api.container.querySelector('.axdb-ins') as HTMLElement | null;
+  const leaves = (model: DiagramModel) => splitLeaves(model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY) as SplitNode | null);
+  const pagesOf = (model: DiagramModel) => [...(model.getGroup('side')!.members ?? [])].filter((m) => !!model.getGroup(m));
+  const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+  const start = (tool: CanvasTool, nps: NodeModel) => {
+    const hit = { node: nps } as never;
+    tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
+    tool.onPointerMove?.(at(nps.position.x + 40, nps.position.y + 30), hit);
+    return hit;
+  };
+
+  it('over the STRIP the widget becomes a new tab of the container, and its pane leaves the tree — one undo', async () => {
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = start(tool, nps);
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 15), hit);
+    expect(marked(api)).toBe(true);
+    expect(line(api)).toBeNull(); // the strip's mark is the whole feedback: no insertion line under it
+    tool.onPointerUp?.(at(r.x + r.width * 0.5, r.top + 15), hit);
+    await settle();
+    expect(marked(api)).toBe(false);
+    expect(pagesOf(model)).toEqual(['p1', 'nps__page']);
+    expect(leaves(model)).toEqual(['side']);
+    expect(handle.getActiveTab('side')).toBe('nps__page');
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(pagesOf(model)).toEqual(['p1']);
+    expect(leaves(model).sort()).toEqual(['nps', 'side']);
+  });
+
+  it('over the PAGE\'s body the page takes the widget (its placeholder shows the cell), and its pane leaves the tree — one undo', async () => {
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = start(tool, nps);
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 250), hit);
+    expect(marked(api)).toBe(false);
+    expect(line(api)).toBeNull(); // the page's own placeholder is the promise, not a line
+    expect(on(handle, 'p1', 'nps')).not.toBeNull(); // the page's board holds the ghost
+    tool.onPointerUp?.(at(r.x + r.width * 0.5, r.top + 250), hit);
+    await settle();
+    expect(model.getGroup('p1')!.members?.has('nps')).toBe(true);
+    expect(model.getGroup('main')!.members?.has('nps')).toBe(false);
+    expect(leaves(model)).toEqual(['side']);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(model.getGroup('p1')!.members?.has('nps')).toBe(false);
+    expect(model.getGroup('main')!.members?.has('nps')).toBe(true);
+    expect(leaves(model).sort()).toEqual(['nps', 'side']);
+  });
+
+  it('over the container\'s outer FIFTH the widget becomes a pane beside it — the split board\'s own insertion line, as before', async () => {
+    const { api, model, handle } = up(board());
+    const r = stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = start(tool, nps);
+    tool.onPointerMove?.(at(r.right - 10, r.top + 250), hit); // the right fifth, mid-height
+    expect(marked(api)).toBe(false);
+    expect(on(handle, 'p1', 'nps')).toBeNull(); // not the page's
+    const l = line(api);
+    expect(l).not.toBeNull();
+    expect(Math.round(parseFloat(l!.style.left))).toBe(Math.round(r.right - 2)); // on the container's right edge
+    tool.onPointerUp?.(at(r.right - 10, r.top + 250), hit);
+    await settle();
+    expect(leaves(model)).toEqual(['side', 'nps']); // after it
+    expect(model.getGroup('main')!.members?.has('nps')).toBe(true);
+  });
+
+  it('a hand that CROSSES the strip between two events is on the tabs here too (0.4.67\'s rule, shared)', () => {
+    const { api, model } = up(board());
+    const r = stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = start(tool, nps);
+    const mid = r.x + r.width * 0.5;
+    tool.onPointerMove?.(at(mid, r.top - 20), hit); // above the frame: the band above it, a pane above
+    expect(marked(api)).toBe(false);
+    expect(line(api)).not.toBeNull();
+    tool.onPointerMove?.(at(mid, r.bottom + 10), hit); // ONE event to 10 px under the strip: crossed — the tabs
+    expect(marked(api)).toBe(true);
+    tool.onPointerMove?.(at(mid, r.bottom + 200), hit); // far into the page: left the tabs behind
+    expect(marked(api)).toBe(false);
+    tool.onPointerUp?.(at(mid, r.bottom + 200), hit);
+  });
+
+  it('a widget dragged OUT of a page onto the split board becomes a pane where the line showed — the split board ADOPTS (0.4.70)', async () => {
+    // Measured live on 0.4.69: a widget dragged out of the Filters page in
+    // split mode got no line and no placeholder anywhere on the board, the
+    // ghost dimmed, and every release snapped home — the split peer's
+    // `adopt` answered null, so a widget could never leave a page there.
+    // Two widgets on the page: the page is the unit, and a page emptied by the
+    // drag closes with its container (0.4.32) — which is right, and not this test.
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        layout: 'split',
+        widgets: [
+          K('nps', 6, 6, 0, 0),
+          { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0), K('k2', 3, 1, 3, 0)] }] },
+        ],
+      })
+    );
+    stubStrip(api, model);
+    const tool = toolOf('p1');
+    const k1 = model.getNode('k1')!;
+    const nps = model.getNode('nps')!;
+    const hit = { node: k1 } as never;
+    tool.onPointerDown?.(tev('down', k1.position.x + 10, k1.position.y + 10), hit);
+    tool.onPointerMove?.(at(k1.position.x + 30, k1.position.y + 20), hit);
+    // onto the RIGHT half of the nps pane: the split board's line on nps's right edge
+    const to = { x: nps.position.x + nps.size.width * 0.8, y: nps.position.y + nps.size.height * 0.5 };
+    tool.onPointerMove?.(at(to.x, to.y), hit);
+    const l = line(api);
+    expect(l).not.toBeNull();
+    expect(Math.round(parseFloat(l!.style.left))).toBe(Math.round(nps.position.x + nps.size.width - 2));
+    expect(api.container.querySelector('.axdb-out')).toBeNull(); // not dimmed: a release lands
+    tool.onPointerUp?.(at(to.x, to.y), hit);
+    await settle();
+    expect(leaves(model)).toEqual(['nps', 'k1', 'side']);
+    expect(model.getGroup('main')!.members?.has('k1')).toBe(true);
+    expect(model.getGroup('p1')!.members?.has('k1')).toBe(false);
+    expect(model.getGroup('p1')!.members?.has('k2')).toBe(true); // the page stays, with its other widget
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(leaves(model).sort()).toEqual(['nps', 'side']);
+    expect(model.getGroup('p1')!.members?.has('k1')).toBe(true);
+  });
+
+  it('a PALETTE chip on a split board goes through the same zones: into a page it lands there and the drop names the page; on a pane edge, the line as before (0.4.70)', async () => {
+    const onDropIn = jest.fn();
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 600,
+        gap: 10,
+        rowHeight: 60,
+        layout: 'split',
+        widgets: [
+          K('nps', 6, 6, 0, 0),
+          { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0)] }] },
+        ],
+        binder: { onDropIn },
+      })
+    );
+    const r = stubStrip(api, model);
+    const binder = handle.binderOf('main')!;
+    const node = new NodeModel({ id: 'pal', type: 'widget', position: { x: 0, y: 0 }, size: { width: 180, height: 60, depth: 0 } });
+    const pe = (type: string, x: number, y: number) => Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }) as unknown as PointerEvent;
+    binder.beginPaletteDrag(node, { w: 2, h: 1 }, pe('pointerdown', 100, 400));
+    window.dispatchEvent(pe('pointermove', 120, 410));
+    // over the strip: a chip never becomes a tab (the grid's rule too) — and no line either
+    window.dispatchEvent(pe('pointermove', r.x + r.width * 0.5, r.top + 15));
+    expect(marked(api)).toBe(false);
+    // into the page's body: the page holds the chip's tile, no line
+    window.dispatchEvent(pe('pointermove', r.x + r.width * 0.5, r.top + 250));
+    expect(on(handle, 'p1', 'pal')).not.toBeNull();
+    expect(line(api)).toBeNull();
+    // out again onto the nps pane's edge: the line, the page lets go
+    window.dispatchEvent(pe('pointermove', 100, 300));
+    expect(on(handle, 'p1', 'pal')).toBeNull();
+    expect(line(api)).not.toBeNull();
+    // and back into the page for the drop
+    window.dispatchEvent(pe('pointermove', r.x + r.width * 0.5, r.top + 250));
+    window.dispatchEvent(pe('pointerup', r.x + r.width * 0.5, r.top + 250));
+    await settle();
+    expect(onDropIn).toHaveBeenCalledTimes(1);
+    const [n, cell, , target] = onDropIn.mock.calls[0] as [NodeModel, { x: number; y: number; w: number; h: number }, unknown[], { boardId: string }];
+    expect(n.id).toBe('pal');
+    expect(target.boardId).toBe('p1');
+    expect(cell.w).toBeGreaterThan(0);
+    expect(leaves(model).sort()).toEqual(['nps', 'side']); // the split tree is untouched: the page took it
+  });
+
+  it('a FULL GROW section on a split board takes a ROW for a widget arriving by hand — its pane grows into its column sibling (D4 on a split board, 0.4.71), one undo', async () => {
+    // Measured live on 0.4.70: the fluid demo's Operations section refused a
+    // widget in split mode and the line beside it answered instead — a pane
+    // cannot ask a grid parent for rows, and the split peer's resizeMemberBy
+    // answered "unchanged". A pane's height is a share of its column: growing
+    // it means moving the divider above it, the siblings giving the row.
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 800,
+        gap: 10,
+        rowHeight: 60,
+        layout: 'split',
+        widgets: [
+          K('nps', 6, 6, 0, 0),
+          { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0), K('k2', 3, 1, 3, 0)] }] },
+          { id: 'ops', title: 'Operations', span: 12, rows: 2, x: 0, y: 6, columns: 12, widgets: [K('orders', 12, 2, 0, 0)] }, // FULL: one widget covers its two rows
+        ],
+      })
+    );
+    stubStrip(api, model);
+    const tree0 = model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY) as SplitNode;
+    expect(splitLeaves(tree0)).toEqual(['nps', 'side', 'ops']);
+    const ops = model.getGroup('ops')!;
+    const h0 = ops.size!.height;
+    const tool = toolOf('p1');
+    const k1 = model.getNode('k1')!;
+    const hit = { node: k1 } as never;
+    tool.onPointerDown?.(tev('down', k1.position.x + 10, k1.position.y + 10), hit);
+    tool.onPointerMove?.(at(k1.position.x + 30, k1.position.y + 20), hit);
+    // into the section's body, under its widget: full — it grows a row and takes the tile
+    const to = { x: ops.position.x + ops.size!.width * 0.5, y: ops.position.y + ops.size!.height * 0.9 };
+    tool.onPointerMove?.(at(to.x, to.y), hit);
+    expect(on(handle, 'ops', 'k1')).not.toBeNull(); // the section holds the ghost…
+    expect(line(api)).toBeNull(); // …not the split board's line
+    expect(model.getGroup('ops')!.size!.height).toBeGreaterThan(h0 + 60); // its pane grew by a row (60 + the gap)
+    tool.onPointerUp?.(at(to.x, to.y), hit);
+    await settle();
+    expect(model.getGroup('ops')!.members?.has('k1')).toBe(true);
+    expect(model.getGroup('p1')!.members?.has('k1')).toBe(false);
+    const tree1 = model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY) as SplitNode;
+    expect(splitLeaves(tree1)).toEqual(['nps', 'side', 'ops']); // the tree kept its panes — only the weights moved
+    expect(JSON.stringify(tree1)).not.toBe(JSON.stringify(tree0));
+    expect(model.getGroup('ops')!.size!.height).toBeGreaterThan(h0 + 60);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(model.getGroup('p1')!.members?.has('k1')).toBe(true);
+    expect(model.getGroup('ops')!.members?.has('k1')).toBe(false);
+    expect(JSON.stringify(model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY))).toBe(JSON.stringify(tree0));
+    expect(Math.round(model.getGroup('ops')!.size!.height)).toBe(Math.round(h0));
+  });
+});
+
+describe('a tab PAGE laid out as a SPLIT takes a widget too — from a grid board and from a split board — and the gap between two panes is not a dead zone (0.4.72)', () => {
+  // The user: "tab should allow both layouts, grow and split — did you try that
+  // inside it as well?" Measured on the lab's tabs board: a widget dragged into
+  // a split page became a pane of the page (0.4.70's adoptPane, never pinned),
+  // and a drop on the 10 px gap between two panes snapped home — nothing under
+  // the pointer, so no target. The gap now means the nearest pane's edge.
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+  const line = (api: { container: HTMLElement }) => api.container.querySelector('.axdb-ins') as HTMLElement | null;
+  const leavesOf = (model: DiagramModel, groupId: string) => splitLeaves((model.getGroup(groupId)!.getMetadata(SPLIT_TREE_KEY) as SplitNode | null) ?? null);
+  const stubStrip = (api: { container: HTMLElement }, model: DiagramModel, h = 30) => {
+    const g = model.getGroup('side')!;
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="side"]') as HTMLElement;
+    const live = () => { const p = g.position; const w = g.size!.width; return { left: p.x, top: p.y, right: p.x + w, bottom: p.y + h, width: w, height: h, x: p.x, y: p.y, toJSON: () => ({}) }; };
+    Object.defineProperty(strip, 'getBoundingClientRect', { value: () => live(), configurable: true });
+    return live();
+  };
+  const SIDE = (pageLayout: 'grid' | 'split'): DashboardWidgetSpec => ({ id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Alerts', columns: 6, layout: pageLayout, widgets: [K('pb1', 3, 4, 0, 0), K('pb2', 3, 4, 3, 0)] }] });
+  const drag = (tool: CanvasTool, node: NodeModel) => { const hit = { node } as never; tool.onPointerDown?.(tev('down', node.position.x + 12, node.position.y + 12), hit); tool.onPointerMove?.(at(node.position.x + 32, node.position.y + 22), hit); return hit; };
+
+  it('from a GRID board: over a split page the page\'s own line shows, and the widget becomes a pane of the page — one undo', async () => {
+    const { api, model } = up(dashboard({ columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, sizing: 'grow', widgets: [K('nps', 2, 1, 0, 0), SIDE('split')] }));
+    stubStrip(api, model);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const pb2 = model.getNode('pb2')!;
+    const hit = drag(tool, nps);
+    // the right pane's inner third — inside the page, clear of the container's fifth (118 px on this fixture): the line on pb2's LEFT edge
+    const to = { x: pb2.position.x + pb2.size.width * 0.3, y: pb2.position.y + pb2.size.height * 0.5 };
+    tool.onPointerMove?.(at(to.x, to.y), hit);
+    expect(line(api)).not.toBeNull();
+    expect(api.container.querySelector('.axdb-out')).toBeNull();
+    tool.onPointerUp?.(at(to.x, to.y), hit);
+    await settle();
+    expect(model.getGroup('p1')!.members?.has('nps')).toBe(true);
+    expect(model.getGroup('main')!.members?.has('nps')).toBe(false);
+    expect(leavesOf(model, 'p1')).toEqual(['pb1', 'nps', 'pb2']);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(model.getGroup('main')!.members?.has('nps')).toBe(true);
+    expect(leavesOf(model, 'p1')).toEqual(['pb1', 'pb2']);
+  });
+
+  it('from a SPLIT board: the same, through the same leg', async () => {
+    const { api, model } = up(dashboard({ columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, layout: 'split', widgets: [K('nps', 6, 6, 0, 0), SIDE('split')] }));
+    stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const nps = model.getNode('nps')!;
+    const pb2 = model.getNode('pb2')!;
+    const hit = drag(tool, nps);
+    const to = { x: pb2.position.x + pb2.size.width * 0.3, y: pb2.position.y + pb2.size.height * 0.5 };
+    tool.onPointerMove?.(at(to.x, to.y), hit);
+    expect(line(api)).not.toBeNull();
+    tool.onPointerUp?.(at(to.x, to.y), hit);
+    await settle();
+    expect(model.getGroup('p1')!.members?.has('nps')).toBe(true);
+    expect(leavesOf(model, 'p1')).toEqual(['pb1', 'nps', 'pb2']);
+    expect(leavesOf(model, 'main')).toEqual(['side']);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(leavesOf(model, 'main').sort()).toEqual(['nps', 'side']);
+    expect(leavesOf(model, 'p1')).toEqual(['pb1', 'pb2']);
+  });
+
+  it('the GAP between two panes means the nearest pane\'s edge, on a split board and inside a split page alike', async () => {
+    const { api, model } = up(dashboard({ columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, layout: 'split', widgets: [K('a', 4, 6, 0, 0), K('b', 4, 6, 4, 0), SIDE('split')] }));
+    stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const b = model.getNode('b')!;
+    const h2 = drag(tool, model.getNode('a')!);
+    // exactly in the gap between b and the side panel: nothing is under the pointer, but the nearest edge is b's right edge
+    const side = model.getGroup('side')!;
+    const gapX = (b.position.x + b.size.width + side.position.x) / 2;
+    tool.onPointerMove?.(at(gapX, b.position.y + b.size.height * 0.5), h2);
+    const l = line(api);
+    expect(l).not.toBeNull();
+    tool.onPointerUp?.(at(gapX, b.position.y + b.size.height * 0.5), h2);
+    await settle();
+    expect(leavesOf(model, 'main')).toEqual(['b', 'a', 'side']); // a landed after b, where the line was
+    await api.getEngine().commandManager.undo();
+    await settle();
+    // and inside the split page: the gap between pb1 and pb2
+    const pb1 = model.getNode('pb1')!;
+    const pb2 = model.getNode('pb2')!;
+    const h3 = drag(tool, model.getNode('a')!);
+    const gx = (pb1.position.x + pb1.size.width + pb2.position.x) / 2;
+    tool.onPointerMove?.(at(gx, pb1.position.y + pb1.size.height * 0.5), h3);
+    expect(line(api)).not.toBeNull();
+    tool.onPointerUp?.(at(gx, pb1.position.y + pb1.size.height * 0.5), h3);
+    await settle();
+    expect(leavesOf(model, 'p1')).toEqual(['pb1', 'a', 'pb2']);
+  });
+});
+
+describe('a container\'s layout is the handle\'s to read and to switch — a section, and a tab PAGE (0.4.73)', () => {
+  const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const board = (pageLayout: 'grid' | 'split') =>
+    dashboard({
+      columns: 12,
+      width: 1200,
+      height: 600,
+      gap: 10,
+      rowHeight: 60,
+      sizing: 'grow',
+      widgets: [
+        K('nps', 2, 1, 0, 0),
+        { id: 'ops', title: 'Operations', span: 6, rows: 2, x: 0, y: 2, columns: 6, widgets: [K('orders', 3, 2, 0, 0), K('churn', 3, 2, 3, 0)] },
+        { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, layout: pageLayout, widgets: [K('pb1', 3, 4, 0, 0), K('pb2', 3, 4, 3, 0)] }] },
+      ],
+    });
+
+  it('getLayout reads an AUTHORED container layout, not only one switched live', () => {
+    const { handle } = up(board('split'));
+    expect(handle.getLayout('p1')).toBe('split');
+    expect(handle.getLayout('ops')).toBe('grid');
+    expect(handle.getLayout('side')).toBe('tabs');
+    expect(handle.getLayout()).toBe('grid'); // the view
+  });
+
+  it('setLayout switches a tab PAGE live, both ways, and the section beside it — the widgets keep their cells across the round trip', async () => {
+    const { model, handle } = up(board('grid'));
+    const cells0 = { pb1: handle.widget('pb1')!.cell, pb2: handle.widget('pb2')!.cell };
+    handle.setLayout('split', 'p1');
+    await settle();
+    expect(handle.getLayout('p1')).toBe('split');
+    expect((model.getGroup('p1')!.getMetadata('containerWidget') as { layout?: string }).layout).toBe('split');
+    expect(splitLeaves((model.getGroup('p1')!.getMetadata(SPLIT_TREE_KEY) as SplitNode | null) ?? null).sort()).toEqual(['pb1', 'pb2']); // a tree from the cells
+    handle.setLayout('grid', 'p1');
+    await settle();
+    expect(handle.getLayout('p1')).toBe('grid');
+    expect(handle.widget('pb1')!.cell).toEqual(cells0.pb1);
+    expect(handle.widget('pb2')!.cell).toEqual(cells0.pb2);
+    handle.setLayout('split', 'ops');
+    await settle();
+    expect(handle.getLayout('ops')).toBe('split');
+    expect(handle.getLayout()).toBe('grid'); // the view is untouched
+  });
+});
+
+describe('a refused drop shows itself where the hand is: the red dashed cell and a not-allowed cursor (0.4.74)', () => {
+  // Quantia, on a FULL fit board: hovering a full fit section during a drag
+  // produced no class change, no shadow, no cursor, no message — the only cue
+  // was the grey placeholder staying in the tile's own column at the other end
+  // of the screen. A group's refused cell has been painted red since the
+  // identification round; a widget's is now, and the cursor says not-allowed.
+  const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+  const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+  const refused = (api: { container: HTMLElement }) => api.container.querySelector('.axdb-ph--no') as HTMLElement | null;
+  it('over a full fit section on a full fit board, the wanted cell is painted refused; back home it clears; the release changes nothing', async () => {
+    const { api, model, handle } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 150, // exactly two rows of 60 with a 10 gap and 10 padding: full
+        gap: 10,
+        rowHeight: 60,
+        sizing: 'fit',
+        squeeze: false, // frozen rows, as Quantia runs its boards: full is full
+        widgets: [K('w', 6, 2, 0, 0), { id: 'ops', title: 'Operations', span: 6, rows: 2, x: 6, y: 0, columns: 6, sizing: 'fit', widgets: [K('o1', 6, 2, 0, 0)] }],
+      })
+    );
+    const tool = toolOf('main');
+    const w = model.getNode('w')!;
+    const ops = model.getGroup('ops')!;
+    const hit = { node: w } as never;
+    const w0 = handle.widget('w')!.cell;
+    const ops0 = handle.widget('ops')!.cell;
+    const home = { x: w.position.x, y: w.position.y }; // the node's position is the GHOST's once the drag starts
+    tool.onPointerDown?.(tev('down', home.x + 30, home.y + 20), hit);
+    tool.onPointerMove?.(at(home.x + 50, home.y + 28), hit);
+    const into = { x: ops.position.x + ops.size!.width * 0.5, y: ops.position.y + ops.size!.height * 0.6 };
+    const unchanged = (): void => {
+      expect(handle.widget('w')!.cell).toEqual(w0); // nowhere to go: the tile stayed
+      expect(handle.widget('ops')!.cell).toEqual(ops0); // the section could not be pushed either — and, the same size, is NOT swapped with it
+    };
+    tool.onPointerMove?.(at(into.x, into.y), hit);
+    unchanged();
+    expect(refused(api)).not.toBeNull(); // …and the hand is told so, where it is
+    expect(api.container.style.cursor).toBe('not-allowed');
+    // the red cell is its OWN element: `.axdb-ph` is the grey placeholder alone — the promise of where the tile lands
+    const phs = api.container.querySelectorAll('.axdb-ph');
+    expect(phs.length).toBe(1);
+    expect(phs[0].classList.contains('axdb-ph--no')).toBe(false);
+    tool.onPointerMove?.(at(home.x + 50, home.y + 28), hit); // back over its own cell
+    unchanged();
+    expect(refused(api)).toBeNull();
+    expect(api.container.style.cursor).not.toBe('not-allowed');
+    tool.onPointerMove?.(at(into.x, into.y), hit); // over it again: still refused, still not swapped
+    unchanged();
+    expect(refused(api)).not.toBeNull();
+    tool.onPointerUp?.(at(into.x, into.y), hit);
+    await new Promise<void>((r) => setTimeout(r, 0));
+    expect(refused(api)).toBeNull();
+    unchanged();
+    expect(api.getEngine().commandManager.canUndo()).toBe(false); // nothing to undo: no step was recorded
+  });
+  it('the red cell CLEARS when the hand moves on — to a strip, into another board, off the board — and returns when it comes back', () => {
+    // The lab, on the first cut of the cue: a red cell painted while the widget passed the solid panel stayed
+    // painted on the strip (L67), rode along into the panel's corner (L95) and sat on the panel's cell for the
+    // whole way up out of the page (L104) — only placeOnSelf ever cleared it. Every branch of a move clears it.
+    const { api, model } = up(
+      dashboard({
+        columns: 12,
+        width: 1200,
+        height: 320,
+        gap: 10,
+        rowHeight: 60,
+        widgets: [
+          K('w', 3, 2, 0, 0),
+          // roomy pages: the page must TAKE the widget for the leg branch to be the one under test
+          { id: 'panel', title: 'Side panel', span: 6, rows: 4, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p-one', title: 'Filters', columns: 6, widgets: [K('k-one', 2, 1, 0, 0)] }, { id: 'p-two', title: 'Alerts', columns: 6, widgets: [K('k-two', 2, 1, 0, 0)] }] },
+        ],
+      })
+    );
+    const tool = toolOf('main');
+    const w = model.getNode('w')!;
+    const panel = model.getGroup('panel')!;
+    const strip = api.container.querySelector('.axdb-tabs[data-tabs-id="panel"]') as HTMLElement;
+    Object.defineProperty(strip, 'getBoundingClientRect', {
+      value: () => ({ left: panel.position.x, top: panel.position.y, right: panel.position.x + panel.size!.width, bottom: panel.position.y + 30, width: panel.size!.width, height: 30, x: panel.position.x, y: panel.position.y, toJSON: () => ({}) }),
+      configurable: true,
+    });
+    const hit = { node: w } as never;
+    const home = { x: w.position.x, y: w.position.y };
+    const layer = () => api.container.querySelector('.grafloria-html-layer') as HTMLElement;
+    const cue = () => ({ red: !!refused(api), cls: layer().classList.contains('axdb-refused') });
+    tool.onPointerDown?.(tev('down', home.x + 30, home.y + 20), hit);
+    tool.onPointerMove?.(at(home.x + 50, home.y + 28), hit);
+    // the gap just left of the panel, at its third row — clear of the strip's stickiness: the pointer is on the
+    // root board, the wanted cell is the SOLID panel's
+    const gap = { x: panel.position.x - 4, y: panel.position.y + 150 };
+    tool.onPointerMove?.(at(gap.x, gap.y), hit);
+    expect(cue()).toEqual({ red: true, cls: true });
+    // on to the strip: a tab-to-be, nothing is refused
+    tool.onPointerMove?.(at(panel.position.x + 60, panel.position.y + 15), hit);
+    expect(api.container.querySelector('.axdb-tabs[data-tabs-id="panel"].axdb-tabs--drop')).not.toBeNull();
+    expect(cue()).toEqual({ red: false, cls: false });
+    tool.onPointerMove?.(at(gap.x, gap.y), hit); // back: the cue returns
+    expect(cue()).toEqual({ red: true, cls: true });
+    // into the page: another board takes the ghost
+    tool.onPointerMove?.(at(panel.position.x + panel.size!.width * 0.5, panel.position.y + panel.size!.height * 0.6), hit);
+    expect(cue()).toEqual({ red: false, cls: false });
+    tool.onPointerMove?.(at(gap.x, gap.y), hit);
+    expect(cue()).toEqual({ red: true, cls: true });
+    // off the board
+    tool.onPointerMove?.(at(gap.x, home.y + 900), hit);
+    expect(cue()).toEqual({ red: false, cls: false });
+    tool.onPointerMove?.(at(home.x + 50, home.y + 28), hit); // home again, then released: nothing painted, nothing moved
+    tool.onPointerUp?.(at(home.x + 50, home.y + 28), hit);
+    expect(cue()).toEqual({ red: false, cls: false });
+  });
+  it('half over a same-size neighbour is NOT a refusal: the anti-jitter gate holds the tile, nothing is painted red; deeper, they swap', () => {
+    // The first cut painted every refused moveCheck red — the gate's "not deep enough yet" included — and the
+    // gallery's dashboard-builder check plus six scenario probes read that as the placeholder.
+    const { api, model, handle } = up(dashboard({ columns: 12, width: 1200, height: 400, gap: 10, rowHeight: 60, widgets: [K('a', 4, 2, 0, 0), K('b', 4, 2, 4, 0)] }));
+    const tool = toolOf('main');
+    const a = model.getNode('a')!;
+    const hit = { node: a } as never;
+    const home = { x: a.position.x, y: a.position.y };
+    const col = (c: number) => 10 + c * ((1200 - 20 - 11 * 10) / 12 + 10); // the world x of column c's left edge
+    tool.onPointerDown?.(tev('down', home.x + 30, home.y + 20), hit);
+    tool.onPointerMove?.(at(home.x + 50, home.y + 28), hit);
+    tool.onPointerMove?.(at(col(1) + 30, home.y + 20), hit); // the ghost's cell one column right: it covers a quarter of b — the gate refuses
+    expect(handle.widget('a')!.cell).toEqual({ x: 0, y: 0, w: 4, h: 2 });
+    expect(handle.widget('b')!.cell).toEqual({ x: 4, y: 0, w: 4, h: 2 });
+    expect(refused(api)).toBeNull(); // not a refusal: the grey placeholder says it lands home
+    expect(api.container.style.cursor).not.toBe('not-allowed');
+    tool.onPointerMove?.(at(col(3) + 30, home.y + 20), hit); // three columns right: three quarters of b — they swap
+    expect(handle.widget('a')!.cell).toEqual({ x: 4, y: 0, w: 4, h: 2 });
+    expect(handle.widget('b')!.cell).toEqual({ x: 0, y: 0, w: 4, h: 2 });
+    expect(refused(api)).toBeNull();
+    tool.onPointerUp?.(at(col(3) + 30, home.y + 20), hit);
+  });
+  it('a ghost hanging past the right edge is not painted refused: it already sits in the last legal column', () => {
+    const { api, model, handle } = up(dashboard({ columns: 12, width: 1200, height: 150, gap: 10, rowHeight: 60, sizing: 'fit', squeeze: false, widgets: [K('w', 6, 2, 6, 0)] }));
+    const tool = toolOf('main');
+    const w = model.getNode('w')!;
+    const hit = { node: w } as never;
+    const home = { x: w.position.x, y: w.position.y };
+    tool.onPointerDown?.(tev('down', home.x + 30, home.y + 20), hit);
+    tool.onPointerMove?.(at(home.x + 50, home.y + 28), hit);
+    tool.onPointerMove?.(at(home.x + 180, home.y + 28), hit); // 150 px right: the wanted column rounds past the board (7 of 12 for a span of 6)
+    expect(handle.widget('w')!.cell).toEqual({ x: 6, y: 0, w: 6, h: 2 });
+    expect(refused(api)).toBeNull(); // the engine clamps to column 6 — its own cell; nothing was refused
+    expect(api.container.style.cursor).not.toBe('not-allowed');
+    tool.onPointerUp?.(at(home.x + 180, home.y + 28), hit);
+  });
+});

@@ -29,8 +29,8 @@ export const umlActivationTemplate: NodeTemplate = {
   "structure": {
     "type": "uml:activation",
     "size": {
-      "width": 15,
-      "height": 80,
+      "width": 12,
+      "height": 60,
       "minWidth": 120,
       "maxWidth": 400,
       "minHeight": 80,
@@ -38,11 +38,12 @@ export const umlActivationTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFFFFF",
-      "stroke": "#1976D2",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"uml-activation-content\">\n          <div class=\"node-label\">{{data.label || 'Activation'}}</div>\n        </div>",

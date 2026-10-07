@@ -1,10 +1,18 @@
 <meta charset="utf-8">
 <title>Named style classes — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="defineStyle() + style.styleClass — one deterministic cascade: theme &lt; type-default &lt; named-class &lt; element-inline &lt; state.">
+<link rel="canonical" href="https://grafloria.com/demos/styling/named-style-classes.html">
+<meta property="og:title" content="Named style classes — Grafloria">
+<meta property="og:description" content="defineStyle() + style.styleClass — one deterministic cascade: theme &lt; type-default &lt; named-class &lt; element-inline &lt; state.">
+<meta property="og:url" content="https://grafloria.com/demos/styling/named-style-classes.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/styling/named-style-classes.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/styling/named-style-classes.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
   code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
-  #canvas { height: calc(100vh - 210px); }
+  #canvas { height: calc(100vh - 150px); }
   .cascade { font-family: ui-monospace, Menlo, monospace; }
 </style>
 <header id="demo-head"></header>
@@ -18,7 +26,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render, defineStyle, getStyle, resolveNodeStyle, listStyles, CASCADE_ORDER, LIGHT_THEME } from '../shell/grafloria.js';
-import { defineDemo, check, checkChanged } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check, checkChanged } from '../shell/demo.js?v=drawer4';
 
 // The registry is a process-wide singleton, so namespace class names to this demo.
 const WARN = 'nsc-warn';

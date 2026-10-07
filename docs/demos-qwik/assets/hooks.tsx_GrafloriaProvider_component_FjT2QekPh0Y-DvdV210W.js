@@ -1,0 +1,1 @@
+import{G as s}from"./hooks-DTadop0D.js";import{i as r,a as o,_ as t,s as a}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const e=()=>(r(s,o()),t(a,null,3,"AM_0"));export{e as s_FjT2QekPh0Y};

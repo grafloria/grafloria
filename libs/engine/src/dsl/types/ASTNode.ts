@@ -12,6 +12,7 @@ export type DiagramType = 'flowchart' | 'bpmn' | 'erd' | 'classDiagram';
  * Node shape type mapping to Mermaid syntax
  */
 export type NodeShape =
+  | 'text'               // @{ shape: text } — words, no box
   | 'rectangle'          // [text]
   | 'rounded-rectangle'  // (text)
   | 'stadium'            // ([text])
@@ -21,8 +22,10 @@ export type NodeShape =
   | 'asymmetric'         // >text]
   | 'rhombus'            // {text}
   | 'hexagon'            // {{text}}
-  | 'trapezoid'          // [/text/]
-  | 'trapezoid-alt';     // [\text\]
+  | 'trapezoid'          // [/text\]  — wide bottom
+  | 'trapezoid-alt'      // [\text/]  — wide top
+  | 'parallelogram'      // [/text/]  — leans right
+  | 'parallelogram-alt'; // [\text\]  — leans left
 
 /**
  * Link/Edge type mapping
@@ -164,6 +167,8 @@ export interface LinkStyleNode extends ASTNode {
   type: 'LinkStyle';
   indices: number[] | 'default';
   properties: StyleProperties;
+  /** `interpolate <curve>` — linear, step, stepBefore, stepAfter, basis, … */
+  interpolate?: string;
 }
 
 /** `click a "https://…" "tooltip"` — a node's navigation target. */
@@ -181,7 +186,9 @@ export interface ClickNode extends ASTNode {
  */
 export interface GrafloriaDirectiveNode extends ASTNode {
   type: 'GrafloriaDirective';
-  target: 'node' | 'edge';
+  /** node / edge / group properties, `at` — an exact position and size, `layout` — how
+   *  the diagram is arranged, `near` — a note placed beside its target. */
+  target: 'node' | 'edge' | 'group' | 'at' | 'layout' | 'near';
   ids: string[];
   properties: Record<string, string>;
 }

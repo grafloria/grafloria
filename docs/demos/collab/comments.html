@@ -1,10 +1,18 @@
 <meta charset="utf-8">
 <title>Threaded comments — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Write a comment on any node and reply in-thread — then delete the node and the thread is orphaned, not destroyed.">
+<link rel="canonical" href="https://grafloria.com/demos/collab/comments.html">
+<meta property="og:title" content="Threaded comments — Grafloria">
+<meta property="og:description" content="Write a comment on any node and reply in-thread — then delete the node and the thread is orphaned, not destroyed.">
+<meta property="og:url" content="https://grafloria.com/demos/collab/comments.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/collab/comments.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/collab/comments.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
   code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
-  #canvas { display: flex; height: calc(100vh - 190px); }
+  #canvas { display: flex; height: calc(100vh - 130px); }
   #stage { flex: 1; min-width: 0; }
   #panel { width: 340px; border-left: 1px solid rgba(127,127,127,.3); padding: 12px 14px; overflow: auto; font-size: 13px; }
 
@@ -61,7 +69,7 @@
 </div>
 <script type="module">
 import { render, CommentStore } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 const NODES = [
   { id: 'a', label: 'Design',  position: { x: 60,  y: 90 },  size: { width: 150, height: 66 } },

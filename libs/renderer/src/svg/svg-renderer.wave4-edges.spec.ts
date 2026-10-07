@@ -411,9 +411,12 @@ describe('SVGRenderer — Wave 4 (Edges & links)', () => {
     it('places an autoOffset label clear of a node, and leaves a pinned one alone', () => {
       node(100, 200, [{ id: 'a', side: 'right' }]);
       node(500, 200, [{ id: 'b', side: 'left' }]);
-      // An obstacle straddling the path's midpoint.
+      // An obstacle right UNDER the line at its midpoint: the line (y ≈ 233) clears
+      // it, a label centred on the line does not. (It used to straddle the line:
+      // the router bent the line round it and the labels sat on the chord's
+      // middle — on the obstacle — only because labels ignored the bend.)
       diagram.addNode(
-        new NodeModel({ type: 'basic', position: { x: 260, y: 200 }, size: { width: 120, height: 50 } })
+        new NodeModel({ type: 'basic', position: { x: 290, y: 237 }, size: { width: 120, height: 40 } })
       );
 
       const link = new LinkModel('a', 'b', 'direct');

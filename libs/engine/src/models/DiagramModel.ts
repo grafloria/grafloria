@@ -1,6 +1,7 @@
+import { debugLog } from '../util/debug';
 // DiagramModel - Root container for all diagram entities
 
-import { DiagramEntity } from './DiagramEntity';
+import { DiagramEntity, bumpMutationEpoch } from './DiagramEntity';
 import { ReadonlyLock } from './readonly-lock'; // Wave 9 — Card 7
 import { NodeModel, SerializedNode, type DetachedParentAnchor } from './NodeModel';
 import { LinkModel, SerializedLink } from './LinkModel';
@@ -77,9 +78,9 @@ export interface SerializedDiagram extends SerializedEntity {
   name: string;
   nodes: SerializedNode[];
   links: SerializedLink[];
-  groups: SerializedGroup[]; // Phase 1.6c
+  groups: SerializedGroup[];
   /**
-   * wave10/whiteboard: freehand ink.
+   * Freehand ink.
    *
    * OMITTED when there is none — the same rule (and for the same load-bearing reason)
    * as `comments` below. A diagram with no ink serializes to EXACTLY the bytes it did
@@ -92,20 +93,18 @@ export interface SerializedDiagram extends SerializedEntity {
   viewport: {
     x: number;
     y: number;
-    width: number;   // Phase 0.5 - Viewport-aware layout
-    height: number;  // Phase 0.5 - Viewport-aware layout
+    width: number;   // Viewport-aware layout
+    height: number;  // Viewport-aware layout
     zoom: number;
   };
   /**
-   * wave9/comments (Card 6): anchored comment threads. Document data, saved with the
+   * Anchored comment threads. Document data, saved with the
    * document — a comment that does not survive a save is a comment that does not exist.
    *
    * OMITTED when there are none, rather than written as `{}`. Two reasons, one of them
-   * load-bearing: a diagram with no comments serializes to EXACTLY the bytes it did
-   * before this card (no churn in any existing document, snapshot or golden file), and
-   * the op log's byte-identical replay oracle keeps comparing the same bytes it always
-   * compared. An always-present empty object would have quietly rewritten every
-   * serialized diagram in the world to say nothing.
+   * load-bearing: a diagram with no comments serializes to the same bytes as one saved
+   * without comment support, and the op log's byte-identical replay keeps comparing the
+   * same bytes.
    */
   comments?: CommentRegisterTree;
 }
@@ -125,7 +124,7 @@ export class DiagramModel extends DiagramEntity {
   nodes: Map<string, NodeModel> = new Map();
   links: Map<string, LinkModel> = new Map();
   groups: Map<string, GroupModel> = new Map(); // Phase 1.6c
-  /** wave10/whiteboard: freehand ink strokes. See StrokeModel for why these are not nodes. */
+  /** Freehand ink strokes. See StrokeModel for why these are not nodes. */
   strokes: Map<string, StrokeModel> = new Map();
 
   /**
@@ -168,15 +167,13 @@ export class DiagramModel extends DiagramEntity {
   private detachedAnchors: Map<string, DetachedParentAnchor> = new Map();
 
   /**
-   * Wave 10 — who owns the invariant "a link whose node is gone is not a link"?
+   * Who owns the invariant "a link whose node is gone is not a link"?
    *
    * `'model'` (the default): {@link removeNode} CASCADES — it removes the links attached
-   * to the node it removes. This is the right answer for an ordinary single-user document,
-   * and its absence was a real bug: deleting a node left its edges in `getLinks()` and on
-   * the screen, through every removal path there is.
+   * to the node it removes. This is the right answer for an ordinary single-user document.
    *
    * `'external'`: something with a BETTER answer owns it, and the cascade must keep its
-   * hands off. Specifically {@link ReferentialIntegrity} (wave 9, collab), which derives
+   * hands off. Specifically {@link ReferentialIntegrity} (collaboration), which derives
    * liveness from the presence registers and QUARANTINES an orphaned link instead of
    * destroying it — so undoing the node delete, or a peer resurrecting the node, brings the
    * links back too, including links this peer never saw. A hard cascade there would be
@@ -549,16 +546,10 @@ export class DiagramModel extends DiagramEntity {
   /**
    * Remove node from diagram — AND every link attached to it.
    *
-   * Wave 10 BUG FIX. This used to delete the node and nothing else, so every link that
-   * touched it survived: still in `getLinks()`, still in the spatial index, and still
-   * PAINTED — two edges hanging off a node that no longer existed. `deleteSelected()`
-   * carried the comment "this will also trigger link cleanup via events"; nothing
-   * listened to `node:removed` for cleanup, so that cleanup never happened, anywhere.
-   *
-   * It matters because EVERY removal path funnels through here:
+   * EVERY removal path funnels through here:
    *   - `deleteSelected()` — what the Delete key calls;
-   *   - `applyNodes()` — what `setNodes()` calls, so dropping a node from a React-shaped
-   *     spec left the dangling links behind;
+   *   - `applyNodes()` — what `setNodes()` calls, so dropping a node from a spec drops
+   *     its links too;
    *   - `RemoveNodeCommand`.
    *
    * A link's endpoints are the invariant that makes it a link; a link to nowhere is not
@@ -568,6 +559,81 @@ export class DiagramModel extends DiagramEntity {
    * UNLESS someone better owns that invariant — see {@link linkIntegrityOwner}.
    */
   removeNode(nodeId: string): NodeModel | undefined {
+    return this.detachNode(nodeId);
+  }
+
+  /**
+   * Swap the live model under `next.id` for `next`, KEEPING the links attached
+   * to it. (An id not on the canvas is simply added.)
+   *
+   * `removeNode(id); addNode(next)` is not a swap: the removal cascades the
+   * node's links, so handing `setNodes()` a reloaded document's models deleted
+   * every edge of every node it replaced. Here each attached link is rebound to
+   * `next`'s ports instead — the SAME port id when `next` has it (a reloaded
+   * document keeps its port ids), else the first port on the same side. A link
+   * whose port has no counterpart on `next` goes, exactly as a removal takes it.
+   *
+   * Observable as what it is: `node:removed` + `node:added` for the node (one
+   * change-log entry each, so collab peers and change capture replay the swap).
+   * A link that keeps its port id is left alone — no event, no op. A link that
+   * moves to another port id is taken out and put back on its new port
+   * (`link:removed` + `link:added`): rebinding it in place would leave it, for a
+   * moment, on a port no node owns, and a collab replica quarantines exactly
+   * such a link, where a port write can no longer reach it.
+   */
+  replaceNode(next: NodeModel): void {
+    if (this.blocksDocumentWrite()) return;
+    const current = this.nodes.get(next.id);
+    if (!current) {
+      this.addNode(next);
+      return;
+    }
+    if (current === next) return;
+
+    // Plan while `current`'s ports are still indexed. `undefined` = not this
+    // node's end (left alone); `null` = no counterpart on `next` (the link goes).
+    const counterpart = (portId: string): string | null | undefined => {
+      const old = current.getPort(portId);
+      if (!old) return undefined;
+      if (next.getPort(portId)) return portId;
+      return next.getPortBySide(old.side)?.id ?? null;
+    };
+    const kept: LinkModel[] = [];
+    const moved: Array<{ link: LinkModel; source?: string; target?: string }> = [];
+    for (const link of this.getLinksForNode(current.id)) {
+      const source = counterpart(link.sourcePortId);
+      const target = counterpart(link.targetPortId);
+      if (source === null || target === null) {
+        this.removeLink(link.id);
+      } else if ((source ?? link.sourcePortId) === link.sourcePortId && (target ?? link.targetPortId) === link.targetPortId) {
+        // installLink's mirror: the old model's ports stop counting this link.
+        current.getPort(link.sourcePortId)?.removeConnection(link.id);
+        current.getPort(link.targetPortId)?.removeConnection(link.id);
+        kept.push(link);
+      } else {
+        this.removeLink(link.id);
+        moved.push({ link, source, target });
+      }
+    }
+
+    this.detachNode(current.id, new Set(kept.map((link) => link.id)));
+    this.installNode(next);
+
+    for (const link of kept) {
+      next.getPort(link.sourcePortId)?.restoreConnection(link.id, 'source');
+      next.getPort(link.targetPortId)?.restoreConnection(link.id, 'target');
+      // The geometry hangs off the new model now: routing and renderers redo it.
+      link.markDirty('node-replaced');
+    }
+    for (const { link, source, target } of moved) {
+      if (source !== undefined) link.setSourcePort(source, next.id);
+      if (target !== undefined) link.setTargetPort(target, next.id);
+      this.addLink(link);
+    }
+  }
+
+  /** removeNode() — sparing the links in `keep`, which a swap rebinds itself. */
+  private detachNode(nodeId: string, keep?: ReadonlySet<string>): NodeModel | undefined {
     if (this.blocksDocumentWrite()) return undefined;
     const node = this.nodes.get(nodeId);
     if (node) {
@@ -607,7 +673,7 @@ export class DiagramModel extends DiagramEntity {
       // resolves them to release the ports' connection bookkeeping.
       if (this.linkIntegrityOwner === 'model') {
         for (const link of this.getLinksForNode(nodeId)) {
-          this.removeLink(link.id);
+          if (!keep?.has(link.id)) this.removeLink(link.id);
         }
       }
 
@@ -653,7 +719,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Restore node from serialized data (Phase 1.8)
+   * Restore node from serialized data
    */
   restoreNode(data: any): NodeModel | undefined {
     try {
@@ -681,7 +747,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Phase 3: Get node that owns a specific port
+   * Get node that owns a specific port
    * Used for connection group validation and other port-based queries.
    * O(1) via the portIndex (was an O(nodes×ports) linear scan).
    */
@@ -698,7 +764,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * wave14/model — the last-known anchor of a REMOVED node, or undefined if the id is
+   * The last-known anchor of a REMOVED node, or undefined if the id is
    * live, was never here, or the anchor was wholesale-cleared. The tolerant readers in
    * NodeModel (getWorldPosition / getGlobalPosition / getGlobalTransformMatrix /
    * setGlobalPosition) resolve an unresolvable parent through this so orphaned relative
@@ -753,6 +819,9 @@ export class DiagramModel extends DiagramEntity {
     if (this.blocksDocumentWrite()) return;
     this.nodes.clear();
     this.portIndex.clear();
+    // …and the culling index, or getVisibleNodes() keeps handing the renderer
+    // nodes the model no longer has (clear() does this; clearNodes did not).
+    this.nodeSpatialIndex.clear();
     // Wholesale reset: no nodes remain to read a frozen frame through.
     this.detachedAnchors.clear();
     this.emitOrQueue('nodes:cleared');
@@ -859,7 +928,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Restore link from serialized data (Phase 1.8)
+   * Restore link from serialized data
    */
   restoreLink(data: any): LinkModel | undefined {
     try {
@@ -887,7 +956,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Phase 0.2: Get all links connected to a specific port
+   * Get all links connected to a specific port
    */
   getLinksForPort(portId: string): LinkModel[] {
     return this.getLinks().filter(link =>
@@ -900,12 +969,20 @@ export class DiagramModel extends DiagramEntity {
    */
   clearLinks(): void {
     if (this.blocksDocumentWrite()) return;
+    // What removeLink() does per link: free the ports' connection budget and drop
+    // the link from the culling index — else it stays on screen, and a port with
+    // maxConnections stays "full" of links that no longer exist.
+    for (const link of this.links.values()) {
+      this.getPortById(link.sourcePortId)?.removeConnection(link.id);
+      this.getPortById(link.targetPortId)?.removeConnection(link.id);
+    }
     this.links.clear();
+    this.linkSpatialIndex.clear();
     this.emitOrQueue('links:cleared');
   }
 
   /**
-   * Phase 0.5.3: Create a smart link with automatic port selection
+   * Create a smart link with automatic port selection
    *
    * This high-level API simplifies link creation by:
    * - Automatically selecting optimal ports based on node geometry
@@ -975,7 +1052,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Phase 0.5.3: High-level API to connect two nodes
+   * High-level API to connect two nodes
    *
    * Convenience method that creates a smart link and returns success status.
    * This is the simplest way to connect nodes.
@@ -1002,7 +1079,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Phase 0.5.3: Get all connections for a node
+   * Get all connections for a node
    *
    * Returns all links where the node is either source or target.
    * Useful for querying node connectivity.
@@ -1050,7 +1127,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Phase 0.5.3: Disconnect two nodes
+   * Disconnect two nodes
    *
    * Removes all links between the specified nodes.
    * Handles cleanup of port connections.
@@ -1105,7 +1182,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Add group (Phase 1.6c)
+   * Add group
    */
   addGroup(group: GroupModel): void {
     if (this.blocksDocumentWrite()) return;
@@ -1147,7 +1224,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Remove group (Phase 1.6c)
+   * Remove group
    */
   removeGroup(groupId: string): GroupModel | undefined {
     if (this.blocksDocumentWrite()) return undefined;
@@ -1161,7 +1238,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Restore group from serialized data (Phase 1.8)
+   * Restore group from serialized data
    */
   restoreGroup(data: any): GroupModel | undefined {
     try {
@@ -1175,21 +1252,21 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get group by ID (Phase 1.6c)
+   * Get group by ID
    */
   getGroup(groupId: string): GroupModel | undefined {
     return this.groups.get(groupId);
   }
 
   /**
-   * Get all groups (Phase 1.6c)
+   * Get all groups
    */
   getGroups(): GroupModel[] {
     return Array.from(this.groups.values());
   }
 
   /**
-   * Wave-5 Card 3: groups in deterministic back-to-front stacking order —
+   * Groups in deterministic back-to-front stacking order —
    * ascending `zIndex`, ties broken by Map insertion order (a STABLE sort keeps
    * it). This is the model-level z-order story that replaces "stacking == Map
    * insertion order" as the only determinant; a renderer paints groups in this
@@ -1200,7 +1277,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Wave-5 Card 4: the placeholder "group-as-node" for a collapsed group, if
+   * The placeholder "group-as-node" for a collapsed group, if
    * present. Placeholder nodes are ordinary NodeModels tagged with the group id
    * so callers can filter them out of exports / counts.
    */
@@ -1213,13 +1290,13 @@ export class DiagramModel extends DiagramEntity {
     return undefined;
   }
 
-  /** Wave-5 Card 4: is this node a collapsed-group placeholder? */
+  /** Is this node a collapsed-group placeholder? */
   isProxyNode(node: NodeModel): boolean {
     return node.getMetadata('__isGroupProxy') === true;
   }
 
   /**
-   * Clear all groups (Phase 1.6c)
+   * Clear all groups
    */
   clearGroups(): void {
     this.groups.clear();
@@ -1328,7 +1405,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Compound-graph containment (Wave-2)
+   * Compound-graph containment
    *
    * These derive the nesting tree from each GroupModel.parentGroupId pointer,
    * which addMember/removeMember/setParent keep authoritative. Coordinates stay
@@ -1410,16 +1487,18 @@ export class DiagramModel extends DiagramEntity {
       return;
     }
 
-    // Clear previous selection
-    this.clearSelection();
+    // ONE event with the final selection. Going through clearSelection() emitted
+    // its own event first, so a listener saw a → ∅ → b; and re-selecting the
+    // node that was already the selection emitted twice for no change at all.
+    const deselected = this.getSelectedNodes().filter((other) => other !== node);
+    const wasSelected = node.isSelected();
+    deselected.forEach((other) => other.setSelected(false));
+    if (!wasSelected) node.setSelected(true);
+    if (wasSelected && deselected.length === 0) return;
 
-    // Select the node
-    node.setSelected(true);
-
-    // Emit selection changed event
     this.emitOrQueue('selection:changed', {
-      selected: [node],
-      deselected: []
+      selected: wasSelected ? [] : [node],
+      deselected
     });
   }
 
@@ -1533,7 +1612,7 @@ export class DiagramModel extends DiagramEntity {
    * @param x - X coordinate
    * @param y - Y coordinate
    * @returns Node at position, or undefined if none found
-   * Phase 3.3: Uses shape-aware hit detection
+   * Uses shape-aware hit detection
    */
   getNodeAtPosition(x: number, y: number): NodeModel | undefined {
     const nodes = this.getNodes();
@@ -1559,9 +1638,8 @@ export class DiagramModel extends DiagramEntity {
    * Same z contract as {@link getNodeAtPosition} (array order, topmost last),
    * same shape-aware containment. This is the occlusion oracle for PORTS: a
    * port whose anchor a higher node covers must neither paint nor accept
-   * input — pre-fix, an overlapped node's port glyphs floated on top of the
-   * covering node's body, and its hidden ports still won the hover/press race
-   * through it (live report from stacked pasted nodes).
+   * input, so a covered port neither floats on top of the covering node's body
+   * nor wins the hover/press race through it.
    */
   isPointCoveredAbove(x: number, y: number, nodeId: string): boolean {
     const nodes = this.getNodes();
@@ -1655,7 +1733,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Set viewport (Phase 0.5 - Viewport-Aware Layout)
+   * Set viewport
    */
   setViewport(x: number, y: number, width: number, height: number, zoom?: number): void {
     const oldViewport = { ...this.viewport };
@@ -1706,7 +1784,7 @@ export class DiagramModel extends DiagramEntity {
 
   /**
    * Set absolute zoom level
-   * Phase 0.5 - Option B: Pan/Zoom controls
+   * Option B: Pan/Zoom controls
    * @param level - Zoom level (0.1 to 10.0)
    * @param center - Optional center point for zoom (defaults to viewport center)
    */
@@ -1723,7 +1801,7 @@ export class DiagramModel extends DiagramEntity {
 
   /**
    * Fit viewport to show all nodes (without changing zoom level)
-   * Phase 0.5 - Option B: Pan/Zoom controls
+   * Option B: Pan/Zoom controls
    * @param padding - Padding around content (default 100)
    */
   fitToView(padding: number = 100): void {
@@ -1769,12 +1847,12 @@ export class DiagramModel extends DiagramEntity {
       this.viewport.zoom
     );
 
-    console.log(`📐 Fit to view: ${nodes.length} nodes, bounds=(${minX.toFixed(1)}, ${minY.toFixed(1)}) to (${maxX.toFixed(1)}, ${maxY.toFixed(1)})`);
+    debugLog(`📐 Fit to view: ${nodes.length} nodes, bounds=(${minX.toFixed(1)}, ${minY.toFixed(1)}) to (${maxX.toFixed(1)}, ${maxY.toFixed(1)})`);
   }
 
   /**
    * Fit viewport to show all nodes AND adjust zoom to fit screen
-   * Phase 0.5 - Option B: Pan/Zoom controls
+   * Option B: Pan/Zoom controls
    * @param targetWidth - Target viewport width (e.g. screen width)
    * @param targetHeight - Target viewport height (e.g. screen height)
    * @param padding - Padding around content (default 100)
@@ -1826,11 +1904,11 @@ export class DiagramModel extends DiagramEntity {
       Math.max(0.1, Math.min(10, newZoom))
     );
 
-    console.log(`🔍 Zoom to fit: ${nodes.length} nodes, zoom=${newZoom.toFixed(2)}, content=${contentWidth.toFixed(1)}x${contentHeight.toFixed(1)}`);
+    debugLog(`🔍 Zoom to fit: ${nodes.length} nodes, zoom=${newZoom.toFixed(2)}, content=${contentWidth.toFixed(1)}x${contentHeight.toFixed(1)}`);
   }
 
   /**
-   * Clear all nodes, links, and groups (Phase 1.6c)
+   * Clear all nodes, links, and groups
    */
   clear(): void {
     // Remove all links first
@@ -1868,7 +1946,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get nodes visible in viewport (Phase 5.1)
+   * Get nodes visible in viewport
    * This enables viewport virtualization - only render visible nodes
    *
    * @param viewport - Rectangular viewport region in world coordinates
@@ -1893,7 +1971,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get links visible in viewport (Phase 5.1)
+   * Get links visible in viewport
    * This enables viewport virtualization - only render visible links
    *
    * @param viewport - Rectangular viewport region in world coordinates
@@ -1906,7 +1984,7 @@ export class DiagramModel extends DiagramEntity {
   /**
    * The nearest port to a world point, served BY THE SPATIAL INDEX.
    *
-   * wave8/culling — Card 2. This is the query a link drag makes on every
+   * This is the query a link drag makes on every
    * pointermove, so it is the one query that must never be a scan: the existing
    * answer (`PortModel.findNearestPort`) could only search ONE node — the one the
    * pointer happened to be over — because searching more would have meant walking
@@ -1917,9 +1995,9 @@ export class DiagramModel extends DiagramEntity {
    * `portPosition` is injectable because THE ENGINE DOES NOT KNOW WHERE PORTS ARE.
    * Its default (`getAbsolutePosition`) walks the bounding box — edge midpoints,
    * blind to the silhouette and to how many ports share a side — while the
-   * renderer draws them shape-aware (`portWorldPosition`). Wave 6 fixed exactly
-   * this divergence for the port hit-test and the magnet, and it is why callers
-   * inside the renderer MUST pass the shape-aware resolver: otherwise you snap to
+   * renderer draws them shape-aware (`portWorldPosition`). The port hit-test and
+   * the magnet use the shape-aware resolver, and callers inside the renderer MUST
+   * pass it too: otherwise you snap to
    * a point several pixels from the circle you can see.
    *
    * @param point   World-space point (usually the drag position).
@@ -1969,7 +2047,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get bounding box of all visible entities (Phase 5.1)
+   * Get bounding box of all visible entities
    * Useful for "fit to viewport" operations
    *
    * @param viewport - Rectangular viewport region
@@ -2016,7 +2094,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get all dirty nodes (Phase 5.2)
+   * Get all dirty nodes
    * Returns nodes that need re-rendering
    */
   getDirtyNodes(): NodeModel[] {
@@ -2024,7 +2102,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get all dirty links (Phase 5.2)
+   * Get all dirty links
    * Returns links that need re-rendering
    */
   getDirtyLinks(): LinkModel[] {
@@ -2032,7 +2110,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get all dirty groups (Phase 5.2)
+   * Get all dirty groups
    * Returns groups that need re-rendering
    */
   getDirtyGroups(): GroupModel[] {
@@ -2040,7 +2118,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Mark all entities as clean (Phase 5.2)
+   * Mark all entities as clean
    * Call this after rendering to reset dirty flags
    */
   markAllClean(): void {
@@ -2064,7 +2142,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get total count of dirty entities (Phase 5.2)
+   * Get total count of dirty entities
    * Useful for monitoring render performance
    */
   getDirtyCount(): number {
@@ -2086,7 +2164,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get visible dirty nodes (Phase 5.2)
+   * Get visible dirty nodes
    * Combines viewport virtualization with dirty marking
    * Only returns nodes that are both visible AND need re-rendering
    *
@@ -2105,7 +2183,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get visible dirty links (Phase 5.2)
+   * Get visible dirty links
    * Combines viewport virtualization with dirty marking
    * Only returns links that are both visible AND need re-rendering
    *
@@ -2117,17 +2195,16 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get LOD level based on zoom (Phase 5.3)
+   * Get LOD level based on zoom
    *
-   * wave2/rendering: driven by the declarative {@link LODConfig}. Picks the
+   * Driven by the declarative {@link LODConfig}. Picks the
    * tier whose `minZoom` the zoom crosses — tiers are pre-sorted highest-first,
    * so the first match wins. With the default config this is exactly:
    *   zoom >= 1.0        -> 'high'
    *   0.5 <= zoom < 1.0  -> 'medium'
    *   zoom <  0.5        -> 'low'
    *
-   * (wave8/culling moved the medium/low breakpoint 0.2 → 0.5 — see
-   * {@link createDefaultLODConfig} for why.)
+   * (See {@link createDefaultLODConfig} for why the medium/low breakpoint is 0.5.)
    *
    * @param zoom - Current zoom level
    * @returns Tier name (default policy: 'high' | 'medium' | 'low')
@@ -2144,7 +2221,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * wave2/rendering: single feature gate that reads the active LOD tier's
+   * Single feature gate that reads the active LOD tier's
    * feature set. Renderers call this instead of hardcoding `lod === 'high'`
    * checks, so custom tiers work automatically.
    *
@@ -2173,6 +2250,7 @@ export class DiagramModel extends DiagramEntity {
   setLODConfig(config: LODConfig): void {
     this._lodConfig = config;
     this._resortLODTiers();
+    this._announceLODChange();
   }
 
   /**
@@ -2187,6 +2265,22 @@ export class DiagramModel extends DiagramEntity {
       this._lodConfig.tiers.push(tier);
     }
     this._resortLODTiers();
+    this._announceLODChange();
+  }
+
+  /**
+   * Tell the renderer the LOD POLICY changed.
+   *
+   * Nothing about the model's entities moved, so neither the mutation epoch nor
+   * any entity's dirty flag notices this — and the renderer's caches are keyed by
+   * TIER NAME, which a redefinition keeps. The result was that `setLODConfig`
+   * appeared to do nothing at all: the next `render()` was idle-skipped, and
+   * redefining a tier under its existing name left a mixed picture, some entities
+   * drawn under the old policy and some under the new. A policy change is exactly
+   * the sort of thing the model cannot see and must therefore say out loud.
+   */
+  private _announceLODChange(): void {
+    this.emitOrQueue('lod:config-changed', { tiers: this._lodConfig.tiers.length });
   }
 
   /** Keep the highest-minZoom-first tier cache in sync with _lodConfig. */
@@ -2197,7 +2291,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get visible nodes with LOD information (Phase 5.3)
+   * Get visible nodes with LOD information
    * Combines viewport virtualization with Level of Detail
    *
    * @param viewport - Rectangular viewport region
@@ -2215,7 +2309,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Get visible links with LOD information (Phase 5.3)
+   * Get visible links with LOD information
    * Combines viewport virtualization with Level of Detail
    *
    * @param viewport - Rectangular viewport region
@@ -2233,32 +2327,32 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Check if labels should be rendered at this LOD level (Phase 5.3)
-   * wave2/rendering: now reads the LOD tier's feature set.
+   * Check if labels should be rendered at this LOD level
+   * Now reads the LOD tier's feature set.
    */
   shouldRenderLabels(lod: LODLevel): boolean {
     return this.shouldRender('labels', lod);
   }
 
   /**
-   * Check if icons should be rendered at this LOD level (Phase 5.3)
-   * wave2/rendering: now reads the LOD tier's feature set.
+   * Check if icons should be rendered at this LOD level
+   * Now reads the LOD tier's feature set.
    */
   shouldRenderIcons(lod: LODLevel): boolean {
     return this.shouldRender('icons', lod);
   }
 
   /**
-   * Check if borders should be rendered at this LOD level (Phase 5.3)
-   * wave2/rendering: now reads the LOD tier's feature set.
+   * Check if borders should be rendered at this LOD level
+   * Now reads the LOD tier's feature set.
    */
   shouldRenderBorders(lod: LODLevel): boolean {
     return this.shouldRender('borders', lod);
   }
 
   /**
-   * Check if shadows should be rendered at this LOD level (Phase 5.3)
-   * wave2/rendering: now reads the LOD tier's feature set.
+   * Check if shadows should be rendered at this LOD level
+   * Now reads the LOD tier's feature set.
    */
   shouldRenderShadows(lod: LODLevel): boolean {
     return this.shouldRender('shadows', lod);
@@ -2359,6 +2453,12 @@ export class DiagramModel extends DiagramEntity {
    * During batch mode, events are queued instead of fired immediately
    */
   private emitOrQueue(eventType: string, data?: any): void {
+    // Every model event but the renderer's own "I drew you" is a change to the
+    // picture, so it moves the global mutation epoch and the frame gate opens. A
+    // bulk clear (clearNodes/Links/Groups/Strokes) empties a collection with no
+    // entity marking itself dirty: the epoch stood still, the scheduled frame was
+    // skipped, and the cleared things stayed on screen. Err toward the wasted frame.
+    if (eventType !== 'dirty:cleared') bumpMutationEpoch();
     const batching = this.isBatching();
     if (batching) {
       // Queue event for later
@@ -2753,7 +2853,7 @@ export class DiagramModel extends DiagramEntity {
   }
 
   /**
-   * Dispose diagram and all child entities (Phase 5.4)
+   * Dispose diagram and all child entities
    * Prevents memory leaks by:
    * - Disposing all nodes, links, and groups
    * - Breaking circular references

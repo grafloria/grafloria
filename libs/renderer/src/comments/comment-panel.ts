@@ -121,6 +121,9 @@ export class CommentPanelView {
     });
 
     container.appendChild(this.root);
+    // Paint what the store ALREADY holds. Waiting for the next change opened the
+    // panel on "No comments yet." beside threads that were plainly there.
+    this.update();
   }
 
   getElement(): HTMLElement {

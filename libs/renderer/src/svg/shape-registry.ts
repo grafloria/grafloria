@@ -739,9 +739,14 @@ const DocumentShape = pathShape(
   { innerRect: (w, h) => ({ x: 0.08 * w, y: 0.08 * h, w: 0.84 * w, h: 0.72 * h }) }
 );
 
-/** Classic DB-cylinder rim radius (must match the outline generator exactly). */
+/**
+ * Classic DB-cylinder rim radius (must match the outline generator exactly).
+ * Capped at a fifth of the height: the classic curve deepens with the width, so
+ * a cylinder stretched wide (a block-beta cell) was all rim, its label drawn
+ * across the seam. Up to 5 : 3 the cap never binds.
+ */
 function cylinderRy(w: number, h: number): number {
-  return Math.min(h / 2, w / 2 / (2.5 + w / h));
+  return Math.min(h / 5, w / 2 / (2.5 + w / h));
 }
 
 const CylinderShape: ShapeDefinition = {
@@ -762,7 +767,15 @@ const CylinderShape: ShapeDefinition = {
         `l 0 ${r3(-body)}`
       );
     },
-    { innerRect: (w, h) => ({ x: 0.1 * w, y: 0.28 * h, w: 0.8 * w, h: 0.5 * h }) }
+    {
+      // the label sits on the BODY: from the rim's front seam (2·ry) down to where
+      // the base arc meets the sides (h − ry) — its middle at h/2 + ry/2, as
+      // Mermaid offsets a cylinder's label; a fixed 28–78 % band put it on the seam
+      innerRect: (w, h) => {
+        const ry = cylinderRy(w, h);
+        return { x: 0.1 * w, y: 2 * ry, w: 0.8 * w, h: h - 3 * ry };
+      },
+    }
   ),
   // Card 7 — geometry-true anchors. Ports ride the cylinder's real geometry: the
   // top port sits on the FRONT RIM SEAM (the visible top edge of the body, at
@@ -1188,8 +1201,23 @@ export function defaultInnerRect(width: number, height: number): InnerRect {
   return { x: pad, y: pad, w: width - 2 * pad, h: height - 2 * pad };
 }
 
-// Register the five built-ins.
-for (const def of [RectShape, CircleShape, EllipseShape, DiamondShape, HexagonShape]) {
+/**
+ * 'text' — a NOTE on the canvas: words with no box (the free annotations of the
+ * diagrams AI tools draw: "if someone swaps the link, the customer lands here").
+ * The rect's geometry, so it hit-tests, selects, drags and takes ports like any
+ * node; the style cascade paints its body transparent, and its label box is the
+ * whole node — the label engine draws it start-aligned and unclipped.
+ */
+const TextShape: ShapeDefinition = {
+  ...RectShape,
+  type: 'text',
+  innerRect(width, height) {
+    return { x: 0, y: 0, w: width, h: height };
+  },
+};
+
+// Register the five built-ins, and the text note.
+for (const def of [RectShape, CircleShape, EllipseShape, DiamondShape, HexagonShape, TextShape]) {
   registry.set(def.type, def);
 }
 
@@ -1394,15 +1422,21 @@ function mergeInlineStyle(existing: unknown, hoisted: string): string {
   return [...parts, hoisted].join('; ');
 }
 
-/** Selection-highlight VNode: the outline grown by `padding`, plus baseProps. */
+/**
+ * Selection-highlight VNode: the outline grown by `padding`, plus baseProps.
+ * `radius` is the corner of the GROWN outline — the renderer passes the node's
+ * own corner + padding, so the ring stays concentric with a rounded card; 6 is
+ * the corner a node that declares none has always had.
+ */
 export function buildShapeSelection(
   def: ShapeDefinition,
   width: number,
   height: number,
   padding: number,
-  baseProps: Record<string, any>
+  baseProps: Record<string, any>,
+  radius = 6
 ): VNode {
-  const spec = def.outline(width, height, { grow: padding, radius: 6, radiusY: true });
+  const spec = def.outline(width, height, { grow: padding, radius, radiusY: true });
   return { type: spec.el, props: { ...spec.geom, ...baseProps } };
 }
 

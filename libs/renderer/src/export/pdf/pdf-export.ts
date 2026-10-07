@@ -78,7 +78,8 @@ import { decodeDataUrlImage, type PdfImage } from './png';
 import { vnodeBounds } from '../bounds';
 // The shared geometry module — see pdf-path.ts.
 import { parseTransform, type Matrix } from '../../canvas/path-geometry';
-import { createClassStyleResolver, type ClassStyleResolver } from '../style-flattener';
+import { createClassStyleResolver, substituteCssVars, type ClassStyleResolver } from '../style-flattener';
+import { resolveThemeVars } from '../../themes/theme-vars';
 import { attrNameForProp, serializeStyle } from '../../vnode/patch';
 import { LIGHT_THEME } from '../../themes/default-light-theme';
 import type { Theme } from '../../types/theme.types';
@@ -123,6 +124,14 @@ export interface PdfExportOptions {
   pages?: Array<Rectangle | { rect: Rectangle; clip?: Rectangle }>;
   /** Draw "n / total" at the foot of each page. Default false; the paginator turns it on. */
   pageNumbers?: boolean;
+  /**
+   * The LIVE value of a CSS custom property — e.g. `getComputedStyle(svg).getPropertyValue(name)`
+   * on the diagram's root. An element's own paint can be a `var(--…)` (the line markers
+   * ride `var(--grafloria-link-stroke, …)` so a token bridge recolours them with their
+   * line); this is how a bridged value reaches the PDF. Optional: when it is absent or
+   * answers empty, the theme's token value is used, then the var()'s own fallback.
+   */
+  resolveVar?: (name: string) => string | null | undefined;
 }
 
 export interface PdfExportResult {
@@ -282,6 +291,14 @@ export function exportPdf(root: VNode, options: PdfExportOptions = {}): PdfExpor
   const defs = collectDefs(root);
   // The stylesheet, flattened — the same resolver the SVG exporter uses.
   const classStyles = createClassStyleResolver(options.theme ?? LIGHT_THEME, warnings);
+  // CSS variables in an element's OWN paint: live value, then theme token, then the
+  // var()'s fallback (substituteCssVars applies the fallback itself).
+  const themeVars = resolveThemeVars(options.theme ?? LIGHT_THEME);
+  const lookupVar = (name: string): string | undefined => {
+    const live = options.resolveVar?.(name);
+    if (typeof live === 'string' && live.trim() !== '') return live.trim();
+    return themeVars[name];
+  };
   const ctx: PaintContext = {
     defs,
     shadings: new ShadingRegistry(),
@@ -289,6 +306,7 @@ export function exportPdf(root: VNode, options: PdfExportOptions = {}): PdfExpor
     images: new ImageRegistry(),
     warnings,
     classStyles,
+    lookupVar,
   };
 
   const writer = new PdfWriter();
@@ -516,6 +534,8 @@ interface PaintContext {
   images: ImageRegistry;
   warnings: string[];
   classStyles: ClassStyleResolver;
+  /** A CSS custom property's value: live (DOM) first, then the theme's token. */
+  lookupVar: (name: string) => string | undefined;
 }
 
 /**
@@ -560,6 +580,25 @@ function resolved(vnode: VNode, ctx: PaintContext): Record<string, string> {
       const prop = declaration.slice(0, colon).trim();
       const value = declaration.slice(colon + 1).trim();
       if (prop && value) out[prop] = value;
+    }
+  }
+
+  // (4) CSS variables. The class rules above arrive resolved; an element's own paint
+  // may not — the line markers paint `var(--grafloria-link-stroke, …)` through their
+  // inline style, and a raw `var(…)` reached parsePdfColor, came back null, and every
+  // arrowhead vanished from the PDF without a word.
+  for (const key of Object.keys(out)) {
+    const value = out[key];
+    if (!value.includes('var(')) continue;
+    const result = substituteCssVars(value, ctx.lookupVar);
+    if (result.value !== undefined) {
+      out[key] = result.value;
+    } else {
+      ctx.warnings.push(
+        `"${key}: ${value}" uses ${result.unresolved.join(', ')}, which has no value here ` +
+          '(no live style, theme token or fallback) — not painted'
+      );
+      delete out[key];
     }
   }
 
@@ -856,7 +895,18 @@ function urlRefId(value: unknown): string | null {
  */
 function flattenedPaint(value: unknown, ctx: PaintContext, why: string): PdfRgb | null {
   const id = urlRefId(value);
-  if (id === null) return parsePdfColor(value);
+  if (id === null) {
+    const color = parsePdfColor(value);
+    // `null` is also the honest answer for none/transparent/absent. Anything else is a
+    // colour we could not read: say so rather than leave a hole in the picture.
+    if (!color && typeof value === 'string') {
+      const text = value.trim().toLowerCase();
+      if (text !== '' && text !== 'none' && text !== 'transparent') {
+        ctx.warnings.push(`the colour "${value}" could not be read — that paint is omitted`);
+      }
+    }
+    return color;
+  }
 
   const gradient = ctx.defs.gradients.get(id);
   if (gradient) {

@@ -1,16 +1,24 @@
 <meta charset="utf-8">
 <title>Typed ports — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Ports coloured by data type, refusing a mismatched connection — number→number is allowed, number→string is rejected before it is made.">
+<link rel="canonical" href="https://grafloria.com/demos/ports/typed-ports.html">
+<meta property="og:title" content="Typed ports — Grafloria">
+<meta property="og:description" content="Ports coloured by data type, refusing a mismatched connection — number→number is allowed, number→string is rejected before it is made.">
+<meta property="og:url" content="https://grafloria.com/demos/ports/typed-ports.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/ports/typed-ports.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/ports/typed-ports.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #hint { padding: 8px 24px; font: 13px/1.5 system-ui; opacity: .75; border-bottom: 1px solid rgba(127,127,127,.25); }
-  #canvas { height: calc(100vh - 190px); }
+  #canvas { height: calc(100vh - 130px); }
 </style>
 <header id="demo-head"></header>
 <div id="hint">Ports are coloured by data type. A number output connects to a number input, but the engine refuses to wire it to a string input.</div>
 <div id="canvas"></div>
 <script type="module">
 import { render, portTypeRegistry } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // Register the palette: a data type COLOURS its glyph only if someone says what
 // colour it is. This registry was unreachable from the embed until the audit

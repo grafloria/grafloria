@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboards in plain JavaScript — dashboard(), the handle, the round trip — Grafloria</title>
+<meta name="description" content="The Grafloria dashboard kit in depth: every dashboard() option, the widget spec, six built-in widget kinds and their data contracts, renderWidget, the live DashboardHandle, and the toJSON round trip.">
+<link rel="canonical" href="https://grafloria.com/learn/javascript-dashboards/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Dashboards in plain JavaScript — dashboard(), the handle, the round trip — Grafloria">
+<meta property="og:description" content="The Grafloria dashboard kit in depth: every dashboard() option, the widget spec, six built-in widget kinds and their data contracts, renderWidget, the live DashboardHandle, and the toJSON round trip.">
+<meta property="og:url" content="https://grafloria.com/learn/javascript-dashboards/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Dashboards in plain JavaScript \u2014 dashboard(), the handle, the round trip","description":"The Grafloria dashboard kit in depth: every dashboard() option, the widget spec, six built-in widget kinds and their data contracts, renderWidget, the live DashboardHandle, and the toJSON round trip.","url":"https://grafloria.com/learn/javascript-dashboards/","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"datePublished":"2026-08-04","dateModified":"2026-08-19","mainEntityOfPage":"https://grafloria.com/learn/javascript-dashboards/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Learn","item":"https://grafloria.com/learn/"},{"@type":"ListItem","position":2,"name":"Dashboards in plain JavaScript \u2014 dashboard(), the handle, the round trip","item":"https://grafloria.com/learn/javascript-dashboards/"}]}]}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../diagrams/">Diagrams</a>
+      <a href="../../dashboards/">Dashboards</a>
+      <a href="../../learn/" aria-current="page">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../blog/">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/" aria-current="page">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Dashboards in plain JavaScript</p>
+      <h1>Dashboards in plain JavaScript</h1>
+      <p class="lede">A dashboard is <b>declared, not assembled</b>: you write what the board is — views, widgets, spans — and <code>render()</code> wires the pack grid, drag/resize with live push, fit/grow, pin and one-undo-per-gesture. This page is the whole contract: every option, every widget kind, the live handle, and the save/load round trip.</p>
+
+      <h2>One call, a working board</h2>
+<div class="filebar">board.js</div>
+<pre data-lang="javascript">import { render, dashboard } from '@grafloria/element';
+
+const SPEC = dashboard({
+  columns: 12,
+  sizing: 'fit',
+  views: [{
+    id: 'overview', name: 'Overview',
+    widgets: [
+      { id: 'rev',   kind: 'kpi',   span: 3, rows: 1,
+        data: { label: 'Total revenue', value: '$6.81M', delta: 12.4, spark: [42,45,51,61,76] } },
+      { id: 'trend', kind: 'line',  span: 8, rows: 2, title: 'Revenue vs target',
+        data: { series: [{ name: 'Revenue', values: [420,455,512,588,648] }], labels: ['Jan','Feb','Mar','Apr','May'] } },
+      { id: 'mix',   kind: 'donut', span: 4, rows: 2, pinned: true, title: 'By region',
+        data: { slices: [{ label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }] } },
+    ],
+  }],
+});
+render(SPEC, document.getElementById('canvas'));
+const H = SPEC.handle;                 // the live handle — every edit goes through it</pre>
+      <p><code>dashboard()</code> returns a render spec (<code>nodes</code>,
+      <code>edges</code>, <code>renderCustomNode</code>, <code>finalize</code>) plus the
+      <code>handle</code>; <code>render()</code> runs the <code>finalize</code> for you —
+      the same pattern as every <a href="../kits/">kit</a>.</p>
+
+      <h2>The options, in depth</h2>
+      <div class="tablewrap"><table>
+        <tr><th>Option</th><th>Default</th><th>What it does</th></tr>
+        <tr><td><code>columns</code></td><td>12</td><td>Column count for every view (a view can override)</td></tr>
+        <tr><td><code>gap</code></td><td>8</td><td>Gap between widgets <b>and</b> the board padding, px</td></tr>
+        <tr><td><code>mode</code></td><td><code>'fluid'</code></td>
+          <td><code>'fluid'</code>: the board is 100% of its container, laid out at real
+          CSS pixels at zoom 1 — what every grid library does. <code>'fixed'</code>: the
+          authored <code>width</code>/<code>height</code> are the world and the camera
+          frames them — for a dashboard embedded inside a larger diagram. An explicit
+          <code>width</code> implies <code>'fixed'</code></td></tr>
+        <tr><td><code>sizing</code></td><td><code>'grow'</code> fluid · <code>'fit'</code> fixed</td>
+          <td><code>'grow'</code> keeps the row height and extends the board downward
+          (the wheel scrolls) — dragging one tile never resizes another, which is why
+          it is the fluid default. <code>'fit'</code> keeps the board at its height and squeezes rows — and
+          <b>fit means bounded</b>: the height is a capacity, and a drop, resize or
+          <code>addWidget()</code> that would need one row too many is refused (the
+          placeholder stays put, the palette chip dims, <code>addWidget</code> returns
+          <code>undefined</code>) — and a bounded fit board never scrolls: a board that
+          already holds more than fits squeezes its rows below the floor rather than
+          growing. The choice for a designer who wants the whole dashboard on one screen</td></tr>
+        <tr><td><code>layout</code></td><td><code>'grid'</code></td>
+          <td><code>'split'</code> is the DevExpress model: a splitter tree instead of cells —
+          the board is always covered, one widget fills it, a second halves it, a third
+          halves the larger half the other way; dividers drag as percentages; a dragged
+          widget shows an insertion line on the nearest edge of the widget under it, or,
+          near a group's outer edge, across the whole group (drop under all the columns of
+          a row, not under one of them); a removed widget's slot goes to its neighbour. Always fit. Switch live with
+          <code>H.setLayout('split' | 'grid')</code> — cells become a tree by guillotine
+          cuts, a tree becomes cells by snapping to the columns; the choice is saved with
+          the board</td></tr>
+        <tr><td><code>overflow</code></td><td><code>'bounded'</code></td>
+          <td><code>'scroll'</code> lifts the fit capacity: the frame extends to hold the
+          rows at the row floor and the canvas pans</td></tr>
+        <tr><td><code>static</code></td><td><code>false</code></td>
+          <td>The viewer's mode: no drag, no resize, no handles — the API, undo and
+          keyboard <i>reading</i> keep working, and clicks inside a widget's content still
+          reach it (a chart's click-to-filter works on a read-only board); a drag across the
+          board selects no text (tables stay copyable). Switch live with <code>H.setStatic()</code></td></tr>
+        <tr><td><code>squeeze</code></td><td><code>true</code></td>
+          <td>What a bounded fit board does when a gesture needs another row. <code>true</code>:
+          rows squeeze toward <code>minRowHeight</code> (28 px) before growth is refused.
+          <code>false</code>: rows freeze at the height they have now — the frame's capacity is
+          counted at that height, so a resize, move or add that needs a row the frame does not hold
+          is refused outright and no other tile shrinks. A document loaded with more rows than fit
+          still squeezes to the frame; fit never scrolls either way</td></tr>
+        <tr><td><code>dragHandle</code></td><td><code>false</code></td>
+          <td>Where a widget can be grabbed. <code>true</code>: the caption strip is the
+          only handle (DevExpress caption drag; the header shows grip dots and a grab
+          cursor). A selector: your own element inside the card.
+          <code>{ grip: true, position: 'left' | 'center' | 'right', placement: 'inside' | 'outside' }</code>:
+          a painted grip along the top edge, in the header band (the header makes room)
+          or a tab above the card like the DevExpress item bar &mdash; a 24 &times; 9 px target, so moving a tile is
+          select, find the tab, drag; caption drag offers the whole 28 px header, roughly forty times the area, for
+          the same gesture. The grip shows on the selected
+          widget only (a press selects, a void click clears; it fades in over 120 ms, so a
+          gate that reads its opacity should wait). A host that paints its own content and
+          has no kit header gets the top 28 px of the card as its caption. <code>false</code>: the
+          whole card. The body then scrolls and clicks as content; resize edges and the
+          keyboard are unchanged. Switch live with <code>H.setDragHandle()</code></td></tr>
+        <tr><td><code>rowHeight</code></td><td>130</td><td>Row height in <code>'grow'</code> mode, px</td></tr>
+        <tr><td><code>width</code>, <code>height</code></td><td>1180 × 660</td><td>Board size, px — only in <code>mode: 'fixed'</code>; a fluid board takes the container's</td></tr>
+        <tr><td><code>float</code></td><td><code>false</code></td>
+          <td>Off = gravity packs widgets upward, no holes; on = widgets sit wherever you
+          drop them, gaps are legal</td></tr>
+        <tr><td><code>rtl</code></td><td><code>false</code></td>
+          <td>Column <code>x=0</code> renders at the <b>right</b> edge. Cells are untouched
+          — the same <code>widgets</code> array describes the same layout in both
+          directions, only the pixels mirror</td></tr>
+        <tr><td><code>responsive</code></td><td>—</td>
+          <td>Derive the live column count from the board's width:
+          <code>{ columnWidth: 100 }</code> or
+          <code>{ breakpoints: [{ w: 480, c: 1 }, { w: 900, c: 6 }] }</code>. Runs through
+          the engine's per-column layout <b>cache</b>, so narrowing and widening back
+          restores the wide layout exactly</td></tr>
+        <tr><td><code>views</code> / <code>widgets</code></td><td>—</td>
+          <td>Mutually exclusive. <code>views</code> is the tab pattern (only one on
+          camera); <code>widgets</code> is shorthand for a single unnamed view</td></tr>
+        <tr><td><code>renderWidget</code></td><td>built-ins</td>
+          <td>Your chart painter — called <b>once per widget when it mounts</b>; the host
+          is reused across re-renders, so this is not a per-frame hook</td></tr>
+        <tr><td><code>onLayoutChange</code></td><td>—</td>
+          <td>Fires with the view whose layout changed — after a pointer gesture, an
+          API call (<code>moveTo</code>, <code>resize</code>, <code>addWidget</code>,
+          <code>remove</code>, <code>pin</code>), a keyboard step, an undo or a redo.
+          Never twice for the same layout; not for a responsive column change, whose
+          saved layout is unchanged. The persistence hook</td></tr>
+        <tr><td><code>binder</code></td><td>—</td>
+          <td>Extra options merged into the grid binder underneath — the escape hatch to
+          the layer below (drag-out-to-remove zones, palette drop-in, gesture callbacks)</td></tr>
+      </table></div>
+
+      <h2>The widget spec</h2>
+<pre data-lang="typescript">{ id: 'trend',        // required
+  kind: 'line',         // free-form string handed to renderWidget (built-ins below)
+  span: 8, rows: 2,     // cell spans — defaults 3 and 1
+  x: 0, y: 1,           // explicit cell — OMIT and widgets flow in declaration
+                        // order, wrapping at the column count
+  pinned: true,         // never pushed, refuses the mover, survives every reflow
+  movable: false,       // the pointer and keyboard may not move it (the API may)
+  resizable: false,     // no handle, no edge pull (the API may)
+  limits: { minSpan: 2, maxSpan: 8, minRows: 1, maxRows: 3 },   // cells; resizes clamp
+  title: 'Revenue',     // used by the built-in renderers' header — and as its spoken name
+  data: { ... } }       // your payload — passed straight back to renderWidget</pre>
+      <p>Mixing works: one widget with an explicit cell, the rest flowing around it — the
+      flagship demo's Pipeline view does exactly that.</p>
+
+      <h2>The six built-in kinds</h2>
+      <p>Write no <code>renderWidget</code> and the kit draws the declared
+      <code>kind</code> from <b>your own data</b> in hand-rolled inline SVG — no charting
+      dependency, no sample dataset, and a renderer <i>"must never throw: it paints into a
+      live board, mid-gesture, on every reflow"</i> — bad or missing data degrades to an
+      empty-state note. The contracts, with shapes straight from the flagship demo:</p>
+<pre data-lang="typescript">kpi:    { label: 'Total revenue', value: '$6.81M',   // value is YOUR formatting
+          delta: +12.4, deltaLabel: 'vs last qtr',    // signed % — up/green, down/red
+          spark: [42, 45, 47, 51, 55, 61, 76] }       // oldest → newest
+
+line:   { series: [{ name: 'Revenue', values: [420, 455, 512] },
+                  { name: 'Target',  values: [400, 430, 465] }],
+          labels: ['Jan', 'Feb', 'Mar'] }             // a bare number[] also works
+
+bar:    { bars: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }] }
+
+donut:  { slices: [{ label: 'EMEA', value: 1920, color: '#14b8a6' }],
+          centerLabel: '$6.73M', centerCaption: 'total' }
+
+funnel: { stages: [{ label: 'Lead', value: 1200 }, { label: 'Qualified', value: 820 }] }
+
+table:  { columns: ['Rep', 'Deals', 'Revenue'],
+          rows: [['A. Farouk', 38, '$1.24M'], ['M. Haddad', 31, '$0.98M']] }</pre>
+      <p>Any other <code>kind</code> falls back to a titled placeholder frame, so a layout
+      is testable before any chart exists.</p>
+
+      <h2>Your own charts: <code>renderWidget</code></h2>
+<pre data-lang="typescript">import { dashboard, defaultWidgetRenderer } from '@grafloria/element';
+
+dashboard({
+  views,
+  renderWidget: (widget, host) =&gt; {
+    defaultWidgetRenderer(widget, host);      // let the kit draw the card + chart…
+    host.firstElementChild.classList.add('my-chrome');   // …then decorate it
+    host.onclick = () =&gt; select(widget.id);
+  },
+});</pre>
+      <p>The seam is deliberate — the kit <i>"hands you the widget and a raw HTML host (the
+      renderer's custom-node path, which unlike <code>metadata.html</code> is not
+      sanitised, so real <code>&lt;svg&gt;</code>/<code>&lt;canvas&gt;</code> is fine)"</i>.
+      Composing with <code>defaultWidgetRenderer</code> first is exactly how the flagship
+      demo adds its focus ring and pin marker. And because the board renders in light DOM,
+      the cards are styled by your page stylesheet like any
+      <a href="../javascript-custom-nodes/">custom node</a>.</p>
+
+      <h2>The live handle</h2>
+      <p>Every runtime edit is one call on <code>SPEC.handle</code> — no commands to
+      sequence, no models to build:</p>
+<pre data-lang="typescript">H.views                      // view ids, in declaration order
+H.activeView                 // the one on camera
+H.showView('sales');         // the tab switch — others park off-camera, camera re-frames
+
+const w = H.addWidget({ id: 'deals', kind: 'bar', span: 6, rows: 2, data: {...} });
+// CREATES the node, wires its metadata, commits node + membership as ONE undoable
+// step, auto-positions into the first free hole when the spec names no cell
+
+H.setSizing('grow');  H.getSizing();     // the two toolbar toggles, live
+H.setFloat(true);     H.getFloat();
+H.setColumns(6);      H.getColumns();    // per-column layout CACHE: shrink then grow
+                                         // back restores the wide layout; an explicit
+                                         // call PINS the count against `responsive`
+H.setRtl(true);       H.getRtl();
+H.setStatic(true);    H.getStatic();    // viewer / designer, one switch
+H.setDragHandle({ grip: true, position: 'left' }); H.getDragHandle();
+H.focusWidget('trend');                  // select AND move keyboard focus (what Tab does)
+H.selectWidget('trend');                 // select only — ring and grip, focus untouched
+H.getSelectedWidget();                   //   (what a mouse press does); undefined clears
+H.refresh();                 // re-read the boards after an out-of-band model edit
+                             // (undo/redo need nothing — the boards follow the history)
+H.fit();                     // re-frame the camera on the active view
+H.metrics();                 // live geometry: columns, gap, rows, rowHeight, frame
+H.exportIds();               // the ids ONE view occupies — for scoped export
+H.binderOf();                // the documented escape hatch to the grid binder
+H.dispose();</pre>
+      <p>Per-widget, <code>H.widget(id)</code> returns a <code>WidgetHandle</code>:</p>
+<pre data-lang="typescript">const w = H.widget('trend');
+w.cell; w.rect; w.spec; w.node;          // where it is, what it is
+await w.resize(6, 3);                    // in CELLS — resolves true when accepted
+await w.moveTo(0, 2);                    //             …the board may refuse
+w.pin();  w.pinned;                      // locked: never pushed, drags refused
+w.bringToFront();  w.sendToBack();       // one undoable step each
+w.update({ data: nextData });            // replace data (and title/kind) and repaint
+w.repaint();                             // re-run renderWidget after your data changed
+w.remove();                              // ONE undoable step incl. the survivors' re-pack</pre>
+      <div class="note"><b>Several boards on one page</b> — a designer beside its preview, a
+      gallery of examples — may share widget ids. Each board answers only presses inside its own
+      container: a press on the second board never selects or moves the first's namesake
+      (element 0.4.13; before it, the first board mounted claimed them all). A mouse-selected
+      widget also keeps its selection and grip across <code>setLayout</code>,
+      <code>setDragHandle</code>, <code>setStatic</code> and <code>setColumns</code>.</div>
+      <div class="note"><b>Undo is already wired.</b> Drags, resizes, adds, removes, pins and
+      keyboard steps each land as one undoable step on the engine's command stack — ⌘Z
+      works, and buttons go through <code>api.getEngine().undo()</code>. The boards follow
+      the history themselves, so nothing needs a <code>refresh()</code> after an undo. See
+      <a href="../commands-and-undo/">Commands &amp; undo</a>.</div>
+      <div class="note"><b>Exporting a board? Scope it.</b> Tabs park inactive views far off-camera,
+      and <code>export()</code> frames the whole model — <i>"a two-view board writes a
+      ~21,000px document that is almost entirely empty — with no warning, because nothing
+      is technically wrong."</i> Pass <code>{ includeIds: H.exportIds() }</code>; the set
+      includes the view's group as well as its widgets, which a hand-rolled id list from
+      <code>toJSON()</code> would drop.</div>
+
+      <h2>Saving: the round trip</h2>
+      <p><code>H.toJSON()</code> returns the whole board as plain data — and that data
+      <b>is</b> valid <code>dashboard()</code> input:</p>
+<pre data-lang="typescript">// save — everything except the function seams
+const snapshot = H.toJSON();   // views + cells + columns, gap, rowHeight,
+                               // sizing, float, rtl — read from the LIVE board,
+                               // so a mode the user changed is what you get back
+
+// …later: a true round trip. renderWidget cannot be written to a file,
+// so it is supplied again on the way back in:
+const SPEC2 = dashboard({ ...snapshot, renderWidget });
+render(SPEC2, host);</pre>
+      <p>Two properties worth knowing. First, cells serialise from the engine's
+      <b>largest cached column count</b> — <i>"a board currently squeezed to 1 column
+      still writes out the 12-column layout its user authored"</i>: saving on a phone
+      saves the desktop layout. Second, <code>JSON.stringify(H)</code> calls the same
+      <code>toJSON()</code>, so there is no partial-answer footgun.</p>
+      <p>The persistence hook completes the pattern:</p>
+<pre data-lang="typescript">dashboard({
+  views,
+  renderWidget,
+  onLayoutChange: (viewId, widgets) =&gt; {
+    // after every committed gesture — save the WHOLE board, not just the view
+    localStorage.setItem('board', JSON.stringify(SPEC.handle.toJSON()));
+  },
+});</pre>
+      <p>There is also a second, document-level round trip: serialise the entire diagram
+      with <code>DiagramSerializer</code> and load it with
+      <code>fromDocument(json, { renderWidget })</code> — the loaded spec carries the
+      <b>same</b> <code>DashboardHandle</code>, rebuilt by the same builder, so
+      <code>showView</code>/<code>addWidget</code>/<code>toJSON</code> all work on the
+      reload. Two carried limits, both because the datum is not in the document:
+      <code>responsive</code> is a runtime seam and is never serialised, and
+      <code>renderWidget</code>/<code>onLayoutChange</code> are functions — pass
+      <code>renderWidget</code> to <code>fromDocument</code> again or the reload silently
+      drops your chrome.</p>
+
+      <h2>What a board is underneath</h2>
+      <p>No magic: each view is a <code>GroupModel</code> whose chrome is suppressed with
+      <code>frameChrome: 'none'</code> — a <b>frameless group</b>, the pure layout
+      container from <a href="../groups/">Groups</a>. Each widget is a custom HTML node
+      (<code>custom: true</code>, unconnectable, ports stripped — a widget is not a wiring
+      endpoint), and the board geometry that turns cells into pixels is persisted as group
+      metadata so a saved document can rebind its grid. Which is why everything else on
+      this site — export, collaboration, commands — works on dashboards unchanged.</p>
+<p><a class="demo-link" href="../../demos/#dashboard">Live: the dashboard builder — tabs, palette, versions →</a></p>
+<p><a class="demo-link" href="../../demos/#dashboard">Live: grid options — nesting, responsive columns, RTL, pinning →</a></p>
+
+      <h2>Containers: a widget that holds widgets</h2>
+      <p>Give a widget a <code>widgets</code> array and it becomes a container —
+      a locked slab in its board with a nested pack grid inside. The inner grid
+      takes its own <code>columns</code> (default: the container's span) and
+      <code>maxRows</code> (default: the row extent of the declared children;
+      resizing a child past it grows the container in the parent board — the
+      escalation ratchet). Cross-boundary drag adopts in both directions with
+      one-undo gestures, <code>handle.addWidget(spec, containerId)</code>
+      targets a container directly, and <code>toJSON()</code> serialises the
+      nesting from live membership — a dragged-in tile lands under its new
+      parent in the snapshot, and the snapshot rebuilds through
+      <code>dashboard()</code> unchanged. Nesting is exercised to two levels.</p>
+      <p><b>Tab containers</b> (element 0.4.27). Give a container <code>layout: 'tabs'</code> and every child
+      carrying <code>widgets</code> becomes a PAGE: one is visible at a time, and a strip of tabs across the
+      container's top switches between them — DevExpress ships this as its Tab Container, and VS Code's editor
+      area is a split of them. <code>active</code> names the page showing and is written by <code>toJSON()</code>,
+      so a saved board reopens where it was left; <code>tabs</code> styles the strip (<code>align</code>,
+      <code>stretch</code>, <code>height</code>, <code>className</code>). A page is an ordinary container, so it
+      can be a grid or a split, and it keeps its layout while parked. Switching is a click, the arrow keys once a
+      tab has focus, or <code>handle.activateTab(containerId, pageId)</code>; <code>onTabChange</code> reports it.
+      The strip is a <code>role="tablist"</code> and takes ONE tab stop, so a board still has exactly one.
+      <code>tabs: { hidden: true }</code> (element 0.4.83) takes the strip away altogether, as DevExpress's
+      <code>ShowCaption="false"</code> does: nothing is reserved for it and nothing is on screen, the pages fill
+      the frame less <code>inset</code>, and the host switches pages with <code>activateTab()</code>. It is meant
+      for a read-only viewer; a designer leaves it off so the author can reach every page.</p>
+      <p><b>A tab is its page's drag handle</b> (element 0.4.29, completed in 0.4.30). Press a tab and travel, as you
+      would in VS Code, and the whole page drags: a chip carrying the tab's name follows the pointer, and the dashed
+      outline shows the cell the page will take — right under the pointer, shrunk to the room there when the page is
+      taller than the free rows above the next locked section (a page torn out of a full-height panel does not have
+      to arrive full height). On release the page becomes a <em>tab container of its own</em>, <code>&lt;page&gt;__group</code>,
+      still wearing its tab, built exactly as an authored one and serialised by <code>toJSON()</code> like one; its
+      tab leaves the strip it came from, and a container whose last page leaves closes, as a VS Code group does. All
+      of it is one undoable step. The tabs a strip shows come from live membership, so the strip is always the pages
+      that are actually there. Escape, or a release back over the container, cancels; a board that cannot place the
+      page (a split pane) leaves the press a plain click. Drop a tab onto <em>another</em> tab container instead (0.4.31) — on its strip, between two tabs, or on
+      its body — and it joins that group as a tab there, active, the way an editor tab moves between VS Code groups:
+      while you hold, the target's frame lights up and its strip marks the slot.</p>
+      <p><b>The unit is the page</b> (element 0.4.32). A tab and its content move together, by the tab; a widget
+      inside a page is a smaller thing and moves alone, into another page or out to the board. What reconciles
+      the two: when a page's last widget leaves, the page closes and its tab with it, and a container whose last
+      page closes goes too — so a one-widget page behaves exactly like "the widget is the tab", and a page holding
+      several behaves like the board it is. The strip means "as a tab": a widget dropped on a strip wraps into a
+      new page there, named by its title and active (<code>handle.moveToTab(widgetId, containerId, index?)</code>
+      does it from code); a tab dropped on its own strip reorders (<code>handle.moveTab(containerId, pageId,
+      index)</code>), and the order is saved with the container. A page dropped on a container's body joins what
+      is showing. And a section moves as one tile: press its caption band, or a tab group's strip on its empty
+      space, and travel — everything inside rides along, tiles in the way are pushed, and other sections still
+      refuse to be overlapped. Type never changes as a side effect of a drop; a torn-out page keeps its tab as a
+      group of its own.</p>
+      <p><b>The drop model the docking libraries share</b> (element 0.4.33). Over another group, where the pointer is
+      decides what the release does: the strip joins at the marked slot; the middle of the body joins on the
+      end; an edge band — a fifth of the body since 0.4.42, a third before — <em>splits</em> the group: it keeps one
+      half of its cell and the page's new group takes the other, left, right, above or below, with the overlay
+      showing the half being taken (VS Code's feel; nothing moves until the release, see 0.4.42). The board's own edges <em>dock</em>: the top band takes a full-width group at row 0 and
+      everything below moves down, the sides take a full-height group at the edge — bands of the <em>visible</em>
+      canvas (20 px top and bottom, 40 px at the sides), so a scrolled board still docks where you see its edge; a
+      strip beats a band and a band beats a group's body. A docked group takes at most half the board, the way an
+      edge drop splits VS Code's editor area in two, never the full height of the container it left — and a top
+      dock <em>inserts</em> rows: everything beneath the band moves down as one, its arrangement intact, rather than
+      being re-packed tile by tile. A widget dragged from the board into a page's <em>body</em> joins that page's grid (element 0.4.34): a
+      page with room takes it where the pointer is, a full page squeezes its rows to make room — the tile under the
+      pointer moves aside, the way the board itself behaves — instead of refusing the drop with no sign of why. (A full
+      <em>section</em> still refuses; growing its slab for a drop is the escalation path's, a later release.)</p>
+      <p><b>The identification round</b> (element 0.4.35). Every tab gesture driven along long paths with a frame every
+      few steps found a family of drifts with one root: the renderer's empty-canvas pan ran underneath every tab drag,
+      sliding the camera 10–20 px so the strip, the bands and the home test disagreed with the pointer — the board's
+      tool now claims a strip press and leaves it to the strip. With that gone: a release outside the visible canvas
+      never lands anything; side and bottom docks measure the board as it stood before the ghost entered; no accent
+      overlay survives a release; a torn-out page travels at most half the board tall and a landing that would sit
+      out of sight dims the chip and cancels; a section or tab group moved by its band slides along its row past a
+      locked neighbour and shows the refused cell when nothing is legal; a widget dragged out of an inner tab page
+      keeps its gesture through the re-layout its own crossing causes; an inner tab lands on whichever board is under
+      the pointer; a section pulled up by its top edge grows by the rows the pointer travelled. The deepest target wins, so a
+      group nested inside the container the page came from is a target, not "home". The ghost enters the board only
+      when the pointer is over free board space, so on a fit board nothing squeezes the moment you grab a tab, and a
+      full board that refuses the ghost still lets the page join, reorder or split. A group too narrow or too short
+      to halve joins instead. All of it is one undoable step.</p>
+      <p><b>The default chrome</b> (element 0.4.36). The kit's defaults were plain to the point of unfinished: a title line with no band, square-ish 3 px corners, tabs that were text with an underline. Now every card wears a header band (<code>--axdb-head-bg</code>, <code>--axdb-head-fg</code>), tabs are pills on a track with the active one lifted in the card's own ground (<code>--axdb-tabs-bg</code>, <code>--axdb-tabs-on-bg</code>, <code>--axdb-tabs-fg</code>, <code>--axdb-tabs-on-fg</code>, <code>--axdb-tab-radius</code>), corners are 8 px (<code>--axdb-rs-radius</code> — the grid-options and builder demos pin 3 px to show it is one variable), and the dark caption band and tab track paint solid so they read on a page whose ground the kit does not own. A header steps down through the same tiers as before (a 90 px card tightens the band, a 46 px card drops it to an inline label, a 26 px card hides it), and an inside grip gets the room it needs beside the title. One behaviour fix rode along: a plain click on a widget armed the reflow transition at the press and never disarmed it, so every later position write eased — a tab switch, which brings a page back from 20,000 px off canvas, slid its content in from the left. Every press now ends disarmed, and parking a page or a view is a teleport whoever holds the transition.</p>
+      <p><b>Tabs on a split board</b> (element 0.4.37). The split binder refused every tear-out — "a split board has no cells to drop a page into" — so on the fluid demo's Split mode a tab press was a dead click: no chip, no reorder, no join. The split board has a drop model of its own (a widget dropped on a pane's edge inserts there), and a torn-out page now uses it: the page becomes a one-tab group that <em>is</em> a pane on the edge of the widget under the pointer, the insertion line showing where (within 18 px of the board's own edge it takes a half of the whole board, the widget drop's rule); over another container's strip or the centre of its body it joins; along its own strip it reorders; released over its own body or off the canvas it cancels. One history step, like every other drop; a static split board still refuses, and the press stays a click.</p>
+      <p><b>Sizing is the view's</b> (element 0.4.38). <code>handle.setSizing()</code> switched every binder, pages and sections included. A nested board is bound fit with no design height of its own — its height is its container's business — and switched to grow it painted its rows at the base height, so an 8-row page torn out into a 3-row group or a split pane spilled 700 px past it, over the widgets below (the fluid demo's Grow button exposed it). The view boards switch; nested boards keep their own sizing. Also: the split board re-projects once a tear-out's batch settles, so the pane is painted from the tree that was set, not from the interim one its membership reconcile produced.</p>
+      <p><b>Torn out twice</b> (element 0.4.39). A page torn out of the one-tab group that had been born from it — dropped above another group, on a free cell, or against the board's edge — threw <em>Group already exists</em> mid-commit: the plan named the arriving group after the page, and that id was still the emptied group's until the same batch closed it. The batch stopped half-applied, the split preview stayed on the board and the chip stayed on the screen (found by the user on the live demo). The arriving group now takes the next free suffix, the emptied one closes, and two undos walk both tear-outs back.</p>
+      <p><b>Groups and sections move on a split board, and keep their captions</b> (element 0.4.40). Two more split-board stubs: the peer answered <em>dragMember</em> with false, so a press on a strip's empty space or a caption band only selected — a tab group could not be moved or swapped with its neighbour; and the split board painted no section chrome at all, so switching the fluid demo to Split made the Operations band vanish and its two KPIs sit bare in the pane. Now a group or a section moves by its strip or its band with the board's own insertion line, dropped on a neighbour's far edge the two swap sides, and the split board paints slabs and caption bands like the grid board (the child board reserves the band). The strip's empty-space press is a real listener now, so a spec can drive it. Also fixed: the split binder's accessibility sync cleared a section's selection a line after it was made.</p>
+      <p><b>Undo shows the page that was showing</b> (element 0.4.41). The live walk of every gesture — real Chrome, light and dark, a frame at each stage — ended each undo on a different page than the rest frame: Filters was on top, torn out (the container switched to Alerts as the tab left), undone, and Alerts stayed on top. Undo put the tab back and nothing put the page back. The tear-out and join plans now capture the page that was showing when the gesture began and restore it last on undo — after the tab is among the pages again, so a neighbour's reflow in between cannot reset it — for the source of a tear-out and of a join; the join target already restored its own.</p>
+      <p><b>Previews are overlays, and the edge bands are a fifth</b> (element 0.4.42). A user tore Filters out of the
+      demo's side panel, then tried to put it back — and could not: the moment the page approached the panel, the
+      panel jumped away. The split preview was applied <em>live</em> — the target halved and moved to its other half
+      while the pointer hovered, in one frame off the screen — and a top dock shoved every tile down the same way. VS
+      Code, Dockview and Golden Layout tint the half or the band and move nothing until the drop; so does the kit now:
+      the target stays where you see it, the overlay says which half or band the page takes, and the halving or the row
+      insert happens on release. The bands themselves are a fifth of the body (Dockview's activation size) instead of
+      a third: two thirds of every group read as "beside", and "close to the edge means beside, the content area means
+      into, the header means a new tab" is the rule people bring with them.</p>
+      <p><b>A group is one thing: its frame, and its motion</b> (element 0.4.43). Two more from the same user: a group dragged
+      by its strip "goes first, then the content follows" — the reflow glide is for the neighbours, and the held tile is
+      exempt, but a group has no tile of its own, so its strip jumped to the pointer while its pages' cards glided after it
+      by up to 140 px a step. Everything in a dragged group's subtree — cards, strips, slabs, the surface — is now carried
+      exempt together, through the drop write, and a pushed group's chrome glides <em>with</em> its cards instead of jumping
+      ahead of them. And a tab container wears a frame by default: a bordered slab and a tinted surface under its pages, the
+      strip's own track colour, with the pages set 8 px inside it — the user's desktop screenshot showed why the border
+      alone was not enough: it ran exactly where the cards' own borders were, so Period still read as a card of its own
+      under a strip that belonged to Region. <code>--axdb-group-bg</code> and <code>--axdb-group-border</code> restyle
+      it, <code>tabs: { inset: 0 }</code> puts the pages edge to edge, and a plain section keeps its invisible slab. The frame is
+      also the group's handle: a press on its margin — under the strip, beside the pages — selects the group and drags it,
+      on grid and split boards alike; the strip's empty space, the only handle before, was one nobody found. (A widget
+      dragged over a group goes <em>into</em> its page; a group is never pushed by a widget, so to put a widget beside a
+      group, move the group.)</p>
+      <p><b>A moved group pushes the sections in its way</b> (element 0.4.44). With the frame as its handle the user dragged
+      the demo's side panel left and got a red cell at every step: the panel is eight rows tall, the Operations section
+      spans the row beneath it, and a section is a locked tile that a <em>moved</em> section or group was refused by too —
+      so no column to the left was legal and the release moved nothing. Sections and groups now give way to a moved
+      section or group, the way they give way to a dock, and the refusal tone is kept for what truly cannot give way. A
+      widget still never pushes a section.</p>
+      <p><b>A widget beside a group, even at the board's edge</b> (element 0.4.45). "If the tab group is at an edge I can't add
+      something after it": the demo's side panel sits at the right edge, so a widget dragged there went into its page or slid
+      to the nearest cell on the left — "after it" was nowhere. A widget dragged onto a tab container's outer band, a fifth of
+      its body like a tab's split bands, now lands beside it on that side; the middle still goes into the page and the strip
+      still makes a tab. Where the board's edge leaves no room on that side, the container shifts over by the widget's span
+      and the widget takes the edge, and the shift is undone if the pointer leaves the vacated cell. The sections in the
+      container's way give way to the shift as they do to a moved group (0.4.46): on the demo the Operations section spans
+      the row under the panel, and a locked tile refused the shift outright — the spec's fixture had left it out, the live
+      walk on the demo found it. The group gives way LIVE, with the same glide every pushed widget gets — 0.4.47 briefly
+      froze it behind an overlay, the way a tab's split preview works, and the user missed the slide at once: a group is a
+      widget first, and its tab behaviours sit on top of that default, not instead of it (0.4.48). What his 3440-px frame
+      had actually caught was the corner: the panel was pushed down as a widget crossed its top band on the way to its
+      right edge. The left and right bands now take precedence in the corners, the way VS Code's do, so a one-row widget
+      carried along the top of a tall panel to its far right means "after it", not "above it". 0.4.49 closed the seam between those two bands: leaving the top band
+      restored the panel in the engine but not on the page, so the corner read as outside and the widget landed under
+      the panel; the restore now paints, the zone is read again in the same move, and a tile the kit moves on purpose
+      no longer teleports back to where a widget had pushed it. From 0.4.50 the question "what does the pointer mean
+      for the dragged widget" is answered once, by a recursive walk over the boards' membership tree: the strip, then the
+      container's bands, then one level down into its active page or its own board, until the deepest board the pointer
+      may enter. A static container is never entered, and a <code>nesting</code> option (default 2) bounds how deep a
+      drop may go. This is the first kit step of the tile-first model: the same walk will carry group drags and the
+      cross-board commit in the steps after it. 0.4.51 put a torn-out tab's zones on the same module, for the grid and
+      the split board alike, so the split board finally uses the fifth where it used a third, and a split's corner
+      belongs to the side band there too.</p>
+      <p>0.4.52 is the step that changes what you feel, and it taught the model its last rule. The first cut unlocked
+      groups outright, and the lab showed a panel fleeing from a widget that approached it from above: the widget's
+      cell overlapped the panel before the hand reached it, the panel was pushed away, the hand found free space, and
+      the "into" zone was never reachable. So a container is a <em>solid</em> tile in the engine: never pushed by a
+      passing widget and never packed, which keeps the board still under your hand, but moved by intent — a widget
+      lands beside a panel at the hand's row through the engine's own place-beside primitive, a full section that
+      cannot take a widget is pushed by it, a moved section or a dock pushes the sections in its way. Fifteen lock
+      toggles and two unlock lists left the binder with it.</p>
+      <p>0.4.53 makes the commit one thing. Whatever a gesture touched — this board, the page it crossed, the section
+      that refused it — reports the tiles that moved, and one function turns them into commands, widgets and containers
+      alike; before it, six places rebuilt a container's command by hand and the cross-board drop threw the target
+      board's pushed sections away, so a section you had seen move snapped back on reload. With that in place the
+      drag's leg carries two more moves: a widget from a section or a page lands <em>beside</em> a container on another
+      board, that container shifting over live, and a section on another board that cannot take the widget is pushed
+      there rather than leaving the widget dimmed. The palette chip walks the same zones, so it drops into a page or a
+      section and the drop-in hook names the board it took. And since a chip now pushes tiles the way a dragged widget
+      does, a host that adds the widget itself must keep that push: <code>addWidget(spec, boardId, { displaced })</code>
+      (0.4.54) takes the drop's displaced commands into the add's own undo step.</p>
+      <p>0.4.56 lets a <em>group</em> travel the way a widget does. Carry a section by its caption band into a tab
+      page and it lands there with its children; carry a tab container by its strip's empty space into a section and
+      you have nested tabs, by hand; drop a group on a container's outer band and it lands beside it; a full section
+      that cannot take a group pushes it back. Two rules keep that honest: the group you are carrying is glass to the
+      drop model (its own frame is under the pointer at every step), and the containers it pushes aside on the way are
+      still "there" for your hand where they were, coming home when the group lands elsewhere. Undo is one step.</p>
+      <p>0.4.58 settles what a <em>full</em> container does with something you drop on it. A section's height is a tile of
+      the board it sits on, so a container that grows can ask that board for another row and take the widget &mdash; if the
+      board has one to give: a <code>fit</code> board that is already full has none, and the growing section then refuses
+      exactly as a fit one does. One you declared <code>sizing: 'fit'</code> cannot ask at all, and keeps the older answer — a page squeezes its rows, a section refuses
+      and is pushed aside by the widget instead. The rows go back if you drag away, and the drop is one undo step.</p>
+      <p>0.4.59 makes the tab strip easier to hit. A strip is about thirty pixels tall and the zone just below it moves
+      the whole container aside, so aiming a widget at the tabs used to flip between the two on a pixel of wobble — and
+      once the container had moved, its strip went with it and the tabs were out of reach. The strip you are aiming at
+      now holds your hand for a few pixels past its edge, and it is measured where the container <em>rests</em>, not
+      where it has been pushed to, so it stays under your cursor while everything else gives way.</p>
+      <p>0.4.60 finishes that. Only the strip you were already on was read that way; every other one was still found by
+      hit-testing the box it is <em>painted</em> in — and that box travels. The zone under the tabs pushes the container
+      down, so the strip swept through the pointer, claimed it as a tab, brought the container home, handed the hand
+      straight back to the band below, and went round again: a hand that had stopped moving altogether watched the
+      answer change frame after frame. Every strip is now read from the model, where its container rests, and a drag's
+      own pushes are read there too. Crossing a header at hand speed changes the answer exactly twice, once on and once
+      off, and a hand that stops keeps the answer it stopped on.</p>
+      <p>0.4.61 removes what both of those were working around. A tab group's top and bottom bands used to shove it a
+      whole row the moment your hand entered them, while you were still holding the widget — so the tabs you were
+      aiming at moved out from under you, and following them down shoved them again. Those two bands now mark the
+      cell the widget will take and <em>move nothing</em>, exactly as a dragged tab's dock and split previews have
+      since 0.4.42; the container gives way when you let go. The left and right bands keep sliding live, because
+      sideways a full-width strip never leaves your hand. A dragged section still pushes what is in its way, live,
+      as it has since 0.4.44: that is a deliberate shove, not a preview.</p>
+      <p>0.4.62 gives those two bands a size that makes sense. Every container edge used to claim the outer fifth of
+      the body for &ldquo;next to it&rdquo;, and a fifth grows with the container: on a panel 1,110&nbsp;px tall that
+      was 216&nbsp;px of what reads as page content, starting right under the tabs &mdash; so aiming into the top of a
+      page meant &ldquo;above the whole panel&rdquo; instead. The top and bottom of a tab group are now a fixed depth,
+      one strip&rsquo;s worth, about thirty pixels. The body means &ldquo;into the page&rdquo; everywhere else. The
+      left and right keep the fifth, because that is how a widget gets beside a full-height panel.</p>
+      <p>0.4.63 makes those bands visible. A fixed depth is a good target and an impossible guess: to put a widget
+      <em>above</em> a panel you point just <em>below</em> its header, inside what reads as page content. So while a
+      widget is held over a container its four bands are now shaded, and the clear middle is the page. The band your
+      hand is in still wears the dashed outline of the cell it will take. This only became possible once the container
+      stopped moving while you hold a widget over it &mdash; a lane that slides away is not a lane you can aim at.</p>
+      <p>0.4.64 draws them where you can see them. The widget under your cursor is taller than the lane it is over, so
+      it covered the top one almost completely: the lane was painted, and invisible at the exact moment you needed it.
+      The lanes and the dashed outline of the cell now sit above the widget being dragged. Neither takes pointer
+      events, so nothing about where a drop lands has changed &mdash; only whether you can see it coming.</p>
+      <p>0.4.65 puts &ldquo;above it&rdquo; above it. A hand looking for the place to drop a widget above a panel goes
+      above the panel; it had to go <em>below</em> the panel&rsquo;s header instead, into a lane inside the body, which
+      is the opposite of where anyone points. The band now also hangs off a <em>tab group&rsquo;s</em> top edge, so pointing
+      above a panel means above it. (A section has no bands at all: its whole body means into it, and the board&rsquo;s own
+      cells around it are how a widget lands beside, above or below it &mdash; a section pinned to the board&rsquo;s first
+      row has nothing above it to offer.) The lane under the tabs stays as the fallback, because a container pressed against
+      the top of its canvas has no room above it to offer &mdash; both lanes are painted, and both mean the same thing.
+      The tab strip&rsquo;s few pixels of stickiness now reach only down into the body, never up into that band.</p>
+      <p>0.4.66 gives the whole thing back its ordinary look. A container&rsquo;s top and bottom bands push it aside the
+      moment your hand enters them, and a plain grey placeholder fills the space that opens &mdash; the same thing that
+      happens when you hover a widget over any occupied row. The coloured overlay and the shaded lanes are gone; there
+      is nothing special to see, because the container moving <em>is</em> the feedback. That became safe once the band
+      moved above the frame in 0.4.65: pushing the container now moves it <em>away</em> from your hand rather than
+      through it, so the loop that made the answer flicker has nothing to close on. All four edges behave alike.</p>
+      <p>0.4.67 is for the hand, not the crawl. Coming down onto a panel from above, the header was never on the way:
+      a tab strip is 30&nbsp;px tall and a hand covers 40 to 80&nbsp;px between two mouse events, so the pointer was above
+      the strip in one event and under it in the next, and the answer went straight from &ldquo;above the panel&rdquo; to
+      &ldquo;into the page&rdquo;. The kit now tests the segment the hand <em>travelled</em>, not only the point it landed
+      on &mdash; a hand that crossed the strip and stopped within a strip&rsquo;s height of it is on the tabs &mdash; and under
+      the strip is the page, plainly; the second &ldquo;above&rdquo; lane that sat there hid the miss. Measured at 40 and
+      60&nbsp;px a step the journey down reads above, tab, page; at 80&nbsp;px a step, a flick, it still passes through, which
+      is what a flick means.</p>
+      <p>0.4.68 closes the seam that opened with it. The 8&nbsp;px between the strip and the page is the page&rsquo;s: it
+      had been the container&rsquo;s own margin, which for a widget can only mean a refusal &mdash; flashed for those 8&nbsp;px
+      on the way up out of the page, once the lane that used to cover it was gone. A slow hand leaving the page for the
+      tabs now sees page, then tabs, and nothing between.</p>
+      <p>0.4.69 brings the tab group&rsquo;s zones to a <b>split</b> board. Until then a widget dragged over a tab group
+      there got only the nearest-edge insertion line: its header was never a tab target, its page never took a widget,
+      and &ldquo;above&rdquo; claimed the upper half of its body. Now the strip makes the widget a tab, the page&rsquo;s
+      body takes it &mdash; the page&rsquo;s own grey placeholder shows the cell &mdash; and the outer fifth means a pane
+      beside it, drawn as the split board&rsquo;s insertion line, as for any pane; the band above the frame is a pane
+      above. The hand-speed crossing rule is shared, so coming down onto the header passes through it on both boards.</p>
+      <p>0.4.70 closes the other direction. A widget dragged <em>out</em> of a page onto a split board used to get no
+      line and no placeholder anywhere &mdash; the ghost dimmed and every release snapped home, because the split board
+      refused to adopt. Now it takes the widget as a pane where the insertion line shows, in one undoable step with the
+      page it left; and a palette chip goes through the same zones there, landing in the page it is dropped into.</p>
+      <p>0.4.71 lets a <b>full section pane grow</b> for a widget on a split board. A pane&rsquo;s height is a share of its
+      column, so a section that is full cannot ask a grid for rows the way it does on a grid board (0.4.58); it now asks the
+      column: the pane grows by one row and the panes above it give the height, live while you hold, committed with the drop
+      as one undoable step. Until then the section refused the widget and the line beside it answered.</p>
+      <p>0.4.72 pins the other page layout. A tab page can be a <b>split</b> itself, and a widget carried into one becomes a
+      pane of that page where the page&rsquo;s own insertion line shows &mdash; from a grid board and from a split board alike.
+      And the gap between two panes is no longer a dead zone: a drop there used to snap home, because nothing was under the
+      pointer; it now means the nearest pane&rsquo;s edge.</p>
+      <p>0.4.73 lets the card decide &ldquo;above&rdquo;. The band above a panel&rsquo;s frame needs the pointer above the frame, and
+      on a panel at the board&rsquo;s first row that is the toolbar; a hand holds the card by its middle, so when the card visibly
+      hangs over the panel&rsquo;s top edge the pointer is under the header, which meant the page. The rows under the header now
+      mean above while the card&rsquo;s top edge is above the frame &mdash; the panel gives way live &mdash; and the page once the whole
+      card is inside. The header itself is still a tab. A card shorter than two headers, grabbed in its middle, cannot show that
+      overhang; for it, above is still the band above the frame.</p>
+      <p>0.4.74 answers two things Quantia measured on its own boards. A drop on a section&rsquo;s <b>caption band</b> used to do
+      nothing at all &mdash; the band is the section&rsquo;s margin, a cell on the parent board that the solid section refused,
+      silently; for a widget it now means the section (a carried group still pushes). And a drop the board cannot take &mdash;
+      a full fit section on a full fit board &mdash; now says so where the hand is: the wanted cell is painted as the red
+      dashed refusal and the cursor on the card you hold reads not-allowed, the way a group&rsquo;s refused cell has since the identification
+      round, instead of the only cue being a grey placeholder left at the other end of the board. A push with intent is a push,
+      never a swap: a widget the size of the section it hovers is refused on a full board, not exchanged with it.</p>
+      <p><b>Section captions</b> (element 0.4.22). A section paints nothing of its own until
+      you give it <code>caption</code>: <code>true</code> for its title, a string, or the options
+      — <code>text</code>, <code>subtitle</code> (the band grows from 28 to 44 px),
+      <code>description</code> (an ⓘ carrying the text as its tooltip and its accessible label),
+      <code>icon</code>, <code>position: 'inside' | 'tab'</code> (a tab is the same band sized to
+      its text, a chip at the leading corner, mirrored on RTL), <code>align</code> / <code>valign</code>, <code>height</code>,
+      <code>font</code> (size, weight, family, color, uppercase), <code>padding</code> /
+      <code>margin</code>, <code>background</code> / <code>border</code>,
+      <code>show: 'always' | 'design' | 'hover'</code> (<code>'design'</code> disappears under
+      <code>static</code>, <code>'hover'</code> overlays the content), <code>actions</code>
+      (buttons at the end of the band; a press fires <code>onCaptionAction(sectionId, actionId,
+      viewId)</code> and never selects), <code>passThrough</code> (a selector for content inside
+      the band — buttons, inputs and <code>[data-axdb-pass]</code> by default) and
+      <code>className</code>. The kit paints the band on the section's overlay, reserves its pixels
+      inside the frame so no child may take them, and routes its presses: a press on the band
+      selects the section, its top edge still resizes. Both positions reserve their pixels inside the
+      section's own cell — a header that hangs over the neighbour above is the overlap bug this
+      replaces, and only <code>show: 'hover'</code> reserves nothing (it is an overlay, so it paints
+      opaque and takes no pointer at all until the pointer is in the section). A band never eats its
+      section either: it clamps so the children keep 20 px, floored at 16 px. Typography and box are CSS variables
+      (<code>--axdb-caption-*</code>) a theme can set once. A section under 90 px steps the band
+      down to 22 px, as a squeezed card steps its header. <code>renderCaption(widget, host)</code>
+      on <code>dashboard()</code> paints the band yourself, keeping its press rules;
+      <code>handle.setCaption(id, caption)</code> changes it live as one undo step,
+      <code>getCaption(id)</code> reads it, and <code>toJSON()</code> writes it beside
+      <code>layout</code> and <code>sizing</code>. Sections inside a board whose own layout is
+      <code>split</code> get their captions in the tab-container round.</p>
+      <p><b>A split section after a layout switch</b> (element 0.4.21). An empty press inside
+      a nested board's frame belongs to that board whatever the order the boards were bound in,
+      so a section switched to split keeps working dividers, and a divider grabbed near the
+      section's edge is still the divider, never a section resize. A split section is selected
+      by <code>selectWidget</code> or its label (it has no empty band) and resized by its corner
+      handle; its panes re-cover the pane.</p>
+      <p><b>Resizing inside a section, every edge</b> (element 0.4.20). A tile's top or left
+      edge grows only into free cells: when the row above or the column beside it is taken the
+      pull is refused, never turned into growth at the opposite edge or a move that pushes the
+      neighbours. Only a tile's bottom edge takes rows from, or gives rows back to, its
+      section. A bounded section keeps its designed row height when its content ends higher —
+      empty rows stay empty, as in gridstack — so a tile pulled shorter follows the pointer
+      row for row. A selected section's corner handle wins a corner it shares with a child;
+      unselected, the child's own handle is there.</p>
+      <p><b>A section is a thing to select and resize</b> (element 0.4.19). A press on a
+      section's empty band selects the section: it wears the selection ring and, while
+      selected, a corner handle; its frame edges answer the resize cursor. Drag the handle or an
+      edge and the section's cell follows, floored at its children's rows and undoable as one
+      step; <code>handle.widget(sectionId).resize(span, rows)</code> does the same from code and
+      <code>selectWidget(sectionId)</code> selects it. <code>onSelect(id, viewId)</code> on
+      <code>dashboard()</code> reports every selection change — a widget, a section, or
+      <code>undefined</code> — so a designer can follow it. Grid layout only; a section under a
+      split layout is resized by its dividers.</p>
+      <p><b>One selection per canvas</b> (element 0.4.18). A press, a focus or
+      <code>selectWidget</code> on any board of a canvas — a section or its parent — clears
+      the selection on every other board, so a section and its board never show two rings.
+      The outside grip tab now fits the gap between tiles: never taller than the gap less a
+      pixel, never shorter than 6 px; the board publishes its gap as <code>--axdb-gap</code>
+      on the canvas for chrome of your own that must sit between tiles. And a split board
+      writes its tree in the row count the grid had, so Grid → Split → Grid returns the same
+      cells on a fit board with many rows (before, 14-row sections came back as 5-row slabs).</p>
+      <p><b>A section grows with what is pulled inside it</b> (element 0.4.17). A tile that
+      spans only part of a multi-row section pushes what is below it; a row the pushed layout
+      needs and the section does not hold is asked of the board, one per pointer step, and
+      rows the layout no longer needs go back as the tile shrinks — never below the section's
+      designed rows. The board decides whether the section may grow: a grow board extends, a fit
+      board squeezes its rows, or refuses when <code>squeeze: false</code> and the frame is
+      full. A tile spanning the section's full height — any tile of a one-row KPI strip —
+      pulls the section with it: the section gains the row and <b>the dragged tile takes it</b>,
+      while its siblings keep their own cells, and the cells say so, so a saved board reloads the
+      way it looked. A grid resize changes the widget you grabbed and nothing else (element
+      0.4.26; before it, every full-height tile grew together). A top-edge pull on a tile that
+      already sits in the first row is refused rather than grown downwards. Before 0.4.17 a partial tile was
+      refused past the section's rows, and before 0.4.16 a 150 px pull on a one-row control
+      inside a 14-row panel shrank the whole panel to 4 rows.</p>
+      <p><b>Charts on a squeezed board stay readable</b> (element 0.4.15). The built-in
+      line and bar widgets tier their axes to the room they have: under 120 px of body the
+      quarter ticks go, under 60 px only the minimum and maximum remain and the x labels and
+      bar values go, and a legend on a body under 64 px steps aside so the plot takes the
+      space. The text is hidden, never dropped — a reloaded board paints the same text at any
+      size — and your own <code>renderWidget</code> is untouched.</p>
+      <p><b>Layout and sizing per container</b> (element 0.4.14). A container takes
+      <code>layout: 'grid' | 'split'</code> exactly as a view does — <code>'split'</code> is a
+      splitter tree covering the pane, with dividers to drag and a <code>tree</code> that
+      <code>toJSON()</code> writes under the container; <code>handle.setLayout(mode, containerId)</code>
+      switches it live, keeping the children and the selection, and
+      <code>getLayout(containerId)</code> reads it. <code>sizing</code> on a container says
+      what a pull past the pane's rows does: <code>'grow'</code> (default) grows the container's
+      slab in the parent — the ratchet above; <code>'fit'</code> makes the pane the bound: a child
+      that needs a row the pane does not hold is refused where it stands, the placeholder stays,
+      <code>onGesture</code> reports <code>changed: false</code>, and nothing outside the pane moves.
+      A split container keeps its own members — tiles are not dragged into or out of it — and
+      nothing scrolls inside a pane.</p>
+<pre data-lang="typescript">const spec = dashboard({
+  columns: 12,
+  widgets: [
+    { id: &#x27;trend&#x27;, kind: &#x27;line&#x27;, span: 8, rows: 2, data: { /* … */ } },
+    { id: &#x27;kpis&#x27;, title: &#x27;KPI section&#x27;, span: 12, rows: 1, columns: 4,
+      widgets: [
+        { id: &#x27;k-rev&#x27;,  kind: &#x27;kpi&#x27;, span: 1, data: { label: &#x27;Revenue&#x27;, value: &#x27;$6.8M&#x27; } },
+        { id: &#x27;k-cust&#x27;, kind: &#x27;kpi&#x27;, span: 1, data: { label: &#x27;Customers&#x27;, value: &#x27;1,284&#x27; } },
+        { id: &#x27;k-win&#x27;,  kind: &#x27;kpi&#x27;, span: 1, data: { label: &#x27;Win rate&#x27;, value: &#x27;27.4%&#x27; } },
+      ] },
+  ],
+});
+render(spec, host);
+// later: spec.handle.toJSON() — the tree, from live membership</pre>
+      <div class="note">A container renders no card of its own — <code>kind</code>/<code>data</code>
+      on it are carried for your bookkeeping, not painted. A FULL bounded
+      section refuses adoption (the tile snaps home) — leave a free slot if you
+      want drag-in room. Container removal through the widget handle is not
+      supported yet.</div>
+<p><a class="demo-link" href="../../demos/dashboard/nested-containers.html">Live: dashboard containers — drag across the boundary, escalate, undo →</a></p>
+
+      <h2>Keyboard and screen readers</h2>
+      <p>Every widget host is a named, focusable group — <code>role="group"</code>, a
+      <code>dashboard widget</code> role description, and a label that carries the widget's
+      name, its cell and whether it is pinned. One tile per board is the tab stop (a roving
+      tabindex); the diagram's own root comes first, and an arrow there hands focus to the
+      board.</p>
+      <div class="tablewrap"><table>
+        <tr><th>Key</th><th>On a focused widget</th></tr>
+        <tr><td>← → ↑ ↓</td><td>Move one cell — a step onto a neighbour swaps with it, as a full drag would</td></tr>
+        <tr><td>Shift + arrows</td><td>Resize one cell</td></tr>
+        <tr><td>Home / End</td><td>First / last widget on the board</td></tr>
+        <tr><td>Tab</td><td>Out of the board (one stop per board)</td></tr>
+      </table></div>
+      <p>Every outcome is spoken through the renderer's live region — the tile's new cell,
+      each neighbour it displaced, or why it was refused. Each step is one undoable command
+      and reaches <code>onLayoutChange</code>. Resize handles are 24&nbsp;px and stay
+      visible on touch devices; motion follows <code>prefers-reduced-motion</code>; every
+      built-in chart carries its numbers as a visually-hidden table; the palette clears
+      3:1 on both light and dark cards. The demo battery runs axe-core (WCAG 2.1 A/AA) on
+      three boards and drives the keyboard for real — see
+      <a href="../../demos/dashboard/fluid-board.html">the fluid dashboard demo</a>.</p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../kits/">Kits</a> — the pattern dashboard() shares with
+        <code>erDiagram()</code> and <code>umlDiagram()</code>.</li>
+        <li><a href="../groups/">Groups</a> — frameless containers, the primitive under
+        every board.</li>
+        <li><a href="../export/">Export</a> — PNG/SVG/PDF, plus
+        <code>includeIds</code> for one-board exports.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../javascript-element-vs-render/">Element vs render()</a>
+        <a class="next" href="../the-model/">The model</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

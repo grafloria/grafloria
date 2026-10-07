@@ -67,6 +67,7 @@ import { circularLayout, forceLayout, gridLayout, radialLayout } from './portfol
 import { treeLayout, type FlowDirection } from './tree-layout';
 // Wave 7 Cards 1 & 5: our own layered (Sugiyama) engine.
 import { createLayeredLayout } from './sugiyama/layered-layout';
+import { layoutArchitecture } from './architecture/architecture-layout';
 
 /**
  * The one options schema. Adapter-specific knobs still ride in `options`, but
@@ -75,13 +76,8 @@ import { createLayeredLayout } from './sugiyama/layered-layout';
  */
 export interface UnifiedLayoutOptions extends Partial<LayoutOptions>, LayoutRunOptions {
   /**
-   * Adapter-specific knobs (`iterations`, `repulsion`, `align`, …) ride along here.
-   *
-   * Card 0's comment PROMISED this — "adapter-specific knobs still ride in
-   * `options`" — but the type did not allow it, so `engine.layout('force',
-   * { iterations: 500 })` was a compile error and the only way to reach half of
-   * force's own options was a cast. A vocabulary that cannot say what its
-   * engines can do is not a unified vocabulary; this is the promise made good.
+   * Adapter-specific knobs (`iterations`, `repulsion`, `align`, …) ride along here,
+   * so `engine.layout('force', { iterations: 500 })` type-checks without a cast.
    */
   [key: string]: unknown;
 
@@ -106,7 +102,7 @@ export interface UnifiedLayoutOptions extends Partial<LayoutOptions>, LayoutRunO
   rankSpacing?: number;
 
   // -------------------------------------------------------------------------
-  // Wave 7 — Card 4: nested container / subgraph layout.
+  // Nested container / subgraph layout.
   // -------------------------------------------------------------------------
 
   /**
@@ -174,32 +170,39 @@ export interface RegisteredLayout {
   /**
    * The underlying node/link algorithm, when the engine has one.
    *
-   * TWO cards landed on this one field, for two reasons that turn out to be the
-   * same reason — a `LayoutAdapter` is a pure function of (nodes, links), and a
-   * `RegisteredLayout` is an opaque closure over a whole DiagramModel:
+   * Two features need it, for the same reason — a `LayoutAdapter` is a pure
+   * function of (nodes, links), and a `RegisteredLayout` is an opaque closure over
+   * a whole DiagramModel:
    *
-   *   • Card 4 (nested) arranges the contents of ONE container at a time, so it
+   *   • Nested layout arranges the contents of ONE container at a time, so it
    *     needs an engine it can hand a node/link SUBSET to. `apply(diagram)` cannot
    *     express "just these nodes". Exposing the adapter is what lets a container
-   *     be laid out by ANY registered engine — including an extension's — instead
-   *     of the closed dagre|elk pair the wave-5 service hard-coded.
+   *     be laid out by ANY registered engine — including an extension's.
    *
-   *   • Card 3 (worker) needs an algorithm it can SHIP ACROSS A THREAD BOUNDARY.
+   *   • Worker layout needs an algorithm it can SHIP ACROSS A THREAD BOUNDARY.
    *     A closure cannot be posted anywhere, so layouts registered that way run
    *     inline — by physics, not by policy. Exposing the adapter is what lets the
    *     host tell the two apart instead of guessing.
    */
   readonly adapter?: LayoutAdapter;
+
+  /**
+   * The layout arranges CONTAINERS itself — zones are part of its composition
+   * (the architecture layout puts regions on a grid and sizes their frames), so
+   * `engine.layout()` must not hand it to the nested-container path, which lays
+   * out one container at a time with some other engine.
+   */
+  readonly handlesContainers?: boolean;
 }
 
 /** How a layout engine reports back. */
 export interface UnifiedLayoutResult extends LayoutResult {
-  /** The algorithm that actually ran (useful once auto-selection lands, Card 7). */
+  /** The algorithm that actually ran (it can differ from the name asked for, as with `auto`). */
   algorithm: string;
   /** The seed used — so a pleasing random layout can be reproduced on demand. */
   seed: number;
   /**
-   * Wave 7 — Card 7b. Present when the AUTO layout ran: which algorithm it chose,
+   * Present when the AUTO layout ran: which algorithm it chose,
    * why, and what every other candidate scored. An auto-selector that cannot show
    * its working is a support ticket.
    */
@@ -233,10 +236,10 @@ export interface UnifiedLayoutResult extends LayoutResult {
  * The named-algorithm registry.
  *
  * Registration is a plain map, deliberately: extension-registered layouts (via
- * the wave-6 ExtensionHost) and the built-ins are the same kind of thing, and a
- * host must be able to replace a built-in — `register()` returns a disposer that
- * RESTORES what was there before rather than deleting the name, which is the
- * convention wave 6 established for every other registry.
+ * the ExtensionHost) and the built-ins are the same kind of thing, and a host
+ * must be able to replace a built-in — `register()` returns a disposer that
+ * RESTORES what was there before rather than deleting the name, as every other
+ * registry does.
  */
 export class LayoutRegistry {
   private readonly engines = new Map<string, RegisteredLayout>();
@@ -264,7 +267,7 @@ export class LayoutRegistry {
   }
 
   /**
-   * Wave 7 Card 4: name → adapter, for every registered engine that exposes one.
+   * Name → adapter, for every registered engine that exposes one.
    *
    * This is what nested (compound) layout resolves a container's algorithm
    * against — so `group.subgraphLayout = { algorithm: 'force' }` works, and so
@@ -285,15 +288,13 @@ export class LayoutRegistry {
  * Wrap a legacy `LayoutAdapter` (dagre/elk/force/spectral/community) as a
  * registry engine.
  *
- * This is the adaptor that finally makes the orphaned stack reachable. It also
- * does the two things the old path never did:
+ * It does two things for every adapter:
  *
  *   1. CANONICAL INPUT ORDER — nodes and links are sorted by id before they
  *      reach the algorithm. A seeded PRNG alone does not give reproducibility:
  *      map iteration follows insertion order, so an authored diagram and the same
  *      diagram loaded from JSON feed the algorithm in different orders and
- *      diverge even with the same seed. (This is the subtle half of Card 0, and
- *      the half that a naive "just seed the RNG" fix misses.)
+ *      diverge even with the same seed.
  *
  *   2. OPTION NORMALISATION — `direction`/`nodeSpacing`/`rankSpacing` are
  *      translated into whatever the adapter calls them.
@@ -331,11 +332,11 @@ export function fromAdapter(adapter: LayoutAdapter): RegisteredLayout {
  * Turn a raw graph-layout function into a registered layout.
  *
  * The two things EVERY layout in the engine gets here, whether it is a wrapped
- * third-party adapter or one of Card 2's own:
+ * third-party adapter or a built-in:
  *
- *   1. CANONICAL INPUT ORDER (Card 0) — sorted by id, so the same graph laid out
+ *   1. CANONICAL INPUT ORDER — sorted by id, so the same graph laid out
  *      after a save/load round-trip produces the same coordinates.
- *   2. COMPONENT PACKING (Card 2) — a disconnected graph is split, laid out
+ *   2. COMPONENT PACKING — a disconnected graph is split, laid out
  *      component by component, and the boxes are packed. Implemented ONCE, here,
  *      rather than five times in five algorithms. It is a no-op for a connected
  *      graph, so it cannot regress an existing layout.
@@ -380,10 +381,9 @@ export function createLayout(name: string, fn: GraphLayoutFn): RegisteredLayout 
  *
  * The adapters disagree about names for the same concept — dagre says `rankdir`,
  * `nodesep`, `ranksep`; ELK says `elk.direction` with words instead of letters.
- * Making callers know which engine they are talking to is exactly the "you cannot
- * be best-in-class with inconsistent options" problem Card 0 names.
+ * Callers use one vocabulary whichever engine runs.
  *
- * Exported for Card 4: nested layout runs a DIFFERENT engine per container
+ * Exported for nested layout, which runs a DIFFERENT engine per container
  * (`group.subgraphLayout.algorithm`), so it has to translate the one vocabulary
  * per level rather than once up front. Reusing this is what stops the nested
  * path from quietly forking the options schema.
@@ -430,7 +430,7 @@ export function translateOptions(
  * The layouts that ship in the box.
  *
  * Registered eagerly by `DiagramEngine.getLayoutRegistry()`, so `engine.layout()`
- * works with no setup call — which is the entire point of Card 0. ELK is included
+ * works with no setup call. ELK is included
  * even though it resolves asynchronously; the adapter already handles that.
  */
 export function createBuiltInLayoutAdapters(): LayoutAdapter[] {
@@ -440,19 +440,11 @@ export function createBuiltInLayoutAdapters(): LayoutAdapter[] {
 /**
  * The same built-ins, as FACTORIES — construct one only when it is asked for.
  *
- * Wave 7 Card 3, and this is not a micro-optimisation: it is a crash fix that
- * only a live run could have found. Constructing every adapter up-front means
- * constructing ELK, and `new ELKLayoutAdapter()` calls `new ElkConstructor()`,
- * which tries to spawn elkjs's OWN nested Worker. Inside a Web Worker that
- * throws `_Worker is not a constructor` — so the layout worker died on the line
- * that started it, before it had read a single message, and every request to it
- * hung forever.
- *
- * Nothing caught it because in Node (where the unit tests live) elkjs constructs
- * happily. It reproduced the instant a real Worker ran in a real browser.
- *
- * Laziness makes the worker pay only for the algorithm actually requested, so
- * asking for `force` no longer detonates on ELK's behalf.
+ * Laziness is required, not an optimisation: constructing ELK calls
+ * `new ElkConstructor()`, which tries to spawn elkjs's OWN nested Worker, and
+ * inside a Web Worker that throws `_Worker is not a constructor`. Built lazily,
+ * the layout worker constructs only the algorithm actually requested, so asking
+ * for `force` never touches ELK.
  */
 export function createBuiltInLayoutFactories(): Map<string, () => LayoutAdapter> {
   return new Map<string, () => LayoutAdapter>([
@@ -467,7 +459,7 @@ export function createBuiltInLayoutFactories(): Map<string, () => LayoutAdapter>
 /**
  * The layout `engine.layout()` runs when the caller names none.
  *
- * Wave 7 — Card 7b: this is `'auto'`, not a fixed algorithm. A zero-config caller
+ * This is `'auto'`, not a fixed algorithm. A zero-config caller
  * gets a bake-off (see layout-auto-select.ts) rather than whichever algorithm
  * happened to be hard-coded, and can read back WHY it chose what it chose. Naming
  * it here rather than inline in DiagramEngine keeps the decision in one place —
@@ -479,9 +471,9 @@ export const DEFAULT_LAYOUT_NAME = AUTO_LAYOUT_NAME;
 /**
  * The auto-selecting layout, as a registry engine.
  *
- * It is registered under a name like any other layout — deliberately. Card 0's
- * contract is that `engine.layout(name)` is THE entry point, so auto-selection had
- * to compose with the registry rather than fork a second one. It takes the registry
+ * It is registered under a name like any other layout — deliberately:
+ * `engine.layout(name)` is THE entry point, so auto-selection composes with the
+ * registry rather than forking a second one. It takes the registry
  * it lives in so its candidate pool is whatever is actually registered, including
  * layouts an extension host added after start-up.
  */
@@ -493,7 +485,7 @@ export function createAutoLayout(registry: LayoutRegistry): RegisteredLayout {
 }
 
 /**
- * Card 2's portfolio: the diagram shapes a serious engine has to be able to draw.
+ * The layout portfolio: tree, grid, circular, radial and force.
  *
  * `force` is in here as well as in the adapter list, and it deliberately WINS —
  * it is registered second. The adapter's physics is reused unchanged (see
@@ -544,20 +536,39 @@ export function createPortfolioLayouts(): RegisteredLayout[] {
 }
 
 /**
+ * `architecture` — a composition, not a ranking: regions on a grid, boxes sized
+ * to their words and aligned in rows, lines straight where boxes line up, bends
+ * in the gutters. It writes sizes, zone frames, anchors and bends as well as
+ * positions, so it runs inline (no adapter: nothing to ship to a worker) and
+ * owns its containers.
+ */
+export function createArchitectureLayout(): RegisteredLayout {
+  return {
+    name: 'architecture',
+    handlesContainers: true,
+    async apply(diagram: DiagramModel, options: UnifiedLayoutOptions): Promise<LayoutResult> {
+      const started = Date.now();
+      const measureText = (options as { measureText?: import('./architecture/text-metrics').MeasureText }).measureText;
+      const r = layoutArchitecture(diagram, { direction: options.direction, measureText });
+      return { nodePositions: r.nodePositions, bounds: r.bounds, metadata: { algorithm: 'architecture', executionTime: Date.now() - started } };
+    },
+  };
+}
+
+/**
  * The registry `engine.layout()` runs against.
  *
  * Registration order is the override order, and it is deliberate:
  *
- *   1. the five legacy ADAPTERS (dagre/elk/force/spectral/community) — Card 0 made
- *      them reachable at all;
- *   2. the PORTFOLIO (tree/grid/circular/radial/force) — Card 2. `force` appears in
+ *   1. the five ADAPTERS (dagre/elk/force/spectral/community);
+ *   2. the PORTFOLIO (tree/grid/circular/radial/force). `force` appears in
  *      both and the portfolio's wins, because it adds component packing and the
  *      shared options vocabulary: the difference between "we expose a force adapter"
  *      and "force is a first-class layout";
- *   3. LAYERED (Cards 1 & 5) — our own Sugiyama. The only engine that honours
+ *   3. LAYERED — our own Sugiyama. The only engine that honours
  *      semantic constraints DURING ranking and ordering, which is why the
- *      mental-map/incremental path (Card 6) names it explicitly;
- *   4. AUTO (Card 7b) — the scored bake-off. Registered last because it takes the
+ *      mental-map/incremental path names it explicitly;
+ *   4. AUTO — the scored bake-off. Registered last because it takes the
  *      registry, so its candidate pool is whatever is actually in it — including
  *      `layered`, and including anything an extension host adds after start-up.
  */
@@ -570,6 +581,7 @@ export function createDefaultLayoutRegistry(): LayoutRegistry {
     registry.register(layout);
   }
   registry.register(createLayeredLayout('layered'));
+  registry.register(createArchitectureLayout());
   registry.register(createAutoLayout(registry));
   return registry;
 }
@@ -580,10 +592,7 @@ export function createDefaultLayoutRegistry(): LayoutRegistry {
  * The single place positions are written back, shared by `DiagramEngine.layout()`
  * and by the preset applicator. `setPosition()` — never a raw write to
  * `node.position` — because the spatial index, the routing obstacle map and the
- * renderer all hang off the change event it emits. (Wave 5 lost a day to the
- * mirror image of this: the engine subscribed to `node.on('position')` while the
- * model emits `change:position`, so the obstacle map never updated and routes were
- * computed against stale geometry.)
+ * renderer all hang off the `change:position` event it emits.
  */
 export async function runLayout(
   registry: LayoutRegistry,

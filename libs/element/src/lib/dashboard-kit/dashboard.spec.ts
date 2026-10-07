@@ -9,31 +9,73 @@
  * They drive the real engine (DiagramModel + the kit's binder) through a
  * minimal API stub, the same shape `render()` passes to `finalize()`.
  */
+import { ownsPress, pressOnDragHandle } from './grid-binder';
 import { Command, DiagramModel, GroupModel, NodeModel, CommandManager, EventBus } from '@grafloria/engine';
 import { render } from '../grafloria';
-import { dashboard, type DashboardSpec } from './dashboard';
+import { dashboard, type DashboardSpec, type DashboardWidgetSpec } from './dashboard';
+import type { DashboardSplitHandle } from './split-binder';
+import { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID } from './styles';
+
+/** Give a jsdom element a measurable box (jsdom lays nothing out). */
+function sizeElement(el: HTMLElement, w: number, h: number): void {
+  Object.defineProperty(el, 'clientWidth', { value: w, configurable: true });
+  Object.defineProperty(el, 'clientHeight', { value: h, configurable: true });
+}
 
 /** The slice of a DiagramInstance `finalize()` uses, over a real model. */
-function makeApi(model: DiagramModel) {
+function makeApi(model: DiagramModel, size?: { w: number; h: number }) {
   const bus = new EventBus();
   const manager = new CommandManager({ diagram: model, eventBus: bus });
   const container = document.createElement('div');
   document.body.appendChild(container);
+  if (size) sizeElement(container, size.w, size.h);
   const layer = document.createElement('div');
   layer.className = 'grafloria-html-layer';
   container.appendChild(layer);
+  // A camera that REMEMBERS what it was asked, so a test can tell a fit from a pin.
+  const camera = {
+    fits: 0,
+    zooms: [] as number[],
+    rect: { x: 0, y: 0, width: size?.w ?? 800, height: size?.h ?? 600 },
+    listeners: [] as Array<(s: unknown) => void>,
+    /** What the renderer does after a wheel or drag pan: move, then tell the listeners. */
+    panTo(x: number, y: number) {
+      camera.rect = { ...camera.rect, x, y };
+      for (const l of camera.listeners) l({ viewport: { ...camera.rect }, zoom: 1 });
+    },
+  };
   return {
     getModel: () => model,
-    getEngine: () => ({ commandManager: manager }),
+    getEngine: () => ({ commandManager: manager, eventBus: bus }),
     container,
     render: () => undefined,
     renderNow: () => undefined,
-    viewport: { fitToBounds: () => undefined, clientToWorld: () => ({ x: 0, y: 0 }) },
+    camera,
+    viewport: {
+      fitToBounds: () => {
+        camera.fits++;
+      },
+      clientToWorld: () => ({ x: 0, y: 0 }),
+      setZoom: (z: number) => {
+        camera.zooms.push(z);
+        return z;
+      },
+      getViewport: () => ({ ...camera.rect }),
+      setViewport: (r: { x: number; y: number; width: number; height: number }) => {
+        camera.rect = { ...r };
+      },
+      onChange: (l: (s: unknown) => void) => {
+        camera.listeners.push(l);
+        return () => {
+          camera.listeners = camera.listeners.filter((x) => x !== l);
+        };
+      },
+    },
   };
 }
 
 /** Mount a spec the way `render()` does: build nodes, then run finalize. */
-function mount(spec: DashboardSpec) {
+function mount(spec: DashboardSpec, size?: { w: number; h: number }) {
   const model = new DiagramModel('dash');
   for (const n of spec.nodes) {
     const raw = n as {
@@ -51,10 +93,14 @@ function mount(spec: DashboardSpec) {
     for (const [k, v] of Object.entries(raw.metadata)) node.setMetadata(k, v);
     model.addNode(node);
   }
-  const api = makeApi(model);
+  const api = makeApi(model, size);
   spec.finalize(api);
   return { model, api, handle: spec.handle };
 }
+
+/** The handle's commands are fire-and-forget (execute() is async with two
+ *  awaits inside); a test that reads the model right after must let them land. */
+const settle = () => new Promise<void>((r) => setTimeout(r, 0));
 
 const SIMPLE = () =>
   dashboard({
@@ -290,6 +336,8 @@ describe('the typed handles (the erTable/umlClass equivalent)', () => {
 
   it('setSizing / setFloat drive every view at once', () => {
     const { handle } = mount(SIMPLE());
+    expect(handle.getSizing()).toBe('grow'); // a fluid board grows by default
+    handle.setSizing('fit');
     expect(handle.getSizing()).toBe('fit');
     handle.setSizing('grow');
     expect(handle.getSizing()).toBe('grow');
@@ -817,5 +865,969 @@ describe('handle.toJSON() — the round-trip promise, kept', () => {
     expect(again.gap).toBe(6);
     expect(again.rowHeight).toBe(90);
     expect(again.views[0].widgets.map((w) => w.id)).toEqual(['a']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// STATE LEAKS — the authored spec, the engine cells and the model each hold a
+// piece of the layout, and these are the places one copy moved while another
+// did not. Every one was reproduced in a browser on the shipped builder demo
+// before it was written down here (review of 2026-09-06, D2/D3/D5/D9).
+// ---------------------------------------------------------------------------
+describe('state leaks between the spec, the engine and the model', () => {
+  it('D2: undo after remove() brings the widget back PAINTED and listed', async () => {
+    const spec = SIMPLE();
+    const { model, api, handle } = mount(spec);
+    handle.widget('b')!.remove();
+    await settle();
+    expect(model.getNode('b')).toBeUndefined();
+
+    await api.getEngine().commandManager.undo();
+    // The node is back in the model AND the kit knows it again…
+    expect(model.getNode('b')).toBeDefined();
+    expect(handle.widget('b')).toBeDefined();
+    expect(handle.widgetsOf().map((w) => w.id)).toEqual(['a', 'b', 'c']);
+    // …so the painter, asked to paint it, actually paints (it used to return
+    // early for an id the spec no longer knew — a blank host after undo).
+    const host = document.createElement('div');
+    spec.renderCustomNode({ id: 'b' }, host);
+    expect(host.children.length).toBeGreaterThan(0);
+    // And redo takes it away again, bookkeeping included.
+    await api.getEngine().commandManager.redo();
+    expect(model.getNode('b')).toBeUndefined();
+    expect(handle.widget('b')).toBeUndefined();
+  });
+
+  it('D2b: undo after addWidget() un-lists the widget too', async () => {
+    const { model, api, handle } = mount(SIMPLE());
+    handle.addWidget({ id: 'z', kind: 'kpi', span: 3 });
+    await settle();
+    expect(model.getNode('z')).toBeDefined();
+    await api.getEngine().commandManager.undo();
+    expect(model.getNode('z')).toBeUndefined();
+    expect(handle.widget('z')).toBeUndefined();
+    expect(handle.widgetsOf().map((w) => w.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('D5: pin() reaches toJSON() and is one undoable step', async () => {
+    const { api, handle } = mount(SIMPLE());
+    const a = handle.widget('a')!;
+    expect(a.pinned).toBe(false);
+    a.pin(true);
+    expect(a.pinned).toBe(true);
+    const saved = handle.toJSON().views[0].widgets.find((w) => w.id === 'a')!;
+    expect(saved.pinned).toBe(true);
+    await settle();
+    await api.getEngine().commandManager.undo();
+    expect(a.pinned).toBe(false);
+    expect(handle.toJSON().views[0].widgets.find((w) => w.id === 'a')!.pinned).toBeFalsy();
+  });
+
+  it('D3: onLayoutChange fires for EVERY layout mutation, not only pointer gestures', async () => {
+    const calls: string[] = [];
+    const spec = dashboard({
+      widgets: [
+        { id: 'a', kind: 'kpi', span: 3 },
+        { id: 'b', kind: 'kpi', span: 3 },
+      ],
+      onLayoutChange: (viewId) => calls.push(viewId),
+    });
+    const { api, handle } = mount(spec);
+    const cm = api.getEngine().commandManager;
+    const n = () => calls.length;
+    expect(n()).toBe(0);
+
+    await handle.widget('a')!.moveTo(6, 0);
+    const afterMove = n();
+    expect(afterMove).toBeGreaterThan(0);
+
+    handle.addWidget({ id: 'z', kind: 'kpi', span: 3 });
+    await settle();
+    expect(n()).toBeGreaterThan(afterMove);
+    const afterAdd = n();
+
+    handle.widget('z')!.remove();
+    await settle();
+    expect(n()).toBeGreaterThan(afterAdd);
+    const afterRemove = n();
+
+    await cm.undo();
+    expect(n()).toBeGreaterThan(afterRemove);
+    const afterUndo = n();
+
+    await cm.redo();
+    expect(n()).toBeGreaterThan(afterUndo);
+    const afterRedo = n();
+
+    handle.widget('a')!.pin(true);
+    await settle();
+    expect(n()).toBeGreaterThan(afterRedo);
+    const afterPin = n();
+
+    // A responsive column change is NOT a layout change: toJSON() keeps
+    // serialising the widest layout, so there is nothing new to save and the
+    // hook stays quiet. (The binder's onColumnsChange is the hook for that.)
+    handle.setColumns(6);
+    expect(n()).toBe(afterPin);
+  });
+
+  it('D3b: after an undo the handle reads the undone cell WITHOUT a manual refresh()', async () => {
+    const { api, handle } = mount(SIMPLE());
+    const before = handle.widget('a')!.cell;
+    await handle.widget('a')!.moveTo(3, 0); // same-size swap with b
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 3 });
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(handle.widget('a')!.cell).toEqual(before);
+  });
+
+  it('D9: dispose() takes the widget nodes it created, not only the boards', () => {
+    const { model, handle } = mount(SIMPLE());
+    expect(model.getNodes().length).toBe(4);
+    handle.dispose();
+    expect(model.getGroups().length).toBe(0);
+    expect(model.getNodes().length).toBe(0);
+  });
+});
+
+describe('a rebuild honours the persisted cells verbatim', () => {
+  it('refresh() keeps the gap a drop left — gravity must not re-pack on rebuild', async () => {
+    // A tile dropped below free space stays where the placeholder promised (the
+    // mover is exempt from gravity during its own gesture). sync() rebuilt the
+    // engine through add()+settle, which packed that gap away — so every
+    // refresh, undo and history event moved a tile the user had just placed.
+    const { handle } = mount(SIMPLE());
+    expect(await handle.widget('a')!.moveTo(0, 4)).toBe(true);
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0, y: 4 });
+    handle.refresh();
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0, y: 4 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DIAGRAM OR LAYOUT — `mode` (review D1, decided 2026-09-06: both, fluid by
+// default). A fluid board is 100% of its container at zoom 1; a fixed board is
+// the authored world the camera frames.
+// ---------------------------------------------------------------------------
+describe('mode: fluid — the board is laid out at the container\'s own pixels', () => {
+  const ROW = () => [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 9 }];
+
+  it('defaults to fluid without an authored width, and to fixed with one', () => {
+    const fl = mount(dashboard({ widgets: ROW() }), { w: 900, h: 500 });
+    expect(fl.handle.toJSON().mode).toBe('fluid');
+    expect(fl.handle.metrics()!.frame).toMatchObject({ width: 900, height: 500 });
+    expect(fl.handle.metrics()!.fluid).toBe(true);
+    // The 9-wide tile really is laid out against 900 px, not 1180.
+    expect(fl.handle.widget('b')!.rect!.width).toBeLessThan(900);
+    expect(fl.handle.widget('b')!.rect!.x + fl.handle.widget('b')!.rect!.width).toBeLessThanOrEqual(900);
+
+    const fx = mount(dashboard({ width: 1180, widgets: ROW() }), { w: 900, h: 500 });
+    expect(fx.handle.toJSON().mode).toBe('fixed');
+    expect(fx.handle.metrics()!.frame).toMatchObject({ width: 1180, height: 660 });
+    expect(fx.handle.metrics()!.fluid).toBe(false);
+  });
+
+  it('an explicit mode wins over the width rule', () => {
+    const fl = mount(dashboard({ mode: 'fluid', width: 1180, widgets: ROW() }), { w: 900, h: 500 });
+    expect(fl.handle.metrics()!.frame.width).toBe(900);
+    const fx = mount(dashboard({ mode: 'fixed', widgets: ROW() }), { w: 900, h: 500 });
+    expect(fx.handle.metrics()!.frame.width).toBe(1180);
+  });
+
+  it('follows the container when it resizes — re-read on refresh()', () => {
+    const { api, handle } = mount(dashboard({ widgets: ROW() }), { w: 900, h: 500 });
+    sizeElement(api.container, 600, 400);
+    handle.refresh();
+    expect(handle.metrics()!.frame).toMatchObject({ width: 600, height: 400 });
+    expect(handle.widget('b')!.rect!.x + handle.widget('b')!.rect!.width).toBeLessThanOrEqual(600);
+  });
+
+  it('a container that cannot be measured keeps the authored frame', () => {
+    const { handle } = mount(dashboard({ widgets: ROW() }));
+    expect(handle.metrics()!.frame).toMatchObject({ width: 1180, height: 660 });
+  });
+
+  it('pins the camera at zoom 1 on the board origin — never a fit', () => {
+    const fl = mount(dashboard({ widgets: ROW() }), { w: 900, h: 500 });
+    expect(fl.api.camera.fits).toBe(0);
+    expect(fl.api.camera.zooms).toContain(1);
+    expect(fl.api.camera.rect).toMatchObject({ x: 0, y: 0 });
+    fl.handle.fit();
+    expect(fl.api.camera.fits).toBe(0);
+
+    const fx = mount(dashboard({ width: 1180, widgets: ROW() }), { w: 900, h: 500 });
+    expect(fx.api.camera.fits).toBeGreaterThan(0);
+  });
+
+  it('asks render() to lock the zoom range, and a fixed board does not', () => {
+    expect(dashboard({ widgets: ROW() }).renderOptions).toEqual({ minZoom: 1, maxZoom: 1 });
+    expect(dashboard({ width: 1180, widgets: ROW() }).renderOptions).toBeUndefined();
+  });
+
+  it('toJSON() → dashboard() keeps the mode', () => {
+    const fl = mount(dashboard({ widgets: ROW() }), { w: 900, h: 500 });
+    const saved = fl.handle.toJSON();
+    expect(saved.mode).toBe('fluid');
+    const again = mount(dashboard(saved), { w: 700, h: 400 });
+    expect(again.handle.toJSON().mode).toBe('fluid');
+    expect(again.handle.metrics()!.frame.width).toBe(700);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIT MEANS BOUNDED (review D6, decided 2026-09-06). A fit board never changes
+// size; widgets do. The 28-px row floor is a CAPACITY, and past it the board
+// refuses — visibly, at design time — instead of painting tiles past its edge.
+// ---------------------------------------------------------------------------
+describe('fit means bounded', () => {
+  // 200 px tall, gap 8, row floor 28 → floor((200 - 16 + 8) / 36) = 5 rows.
+  const rowsOf = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ id: 'r' + i, kind: 'kpi', span: 12, rows: 1 }));
+  const board = (extra: Partial<Parameters<typeof dashboard>[0]> = {}, n = 5) =>
+    dashboard({ width: 1180, height: 200, sizing: 'fit', widgets: rowsOf(n), ...extra });
+
+  it('reports the capacity its height allows, and every widget that fits is there', () => {
+    const { handle } = mount(board());
+    expect(handle.metrics()!.capacity).toBe(5);
+    expect(handle.widgetsOf().every((w) => w.cell !== undefined)).toBe(true);
+    expect(handle.metrics()!.rows).toBe(5);
+  });
+
+  it('refuses the widget that would need one row too many — nothing is created', () => {
+    const { model, handle } = mount(board());
+    expect(handle.addWidget({ id: 'r5', kind: 'kpi', span: 12, rows: 1 })).toBeUndefined();
+    expect(model.getNode('r5')).toBeUndefined();
+    expect(handle.widgetsOf().map((w) => w.id)).not.toContain('r5');
+    // …while one that fits in a free hole still lands.
+    const { handle: h2 } = mount(board({}, 4));
+    expect(h2.addWidget({ id: 'r4', kind: 'kpi', span: 6, rows: 1 })).toBeDefined();
+  });
+
+  it('refuses a resize past the capacity, and the board stays inside its frame', async () => {
+    const { handle } = mount(board());
+    expect(await handle.widget('r4')!.resize(12, 2)).toBe(false);
+    expect(handle.widget('r4')!.cell).toMatchObject({ h: 1 });
+    const frame = handle.metrics()!.frame;
+    for (const w of handle.widgetsOf()) {
+      expect(w.rect!.y + w.rect!.height).toBeLessThanOrEqual(frame.y + frame.height + 0.5);
+    }
+  });
+
+  it('overflow: "scroll" lifts the bound and EXTENDS the frame so nothing paints past it', () => {
+    const { handle } = mount(board({ overflow: 'scroll' }));
+    expect(handle.metrics()!.capacity).toBeUndefined();
+    expect(handle.addWidget({ id: 'r5', kind: 'kpi', span: 12, rows: 1 })).toBeDefined();
+    const m = handle.metrics()!;
+    expect(m.rows).toBe(6);
+    // 6 rows at the 28-px floor: 2·8 + 6·28 + 5·8 = 224 > the 200 design height.
+    expect(m.frame.height).toBe(224);
+    for (const w of handle.widgetsOf()) {
+      expect(w.rect!.y + w.rect!.height).toBeLessThanOrEqual(m.frame.y + m.frame.height + 0.5);
+    }
+  });
+
+  it('a board holding MORE than its capacity keeps every tile INSIDE the frame — fit never scrolls', () => {
+    const { handle } = mount(board({}, 7));
+    expect(handle.widgetsOf().every((w) => w.cell !== undefined)).toBe(true);
+    const m = handle.metrics()!;
+    expect(m.capacity).toBe(7); // floored at the content: growth is still refused
+    expect(m.frame.height).toBe(200); // the board stays the board
+    expect(m.rowHeight).toBeLessThan(28); // rows go below the floor before the board grows
+    for (const w of handle.widgetsOf()) {
+      expect(w.rect!.y + w.rect!.height).toBeLessThanOrEqual(m.frame.y + m.frame.height + 0.5);
+    }
+    expect(handle.addWidget({ id: 'r7', kind: 'kpi', span: 12, rows: 1 })).toBeUndefined();
+  });
+
+  it('grow mode is never bounded', () => {
+    const { handle } = mount(board({ sizing: 'grow' }, 7));
+    expect(handle.metrics()!.capacity).toBeUndefined();
+    expect(handle.addWidget({ id: 'r7', kind: 'kpi', span: 12, rows: 1 })).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PER-WIDGET CONSTRAINTS AND THE STATIC BOARD (plan step 4).
+// ---------------------------------------------------------------------------
+describe('per-widget limits, pointer flags and the static board', () => {
+  it('limits reach the engine: a resize clamps to minSpan/maxSpan/minRows/maxRows', async () => {
+    const { handle } = mount(
+      dashboard({ widgets: [{ id: 'a', kind: 'kpi', span: 6, rows: 2, limits: { minSpan: 3, maxSpan: 8, minRows: 1, maxRows: 3 } }] })
+    );
+    expect(await handle.widget('a')!.resize(1, 1)).toBe(true);
+    expect(handle.widget('a')!.cell).toMatchObject({ w: 3, h: 1 });
+    expect(await handle.widget('a')!.resize(12, 9)).toBe(true);
+    expect(handle.widget('a')!.cell).toMatchObject({ w: 8, h: 3 });
+  });
+
+  it('limits clamp the AUTHORED size too, and a column change honours them', () => {
+    const { handle } = mount(
+      dashboard({ widgets: [{ id: 'a', kind: 'kpi', span: 12, limits: { maxSpan: 6, minSpan: 4 } }] })
+    );
+    expect(handle.widget('a')!.cell).toMatchObject({ w: 6 });
+    handle.setColumns(6); // 6 → 3 by ratio, but never under minSpan 4
+    expect(handle.widget('a')!.cell!.w).toBe(4);
+  });
+
+  it('limits, movable and resizable reach the node on BOTH paths and round-trip through toJSON()', () => {
+    const { model, handle } = mount(
+      dashboard({ widgets: [{ id: 'a', kind: 'kpi', span: 3, limits: { maxSpan: 6 }, movable: false, resizable: false }] })
+    );
+    expect(model.getNode('a')!.getMetadata('widgetLimits')).toEqual({ maxSpan: 6 });
+    expect(model.getNode('a')!.getMetadata('widgetMovable')).toBe(false);
+    expect(model.getNode('a')!.getMetadata('widgetResizable')).toBe(false);
+    handle.addWidget({ id: 'b', kind: 'kpi', span: 3, limits: { minRows: 2 }, movable: false });
+    expect(model.getNode('b')!.getMetadata('widgetLimits')).toEqual({ minRows: 2 });
+    expect(model.getNode('b')!.getMetadata('widgetMovable')).toBe(false);
+    expect(model.getNode('b')!.getMetadata('widgetResizable')).toBeUndefined();
+    const saved = handle.toJSON().views[0].widgets;
+    expect(saved.find((w) => w.id === 'a')).toMatchObject({ limits: { maxSpan: 6 }, movable: false, resizable: false });
+    expect(saved.find((w) => w.id === 'b')).toMatchObject({ limits: { minRows: 2 }, movable: false });
+  });
+
+  it('a static board reports so, round-trips, toggles live, and the API still edits it', async () => {
+    const { handle } = mount(dashboard({ static: true, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    expect(handle.getStatic()).toBe(true);
+    expect(handle.metrics()!.static).toBe(true);
+    expect(handle.toJSON().static).toBe(true);
+    // gridstack's staticGrid: the POINTER is off, the API is not.
+    expect(await handle.widget('a')!.moveTo(3, 0)).toBe(true);
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 3 });
+    handle.setStatic(false);
+    expect(handle.getStatic()).toBe(false);
+    expect(handle.toJSON().static).toBe(false);
+  });
+
+  it('a drag-handle board reports so, round-trips, toggles live, and marks its container', () => {
+    const { handle } = mount(dashboard({ dragHandle: true, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    expect(handle.getDragHandle()).toBe(true);
+    expect(handle.metrics()!.dragHandle).toBe(true);
+    expect(handle.toJSON().dragHandle).toBe(true);
+    // The header grip is CSS keyed on the container class — the class is the contract.
+    expect(document.querySelector('.axdb-drag-handle')).not.toBeNull();
+    handle.setDragHandle('.my-grip');
+    expect(handle.getDragHandle()).toBe('.my-grip');
+    // A custom handle is the app's own element: no caption dots on the header.
+    expect(document.querySelector('.axdb-drag-handle')).toBeNull();
+    handle.setDragHandle(false);
+    expect(handle.getDragHandle()).toBe(false);
+    expect(handle.toJSON().dragHandle).toBe(false);
+    expect(document.querySelector('.axdb-drag-handle')).toBeNull();
+    // Off by default, and the split layout carries the same switch.
+    const { handle: h2 } = mount(dashboard({ layout: 'split', widgets: [{ id: 'a', kind: 'kpi', span: 3 }] }));
+    expect(h2.getDragHandle()).toBe(false);
+    h2.setDragHandle(true);
+    expect(h2.getDragHandle()).toBe(true);
+    expect(h2.metrics()!.dragHandle).toBe(true);
+  });
+
+  it('a painted grip: defaults filled in, one grip per host placed as asked, gone when off, on both layouts', () => {
+    const { api, handle } = mount(dashboard({ dragHandle: { grip: true }, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3, movable: false }] }));
+    // jsdom paints no hosts: stand two in, as the observer test does, and re-sync.
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    for (const id of ['a', 'b']) {
+      const h = document.createElement('div');
+      h.className = 'grafloria-node-host';
+      h.setAttribute('data-node-id', id);
+      layer.appendChild(h);
+    }
+    handle.refresh();
+    expect(handle.getDragHandle()).toEqual({ grip: true, position: 'left', placement: 'inside' });
+    expect(handle.toJSON().dragHandle).toEqual({ grip: true, position: 'left', placement: 'inside' });
+    const gripOn = (id: string) => document.querySelector(`.grafloria-node-host[data-node-id="${id}"] > .axdb-grip`);
+    expect(gripOn('a')!.className).toBe('axdb-grip axdb-grip--left axdb-grip--inside');
+    expect(gripOn('a')!.parentElement!.classList.contains('axdb-gp-left')).toBe(true);
+    expect(gripOn('b')).toBeNull(); // a fixed tile paints no grip
+    // The caption class is NOT set on THIS board (earlier mounts stay in the document): the grip is the only handle.
+    expect(api.container.classList.contains('axdb-drag-handle')).toBe(false);
+    handle.setDragHandle({ grip: true, position: 'right', placement: 'outside' });
+    expect(gripOn('a')!.className).toBe('axdb-grip axdb-grip--right axdb-grip--outside');
+    expect(gripOn('a')!.parentElement!.classList.contains('axdb-gp-outside')).toBe(true);
+    handle.setLayout('split');
+    expect(handle.getDragHandle()).toEqual({ grip: true, position: 'right', placement: 'outside' });
+    handle.refresh();
+    expect(gripOn('a')!.className).toBe('axdb-grip axdb-grip--right axdb-grip--outside');
+    handle.setDragHandle(false);
+    expect(gripOn('a')).toBeNull();
+    expect(document.querySelector('.axdb-gp-right')).toBeNull();
+  });
+
+  it('selection: focusWidget stamps axdb-selected on that host only (the grip shows on the selected widget)', () => {
+    const { api, handle } = mount(dashboard({ dragHandle: { grip: true }, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    for (const id of ['a', 'b']) {
+      const h = document.createElement('div');
+      h.className = 'grafloria-node-host';
+      h.setAttribute('data-node-id', id);
+      layer.appendChild(h);
+    }
+    handle.refresh();
+    const host = (id: string) => api.container.querySelector(`.grafloria-node-host[data-node-id="${id}"]`)!;
+    expect(host('a').classList.contains('axdb-selected')).toBe(false);
+    expect(host('b').classList.contains('axdb-selected')).toBe(false);
+    handle.focusWidget('b');
+    expect(host('b').classList.contains('axdb-selected')).toBe(true);
+    expect(host('a').classList.contains('axdb-selected')).toBe(false);
+    handle.focusWidget('a');
+    expect(host('a').classList.contains('axdb-selected')).toBe(true);
+    expect(host('b').classList.contains('axdb-selected')).toBe(false);
+  });
+
+  it('squeeze: false freezes the row height — a full fit board refuses a row instead of shrinking its neighbours', () => {
+    // 3 rows of 130 px + 2 gaps of 10 + 2 × 10 padding = 430 px: the frame is full at the current height.
+    const widgets = [{ id: 'a', kind: 'kpi', span: 12, rows: 1 }, { id: 'b', kind: 'kpi', span: 12, rows: 1 }, { id: 'c', kind: 'kpi', span: 12, rows: 1 }];
+    const frozen = mount(dashboard({ width: 1200, height: 430, gap: 10, rowHeight: 130, sizing: 'fit', squeeze: false, widgets }));
+    expect(frozen.handle.metrics()!.capacity).toBe(3);
+    expect(frozen.handle.addWidget({ id: 'd', kind: 'kpi', span: 12, rows: 1 })).toBeUndefined();
+    expect(frozen.handle.widget('a')!.cell).toMatchObject({ h: 1 });
+    // The default squeezes: the same frame holds rows at the 28 px floor, so the add lands.
+    const elastic = mount(dashboard({ width: 1200, height: 430, gap: 10, rowHeight: 130, sizing: 'fit', widgets }));
+    expect(elastic.handle.metrics()!.capacity).toBeGreaterThan(3);
+    expect(elastic.handle.addWidget({ id: 'd', kind: 'kpi', span: 12, rows: 1 })).toBeDefined();
+  });
+
+  it('a press inside a static board\'s content never reaches the renderer; a press on kit chrome does', () => {
+    const { api, handle } = mount(dashboard({ static: true, widgets: [{ id: 'a', kind: 'kpi', span: 3 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    const h = document.createElement('div');
+    h.className = 'grafloria-node-host';
+    h.setAttribute('data-node-id', 'a');
+    // Chrome the grid binder does not strip on a static board: a split divider element.
+    h.innerHTML = '<div class="axdb-widget"><canvas class="chart"></canvas></div><div class="axdb-div"></div>';
+    layer.appendChild(h);
+    handle.refresh();
+    const seen: string[] = [];
+    api.container.addEventListener('pointerdown', (e) => seen.push((e.target as Element).className));
+    h.querySelector('.chart')!.dispatchEvent(new Event('pointerdown', { bubbles: true, cancelable: true }));
+    h.querySelector('.axdb-div')!.dispatchEvent(new Event('pointerdown', { bubbles: true, cancelable: true }));
+    expect(seen).toEqual(['axdb-div']);
+    // Off static, content presses reach the renderer again (the kit's tool claims them).
+    handle.setStatic(false);
+    h.querySelector('.chart')!.dispatchEvent(new Event('pointerdown', { bubbles: true, cancelable: true }));
+    expect(seen).toEqual(['axdb-div', 'chart']);
+  });
+
+  it('dragHandle: true on a host with no kit header treats the top band as the caption', () => {
+    const host = document.createElement('div');
+    host.innerHTML = '<div class="mine"><span class="deep"></span></div>';
+    const deep = host.querySelector('.deep') as Element;
+    // jsdom rects are all zero: the band is 0…28 px from the top.
+    expect(pressOnDragHandle('.axdb-widget-h', deep, host, 0, 10)).toBe(true);
+    expect(pressOnDragHandle('.axdb-widget-h', deep, host, 0, 40)).toBe(false);
+  });
+
+  it('focusWidget right after addWidget selects once the add has landed', async () => {
+    const { api, handle } = mount(dashboard({ widgets: [{ id: 'a', kind: 'kpi', span: 3 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    for (const id of ['a', 'b']) { const h = document.createElement('div'); h.className = 'grafloria-node-host'; h.setAttribute('data-node-id', id); layer.appendChild(h); }
+    handle.addWidget({ id: 'b', kind: 'kpi', span: 3 });
+    expect(handle.focusWidget('b')).toBe(true);
+    await new Promise((r) => setTimeout(r, 80));
+    handle.refresh();
+    expect(api.container.querySelector('.grafloria-node-host[data-node-id="b"]')!.classList.contains('axdb-selected')).toBe(true);
+  });
+
+  it('a layout switch keeps the selected widget', () => {
+    const { api, handle } = mount(dashboard({ dragHandle: { grip: true }, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    for (const id of ['a', 'b']) { const h = document.createElement('div'); h.className = 'grafloria-node-host'; h.setAttribute('data-node-id', id); layer.appendChild(h); }
+    handle.refresh();
+    handle.focusWidget('b');
+    handle.setLayout('split');
+    handle.refresh();
+    const host = (id: string) => api.container.querySelector(`.grafloria-node-host[data-node-id="${id}"]`)!;
+    expect(host('b').classList.contains('axdb-selected')).toBe(true);
+    expect(host('a').classList.contains('axdb-selected')).toBe(false);
+  });
+
+  it('a layout switch keeps a MOUSE-selected widget — selected, never focused', () => {
+    const { api, handle } = mount(dashboard({ dragHandle: { grip: true }, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    for (const id of ['a', 'b']) { const h = document.createElement('div'); h.className = 'grafloria-node-host'; h.setAttribute('data-node-id', id); layer.appendChild(h); }
+    handle.refresh();
+    expect(handle.selectWidget('b')).toBe(true);
+    expect(handle.getSelectedWidget()).toBe('b');
+    expect(handle.binderOf()!.getFocusedWidget()).not.toBe('b');
+    handle.setLayout('split');
+    handle.refresh();
+    const host = (id: string) => api.container.querySelector(`.grafloria-node-host[data-node-id="${id}"]`)!;
+    expect(host('b').classList.contains('axdb-selected')).toBe(true);
+    expect(handle.getSelectedWidget()).toBe('b');
+    handle.setLayout('grid');
+    handle.refresh();
+    expect(host('b').classList.contains('axdb-selected')).toBe(true);
+    expect(handle.selectWidget('nope')).toBe(false);
+    expect(handle.selectWidget(undefined)).toBe(true);
+    expect(handle.getSelectedWidget()).toBeUndefined();
+    handle.refresh();
+    expect(host('b').classList.contains('axdb-selected')).toBe(false);
+  });
+
+  it('a layout switch keeps the LIVE switches: static, rtl and the drag handle survive setLayout', () => {
+    const { handle } = mount(dashboard({ widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    handle.setStatic(true);
+    handle.setRtl(true);
+    handle.setDragHandle(true);
+    handle.setLayout('split');
+    expect([handle.getStatic(), handle.getRtl(), handle.getDragHandle()]).toEqual([true, true, true]);
+    handle.setLayout('grid');
+    expect([handle.getStatic(), handle.getRtl(), handle.getDragHandle()]).toEqual([true, true, true]);
+    expect(handle.getLayout()).toBe('grid');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ACCESSIBILITY (plan step 5, decided 2026-09-06: full — WCAG 2.1 AA). The
+// harness mounts no renderer, so the hosts the renderer would create are
+// made here by hand, exactly as the renderer names them.
+// ---------------------------------------------------------------------------
+describe('accessibility — name, role, keyboard, announcements', () => {
+  function hostsFor(api: ReturnType<typeof makeApi>, ids: string[]): Map<string, HTMLElement> {
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    const out = new Map<string, HTMLElement>();
+    for (const id of ids) {
+      const h = document.createElement('div');
+      h.className = 'grafloria-node-host';
+      h.setAttribute('data-node-id', id);
+      layer.appendChild(h);
+      out.set(id, h);
+    }
+    return out;
+  }
+  const liveText = (api: ReturnType<typeof makeApi>) =>
+    Array.from(api.container.querySelectorAll('[aria-live]')).map((el) => el.textContent).join(' ');
+  const key = (el: HTMLElement, k: string, shift = false) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, shiftKey: shift, bubbles: true, cancelable: true }));
+
+  const BOARD = () =>
+    dashboard({
+      width: 1180,
+      widgets: [
+        { id: 'a', kind: 'kpi', span: 3, title: 'Revenue' },
+        { id: 'b', kind: 'kpi', span: 3, title: 'Customers' },
+        { id: 'c', kind: 'line', span: 6, rows: 2 },
+      ],
+    });
+
+  it('every widget host gets a role, a description, a label with its cell, and ONE tab stop per board', () => {
+    const { api, handle } = mount(BOARD());
+    const hosts = hostsFor(api, ['a', 'b', 'c']);
+    handle.refresh();
+    expect(hosts.get('a')!.getAttribute('role')).toBe('group');
+    expect(hosts.get('a')!.getAttribute('aria-roledescription')).toBe('dashboard widget');
+    expect(hosts.get('a')!.getAttribute('aria-label')).toBe('Revenue, column 1, row 1, 3 by 1');
+    expect(hosts.get('c')!.getAttribute('aria-label')).toBe('line widget, column 7, row 1, 6 by 2');
+    expect([...hosts.values()].map((h) => h.getAttribute('tabindex'))).toEqual(['0', '-1', '-1']);
+  });
+
+  it('a pinned widget says so, and the roving tab stop follows focus', () => {
+    const { api, handle } = mount(BOARD());
+    const hosts = hostsFor(api, ['a', 'b', 'c']);
+    handle.widget('b')!.pin(true);
+    expect(hosts.get('b')!.getAttribute('aria-label')).toContain('pinned');
+    expect(handle.binderOf()!.focusWidget('c')).toBe(true);
+    expect([...hosts.values()].map((h) => h.getAttribute('tabindex'))).toEqual(['-1', '-1', '0']);
+    expect(handle.binderOf()!.getFocusedWidget()).toBe('c');
+  });
+
+  it('arrows move the focused widget one cell — one undoable step, announced', async () => {
+    const { api, handle } = mount(BOARD());
+    const hosts = hostsFor(api, ['a', 'b', 'c']);
+    handle.refresh();
+    key(hosts.get('a')!, 'ArrowRight'); // onto b: a same-size swap
+    await settle();
+    await settle();
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 3, y: 0 });
+    expect(handle.widget('b')!.cell).toMatchObject({ x: 0, y: 0 });
+    expect(liveText(api)).toContain('Revenue moved to column 4, row 1, 3 by 1');
+    expect(liveText(api)).toContain('Customers moved to column 1, row 1');
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it('Shift+arrows resize it, a refusal is announced, and a static board only reads', async () => {
+    const { api, handle } = mount(BOARD());
+    const hosts = hostsFor(api, ['a', 'b', 'c']);
+    handle.refresh();
+    key(hosts.get('c')!, 'ArrowDown', true);
+    await settle();
+    await settle();
+    expect(handle.widget('c')!.cell).toMatchObject({ h: 3 });
+    expect(liveText(api)).toContain('line widget resized to column 7, row 1, 6 by 3');
+    key(hosts.get('a')!, 'ArrowLeft'); // column 0 already: nowhere to go
+    await settle();
+    await settle();
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0 });
+    expect(liveText(api)).toContain('Cannot move Revenue left');
+    handle.setStatic(true);
+    key(hosts.get('a')!, 'ArrowRight');
+    await settle();
+    await settle();
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0 });
+    // Still reachable, just not editable: the roving stop is where focus last
+    // rested (the resize focused c), and the board keeps exactly one.
+    expect([...hosts.values()].map((h) => h.getAttribute('tabindex')).filter((t) => t === '0')).toHaveLength(1);
+    expect(hosts.get('c')!.getAttribute('tabindex')).toBe('0');
+  });
+
+  it('a fixed widget refuses the keyboard the way it refuses the pointer', async () => {
+    const { api, handle } = mount(
+      dashboard({ width: 1180, widgets: [{ id: 'a', kind: 'kpi', span: 3, title: 'Fixed', movable: false }] })
+    );
+    const hosts = hostsFor(api, ['a']);
+    handle.refresh();
+    key(hosts.get('a')!, 'ArrowRight');
+    await settle();
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0 });
+    expect(liveText(api)).toContain('Fixed cannot be moved');
+  });
+
+  it('an arrow on the diagram root hands focus to the board\'s tab stop', () => {
+    const { api, handle } = mount(BOARD());
+    const hosts = hostsFor(api, ['a', 'b', 'c']);
+    handle.refresh();
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'grafloria-diagram');
+    api.container.appendChild(svg);
+    svg.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    expect(handle.binderOf()!.getFocusedWidget()).toBe('a');
+    expect(hosts.get('a')!.getAttribute('tabindex')).toBe('0');
+  });
+
+  it('the stylesheet carries the focus ring, the reduced-motion rule and the sr-only table class', () => {
+    ensureDashboardKitStyles(document);
+    const css = document.getElementById(DASHBOARD_KIT_STYLE_ID)!.textContent ?? '';
+    expect(css).toContain('.grafloria-node-host:focus-visible');
+    expect(css).toContain('prefers-reduced-motion: reduce');
+    expect(css).toContain('.axdb-sr');
+  });
+});
+
+describe('host observer (plan step 6, D10)', () => {
+  it('re-syncs only the hosts a host-level mutation names, and ignores a chart\'s internal churn', async () => {
+    const { api, handle } = mount(dashboard({ width: 1180, widgets: [{ id: 'a', kind: 'kpi', span: 3 }, { id: 'b', kind: 'kpi', span: 3 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    const mk = (id: string) => {
+      const h = document.createElement('div');
+      h.className = 'grafloria-node-host';
+      h.setAttribute('data-node-id', id);
+      layer.appendChild(h);
+      return h;
+    };
+    const a = mk('a');
+    const b = mk('b');
+    handle.refresh();
+    let calls = 0;
+    const orig = api.container.querySelector.bind(api.container);
+    (api.container as { querySelector: typeof orig }).querySelector = ((sel: string) => {
+      calls++;
+      return orig(sel);
+    }) as typeof orig;
+    // Deep churn inside a widget: nothing to re-sync.
+    const inner = document.createElement('div');
+    a.appendChild(inner);
+    await new Promise((r) => setTimeout(r, 0));
+    calls = 0;
+    for (let i = 0; i < 20; i++) inner.appendChild(document.createElement('i'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls).toBe(0);
+    // A repaint wipes a's handle: exactly a is looked up again, not b.
+    a.querySelector('.axdb-rs')?.remove();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls).toBeGreaterThan(0);
+    expect(calls).toBeLessThanOrEqual(2);
+    expect(a.querySelector('.axdb-rs')).toBeTruthy();
+    expect(b.querySelector('.axdb-rs')).toBeTruthy();
+  });
+});
+
+// ---- round two (2026-09-06): the fluid camera is a scroll position ---------
+// Found on the live page: scroll down in Grow, press Fit — the board shrank to
+// the canvas while the camera stayed where it was, the board's top half out of
+// view above an empty canvas. And a wheel could run past the last row.
+describe('fluid camera is a scroll position, bounded to the board', () => {
+  const tall = () =>
+    dashboard({
+      widgets: Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, kind: 'kpi', span: 12, rows: 1 })),
+    });
+
+  it('a pan cannot run past the last row nor above the origin', () => {
+    const { api, handle } = mount(tall(), { w: 800, h: 600 });
+    const frame = handle.metrics()!.frame;
+    expect(frame.height).toBeGreaterThan(600); // 12 rows of 130 px: taller than the canvas
+    expect(api.camera.listeners).toHaveLength(1);
+    api.camera.panTo(0, 100000);
+    expect(api.camera.rect.y).toBeCloseTo(frame.height - 600, 3);
+    api.camera.panTo(300, -500);
+    expect(api.camera.rect).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it('Fit under a scrolled camera pulls the camera back into the board', () => {
+    const { api, handle } = mount(tall(), { w: 800, h: 600 });
+    api.camera.panTo(0, 1000);
+    expect(api.camera.rect.y).toBeGreaterThan(0);
+    handle.setSizing('fit');
+    const frame = handle.metrics()!.frame;
+    expect(api.camera.rect.y).toBeCloseTo(Math.max(0, frame.height - 600), 3);
+  });
+
+  it('a fixed board is a diagram: its camera pans free', () => {
+    const { api } = mount(dashboard({ width: 1180, height: 400, widgets: [{ id: 'a', kind: 'kpi', span: 3 }] }), { w: 800, h: 600 });
+    api.camera.panTo(-900, 5000);
+    expect(api.camera.rect).toMatchObject({ x: -900, y: 5000 });
+  });
+});
+
+// ---- layout: 'split' — the DevExpress splitter tree (decided 6 Sep 2026) ---
+describe("layout: 'split' — the board is always covered", () => {
+  const board = (extra: Partial<Parameters<typeof dashboard>[0]> = {}) =>
+    dashboard({
+      width: 1200,
+      height: 600,
+      gap: 0,
+      layout: 'split',
+      widgets: [
+        { id: 'a', kind: 'kpi', span: 6, rows: 1 },
+        { id: 'b', kind: 'kpi', span: 6, rows: 1 },
+        { id: 'c', kind: 'line', span: 12, rows: 3 },
+      ],
+      ...extra,
+    });
+  const covered = (handle: ReturnType<typeof dashboard>['handle']) => {
+    const f = handle.metrics()!.frame;
+    const rects = handle.widgetsOf().map((w) => w.rect!);
+    const area = rects.reduce((s, r) => s + r.width * r.height, 0);
+    return Math.abs(area - f.width * f.height) < 1;
+  };
+
+  it('opens a grid-authored board as a tree with the same proportions, every slot covered', () => {
+    const { handle } = mount(board());
+    expect(handle.getLayout()).toBe('split');
+    expect(handle.getSizing()).toBe('fit');
+    const a = handle.widget('a')!.rect!;
+    const c = handle.widget('c')!.rect!;
+    // 1 row of 4 → a quarter of the height; a and b share the top row.
+    expect(a).toMatchObject({ x: 0, y: 0, width: 600, height: 150 });
+    expect(c).toMatchObject({ x: 0, y: 150, width: 1200, height: 450 });
+    expect(covered(handle)).toBe(true);
+    expect(handle.metrics()!.capacity).toBeUndefined();
+  });
+
+  it('addWidget halves the largest widget along its longer axis; remove hands the slot back; both undo as one step', async () => {
+    const { api, handle } = mount(board());
+    const added = handle.addWidget({ id: 'd', kind: 'kpi' });
+    await settle();
+    expect(added).toBeDefined();
+    const c = handle.widget('c')!.rect!;
+    const d = handle.widget('d')!.rect!;
+    // c was 1200×450 (wider than tall) → left / right halves.
+    expect(c).toMatchObject({ x: 0, y: 150, width: 600, height: 450 });
+    expect(d).toMatchObject({ x: 600, y: 150, width: 600, height: 450 });
+    expect(covered(handle)).toBe(true);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    handle.refresh();
+    expect(handle.widget('d')).toBeUndefined();
+    expect(handle.widget('c')!.rect).toMatchObject({ x: 0, y: 150, width: 1200, height: 450 });
+    // Remove b: a takes the whole top row.
+    handle.widget('b')!.remove();
+    await settle();
+    expect(handle.widget('a')!.rect).toMatchObject({ x: 0, y: 0, width: 1200, height: 150 });
+    expect(covered(handle)).toBe(true);
+  });
+
+  it('toJSON carries the layout and the tree, and a snapshot fed back opens the same board', () => {
+    const { handle } = mount(board());
+    const snap = handle.toJSON();
+    expect(snap.layout).toBe('split');
+    const view = snap.views[0] as { tree?: unknown };
+    expect(view.tree).toBeDefined();
+    const { handle: again } = mount(dashboard({ ...snap, renderWidget: undefined }));
+    expect(again.widget('c')!.rect).toMatchObject({ x: 0, y: 150, width: 1200, height: 450 });
+    expect(again.getLayout()).toBe('split');
+  });
+
+  it('setLayout switches live and keeps the picture: split → grid snaps to cells, grid → split cuts the cells into a tree', () => {
+    const { handle } = mount(board());
+    handle.setLayout('grid');
+    expect(handle.getLayout()).toBe('grid');
+    expect(handle.widget('a')!.cell).toMatchObject({ x: 0, y: 0, w: 6, h: 1 });
+    expect(handle.widget('c')!.cell).toMatchObject({ x: 0, y: 1, w: 12, h: 3 });
+    handle.setLayout('split');
+    expect(handle.getLayout()).toBe('split');
+    expect(handle.widget('c')!.rect).toMatchObject({ x: 0, y: 150, width: 1200, height: 450 });
+    expect(covered(handle)).toBe(true);
+  });
+
+  it('a split board persists its layout on the group, so fromDocument rebinds it as a split', () => {
+    const { model } = mount(board());
+    const g = model.getGroup('main')!;
+    expect((g.getMetadata('dashboardBoard') as { layout?: string }).layout).toBe('split');
+    expect(g.getMetadata('dashboardTree')).toBeDefined();
+  });
+});
+
+describe('split layout has no corner resize handle', () => {
+  it('switching grid → split removes the grid\'s injected handles; switching back re-injects them', () => {
+    const { api, handle } = mount(dashboard({ width: 1200, height: 600, widgets: [{ id: 'a', kind: 'kpi', span: 6 }, { id: 'b', kind: 'kpi', span: 6 }] }));
+    const layer = api.container.querySelector('.grafloria-html-layer')!;
+    const hosts = new Map(['a', 'b'].map((id) => {
+      const h = document.createElement('div');
+      h.className = 'grafloria-node-host';
+      h.setAttribute('data-node-id', id);
+      layer.appendChild(h);
+      return [id, h] as const;
+    }));
+    handle.refresh();
+    expect(hosts.get('a')!.querySelector(':scope > .axdb-rs')).not.toBeNull();
+    handle.setLayout('split');
+    handle.refresh();
+    expect(hosts.get('a')!.querySelector(':scope > .axdb-rs')).toBeNull();
+    expect(hosts.get('b')!.querySelector(':scope > .axdb-rs')).toBeNull();
+    handle.setLayout('grid');
+    handle.refresh();
+    expect(hosts.get('a')!.querySelector(':scope > .axdb-rs')).not.toBeNull();
+  });
+});
+
+describe('split layout with tabs: a parked view leaves the camera', () => {
+  it('showView parks the other split view off-camera — its widgets follow the group frame', () => {
+    const { model, handle } = mount(
+      dashboard({
+        width: 1200,
+        height: 600,
+        layout: 'split',
+        views: [
+          { id: 'sales', widgets: [{ id: 'rev', kind: 'kpi', span: 6 }, { id: 'ord', kind: 'kpi', span: 6 }] },
+          { id: 'ops', widgets: [{ id: 'cpu', kind: 'kpi', span: 12 }] },
+        ],
+      })
+    );
+    // The NODE positions are what the hosts paint — a projected rect can look
+    // right while the painted widget is still on camera (the Angular
+    // conformance drive saw the parked view's cards bleed through).
+    const x = (id: string) => model.getNode(id)!.position.x;
+    expect(x('rev')).toBeGreaterThanOrEqual(0);
+    expect(x('cpu')).toBeLessThan(-10000); // parked at boot
+    handle.showView('ops');
+    expect(x('cpu')).toBeGreaterThanOrEqual(0); // came on camera
+    expect(x('rev')).toBeLessThan(-10000); // and sales LEFT it
+    expect(x('ord')).toBeLessThan(-10000);
+    handle.showView('sales');
+    expect(x('rev')).toBeGreaterThanOrEqual(0);
+    expect(x('cpu')).toBeLessThan(-10000);
+  });
+});
+
+describe('ownsPress — the page-global tool registry asks every board about every press', () => {
+  const ev = (target: unknown) => ({ world: { x: 0, y: 0 }, screen: { x: 0, y: 0 }, source: target === undefined ? undefined : ({ target } as never) }) as never;
+  it('refuses a press whose DOM target sits in another container', () => {
+    const mine = document.createElement('div');
+    const theirs = document.createElement('div');
+    const inner = document.createElement('span');
+    theirs.appendChild(inner);
+    const diagram = { getNode: () => undefined };
+    expect(ownsPress(mine, diagram, ev(inner), {})).toBe(false);
+    mine.appendChild(inner);
+    expect(ownsPress(mine, diagram, ev(inner), {})).toBe(true);
+  });
+  it('refuses a hit node that is a NAMESAKE from another diagram, takes its own', () => {
+    const mine = document.createElement('div');
+    const own = { id: 'rev' };
+    const namesake = { id: 'rev' };
+    const diagram = { getNode: (id: string) => (id === 'rev' ? own : undefined) };
+    expect(ownsPress(mine, diagram, ev(undefined), { node: namesake })).toBe(false);
+    expect(ownsPress(mine, diagram, ev(undefined), { node: own })).toBe(true);
+  });
+  it('a press with no DOM source and no node is nobody\'s to refuse', () => {
+    expect(ownsPress(document.createElement('div'), { getNode: () => undefined }, ev(undefined), {})).toBe(true);
+  });
+});
+
+describe('item 7 — layout and sizing per container', () => {
+  const NESTED = (extra: Partial<DashboardWidgetSpec>) =>
+    dashboard({
+      columns: 12,
+      widgets: [
+        { id: 'k', kind: 'kpi', span: 12, rows: 1, x: 0, y: 0 },
+        {
+          id: 'box', span: 12, rows: 2, x: 0, y: 1, columns: 12, ...extra,
+          widgets: [
+            { id: 'i1', kind: 'line', span: 8, rows: 2, x: 0, y: 0 },
+            { id: 'i2', kind: 'donut', span: 4, rows: 2, x: 8, y: 0 },
+          ],
+        },
+      ],
+    });
+  const boxOf = (h: ReturnType<typeof mount>['handle']) => h.toJSON().views[0].widgets.find((w) => w.id === 'box')!;
+  const splitOf = (h: ReturnType<typeof mount>['handle']) => h.binderOf('box') as Partial<DashboardSplitHandle> | undefined;
+
+  it('a split container binds a splitter tree; toJSON writes layout and tree under it', () => {
+    const { handle } = mount(NESTED({ layout: 'split' }));
+    expect(handle.getLayout('box')).toBe('split');
+    expect(typeof splitOf(handle)?.getSplitTree).toBe('function');
+    const box = boxOf(handle);
+    expect(box.layout).toBe('split');
+    expect(box.tree).toBeTruthy();
+    expect(box.widgets!.map((w) => w.id).sort()).toEqual(['i1', 'i2']);
+  });
+
+  it('setLayout(mode, containerId) switches a container live and back, children intact', () => {
+    const { handle } = mount(NESTED({}));
+    expect(handle.getLayout('box')).toBe('grid');
+    handle.setLayout('split', 'box');
+    expect(handle.getLayout('box')).toBe('split');
+    expect(typeof splitOf(handle)?.getSplitTree).toBe('function');
+    expect(boxOf(handle).tree).toBeTruthy();
+    handle.setLayout('grid', 'box');
+    expect(handle.getLayout('box')).toBe('grid');
+    expect(splitOf(handle)?.getSplitTree).toBeUndefined();
+    const box = boxOf(handle);
+    expect(box.layout).toBe('grid');
+    expect(box.tree).toBeUndefined();
+    expect(box.widgets!.length).toBe(2);
+    expect(handle.getLayout()).toBe('grid'); // the view itself untouched
+  });
+
+  it('a fit container persists escalate:false and its sizing; grow (default) escalates', () => {
+    const fit = mount(NESTED({ sizing: 'fit' }));
+    expect((fit.model.getGroup('box')!.getMetadata('dashboardBoard') as { escalate?: boolean }).escalate).toBe(false);
+    expect(boxOf(fit.handle).sizing).toBe('fit');
+    const grow = mount(NESTED({}));
+    expect((grow.model.getGroup('box')!.getMetadata('dashboardBoard') as { escalate?: boolean }).escalate).toBe(true);
+    expect(boxOf(grow.handle).sizing).toBeUndefined();
+  });
+
+  it('a saved split container comes back split (toJSON → dashboard)', () => {
+    const a = mount(NESTED({ layout: 'split' }));
+    const json = a.handle.toJSON();
+    const b = mount(dashboard({ ...json }));
+    expect(b.handle.getLayout('box')).toBe('split');
+    expect(typeof splitOf(b.handle)?.getSplitTree).toBe('function');
+    expect(boxOf(b.handle).widgets!.map((w) => w.id).sort()).toEqual(['i1', 'i2']);
+  });
+
+  it('setLayout on an unknown id is a no-op', () => {
+    const { handle } = mount(NESTED({}));
+    handle.setLayout('split', 'nope');
+    expect(handle.getLayout('box')).toBe('grid');
+  });
+});
+
+describe('a split round trip keeps the cells it was given', () => {
+  it('14-row tiles on a fit board come back as 14-row tiles (not the base-row-height guess)', () => {
+    const { handle } = mount(dashboard({ columns: 12, widgets: [
+      { id: 'a', kind: 'kpi', span: 3, rows: 14, x: 0, y: 0 },
+      { id: 'b', kind: 'kpi', span: 5, rows: 14, x: 3, y: 0 },
+      { id: 'c', kind: 'kpi', span: 4, rows: 14, x: 8, y: 0 },
+    ] }));
+    const rowsOf = () => Object.fromEntries(handle.toJSON().views[0].widgets.map((w) => [w.id, w.rows]));
+    expect(rowsOf()).toEqual({ a: 14, b: 14, c: 14 });
+    handle.setLayout('split');
+    expect(rowsOf()).toEqual({ a: 14, b: 14, c: 14 });
+    handle.setLayout('grid');
+    expect(rowsOf()).toEqual({ a: 14, b: 14, c: 14 });
+    expect(handle.widget('b')!.cell).toEqual({ x: 3, y: 0, w: 5, h: 14 });
   });
 });

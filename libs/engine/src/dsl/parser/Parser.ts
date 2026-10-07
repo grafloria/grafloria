@@ -39,6 +39,41 @@ export class ParseError extends Error {
   }
 }
 
+/** The tokens that open a shape's label: met on a LATER line, the label before never closed. */
+const SHAPE_OPENERS: ReadonlySet<TokenType> = new Set([
+  TokenType.SQUARE_OPEN,
+  TokenType.SUBROUTINE_OPEN,
+  TokenType.STADIUM_OPEN,
+  TokenType.CYLINDRICAL_OPEN,
+  TokenType.CIRCLE_OPEN,
+  TokenType.ROUND_OPEN,
+  TokenType.RHOMBUS_OPEN,
+  TokenType.HEXAGON_OPEN,
+  TokenType.TRAPEZOID_OPEN,
+]);
+
+/** The lexer's token for a quote with no closing quote (it runs to the end of its line). */
+function isUnclosedQuote(token: Token): boolean {
+  return token.type === TokenType.UNKNOWN && (token.value.startsWith('"') || token.value.startsWith("'"));
+}
+
+/** What the author has to type to close a label, for the error message. */
+function closingText(endType: TokenType): string {
+  switch (endType) {
+    case TokenType.SQUARE_CLOSE: return ']';
+    case TokenType.SUBROUTINE_CLOSE: return ']]';
+    case TokenType.STADIUM_CLOSE: return '])';
+    case TokenType.CYLINDRICAL_CLOSE: return ')]';
+    case TokenType.CIRCLE_CLOSE: return '))';
+    case TokenType.ROUND_CLOSE: return ')';
+    case TokenType.RHOMBUS_CLOSE: return '}';
+    case TokenType.HEXAGON_CLOSE: return '}}';
+    case TokenType.TRAPEZOID_CLOSE: return '/] or \\]';
+    case TokenType.PIPE: return '|';
+    default: return endType;
+  }
+}
+
 interface NodeRef {
   id: string;
   shape?: NodeShape;
@@ -58,20 +93,36 @@ const V11_SHAPE_MAP: Record<string, NodeShape> = {
   hexagon: 'hexagon', hex: 'hexagon', prepare: 'hexagon',
   trapezoid: 'trapezoid', 'trap-b': 'trapezoid', 'manual-input': 'trapezoid',
   'trapezoid-alt': 'trapezoid-alt', 'trap-t': 'trapezoid-alt',
+  'lean-r': 'parallelogram', 'in-out': 'parallelogram', 'lean-l': 'parallelogram-alt', 'out-in': 'parallelogram-alt',
+  // v11's text block: words on the canvas, no box.
+  text: 'text',
 };
 
 export class Parser {
   private tokens: Token[] = [];
   private current: number = 0;
+  /** The lines the last parse() could not read and skipped — see getErrors(). */
+  private errors: ParseError[] = [];
+
+  /**
+   * The errors the last `parse()` RECOVERED from. The parser skips an unreadable
+   * line rather than abort the whole diagram (and never manufactures nodes from
+   * it), so `parse()` does not throw for them — which used to mean nobody heard
+   * about them at all: `flowchart\n a[[[ -->` parsed "cleanly" to nothing.
+   */
+  getErrors(): ParseError[] {
+    return [...this.errors];
+  }
 
   /**
    * Parse tokens into an AST
    */
   parse(tokens: Token[]): DiagramNode {
+    this.errors = [];
     this.tokens = tokens.filter(t =>
       t.type !== TokenType.WHITESPACE &&
       // Keep ONLY the Tier-2 extension comments; ordinary %% comments still drop.
-      (t.type !== TokenType.COMMENT || /^%%grafloria:(node|edge)\b/.test(t.value))
+      (t.type !== TokenType.COMMENT || /^%%grafloria:(node|edge|group|at|layout|near)\b/.test(t.value))
     );
     this.current = 0;
 
@@ -87,6 +138,12 @@ export class Parser {
     // Parse diagram type and direction
     let diagramType: DiagramType = 'flowchart';
     let direction: Direction | undefined;
+
+    // The header is the first MEANINGFUL line. A leading blank line or comment
+    // (`%%{init: …}%%`, a title comment) leaves a NEWLINE token in front of it, and
+    // the header used to go unrecognised — then skipped as a bad statement, taking
+    // its direction with it.
+    this.consumeNewlines();
 
     if (this.match(TokenType.FLOWCHART, TokenType.GRAPH)) {
       diagramType = 'flowchart';
@@ -111,8 +168,9 @@ export class Parser {
     const statements: StatementNode[] = [];
 
     while (!this.isAtEnd()) {
-      // Skip empty lines
-      if (this.match(TokenType.NEWLINE)) {
+      // Skip empty lines — and `;`, Mermaid's optional statement terminator
+      // (`A --> B;`), which is a separator, not a statement.
+      if (this.match(TokenType.NEWLINE, TokenType.SEMICOLON)) {
         continue;
       }
 
@@ -129,6 +187,7 @@ export class Parser {
         // whole diagram, and must not leave debris. Skip to the next newline.
         // (docs/MERMAID-GAP-ANALYSIS.md Phase 0 — "never manufacture nodes".)
         if (error instanceof ParseError) {
+          this.errors.push(error);
           this.skipLine();
         } else {
           throw error;
@@ -173,6 +232,12 @@ export class Parser {
         case 'linkStyle': return this.parseLinkStyle();
         case 'click': return this.parseClick();
         case 'direction': this.skipLine(); return null;
+        // Accessibility metadata: valid Mermaid that draws nothing. Read as a
+        // statement it used to manufacture a node called "accTitle".
+        case 'accTitle':
+        case 'accDescr':
+          this.skipAccessibilityDirective();
+          return null;
       }
     }
 
@@ -184,7 +249,17 @@ export class Parser {
 
     if (firstGroup.length === 0) {
       // Not a node/edge start — skip the whole line rather than a single token,
-      // so partial debris cannot leak into the model.
+      // so partial debris cannot leak into the model. Recorded, not thrown: the
+      // rest of the diagram still parses, and getErrors() says what was dropped.
+      if (!this.isAtEnd() && !this.check(TokenType.NEWLINE)) {
+        const token = this.currentToken();
+        this.errors.push(new ParseError(
+          isUnclosedQuote(token)
+            ? `the quote ${token.value[0]} is never closed — add the closing ${token.value[0]} on this line`
+            : `Unexpected "${token.value}" — not a node or an edge; the line was skipped`,
+          token, token.line, token.column
+        ));
+      }
       this.skipLine();
       return null;
     }
@@ -266,11 +341,36 @@ export class Parser {
     let prevGroup = firstGroup;
 
     while (this.isLinkToken()) {
-      const linkToken = this.advance();
-      const linkType = this.getLinkType(linkToken.type);
+      let linkToken = this.advance();
 
       let label: string | undefined;
-      if (this.match(TokenType.PIPE)) {
+      // Mermaid's other label spelling — the text BETWEEN the dashes:
+      // `A -- text --> B`, `A -. text .-> B`, `A == text ==> B`. The opener is a
+      // bare `--` / `-.` / `==`; the next link token on the line closes the label
+      // and says what the line is.
+      const opener =
+        (linkToken.type === TokenType.LINE && linkToken.value === '--') ||
+        (linkToken.type === TokenType.DOTTED_LINE && linkToken.value === '-.') ||
+        (linkToken.type === TokenType.THICK_LINE && linkToken.value === '==');
+      if (opener) {
+        let close = this.current;
+        while (close < this.tokens.length && this.tokens[close]!.type !== TokenType.NEWLINE && !this.isLinkTokenAt(close)) close++;
+        if (close > this.current && close < this.tokens.length && this.isLinkTokenAt(close)) {
+          let text = '';
+          let lastEnd = -1;
+          for (let i = this.current; i < close; i++) {
+            const t = this.tokens[i]!;
+            text += (lastEnd >= 0 && t.startIndex > lastEnd ? ' ' : '') + t.value;
+            lastEnd = t.endIndex;
+          }
+          label = text.trim();
+          this.current = close;
+          linkToken = this.advance();
+        }
+      }
+      const linkType = this.getLinkType(linkToken.type);
+
+      if (label === undefined && this.match(TokenType.PIPE)) {
         label = this.parseTextUntil(TokenType.PIPE);
         this.consume(TokenType.PIPE, 'Expected closing "|"');
       }
@@ -374,6 +474,16 @@ export class Parser {
         continue;
       }
 
+      // Mermaid's own spelling: `direction LR` as a statement inside the body.
+      if (this.check(TokenType.IDENTIFIER) && this.peek().value === 'direction') {
+        this.advance();
+        if (this.match(TokenType.TD, TokenType.TB, TokenType.BT, TokenType.RL, TokenType.LR)) {
+          direction = this.previous().value.toUpperCase() as Direction;
+        }
+        this.skipLine();
+        continue;
+      }
+
       const before = this.current;
       try {
         const statement = this.parseStatement();
@@ -473,8 +583,15 @@ export class Parser {
         indices.push(parseInt(this.consume(TokenType.NUMBER, 'Expected link index').value, 10));
       }
     }
+    // Mermaid's `linkStyle 2 interpolate stepBefore stroke:…` — the curve of
+    // the line, before its CSS.
+    let interpolate: string | undefined;
+    if (this.check(TokenType.IDENTIFIER) && this.peek().value === 'interpolate') {
+      this.advance();
+      if (this.check(TokenType.IDENTIFIER)) interpolate = this.advance().value;
+    }
     const properties = this.parseStyleProperties();
-    return { type: 'LinkStyle', indices, properties, location: this.getLocation(start, this.previous()) };
+    return { type: 'LinkStyle', indices, properties, ...(interpolate ? { interpolate } : {}), location: this.getLocation(start, this.previous()) };
   }
 
   /**
@@ -505,9 +622,34 @@ export class Parser {
    * malformed one is simply ignored, never garbage).
    */
   private parseGrafloriaComment(value: string): GrafloriaDirectiveNode | null {
-    const m = value.match(/^%%grafloria:(node|edge)\s+(.+)$/);
+    // `%%grafloria:at <id> <x>,<y> [<w>x<h>]` — an exact position (and size),
+    // for a node or a subgraph's frame.
+    const at = value.match(/^%%grafloria:at\s+(\S+)\s+(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?))?\s*$/);
+    if (at) {
+      const properties: Record<string, string> = { x: at[2], y: at[3] };
+      if (at[4] !== undefined) {
+        properties['w'] = at[4];
+        properties['h'] = at[5];
+      }
+      return { type: 'GrafloriaDirective', target: 'at', ids: [at[1]], properties, location: this.getLocation(this.previous(), this.previous()) };
+    }
+    // `%%grafloria:layout <name>` — how the diagram is arranged (`architecture`:
+    // regions on a grid, boxes in rows, lines straight where boxes line up).
+    const lay = value.match(/^%%grafloria:layout\s+([A-Za-z][\w-]*)\s*$/);
+    if (lay) {
+      return { type: 'GrafloriaDirective', target: 'layout', ids: [lay[1]], properties: {}, location: this.getLocation(this.previous(), this.previous()) };
+    }
+    // `%%grafloria:near <id> <target> [right|left|above|below] [gap]` — a relation,
+    // not a coordinate: a note placed beside the thing it is about.
+    const near = value.match(/^%%grafloria:near\s+(\S+)\s+(\S+)(?:\s+(right|left|above|below))?(?:\s+(\d+(?:\.\d+)?))?\s*$/);
+    if (near) {
+      const properties: Record<string, string> = { side: near[3] ?? 'right' };
+      if (near[4] !== undefined) properties['gap'] = near[4];
+      return { type: 'GrafloriaDirective', target: 'near', ids: [near[1], near[2]], properties, location: this.getLocation(this.previous(), this.previous()) };
+    }
+    const m = value.match(/^%%grafloria:(node|edge|group)\s+(.+)$/);
     if (!m) return null;
-    const target = m[1] as 'node' | 'edge';
+    const target = m[1] as 'node' | 'edge' | 'group';
     const parts = m[2].trim().split(/\s+/);
     const idCount = target === 'edge' ? 2 : 1;
     if (parts.length < idCount) return null;
@@ -533,23 +675,31 @@ export class Parser {
       const propName = this.advance().value;
       this.consume(TokenType.COLON, 'Expected ":" after property name');
 
-      let propValue: string;
-      if (this.check(TokenType.STRING)) {
-        propValue = this.advance().value;
-      } else if (this.check(TokenType.NUMBER)) {
-        propValue = this.advance().value;
-      } else if (this.check(TokenType.IDENTIFIER)) {
-        propValue = this.advance().value;
-      } else {
-        // Try to parse color or other value
-        propValue = this.advance().value;
+      // A value runs to the next comma or the end of the line, and may be
+      // several tokens: `stroke-dasharray:5 4`, `font-size:11px`,
+      // `font-family:Menlo, monospace` would stop at the comma — as Mermaid's
+      // own classDef does. Tokens that touched in the source are rejoined
+      // without a space; separated ones keep one.
+      let propValue = '';
+      let lastEnd = -1;
+      while (
+        !this.isAtEnd() &&
+        !this.check(TokenType.COMMA) &&
+        !this.check(TokenType.NEWLINE) &&
+        !this.check(TokenType.SEMICOLON) &&
+        !this.check(TokenType.COMMENT)
+      ) {
+        const t = this.advance();
+        propValue += (lastEnd >= 0 && t.startIndex > lastEnd ? ' ' : '') + t.value;
+        lastEnd = t.endIndex;
       }
 
       // Convert kebab-case to camelCase
       const camelCaseName = propName.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
 
       // Convert numeric strings to numbers for certain properties
-      if (camelCaseName === 'strokeWidth' || camelCaseName === 'opacity') {
+      if (camelCaseName === 'strokeWidth' || camelCaseName === 'opacity' || camelCaseName === 'fontSize' || camelCaseName === 'letterSpacing' || camelCaseName === 'rx') {
+        // `11px`, `1px`, `2` — a length is its number.
         properties[camelCaseName] = parseFloat(propValue);
       } else {
         properties[camelCaseName] = propValue;
@@ -632,11 +782,16 @@ export class Parser {
       return { shape: 'hexagon', label };
     }
 
-    // [/text/] or [\text\] - trapezoid
+    // The slash shapes, told apart by their pair of slashes (Mermaid):
+    // [/ \] trapezoid, [\ /] inverted trapezoid, [/ /] and [\ \] parallelograms.
     if (this.match(TokenType.TRAPEZOID_OPEN)) {
+      const open = this.previous().value;
       const label = this.parseTextUntil(TokenType.TRAPEZOID_CLOSE);
+      const close = this.currentToken().value;
       this.consume(TokenType.TRAPEZOID_CLOSE, 'Expected trapezoid close');
-      return { shape: 'trapezoid', label };
+      const fwd = open === '[/';
+      const shape: NodeShape = fwd ? (close === '/]' ? 'parallelogram' : 'trapezoid') : close === '/]' ? 'trapezoid-alt' : 'parallelogram-alt';
+      return { shape, label };
     }
 
     // >text] - asymmetric
@@ -651,13 +806,44 @@ export class Parser {
   }
 
   /**
-   * Parse text until a specific token type
+   * Parse text until a specific token type — the label of the shape (or edge
+   * label) whose opening token was just consumed.
+   *
+   * A label may run on across lines (Mermaid takes that), but one that runs
+   * into ANOTHER shape's opening bracket on a later line, or to the end of the
+   * text, was never closed: the reader used to carry on to the next `]` it met
+   * and swallow the line in between, silently. That is a ParseError at the
+   * line where the bracket opened; recovery resumes at the first line break
+   * the label crossed, so the following lines still parse.
    */
   private parseTextUntil(endType: TokenType): string {
+    const open = this.previous();
+    let firstBreak = -1;
+    const unclosed = (): ParseError => {
+      if (firstBreak >= 0) this.current = firstBreak;
+      return new ParseError(
+        `"${open.value}" is never closed — add the closing "${closingText(endType)}" on this line`,
+        open, open.line, open.column
+      );
+    };
+
     let text = '';
     let prevEnd = -1;
 
-    while (!this.check(endType) && !this.isAtEnd()) {
+    while (!this.check(endType)) {
+      if (this.isAtEnd()) throw unclosed();
+      if (this.check(TokenType.NEWLINE)) {
+        if (firstBreak < 0) firstBreak = this.current;
+      } else if (firstBreak >= 0 && SHAPE_OPENERS.has(this.peek().type)) {
+        throw unclosed();
+      }
+      if (isUnclosedQuote(this.peek())) {
+        const quote = this.peek();
+        throw new ParseError(
+          `the quote ${quote.value[0]} is never closed — add the closing ${quote.value[0]} on this line`,
+          quote, quote.line, quote.column
+        );
+      }
       const token = this.advance();
       // Join by SOURCE ADJACENCY, not with an unconditional space: tokens that
       // touch in the input stay touching in the label. The unconditional join
@@ -701,6 +887,16 @@ export class Parser {
       default:
         return 'arrow';
     }
+  }
+
+  /** Is the token at `i` a link token? */
+  private isLinkTokenAt(i: number): boolean {
+    const t = this.tokens[i];
+    return !!t && [
+      TokenType.ARROW, TokenType.LINE, TokenType.DOTTED_ARROW, TokenType.DOTTED_LINE,
+      TokenType.THICK_ARROW, TokenType.THICK_LINE, TokenType.BIDIRECTIONAL,
+      TokenType.CIRCLE_EDGE, TokenType.CROSS_EDGE,
+    ].includes(t.type);
   }
 
   /**
@@ -795,6 +991,16 @@ export class Parser {
   }
 
   /** Consume everything up to (not including) the next newline. */
+  /** `accTitle: …`, `accDescr: …`, or the block form `accDescr { … }` (to its `}`). */
+  private skipAccessibilityDirective(): void {
+    this.advance(); // the keyword
+    if (this.peek().value === '{') {
+      while (!this.isAtEnd() && this.peek().value !== '}') this.advance();
+      if (!this.isAtEnd()) this.advance(); // the closing brace
+    }
+    this.skipLine();
+  }
+
   private skipLine(): void {
     while (!this.isAtEnd() && !this.check(TokenType.NEWLINE)) {
       this.advance();
@@ -804,7 +1010,10 @@ export class Parser {
   /**
    * Get source location from start and end tokens
    */
-  private getLocation(start: Token, end: Token): SourceLocation {
+  private getLocation(start: Token, end: Token | undefined): SourceLocation {
+    // `end` is `previous()`, which is undefined when nothing was consumed — empty
+    // text, whose only token is EOF, crashed here with a TypeError.
+    end = end ?? start;
     return {
       start: {
         line: start.line,

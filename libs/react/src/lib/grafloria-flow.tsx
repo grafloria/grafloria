@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ComponentType, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { createSyncSession } from '@grafloria/engine';
-import type { CommentStore, LinkModel, NodeModel, SyncAdapter, SyncTransport } from '@grafloria/engine';
+import type { CommentStore, GroupModel, LinkModel, NodeModel, SyncAdapter, SyncTransport } from '@grafloria/engine';
 
 /** The uniform collab contract every Grafloria wrapper shares. */
 export interface GrafloriaCollabOptions {
@@ -19,8 +19,9 @@ export interface GrafloriaCollabOptions {
   [option: string]: unknown;
 }
 import { createDiagram, loadCanvasPlugins, bindPresence } from '@grafloria/renderer';
-import type { CanvasPluginOptions, BindPresenceOptions, PresenceBinding } from '@grafloria/renderer';
+import type { CanvasPluginOptions, BindPresenceOptions, PresenceBinding, HighlighterConfig, HighlightConnectedOptions, GroupSpec } from '@grafloria/renderer';
 import type {
+  ColorMode,
   CreateDiagramOptions,
   DiagramInstance,
   EdgeSpec,
@@ -74,11 +75,17 @@ export interface GrafloriaFlowProps {
   nodes?: NodeSpec[];
   /** Controlled edges. */
   edges?: EdgeSpec[];
+  /**
+   * Controlled groups — zones around some nodes (a spec's `groups`, or the live
+   * GroupModels of a loaded document). Reconciled like `nodes`.
+   */
+  groups?: Array<GroupSpec | GroupModel>;
 
   // -- model (uncontrolled) --------------------------------------------------
   /** Uncontrolled nodes — the instance owns them from here on. */
   defaultNodes?: NodeSpec[];
   defaultEdges?: EdgeSpec[];
+  defaultGroups?: Array<GroupSpec | GroupModel>;
 
   // -- callbacks -------------------------------------------------------------
   onNodesChange?: (nodes: NodeModel[]) => void;
@@ -93,6 +100,13 @@ export interface GrafloriaFlowProps {
   /** Custom node components, keyed by node `type`. */
   nodeTypes?: NodeTypes;
   theme?: Theme;
+  /**
+   * `'light'` or `'dark'` pins the built-in light/dark theme; `'system'` follows the
+   * OS (and its high-contrast setting). Applied at mount; a change applies live, with
+   * no remount. While a mode is set, the `theme` prop does not override it — the same
+   * rule as Angular's `colorMode` input. Removing the prop keeps the last mode.
+   */
+  colorMode?: ColorMode;
   fitView?: boolean;
 
   // -- interaction (forwarded to the binder) ---------------------------------
@@ -142,6 +156,19 @@ export interface GrafloriaFlowProps {
   interaction?: Record<string, unknown>;
   /** Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables. */
   tokenBridge?: unknown;
+  /**
+   * The outline layer Angular's canvas draws: outlines around the hovered node,
+   * the selected node, nodes with a validation issue, and valid connection
+   * targets. `true` turns every kind on; an object turns kinds on or off one by
+   * one. Off when unset. Live: follows the prop by value.
+   */
+  highlighterConfig?: boolean | Partial<HighlighterConfig>;
+  /**
+   * Bring the selected nodes' lines forward and fade the rest: `true`, or
+   * options (depth, stroke, outgoing, dimOpacity). Off when unset. Live: follows
+   * the prop by value.
+   */
+  highlightConnected?: boolean | HighlightConnectedOptions;
 
   className?: string;
   style?: CSSProperties;
@@ -159,6 +186,7 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
   const {
     nodes,
     edges,
+    groups,
     defaultNodes,
     defaultEdges,
     nodeTypes,
@@ -193,7 +221,9 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     const options: CreateDiagramOptions = {
       nodes: callbacks.current.nodes ?? callbacks.current.defaultNodes ?? [],
       edges: callbacks.current.edges ?? callbacks.current.defaultEdges ?? [],
+      groups: callbacks.current.groups ?? callbacks.current.defaultGroups,
       theme: callbacks.current.theme,
+      colorMode: callbacks.current.colorMode,
       fitView: callbacks.current.fitView,
       enablePan: callbacks.current.enablePan,
       enableZoom: callbacks.current.enableZoom,
@@ -208,6 +238,8 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
       renderer: callbacks.current.rendererConfig as never,
       interaction: callbacks.current.interaction,
       tokenBridge: callbacks.current.tokenBridge as never,
+      highlighterConfig: callbacks.current.highlighterConfig,
+      highlightConnected: callbacks.current.highlightConnected,
 
       // Blocker #4, from React's side: the core hands us an element, we render a
       // PORTAL into it. Portals keep the node component inside this React tree —
@@ -294,10 +326,24 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     instance.setEdges(edges);
   }, [instance, edges]);
 
+  // After nodes: a group's children must be on the canvas to join it.
   useEffect(() => {
-    if (!instance || !props.theme) return;
+    if (!instance || !groups) return;
+    instance.setGroups(groups);
+  }, [instance, groups]);
+
+  useEffect(() => {
+    // A colour mode decides the theme while it is set (light/dark/the OS); a stray
+    // `theme` must not fight it.
+    if (!instance || !props.theme || callbacks.current.colorMode) return;
     instance.setTheme(props.theme);
   }, [instance, props.theme]);
+
+  // The first mode went in with createDiagram(); only a CHANGE is applied here.
+  useEffect(() => {
+    if (!instance || !props.colorMode || instance.getColorMode() === props.colorMode) return;
+    instance.setColorMode(props.colorMode);
+  }, [instance, props.colorMode]);
 
   // -- canvas plugins (minimap / controls / background) -----------------------
   const pluginsKey = props.plugins === undefined ? undefined : JSON.stringify(props.plugins);
@@ -322,6 +368,39 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
       dispose?.();
     };
   }, [instance, pluginsKey]);
+
+  // -- the outline layer, live ------------------------------------------------
+  // By VALUE, like `layout`, so an inline object does not re-apply every render.
+  // The first value went in with createDiagram(); only a CHANGE is applied here.
+  const highlighterKey = JSON.stringify(props.highlighterConfig ?? false);
+  const appliedHighlighter = useRef<string | null>(null);
+  useEffect(() => {
+    if (!instance) return;
+    if (appliedHighlighter.current === null) {
+      appliedHighlighter.current = highlighterKey;
+      return;
+    }
+    if (appliedHighlighter.current === highlighterKey) return;
+    appliedHighlighter.current = highlighterKey;
+    instance.setHighlighterConfig(JSON.parse(highlighterKey) as boolean | Partial<HighlighterConfig>);
+  }, [instance, highlighterKey]);
+
+  // -- the selection's line highlight, live ---------------------------------------
+  // Same by-VALUE rule; the first value went in with createDiagram(). The key
+  // only DETECTS a change — the prop itself is applied, because JSON turns
+  // `depth: Infinity` (trace every path) into null.
+  const highlightKey = JSON.stringify(props.highlightConnected ?? false);
+  const appliedHighlight = useRef<string | null>(null);
+  useEffect(() => {
+    if (!instance) return;
+    if (appliedHighlight.current === null) {
+      appliedHighlight.current = highlightKey;
+      return;
+    }
+    if (appliedHighlight.current === highlightKey) return;
+    appliedHighlight.current = highlightKey;
+    instance.setHighlightConnected(callbacks.current.highlightConnected ?? false);
+  }, [instance, highlightKey]);
 
   // -- declarative layout -----------------------------------------------------
   // Runs when the `layout` prop (by VALUE, so inline objects are fine) or the
@@ -349,16 +428,28 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
     [style]
   );
 
+  // SSR: the server markup, as ONE object for the life of the component.
+  //
+  // React 19 re-applies a prop whose IDENTITY changed — for `dangerouslySetInnerHTML`
+  // that means re-writing `innerHTML`. A fresh `{ __html }` on every render therefore
+  // replaced the server SVG on the first re-render after mount (setInstance causes one),
+  // throwing away the very DOM the effect had just ADOPTED: the instance kept painting a
+  // detached tree, so clicks did not select and drags moved nodes nobody could see.
+  // Frozen at the first render, it is hydrated once and never written again — after
+  // mount the instance owns that DOM, and a later `ssr` value (a new object built inline,
+  // or new markup) must not overwrite it.
+  const [ssrMarkup] = useState(() => (ssr ? { __html: ssr.html } : undefined));
+
   const content = (
     <>
       <div
         ref={containerRef}
         className={['grafloria-flow', className].filter(Boolean).join(' ')}
         style={rootStyle}
-        // SSR: emit the server's markup verbatim. React does not diff inside
-        // dangerouslySetInnerHTML, so hydration leaves it alone and the effect
-        // above adopts it — that is the whole no-flash trick.
-        {...(ssr ? { dangerouslySetInnerHTML: { __html: ssr.html } } : {})}
+        // SSR: emit the server's markup verbatim. Hydration keeps it (the same
+        // string the server wrote), the effect above adopts it, and the frozen
+        // object above means React never re-writes it — the whole no-flash trick.
+        {...(ssrMarkup ? { dangerouslySetInnerHTML: ssrMarkup } : {})}
       />
       {portals.map((portal) => (
         <NodePortalHost
@@ -383,8 +474,11 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
 
 /**
  * Renders one custom node component into the host element the core created,
- * and keeps it in sync with the model (selection, data) via the instance's
- * events rather than a React render of the whole flow.
+ * and keeps it in sync with the model via events rather than a React render of
+ * the whole flow: the instance's `nodes:change` / `selection:change`, and the
+ * node's own data and metadata writes (`node.setData()`, `setMetadata()`), so a
+ * card follows its data in uncontrolled mode too. Each data change hands the
+ * component a new `data` object, so a `React.memo` card refreshes as well.
  */
 function NodePortalHost({
   portal,
@@ -398,6 +492,7 @@ function NodePortalHost({
   const { node, element } = portal;
   const Component = nodeTypes?.[node.type];
   const [, force] = useState(0);
+  const [dataVersion, setDataVersion] = useState(0);
 
   const rerender = useCallback(() => force((n) => n + 1), []);
 
@@ -411,6 +506,25 @@ function NodePortalHost({
     };
   }, [instance, rerender]);
 
+  // The node's own writes. Only data and metadata: a drag changes the position
+  // on every frame, and the card's content does not depend on it.
+  useEffect(
+    () =>
+      node.on('change', (entry: { property?: string } | undefined) => {
+        const property = entry?.property ?? '';
+        if (property.startsWith('data') || property.startsWith('metadata.')) {
+          setDataVersion((v) => v + 1);
+        }
+      }),
+    [node]
+  );
+
+  const data = useMemo(
+    () => ({ ...(node.data ?? {}) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [node, node.data, dataVersion]
+  );
+
   if (!Component) {
     // A `custom: true` node with no matching entry in `nodeTypes` is a caller
     // error; render nothing rather than an exception in the middle of a canvas.
@@ -420,7 +534,7 @@ function NodePortalHost({
   return createPortal(
     <Component
       id={node.id}
-      data={node.data as never}
+      data={data as never}
       selected={node.isSelected()}
       node={node}
     />,

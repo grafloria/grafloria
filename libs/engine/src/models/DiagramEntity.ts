@@ -84,14 +84,14 @@ export abstract class DiagramEntity {
   }
 
   /**
-   * Check if entity has been modified since last render (Phase 5.2)
+   * Check if entity has been modified since last render
    */
   get isDirty(): boolean {
     return this._isDirty;
   }
 
   /**
-   * Mark entity as dirty (needs re-render) (Phase 5.2)
+   * Mark entity as dirty (needs re-render)
    */
   markDirty(reason?: string): void {
     this.assertNotDisposed(); // Phase 5.4: Prevent operations on disposed entities
@@ -119,7 +119,7 @@ export abstract class DiagramEntity {
   }
 
   /**
-   * Mark entity as clean (rendered) (Phase 5.2)
+   * Mark entity as clean (rendered)
    */
   markClean(): void {
     this.assertNotDisposed(); // Phase 5.4
@@ -137,21 +137,21 @@ export abstract class DiagramEntity {
   }
 
   /**
-   * Get reasons why entity is dirty (Phase 5.2)
+   * Get reasons why entity is dirty
    */
   getDirtyReasons(): string[] {
     return Array.from(this._dirtyReasons);
   }
 
   /**
-   * Get timestamp when entity was marked dirty (Phase 5.2)
+   * Get timestamp when entity was marked dirty
    */
   getDirtyTimestamp(): number | null {
     return this._dirtyTimestamp;
   }
 
   /**
-   * Begin batch update (Phase 5.2)
+   * Begin batch update
    * Delays dirty marking until batch ends
    */
   beginBatch(): void {
@@ -159,7 +159,7 @@ export abstract class DiagramEntity {
   }
 
   /**
-   * End batch update (Phase 5.2)
+   * End batch update
    * Marks dirty once if any changes occurred
    */
   endBatch(): void {
@@ -381,14 +381,14 @@ export abstract class DiagramEntity {
   abstract serialize(): SerializedEntity;
 
   /**
-   * Check if entity has been disposed (Phase 5.4)
+   * Check if entity has been disposed
    */
   isDisposed(): boolean {
     return this._disposed;
   }
 
   /**
-   * Check if entity is not disposed and throw if it is (Phase 5.4)
+   * Check if entity is not disposed and throw if it is
    */
   protected assertNotDisposed(): void {
     if (this._disposed) {
@@ -397,7 +397,7 @@ export abstract class DiagramEntity {
   }
 
   /**
-   * Dispose entity and clean up resources (Phase 5.4)
+   * Dispose entity and clean up resources
    * Prevents memory leaks by:
    * - Removing all event listeners
    * - Clearing change log

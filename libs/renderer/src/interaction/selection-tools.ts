@@ -29,7 +29,7 @@ import {
 } from '../svg/node-toolbar';
 
 /**
- * SelectionToolsController — the floating tool layer (Card 5, wave4/interaction).
+ * SelectionToolsController — the floating tool layer.
  *
  * Everything a user can grab AROUND a selection lives here: the 8 resize
  * handles, the rotate handle, the remove button, the Halo context toolbar
@@ -89,9 +89,9 @@ export interface ToolHandle {
   /**
    * resize-ux: for the four SIDE resize handles (n/e/s/w), the full edge they
    * own, as a WORLD segment (rotated with the node). React Flow's side
-   * affordance is the whole border line, not a midpoint dot — the live audit
-   * found the 6px dots unreachable (fully inside the port's hover halo), so a
-   * side handle hit-tests as a BAND around this segment: grab the border
+   * affordance is the whole border line, not a midpoint dot (a 6px dot would sit
+   * inside the port's hover halo), so a side handle hit-tests as a BAND around
+   * this segment: grab the border
    * anywhere and that edge follows. `world` stays the midpoint for hosts that
    * draw dots. Corner handles never carry a segment.
    */
@@ -151,7 +151,7 @@ export interface SelectionToolsConfig {
   /** Rotation snap while a modifier is held, in degrees. */
   rotationSnapDegrees: number;
   /**
-   * Per-TYPE toolbar policy (Card 6). Layered on top of each node's own
+   * Per-TYPE toolbar policy. Layered on top of each node's own
    * `metadata.toolbar`; lets a host decide which tools a node type exposes
    * without touching per-node data. Omit for "every tool, every node".
    */
@@ -903,7 +903,7 @@ export class SelectionToolsController {
    * Live-resize the node (direct model mutation, like the drag tool: smooth, no
    * command churn — the single undo entry is minted at {@link endGesture}).
    * `snap` optionally quantises the resulting box (grid / alignment) — the host
-   * passes the SnapController's hook so Card 6 composes with Card 5.
+   * passes the SnapController's hook so snapping composes with resizing.
    */
   updateResize(
     engine: DiagramEngine,
@@ -1061,7 +1061,7 @@ export class SelectionToolsController {
    * End the active gesture and return the ONE command that makes it undoable
    * (null for a no-op gesture). The model already sits at its final state — the
    * command re-applies it (a no-op) and records the inverse, exactly like the
-   * wave-3 node-drag commit.
+   * node-drag commit.
    */
   endGesture(engine: DiagramEngine): Command | null {
     const gesture = this.gesture;

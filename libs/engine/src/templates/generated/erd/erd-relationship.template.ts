@@ -36,8 +36,8 @@ export const erdRelationshipTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "diamond",
-      "fill": "#FFF3E0",
-      "stroke": "#F57C00",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },

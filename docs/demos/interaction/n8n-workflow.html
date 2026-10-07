@@ -1,6 +1,14 @@
 <meta charset="utf-8">
 <title>n8n-style workflow builder — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="An n8n workflow you can actually RUN: press ▶ Test workflow and execution walks the graph from the Trigger — the running node spins, finished nodes get green…">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/n8n-workflow.html">
+<meta property="og:title" content="n8n-style workflow builder — Grafloria">
+<meta property="og:description" content="An n8n workflow you can actually RUN: press ▶ Test workflow and execution walks the graph from the Trigger — the running node spins, finished nodes get green…">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/n8n-workflow.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/n8n-workflow.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/n8n-workflow.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   /* ---- the n8n canvas: a dotted grid ground ------------------------------ */
   #stage { display: grid; grid-template-columns: 188px 1fr; height: calc(100vh - 150px); min-height: 460px; }
@@ -242,7 +250,8 @@
 </div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { mountCodeEditor } from '../shell/code-editor.js';
 
 // An interactive n8n workflow, rebuilt on the Grafloria engine — now with n8n's
 // EXECUTION model, not just its looks:
@@ -1083,6 +1092,13 @@ defineDemo({
           const t = bindText(id, 'code', 'textarea');
           t.className = 'code';
           add(fieldWrap('JavaScript', t));
+          // Syntax-coloured, like n8n's own Code node. The textarea stays
+          // canonical (mountCodeEditor mirrors every keystroke back), so
+          // bindText's change handling and the gates are untouched. Mounted
+          // after this frame so the field has its final size first.
+          requestAnimationFrame(() => {
+            if (t.isConnected) void mountCodeEditor(t, { language: 'javascript' });
+          });
           break;
         }
         case 'merge':

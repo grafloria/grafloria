@@ -4,7 +4,34 @@ export {
   type DashboardGridOptions,
   type DashboardGridHandle,
   type DashboardResponsiveOptions,
+  type DragHandleOption,
+  type DragGripOptions,
+  normalizeDragHandle,
 } from './grid-binder';
+export {
+  bindDashboardSplit,
+  SetSplitTreeCommand,
+  SPLIT_TREE_KEY,
+  type DashboardSplitOptions,
+  type DashboardSplitHandle,
+} from './split-binder';
+export {
+  projectSplit,
+  dividersOf,
+  addSplitLeaf,
+  removeSplitLeaf,
+  insertSplitLeaf,
+  moveSplitDivider,
+  splitFromCells,
+  cellsFromSplit,
+  splitLeaves,
+  type SplitNode,
+  type SplitGroup,
+  type SplitLeaf,
+  type SplitDir,
+  type SplitSide,
+  type SplitDivider,
+} from './split-layout';
 export {
   rowHeightFor,
   boardHeightFor,
@@ -21,7 +48,22 @@ export {
   type DashboardGridGeometry,
   type TileDelta,
 } from './grid-mapping';
-export { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID } from './styles';
+export { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID, DASHBOARD_KIT_CSS } from './styles';
+export { paintTabStrip, tabStripReserve, tabStripKey, TAB_STRIP_HEIGHT, TAB_DRAG_THRESHOLD, type TabsOptions, type TabPage } from './tabs';
+export {
+  normalizeCaption,
+  captionReserve,
+  captionBandHeight,
+  paintCaptionBand,
+  CAPTION_HEIGHT,
+  CAPTION_HEIGHT_SUBTITLE,
+  CAPTION_HEIGHT_TIGHT,
+  CAPTION_PASS_THROUGH,
+  type SectionCaption,
+  type SectionCaptionOptions,
+  type SectionCaptionAction,
+  type SectionCaptionFont,
+} from './caption';
 
 // The DATA-FIRST authoring API (the erDiagram/umlDiagram equivalent).
 export {

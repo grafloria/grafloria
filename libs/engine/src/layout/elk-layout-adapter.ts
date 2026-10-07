@@ -8,7 +8,7 @@
  * @see https://github.com/kieler/elkjs
  */
 
-import type { ElkNode, ElkExtendedEdge, ELK } from 'elkjs/lib/elk.bundled';
+import type { ElkNode, ElkExtendedEdge, ELK } from 'elkjs/lib/elk.bundled.js';
 import { loadElk } from './elk-loader';
 import { NodeModel } from '../models/NodeModel';
 import { LinkModel } from '../models/LinkModel';
@@ -63,7 +63,7 @@ export interface ELKLayoutOptions extends LayoutOptions {
   'elk.spacing.edgeNode'?: number;
   /** Spacing between edges */
   'elk.spacing.edgeEdge'?: number;
-  /** Spacing between an edge and its label (Wave 7 — Card 7) */
+  /** Spacing between an edge and its label */
   'elk.spacing.edgeLabel'?: number;
 
   // Layered algorithm specific options

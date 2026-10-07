@@ -13,18 +13,38 @@ import { useGrafloriaStore } from './context';
  */
 
 /**
- * The live `DiagramInstance`, or `null` until `<GrafloriaFlow>` has mounted.
- *
- * Works from anywhere inside an `<GrafloriaProvider>` (a toolbar, a minimap, a
- * sidebar) and from inside `<GrafloriaFlow>`'s own children.
- *
- * ```tsx
- * const grafloria = useGrafloria();
- * <button onClick={() => grafloria?.fitView()}>Fit</button>
- * ```
+ * Development builds only: `process.env.NODE_ENV` is replaced by every React
+ * bundler; with no bundler at all, reading `process` throws and we count that as
+ * development too.
  */
-export function useGrafloria(): DiagramInstance | null {
+const IS_DEV = (() => {
+  try {
+    return process.env['NODE_ENV'] !== 'production';
+  } catch {
+    return true;
+  }
+})();
+const warned = new Set<string>();
+
+/**
+ * A hook with no provider above it returns null forever — correct, but silent, so a
+ * toolbar that forgot the provider just never came alive. Say so, once per hook, in
+ * development. No behaviour change.
+ */
+function warnOutsideProvider(hook: string): void {
+  if (!IS_DEV || warned.has(hook)) return;
+  warned.add(hook);
+  console.warn(
+    `[grafloria] ${hook} was called outside a <GrafloriaProvider>, so it has no diagram to ` +
+      `reach and will keep returning null. Wrap this component and its <GrafloriaFlow> in ` +
+      `<GrafloriaProvider> from @grafloria/react (or render it as a child of <GrafloriaFlow>).`
+  );
+}
+
+/** `useGrafloria()`'s body, told which public hook it is serving. */
+function useInstance(hook: string): DiagramInstance | null {
   const store = useGrafloriaStore();
+  if (!store) warnOutsideProvider(hook);
   const [instance, setInstance] = useState<DiagramInstance | null>(
     () => store?.get() ?? null
   );
@@ -36,6 +56,21 @@ export function useGrafloria(): DiagramInstance | null {
   }, [store]);
 
   return instance;
+}
+
+/**
+ * The live `DiagramInstance`, or `null` until `<GrafloriaFlow>` has mounted.
+ *
+ * Works from anywhere inside an `<GrafloriaProvider>` (a toolbar, a minimap, a
+ * sidebar) and from inside `<GrafloriaFlow>`'s own children.
+ *
+ * ```tsx
+ * const grafloria = useGrafloria();
+ * <button onClick={() => grafloria?.fitView()}>Fit</button>
+ * ```
+ */
+export function useGrafloria(): DiagramInstance | null {
+  return useInstance('useGrafloria()');
 }
 
 /** What `useNodesState` hands back — React Flow's tuple, with our types. */
@@ -101,7 +136,7 @@ export interface SelectionChange {
  * does NOT re-subscribe on every render.
  */
 export function useOnSelectionChange(handler: (change: SelectionChange) => void): void {
-  const instance = useGrafloria();
+  const instance = useInstance('useOnSelectionChange()');
   const [ref] = useState(() => ({ current: handler }));
   ref.current = handler;
 
@@ -113,7 +148,7 @@ export function useOnSelectionChange(handler: (change: SelectionChange) => void)
 
 /** The current selection as state (for rendering an inspector panel). */
 export function useSelection(): SelectionChange {
-  const instance = useGrafloria();
+  const instance = useInstance('useSelection()');
   const [selection, setSelection] = useState<SelectionChange>({ nodes: [], edges: [] });
 
   useEffect(() => {
@@ -134,7 +169,7 @@ export function useSelection(): SelectionChange {
 
 /** The live camera (zoom + world rect) as state — for a minimap or a zoom badge. */
 export function useViewport(): { zoom: number; x: number; y: number } {
-  const instance = useGrafloria();
+  const instance = useInstance('useViewport()');
   const [state, setState] = useState({ zoom: 1, x: 0, y: 0 });
 
   useEffect(() => {

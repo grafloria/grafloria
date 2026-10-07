@@ -94,29 +94,20 @@ const CAT_COLOR = {
 const CATEGORY_ORDER = Object.keys(CATEGORY_LABEL);
 
 // NEW badge — a DATED, curatorial overlay, not part of the auto-discovery. These
-// are the pages created or reworked in the 2026-07 React-Flow-parity wave; the
-// badge just helps a visitor find them. Clear this set once the wave is old news.
+// are the pages created in the 2026-09 wave (the dashboards' fluid board, the
+// connected-path highlight, the AI-style and architecture diagrams, Mermaid
+// architecture & block). The July React-Flow-parity wave that held it before is
+// old news. Clear this set once this wave is too.
 const NEW_DEMOS = new Set([
-  'nodes/delete-middle-node.html',
-  'nodes/drag-handle.html',
-  'nodes/intersections.html',
-  'nodes/node-resizer.html',
-  'nodes/node-resize-gesture.html',
-  'nodes/node-toolbar.html',
-  'nodes/proximity-connect.html',
-  'nodes/node-position-animation.html',
-  'nodes/stress-test.html',
-  'nodes/updating-nodes.html',
-  'edges/animating-edges.html',
-  'interaction/computing-flows.html',
-  'interaction/connection-events.html',
-  'grouping/parent-child.html',
-  'diagrams/scrollable-cards.html',
-  'interaction/n8n-workflow.html',
-  'collab/conflict-resolution.html',
-  'diagrams/erd-editor.html',
-  'dashboard/dashboard-builder.html',
-  'dashboard/grid-options.html',
+  'dashboard/fluid-board.html',
+  'edges/highlight-connected.html',
+  'diagrams/ai-style-diagram.html',
+  'diagrams/architecture-layout.html',
+  'diagrams/mermaid-architecture-block.html',
+  'interaction/chatbot-flow.html',
+  'interaction/workflow-builder.html',
+  'interaction/marketing-automation.html',
+  'diagrams/data-modeling.html',
 ]);
 const isNewDemo = (rel) => NEW_DEMOS.has(rel.split(sep).join('/'));
 
@@ -126,7 +117,10 @@ const esc = (s) =>
 // The wow-factor demos, in the order a first-time visitor should meet them —
 // so the flagships are never buried below alphabetical A-Z. Keys are `cat/name`.
 const FEATURED = [
-  'interaction/n8n-workflow', 'dashboard/dashboard-builder', 'diagrams/erd-editor',
+  'diagrams/visio-editor', 'misc/drawio-import',
+  'interaction/n8n-workflow', 'interaction/chatbot-flow',
+  'interaction/workflow-builder', 'interaction/marketing-automation', 'diagrams/data-modeling',
+  'dashboard/dashboard-builder', 'diagrams/erd-editor',
   'diagrams/class-uml', 'collab/two-tabs-live', 'edges/edge-routing',
   'styling/turbo-flow', 'interaction/execute-flow', 'grouping/swimlanes',
   'collab/comments', 'nodes/shapes', 'layout/off-thread-layout',
@@ -153,7 +147,7 @@ function render(byCat) {
   const featuredCards = FEATURED.map((k) => byRel[k]).filter(Boolean)
     .map(({ d, cat }) => cardHtml(d, cat)).join('');
   const featuredSection = featuredCards ? `
-      <section class="featured">
+      <section class="featured" id="featured">
         <h2>★ Featured <span class="count">start here</span></h2>
         <div class="grid">${featuredCards}
         </div>
@@ -166,7 +160,7 @@ function render(byCat) {
         .map((d) => cardHtml(d, cat))
         .join('');
       return `
-      <section>
+      <section id="${esc(cat)}">
         <h2>${esc(CATEGORY_LABEL[cat] ?? cat)} <span class="count">${byCat[cat].length}</span></h2>
         <div class="grid">${cards}
         </div>
@@ -180,6 +174,12 @@ function render(byCat) {
 <title>Grafloria — demo gallery</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Over 100 live, clickable Grafloria demos — every one executed in CI as a test. Nodes, edges, layouts, dashboards, collaboration, exports.">
+<link rel="canonical" href="https://grafloria.com/demos/">
+<meta property="og:title" content="Grafloria — demo gallery">
+<meta property="og:description" content="Over 100 live, clickable Grafloria demos — every one executed in CI as a test.">
+<meta property="og:url" content="https://grafloria.com/demos/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="shell/logo.svg" type="image/svg+xml">
 <style>
   :root {

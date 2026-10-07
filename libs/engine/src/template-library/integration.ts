@@ -38,7 +38,7 @@ function getLibraryTemplatesByCategory(category: string): NodeTemplate[] {
 }
 
 /**
- * Register all Phase 4 templates into a TemplateRegistry instance
+ * Register every template in the template library into a TemplateRegistry.
  *
  * Use this to make the template library available to NodeFactory:
  *

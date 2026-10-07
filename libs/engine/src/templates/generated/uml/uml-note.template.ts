@@ -37,9 +37,9 @@ export const umlNoteTemplate: NodeTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
-      "fill": "#FFFDE7",
-      "stroke": "#F57F17",
+      "type": "note",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 1,
       "opacity": 1
     },

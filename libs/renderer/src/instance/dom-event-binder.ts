@@ -1,6 +1,9 @@
 import type { DiagramEngine, LinkModel, NodeModel, GroupModel } from '@grafloria/engine';
 // wave12/connect-ergonomics (gap 1): the ONE undoable step a subflow drag commits.
-import { MoveGroupCommand, MoveNodeCommand, MacroCommand, GroupMembershipService } from '@grafloria/engine';
+import {
+  MoveGroupCommand, MoveNodeCommand, MacroCommand, GroupMembershipService,
+  memberConfinement, clampBoxInto, containingGroup, poolOfLane, laneAtPoint,
+} from '@grafloria/engine';
 import type { Command } from '@grafloria/engine';
 import type { GroupFrameSnapshot, GroupNodeMove, GroupFrameMove } from '@grafloria/engine';
 import type { InteractionController } from '../interaction/interaction-controller';
@@ -24,6 +27,9 @@ import { portWorldPosition } from '../svg/port-positioning';
 import { delegateWheelToScrollable } from './wheel-scroll-yield';
 import { SnapController } from '../interaction/snapping';
 import { InPlaceTextEditor, type TextEditTarget } from '../interaction/in-place-editor';
+// visio-depth: the shipped nudge math (KeyboardNavigationController.nudgeCommand)
+// was auto-wired only in the Angular wrapper; `enableKeyboardNudge` drives it here.
+import { KeyboardNavigationController } from '../interaction/keyboard-navigation';
 import type { Rectangle } from '../types/geometry.types';
 import type { ProximityCandidate } from '../interaction/snapping';
 
@@ -77,6 +83,17 @@ export interface DomEventBinderHost {
   requestRender(): void;
   /** Emit a public diagram event (`node:click`, `connect`, …). */
   emit(event: string, payload: unknown): void;
+  /**
+   * Optional: bracket a USER GESTURE so the host can coalesce its selection
+   * events. The binder opens a batch around every DOM event it handles, and holds
+   * one from a press to its release (a marquee clears on the press and selects on
+   * the release). Batches nest; a host that implements these emits ONE
+   * `selection:change`, with the final selection, when the outermost one closes —
+   * instead of one per model mutation plus the binder's own (which fired stale,
+   * mid-gesture events: `{n:1,e:1}` then `{n:1,e:0}` for one click).
+   */
+  beginSelectionBatch?(): void;
+  endSelectionBatch?(): void;
 }
 
 export interface DomEventBinderOptions {
@@ -114,6 +131,12 @@ interface NodeDragState {
    * position makes leaving a snapline land exactly back under the pointer.
    */
   snapAnchor?: { x: number; y: number };
+  /**
+   * Where each dragged member must stay (its confining group's extent; a lane
+   * member's whole pool), captured once when the drag commits — the frames do
+   * not move during a node drag. Absent / null entry = free.
+   */
+  confine?: Map<string, { x: number; y: number; width: number; height: number } | null>;
 }
 
 /**
@@ -146,6 +169,23 @@ export class DomEventBinder {
   private isPanning = false;
   /** Armed by an empty-canvas left press; becomes a real pan past the drag threshold. */
   private pendingEmptyPan: { startX: number; startY: number } | null = null;
+  /**
+   * The screen point where a PORT press started a connection. A press on a
+   * port claims the gesture immediately — but a press that never travels past
+   * the drag threshold is a CLICK, and a click on a shape must select it.
+   * Without this, the port hit zones (top-centre, side-mid — a card's whole
+   * header band) were dead for selection: connect swallowed the press,
+   * completion at the same spot failed validation, and the release fell out
+   * as a silent no-op. Found by live audit, on every node type.
+   */
+  private pendingPortClick: { startX: number; startY: number; nodeId: string } | null = null;
+  /**
+   * Same click-vs-gesture layering for POSITIONED EDGE LABELS: a press on a
+   * label arms a label DRAG, so a motionless press-release ended as a silent
+   * no-op and the label was a selection dead zone — a query-builder join pill
+   * you could not click (live audit finding, the port dead-band's twin).
+   */
+  private pendingLabelClick: { startX: number; startY: number; linkId: string } | null = null;
   private lastPanX = 0;
   private lastPanY = 0;
 
@@ -160,6 +200,7 @@ export class DomEventBinder {
   private snap?: SnapController;
   /** T10 — the in-place label editor + its live DOM widget (lazy). */
   private textEditor?: InPlaceTextEditor;
+  private keyboardNav?: KeyboardNavigationController;
   private activeTextInput?: HTMLInputElement;
   /** T8 — lazily built per diagram; rebuilt when the diagram identity changes. */
   private membership?: { service: GroupMembershipService; diagram: unknown };
@@ -214,11 +255,20 @@ export class DomEventBinder {
   /** The container's own touch-action, restored on detach. */
   private previousTouchAction: string | null = null;
 
-  private readonly boundPointerDown = (e: PointerEvent) => this.onPointerDown(e);
-  private readonly boundPointerMove = (e: PointerEvent) => this.onPointerMove(e);
-  private readonly boundPointerUp = (e: PointerEvent) => this.onPointerUp(e);
-  private readonly boundPointerCancel = (e: PointerEvent) => this.onPointerCancel(e);
-  private readonly boundContextMenu = (e: MouseEvent) => this.onContextMenu(e);
+  // Every DOM entry point runs inside a selection batch (see
+  // DomEventBinderHost.beginSelectionBatch); a press opens a hold its release closes.
+  private readonly boundPointerDown = (e: PointerEvent) =>
+    this.inSelectionBatch(() => { this.holdPress(); this.onPointerDown(e); });
+  private readonly boundPointerMove = (e: PointerEvent) => this.inSelectionBatch(() => this.onPointerMove(e));
+  private readonly boundPointerUp = (e: PointerEvent) => {
+    this.inSelectionBatch(() => this.onPointerUp(e));
+    this.releasePress();
+  };
+  private readonly boundPointerCancel = (e: PointerEvent) => {
+    this.inSelectionBatch(() => this.onPointerCancel(e));
+    this.releasePress();
+  };
+  private readonly boundContextMenu = (e: MouseEvent) => this.inSelectionBatch(() => this.onContextMenu(e));
   /**
    * Wave 6 — Card 5. The registered tool that CLAIMED the current gesture, if
    * any. Exactly one tool owns a gesture end-to-end (the same single-active-tool
@@ -263,20 +313,51 @@ export class DomEventBinder {
   // very path that replaces these.
   private readonly boundMouseDown = (e: MouseEvent) => {
     if (this.sawPointerEvent) return;
-    this.onMouseDown(e);
+    this.inSelectionBatch(() => { this.holdPress(); this.onMouseDown(e); });
   };
   private readonly boundMouseMove = (e: MouseEvent) => {
     if (this.sawPointerEvent) return;
-    this.onMouseMove(e);
+    this.inSelectionBatch(() => this.onMouseMove(e));
   };
   private readonly boundMouseUp = (e: MouseEvent) => {
     if (this.sawPointerEvent) return;
-    this.onMouseUp(e);
+    this.inSelectionBatch(() => this.onMouseUp(e));
+    this.releasePress();
   };
-  private readonly boundMouseLeave = () => this.onMouseLeave();
-  private readonly boundDblClick = (e: MouseEvent) => this.onDoubleClick(e);
-  private readonly boundKeyDown = (e: KeyboardEvent) => this.onKeyDown(e);
-  private readonly boundKeyUp = (e: KeyboardEvent) => this.onKeyUp(e);
+  private readonly boundMouseLeave = () => {
+    this.inSelectionBatch(() => this.onMouseLeave());
+    // The release may never reach a container the pointer has left.
+    this.releasePress();
+  };
+  private readonly boundDblClick = (e: MouseEvent) => this.inSelectionBatch(() => this.onDoubleClick(e));
+  private readonly boundKeyDown = (e: KeyboardEvent) => this.inSelectionBatch(() => this.onKeyDown(e));
+  private readonly boundKeyUp = (e: KeyboardEvent) => this.inSelectionBatch(() => this.onKeyUp(e));
+
+  /** True while a press holds a selection batch open until its release. */
+  private pressHeld = false;
+
+  /** Run one DOM event's handling inside a selection batch (host permitting). */
+  private inSelectionBatch(run: () => void): void {
+    this.host.beginSelectionBatch?.();
+    try {
+      run();
+    } finally {
+      this.host.endSelectionBatch?.();
+    }
+  }
+
+  /** A press opens a batch that lasts until its release (or the pointer leaves). */
+  private holdPress(): void {
+    if (this.pressHeld) return;
+    this.pressHeld = true;
+    this.host.beginSelectionBatch?.();
+  }
+
+  private releasePress(): void {
+    if (!this.pressHeld) return;
+    this.pressHeld = false;
+    this.host.endSelectionBatch?.();
+  }
 
   constructor(
     private readonly container: HTMLElement,
@@ -383,6 +464,8 @@ export class DomEventBinder {
   detach(): void {
     if (!this.attached) return;
     this.attached = false;
+    // A press still held open must not leave the host batching forever.
+    this.releasePress();
 
     this.container.removeEventListener('wheel', this.boundWheel);
     this.container.removeEventListener('pointerdown', this.boundPointerDown);
@@ -639,6 +722,10 @@ export class DomEventBinder {
     const engine = this.engine();
     const diagram = engine?.getDiagram();
     if (!engine || !diagram) return;
+    // A new press invalidates any recorded port/label press — only their
+    // branches below re-arm them. Stale ones would mis-read a later release.
+    this.pendingPortClick = null;
+    this.pendingLabelClick = null;
 
     // 1. Pan: middle button, or left button while Space is held.
     if (event.button === 1 || (event.button === 0 && this.spaceKeyPressed)) {
@@ -780,6 +867,13 @@ export class DomEventBinder {
           this.host.requestRender();
           return;
         }
+        // Remember where this press landed: if it releases inside the drag
+        // threshold it was a click on the shape, not a connection attempt.
+        this.pendingPortClick = {
+          startX: event.clientX,
+          startY: event.clientY,
+          nodeId: state.hoveredPort.nodeId,
+        };
         this.host.interaction.startConnection(state.hoveredPort, worldX, worldY, engine);
         this.host.requestRender();
         return;
@@ -846,8 +940,20 @@ export class DomEventBinder {
           return;
         }
 
-        if (edgeHit.part === 'label' && edgeHit.labelIndex !== undefined) {
+        if (
+          edgeHit.part === 'label' &&
+          edgeHit.labelIndex !== undefined &&
+          // Only POSITIONED labels drag (they own position/offset). A display-
+          // label hit (synthesized box over `metadata.label`, no labels[]
+          // entry) falls through to link selection instead.
+          edgeHit.link.labels?.[edgeHit.labelIndex]
+        ) {
           event.preventDefault();
+          this.pendingLabelClick = {
+            startX: event.clientX,
+            startY: event.clientY,
+            linkId: edgeHit.link.id,
+          };
           this.host.interaction.startLabelDrag(edgeHit.link, edgeHit.labelIndex);
           this.host.requestRender();
           return;
@@ -857,9 +963,18 @@ export class DomEventBinder {
 
     // 7. Link body → select. Hover state is the fast path; fall back to a direct
     // hit-test because on first load no mousemove has run yet.
-    const link =
-      state.hoveredLink ??
-      this.host.interaction.getLinkAtPosition(worldX, worldY, engine);
+    //
+    // BUT a node body covers link ink: nodes paint in `nodes-layer`, ABOVE
+    // `links-layer`, so at a point where both coincide the user is touching the
+    // NODE — the ink is invisible under it. This rung used to win anyway, so a
+    // node dropped onto a link's path became undraggable at exactly the spot
+    // the user grabbed it (visio gate: recv adopted between pick and ship sits
+    // on the pick→ship path; the drag-out press selected that link instead and
+    // the node never moved).
+    const link = diagram.getNodeAtPosition(worldX, worldY)
+      ? null
+      : (state.hoveredLink ??
+        this.host.interaction.getLinkAtPosition(worldX, worldY, engine));
     if (link) {
       event.preventDefault();
       this.host.interaction.selectLink(link, engine, event.ctrlKey || event.metaKey);
@@ -906,7 +1021,9 @@ export class DomEventBinder {
       const group = this.findGroupAtPoint(diagram, worldX, worldY);
       if (group) {
         event.preventDefault();
-        this.pressGroup(group, diagram, event, worldX, worldY);
+        // A lane is a band of its pool, not a free frame: grabbing it moves the
+        // whole pool (its lanes stay tiled and their members ride along).
+        this.pressGroup(poolOfLane(diagram, group) ?? group, diagram, event, worldX, worldY);
         return;
       }
     }
@@ -1151,13 +1268,53 @@ export class DomEventBinder {
 
     if (state.isDraggingLabel) {
       event.preventDefault();
+      const press = this.pendingLabelClick;
+      this.pendingLabelClick = null;
       this.host.interaction.endLabelDrag();
+      // CLICK, not drag: select the label's link with the same semantics a
+      // press on the link body has, so a pill click drives selection:change
+      // and every inspector listening to it.
+      if (
+        press &&
+        Math.hypot(event.clientX - press.startX, event.clientY - press.startY) <
+          this.options.dragThreshold
+      ) {
+        const diagram = engine?.getDiagram();
+        const link = diagram?.getLink?.(press.linkId);
+        if (engine && link) {
+          this.host.interaction.selectLink(link, engine, event.ctrlKey || event.metaKey);
+          this.emitSelectionChange();
+          this.host.emit('edge:click', { edge: link, world: this.toWorld(event) });
+        }
+      }
       this.host.requestRender();
       return;
     }
 
     if (state.isConnecting) {
       event.preventDefault();
+      // CLICK, not drag: the press never left the threshold, so the user was
+      // clicking the shape — cancel the aborted connection and select the
+      // port's node with the same semantics a body click has (plain replaces,
+      // shift extends). Without this the port zones are selection dead bands.
+      const press = this.pendingPortClick;
+      this.pendingPortClick = null;
+      if (
+        press &&
+        Math.hypot(event.clientX - press.startX, event.clientY - press.startY) <
+          this.options.dragThreshold
+      ) {
+        this.host.interaction.cancelConnection(engine);
+        const diagram = engine.getDiagram();
+        const node = diagram?.getNode(press.nodeId);
+        if (diagram && node) {
+          if (event.shiftKey) diagram.addToSelection(node);
+          else diagram.selectNode(node);
+          this.emitSelectionChange();
+        }
+        this.host.requestRender();
+        return;
+      }
       // The link itself is created asynchronously by the engine's
       // `connection:complete` handler, so `connect` is emitted from the
       // instance's `link:added` subscription — not from here.
@@ -1190,10 +1347,13 @@ export class DomEventBinder {
       const drag = this.nodeDrag;
       const moved = drag.committed;
       this.nodeDrag = null;
-      // wave12: record the completed drag as one undoable step BEFORE anything else.
-      if (moved && engine) this.commitNodeMove(engine, drag);
-      // T8/visio: the drop may also change WHAT CONTAINS the node.
-      if (moved && engine) this.applyMembershipOnDrop(engine, drag);
+      // A lane member settles fully inside the lane it was dropped in, BEFORE the
+      // move is recorded, so undo/redo replay the position the user saw.
+      if (moved && engine) this.settleIntoLanes(engine, drag);
+      // wave12 + T8/visio: record the completed drag — and any change of WHAT
+      // CONTAINS the node that the drop makes — as ONE undoable step (a drop out
+      // of a group used to take two Ctrl+Z presses, into another group three).
+      if (moved && engine) this.commitDrop(engine, drag);
       // wave12 (gap 2): a drag that ended near a compatible port auto-links on drop.
       const connected = moved ? this.commitProximityConnection() : false;
       if (moved) this.emitNodesChange();
@@ -1239,6 +1399,7 @@ export class DomEventBinder {
     }
 
     if (engine && this.host.interaction.getState().isConnecting) {
+      this.pendingPortClick = null;
       this.host.interaction.cancelConnection(engine);
       this.host.requestRender();
     }
@@ -1246,15 +1407,21 @@ export class DomEventBinder {
     this.setCursor('default');
   }
 
-  /** Double-click on a link body inserts a waypoint there (label editing is a host concern). */
+  /** Double-click: node → in-place rename; link label → rename; link body → waypoint. */
   onDoubleClick(event: MouseEvent): void {
     const engine = this.engine();
     if (!engine || this.isReadonly()) return;
 
     const { x: worldX, y: worldY } = this.toWorld(event);
-    const hit = this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
+    // Node bodies cover link ink (nodes-layer paints above links-layer), so a
+    // node under the point owns the double-click — same covered-ink rule as the
+    // mousedown ladder's link rung.
+    const nodeUnder = engine.getDiagram()?.getNodeAtPosition(worldX, worldY);
+    const hit = nodeUnder
+      ? null
+      : this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
     if (!hit) {
-      const node = engine.getDiagram()?.getNodeAtPosition(worldX, worldY);
+      const node = nodeUnder;
       if (node) {
         this.host.emit('node:doubleclick', { node, world: { x: worldX, y: worldY } });
         // T10/visio — double-click EDITS the label. InPlaceTextEditor (session +
@@ -1266,6 +1433,22 @@ export class DomEventBinder {
           this.openTextEditor(engine, { type: 'node', nodeId: node.id });
         }
       }
+      return;
+    }
+
+    // visio-depth — double-click an edge LABEL edits it in place, exactly like
+    // a node label (same editor, same undoable commit; the display-label
+    // dialect is resolved inside InPlaceTextEditor.begin). Same opt-in flag.
+    if (
+      hit.part === 'label' &&
+      engine.getInteractionConfig().enableInPlaceTextEdit === true
+    ) {
+      event.preventDefault();
+      this.openTextEditor(engine, {
+        type: 'link-label',
+        linkId: hit.link.id,
+        labelIndex: hit.labelIndex ?? 0,
+      });
       return;
     }
 
@@ -1310,9 +1493,19 @@ export class DomEventBinder {
           this.activeTool = undefined;
           this.activeToolHit = undefined;
         }
+        // Escape LAYERS: the first press cancels the in-flight gesture and is
+        // CONSUMED — falling through here let the clear-selection branch below
+        // wipe the very selection the tool's onCancel just rolled back, so a
+        // cancelled marquee ended empty instead of restored (live audit
+        // finding). A second Escape, with no gesture active, deselects.
+        this.host.requestRender();
+        return;
       }
       const state = this.host.interaction.getState();
-      if (state.isConnecting) this.host.interaction.cancelConnection(engine);
+      if (state.isConnecting) {
+        this.pendingPortClick = null;
+        this.host.interaction.cancelConnection(engine);
+      }
       if (state.isReconnectingLink) this.host.interaction.cancelLinkReconnection(engine);
       // wave12/node-resize: Escape abandons an in-flight resize, restoring the
       // node's pre-gesture size/position (SelectionToolsController.cancelGesture).
@@ -1347,23 +1540,58 @@ export class DomEventBinder {
         // throwing exactly that way).
         const nodeIds = selectedNodes.map((n: NodeModel) => n.id);
         const linkId = selectedLink?.id;
+        // The deletes land after the key event's batch has closed: hold one
+        // across them, so the whole Delete is still ONE selection:change.
+        this.host.beginSelectionBatch?.();
         void (async () => {
           const cm = engine.commandManager;
           const many = nodeIds.length + (linkId ? 1 : 0) > 1;
-          if (many) cm.beginBatch();
           try {
-            if (linkId) await engine.removeLink(linkId);
-            for (const id of nodeIds) await engine.removeNode(id);
+            if (many) cm.beginBatch();
+            try {
+              if (linkId) await engine.removeLink(linkId);
+              for (const id of nodeIds) await engine.removeNode(id);
+            } finally {
+              if (many) await cm.endBatch('Delete Selection');
+            }
+            this.host.requestRender();
+            if (nodeIds.length > 0) this.emitNodesChange();
+            if (linkId) this.emitEdgesChange();
+            this.emitSelectionChange();
           } finally {
-            if (many) await cm.endBatch('Delete Selection');
+            this.host.endSelectionBatch?.();
           }
-          this.host.requestRender();
-          if (nodeIds.length > 0) this.emitNodesChange();
-          if (linkId) this.emitEdgesChange();
-          this.emitSelectionChange();
         })();
       }
       return;
+    }
+
+    // visio-depth — arrow-key NUDGE (opt-in via `enableKeyboardNudge`): the
+    // selection moves 1 world unit per press, ×10 with Shift, each press one
+    // undoable command — and MERGEABLE, so a held key's auto-repeat collapses
+    // into a single undo entry inside the CommandManager's merge window. The
+    // math is the shipped KeyboardNavigationController's; the focused-input
+    // guard at the top of this handler keeps arrows out of a live text editor.
+    if (
+      !this.isReadonly() &&
+      event.key.startsWith('Arrow') &&
+      engine.getInteractionConfig().enableKeyboardNudge &&
+      !(event.ctrlKey || event.metaKey || event.altKey)
+    ) {
+      if (!this.keyboardNav) this.keyboardNav = new KeyboardNavigationController();
+      const delta = this.keyboardNav.nudgeDelta(event.key, event.shiftKey);
+      if (delta && diagram.getSelectedNodes().length > 0) {
+        event.preventDefault();
+        const command = this.keyboardNav.nudgeCommand(engine, delta.x, delta.y, {
+          mergeable: true,
+        });
+        if (command) {
+          void engine.commandManager.execute(command);
+          this.host.requestRender();
+          this.emitNodesChange();
+        }
+        return;
+      }
     }
 
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
@@ -1417,6 +1645,52 @@ export class DomEventBinder {
       });
       return;
     }
+    // visio-depth — ⌘D / Ctrl+D duplicates the selection: copy + paste-with-
+    // offset as ONE command (DuplicateCommand shipped in Phase 1.8 with no
+    // keyboard reaching it). preventDefault matters here: the browser's default
+    // for this chord is bookmark-the-page.
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') {
+      if (this.isReadonly() || diagram.getSelectedNodes().length === 0) return;
+      event.preventDefault();
+      void engine.duplicate().then(() => {
+        this.host.requestRender();
+        this.emitNodesChange();
+        this.emitEdgesChange();
+        this.emitSelectionChange();
+      });
+      return;
+    }
+
+    // visio-depth — F2 and TYPE-TO-REPLACE, both riding the same in-place
+    // editor double-click opens (gated on the same `enableInPlaceTextEdit`
+    // opt-in, and the focused-input guard at the top keeps both out of a live
+    // editor). F2 opens with the current label selected; a PRINTABLE key with
+    // exactly one node selected opens the editor seeded with that character,
+    // replacing the label on commit — Visio's signature affordance. Modifier
+    // chords never trigger it: every Ctrl/Cmd chord returned above, and
+    // Alt-composed characters are explicitly excluded here.
+    if (
+      !this.isReadonly() &&
+      engine.getInteractionConfig().enableInPlaceTextEdit === true
+    ) {
+      const selected = diagram.getSelectedNodes();
+      if (selected.length === 1) {
+        if (event.key === 'F2') {
+          event.preventDefault();
+          this.openTextEditor(engine, { type: 'node', nodeId: selected[0]!.id });
+          return;
+        }
+        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          this.openTextEditor(
+            engine,
+            { type: 'node', nodeId: selected[0]!.id },
+            { seed: event.key }
+          );
+          return;
+        }
+      }
+    }
   }
 
   onKeyUp(event: KeyboardEvent): void {
@@ -1446,6 +1720,14 @@ export class DomEventBinder {
       diagram.toggleNodeSelection(node);
     } else if (!wasSelected) {
       diagram.selectNode(node);
+      // A plain node click REPLACES the selection, and links are part of it.
+      // Leaving a link in state 'selected' here made the properties panel read
+      // "2 shapes" after edge-click → node-click (live audit finding): node
+      // and link selection are one selection to the user, so clearing one
+      // side must clear the other — exactly what the empty-canvas click does.
+      diagram.getLinks().forEach((l) => {
+        if (l.state === 'selected') l.setState('default');
+      });
     }
     // Clicking an already-selected node without a modifier keeps the whole
     // selection, so a multi-node drag works.
@@ -1498,9 +1780,11 @@ export class DomEventBinder {
       // has moved yet on this frame (the delta is applied after this block), so these
       // are the true start positions.
       drag.startPositions = new Map();
+      drag.confine = new Map();
       for (const id of drag.nodeIds) {
         const n = diagram.getNode(id);
         if (n) drag.startPositions.set(id, { x: n.position.x, y: n.position.y, z: n.position.z });
+        drag.confine.set(id, memberConfinement(diagram, id));
       }
     }
 
@@ -1524,6 +1808,9 @@ export class DomEventBinder {
         node.setPosition(node.position.x + dx, node.position.y + dy);
       }
     }
+    // `constrainChildren`, honoured at last: a member of a confining group stays
+    // inside it (a lane member inside its pool's lanes) while the pointer roams.
+    this.confineDraggedNodes(drag, diagram);
 
     // Node geometry moved ⇒ the port hit cache is stale.
     this.host.interaction.invalidatePortHitCache();
@@ -1869,14 +2156,62 @@ export class DomEventBinder {
     };
   }
 
-  private applyMembershipOnDrop(engine: DiagramEngine, drag: NodeDragState): void {
-    if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return;
-    if (drag.nodeIds.length !== 1 || this.isReadonly()) return;
+  /** Keep each dragged member inside the rectangle that confines it. */
+  private confineDraggedNodes(
+    drag: NodeDragState,
+    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>
+  ): void {
+    if (!drag.confine) return;
+    for (const id of drag.nodeIds) {
+      const rect = drag.confine.get(id);
+      if (!rect) continue;
+      const node = diagram.getNode(id);
+      if (!node || node.state.locked) continue;
+      const p = clampBoxInto(rect, node.position.x, node.position.y, node.size.width, node.size.height);
+      if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
+    }
+  }
 
+  /**
+   * A lane member is let go: it belongs to the lane its CENTRE landed in (the
+   * membership service makes that so on drop), so move it fully inside that
+   * lane's band — a box straddling two lanes reads as belonging to neither.
+   */
+  private settleIntoLanes(engine: DiagramEngine, drag: NodeDragState): void {
     const diagram = engine.getDiagram();
     if (!diagram) return;
+    for (const id of drag.nodeIds) {
+      const node = diagram.getNode(id);
+      if (!node || node.state.locked) continue;
+      const group = containingGroup(diagram, id);
+      const pool = group ? poolOfLane(diagram, group) : undefined;
+      if (!pool) continue;
+      const lane = laneAtPoint(diagram, pool, {
+        x: node.position.x + node.size.width / 2,
+        y: node.position.y + node.size.height / 2,
+      });
+      if (!lane) continue;
+      const p = clampBoxInto(lane.getInnerBounds(), node.position.x, node.position.y, node.size.width, node.size.height);
+      if (p.x !== node.position.x || p.y !== node.position.y) node.setPosition(p.x, p.y);
+    }
+  }
+
+  /**
+   * What the drop does to what contains the dragged node — PLANNED, not done:
+   * the leave/join commands ride in the drop's own undo step (see commitDrop).
+   * Null when drop-to-join is off, several nodes moved, or the node is locked.
+   */
+  private planMembershipOnDrop(
+    engine: DiagramEngine,
+    drag: NodeDragState
+  ): { service: GroupMembershipService; plan: ReturnType<GroupMembershipService['planNodeDrop']> } | null {
+    if (engine.getInteractionConfig().enableGroupMembershipOnDrop !== true) return null;
+    if (drag.nodeIds.length !== 1 || this.isReadonly()) return null;
+
+    const diagram = engine.getDiagram();
+    if (!diagram) return null;
     const node = diagram.getNode(drag.nodeIds[0]);
-    if (!node || node.state.locked) return;
+    if (!node || node.state.locked) return null;
 
     if (!this.membership || this.membership.diagram !== diagram) {
       this.membership = {
@@ -1894,18 +2229,14 @@ export class DomEventBinder {
       x: node.position.x + node.size.width / 2,
       y: node.position.y + node.size.height / 2,
     };
-    void Promise.resolve(service.handleNodeDragEnd(node.id, point)).then((result) => {
-      if (result?.changed) {
-        this.emitNodesChange();
-        this.host.requestRender();
-      }
-    });
+    return { service, plan: service.planNodeDrop(node.id, point) };
   }
 
-  private commitNodeMove(engine: DiagramEngine, drag: NodeDragState): void {
-    if (!drag.committed || !drag.startPositions) return;
+  /** One MoveNodeCommand per dragged node that actually moved (FROM → TO). */
+  private moveSteps(engine: DiagramEngine, drag: NodeDragState): Command[] {
+    if (!drag.committed || !drag.startPositions) return [];
     const diagram = engine.getDiagram();
-    if (!diagram) return;
+    if (!diagram) return [];
 
     const steps: Command[] = [];
     for (const id of drag.nodeIds) {
@@ -1922,17 +2253,35 @@ export class DomEventBinder {
         )
       );
     }
-    if (steps.length === 0) return;
+    return steps;
+  }
 
-    let command: Command;
-    if (steps.length === 1) {
-      command = steps[0];
-    } else {
-      const macro = new MacroCommand('Move nodes');
-      for (const s of steps) macro.addStep(s);
-      command = macro;
-    }
-    void engine.commandManager.execute(command);
+  /** Run `steps` through the command manager as ONE history entry. */
+  private executeAsOneStep(engine: DiagramEngine, name: string, steps: Command[]): Promise<void> {
+    if (steps.length === 0) return Promise.resolve();
+    if (steps.length === 1) return Promise.resolve(engine.commandManager.execute(steps[0]));
+    const macro = new MacroCommand(name);
+    for (const step of steps) macro.addStep(step);
+    return Promise.resolve(engine.commandManager.execute(macro));
+  }
+
+  /** A completed drop: the move plus any membership change, one undo step. */
+  private commitDrop(engine: DiagramEngine, drag: NodeDragState): void {
+    const membership = this.planMembershipOnDrop(engine, drag);
+    const steps = [...this.moveSteps(engine, drag), ...(membership?.plan.commands ?? [])];
+    void this.executeAsOneStep(engine, membership?.plan.changed ? 'Move into group' : 'Move nodes', steps).then(() => {
+      if (!membership) return;
+      membership.service.finishDrop(membership.plan);
+      if (membership.plan.changed) {
+        this.emitNodesChange();
+        this.host.requestRender();
+      }
+    });
+  }
+
+  /** The move alone, one undo step (a drag the pointer abandoned mid-way). */
+  private commitNodeMove(engine: DiagramEngine, drag: NodeDragState): void {
+    void this.executeAsOneStep(engine, 'Move nodes', this.moveSteps(engine, drag));
   }
 
   /**
@@ -2010,7 +2359,11 @@ export class DomEventBinder {
    * adds is the DOM input and where to put it — mapped through the live
    * world→client transform so it lands on the label at any zoom or pan.
    */
-  private openTextEditor(engine: DiagramEngine, target: TextEditTarget): void {
+  private openTextEditor(
+    engine: DiagramEngine,
+    target: TextEditTarget,
+    options?: { seed?: string }
+  ): void {
     if (!this.textEditor) this.textEditor = new InPlaceTextEditor();
     const editor = this.textEditor;
     this.closeTextEditor();
@@ -2054,7 +2407,10 @@ export class DomEventBinder {
       cleanup();
       if (command) void engine.commandManager.execute(command);
       this.host.requestRender();
-      this.emitNodesChange();
+      // Tell the host WHAT changed: a link-label commit is an edges change —
+      // it used to report nodes:change, so an edge-labels listener never heard.
+      if (target.type === 'link-label') this.emitEdgesChange();
+      else this.emitNodesChange();
     };
     const cancel = () => {
       if (settled) return;
@@ -2076,7 +2432,28 @@ export class DomEventBinder {
     (this.container.ownerDocument ?? document).body.appendChild(input);
     this.activeTextInput = input;
     input.focus();
-    input.select();
+    if (options?.seed !== undefined) {
+      // Type-to-replace (Visio's signature affordance): the editor opens
+      // holding ONLY the typed character — committing replaces the label,
+      // Escape restores the original untouched (the session keeps it).
+      input.value = options.seed;
+      input.setSelectionRange(input.value.length, input.value.length);
+    } else {
+      input.select();
+    }
+  }
+
+  /**
+   * Open the in-place label editor programmatically — the seam behind F2 and a
+   * host's context-menu Rename. Unlike the double-click path this is NOT gated
+   * on `enableInPlaceTextEdit`: an explicit call IS the host's opt-in.
+   * Returns false when the target does not exist / is not editable / readonly.
+   */
+  beginLabelEdit(target: TextEditTarget, options?: { seed?: string }): boolean {
+    const engine = this.engine();
+    if (!engine || this.isReadonly()) return false;
+    this.openTextEditor(engine, target, options);
+    return this.activeTextInput !== undefined;
   }
 
   /** Drop any live text widget without committing (a new edit, or teardown). */

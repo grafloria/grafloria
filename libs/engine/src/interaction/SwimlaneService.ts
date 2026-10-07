@@ -35,7 +35,7 @@ export interface CreatePoolOptions {
   lanes: LaneSpec[];
   /** Title-band thickness along the main-axis start (left for horizontal). */
   headerSize?: number;
-  /** Reserve a header band inside each lane (Card 3 headerHeight). Default 0. */
+  /** Reserve a header band inside each lane (its `headerHeight`). Default 0. */
   laneHeaderSize?: number;
 }
 

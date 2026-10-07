@@ -1,3 +1,4 @@
+import { debugLog } from '../../util/debug';
 // OrthogonalRouter - Right-angle routing with obstacle avoidance
 
 import type { IRouter, RouteRequest, RoutedPath, RoutePoint, Obstacle } from '../types';
@@ -10,6 +11,122 @@ import { ObstacleIndex } from '../ObstacleIndex';
  * what made a one-node drag take 5.5 seconds.
  */
 const INDEX_THRESHOLD = 24;
+
+/**
+ * How many grid cells the A* search may span along its longest axis before the
+ * grid is coarsened to fit.
+ *
+ * The search explores on the order of the SQUARE of this number, against a fixed
+ * iteration budget, so it is what decides how long a link can be before
+ * pathfinding gives up. At the default grid of 10 units it used to mean any link
+ * longer than ~2,200 units exhausted the budget, and the caller then fell back to
+ * a straight line — drawn straight THROUGH whatever the route was supposed to
+ * avoid. Coarsening the grid instead keeps the search in budget, so a long link
+ * is routed a little less finely rather than routed wrongly.
+ */
+const MAX_GRID_CELLS_ACROSS = 150;
+
+/**
+ * The ceiling on that coarsening, as a multiple of the requested grid.
+ *
+ * Obstacle collision is sampled per grid POINT, not per segment, so a grid step
+ * much larger than the obstacle margin could stride over a thin obstacle without
+ * ever sampling inside it. Capping the multiplier keeps the step near the margin;
+ * a link long enough to need more than this is left to the existing fallback.
+ */
+const MAX_GRID_COARSENING = 4;
+
+/**
+ * A binary min-heap over (key, fScore), used as the A* frontier.
+ *
+ * Parallel arrays rather than objects or tuples: the frontier is pushed and
+ * popped tens of thousands of times per route, and this is the version that does
+ * not allocate a wrapper per entry. Supports duplicates by design — see the lazy
+ * deletion note on aStarPathfinding.
+ */
+class FScoreHeap {
+  private readonly keys: string[] = [];
+  private readonly scores: number[] = [];
+  /**
+   * Tie-break rank, carried alongside the score.
+   *
+   * TIES ARE THE COMMON CASE on a uniform grid — most frontier cells share an
+   * fScore — so whatever breaks them decides the route's shape. The Set this
+   * replaced was scanned with a strict `<`, which meant "the earliest-inserted
+   * cell wins", and routes were built on that without anyone writing it down: an
+   * obstacle with equal-cost detours to either side was always rounded the same
+   * way. A bare heap breaks ties arbitrarily, which silently mirrored some routes
+   * — the jump-over gallery demo caught it, because a route that had gone right
+   * of an obstacle went left instead and started crossing a neighbouring link.
+   *
+   * So the order is made explicit and stable rather than incidental: equal
+   * scores are resolved by first-insertion rank, exactly as the scan did.
+   */
+  private readonly ranks: number[] = [];
+
+  get size(): number {
+    return this.keys.length;
+  }
+
+  /** `rank` orders equal scores; pass each key's first-insertion sequence. */
+  push(key: string, score: number, rank: number): void {
+    this.keys.push(key);
+    this.scores.push(score);
+    this.ranks.push(rank);
+    let i = this.keys.length - 1;
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (!this.before(i, parent)) break;
+      this.swap(parent, i);
+      i = parent;
+    }
+  }
+
+  /** Does entry `a` come before entry `b`? Score first, insertion rank second. */
+  private before(a: number, b: number): boolean {
+    if (this.scores[a] !== this.scores[b]) return this.scores[a] < this.scores[b];
+    return this.ranks[a] < this.ranks[b];
+  }
+
+  pop(): string | undefined {
+    const n = this.keys.length;
+    if (n === 0) return undefined;
+    const top = this.keys[0];
+    const lastKey = this.keys.pop() as string;
+    const lastScore = this.scores.pop() as number;
+    const lastRank = this.ranks.pop() as number;
+
+    if (this.keys.length > 0) {
+      this.keys[0] = lastKey;
+      this.scores[0] = lastScore;
+      this.ranks[0] = lastRank;
+      let i = 0;
+      for (;;) {
+        const left = i * 2 + 1;
+        const right = left + 1;
+        let smallest = i;
+        if (left < this.keys.length && this.before(left, smallest)) smallest = left;
+        if (right < this.keys.length && this.before(right, smallest)) smallest = right;
+        if (smallest === i) break;
+        this.swap(smallest, i);
+        i = smallest;
+      }
+    }
+    return top;
+  }
+
+  private swap(a: number, b: number): void {
+    const k = this.keys[a];
+    this.keys[a] = this.keys[b];
+    this.keys[b] = k;
+    const s = this.scores[a];
+    this.scores[a] = this.scores[b];
+    this.scores[b] = s;
+    const r = this.ranks[a];
+    this.ranks[a] = this.ranks[b];
+    this.ranks[b] = r;
+  }
+}
 
 /**
  * OrthogonalRouter creates paths with only 90-degree angles
@@ -807,6 +924,24 @@ export class OrthogonalRouter implements IRouter {
   /**
    * Orthogonal routing with obstacle avoidance using A*
    */
+  /**
+   * Route with obstacle avoidance, at the best clearance the SCENE can afford.
+   *
+   * The requested margin (default 20) is a preference, not a possibility: in a
+   * row of nodes 20 units apart, a 20-unit margin on BOTH sides seals every gap,
+   * and the 30-unit port offset lands the A* start inside the neighbouring
+   * node's body. The old code made exactly one attempt at exactly that margin,
+   * and when it failed — which in tight layouts it reliably did — it silently
+   * returned the simple route, drawn straight through the node it was asked to
+   * avoid. Measured on a four-in-a-row demo: the "avoidance" route and the
+   * no-avoidance route were byte-identical.
+   *
+   * So: try the requested clearance first, and when an attempt cannot even
+   * stand at its start/end or A* finds no path, RETRY at half, then a quarter,
+   * then a 2-unit floor. A tightly-packed scene gets a route that hugs its
+   * corridors instead of one that ignores them; a spacious scene succeeds on
+   * the first attempt and pays nothing new.
+   */
   private avoidObstaclesRoute(
     start: Point,
     end: Point,
@@ -817,55 +952,107 @@ export class OrthogonalRouter implements IRouter {
     index?: ObstacleIndex | null
   ): RoutedPath | null {
     const gridSize = options.gridSize ?? 10;
-    const margin = options.obstacleMargin ?? 20; // Margin around obstacles
+    const requestedMargin = options.obstacleMargin ?? 20;
     const maxIterations = options.maxIterations ?? 10000;
-    const gapOffset = 30; // Distance to move away from port (must be > margin to clear obstacle boundary)
+
+    const clearances: number[] = [requestedMargin];
+    for (const next of [Math.ceil(requestedMargin / 2), Math.ceil(requestedMargin / 4), 2]) {
+      if (next >= 2 && next < clearances[clearances.length - 1]) clearances.push(next);
+    }
+
+    for (const margin of clearances) {
+      const attempt = this.attemptAvoidanceRoute(
+        start, end, obstacles, gridSize, margin, maxIterations, options,
+        sourceDirection, targetDirection, index
+      );
+      if (attempt) return attempt;
+    }
+
+    debugLog(`⚠️ A* pathfinding failed at every clearance (${clearances.join(', ')}):`, {
+      start, end, obstacleCount: obstacles.length, gridSize,
+    });
+    debugLog(`   Falling back to simple orthogonal route (no obstacle avoidance)`);
+    return this.simpleOrthogonalRoute(start, end, gridSize, options.costs?.bends ?? 10, sourceDirection, targetDirection);
+  }
+
+  /** One avoidance attempt at one clearance. Null means "not at this margin". */
+  private attemptAvoidanceRoute(
+    start: Point,
+    end: Point,
+    obstacles: Obstacle[],
+    gridSize: number,
+    margin: number,
+    maxIterations: number,
+    options: any,
+    sourceDirection?: 'left' | 'right' | 'top' | 'bottom',
+    targetDirection?: 'left' | 'right' | 'top' | 'bottom',
+    index?: ObstacleIndex | null
+  ): RoutedPath | null {
+    // The port stub scales WITH the clearance — it exists to clear the obstacle
+    // boundary, so it must stay just past the margin. The old fixed 30 was the
+    // other half of the tight-row failure: it jumped clean over a 20-unit gap
+    // into the neighbour's body before pathfinding even began.
+    const gapOffset = Math.max(margin + 2, 8);
 
     // Apply gap offset to move away from ports before pathfinding
     // This ensures paths don't start/end directly on node borders
     const sourceOffset = this.applyGapOffset(start, sourceDirection, gapOffset);
     const targetOffset = this.applyGapOffset(end, targetDirection, gapOffset);
 
+    // How fine a grid can this route AFFORD? The search cost goes with the
+    // square of the cells it has to cross, so a long link on a fine grid runs out
+    // of iterations and gets abandoned to a straight line through the obstacles
+    // it was meant to avoid. Coarsen just enough to stay inside the budget, and
+    // never past MAX_GRID_COARSENING (see the constant). Short links — every link
+    // in an ordinary diagram — come out of this with `gridSize` untouched and
+    // route exactly as they did before.
+    const span = Math.max(
+      Math.abs(targetOffset.x - sourceOffset.x),
+      Math.abs(targetOffset.y - sourceOffset.y)
+    );
+    const searchGrid =
+      Number.isFinite(span) && span / gridSize > MAX_GRID_CELLS_ACROSS
+        ? gridSize * Math.min(MAX_GRID_COARSENING, Math.ceil(span / MAX_GRID_CELLS_ACROSS / gridSize))
+        : gridSize;
+
     // Snap offset points to grid for A* pathfinding
-    let gridStart = this.snapToGrid(sourceOffset, gridSize);
-    let gridEnd = this.snapToGrid(targetOffset, gridSize);
+    let gridStart = this.snapToGrid(sourceOffset, searchGrid);
+    let gridEnd = this.snapToGrid(targetOffset, searchGrid);
 
     // CRITICAL FIX: Validate start/end points are not inside obstacles
-    // If grid snapping moved them into an obstacle, adjust outward
+    // If grid snapping moved them into an obstacle, adjust outward. A start or
+    // end that CANNOT be made valid fails this attempt — the caller retries at
+    // a smaller clearance, where the same point may be perfectly standable.
     if (this.collidesWithObstacles(gridStart, obstacles, margin, index)) {
-      console.debug(`⚠️ Grid start point inside obstacle, adjusting...`);
-      gridStart = this.findNearestValidPoint(gridStart, sourceDirection, obstacles, margin, gridSize, index);
+      debugLog(`⚠️ Grid start point inside obstacle, adjusting...`);
+      const adjusted = this.findNearestValidPoint(gridStart, sourceDirection, obstacles, margin, searchGrid, index);
+      if (!adjusted) return null;
+      gridStart = adjusted;
     }
     if (this.collidesWithObstacles(gridEnd, obstacles, margin, index)) {
-      console.debug(`⚠️ Grid end point inside obstacle, adjusting...`);
-      gridEnd = this.findNearestValidPoint(gridEnd, targetDirection, obstacles, margin, gridSize, index);
+      debugLog(`⚠️ Grid end point inside obstacle, adjusting...`);
+      const adjusted = this.findNearestValidPoint(gridEnd, targetDirection, obstacles, margin, searchGrid, index);
+      if (!adjusted) return null;
+      gridEnd = adjusted;
     }
 
-    // Use A* to find path between offset points
+    // Use A* to find path between offset points. `searchGrid` — NOT `gridSize` —
+    // must be what the neighbour steps use too: the endpoints above were snapped
+    // to it, and a search stepping on a finer grid would walk straight past the
+    // goal cell without ever matching its key.
     const path = this.aStarPathfinding(
       gridStart,
       gridEnd,
       obstacles,
-      gridSize,
+      searchGrid,
       margin,
       maxIterations,
       index
     );
 
-    if (!path || path.length === 0) {
-      // IMPROVED: Log why pathfinding failed and what we're doing
-      console.debug(`⚠️ A* pathfinding failed for link routing:`, {
-        start: gridStart,
-        end: gridEnd,
-        obstacleCount: obstacles.length,
-        gridSize,
-        margin
-      });
-      console.debug(`   Falling back to simple orthogonal route (no obstacle avoidance)`);
-
-      // Fallback to simple route if pathfinding fails
-      return this.simpleOrthogonalRoute(start, end, gridSize, options.costs?.bends ?? 10, sourceDirection, targetDirection);
-    }
+    // No path at this clearance — the ATTEMPT fails, not the routing: the
+    // caller has smaller clearances to try before conceding to the fallback.
+    if (!path || path.length === 0) return null;
 
     // Prepend actual start point and append actual end point
     // This ensures the path connects to the exact port positions
@@ -892,7 +1079,23 @@ export class OrthogonalRouter implements IRouter {
   }
 
   /**
-   * A* pathfinding on a grid with improved obstacle avoidance
+   * A* pathfinding on a grid with improved obstacle avoidance.
+   *
+   * The frontier is a BINARY MIN-HEAP, not a Set scanned for its minimum. That
+   * scan was O(|openSet|) inside a loop that runs up to `maxIterations` times, so
+   * the router's cost grew superlinearly with route length: a single 3,200-unit
+   * link cost ~27ms per pointer move (1,097ms of `aStarPathfinding` self-time
+   * across a 40-move drag), and dragging it dropped frames on a ten-node scene.
+   *
+   * The heap uses LAZY DELETION: improving a node pushes a second entry rather
+   * than repositioning the first, and stale entries are recognised on pop by the
+   * closed set. That keeps the push path allocation-free at the cost of a heap
+   * that can hold duplicates — the standard trade, and the right one here
+   * because the frontier is short-lived.
+   *
+   * `maxIterations` counts REAL expansions, not loop passes: a popped duplicate
+   * is skipped without spending budget, so the budget means the same thing it
+   * always did even though the loop now spins more often.
    */
   private aStarPathfinding(
     start: Point,
@@ -903,36 +1106,41 @@ export class OrthogonalRouter implements IRouter {
     maxIterations: number,
     index?: ObstacleIndex | null
   ): RoutePoint[] | null {
-    const openSet = new Set<string>();
+    const openHeap = new FScoreHeap();
     const closedSet = new Set<string>();
     const cameFrom = new Map<string, Point>();
     const gScore = new Map<string, number>();
-    const fScore = new Map<string, number>();
+
+    // FIRST-INSERTION ORDER, which is what the Set this replaced iterated in and
+    // therefore what every existing route's shape was decided by. Recorded per
+    // KEY, not per push: re-adding a key to a Set does not move it, so an
+    // improved cell kept its original position in the old scan too.
+    const firstSeen = new Map<string, number>();
+    let seq = 0;
+    const rankOf = (key: string): number => {
+      let rank = firstSeen.get(key);
+      if (rank === undefined) {
+        rank = seq++;
+        firstSeen.set(key, rank);
+      }
+      return rank;
+    };
 
     const startKey = this.pointToKey(start);
     const endKey = this.pointToKey(end);
 
-    openSet.add(startKey);
+    openHeap.push(startKey, this.heuristic(start, end), rankOf(startKey));
     gScore.set(startKey, 0);
-    fScore.set(startKey, this.heuristic(start, end));
 
     let iterations = 0;
 
-    while (openSet.size > 0 && iterations < maxIterations) {
+    while (openHeap.size > 0 && iterations < maxIterations) {
+      const currentKey = openHeap.pop();
+      if (currentKey === undefined) break;
+      // A stale duplicate left behind by an improvement — already expanded.
+      if (closedSet.has(currentKey)) continue;
+
       iterations++;
-
-      // Find node with lowest fScore
-      let currentKey = '';
-      let lowestF = Infinity;
-      for (const key of openSet) {
-        const f = fScore.get(key) ?? Infinity;
-        if (f < lowestF) {
-          lowestF = f;
-          currentKey = key;
-        }
-      }
-
-      if (!currentKey) break;
 
       const current = this.keyToPoint(currentKey);
 
@@ -943,7 +1151,6 @@ export class OrthogonalRouter implements IRouter {
         return this.simplifyOrthogonalPath(path);
       }
 
-      openSet.delete(currentKey);
       closedSet.add(currentKey);
 
       // Check neighbors (4-directional: up, down, left, right)
@@ -975,15 +1182,15 @@ export class OrthogonalRouter implements IRouter {
 
         const tentativeG = (gScore.get(currentKey) ?? Infinity) + movementCost;
 
-        if (!openSet.has(neighborKey)) {
-          openSet.add(neighborKey);
-        } else if (tentativeG >= (gScore.get(neighborKey) ?? Infinity)) {
-          continue;
-        }
+        // Only a genuine improvement is worth recording. (The Set version added
+        // the neighbour and then overwrote cameFrom/gScore unconditionally
+        // whenever the key was not currently queued — which could replace a
+        // cheaper route to that cell with a dearer one.)
+        if (tentativeG >= (gScore.get(neighborKey) ?? Infinity)) continue;
 
         cameFrom.set(neighborKey, current);
         gScore.set(neighborKey, tentativeG);
-        fScore.set(neighborKey, tentativeG + this.heuristic(neighbor, end));
+        openHeap.push(neighborKey, tentativeG + this.heuristic(neighbor, end), rankOf(neighborKey));
       }
     }
 
@@ -1189,7 +1396,7 @@ export class OrthogonalRouter implements IRouter {
     margin: number,
     gridSize: number,
     index?: ObstacleIndex | null
-  ): Point {
+  ): Point | null {
     // Try moving outward in the port direction to find a valid point
     const maxAttempts = 10;
     let current = { ...point };
@@ -1232,9 +1439,14 @@ export class OrthogonalRouter implements IRouter {
       }
     }
 
-    // If all attempts failed, return original point (pathfinding will fail, but at least we tried)
-    console.debug(`   ✗ Could not find valid point after ${maxAttempts} attempts, using original`);
-    return point;
+    // NULL, not the original point. This used to return the colliding point with
+    // a comment admitting "pathfinding will fail" — and it did, silently, and the
+    // caller then fell back to a route drawn straight through the obstacle. A
+    // start we cannot stand on is this ATTEMPT failing, and the caller has a
+    // cheaper clearance to try next; poisoning A* with an unreachable start
+    // helped nobody.
+    debugLog(`   ✗ Could not find valid point after ${maxAttempts} attempts`);
+    return null;
   }
 
   /**

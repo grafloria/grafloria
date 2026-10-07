@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { GrafloriaFlow } from '@grafloria/react';
 import type { DiagramInstance } from '@grafloria/react';
 import { markReady } from '../ready';
+import { mountCodeEditor } from '../code-editor';
 
 const nodes = [
   { id: 'start', position: { x: 80, y: 60 },  size: { width: 140, height: 60 }, data: { label: 'Start' } },
@@ -21,6 +22,9 @@ export default function MermaidTextDemo() {
   const [text, setText] = useState('');
   const doExport = () => { if (instanceRef.current) setText(instanceRef.current.exportText()); };
   const doLoad = () => { instanceRef.current?.loadText(text); };
+  // The text reads as Mermaid: the gallery's editor colours it over the textarea.
+  const source = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { void mountCodeEditor(source.current, { language: 'mermaid' }); }, []);
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       <GrafloriaFlow
@@ -38,8 +42,10 @@ export default function MermaidTextDemo() {
           <button onClick={doExport} style={{ padding: '6px 14px', borderRadius: 7, border: 0, background: '#3B52D9', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>⇢ Export</button>
           <button onClick={doLoad} style={{ padding: '6px 14px', borderRadius: 7, border: '1px solid #94A5F0', background: '#EEF1FE', color: '#3B52D9', fontWeight: 600, cursor: 'pointer' }}>⇠ Load</button>
         </div>
-        <textarea value={text} onChange={(e) => setText(e.target.value)}
-          style={{ flex: 1, font: '12.5px/1.6 ui-monospace, Menlo, monospace', border: '1px solid #E3E7F2', borderRadius: 8, padding: 10, resize: 'none' }} />
+        <div style={{ flex: 1, minHeight: 0, border: '1px solid #E3E7F2', borderRadius: 8, overflow: 'hidden' }}>
+          <textarea ref={source} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false}
+            style={{ width: '100%', height: '100%', boxSizing: 'border-box', font: '12.5px/1.6 ui-monospace, Menlo, monospace', border: 0, padding: 10, resize: 'none' }} />
+        </div>
       </div>
     </div>
   );

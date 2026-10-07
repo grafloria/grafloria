@@ -53,7 +53,7 @@ export class ValidationEngine {
   }
 
   /**
-   * Check if real-time validation is enabled (Phase 1 - Critical Fixes)
+   * Check if real-time validation is enabled
    */
   isRealTimeValidationEnabled(): boolean {
     return this.realTimeValidation;
@@ -524,7 +524,7 @@ export class ValidationEngine {
   }
 
   /**
-   * Validate node hierarchy (Phase 2 - Hierarchy-aware validation)
+   * Validate node hierarchy
    */
   validateHierarchy(
     node: NodeModel,
@@ -669,7 +669,7 @@ export class ValidationEngine {
   }
 
   /**
-   * Validate group (Phase 2 - Group validation)
+   * Validate group
    */
   validateGroup(
     group: GroupModel,
@@ -823,7 +823,7 @@ export class ValidationEngine {
   }
 
   /**
-   * Validate layout configuration (Phase 3 - Layout validation)
+   * Validate layout configuration
    */
   validateLayout(
     group: GroupModel,

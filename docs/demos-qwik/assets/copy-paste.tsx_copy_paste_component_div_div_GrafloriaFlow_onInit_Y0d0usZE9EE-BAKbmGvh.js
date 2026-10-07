@@ -1,0 +1,1 @@
+import{v as t}from"./core.min-DSxUtzo6.js";import{x as d}from"./core.min-DSxUtzo6.js";import{m as e}from"./ready-C4_3DsUA.js";import"./preloader-D7tuiBjF.js";const m=()=>{const[o]=t();o.value="one node — select it, then ⌘C / Ctrl+C to copy and ⌘V / Ctrl+V to paste",e()};export{d as _hW,m as s_Y0d0usZE9EE};

@@ -34,7 +34,7 @@ export interface SerializedPort extends SerializedEntity {
   visible: boolean;
   style: Record<string, any>;
   data: Record<string, any>;
-  renderingConfig?: any; // Phase 2: Port rendering configuration from templates
+  renderingConfig?: any; // Port rendering configuration from templates
 
   // --- Wave 6: every field below is OPTIONAL and omitted when unset, so a port
   // that uses none of the new config serializes byte-identically to before.
@@ -82,7 +82,7 @@ export class PortModel extends DiagramEntity {
    *
    * DERIVED state, rebuilt from the diagram's links by
    * `DiagramModel.reconcilePortConnections()`, exactly like `currentConnections`.
-   * It exists because `fromMaxLinks` / `toMaxLinks` (Card 2) need a DIRECTIONAL
+   * It exists because `fromMaxLinks` / `toMaxLinks` need a DIRECTIONAL
    * count and `currentConnections` is a direction-blind Set of link ids.
    *
    * A link registered without a role (legacy `addConnection(id)` callers) is
@@ -106,7 +106,7 @@ export class PortModel extends DiagramEntity {
   // validates byte-identically to before.
   // =========================================================================
 
-  /** Named port group (Card 3). Its config is inherited; these fields override it. */
+  /** Named port group. Its config is inherited; these fields override it. */
   group?: string;
 
   /**
@@ -116,23 +116,23 @@ export class PortModel extends DiagramEntity {
    */
   explicitSide: boolean = false;
 
-  /** Non-circle glyph (Card 0): square / diamond / triangle / custom SVG path. */
+  /** Non-circle glyph: square / diamond / triangle / custom SVG path. */
   shape?: PortShapeSpec;
 
-  /** Port label + its layout mode (Card 1). */
+  /** Port label + its layout mode. */
   label?: PortLabelSpec;
 
-  /** Layout strategy override (Card 4). Unset → the shape registry's anchor. */
+  /** Layout strategy override. Unset → the shape registry's anchor. */
   layout?: PortLayoutSpec;
 
-  /** Where a link leaves / lands on the glyph (Card 5). */
+  /** Where a link leaves / lands on the glyph. */
   fromSpot?: PortSpot;
   toSpot?: PortSpot;
 
-  /** Spread multiple links along this port's edge instead of piling them (Card 5). */
+  /** Spread multiple links along this port's edge instead of piling them. */
   spread?: PortSpreadSpec;
 
-  /** Declarative data type (Card 7): drives link validity AND glyph colour. */
+  /** Declarative data type: drives link validity AND glyph colour. */
   dataType?: string;
 
   // -- Directional connectability (Card 2) ----------------------------------
@@ -146,10 +146,13 @@ export class PortModel extends DiagramEntity {
   toMaxLinks?: number | null;
   /** Allow a link whose source node IS its target node. Unset → false. */
   allowSelfLink?: boolean;
-  /** Allow a second link between the same ordered port pair. Unset → true. */
+  /**
+   * Allow a second link between the same two ports. Either direction counts: with
+   * this off, B → A is refused when A → B exists. Unset → true.
+   */
   allowDuplicateLinks?: boolean;
 
-  /** Spawned by the dynamic auto-port allocator (Card 7) rather than authored. */
+  /** Spawned by the dynamic auto-port allocator rather than authored. */
   dynamic?: boolean;
 
   // Phase 2: Template system support
@@ -397,7 +400,7 @@ export class PortModel extends DiagramEntity {
   }
 
   /**
-   * Wave 6 (Card 2): how many links LEAVE this port / how many ARRIVE at it.
+   * How many links LEAVE this port / how many ARRIVE at it.
    *
    * A self-loop that both starts and ends here registers once in
    * `currentConnections` (the Set dedupes) but `linkRoles` can only hold one
@@ -430,13 +433,12 @@ export class PortModel extends DiagramEntity {
    * - output can connect to input or bi
    * - bi can connect to any
    *
-   * Wave 6 (Card 2) adds the DIRECTIONAL gates on top: `isConnectableStart` on
+   * On top of that, the DIRECTIONAL gates: `isConnectableStart` on
    * the source, `isConnectableEnd` on the target, the per-direction
-   * `fromMaxLinks`/`toMaxLinks` caps, the `allowedTypes` whitelist (which was
-   * dead config — `isTypeAllowed` had no caller anywhere in the tree) and
-   * `dataType` compatibility (Card 7).
+   * `fromMaxLinks`/`toMaxLinks` caps, the `allowedTypes` whitelist and
+   * `dataType` compatibility.
    *
-   * Every new gate is opt-in: unset → the pre-wave-6 answer, unchanged.
+   * Every gate is opt-in: unset, only the direction rules above apply.
    *
    * NOTE: this is the PORT-LOCAL rule. Rules that need the graph (self-links,
    * duplicate links, connection groups) live in `evaluatePortConnection()`,
@@ -531,7 +533,7 @@ export class PortModel extends DiagramEntity {
   }
 
   /**
-   * Phase 1: Get port position at node edge (for smart mode)
+   * Get port position at node edge (for smart mode)
    * Returns the position at the edge midpoint based on alignment
    */
   getEdgePosition(nodeBounds: BoundingBox): Point {
@@ -562,7 +564,7 @@ export class PortModel extends DiagramEntity {
   }
 
   /**
-   * Phase 1: Find nearest port on a node to a given point
+   * Find nearest port on a node to a given point
    * Used in smart mode for auto-connect to nearest port
    *
    * @param point - Point in world coordinates
@@ -597,7 +599,7 @@ export class PortModel extends DiagramEntity {
   }
 
   /**
-   * Phase 1: Calculate distance from point to this port
+   * Calculate distance from point to this port
    *
    * @param point - Point in world coordinates
    * @param nodeBounds - Bounding box of the node this port belongs to
@@ -611,7 +613,7 @@ export class PortModel extends DiagramEntity {
   }
 
   /**
-   * Phase 1: Reset interaction state
+   * Reset interaction state
    * Called when connection drag ends or is cancelled
    */
   resetInteractionState(): void {
@@ -621,7 +623,7 @@ export class PortModel extends DiagramEntity {
   }
 
   /**
-   * Phase 2: Set port rendering configuration from template
+   * Set port rendering configuration from template
    */
   setRenderingConfig(config: any): void {
     const oldConfig = this.renderingConfig;
@@ -633,14 +635,14 @@ export class PortModel extends DiagramEntity {
   }
 
   /**
-   * Phase 2: Get port rendering configuration
+   * Get port rendering configuration
    */
   getRenderingConfig(): any | undefined {
     return this.renderingConfig;
   }
 
   /**
-   * Phase 2: Get effective visibility considering port and node configuration
+   * Get effective visibility considering port and node configuration
    * Priority: port config > node metadata > default ('on-hover')
    */
   getEffectiveVisibility(

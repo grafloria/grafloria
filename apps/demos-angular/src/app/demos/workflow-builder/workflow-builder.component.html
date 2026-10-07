@@ -1,0 +1,160 @@
+<div id="stage" #stage>
+  <!-- ---- the top bar ---- -->
+  <div class="wf-top">
+    <button class="wf-ib" id="wf-undo" title="Undo (Ctrl/⌘+Z)" aria-label="Undo" [disabled]="!c.canUndo" (click)="c.undo()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+    <button class="wf-ib" id="wf-redo" title="Redo (Ctrl/⌘+Shift+Z)" aria-label="Redo" [disabled]="!c.canRedo" (click)="c.redo()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+    <span class="wf-sep"></span>
+    <button class="wf-tb" id="wf-save" title="Save this workflow in your browser" (click)="c.save()">Save</button>
+    <button class="wf-tb" id="wf-load" title="Load the workflow you saved" (click)="c.load()">Load</button>
+    <button class="wf-tb" id="wf-new" title="Start a blank workflow" (click)="c.newWorkflow()">New</button>
+    <input class="wf-title" id="wf-title" aria-label="Workflow name" spellcheck="false" [value]="c.title"
+      (input)="c.titleInput(val($event))" (keydown.enter)="blur($event)">
+    <span class="wf-state" [class.dirty]="c.dirty" id="wf-state">{{ c.stateText }}</span>
+    <button class="wf-tb" id="wf-test" title="Run the workflow with a sample commit" (click)="c.runWorkflow()">▷ Test workflow</button>
+    <button class="wf-tb primary" id="wf-publish" (click)="c.publish()">Publish</button>
+  </div>
+
+  <div class="wf-body">
+    <!-- ---- the canvas and the chrome over it ---- -->
+    <div id="canvas">
+      <grafloria-diagram [spec]="spec" [options]="options" (ready)="onReady($event)" style="display:block;height:100%;width:100%"></grafloria-diagram>
+
+      <div class="wf-menu" id="wf-menu" [hidden]="!c.menu.open" role="dialog" aria-label="Add a step"
+        [style.left]="c.menu.style.left" [style.top]="c.menu.style.top" [style.bottom]="c.menu.style.bottom">
+        <input class="mn-search" id="mn-search" placeholder="Search apps and actions…" autocomplete="off" spellcheck="false"
+          [value]="c.menu.query" (input)="c.menuSearch(val($event))" (keydown)="onSearchKey($event)">
+        <div class="mn-list" id="mn-list" role="listbox">
+          @for (g of c.menu.groups; track g.cat) {
+            <div class="mn-cat">{{ g.cat }}</div>
+            @for (it of g.items; track it.key) {
+              <button class="mn-item" [class.on]="it.index === c.menu.on" role="option" [attr.data-action]="it.key"
+                (click)="c.pick(it.key)"><span class="mn-ic"><span [class]="'wf-ic ic-' + it.icon"></span></span><span><small>{{ it.app }}</small>{{ it.label }}</span></button>
+            }
+          } @empty {
+            <div class="mn-none">No action matches that search.</div>
+          }
+        </div>
+      </div>
+
+      <div class="wf-run" id="wf-run" [hidden]="!c.test.open">
+        <div class="rn-head"><b>Test run</b><span [class]="'rn-chip ' + c.test.chipCls" id="rn-chip">{{ c.test.chipText }}</span><span class="sp"></span>
+          <button id="rn-stop" [hidden]="!c.test.active" (click)="c.test.halt()">Stop</button><button id="rn-again" [hidden]="c.test.active" (click)="c.runWorkflow()">Run again</button><button id="rn-close" aria-label="Close the run log" (click)="c.test.close()">×</button></div>
+        <div class="rn-in">
+          <label>Sample commit message<input id="rn-msg" spellcheck="false" [value]="c.test.msg" (input)="c.test.setMsg(val($event))"></label>
+          <label>Health check result<select id="rn-health" (input)="c.test.setHealth(val($event))">
+            @for (h of c.test.healthOptions; track h.value) { <option [value]="h.value" [selected]="h.value === c.test.health">{{ h.label }}</option> }</select></label>
+        </div>
+        <ol class="rn-log" id="rn-log" aria-live="polite">
+          @for (r of c.test.log; track r.id) {
+            @if (r.cls === 'note') { <li class="note">{{ r.msg }}</li> }
+            @else { <li [class]="r.cls"><span class="rn-st">{{ r.st }}</span><span [class]="'wf-ic ic-' + r.icon"></span><div><b>{{ r.name }}</b>&ngsp;<span class="rn-msg">{{ r.msg }}</span></div></li> }
+          }
+        </ol>
+      </div>
+
+      <div class="wf-nav" id="wf-nav">
+        <div class="wf-mm" id="wf-mm" [hidden]="!c.nav.mmOn"></div>
+        <div class="wf-nav-bar">
+          <button class="wf-ib" [class.wf-flash]="c.nav.flashing === 'fit'" id="wf-fit" title="Fit the whole workflow" aria-label="Fit" (click)="c.nav.fit()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+          <button class="wf-ib" [class.wf-flash]="c.nav.flashing === 'fitw'" id="wf-fitw" title="Fit the width" aria-label="Fit width" (click)="c.nav.fitWidth()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M21 5v14M7 12h10M10 9l-3 3 3 3M14 9l3 3-3 3"/></svg></button>
+          <input class="wf-zoom" id="wf-zoom" type="range" min="20" max="200" step="1" aria-label="Zoom" [value]="c.nav.zoomPct" (input)="c.nav.zoomTo(+val($event))">
+          <span class="wf-zoom-v" id="wf-zoom-v">{{ c.nav.zoomPct }}%</span>
+          <button class="wf-ib" id="wf-mmt" title="Show or hide the minimap" aria-label="Minimap" [attr.aria-pressed]="c.nav.mmOn" (click)="c.nav.toggleMinimap()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
+        </div>
+      </div>
+      <div class="wf-toast" [class.on]="c.toastOn" id="wf-toast" role="status">{{ c.toastText }}</div>
+    </div>
+
+    <!-- ---- the property panel (an edit commits on its field's `change`: see the controller) ---- -->
+    @let p = c.panel;
+    <aside id="panel" aria-label="Step properties" [class.pn-idle]="c.panelIdle">
+      @switch (p.mode) {
+        @case ('placeholder') {
+          <div class="pn-head"><div [class]="p.tile!.cls">+</div><div><div class="pn-kind">{{ p.kind }}</div><div class="pn-title">{{ p.title }}</div></div></div>
+          <div class="pn-body"><p class="pn-hint">A workflow starts with the event that sets it off. Pick one:</p>
+            <div class="pn-picks">
+              @for (t of p.triggers; track t.key) {
+                <button class="pn-pick" data-act="pick-trigger" [attr.data-action]="t.key" (click)="c.panelAct('pick-trigger', t.key)"><span [class]="'wf-ic ic-' + t.icon"></span><span>{{ t.label }}<small>{{ t.app }}</small></span></button>
+              }
+            </div></div>
+        }
+        @case ('step') {
+          <div class="pn-head"><div [class]="p.tile!.cls"><span [class]="'wf-ic ic-' + p.tile!.icon"></span></div><div><div class="pn-kind">{{ p.kind }}</div><div class="pn-title">{{ p.title }}</div></div></div>
+          <div class="pn-body">
+            @for (f of p.fields; track f.key) {
+              <label class="pn-field"><span [class]="f.required ? 'pn-req' : ''">{{ f.label }}</span>
+                @if (f.type === 'select') {
+                  <select [attr.data-k]="f.key" (input)="c.editField(f.key, val($event))">
+                    @for (o of f.options; track o.value) { <option [value]="o.value" [selected]="o.value === f.value">{{ o.label }}</option> }</select>
+                } @else if (f.type === 'textarea') {
+                  <textarea [attr.data-k]="f.key" [placeholder]="f.placeholder" [value]="f.value" (input)="c.editField(f.key, val($event))"></textarea>
+                } @else {
+                  <input [attr.data-k]="f.key" [attr.type]="f.type === 'number' ? 'number' : null" [attr.min]="f.type === 'number' ? 1 : null"
+                    [value]="f.value" [placeholder]="f.placeholder" spellcheck="false" (input)="c.editField(f.key, val($event))">
+                }
+              </label>
+            }
+            @if (p.isSwitch) {
+              <div class="pn-sec">Outputs and their rules</div>
+              @for (o of p.outputs; track o.i) {
+                <div class="pn-out">
+                  <div class="pn-out-h" [style.grid-template-columns]="o.rule ? null : '1fr'">
+                    <input [attr.data-out]="o.i" data-ok="label" [value]="o.label" aria-label="Output name" (input)="c.editOut(o.i, 'label', val($event))">
+                    @if (o.rule) { <button class="pn-btn pn-x" data-act="rm-out" [attr.data-out]="o.i" title="Remove this output" aria-label="Remove output" (click)="c.panelAct('rm-out', o.i)">×</button> }
+                  </div>
+                  @if (o.rule; as rule) {
+                    <div class="pn-rule">
+                      <select [attr.data-out]="o.i" data-ok="metric" aria-label="Metric" (input)="c.editOut(o.i, 'metric', val($event))">
+                        @for (m of metrics; track m.key) { <option [value]="m.key" [selected]="m.key === rule.metric">{{ m.label }}</option> }</select>
+                      <select [attr.data-out]="o.i" data-ok="op" aria-label="Operator" (input)="c.editOut(o.i, 'op', val($event))">
+                        @for (op of ruleOps; track op) { <option [selected]="op === rule.op">{{ op }}</option> }</select>
+                      <input [attr.data-out]="o.i" data-ok="value" type="number" [value]="o.value" aria-label="Value" (input)="c.editOut(o.i, 'value', val($event))">
+                    </div>
+                  } @else {
+                    <div class="pn-rule"><span>when no rule above matches</span></div>
+                  }
+                </div>
+              }
+              <button class="pn-btn" data-act="add-out" (click)="c.panelAct('add-out')">+ Add output</button>
+            }
+            <div class="pn-sec">Next step</div>
+            <div class="pn-row">
+              @for (n of p.next; track n.port) {
+                <button class="pn-btn" data-act="add-after" [attr.data-port]="n.port" (click)="c.panelAct('add-after', n.port, rect($event))">{{ n.label }}</button>
+              }
+            </div>
+            <button class="pn-btn pn-del" data-act="del-step" (click)="c.panelAct('del-step')">Delete step</button>
+          </div>
+        }
+        @case ('link') {
+          <div class="pn-head"><div><div class="pn-kind">{{ p.kind }}</div><div class="pn-title">{{ p.title }}</div></div></div>
+          <div class="pn-body">
+            @if (p.from; as e) {
+              <div class="pn-end"><div [class]="e.tile.cls">@if (e.tile.icon) { <span [class]="'wf-ic ic-' + e.tile.icon"></span> } @else { + }</div><div><b>{{ e.app }}</b><small>{{ e.sub }}</small></div></div>
+            }
+            <div class="pn-arrow">↓</div>
+            @if (p.to; as e) {
+              <div class="pn-end"><div [class]="e.tile.cls">@if (e.tile.icon) { <span [class]="'wf-ic ic-' + e.tile.icon"></span> } @else { + }</div><div><b>{{ e.app }}</b><small>{{ e.sub }}</small></div></div>
+            }
+            <p class="pn-hint">Drag either end of the highlighted line onto another dot to reconnect it.</p>
+            <button class="pn-btn pn-del" data-act="del-link" (click)="c.panelAct('del-link')">Delete line</button></div>
+        }
+        @case ('note') {
+          <div class="pn-head"><div><div class="pn-kind">{{ p.kind }}</div><div class="pn-title">{{ p.title }}</div></div></div>
+          <div class="pn-body"><label class="pn-field"><span>Title</span><input data-note="title" [value]="p.noteTitle" spellcheck="false" (input)="c.editNote('title', val($event))"></label>
+            <label class="pn-field"><span>Text</span><textarea data-note="text" rows="6" [value]="p.noteText" (input)="c.editNote('text', val($event))"></textarea></label>
+            <p class="pn-hint">Drag the note by its header and its steps come along. Drag a step in or out of it to change what it holds.</p>
+            <button class="pn-btn pn-del" data-act="del-note" (click)="c.panelAct('del-note')">Delete note (keep its steps)</button></div>
+        }
+        @case ('multi') {
+          <div class="pn-empty"><b>{{ p.count }} steps selected</b><span>Press Delete to remove them, or click one step to edit it.</span></div>
+        }
+        @default {
+          <div class="pn-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 9 5 12 1.8-5.2L21 14z"/><path d="M7.2 2.2 8 5.1M5.1 8 2.2 7.2M14 4.1 12 6M6 12l-1.9 2"/></svg>
+            <b>Select a step or a line to edit it</b><span>{{ p.steps }} steps · {{ p.lines }} lines</span>
+            <ul><li>“+” on a dot adds the next step.</li><li>Drag a line from a dot to a step, or to empty canvas.</li><li>Ctrl/⌘+Z undoes, ⇧ redoes.</li></ul></div>
+        }
+      }
+    </aside>
+  </div>
+</div>

@@ -37,9 +37,9 @@ export const erdPartialKeyTemplate: NodeTemplate = {
       "maxHeight": 500
     },
     "shape": {
-      "type": "rect",
-      "fill": "#FFFFFF",
-      "stroke": "#000000",
+      "type": "ellipse",
+      "fill": "#ECFDF5",
+      "stroke": "#059669",
       "strokeWidth": 2,
       "opacity": 1
     },

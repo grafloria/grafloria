@@ -37,11 +37,12 @@ export const umlPortTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFFFFF",
-      "stroke": "#00838F",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"uml-port-content\">\n          <div class=\"node-label\">{{data.label || 'Port'}}</div>\n        </div>",

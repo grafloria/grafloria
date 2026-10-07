@@ -37,8 +37,8 @@ export const umlCollaborationTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "ellipse",
-      "fill": "#F3E5F5",
-      "stroke": "#7B1FA2",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },

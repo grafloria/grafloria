@@ -24,7 +24,7 @@ export interface NodeState {
   enabled: boolean;
   error?: string;
   warning?: string;
-  // Phase 1: Status-based animations
+  // Status-based animations
   status?: 'idle' | 'pending' | 'running' | 'completed' | 'error' | 'warning';
   animateStatus?: boolean;  // Enable automatic status-based animations
 }
@@ -45,8 +45,24 @@ export interface NodeBehavior {
   };
 }
 
+/**
+ * How a selected node shows it is selected.
+ * - `'both'` (default): the body takes the theme's selected colours AND a ring
+ *   is drawn 3px outside it.
+ * - `'border'`: only the node's own border changes (the selected colour, 2px);
+ *   its fill stays and no ring is drawn — the card look.
+ * - `'ring'`: only the ring; the body keeps its own paint.
+ */
+export type NodeSelectionLook = 'both' | 'border' | 'ring';
+
 export interface NodeStyle {
   shape?: string; // Shape type (rectangle, circle, diamond, etc.)
+  /**
+   * How this node shows it is selected — see {@link NodeSelectionLook}. A style
+   * property like any other: set it per node, in a named style, per node type
+   * (`theme.nodes[type]`) or theme-wide (`theme.nodes.default`).
+   */
+  selection?: NodeSelectionLook;
   /**
    * Extra CSS class(es) put verbatim on the rendered element, alongside
    * `diagram-node` and the state classes. Purely a hook for host CSS — the
@@ -82,7 +98,7 @@ export interface NodeStyle {
   color?: string;
   padding?: number;
   zIndex?: number;
-  // Phase 1: Border animations
+  // Border animations
   animatedBorder?: boolean;
   borderAnimationType?: 'gradient' | 'pulse' | 'breathe' | 'shimmer' | 'none';
   borderAnimationSpeed?: number;  // Duration in seconds
@@ -137,7 +153,7 @@ export interface LinkStyle {
   arrowHead?: ArrowStyle;
   arrowTail?: ArrowStyle;
   /**
-   * Wave 3 (Edges & links): smooth/bezier curve TIGHTNESS, as a multiplier of
+   * Smooth/bezier curve TIGHTNESS, as a multiplier of
    * the endpoint distance for the control-point offset. Default `0.5`
    * (unchanged legacy behaviour); `0` collapses the curve onto its chord,
    * larger values bulge harder. Honoured by both LinkModel.generateSmoothPath
@@ -146,16 +162,16 @@ export interface LinkStyle {
    */
   curvature?: number;
   /**
-   * Wave 5 (Edge routing) — Card 1. Minimum port-anchor stub (px): the route
+   * Minimum port-anchor stub (px): the route
    * leaves the source and enters the target perpendicular to the port side for
    * at least this length before the first bend — GUARANTEED, not best-effort
    * (the router enforces it on whichever routing branch produced the path).
-   * Unset = the legacy 20px best-effort stub, byte-for-byte.
+   * Unset = a 20px best-effort stub.
    */
   jetty?: number;
 
   /**
-   * Wave 3 (Edges & links): PER-LINK orthogonal corner radius (px). Defaults to
+   * PER-LINK orthogonal corner radius (px). Defaults to
    * the renderer's built-ins (5px for `orthogonal`, 12px for the rounded
    * fallback a `smooth` detour falls back to). `0` gives hard 90° corners.
    *
@@ -165,21 +181,21 @@ export interface LinkStyle {
    * window clear of the corners — jumps win over an oversized radius.
    */
   cornerRadius?: number;
-  // Phase 1.3: Jump points
+  // Jump points
   jumpPoints?: JumpPointConfig;
   /**
-   * Wave 4 (Edges & links) — Card 4: how THIS link behaves when it is one of
+   * How THIS link behaves when it is one of
    * several links between the same pair of nodes. Per-link override of the
    * renderer-wide `parallelLinks` config.
    */
   parallel?: ParallelLinkConfig;
   /**
-   * Wave 4 (Edges & links) — Card 4: how THIS link is drawn when it is a
+   * How THIS link is drawn when it is a
    * SELF-LOOP (source node === target node). Ignored on ordinary links.
    */
   selfLoop?: SelfLoopConfig;
   /**
-   * Wave 4 (Edges & links) — Card 5: name of a registered LINK TEMPLATE
+   * Name of a registered LINK TEMPLATE
    * (`registerLinkTemplate` in @grafloria/renderer). The template replaces the
    * link's default visuals (path + arrows + labels) with whatever VNodes it
    * returns — arbitrary SVG, or HTML through a `foreignObject`. The hit area
@@ -191,7 +207,7 @@ export interface LinkStyle {
    * `styleClass` → the named-style registry.
    */
   template?: string;
-  // Phase 4: Advanced styling
+  // Advanced styling
   gradient?: LinearGradient | RadialGradient;
   pattern?: Pattern;
   shadow?: Shadow;
@@ -200,7 +216,7 @@ export interface LinkStyle {
 }
 
 /**
- * Wave 4 — Card 4: auto-separation of PARALLEL links (two or more links between
+ * Auto-separation of PARALLEL links (two or more links between
  * the same pair of nodes). Without it, ERD / BPMN / state-machine diagrams stack
  * every relationship between the same two entities on top of each other.
  *
@@ -222,7 +238,7 @@ export interface ParallelLinkConfig {
 }
 
 /**
- * Wave 4 — Card 4: SELF-LOOP geometry (source node === target node). The loop
+ * SELF-LOOP geometry (source node === target node). The loop
  * leaves the source port, bulges away from the node body and re-enters at the
  * target port. Several self-loops on the same node nest concentrically
  * (`size + i * spacing`), so each keeps its own label slot.
@@ -288,11 +304,11 @@ export interface Shadow {
 
 // Phase 1 & 4: Animation
 export interface LinkAnimation {
-  // Phase 1: New animation types
+  // New animation types
   type: 'marching-ants' | 'flow' | 'pulse' | 'dash-flow' | 'none';
   duration?: number;  // milliseconds
   dashOffset?: number;
-  // Phase 1: Animation control
+  // Animation control
   speed?: 'slow' | 'normal' | 'fast';
   direction?: 'forward' | 'reverse';
 }
@@ -307,27 +323,27 @@ export interface Marker {
 
 export interface ArrowStyle {
   type: 'none' | 'arrow' | 'circle' | 'square' | 'diamond'
-    // Phase 4: ERD-specific arrows
+    // ERD-specific arrows
     | 'crow-foot'           // ERD many relationship (⋈)
     | 'one'                 // ERD one relationship (|)
     | 'zero-or-one'         // ERD optional relationship (O|)
     | 'zero-or-many'        // ERD optional many (O⋈)
     | 'one-or-many'         // ERD mandatory many (|⋈)
-    // Phase 4: UML-specific arrows
+    // UML-specific arrows
     | 'hollow-diamond'      // UML aggregation (◇)
     | 'filled-diamond'      // UML composition (◆)
     | 'generalization'      // UML inheritance (△)
     | 'open-arrow'          // UML dependency/realization (⊳)
     | 'double-arrow'        // Bidirectional (⇄)
-    // Phase 4: Additional arrows
+    // Additional arrows
     | 'cross'               // X mark
     | 'bar'                 // Perpendicular line (⊥)
     | 'dot'                 // Simple dot
     | 'oval'                // Oval shape
-    // Wave 4 (Edges & links) — Card 5: half-arrowheads (Mermaid 11.13)
+    // Half-arrowheads (Mermaid 11.13)
     | 'half-arrow-left'     // Only the left barb (relative to direction of travel)
     | 'half-arrow-right'    // Only the right barb
-    // Wave 4 — Card 5: author-defined marker. Either `path` (raw SVG path data,
+    // Author-defined marker. Either `path` (raw SVG path data,
     // drawn in the marker's local frame with the tip toward +x) or `marker`
     // (the name of a marker registered with `registerMarker` in @grafloria/renderer).
     | 'custom'
@@ -337,24 +353,24 @@ export interface ArrowStyle {
     | (string & {});
   size: number;
   filled: boolean;
-  // Phase 4: Advanced arrow properties
+  // Advanced arrow properties
   width?: number;           // Arrow width (independent of size)
   offset?: number;          // Distance from node edge
   color?: string;           // Override link color
   /**
-   * Wave 4 — Card 5: raw SVG path data for a `type: 'custom'` marker. Drawn in
+   * Raw SVG path data for a `type: 'custom'` marker. Drawn in
    * the marker's LOCAL frame: the origin is the anchor the renderer pulls back
    * from the endpoint, +x is the direction of travel. Scale it yourself (or
    * read `size` when you build the string).
    */
   path?: string;
   /**
-   * Wave 4 — Card 5: name of a marker registered via `registerMarker`. Set it
+   * Name of a marker registered via `registerMarker`. Set it
    * with `type: 'custom'` (or simply put the registered name in `type`).
    */
   marker?: string;
   /**
-   * Wave 4 — Card 5: distance from the custom marker's local origin to its
+   * Distance from the custom marker's local origin to its
    * visual TIP, in the +x direction. The renderer pulls the marker back from
    * the path endpoint by exactly this much so the tip lands on the port.
    * Registered markers supply their own default; this overrides it. Default 0
@@ -364,7 +380,7 @@ export interface ArrowStyle {
 }
 
 /**
- * Wave 4 — Card 5: the three label SLOTS along an edge (ngx-vflow ships exactly
+ * The three label SLOTS along an edge (ngx-vflow ships exactly
  * these). A slot is shorthand for a `position`: start = 0.12, center = 0.5,
  * end = 0.88 — pulled off the very endpoints so a slot label never sits under
  * an arrowhead. An explicit `position` still wins.
@@ -377,7 +393,7 @@ export interface LinkLabel {
   position: number; // 0-1 along the link
   offset: Point;    // Offset from link
   style?: LabelStyle;
-  // Phase 4: Advanced label features
+  // Advanced label features
   rotation?: 'auto' | number;        // Auto-rotate with path or fixed angle
   rotationOffset?: number;           // Additional rotation offset (degrees)
   keepUpright?: boolean;             // Flip label if upside down
@@ -387,26 +403,26 @@ export interface LinkLabel {
   maxWidth?: number;                 // Maximum width before wrapping
   /**
    * Auto-position this label so it does not overlap nodes, other labels or
-   * links. Handled by the diagram-wide edge optimizer (Card 7): `offset` is the
+   * links. Handled by the diagram-wide edge optimizer: `offset` is the
    * label's PREFERRED placement and the optimizer searches outward from it only
-   * when it collides. Was declared-but-dead until Wave 4.
+   * when it collides.
    */
   autoOffset?: boolean;
   segmentIndex?: number;             // Place on specific segment
   /**
-   * Wave 4 — Card 5: one of the three edge slots. Shorthand for `position`;
+   * One of the three edge slots. Shorthand for `position`;
    * ignored when the label carries an explicit `position` (see LinkLabelSlot).
    */
   slot?: LinkLabelSlot;
   /**
-   * Wave 4 — Card 5: render this label as ARBITRARY HTML inside a
+   * Render this label as ARBITRARY HTML inside a
    * `foreignObject` instead of SVG text. The string is injected verbatim, so it
    * is the author's job to keep it trusted/escaped — exactly like any
    * `innerHTML` seam.
    */
   html?: string;
   /**
-   * Wave 4 — Card 5: name of a label template registered with
+   * Name of a label template registered with
    * `registerLabelTemplate` (@grafloria/renderer). The template returns VNodes, so
    * it can emit SVG or a `foreignObject` full of HTML. Wins over `html`.
    */
@@ -424,7 +440,7 @@ export interface LabelStyle {
   background?: string;
   padding?: number;
   borderRadius?: number;
-  // Phase 4: Advanced label styling
+  // Advanced label styling
   fontWeight?: 'normal' | 'bold' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900';
   fontStyle?: 'normal' | 'italic' | 'oblique';
   textDecoration?: 'none' | 'underline' | 'overline' | 'line-through';

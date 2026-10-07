@@ -32,12 +32,9 @@ export interface LayoutOptions {
   /**
    * Seed for any algorithm that uses randomness (force, spectral, community).
    *
-   * Wave 7 Card 3: this was already load-bearing — Card 0 made three adapters
-   * read it — but it lived nowhere in the type, so `force-layout-adapter` had to
-   * launder it through `(options as { seed?: number }).seed`. A cast is not a
-   * contract: it meant `seed` could not survive a typed hop across the worker
-   * boundary, where the options bag really is `Partial<LayoutOptions>` and
-   * anything not named there is dropped. Named here, it crosses.
+   * Named in the type so it survives the hop across the worker boundary, where
+   * the options bag is `Partial<LayoutOptions>` and anything not named there is
+   * dropped. The same seed and input give the same coordinates.
    */
   seed?: number;
 
@@ -55,11 +52,11 @@ export interface LayoutOptions {
   calculateQuality?: boolean;
   /** Canvas dimensions for quality assessment */
   canvasDimensions?: { width: number; height: number };
-  /** Port-aware layout options (Phase 3) */
+  /** Port-aware layout options */
   portAware?: PortAwareLayoutOptions;
-  /** Subgraph/group layout options (Phase 3) */
+  /** Subgraph/group layout options */
   subgraph?: SubgraphLayoutOptions;
-  /** Edge bundling options (Phase 4) */
+  /** Edge bundling options */
   edgeBundling?: EdgeBundlingOptions;
 
   // --- Wave 7 (Auto-layout) — Card 7: port- and label-aware layout. ---------
@@ -90,22 +87,19 @@ export interface LayoutOptions {
 
   /**
    * Ask the layout engine for orthogonal edge routes (default true for ELK).
-   * The routes come back as HINTS (see `LayoutResult.routing`) — the wave-5
-   * routing engine stays authoritative.
+   * The routes come back as HINTS (see `LayoutResult.routing`) — the routing
+   * engine stays authoritative.
    */
   orthogonalRouting?: boolean;
 }
 
 /**
- * Wave 7 — Card 7: what the layout engine worked out about EDGES and PORTS,
- * which until now was computed and then thrown in the bin.
+ * What the layout engine worked out about EDGES and PORTS.
  *
- * ELK does genuine port-aware layered layout with orthogonal edge routing. The
- * old adapter read back `child.x` / `child.y` and NOTHING else — every port
- * position and every edge section ELK produced was discarded. These are those
- * results.
+ * ELK does genuine port-aware layered layout with orthogonal edge routing;
+ * these are the port positions and edge sections it produced.
  *
- * They are HINTS, deliberately. The boundary wave 5 established still holds: the
+ * They are HINTS, deliberately: the
  * renderer computes endpoints and hands them to the routing engine
  * (ManhattanRouter / GlobalRouteSolver), which owns the final path. Layout's job
  * is to place nodes so a good route EXISTS and to say where it thinks that route
@@ -153,9 +147,8 @@ export interface LayoutResult {
   /** Edge bundling result (if edgeBundling was enabled) */
   edgeBundling?: EdgeBundlingResult;
   /**
-   * Wave 7 — Card 7: the port positions and edge routes the layout engine
-   * computed. Present when the engine produces them (ELK does); previously
-   * computed and discarded.
+   * The port positions and edge routes the layout engine
+   * computed. Present when the engine produces them (ELK does).
    */
   routing?: LayoutRoutingHints;
 }

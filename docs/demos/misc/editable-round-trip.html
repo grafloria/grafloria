@@ -1,10 +1,18 @@
 <meta charset="utf-8">
 <title>Editable round-trip — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="The diagram model is embedded in the exported SVG/PNG; re-opening the file gives back an EDITABLE diagram, not a flat image.">
+<link rel="canonical" href="https://grafloria.com/demos/misc/editable-round-trip.html">
+<meta property="og:title" content="Editable round-trip — Grafloria">
+<meta property="og:description" content="The diagram model is embedded in the exported SVG/PNG; re-opening the file gives back an EDITABLE diagram, not a flat image.">
+<meta property="og:url" content="https://grafloria.com/demos/misc/editable-round-trip.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/misc/editable-round-trip.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/misc/editable-round-trip.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
   code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
-  #canvas { display: flex; height: calc(100vh - 190px); }
+  #canvas { display: flex; height: calc(100vh - 130px); }
   .pane { flex: 1; min-width: 0; position: relative; }
   .pane + .pane { border-left: 2px solid rgba(127,127,127,.35); }
   .pane .tag { position: absolute; top: 8px; left: 8px; z-index: 2; font: 11px ui-monospace, Menlo, monospace; background: rgba(37,99,235,.85); color:#fff; padding: 2px 8px; border-radius: 4px; }
@@ -21,7 +29,7 @@
 </div>
 <script type="module">
 import { render, importDiagram, extractModel, isEditableArtifact } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 const SPEC = {
   nodes: [

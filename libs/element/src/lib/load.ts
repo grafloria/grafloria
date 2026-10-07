@@ -69,12 +69,16 @@ import type {
   LinkModel,
   NodeModel,
   SerializedDiagramData,
+  StrokeModel,
 } from '@grafloria/engine';
 import { getNodeType } from './node-type-registry';
 import { bindRowInteractions } from './diagram-kit/rows';
 import { bindCardEditing } from './diagram-kit/editing';
 import { ensureDiagramKitStyles } from './diagram-kit/styles';
 import { bindDashboardGrid, type DashboardGridHandle } from './dashboard-kit/grid-binder';
+import { bindDashboardSplit, SPLIT_TREE_KEY } from './dashboard-kit/split-binder';
+import { gridItemFromCell } from './dashboard-kit/grid-mapping';
+import { cellFromGridItem } from './dashboard-kit/grid-mapping';
 import { ensureDashboardKitStyles } from './dashboard-kit/styles';
 import { defaultWidgetRenderer, type WidgetRenderer } from './dashboard-kit/widgets';
 import {
@@ -83,8 +87,7 @@ import {
   type DashboardHandle,
   type DashboardHandleContext,
   type DashboardViewSpec,
-  type DashboardWidgetSpec,
-} from './dashboard-kit/dashboard';
+  type DashboardWidgetSpec, attachTabsRuntime } from './dashboard-kit/dashboard';
 
 /** Anything `DiagramSerializer.deserialize()` accepts, or the JSON string of it. */
 export type SavedDiagram =
@@ -115,6 +118,10 @@ export interface LoadedDiagramSpec {
   nodes: NodeModel[];
   edges: LinkModel[];
   renderCustomNode: (node: NodeModel, host: HTMLElement) => void;
+  /**
+   * Puts back what `nodes`/`edges` do not carry — groups, whiteboard strokes,
+   * kit wiring — on the mounted instance. `render()` calls it for you.
+   */
   finalize: (api: unknown) => void;
   /** The deserialized model — the escape hatch, available before any render. */
   readonly model: DiagramModel;
@@ -146,6 +153,8 @@ export interface LoadedDiagramSpec {
    *    app's own painter, exactly as `dashboard({ renderWidget })` did.
    */
   readonly handle: DashboardHandle;
+  /** Instance options the loaded spec asks `render()` to apply (a fluid board pins zoom). */
+  renderOptions?: { minZoom?: number; maxZoom?: number };
 }
 
 /** The board geometry `dashboard()` stamps on its view group so a reload can rebind. */
@@ -158,6 +167,14 @@ interface PersistedBoard {
   designHeight?: number;
   float?: boolean;
   rtl?: boolean;
+  fluid?: boolean;
+  overflow?: 'bounded' | 'scroll';
+  static?: boolean;
+  /** 'split': a splitter tree persisted as `dashboardTree` on the group. */
+  layout?: 'grid' | 'split';
+  /** Containers: the inner row bound, and whether a pull past it grows the slab. */
+  maxRows?: number;
+  escalate?: boolean;
 }
 
 /** True when the node is an ER entity card or a UML class card. */
@@ -181,6 +198,11 @@ function widgetSpecOf(node: NodeModel): DashboardWidgetSpec | null {
     data: (node.getMetadata('widgetSpec') ?? {}) as Record<string, unknown>,
     span: node.getMetadata('columnSpan') as number | undefined,
     rows: node.getMetadata('rowSpan') as number | undefined,
+    ...(node.getMetadata('widgetLimits') !== undefined
+      ? { limits: { ...(node.getMetadata('widgetLimits') as DashboardWidgetSpec['limits']) } }
+      : {}),
+    ...(node.getMetadata('widgetMovable') === false ? { movable: false } : {}),
+    ...(node.getMetadata('widgetResizable') === false ? { resizable: false } : {}),
   };
 }
 
@@ -224,40 +246,99 @@ export function fromDocument(
   const dashGroups = groups.filter((g) => g.getMetadata('dashboardBoard') !== undefined);
   const specById = new Map<string, DashboardWidgetSpec>();
   const viewOfWidget = new Map<string, string>();
-  const ctxViews: DashboardViewSpec[] = dashGroups.map((g) => {
-    const board = g.getMetadata('dashboardBoard') as PersistedBoard;
+  const boardWidgets = new Map<string, DashboardWidgetSpec[]>();
+  const viewOfBoard = new Map<string, string>();
+  const boardGroups = new Map(dashGroups.map((g) => [g.id, g]));
+  // A CONTAINER is a dashboard group that is itself a MEMBER of another
+  // dashboard group; the rest are views. This is the whole nesting test —
+  // containment IS membership.
+  const containerIds = new Set<string>();
+  for (const g of dashGroups) {
+    for (const m of g.members ?? []) if (boardGroups.has(m)) containerIds.add(m);
+  }
+  const rebuildBoard = (g: (typeof dashGroups)[number], viewId: string): DashboardWidgetSpec[] => {
     const widgets: DashboardWidgetSpec[] = [];
     for (const memberId of g.members ?? []) {
+      const childGroup = boardGroups.get(memberId);
+      if (childGroup) {
+        // A nested container: its spec fields ride on the group, its cell in
+        // the group's slab `gridItem`, its children in its own membership.
+        const meta = (childGroup.getMetadata('containerWidget') ?? {}) as Partial<DashboardWidgetSpec>;
+        const cell = cellFromGridItem(childGroup.getMetadata('gridItem') as never);
+        const inner = rebuildBoard(childGroup, viewId);
+        // A tab container's pages keep the order they were REORDERED into
+        // (`order` on the container), not the order they joined the group.
+        const order = (meta as { order?: string[] }).order;
+        if (Array.isArray(order)) {
+          const rank = (id: string): number => (order.indexOf(id) < 0 ? Number.MAX_SAFE_INTEGER : order.indexOf(id));
+          inner.sort((p, q) => rank(p.id) - rank(q.id));
+        }
+        const ws: DashboardWidgetSpec = {
+          id: childGroup.id,
+          ...meta,
+          ...(cell ? { x: cell.x, y: cell.y, span: cell.w, rows: cell.h } : {}),
+          widgets: inner,
+        };
+        specById.set(ws.id, ws);
+        viewOfWidget.set(ws.id, g.id);
+        boardWidgets.set(ws.id, ws.widgets!);
+        viewOfBoard.set(ws.id, viewId);
+        widgets.push(ws);
+        continue;
+      }
       const node = model.getNode(memberId);
       const ws = node ? widgetSpecOf(node) : null;
-      if (!ws) continue; // non-widget members (e.g. a nested slab group) are not widgets
+      if (!ws) continue;
       specById.set(ws.id, ws);
       viewOfWidget.set(ws.id, g.id);
       widgets.push(ws);
     }
+    return widgets;
+  };
+  const viewGroups = dashGroups.filter((g) => !containerIds.has(g.id));
+  const ctxViews: DashboardViewSpec[] = viewGroups.map((g) => {
+    const board = g.getMetadata('dashboardBoard') as PersistedBoard;
+    const widgets = rebuildBoard(g, g.id);
+    boardWidgets.set(g.id, widgets);
+    viewOfBoard.set(g.id, g.id);
     return { id: g.id, name: g.name, widgets, columns: board.columns, width: g.size?.width, height: g.size?.height };
   });
 
-  const firstBoard = dashGroups[0]?.getMetadata('dashboardBoard') as PersistedBoard | undefined;
+  const firstBoard = viewGroups[0]?.getMetadata('dashboardBoard') as PersistedBoard | undefined;
   // The active view is the one the save left ON camera (x≈0); the others were
   // parked far off-screen by showView. Falls back to the first board when
   // positions are ambiguous (e.g. a single view, or positions not restored).
-  const activeGroup = dashGroups.find((g) => g.position.x > -1000) ?? dashGroups[0];
+  const activeGroup = viewGroups.find((g) => g.position.x > -1000) ?? viewGroups[0];
 
   const ctx: DashboardHandleContext = {
     views: ctxViews,
-    groups: new Map(dashGroups.map((g) => [g.id, g])),
+    // PARKING map: views only. A container must follow its parent when a view
+    // parks, not travel to OFFSCREEN_X on its own.
+    groups: new Map(viewGroups.map((g) => [g.id, g])),
     // The SAME map the LoadedDiagramSpec exposes as `boards` — derived, not a copy.
     binders: boards,
     specById,
     viewOfWidget,
+    boardGroups,
+    boardWidgets,
+    viewOfBoard,
     hosts: new Map<string, HTMLElement>(),
     renderWidget: paintWidget,
     columns: firstBoard?.columns ?? 12,
     gap: firstBoard?.gap ?? 8,
     rowHeight: firstBoard?.baseRowHeight ?? 130,
-    boardW: dashGroups[0]?.size?.width ?? 1180,
-    boardH: dashGroups[0]?.size?.height ?? 660,
+    boardW: viewGroups[0]?.size?.width ?? 1180,
+    boardH: viewGroups[0]?.size?.height ?? 660,
+    // A board saved before `mode` existed carries no flag and was authored as
+    // a fixed world — it stays one. Fluid is only what was saved fluid.
+    mode: firstBoard?.fluid === true ? 'fluid' : 'fixed',
+    overflow: firstBoard?.overflow ?? 'bounded',
+    activeTab: new Map(),
+    tabsOf: new Map(),
+    tabStrips: new Map(),
+    layoutOf: new Map(
+      dashGroups.map((g) => [g.id, ((g.getMetadata('dashboardBoard') as PersistedBoard | undefined)?.layout ?? 'grid') as 'grid' | 'split' | 'tabs'])
+    ),
     // responsive is NOT in the document (a runtime seam), so it is deliberately
     // absent from the round-trip; width/height/columns/gap/sizing/float/rtl are.
     optionsBase: firstBoard
@@ -268,12 +349,17 @@ export function fromDocument(
           sizing: firstBoard.sizing,
           float: firstBoard.float,
           rtl: firstBoard.rtl,
-          width: dashGroups[0]?.size?.width,
-          height: dashGroups[0]?.size?.height,
+          mode: firstBoard.fluid === true ? 'fluid' : 'fixed',
+          overflow: firstBoard.overflow ?? 'bounded',
+          static: firstBoard.static ?? false,
+          layout: firstBoard.layout ?? 'grid',
+          width: viewGroups[0]?.size?.width,
+          height: viewGroups[0]?.size?.height,
         }
       : {},
     active: activeGroup?.id ?? 'main',
     apiRef: null,
+    container: null,
   };
   const handle = createDashboardHandle(ctx);
 
@@ -302,6 +388,12 @@ export function fromDocument(
     if (live) {
       for (const group of groups) {
         if (!live.getGroup?.(group.id)) live.addGroup?.(group);
+      }
+      // -- whiteboard ink -------------------------------------------------------
+      // Strokes are saved in the document's `strokes`, outside nodes/edges as
+      // well, so they come back here too — a reopened board keeps its ink.
+      for (const stroke of model.getStrokes()) {
+        if (!live.getStroke?.(stroke.id)) live.addStroke?.(stroke);
       }
     }
 
@@ -332,14 +424,72 @@ export function fromDocument(
     // work immediately — no camera move, no showView, so the paint is byte-for-
     // byte what a boards-only load produced.
     ctx.apiRef = a as unknown as DashboardApiRef;
+    ctx.container = (a as { container?: HTMLElement }).container ?? null;
     for (const group of groups) {
       const board = group.getMetadata('dashboardBoard') as PersistedBoard | undefined;
       if (!board) continue;
-      boards.set(group.id, bindDashboardGrid(a as never, group, { ...board }));
+      // A TAB CONTAINER binds no board of its own — the runtime below places
+      // its pages and paints its strip.
+      if ((board.layout as string) === 'tabs') continue;
+      boards.set(group.id, bindBoard(group, board));
     }
+    // Tab containers, with the same runtime dashboard() uses — a reloaded
+    // document must switch pages exactly like a board built from a literal.
+    attachTabsRuntime(ctx, model, (a as unknown as { container?: HTMLElement }).container ?? null, handle);
+    // LIVE LAYOUT SWITCH on a loaded document — the same contract dashboard()
+    // finalize offers: cells persisted where the grid reads them, any tree and
+    // column cache cleared, the board's `layout` flag flipped, a fresh binder.
+    ctx.rebindView = (viewId, next) => {
+      const group = model.getGroup(viewId);
+      const b = boards.get(viewId);
+      const board = group?.getMetadata('dashboardBoard') as PersistedBoard | undefined;
+      if (!group || !b || !board) return;
+      const cells = b.saveLayout().cells;
+      b.dispose();
+      model.runSystemWrite(() => {
+        for (const [id, cell] of cells) {
+          const n = model.getNode(id);
+          if (n) n.setMetadata('gridItem', gridItemFromCell(cell));
+          else model.getGroup(id)?.setMetadata('gridItem', gridItemFromCell(cell));
+        }
+        group.setMetadata(SPLIT_TREE_KEY, undefined);
+        group.setMetadata('dashboardLayouts', undefined);
+        group.setMetadata('dashboardBoard', { ...board, layout: next });
+      });
+      ctx.layoutOf.set(viewId, next);
+      boards.set(viewId, bindBoard(group, { ...board, layout: next }));
+      boards.get(viewId)?.sync();
+    };
+    // A container removed and restored through the history comes back as a
+    // fresh group: bind it again from its own persisted geometry.
+    ctx.rebindContainer = (id: string): void => {
+      const group = model.getGroup(id);
+      const board = group?.getMetadata('dashboardBoard') as PersistedBoard | undefined;
+      if (!group || !board) return;
+      ctx.boardGroups.set(id, group);
+      boards.set(id, bindBoard(group, board));
+    };
+    function bindBoard(group: GroupModel, board: PersistedBoard): DashboardGridHandle {
+      return board.layout === 'split'
+        ? bindDashboardSplit(a as never, group, { ...board })
+        : bindDashboardGrid(a as never, group, { ...board });
+    }
+    // A loaded board follows the history exactly as an authored one does: an
+    // undo re-syncs every binder without the consumer calling refresh().
+    ctx.attachHistory?.();
   };
 
-  return { nodes, edges: model.getLinks(), renderCustomNode, finalize, model, boards, handle };
+  return {
+    nodes,
+    edges: model.getLinks(),
+    renderCustomNode,
+    finalize,
+    model,
+    boards,
+    handle,
+    // A fluid board reloads with its zoom pinned, exactly as dashboard() ships it.
+    ...(ctx.mode === 'fluid' ? { renderOptions: { minZoom: 1, maxZoom: 1 } } : {}),
+  };
 }
 
 interface FinalizeApi {
@@ -347,6 +497,8 @@ interface FinalizeApi {
   getModel?: () => {
     getGroup?: (id: string) => GroupModel | undefined;
     addGroup?: (g: GroupModel) => void;
+    getStroke?: (id: string) => StrokeModel | undefined;
+    addStroke?: (s: StrokeModel) => void;
   };
 }
 

@@ -37,8 +37,8 @@ export const flowchartProcessTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E3F2FD",
-      "stroke": "#1976D2",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },

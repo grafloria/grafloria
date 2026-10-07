@@ -213,7 +213,9 @@
         <!-- Render HTML handles for nodes with ports (React Flow style) -->
         @for (port of node.ports.values(); track port.id) {
           @if (shouldRenderPort(port, node)) {
+            <!-- Interaction chrome: on screen, never in an exported file. -->
             <div class="html-port-handle"
+                 data-grafloria-export="ignore"
                  [grafloriaHandle]="port.type === 'output' ? 'source' : 'target'"
                  [handleId]="port.id"
                  [handlePosition]="port.side"

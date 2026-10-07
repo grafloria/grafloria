@@ -1,6 +1,14 @@
 <meta charset="utf-8">
 <title>Dashboard grid options — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="The dashboard kit's ADVANCED grid constructs, one labelled board each — cross-container drag between two boards, a bounded section (maxRows: 1) nested inside…">
+<link rel="canonical" href="https://grafloria.com/demos/dashboard/grid-options.html">
+<meta property="og:title" content="Dashboard grid options — Grafloria">
+<meta property="og:description" content="The dashboard kit's ADVANCED grid constructs, one labelled board each — cross-container drag between two boards, a bounded section (maxRows: 1) nested inside…">
+<meta property="og:url" content="https://grafloria.com/demos/dashboard/grid-options.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/dashboard/grid-options.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/dashboard/grid-options.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   /* ================================================================================
      THE OPTIONS PAGE. dashboard-builder.html is deliberately PLAIN — one flat
@@ -46,7 +54,7 @@
   .go-key code { font: 11px/1.2 ui-monospace, SFMono-Regular, monospace; background: rgba(127,127,127,.13);
     padding: 1px 4px; border-radius: 4px; }
 
-  #canvas { --gt-radius: 5px; --axdb-rs-radius: 5px;   /* tile = placeholder = handle arc */
+  #canvas { --gt-radius: 3px; --axdb-rs-radius: 3px;   /* tile = placeholder = handle arc */
     position: relative; overflow: hidden; height: 100%;
     background-color: var(--go-canvas-bg, #f1f3f7);
     background-image: radial-gradient(circle, rgba(120,128,145,.16) 1px, transparent 1px);
@@ -130,7 +138,7 @@
     <ul class="go-key">
       <li><span class="n">1</span><span><b>Two boards, one canvas</b>Drag a tile from ① into ② — the source board settles, the target makes room live, and the whole crossing is ONE undo.</span></li>
       <li><span class="n">2</span><span><b>Explicit cell placement</b>The green tile declares fixed cells (<code>gridItem</code> col 3–4 · row 1–2); the others carry no cells and auto-flow around it.</span></li>
-      <li><span class="n">3</span><span><b>Bounded section</b><code>maxRows: 1</code> nested inside board ③: its own pack grid, a locked slab outside. Pull a tile past it and the strip GROWS a row (all tiles together); pull back and it shrinks. <em>The main dashboard deliberately does not use this.</em></span></li>
+      <li><span class="n">3</span><span><b>Bounded section</b><code>maxRows: 1</code> nested inside board ③: its own pack grid, a locked slab outside. Pull a tile past it and the section GROWS a row for THAT tile; its neighbours keep their cells; pull back and it shrinks. <em>The main dashboard deliberately does not use this.</em></span></li>
       <li><span class="n">4</span><span><b>Pinned tile</b>The amber tile is <code>locked</code>: never pushed, and a drag onto it is refused outright.</span></li>
       <li><span class="n">5</span><span><b>Float &amp; fit/grow</b><b style="font-weight:400">Float off</b> = gravity packs upward, no holes; <b style="font-weight:400">on</b> = tiles stay where you drop them. <b style="font-weight:400">Fit</b> = board keeps its height, rows squeeze; <b style="font-weight:400">grow</b> = rows keep their height, the board extends.</span></li>
       <li><span class="n">6</span><span><b>Palette in, drag out</b>Drag-in places live from the moment the cursor enters; a release over the palette deletes, undoably.</span></li>
@@ -141,6 +149,110 @@
   <div id="canvas"><div id="go-status"></div></div>
 </div>
 
+<script type="text/plain" data-code="angular">
+// npm i @grafloria/angular
+import { Component } from '@angular/core';
+import { GrafloriaDashboardComponent } from '@grafloria/angular';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+@Component({
+  selector: 'app-grid-options',
+  imports: [GrafloriaDashboardComponent],
+  template: `
+    <div class="bar">
+      <button (click)="handle?.setRtl(!handle?.getRtl())">RTL</button>
+      <button (click)="handle?.setFloat(!handle?.getFloat())">Float</button>
+      <button (click)="handle?.setColumns(6)">6 columns</button>
+      <button (click)="handle?.setColumns(12)">12 columns</button>
+    </div>
+    <!-- Every construct on this page as DATA — the section, a pinned tile, RTL, a responsive column count, float. The hand-built bindDashboardGrid() calls in the JS tab are what the component does for you. -->
+    <grafloria-dashboard [views]="views" [options]="options" (ready)="handle = $event"
+      style="display:block; height:620px" />
+  `,
+})
+export class GridOptionsComponent {
+  handle?: DashboardHandle;
+  options = { columns: 12, gap: 8, width: 1180, height: 620, responsive: { columnWidth: 96 } };
+  views: DashboardViewSpec[] = [{ id: 'main', widgets: [
+    { id: 'trend', kind: 'line',  span: 8, rows: 2, title: 'Revenue trend', data: { series: [[1.2, 1.5, 1.4, 1.9, 2.3, 2.8]], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix',   kind: 'donut', span: 4, rows: 2, title: 'By region', data: { slices: [{ label: 'EMEA', value: 2.9 }, { label: 'APAC', value: 1.8 }, { label: 'NA', value: 2.1 }] } },
+    // A SECTION: a widget carrying widgets — a locked slab with its own grid.
+    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+      { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
+      { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
+      { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
+    ] },
+    { id: 'pinned', kind: 'kpi', span: 12, rows: 1, pinned: true, data: { label: 'Pinned row', value: 'no reflow moves it' } },
+  ] }];
+}
+</script>
+<script type="text/plain" data-code="react">
+// npm i @grafloria/react
+import { useState } from 'react';
+import { GrafloriaDashboard } from '@grafloria/react';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+// Every construct on this page as DATA — the section, a pinned tile, RTL, a responsive column count, float. The hand-built bindDashboardGrid() calls in the JS tab are what the component does for you.
+const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
+    { id: 'trend', kind: 'line',  span: 8, rows: 2, title: 'Revenue trend', data: { series: [[1.2, 1.5, 1.4, 1.9, 2.3, 2.8]], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix',   kind: 'donut', span: 4, rows: 2, title: 'By region', data: { slices: [{ label: 'EMEA', value: 2.9 }, { label: 'APAC', value: 1.8 }, { label: 'NA', value: 2.1 }] } },
+    // A SECTION: a widget carrying widgets — a locked slab with its own grid.
+    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+      { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
+      { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
+      { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
+    ] },
+    { id: 'pinned', kind: 'kpi', span: 12, rows: 1, pinned: true, data: { label: 'Pinned row', value: 'no reflow moves it' } },
+] }];
+
+export function GridOptions() {
+  const [handle, setHandle] = useState<DashboardHandle>();
+  return (
+    <>
+      <div className="bar">
+        <button onClick={() => handle?.setRtl(!handle.getRtl())}>RTL</button>
+        <button onClick={() => handle?.setFloat(!handle.getFloat())}>Float</button>
+        <button onClick={() => handle?.setColumns(6)}>6 columns</button>
+        <button onClick={() => handle?.setColumns(12)}>12 columns</button>
+      </div>
+      <GrafloriaDashboard views={views} options={{ columns: 12, gap: 8, width: 1180, height: 620, responsive: { columnWidth: 96 } }} onReady={setHandle} style={{ height: 620 }} />
+    </>
+  );
+}
+</script>
+<script type="text/plain" data-code="vue">
+<!-- npm i @grafloria/vue -->
+<script setup lang="ts">
+import { shallowRef } from 'vue';
+import { GrafloriaDashboard } from '@grafloria/vue';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+// Every construct on this page as DATA — the section, a pinned tile, RTL, a responsive column count, float. The hand-built bindDashboardGrid() calls in the JS tab are what the component does for you.
+const handle = shallowRef<DashboardHandle>();
+const options = { columns: 12, gap: 8, width: 1180, height: 620, responsive: { columnWidth: 96 } };
+const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
+    { id: 'trend', kind: 'line',  span: 8, rows: 2, title: 'Revenue trend', data: { series: [[1.2, 1.5, 1.4, 1.9, 2.3, 2.8]], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix',   kind: 'donut', span: 4, rows: 2, title: 'By region', data: { slices: [{ label: 'EMEA', value: 2.9 }, { label: 'APAC', value: 1.8 }, { label: 'NA', value: 2.1 }] } },
+    // A SECTION: a widget carrying widgets — a locked slab with its own grid.
+    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4, widgets: [
+      { id: 'k-rev',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Revenue',   value: '$6.8M', delta: 12.4 } },
+      { id: 'k-cust', kind: 'kpi', span: 1, rows: 1, data: { label: 'Customers', value: '1,284', delta: 8.1 } },
+      { id: 'k-win',  kind: 'kpi', span: 1, rows: 1, data: { label: 'Win rate',  value: '27.4%', delta: 3.5 } },
+    ] },
+    { id: 'pinned', kind: 'kpi', span: 12, rows: 1, pinned: true, data: { label: 'Pinned row', value: 'no reflow moves it' } },
+] }];
+<\/script>
+
+<template>
+  <div class="bar">
+    <button @click="handle?.setRtl(!handle.getRtl())">RTL</button>
+    <button @click="handle?.setFloat(!handle.getFloat())">Float</button>
+    <button @click="handle?.setColumns(6)">6 columns</button>
+    <button @click="handle?.setColumns(12)">12 columns</button>
+  </div>
+  <GrafloriaDashboard :views="views" :options="options" @ready="handle = $event" style="display:block; height:620px" />
+</template>
+</script>
 <script type="module">
 // ===========================================================================
 //  DASHBOARD GRID OPTIONS — the advanced constructs, labelled.
@@ -155,7 +267,7 @@ import {
   AddNodeCommand, AddToGroupCommand, RemoveNodeCommand, RemoveFromGroupCommand,
   BatchCommand, bindDashboardGrid,
 } from '../shell/grafloria.js';
-import { defineDemo, check, checkEqual, checkChanged } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check, checkEqual, checkChanged } from '../shell/demo.js?v=drawer4';
 
 /* ---------------------------------------------------------------------------
    1. GEOMETRY. Three boards in world space; captions ride above each one.
@@ -402,12 +514,14 @@ function boardBinderOptions(key) {
       return screen.x <= side.getBoundingClientRect().right + 8;
     },
     onRemoveRequest: (nodeId, displaced) => removeTileCmd(nodeId, displaced),
-    onDropIn: async (node, cell, displaced) => {
+    // `target.boardId` names the board the chip was dropped INTO — this board,
+    // or a page or section on it (tile first, step 4a).
+    onDropIn: async (node, cell, displaced, target) => {
       await cmd().execute(new AddNodeCommand(node));
       await cmd().execute(new BatchCommand('Add tile',
-        [new AddToGroupCommand(boards[key].id, node.id), ...displaced]));
+        [new AddToGroupCommand(target?.boardId ?? boards[key].id, node.id), ...displaced]));
       setFocus(node.id);
-      flash(`dropped into board ${key.toUpperCase()} at column ${cell.x + 1}, row ${cell.y + 1}`);
+      flash(`dropped into ${target?.boardId ?? `board ${key.toUpperCase()}`} at column ${cell.x + 1}, row ${cell.y + 1}`);
     },
     onGesture: (e) => onAnyGesture(e, `board ${key.toUpperCase()}`),
   };
@@ -667,7 +781,7 @@ defineDemo({
   howTo: [
     '① Drag "A · one" from board A into board B: the source board settles behind it, board B makes room live around the dashed placeholder, and ONE undo restores both boards at once (cross-container drag — the tile changes group membership in the same batch).',
     '② Board B\'s green tile declares explicit cells (gridItem col 3–4, row 1–2). The other three carry no cells at all and were auto-positioned around it by the engine\'s row-major scan.',
-    '③ Board C\'s blue strip is a nested SECTION bound with maxRows: 1 — its own 4-column pack grid inside, a locked slab to board C outside. Drag a strip tile onto another and they shift ALONG the row (never onto a second row). Pull "Strip A"\'s bottom-right corner well past the strip and the whole strip GROWS a row; pull back up and it shrinks again. The main dashboard deliberately does not use this construct.',
+    '③ Board C\'s blue strip is a nested SECTION bound with maxRows: 1 — its own 4-column pack grid inside, a locked slab to board C outside. Drag a strip tile onto another and they shift ALONG the row (never onto a second row). Pull "Strip A"\'s bottom-right corner well past the strip and the section GROWS a row which "Strip A" alone takes — a grid resize changes the tile you grabbed, never its neighbour; pull back up and it shrinks again. The main dashboard deliberately does not use this construct.',
     '④ The amber "A · pinned" tile is locked: drag another tile onto it and the drag is refused outright, and nothing can push it. Focus any tile and press Pin to lock it too.',
     '⑤ Float: off is gravity — tiles pack upward and holes close. Float: on lets a tile stay exactly where you dropped it. Mode: fit keeps every board at its design height and squeezes the rows; Mode: grow keeps 110px rows and lets the boards extend downward.',
     '⑥ Drag a palette item onto the board you last touched — it places live from the moment the cursor enters. Drag any tile OUT and release over the palette panel to delete it; one undo puts it back with its neighbours.',
@@ -802,7 +916,9 @@ defineDemo({
       cm.clear();
 
       // HEIGHT ESCALATION: pull a strip tile well past the strip and the SLAB
-      // grows a row in board C — every strip tile gets taller together.
+      // grows a row in board C — and the tile UNDER THE POINTER takes it. Its
+      // neighbours keep their own cells: a grid resize adjusts what you
+      // grabbed, nothing else (element 0.4.26).
       const s0b = byLabel('Strip A');
       const h0 = s0b.size.height, sibH0 = byLabel('Strip B').size.height;
       const slab0 = { ...binders.c.cellOf('sec-strip') };
@@ -815,7 +931,7 @@ defineDemo({
       let cpt = toClient(corner.x, corner.y + 150);
       pev('pointermove', cpt.x, cpt.y); await raf(); await raf();
       checkEqual(binders.c.cellOf('sec-strip').h, slab0.h + 1, 'pulling past the strip grew the SLAB by a row');
-      check(byLabel('Strip B').size.height > sibH0 + 10, 'every tile in the section grew with it (it is one bounded row)');
+      check(byLabel('Strip B').size.height < byLabel('Strip A').size.height - 10, 'its neighbour kept its own cell — only the dragged tile grew');
       await release(corner.x, corner.y + 150);
       check(byLabel('Strip A').size.height > h0 + 10, 'the escalation committed');
       await cm.undo(); refreshBoards(); await settle();

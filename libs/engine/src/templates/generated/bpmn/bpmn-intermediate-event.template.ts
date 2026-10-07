@@ -37,12 +37,13 @@ export const bpmnIntermediateEventTemplate: NodeTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "circle",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
-      "strokeWidth": 3,
+      "type": "event-intermediate",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
+      "strokeWidth": 1.5,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"bpmn-intermediate-event-content\">\n          <div class=\"node-label\">{{data.label || 'Intermediate Event'}}</div>\n        </div>",

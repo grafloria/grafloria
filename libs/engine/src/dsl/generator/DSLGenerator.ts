@@ -10,6 +10,8 @@ import { NodeModel } from '../../models/NodeModel';
 import { LinkModel } from '../../models/LinkModel';
 import { DiagramAnalyzer, DiagramAnalysis } from './DiagramAnalyzer';
 import { NodeShape, LinkType } from '../types/ASTNode';
+import { GroupModel } from '../../models/GroupModel';
+import { isSideAnchorPort } from '../../ports/side-anchor';
 
 export interface GeneratorOptions {
   /**
@@ -36,11 +38,17 @@ export interface GeneratorOptions {
    * Generate subgraphs
    */
   includeSubgraphs?: boolean;
+
+  /** Write `%%grafloria:at id x,y WxH` for every node and zone (see ExportTextOptions.positions). */
+  positions?: boolean;
 }
 
 export class DSLGenerator {
   private analyzer: DiagramAnalyzer;
   private analysis?: DiagramAnalysis;
+  /** The links in the order they were written — what `linkStyle <n>` counts. */
+  private edgeOrder: LinkModel[] = [];
+  private positions = false;
 
   constructor() {
     this.analyzer = new DiagramAnalyzer();
@@ -59,6 +67,8 @@ export class DSLGenerator {
 
     // Analyze diagram structure
     this.analysis = this.analyzer.analyze(diagram);
+    this.edgeOrder = [];
+    this.positions = options.positions === true;
 
     const lines: string[] = [];
 
@@ -74,8 +84,11 @@ export class DSLGenerator {
     lines.push(diagramDeclaration);
     lines.push('');
 
-    // Generate nodes and edges
-    const statements = this.generateStatements(diagram, preserveIds, includeSubgraphs);
+    // Generate nodes and edges. A diagram with groups writes them as SUBGRAPHS
+    // (members inside, edges after) — the zones of the picture.
+    const statements = diagram.getGroups().length > 0
+      ? this.generateGroupedStatements(diagram, preserveIds)
+      : this.generateStatements(diagram, preserveIds, includeSubgraphs);
     lines.push(...statements);
 
     // Generate style definitions
@@ -162,6 +175,7 @@ export class DSLGenerator {
         if (edgeDef) {
           lines.push(`  ${edgeDef}`);
           processedLinks.add(link.id);
+          this.edgeOrder.push(link);
         }
       }
     }
@@ -184,10 +198,56 @@ export class DSLGenerator {
         if (edgeDef) {
           lines.push(`  ${edgeDef}`);
           processedLinks.add(link.id);
+          this.edgeOrder.push(link);
         }
       }
     }
 
+    return lines;
+  }
+
+  /**
+   * Nodes inside their zones — `subgraph id["name"] … end` for every group,
+   * nested groups inside their parents — then the ungrouped nodes, then every
+   * edge. Used when the diagram HAS groups; a diagram without keeps the
+   * interleaved order above, byte for byte.
+   */
+  private generateGroupedStatements(diagram: DiagramModel, preserveIds: boolean): string[] {
+    const lines: string[] = [];
+    const groups = diagram.getGroups();
+    const byId = new Map(groups.map((g) => [g.id, g]));
+    const placed = new Set<string>();
+    const writeGroup = (group: GroupModel, depth: number): void => {
+      const pad = '  '.repeat(depth);
+      const name = group.name && group.name !== group.id ? `["${this.labelMarkup(group.name).replace(/"/g, '#quot;')}"]` : '';
+      lines.push(`${pad}subgraph ${this.sanitizeId(group.id)}${name}`);
+      const dir = group.getMetadata('direction');
+      if (typeof dir === 'string' && /^(TB|TD|BT|RL|LR)$/i.test(dir)) lines.push(`${pad}  direction ${dir.toUpperCase()}`);
+      for (const child of groups.filter((g) => g.parentGroupId === group.id)) writeGroup(child, depth + 1);
+      for (const id of group.members) {
+        const node = diagram.getNode(id);
+        if (!node || placed.has(id)) continue;
+        const def = this.generateNodeDefinition(node, preserveIds);
+        if (def) lines.push(`${pad}  ${def}`);
+        placed.add(id);
+      }
+      lines.push(`${pad}end`);
+    };
+    for (const node of diagram.getNodes()) {
+      const inGroup = groups.some((g) => g.members.has(node.id));
+      if (inGroup) continue;
+      const def = this.generateNodeDefinition(node, preserveIds);
+      if (def) lines.push(`  ${def}`);
+      placed.add(node.id);
+    }
+    for (const group of groups) if (!group.parentGroupId || !byId.has(group.parentGroupId)) writeGroup(group, 1);
+    for (const link of diagram.getLinks()) {
+      const def = this.generateEdgeDefinition(link, diagram, preserveIds);
+      if (def) {
+        lines.push(`  ${def}`);
+        this.edgeOrder.push(link);
+      }
+    }
     return lines;
   }
 
@@ -205,10 +265,31 @@ export class DSLGenerator {
     const shapeMetadata = this.analysis?.nodeMetadata.get(node.id);
     const shape = shapeMetadata?.shape || 'rectangle';
 
+    // A text note: v11's `@{ shape: text }` — words, no box.
+    const shapeType = (node.getMetadata('shape') as { type?: string } | undefined)?.type;
+    if (shapeType === 'text' || shape === 'text') {
+      return `${nodeId}@{ shape: text, label: "${this.labelMarkup(label).replace(/"/g, '#quot;')}" }`;
+    }
+
     // Generate shape brackets
     const { opening, closing } = this.getShapeBrackets(shape as NodeShape);
 
-    return `${nodeId}${opening}${this.escapeLabel(label, closing)}${closing}`;
+    // A name over a subtitle is written the way real Mermaid draws it too:
+    // `<b>Name</b><br/>subtitle`, a monospace subtitle in <code>.
+    const sub = node.getMetadata('sublabel') as string | { text?: string; fontFamily?: string } | undefined;
+    const subText = typeof sub === 'string' ? sub : sub?.text;
+    if (subText) {
+      const mono = typeof sub === 'object' && (sub.fontFamily === 'mono' || sub.fontFamily === 'monospace');
+      const rich = `<b>${this.labelMarkup(label)}</b><br/>${mono ? `<code>${this.labelMarkup(subText)}</code>` : this.labelMarkup(subText)}`;
+      return `${nodeId}${opening}"${rich.replace(/"/g, '#quot;')}"${closing}`;
+    }
+
+    return `${nodeId}${opening}${this.escapeLabel(this.labelMarkup(label), closing)}${closing}`;
+  }
+
+  /** A label's line breaks as `<br/>` — the form every Mermaid renderer reads. */
+  private labelMarkup(text: string): string {
+    return String(text).replace(/\n/g, '<br/>');
   }
 
   /**
@@ -219,7 +300,7 @@ export class DSLGenerator {
    */
   private escapeLabel(label: string, closing: string): string {
     const needsQuoting =
-      /[[\](){}"|]/.test(label) ||
+      /[[\](){}"|<>]/.test(label) ||
       label !== label.trim() ||
       (closing.length > 0 && label.includes(closing));
     if (!needsQuoting) return label;
@@ -251,7 +332,10 @@ export class DSLGenerator {
     // Add label if present (canonical read; see generateNodeDefinition)
     const label = link.getLabel();
     if (label) {
-      return `${sourceId} ${linkSyntax.split('>')[0]}>|${label}|${linkSyntax.split('>')[1] || ''} ${targetId}`;
+      // Line breaks as <br/>; a label with quotes or a break travels quoted.
+      const text = this.labelMarkup(label);
+      const written = /["|<>]/.test(text) ? `"${text.replace(/"/g, '#quot;')}"` : text;
+      return `${sourceId} ${linkSyntax.split('>')[0]}>|${written}|${linkSyntax.split('>')[1] || ''} ${targetId}`;
     }
 
     return `${sourceId} ${linkSyntax} ${targetId}`;
@@ -271,8 +355,9 @@ export class DSLGenerator {
 
     for (const node of nodes) {
       // Emit for nodes the DSL transformer actually styled — not the analyzer's
-      // hasCustomStyle flag, which treats fill/stroke as non-custom.
-      if (node.getMetadata('dslStyled') && node.style) {
+      // hasCustomStyle flag, which treats fill/stroke as non-custom — and for
+      // nodes that carry the AI-diagram look (typography, the flat box).
+      if ((node.getMetadata('dslStyled') || this.hasLookStyle(node)) && node.style) {
         const styleProps = this.formatStyleProperties(node.style);
         if (styleProps) {
           lines.push(`  style ${this.sanitizeId(node.id)} ${styleProps}`);
@@ -280,7 +365,38 @@ export class DSLGenerator {
       }
     }
 
+    // A zone's frame: `style <subgraph> …`.
+    for (const group of diagram.getGroups()) {
+      const frame = group.getMetadata('frameStyle') as Record<string, unknown> | undefined;
+      if (!frame) continue;
+      const props = this.formatStyleProperties({ ...frame, rx: frame['borderRadius'] });
+      if (props) lines.push(`  style ${this.sanitizeId(group.id)} ${props}`);
+    }
+
+    // `linkStyle <n>` — counted in the order the edges were written: the line's
+    // colour, dash and width, its label's colour and weight, and right angles as
+    // Mermaid's own `interpolate stepBefore`.
+    this.edgeOrder.forEach((link, i) => {
+      const own: Record<string, unknown> = {};
+      if (link.style?.stroke && typeof link.style.stroke === 'string') own['stroke'] = link.style.stroke;
+      if (link.style?.strokeWidth !== undefined && link.style.strokeWidth !== 2) own['strokeWidth'] = link.style.strokeWidth;
+      const labelStyle = link.labels?.[0]?.style as Record<string, unknown> | undefined;
+      if (labelStyle?.['color']) own['color'] = labelStyle['color'];
+      if (labelStyle?.['fontWeight']) own['fontWeight'] = labelStyle['fontWeight'];
+      if (labelStyle?.['fontSize']) own['fontSize'] = labelStyle['fontSize'];
+      const props = this.formatStyleProperties(own);
+      const step = link.pathType === 'orthogonal' ? 'interpolate stepBefore ' : '';
+      if (props || step) lines.push(`  linkStyle ${i} ${step}${props}`.trimEnd());
+    });
+
     return lines;
+  }
+
+  /** A node that carries the AI-diagram look — typography or the flat box. */
+  private hasLookStyle(node: NodeModel): boolean {
+    const st = node.style as Record<string, unknown> | undefined;
+    if (!st) return false;
+    return st['fontWeight'] !== undefined || st['fontSize'] !== undefined || st['fontFamily'] !== undefined || st['shadow'] === false || st['color'] !== undefined;
   }
 
   /**
@@ -291,6 +407,9 @@ export class DSLGenerator {
    */
   private generateGrafloriaDirectives(diagram: DiagramModel): string[] {
     const lines: string[] = [];
+    // How the drawing is arranged, when the author asked for a layout by name.
+    const layout = diagram.getMetadata('layout');
+    if (typeof layout === 'string' && /^[A-Za-z][\w-]*$/.test(layout)) lines.push(`%%grafloria:layout ${layout}`);
     for (const node of diagram.getNodes()) {
       const status = (node.state as { status?: string } | undefined)?.status;
       if (status && status !== 'idle') {
@@ -304,6 +423,54 @@ export class DSLGenerator {
         if (anim.speed) line += `,speed:${anim.speed}`;
         lines.push(line);
       }
+    }
+    // A note beside what it is about — a relation, not a coordinate.
+    for (const node of diagram.getNodes()) {
+      const near = node.getMetadata('near') as { target?: string; side?: string; gap?: number } | undefined;
+      if (near?.target) {
+        let line = `%%grafloria:near ${this.sanitizeId(node.id)} ${this.sanitizeId(near.target)} ${near.side ?? 'right'}`;
+        if (typeof near.gap === 'number') line += ` ${near.gap}`;
+        lines.push(line);
+      }
+    }
+    // Where a zone's caption sits, when not its default corner.
+    for (const group of diagram.getGroups()) {
+      const placement = (group.getMetadata('frameStyle') as { labelPlacement?: string } | undefined)?.labelPlacement;
+      if (placement && placement !== 'top-left') lines.push(`%%grafloria:group ${this.sanitizeId(group.id)} caption:${placement}`);
+    }
+    // Exact positions — asked for (ExportTextOptions.positions).
+    if (this.positions) {
+      const n = (v: number) => Math.round(v * 100) / 100;
+      for (const node of diagram.getNodes()) {
+        lines.push(`%%grafloria:at ${this.sanitizeId(node.id)} ${n(node.position.x)},${n(node.position.y)} ${n(node.size.width)}x${n(node.size.height)}`);
+      }
+      for (const group of diagram.getGroups()) {
+        const b = group.getOuterBounds();
+        if (b.width > 0 && b.height > 0) lines.push(`%%grafloria:at ${this.sanitizeId(group.id)} ${n(b.x)},${n(b.y)} ${n(b.width)}x${n(b.height)}`);
+      }
+    }
+    // Anchors along a side, label placement, hand-drawn bends.
+    for (const link of diagram.getLinks()) {
+      const props: string[] = [];
+      const handle = (portId: string | undefined, nodeId: string | undefined) =>
+        portId && nodeId && isSideAnchorPort(portId) && portId.startsWith(`${nodeId}__`) ? portId.slice(nodeId.length + 2) : undefined;
+      // A layout that anchored this line chose its points and bends; only the
+      // side the AUTHOR named (a relation: `from:bottom`) is theirs to keep.
+      const byLayout = link.getMetadata('layoutAnchored') === true;
+      const sideOf = (end: 'sourceSide' | 'targetSide') => {
+        const v = link.getMetadata(end);
+        return v === 'top' || v === 'right' || v === 'bottom' || v === 'left' ? v : undefined;
+      };
+      const from = sideOf('sourceSide') ?? (byLayout ? undefined : handle(link.sourcePortId, link.sourceNodeId));
+      const to = sideOf('targetSide') ?? (byLayout ? undefined : handle(link.targetPortId, link.targetNodeId));
+      if (from) props.push(`from:${from}`);
+      if (to) props.push(`to:${to}`);
+      const placement = link.getMetadata('labelPlacement');
+      if (placement === 'above' || placement === 'below') props.push(`label:${placement}`);
+      if (!byLayout && link.getMetadata('hasManualWaypoints') === true && link.points.length > 2) {
+        props.push(`via:${link.points.slice(1, -1).map((p) => `${Math.round(p.x * 100) / 100} ${Math.round(p.y * 100) / 100}`).join(' ')}`);
+      }
+      if (props.length > 0) lines.push(`%%grafloria:edge ${this.sanitizeId(link.sourceNodeId ?? '')} ${this.sanitizeId(link.targetNodeId ?? '')} ${props.join(', ')}`);
     }
     return lines;
   }
@@ -329,6 +496,14 @@ export class DSLGenerator {
     if (style.color) {
       props.push(`color:${style.color}`);
     }
+    // The look's own words — CSS properties real Mermaid passes through.
+    if (style.fontWeight !== undefined && style.fontWeight !== '') props.push(`font-weight:${style.fontWeight}`);
+    if (typeof style.fontSize === 'number') props.push(`font-size:${style.fontSize}px`);
+    if (style.fontFamily) props.push(`font-family:${style.fontFamily}`);
+    if (typeof style.letterSpacing === 'number') props.push(`letter-spacing:${style.letterSpacing}px`);
+    if (typeof style.rx === 'number') props.push(`rx:${style.rx}`);
+    else if (typeof style.borderRadius === 'number') props.push(`rx:${style.borderRadius}`);
+    if (style.shadow === false) props.push('shadow:none');
 
     return props.join(',');
   }
@@ -338,6 +513,9 @@ export class DSLGenerator {
    */
   private getShapeBrackets(shape: NodeShape): { opening: string; closing: string } {
     const brackets: Record<NodeShape, { opening: string; closing: string }> = {
+      // A text note is written `id@{ shape: text, label: "…" }` (see
+      // generateNodeDefinition); brackets are only its fallback.
+      'text': { opening: '[', closing: ']' },
       'rectangle': { opening: '[', closing: ']' },
       'rounded-rectangle': { opening: '(', closing: ')' },
       'stadium': { opening: '([', closing: '])' },
@@ -347,8 +525,10 @@ export class DSLGenerator {
       'asymmetric': { opening: '>', closing: ']' },
       'rhombus': { opening: '{', closing: '}' },
       'hexagon': { opening: '{{', closing: '}}' },
-      'trapezoid': { opening: '[/', closing: '/]' },
-      'trapezoid-alt': { opening: '[\\', closing: '\\]' },
+      'trapezoid': { opening: '[/', closing: '\\]' },
+      'trapezoid-alt': { opening: '[\\', closing: '/]' },
+      'parallelogram': { opening: '[/', closing: '/]' },
+      'parallelogram-alt': { opening: '[\\', closing: '\\]' },
     };
 
     return brackets[shape] || brackets['rectangle'];

@@ -29,8 +29,8 @@ export const umlSignalTemplate: NodeTemplate = {
   "structure": {
     "type": "uml:signal",
     "size": {
-      "width": 100,
-      "height": 60,
+      "width": 120,
+      "height": 80,
       "minWidth": 120,
       "maxWidth": 400,
       "minHeight": 80,
@@ -38,8 +38,8 @@ export const umlSignalTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#FFF3E0",
-      "stroke": "#F57C00",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },

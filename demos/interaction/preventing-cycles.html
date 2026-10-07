@@ -1,16 +1,24 @@
 <meta charset="utf-8">
 <title>Preventing cycles — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="A DAG that stays acyclic: a connection whose target can already reach its source is refused, so a→b→c→d can never be closed into a loop.">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/preventing-cycles.html">
+<meta property="og:title" content="Preventing cycles — Grafloria">
+<meta property="og:description" content="A DAG that stays acyclic: a connection whose target can already reach its source is refused, so a→b→c→d can never be closed into a loop.">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/preventing-cycles.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/preventing-cycles.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/preventing-cycles.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
-  #canvas { height: calc(100vh - 168px); }
+  #canvas { height: calc(100vh - 108px); }
 </style>
 <header id="demo-head"></header>
 <div id="readout"></div>
 <div id="canvas"></div>
 <script type="module">
 import { render, registerConnectionValidator, clearConnectionValidators } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // A DAG: a→b→c→d. Closing a loop (d→a, or c→a) would make it cyclic. A validator
 // walks the existing directed edges and refuses any connection whose target can

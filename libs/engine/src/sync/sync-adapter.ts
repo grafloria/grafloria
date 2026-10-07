@@ -45,6 +45,9 @@ import type { SyncMessage } from './protocol';
 import type { SyncTransport, TransportStatus, Unsubscribe } from './transport';
 import { VersionVector, deltaFor, type VersionVectorJSON } from './version-vector';
 
+/** How long a silent peer keeps its presence, by default. */
+const DEFAULT_AWARENESS_TIMEOUT_MS = 15_000;
+
 export interface SyncAdapterOptions {
   /** Batching. `false` sends every op the instant it happens — legal, and a bad idea. */
   batch?: Omit<OpBatcherOptions, 'onFlush'> | false;
@@ -63,13 +66,23 @@ export interface SyncAdapterOptions {
   /** Periodic anti-entropy, ms. 0 disables it (the tests drive `sync()` by hand). */
   syncIntervalMs?: number;
 
-  /** Re-publish our awareness this often so peers do not time us out while we sit still. */
+  /**
+   * Re-publish our awareness this often, so peers do not time us out while we sit
+   * still. Default: a third of {@link awarenessTimeoutMs} (5 s with the defaults).
+   * 0 turns the heartbeat off; peers then expire anyone silent for the timeout,
+   * idle or not.
+   */
   heartbeatMs?: number;
 
   /** Minimum ms between awareness sends. 60Hz in, ~20Hz out. */
   awarenessThrottleMs?: number;
 
-  /** Drop a peer's presence after this long without a word. */
+  /**
+   * Drop a peer's presence (its cursor, selection and name) after this long
+   * without a word from it. Default 15 s. Checked on a timer, so a peer that
+   * crashes without saying goodbye is removed within about the timeout plus a
+   * third of it. A peer that leaves cleanly is removed at once.
+   */
   awarenessTimeoutMs?: number;
 
   /** Injectables, so every timing test is deterministic instead of a race. */
@@ -280,19 +293,23 @@ export class SyncAdapter {
       this.syncTimer = this.setIntervalFn(() => this.sync(), interval);
     }
 
-    const beat = this.options.heartbeatMs ?? 0;
-    if (beat > 0 && this.heartbeatTimer === null) {
+    // Presence upkeep runs on ONE timer, on by default. Expiry has to be driven by a
+    // timer: nothing arrives from a peer whose tab has crashed, so there is no event to
+    // hang it on, and its cursor would otherwise hover on the canvas forever.
+    const timeout = this.options.awarenessTimeoutMs ?? DEFAULT_AWARENESS_TIMEOUT_MS;
+    const beat = this.options.heartbeatMs ?? Math.max(1, Math.floor(timeout / 3));
+    if (this.heartbeatTimer === null) {
+      const every = beat > 0 ? beat : Math.max(1, Math.floor(timeout / 3));
       this.heartbeatTimer = this.setIntervalFn(() => {
         // A heartbeat is a re-send of the CURRENT state at the CURRENT sequence — it must
         // not bump `seq`, or every peer would think our cursor "changed" every 5 seconds
         // and repaint it. It refreshes their `lastSeen`, nothing more.
-        this.sendAwareness();
-        // …and it is where WE drop peers who have stopped heartbeating at us. Expiry has
-        // to be driven by a timer: nothing arrives from a peer whose tab has crashed, so
-        // there is no event to hang it on. That is precisely why their cursor would
-        // otherwise hover on the canvas forever.
+        if (beat > 0) this.sendAwareness();
+        // …and drop the peers we have not heard from inside the timeout.
         this.awareness.prune();
-      }, beat);
+      }, every);
+      // A presence timer must never keep a Node process alive on its own.
+      (this.heartbeatTimer as { unref?: () => void } | null)?.unref?.();
     }
   }
 
@@ -359,26 +376,14 @@ export class SyncAdapter {
   /**
    * THE LOG AS THE NETWORK SEES IT — our history, minus everything coalescing withheld.
    *
-   * ---------------------------------------------------------------------------
-   * THE BUG THIS EXISTS TO FIX, WHICH WAS MINE, AND WHICH ONLY THE BROWSER FOUND
-   * ---------------------------------------------------------------------------
    * A 20-frame drag puts ONE op on the wire and leaves TWENTY in the local log — that is
-   * coalescing working exactly as designed, and the two peers' documents agree perfectly.
+   * coalescing working as designed, and the two peers' documents agree.
    *
-   * But anti-entropy compares FRONTIERS DERIVED FROM LOGS. So on the next sync round my
-   * frontier said "I hold 20 ops from alice" and the peer's said "I hold 1", and the digest
-   * — which cannot tell a withheld op from a lost one — declared a HOLE and repaired it by
-   * resending my entire history. Measured: `opsSent` went from 1 to 21 on the first sync
-   * after a single drag. And it never settles, because the peer can NEVER obtain the 19 ops
-   * I have deliberately decided never to send. Every sync round, forever, for the rest of
-   * the session, on the most common interaction in the product.
+   * Anti-entropy compares FRONTIERS DERIVED FROM LOGS, and a digest cannot tell a withheld
+   * op from a lost one. If the frontier counted the 19 withheld ops, every sync round would
+   * see a HOLE and resend the whole history, forever, since no peer can ever obtain them.
    *
-   * It is invisible to a convergence oracle — the document is perfectly correct throughout —
-   * and it was invisible to my own frontier-invariant test, which flushed after every single
-   * op and therefore never once coalesced anything while syncing. It took driving a real drag
-   * through a real browser to compose the two.
-   *
-   * THE FIX is a definition, not a patch: THE FRONTIER DESCRIBES THE SHARED LOG. An op we
+   * So THE FRONTIER DESCRIBES THE SHARED LOG. An op we
    * chose never to transmit is not part of the history we share with anyone, so it is not in
    * our frontier and it is not in the catch-up delta we serve — to ANY peer, including one
    * that joins tomorrow. Every peer therefore holds the same shared set, every digest agrees,
@@ -592,6 +597,18 @@ export class SyncAdapter {
     this.awarenessPending = false;
   }
 
+  /**
+   * Stop for good: leave (which DISCONNECTS the transport), drop every timer and
+   * unsubscribe from the transport.
+   *
+   * It does NOT close the transport. The session was handed that transport; it did not
+   * create it, so it is not the session's to destroy — which is what makes a
+   * mount / clean up / mount again cycle (React StrictMode, on by default in Vite and
+   * Next dev) work: the second mount joins the same, still-open transport.
+   *
+   * A disconnected transport holds no socket or channel and can be joined again by a new
+   * session. Call `transport.close()` yourself when the transport itself is done.
+   */
   dispose(): void {
     if (this.disposed) return;
     if (this.joined) this.leave();
@@ -600,7 +617,6 @@ export class SyncAdapter {
     this.batcher?.dispose();
     for (const u of this.unsubs) u();
     this.unsubs.length = 0;
-    this.transport.close();
   }
 }
 

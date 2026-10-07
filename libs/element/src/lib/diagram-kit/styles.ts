@@ -24,14 +24,45 @@ const CSS = `
   display: flex; flex-direction: column; }
 .axk-entity-body { flex: 1; min-height: 0; overflow-y: hidden; }
 .axk-entity-body.axk-scroll { overflow-y: auto; scrollbar-width: thin; }
+/* The head is sized by entityAutoWidth, but a title past the auto-width ceiling
+   still has to degrade VISIBLY: this rule used to be absent entirely, so a long
+   table name ran off the card and was cut by .axk-entity's overflow:hidden with
+   nothing to show for it (measured: 305px of name in a 180px head — 125px gone,
+   no ellipsis, no hint). nowrap also keeps the head exactly ER_HEAD_H tall,
+   which entityAutoHeight's row math depends on. */
 .axk-entity-head { background: #334155; color: #fff; font-weight: 600;
-  letter-spacing: .3px; padding: 5px 10px; text-transform: uppercase; font-size: 11px; }
+  letter-spacing: .3px; padding: 5px 10px; text-transform: uppercase; font-size: 11px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .axk-row { display: flex; align-items: center; gap: 8px; padding: 3px 10px;
   border-top: 1px solid #e2e8f0; }
 .axk-key { width: 22px; font-size: 9px; font-weight: 700; color: #b45309; }
 .axk-key.axk-fk { color: #6d28d9; }
-.axk-col { flex: 1; color: #0f172a; }
-.axk-ty { color: #64748b; font-size: 11px; }
+/* ONE LINE PER COLUMN, ALWAYS — this rule is load-bearing for the card's HEIGHT.
+   entityAutoHeight allocates exactly ER_ROW_H per column, and .axk-entity-body is
+   overflow-y:hidden, so a name that wrapped to a second line pushed the last row
+   past the card's bottom edge and it silently vanished (measured: a 40px row
+   against the 25px the height math had reserved — 14px of the final column gone,
+   with no scrollbar to hint at it). Long identifiers ellipsis instead, so the
+   ROW always survives even when the text does not fit; an author who needs the
+   whole identifier visible sets an explicit width on the entity. (No title
+   attribute: the HTML-node contract deliberately passes text through
+   textContent and no attributes, and a tooltip is not worth widening it.)
+   min-width:0 is what lets a flex child shrink below its content. */
+.axk-col { flex: 1; min-width: 0; color: #0f172a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.axk-ty {
+  color: #64748b; font-size: 11px;
+  /* A new column starts with an EMPTY type, which collapsed the cell to zero
+     width — there was nothing to double-click, so a type could never be set on
+     a field you just added. Reserve a target and hint that it is editable. */
+  min-width: 52px; text-align: right; cursor: text;
+  /* Same contract as .axk-col: a long type must not wrap the row either.
+     It keeps its reserved width and never shrinks away. */
+  flex: 0 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 45%;
+}
+.axk-ty:empty::before { content: 'type'; color: #cbd5e1; font-style: italic; }
+.axk-ty:hover { color: #0f172a; }
 .axk-row.axk-pk .axk-col { font-weight: 600; }
 
 /* ===== UML class cards ===== */
@@ -41,14 +72,25 @@ const CSS = `
   display: flex; flex-direction: column; }
 .axk-uml-body { flex: 1; min-height: 0; overflow-y: hidden; }
 .axk-uml-body.axk-scroll { overflow-y: auto; scrollbar-width: thin; }
+/* Same one-line contract as .axk-entity-head: UML_NAME_H is what
+   classAutoHeight reserves, so a wrapped class name would push the first
+   compartment past the card's bottom edge. */
 .axk-uml-name { text-align: center; font-weight: 700; padding: 5px 10px;
-  background: #eef2ff; color: #1e1b4b; }
+  background: #eef2ff; color: #1e1b4b;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .axk-uml-name.axk-abstract { font-style: italic; }
 .axk-uml-stereo { display: block; font-size: 10px; font-weight: 500; opacity: .8; }
 .axk-uml-comp { border-top: 1px solid #475569; padding: 3px 0; }
 .axk-uml-comp.axk-empty { min-height: 8px; }
+/* Members already refused to wrap, but with no ellipsis they were cut
+   MID-GLYPH by the card's overflow:hidden — a method signature needing 487px
+   in a 190px card lost 297px of itself silently, on the one line a class
+   diagram exists to show. classAutoWidth now widens the card to fit; past its
+   ceiling this ellipsis says so. min-width:0 lets the editable flex variant
+   shrink. */
 .axk-member { padding: 1px 10px; font: 11px/1.5 ui-monospace, Menlo, monospace;
-  color: #0f172a; white-space: nowrap; }
+  color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; }
 
 /* ===== Row interactivity (cards are interactive; drag stays geometric) ===== */
 .axk-entity, .axk-uml { user-select: none; -webkit-user-select: none; }
@@ -78,7 +120,8 @@ g.node-group[data-selected="true"]:has(.axk-uml) rect.diagram-node {
 /* Only editable members (which wrap their text in .axk-mtext) go flex — a
    read-only member stays a plain text div, so its golden never shifts. */
 .axk-member:has(.axk-mtext) { display: flex; align-items: center; }
-.axk-member .axk-mtext { flex: 1; }
+.axk-member .axk-mtext { flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .axk-entity-add, .axk-uml-add { padding: 3px 10px; font-size: 11px; font-weight: 600;
   color: #2563eb; cursor: pointer; border-top: 1px dashed #cbd5e1; user-select: none; }
 .axk-uml-add { color: #4f46e5; border-top: 1px dashed #c7d2fe; text-align: left; }

@@ -1,0 +1,732 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fluid dashboard — Grafloria</title>
+<meta name="description" content="A dashboard that is 100% of its container at zoom 1 — the default mode of dashboard(). Resize the container and the board follows; fit is bounded, so the board refuses what does not fit instead of painting past its edge.">
+<link rel="canonical" href="https://grafloria.com/demos/dashboard/fluid-board.html">
+<meta property="og:title" content="Fluid dashboard — Grafloria">
+<meta property="og:description" content="A dashboard that is 100% of its container at zoom 1 — the default mode of dashboard(). Resize the container and the board follows; fit is bounded, so the board refuses what does not fit instead of painting past its edge.">
+<meta property="og:url" content="https://grafloria.com/demos/dashboard/fluid-board.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/dashboard/fluid-board.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/dashboard/fluid-board.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  /* ================================================================================
+     THE BOARD IS A LAYOUT, NOT A PICTURE. dashboard-builder.html authors a 1180-px
+     world and lets the camera frame it — the 'fixed' mode, right for a dashboard
+     that lives inside a larger diagram. This page is the DEFAULT: no width authored,
+     so the board is the container's own CSS pixels at zoom 1, exactly as gridstack
+     or react-grid-layout would lay it out. Shrink the container and the board
+     re-lays out; it never shrinks the type.
+     ================================================================================ */
+  /* The controls wrap as whole items; the message always has a line of its own under them, reserved even when empty, so
+     the first message never shifts the board. */
+  #fb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--gf-line, rgba(127,127,127,.24)); font: 500 12.5px/1.3 system-ui, sans-serif; }
+  #fb-bar button { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; cursor: pointer; white-space: nowrap; }
+  #fb-bar button[aria-pressed="true"] { background: rgba(59, 82, 217, .12); border-color: #3b52d9; }
+  #fb-bar .fb-sep { width: 1px; height: 18px; background: rgba(127,127,127,.3); margin: 0 4px; }
+  #fb-bar .fb-lab { display: inline-flex; align-items: center; gap: 6px; }
+  /* Pinned so the toolbar cannot reflow when an option's TEXT changes: a
+     select is sized to its widest option, so renaming one shifted the whole
+     board a few px and every visual golden with it. */
+  #fb-caption { width: 190px; }
+  #fb-sel-lab { white-space: nowrap; }
+  #fb-sel-lab b { margin-right: 6px; }
+  #fb-bar select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; }
+  #fb-bar select:disabled { opacity: .45; }
+  #fb-bar .fb-msg { flex: 1 1 100%; min-height: 1.3em; opacity: .75; font-variant-numeric: tabular-nums; }
+  #fb-bar .fb-msg.refused { color: #b3261e; opacity: 1; }
+  /* The container is what the board follows: 100% wide, or 60% when "narrow". */
+  #fb-stage { width: 100%; }
+  #fb-stage.narrow { width: 60%; }
+  #canvas { position: relative; overflow: hidden; width: 100%; height: calc(100vh - 140px); min-height: 480px; }
+</style>
+
+<div id="demo-head"></div>
+<div id="fb-bar">
+  <button id="fb-narrow" aria-pressed="false" title="Make the container 60% wide — the board follows">Narrow container</button>
+  <span class="fb-sep"></span>
+  <button id="fb-fit" aria-pressed="false">Fit</button>
+  <button id="fb-grow" aria-pressed="true">Grow</button>
+  <span class="sep"></span>
+  <button id="fb-grid" aria-pressed="true" title="The cell grid: columns, spans, push">Grid</button>
+  <button id="fb-split" aria-pressed="false" title="The splitter tree: the board is always covered, dividers are percentages">Split</button>
+  <span class="fb-sep"></span>
+  <label class="fb-lab" title="Where a widget can be grabbed: anywhere on the card, only its caption strip (DevExpress caption drag), or only a painted grip">Drag
+    <select id="fb-drag"><option value="anywhere">anywhere</option><option value="caption">by caption</option><option value="grip">by grip</option></select></label>
+  <select id="fb-grip-pos" disabled title="Where the grip sits along the top edge"><option value="left">left</option><option value="center">center</option><option value="right">right</option></select>
+  <select id="fb-grip-place" disabled title="Inside the header band, or a tab above the card"><option value="inside">inside</option><option value="outside">outside</option></select>
+  <span class="fb-sep"></span>
+  <label class="fb-lab" title="The Operations section's caption, painted by the kit — handle.setCaption() switches it live">Caption
+    <select id="fb-caption"><option value="default">subtitle · ⓘ · actions</option><option value="tab">a tab at the corner</option><option value="center">centred · uppercase</option><option value="hover">on hover only</option><option value="none">none</option></select></label>
+  <span class="fb-sep"></span>
+  <label class="fb-lab" id="fb-sel-lab" title="The layout INSIDE the selected container — a section, or a tab group's page. Click a section's caption band, a tab, or a widget inside one, then switch: handle.setLayout(mode, containerId)">Inside <b id="fb-sel-name">nothing selected</b>
+    <button id="fb-sel-grid" aria-pressed="false" disabled>Grid</button><button id="fb-sel-split" aria-pressed="false" disabled>Split</button></label>
+  <span class="fb-sep"></span>
+  <button id="fb-add" title="Add a full-width KPI row — a fit board refuses once it is full">+ Add a row</button>
+  <span class="fb-msg" id="fb-msg"></span>
+</div>
+<div id="fb-stage"><div id="canvas"></div></div>
+
+<script type="text/plain" data-code="angular">
+// npm i @grafloria/angular
+import { Component, signal } from '@angular/core';
+import { GrafloriaDashboardComponent } from '@grafloria/angular';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+@Component({
+  selector: 'app-fluid-board',
+  imports: [GrafloriaDashboardComponent],
+  template: `
+    <div class="bar">
+      <button (click)="sizing.set('fit')">Fit</button>
+      <button (click)="sizing.set('grow')">Grow</button>
+      <button (click)="layout.set('grid')">Grid</button>
+      <button (click)="layout.set('split')">Split</button>
+      <button (click)="handle?.setDragHandle(true)">Drag by caption</button>
+      <button (click)="handle?.setDragHandle({ grip: true, position: 'right', placement: 'outside' })">Grip outside</button>
+      <button (click)="handle?.setDragHandle(false)">Drag anywhere</button>
+      <button (click)="handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })">+ Add a row</button>
+    </div>
+    <!-- No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. -->
+    <grafloria-dashboard
+      [views]="views" [options]="options"
+      [layout]="layout()" [sizing]="sizing()"
+      (ready)="handle = $event"
+      (layoutChange)="onLayout($event)"
+      style="display:block; height:calc(100vh - 140px)" />
+  `,
+})
+export class FluidBoardComponent {
+  handle?: DashboardHandle;
+  // The switches are INPUTS: a signal change is one handle call, never a remount.
+  layout = signal<'grid' | 'split'>('grid');
+  sizing = signal<'fit' | 'grow'>('grow');
+  options = { columns: 12, gap: 10 };
+  views: DashboardViewSpec[] = [{ id: 'main', widgets: [
+    { id: 'rev',  kind: 'kpi',   span: 2, rows: 1, x: 0, y: 0, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
+    { id: 'cust', kind: 'kpi',   span: 2, rows: 1, x: 2, y: 0, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
+    { id: 'win',  kind: 'kpi',   span: 2, rows: 1, x: 4, y: 0, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
+    { id: 'nps',  kind: 'kpi',   span: 2, rows: 1, x: 6, y: 0, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 3, x: 0, y: 1, title: 'Revenue vs target',
+      data: { series: [{ name: 'Revenue', values: [4.1, 4.4, 4.9, 5.2, 5.9, 6.8] }, { name: 'Target', values: [4.0, 4.5, 5.0, 5.5, 6.0, 6.5] }],
+              labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix',  kind: 'donut', span: 3, rows: 3, x: 6, y: 1, title: 'Revenue by region',
+      data: { slices: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } },
+    { id: 'reps', kind: 'table', span: 5, rows: 3, x: 0, y: 4, title: 'Top reps',
+      data: { columns: ['Rep', 'Region', 'Closed', 'Quota'],
+              rows: [['A. Farouk', 'EMEA', 412000, '118%'], ['J. Park', 'APAC', 388000, '104%'], ['M. Silva', 'LATAM', 301000, '96%'], ['R. Chen', 'NA', 297000, '91%']] } },
+    { id: 'funnel', kind: 'funnel', span: 4, rows: 3, x: 5, y: 4, title: 'Pipeline',
+      data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
+    // A SECTION with a caption painted by the kit (element 0.4.22): its own
+    // 12-column grid, a 44 px band reserved above its children, four free
+    // columns to drag a KPI into. `setCaption` restyles it live.
+    { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9,
+      caption: { subtitle: 'live since 08:00', description: 'A section: its own grid inside the board. Drag a KPI in or out; the band is the kit\'s.', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }, { id: 'menu', label: 'More', icon: '⋯' }] },
+      widgets: [
+        { id: 'orders', kind: 'kpi', span: 4, rows: 1, data: { label: 'Orders today', value: '312', delta: 5.2 } },
+        { id: 'churn',  kind: 'kpi', span: 4, rows: 1, data: { label: 'Churn', value: '1.9%', delta: -0.3 } },
+      ] },
+    // A TAB CONTAINER down the right, the board's full height: `layout: 'tabs'`
+    // makes every child that carries `widgets` a PAGE — one visible at a time,
+    // switched by the strip across the top. `active` is persisted by toJSON().
+    { id: 'side', title: 'Side panel', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', active: 'p-filters', widgets: [
+      { id: 'p-filters', title: 'Filters', columns: 3, widgets: [
+        { id: 'f-region', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } },
+        { id: 'f-period', kind: 'kpi', span: 3, rows: 4, x: 0, y: 4, data: { label: 'Period', value: 'Q3' } } ] },
+      { id: 'p-alerts', title: 'Alerts', columns: 3, widgets: [
+        { id: 'a-open', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Open alerts', value: '3', delta: -2.0 } } ] },
+      { id: 'p-notes', title: 'Notes', columns: 3, widgets: [
+        { id: 'n-last', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } } ] },
+    ] },
+  ] }];
+
+  onLayout(e: { viewId: string; widgets: unknown[] }) {
+    // Every committed gesture, API call, undo and redo lands here — persist it.
+    console.log('layout changed', e.viewId, e.widgets.length, 'widgets');
+  }
+}
+</script>
+<script type="text/plain" data-code="react">
+// npm i @grafloria/react
+import { useState } from 'react';
+import { GrafloriaDashboard } from '@grafloria/react';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
+    { id: 'rev',  kind: 'kpi',   span: 2, rows: 1, x: 0, y: 0, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
+    { id: 'cust', kind: 'kpi',   span: 2, rows: 1, x: 2, y: 0, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
+    { id: 'win',  kind: 'kpi',   span: 2, rows: 1, x: 4, y: 0, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
+    { id: 'nps',  kind: 'kpi',   span: 2, rows: 1, x: 6, y: 0, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 3, x: 0, y: 1, title: 'Revenue vs target',
+      data: { series: [{ name: 'Revenue', values: [4.1, 4.4, 4.9, 5.2, 5.9, 6.8] }, { name: 'Target', values: [4.0, 4.5, 5.0, 5.5, 6.0, 6.5] }],
+              labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix',  kind: 'donut', span: 3, rows: 3, x: 6, y: 1, title: 'Revenue by region',
+      data: { slices: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } },
+    { id: 'reps', kind: 'table', span: 5, rows: 3, x: 0, y: 4, title: 'Top reps',
+      data: { columns: ['Rep', 'Region', 'Closed', 'Quota'],
+              rows: [['A. Farouk', 'EMEA', 412000, '118%'], ['J. Park', 'APAC', 388000, '104%'], ['M. Silva', 'LATAM', 301000, '96%'], ['R. Chen', 'NA', 297000, '91%']] } },
+    { id: 'funnel', kind: 'funnel', span: 4, rows: 3, x: 5, y: 4, title: 'Pipeline',
+      data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
+    // A SECTION with a caption painted by the kit (element 0.4.22): its own
+    // 12-column grid, a 44 px band reserved above its children, four free
+    // columns to drag a KPI into. `setCaption` restyles it live.
+    { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9,
+      caption: { subtitle: 'live since 08:00', description: 'A section: its own grid inside the board. Drag a KPI in or out; the band is the kit\'s.', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }, { id: 'menu', label: 'More', icon: '⋯' }] },
+      widgets: [
+        { id: 'orders', kind: 'kpi', span: 4, rows: 1, data: { label: 'Orders today', value: '312', delta: 5.2 } },
+        { id: 'churn',  kind: 'kpi', span: 4, rows: 1, data: { label: 'Churn', value: '1.9%', delta: -0.3 } },
+      ] },
+    // A TAB CONTAINER down the right, the board's full height: `layout: 'tabs'`
+    // makes every child that carries `widgets` a PAGE — one visible at a time,
+    // switched by the strip across the top. `active` is persisted by toJSON().
+    { id: 'side', title: 'Side panel', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', active: 'p-filters', widgets: [
+      { id: 'p-filters', title: 'Filters', columns: 3, widgets: [
+        { id: 'f-region', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } },
+        { id: 'f-period', kind: 'kpi', span: 3, rows: 4, x: 0, y: 4, data: { label: 'Period', value: 'Q3' } } ] },
+      { id: 'p-alerts', title: 'Alerts', columns: 3, widgets: [
+        { id: 'a-open', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Open alerts', value: '3', delta: -2.0 } } ] },
+      { id: 'p-notes', title: 'Notes', columns: 3, widgets: [
+        { id: 'n-last', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } } ] },
+    ] },
+] }];
+
+export function FluidBoard() {
+  const [handle, setHandle] = useState<DashboardHandle>();
+  // The switches are PROPS: a state change is one handle call, never a remount.
+  const [layout, setLayout] = useState<'grid' | 'split'>('grid');
+  const [sizing, setSizing] = useState<'fit' | 'grow'>('grow');
+  return (
+    <>
+      <div className="bar">
+        <button onClick={() => setSizing('fit')}>Fit</button>
+        <button onClick={() => setSizing('grow')}>Grow</button>
+        <button onClick={() => setLayout('grid')}>Grid</button>
+        <button onClick={() => setLayout('split')}>Split</button>
+        <button onClick={() => handle?.setDragHandle(true)}>Drag by caption</button>
+        <button onClick={() => handle?.setDragHandle({ grip: true, position: 'right', placement: 'outside' })}>Grip outside</button>
+        <button onClick={() => handle?.setDragHandle(false)}>Drag anywhere</button>
+        <button onClick={() => handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })}>+ Add a row</button>
+      </div>
+      {/* No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. */}
+      <GrafloriaDashboard
+        views={views}
+        options={{ columns: 12, gap: 10 }}
+        layout={layout}
+        sizing={sizing}
+        onReady={setHandle}
+        onLayoutChange={({ viewId, widgets }) => console.log('layout changed', viewId, widgets.length, 'widgets')}
+        style={{ height: 'calc(100vh - 140px)' }}
+      />
+    </>
+  );
+}
+</script>
+<script type="text/plain" data-code="vue">
+<!-- npm i @grafloria/vue -->
+<script setup lang="ts">
+import { ref, shallowRef } from 'vue';
+import { GrafloriaDashboard } from '@grafloria/vue';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+const handle = shallowRef<DashboardHandle>();
+// The switches are PROPS: a ref change is one handle call, never a remount.
+const layout = ref<'grid' | 'split'>('grid');
+const sizing = ref<'fit' | 'grow'>('grow');
+const options = { columns: 12, gap: 10 };
+const views: DashboardViewSpec[] = [{ id: 'main', widgets: [
+    { id: 'rev',  kind: 'kpi',   span: 2, rows: 1, x: 0, y: 0, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
+    { id: 'cust', kind: 'kpi',   span: 2, rows: 1, x: 2, y: 0, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
+    { id: 'win',  kind: 'kpi',   span: 2, rows: 1, x: 4, y: 0, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
+    { id: 'nps',  kind: 'kpi',   span: 2, rows: 1, x: 6, y: 0, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 3, x: 0, y: 1, title: 'Revenue vs target',
+      data: { series: [{ name: 'Revenue', values: [4.1, 4.4, 4.9, 5.2, 5.9, 6.8] }, { name: 'Target', values: [4.0, 4.5, 5.0, 5.5, 6.0, 6.5] }],
+              labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix',  kind: 'donut', span: 3, rows: 3, x: 6, y: 1, title: 'Revenue by region',
+      data: { slices: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } },
+    { id: 'reps', kind: 'table', span: 5, rows: 3, x: 0, y: 4, title: 'Top reps',
+      data: { columns: ['Rep', 'Region', 'Closed', 'Quota'],
+              rows: [['A. Farouk', 'EMEA', 412000, '118%'], ['J. Park', 'APAC', 388000, '104%'], ['M. Silva', 'LATAM', 301000, '96%'], ['R. Chen', 'NA', 297000, '91%']] } },
+    { id: 'funnel', kind: 'funnel', span: 4, rows: 3, x: 5, y: 4, title: 'Pipeline',
+      data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
+    // A SECTION with a caption painted by the kit (element 0.4.22): its own
+    // 12-column grid, a 44 px band reserved above its children, four free
+    // columns to drag a KPI into. `setCaption` restyles it live.
+    { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9,
+      caption: { subtitle: 'live since 08:00', description: 'A section: its own grid inside the board. Drag a KPI in or out; the band is the kit\'s.', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }, { id: 'menu', label: 'More', icon: '⋯' }] },
+      widgets: [
+        { id: 'orders', kind: 'kpi', span: 4, rows: 1, data: { label: 'Orders today', value: '312', delta: 5.2 } },
+        { id: 'churn',  kind: 'kpi', span: 4, rows: 1, data: { label: 'Churn', value: '1.9%', delta: -0.3 } },
+      ] },
+    // A TAB CONTAINER down the right, the board's full height: `layout: 'tabs'`
+    // makes every child that carries `widgets` a PAGE — one visible at a time,
+    // switched by the strip across the top. `active` is persisted by toJSON().
+    { id: 'side', title: 'Side panel', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', active: 'p-filters', widgets: [
+      { id: 'p-filters', title: 'Filters', columns: 3, widgets: [
+        { id: 'f-region', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } },
+        { id: 'f-period', kind: 'kpi', span: 3, rows: 4, x: 0, y: 4, data: { label: 'Period', value: 'Q3' } } ] },
+      { id: 'p-alerts', title: 'Alerts', columns: 3, widgets: [
+        { id: 'a-open', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Open alerts', value: '3', delta: -2.0 } } ] },
+      { id: 'p-notes', title: 'Notes', columns: 3, widgets: [
+        { id: 'n-last', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } } ] },
+    ] },
+] }];
+const onLayout = (e: { viewId: string; widgets: unknown[] }) => console.log('layout changed', e.viewId, e.widgets.length, 'widgets');
+<\/script>
+
+<template>
+  <div class="bar">
+    <button @click="sizing = 'fit'">Fit</button>
+    <button @click="sizing = 'grow'">Grow</button>
+    <button @click="layout = 'grid'">Grid</button>
+    <button @click="layout = 'split'">Split</button>
+    <button @click="handle?.setDragHandle(true)">Drag by caption</button>
+    <button @click="handle?.setDragHandle({ grip: true, position: 'right', placement: 'outside' })">Grip outside</button>
+    <button @click="handle?.setDragHandle(false)">Drag anywhere</button>
+    <button @click="handle?.addWidget({ id: 'row-' + Date.now(), kind: 'kpi', span: 12, rows: 1, data: { label: 'Row', value: '+1' } })">+ Add a row</button>
+  </div>
+  <!-- No width → mode 'fluid': the board is 100% of this element at zoom 1 and GROWS by default; 'fit' keeps the height and squeezes rows; 'split' is the DevExpress splitter tree. -->
+  <GrafloriaDashboard :views="views" :options="options" :layout="layout" :sizing="sizing"
+    @ready="handle = $event" @layout-change="onLayout"
+    style="display:block; height:calc(100vh - 140px)" />
+</template>
+</script>
+<script type="module">
+import { render, dashboard } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
+
+// No `width` → mode 'fluid' (an explicit width would make it 'fixed').
+// No `sizing` either: a fluid board grows by default (rows keep their height,
+// the board extends, the canvas scrolls) — dragging one tile never resizes another.
+const SPEC_INPUT = {
+  columns: 12,
+  gap: 10,
+  widgets: [
+    { id: 'rev',  kind: 'kpi',   span: 2, rows: 1, x: 0, y: 0, data: { label: 'Revenue',   value: '$6.81M', delta: 12.4, spark: [3.9, 4.4, 4.1, 5.2, 5.9, 6.8] } },
+    { id: 'cust', kind: 'kpi',   span: 2, rows: 1, x: 2, y: 0, data: { label: 'Customers', value: '1,284',  delta: 8.1,  spark: [980, 1010, 1090, 1150, 1210, 1284] } },
+    { id: 'win',  kind: 'kpi',   span: 2, rows: 1, x: 4, y: 0, data: { label: 'Win rate',  value: '27.4%', delta: -1.2, spark: [29, 28.5, 28, 27.9, 27.6, 27.4] } },
+    { id: 'nps',  kind: 'kpi',   span: 2, rows: 1, x: 6, y: 0, data: { label: 'NPS',       value: '61',    delta: 4.0,  spark: [52, 54, 57, 58, 60, 61] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 3, x: 0, y: 1, title: 'Revenue vs target',
+      data: { series: [{ name: 'Revenue', values: [4.1, 4.4, 4.9, 5.2, 5.9, 6.8] }, { name: 'Target', values: [4.0, 4.5, 5.0, 5.5, 6.0, 6.5] }], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] } },
+    { id: 'mix',  kind: 'donut', span: 3, rows: 3, x: 6, y: 1, title: 'Revenue by region',
+      data: { slices: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }, { label: 'LATAM', value: 690 }] } },
+    { id: 'reps', kind: 'table', span: 5, rows: 3, x: 0, y: 4, title: 'Top reps',
+      data: { columns: ['Rep', 'Region', 'Closed', 'Quota'], rows: [['A. Farouk', 'EMEA', 412000, '118%'], ['J. Park', 'APAC', 388000, '104%'], ['M. Silva', 'LATAM', 301000, '96%'], ['R. Chen', 'NA', 297000, '91%']] } },
+    { id: 'funnel', kind: 'funnel', span: 4, rows: 3, x: 5, y: 4, title: 'Pipeline',
+      data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
+    // A SECTION with a caption painted by the kit (element 0.4.22): its own
+    // 12-column grid, a 44 px band reserved above its children, four free
+    // columns to drag a KPI into. `setCaption` restyles it live.
+    { id: 'ops', title: 'Operations', span: 9, rows: 1, x: 0, y: 7, columns: 9,
+      caption: { subtitle: 'live since 08:00', description: 'A section: its own grid inside the board. Drag a KPI in or out; the band is the kit\'s.', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }, { id: 'menu', label: 'More', icon: '⋯' }] },
+      widgets: [
+        { id: 'orders', kind: 'kpi', span: 4, rows: 1, data: { label: 'Orders today', value: '312', delta: 5.2 } },
+        { id: 'churn',  kind: 'kpi', span: 4, rows: 1, data: { label: 'Churn', value: '1.9%', delta: -0.3 } },
+      ] },
+    // A TAB CONTAINER down the right, the board's full height: `layout: 'tabs'`
+    // makes every child that carries `widgets` a PAGE — one visible at a time,
+    // switched by the strip across the top. `active` is persisted by toJSON().
+    { id: 'side', title: 'Side panel', span: 3, rows: 8, x: 9, y: 0, layout: 'tabs', active: 'p-filters', widgets: [
+      { id: 'p-filters', title: 'Filters', columns: 3, widgets: [
+        { id: 'f-region', kind: 'kpi', span: 3, rows: 4, x: 0, y: 0, data: { label: 'Region', value: 'EMEA' } },
+        { id: 'f-period', kind: 'kpi', span: 3, rows: 4, x: 0, y: 4, data: { label: 'Period', value: 'Q3' } } ] },
+      { id: 'p-alerts', title: 'Alerts', columns: 3, widgets: [
+        { id: 'a-open', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Open alerts', value: '3', delta: -2.0 } } ] },
+      { id: 'p-notes', title: 'Notes', columns: 3, widgets: [
+        { id: 'n-last', kind: 'kpi', span: 3, rows: 8, x: 0, y: 0, data: { label: 'Last edit', value: '08:12' } } ] },
+    ] },
+  ],
+};
+
+const ctx2 = {};
+
+defineDemo({
+  name: 'Fluid dashboard',
+  blurb: 'The DEFAULT mode of `dashboard()`: no width authored, so the board is 100% of its container at zoom 1 — laid out at real CSS pixels, the way gridstack and react-grid-layout lay out, never a picture the camera scales. Rows keep their height (GROW, the fluid default): drag or resize one tile and no other tile changes size; the board extends downward and the wheel scrolls it. Shrink the container ("Narrow container") and the board follows; the type stays 30 px. Switch to FIT and the board keeps its height instead — FIT MEANS BOUNDED: rows squeeze so everything stays on one screen, the row floor is a capacity, and "+ Add a row" is REFUSED, visibly, when there is no room; nothing is ever painted past the board\'s edge. `mode: \'fixed\'` (or an explicit width) keeps the framed-world behaviour for a dashboard embedded inside a larger diagram — see dashboard/dashboard-builder.html. "Drag" picks the handle: anywhere on the card; BY CAPTION (`dragHandle: true`, the DevExpress caption drag — the caption strip is the only grip, so a table body scrolls and a legend clicks instead of starting a move); or BY GRIP (`{ grip: true, position, placement }` — a painted grip, left / center / right, INSIDE the header band or OUTSIDE as a tab above the card like the DevExpress item bar; it shows on the SELECTED widget only — click a widget to select it, click the board to clear). `handle.setDragHandle()` switches it live. The OPERATIONS row is a SECTION (a widget carrying `widgets`) with a CAPTION painted by the kit (0.4.22): a 44 px band with a subtitle, an ⓘ and two action buttons, reserved above its children; a press on the band selects the section, an action fires `onCaptionAction`, "Caption" switches it live through `handle.setCaption()` — a tab above the frame, centred and uppercase with its own fill, on hover only, or none.',
+  howTo: [
+    '① The board fills the canvas exactly — no zoom, no margins the camera invented. Ctrl/⌘-wheel does nothing: a fluid board pins its zoom range to 1.',
+    '② Press "Narrow container": the canvas becomes 60% wide and every tile re-lays out against the new width. Press again to widen.',
+    '③ Drag "Revenue by region" up onto the KPI row: the KPIs slide out of the way, nothing else changes size, and the board grows a few rows — scroll with the wheel to reach the bottom. Adds are never refused in grow mode.',
+    '④ Switch to "Fit": the board keeps its height and rows squeeze so everything stays on one screen. Press "+ Add a row" a few times: each row lands while there is room; when the next would need more than the board\'s height allows, the add is refused and the message says so.',
+    '⑤ Switch to "Split": the DevExpress model — every widget stretches to cover the board, a divider between two widgets drags as a percentage, dragging a widget onto another\'s edge inserts it there, "+ Add a row" halves the largest widget. "Grid" brings the cells back with the same picture. A TAB GROUP or a SECTION moves as one pane on a split board too (0.4.40): press the strip\'s empty space or the caption band, travel, and the insertion line marks the pane edge — drop it on a neighbour\'s far edge and the two swap sides. Captioned sections keep their band on a split board; the children start below it. From 0.4.69 a WIDGET over the tab group finds the same zones here as on the grid: its strip makes the widget a tab, the body of the page takes it (the page\'s own grey placeholder shows the cell), its outer fifth means a pane beside it — the split board\'s insertion line, as for any pane — and the band above its frame a pane above it, with the corners going to the sides. Until then a widget over the tab group got only the nearest-edge line: the header was never a tab target, the page never took a widget, and \'above\' claimed the upper half of its body. Coming down onto the header at hand speed passes through it here too. And from 0.4.70 the split board TAKES widgets as well as giving them: drag Region out of the Filters page onto any pane and the insertion line says where the new pane goes (before, the ghost only dimmed and every release snapped home), and a palette chip carried into a page lands in that page. 0.4.71: a FULL section pane grows for a widget too — drop Region into Operations when it is full and the pane takes a row from the panes above it, the way a grow section takes a row from a grid (0.4.58); until then the section refused and the line beside it answered. A page can itself be a SPLIT layout, and a widget carried into one becomes a pane of the page where the page\'s own line shows — on a grid board and on a split board alike; and from 0.4.72 the gap between two panes is no longer a dead zone: it means the nearest pane\'s edge.',
+    '⑥ Down the RIGHT is a TAB CONTAINER (`layout: \'tabs\'`): Filters, Alerts and Notes are three PAGES of one panel, one visible at a time. Click a tab, or use the arrow keys once a tab has focus; `handle.activateTab(id, page)` does it from code and `onTabChange` reports it. The page showing is persisted by toJSON().',
+    '⑦ DRAG a tab off the strip, the way you would in VS Code: a chip carrying the tab\'s name follows the pointer and a dashed outline shows the cell the page will take — right under the pointer, shrunk to the room there if the page is taller than that. Release, and the page becomes a GROUP of its own on the board, still wearing its tab; its tab leaves the strip it came from. Drop a tab onto ANOTHER tab container instead: its strip, or the centre of its body, joins it as a tab there, the way an editor tab moves between VS Code groups; its edge bands — a FIFTH of the body (0.4.42; a third until then) — SPLIT it: the target keeps half its cell and the page takes the other half, left, right, above or below. While you hold, the target lights up for a join, or just the half being taken for a split, and NOTHING MOVES until you release — the halving used to be applied live, and the group jumped away from under the pointer as the page approached it (the user, putting a page back into the panel it came from, never reached the "into"). The board\'s own edges DOCK the page against the whole board: the band lights up while you hold; on release everything else is pushed aside. A tab GROUP wears a frame by default (0.4.43): a bordered slab and a tinted surface under its pages, the strip\'s own track colour, with the pages set 8 px inside it, so two cards under one tab read as one panel; `--axdb-group-bg` and `--axdb-group-border` restyle it and `tabs: { inset: 0 }` puts the pages edge to edge. The frame is the group\'s handle: press its margin — under the strip or beside the pages — and drag, and the whole group moves (the strip\'s empty space still works; a widget dragged over a group goes INTO its page, so to put a widget beside a group, move the group). A moved group or section PUSHES the sections in its way (0.4.44): the fluid demo\'s side panel is eight rows tall and the Operations section spans the row beneath it, so every column to the left was refused — the red cell at every step — and the panel could not leave its column; sections and groups give way to a moved one now, the way they give way to a dock, while a widget still never pushes a section. A WIDGET dragged onto a tab group\'s outer band lands BESIDE it (0.4.45): its edge bands are a fifth of its body, like a tab\'s split bands — the middle still goes into the page, the strip still makes a tab — and at the board\'s edge, where there is no room on that side, the group shifts over by the widget\'s span and the widget takes the edge, so a widget can go AFTER the side panel; the sections in the group\'s way give way to the shift (0.4.46), as they do to a moved group. The group slides out of the way while you hold, the way every widget does (0.4.48 — 0.4.47 had frozen it behind an overlay for a moment); from 0.4.52 a section or a tab group is a SOLID tile: a widget carried over it slides aside and it never packs, so the panel holds still under your hand and its zones stay reachable, while intent moves it — a widget lands beside a panel at the hand\'s row, a full section a widget cannot enter is pushed by it, a moved section or a dock pushes the sections in its way; the left and right bands win the corners, so a widget carried along the top of a panel to its far right goes AFTER it, not above it — and a band the hand leaves gives the panel back before the next band is read (0.4.49). And a group dragged by its strip moves as ONE thing: its pages, strip and frame are carried together — the strip used to jump to the pointer while the pages glided after it. Drag a tab along its OWN strip to reorder it. On a SPLIT board (element 0.4.37) the same drag works: the page becomes a PANE on the edge of the widget under the pointer — the insertion line shows where; within 18 px of the board\'s own edge it takes a half of the whole board, the way a dropped widget does — joins another container over its strip or the centre of its body, and reorders along its own strip. Drag a plain widget onto a strip and it becomes a new tab there; drop it in a page\'s BODY instead and the page takes it beside what it holds — a full page squeezes its rows to make room, the widget under the pointer moving aside, the way the board itself does; drag the last widget out of a page and the page closes, its tab with it, and an emptied container closes too. Drag a whole tab group by its strip\'s empty space, or a section by its caption band, and it moves as one tile with everything inside — sliding along its row past a locked neighbour, and painting the cell it cannot have in red when nothing on the row is legal. A page travels at most half the board tall, and a drop that would land out of sight dims and does nothing. Drag a widget OUT of the Operations section onto the side panel\'s outer band and it lands beside the panel on the board, the panel shifting over when it must (0.4.53: the same beside, through another board). Carry the whole Operations section by its caption band into the side panel\'s page and it nests there with its widgets; carry the panel by its strip\'s empty space over Operations and it pushes it (0.4.56: a group travels like a widget). Drop a widget onto Operations when it is full and it takes a row from the board to hold it (0.4.58); a container declared \'fit\' refuses instead and is pushed aside. Aiming a widget at the tab strip is forgiving: the strip keeps your hand for a few pixels past its edge and stays where the panel RESTS, so overshooting by a pixel no longer flips between \'a new tab\' and \'above the panel\' (0.4.59) — and from 0.4.60 EVERY strip is read that way, from the model where its container rests, because a strip found by hit-testing the box it is painted in is a target that travels: the panel pushed down by the zone under its own tabs swept its strip back through the pointer, claimed the hand, came home, gave the hand back to the band, and went round again, so the answer flickered between \'a new tab\' and \'above the panel\' while the hand held perfectly still. From 0.4.60 that flicker is gone, and from 0.4.61 so is its cause: a tab group\'s TOP and BOTTOM bands MARK the cell the widget will take and move nothing at all while you hold it — the container gives way on release, the way a dragged tab\'s dock and split previews have since 0.4.42 — so the tabs never leave the place you are aiming at. The LEFT and RIGHT bands still slide live (0.4.48): sideways, a full-width strip stays under your hand. A dragged SECTION still pushes what is in its way while you carry it (0.4.44): that is intent, not a preview. And from 0.4.62 those two bands are a FIXED depth \u2014 one strip\'s worth, about 30 px \u2014 instead of a fifth of the body: a fifth GREW with the container, so 216 px of this panel\'s page meant \'above the whole panel\', starting right under its tabs. The body is the page now, nearly all of it; the left and right keep the fifth, which is how a widget gets beside a full-height panel. 0.4.63 SHOWS them: while you hold a widget over a container its four bands are shaded and the clear middle is the page, so \'above it\' is a place you can see and aim at rather than a depth you would have to guess \u2014 the band your hand is in still wears the dashed outline of the cell it will take. 0.4.64 draws both ABOVE the widget you are dragging: that widget is taller than the lane it hovers over and covered the top one almost completely, so the lane was painted and invisible at the very moment you needed it. 0.4.65 puts \'above it\' ABOVE it: the band also hangs off the container\'s top edge, so pointing above a panel means above the panel \u2014 the lane under the tabs stays as the fallback for a container pressed against the top of its canvas, which has no room above it to offer. From 0.4.66 those bands PUSH the container aside the moment your hand enters them and a plain grey placeholder fills the gap, exactly as hovering a widget over any occupied row does \u2014 the coloured overlay and the shaded lanes are gone, because the container moving IS the feedback. Safe only because the band sits above the frame: the push moves the container AWAY from the hand, never through it. 0.4.67 is for the hand, not the crawl: coming DOWN onto the panel from above, the header was never on the way — a strip is 30 px tall and a hand covers 40 to 80 px between two mouse events, so the pointer was above the strip in one event and under it in the next, and the answer went straight from \'above the panel\' to \'into the page\'. The kit now tests the segment the hand TRAVELLED, not only the point it landed on: a hand that crossed the strip and stopped within a strip\'s height of it is on the tabs. And under the strip is the page, plainly — a second \'above\' lane used to sit there and hid the miss. Measured at 40 and 60 px a step, the journey down reads above, tab, page; at 80 px a step, a flick, it still passes through, which is what a flick means. 0.4.73 puts the CARD in charge of \'above\': a hand holds the card by its middle, and when the card visibly hangs over the panel\'s top edge the pointer is under the header — which meant the page — so the rows under the header mean ABOVE while the card\'s top edge is above the frame (the panel gives way live), and the page once the whole card is inside; the header itself stays a tab. 0.4.68 closes the seam that opened: the 8 px between the strip and the page is the page\'s — it was the container\'s own margin, which for a widget can only mean a refusal, flashed for those 8 px on the way up out of the page — so a slow hand leaving the page for the tabs sees page, then tabs, nothing between. Ctrl/⌘-Z puts everything back.',
+    '⑧ The "Operations" row is a section with a caption the kit paints: click the band to select the section, hover it for its actions, press ⤢ and read the message. Drag "Orders today" out onto the board, or a KPI in — four columns are free. "Caption" restyles it live; Ctrl/⌘-Z undoes each change. Every variant keeps its pixels inside the section — a header hanging over the neighbour above is the bug this replaces. And with the section selected — or a tab, or a widget inside either — the "Inside …" control switches the layout INSIDE it: Grid or Split, per container, live, with `handle.setLayout(mode, containerId)`; a page takes both layouts exactly as a section does. Drop a widget on the Operations caption band and it goes INTO the section (0.4.74); and a drop the board cannot take — a full section on a board with no row to give — shows a red dashed cell under your hand and a not-allowed cursor, instead of nothing.',
+    '⑨ The DEFAULT CHROME (element 0.4.36): every card wears a header band, tabs are pills on a track with the active one lifted, corners are 8 px and a section caption is a solid band that reads in dark mode on any page. All of it is CSS variables on the canvas element — `--axdb-head-bg` / `--axdb-head-fg` for the band, `--axdb-tabs-bg` / `--axdb-tabs-on-bg` / `--axdb-tabs-fg` / `--axdb-tabs-on-fg` / `--axdb-tab-radius` for the strip, `--axdb-rs-radius` for the corners (3 px is one variable away), `--axdb-caption-*` for the band — so a host restyles the whole board once. Click a widget, then a tab: the page lands in place. A click used to leave the reflow transition armed, and the next tab switch slid its page in from off canvas. "Fit" and "Grow" are the VIEW\'s (0.4.38): a page or a section keeps its own bound — its height is its container\'s business — so a tab torn out after "Grow" lands inside its group or pane instead of painting its rows past it. Tear a tab out TWICE — out of the group it was born into — and it lands again (0.4.39): the new group takes a fresh id and the emptied one closes; it used to throw mid-commit and leave the chip on screen. Undo a tear-out or a join (0.4.41) and the group shows the page it was showing before the drag: Filters was on top, torn out, undone — and Alerts stayed on top, because the container had switched when the tab left and undo only put the tab back.',
+    'Press "▶ run the scripted checks": mode, frame = container, zoom 1, the container resize, the capacity refusal, the no-overflow invariant and the section caption are all asserted.',
+  ],
+  reactflow: null,
+  pro: false,
+
+  async setup(ctx) {
+    const msg = document.getElementById('fb-msg');
+    const say = (text, refused = false) => { msg.textContent = text; msg.classList.toggle('refused', refused); };
+    // A caption ACTION is yours to implement — the kit paints the button, routes
+    // the press (never a selection, never a drag) and names it here.
+    // The selection reaches the page through `onSelect` (a widget, a section by its caption band, a tab group by its
+    // strip) and `onTabChange` (a tab click): the "Inside …" control below switches the layout of the container that
+    // holds the selection — a section, or a tab group's page — with `handle.setLayout(mode, containerId)`.
+    let selected = undefined;
+    let syncSel = () => {};
+    const spec = dashboard({ ...SPEC_INPUT,
+      onCaptionAction: (sectionId, actionId) => say(`caption action "${actionId}" on ${sectionId} — the app's to implement (maximize, a menu, remove…)`),
+      onSelect: (id) => { selected = id; syncSel(); },
+      onTabChange: (containerId) => { selected = containerId; syncSel(); },
+    });
+    const api = render(spec, ctx.host);
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.handle = spec.handle;
+    api.renderNow();
+    await ctx.tick();
+
+    const H = spec.handle;
+    const stage = document.getElementById('fb-stage');
+    const setPressed = (id, on) => document.getElementById(id).setAttribute('aria-pressed', String(on));
+    let added = 0;
+
+    ctx2.addRow = () => {
+      const id = `row-${++added}`;
+      const w = H.addWidget({ id, kind: 'kpi', span: 9, rows: 1, data: { label: `Row ${added}`, value: `#${added}` } });
+      const m = H.metrics();
+      if (w) say(`added ${id} — ${m.rows} rows of ${m.capacity ?? '∞'}`);
+      else say(`refused: the board holds ${m.capacity} rows and is full — nothing painted past its edge`, true);
+      return !!w;
+    };
+    ctx2.narrow = (on) => {
+      stage.classList.toggle('narrow', on);
+      setPressed('fb-narrow', on);
+    };
+    ctx2.sizing = (mode) => {
+      H.setSizing(mode);
+      setPressed('fb-fit', mode === 'fit');
+      setPressed('fb-grow', mode === 'grow');
+      say(mode === 'fit' ? 'fit: the board keeps its height, rows squeeze — bounded' : 'grow: rows keep 130 px, the board extends — wheel to scroll');
+    };
+    document.getElementById('fb-add').addEventListener('click', () => ctx2.addRow());
+    // The section's caption, live: one undo step each.
+    const CAPTIONS = {
+      default: SPEC_INPUT.widgets.find((w) => w.id === 'ops').caption,
+      tab: { text: 'Operations', position: 'tab', icon: '▤' },   // a chip at the leading corner, reserved like the band
+      center: { align: 'center', font: { size: 11, weight: 700, transform: 'uppercase' }, background: '#e8ecfb', border: '1px solid #3b52d9' },
+      hover: { show: 'hover', actions: [{ id: 'max', label: 'Maximize', icon: '⤢' }] },
+      none: false,
+    };
+    const capSel = document.getElementById('fb-caption');
+    ctx2.caption = (mode) => {
+      capSel.value = mode;
+      H.setCaption('ops', CAPTIONS[mode]);
+      say({ default: 'caption: a 44 px band with a subtitle, an ⓘ and two actions — a press on it selects the section', tab: 'caption as a tab: the same band sized to its text, a chip at the section\'s top-left corner — it reserves its height inside the section, so it never lies over the widget above', center: 'caption centred, uppercase, with its own fill and rule — typography and box are options', hover: 'caption on hover only: it overlays the content, nothing reserved', none: 'no caption: the section is a bare slab again — Ctrl/⌘-Z brings it back' }[mode]);
+    };
+    capSel.addEventListener('change', () => ctx2.caption(capSel.value));
+    document.getElementById('fb-narrow').addEventListener('click', () => ctx2.narrow(!stage.classList.contains('narrow')));
+    document.getElementById('fb-fit').addEventListener('click', () => ctx2.sizing('fit'));
+    document.getElementById('fb-grow').addEventListener('click', () => ctx2.sizing('grow'));
+    // THE LAYOUT INSIDE THE SELECTED CONTAINER. What the selection resolves to: a section → itself; a tab group → its
+    // active page; a widget inside a page or a section → that page or section; a widget of the view → nothing (the view
+    // has the Grid / Split buttons above). Pages take both layouts, as sections do — a widget dropped into a split page
+    // becomes a pane of it, into a grid page a cell.
+    const selName = document.getElementById('fb-sel-name');
+    const selGrid = document.getElementById('fb-sel-grid');
+    const selSplit = document.getElementById('fb-sel-split');
+    const locate = (id) => { // the live spec tree: [spec, its container spec or null (the view)]
+      const walk = (ws, parent) => { for (const w of ws ?? []) { if (w.id === id) return [w, parent]; const r = walk(w.widgets, w); if (r) return r; } return null; };
+      return walk(H.toJSON().views[0].widgets, null);
+    };
+    const nameOf = (spec, parent) => (parent && parent.layout === 'tabs' ? `${parent.title ?? parent.id} › ${spec.title ?? spec.id}` : spec.title ?? spec.id);
+    const targetOf = () => {
+      if (!selected) return null;
+      const hit = locate(selected);
+      if (!hit) return null;
+      const [spec, parent] = hit;
+      if (spec.widgets && spec.layout === 'tabs') { // a tab group: its active page
+        const pg = H.getActiveTab(spec.id); const ps = pg ? spec.widgets.find((p) => p.id === pg) : null;
+        return ps ? { id: ps.id, name: nameOf(ps, spec) } : null;
+      }
+      if (spec.widgets) return { id: spec.id, name: nameOf(spec, parent) }; // a section, or a page
+      if (parent && parent.widgets) { // a widget inside a container: that container
+        const grand = locate(parent.id)?.[1] ?? null;
+        return { id: parent.id, name: nameOf(parent, grand) };
+      }
+      return null;
+    };
+    syncSel = () => {
+      const t = targetOf();
+      selName.textContent = t ? t.name : 'nothing selected';
+      const mode = t ? H.getLayout(t.id) : null;
+      selGrid.disabled = selSplit.disabled = !t;
+      setPressed('fb-sel-grid', mode === 'grid');
+      setPressed('fb-sel-split', mode === 'split');
+    };
+    ctx2.selLayout = (mode) => {
+      const t = targetOf();
+      if (!t) return false;
+      H.setLayout(mode, t.id);
+      syncSel();
+      say(`${t.name}: ${mode === 'split' ? 'a splitter tree inside it — its widgets cover it, dividers are percentages' : 'a grid inside it — cells, spans and push'} · handle.setLayout('${mode}', '${t.id}')`);
+      return true;
+    };
+    selGrid.addEventListener('click', () => ctx2.selLayout('grid'));
+    selSplit.addEventListener('click', () => ctx2.selLayout('split'));
+    ctx2.layout = (mode) => {
+      H.setLayout(mode);
+      setPressed('fb-grid', mode === 'grid');
+      setPressed('fb-split', mode === 'split');
+      const fitOnly = mode === 'split';
+      document.getElementById('fb-fit').disabled = fitOnly;
+      document.getElementById('fb-grow').disabled = fitOnly;
+      if (fitOnly) { setPressed('fb-fit', true); setPressed('fb-grow', false); }
+      else { setPressed('fb-fit', H.getSizing() === 'fit'); setPressed('fb-grow', H.getSizing() === 'grow'); }
+      say(mode === 'split'
+        ? 'split: the board is always covered — drag a divider (a percentage), drag a widget onto an edge, add one and it halves the largest'
+        : 'grid: cells, spans and push — the gridstack model');
+    };
+    document.getElementById('fb-grid').addEventListener('click', () => ctx2.layout('grid'));
+    document.getElementById('fb-split').addEventListener('click', () => ctx2.layout('split'));
+    // Drag handle: anywhere | caption strip | painted grip (position × placement).
+    const dragSel = document.getElementById('fb-drag');
+    const gripPos = document.getElementById('fb-grip-pos');
+    const gripPlace = document.getElementById('fb-grip-place');
+    ctx2.drag = (mode, position, placement) => {
+      if (mode !== undefined) dragSel.value = mode;
+      if (position !== undefined) gripPos.value = position;
+      if (placement !== undefined) gripPlace.value = placement;
+      const grip = dragSel.value === 'grip';
+      gripPos.disabled = !grip; gripPlace.disabled = !grip;
+      const v = grip ? { grip: true, position: gripPos.value, placement: gripPlace.value } : dragSel.value === 'caption';
+      H.setDragHandle(v);
+      say(grip
+        ? `drag by grip: a ${gripPlace.value} grip on the ${gripPos.value} is the only handle — the header and body are content`
+        : dragSel.value === 'caption' ? 'drag by caption: a widget moves only from its caption strip — the body scrolls and clicks as content' : 'drag anywhere: the whole card is the handle');
+    };
+    // Kept for older scripts: on = caption drag.
+    ctx2.dragHandle = (on) => ctx2.drag(on ? 'caption' : 'anywhere');
+    for (const el of [dragSel, gripPos, gripPlace]) el.addEventListener('change', () => ctx2.drag());
+    const m0 = H.metrics();
+    say(`fluid · grow · ${Math.round(m0.frame.width)}×${Math.round(m0.frame.height)} px · ${m0.rows} rows`);
+  },
+
+  async assert(ctx) {
+    const H = ctx.handle;
+    const api = ctx.instance;
+    const host = ctx.host;
+    const settle = async () => { api.renderNow(); await ctx.tick(); await ctx.tick(); };
+    const frameOf = () => H.metrics().frame;
+    const box = () => ({ w: host.clientWidth, h: host.clientHeight });
+
+    // ---- ① a fluid board IS its container, at zoom 1 --------------------------
+    checkEqual(H.toJSON().mode, 'fluid', 'no width authored → mode is fluid');
+    check(H.metrics().fluid, 'the binder runs fluid');
+    checkEqual(Math.round(frameOf().width), Math.round(box().w), 'the board frame is exactly the container width');
+    checkEqual(H.getSizing(), 'grow', 'a fluid board grows by default — no tile resizes because another moved');
+    check(Math.round(frameOf().height) >= Math.round(box().h), 'the board frame is at least the container height (grow)');
+    checkEqual(api.viewport.zoom, 1, 'the camera sits at zoom 1');
+    const vb = api.viewport.getViewBox();
+    check(Math.abs(vb.x) < 1 && Math.abs(vb.y) < 1, 'the board origin is at the canvas top-left');
+    const kpi = host.querySelector('.grafloria-node-host[data-node-id="rev"] .axdb-kpi-v');
+    check(kpi && Math.abs(parseFloat(getComputedStyle(kpi).fontSize) - kpi.getBoundingClientRect().height / 1.05) < 3, 'a 30-px KPI figure paints at its own size, not scaled');
+
+    // ---- ② zoom is pinned ------------------------------------------------------
+    const c = host.getBoundingClientRect();
+    host.dispatchEvent(new WheelEvent('wheel', { deltaY: -240, ctrlKey: true, clientX: c.x + 200, clientY: c.y + 200, bubbles: true, cancelable: true }));
+    await settle();
+    checkEqual(api.viewport.zoom, 1, 'ctrl-wheel cannot zoom a fluid board');
+
+    // ---- ③ the container resizes → the board follows ---------------------------
+    const wide = Math.round(frameOf().width);
+    ctx2.narrow(true);
+    await ctx.tick(100);
+    await settle();
+    const narrow = Math.round(frameOf().width);
+    check(narrow < wide - 100, `narrowing the container narrowed the board (${wide} → ${narrow})`);
+    checkEqual(narrow, Math.round(box().w), 'the narrow board is exactly the narrow container');
+    const right = Math.max(...H.widgetsOf().map((w) => w.rect.x + w.rect.width));
+    check(right <= narrow + 0.5, 'every tile re-laid out inside the narrow width');
+    ctx2.narrow(false);
+    await ctx.tick(100);
+    await settle();
+    checkEqual(Math.round(frameOf().width), wide, 'widening restores the wide board');
+
+    // ---- ④ fit means bounded ---------------------------------------------------
+    ctx2.sizing('fit');
+    await settle();
+    checkEqual(Math.round(frameOf().height), Math.round(box().h), 'fit: the board frame is exactly the container height');
+    const cap = H.metrics().capacity;
+    check(Number.isInteger(cap) && cap > 0, `a fit board reports a capacity (${cap} rows)`);
+    let landed = 0;
+    let refused = 0;
+    for (let i = 0; i < cap + 2; i++) {
+      if (ctx2.addRow()) landed++;
+      else refused++;
+    }
+    await settle();
+    check(refused > 0, `the add past the capacity was refused (${landed} landed, ${refused} refused)`);
+    check(H.metrics().rows <= cap, `the board holds ${H.metrics().rows} rows, never more than its capacity ${cap}`);
+    const f = frameOf();
+    const below = H.widgetsOf().filter((w) => w.rect.y + w.rect.height > f.y + f.height + 0.5).length;
+    checkEqual(below, 0, 'no tile is painted past the bottom of the board');
+    checkEqual(ctx.diagram.getNodes().filter((n) => n.id.startsWith('row-')).length, landed, 'a refused add created nothing');
+
+    // ---- ⑤ grow is unbounded ---------------------------------------------------
+    ctx2.sizing('grow');
+    await settle();
+    checkEqual(H.metrics().capacity, undefined, 'grow mode has no capacity');
+    check(ctx2.addRow(), 'grow accepts the row fit refused');
+    await settle();
+    check(frameOf().height > box().h, 'and the board extended past the container (wheel to scroll)');
+
+    // ---- ⑥ the camera is a scroll position, bounded to the board ---------------
+    const wheel = (dy) => host.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, clientX: c.x + 200, clientY: c.y + 200, bubbles: true, cancelable: true }));
+    wheel(100000);
+    await settle();
+    const down = api.viewport.getViewBox();
+    check(down.y > 0, 'a wheel scrolls the grown board');
+    check(down.y <= frameOf().height - box().h + 1, 'and stops at its last row — never past the board');
+    ctx2.sizing('fit');
+    await settle();
+    // The board holds one row more than the fit capacity here (⑤): fit still
+    // never scrolls — the board is exactly the container and rows squeeze.
+    checkEqual(Math.round(frameOf().height), Math.round(box().h), 'fit never extends: one row past capacity squeezes, the board is still exactly the container');
+    check(Math.abs(api.viewport.getViewBox().y) < 1, 'fit pulls a scrolled camera back to the board origin');
+    check(H.widgetsOf().every((w) => w.rect.y + w.rect.height <= frameOf().y + frameOf().height + 0.5), 'and every tile is inside the board');
+    ctx2.sizing('grow');
+    await settle();
+    wheel(-100000);
+    await settle();
+    check(Math.abs(api.viewport.getViewBox().y) < 1, 'and a wheel back up stops exactly at the origin — the page is at rest');
+
+    // ---- ⑦ split: the board is always covered ---------------------------------
+    ctx2.layout('split');
+    await settle();
+    checkEqual(H.getLayout(), 'split', 'the view runs the split layout');
+    checkEqual(H.getSizing(), 'fit', 'a split board is always fit');
+    // COVERED means: what is not a widget is exactly the padding band and the
+    // gaps between siblings — one gap per divider, never a hole. Widgets never
+    // overlap and never leave the frame.
+    const covered = () => {
+      const fr = frameOf();
+      const m = H.metrics();
+      const ws = H.widgetsOf().map((w) => w.rect);
+      const area = ws.reduce((s, r) => s + r.width * r.height, 0);
+      const dividers = host.querySelectorAll('.axdb-div').length;
+      const allowance = 2 * m.padding * (fr.width + fr.height) + dividers * m.gap * Math.max(fr.width, fr.height) + 1;
+      const inside = ws.every((r) => r.x >= fr.x - 0.5 && r.y >= fr.y - 0.5 && r.x + r.width <= fr.x + fr.width + 0.5 && r.y + r.height <= fr.y + fr.height + 0.5);
+      let overlaps = 0;
+      for (let i = 0; i < ws.length; i++) for (let j = i + 1; j < ws.length; j++) { const a = ws[i], b = ws[j]; if (a.x < b.x + b.width - 1 && b.x < a.x + a.width - 1 && a.y < b.y + b.height - 1 && b.y < a.y + a.height - 1) overlaps++; }
+      return inside && overlaps === 0 && fr.width * fr.height - area <= allowance;
+    };
+    check(covered(), 'every slot is covered: only gaps and padding are not a widget');
+    checkEqual(Math.round(frameOf().height), Math.round(box().h), 'the split board is exactly the container');
+    const nBefore = H.widgetsOf().length;
+    const biggest = H.widgetsOf().reduce((p, w) => (w.rect.width * w.rect.height > p.rect.width * p.rect.height ? w : p));
+    const areaBefore = biggest.rect.width * biggest.rect.height;
+    check(!!H.addWidget({ id: 'split-add', kind: 'kpi', data: { label: 'Added', value: '+1' } }), 'an add lands on a split board');
+    await settle();
+    checkEqual(H.widgetsOf().length, nBefore + 1, 'the widget joined the board');
+    const after = H.widget(biggest.id).rect;
+    check(Math.abs(after.width * after.height - areaBefore / 2) < areaBefore * 0.08, `the newcomer halved the largest widget (${biggest.id})`);
+    check(covered(), 'and the board is still fully covered');
+    await H.widget('split-add').remove();
+    await settle();
+    checkEqual(H.widgetsOf().length, nBefore, 'removing it hands the slot back');
+    ctx2.layout('grid');
+    await settle();
+    checkEqual(H.getLayout(), 'grid', 'and the view is back on the grid');
+    ctx2.sizing('grow');
+    await settle();
+
+    // ---- ⑧ drag handle: caption strip, painted grip (position × placement), off ----
+    ctx2.drag('caption');
+    await settle();
+    checkEqual(H.getDragHandle(), true, 'the board drags by the caption strip');
+    checkEqual(H.toJSON().dragHandle, true, 'and says so in its snapshot');
+    check(!!document.querySelector('.axdb-drag-handle'), 'the container carries the caption class');
+    checkEqual(getComputedStyle(document.querySelector('.axdb-widget-h')).cursor, 'grab', 'a header shows the grab cursor');
+    checkEqual(getComputedStyle(document.querySelector('.axdb-widget-h'), '::before').width, '8px', 'and the grip dots are painted');
+    ctx2.drag('grip', 'left', 'inside');
+    await settle();
+    checkEqual(JSON.stringify(H.getDragHandle()), JSON.stringify({ grip: true, position: 'left', placement: 'inside' }), 'a painted grip, left, inside');
+    const grips = () => [...document.querySelectorAll('.grafloria-node-host > .axdb-grip')];
+    checkEqual(grips().length, document.querySelectorAll('.grafloria-node-host').length, 'every widget card carries one grip (a section has no card)');
+    check(!document.querySelector('.axdb-drag-handle'), 'and the caption class is gone (the grip is the only handle)');
+    const hostRect = (g) => g.parentElement.getBoundingClientRect();
+    // Grips show on the SELECTED widget only (the DevExpress designer's item bar).
+    check(grips().every((g) => getComputedStyle(g).opacity === '0'), 'nothing selected: every grip is hidden');
+    H.focusWidget('trend');
+    await settle();
+    await new Promise((r) => setTimeout(r, 250)); // the grip fades in over 120 ms
+    const tGrip = document.querySelector('.grafloria-node-host[data-node-id="trend"] > .axdb-grip');
+    checkEqual(getComputedStyle(tGrip).opacity, '1', 'selecting the chart shows ITS grip');
+    checkEqual(grips().filter((g) => getComputedStyle(g).opacity === '1').length, 1, 'and only its grip');
+    check(grips().every((g) => { const r = g.getBoundingClientRect(), h = hostRect(g); return r.top >= h.top && r.left - h.left < 20; }), 'inside-left: the grip sits in the header band, flush with the card padding');
+    const hdr = document.querySelector('.grafloria-node-host[data-node-id="trend"] .axdb-widget-h').getBoundingClientRect();
+    const gr = tGrip.getBoundingClientRect();
+    check(Math.abs((gr.top + gr.bottom) / 2 - (hdr.top + hdr.bottom) / 2) <= 3, 'and is centred on the caption text line');
+    check(parseFloat(getComputedStyle(document.querySelector('.axdb-gp-left .axdb-widget-h')).paddingLeft) >= 20, 'and the header makes room for it');
+    ctx2.drag('grip', 'right', 'outside');
+    await settle();
+    check(grips().every((g) => { const r = g.getBoundingClientRect(), h = hostRect(g); return r.bottom <= h.top + 1 && h.right - r.right < 12; }), 'outside-right: the grip is a tab above the card at the right edge');
+    ctx2.drag('grip', 'center', 'inside');
+    await settle();
+    check(grips().every((g) => { const r = g.getBoundingClientRect(), h = hostRect(g); return Math.abs((r.left + r.right) / 2 - (h.left + h.right) / 2) < 2; }), 'center: the grip is centred on the card');
+    ctx2.drag('anywhere');
+    await settle();
+    checkEqual(H.getDragHandle(), false, 'off again: the whole card is the handle');
+    checkEqual(grips().length, 0, 'and the grips are gone');
+
+    // ---- ⑨ the section caption: painted, reserved, routed, live, undoable ----
+    ctx2.caption('default');
+    await settle();
+    const slab = () => host.querySelector('.axdb-slab[data-slab-id="ops"]');
+    const band = () => slab()?.querySelector(':scope > .axdb-slab-h');
+    check(!!band(), 'the section carries a caption band on its overlay');
+    checkEqual(band().querySelector('.axdb-slab-h-text').textContent, 'Operations', 'the band shows the title');
+    checkEqual(band().querySelector('.axdb-slab-h-sub').textContent, 'live since 08:00', 'and the subtitle');
+    checkEqual(Math.round(band().getBoundingClientRect().height), 44, 'a band with a subtitle is 44 px');
+    const orders = host.querySelector('.grafloria-node-host[data-node-id="orders"]').getBoundingClientRect();
+    const bandR = band().getBoundingClientRect();
+    check(orders.top >= bandR.bottom - 0.5, 'the children start below the band: its pixels are reserved');
+    check(Math.abs(bandR.width - slab().getBoundingClientRect().width) < 1, 'the band spans the section frame');
+    checkEqual(band().querySelectorAll('.axdb-slab-h-action').length, 2, 'two action buttons at the end');
+    // a press on the action fires onCaptionAction and selects nothing
+    H.selectWidget(undefined);
+    await settle();
+    const maxBtn = band().querySelector('.axdb-slab-h-action[data-action="max"]');
+    maxBtn.click(); // a real button: a click from the mouse, a touch or the keyboard
+    await settle();
+    check(document.getElementById('fb-msg').textContent.includes('caption action "max" on ops'), 'a press on ⤢ reaches onCaptionAction');
+    checkEqual(H.getSelectedWidget(), undefined, 'and selects nothing');
+    // a press on the band selects the section
+    const text = band().querySelector('.axdb-slab-h-text');
+    const tr = text.getBoundingClientRect();
+    for (const type of ['pointerdown', 'pointerup']) text.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: tr.x + 4, clientY: tr.y + tr.height / 2, pointerId: 8, button: 0, isPrimary: true }));
+    await settle();
+    checkEqual(H.getSelectedWidget(), 'ops', 'a press on the band selects the section');
+    check(slab().classList.contains('axdb-slab--selected'), 'and the section wears the ring');
+    // live restyles, each one undo step
+    ctx2.caption('tab');
+    await settle();
+    const tabR = band().getBoundingClientRect(), slabR = slab().getBoundingClientRect();
+    check(band().classList.contains('axdb-slab-h--tab') && tabR.width < slabR.width - 40 && Math.abs(tabR.x - slabR.x) < 1, 'a tab is the band sized to its text, at the leading corner');
+    check(tabR.top >= slabR.top - 0.5 && tabR.bottom <= slabR.bottom, 'inside its own frame — never over the widget above it');
+    const ordersTab = host.querySelector('.grafloria-node-host[data-node-id="orders"]').getBoundingClientRect();
+    check(ordersTab.top >= tabR.bottom - 0.5, 'and it reserves its height, like an inside band');
+    ctx2.caption('center');
+    await settle();
+    checkEqual(getComputedStyle(band()).textTransform, 'uppercase', 'centred: uppercase from the font option');
+    checkEqual(getComputedStyle(band()).justifyContent, 'center', 'and centred');
+    ctx2.caption('none');
+    await settle();
+    check(!band(), 'none: the band is gone');
+    check(Math.abs(host.querySelector('.grafloria-node-host[data-node-id="orders"]').getBoundingClientRect().top - slab().getBoundingClientRect().top) < 1, 'and the rows are back');
+    const cm = api.getEngine().commandManager;
+    await cm.undo(); await settle();
+    check(!!band() && getComputedStyle(band()).textTransform === 'uppercase', 'undo brings the centred caption back');
+    await cm.undo(); await cm.undo(); await settle();
+    checkEqual(band()?.querySelector('.axdb-slab-h-sub')?.textContent, 'live since 08:00', 'two more undos: the default caption again');
+    checkEqual(H.toJSON().views[0].widgets.find((w) => w.id === 'ops').caption.subtitle, 'live since 08:00', 'and the snapshot carries it');
+    ctx2.caption('default');
+    await settle();
+  },
+});
+</script>

@@ -37,11 +37,12 @@ export const flowchartConnectorTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "circle",
-      "fill": "#FFFFFF",
-      "stroke": "#757575",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"flowchart-connector-content\">\n          <div class=\"node-label\">{{data.label || 'Connector'}}</div>\n        </div>",

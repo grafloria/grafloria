@@ -36,12 +36,13 @@ export const flowchartOrTemplate: NodeTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "circle",
-      "fill": "#FFF9C4",
-      "stroke": "#F57F17",
+      "type": "or-junction",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"flowchart-or-content\">\n          <div class=\"node-label\">{{data.label || 'OR'}}</div>\n        </div>",

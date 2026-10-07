@@ -10,7 +10,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const FW = process.argv[2];
-if (!['angular', 'react', 'vue'].includes(FW)) throw new Error('usage: bake-variant-sources.mjs <angular|react|vue>');
+if (!['angular', 'react', 'vue', 'qwik'].includes(FW)) throw new Error('usage: bake-variant-sources.mjs <angular|react|vue|qwik>');
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = join(root, 'apps', `demos-${FW}`);
@@ -26,7 +26,9 @@ if (FW === 'angular') {
   pairs = [...rc.matchAll(/path: '([^']+)',\s*loadComponent: \(\) => import\('\.\/demos\/([^/]+)\//g)]
     .map((m) => ({ route: m[1], dir: join(APP, 'src', 'app', 'demos', m[2]) }));
 } else {
-  const rc = readFileSync(join(APP, 'src', 'routes.ts'), 'utf8');
+  // The Qwik app's gallery lives in apps/demos-qwik/gallery/ (its src/ is the
+  // server-rendered showcase).
+  const rc = readFileSync(join(APP, FW === 'qwik' ? 'gallery' : 'src', 'routes.ts'), 'utf8');
   // 'cat/name': () => import('./demos/<file>')  — file may be .tsx or .vue
   pairs = [...rc.matchAll(/'([\w-]+\/[\w-]+)':\s*\(\) => import\('\.\/demos\/([\w.-]+)'\)/g)]
     .map((m) => ({ route: m[1], file: m[2] }));
@@ -59,13 +61,29 @@ for (const p of pairs) {
     });
     sources[p.route] = files;
   } else {
-    // react/vue: one file per demo (a .tsx or a .vue SFC). Resolve the exact name.
-    const base = join(APP, 'src', 'demos');
+    // react/vue/qwik: the demo file (a .tsx or a .vue SFC). Resolve the exact name.
+    const base = join(APP, FW === 'qwik' ? 'gallery' : 'src', 'demos');
     let file = p.file;
     if (!existsSync(join(base, file))) {
       for (const ext of ['.tsx', '.ts', '.vue']) { if (existsSync(join(base, file + ext))) { file = file + ext; break; } }
     }
-    sources[p.route] = [{ name: file, text: readFileSync(join(base, file), 'utf8') }];
+    // …plus the helper modules beside it that it imports (`from './x'`, and
+    // theirs in turn): a demo whose controller lives in a sibling file shows it
+    // in the drawer too, as an Angular demo's folder does.
+    const files = [];
+    const seen = new Set();
+    const visit = (name) => {
+      if (seen.has(name)) return;
+      seen.add(name);
+      const text = readFileSync(join(base, name), 'utf8');
+      files.push({ name, text });
+      for (const m of text.matchAll(/(?:from|import)\s+['"]\.\/([\w.-]+)['"]/g)) {
+        const dep = [m[1], `${m[1]}.ts`, `${m[1]}.tsx`].find((n) => existsSync(join(base, n)) && !n.endsWith('.vue'));
+        if (dep && !/\.worker\./.test(dep)) visit(dep);
+      }
+    };
+    visit(file);
+    sources[p.route] = files;
   }
 }
 

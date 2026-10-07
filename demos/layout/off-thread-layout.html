@@ -1,16 +1,24 @@
 <meta charset="utf-8">
 <title>Off-thread layout — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Force layout in a REAL Worker via engine.setLayoutPort(): progress streams from the other thread, a cancel lands mid-run and keeps the partial result, and…">
+<link rel="canonical" href="https://grafloria.com/demos/layout/off-thread-layout.html">
+<meta property="og:title" content="Off-thread layout — Grafloria">
+<meta property="og:description" content="Force layout in a REAL Worker via engine.setLayoutPort(): progress streams from the other thread, a cancel lands mid-run and keeps the partial result, and…">
+<meta property="og:url" content="https://grafloria.com/demos/layout/off-thread-layout.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/layout/off-thread-layout.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/layout/off-thread-layout.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
-  #canvas { height: calc(100vh - 168px); }
+  #canvas { height: calc(100vh - 108px); }
 </style>
 <header id="demo-head"></header>
 <div id="readout"></div>
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 import { overlaps } from './_layout-lib.js';
 
 // A REAL Worker runs the force layout. The worker body is this very package: we
@@ -115,11 +123,17 @@ defineDemo({
     let mainThreadTicks = 0;
     const ticker = setInterval(() => { mainThreadTicks++; }, 4);
 
+    // Cancel once the worker has REPORTED real progress (1% of the run), not after a
+    // fixed delay: 60 ms was too late on a fast runner (4000 iterations done, nothing
+    // to cancel) and too early on a starved one (the run not yet started).
     const controller = new AbortController();
+    let underWay;
+    const started = new Promise((r) => (underWay = r));
     const running = engine.layout('force', {
       seed: 0x5eed, iterations: 4000, threshold: 0, sliceMs: 0, signal: controller.signal,
+      onProgress: (p) => { if (p.progress >= 0.01) underWay(); },
     });
-    await new Promise((r) => setTimeout(r, 60)); // let the worker get genuinely under way
+    await Promise.race([started, new Promise((r) => setTimeout(r, 2000))]);
     controller.abort();
     const cancelled = await running;
     clearInterval(ticker);

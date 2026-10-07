@@ -37,8 +37,8 @@ export const umlPrimitiveTypeTemplate: NodeTemplate = {
     },
     "shape": {
       "type": "rect",
-      "fill": "#E8EAF6",
-      "stroke": "#3F51B5",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },

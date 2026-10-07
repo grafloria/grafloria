@@ -62,7 +62,7 @@ export interface PersistedDocument {
   schemaVersion: number;
   /** The checkpoint. Complete on its own — this is what makes the tail OPTIONAL. */
   document: SerializedDiagram;
-  /** Absent on a document saved before Card 1, and on a document with no collaboration history. */
+  /** Absent on a document with no collaboration history, and on documents saved by older versions. */
   log?: PersistedLog;
 }
 

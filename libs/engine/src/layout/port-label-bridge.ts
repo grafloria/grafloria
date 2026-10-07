@@ -82,13 +82,12 @@ function flowDirection(port: PortModel): PortFlowDirection {
 }
 
 /**
- * Build the `PortInfo[]` that `PortAwareLayoutManager` and the ELK adapter have
- * been waiting for, from the real wave-6 port model.
+ * Build the `PortInfo[]` that `PortAwareLayoutManager` and the ELK adapter read,
+ * from the port model.
  *
  * Only DECLARED ports are emitted (see the file header). Ordering is canonical —
- * sorted by (nodeId, side, index, id) — because layout determinism is a Card 0
- * invariant and a Map-iteration-ordered port list would break it exactly the way
- * an insertion-ordered node list did.
+ * sorted by (nodeId, side, index, id) — because layout is deterministic, and a
+ * Map-iteration-ordered port list would make it depend on insertion order.
  */
 export function derivePortInfos(nodes: NodeModel[]): PortInfo[] {
   const infos: PortInfo[] = [];

@@ -1,6 +1,14 @@
 <meta charset="utf-8">
 <title>Connection events — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="A live log of the connection lifecycle the engine fires as you drag a wire — start, per-move update, port enter/leave, then complete or cancel.">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/connection-events.html">
+<meta property="og:title" content="Connection events — Grafloria">
+<meta property="og:description" content="A live log of the connection lifecycle the engine fires as you drag a wire — start, per-move update, port enter/leave, then complete or cancel.">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/connection-events.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/connection-events.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/connection-events.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #events { padding: 8px 24px 10px; border-bottom: 1px solid rgba(127,127,127,.25); font: 12px/1.4 ui-monospace, monospace; }
   #flags { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -19,7 +27,7 @@
   #log .row.connect .ev { color: #16a34a; }
   #log .row.cancel .ev  { color: #dc2626; }
   #log .empty { opacity: .5; }
-  #canvas { height: calc(100vh - 300px); min-height: 300px; }
+  #canvas { height: calc(100vh - 240px); min-height: 300px; }
 </style>
 <header id="demo-head"></header>
 <div id="events">
@@ -37,7 +45,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // What does a connect DRAG emit? React Flow's Connection Events example logs
 // onConnectStart / onConnect / onConnectEnd (and the reconnect trio) as you drag a

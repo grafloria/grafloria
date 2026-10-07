@@ -293,12 +293,10 @@ export class CommentStore {
    *      op to un-orphan the thread, from some peer that thought to look, and until then
    *      the thread sits detached beside the node it is attached to. Derived, the thread
    *      RE-ATTACHES on the very next read, with zero ops and zero code.
-   *   3. IT ASSUMES AN ANSWER THE CRDT CARD HAS NOT GIVEN YET. Card 4 is concurrently
-   *      deciding whether a remove beats a concurrent add, or whether an observed-remove
-   *      set lets the add survive. If they land on add-wins, a node this store had marked
-   *      dead comes back. Deriving the state means BOTH answers are already handled and
-   *      neither can be wrong: whatever the diagram says right now, the pin agrees with
-   *      it. That is the only way to be robust to a decision that has not been made.
+   *   3. IT WOULD DEPEND ON HOW CONCURRENT EDITS MERGE. Whether a remove beats a
+   *      concurrent add, or an observed-remove set lets the add survive, decides whether
+   *      a node this store had marked dead comes back. Deriving the state handles BOTH
+   *      answers: whatever the diagram says right now, the pin agrees with it.
    *
    * So: nothing is stored, nothing is broadcast, and `attached` is simply "is the entity
    * in the diagram, right now". The thread survives the delete BY NOT DEPENDING ON THE
@@ -410,9 +408,8 @@ export class CommentStore {
    *
    * INCOMPLETE THREADS ARE INVISIBLE, NOT BROKEN. A thread is three ops, and an
    * unreliable transport is free to deliver the reply before the head that owns it — the
-   * substrate says so out loud (causal readiness is explicitly Card 4/5's, and until they
-   * ship it, `applyOp` will happily write `comments.t1.messages.m1` into a tree with no
-   * `t1.head`). A store that crashed on that would be broken by a packet reorder; a store
+   * substrate allows it (`applyOp` will write `comments.t1.messages.m1` into a tree with
+   * no `t1.head`). A store that crashed on that would be broken by a packet reorder; a store
    * that rendered a half-thread would show a message from nobody, about nothing. So a
    * thread without a head or an anchor simply does not exist yet, and it appears — whole,
    * with every message that arrived early already in it — the moment its head lands.

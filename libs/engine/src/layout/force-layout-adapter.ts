@@ -124,7 +124,7 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
   readonly name = 'force';
 
   /**
-   * Wave 7 Card 3 — the simulation, exposed one iteration at a time.
+   * The simulation, exposed one iteration at a time.
    *
    * This is where the physics lives, and it is the ONLY place it lives: `apply()`
    * below is now just "drive this to convergence". Splitting the loop out (rather
@@ -938,7 +938,7 @@ export class ForceLayoutAdapter implements SteppableLayoutAdapter {
   }
 
   /**
-   * Apply incremental layout (Phase 1 compatibility)
+   * Apply incremental layout
    */
   async applyIncremental(
     nodes: NodeModel[],

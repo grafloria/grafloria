@@ -94,11 +94,17 @@
  * ```
  */
 
+// Every name below is a TYPE, so each re-export says `export type`. Without it
+// a transpile-only pipeline (esbuild, SWC, Vite dev's native-ESM dev server)
+// cannot know the binding has no runtime value and emits a real re-export,
+// which then fails at load with "does not provide an export named …".
+// `tsc` elides these either way, so this is free for the Nx builds.
+
 // Core property definition
-export { PropertyDefinition, PropertyEditorType, PropertyDisplayOptions } from './property-definition';
+export type { PropertyDefinition, PropertyEditorType, PropertyDisplayOptions } from './property-definition';
 
 // Editor types and type-specific definitions
-export {
+export type {
   StringPropertyDefinition,
   NumberPropertyDefinition,
   BooleanPropertyDefinition,
@@ -114,7 +120,7 @@ export {
 } from './editor-types';
 
 // Validation types
-export {
+export type {
   PropertyValidation,
   ValidationError,
   ValidationResult,
@@ -122,14 +128,14 @@ export {
 } from './validation';
 
 // Condition types
-export {
+export type {
   PropertyCondition,
   ConditionOperator,
   ComplexPropertyCondition,
 } from './conditions';
 
 // Group types
-export { PropertyGroup } from './groups';
+export type { PropertyGroup } from './groups';
 
 // Complete schema
-export { PropertySchema } from './schema';
+export type { PropertySchema } from './schema';

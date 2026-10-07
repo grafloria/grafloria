@@ -5,9 +5,8 @@ import { Command, CommandContext, SerializedCommand } from '../Command';
 /**
  * Set the text of one of a link's labels, undoable.
  *
- * The wave-2 inline label editor wrote straight to `link.updateLabel(...)`, so
- * editing an edge label could not be undone — the only direct-manipulation edit
- * left outside the command layer. This is that seam.
+ * The inline label editor commits through this command, so an edge-label edit
+ * is one undo step like every other direct-manipulation edit.
  */
 export class SetLinkLabelCommand extends Command {
   private oldText?: string;

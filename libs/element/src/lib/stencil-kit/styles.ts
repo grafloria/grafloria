@@ -82,9 +82,38 @@ const CSS = `
 }
 .gf-sd-input:focus { border-color: var(--gf-st-accent); }
 .gf-sd-check { width: 16px; height: 16px; accent-color: var(--gf-st-accent); }
+.gf-sd-section {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--gf-st-mut); margin: 10px 0 2px; padding-top: 8px; border-top: 1px solid var(--gf-st-line);
+}
+.gf-sd-section:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.gf-sd-danger {
+  margin-top: 8px; padding: 6px 10px; border-radius: 7px; cursor: pointer;
+  border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c;
+  font: 600 12px ui-sans-serif, system-ui, sans-serif;
+}
+.gf-sd-danger:hover { background: #fee2e2; }
+@media (prefers-color-scheme: dark) {
+  .gf-sd-danger { background: #2a1414; border-color: #7f1d1d; color: #fca5a5; }
+}
 
 /* The canvas while a stencil is held over it. */
 .gf-stencil-target { outline: 2px dashed var(--gf-st-accent); outline-offset: -3px; }
+
+/* The drag GHOST — the master's silhouette + name following the cursor during a
+   palette drag, so the drop point is legible. A DOM element on purpose: the
+   browser's native drag image lives outside the DOM, does not screenshot, and
+   several platforms simply never paint it. */
+.gf-stencil-ghost {
+  position: fixed; z-index: 1000; pointer-events: none;
+  transform: translate(-50%, -50%); opacity: .6;
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  background: var(--gf-st-bg, #fff); color: var(--gf-st-ink, #1e2436);
+  border: 1px solid var(--gf-st-accent, #3B52D9); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18);
+  font: 12px ui-sans-serif, system-ui, sans-serif;
+}
+.gf-stencil-ghost svg { display: block; }
 `;
 
 /** Inject the palette stylesheet once per document. */

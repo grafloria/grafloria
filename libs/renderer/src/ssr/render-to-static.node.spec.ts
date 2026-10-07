@@ -51,7 +51,12 @@ describe('renderToStaticSVG (node environment — no DOM)', () => {
     expect(svg).toContain('Start');
     expect(svg).toContain('End');
 
-    expect(html).toContain(svg);
+    // `html` embeds the SAME svg minus its self-sizing width/height: the adopted
+    // copy must be the live path's root, which leaves size to its layer (see
+    // ssr-hydration.spec — "the server canvas is not the browser container").
+    expect(svg).toContain(' width="800" height="600"');
+    expect(html).toContain(svg.replace(' width="800" height="600"', ''));
+    expect(html).not.toContain('width="800" height="600" data-vnode-key="diagram-root"');
     expect(snapshot.instanceId).toBe('grafloria-ssr');
   });
 

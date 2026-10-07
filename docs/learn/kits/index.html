@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kits — dashboards, ER &amp; UML from data — Grafloria</title>
+<meta name="description" content="Grafloria kits: erDiagram(), umlDiagram() and dashboard() turn plain data into interactive diagrams — column-level ER ports, UML markers, a drag-and-pack dashboard grid.">
+<link rel="canonical" href="https://grafloria.com/learn/kits/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Kits — dashboards, ER &amp; UML from data — Grafloria">
+<meta property="og:description" content="Grafloria kits: erDiagram(), umlDiagram() and dashboard() turn plain data into interactive diagrams — column-level ER ports, UML markers, a drag-and-pack dashboard grid.">
+<meta property="og:url" content="https://grafloria.com/learn/kits/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Kits \u2014 dashboards, ER &amp; UML from data","description":"Grafloria kits: erDiagram(), umlDiagram() and dashboard() turn plain data into interactive diagrams \u2014 column-level ER ports, UML markers, a drag-and-pack dashboard grid.","url":"https://grafloria.com/learn/kits/","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"datePublished":"2026-08-04","dateModified":"2026-08-19","mainEntityOfPage":"https://grafloria.com/learn/kits/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Learn","item":"https://grafloria.com/learn/"},{"@type":"ListItem","position":2,"name":"Kits \u2014 dashboards, ER &amp; UML from data","item":"https://grafloria.com/learn/kits/"}]}]}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../diagrams/">Diagrams</a>
+      <a href="../../dashboards/">Dashboards</a>
+      <a href="../../learn/" aria-current="page">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../blog/">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
+        <a href="../layout/">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/" aria-current="page">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Kits: dashboards, ER &amp; UML</p>
+      <h1>Kits: dashboards, ER &amp; UML</h1>
+      <p class="lede">A kit turns plain data into a finished interactive diagram — entities in, an ER diagram with column-level ports out. Kits are functions returning specs, so they compose with everything else on this site.</p>
+
+      <h2>The pattern</h2>
+<pre data-lang="typescript">import { render, erDiagram } from '@grafloria/element';
+
+const spec = erDiagram({ entities, relationships });
+const api = render(spec, host);      // render() runs the kit's finalize for you</pre>
+      <p>In Vue: <code>&lt;GrafloriaDiagram :spec="spec" /&gt;</code>. A kit spec is
+      <code>{ nodes, edges, finalize }</code> — regular nodes and edges plus a wiring step, so
+      everything else (layout, export, undo, collaboration) works on kit diagrams
+      unchanged.</p>
+
+      <h2>ER — tables with real columns</h2>
+<pre data-lang="typescript">const spec = erDiagram({
+  entities: [
+    { id: 'CUSTOMER', name: 'Customer', position: { x: 60, y: 76 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'email', type: 'varchar' },
+    ]},
+    { id: 'ORDER', name: 'Order', position: { x: 400, y: 64 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'customer_id', type: 'int', fk: true },
+    ]},
+  ],
+  relationships: [
+    { from: 'CUSTOMER', to: 'ORDER', label: 'places', cardinality: 'one-to-many' },
+    // attach at a COLUMN with ENTITY.column:
+    { from: 'ORDER.customer_id', to: 'CUSTOMER.id' },
+  ],
+});</pre>
+      <p>Rows are selectable (listen for <code>axk:row-select</code>), a fixed entity
+      <code>height</code> makes the column list scroll, and <code>editable: true</code> adds
+      rename/add/delete chrome where every edit is one undoable step.</p>
+<p><a class="demo-link" href="../../demos/diagrams/table-er.html">Live: ER diagram →</a></p>
+
+      <h2>UML — classes, stereotypes, markers</h2>
+<pre data-lang="typescript">const spec = umlDiagram({
+  classes: [
+    { id: 'Animal', abstract: true, position: { x: 380, y: 40 },
+      attributes: ['# name: String'], methods: ['+ speak(): void'] },
+    { id: 'Dog', position: { x: 150, y: 320 }, methods: ['+ fetch(): void'] },
+  ],
+  relationships: [
+    { from: 'Dog', to: 'Animal', kind: 'inheritance' },
+    { from: 'Owner', to: 'Dog', kind: 'aggregation', label: 'owns', multiplicity: ['1', '0..*'] },
+  ],
+});</pre>
+      <p>Relationship kinds draw the correct UML markers: <code>inheritance</code>,
+      <code>realization</code>, <code>association</code>, <code>directed-association</code>,
+      <code>aggregation</code>, <code>composition</code>, <code>dependency</code>.</p>
+      <p>Both card kits also expose a <b>typed handle façade</b> for programmatic editing that
+      rides the undo stack:</p>
+<pre data-lang="typescript">import { umlClass } from '@grafloria/element';
+
+const animal = umlClass(api, 'Animal');
+await animal.methods.add('+ move(): void');
+await animal.setAbstract(true);
+await animal.undo();</pre>
+<p><a class="demo-link" href="../../demos/diagrams/class-uml.html">Live: UML class diagram →</a></p>
+
+      <h2>Dashboards — a drag-and-pack grid</h2>
+<pre data-lang="typescript">import { render, dashboard } from '@grafloria/element';
+
+const spec = dashboard({
+  columns: 12,
+  widgets: [
+    { id: 'kpi-revenue', kind: 'kpi', span: 3,
+      data: { label: 'Total revenue', value: '$6.81M', delta: 12.4,
+              spark: [42, 45, 51, 55, 61, 71, 76] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 2, title: 'Revenue trend',
+      data: { series: [{ name: 'Revenue', values: [1.2, 1.4, 1.9, 2.3] }],
+              labels: ['Q1', 'Q2', 'Q3', 'Q4'] } },
+    { id: 'mix', kind: 'donut', span: 3, rows: 2, title: 'By region',
+      data: { slices: [{ label: 'EMEA', value: 2.9, color: '#3B52D9' }] } },
+  ],
+});
+render(spec, host);
+spec.handle.addWidget({ id: 'later', kind: 'bar', span: 3, data: { bars: [] } });</pre>
+      <p><b>Containers — widgets that hold widgets.</b> A widget carrying
+      <code>widgets</code> mounts as a <i>section</i>: a locked slab in the board
+      with its own pack grid inside (own <code>columns</code>, default: its span).
+      Tiles drag across the boundary in both directions — the other grid adopts
+      them live — and one undo restores the whole gesture. A child resized past
+      the section's designed rows escalates: the <i>section</i> grows a row in
+      the board. <code>toJSON()</code> reports the nesting from live membership,
+      so a dragged-in tile serialises under its new parent. Tested to two levels
+      of nesting.</p>
+<pre data-lang="typescript">{ id: &#x27;kpis&#x27;, title: &#x27;KPI section&#x27;, span: 12, rows: 1, columns: 4,
+  widgets: [
+    { id: &#x27;k-rev&#x27;,  kind: &#x27;kpi&#x27;, span: 1, data: { label: &#x27;Revenue&#x27;, value: &#x27;$6.8M&#x27; } },
+    { id: &#x27;k-cust&#x27;, kind: &#x27;kpi&#x27;, span: 1, data: { label: &#x27;Customers&#x27;, value: &#x27;1,284&#x27; } },
+  ] }</pre>
+<p><a class="demo-link" href="../../demos/dashboard/nested-containers.html">Live: dashboard containers →</a></p>
+      <p>Six built-in widget kinds render with zero code — <code>kpi</code>,
+      <code>line</code>, <code>bar</code>, <code>donut</code>, <code>funnel</code>,
+      <code>table</code> — and <code>renderWidget</code> (or React's
+      <code>widgetTypes</code>, Vue's <code>#widget-&lt;kind&gt;</code> slots, Angular's
+      <code>ng-template grafloriaWidget</code>) takes over for your own. Widgets drag and
+      pack live, gridstack-style; multiple <code>views</code> give you tabs; and
+      <code>handle.toJSON()</code> returns exactly what <code>dashboard()</code> accepts —
+      the layout round-trips by construction.</p>
+<p><a class="demo-link" href="../../demos/#dashboard">Live: dashboard builder →</a></p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../../compare/#dashboards">vs GridStack-class libraries</a> — where the
+        dashboard kit sits.</li>
+        <li><a href="../commands-and-undo/">Commands &amp; undo</a> — why kit edits are
+        undoable for free.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../collaboration/">Collaboration</a>
+        <a class="next" href="../the-instance/">The DiagramInstance</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

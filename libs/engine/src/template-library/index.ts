@@ -327,7 +327,7 @@ export function registerCustomTemplate(
 }
 
 /**
- * Integration helpers for connecting to TemplateRegistry (Phase 2)
+ * Integration helpers for connecting to TemplateRegistry
  */
 export {
   registerTemplateLibrary,

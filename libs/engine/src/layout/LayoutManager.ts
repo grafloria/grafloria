@@ -1,3 +1,4 @@
+import { debugLog } from '../util/debug';
 /**
  * Layout Manager
  *
@@ -169,7 +170,7 @@ export class LayoutManager {
   }
 
   /**
-   * Re-layout all nodes using current algorithm (Phase 0.5 - Viewport-aware)
+   * Re-layout all nodes using current algorithm
    * Option 3: Supports animation and locked node constraints
    */
   async reLayout(config?: LayoutConfiguration): Promise<void> {
@@ -196,13 +197,12 @@ export class LayoutManager {
         };
       }
 
-      // Option 3: Store old positions for animation
+      // Option 3: Store old positions for animation — and, always, as the
+      // baseline for invalidating stale link routes after the apply below.
       const oldPositions = new Map<string, Point>();
-      if (config?.animate) {
-        this.diagram.getNodes().forEach((node) => {
-          oldPositions.set(node.id, { ...node.position });
-        });
-      }
+      this.diagram.getNodes().forEach((node) => {
+        oldPositions.set(node.id, { ...node.position });
+      });
 
       // Calculate new positions (viewport-aware)
       const positions = this.currentAlgorithm.reLayout(this.diagram, enhancedConfig);
@@ -218,7 +218,7 @@ export class LayoutManager {
       });
 
       if (lockedNodes.size > 0) {
-        console.log(`📌 ${lockedNodes.size} locked node(s) preserved during layout`);
+        debugLog(`📌 ${lockedNodes.size} locked node(s) preserved during layout`);
       }
 
       // Option 3: Apply animation if requested
@@ -238,9 +238,16 @@ export class LayoutManager {
       // This must happen BEFORE recalculating paths, so links use optimal ports
       this.optimizeConnections();
 
-      // CRITICAL: Recalculate all link paths after nodes have moved
-      // Links don't automatically update when nodes move - we must explicitly regenerate their paths
-      this.recalculateLinkPaths();
+      // THE stale-polyline fix, applied after BOTH the animated and the
+      // immediate path: a link whose endpoint nodes moved still carries the
+      // polyline it was routed on BEFORE the layout (recalculateLinkPaths
+      // regenerates it with LinkModel's simple generators during animation,
+      // but the renderer's obstacle-aware router is authoritative). Emptying
+      // the routed points is the canonical "re-route on next paint" trigger,
+      // and it marks the link dirty so no cached VNode — with its stale
+      // label position — can be reused. Links whose endpoints did NOT move
+      // keep their still-valid routes.
+      this.invalidateRoutesForMovedNodes(oldPositions);
 
       this.emitEvent({
         type: 'layout:completed',
@@ -315,6 +322,47 @@ export class LayoutManager {
   }
 
   /**
+   * Invalidate the routed polyline of every link whose endpoint nodes moved.
+   *
+   * Layout moves NODES; each link keeps the polyline it was routed on before.
+   * Edge labels are placed by walking that polyline (renderer LabelRenderer via
+   * link.getPointAtPosition), so a stale route strands labels at PRE-layout
+   * midpoints — observed live with labels sitting off-canvas at the old world
+   * coordinates. `setPoints([])` is the proven trigger for a re-route on the
+   * next paint (and it marks the link dirty, busting the VNode cache).
+   *
+   * Manual waypoints are cleared with the route — they were authored against
+   * the pre-layout coordinates (same rule as setPathType / setRouter).
+   */
+  private invalidateRoutesForMovedNodes(before: Map<string, Point>): void {
+    const moved = new Set<string>();
+    this.diagram.getNodes().forEach((node) => {
+      const prev = before.get(node.id);
+      if (!prev || prev.x !== node.position.x || prev.y !== node.position.y) {
+        moved.add(node.id);
+      }
+    });
+    if (moved.size === 0) return;
+
+    const nodeIdForPort = (portId: string): string | undefined =>
+      this.diagram.getNodes().find((n) => n.getPorts().some((p) => p.id === portId))?.id;
+
+    this.diagram.getLinks().forEach((link) => {
+      const sourceId = link.sourceNodeId ?? nodeIdForPort(link.sourcePortId);
+      const targetId = link.targetNodeId ?? nodeIdForPort(link.targetPortId);
+      if (!(sourceId && moved.has(sourceId)) && !(targetId && moved.has(targetId))) {
+        return;
+      }
+      if (link.points.length > 0) {
+        link.setPoints([]);
+      }
+      if (link.getMetadata('hasManualWaypoints') === true) {
+        link.setMetadata('hasManualWaypoints', false);
+      }
+    });
+  }
+
+  /**
    * Recalculate all link paths based on current node/port positions
    *
    * CRITICAL: This must be called after moving nodes programmatically (e.g., layout algorithms)
@@ -372,11 +420,11 @@ export class LayoutManager {
       recalculated++;
     });
 
-    console.log(`🔗 Recalculated ${recalculated} link paths after layout`);
+    debugLog(`🔗 Recalculated ${recalculated} link paths after layout`);
   }
 
   /**
-   * Phase 0.5.2 Enhanced: Select optimal ports based on layout-aware algorithm
+   * Select optimal ports based on layout-aware algorithm
    *
    * Uses layout-aware analysis based on academic research:
    * - Considers layout direction (TB/LR/RL/BT)
@@ -567,7 +615,7 @@ export class LayoutManager {
   }
 
   /**
-   * Phase 0.5.2 Enhanced: Optimize all connections after layout
+   * Optimize all connections after layout
    *
    * Reassigns ports for all links based on current node positions and layout context.
    * This ensures connections look natural after layout algorithms reposition nodes.
@@ -634,7 +682,7 @@ export class LayoutManager {
       const contextInfo = layoutContext?.direction
         ? ` using layout-aware algorithm (${layoutContext.direction})`
         : ' using geometric algorithm';
-      console.log(`🎯 Optimized ${optimized} connections${contextInfo}`);
+      debugLog(`🎯 Optimized ${optimized} connections${contextInfo}`);
     }
 
     return optimized;

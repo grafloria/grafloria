@@ -1,3 +1,4 @@
+import { debugLog } from '@grafloria/engine';
 import { Injectable } from '@angular/core';
 
 /**
@@ -76,7 +77,7 @@ export class HandleRegistryService {
 
     nodeHandles.push(handle);
 
-    console.log(
+    debugLog(
       `📍 [HandleRegistry] Registered ${handle.type} handle "${handle.id}" ` +
       `for node "${nodeId}" (total: ${nodeHandles.length} handles)`
     );
@@ -96,7 +97,7 @@ export class HandleRegistryService {
     if (index >= 0) {
       nodeHandles.splice(index, 1);
 
-      console.log(
+      debugLog(
         `🗑️  [HandleRegistry] Unregistered handle "${handleId}" ` +
         `from node "${nodeId}" (remaining: ${nodeHandles.length} handles)`
       );
@@ -225,15 +226,15 @@ export class HandleRegistryService {
     screenY: number,
     zoom: number = 1
   ): { nodeId: string; handleId: string; handle: HTMLHandle } | null {
-    console.log('🔍 [HandleRegistry] getHandleAtPoint called with:', { screenX, screenY, zoom, totalHandles: this.handles.size });
+    debugLog('🔍 [HandleRegistry] getHandleAtPoint called with:', { screenX, screenY, zoom, totalHandles: this.handles.size });
 
     for (const [nodeId, handles] of this.handles.entries()) {
-      console.log(`🔍 [HandleRegistry] Checking node ${nodeId} with ${handles.length} handles`);
+      debugLog(`🔍 [HandleRegistry] Checking node ${nodeId} with ${handles.length} handles`);
 
       for (const handle of handles) {
         const bounds = handle.element.getBoundingClientRect();
 
-        console.log(`🔍 [HandleRegistry] Handle "${handle.id}" bounds:`, {
+        debugLog(`🔍 [HandleRegistry] Handle "${handle.id}" bounds:`, {
           left: bounds.left,
           right: bounds.right,
           top: bounds.top,
@@ -250,13 +251,13 @@ export class HandleRegistryService {
           screenY >= bounds.top &&
           screenY <= bounds.bottom
         ) {
-          console.log(`✅ [HandleRegistry] Handle "${handle.id}" HIT!`);
+          debugLog(`✅ [HandleRegistry] Handle "${handle.id}" HIT!`);
           return { nodeId, handleId: handle.id, handle };
         }
       }
     }
 
-    console.log('❌ [HandleRegistry] No handle found at point');
+    debugLog('❌ [HandleRegistry] No handle found at point');
     return null;
   }
 
@@ -282,6 +283,6 @@ export class HandleRegistryService {
    */
   clear(): void {
     this.handles.clear();
-    console.log('[HandleRegistry] Cleared all handles');
+    debugLog('[HandleRegistry] Cleared all handles');
   }
 }

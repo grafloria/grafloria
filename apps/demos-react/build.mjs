@@ -1,4 +1,4 @@
-import { build } from 'esbuild';
+import { build as esbuildBuild, context } from 'esbuild';
 import { cpSync, mkdirSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -7,6 +7,18 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
 const out = join(root, 'dist', 'apps', 'demos-react');
 const L = (p) => join(root, 'libs', p);
+
+// `node build.mjs --serve [port]` watches the sources and serves dist/ — one
+// rebuild at a time, and a broken edit keeps the last good bundle on disk.
+const serveIdx = process.argv.indexOf('--serve');
+const SERVE = serveIdx >= 0 ? Number(process.argv[serveIdx + 1]) || 4428 : 0;
+const contexts = [];
+async function build(options) {
+  if (!SERVE) return esbuildBuild(options);
+  const ctx = await context({ ...options, minify: false });
+  await ctx.watch();
+  contexts.push(ctx);
+}
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
@@ -59,4 +71,8 @@ await build({
 });
 
 cpSync(join(here, 'src', 'index.html'), join(out, 'index.html'));
+if (SERVE) {
+  await contexts[0].serve({ servedir: out, port: SERVE });
+  console.log(`demos-react watching — http://localhost:${SERVE}/`);
+}
 console.log('demos-react → dist/apps/demos-react');

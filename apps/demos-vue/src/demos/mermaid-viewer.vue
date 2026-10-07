@@ -3,6 +3,7 @@ import { onMounted, ref, shallowRef } from 'vue';
 import { GrafloriaFlow } from '@grafloria/vue';
 import { importDiagramText } from '@grafloria/element';
 import { markReady } from '../ready';
+import { mountCodeEditor } from '../code-editor';
 
 // Mermaid viewer: paste Mermaid text and see it rendered. importDiagramText()
 // parses the source into a model; the canvas renders the reconciled spec.
@@ -54,6 +55,9 @@ const EXAMPLES: Record<string, string> = {
 
 const type = ref('flowchart');
 const text = ref(EXAMPLES['flowchart']);
+// The source reads as Mermaid: the gallery's editor colours it over the textarea.
+const source = ref<HTMLTextAreaElement>();
+onMounted(() => { void mountCodeEditor(source.value, { language: 'mermaid' }); });
 const nodes = shallowRef<unknown[]>([]);
 const edges = shallowRef<unknown[]>([]);
 const status = ref('—');
@@ -109,7 +113,7 @@ onMounted(() => {
       <GrafloriaFlow style="height:100%" :nodes="(nodes as never)" :edges="(edges as never)" />
     </div>
     <div style="flex:1;min-width:0;border-left:1px solid rgba(127,127,127,.25)">
-      <textarea v-model="text" spellcheck="false"
+      <textarea ref="source" v-model="text" spellcheck="false"
         style="width:100%;height:100%;box-sizing:border-box;border:0;padding:10px 14px;font:12px/1.5 ui-monospace,Menlo,monospace;resize:none;color:inherit;background:transparent"></textarea>
     </div>
   </div>

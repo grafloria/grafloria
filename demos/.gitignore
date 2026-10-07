@@ -10,3 +10,4 @@
 # reference frames; they are the point of the visual gate.
 e2e/shots/
 e2e/scenario-shots/
+e2e/kit-lab-shots/

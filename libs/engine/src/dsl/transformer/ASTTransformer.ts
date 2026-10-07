@@ -9,6 +9,10 @@ import { DiagramModel } from '../../models/DiagramModel';
 import { NodeModel } from '../../models/NodeModel';
 import { LinkModel } from '../../models/LinkModel';
 import { GroupModel } from '../../models/GroupModel';
+import { assignRanks, placeByRank } from '../mermaid/layout';
+import { readMermaidLabel } from '../mermaid/rich-label';
+import { ensureSideAnchorPort } from '../../ports/side-anchor';
+import { layoutArchitecture } from '../../layout/architecture/architecture-layout';
 import {
   DiagramNode,
   StatementNode,
@@ -57,6 +61,14 @@ export class ASTTransformer {
   private nodePositions: Map<string, { x: number; y: number }> = new Map();
   private nextAutoPosition = { x: 100, y: 100 };
   private nodeSpacing = 150;
+  /**
+   * The axis auto-placement advances along, from the diagram's direction
+   * keyword. `flowchart TD` is TOP-DOWN and must stack vertically; every
+   * direction used to lay out identically left-to-right, so TD/TB read as LR.
+   */
+  private flowAxis: 'x' | 'y' = 'x';
+  /** `%%grafloria:at` pins, re-applied after a requested layout so they still win. */
+  private atDirectives: GrafloriaDirectiveNode[] = [];
 
   /**
    * Transform AST into DiagramModel
@@ -73,6 +85,7 @@ export class ASTTransformer {
 
     this.nodeSpacing = nodeSpacing;
     this.nextAutoPosition = { ...startPosition };
+    this.atDirectives = [];
 
     // Create diagram
     const diagram = new DiagramModel(diagramName);
@@ -80,6 +93,8 @@ export class ASTTransformer {
     // Store diagram type in metadata
     diagram.setMetadata('diagramType', ast.diagramType);
     diagram.setMetadata('direction', ast.direction);
+    // TD / TB (top-down) and BT stack DOWN the page; LR / RL run across it.
+    this.flowAxis = /^(TD|TB|BT)$/i.test(String(ast.direction ?? '')) ? 'y' : 'x';
 
     // Phase 1: structure — nodes, subgraphs→groups, and classDefs (stored so
     // class applications in Phase 3 can resolve regardless of source order).
@@ -95,12 +110,115 @@ export class ASTTransformer {
       }
     }
 
+    // Phase 2.5: type-aware placement. The chain-wrap positions assigned while
+    // creating nodes step along the flow axis in READING order, so a BRANCH
+    // renders as a straight line that lies about the graph ("Check -->|no|
+    // Order" reads as Pick→Order). Now that every edge exists, re-place the
+    // auto-positioned nodes by RANK: rank along the direction's flow axis,
+    // siblings spread on the cross axis — a fork reads as a fork. Nodes with
+    // EXPLICIT positions (none from a parse, but transform options can disable
+    // auto-positioning) are untouched.
+    if (autoPosition) {
+      this.applyRankPlacement(diagram, startPosition);
+    }
+
     // Phase 3: the extension channel — Tier-1 directives (style/class/linkStyle/
     // click) and Tier-2 %%grafloria: directives. Run last, over the FLATTENED tree,
     // because they reference nodes/links/classDefs that must already exist.
     this.applyDirectives(this.flattenStatements(ast.statements), diagram);
 
+    // Phase 4: a subgraph means "a box around these nodes". One whose frame no
+    // `%%grafloria:at` pinned is fitted around its members (deepest first) —
+    // without this it had no size at all and drew nothing.
+    for (const group of diagram.getGroups()) {
+      if (group.parentGroupId || group.size) continue;
+      group.fitToContents(diagram, { mode: 'exact', deepRecursive: true });
+    }
+
+    // Phase 5: `%%grafloria:layout architecture` — the author asked for the
+    // composition (regions on a grid, boxes in rows, lines straight where boxes
+    // line up), so the whole drawing is arranged; an exact `%%grafloria:at`
+    // still wins for the node or zone it names.
+    if (diagram.getMetadata('layout') === 'architecture') {
+      layoutArchitecture(diagram);
+      for (const st of this.atDirectives) this.applyGrafloriaAt(st, diagram);
+    }
+
     return diagram;
+  }
+
+  /**
+   * Rank-based placement over the whole parsed graph (Phase 2.5).
+   *
+   * Only nodes THIS transform auto-positioned (`this.nodePositions`) move — a
+   * guard, not a hope: anything with an explicit position (restored later by
+   * the sidecar, or added by a caller) must never be rearranged by a parse.
+   * Synchronous and deterministic; see dsl/mermaid/layout.ts.
+   */
+  private applyRankPlacement(
+    diagram: DiagramModel,
+    startPosition: { x: number; y: number }
+  ): void {
+    const placeable = diagram
+      .getNodes()
+      .filter((node) => this.nodePositions.has(node.id));
+    if (placeable.length === 0) return;
+
+    const ids = placeable.map((n) => n.id);
+    const idSet = new Set(ids);
+    const edges = diagram
+      .getLinks()
+      .filter(
+        (l) =>
+          l.sourceNodeId !== undefined &&
+          l.targetNodeId !== undefined &&
+          idSet.has(l.sourceNodeId) &&
+          idSet.has(l.targetNodeId)
+      )
+      .map((l) => ({ from: l.sourceNodeId!, to: l.targetNodeId! }));
+
+    const direction = (diagram.getMetadata('direction') as string) ?? 'TD';
+    const ranks = assignRanks(ids, edges);
+    const positions = placeByRank(placeable, ranks, {
+      direction,
+      start: startPosition,
+      // Bands are size-aware, so these are true GAPS — derived from the same
+      // nodeSpacing constant the chain-wrap used (150 ⇒ 75 / 50 by default).
+      rankGap: this.nodeSpacing / 2,
+      crossGap: this.nodeSpacing / 3,
+    });
+
+    for (const node of placeable) {
+      const position = positions.get(node.id);
+      if (!position) continue;
+      node.setPosition(position.x, position.y);
+      this.nodePositions.set(node.id, position);
+    }
+
+    // The links were smart-linked against the CHAIN-WRAP positions: their port
+    // sides and generated paths describe the old picture. Re-select ports with
+    // the rank context (forward edges leave the flow side, back-edges loop),
+    // then drop the routed polylines so the renderer re-routes from the real
+    // geometry on first paint — the same invalidate-on-move rule the layout
+    // engine applies (see layout-route-invalidation.spec.ts).
+    const contextDirection = (
+      { TD: 'TB', TB: 'TB', BT: 'BT', LR: 'LR', RL: 'RL' } as const
+    )[direction.toUpperCase() as 'TD' | 'TB' | 'BT' | 'LR' | 'RL'];
+    diagram.getLayoutManager().optimizeConnections({
+      ...(contextDirection ? { direction: contextDirection } : {}),
+      ranks,
+    });
+    for (const link of diagram.getLinks()) {
+      if (
+        link.sourceNodeId !== undefined &&
+        link.targetNodeId !== undefined &&
+        idSet.has(link.sourceNodeId) &&
+        idSet.has(link.targetNodeId) &&
+        link.points.length > 0
+      ) {
+        link.setPoints([]);
+      }
+    }
   }
 
   /**
@@ -156,19 +274,101 @@ export class ASTTransformer {
    * depend on link order.
    */
   private applyDirectives(statements: StatementNode[], diagram: DiagramModel): void {
+    const directive = (st: StatementNode, target: GrafloriaDirectiveNode['target']): st is GrafloriaDirectiveNode =>
+      st.type === 'GrafloriaDirective' && (st as GrafloriaDirectiveNode).target === target;
     for (const st of statements) {
       if (st.type === 'Style') this.applyStyle(st as StyleNode, diagram);
       else if (st.type === 'ClassApplication') this.applyClass(st as ClassApplicationNode, diagram);
       else if (st.type === 'Click') this.applyClick(st as ClickNode, diagram);
-      else if (st.type === 'GrafloriaDirective' && (st as GrafloriaDirectiveNode).target === 'node') {
-        this.applyGrafloriaNode(st as GrafloriaDirectiveNode, diagram);
+      else if (directive(st, 'node')) this.applyGrafloriaNode(st, diagram);
+      else if (directive(st, 'group')) this.applyGrafloriaGroup(st, diagram);
+      // Positions and sizes BEFORE the edge directives: an anchor along a side
+      // is placed as a fraction of the node's final size.
+      else if (directive(st, 'at')) {
+        this.atDirectives.push(st);
+        this.applyGrafloriaAt(st, diagram);
       }
+      else if (directive(st, 'layout')) diagram.setMetadata('layout', (st as GrafloriaDirectiveNode).ids[0]);
+      else if (directive(st, 'near')) this.applyGrafloriaNear(st, diagram);
     }
     for (const st of statements) {
       if (st.type === 'LinkStyle') this.applyLinkStyle(st as LinkStyleNode, diagram);
-      else if (st.type === 'GrafloriaDirective' && (st as GrafloriaDirectiveNode).target === 'edge') {
-        this.applyGrafloriaEdge(st as GrafloriaDirectiveNode, diagram);
-      }
+    }
+    // `%%grafloria:edge * * …` is every edge's DEFAULT — applied first, so a
+    // directive for one edge wins wherever it appears in the text.
+    const edges = statements.filter((st): st is GrafloriaDirectiveNode => directive(st, 'edge'));
+    for (const st of edges) if (st.ids[0] === '*' && st.ids[1] === '*') this.applyGrafloriaEdge(st, diagram);
+    for (const st of edges) if (!(st.ids[0] === '*' && st.ids[1] === '*')) this.applyGrafloriaEdge(st, diagram);
+  }
+
+  /**
+   * A label, read the way Mermaid means it: a bold first line over more lines
+   * is a name and a subtitle (`metadata.sublabel`), `<br/>` a line break,
+   * `#quot;` a quote. See dsl/mermaid/rich-label.
+   */
+  private applyRichLabel(node: NodeModel, raw: string): void {
+    const rich = readMermaidLabel(raw, true);
+    node.setLabel(rich.text);
+    node.setMetadata('sublabel', rich.sublabel);
+  }
+
+  /**
+   * A zone's frame from Mermaid style properties — `style <subgraph> …`,
+   * `classDef` + `class <subgraph>`. Merged into `metadata.frameStyle` (the
+   * renderer's zone frame); a zone's caption lives in its padding, so no band.
+   */
+  private applyFrameStyle(group: GroupModel, properties: StyleProperties): void {
+    const frame = { ...((group.getMetadata('frameStyle') as Record<string, unknown> | undefined) ?? { labelPlacement: 'top-left' }) };
+    const copy = ['fill', 'stroke', 'strokeWidth', 'strokeDasharray', 'color', 'fontWeight', 'fontSize', 'fontFamily', 'letterSpacing', 'textTransform'];
+    for (const key of copy) if (properties[key] !== undefined && properties[key] !== '') frame[key] = properties[key];
+    if (typeof properties['rx'] === 'number') frame['borderRadius'] = properties['rx'];
+    group.setMetadata('frameStyle', frame);
+    group.headerHeight = 0;
+  }
+
+  /** `%%grafloria:group ours caption:bottom-left` — where a zone's caption sits. */
+  private applyGrafloriaGroup(node: GrafloriaDirectiveNode, diagram: DiagramModel): void {
+    const group = diagram.getGroup(node.ids[0]);
+    if (!group) return;
+    const caption = node.properties['caption'];
+    if (caption) {
+      const frame = { ...((group.getMetadata('frameStyle') as Record<string, unknown> | undefined) ?? {}) };
+      frame['labelPlacement'] = caption;
+      group.setMetadata('frameStyle', frame);
+      group.headerHeight = 0;
+    }
+  }
+
+  /** `%%grafloria:near note fake right` — a note placed beside what it is about (a relation, not a coordinate). */
+  private applyGrafloriaNear(node: GrafloriaDirectiveNode, diagram: DiagramModel): void {
+    const [id, target] = node.ids;
+    const n = id ? diagram.getNode(id) : undefined;
+    if (!n || !target) return;
+    const near: Record<string, unknown> = { target, side: node.properties['side'] ?? 'right' };
+    if (node.properties['gap'] !== undefined) near['gap'] = Number(node.properties['gap']);
+    n.setMetadata('near', near);
+  }
+
+  /** `%%grafloria:at customer 20,78 150x292` — an exact position (and size), node or zone. */
+  private applyGrafloriaAt(node: GrafloriaDirectiveNode, diagram: DiagramModel): void {
+    const id = node.ids[0];
+    const x = Number(node.properties['x']);
+    const y = Number(node.properties['y']);
+    const w = node.properties['w'] !== undefined ? Number(node.properties['w']) : undefined;
+    const h = node.properties['h'] !== undefined ? Number(node.properties['h']) : undefined;
+    const target = diagram.getNode(id);
+    if (target) {
+      target.setPosition(x, y);
+      if (w !== undefined && h !== undefined) target.setSize(w, h);
+      return;
+    }
+    const group = diagram.getGroup(id);
+    if (group) {
+      const width = w ?? group.getOuterBounds().width;
+      const height = h ?? group.getOuterBounds().height;
+      group.position = { x, y };
+      group.size = { width, height, depth: 0 };
+      group.bounds = { x, y, width, height };
     }
   }
 
@@ -180,6 +380,10 @@ export class ASTTransformer {
     for (const id of node.ids) {
       const target = diagram.getNode(id);
       if (target) this.applyStyleToNode(target, props);
+      else {
+        const group = diagram.getGroup(id);
+        if (group) this.applyFrameStyle(group, props);
+      }
     }
   }
 
@@ -187,8 +391,14 @@ export class ASTTransformer {
   private applyLinkStyle(node: LinkStyleNode, diagram: DiagramModel): void {
     const links = diagram.getLinks();
     const targets = node.indices === 'default' ? links.map((_, i) => i) : node.indices;
+    // The curve, in Grafloria's path types: `linear` is straight, the `step`
+    // family is right angles, every smooth d3 curve is a smooth one.
+    const curve = node.interpolate?.toLowerCase();
+    const pathType = !curve ? undefined : curve === 'linear' ? 'direct' : curve.startsWith('step') ? 'orthogonal' : 'smooth';
     for (const i of targets) {
-      if (links[i]) this.applyStyleToLink(links[i], node.properties);
+      if (!links[i]) continue;
+      this.applyStyleToLink(links[i], node.properties);
+      if (pathType && links[i].pathType !== pathType) links[i].setPathType(pathType as never);
     }
   }
 
@@ -209,15 +419,65 @@ export class ASTTransformer {
     }
   }
 
-  /** `%%grafloria:edge a b animation:flow` — Grafloria-only edge animation. */
+  /**
+   * `%%grafloria:edge a b …` — Grafloria-only edge properties:
+   *   animation:flow, speed:…        the edge animation
+   *   from:right@36, to:left@36      ends pinned to a point along a side
+   *   label:above | below | on       where the label sits (above/below: no box)
+   *   via:580 204 850 204            the bends — manual waypoints
+   * `* *` names every edge.
+   */
   private applyGrafloriaEdge(node: GrafloriaDirectiveNode, diagram: DiagramModel): void {
     const [source, target] = node.ids;
-    const link = diagram.getLinks().find((l) => l.sourceNodeId === source && l.targetNodeId === target);
-    if (!link) return;
-    if (node.properties['animation']) {
-      const anim: Record<string, string> = { type: node.properties['animation'] };
-      if (node.properties['speed']) anim['speed'] = node.properties['speed'];
-      link.updateStyle({ animation: anim } as never);
+    const every = source === '*' && target === '*';
+    const links = every
+      ? diagram.getLinks()
+      : diagram.getLinks().filter((l) => l.sourceNodeId === source && l.targetNodeId === target).slice(0, 1);
+    const p = node.properties;
+    for (const link of links) {
+      if (p['animation']) {
+        const anim: Record<string, string> = { type: p['animation'] };
+        if (p['speed']) anim['speed'] = p['speed'];
+        link.updateStyle({ animation: anim } as never);
+      }
+      // `from:right@36` pins a point along a side; a PLAIN side (`from:bottom`)
+      // is a relation — the line leaves that side — kept as a hint (a layout
+      // reads it: the target is below) and drawn from the side's middle.
+      const plain = (v: string | undefined) => (v === 'top' || v === 'right' || v === 'bottom' || v === 'left' ? v : undefined);
+      if (p['from'] && link.sourceNodeId) {
+        const n = diagram.getNode(link.sourceNodeId);
+        const side = plain(p['from']);
+        if (side) link.setMetadata('sourceSide', side);
+        const port = n ? ensureSideAnchorPort(n, side ? `${side}@50%` : p['from']) : null;
+        if (port) link.setSourcePort(port, link.sourceNodeId);
+      }
+      if (p['to'] && link.targetNodeId) {
+        const n = diagram.getNode(link.targetNodeId);
+        const side = plain(p['to']);
+        if (side) link.setMetadata('targetSide', side);
+        const port = n ? ensureSideAnchorPort(n, side ? `${side}@50%` : p['to']) : null;
+        if (port) link.setTargetPort(port, link.targetNodeId);
+      }
+      if (p['label'] === 'above' || p['label'] === 'below' || p['label'] === 'on') {
+        link.setMetadata('labelPlacement', p['label'] === 'on' ? undefined : p['label']);
+        // Off the line, a label has no box of its own.
+        for (const label of link.labels) {
+          const style = { ...(label.style ?? {}) } as Record<string, unknown>;
+          if (p['label'] === 'on') delete style['background'];
+          else style['background'] = 'none';
+          label.style = style;
+        }
+      }
+      if (p['via']) {
+        const nums = p['via'].trim().split(/[\s,]+/).map(Number).filter((v) => Number.isFinite(v));
+        const pts: Array<{ x: number; y: number }> = [];
+        for (let i = 0; i + 1 < nums.length; i += 2) pts.push({ x: nums[i], y: nums[i + 1] });
+        if (pts.length > 0) {
+          // The ends are placeholders; the renderer refreshes them from the ports.
+          link.setPoints([{ ...pts[0] }, ...pts, { ...pts[pts.length - 1] }]);
+          link.setMetadata('hasManualWaypoints', true);
+        }
+      }
     }
   }
 
@@ -237,7 +497,7 @@ export class ASTTransformer {
       // (metadata.label — what the renderer and a11y read) and mirrors the
       // legacy data.label slot; see DiagramEntity.setLabel.
       if (astNode.label) {
-        node.setLabel(astNode.label);
+        this.applyRichLabel(node, astNode.label);
       }
       return node;
     }
@@ -267,7 +527,7 @@ export class ASTTransformer {
     // Set label through the canon (metadata.label + legacy mirror) — a parsed
     // node must carry its label where the renderer reads it, or Mermaid-loaded
     // diagrams draw unlabeled and read to screen readers as '<type> node'.
-    node.setLabel(astNode.label || astNode.id);
+    this.applyRichLabel(node, astNode.label || astNode.id);
 
     // Store shape information for DSL
     node.setMetadata('dslShape', astNode.shape);
@@ -360,7 +620,15 @@ export class ASTTransformer {
     // Set label if provided — canonical write, same reasoning as node labels
     // (svg-renderer reads link.getMetadata('label') for the edge label).
     if (astEdge.label) {
-      link.setLabel(astEdge.label);
+      // `<br/>` and `#quot;` read as a line break and a quote, not as text.
+      const text = readMermaidLabel(astEdge.label, false).text;
+      link.setLabel(text);
+      // …and ALSO as a real link label. `setLabel` only writes `metadata.label`
+      // (plus the legacy data mirror), but the SVG renderer paints from the
+      // `labels[]` array — so every Mermaid edge label (`-->|yes|`) parsed
+      // correctly, was stored on the link, and then never appeared. That left
+      // branch edges looking like unexplained stray lines.
+      if (!link.labels?.length) link.addLabel({ text, slot: 'center' });
     }
 
     // Store link type information
@@ -403,14 +671,34 @@ export class ASTTransformer {
 
     // The group and its membership.
     const groupId = astSubgraph.id || `subgraph-${diagram.getGroups().length + 1}`;
-    const group = new GroupModel({ id: groupId, name: astSubgraph.label || astSubgraph.id || groupId });
+    const group = new GroupModel({ id: groupId, name: readMermaidLabel(astSubgraph.label || astSubgraph.id || groupId, false).text });
     diagram.addGroup(group);
 
+    // Nested subgraphs are zones INSIDE this one (their groups exist: nodes and
+    // nested subgraphs were processed first) — and a box one of them holds is
+    // theirs, not this zone's, even when an edge here names it (`gw --> app`).
+    const nested = astSubgraph.statements
+      .filter((st): st is SubgraphNode => st.type === 'Subgraph')
+      .map((st) => diagram.getGroup(st.id ?? ''))
+      .filter((g): g is GroupModel => !!g);
+    const heldBelow = (id: string): boolean => {
+      const stack = [...nested];
+      while (stack.length) {
+        const g = stack.pop()!;
+        if (g.members.has(id)) return true;
+        for (const m of g.members) {
+          const child = diagram.getGroup(m);
+          if (child) stack.push(child);
+        }
+      }
+      return false;
+    };
     const memberIds = new Set<string>();
     this.collectDirectNodeIds(astSubgraph.statements, memberIds);
     for (const id of memberIds) {
-      if (diagram.getNode(id)) group.addMember(id, diagram);
+      if (diagram.getNode(id) && !heldBelow(id)) group.addMember(id, diagram);
     }
+    for (const child of nested) group.addMember(child.id, diagram);
 
     if (astSubgraph.direction) {
       group.setMetadata('direction', astSubgraph.direction);
@@ -439,6 +727,12 @@ export class ASTTransformer {
   private applyStyle(styleNode: StyleNode, diagram: DiagramModel): void {
     const node = diagram.getNode(styleNode.targetId);
     if (!node) {
+      // `style <subgraph> …` styles the ZONE.
+      const group = diagram.getGroup(styleNode.targetId);
+      if (group) {
+        this.applyFrameStyle(group, styleNode.properties);
+        return;
+      }
       console.warn(`Style target node not found: ${styleNode.targetId}`);
       return;
     }
@@ -474,6 +768,13 @@ export class ASTTransformer {
     if (properties.strokeDasharray) {
       node.style.strokeDasharray = properties.strokeDasharray;
     }
+    // Typography and the flat look — CSS properties Mermaid passes through
+    // (and any other renderer ignores), read by Grafloria.
+    if (properties['fontWeight'] !== undefined && properties['fontWeight'] !== '') node.style.fontWeight = String(properties['fontWeight']);
+    if (typeof properties['fontSize'] === 'number' && Number.isFinite(properties['fontSize'])) node.style.fontSize = properties['fontSize'];
+    if (properties['fontFamily']) node.style.fontFamily = String(properties['fontFamily']);
+    if (typeof properties['rx'] === 'number') node.style.borderRadius = properties['rx'];
+    if (properties['shadow'] === 'none' || properties['shadow'] === 'false') node.style.shadow = false;
 
     // Paints must ALSO ride the shape-config metadata — that is where the SVG
     // renderer reads fill/stroke for the shape (node.style alone renders
@@ -495,12 +796,26 @@ export class ASTTransformer {
   private applyStyleToLink(link: LinkModel, properties: StyleProperties): void {
     if (properties.stroke) {
       link.style.stroke = properties.stroke;
+      // The head is the line's: a green line with a grey arrowhead reads as two things.
+      if (link.style.arrowHead && typeof link.style.arrowHead === 'object') {
+        link.style.arrowHead = { ...link.style.arrowHead, color: properties.stroke } as never;
+      }
     }
     if (properties.strokeWidth !== undefined) {
       link.style.strokeWidth = properties.strokeWidth;
     }
     if (properties.strokeDasharray) {
       link.style.strokeDasharray = properties.strokeDasharray;
+    }
+    // `linkStyle n color:…` is the LABEL's colour in Mermaid; weight, size and
+    // family go with it. They land on the link's labels.
+    const labelStyle: Record<string, unknown> = {};
+    if (properties.color) labelStyle['color'] = properties.color;
+    if (properties['fontWeight'] !== undefined && properties['fontWeight'] !== '') labelStyle['fontWeight'] = String(properties['fontWeight']);
+    if (typeof properties['fontSize'] === 'number' && Number.isFinite(properties['fontSize'])) labelStyle['fontSize'] = properties['fontSize'];
+    if (properties['fontFamily']) labelStyle['fontFamily'] = String(properties['fontFamily']);
+    if (Object.keys(labelStyle).length > 0) {
+      for (const label of link.labels) label.style = { ...(label.style ?? {}), ...labelStyle } as never;
     }
   }
 
@@ -530,6 +845,7 @@ export class ASTTransformer {
    */
   private getNodeTypeFromShape(shape: NodeShape): string {
     const shapeToType: Record<NodeShape, string> = {
+      'text': 'text',
       'rectangle': 'flowchart:process',
       'rounded-rectangle': 'flowchart:terminator',
       'stadium': 'flowchart:terminator',
@@ -541,6 +857,8 @@ export class ASTTransformer {
       'hexagon': 'flowchart:preparation',
       'trapezoid': 'flowchart:manual-input',
       'trapezoid-alt': 'flowchart:manual-input',
+      'parallelogram': 'flowchart:data',
+      'parallelogram-alt': 'flowchart:data',
     };
 
     return shapeToType[shape] || 'flowchart:process';
@@ -552,17 +870,22 @@ export class ASTTransformer {
    */
   private getShapeConfigFromDSLShape(shape: NodeShape): { type: string; cornerRadius?: number } {
     const shapeMapping: Record<NodeShape, { type: string; cornerRadius?: number }> = {
+      'text': { type: 'text' },
       'rectangle': { type: 'rect' },
       'rounded-rectangle': { type: 'rect', cornerRadius: 10 },
-      'stadium': { type: 'ellipse' }, // Stadium is essentially a tall ellipse
-      'subroutine': { type: 'rect', cornerRadius: 5 },
-      'cylindrical': { type: 'ellipse' }, // Cylinder approximated as ellipse
+      // The renderer's shape registry draws these as what they are (it used to
+      // approximate: a database as an ellipse, a trapezoid as a rect).
+      'stadium': { type: 'stadium' },
+      'subroutine': { type: 'subroutine' },
+      'cylindrical': { type: 'cylinder' },
       'circle': { type: 'circle' },
-      'asymmetric': { type: 'rect' }, // Document shape - fallback to rect for now
+      'asymmetric': { type: 'rect' }, // Mermaid's flag — no registry shape yet
       'rhombus': { type: 'diamond' },
       'hexagon': { type: 'hexagon' },
-      'trapezoid': { type: 'rect' }, // Trapezoid - fallback to rect for now
-      'trapezoid-alt': { type: 'rect' }, // Trapezoid alt - fallback to rect for now
+      'trapezoid': { type: 'trapezoid' }, // [/ \] — wide bottom
+      'trapezoid-alt': { type: 'trapezoid-bottom' }, // [\ /] — wide top
+      'parallelogram': { type: 'parallelogram' }, // [/ /] — leans right
+      'parallelogram-alt': { type: 'parallelogram-top' }, // [\ \] — leans left
     };
 
     return shapeMapping[shape] || { type: 'rect' };
@@ -588,6 +911,15 @@ export class ASTTransformer {
       case 'hexagon':
         return { width: 140, height: 80 };
 
+      case 'stadium':
+        // A pill: its words sit between the round ends (width minus height),
+        // so it is wide and short — 120×80 left them 40 px.
+        return { width: 160, height: 56 };
+
+      case 'text':
+        // A note is a line of words, not a box.
+        return { width: 240, height: 24 };
+
       default:
         return defaultSize;
     }
@@ -608,13 +940,18 @@ export class ASTTransformer {
   private getNextAutoPosition(): { x: number; y: number } {
     const position = { ...this.nextAutoPosition };
 
-    // Move to next position (simple horizontal layout for now)
-    this.nextAutoPosition.x += this.nodeSpacing;
+    // Advance along the DIRECTION's axis, wrapping on the cross axis. This used
+    // to always step in x, so `flowchart TD` produced the same left-to-right
+    // chain as `LR` — the direction keyword parsed, was stored on the diagram,
+    // and then nothing read it.
+    const along = this.flowAxis;
+    const across = along === 'x' ? 'y' : 'x';
+    const limit = along === 'x' ? 1000 : 700;   // wrap a column sooner than a row
 
-    // Wrap to next row after 6 nodes
-    if (this.nextAutoPosition.x > 1000) {
-      this.nextAutoPosition.x = 100;
-      this.nextAutoPosition.y += this.nodeSpacing;
+    this.nextAutoPosition[along] += this.nodeSpacing;
+    if (this.nextAutoPosition[along] > limit) {
+      this.nextAutoPosition[along] = 100;
+      this.nextAutoPosition[across] += this.nodeSpacing;
     }
 
     return position;
@@ -626,5 +963,6 @@ export class ASTTransformer {
   resetAutoPosition(startPosition: { x: number; y: number }): void {
     this.nextAutoPosition = { ...startPosition };
     this.nodePositions.clear();
+    this.atDirectives = [];
   }
 }

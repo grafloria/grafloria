@@ -1,0 +1,319 @@
+<meta charset="utf-8">
+<title>AI-style diagrams — Grafloria</title>
+<meta name="description" content="The diagrams Claude and ChatGPT hand-write as SVG — zones with corner captions, a name over a muted line, coloured labels riding their lines — drawn by Grafloria, from the native API or from Mermaid.">
+<link rel="canonical" href="https://grafloria.com/demos/diagrams/ai-style-diagram.html">
+<meta property="og:title" content="AI-style diagrams — Grafloria">
+<meta property="og:description" content="The diagrams Claude and ChatGPT hand-write as SVG — zones with corner captions, a name over a muted line, coloured labels riding their lines — drawn by Grafloria, from the native API or from Mermaid.">
+<meta property="og:url" content="https://grafloria.com/demos/diagrams/ai-style-diagram.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/diagrams/ai-style-diagram.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/diagrams/ai-style-diagram.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  #ai-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--gf-line, #e5e7eb); background: #fff; font: 500 12.5px ui-sans-serif, system-ui, sans-serif; color: var(--gf-ink, #111827); }
+  #ai-bar .seg { display: inline-flex; border: 1px solid var(--gf-line, #e5e7eb); border-radius: 7px; overflow: hidden; }
+  #ai-bar .seg button { border: 0; background: none; padding: 4px 11px; cursor: pointer; white-space: nowrap; font: 600 12px ui-sans-serif, system-ui, sans-serif; color: var(--gf-mut, #6b7280); }
+  #ai-bar .seg button + button { border-left: 1px solid var(--gf-line, #e5e7eb); }
+  #ai-bar .seg button.on { background: var(--gf-ink, #111827); color: #fff; }
+  #ai-bar .seg button:focus-visible { outline: 2px solid var(--gf-accent, #2563eb); outline-offset: 2px; }
+  #ai-note { color: var(--gf-mut, #6b7280); }
+  #canvas { height: 520px; background: #fff; }
+  #ai-src { margin: 0; padding: 14px 18px; border-top: 1px solid var(--gf-line, #e5e7eb); background: #f8fafc; color: #1f2937; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; overflow: auto; max-height: 520px; }
+</style>
+<header id="demo-head"></header>
+<div id="ai-bar">
+  <span>Drawn from</span>
+  <span class="seg" id="ai-source" role="group" aria-label="Drawn from">
+    <button type="button" data-src="native" class="on" aria-pressed="true">the native API</button>
+    <button type="button" data-src="mermaid" aria-pressed="false">Grafloria Mermaid</button>
+  </span>
+  <span id="ai-note">The same picture from either source. Its text is below.</span>
+</div>
+<div id="canvas"></div>
+<pre id="ai-src"></pre>
+<script type="text/plain" id="native-src">// The diagram, as a render() spec. Every look is a field:
+//   sublabel · shape 'text' · groups (zones) · 'right@36' anchors
+//   labelPlacement / labelStyle · waypoints · style.shadow: false
+const INK = '#1f2328', MUTED = '#5f6b7a', LINE = '#6b7785', GOOD = '#1a7f37', BAD = '#cf222e', ACC = '#2a7a86';
+const flat = { fill: '#ffffff', stroke: '#d0d5dd', borderRadius: 4, shadow: false, color: INK, fontSize: 13 };
+const box = (id, x, y, w, h, label, sublabel, style = {}) =>
+  ({ id, position: { x, y }, size: { width: w, height: h }, label, sublabel, style: { ...flat, ...style } });
+const sub = (text) => ({ text, fontSize: 11, color: MUTED });
+const line = (c, extra = {}) => ({ stroke: c, strokeWidth: 1.5, arrowHead: { type: 'arrow', size: 7, filled: true, color: c }, ...extra });
+const small = { fontSize: 11, color: MUTED };
+
+export default {
+  groups: [
+    { id: 'hp', label: "HEALTHPAY'S SIDE · CARDS ARE TYPED HERE", children: ['page', 'wallets'],
+      bounds: { x: 380, y: 36, width: 566, height: 138 },
+      style: { fill: '#e9f2f3', stroke: '#7aabb3', strokeDasharray: '5 4', color: ACC, fontWeight: '700', letterSpacing: 1 } },
+    { id: 'ours', label: 'OUR SIDE · MUST NEVER SEE A CARD', children: ['api', 'db'],
+      bounds: { x: 380, y: 236, width: 566, height: 150 }, labelPlacement: 'bottom-left',
+      style: { fill: '#f3f4f6', stroke: '#d7dbe0', color: '#4b5563', fontWeight: '700', letterSpacing: 1 } },
+  ],
+  nodes: [
+    box('customer', 20, 78, 150, 292, 'Customer', sub('phone or browser'), { borderRadius: 6 }),
+    box('page', 410, 78, 210, 72, 'HealthPay payment page', sub('the card is typed here')),
+    box('wallets', 712, 78, 210, 72, 'HealthPay wallets', sub("hold the customer's money")),
+    box('api', 410, 264, 210, 72, 'Our API', { text: 'sherkety-erp-api', fontFamily: 'mono', fontSize: 11, color: MUTED }),
+    box('db', 712, 264, 210, 72, 'Our database', sub('keys, ledger, bank numbers')),
+    box('fake', 20, 398, 150, 60, 'Fake card page', sub("not HealthPay's"), { fill: '#fdecec', stroke: '#e5a0a0' }),
+    { id: 'note', position: { x: 186, y: 421 }, size: { width: 360, height: 24 }, shape: { type: 'text' },
+      label: 'if someone swaps the link, the customer lands here (M1)', style: { color: BAD, fontWeight: '700', fontSize: 11 } },
+  ],
+  edges: [
+    { source: 'customer', target: 'page', sourceHandle: 'right@36', targetHandle: 'left@36', type: 'orthogonal', style: line(GOOD),
+      label: 'card number and CVV', labelPlacement: 'above', labelStyle: { color: GOOD, fontWeight: '700', fontSize: 11 } },
+    { source: 'page', target: 'wallets', sourceHandle: 'right@36', targetHandle: 'left@36', type: 'orthogonal', style: line(LINE),
+      label: 'adds money', labelPlacement: 'above', labelStyle: small },
+    { source: 'api', target: 'wallets', sourceHandle: 'top@170', targetHandle: 'bottom@138', type: 'orthogonal',
+      waypoints: [{ x: 580, y: 204 }, { x: 850, y: 204 }], style: line(LINE),
+      label: 'asks HealthPay to move money', labelPlacement: 'above', labelStyle: small },
+    { source: 'api', target: 'db', sourceHandle: 'right@36', targetHandle: 'left@36', type: 'orthogonal', style: line(LINE),
+      label: 'saves keys', labelPlacement: 'above', labelStyle: small },
+    { source: 'api', target: 'customer', sourceHandle: 'left@24', targetHandle: 'right@210', type: 'orthogonal', style: line(LINE),
+      label: 'sends the payment link', labelPlacement: 'above', labelStyle: small },
+    { source: 'customer', target: 'api', sourceHandle: 'right@240', targetHandle: 'left@54', type: 'orthogonal',
+      style: line(BAD, { strokeDasharray: '5 4' }), label: 'card typed as a\n"bank account" (H1)',
+      labelPlacement: 'below', labelStyle: { color: BAD, fontWeight: '700', fontSize: 11 } },
+    { source: 'customer', target: 'fake', sourceHandle: 'bottom@75', targetHandle: 'top@75', type: 'orthogonal',
+      style: line(BAD, { strokeDasharray: '5 4' }) },
+  ],
+};
+</script>
+<script type="text/plain" id="mermaid-src">flowchart LR
+  customer["<b>Customer</b><br/>phone or browser"]
+  subgraph hp["HEALTHPAY'S SIDE · CARDS ARE TYPED HERE"]
+    page["<b>HealthPay payment page</b><br/>the card is typed here"]
+    wallets["<b>HealthPay wallets</b><br/>hold the customer's money"]
+  end
+  subgraph ours["OUR SIDE · MUST NEVER SEE A CARD"]
+    api["<b>Our API</b><br/><code>sherkety-erp-api</code>"]
+    db["<b>Our database</b><br/>keys, ledger, bank numbers"]
+  end
+  fake["<b>Fake card page</b><br/>not HealthPay's"]:::bad
+  note@{ shape: text, label: "if someone swaps the link, the customer lands here (M1)" }
+  customer -->|card number and CVV| page
+  page -->|adds money| wallets
+  api -->|asks HealthPay to move money| wallets
+  api -->|saves keys| db
+  api -->|sends the payment link| customer
+  customer -.->|"card typed as a<br/>#quot;bank account#quot; (H1)"| api
+  customer -.-> fake
+  classDef box fill:#ffffff,stroke:#d0d5dd,shadow:none,rx:4,font-size:13px
+  classDef bad fill:#fdecec,stroke:#e5a0a0,shadow:none,rx:4,font-size:13px
+  class customer,page,wallets,api,db box
+  style note color:#cf222e,font-weight:bold,font-size:11px
+  style hp fill:#e9f2f3,stroke:#7aabb3,stroke-dasharray:5 4,color:#2a7a86,font-weight:bold,letter-spacing:1px
+  style ours fill:#f3f4f6,stroke:#d7dbe0,color:#4b5563,font-weight:bold,letter-spacing:1px
+  linkStyle default interpolate stepBefore
+  linkStyle 0 stroke:#1a7f37,color:#1a7f37,font-weight:bold,font-size:11px,stroke-width:1.5px
+  linkStyle 1,2,3,4 stroke:#6b7785,color:#5f6b7a,font-size:11px,stroke-width:1.5px
+  linkStyle 5,6 stroke:#cf222e,color:#cf222e,font-weight:bold,font-size:11px,stroke-width:1.5px
+  %% Grafloria layout — comments any other Mermaid renderer ignores
+  %%grafloria:at customer 20,78 150x292
+  %%grafloria:at page 410,78 210x72
+  %%grafloria:at wallets 712,78 210x72
+  %%grafloria:at api 410,264 210x72
+  %%grafloria:at db 712,264 210x72
+  %%grafloria:at fake 20,398 150x60
+  %%grafloria:at note 186,421 360x24
+  %%grafloria:at hp 380,36 566x138
+  %%grafloria:at ours 380,236 566x150
+  %%grafloria:group ours caption:bottom-left
+  %%grafloria:edge * * label:above
+  %%grafloria:edge customer page from:right@36, to:left@36
+  %%grafloria:edge page wallets from:right@36, to:left@36
+  %%grafloria:edge api wallets from:top@170, to:bottom@138, via:580 204 850 204
+  %%grafloria:edge api db from:right@36, to:left@36
+  %%grafloria:edge api customer from:left@24, to:right@210
+  %%grafloria:edge customer api from:right@240, to:left@54, label:below
+  %%grafloria:edge customer fake from:bottom@75, to:top@75
+</script>
+<script type="module">
+import { render, importDiagramText } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { highlightBlock } from '../shell/code-editor.js';
+
+// The source text on the page IS the source that runs: the native spec is
+// loaded as a module from the text shown, the Mermaid is parsed from it.
+const nativeText = document.getElementById('native-src').textContent;
+const mermaidText = document.getElementById('mermaid-src').textContent;
+const loadNative = async () => (await import(URL.createObjectURL(new Blob([nativeText], { type: 'text/javascript' })))).default;
+const fromMermaid = () => {
+  const d = importDiagramText(mermaidText).diagram;
+  return { nodes: d.getNodes(), edges: d.getLinks(), groups: d.getGroups() };
+};
+
+defineDemo({
+  name: 'AI-style diagrams',
+  blurb: 'The diagrams Claude and ChatGPT hand-write as SVG — zones with corner captions, a name over a muted line, coloured labels riding their lines — drawn by Grafloria, from the native API or from Mermaid.',
+  howTo: [
+    'This is a card-payment review diagram in the style AI tools draw as hand-written SVG: two tinted zones with small captions in a corner, boxes with a bold name over a muted line (one of them monospace), coloured labels riding just over or under their lines, a red note beside the fake page.',
+    'Switch "Drawn from" to Grafloria Mermaid: the same picture, parsed from the Mermaid text below. It is still Mermaid any renderer accepts — the look is style / classDef / linkStyle, <b>…</b><br/>… labels and v11 @{ shape: text } — and everything Mermaid has no word for (exact positions, a line leaving a box 36 px down its side, labels above or below, the elbow\'s bends, a caption in the bottom corner) rides in %%grafloria: comments other renderers ignore.',
+    'Read the native source: every part of the look is one field — sublabel, shape: "text", groups with style and labelPlacement, handles like "right@36", labelPlacement and labelStyle, waypoints, style.shadow: false.',
+    'It is a real diagram, not a picture. Pick a zone up by its caption or its tinted space: it moves with its boxes. Drag a box out of a zone and it leaves it; drop it into one and it joins. Lines stay on the same spot of each box and turn corners to follow; their labels ride along.',
+    'Ports stay out of sight until you draw a line (portVisibility: "hidden"): this diagram is read far more than it is wired.',
+  ],
+
+  async setup(ctx) {
+    const native = await loadNative();
+    ctx.instance = render(native, ctx.host, { zoom: 1 });
+    ctx.diagram = ctx.instance.getModel();
+    const api = ctx.instance;
+    const src = document.getElementById('ai-src');
+    const seg = document.getElementById('ai-source');
+    const show = async (which) => {
+      const parts = which === 'mermaid' ? fromMermaid() : await loadNative();
+      // Clear first: a live model with an id already on the canvas would be kept, not replaced.
+      api.setEdges([]); api.setGroups([]); api.setNodes([]);
+      api.setNodes(parts.nodes); api.setGroups(parts.groups); api.setEdges(parts.edges);
+      api.renderNow();
+      src.textContent = which === 'mermaid' ? mermaidText.trim() : nativeText.trim();
+      // Coloured as what it is: Mermaid, or the JavaScript spec.
+      void highlightBlock(src, which === 'mermaid' ? 'mermaid' : 'javascript');
+      for (const b of seg.querySelectorAll('button')) {
+        const on = b.getAttribute('data-src') === which;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
+      }
+      ctx.source = which;
+    };
+    ctx.show = show;
+    seg.onclick = (e) => { const v = e.target.closest('button')?.getAttribute('data-src'); if (v) show(v); };
+    // A diagram to read: ports appear only while a line is being drawn.
+    api.getEngine().setInteractionConfig({ portVisibility: 'hidden' });
+    // Real pointer events at WORLD points — what a hand does, for the assert.
+    ctx.fire = (type, w) => {
+      const c = api.viewport.worldToClient(w.x, w.y, ctx.host.getBoundingClientRect());
+      ctx.host.dispatchEvent(new PointerEvent(({ mousedown: 'pointerdown', mousemove: 'pointermove', mouseup: 'pointerup' })[type], { bubbles: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0 }));
+    };
+    ctx.dragFrom = async (w, dx, dy) => {
+      ctx.fire('mousedown', w);
+      for (let i = 1; i <= 6; i++) ctx.fire('mousemove', { x: w.x + (dx * i) / 6, y: w.y + (dy * i) / 6 });
+      ctx.fire('mouseup', { x: w.x + dx, y: w.y + dy });
+      api.renderNow();
+      for (let i = 0; i < 6; i++) await ctx.tick(10);
+    };
+    await show('native');
+    // 1:1, the 960 × 480 drawing centred in the canvas — the scale it was drawn at.
+    const r = ctx.host.getBoundingClientRect();
+    api.viewport.setZoom(1);
+    api.viewport.setViewport({ x: -Math.max(0, (r.width - 960) / 2), y: -Math.max(0, (r.height - 480) / 2), width: r.width, height: r.height });
+    api.renderNow();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const host = ctx.host;
+    const q = (s) => host.querySelector(s);
+    const check3 = async (which) => {
+      await ctx.show(which);
+      await ctx.tick();
+      const m = ctx.instance.getModel();
+      const tag = `[${which}]`;
+      // zones
+      const hp = q('[data-group-id="hp"] rect');
+      check(hp && hp.getAttribute('fill') === '#e9f2f3' && hp.getAttribute('stroke-dasharray') === '5 4', `${tag} the HealthPay zone should be tinted and dashed`);
+      const cap = q('[data-group-id="hp"] text');
+      check(cap && cap.textContent.startsWith("HEALTHPAY'S SIDE") && Number(cap.getAttribute('y')) < 36 + 30, `${tag} its caption should sit in its top-left corner`);
+      const ours = q('[data-group-id="ours"] text');
+      check(ours && Number(ours.getAttribute('y')) > 236 + 150 - 30, `${tag} "OUR SIDE" should be captioned in its bottom-left corner`);
+      // boxes
+      const subs = host.querySelectorAll('.diagram-sublabel');
+      check(subs.length === 6, `${tag} six boxes should carry a subtitle, got ${subs.length}`);
+      const apiSub = q('[data-node-id="api"] .diagram-sublabel');
+      check(apiSub && /mono/i.test(apiSub.style.fontFamily), `${tag} "sherkety-erp-api" should be monospace`);
+      check(!q('[data-node-id="customer"] .node-shadow'), `${tag} the boxes should be flat — no drop shadow`);
+      const note = q('[data-node-id="note"] text');
+      check(note && note.getAttribute('text-anchor') === 'start' && getComputedStyle(note).fill === 'rgb(207, 34, 46)', `${tag} the note should be red words, left-aligned, no box`);
+      // lines
+      const link = (s, t) => m.getLinks().find((l) => l.sourceNodeId === s && l.targetNodeId === t);
+      const ys = [['customer', 'page'], ['api', 'customer'], ['customer', 'api']].map(([s, t]) => Math.round(link(s, t).points[0].y));
+      check(JSON.stringify(ys) === '[114,288,318]', `${tag} three lines should leave/enter at their anchored heights 114/288/318, got ${ys}`);
+      const elbow = link('api', 'wallets').points.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`);
+      check(elbow.includes('580,204') && elbow.includes('850,204'), `${tag} the elbow should bend at 580,204 and 850,204, got ${elbow}`);
+      const good = q(`[data-link-id="${link('customer', 'page').id}"] .link-label-group`);
+      const gy = Number(/translate\([^,]+,\s*([-\d.]+)/.exec(good.getAttribute('transform'))[1]);
+      check(gy < 114 && !good.querySelector('.link-label-bg'), `${tag} "card number and CVV" should ride over its line with no box`);
+      const head = q(`[data-link-id="${link('customer', 'page').id}"] .arrow`);
+      check(head && /1a7f37/i.test(head.getAttribute('style') ?? head.getAttribute('fill') ?? ''), `${tag} the green line should have a green arrowhead`);
+      const bad = q(`[data-link-id="${link('customer', 'api').id}"] .link-label-group`);
+      const by = Number(/translate\([^,]+,\s*([-\d.]+)/.exec(bad.getAttribute('transform'))[1]);
+      check(by > 318, `${tag} "card typed as a / bank account (H1)" should hang under its line`);
+    };
+    await check3('native');
+    await check3('mermaid');
+
+    // BEHAVIOUR — the page was once only LOOKED at; these are the gestures that
+    // broke it. Both sources, from a fresh drawing each time.
+    const moves = async (which) => {
+      await ctx.show(which);
+      await ctx.tick();
+      const m = ctx.instance.getModel();
+      const tag = `[${which} · drag]`;
+      const link = (s, t) => m.getLinks().find((l) => l.sourceNodeId === s && l.targetNodeId === t);
+      const near = (a, b, tol = 1.5) => Math.abs(a - b) <= tol;
+      // every line touching a box starts / ends on its outline
+      const attached = (id) => {
+        const n = m.getNode(id);
+        const on = (p) => p.x >= n.position.x - 2 && p.x <= n.position.x + n.size.width + 2 && p.y >= n.position.y - 2 && p.y <= n.position.y + n.size.height + 2;
+        for (const l of m.getLinks()) {
+          if (l.sourceNodeId === id) check(on(l.points[0]), `${tag} a line from "${id}" must start on it, starts at ${JSON.stringify(l.points[0])}`);
+          if (l.targetNodeId === id) check(on(l.points[l.points.length - 1]), `${tag} a line into "${id}" must end on it, ends at ${JSON.stringify(l.points[l.points.length - 1])}`);
+        }
+      };
+      // every label sits on (or just off) its line
+      const labelsOnLines = () => {
+        for (const l of m.getLinks()) {
+          const g = host.querySelector(`[data-link-id="${l.id}"] .link-label-group`);
+          if (!g) continue;
+          const t = /translate\(\s*([-\d.]+)[ ,]+([-\d.]+)/.exec(g.getAttribute('transform') ?? '');
+          const p = { x: Number(t[1]), y: Number(t[2]) };
+          let best = Infinity;
+          for (let i = 0; i < l.points.length - 1; i++) {
+            const a = l.points[i], b = l.points[i + 1];
+            const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1;
+            const u = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L));
+            best = Math.min(best, Math.hypot(a.x + u * dx - p.x, a.y + u * dy - p.y));
+          }
+          check(best < 30, `${tag} the label "${l.getLabel()?.split('\n')[0]}" must ride its line, ${Math.round(best)} px off`);
+        }
+      };
+
+      // 1. a zone picked up by its tint carries its boxes; the canvas does not pan
+      const hp0 = m.getGroup('hp').getOuterBounds();
+      const page0 = { ...m.getNode('page').position }, cust0 = { ...m.getNode('customer').position };
+      await ctx.dragFrom({ x: hp0.x + 12, y: hp0.y + hp0.height - 10 }, 40, -30);
+      const page1 = m.getNode('page').position;
+      check(near(page1.x, page0.x + 40) && near(page1.y, page0.y - 30), `${tag} dragging the HealthPay zone must carry its boxes, page at ${JSON.stringify(page1)}`);
+      check(near(m.getGroup('hp').getOuterBounds().x, hp0.x + 40), `${tag} the zone itself must move`);
+      check(near(m.getNode('customer').position.x, cust0.x) && near(m.getNode('customer').position.y, cust0.y), `${tag} a box outside the zone must stay put (the canvas must not pan)`);
+      attached('page'); attached('wallets');
+
+      // 2. "Our API" dragged out of its zone leaves it, and keeps every line
+      const a0 = { ...m.getNode('api').position };
+      await ctx.dragFrom({ x: a0.x + 105, y: a0.y + 36 }, -40, 150);
+      const a1 = m.getNode('api').position;
+      check(near(a1.x, a0.x - 40) && near(a1.y, a0.y + 150), `${tag} "Our API" must move with the hand, at ${JSON.stringify(a1)}`);
+      check(!m.getGroup('ours').members.has('api'), `${tag} dropped outside its zone, "Our API" must leave it`);
+      attached('api');
+      const elbow = link('api', 'wallets').points;
+      check(near(elbow[0].x, a1.x + 170) && near(elbow[0].y, a1.y), `${tag} the elbow line must leave "Our API" at top@170, starts at ${JSON.stringify(elbow[0])}`);
+      check(near(elbow[1].x, elbow[0].x), `${tag} the elbow's first run must stay vertical`);
+      labelsOnLines();
+    };
+    await moves('native');
+    await moves('mermaid');
+    // the Mermaid on the page is Mermaid: every Grafloria-only word lives in a %% comment
+    check(mermaidText.split('\n').every((l) => !/grafloria/i.test(l) || l.trim().startsWith('%%')), 'every Grafloria-only line of the Mermaid source should be a %% comment');
+    await ctx.show('native');
+  },
+
+  // The Mermaid drawing gets its own golden: the same picture, from the text.
+  async showcase(ctx) {
+    await ctx.show('mermaid');
+    await ctx.tick();
+  },
+});
+</script>

@@ -1,10 +1,18 @@
 <meta charset="utf-8">
 <title>Turbo flow — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Turbo flow — a live, editable Grafloria diagram demo. MIT licensed; view source is the tutorial.">
+<link rel="canonical" href="https://grafloria.com/demos/styling/turbo-flow.html">
+<meta property="og:title" content="Turbo flow — Grafloria">
+<meta property="og:description" content="Turbo flow — a live, editable Grafloria diagram demo. MIT licensed; view source is the tutorial.">
+<meta property="og:url" content="https://grafloria.com/demos/styling/turbo-flow.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/styling/turbo-flow.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/styling/turbo-flow.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
   code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
-  #canvas { height: calc(100vh - 190px); background: #0b1020; }
+  #canvas { height: calc(100vh - 130px); background: #0b1020; }
 </style>
 <header id="demo-head"></header>
 <div class="note">
@@ -16,7 +24,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render, DARK_THEME } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 const TURBO = { type: 'linear', x1: 0, y1: 0, x2: 1, y2: 0,
   stops: [{ offset: 0, color: '#2a8af6' }, { offset: 0.5, color: '#a853ba' }, { offset: 1, color: '#e92a67' }] };

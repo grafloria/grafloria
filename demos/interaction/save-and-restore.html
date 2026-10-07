@@ -1,9 +1,17 @@
 <meta charset="utf-8">
 <title>Save & restore — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Save a document as a snapshot + op-log tail, then restore it into a fresh peer that RESUMES its Lamport clock — its next edit stamps after everything saved,…">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/save-and-restore.html">
+<meta property="og:title" content="Save &amp; restore — Grafloria">
+<meta property="og:description" content="Save a document as a snapshot + op-log tail, then restore it into a fresh peer that RESUMES its Lamport clock — its next edit stamps after everything saved,…">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/save-and-restore.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/save-and-restore.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/save-and-restore.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .85; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
-  #canvas { height: calc(100vh - 168px); }
+  #canvas { height: calc(100vh - 108px); }
 </style>
 <header id="demo-head"></header>
 <div id="bar" style="display:flex;gap:8px;padding:10px 24px;border-bottom:1px solid rgba(127,127,127,.25)">
@@ -14,7 +22,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render, Replica, DiagramSerializer } from '../shell/grafloria.js';
-import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
 
 // A peer edits a document, then we SAVE it as (snapshot + op-log tail) and a fresh
 // peer RESTORES from that pair — the Wave 9 durable-collaboration round-trip. The

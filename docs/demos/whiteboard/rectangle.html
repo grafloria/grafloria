@@ -1,11 +1,19 @@
 <meta charset="utf-8">
 <title>Rectangle tool — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Drag out a rectangle. It becomes a real NODE — connectable, resizable, laid out — because a rectangle IS a box, unlike freehand ink.">
+<link rel="canonical" href="https://grafloria.com/demos/whiteboard/rectangle.html">
+<meta property="og:title" content="Rectangle tool — Grafloria">
+<meta property="og:description" content="Drag out a rectangle. It becomes a real NODE — connectable, resizable, laid out — because a rectangle IS a box, unlike freehand ink.">
+<meta property="og:url" content="https://grafloria.com/demos/whiteboard/rectangle.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/whiteboard/rectangle.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/whiteboard/rectangle.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">
 import { render, registerTool, createRectangleTool } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 function gesture(host, from, to, steps) {
   const rect = host.getBoundingClientRect();
@@ -64,6 +72,14 @@ defineDemo({
     // 3. Being a NODE, not ink, it is a real diagram participant: it painted with a node id.
     const painted = ctx.host.querySelectorAll('[data-node-id]');
     check(painted.length === 1, `expected 1 node in the DOM, found ${painted.length}`);
+  },
+
+  // The card's picture: three boxes dragged out with the tool.
+  async showcase(ctx) {
+    gesture(ctx.host, { x: 120, y: 100 }, { x: 360, y: 240 }, 12);
+    gesture(ctx.host, { x: 420, y: 140 }, { x: 640, y: 300 }, 12);
+    gesture(ctx.host, { x: 200, y: 300 }, { x: 460, y: 420 }, 12);
+    await ctx.tick();
   },
 });
 </script>

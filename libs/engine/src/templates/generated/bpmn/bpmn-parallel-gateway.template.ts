@@ -38,12 +38,13 @@ export const bpmnParallelGatewayTemplate: NodeTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "diamond",
-      "fill": "#E0F7FA",
-      "stroke": "#00838F",
+      "type": "gateway-and",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"bpmn-parallel-gateway-content\">\n          <div class=\"node-label\">{{data.label || 'Parallel Gateway'}}</div>\n        </div>",

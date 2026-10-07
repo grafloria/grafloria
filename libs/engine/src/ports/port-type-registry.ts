@@ -45,8 +45,7 @@ export class PortTypeRegistry {
   /**
    * May a link carry `from` into `to`?
    *
-   * - either side UNTYPED  → yes (an untyped port is unconstrained; this is what
-   *   keeps every pre-wave-6 diagram connecting exactly as it did)
+   * - either side UNTYPED  → yes (an untyped port is unconstrained)
    * - either side is `*`    → yes
    * - identical names       → yes
    * - `from`'s registered `compatibleWith` lists `to` (or `*`) → yes

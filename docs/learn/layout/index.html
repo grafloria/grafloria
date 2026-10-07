@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layout — eleven algorithms, one call — Grafloria</title>
+<meta name="description" content="Grafloria auto-layout: ELK, dagre, tree, force, grid and more behind one registry. Lazy ELK loading, worker offload, incremental layout, framework bindings.">
+<link rel="canonical" href="https://grafloria.com/learn/layout/">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="../../favicon-32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<meta property="og:title" content="Layout — eleven algorithms, one call — Grafloria">
+<meta property="og:description" content="Grafloria auto-layout: ELK, dagre, tree, force, grid and more behind one registry. Lazy ELK loading, worker offload, incremental layout, framework bindings.">
+<meta property="og:url" content="https://grafloria.com/learn/layout/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Layout \u2014 eleven algorithms, one call","description":"Grafloria auto-layout: ELK, dagre, tree, force, grid and more behind one registry. Lazy ELK loading, worker offload, incremental layout, framework bindings.","url":"https://grafloria.com/learn/layout/","author":{"@type":"Organization","name":"Grafloria"},"publisher":{"@type":"Organization","name":"Grafloria","logo":{"@type":"ImageObject","url":"https://grafloria.com/apple-touch-icon.png"}},"datePublished":"2026-08-04","dateModified":"2026-08-04","mainEntityOfPage":"https://grafloria.com/learn/layout/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Learn","item":"https://grafloria.com/learn/"},{"@type":"ListItem","position":2,"name":"Layout \u2014 eleven algorithms, one call","item":"https://grafloria.com/learn/layout/"}]}]}</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="../learn.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="../../favicon.svg" alt="">
+    <span class="name"><a href="../../">grafloria</a></span>
+    <nav class="links">
+      <a href="../../diagrams/">Diagrams</a>
+      <a href="../../dashboards/">Dashboards</a>
+      <a href="../../learn/" aria-current="page">Learn</a>
+      <a href="../../demos/">Demos</a>
+      <a href="../../blog/">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap learn">
+    <aside class="side">
+      <div class="group">
+        <b>Tutorials</b>
+        <a href="../javascript/">JavaScript in 10 minutes</a>
+        <a href="../react/">React in 10 minutes</a>
+        <a href="../vue/">Vue 3 in 10 minutes</a>
+        <a href="../angular/">Angular in 10 minutes</a>
+      </div>
+      <div class="group">
+        <b>React guides</b>
+        <a href="../react-custom-nodes/">Custom nodes</a>
+        <a href="../react-state-and-data/">State & data flow</a>
+        <a href="../react-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Vue guides</b>
+        <a href="../vue-custom-nodes/">Custom nodes</a>
+        <a href="../vue-state-and-data/">State & data flow</a>
+        <a href="../vue-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Angular guides</b>
+        <a href="../angular-custom-nodes/">Custom nodes</a>
+        <a href="../angular-state-and-tooling/">State, signals & tooling</a>
+        <a href="../angular-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>JavaScript guides</b>
+        <a href="../javascript-custom-nodes/">Custom nodes</a>
+        <a href="../javascript-element-vs-render/">Element vs render()</a>
+        <a href="../javascript-dashboards/">Dashboards</a>
+      </div>
+      <div class="group">
+        <b>Concepts</b>
+        <a href="../the-model/">The model</a>
+        <a href="../edges-and-routing/">Edges & routing</a>
+        <a href="../ports-and-validation/">Ports & validation</a>
+        <a href="../groups/">Groups</a>
+        <a href="../commands-and-undo/">Commands & undo</a>
+        <a href="../events-and-interaction/">Events & interaction</a>
+        <a href="../layout/" aria-current="page">Layout</a>
+        <a href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+        <a href="../theming/">Theming</a>
+        <a href="../export/">Export</a>
+        <a href="../collaboration/">Collaboration</a>
+        <a href="../kits/">Kits: dashboards, ER & UML</a>
+      </div>
+      <div class="group">
+        <b>Reference</b>
+        <a href="../the-instance/">The DiagramInstance</a>
+        <a href="../faq/">FAQ & troubleshooting</a>
+      </div>
+    </aside>
+    <article class="prose">
+      <p class="crumb"><a href="../">Learn</a> / Layout</p>
+      <h1>Layout</h1>
+      <p class="lede">Hand-placing nodes stops scaling around fifteen of them. Grafloria puts eleven layout algorithms behind one registry and one call — and keeps the heavyweight (ELK) out of your bundle until the moment it is used.</p>
+
+      <h2>One call</h2>
+<pre data-lang="typescript">await engine.layout('elk');                                   // opinionated default
+await engine.layout('dagre', { direction: 'TB', rankSpacing: 80 });
+await engine.layout();                                        // 'auto' — picks for you</pre>
+      <p>Registered names: <code>auto</code>, <code>architecture</code>, <code>elk</code>, <code>dagre</code>,
+      <code>layered</code>, <code>tree</code>, <code>grid</code>, <code>circular</code>,
+      <code>radial</code>, <code>force</code>, <code>spectral</code>, <code>community</code>.
+      An unknown name throws with the list of registered ones — no silent no-op.
+      <code>auto</code> inspects the graph (a tree? a DAG? a hairball?) and dispatches to the
+      right algorithm.</p>
+
+      <h2>Choosing</h2>
+      <div class="tablewrap"><table>
+        <tr><th>Graph</th><th>Reach for</th><th>Why</th></tr>
+        <tr><td>Flowcharts, pipelines, DAGs</td><td><code>elk</code> or <code>layered</code>/<code>dagre</code></td>
+            <td>layered ranking, few crossings; ELK handles ports and nesting best</td></tr>
+        <tr><td>Architecture and system diagrams with zones</td><td><code>architecture</code></td>
+            <td>regions on a grid, boxes sized to their words in rows, straight lines, bends in the gutters</td></tr>
+        <tr><td>Hierarchies, org charts</td><td><code>tree</code></td><td>parent-centered, tidy</td></tr>
+        <tr><td>Networks, clusters</td><td><code>force</code>, <code>community</code>, <code>spectral</code></td>
+            <td>physical spread; community detection groups related nodes</td></tr>
+        <tr><td>Catalogs, galleries</td><td><code>grid</code>, <code>circular</code>, <code>radial</code></td><td>uniform placement</td></tr>
+        <tr><td>Don't want to think</td><td><code>auto</code></td><td>classification + dispatch</td></tr>
+      </table></div>
+
+      <h2 id="architecture">Architecture — a composition, not a ranking</h2>
+      <p>The diagrams AI tools hand-draw as SVG — a user on the left, "their side" and "our side"
+      as tinted zones, a name over a muted line in every box — are not graphs to rank. Layered,
+      ELK and dagre draw them correctly and badly: zones packed over their captions, lines
+      U-turning, labels on labels. <code>architecture</code> composes instead:</p>
+      <ul>
+        <li><b>Regions on a grid.</b> Children go into columns along the flow; zones joined by a
+        line that names a cross side (<code>from:top</code>) stack, the upper one where it says.</li>
+        <li><b>Boxes sized to their words</b>, sharing a width down a column and a height along a
+        row; stacked zones share one column grid, so the box over a box lines up.</li>
+        <li><b>Straight lines.</b> A box that talks to several stacked boxes spans them; every line
+        gets anchors at a height both its boxes cover, several lines between one pair spread out;
+        a line that cannot run straight bends in the gutter between the zones.</li>
+        <li><b>Room for words.</b> A gap is as wide as the widest label crossing it; a zone keeps a
+        band for its caption; a note with <code>near</code> sits beside what it is about.</li>
+      </ul>
+<pre data-lang="typescript">render({ nodes, edges, groups, layout: 'architecture' }, el);   // on mount — nodes need no position
+await engine.layout('architecture');                            // any time, any diagram
+&lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} layout="architecture" /&gt;   // React (Vue, Angular: same prop)
+
+// the relations it reads — none of them a coordinate
+{ id: 'hp', children: ['page', 'wallets'], direction: 'LR' }         // a zone lays its boxes in a row
+{ source: 'api', target: 'wallets', sourceHandle: 'top' }            // the wallets sit ABOVE the API
+{ id: 'note', shape: { type: 'text' }, near: { target: 'fake', side: 'right' } }</pre>
+      <p>In Mermaid it is one comment: <code>%%grafloria:layout architecture</code> — see
+      <a href="../mermaid-and-the-dsl/#architecture">the Mermaid page</a>.</p>
+      <p>RL and BT run the flow backwards (a container's content mirrors along its own flow);
+      four or more boxes with no line between them wrap into a grid in reading order. Mermaid's
+      <code>architecture-beta</code> (its lines name their sides) and <code>block-beta</code> (an
+      explicit grid, <code>columns N</code>, spans and holes) import straight into this layout.</p>
+<p><a class="demo-link" href="../../demos/diagrams/architecture-layout.html">Live: the same text, architecture vs layered →</a></p>
+<p><a class="demo-link" href="../../demos/diagrams/mermaid-architecture-block.html">Live: Mermaid architecture-beta and block-beta →</a></p>
+
+      <h2>The cost model — why ELK doesn't bloat you</h2>
+      <p>ELK is the best layered engine available and also ~1.4&nbsp;MB minified. Grafloria
+      loads it through a lazy <code>import()</code> — a separate chunk (~432&nbsp;KB gz) that
+      downloads on the <b>first</b> <code>layout('elk')</code> call and never before. It also
+      runs off-thread in a Worker, so a thousand-node layout doesn't freeze your UI. Everything
+      else (dagre, tree, force, grid…) is small and ships eagerly.</p>
+
+      <h2>Declarative, in every framework</h2>
+<pre data-lang="typescript">// React
+&lt;GrafloriaFlow defaultNodes={nodes} defaultEdges={edges} layout="elk" /&gt;
+
+// Angular
+&lt;grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges" [layout]="'elk'" /&gt;
+
+// object form everywhere
+layout={{ name: 'dagre', options: { direction: 'LR' } }}</pre>
+      <div class="note">The binding re-runs when its <b>value</b> changes — never when node data
+      changes. That is deliberate: a user drag round-trips through the nodes binding, and a
+      re-layout firing on every change would fight the user's hands. Re-run on demand with
+      <code>instance.getEngine().layout(...)</code> (React/Vue) or
+      <code>applyLayout()</code> (Angular).</div>
+
+      <h2>Incremental layout</h2>
+      <p>After inserting into an already-laid-out graph, a full re-layout scrambles the user's
+      mental map. <code>layoutIncremental</code> moves only the neighborhood:</p>
+<pre data-lang="typescript">await engine.layoutIncremental({ changed: ['inserted-node-id'], direction: 'LR', radius: 1 });</pre>
+<p><a class="demo-link" href="../../demos-react/#/layout/dynamic-layouting">Live: incremental layout on insert →</a></p>
+
+      <h2>Where next</h2>
+      <ul>
+        <li><a href="../../demos/">Layout demos</a> — every algorithm on a real graph.</li>
+        <li><a href="../mermaid-and-the-dsl/">Mermaid &amp; the text format</a> — imported text
+        gets type-aware layout automatically.</li>
+      </ul>
+
+      <div class="pn">
+        <a class="prev" href="../events-and-interaction/">Events & interaction</a>
+        <a class="next" href="../mermaid-and-the-dsl/">Mermaid & the text format</a>
+      </div>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap row">
+    <img src="../../favicon.svg" alt="">
+    <span>Grafloria — MIT licensed, free forever.</span>
+    <span class="fam"><a href="../">Learn</a> · <a href="../../demos/">Demos</a> · <a href="https://github.com/grafloria/grafloria">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  // Colorize every code block with Monaco's tokenizer — read-only by
+  // construction (no editor instances). Degrades to plain <pre> offline.
+  if (window.require) {
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.setTheme('vs');
+      document.querySelectorAll('pre[data-lang]').forEach(function (el) {
+        monaco.editor.colorize(el.textContent, el.dataset.lang, { tabSize: 2 })
+          .then(function (html) { el.innerHTML = html; el.classList.add('colorized'); })
+          .catch(function () {});
+      });
+    });
+  }
+</script>
+</body>
+</html>

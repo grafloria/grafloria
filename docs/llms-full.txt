@@ -1,0 +1,5024 @@
+# Grafloria
+
+> The framework-agnostic diagram engine. Flow charts, dashboards, UML, ERD, and real-time
+> collaboration — one headless TypeScript core with native bindings for Angular, React, Vue,
+> and a plain web component. MIT licensed, every feature free; there is no commercial tier.
+
+Grafloria ships what other diagram libraries sell or leave to DIY: obstacle-avoiding
+orthogonal edge routing (never crosses its own nodes), built-in auto-layout (ELK layered,
+tree, force — off-thread in a Worker), command-based undo/redo, minimap/snap/marquee editor
+chrome, per-property CRDT collaboration with live cursors and anchored comments, keyboard
+accessibility with live-region narration, server-side SVG/PNG/PDF export, a Mermaid-compatible
+text format that round-trips through the live canvas, a drag-and-pack dashboard kit, and
+interactive UML/ER kits. Every capability is demonstrated by one of 100+ live demos, each
+executed in CI with real pointer events.
+
+## Packages (npm, all MIT)
+
+- @grafloria/engine — headless diagram model: nodes, edges, ports, groups, layout, CRDT collab. Runs in Node, workers, browsers; no DOM required.
+- @grafloria/renderer — SVG renderer over the engine: interaction, routing, editor chrome, export, comments UI.
+- @grafloria/angular — Angular components: <grafloria-diagram-canvas> with [(nodes)]/[(edges)] two-way bindings, ng-template custom nodes, [layout], [plugins], [collab], [comments].
+- @grafloria/react — React components & hooks: <GrafloriaFlow>, nodeTypes, useGrafloria/useSelection/useViewport, <GrafloriaCommentPanel>.
+- @grafloria/vue — Vue 3 components & composables: <GrafloriaFlow> with v-model:nodes, #node-<type> slots, provider composables.
+- @grafloria/element — dependency-free custom element <grafloria-flow>; also renders kit specs (erDiagram, umlDiagram, dashboard) and Mermaid-style text.
+
+## Quick start (plain web)
+
+Two doors. The function (spec FIRST, target second; spec is data, not Mermaid text):
+
+```js
+import { render } from '@grafloria/element';
+
+const api = render({
+  nodes: [
+    { id: 'a', position: { x: 40, y: 60 },  size: { width: 160, height: 60 }, label: 'Start' },
+    { id: 'b', position: { x: 260, y: 60 }, size: { width: 160, height: 60 }, label: 'Ship' },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }],
+}, document.getElementById('canvas'));   // the target MUST have a real height
+```
+
+Or the custom element — JSON attributes in, bubbling `grafloria-*` DOM events out;
+properties `el.nodes = [...]` / `el.edges` work after mount, and `el.diagram` is the
+full instance. There is NO `el.render()` method and NO top-level `x`/`y` on nodes —
+node geometry is always `position: { x, y }` (+ optional `size: { width, height }`):
+
+```html
+<script type="module">import '@grafloria/element';</script>
+<grafloria-flow theme="light" fit-view style="height: 80vh"
+  nodes='[{"id":"a","position":{"x":0,"y":0},"label":"Extract"},
+          {"id":"b","position":{"x":220,"y":0},"label":"Load"}]'
+  edges='[{"source":"a","target":"b"}]'>
+</grafloria-flow>
+```
+
+## Quick start (React)
+
+```tsx
+import { GrafloriaFlow } from '@grafloria/react';
+
+<GrafloriaFlow
+  nodes={nodes}
+  edges={edges}
+  onNodesChange={setNodes}
+  layout="elk"
+  plugins
+/>
+```
+
+## Docs
+
+- [Learn](https://grafloria.com/learn/): 10-minute tutorials (JavaScript, React, Vue, Angular) + nine concept guides (model, ports & validation, commands & undo, layout, Mermaid & the text format, theming, export, collaboration, kits). Every sample executed against the published packages. Full text: https://grafloria.com/llms-full.txt
+- [Live demo gallery](https://grafloria.com/demos/): 100+ runnable pages — view-source is the tutorial; every demo is also a CI test.
+- [How Grafloria compares](https://grafloria.com/compare/): three sourced matrices — vs diagram libraries (React Flow, JointJS+, GoJS, ngx-vflow), vs dashboard grids (GridStack.js, react-grid-layout, angular-gridster2, Muuri), and vs Mermaid.
+- Framework guides: [React & Next.js](https://grafloria.com/react/), [Angular](https://grafloria.com/angular/), [Vue 3](https://grafloria.com/vue/), [plain JavaScript](https://grafloria.com/javascript/) — per-framework install, idiomatic quickstart, and links to that framework's demo variants.
+- [Mermaid support](https://grafloria.com/mermaid/): which Mermaid types Grafloria reads and writes (flowchart, erDiagram, classDiagram, stateDiagram), the three-tier extension model, the round trip, and the named gaps.
+- [GitHub repository](https://github.com/grafloria/grafloria): source, READMEs per package, issues.
+- [npm organization](https://www.npmjs.com/org/grafloria): published packages.
+
+## Notes for code generation
+
+- Node geometry: `position: { x, y }` (required) and `size: { width, height }` — never top-level x/y.
+- Custom HTML nodes need `custom: true` on the spec in plain JS and React (`nodeTypes`); Vue slots (`#node-<type>`) and Angular templates (`ng-template grafloriaNode="type"`) flag it automatically.
+- Undo/redo live on the ENGINE, not the instance: `instance.getEngine().undo()` (async). ⌘Z/Ctrl+Z works with zero wiring. Angular's canvas component mirrors undo()/redo() directly.
+- React useNodesState returns [nodes, setNodes, onNodesChange] — wire the THIRD element into <GrafloriaFlow onNodesChange>, not setNodes.
+- The canvas fills its container: the parent element must have a real height or the page renders blank.
+- Connection validators (registerConnectionValidator from @grafloria/element) are process-global — keep the disposer and clear on unmount.
+- Versions ≥ engine 0.3.1 / renderer 0.4.1 / element 0.4.0 are pure ESM; shipped weight is ~230–450 KB gz eager with ELK layout in a lazy chunk (see each package README's "Bundle size" section for the reproduction script).
+
+- Ports are model anatomy (spec.ports on a node), not separate components — identical across all frameworks.
+- The same JSON spec drives every surface; there is no framework-specific model.
+- Collab: pass collab={{ transport, actor, presence: true }} — the CRDT lives in the engine; BroadcastChannel works serverless for same-browser tabs.
+- Text format: importDiagramText() / exportDiagramText() round-trip Mermaid text with a lossless %%grafloria:document position sidecar; the visible body stays valid Mermaid. Supported types: flowchart/graph, erDiagram, classDiagram, stateDiagram[-v2]. Every other type returns { unsupported: '<type>' } rather than a wrong diagram — check that field before rendering.
+- Dashboards / UML / ER: kits are FUNCTIONS — call erDiagram({ entities, relationships }) / umlDiagram({ classes, relationships }) / dashboard({ widgets }) from @grafloria/element and pass the RETURNED spec to render(spec, host) or <GrafloriaDiagram :spec>. There is no { erDiagram: ... } wrapper-object form.
+
+
+# ============ FULL LEARN PAGES ============
+
+
+# JavaScript in 10 minutes (https://grafloria.com/learn/javascript/)
+
+No framework, no build step required. Two front doors — a render() function and a <grafloria-flow> element — over the same engine that powers every framework binding. The same code the CI-gated demo gallery runs.
+
+## 1 — Install and render
+
+```
+npm install @grafloria/element @grafloria/renderer @grafloria/engine
+```
+
+      render(spec, target) mounts a full editor into any sized element —
+      spec first, target second:
+
+``` main.js
+import { render } from '@grafloria/element';
+
+const api = render({
+  nodes: [
+    { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' } },
+    { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Publish' } },
+  ],
+  edges: [{ id: 'e1', source: 'a', target: 'b' }],
+}, document.getElementById('canvas'));
+```
+
+      Drag, connect, pan, zoom — all live. The return value is the
+      DiagramInstance, your handle to everything else on this page. Two rules:
+      the target must have a real height (#canvas { height: 80vh }), and the
+      spec is data, not text — Mermaid text has its own door (step 7).
+      Position is the only required node field. label and
+      data: { label } both work. Every node is born with four bi-directional
+      ports (top/right/bottom/left), so connections work with zero port ceremony —
+      sourceHandle: 'bottom' targets a default port by side name.
+
+      
+## 2 — Or: the zero-build tag
+
+      The same canvas as a custom element — JSON attributes in, DOM events out. This is
+      the CMS/notebook/plain-HTML path:
+
+``` index.html
+import '@grafloria/element';
+
+  const el = document.querySelector('grafloria-flow');
+  el.addEventListener('grafloria-connect', (e) => console.log('wired:', e.detail.link));
+  el.addEventListener('grafloria-nodes-change', (e) => save(e.detail.nodes));
+  // properties work too: el.nodes = [...]; the engine: el.diagram
+
+```
+
+      Events (grafloria-ready, -nodes-change,
+      -edges-change, -selection-change, -connect,
+      -node-click, -edge-click, -viewport-change) all
+      bubble and cross shadow boundaries. The element uses light DOM on purpose — your
+      stylesheet can style node content directly.
+
+      
+## 3 — Custom nodes without a framework
+
+      Two paths. A renderer function:
+
+```
+import { Grafloria } from '@grafloria/element';
+
+Grafloria.registerNodeType('card', (node, el) => {
+  el.innerHTML = `${node.getData('title')}`;
+});
+
+// nodes of that type must opt into the HTML layer:
+{ id: 'a', type: 'card', custom: true, position: { x: 80, y: 90 },
+  size: { width: 230, height: 110 }, data: { title: 'Build' } }
+```
+
+      …or a zero-JavaScript template slotted into the element — cloned per node,
+      data-field elements filled from node.data via
+      textContent (never innerHTML — diagram data is user input):
+
+```
+
+  
+    
+  
+
+```
+
+      Plain JS is the one surface where custom: true is always
+      explicit. The React nodeTypes prop needs it too; Vue slots and Angular
+      templates flag it for you.
+Live: custom node demos →
+
+      
+## 4 — Ports and connection rules
+
+```
+const nodes = [
+  { id: 'src', position: { x: 120, y: 260 }, size: { width: 130, height: 70 }, label: 'number src',
+    ports: [{ id: 'out', side: 'right', type: 'output', dataType: 'number' }] },
+  { id: 'num', position: { x: 640, y: 140 }, size: { width: 130, height: 70 }, label: 'number in',
+    ports: [{ id: 'nin', side: 'left', type: 'input', dataType: 'number' }] },
+];
+
+// declarative type compatibility…
+import { portTypeRegistry, registerConnectionValidator } from '@grafloria/element';
+portTypeRegistry.registerAll([
+  { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
+  { name: 'string', color: '#9333ea', compatibleWith: ['string'] },
+]);
+
+// …and custom rules: true allows, a string vetoes with a reason
+const dispose = registerConnectionValidator(({ sourcePort, targetPort }) => {
+  if (sourcePort?.type === 'output' && targetPort?.type === 'output')
+    return 'an output cannot feed another output';
+  return true;
+});
+
+// ports show on hover by default; keep them always visible:
+api.getEngine().setInteractionConfig({ portVisibility: 'always' });
+```
+
+      
+## 5 — Undo, layout, plugins
+
+```
+// ⌘Z / Ctrl+Z already works. For buttons:
+await api.getEngine().undo();
+await api.getEngine().redo();
+api.getEngine().canUndo();
+
+// auto-layout — ELK lazy-loads (~432 KB gz) only on first use
+await api.getEngine().layout('elk');
+api.renderNow();
+api.fitView(40);
+
+// minimap + zoom controls + dotted background, lazy-loaded
+import { attachCanvasPlugins } from '@grafloria/element';
+attachCanvasPlugins(api, { background: { variant: 'dots' }, minimap: true, controls: true });
+```
+
+      Layout names: auto, elk, dagre,
+      layered, tree, grid, circular,
+      radial, force, spectral, community.
+
+      
+## 6 — Save and load, losslessly
+
+```
+import { DiagramSerializer, fromDocument, render } from '@grafloria/element';
+
+// save
+const json = JSON.stringify(new DiagramSerializer().serialize(api.getModel()));
+
+// …later, in a fresh page — fromDocument() restores ports, metadata, everything:
+const api2 = render(fromDocument(json), host);
+```
+
+      
+## 7 — Mermaid text and image export
+
+```
+// text round-trip — valid Mermaid out, sidecar keeps your positions
+const text = api.exportText();
+api.loadText(text);                       // reconciles into the live canvas
+
+// or at the model level:
+import { importDiagramText } from '@grafloria/element';
+const r = importDiagramText('flowchart LR\n  a[Start] --> b[Ship]');
+if (r.unsupported) console.warn('not a supported type:', r.unsupported);
+
+// images — exports the scene graph, not a screenshot
+const png = await api.export('png', { scale: 2 });   // data: URL
+const svg = await api.export('svg');                 // raw SVG string
+const pdf = await api.export('pdf');                 // real vector PDF
+```
+
+      
+## Where next
+
+      
+        - The demo gallery — 111 pages; view-source is the tutorial.
+
+        - Kits — erDiagram(), umlDiagram(),
+        dashboard(): data in, a full interactive diagram out.
+
+        - The model — the engine underneath, which also runs in Node and workers.
+
+
+# React in 10 minutes (https://grafloria.com/learn/react/)
+
+From npm install to a flow editor with custom nodes, connection rules, undo and export. Every snippet below is real, current API — the same code the CI-gated React demo gallery runs.
+
+## 1 — Install and mount a canvas
+
+```
+npm install @grafloria/react @grafloria/element @grafloria/renderer @grafloria/engine react react-dom
+```
+
+      One component does the heavy lifting: <GrafloriaFlow>. Give it nodes,
+      edges, and — this matters — a parent with a real height. The canvas fills
+      100% of its container, and 100% of zero is an empty page.
+
+``` App.tsx
+import { GrafloriaFlow } from '@grafloria/react';
+
+const nodes = [
+  { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' } },
+  { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Publish' } },
+];
+const edges = [{ id: 'e1', source: 'a', target: 'b' }];
+
+export default function App() {
+  return (
+    
+      
+    
+  );
+}
+```
+
+      That's already a working editor: drag nodes, draw connections between them, pan and
+      zoom, and — because of plugins — a minimap, zoom controls and a dotted
+      background (all lazy-loaded, they cost nothing if you omit the prop).
+      defaultNodes/defaultEdges is the uncontrolled form: the
+      canvas owns the data from here on. No stylesheet import is needed — the renderer injects
+      its own scoped styles.
+
+      
+## 2 — Controlled state, the React way
+
+      When your app needs to own the graph, use useNodesState /
+      useEdgesState. Each returns a triple — and the third element is the
+      change handler for the canvas, not the second:
+
+``` Editor.tsx
+import { GrafloriaFlow, useNodesState, useEdgesState } from '@grafloria/react';
+
+function Editor() {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  return (
+    
+       setNodes((all) => [...all,
+        { id: 'n' + all.length, position: { x: 80, y: 80 }, data: { label: 'New' } }])}>
+        Add node
+      
+      
+    
+  );
+}
+```
+
+      Why the third element? setNodes updates your state with
+      specs; onNodesChange receives the engine's live NodeModel[]
+      after a drag or delete and folds them back into your state. Wiring
+      setNodes into onNodesChange type-errors — the tuple keeps the
+      two directions separate on purpose.
+
+      
+## 3 — Custom nodes are just components
+
+      Map a node type to a component with nodeTypes, and mark the
+      spec custom: true so it renders through the HTML layer instead of as SVG.
+      The node still drags, routes and hit-tests like any other:
+
+``` Card.tsx
+function Card({ data, selected }) {
+  return (
+    
+      {data.title}
+      owner: {data.owner}
+    
+  );
+}
+
+const nodes = [
+  { id: 'a', type: 'card', custom: true, position: { x: 80, y: 90 },
+    size: { width: 230, height: 110 }, data: { title: 'Build', owner: 'CI' } },
+  { id: 'b', type: 'card', custom: true, position: { x: 430, y: 90 },
+    size: { width: 230, height: 110 }, data: { title: 'Deploy', owner: 'CD' } },
+];
+
+```
+
+      Your component receives { id, data, selected, node } — node
+      is the live engine model, the escape hatch when you need more than data.
+Live: custom nodes in React →
+
+      
+## 4 — Ports and connection rules
+
+      Ports are part of the node spec — no separate handle components. Declare them with a
+      side, a direction, and optionally a dataType:
+
+```
+const nodes = [
+  { id: 'src', position: { x: 120, y: 260 }, size: { width: 130, height: 70 }, label: 'number src',
+    ports: [{ id: 'out', side: 'right', type: 'output', dataType: 'number' }] },
+  { id: 'num', position: { x: 640, y: 140 }, size: { width: 130, height: 70 }, label: 'number in',
+    ports: [{ id: 'nin', side: 'left', type: 'input', dataType: 'number' }] },
+  { id: 'str', position: { x: 640, y: 400 }, size: { width: 130, height: 70 }, label: 'string in',
+    ports: [{ id: 'sin', side: 'left', type: 'input', dataType: 'string' }] },
+];
+```
+
+      Two validation mechanisms compose. Type compatibility is declarative — register
+      the types once and incompatible ports refuse the wire mid-drag:
+
+```
+import { portTypeRegistry } from '@grafloria/element';
+
+portTypeRegistry.registerAll([
+  { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
+  { name: 'string', color: '#9333ea', compatibleWith: ['string'] },
+]);
+```
+
+      Custom rules are a validator function — return true to allow, or a
+      string to veto with a reason:
+
+```
+import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/element';
+
+useEffect(() => {
+  const dispose = registerConnectionValidator(({ sourcePort, targetPort }) => {
+    if (sourcePort?.type === 'output' && targetPort?.type === 'output')
+      return 'an output cannot feed another output';
+    return true;
+  });
+  return () => { dispose(); clearConnectionValidators(); };
+}, []);
+```
+
+      Validators are global, not per-canvas — always dispose in the effect
+      cleanup or they leak across remounts (StrictMode double-invoke included). Ports are
+      invisible until hover by default; show them permanently with
+      interaction={{ portVisibility: 'always' }} on the flow.
+Live: typed ports →
+Live: connection validation →
+
+      
+## 5 — Undo comes free; buttons reach the engine
+
+      ⌘Z/Ctrl+Z and ⌘⇧Z/Ctrl+Y work with zero
+      wiring — every gesture is a command on the engine's history. For your own buttons, reach
+      the engine through the instance:
+
+```
+import type { DiagramInstance } from '@grafloria/react';
+
+const inst = useRef(null);
+
+ { inst.current = instance; }} />
+
+ void inst.current?.getEngine().undo()}>Undo
+ void inst.current?.getEngine().redo()}>Redo
+```
+
+Live: drag, then ⌘Z →
+
+      
+## 6 — Auto-layout
+
+      Stop hand-placing nodes: name a layout and the engine arranges them. ELK is the
+      heavyweight — it loads lazily (a separate ~432 KB gz chunk) only when first used:
+
+```
+
+// or configured:
+
+```
+
+      Registered names: auto, elk, dagre,
+      layered, tree, grid, circular,
+      radial, force, spectral, community.
+      The prop re-runs on value change only — it will never fight a user's drag. To
+      re-layout on demand, call instance.getEngine().layout('layered', { direction: 'LR' }).
+Live: ELK layout →
+
+      
+## 7 — Save, load, export
+
+```
+// PNG (data: URL) and SVG (raw string) — exports the scene graph, not a screenshot
+const png = await inst.current.export('png', { scale: 2 });
+const svg = await inst.current.export('svg');
+const pdf = await inst.current.export('pdf');   // real vector PDF
+
+// Mermaid-compatible text round-trip
+const text = inst.current.exportText();          // valid Mermaid + position sidecar
+inst.current.loadText(text);                     // reconciles into the live canvas
+```
+
+      Pass { embedModel: true } to PNG/SVG export and the diagram model rides
+      inside the file — the exported image re-opens as an editable diagram.
+Live: PNG/SVG download →
+
+      
+## Where next
+
+      
+        - Every demo as a React component — 100+ routes, source shown.
+
+        - The model — what nodes, ports, links and groups really are.
+
+        - Collaboration — the collab prop and CRDT sync.
+
+        - Next.js: all components carry 'use client'; for server rendering use the
+        ssr prop with renderToStaticSVG() — no dynamic() tricks needed.
+
+
+# Vue 3 in 10 minutes (https://grafloria.com/learn/vue/)
+
+From npm install to a flow editor with slot-defined nodes, connection rules, undo and export. The same code the CI-gated Vue demo gallery runs.
+
+## 1 — Install and mount a canvas
+
+```
+npm install @grafloria/vue @grafloria/element @grafloria/renderer @grafloria/engine
+```
+
+      One component: <GrafloriaFlow>. Give its wrapper a real height —
+      the canvas fills its container, and 100% of zero is a blank page.
+
+``` App.vue
+
+import { GrafloriaFlow } from '@grafloria/vue';
+
+const nodes = [
+  { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' } },
+  { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Publish' } },
+];
+const edges = [{ id: 'e1', source: 'a', target: 'b' }];
+
+  
+    
+  
+
+```
+
+      Drag, connect, pan, zoom — plus minimap, zoom controls and a dotted background from
+      :plugins="true" (lazy-loaded). default-nodes is the
+      uncontrolled form; for app-owned state use v-model:nodes /
+      v-model:edges with ref()s — the canvas emits spec updates
+      after every add/remove. No stylesheet import needed.
+
+      
+## 2 — Custom nodes are slots
+
+      A node whose type is card renders through
+      #node-card — declaring the slot is the opt-in, no flag needed.
+      Slot content is real Vue: reactivity, components and event handlers all work.
+
+``` App.vue
+
+  
+    
+      
+        
+          {{ data.title }}
+          owner: {{ data.owner }}
+        
+      
+    
+  
+
+.card { height: 100%; background: #fff; border: 1.5px solid #94A5F0;
+        border-radius: 12px; padding: 10px 14px; box-sizing: border-box; }
+.title { font-weight: 700; } .owner { font-size: 12px; color: #5A6478; }
+
+```
+
+```
+const nodes = [
+  { id: 'a', type: 'card', position: { x: 80, y: 90 },  size: { width: 230, height: 110 },
+    data: { title: 'Build', owner: 'CI' } },
+  { id: 'b', type: 'card', position: { x: 430, y: 90 }, size: { width: 230, height: 110 },
+    data: { title: 'Deploy', owner: 'CD' } },
+];
+```
+
+      Slot context: { node, data, engine } — node is the live
+      NodeModel. #node (no type) is the wildcard. Give the slot
+      root height: 100% so it fills the node box.
+Live: slot-defined custom nodes →
+
+      
+## 3 — Ports and connection rules
+
+``` Ports.vue
+
+import { onBeforeUnmount } from 'vue';
+import { GrafloriaFlow } from '@grafloria/vue';
+import type { DiagramInstance } from '@grafloria/vue';
+import { registerConnectionValidator, clearConnectionValidators, portTypeRegistry } from '@grafloria/element';
+
+portTypeRegistry.registerAll([
+  { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
+  { name: 'string', color: '#9333ea', compatibleWith: ['string'] },
+]);
+
+const nodes = [
+  { id: 'src', position: { x: 120, y: 260 }, size: { width: 130, height: 70 }, label: 'number src',
+    ports: [{ id: 'out', side: 'right', type: 'output', dataType: 'number' }] },
+  { id: 'num', position: { x: 640, y: 140 }, size: { width: 130, height: 70 }, label: 'number in',
+    ports: [{ id: 'nin', side: 'left', type: 'input', dataType: 'number' }] },
+];
+
+let dispose;
+function onInit(instance: DiagramInstance) {
+  dispose = registerConnectionValidator(({ sourcePort, targetPort }) => {
+    if (sourcePort?.type === 'output' && targetPort?.type === 'output')
+      return 'an output cannot feed another output';
+    return true;
+  });
+  instance.getEngine().setInteractionConfig({ portVisibility: 'always' });
+}
+onBeforeUnmount(() => { dispose?.(); clearConnectionValidators(); });
+
+  
+    
+  
+
+```
+
+      Validators are global — dispose in onBeforeUnmount or they
+      leak across routed pages. A validator returns true to allow, or a string
+      as the rejection reason.
+Live: typed ports →
+Live: connection validation →
+
+      
+## 4 — Undo and engine access
+
+      ⌘Z/Ctrl+Z works with zero wiring. For buttons, capture the
+      instance in @init and go through the engine:
+
+```
+let instance = null;
+function onInit(api) { instance = api; }
+
+async function undo() { await instance?.getEngine().undo(); instance?.renderNow(); }
+async function redo() { await instance?.getEngine().redo(); instance?.renderNow(); }
+```
+
+      For an inspector panel elsewhere in the tree, wrap the flow in
+      <GrafloriaProvider> and use the composables —
+      useGrafloria(), useSelection(), useViewport(),
+      useOnSelectionChange().
+Live: drag, then ⌘Z →
+
+      
+## 5 — Auto-layout
+
+```
+
+```
+
+      Names: auto, elk, dagre, layered,
+      tree, grid, circular, radial,
+      force, spectral, community. ELK lazy-loads on
+      first use. The prop re-runs on value change only — never on node data, so it
+      won't fight a drag. Template ref: applyLayout('dagre'); event:
+      @layout-done.
+Live: ELK layout →
+
+      
+## 6 — Save, load, export
+
+```
+import { DiagramSerializer, fromDocument } from '@grafloria/element';
+
+// save — the full document, losslessly
+const serializer = new DiagramSerializer();
+const json = JSON.stringify(serializer.serialize(instance.getModel()));
+
+// restore later with fromDocument() — ports and metadata survive
+// (see the JavaScript tutorial, step 6, for the fresh-page form)
+
+// Mermaid text — template ref shortcuts exist too (exportText / loadText)
+const text = instance.exportText();
+instance.loadText(text);
+
+// images: PNG/PDF return data: URLs, SVG returns the raw string
+const png = await instance.export('png', { scale: 2 });
+```
+
+Live: save & restore →
+Live: PNG/SVG download →
+
+      
+## Where next
+
+      
+        - Every demo as a Vue SFC — 100+ routes, source shown.
+
+        - Kits — <GrafloriaDiagram :spec="erDiagram(...)">
+        and <GrafloriaDashboard> with #widget-<kind> slots.
+
+        - The model — what nodes, ports, links and groups really are.
+
+
+# Angular in 10 minutes (https://grafloria.com/learn/angular/)
+
+From npm install to a flow editor with template-defined nodes, connection rules, undo and export — signal-based, zoneless-verified. The same code the CI-gated Angular demo gallery runs.
+
+## 1 — Install and mount a canvas
+
+```
+npm install @grafloria/angular @grafloria/element @grafloria/renderer @grafloria/engine
+```
+
+      DiagramCanvasComponent is a standalone component with signal-based
+      two-way bindings. One rule to remember: give the canvas a real height — it fills
+      its container, and an unstyled custom element collapses to zero.
+
+``` flow.component.ts
+import { Component } from '@angular/core';
+import { DiagramCanvasComponent } from '@grafloria/angular';
+
+@Component({
+  selector: 'app-flow',
+  imports: [DiagramCanvasComponent],
+  template: `
+    
+  `,
+})
+export class FlowComponent {
+  nodes = [
+    { id: 'a', position: { x: 60, y: 80 },  size: { width: 180, height: 80 }, data: { label: 'Ingest' } },
+    { id: 'b', position: { x: 380, y: 80 }, size: { width: 180, height: 80 }, data: { label: 'Publish' } },
+  ];
+  edges = [{ id: 'e1', source: 'a', target: 'b' }];
+}
+```
+
+      That's a working editor: drag, connect, pan, zoom — plus minimap, zoom controls and a
+      dotted background from [plugins]="true" (lazy-loaded; omit the binding and
+      none of it is downloaded). Plain array fields work; signal([...]) works
+      identically — the bindings are model()-based either way. No stylesheet
+      import, no NgModule, no provider is required.
+
+      
+## 2 — Custom nodes are ng-templates
+
+      Declare a template for a node type and every node of that type renders
+      through it — declaring the template is the opt-in, no extra flag needed:
+
+``` flow.component.ts
+import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/angular';
+
+@Component({
+  selector: 'app-flow',
+  imports: [DiagramCanvasComponent, GrafloriaNodeDefDirective],
+  template: `
+    
+      
+        
+          {{ data['title'] }}
+          owner: {{ data['owner'] }}
+        
+      
+    
+  `,
+  styles: [`.card { height: 100%; background: #fff; border: 1.5px solid #94A5F0;
+    border-radius: 12px; padding: 10px 14px; box-sizing: border-box; }
+    .title { font-weight: 700; } .owner { font-size: 12px; color: #5A6478; }`],
+})
+export class FlowComponent {
+  nodes = [
+    { id: 'a', type: 'card', position: { x: 80, y: 90 },  size: { width: 230, height: 110 },
+      data: { title: 'Build', owner: 'CI' } },
+    { id: 'b', type: 'card', position: { x: 430, y: 90 }, size: { width: 230, height: 110 },
+      data: { title: 'Deploy', owner: 'CD' } },
+  ];
+  edges = [{ id: 'e1', source: 'a', target: 'b' }];
+}
+```
+
+      The template context gives you let-data="data" (the node's payload),
+      let-node (the live NodeModel) and
+      let-engine="engine". An <ng-template grafloriaNode> with
+      no value is the wildcard fallback for every type without its own template.
+Live: ng-template custom nodes →
+
+      
+## 3 — Ports and connection rules
+
+      Ports are part of the node spec — a side, a direction, optionally a
+      dataType:
+
+```
+nodes = [
+  { id: 'src', position: { x: 120, y: 260 }, size: { width: 130, height: 70 }, label: 'number src',
+    ports: [{ id: 'out', side: 'right' as const, type: 'output', dataType: 'number' }] },
+  { id: 'num', position: { x: 640, y: 140 }, size: { width: 130, height: 70 }, label: 'number in',
+    ports: [{ id: 'nin', side: 'left' as const, type: 'input', dataType: 'number' }] },
+];
+```
+
+      Type compatibility is registered once, app-wide; custom rules are a validator that
+      returns true to allow or a string to veto with a reason. Both come from the
+      framework-agnostic packages:
+
+```
+import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/renderer';
+import { portTypeRegistry } from '@grafloria/element';
+
+portTypeRegistry.registerAll([
+  { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
+  { name: 'string', color: '#9333ea', compatibleWith: ['string'] },
+]);
+
+export class FlowComponent implements AfterViewInit, OnDestroy {
+  private dispose?: () => void;
+
+  ngAfterViewInit() {
+    this.dispose = registerConnectionValidator(({ sourcePort, targetPort }) => {
+      if (sourcePort?.type === 'output' && targetPort?.type === 'output')
+        return 'an output cannot feed another output';
+      return true;
+    });
+  }
+  ngOnDestroy() { this.dispose?.(); clearConnectionValidators(); }
+}
+```
+
+      Validators are global — dispose in ngOnDestroy or they leak
+      across routes. Ports show on hover by default; to show them always, reach the engine
+      after view init:
+      this.canvas().activeEngine()?.setInteractionConfig({ portVisibility: 'always' }).
+Live: typed ports →
+Live: connection validation →
+
+      
+## 4 — Undo, viewport, engine access
+
+      ⌘Z/Ctrl+Z works with zero wiring. For your own toolbar, the
+      canvas surfaces the essentials directly; everything else lives on the engine, reached
+      with viewChild after the view initializes:
+
+```
+import { Component, viewChild } from '@angular/core';
+import { DiagramCanvasComponent } from '@grafloria/angular';
+
+export class FlowComponent {
+  canvas = viewChild.required(DiagramCanvasComponent);
+
+  undo() { void this.canvas().undo(); }
+  redo() { void this.canvas().redo(); }
+  fit()  { this.canvas().fitToContent(40); }
+
+  // engine escape hatch — canUndo, copy/paste, selection, interaction config …
+  get engine() { return this.canvas().activeEngine(); }
+}
+```
+
+      activeEngine() is available from ngAfterViewInit
+      onward — engine-touching setup belongs there, not in the constructor.
+Live: undo/redo buttons →
+
+      
+## 5 — Auto-layout
+
+```
+
+[layout]="{ name: 'dagre', options: { direction: 'TB', rankSpacing: 80 } }"
+```
+
+      Registered names: auto, elk, dagre,
+      layered, tree, grid, circular,
+      radial, force, spectral, community.
+      ELK loads lazily in a Worker (a separate ~432 KB gz chunk, only when first used).
+      The binding re-runs on value change only — it never fights a drag; call
+      applyLayout() on the component to re-run on demand, and listen with
+      (layoutDone).
+Live: ELK layout →
+
+      
+## 6 — Save, load, export
+
+```
+// snapshot / restore (JSON)
+saved: SerializedDiagram | null = null;            // type from '@grafloria/engine'
+save()    { this.saved = this.canvas().snapshot(); }
+restore() { if (this.saved) this.canvas().loadSnapshot(this.saved); }
+
+// Mermaid-compatible text round-trip
+text = '';
+export() { this.text = this.canvas().exportText(); }
+load()   { this.canvas().loadText(this.text); }
+
+// images — PNG returns a data: URL, SVG returns the raw string
+async downloadPng() {
+  const url = await this.canvas().exportDiagram('png', { scale: 2 });
+  const a = document.createElement('a');
+  a.href = url; a.download = 'diagram.png'; a.click();
+}
+```
+
+      Export needs a painted canvas — calling it before the first paint throws a
+      clear error. PDF export (exportDiagram('pdf')) produces a real vector PDF:
+      paths stay paths, text stays selectable.
+Live: save & restore →
+Live: PNG/SVG download →
+
+      
+## Where next
+
+      
+        - Every demo as an Angular component — 100+ routes, source shown.
+
+        - The model — what nodes, ports, links and groups really are.
+
+        - Kits — <grafloria-dashboard> with
+        ng-template grafloriaWidget widgets.
+
+        - App-wide defaults: provideGrafloria({ theme }) in your bootstrap
+        providers; a canvas-level [theme] binding always wins.
+
+        - Zoneless: the binding is verified against zoneless change detection — no
+        zone.js assumptions anywhere.
+
+
+# The model (https://grafloria.com/learn/the-model/)
+
+Everything in Grafloria — the React component, the Angular canvas, the web component — is a thin skin over one headless model in @grafloria/engine. Understand the model once and every binding makes sense.
+
+## Two layers, one truth
+
+      The engine (DiagramEngine) owns behavior: commands, history,
+      layout, validation, collaboration. The diagram (DiagramModel) owns
+      the data: nodes, links, groups, viewport. The framework bindings hand you a friendlier
+      spec layer ({ id, position, data, ports } objects), convert it to
+      models internally, and hand models back in change events. This page is the layer
+      underneath — it runs identically in the browser, in a worker, and in Node (the snippets
+      below execute in plain Node against the published package).
+
+```
+import { DiagramEngine, NodeModel, PortModel, LinkModel } from '@grafloria/engine';
+
+const engine  = new DiagramEngine();
+const diagram = engine.createDiagram('order-flow');
+
+const intake = new NodeModel({
+  id: 'intake', type: 'task',
+  position: { x: 40, y: 60 }, size: { width: 120, height: 48 },
+});
+intake.setData('label', 'Intake');
+
+const review = new NodeModel({
+  id: 'review', type: 'task',
+  position: { x: 260, y: 60 }, size: { width: 120, height: 48 },
+});
+review.setData('label', 'Review');
+
+diagram.addNode(intake);
+diagram.addNode(review);
+diagram.addLink(new LinkModel({
+  id: 'l1',
+  source: { nodeId: 'intake' },
+  target: { nodeId: 'review' },
+}));
+```
+
+      
+## Nodes
+
+      A node is an id, a type (which selects its renderer — a shape, a custom
+      component, a template), geometry (position, size), and two
+      open dictionaries: data for your payload
+      (setData/getData) and metadata for
+      Grafloria-adjacent settings (label, shape styling, port groups). In the framework spec
+      layer, label: 'Intake' and data: { label: 'Intake' } are the
+      convenient front doors to the same places.
+
+      
+## Ports — four by default, precise on demand
+
+      Every node is born with four deterministic bi-directional ports (top, right,
+      bottom, left) — the industry default, so plain flowcharts need zero port ceremony.
+      The moment you need precision, add your own:
+
+```
+intake.addPort(new PortModel({ id: 'intake-out', type: 'output', side: 'right' }));
+
+// reach them later
+intake.getPorts();                    // all ports
+intake.getPortBySide('right');
+diagram.getPortById('intake-out');
+diagram.getNodeByPortId('intake-out');
+```
+
+      A port has a direction (input / output / bi),
+      a side, an optional dataType (drives both its color and connection
+      compatibility), connection caps, glyph shape, label, and layout strategy. The full
+      surface is on Ports & validation.
+
+      
+## Links
+
+      A link connects two endpoints. Each endpoint names a node — and optionally a specific
+      port; omit portId and the renderer picks the best side as things move:
+
+```
+new LinkModel({
+  id: 'l1',
+  source: { nodeId: 'intake', portId: 'intake-out' },   // pinned to a port
+  target: { nodeId: 'review' },                          // free — best side wins
+});
+
+diagram.getLinksForNode('intake');   // every link touching a node
+```
+
+      In the spec layer this is just { source: 'intake', target: 'review' } —
+      with sourceHandle/targetHandle to pin ports, and
+      type: 'orthogonal' | 'smooth' | 'bezier' | 'direct' to pick geometry.
+      Routing (including the obstacle-avoiding router) is the renderer's job; the model stores
+      intent, not pixels.
+
+      
+## Groups
+
+      Groups are containers with real semantics — membership
+      (engine.addToGroup), collective drag, collapse/expand
+      (engine.collapseGroup), and nesting
+      (diagram.getAncestors/getDescendants). A group can render with
+      full chrome or frameless (frameChrome: 'none') for dashboard-style
+      packing.
+
+      
+## Serialization — the document is the API
+
+      The whole diagram round-trips through one JSON document with a
+      schemaVersion and migrations on load — save it anywhere:
+
+```
+const doc = diagram.serialize();
+// { schemaVersion, id, uuid, type, version, metadata, name, nodes, links, groups, viewport }
+
+const engine2 = new DiagramEngine();
+engine2.createDiagram('restored');
+engine2.deserialize(doc);
+engine2.getDiagram().getNode('intake').getData('label');   // 'Intake' — everything survives
+```
+
+      The same document shape is what snapshot()/loadSnapshot()
+      (Angular), DiagramSerializer (React/Vue), SVG/PNG embedModel
+      export, and the collaboration op-log all speak. There is exactly one persistence format
+      to learn.
+
+      
+## Where next
+
+      
+        - Ports & validation — the full port spec and connection rules.
+
+        - Commands & undo — why mutations are objects.
+
+        - Mermaid & the text format — the second, human-writable serialization.
+
+
+# Edges & routing (https://grafloria.com/learn/edges-and-routing/)
+
+An edge stores intent — connect A to B, orthogonally, avoiding obstacles — and the renderer turns intent into geometry that stays correct as nodes move. Only two fields are required.
+
+## The minimal edge, and every field after it
+
+```
+{ source: 'a', target: 'b' }                       // that's a complete edge
+
+{ id: 'e1',
+  source: 'a', target: 'b',                          // node ids
+  sourceHandle: 'out',                               // a port id — or a bare side: 'right'
+  targetHandle: 'left',
+  type: 'orthogonal',                                // 'direct' | 'smooth' | 'orthogonal' | 'bezier'
+  router: 'avoid',                                   // 'straight' | 'orthogonal' | 'manhattan' | 'avoid' | 'elk'
+  connector: 'rounded',                              // corner treatment: 'straight' | 'rounded' | 'smooth' | 'bezier'
+  label: 'retry',
+  style: { stroke: '#9333ea', strokeWidth: 2, strokeDasharray: '6 3' },
+  data: { weight: 3 },                               // your payload
+  points: [{ x: 340, y: 180 }] }                     // explicit waypoints — restores a user-edited route
+```
+
+      Omit both handles and the edge attaches to whichever default port faces its partner
+      as nodes move. Default ports have deterministic ids
+      (<nodeId>__top … __left), which is why a bare side name
+      like sourceHandle: 'bottom' resolves. For true perimeter floating —
+      attaching anywhere along the node's outline rather than at a port — set
+      metadata: { connectionPoint: 'smart' }.
+
+      
+## Type versus router — two different questions
+
+      type answers "what shape is the line" (straight segments, one smooth
+      curve, right angles, a bezier). router answers "which path does it take"
+      — and that is where the interesting engineering lives:
+      
+        | Router | Behavior |
+
+        | straight | direct line, endpoints only |
+
+        | orthogonal | right-angled path from the port's exit direction |
+
+        | manhattan | grid-based right-angle routing with turn minimization |
+
+        | avoid | obstacle avoidance — the path walks around nodes instead of crossing them, and re-routes live as you drag |
+
+        | elk | edge routes computed by the ELK layout engine, consistent with an ELK-laid-out graph |
+
+      
+      Obstacle-avoiding routing is the feature most diagram libraries sell as a paid
+      add-on or leave as an exercise. Here it is one word on the edge spec. The
+      comparison table sources this cell by cell.
+Live: every edge type, router and connector →
+
+      
+## Labels, parallel edges, crossings
+
+      label puts editable text on the path (double-click to edit in place;
+      drag to reposition — the position persists in the model). When several edges connect
+      the same pair of nodes, the renderer fans them apart
+      (rendererConfig: { parallelLinks: true, parallelSpacing: 12 }), and where
+      unrelated edges cross you can render jump-overs via the renderer config's jump
+      styles.
+
+      
+## Reconnecting and editing
+
+      Drag an edge's endpoint and drop it on another port — validators run again (see
+      Ports & validation; the candidate carries
+      link so a rule can treat reconnection differently). Drag the path itself
+      to bend it — the bend lands in points and round-trips through
+      serialization. Every one of these edits is a single undoable step.
+
+      
+## Where next
+
+      
+        - Ports & validation — what edges attach to.
+
+        - Layout — edge routes that come from the layout engine.
+
+
+# Ports & validation (https://grafloria.com/learn/ports-and-validation/)
+
+Ports decide where links attach and which connections are legal. The spec is identical in every framework — declared on the node, enforced by the engine, drawn by the renderer.
+
+## The default: zero ceremony
+
+      Every node is born with four deterministic bi-directional ports — top, right, bottom,
+      left, with ids <nodeId>__top … __left. Plain flowcharts
+      need nothing declared: omit handles on an edge and it attaches to whichever side faces
+      its partner as nodes move. sourceHandle: 'bottom' pins a default port by
+      side name.
+
+      
+## Declared ports
+
+```
+{ id: 'transform', position: { x: 300, y: 120 }, size: { width: 150, height: 90 },
+  ports: [
+    { id: 'in',    side: 'left',  type: 'input' },
+    { id: 'out',   side: 'right', type: 'output', dataType: 'frame' },
+    { id: 'errs',  side: 'bottom', type: 'output', maxConnections: 1,
+      shape: { shape: 'diamond', size: 12 },
+      label: { text: 'errors', layout: 'outside' } },
+  ] }
+```
+
+      The full spec, field by field:
+      
+        | Field | What it does |
+
+        | side, index | which edge of the node, and ordering along it |
+
+        | type | input / output / bi — directionality, enforced while wiring |
+
+        | dataType | a named data-flow type; drives the glyph color and compatibility (below) |
+
+        | shape | glyph: circle (default), square, diamond, triangle, or a custom SVG path |
+
+        | label | text + placement: inside / outside / orthogonal / radial |
+
+        | group + metadata.portGroups | shared config and a layout strategy — sideLinear, line, ellipseSpread — for many-port nodes |
+
+        | maxConnections, gating | link caps; gating is the richer form (directional connectability, allowed types, self-links) |
+
+        | fromSpot / toSpot, spread | where links leave the glyph box, and fanning several links along an edge |
+
+      
+      Ports show on hover by default. To show them always:
+      interaction: { portVisibility: 'always' } at creation (a prop in
+      React/Vue), or engine.setInteractionConfig({ portVisibility: 'always' })
+      at runtime.
+Live: port shapes, labels, groups and layouts →
+
+      
+## Three validation layers
+
+      
+### 1. Port anatomy — free
+
+      Directions and caps enforce themselves: an input refuses to start a
+      wire, a full maxConnections: 1 port refuses a second, and the invalid
+      target is tinted while you drag.
+
+      
+### 2. Type compatibility — declarative
+
+```
+import { portTypeRegistry } from '@grafloria/element';
+
+portTypeRegistry.registerAll([
+  { name: 'number', color: '#2563eb', compatibleWith: ['number'] },
+  { name: 'string', color: '#9333ea', compatibleWith: ['string'] },
+]);
+```
+
+      Ports carrying a dataType get the registered color, and incompatible
+      pairs refuse the wire mid-drag — the visual language and the rule are one
+      declaration.
+
+      
+### 3. Custom rules — a function with veto power
+
+```
+import { registerConnectionValidator, clearConnectionValidators } from '@grafloria/element';
+
+const dispose = registerConnectionValidator(({ sourceNode, sourcePort, targetNode, targetPort, link }) => {
+  if (sourcePort?.type === 'output' && targetPort?.type === 'output')
+    return 'an output cannot feed another output';   // string = veto, with a reason
+  if (sourceNode?.data?.role === 'sink')
+    return 'a Sink has no outputs';
+  return true;                                        // true = allow
+});
+```
+
+      The candidate carries both nodes, both ports, and — when the user is
+      reconnecting an existing edge rather than drawing a new one — the
+      link. Every registered validator must pass: it's veto power, not voting.
+      The registry is process-global, not per-canvas. Always keep the
+      returned disposer and call it (plus clearConnectionValidators()) when your
+      view unmounts — otherwise validators leak across routes, remounts, and React
+      StrictMode's double-invoke.
+Live: validation demos →
+
+      
+## Where next
+
+      
+        - The model — ports as engine objects (PortModel).
+
+        - The tutorials wire typed ports end-to-end in each framework.
+
+
+# Groups (https://grafloria.com/learn/groups/)
+
+A group is not a rectangle drawn behind some nodes — it is a container the engine understands: members move together, collapse is reversible by construction, and nesting reflows parents around children.
+
+## Creating and membership
+
+```
+import { GroupModel } from '@grafloria/engine';
+
+diagram.addGroup(new GroupModel({
+  id: 'ingest-stage',
+  position: { x: 0, y: 0 }, size: { width: 320, height: 180 },
+}));
+
+await engine.addToGroup('ingest-stage', 'a');    // (groupId, entityId) — group first
+await engine.addToGroup('ingest-stage', 'b');
+await engine.removeFromGroup('ingest-stage', 'b');
+```
+
+      Members drag with the group, and interactive membership works too — drag a node
+      into a group's frame and it joins; groups can contain groups. Query structure with
+      diagram.getGroups(), diagram.getGroup(id),
+      diagram.getAncestors(id) / getDescendants(id).
+
+      
+## Collapse is a reversible snapshot
+
+```
+await engine.collapseGroup('ingest-stage');   // members hide, links re-route to the header
+await engine.expandGroup('ingest-stage');     // everything returns exactly where it was
+```
+
+      Collapse stores a snapshot on the group — member world-positions and the
+      links removed at collapse time — so a collapsed diagram serializes, round-trips,
+      and expands correctly later, even in a different session. Links from outside to a
+      hidden member re-anchor to the collapsed header, and parallel edges merge into one
+      until expand.
+
+      
+## Nesting and fit
+
+      Containers reflow: a group can fit itself around its already-fitted children, and a
+      resize cascades down into nested containers' own reflows. That is what makes
+      swimlanes, BPMN pools and stage-based pipelines behave — moving a lane moves its
+      contents; growing content grows the lane.
+
+      
+## Frameless groups — layout without chrome
+
+```
+const g = diagram.getGroup('kpi-row');
+g.setMetadata('frameChrome', 'none');    // no border, no header — pure layout container
+```
+
+      A frameless group is the primitive under the
+      dashboard kit's grid: cells that pack and drag without looking
+      like "a group". Use it whenever you want container behavior without container
+      pixels.
+      Groups participate in everything else on this site: group operations are
+      commands (undoable), groups serialize in the document, ELK lays out nested structures
+      natively, and a collapsed group exports exactly as it looks on screen.
+Live: group demos — drag in, collapse, nest →
+
+      
+## Where next
+
+      
+        - The model — where groups sit among nodes and links.
+
+        - Kits — the dashboard grid built on frameless groups.
+
+
+# Commands & undo (https://grafloria.com/learn/commands-and-undo/)
+
+Every user gesture — drag, connect, delete, paste, group — becomes a command object on one history stack. That is why ⌘Z works everywhere with zero wiring, and why your own features can join the same history.
+
+## The free part
+
+      Mount any canvas and ⌘Z/Ctrl+Z undoes, ⌘⇧Z/Ctrl+Y
+      redoes. One drag is one step — not sixty position updates. Buttons are one call:
+
+```
+await engine.undo();      // all async — a command may do async work
+await engine.redo();
+engine.canUndo();          // drive your buttons' disabled state
+engine.canRedo();
+```
+
+      Framework surfaces: Angular's canvas mirrors undo()/redo()
+      as component methods; in React and Vue you reach the engine via the instance —
+      instance.getEngine().undo().
+Live: drag something, press ⌘Z →
+
+      
+## Programmatic edits: two intents, two APIs
+
+      This distinction is deliberate and worth internalizing:
+      
+        | You want | Use | History |
+
+        | To load or build a diagram (setup, import, sync) | diagram.addNode(node), diagram.addLink(link) | not recorded — loading a file should not be undoable |
+
+        | To edit on the user's behalf (a toolbar action, an AI suggestion) | engine.commandManager.execute(command) | recorded — the user can ⌘Z your feature |
+
+      
+
+```
+import { AddNodeCommand } from '@grafloria/engine';
+
+const node = new NodeModel({ id: 'ship', type: 'task',
+  position: { x: 480, y: 60 }, size: { width: 120, height: 48 } });
+
+await engine.commandManager.execute(new AddNodeCommand(node));
+engine.canUndo();     // true — your edit is a first-class history entry
+await engine.undo();  // and it cleanly reverts
+```
+
+      
+## The command vocabulary
+
+      The built-in commands cover the whole editing surface — AddNodeCommand,
+      RemoveNodeCommand, AddLinkCommand, MoveNodeCommand,
+      AlignCommand, AddGroupCommand, CollapseGroupCommand,
+      BringNodeToFrontCommand, and more. Two are structural:
+      
+        - BatchCommand / MacroCommand — bundle several commands
+        into one undo step ("paste 12 nodes" is one ⌘Z, not twelve).
+
+        - Your own — extend Command with execute(context) /
+        undo(context) and your domain action rides the same stack as everything
+        else.
+
+      
+      A command can refuse: canExecute(context) returning false means the
+      command never enters history at all — a refused action leaves nothing to "undo".
+      Real-time validation composes with this: in strict mode, a command whose result fails
+      validation is reverted and never recorded.
+
+      
+## How the frameworks fold history back into state
+
+      After an undo, the engine's models changed — the bindings re-emit them:
+      React's onNodesChange fires with the reverted NodeModel[],
+      Angular's [(nodes)] writes back, Vue's v-model:nodes updates.
+      Your state and the history never disagree, because there is only one history — the
+      engine's.
+
+      
+## Where next
+
+      
+        - The model — what these commands mutate.
+
+        - Collaboration — how local commands become CRDT ops.
+
+
+# Events & interaction (https://grafloria.com/learn/events-and-interaction/)
+
+One event map on the instance; each framework dresses it in its own idiom — DOM events, React callbacks, Vue emits, Angular outputs. Learn the map once and the bindings become predictable.
+
+## The instance event map
+
+```
+instance.on('nodes:change',     ({ nodes }) => save(nodes));      // add/remove — live NodeModel[]
+instance.on('edges:change',     ({ edges }) => {});
+instance.on('selection:change', ({ nodes, edges }) => inspect(nodes));
+instance.on('connect',          ({ link }) => {});                 // a wire was completed
+instance.on('reconnect',        ({ link, endpoint }) => {});       // 'source' | 'target' moved
+instance.on('node:click',       ({ node, world }) => {});          // world = diagram coords
+instance.on('node:doubleclick', ({ node, world }) => {});
+instance.on('edge:click',       ({ edge, world }) => {});
+instance.on('viewport:change',  ({ viewport, zoom }) => {});
+// every on() returns an unsubscribe function
+```
+
+      
+## The same map, per framework
+
+      
+        | Surface | Idiom | Example |
+
+        | Plain JS | api.on(...), or bubbling DOM events on <grafloria-flow> | el.addEventListener('grafloria-connect', e => e.detail.link) |
+
+        | React | callback props | onConnect, onNodeClick, onSelectionChange, onNodesChange |
+
+        | Vue | emits (kebab-case) | @connect, @node-click, @selection-change, v-model:nodes |
+
+        | Angular | model writes + outputs | [(nodes)], (viewportChanged), (layoutDone); clicks via the engine bus |
+
+      
+      The element's DOM events (grafloria-ready, -nodes-change,
+      -edges-change, -selection-change, -connect,
+      -node-click, -edge-click, -viewport-change) all
+      bubble and cross shadow boundaries — delegate at document level if you
+      like.
+
+      
+## The connection lifecycle, live
+
+      While a user drags a wire, the engine's bus narrates it — this is what powers
+      guidance UIs (tint the good targets, explain the refusals):
+
+```
+const bus = instance.getEngine().eventBus;
+for (const name of ['connection:start', 'connection:update', 'connection:port-enter',
+                    'connection:port-leave', 'connection:complete', 'connection:cancel']) {
+  bus.on(name, (payload) => log(name, payload));
+}
+```
+
+Live: connection events narrated on screen →
+
+      
+## Interaction config — what the user may do
+
+```
+// at creation (a prop in React/Vue: interaction={{ ... }})
+render(spec, host, { interaction: { portVisibility: 'always' } });
+
+// at runtime
+instance.getEngine().setInteractionConfig({ portVisibility: 'always' });
+```
+
+      Framework-level switches cover the common cases directly:
+      readonly (view-only canvas), enablePan /
+      enableZoom / minZoom / maxZoom /
+      zoomSensitivity, fitView, and in Angular also
+      enableSnapping, enableProximityConnect,
+      enableKeyboardNavigation, enableInPlaceEditing and
+      canvasBounds.
+      Built-in keyboard support ships enabled: ⌘Z/⌘⇧Z history, Delete for
+      selection, arrow-key nudging, and focus-visible navigation with live-region narration
+      for screen readers. You wire nothing.
+
+      
+## Where next
+
+      
+        - The DiagramInstance — the object all of this hangs off.
+
+        - Commands & undo — what a gesture becomes once it lands.
+
+
+# Layout (https://grafloria.com/learn/layout/)
+
+Hand-placing nodes stops scaling around fifteen of them. Grafloria puts eleven layout algorithms behind one registry and one call — and keeps the heavyweight (ELK) out of your bundle until the moment it is used.
+
+## One call
+
+```
+await engine.layout('elk');                                   // opinionated default
+await engine.layout('dagre', { direction: 'TB', rankSpacing: 80 });
+await engine.layout();                                        // 'auto' — picks for you
+```
+
+      Registered names: auto, elk, dagre,
+      layered, tree, grid, circular,
+      radial, force, spectral, community.
+      An unknown name throws with the list of registered ones — no silent no-op.
+      auto inspects the graph (a tree? a DAG? a hairball?) and dispatches to the
+      right algorithm.
+
+      
+## Choosing
+
+      
+        | Graph | Reach for | Why |
+
+        | Flowcharts, pipelines, DAGs | elk or layered/dagre | layered ranking, few crossings; ELK handles ports and nesting best |
+
+        | Hierarchies, org charts | tree | parent-centered, tidy |
+
+        | Networks, clusters | force, community, spectral | physical spread; community detection groups related nodes |
+
+        | Catalogs, galleries | grid, circular, radial | uniform placement |
+
+        | Don't want to think | auto | classification + dispatch |
+
+      
+
+      
+## The cost model — why ELK doesn't bloat you
+
+      ELK is the best layered engine available and also ~1.4 MB minified. Grafloria
+      loads it through a lazy import() — a separate chunk (~432 KB gz) that
+      downloads on the first layout('elk') call and never before. It also
+      runs off-thread in a Worker, so a thousand-node layout doesn't freeze your UI. Everything
+      else (dagre, tree, force, grid…) is small and ships eagerly.
+
+      
+## Declarative, in every framework
+
+```
+// React
+
+// Angular
+
+// object form everywhere
+layout={{ name: 'dagre', options: { direction: 'LR' } }}
+```
+
+      The binding re-runs when its value changes — never when node data
+      changes. That is deliberate: a user drag round-trips through the nodes binding, and a
+      re-layout firing on every change would fight the user's hands. Re-run on demand with
+      instance.getEngine().layout(...) (React/Vue) or
+      applyLayout() (Angular).
+
+      
+## Incremental layout
+
+      After inserting into an already-laid-out graph, a full re-layout scrambles the user's
+      mental map. layoutIncremental moves only the neighborhood:
+
+```
+await engine.layoutIncremental({ changed: ['inserted-node-id'], direction: 'LR', radius: 1 });
+```
+
+Live: incremental layout on insert →
+
+      
+## Where next
+
+      
+        - Layout demos — every algorithm on a real graph.
+
+        - Mermaid & the text format — imported text
+        gets type-aware layout automatically.
+
+
+# Mermaid & the text format (https://grafloria.com/learn/mermaid-and-the-dsl/)
+
+Diagrams-as-text is how diagrams live in git. Grafloria reads and writes Mermaid-compatible text — and adds the one thing Mermaid cannot express: your hand-arranged positions, in a sidecar that keeps the text valid Mermaid.
+
+## Import
+
+```
+import { importDiagramText } from '@grafloria/engine';
+
+const result = importDiagramText(`flowchart LR
+  a[Start] --> b{Gate}
+  b -->|yes| c[Ship]
+  b -->|no| a`);
+
+result.diagram;             // a live DiagramModel — 3 nodes, 3 links
+result.diagram.getNodes()[0].getData('label');   // 'Start'
+result.diagram.getNodes()[0].type;               // 'flowchart:process' — typed, not generic
+```
+
+      Imported nodes carry semantic types (flowchart:process,
+      flowchart:decision, ER entities, class boxes…), so they render with the
+      right glyphs and get type-aware layout — a state machine lays out differently from an
+      entity-relationship diagram.
+
+      
+## Supported types — and the honest line
+
+      flowchart/graph, erDiagram,
+      classDiagram, stateDiagram/stateDiagram-v2. These
+      four are verified against real Mermaid by a CI oracle — the same text rendered by
+      Mermaid itself and by Grafloria, compared structurally. Everything else is refused
+      loudly rather than rendered wrongly:
+
+```
+const r = importDiagramText('sequenceDiagram\n  A->>B: hi');
+r.unsupported;   // 'sequenceDiagram' — check this field; there is no silent wrong guess
+```
+
+The full Mermaid compatibility story →
+
+      
+## Export — and the sidecar trick
+
+```
+import { exportDiagramText } from '@grafloria/engine';
+
+const text = exportDiagramText(diagram);
+```
+
+      The output is valid Mermaid that any Mermaid renderer accepts. Positions, sizes and
+      styling — things Mermaid has no syntax for — ride in a
+      %%grafloria:document comment block at the end. Mermaid ignores comments;
+      Grafloria reads them back. So the round trip is lossless for Grafloria and
+      legible for everyone else: hand-arrange a diagram, export, commit, re-import —
+      your arrangement survives, and GitHub still previews the file.
+
+      
+## Text and canvas, live
+
+      The framework surfaces wire both directions into the live canvas —
+      instance.exportText() / instance.loadText(text) (React/Vue) and
+      exportText() / loadText() on the Angular canvas.
+      loadText reconciles into the existing diagram rather than replacing
+      it — listeners, plugins and selection survive. That's the pattern behind the Monaco
+      side-by-side demos: edit text, watch the canvas; drag the canvas, watch the text.
+Live: the Mermaid round-trip demos →
+
+      Scope note: the import result also reports bodyEdited and
+      sidecarInvalid so an editor can tell "the human edited the Mermaid body by
+      hand" from "the sidecar is stale" and re-layout only when needed.
+
+      
+## Where next
+
+      
+        - Grafloria vs Mermaid — when text-only is enough and when it isn't.
+
+        - Layout — what happens when imported text has no positions.
+
+
+# Theming (https://grafloria.com/learn/theming/)
+
+One Theme object drives the canvas chrome, node defaults, link colors and selection states — swap it and everything repaints. Per-node styling stays in the spec, so themes and data never fight.
+
+## Built-in themes
+
+```
+// exported from @grafloria/react, @grafloria/vue, or @grafloria/renderer
+import { LIGHT_THEME, DARK_THEME } from '@grafloria/react';
+
+// React
+
+// Vue — a computed ref works
+
+// Angular
+
+// element attribute (strings only here)
+
+```
+
+      Switching is live — no remount, no data loss. At runtime on any instance:
+      instance.setTheme(DARK_THEME).
+Live: dark mode toggle →
+
+      
+## App-wide defaults (Angular)
+
+```
+bootstrapApplication(App, {
+  providers: [provideGrafloria({ theme: DARK_THEME })],
+});
+```
+
+      Precedence: a canvas-level [theme] binding → the provided default →
+      LIGHT_THEME.
+
+      
+## Adopting your design system: the token bridge
+
+      If your app already speaks CSS variables — shadcn, MUI, Tailwind — hand them over
+      with tokenBridge and the canvas derives its colors from
+      your tokens instead of its own palette. The diagram stops looking embedded and
+      starts looking native.
+
+      
+## Per-node and per-edge styling
+
+      Theme = the room; spec styling = the furniture:
+
+```
+{ id: 'a', position: { x: 60, y: 80 },
+  shape: { type: 'terminal', fill: '#ecfdf5', stroke: '#059669', cornerRadius: 10 } }
+
+{ id: 'e1', source: 'a', target: 'b',
+  style: { stroke: '#9333ea', strokeWidth: 2, strokeDasharray: '6 3' }, label: 'retry' }
+```
+
+      And because custom nodes are your own HTML (React components, Vue slots, Angular
+      templates, plain templates), they inherit your app's stylesheet directly — the element
+      renders in light DOM precisely so your CSS cascades in.
+      The renderer injects one scoped <style> block per instance
+      and exposes --grafloria-* variables — there is no stylesheet you must
+      import, in any framework.
+
+      
+## Where next
+
+      
+        - Export — exports honor the active theme.
+
+        - Demos — themed galleries in light and dark.
+
+
+# Export (https://grafloria.com/learn/export/)
+
+Exports render the scene graph, not a screenshot — full quality at any scale, whatever is on or off camera. Five formats, one async call, plus a server-side path that needs no DOM at all.
+
+## The one call
+
+```
+const png  = await instance.export('png', { scale: 2 });  // data: URL
+const jpeg = await instance.export('jpeg');                 // data: URL
+const webp = await instance.export('webp');                 // data: URL
+const svg  = await instance.export('svg');                  // raw SVG source string
+const pdf  = await instance.export('pdf');                  // data: URL — a real vector PDF
+```
+
+      export() is async because it waits for custom-node painters — your
+      React/Vue/Angular-rendered nodes are captured faithfully. Two sync variants exist when
+      you don't need that: exportSvgString() (deterministic, DOM-free, carries
+      warnings) and exportPdf() (returns { pdf: Uint8Array, … }).
+      Angular surfaces the same thing as exportDiagram(format, options) on the
+      canvas component; Vue also exposes template-ref shortcuts.
+
+```
+// the classic download button
+const a = document.createElement('a');
+a.href = await instance.export('png', { scale: 2 });
+a.download = 'diagram.png';
+a.click();
+```
+
+      SVG comes back as a raw string — wrap it yourself:
+      'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg). And export
+      requires a painted canvas — calling before the first paint throws a clear error rather
+      than returning a blank image.
+Live: export demos →
+
+      
+## PDF that is actually vector
+
+      export('pdf') produces paths as paths and text as selectable text — not
+      a rasterized page. Print it at any size; search it; extract from it.
+
+      
+## The editable file trick: embedModel
+
+```
+const svg = await instance.export('svg', { embedModel: true });
+// the diagram's full document now rides inside the artifact
+
+import { importDiagram, isEditableArtifact } from '@grafloria/element';
+isEditableArtifact(svg);          // true
+const model = importDiagram(svg); // back to a live, editable diagram
+```
+
+      Works for PNG and SVG. An exported image becomes its own save file — email the
+      picture, and the recipient can keep editing it.
+Live: the editable round-trip →
+
+      
+## Server-side, no DOM
+
+```
+import { renderStatic } from '@grafloria/element';
+
+const r = renderStatic({ nodes, edges, width: 520, height: 300, standalone: true });
+// r.svg — deterministic SVG, rendered headlessly (Node, workers, edge functions)
+```
+
+      The same path powers SSR: React's renderToStaticSVG() +
+      the ssr prop renders on the server and hydrates into a live canvas on the
+      client — no dynamic(() => …, { ssr: false }) workarounds.
+
+      
+## Where next
+
+      
+        - Mermaid & the text format — the third
+        export target: text for git.
+
+        - Theming — exports honor the active theme.
+
+
+# Collaboration (https://grafloria.com/learn/collaboration/)
+
+Two people drag the same diagram and both keep their changes. The CRDT lives in the engine — you bring a message channel, Grafloria brings convergence, presence and comments.
+
+## The one-prop version
+
+```
+// React
+ console.log('joined')} />
+
+// Angular
+
+// Vue
+
+```
+
+      The canvas joins a sync session at mount and leaves at unmount. Every local edit
+      becomes a CRDT operation broadcast to peers; every inbound operation merges — per
+      property, so one user recoloring a node while another moves it produces both, not a
+      conflict dialog.
+
+      
+## Bring any transport
+
+      A transport is a tiny interface — send(message),
+      onMessage(handler), onStatus(handler),
+      connect()/disconnect(). Anything that moves JSON qualifies:
+      WebSocket, WebRTC, or — the demo favorite, because it needs no server at all —
+      a BroadcastChannel between two tabs of the same browser.
+      Reconnects are handled for you — the session listens for the
+      transport's 'connected' status and runs an anti-entropy round the moment the channel
+      comes back, so peers that were offline catch up automatically. A transport that never
+      reports status can never be caught up: implement onStatus.
+Live: open twice, drag in both tabs →
+
+      
+## Presence and comments ride along
+
+      The same session carries live cursors (each peer sees where others point and
+      what they select) and anchored comment threads — comments: true on
+      any canvas creates a store; pass a shared CommentStore to sync threads
+      across peers, and drop in the ready-made panel
+      (<GrafloriaCommentPanel> in all three frameworks).
+
+      
+## The engine level — headless sync
+
+      The frameworks call the same public seam you can: a session binds a diagram to a
+      transport, and it runs anywhere the engine runs — including Node, which is how you
+      build a persistence peer (a headless replica that joins the room and writes every
+      converged state to a database):
+
+```
+import { createSyncSession } from '@grafloria/engine';
+
+const session = createSyncSession(diagram, transport, { actor: 'server-writer' });
+// same CRDT, no renderer — a Node process is just another peer
+```
+
+      
+## What it is not
+
+      Honesty corner: Grafloria gives you convergence, presence, comments and an op-log —
+      it does not give you rooms, auth, or storage. Those stay in your product, attached
+      through the transport and the serialized document. That is a deliberate seam, not a
+      gap: every team's room model is different.
+
+      
+## Where next
+
+      
+        - Commands & undo — local commands are what
+        become CRDT ops.
+
+        - The model — the document peers converge on.
+
+
+# Kits: dashboards, ER & UML (https://grafloria.com/learn/kits/)
+
+A kit turns plain data into a finished interactive diagram — entities in, an ER diagram with column-level ports out. Kits are functions returning specs, so they compose with everything else on this site.
+
+## The pattern
+
+```
+import { render, erDiagram } from '@grafloria/element';
+
+const spec = erDiagram({ entities, relationships });
+const api = render(spec, host);      // render() runs the kit's finalize for you
+```
+
+      In Vue: <GrafloriaDiagram :spec="spec" />. A kit spec is
+      { nodes, edges, finalize } — regular nodes and edges plus a wiring step, so
+      everything else (layout, export, undo, collaboration) works on kit diagrams
+      unchanged.
+
+      
+## ER — tables with real columns
+
+```
+const spec = erDiagram({
+  entities: [
+    { id: 'CUSTOMER', name: 'Customer', position: { x: 60, y: 76 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'email', type: 'varchar' },
+    ]},
+    { id: 'ORDER', name: 'Order', position: { x: 400, y: 64 }, columns: [
+      { name: 'id', type: 'int', pk: true },
+      { name: 'customer_id', type: 'int', fk: true },
+    ]},
+  ],
+  relationships: [
+    { from: 'CUSTOMER', to: 'ORDER', label: 'places', cardinality: 'one-to-many' },
+    // attach at a COLUMN with ENTITY.column:
+    { from: 'ORDER.customer_id', to: 'CUSTOMER.id' },
+  ],
+});
+```
+
+      Rows are selectable (listen for axk:row-select), a fixed entity
+      height makes the column list scroll, and editable: true adds
+      rename/add/delete chrome where every edit is one undoable step.
+Live: ER diagram →
+
+      
+## UML — classes, stereotypes, markers
+
+```
+const spec = umlDiagram({
+  classes: [
+    { id: 'Animal', abstract: true, position: { x: 380, y: 40 },
+      attributes: ['# name: String'], methods: ['+ speak(): void'] },
+    { id: 'Dog', position: { x: 150, y: 320 }, methods: ['+ fetch(): void'] },
+  ],
+  relationships: [
+    { from: 'Dog', to: 'Animal', kind: 'inheritance' },
+    { from: 'Owner', to: 'Dog', kind: 'aggregation', label: 'owns', multiplicity: ['1', '0..*'] },
+  ],
+});
+```
+
+      Relationship kinds draw the correct UML markers: inheritance,
+      realization, association, directed-association,
+      aggregation, composition, dependency.
+      Both card kits also expose a typed handle façade for programmatic editing that
+      rides the undo stack:
+
+```
+import { umlClass } from '@grafloria/element';
+
+const animal = umlClass(api, 'Animal');
+await animal.methods.add('+ move(): void');
+await animal.setAbstract(true);
+await animal.undo();
+```
+
+Live: UML class diagram →
+
+      
+## Dashboards — a drag-and-pack grid
+
+```
+import { render, dashboard } from '@grafloria/element';
+
+const spec = dashboard({
+  columns: 12,
+  widgets: [
+    { id: 'kpi-revenue', kind: 'kpi', span: 3,
+      data: { label: 'Total revenue', value: '$6.81M', delta: 12.4,
+              spark: [42, 45, 51, 55, 61, 71, 76] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 2, title: 'Revenue trend',
+      data: { series: [{ name: 'Revenue', values: [1.2, 1.4, 1.9, 2.3] }],
+              labels: ['Q1', 'Q2', 'Q3', 'Q4'] } },
+    { id: 'mix', kind: 'donut', span: 3, rows: 2, title: 'By region',
+      data: { slices: [{ label: 'EMEA', value: 2.9, color: '#3B52D9' }] } },
+  ],
+});
+render(spec, host);
+spec.handle.addWidget({ id: 'later', kind: 'bar', span: 3, data: { bars: [] } });
+```
+
+      Six built-in widget kinds render with zero code — kpi,
+      line, bar, donut, funnel,
+      table — and renderWidget (or React's
+      widgetTypes, Vue's #widget-<kind> slots, Angular's
+      ng-template grafloriaWidget) takes over for your own. Widgets drag and
+      pack live, gridstack-style; multiple views give you tabs; and
+      handle.toJSON() returns exactly what dashboard() accepts —
+      the layout round-trips by construction.
+Live: dashboard builder →
+
+      
+## Where next
+
+      
+        - vs GridStack-class libraries — where the
+        dashboard kit sits.
+
+        - Commands & undo — why kit edits are
+        undoable for free.
+
+
+# The DiagramInstance (https://grafloria.com/learn/the-instance/)
+
+Everything hands you the same object: render() returns it, React/Vue give it via onInit/@init, the element exposes it as el.diagram. This page is its map.
+
+## Orientation: three layers down
+
+```
+const api = render(spec, host);       // DiagramInstance — the renderer-level facade
+api.getModel();                       // DiagramModel  — the data (nodes, links, groups)
+api.getEngine();                      // DiagramEngine — behavior (commands, layout, validation)
+```
+
+      Rule of thumb: pixels and specs → instance; data queries → model; behavior →
+      engine. If a method is missing on the instance, it lives one layer down.
+
+      
+## The surface, grouped
+
+      
+        | Area | Members |
+
+        | Model in/out | setNodes(specs), setEdges(specs) — reconcile specs into the live diagram; getModel() |
+
+        | Events | on(event, handler) → unsubscribe fn, off(event, handler) — see Events & interaction |
+
+        | Camera | viewport (controller), fitView(padding?) |
+
+        | Painting | render() — queued, coalesced; renderNow() — synchronous |
+
+        | Batching | batchUpdate((model) => { ... }) — many mutations, one repaint |
+
+        | Export | export(format?, options?) async; exportSvgString(), exportPdf() sync — see Export |
+
+        | Text | exportText(), loadText(text) — Mermaid round-trip, reconciled into the live canvas |
+
+        | Appearance | setTheme(theme) |
+
+        | Interaction | interaction (controller); config via getEngine().setInteractionConfig(...) |
+
+        | Lifecycle | dispose(); container — the host element |
+
+      
+
+      
+## The reconciler — and its one gotcha
+
+      setNodes/setEdges and loadText do not
+      rebuild the diagram; they reconcile — existing ids keep their live objects
+      (selection, listeners, plugins all survive), new ids are created, missing ids are
+      removed. The gotcha: an id that still exists keeps its existing object, so
+      re-applying externally-edited data for the same ids needs a clear first:
+
+```
+// re-applying edited text/specs where ids persist:
+api.setEdges([]); api.setNodes([]);   // clear, then apply — otherwise stale nodes survive
+api.setNodes(next.nodes);
+api.setEdges(next.edges);
+```
+
+      
+## What is deliberately NOT here
+
+      
+        - undo()/redo() — history lives on the engine:
+        await api.getEngine().undo(). (⌘Z needs no wiring at all.)
+
+        - layout() — also the engine: await api.getEngine().layout('elk'),
+        then api.renderNow().
+
+        - serialize() — the model: api.getModel().serialize(); restore
+        losslessly via fromDocument() from @grafloria/element.
+
+      
+      If you prefer one flat object over three layers,
+      createDiagramApi(instance) from @grafloria/element wraps the
+      common cross-layer calls — including undo()/redo()/execute(command) —
+      into a single facade.
+
+      
+## Where next
+
+      
+        - FAQ & troubleshooting — the ten minutes of debugging this page prevents.
+
+
+# FAQ & troubleshooting (https://grafloria.com/learn/faq/)
+
+Every entry here is a wall someone actually hit — most of them us, while verifying the tutorials. Symptoms first, causes second.
+
+## The canvas is blank
+
+      The container has no resolved height. The canvas fills 100% of its parent — and
+      100% of zero is an empty page. Give the wrapper a real height
+      (height: 100vh, a flex row with flex: 1, a sized grid cell).
+      This is the #1 first-run issue in every framework.
+
+      
+## My custom node renders as a plain rectangle
+
+      In plain JS and React the spec must carry custom: true — that is what
+      routes the node through the HTML layer where your renderer/component mounts. Vue slots
+      (#node-<type>) and Angular templates
+      (ng-template grafloriaNode="type") set it for you; nodeTypes
+      and registerNodeType do not.
+
+      
+## instance.undo is not a function
+
+      Correct — history lives on the engine: await instance.getEngine().undo().
+      Angular's canvas component mirrors undo()/redo() directly;
+      nothing else does. Keyboard ⌘Z/Ctrl+Z works everywhere with zero wiring.
+
+      
+## I can't see any ports
+
+      Ports show on hover by default. Show them permanently with
+      interaction: { portVisibility: 'always' } at creation (a prop in
+      React/Vue) or engine.setInteractionConfig({ portVisibility: 'always' })
+      at runtime.
+
+      
+## My connection validator fires on a completely different page
+
+      The validator registry is process-global, not per-canvas. Keep the disposer
+      returned by registerConnectionValidator and call it on unmount (plus
+      clearConnectionValidators() if you want a clean slate). React StrictMode
+      double-invokes effects — the cleanup protects you there too.
+
+      
+## The layout prop doesn't re-run when my data changes
+
+      Deliberate. layout re-runs when the prop value changes, never
+      when node data changes — otherwise every user drag would be fought by a relayout.
+      Re-run on demand: instance.getEngine().layout('elk') (then
+      renderNow()), or applyLayout() in Angular/Vue.
+
+      
+## Re-applying edited data keeps stale nodes
+
+      setNodes/loadText reconcile: ids that still exist
+      keep their live objects. When you re-apply externally-edited data for the same ids,
+      clear first — api.setEdges([]); api.setNodes([]); then apply.
+
+      
+## Export throws "the canvas has not rendered yet"
+
+      Export needs a painted canvas — call it after the first paint (in practice: after
+      onInit/ngAfterViewInit plus a frame, or behind a user
+      action). SVG returns a raw string; PNG/PDF return data: URLs.
+
+      
+## ESM, require(), Jest
+
+      
+        - Since engine 0.3.x / renderer 0.4.x / element 0.4.x the packages are
+        pure ESM. Bundlers need no config; Node ≥ 20.19 can even
+        require() them.
+
+        - Jest with CJS transforms: allow the packages through
+        (transformIgnorePatterns: ['/node_modules/(?!@grafloria)']) or run
+        Jest/Vitest in ESM mode. Test failures like "Unexpected token export" are runner
+        config, not library bugs.
+
+        - Importing @grafloria/element registers the
+        <grafloria-flow> element as a side effect — safe in Node and
+        workers (it no-ops without customElements).
+
+      
+
+      
+## Isn't 9 MB unpacked huge?
+
+      npm's unpacked-size stat counts uncompressed ESM source plus full TypeScript
+      declarations — none of it ships. What your users download, measured worst-case:
+      engine 228 KB gz, react/vue 334, angular 395, element
+      451 — with ELK layout in a lazy chunk (432 KB gz) that only downloads if
+      invoked. Every package README carries a two-minute reproduction script.
+
+      
+## The element ignores my nodes attribute
+
+      Malformed JSON — the element warns
+      ([grafloria-flow] ignoring malformed JSON attribute) and keeps running.
+      Single-quote the attribute, double-quote the JSON inside, and remember geometry is
+      "position":{"x":0,"y":0} — never top-level x/y. After mount, prefer
+      properties: el.nodes = [...].
+
+      Something not covered here? The 111 demos are
+      executable answers — find the closest one and read its source. Or open an issue on
+      GitHub.
+
+
+# Custom nodes in React (https://grafloria.com/learn/react-custom-nodes/)
+
+A custom node is an ordinary React component, portal-mounted into a host element the engine creates and positions. You render the inside of the box; the engine owns the box — dragging, hit-testing, connections and selection keep working exactly as for built-in nodes.
+
+## The contract: NodeProps
+
+      Your component receives exactly four props — { id, data, selected, node }.
+      data is the payload you declared on the spec, selected is live
+      selection state, and node is the engine's NodeModel itself —
+      the escape hatch for everything the other three don't cover.
+
+``` Card.tsx
+import { GrafloriaFlow } from '@grafloria/react';
+import type { NodeProps } from '@grafloria/react';
+
+type CardData = { title: string; owner: string };
+
+function Card({ id, data, selected, node }: NodeProps) {
+  return (
+    
+      {data.title}
+      owner: {data.owner}
+    
+  );
+}
+
+const nodes = [
+  { id: 'a', type: 'card', custom: true, position: { x: 80, y: 90 },
+    size: { width: 230, height: 110 }, data: { title: 'Build', owner: 'CI' } },
+  { id: 'b', type: 'card', custom: true, position: { x: 430, y: 90 },
+    size: { width: 230, height: 110 }, data: { title: 'Deploy', owner: 'CD' } },
+];
+const edges = [{ id: 'e1', source: 'a', target: 'b' }];
+
+```
+
+      Two registrations, and both are required: nodeTypes maps the node's
+      type string to the component, and the node spec carries
+      custom: true. Miss either and nothing mounts — more on why below.
+      The cast is deliberate. NodeTypes is a type-erased registry
+      (Record<string, ComponentType<NodeProps<never>>>), so a
+      component typed with its own NodeProps<CardData> needs
+      as never at the registration site — the library's own tests register
+      components exactly this way.
+Live: custom React nodes →
+
+      
+## Why custom: true — the two render paths
+
+      Grafloria draws a diagram twice over: an SVG scene graph for built-in nodes, edges
+      and ports, and an HTML layer — a camera-registered sibling of the SVG — for
+      nodes that render as framework components. custom: true on the spec is the
+      switch: it sets metadata.useHTMLLayer on the model, the SVG renderer then
+      skips the node's body entirely, and the instance creates an absolutely-positioned host
+      element for it instead:
+
+```
+                
+  …                               
+           
+    
+      …your component renders in here…
+    
+  
+
+```
+
+      This is why the flag is not optional. Without it the node takes the SVG path and
+      renders as a normal built-in node — your nodeTypes entry is simply never
+      consulted, with no warning. The reverse failure is equally quiet by design: a
+      custom: true node whose type has no entry in
+      nodeTypes renders nothing rather than throwing an exception in the middle
+      of a canvas.
+
+      
+## The portal mechanism
+
+      When the core mounts a custom node it hands <GrafloriaFlow> the
+      model and the host element; the wrapper renders your component into that element with
+      createPortal. Portals keep the component inside your React tree —
+      context, hooks and state all work, and React (not the diagram) owns its lifecycle. It
+      is also why the binding uses createPortal and not createRoot:
+      portals behave identically on React 17, 18 and 19.
+      The host mounts once. Moving the node — a drag, a layout run, a
+      setNodes reconcile — updates the host's left/top
+      style; it never re-creates the element or remounts your component, so component state
+      survives every gesture. When the node is removed from the model, the core retires the
+      host and the wrapper drops the portal, so React unmounts your component normally.
+
+      
+## Selection-aware styling
+
+      The selected prop is not a snapshot: the wrapper subscribes each portal
+      to the instance's selection:change (and nodes:change) events
+      and re-renders your component when they fire, reading
+      node.isSelected() fresh. Styling selection is therefore just an ordinary
+      conditional — the border: selected ? … : … line in the card above is the
+      whole technique. There is no CSS class to hunt for and no observer to wire.
+
+      
+## Ports on custom nodes
+
+      Ports belong to the spec, not to your component — there is no
+      <Handle> equivalent to render. Declare them exactly as on a built-in
+      node and the engine draws them, hit-tests them, and routes edges to them; typed ports
+      and connection validators apply unchanged:
+
+```
+{ id: 'sum', type: 'card', custom: true, position: { x: 430, y: 90 },
+  size: { width: 230, height: 110 }, data: { title: 'Sum' },
+  ports: [
+    { id: 'in',  side: 'left',  type: 'input',  dataType: 'number' },
+    { id: 'out', side: 'right', type: 'output', dataType: 'number' },
+  ] }
+```
+
+      And ports are not even a prerequisite for wiring: a custom node with no declared
+      ports still accepts connections on its body — the two cards in the demo above are
+      joined by a plain { source: 'a', target: 'b' } edge.
+Live: typed ports and type-checked wires →
+
+      
+## Sizing: the component fills the node box
+
+      The engine sizes and positions the host from the node's size and
+      position; your component is expected to fill it. Give the spec a real
+      size, then make the root element height: '100%' with
+      boxSizing: 'border-box' so padding and borders stay inside the box the
+      engine is hit-testing. If your borders visually overhang the selection outline or
+      edges attach slightly outside the card, a missing boxSizing is almost
+      always why.
+      And the canvas itself needs a sized parent. The flow fills 100% of its
+      container — mount it in a <div style={{ height: '100vh' }}> (or any
+      element with a real height) or you will be staring at a perfectly healthy, zero-pixel
+      diagram.
+
+      
+## Reaching the live NodeModel
+
+      The node prop is the live engine model, and because the portal keeps
+      your component in the React tree, useGrafloria() works inside a node
+      too. Mutate through the model's tracked setters, then ask for a frame:
+
+``` LiveModel.tsx
+import { useGrafloria } from '@grafloria/react';
+import type { NodeProps } from '@grafloria/react';
+
+function Card({ data, node }: NodeProps) {
+  const grafloria = useGrafloria();   // the DiagramInstance, from inside the node
+
+  const grow = () => {
+    node.setSize(node.size.width + 40, node.size.height);
+    node.setMetadata('label', 'wider');
+    grafloria?.renderNow();
+  };
+
+  return {data.title};
+}
+```
+
+      setSize, setMetadata, setData and friends are
+      tracked setters — they record the change for undo and mark the node dirty. Writing to
+      plain properties bypasses all of that; if an edit seems to vanish, check that it went
+      through a setter.
+Live: editing a live node from outside the canvas →
+
+      
+## When your component re-renders
+
+      Three triggers, and knowing them explains every "why didn't it update":
+      
+        - Your own state and context — it is a normal component; local
+        useState, props from context, a store subscription all re-render it as
+        usual.
+
+        - nodes:change — fired when nodes are added or removed and when
+        a gesture commits. During a drag the core moves the host element directly and
+        does not stream events, so your component does not re-render per frame — the box
+        moves, the contents stand still. That is a feature.
+
+        - selection:change — so selected is always
+        current.
+
+      
+
+      
+## Common mistakes
+
+      Forgot custom: true. The single most common failure: the
+      node renders as a default SVG rectangle and the component never mounts. The spec flag —
+      not the nodeTypes entry — is what routes a node through the HTML layer.
+      Type key mismatch. type: 'card' must match the
+      nodeTypes key exactly; a miss renders nothing, silently, by design. If a
+      custom node is invisible, check the flag first and the key second.
+      Expecting per-frame renders during a drag. Position lives on the host
+      element, not in your props — do not try to read node.position from render
+      and animate with it. If you need mid-gesture geometry, subscribe to the instance's
+      events through useGrafloria() instead.
+      If you only need a different look — a terminal shape, a document silhouette,
+      a fill — you may not need a component at all: per-node shape styling on
+      the spec keeps the node on the fast SVG path.
+Live: custom shapes with no components →
+
+      
+## Where next
+
+      
+        - State & data flow in React — who owns the graph, and how changes round-trip.
+
+        - Ports and validation — sides, directions, typed ports, validators.
+
+        - Dashboards in React — the same portal idiom, applied to widget boards.
+
+        - Theming — custom nodes render in light DOM, so your app's CSS cascades in.
+
+
+# State & data flow in React (https://grafloria.com/learn/react-state-and-data/)
+
+There is no diagram state in React and no diagram logic in the binding — the headless instance owns the graph, and every hook is a subscription to it. Once you know which side owns what, every update path is one sentence long.
+
+## Uncontrolled or controlled — pick an owner
+
+      Uncontrolled (defaultNodes / defaultEdges): the
+      props seed the instance once, and the instance owns the data from then on. Re-renders
+      never snap the model back to the defaults — pass a new defaultNodes array
+      later and nothing happens, by contract. Reach the graph imperatively
+      (instance.getModel(), instance.setNodes()) when you need to.
+      Controlled (nodes + onNodesChange): your React
+      state is the source of truth and the canvas mirrors it — in both directions.
+
+``` Editor.tsx
+import { GrafloriaFlow, useNodesState, useEdgesState } from '@grafloria/react';
+
+function Editor() {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  return (
+    
+      
+    
+  );
+}
+```
+
+      Choose uncontrolled when the diagram is self-contained — a viewer, a demo, an
+      editor whose only consumer is itself. Choose controlled the moment anything
+      outside the canvas needs the graph: persistence, an inspector panel, a server
+      round-trip, derived UI. Mixing the two on one canvas is the classic trap — if you pass
+      nodes, wire onNodesChange, or user edits will be overwritten
+      by your stale state on the next render.
+
+      
+## The triple, in depth
+
+      useNodesState returns [nodes, setNodes, onNodesChange],
+      and the asymmetry between the second and third elements is the whole design. Two
+      different types flow in the two directions:
+
+```
+const [nodes, setNodes, onNodesChange] = useNodesState(initial);
+//     │        │         └─ (nodes: NodeModel[]) => void   ← the ENGINE's live models, in
+//     │        └─ Dispatch>     ← YOUR intent, out
+//     └─ NodeSpec[]                                        ← plain data, owned by React
+```
+
+      Outbound, you write specs: setNodes updates React state, the new
+      array reaches the nodes prop, and the instance reconciles it into the live
+      model. Inbound, the engine hands back models: the user drags or deletes, the
+      instance emits nodes:change, the flow calls your onNodesChange
+      with NodeModel[], and the hook converts them back to specs
+      (toNodeSpec) and folds them into state. Without that return leg a
+      controlled canvas would snap every dragged node back on the next render — the classic
+      controlled-component trap, closed by construction.
+      The third element goes into onNodesChange — never the
+      second. The tuple keeps the two directions apart on purpose: wiring
+      setNodes where onNodesChange belongs is a type error, because
+      one speaks NodeSpec[] and the other NodeModel[].
+      One timing detail worth knowing: nodes:change fires when nodes are
+      added or removed and when a gesture commits — not per frame during a drag. The
+      core moves the model and the DOM directly mid-gesture; your state is a mirror that
+      catches up at the commit points. Alongside it sit the other event props —
+      onSelectionChange, onConnect, onNodeClick,
+      onEdgeClick — each a direct feed from the instance's event bus.
+
+      
+## Reference diffing: what a new array means
+
+      The controlled props are compared by reference. Internally the flow runs
+      instance.setNodes(nodes) in an effect keyed on the array itself — so a new
+      reference triggers a reconcile of the live model (adds, removes, updates; never a
+      remount), and the same reference is free. A fresh array literal on every render is
+      therefore correct but wasteful: it reconciles on every unrelated render of the
+      parent. Keep the arrays in state (the hooks do exactly this) or memoize them.
+      Two props deliberately break this rule: layout and
+      plugins are compared by value (via their JSON), so inline object
+      literals there never thrash — layout={{ name: 'dagre' }} re-runs only when
+      the value actually changes, which is also why a declarative layout never fights a
+      user's drag.
+
+      
+## The instance is created once — inline callbacks are safe
+
+      createDiagram() runs in a mount effect, once. Every callback prop lives
+      in a ref the component refreshes each render, so a new inline arrow — or a new
+      nodes array, or a toggled fitView — never tears the instance
+      down. This is load-bearing: recreating the instance on a prop change would throw away
+      the camera, the selection and every mounted custom node. The unit test that pins this
+      is blunt about it: re-render with new inline callbacks, assert onInit
+      fired exactly once.
+
+      
+## Reaching the instance: onInit vs useGrafloria
+
+      When the button lives in the same component as the flow, a ref via
+      onInit is the shortest path:
+
+```
+import type { DiagramInstance } from '@grafloria/react';
+
+const inst = useRef(null);
+
+ { inst.current = i; }} />
+ inst.current?.fitView()}>Fit
+```
+
+      When the consumer is a sibling of the canvas — a toolbar, a sidebar, an
+      inspector — wrap both in <GrafloriaProvider> and call
+      useGrafloria() from anywhere inside it. The hook returns the live
+      DiagramInstance, or null until the flow has mounted:
+
+``` App.tsx
+import { GrafloriaProvider, GrafloriaFlow, useGrafloria } from '@grafloria/react';
+
+function Toolbar() {
+  const grafloria = useGrafloria();           // null until  mounts
+  return (
+     void grafloria?.getEngine().undo()}>
+      Undo
+    
+  );
+}
+
+export default function App() {
+  return (
+    
+      
+      
+        
+      
+    
+  );
+}
+```
+
+      Children of <GrafloriaFlow> itself — overlays, panels passed as
+      children — get useGrafloria() with no provider at all:
+      the flow publishes its instance to its own store when none is above it. The provider is
+      only for consumers outside the flow's subtree. Note where undo lives:
+      instance.getEngine().undo() / .redo() — the engine, reached
+      through the instance.
+Live: drag, then undo from a button →
+
+      
+## Subscription hooks
+
+```
+import { useSelection, useOnSelectionChange, useViewport } from '@grafloria/react';
+
+const { nodes: selectedNodes, edges: selectedEdges } = useSelection();  // selection as state
+useOnSelectionChange(({ nodes }) => setInspected(nodes[0] ?? null));    // selection as callback
+const { zoom, x, y } = useViewport();                                   // the live camera
+```
+
+      useSelection renders — use it for an inspector panel that shows the
+      current selection. useOnSelectionChange fires — use it for side effects.
+      Its handler is held in a ref, so the inline arrow everyone writes does not
+      re-subscribe on every render; the test suite spies on instance.on to prove
+      it. useViewport tracks viewport:change — a zoom badge or a
+      hand-rolled minimap is a three-line component.
+
+      
+## Save and load
+
+      For persistence, serialize the model, not your React state — the model is
+      where the truth lives, including everything gestures changed:
+
+``` persistence.tsx
+import { DiagramSerializer } from '@grafloria/element';
+
+// save — plain JSON out of the live model
+const doc = new DiagramSerializer().serialize(instance.getModel());
+localStorage.setItem('diagram', JSON.stringify(doc));
+
+// load, option 1: full fidelity in one line (accepts the JSON string directly)
+import { render, fromDocument } from '@grafloria/element';
+render(fromDocument(saved), hostElement);
+
+// load, option 2: the React way — a kit-spec host component
+import { GrafloriaDiagram } from '@grafloria/react';
+ { /* … */ }} />
+```
+
+      fromDocument accepts the serializer's output, the portable envelope, or
+      the JSON string of either, and returns a spec render() can mount — kit
+      documents (dashboards included) come back with their interactive behavior rewired. For
+      a lighter touch you can also deserialize and feed specs into an existing canvas with
+      instance.setNodes(...) — the save-and-restore demo does exactly that, and
+      also shows the deeper op-log pattern for collaborative documents.
+Live: save, edit, restore →
+
+      
+## SSR: correct before hydration
+
+      Every component in the binding carries 'use client', but
+      <GrafloriaFlow> still renders on the server — all DOM work lives in
+      effects, which never run there, so no typeof window checks and no
+      dynamic() tricks are needed. To ship a correct page rather than an
+      empty box, render the SVG on the server and hand it to the flow:
+
+```
+import { renderToStaticSVG } from '@grafloria/react';
+
+// server:
+const ssr = renderToStaticSVG({ nodes, width: 800, height: 600 });
+
+// client:
+
+```
+
+      The server markup is emitted verbatim (React does not diff inside
+      dangerouslySetInnerHTML), and the mount effect adopts that DOM
+      instead of rebuilding it — the hydration test asserts zero DOM nodes created and zero
+      removed. No flash, no re-layout.
+      Custom nodes are absent server-side. They are framework components, so
+      the server SVG contains the scene graph and an empty HTML layer; your components mount
+      at hydration. Built-in nodes, edges, labels and geometry are all in the server
+      markup.
+      For servers that only need an image of a diagram — reports, previews,
+      caching — skip the component entirely: renderStatic from
+      @grafloria/element is a pure spec-to-SVG function with zero DOM, and two
+      renders of the same spec are byte-identical.
+Live: deterministic headless render →
+
+      
+## Where next
+
+      
+        - Custom nodes in React — the portal mechanism and the NodeProps contract.
+
+        - Dashboards in React — data-first boards with their own handle-based state story.
+
+        - Commands and undo — why every gesture is already undoable.
+
+        - Collaboration — the collab prop joins a CRDT session over any transport.
+
+
+# Dashboards in React (https://grafloria.com/learn/react-dashboards/)
+
+<GrafloriaDashboard> is the dashboard kit with React idioms on top: views declare the whole board as data, the kit wires the 12-column pack grid, drag/resize gestures and undo, and widgetTypes is the nodeTypes pattern applied to widgets.
+
+## Declare the board, mount the component
+
+      A widget is { id, kind, span, rows, data } — plus optional
+      title, pinned, and an explicit cell (x/y).
+      Omit the coordinates and widgets flow in declaration order, wrapping at the column
+      count, so the common case needs no geometry at all. span defaults to 3
+      columns, rows to 1:
+
+``` Board.tsx
+import { GrafloriaDashboard } from '@grafloria/react';
+
+const views = [
+  { id: 'overview', name: 'Overview', widgets: [
+    { id: 'kpi-revenue', kind: 'kpi', span: 3, rows: 1,
+      data: { label: 'Total revenue', value: '$6.81M', delta: 12.4, deltaLabel: 'vs last qtr',
+              spark: [42, 45, 47, 51, 50, 55, 59, 61, 60, 65, 71, 76] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 2, title: 'Revenue trend',
+      data: { series: [{ name: 'Revenue', values: [42, 45, 47, 51, 50, 55, 59, 61, 60, 65, 71, 76] }],
+              labels: ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'] } },
+    { id: 'mix', kind: 'donut', span: 6, rows: 2, title: 'Revenue by region',
+      data: { slices: [
+        { label: 'EMEA', value: 2.9, color: '#3B52D9' },
+        { label: 'AMER', value: 2.4, color: '#94A5F0' },
+        { label: 'APAC', value: 1.5, color: '#059669' },
+      ], centerLabel: '$6.8M' } },
+    { id: 'bars', kind: 'bar', span: 6, rows: 2, title: 'Deals by quarter',
+      data: { bars: [
+        { label: 'Q1', value: 210 }, { label: 'Q2', value: 260 },
+        { label: 'Q3', value: 245 }, { label: 'Q4', value: 292 },
+      ] } },
+  ] },
+];
+
+export default function Board() {
+  return (
+    
+      
+    
+  );
+}
+```
+
+      That renders a working board — drag widgets between cells, resize them from the
+      corner, undo any of it — with real KPI, line, donut and bar widgets drawn from the
+      data above and not a charting library in sight. views is the multi-view
+      (tabbed) form; widgets is the single-view shorthand, and the two props are
+      mutually exclusive.
+Live: the board above →
+
+      
+## The six built-in kinds
+
+      When a widget's kind has no entry in widgetTypes, the
+      kit's built-in painters draw it from your own data — hand-rolled inline
+      SVG, zero dependencies, no sample dataset. The shapes they read:
+
+```
+kind: 'kpi'     data: { label?, value?, delta?, deltaLabel?, spark?: number[] }
+kind: 'line'    data: { series?: number[] | { name?, values: number[] }[], labels?: string[] }
+kind: 'bar'     data: { bars?: { label?, value? }[] }
+kind: 'donut'   data: { slices?: { label?, value?, color? }[], centerLabel?, centerCaption? }
+kind: 'funnel'  data: { stages?: { label?, value? }[] }
+kind: 'table'   data: { columns?: string[], rows?: (string | number)[][] }
+```
+
+      Every field is optional because a widget renderer must never throw — it paints into
+      a live board, mid-gesture, on every reflow — so missing or partial data degrades to an
+      empty-state note instead. A kind nobody knows falls back to a titled
+      placeholder frame, which makes a layout testable before any chart exists. Colors cycle
+      a built-in categorical palette; a per-slice color wins. KPI
+      value is a string on purpose: you pre-format it, so units and currency
+      stay yours.
+
+      
+## Custom widgets: widgetTypes and WidgetProps
+
+      widgetTypes maps a widget kind to a real React component.
+      Components are portal-mounted into the kit's host elements, so hooks, context and
+      state work inside — the exact custom-node idiom, applied to boards. The component
+      receives { widget, data }: the full spec, and its data
+      payload:
+
+``` OrdersCard.tsx
+import { useState } from 'react';
+import type { WidgetProps } from '@grafloria/react';
+
+function OrdersCard({ widget, data }: WidgetProps) {
+  const [expanded, setExpanded] = useState(false);   // real component: state survives gestures
+  return (
+     setExpanded(!expanded)}>
+      {data.title} {expanded ? '▾' : '▸'}
+    
+  );
+}
+
+```
+
+      Kinds with a component render through React; kinds without one fall back to the
+      built-in painters. Mixing both on one board is the normal case, not a trick.
+      In React, custom painting goes through widgetTypes — not
+      options.renderWidget. The wrapper installs its own
+      renderWidget to power the portal mechanism, so a function you pass inside
+      options is shadowed. Reserve options for board behavior and
+      geometry.
+
+      
+## Props: options, activeView, and the mount-once rule
+
+      options carries the board's physics — columns (default 12),
+      gap (default 8), sizing ('fit' squeezes rows into
+      the board height, 'grow' extends the board at rowHeight,
+      default 130), width/height, float (off means
+      gravity packs upward), rtl (mirrors pixels, never cells),
+      responsive (width-driven column count, via columnWidth or
+      named breakpoints) and binder, the escape hatch to the
+      gesture layer below.
+      activeView is the tab pattern: a controlled prop that drives
+      showView, so switching tabs is just re-rendering with a different id —
+      inactive views park off-camera, they are not unmounted.
+      The board mounts once. Like the flow, the component reads
+      views, widgets and options at mount and does not
+      rebuild on prop changes — activeView is the one prop that stays live.
+      After mount, data flows through the handle: widget updates, adds, removals,
+      sizing switches. Changing the views array on a later render does
+      nothing.
+Live: gravity packing, pinning, RTL, responsive columns →
+
+      
+## The handle: your runtime API
+
+      onReady hands you the typed DashboardHandle once the board
+      is live; onLayoutChange mirrors every committed gesture — drag, resize,
+      add, remove — with the affected view's widgets, ready to persist:
+
+``` Handle.tsx
+import type { DashboardHandle } from '@grafloria/element';
+
+const handleRef = useRef(null);
+
+ { handleRef.current = h; }}
+  onLayoutChange={({ viewId, widgets }) => persist(viewId, widgets)} />
+
+// later — everything is a method on the handle:
+const h = handleRef.current!;
+h.widget('kpi-revenue')?.update({ data: { label: 'Total revenue', value: '$7.02M', delta: 3.1 } });
+h.addWidget({ id: 'funnel', kind: 'funnel', span: 4, rows: 2,
+              data: { stages: [{ label: 'Leads', value: 900 }, { label: 'Won', value: 210 }] } });
+h.setSizing('grow');
+h.showView('ops');
+```
+
+      The highlights: widget(id) returns a per-widget handle
+      (update, repaint, resize, moveTo,
+      pin, remove — the destructive ones are single undoable
+      steps, re-pack included). addWidget creates the node and its board
+      membership as one undo step. setSizing / setFloat /
+      setColumns / setRtl flip board behavior live, and
+      refresh() re-reads the boards after an undo/redo or any out-of-band model
+      change. binderOf() is the documented escape hatch to the raw grid
+      binder.
+
+      
+## Persistence: the toJSON round-trip
+
+```
+// save — the whole board as plain data (views, cells, columns, gap, sizing, float, rtl)
+localStorage.setItem('board', JSON.stringify(handle.toJSON()));
+
+// restore — the function seams cannot be serialized, so supply them again:
+import type { DashboardSnapshot } from '@grafloria/element';
+const { views, ...options } = JSON.parse(saved) as DashboardSnapshot;
+
+```
+
+      toJSON() reads the live board, not the authored literal — a
+      sizing mode or column count the user changed after mount is what you get back. And it
+      serializes from the engine's widest cached column layout, so a board squeezed to one
+      column on a phone still saves the 12-column layout its user authored. It is also what
+      JSON.stringify(handle) calls.
+      Exporting a multi-view board? Tabs park inactive views far off-camera,
+      and export() frames the whole model — a two-view board can silently write
+      a ~21,000px document that is almost entirely empty. Scope it:
+      api.export('pdf', { includeIds: handle.exportIds() }). The set includes
+      the view's group, which hand-rolling from toJSON() would drop.
+
+      
+## Dashboard or flow?
+
+      Use <GrafloriaDashboard> when the thing you are building is a
+      board: cells, spans, gravity packing, pinning — and no wires. Widgets are
+      deliberately not connectable (their ports are stripped), and the board has no edges at
+      all. Use <GrafloriaFlow> when nodes connect
+      to nodes — free positions, edges, routing, validation. And if you are rendering any kit
+      spec — erDiagram(...), umlDiagram(...),
+      dashboard(...), DSL text — <GrafloriaDiagram spec={...}>
+      is the one generic host component; <GrafloriaDashboard> is that,
+      plus the React widget idioms.
+
+      
+## Where next
+
+      
+        - Kits — the data-first authoring layer the dashboard kit belongs to.
+
+        - Custom nodes in React — the same portal mechanism, one level down.
+
+        - Commands and undo — why widget add/remove is one Ctrl-Z, not two.
+
+        - Export — PNG, SVG and real vector PDF, with includeIds scoping.
+
+
+# Custom nodes in Vue (https://grafloria.com/learn/vue-custom-nodes/)
+
+A custom node is a named slot. Declaring #node-<type> is the whole opt-in — no flag, no registry call — and what renders inside is real Vue: components, event handlers, your stylesheet. This page is the full mechanics: how the opt-in works, what the slot receives, when it repaints, and how to reach the engine from inside a node.
+
+## The mechanic: a slot per node type
+
+      Give a node a type, declare a slot named after it, and the node's body
+      becomes your template. It still hit-tests, drags, connects and exports like any other
+      node — the engine keeps the geometry; you paint the interior.
+
+``` App.vue
+
+import { GrafloriaFlow } from '@grafloria/vue';
+
+const nodes = [
+  { id: 'a', type: 'card', position: { x: 80, y: 90 },  size: { width: 230, height: 110 },
+    data: { title: 'Build', owner: 'CI', status: 'passing' } },
+  { id: 'b', type: 'card', position: { x: 430, y: 90 }, size: { width: 230, height: 110 },
+    data: { title: 'Deploy', owner: 'CD', status: 'ready' } },
+];
+const edges = [{ id: 'e1', source: 'a', target: 'b' }];
+
+  
+    
+      
+        
+          {{ data.title }}
+          owner: {{ data.owner }}
+          {{ data.status }}
+        
+      
+    
+  
+
+```
+
+Live: slot-defined custom nodes →
+
+      The opt-in rule, quoted from the wrapper source, because the details matter:
+
+``` libs/vue/src/lib/grafloria-flow.ts
+/**
+ * Declaring `#node-` IS the opt-in (the same DX as the Angular
+ * wrapper): specs whose type has an exact slot are flagged `custom`
+ * automatically. Explicit `custom` always wins; the wildcard `#node` slot
+ * renders already-custom nodes but does not flag anything itself.
+ */
+```
+
+      Three consequences worth reading twice:
+      
+        - A node whose type has an exact slot renders through it —
+        nothing else to write.
+
+        - #node (no type) is the wildcard: it catches custom nodes
+        that have no exact slot, but it never opts a node in by itself. To route a node
+        through the wildcard, set custom: true on its spec.
+
+        - An explicit custom on the spec wins in both directions —
+        custom: false keeps a node in SVG even when a matching slot exists.
+
+      
+
+      
+## What the slot receives
+
+      Slot context is { node, data, engine }:
+      
+        - node — the live NodeModel, not a copy. Its setters
+        (setMetadata, setSize, setPosition) write
+        straight into the model.
+
+        - data — the node's data payload
+        ({} when the spec declared none), passed through untouched.
+
+        - engine — the DiagramEngine
+        (the same object instance.getEngine() returns): commands, undo/redo,
+        layout, interaction config.
+
+      
+
+      
+## Reactivity, and how repaints actually work
+
+      Slot content is mounted with Vue's low-level render() into the host
+      element the engine provides in its HTML layer. That makes it real Vue — components
+      mount with their own state and lifecycle, and event handlers are real DOM listeners.
+      But the repaint schedule is the engine's, not Vue's, so it pays to know when
+      the wrapper re-invokes your slot:
+      
+        - On mount — once per custom node, when the engine creates its host.
+
+        - On every nodes:change — which the instance emits on node
+        add and remove only. In-place changes (node:changed) repaint the
+        SVG canvas but do not re-run slots.
+
+      
+      The trap this implies: mutating node.data — or updating a
+      controlled v-model:nodes array in place — does not repaint slot
+      content, because no node was added or removed. A plain interpolation of page-level
+      state inside a slot refreshes only when a repaint happens to run. For content that
+      must stay live, put a component in the slot and let it read from your own
+      reactive source (a store, a reactive map keyed by node.id): a mounted
+      component re-renders itself, on its own schedule, regardless of the canvas.
+
+```
+
+  
+  
+
+```
+
+      
+## Styling and sizing
+
+      The wrapper renders your slot inside a width:100%; height:100% host,
+      and the host is sized to the node's box — so the one rule is: give your slot root
+      height: 100% (and box-sizing: border-box if it has padding),
+      or the card will not fill the node it lives in. The node's footprint itself comes from
+      the spec's size, not from your CSS.
+      Custom nodes render in light DOM, so your app stylesheet — including
+      <style scoped> in the SFC that declares the slot — cascades in
+      directly. No stylesheet import, no shadow-DOM piercing.
+      The canvas itself fills its container, and 100% of zero is a blank page —
+      the component's own root is width:100%; height:100%, so the element you
+      mount <GrafloriaFlow> into must have a real height.
+
+      
+## Ports on custom nodes
+
+      Ports belong to the spec, not to the painter — how the body renders and
+      where edges attach are orthogonal. A custom node you declare no ports for keeps the
+      default four (one per side, deterministic ids <nodeId>__<side>);
+      declare ports to replace them:
+
+```
+const nodes = [
+  { id: 'src', type: 'card', position: { x: 80, y: 90 }, size: { width: 230, height: 110 },
+    data: { title: 'Extract' },
+    ports: [
+      { id: 'out',  side: 'right', type: 'output', dataType: 'number' },
+      { id: 'ctl',  side: 'top',   type: 'input' },
+    ] },
+];
+```
+
+```
+
+   ... 
+
+```
+
+      Typed ports, connection validators and port gating all work unchanged on custom
+      nodes — see Ports & validation. One caveat
+      carries over: connection validators are process-global, so dispose them in
+      onBeforeUnmount.
+Live: typed ports →
+
+      
+## Reaching the model and engine from inside a node
+
+      Because the slot gets the live NodeModel and the engine, a node can
+      carry its own controls. Deletion is one call — it runs through the command layer, so
+      it is a single undoable step, and the removal fires nodes:change, which
+      repaints the remaining slots and (in controlled mode) emits the updated specs:
+
+```
+
+  
+    {{ data.title }}
+    ✕
+  
+
+```
+
+      Undo and redo live on the engine, not the instance:
+      instance.getEngine().undo(). There is no instance.undo() —
+      reaching for one fails silently in an ?. chain, which makes it a
+      long-lived bug rather than a loud one.
+Live: undo/redo from your own buttons →
+
+      
+## Common mistakes
+
+      
+        - No height on the wrapper. The canvas fills its parent; an unsized parent
+        renders nothing.
+
+        - No height: 100% on the slot root. The card floats at the top
+        of an invisible node box.
+
+        - Expecting #node to opt nodes in. The wildcard only renders
+        nodes that are already custom — add custom: true to the spec.
+
+        - Expecting a data mutation to repaint the slot. Slots repaint on
+        add/remove; live content belongs in a component with its own reactive source.
+
+        - instance.undo(). It does not exist; go through
+        getEngine().
+
+        - Doing shape work in a slot that the spec already does. For a styled
+        rectangle, terminal or document shape, shape: { type, fill, stroke }
+        on the spec is cheaper than a custom node — see the
+        shape-based demo for the contrast.
+
+      
+
+      
+## Where next
+
+      
+        - State & data flow in Vue — controlled
+        vs uncontrolled nodes, the emit rules, saving and loading.
+
+        - Dashboards in Vue — the same slot idiom,
+        #widget-<kind>, on the dashboard kit.
+
+        - The model — what a NodeModel really is
+        under the slot.
+
+        - Ports & validation — the port
+        vocabulary your custom nodes inherit.
+
+
+# State & data flow in Vue (https://grafloria.com/learn/vue-state-and-data/)
+
+Two ownership models (default-nodes or v-model:nodes), one reconciler underneath, and a precise contract for what flows back out and when. This page pins down that contract — including the parts that surprise people — then covers the template-ref API, the composables, and save/load.
+
+## Uncontrolled: default-nodes
+
+      The uncontrolled form hands the engine an initial snapshot and steps aside:
+
+```
+
+```
+
+      default-nodes/default-edges are read once, at
+      mount — the wrapper watches only the controlled props, so later changes to these
+      arrays are ignored. The model owns the state from then on; reach it through
+      @init, a template ref, or the composables below. This is the right form
+      for editors where the diagram is the state and your app only needs snapshots.
+
+      
+## Controlled: v-model:nodes
+
+``` App.vue
+
+import { ref } from 'vue';
+import { GrafloriaFlow } from '@grafloria/vue';
+
+const nodes = ref([
+  { id: 'a', position: { x: 0, y: 0 }, size: { width: 100, height: 50 }, label: 'A' },
+]);
+const edges = ref([]);
+
+  
+    
+  
+
+```
+
+      Inbound, every assignment to the ref is reconciled into the model. Outbound, the
+      wrapper subscribes to the instance and emits specs back — but under two rules that
+      are easy to miss and worth quoting from the source:
+
+``` libs/vue/src/lib/grafloria-flow.ts
+inst.on('nodes:change', ({ nodes: next }: { nodes: NodeModel[] }) => {
+  repaintSlots();
+  if (props.nodes !== undefined) emit('update:nodes', next.map((n) => toNodeSpec(n)));
+}),
+```
+
+      
+        - update:nodes is emitted only when the nodes prop is
+        bound. An uncontrolled canvas never emits it — there is no half-controlled mode
+        where you listen without binding.
+
+        - nodes:change fires on add and remove — membership changes,
+        not every mutation. A drag does not stream positions through
+        v-model:nodes frame by frame; the specs you receive on the next
+        membership change carry the then-current positions, because they are projected from
+        the live model at emit time.
+
+      
+      The wrapper's own test suite states the contract as two assertions: pushing a spec
+      into the ref grows the model, and model.removeNode('b') comes back as an
+      emitted spec array of ['a']. Prop in, spec out — that round trip is the
+      whole feature.
+      What flows back is a projection, not the document. toNodeSpec()
+      carries id, type, position, size, selected, data, label, shape and the custom flag —
+      and nothing else: no ports, no metadata, no behavior. v-model:nodes keeps
+      your app state in sync; it is not a save format. For persistence, use
+      snapshot() below.
+
+      
+## The reconciler underneath
+
+      Every controlled update runs through one reconciler: add what is new, update what
+      moved, remove what disappeared. A node whose id persists keeps its live model
+      object — the update path patches position, size, data, label, shape and metadata
+      in place, and never rebuilds ports (those are built once, when the id first
+      appears).
+      That identity-keeping is what makes drags, undo history and selections survive a
+      controlled update. It is also a trap when you re-import: load a second document
+      that happens to reuse ids and the survivors keep their old ports and metadata. The
+      recipe for a genuine fresh start is clear-then-apply:
+
+```
+nodes.value = [];
+edges.value = [];
+await nextTick();          // let the empty lists reconcile first
+nodes.value = importedNodes;
+edges.value = importedEdges;
+```
+
+      (The two-step matters: Vue batches watcher runs, so assigning twice in one tick
+      reconciles only the final value — the clear never happens.)
+
+      
+## The template-ref surface
+
+      The component exposes a small, typed API — everything else goes through the
+      instance:
+
+```
+
+```
+
+```
+const flow = ref();
+
+flow.value.getInstance();                  // the live DiagramInstance
+flow.value.applyLayout('elk');             // or { name: 'dagre', options: {...} }
+flow.value.snapshot();                     // getModel().serialize() — the full document
+flow.value.exportSvg();                    // SVG string (sync)
+await flow.value.exportPdf();              // PDF data: URL
+await flow.value.exportDiagram('png', { scale: 2 });
+flow.value.exportText();                   // Mermaid-compatible text
+flow.value.loadText(text);                 // ...and back in
+flow.value.fitView(40);                    // frame the content, optional padding
+```
+
+      @init hands you the same DiagramInstance the moment it
+      exists — the usual pattern is to stash it for event wiring and engine access
+      (instance.getEngine().undo(), interaction config, layout). Both roads
+      lead to the same object; the ref is just the declarative doorway.
+
+      
+## Siblings: GrafloriaProvider and the composables
+
+      A toolbar or inspector that lives next to the canvas — not inside it — needs
+      the instance without prop-drilling. Wrap both in <GrafloriaProvider>
+      and the flow publishes itself to the nearest provider:
+
+``` App.vue
+
+  
+    
+    
+      
+    
+  
+
+```
+
+``` InspectorPanel.vue
+
+import { useGrafloria, useSelection, useViewport, useOnSelectionChange } from '@grafloria/vue';
+
+const grafloria = useGrafloria();   // ShallowRef — null until the flow mounts
+const selection = useSelection();   // reactive { nodes, edges }
+const viewport  = useViewport();    // reactive { zoom, x, y }
+useOnSelectionChange((change) => console.log(change.nodes.map((n) => n.id)));
+
+  
+    {{ selection.nodes.length }} selected · zoom {{ viewport.zoom.toFixed(2) }}
+  
+
+```
+
+      Every composable is a subscription to the headless instance — no diagram state
+      lives in Vue, and teardown is automatic when the component's scope disposes.
+      useSelection() also seeds itself from the model on attach, so a panel
+      mounted after a selection exists starts correct rather than empty.
+
+      
+## Save and load
+
+      Saving is one call — snapshot() on the ref, or the serializer
+      directly. The result is the full document: nodes, links, ports, groups, metadata.
+
+```
+import { DiagramSerializer } from '@grafloria/element';
+
+const serializer = new DiagramSerializer();
+const json = JSON.stringify(serializer.serialize(instance.getModel()));
+```
+
+      Restoring is where fidelity is decided. The
+      save-and-restore demo deliberately
+      shows the lossy road: it deserializes, then hand-projects each node back to a
+      spec of id/position/size/label and calls setNodes(). That round-trips
+      what it names and silently drops the rest — declared ports come back as the four
+      defaults, metadata is gone. Fine for that demo's plain boxes; wrong for anything with
+      structure.
+      The lossless door is fromDocument(): it feeds the deserialized
+      live models back in untouched — ports, metadata and kit wiring survive — and
+      it is the documented way to reload kit-built diagrams:
+
+```
+import { render, fromDocument } from '@grafloria/element';
+
+render(fromDocument(JSON.parse(json)), hostElement);
+```
+
+      <GrafloriaFlow> has no document prop — its controlled input
+      is specs. Re-declaring specs (clear-then-apply) is enough whenever your app owns the
+      source of truth anyway; reach for fromDocument() + render()
+      when the saved document is the source of truth and nothing may be lost.
+Live: save & restore →
+
+      
+## The controlled-viewer pattern
+
+      The mermaid viewer is the cleanest showcase of controlled mode: parsing happens
+      entirely outside the canvas, and the canvas just renders whatever the refs hold.
+
+``` mermaid-viewer.vue (trimmed)
+import { importDiagramText } from '@grafloria/element';
+
+function renderText(src) {
+  const r = importDiagramText(src);
+  if (r.unsupported) {            // reports its reason instead of throwing
+    nodes.value = []; edges.value = [];
+    status.value = 'unsupported diagram type: ' + r.unsupported;
+    return;
+  }
+  const model = r.diagram;
+  nodes.value = model.getNodes().map((n) => ({
+    id: n.id, label: n.getMetadata('label'),
+    position: { x: n.position.x, y: n.position.y },
+    size: { width: n.size.width, height: n.size.height },
+    shape: n.getMetadata('shape'), style: n.style,
+  }));
+  edges.value = model.getLinks().map((l) => ({
+    id: l.id, source: l.sourceNodeId, target: l.targetNodeId,
+  }));
+}
+```
+
+      Text goes in, specs come out, the reconciler does the diffing — re-parsing edited
+      text updates in place because the ids persist. (And if two parses genuinely mean
+      different diagrams, clear-then-apply, as above.) For quick round trips the template
+      ref has shortcuts: exportText() / loadText().
+Live: Mermaid viewer, fully controlled →
+
+      
+## Where next
+
+      
+        - Custom nodes in Vue — why slot repaints follow
+        nodes:change, and what to do about it.
+
+        - Dashboards in Vue — the dashboard kit's own
+        state story: handle, snapshot, round trip.
+
+        - Commands & undo — what "one undoable
+        step" means in the engine.
+
+        - Mermaid & the DSL — everything
+        importDiagramText() understands.
+
+        - The instance — the full surface behind
+        getInstance().
+
+
+# Dashboards in Vue (https://grafloria.com/learn/vue-dashboards/)
+
+<GrafloriaDashboard> turns a data description of a board — views, widgets, spans — into a live 12-column grid with drag, resize and undo wired in. Six widget kinds render from pure data with no charting library; anything richer is a #widget-<kind> slot, the same idiom as custom nodes on the flow.
+
+## When it's this, and when it's GrafloriaFlow
+
+      The dashboard kit is built on the same engine as the flow canvas, but it is a
+      different contract: widgets live in a pack grid (gravity, pushing, pinning), gestures
+      move and resize cells rather than free coordinates, and widget nodes are made
+      non-connectable — nobody draws an edge between two KPI tiles. Reach for
+      <GrafloriaFlow> when the point is nodes and edges; reach for
+      <GrafloriaDashboard> when the point is tiles on a board.
+
+      
+## A board is data
+
+      This is the Vue demo's board, verbatim — note that the data shapes are yours,
+      pre-formatted by you (the kit never invents numbers or formats your currency):
+
+``` dashboard-builder.vue
+
+import { ref } from 'vue';
+import { GrafloriaDashboard } from '@grafloria/vue';
+
+const tab = ref('overview');
+const views = [
+  { id: 'overview', name: 'Overview', widgets: [
+    { id: 'kpi-revenue', kind: 'kpi', span: 3, rows: 1,
+      data: { label: 'Total revenue', value: '$6.81M', delta: 12.4, deltaLabel: 'vs last qtr',
+              spark: [42, 45, 47, 51, 50, 55, 59, 61, 60, 65, 71, 76] } },
+    { id: 'trend', kind: 'line', span: 6, rows: 2, title: 'Revenue trend',
+      data: { series: [{ name: 'Revenue', values: [42, 45, 47, 51, 50, 55, 59, 61, 60, 65, 71, 76] }],
+              labels: ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'] } },
+    { id: 'mix', kind: 'donut', span: 6, rows: 2, title: 'Revenue by region',
+      data: { slices: [
+        { label: 'EMEA', value: 2.9, color: '#3B52D9' },
+        { label: 'AMER', value: 2.4, color: '#94A5F0' },
+        { label: 'APAC', value: 1.5, color: '#059669' },
+      ], centerLabel: '$6.8M' } },
+    { id: 'bars', kind: 'bar', span: 6, rows: 2, title: 'Deals by quarter',
+      data: { bars: [
+        { label: 'Q1', value: 210 }, { label: 'Q2', value: 260 },
+        { label: 'Q3', value: 245 }, { label: 'Q4', value: 292 },
+      ] } },
+  ]},
+];
+
+  
+    
+  
+
+```
+
+Live: the dashboard builder →
+      Widget geometry: span is columns (default 3), rows is
+      rows (default 1). Omit x/y and widgets flow in declaration
+      order, wrapping at the column count — the common case needs no coordinates at all.
+      pinned: true makes a widget refuse the mover and survive every reflow.
+      Board geometry lives in :options — columns (default 12),
+      gap (default 8), sizing: 'fit' | 'grow',
+      rowHeight (grow mode, default 130), width/height
+      (default 1180 × 660), float, rtl, and a
+      responsive column-count policy. For a single unnamed view,
+      :widgets is the shorthand; when both are given, :views
+      wins.
+
+      
+## The six built-in kinds
+
+      With no slot and no renderer, kind selects one of six built-in
+      painters — hand-rolled inline SVG, zero dependencies. Their data contracts:
+
+```
+kind: 'kpi'    → data: { label?, value?, delta?, deltaLabel?, spark?: number[] }
+kind: 'line'   → data: { series?: number[] | { name?, values: number[] }[], labels?: string[] }
+kind: 'bar'    → data: { bars?: { label?, value? }[] }
+kind: 'donut'  → data: { slices?: { label?, value?, color? }[], centerLabel?, centerCaption? }
+kind: 'funnel' → data: { stages?: { label?, value? }[] }
+kind: 'table'  → data: { columns?: string[], rows?: (string | number)[][] }
+```
+
+      Details that make them production-safe rather than demo-ware: a widget renderer
+      never throws — missing, partial or wrong-shaped data degrades to an empty-state note;
+      a bare number[] is the single-series shorthand for line;
+      kpi.value is a string you pre-format so units stay yours; per-slice
+      color wins over the built-in palette. A kind outside the six
+      falls back to a titled placeholder frame, so a layout is testable before any chart
+      exists.
+
+      
+## Custom widgets: #widget- slots
+
+      Kinds with a matching slot render through it; kinds without one fall back to the
+      built-ins. Slot context is { widget, data } — the widget's declared spec
+      and its data payload:
+
+```
+
+  
+    
+  
+                   
+    …
+  
+
+```
+
+      The same rendering mechanics as flow slots apply: content mounts with Vue's
+      low-level render() into a width:100%; height:100% host, so
+      give the slot root height: 100%. Painting happens when a widget mounts
+      (hosts are reused across re-renders, not repainted per frame) and again whenever the
+      kit repaints a widget — including WidgetHandle.update() below.
+      The wrapper owns the kit's function seams: it installs its own
+      renderWidget (to resolve slots) and onLayoutChange (to emit
+      the event). A renderWidget or onLayoutChange passed inside
+      :options is overwritten — use slots and @layout-change;
+      they are the Vue spelling of those seams.
+
+      
+## Views and v-model:active-view
+
+      Multiple views are the tab pattern: only one is on-camera; the kit parks the others
+      far off-screen. There is no built-in tab bar — your tab strip is ordinary Vue
+      writing one ref, and the wrapper calls showView() for you:
+
+```
+
+  {{ v.name }}
+
+  
+
+```
+
+      On mount the wrapper emits update:activeView with the initial view
+      (honoring a pre-set tab), and @ready hands you the
+      DashboardHandle — the same object getHandle() returns.
+
+      
+## Persisting layout: @layout-change
+
+      After any committed gesture — a drag, a resize, an undo of either — the component
+      emits layoutChange with { viewId, widgets }: the affected
+      view and its widget specs with their current cells. Write it wherever you keep
+      state:
+
+```
+
+function onLayout({ viewId, widgets }) {
+  saveLayout(viewId, widgets);   // specs with live x/y/span/rows
+}
+```
+
+      
+## The handle, live data, and the snapshot round trip
+
+      The template ref exposes two members: getHandle() and
+      snapshot(). The handle is the board's typed façade — views
+      (showView, activeView, fit), live switches
+      (setSizing, setFloat, setColumns,
+      setRtl), widget access (widget(id),
+      widgetsOf(), addWidget() — one undoable step including the
+      re-pack), and refresh() to re-read the boards after an out-of-band
+      undo.
+      Per-widget handles make live data one call — update() replaces the
+      widget's data and repaints it through whatever painter owns it, built-in or slot:
+
+```
+const board = ref();                       // template ref on 
+
+function tick(revenue) {
+  const h = board.value.getHandle();
+  h.widget('kpi-revenue')?.update({ data: { label: 'Total revenue', value: revenue } });
+}
+```
+
+      snapshot() is handle.toJSON(): the whole board as plain
+      data — every option except the function seams, plus the views with their live
+      layout. Values are read from the live board, so a column count or sizing mode
+      the user changed after mount is what you get back. And the output is
+      dashboard() input — the documented round trip:
+
+```
+// save
+const saved = board.value.snapshot();      // DashboardSnapshot — JSON-safe
+
+// restore, the Vue way: the snapshot is the options object
+
+  …
+
+```
+
+      The function seams (renderWidget, onLayoutChange) cannot
+      live in a JSON file and must be re-supplied on the way back in — and in Vue they
+      re-supply themselves: your slots are the painters, so declaring the same slots
+      on the restoring component completes the round trip.
+      Exporting a multi-view board: inactive views are parked far off-camera, and
+      export() frames the whole model — a two-view board can write a
+      ~21,000px, almost entirely empty document with no warning. Scope the export with the
+      handle: api.export('pdf', { includeIds: handle.exportIds() }). The set
+      includes the view's group as well as its widgets; rolling it by hand from
+      toJSON() drops the group.
+
+      
+## Where next
+
+      
+        - Kits — the dashboard kit next to its siblings: ER, UML,
+        stencils.
+
+        - Custom nodes in Vue — the slot mechanics
+        #widget-<kind> inherits, in depth.
+
+        - State & data flow in Vue — the flow
+        component's state contract, refs and composables.
+
+        - Export — formats, scoping and fidelity warnings.
+
+
+# Custom nodes in Angular (https://grafloria.com/learn/angular-custom-nodes/)
+
+One <ng-template grafloriaNode="type"> inside the canvas and every node of that type renders through real Angular — bindings, pipes, components, event handlers. This page is the full mechanics: the context, the auto-opt-in, sizing, ports, and the mistakes that cost an afternoon.
+
+## The idiom, precisely
+
+      A custom node is an ng-template projected into the canvas, tagged with
+      the node type it renders. There is no registry call, no component map, no
+      custom: true flag to remember — the directive's own doc says it best:
+      From the source: "A node whose type matches a template is
+      rendered by THAT template in the HTML layer — full Angular change detection, pipes,
+      directives, and bindings, no string micro-templates and no component registry required.
+      In controlled mode the canvas flags matching specs as custom
+      automatically, so declaring the template is the whole integration."
+
+``` board.component.ts
+import { Component } from '@angular/core';
+import { DiagramCanvasComponent, GrafloriaNodeDefDirective } from '@grafloria/angular';
+
+@Component({
+  selector: 'app-board',
+  imports: [DiagramCanvasComponent, GrafloriaNodeDefDirective],
+  template: `
+    
+
+      
+        
+          {{ data['title'] }}
+          {{ data['assignee'] }}
+          ✕
+        
+      
+
+    
+  `,
+  styles: [`.ticket { height: 100%; box-sizing: border-box; background: #fff;
+    border: 1.5px solid #94A5F0; border-radius: 12px; padding: 10px 14px; }`],
+})
+export class BoardComponent {
+  nodes = [
+    { id: 't1', type: 'ticket', position: { x: 80, y: 90 }, size: { width: 230, height: 110 },
+      data: { title: 'Fix login flow', assignee: 'Nour' } },
+  ];
+  edges = [];
+}
+```
+
+      Both pieces must be in imports: the canvas and
+      GrafloriaNodeDefDirective. Forget the directive and the
+      grafloriaNode attribute matches nothing — the template is silently
+      ignored and the node falls back to its default rendering. That is the single most
+      common "my template does nothing" report.
+Live: ng-template custom nodes →
+
+      
+## The template context
+
+      The directive publishes a typed context (GrafloriaNodeTemplateContext),
+      and ships an ngTemplateContextGuard, so the language service type-checks
+      what you write in the template:
+
+``` grafloria-node-def.directive.ts (shape)
+export interface GrafloriaNodeTemplateContext {
+  $implicit: NodeModel | GroupModel;      // let-node          — the LIVE model object
+  engine: DiagramEngine | undefined;      // let-engine="engine"
+  data: Record;          // let-data="data"   — your payload
+}
+```
+
+      
+        - let-node — the $implicit value: not a copy of your spec
+        but the live NodeModel (or GroupModel for groups). Its
+        id, position and size are current
+        mid-drag, and its tracked setters (setMetadata, setSize)
+        are how external UI edits a node in place.
+
+        - let-data="data" — the free-form payload from the spec's
+        data field. It is typed Record<string, unknown>, so
+        templates read it with index syntax: {{ data['title'] }}, not
+        data.title.
+
+        - let-engine="engine" — the same engine
+        activeEngine() returns; undefined only before the canvas
+        has one. Guard with engine?. and any button in your node can dispatch
+        real operations.
+
+      
+
+      
+## The wildcard template
+
+      <ng-template grafloriaNode> with no value registers under
+      the empty string and becomes the fallback: any HTML-layer node whose type
+      has no exact template renders through it. Exact matches always win. One wildcard plus a
+      few specialised templates is the usual shape of a node palette:
+
+```
+
+  {{ data['question'] }}
+
+  
+  {{ data['label'] ?? node.id }}
+
+```
+
+      
+## How the auto-custom mechanic works
+
+      Grafloria nodes normally paint in the SVG layer; HTML nodes live in a separate
+      HTML layer that shares the same camera. The spec flag custom: true is what
+      routes a node to the HTML layer — and in Angular you almost never write it, because the
+      canvas derives it while syncing your arrays in. The exact rule, from the component
+      source:
+      "Angular-native custom nodes: a spec whose type has an exact
+      <ng-template grafloriaNode="type"> def renders in the HTML layer
+      without the author touching custom — declaring the template IS the opt-in.
+      Explicit custom (either value) always wins; live models pass through."
+      Three consequences worth spelling out:
+      
+        - The match is exact — the wildcard template does not auto-flag anything.
+        A node with no type, or a type with no exact template, stays in the SVG
+        layer unless you set custom: true yourself (at which point the wildcard
+        can render it).
+
+        - custom: false in a spec disables the template for that node,
+        even when the type matches — explicit wins, in both directions.
+
+        - The rewrite happens on the spec on its way into the reconciler; live
+        NodeModel instances you pass through [(nodes)] are never
+        rewritten.
+
+      
+
+      
+## Plain arrays or signals — both are the model
+
+      nodes and edges are model() signals on the
+      component, so [(nodes)] accepts either a plain array property or a
+      signal([...]) on your side; Angular wires the write-back in both cases.
+      Updating a node from outside can therefore go two ways:
+
+```
+// 1 — data-down: hand the canvas a NEW array (the shared reconciler diffs it;
+//     only fields that actually changed are written, nothing else repaints)
+this.nodes = this.nodes.map((n) => n.id === 't1'
+  ? { ...n, data: { ...n.data, title: 'Renamed' } } : n);
+
+// 2 — straight at the live model: tracked setters repaint on the spot
+const node = this.canvas().activeEngine()?.getDiagram()?.getNode('t1');
+node?.setMetadata('title', 'Renamed');
+node?.setSize(320, node.size.height);
+```
+
+Live: editing a live node from outside the canvas →
+
+      
+## Sizing and styling the template root
+
+      The canvas absolutely positions a wrapper div per HTML node at the
+      node's world position, sized to the node's size from the spec —
+      your template is stamped inside that wrapper. Two rules follow:
+      
+        - Give every custom-node spec a real size. The wrapper's width and
+        height come from it; the template does not size the node, the node sizes the
+        template.
+
+        - Make your template root fill the wrapper: height: 100% and
+        box-sizing: border-box (so borders and padding don't overflow the
+        node's hit area). Every shipped demo template starts this way.
+
+      
+      Styling is ordinary Angular styling — the template belongs to your component,
+      so your component's styles and your global stylesheet apply exactly as
+      they would anywhere else. Nothing to import, no style bridge.
+
+      
+## Ports on custom nodes
+
+      Ports are part of the node spec, and they survive the trip to the HTML layer: for
+      each port on an HTML-layer node the canvas renders a small connection handle inside the
+      wrapper — type: 'output' ports become drag sources,
+      type: 'input' ports become drop targets, each positioned on its
+      declared side (shape-aware, in percentages, so they stay put at any
+      zoom):
+
+```
+nodes = [
+  { id: 'step', type: 'ticket', position: { x: 80, y: 90 }, size: { width: 230, height: 110 },
+    data: { title: 'Review' },
+    ports: [
+      { id: 'in',  side: 'left',  type: 'input' },
+      { id: 'out', side: 'right', type: 'output' },
+    ] },
+];
+```
+
+      Connections dragged from these handles run through the same validation pipeline as
+      everywhere else — typed ports, validators, the lot; see
+      ports & validation. To keep ports visible
+      instead of hover-only, the port demos flip the engine's interaction config once the
+      view exists:
+
+```
+ngAfterViewInit() {
+  this.canvas().activeEngine()?.setInteractionConfig({ portVisibility: 'always' });
+}
+```
+
+Live: typed ports →
+
+      
+## Reaching out from inside a template
+
+      Because let-engine and let-node are in scope, a template
+      can carry its own controls — the delete button in the first example is the pattern:
+      read from data, act through engine, address the node by
+      node.id. Anything the engine can do (selection, commands, layout) is one
+      expression away.
+      There are no node/edge click outputs on the canvas component — do not
+      hunt for a (nodeClick). For clicks on the node body, put the handler in
+      your template (it is your DOM). For diagram-level interaction — connections being
+      drawn, selection changing — subscribe to the engine's eventBus; the
+      pattern is in State, signals &
+      tooling.
+
+      
+## Common mistakes
+
+      
+        - GrafloriaNodeDefDirective missing from imports.
+        The attribute matches nothing, the template is ignored, no error is thrown.
+
+        - data.title instead of data['title']. The payload
+        is Record<string, unknown>; the strictly-typed context makes dot
+        access a compile error.
+
+        - No size on the spec / no height: 100% on the
+        root. The node exists but the card renders collapsed or overflows its hit
+        area.
+
+        - custom: false left in a spec. Explicit always beats the
+        template match — the node stays in the SVG layer and the template never runs.
+
+        - Engine work in the constructor. activeEngine() is available
+        from ngAfterViewInit onward; before that it is undefined
+        and template buttons should guard with engine?..
+
+        - No height on the canvas element. The canvas fills its container; an
+        unstyled custom element collapses to zero and your nodes render into nothing.
+
+      
+
+      
+## Where next
+
+      
+        - State, signals & tooling — the
+        two-way bindings, the component methods, the engine escape hatch.
+
+        - Dashboards in Angular — the same template
+        idiom applied to widgets.
+
+        - The model — what a NodeModel actually
+        is.
+
+        - Ports & validation — typed ports and
+        connection rules in depth.
+
+
+# State, signals & tooling in Angular (https://grafloria.com/learn/angular-state-and-tooling/)
+
+Everything on <grafloria-diagram-canvas> is a signal — input(), model(), output(), zero decorators. This page maps the whole surface: the two-way bindings and what they emit, the methods you reach with viewChild, and the engine underneath for everything else.
+
+## Four two-way bindings
+
+```
+
+  [(edges)]="edges"        
+  [(viewport)]="viewport"  
+  [(zoom)]="zoom"          
+  style="display:block; height:100vh" />
+```
+
+      All four are model() signals, which is a statement about who
+      writes: the canvas itself pans, zooms, fits, drags and undoes — so it writes these
+      values back, and model() is what makes the round trip a first-class
+      binding. Bind plain properties or signals on your side; both work. Each
+      model() also gives you the standalone outputs for free:
+      (nodesChange), (edgesChange), (viewportChange),
+      (zoomChange) — each emitting the next value.
+      nodes/edges left unbound means uncontrolled: pass
+      [engine] and mutate the engine yourself. Bound, the canvas reconciles your
+      arrays against the live model with the same shared reconciler the React wrapper uses —
+      only fields that actually differ are written, so re-handing it an equivalent array is
+      free — and engine-side mutations come back out as fresh arrays. One input tunes this:
+      [skipModelUpdate]="true" suspends the inbound half (your arrays
+      stop being pushed in; outbound emissions continue), and flipping it back re-syncs
+      immediately.
+
+      
+## modelChange — the incremental patch
+
+      Alongside the next-array outputs the canvas emits
+      (modelChange): a DiagramIncremental describing precisely
+      which nodes, links and groups were added, removed or modified — produced by the
+      engine's IncrementalCapture, so it replays exactly. It fires for
+      engine-originated changes only: a change you pushed in through
+      [nodes]/[edges] is not echoed back at you. That makes it the
+      right hook for persistence — you save what the user did, never your own writes:
+
+```
+
+```
+
+      Two viewport outputs exist and they are not the same:
+      (viewportChange) — the model() twin — emits the camera rect
+      that the viewport input is, while the legacy
+      (viewportChanged) emits the VISIBLE world rect (the SVG viewBox) after a
+      pan/zoom. Persist the former; use the latter when you need what is actually on
+      screen.
+
+      
+## Component methods via viewChild
+
+      The canvas surfaces the everyday verbs as plain methods. Grab the component once and
+      wire your toolbar:
+
+``` editor.component.ts
+import { Component, viewChild } from '@angular/core';
+import { DiagramCanvasComponent } from '@grafloria/angular';
+
+export class EditorComponent {
+  canvas = viewChild.required(DiagramCanvasComponent);
+
+  // history
+  undo() { void this.canvas().undo(); }
+  redo() { void this.canvas().redo(); }
+
+  // clipboard — each is ONE undo step
+  copy()  { void this.canvas().copySelection(); }
+  cut()   { void this.canvas().cutSelection(); }
+  paste() { void this.canvas().pasteClipboard(); }   // drops at the cursor
+  del()   { void this.canvas().deleteSelection(); }
+
+  // camera
+  zoomIn()  { this.canvas().zoomIn(); }
+  zoomOut() { this.canvas().zoomOut(); }
+  reset()   { this.canvas().resetZoom(); }
+  fit()     { this.canvas().fitToContent(40); }
+  fitSel()  { this.canvas().zoomToSelection(); }
+
+  // persistence & export
+  save() { return this.canvas().snapshot(); }                 // SerializedDiagram | null
+  load(s: SerializedDiagram) { this.canvas().loadSnapshot(s); }
+  text() { return this.canvas().exportText(); }               // Mermaid-compatible
+  parse(t: string) { this.canvas().loadText(t); }
+  png()  { return this.canvas().exportDiagram('png', { scale: 2 }); }
+
+  // layout
+  relayout() { void this.canvas().applyLayout('elk'); }
+}
+```
+
+      undo()/redo() and the clipboard methods return the
+      command's promise — await it when a test (or a spinner) needs to observe the result.
+      The keyboard already drives all of them: ⌘Z, ⌘C/V/X,
+      ⌘0, Shift+1 work with zero wiring.
+      loadSnapshot() does not replace the document — it
+      reconciles into the live diagram (removals included), so the renderer, your
+      event subscriptions and the plugins stay attached to the same model. Saving before
+      any edit and restoring later is exactly two calls.
+Live: undo/redo from your own buttons →
+Live: snapshot & restore →
+
+      
+## The engine escape hatch
+
+      Everything the component does not surface lives one level down.
+      activeEngine() is a computed signal returning the engine in use — the one
+      you bound, or the one the canvas created for controlled mode. It is available from
+      ngAfterViewInit onward:
+
+```
+ngAfterViewInit() {
+  const engine = this.canvas().activeEngine();
+  if (!engine) return;
+
+  engine.canUndo();  engine.canRedo();          // history state — engine-level,
+                                                // there is no component canUndo()
+  engine.selectNodes(['a', 'b']);               // programmatic selection
+  engine.copy();                                // engine clipboard…
+  engine.paste({ offset: { x: 60, y: 60 } });   // …and paste with a delta
+  engine.setInteractionConfig({ portVisibility: 'always' });
+  engine.getDiagram();                          // the live DiagramModel
+}
+```
+
+      canUndo/canRedo deserve the callout: people look for them
+      on the component, but history state belongs to the engine. Disable your toolbar buttons
+      from there.
+Live: engine clipboard round-trip →
+
+      
+## Engine events — the interaction stream
+
+      The canvas deliberately has no per-gesture outputs; the engine's
+      eventBus is the path. The connection lifecycle, for instance, fires
+      connection:start, connection:update (per move, with live
+      validity), connection:port-enter / connection:port-leave
+      (with the rejection reason when a validator vetoed), then exactly one of
+      connection:complete or connection:cancel:
+
+```
+ngAfterViewInit() {
+  const engine = this.canvas().activeEngine();
+  engine?.eventBus.on('connection:complete', (p) => {
+    console.log('wired', p.sourcePortId, '→', p.targetPortId);
+  });
+  engine?.eventBus.on('connection:port-enter', (p) => {
+    if (!p.isValid) console.log('refused:', p.rejectionReason);
+  });
+}
+```
+
+      The event vocabulary and payloads are catalogued in
+      Events & interaction — the bus is
+      framework-agnostic, so everything there applies verbatim.
+Live: the connection lifecycle, logged →
+
+      
+## Toolbars
+
+      Edges come with a floating toolbar built in: it appears on link hover or
+      selection, glued to a fraction along the rendered route, and defaults to
+      delete + insert-node-on-edge. Three inputs control it —
+      [enableLinkToolbar] (default true),
+      [linkToolbarActions] for your own buttons, and
+      [linkToolbarAnchor] (0.5 = midpoint).
+      Nodes: build the toolbar as your own overlay and anchor it with
+      viewportController() — the live world↔screen transform the canvas paints
+      with. worldToClient(x, y, hostRect) converts a world point to client
+      pixels, and onChange fires on every pan/zoom so the overlay re-anchors;
+      it is the same controller the minimap and zoom controls drive, so nothing ever
+      drifts:
+
+```
+const viewport = this.canvas().viewportController();
+const rect = host.getBoundingClientRect();
+const c = viewport.worldToClient(node.position.x + node.size.width / 2, node.position.y, rect);
+toolbar.style.left = (c.x - rect.left) + 'px';
+toolbar.style.top  = (c.y - rect.top) + 'px';
+viewport.onChange(reposition);   // stay glued through pan & zoom
+```
+
+Live: the built-in edge toolbar →
+Live: a node toolbar anchored via viewportController →
+
+      
+## App-wide configuration
+
+      provideGrafloria sets defaults once at bootstrap; explicit inputs on a
+      specific canvas always win:
+
+``` main.ts
+import { bootstrapApplication } from '@angular/platform-browser';
+import { provideGrafloria } from '@grafloria/angular';
+import { DARK_THEME } from '@grafloria/renderer';
+
+bootstrapApplication(AppComponent, {
+  providers: [provideGrafloria({ theme: DARK_THEME })],
+});
+```
+
+      Theme resolution order: canvas-level [theme] → the provided default →
+      the built-in light theme. More in Theming.
+
+      
+## Zoneless, verified
+
+      The binding has no NgZone dependency and no EventEmitter — inputs are
+      signals, outputs are output(), everything the template binds is a signal,
+      and the SVG layer is painted imperatively outside change detection entirely. The
+      component's own test suite mounts, paints and interacts under
+      provideZonelessChangeDetection(), so a zoneless app is a supported
+      configuration, not a hopeful one.
+
+      
+## Where next
+
+      
+        - Custom nodes in Angular — the
+        ng-template idiom in depth.
+
+        - Dashboards in Angular —
+        <grafloria-dashboard> and widget templates.
+
+        - Commands & undo — what a command is and
+        why one gesture is one step.
+
+        - Events & interaction — the full
+        event vocabulary behind the eventBus.
+
+
+# Dashboards in Angular (https://grafloria.com/learn/angular-dashboards/)
+
+A dashboard is data: [views] declares the whole board and the kit wires the 12-column pack grid, drag/resize gestures and undo. <grafloria-dashboard> adds the Angular idioms on top — a two-way active view, a typed handle, and ng-template widgets.
+
+## A board in one binding
+
+``` board.component.ts
+import { Component } from '@angular/core';
+import { GrafloriaDashboardComponent } from '@grafloria/angular';
+
+@Component({
+  selector: 'app-board',
+  imports: [GrafloriaDashboardComponent],
+  template: `
+    
+  `,
+})
+export class BoardComponent {
+  tab: string | undefined = 'overview';
+  views = [
+    { id: 'overview', name: 'Overview', widgets: [
+      { id: 'kpi-revenue', kind: 'kpi', span: 3, rows: 1,
+        data: { label: 'Total revenue', value: '$6.81M', delta: 12.4, deltaLabel: 'vs last qtr',
+                spark: [42, 45, 47, 51, 50, 55, 59, 61, 60, 65, 71, 76] } },
+      { id: 'trend', kind: 'line', span: 6, rows: 2, title: 'Revenue trend',
+        data: { series: [{ name: 'Revenue', values: [42, 45, 47, 51, 50, 55, 59, 61, 60, 65, 71, 76] }],
+                labels: ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'] } },
+      { id: 'mix', kind: 'donut', span: 6, rows: 2, title: 'Revenue by region',
+        data: { slices: [
+          { label: 'EMEA', value: 2.9, color: '#3B52D9' },
+          { label: 'AMER', value: 2.4, color: '#94A5F0' },
+          { label: 'APAC', value: 1.5, color: '#059669' },
+        ], centerLabel: '$6.8M' } },
+      { id: 'bars', kind: 'bar', span: 6, rows: 2, title: 'Deals by quarter',
+        data: { bars: [
+          { label: 'Q1', value: 210 }, { label: 'Q2', value: 260 },
+          { label: 'Q3', value: 245 }, { label: 'Q4', value: 292 },
+        ] } },
+    ]},
+  ];
+}
+```
+
+      That is a complete interactive dashboard: widgets drag and resize on a gravity-packed
+      grid, every committed gesture is one undo step, and each kind above is
+      painted by a built-in renderer. Widgets flow in declaration order, wrapping at the
+      column count — the common case needs no coordinates at all (add x/y
+      to pin a cell explicitly, pinned: true for a tile no reflow may move).
+      As with the canvas: give the element a real height.
+Live: the dashboard builder →
+
+      
+## The component surface
+
+      
+        - [views] — DashboardViewSpec[]: a multi-view (tabbed)
+        board. Each view is { id, name?, widgets, columns?, width?, height? }
+        — the last three override the board geometry per view.
+
+        - [widgets] — DashboardWidgetSpec[]: single-view
+        shorthand. Mutually exclusive with views.
+
+        - [options] — Partial<DashboardOptions>: columns
+        (default 12), gap (default 8), sizing: 'fit' | 'grow',
+        rowHeight, float, rtl, and
+        responsive (derive the live column count from board width — by
+        columnWidth or named breakpoints).
+
+        - [(activeView)] — two-way active view id; the tab pattern.
+
+        - (ready) — emits the typed DashboardHandle once the
+        board is live.
+
+        - (layoutChange) — { viewId, widgets }, mirroring the
+        kit's committed gestures: drag, resize, add, remove.
+
+        - Methods: getHandle() (undefined before first paint) and
+        snapshot().
+
+      
+      A widget spec is small: { id, kind?, span?, rows?, x?, y?, pinned?, data?,
+      title? } — span defaults to 3 columns, rows to 1, and
+      data is your payload, handed back untouched to whatever renders the
+      widget.
+
+      
+## Built-in widget kinds
+
+      Six kinds render with zero code of yours — their data shapes, from the
+      kit's own type declarations:
+
+```
+kind: 'kpi'    → { label?, value?, delta?, deltaLabel?, spark?: number[] }
+                 // headline number; delta paints up/green or down/red; spark = trend line
+kind: 'line'   → { series?: number[] | { name?, values }[], labels?: string[] }
+                 // a bare number[] is the single-series shorthand
+kind: 'bar'    → { bars?: { label?, value? }[] }
+kind: 'donut'  → { slices?: { label?, value?, color? }[], centerLabel?, centerCaption? }
+kind: 'funnel' → { stages?: { label?, value? }[] }   // each stage scaled vs the first
+kind: 'table'  → { columns?: string[], rows?: (string | number)[][] }
+                 // numbers right-align on their own
+```
+
+      Any other kind string gets a titled placeholder frame — useful while a
+      board's data contracts are still settling.
+
+      
+## Custom widgets: ng-template grafloriaWidget
+
+      The node-template idiom, applied to boards. A widget whose kind matches
+      a template renders through it — full Angular change detection, components, pipes and
+      event handlers; kinds without a template fall back to the built-in painters above.
+      grafloriaWidget with no value is the wildcard for any kind without an
+      exact template.
+
+``` orders-board.component.ts
+import { GrafloriaDashboardComponent, GrafloriaWidgetDefDirective } from '@grafloria/angular';
+
+@Component({
+  imports: [GrafloriaDashboardComponent, GrafloriaWidgetDefDirective, OrdersCardComponent],
+  template: `
+    
+      
+        
+      
+    
+  `,
+})
+```
+
+      The context mirrors the node one: $implicit (let-widget)
+      is the full DashboardWidgetSpec, let-data="data" is its
+      payload as Record<string, unknown> — index syntax again. Your
+      template is stamped into a wrapper the component sizes to 100% × 100% of
+      the widget's cell, so a root with height: 100% fills the tile.
+      A widget template runs once per widget when it mounts — the host
+      element is reused across re-renders, not repainted per frame. Design widget components
+      to own their data flow (signals, observables, inputs) rather than expecting the
+      dashboard to re-stamp them.
+
+      
+## Tabs — the active-view pattern
+
+      Multiple views park all but one off-camera; showView frames the chosen
+      one. The component folds that into [(activeView)], so tab buttons are just
+      writes to your own property:
+
+```
+
+  @for (v of views; track v.id) {
+    {{ v.name }}
+  }
+
+```
+
+      On mount, a pre-set activeView is applied; if you left it undefined the
+      component reflects the board's boot view back into the binding (deferred a microtask —
+      writing it in the same change-detection pass would be NG0100).
+Live: grids, float, RTL, responsive columns and pinning — one tab each →
+
+      
+## Persistence: layoutChange + the snapshot round-trip
+
+```
+
+```
+
+      (layoutChange) fires after any committed gesture with the view whose
+      layout changed — the natural autosave hook. For whole-board persistence,
+      snapshot() returns the handle's toJSON(): every
+      DashboardOptions field except the function seams
+      (renderWidget, onLayoutChange), read from the live
+      board — a column count or sizing mode the user changed after mount is what you get
+      back. Feed it back to [views]/[options] and the identical
+      board rebuilds; that is the kit's round-trip contract.
+      Beyond that, the DashboardHandle from (ready) is the
+      live-control surface: showView, addWidget (creates the node
+      and commits it as one undoable step), setColumns / setRtl /
+      setSizing / setFloat live switches, metrics(),
+      refresh() after out-of-band mutations, and
+      exportIds(viewId) — the node ids one view occupies, for scoping an export
+      to a single board instead of the whole multi-view model.
+
+      
+## Dashboard or canvas?
+
+      Both render through the same engine — which is why dashboard gestures are undoable
+      and boards serialize like any diagram. Choose by what the user manipulates:
+      
+        - <grafloria-dashboard> when the content is widgets on a
+        grid: cells, spans, gravity packing, pinning, RTL, responsive columns. You give up
+        free placement and get layout discipline for free.
+
+        - <grafloria-diagram-canvas> when the content is a
+        graph: nodes anywhere, edges, ports, routing, layout algorithms. See
+        Custom nodes in Angular.
+
+      
+      The kit family — dashboards, ER, UML — shares this data-first shape; the
+      framework-agnostic story is in Kits.
+
+      
+## Where next
+
+      
+        - Kits — dashboard(), erDiagram(),
+        umlDiagram() from plain data, in any framework.
+
+        - State, signals & tooling — the
+        canvas-side binding surface this page builds on.
+
+        - The model — what those widget nodes really are
+        underneath.
+
+
+# Custom nodes in plain JavaScript (https://grafloria.com/learn/javascript-custom-nodes/)
+
+A custom node is a box the engine drives and you fill. Two ways to fill it — a registered renderer function, or a <template> that needs no JavaScript at all — and one stylesheet: yours, because the canvas renders in light DOM.
+
+## The mental model
+
+      A node that opts in with custom: true does not render as SVG. The
+      instance creates an absolutely-positioned host element in the HTML layer —
+      <div class="grafloria-node-host" data-node-id="…"> — keeps its
+      left/top/width/height glued to the model, and hands it to your renderer
+      exactly once. Everything around the box stays the engine's job: selection, dragging,
+      hit-testing, ports and wires are painted by the SVG layer as for any stock node.
+
+      
+## The renderer function
+
+``` main.js
+import { Grafloria, render } from '@grafloria/element';
+
+// (node: NodeModel, element: HTMLElement) => void — register (or replace) globally
+Grafloria.registerNodeType('card', (node, el) => {
+  el.innerHTML = `
+    
+      ${node.getData('title')}
+      ${node.id}
+    `;
+});
+
+render({
+  nodes: [{ id: 'a', type: 'card', custom: true,
+    position: { x: 80, y: 90 }, size: { width: 230, height: 110 },
+    data: { title: 'Build' } }],
+}, '#canvas');
+```
+
+      The renderer receives the live NodeModel: read the payload with
+      node.getData('title') (spec data lands there key by key),
+      plus node.id and node.getMetadata(…). The same registry
+      serves both front doors — render() and
+      <grafloria-flow> resolve types from it identically.
+      When does it run? Once, at mount. The source states the contract
+      plainly: "renderCustomNode fires only when the element is created" — it is a
+      mount hook, not a data binding. Dragging, panning, zooming and selection never re-run
+      it (the engine moves the host, your DOM rides along), and neither does a later change
+      to node.data. If content must update, you own that: keep a reference to
+      the elements you created, or repaint from your own event handler. The
+      dashboard kit wraps this pattern for you as
+      widget.update() / widget.repaint().
+      Register before you render. A node whose type has no renderer and no
+      template mounts an empty host — deliberately: "leave the host empty rather
+      than throwing inside a render. The node still exists, is selectable and is
+      draggable." Registering afterwards does not back-fill hosts that already mounted.
+
+      
+## custom: true is the opt-in
+
+      Plain JavaScript is the surface where the flag is always explicit. It maps to the
+      model's useHTMLLayer metadata — the renderer's signal to build an HTML
+      host instead of an SVG body. Omit it and the node paints as a stock SVG node: your
+      renderer is simply never consulted, with no warning, because a non-custom node of
+      type 'card' is perfectly legal.
+
+      
+## The zero-JavaScript path: 
+
+      Slotted inside the element, a template makes a custom node with no build step and
+      no script — the CMS / notebook / static-page path:
+
+``` index.html
+
+  
+    
+      
+      
+    
+  
+
+```
+
+      The template is cloned per node, and every [data-field="key"]
+      descendant is filled from node.data[key]. One special case:
+      data-field="id" fills from node.id rather than the data
+      bag. A missing or null value becomes an empty string, never the text
+      "undefined".
+      Values are written with textContent, never
+      innerHTML — in the source's words: "a diagram's data
+      is frequently user-supplied, and a template engine that injected raw HTML here would
+      be an XSS vector in every host that embeds us." The test suite pins this down: a
+      data.title of <img src=x onerror=…> arrives on screen
+      as literal text, not as an element. The same stance applies to your renderer
+      functions — the engine hands you a raw host precisely so <svg> and
+      <canvas> work, which means innerHTML with
+      user-supplied data is your XSS to avoid. Interpolate untrusted values via
+      textContent.
+      Precedence: a registered renderer wins over a template. The element checks
+      the registry first and only then looks for a matching template — so a page can ship a
+      template fallback and an app can override it later without touching the markup.
+Live: custom node demos →
+
+      
+## Styling: your stylesheet already applies
+
+      The element renders in light DOM on purpose. From the source: "the
+      diagram's stylesheet is injected into <head> and its CSS variables
+      cascade — a shadow root would cut both off, and hosts routinely want to style nodes
+      from their own stylesheet." So a custom node is styled like any other markup on
+      the page:
+
+``` app.css
+.card { height: 100%; border: 1px solid #d8dce6; border-radius: 9px;
+  background: #fff; padding: 10px 12px; font-family: system-ui; }
+.card h4 { margin: 0; font-size: 14px; }
+.grafloria-node-host[data-node-id="n1"] .card { border-color: #3b52d9; }
+```
+
+      See Theming for the theme object and the token bridge —
+      theme = the room, your node CSS = the furniture.
+
+      
+## Ports on custom nodes
+
+      Port machinery is untouched by custom: true. A spec-built node gets
+      the four default bi-directional side ports with deterministic ids
+      (<nodeId>__top, __right, __bottom,
+      __left), or exactly the ports: [{ id, side, type, dataType }]
+      you declare — port glyphs and wires paint in the SVG layer, above and around your
+      HTML. A node that should not be wired (a dashboard tile, a legend) opts out on
+      the model, which is exactly what the dashboard kit does for every widget:
+
+```
+const n = api.getModel().getNode('a');
+n.setBehavior({ connectable: false });                  // refuses link ends, no hover glyphs
+for (const p of [...n.getPorts().values()]) n.removePort(p.id);   // and says so in the model
+```
+
+      Validation and typed ports work as everywhere else — see
+      Ports & validation.
+
+      
+## Common mistakes
+
+      
+        - Top-level x/y. Node geometry is
+        position: { x, y } (plus size: { width, height }) —
+        there is no top-level x/y on a node spec.
+
+        - Forgetting custom: true. The renderer is never called and
+        the node paints as a stock SVG node — silently.
+
+        - Registering after mounting. Hosts that mounted while the type was
+        unknown stay empty. Register first, then render().
+
+        - innerHTML with user data. The template path refuses to do
+        this for you; do not undo that in a renderer. textContent for anything
+        a user typed.
+
+        - Expecting a re-render on data change. Mount-once is the contract.
+        Update the DOM you own, or use the dashboard kit's widget handles.
+
+        - Styling the host itself. The host's inline left/top/width/height
+        is rewritten by the engine every frame — style a child (.card above),
+        not .grafloria-node-host's geometry.
+
+      
+
+      
+## Where next
+
+      
+        - The element vs render() — which
+        front door your custom nodes ride through, and everything each one offers.
+
+        - Dashboards in plain JavaScript — custom
+        HTML nodes at scale, with update/repaint handles built in.
+
+        - Ports & validation — typed ports and
+        connection rules on any node, custom or stock.
+
+
+# The element vs render() — choosing your door (https://grafloria.com/learn/javascript-element-vs-render/)
+
+Both doors open onto the same DiagramInstance. The element speaks HTML — attributes in, DOM events out, dispose on disconnect. render() speaks JavaScript — spec in, instance out, every option on the table. This page is the full contract of each, so the choice is mechanical.
+
+## Same engine, two grips
+
+      
+        |  | <grafloria-flow> | render(spec, target, options) |
+
+        | Input | JSON attributes, or properties | A spec object (or its JSON string), incl. kit specs |
+
+        | Output | Bubbling DOM CustomEvents | The DiagramInstance, returned |
+
+        | Options | The attribute set below | Everything createDiagram() takes |
+
+        | Teardown | Automatic on disconnect | api.dispose(), yours to call |
+
+        | The instance | el.diagram (the escape hatch) | The return value |
+
+      
+      The element's own doc states why it exists: "React Flow serves React. ngx-vflow
+      serves Angular. Each is a wall around one framework. A custom element has no wall:
+      Vue, Svelte, Solid, Lit, Alpine, plain HTML, a CMS block, a Jupyter/Observable cell
+      and a static site all speak 'HTML element with attributes and events'." And
+      render() is "the Mermaid-shaped top-level API" — one function, no
+      build step, returning "the same DiagramInstance every wrapper binds
+      to, so the 'tiny API' is not a lesser one — it is the whole engine, addressed in one
+      call."
+
+      
+## The element: attributes
+
+      
+        | Attribute | After mount | Semantics |
+
+        | nodes, edges | live | JSON arrays; a change reconciles into the running diagram |
+
+        | theme | live | "light" | "dark" (strings only here); swaps in
+          place — the SVG is patched, not remounted. Unknown values fall back to light. |
+
+        | fit-view | live | Boolean by presence; setting it after mount re-frames the content |
+
+        | zoom | live | Number; drives viewport.setZoom() when changed |
+
+        | readonly | mount-time | Boolean by presence; blocks every mutating gesture but still pans and zooms |
+
+        | pan, wheel-zoom | mount-time | Opt-out booleans: on by default, disabled only by the literal value
+          "false" |
+
+        | min-zoom, max-zoom | mount-time | Numbers; camera clamp |
+
+      
+      The mount-time five are read once, deliberately: "they configure the event
+      binder, which is created once. Changing them afterwards is rare enough that we do not
+      tear the instance down."
+      Malformed JSON never takes the page down. A bad
+      nodes/edges attribute logs
+      [grafloria-flow] ignoring malformed JSON attribute: … and falls back to an
+      empty array — the element still mounts a working (empty) canvas. There is a test that
+      feeds it {{{ not json to keep this true.
+
+      
+## The element: properties and methods
+
+```
+const el = document.querySelector('grafloria-flow');
+
+el.nodes = bigGraph.nodes;      // the RICH path — real objects, no JSON round-trip
+el.edges = bigGraph.edges;      // (what Vue/Svelte/Solid template bindings target)
+
+el.fitView(40);                 // the one convenience method
+
+el.diagram                      // the DiagramInstance — the escape hatch to everything:
+el.diagram.getModel();          //   the data
+el.diagram.getEngine();         //   commands, undo, layout, validation
+el.diagram.renderNow();         //   force a synchronous paint
+```
+
+      There is no el.render(). Attribute and property writes
+      reconcile the model and the scheduler paints on the next frame; when you must measure
+      the DOM immediately after a change, go through the instance:
+      el.diagram.renderNow().
+      The reconciler keeps live objects for ids that persist. Setting
+      el.nodes (or api.setNodes()) adds what is new, patches what
+      exists and removes what disappeared — an existing id keeps its live
+      NodeModel. That is what you want for incremental updates; it is
+      not what you want when the new array carries freshly built models under old
+      ids. The Mermaid-viewer demo documents the trap: "the reconciler treats a live
+      model as 'already here' and leaves the existing object alone, so re-applying edited
+      text would otherwise keep the STALE nodes for every id that still exists." The
+      fix is clear-then-apply: setNodes([]), then setNodes(next).
+Live: the clear-then-apply reconciler in the Mermaid viewer →
+
+      
+## The element: all eight events
+
+      Instance events are forwarded as CustomEvents that bubble and
+      are composed — they cross shadow boundaries, so a listener on
+      document works (the test suite proves exactly that):
+      
+        | Event | e.detail |
+
+        | grafloria-ready | { diagram } — the instance |
+
+        | grafloria-nodes-change | { nodes: NodeModel[] } |
+
+        | grafloria-edges-change | { edges: LinkModel[] } |
+
+        | grafloria-selection-change | { nodes, edges } |
+
+        | grafloria-connect | { link: LinkModel } |
+
+        | grafloria-node-click | { node, world: { x, y } } |
+
+        | grafloria-edge-click | { edge, world: { x, y } } |
+
+        | grafloria-viewport-change | { viewport, zoom } |
+
+      
+
+```
+el.addEventListener('grafloria-connect', (e) => save(e.detail.link));
+el.addEventListener('grafloria-nodes-change', (e) => persist(e.detail.nodes));
+```
+
+      The instance itself emits a few more (reconnect,
+      node:doubleclick) — subscribe on el.diagram.on(…) for
+      those. And teardown is automatic: disconnecting the element disposes the
+      diagram — after el.remove(), el.diagram is
+      null and the DOM is gone. Re-connecting mounts fresh.
+
+      
+## Renaming the tag
+
+```
+import { Grafloria } from '@grafloria/element';
+Grafloria.define('acme-flow');       // same class, your tag name
+```
+
+      Importing the package already registers <grafloria-flow> for you;
+      define() is idempotent and "safe to call on the server (where
+      customElements does not exist)". The class itself is guarded the
+      same way, so importing the bundle in Node or a Web Worker throws nothing.
+
+      
+## render(spec, target, options)
+
+```
+import { render, DARK_THEME } from '@grafloria/element';
+
+const api = render(
+  { nodes: [...], edges: [...] },   // or the JSON string of it, or a kit spec
+  '#canvas',                        // an element, or a CSS selector
+  { theme: DARK_THEME, fitView: true }
+);
+```
+
+      The contract, point by point:
+      
+        - Target — an element or a selector; no match throws
+        Grafloria.render: no element matched … rather than failing silently.
+
+        - Spec — an object or its JSON string. A kit spec is a render spec:
+        render(dashboard({…}), host) and render(erDiagram({…}), host)
+        are the documented one-liners, and a kit's finalize(api) runs
+        automatically so the diagram is fully wired from one call
+        (see Kits).
+
+        - Custom nodes — resolved with the precedence "explicit option >
+        spec > registry": your options.renderCustomNode outranks a kit
+        spec's own painter, which outranks
+        registered node types.
+
+      
+      The scope, quoted rather than paraphrased: "spec is
+      data (an object or its JSON), not a Mermaid-style text DSL. The engine does have a
+      DSL, but wiring it in is a separate card — render() is the embedding
+      surface, not a parser." Mermaid text goes through
+      api.loadText() / importDiagramText() — see
+      Mermaid & the text format.
+      Options are everything createDiagram() accepts except
+      nodes/edges. The ones you will actually reach for:
+      
+        - theme, colorMode ('system' follows the
+        OS), tokenBridge — see Theming.
+
+        - fitView, zoom, minZoom,
+        maxZoom, viewport — the camera.
+
+        - readonly, enablePan, enableZoom,
+        zoomSensitivity, dragThreshold — the gesture binder
+        (the element's mount-time attributes are exactly these).
+
+        - interaction — passed through to the engine's interaction config.
+
+        - renderer — the full renderer config "for every knob the
+        ergonomic fields above do not name": floating connection points, parallel
+        links, channel nudging, link hit-area width.
+
+        - renderCustomNode / removeCustomNode — the custom-node
+        hook pair; a painter that draws later (fetch, rAF, web font) should return its
+        promise, which is what lets await api.export(…) wait for exactly
+        the widgets that were not done.
+
+      
+      And the pieces people look for on the instance: undo lives on the engine
+      (await api.getEngine().undo() — ⌘Z is already wired), layout too
+      (await api.getEngine().layout('elk')), and plugins attach with a plain
+      static import — import { attachCanvasPlugins } from '@grafloria/element',
+      then attachCanvasPlugins(api, { minimap: true, controls: true }). The
+      full surface is in The DiagramInstance.
+
+      
+## So: which door?
+
+      
+        - The element, when the page is the platform: a CMS block, a static site,
+        a notebook cell, a framework without a first-class binding — anywhere "HTML in,
+        events out, cleanup on removal" is the natural shape, and the JSON-attribute
+        ceiling (plus el.diagram for everything above it) is acceptable.
+
+        - render(), when you are writing application code: you want
+        the instance in hand from line one, the full options surface, kit specs, and
+        explicit control of disposal.
+
+      
+      It is not a fork in the road. el.diagram is the instance
+      render() returns, so code written against one door runs unchanged behind
+      the other.
+
+      
+## Where next
+
+      
+        - The DiagramInstance — the shared surface both
+        doors hand you.
+
+        - Custom nodes in plain JavaScript —
+        renderers and templates over either door.
+
+        - Events & interaction — the event
+        model beneath the eight DOM events.
+
+
+# Dashboards in plain JavaScript (https://grafloria.com/learn/javascript-dashboards/)
+
+A dashboard is declared, not assembled: you write what the board is — views, widgets, spans — and render() wires the pack grid, drag/resize with live push, fit/grow, pin and one-undo-per-gesture. This page is the whole contract: every option, every widget kind, the live handle, and the save/load round trip.
+
+## One call, a working board
+
+``` board.js
+import { render, dashboard } from '@grafloria/element';
+
+const SPEC = dashboard({
+  columns: 12,
+  sizing: 'fit',
+  views: [{
+    id: 'overview', name: 'Overview',
+    widgets: [
+      { id: 'rev',   kind: 'kpi',   span: 3, rows: 1,
+        data: { label: 'Total revenue', value: '$6.81M', delta: 12.4, spark: [42,45,51,61,76] } },
+      { id: 'trend', kind: 'line',  span: 8, rows: 2, title: 'Revenue vs target',
+        data: { series: [{ name: 'Revenue', values: [420,455,512,588,648] }], labels: ['Jan','Feb','Mar','Apr','May'] } },
+      { id: 'mix',   kind: 'donut', span: 4, rows: 2, pinned: true, title: 'By region',
+        data: { slices: [{ label: 'EMEA', value: 1920 }, { label: 'APAC', value: 1340 }] } },
+    ],
+  }],
+});
+render(SPEC, document.getElementById('canvas'));
+const H = SPEC.handle;                 // the live handle — every edit goes through it
+```
+
+      dashboard() returns a render spec (nodes,
+      edges, renderCustomNode, finalize) plus the
+      handle; render() runs the finalize for you —
+      the same pattern as every kit.
+
+      
+## The options, in depth
+
+      
+        | Option | Default | What it does |
+
+        | columns | 12 | Column count for every view (a view can override) |
+
+        | gap | 8 | Gap between widgets and the board padding, px |
+
+        | sizing | 'fit' | 'fit' keeps the board at its design height and squeezes rows —
+          nothing falls below the fold; 'grow' keeps the row height and
+          extends the board downward |
+
+        | rowHeight | 130 | Row height in 'grow' mode, px |
+
+        | width, height | 1180 × 660 | Board size, px |
+
+        | float | false | Off = gravity packs widgets upward, no holes; on = widgets sit wherever you
+          drop them, gaps are legal |
+
+        | rtl | false | Column x=0 renders at the right edge. Cells are untouched
+          — the same widgets array describes the same layout in both
+          directions, only the pixels mirror |
+
+        | responsive | — | Derive the live column count from the board's width:
+          { columnWidth: 100 } or
+          { breakpoints: [{ w: 480, c: 1 }, { w: 900, c: 6 }] }. Runs through
+          the engine's per-column layout cache, so narrowing and widening back
+          restores the wide layout exactly |
+
+        | views / widgets | — | Mutually exclusive. views is the tab pattern (only one on
+          camera); widgets is shorthand for a single unnamed view |
+
+        | renderWidget | built-ins | Your chart painter — called once per widget when it mounts; the host
+          is reused across re-renders, so this is not a per-frame hook |
+
+        | onLayoutChange | — | "Fires after any committed gesture, with the view whose layout
+          changed" — the persistence hook |
+
+        | binder | — | Extra options merged into the grid binder underneath — the escape hatch to
+          the layer below (drag-out-to-remove zones, palette drop-in, gesture callbacks) |
+
+      
+
+      
+## The widget spec
+
+```
+{ id: 'trend',        // required
+  kind: 'line',         // free-form string handed to renderWidget (built-ins below)
+  span: 8, rows: 2,     // cell spans — defaults 3 and 1
+  x: 0, y: 1,           // explicit cell — OMIT and widgets flow in declaration
+                        // order, wrapping at the column count
+  pinned: true,         // never pushed, refuses the mover, survives every reflow
+  title: 'Revenue',     // used by the built-in renderers' header
+  data: { ... } }       // your payload — passed straight back to renderWidget
+```
+
+      Mixing works: one widget with an explicit cell, the rest flowing around it — the
+      flagship demo's Pipeline view does exactly that.
+
+      
+## The six built-in kinds
+
+      Write no renderWidget and the kit draws the declared
+      kind from your own data in hand-rolled inline SVG — no charting
+      dependency, no sample dataset, and a renderer "must never throw: it paints into a
+      live board, mid-gesture, on every reflow" — bad or missing data degrades to an
+      empty-state note. The contracts, with shapes straight from the flagship demo:
+
+```
+kpi:    { label: 'Total revenue', value: '$6.81M',   // value is YOUR formatting
+          delta: +12.4, deltaLabel: 'vs last qtr',    // signed % — up/green, down/red
+          spark: [42, 45, 47, 51, 55, 61, 76] }       // oldest → newest
+
+line:   { series: [{ name: 'Revenue', values: [420, 455, 512] },
+                  { name: 'Target',  values: [400, 430, 465] }],
+          labels: ['Jan', 'Feb', 'Mar'] }             // a bare number[] also works
+
+bar:    { bars: [{ label: 'North America', value: 2860 }, { label: 'EMEA', value: 1920 }] }
+
+donut:  { slices: [{ label: 'EMEA', value: 1920, color: '#14b8a6' }],
+          centerLabel: '$6.73M', centerCaption: 'total' }
+
+funnel: { stages: [{ label: 'Lead', value: 1200 }, { label: 'Qualified', value: 820 }] }
+
+table:  { columns: ['Rep', 'Deals', 'Revenue'],
+          rows: [['A. Farouk', 38, '$1.24M'], ['M. Haddad', 31, '$0.98M']] }
+```
+
+      Any other kind falls back to a titled placeholder frame, so a layout
+      is testable before any chart exists.
+
+      
+## Your own charts: renderWidget
+
+```
+import { dashboard, defaultWidgetRenderer } from '@grafloria/element';
+
+dashboard({
+  views,
+  renderWidget: (widget, host) => {
+    defaultWidgetRenderer(widget, host);      // let the kit draw the card + chart…
+    host.firstElementChild.classList.add('my-chrome');   // …then decorate it
+    host.onclick = () => select(widget.id);
+  },
+});
+```
+
+      The seam is deliberate — the kit "hands you the widget and a raw HTML host (the
+      renderer's custom-node path, which unlike metadata.html is not
+      sanitised, so real <svg>/<canvas> is fine)".
+      Composing with defaultWidgetRenderer first is exactly how the flagship
+      demo adds its focus ring and pin marker. And because the board renders in light DOM,
+      the cards are styled by your page stylesheet like any
+      custom node.
+
+      
+## The live handle
+
+      Every runtime edit is one call on SPEC.handle — no commands to
+      sequence, no models to build:
+
+```
+H.views                      // view ids, in declaration order
+H.activeView                 // the one on camera
+H.showView('sales');         // the tab switch — others park off-camera, camera re-frames
+
+const w = H.addWidget({ kind: 'bar', span: 6, rows: 2, data: {...} });
+// CREATES the node, wires its metadata, commits node + membership as ONE undoable
+// step, auto-positions into the first free hole when the spec names no cell
+
+H.setSizing('grow');  H.getSizing();     // the two toolbar toggles, live
+H.setFloat(true);     H.getFloat();
+H.setColumns(6);      H.getColumns();    // per-column layout CACHE: shrink then grow
+                                         // back restores the wide layout; an explicit
+                                         // call PINS the count against `responsive`
+H.setRtl(true);       H.getRtl();
+H.refresh();                 // re-read the boards after undo/redo or out-of-band edits
+H.fit();                     // re-frame the camera on the active view
+H.metrics();                 // live geometry: columns, gap, rows, rowHeight, frame
+H.exportIds();               // the ids ONE view occupies — for scoped export
+H.binderOf();                // the documented escape hatch to the grid binder
+H.dispose();
+```
+
+      Per-widget, H.widget(id) returns a WidgetHandle:
+
+```
+const w = H.widget('trend');
+w.cell; w.rect; w.spec; w.node;          // where it is, what it is
+await w.resize(6, 3);                    // in CELLS — resolves true when accepted
+await w.moveTo(0, 2);                    //             …the board may refuse
+w.pin();  w.pinned;                      // locked: never pushed, drags refused
+w.bringToFront();  w.sendToBack();       // one undoable step each
+w.update({ data: nextData });            // replace data (and title/kind) and repaint
+w.repaint();                             // re-run renderWidget after your data changed
+w.remove();                              // ONE undoable step incl. the survivors' re-pack
+```
+
+      Undo is already wired. Drags, resizes, adds and removes each land as
+      one undoable step on the engine's command stack — ⌘Z works, and buttons go through
+      api.getEngine().undo(). After an undo/redo call H.refresh()
+      so the grid and the model agree again. See
+      Commands & undo.
+      Exporting a board? Scope it. Tabs park inactive views far off-camera,
+      and export() frames the whole model — "a two-view board writes a
+      ~21,000px document that is almost entirely empty — with no warning, because nothing
+      is technically wrong." Pass { includeIds: H.exportIds() }; the set
+      includes the view's group as well as its widgets, which a hand-rolled id list from
+      toJSON() would drop.
+
+      
+## Saving: the round trip
+
+      H.toJSON() returns the whole board as plain data — and that data
+      is valid dashboard() input:
+
+```
+// save — everything except the function seams
+const snapshot = H.toJSON();   // views + cells + columns, gap, rowHeight,
+                               // sizing, float, rtl — read from the LIVE board,
+                               // so a mode the user changed is what you get back
+
+// …later: a true round trip. renderWidget cannot be written to a file,
+// so it is supplied again on the way back in:
+const SPEC2 = dashboard({ ...snapshot, renderWidget });
+render(SPEC2, host);
+```
+
+      Two properties worth knowing. First, cells serialise from the engine's
+      largest cached column count — "a board currently squeezed to 1 column
+      still writes out the 12-column layout its user authored": saving on a phone
+      saves the desktop layout. Second, JSON.stringify(H) calls the same
+      toJSON(), so there is no partial-answer footgun.
+      The persistence hook completes the pattern:
+
+```
+dashboard({
+  views,
+  renderWidget,
+  onLayoutChange: (viewId, widgets) => {
+    // after every committed gesture — save the WHOLE board, not just the view
+    localStorage.setItem('board', JSON.stringify(SPEC.handle.toJSON()));
+  },
+});
+```
+
+      There is also a second, document-level round trip: serialise the entire diagram
+      with DiagramSerializer and load it with
+      fromDocument(json, { renderWidget }) — the loaded spec carries the
+      same DashboardHandle, rebuilt by the same builder, so
+      showView/addWidget/toJSON all work on the
+      reload. Two carried limits, both because the datum is not in the document:
+      responsive is a runtime seam and is never serialised, and
+      renderWidget/onLayoutChange are functions — pass
+      renderWidget to fromDocument again or the reload silently
+      drops your chrome.
+
+      
+## What a board is underneath
+
+      No magic: each view is a GroupModel whose chrome is suppressed with
+      frameChrome: 'none' — a frameless group, the pure layout
+      container from Groups. Each widget is a custom HTML node
+      (custom: true, unconnectable, ports stripped — a widget is not a wiring
+      endpoint), and the board geometry that turns cells into pixels is persisted as group
+      metadata so a saved document can rebind its grid. Which is why everything else on
+      this site — export, collaboration, commands — works on dashboards unchanged.
+Live: the dashboard builder — tabs, palette, versions →
+Live: grid options — nesting, responsive columns, RTL, pinning →
+
+      
+## Where next
+
+      
+        - Kits — the pattern dashboard() shares with
+        erDiagram() and umlDiagram().
+
+        - Groups — frameless containers, the primitive under
+        every board.
+
+        - Export — PNG/SVG/PDF, plus
+        includeIds for one-board exports.
+
+
+# Dashboard containers (added in @grafloria/element 0.4.2)
+
+A widget spec carrying `widgets` is a CONTAINER: it mounts as a locked slab in
+its parent board with its own nested pack grid. Inner grid: `columns` (default:
+the container's span), `maxRows` (default: row extent of the declared children;
+a child resized past it grows the container in the PARENT board — escalation).
+Cross-boundary drag adopts in both directions, one undo restores the whole
+gesture, `handle.addWidget(spec, containerId)` targets a container, and
+`toJSON()` serialises nesting from live membership. Tested to two levels.
+A full bounded section refuses adoption (tile snaps home). A container renders
+no card of its own. Live demo: https://grafloria.com/demos/dashboard/nested-containers.html
+
+```
+const spec = dashboard({
+  columns: 12,
+  widgets: [
+    { id: 'trend', kind: 'line', span: 8, rows: 2, data: { /* … */ } },
+    { id: 'kpis', title: 'KPI section', span: 12, rows: 1, columns: 4,
+      widgets: [
+        { id: 'k-rev',  kind: 'kpi', span: 1, data: { label: 'Revenue', value: '$6.8M' } },
+        { id: 'k-cust', kind: 'kpi', span: 1, data: { label: 'Customers', value: '1,284' } },
+        { id: 'k-win',  kind: 'kpi', span: 1, data: { label: 'Win rate', value: '27.4%' } },
+      ] },
+  ],
+});
+render(spec, host);
+// later: spec.handle.toJSON() — the tree, from live membership
+```

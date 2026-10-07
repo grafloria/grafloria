@@ -1,3 +1,4 @@
+import { debugLog } from '../../util/debug';
 /**
  * Hierarchical Layout Algorithm
  *
@@ -17,7 +18,10 @@
  * - Professional appearance
  */
 
-import * as dagre from '@dagrejs/dagre';
+import * as dagreNs from '@dagrejs/dagre';
+// CJS interop: Node's ESM loader exposes dagre's API only on .default (its
+// exports are invisible to the CJS lexer); bundlers expose it both ways.
+const dagre: typeof dagreNs = (dagreNs as any).default ?? dagreNs;
 import { DiagramModel } from '../../models/DiagramModel';
 import { NodeModel } from '../../models/NodeModel';
 import { Point } from '../../types';
@@ -283,7 +287,7 @@ export class HierarchicalLayoutAlgorithm extends BaseLayoutAlgorithm {
         positions.set(node.id, transformedPos);
       });
 
-      console.log(`📐 Hierarchical layout: ${nodes.length} nodes fit in viewport (scale: ${transform.scale.toFixed(2)}, node-spacing: ${nodeSpacing}px, rank-spacing: ${rankSpacing}px)`);
+      debugLog(`📐 Hierarchical layout: ${nodes.length} nodes fit in viewport (scale: ${transform.scale.toFixed(2)}, node-spacing: ${nodeSpacing}px, rank-spacing: ${rankSpacing}px)`);
     } else {
       // No viewport - use relative positions as-is (backward compatibility)
       relativePositions.forEach(({ node, position }) => {

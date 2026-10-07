@@ -66,6 +66,19 @@ function verdict(ok, detail) {
   console.log(`${ok ? '✓' : '✗'} ${scenario}${ok ? '' : `   ${detail}`}`);
 }
 
+/**
+ * An uncaught exception on the page fails the scenario it happened in.
+ *
+ * These were being collected onto `page.__errs` and then never read, so a
+ * scenario could throw on every interaction and still be scored a pass — the
+ * same hole `interaction-run` had. Call this before closing a page.
+ */
+function assertNoPageErrors(page) {
+  const errs = page.__errs ?? [];
+  if (errs.length) verdict(false, `uncaught page error: ${errs.join(' | ')}`);
+  return errs.length === 0;
+}
+
 const DASH = '/dashboard/dashboard-builder.html';   // the plain, flat grid
 const OPTS = '/dashboard/grid-options.html';        // the advanced constructs
 
@@ -197,6 +210,7 @@ try {
     (donutMid.x !== donut0.x || donutMid.y !== donut0.y) && ph && st.overlaps === 0,
     `neighbour moved mid-drag=${donutMid.x !== donut0.x || donutMid.y !== donut0.y} placeholder=${ph} overlaps=${st.overlaps}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -208,7 +222,7 @@ try {
   await page.waitForTimeout(300);
   const table0 = await host(page, 'Top reps');
   const rs = await resizeHandleOf(page, 'Revenue vs target');
-  if (!rs) { verdict(false, 'no resize handle found'); await page.close(); }
+  if (!rs) { verdict(false, 'no resize handle found'); assertNoPageErrors(page); await page.close(); }
   else {
     await shot(page, 'before');
     await page.mouse.move(rs.x, rs.y);
@@ -228,7 +242,8 @@ try {
       tableMid.y > table0.y && Math.abs(tableBack.y - table0.y) < 5 && st.overlaps === 0,
       `pushed=${tableMid.y > table0.y} restored=${Math.abs(tableBack.y - table0.y) < 5} overlaps=${st.overlaps}`
     );
-    await page.close();
+    assertNoPageErrors(page);
+  await page.close();
   }
 }
 
@@ -264,6 +279,7 @@ try {
     firstSwap && lineB.x < donutB.x && st.overlaps === 0,
     `big->small=${firstSwap} small->big=${lineB.x < donutB.x} overlaps=${st.overlaps}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -304,6 +320,7 @@ try {
     belowTable && onPlaceholder && committed && !!backHome && st.overlaps === 0 && ghostKeptItsSize,
     `below-table=${belowTable} landed-on-placeholder=${onPlaceholder} committed=${committed} undo-restores=${!!backHome} overlaps=${st.overlaps} ghost-full-size=${ghostKeptItsSize}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -311,22 +328,41 @@ try {
 {
   begin('s05-tile-into-bounded-section');
   const page = await freshPage(OPTS);
-  // The section is FULL (4 tiles, maxRows 1) — entry must be REFUSED, snap home.
+  // The section is FULL (4 tiles, maxRows 1) — and it ESCALATES: board ③ exists to show a bounded strip that asks its
+  // board for a row. So a panel dropped on it makes it take one and joins it (D4, element 0.4.58). Before D4 nothing
+  // could grow for an arrival and the panel pushed the section down instead (D2) — which is still what a section
+  // declared `sizing: 'fit'` (escalate false) does, covered by the kit lab's L101.
   const share0 = await host(page, 'Share panel');
-  const sB = await host(page, 'Strip B');
+  const sB0 = await host(page, 'Strip B');
+  const sD0 = await host(page, 'Strip D');
   await page.mouse.move(share0.x + share0.w / 2, share0.y + 12);
   await page.mouse.down();
-  await page.mouse.move(sB.x + sB.w / 2, sB.y + sB.h / 2, { steps: 14 });
+  await page.mouse.move(sB0.x + sB0.w / 2, sB0.y + sB0.h / 2, { steps: 14 });
   await page.waitForTimeout(450);
-  await shot(page, 'over-full-section');
+  await shot(page, 'over-full-section-which-gives-way');
   await page.mouse.up();
   await page.waitForTimeout(600);
   const shareA = await host(page, 'Share panel');
-  const snapHome = Math.abs(shareA.x - share0.x) < 5 && Math.abs(shareA.y - share0.y) < 5;
-  const noCommit = !(await undoEnabled(page));
-  await shot(page, 'refused-snap-home');
+  const sBA = await host(page, 'Strip B');
+  // The strip took a row for it: the panel lands in the row under the hand (the strip tiles slide along it) and the
+  // tile the row no longer fits — Strip D — moves onto the row the section just gained.
+  const sDA = await host(page, 'Strip D');
+  const grewForIt = !!shareA && !!sBA && Math.abs(shareA.y - sB0.y) < 8 && !!sDA && sDA.y > sD0.y + 5;
+  const committed = await undoEnabled(page);
+  await shot(page, 'panel-inside-the-section-which-took-a-row');
+  // One undo puts the row and the panel back — through the page's own Undo button, the way a person
+  // undoes: this demo binds its boards by hand, so a raw commandManager.undo() would leave their
+  // engines holding cells the model no longer has.
+  await clickUndo(page);
+  await page.waitForTimeout(600);
+  const sBU = await host(page, 'Strip B');
+  const shareU = await host(page, 'Share panel');
+  const sDU = await host(page, 'Strip D');
+  await shot(page, 'after-undo-the-row-and-the-panel-are-back');
+  const restored = !!sBU && Math.abs(sBU.y - sB0.y) < 5 && !!sDU && Math.abs(sDU.y - sD0.y) < 6 && !!shareU && Math.abs(shareU.y - share0.y) < 8;
   // Now make room: remove one strip tile, then the panel CAN cross in.
-  await page.mouse.click(sB.x + sB.w / 2, sB.y + 12);
+  const sB1 = await host(page, 'Strip B');
+  await page.mouse.click(sB1.x + sB1.w / 2, sB1.y + 12);
   await page.waitForTimeout(250);
   await clickRemove(page);
   const shareB0 = await host(page, 'Share panel');
@@ -343,9 +379,10 @@ try {
   await shot(page, 'joined-section');
   const st = await boardState(page);
   verdict(
-    snapHome && noCommit && !!inStrip && st.overlaps === 0,
-    `full-section-refused=${snapHome} no-commit=${noCommit} joined-when-room=${!!inStrip} overlaps=${st.overlaps}`
+    grewForIt && committed && restored && !!inStrip && st.overlaps === 0,
+    `full-section-grew-and-took-it=${grewForIt} (panel y ${Math.round(shareA?.y ?? -1)} vs strip ${Math.round(sB0.y)}, D ${Math.round(sD0.y)}->${Math.round(sDA?.y ?? -1)}) committed=${committed} undo-restores=${restored} (panel ${Math.round(share0.y)}->${Math.round(shareU?.y ?? -1)}, B ${Math.round(sB0.y)}->${Math.round(sBU?.y ?? -1)}, D ${Math.round(sDU?.y ?? -1)}) joined-when-room=${!!inStrip} overlaps=${st.overlaps}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -358,11 +395,11 @@ try {
   await page.mouse.click(tr.x + tr.w / 2, tr.y + 12);
   await page.waitForTimeout(300);
   const rs = await resizeHandleOf(page, 'Strip A');
-  if (!rs) { verdict(false, 'no resize handle on the strip tile'); await page.close(); }
+  if (!rs) { verdict(false, 'no resize handle on the strip tile'); assertNoPageErrors(page); await page.close(); }
   else {
     await shot(page, 'before');
     // (HEIGHT growth is s21's contract: pulling past the section GROWS the
-    //  section — all tiles together. This scenario owns the WIDTH rules.)
+    //  section, and the DRAGGED tile takes the row. This scenario owns WIDTH.)
     // 1) WIDTH growth on a FULL 4/4 section must be REFUSED — there is nowhere
     //    for a sibling to go, and refusing IS the design staying intact.
     const rs2 = await resizeHandleOf(page, 'Strip A');
@@ -403,7 +440,8 @@ try {
       fullRefused && widthPushed && widthRestored && st.overlaps === 0,
       `full-section-refused=${fullRefused} w-pushes-right=${widthPushed} w-restores=${widthRestored} overlaps=${st.overlaps}`
     );
-    await page.close();
+    assertNoPageErrors(page);
+  await page.close();
   }
 }
 
@@ -428,6 +466,7 @@ try {
     Math.abs(donutA.x - donut0.x) < 5 && Math.abs(donutA.y - donut0.y) < 5;
   const noCommit = !(await undoEnabled(page));
   verdict(restored && noCommit, `restored=${restored} no-commit=${noCommit}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -451,6 +490,7 @@ try {
     Math.abs(lineA.x - line0.x) < 5 && Math.abs(donutA.x - donut0.x) < 5;
   const historyEmpty = !(await undoEnabled(page));
   verdict(restored && historyEmpty, `restored-by-ONE-undo=${restored} history-empty=${historyEmpty}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -475,6 +515,7 @@ try {
   const refit = !!lineBack && Math.abs(lineBack.h - lineFit.h) < 8;
   verdict(taller && refit && st.overlaps === 0,
     `grow-taller-on-screen=${taller} fit-refits=${refit} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -514,6 +555,7 @@ try {
     afterRemove === before - 1 && afterUndo === before && survivedOvershoot,
     `removed-at-palette=${afterRemove === before - 1} undo-restored=${afterUndo === before} overshoot-survives=${survivedOvershoot}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -535,6 +577,7 @@ try {
   const st = await boardState(page);
   verdict(r1.ok && m1.ok && r2.ok && m2.ok && st.overlaps === 0,
     `shrink=${r1.ok}(${r1.detail}) move=${m1.ok}(${m1.detail}) grow=${r2.ok}(${r2.detail}) move2=${m2.ok}(${m2.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -560,6 +603,7 @@ try {
   const st2 = await boardState(page);
   verdict(m1.ok && m2.ok && r2.ok && st1.overlaps === 0 && st2.overlaps === 0,
     `sales-swap=${m1.ok}(${m1.detail}) pipeline-drag=${m2.ok}(${m2.detail}) pipeline-resize=${r2.ok}(${r2.detail}) overlaps=${st1.overlaps}/${st2.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -581,6 +625,7 @@ try {
   const st = await boardState(page);
   verdict(m.ok && r.ok && st.overlaps === 0,
     `grow-swap=${m.ok}(${m.detail}) grow-resize=${r.ok}(${r.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -602,6 +647,7 @@ try {
   const st = await boardState(page);
   verdict(m.ok && r.ok && st.overlaps === 0,
     `zoom-swap=${m.ok}(${m.detail}) zoom-resize=${r.ok}(${r.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -637,6 +683,7 @@ try {
   const st = await boardState(page);
   verdict(!!cornerOk && !!flickOk && st.overlaps === 0,
     `corner-grab=${!!cornerOk} flick=${!!flickOk} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -655,6 +702,7 @@ try {
   const st = await boardState(page);
   verdict(!!added && m.ok && r.ok && st.overlaps === 0,
     `added=${!!added} moved=${m.ok}(${m.detail}) shrunk=${r.ok}(${r.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -681,6 +729,7 @@ try {
   await shot(page, 'after-2-redos');
   verdict(r.ok && undone && st.overlaps === 0,
     `resize-ok=${r.ok} both-undone-exact=${undone} redo-clean-overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -704,6 +753,7 @@ try {
   const st = await boardState(page);
   verdict(!!restored && m.ok && st.overlaps === 0,
     `load-restored=${!!restored} gesture-after-load=${m.ok}(${m.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -740,6 +790,7 @@ try {
   const st = await boardState(page);
   verdict(refused && pinHeld && m.ok && st.overlaps === 0,
     `pinned-refuses=${refused} pin-held=${pinHeld} unpin-swaps=${m.ok}(${m.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -758,6 +809,7 @@ try {
   const st = await boardState(page);
   verdict(r.ok && m.ok && sameRow && st.overlaps === 0,
     `shrink=${r.ok}(${r.detail}) move-into-gap=${m.ok}(${m.detail}) same-row=${sameRow} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -772,7 +824,7 @@ try {
   await page.mouse.click(tr0.x + tr0.w / 2, tr0.y + 10);
   await page.waitForTimeout(250);
   const rs = await resizeHandleOf(page, 'Strip A');
-  if (!rs) { verdict(false, 'no strip-tile handle'); await page.close(); }
+  if (!rs) { verdict(false, 'no strip-tile handle'); assertNoPageErrors(page); await page.close(); }
   else {
     await page.mouse.move(rs.x, rs.y);
     await page.mouse.down();
@@ -787,9 +839,14 @@ try {
     const ncA = await host(page, 'Strip B');
     await shot(page, 'committed');
     const st = await boardState(page);
-    // The WHOLE section grew: the dragged tile and its siblings are both taller.
-    const grewLive = trMid.h > tr0.h + 30 && ncMid.h > nc0.h + 30;
-    const grewCommitted = trA.h > tr0.h + 30 && ncA.h > nc0.h + 30;
+    // GRID SEMANTICS: the SECTION grows to hold the tile under the pointer,
+    // and that tile alone gains the row. Its sibling keeps its own cell — it
+    // is only as tall as one row of the (now taller) section, well short of
+    // the dragged tile. Until 0.4.26 every full-height tile grew together,
+    // so pulling one KPI silently resized its neighbour ("why are both
+    // widgets aligned when I adjust one of them?").
+    const grewLive = trMid.h > tr0.h + 30 && ncMid.h < trMid.h - 30;
+    const grewCommitted = trA.h > tr0.h + 30 && ncA.h < trA.h - 30;
     // …and ONE undo restores the section exactly.
     await clickUndo(page);
     const trU = await host(page, 'Strip A');
@@ -799,8 +856,9 @@ try {
     const undone = Math.abs(trU.h - tr0.h) < 6 && Math.abs(ncU.h - nc0.h) < 6 &&
                    Math.abs(lineU.y - line0.y) < 8;
     verdict(grewLive && grewCommitted && undone && st.overlaps === 0,
-      `section-grew-live=${grewLive} committed=${grewCommitted} one-undo-restores=${undone} overlaps=${st.overlaps} (a ${tr0.h}->${trA.h}, b ${nc0.h}->${ncA.h})`);
-    await page.close();
+      `dragged-tile-grew-alone live=${grewLive} committed=${grewCommitted} one-undo-restores=${undone} overlaps=${st.overlaps} (dragged ${tr0.h}->${trA.h}, sibling ${nc0.h}->${ncA.h})`);
+    assertNoPageErrors(page);
+  await page.close();
   }
 }
 
@@ -821,6 +879,7 @@ try {
   await shot(page, 'bottom-tile-grown');
   const st = await boardState(page);
   verdict(r.ok && st.overlaps === 0, `pan-then-resize=${r.ok}(${r.detail}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -846,6 +905,7 @@ try {
   const st = await boardState(page);
   verdict(m.ok && stayed && repacked && st.overlaps === 0,
     `placed=${m.ok}(${m.detail}) stays-in-float=${stayed} repacks-on-off=${repacked} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -875,6 +935,7 @@ try {
   });
   await shot(page, 'aligned');
   verdict(dev <= 2, `max column-line deviation ${dev}px (must be ≤2px)`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -916,6 +977,7 @@ try {
   await shot(page, 'after-undos');
   verdict(grew && shrank && undo1Tall && undo2Orig && st.overlaps === 0,
     `grew=${grew} shrank-in-NEW-gesture=${shrank} undo1-tall=${undo1Tall} undo2-original=${undo2Orig} overlaps=${st.overlaps} (a ${tr0.h}->${trTall.h}->${trBack.h})`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -934,7 +996,7 @@ try {
   await page.mouse.click(tr0.x + tr0.w / 2, tr0.y + 10);
   await page.waitForTimeout(250);
   const rs = await resizeHandleOf(page, 'Total revenue');
-  if (!rs) { verdict(false, 'no KPI handle'); await page.close(); }
+  if (!rs) { verdict(false, 'no KPI handle'); assertNoPageErrors(page); await page.close(); }
   else {
     await page.mouse.move(rs.x, rs.y); await page.mouse.down();
     await page.mouse.move(rs.x, rs.y + 130, { steps: 12 });   // grow it a row taller
@@ -961,7 +1023,8 @@ try {
     const st = await boardState(page);
     verdict(itGrew && siblingsDidNotGrow && siblingsHeldTheirPlace && undone && st.overlaps === 0,
       `only-it-grew=${itGrew} siblings-unchanged=${siblingsDidNotGrow} siblings-in-place=${siblingsHeldTheirPlace} one-undo=${undone} overlaps=${st.overlaps} (tr ${tr0.h}->${trA.h}, nc ${nc0.h}->${ncA.h})`);
-    await page.close();
+    assertNoPageErrors(page);
+  await page.close();
   }
 }
 
@@ -1000,6 +1063,7 @@ try {
                  Math.abs(lineU.y - line0.y) < 6 && Math.abs(lineU.x - line0.x) < 6;
   verdict(displacedLive && landedOnPh && chartMoved && undone && st.overlaps === 0,
     `chart-pushed-live=${displacedLive} landed-on-placeholder=${landedOnPh} chart-moved=${chartMoved} one-undo=${undone} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -1064,6 +1128,7 @@ try {
     `re-laid-out=${reLaidOut} save-while-narrow-keeps-desktop=${savedTheDesktop}(cols=${narrow.savedColumns}) ` +
     `widen-restores-exactly=${restoredExactly} overlaps=${st.overlaps}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -1139,6 +1204,7 @@ try {
     `drag-landed-on-placeholder=${m.ok}(${m.detail}) cell-advanced=${movedRight}(x=${moved.cell.x}) ` +
     `pixels-went-left=${movedLeftOnScreen} still-mirrored-after-gesture=${stillMirrored} overlaps=${st.overlaps}`
   );
+  assertNoPageErrors(page);
   await page.close();
 }
 
@@ -1237,10 +1303,372 @@ try {
     `re-laid-out=${reLaidOut} viewport-restore-restores-cells-exactly=${restoredExactly} ` +
     `still-responsive=${stillResponsive} overlaps=${st.overlaps}`
   );
+  assertNoPageErrors(page);
+  await page.close();
+}
+
+// ---- S31 · ACCESSIBILITY (WCAG 2.1 AA — decided 2026-09-06) --------------
+// Three boards through axe-core, plus the operability WCAG 2.1.1 asks for:
+// a keyboard alone must reach a widget, move it, resize it, and hear the result.
+{
+  begin('s31-accessibility');
+  const axeSrc = readFileSync(join(root, '..', 'node_modules', 'axe-core', 'axe.min.js'), 'utf8');
+  const violationsOn = async (path) => {
+    const page = await freshPage(path);
+    await page.addScriptTag({ content: axeSrc });
+    const r = await page.evaluate(async () => {
+      const res = await window.axe.run(document.getElementById('canvas'), {
+        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
+      });
+      return res.violations
+        .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+        .map((v) => `${v.id}(${v.impact})×${v.nodes.length}`);
+    });
+    const ok = assertNoPageErrors(page);
+    await page.close();
+    return { path, violations: r, ok };
+  };
+  const audits = [];
+  for (const path of [DASH, '/dashboard/fluid-board.html', '/dashboard/nested-containers.html']) {
+    audits.push(await violationsOn(path));
+  }
+  const clean = audits.every((a) => a.violations.length === 0 && a.ok);
+
+  // Keyboard operation on the fluid board: Tab from the toolbar lands on ONE
+  // widget; arrows move it; Shift+arrows resize it; every outcome is announced.
+  const page = await freshPage('/dashboard/fluid-board.html');
+  const read = () => page.evaluate(() => ({
+    active: document.activeElement?.getAttribute('data-node-id') ?? null,
+    label: document.activeElement?.getAttribute('aria-label') ?? '',
+    live: Array.from(document.querySelectorAll('[aria-live]')).map((e) => e.textContent).join(' '),
+    rev: window.__demoCtx.handle.widget('rev').cell,
+    stops: document.querySelectorAll('.grafloria-node-host[tabindex="0"]').length,
+    // ONE tab stop PER BOARD: the view's roving stop plus one per section (a
+    // nested board rolls its own) — the fluid demo carries a captioned section.
+    boards: 1 + document.querySelectorAll('#canvas .axdb-slab').length,
+  }));
+  await page.focus('#fb-add');
+  // The diagram root is a tab stop of its own before the board's; keep
+  // tabbing until a widget holds focus (three presses is the ceiling).
+  let s0 = await read();
+  for (let i = 0; i < 3 && !s0.active; i++) {
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(150);
+    s0 = await read();
+  }
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(500);
+  const s1 = await read();
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.waitForTimeout(500);
+  const s2 = await read();
+  await shot(page, 'after-keyboard-move-and-resize');
+  const cm = () => page.evaluate(() => window.__demoCtx.instance.getEngine().commandManager.canUndo());
+  const undoable = await cm();
+  const reached = s0.active === 'rev' && s0.stops === s0.boards && /column 1, row 1/.test(s0.label);
+  const moved = s1.rev.x > 0 && /moved to column/.test(s1.live);
+  const resized = s2.rev.h > s1.rev.h && /resized to/.test(s2.live);
+  const st = await boardState(page);
+  verdict(clean && reached && moved && resized && undoable && st.overlaps === 0,
+    `axe=${audits.map((a) => `${a.path.split('/').pop()}:${a.violations.length ? a.violations.join(',') : 'clean'}`).join(' ')} ` +
+    `tab-reaches-one-widget-per-board=${reached}(${s0.active},stops=${s0.stops}/${s0.boards}) arrow-moved=${moved}(x=${s1.rev.x}) ` +
+    `shift-arrow-resized=${resized}(h=${s1.rev.h}->${s2.rev.h}) announced="${s2.live.slice(0, 80)}" undoable=${undoable} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
+
+// ---- S32 · THE CAMERA IS A SCROLL POSITION (round two, 2026-09-06) --------
+// Found on the live page: scroll in Grow, press Fit → the board shrank to the
+// canvas while the camera stayed 600 px down. And a wheel ran past the last row.
+{
+  begin('s32-scroll-then-fit-camera-follows');
+  const page = await freshPage('/dashboard/fluid-board.html');
+  const read = () => page.evaluate(() => {
+    const c = document.getElementById('canvas').getBoundingClientRect();
+    const hosts = [...document.querySelectorAll('.grafloria-node-host')].map((h) => h.getBoundingClientRect());
+    const m = window.__demoCtx.handle.metrics();
+    return {
+      top: Math.round(Math.min(...hosts.map((r) => r.y)) - c.y),
+      bottom: Math.round(Math.max(...hosts.map((r) => r.bottom)) - c.y),
+      canvasH: Math.round(c.height),
+      frameH: Math.round(m.frame.height),
+      sizing: m.sizing,
+      vy: Math.round(window.__demoCtx.instance.viewport.getViewport().y),
+    };
+  });
+  const rectOf = (id) => page.evaluate((id) => document.querySelector(`.grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect().toJSON(), id);
+  const c = await page.evaluate(() => document.getElementById('canvas').getBoundingClientRect().toJSON());
+  // Grow a board taller than the canvas: the donut onto the KPI row (the user's gesture).
+  const mix = await rectOf('mix');
+  const win = await rectOf('win');
+  await page.mouse.move(mix.x + mix.width / 2, mix.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(win.x + 20, win.y + 30, { steps: 25 });
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  const tall = await read();
+  await page.mouse.move(c.x + c.width / 2, c.y + c.height / 2);
+  await page.mouse.wheel(0, 100000);
+  await page.waitForTimeout(400);
+  const down = await read();
+  await shot(page, 'wheel-stops-at-last-row');
+  await page.mouse.wheel(0, -100000);
+  await page.waitForTimeout(400);
+  const up = await read();
+  await page.mouse.wheel(0, 600);
+  await page.waitForTimeout(400);
+  await page.click('#fb-fit');
+  await page.waitForTimeout(600);
+  const fit = await read();
+  await shot(page, 'fit-after-scroll');
+  const grewTall = tall.frameH > tall.canvasH;
+  const stoppedAtLastRow = down.vy > 0 && down.bottom <= down.canvasH + 1 && down.bottom >= down.canvasH - 60;
+  const backToTop = up.vy === 0 && up.top >= 0;
+  const fitPulledBack = fit.sizing === 'fit' && fit.vy === 0 && fit.top >= 0 && fit.bottom <= fit.canvasH + 1;
+  const st = await boardState(page);
+  verdict(grewTall && stoppedAtLastRow && backToTop && fitPulledBack && st.overlaps === 0,
+    `grew-tall=${grewTall}(${tall.frameH}>${tall.canvasH}) wheel-stops-at-last-row=${stoppedAtLastRow}(vy=${down.vy},bottom=${down.bottom}/${down.canvasH}) ` +
+    `back-to-top=${backToTop}(vy=${up.vy},top=${up.top}) fit-pulls-camera-back=${fitPulledBack}(vy=${fit.vy},top=${fit.top},bottom=${fit.bottom}/${fit.canvasH}) overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
+
+// ---- S33 · SPLIT LAYOUT (the DevExpress splitter tree, 2026-09-06) --------
+// Measured on the DevExpress designer: the board is always covered, an add
+// halves the largest widget, a divider is a percentage, a dragged widget lands
+// on the edge the insertion line shows, a removed widget's slot goes to its
+// siblings, and one undo is one thing.
+{
+  begin('s33-split-layout');
+  const page = await freshPage('/dashboard/fluid-board.html');
+  const read = () => page.evaluate(() => {
+    const H = window.__demoCtx.handle; const m = H.metrics();
+    const ws = Object.fromEntries(H.widgetsOf().map((w) => [w.id, { x: Math.round(w.rect.x), y: Math.round(w.rect.y), w: Math.round(w.rect.width), h: Math.round(w.rect.height) }]));
+    const area = Object.values(ws).reduce((s, r) => s + r.w * r.h, 0);
+    return { layout: H.getLayout(), sizing: H.getSizing(), coverage: area / (m.frame.width * m.frame.height), n: Object.keys(ws).length, ws, dividers: document.querySelectorAll('.axdb-div').length, ins: document.querySelectorAll('.axdb-ins').length };
+  });
+  const rectOf = (id) => page.evaluate((id) => document.querySelector(`.grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect().toJSON(), id);
+  await page.click('#fb-split'); await page.waitForTimeout(500);
+  const s0 = await read();
+  await shot(page, 'split-boot');
+  // A. divider between rev and cust: +150 px → a percentage, the pair re-shares
+  const div = await page.evaluate(() => { const d = [...document.querySelectorAll('.axdb-div--row')].map((e) => e.getBoundingClientRect()).sort((a, b) => a.y - b.y || a.x - b.x)[0]; return { x: d.x + d.width / 2, y: d.y + d.height / 2 }; });
+  await page.mouse.move(div.x, div.y); await page.mouse.down(); await page.mouse.move(div.x + 50, div.y, { steps: 8 }); await page.mouse.move(div.x + 150, div.y, { steps: 12 });
+  const mid = await read();
+  await shot(page, 'divider-mid');
+  await page.mouse.up(); await page.waitForTimeout(400);
+  const s1 = await read();
+  const dividerLive = mid.ws.rev.w > s0.ws.rev.w + 100;
+  const dividerIsPercent = Math.abs(s1.ws.rev.w - (s0.ws.rev.w + 150)) < 12 && Math.abs(s1.ws.cust.w - (s0.ws.cust.w - 150)) < 12 && s1.ws.win.w === s0.ws.win.w;
+  // B. drag the donut onto the chart's LEFT edge: insertion line, then the drop lands it there
+  const mix = await rectOf('mix'); const tr = await rectOf('trend');
+  await page.mouse.move(mix.x + mix.width / 2, mix.y + 14); await page.mouse.down(); await page.mouse.move(mix.x + mix.width / 2 - 40, mix.y + 40, { steps: 8 });
+  await page.mouse.move(tr.x + 30, tr.y + tr.height / 2, { steps: 25 }); await page.waitForTimeout(300);
+  const drag = await read();
+  await shot(page, 'drag-insertion-line');
+  const liftedOut = drag.ws.trend.w > s1.ws.trend.w + 300; // the chart took the donut's slot at once
+  await page.mouse.up(); await page.waitForTimeout(500);
+  const s2 = await read();
+  await shot(page, 'dropped-left-of-chart');
+  const landedLeft = s2.ws.mix.x < s2.ws.trend.x && Math.abs(s2.ws.mix.y - s2.ws.trend.y) < 2 && Math.abs(s2.ws.mix.w - s2.ws.trend.w) < 12;
+  // C. one undo restores the drop; a second restores the divider
+  const undo = () => page.evaluate(() => window.__demoCtx.instance.getEngine().commandManager.undo());
+  await undo(); await page.waitForTimeout(400); const u1 = await read();
+  await undo(); await page.waitForTimeout(400); const u2 = await read();
+  const undoOneEach = JSON.stringify(u1.ws) === JSON.stringify(s1.ws) && JSON.stringify(u2.ws) === JSON.stringify(s0.ws);
+  // D. add halves the largest; remove hands the slot back
+  const largest = Object.entries(s0.ws).sort((a, b) => b[1].w * b[1].h - a[1].w * a[1].h)[0];
+  await page.click('#fb-add'); await page.waitForTimeout(500); const s3 = await read();
+  await shot(page, 'add-halves-largest');
+  const halved = s3.n === s0.n + 1 && Math.abs(s3.ws[largest[0]].w * s3.ws[largest[0]].h - (largest[1].w * largest[1].h) / 2) < largest[1].w * largest[1].h * 0.08;
+  await page.evaluate(() => window.__demoCtx.handle.widget('row-1').remove()); await page.waitForTimeout(500); const s4 = await read();
+  const slotBack = s4.n === s0.n && JSON.stringify(s4.ws) === JSON.stringify(s0.ws);
+  // E. a drop on the KPI ROW's bottom edge (18 px band): nps lands UNDER ALL FOUR, full width
+  const nps = await rectOf('nps'); const rev = await rectOf('rev');
+  await page.mouse.move(nps.x + nps.width / 2, nps.y + 14); await page.mouse.down(); await page.mouse.move(nps.x + nps.width / 2 - 40, nps.y + 40, { steps: 8 });
+  await page.mouse.move(rev.x + rev.width + 60, rev.y + rev.height - 6, { steps: 25 }); await page.waitForTimeout(300);
+  const gdrag = await read();
+  await shot(page, 'drag-group-edge');
+  await page.mouse.up(); await page.waitForTimeout(500);
+  const s5 = await read();
+  await shot(page, 'dropped-under-the-row');
+  const f = await page.evaluate(() => window.__demoCtx.handle.metrics().frame);
+  // nps spans the KPI ROW under it, and the row's three survivors still fill
+  // the width between them (win took nps's old slot — the neighbour rule).
+  // Not the whole FRAME: the board keeps a right-hand column of tab-captioned
+  // sections, which is a sibling of the row in the split tree.
+  const rowW = s5.ws.rev.w + s5.ws.cust.w + s5.ws.win.w;
+  const underAll = s5.ws.nps.w > f.width * 0.6 && s5.ws.nps.y > s5.ws.rev.y + s5.ws.rev.h - 1 && s5.ws.nps.y < s5.ws.trend.y && Math.abs(rowW - s5.ws.nps.w) < 40;
+  await undo(); await page.waitForTimeout(400);
+  // F. back to the grid: the same picture, then split again
+  await page.click('#fb-grid'); await page.waitForTimeout(500); const g = await read();
+  const gridBack = g.layout === 'grid' && g.dividers === 0 && g.n === s0.n;
+  const covered = [s0, s1, s2, s3, s4].every((s) => s.coverage > 0.9 && s.coverage <= 1.001);
+  const st = await boardState(page);
+  verdict(s0.layout === 'split' && s0.sizing === 'fit' && s0.dividers > 0 && covered && dividerLive && dividerIsPercent && liftedOut && drag.ins === 1 && landedLeft && undoOneEach && halved && slotBack && gdrag.ins === 1 && underAll && gridBack && st.overlaps === 0,
+    `split=${s0.layout}/${s0.sizing} dividers=${s0.dividers} covered=${covered}(${s0.coverage.toFixed(3)}) divider-live=${dividerLive} divider-percent=${dividerIsPercent}(rev ${s0.ws.rev.w}->${s1.ws.rev.w}) ` +
+    `lifted-out=${liftedOut} insertion-line=${drag.ins} landed-left=${landedLeft} undo-one-each=${undoOneEach} add-halves-largest=${halved}(${largest[0]}) slot-back=${slotBack} group-edge-drop-under-all=${underAll}(nps ${s5.ws.nps.w}px wide, y ${s5.ws.nps.y}) grid-back=${gridBack} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
+
+{
+  begin('s34-drag-by-header');
+  const page = await freshPage('/dashboard/fluid-board.html');
+  const rectOf = (id) => page.evaluate((id) => document.querySelector(`.grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect().toJSON(), id);
+  const cellOf = (id) => page.evaluate((id) => { const c = window.__demoCtx.handle.widget(id).cell; return { x: c.x, y: c.y }; }, id);
+  const drag = (mode, pos, place) => page.evaluate(([m, p, l]) => window.__demoCtx.ctx2 ? window.__demoCtx.ctx2.drag(m, p, l) : null, [mode, pos, place]);
+  const pull = async (x, y, dy) => { await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y + dy, { steps: 15 }); await page.waitForTimeout(300); const ph = await phRect(page); await page.mouse.up(); await page.waitForTimeout(500); return !!ph; };
+  await page.selectOption('#fb-drag', 'caption'); await page.waitForTimeout(300);
+  const on = await page.evaluate(() => ({ v: window.__demoCtx.handle.getDragHandle(), cls: !!document.querySelector('.axdb-drag-handle'), cursor: getComputedStyle(document.querySelector('.grafloria-node-host[data-node-id="trend"] .axdb-widget-h')).cursor }));
+  // A. caption mode — a press in the chart's BODY and a 300 px pull: no placeholder, no move
+  const c0 = await cellOf('trend'); const r0 = await rectOf('trend');
+  const phBody = await pull(r0.x + r0.width / 2, r0.y + r0.height * 0.6, 300);
+  await shot(page, 'caption-body-press-starts-nothing');
+  const c1 = await cellOf('trend');
+  const bodyInert = !phBody && c1.x === c0.x && c1.y === c0.y;
+  // B. the same pull from the caption strip moves it
+  const r1 = await rectOf('trend');
+  const phHead = await pull(r1.x + r1.width / 2, r1.y + 12, 300);
+  await shot(page, 'caption-press-moves');
+  const c2 = await cellOf('trend');
+  const headerMoves = phHead && c2.y > c0.y;
+  // C. off again: the body drags as before
+  await page.selectOption('#fb-drag', 'anywhere'); await page.waitForTimeout(300);
+  const off = await page.evaluate(() => ({ v: window.__demoCtx.handle.getDragHandle(), cls: !!document.querySelector('.axdb-drag-handle') }));
+  const r2 = await rectOf('trend');
+  const phOff = await pull(r2.x + r2.width / 2, r2.y + r2.height * 0.6, -300);
+  const c3 = await cellOf('trend');
+  const bodyBack = phOff && c3.y < c2.y;
+  // D. GRIP mode, left / inside: body AND caption text are inert; only the grip moves it
+  await page.selectOption('#fb-drag', 'grip'); await page.waitForTimeout(300);
+  const gripInfo = () => page.evaluate(() => { const h = document.querySelector('.grafloria-node-host[data-node-id="trend"]'); const g = h.querySelector(':scope > .axdb-grip'); if (!g) return null; const r = g.getBoundingClientRect(), hr = h.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, above: r.bottom <= hr.top + 1, left: r.left - hr.left, right: hr.right - r.right, cls: g.className, shown: getComputedStyle(g).opacity === '1' }; });
+  // Grips show on the SELECTED widget only: trend was pressed in C (selected), reps was not.
+  const g1 = await gripInfo();
+  const repsHidden = await page.evaluate(() => getComputedStyle(document.querySelector('.grafloria-node-host[data-node-id="reps"] > .axdb-grip')).opacity === '0');
+  const selectedOnly = !!g1 && g1.shown && repsHidden;
+  const c4 = await cellOf('trend'); const r4 = await rectOf('trend');
+  const phGripBody = await pull(r4.x + r4.width / 2, r4.y + r4.height * 0.6, 300);
+  const phGripCaption = await pull(r4.x + r4.width / 2, r4.y + 12, 300);
+  const c5 = await cellOf('trend');
+  const gripInert = !phGripBody && !phGripCaption && c5.y === c4.y;
+  const phGrip = await pull(g1.x, g1.y, 300);
+  await shot(page, 'grip-inside-left-press-moves');
+  const c6 = await cellOf('trend');
+  const gripMoves = phGrip && c6.y > c4.y;
+  // E. right / OUTSIDE: the tab sits above the card, and a press on it moves the widget
+  await page.selectOption('#fb-grip-pos', 'right'); await page.selectOption('#fb-grip-place', 'outside'); await page.waitForTimeout(300);
+  const g2 = await gripInfo();
+  const c7 = await cellOf('trend');
+  const phOut = await pull(g2.x, g2.y, -300);
+  await shot(page, 'grip-outside-right-press-moves');
+  const c8 = await cellOf('trend');
+  const outsideMoves = g2.above && g2.right < 12 && phOut && c8.y < c7.y;
+  // F. split honours the grip too: a body press draws no insertion line, a grip press does
+  await page.click('#fb-split'); await page.waitForTimeout(500);
+  const m = await rectOf('mix'); const t = await rectOf('trend');
+  await page.mouse.move(m.x + m.width / 2, m.y + m.height * 0.6); await page.mouse.down();
+  await page.mouse.move(t.x + 30, t.y + t.height / 2, { steps: 20 }); await page.waitForTimeout(300);
+  const splitBody = await page.evaluate(() => document.querySelectorAll('.axdb-ins').length);
+  await page.mouse.up(); await page.waitForTimeout(400);
+  const gm = await page.evaluate(() => { const g = document.querySelector('.grafloria-node-host[data-node-id="mix"] > .axdb-grip'); const r = g.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  const t2 = await rectOf('trend');
+  await page.mouse.move(gm.x, gm.y); await page.mouse.down();
+  await page.mouse.move(t2.x + 30, t2.y + t2.height / 2, { steps: 20 }); await page.waitForTimeout(300);
+  const splitGrip = await page.evaluate(() => document.querySelectorAll('.axdb-ins').length);
+  await shot(page, 'split-grip-drag');
+  await page.mouse.up(); await page.waitForTimeout(400);
+  const st = await boardState(page);
+  verdict(on.v === true && on.cls && on.cursor === 'grab' && bodyInert && headerMoves && off.v === false && !off.cls && bodyBack && !!g1 && !g1.above && g1.left < 20 && selectedOnly && gripInert && gripMoves && outsideMoves && splitBody === 0 && splitGrip === 1 && st.overlaps === 0,
+    `caption=${on.v}/${on.cls}/cursor=${on.cursor} body-inert=${bodyInert} caption-moves=${headerMoves}(y ${c0.y}->${c2.y}) off=${off.v}/${off.cls} body-back=${bodyBack} ` +
+    `grip-inside-left=${!!g1 && !g1.above && g1.left < 20}(${g1?.cls}) selected-only=${selectedOnly} grip-body+caption-inert=${gripInert} grip-moves=${gripMoves}(y ${c4.y}->${c6.y}) ` +
+    `outside-right-moves=${outsideMoves}(above=${g2?.above}, right=${g2?.right}, y ${c7.y}->${c8.y}) split-body-line=${splitBody} split-grip-line=${splitGrip} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
+  await page.close();
+}
+
+{
+  begin('s35-static-clicks-and-edge-cursor');
+  const page = await freshPage('/dashboard/fluid-board.html');
+  const rectOf = (sel) => page.evaluate((sel) => document.querySelector(sel).getBoundingClientRect().toJSON(), sel);
+  // A. hover near a chart's bottom edge: the cursor says resize even over the chart's own svg
+  const t = await rectOf('.grafloria-node-host[data-node-id="trend"]');
+  await page.mouse.move(t.x + t.width / 2, t.y + t.height - 3); await page.waitForTimeout(150);
+  const cursorNearEdge = await page.evaluate(() => { const h = document.querySelector('.grafloria-node-host[data-node-id="trend"]'); const el = document.elementFromPoint(h.getBoundingClientRect().x + h.getBoundingClientRect().width / 2, h.getBoundingClientRect().bottom - 3); return { host: h.getAttribute('data-axdb-edge') ?? '', attr: h.hasAttribute('data-axdb-edge'), under: getComputedStyle(el).cursor, tag: el.tagName }; });
+  await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2); await page.waitForTimeout(150);
+  const cursorMid = await page.evaluate(() => { const h = document.querySelector('.grafloria-node-host[data-node-id="trend"]'); return { host: h.getAttribute('data-axdb-edge') ?? '', attr: h.hasAttribute('data-axdb-edge') }; });
+  // B. static board: a real click inside the chart's content reaches a listener on the content
+  await page.evaluate(() => { window.__demoCtx.handle.setStatic(true); window.__clicks = 0; document.querySelector('.grafloria-node-host[data-node-id="trend"] .axdb-widget-b').addEventListener('click', () => { window.__clicks++; }); });
+  await page.waitForTimeout(200);
+  await page.mouse.click(t.x + t.width / 2, t.y + t.height / 2); await page.waitForTimeout(200);
+  const clicksStatic = await page.evaluate(() => window.__clicks);
+  const movedStatic = await page.evaluate(() => { const c = window.__demoCtx.handle.widget('trend').cell; return { x: c.x, y: c.y }; });
+  // …and a press there starts no drag
+  await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2); await page.mouse.down(); await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2 + 200, { steps: 10 }); await page.waitForTimeout(200); await page.mouse.up(); await page.waitForTimeout(300);
+  const afterDrag = await page.evaluate(() => { const c = window.__demoCtx.handle.widget('trend').cell; return { x: c.x, y: c.y }; });
+  await shot(page, 'static-click-reaches-content');
+  await page.evaluate(() => window.__demoCtx.handle.setStatic(false));
+  const st = await boardState(page);
+  verdict(cursorNearEdge.host === 'ns-resize' && cursorNearEdge.attr && cursorNearEdge.under === 'ns-resize' && cursorMid.host === '' && !cursorMid.attr && clicksStatic === 1 && afterDrag.x === movedStatic.x && afterDrag.y === movedStatic.y && st.overlaps === 0,
+    `edge-cursor=${cursorNearEdge.host}/under=${cursorNearEdge.under}(${cursorNearEdge.tag}) attr=${cursorNearEdge.attr} mid=${JSON.stringify(cursorMid)} static-click=${clicksStatic} static-drag-moved=${afterDrag.x !== movedStatic.x || afterDrag.y !== movedStatic.y} overlaps=${st.overlaps}`);
+  assertNoPageErrors(page);
   await page.close();
 }
 
 } finally {
+
+{
+  begin('s36-inside-the-selection-a-sections-or-a-pages-layout-switches-live');
+  // The user: "if I selected a tab or a group that can have other widgets I would have an option to change its layout,
+  // grid or split." The "Inside …" control resolves the selection to the container that holds it — a section, a tab
+  // group's active page, the page a widget sits in — and switches its layout with handle.setLayout(mode, containerId).
+  const page = await freshPage('/dashboard/fluid-board.html');
+  const control = () => page.evaluate(() => ({ name: document.getElementById('fb-sel-name').textContent, grid: document.getElementById('fb-sel-grid').getAttribute('aria-pressed'), split: document.getElementById('fb-sel-split').getAttribute('aria-pressed'), disabled: document.getElementById('fb-sel-split').disabled }));
+  const layoutOf = (id) => page.evaluate((id) => window.__demoCtx.handle.getLayout(id), id);
+  const rects = (ids) => page.evaluate((ids) => Object.fromEntries(ids.map((id) => { const r = document.querySelector(`.grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect(); return [id, { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) }]; })), ids);
+  const sanity = () => page.evaluate(() => { const hosts = [...document.querySelectorAll('.grafloria-node-host')].filter((h) => { const r = h.getBoundingClientRect(); return r.width > 4 && r.x > -5000; }); let overlaps = 0; const rs = hosts.map((h) => h.getBoundingClientRect()); for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) { const a = rs[i], b = rs[j]; if (a.x < b.right - 4 && b.x < a.right - 4 && a.y < b.bottom - 4 && b.y < a.bottom - 4) overlaps++; } return { count: hosts.length, overlaps }; });
+  const c0 = await control(); // nothing selected: the control is disabled
+  // A. the Operations section by its caption band → "Operations", Grid pressed; Split → a splitter tree INSIDE it: its two widgets share the whole section
+  await page.click('.axdb-slab[data-slab-id="ops"] > .axdb-slab-h'); await page.waitForTimeout(300);
+  const c1 = await control();
+  const ops0 = await rects(['orders', 'churn']);
+  const slab = await page.evaluate(() => document.querySelector('.axdb-slab[data-slab-id="ops"]').getBoundingClientRect().toJSON());
+  await page.click('#fb-sel-split'); await page.waitForTimeout(600);
+  const c2 = await control(); const lOps = await layoutOf('ops');
+  const ops1 = await rects(['orders', 'churn']);
+  await shot(page, 'operations-split-inside');
+  const covers = ops1.orders.w + ops1.churn.w > slab.width * 0.85 && ops1.orders.w > ops0.orders.w + 40;
+  await page.click('#fb-sel-grid'); await page.waitForTimeout(600);
+  const ops2 = await rects(['orders', 'churn']); const lOps2 = await layoutOf('ops');
+  // B. the Alerts tab → "Side panel › Alerts", Grid; Split → the page's widgets cover the page; the Filters tab → the control follows, Filters still grid
+  await page.click('.axdb-tabs[data-tabs-id="side"] .axdb-tab[data-tab-id="p-alerts"]'); await page.waitForTimeout(350);
+  const c3 = await control();
+  const alertsIds = await page.evaluate(() => window.__demoCtx.handle.toJSON().views[0].widgets.find((w) => w.id === 'side').widgets.find((p) => p.id === 'p-alerts').widgets.map((w) => w.id));
+  const al0 = await rects(alertsIds);
+  await page.click('#fb-sel-split'); await page.waitForTimeout(600);
+  const c4 = await control(); const lAlerts = await layoutOf('p-alerts');
+  const al1 = await rects(alertsIds);
+  const pageBox = await page.evaluate(() => { const s = document.querySelector('.axdb-slab[data-slab-id="side"]').getBoundingClientRect(); return { w: s.width, h: s.height }; });
+  // the page's one widget already filled it as a grid; as a split it is the whole pane — the page is covered either way
+  const alertsCover = Object.values(al1).reduce((a, r) => a + r.w * r.h, 0) > 0.8 * (pageBox.w - 16) * (pageBox.h - 30 - 16) && Object.values(al1).reduce((a, r) => a + r.w * r.h, 0) >= Object.values(al0).reduce((a, r) => a + r.w * r.h, 0) * 0.95;
+  await shot(page, 'alerts-page-split-inside');
+  await page.click('.axdb-tabs[data-tabs-id="side"] .axdb-tab[data-tab-id="p-filters"]'); await page.waitForTimeout(350);
+  const c5 = await control(); const lFilters = await layoutOf('p-filters');
+  // C. a widget INSIDE the Filters page → the page; a widget of the view → nothing to switch (the view has its own buttons)
+  await page.click('.grafloria-node-host[data-node-id="f-region"]'); await page.waitForTimeout(300);
+  const c6 = await control();
+  await page.click('.grafloria-node-host[data-node-id="rev"]'); await page.waitForTimeout(300);
+  const c7 = await control();
+  const sane = await sanity();
+  verdict(c0.disabled && c1.name === 'Operations' && c1.grid === 'true' && !c1.disabled
+    && c2.split === 'true' && lOps === 'split' && covers
+    && lOps2 === 'grid' && ops2.orders.w === ops0.orders.w && ops2.orders.x === ops0.orders.x
+    && c3.name === 'Side panel › Alerts' && c3.grid === 'true' && c4.split === 'true' && lAlerts === 'split' && alertsCover
+    && c5.name === 'Side panel › Filters' && c5.grid === 'true' && lFilters === 'grid'
+    && c6.name === 'Side panel › Filters' && c7.disabled && c7.name === 'nothing selected' && sane.overlaps === 0,
+    `rest: ${JSON.stringify(c0)} · Operations selected: ${JSON.stringify(c1)} · Split inside: layout ${lOps}, orders ${ops0.orders.w}→${ops1.orders.w} px, the pair covers the ${Math.round(slab.width)} px section ${covers} · Grid back: ${lOps2}, orders at ${ops2.orders.x} w ${ops2.orders.w} (was ${ops0.orders.x} w ${ops0.orders.w}) · Alerts tab: ${JSON.stringify(c3)} · Split inside: ${lAlerts}, ${alertsIds.length} widgets cover the page ${alertsCover} · Filters tab: ${JSON.stringify(c5)} layout ${lFilters} · a widget inside Filters: ${c6.name} · a view widget: ${JSON.stringify(c7)} · ${JSON.stringify(sane)}`);
+}
+
   await browser.close();
   server.close();
 }

@@ -4,6 +4,12 @@
 <title>Grafloria — demo gallery</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Over 100 live, clickable Grafloria demos — every one executed in CI as a test. Nodes, edges, layouts, dashboards, collaboration, exports.">
+<link rel="canonical" href="https://grafloria.com/demos/">
+<meta property="og:title" content="Grafloria — demo gallery">
+<meta property="og:description" content="Over 100 live, clickable Grafloria demos — every one executed in CI as a test.">
+<meta property="og:url" content="https://grafloria.com/demos/">
+<meta property="og:image" content="https://grafloria.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="shell/logo.svg" type="image/svg+xml">
 <style>
   :root {
@@ -87,7 +93,7 @@
   public embed with real pointer events and asserts a consequence; a broken demo fails CI.
   If it's in the gallery, it works.</p>
   <div class="scoreboard">
-    <span class="stat"><b>109</b> demos</span>
+    <span class="stat"><b>121</b> demos</span>
     <span class="stat"><b>12</b> categories</span>
     <span class="stat"><b>MIT</b> — every one of them</span>
     <a class="stat link" href="https://grafloria.com/compare/">how Grafloria compares →</a>
@@ -95,22 +101,52 @@
 </header>
 <main>
 
-      <section class="featured">
+      <section class="featured" id="featured">
         <h2>★ Featured <span class="count">start here</span></h2>
         <div class="grid">
-        <a class="card is-new" href="interaction/n8n-workflow.html" style="--cat:#7c3aed">
+        <a class="card" href="diagrams/visio-editor.html" style="--cat:#9333ea">
+          <div class="card-thumb"><img src="thumbs/diagrams/visio-editor.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name">Visio-style editor<span class="card-go">→</span></div>
+          <div class="card-blurb">The whole authoring surface: a page grid with snap, zoom controls and a minimap, drop a shape OR a real database table, group, align, drop into containers — every edit undoable.</div>
+        </a>
+        <a class="card" href="misc/drawio-import.html" style="--cat:#64748b">
+          <div class="card-thumb"><img src="thumbs/misc/drawio-import.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name">draw.io import<span class="card-go">→</span></div>
+          <div class="card-blurb">Import .drawio files — plain XML or the default compressed save — onto live engine models: shapes, colours, swimlane containers with real membership, edge labels. Every dropped construct is a named warning.</div>
+        </a>
+        <a class="card" href="interaction/n8n-workflow.html" style="--cat:#7c3aed">
           <div class="card-thumb"><img src="thumbs/interaction/n8n-workflow.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>n8n workflow builder<span class="card-go">→</span></div>
+          <div class="card-name">n8n workflow builder<span class="card-go">→</span></div>
           <div class="card-blurb">An n8n workflow you can actually RUN: press ▶ Test workflow and execution walks the graph from the Trigger — the running node spins, finished nodes get green checks, wires grow &quot;n items&quot; pills, the AI Agent's sub-nodes flash while it thinks, and the If node routes items down ONE branch by a real condition. Pause / step / continue a live run, read the execution log, and double-click any node for n8n's Node Details View: input items | an editable Parameters form + Settings tab | output items, plus &quot;Execute step&quot; to run up to that node. Connect-by-drag, a node palette, and the two wire families still apply.</div>
         </a>
-        <a class="card is-new" href="dashboard/dashboard-builder.html" style="--cat:#0891b2">
+        <a class="card is-new" href="interaction/chatbot-flow.html" style="--cat:#7c3aed">
+          <div class="card-thumb"><img src="thumbs/interaction/chatbot-flow.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>ManyChat-style chatbot builder<span class="card-go">→</span></div>
+          <div class="card-blurb">A ManyChat-style chatbot builder: message cards whose every button owns its own connection dot, orange and red branches for &quot;on reply&quot; and &quot;no reply&quot;, a step editor that re-measures the card as you type, and a Preview that runs the bot along the lines you drew.</div>
+        </a>
+        <a class="card is-new" href="interaction/workflow-builder.html" style="--cat:#7c3aed">
+          <div class="card-thumb"><img src="thumbs/interaction/workflow-builder.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>Workflow automation builder<span class="card-go">→</span></div>
+          <div class="card-blurb">A deployment-automation builder: a GitLab push runs through a Condition and a health-check Switch to Kubernetes, Datadog, PagerDuty, Jira, ServiceNow and Slack steps. Add steps with the &quot;+&quot; on any output (the flow re-arranges itself), edit each step in the side panel, group a sub-flow in a sticky note, undo anything, save and load, and press Test workflow to watch the run take the branch its rules decide.</div>
+        </a>
+        <a class="card is-new" href="interaction/marketing-automation.html" style="--cat:#7c3aed">
+          <div class="card-thumb"><img src="thumbs/interaction/marketing-automation.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>Marketing automation studio<span class="card-go">→</span></div>
+          <div class="card-blurb">A top-down marketing automation builder: a trigger with removable criteria chips, a spine of steps, Branches whose paths fan out under chips, a computed layout that re-flows with a short animation on every edit, a &quot;+&quot; on every line and at the end of every path, a property panel with a hint under each field, undo for everything, Save / Load, and a Test flow in which a token walks a sample contact through the automation while delays fast-forward.</div>
+        </a>
+        <a class="card is-new" href="diagrams/data-modeling.html" style="--cat:#9333ea">
+          <div class="card-thumb"><img src="thumbs/diagrams/data-modeling.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>Data modeling studio<span class="card-go">→</span></div>
+          <div class="card-blurb">Design a database on the board and get live SQL: table cards with inline names, types and UQ / NN switches, foreign keys made by dragging a column's grip onto another table, coloured groups that fold away, DDL for SQLite, PostgreSQL or MySQL that rewrites itself on every edit, DDL import and export, and a query runner that builds the schema in a real in-browser database — all of it undoable.</div>
+        </a>
+        <a class="card" href="dashboard/dashboard-builder.html" style="--cat:#0891b2">
           <div class="card-thumb"><img src="thumbs/dashboard/dashboard-builder.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Dashboard builder<span class="card-go">→</span></div>
+          <div class="card-name">Dashboard builder<span class="card-go">→</span></div>
           <div class="card-blurb">A dashboard-builder app authored with the kit's DATA-FIRST API: `dashboard({ views: [{ widgets: [{ id, kind, span, rows, data }] }] })` — three tabbed views declared as plain data, no groups/nodes/cells assembled by hand, and every chart drawn by the kit's built-in renderers (kpi / line / bar / donut / funnel / table) from this page's own dataset. render() wires the rest: ONE flat 12-column PACK grid per view, so drag a tile and neighbours slide out of the way live around a truthful placeholder; resize from the corner and only that tile changes; pinned tiles refuse the mover; Esc restores; palette drag-in and drag-out-to-remove; fit/grow sizing — every gesture ONE undoable BatchCommand, from the @grafloria/element front door.</div>
         </a>
-        <a class="card is-new" href="diagrams/erd-editor.html" style="--cat:#9333ea">
+        <a class="card" href="diagrams/erd-editor.html" style="--cat:#9333ea">
           <div class="card-thumb"><img src="thumbs/diagrams/erd-editor.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>ERD editor (in-canvas editing)<span class="card-go">→</span></div>
+          <div class="card-name">ERD editor (in-canvas editing)<span class="card-go">→</span></div>
           <div class="card-blurb">The erDiagram() kit with editable:true — rename tables &amp; columns in place, add and delete columns, all as undoable edits. Field ports and FK→PK edges reconcile automatically, so an edge never comes unglued when the rows shift.</div>
         </a>
         <a class="card" href="diagrams/class-uml.html" style="--cat:#9333ea">
@@ -141,7 +177,7 @@
         <a class="card" href="grouping/swimlanes.html" style="--cat:#db2777">
           <div class="card-thumb"><img src="thumbs/grouping/swimlanes.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name">Swimlanes<span class="card-go">→</span></div>
-          <div class="card-blurb">Pools and weighted lanes that tile a frame and keep their nodes in-lane — a full containment model, reachable now that SwimlaneService is on the public embed.</div>
+          <div class="card-blurb">A pool of weighted lanes you can work in by hand: drag tickets between lanes, drop new ones in, and they never leave the pool. Grab a lane to move the whole pool.</div>
         </a>
         <a class="card" href="collab/comments.html" style="--cat:#dc2626">
           <div class="card-thumb"><img src="thumbs/collab/comments.png" loading="lazy" alt="" width="600" height="360"></div>
@@ -161,7 +197,7 @@
         </div>
       </section>
 
-      <section>
+      <section id="nodes">
         <h2>Nodes <span class="count">18</span></h2>
         <div class="grid">
         <a class="card" href="nodes/auto-sizing.html" style="--cat:#3B52D9">
@@ -179,14 +215,14 @@
           <div class="card-name">Custom nodes<span class="card-go">→</span></div>
           <div class="card-blurb">Arbitrary content inside a node — and the node still hit-tests, routes and serialises like any other.</div>
         </a>
-        <a class="card is-new" href="nodes/delete-middle-node.html" style="--cat:#3B52D9">
+        <a class="card" href="nodes/delete-middle-node.html" style="--cat:#3B52D9">
           <div class="card-thumb"><img src="thumbs/nodes/delete-middle-node.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Delete the middle node<span class="card-go">→</span></div>
+          <div class="card-name">Delete the middle node<span class="card-go">→</span></div>
           <div class="card-blurb">Delete B out of A→B→C and the chain HEALS: its two edges cascade away with it, and a fresh A→C wire bridges the gap. Built from getLinks() + the shipped link command, so the bridge is a real, undoable edge.</div>
         </a>
-        <a class="card is-new" href="nodes/drag-handle.html" style="--cat:#3B52D9">
+        <a class="card" href="nodes/drag-handle.html" style="--cat:#3B52D9">
           <div class="card-thumb"><img src="thumbs/nodes/drag-handle.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Drag handle<span class="card-go">→</span></div>
+          <div class="card-name">Drag handle<span class="card-go">→</span></div>
           <div class="card-blurb">A designated grip drags its parent — and ONLY the grip: the body selects but no longer drags, and the handle is chrome (no ports, no wires). Press the title bar and the window moves through the real drag pipeline.</div>
         </a>
         <a class="card" href="nodes/easy-connect.html" style="--cat:#3B52D9">
@@ -204,34 +240,34 @@
           <div class="card-name">HTML nodes<span class="card-go">→</span></div>
           <div class="card-blurb">Rich HTML inside a node via SVG foreignObject — sanitised (never innerHTML), and because it lives inside the node’s transformed group it rotates, pans and moves with the node.</div>
         </a>
-        <a class="card is-new" href="nodes/intersections.html" style="--cat:#3B52D9">
+        <a class="card" href="nodes/intersections.html" style="--cat:#3B52D9">
           <div class="card-thumb"><img src="thumbs/nodes/intersections.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Intersections<span class="card-go">→</span></div>
+          <div class="card-name">Intersections<span class="card-go">→</span></div>
           <div class="card-blurb">Drag a node and every node it overlaps lights up red, live — createDiagramApi(…).getIntersectingNodes on each move, with overlap vs full-containment (fully:true) both proven.</div>
         </a>
-        <a class="card is-new" href="nodes/node-position-animation.html" style="--cat:#3B52D9">
+        <a class="card" href="nodes/node-position-animation.html" style="--cat:#3B52D9">
           <div class="card-thumb"><img src="thumbs/nodes/node-position-animation.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Node position animation<span class="card-go">→</span></div>
+          <div class="card-name">Node position animation<span class="card-go">→</span></div>
           <div class="card-blurb">Eight nodes tween between layouts — grid · ring · row — by writing node.position every frame on an ease-out curve (pure userland — no animation API needed). Proven by sampling a node mid-flight: it is between start and target, AHEAD of a linear curve, lands exactly on target, and both the node DOM and its edges follow.</div>
         </a>
-        <a class="card is-new" href="nodes/node-resize-gesture.html" style="--cat:#3B52D9">
+        <a class="card" href="nodes/node-resize-gesture.html" style="--cat:#3B52D9">
           <div class="card-thumb"><img src="thumbs/nodes/node-resize-gesture.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Node resize gesture<span class="card-go">→</span></div>
+          <div class="card-name">Node resize gesture<span class="card-go">→</span></div>
           <div class="card-blurb">Select a node and the renderer paints the full resizer chrome: four corner dots and four edge lines, each with its own resize cursor, driven by a REAL pointer drag through the default pipeline. Corners resize both axes and pin the opposite corner; an edge line is grabbable ANYWHERE along the border and moves just that edge; the port keeps its glyph (that press draws a wire); min/max/aspect clamp DURING the gesture; one release is one undo step.</div>
         </a>
-        <a class="card is-new" href="nodes/node-resizer.html" style="--cat:#3B52D9">
+        <a class="card" href="nodes/node-resizer.html" style="--cat:#3B52D9">
           <div class="card-thumb"><img src="thumbs/nodes/node-resizer.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Node resizer<span class="card-go">→</span></div>
+          <div class="card-name">Node resizer<span class="card-go">→</span></div>
           <div class="card-blurb">Two resizers: SELECT a node for the built-in one — painted corner dots + edge lines, per-handle cursors, every handle live — or grab the bottom-right corner WITHOUT selecting for a custom control registered through the public registerTool seam. Both clamp to the node's declared min/max/aspect DURING the gesture.</div>
         </a>
-        <a class="card is-new" href="nodes/node-toolbar.html" style="--cat:#3B52D9">
+        <a class="card" href="nodes/node-toolbar.html" style="--cat:#3B52D9">
           <div class="card-thumb"><img src="thumbs/nodes/node-toolbar.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Node toolbar<span class="card-go">→</span></div>
+          <div class="card-name">Node toolbar<span class="card-go">→</span></div>
           <div class="card-blurb">A floating toolbar pinned to a node — shown only while the node is selected (or forced visible), placeable on any side with an alignment, and held at a CONSTANT on-screen size so its buttons stay legible at any zoom. It rides the node through pans, zooms and drags; its buttons act on that node.</div>
         </a>
-        <a class="card is-new" href="nodes/proximity-connect.html" style="--cat:#3B52D9">
+        <a class="card" href="nodes/proximity-connect.html" style="--cat:#3B52D9">
           <div class="card-thumb"><img src="thumbs/nodes/proximity-connect.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Proximity connect<span class="card-go">→</span></div>
+          <div class="card-name">Proximity connect<span class="card-go">→</span></div>
           <div class="card-blurb">Drag a node near another and a dashed wire proposes itself LIVE, then commits on drop — SnapController.findProximityConnection driven from host glue on node:moved.</div>
         </a>
         <a class="card" href="nodes/rotatable-node.html" style="--cat:#3B52D9">
@@ -244,25 +280,25 @@
           <div class="card-name">Shapes<span class="card-go">→</span></div>
           <div class="card-blurb">21 built-in figures, each a full ShapeDefinition — and registerPathShape() adds a custom silhouette whose links attach to its real edge — the full shape pack, MIT.</div>
         </a>
-        <a class="card is-new" href="nodes/stress-test.html" style="--cat:#3B52D9">
+        <a class="card" href="nodes/stress-test.html" style="--cat:#3B52D9">
           <div class="card-thumb"><img src="thumbs/nodes/stress-test.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Stress test<span class="card-go">→</span></div>
+          <div class="card-name">Stress test<span class="card-go">→</span></div>
           <div class="card-blurb">A 900-node mesh. Only the visible slice is ever in the DOM (viewport culling), a full-graph move repaints inside a frame budget, and one call lays ALL 900 out with a real engine — layered / elk / dagre / force / auto, each spreading the mesh in 2D. The strip prints the real layout time, so you can see which engine scales.</div>
         </a>
-        <a class="card is-new" href="nodes/updating-nodes.html" style="--cat:#3B52D9">
+        <a class="card" href="nodes/updating-nodes.html" style="--cat:#3B52D9">
           <div class="card-thumb"><img src="thumbs/nodes/updating-nodes.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Updating nodes<span class="card-go">→</span></div>
+          <div class="card-name">Updating nodes<span class="card-go">→</span></div>
           <div class="card-blurb">Edit a live node from OUTSIDE the canvas — type a label, pick a background, drag the width slider — and it re-renders on the spot. Each control calls a tracked setter (setMetadata, setSize) that bumps the mutation epoch; a raw field write would silently NOT repaint.</div>
         </a>
         </div>
       </section>
 
-      <section>
-        <h2>Edges <span class="count">13</span></h2>
+      <section id="edges">
+        <h2>Edges <span class="count">14</span></h2>
         <div class="grid">
-        <a class="card is-new" href="edges/animating-edges.html" style="--cat:#059669">
+        <a class="card" href="edges/animating-edges.html" style="--cat:#059669">
           <div class="card-thumb"><img src="thumbs/edges/animating-edges.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Animating edges<span class="card-go">→</span></div>
+          <div class="card-name">Animating edges<span class="card-go">→</span></div>
           <div class="card-blurb">Two ways to show a wire carrying data: the STROKE animates (four CSS styles) AND a SHAPE rides the wire — a circle, a package, a train of dots travelling the exact painted edge path via &lt;animateMotion&gt;. Asserted by the resolved animation-name, by the token tracking the path geometry, and by real per-frame motion.</div>
         </a>
         <a class="card" href="edges/custom-edges.html" style="--cat:#059669">
@@ -305,6 +341,11 @@
           <div class="card-name">Floating edges<span class="card-go">→</span></div>
           <div class="card-blurb">Endpoints slide to the nearest point on each node's perimeter (draw.io strategy) — asserted by watching the attachment migrate to the side that faces the partner when a node moves.</div>
         </a>
+        <a class="card is-new" href="edges/highlight-connected.html" style="--cat:#059669">
+          <div class="card-thumb"><img src="thumbs/edges/highlight-connected.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>Highlight connected lines<span class="card-go">→</span></div>
+          <div class="card-blurb">Select a node and its lines come forward in ink while the rest fade; a line crossing a card is lifted above it and dashed. One option, highlightConnected, and a trace mode that follows the whole path.</div>
+        </a>
         <a class="card" href="edges/jump-overs.html" style="--cat:#059669">
           <div class="card-thumb"><img src="thumbs/edges/jump-overs.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name">Jump-overs<span class="card-go">→</span></div>
@@ -328,7 +369,7 @@
         </div>
       </section>
 
-      <section>
+      <section id="ports">
         <h2>Ports &amp; handles <span class="count">6</span></h2>
         <div class="grid">
         <a class="card" href="ports/connection-validation.html" style="--cat:#d97706">
@@ -364,22 +405,22 @@
         </div>
       </section>
 
-      <section>
-        <h2>Interaction <span class="count">20</span></h2>
+      <section id="interaction">
+        <h2>Interaction <span class="count">23</span></h2>
         <div class="grid">
         <a class="card" href="interaction/undo-redo.html" style="--cat:#7c3aed">
           <div class="card-thumb"><img src="thumbs/interaction/undo-redo.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name">Collaboration-aware undo<span class="card-go">→</span></div>
           <div class="card-blurb">Two peers share an op log. ⌘Z on peer A undoes A's OWN last move, not the move peer B made afterwards — the thing single-buffer undo gets wrong in every collaborative editor.</div>
         </a>
-        <a class="card is-new" href="interaction/computing-flows.html" style="--cat:#7c3aed">
+        <a class="card" href="interaction/computing-flows.html" style="--cat:#7c3aed">
           <div class="card-thumb"><img src="thumbs/interaction/computing-flows.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Computing flows<span class="card-go">→</span></div>
+          <div class="card-name">Computing flows<span class="card-go">→</span></div>
           <div class="card-blurb">Type a value into the source and it flows: every downstream node recomputes LIVE along the real link topology. Drop a wire and the result recomputes the instant it lands; cut a wire and the flow stops past the cut. Grafloria owns the graph and fires the change events; the app owns the arithmetic.</div>
         </a>
-        <a class="card is-new" href="interaction/connection-events.html" style="--cat:#7c3aed">
+        <a class="card" href="interaction/connection-events.html" style="--cat:#7c3aed">
           <div class="card-thumb"><img src="thumbs/interaction/connection-events.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Connection events<span class="card-go">→</span></div>
+          <div class="card-name">Connection events<span class="card-go">→</span></div>
           <div class="card-blurb">A live log of the connection lifecycle the engine fires as you drag a wire — start, per-move update, port enter/leave, then complete or cancel. The stream splits the &quot;end&quot; into complete (valid) vs cancel (abandoned/refused), so hosts can react to each outcome differently.</div>
         </a>
         <a class="card" href="interaction/validation.html" style="--cat:#7c3aed">
@@ -432,14 +473,24 @@
           <div class="card-name">Keyboard &amp; screen-reader a11y<span class="card-go">→</span></div>
           <div class="card-blurb">Everything by keyboard: Tab moves a focus ring, arrows nudge (and ⌘Z undoes to the exact pixel), C+Tab+Enter connects, and a live-region outline mirror narrates the whole graph to a screen reader.</div>
         </a>
+        <a class="card is-new" href="interaction/chatbot-flow.html" style="--cat:#7c3aed">
+          <div class="card-thumb"><img src="thumbs/interaction/chatbot-flow.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>ManyChat-style chatbot builder<span class="card-go">→</span></div>
+          <div class="card-blurb">A ManyChat-style chatbot builder: message cards whose every button owns its own connection dot, orange and red branches for &quot;on reply&quot; and &quot;no reply&quot;, a step editor that re-measures the card as you type, and a Preview that runs the bot along the lines you drew.</div>
+        </a>
+        <a class="card is-new" href="interaction/marketing-automation.html" style="--cat:#7c3aed">
+          <div class="card-thumb"><img src="thumbs/interaction/marketing-automation.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>Marketing automation studio<span class="card-go">→</span></div>
+          <div class="card-blurb">A top-down marketing automation builder: a trigger with removable criteria chips, a spine of steps, Branches whose paths fan out under chips, a computed layout that re-flows with a short animation on every edit, a &quot;+&quot; on every line and at the end of every path, a property panel with a hint under each field, undo for everything, Save / Load, and a Test flow in which a token walks a sample contact through the automation while delays fast-forward.</div>
+        </a>
         <a class="card" href="interaction/marquee-select.html" style="--cat:#7c3aed">
           <div class="card-thumb"><img src="thumbs/interaction/marquee-select.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name">Marquee selection<span class="card-go">→</span></div>
           <div class="card-blurb">Drag a rubber-band box over empty canvas and every node it fully encloses is selected — the marquee tool the binder leaves to the host, assembled from the public registerTool + viewport + selection seams. Shift adds to the selection.</div>
         </a>
-        <a class="card is-new" href="interaction/n8n-workflow.html" style="--cat:#7c3aed">
+        <a class="card" href="interaction/n8n-workflow.html" style="--cat:#7c3aed">
           <div class="card-thumb"><img src="thumbs/interaction/n8n-workflow.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>n8n workflow builder<span class="card-go">→</span></div>
+          <div class="card-name">n8n workflow builder<span class="card-go">→</span></div>
           <div class="card-blurb">An n8n workflow you can actually RUN: press ▶ Test workflow and execution walks the graph from the Trigger — the running node spins, finished nodes get green checks, wires grow &quot;n items&quot; pills, the AI Agent's sub-nodes flash while it thinks, and the If node routes items down ONE branch by a real condition. Pause / step / continue a live run, read the execution log, and double-click any node for n8n's Node Details View: input items | an editable Parameters form + Settings tab | output items, plus &quot;Execute step&quot; to run up to that node. Connect-by-drag, a node palette, and the two wire families still apply.</div>
         </a>
         <a class="card" href="interaction/parent-move.html" style="--cat:#7c3aed">
@@ -467,10 +518,15 @@
           <div class="card-name">Touch device<span class="card-go">→</span></div>
           <div class="card-blurb">Pan, pinch-zoom, tap-to-select and one-finger node drag — all from real touch PointerEvents through the same pipeline a phone uses. touch-action:none is what keeps the browser from eating the gesture.</div>
         </a>
+        <a class="card is-new" href="interaction/workflow-builder.html" style="--cat:#7c3aed">
+          <div class="card-thumb"><img src="thumbs/interaction/workflow-builder.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>Workflow automation builder<span class="card-go">→</span></div>
+          <div class="card-blurb">A deployment-automation builder: a GitLab push runs through a Condition and a health-check Switch to Kubernetes, Datadog, PagerDuty, Jira, ServiceNow and Slack steps. Add steps with the &quot;+&quot; on any output (the flow re-arranges itself), edit each step in the side panel, group a sub-flow in a sticky note, undo anything, save and load, and press Test workflow to watch the run take the branch its rules decide.</div>
+        </a>
         </div>
       </section>
 
-      <section>
+      <section id="layout">
         <h2>Layout <span class="count">9</span></h2>
         <div class="grid">
         <a class="card" href="layout/auto-layout.html" style="--cat:#2563eb">
@@ -521,7 +577,7 @@
         </div>
       </section>
 
-      <section>
+      <section id="grouping">
         <h2>Grouping &amp; subflows <span class="count">7</span></h2>
         <div class="grid">
         <a class="card" href="grouping/collapse-expand.html" style="--cat:#db2777">
@@ -539,9 +595,9 @@
           <div class="card-name">Group frames<span class="card-go">→</span></div>
           <div class="card-blurb">Groups now draw a visible, labelled, themed frame — nested containers included. Was model-only since Wave 7.</div>
         </a>
-        <a class="card is-new" href="grouping/parent-child.html" style="--cat:#db2777">
+        <a class="card" href="grouping/parent-child.html" style="--cat:#db2777">
           <div class="card-thumb"><img src="thumbs/grouping/parent-child.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Parent &amp; child<span class="card-go">→</span></div>
+          <div class="card-name">Parent &amp; child<span class="card-go">→</span></div>
           <div class="card-blurb">Drop the child into the container to attach it. While attached, an out-of-bounds drag is reeled back to the container’s extent on release, and dragging the frame carries the child along. Detach, and the very same drag sticks — membership is the binding.</div>
         </a>
         <a class="card" href="grouping/selection-grouping.html" style="--cat:#db2777">
@@ -557,28 +613,38 @@
         <a class="card" href="grouping/swimlanes.html" style="--cat:#db2777">
           <div class="card-thumb"><img src="thumbs/grouping/swimlanes.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name">Swimlanes<span class="card-go">→</span></div>
-          <div class="card-blurb">Pools and weighted lanes that tile a frame and keep their nodes in-lane — a full containment model, reachable now that SwimlaneService is on the public embed.</div>
+          <div class="card-blurb">A pool of weighted lanes you can work in by hand: drag tickets between lanes, drop new ones in, and they never leave the pool. Grab a lane to move the whole pool.</div>
         </a>
         </div>
       </section>
 
-      <section>
-        <h2>Dashboards <span class="count">2</span></h2>
+      <section id="dashboard">
+        <h2>Dashboards <span class="count">4</span></h2>
         <div class="grid">
-        <a class="card is-new" href="dashboard/dashboard-builder.html" style="--cat:#0891b2">
+        <a class="card" href="dashboard/dashboard-builder.html" style="--cat:#0891b2">
           <div class="card-thumb"><img src="thumbs/dashboard/dashboard-builder.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Dashboard builder<span class="card-go">→</span></div>
+          <div class="card-name">Dashboard builder<span class="card-go">→</span></div>
           <div class="card-blurb">A dashboard-builder app authored with the kit's DATA-FIRST API: `dashboard({ views: [{ widgets: [{ id, kind, span, rows, data }] }] })` — three tabbed views declared as plain data, no groups/nodes/cells assembled by hand, and every chart drawn by the kit's built-in renderers (kpi / line / bar / donut / funnel / table) from this page's own dataset. render() wires the rest: ONE flat 12-column PACK grid per view, so drag a tile and neighbours slide out of the way live around a truthful placeholder; resize from the corner and only that tile changes; pinned tiles refuse the mover; Esc restores; palette drag-in and drag-out-to-remove; fit/grow sizing — every gesture ONE undoable BatchCommand, from the @grafloria/element front door.</div>
         </a>
-        <a class="card is-new" href="dashboard/grid-options.html" style="--cat:#0891b2">
+        <a class="card" href="dashboard/nested-containers.html" style="--cat:#0891b2">
+          <div class="card-thumb"><img src="thumbs/dashboard/nested-containers.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name">Dashboard containers<span class="card-go">→</span></div>
+          <div class="card-blurb">CONTAINMENT declared as data: a widget carrying `widgets` in `dashboard()` mounts as a section — a locked slab in the board with its own pack grid inside. Drag a tile across the boundary and the other grid adopts it live, in either direction; one undo restores the whole gesture, both grids at once. Resize a KPI taller than the section and the SECTION grows a row in the board (the escalation ratchet). toJSON() reports the nesting from live membership — a tile you dragged in serialises under the section, and the snapshot rebuilds through dashboard() unchanged. The hand-built version of this construct lives in dashboard/grid-options.html; this page is the same thing as one field in the data.</div>
+        </a>
+        <a class="card" href="dashboard/grid-options.html" style="--cat:#0891b2">
           <div class="card-thumb"><img src="thumbs/dashboard/grid-options.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Dashboard grid options<span class="card-go">→</span></div>
+          <div class="card-name">Dashboard grid options<span class="card-go">→</span></div>
           <div class="card-blurb">The dashboard kit's ADVANCED grid constructs, one labelled board each — cross-container drag between two boards, a bounded section (maxRows: 1) nested inside a board with height escalation, a pinned tile that refuses the mover, explicit cell placement with auto-flow around it, float and fit/grow toggles, palette drag-in and drag-out-to-remove. The flagship Dashboard builder deliberately uses NONE of these: it is one flat 12-column grid so its behaviour is predictable. This page is the options menu. LAYERS: `dashboard({ views })` declares a whole board as data and wires all of this for you (dashboard/dashboard-builder.html) — this page is the layer beneath it, `bindDashboardGrid` driven directly, because that is where these options live.</div>
+        </a>
+        <a class="card is-new" href="dashboard/fluid-board.html" style="--cat:#0891b2">
+          <div class="card-thumb"><img src="thumbs/dashboard/fluid-board.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>Fluid dashboard<span class="card-go">→</span></div>
+          <div class="card-blurb">The DEFAULT mode of `dashboard()`: no width authored, so the board is 100% of its container at zoom 1 — laid out at real CSS pixels, the way gridstack and react-grid-layout lay out, never a picture the camera scales. Rows keep their height (GROW, the fluid default): drag or resize one tile and no other tile changes size; the board extends downward and the wheel scrolls it. Shrink the container (&quot;Narrow container&quot;) and the board follows; the type stays 30 px. Switch to FIT and the board keeps its height instead — FIT MEANS BOUNDED: rows squeeze so everything stays on one screen, the row floor is a capacity, and &quot;+ Add a row&quot; is REFUSED, visibly, when there is no room; nothing is ever painted past the board's edge. `mode: 'fixed'` (or an explicit width) keeps the framed-world behaviour for a dashboard embedded inside a larger diagram — see dashboard/dashboard-builder.html. &quot;Drag&quot; picks the handle: anywhere on the card; BY CAPTION (`dragHandle: true`, the DevExpress caption drag — the caption strip is the only grip, so a table body scrolls and a legend clicks instead of starting a move); or BY GRIP (`{ grip: true, position, placement }` — a painted grip, left / center / right, INSIDE the header band or OUTSIDE as a tab above the card like the DevExpress item bar; it shows on the SELECTED widget only — click a widget to select it, click the board to clear). `handle.setDragHandle()` switches it live. The OPERATIONS row is a SECTION (a widget carrying `widgets`) with a CAPTION painted by the kit (0.4.22): a 44 px band with a subtitle, an ⓘ and two action buttons, reserved above its children; a press on the band selects the section, an action fires `onCaptionAction`, &quot;Caption&quot; switches it live through `handle.setCaption()` — a tab above the frame, centred and uppercase with its own fill, on hover only, or none.</div>
         </a>
         </div>
       </section>
 
-      <section>
+      <section id="styling">
         <h2>Styling &amp; theming <span class="count">7</span></h2>
         <div class="grid">
         <a class="card" href="styling/dark-mode.html" style="--cat:#ca8a04">
@@ -619,12 +685,12 @@
         </div>
       </section>
 
-      <section>
+      <section id="collab">
         <h2>Collaboration <span class="count">6</span></h2>
         <div class="grid">
-        <a class="card is-new" href="collab/conflict-resolution.html" style="--cat:#dc2626">
+        <a class="card" href="collab/conflict-resolution.html" style="--cat:#dc2626">
           <div class="card-thumb"><img src="thumbs/collab/conflict-resolution.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Conflict resolution<span class="card-go">→</span></div>
+          <div class="card-name">Conflict resolution<span class="card-go">→</span></div>
           <div class="card-blurb">Concurrent move + rename of the SAME node: both survive on both peers. Whole-entity LWW would throw one away — a per-property CRDT does not.</div>
         </a>
         <a class="card" href="collab/live-cursors.html" style="--cat:#dc2626">
@@ -655,7 +721,7 @@
         </div>
       </section>
 
-      <section>
+      <section id="whiteboard">
         <h2>Whiteboard <span class="count">4</span></h2>
         <div class="grid">
         <a class="card" href="whiteboard/eraser.html" style="--cat:#4f46e5">
@@ -681,13 +747,18 @@
         </div>
       </section>
 
-      <section>
-        <h2>Export &amp; misc <span class="count">8</span></h2>
+      <section id="misc">
+        <h2>Export &amp; misc <span class="count">9</span></h2>
         <div class="grid">
         <a class="card" href="misc/download-image.html" style="--cat:#64748b">
           <div class="card-thumb"><img src="thumbs/misc/download-image.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name">Download image<span class="card-go">→</span></div>
           <div class="card-blurb">PNG and SVG straight from the VNode tree — labels, arrowheads and shadows included — and the raster is provably not blank and not black.</div>
+        </a>
+        <a class="card" href="misc/drawio-import.html" style="--cat:#64748b">
+          <div class="card-thumb"><img src="thumbs/misc/drawio-import.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name">draw.io import<span class="card-go">→</span></div>
+          <div class="card-blurb">Import .drawio files — plain XML or the default compressed save — onto live engine models: shapes, colours, swimlane containers with real membership, edge labels. Every dropped construct is a named warning.</div>
         </a>
         <a class="card" href="misc/editable-round-trip.html" style="--cat:#64748b">
           <div class="card-thumb"><img src="thumbs/misc/editable-round-trip.png" loading="lazy" alt="" width="600" height="360"></div>
@@ -727,27 +798,52 @@
         </div>
       </section>
 
-      <section>
-        <h2>Diagrams &amp; kits <span class="count">9</span></h2>
+      <section id="diagrams">
+        <h2>Diagrams &amp; kits <span class="count">14</span></h2>
         <div class="grid">
+        <a class="card is-new" href="diagrams/ai-style-diagram.html" style="--cat:#9333ea">
+          <div class="card-thumb"><img src="thumbs/diagrams/ai-style-diagram.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>AI-style diagrams<span class="card-go">→</span></div>
+          <div class="card-blurb">The diagrams Claude and ChatGPT hand-write as SVG — zones with corner captions, a name over a muted line, coloured labels riding their lines — drawn by Grafloria, from the native API or from Mermaid.</div>
+        </a>
+        <a class="card is-new" href="diagrams/architecture-layout.html" style="--cat:#9333ea">
+          <div class="card-thumb"><img src="thumbs/diagrams/architecture-layout.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>Architecture layout<span class="card-go">→</span></div>
+          <div class="card-blurb">The look of an AI-drawn architecture diagram — zones as regions, boxes sized to their words in rows, straight lines where boxes line up, bends in the gutters, a note beside what it warns about — from Grafloria Mermaid with no coordinates in it.</div>
+        </a>
         <a class="card" href="diagrams/class-uml.html" style="--cat:#9333ea">
           <div class="card-thumb"><img src="thumbs/diagrams/class-uml.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name">Class diagram (UML)<span class="card-go">→</span></div>
           <div class="card-blurb">A UML class diagram from PURE DATA via the reusable umlDiagram() kit: class boxes with name / attributes / methods compartments, hollow-triangle inheritance and hollow-diamond aggregation — look, selection and routing all from the kit.</div>
+        </a>
+        <a class="card is-new" href="diagrams/data-modeling.html" style="--cat:#9333ea">
+          <div class="card-thumb"><img src="thumbs/diagrams/data-modeling.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>Data modeling studio<span class="card-go">→</span></div>
+          <div class="card-blurb">Design a database on the board and get live SQL: table cards with inline names, types and UQ / NN switches, foreign keys made by dragging a column's grip onto another table, coloured groups that fold away, DDL for SQLite, PostgreSQL or MySQL that rewrites itself on every edit, DDL import and export, and a query runner that builds the schema in a real in-browser database — all of it undoable.</div>
         </a>
         <a class="card" href="diagrams/er-advanced.html" style="--cat:#9333ea">
           <div class="card-thumb"><img src="thumbs/diagrams/er-advanced.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name">ER diagram — advanced<span class="card-go">→</span></div>
           <div class="card-blurb">The advanced ER shapes — two relationships between the SAME pair of tables on different FK columns, a self-reference, a many-to-many junction, optional-vs-mandatory crow's-foot cardinality — all from ONE erDiagram() call: every line is a 'TABLE.column' → 'TABLE.column' string pinned to the exact row it joins.</div>
         </a>
-        <a class="card is-new" href="diagrams/erd-editor.html" style="--cat:#9333ea">
+        <a class="card" href="diagrams/erd-editor.html" style="--cat:#9333ea">
           <div class="card-thumb"><img src="thumbs/diagrams/erd-editor.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>ERD editor (in-canvas editing)<span class="card-go">→</span></div>
+          <div class="card-name">ERD editor (in-canvas editing)<span class="card-go">→</span></div>
           <div class="card-blurb">The erDiagram() kit with editable:true — rename tables &amp; columns in place, add and delete columns, all as undoable edits. Field ports and FK→PK edges reconcile automatically, so an edge never comes unglued when the rows shift.</div>
         </a>
-        <a class="card is-new" href="diagrams/scrollable-cards.html" style="--cat:#9333ea">
+        <a class="card is-new" href="diagrams/mermaid-architecture-block.html" style="--cat:#9333ea">
+          <div class="card-thumb"><img src="thumbs/diagrams/mermaid-architecture-block.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name"><span class="badge new">New</span>Mermaid architecture &amp; block diagrams<span class="card-go">→</span></div>
+          <div class="card-blurb">Mermaid's architecture-beta and block-beta, read by Grafloria: groups as regions, services placed where their sided lines say, a block grid with spans and holes, a classic 3-tier application with security down every layer — laid out, editable, and written back as the same Mermaid.</div>
+        </a>
+        <a class="card" href="diagrams/query-builder.html" style="--cat:#9333ea">
+          <div class="card-thumb"><img src="thumbs/diagrams/query-builder.png" loading="lazy" alt="" width="600" height="360"></div>
+          <div class="card-name">Query builder (visual SQL)<span class="card-go">→</span></div>
+          <div class="card-blurb">A BI-tool Query Studio on Grafloria: drag tables in, wire column to column with LIVE join guidance (the best PK↔FK match glows gold), click the pill to change the join type, tick columns — and the SQL below writes itself. Every edit undoable.</div>
+        </a>
+        <a class="card" href="diagrams/scrollable-cards.html" style="--cat:#9333ea">
           <div class="card-thumb"><img src="thumbs/diagrams/scrollable-cards.png" loading="lazy" alt="" width="600" height="360"></div>
-          <div class="card-name"><span class="badge new">New</span>Scrollable cards<span class="card-go">→</span></div>
+          <div class="card-name">Scrollable cards<span class="card-go">→</span></div>
           <div class="card-blurb">BOTH an ER table (21 columns) and a UML class (26 members) capped at a fixed height: each card body scrolls. The wheel belongs to the card (the binder delegates — card content is pointer-events:none) and is CONTAINED: at the end of the range the canvas does not pan, so reaching the bottom never jumps the whole diagram. ctrl/⌘-wheel always zooms.</div>
         </a>
         <a class="card" href="diagrams/shape-data.html" style="--cat:#9333ea">
@@ -773,7 +869,7 @@
         <a class="card" href="diagrams/visio-editor.html" style="--cat:#9333ea">
           <div class="card-thumb"><img src="thumbs/diagrams/visio-editor.png" loading="lazy" alt="" width="600" height="360"></div>
           <div class="card-name">Visio-style editor<span class="card-go">→</span></div>
-          <div class="card-blurb">The whole authoring surface: stencil palette, drag-to-place, snap guides on drag and resize, containers that adopt what you drop in them, align &amp; distribute, in-place rename, and a shape-data panel — every edit undoable.</div>
+          <div class="card-blurb">The whole authoring surface: a page grid with snap, zoom controls and a minimap, drop a shape OR a real database table, group, align, drop into containers — every edit undoable.</div>
         </a>
         </div>
       </section>

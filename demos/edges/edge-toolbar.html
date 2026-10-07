@@ -1,8 +1,16 @@
 <meta charset="utf-8">
 <title>Edge toolbar — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="A floating toolbar anchored to the edge via createViewportPortal() — sits at the path midpoint and re-anchors when the route moves.">
+<link rel="canonical" href="https://grafloria.com/demos/edges/edge-toolbar.html">
+<meta property="og:title" content="Edge toolbar — Grafloria">
+<meta property="og:description" content="A floating toolbar anchored to the edge via createViewportPortal() — sits at the path midpoint and re-anchors when the route moves.">
+<meta property="og:url" content="https://grafloria.com/demos/edges/edge-toolbar.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/edges/edge-toolbar.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/edges/edge-toolbar.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
-  #canvas { height: calc(100vh - 140px); }
+  #canvas { height: calc(100vh - 80px); }
   .edge-tb { display: flex; gap: 4px; transform: translate(-50%, -50%); background: #1f2937; border-radius: 8px; padding: 4px 6px; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
   .edge-tb button { border: 0; background: #374151; color: #fff; border-radius: 5px; width: 26px; height: 26px; cursor: pointer; font: 13px system-ui; }
   .edge-tb button:hover { background: #4b5563; }
@@ -11,7 +19,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render, createViewportPortal } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // An edge toolbar anchored to the PATH, built the way the package documents:
 // createViewportPortal() drops your own DOM into the world layer that tracks the
@@ -74,7 +82,14 @@ defineDemo({
     });
 
     ctx.reanchor = () => {
-      const m = midpoint(ctx.diagram.getLink('e1').points);
+      // The link can go away underneath this loop — the toolbar's own Delete
+      // button is not the only way (select the edge and press Delete, and the
+      // engine removes it without ever calling the handler that stops the rAF).
+      // An overlay that tracks geometry has to tolerate the geometry ceasing to
+      // exist, or it throws once per frame forever.
+      const link = ctx.diagram.getLink('e1');
+      if (!link) return null;
+      const m = midpoint(link.points);
       ctx.portal.setPosition(m.x, m.y);
       return m;
     };

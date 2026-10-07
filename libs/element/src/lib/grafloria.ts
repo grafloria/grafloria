@@ -5,10 +5,10 @@ import type {
   EdgeSpec,
   NodeSpec,
   StaticRenderOptions,
-  StaticRenderResult,
-} from '@grafloria/renderer';
+  StaticRenderResult, GroupSpec } from '@grafloria/renderer';
 import { defineGrafloriaFlow } from './grafloria-flow-element';
 import type { DashboardSpec } from './dashboard-kit';
+import type { LoadedDiagramSpec } from './load';
 import { registerNodeType, registeredNodeTypes, getNodeType } from './node-type-registry';
 import type { NodeTypeRenderer } from './node-type-registry';
 
@@ -44,6 +44,13 @@ import type { NodeTypeRenderer } from './node-type-registry';
 export interface DiagramSpec {
   nodes?: NodeSpec[];
   edges?: EdgeSpec[];
+  /** Zones around some boxes, each with its own frame and caption. See `GroupSpec`. */
+  groups?: GroupSpec[];
+  /**
+   * `'architecture'`: compose the drawing — zones as regions, boxes sized to their
+   * words in rows, straight lines where boxes line up. Positions are not needed.
+   */
+  layout?: 'architecture';
 }
 
 /**
@@ -57,9 +64,12 @@ export interface KitDiagramSpec {
   finalize?: (api: unknown) => void;
 }
 
-// A kit spec (dashboard(), erDiagram(), umlDiagram(), …) IS a render spec —
-// `render(kit({…}), host)` is the documented one-liner, so the type says so.
-export type RenderSpec = DiagramSpec | DashboardSpec | KitDiagramSpec | string;
+/**
+ * Everything `render()` mounts: a plain {@link DiagramSpec}, a kit spec
+ * (`dashboard()`, `erDiagram()`, `umlDiagram()`, …), a reopened document from
+ * `fromDocument()`, or the JSON string of a plain spec.
+ */
+export type RenderSpec = DiagramSpec | DashboardSpec | KitDiagramSpec | LoadedDiagramSpec | string;
 
 export type RenderOptions = Omit<CreateDiagramOptions, 'nodes' | 'edges'>;
 
@@ -92,9 +102,15 @@ export function render(
   const parsed = (typeof spec === 'string' ? parseSpec(spec) : spec) as DiagramSpec;
 
   const instance = createDiagram(element, {
+    // A kit spec may ask for instance options of its own — a fluid dashboard
+    // pins the zoom range so its layout can never become a scaled picture. The
+    // caller's explicit options still win.
+    ...((parsed as { renderOptions?: Partial<RenderOptions> }).renderOptions ?? {}),
     ...options,
     nodes: parsed.nodes ?? [],
     edges: parsed.edges ?? [],
+    ...(parsed.groups ? { groups: parsed.groups } : {}),
+    ...(parsed.layout ? { layout: parsed.layout } : {}),
     // Wire the global registry in, so `registerNodeType` works for the tiny API
     // exactly as it does for `<grafloria-flow>` — unless the caller supplies their
     // own. A KIT SPEC may also carry its own painter (dashboard() does: every
@@ -123,7 +139,7 @@ export function render(
   return instance;
 }
 
-/** Server-side render (Card 6). Re-exported so the tiny API is self-contained. */
+/** Server-side render. Re-exported so the tiny API is self-contained. */
 export function renderStatic(options: StaticRenderOptions = {}): StaticRenderResult {
   return renderToStaticSVG(options);
 }

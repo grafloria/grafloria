@@ -1,3 +1,4 @@
+import { debugLog } from '../util/debug';
 /**
  * Community Detection Layout Adapter
  *
@@ -132,7 +133,7 @@ export class CommunityLayoutAdapter implements LayoutAdapter {
     // Group nodes by community
     const communities = this.buildCommunities(nodes, communityAssignments);
 
-    console.log(`Detected ${communities.length} communities`);
+    debugLog(`Detected ${communities.length} communities`);
 
     // Layout each community internally
     const communityLayouts = await Promise.all(
@@ -620,7 +621,7 @@ export class CommunityLayoutAdapter implements LayoutAdapter {
   }
 
   /**
-   * Apply incremental layout (Phase 1 compatibility)
+   * Apply incremental layout
    */
   async applyIncremental(
     nodes: NodeModel[],

@@ -358,23 +358,22 @@ export class Lexer {
   }
 
   /**
-   * Scan equals combinations: ==>, ===
+   * Scan equals combinations: `==>` thick arrow (Mermaid's own spelling — only
+   * `===>` used to lex, so `A ==> B` drew nothing), `===` or longer a thick line,
+   * and a bare `==` — the opener of an inline label, `A == text ==> B`.
    */
-  private scanEquals(start: number, startColumn: number): void {
-    if (this.peek() === '=' && this.peekNext() === '=') {
-      this.advance(); // second =
-      this.advance(); // third =
-
-      if (this.peek() === '>') {
-        // Thick arrow: ==>
-        this.advance(); // >
-        this.addToken(TokenType.THICK_ARROW, '==>', start, this.position);
-      } else {
-        // Thick line: ===
-        this.addToken(TokenType.THICK_LINE, '===', start, this.position);
-      }
+  private scanEquals(start: number, _startColumn: number): void {
+    let count = 1;
+    while (this.peek() === '=') {
+      this.advance();
+      count++;
+    }
+    if (count >= 2 && this.peek() === '>') {
+      this.advance();
+      this.addToken(TokenType.THICK_ARROW, this.input.substring(start, this.position), start, this.position);
+    } else if (count >= 2) {
+      this.addToken(TokenType.THICK_LINE, this.input.substring(start, this.position), start, this.position);
     } else {
-      // Single = (unknown)
       this.addToken(TokenType.UNKNOWN, '=', start, this.position);
     }
   }
@@ -383,6 +382,17 @@ export class Lexer {
    * Scan dot (for dotted lines) - already handled in scanDash
    */
   private scanDot(start: number, startColumn: number): void {
+    // `.->` / `.-` close a dotted inline label: `A -. note .-> B`.
+    if (this.peek() === '-') {
+      this.advance();
+      if (this.peek() === '>') {
+        this.advance();
+        this.addToken(TokenType.DOTTED_ARROW, '.->', start, this.position);
+      } else {
+        this.addToken(TokenType.DOTTED_LINE, '.-', start, this.position);
+      }
+      return;
+    }
     this.addToken(TokenType.UNKNOWN, '.', start, this.position);
   }
 
@@ -391,6 +401,9 @@ export class Lexer {
    */
   private scanString(quote: string, start: number, startColumn: number): void {
     let value = '';
+    // A string may span lines (a quoted multi-line label); its token still
+    // belongs to the line it OPENED on, which is where an error must point.
+    const startLine = this.line;
 
     while (!this.isAtEnd() && this.peek() !== quote) {
       if (this.peek() === '\n') {
@@ -401,15 +414,22 @@ export class Lexer {
     }
 
     if (this.isAtEnd()) {
-      // Unterminated string
-      this.addToken(TokenType.UNKNOWN, quote + value, start, this.position);
+      // Unterminated: the stray quote runs to the end of ITS line, not of the
+      // text. Swallowing every line after it lost the rest of the diagram from
+      // even a best-effort parse; the parser reports the quote at its line.
+      const newline = this.input.indexOf('\n', start);
+      const stop = newline < 0 ? this.input.length : newline;
+      this.position = stop;
+      this.line = startLine;
+      this.column = startColumn + (stop - start);
+      this.tokens.push(createToken(TokenType.UNKNOWN, this.input.substring(start, stop), startLine, startColumn, start, stop));
       return;
     }
 
     // Consume closing quote
     this.advance();
 
-    this.addToken(TokenType.STRING, value, start, this.position);
+    this.tokens.push(createToken(TokenType.STRING, value, startLine, startColumn, start, this.position));
   }
 
   /**

@@ -154,7 +154,7 @@ function mergeLabel(
  * function and never the raw port fields, so group inheritance can never
  * silently apply in one place and not another.
  *
- * A port with no group and no wave-6 fields resolves to the pre-wave-6 defaults
+ * A port with no group and none of these fields resolves to the defaults
  * (circle glyph via `shape: undefined`, `always/on-hover` visibility from the
  * existing precedence chain, unlimited unrestricted connectability).
  */

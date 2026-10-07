@@ -470,6 +470,8 @@ describe('fromDocument — dashboard handle', () => {
     const spec = fromDocument(save(original.api));
     mount(spec);
 
+    expect(spec.handle.getSizing()).toBe('grow'); // fluid → grow by default, and it reloaded as saved
+    spec.handle.setSizing('fit');
     expect(spec.handle.getSizing()).toBe('fit');
     spec.handle.setSizing('grow');
     expect(spec.handle.getSizing()).toBe('grow');
@@ -538,6 +540,99 @@ describe('fromDocument — dashboard handle', () => {
 // ---------------------------------------------------------------------------
 // The front door itself
 // ---------------------------------------------------------------------------
+
+describe('fromDocument — a document saved while NARROW (D4)', () => {
+  it('reloads at the WIDE layout, the same one toJSON() would have saved', () => {
+    // handle.toJSON() always got this right (it serialises from the engine's
+    // widest cached layout). The DOCUMENT path read the node's GridItemConfig,
+    // and a responsive column change wrote the live, NARROW cells into exactly
+    // that field — so a board saved on a phone reloaded as 1-wide tiles crammed
+    // into the left of a 12-column board.
+    const original = mount(DASH_SPEC());
+    const H = original.spec.handle;
+    H.setColumns(4);
+    expect(H.getColumns()).toBe(4);
+    expect(H.widget('t1')!.cell!.w).toBeLessThan(9); // squeezed, as it should be
+
+    const spec = fromDocument(save(original.api));
+    mount(spec);
+    expect(spec.handle.getColumns()).toBe(12);
+    expect(spec.handle.widget('t1')!.cell).toEqual({ x: 3, y: 0, w: 9, h: 2 });
+    expect(spec.handle.widget('k1')!.cell).toEqual({ x: 0, y: 0, w: 3, h: 1 });
+    expect(spec.handle.toJSON().views[0].columns).toBe(12);
+  });
+
+  it('an edit made while narrow still reaches the reloaded wide board', async () => {
+    // A reorder on the phone is exactly what a user does there; the engine
+    // propagates it into the cached wide layout, and the document must carry
+    // that cache, not just the cells of the moment. Two FULL-WIDTH tiles, so
+    // the order is the layout at every column count (a KPI beside a 9-wide
+    // table would legitimately climb back up at 12 columns — that is gravity,
+    // not a lost edit).
+    const original = mount(
+      dashboard({
+        columns: 12,
+        widgets: [
+          { id: 'top', kind: 'kpi', span: 12, rows: 1, title: 'Top' },
+          { id: 'bottom', kind: 'kpi', span: 12, rows: 1, title: 'Bottom' },
+        ],
+      })
+    );
+    const H = original.spec.handle;
+    H.setColumns(1);
+    expect(H.widget('top')!.cell).toEqual({ x: 0, y: 0, w: 1, h: 1 });
+    expect(H.widget('bottom')!.cell).toEqual({ x: 0, y: 1, w: 1, h: 1 });
+    // Same-size swap: BOTTOM goes on top.
+    expect(await H.widget('bottom')!.moveTo(0, 0)).toBe(true);
+    expect(H.widget('bottom')!.cell!.y).toBe(0);
+
+    const spec = fromDocument(save(original.api));
+    mount(spec);
+    expect(spec.handle.getColumns()).toBe(12);
+    expect(spec.handle.widget('bottom')!.cell).toEqual({ x: 0, y: 0, w: 12, h: 1 });
+    expect(spec.handle.widget('top')!.cell).toEqual({ x: 0, y: 1, w: 12, h: 1 });
+  });
+});
+
+describe('fromDocument — mode (D1)', () => {
+  it('a fluid board reloads fluid, at the container it lands in, zoom pinned', () => {
+    const original = mount(DASH_SPEC()); // no width authored → fluid
+    expect(original.spec.handle.toJSON().mode).toBe('fluid');
+    const spec = fromDocument(save(original.api));
+    expect(spec.renderOptions).toEqual({ minZoom: 1, maxZoom: 1 });
+    mount(spec);
+    expect(spec.handle.toJSON().mode).toBe('fluid');
+    expect(spec.handle.metrics()!.fluid).toBe(true);
+    expect(spec.handle.metrics()!.frame.width).toBe(1200); // the sized host
+  });
+
+  it('a fixed board reloads fixed at its authored world', () => {
+    const original = mount(dashboard({ width: 1180, height: 620, widgets: [{ id: 'k', kind: 'kpi', span: 3 }] }));
+    const spec = fromDocument(save(original.api));
+    expect(spec.renderOptions).toBeUndefined();
+    mount(spec);
+    expect(spec.handle.toJSON().mode).toBe('fixed');
+    expect(spec.handle.metrics()!.frame).toMatchObject({ width: 1180, height: 620 });
+  });
+});
+
+describe('fromDocument — limits, pointer flags, static (plan step 4)', () => {
+  it('a widget\'s limits and flags survive the document round-trip', () => {
+    const original = mount(
+      dashboard({
+        width: 1180,
+        static: true,
+        widgets: [{ id: 'a', kind: 'kpi', span: 3, limits: { minSpan: 2, maxSpan: 6 }, movable: false, resizable: false }],
+      })
+    );
+    const spec = fromDocument(save(original.api));
+    mount(spec);
+    expect(spec.handle.widget('a')!.spec).toMatchObject({ limits: { minSpan: 2, maxSpan: 6 }, movable: false, resizable: false });
+    expect(spec.handle.getStatic()).toBe(true);
+    expect(spec.handle.toJSON().static).toBe(true);
+    expect(spec.handle.toJSON().views[0].widgets[0]).toMatchObject({ limits: { minSpan: 2, maxSpan: 6 }, movable: false, resizable: false });
+  });
+});
 
 describe('fromDocument — the front door', () => {
   it('accepts the parsed object as well as the JSON string', () => {

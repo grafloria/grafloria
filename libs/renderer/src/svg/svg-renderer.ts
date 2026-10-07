@@ -1,7 +1,7 @@
-import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, ProximityPreview, LODLevel, LODFeature, Shadow, GroupModel } from '@grafloria/engine';
+import type { DiagramEngine, DiagramModel, NodeModel, NodeStyle, LinkModel, LinkLabel, LinkStyle, PortModel, InteractionConfig, ReconnectionPreview, ProximityPreview, LODLevel, LODFeature, Shadow, GroupModel } from '@grafloria/engine';
 // Value import: the ONE definition of "where does a label sit along the path"
 // (slot vs position), shared by the model, this renderer and the edge optimizer.
-import { linkLabelPosition, DiagramSerializer } from '@grafloria/engine';
+import { linkLabelPosition, DiagramSerializer, debugLog } from '@grafloria/engine';
 // wave8/dirty — the O(1) "has anything changed?" counter every model mutation
 // bumps. See the FRAME GATE in render().
 import { getMutationEpoch } from '@grafloria/engine';
@@ -18,6 +18,7 @@ import { MotionTracker } from './motion-tracker';
 import { SelectionToolsController } from '../interaction/selection-tools';
 import { QualityGovernor, type GovernorState } from '../perf/quality-governor';
 import { RouteSolverBridge, type RouteSolverStats } from './route-solver-bridge';
+import { isSideAnchorPort } from '@grafloria/engine';
 import type {
   IRenderer,
   PerformanceMetrics,
@@ -28,6 +29,8 @@ import type {
   RendererCapabilities,
   ExportFormat,
   ExportOptions,
+  HighlightConnectedOptions,
+  LinkConnection,
 } from '../types';
 // Deterministic headless export (VNode → standalone SVG → PNG/JPEG/WebP). The
 // serializer is the DOM-less sibling of vnode/patch.ts and consumes the very same
@@ -50,9 +53,37 @@ import { filterTreeByIds } from '../export/scope';
 import { collectAssetUrls, inlineAssets } from '../export/assets';
 import { customNodeVNodes, filterCaptures } from '../export/custom-nodes';
 import { exportPdf, type PdfExportResult } from '../export/pdf/pdf-export';
+import { groupFrameRects } from './group-frame-bounds';
 import { paginate, type Page, type PaginationOptions } from '../export/pagination';
 
 /** One paginated tile: its grid position, its world window, and the SVG for it. */
+/**
+ * What one live `render()` pass actually drew, in world coordinates — the
+ * contract behind the host's camera fast path (see CAMERA_OVERSCAN).
+ *
+ * `rect` is the node-cull rectangle INCLUDING overscan: every node, group,
+ * stroke and comment intersecting it was rendered (links got LINK_CULL_MARGIN
+ * of extra slack beyond it). While a new viewBox of the same size and zoom
+ * stays inside `rect`, the DOM already contains everything that viewBox can
+ * show, and the camera may move by rewriting the `viewBox` attribute alone.
+ *
+ * `total` — every node and link in the diagram was admitted and no optional
+ * layer (groups, ink, comment pins) exists, so containment is moot: ANY camera
+ * position at this zoom shows a complete picture. This is what makes panning a
+ * fit-to-content scene free.
+ *
+ * Null when there is no diagram, or when the mount gate deferred anything (a
+ * progressive mount in flight, frozen entities): the drawn set is then smaller
+ * than the culled set and the coverage claim would be a lie.
+ */
+export interface FrameCoverage {
+  rect: Rectangle;
+  zoom: number;
+  viewBoxWidth: number;
+  viewBoxHeight: number;
+  total: boolean;
+}
+
 export interface PagedSvgResult {
   pages: Array<Page & { svg: string }>;
   columns: number;
@@ -79,6 +110,7 @@ import {
   linkTypeKey,
   onStyleRegistryChange,
   resolveLinkStyle,
+  resolveNodeSelectionLook,
   resolveNodeStyle,
 } from '../themes';
 // Wave 4 — colorMode (system auto-detection + hot-swap), theme-bound properties,
@@ -152,7 +184,59 @@ import {
 
 // Node label engine: shared, link-agnostic text-block core (wrap / multi-line /
 // ellipsis / shape-fit) — the same code path link labels render through.
-import { renderTextBlock } from './text-block';
+import { renderTextBlock, wrapText } from './text-block';
+
+/** A 'text' note: words on the canvas with no box of their own. */
+function isTextNote(node: NodeModel): boolean {
+  return (node.getMetadata('shape') as { type?: string } | undefined)?.type === 'text';
+}
+
+/** The direction of a polyline at fraction `t` of its length; null for fewer than two distinct points. */
+function polylineTangentAt(points: Array<{ x: number; y: number }> | undefined, t: number): { x: number; y: number } | null {
+  if (!points || points.length < 2) return null;
+  const lens: number[] = [];
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    const l = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    lens.push(l);
+    total += l;
+  }
+  if (total <= 0) return null;
+  let target = Math.max(0, Math.min(1, t)) * total;
+  for (let i = 0; i < lens.length; i++) {
+    if (lens[i] > 0 && (target <= lens[i] || i === lens.length - 1)) {
+      return { x: points[i + 1].x - points[i].x, y: points[i + 1].y - points[i].y };
+    }
+    target -= lens[i];
+  }
+  return null;
+}
+
+/** A label's inline typography — the only keys a node can set on its text. */
+interface LabelCss {
+  fill?: string;
+  fontSize?: string;
+  fontWeight?: string;
+  fontFamily?: string;
+  fontStyle?: string;
+  textDecoration?: string;
+}
+
+/** The monospace stack the `'mono'` keyword names (a subtitle like "sherkety-erp-api"). */
+const MONO_STACK = "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace";
+/** A font family as written by a user: `'mono'` is a keyword, anything else a CSS stack. */
+function fontStackFor(family: string): string {
+  return family.trim().toLowerCase() === 'mono' || family.trim().toLowerCase() === 'monospace' ? MONO_STACK : family;
+}
+/** `metadata.sublabel` — a string, or `{ text, fontFamily, fontSize, color, fontWeight }` — normalised; null when absent or empty. */
+function readSublabel(meta: unknown): { text: string; fontFamily?: string; fontSize?: number; color?: string; fontWeight?: string | number } | null {
+  if (typeof meta === 'string') return meta ? { text: meta } : null;
+  if (meta && typeof meta === 'object' && typeof (meta as { text?: unknown }).text === 'string') {
+    const m = meta as { text: string; fontFamily?: string; fontSize?: number; color?: string; fontWeight?: string | number };
+    return m.text ? m : null;
+  }
+  return null;
+}
 
 // Wave 5 Card 7: content-aware auto-sizing (opt-in via metadata.sizing.auto).
 import { autoSizeNode, type AutoSizeOptions } from './auto-size';
@@ -175,6 +259,7 @@ import { buildHtmlForeignObject, hasHtmlContent } from './html-node';
 
 // Phase 1.1: Arrow type rendering
 import { ArrowRenderer } from './ArrowRenderer';
+
 
 // Phase 1.2: Label rendering
 import { LabelRenderer } from './LabelRenderer';
@@ -299,6 +384,27 @@ function polylineLength(points: Array<{ x: number; y: number }>): number {
  * Renders diagram to VNode tree for framework-agnostic consumption
  * Integrates with engine's performance features (SpatialIndex, dirty marking, LOD)
  */
+/**
+ * The font size at which `text`'s widest UNBREAKABLE token fits `maxWidth`.
+ *
+ * `wrapText` breaks on spaces and hyphens only, so a single long word cannot be
+ * wrapped and simply overflows its shape's inner box, where the clip path cuts
+ * it mid-glyph. Shrinking is what a user expects (and what Visio does); the
+ * floor keeps a label legible rather than shrinking it to nothing — past that
+ * point the existing ellipsis behaviour takes over.
+ */
+const MIN_LABEL_FONT_PX = 8;
+export function fitFontSize(text: string, maxWidth: number, base: number): number {
+  if (!text || !isFinite(maxWidth) || maxWidth <= 0) return base;
+  // Longest token AFTER the breaks wrapText can actually make (spaces, hyphens).
+  let longest = 0;
+  for (const token of text.split(/[\s-]+/)) longest = Math.max(longest, token.length);
+  if (longest === 0) return base;
+  // Same 0.6em average-glyph estimate the wrap engine uses, so both agree.
+  const needed = maxWidth / (longest * 0.6);
+  return needed >= base ? base : Math.max(MIN_LABEL_FONT_PX, Math.floor(needed));
+}
+
 export class SVGRenderer implements IRenderer {
   readonly mode = 'svg' as const;
 
@@ -338,6 +444,22 @@ export class SVGRenderer implements IRenderer {
    * extra VNodes.
    */
   private static readonly LINK_CULL_MARGIN = 250;
+
+  /**
+   * Camera overscan — every cull query runs against the viewBox EXPANDED by this
+   * fraction of its own size on each side, and the expanded rect is published as
+   * {@link getFrameCoverage}. The point is the host's camera fast path: a pan
+   * whose new viewBox stays inside the last frame's coverage needs NO re-render —
+   * the SVG draws in world coordinates, so moving the `viewBox` attribute (and
+   * the HTML layer's transform) shows the already-painted overscan margin. The
+   * frame only has to be rebuilt when the camera EXITS what was actually drawn.
+   *
+   * The trade is explicit: 0.25 per side renders ~1.5×1.5 = 2.25× the visible
+   * area per full frame, and buys a quarter-viewport of free travel in every
+   * direction between full frames. Identity-stable cached VNodes keep the extra
+   * entities cheap for the patcher.
+   */
+  private static readonly CAMERA_OVERSCAN = 0.25;
 
   private theme: Theme;
   private config: Required<SVGRendererConfig>;
@@ -455,6 +577,37 @@ export class SVGRenderer implements IRenderer {
   private frameInvalidated = true;
   /** Monotone count of invalidateFrame() calls — a HOST's idle-skip keys on this. */
   private invalidationEpoch = 0;
+  /** What the most recent render() actually drew — see getFrameCoverage(). */
+  private frameCoverage: FrameCoverage | null = null;
+  /**
+   * Depth of the export passes currently on the stack.
+   *
+   * An export calls the same `render()` the screen does, but what it produces is
+   * NOT the picture on screen: different viewport, always zoom 1, the whole
+   * diagram. Everything that learns from a frame — the quality governor, the
+   * frame gate — has to be told to ignore these, or saving a PNG changes what
+   * the user is looking at. A counter rather than a flag because export paths
+   * nest (a paged export renders per page inside one export).
+   */
+  private exportDepth = 0;
+
+  /** True while an export pass is building a tree. See {@link exportDepth}. */
+  private get exporting(): boolean {
+    return this.exportDepth > 0;
+  }
+
+  /**
+   * Render a tree FOR AN EXPORT — same pass, but flagged so it neither teaches
+   * the governor nor arms the on-screen frame gate.
+   */
+  private renderForExport(viewport: Rectangle, zoom: number): VNode {
+    this.exportDepth++;
+    try {
+      return this.render(viewport, zoom);
+    } finally {
+      this.exportDepth--;
+    }
+  }
   /**
    * Did the frame being built move any link's FINAL geometry? If so it has not
    * reached a fixed point and must not arm the gate.
@@ -594,6 +747,20 @@ export class SVGRenderer implements IRenderer {
   // it is the only link between its pair). Kept so renderLink and the arrow
   // maths agree with the pre-pass.
   private frameSeparation = new Map<string, number>();
+  /**
+   * `highlightConnected`: each line's part in the selection's neighbourhood,
+   * derived from the selection at the start of every frame. Empty when the
+   * option is off, nothing is selected, or the frame is an export.
+   */
+  private frameConnections = new Map<string, LinkConnection>();
+  /**
+   * The lines of the selection that run ACROSS another node this frame — drawn
+   * dashed and lifted above the cards (`getLineOverlay`). Decided after the
+   * routing pre-pass, from the painted geometry, before any line is styled.
+   */
+  private frameCrossings = new Set<string>();
+  /** This frame's lifted lines (path + arrowheads), for the overlay above the HTML layer. */
+  private frameOverlay: VNode[] = [];
 
   // Wave 4: signature of everything that affects a link's RENDERED output but
   // does not live on the link (its routed points, its jumps, its optimizer label
@@ -712,6 +879,9 @@ export class SVGRenderer implements IRenderer {
       colorMode: config.colorMode ?? undefined,
       themes: config.themes ?? DEFAULT_THEME_SET,
       tokenBridge: config.tokenBridge ?? undefined,
+      // Off unless asked: a diagram that did not opt in must not change its
+      // picture when a node is clicked.
+      highlightConnected: config.highlightConnected ?? false,
     } as Required<SVGRendererConfig>;
 
     // Card 5: the optimizer's jump-ownership mode comes from renderer config.
@@ -861,6 +1031,7 @@ export class SVGRenderer implements IRenderer {
 
     const diagram = this.engine.getDiagram();
     if (!diagram) {
+      this.frameCoverage = null;
       return this.createEmptyDiagram(viewport);
     }
 
@@ -953,8 +1124,21 @@ export class SVGRenderer implements IRenderer {
       height: viewBoxHeight,
     };
 
+    // Every cull below queries the OVERSCANNED rect, not the bare viewBox — see
+    // CAMERA_OVERSCAN. The margin is what the camera fast path pans across
+    // without a re-render; anything culled by `visibleRect` here but shown by a
+    // fast-path viewBox move would pop in a frame late (or not at all).
+    const overscanX = viewBoxWidth * SVGRenderer.CAMERA_OVERSCAN;
+    const overscanY = viewBoxHeight * SVGRenderer.CAMERA_OVERSCAN;
+    const cullRect: Rectangle = {
+      x: viewBoxX - overscanX,
+      y: viewBoxY - overscanY,
+      width: viewBoxWidth + overscanX * 2,
+      height: viewBoxHeight + overscanY * 2,
+    };
+
     // Get visible nodes using engine's SpatialIndex (viewport virtualization)
-    const culledNodes = diagram.getVisibleNodes(visibleRect);
+    const culledNodes = diagram.getVisibleNodes(cullRect);
 
     // Get visible links by GEOMETRY, through the engine's link SpatialIndex.
     // (This used to be "render the link only if BOTH endpoint nodes are visible",
@@ -965,7 +1149,7 @@ export class SVGRenderer implements IRenderer {
     // argument: the two diverge once zoom != 1, and culling links against the
     // un-zoomed rect dropped on-screen links whenever the view was zoomed out
     // (which fit-to-content always does). Nodes above are culled the same way.
-    const culledLinks = diagram.getVisibleLinks(this.expandForLinkCulling(visibleRect));
+    const culledLinks = diagram.getVisibleLinks(this.expandForLinkCulling(cullRect));
 
     // Wave 8 — Card 3: the MOUNT GATE. Culling has said what is on screen; the gate
     // says what may have a VIEW. It can only ever subtract (a frozen entity, or one
@@ -988,6 +1172,10 @@ export class SVGRenderer implements IRenderer {
     // deduped `<defs>` block is assembled from it once the layers are built.
     this.frameDefs.clear();
 
+    // highlightConnected: over the WHOLE diagram, not the visible links — a trace
+    // runs through lines that are scrolled off-screen.
+    this.computeFrameConnections(diagram);
+
     // Render layers
     const linksLayer = this.renderLinksLayer(visibleLinks, lod);
     const nodesLayer = this.renderNodesLayer(visibleNodes, lod);
@@ -1001,7 +1189,7 @@ export class SVGRenderer implements IRenderer {
 
     // wave9/comments (Card 6): the pins. Null unless a comment source is attached, so a
     // canvas with no comment system pays literally nothing — not a layer, not a query.
-    const commentsLayer = this.renderCommentsLayer(visibleRect, zoom);
+    const commentsLayer = this.renderCommentsLayer(cullRect, zoom);
 
     // wave10/whiteboard: committed ink. Null (and zero cost) on a canvas with no strokes.
     // Culled by a linear bounds scan — strokes are rare (tens, not tens of thousands), so
@@ -1009,7 +1197,7 @@ export class SVGRenderer implements IRenderer {
     // would go if that ever stops being true.
     const strokesLayer =
       diagram.strokes.size > 0
-        ? renderStrokesLayer(diagram.getVisibleStrokes(visibleRect))
+        ? renderStrokesLayer(diagram.getVisibleStrokes(cullRect))
         : null;
 
     // wave12/group-visuals: the group FRAMES. Groups have driven layout, collapse
@@ -1019,7 +1207,31 @@ export class SVGRenderer implements IRenderer {
     // the children[0]=links / children[1]=nodes contract is byte-identical
     // whenever grouping is not in use — exactly like strokes/comments are null
     // when absent. A linear bounds scan culls it (groups are tens, not thousands).
-    const groupsLayer = this.renderGroupsLayer(diagram, visibleRect);
+    const groupsLayer = this.renderGroupsLayer(diagram, cullRect);
+
+    // Publish what this frame drew (see FrameCoverage). Recorded only when the
+    // mount gate deferred nothing — a deferred entity means the DOM holds LESS
+    // than the culled set, and a coverage claim over it would let the camera
+    // fast path show a hole. `total` is deliberately conservative: it requires
+    // every node AND link admitted and no optional layer present, because the
+    // optional layers cull by their own bounds and are not counted here.
+    this.frameCoverage =
+      this.deferredThisFrame.length === 0
+        ? {
+            rect: cullRect,
+            zoom,
+            viewBoxWidth,
+            viewBoxHeight,
+            // `.size` on the maps, not getNodes()/getLinks(): those materialize
+            // a fresh array each call, and this runs on every full frame.
+            total:
+              groupsLayer === null &&
+              strokesLayer === null &&
+              commentsLayer === null &&
+              culledNodes.length === diagram.nodes.size &&
+              culledLinks.length === diagram.links.size,
+          }
+        : null;
 
     // Card 2: assemble the deduped paint-server `<defs>` populated while the
     // layers rendered. Appended LAST (not prepended) so existing positional
@@ -1098,10 +1310,16 @@ export class SVGRenderer implements IRenderer {
     // something different from the same model and the same viewport. See
     // `frameChangedGeometry`.
     const settled = !this.frameChangedGeometry;
-    this.lastFrameRoot = frameSig === null || !settled ? null : root;
-    this.lastFrameSig = settled ? frameSig : null;
-    this.lastFrameEpoch = getMutationEpoch();
-    this.frameInvalidated = false;
+    // …and NOT on an export pass. An export renders its own viewport at its own
+    // zoom, which is not the picture on screen; arming the gate with it would
+    // make the next real frame either reuse an export's tree or rebuild from
+    // scratch, neither of which the screen asked for.
+    if (!this.exporting) {
+      this.lastFrameRoot = frameSig === null || !settled ? null : root;
+      this.lastFrameSig = settled ? frameSig : null;
+      this.lastFrameEpoch = getMutationEpoch();
+      this.frameInvalidated = false;
+    }
     this.framesBuilt++;
 
     // Track render time
@@ -1117,7 +1335,16 @@ export class SVGRenderer implements IRenderer {
     // 99% route computation, zero percent paint), and it is the only part we can
     // attribute. A renderer that blamed the compositor for its own O(n²) loop would
     // be worse than no governor at all.
-    this.governor?.record(this.lastRenderTime);
+    // NOT on an export pass. The governor's whole job is to judge what this
+    // machine can afford to put on SCREEN, from frames it actually painted — and
+    // an export is not one. It renders the WHOLE diagram at zoom 1 regardless of
+    // the viewport, so on a large scene it is legitimately slow (hundreds of ms
+    // against a 16ms budget), and feeding that in convinced the governor the
+    // machine could not cope: it dropped the LOD tier and the user's canvas
+    // visibly lost detail because they saved a PNG. This is the same refusal the
+    // frame-gate skip path makes at the top of this method, for the mirror-image
+    // reason — there, a frame that cost nothing must not argue for more detail.
+    if (!this.exporting) this.governor?.record(this.lastRenderTime);
 
     // Motion-stable routing: this frame painted PROVISIONAL routes (suppressed
     // detours / penetration retries), so a settle repaint is owed once motion
@@ -1253,6 +1480,20 @@ export class SVGRenderer implements IRenderer {
   }
 
   /**
+   * The {@link FrameCoverage} of the most recent `render()` pass.
+   *
+   * CAPTURE IT IMMEDIATELY after the render() call whose frame you patched into
+   * the DOM — do not hold the renderer and ask later. Exports run through the
+   * same render pass with their own viewport (see exportSvg callers), so this
+   * field describes whatever rendered LAST, which is not necessarily what is on
+   * screen. `createDiagram`'s paint() takes its own copy for exactly this
+   * reason.
+   */
+  getFrameCoverage(): FrameCoverage | null {
+    return this.frameCoverage;
+  }
+
+  /**
    * wave8/dirty — the incrementality is only real if these move. `framesSkipped`
    * counts frames served from the previous root (zero DOM work); `framesBuilt`
    * counts frames actually walked. An idle canvas should build ONE.
@@ -1271,6 +1512,212 @@ export class SVGRenderer implements IRenderer {
   /**
    * Set theme and update rendering
    */
+  /**
+   * Switch `highlightConnected` live: `false` turns it off, `true` takes the
+   * defaults, an object tunes it. The next frame redraws every line.
+   */
+  setHighlightConnected(value: boolean | HighlightConnectedOptions | undefined): void {
+    this.config.highlightConnected = value ?? false;
+    // The options (colour, width, dash) are not part of a line's cache key — the
+    // role is — so a change of options drops every cached line.
+    this.vnodeCache.clear();
+    this.invalidateFrame();
+  }
+
+  getHighlightConnected(): boolean | HighlightConnectedOptions {
+    return this.config.highlightConnected;
+  }
+
+  /** The option with its defaults filled in, or null when it is off. */
+  private highlightOptions(): Required<HighlightConnectedOptions> | null {
+    const v = this.config.highlightConnected;
+    if (!v) return null;
+    const o = typeof v === 'object' ? v : {};
+    return {
+      depth: o.depth === undefined || !(o.depth >= 1) ? 1 : o.depth,
+      stroke: o.stroke ?? this.theme.colors.text.primary,
+      strokeWidth: o.strokeWidth ?? 2.5,
+      // Solid: the reference draws in AND out alike; its dashes mark a line crossing a card.
+      outgoing: o.outgoing ?? 'solid',
+      dimOpacity: o.dimOpacity ?? 0.4,
+    };
+  }
+
+  /**
+   * Each line's part in the selection's neighbourhood. Depth 1 reads a line's
+   * two ends; a deeper trace walks the graph upstream from the selection
+   * (marking lines `in`) and downstream (marking them `out`), `depth` hops each
+   * way. O(lines) per frame when on, nothing when off.
+   */
+  private computeFrameConnections(diagram: DiagramModel): void {
+    this.frameConnections.clear();
+    this.frameCrossings.clear();
+    this.frameOverlay = [];
+    const opts = this.exporting ? null : this.highlightOptions();
+    if (!opts) return;
+    const selected = new Set<string>();
+    for (const n of diagram.getNodes()) if (n.isSelected()) selected.add(n.id);
+    if (selected.size === 0) return;
+    const links = diagram.getLinks();
+    const inbound = new Set<string>();
+    const outbound = new Set<string>();
+    if (opts.depth <= 1) {
+      for (const l of links) {
+        if (l.targetNodeId !== undefined && selected.has(l.targetNodeId)) inbound.add(l.id);
+        if (l.sourceNodeId !== undefined && selected.has(l.sourceNodeId)) outbound.add(l.id);
+      }
+    } else {
+      const bySource = new Map<string, LinkModel[]>();
+      const byTarget = new Map<string, LinkModel[]>();
+      for (const l of links) {
+        if (l.sourceNodeId !== undefined) (bySource.get(l.sourceNodeId) ?? bySource.set(l.sourceNodeId, []).get(l.sourceNodeId)!).push(l);
+        if (l.targetNodeId !== undefined) (byTarget.get(l.targetNodeId) ?? byTarget.set(l.targetNodeId, []).get(l.targetNodeId)!).push(l);
+      }
+      const walk = (
+        from: Map<string, LinkModel[]>,
+        next: (l: LinkModel) => string | undefined,
+        marked: Set<string>
+      ): void => {
+        const seen = new Set(selected);
+        let frontier = [...selected];
+        for (let hop = 0; hop < opts.depth && frontier.length > 0; hop++) {
+          const ahead: string[] = [];
+          for (const id of frontier) {
+            for (const l of from.get(id) ?? []) {
+              marked.add(l.id);
+              const n = next(l);
+              if (n !== undefined && !seen.has(n)) {
+                seen.add(n);
+                ahead.push(n);
+              }
+            }
+          }
+          frontier = ahead;
+        }
+      };
+      walk(byTarget, (l) => l.sourceNodeId, inbound);
+      walk(bySource, (l) => l.targetNodeId, outbound);
+    }
+    for (const l of links) {
+      const i = inbound.has(l.id);
+      const o = outbound.has(l.id);
+      this.frameConnections.set(l.id, i && o ? 'both' : o ? 'out' : i ? 'in' : 'dim');
+    }
+  }
+
+  /** The cascade layer for a line of the selection; undefined for any other line. */
+  private connectionStyle(link: LinkModel): Partial<LinkStyle> | undefined {
+    const role = this.frameConnections.get(link.id);
+    if (role === undefined || role === 'dim') return undefined;
+    const opts = this.highlightOptions();
+    if (!opts) return undefined;
+    const dashed = this.frameCrossings.has(link.id) || (role === 'out' && opts.outgoing === 'dashed');
+    return {
+      stroke: opts.stroke,
+      strokeWidth: opts.strokeWidth,
+      ...(dashed ? { strokeDasharray: '7 5' } : {}),
+    };
+  }
+
+  /**
+   * Which lines of the selection run ACROSS a node they do not connect — the
+   * reference's "Generate Ad Text → Generate Ad Campaign" straight through
+   * "Generate Video". At rest the router already detours a line around a card
+   * (computeAutoRoute), so this is the line a card is being DRAGGED over — the
+   * chord motion-stable routing keeps until the settle frame — and any route
+   * that found no detour. Read from `link.points`, which the routing pre-pass
+   * has just set to this frame's PAINTED geometry (flattened), so the answer is
+   * this frame's, never the last one's. Only the selection's lines are tested:
+   * a handful, each against the nodes its bounds reach.
+   */
+  private computeFrameCrossings(links: LinkModel[]): void {
+    this.frameCrossings.clear();
+    if (this.frameConnections.size === 0) return;
+    const diagram = this.engine.getDiagram();
+    if (!diagram) return;
+    const INSET = 2; // a line grazing a card's edge is not across it
+    for (const link of links) {
+      const role = this.frameConnections.get(link.id);
+      if (role === undefined || role === 'dim') continue;
+      const pts = link.points;
+      if (!pts || pts.length < 2) continue;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      // Its own ends, and anything that contains them, are not "another node".
+      const own = new Set<string>();
+      for (const id of [link.sourceNodeId, link.targetNodeId]) {
+        let n = id !== undefined ? diagram.getNode(id) : undefined;
+        while (n) {
+          own.add(n.id);
+          n = n.getParent();
+        }
+      }
+      const candidates = diagram.getVisibleNodes({ x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) });
+      const crosses = candidates.some((n) => {
+        if (own.has(n.id) || !n.size || n.state?.visible === false) return false;
+        const at = n.getWorldPosition?.() ?? n.position; // a node in a group is placed relative to it
+        const r = { minX: at.x + INSET, minY: at.y + INSET, maxX: at.x + n.size.width - INSET, maxY: at.y + n.size.height - INSET };
+        if (r.maxX <= r.minX || r.maxY <= r.minY) return false;
+        for (let i = 1; i < pts.length; i++) if (this.segmentIntersectsRect(pts[i - 1], pts[i], r)) return true;
+        return false;
+      });
+      if (crosses) this.frameCrossings.add(link.id);
+    }
+  }
+
+  /**
+   * The lifted lines, as an `<svg>` in WORLD coordinates for the overlay the
+   * instance keeps at the end of the HTML layer — above SVG nodes and HTML
+   * custom nodes alike, moved by the same camera transform. `null` when
+   * `highlightConnected` is off; an empty `<svg>` when nothing is lifted.
+   */
+  getLineOverlay(): VNode | null {
+    if (!this.highlightOptions()) return null;
+    return {
+      type: 'svg',
+      key: 'grafloria-line-overlay',
+      props: {
+        width: 1,
+        height: 1,
+        style: { position: 'absolute', left: '0px', top: '0px', overflow: 'visible', pointerEvents: 'none' },
+      },
+      children: this.frameOverlay,
+    };
+  }
+
+  /** A crossing line's path and arrowheads, copied from its own VNode for the overlay. */
+  private liftLine(linkVNode: VNode): VNode[] {
+    const out: VNode[] = [];
+    const id = String(linkVNode.props['data-link-id'] ?? '');
+    for (const c of linkVNode.children ?? []) {
+      if (!c || typeof c !== 'object') continue;
+      const cls = String(c.props?.className ?? '');
+      if (c.type === 'path' && /(^|\s)diagram-link(\s|$)/.test(cls)) {
+        out.push({
+          type: 'path',
+          key: `overlay-${id}-path`,
+          props: {
+            d: c.props.d,
+            fill: 'none',
+            style: c.props.style,
+            stroke: c.props.stroke,
+            className: 'grafloria-line-overlay-path',
+            'data-link-id': id,
+          },
+          children: [],
+        });
+      } else if (/(^|\s)arrow(\s|$)/.test(cls)) {
+        out.push({ ...c, key: `overlay-${id}-${c.key ?? out.length}` });
+      }
+    }
+    return out;
+  }
+
   setTheme(theme: Theme): void {
     this.theme = theme;
 
@@ -1442,6 +1889,26 @@ export class SVGRenderer implements IRenderer {
   applyInstanceScope(element: Element | null | undefined): void {
     if (!element || !this.config.useCSSMode) return;
     element.setAttribute(GRAFLORIA_INSTANCE_ATTR, this.instanceId);
+  }
+
+  /**
+   * Reads this diagram's CSS custom properties as the browser resolved them — on its
+   * root `<svg>`, so variables set on the host (a token bridge) are inherited in.
+   * `undefined` without a DOM, or when the diagram is not mounted: the PDF painter then
+   * uses the theme's token values and the var() fallbacks.
+   */
+  private liveCssVarReader(): ((name: string) => string | undefined) | undefined {
+    if (typeof document === 'undefined' || typeof getComputedStyle !== 'function') return undefined;
+    let root: Element | null = null;
+    try {
+      const scope = `[${GRAFLORIA_INSTANCE_ATTR}="${this.instanceId}"]`;
+      root = document.querySelector(`svg${scope}`) ?? document.querySelector(scope);
+    } catch {
+      return undefined;
+    }
+    if (!root) return undefined;
+    const computed = getComputedStyle(root);
+    return (name: string) => computed.getPropertyValue(name).trim() || undefined;
   }
 
   /**
@@ -1698,6 +2165,8 @@ export class SVGRenderer implements IRenderer {
   /** Did a theme LAYER (state / type-default) contribute a literal to this node? */
   private drawsThemeLiteral(node: NodeModel): boolean {
     if (!this.config.useCSSMode) return true; // no stylesheet: everything is baked
+    // A subtitle paints the theme's secondary text colour as a literal.
+    if (readSublabel(node.getMetadata('sublabel'))) return true;
     const state = node.state;
     if (state.selected || state.highlighted || state.hovered || !state.enabled || state.error) {
       return true;
@@ -1731,6 +2200,8 @@ export class SVGRenderer implements IRenderer {
   private linkPaintLiterals(link: LinkModel): { stroke?: string; strokeWidth: number } {
     const resolved = resolveLinkStyle(link, this.theme, {
       includeThemeBase: !this.config.useCSSMode,
+      // …so the arrowhead, painted from these literals, takes the line's ink too.
+      connection: this.connectionStyle(link),
     });
 
     const literal = (value: unknown): string | number | undefined => {
@@ -1883,7 +2354,7 @@ export class SVGRenderer implements IRenderer {
     // zoom 1: the SVG stays vector, and `scale` multiplies the intrinsic
     // width/height instead of the viewBox — so a 2x PNG is 2x pixels of the
     // identical picture, not a differently-culled render.
-    let root = this.render(renderViewport, 1);
+    let root = this.renderForExport(renderViewport, 1);
 
     // PRE-RESOLVED external images (a panel node's avatar/logo) become bytes in the
     // file. A PURE substitution — `inlineAssets` maps URL → data: URI over the tree,
@@ -1934,7 +2405,7 @@ export class SVGRenderer implements IRenderer {
     const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
 
     const renderViewport = options.viewport ?? this.contentViewport(padding + CONTENT_RENDER_SLACK);
-    let tree = this.render(renderViewport, 1);
+    let tree = this.renderForExport(renderViewport, 1);
     if (ids !== undefined) tree = filterTreeByIds(tree, ids);
 
     // CUSTOM NODES IN PDF. A `foreignObject` genuinely cannot survive here — PDF has no
@@ -1962,6 +2433,9 @@ export class SVGRenderer implements IRenderer {
       // default light theme — or, in CSS mode, against nothing at all, and every link
       // loses its stroke and every node its fill.
       theme: this.theme,
+      // …and the live CSS variables, for paint that is a var() (the line markers):
+      // a token bridge's value only exists in the DOM.
+      resolveVar: this.liveCssVarReader(),
       padding,
       viewBox: options.viewport,
       backgroundColor: options.backgroundColor,
@@ -1985,7 +2459,7 @@ export class SVGRenderer implements IRenderer {
     const padding = options.padding ?? 20;
     const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
 
-    let tree = this.render(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
+    let tree = this.renderForExport(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
     if (ids !== undefined) tree = filterTreeByIds(tree, ids);
 
     const layout = paginate(tree, { padding, ...pagination });
@@ -2022,13 +2496,14 @@ export class SVGRenderer implements IRenderer {
     const padding = options.padding ?? 20;
     const ids = options.scope === 'selection' ? this.selectedIds() : options.includeIds;
 
-    let tree = this.render(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
+    let tree = this.renderForExport(this.contentViewport(padding + CONTENT_RENDER_SLACK), 1);
     if (ids !== undefined) tree = filterTreeByIds(tree, ids);
 
     const layout = paginate(tree, { padding, ...pagination });
 
     const result = exportPdf(tree, {
       theme: this.theme,
+      resolveVar: this.liveCssVarReader(),
       padding,
       backgroundColor: options.backgroundColor,
       pageNumbers: true,
@@ -2058,7 +2533,7 @@ export class SVGRenderer implements IRenderer {
     // scope 'viewport' without a rectangle throws in the export proper; enumeration is
     // best-effort and simply falls back to the content bounds (a superset of the URLs).
     const renderViewport = options.viewport ?? this.contentViewport(padding + CONTENT_RENDER_SLACK);
-    let tree = this.render(renderViewport, 1);
+    let tree = this.renderForExport(renderViewport, 1);
     if (ids !== undefined) tree = filterTreeByIds(tree, ids);
     return collectAssetUrls(tree);
   }
@@ -2114,6 +2589,14 @@ export class SVGRenderer implements IRenderer {
           maxY = Math.max(maxY, point.y);
         }
       }
+      // Group frames reach past their members; a frame outside this window
+      // would be culled from the export.
+      for (const frame of groupFrameRects(diagram, { captionFontSize: this.theme.typography.fontSize.sm })) {
+        minX = Math.min(minX, frame.x);
+        minY = Math.min(minY, frame.y);
+        maxX = Math.max(maxX, frame.x + frame.width);
+        maxY = Math.max(maxY, frame.y + frame.height);
+      }
     }
 
     if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
@@ -2148,6 +2631,13 @@ export class SVGRenderer implements IRenderer {
     if (this.disposed) return;
 
     this.disposed = true;
+
+    // The animation service holds document-global state: a refcounted
+    // stylesheet and matchMedia/battery listeners. destroy() had no caller,
+    // so every mount left a 9 KB keyframe sheet in the recalculation set for
+    // the life of the document (found by a consumer auditing an SPA that
+    // routed in and out of a diagram page).
+    this.animationService.destroy();
 
     // Wave 8 — Card 6: the route memo outlives the frame by design, so it must
     // not outlive the renderer. (It holds a routed polyline per link plus a rect
@@ -2241,11 +2731,15 @@ export class SVGRenderer implements IRenderer {
    */
   private renderLinksLayer(links: LinkModel[], lod: LODLevel): VNode {
     // Sort links: default/hovered first, then selected/highlighted on top
-    const sortedLinks = [...links].sort((a, b) => {
-      const aOrder = (a.state === 'selected' || a.state === 'highlighted') ? 1 : 0;
-      const bOrder = (b.state === 'selected' || b.state === 'highlighted') ? 1 : 0;
-      return aOrder - bOrder;
-    });
+    // …and with highlightConnected, a dimmed line under the rest and a line of
+    // the selection over them: its ink must not be crossed by a faded line.
+    const connections = this.frameConnections;
+    const order = (l: LinkModel): number => {
+      if (l.state === 'selected' || l.state === 'highlighted') return 3;
+      const c = connections.get(l.id);
+      return c === undefined ? 1 : c === 'dim' ? 0 : 2;
+    };
+    const sortedLinks = [...links].sort((a, b) => order(a) - order(b));
 
     // Pre-pass: route every auto-routed link and sync its points BEFORE any
     // link builds its VNode. Jump-point detection reads other links' points,
@@ -2331,7 +2825,12 @@ export class SVGRenderer implements IRenderer {
     // of them is weaker, is how you get a route that "hasn't changed" and is wrong anyway.
     // The spec still counts routes per link across a whole mount and pins it at one.
     for (const link of sortedLinks) {
-      if (this.linkHasManualWaypoints(link)) continue;
+      if (this.linkHasManualWaypoints(link)) {
+        // Not routed — but its ends are still decided HERE, with every other
+        // line's geometry, so the frame signature below sees them move.
+        this.settleManualWaypoints(link);
+        continue;
+      }
 
       const endpoints = this.getLinkEndpoints(link);
       if (!endpoints) continue;
@@ -2415,7 +2914,18 @@ export class SVGRenderer implements IRenderer {
     // bug: jump arcs already had exactly this problem before Wave 4.)
     this.markLinksWhoseFrameChanged(sortedLinks);
 
+    // highlightConnected: which of the selection's lines cross a card — now,
+    // with the geometry final and before any line is styled.
+    this.computeFrameCrossings(sortedLinks);
+
     const children = sortedLinks.map(link => this.renderLink(link, lod));
+    this.frameOverlay = [];
+    if (this.frameCrossings.size > 0) {
+      for (const vnode of children) {
+        const id = vnode.props?.['data-link-id'];
+        if (typeof id === 'string' && this.frameCrossings.has(id)) this.frameOverlay.push(...this.liftLine(vnode));
+      }
+    }
 
     return {
       type: 'g',
@@ -2739,6 +3249,10 @@ export class SVGRenderer implements IRenderer {
       // Self-loops are not a "bundle" — they nest concentrically instead (see
       // selfLoopIndex), so they must not consume lanes in the pair map.
       if (link.isSelfLoop()) continue;
+      // A line pinned to a `side@offset` anchor was PLACED — "sends the payment
+      // link" at one height, the red "card typed as…" 30 px under it. Fanning
+      // them as a bundle bowed both into a V between their own anchors.
+      if (isSideAnchorPort(link.sourcePortId) || isSideAnchorPort(link.targetPortId)) continue;
       const key = link.getNodePairKey();
       if (!key) continue;
       const bucket = groups.get(key);
@@ -3329,7 +3843,7 @@ export class SVGRenderer implements IRenderer {
       if (fallbackPath) {
         // ✅ CRITICAL FIX: Also pass directions for fallback path
         pathData = this.convertRoutedPathToSVG(fallbackPath, pathType, sourceDirection, targetDirection);
-        console.log('✅ Fallback routing succeeded for connection preview');
+        debugLog('✅ Fallback routing succeeded for connection preview');
       } else {
         // Fallback Strategy 2: Hide invalid preview (don't show crossing line)
         console.warn('All routing strategies failed for connection preview - hiding invalid preview');
@@ -3681,6 +4195,25 @@ export class SVGRenderer implements IRenderer {
    * to communicate (what connects to what) was the one thing AT users could not
    * get.
    */
+  /**
+   * The part of a link's cache key that tracks its endpoints' NAMES.
+   *
+   * Two map lookups per link per frame, which is cheap next to building the
+   * VNode this key protects — and the labels are read from the same metadata the
+   * accessible name reads, so the two cannot disagree.
+   */
+  private endpointNameKey(link: LinkModel): string {
+    const diagram = this.engine?.getDiagram?.();
+    if (!diagram) return '';
+    const nameOf = (id: string | undefined): string => {
+      if (!id) return '';
+      const node = diagram.getNode(id);
+      const label = node?.getMetadata('label');
+      return typeof label === 'string' ? label : '';
+    };
+    return `${nameOf(link.sourceNodeId)}${nameOf(link.targetNodeId)}`;
+  }
+
   private linkAriaProps(link: LinkModel): Record<string, unknown> {
     const diagram = this.engine?.getDiagram?.();
     return {
@@ -3878,10 +4411,91 @@ export class SVGRenderer implements IRenderer {
     };
   }
 
+  /**
+   * A zone's frame: its own fill, border, dash and radius, and its caption in a
+   * corner in its own typography — no title band. The caption is inset 16 px
+   * from the side and sits ~20 px in from the top (or bottom) edge, where the
+   * diagrams it imitates put it.
+   */
+  private renderZoneFrame(group: GroupModel, bounds: Rectangle, z: Record<string, unknown> & { labelPlacement?: string }): VNode {
+    const c = this.theme.colors;
+    const str = (k: string): string | undefined => (typeof z[k] === 'string' && z[k] ? (z[k] as string) : undefined);
+    const num = (k: string): number | undefined => (typeof z[k] === 'number' && Number.isFinite(z[k] as number) ? (z[k] as number) : undefined);
+    const radius = num('borderRadius') ?? 6;
+    const frameRect: VNode = {
+      type: 'rect',
+      key: `group-frame-rect-${group.id}`,
+      props: {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        rx: radius,
+        ry: radius,
+        fill: str('fill') ?? 'none',
+        stroke: str('stroke') ?? (c.node.default.stroke as string),
+        strokeWidth: num('strokeWidth') ?? 1,
+        ...(str('strokeDasharray') ? { strokeDasharray: str('strokeDasharray') } : {}),
+        className: 'group-frame-rect group-zone-rect',
+        'aria-hidden': 'true',
+      },
+    };
+    const placement = z.labelPlacement ?? 'top-left';
+    const bottom = placement.startsWith('bottom');
+    const align: 'start' | 'middle' | 'end' = placement.endsWith('left') ? 'start' : placement.endsWith('right') ? 'end' : 'middle';
+    const fontSize = num('fontSize') ?? 11;
+    const INSET_X = 16;
+    const INSET_Y = 12 + fontSize * 0.7;
+    const style: Record<string, string> = {
+      fill: str('color') ?? (c.text.secondary as string),
+      fontSize: `${fontSize}px`,
+      fontWeight: z['fontWeight'] !== undefined ? String(z['fontWeight']) : '600',
+      ...(str('fontFamily') ? { fontFamily: fontStackFor(str('fontFamily')!) } : {}),
+      ...(num('letterSpacing') !== undefined ? { letterSpacing: `${num('letterSpacing')}px` } : {}),
+      ...(str('textTransform') ? { textTransform: str('textTransform')! } : {}),
+    };
+    const children: VNode[] = [frameRect];
+    if (group.name) {
+      children.push({
+        type: 'text',
+        key: `group-frame-label-${group.id}`,
+        props: {
+          x: align === 'start' ? bounds.x + INSET_X : align === 'end' ? bounds.x + bounds.width - INSET_X : bounds.x + bounds.width / 2,
+          y: bottom ? bounds.y + bounds.height - INSET_Y : bounds.y + INSET_Y,
+          textAnchor: align,
+          dominantBaseline: 'central',
+          fontFamily: this.theme.typography.fontFamily.default,
+          className: 'group-frame-label group-zone-label',
+          textContent: group.name,
+          style,
+          'aria-hidden': 'true',
+        },
+      });
+    }
+    return {
+      type: 'g',
+      key: `group-frame-${group.id}`,
+      props: {
+        className: 'group-frame group-zone',
+        role: 'graphics-object',
+        'aria-roledescription': 'Group',
+        'aria-label': group.name,
+        'data-group-id': group.id,
+        'data-collapsed': 'false',
+      },
+      children,
+    };
+  }
+
   /** One group's frame + label band, themed and accessible. */
   private renderGroupFrame(group: GroupModel, bounds: Rectangle, parent?: GroupModel): VNode {
     const c = this.theme.colors;
     const collapsed = group.isCollapsed;
+    // A ZONE — a group with a frame of its own (`metadata.frameStyle`, set from
+    // the spec's `groups[].style`): the tinted, captioned region of the diagrams
+    // AI tools draw. Collapsed, it falls back to the theme frame.
+    const zone = group.getMetadata?.('frameStyle') as (Record<string, unknown> & { labelPlacement?: string }) | undefined;
+    if (zone && !collapsed) return this.renderZoneFrame(group, bounds, zone);
 
     // A LANE is an internal band of its pool, not an independent framed group.
     // Giving each lane its own full 1.5px rounded outline stacked TWO strokes on
@@ -3894,6 +4508,10 @@ export class SVGRenderer implements IRenderer {
     // (leading edge of every lane after the first).
     const laneRole = !collapsed && group.laneConfig?.role === 'lane' && parent ? group.laneConfig : null;
     const radius = laneRole ? 0 : this.theme.effects.borderRadius.md;
+    // A lane's FILLS (wash + label band) stay inside the pool's border: drawn
+    // edge to edge after the pool, they covered the inner half of its 1.5px
+    // stroke, and the border thinned to a notch beside every lane's title strip.
+    const fillBox = laneRole && parent ? insetWithin(bounds, parent.getOuterBounds(), 0.75) : bounds;
 
     // Label band height: honour an authored header, else a readable default.
     const bandHeight = Math.min(
@@ -3911,10 +4529,10 @@ export class SVGRenderer implements IRenderer {
       type: 'rect',
       key: `group-frame-rect-${group.id}`,
       props: {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
+        x: fillBox.x,
+        y: fillBox.y,
+        width: fillBox.width,
+        height: fillBox.height,
         rx: radius,
         ry: radius,
         fill: surface,
@@ -3995,10 +4613,10 @@ export class SVGRenderer implements IRenderer {
       type: 'rect',
       key: `group-frame-band-${group.id}`,
       props: {
-        x: bounds.x,
-        y: bounds.y,
-        width: sideStrip > 0 ? sideStrip : bounds.width,
-        height: sideStrip > 0 ? bounds.height : bandHeight,
+        x: fillBox.x,
+        y: fillBox.y,
+        width: sideStrip > 0 ? sideStrip : fillBox.width,
+        height: sideStrip > 0 ? bounds.height : Math.min(bandHeight, fillBox.height),
         rx: radius,
         ry: radius,
         fill: surface,
@@ -4307,8 +4925,9 @@ export class SVGRenderer implements IRenderer {
         ...this.nodeAriaProps(node),
       },
       children: [
-        // Selection highlight (Phase 3.1: Shape-aware)
-        ...(isSelected ? [this.renderSelectionHighlight(node)] : []),
+        // Selection highlight (Phase 3.1: Shape-aware) — unless the node's
+        // selection look is its border alone (`style.selection: 'border'`).
+        ...(isSelected && resolveNodeSelectionLook(node, this.theme) !== 'border' ? [this.renderSelectionHighlight(node)] : []),
         // wave6/a11y (card 7 / WCAG 1.4.1): status must not be colour-ALONE.
         ...this.renderStateAffordances(node),
         // Phase 2: Connection target highlight (rendered behind the node)
@@ -4332,10 +4951,16 @@ export class SVGRenderer implements IRenderer {
               } as VNode,
             ]
           : []),
-        // Drop shadow (Phase 3.1: Shape-aware)
-        ...(this.lodAllows('shadows', lod) ? [this.renderShadow(node, isHovered)] : []),
+        // Drop shadow (Phase 3.1: Shape-aware). `style.shadow: false` turns it
+        // OFF — it used to add nothing and remove nothing, so a flat box (and a
+        // text note) still wore a blurred grey slab under it.
+        ...(this.lodAllows('shadows', lod) && this.resolvedNodeStyle(node).shadow !== false ? [this.renderShadow(node, isHovered)] : []),
         // Node shape (Phase 3.1: Shape-based rendering)
         this.renderNodeShape(node, styles, isHovered),
+        // Far zoom: an HTML card over an invisible shape keeps a silhouette.
+        ...(!this.lodAllows('decorations', lod) && hasHtmlContent(node) && this.bodyPaintsNothing(styles)
+          ? [this.renderHtmlSilhouette(node)]
+          : []),
         // Card 5: composite panel overlay (header band / image / rows / badges /
         // icon), drawn ON TOP of the base shape so it composes with any silhouette.
         ...(this.lodAllows('decorations', lod) ? this.renderPanelOverlay(node) : []),
@@ -4483,26 +5108,11 @@ export class SVGRenderer implements IRenderer {
         ...this.nodeAriaProps(node),
       },
       children: [
-        // Selection highlight (rendered behind foreignObject)
-        ...(isSelected
-          ? [
-              {
-                type: 'rect',
-                props: {
-                  x: -3,
-                  y: -3,
-                  width: node.size.width + 6,
-                  height: node.size.height + 6,
-                  fill: 'none',
-                  stroke: this.theme.colors.primary,
-                  strokeWidth: 3,
-                  strokeDasharray: '5,5',
-                  rx: 6,
-                  ry: 6,
-                  className: 'selection-highlight',
-                },
-              } as VNode,
-            ]
+        // Selection highlight (rendered behind foreignObject) — the same ring
+        // as a plain node's, so it follows the node's corners; none when the
+        // selection look is 'border' (the component paints its own border).
+        ...(isSelected && resolveNodeSelectionLook(node, this.theme) !== 'border'
+          ? [this.renderSelectionHighlight(node)]
           : []),
         // Connection target highlight
         ...(isConnectionTarget
@@ -4903,7 +5513,7 @@ export class SVGRenderer implements IRenderer {
     const debugPortVisibility = false; // Disabled - working correctly now
 
     if (debugPortVisibility && visibilityStr === 'on-hover') {
-      console.log(`🔍 Port visibility check:`, {
+      debugLog(`🔍 Port visibility check:`, {
         port: `${port.side}`,
         nodeHovered: node.state.hovered,
         portHovered: port.isHovered,
@@ -4978,7 +5588,17 @@ export class SVGRenderer implements IRenderer {
    * so the clip rect and the text share the node-local coordinate space.
    */
   private renderNodeLabel(node: NodeModel): VNode[] {
+    // OUTSIDE LABEL (Visio/BPMN convention): a glyph-sized master — an event
+    // circle, a gateway diamond, a connector dot, a fork bar — cannot carry its
+    // caption INSIDE without shearing it into garbage ("onnect" in an 18px
+    // circle). `metadata.labelPlacement: 'below'` paints the caption centred
+    // UNDER the silhouette instead. Pure paint: hit geometry, ports and the
+    // shape body are untouched.
+    if (node.getMetadata('labelPlacement') === 'below') {
+      return this.renderNodeLabelBelow(node);
+    }
     const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
+    if (shapeConfig.type === 'text') return this.renderTextNoteLabel(node);
     const { width, height } = node.size;
     // Card 5: when the node carries a composite panel, keep the label out of the
     // panel's header/image (top) and row (bottom) bands.
@@ -4989,9 +5609,23 @@ export class SVGRenderer implements IRenderer {
       height
     );
 
-    const fontSize = this.theme.typography.fontSize.md as number;
+    const label = String(node.getLabel());
+    // THE NODE'S OWN TYPOGRAPHY. `style.color`, `fontSize`, `fontWeight`,
+    // `fontFamily` were declared on NodeStyle and read by nothing — a caption
+    // styled teal, bold and 11 px drew in the theme's ink at 14 px. Resolved
+    // through the cascade (so a Mermaid `classDef … color:` lands too) and
+    // emitted as an inline style, which beats the `.diagram-label` rule.
+    const typo = this.nodeTextStyle(node);
+    const sublabel = readSublabel(node.getMetadata('sublabel'));
+    // SHRINK-TO-FIT (Visio does this too). `wrapText` can only break on spaces
+    // and hyphens, so a single long token — "Decision" in a diamond's 50px inner
+    // box, "Connector" in a 36px circle — stayed one over-wide line and the clip
+    // path sheared it ("Decisior", "nnec"). Scale the font down just enough for
+    // the widest unbreakable token to fit, with a legibility floor.
+    const baseFont = typo.fontSize ?? (this.theme.typography.fontSize.md as number);
+    const fontSize = fitFontSize(label, inner.w, baseFont);
+    const shrunk = fontSize < baseFont;
     const lineHeight = fontSize * 1.2;
-    const maxLines = Math.max(1, Math.floor(inner.h / lineHeight));
     const clipId = `node-clip-${node.id}`;
 
     const clip: VNode = {
@@ -5006,26 +5640,249 @@ export class SVGRenderer implements IRenderer {
       ],
     };
 
+    // A NAME OVER A SUBTITLE — the box of the diagrams AI tools draw. The pair
+    // is laid out as one block centred in the inner rect: the name semi-bold,
+    // the subtitle smaller and muted, a small gap between.
+    const subFont = sublabel ? fitFontSize(sublabel.text, inner.w, sublabel.fontSize ?? Math.round(fontSize * 0.85)) : 0;
+    const subLineHeight = subFont * 1.2;
+    const GAP = sublabel ? 3 : 0;
+    const titleLines = Math.max(1, Math.min(wrapText(label, inner.w, fontSize).length, Math.floor((inner.h - (sublabel ? subLineHeight + GAP : 0)) / lineHeight)));
+    const subLines = sublabel ? Math.max(1, Math.min(wrapText(sublabel.text, inner.w, subFont).length, Math.floor((inner.h - titleLines * lineHeight - GAP) / subLineHeight))) : 0;
+    const titleH = titleLines * lineHeight;
+    const blockH = titleH + (sublabel ? GAP + subLines * subLineHeight : 0);
+    const top = inner.y + (inner.h - blockH) / 2;
+
     const text = renderTextBlock({
-      text: String(node.getLabel()),
+      text: label,
       x: inner.x + inner.w / 2,
-      y: inner.y + inner.h / 2,
+      y: sublabel ? top + titleH / 2 : inner.y + inner.h / 2,
       maxWidth: inner.w,
       align: 'middle',
       valign: 'middle',
       fontSize,
       lineHeight: 1.2,
-      maxLines,
+      maxLines: sublabel ? titleLines : Math.max(1, Math.floor(inner.h / lineHeight)),
       clipId,
       nonInteractive: true,
       // CSS mode lets `.diagram-label` drive font/fill; programmatic mode emits them.
       className: this.config.useCSSMode ? 'diagram-label' : undefined,
+      // In CSS mode `.diagram-label` normally owns the font. A shrink-to-fit is
+      // geometry, not theming, so it MUST be emitted inline or the label keeps
+      // the stylesheet's size and overflows exactly as before.
+      emitFontSize: !this.config.useCSSMode || shrunk,
+      color: this.config.useCSSMode ? undefined : (typo.style.fill ?? (this.theme.colors.text.primary as string)),
+      fontWeight: this.config.useCSSMode ? undefined : (typo.style.fontWeight ?? (sublabel ? 600 : (this.theme.typography.fontWeight.medium as number))),
+    });
+
+    // A shrink must WIN over `.diagram-label`'s font-size: `fontSize` is emitted
+    // as an SVG presentation attribute, and any CSS rule outranks those — which
+    // is why emitting it alone left the label at the stylesheet size and still
+    // clipped. An inline style beats the class. The node's own typography rides
+    // the same inline style, for the same reason.
+    const inline: LabelCss = { ...typo.style };
+    if (shrunk) inline.fontSize = `${fontSize}px`;
+    if (sublabel && inline.fontWeight === undefined) inline.fontWeight = '600';
+    if (Object.keys(inline).length > 0) {
+      const props = text.props as Record<string, unknown>;
+      props['style'] = { ...((props['style'] as object) ?? {}), ...inline };
+    }
+    if (!sublabel) return [clip, text];
+
+    const subColor = sublabel.color ?? (this.theme.colors.text.secondary as string);
+    const sub = renderTextBlock({
+      text: sublabel.text,
+      x: inner.x + inner.w / 2,
+      y: top + titleH + GAP + (subLines * subLineHeight) / 2,
+      maxWidth: inner.w,
+      align: 'middle',
+      valign: 'middle',
+      fontSize: subFont,
+      lineHeight: 1.2,
+      maxLines: subLines,
+      clipId,
+      nonInteractive: true,
+      className: 'diagram-sublabel',
+      emitFontSize: true,
+      color: subColor,
+    });
+    // Inline, always: no stylesheet rule owns a subtitle, and the theme's label
+    // rule must not repaint it in the name's ink.
+    (sub.props as Record<string, unknown>)['style'] = {
+      fill: subColor,
+      fontSize: `${subFont}px`,
+      ...(sublabel.fontFamily ? { fontFamily: fontStackFor(sublabel.fontFamily) } : {}),
+      ...(sublabel.fontWeight !== undefined ? { fontWeight: String(sublabel.fontWeight) } : {}),
+    };
+    return [clip, text, sub];
+  }
+
+  /**
+   * `metadata.labelPlacement: 'above' | 'below'` — the label just off its line,
+   * on the side the line's normal points "up" (negative y; on a vertical run,
+   * negative x — left), or the other side for 'below'. The gap clears half the
+   * label's height plus 5 px, so a two-line label hangs clear of the stroke.
+   * Decided per frame from the path's tangent where the label lands, so the
+   * label follows the line when a box moves. Undefined = the label's own offset.
+   */
+  /**
+   * A label placed above/below a BENT line rides the middle of its longest
+   * straight run — where a person drawing it would write it — instead of half
+   * way along its length, which is often a corner. Only for the default
+   * position (0.5) on straight-run lines (direct / orthogonal); a straight line's
+   * longest run is the whole line, so nothing moves there.
+   */
+  private onLongestRun(link: LinkModel, label: LinkLabel, painted?: ReadonlyArray<{ x: number; y: number }>): LinkLabel {
+    const placement = link.getMetadata('labelPlacement');
+    if (placement !== 'above' && placement !== 'below') return label;
+    if (label.position !== undefined && label.position !== 0.5) return label;
+    if (link.pathType !== 'direct' && link.pathType !== 'orthogonal') return label;
+    const pts = painted ?? link.points;
+    if (!pts || pts.length < 3) return label;
+    // Words run level: the longest LEVEL run wins; only a line with none falls
+    // back to its longest run of any direction.
+    let total = 0;
+    let best = { from: 0, len: -1 };
+    let level = { from: 0, len: -1 };
+    for (let i = 0; i < pts.length - 1; i++) {
+      const dx = pts[i + 1].x - pts[i].x;
+      const dy = pts[i + 1].y - pts[i].y;
+      const len = Math.hypot(dx, dy);
+      if (len > best.len) best = { from: total, len };
+      if (Math.abs(dy) < 0.5 && len > level.len) level = { from: total, len };
+      total += len;
+    }
+    if (total <= 0) return label;
+    const run = level.len > 0 ? level : best;
+    return { ...label, position: (run.from + run.len / 2) / total };
+  }
+
+  private placedLabelOffset(link: LinkModel, label: LinkLabel, painted?: ReadonlyArray<{ x: number; y: number }>): { x: number; y: number } | undefined {
+    const placement = link.getMetadata('labelPlacement');
+    if (placement !== 'above' && placement !== 'below') return undefined;
+    // The PAINTED polyline's direction where the label lands (`link.points` is
+    // the painted geometry, flattened — the model's own tangent needs segments,
+    // which a routed link does not carry).
+    const tangent = polylineTangentAt((painted ?? link.points) as Array<{ x: number; y: number }>, typeof label.position === 'number' ? label.position : 0.5) ?? link.getTangentAt(0.5);
+    if (!tangent) return undefined;
+    const len = Math.hypot(tangent.x, tangent.y) || 1;
+    let nx = -tangent.y / len;
+    let ny = tangent.x / len;
+    // "up": the normal with negative y; on a vertical run, the one pointing left.
+    if (ny > 1e-6 || (Math.abs(ny) <= 1e-6 && nx > 0)) {
+      nx = -nx;
+      ny = -ny;
+    }
+    if (placement === 'below') {
+      nx = -nx;
+      ny = -ny;
+    }
+    const fontSize = label.style?.fontSize ?? 12;
+    const textLines = String(label.text).split('\n');
+    // Clear the line by half the label's extent ACROSS it: its height beside a
+    // level run, its width beside an upright one (a word written next to an
+    // upright line must not be struck through by it). Width is estimated.
+    const halfHeight = (Math.max(1, textLines.length) * fontSize * 1.2) / 2;
+    const halfWidth = (Math.max(...textLines.map((l) => l.length)) * fontSize * 0.6) / 2;
+    const d = Math.abs(ny) >= Math.abs(nx) ? halfHeight + 5 : halfWidth + 5;
+    return { x: (label.offset?.x ?? 0) + nx * d, y: (label.offset?.y ?? 0) + ny * d };
+  }
+
+  /**
+   * A 'text' note's words: from its left edge by default (`metadata.textAlign`
+   * centres or right-aligns), vertically centred, wrapped to its width — and
+   * never clipped, shrunk or cut to "…": a note has no silhouette to escape.
+   */
+  private renderTextNoteLabel(node: NodeModel): VNode[] {
+    const { width, height } = node.size;
+    const typo = this.nodeTextStyle(node);
+    const fontSize = typo.fontSize ?? (this.theme.typography.fontSize.md as number);
+    const a = node.getMetadata('textAlign');
+    const align: 'start' | 'middle' | 'end' = a === 'center' || a === 'middle' ? 'middle' : a === 'end' || a === 'right' ? 'end' : 'start';
+    const text = renderTextBlock({
+      text: String(node.getLabel()),
+      x: align === 'start' ? 0 : align === 'middle' ? width / 2 : width,
+      y: height / 2,
+      // One line unless the text breaks itself ('\n'), like an SVG <text>: the
+      // width estimate (0.6 em a glyph) runs long, and a note wrapped by a guess
+      // is a note broken in the wrong place.
+      maxWidth: undefined,
+      align,
+      valign: 'middle',
+      fontSize,
+      lineHeight: 1.2,
+      nonInteractive: true,
+      className: this.config.useCSSMode ? 'diagram-label' : undefined,
+      emitFontSize: !this.config.useCSSMode,
+      color: this.config.useCSSMode ? undefined : (typo.style.fill ?? (this.theme.colors.text.primary as string)),
+      fontWeight: this.config.useCSSMode ? undefined : typo.style.fontWeight,
+    });
+    if (Object.keys(typo.style).length > 0) {
+      const props = text.props as Record<string, unknown>;
+      props['style'] = { ...((props['style'] as object) ?? {}), ...typo.style };
+    }
+    return [text];
+  }
+
+  /**
+   * A node's own typography — color, size, weight, family, style, decoration —
+   * as an inline CSS object for its label, from the resolved cascade (inline
+   * style, classDef, type defaults). Only what the node actually sets.
+   */
+  private nodeTextStyle(node: NodeModel): { style: LabelCss; fontSize?: number } {
+    const st = this.resolvedNodeStyle(node) as Partial<NodeStyle>;
+    const out: LabelCss = {};
+    if (typeof st.color === 'string' && st.color) out.fill = st.color;
+    const size = typeof st.fontSize === 'number' && st.fontSize > 0 ? st.fontSize : undefined;
+    if (size !== undefined) out.fontSize = `${size}px`;
+    if (st.fontWeight !== undefined && st.fontWeight !== '') out.fontWeight = String(st.fontWeight);
+    if (st.fontFamily) out.fontFamily = fontStackFor(st.fontFamily);
+    if (st.fontStyle) out.fontStyle = st.fontStyle;
+    if (st.textDecoration) out.textDecoration = st.textDecoration;
+    return { style: out, fontSize: size };
+  }
+
+  /** Gap between a silhouette's bottom edge and its below-label (px). */
+  private static readonly BELOW_LABEL_GAP = 5;
+
+  /**
+   * Paint a node's caption BELOW its silhouette (`metadata.labelPlacement:
+   * 'below'`). The label is centred under the node, wraps at a width a little
+   * wider than the shape (a 36px event circle should not force one-character
+   * lines), is NEVER clipped and NEVER shrunk below the theme size — outside
+   * the silhouette there is room, so legibility wins. The text block's top edge
+   * sits {@link BELOW_LABEL_GAP} px under the node's height, so it can never
+   * straddle the silhouette edge.
+   */
+  private renderNodeLabelBelow(node: NodeModel): VNode[] {
+    const { width, height } = node.size;
+    const label = String(node.getLabel());
+    const fontSize = this.theme.typography.fontSize.md as number;
+    const lineHeight = fontSize * 1.2;
+    // Wrap width: at least ~9em so short captions stay one line under tiny
+    // glyphs, at most the node width when the node is already wide.
+    const maxWidth = Math.max(width, fontSize * 9);
+    const lines = wrapText(label, maxWidth, fontSize);
+    const blockH = lines.length * lineHeight;
+    const top = height + SVGRenderer.BELOW_LABEL_GAP;
+
+    const text = renderTextBlock({
+      text: label,
+      x: width / 2,
+      y: top + blockH / 2,
+      maxWidth,
+      align: 'middle',
+      valign: 'middle',
+      fontSize,
+      lineHeight: 1.2,
+      // No maxLines and no clipId: an outside label is never truncated and
+      // never clipped — that is its whole reason to exist.
+      nonInteractive: true,
+      className: this.config.useCSSMode ? 'diagram-label gf-label-below' : 'gf-label-below',
       emitFontSize: !this.config.useCSSMode,
       color: this.config.useCSSMode ? undefined : (this.theme.colors.text.primary as string),
       fontWeight: this.config.useCSSMode ? undefined : (this.theme.typography.fontWeight.medium as number),
     });
-
-    return [clip, text];
+    return [text];
   }
 
   private renderNodeShape(node: NodeModel, styles: any, isHovered: boolean): VNode {
@@ -5038,7 +5895,7 @@ export class SVGRenderer implements IRenderer {
                                      node.style?.borderAnimationType !== 'none';
 
     if (hasActiveBorderAnimation && styles.strokeWidth !== undefined) {
-      console.log(`[SVGRenderer] Removing inline strokeWidth for ${node.id} due to active border animation`);
+      debugLog(`[SVGRenderer] Removing inline strokeWidth for ${node.id} due to active border animation`);
       const { strokeWidth, ...stylesWithoutStrokeWidth } = styles;
       styles = stylesWithoutStrokeWidth;
     }
@@ -5080,6 +5937,10 @@ export class SVGRenderer implements IRenderer {
     const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
     const { width, height } = node.size;
     const padding = 3;
+    // Concentric with the node's own corners: a 12px card gets a 15px ring
+    // 3px out. It was a fixed 6 — a rounded card wore a squarish ring that
+    // did not follow its border (live report on the chatbot demo).
+    const corner = this.nodeCornerRadius(node);
 
     const baseProps = {
       fill: 'none',
@@ -5090,7 +5951,58 @@ export class SVGRenderer implements IRenderer {
     };
 
     // Selection highlight = the shape outline grown by `padding` (registry).
-    return buildShapeSelection(getShape(shapeConfig.type), width, height, padding, baseProps);
+    return buildShapeSelection(
+      getShape(shapeConfig.type), width, height, padding, baseProps,
+      corner !== undefined ? corner + padding : undefined
+    );
+  }
+
+  /**
+   * The corner radius the author gave this node's BODY, or undefined when
+   * they gave none. `shape.cornerRadius` first — it wins the body's rx (the
+   * shape registry defers rx/ry over the styles) — then `borderRadius` from
+   * the style cascade WITHOUT the theme base, so an undeclared node keeps the
+   * outline and shadow it always had. One answer for every layer that traces
+   * the node's outline: selection ring, drop shadow, far-zoom silhouette.
+   */
+  private nodeCornerRadius(node: NodeModel): number | undefined {
+    const shape = node.getMetadata('shape') as { cornerRadius?: unknown } | undefined;
+    if (typeof shape?.cornerRadius === 'number') return shape.cornerRadius;
+    const r = resolveNodeStyle(node, this.theme, { includeThemeBase: false }).borderRadius;
+    return typeof r === 'number' ? r : undefined;
+  }
+
+  /**
+   * True when the node's resolved body paints nothing at all — no fill, no
+   * visible stroke. An UNSET paint is not invisible: the theme stylesheet
+   * paints it.
+   */
+  private bodyPaintsNothing(styles: { fill?: unknown; stroke?: unknown; strokeWidth?: unknown }): boolean {
+    const clear = (v: unknown) =>
+      typeof v === 'string' && (v === 'none' || v === 'transparent' || /^rgba\([^)]*,\s*0(\.0+)?\s*\)$/.test(v.replace(/\s+/g, ' ')));
+    return clear(styles.fill) && (clear(styles.stroke) || styles.strokeWidth === 0);
+  }
+
+  /**
+   * Far zoom drops an HTML node's rich body and leaves "just its silhouette".
+   * When the HTML painted the card over an INVISIBLE shape (the usual way to
+   * build a card), that silhouette was nothing: the boxes vanished and only
+   * the lines stayed. Stand in for it with a plain box in the theme's node
+   * colours, rounded like the node.
+   */
+  private renderHtmlSilhouette(node: NodeModel): VNode {
+    const { width, height } = node.size;
+    const r = this.nodeCornerRadius(node) ?? 4;
+    const d = this.theme.nodes.default;
+    return {
+      type: 'rect',
+      props: {
+        x: 0, y: 0, width, height, rx: r, ry: r,
+        fill: d.fill, stroke: d.stroke, strokeWidth: d.strokeWidth ?? 1,
+        className: 'html-node-silhouette',
+        pointerEvents: 'none',
+      },
+    };
   }
 
   /**
@@ -5211,7 +6123,7 @@ export class SVGRenderer implements IRenderer {
       width,
       height,
       offset,
-      (node.style.borderRadius ?? 4) as number,
+      this.nodeCornerRadius(node) ?? 4,
       baseProps
     );
   }
@@ -5717,6 +6629,24 @@ export class SVGRenderer implements IRenderer {
       return `L${x} ${y}`;
     }
 
+    // A SLANTED corner (an `avoid`/A* route, a hand-placed bend): the branches
+    // below assume one horizontal and one vertical segment, and at a slanted
+    // corner they stepped off the route with an axis-aligned stub — a hook at
+    // every corner. Back off along each segment instead, curving through the
+    // corner; for an axis-aligned corner this is the same geometry.
+    const axisA = a.x === x || a.y === y;
+    const axisC = c.x === x || c.y === y;
+    if (!axisA || !axisC) {
+      const dA = this.distance(a, b);
+      const dC = this.distance(b, c);
+      if (dA === 0 || dC === 0 || bendSize <= 0) return `L${x} ${y}`;
+      const p1x = x + ((a.x - x) / dA) * bendSize;
+      const p1y = y + ((a.y - y) / dA) * bendSize;
+      const p2x = x + ((c.x - x) / dC) * bendSize;
+      const p2y = y + ((c.y - y) / dC) * bendSize;
+      return `L ${p1x},${p1y}Q ${x},${y} ${p2x},${p2y}`;
+    }
+
     // First segment is horizontal
     if (a.y === y) {
       const xDir = a.x < c.x ? -1 : 1;
@@ -5792,6 +6722,96 @@ export class SVGRenderer implements IRenderer {
    * The historical 100px cap scales with the multiplier so curvature 0.5 is
    * exactly the old `Math.min(distance / 2, 100)`.
    */
+  /**
+   * The bezier for a 2-POINT smooth link, at the deepest curvature the scene
+   * has room for.
+   *
+   * A direction-aware bezier's control points push the curve OUTSIDE the chord —
+   * that is the whole point of them — and nothing checked what the bulge swept
+   * through. A chord that legally grazed past a neighbouring node by a few units
+   * was drawn as a curve bowing straight through that node's body (the
+   * theme-bound demo's info→sink edge sat 4 units under a node and was painted
+   * 20 units INSIDE it). The multi-point branch has had this guard since the
+   * spline-clearance fix; this is the same contract for the 2-point case.
+   *
+   * Degrade by HALVING the control distance rather than jumping straight to a
+   * line: most grazes clear after one halving and the link keeps its curved
+   * identity. `cp1 === null` in the result means even the flattest curve clipped
+   * something and the caller should draw the chord itself.
+   *
+   * Returns the SAMPLES too, because the painted hit polyline must flatten the
+   * same curve this shape describes — one decision, consumed by both.
+   */
+  private twoPointSmoothCurve(
+    p0: { x: number; y: number },
+    p1: { x: number; y: number },
+    style: Partial<LinkStyle> | undefined,
+    sourceDirection: string | undefined,
+    targetDirection: string | undefined,
+    ownNodes: NodeModel[]
+  ): {
+    cp1: { x: number; y: number } | null;
+    cp2: { x: number; y: number } | null;
+    samples: Array<{ x: number; y: number }>;
+  } {
+    const distance = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+    const STEPS = 16;
+
+    const sampled = (cp1: { x: number; y: number }, cp2: { x: number; y: number }) => {
+      const out: Array<{ x: number; y: number }> = [];
+      for (let i = 0; i <= STEPS; i++) {
+        const t = i / STEPS;
+        const u = 1 - t;
+        out.push({
+          x: u * u * u * p0.x + 3 * u * u * t * cp1.x + 3 * u * t * t * cp2.x + t * t * t * p1.x,
+          y: u * u * u * p0.y + 3 * u * u * t * cp1.y + 3 * u * t * t * cp2.y + t * t * t * p1.y,
+        });
+      }
+      return out;
+    };
+
+    // NEIGHBOURS only. The stub legitimately hugs — and may clip the corner of —
+    // its OWN nodes: that has always been the 2-point look, and judging it now
+    // would flatten curves that were never a problem. The defect this guards
+    // against is the bulge entering somebody ELSE's node.
+    const ownIds = new Set(ownNodes.map((n) => n.id));
+
+    let controlDistance = this.controlDistanceFor(distance, style);
+
+    // curvature: 0 is a CONTRACT, not an absence — "collapse the curve onto its
+    // chord, control points at the endpoints" (link-shape spec). A chord-shaped
+    // cubic cannot bulge, so it needs no clearance check either.
+    if (controlDistance <= 0) {
+      const { cp1, cp2 } = this.smoothControlPoints(p0, p1, 0, sourceDirection, targetDirection);
+      return { cp1, cp2, samples: [p0, p1] };
+    }
+
+    // MOTION SUSPENDS THE GUARD, exactly as it suspends the route's own detour
+    // decision (see the motion-stable block in the route ladder): a link whose
+    // endpoint is mid-tween must not flip shape class frame to frame, and a node
+    // SWEEPING across a curve must not toggle it flat and back as it passes.
+    // The settle machinery already owes a repaint when motion stops — that frame
+    // re-runs this guard against the world at rest.
+    const endpointsInMotion =
+      this.motionTracker.hasMotion && ownNodes.some((n) => this.motionTracker.isInMotion(n.id));
+
+    for (let attempt = 0; attempt < 3 && controlDistance >= 1; attempt++, controlDistance /= 2) {
+      const { cp1, cp2 } = this.smoothControlPoints(p0, p1, controlDistance, sourceDirection, targetDirection);
+      const samples = sampled(cp1, cp2);
+      if (endpointsInMotion) return { cp1, cp2, samples };
+      const neighbours = this.splineClearanceNodes(samples, []).filter(
+        (n) =>
+          !ownIds.has(n.id) &&
+          !(this.motionTracker.hasMotion && this.motionTracker.isInMotion(n.id))
+      );
+      if (neighbours.length === 0 || this.penetrationLength(samples, neighbours) <= 2) {
+        return { cp1, cp2, samples };
+      }
+    }
+
+    return { cp1: null, cp2: null, samples: [p0, p1] };
+  }
+
   private controlDistanceFor(distance: number, style?: Partial<LinkStyle>): number {
     const c = style?.curvature;
     const curvature = typeof c === 'number' && isFinite(c) && c >= 0 ? c : 0.5;
@@ -5895,27 +6915,21 @@ export class SVGRenderer implements IRenderer {
       const p1 = routePoints[1];
       const distance = Math.hypot(p1.x - p0.x, p1.y - p0.y);
       if (distance < 1) return routePoints;
-      const { cp1, cp2 } = this.smoothControlPoints(
-        p0, p1, this.controlDistanceFor(distance, style), sourceDirection, targetDirection
-      );
-      const STEPS = 16;
-      const out: Array<{ x: number; y: number }> = [];
-      for (let i = 0; i <= STEPS; i++) {
-        const t = i / STEPS;
-        const u = 1 - t;
-        out.push({
-          x: u * u * u * p0.x + 3 * u * u * t * cp1.x + 3 * u * t * t * cp2.x + t * t * t * p1.x,
-          y: u * u * u * p0.y + 3 * u * u * t * cp1.y + 3 * u * t * t * cp2.y + t * t * t * p1.y,
-        });
-      }
-      return out;
+      // ONE decision for the curve's depth, shared with the drawn path — see
+      // twoPointSmoothCurve. Whatever bezier (or chord) that picks, this hit
+      // polyline is its flattening, so the hit shape and the ink cannot diverge.
+      return this.twoPointSmoothCurve(p0, p1, style, sourceDirection, targetDirection, avoidNodes).samples;
     }
     // Multi-point smooth: mirror convertRoutedPathToSVG's choice — the
-    // catmull-rom spline unless its overshoot would clip the link's own nodes
-    // (then the drawn path is rounded corners, which hug the route within
-    // ~0.4 units — the route polyline is already an honest hit shape there).
+    // catmull-rom spline unless its overshoot would clip a node (then the drawn
+    // path is rounded corners, which hug the route within ~0.4 units — the route
+    // polyline is already an honest hit shape there).
+    //
+    // ANY node the curve reaches, not just the link's own two: the whole reason
+    // this route has corners is that it was steered around something.
     const samples = this.sampleCatmullRom(routePoints, 8);
-    if (avoidNodes.length === 0 || this.penetrationLength(samples, avoidNodes) <= 2) {
+    const mustClear = this.splineClearanceNodes(samples, avoidNodes);
+    if (mustClear.length === 0 || this.penetrationLength(samples, mustClear) <= 2) {
       return samples;
     }
     return routePoints;
@@ -5948,32 +6962,35 @@ export class SVGRenderer implements IRenderer {
 
       // Simple bezier curve for 2 points
       if (points.length === 2) {
-        const dx = points[1].x - points[0].x;
-        const dy = points[1].y - points[0].y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const controlDistance = this.controlDistanceFor(distance, style);
-
-        // ENHANCED: Direction-aware control points (ReactFlow style)
-        // Control points extend from the port in the direction it faces.
-        // Shared with paintedHitPolyline — the hit test must flatten the SAME
-        // curve this draws (see that method's header).
-        const { cp1, cp2 } = this.smoothControlPoints(
-          points[0], points[1], controlDistance, sourceDirection, targetDirection
+        // Direction-aware control points, at the deepest curvature with room to
+        // exist — twoPointSmoothCurve halves the depth until the bulge stops
+        // entering a NEIGHBOURING node, and hands back null control points when
+        // even the flattest curve clips one (then the chord is the honest
+        // drawing). Shared with paintedHitPolyline — the hit test flattens the
+        // SAME curve this draws.
+        const { cp1, cp2 } = this.twoPointSmoothCurve(
+          points[0], points[1], style, sourceDirection, targetDirection, avoidNodes ?? []
         );
-
-        path += ` C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${points[1].x} ${points[1].y}`;
+        if (cp1 && cp2) {
+          path += ` C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${points[1].x} ${points[1].y}`;
+        } else {
+          path += ` L ${points[1].x} ${points[1].y}`;
+        }
       } else {
         // Multi-point route (e.g. a detour around a node): a smooth link must
         // KEEP ITS CURVED IDENTITY — fit a spline through the route points.
-        // Guard: if the spline's corner overshoot would dip into the link's
-        // own nodes, fall back to tight rounded corners instead.
+        // Guard: if the spline's corner overshoot would dip into ANY node it
+        // passes — not merely the link's own two — fall back to tight rounded
+        // corners instead. A detouring route was bought clearance from
+        // obstacles; the spline must not spend it. Must stay in step with
+        // paintedHitPolyline, or the hit shape and the drawn shape disagree.
         const spline = this.catmullRomPath(points);
-        const avoid = avoidNodes ?? [];
-        if (avoid.length === 0 ||
-            this.penetrationLength(this.sampleCatmullRom(points, 8), avoid) <= 2) {
+        const samples = this.sampleCatmullRom(points, 8);
+        const avoid = this.splineClearanceNodes(samples, avoidNodes ?? []);
+        if (avoid.length === 0 || this.penetrationLength(samples, avoid) <= 2) {
           return spline;
         }
-        // Rounded-corner fallback for a detour that would clip its own nodes.
+        // Rounded-corner fallback for a detour that would clip a node.
         // Default radius here is 12 (tighter corners read as "still a curve").
         return this.convertOrthogonalPathWithBends(points, this.resolveCornerRadius(style, pathType));
       }
@@ -6013,7 +7030,23 @@ export class SVGRenderer implements IRenderer {
     // A clean link crossing an LOD threshold on zoom must NOT serve a
     // wrong-LOD VNode. NOTE: this is the cache lookup key only; the VNode's
     // `key` prop stays `link-${link.id}` for stable VDOM reconciliation.
-    const cacheKey = `link-${link.id}-${lod}`;
+    // The ENDPOINT NAMES are part of the key, because they are part of what this
+    // VNode renders: the edge's accessible name is "Edge from <source> to
+    // <target>" (see linkAriaProps). Keyed only by id and LOD, renaming a node
+    // left every attached edge announcing the OLD name to a screen reader —
+    // permanently, since nothing about the LINK had changed, so it never went
+    // dirty and the cached tree was handed back forever.
+    //
+    // Folded into the key rather than fixed by dirtying incident links on a
+    // label write: a name can change through setLabel, setMetadata('label'), the
+    // legacy data.label mirror, a spec reconcile or a document restore, and a
+    // fix that has to intercept all five is a fix that will miss the sixth. A
+    // key cannot miss one — if the name is different, the key is different.
+    // …and so is the line's part in the selection (highlightConnected): a new
+    // selection changes the picture of lines whose own model never changed.
+    const connection = this.frameConnections.get(link.id);
+    const crossing = this.frameCrossings.has(link.id);
+    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}${connection ? `|${connection}` : ''}${crossing ? '~x' : ''}`;
     // Paint-server links bypass the cache so their `<defs>` entry is re-registered
     // every frame (a cache hit would skip style computation and orphan url(#…)).
     const usesPaintServer = this.linkUsesPaintServer(link);
@@ -6115,7 +7148,7 @@ export class SVGRenderer implements IRenderer {
 
           segmentObstacles = currentDiagram.getNodes()
             .filter((node: NodeModel) =>
-              node.id !== sourceNodeId && node.id !== targetNodeId
+              node.id !== sourceNodeId && node.id !== targetNodeId && !isTextNote(node)
             )
             .map((node: NodeModel) => ({
               id: node.id,
@@ -6132,7 +7165,28 @@ export class SVGRenderer implements IRenderer {
           const isFirstSegment = i === 0;
           const isLastSegment = i === points.length - 2;
 
-          if (isFirstSegment || isLastSegment) {
+          // An end run that is ALREADY square and heads the right way — out of
+          // its source's side, or into its target's side — is drawn as it is.
+          // Routing it again to guarantee a longer port stub sent a 16 px run
+          // round the whole box (a junction dot under an API box).
+          const squareRun = (a: { x: number; y: number }, b: { x: number; y: number }, dir: string | undefined, leaving: boolean): boolean => {
+            if (!dir) return false;
+            const [from, to] = leaving ? [a, b] : [b, a]; // measured from the port outward
+            const dx = to.x - from.x, dy = to.y - from.y;
+            if (dir === 'top') return Math.abs(dx) < 0.5 && dy < 0;
+            if (dir === 'bottom') return Math.abs(dx) < 0.5 && dy > 0;
+            if (dir === 'left') return Math.abs(dy) < 0.5 && dx < 0;
+            if (dir === 'right') return Math.abs(dy) < 0.5 && dx > 0;
+            return false;
+          };
+          const straightEnd =
+            (isFirstSegment || isLastSegment) &&
+            (!isFirstSegment || squareRun(start, end, sourceDirection, true)) &&
+            (!isLastSegment || squareRun(start, end, targetDirection, false));
+          if (straightEnd) {
+            if (i === 0) allRoutedPoints.push(start);
+            allRoutedPoints.push(end);
+          } else if (isFirstSegment || isLastSegment) {
             // Use routing engine for port connections (perpendicular to ports)
             // FIXED: Enable obstacle avoidance to prevent penetrating nodes during drag
             const segmentSourceDir = isFirstSegment ? sourceDirection : undefined;
@@ -6214,7 +7268,11 @@ export class SVGRenderer implements IRenderer {
       type: 'arrow',
       size: 10,
       filled: true,
-      color: this.config.useCSSMode
+      // The line's OWN colour when it has one (its style, a classDef, a state,
+      // the selection's ink): the theme variable first meant a green line kept
+      // a grey head, because `var(--link-stroke, green)` always resolves the
+      // variable. The variable only when the colour IS the theme's.
+      color: this.config.useCSSMode && !linkLiterals.stroke
         ? `var(${THEME_VARS['link.stroke'].cssVar}, ${arrowLiteral})`
         : arrowLiteral,
     };
@@ -6358,7 +7416,18 @@ export class SVGRenderer implements IRenderer {
       type: 'g',
       key: `link-${link.id}`,
       props: {
-        className: 'link-group',
+        className:
+          connection === undefined
+            ? 'link-group'
+            : connection === 'dim'
+              ? 'link-group link-dimmed'
+              : `link-group link-connected link-connected-${connection}${crossing ? ' link-crossing' : ''}`,
+        ...(connection !== undefined ? { 'data-connected': connection } : {}),
+        ...(crossing ? { 'data-crossing': 'true' } : {}),
+        // A faded line fades WHOLE — its arrowhead and label with it.
+        ...(connection === 'dim' && (this.highlightOptions()?.dimOpacity ?? 1) < 1
+          ? { style: { opacity: this.highlightOptions()!.dimOpacity } }
+          : {}),
         // Wave 3 (Edges & links): identify the link in the DOM. VNode `key` is
         // a VDOM-reconciliation concept and is NOT emitted as an attribute, so
         // without this there is no way to find a link's RENDERED <path> — which
@@ -6417,10 +7486,16 @@ export class SVGRenderer implements IRenderer {
                   // Wave 4 — Card 7: the optimizer's placement, when it placed
                   // this one. For a label that did not opt into `autoOffset` this
                   // IS the author's offset, so nothing moves.
-                  const offset = this.frameLabelOffsets.get(`${link.id}::${label.id}`);
-                  const labelVNode = this.labelRenderer.renderLabel(label, link, {
+                  // An explicit above/below placement wins: the optimizer's entry is
+                  // the label's own offset unless it opted into autoOffset.
+                  // The line AS PAINTED: for a hand-bent right-angle line that is
+                  // not its stored points (the jogs between its bends are drawn).
+                  const placed = this.onLongestRun(link, label, points);
+                  const offset = this.placedLabelOffset(link, placed, points) ?? this.frameLabelOffsets.get(`${link.id}::${label.id}`);
+                  const labelVNode = this.labelRenderer.renderLabel(placed, link, {
                     offset,
                     theme: this.theme,
+                    path: points,
                   });
                   if (labelVNode) {
                     labelVNodes.push(labelVNode);
@@ -6699,6 +7774,7 @@ export class SVGRenderer implements IRenderer {
   private resolvedLinkStyle(link: LinkModel): Partial<LinkStyle> {
     const resolved = resolveLinkStyle(link, this.theme, {
       includeThemeBase: !this.config.useCSSMode,
+      connection: this.connectionStyle(link),
     });
     const { style, themeBound } = this.materializeThemeRefs<LinkStyle>(
       resolved,
@@ -6710,7 +7786,8 @@ export class SVGRenderer implements IRenderer {
     // that draws one is theme-bound, `themeRef` or not. (Found by reading the
     // arrow path, not by assuming: `color: styles.stroke || theme.colors.link.default`.)
     const drawsArrow = link.style.arrowHead?.type !== 'none' || !!link.style.arrowTail;
-    if (themeBound || drawsArrow || this.linkDrawsThemeLiteral(link)) {
+    // A line of the selection is painted with the theme's ink: a theme swap must repaint it.
+    if (themeBound || drawsArrow || this.linkDrawsThemeLiteral(link) || this.frameConnections.has(link.id)) {
       this.themeBoundLinks.add(link.id);
     } else {
       this.themeBoundLinks.delete(link.id);
@@ -6725,7 +7802,12 @@ export class SVGRenderer implements IRenderer {
     const style = this.resolvedNodeStyle(node);
     const classes = ['diagram-node'];
 
-    if (node.state.selected) classes.push('selected');
+    if (node.state.selected) {
+      classes.push('selected');
+      // `style.selection`: lets the stylesheet fallback paint only what the look allows.
+      const look = resolveNodeSelectionLook(node, this.theme);
+      if (look !== 'both') classes.push(`selected-${look}`);
+    }
     // Attention emphasis (Card 1). Emitted alongside `selected`; selection wins
     // — in the cascade's state layer, and in the stylesheet fallback (where the
     // `.highlighted` rule is authored BEFORE `.selected`).
@@ -6842,11 +7924,21 @@ export class SVGRenderer implements IRenderer {
     // which beats it. `stroke` is ALSO kept as a prop for consumers that read
     // props.stroke (and for Canvas parity). Only properties a layer actually set
     // are emitted, so untouched props still fall back to the theme.
+    // `animation.duration` (ms) was in the type and ignored. Inline, it beats the
+    // `speed` preset classes; the reduced-motion / performance / battery rules are
+    // `!important` and still override it.
+    const animation = link.style.animation;
+    const animationMs =
+      animation && animation.type !== 'none' &&
+      typeof animation.duration === 'number' && Number.isFinite(animation.duration) && animation.duration > 0
+        ? animation.duration
+        : undefined;
     const inlineStyle = [
       resolvedStroke !== undefined ? `stroke: ${resolvedStroke}` : '',
       style.strokeWidth !== undefined ? `stroke-width: ${style.strokeWidth}` : '',
       style.strokeDasharray !== undefined ? `stroke-dasharray: ${style.strokeDasharray}` : '',
       style.opacity !== undefined ? `opacity: ${style.opacity}` : '',
+      animationMs !== undefined ? `animation-duration: ${animationMs}ms` : '',
     ].filter(Boolean).join('; ');
 
     // …but the PROP becomes an ATTRIBUTE (`stroke="…"`), and an attribute cannot
@@ -7431,6 +8523,16 @@ export class SVGRenderer implements IRenderer {
     diagram.on('link:removed', dropFrame);
     diagram.on('group:added', dropFrame);
     diagram.on('group:removed', dropFrame);
+    // An LOD POLICY change is invisible to every other channel: no entity moved,
+    // so the epoch does not budge, and the per-entity cache keys carry the tier
+    // NAME, which a redefinition keeps. `invalidateStyles` is the right hammer —
+    // it clears the VNode cache, bumps the invalidation epoch so the host stops
+    // idle-skipping, and dirties every entity so none is left drawn under the
+    // policy that was just replaced.
+    diagram.on('lod:config-changed', () => {
+      this.lodCache.clear();
+      this.invalidateStyles('lod-config-changed');
+    });
     // (`link:path-changed` needs no listener here: LinkModel.generatePath() now
     // markDirty()s the link, which is both more correct and bumps the epoch — see
     // the note there. It used to rewrite `points` in place and tell no one.)
@@ -7966,6 +9068,46 @@ export class SVGRenderer implements IRenderer {
    * interaction layer), never inferred from point count — auto-routed
    * orthogonal paths also have >2 points.
    */
+  /**
+   * A hand-bent line whose box moved: its ends re-attach to the ports where
+   * they are NOW, and on a right-angle line the bend next to a moved end slides
+   * with it so that run stays square (a line leaving a box's top keeps its first
+   * run vertical). Bends next to an end that did not move are the author's and
+   * stay exactly where they were.
+   *
+   * This used to happen only inside `renderLink` — after the frame signature
+   * had compared the line's stored points, which nothing had refreshed, so the
+   * line was served from the cache: drawn where it was, both ends in the air.
+   */
+  private settleManualWaypoints(link: LinkModel): void {
+    const endpoints = this.getLinkEndpoints(link);
+    const old = link.points;
+    if (!endpoints || !old || old.length < 3) return;
+    const start = { ...endpoints.start };
+    const end = { ...endpoints.end };
+    const bends = old.slice(1, -1).map((p) => ({ ...p }));
+    type P = { x: number; y: number };
+    const moved = (a: P, b: P) => Math.abs(a.x - b.x) > 0.01 || Math.abs(a.y - b.y) > 0.01;
+    // (a zero-length run — a placeholder end sitting on its bend — is neither)
+    const upright = (a: P, b: P) => Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) >= 0.5;
+    const level = (a: P, b: P) => Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) >= 0.5;
+    // Only a run that WAS square is kept square: a run the author left slanted
+    // (the painter draws the jogs between their bends) keeps its bend.
+    if (this.isOrthogonalRouting(link)) {
+      const n = old.length;
+      if (moved(start, old[0])) {
+        if (upright(old[0], old[1])) bends[0].x = start.x;
+        else if (level(old[0], old[1])) bends[0].y = start.y;
+      }
+      if (moved(end, old[n - 1])) {
+        const last = bends[bends.length - 1];
+        if (upright(old[n - 2], old[n - 1])) last.x = end.x;
+        else if (level(old[n - 2], old[n - 1])) last.y = end.y;
+      }
+    }
+    this.syncLinkPoints(link, [start, ...bends, end]);
+  }
+
   private linkHasManualWaypoints(link: LinkModel): boolean {
     return link.getMetadata('hasManualWaypoints') === true &&
       !!link.points && link.points.length > 2;
@@ -8129,7 +9271,9 @@ export class SVGRenderer implements IRenderer {
         height: node.size.height,
       };
       all.push(rect);
-      if (!group.hiddenByCollapse.has(node.id)) routing.push(rect);
+      // A text note is words with no box: a line may pass it (it used to
+      // detour round an invisible rectangle).
+      if (!group.hiddenByCollapse.has(node.id) && !isTextNote(node)) routing.push(rect);
     }
     for (const block of group.groupBlocks) routing.push(block);
 
@@ -8310,9 +9454,14 @@ export class SVGRenderer implements IRenderer {
       }
     }
 
-    // Fallback: simple orthogonal routing
+    // Fallback when the chosen router found nothing (an `avoid` search that ran
+    // out of budget, a custom router that gave up). The orthogonal OBSTACLE
+    // router first: the fallback used to be `orthogonal` with avoidance OFF, so
+    // a failed `avoid` drew a straight line through the very wall it was asked
+    // to avoid. The non-avoiding route is only the last resort.
     if (!routedPath) {
-      routedPath = routeWith('orthogonal', false);
+      if (algorithm !== 'orthogonal') routedPath = routeWith('orthogonal', true);
+      if (!routedPath) routedPath = routeWith('orthogonal', false);
       usedOrthogonal = !!routedPath;
     }
 
@@ -8623,6 +9772,58 @@ export class SVGRenderer implements IRenderer {
    * Total length of the polyline that lies inside the given node bodies
    * (rects inset by 1px so port-touch on the border doesn't count).
    */
+  /**
+   * Everything a smoothed route has to stay out of: the link's own endpoint
+   * nodes, PLUS whatever else the curve now passes near.
+   *
+   * The overshoot guard used to consider only `linkOwnNodes`. But a multi-point
+   * route exists precisely BECAUSE it was steered around other nodes, and fitting
+   * a Catmull-Rom spline through its corners pushes the curve OUTSIDE the
+   * polyline — straight back into the obstacle the detour was buying clearance
+   * from. A link would route correctly and then be drawn through a node, with the
+   * overshoot written into `link.points` as well, so hit-testing agreed with the
+   * wrong picture.
+   *
+   * Asked of the spatial index, and only for the curve's own bounds, so this
+   * costs one region query on the links that actually bend — a 2-point link
+   * returns from `paintedHitPolyline` long before reaching here.
+   */
+  private splineClearanceNodes(
+    samples: Array<{ x: number; y: number }>,
+    ownNodes: NodeModel[]
+  ): NodeModel[] {
+    const diagram = this.engine.getDiagram();
+    if (!diagram || samples.length < 2) return ownNodes;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of samples) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY)) return ownNodes;
+
+    const near: NodeModel[] = diagram.getVisibleNodes({
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    });
+
+    const seen = new Set(ownNodes.map((n) => n.id));
+    const out = [...ownNodes];
+    for (const node of near) {
+      if (seen.has(node.id)) continue;
+      seen.add(node.id);
+      out.push(node);
+    }
+    return out;
+  }
+
   private penetrationLength(
     points: Array<{ x: number; y: number }>,
     nodes: NodeModel[]
@@ -8761,6 +9962,7 @@ export class SVGRenderer implements IRenderer {
     if (!points || points.length < 2) return false;
     const inset = 1;
     for (const node of nodes) {
+      if (isTextNote(node)) continue; // words, no body to cross
       const rect = {
         minX: node.position.x + inset,
         minY: node.position.y + inset,
@@ -8819,4 +10021,20 @@ export class SVGRenderer implements IRenderer {
       t0 < t1;
     return hit ? { t0, t1 } : null;
   }
+}
+
+/**
+ * `box` clipped to stay `inset` inside `outer` — so a child's fill never paints
+ * over the inner half of the parent's border stroke.
+ */
+function insetWithin(
+  box: { x: number; y: number; width: number; height: number },
+  outer: { x: number; y: number; width: number; height: number },
+  inset: number
+): { x: number; y: number; width: number; height: number } {
+  const left = Math.max(box.x, outer.x + inset);
+  const top = Math.max(box.y, outer.y + inset);
+  const right = Math.min(box.x + box.width, outer.x + outer.width - inset);
+  const bottom = Math.min(box.y + box.height, outer.y + outer.height - inset);
+  return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 }

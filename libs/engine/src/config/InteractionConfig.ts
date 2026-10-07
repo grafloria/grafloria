@@ -143,51 +143,51 @@ export interface InteractionConfig {
   animateConnectionPreview: boolean;
 
   /**
-   * Phase 2.3: Enable waypoint editing on links
+   * Enable waypoint editing on links
    * Allow users to add/move/remove waypoints by clicking/dragging link paths
    */
   enableWaypointEditing: boolean;
 
   /**
-   * Phase 2.3: Show waypoint handles on selected links
+   * Show waypoint handles on selected links
    */
   showWaypointHandles: boolean;
 
   /**
-   * Phase 2.3: Waypoint editor configuration
+   * Waypoint editor configuration
    */
   waypointEditor?: WaypointEditorConfig;
 
   /**
-   * Phase 2.3: Enable control point editing on bezier curves
+   * Enable control point editing on bezier curves
    * Allow users to adjust bezier control points by dragging handles
    */
   enableControlPointEditing: boolean;
 
   /**
-   * Phase 2.3: Show control point handles on selected bezier links
+   * Show control point handles on selected bezier links
    */
   showControlPointHandles: boolean;
 
   /**
-   * Phase 2.3: Control point editor configuration
+   * Control point editor configuration
    */
   controlPointEditor?: ControlPointEditorConfig;
 
   /**
-   * wave12/connect-ergonomics (gap 1) — Drag a group's frame to move the whole
+   * Drag a group's frame to move the whole
    * subflow: the container and every member node (recursively through nested
    * groups) translate by the same delta, committed as ONE undoable step.
    *
-   * Opt-in (default false) so steady-state is untouched: with it off, a press on
-   * a group's empty frame area still falls through to clear-selection exactly as
-   * before. A press on a MEMBER NODE always drags that node (the node wins the
-   * priority ladder) regardless of this flag.
+   * Default true (it was opt-in, and a press on a zone panned the whole canvas).
+   * Off, a press on a group's empty frame area falls through to clear-selection
+   * and the empty-canvas pan. A press on a MEMBER NODE always drags that node
+   * (the node wins the priority ladder) regardless of this flag.
    */
   enableGroupDrag: boolean;
 
   /**
-   * wave12/connect-ergonomics (gap 2) — React-Flow "Proximity Connect": after a
+   * React-Flow "Proximity Connect": after a
    * node drag, if one of its ports comes within `proximityConnectRadius` of a
    * compatible port on another node, auto-create the link on drop (one undoable
    * command). Drives the shipped `SnapController.findProximityConnection` from
@@ -196,44 +196,52 @@ export interface InteractionConfig {
   enableProximityConnect: boolean;
 
   /**
-   * wave12/connect-ergonomics (gap 2) — Auto-link radius in world units for
+   * Auto-link radius in world units for
    * {@link enableProximityConnect}. Defaults to `DEFAULT_SNAP_CONFIG`'s value
    * when unset/0.
    */
   proximityConnectRadius: number;
 
   /**
-   * wave15/helper-lines — React-Flow "Helper Lines": while dragging a single
+   * React-Flow "Helper Lines": while dragging a single
    * top-level node, snap it to sibling edge/centre alignments and equal
-   * spacing, and draw the guides as dashed overlay lines. The SnapController
-   * always could compute this; nothing drove it from a live drag until now.
-   * Default false (opt-in) so the stock drag feel is unchanged.
+   * spacing, and draw the guides as dashed overlay lines (computed by the
+   * SnapController). Default false (opt-in).
    */
   enableHelperLines: boolean;
 
   /**
-   * T8/visio — Visio-style containment: dropping a node inside a container's
-   * frame REPARENTS it (and dropping it outside every container unembeds it),
-   * so it then moves with its container. `GroupMembershipService` always had
-   * the full drop logic — hit-test, per-group `canAddMember` veto, coordinate
-   * translation, undoable Add/RemoveFromGroupCommand — and nothing ever called
-   * it, so a drag into a container only changed x/y. Default false (opt-in),
-   * like every other gesture in this block: turning it on globally changes what
-   * an existing drag MEANS for any host that draws frames decoratively.
+   * Visio-style containment: dropping a node inside a container's frame
+   * REPARENTS it (and dropping it outside every container unembeds it), so it
+   * then moves with its container. The drop runs through `GroupMembershipService`
+   * (hit-test, per-group `canAddMember` veto, undoable
+   * Add/RemoveFromGroupCommand) and is one undo step with the move. Default
+   * true. A host that draws frames purely decoratively turns it off.
    */
   enableGroupMembershipOnDrop: boolean;
 
   /**
-   * T10/visio — double-click a node to edit its label in place. The editor
-   * (session + undoable commit) shipped in the renderer but was auto-wired ONLY
-   * in the Angular wrapper, so a vanilla / React / Vue embed got a
-   * `node:doubleclick` event and no caret. Default false (opt-in) so a host that
-   * already answers that event with its own editor keeps sole control.
+   * Double-click a node to edit its label in place, as one undoable commit.
+   * Default false (opt-in), so a host that already answers `node:doubleclick`
+   * with its own editor keeps sole control.
    */
   enableInPlaceTextEdit: boolean;
 
   /**
-   * wave12/connect-ergonomics (gap 3) — React-Flow "Easy Connect": make the
+   * visio-depth — arrow keys NUDGE the selected node(s): 1 world unit per
+   * press, ×10 with Shift, committed through MoveNodeCommand so every nudge is
+   * undoable (and successive presses inside the CommandManager's merge window
+   * collapse to one undo entry). The whole computation shipped years ago in
+   * `KeyboardNavigationController.nudgeCommand` — but it was auto-wired only in
+   * the Angular wrapper, so a vanilla/React/Vue embed pressing an arrow moved
+   * nothing (the same built-but-unwired hole `enableInPlaceTextEdit` closed for
+   * double-click rename). Default false (opt-in): arrows may already mean
+   * scroll-the-page to an embedding host.
+   */
+  enableKeyboardNudge: boolean;
+
+  /**
+   * React-Flow "Easy Connect": make the
    * whole node BODY a connection handle. A press on a node body (not over a
    * specific port) starts a connection from the node's nearest/default port
    * instead of a move. Default false (opt-in) so normal body-drag-to-move is
@@ -243,7 +251,7 @@ export interface InteractionConfig {
   enableEasyConnect: boolean;
 
   /**
-   * wave12/connect-ergonomics (gap 3) — Optional modifier that must be held for
+   * Optional modifier that must be held for
    * an easy-connect body press to start a connection (e.g. 'shift'). When
    * 'none' (the default) any plain body press connects while {@link
    * enableEasyConnect} is on. Lets a host keep body-drag-to-move as the default
@@ -253,7 +261,7 @@ export interface InteractionConfig {
 }
 
 /**
- * Phase 2.3: Waypoint editor configuration
+ * Waypoint editor configuration
  */
 export interface WaypointEditorConfig {
   /**
@@ -298,7 +306,7 @@ export interface WaypointEditorConfig {
 }
 
 /**
- * Phase 2.3: Control point editor configuration
+ * Control point editor configuration
  */
 export interface ControlPointEditorConfig {
   /**
@@ -405,7 +413,9 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
     symmetricControls: false,
   },
   // wave12/connect-ergonomics — all three opt-in so steady-state is untouched.
-  enableGroupDrag: false,
+  // A zone is a container you can pick up: on by default (it used to pan the
+  // canvas, and a diagram that declared zones got no way to move one).
+  enableGroupDrag: true,
   enableProximityConnect: false,
   proximityConnectRadius: 0, // 0 → fall back to DEFAULT_SNAP_CONFIG.proximityConnectRadius
   // Kept opt-in at the library level: a global default-on regresses the drag
@@ -413,8 +423,10 @@ export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
   // DRAG-ATTACH on contextual-zoom + LINK-SELECT-SPAN on layout-portfolio), and
   // changes the feel for every embedder. The Visio editor surface enables it.
   enableHelperLines: false,
-  enableGroupMembershipOnDrop: false,
+  // …and a box dropped out of a zone leaves it, dropped into one joins it.
+  enableGroupMembershipOnDrop: true,
   enableInPlaceTextEdit: false,
+  enableKeyboardNudge: false,
   enableEasyConnect: false,
   easyConnectModifier: 'none',
 };

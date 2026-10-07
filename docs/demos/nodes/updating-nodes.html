@@ -1,13 +1,21 @@
 <meta charset="utf-8">
 <title>Updating nodes — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Edit a live node from OUTSIDE the canvas — type a label, pick a background, drag the width slider — and it re-renders on the spot.">
+<link rel="canonical" href="https://grafloria.com/demos/nodes/updating-nodes.html">
+<meta property="og:title" content="Updating nodes — Grafloria">
+<meta property="og:description" content="Edit a live node from OUTSIDE the canvas — type a label, pick a background, drag the width slider — and it re-renders on the spot.">
+<meta property="og:url" content="https://grafloria.com/demos/nodes/updating-nodes.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/nodes/updating-nodes.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/nodes/updating-nodes.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #bar { display: flex; gap: 18px; align-items: center; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); font: 13px system-ui, sans-serif; }
   #bar label { display: flex; gap: 7px; align-items: center; }
   #bar input[type=text] { font: inherit; padding: 3px 7px; border: 1px solid rgba(127,127,127,.5); border-radius: 5px; background: transparent; color: inherit; }
   #bar input[type=color] { width: 34px; height: 26px; padding: 0; border: 1px solid rgba(127,127,127,.5); border-radius: 5px; background: transparent; }
   #bar output { font: 12px ui-monospace, monospace; min-width: 32px; }
-  #canvas { height: calc(100vh - 150px); }
+  #canvas { height: calc(100vh - 90px); }
 </style>
 <header id="demo-head"></header>
 <div id="bar">
@@ -18,7 +26,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check, checkChanged } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check, checkChanged } from '../shell/demo.js?v=drawer4';
 
 defineDemo({
   name: 'Updating nodes',

@@ -34,11 +34,14 @@ import type { UmlClassSpec } from './uml';
 import {
   entityCardContent,
   entityAutoHeight,
+  entityAutoWidth,
   classCardContent,
   classAutoHeight,
+  classAutoWidth,
   erRowCenterY,
   rowIndexFromY,
   matchColumns,
+  cardHtml,
   type HtmlNode,
 } from './card';
 
@@ -194,7 +197,7 @@ class UpdateCardCommand extends Command {
       }
     }
 
-    node.setMetadata('html', { content: result.content, interactive: true });
+    node.setMetadata('html', cardHtml(result.content));
     node.setMetadata(kitKey, result.newKit);
     node.setSize(newWidth, result.height);
     if (this.before) this.before.links = removedLinks;
@@ -271,7 +274,11 @@ export function updateEntity(api: KitApi, entityId: string, delta: ErEntityDelta
       newKit: newEntity as unknown as Record<string, unknown>,
       content: entityCardContent(newEntity, editable),
       height: entityAutoHeight(newEntity, editable),
-      width: newEntity.width,
+      // Derived, not carried over: renaming a column to something longer has to
+      // widen the card the same way the builder would have, or the edit lands
+      // inside a card still sized for the old text and is truncated on arrival.
+      // An explicit delta.width still wins — entityAutoWidth honours it.
+      width: entityAutoWidth(newEntity, editable),
     };
   };
   return runUpdate(api, entityId, 'er', build);
@@ -296,7 +303,7 @@ export function updateClass(api: KitApi, classId: string, delta: UmlClassDelta):
       newKit: newClass as unknown as Record<string, unknown>,
       content: classCardContent(newClass, editable),
       height: classAutoHeight(newClass, editable),
-      width: newClass.width,
+      width: classAutoWidth(newClass, editable),
     };
   };
   return runUpdate(api, classId, 'uml', build);

@@ -3,7 +3,7 @@
 /**
  * Level of Detail tier name.
  *
- * Widened (wave2/rendering) from the fixed `'high' | 'medium' | 'low'` union to
+ * Widened from the fixed `'high' | 'medium' | 'low'` union to
  * `string` so apps can register their own tiers through {@link LODConfig}. The
  * three built-in tiers keep those exact names, so every historical
  * `lod === 'high'` / `lod !== 'low'` style check keeps working unchanged.
@@ -14,7 +14,7 @@ export type LODLevel = string;
  * A visual feature that a {@link LODTier} may gate on. Renderers ask
  * `diagram.shouldRender(feature, lod)` instead of hardcoding zoom breakpoints.
  *
- * wave8/culling — THE ECONOMIC FEATURES. Everything above the divider gates a
+ * THE ECONOMIC FEATURES. Everything above the divider gates a
  * DECORATION: dropping it removes a few attributes or a child VNode at the very
  * end of the pipeline, and the work that produced them ran anyway. That made LOD
  * cosmetic, not economic: a 10k-node zoom-out frame took 63 SECONDS because the
@@ -33,7 +33,7 @@ export type LODFeature =
   | 'ports'
   | 'decorations'
   | 'handles'
-  // --- economic: gate what is COMPUTED (wave8/culling) ---
+  // --- economic: gate what is COMPUTED ---
   /**
    * Obstacle-aware edge routing and the diagram-wide edge passes that depend on
    * it (parallel-bundle lanes, corridor nudging). OFF ⇒ every auto-routed edge
@@ -84,9 +84,8 @@ export interface LODTier {
 }
 
 /**
- * A declarative, per-diagram Level-of-Detail policy. Replaces the hardcoded
- * zoom breakpoints and per-tier feature gates that used to live inside
- * DiagramModel.
+ * A declarative, per-diagram Level-of-Detail policy: the zoom breakpoints and
+ * the features each tier draws.
  */
 export interface LODConfig {
   tiers: LODTier[];
@@ -102,7 +101,7 @@ export interface LODConfig {
  *   zoom <  0.5        -> 'low'    (nothing — plain rects and direct lines)
  * ```
  *
- * wave8/culling — THE MEDIUM/LOW BREAKPOINT MOVED, 0.2 → 0.5, and that is the
+ * THE MEDIUM/LOW BREAKPOINT MOVED, 0.2 → 0.5, and that is the
  * behaviour change in this wave.
  *
  * The old boundary made 'medium' span 0.2–1.0 with a near-full feature set, so a

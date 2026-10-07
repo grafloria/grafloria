@@ -63,7 +63,7 @@ export interface SugiyamaEdge {
 }
 
 /**
- * Card 5's semantic constraints — honoured DURING the pipeline, not clamped after.
+ * Semantic constraints — honoured DURING the pipeline, not clamped after.
  * Every one of these is a decision taken in ranking or ordering.
  */
 export interface SemanticConstraints {
@@ -91,7 +91,7 @@ export interface SugiyamaOptions {
 
 export interface SugiyamaResult {
   positions: Map<string, { x: number; y: number }>;
-  /** Rank per node — Card 7's auto-selection and Card 6's incremental pass both want it. */
+  /** Rank per node — auto-selection and the incremental pass both read it. */
   ranks: Map<string, number>;
   /** Bend points for edges that span more than one rank (the dummy chains). */
   bends: Map<string, Array<{ x: number; y: number }>>;
@@ -905,7 +905,7 @@ export function sugiyama(
 }
 
 /**
- * Card 1: DIRECTION INFERENCE — "TB for trees, LR for pipelines".
+ * DIRECTION INFERENCE — "TB for trees, LR for pipelines".
  *
  * The heuristic, stated so it can be argued with: a graph that is deep and narrow
  * reads better across the page (a pipeline: A → B → C → D as a row, not a column),

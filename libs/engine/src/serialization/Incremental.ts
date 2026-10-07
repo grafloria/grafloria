@@ -34,7 +34,7 @@ export interface DiagramIncremental {
   baseVersion: number;
   /** diagram.version at commit — apply converges the replica's counter to it. */
   targetVersion: number;
-  // wave10/whiteboard: `strokes` is OPTIONAL on each side, unlike the three original
+  // `strokes` is OPTIONAL on each side, unlike the three original
   // collections. Not laziness — a patch is a hand-constructible value (the specs build
   // them literally, and so do hosts), and making it required would break every existing
   // caller for a key that is empty in almost every patch. Absent = "no ink changed".

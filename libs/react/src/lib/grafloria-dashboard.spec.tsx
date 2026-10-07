@@ -83,3 +83,39 @@ describe('<GrafloriaDashboard>', () => {
     expect(document.querySelector('[data-testid="w-note"]')).toBeNull();
   });
 });
+
+describe('<GrafloriaDashboard> live switches (layout / sizing / static as props)', () => {
+  const W: DashboardViewSpec[] = [
+    { id: 'main', widgets: [{ id: 'a', kind: 'kpi', span: 6 }, { id: 'b', kind: 'kpi', span: 6 }, { id: 'c', kind: 'line', span: 12, rows: 2 }] },
+  ];
+  it('boots in the layout and sizing the props name, over options', async () => {
+    let handle: DashboardHandle | undefined;
+    render(<GrafloriaDashboard views={W} options={{ width: 1200, height: 600, layout: 'grid' }} layout="split" static onReady={(h) => (handle = h)} />);
+    await waitFor(() => expect(handle).toBeTruthy());
+    expect(handle!.getLayout()).toBe('split');
+    expect(handle!.getSizing()).toBe('fit');
+    expect(handle!.getStatic()).toBe(true);
+  });
+  it('a changed prop is one handle call, not a remount: the same handle switches', async () => {
+    let handle: DashboardHandle | undefined;
+    const onReady = jest.fn((h: DashboardHandle) => (handle = h));
+    const { rerender } = render(<GrafloriaDashboard views={W} options={{ width: 1200, height: 600 }} layout="grid" sizing="fit" onReady={onReady} />);
+    await waitFor(() => expect(handle).toBeTruthy());
+    const first = handle;
+    rerender(<GrafloriaDashboard views={W} options={{ width: 1200, height: 600 }} layout="split" sizing="fit" onReady={onReady} />);
+    await waitFor(() => expect(first!.getLayout()).toBe('split'));
+    rerender(<GrafloriaDashboard views={W} options={{ width: 1200, height: 600 }} layout="grid" sizing="grow" onReady={onReady} />);
+    await waitFor(() => expect(first!.getLayout()).toBe('grid'));
+    expect(first!.getSizing()).toBe('grow');
+    expect(onReady).toHaveBeenCalledTimes(1); // mounted once
+    expect(handle).toBe(first);
+  });
+  it('the layout prop names the whole board: a parked view switches too', async () => {
+    let handle: DashboardHandle | undefined;
+    const { rerender } = render(<GrafloriaDashboard views={VIEWS} options={{ width: 1200, height: 600 }} layout="grid" onReady={(h) => (handle = h)} />);
+    await waitFor(() => expect(handle).toBeTruthy());
+    rerender(<GrafloriaDashboard views={VIEWS} options={{ width: 1200, height: 600 }} layout="split" onReady={() => undefined} />);
+    await waitFor(() => expect(handle!.getLayout('sales')).toBe('split'));
+    expect(handle!.getLayout('ops')).toBe('split');
+  });
+});

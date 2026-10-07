@@ -28,20 +28,21 @@ export const bpmnTimerEventTemplate: NodeTemplate = {
   "structure": {
     "type": "bpmn:timer-event",
     "size": {
-      "width": 120,
-      "height": 80,
+      "width": 36,
+      "height": 36,
       "minWidth": 80,
       "maxWidth": 300,
       "minHeight": 60,
       "maxHeight": 200
     },
     "shape": {
-      "type": "rect",
-      "fill": "#FFF3E0",
-      "stroke": "#000000",
+      "type": "circle",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"bpmn-timer-event-content\">\n          <div class=\"node-label\">{{data.label || 'Timer Event'}}</div>\n        </div>",

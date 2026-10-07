@@ -97,13 +97,15 @@ describe('RenderedLinkPath', () => {
   it('IGNORES stale LinkModel.segments (the trap this class exists for)', () => {
     const l = link([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
     // Geometry from BEFORE the node moved — exactly what the renderer leaves
-    // behind, and what LinkModel.getPointAtPosition() would happily return.
+    // behind. LinkModel.getPointAtPosition() used to return it (y 900); the
+    // engine now ignores segments that no longer trace the link's points
+    // (ebbd3589), so both answers are the drawn line.
     l.segments = [
       { type: 'line', from: { x: 0, y: 900 }, to: { x: 100, y: 900 } } as any,
     ];
 
-    expect(l.getPointAtPosition(0.5)).toEqual({ x: 50, y: 900 }); // ← the stale answer
     expect(RenderedLinkPath.forLink(l, null).pointAt(0.5)).toEqual({ x: 50, y: 0 }); // ← the drawn one
+    expect(l.getPointAtPosition(0.5)).toEqual({ x: 50, y: 0 }); // ← and the engine agrees (it used to say 900)
   });
 
   it('is invalid (nothing to anchor to) for a link with no geometry', () => {

@@ -11,6 +11,7 @@
  *     must all paint something rather than take the board down.
  */
 import { dashboard } from './dashboard';
+import { ensureDashboardKitStyles, DASHBOARD_KIT_STYLE_ID } from './styles';
 import {
   BUILT_IN_WIDGET_KINDS,
   defaultWidgetRenderer,
@@ -19,7 +20,9 @@ import {
   renderFunnelWidget,
   renderKpiWidget,
   renderLineWidget,
+  chartTier,
   renderTableWidget,
+  chartBox,
 } from './widgets';
 
 const host = (): HTMLElement => document.createElement('div');
@@ -130,6 +133,22 @@ describe('built-in widget renderers — structure from the declared data', () =>
     expect(h.querySelector('svg')!.textContent).toContain('Lead');
   });
 
+  it('funnel draws to its box with fixed type, and the smallest stage still holds its number', () => {
+    const h = paint({
+      id: 'f',
+      kind: 'funnel',
+      data: { stages: [{ label: 'Leads', value: 100000 }, { label: 'Won', value: 1 }] },
+    });
+    const svg = h.querySelector('svg')!;
+    // Outside a layout the classic 640x250 stands in — the viewBox IS the box,
+    // never a 260-wide picture scaled with the tile (24-px digits in a tall one).
+    expect(svg.getAttribute('viewBox')).toBe('0 0 640 250');
+    const [lead, won] = Array.from(h.querySelectorAll('rect'));
+    expect(parseFloat(won.getAttribute('width')!)).toBeGreaterThanOrEqual(20); // wider than "1" at 11 px
+    expect(parseFloat(won.getAttribute('width')!)).toBeLessThan(parseFloat(lead.getAttribute('width')!) / 10);
+    for (const t of Array.from(svg.querySelectorAll('text'))) expect(['11', '10.5']).toContain(t.getAttribute('font-size'));
+  });
+
   it('table renders a header cell per column, a row per row, numbers right-aligned', () => {
     const h = paint({
       id: 't',
@@ -235,5 +254,221 @@ describe('dispatch and the dashboard() default', () => {
     const h = host();
     spec.renderCustomNode({ id: 'rev' }, h);
     expect(h.textContent).toBe('mine:rev');
+  });
+});
+
+describe('line widget — a single data point is still data', () => {
+  // A one-value series used to render axes, grid and legend around an invisible
+  // chart: a polyline needs two points, and one point drew nothing. That is the
+  // day-one-of-data tile, and it looked broken. A single value now draws a dot.
+  function renderInto(values: number[]): HTMLElement {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    renderLineWidget(
+      { id: 'w', kind: 'line', title: 'T', data: { series: [{ name: 'One', values }], labels: ['a', 'b'] } } as never,
+      host
+    );
+    return host;
+  }
+
+  it('draws a visible dot for a one-point series', () => {
+    const host = renderInto([42]);
+    expect(host.querySelectorAll('circle').length).toBe(1);
+    host.remove();
+  });
+
+  it('draws no dots once a real line exists — the ≥2-point look is unchanged', () => {
+    const host = renderInto([42, 51]);
+    expect(host.querySelectorAll('circle').length).toBe(0);
+    expect(host.querySelector('polyline')).toBeTruthy();
+    host.remove();
+  });
+});
+
+describe('every built-in chart carries its data as a screen-reader table', () => {
+  const host = () => document.createElement('div');
+  it('line, bar, donut and funnel each render one .axdb-sr table with the numbers', () => {
+    const cases: Array<[string, Record<string, unknown>, string]> = [
+      ['line', { series: [{ name: 'Rev', values: [1, 2] }], labels: ['Jan', 'Feb'] }, '2'],
+      ['bar', { bars: [{ label: 'Q1', value: 210 }] }, '210'],
+      ['donut', { slices: [{ label: 'EMEA', value: 3 }, { label: 'NA', value: 1 }] }, '75%'],
+      ['funnel', { stages: [{ label: 'Leads', value: 1840 }] }, '1840'],
+    ];
+    for (const [kind, data, needle] of cases) {
+      const h = host();
+      defaultWidgetRenderer({ id: 'w', kind, data }, h);
+      const table = h.querySelector('table.axdb-sr');
+      expect(table).toBeTruthy();
+      expect(table!.textContent).toContain(needle);
+      expect(h.querySelector('svg')!.getAttribute('role')).toBe('img');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CONTRAST (WCAG 1.4.3 text ≥ 4.5:1, 1.4.11 non-text ≥ 3:1), both themes —
+// computed from the stylesheet's own tokens so a colour tweak that breaks a
+// ratio fails here before axe-core sees it in the battery.
+// ---------------------------------------------------------------------------
+describe('the built-in widgets keep their contrast in both themes', () => {
+  const lum = (hex: string): number => {
+    const h = hex.replace('#', '');
+    const c = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const ratio = (a: string, b: string): number => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const tokensOf = (block: string): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const m of block.matchAll(/--axdb-([a-z0-9]+):\s*(#[0-9a-fA-F]{3,6})/g)) out[m[1]] = m[2].length === 4 ? '#' + [...m[2].slice(1)].map((c) => c + c).join('') : m[2];
+    return out;
+  };
+  const themes = (): { light: Record<string, string>; dark: Record<string, string> } => {
+    ensureDashboardKitStyles(document);
+    const css = document.getElementById(DASHBOARD_KIT_STYLE_ID)!.textContent ?? '';
+    const lightStart = css.indexOf('.axdb-widget {');
+    const darkStart = css.indexOf('@media (prefers-color-scheme: dark) {\n  .axdb-widget {');
+    const light = tokensOf(css.slice(lightStart, css.indexOf('}', lightStart)));
+    const dark = { ...light, ...tokensOf(css.slice(darkStart, css.indexOf('}', darkStart))) };
+    return { light, dark };
+  };
+
+  it('captions, deltas and headers read at 4.5:1 or better', () => {
+    for (const t of Object.values(themes())) {
+      expect(ratio(t['muted'], t['card'])).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(t['ink'], t['card'])).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(t['up'], t['card'])).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(t['down'], t['card'])).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('every palette entry clears 3:1 against its card', () => {
+    for (const t of Object.values(themes())) {
+      for (let i = 1; i <= 6; i++) expect(ratio(t['c' + i], t['card'])).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('charts colour through the tokens, so the dark card gets its own steps', () => {
+    const h = document.createElement('div');
+    defaultWidgetRenderer({ id: 'w', kind: 'bar', data: { bars: [{ label: 'a', value: 1 }, { label: 'b', value: 2 }] } }, h);
+    const fills = Array.from(h.querySelectorAll('rect')).map((r) => r.getAttribute('fill'));
+    expect(fills).toEqual(['var(--axdb-c1)', 'var(--axdb-c2)']);
+  });
+
+  it('the table body is a focusable, named region (axe: scrollable-region-focusable)', () => {
+    const h = document.createElement('div');
+    defaultWidgetRenderer({ id: 'w', kind: 'table', title: 'Top reps', data: { columns: ['a'], rows: [[1]] } }, h);
+    const body = h.querySelector('.axdb-scroll')!;
+    expect(body.getAttribute('tabindex')).toBe('0');
+    expect(body.getAttribute('role')).toBe('region');
+    expect(body.getAttribute('aria-label')).toBe('Top reps');
+  });
+});
+
+describe('charts draw to the box they are painted into', () => {
+  it('chartBox follows the body, less the legend strip, and falls back to 640×250 without a layout', () => {
+    expect(chartBox({ clientWidth: 0, clientHeight: 0 })).toEqual({ W: 640, H: 250 });
+    expect(chartBox({ clientWidth: 1100, clientHeight: 300 })).toEqual({ W: 1100, H: 300 });
+    expect(chartBox({ clientWidth: 1100, clientHeight: 300 }, true)).toEqual({ W: 1100, H: 274 });
+    expect(chartBox({ clientWidth: 50, clientHeight: 300 })).toEqual({ W: 640, H: 250 }); // too small to trust
+  });
+
+  it('the label set does not depend on the box — a reload at another size paints the same text', () => {
+    const labels = Array.from({ length: 12 }, (_, i) => 'M' + i);
+    const paint = (w: number, h: number): string[] => {
+      const host = document.createElement('div');
+      Object.defineProperty(host, 'clientWidth', { value: w });
+      Object.defineProperty(host, 'clientHeight', { value: h });
+      defaultWidgetRenderer({ id: 'w', kind: 'line', data: { series: labels.map((_, i) => i), labels } }, host);
+      return Array.from(host.querySelectorAll('svg text')).map((t) => t.textContent ?? '').filter((t) => /^M\d+$/.test(t));
+    };
+    expect(paint(0, 0)).toEqual(paint(1200, 300));
+    expect(paint(0, 0)).toHaveLength(6); // >8 labels → every second one
+  });
+});
+
+describe('the KPI card steps down instead of clipping', () => {
+  it('the stylesheet hides the sparkline, then the delta, then the value as the body shrinks', () => {
+    ensureDashboardKitStyles(document);
+    const css = document.getElementById(DASHBOARD_KIT_STYLE_ID)!.textContent ?? '';
+    expect(css).toContain('@container (max-height: 78px) { .axdb-kpi > .axdb-kpi-s { display: none; } }');
+    expect(css).toContain('@container (max-height: 40px) { .axdb-kpi > .axdb-kpi-d { display: none; } }');
+    expect(css).toContain('@container (max-height: 16px) { .axdb-kpi > .axdb-kpi-v { display: none; } }');
+    expect(css).toContain('.grafloria-html-layer > .grafloria-node-host { container: axdb-tile / size; }');
+  });
+
+  it('a short, wide KPI lays the figure, delta and sparkline in a row; the strip puts header and figure on one line', () => {
+    ensureDashboardKitStyles(document);
+    const css = document.getElementById(DASHBOARD_KIT_STYLE_ID)!.textContent ?? '';
+    const row = css.indexOf('@container axdb-tile (max-height: 125px) and (min-width: 340px) {');
+    expect(row).toBeGreaterThan(-1);
+    const block = css.slice(row, css.indexOf('/* THE STRIP', row));
+    expect(block).toContain('.axdb-widget--kpi > .axdb-kpi { flex-direction: row;');
+    // The spark comes back in the row — a nested query on the BODY keeps it away
+    // from a strip too thin to draw it readably.
+    expect(block).toContain('@container axdb-kpi (min-height: 24px) {');
+    expect(block).toContain('.axdb-kpi > .axdb-kpi-s { display: block; flex: 1 1 40%;');
+    // The row rule must come AFTER the stacked hide rule: same specificity, later wins.
+    expect(css.indexOf('@container (max-height: 78px) { .axdb-kpi > .axdb-kpi-s { display: none; } }')).toBeLessThan(row);
+    const strip = css.slice(css.indexOf('/* THE STRIP'));
+    expect(strip).toContain('@container axdb-tile (max-height: 46px) {\n  .axdb-widget--kpi { flex-direction: row;');
+  });
+
+  it('the donut ring takes its body height (square, capped) instead of a fixed 150 px', () => {
+    ensureDashboardKitStyles(document);
+    const css = document.getElementById(DASHBOARD_KIT_STYLE_ID)!.textContent ?? '';
+    const rule = css.slice(css.indexOf('.axdb-widget-b.axdb-donut > svg {'));
+    expect(rule.slice(0, rule.indexOf('}'))).toContain('height: 100%; max-height: 260px; max-width: 60%; aspect-ratio: 1 / 1;');
+    expect(css).not.toContain('max-width: 150px');
+    // The sr-only data table sits at the body's origin, so it never extends the
+    // card's scroll range below the chart (a table ignores a 1-px height).
+    expect(css).toContain('.axdb-sr {\n  position: absolute; top: 0; left: 0;');
+  });
+});
+
+describe('readability tiers — a squeezed chart hides what it cannot afford, and keeps the text', () => {
+  it('chartTier: full at 120+, quarters gone under 120, min/max only under 60, legend off under 64', () => {
+    expect(chartTier(0, true)).toEqual({ tier: 0, legendShown: true });
+    expect(chartTier(200, true)).toEqual({ tier: 0, legendShown: true });
+    expect(chartTier(140, true)).toEqual({ tier: 1, legendShown: true }); // 140 - 26 = 114
+    expect(chartTier(80, true)).toEqual({ tier: 2, legendShown: true }); // 80 - 26 = 54
+    expect(chartTier(60, true)).toEqual({ tier: 1, legendShown: false }); // legend off, 60 keeps the halves
+    expect(chartTier(59, true)).toEqual({ tier: 2, legendShown: false });
+    expect(chartTier(100, false)).toEqual({ tier: 1, legendShown: false });
+  });
+
+  it('a 50 px body paints tier 2 classes, keeps every label in the DOM and hides the legend', () => {
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 50 });
+    try {
+      const host = document.createElement('div');
+      renderLineWidget(
+        { id: 't', kind: 'line', data: { series: [{ name: 'Revenue', values: [1, 5, 3] }], labels: ['Jan', 'Feb', 'Mar'] } },
+        host
+      );
+      const svg = host.querySelector('svg')!;
+      expect(svg.classList.contains('axdb-tier-2')).toBe(true);
+      expect(svg.querySelectorAll('.axdb-yt')).toHaveLength(5);
+      expect(svg.querySelectorAll('.axdb-yt--q')).toHaveLength(2);
+      expect(svg.querySelectorAll('.axdb-xt')).toHaveLength(3);
+      expect(svg.textContent).toContain('Jan');
+      expect(host.querySelector('.axdb-lg')!.classList.contains('axdb-lg--off')).toBe(true);
+      expect(host.querySelector('.axdb-lg')!.textContent).toContain('Revenue');
+      expect(host.querySelector('.axdb-widget-b')!.classList.contains('axdb-has-lg')).toBe(false);
+    } finally {
+      // clientHeight lives on Element.prototype; the override was an OWN
+      // property on HTMLElement.prototype and must go, or the next test sees 50.
+      if (desc) Object.defineProperty(HTMLElement.prototype, 'clientHeight', desc);
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>)['clientHeight'];
+    }
+  });
+
+  it('an unmeasured body (jsdom) paints the full tier with its legend, as before', () => {
+    const host = document.createElement('div');
+    renderLineWidget({ id: 't', kind: 'line', data: { series: [{ name: 'Revenue', values: [1, 5, 3] }] } }, host);
+    expect(host.querySelector('svg')!.classList.contains('axdb-tier-0')).toBe(true);
+    expect(host.querySelector('.axdb-lg')!.classList.contains('axdb-lg--off')).toBe(false);
   });
 });

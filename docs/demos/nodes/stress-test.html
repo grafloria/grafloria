@@ -1,13 +1,21 @@
 <meta charset="utf-8">
 <title>Stress test — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="A 900-node mesh. Only the visible slice is ever in the DOM (viewport culling), a full-graph move repaints inside a frame budget, and one call lays ALL 900…">
+<link rel="canonical" href="https://grafloria.com/demos/nodes/stress-test.html">
+<meta property="og:title" content="Stress test — Grafloria">
+<meta property="og:description" content="A 900-node mesh. Only the visible slice is ever in the DOM (viewport culling), a full-graph move repaints inside a frame budget, and one call lays ALL 900…">
+<meta property="og:url" content="https://grafloria.com/demos/nodes/stress-test.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/nodes/stress-test.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/nodes/stress-test.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #readbar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 10px 24px; font: 12px/1.5 ui-monospace, monospace; border-bottom: 1px solid rgba(127,127,127,.25); }
   #readbar .lay { font: 12px system-ui, sans-serif; padding: 4px 12px; border: 1px solid rgba(127,127,127,.5); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
   #readbar .lay:hover { border-color: rgba(127,127,127,.9); }
   #readbar .lay[aria-pressed="true"] { border-color: #2563eb; color: #2563eb; font-weight: 600; }
   #readbar .sep { opacity: .4; }
-  #canvas { height: calc(100vh - 190px); }
+  #canvas { height: calc(100vh - 130px); }
 </style>
 <header id="demo-head"></header>
 <div id="readbar" data-capture-hide>
@@ -22,7 +30,7 @@
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // A MESH of 900 nodes (30×30, each wired to its right + down neighbour). Two
 // stresses in one page:
@@ -164,6 +172,15 @@ defineDemo({
     // Ends on the deterministic layered diamond — a stable, beautiful golden.
     await ctx.applyLayout('layered');
     api.fitView?.(40);
+    await ctx.tick();
+  },
+
+  // The card's picture: close enough to read — a dense corner of the 900-node grid.
+  async showcase(ctx) {
+    const vp = ctx.instance.viewport;
+    vp.setZoom(0.75);
+    vp.setViewport({ ...vp.getViewport(), x: -20, y: -20 });
+    ctx.instance.renderNow();
     await ctx.tick();
   },
 });

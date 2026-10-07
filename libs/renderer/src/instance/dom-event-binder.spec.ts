@@ -5,6 +5,7 @@ import type { DomEventBinderHost, DomEventBinderOptions } from './dom-event-bind
 import { InteractionController } from '../interaction/interaction-controller';
 import { ViewportController } from '../viewport/viewport-controller';
 import { applyEdges, applyNodes } from './model-input';
+import { registerTool } from '../ext/tools';
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -147,6 +148,29 @@ describe('DomEventBinder', () => {
       );
 
       expect(h.model.getSelectedNodes()).toHaveLength(1);
+    });
+
+    it('a plain node click deselects a selected LINK — one selection, both kinds', () => {
+      h = harness();
+      const link = h.model.getLinks()[0];
+      link.setState('selected');
+
+      h.container.dispatchEvent(mouse('mousedown', A_CENTER));
+
+      expect(h.model.getNode('a')!.isSelected()).toBe(true);
+      // The panel reads node+link selection as ONE selection; a stale
+      // link.state='selected' after a node click showed "2 shapes".
+      expect(link.state).toBe('default');
+    });
+
+    it('ctrl+click on a node PRESERVES a selected link (additive semantics)', () => {
+      h = harness();
+      const link = h.model.getLinks()[0];
+      link.setState('selected');
+
+      h.container.dispatchEvent(mouse('mousedown', { ...A_CENTER, ctrlKey: true }));
+
+      expect(link.state).toBe('selected');
     });
 
     it('ctrl+click toggles (multi-select)', () => {
@@ -337,6 +361,112 @@ describe('DomEventBinder', () => {
       expect(link.state).toBe('selected');
       expect(h.events.map((e) => e.event)).toContain('edge:click');
     });
+
+    it('a NODE BODY over link ink wins the press — the ink is painted beneath it', () => {
+      // Nodes render in nodes-layer, above links-layer: at a point where a node
+      // covers a link's path the user is touching the node. The link rung used
+      // to claim the press anyway, so a node dropped onto a link's route became
+      // undraggable at the exact spot the user grabbed (visio gate, drag-out).
+      h = harness();
+      applyNodes(h.model, [
+        { id: 'a', position: { x: 100, y: 100 }, size: { width: 100, height: 60 } },
+        { id: 'b', position: { x: 400, y: 100 }, size: { width: 100, height: 60 } },
+        { id: 'c', position: { x: 250, y: 100 }, size: { width: 100, height: 60 } },
+      ]);
+      const link = h.model.getLink('e')!;
+      jest.spyOn(h.interaction, 'getLinkAtPosition').mockReturnValue(link);
+
+      // (300,130) is inside node c AND on the a→b link's straight route.
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 300, clientY: 130 }));
+
+      expect(link.state).not.toBe('selected');
+      expect(h.model.getNode('c')!.isSelected()).toBe(true);
+      expect(h.events.map((e) => e.event)).toContain('node:click');
+    });
+
+    it('double-click over node-covered link ink goes to the NODE, not the waypoint path', () => {
+      h = harness();
+      applyNodes(h.model, [
+        { id: 'a', position: { x: 100, y: 100 }, size: { width: 100, height: 60 } },
+        { id: 'b', position: { x: 400, y: 100 }, size: { width: 100, height: 60 } },
+        { id: 'c', position: { x: 250, y: 100 }, size: { width: 100, height: 60 } },
+      ]);
+      const link = h.model.getLink('e')!;
+      jest
+        .spyOn(h.interaction, 'getLinkHitAtPosition')
+        .mockReturnValue({ link, part: 'body', t: 0.5 } as never);
+
+      h.container.dispatchEvent(mouse('dblclick', { clientX: 300, clientY: 130 }));
+
+      expect(h.events.map((e) => e.event)).toContain('node:doubleclick');
+    });
+  });
+
+  describe('Escape layering with a registered tool', () => {
+    let dispose: (() => void) | undefined;
+    afterEach(() => { dispose?.(); dispose = undefined; });
+
+    it('the first Escape cancels the active tool and PRESERVES the selection it restored', () => {
+      h = harness();
+      h.model.selectNode(h.model.getNode('b')!);
+      let cancelled = 0;
+      // a minimal registered tool that claims empty-canvas presses — the same
+      // seam the visio editor's marquee uses
+      dispose = registerTool({
+        id: 'escape-layering-spec', priority: 1,
+        hitTest: (_ev, hit) => !!hit.empty,
+        onPointerDown: () => {},
+        onCancel: () => { cancelled++; h.model.selectNode(h.model.getNode('b')!); },
+      });
+      // press empty canvas to arm the tool (plain press clears selection first)
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 700, clientY: 500 }));
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+      expect(cancelled).toBe(1);
+      // the selection the tool restored must SURVIVE the same Escape
+      expect(h.model.getSelectedNodes().map((n) => n.id)).toEqual(['b']);
+
+      // …and a SECOND Escape, with no gesture active, deselects as before
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(h.model.getSelectedNodes()).toHaveLength(0);
+    });
+  });
+
+  describe('positioned-label click layering', () => {
+    // The house idiom for label hits (see the dblclick-label spec): route the
+    // link, add the label, and mock getLinkHitAtPosition — jsdom paints no
+    // label boxes, so the geometric part-resolution is mocked at its seam.
+    const labelHit = () => {
+      const link = h.model.getLink('e')!;
+      link.addLabel({ text: 'INNER', slot: 'center' });
+      link.setPoints([{ x: 200, y: 130 }, { x: 300, y: 130 }, { x: 400, y: 130 }]);
+      jest
+        .spyOn(h.interaction, 'getLinkHitAtPosition')
+        .mockReturnValue({ link, part: 'label', labelIndex: 0 } as never);
+      return link;
+    };
+
+    it('a motionless press on a positioned edge label SELECTS its link', () => {
+      h = harness();
+      const link = labelHit();
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 300, clientY: 300 }));
+      h.container.dispatchEvent(mouse('mouseup', { clientX: 301, clientY: 300 }));
+
+      expect(link.state).toBe('selected');
+      expect(h.events.some((e) => e.event === 'selection:change')).toBe(true);
+      expect(h.events.some((e) => e.event === 'edge:click')).toBe(true);
+    });
+
+    it('a real label drag past the threshold does NOT select the link', () => {
+      h = harness();
+      const link = labelHit();
+      h.container.dispatchEvent(mouse('mousedown', { clientX: 300, clientY: 300 }));
+      h.container.dispatchEvent(mouse('mousemove', { clientX: 340, clientY: 325 }));
+      h.container.dispatchEvent(mouse('mouseup', { clientX: 340, clientY: 325 }));
+
+      expect(link.state).toBe('default');
+    });
   });
 
   describe('connection gesture', () => {
@@ -359,6 +489,51 @@ describe('DomEventBinder', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 
       expect(h.interaction.getState().isConnecting).toBe(false);
+    });
+
+    // The port hit zones were selection DEAD BANDS: a press on a port claimed
+    // the connect gesture, completion at the same spot failed validation, and
+    // the release fell out as a silent no-op — so clicking a node's top-centre
+    // (or a kit card's whole header strip, which sits under the top port)
+    // selected nothing. A sub-threshold release is a CLICK and must select.
+    describe('sub-threshold port click selects the node', () => {
+      const PORT_AT = { clientX: 200, clientY: 130 }; // node a's right port
+
+      it('press-and-release on a port without dragging selects the port’s node', () => {
+        h = harness();
+        const linksBefore = h.model.getLinks().length;
+        h.container.dispatchEvent(mouse('mousemove', PORT_AT)); // hover arms the port
+        h.container.dispatchEvent(mouse('mousedown', PORT_AT));
+        expect(h.interaction.getState().isConnecting).toBe(true);
+
+        h.container.dispatchEvent(mouse('mouseup', { clientX: 201, clientY: 131 }));
+
+        expect(h.interaction.getState().isConnecting).toBe(false);
+        expect(h.model.getSelectedNodes().map((n) => n.id)).toEqual(['a']);
+        expect(h.model.getLinks()).toHaveLength(linksBefore); // a click never creates a link
+      });
+
+      it('shift keeps the click additive, matching body-click semantics', () => {
+        h = harness();
+        h.model.selectNode(h.model.getNode('b')!);
+        h.container.dispatchEvent(mouse('mousemove', PORT_AT));
+        h.container.dispatchEvent(mouse('mousedown', { ...PORT_AT, shiftKey: true }));
+        h.container.dispatchEvent(mouse('mouseup', { ...PORT_AT, shiftKey: true }));
+
+        expect(h.model.getSelectedNodes().map((n) => n.id).sort()).toEqual(['a', 'b']);
+      });
+
+      it('a real drag past the threshold still completes as a connection attempt', () => {
+        h = harness();
+        const complete = jest.spyOn(h.interaction, 'completeConnection');
+        h.container.dispatchEvent(mouse('mousemove', PORT_AT));
+        h.container.dispatchEvent(mouse('mousedown', PORT_AT));
+
+        h.container.dispatchEvent(mouse('mouseup', { clientX: 400, clientY: 130 }));
+
+        expect(complete).toHaveBeenCalledWith(h.engine);
+        expect(h.model.getSelectedNodes()).toHaveLength(0); // no phantom click-select
+      });
     });
   });
 
@@ -401,6 +576,211 @@ describe('DomEventBinder', () => {
 
       expect(h.model.getNode('a')).toBeDefined();
       input.remove();
+    });
+
+    it('Ctrl+D duplicates the MOUSE-selected node as one undoable step', async () => {
+      h = harness();
+      // Select by mouse — the path that never writes the engine store's
+      // selection set, which is exactly the path engine.duplicate() used to
+      // reject with "No nodes selected".
+      h.container.dispatchEvent(mouse('mousedown', A_CENTER));
+      h.container.dispatchEvent(mouse('mouseup', A_CENTER));
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', ctrlKey: true }));
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const nodes = h.model.getNodes();
+      expect(nodes).toHaveLength(3);
+      const copy = nodes.find((n) => n.id !== 'a' && n.id !== 'b')!;
+      // paste-with-offset semantics: the copy lands +20,+20 from the source
+      expect(copy.position.x).toBe(120);
+      expect(copy.position.y).toBe(120);
+
+      await h.engine.commandManager.undo();          // ONE undo removes the copy
+      expect(h.model.getNodes()).toHaveLength(2);
+    });
+
+    it('Ctrl+D with nothing selected is inert', async () => {
+      h = harness();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', ctrlKey: true }));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(h.model.getNodes()).toHaveLength(2);
+    });
+
+    describe('F2 + type-to-replace (enableInPlaceTextEdit)', () => {
+      const editorInput = () =>
+        document.querySelector<HTMLInputElement>('.grafloria-text-editor');
+      afterEach(() => editorInput()?.remove());
+
+      it('F2 opens the in-place editor on the selected node; Enter commits undoably', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        const node = h.model.getNode('a')!;
+        node.setLabel?.('Alpha');
+        h.model.selectNode(node);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2' }));
+        const input = editorInput()!;
+        expect(input).toBeTruthy();
+        expect(input.value).toBe('Alpha');
+
+        input.value = 'Renamed';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(String(node.getLabel?.() ?? '')).toBe('Renamed');
+
+        await h.engine.commandManager.undo();
+        expect(String(node.getLabel?.() ?? '')).toBe('Alpha');
+      });
+
+      it('a printable key opens the editor SEEDED with that character (replace on commit)', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        const node = h.model.getNode('a')!;
+        node.setLabel?.('Alpha');
+        h.model.selectNode(node);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+        const input = editorInput()!;
+        expect(input).toBeTruthy();
+        expect(input.value).toBe('x'); // NOT 'Alphax' — the label is replaced
+
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(String(node.getLabel?.() ?? '')).toBe('x');
+      });
+
+      it('Escape abandons a type-to-replace without touching the label', () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        const node = h.model.getNode('a')!;
+        node.setLabel?.('Alpha');
+        h.model.selectNode(node);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+        editorInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        expect(editorInput()).toBeNull();
+        expect(String(node.getLabel?.() ?? '')).toBe('Alpha');
+      });
+
+      it('modifier chords and multi-selection never trigger it; neither does the default config', () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        h.model.selectNode(h.model.getNode('a')!);
+
+        // Ctrl+x is a chord, not typing.
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', ctrlKey: true }));
+        expect(editorInput()).toBeNull();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', altKey: true }));
+        expect(editorInput()).toBeNull();
+
+        // Two nodes selected: ambiguous target, no editor.
+        h.model.addToSelection(h.model.getNode('b')!);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+        expect(editorInput()).toBeNull();
+
+        // Flag off (default): F2 and typing are inert.
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: false });
+        h.model.selectNode(h.model.getNode('a')!);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2' }));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+        expect(editorInput()).toBeNull();
+      });
+
+      it('beginLabelEdit() opens the same editor programmatically (context-menu Rename seam)', () => {
+        h = harness();
+        const node = h.model.getNode('b')!;
+        node.setLabel?.('Beta');
+
+        const opened = h.binder.beginLabelEdit({ type: 'node', nodeId: 'b' });
+        expect(opened).toBe(true);
+        expect(editorInput()!.value).toBe('Beta');
+      });
+
+      it('double-click on an edge LABEL opens the editor holding the DISPLAY label', () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableInPlaceTextEdit: true });
+        const link = h.model.getLink('e')!;
+        link.setLabel?.('in stock');          // the metadata dialect, no labels[]
+        link.setPoints([
+          { x: 200, y: 130 },
+          { x: 300, y: 130 },
+          { x: 400, y: 130 },
+        ]);
+        jest
+          .spyOn(h.interaction, 'getLinkHitAtPosition')
+          .mockReturnValue({ link, part: 'label', labelIndex: 0 } as never);
+
+        // (300,300) is empty canvas in the harness — no node steals the hit.
+        h.container.dispatchEvent(mouse('dblclick', { clientX: 300, clientY: 300 }));
+
+        const input = editorInput()!;
+        expect(input).toBeTruthy();
+        expect(input.value).toBe('in stock');
+      });
+    });
+
+    describe('arrow-key nudge (enableKeyboardNudge)', () => {
+      it('is OFF by default — an arrow press moves nothing', async () => {
+        h = harness();
+        h.model.selectNode(h.model.getNode('a')!);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(100);
+      });
+
+      it('ArrowRight nudges the selected node 1 unit; Shift makes it 10', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableKeyboardNudge: true });
+        h.model.selectNode(h.model.getNode('a')!);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(101);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.y).toBe(110);
+        expect(h.events.some((e) => e.event === 'nodes:change')).toBe(true);
+      });
+
+      it('rapid presses MERGE into one undo entry that rewinds to the start', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableKeyboardNudge: true });
+        h.model.selectNode(h.model.getNode('a')!);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(102);
+
+        await h.engine.commandManager.undo();
+        expect(h.model.getNode('a')!.position.x).toBe(100);
+        // …and that single entry was the whole story: nothing else to unwind
+        // from the two presses.
+        expect(h.engine.commandManager.canUndo()).toBe(false);
+      });
+
+      it('does not fire from a focused text input, and needs a selection', async () => {
+        h = harness();
+        h.engine.setInteractionConfig({ enableKeyboardNudge: true });
+        h.model.selectNode(h.model.getNode('a')!);
+
+        const input = document.createElement('input');
+        document.body.appendChild(input);
+        input.focus();
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(100);
+        input.remove();
+
+        h.model.clearSelection();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(h.model.getNode('a')!.position.x).toBe(100);
+      });
     });
   });
 

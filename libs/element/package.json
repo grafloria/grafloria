@@ -1,20 +1,20 @@
 {
   "name": "@grafloria/element",
-  "version": "0.3.4",
-  "type": "commonjs",
+  "version": "0.5.0",
+  "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "peerDependencies": {
-    "@grafloria/engine": "^0.2.0",
-    "@grafloria/renderer": "^0.3.0"
+    "@grafloria/engine": "^0.4.0",
+    "@grafloria/renderer": "^0.5.0"
   },
   "dependencies": {
     "tslib": "^2.3.0"
   },
-  "description": "The <grafloria-flow> custom element and high-level diagram kits (dashboard, UML, ERD) — works in any framework or none",
+  "description": "Web component, dashboard kit and UML/ERD kits for Grafloria — diagrams and dashboards in any framework or none. Grafloria is an MIT diagram and dashboard engine for JavaScript.",
   "license": "MIT",
   "author": "Ramy Othman",
-  "homepage": "https://github.com/grafloria/grafloria",
+  "homepage": "https://grafloria.com/javascript/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/grafloria/grafloria.git",
@@ -33,10 +33,21 @@
     "erd",
     "svg",
     "layout",
-    "mermaid"
+    "mermaid",
+    "dashboard-layout",
+    "workflow-editor"
   ],
   "publishConfig": {
     "access": "public"
   },
-  "module": "./esm/src/index.js"
+  "module": "./src/index.js",
+  "qwik": "./src/index.js",
+  "files": [
+    "src/**/*.js",
+    "src/**/*.d.ts"
+  ],
+  "sideEffects": [
+    "./src/index.js",
+    "./src/index.ts"
+  ]
 }

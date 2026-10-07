@@ -38,12 +38,13 @@ export const umlForkTemplate: NodeTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
+      "type": "sync-bar",
       "fill": "#000000",
       "stroke": "#000000",
       "strokeWidth": 1,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"uml-fork-content\">\n          <div class=\"node-label\">{{data.label || 'Fork'}}</div>\n        </div>",

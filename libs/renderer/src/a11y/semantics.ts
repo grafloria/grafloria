@@ -76,6 +76,9 @@ export function humaniseType(type: string | undefined): string {
 /** The `aria-roledescription` for a node — its SHAPE, in human words. */
 export function nodeRoleDescription(node: NodeModel): string {
   const type = (node.type || '').toLowerCase();
+  // A 'text' note is words on the canvas, whatever generic type it carries.
+  const shape = node.getMetadata?.('shape') as { type?: string } | undefined;
+  if (shape?.type === 'text' && (!type || type === 'rect' || type === 'default' || type === 'node')) return 'Text';
   return NODE_ROLEDESCRIPTIONS[type] ?? humaniseType(node.type);
 }
 

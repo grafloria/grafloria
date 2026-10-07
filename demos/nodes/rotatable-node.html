@@ -1,11 +1,19 @@
 <meta charset="utf-8">
 <title>Rotatable node — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="A node carries a rotation the renderer bakes into its SVG transform.">
+<link rel="canonical" href="https://grafloria.com/demos/nodes/rotatable-node.html">
+<meta property="og:title" content="Rotatable node — Grafloria">
+<meta property="og:description" content="A node carries a rotation the renderer bakes into its SVG transform.">
+<meta property="og:url" content="https://grafloria.com/demos/nodes/rotatable-node.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/nodes/rotatable-node.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/nodes/rotatable-node.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">
 import { render, registerTool } from '../shell/grafloria.js';
-import { defineDemo, check, checkChanged } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check, checkChanged } from '../shell/demo.js?v=drawer4';
 
 const rotateOf = (el) => {
   const t = el.getAttribute('transform') || '';
@@ -101,6 +109,13 @@ defineDemo({
     // And the DOM followed the gesture, not just the model.
     check(Math.abs(rotateOf(g()) - node.rotation) < 0.01,
       `the SVG transform (${rotateOf(g())}) did not track the gesture rotation (${node.rotation})`);
+  },
+
+  // The card's picture: the node turned part-way round.
+  async showcase(ctx) {
+    ctx.diagram.getNode('n').setRotation(-18);
+    ctx.instance.renderNow();
+    await ctx.tick();
   },
 });
 </script>

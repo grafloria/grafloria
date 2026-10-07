@@ -23,12 +23,6 @@ import * as flowchart from './generated/flowchart';
 import * as uml from './generated/uml';
 import * as erd from './generated/erd';
 
-// Curated groups — imported from their own files, not the `template-library`
-// barrel, so `templates/` never depends on a module that depends back on it.
-import { CommonTemplates } from '../template-library/common-templates';
-import { WorkflowTemplates } from '../template-library/workflow-templates';
-import { DataVizTemplates } from '../template-library/data-viz-templates';
-import { ERDTemplates } from '../template-library/erd-templates';
 
 /** A named, categorized set of masters — one section of a stencil palette. */
 export interface Stencil {
@@ -56,9 +50,10 @@ function templatesOf(mod: Record<string, unknown>): NodeTemplate[] {
 }
 
 /**
- * The stencils that ship with Grafloria — the 80 generated notation masters plus
- * the curated library groups. Freshly built on each call so a caller can mutate
- * the returned arrays without corrupting the built-ins.
+ * The stencils that ship with Grafloria — the 80 generated NOTATION masters
+ * (flowchart / BPMN / UML / ERD), each a true silhouette the SVG canvas draws.
+ * Freshly built on each call so a caller can mutate the returned arrays without
+ * corrupting the built-ins.
  */
 export function builtInStencils(): Stencil[] {
   return [
@@ -66,10 +61,26 @@ export function builtInStencils(): Stencil[] {
     { id: 'bpmn',      name: 'BPMN',      description: 'Tasks, gateways and events for business process models.', masters: templatesOf(bpmn) },
     { id: 'uml',       name: 'UML',       description: 'Class, activity, state and component shapes.', masters: templatesOf(uml) },
     { id: 'erd',       name: 'ERD',       description: 'Entities, relationships and attributes for data models.', masters: templatesOf(erd) },
-    { id: 'common',    name: 'Basic',     description: 'Cards, buttons, inputs, badges and avatars.', masters: templatesOf(CommonTemplates) },
-    { id: 'workflow',  name: 'Workflow',  description: 'Ready-made workflow and automation nodes.', masters: templatesOf(WorkflowTemplates) },
-    { id: 'data-viz',  name: 'Data viz',  description: 'KPI, chart and metric widgets.', masters: templatesOf(DataVizTemplates) },
-    { id: 'erd-rich',  name: 'ERD (rich)', description: 'Detailed entity shapes with typed column rows.', masters: templatesOf(ERDTemplates) },
+    // NOTE: the `template-library/` groups (common, workflow, data-viz, erd) are
+    // deliberately NOT stencils. Every one of them carries its real content in an
+    // HTML template, and the SVG canvas paints only the silhouette — so a KPI
+    // card, a gauge, an avatar or a table drops as a bare labelled rectangle.
+    // They also have working successors: the dashboard kit (`dashboard()`) for
+    // KPI/line/bar/donut widgets, and the `erDiagram()` / `erTable()` kit for
+    // true entity tables with typed rows, field ports and reconciling FK→PK
+    // edges (demos/diagrams/erd-editor.html). The erd-templates set was doubly
+    // unfit: its entries are design experiments ("ERD Table (OLD)", "Option A",
+    // "Option B", "Repeater") and two of them — "ERD Container (Option B)" and
+    // "ERD Header (Option B)" — are SEPARATE nodes, so dragging the body left
+    // the header behind. A stencil ships only shapes that actually draw. Those
+    // entries are design experiments — their own names say so ("ERD Table (OLD)",
+    // "Option A", "Option B", "Repeater") — and two of them ("ERD Container
+    // (Option B)" + "ERD Header (Option B)") are SEPARATE nodes, so dragging the
+    // body leaves the header behind. Their table fidelity also lived in HTML
+    // templates the SVG path does not paint, so they drop as bare rectangles.
+    // The real entity-relationship surface is the `erDiagram()` / `erTable()`
+    // kit (see demos/diagrams/erd-editor.html), which renders true tables with
+    // typed rows, field ports and reconciling FK→PK edges.
   ].filter((s) => s.masters.length > 0);
 }
 

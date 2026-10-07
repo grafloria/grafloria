@@ -1,6 +1,14 @@
 <meta charset="utf-8">
 <title>Dashboard builder — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="A dashboard-builder app authored with the kit's DATA-FIRST API: dashboard({ views: [{ widgets: [{ id, kind, span, rows, data }] }] }) — three tabbed views…">
+<link rel="canonical" href="https://grafloria.com/demos/dashboard/dashboard-builder.html">
+<meta property="og:title" content="Dashboard builder — Grafloria">
+<meta property="og:description" content="A dashboard-builder app authored with the kit's DATA-FIRST API: dashboard({ views: [{ widgets: [{ id, kind, span, rows, data }] }] }) — three tabbed views…">
+<meta property="og:url" content="https://grafloria.com/demos/dashboard/dashboard-builder.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/dashboard/dashboard-builder.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/dashboard/dashboard-builder.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   /* ================================================================================
      A REAL dashboard-builder app, built on the ONE package an embedder installs.
@@ -47,7 +55,7 @@
     justify-content: center; font-size: 15px; color: #fff; }
   .pal-note { margin: 12px 2px 0; font: 11px/1.5 system-ui, sans-serif; color: #949bab; }
 
-  #canvas { --axdb-rs-radius: 5px;   /* widget card = placeholder = handle arc */
+  #canvas { --axdb-rs-radius: 3px;   /* widget card = placeholder = handle arc */
     position: relative; overflow: hidden; height: 100%;
     background-color: var(--db-canvas-bg, #f1f3f7);
     background-image: radial-gradient(circle, rgba(120,128,145,.16) 1px, transparent 1px);
@@ -141,6 +149,9 @@
     .hist-id { color:#e6e9f0; } .hist-sub { color:#aab2c2; }
     .hist-tag { background:#2a3040; color:#9aa2b2; } .hist-tag.now { background:#3b52d9; color:#fff; }
   }
+  .pal-layout { display: flex; gap: 8px; }
+  .pal-item.pal-half { width: auto; flex: 1; justify-content: center; }
+  .pal-item[aria-pressed="true"] { background: rgba(59, 82, 217, .12); border-color: #3b52d9; color: #2c3fb0; }
 </style>
 
 <header id="demo-head"></header>
@@ -175,6 +186,11 @@
     <button class="pal-item" data-add="donut"><span class="pal-glyph" style="background:#f59e0b">◕</span>Donut</button>
     <button class="pal-item" data-add="funnel"><span class="pal-glyph" style="background:#8b5cf6">▽</span>Funnel</button>
     <button class="pal-item" data-add="table"><span class="pal-glyph" style="background:#64748b">▤</span>Table</button>
+    <div class="pal-title" style="margin-top:14px">Layout</div>
+    <div class="pal-layout">
+      <button class="pal-item pal-half" id="t-layout-grid" aria-pressed="true" title="The cell grid: columns, spans, push">Grid</button>
+      <button class="pal-item pal-half" id="t-layout-split" aria-pressed="false" title="The DevExpress splitter tree: the board is always covered, dividers are percentages">Split</button>
+    </div>
     <div class="pal-note">Click to add, or DRAG onto the board — it makes room live from the moment the cursor enters. On the board: drag tiles (neighbours slide out of the way around the dashed placeholder), resize from a tile's corner, drag OUT to remove. Click a tile to focus it, then use the toolbar.</div>
   </aside>
   <div id="canvas"><div id="db-status"></div></div>
@@ -194,6 +210,220 @@
   </aside>
 </div>
 
+<script type="text/plain" data-code="angular">
+// npm i @grafloria/angular
+import { Component } from '@angular/core';
+import { GrafloriaDashboardComponent, GrafloriaWidgetDefDirective } from '@grafloria/angular';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+// THE BUILDER, THE ANGULAR WAY: [views] declares the three tabbed boards; the
+// component owns the pack grid, the gestures and the undo. [(activeView)] is
+// the tab pattern; a palette is one addWidget() per chip; the toolbar is one
+// handle call each. A widget kind may render through real Angular with an
+// <ng-template grafloriaWidget="kind">; kinds without one use the built-in
+// painters (kpi / line / bar / donut / funnel / table).
+@Component({
+  selector: 'app-dashboard-builder',
+  imports: [GrafloriaDashboardComponent, GrafloriaWidgetDefDirective],
+  template: `
+    <nav class="tabs">
+      @for (v of views; track v.id) {
+        <button [class.on]="tab === v.id" (click)="tab = v.id">{{ v.name }}</button>
+      }
+    </nav>
+    <div class="bar">
+      <button (click)="add('kpi')">+ KPI</button>
+      <button (click)="add('line')">+ Line</button>
+      <button (click)="add('donut')">+ Donut</button>
+      <button (click)="pinFocused()">Pin</button>
+      <button (click)="handle?.setSizing(handle?.getSizing() === 'fit' ? 'grow' : 'fit')">Mode</button>
+      <button (click)="handle?.setLayout(handle?.getLayout() === 'split' ? 'grid' : 'split')">Split</button>
+      <button (click)="save()">Save</button>
+    </div>
+    <grafloria-dashboard
+      [views]="views" [options]="options" [(activeView)]="tab"
+      (ready)="handle = $event"
+      (layoutChange)="dirty = true"
+      style="display:block; height:660px">
+      <!-- optional: a real Angular widget for a kind -->
+      <ng-template grafloriaWidget="note" let-data="data">
+        <div class="note">{{ data.text }}</div>
+      </ng-template>
+    </grafloria-dashboard>
+  `,
+})
+export class DashboardBuilderComponent {
+  handle?: DashboardHandle;
+  tab: string | undefined = 'overview';
+  dirty = false;
+  focused?: string;
+  options = { columns: 12, gap: 8, rowHeight: 130, width: 1180, height: 660, sizing: 'fit' as const };
+  views: DashboardViewSpec[] = [
+  { id: 'overview', name: 'Overview', widgets: [
+    { id: 'kpi-revenue',   kind: 'kpi',   span: 3,  rows: 1, data: { label: 'Total revenue', value: '$6.81M', delta: 12.4, deltaLabel: 'vs last qtr', spark: [42, 45, 47, 51, 50, 55, 59, 61, 60, 65, 71, 76] } },
+    { id: 'kpi-customers', kind: 'kpi',   span: 3,  rows: 1, data: { label: 'New customers', value: '1,284', delta: 8.1, deltaLabel: 'vs last qtr', spark: [30, 32, 35, 33, 38, 41, 44, 43, 47, 50, 52, 56] } },
+    { id: 'kpi-avgdeal',   kind: 'kpi',   span: 3,  rows: 1, data: { label: 'Avg deal size', value: '$18.6K', delta: -2.3, deltaLabel: 'vs last qtr', spark: [21, 20, 20.5, 19, 19.8, 19.2, 18.9, 19.4, 18.7, 18.5, 18.8, 18.6] } },
+    { id: 'kpi-winrate',   kind: 'kpi',   span: 3,  rows: 1, data: { label: 'Win rate', value: '27.4%', delta: 3.5, deltaLabel: 'vs last qtr', spark: [22, 23, 23.5, 24, 24.8, 25, 25.6, 26, 26.4, 26.9, 27.1, 27.4] } },
+    { id: 'trend', kind: 'line',  span: 8,  rows: 2, title: 'Revenue vs target', data: { series: [{ name: 'Revenue', values: [420, 450, 470, 510, 500, 550, 590, 610, 600, 650, 710, 760] }, { name: 'Target', values: [400, 430, 460, 490, 520, 550, 580, 610, 640, 670, 700, 730] }], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] } },
+    { id: 'mix',   kind: 'donut', span: 4,  rows: 2, title: 'Revenue by region', data: { slices: [{ label: 'North America', value: 2.83 }, { label: 'EMEA', value: 1.95 }, { label: 'APAC', value: 1.35 }, { label: 'LATAM', value: 0.6 }], centerLabel: '$6.73M' } },
+    { id: 'reps',  kind: 'table', span: 12, rows: 2, title: 'Top reps by revenue', data: { columns: ['Rep', 'Deals', 'Revenue', 'Quota'], rows: [['A. Farouk', 38, '$1.24M', '118%'], ['M. Haddad', 31, '$0.98M', '96%'], ['J. Okonkwo', 29, '$0.91M', '88%'], ['S. Nakamura', 24, '$0.77M', '74%'], ['L. Moretti', 21, '$0.63M', '61%']] } },
+  ] },
+  { id: 'sales', name: 'Sales', widgets: [
+    { id: 'sales-bar', kind: 'bar',   span: 7, rows: 2, title: 'Revenue by region', data: { bars: [{ label: 'NA', value: 2830 }, { label: 'EMEA', value: 1950 }, { label: 'APAC', value: 1350 }, { label: 'LATAM', value: 600 }] } },
+    { id: 'sales-mix', kind: 'donut', span: 5, rows: 2, title: 'Region share',      data: { slices: [{ label: 'North America', value: 2.83 }, { label: 'EMEA', value: 1.95 }, { label: 'APAC', value: 1.35 }, { label: 'LATAM', value: 0.6 }] } },
+  ] },
+  { id: 'pipeline', name: 'Pipeline', widgets: [
+    { id: 'funnel', kind: 'funnel', span: 6, rows: 2, title: 'Conversion funnel', data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
+  ] },
+  ];
+
+  add(kind: 'kpi' | 'line' | 'donut') {
+    const spec = { kpi: { kind, span: 3, rows: 1, data: { label: 'New KPI', value: '—' } },
+                   line: { kind, span: 8, rows: 2, title: 'New chart', data: { series: [[1, 2, 3]] } },
+                   donut: { kind, span: 4, rows: 2, title: 'New share', data: { slices: [{ label: 'A', value: 1 }] } } }[kind];
+    this.focused = this.handle?.addWidget(spec, this.tab)?.id;   // undefined when a fit board is full
+  }
+  pinFocused() { if (this.focused) this.handle?.widget(this.focused)?.pin(true); }
+  save() {
+    // toJSON() output IS dashboard() input — the round trip the Load button replays.
+    localStorage.setItem('board', JSON.stringify(this.handle?.toJSON()));
+    this.dirty = false;
+  }
+}
+</script>
+<script type="text/plain" data-code="react">
+// npm i @grafloria/react
+import { useState } from 'react';
+import { GrafloriaDashboard } from '@grafloria/react';
+import type { WidgetProps } from '@grafloria/react';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+// THE BUILDER, THE REACT WAY: `views` declares the three tabbed boards; the
+// component owns the pack grid, the gestures and the undo. `activeView` is the
+// tab pattern; a palette is one addWidget() per chip; the toolbar is one
+// handle call each. `widgetTypes` maps a kind to a real React component
+// (portal-mounted, hooks and context work); other kinds use the built-in
+// painters (kpi / line / bar / donut / funnel / table).
+const views: DashboardViewSpec[] = [
+  { id: 'overview', name: 'Overview', widgets: [
+    { id: 'kpi-revenue',   kind: 'kpi',   span: 3,  rows: 1, data: { label: 'Total revenue', value: '$6.81M', delta: 12.4, deltaLabel: 'vs last qtr', spark: [42, 45, 47, 51, 50, 55, 59, 61, 60, 65, 71, 76] } },
+    { id: 'kpi-customers', kind: 'kpi',   span: 3,  rows: 1, data: { label: 'New customers', value: '1,284', delta: 8.1, deltaLabel: 'vs last qtr', spark: [30, 32, 35, 33, 38, 41, 44, 43, 47, 50, 52, 56] } },
+    { id: 'kpi-avgdeal',   kind: 'kpi',   span: 3,  rows: 1, data: { label: 'Avg deal size', value: '$18.6K', delta: -2.3, deltaLabel: 'vs last qtr', spark: [21, 20, 20.5, 19, 19.8, 19.2, 18.9, 19.4, 18.7, 18.5, 18.8, 18.6] } },
+    { id: 'kpi-winrate',   kind: 'kpi',   span: 3,  rows: 1, data: { label: 'Win rate', value: '27.4%', delta: 3.5, deltaLabel: 'vs last qtr', spark: [22, 23, 23.5, 24, 24.8, 25, 25.6, 26, 26.4, 26.9, 27.1, 27.4] } },
+    { id: 'trend', kind: 'line',  span: 8,  rows: 2, title: 'Revenue vs target', data: { series: [{ name: 'Revenue', values: [420, 450, 470, 510, 500, 550, 590, 610, 600, 650, 710, 760] }, { name: 'Target', values: [400, 430, 460, 490, 520, 550, 580, 610, 640, 670, 700, 730] }], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] } },
+    { id: 'mix',   kind: 'donut', span: 4,  rows: 2, title: 'Revenue by region', data: { slices: [{ label: 'North America', value: 2.83 }, { label: 'EMEA', value: 1.95 }, { label: 'APAC', value: 1.35 }, { label: 'LATAM', value: 0.6 }], centerLabel: '$6.73M' } },
+    { id: 'reps',  kind: 'table', span: 12, rows: 2, title: 'Top reps by revenue', data: { columns: ['Rep', 'Deals', 'Revenue', 'Quota'], rows: [['A. Farouk', 38, '$1.24M', '118%'], ['M. Haddad', 31, '$0.98M', '96%'], ['J. Okonkwo', 29, '$0.91M', '88%'], ['S. Nakamura', 24, '$0.77M', '74%'], ['L. Moretti', 21, '$0.63M', '61%']] } },
+  ] },
+  { id: 'sales', name: 'Sales', widgets: [
+    { id: 'sales-bar', kind: 'bar',   span: 7, rows: 2, title: 'Revenue by region', data: { bars: [{ label: 'NA', value: 2830 }, { label: 'EMEA', value: 1950 }, { label: 'APAC', value: 1350 }, { label: 'LATAM', value: 600 }] } },
+    { id: 'sales-mix', kind: 'donut', span: 5, rows: 2, title: 'Region share',      data: { slices: [{ label: 'North America', value: 2.83 }, { label: 'EMEA', value: 1.95 }, { label: 'APAC', value: 1.35 }, { label: 'LATAM', value: 0.6 }] } },
+  ] },
+  { id: 'pipeline', name: 'Pipeline', widgets: [
+    { id: 'funnel', kind: 'funnel', span: 6, rows: 2, title: 'Conversion funnel', data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
+  ] },
+];
+
+const Note = ({ data }: WidgetProps<{ text: string }>) => <div className="note">{data.text}</div>;
+
+export function DashboardBuilder() {
+  const [handle, setHandle] = useState<DashboardHandle>();
+  const [tab, setTab] = useState('overview');
+  const [focused, setFocused] = useState<string>();
+  const add = (kind: 'kpi' | 'line' | 'donut') => {
+    const spec = { kpi: { kind, span: 3, rows: 1, data: { label: 'New KPI', value: '—' } },
+                   line: { kind, span: 8, rows: 2, title: 'New chart', data: { series: [[1, 2, 3]] } },
+                   donut: { kind, span: 4, rows: 2, title: 'New share', data: { slices: [{ label: 'A', value: 1 }] } } }[kind];
+    setFocused(handle?.addWidget(spec, tab)?.id);   // undefined when a fit board is full
+  };
+  return (
+    <>
+      <nav className="tabs">
+        {views.map((v) => <button key={v.id} className={tab === v.id ? 'on' : ''} onClick={() => setTab(v.id)}>{v.name}</button>)}
+      </nav>
+      <div className="bar">
+        <button onClick={() => add('kpi')}>+ KPI</button>
+        <button onClick={() => add('line')}>+ Line</button>
+        <button onClick={() => add('donut')}>+ Donut</button>
+        <button onClick={() => focused && handle?.widget(focused)?.pin(true)}>Pin</button>
+        <button onClick={() => handle?.setSizing(handle.getSizing() === 'fit' ? 'grow' : 'fit')}>Mode</button>
+        <button onClick={() => handle?.setLayout(handle.getLayout() === 'split' ? 'grid' : 'split')}>Split</button>
+        <button onClick={() => localStorage.setItem('board', JSON.stringify(handle?.toJSON()))}>Save</button>
+      </div>
+      <GrafloriaDashboard
+        views={views}
+        options={{ columns: 12, gap: 8, rowHeight: 130, width: 1180, height: 660, sizing: 'fit' }}
+        widgetTypes={{ note: Note }}
+        activeView={tab}
+        onReady={setHandle}
+        onLayoutChange={({ viewId, widgets }) => console.log('layout changed', viewId, widgets.length)}
+        style={{ height: 660 }}
+      />
+    </>
+  );
+}
+</script>
+<script type="text/plain" data-code="vue">
+<!-- npm i @grafloria/vue -->
+<script setup lang="ts">
+import { ref, shallowRef } from 'vue';
+import { GrafloriaDashboard } from '@grafloria/vue';
+import type { DashboardHandle, DashboardViewSpec } from '@grafloria/element';
+
+// THE BUILDER, THE VUE WAY: :views declares the three tabbed boards; the
+// component owns the pack grid, the gestures and the undo. v-model:active-view
+// is the tab pattern; a palette is one addWidget() per chip; the toolbar is
+// one handle call each. A #widget-<kind> slot renders that kind with real Vue;
+// kinds without a slot use the built-in painters.
+const handle = shallowRef<DashboardHandle>();
+const tab = ref('overview');
+const focused = ref<string>();
+const options = { columns: 12, gap: 8, rowHeight: 130, width: 1180, height: 660, sizing: 'fit' as const };
+const views: DashboardViewSpec[] = [
+  { id: 'overview', name: 'Overview', widgets: [
+    { id: 'kpi-revenue',   kind: 'kpi',   span: 3,  rows: 1, data: { label: 'Total revenue', value: '$6.81M', delta: 12.4, deltaLabel: 'vs last qtr', spark: [42, 45, 47, 51, 50, 55, 59, 61, 60, 65, 71, 76] } },
+    { id: 'kpi-customers', kind: 'kpi',   span: 3,  rows: 1, data: { label: 'New customers', value: '1,284', delta: 8.1, deltaLabel: 'vs last qtr', spark: [30, 32, 35, 33, 38, 41, 44, 43, 47, 50, 52, 56] } },
+    { id: 'kpi-avgdeal',   kind: 'kpi',   span: 3,  rows: 1, data: { label: 'Avg deal size', value: '$18.6K', delta: -2.3, deltaLabel: 'vs last qtr', spark: [21, 20, 20.5, 19, 19.8, 19.2, 18.9, 19.4, 18.7, 18.5, 18.8, 18.6] } },
+    { id: 'kpi-winrate',   kind: 'kpi',   span: 3,  rows: 1, data: { label: 'Win rate', value: '27.4%', delta: 3.5, deltaLabel: 'vs last qtr', spark: [22, 23, 23.5, 24, 24.8, 25, 25.6, 26, 26.4, 26.9, 27.1, 27.4] } },
+    { id: 'trend', kind: 'line',  span: 8,  rows: 2, title: 'Revenue vs target', data: { series: [{ name: 'Revenue', values: [420, 450, 470, 510, 500, 550, 590, 610, 600, 650, 710, 760] }, { name: 'Target', values: [400, 430, 460, 490, 520, 550, 580, 610, 640, 670, 700, 730] }], labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] } },
+    { id: 'mix',   kind: 'donut', span: 4,  rows: 2, title: 'Revenue by region', data: { slices: [{ label: 'North America', value: 2.83 }, { label: 'EMEA', value: 1.95 }, { label: 'APAC', value: 1.35 }, { label: 'LATAM', value: 0.6 }], centerLabel: '$6.73M' } },
+    { id: 'reps',  kind: 'table', span: 12, rows: 2, title: 'Top reps by revenue', data: { columns: ['Rep', 'Deals', 'Revenue', 'Quota'], rows: [['A. Farouk', 38, '$1.24M', '118%'], ['M. Haddad', 31, '$0.98M', '96%'], ['J. Okonkwo', 29, '$0.91M', '88%'], ['S. Nakamura', 24, '$0.77M', '74%'], ['L. Moretti', 21, '$0.63M', '61%']] } },
+  ] },
+  { id: 'sales', name: 'Sales', widgets: [
+    { id: 'sales-bar', kind: 'bar',   span: 7, rows: 2, title: 'Revenue by region', data: { bars: [{ label: 'NA', value: 2830 }, { label: 'EMEA', value: 1950 }, { label: 'APAC', value: 1350 }, { label: 'LATAM', value: 600 }] } },
+    { id: 'sales-mix', kind: 'donut', span: 5, rows: 2, title: 'Region share',      data: { slices: [{ label: 'North America', value: 2.83 }, { label: 'EMEA', value: 1.95 }, { label: 'APAC', value: 1.35 }, { label: 'LATAM', value: 0.6 }] } },
+  ] },
+  { id: 'pipeline', name: 'Pipeline', widgets: [
+    { id: 'funnel', kind: 'funnel', span: 6, rows: 2, title: 'Conversion funnel', data: { stages: [{ label: 'Leads', value: 1840 }, { label: 'Qualified', value: 920 }, { label: 'Proposal', value: 410 }, { label: 'Won', value: 188 }] } },
+  ] },
+];
+const add = (kind: 'kpi' | 'line' | 'donut') => {
+  const spec = { kpi: { kind, span: 3, rows: 1, data: { label: 'New KPI', value: '—' } },
+                 line: { kind, span: 8, rows: 2, title: 'New chart', data: { series: [[1, 2, 3]] } },
+                 donut: { kind, span: 4, rows: 2, title: 'New share', data: { slices: [{ label: 'A', value: 1 }] } } }[kind];
+  focused.value = handle.value?.addWidget(spec, tab.value)?.id;   // undefined when a fit board is full
+};
+<\/script>
+
+<template>
+  <nav class="tabs">
+    <button v-for="v in views" :key="v.id" :class="{ on: tab === v.id }" @click="tab = v.id">{{ v.name }}</button>
+  </nav>
+  <div class="bar">
+    <button @click="add('kpi')">+ KPI</button>
+    <button @click="add('line')">+ Line</button>
+    <button @click="add('donut')">+ Donut</button>
+    <button @click="focused && handle?.widget(focused)?.pin(true)">Pin</button>
+    <button @click="handle?.setSizing(handle.getSizing() === 'fit' ? 'grow' : 'fit')">Mode</button>
+    <button @click="handle?.setLayout(handle.getLayout() === 'split' ? 'grid' : 'split')">Split</button>
+    <button @click="localStorage.setItem('board', JSON.stringify(handle?.toJSON()))">Save</button>
+  </div>
+  <GrafloriaDashboard :views="views" :options="options" v-model:active-view="tab"
+    @ready="handle = $event" @layout-change="(e) => console.log('layout changed', e.viewId)"
+    style="display:block; height:660px">
+    <template #widget-note="{ data }"><div class="note">{{ data.text }}</div></template>
+  </GrafloriaDashboard>
+</template>
+</script>
 <script type="module">
 // ===========================================================================
 //  Dashboard builder — the flagship proof that a dashboard-builder app can be
@@ -236,7 +466,7 @@ import {
   // The dashboard kit: the authoring API + the built-in widget renderers.
   dashboard, defaultWidgetRenderer,
 } from '../shell/grafloria.js';
-import { defineDemo, check, checkEqual, checkChanged } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check, checkEqual, checkChanged } from '../shell/demo.js?v=drawer4';
 
 /* ---------------------------------------------------------------------------
    1. STATIC SALES DATASET — deterministic, no Math.random() anywhere (goldens
@@ -344,7 +574,7 @@ let SPEC = null;                  // the live dashboard() spec (Load rebuilds it
 let H = null;                     // SPEC.handle — showView / widget() / setSizing / …
 let ctxRef = null;                // { diagram, engine, instance } from defineDemo
 let statusEl = null;
-let sizingMode = 'fit', floatMode = false;
+let sizingMode = 'fit', floatMode = false, layoutMode = 'grid';
 const state = { focus: null, saved: null, seq: 0 };
 
 /** dashboard()'s `renderWidget` seam. The LIBRARY draws the chart from the
@@ -414,6 +644,7 @@ function buildSpec(views) {
     ...BOARD,
     sizing: sizingMode,
     float: floatMode,
+    layout: layoutMode,
     views,
     renderWidget,
     // Fires after every committed gesture: the undo button must light up as
@@ -436,7 +667,7 @@ function buildSpec(views) {
       // already computed. remove() folds them into its own batch; see dropIn()
       // for the one place that still has nowhere to put them.
       onRemoveRequest: (nodeId, displaced) => removeWidget(nodeId, displaced),
-      onDropIn: (node, cell) => dropIn(node, cell),
+      onDropIn: (node, cell, displaced, target) => dropIn(node, cell, target, displaced),
       onGesture: (e) => {
         lastPaletteGestureAt = e.kind === 'palette' ? Date.now() : lastPaletteGestureAt;
         if (e.type === 'commit') {
@@ -467,6 +698,8 @@ function showView(id) {
   H.showView(id);
   for (const btn of document.querySelectorAll('.db-tab')) btn.setAttribute('aria-selected', String(btn.dataset.tab === id));
   setFocus(H.widgetsOf()[0]?.id ?? null);
+  // Layout is PER VIEW: the Grid / Split pair must read the view just shown.
+  syncToolbarSoon();
   flash(`view: ${id}`);
 }
 
@@ -518,12 +751,16 @@ function addWidget(kind) {
  *  the placeholder settled on. (`displaced` — the survivors this drop pushed —
  *  is the one thing the API still cannot express: addWidget() has no
  *  counterpart to remove(displaced). Unchanged from the hand-assembled page.) */
-function dropIn(node, cell) {
+function dropIn(node, cell, target, displaced) {
   const p = node.__palette;
-  const w = H.addWidget({ ...p, x: cell.x, y: cell.y }, H.activeView);
+  // The board the chip was dropped INTO: the view, or a page or section on it
+  // (tile first, step 4a) — addWidget takes a container id as the board. The
+  // tiles the placeholder pushed aside ride in the same undo step (0.4.54).
+  const boardId = target?.boardId ?? H.activeView;
+  const w = H.addWidget({ ...p, x: cell.x, y: cell.y, span: cell.w, rows: cell.h }, boardId, { displaced });
   if (!w) return;
   setFocus(w.id);
-  flash(`dropped ${p.kind} at column ${cell.x + 1}, row ${cell.y + 1}`);
+  flash(`dropped ${p.kind} into ${boardId} at column ${cell.x + 1}, row ${cell.y + 1}`);
 }
 
 /** REMOVE: ONE undoable batch — membership + node + the survivors' re-pack, so
@@ -576,6 +813,25 @@ function setFloatMode(on) {
 /** SIZING MODE: fit (default) keeps every board at its design height and
  *  squeezes rows (DevExtreme-style — nothing falls below the fold); grow keeps
  *  the 130px design row and extends the board downward. */
+function syncLayoutButtons(mode) {
+  document.getElementById('t-layout-grid').setAttribute('aria-pressed', String(mode !== 'split'));
+  document.getElementById('t-layout-split').setAttribute('aria-pressed', String(mode === 'split'));
+}
+
+function setLayoutMode(mode) {
+  if (!H) return;
+  layoutMode = mode;
+  H.setLayout(mode);
+  syncLayoutButtons(mode);
+  const fitOnly = mode === 'split';
+  document.getElementById('t-mode').disabled = fitOnly;
+  document.getElementById('t-float').disabled = fitOnly;
+  flash(mode === 'split'
+    ? 'split layout — every widget covers its slot; drag a divider, drop a widget on an edge, add one and it halves the largest'
+    : 'grid layout — cells, spans and push');
+  syncToolbarSoon();
+}
+
 function setSizingMode(mode) {
   if (mode === sizingMode) return;
   sizingMode = mode;
@@ -729,6 +985,7 @@ function applyVersion(v) {
   H.dispose();                      // drops the old binders AND their boards
   sizingMode = v.sizing ?? sizingMode;
   floatMode = v.float ?? floatMode;
+  layoutMode = v.board?.layout ?? layoutMode;   // the split tree rides in the views
   SPEC = buildSpec(v.views);        // toJSON() output IS dashboard() input
   H = SPEC.handle;
   // Reconcile the model to the rebuilt spec (same ids → the same hosts, so
@@ -738,6 +995,10 @@ function applyVersion(v) {
   cmd().clear();                    // a load is not an undoable edit
   document.getElementById('t-mode').textContent = `Mode: ${sizingMode}`;
   document.getElementById('t-float').textContent = `Float: ${floatMode ? 'on' : 'off'}`;
+  const layout = H ? H.getLayout() : 'grid';
+  syncLayoutButtons(layout);
+  document.getElementById('t-mode').disabled = layout === 'split';
+  document.getElementById('t-float').disabled = layout === 'split';
   afterMount(active);
 }
 
@@ -862,6 +1123,7 @@ function wireControls() {
     // Click-to-add stays; pointerdown ALSO arms the kit's palette DRAG-IN
     // (clone follows the cursor; entering the board places it live). A drag
     // that actually ran suppresses the click that may follow it.
+    if (!btn.dataset.add) continue; // the Layout pair below is not a widget chip
     btn.addEventListener('click', () => {
       if (Date.now() - lastPaletteGestureAt < 400) return;   // that click was a drag
       addWidget(btn.dataset.add);
@@ -888,6 +1150,8 @@ function wireControls() {
   on('t-redo', async () => { const cm = cmd(); if (cm.canRedo()) { await cm.redo(); refresh(); } syncToolbarSoon(); flash('redo'); });
   on('t-mode', () => setSizingMode(sizingMode === 'fit' ? 'grow' : 'fit'));
   on('t-float', () => setFloatMode(!floatMode));
+  on('t-layout-grid', () => setLayoutMode('grid'));
+  on('t-layout-split', () => setLayoutMode('split'));
   on('t-pin', focused(togglePin));
   on('t-grow', focused(cycleRows));
   on('t-remove', focused(removeWidget));

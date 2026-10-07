@@ -13,31 +13,8 @@ import type { SelectionToolsController, ToolHandle } from './selection-tools';
 import { sideHandleYieldsToPort } from './selection-tools';
 
 /**
- * Touch & mobile gestures — Wave 9, Card 2.
- *
- * ## What was actually there before this file
- *
- * The audit contradicted the card. The card said "Grafloria handles touch on resize
- * handles only". In fact:
- *
- *  - `DomEventBinder` — the ONLY interaction pipeline the framework-free renderer
- *    actually attaches — bound `mousedown`/`mousemove`/`mouseup`. Raw MouseEvent.
- *    **Not one pointer listener, not one touch listener.**
- *  - The "unified Pointer Events pipeline" Wave 1 is credited with
- *    (`renderer-angular/interaction/pointer-input.ts`) is real, well-written — and
- *    **DEAD**. `PointerInputController` is never constructed anywhere; it survives
- *    only as a name inside a doc comment in `tool-manager.ts`.
- *  - `renderer-angular/.../touch-resize-handle.component.ts` — the touch resize
- *    handle the card refers to — is **also dead**. Nothing references it.
- *  - `engine/lib/input/{touch-handler,mobile-interaction.service,mobile-manager.service}.ts`
- *    is a whole mobile stack (a `TouchHandler` with pinch/rotate/swipe, an
- *    `IMobileEngine`) that **nothing outside its own directory constructs**.
- *  - `touch-action` appears **nowhere in the repository**. Even had a handler
- *    existed, Chrome would have eaten every pan and pinch before it fired.
- *
- * So touch on the real canvas was not "partial". It was zero, behind four separate
- * piles of machinery that each looked like it did the job. This controller is the
- * one that is wired (see `DomEventBinder.attach`).
+ * Touch & mobile gestures on the canvas. This controller is the one the
+ * framework-free renderer wires (see `DomEventBinder.attach`).
  *
  * ## The gesture set
  *
@@ -51,12 +28,10 @@ import { sideHandleYieldsToPort } from './selection-tools';
  * | 2       | pinch                         | zoom, anchored between the fingers  |
  * | 2       | drag                          | pan                                 |
  *
- * **Rotate is deliberately NOT implemented.** The card said to check first, so I
- * did: `ViewportController` has no rotation — no angle in its state, no rotate in
- * `getViewBox()`/`clientToWorld()`. A two-finger rotate would have had nothing to
- * write to. Building the gesture would have meant building canvas rotation, which
- * is a different (large) card. `NodeModel.setRotation` exists, but rotating the
- * *selection* by a canvas pinch is not what the gesture means.
+ * **Rotate is deliberately NOT implemented.** `ViewportController` has no rotation
+ * — no angle in its state, no rotate in `getViewBox()`/`clientToWorld()` — so a
+ * two-finger rotate has nothing to write to. `NodeModel.setRotation` exists, but
+ * rotating the *selection* by a canvas pinch is not what the gesture means.
  *
  * ## Why the browser would otherwise win
  *

@@ -104,9 +104,24 @@ class PriorityQueue {
 /**
  * A* Pathfinding Router
  */
+/**
+ * An obstacle that holds one of the route's endpoints (its port sits on, or
+ * inside the margin of, that body): normally the link's OWN source or target
+ * node. It must not block the search near that port, or the search can never
+ * leave the start nor enter the goal.
+ */
+interface EndpointZone {
+  obstacleId: string;
+  anchor: Point;
+  /** Chebyshev distance from `anchor` within which this obstacle is passable. */
+  radius: number;
+}
+
 export class AStarRouter {
   private obstacleMap: ObstacleMap;
   private options: Required<AStarOptions>;
+  /** Set per route() call — see EndpointZone. */
+  private endpointZones: EndpointZone[] = [];
 
   constructor(obstacleMap: ObstacleMap, options: AStarOptions = {}) {
     this.obstacleMap = obstacleMap;
@@ -145,8 +160,25 @@ export class AStarRouter {
       return [start, end];
     }
 
+    // The link's own end nodes are normally in the obstacle set (the renderer
+    // routes every link against every node). A port sits ON its node's edge,
+    // so with the margin the start is inside its node's inflated box and the
+    // goal inside the other's: every first step collided, the goal could never
+    // be entered, and A* returned no path at all — for the plainest "A, wall,
+    // B" diagram. Those bodies are passable near their ports only; everywhere
+    // else they stay solid, so a port facing away still routes AROUND its node.
+    this.endpointZones = [
+      ...this.zonesFor(start, gridStart),
+      ...this.zonesFor(end, gridEnd),
+    ];
+
     // Run A* algorithm
-    const path = this.findPath(gridStart, gridEnd);
+    let path: Point[];
+    try {
+      path = this.findPath(gridStart, gridEnd);
+    } finally {
+      this.endpointZones = [];
+    }
 
     if (path.length === 0) {
       return [];
@@ -156,12 +188,55 @@ export class AStarRouter {
     path[0] = start;
     path[path.length - 1] = end;
 
-    // Apply path smoothing if enabled
+    // Apply path smoothing if enabled (its line-of-sight test needs the same
+    // endpoint zones the search used, or it would see the ports as blocked).
     if (this.options.smoothing) {
-      return this.smoothPath(path);
+      this.endpointZones = [
+        ...this.zonesFor(start, gridStart),
+        ...this.zonesFor(end, gridEnd),
+      ];
+      try {
+        return this.smoothPath(path);
+      } finally {
+        this.endpointZones = [];
+      }
     }
 
     return path;
+  }
+
+  /**
+   * The endpoint zones for one end of the route: every obstacle whose inflated
+   * box holds the port. The passable radius reaches from the port out past the
+   * body's nearest edge and its margin, plus one grid step — enough to step
+   * clear of the body, and no more.
+   */
+  private zonesFor(point: Point, gridPoint: Point): EndpointZone[] {
+    const margin = this.options.obstacleMargin;
+    const { gridSize } = this.options;
+    const zones: EndpointZone[] = [];
+    const probe = { x: Math.min(point.x, gridPoint.x) - margin, y: Math.min(point.y, gridPoint.y) - margin };
+    const candidates = this.obstacleMap.queryRegion({
+      x: probe.x,
+      y: probe.y,
+      width: Math.abs(point.x - gridPoint.x) + margin * 2,
+      height: Math.abs(point.y - gridPoint.y) + margin * 2,
+    });
+    for (const o of candidates) {
+      const holds = (p: Point) =>
+        p.x >= o.x - margin && p.x <= o.x + o.width + margin &&
+        p.y >= o.y - margin && p.y <= o.y + o.height + margin;
+      if (!holds(point) && !holds(gridPoint)) continue;
+      // How deep inside the body the (snapped) port is; 0 when on or outside it.
+      const depth = (p: Point) => Math.max(0, Math.min(
+        p.x - o.x, o.x + o.width - p.x, p.y - o.y, o.y + o.height - p.y));
+      zones.push({
+        obstacleId: o.id,
+        anchor: gridPoint,
+        radius: Math.max(depth(point), depth(gridPoint)) + margin + gridSize,
+      });
+    }
+    return zones;
   }
 
   /**
@@ -333,6 +408,9 @@ export class AStarRouter {
     });
 
     for (const obstacle of obstacles) {
+      // An end node does not block the search near its own port.
+      if (this.endpointZones.length > 0 && this.inEndpointZone(point, obstacle.id)) continue;
+
       // Check if point is within obstacle bounds + margin
       if (
         point.x >= obstacle.x - margin &&
@@ -344,6 +422,18 @@ export class AStarRouter {
       }
     }
 
+    return false;
+  }
+
+  private inEndpointZone(point: Point, obstacleId: string): boolean {
+    for (const z of this.endpointZones) {
+      if (
+        z.obstacleId === obstacleId &&
+        Math.max(Math.abs(point.x - z.anchor.x), Math.abs(point.y - z.anchor.y)) <= z.radius
+      ) {
+        return true;
+      }
+    }
     return false;
   }
 

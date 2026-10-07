@@ -50,7 +50,7 @@ export interface WhiteboardHost {
    */
   batch?: (fn: () => void) => void;
   /**
-   * wave13/stroke-edit: the command manager, when the host has one. `DiagramInstance`
+   * The command manager, when the host has one. `DiagramInstance`
    * already exposes exactly this signature, so an embed keeps handing the instance over
    * unchanged. The EDIT tool commits its translate through `engine.commandManager` so the
    * gesture is Ctrl-Z-able; without an engine it falls back to a plain `setPoints` commit

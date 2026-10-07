@@ -85,6 +85,21 @@ export const BASE_STYLE_RULES: readonly StyleRule[] = [
       'stroke-width': themeVar('node.selected.strokeWidth'),
     },
   },
+  // `style.selection`: a node whose selection is its BORDER keeps the base fill;
+  // one whose selection is the RING keeps its whole body. Added specificity, not
+  // a rewritten `.selected`, so a host's own `.selected` rule still works.
+  {
+    selector: '.diagram-node.selected.selected-border',
+    decls: { fill: themeVar('node.fill') },
+  },
+  {
+    selector: '.diagram-node.selected.selected-ring',
+    decls: {
+      fill: themeVar('node.fill'),
+      stroke: themeVar('node.stroke'),
+      'stroke-width': themeVar('node.strokeWidth'),
+    },
+  },
 
   // ---- Links -------------------------------------------------------------
   {
@@ -123,6 +138,12 @@ export const BASE_STYLE_RULES: readonly StyleRule[] = [
       fill: themeVar('label.color'),
     },
   },
+  // A node's subtitle and a line's label speak in the theme's face too. With no
+  // rule they inherited the HOST PAGE's font — serif on a page that set none —
+  // beside a sans-serif name. Their own family (a `'mono'` subtitle, a label's
+  // `fontFamily`) rides an inline style, which beats these.
+  { selector: '.diagram-sublabel', decls: { 'font-family': themeVar('label.fontFamily') } },
+  { selector: '.link-label-text', decls: { 'font-family': themeVar('label.fontFamily') } },
 
   // ---- Ports -------------------------------------------------------------
   {
@@ -166,11 +187,20 @@ export const BASE_STYLE_RULES: readonly StyleRule[] = [
 ];
 
 /**
+ * Drop CSS comments from what ships. The comments below are for maintainers; the
+ * stylesheet is also inlined into exported and server-rendered SVG, where a `<` in
+ * a comment opens a tag and the browser swallows every rule after it.
+ */
+function stripCssComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
  * Structural rules: cursors, transitions, hit-target sizes. No theme values, so
  * they are emitted verbatim (and unscoped, exactly as before) — `@keyframes`
  * cannot be scoped anyway.
  */
-const STATIC_CSS = `
+const STATIC_CSS = stripCssComments(`
 /* The diagram root is keyboard-focusable (tabindex=0, the a11y entry point),
    and every node/link group carries tabindex=-1 for programmatic keyboard
    navigation — which ALSO makes them mouse-focusable, so a click on a link's
@@ -268,7 +298,7 @@ svg.grafloria-diagram text {
   pointer-events: none;
   transition: opacity 0.2s ease;
 }
-`.trim();
+`);
 
 /** `[data-grafloria-instance="grafloria-3"]` — selects one diagram's root (and scoped hosts). */
 export function instanceScopeSelector(instanceId: string): string {

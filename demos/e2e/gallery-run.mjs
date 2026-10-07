@@ -42,7 +42,16 @@ function demoPages(dir = root, out = []) {
   return out;
 }
 
-const filter = process.argv[2];
+// `--origin <url>` runs the SAME gate against a deployed copy of the gallery:
+//   node demos/e2e/gallery-run.mjs --origin https://grafloria.com/demos
+// Every gate here served the LOCAL tree, so a file the host refuses to serve was
+// invisible: GitHub Pages' Jekyll dropped `layout/_layout-lib.js` (a leading
+// underscore) and seven layout demos were blank on the live site for two months
+// with the gate green. The pages are still listed from the local tree.
+const argv = process.argv.slice(2);
+const originIdx = argv.indexOf('--origin');
+const liveOrigin = originIdx >= 0 ? String(argv[originIdx + 1] ?? '').replace(/\/$/, '') : null;
+const filter = argv.find((a, i) => !a.startsWith('--') && (originIdx < 0 || i !== originIdx + 1));
 const pages = demoPages().filter((p) => !filter || relative(root, p).startsWith(filter));
 
 if (pages.length === 0) {
@@ -73,8 +82,9 @@ const server = createServer((req, res) => {
     res.writeHead(404).end('not found');
   }
 });
-await new Promise((r) => server.listen(0, '127.0.0.1', r));
-const origin = `http://127.0.0.1:${server.address().port}`;
+if (!liveOrigin) await new Promise((r) => server.listen(0, '127.0.0.1', r));
+const origin = liveOrigin ?? `http://127.0.0.1:${server.address().port}`;
+if (liveOrigin) console.log(`gallery against ${liveOrigin}\n`);
 
 const browser = await chromium.launch();
 const results = [];
@@ -87,6 +97,12 @@ for (const page of pages) {
   tab.on('pageerror', (e) => pageErrors.push(String(e)));
   tab.on('console', (m) => {
     if (m.type() === 'error') pageErrors.push(`console: ${m.text()}`);
+  });
+  // A file the page asks for and the server does not have — named, because
+  // "Failed to load resource" alone does not say which.
+  const missing = [];
+  tab.on('response', (r) => {
+    if (r.status() >= 400) missing.push(`${r.status()} ${r.url().replace(origin, '')}`);
   });
 
   let result = { rel, ok: false, failures: [], pageErrors, reactflow: null, pro: false };
@@ -127,6 +143,10 @@ for (const page of pages) {
   } catch (e) {
     result.failures = [`harness: ${e.message}`];
   }
+  if (missing.length) {
+    result.ok = false;
+    result.failures.push(...missing.map((m) => `the server does not serve a file this page needs: ${m}`));
+  }
 
   await tab.close();
   results.push(result);
@@ -138,7 +158,7 @@ for (const page of pages) {
 }
 
 await browser.close();
-server.close();
+if (!liveOrigin) server.close();
 
 const failed = results.filter((r) => !r.ok);
 

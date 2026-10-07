@@ -1,6 +1,14 @@
 <meta charset="utf-8">
 <title>Drag & drop from a palette — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Drag a node type from a palette and drop it on the canvas. It is created at the drop point in WORLD space, and a second drop makes a second, independent node.">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/drag-and-drop.html">
+<meta property="og:title" content="Drag &amp; drop from a palette — Grafloria">
+<meta property="og:description" content="Drag a node type from a palette and drop it on the canvas. It is created at the drop point in WORLD space, and a second drop makes a second, independent node.">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/drag-and-drop.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/drag-and-drop.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/drag-and-drop.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #wrap { display: grid; grid-template-columns: 160px 1fr; height: calc(100vh - 120px); }
   #palette { border-right: 1px solid rgba(127,127,127,.25); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
@@ -19,7 +27,7 @@
 </div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // Drag a chip out of the palette and drop it on the canvas: a node is created AT
 // THE DROP POINT, in world coordinates (so it lands where the cursor is even after
@@ -113,6 +121,15 @@ defineDemo({
     const n2Before = { x: n2.position.x, y: n2.position.y };
     model.getNode(n1.id).setPosition(0, 0);
     check(n2.position.x === n2Before.x && n2.position.y === n2Before.y, 'moving the first node moved the second — they are not independent');
+  },
+
+  // The card's picture: four palette items dropped onto the canvas.
+  async showcase(ctx) {
+    const r = ctx.host.getBoundingClientRect();
+    for (const [kind, x, y] of [['source', 200, 150], ['filter', 420, 150], ['transform', 640, 150], ['sink', 420, 300]]) {
+      await ctx.dropAt(kind, r.left + x, r.top + y);
+    }
+    await ctx.tick();
   },
 });
 </script>

@@ -1,0 +1,207 @@
+<meta charset="utf-8">
+<title>Architecture layout — Grafloria</title>
+<meta name="description" content="The look of an AI-drawn architecture diagram — zones on a grid, boxes sized to their words in rows, straight lines, bends in the gutters — from Mermaid with no coordinates in it.">
+<link rel="canonical" href="https://grafloria.com/demos/diagrams/architecture-layout.html">
+<meta property="og:title" content="Architecture layout — Grafloria">
+<meta property="og:description" content="The look of an AI-drawn architecture diagram from Mermaid with no coordinates in it.">
+<meta property="og:url" content="https://grafloria.com/demos/diagrams/architecture-layout.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/diagrams/architecture-layout.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/diagrams/architecture-layout.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  #al-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--gf-line, #e5e7eb); background: #fff; font: 500 12.5px ui-sans-serif, system-ui, sans-serif; color: var(--gf-ink, #111827); }
+  #al-bar .seg { display: inline-flex; border: 1px solid var(--gf-line, #e5e7eb); border-radius: 7px; overflow: hidden; }
+  #al-bar .seg button { border: 0; background: none; padding: 4px 11px; cursor: pointer; white-space: nowrap; font: 600 12px ui-sans-serif, system-ui, sans-serif; color: var(--gf-mut, #6b7280); }
+  #al-bar .seg button + button { border-left: 1px solid var(--gf-line, #e5e7eb); }
+  #al-bar .seg button.on { background: var(--gf-ink, #111827); color: #fff; }
+  #al-bar .seg button:focus-visible { outline: 2px solid var(--gf-accent, #2563eb); outline-offset: 2px; }
+  #al-note { color: var(--gf-mut, #6b7280); }
+  #al-note.err { color: #b42318; }
+  #canvas { height: 540px; background: #fff; }
+  /* The source box: the gallery's editor mounts in it (Mermaid colouring); the
+     textarea is the fallback and stays the value the page reads. */
+  #al-src-box { height: 420px; border-top: 1px solid var(--gf-line, #e5e7eb); background: #f8fafc; }
+  #al-src { display: block; box-sizing: border-box; width: 100%; height: 100%; margin: 0; padding: 14px 18px; border: 0; background: #f8fafc; color: #1f2937; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; overflow: auto; resize: vertical; tab-size: 2; }
+  #al-src:focus-visible { outline: 2px solid var(--gf-accent, #2563eb); outline-offset: -2px; }
+</style>
+<header id="demo-head"></header>
+<div id="al-bar">
+  <span>Layout</span>
+  <span class="seg" id="al-layout" role="group" aria-label="Layout">
+    <button type="button" data-layout="architecture" class="on" aria-pressed="true">architecture</button>
+    <button type="button" data-layout="layered" aria-pressed="false">layered (for comparison)</button>
+  </span>
+  <span id="al-note" role="status">The Mermaid below has no coordinates. Edit it — the drawing follows.</span>
+</div>
+<div id="canvas"></div>
+<label for="al-src" class="visually-hidden" style="position:absolute;left:-9999px">Grafloria Mermaid source</label>
+<div id="al-src-box"><textarea id="al-src" spellcheck="false" aria-label="Grafloria Mermaid source">flowchart LR
+  %%grafloria:layout architecture
+  customer[&quot;&lt;b&gt;Customer&lt;/b&gt;&lt;br/&gt;phone or browser&quot;]
+  subgraph hp[&quot;HEALTHPAY&#x27;S SIDE · CARDS ARE TYPED HERE&quot;]
+    direction LR
+    page[&quot;&lt;b&gt;HealthPay payment page&lt;/b&gt;&lt;br/&gt;the card is typed here&quot;]
+    wallets[&quot;&lt;b&gt;HealthPay wallets&lt;/b&gt;&lt;br/&gt;hold the customer&#x27;s money&quot;]
+  end
+  subgraph ours[&quot;OUR SIDE · MUST NEVER SEE A CARD&quot;]
+    direction LR
+    api[&quot;&lt;b&gt;Our API&lt;/b&gt;&lt;br/&gt;&lt;code&gt;sherkety-erp-api&lt;/code&gt;&quot;]
+    db[&quot;&lt;b&gt;Our database&lt;/b&gt;&lt;br/&gt;keys, ledger, bank numbers&quot;]
+  end
+  fake[&quot;&lt;b&gt;Fake card page&lt;/b&gt;&lt;br/&gt;not HealthPay&#x27;s&quot;]:::bad
+  note@{ shape: text, label: &quot;if someone swaps the link, the customer lands here (M1)&quot; }
+  customer --&gt;|card number and CVV| page
+  page --&gt;|adds money| wallets
+  api --&gt;|asks HealthPay to move money| wallets
+  api --&gt;|saves keys| db
+  api --&gt;|sends the payment link| customer
+  customer -.-&gt;|&quot;card typed as a&lt;br/&gt;#quot;bank account#quot; (H1)&quot;| api
+  customer -.-&gt; fake
+  classDef box fill:#ffffff,stroke:#d0d5dd,shadow:none,rx:4,font-size:13px
+  classDef bad fill:#fdecec,stroke:#e5a0a0,shadow:none,rx:4,font-size:13px
+  class customer,page,wallets,api,db box
+  style note color:#cf222e,font-weight:bold,font-size:11px
+  style hp fill:#e9f2f3,stroke:#7aabb3,stroke-dasharray:5 4,color:#2a7a86,font-weight:bold,letter-spacing:1px
+  style ours fill:#f3f4f6,stroke:#d7dbe0,color:#4b5563,font-weight:bold,letter-spacing:1px
+  linkStyle default interpolate stepBefore
+  linkStyle 0 stroke:#1a7f37,color:#1a7f37,font-weight:bold,font-size:11px,stroke-width:1.5px
+  linkStyle 1,2,3,4 stroke:#6b7785,color:#5f6b7a,font-size:11px,stroke-width:1.5px
+  linkStyle 5,6 stroke:#cf222e,color:#cf222e,font-weight:bold,font-size:11px,stroke-width:1.5px
+  %%grafloria:group ours caption:bottom-left
+  %%grafloria:edge * * label:above
+  %%grafloria:edge customer api label:below
+  %%grafloria:edge api wallets from:top, to:bottom
+  %%grafloria:edge customer fake from:bottom, to:top
+  %%grafloria:near note fake right
+</textarea></div>
+<script type="module">
+import { render, importDiagramText } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { mountCodeEditor } from '../shell/code-editor.js';
+
+const srcEl = document.getElementById('al-src');
+const note = document.getElementById('al-note');
+const seg = document.getElementById('al-layout');
+const NOTE = note.textContent;
+
+defineDemo({
+  name: 'Architecture layout',
+  blurb: 'The look of an AI-drawn architecture diagram — zones as regions, boxes sized to their words in rows, straight lines where boxes line up, bends in the gutters, a note beside what it warns about — from Grafloria Mermaid with no coordinates in it.',
+  howTo: [
+    'The text under the drawing is Grafloria Mermaid with no position, size, pixel anchor or bend in it — only structure (who is in which zone, who talks to whom) and relations: from:top says the wallets sit above Our API, near says where the note goes. %%grafloria:layout architecture asks for the composition.',
+    'Switch Layout to "layered" to see the same text through a graph layout: correct, but zones packed over their captions, lines U-turning, labels piling up. Switch back.',
+    'Edit the text: add a box to a zone (inside its subgraph), a new line, change a label. The drawing re-composes as you type — boxes stay sized to their words and lines stay straight where boxes line up.',
+    'Drag a box or a zone: lines stay attached and turn corners; the zone carries its boxes.',
+  ],
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: [], edges: [] }, ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+    const api = ctx.instance;
+    api.getEngine().setInteractionConfig({ portVisibility: 'hidden' });
+    ctx.layout = 'architecture';
+    ctx.draw = async (which = ctx.layout) => {
+      const text = srcEl.value;
+      let d;
+      try {
+        const body = which === 'architecture' ? text : text.replace(/^\s*%%grafloria:layout\s+architecture\s*$/m, '');
+        d = importDiagramText(body).diagram;
+      } catch (e) {
+        note.textContent = `That text does not parse yet (${e && e.message ? e.message : e}) — the last drawing stays.`;
+        note.classList.add('err');
+        return false;
+      }
+      note.textContent = NOTE;
+      note.classList.remove('err');
+      // Clear first: a live model with an id already on the canvas would be kept, not replaced.
+      api.setEdges([]); api.setGroups([]); api.setNodes([]);
+      api.setNodes(d.getNodes()); api.setGroups(d.getGroups()); api.setEdges(d.getLinks());
+      if (which === 'layered') await api.getEngine().layout('layered', { direction: 'LR' });
+      api.renderNow();
+      api.fitView(28);
+      api.renderNow();
+      ctx.layout = which;
+      for (const b of seg.querySelectorAll('button')) {
+        const on = b.getAttribute('data-layout') === which;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
+      }
+      return true;
+    };
+    seg.onclick = (e) => { const v = e.target.closest('button')?.getAttribute('data-layout'); if (v) ctx.draw(v); };
+    let timer = 0;
+    srcEl.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => ctx.draw(), 300); });
+    await ctx.draw('architecture');
+    // Mermaid colouring over the textarea; its keystrokes arrive as the input
+    // events the redraw above listens for.
+    void mountCodeEditor(srcEl, { language: 'mermaid' });
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = () => ctx.instance.getModel();
+    const R = (id) => {
+      const n = m().getNode(id);
+      if (n) return { x: n.position.x, y: n.position.y, w: n.size.width, h: n.size.height };
+      const b = m().getGroup(id).getOuterBounds();
+      return { x: b.x, y: b.y, w: b.width, h: b.height };
+    };
+    const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const anchorY = (l, end) => {
+      const id = end === 'source' ? l.sourceNodeId : l.targetNodeId;
+      const handle = ((end === 'source' ? l.sourcePortId : l.targetPortId) ?? '').split('__')[1] ?? '';
+      const px = /^(left|right)@(-?\d+)$/.exec(handle);
+      return px ? R(id).y + Number(px[2]) : NaN;
+    };
+    const link = (s, t) => m().getLinks().find((l) => l.sourceNodeId === s && l.targetNodeId === t);
+    const clean = (tag) => {
+      const ids = m().getNodes().map((n) => n.id);
+      for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+        check(!overlaps(R(ids[i]), R(ids[j])), `${tag} "${ids[i]}" and "${ids[j]}" must not overlap`);
+      }
+    };
+
+    // 1. the composition, from text with no coordinates in it
+    await ctx.draw('architecture');
+    check(!/%%grafloria:at\b|via:|@\d/.test(srcEl.value), 'the source must carry no coordinates');
+    const hp = R('hp'), ours = R('ours');
+    check(hp.y + hp.h < ours.y && Math.abs(hp.x - ours.x) < 1, 'the HealthPay zone must stack above ours, same left edge');
+    check(R('page').y - hp.y >= 36, "HealthPay's caption must keep its band above the boxes");
+    check(ours.y + ours.h - (R('api').y + R('api').h) >= 36, "ours must keep its caption band at the bottom");
+    check(R('customer').x + R('customer').w < hp.x, 'the customer must stand left of the zones');
+    check(Math.abs(R('page').x - R('api').x) < 1, 'the payment page must sit over Our API');
+    for (const [s, t] of [['customer', 'page'], ['api', 'customer'], ['customer', 'api'], ['page', 'wallets'], ['api', 'db']]) {
+      const l = link(s, t);
+      check(l && Math.round(anchorY(l, 'source')) === Math.round(anchorY(l, 'target')), `the line ${s} → ${t} must run straight`);
+    }
+    check(R('note').x >= R('fake').x + R('fake').w, 'the note must sit to the right of the fake page');
+    clean('[architecture]');
+
+    // 2. edit the text: a new box joins our zone — the drawing re-composes
+    const before = srcEl.value;
+    srcEl.value = before.replace('    db["<b>Our database</b><br/>keys, ledger, bank numbers"]', '    db["<b>Our database</b><br/>keys, ledger, bank numbers"]\n    audit["<b>Audit log</b><br/>append only"]').replace('  api -->|saves keys| db', '  api -->|saves keys| db\n  db -->|writes| audit');
+    srcEl.dispatchEvent(new Event('input'));
+    for (let i = 0; i < 40 && !m().getNode('audit'); i++) await ctx.tick(20);
+    check(!!m().getNode('audit'), 'an edit must re-draw the diagram');
+    check(m().getGroup('ours').members.has('audit'), 'the new box must join its zone');
+    check(R('audit').x > R('db').x + R('db').w && Math.abs(R('audit').y - R('db').y) < 1, 'the new box must extend the row to the right');
+    check(R('audit').x + R('audit').w <= R('ours').x + R('ours').w, 'the zone must grow around the new box');
+    clean('[after an edit]');
+    srcEl.value = before;
+    await ctx.draw('architecture');
+
+    // 3. the same text through a graph layout, for comparison — then back
+    await ctx.draw('layered');
+    check(ctx.layout === 'layered' && m().getNodes().length === 7, 'layered must draw the same boxes');
+    await ctx.draw('architecture');
+    check(R('hp').y + R('hp').h < R('ours').y, 'switching back must restore the composition');
+  },
+
+  // The comparison frame: the same text, through a graph layout.
+  async showcase(ctx) {
+    await ctx.draw('layered');
+    await ctx.tick();
+  },
+});
+</script>

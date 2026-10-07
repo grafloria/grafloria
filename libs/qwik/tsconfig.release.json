@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.lib.json",
+  "compilerOptions": {
+    "declaration": true,
+    // The JavaScript comes from the Qwik optimizer (vite.config.lib.mts); tsc only
+    // writes the declarations.
+    "emitDeclarationOnly": true,
+    "noEmitOnError": false,
+    "module": "es2020",
+    // OUT of the tree. This program pulls in engine/renderer/element SOURCES — their
+    // `.ts` sit beside their built `.d.ts`, and TypeScript prefers the `.ts` — so with
+    // the package as rootDir/outDir it reported TS6059 and wrote their files back
+    // IN PLACE, clobbering the siblings' fixed builds (the bug that shipped broken
+    // packages twice). Here everything lands under dist/, and build-release.mjs
+    // copies back only this package's own declarations.
+    "rootDir": "..",
+    "outDir": "../../dist/qwik-types"
+  }
+}

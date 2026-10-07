@@ -13,6 +13,7 @@
 // the affected groups' derived bounds. `translateOnReparent` is the single seam
 // where a relative-coordinate model would translate; here it is the identity.
 
+import { areSiblingLanes } from './confinement';
 import type { Point } from '../types/geometry.types';
 import type { DiagramModel } from '../models/DiagramModel';
 import type { GroupModel } from '../models/GroupModel';
@@ -55,7 +56,7 @@ export interface DropResult {
   fromGroupId?: string;
   /** Group the node joined (undefined when dropped outside all groups). */
   toGroupId?: string;
-  /** Commands dispatched, in order (empty when nothing changed). */
+  /** The membership commands, in order (empty when nothing changes). */
   commands: Command[];
   /** Whether membership actually changed. */
   changed: boolean;
@@ -177,12 +178,14 @@ export class GroupMembershipService {
   }
 
   /**
-   * Handle a node drag-end at `point`: re-parent the node into the group under
-   * the cursor, or unembed it when dropped outside every group. No-op when the
-   * node is already in the target group. Rejected (no change) when the target
-   * group's validation/cycle rules veto the node.
+   * Decide what a drop at `point` does to what contains `nodeId` — WITHOUT doing
+   * it: the commands that leave the current group and/or join the one under the
+   * point, in order. A host that records the drop as ONE undo step folds them
+   * into the move's own command, runs it, then calls {@link finishDrop}. No
+   * commands when the node stays where it is or the drop is vetoed (`rejected`:
+   * a confining group, or the target's validation/cycle rules).
    */
-  async handleNodeDragEnd(nodeId: string, point: Point): Promise<DropResult> {
+  planNodeDrop(nodeId: string, point: Point): DropResult {
     const result: DropResult = {
       nodeId,
       commands: [],
@@ -191,10 +194,7 @@ export class GroupMembershipService {
     };
 
     const node = this.diagram.getNode(nodeId);
-    if (!node) {
-      this.clearHover();
-      return result;
-    }
+    if (!node) return result;
 
     const currentGroup = this.getContainingGroup(nodeId);
     const target = this.hitTestGroup(point);
@@ -203,42 +203,64 @@ export class GroupMembershipService {
     result.toGroupId = target?.id;
 
     // Dropped back into the same group (or stayed ungrouped): nothing to do.
-    if ((target?.id ?? undefined) === (currentGroup?.id ?? undefined)) {
-      this.clearHover();
+    if ((target?.id ?? undefined) === (currentGroup?.id ?? undefined)) return result;
+
+    // A group that CONFINES its children cannot be left by a drop: its extent
+    // reels the member back in ("you cannot leave"), so leaving is vetoed here
+    // rather than detaching what the clamp is about to keep. The one way out is
+    // into a SIBLING LANE of the same pool — a lane confines to its pool's lane
+    // area, and moving between lanes is the point of having them.
+    if (
+      currentGroup &&
+      currentGroup.constrainChildren === true &&
+      !areSiblingLanes(this.diagram, currentGroup, target)
+    ) {
+      result.rejected = true;
       return result;
     }
 
-    // Validate the destination before mutating anything.
+    // Validate the destination before planning anything.
     if (target && !target.canAddMember(nodeId, this.diagram)) {
       result.rejected = true;
-      this.clearHover();
       return result;
     }
 
     // Leave the current group first so undo replays cleanly.
-    if (currentGroup) {
-      const remove = new RemoveFromGroupCommand(currentGroup.id, nodeId);
-      await this.dispatch(remove);
-      result.commands.push(remove);
-    }
-
+    if (currentGroup) result.commands.push(new RemoveFromGroupCommand(currentGroup.id, nodeId));
     // Join the target group (if any), translating coordinates on reparent.
     if (target) {
       this.translateOnReparent(node, currentGroup, target);
-      const add = new AddToGroupCommand(target.id, nodeId);
-      await this.dispatch(add);
-      result.commands.push(add);
-      target.calculateBounds(this.diagram);
-    }
-
-    // Refresh the source group's derived bounds now that it lost a member.
-    if (currentGroup) {
-      currentGroup.calculateBounds(this.diagram);
+      result.commands.push(new AddToGroupCommand(target.id, nodeId));
     }
 
     result.changed = result.commands.length > 0;
-    this.clearHover();
     return result;
+  }
+
+  /**
+   * After a planned drop's commands have run: refresh both groups' derived
+   * bounds (one gained a member, one lost one) and clear the hover highlight.
+   */
+  finishDrop(plan: DropResult): void {
+    if (plan.changed) {
+      if (plan.toGroupId) this.diagram.getGroup(plan.toGroupId)?.calculateBounds(this.diagram);
+      if (plan.fromGroupId) this.diagram.getGroup(plan.fromGroupId)?.calculateBounds(this.diagram);
+    }
+    this.clearHover();
+  }
+
+  /**
+   * Handle a node drag-end at `point`: re-parent the node into the group under
+   * the cursor, or unembed it when dropped outside every group. No-op when the
+   * node is already in the target group. Rejected (no change) when the target
+   * group's validation/cycle rules veto the node. Each command is dispatched on
+   * its own — see {@link planNodeDrop} to record the drop as one step instead.
+   */
+  async handleNodeDragEnd(nodeId: string, point: Point): Promise<DropResult> {
+    const plan = this.planNodeDrop(nodeId, point);
+    for (const command of plan.commands) await this.dispatch(command);
+    this.finishDrop(plan);
+    return plan;
   }
 
   /**
@@ -265,15 +287,22 @@ export class GroupMembershipService {
     }
   }
 
-  /** Resolve a group's screen rectangle for spatial indexing / hit-testing. */
+  /**
+   * Resolve a group's screen rectangle for spatial indexing / hit-testing.
+   *
+   * The PAINTED frame (explicit position + size) must win over the derived
+   * member `bounds`, exactly as GroupModel.getOuterBounds() orders them. This
+   * method used to prefer `bounds` — which handleNodeDragEnd overwrites with
+   * the tight member bbox after every membership change — so once anything was
+   * dragged in or out, the drop target silently shrank from the frame the user
+   * SEES to an invisible box around the remaining members, and drops in the
+   * frame's empty margin stopped adopting (visio audit, empirically
+   * reproduced: drag-out worked, the next drag-in near the frame edge did
+   * nothing).
+   */
   private groupRect(group: GroupModel): { x: number; y: number; width: number; height: number } {
-    if (group.bounds) {
-      return {
-        x: group.bounds.x,
-        y: group.bounds.y,
-        width: group.bounds.width,
-        height: group.bounds.height,
-      };
+    if (typeof group.getOuterBounds === 'function') {
+      return group.getOuterBounds();
     }
     if (group.size) {
       return {
@@ -281,6 +310,14 @@ export class GroupMembershipService {
         y: group.position.y,
         width: group.size.width,
         height: group.size.height,
+      };
+    }
+    if (group.bounds) {
+      return {
+        x: group.bounds.x,
+        y: group.bounds.y,
+        width: group.bounds.width,
+        height: group.bounds.height,
       };
     }
     return { x: group.position.x, y: group.position.y, width: 0, height: 0 };

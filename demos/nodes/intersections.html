@@ -1,16 +1,24 @@
 <meta charset="utf-8">
 <title>Intersections — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Drag a node and every node it overlaps lights up red, live — createDiagramApi(…).getIntersectingNodes on each move, with overlap vs full-containment…">
+<link rel="canonical" href="https://grafloria.com/demos/nodes/intersections.html">
+<meta property="og:title" content="Intersections — Grafloria">
+<meta property="og:description" content="Drag a node and every node it overlaps lights up red, live — createDiagramApi(…).getIntersectingNodes on each move, with overlap vs full-containment…">
+<meta property="og:url" content="https://grafloria.com/demos/nodes/intersections.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/nodes/intersections.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/nodes/intersections.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
-  #canvas { height: calc(100vh - 168px); }
+  #canvas { height: calc(100vh - 108px); }
 </style>
 <header id="demo-head"></header>
 <div id="readout">drag a node — the overlap set recomputes on every move</div>
 <div id="canvas"></div>
 <script type="module">
 import { render, createDiagramApi } from '../shell/grafloria.js';
-import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
 
 // React Flow's Intersections example: while you DRAG a node, every node it
 // overlaps lights up, live. Ours is served by the PUBLIC wrapper —

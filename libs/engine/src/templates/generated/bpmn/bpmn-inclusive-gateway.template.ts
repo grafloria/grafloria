@@ -36,12 +36,13 @@ export const bpmnInclusiveGatewayTemplate: NodeTemplate = {
       "maxHeight": 200
     },
     "shape": {
-      "type": "diamond",
-      "fill": "#F3E5F5",
-      "stroke": "#7B1FA2",
+      "type": "gateway-or",
+      "fill": "#FFFFFF",
+      "stroke": "#334155",
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"bpmn-inclusive-gateway-content\">\n          <div class=\"node-label\">{{data.label || 'Inclusive Gateway'}}</div>\n        </div>",

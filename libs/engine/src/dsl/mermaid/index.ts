@@ -52,3 +52,31 @@ export {
   type MermaidStateTransition,
   type StateKind,
 } from './MermaidState';
+
+export {
+  parseMermaidBlock,
+  blockModelToFlowchart,
+  applyBlockGrid,
+  generateBlockFromDiagram,
+  type MermaidBlockModel,
+  type BlockCell,
+  type BlockGridSpec,
+} from './MermaidBlock';
+
+export {
+  parseMermaidArchitecture,
+  architectureModelToFlowchart,
+  applyArchitectureModel,
+  generateArchitectureFromDiagram,
+  ARCHITECTURE_ICONS,
+  type MermaidArchitectureModel,
+  type MermaidArchGroup,
+  type MermaidArchService,
+  type MermaidArchJunction,
+  type MermaidArchEdge,
+  type ArchSide,
+} from './MermaidArchitecture';
+
+// The diagram-level keys the grammars write and read back — what a host loading text
+// INTO an existing model must carry across for the text to export as it came in.
+export { TEXT_GRAMMAR_METADATA_KEYS, adoptTextGrammarMetadata } from './text-metadata';

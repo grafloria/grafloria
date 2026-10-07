@@ -95,8 +95,12 @@ export const BUILT_IN_WIDGET_KINDS = ['kpi', 'line', 'bar', 'donut', 'funnel', '
  * Categorical default palette — readable on both light and dark cards. Per-mark
  * overrides win (`slices[].color`); everything else cycles this list.
  */
-const PALETTE = ['#3b52d9', '#0ea5e9', '#14b8a6', '#f59e0b', '#8b5cf6', '#64748b'];
-const colorAt = (i: number): string => PALETTE[((i % PALETTE.length) + PALETTE.length) % PALETTE.length];
+/* Every entry clears 3:1 against the light AND the dark card (WCAG 1.4.11,
+   non-text contrast): the sky, teal and amber of the first palette sat at
+   2.9, 2.5 and 2.2 against white and were replaced by their darker steps. */
+const PALETTE_SIZE = 6;
+/** The i-th palette token — the stylesheet resolves it per theme (`--axdb-c1…c6`). */
+const colorAt = (i: number): string => `var(--axdb-c${(((i % PALETTE_SIZE) + PALETTE_SIZE) % PALETTE_SIZE) + 1})`;
 
 // -- primitives ---------------------------------------------------------------
 
@@ -156,8 +160,84 @@ function empty(body: HTMLElement, note = 'no data'): void {
 const data = <T>(widget: DashboardWidgetSpec): Partial<T> =>
   (widget.data ?? {}) as Partial<T>;
 
-const legend = (items: Array<{ label: string; color: string }>, column = false): string =>
-  `<div class="axdb-lg${column ? ' axdb-lg--col' : ''}">` +
+/**
+ * The drawing box a chart should lay itself out in: the body it is painted
+ * into, less the legend's strip. A fixed 640×250 viewBox scaled to "meet" left
+ * a wide fluid tile with ~170 px of dead card either side; drawing to the
+ * body's own aspect fills it. Outside a layout (jsdom, a host not yet sized)
+ * the classic 640×250 stands in, and the size watcher below repaints once the
+ * real box exists.
+ */
+/**
+ * READABILITY TIERS, for a squeezed chart — a one-row line on a fit board, a
+ * 60-px row after a pull — whose y labels would pile onto each other or whose
+ * legend would take the whole body. The text set never changes with the box
+ * (a board reloaded at another size paints the same text), so the
+ * SVG carries a tier class and the stylesheet HIDES what does not fit:
+ * tier 1 drops the quarter ticks, tier 2 keeps only min and max, drops the x
+ * labels and the bar values; a legend on a body under 64 px is hidden and the
+ * chart takes the room. 0 = unmeasured (jsdom, a detached host): full tier.
+ */
+export function chartTier(bodyH: number, hasLegend: boolean): { tier: 0 | 1 | 2; legendShown: boolean } {
+  if (!bodyH) return { tier: 0, legendShown: hasLegend };
+  const legendShown = hasLegend && bodyH >= 64;
+  const h = bodyH - (legendShown ? 26 : 0);
+  return { tier: h < 60 ? 2 : h < 120 ? 1 : 0, legendShown };
+}
+
+export function chartBox(body: { clientWidth: number; clientHeight: number }, legend = false): { W: number; H: number } {
+  const w = body.clientWidth || 0;
+  const h = (body.clientHeight || 0) - (legend ? 26 : 0);
+  if (w < 60 || h < 40) return { W: 640, H: 250 };
+  return { W: Math.round(w), H: Math.round(h) };
+}
+
+const sizeWatchers = new WeakMap<HTMLElement, ResizeObserver>();
+
+/**
+ * Re-lay a chart out when the HOST's box changes (a fit-mode reflow, a
+ * resize, a narrower container) — coalesced to a frame, skipping sub-2-px
+ * jitter. `relayout` redraws ONLY the chart body: the card and anything an
+ * app painted onto it after `defaultWidgetRenderer` (a focus ring, a pin
+ * marker — the documented composition) are never touched. The first version
+ * re-ran the whole painter and wiped exactly those, which the save/load gate
+ * caught as a reloaded board reading differently from the original.
+ */
+function watchSize(host: HTMLElement, relayout: () => void): void {
+  if (typeof ResizeObserver === 'undefined') return;
+  sizeWatchers.get(host)?.disconnect();
+  let last = { w: host.clientWidth, h: host.clientHeight };
+  let frame = 0;
+  const ro = new ResizeObserver(() => {
+    const w = host.clientWidth;
+    const h = host.clientHeight;
+    if (Math.abs(w - last.w) < 2 && Math.abs(h - last.h) < 2) return;
+    last = { w, h };
+    if (frame) cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      if (host.isConnected) relayout();
+      else ro.disconnect();
+    });
+  });
+  ro.observe(host);
+  sizeWatchers.set(host, ro);
+}
+
+/**
+ * The chart's numbers as a visually-hidden table — what a screen reader gets
+ * instead of an svg it cannot read (WCAG 1.1.1). `role="img"` + aria-label on
+ * the svg names the chart; this carries the values.
+ */
+const srTable = (caption: string, columns: string[], rows: Array<Array<string | number>>): string =>
+  `<table class="axdb-sr"><caption>${esc(caption)}</caption><thead><tr>${columns
+    .map((c) => `<th scope="col">${esc(c)}</th>`)
+    .join('')}</tr></thead><tbody>${rows
+    .map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join('')}</tr>`)
+    .join('')}</tbody></table>`;
+
+const legend = (items: Array<{ label: string; color: string }>, column = false, off = false): string =>
+  `<div class="axdb-lg${column ? ' axdb-lg--col' : ''}${off ? ' axdb-lg--off' : ''}">` +
   items.map((i) => `<i><b style="background:${esc(i.color)}"></b>${esc(i.label)}</i>`).join('') +
   '</div>';
 
@@ -216,14 +296,23 @@ function normalizeSeries(raw: LineWidgetData['series']): LineSeries[] {
 
 /** `{ series, labels? }` — area under the first series, a line per series. */
 export const renderLineWidget: WidgetRenderer = (widget, host) => {
-  const d = data<LineWidgetData>(widget);
   const body = card(host, widget, titleOf(widget));
+  layoutLine(widget, body);
+  watchSize(host, () => layoutLine(widget, body));
+};
+
+/** The line chart's body, drawn to the body's current box. */
+function layoutLine(widget: DashboardWidgetSpec, body: HTMLElement): void {
+  const d = data<LineWidgetData>(widget);
   const series = normalizeSeries(d.series);
   if (!series.length) return empty(body);
 
-  const W = 640;
-  const H = 250;
-  const pad = { l: 34, r: 12, t: 12, b: 22 };
+  const named = series.filter((s) => s.name);
+  const { tier, legendShown } = chartTier(body.clientHeight || 0, named.length > 0);
+  body.classList.toggle('axdb-has-lg', legendShown);
+  const { W, H } = chartBox(body, legendShown);
+  // Tier 2 shows no x labels, so the band they lived in goes to the plot.
+  const pad = tier === 2 ? { l: 34, r: 12, t: 4, b: 6 } : { l: 34, r: 12, t: 12, b: 22 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
   const all = series.flatMap((s) => s.values);
@@ -236,22 +325,26 @@ export const renderLineWidget: WidgetRenderer = (widget, host) => {
   const grid = [0, 0.25, 0.5, 0.75, 1]
     .map((f) => {
       const y = pad.t + ih - f * ih;
+      const cls = f === 0.5 ? ' axdb-yt--h' : f === 0.25 || f === 0.75 ? ' axdb-yt--q' : '';
       return (
-        `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" ` +
+        `<line class="axdb-yl${cls.replace('yt', 'yl')}" x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" ` +
         `stroke="var(--axdb-grid)" stroke-width="1"></line>` +
-        `<text x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" ` +
+        `<text class="axdb-yt${cls}" x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" ` +
         `fill="var(--axdb-muted)">${esc(compact(min + f * (max - min)))}</text>`
       );
     })
     .join('');
 
   const labels = Array.isArray(d.labels) ? d.labels : [];
+  // The label SET must not depend on the box: a board reloaded at another size
+  // has to paint the same text as the original (the save/load gate's contract).
+  // Only the geometry follows the box.
   const every = labels.length > 8 ? 2 : 1;
   const ticks = labels
     .slice(0, count)
     .map((l, i) =>
       i % every === 0
-        ? `<text x="${xAt(i).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" ` +
+        ? `<text class="axdb-xt" x="${xAt(i).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" ` +
           `fill="var(--axdb-muted)">${esc(l)}</text>`
         : ''
     )
@@ -266,34 +359,58 @@ export const renderLineWidget: WidgetRenderer = (widget, host) => {
             `L${xAt(s.values.length - 1).toFixed(1)},${(pad.t + ih).toFixed(1)} Z" ` +
             `fill="${colorAt(si)}" fill-opacity="0.10"></path>`
           : '';
+      // A series with ONE point has nothing for a polyline to connect, so the
+      // plot rendered its axes and legend around an invisible chart — the
+      // classic day-one-of-data tile. A single value is still data: draw it as
+      // a dot. (Two or more points keep exactly the look they had.)
+      const dots =
+        s.values.length < 2
+          ? s.values
+              .map(
+                (v, i) =>
+                  `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(v).toFixed(1)}" r="3.5" ` +
+                  `fill="${colorAt(si)}"></circle>`
+              )
+              .join('')
+          : '';
       return (
         area +
         `<polyline points="${pts}" fill="none" stroke="${colorAt(si)}" stroke-width="${si === 0 ? 2.4 : 1.8}" ` +
-        `stroke-linejoin="round" stroke-linecap="round"></polyline>`
+        `stroke-linejoin="round" stroke-linecap="round"></polyline>` +
+        dots
       );
     })
     .join('');
 
-  const named = series.filter((s) => s.name);
-  if (named.length) body.classList.add('axdb-has-lg');
   body.innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
+    `<svg class="axdb-tier-${tier}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
     `aria-label="${esc(titleOf(widget))}">${grid}${ticks}${marks}</svg>` +
-    (named.length ? legend(series.map((s, i) => ({ label: String(s.name ?? ''), color: colorAt(i) }))) : '');
-};
+    (named.length ? legend(series.map((s, i) => ({ label: String(s.name ?? ''), color: colorAt(i) })), false, !legendShown) : '') +
+    srTable(
+      titleOf(widget),
+      ['', ...series.map((s, i) => String(s.name ?? `Series ${i + 1}`))],
+      Array.from({ length: count }, (_, i) => [labels[i] ?? String(i + 1), ...series.map((s) => s.values[i] ?? '')])
+    );
+}
 
 // -- bar ----------------------------------------------------------------------
 
 /** `{ bars: [{label, value}] }` — columns, value above, category below. */
 export const renderBarWidget: WidgetRenderer = (widget, host) => {
-  const d = data<BarWidgetData>(widget);
   const body = card(host, widget, titleOf(widget));
+  layoutBar(widget, body);
+  watchSize(host, () => layoutBar(widget, body));
+};
+
+/** The bar chart's body, drawn to the body's current box. */
+function layoutBar(widget: DashboardWidgetSpec, body: HTMLElement): void {
+  const d = data<BarWidgetData>(widget);
   const bars = (Array.isArray(d.bars) ? d.bars : []).filter((b) => !!b);
   if (!bars.length) return empty(body);
 
-  const W = 640;
-  const H = 250;
-  const pad = { l: 34, r: 12, t: 12, b: 26 };
+  const { tier } = chartTier(body.clientHeight || 0, false);
+  const { W, H } = chartBox(body);
+  const pad = tier === 2 ? { l: 34, r: 12, t: 4, b: 6 } : { l: 34, r: 12, t: 12, b: 26 };
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
   const max = niceMax(Math.max(...bars.map((b) => num(b.value))));
@@ -303,10 +420,11 @@ export const renderBarWidget: WidgetRenderer = (widget, host) => {
   const grid = [0, 0.5, 1]
     .map((f) => {
       const y = pad.t + ih - f * ih;
+      const cls = f === 0.5 ? ' axdb-yt--h' : '';
       return (
-        `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" ` +
+        `<line class="axdb-yl${cls.replace('yt', 'yl')}" x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" ` +
         `stroke="var(--axdb-grid)" stroke-width="1"></line>` +
-        `<text x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" ` +
+        `<text class="axdb-yt${cls}" x="${pad.l - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" ` +
         `fill="var(--axdb-muted)">${esc(compact(f * max))}</text>`
       );
     })
@@ -321,18 +439,19 @@ export const renderBarWidget: WidgetRenderer = (widget, host) => {
       return (
         `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" ` +
         `rx="4" fill="${colorAt(i)}"></rect>` +
-        `<text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" ` +
+        `<text class="axdb-vt" x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9.5" ` +
         `font-weight="600" fill="var(--axdb-ink)">${esc(compact(num(b.value)))}</text>` +
-        `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" ` +
+        `<text class="axdb-xt" x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" ` +
         `fill="var(--axdb-muted)">${esc(b.label ?? '')}</text>`
       );
     })
     .join('');
 
   body.innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
-    `aria-label="${esc(titleOf(widget))}">${grid}${marks}</svg>`;
-};
+    `<svg class="axdb-tier-${tier}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
+    `aria-label="${esc(titleOf(widget))}">${grid}${marks}</svg>` +
+    srTable(titleOf(widget), ['Category', 'Value'], bars.map((b) => [b.label ?? '', num(b.value)]));
+}
 
 // -- donut --------------------------------------------------------------------
 
@@ -384,43 +503,68 @@ export const renderDonutWidget: WidgetRenderer = (widget, host) => {
         color: s.color ?? colorAt(i),
       })),
       true
+    ) +
+    srTable(
+      titleOf(widget),
+      ['Slice', 'Value', 'Share'],
+      slices.map((s) => [s.label ?? '', num(s.value), `${Math.round((num(s.value) / total) * 100)}%`])
     );
 };
 
 // -- funnel -------------------------------------------------------------------
 
-/** `{ stages: [{label, value}] }` — centred bars scaled against the first stage. */
+/** `{ stages: [{label, value}] }` — centred bars scaled against the widest stage. */
 export const renderFunnelWidget: WidgetRenderer = (widget, host) => {
-  const d = data<FunnelWidgetData>(widget);
   const body = card(host, widget, titleOf(widget));
+  layoutFunnel(widget, body);
+  watchSize(host, () => layoutFunnel(widget, body));
+};
+
+/** Room an 11-px value needs, so the smallest stage's bar still holds its number. */
+const valueWidth = (text: string): number => text.length * 6.6 + 14;
+
+/**
+ * The funnel's body, drawn to the body's current box. The old fixed 260-wide
+ * viewBox scaled bars AND type with the tile: 24-px digits in a tall tile,
+ * "188" spilling out of a stage narrower than its own label. Here the type is
+ * fixed, bars share the height between a readable 18 px and a 40 px cap, the
+ * stack is centred, and a bar is never narrower than its value.
+ */
+function layoutFunnel(widget: DashboardWidgetSpec, body: HTMLElement): void {
+  const d = data<FunnelWidgetData>(widget);
   const stages = (Array.isArray(d.stages) ? d.stages : []).filter((s) => !!s);
   if (!stages.length) return empty(body);
 
-  const W = 260;
-  const rowH = 34;
-  const gap = 8;
-  const H = stages.length * (rowH + gap);
+  const { W, H } = chartBox(body);
+  const n = stages.length;
+  const gap = 6;
+  const rowH = Math.max(18, Math.min(40, (H - gap * (n - 1)) / n));
+  const top = Math.max(0, (H - (n * rowH + (n - 1) * gap)) / 2);
+  const labelCol = Math.min(120, Math.max(60, W * 0.28));
+  const track = Math.max(40, W - labelCol - 16);
   const max = Math.max(...stages.map((s) => num(s.value)), 1);
-  const track = W - 90;
 
   const marks = stages
     .map((s, i) => {
-      const w = Math.max(2, (num(s.value) / max) * track);
-      const x = (track - w) / 2 + 8;
-      const y = i * (rowH + gap);
+      const text = compact(num(s.value));
+      const w = Math.min(track, Math.max(valueWidth(text), (num(s.value) / max) * track));
+      const x = 8 + (track - w) / 2;
+      const y = top + i * (rowH + gap);
+      const mid = (y + rowH / 2 + 4).toFixed(1);
       return (
-        `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${rowH}" rx="6" fill="${colorAt(i)}"></rect>` +
-        `<text x="${(x + w / 2).toFixed(1)}" y="${y + rowH / 2 + 4}" text-anchor="middle" font-size="11" ` +
-        `font-weight="600" fill="#fff">${esc(compact(num(s.value)))}</text>` +
-        `<text x="${W - 78}" y="${y + rowH / 2 + 4}" font-size="10.5" fill="var(--axdb-muted)">${esc(s.label ?? '')}</text>`
+        `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${rowH.toFixed(1)}" rx="6" fill="${colorAt(i)}"></rect>` +
+        `<text x="${(x + w / 2).toFixed(1)}" y="${mid}" text-anchor="middle" font-size="11" ` +
+        `font-weight="600" fill="#fff">${esc(text)}</text>` +
+        `<text x="${8 + track + 8}" y="${mid}" font-size="10.5" fill="var(--axdb-muted)">${esc(s.label ?? '')}</text>`
       );
     })
     .join('');
 
   body.innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
-    `aria-label="${esc(titleOf(widget))}">${marks}</svg>`;
-};
+    `aria-label="${esc(titleOf(widget))}">${marks}</svg>` +
+    srTable(titleOf(widget), ['Stage', 'Value'], stages.map((s) => [s.label ?? '', num(s.value)]));
+}
 
 // -- table --------------------------------------------------------------------
 
@@ -448,6 +592,11 @@ export const renderTableWidget: WidgetRenderer = (widget, host) => {
     .join('');
 
   body.classList.add('axdb-scroll');
+  // A scrollable region must be reachable by keyboard (axe: scrollable-
+  // region-focusable) — it is a tab stop with the table's name.
+  body.setAttribute('tabindex', '0');
+  body.setAttribute('role', 'region');
+  body.setAttribute('aria-label', titleOf(widget));
   body.innerHTML = `<table class="axdb-table">${head}<tbody>${tbody}</tbody></table>`;
 };
 

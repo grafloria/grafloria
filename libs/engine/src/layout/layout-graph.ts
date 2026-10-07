@@ -56,7 +56,7 @@ export interface LayoutGraphNode {
   /** Container membership — the nested-layout card needs it; harmless otherwise. */
   parentId?: string;
   /**
-   * wave13: how `position` relates to the parent. Absent on pre-v3 payloads, which meant
+   * How `position` relates to the parent. Absent on pre-v3 payloads, which meant
    * summation — i.e. 'relative'; the consumer below applies exactly that default.
    */
   positionMode?: 'absolute' | 'relative' | 'layout';
@@ -81,11 +81,10 @@ export interface LayoutGraph {
 /**
  * Freeze a live graph into the wire format.
  *
- * Emits nodes and links in CANONICAL (id-sorted) order — the same discipline
- * Card 0 established in `fromAdapter`. Determinism needs both halves: a seeded
- * PRNG *and* a stable input order. Serialising in map-iteration order would
- * quietly reintroduce the divergence Card 0 just removed, because an authored
- * diagram and the same diagram loaded from JSON do not iterate alike.
+ * Emits nodes and links in CANONICAL (id-sorted) order, as `fromAdapter`
+ * does. Determinism needs both halves: a seeded PRNG *and* a stable input
+ * order. Map-iteration order would not do, because an authored diagram and
+ * the same diagram loaded from JSON do not iterate alike.
  */
 export function serializeGraph(nodes: NodeModel[], links: LinkModel[]): LayoutGraph {
   return {

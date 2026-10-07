@@ -75,6 +75,23 @@ export type ShapeType =
   | 'note'
   | 'terminal'
   | 'actor'
+  // Group B — notation silhouettes added with the stencil fidelity audit. Each
+  // is registered by the renderer (svg/notation-shapes.ts) through the public
+  // registerPathShape seam, so links attach to the real outline.
+  | 'delay'              // flowchart: half-round right cap
+  | 'display'            // flowchart: swept left edge, rounded right
+  | 'summing-junction'   // flowchart: circle crossed by its diagonals
+  | 'or-junction'        // flowchart: circle crossed by its axes
+  | 'sync-bar'           // UML activity: fork/join synchronisation bar
+  | 'double-rect'        // ERD (Chen): weak entity
+  | 'double-diamond'     // ERD (Chen): weak relationship
+  | 'double-ellipse'     // ERD (Chen): multivalued attribute
+  // Notation MARKER shapes — the glyph IS the identity (stencil master audit).
+  | 'gateway-xor'        // BPMN: diamond + ✕ (exclusive)
+  | 'gateway-or'         // BPMN: diamond + ◯ ring (inclusive)
+  | 'gateway-and'        // BPMN: diamond + ＋ (parallel)
+  | 'event-intermediate' // BPMN: double ring
+  | 'final-node'         // UML activity/state: bulls-eye (ring + solid dot)
   // common aliases
   | 'database'
   | 'stadium'
@@ -83,7 +100,7 @@ export type ShapeType =
   | 'folder';
 
 /**
- * Shape configuration for SVG node rendering (Phase 3.1)
+ * Shape configuration for SVG node rendering
  * Defines the geometric shape of the node in the SVG layer
  */
 export interface ShapeConfig {
@@ -191,7 +208,7 @@ export interface DragHandlerConfig {
  * Ports configuration
  */
 /**
- * Wave 6 (Card 3): one member of a named port group. It declares its id and
+ * One member of a named port group. It declares its id and
  * ONLY the fields that differ from the group — side, shape, label config,
  * gating and data type all inherit.
  */
@@ -222,7 +239,7 @@ export interface PortsConfig {
   enabled?: boolean;
   defaultVisibility?: PortVisibility;
   rendering?: PortRenderingConfig;
-  /** Wave 6 (Card 3). When present, the four side slots below are not consulted. */
+  /** When present, the four side slots below are not consulted. */
   groups?: PortGroupSpec[];
   top?: PortConfig;
   right?: PortConfig;
@@ -232,7 +249,7 @@ export interface PortsConfig {
 
 /**
  * HTML rendering configuration
- * Phase 3.4: Enhanced to support LemonadeJS templates for framework-agnostic rendering
+ * Enhanced to support LemonadeJS templates for framework-agnostic rendering
  */
 export interface HtmlConfig {
   /**
@@ -253,7 +270,7 @@ export interface HtmlConfig {
    * HTML string with LemonadeJS binding syntax
    * Example: '<div>{{data.name}}</div>'
    *
-   * Phase 3.4: Framework-agnostic HTML templates
+   * Framework-agnostic HTML templates
    */
   template?: string;
 
@@ -279,7 +296,7 @@ export interface HtmlConfig {
    * Maps DOM events to engine event names
    * Example: { click: 'node:clicked', input: 'node:valueChanged' }
    *
-   * Phase 3.4: Events are emitted through the engine's EventBus
+   * Events are emitted through the engine's EventBus
    * Handler signature: (nodeId: string, eventData: any) => void
    */
   events?: Record<string, string>;
@@ -330,11 +347,20 @@ export interface NodeStructureDefinition {
   };
 
   /**
-   * Shape configuration for SVG rendering (Phase 3.1)
+   * Shape configuration for SVG rendering
    * Defines the geometric shape of the node
    * If not specified, defaults to rectangle
    */
   shape?: ShapeConfig;
+
+  /**
+   * Where the node's caption paints. `'inside'` (default) centres it in the
+   * shape's inner rect; `'below'` paints it centred UNDER the silhouette — the
+   * Visio/BPMN convention for glyph-sized masters (event circles, gateway
+   * diamonds, connectors, fork/join bars) whose caption cannot fit inside.
+   * Carried to the node as `metadata.labelPlacement`; the renderer consumes it.
+   */
+  labelPlacement?: 'inside' | 'below';
 
   layout?: LayoutConfig;
 

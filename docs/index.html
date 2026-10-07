@@ -2,14 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="msvalidate.01" content="125A5292629F5E845ADA752B252D613D" />
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Grafloria — the framework-agnostic diagram engine</title>
-<meta name="description" content="Flow charts, dashboards, UML, ERD and real-time collaboration — one headless core with native Angular, React and Vue bindings. Open source, MIT.">
+<title>Grafloria — diagrams and dashboards, one engine</title>
+<meta name="description" content="Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React and Vue bindings, one document format and one undo stack. Grafloria Diagrams for flowcharts, workflow editors, UML and ER; Grafloria Dashboards for draggable, resizable widget layouts.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="favicon-32.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta property="og:title" content="Grafloria — the framework-agnostic diagram engine">
-<meta property="og:description" content="Flow charts, dashboards, UML, ERD and real-time collaboration — native in Angular, React and Vue. MIT.">
+<link rel="canonical" href="https://grafloria.com/">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"SoftwareApplication","name":"Grafloria","url":"https://grafloria.com/","description":"Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React and Vue bindings, one document format and one undo stack.","applicationCategory":"DeveloperApplication","operatingSystem":"Web","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"screenshot":"https://grafloria.com/og-image.png","softwareHelp":"https://grafloria.com/learn/","sameAs":["https://github.com/grafloria/grafloria","https://www.npmjs.com/org/grafloria"]},{"@type":"WebSite","url":"https://grafloria.com/","name":"Grafloria","publisher":{"@type":"Organization","name":"Grafloria","url":"https://grafloria.com/","logo":"https://grafloria.com/apple-touch-icon.png"}}]}</script>
+<meta property="og:title" content="Grafloria — diagrams and dashboards, one engine">
+<meta property="og:description" content="Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React and Vue bindings, one document format and one undo stack.">
 <meta property="og:url" content="https://grafloria.com">
 <meta property="og:image" content="https://grafloria.com/og-image.png">
 <meta property="og:image:width" content="1280">
@@ -48,6 +51,14 @@
 
   /* Hero — two columns: the pitch on the left, a LIVE Grafloria canvas on the right. */
   .hero { padding: 60px 0 20px; display: grid; grid-template-columns: 1fr 1.05fr; gap: 40px; align-items: center; }
+    .fw-band { margin-top: 16px; }
+  .fw-label { display: block; font-size: 11.5px; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--slate, #5A6478); margin-bottom: 8px; }
+  .fw-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .fw-row a { font-size: 13.5px; font-weight: 600; padding: 7px 14px; border-radius: 999px;
+    border: 1px solid #94A5F0; background: #fff; color: #3B52D9; text-decoration: none; }
+  .fw-row a span { opacity: .55; margin-left: 2px; }
+  .fw-row a:hover { background: #EEF1FE; text-decoration: none; }
   .hero .brandmark { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
   .hero .brandmark img { width: 40px; height: 40px; }
   .hero .brandmark span { font-weight: 700; font-size: 17px; letter-spacing: -0.3px; }
@@ -225,6 +236,12 @@
   footer .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   footer img { width: 22px; height: 22px; }
   footer .fam { margin-left: auto; }
+  .prod-band { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 18px 0 6px; }
+  .prod { display: block; border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 14px 16px; color: var(--ink); text-decoration: none; }
+  .prod:hover { border-color: var(--indigo-soft); text-decoration: none; }
+  .prod b { display: block; font-size: 16px; margin-bottom: 4px; }
+  .prod span { display: block; font-size: 13.5px; color: var(--slate); line-height: 1.45; }
+  .prod i { display: block; font-style: normal; font-weight: 600; font-size: 13.5px; color: var(--indigo); margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -234,11 +251,13 @@
     <img src="favicon.svg" alt="">
     <span class="name">grafloria</span>
     <nav class="links">
-      <a href="https://github.com/grafloria/grafloria">GitHub</a>
-      <a href="https://www.npmjs.com/org/grafloria">npm</a>
+      <a href="diagrams/">Diagrams</a>
+      <a href="dashboards/">Dashboards</a>
+      <a href="learn/">Learn</a>
       <a href="demos/">Demos</a>
-      <a href="compare/">Compare</a>
-      <a href="https://www.producthunt.com/products/grafloria" target="_blank" rel="noopener">Product Hunt</a>
+      <a href="blog/">Blog</a>
+      <a href="https://github.com/grafloria/grafloria" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/org/grafloria" target="_blank" rel="noopener">npm</a>
     </nav>
   </div>
 </header>
@@ -247,17 +266,31 @@
   <div class="wrap">
     <div class="hero">
       <div class="hero-copy">
-        <h1>Wire your ideas with <em>Grafloria</em></h1>
+        <h1>Diagrams and dashboards, <em>one engine</em></h1>
         <p class="lede">
-          The framework-agnostic diagram engine — flow charts, dashboards, UML, and real-time
-          collaboration. Native in Angular, React and Vue. Open source, MIT, no pro tier.
+          Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native
+          Angular, React and Vue bindings, one document format and one undo stack.
         </p>
+        <div class="prod-band" aria-label="Products">
+          <a class="prod" href="diagrams/"><b>Grafloria Diagrams</b><span>Flowcharts, workflow editors, UML and ER diagrams — routing, auto-layout, undo and collaboration built in.</span><i>The diagram library →</i></a>
+          <a class="prod" href="dashboards/"><b>Grafloria Dashboards</b><span>Draggable, resizable widgets on a grid or a splitter layout — undo, nesting and persistence built in.</span><i>The dashboard layout library →</i></a>
+        </div>
         <div class="cta">
           <a class="btn primary" href="demos/">Try the live demos</a>
           <a class="btn ghost" href="https://github.com/grafloria/grafloria">Star on GitHub</a>
         </div>
         <div class="install">
           <code>npm install <b>@grafloria/react</b>   <i># or angular · vue · element</i></code>
+        </div>
+        <!-- Developers search by framework — each chip is a dedicated landing page. -->
+        <div class="fw-band" aria-label="Framework guides">
+          <span class="fw-label">Guides for your stack</span>
+          <div class="fw-row">
+            <a href="react/">⚛ React &amp; Next.js <span>→</span></a>
+            <a href="angular/">🅰 Angular <span>→</span></a>
+            <a href="vue/">✳ Vue 3 <span>→</span></a>
+            <a href="javascript/">〈/〉 JavaScript <span>→</span></a>
+          </div>
         </div>
         <a class="ph-badge" href="https://www.producthunt.com/products/grafloria?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-grafloria" target="_blank" rel="noopener noreferrer">
           <img alt="Grafloria - The framework-agnostic diagram engine | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204715&amp;theme=light&amp;t=1784932924027">
@@ -306,8 +339,11 @@
           <span class="chip">Dashboards</span>
           <h3>Dashboards from pure data</h3>
           <p><b>Declare views as data; the kit packs the grid.</b> KPI cards, line, bar and donut
-            widgets tile a 12-column grid — drag to re-pack live, resize from a corner, undo any gesture.</p>
-          <p>Save and restore round-trips the whole board byte-for-byte.</p>
+            widgets tile a 12-column grid that is 100% of its container — fluid by default, fitted to the frame or growing with it,
+            packed on a grid or shared through splitters. Drag from anywhere, the caption or a grip; resize from any edge; undo any gesture,
+            or do all of it from the keyboard with every move announced.</p>
+          <p>Save and restore round-trips the whole board byte-for-byte — layouts, splitter trees and drag handle included. One flag, <code>static</code>, makes the same board read-only.</p>
+          <a class="go" href="demos/dashboard/fluid-board.html">Open the fluid dashboard →</a>
           <a class="go" href="demos/dashboard/dashboard-builder.html">Open the dashboard builder →</a>
         </div>
         <div class="story-stage">
@@ -348,6 +384,27 @@
         </div>
       </div>
 
+      <div class="connector" aria-hidden="true"><svg viewBox="0 0 84 96"><path class="wire" d="M42 6 C 24 34, 60 62, 42 90"/><path class="flow" d="M42 6 C 24 34, 60 62, 42 90"/><circle class="handle-ring" cx="42" cy="6" r="8"/><circle class="handle" cx="42" cy="6" r="4"/><circle class="handle-ring" cx="42" cy="90" r="8"/><circle class="handle" cx="42" cy="90" r="4"/></svg></div>
+
+      <div class="story">
+        <div class="story-text">
+          <span class="chip">Mermaid</span>
+          <h3>Your Mermaid, but you can grab it</h3>
+          <p><b>Paste Mermaid text and get a real diagram.</b> Not a picture of one — every
+            node on the right is live: drag it, connect it, re-route the edges, export it
+            to SVG or PDF.</p>
+          <p>Flowchart, ER, class and state parse today, validated against Mermaid v11 by a
+            28-case oracle; anything else fails safe and says so rather than drawing
+            something wrong.</p>
+          <a class="go" href="mermaid/">How Mermaid support works →</a>
+        </div>
+        <div class="story-stage">
+          <div class="story-canvas" data-demo="mermaid"><span class="live-badge"><span class="dot"></span>live</span><div class="skel">rendering…</div><div class="cv"></div></div>
+        </div>
+      </div>
+
+      </div>
+
       <p class="more"><a href="demos/">Browse all 100+ live demos →</a></p>
     </div>
   </section>
@@ -365,7 +422,7 @@
           <p>ELK, dagre, force, tree, grid, and a zero-config <code>auto</code> — one prop. ELK loads lazily, so you ship none of it until a layout runs.</p></div>
         <div class="card"><span class="chip">Dashboards</span>
           <h3>A drag-pack dashboard kit</h3>
-          <p>Declared as pure data: tabbed views, drag &amp; resize with live re-packing, undo, and built-in KPI, line, bar, donut, funnel and table widgets.</p></div>
+          <p>Declared as pure data: fluid tabbed views, grid or split layout, fit or grow sizing, drag by caption or grip with live re-packing, undo, keyboard operation with a live region, a static viewer mode, and built-in KPI, line, bar, donut, funnel and table widgets.</p></div>
         <div class="card"><span class="chip">Collab</span>
           <h3>Multiplayer in one prop</h3>
           <p>CRDT sync over any transport, live cursors, anchored comment threads with a conversation panel — serverless cross-tab or your own websocket.</p></div>
@@ -491,6 +548,15 @@
 </main>
 
 <footer>
+  <div class="wrap" style="display:flex;flex-wrap:wrap;gap:8px 20px;padding-bottom:18px;font-size:14px">
+    <a href="react/">React &amp; Next.js</a> ·
+    <a href="angular/">Angular</a> ·
+    <a href="vue/">Vue 3</a> ·
+    <a href="javascript/">JavaScript</a> ·
+    <a href="mermaid/">Mermaid</a> ·
+    <a href="compare/">Compare</a> ·
+    <a href="demos/">All demos</a>
+  </div>
   <div class="wrap row">
     <img src="favicon.svg" alt="">
     <span>© 2026 Grafloria · MIT License</span>
@@ -513,7 +579,32 @@
   });
 
   // Each demo's spec, built lazily from the bundle's kit helpers.
+  /** The Mermaid source shown in the story — parsed live, not pre-baked. */
+  const MERMAID_SRC = [
+    'flowchart LR',
+    '  A[Order received] --> B{In stock?}',
+    '  B --> C[Pick items]',
+    '  C --> D([Ship])',
+  ].join('\n');
+
+  /** A parsed DiagramModel → the {nodes, edges} spec render() takes. */
+  const modelToSpec = (d) => ({
+    nodes: d.getNodes().map((n) => ({
+      id: n.id, position: { ...n.position }, size: { ...n.size },
+      label: n.getLabel?.() ?? '',
+      ...(n.getMetadata?.('shape') ? { shape: n.getMetadata('shape') } : {}),
+    })),
+    edges: d.getLinks().map((l) => ({
+      id: l.id, source: l.sourceNodeId, target: l.targetNodeId,
+      label: l.labels?.[0]?.text ?? l.label ?? undefined,
+    })),
+  });
+
   const DEMOS = {
+    mermaid: (k) => {
+      const r = k.importDiagramText(MERMAID_SRC);
+      return r?.diagram ? modelToSpec(r.diagram) : { nodes: [], edges: [] };
+    },
     workflow: (k) => ({
       nodes: [
         N('trig', 30, 150, 'Webhook',      '#ecfdf5', '#059669', 'terminal'),
@@ -652,6 +743,20 @@
     frames.forEach(mount);
   }
 </script>
+
+
+<script>
+  // PAGE SCROLL WINS on landing pages. The canvas binder preventDefaults wheel
+  // (zoom) — correct in the tool pages, wrong under a reader's scrolling
+  // thumb: the page froze wherever the pointer crossed a diagram. Stop the
+  // wheel at capture phase so the binder never sees it (the browser then
+  // scrolls normally); drag-to-pan and every click still work. pan-y lets
+  // vertical TOUCH pans through for the same reason.
+  for (const el of document.querySelectorAll('#hero-canvas, .story-canvas')) {
+    el.addEventListener('wheel', (e) => e.stopPropagation(), { capture: true, passive: true });
+  }
+</script>
+<style>#hero-canvas, .story-canvas , #hero-canvas, .story-canvas * { touch-action: pan-y !important; }</style>
 
 </body>
 </html>

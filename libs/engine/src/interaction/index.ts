@@ -3,4 +3,5 @@
 export * from './GroupMembershipService';
 export * from './GroupCollapseService';
 export * from './SwimlaneService';
+export * from './confinement';
 export * from './SemanticMembershipService';

@@ -44,6 +44,15 @@ jobs:
       # per-platform (font rasterization differs), and the blessed set is
       # macOS. Blessing a Linux golden set in CI is tracked in ROADMAP.md.
       - run: node demos/e2e/gallery-run.mjs
+      # Every card in the gallery shows its demo: a thumbnail exists and it is not
+      # blank or a lone box on white (six cards were, and every one "loaded").
+      - run: node demos/e2e/thumbs-run.mjs
+      # The packaging covenant: what a consumer INSTALLS still works after their
+      # bundler has finished with it. Every other gate here tests source — which
+      # is why `sideEffects: false` was able to let three bundlers strip the
+      # renderer's shape registration, degrading 13 shape types to plain
+      # rectangles in every published build, with the whole suite green.
+      - run: node demos/e2e/packaging-run.mjs
       # The framework-variant covenant: each host app builds and every route
       # paints, or the claim "this demo runs in <framework>" must not ship.
       - run: npx nx build demos-angular
@@ -52,8 +61,40 @@ jobs:
       - run: node demos/e2e/variant-run.mjs react
       - run: node apps/demos-vue/build.mjs
       - run: node demos/e2e/variant-run.mjs vue
+      # The Qwik binding through a real Qwik build (its optimizer is what makes
+      # component$ and QRLs loadable), driven page by page in a browser —
+      # including server rendering and resume.
+      - run: node demos/e2e/qwik-run.mjs
+      # …and every gallery demo as a Qwik component, like React/Vue/Angular above.
+      - run: npx vite build --config apps/demos-qwik/vite.gallery.config.ts
+      - run: node demos/e2e/variant-run.mjs qwik
+      # Code text (Mermaid, SQL, XML) is coloured on the JS page and in all four apps.
+      - run: node demos/e2e/code-colour-run.mjs
       - run: node demos/e2e/interaction-run.mjs
+      - run: node demos/e2e/table-editing-run.mjs
+      # The master-sheet covenant: every stencil master placed and measured as
+      # PAINTED — ink present and inside its declared bounds, caption visible,
+      # unclipped and untruncated (inside the silhouette or fully below it).
+      # A master that renders garbage fails the user in the first minute.
+      - run: node demos/e2e/master-sheet-run.mjs
+      # The query-builder demo's own gestures: guided wiring (validator-aware
+      # tints), pill-typed joins, the SQL that writes itself.
+      - run: node demos/e2e/query-builder-run.mjs
+      # The Visio-editor covenant: every advertised gesture (marquee, nudge,
+      # duplicate, F2/type-to-replace, context menu, port-drag connect,
+      # drag-into-container, edge-label edit, palette ghost, toolbar) driven
+      # as a REAL pointer/keyboard gesture — a direct API call proving a broken
+      # drag is exactly the failure this gate exists to prevent.
+      - run: node demos/e2e/visio-editor-run.mjs
+      # The Mermaid compatibility claim, checked against REAL mermaid v11 in both
+      # directions. The site says this runs in CI; this is the line that makes
+      # that true.
+      - run: node demos/e2e/mermaid-oracle-run.mjs
       - run: node demos/e2e/save-load-run.mjs
+      # The dashboard covenant: 30 board scenarios driven by a real mouse. This
+      # file called itself "the gate" for months while nothing — not CI, not nx,
+      # not a package script — ever ran it.
+      - run: node demos/e2e/dashboard-scenarios-run.mjs
       - run: node demos/e2e/export-widgets-run.mjs
       - run: node demos/e2e/export-fetch-run.mjs
       - run: node demos/e2e/export-tree-images-run.mjs

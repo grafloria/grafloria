@@ -1,0 +1,1650 @@
+<meta charset="utf-8">
+<title>Marketing automation studio — Grafloria</title>
+<meta name="description" content="Build a marketing automation top-down: insert steps from the + on any line, branch by lifecycle stage, edit each step, then Test flow with a sample contact.">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/marketing-automation.html">
+<meta property="og:title" content="Marketing automation studio — Grafloria">
+<meta property="og:description" content="Build a marketing automation top-down: insert steps from the + on any line, branch by lifecycle stage, edit each step, then Test flow with a sample contact.">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/marketing-automation.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/marketing-automation.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/marketing-automation.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  /* ---- palette (light; dark below) ------------------------------------------ */
+  #stage {
+    --ma-bg: #f5f6fa; --ma-dot: #dde1ea;
+    --ma-card: #ffffff; --ma-card-line: #e0e4ed; --ma-ink: #1d2433; --ma-mut: #6a7387; --ma-faint: #98a0b3;
+    --ma-accent: #3b52d9; --ma-accent-ink: #2a3ca8; --ma-accent-wash: #eef1fe;
+    --ma-done: #1f9d55; --ma-done-wash: #e5f5eb;
+    --ma-branch-bg: #fffaf0; --ma-branch-line: #efd8a6;
+    --ma-note-bg: #f3f4ff; --ma-note-line: #d8ddfa; --ma-note-ink: #30366e; --ma-note-h: #3b52d9;
+    --ma-panel: #ffffff; --ma-panel-line: #e4e7ef; --ma-field: #ffffff; --ma-field-line: #d6dbe5;
+    --ma-hint: #f5f6fa; --ma-hint-ink: #5d6679; --ma-danger: #c23b3b;
+    --ma-shadow: 0 12px 36px rgba(20, 28, 48, .16);
+    display: grid; grid-template-columns: minmax(0, 1fr) 312px; grid-template-rows: 48px minmax(0, 1fr);
+    height: calc(100vh - 79px); min-height: 560px; color: var(--ma-ink);
+    font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    #stage {
+      --ma-bg: #12151c; --ma-dot: #222733;
+      --ma-card: #1b1f28; --ma-card-line: #2e3441; --ma-ink: #e7eaf2; --ma-mut: #9aa3b8; --ma-faint: #6f788d;
+      --ma-accent: #8b9cf2; --ma-accent-ink: #b7c2f7; --ma-accent-wash: rgba(139, 156, 242, .14);
+      --ma-done: #3ccf7e; --ma-done-wash: rgba(60, 207, 126, .13);
+      --ma-branch-bg: #241f14; --ma-branch-line: #574726;
+      --ma-note-bg: #1c1f35; --ma-note-line: #343a64; --ma-note-ink: #cdd2f6; --ma-note-h: #a9b5f6;
+      --ma-panel: #161921; --ma-panel-line: #292e3a; --ma-field: #10131a; --ma-field-line: #323846;
+      --ma-hint: #1d2029; --ma-hint-ink: #a0a8bb; --ma-danger: #ff8a8a;
+      --ma-shadow: 0 12px 36px rgba(0, 0, 0, .5);
+    }
+  }
+
+  /* ---- top bar ------------------------------------------------------------- */
+  .ma-top { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+    background: var(--ma-panel); border-bottom: 1px solid var(--ma-panel-line); position: relative; z-index: 5; }
+  .ma-tb-group { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+  .ma-tb-group.right { justify-content: flex-end; }
+  .ma-sep { width: 1px; height: 22px; background: var(--ma-panel-line); margin: 0 4px; }
+  .ma-ib, .ma-tb { border: 1px solid var(--ma-field-line); background: var(--ma-panel); color: var(--ma-ink); border-radius: 8px;
+    height: 32px; cursor: pointer; font: 500 13px/1 inherit; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; }
+  .ma-ib { width: 32px; justify-content: center; border-color: transparent; color: var(--ma-mut); }
+  .ma-ib:hover:not(:disabled) { background: var(--ma-hint); color: var(--ma-ink); }
+  .ma-ib:disabled { opacity: .35; cursor: default; }
+  .ma-tb { padding: 0 12px; }
+  .ma-tb:hover { border-color: var(--ma-faint); }
+  .ma-tb.primary { background: var(--ma-accent); border-color: var(--ma-accent); color: #fff; }
+  .ma-tb.primary:hover { background: var(--ma-accent-ink); }
+  @media (prefers-color-scheme: dark) { .ma-tb.primary { color: #10131a; } }
+  .ma-title-wrap { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
+  #ma-title { border: 1px solid transparent; background: transparent; color: inherit; font: 600 14.5px/1.2 inherit; font-family: inherit;
+    padding: 6px 8px; border-radius: 7px; field-sizing: content; min-width: 140px; max-width: min(420px, 36vw); text-align: center; text-overflow: ellipsis; }
+  #ma-title:hover, #ma-title:focus { border-color: var(--ma-field-line); background: var(--ma-field); outline: none; }
+  .ma-status { font: 600 10.5px/1 inherit; font-family: inherit; letter-spacing: .04em; text-transform: uppercase; padding: 4px 7px; border-radius: 999px;
+    background: var(--ma-hint); color: var(--ma-mut); white-space: nowrap; }
+  .ma-status.live { background: var(--ma-done-wash); color: var(--ma-done); }
+
+  /* ---- the canvas ------------------------------------------------------------ */
+  #canvas { position: relative; overflow: hidden; height: 100%; min-width: 0; background-color: var(--ma-bg);
+    background-image: radial-gradient(circle, var(--ma-dot) 1px, transparent 1px); background-size: 22px 22px; }
+  #canvas foreignObject { overflow: visible; }
+  /* The node's SHAPE is the card (rounded rect); the HTML inside draws the rest.
+     Kind and run state ride on the rect as classes (NodeModel.setClasses). */
+  #canvas rect.diagram-node.ma-n { fill: var(--ma-card) !important; stroke: var(--ma-card-line) !important; stroke-width: 1px !important;
+    filter: drop-shadow(0 1px 1.5px rgba(16, 24, 40, .07)); }
+  #canvas rect.diagram-node.ma-n-branch { fill: var(--ma-branch-bg) !important; stroke: var(--ma-branch-line) !important; }
+  #canvas rect.diagram-node.ma-n.ma-s-done { stroke: var(--ma-done) !important; stroke-width: 1.6px !important; }
+  #canvas rect.diagram-node.ma-n.ma-s-run, #canvas rect.diagram-node.ma-n.ma-s-wait { stroke: var(--ma-accent) !important; stroke-width: 2.6px !important; }
+  #canvas rect.diagram-node.ma-n.ma-s-fail { stroke: var(--ma-danger) !important; stroke-width: 2px !important; }
+  #canvas rect.diagram-node.ma-n.selected { stroke: var(--ma-accent) !important; stroke-width: 2px !important; }
+  #canvas rect.diagram-node.ma-n-anchor { fill: transparent !important; stroke: none !important; filter: none; }
+  #canvas rect.diagram-node.ma-n-note { fill: var(--ma-note-bg) !important; stroke: var(--ma-note-line) !important; stroke-width: 1px !important; filter: none; }
+  @media (prefers-color-scheme: dark) { #canvas rect.diagram-node.ma-n { filter: none; } }
+
+  /* ---- icons: one mask per glyph, painted in currentColor (built in setup) ---- */
+  .ma-ico { display: inline-block; width: 18px; height: 18px; flex: none; background-color: currentColor;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: center; mask-position: center;
+    -webkit-mask-size: contain; mask-size: contain; }
+  .ma-tile { width: 36px; height: 36px; border-radius: 10px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+  .ma-tile.sm { width: 24px; height: 24px; border-radius: 7px; }
+  .ma-tile.sm .ma-ico { width: 14px; height: 14px; }
+  .t-indigo { background: #eef1fe; color: #3b52d9; } .t-sky { background: #e6f3fc; color: #1673c4; }
+  .t-plum { background: #f3ecfa; color: #7b3db8; }   .t-green { background: #e6f5ec; color: #1d8a4b; }
+  .t-orange { background: #fdede4; color: #c2541c; } .t-pink { background: #fceaf2; color: #b4336a; }
+  .t-slate { background: #edf0f4; color: #4a5568; }  .t-violet { background: #efecfd; color: #6548d6; }
+  .t-amber { background: #fdf0d8; color: #a86400; }
+  @media (prefers-color-scheme: dark) {
+    .t-indigo { background: rgba(139,156,242,.16); color: #a9b5f6; } .t-sky { background: rgba(56,160,240,.16); color: #7cc0f5; }
+    .t-plum { background: rgba(170,110,230,.18); color: #c9a3f2; }   .t-green { background: rgba(60,200,120,.15); color: #6fd69b; }
+    .t-orange { background: rgba(240,130,70,.16); color: #f5a473; }  .t-pink { background: rgba(236,90,150,.16); color: #f293bb; }
+    .t-slate { background: rgba(150,165,190,.16); color: #b5c0d3; }  .t-violet { background: rgba(150,120,240,.18); color: #b6a5f7; }
+    .t-amber { background: rgba(240,180,60,.16); color: #f1c76c; }
+  }
+
+  /* ---- a step card (inside the node's foreignObject) ------------------------- */
+  .ma-card { box-sizing: border-box; width: 100%; height: 100%; display: flex; align-items: center; gap: 11px; padding: 0 12px;
+    color: var(--ma-ink); font: 12px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; position: relative;
+    text-align: left; letter-spacing: normal; }
+  .ma-txt { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .ma-type { font-size: 11px; color: var(--ma-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ma-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ma-badge { display: none; position: absolute; right: 9px; top: 9px; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--ma-done); color: #fff; align-items: center; justify-content: center; }
+  .ma-badge .ma-ico { width: 12px; height: 12px; }
+  .ma-card.ma-done .ma-badge, .ma-card.ma-fail .ma-badge { display: inline-flex; animation: ma-pop .28s ease-out; }
+  .ma-card.ma-fail .ma-badge { background: var(--ma-danger); }
+  .ma-card.ma-done .ma-title { padding-right: 18px; }
+  .ma-card.ma-run .ma-tile { box-shadow: 0 0 0 3px var(--ma-accent-wash); animation: ma-throb 1s ease-in-out infinite; }
+  .ma-ff { position: absolute; right: 9px; top: 7px; display: inline-flex; align-items: center; gap: 3px; font: 700 10.5px/1 inherit; color: var(--ma-accent);
+    background: var(--ma-accent-wash); padding: 3px 6px; border-radius: 999px; }
+  .ma-ff .ma-ico, .ma-tick .ma-ico { width: 10px; height: 10px; }
+  .ma-bar { position: absolute; left: 12px; right: 12px; bottom: 6px; height: 3px; border-radius: 3px; background: var(--ma-accent-wash); overflow: hidden; }
+  .ma-bar::after { content: ""; position: absolute; inset: 0; background: var(--ma-accent); transform-origin: 0 50%; animation: ma-fill .8s linear forwards; }
+  .ma-card.ma-new { animation: ma-in .32s ease-out; }
+  @keyframes ma-pop { from { transform: scale(.3); opacity: 0; } }
+  @keyframes ma-throb { 50% { box-shadow: 0 0 0 6px var(--ma-accent-wash); } }
+  @keyframes ma-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @keyframes ma-in { from { opacity: 0; transform: translateY(-6px); } }
+
+  /* trigger */
+  .ma-card.ma-k-trigger { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 8px; padding: 12px; }
+  .ma-trig-head { display: flex; align-items: center; gap: 11px; }
+  .ma-trig-event { font-size: 11.5px; color: var(--ma-mut); margin-top: -2px; }
+  .ma-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .ma-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; background: var(--ma-accent-wash); color: var(--ma-accent-ink);
+    border-radius: 7px; padding: 3px 4px 3px 8px; font-size: 11.5px; font-weight: 500; }
+  .ma-chip-t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ma-chip-x { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
+  .ma-chip-x .ma-ico { width: 10px; height: 10px; }
+  .ma-chip-x:hover { background: var(--ma-accent); color: #fff; }
+  .ma-addcrit { display: flex; align-items: center; justify-content: center; gap: 5px; border-radius: 8px; padding: 6px 0;
+    background: var(--ma-accent); color: #fff; font-weight: 600; font-size: 12px; cursor: pointer; }
+  .ma-addcrit .ma-ico { width: 13px; height: 13px; }
+  .ma-addcrit:hover { background: var(--ma-accent-ink); }
+  @media (prefers-color-scheme: dark) { .ma-addcrit { color: #10131a; } .ma-chip-x:hover { color: #10131a; } }
+
+  /* the workflow description note */
+  .ma-note { box-sizing: border-box; width: 100%; padding: 4px 18px 14px; color: var(--ma-note-ink);
+    font: 12.5px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: left; }
+  .ma-note-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; padding: 10px 0 6px; }
+  .ma-note-h { font-size: 15px; font-weight: 700; color: var(--ma-note-h); letter-spacing: -.01em; }
+  .ma-note-toggle { width: 24px; height: 24px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--ma-note-h); }
+  .ma-note-head:hover .ma-note-toggle { background: var(--ma-note-line); }
+  .ma-note.ma-note-min { padding-bottom: 0; }
+  .ma-note.ma-note-min .ma-note-toggle .ma-ico { transform: rotate(-90deg); }
+  .ma-note-sec { border-top: 1px solid var(--ma-note-line); padding: 8px 0 2px; }
+  .ma-note-sec h4 { margin: 0 0 3px; font-size: 12px; font-weight: 700; color: var(--ma-note-h); text-transform: uppercase; letter-spacing: .05em; }
+  .ma-note-sec p { margin: 0 0 4px; }
+  .ma-note-sec ul { margin: 2px 0 4px; padding-left: 16px; }
+  .ma-note-sec li { margin: 1px 0; }
+
+  #ma-measure { position: absolute; left: -10000px; top: 0; visibility: hidden; pointer-events: none; }
+  #ma-measure > * { height: auto !important; }
+
+  /* ---- world-space chrome: the "+" buttons, the token, the day tick ---------- */
+  .ma-plus { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--ma-field-line); background: var(--ma-card); color: var(--ma-mut);
+    display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; box-shadow: 0 1px 2px rgba(16,24,40,.08);
+    transition: background-color .12s, color .12s, transform .12s; }
+  .ma-plus .ma-ico { width: 13px; height: 13px; }
+  .ma-plus:hover, .ma-plus:focus-visible, .ma-plus[aria-expanded="true"] { background: var(--ma-accent); border-color: var(--ma-accent); color: #fff; transform: scale(1.12); outline: none; }
+  .ma-plus.add { border-style: dashed; }
+  @media (prefers-color-scheme: dark) { .ma-plus:hover, .ma-plus:focus-visible, .ma-plus[aria-expanded="true"] { color: #10131a; } }
+  .ma-token { width: 14px; height: 14px; border-radius: 50%; background: var(--ma-accent); pointer-events: none !important;
+    box-shadow: 0 0 0 4px var(--ma-accent-wash), 0 2px 8px rgba(59, 82, 217, .45); }
+  .ma-tick { pointer-events: none !important; display: inline-flex; align-items: center; gap: 4px; font: 700 12px/1 ui-sans-serif, system-ui, sans-serif; color: var(--ma-accent); background: var(--ma-card);
+    border: 1px solid var(--ma-accent); border-radius: 999px; padding: 4px 8px; white-space: nowrap; animation: ma-rise 1.1s ease-out forwards; }
+  @keyframes ma-rise { 0% { opacity: 0; transform: translateY(6px); } 15% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px); } }
+
+  /* ---- canvas overlays (screen space) ------------------------------------------ */
+  .ma-nav { position: absolute; left: 14px; bottom: 14px; z-index: 6; width: 236px; background: var(--ma-panel); border: 1px solid var(--ma-panel-line);
+    border-radius: 12px; box-shadow: var(--ma-shadow); overflow: hidden; }
+  .ma-nav-map { height: 132px; border-bottom: 1px solid var(--ma-panel-line); position: relative; }
+  .ma-nav-map[hidden] { display: none; }
+  .ma-nav-map .grafloria-minimap { position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important;
+    border: 0 !important; box-shadow: none !important; border-radius: 0 !important; background: transparent !important; }
+  .ma-nav-row { display: flex; align-items: center; gap: 4px; padding: 6px 8px; }
+  .ma-nav-row .ma-ib { width: 28px; height: 28px; }
+  .ma-nav-row .ma-ib[aria-pressed="true"] { background: var(--ma-accent-wash); color: var(--ma-accent); }
+  #ma-zoom { flex: 1; min-width: 0; accent-color: var(--ma-accent); }
+  #ma-zoom-pct { width: 38px; text-align: right; font: 500 11.5px/1 inherit; font-family: inherit; color: var(--ma-mut); font-variant-numeric: tabular-nums; }
+
+  #ma-menu { position: absolute; z-index: 20; width: 268px; max-height: min(430px, calc(100% - 24px)); display: flex; flex-direction: column;
+    background: var(--ma-panel); border: 1px solid var(--ma-panel-line); border-radius: 12px; box-shadow: var(--ma-shadow); overflow: hidden; }
+  #ma-menu[hidden] { display: none; }
+  .ma-menu-search { display: flex; align-items: center; gap: 7px; padding: 9px 11px; border-bottom: 1px solid var(--ma-panel-line); color: var(--ma-faint); }
+  #ma-menu-q { flex: 1; border: 0; background: transparent; color: var(--ma-ink); font: 13px/1.3 inherit; font-family: inherit; outline: none; min-width: 0; }
+  .ma-menu-list { overflow-y: auto; padding: 6px; }
+  .ma-menu-h { font: 600 10.5px/1 inherit; font-family: inherit; letter-spacing: .06em; text-transform: uppercase; color: var(--ma-faint); padding: 9px 8px 6px; }
+  .ma-mi { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; color: var(--ma-ink); text-align: left;
+    padding: 6px 8px; border-radius: 9px; cursor: pointer; font: inherit; }
+  .ma-mi b { display: block; font-weight: 600; font-size: 13px; }
+  .ma-mi small { display: block; color: var(--ma-mut); font-size: 11.5px; }
+  .ma-mi:hover, .ma-mi.active { background: var(--ma-hint); }
+  .ma-mi .ma-tile { width: 30px; height: 30px; border-radius: 8px; }
+  .ma-mi .ma-tile .ma-ico { width: 16px; height: 16px; }
+  .ma-menu-empty { padding: 14px; color: var(--ma-mut); font-size: 12.5px; }
+  .ma-menu-empty[hidden], .ma-mi[hidden], .ma-menu-h[hidden] { display: none; }
+
+  #ma-dialog { position: absolute; inset: 0; z-index: 30; display: flex; align-items: flex-start; justify-content: center; padding-top: 70px;
+    background: rgba(18, 22, 34, .28); }
+  #ma-dialog[hidden] { display: none; }
+  .ma-dlg { width: min(420px, calc(100% - 32px)); background: var(--ma-panel); border: 1px solid var(--ma-panel-line); border-radius: 14px;
+    box-shadow: var(--ma-shadow); padding: 18px 18px 14px; }
+  .ma-dlg h3 { margin: 0 0 4px; font-size: 16px; letter-spacing: -.01em; }
+  .ma-dlg p { margin: 0 0 12px; color: var(--ma-mut); }
+  .ma-dlg-list { display: grid; gap: 7px; margin-bottom: 14px; }
+  .ma-pick { display: flex; align-items: center; gap: 10px; border: 1px solid var(--ma-field-line); background: var(--ma-field); color: var(--ma-ink);
+    border-radius: 10px; padding: 8px 10px; cursor: pointer; text-align: left; font: inherit; }
+  .ma-pick:hover { border-color: var(--ma-faint); }
+  .ma-pick[aria-pressed="true"] { border-color: var(--ma-accent); background: var(--ma-accent-wash); }
+  .ma-pick b { display: block; font-size: 13px; }
+  .ma-pick small { display: block; color: var(--ma-mut); font-size: 11.5px; }
+  .ma-av { width: 30px; height: 30px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center;
+    font: 700 11px/1 inherit; font-family: inherit; color: #fff; background: linear-gradient(135deg, #6f7ff0, #3b52d9); }
+  .ma-dlg-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .ma-btn { border: 1px solid var(--ma-field-line); background: var(--ma-panel); color: var(--ma-ink); border-radius: 8px; padding: 7px 12px;
+    cursor: pointer; font: 500 13px/1.2 inherit; font-family: inherit; }
+  .ma-btn:hover { border-color: var(--ma-faint); }
+  .ma-btn.primary { background: var(--ma-accent); border-color: var(--ma-accent); color: #fff; }
+  .ma-btn.danger { color: var(--ma-danger); border-color: color-mix(in srgb, var(--ma-danger) 45%, transparent); }
+  @media (prefers-color-scheme: dark) { .ma-btn.primary { color: #10131a; } }
+
+  #ma-toast { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 25; background: #1d2433; color: #fff;
+    padding: 8px 14px; border-radius: 9px; font-size: 12.5px; box-shadow: var(--ma-shadow); pointer-events: none; max-width: 70%; text-align: center;
+    transition: opacity .2s; }
+  #ma-toast[hidden] { display: none; }
+  @media (prefers-color-scheme: dark) { #ma-toast { background: #e7eaf2; color: #10131a; } }
+
+  /* ---- the property panel ---------------------------------------------------- */
+  #ma-panel { background: var(--ma-panel); border-left: 1px solid var(--ma-panel-line); overflow-y: auto; min-width: 0; }
+  .ma-p-head { display: flex; align-items: center; gap: 11px; padding: 16px 16px 14px; border-bottom: 1px solid var(--ma-panel-line); }
+  .ma-p-kind { font-size: 11px; color: var(--ma-mut); }
+  .ma-p-name { font-size: 15px; font-weight: 650; line-height: 1.25; overflow-wrap: anywhere; }
+  .ma-p-sec { padding: 8px 16px; background: var(--ma-hint); border-bottom: 1px solid var(--ma-panel-line); font-size: 11.5px; font-weight: 600;
+    color: var(--ma-mut); box-shadow: inset 3px 0 0 var(--ma-accent); }
+  .ma-p-body { padding: 14px 16px 18px; display: grid; gap: 14px; }
+  .ma-f { display: grid; gap: 5px; }
+  .ma-f-l { font-size: 12.5px; font-weight: 600; }
+  .ma-f input, .ma-f select, .ma-f textarea, .ma-arm input, .ma-arm select { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--ma-field-line);
+    background: var(--ma-field); color: var(--ma-ink); border-radius: 8px; padding: 7px 9px; font: 13px/1.35 inherit; font-family: inherit; }
+  .ma-f textarea { min-height: 76px; resize: vertical; }
+  .ma-f input:focus, .ma-f select:focus, .ma-f textarea:focus, .ma-arm input:focus, .ma-arm select:focus { outline: 2px solid var(--ma-accent-wash); border-color: var(--ma-accent); }
+  .ma-f-h { display: flex; gap: 6px; align-items: flex-start; font-size: 11.5px; color: var(--ma-hint-ink); background: var(--ma-hint);
+    border-radius: 7px; padding: 6px 8px; line-height: 1.4; }
+  .ma-f-h .ma-ico { width: 14px; height: 14px; color: #c99a16; margin-top: 1px; }
+  .ma-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ma-arms { display: grid; gap: 7px; }
+  .ma-arm { display: grid; grid-template-columns: 1fr 1fr 28px; gap: 6px; align-items: center; }
+  .ma-arm-any { font-size: 12px; color: var(--ma-mut); padding: 0 4px; }
+  .ma-x { width: 28px; height: 28px; border: 0; background: none; color: var(--ma-faint); border-radius: 7px; cursor: pointer; display: inline-flex;
+    align-items: center; justify-content: center; }
+  .ma-x:hover { background: var(--ma-hint); color: var(--ma-danger); }
+  .ma-x .ma-ico { width: 14px; height: 14px; }
+  .ma-add { border: 1px dashed var(--ma-field-line); background: none; color: var(--ma-accent); border-radius: 8px; padding: 7px; cursor: pointer;
+    font: 600 12.5px/1.2 inherit; font-family: inherit; }
+  .ma-add:hover { border-color: var(--ma-accent); }
+  .ma-del { justify-self: start; border: 0; background: none; color: var(--ma-danger); cursor: pointer; font: 500 12.5px/1 inherit; font-family: inherit;
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; }
+  .ma-del .ma-ico { width: 15px; height: 15px; }
+  .ma-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .ma-stats div { border: 1px solid var(--ma-panel-line); border-radius: 10px; padding: 8px 10px; font-size: 11.5px; color: var(--ma-mut); }
+  .ma-stats b { display: block; font-size: 18px; color: var(--ma-ink); font-variant-numeric: tabular-nums; }
+  .ma-tips { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--ma-mut); font-size: 12.5px; }
+  .ma-tips b { color: var(--ma-ink); font-weight: 600; }
+  .ma-run-who { display: flex; align-items: center; gap: 10px; }
+  .ma-run-who b { display: block; }
+  .ma-run-who small { color: var(--ma-mut); }
+  .ma-clock { display: flex; align-items: center; gap: 8px; border: 1px solid var(--ma-panel-line); border-radius: 10px; padding: 8px 10px; }
+  .ma-clock .ma-ico { color: var(--ma-accent); }
+  #ma-clock { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .ma-run-state { margin-left: auto; font-size: 11.5px; color: var(--ma-accent); font-weight: 600; }
+  .ma-run-state.done { color: var(--ma-done); }
+  .ma-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .ma-log li { display: grid; grid-template-columns: 24px 1fr; gap: 9px; padding: 6px 0; border-bottom: 1px dashed var(--ma-panel-line); animation: ma-in .25s ease-out; }
+  .ma-log-t { font-size: 10.5px; color: var(--ma-faint); font-variant-numeric: tabular-nums; }
+  .ma-log li > div { font-size: 12px; overflow-wrap: anywhere; }
+  .ma-run-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  @media (prefers-reduced-motion: reduce) {
+    .ma-card.ma-run .ma-tile, .ma-bar::after, .ma-tick, .ma-log li, .ma-card.ma-new, .ma-badge { animation: none !important; }
+  }
+</style>
+<header id="demo-head"></header>
+<div id="stage">
+  <div class="ma-top">
+    <div class="ma-tb-group">
+      <button class="ma-ib" id="ma-undo" title="Undo (⌘Z / Ctrl+Z)" aria-label="Undo" disabled><span class="ma-ico ma-i-undo"></span></button>
+      <button class="ma-ib" id="ma-redo" title="Redo (⇧⌘Z / Ctrl+Shift+Z)" aria-label="Redo" disabled><span class="ma-ico ma-i-redo"></span></button>
+      <span class="ma-sep"></span>
+      <button class="ma-tb" id="ma-save" title="Save to this browser">Save</button>
+      <button class="ma-tb" id="ma-load" title="Load the saved version">Load</button>
+      <button class="ma-tb" id="ma-new" title="Start from a trigger">New</button>
+    </div>
+    <div class="ma-title-wrap">
+      <input id="ma-title" aria-label="Automation name" autocomplete="off" spellcheck="false">
+      <span class="ma-status" id="ma-status">Draft</span>
+    </div>
+    <div class="ma-tb-group right">
+      <button class="ma-tb primary" id="ma-test"><span class="ma-ico ma-i-play" style="width:13px;height:13px"></span>Test flow</button>
+      <button class="ma-tb" id="ma-publish">Publish</button>
+    </div>
+  </div>
+  <div id="canvas"></div>
+  <aside id="ma-panel" aria-label="Step properties"></aside>
+</div>
+<script type="module">
+import { render, createMiniMap, createViewportPortal, Command, PortModel } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import * as M from './marketing-automation-model.js';
+import { injectIconCss, ico, esc, lineStyle, chipStyle, cardContent, noteContent, measure, portsFor, FIELDS, SUBTITLE } from './marketing-automation-view.js';
+
+// A marketing-automation studio on the Grafloria engine, built top-down:
+//
+//   • The automation is a TREE kept as plain JSON (marketing-automation-model.js):
+//     a trigger, a spine of steps, Branches that fan out into named paths. The
+//     tidy-tree layout there decides every position — nothing is hand-placed —
+//     and every edit re-flows the whole tree with a short animation.
+//   • Steps are HTML cards (metadata.html) on rounded-rect nodes. Lines are real
+//     links, orthogonal with rounded corners (manual waypoints from the layout),
+//     and each Branch path carries its name as a chip (a link label).
+//   • The "+" buttons are WORLD-SPACE portals (createViewportPortal) — they pan
+//     and zoom with the canvas. Every line has one; so does the end of every
+//     path; the dashed one beside a Branch adds a path.
+//   • Every edit is a snapshot command on the engine's own CommandManager, so
+//     the toolbar, ⌘Z / Ctrl+Z and ⇧⌘Z all walk one history.
+//   • Test flow plans the run a sample contact would take and animates it: a
+//     token rides the lines, steps light up, delays fast-forward.
+
+const { G, KINDS } = M;
+const DARK = matchMedia('(prefers-color-scheme: dark)');
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)');
+const STORE_KEY = 'grafloria.marketing-automation.v1';
+const NOTE = 'note';
+
+defineDemo({
+  name: 'Marketing automation studio',
+  blurb: 'A top-down marketing automation builder: a trigger with removable criteria chips, a spine of steps, Branches whose paths fan out under chips, a computed layout that re-flows with a short animation on every edit, a "+" on every line and at the end of every path, a property panel with a hint under each field, undo for everything, Save / Load, and a Test flow in which a token walks a sample contact through the automation while delays fast-forward.',
+  howTo: [
+    'Read the sample from the top: the trigger ("When this happens" — a webinar registration, its criteria shown as chips), the replay email, then a Branch on lifecycle stage whose four paths fan out under the chips Customer, Opportunity, Lead and Other. The note on the left describes it all; collapse it with its chevron.',
+    'Press the + on any line (say between "Send the webinar replay" and the Branch). A searchable menu opens: type "del" and press Enter, or click a step. It is inserted right there and the whole tree slides down to make room — nothing is ever placed by hand, and nothing overlaps.',
+    'Every path also ends in a +: add a step to the end of the Customer path. The dashed + to the right of a Branch adds another path; a new Branch takes the steps that were below it onto its first path.',
+    'Click a card to edit it in the right panel — each field has a hint under it. Change the Delay amount, rename an email, or edit the Branch: the property it splits on and one row per path. The card changes as you type. On the trigger card, × removes a criterion chip and "Add criteria" adds one.',
+    'Undo / Redo in the toolbar (or ⌘Z / Ctrl+Z and ⇧⌘Z / Ctrl+Shift+Z) walk back through every edit, including inserts, deletes, renames and the automation title in the top bar.',
+    'Delete a step with Delete / Backspace or "Delete step" in the panel: the steps under it re-attach to its parent. Deleting a Branch asks which ONE path to keep in its place — or deletes the Branch with everything below it.',
+    'Press "Test flow", pick a sample contact and Run test. A token travels down the lines; each step it reaches lights up with a check, delays fast-forward with a visible "+1 day" tick, and each Branch takes the line the contact\'s data decides. The run log on the right lists what happened. Run it for Maya (a Lead who replies), then Priya (a Customer): different paths. A new run resets the last one.',
+    'Save keeps the automation in this browser; change something, then Load brings the saved version back (Load itself is undoable). New starts over from a bare trigger. The card bottom-left is the navigator: a minimap you can click or drag, fit-all and fit-width, and a zoom slider. Drag anywhere — even on a card — to pan: the layout, not the mouse, decides where cards go.',
+  ],
+
+  async setup(ctx) {
+    injectIconCss();
+    const host = ctx.host;
+    let state = M.sampleAutomation();
+    let noteCollapsed = false;
+    // Registered BEFORE render(): a key event dispatched on window itself runs its
+    // listeners in REGISTRATION order (capture or not), and the engine's own
+    // Delete must never run before the tree has had its say.
+    let onKey = () => {};
+    window.addEventListener('keydown', (e) => onKey(e), true);
+
+    const api = render({ nodes: [], edges: [] }, host, {
+      minZoom: 0.2, maxZoom: 2,
+      interaction: { portVisibility: 'hidden', enableLinkReconnection: false, showLinkEndpointHandles: false, enableWaypointEditing: false,
+        enableControlPointEditing: false, enableInPlaceTextEdit: false, enableSmartAutoConnect: false, enableProximityConnect: false },
+      // Branch paths SHARE their horizontal run under the Branch on purpose —
+      // nudging them onto separate lanes would undo the fan-out.
+      renderer: { channelNudging: false, parallelLinks: false },
+    });
+    ctx.instance = api;
+    ctx.diagram = api.getModel();
+    ctx.engine = api.getEngine();
+    const model = ctx.diagram, engine = ctx.engine, cm = engine.commandManager;
+    // The run animates lines — battery saver must not still them.
+    api.animations.updateConfig({ respectBatteryStatus: false, batterySavingMode: false });
+    // A builder keeps its words at every zoom: widen every LOD tier to draw everything.
+    try {
+      const cfg = model.getLODConfig();
+      const all = new Set();
+      for (const t of cfg.tiers) for (const f of t.features) all.add(f);
+      for (const t of cfg.tiers) for (const f of all) t.features.add(f);
+      model.setLODConfig(cfg);
+    } catch { /* an engine without LOD config draws everything anyway */ }
+    const htmlLayer = host.querySelector('.grafloria-html-layer');
+    const $ = (id) => document.getElementById(id);
+
+    // ---- chrome over the canvas ----------------------------------------------
+    host.insertAdjacentHTML('beforeend', `
+      <div class="ma-nav" aria-label="Navigator">
+        <div class="ma-nav-map" id="ma-nav-map"></div>
+        <div class="ma-nav-row">
+          <button class="ma-ib" id="ma-fit" title="Fit the whole automation" aria-label="Fit the whole automation">${ico('fit')}</button>
+          <button class="ma-ib" id="ma-fitw" title="Fit the width, from the top" aria-label="Fit the width">${ico('fitw')}</button>
+          <input type="range" id="ma-zoom" min="20" max="200" step="5" value="100" aria-label="Zoom">
+          <span id="ma-zoom-pct">100%</span>
+          <button class="ma-ib" id="ma-map" title="Show or hide the minimap" aria-label="Show or hide the minimap" aria-pressed="true">${ico('map')}</button>
+        </div>
+      </div>
+      <div id="ma-menu" hidden role="dialog" aria-label="Choose a step">
+        <div class="ma-menu-search">${ico('search')}<input id="ma-menu-q" placeholder="Search steps…" autocomplete="off" spellcheck="false" aria-label="Search steps"></div>
+        <div class="ma-menu-list" id="ma-menu-list" role="listbox"></div>
+        <div class="ma-menu-empty" id="ma-menu-empty" hidden>No step matches.</div>
+      </div>
+      <div id="ma-dialog" hidden><div class="ma-dlg" role="dialog" aria-modal="true" id="ma-dlg"></div></div>
+      <div id="ma-toast" hidden role="status"></div>`);
+    for (const el of host.querySelectorAll('.ma-nav, #ma-menu, #ma-dialog, #ma-toast')) {
+      for (const t of ['pointerdown', 'mousedown', 'wheel', 'dblclick']) el.addEventListener(t, (e) => e.stopPropagation());
+    }
+    const panel = $('ma-panel'), titleInput = $('ma-title'), statusEl = $('ma-status');
+    const undoBtn = $('ma-undo'), redoBtn = $('ma-redo');
+
+    const toastEl = $('ma-toast');
+    let toastTimer = 0;
+    const toast = (text) => { toastEl.textContent = text; toastEl.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2600); };
+
+    // ---- layout + the animated re-flow -------------------------------------------
+    let L = null;            // the last computed layout
+    let cur = {};            // id → {x,y,w,h} as drawn right now (mid-animation too)
+    let target = {};         // id → {x,y,w,h} where the layout wants it
+    let tween = null;
+    const box = (id) => cur[id] || target[id];
+    const fresh = new Set(); // cards that just appeared (a short fade-in)
+    const heightOf = (s) => (s.kind === 'trigger' ? measure(cardContent(s), G.TRIGGER_W) : G.CARD_H);
+
+    /** The note sits left of the trigger, clear of everything on the rows it spans. */
+    function placeNote(lay) {
+      const h = measure(noteContent(state, noteCollapsed), G.NOTE_W);
+      const trig = lay.boxes[state.rootId];
+      const y0 = trig.y - 6, y1 = y0 + h;
+      let minX = trig.x;
+      const span = (top, bottom) => bottom > y0 - 24 && top < y1 + 24;
+      for (const b of Object.values(lay.boxes)) if (span(b.y, b.y + b.h)) minX = Math.min(minX, b.x);
+      for (const e of lay.edges) {
+        const pts = M.routeOf(e, (id) => lay.boxes[id]);
+        for (let i = 1; i < pts.length; i++) {
+          const a = pts[i - 1], c = pts[i];
+          if (span(Math.min(a.y, c.y), Math.max(a.y, c.y))) minX = Math.min(minX, a.x, c.x);
+        }
+        if (e.kind === 'arm') { const m = M.armMarks(e, (id) => lay.boxes[id]); if (span(m.chip.y - 12, m.chip.y + 12)) minX = Math.min(minX, m.chip.x - 60); }
+      }
+      return { x: minX - G.NOTE_GAP - G.NOTE_W, y: y0, w: G.NOTE_W, h };
+    }
+
+    function nodeSpec(id, b, pos) {
+      const s = state.steps[id];
+      const base = { id, position: { x: pos.x, y: pos.y }, size: { width: b.w, height: b.h }, draggable: false };
+      if (s) {
+        return { ...base, selectable: true, shape: { type: 'rect', cornerRadius: 12 }, style: { selection: 'border' },
+          metadata: { html: { content: cardContent(s, RUN.status[id], { fresh: fresh.has(id), wait: RUN.wait[id] }), padding: 0, interactive: s.kind === 'trigger' } },
+          ports: portsFor(id, s.kind, b.w, b.h) };
+      }
+      if (id === NOTE) {
+        return { ...base, selectable: false, shape: { type: 'rect', cornerRadius: 14 },
+          metadata: { html: { content: noteContent(state, noteCollapsed), padding: 0, interactive: true } }, ports: [] };
+      }
+      return { ...base, selectable: false, shape: { type: 'rect', cornerRadius: 12 }, ports: portsFor(id, 'anchor', b.w, b.h) };
+    }
+    // Ports are built once per node; a card that changed height re-seats its
+    // ports under the SAME ids, so its lines stay attached.
+    function seatPorts(node, specs) {
+      for (const p of specs) {
+        const have = node.getPort(p.id);
+        const a = have?.layout?.args;
+        if (have && a && a.x === p.layout.args.x && a.y === p.layout.args.y) continue;
+        if (have) node.removePort(p.id);
+        node.addPort(new PortModel({ id: p.id, type: p.type, side: p.side, shape: p.shape, layout: p.layout, isConnectableStart: false, isConnectableEnd: false }));
+      }
+    }
+    const classesFor = (id) => {
+      const s = state.steps[id];
+      if (s) return ['ma-n', `ma-n-${s.kind}`, ...(RUN.status[id] ? [`ma-s-${RUN.status[id]}`] : [])];
+      return id === NOTE ? ['ma-n-note'] : ['ma-n-anchor'];
+    };
+    const setClasses = (node, want) => { const have = [...(node.classes || [])]; if (have.join(' ') !== want.join(' ')) node.setClasses(want); };
+
+    /**
+     * Draw the state: lay the tree out, reconcile the model's nodes and lines
+     * (setNodes / setEdges), then glide everything to its new place.
+     */
+    function sync(opts = {}) {
+      L = M.computeLayout(state, heightOf);
+      const noteBox = placeNote(L);
+      target = { ...L.boxes, [NOTE]: noteBox };
+      const order = [...M.orderedIds(state).filter((id) => id !== state.rootId), ...L.anchors.map((a) => a.id), NOTE, state.rootId];
+      const animate = !!opts.animate && !REDUCED.matches;
+      const startOf = (id) => {
+        if (animate && cur[id]) return cur[id];
+        const t = target[id];
+        if (animate && opts.spawn && state.steps[id]) return { x: opts.spawn.x - t.w / 2, y: opts.spawn.y - t.h / 2 };
+        return t;
+      };
+      for (const id of order) if (!model.getNode(id) && state.steps[id] && animate) { fresh.add(id); setTimeout(() => { fresh.delete(id); paintStep(id); }, 420); }
+      const specs = order.map((id) => nodeSpec(id, target[id], startOf(id)));
+      api.setNodes(specs);
+      specs.forEach((sp) => {
+        const n = model.getNode(sp.id);
+        if (!n) return;
+        n.behavior.resizable = false;   // the layout sizes the cards
+        seatPorts(n, sp.ports);
+        setClasses(n, classesFor(sp.id));
+      });
+      api.setEdges(L.edges.map((e) => ({ id: e.id, source: e.from, target: e.to,
+        sourceHandle: e.kind === 'add' ? `${e.from}__add` : `${e.from}__out`, targetHandle: `${e.to}__in`,
+        type: 'orthogonal', style: lineStyle(e.kind, RUN.links[e.id]) })));
+      syncPluses();
+      const next = {};
+      for (const id of order) next[id] = { ...startOf(id), w: target[id].w, h: target[id].h };
+      cur = next;
+      if (animate) tweenTo();
+      else { cancelAnimationFrame(tween?.raf ?? 0); tween = null; cur = { ...target }; frame(); for (const r of idleWaiters.splice(0)) r(); }
+      refreshChrome();
+    }
+
+    function tweenTo() {
+      cancelAnimationFrame(tween?.raf ?? 0);
+      const from = {};
+      for (const [id, b] of Object.entries(cur)) from[id] = { x: b.x, y: b.y };
+      const t0 = performance.now(), dur = 320;
+      const me = (tween = { raf: 0 });
+      const step = (now) => {
+        if (tween !== me) return;
+        const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+        for (const [id, to] of Object.entries(target)) {
+          const f = from[id] || to;
+          cur[id] = { x: f.x + (to.x - f.x) * e, y: f.y + (to.y - f.y) * e, w: to.w, h: to.h };
+        }
+        try { frame(); } finally {
+          if (k < 1) me.raf = requestAnimationFrame(step);
+          else { tween = null; for (const r of idleWaiters.splice(0)) r(); }
+        }
+      };
+      step(t0);
+    }
+    const idleWaiters = [];
+    ctx.idle = () => (tween ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve());
+
+    /** One frame: nodes to their drawn boxes; lines, chips, "+" and the note follow. */
+    function frame() {
+      for (const [id, b] of Object.entries(cur)) {
+        const n = model.getNode(id);
+        if (n && (n.position.x !== b.x || n.position.y !== b.y)) n.setPosition(b.x, b.y);
+      }
+      for (const e of L.edges) {
+        const link = model.getLink(e.id);
+        if (!link) continue;
+        const pts = M.routeOf(e, box);
+        // Always an explicit route: a bare two-point line would go to the
+        // obstacle router, which happily detours a dashed stub round its own card.
+        const drawn = pts.length > 2 ? pts : [pts[0], { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }, pts[1]];
+        link.setPoints(drawn);
+        link.setMetadata('hasManualWaypoints', true);
+        if (e.kind === 'arm') {
+          const m = M.armMarks(e, box);
+          link.setLabels([{ id: 'chip', text: e.label, position: M.fractionAt(pts, m.chip), offset: { x: 0, y: 0 }, style: chipStyle(RUN.arms.has(e.id)) }]);
+        }
+      }
+      for (const p of pluses.values()) placePlus(p);
+      api.renderNow();
+    }
+
+    // ---- the "+" buttons: world-space portals, keyed by the slot they insert at --
+    const pluses = new Map();
+    const slotKey = (slot) => `${slot.parentId}|${slot.armId || ''}`;
+    function syncPluses() {
+      const want = new Map();
+      for (const e of L.edges) {
+        if (e.kind === 'spine') want.set(slotKey(e.slot), { kind: 'insert', slot: e.slot, edge: e });
+        else if (e.kind === 'arm' && !e.toEnd) want.set(slotKey(e.slot), { kind: 'insert', slot: e.slot, edge: e });
+      }
+      for (const a of L.anchors) {
+        if (a.role === 'end') want.set(slotKey(a.slot), { kind: 'insert', slot: a.slot, anchor: a.id });
+        else want.set(`add|${a.branchId}`, { kind: 'add', branchId: a.branchId, anchor: a.id });
+      }
+      for (const [key, p] of pluses) if (!want.has(key)) { p.portal.dispose(); pluses.delete(key); }
+      for (const [key, w] of want) {
+        let p = pluses.get(key);
+        if (!p) {
+          const portal = createViewportPortal(htmlLayer, { className: 'ma-plus-host' });
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'ma-plus';
+          btn.innerHTML = ico('plus');
+          // It opens a picker (or adds a path) for whatever slot it holds NOW.
+          btn.setAttribute('data-gate-inert', '');
+          portal.element.appendChild(btn);
+          for (const t of ['pointerdown', 'mousedown', 'dblclick']) portal.element.addEventListener(t, (ev) => ev.stopPropagation());
+          p = { key, portal, btn, x: 0, y: 0 };
+          btn.addEventListener('click', () => onPlus(p));
+          pluses.set(key, p);
+        }
+        // A slot can change shape (an empty path's end "+" becomes a line's "+"):
+        // drop what the last layout said before taking this one's word for it.
+        p.anchor = undefined; p.edge = undefined; p.slot = undefined; p.branchId = undefined;
+        Object.assign(p, w);
+        p.btn.classList.toggle('add', w.kind === 'add');
+        p.btn.dataset.slot = key;
+        const label = w.kind === 'add' ? 'Add another path to this Branch' : 'Insert a step here';
+        p.btn.title = label;
+        p.btn.setAttribute('aria-label', label);
+      }
+    }
+    function placePlus(p) {
+      let pt;
+      if (p.anchor) { const b = box(p.anchor); if (!b) return; pt = { x: b.x + b.w / 2, y: b.y + b.h / 2 }; }
+      else if (p.edge.kind === 'arm') pt = M.armMarks(p.edge, box).plus;
+      else { const a = box(p.edge.from), b = box(p.edge.to); pt = { x: b.x + b.w / 2, y: (a.y + a.h + b.y) / 2 }; }
+      if (!pt) return;
+      p.x = pt.x; p.y = pt.y;
+      p.portal.setPosition(pt.x - 11, pt.y - 11);
+    }
+    ctx.plusEl = (key) => pluses.get(key)?.btn || null;
+
+    // ---- history: every edit is ONE snapshot command on the engine's stack ------
+    class SnapshotCommand extends Command {
+      constructor(name, before, after) { super(name); this.before = before; this.after = after; this.fresh = true; }
+      execute() { if (this.fresh) { this.fresh = false; return; } applySnapshot(this.after); }
+      undo() { applySnapshot(this.before); }
+      redo() { applySnapshot(this.after); }
+      serialize() { return { id: this.id, name: this.name, timestamp: this.timestamp, data: { before: this.before, after: this.after } }; }
+    }
+    function applySnapshot(snap) {
+      state = M.clone(snap);
+      stopRun(true);
+      sync({ animate: true });
+      titleInput.value = state.title;
+      markDirty();
+      renderPanel();
+    }
+    function record(name, before) {
+      const after = M.clone(state);
+      if (JSON.stringify(after) === JSON.stringify(before)) return false;
+      markDirty();
+      lastExec = cm.execute(new SnapshotCommand(name, before, after)).catch(() => {});
+      return true;
+    }
+    // The command lands on the stack a few microtasks after execute() is called;
+    // an undo pressed right after an edit must wait for it, or it would undo the
+    // edit BEFORE that one.
+    let lastExec = Promise.resolve();
+    async function undoRedo(redo) {
+      commitLive();
+      await lastExec;
+      await (redo ? engine.redo() : engine.undo());
+      refreshUndo();
+    }
+    /** Mutate the state as ONE undoable edit, then re-flow. */
+    function edit(name, mutate, syncOpts = {}) {
+      commitLive();
+      const before = M.clone(state);
+      const result = mutate(state);
+      if (record(name, before)) { stopRun(true); sync({ animate: true, ...syncOpts }); renderPanel(); }
+      return result;
+    }
+    const refreshUndo = () => { undoBtn.disabled = !cm.canUndo(); redoBtn.disabled = !cm.canRedo(); };
+    for (const ev of ['command:executed', 'command:undone', 'command:redone', 'command:history-cleared']) engine.eventBus.on(ev, () => setTimeout(refreshUndo, 0));
+    undoBtn.addEventListener('click', () => undoRedo(false));
+    redoBtn.addEventListener('click', () => undoRedo(true));
+
+    // Live edits (typing in the panel) paint the card as you type and land in the
+    // history as one step when the field is committed (blur / Enter / a pick).
+    let live = null;
+    function liveEdit(name, mutate) {
+      if (!live) live = { name, before: M.clone(state) };
+      mutate(state);
+      stopRun(true);
+      sync({ animate: false });
+    }
+    function commitLive() {
+      if (!live) return;
+      const { name, before } = live;
+      live = null;
+      record(name, before);
+    }
+
+    let published = false;
+    function markDirty() {
+      statusEl.textContent = published ? 'Unpublished changes' : 'Draft';
+      statusEl.classList.remove('live');
+    }
+    function refreshChrome() { refreshUndo(); }
+
+    // ---- selection drives the panel ---------------------------------------------
+    let selectedId = null;
+    let testView = false;
+    api.on('selection:change', ({ nodes }) => {
+      const id = nodes.length === 1 && state.steps[nodes[0].id] ? nodes[0].id : null;
+      if (id === selectedId) return;
+      commitLive();
+      selectedId = id;
+      if (!testView) renderPanel();
+    });
+    const select = (id) => {
+      model.clearSelection?.();
+      const n = id && model.getNode(id);
+      if (n) model.selectNode(n);
+      selectedId = n ? id : null;
+      api.renderNow();
+      if (!testView) renderPanel();
+    };
+    ctx.select = select;
+    ctx.selected = () => selectedId;
+
+    // ---- the step menu (the "+" and "Add criteria") -------------------------------
+    const menu = $('ma-menu'), menuList = $('ma-menu-list'), menuQ = $('ma-menu-q'), menuEmpty = $('ma-menu-empty');
+    let menuCtx = null;
+    function openMenu(mode, anchorEl, mctx) {
+      closeMenu();
+      menuCtx = { mode, ...mctx, anchorEl };
+      const items = mode === 'criteria'
+        ? [{ group: 'Add criteria', list: Object.entries(M.CRITERIA).filter(([k]) => { const v = state.steps[state.rootId].props[k]; return v === '' || v == null; })
+            .map(([k, c]) => ({ key: k, label: c.label, desc: 'Only enroll contacts that match', icon: 'flag', tone: 'indigo' })) }]
+        : M.MENU_GROUPS.map((g) => ({ group: g, list: Object.entries(KINDS).filter(([, k]) => k.group === g).map(([key, k]) => ({ key, label: k.label, desc: k.desc, icon: k.icon, tone: k.tone })) }));
+      menuList.innerHTML = items.map((g) => `<div class="ma-menu-h">${esc(g.group)}</div>` + g.list.map((it) =>
+        `<button class="ma-mi" role="option" data-key="${it.key}" data-search="${esc((it.label + ' ' + it.desc + ' ' + g.group).toLowerCase())}">
+          <span class="ma-tile t-${it.tone}">${ico(it.icon)}</span><span><b>${esc(it.label)}</b><small>${esc(it.desc)}</small></span></button>`).join('')).join('');
+      menuQ.value = '';
+      menuQ.placeholder = mode === 'criteria' ? 'Search criteria…' : 'Search steps…';
+      filterMenu();
+      const hr = host.getBoundingClientRect(), r = anchorEl.getBoundingClientRect();
+      menu.hidden = false;
+      const mw = menu.offsetWidth, mh = menu.offsetHeight;
+      let left = r.right - hr.left + 10, top = r.top - hr.top - 18;
+      if (left + mw > hr.width - 10) left = r.left - hr.left - mw - 10;
+      menu.style.left = Math.max(10, left) + 'px';
+      menu.style.top = Math.max(10, Math.min(top, hr.height - mh - 10)) + 'px';
+      anchorEl.setAttribute('aria-expanded', 'true');
+      menuQ.focus({ preventScroll: true });
+    }
+    function closeMenu() {
+      if (menuCtx?.anchorEl) menuCtx.anchorEl.removeAttribute('aria-expanded');
+      menu.hidden = true;
+      menuCtx = null;
+    }
+    function filterMenu() {
+      const q = menuQ.value.trim().toLowerCase();
+      let firstVisible = null;
+      for (const b of menuList.querySelectorAll('.ma-mi')) {
+        const hit = !q || b.dataset.search.includes(q);
+        b.hidden = !hit;
+        b.classList.remove('active');
+        if (hit && !firstVisible) firstVisible = b;
+      }
+      for (const h of menuList.querySelectorAll('.ma-menu-h')) {
+        let el = h.nextElementSibling, any = false;
+        while (el && el.classList.contains('ma-mi')) { if (!el.hidden) any = true; el = el.nextElementSibling; }
+        h.hidden = !any;
+      }
+      firstVisible?.classList.add('active');
+      menuEmpty.hidden = !!firstVisible;
+    }
+    menuQ.addEventListener('input', filterMenu);
+    menuQ.addEventListener('keydown', (e) => {
+      const vis = [...menuList.querySelectorAll('.ma-mi:not([hidden])')];
+      const at = vis.findIndex((b) => b.classList.contains('active'));
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!vis.length) return;
+        vis[at]?.classList.remove('active');
+        const n = vis[(at + (e.key === 'ArrowDown' ? 1 : -1) + vis.length) % vis.length];
+        n.classList.add('active'); n.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (vis[at]) pickMenu(vis[at].dataset.key);
+      } else if (e.key === 'Escape') { e.preventDefault(); closeMenu(); }
+    });
+    menuList.addEventListener('click', (e) => { const b = e.target.closest('.ma-mi'); if (b) pickMenu(b.dataset.key); });
+    document.addEventListener('pointerdown', (e) => {
+      if (!menu.hidden && !menu.contains(e.target) && !(menuCtx?.anchorEl && menuCtx.anchorEl.contains(e.target))) closeMenu();
+    }, true);
+    function pickMenu(key) {
+      const m = menuCtx;
+      if (!m) return;
+      closeMenu();
+      if (m.mode === 'criteria') {
+        edit(`Add criterion: ${M.CRITERIA[key].label}`, (s) => { s.steps[s.rootId].props[key] = M.CRITERIA[key].fallback; });
+        select(state.rootId);
+        requestAnimationFrame(() => panel.querySelector(`[data-k="${key}"]`)?.focus());
+        return;
+      }
+      if (!M.slotExists(state, m.slot)) return;
+      const id = edit(`Insert ${KINDS[key].label}`, (s) => M.insertStep(s, m.slot, key), { spawn: m.at });
+      if (id) select(id);
+    }
+    function onPlus(p) {
+      if (p.kind === 'add') {
+        const armId = edit('Add a path', (s) => M.addArm(s, p.branchId));
+        select(p.branchId);
+        requestAnimationFrame(() => panel.querySelector(`input[data-arm="${armId}"]`)?.select());
+        return;
+      }
+      if (menuCtx && menuCtx.anchorEl === p.btn) { closeMenu(); return; }
+      openMenu('steps', p.btn, { slot: p.slot, at: { x: p.x, y: p.y } });
+    }
+
+    // The layout owns where cards go, so a drag that starts ON a card pans the
+    // canvas (a drag on empty canvas already does).
+    let cardPan = null, panned = false;
+    host.addEventListener('pointerdown', (e) => {
+      panned = false;
+      if (e.button !== 0 || !(e.target instanceof Element)) return;
+      const g = e.target.closest('[data-node-id]');
+      cardPan = g && g.closest('svg.grafloria-diagram') ? { x: e.clientX, y: e.clientY, moving: false } : null;
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!cardPan) return;
+      if (!(e.buttons & 1)) { cardPan = null; return; }
+      if (!cardPan.moving && Math.hypot(e.clientX - cardPan.x, e.clientY - cardPan.y) < 5) return;
+      cardPan.moving = panned = true;
+      api.viewport.panByScreenDelta(cardPan.x - e.clientX, cardPan.y - e.clientY);
+      cardPan.x = e.clientX; cardPan.y = e.clientY;
+      api.renderNow();
+    });
+    window.addEventListener('pointerup', () => { cardPan = null; });
+
+    // Clicks inside cards: the trigger's chip × and "Add criteria", the note's chevron.
+    host.addEventListener('click', (e) => {
+      const t = e.target;
+      if (!(t instanceof Element) || panned) return;
+      const x = t.closest('.ma-chip-x');
+      if (x) {
+        const key = [...x.classList].find((c) => c.startsWith('ma-x-'))?.slice(5);
+        if (key && M.CRITERIA[key]) edit(`Remove criterion: ${M.CRITERIA[key].label}`, (s) => { s.steps[s.rootId].props[key] = ''; });
+        return;
+      }
+      const add = t.closest('.ma-addcrit');
+      if (add) { openMenu('criteria', add, {}); return; }
+      if (t.closest('.ma-note-head')) { noteCollapsed = !noteCollapsed; sync({ animate: true }); }
+    });
+
+    // ---- dialogs -------------------------------------------------------------------
+    const dialog = $('ma-dialog'), dlg = $('ma-dlg');
+    let dialogHandler = null;
+    function openDialog(html, onAct) {
+      dlg.innerHTML = html;
+      dialog.hidden = false;
+      dialogHandler = onAct;
+      requestAnimationFrame(() => dlg.querySelector('[data-focus]')?.focus({ preventScroll: true }));
+    }
+    function closeDialog() { dialog.hidden = true; dialogHandler = null; }
+    ctx.closeDialog = closeDialog;
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) { closeDialog(); return; }
+      const b = e.target.closest('[data-act]');
+      if (b && dialogHandler) dialogHandler(b.dataset.act, b);
+    });
+
+    // ---- delete --------------------------------------------------------------------
+    function requestDelete(id) {
+      const s = state.steps[id];
+      if (!s) return;
+      if (s.kind === 'trigger') { toast('The trigger starts the automation — press New to start over.'); return; }
+      if (s.kind !== 'branch') {
+        edit(`Delete ${KINDS[s.kind].label}`, (st) => M.deleteStep(st, id));
+        select(null);
+        return;
+      }
+      const below = M.subtreeIds(state, id).length - 1;
+      openDialog(`<h3>Delete “${esc(s.title)}”?</h3>
+        <p>This Branch has ${s.arms.length} paths and ${below} step${below === 1 ? '' : 's'} below it. Keep one path in its place, or delete everything below.</p>
+        <div class="ma-dlg-list">${s.arms.map((a) => { const n = M.subtreeIds(state, a.next).length; return `<button class="ma-pick" data-act="keep" data-arm="${a.id}"${a === s.arms[0] ? ' data-focus' : ''}>
+          <span class="ma-tile sm t-amber">${ico('fork')}</span><span><b>Keep the ${esc(a.label)} path</b><small>${n ? `${n} step${n === 1 ? ' moves' : 's move'} up into its place` : 'an empty path'}</small></span></button>`; }).join('')}</div>
+        <div class="ma-dlg-actions"><button class="ma-btn" data-act="cancel">Cancel</button><button class="ma-btn danger" data-act="all">${below ? `Delete it and the ${below} step${below === 1 ? '' : 's'} below` : 'Delete the Branch'}</button></div>`,
+      (act, b) => {
+        if (act === 'cancel') { closeDialog(); return; }
+        if (act === 'keep' || act === 'all') {
+          closeDialog();
+          const keep = act === 'keep' ? b.dataset.arm : null;
+          edit(keep ? 'Delete Branch (keep a path)' : 'Delete Branch and its paths', (st) => M.deleteStep(st, id, keep));
+          select(null);
+        }
+      });
+    }
+
+    // Keyboard: Delete / Backspace remove the selected step. Undo / Redo stay with
+    // the engine's own binding (they reach the same command stack). Copy, paste,
+    // cut and duplicate are refused: the layout owns where steps go.
+    const isTyping = (t) => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]');
+    onKey = (e) => {
+      if (isTyping(e.target)) return;
+      if (e.key === 'Escape') { if (!menu.hidden) closeMenu(); if (!dialog.hidden) closeDialog(); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Never the engine's own delete: the tree decides what a delete means.
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (!dialog.hidden) return;
+        const ids = model.getSelectedNodes().map((n) => n.id).filter((id) => state.steps[id]);
+        if (ids.length === 1) requestDelete(ids[0]);
+        else if (ids.length > 1) toast('Select one step to delete it.');
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && ['c', 'v', 'x', 'd'].includes(e.key.toLowerCase())) e.stopImmediatePropagation();
+      // ⌘Z / Ctrl+Z, ⇧⌘Z / Ctrl+Shift+Z, Ctrl+Y: the same engine undo stack the
+      // engine's own binding drives — taken here so a just-made edit lands first.
+      if ((e.ctrlKey || e.metaKey) && ['z', 'y'].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        void undoRedo(e.key.toLowerCase() === 'y' || e.shiftKey);
+      }
+    };
+
+    // ---- the property panel ---------------------------------------------------------
+    const hint = (text) => `<span class="ma-f-h">${ico('bulb')}<span>${esc(text)}</span></span>`;
+    const field = (f, v) => {
+      const val = v ?? '';
+      let ctrl;
+      if (f.type === 'select') ctrl = `<select data-k="${f.key}">${f.options.map((o) => { const [ov, ol] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(ov)}"${String(ov) === String(val) ? ' selected' : ''}>${esc(ol)}</option>`; }).join('')}</select>`;
+      else if (f.type === 'textarea') ctrl = `<textarea data-k="${f.key}" rows="3">${esc(val)}</textarea>`;
+      else ctrl = `<input data-k="${f.key}" type="${f.type === 'number' ? 'number' : 'text'}"${f.min != null ? ` min="${f.min}"` : ''} value="${esc(val)}"${f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : ''} autocomplete="off">`;
+      return `<label class="ma-f"><span class="ma-f-l">${esc(f.label)}</span>${ctrl}${hint(f.hint)}</label>`;
+    };
+
+    function renderPanel() {
+      if (testView) return renderRunPanel();
+      const s = selectedId && state.steps[selectedId];
+      if (!s) return renderOverview();
+      const k = KINDS[s.kind];
+      let body = '';
+      if (k.named) body += field({ key: 'title', label: s.kind === 'branch' ? 'Question' : 'Step name', type: 'text', hint: 'Shown as the title on the card.' }, s.title);
+      if (s.kind === 'delay') {
+        body += `<div class="ma-f"><span class="ma-f-l">Wait for</span><div class="ma-pair">
+          <input data-k="amount" type="number" min="1" value="${esc(s.props.amount)}" aria-label="Amount">
+          <select data-k="unit" aria-label="Unit">${M.DELAY_UNITS.map((u) => `<option${u === s.props.unit ? ' selected' : ''}>${u}</option>`).join('')}</select></div>
+          ${hint('How long the contact waits here. A Test flow fast-forwards it.')}</div>`;
+      } else {
+        for (const f of FIELDS[s.kind] || []) body += field(f, s.props[f.key]);
+      }
+      if (s.kind === 'branch') {
+        const prop = M.BRANCH_PROPS[s.props.property];
+        body += `<div class="ma-f"><span class="ma-f-l">Paths</span><div class="ma-arms">${s.arms.map((a) => `<div class="ma-arm">
+            <input data-arm="${a.id}" data-ak="label" value="${esc(a.label)}" aria-label="Path name">
+            ${a.isDefault ? '<span class="ma-arm-any">any other value</span>' : `<select data-arm="${a.id}" data-ak="value" aria-label="Value">${(prop?.values || []).map(([v, l]) => `<option value="${esc(v)}"${v === a.value ? ' selected' : ''}>${esc(l)}</option>`).join('')}${prop?.values.some(([v]) => v === a.value) ? '' : `<option selected>${esc(a.value)}</option>`}</select>`}
+            ${s.arms.length > 1 ? `<button class="ma-x" data-act="rm-arm" data-arm="${a.id}" title="Remove this path and its steps" aria-label="Remove the ${esc(a.label)} path">${ico('close')}</button>` : '<span></span>'}
+          </div>`).join('')}</div>
+          ${hint('A contact takes the first path whose value matches; “any other value” catches everyone else.')}
+          <button class="ma-add" data-act="add-arm">+ Add a path</button></div>`;
+      }
+      if (s.kind !== 'trigger') body += `<button class="ma-del" data-act="delete">${ico('trash')}Delete ${s.kind === 'branch' ? 'Branch' : 'step'}</button>`;
+      panel.innerHTML = `<div class="ma-p-head"><span class="ma-tile t-${k.tone}">${ico(k.icon)}</span>
+          <div><div class="ma-p-name">${esc(s.kind === 'trigger' ? 'Trigger' : k.label)}</div><div class="ma-p-kind">${esc(SUBTITLE[s.kind])}</div></div></div>
+        <div class="ma-p-sec">${esc(s.kind === 'trigger' ? (M.TRIGGER_EVENTS[s.props.event] || 'Trigger') : M.stepTitle(s))}</div>
+        <div class="ma-p-body" data-step="${s.id}">${body}</div>`;
+    }
+    function longestWait(id, acc = 0) {
+      const UNIT = { minutes: 1, hours: 60, days: 1440, weeks: 10080 };
+      let best = acc;
+      while (id) {
+        const s = state.steps[id];
+        if (s.kind === 'delay') acc += (Number(s.props.amount) || 0) * (UNIT[s.props.unit] || 1440);
+        best = Math.max(best, acc);
+        if (s.kind === 'branch') { for (const a of s.arms) best = Math.max(best, longestWait(a.next, acc)); break; }
+        id = s.next;
+      }
+      return best;
+    }
+    function renderOverview() {
+      const steps = Object.keys(state.steps).length - 1;
+      // Paths = the ends a contact can reach (every path ends in a "+").
+      const ends = (id) => {
+        while (id) { const st = state.steps[id]; if (st.kind === 'branch') return st.arms.reduce((n, a) => n + ends(a.next), 0); id = st.next; }
+        return 1;
+      };
+      const paths = ends(state.rootId);
+      const wait = longestWait(state.rootId);
+      const waitText = !wait ? '—' : wait >= 1440 ? `${Math.round(wait / 144) / 10} d` : wait >= 60 ? `${Math.round(wait / 6) / 10} h` : `${wait} min`;
+      panel.innerHTML = `<div class="ma-p-head"><span class="ma-tile t-indigo">${ico('automation')}</span>
+          <div><div class="ma-p-name">Automation</div><div class="ma-p-kind">Select a step to configure it</div></div></div>
+        <div class="ma-p-body">
+          <div class="ma-stats"><div><b>${steps}</b>steps</div><div><b>${paths}</b>paths</div><div><b>${waitText}</b>longest wait</div></div>
+          ${field({ key: 'description', label: 'What it does', type: 'textarea', hint: 'Shown in the workflow description on the canvas.' }, state.description)}
+          <ul class="ma-tips">
+            <li>Click a <b>step</b> to edit it here.</li>
+            <li>Press <b>+</b> on a line to insert a step there; the dashed <b>+</b> beside a Branch adds a path.</li>
+            <li><b>Delete</b> removes the selected step; <b>⌘Z</b> / <b>Ctrl+Z</b> undoes.</li>
+            <li><b>Test flow</b> walks a sample contact through it.</li>
+          </ul>
+        </div>`;
+    }
+
+    const editName = (s, key) => (key === 'title' ? `Rename ${KINDS[s.kind].label}` : key === 'description' ? 'Edit description' : `Edit ${KINDS[s.kind].label}`);
+    function panelInput(t, committed) {
+      const stepId = t.closest('[data-step]')?.dataset.step;
+      const s = stepId && state.steps[stepId];
+      if (t.dataset.k === 'description' && !s) {
+        liveEdit('Edit description', (st) => { st.description = t.value; });
+      } else if (s && t.dataset.k === 'property') {
+        if (!committed) return;      // a structural pick: one step, then the rows redraw
+        edit('Change what the Branch splits on', (st) => M.setBranchProperty(st, s.id, t.value));
+        return;
+      } else if (s && t.dataset.k) {
+        const key = t.dataset.k;
+        const v = t.type === 'number' ? (t.value === '' ? '' : Number(t.value)) : t.value;
+        if (key === 'amount' && s.kind === 'delay' && (v === '' || v < 1)) return;
+        liveEdit(editName(s, key), (st) => { if (key === 'title') st.steps[s.id].title = v; else st.steps[s.id].props[key] = v; });
+        const sec = panel.querySelector('.ma-p-sec');
+        if (sec) sec.textContent = s.kind === 'trigger' ? (M.TRIGGER_EVENTS[state.steps[s.id].props.event] || 'Trigger') : M.stepTitle(state.steps[s.id]);
+      } else if (s && t.dataset.arm) {
+        const armId = t.dataset.arm, ak = t.dataset.ak;
+        liveEdit('Edit a path', (st) => { const a = st.steps[s.id].arms.find((x) => x.id === armId); if (a) a[ak] = t.value; });
+        if (ak === 'value' && committed) {
+          // Picking a value names the path after it, unless it was renamed by hand.
+          const a = state.steps[s.id].arms.find((x) => x.id === armId);
+          const lab = M.BRANCH_PROPS[state.steps[s.id].props.property]?.values.find(([v]) => v === t.value)?.[1];
+          const inp = panel.querySelector(`input[data-arm="${armId}"]`);
+          if (a && lab && inp && M.BRANCH_PROPS[state.steps[s.id].props.property].values.some(([, l]) => l === a.label)) { liveEdit('Edit a path', () => { a.label = lab; }); inp.value = lab; }
+        }
+      } else return;
+      if (committed) commitLive();
+    }
+    panel.addEventListener('input', (e) => panelInput(e.target, false));
+    panel.addEventListener('change', (e) => panelInput(e.target, true));
+    panel.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b) return;
+      const act = b.dataset.act, s = selectedId && state.steps[selectedId];
+      if (act === 'delete' && s) requestDelete(s.id);
+      else if (act === 'add-arm' && s) { const armId = edit('Add a path', (st) => M.addArm(st, s.id)); requestAnimationFrame(() => panel.querySelector(`input[data-arm="${armId}"]`)?.select()); }
+      else if (act === 'rm-arm' && s) edit('Remove a path', (st) => M.removeArm(st, s.id, b.dataset.arm));
+      else if (act === 'run-again' && RUN.contact) runTest(RUN.contact);
+      else if (act === 'run-pick') openTestDialog();
+      else if (act === 'run-exit') exitTest();
+    });
+    titleInput.addEventListener('input', () => liveEdit('Rename the automation', (st) => { st.title = titleInput.value; }));
+    titleInput.addEventListener('change', () => commitLive());
+    titleInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') titleInput.blur(); });
+
+    // ---- Save / Load / New / Publish ---------------------------------------------------
+    $('ma-save').addEventListener('click', () => {
+      commitLive();
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify({ format: 'grafloria-marketing-automation', version: 1, savedAt: new Date().toISOString(), automation: state }));
+        toast(`Saved “${state.title}” in this browser.`);
+      } catch { toast('This browser refused to save (private mode?).'); }
+    });
+    function load() {
+      commitLive();
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch { saved = null; }
+      if (!saved || !M.isAutomation(saved.automation)) { toast('Nothing saved yet — press Save first.'); return false; }
+      const before = M.clone(state);
+      state = M.clone(saved.automation);
+      record('Load the saved automation', before);
+      stopRun(true);
+      sync({ animate: true });
+      titleInput.value = state.title;
+      select(null);
+      const at = new Date(saved.savedAt);
+      toast(`Loaded the version saved at ${at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+      return true;
+    }
+    $('ma-load').addEventListener('click', load);
+    function startNew() {
+      commitLive();
+      const before = M.clone(state);
+      state = M.blankAutomation();
+      record('New automation', before);
+      stopRun(true);
+      exitTest(false);
+      select(null);
+      sync({ animate: false });
+      titleInput.value = state.title;
+      frameView();
+      toast('Started over from a trigger — Undo brings the last one back.');
+    }
+    $('ma-new').addEventListener('click', () => {
+      openDialog(`<h3>Start a new automation?</h3><p>The canvas is cleared down to a bare trigger. Undo brings this one back.</p>
+        <div class="ma-dlg-actions"><button class="ma-btn" data-act="cancel">Cancel</button><button class="ma-btn primary" data-act="new" data-focus>Start new</button></div>`,
+      (act) => { closeDialog(); if (act === 'new') startNew(); });
+    });
+    $('ma-publish').addEventListener('click', () => {
+      commitLive();
+      published = true;
+      statusEl.textContent = 'Live';
+      statusEl.classList.add('live');
+      toast(`Published — ${Object.keys(state.steps).length - 1} steps are live for new contacts.`);
+    });
+
+    // ---- the navigator: minimap + fit + zoom ---------------------------------------------
+    const root = host.querySelector('.grafloria-diagram-root');
+    const mini = createMiniMap(root, api.viewport, () => model, {
+      placement: 'none', showLinks: true, padding: 60, ariaLabel: 'Minimap — click or drag to move the view',
+      linkColor: DARK.matches ? 'rgba(150,160,185,.55)' : 'rgba(120,130,150,.6)',
+      maskColor: DARK.matches ? 'rgba(139,156,242,.16)' : 'rgba(59,82,217,.1)', maskStroke: DARK.matches ? '#8b9cf2' : '#3b52d9',
+      nodeColor: (n) => {
+        const s = state.steps[n.id];
+        if (n.id === NOTE) return DARK.matches ? '#343a64' : '#dfe3fb';
+        if (!s) return 'transparent';
+        if (RUN.status[n.id] === 'done') return DARK.matches ? '#3ccf7e' : '#7fd3a2';
+        return s.kind === 'branch' ? (DARK.matches ? '#6a5321' : '#f0cf8e') : n.isSelected() ? '#3b52d9' : (DARK.matches ? '#4a5266' : '#c3cad8');
+      },
+    });
+    $('ma-nav-map').appendChild(mini.portal.element);
+    let miniQueued = false;
+    const refreshMini = () => { if (miniQueued) return; miniQueued = true; requestAnimationFrame(() => { miniQueued = false; mini.refresh(); }); };
+    for (const ev of ['node:added', 'node:removed', 'node:changed', 'link:added', 'link:removed', 'selection:changed']) model.on(ev, refreshMini);
+    ctx.mini = mini;
+    const zoomEl = $('ma-zoom'), pctEl = $('ma-zoom-pct');
+    const showZoom = () => { const z = api.viewport.getZoom(); zoomEl.value = String(Math.round(z * 100)); pctEl.textContent = `${Math.round(z * 100)}%`; };
+    api.viewport.onChange(showZoom);
+    zoomEl.addEventListener('input', () => { api.viewport.setZoom(Number(zoomEl.value) / 100); api.renderNow(); });
+    function contentBounds() {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const b of Object.values(target)) { x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.w); y1 = Math.max(y1, b.y + b.h); }
+      return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+    }
+    /** Put world (wx, wy) at the canvas centre at zoom z. */
+    function centerView(wx, wy, z) {
+      const vp = api.viewport;
+      if (z) vp.setZoom(z);
+      const v = vp.getViewport();
+      vp.setViewport({ x: wx - v.width / 2, y: wy - v.height / 2, width: v.width, height: v.height });
+      api.renderNow();
+    }
+    function fitAll() { const b = contentBounds(); api.viewport.fitToBounds(b, 40, { maxZoom: 1 }); api.renderNow(); }
+    function fitWidth(maxZ = 1, minZ = 0.2) {
+      const b = contentBounds(), v = api.viewport.getViewport();
+      const z = Math.max(minZ, Math.min(maxZ, (v.width - 60) / b.width));
+      centerView(b.x + b.width / 2, b.y - 28 / z + v.height / z / 2, z);
+    }
+    // First look: the width of the flow from the top, never tiny — and when it
+    // cannot all fit, the spine (trigger first) stays in the middle.
+    function frameView() {
+      fitWidth(0.95, 0.5);
+      const b = contentBounds(), v = api.viewport.getViewport(), z = api.viewport.getZoom();
+      if (b.width * z > v.width - 40) {
+        const t = target[state.rootId];
+        centerView(t.x + t.w / 2, b.y - 28 / z + v.height / z / 2, z);
+      }
+    }
+    ctx.frameView = frameView; ctx.fitAll = fitAll; ctx.centerView = centerView; ctx.contentBounds = contentBounds;
+    // A narrow canvas (the gallery's side panels open) starts with the map folded.
+    if (host.getBoundingClientRect().width < 720) { $('ma-nav-map').hidden = true; $('ma-map').setAttribute('aria-pressed', 'false'); }
+    $('ma-fit').addEventListener('click', fitAll);
+    $('ma-fitw').addEventListener('click', () => fitWidth());
+    $('ma-map').addEventListener('click', (e) => {
+      const map = $('ma-nav-map');
+      map.hidden = !map.hidden;
+      e.currentTarget.setAttribute('aria-pressed', String(!map.hidden));
+      if (!map.hidden) mini.refresh();
+    });
+
+    // ---- Test flow: plan the contact's run, then animate it ---------------------------------
+    const RUN = { token: 0, active: false, status: {}, wait: {}, links: {}, arms: new Set(), path: [], contact: null, plan: null, ticks: 0, speed: 1, log: [],
+      clock: 9 * 60, state: { text: 'Running…', done: false } };
+    ctx.RUN = RUN;
+    const tokenPortal = createViewportPortal(htmlLayer, { className: 'ma-token-host' });
+    tokenPortal.element.innerHTML = '<div class="ma-token"></div>';
+    tokenPortal.element.style.pointerEvents = 'none';
+    tokenPortal.element.hidden = true;
+    ctx.tokenEl = tokenPortal.element;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    function paintStep(id) {
+      const s = state.steps[id], n = model.getNode(id);
+      if (!s || !n) return;
+      n.setMetadata('html', { content: cardContent(s, RUN.status[id], { fresh: fresh.has(id), wait: RUN.wait[id] }), padding: 0, interactive: s.kind === 'trigger' });
+      setClasses(n, classesFor(id));
+    }
+    function markLink(id, mark) {
+      if (mark) RUN.links[id] = mark; else delete RUN.links[id];
+      const e = L.edges.find((x) => x.id === id), link = model.getLink(id);
+      if (e && link) link.updateStyle(lineStyle(e.kind, mark));
+    }
+    /** Clear the last run's marks (a new run, an edit, leaving the test). */
+    function stopRun(clearMarks) {
+      RUN.token++;
+      if (RUN.active) setRunState('Stopped — the flow changed', false);
+      RUN.active = false;
+      tokenPortal.element.hidden = true;
+      if (!clearMarks) return;
+      const had = Object.keys(RUN.status).length || Object.keys(RUN.links).length;
+      RUN.status = {}; RUN.wait = {}; RUN.arms.clear();
+      for (const id of Object.keys(RUN.links)) markLink(id, null);
+      RUN.links = {};
+      if (had) { for (const id of Object.keys(state.steps)) paintStep(id); if (L) frame(); }
+      if (had && !RUN.active && RUN.state.done) setRunState('Out of date — the flow changed', false);
+    }
+    function setRunState(text, done) {
+      RUN.state = { text, done };
+      const st = $('ma-run-state');
+      if (st) { st.textContent = text; st.classList.toggle('done', done); }
+    }
+    function setStatus(id, st, wait) {
+      if (st) RUN.status[id] = st; else delete RUN.status[id];
+      if (wait) RUN.wait[id] = wait; else delete RUN.wait[id];
+      paintStep(id);
+      api.renderNow();
+    }
+    /** Pan (animated) until a card is inside the free part of the canvas. */
+    let panJob = 0;
+    function reveal(id) {
+      const b = box(id);
+      if (!b) return;
+      const vp = api.viewport, vb = vp.getViewBox(), z = vp.getZoom();
+      const m = 40 / z;
+      const navH = 190 / z;
+      if (b.x >= vb.x + m && b.x + b.w <= vb.x + vb.width - m && b.y >= vb.y + m && b.y + b.h <= vb.y + vb.height - navH) return;
+      const from = vp.getViewport();
+      const dx = (b.x + b.w / 2) - (vb.x + vb.width / 2), dy = (b.y + b.h / 2) - (vb.y + vb.height * 0.42);
+      const t0 = performance.now(), dur = REDUCED.matches || RUN.speed < 0.2 ? 0 : 380, job = ++panJob;
+      const f = (now) => {
+        if (job !== panJob) return;
+        const k = dur ? Math.min(1, (now - t0) / dur) : 1, e = 1 - Math.pow(1 - k, 3);
+        vp.setViewport({ ...from, x: from.x + dx * e, y: from.y + dy * e });
+        api.renderNow();
+        if (k < 1) requestAnimationFrame(f);
+      };
+      requestAnimationFrame(f);
+    }
+    function travel(edgeId, my) {
+      const e = L.edges.find((x) => x.id === edgeId);
+      if (!e) return Promise.resolve();
+      markLink(edgeId, 'run');
+      tokenPortal.element.hidden = false;
+      const len = M.polyLength(M.routeOf(e, box));
+      const dur = Math.max(260, Math.min(950, len * 2.4)) * RUN.speed;
+      return new Promise((resolve) => {
+        const t0 = performance.now();
+        const f = (now) => {
+          if (my !== RUN.token) return resolve();
+          const k = dur ? Math.min(1, (now - t0) / dur) : 1;
+          const p = M.pointAlong(M.routeOf(e, box), k);
+          tokenPortal.setPosition(p.x - 7, p.y - 7);
+          RUN.tokenAt = { x: p.x, y: p.y, edge: edgeId };
+          if (k < 1) requestAnimationFrame(f);
+          else { markLink(edgeId, 'done'); RUN.path.push(edgeId); resolve(); }
+        };
+        requestAnimationFrame(f);
+      });
+    }
+    let lastTick = null;
+    function showTick(id, text) {
+      const b = box(id);
+      if (!b) return;
+      lastTick?.dispose();
+      const p = (lastTick = createViewportPortal(htmlLayer, { className: 'ma-tick-host' }));
+      p.element.style.pointerEvents = 'none';
+      p.element.innerHTML = `<div class="ma-tick">${ico('ff')}${esc(text)}</div>`;
+      p.setPosition(b.x + b.w + 10, b.y + 14);
+      RUN.ticks++;
+      setTimeout(() => { p.dispose(); if (lastTick === p) lastTick = null; }, REDUCED.matches ? 600 : 1150);
+    }
+    const LOG_ICON = { trigger: ['flag', 'indigo'], end: ['check', 'green'] };
+    function logRow(ev, replay = false) {
+      if (!replay) RUN.log.push(ev);
+      const list = $('ma-log');
+      if (!list) return;
+      const [icon, tone] = LOG_ICON[ev.kind] || [KINDS[ev.kind].icon, KINDS[ev.kind].tone];
+      const li = document.createElement('li');
+      li.dataset.kind = ev.kind;
+      li.innerHTML = `<span class="ma-tile sm t-${tone}">${ico(icon)}</span><div><div class="ma-log-t">${M.clockText(ev.clock)}</div>${esc(ev.text)}</div>`;
+      list.appendChild(li);
+      panel.scrollTop = panel.scrollHeight;   // the panel scrolls, never the page
+    }
+    async function runTest(contact, opts = {}) {
+      commitLive();
+      closeMenu();
+      stopRun(true);
+      const my = ++RUN.token;
+      RUN.active = true;
+      RUN.contact = contact;
+      RUN.path = []; RUN.log = []; RUN.ticks = 0; RUN.clock = 9 * 60;
+      RUN.state = { text: 'Running…', done: false };
+      RUN.plan = M.planRun(state, contact);
+      testView = true;
+      select(null);
+      renderRunPanel();
+      const clock = () => $('ma-clock');
+      for (const ev of RUN.plan.events) {
+        if (my !== RUN.token) return RUN;
+        if (ev.via) { await travel(ev.via, my); if (my !== RUN.token) return RUN; }
+        if (ev.kind === 'end') { tokenPortal.element.hidden = true; logRow(ev); break; }
+        setStatus(ev.id, 'run');
+        reveal(ev.id);
+        logRow(ev);
+        RUN.clock = ev.clock;
+        if (clock()) clock().textContent = M.clockText(ev.clock);   // a delay fast-forwards the clock right away
+        if (ev.wait) {
+          setStatus(ev.id, 'wait', ev.wait);
+          showTick(ev.id, ev.wait);
+          if (ev.id === opts.holdAt) return RUN;   // the camera's frame: hold right here
+          await sleep(900 * RUN.speed);
+        } else {
+          if (ev.id === opts.holdAt) return RUN;
+          await sleep(380 * RUN.speed);
+        }
+        if (my !== RUN.token) return RUN;
+        if (ev.armId) { const ae = L.edges.find((x) => x.from === ev.id && x.armId === ev.armId); if (ae) { RUN.arms.add(ae.id); frame(); } }
+        setStatus(ev.id, ev.ok === false ? 'fail' : 'done');
+      }
+      if (my !== RUN.token) return RUN;
+      RUN.active = false;
+      tokenPortal.element.hidden = true;
+      const steps = RUN.plan.events.filter((e) => e.kind !== 'trigger' && e.kind !== 'end').length;
+      setRunState(RUN.plan.enrolled ? `Done · ${steps} step${steps === 1 ? '' : 's'}` : 'Not enrolled', true);
+      return RUN;
+    }
+    ctx.runTest = (id, opts) => runTest(M.CONTACTS.find((c) => c.id === id), opts);
+    function renderRunPanel() {
+      const c = RUN.contact;
+      if (!c) return;
+      panel.innerHTML = `<div class="ma-p-head"><span class="ma-tile t-indigo">${ico('play')}</span>
+          <div><div class="ma-p-name">Test run</div><div class="ma-p-kind">Simulated — nothing is sent</div></div></div>
+        <div class="ma-p-body">
+          <div class="ma-run-who"><span class="ma-av">${esc(c.initials)}</span><div><b>${esc(c.name)}</b><small>${esc(c.company)} · ${esc(c.blurb)}</small></div></div>
+          <div class="ma-clock">${ico('clock')}<span id="ma-clock">${M.clockText(RUN.clock)}</span><span class="ma-run-state${RUN.state.done ? ' done' : ''}" id="ma-run-state">${esc(RUN.state.text)}</span></div>
+          <div class="ma-run-actions"><button class="ma-btn primary" data-act="run-again">Run again</button><button class="ma-btn" data-act="run-pick">Another contact</button><button class="ma-btn" data-act="run-exit">Exit test</button></div>
+          <ol class="ma-log" id="ma-log" aria-live="polite"></ol>
+        </div>`;
+      for (const ev of RUN.log) logRow(ev, true);   // a re-render (an undo mid-test) keeps the log
+    }
+    function exitTest(repaint = true) {
+      stopRun(true);
+      testView = false;
+      RUN.contact = null; RUN.plan = null;
+      if (repaint) renderPanel();
+    }
+    ctx.exitTest = exitTest;
+    let pickedContact = M.CONTACTS[0].id;
+    function openTestDialog() {
+      commitLive();
+      openDialog(`<h3>Test flow</h3><p>Pick a sample contact. A token walks the automation exactly as they would — delays fast-forward, nothing is sent.</p>
+        <div class="ma-dlg-list">${M.CONTACTS.map((c) => `<button class="ma-pick" data-act="pick" data-id="${c.id}" aria-pressed="${c.id === pickedContact}">
+          <span class="ma-av">${esc(c.initials)}</span><span><b>${esc(c.name)}</b><small>${esc(c.company)} · ${esc(c.blurb)}</small></span></button>`).join('')}</div>
+        <div class="ma-dlg-actions"><button class="ma-btn" data-act="cancel">Cancel</button><button class="ma-btn primary" data-act="run" data-focus>Run test</button></div>`,
+      (act, b) => {
+        if (act === 'cancel') closeDialog();
+        else if (act === 'pick') { pickedContact = b.dataset.id; for (const x of dlg.querySelectorAll('.ma-pick')) x.setAttribute('aria-pressed', String(x === b)); }
+        else if (act === 'run') { closeDialog(); runTest(M.CONTACTS.find((c) => c.id === pickedContact)); }
+      });
+    }
+    $('ma-test').addEventListener('click', openTestDialog);
+
+    // ---- the scheme can flip live: model styles follow it ----------------------------------
+    DARK.addEventListener?.('change', () => { if (L) { sync({ animate: false }); } });
+
+    // ---- a fresh sample, for the checks and the camera ----------------------------------------
+    ctx.state = () => state;
+    ctx.layout = () => L;
+    ctx.box = (id) => box(id);
+    ctx.reset = () => {
+      commitLive();
+      closeMenu();
+      closeDialog();
+      exitTest(false);
+      state = M.sampleAutomation();
+      noteCollapsed = false;
+      published = false;
+      select(null);
+      sync({ animate: false });
+      cm.clear();
+      refreshUndo();
+      titleInput.value = state.title;
+      markDirty();
+      frameView();
+      renderPanel();
+    };
+
+    sync({ animate: false });
+    titleInput.value = state.title;
+    frameView();
+    renderPanel();
+    refreshUndo();
+    await ctx.tick();
+  },
+
+  // The money shot: Maya's test run held at "Wait 3 days" — the replay, the
+  // Lead path and the first wait checked off in green, the "+3 days" tick on
+  // screen, the token on its way down, the run log open on the right.
+  async showcase(ctx) {
+    ctx.reset();
+    const RUN = ctx.RUN;
+    RUN.speed = 0;
+    await ctx.runTest('maya', { holdAt: 'wait3' });
+    RUN.speed = 1;
+    ctx.fitAll();
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    ctx.reset();
+    const m = ctx.diagram, api = ctx.instance, host = ctx.host;
+    const raf = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const until = async (cond, what, tries = 600) => {
+      for (let i = 0; i < tries && !cond(); i++) await wait(10);
+      check(cond(), `timed out waiting for ${what}`);
+    };
+    const S = () => ctx.state().steps;
+    const nodeBox = (id) => { const n = m.getNode(id); return n ? { x: n.position.x, y: n.position.y, w: n.size.width, h: n.size.height } : null; };
+    const cx = (id) => { const b = nodeBox(id); return b.x + b.w / 2; };
+    const cardEl = (id) => host.querySelector(`[data-node-id="${id}"] .ma-card`);
+    const cardTitle = (id) => cardEl(id)?.querySelector('.ma-title')?.textContent ?? null;
+    // REAL gestures: pointer events at a client point, on whatever is painted there.
+    const fire = (type, c) => {
+      const init = { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', clientX: c.x, clientY: c.y, button: 0, buttons: /up|click/.test(type) ? 0 : 1 };
+      const el = document.elementFromPoint(c.x, c.y) || host;
+      el.dispatchEvent(type === 'click' ? new MouseEvent('click', init) : new PointerEvent(type, init));
+      return el;
+    };
+    const centre = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    /** Click a DOM control the way a hand would — and prove nothing covers it. */
+    const tap = (el, what) => {
+      check(!!el, `${what} is not on the page`);
+      el.scrollIntoView?.({ block: 'nearest' });
+      const c = centre(el), hit = document.elementFromPoint(c.x, c.y);
+      check(hit && (hit === el || el.contains(hit)), `${what} is covered by ${hit ? hit.className || hit.tagName : 'nothing'}`);
+      fire('pointermove', c); fire('pointerdown', c); fire('pointerup', c); fire('click', c);
+    };
+    /** Click a card on the canvas (the engine's own selection gesture). */
+    const tapCard = async (id) => {
+      const el = host.querySelector(`[data-node-id="${id}"]`);
+      check(!!el, `the card ${id} is not drawn`);
+      const c = centre(el);
+      fire('pointermove', c); fire('pointerdown', c); fire('pointerup', c); fire('click', c);
+      await raf();
+    };
+    const key = (k, mods = {}) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...mods }));
+    const overlaps = () => {
+      const ids = Object.keys(S());
+      const bad = [];
+      const all = [...ids, 'note'];
+      for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+        const a = nodeBox(all[i]), b = nodeBox(all[j]);
+        if (a && b && a.x < b.x + b.w - 1 && b.x < a.x + a.w - 1 && a.y < b.y + b.h - 1 && b.y < a.y + a.h - 1) bad.push(`${all[i]}×${all[j]}`);
+      }
+      return bad;
+    };
+    await raf();
+
+    // 1. The sample drew: 13 cards, the trigger's chips + "Add criteria", path chips on the Branch lines.
+    check(Object.keys(S()).length === 13, `expected the 13-step sample, got ${Object.keys(S()).length}`);
+    for (const id of Object.keys(S())) check(!!cardEl(id), `step ${id} has no card on the canvas`);
+    const trig = cardEl('trigger');
+    check(trig.querySelectorAll('.ma-chip').length === 3, `the trigger should show 3 criteria chips, got ${trig.querySelectorAll('.ma-chip').length}`);
+    check(!!trig.querySelector('.ma-addcrit'), 'the trigger card has no "Add criteria" button');
+    check(cardEl('email1').querySelector('.ma-type').textContent === 'Send email' && !!cardEl('email1').querySelector('.ma-tile .ma-ico'), 'a step card must show its icon tile, a muted type and a title');
+    const chipText = (from, to) => host.querySelector(`[data-link-id="${CSS.escape(`ln:${from}>${to}`)}"]`)?.textContent || '';
+    for (const [to, label] of [['slackCs', 'Customer'], ['slackDeal', 'Opportunity'], ['wait1', 'Lead'], ['taskReview', 'Other']]) {
+      check(chipText('stage', to).includes(label), `the Branch line to ${to} should carry the chip "${label}", DOM text "${chipText('stage', to)}"`);
+    }
+
+    // 2. The guided layout: one spine, paths fanned out under their Branch, orthogonal rounded lines, no overlaps.
+    check(Math.abs(cx('trigger') - cx('email1')) < 0.5 && Math.abs(cx('email1') - cx('stage')) < 0.5, 'the trigger, the first email and the Branch must share one spine');
+    const arms = ['slackCs', 'slackDeal', 'wait1', 'taskReview'];
+    check(new Set(arms.map((id) => nodeBox(id).y)).size === 1, 'the four paths must start on one row');
+    check(arms.every((id, i) => i === 0 || cx(arms[i - 1]) < cx(id)), 'the paths must run left to right in their Branch\'s order');
+    check(Math.abs((cx('slackCs') + cx('taskReview')) / 2 - cx('stage')) < 1, 'the Branch must sit centred over its paths');
+    check(nodeBox('slackCs').y > nodeBox('stage').y + nodeBox('stage').h + 60, 'the paths must hang below the Branch with room for the chips');
+    for (const l of m.getLinks()) {
+      for (let i = 1; i < l.points.length; i++) {
+        const a = l.points[i - 1], b = l.points[i];
+        check(Math.abs(a.x - b.x) < 0.6 || Math.abs(a.y - b.y) < 0.6, `line ${l.id} has a diagonal run (${Math.round(a.x)},${Math.round(a.y)} → ${Math.round(b.x)},${Math.round(b.y)})`);
+      }
+    }
+    const bent = host.querySelector(`[data-link-id="${CSS.escape('ln:stage>slackCs')}"] path.diagram-link`);
+    check(/[QCA]/.test(bent?.getAttribute('d') || ''), `the bent Branch line must draw rounded corners, d="${bent?.getAttribute('d')}"`);
+    check(overlaps().length === 0, `cards overlap: ${overlaps().join(', ')}`);
+
+    // 3. Insert from a line's "+": open the menu, search, pick — the tree re-flows (animated).
+    ctx.fitAll(); await raf();
+    const stageY0 = nodeBox('stage').y, slackY0 = nodeBox('slackCs').y, scoreY0 = nodeBox('score').y;
+    tap(ctx.plusEl('email1|'), 'the + between "Send the webinar replay" and the Branch');
+    const menu = document.getElementById('ma-menu');
+    check(!menu.hidden, 'the + did not open the step menu');
+    for (const label of ['Send email', 'Send Slack message', 'Create task', 'Adjust lead score', 'Add to audience', 'Webhook', 'Delay', 'Branch']) {
+      check([...menu.querySelectorAll('.ma-mi b')].some((b) => b.textContent === label), `the step menu is missing "${label}"`);
+    }
+    const q = document.getElementById('ma-menu-q');
+    q.value = 'dela'; q.dispatchEvent(new Event('input', { bubbles: true }));
+    const visible = [...menu.querySelectorAll('.ma-mi:not([hidden])')].map((b) => b.querySelector('b').textContent);
+    check(visible.length === 1 && visible[0] === 'Delay', `searching "dela" should leave only Delay, got [${visible}]`);
+    q.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    check(menu.hidden, 'picking a step did not close the menu');
+    const newId = S().email1.next;
+    check(newId && S()[newId]?.kind === 'delay' && S()[newId].next === 'stage', `the Delay was not inserted between the email and the Branch (email1.next=${newId})`);
+    await raf();
+    const midY = nodeBox('stage').y;
+    check(midY > stageY0 + 1 && midY < stageY0 + G.CARD_H + G.GAP_V - 1, `the re-flow should ANIMATE: mid-way the Branch should be between ${stageY0} and ${stageY0 + G.CARD_H + G.GAP_V}, it is at ${midY}`);
+    await ctx.idle();
+    const shift = G.CARD_H + G.GAP_V;
+    check(Math.abs(cx(newId) - cx('email1')) < 0.5, 'the inserted step must land on the spine');
+    check(Math.abs(nodeBox(newId).y - (nodeBox('email1').y + G.CARD_H + G.GAP_V)) < 1, 'the inserted step must sit right under the email');
+    for (const [id, y0] of [['stage', stageY0], ['slackCs', slackY0], ['score', scoreY0]]) {
+      check(Math.abs(nodeBox(id).y - (y0 + shift)) < 1, `${id} should move down ${shift} with the re-flow, moved ${nodeBox(id).y - y0}`);
+    }
+    check(!!m.getLink(`ln:email1>${newId}`) && !!m.getLink(`ln:${newId}>stage`), 'the new step is not wired into the spine');
+    check(overlaps().length === 0, `after inserting, cards overlap: ${overlaps().join(', ')}`);
+    check(ctx.selected() === newId && !!document.querySelector('#ma-panel input[data-k="amount"]'), 'the inserted step should be selected with its form in the panel');
+
+    // 4. Add a path with the dashed "+" beside the Branch.
+    const nArms = S().stage.arms.length;
+    ctx.fitAll(); await raf();
+    tap(ctx.plusEl('add|stage'), 'the dashed + beside the Branch');
+    await ctx.idle();
+    check(S().stage.arms.length === nArms + 1, `the dashed + should add a path (${nArms} → ${S().stage.arms.length})`);
+    const newArm = S().stage.arms[S().stage.arms.length - 2];
+    check(chipText('stage', `end:stage:${newArm.id}`).includes(newArm.label), `the new path should carry its chip "${newArm.label}"`);
+    check(Math.abs((cx('slackCs') + cx('taskReview')) / 2 - cx('stage')) < 1, 'the Branch must re-centre over its new set of paths');
+    check(cx('wait1') < cx(`end:stage:${newArm.id}`) && cx(`end:stage:${newArm.id}`) < cx('taskReview'), 'a new path goes after the last value path, before Other');
+    check(overlaps().length === 0, `after adding a path, cards overlap: ${overlaps().join(', ')}`);
+    check(!!ctx.plusEl(`stage|${newArm.id}`), 'the new path has no + to start it');
+
+    // 5. Edit a property: click the Delay card, change the amount — the card changes live.
+    ctx.centerView(cx(newId), nodeBox(newId).y + 30, 1); await raf();
+    await tapCard(newId);
+    check(ctx.selected() === newId, 'clicking the Delay card did not select it');
+    const amount = document.querySelector('#ma-panel input[data-k="amount"]');
+    check(!!amount && !!amount.closest('.ma-f').querySelector('.ma-f-h'), 'the Delay form must show its amount field with a hint under it');
+    check(cardTitle(newId) === 'Wait 1 day', `a new Delay reads "Wait 1 day", got "${cardTitle(newId)}"`);
+    amount.value = '2'; amount.dispatchEvent(new Event('input', { bubbles: true }));
+    await raf();
+    check(cardTitle(newId) === 'Wait 2 days', `typing 2 should update the card live, got "${cardTitle(newId)}"`);
+    amount.dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(20);
+
+    // 6. Undo / redo — the keyboard and the toolbar walk the same history.
+    key('z', { ctrlKey: true }); await wait(30); await raf();
+    check(cardTitle(newId) === 'Wait 1 day', `Ctrl+Z should undo the edit, card reads "${cardTitle(newId)}"`);
+    key('z', { ctrlKey: true, shiftKey: true }); await wait(30); await raf();
+    check(cardTitle(newId) === 'Wait 2 days', `Ctrl+Shift+Z should redo it, card reads "${cardTitle(newId)}"`);
+    tap(document.getElementById('ma-undo'), 'the Undo button'); await wait(30); await raf();
+    check(cardTitle(newId) === 'Wait 1 day', `the Undo button should undo the edit, card reads "${cardTitle(newId)}"`);
+
+    // 7. Delete with the keyboard: children re-attach, the tree closes up; a Branch asks what to keep.
+    await tapCard(newId);
+    check(ctx.selected() === newId, 'could not select the Delay to delete it');
+    key('Delete'); await ctx.idle();
+    check(!S()[newId] && S().email1.next === 'stage', 'Delete should remove the step and re-attach the Branch to the email');
+    check(Math.abs(nodeBox('stage').y - stageY0) < 1, 'after the delete the Branch should move back up');
+    check(!m.getNode(newId) && !m.getLinks().some((l) => l.sourceNodeId === newId || l.targetNodeId === newId), 'the deleted step left a card or a line behind');
+    ctx.select('replied'); await raf();
+    key('Delete'); await raf();
+    const dlg = document.getElementById('ma-dialog');
+    check(!dlg.hidden && !!dlg.querySelector('[data-act="keep"]'), 'deleting a Branch should ask which path to keep');
+    const keepNo = [...dlg.querySelectorAll('[data-act="keep"]')].find((b) => b.textContent.includes('No'));
+    tap(keepNo, 'the "Keep the No path" choice');
+    await ctx.idle();
+    check(!S().replied && !S().score && S().wait3.next === 'audience', 'keeping the No path should put "Retarget on LinkedIn" in the Branch\'s place and drop the Yes path');
+    check(Math.abs(cx('audience') - cx('wait3')) < 0.5, 'the kept path must move onto its parent\'s line');
+    tap(document.getElementById('ma-undo'), 'the Undo button'); await wait(30); await ctx.idle();
+    check(S().replied && S().score && S().replied.arms.length === 2, 'Undo should bring the Branch and both paths back');
+    check(overlaps().length === 0, `after undoing the delete, cards overlap: ${overlaps().join(', ')}`);
+
+    // 8. Test flow for two contacts: the token walks different branches.
+    ctx.reset(); await raf();
+    const RUN = ctx.RUN;
+    RUN.speed = 0.12;
+    tap(document.getElementById('ma-test'), 'the Test flow button');
+    check(!dlg.hidden && dlg.querySelectorAll('.ma-pick').length === 4, 'Test flow should open a dialog with 4 sample contacts');
+    tap([...dlg.querySelectorAll('.ma-pick')].find((b) => b.textContent.includes('Maya')), 'Maya Chen');
+    tap(dlg.querySelector('[data-act="run"]'), 'Run test');
+    check(dlg.hidden, 'Run test should close the dialog');
+    // Mid-run: the token is drawn ON the line it travels; a step is lit.
+    await until(() => RUN.tokenAt && !ctx.tokenEl.hidden, 'the token to set off');
+    let onLine = 0;
+    for (let i = 0; i < 6 && RUN.active; i++) {
+      const at = RUN.tokenAt, e = ctx.layout().edges.find((x) => x.id === at.edge);
+      const pts = M.routeOf(e, ctx.box);
+      let d = Infinity;
+      for (let j = 1; j < pts.length; j++) {
+        const a = pts[j - 1], b = pts[j], dx = b.x - a.x, dy = b.y - a.y, LL = dx * dx + dy * dy || 1;
+        const u = Math.max(0, Math.min(1, ((at.x - a.x) * dx + (at.y - a.y) * dy) / LL));
+        d = Math.min(d, Math.hypot(a.x + u * dx - at.x, a.y + u * dy - at.y));
+      }
+      const r = ctx.tokenEl.getBoundingClientRect(), wc = api.viewport.worldToClient(at.x, at.y, host.getBoundingClientRect());
+      if (d < 1.5 && Math.hypot(r.left + r.width / 2 - wc.x, r.top + r.height / 2 - wc.y) < 3) onLine++;
+      await wait(25);
+    }
+    check(onLine >= 3, `the token should ride the lines (on a line in ${onLine}/6 samples)`);
+    await until(() => !RUN.active, 'Maya\'s run to finish', 2000);
+    const pathMaya = [...RUN.path];
+    check(pathMaya.includes('ln:stage>wait1') && pathMaya.includes('ln:replied>score'), `Maya (a Lead who replies) should take Lead → Yes, took ${pathMaya.join(' ')}`);
+    check(RUN.status.score === 'done' && !RUN.status.audience && !RUN.status.slackCs, 'only the steps on Maya\'s path may light up');
+    check(!!host.querySelector('[data-node-id="score"] .ma-card.ma-done .ma-badge'), 'a visited step must show its check');
+    check(RUN.ticks === 2, `the two delays should each show a fast-forward tick, saw ${RUN.ticks}`);
+    const logText = document.getElementById('ma-log').textContent;
+    check(logText.includes('took the Lead path') && logText.includes('Waited 3 days') && logText.includes('Lead score 34 → 49'), `the run log should list what happened, got "${logText.slice(0, 160)}…"`);
+    check(document.getElementById('ma-clock').textContent.startsWith('Day 4'), `four days pass on Maya's path, the clock reads "${document.getElementById('ma-clock').textContent}"`);
+    // A second run (another contact) resets the first and takes another branch.
+    tap(document.querySelector('#ma-panel [data-act="run-pick"]'), 'Another contact');
+    tap([...dlg.querySelectorAll('.ma-pick')].find((b) => b.textContent.includes('Priya')), 'Priya Nair');
+    tap(dlg.querySelector('[data-act="run"]'), 'Run test');
+    await until(() => RUN.status.trigger === 'done' || RUN.status.trigger === 'run', 'Priya\'s run to start');
+    check(!RUN.status.score && !RUN.links['ln:replied>score'], 'a new run must reset the last one');
+    await until(() => !RUN.active, 'Priya\'s run to finish', 2000);
+    check(RUN.path.includes('ln:stage>slackCs') && !RUN.path.includes('ln:stage>wait1'), `Priya (a Customer) should take the Customer path, took ${RUN.path.join(' ')}`);
+    check(RUN.path.join() !== pathMaya.join(), 'two different contacts must take different branches');
+    check(RUN.ticks === 0, 'the Customer path has no delay, so no tick');
+    RUN.speed = 1;
+    tap(document.querySelector('#ma-panel [data-act="run-exit"]'), 'Exit test');
+
+    // 9. Save, change something, Load restores it.
+    const saved0 = localStorage.getItem('grafloria.marketing-automation.v1');
+    try {
+      tap(document.getElementById('ma-save'), 'Save');
+      check(JSON.parse(localStorage.getItem('grafloria.marketing-automation.v1')).automation.title === ctx.state().title, 'Save did not write the automation to localStorage');
+      ctx.select('taskReview'); await raf();
+      key('Delete'); await ctx.idle();
+      const title = document.getElementById('ma-title');
+      title.value = 'Changed after saving'; title.dispatchEvent(new Event('input', { bubbles: true })); title.dispatchEvent(new Event('change', { bubbles: true }));
+      check(!S().taskReview && ctx.state().title === 'Changed after saving', 'setup: the post-save edits did not land');
+      tap(document.getElementById('ma-load'), 'Load');
+      await ctx.idle();
+      check(!!S().taskReview && ctx.state().title === 'Webinar follow-up · Q4 product tour' && title.value === ctx.state().title, 'Load should restore the saved automation (the deleted step and the old title)');
+      check(!!m.getNode('taskReview') && !!m.getLink('ln:stage>taskReview'), 'Load should redraw the restored step and its line');
+    } finally {
+      if (saved0 === null) localStorage.removeItem('grafloria.marketing-automation.v1'); else localStorage.setItem('grafloria.marketing-automation.v1', saved0);
+    }
+
+    // 10. Trigger chips: × removes a criterion (undoable); the navigator moves the view.
+    ctx.centerView(cx('trigger'), nodeBox('trigger').y + 80, 1); await raf();
+    const x = host.querySelector('[data-node-id="trigger"] .ma-chip-x.ma-x-utmSource');
+    tap(x, 'the × on the UTM chip'); await raf();
+    check(S().trigger.props.utmSource === '' && cardEl('trigger').querySelectorAll('.ma-chip').length === 2, 'the × should remove the UTM criterion chip');
+    key('z', { ctrlKey: true }); await wait(30); await raf();
+    check(S().trigger.props.utmSource === 'linkedin', 'Ctrl+Z should bring the chip back');
+    check(ctx.mini.element.querySelectorAll('rect[data-node-id]').length >= 13, 'the minimap should mirror the cards');
+    const z0 = api.viewport.getZoom();
+    const slider = document.getElementById('ma-zoom');
+    slider.value = String(Math.round(z0 * 100) === 60 ? 80 : 60); slider.dispatchEvent(new Event('input', { bubbles: true }));
+    check(Math.abs(api.viewport.getZoom() - Number(slider.value) / 100) < 0.01, 'the zoom slider should set the zoom');
+    const pos0 = { ...m.getNode('email1').position }, vp0 = api.viewport.getViewport();
+    const from = centre(host.querySelector('[data-node-id="email1"]'));
+    fire('pointermove', from); fire('pointerdown', from);
+    for (let i = 1; i <= 6; i++) fire('pointermove', { x: from.x + i * 12, y: from.y + i * 7 });
+    fire('pointerup', { x: from.x + 72, y: from.y + 42 }); await raf();
+    const vp1 = api.viewport.getViewport();
+    check(Math.hypot(vp1.x - vp0.x, vp1.y - vp0.y) > 40, 'a drag that starts on a card should pan the canvas');
+    check(m.getNode('email1').position.x === pos0.x && m.getNode('email1').position.y === pos0.y, 'a card must never be dragged out of its computed place');
+    tap(document.getElementById('ma-fit'), 'Fit');
+    const b = ctx.contentBounds(), vb = api.viewport.getViewBox();
+    check(b.x >= vb.x - 1 && b.y >= vb.y - 1 && b.x + b.width <= vb.x + vb.width + 1 && b.y + b.height <= vb.y + vb.height + 1, 'Fit should frame the whole automation');
+
+    // 11. New starts from a bare trigger; Undo brings the sample back.
+    tap(document.getElementById('ma-new'), 'New');
+    tap(dlg.querySelector('[data-act="new"]'), 'Start new');
+    await raf();
+    check(Object.keys(S()).length === 1 && S().trigger && !S().trigger.next, 'New should leave just a trigger');
+    check(!!ctx.plusEl('trigger|'), 'a bare trigger still offers a + to start from');
+    tap(document.getElementById('ma-undo'), 'the Undo button'); await wait(30); await ctx.idle();
+    check(Object.keys(S()).length === 13, 'Undo after New should bring the automation back');
+
+    ctx.reset();
+  },
+});
+</script>

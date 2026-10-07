@@ -118,15 +118,17 @@ async function buildNav() {
   nav.setAttribute('aria-label', 'Demo gallery');
   nav.innerHTML =
     `<div class="an-head"><a class="an-home" href="../index.html"><img src="../shell/logo.svg" alt="">Grafloria demos</a>` +
-    `<button class="an-close" aria-label="Close menu" title="Close (Esc)">×</button></div>` +
+    `<button class="an-close" aria-label="Collapse menu" title="Collapse (Esc) — the tab at the left edge brings it back">‹</button></div>` +
     `<input class="an-search" type="search" placeholder="Filter demos…  ( / )" aria-label="Filter demos" autocomplete="off">` +
     `<div class="an-list">${list}</div>` +
     `<div class="an-foot">${DEMOS.length} demos · every one MIT · <a href="https://grafloria.com">grafloria.com</a></div>`;
 
   const toggle = document.createElement('button');
   toggle.id = 'grafloria-nav-toggle';
+  toggle.setAttribute('aria-label', 'Expand the demos menu');
+  toggle.title = 'Demos menu';
   toggle.setAttribute('aria-label', 'Open demo menu');
-  toggle.innerHTML = '☰';
+  toggle.innerHTML = '☰ Demos';
 
   document.body.append(toggle, nav);
 
@@ -184,11 +186,16 @@ function buildHowTo(spec) {
 
   const panel = document.createElement('aside');
   panel.id = 'grafloria-howto';
+  // The demo's description lives HERE, not under the title: a visitor gets a
+  // clean board and reads the story when they open the panel (the gallery
+  // index still shows the first lines on each card).
   panel.innerHTML = `
     <div class="ht-head">
-      <span>How to test</span>
+      <span>About &amp; how to test</span>
       <button id="grafloria-howto-toggle" title="collapse">×</button>
     </div>
+    ${spec.blurb ? `<p class="ht-about">${escapeHtml(spec.blurb)}</p>` : ''}
+    <div class="ht-steps">How to test</div>
     <ol>${spec.howTo.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ol>
     <div class="ht-run">
       <button id="grafloria-howto-run">▶ run the scripted checks</button>
@@ -263,8 +270,8 @@ function buildCodePanel(spec) {
   const routeKey = location.pathname.replace(/.*\/([^/]+\/[^/]+)\.html$/, '$1');
   // Each framework may ship a REAL implementation of this demo under
   // ../../demos-<fw>/. The tab shows its actual source files; the pill runs it.
-  const FW_APPS = { angular: '../../demos-angular/', react: '../../demos-react/', vue: '../../demos-vue/' };
-  const fwFiles = { angular: null, react: null, vue: null };   // [{name,text}] per fw
+  const FW_APPS = { angular: '../../demos-angular/', react: '../../demos-react/', vue: '../../demos-vue/', qwik: '../../demos-qwik/' };
+  const fwFiles = { angular: null, react: null, vue: null, qwik: null };   // [{name,text}] per fw
   let fwFileIdx = 0;
   const variantReady = Promise.all(Object.keys(FW_APPS).map((fw) =>
     fetch(FW_APPS[fw] + 'sources.json')
@@ -278,12 +285,17 @@ function buildCodePanel(spec) {
     { key: 'angular', label: 'Angular' },
     { key: 'react',   label: 'React' },
     { key: 'vue',     label: 'Vue' },
+    { key: 'qwik',    label: 'Qwik' },
     { key: 'install', label: 'Install' },
   ];
 
+  // A demo may ship its own dialect samples as plain-text script blocks —
+  // `<script type="text/plain" data-code="angular">…</script>` — so they stay
+  // out of the module the JavaScript tab shows. `spec.code` still wins.
+  const blockCode = (fw) => document.querySelector(`script[type="text/plain"][data-code="${fw}"]`)?.textContent?.replace(/^\n/, '') ?? undefined;
   const samples = {
     js: pageSource,
-    angular: spec.code?.angular ?? `// npm i @grafloria/angular
+    angular: spec.code?.angular ?? blockCode('angular') ?? `// npm i @grafloria/angular
 import { Component, viewChild } from '@angular/core';
 import { GrafloriaDiagramCanvas } from '@grafloria/angular';
 
@@ -306,7 +318,7 @@ export class DemoComponent {
   // JavaScript tab: one engine underneath every framework.
   canvas = viewChild(GrafloriaDiagramCanvas);
 }`,
-    react: spec.code?.react ?? `// npm i @grafloria/react
+    react: spec.code?.react ?? blockCode('react') ?? `// npm i @grafloria/react
 import { GrafloriaFlow } from '@grafloria/react';
 
 // Use this demo's exact nodes/edges — copy them from the JavaScript tab.
@@ -325,7 +337,7 @@ export function Demo() {
     />
   );
 }`,
-    vue: spec.code?.vue ?? `<!-- npm i @grafloria/vue -->
+    vue: spec.code?.vue ?? blockCode('vue') ?? `<!-- npm i @grafloria/vue -->
 <script setup>
 import { GrafloriaFlow } from '@grafloria/vue';
 import { ref } from 'vue';
@@ -341,11 +353,25 @@ const onInit = (instance) => {};
 <template>
   <GrafloriaFlow v-model:nodes="nodes" v-model:edges="edges" @init="onInit" />
 </template>`,
+    qwik: spec.code?.qwik ?? blockCode('qwik') ?? `// npm i @grafloria/qwik
+import { component$, $ } from '@builder.io/qwik';
+import { GrafloriaFlow, type DiagramInstance } from '@grafloria/qwik';
+
+// Use this demo's exact nodes/edges — copy them from the JavaScript tab.
+const nodes = [/* ... */];
+const edges = [/* ... */];
+
+export default component$(() => (
+  // \`instance\` from onInit$ is the same object the JavaScript tab drives.
+  <GrafloriaFlow defaultNodes={nodes} defaultEdges={edges}
+    onInit$={$((instance: DiagramInstance) => {})} />
+));`,
     install: `# pick your dialect — one engine underneath all of them
 npm i @grafloria/element            # plain web component <grafloria-flow>
 npm i @grafloria/angular   # Angular
 npm i @grafloria/react              # React
 npm i @grafloria/vue                # Vue 3
+npm i @grafloria/qwik               # Qwik
 
 # headless (Node, workers, server-side export)
 npm i @grafloria/engine @grafloria/renderer`,
@@ -356,6 +382,7 @@ npm i @grafloria/engine @grafloria/renderer`,
     angular: '<b>Same engine, Angular dialect.</b> The mount is Angular signals + banana-boxes; every instance call from the JavaScript tab works identically here.',
     react: '<b>Same engine, React dialect.</b> The mount is React; every instance call from the JavaScript tab works identically on the <code>onInit</code> instance.',
     vue: '<b>Same engine, Vue dialect.</b> The mount is Vue 3; every instance call from the JavaScript tab works identically on the <code>@init</code> instance.',
+    qwik: '<b>Same engine, Qwik dialect.</b> The mount is a Qwik component; every instance call from the JavaScript tab works identically on the <code>onInit$</code> instance.',
     install: '<b>All packages are MIT.</b> Dual CJS + ESM builds; the element registers <code>&lt;grafloria-flow&gt;</code> on import.',
   };
 
@@ -397,8 +424,10 @@ npm i @grafloria/engine @grafloria/renderer`,
   const EXT_LANG = { ts: 'typescript', tsx: 'typescript', js: 'javascript', html: 'html', vue: 'html', css: 'css' };
   function loadMonaco() {
     if (M.ready) return M.ready;
+    // Shared with code-editor.js: a second loader.js on the page throws.
+    if (window.__grafloriaMonaco) return (M.ready = window.__grafloriaMonaco);
     const CDN = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
-    M.ready = new Promise((resolve, reject) => {
+    M.ready = window.__grafloriaMonaco = new Promise((resolve, reject) => {
       window.MonacoEnvironment = {
         // A BLOB worker (page origin) can importScripts the CDN's CORS-enabled
         // worker; a data: worker has an opaque origin and is blocked.
@@ -483,7 +512,11 @@ npm i @grafloria/engine @grafloria/renderer`,
         const f = realFw[M.file];
         showMonaco(f.text, f.name.split('.').pop(), true, realFw, M.file, (i) => { M.file = i; setTab(t); });
       } else {
-        showMonaco(samples[t], t === 'install' ? 'js' : 'typescript', true, null, 0);
+        // EXT_LANG is keyed by file EXTENSION: 'ts' → TypeScript colouring for
+        // the Angular / React samples, 'vue' → HTML for the SFC. Passing a
+        // language NAME here fell through to plaintext — every framework tab
+        // painted black while the JS tab was coloured (live report).
+        showMonaco(samples[t], t === 'install' ? 'js' : t === 'vue' ? 'vue' : 'ts', true, null, 0);
       }
     } else {
       // Fallback: textarea (JS) / highlighted <pre> (frameworks).
@@ -494,7 +527,7 @@ npm i @grafloria/engine @grafloria/renderer`,
       else view.innerHTML = highlight(samples[t]);
     }
 
-    const fwLabel = { angular: 'Angular', react: 'React', vue: 'Vue' }[t];
+    const fwLabel = { angular: 'Angular', react: 'React', vue: 'Vue', qwik: 'Qwik' }[t];
     note.innerHTML = realFw
       ? '<b>This is a real ' + fwLabel + ' app.</b> The files below are the actual compiled-and-gated source of the ' + fwLabel + ' implementation running when the ' + fwLabel + ' pill is active. <a href="' + FW_APPS[t] + 'index.html#/' + routeKey + '" target="_blank" rel="noopener">Open it standalone ↗</a>'
       : NOTES[t];
@@ -507,7 +540,6 @@ npm i @grafloria/engine @grafloria/renderer`,
   const setOpen = (open) => {
     document.body.classList.toggle('code-open', open);
     if (open) loadMonaco().then((m) => { if (m) { mountMonaco(m); requestAnimationFrame(() => M.editor?.layout()); } });
-    try { localStorage.setItem('grafloria-code-open', open ? '1' : '0'); } catch { /* private mode */ }
   };
 
   drawer.querySelectorAll('.gfc-tab').forEach((b) => b.addEventListener('click', () => { saveJs(); setTab(b.dataset.tab); }));
@@ -549,7 +581,7 @@ npm i @grafloria/engine @grafloria/renderer`,
     if (!fwFiles[fw]) return;
     if (variantOverlay && variantFw !== fw) { variantOverlay.remove(); variantOverlay = null; }
     variantFw = fw;
-    const label = { angular: 'Angular', react: 'React', vue: 'Vue' }[fw];
+    const label = { angular: 'Angular', react: 'React', vue: 'Vue', qwik: 'Qwik' }[fw];
     if (!variantOverlay) {
       variantOverlay = document.createElement('div');
       variantOverlay.className = 'gfc-overlay gfc-variant';
@@ -652,9 +684,12 @@ npm i @grafloria/engine @grafloria/renderer`,
   let fw = 'js';
   try { fw = localStorage.getItem('grafloria-fw') || 'js'; } catch { /* private mode */ }
   setTab(FW.some((f) => f.key === fw) ? fw : 'js');
-  let open = false;
-  try { open = localStorage.getItem('grafloria-code-open') === '1'; } catch { /* private mode */ }
-  setOpen(open);
+  // The drawer always starts CLOSED. It used to restore its last state, so
+  // opening it once made every subsequent demo load with the canvas already
+  // squeezed between the nav, the how-to panel and the drawer — the demo is the
+  // point of the page, and it should be what you see first. The `</> Code`
+  // button (and the framework pills) open it on demand.
+  setOpen(false);
 }
 
 /**
@@ -714,6 +749,7 @@ export function defineDemo(spec) {
             <button data-fw="angular" role="tab">Angular</button>
             <button data-fw="react" role="tab">React</button>
             <button data-fw="vue" role="tab">Vue</button>
+            <button data-fw="qwik" role="tab">Qwik</button>
           </div>`;
       const codeBtn = navigator.webdriver ? '' : `
             <button class="code-toggle" id="gf-code-toggle">&lsaquo;/&rsaquo; Code</button>`;
@@ -727,8 +763,7 @@ export function defineDemo(spec) {
             <a href="https://grafloria.com">grafloria.com</a>
           </nav>
         </div>
-        <h1>${escapeHtml(spec.name)}</h1>
-        <p class="blurb">${escapeHtml(spec.blurb)}</p>`;
+        <h1>${escapeHtml(spec.name)}</h1>`;
     }
 
     // Reserve the CHROME's layout space BEFORE the page fits itself: buildNav

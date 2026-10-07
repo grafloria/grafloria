@@ -1,3 +1,4 @@
+import { debugLog } from '../util/debug';
 /**
  * DSL - Main interface for Mermaid-compatible diagram text parsing
  *
@@ -50,6 +51,14 @@ import {
   parseMermaidState,
   stateModelToDiagram,
   generateStateFromDiagram,
+  parseMermaidBlock,
+  blockModelToFlowchart,
+  applyBlockGrid,
+  generateBlockFromDiagram,
+  parseMermaidArchitecture,
+  architectureModelToFlowchart,
+  applyArchitectureModel,
+  generateArchitectureFromDiagram,
 } from './mermaid';
 
 // Advanced features (Phase 4)
@@ -92,6 +101,13 @@ export interface ParseResult {
    * Layout suggestion
    */
   layoutSuggestion?: LayoutSuggestion;
+
+  /**
+   * Lines the flowchart parser could not read and SKIPPED. It recovers line by
+   * line (one bad line must not lose the diagram), so `parse()` never throws for
+   * these — read them here, or use `validate()`. Empty for the other grammars.
+   */
+  errors?: string[];
 
   /**
    * Parse statistics
@@ -183,7 +199,7 @@ export class DSL {
       const diagramType = this.detectDiagramType(text);
 
       if (this.options.debug) {
-        console.log(`[DSL] Detected diagram type: ${diagramType}`);
+        debugLog(`[DSL] Detected diagram type: ${diagramType}`);
       }
 
       // Mermaid graph-family types with a real parser of their own (Phase 3).
@@ -206,6 +222,22 @@ export class DSL {
           startTime
         );
       }
+      // block-beta: the grid is its own; every block, edge and style is the
+      // flowchart grammar — parsed as flowchart text, then the grid laid on.
+      if (diagramType === 'block-beta') {
+        const model = parseMermaidBlock(text);
+        const flow = this.parseDetailed(blockModelToFlowchart(model));
+        applyBlockGrid(flow.diagram, model);
+        return this.finishGraphType(flow.diagram, 'block-beta', startTime);
+      }
+      // architecture-beta: groups and services are flowchart subgraphs and nodes;
+      // the sides every line names are the layout's relations.
+      if (diagramType === 'architecture-beta') {
+        const model = parseMermaidArchitecture(text);
+        const flow = this.parseDetailed(architectureModelToFlowchart(model));
+        applyArchitectureModel(flow.diagram, model);
+        return this.finishGraphType(flow.diagram, 'architecture-beta', startTime);
+      }
 
       // Recognised Mermaid type we do not yet parse (sequence, gantt, pie, …):
       // return an EMPTY diagram tagged with the type, never garbage from the
@@ -225,42 +257,42 @@ export class DSL {
 
       // Phase 4: Parse styles and templates first
       if (this.options.debug) {
-        console.log('[DSL] Phase 4: Parsing styles and templates...');
+        debugLog('[DSL] Phase 4: Parsing styles and templates...');
       }
       const styleDefinitions = this.styleParser.parseStyleDefinitions(text);
       const templateDefinitions = this.templateParser.parseTemplateDefinitions(text);
 
       if (this.options.debug && styleDefinitions.size > 0) {
-        console.log(`[DSL] Found ${styleDefinitions.size} style definitions`);
+        debugLog(`[DSL] Found ${styleDefinitions.size} style definitions`);
       }
       if (this.options.debug && templateDefinitions.size > 0) {
-        console.log(`[DSL] Found ${templateDefinitions.size} template definitions`);
+        debugLog(`[DSL] Found ${templateDefinitions.size} template definitions`);
       }
 
       // Step 1: Lexical analysis
       if (this.options.debug) {
-        console.log('[DSL] Starting lexical analysis...');
+        debugLog('[DSL] Starting lexical analysis...');
       }
       this.lexer = new Lexer(text);
       const tokens = this.lexer.tokenize();
 
       if (this.options.debug) {
-        console.log(`[DSL] Tokenized: ${tokens.length} tokens`);
+        debugLog(`[DSL] Tokenized: ${tokens.length} tokens`);
       }
 
       // Step 2: Parsing
       if (this.options.debug) {
-        console.log('[DSL] Starting parsing...');
+        debugLog('[DSL] Starting parsing...');
       }
       const ast = this.parser.parse(tokens);
 
       if (this.options.debug) {
-        console.log(`[DSL] Parsed AST: ${ast.statements.length} statements`);
+        debugLog(`[DSL] Parsed AST: ${ast.statements.length} statements`);
       }
 
       // Step 3: Transformation
       if (this.options.debug) {
-        console.log('[DSL] Transforming AST to DiagramModel...');
+        debugLog('[DSL] Transforming AST to DiagramModel...');
       }
       const diagram = this.transformer.transform(ast, this.options.transformOptions);
 
@@ -271,7 +303,7 @@ export class DSL {
       const linkCount = diagram.getLinks().length;
 
       if (this.options.debug) {
-        console.log(`[DSL] Created diagram: ${nodeCount} nodes, ${linkCount} links`);
+        debugLog(`[DSL] Created diagram: ${nodeCount} nodes, ${linkCount} links`);
       }
 
       // Step 4: Layout detection and application
@@ -279,16 +311,16 @@ export class DSL {
 
       if (this.options.autoLayout) {
         if (this.options.debug) {
-          console.log('[DSL] Detecting optimal layout...');
+          debugLog('[DSL] Detecting optimal layout...');
         }
 
         layoutSuggestion = this.layoutDetector.detect(diagram, ast);
 
         if (this.options.debug) {
-          console.log(
+          debugLog(
             `[DSL] Layout suggestion: ${layoutSuggestion.presetId} (confidence: ${layoutSuggestion.confidence.toFixed(2)})`
           );
-          console.log(`[DSL] Reasoning: ${layoutSuggestion.reasoning}`);
+          debugLog(`[DSL] Reasoning: ${layoutSuggestion.reasoning}`);
         }
 
         // Store layout suggestion in diagram metadata
@@ -300,7 +332,7 @@ export class DSL {
       const parseTime = performance.now() - startTime;
 
       if (this.options.debug) {
-        console.log(`[DSL] Parse complete in ${parseTime.toFixed(2)}ms`);
+        debugLog(`[DSL] Parse complete in ${parseTime.toFixed(2)}ms`);
       }
 
       return {
@@ -308,6 +340,7 @@ export class DSL {
         ast,
         tokens,
         layoutSuggestion,
+        errors: this.parser.getErrors().map((e) => e.message),
         stats: {
           nodeCount,
           linkCount,
@@ -325,31 +358,85 @@ export class DSL {
   }
 
   /**
-   * Validate DSL text without creating a diagram
+   * Validate DSL text without creating a diagram.
+   *
+   * Stricter than `parse()`, on purpose: `parse()` is best-effort (it skips a line it
+   * cannot read, and takes a body with no header as a flowchart), while this answers
+   * "is this text what it claims to be?" — so a caller can refuse it before it replaces
+   * anything. Reported: empty text, a first line that is not a diagram type (`flowchrt`),
+   * and every line the flowchart parser had to skip.
    */
   validate(text: string): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
+    const header = this.headerLine(text);
+    if (!header) {
+      return { valid: false, errors: ['The text is empty — there is no diagram in it.'] };
+    }
+    const firstWord = header.text.split(/[\s:]/)[0];
+    if (!DSL.isDiagramHeader(firstWord)) {
+      return {
+        valid: false,
+        errors: [
+          `Line ${header.line}: "${firstWord}" is not a diagram type. Mermaid text starts with ` +
+            `one: ${DSL.SUPPORTED_TEXT_TYPES.join(', ')}.`,
+        ],
+      };
+    }
+
+    // The graph-family grammars (erDiagram, classDiagram, …) are line-oriented
+    // parsers of their own; only flowchart text goes through this token parser.
+    if (this.detectDiagramType(text) !== 'flowchart') return { valid: true, errors };
 
     try {
-      // Tokenize
       this.lexer = new Lexer(text);
       const tokens = this.lexer.tokenize();
-
-      // Parse
       this.parser.parse(tokens);
-
-      return { valid: true, errors: [] };
+      for (const error of this.parser.getErrors()) errors.push(error.message);
     } catch (error) {
-      if (error instanceof ParseError) {
-        errors.push(
-          `Line ${error.line}, Column ${error.column}: ${error.message}`
-        );
-      } else if (error instanceof Error) {
-        errors.push(error.message);
-      }
-
-      return { valid: false, errors };
+      errors.push(error instanceof Error ? error.message : String(error));
     }
+    return { valid: errors.length === 0, errors };
+  }
+
+  /** The diagram types the text format reads and writes back (the canvas round-trips these). */
+  static readonly SUPPORTED_TEXT_TYPES: readonly string[] = [
+    'flowchart',
+    'graph',
+    'erDiagram',
+    'classDiagram',
+    'stateDiagram',
+    'stateDiagram-v2',
+    'block-beta',
+    'architecture-beta',
+  ];
+
+  /** Is this first word a diagram header the DSL recognises (parsed or not)? */
+  private static isDiagramHeader(word: string): boolean {
+    const lower = word.toLowerCase();
+    return (
+      lower === 'flowchart' ||
+      lower === 'graph' ||
+      lower === 'erdiagram' ||
+      lower === 'classdiagram' ||
+      lower === 'bpmn' ||
+      lower === 'erd' ||
+      DSL.KNOWN_DIAGRAM_TYPES[lower] !== undefined
+    );
+  }
+
+  /** The header line (1-based) — the first line that is not blank, a comment or frontmatter. */
+  private headerLine(text: string): { text: string; line: number } | null {
+    let inFrontmatter = false;
+    const lines = text.replace(/\r\n?/g, '\n').split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      if (line === '---') { inFrontmatter = !inFrontmatter; continue; }
+      if (inFrontmatter) continue;
+      if (line.startsWith('%%')) continue;
+      return { text: line, line: i + 1 };
+    }
+    return null;
   }
 
   /**
@@ -404,7 +491,7 @@ export class DSL {
    */
   generate(diagram: DiagramModel, options?: GeneratorOptions): string {
     if (this.options.debug) {
-      console.log('[DSL] Generating DSL text from diagram...');
+      debugLog('[DSL] Generating DSL text from diagram...');
     }
 
     // A graph-family diagram must be written back in ITS OWN grammar. Handing
@@ -417,11 +504,13 @@ export class DSL {
     if (graphType === 'stateDiagram' || graphType === 'stateDiagram-v2') {
       return generateStateFromDiagram(diagram);
     }
+    if (graphType === 'block-beta') return generateBlockFromDiagram(diagram);
+    if (graphType === 'architecture-beta') return generateArchitectureFromDiagram(diagram);
 
     const text = this.generator.generate(diagram, options);
 
     if (this.options.debug) {
-      console.log(`[DSL] Generated ${text.split('\n').length} lines of DSL text`);
+      debugLog(`[DSL] Generated ${text.split('\n').length} lines of DSL text`);
     }
 
     return text;
@@ -528,7 +617,7 @@ export class DSL {
   parseERD(text: string): DiagramModel {
     const model = parseMermaidEr(text);
     if (this.options.debug) {
-      console.log(
+      debugLog(
         `[DSL] Parsed ERD: ${model.entities.length} entities, ${model.relationships.length} relationships`
       );
     }
@@ -569,7 +658,7 @@ export class DSL {
   parseUML(text: string): DiagramModel {
     const model = parseMermaidClass(text);
     if (this.options.debug) {
-      console.log(
+      debugLog(
         `[DSL] Parsed UML: ${model.classes.length} classes, ${model.relationships.length} relationships`
       );
     }

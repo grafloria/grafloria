@@ -37,9 +37,9 @@ export const flowchartDataTemplate: NodeTemplate = {
       "maxHeight": 150
     },
     "shape": {
-      "type": "rect",
-      "fill": "#F3E5F5",
-      "stroke": "#7B1FA2",
+      "type": "parallelogram",
+      "fill": "#EEF2FF",
+      "stroke": "#4F46E5",
       "strokeWidth": 2,
       "opacity": 1
     },

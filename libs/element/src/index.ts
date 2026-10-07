@@ -590,6 +590,23 @@ export {
   bindCardEditing,
   matchColumns,
   rowIndexFromY,
+  // Live join guidance (query-builder): score every other table's columns
+  // against a connection drag's source column and tint the kit rows by fit.
+  scoreMatch,
+  matchTier,
+  assignTiers,
+  singularize,
+  bindJoinGuidance,
+  ensureJoinGuidanceStyles,
+  JOIN_GUIDANCE_STYLE_ID,
+} from './lib/diagram-kit';
+export type {
+  JoinColumn,
+  JoinEnd,
+  MatchTier,
+  JoinGuidanceApi,
+  JoinGuidanceOptions,
+  JoinGuidanceHandle,
 } from './lib/diagram-kit';
 export type {
   ErColumn,
@@ -636,6 +653,19 @@ export type { HandleApi } from './lib/diagram-kit';
 // ===========================================================================
 export {
   bindDashboardGrid,
+  paintTabStrip,
+  tabStripReserve,
+  tabStripKey,
+  TAB_STRIP_HEIGHT,
+  TAB_DRAG_THRESHOLD,
+  normalizeCaption,
+  captionReserve,
+  captionBandHeight,
+  paintCaptionBand,
+  CAPTION_HEIGHT,
+  CAPTION_HEIGHT_SUBTITLE,
+  CAPTION_HEIGHT_TIGHT,
+  CAPTION_PASS_THROUGH,
   rowHeightFor,
   boardHeightFor,
   columnUnitFor,
@@ -647,6 +677,7 @@ export {
   buildCommitCommands,
   ensureDashboardKitStyles,
   DASHBOARD_KIT_STYLE_ID,
+  DASHBOARD_KIT_CSS,
   // The DATA-FIRST authoring API — the erDiagram()/umlDiagram() equivalent.
   dashboard,
   // …and the built-in renderers behind `kind`, so a dashboard is useful with
@@ -672,9 +703,17 @@ export type {
   DashboardOptions,
   DashboardSpec,
   DashboardSnapshot,
+  DragHandleOption,
+  DragGripOptions,
   DashboardHandle,
   DashboardViewSpec,
   DashboardWidgetSpec,
+  SectionCaption,
+  SectionCaptionOptions,
+  TabsOptions,
+  TabPage,
+  SectionCaptionAction,
+  SectionCaptionFont,
   WidgetHandle,
   WidgetRenderer,
   KpiWidgetData,

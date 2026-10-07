@@ -36,9 +36,9 @@ export const umlMergeTemplate: NodeTemplate = {
       "maxHeight": 600
     },
     "shape": {
-      "type": "rect",
-      "fill": "#E8F5E9",
-      "stroke": "#388E3C",
+      "type": "diamond",
+      "fill": "#F8FAFC",
+      "stroke": "#475569",
       "strokeWidth": 2,
       "opacity": 1
     },

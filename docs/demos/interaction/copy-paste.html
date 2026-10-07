@@ -1,16 +1,24 @@
 <meta charset="utf-8">
 <title>Copy / paste — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="Copy a node, paste it twice — two independent copies, each with its own id and position, and mutating one touches neither the other nor the original.">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/copy-paste.html">
+<meta property="og:title" content="Copy / paste — Grafloria">
+<meta property="og:description" content="Copy a node, paste it twice — two independent copies, each with its own id and position, and mutating one touches neither the other nor the original.">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/copy-paste.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/copy-paste.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/copy-paste.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #readout { padding: 8px 24px; font: 12px/1.5 ui-monospace, monospace; opacity: .8; border-bottom: 1px solid rgba(127,127,127,.25); white-space: pre; }
-  #canvas { height: calc(100vh - 168px); }
+  #canvas { height: calc(100vh - 108px); }
 </style>
 <header id="demo-head"></header>
 <div id="readout"></div>
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // Copy a selected node to the clipboard, then paste it TWICE. Each paste is an
 // independent copy: it gets its own id, its own position, and mutating one leaves
@@ -120,6 +128,16 @@ defineDemo({
       `repeat pastes stacked on the same spot — positions [${spots.join('  ')}]`);
 
     ctx.report(`orig=${orig.id}  copy1=${c1.id}  copy2=${c2.id}  (+2 via ⌘C/⌘V ×2 = 5 nodes, all at distinct spots)`);
+  },
+
+  // The card's picture: the original and two pasted copies, cascading.
+  async showcase(ctx) {
+    ctx.engine.selectNodes(['orig']);
+    await ctx.engine.copy();
+    await ctx.engine.paste({ offset: { x: 60, y: 60 } });
+    await ctx.engine.paste({ offset: { x: 120, y: 120 } });
+    ctx.instance.renderNow();
+    await ctx.tick();
   },
 });
 </script>

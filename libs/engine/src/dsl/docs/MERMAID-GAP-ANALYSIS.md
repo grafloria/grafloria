@@ -291,8 +291,13 @@ errors. Guessing here would have invented regions Mermaid never accepts.
 - The `%%grafloria:` Tier-2 per-entity directive channel (Phase 2) is wired for
   FLOWCHART only. ER/class/state extras currently fall back to the Tier-3
   sidecar, which is lossless but opaque.
-- Layout is a naive grid (3-up for ER/class, 4-up for state); no type-aware
-  layout (ER tables by FK dependency, class by inheritance depth, state by flow).
+- ~~Layout is a naive grid~~ **CLOSED 2026-07-26**: import placement is now
+  type-aware and synchronous (`dsl/mermaid/layout.ts` rank machinery) — flowchart
+  ranks along the declared direction with siblings spread across, ER ranks by FK
+  dependency (the ONE side leads), class by inheritance/realization depth only,
+  state by flow with concurrent regions banded inside their composite. Locked by
+  `rank-placement.spec.ts` + `typed-layout.spec.ts`; exported text bodies proven
+  unchanged by the oracle.
 
 ---
 

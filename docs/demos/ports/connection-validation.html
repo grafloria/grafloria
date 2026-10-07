@@ -1,16 +1,24 @@
 <meta charset="utf-8">
 <title>Connection validation — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
+<meta name="description" content="A registered validator vetoes an invalid connection before it is made — output→output is rejected (with a reason), output→input is allowed.">
+<link rel="canonical" href="https://grafloria.com/demos/ports/connection-validation.html">
+<meta property="og:title" content="Connection validation — Grafloria">
+<meta property="og:description" content="A registered validator vetoes an invalid connection before it is made — output→output is rejected (with a reason), output→input is allowed.">
+<meta property="og:url" content="https://grafloria.com/demos/ports/connection-validation.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/ports/connection-validation.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/ports/connection-validation.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   #status { padding: 8px 24px; font: 13px/1.5 ui-monospace, monospace; min-height: 20px; border-bottom: 1px solid rgba(127,127,127,.25); }
-  #canvas { height: calc(100vh - 190px); }
+  #canvas { height: calc(100vh - 130px); }
 </style>
 <header id="demo-head"></header>
 <div id="status">—</div>
 <div id="canvas"></div>
 <script type="module">
 import { render, registerConnectionValidator, isValidConnection, clearConnectionValidators } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // registerConnectionValidator(): veto a connection BEFORE it is made, with a
 // reason. The rule here is a directional one — an output may only feed an input,
@@ -81,6 +89,19 @@ defineDemo({
     await ctx.drag('ao', 'bi');
     status.textContent = `output→input: ${ctx.diagram.getLinks().length} link (accepted)`;
     check(ctx.diagram.getLinks().length === 1, `the valid connection was not made (${ctx.diagram.getLinks().length} links)`);
+  },
+
+  // The card's picture: the valid output→input connection made, framed close
+  // (fitView stops at 1:1 — it never magnifies; these three nodes want nearer).
+  async showcase(ctx) {
+    await ctx.drag('ao', 'bi');
+    const ns = ctx.diagram.getNodes();
+    const x = Math.min(...ns.map((n) => n.position.x)), y = Math.min(...ns.map((n) => n.position.y));
+    const w = Math.max(...ns.map((n) => n.position.x + n.size.width)) - x;
+    const h = Math.max(...ns.map((n) => n.position.y + n.size.height)) - y;
+    ctx.instance.viewport.fitToBounds({ x, y, width: w, height: h }, 80, { maxZoom: 2 });
+    ctx.instance.renderNow();
+    await ctx.tick();
   },
 });
 </script>

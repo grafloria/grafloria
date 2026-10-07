@@ -14,6 +14,7 @@
     "@angular/cli": "19.2.15",
     "@angular/compiler-cli": "19.2.14",
     "@angular/language-service": "19.2.14",
+    "@builder.io/qwik": "^1.20.1",
     "@nestjs/cli": "^11.0.7",
     "@nestjs/schematics": "^10.0.1",
     "@nestjs/testing": "^10.0.2",

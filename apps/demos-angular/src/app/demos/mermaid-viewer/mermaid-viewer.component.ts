@@ -1,8 +1,9 @@
-import { AfterViewInit, Component } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DiagramCanvasComponent } from '@grafloria/angular';
 import { importDiagramText } from '@grafloria/element';
 import { markReady } from '../demo-ready';
+import { mountCodeEditor } from '../../code-editor';
 
 /** Mermaid viewer: paste Mermaid text and see it rendered. importDiagramText()
  *  parses the source into a model; the canvas renders the reconciled spec.
@@ -75,13 +76,15 @@ const EXAMPLES: Record<string, string> = {
         <grafloria-diagram-canvas [(nodes)]="nodes" [(edges)]="edges" style="display:block; height:100%" />
       </div>
       <div style="flex:1;min-width:0;border-left:1px solid rgba(127,127,127,.25)">
-        <textarea [(ngModel)]="text" spellcheck="false"
+        <textarea #source [(ngModel)]="text" spellcheck="false"
           style="width:100%;height:100%;box-sizing:border-box;border:0;padding:10px 14px;font:12px/1.5 ui-monospace,Menlo,monospace;resize:none;color:inherit;background:transparent"></textarea>
       </div>
     </div>
   `,
 })
 export class MermaidViewerComponent implements AfterViewInit {
+  // The source reads as Mermaid: the gallery's editor colours it over the textarea.
+  source = viewChild<ElementRef<HTMLTextAreaElement>>('source');
   type = 'flowchart';
   text = EXAMPLES['flowchart'];
   nodes: unknown[] = [];
@@ -115,6 +118,7 @@ export class MermaidViewerComponent implements AfterViewInit {
 
   ngAfterViewInit() {
     this.renderText(this.text);
+    void mountCodeEditor(this.source()?.nativeElement, { language: 'mermaid' });
     markReady();
   }
 }

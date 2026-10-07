@@ -1,12 +1,20 @@
 <meta charset="utf-8">
 <title>Port labels — Grafloria</title>
-<link rel="stylesheet" href="../shell/demo.css?v=drawer3">
-<style>#canvas { height: calc(100vh - 140px); }</style>
+<meta name="description" content="Labels placed inside / outside / orthogonal to the glyph, and a keep-upright flip that rescues an upside-down label. All asserted by geometry.">
+<link rel="canonical" href="https://grafloria.com/demos/ports/port-labels.html">
+<meta property="og:title" content="Port labels — Grafloria">
+<meta property="og:description" content="Labels placed inside / outside / orthogonal to the glyph, and a keep-upright flip that rescues an upside-down label. All asserted by geometry.">
+<meta property="og:url" content="https://grafloria.com/demos/ports/port-labels.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/ports/port-labels.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/ports/port-labels.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>#canvas { height: calc(100vh - 80px); }</style>
 <header id="demo-head"></header>
 <div id="canvas"></div>
 <script type="module">
 import { render } from '../shell/grafloria.js';
-import { defineDemo, check } from '../shell/demo.js?v=drawer3';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
 
 // Port labels: text next to a port, placed relative to the glyph — pulled INSIDE
 // the node, pushed OUTSIDE it, or set ORTHOGONAL (along the edge). Plus keep-upright:

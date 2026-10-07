@@ -68,7 +68,7 @@ export interface RenderResult {
 
 /**
  * HTML Template Renderer
- * Phase 3.4: Framework-agnostic HTML template rendering with EventBus integration
+ * Framework-agnostic HTML template rendering with EventBus integration
  *
  * Features:
  * - LemonadeJS template rendering

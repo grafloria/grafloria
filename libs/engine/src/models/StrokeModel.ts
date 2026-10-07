@@ -389,12 +389,10 @@ export class StrokeModel extends DiagramEntity {
    * A two-second scribble at 120Hz is ~240 samples, most of them a fraction of a pixel
    * apart. Persisting them all means a document that is mostly float noise, an op
    * payload that is kilobytes per line, and an SVG path the browser re-parses on every
-   * frame. The brief's phrasing is exactly right: a 500-point stroke that serialises as
-   * 500 points is a bug.
+   * frame.
    *
-   * So: Douglas-Peucker, through the engine's OWN `PathSimplifier` — which existed and
-   * which the renderer had never called until Wave 8, and which I am not going to
-   * reimplement a second copy of. Typical reduction on real ink is 85-95%.
+   * So: Douglas-Peucker, through the engine's own `PathSimplifier`. Typical reduction
+   * on real ink is 85-95%.
    *
    * IT PRESERVES PRESSURE, and that is a property of the algorithm rather than luck:
    * Douglas-Peucker SELECTS a subset of the input points (it returns the very objects it

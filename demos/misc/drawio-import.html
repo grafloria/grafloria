@@ -1,0 +1,377 @@
+<meta charset="utf-8">
+<title>draw.io import — Grafloria</title>
+<meta name="description" content="Import .drawio files — plain XML or the default compressed save — onto live engine models: shapes, colours, swimlane containers with real membership, edge…">
+<link rel="canonical" href="https://grafloria.com/demos/misc/drawio-import.html">
+<meta property="og:title" content="draw.io import — Grafloria">
+<meta property="og:description" content="Import .drawio files — plain XML or the default compressed save — onto live engine models: shapes, colours, swimlane containers with real membership, edge…">
+<meta property="og:url" content="https://grafloria.com/demos/misc/drawio-import.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/misc/drawio-import.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/misc/drawio-import.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  .note { font-size: 12px; opacity: .8; padding: 10px 24px; border-bottom: 1px solid rgba(127,127,127,.25); line-height: 1.6; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+  #canvas { display: flex; height: calc(100vh - 130px); }
+  #stage { flex: 1; min-width: 0; position: relative; }
+  #side { width: 400px; border-left: 1px solid rgba(127,127,127,.3); display: flex; flex-direction: column; }
+  #text { flex: 1; font: 11px ui-monospace, Menlo, monospace; border: 0; border-bottom: 1px solid rgba(127,127,127,.3); padding: 10px; resize: none; background: transparent; color: inherit; white-space: pre; }
+  #side .foot { padding: 8px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #side button { padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; }
+  #pagepick { padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; }
+  #status { font-size: 12px; padding: 6px 10px 10px; line-height: 1.5; max-height: 130px; overflow: auto; }
+  #status .bad { color: #dc2626; font-weight: 600; }
+  #status .warn { opacity: .75; display: block; }
+</style>
+<header id="demo-head"></header>
+<div class="note">
+  <b>.drawio (mxGraph XML) import</b> — the migration on-ramp from draw.io / diagrams.net.
+  Reads plain <code>&lt;mxGraphModel&gt;</code> XML <i>and</i> the default compressed
+  <code>&lt;mxfile&gt;</code> save (base64 → raw-deflate → URI-encoded). Vertices, styles,
+  swimlane containers with real membership, edges with labels, arrow markers, <b>manual
+  waypoints</b> (applied, not parked), edges that end <b>on a container</b>, and
+  <b>multi-page files</b> (every page imports; pick one below) all map onto the engine's
+  own models — and every construct the import drops is <b>named in a warning</b>, never
+  lost in silence.
+</div>
+<div id="canvas">
+  <div id="stage"></div>
+  <div id="side">
+    <textarea id="text" spellcheck="false" placeholder="Paste .drawio / mxGraph XML here…"></textarea>
+    <div class="foot">
+      <button id="ex-plain">example: plain XML</button>
+      <button id="ex-compressed">example: compressed</button>
+      <button id="ex-pages">example: 2 pages</button>
+      <button id="import">import</button>
+      <select id="pagepick" hidden></select>
+    </div>
+    <div id="status">—</div>
+  </div>
+</div>
+<script type="module">
+import { render, importDrawio, fromDocument, DiagramSerializer } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { mountCodeEditor } from '../shell/code-editor.js';
+
+// A small order flow, hand-written in the exact XML draw.io saves: a rounded
+// start box, a rhombus decision, a SWIMLANE CONTAINER whose children carry
+// PARENT-RELATIVE geometry, an edge with MANUAL WAYPOINTS that detours under
+// the decision, and an edge that ends ON the container itself — the four
+// constructs this importer exists for.
+const PLAIN_XML = `<mxGraphModel dx="800" dy="600" grid="1">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="start" value="New order" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+      <mxGeometry x="40" y="70" width="150" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="check" value="In stock?" style="rhombus;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+      <mxGeometry x="45" y="220" width="140" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="lane" value="Fulfilment" style="swimlane;" vertex="1" parent="1">
+      <mxGeometry x="330" y="70" width="380" height="280" as="geometry"/>
+    </mxCell>
+    <mxCell id="pick" value="Pick items" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="lane">
+      <mxGeometry x="30" y="50" width="130" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="pack" value="Pack &amp; ship" style="rounded=0;" vertex="1" parent="lane">
+      <mxGeometry x="210" y="170" width="130" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="start" target="check">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e2" value="yes" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="check" target="pick">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points"><mxPoint x="115" y="420"/><mxPoint x="425" y="420"/></Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e3" edge="1" parent="lane" source="pick" target="pack">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e4" value="escalate" style="dashed=1;" edge="1" parent="1" source="check" target="lane">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>`;
+
+// A TWO-PAGE file, both pages inline (uncompressed) — the page picker appears
+// and each page renders as its own diagram.
+const MULTI_XML = `<mxfile host="grafloria-demo" version="24.0">
+  <diagram id="p1" name="Overview"><mxGraphModel><root>
+    <mxCell id="0"/><mxCell id="1" parent="0"/>
+    <mxCell id="m1" value="PageOneNode" style="rounded=1;fillColor=#dae8fc;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="170" height="60" as="geometry"/></mxCell>
+  </root></mxGraphModel></diagram>
+  <diagram id="p2" name="Detail"><mxGraphModel><root>
+    <mxCell id="0"/><mxCell id="1" parent="0"/>
+    <mxCell id="m2" value="PageTwoNode" style="ellipse;fillColor=#d5e8d4;" vertex="1" parent="1"><mxGeometry x="40" y="60" width="180" height="80" as="geometry"/></mxCell>
+    <mxCell id="m3" value="Second" vertex="1" parent="1"><mxGeometry x="330" y="70" width="120" height="60" as="geometry"/></mxCell>
+    <mxCell id="me" edge="1" parent="1" source="m2" target="m3"><mxGeometry relative="1" as="geometry"/></mxCell>
+  </root></mxGraphModel></diagram>
+</mxfile>`;
+
+// The COMPRESSED example is generated from the SAME XML, through the browser's
+// own CompressionStream — the exact inverse of the decode path importDrawio
+// runs — so the two examples can never drift apart, and importing both proves
+// compressed ≡ plain end to end.
+async function compressedCopy(xml) {
+  const bytes = new TextEncoder().encode(encodeURIComponent(xml));
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  const buf = new Uint8Array(await new Response(stream).arrayBuffer());
+  let bin = '';
+  for (const b of buf) bin += String.fromCharCode(b);
+  return `<mxfile host="grafloria-demo" version="24.0"><diagram id="d1" name="Page-1">${btoa(bin)}</diagram></mxfile>`;
+}
+
+defineDemo({
+  name: 'draw.io import',
+  blurb: 'Import .drawio files — plain XML or the default compressed save — onto live engine models: shapes, colours, swimlane containers with real membership, edge labels. Every dropped construct is a named warning.',
+  howTo: [
+    'Click "example: plain XML" — the order flow imports: a rounded blue start box, a yellow decision rhombus, a "Fulfilment" swimlane drawn as a real group frame, an edge whose MANUAL WAYPOINTS detour under the diamond exactly as authored, and a dashed edge that ends ON the swimlane itself.',
+    'Click "example: compressed" — the SAME diagram, but wrapped exactly like draw.io\'s default save (base64 → raw-deflate → URI-encoded). The status line shows identical counts: the decode path is proven live.',
+    'Click "example: 2 pages" — a multi-page file. Every page imports; the page picker appears next to the buttons, and switching it swaps the rendered diagram.',
+    'Read the status line: node / link / group counts, then every warning the import raised — anything dropped is named (unmapped style keys, …) instead of lost silently.',
+    'Paste your own .drawio file into the pane and click import. Garbage input reports an error and leaves the current diagram untouched.',
+    'Drag any node — these are live engine models, not a picture of draw.io: selection, dragging and routing all work on the imported diagram.',
+  ],
+  reactflow: null,
+
+  async setup(ctx) {
+    const stage = document.getElementById('stage');
+    const ta = document.getElementById('text');
+    // Syntax-coloured XML; the textarea stays canonical beneath, so every
+    // ta.value read (and the gate) is untouched. Monaco's built-in xml
+    // tokenizer colours without workers.
+    const ed = await mountCodeEditor(ta, { language: 'xml' });
+    ctx.editor = ed;
+    const status = document.getElementById('status');
+    const pagePick = document.getElementById('pagepick');
+    let mountHost = null;
+    let currentPages = null;
+
+    // Import → serialize → fromDocument → render: the LOADED path is the same
+    // public one-liner an embedder writes, so groups (frames + membership),
+    // applied waypoints and link styles all arrive through the supported
+    // loader instead of a demo-only rebuild.
+    const renderModel = (model) => {
+      const json = JSON.stringify(new DiagramSerializer().serialize(model));
+      if (mountHost) mountHost.remove();
+      mountHost = document.createElement('div');
+      mountHost.style.cssText = 'position:absolute;inset:0;';
+      stage.appendChild(mountHost);
+      const api = render(fromDocument(json), mountHost);
+      api.renderNow();
+      api.fitView?.(40);
+      ctx.instance = api;
+      return api;
+    };
+
+    const showStatus = (model, warnings, pageNote) => {
+      const counts = `${model.getNodes().length} nodes · ${model.getLinks().length} links · ${model.getGroups().length} groups`;
+      status.textContent = '';
+      const head = document.createElement('div');
+      head.textContent =
+        (pageNote ? `${pageNote} · ` : '') +
+        counts +
+        (warnings.length ? ` · ${warnings.length} warning(s):` : ' · no warnings');
+      status.appendChild(head);
+      for (const w of warnings) {
+        const line = document.createElement('span');
+        line.className = 'warn';
+        line.textContent = '⚠ ' + w;
+        status.appendChild(line);
+      }
+    };
+
+    const show = async (text) => {
+      const result = await importDrawio(text);
+      if (result.error && !result.diagram) {
+        // Error path leaves the PREVIOUS diagram (and picker) fully intact.
+        status.innerHTML = `<span class="bad"></span>`;
+        status.querySelector('.bad').textContent = result.error;
+        return result;
+      }
+      currentPages = result.pages ?? null;
+      pagePick.innerHTML = '';
+      pagePick.hidden = !currentPages;
+      if (currentPages) {
+        currentPages.forEach((p, i) => {
+          const o = document.createElement('option');
+          o.value = String(i);
+          o.textContent = `page ${i + 1}: ${p.name}${p.error ? ' (unreadable)' : ''}`;
+          if (p.error) o.disabled = true;
+          pagePick.appendChild(o);
+        });
+        pagePick.value = '0';
+      }
+      renderModel(result.diagram);
+      showStatus(
+        result.diagram,
+        result.warnings,
+        currentPages ? `page 1/${currentPages.length} "${currentPages[0].name}"` : ''
+      );
+      return result;
+    };
+
+    pagePick.onchange = () => {
+      const page = currentPages?.[Number(pagePick.value)];
+      if (!page || !page.diagram) return;
+      renderModel(page.diagram);
+      showStatus(page.diagram, page.warnings, `page ${page.index + 1}/${currentPages.length} "${page.name}"`);
+    };
+
+    ctx.show = show;
+    ctx.showPage = (i) => { pagePick.value = String(i); pagePick.onchange(); };
+    ctx.compressedCopy = compressedCopy;
+    ctx.PLAIN_XML = PLAIN_XML;
+    ctx.MULTI_XML = MULTI_XML;
+
+    document.getElementById('ex-plain').onclick = () => { ed.setValue(PLAIN_XML); show(ta.value); };
+    document.getElementById('ex-compressed').onclick = async () => { ed.setValue(await compressedCopy(PLAIN_XML)); show(ta.value); };
+    document.getElementById('ex-pages').onclick = () => { ed.setValue(MULTI_XML); show(ta.value); };
+    document.getElementById('import').onclick = () => show(ta.value);
+
+    ed.setValue(PLAIN_XML);
+    await show(PLAIN_XML);
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const stage = document.getElementById('stage');
+    const status = document.getElementById('status');
+    const pagePick = document.getElementById('pagepick');
+
+    // The PAINTED route of the link a draw.io edge id imported as: the longest
+    // <path> inside its data-link-id group (the wrapper also holds the fat
+    // invisible hit path — same geometry — and small marker shapes).
+    const paintedPathFor = (model, drawioId) => {
+      const link = model.getLinks().find((l) => l.getMetadata('drawioId') === drawioId);
+      if (!link) return null;
+      const g = stage.querySelector(`[data-link-id="${link.id}"]`);
+      if (!g) return null;
+      let best = null;
+      let bestLen = -1;
+      for (const p of g.querySelectorAll('path')) {
+        try {
+          const L = p.getTotalLength();
+          if (L > bestLen) { bestLen = L; best = p; }
+        } catch { /* unmeasurable path */ }
+      }
+      return best;
+    };
+    const minDistTo = (path, pt, samples = 250) => {
+      const L = path.getTotalLength();
+      let min = Infinity;
+      for (let i = 0; i <= samples; i++) {
+        const q = path.getPointAtLength((L * i) / samples);
+        const d = Math.hypot(q.x - pt.x, q.y - pt.y);
+        if (d < min) min = d;
+      }
+      return min;
+    };
+
+    // 1. BOTH built-in examples import, with EQUAL counts — the compressed copy
+    //    decodes to exactly the plain import (the whole decode pipeline, live).
+    //    5 nodes = 4 authored + the invisible anchor for the container edge e4.
+    const plain = await ctx.show(ctx.PLAIN_XML);
+    check(!plain.error, `plain XML import failed: ${plain.error}`);
+    const pm = ctx.instance.getModel();
+    const plainCounts = [pm.getNodes().length, pm.getLinks().length, pm.getGroups().length];
+    check(plainCounts[0] === 5, `expected 5 nodes (4 + container anchor), got ${plainCounts[0]}`);
+    check(plainCounts[1] === 4, `expected 4 links, got ${plainCounts[1]}`);
+    check(plainCounts[2] === 1, `expected 1 group, got ${plainCounts[2]}`);
+
+    const compressed = await ctx.show(await ctx.compressedCopy(ctx.PLAIN_XML));
+    check(!compressed.error, `compressed import failed: ${compressed.error}`);
+    const cm = ctx.instance.getModel();
+    check(
+      cm.getNodes().length === plainCounts[0] && cm.getLinks().length === plainCounts[1] && cm.getGroups().length === plainCounts[2],
+      `compressed import diverged from plain: ${cm.getNodes().length}/${cm.getLinks().length}/${cm.getGroups().length} vs ${plainCounts.join('/')}`
+    );
+    await ctx.tick();
+
+    // 2. A known label reaches the PIXELS, not just the model.
+    check((stage.textContent || '').includes('Pick items'), 'the imported label "Pick items" did not render');
+    check((stage.textContent || '').includes('Fulfilment'), 'the swimlane group frame does not show its name');
+
+    // 3. A known draw.io fillColor arrives on the node — model AND ink.
+    const model = ctx.instance.getModel();
+    const startShape = model.getNode('start').getMetadata('shape');
+    check(startShape && startShape.fill === '#dae8fc', `fillColor did not arrive: ${JSON.stringify(startShape)}`);
+    const startEl = stage.querySelector('[data-node-id="start"]');
+    check(!!startEl, 'the start node did not render');
+    check(startEl.innerHTML.toLowerCase().includes('dae8fc'), 'the draw.io fillColor is not in the painted SVG');
+
+    // 4. THE COORDINATE CONTRACT: "pick" was authored at (30,50) RELATIVE to the
+    //    lane at (330,70) — it must land ABSOLUTE at (360,120), inside the lane's
+    //    frame, and be a REAL member of the group (not merely drawn near it).
+    const pick = model.getNode('pick');
+    check(pick.position.x === 360 && pick.position.y === 120,
+      `relative→absolute conversion failed: pick is at (${pick.position.x},${pick.position.y}), expected (360,120)`);
+    const lane = model.getGroup('lane');
+    check(!!lane, 'the swimlane did not import as a group');
+    check(lane.members.has('pick') && lane.members.has('pack'), 'swimlane membership is not real (addMember missing)');
+    const frame = lane.getOuterBounds();
+    check(
+      pick.position.x >= frame.x && pick.position.y >= frame.y &&
+      pick.position.x + pick.size.width <= frame.x + frame.width &&
+      pick.position.y + pick.size.height <= frame.y + frame.height,
+      `pick (${pick.position.x},${pick.position.y}) lies outside the lane frame ${JSON.stringify(frame)}`
+    );
+    // ...and the frame is painted ink, not just a model fact.
+    const laneEl = stage.querySelector(`[data-group-id="${lane.id}"]`);
+    check(!!laneEl, 'the swimlane group frame is not in the rendered SVG');
+
+    // 5. MANUAL WAYPOINTS paint. e2's authored detour dips to y=420 — far below
+    //    the straight check→pick line — and the PAINTED path must follow it.
+    const e2 = model.getLinks().find((l) => l.getMetadata('drawioId') === 'e2');
+    check(!!e2 && e2.getMetadata('hasManualWaypoints') === true, 'e2 did not keep its manual-waypoint flag');
+    const e2Path = paintedPathFor(model, 'e2');
+    check(!!e2Path, 'e2 has no painted path in the SVG');
+    check(minDistTo(e2Path, { x: 115, y: 420 }) < 20, 'the painted e2 route misses waypoint (115,420)');
+    check(minDistTo(e2Path, { x: 425, y: 420 }) < 20, 'the painted e2 route misses waypoint (425,420)');
+
+    // 6. CONTAINER-ENDPOINT EDGE paints where draw.io painted it. e4 ends ON the
+    //    lane: its anchor pins to the frame's left edge at (330,265) — nearest
+    //    the decision diamond's centre — and the painted route must arrive there.
+    const e4 = model.getLinks().find((l) => l.getMetadata('drawioId') === 'e4');
+    check(!!e4, 'the container-endpoint edge e4 was skipped');
+    const anchor = model.getNode(e4.targetNodeId);
+    check(anchor && anchor.getMetadata('drawioContainerAnchor') === 'lane', 'e4 target is not a lane-owned anchor');
+    check(lane.members.has(anchor.id), 'the container anchor is not group-owned');
+    const e4Path = paintedPathFor(model, 'e4');
+    check(!!e4Path, 'e4 has no painted path in the SVG');
+    check(minDistTo(e4Path, { x: 330, y: 265 }) < 25, 'the painted e4 route does not arrive at the lane frame edge (330,265)');
+
+    // 7. MULTI-PAGE: both pages import, the picker appears, and switching it
+    //    swaps the rendered diagram.
+    const multi = await ctx.show(ctx.MULTI_XML);
+    check(!multi.error, `multi-page import failed: ${multi.error}`);
+    check(Array.isArray(multi.pages) && multi.pages.length === 2, `expected 2 pages, got ${multi.pages?.length}`);
+    check(multi.diagram === multi.pages[0].diagram, 'top-level diagram is not pages[0].diagram');
+    check(!pagePick.hidden && pagePick.options.length === 2, 'the page picker did not appear with 2 pages');
+    await ctx.tick();
+    check((stage.textContent || '').includes('PageOneNode'), 'page 1 did not render first');
+    check(!(stage.textContent || '').includes('PageTwoNode'), 'page 2 leaked into the page-1 canvas');
+    ctx.showPage(1);
+    await ctx.tick();
+    check((stage.textContent || '').includes('PageTwoNode'), 'switching the picker did not render page 2');
+    check(!(stage.textContent || '').includes('PageOneNode'), 'page 1 leaked into the page-2 canvas');
+    check(ctx.instance.getModel().getLinks().length === 1, 'page 2 lost its edge');
+
+    // 8. GARBAGE input: an error status, and the previous diagram left intact.
+    const before = ctx.instance;
+    const garbage = await ctx.show('this is not xml at all');
+    check(!!garbage.error, 'garbage input did not report an error');
+    check((status.textContent || '').includes('not a readable .drawio'), 'the error is not shown in the status line');
+    check(ctx.instance === before, 'garbage input remounted the canvas instead of leaving it alone');
+    check((stage.textContent || '').includes('PageTwoNode'), 'the previous diagram vanished from the stage after a bad import');
+
+    // 9. Re-import the flagship diagram so the demo photographs in its healthy
+    //    state — and the status line shows honest counts again after the error.
+    await ctx.show(ctx.PLAIN_XML);
+    check((status.textContent || '').includes('5 nodes'), 'the status line does not show the node count');
+    check(pagePick.hidden, 'the page picker did not hide for a single-page import');
+    await ctx.tick();
+  },
+});
+</script>

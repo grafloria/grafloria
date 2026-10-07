@@ -213,6 +213,15 @@ export class LinkToolbarComponent implements OnInit, OnChanges, OnDestroy {
   private diagramUnsubscribers: Array<() => void> = [];
   private positionUpdatePending = false;
   private lastPosition: Point = { x: 0, y: 0 };
+  /**
+   * The canvas mounts this toolbar inside an `@if`, so it is routinely destroyed
+   * with a re-position still queued (the first-paint timer, a frame). Running
+   * it then emitted `positionUpdated` on a destroyed output (NG0953) and ran
+   * change detection on a dead view.
+   */
+  private destroyed = false;
+  private initialTimer: ReturnType<typeof setTimeout> | null = null;
+  private frameHandle: number | null = null;
 
   constructor(private cdr: ChangeDetectorRef, private host: ElementRef<HTMLElement>) {}
 
@@ -220,7 +229,10 @@ export class LinkToolbarComponent implements OnInit, OnChanges, OnDestroy {
     this.isVisible = this.visible;
     this.subscribeToEngine();
     // Position after the first paint, when the toolbar has a measurable size.
-    setTimeout(() => this.updatePosition(), 0);
+    this.initialTimer = setTimeout(() => {
+      this.initialTimer = null;
+      this.updatePosition();
+    }, 0);
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -243,6 +255,13 @@ export class LinkToolbarComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.destroyed = true;
+    if (this.initialTimer !== null) clearTimeout(this.initialTimer);
+    this.initialTimer = null;
+    if (this.frameHandle !== null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(this.frameHandle);
+    }
+    this.frameHandle = null;
     this.unsubscribe();
     this.destroy$.next();
     this.destroy$.complete();
@@ -325,11 +344,11 @@ export class LinkToolbarComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   onPointerEnter(): void {
-    this.pointerOverChange.emit(true);
+    if (!this.destroyed) this.pointerOverChange.emit(true);
   }
 
   onPointerLeave(): void {
-    this.pointerOverChange.emit(false);
+    if (!this.destroyed) this.pointerOverChange.emit(false);
   }
 
   /**
@@ -340,6 +359,7 @@ export class LinkToolbarComponent implements OnInit, OnChanges, OnDestroy {
    * the toolbar rather than parking it at (0, 0).
    */
   updatePosition(): void {
+    if (this.destroyed) return;
     try {
       if (!this.link || !this.visible) {
         this.applyHidden();
@@ -472,15 +492,16 @@ export class LinkToolbarComponent implements OnInit, OnChanges, OnDestroy {
   // --------------------------------------------------------------- reactivity
 
   private schedulePositionUpdate(): void {
-    if (this.positionUpdatePending) return;
+    if (this.positionUpdatePending || this.destroyed) return;
     this.positionUpdatePending = true;
 
     const run = () => {
+      this.frameHandle = null;
       this.positionUpdatePending = false;
       this.updatePosition();
     };
     if (typeof requestAnimationFrame === 'function') {
-      requestAnimationFrame(run);
+      this.frameHandle = requestAnimationFrame(run);
     } else {
       setTimeout(run, 0);
     }

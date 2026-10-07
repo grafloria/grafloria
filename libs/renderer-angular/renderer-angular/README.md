@@ -1,13 +1,16 @@
 # @grafloria/angular
 
-Angular components, directives, and providers for the
-[Grafloria](https://github.com/grafloria/grafloria) diagram engine — built the
-Angular way: standalone components, signal inputs/outputs, `OnPush`, and
-verified **zoneless**.
+Angular components for **Grafloria Diagrams** and **Grafloria Dashboards**. Grafloria is an MIT diagram and dashboard engine for JavaScript: one headless core, native Angular, React and Vue bindings, one document format and one undo stack.
+
+Grafloria Diagrams is an MIT JavaScript diagram library for flowcharts, workflow editors, UML and ER diagrams, with obstacle-avoiding routing, auto-layout, undo and real-time collaboration built in. Built the Angular way: standalone components, signal inputs/outputs, `OnPush`, verified **zoneless**. `<grafloria-dashboard>` brings the dashboard layout kit with live `[layout]`, `[sizing]` and `[static]` inputs.
+
+**Docs:** [Angular in 10 minutes](https://grafloria.com/learn/angular/) · [Angular deep guides](https://grafloria.com/learn/angular-custom-nodes/) · [every demo as an Angular component](https://grafloria.com/demos-angular/)
 
 ```sh
 npm install @grafloria/angular @grafloria/renderer @grafloria/engine
 ```
+
+**Angular 18.1 to 22.** Every major in that range is installed (no `--legacy-peer-deps`), built and driven in a browser by [`tools/conformance/angular/matrix.mjs`](https://github.com/grafloria/grafloria/blob/main/tools/conformance/angular/matrix.mjs) before the range is claimed. The package is built with Angular 19 in partial-Ivy mode, so your own Angular links it.
 
 ## The canvas
 
@@ -42,6 +45,13 @@ export class FlowComponent {
 - `[(nodes)]` / `[(edges)]` — two-way model signals; drags, connects, and edits
   round-trip into your arrays. `(modelChange)` emits a replayable delta.
 - `[(viewport)]` / `[(zoom)]` — the camera, two-way.
+- `[highlighterConfig]` — the outline layer: outlines around the hovered node,
+  the selected node, nodes with a validation issue, and valid connection
+  targets. On by default; `false` turns it off with no CSS, an object picks
+  kinds (`{ showValidation: false }` keeps hover and selection only).
+- `<grafloria-diagram [spec] [options] (ready)>` — hosts any kit spec through the
+  full renderer. A CHANGED spec (or options) replaces the diagram and emits
+  `ready` again; an equal one built again does not.
 
 ## Custom nodes are `ng-template`s
 
@@ -73,9 +83,20 @@ so user drags are not fought. Re-run on demand with `applyLayout()`; listen via
 ## Export & persistence
 
 ```ts
-canvas().exportSvg();                  // SVG string, synchronous
-canvas().exportPdf();                  // vector PDF, synchronous
-await canvas().exportDiagram('png');   // full async pipeline
+canvas().exportSvg();                  // { svg, warnings }, synchronous
+canvas().exportPdf();                  // { pdf, warnings }, synchronous vector PDF
+await canvas().exportDiagram('png');   // full async pipeline → data: URL
+```
+
+All three include your custom nodes (`ng-template grafloriaNode` cards and
+registered components), captured from the canvas's HTML layer. Only
+`exportDiagram()` fetches external images and embeds them as `data:` URIs (pass
+`assetFetcher` for a server that refuses CORS); the synchronous two never touch
+the network, so an external image stays a link there and is reported in
+`warnings`. Mark any element in a card `data-grafloria-export="ignore"` to keep
+it on screen but out of the file.
+
+```ts
 const doc = canvas().snapshot();       // serialize …
 canvas().loadSnapshot(doc);            // … and restore
 ```
@@ -94,5 +115,35 @@ outputs are signal `output()`s.
 - Packages ship ESM for bundlers (tree-shakeable, `sideEffects: false`) plus
   CJS for Node. A basic canvas app builds to ~1.2 MB initial / ~300 KB
   transfer; raise the default Angular bundle budget accordingly.
+
+## Bundle size — what actually ships
+
+Don't judge this library by npm's **unpacked size** stat — that is
+uncompressed ESM source plus full TypeScript declarations (the whole family
+installs ~9 MB). None of it reaches your users as-is; what matters is what
+your bundler emits.
+
+Worst case, importing the **entire** public surface of `@grafloria/angular`
+(engine + renderer + the full Angular component library), measured with esbuild (minify, ESM, code-splitting):
+
+| | minified | gzipped |
+|---|---|---|
+| eager bundle | 1501 KB | **395 KB** |
+| elkjs — lazy chunk, downloads **only** if ELK layout is invoked | 1,423 KB | 432 KB |
+
+A real app importing only what it uses ships less. Reproduce it in two minutes:
+
+```sh
+npm i -D esbuild @grafloria/angular
+echo "export * from '@grafloria/angular';" > entry.mjs
+npx esbuild entry.mjs --bundle --minify --format=esm --splitting --outdir=out '--external:@angular/*' --external:rxjs
+gzip -k9 out/entry.js && wc -c out/entry.js out/entry.js.gz
+```
+
+`--splitting` matters: without it esbuild inlines the lazily-imported ELK
+chunk and inflates the number by ~1.4 MB. Real app bundlers (Angular CLI,
+Vite, Next.js) split by default. Since engine 0.3.0 / renderer 0.4.0 /
+element 0.4.0 the packages are **pure ESM** — every bundler tree-shakes them,
+and Node ≥ 20.19 can `require()` them too.
 
 MIT © [Grafloria](https://github.com/grafloria/grafloria)

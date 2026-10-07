@@ -15,12 +15,18 @@
  * itself. That also keeps a validation run from rewriting the shared demo
  * bundle (other lanes are live on this tree and the demo server serves it).
  *
- * Run: node demos/e2e/mermaid-oracle-run.mjs   (needs the demo server on :4321)
+ * Run: node demos/e2e/mermaid-oracle-run.mjs
+ *
+ * It serves `demos/` itself on an ephemeral port, so it needs nothing running
+ * first. It used to require a hand-started server on :4321, which is exactly
+ * why it sat outside CI while the site claimed it ran there.
  */
 import { chromium } from 'playwright';
 import { build } from 'esbuild';
+import { createServer } from 'http';
+import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname, join, resolve } from 'path';
+import { dirname, extname, join, resolve } from 'path';
 import { tmpdir } from 'os';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -31,6 +37,9 @@ const BUNDLE = join(tmpdir(), 'mermaid-oracle-grafloria.js');
 
 // Real hand-written Mermaid a visitor might paste. Grouped by diagram type so a
 // failure names the family it belongs to.
+/** A demo's Mermaid source, read from the page itself so the gate and the demo cannot drift. */
+const demoSource = (page, id) => new RegExp(`<script type="text/plain" id="${id}">([\\s\\S]*?)</script>`).exec(readFileSync(join(HERE, '..', page), 'utf8'))[1].trim();
+
 const CASES = {
   // ── flowchart: base + the Tier-1 styling channel (Phases 1–2) ────────────
   'flow base': 'flowchart TD\n  a-->b-->c',
@@ -41,6 +50,24 @@ const CASES = {
     'flowchart TD\n  a[Hot]-->b[Cold]\n  style a fill:#f9a,stroke:#900,stroke-width:2\n  classDef cool fill:#9cf,stroke:#036\n  class b cool',
   'flow inline class + link':
     'flowchart LR\n  a:::hot-->b\n  classDef hot fill:#fa0\n  click a "https://example.com"',
+
+  // ── flowchart: the other label spelling, thick arrows, the slash shapes ──
+  'flow inline labels': 'flowchart LR\n  a -- writes --> b\n  b -- "twice, quoted" --> c\n  c -. note .-> d\n  d == big ==> e\n  e ==> f',
+  'flow slash shapes': 'flowchart LR\n  a[/Wide bottom\\] --> b[\\Wide top/] --> c[/In or out/] --> d[\\Lean left\\] --> e[(DB)]',
+
+  // ── architecture-beta: groups, services, junctions, sided edges ─────────
+  'architecture docs':
+    'architecture-beta\n    group api(cloud)[API]\n\n    service db(database)[Database] in api\n    service disk1(disk)[Storage] in api\n    service disk2(disk)[Storage] in api\n    service server(server)[Server] in api\n\n    db:L -- R:server\n    disk1:T -- B:server\n    disk2:T -- B:db',
+  'architecture arrows+labels':
+    'architecture-beta\n  service internet(internet)[Internet]\n  group cloud(cloud)[Cloud]\n  service web(server)[Web app] in cloud\n  group data(database)[Data tier] in cloud\n  service db(database)[Postgres] in data\n  junction j in cloud\n  internet:R --> L:web\n  web:B -[writes]- T:j\n  j:B <--> T:db\n  web{group}:R --> L:db{group}',
+
+  // ── block-beta: the grid ────────────────────────────────────────────────
+  'block docs':
+    'block-beta\ncolumns 3\ndoc>"Document"]:3\nspace down1<[" "]>(down) space\n\nblock:e:3\n       l["left"]\n       m("A wide one in the middle")\n       r["right"]\nend\nspace down2<[" "]>(down) space\ndb[("DB")]:3\nspace:3\nD space C\ndb --> D\nC --> db\nD --> C\nstyle m fill:#d6d,stroke:#333,stroke-width:4px',
+  'block spans+nested+labels':
+    'block-beta\n  columns 3\n  a["Frontend"] b["API"] c[("Database")]\n  d["Cache layer"]:2 e["Queue"]\n  block:grp:3\n    columns 2\n    x y\n  end\n  a --> b\n  b -- "writes" --> c\n  d -.-> e\n  classDef hot fill:#fca\n  class e hot',
+  // labelled nested blocks, as the 3-tier demo writes them
+  'block labelled layers (3-tier demo)': demoSource('diagrams/mermaid-architecture-block.html', 'src-tiers'),
 
   // ── erDiagram (Phase 3) ─────────────────────────────────────────────────
   'er minimal': 'erDiagram\n    CUSTOMER ||--o{ ORDER : places',
@@ -249,6 +276,31 @@ await build({
   logLevel: 'warning',
 });
 
+// Serve demos/ on an ephemeral port — same pattern as gallery-run, so the gate
+// is self-contained and can run in CI unattended.
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+};
+const docRoot = resolve(HERE, '..');
+const server = createServer((req, res) => {
+  const url = decodeURIComponent((req.url || '/').split('?')[0]);
+  try {
+    const file = join(docRoot, url === '/' ? 'index.html' : url);
+    res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream' });
+    res.end(readFileSync(file));
+  } catch {
+    res.writeHead(404).end('not found');
+  }
+});
+await new Promise((r) => server.listen(0, '127.0.0.1', r));
+const ORIGIN = `http://127.0.0.1:${server.address().port}`;
+
 const b = await chromium.launch({ args: ['--disable-blink-features=AutomationControlled'] });
 const p = await b.newPage({ viewport: { width: 1400, height: 520 } });
 await p.route('**/mermaid.min.js', (route) => route.fulfill({ path: MERMAID_UMD }));
@@ -257,7 +309,7 @@ await p.route('**/shell/grafloria.js', (route) =>
 );
 const pageErrors = [];
 p.on('pageerror', (e) => pageErrors.push(String(e).slice(0, 160)));
-await p.goto('http://127.0.0.1:4321/e2e/mermaid-oracle.html');
+await p.goto(`${ORIGIN}/e2e/mermaid-oracle.html`);
 await p.waitForFunction(() => window.__oracleReady === true, { timeout: 20000 });
 
 let fail = 0;
@@ -290,4 +342,5 @@ console.log('  wrote ' + OUT);
 if (pageErrors.length) { console.log('\nPAGE ERRORS:', pageErrors.join(' | ')); fail++; }
 console.log(`\nmermaid-oracle: ${fail === 0 ? 'ALL VALID' : fail + ' FAILURE(S)'}`);
 await b.close();
+server.close();
 process.exit(fail === 0 ? 0 : 1);

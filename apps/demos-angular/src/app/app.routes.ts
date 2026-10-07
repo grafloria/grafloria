@@ -3,6 +3,8 @@ import { Routes } from '@angular/router';
 /** One route per demo, mirroring the gallery's <category>/<name> paths so the
  *  shell can map a JS demo page to its Angular twin mechanically. */
 export const routes: Routes = [
+  // The front door: every demo, by category.
+  { path: '', pathMatch: 'full', loadComponent: () => import('./demos-index.component').then((m) => m.DemosIndexComponent) },
   { path: 'nodes/custom-nodes', loadComponent: () => import('./demos/custom-nodes/custom-nodes.component').then((m) => m.CustomNodesComponent) },
   { path: 'nodes/html-nodes', loadComponent: () => import('./demos/html-nodes/html-nodes.component').then((m) => m.HtmlNodesComponent) },
   { path: 'nodes/node-resizer', loadComponent: () => import('./demos/node-resizer/node-resizer.component').then((m) => m.NodeResizerComponent) },
@@ -12,6 +14,8 @@ export const routes: Routes = [
   { path: 'diagrams/class-uml', loadComponent: () => import('./demos/class-uml/class-uml.component').then((m) => m.ClassUmlComponent) },
   { path: 'diagrams/erd-editor', loadComponent: () => import('./demos/erd-editor/erd-editor.component').then((m) => m.ErdEditorComponent) },
   { path: 'dashboard/dashboard-builder', loadComponent: () => import('./demos/dashboard-builder/dashboard-builder.component').then((m) => m.DashboardBuilderComponent) },
+  { path: 'dashboard/fluid-board', loadComponent: () => import('./demos/fluid-board/fluid-board.component').then((m) => m.FluidBoardComponent) },
+  { path: 'dashboard/nested-containers', loadComponent: () => import('./demos/dashboard-containers/dashboard-containers.component').then((m) => m.DashboardContainersComponent) },
   { path: 'collab/two-tabs-live', loadComponent: () => import('./demos/two-tabs-live/two-tabs-live.component').then((m) => m.TwoTabsLiveComponent) },
   { path: 'collab/comments', loadComponent: () => import('./demos/comments/comments.component').then((m) => m.CommentsComponent) },
   { path: 'misc/mermaid-text', loadComponent: () => import('./demos/mermaid-text/mermaid-text.component').then((m) => m.MermaidTextComponent) },
@@ -107,4 +111,19 @@ export const routes: Routes = [
   { path: 'misc/pdf-export', loadComponent: () => import('./demos/pdf-export/pdf-export.component').then((m) => m.PdfExportComponent) },
   { path: 'misc/perf-hud', loadComponent: () => import('./demos/perf-hud/perf-hud.component').then((m) => m.PerfHudComponent) },
   { path: 'misc/server-side-export', loadComponent: () => import('./demos/server-side-export/server-side-export.component').then((m) => m.ServerSideExportComponent) },
+  { path: 'diagrams/ai-style-diagram', loadComponent: () => import('./demos/ai-style-diagram/ai-style-diagram.component').then((m) => m.AiStyleDiagramComponent) },
+  { path: 'diagrams/architecture-layout', loadComponent: () => import('./demos/architecture-layout/architecture-layout.component').then((m) => m.ArchitectureLayoutComponent) },
+  { path: 'diagrams/mermaid-architecture-block', loadComponent: () => import('./demos/mermaid-architecture-block/mermaid-architecture-block.component').then((m) => m.MermaidArchitectureBlockComponent) },
+  { path: 'diagrams/query-builder', loadComponent: () => import('./demos/query-builder/query-builder.component').then((m) => m.QueryBuilderComponent) },
+  { path: 'diagrams/shape-data', loadComponent: () => import('./demos/shape-data/shape-data.component').then((m) => m.ShapeDataComponent) },
+  { path: 'diagrams/stencil-palette', loadComponent: () => import('./demos/stencil-palette/stencil-palette.component').then((m) => m.StencilPaletteComponent) },
+  { path: 'diagrams/visio-editor', loadComponent: () => import('./demos/visio-editor/visio-editor.component').then((m) => m.VisioEditorComponent) },
+  { path: 'edges/highlight-connected', loadComponent: () => import('./demos/highlight-connected/highlight-connected.component').then((m) => m.HighlightConnectedComponent) },
+  { path: 'grouping/drop-to-contain', loadComponent: () => import('./demos/drop-to-contain/drop-to-contain.component').then((m) => m.DropToContainComponent) },
+  { path: 'interaction/chatbot-flow', loadComponent: () => import('./demos/chatbot-flow/chatbot-flow.component').then((m) => m.ChatbotFlowComponent) },
+  { path: 'misc/drawio-import', loadComponent: () => import('./demos/drawio-import/drawio-import.component').then((m) => m.DrawioImportComponent) },
+  { path: 'nodes/edit-label', loadComponent: () => import('./demos/edit-label/edit-label.component').then((m) => m.EditLabelComponent) },
+  { path: 'interaction/workflow-builder', loadComponent: () => import('./demos/workflow-builder/workflow-builder.component').then((m) => m.WorkflowBuilderComponent) },
+  { path: 'interaction/marketing-automation', loadComponent: () => import('./demos/marketing-automation/marketing-automation.component').then((m) => m.MarketingAutomationComponent) },
+  { path: 'diagrams/data-modeling', loadComponent: () => import('./demos/data-modeling/data-modeling.component').then((m) => m.DataModelingComponent) },
 ];

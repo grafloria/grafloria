@@ -249,8 +249,8 @@ export function constraintsForStrategy(
 /**
  * A tween plan: pure data, so the engine stays free of rAF/DOM/time.
  *
- * The card asks for "an animated tweened transition from old to new positions
- * instead of snapping". The engine's job is to say WHERE things go at time t; the
+ * For an animated transition from old to new positions instead of a snap. The
+ * engine's job is to say WHERE things go at time t; the
  * host's job is to drive t. Keeping it that way is what lets the same code run in
  * a worker, in SSR, and in a test.
  */

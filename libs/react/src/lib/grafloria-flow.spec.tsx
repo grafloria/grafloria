@@ -1,12 +1,12 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { useState } from 'react';
+import { StrictMode, useState } from 'react';
 import type { NodeModel } from '@grafloria/engine';
 import { renderToStaticSVG } from '@grafloria/renderer';
 import type { DiagramInstance, NodeSpec } from '@grafloria/renderer';
 import { GrafloriaFlow } from './grafloria-flow';
 import type { NodeProps } from './grafloria-flow';
 import { GrafloriaProvider } from './context';
-import { useGrafloria, useEdgesState, useNodesState, useOnSelectionChange } from './hooks';
+import { useGrafloria, useEdgesState, useNodesState, useOnSelectionChange, useSelection, useViewport } from './hooks';
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -21,12 +21,64 @@ beforeAll(() => {
   };
 });
 
+// A type with no shape: the validation outline flags it (built-in shapes such as
+// `rect` are never flagged as unregistered).
 const NODES: NodeSpec[] = [
-  { id: 'a', position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
-  { id: 'b', position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
+  { id: 'a', type: 'no-such-node-type', position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
+  { id: 'b', type: 'no-such-node-type', position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
 ];
 
 describe('<GrafloriaFlow>', () => {
+  it('highlighterConfig: off unless set; on, it outlines the selection; it follows the prop live', async () => {
+    let instance: DiagramInstance | undefined;
+    const { container, rerender } = render(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} />);
+    await waitFor(() => expect(instance).toBeDefined());
+    const outlines = (kind: string) => container.querySelectorAll(`.grafloria-highlighter-${kind}`).length;
+    act(() => { instance!.getModel().selectNode(instance!.getModel().getNode('a')!); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 40)); });
+    expect(outlines('selection')).toBe(0); // unset: no outline layer, as before
+    rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlighterConfig />);
+    await waitFor(() => expect(outlines('selection')).toBe(1));
+    rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlighterConfig={{ showSelection: false }} />);
+    await waitFor(() => expect(outlines('selection')).toBe(0));
+    expect(outlines('validation')).toBeGreaterThan(0); // the other kinds stay on
+    rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlighterConfig={false} />);
+    await waitFor(() => expect(container.querySelectorAll('.grafloria-highlighter').length).toBe(0));
+  });
+
+  it('highlightConnected: goes in at mount and follows the prop live', async () => {
+    let instance: DiagramInstance | undefined;
+    const { rerender } = render(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlightConnected />);
+    await waitFor(() => expect(instance).toBeDefined());
+    expect(instance!.getHighlightConnected()).toBeTruthy();
+    rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlightConnected={{ depth: 2 }} />);
+    await waitFor(() => expect(instance!.getHighlightConnected()).toEqual(expect.objectContaining({ depth: 2 })));
+    // Infinity (trace every path) must arrive as Infinity — JSON would make it null
+    rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlightConnected={{ depth: Infinity }} />);
+    await waitFor(() => expect((instance!.getHighlightConnected() as { depth?: number }).depth).toBe(Infinity));
+    rerender(<GrafloriaFlow defaultNodes={NODES} onInit={(i) => (instance = i)} highlightConnected={false} />);
+    await waitFor(() => expect(instance!.getHighlightConnected()).toBe(false));
+  });
+
+  it('groups: zones go in at mount (a loaded document keeps them) and follow the prop', async () => {
+    let instance: DiagramInstance | undefined;
+    const zone = { id: 'zone', label: 'Zone', children: ['a', 'b'] };
+    const { rerender } = render(<GrafloriaFlow nodes={NODES} groups={[zone]} onInit={(i) => (instance = i)} />);
+    await waitFor(() => expect(instance).toBeDefined());
+    expect(instance!.getModel().getGroup('zone')?.members.has('b')).toBe(true);
+    rerender(<GrafloriaFlow nodes={NODES} groups={[{ ...zone, children: ['a'] }]} onInit={(i) => (instance = i)} />);
+    await waitFor(() => expect(instance!.getModel().getGroup('zone')?.members.has('b')).toBe(false));
+    rerender(<GrafloriaFlow nodes={NODES} groups={[]} onInit={(i) => (instance = i)} />);
+    await waitFor(() => expect(instance!.getModel().getGroup('zone')).toBeUndefined());
+  });
+
+  it('defaultGroups: zones go in once; the instance owns them after', async () => {
+    let instance: DiagramInstance | undefined;
+    render(<GrafloriaFlow defaultNodes={NODES} defaultGroups={[{ id: 'zone', children: ['a'] }]} onInit={(i) => (instance = i)} />);
+    await waitFor(() => expect(instance).toBeDefined());
+    expect(instance!.getModel().getGroup('zone')?.members.has('a')).toBe(true);
+  });
+
   it('mounts a real diagram into the DOM', async () => {
     const { container } = render(<GrafloriaFlow defaultNodes={NODES} />);
 
@@ -207,6 +259,64 @@ describe('<GrafloriaFlow>', () => {
   });
 
   describe('SSR + hydration (Card 6)', () => {
+    it('a REAL hydrateRoot keeps the server SVG, and the instance paints the DOM the user sees', async () => {
+      // The round trip a Next/Remix page does: renderToString on the server, hydrateRoot on
+      // the client. React 19 re-applies an object prop whose IDENTITY changed, so a fresh
+      // `{ __html }` on every render made it re-write innerHTML on the first re-render after
+      // mount — replacing the SVG the effect had just adopted. The instance kept painting
+      // the detached original: clicks did not select and drags moved nodes nobody saw.
+      const { renderToString } = require('react-dom/server');
+      const { hydrateRoot } = require('react-dom/client');
+      const ssr = renderToStaticSVG({ nodes: NODES, width: WIDTH, height: HEIGHT, instanceId: 'grafloria-react-hydrate' });
+
+      let instance: DiagramInstance | undefined;
+      let bump: (() => void) | undefined;
+      function Page() {
+        const [n, setN] = useState(0);
+        bump = () => setN((v) => v + 1);
+        return (
+          <div data-renders={n}>
+            <GrafloriaFlow nodes={NODES} ssr={{ html: ssr.html, snapshot: ssr.snapshot }} onInit={(i) => (instance = i)} />
+          </div>
+        );
+      }
+
+      const host = document.createElement('div');
+      host.innerHTML = renderToString(<Page />);
+      document.body.appendChild(host);
+      const serverSvg = host.querySelector('svg');
+      expect(serverSvg).toBeTruthy();
+
+      const errors: unknown[][] = [];
+      const spy = jest.spyOn(console, 'error').mockImplementation((...args) => { errors.push(args); });
+      let root: { unmount(): void } | undefined;
+      try {
+        await act(async () => {
+          root = hydrateRoot(host, <Page />, { onRecoverableError: (e: unknown) => errors.push(['recoverable', e]) });
+        });
+        await waitFor(() => expect(instance).toBeDefined());
+        // a parent re-render — every app has them
+        await act(async () => { bump!(); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+
+        // React kept the server markup: the very same element is still in the document…
+        expect(host.querySelector('svg')).toBe(serverSvg);
+        expect(serverSvg!.isConnected).toBe(true);
+        // …and it is the one the instance paints into: a model change shows up in it.
+        const nodeA = () => host.querySelector('[data-node-id="a"]')!.outerHTML;
+        const before = nodeA();
+        act(() => { instance!.getModel().getNode('a')!.setPosition(333, 222); instance!.renderNow(); });
+        expect(nodeA()).not.toBe(before);
+        expect(instance!.patcher.stats.created).toBe(0);
+        // …with no hydration complaint from React.
+        expect(errors).toEqual([]);
+      } finally {
+        spy.mockRestore();
+        act(() => root?.unmount());
+        host.remove();
+      }
+    });
+
     it('hydrates the server SVG without recreating a single DOM node', async () => {
       const ssr = renderToStaticSVG({
         nodes: NODES,
@@ -234,7 +344,82 @@ describe('<GrafloriaFlow>', () => {
   });
 });
 
+/** The CSS variable block THIS instance injected — where a theme actually lands. */
+function themeCss(container: Element): string {
+  const id = container.querySelector('svg')?.getAttribute('data-grafloria-instance');
+  return (id && document.head.querySelector(`style[id$="${id}"]`)?.textContent) || '';
+}
+// The block names its theme: `/* Grafloria Renderer Theme: Dark (instance …) */`.
+const DARK = 'Theme: Dark';
+
+describe('colorMode prop', () => {
+  it('applies at mount and follows the prop live, without remounting', async () => {
+    let instance: DiagramInstance | undefined;
+    const onInit = jest.fn((i: DiagramInstance) => (instance = i));
+    const { container, rerender } = render(<GrafloriaFlow defaultNodes={NODES} colorMode="dark" onInit={onInit} />);
+    await waitFor(() => expect(instance).toBeDefined());
+    expect(instance!.getColorMode()).toBe('dark');
+    expect(themeCss(container)).toContain(DARK);
+
+    rerender(<GrafloriaFlow defaultNodes={NODES} colorMode="light" onInit={onInit} />);
+    await waitFor(() => expect(instance!.getColorMode()).toBe('light'));
+    expect(themeCss(container)).toContain('Theme: Light');
+    rerender(<GrafloriaFlow defaultNodes={NODES} colorMode="system" onInit={onInit} />);
+    await waitFor(() => expect(instance!.getColorMode()).toBe('system'));
+    expect(onInit).toHaveBeenCalledTimes(1); // one instance the whole time
+  });
+
+  it('a theme prop does not fight the colour mode', async () => {
+    const { LIGHT_THEME } = require('@grafloria/renderer');
+    let instance: DiagramInstance | undefined;
+    const { container } = render(
+      <GrafloriaFlow defaultNodes={NODES} theme={LIGHT_THEME} colorMode="dark" onInit={(i) => (instance = i)} />
+    );
+    await waitFor(() => expect(instance).toBeDefined());
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(themeCss(container)).toContain(DARK);
+  });
+});
+
 describe('hooks', () => {
+  it('a hook used outside any provider warns ONCE in development, naming the provider to add', () => {
+    // It still returns null — no behaviour change — but it used to say nothing at all, so
+    // a toolbar that forgot <GrafloriaProvider> just never came alive.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      function Lost() {
+        useViewport();
+        return <div />;
+      }
+      const { rerender } = render(<Lost />);
+      rerender(<Lost />);
+      render(<Lost />);
+      const ours = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('useViewport()'));
+      expect(ours).toHaveLength(1);
+      expect(ours[0]).toContain('<GrafloriaProvider>');
+      expect(ours[0]).toContain('@grafloria/react');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('no warning inside a provider, or among <GrafloriaFlow>\'s own children', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      function Toolbar() {
+        useSelection();
+        useOnSelectionChange(() => undefined);
+        return <div />;
+      }
+      render(<GrafloriaProvider><Toolbar /><GrafloriaFlow defaultNodes={NODES} /></GrafloriaProvider>);
+      render(<GrafloriaFlow defaultNodes={NODES}><Toolbar /></GrafloriaFlow>);
+      await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+      expect(warn.mock.calls.filter((c) => String(c[0]).includes('GrafloriaProvider'))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('useGrafloria reaches the instance from a SIBLING of the canvas via the provider', async () => {
     function Toolbar() {
       const grafloria = useGrafloria();
@@ -430,6 +615,41 @@ describe('collab — two flows over a MemoryHub', () => {
     await waitFor(() => {
       const nodeB = b!.getModel().getNode(nodeA.id)!;
       expect({ x: nodeB.position.x, y: nodeB.position.y }).toEqual({ x: 333, y: 77 });
+    });
+  });
+});
+
+describe('collab under React StrictMode', () => {
+  it('the double mount does not kill the caller\'s transport: the panes still sync', async () => {
+    // StrictMode mounts, runs the cleanup, and mounts again. The cleanup used to dispose
+    // the session, and dispose closed the transport the CALLER created — so the real
+    // mount joined a dead channel and nothing ever synced, with no error anywhere.
+    const { MemoryHub } = require('@grafloria/engine');
+    const hub = new MemoryHub();
+    const transportA = hub.connect('actor-a');
+    const transportB = hub.connect('actor-b');
+    let a: DiagramInstance | undefined;
+    let b: DiagramInstance | undefined;
+    render(
+      <StrictMode>
+        <GrafloriaFlow defaultNodes={NODES} onInit={(i) => (a = i)}
+          collab={{ transport: transportA, actor: 'actor-a', batch: false }} />
+        <GrafloriaFlow defaultNodes={NODES} onInit={(i) => (b = i)}
+          collab={{ transport: transportB, actor: 'actor-b', batch: false }} />
+      </StrictMode>
+    );
+    await waitFor(() => expect(a && b).toBeTruthy());
+    expect(transportA.status).toBe('connected');
+
+    a!.getModel().getNode('a')!.setPosition(321, 54);
+    await waitFor(() => {
+      const nodeB = b!.getModel().getNode('a')!;
+      expect({ x: nodeB.position.x, y: nodeB.position.y }).toEqual({ x: 321, y: 54 });
+    });
+    b!.getModel().getNode('b')!.setPosition(12, 34);
+    await waitFor(() => {
+      const nodeA = a!.getModel().getNode('b')!;
+      expect({ x: nodeA.position.x, y: nodeA.position.y }).toEqual({ x: 12, y: 34 });
     });
   });
 });

@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.lib.json",
-  "compilerOptions": {
-    "paths": {
-      "@grafloria/engine": ["dist/libs/engine/src/index.d.ts"],
-      "@grafloria/renderer": ["dist/libs/renderer/src/index.d.ts"]
-    }
-  }
-}

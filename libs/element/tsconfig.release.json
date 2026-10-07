@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.lib.json",
+  "compilerOptions": {
+    "outDir": ".",
+    "rootDir": ".",
+    "declaration": true,
+    "sourceMap": false,
+    "noEmitOnError": false,
+    "baseUrl": ".",
+    "paths": {
+      "@grafloria/engine": [
+        "../engine/src/index.d.ts"
+      ],
+      "@grafloria/renderer": [
+        "../renderer/src/index.d.ts"
+      ]
+    },
+    "module": "es2020"
+  }
+}

@@ -74,6 +74,43 @@ describe('GroupMembershipService (Wave-2)', () => {
     });
   });
 
+  describe('planNodeDrop — decide without doing', () => {
+    it('plans leave-then-join and changes nothing until the commands run', async () => {
+      const node = makeNode('n1', 50, 50);
+      diagram.addNode(node);
+      const from = makeGroup('from', { x: 0, y: 0, width: 200, height: 200 });
+      const to = makeGroup('to', { x: 400, y: 0, width: 200, height: 200 });
+      diagram.addGroup(from);
+      diagram.addGroup(to);
+      from.addMember('n1', diagram);
+      service.refresh();
+
+      const plan = service.planNodeDrop('n1', { x: 500, y: 100 });
+
+      expect(plan.changed).toBe(true);
+      expect(plan.commands.map((c) => c.constructor)).toEqual([RemoveFromGroupCommand, AddToGroupCommand]);
+      expect(from.members.has('n1')).toBe(true); // nothing done yet
+      expect(to.members.has('n1')).toBe(false);
+      expect(commandManager.canUndo()).toBe(false);
+
+      for (const command of plan.commands) await command.execute({ diagram, eventBus });
+      service.finishDrop(plan);
+      expect(to.members.has('n1')).toBe(true);
+      expect(from.members.has('n1')).toBe(false);
+    });
+
+    it('plans nothing for a drop back into the same group', () => {
+      diagram.addNode(makeNode('n1', 50, 50));
+      const g = makeGroup('g', { x: 0, y: 0, width: 200, height: 200 });
+      diagram.addGroup(g);
+      g.addMember('n1', diagram);
+      service.refresh();
+      const plan = service.planNodeDrop('n1', { x: 120, y: 120 });
+      expect(plan.changed).toBe(false);
+      expect(plan.commands).toHaveLength(0);
+    });
+  });
+
   describe('drag-out', () => {
     it('dispatches a RemoveFromGroupCommand when dragged outside its group', async () => {
       const node = makeNode('n1', 50, 50);
@@ -93,6 +130,27 @@ describe('GroupMembershipService (Wave-2)', () => {
 
       await commandManager.undo();
       expect(group.members.has('n1')).toBe(true);
+    });
+
+    it('a group that CONFINES its children (constrainChildren) cannot be left by a drop — its extent reels the member back', async () => {
+      // Drop-to-leave is on by default now; a confining container ("you cannot
+      // leave") must win over it, or the drop detaches what the clamp keeps in.
+      const node = makeNode('n1', 50, 50);
+      diagram.addNode(node);
+      const group = makeGroup('g1', { x: 0, y: 0, width: 200, height: 200 });
+      group.constrainChildren = true;
+      diagram.addGroup(group);
+      group.addMember('n1', diagram);
+      const other = makeGroup('g2', { x: 400, y: 400, width: 200, height: 200 });
+      diagram.addGroup(other);
+
+      for (const at of [{ x: 900, y: 900 }, { x: 500, y: 500 }]) { // outside everything; inside another group
+        const result = await service.handleNodeDragEnd('n1', at);
+        expect(result.changed).toBe(false);
+        expect(result.rejected).toBe(true);
+        expect(group.members.has('n1')).toBe(true);
+        expect(other.members.has('n1')).toBe(false);
+      }
     });
   });
 
@@ -174,6 +232,50 @@ describe('GroupMembershipService (Wave-2)', () => {
       // A point inside outer but outside inner resolves to outer.
       const outerHit = service.hitTestGroup({ x: 10, y: 10 });
       expect(outerHit?.id).toBe('outer');
+    });
+  });
+
+  describe('painted frame wins over derived member bounds (visio audit)', () => {
+    it('adopts a drop inside the explicit frame even after a membership change shrank `bounds`', async () => {
+      // A container with an explicit frame much larger than its member bbox —
+      // exactly the visio-editor's "Fulfilment" box.
+      const member = makeNode('m1', 340, 430);
+      const wanderer = makeNode('n1', 700, 700);
+      diagram.addNode(member);
+      diagram.addNode(wanderer);
+      const group = new GroupModel({ id: 'g1', name: 'g1' });
+      diagram.addGroup(group);
+      group.setFrame({ x: 300, y: 290, width: 240, height: 230 });
+      group.addMember('m1');
+
+      // A membership change recomputes the derived bounds to the TIGHT member
+      // bbox — this is what the drag-out path does via calculateBounds().
+      group.calculateBounds(diagram);
+      expect(group.bounds!.width).toBeLessThan(240); // derived rect really did shrink
+
+      // Drop in the frame's empty margin: inside the painted frame, OUTSIDE
+      // the tight member bbox. The user sees the frame, so this must adopt.
+      const result = await service.handleNodeDragEnd('n1', { x: 320, y: 310 });
+
+      expect(result.changed).toBe(true);
+      expect(result.toGroupId).toBe('g1');
+      expect(group.members.has('n1')).toBe(true);
+    });
+
+    it('a point outside the painted frame still adopts nothing', async () => {
+      const member = makeNode('m1', 340, 430);
+      const wanderer = makeNode('n1', 700, 700);
+      diagram.addNode(member);
+      diagram.addNode(wanderer);
+      const group = new GroupModel({ id: 'g1', name: 'g1' });
+      diagram.addGroup(group);
+      group.setFrame({ x: 300, y: 290, width: 240, height: 230 });
+      group.addMember('m1');
+
+      const result = await service.handleNodeDragEnd('n1', { x: 600, y: 600 });
+
+      expect(result.changed).toBe(false);
+      expect(group.members.has('n1')).toBe(false);
     });
   });
 });

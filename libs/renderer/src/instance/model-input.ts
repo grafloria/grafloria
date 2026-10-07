@@ -1,6 +1,7 @@
-import { LinkModel, NodeModel, PortModel } from '@grafloria/engine';
+import { GroupModel, LinkModel, NodeModel, PortModel, ensureSideAnchorPort } from '@grafloria/engine';
 import type {
   DiagramModel,
+  LabelStyle,
   LinkConnectorName,
   LinkRouterName,
   LinkStyle,
@@ -22,7 +23,7 @@ import type {
  * reconcile it against the live model. That reconciliation is diagram logic, not
  * framework logic, so it lives here and NOT in the wrappers.
  *
- * ## Determinism (Card 6 — SSR + hydration)
+ * ## Determinism
  *
  * The server and the client each build their own `DiagramEngine` from the SAME
  * spec, and the two VNode trees must come out byte-identical or hydration would
@@ -41,25 +42,10 @@ import type {
 /**
  * A port on a node. Omit `id` to get the deterministic `<nodeId>__<side>` name.
  *
- * ## wave10/gallery BUG FIX — the wave-6 port vocabulary was UNREACHABLE
- *
- * `PortSpec` used to be `{ id, side, type, index }` and `buildNode()` passed
- * exactly those four fields to `new PortModel(...)`. Everything else Wave 6
- * shipped — glyph shapes, port labels, the pluggable layout strategies, port
- * groups, data types, directional gating, link spots, link spreading — is
- * declared on `PortModel`, is accepted by its constructor, and is READ by the
- * renderer and the connection validator… and was silently dropped on the floor
- * by the one translator every host actually goes through.
- *
- * `Grafloria.render()`, `<grafloria-flow>` and `<GrafloriaFlow>` (React) ALL build their
- * ports here. So an entire wave of feature work — square/diamond/triangle/path
- * glyphs, `sideLinear`/`line`/`ellipse` layouts, typed data-flow ports, "this
- * port accepts at most one link" — could not be expressed by any embedder, from
- * any framework, through any public entry point. It had passing unit tests the
- * whole time, because the unit tests construct `PortModel` directly.
- *
- * This is the demo gallery's canonical finding shape, and it is why the gallery
- * exists: a unit test proves a unit works; it never proves anything CALLS it.
+ * Carries the whole port vocabulary through to the `PortModel`: glyph shapes,
+ * port labels, the pluggable layout strategies, port groups, data types,
+ * directional gating, link spots and link spreading. `Grafloria.render()`,
+ * `<grafloria-flow>` and every framework component build their ports from this.
  */
 export interface PortSpec {
   id?: string;
@@ -100,19 +86,100 @@ export interface PortSpec {
 }
 
 /** A node, as a host hands it in. */
+/** Where a zone's caption sits. */
+export type GroupLabelPlacement = 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right';
+
+/**
+ * A zone's own frame — what makes a group look like the tinted, captioned
+ * regions of the diagrams AI tools draw instead of the theme's titled box.
+ * Declaring any of it replaces the theme frame (no title band).
+ */
+export interface GroupFrameStyle {
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  strokeDasharray?: string;
+  borderRadius?: number;
+  /** Caption colour. */
+  color?: string;
+  /** Caption size in px. Default 11. */
+  fontSize?: number;
+  fontWeight?: string | number;
+  fontFamily?: string;
+  /** Caption letter spacing in px. */
+  letterSpacing?: number;
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+}
+
+/**
+ * A GROUP in the spec — a zone around some boxes. `bounds` pins its frame;
+ * without it the frame is fitted around `children` with `padding`. The children
+ * become the group's members (they travel with it). Stored as a GroupModel whose
+ * `metadata.frameStyle` carries `style` + `labelPlacement`, so it serializes.
+ */
+export interface GroupSpec {
+  id: string;
+  label?: string;
+  children?: string[];
+  bounds?: { x: number; y: number; width: number; height: number };
+  /** Space between the children and the fitted frame. Default 20. */
+  padding?: number;
+  style?: GroupFrameStyle;
+  /** Default 'top-left'. */
+  labelPlacement?: GroupLabelPlacement;
+  /** How the zone lays its boxes out under a composing layout: `'LR'` a row, `'TB'` a column. */
+  direction?: 'LR' | 'RL' | 'TB' | 'TD' | 'BT';
+}
+
+/** A node's second line, when it needs its own font or colour. See `NodeSpec.sublabel`. */
+export interface NodeSublabel {
+  text: string;
+  /** A CSS font stack, or `'mono'` for a monospace one. */
+  fontFamily?: string;
+  /** px. Default: 0.85 of the label's size. */
+  fontSize?: number;
+  /** Default: the theme's secondary text colour. */
+  color?: string;
+  fontWeight?: string | number;
+}
+
 export interface NodeSpec {
   id?: string;
   /** Engine node type. Default `'rect'`. */
   type?: string;
-  position: { x: number; y: number };
+  /**
+   * Where the box sits. Optional: absent, a new box starts at the origin and an
+   * existing one stays put — and a composing layout (`layout: 'architecture'`)
+   * places it anyway.
+   */
+  position?: { x: number; y: number };
   size?: { width: number; height: number };
   /** Free-form user payload — passed straight to custom node components. */
   data?: Record<string, any>;
   /** Convenience for `metadata.label`. */
   label?: string;
+  /**
+   * A second, smaller, muted line under the label — the name-and-description
+   * box of the diagrams AI tools draw ("Our API" / "sherkety-erp-api"). With a
+   * sublabel the label is drawn semi-bold (a `style.fontWeight` still wins).
+   * An object sets the line's own font (`'mono'` = a monospace stack), size and
+   * colour. Stored on `metadata.sublabel`, so it serializes with the node.
+   */
+  sublabel?: string | NodeSublabel;
+  /**
+   * A note placed BESIDE what it is about — a relation, not a coordinate: the
+   * architecture layout puts this box to the `side` of `target` (a node or zone),
+   * `gap` px away. Stored on `metadata.near`.
+   */
+  near?: { target: string; side?: 'right' | 'left' | 'above' | 'below'; gap?: number } | null;
   /** Convenience for `metadata.shape` (fill / stroke / cornerRadius / …). */
   shape?: Record<string, any>;
   style?: Partial<NodeStyle>;
+  /**
+   * Select (or deselect) the node. Omitted, `setNodes` leaves the selection as
+   * the user made it — and `toNodeSpec` never projects it, so a host writing its
+   * stored specs back never re-selects anything.
+   */
   selected?: boolean;
   draggable?: boolean;
   selectable?: boolean;
@@ -130,17 +197,10 @@ export interface NodeSpec {
 /**
  * An edge, as a host hands it in. Node-to-node, like React Flow.
  *
- * ## wave10/gallery BUG FIX — `router`, `connector`, `metadata` and `points`
- *
- * Wave 5 Card 0 split `pathType` into two orthogonal, per-link, SERIALIZABLE
- * settings — `router` (where the line goes) and `connector` (how it is drawn) —
- * and Wave 6 Card 2 made the connector a real registry addressed by name. Both
- * fields live on `LinkModel`, both round-trip through `serialize()`… and neither
- * was on `EdgeSpec`. So the A* / manhattan obstacle routers, and every custom
- * connector, were addressable only by reaching past the spec layer into the live
- * model. Same for `metadata`, which is how a link names its anchor and its
- * connection-point strategy (floating edges), and for `points`, which is how a
- * host restores saved waypoints.
+ * `router` (where the line goes) and `connector` (how it is drawn, by registered
+ * name) are separate, per-link settings that round-trip through `serialize()`.
+ * `metadata` is how a link names its anchor and its connection-point strategy
+ * (floating edges), and `waypoints` restore saved bends.
  */
 export interface EdgeSpec {
   id?: string;
@@ -158,7 +218,11 @@ export interface EdgeSpec {
    * 'smart'` opts into true perimeter floating.
    */
   sourceHandle?: string;
-  /** Port id, or a bare side name (`'left'`). See `sourceHandle` for the default. */
+  /**
+   * Port id, a bare side name (`'left'`), or a side AT a point along it:
+   * `'left@36'` (36 px down the left side), `'bottom@138'` (138 px from the
+   * bottom's left end), `'right@50%'`. See `sourceHandle` for the default.
+   */
   targetHandle?: string;
   type?: 'direct' | 'smooth' | 'orthogonal' | 'bezier';
   /**
@@ -173,7 +237,24 @@ export interface EdgeSpec {
    */
   connector?: LinkConnectorName;
   label?: string;
+  /**
+   * Where the label sits: `'on'` the line on its own little box (the default),
+   * or `'above'` / `'below'` it with no box — the labels of the diagrams AI tools
+   * draw. Decided against the line's direction where the label lands, so on a
+   * vertical run `'above'` means to its left.
+   */
+  labelPlacement?: 'on' | 'above' | 'below';
+  /** The label's own colour, size, weight, family, background (`'none'` for no box). */
+  labelStyle?: LabelStyle;
+  /**
+   * The bends the line must take, in world coordinates — interior points only;
+   * its ends stay on their ports. Drawn as MANUAL waypoints (the user's own
+   * bends), so the router keeps them: "M580,264 V204 H850 V154" is
+   * `waypoints: [{ x: 580, y: 204 }, { x: 850, y: 204 }]`.
+   */
+  waypoints?: Point[];
   style?: Partial<LinkStyle>;
+  /** Select (or deselect) the edge. Omitted, the selection is left alone; see `NodeSpec.selected`. */
   selected?: boolean;
   data?: Record<string, any>;
   /**
@@ -220,7 +301,7 @@ export function buildNode(spec: NodeSpec, index: number): NodeModel {
   const node = new NodeModel({
     id,
     type: spec.type ?? 'rect',
-    position: { ...spec.position },
+    position: { ...(spec.position ?? { x: 0, y: 0 }) },
     size: spec.size ? { ...spec.size } : undefined,
   });
 
@@ -237,14 +318,14 @@ export function buildNode(spec: NodeSpec, index: number): NodeModel {
 }
 
 /**
- * Spec → `PortModel`, carrying the WHOLE wave-6 vocabulary through.
+ * Spec → `PortModel`, carrying the WHOLE port vocabulary through.
  *
  * The gating spec is flattened onto the model's individual fields because that
  * is the shape `resolvePortConfig()` reads; `PortSpec.gating` is only the
  * ergonomic grouping of them.
  *
  * A port with no explicit `side` and no `group` still lands on `right` (the
- * `PortModel` default) — but a port that names a group and no side is now built
+ * `PortModel` default) — but a port that names a group and no side is built
  * WITHOUT `side`, so `explicitSide` stays false and the group's side is
  * inherited, which is the entire reason that flag exists.
  */
@@ -281,7 +362,7 @@ export function buildPort(nodeId: string, spec: PortSpec, index: number): PortMo
 
 /** Apply the mutable parts of a spec onto an existing node (the update path). */
 export function applyNodeSpec(node: NodeModel, spec: NodeSpec): void {
-  if (node.position.x !== spec.position.x || node.position.y !== spec.position.y) {
+  if (spec.position && (node.position.x !== spec.position.x || node.position.y !== spec.position.y)) {
     node.setPosition(spec.position.x, spec.position.y);
   }
   if (spec.size && (node.size.width !== spec.size.width || node.size.height !== spec.size.height)) {
@@ -291,6 +372,8 @@ export function applyNodeSpec(node: NodeModel, spec: NodeSpec): void {
   if (spec.data) node.data = { ...spec.data };
   if (spec.style) node.style = { ...node.style, ...spec.style };
   if (spec.label !== undefined) node.setMetadata('label', spec.label);
+  if (spec.sublabel !== undefined) node.setMetadata('sublabel', spec.sublabel);
+  if (spec.near !== undefined) node.setMetadata('near', spec.near ? { ...spec.near } : undefined);
   if (spec.shape !== undefined) node.setMetadata('shape', spec.shape);
   if (spec.custom !== undefined) node.setMetadata('useHTMLLayer', spec.custom);
   if (spec.metadata) {
@@ -324,6 +407,9 @@ export function resolvePortId(
 
   if (handle) {
     if (node.getPort(handle)) return handle;
+    // `'right@36'` — a point along a side (engine/ports/side-anchor).
+    const anchored = ensureSideAnchorPort(node, handle);
+    if (anchored) return anchored;
     if ((PORT_SIDES as readonly string[]).includes(handle)) {
       const port = node.getPortBySide(handle as (typeof PORT_SIDES)[number]);
       if (port) return port.id;
@@ -380,6 +466,11 @@ export function buildEdge(
 /** Apply the mutable parts of an edge spec onto an existing link. */
 export function applyEdgeSpec(link: LinkModel, spec: EdgeSpec): void {
   if (spec.type && link.pathType !== spec.type) link.setPathType(spec.type);
+  // A PLAIN side handle ('bottom') is also a relation a composing layout reads —
+  // the line leaves that side, so its target sits that way (Mermaid: `from:bottom`).
+  const plainSide = (h: string | undefined) => (h === 'top' || h === 'right' || h === 'bottom' || h === 'left' ? h : undefined);
+  if (plainSide(spec.sourceHandle)) link.setMetadata('sourceSide', plainSide(spec.sourceHandle));
+  if (plainSide(spec.targetHandle)) link.setMetadata('targetSide', plainSide(spec.targetHandle));
   // Router/connector go through the SETTERS, not assignment: `setRouter` drops
   // the stale polyline (it belongs to the old router) and both track the change,
   // which is what invalidates the link's cached VNode.
@@ -390,10 +481,26 @@ export function applyEdgeSpec(link: LinkModel, spec: EdgeSpec): void {
   if (spec.style) link.updateStyle(spec.style);
   if (spec.data) link.data = { ...spec.data };
   if (spec.label !== undefined) link.setMetadata('label', spec.label);
+  // A placed or styled label is a real LinkLabel (its style is LabelStyle); the
+  // plain `label` stays the link's accessible name. Above/below draw no box
+  // unless the style asks for a background.
+  if (spec.labelPlacement !== undefined) link.setMetadata('labelPlacement', spec.labelPlacement === 'on' ? undefined : spec.labelPlacement);
+  const text = spec.label ?? link.getLabel();
+  if (text !== undefined && text !== '' && (spec.labelPlacement !== undefined || spec.labelStyle !== undefined)) {
+    const offLine = spec.labelPlacement === 'above' || spec.labelPlacement === 'below';
+    link.setLabels([{ id: `${link.id}-label`, text: String(text), position: 0.5, offset: { x: 0, y: 0 }, style: { ...(offLine ? { background: 'none' } : {}), ...(spec.labelStyle ?? {}) } }]);
+  }
   if (spec.metadata) {
     for (const [key, value] of Object.entries(spec.metadata)) link.setMetadata(key, value);
   }
   if (spec.points) link.setPoints(spec.points);
+  if (spec.waypoints && spec.waypoints.length > 0) {
+    // The ends are placeholders: the renderer refreshes both from the ports.
+    const first = spec.waypoints[0];
+    const last = spec.waypoints[spec.waypoints.length - 1];
+    link.setPoints([{ ...first }, ...spec.waypoints.map((p) => ({ ...p })), { ...last }]);
+    link.setMetadata('hasManualWaypoints', true);
+  }
   if (spec.selected !== undefined) {
     const want = spec.selected ? 'selected' : 'default';
     if (link.state !== want) link.setState(want);
@@ -414,7 +521,16 @@ export function applyNodes(diagram: DiagramModel, specs: Array<NodeSpec | NodeMo
   specs.forEach((spec, index) => {
     if (isNodeModel(spec)) {
       seen.add(spec.id);
-      if (!diagram.getNode(spec.id)) {
+      const current = diagram.getNode(spec.id);
+      // A DIFFERENT model under an id already on the canvas replaces it: these
+      // models are the truth. Adding only missing ids left an existing node on
+      // its old object — loadText of edited text kept the old label. A SWAP, not
+      // remove + add: the removal cascades the node's links, so a reloaded
+      // document's models (setNodes(fromDocument(json).nodes)) lost every edge.
+      if (current && current !== spec) {
+        diagram.replaceNode(spec);
+        changed = true;
+      } else if (!current) {
         diagram.addNode(spec);
         changed = true;
       }
@@ -449,6 +565,15 @@ export function applyNodes(diagram: DiagramModel, specs: Array<NodeSpec | NodeMo
  * own state (a React `useState`, a Vue `ref`, a web-component property). Without
  * it a wrapper would have to reach into engine models, which is exactly the
  * coupling these specs exist to avoid.
+ *
+ * It carries no `selected`. Selection is viewer state that changes on every
+ * click, and `nodes:change` — when hosts store this projection — fires for the
+ * document (a node added, removed, dropped), not for a click. A projected
+ * `selected` therefore went stale the moment the user clicked elsewhere, and the
+ * host's next write (a rename) selected the node again. Absent, writing the
+ * projection back never touches the selection. A host that wants to DRIVE the
+ * selection still sets `selected` in its own specs (`setNodes` applies it) and
+ * reads it from `selection:change`.
  */
 export function toNodeSpec(node: NodeModel): NodeSpec {
   const spec: NodeSpec = {
@@ -456,7 +581,6 @@ export function toNodeSpec(node: NodeModel): NodeSpec {
     type: node.type,
     position: { x: node.position.x, y: node.position.y },
     size: { width: node.size.width, height: node.size.height },
-    selected: node.isSelected(),
   };
 
   const data = node.data;
@@ -464,6 +588,10 @@ export function toNodeSpec(node: NodeModel): NodeSpec {
 
   const label = node.getLabel();
   if (label !== undefined) spec.label = label;
+  const sublabel = node.getMetadata('sublabel') as NodeSpec['sublabel'] | undefined;
+  if (sublabel !== undefined) spec.sublabel = sublabel;
+  const near = node.getMetadata('near') as NodeSpec['near'] | undefined;
+  if (near) spec.near = { ...near };
 
   const shape = node.getMetadata('shape');
   if (shape !== undefined) spec.shape = shape;
@@ -473,7 +601,7 @@ export function toNodeSpec(node: NodeModel): NodeSpec {
   return spec;
 }
 
-/** Model → spec for a link. See {@link toNodeSpec}. */
+/** Model → spec for a link. See {@link toNodeSpec} — no `selected` either, for the same reason. */
 export function toEdgeSpec(link: LinkModel): EdgeSpec {
   const spec: EdgeSpec = {
     id: link.id,
@@ -482,7 +610,6 @@ export function toEdgeSpec(link: LinkModel): EdgeSpec {
     sourceHandle: link.sourcePortId,
     targetHandle: link.targetPortId,
     type: link.pathType,
-    selected: link.state === 'selected',
   };
 
   // Round-trip the wave-5 split fields, or a host that projects the model back
@@ -505,7 +632,13 @@ export function applyEdges(diagram: DiagramModel, specs: Array<EdgeSpec | LinkMo
   specs.forEach((spec, index) => {
     if (isLinkModel(spec)) {
       seen.add(spec.id);
-      if (!diagram.getLink(spec.id)) {
+      const current = diagram.getLink(spec.id);
+      // Same rule as nodes: a different model under a known id replaces it.
+      if (current && current !== spec) {
+        diagram.removeLink(current.id);
+        diagram.addLink(spec);
+        changed = true;
+      } else if (!current) {
         diagram.addLink(spec);
         changed = true;
       }
@@ -537,3 +670,90 @@ export function applyEdges(diagram: DiagramModel, specs: Array<EdgeSpec | LinkMo
 
   return changed;
 }
+
+/** True for a live `GroupModel`. */
+export function isGroupModel(value: unknown): value is GroupModel {
+  return value instanceof GroupModel;
+}
+
+/**
+ * Reconcile the diagram's groups against `specs` — add, update, remove — the
+ * way {@link applyNodes} does for nodes. A live `GroupModel` passes through (a
+ * Mermaid subgraph arrives that way). Removing a group never removes its boxes.
+ *
+ * @returns whether anything changed.
+ */
+export function applyGroups(diagram: DiagramModel, specs: Array<GroupSpec | GroupModel>): boolean {
+  const seen = new Set<string>();
+  let changed = false;
+  for (const spec of specs) {
+    if (isGroupModel(spec)) {
+      seen.add(spec.id);
+      if (!diagram.getGroup(spec.id)) {
+        diagram.addGroup(spec);
+        changed = true;
+      }
+      continue;
+    }
+    seen.add(spec.id);
+    let group = diagram.getGroup(spec.id);
+    if (!group) {
+      group = new GroupModel({ id: spec.id, name: spec.label ?? '' });
+      diagram.addGroup(group);
+    }
+    applyGroupSpec(diagram, group, spec);
+    changed = true;
+  }
+  for (const group of diagram.getGroups()) {
+    if (!seen.has(group.id)) {
+      diagram.removeGroup(group.id);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function applyGroupSpec(diagram: DiagramModel, group: GroupModel, spec: GroupSpec): void {
+  group.name = spec.label ?? '';
+  const styled = spec.style !== undefined || spec.labelPlacement !== undefined;
+  group.setMetadata('frameStyle', styled ? { ...(spec.style ?? {}), labelPlacement: spec.labelPlacement ?? 'top-left' } : undefined);
+  if (spec.direction !== undefined) group.setMetadata('direction', spec.direction);
+  const wanted = new Set(spec.children ?? []);
+  for (const id of [...group.members]) if (!wanted.has(id)) group.removeMember(id, diagram);
+  for (const id of wanted) if (!group.members.has(id) && diagram.getNode(id)) group.addMember(id, diagram);
+  if (spec.bounds) {
+    group.position = { x: spec.bounds.x, y: spec.bounds.y };
+    group.size = { width: spec.bounds.width, height: spec.bounds.height, depth: 0 };
+    group.bounds = { ...spec.bounds };
+    if (styled) reserveZoneCaptionRoom(group, spec);
+  } else {
+    group.padding = spec.padding ?? 20;
+    if (styled) reserveZoneCaptionRoom(group, spec);
+    group.fitToContents(diagram, { mode: 'exact' });
+  }
+}
+
+/**
+ * A zone has no title band: its caption is drawn inside the frame, ~20 px in
+ * from the top (or bottom) edge. Reserve that margin, so a frame fitted to its
+ * members — now, on a later `fitToContents()`, or when a node joins — never
+ * puts a member over the caption. A top caption gets a header band of the
+ * difference between the room it needs and the top padding; a bottom caption
+ * raises the bottom padding. A zone without a caption keeps its padding alone.
+ */
+function reserveZoneCaptionRoom(group: GroupModel, spec: GroupSpec): void {
+  group.headerHeight = 0;
+  if (!spec.label?.trim()) return;
+  const fontSize =
+    typeof spec.style?.fontSize === 'number' && Number.isFinite(spec.style.fontSize) ? spec.style.fontSize : 11;
+  // The caption is centred 12 + 0.7·size from the edge; its glyphs reach about
+  // 0.6·size past that, and 6 px keeps it clear of the member below.
+  const room = Math.ceil(12 + fontSize * 1.3 + 6);
+  const pad = group.getPadding();
+  if ((spec.labelPlacement ?? 'top-left').startsWith('bottom')) {
+    if (pad.bottom < room) group.padding = { ...pad, bottom: room };
+  } else {
+    group.headerHeight = Math.max(0, room - pad.top);
+  }
+}
+

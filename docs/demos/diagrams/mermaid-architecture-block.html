@@ -1,0 +1,293 @@
+<meta charset="utf-8">
+<title>Mermaid architecture &amp; block diagrams — Grafloria</title>
+<meta name="description" content="Mermaid's architecture-beta and block-beta, read by Grafloria: groups as regions, services placed where their sided lines say, a block grid with spans and holes, a classic 3-tier application with security down every layer — laid out, editable, written back as the same Mermaid.">
+<link rel="canonical" href="https://grafloria.com/demos/diagrams/mermaid-architecture-block.html">
+<meta property="og:title" content="Mermaid architecture &amp; block diagrams — Grafloria">
+<meta property="og:description" content="Mermaid's architecture-beta and block-beta, read and laid out by Grafloria, written back as the same Mermaid.">
+<meta property="og:url" content="https://grafloria.com/demos/diagrams/mermaid-architecture-block.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/diagrams/mermaid-architecture-block.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/diagrams/mermaid-architecture-block.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  #mb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--gf-line, #e5e7eb); background: #fff; font: 500 12.5px ui-sans-serif, system-ui, sans-serif; color: var(--gf-ink, #111827); }
+  #mb-bar .seg { display: inline-flex; border: 1px solid var(--gf-line, #e5e7eb); border-radius: 7px; overflow: hidden; }
+  #mb-bar .seg button { border: 0; background: none; padding: 4px 11px; cursor: pointer; white-space: nowrap; font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--gf-mut, #6b7280); }
+  #mb-bar .seg button + button { border-left: 1px solid var(--gf-line, #e5e7eb); }
+  #mb-bar .seg button.on { background: var(--gf-ink, #111827); color: #fff; }
+  #mb-bar .seg button:focus-visible { outline: 2px solid var(--gf-accent, #2563eb); outline-offset: 2px; }
+  #mb-note { color: var(--gf-mut, #6b7280); }
+  #mb-note.err { color: #b42318; }
+  #canvas { height: 540px; background: #fff; }
+  #mb-code { height: 460px; border-top: 1px solid var(--gf-line, #e5e7eb); background: #fff; }
+  #mb-src { display: block; box-sizing: border-box; width: 100%; height: 100%; margin: 0; padding: 14px 18px; border: 0; background: #f8fafc; color: #1f2937; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; overflow: auto; resize: none; tab-size: 4; }
+  #mb-src:focus-visible { outline: 2px solid var(--gf-accent, #2563eb); outline-offset: -2px; }
+</style>
+<header id="demo-head"></header>
+<div id="mb-bar">
+  <span>Mermaid</span>
+  <span class="seg" id="mb-type" role="group" aria-label="Mermaid diagram type">
+    <button type="button" data-type="arch" class="on" aria-pressed="true">architecture-beta</button>
+    <button type="button" data-type="block" aria-pressed="false">block-beta</button>
+    <button type="button" data-type="tiers" aria-pressed="false">3-tier app</button>
+  </span>
+  <span id="mb-note" role="status">Real Mermaid syntax, laid out by Grafloria. Edit it — the drawing follows.</span>
+</div>
+<div id="canvas"></div>
+<div id="mb-code"><textarea id="mb-src" spellcheck="false" aria-label="Mermaid source"></textarea></div>
+<script type="text/plain" id="src-arch">architecture-beta
+    service internet(internet)[Internet]
+    group cloud(cloud)[Cloud]
+    service web(server)[Web app] in cloud
+    service api(server)[API] in cloud
+    group data(database)[Data tier] in cloud
+    service db(database)[Postgres] in data
+    service cache(disk)[Redis cache] in data
+    junction j in cloud
+
+    internet:R --> L:web
+    web:R -[HTTPS]-> L:api
+    api:B -- T:j
+    j:B --> T:db
+    db:R -- L:cache</script>
+<script type="text/plain" id="src-block">block-beta
+    columns 3
+    doc>"Document"]:3
+    space down1<[" "]>(down) space
+
+    block:e:3
+        l["left"]
+        m("A wide one in the middle")
+        r["right"]
+    end
+    space down2<[" "]>(down) space
+    db[("DB")]:3
+    space:3
+    D space C
+    db --> D
+    C --> db
+    D --> C
+    style m fill:#d6d,stroke:#333,stroke-width:4px</script>
+<script type="text/plain" id="src-tiers">block-beta
+    columns 4
+    block:app["Application"]:3
+        columns 1
+        block:ui["Presentation layer"]
+            columns 3
+            web["Web app"] mobile["Mobile app"] admin["Admin portal"]
+        end
+        block:bll["Business logic layer"]
+            columns 4
+            orders["Orders"] billing["Billing"] rules["Business rules"] flows["Workflows"]
+        end
+        block:dal["Data access layer"]
+            columns 3
+            repos["Repositories"] orm["ORM / unit of work"] agents["Service agents"]
+        end
+    end
+    block:sec["Security"]
+        columns 1
+        authn["Authentication"] authz["Authorization"] valid["Input validation"] crypto["Encryption"] audit["Audit log"]
+    end
+    block:data["Data"]:4
+        columns 4
+        db[("SQL database")] cache[("Cache")] files[("File storage")] ext["External APIs"]
+    end
+    classDef front fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
+    classDef logic fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef access fill:#ede9fe,stroke:#7c3aed,color:#3b0764
+    classDef store fill:#f1f5f9,stroke:#475569,color:#1e293b
+    classDef guard fill:#fef3c7,stroke:#d97706,color:#78350f
+    class web,mobile,admin front
+    class orders,billing,rules,flows logic
+    class repos,orm,agents access
+    class db,cache,files,ext store
+    class authn,authz,valid,crypto,audit guard</script>
+<script type="module">
+import { render, importDiagramText, exportDiagramText } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { mountCodeEditor } from '../shell/code-editor.js';
+
+const srcEl = document.getElementById('mb-src');
+const note = document.getElementById('mb-note');
+const seg = document.getElementById('mb-type');
+const NOTE = note.textContent;
+const SOURCES = Object.fromEntries(['arch', 'block', 'tiers'].map((t) => [t, document.getElementById(`src-${t}`).textContent]));
+
+defineDemo({
+  name: 'Mermaid architecture & block diagrams',
+  blurb: "Mermaid's architecture-beta and block-beta, read by Grafloria: groups as regions, services placed where their sided lines say, a block grid with spans and holes, a classic 3-tier application with security down every layer — laid out, editable, and written back as the same Mermaid.",
+  howTo: [
+    'architecture-beta: every line names its sides — web:R -[HTTPS]-> L:api leaves the web app on its right and enters the API on its left, so the API sits to its right. Grafloria reads those sides as the layout: groups become regions, services line up, lines run straight; the icons (internet, server, database, disk, cloud) are drawn.',
+    'block-beta: blocks fill rows of `columns 3`; `:3` spans a row, `space` leaves a hole, block … end nests a grid, block arrows point the way. Styles and classDef come through.',
+    '3-tier app: the classic layered picture in block-beta. block:ui["Presentation layer"] names a layer and draws its caption; the layers stack inside the application, their blocks one width and filling each layer edge to edge, and the Security column runs the full height beside all of them. classDef tints each layer.',
+    'Edit any of them: add a service to a group (… in data), a line with its sides, a block to a layer (it takes its share of the width). The drawing re-composes as you type.',
+    'Each writes back as itself: export gives architecture-beta or block-beta text that real Mermaid accepts, layer names included — not a flowchart.',
+  ],
+
+  async setup(ctx) {
+    ctx.instance = render({ nodes: [], edges: [] }, ctx.host);
+    ctx.diagram = ctx.instance.getModel();
+    const api = ctx.instance;
+    api.getEngine().setInteractionConfig({ portVisibility: 'hidden' });
+    ctx.draw = () => {
+      let d;
+      try {
+        d = importDiagramText(srcEl.value).diagram;
+      } catch (e) {
+        note.textContent = `That text does not parse yet (${e && e.message ? e.message : e}) — the last drawing stays.`;
+        note.classList.add('err');
+        return false;
+      }
+      note.textContent = NOTE;
+      note.classList.remove('err');
+      ctx.imported = d;
+      api.setEdges([]); api.setGroups([]); api.setNodes([]);
+      api.setNodes(d.getNodes()); api.setGroups(d.getGroups()); api.setEdges(d.getLinks());
+      api.renderNow();
+      api.fitView(32);
+      api.renderNow();
+      return true;
+    };
+    // The source reads as code — coloured the way the JavaScript and Angular
+    // tabs are. The textarea stays canonical underneath (every edit mirrors into
+    // it), so the drawing reads `srcEl.value` either way.
+    let timer = 0;
+    const schedule = () => { clearTimeout(timer); timer = setTimeout(() => ctx.draw(), 300); };
+    ctx.editor = await mountCodeEditor(srcEl, { language: 'mermaid', onChange: schedule });
+    srcEl.addEventListener('input', schedule);
+    /** Write the source as a person would see it typed: both surfaces, then a re-draw. */
+    ctx.edit = (text) => {
+      ctx.editor.setValue(text);
+      if (!ctx.editor.monaco) srcEl.dispatchEvent(new Event('input'));
+    };
+    ctx.show = (type) => {
+      ctx.type = type;
+      ctx.editor.setValue(SOURCES[type].trim());
+      clearTimeout(timer); // the tab draws now, not after the typing pause
+      for (const b of seg.querySelectorAll('button')) {
+        const on = b.getAttribute('data-type') === type;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
+      }
+      ctx.draw();
+    };
+    seg.onclick = (e) => { const v = e.target.closest('button')?.getAttribute('data-type'); if (v) ctx.show(v); };
+    ctx.show('arch');
+    await ctx.tick();
+  },
+
+  async assert(ctx) {
+    const m = () => ctx.instance.getModel();
+    const R = (id) => {
+      const n = m().getNode(id);
+      if (n) return { x: n.position.x, y: n.position.y, w: n.size.width, h: n.size.height };
+      const b = m().getGroup(id).getOuterBounds();
+      return { x: b.x, y: b.y, w: b.width, h: b.height };
+    };
+    const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const clean = (tag) => {
+      const ids = m().getNodes().map((n) => n.id);
+      for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+        check(!overlaps(R(ids[i]), R(ids[j])), `${tag} "${ids[i]}" and "${ids[j]}" must not overlap`);
+      }
+    };
+    const inside = (id, g) => { const r = R(id), f = R(g); return r.x >= f.x && r.y >= f.y && r.x + r.w <= f.x + f.w && r.y + r.h <= f.y + f.h; };
+
+    // the source is coloured like code — asked of Monaco's own tokenizer, word by word
+    check(ctx.editor.monaco ? !!document.querySelector('#mb-code .monaco-editor') && getComputedStyle(srcEl).display === 'none' : getComputedStyle(srcEl).display !== 'none',
+      'the source must show in the coloured editor (or, if it never loads, in the plain textarea)');
+    if (ctx.editor.monaco) {
+      const typeAt = (line, word, from = 0) => {
+        const i = line.indexOf(word, from);
+        let type = '';
+        for (const t of window.monaco.editor.tokenize(line, 'mermaid')[0]) if (t.offset <= i) type = t.type;
+        return type.replace(/\.mermaid$/, '');
+      };
+      const svc = '    service web(server)[Web app] in cloud';
+      const edge = '    web:R -[HTTPS]-> L:api';
+      for (const [line, word, want, from] of [
+        ['architecture-beta', 'architecture-beta', 'keyword'],
+        [svc, 'service', 'keyword'], [svc, 'server', 'type'], [svc, 'in', 'keyword', svc.indexOf(']')],
+        ['    group data(database)[Data tier] in cloud', 'group', 'keyword'],
+        ['    junction j in cloud', 'junction', 'keyword'],
+        [edge, ':R', 'type'], [edge, 'L:', 'type'], [edge, '-[', 'operator'], [edge, 'HTTPS', 'string'], [edge, ']->', 'operator'],
+        ['block-beta', 'block-beta', 'keyword'], ['    columns 4', 'columns', 'keyword'],
+        ['    block:app["Application"]:3', 'block', 'keyword'], ['    block:app["Application"]:3', '"Application"', 'string'],
+        ['    space down1<[" "]>(down) space', 'space', 'keyword'],
+        ['    classDef guard fill:#fef3c7,stroke:#d97706', 'classDef', 'keyword'],
+      ]) check(typeAt(line, word, from) === want, `"${word.trim()}" in \`${line.trim()}\` must be coloured as ${want}, not "${typeAt(line, word, from)}"`);
+      // a word inside a label is text, never a keyword
+      check(typeAt('    a[Log in to the service] --> b', 'in') !== 'keyword' && typeAt('    a[Log in to the service] --> b', 'service') !== 'keyword', 'words inside a label must stay text');
+      // an identifier is ONE word: no digit or keyword coloured inside it
+      check(typeAt('    space down1<[" "]>(down) space', '1') !== 'number' && typeAt('    weekend --> b', 'end') !== 'keyword', 'an identifier must stay one word (down1, weekend)');
+    }
+
+    // architecture-beta: the sides are the layout
+    ctx.show('arch');
+    check(m().getGroup('cloud') && m().getGroup('data'), 'the groups must come through');
+    check(inside('web', 'cloud') && inside('db', 'data') && inside('data', 'cloud'), 'services and the inner group must sit inside their groups');
+    check(R('internet').x + R('internet').w < R('web').x, 'internet:R --> L:web — the web app must be to the RIGHT of the internet');
+    check(R('web').x + R('web').w < R('api').x, 'web:R --> L:api — the API must be to the RIGHT of the web app');
+    check(R('db').y > R('api').y + R('api').h, 'api:B … T:db — the database must be BELOW the API');
+    check(R('db').x + R('db').w < R('cache').x, 'db:R -- L:cache — the cache must be to the RIGHT of the database');
+    check(R('j').w <= 16, 'a junction must be a small dot');
+    check(!!ctx.host.querySelector('[data-node-id="db"] .panel-icon path'), 'the database icon must be drawn');
+    const https = m().getLinks().find((l) => l.sourceNodeId === 'web' && l.targetNodeId === 'api');
+    check(https && https.getLabel() === 'HTTPS', 'the -[HTTPS]-> label must come through');
+    clean('[architecture]');
+    const archOut = exportDiagramText(ctx.imported, { lossless: false });
+    check(/^architecture-beta/.test(archOut.trim()) && /web:R -\[HTTPS\]-> L:api/.test(archOut), 'it must write back as architecture-beta, sides and label included');
+
+    // edit: a new service in the data tier, right of the cache
+    const before = srcEl.value;
+    ctx.edit(before + '\n    service queue(disk)[Job queue] in data\n    cache:R -- L:queue');
+    for (let i = 0; i < 40 && !m().getNode('queue'); i++) await ctx.tick(20);
+    check(!!m().getNode('queue') && inside('queue', 'data'), 'an edit must re-draw, the new service inside its group');
+    check(R('queue').x > R('cache').x + R('cache').w, 'cache:R -- L:queue — the new service must be to the RIGHT of the cache');
+    clean('[after an edit]');
+
+    // block-beta: the grid
+    ctx.show('block');
+    check(Math.abs(R('doc').x - R('db').x) < 1 && Math.abs(R('doc').w - R('db').w) < 1, 'doc:3 and db:3 must span the whole row');
+    check(Math.abs(R('D').x - R('db').x) < 1 && R('C').x + R('C').w - (R('db').x + R('db').w) < 1, 'D and C must sit in the first and last columns (space between)');
+    check(inside('l', 'e') && inside('m', 'e') && inside('r', 'e'), 'the nested block must hold its blocks');
+    const dn = m().getNode('down1');
+    check(dn && dn.getLabel() === '↓', 'a block arrow must point its way');
+    check(m().getNode('m').style.fill === '#d6d', 'the style line must come through');
+    clean('[block]');
+    const blockOut = exportDiagramText(ctx.imported, { lossless: false });
+    check(/^block-beta/.test(blockOut.trim()) && /db\[\("DB"\)\]:3/.test(blockOut) && /down1<\[" "\]>\(down\)/.test(blockOut), 'it must write back as block-beta, spans and arrows included');
+    check(['l', 'm', 'r'].every((id) => Math.abs(R(id).w - R('m').w) < 1), 'the cells of a grid must be one width, as Mermaid draws them');
+
+    // the 3-tier app: named layers, stacked, a Security column down all of them
+    ctx.show('tiers');
+    const LAYERS = { ui: ['web', 'mobile', 'admin'], bll: ['orders', 'billing', 'rules', 'flows'], dal: ['repos', 'orm', 'agents'] };
+    const NAMES = { ui: 'Presentation layer', bll: 'Business logic layer', dal: 'Data access layer' };
+    const drawn = [...ctx.host.querySelectorAll('text')].map((t) => t.textContent);
+    for (const [layer, ids] of Object.entries(LAYERS)) {
+      check(m().getGroup(layer)?.name === NAMES[layer] && drawn.includes(NAMES[layer]), `the ${layer} layer must carry and draw its name "${NAMES[layer]}"`);
+      for (const id of ids) check(inside(id, layer), `"${id}" must sit inside the ${layer} layer`);
+      const f = R(layer), first = R(ids[0]), last = R(ids[ids.length - 1]);
+      check(Math.abs((first.x - f.x) - (f.x + f.w - last.x - last.w)) < 1, `the ${layer} layer's blocks must fill it edge to edge`);
+      check(ids.every((id) => Math.abs(R(id).w - first.w) < 1), `the ${layer} layer's blocks must be one width`);
+      check(inside(layer, 'app'), `the ${layer} layer must sit inside the application`);
+    }
+    check(R('ui').y + R('ui').h < R('bll').y && R('bll').y + R('bll').h < R('dal').y, 'the layers must stack: presentation, business logic, data access');
+    const app = R('app'), sec = R('sec');
+    check(sec.x > app.x + app.w && Math.abs(sec.y - app.y) < 1 && Math.abs(sec.y + sec.h - (app.y + app.h)) < 1, 'Security must run beside the application, the full height of its layers');
+    check(Math.abs((sec.y + sec.h - R('audit').y - R('audit').h) - (R('authn').x - sec.x)) < 1, 'the security blocks must spread down the whole column');
+    check(R('data').y > app.y + app.h && Math.abs(R('data').w - (sec.x + sec.w - app.x)) < 1, 'the data row must run under the application and Security both');
+    check(m().getNode('orders').style.fill === '#dcfce7' && m().getNode('authn').style.fill === '#fef3c7', 'classDef / class must tint each layer');
+    clean('[3-tier]');
+    const tiersOut = exportDiagramText(ctx.imported, { lossless: false });
+    check(/^block-beta/.test(tiersOut.trim()) && /block:app\["Application"\]:3/.test(tiersOut) && /block:ui\["Presentation layer"\]/.test(tiersOut), 'it must write back as block-beta, the layer names included');
+  },
+
+  // The block grid gets its own frame.
+  async showcase(ctx) {
+    ctx.show('block');
+    await ctx.tick();
+  },
+});
+</script>

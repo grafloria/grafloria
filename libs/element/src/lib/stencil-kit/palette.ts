@@ -20,20 +20,33 @@ import {
   BatchCommand,
   type Stencil,
   type NodeTemplate,
+  type DiagramEngine,
+  type DiagramModel,
 } from '@grafloria/engine';
 import { getShape } from '@grafloria/renderer';
 import { ensureStencilKitStyles } from './styles';
+import { getStencilBuilder } from './builders';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** The MIME the palette drags with — namespaced so a page's other DnD is untouched. */
 const DND_TYPE = 'application/x-grafloria-master';
 
-/** The bits of a diagram instance the palette needs (kept structural so any
- *  host — element, React, Vue — satisfies it without importing a class). */
+/**
+ * What the palette needs from a diagram: its engine (a drop runs as one
+ * undoable command), its model, and the viewport that turns the drop point
+ * into world coordinates. A `DiagramInstance` is all of this, so pass the
+ * instance itself.
+ */
 export interface StencilPaletteApi {
-  getEngine(): any;
-  getModel(): any;
-  viewport: { clientToWorld(x: number, y: number, rect: { left: number; top: number; width: number; height: number }): { x: number; y: number } };
+  getEngine: () => DiagramEngine;
+  getModel: () => DiagramModel;
+  viewport: {
+    clientToWorld(
+      x: number,
+      y: number,
+      rect: { left: number; top: number; width: number; height: number }
+    ): { x: number; y: number };
+  };
 }
 
 export interface StencilPaletteOptions {
@@ -47,6 +60,24 @@ export interface StencilPaletteOptions {
   data?: (master: NodeTemplate) => Record<string, unknown>;
   /** Called after a master is placed on the canvas. */
   onPlace?: (info: { master: NodeTemplate; nodeId: string; x: number; y: number }) => void;
+  /**
+   * Restyle the shapes per stencil WITHOUT editing any master — the seam that
+   * makes stencil colour a host/theme decision instead of baked template data.
+   * Keyed by stencil id (`flowchart`, `bpmn`, `uml`, `erd`); each entry
+   * overrides the master's own `fill` / `stroke`. Pass `'theme'` for a value to
+   * take it from the live theme instead of a literal.
+   *
+   *   bindStencilPalette(api, hosts, {
+   *     notationTheme: { flowchart: { fill: 'theme', stroke: '#0f172a' } },
+   *   })
+   */
+  notationTheme?: Record<string, { fill?: string; stroke?: string }>;
+  /**
+   * Opt a placed master INTO `useHTMLLayer`. Only set this when the host really
+   * runs an HTML layer that paints `node.data._html` — with the plain SVG
+   * renderer the flag makes the node render as an empty group.
+   */
+  htmlLayer?: boolean;
 }
 
 export interface StencilPaletteHandle {
@@ -56,6 +87,86 @@ export interface StencilPaletteHandle {
   place(masterId: string, world: { x: number; y: number }): Promise<string | null>;
   /** Remove listeners and the palette DOM. */
   destroy(): void;
+}
+
+
+/**
+ * Repaint a placed master from the host's per-notation palette.
+ *
+ * Colour used to live only in the 80 generated templates, so restyling meant
+ * editing template data — impossible for an embedder. This applies the caller's
+ * scheme on top, and `'theme'` resolves against the live theme so a colour-mode
+ * swap carries the stencils with it.
+ */
+function applyNotationTheme(
+  node: any,
+  stencilId: string | undefined,
+  scheme: Record<string, { fill?: string; stroke?: string }> | undefined,
+  api: StencilPaletteApi
+): void {
+  if (!stencilId || !scheme) return;
+  const want = scheme[stencilId];
+  if (!want) return;
+  const shape = { ...(node.getMetadata?.('shape') ?? {}) };
+  const theme: any = (api as any).getTheme?.() ?? null;
+  const resolve = (v: string | undefined, token: 'surface' | 'ink') =>
+    v === 'theme'
+      ? (token === 'surface' ? theme?.colors?.background?.paper : theme?.colors?.primary) ?? undefined
+      : v;
+  const fill = resolve(want.fill, 'surface');
+  const stroke = resolve(want.stroke, 'ink');
+  if (fill !== undefined) shape.fill = fill;
+  if (stroke !== undefined) shape.stroke = stroke;
+  node.setMetadata('shape', shape);
+}
+
+/** UML classifiers get a name compartment + a member compartment.
+ *  Keys are MASTER IDS — `uml-enum` / `uml-primitive-type` are the generated
+ *  ids (the old `uml-enumeration` / `uml-primitivetype` keys matched nothing,
+ *  so those two masters dropped as bare rectangles with no card). */
+const UML_CLASSIFIERS: Record<string, string | null> = {
+  'uml-class': null, 'uml-abstract-class': '«abstract»', 'uml-interface': '«interface»',
+  'uml-enum': '«enumeration»', 'uml-datatype': '«dataType»',
+  'uml-primitive-type': '«primitive»', 'uml-signal': '«signal»', 'uml-object': null,
+};
+
+/** BPMN event types carry their trigger glyph inside the circle. */
+const BPMN_EVENT_GLYPH: Record<string, string> = {
+  'bpmn-message-event': '✉', 'bpmn-timer-event': '⏱', 'bpmn-error-event': '⚡',
+};
+
+/**
+ * Give a placed master its notation furniture: UML compartments, or a BPMN
+ * event trigger glyph. Both ride `metadata.panel`, so they paint in SVG and
+ * survive export — see the note at the call site.
+ */
+function applyNotationPanel(node: any, masterId: string, master: NodeTemplate): void {
+  const glyph = BPMN_EVENT_GLYPH[masterId];
+  if (glyph) {
+    // CENTRED, as BPMN draws its trigger glyphs — the caption now paints BELOW
+    // the circle (labelPlacement), so the middle belongs to the badge.
+    node.setMetadata('panel', { icon: { glyph, size: 16, corner: 'c' } });
+    return;
+  }
+  if (!(masterId in UML_CLASSIFIERS)) return;
+  const stereotype = UML_CLASSIFIERS[masterId];
+  const name = (master as any).meta?.name ?? 'Class';
+  // Placeholder members, so a dropped classifier looks like a UML card the user
+  // can then edit rather than an empty box.
+  const rows = masterId === 'uml-enum'
+    ? [{ text: 'VALUE_A' }, { text: 'VALUE_B' }]
+    : [{ text: '+ field: Type' }, { text: '+ method(): void' }];
+  node.setMetadata('panel', {
+    // A stereotyped classifier stacks «stereotype» OVER the name, the way UML
+    // draws its cards — inline ("«enumeration» Enumeration") the header line
+    // was wider than the card and painted cut off at both edges.
+    header: stereotype ? { lines: [stereotype, name] } : { text: name },
+    rows,
+    rowHeight: 18,
+  });
+  // The header IS the classifier's name, so the node's own centred label would
+  // simply repeat it in the gap between the compartments.
+  node.setLabel?.('');
 }
 
 /** A thumbnail SVG for a master, drawn from its real outline + declared paint. */
@@ -129,6 +240,9 @@ export function bindStencilPalette(
   ensureStencilKitStyles(hosts.palette.ownerDocument ?? document);
 
   const stencils = options.stencils ?? listStencils();
+  /** master id → stencil id, so a drop knows which notation it belongs to. */
+  const stencilOf = new Map<string, string>();
+  for (const st of stencils) for (const m of st.masters) stencilOf.set(m.id, st.id);
   const collapsed = new Set(options.collapsed ?? stencils.slice(1).map((s) => s.id));
   const { palette, canvas } = hosts;
   let query = '';
@@ -203,6 +317,39 @@ export function bindStencilPalette(
     }
   }
 
+  // ── drag ghost ───────────────────────────────────────────────────────────
+  // A lightweight preview that follows the cursor during a palette drag, so
+  // the user can see WHAT they are holding and WHERE it will land. A DOM
+  // element rather than `setDragImage`: the native drag image is browser
+  // chrome — it never appears in a screenshot, and headless/some platforms do
+  // not paint it at all, which is exactly how "dragging from the rail shows no
+  // preview" shipped unnoticed.
+  let ghost: HTMLElement | null = null;
+  const moveGhost = (e: DragEvent) => {
+    if (!ghost) return;
+    ghost.style.left = `${e.clientX}px`;
+    ghost.style.top = `${e.clientY}px`;
+  };
+  const killGhost = () => {
+    ghost?.remove();
+    ghost = null;
+    document.removeEventListener('dragover', moveGhost);
+  };
+  const spawnGhost = (master: NodeTemplate, e: DragEvent) => {
+    killGhost();
+    const meta: any = (master as any).meta ?? {};
+    ghost = document.createElement('div');
+    ghost.className = 'gf-stencil-ghost';
+    ghost.appendChild(thumbnail(master, 28));
+    ghost.append(meta.name ?? master.id);
+    ghost.style.left = `${e.clientX}px`;
+    ghost.style.top = `${e.clientY}px`;
+    document.body.appendChild(ghost);
+    // dragover fires document-wide throughout an HTML5 drag — the one stream
+    // that reliably carries live coordinates on every platform.
+    document.addEventListener('dragover', moveGhost);
+  };
+
   function itemEl(master: NodeTemplate): HTMLElement {
     const meta: any = (master as any).meta ?? {};
     const el = document.createElement('div');
@@ -222,7 +369,17 @@ export function bindStencilPalette(
       dt.setData(DND_TYPE, master.id);
       dt.setData('text/plain', meta.name ?? master.id); // so a stray drop is harmless text
       dt.effectAllowed = 'copy';
+      // Suppress the native drag snapshot where it IS painted — otherwise the
+      // ghost and the platform preview would ride the cursor together.
+      if (typeof Image !== 'undefined' && dt.setDragImage) {
+        const blank = new Image();
+        blank.src =
+          'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        dt.setDragImage(blank, 0, 0);
+      }
+      spawnGhost(master, e as DragEvent);
     });
+    el.addEventListener('dragend', killGhost);
     return el;
   }
 
@@ -248,6 +405,7 @@ export function bindStencilPalette(
   const onDrop = (e: DragEvent) => {
     const id = heldMaster(e);
     canvas.classList.remove('gf-stencil-target');
+    killGhost();
     if (!id) return;
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
@@ -278,9 +436,35 @@ export function bindStencilPalette(
     const h = Number(struct.size?.height) || 60;
     const at = { x: world.x - w / 2, y: world.y - h / 2 };   // drop centres on the cursor
 
-    const factory = new NodeFactory(registry, diagram);
-    const root = factory.createFromTemplate(masterId, options.data?.(master) ?? {}, at);
-    const created = subtree(diagram, root);
+    // A master may resolve to a registered BUILDER (an ER entity / UML class is
+    // a kit card, not a silhouette). Anything without one takes the template
+    // path — see stencil-kit/builders.ts for why this is a registry and not an
+    // id check inside the palette.
+    const builder = getStencilBuilder(masterId);
+    const built = builder ? builder({ api, master, at }) : null;
+
+    const factory = built ? null : new NodeFactory(registry, diagram);
+    const root = built ?? factory!.createFromTemplate(masterId, options.data?.(master) ?? {}, at);
+    const created = built ? [built] : subtree(diagram, root);
+
+    // NOTE: masters used to need `useHTMLLayer` stripped here or they rendered
+    // as empty groups. That is fixed at the source now (NodeFactory no longer
+    // sets the flag — see NodeFactory.html-contract.spec.ts), so the workaround
+    // is gone. `htmlLayer: true` is still honoured for hosts that set the flag
+    // themselves and DO run a layer that paints it.
+    if (options.htmlLayer === true) {
+      for (const n of created) n.setMetadata('useHTMLLayer', true);
+    }
+
+    // COMPARTMENTS & EVENT MARKERS. `metadata.panel` drives the renderer's
+    // composite-panel overlay (header band + stacked rows + a corner glyph) —
+    // a complete, themed, SVG-NATIVE subsystem that shipped with zero callers.
+    // Using it here rather than the UML kit's `metadata.html` route is
+    // deliberate: an HTML-layer card is not vector-exportable and depends on a
+    // layer the plain SVG embed does not run — the exact dependency that made
+    // every dropped master render blank.
+    applyNotationPanel(root, masterId, master);
+    applyNotationTheme(root, stencilOf.get(masterId), options.notationTheme, api);
 
     // Serialize into commands BEFORE detaching (AddNodeCommand snapshots in its
     // constructor), then detach and replay through the command manager.
@@ -298,6 +482,7 @@ export function bindStencilPalette(
     setSearch(q: string) { query = (q ?? '').trim().toLowerCase(); if (input) input.value = q ?? ''; renderList(); },
     place,
     destroy() {
+      killGhost();
       canvas.removeEventListener('dragover', onDragOver);
       canvas.removeEventListener('dragleave', onDragLeave);
       canvas.removeEventListener('drop', onDrop);
