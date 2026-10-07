@@ -4167,6 +4167,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         } else if (!clickedNode.isSelected()) {
           // Normal click on unselected node: Select only this node (clearing others)
           diagram.selectNode(clickedNode);
+          // The click REPLACES the selection, and links are part of it — as in
+          // the shared canvas (dom-event-binder pressNode) and the empty-canvas click.
+          diagram.getLinks().forEach((link: LinkModel) => {
+            if (link.state === 'selected') link.setState('default');
+          });
           debugLog('[FieldSelectDebug] Selected node - isSelected:', clickedNode.isSelected());
         }
         // If clicking an already-selected node without Ctrl: Keep all selections for multi-drag

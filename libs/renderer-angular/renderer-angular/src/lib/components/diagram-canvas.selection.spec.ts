@@ -79,6 +79,29 @@ describe('DiagramCanvasComponent — (selectionChange)', () => {
     expect(host.changes.map(ids)).toEqual([{ nodes: ['a'], edges: [] }]);
   });
 
+  test('a plain node click replaces the selection: a selected edge is deselected', async () => {
+    link.setState('selected');
+    await settle();
+    host.changes.length = 0;
+
+    click(180, 140);
+    await settle();
+
+    expect(link.state).not.toBe('selected');
+    expect(host.changes.map(ids)).toEqual([{ nodes: ['a'], edges: [] }]);
+  });
+
+  test('a Ctrl+click on a node adds to the selection and keeps the edge', async () => {
+    link.setState('selected');
+    await settle();
+
+    click(180, 140, { ctrlKey: true });
+    await settle();
+
+    expect(link.state).toBe('selected');
+    expect(diagram.getNode('a')!.isSelected()).toBe(true);
+  });
+
   test('clicking the already-selected node again emits nothing', async () => {
     click(180, 140);
     await settle();
