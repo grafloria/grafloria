@@ -3,7 +3,7 @@
  * jsdom (no test-utils): mount, v-model round-trip, slot-based custom nodes
  * with the auto-`custom` opt-in, declarative layout, and exposed API.
  */
-import { createApp, defineComponent, h, nextTick, ref, type App } from 'vue';
+import { createApp, defineComponent, h, nextTick, onUnmounted, ref, type App } from 'vue';
 import { GrafloriaFlow } from './grafloria-flow';
 import type { NodeSpec, EdgeSpec } from '@grafloria/renderer';
 
@@ -210,6 +210,45 @@ describe('GrafloriaFlow (Vue)', () => {
     const card = host.querySelector('.vue-job');
     expect(card).toBeTruthy();
     expect(card!.textContent).toBe('Extract');
+  });
+
+  it('a deleted custom node unmounts its slot content', async () => {
+    let instance: any = null;
+    let unmounted = 0;
+    const Card = defineComponent({
+      props: { title: String },
+      setup(p) {
+        onUnmounted(() => unmounted++);
+        return () => h('div', { class: 'vue-job' }, p.title);
+      },
+    });
+    app = createApp(
+      defineComponent({
+        setup() {
+          return () =>
+            h(
+              GrafloriaFlow,
+              {
+                defaultNodes: [
+                  { id: 'j1', type: 'job', position: { x: 10, y: 10 }, size: { width: 150, height: 60 }, data: { title: 'Extract' } },
+                  { id: 'j2', type: 'job', position: { x: 300, y: 10 }, size: { width: 150, height: 60 }, data: { title: 'Load' } },
+                ] as NodeSpec[],
+                onInit: (i: unknown) => (instance = i),
+              },
+              { 'node-job': (p: any) => [h(Card, { title: String(p.data['title']) })] }
+            );
+        },
+      })
+    );
+    app.mount(host);
+    await flush();
+    expect(host.querySelectorAll('.vue-job')).toHaveLength(2);
+
+    instance.getModel().removeNode('j1');
+    await flush();
+
+    expect(unmounted).toBe(1);
+    expect(Array.from(host.querySelectorAll('.vue-job'), (e) => e.textContent)).toEqual(['Load']);
   });
 
   it('v-model:nodes round-trips: prop changes reach the model, model edits emit specs', async () => {

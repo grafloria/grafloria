@@ -347,6 +347,12 @@ export const GrafloriaFlow = defineComponent({
           mounted.set(node.id, entry);
           paintSlot(entry);
         },
+        // A deleted custom node's Vue tree is unmounted with it — otherwise it stayed
+        // mounted (effects, listeners, onUnmounted never run) and kept being repainted.
+        removeCustomNode: (nodeId: string, element: HTMLElement) => {
+          vueRender(null, element);
+          if (mounted.get(nodeId)?.element === element) mounted.delete(nodeId);
+        },
       } as any);
       instance.value = inst;
       store.value = inst;
