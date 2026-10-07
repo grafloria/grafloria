@@ -130,9 +130,11 @@ describe('GrafloriaFlow (Vue)', () => {
         setup() {
           return () =>
             h(GrafloriaFlow, {
+              // A type with no shape: the validation outline flags it (built-in
+              // shapes such as `rect` are never flagged as unregistered).
               defaultNodes: [
-                { id: 'a', position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
-                { id: 'b', position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
+                { id: 'a', type: 'no-such-node-type', position: { x: 100, y: 100 }, size: { width: 120, height: 60 }, label: 'A' },
+                { id: 'b', type: 'no-such-node-type', position: { x: 400, y: 100 }, size: { width: 120, height: 60 }, label: 'B' },
               ] as NodeSpec[],
               highlighterConfig: cfg.value,
               onInit: (i: unknown) => (instance = i),
