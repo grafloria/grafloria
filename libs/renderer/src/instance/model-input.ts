@@ -725,8 +725,6 @@ function applyGroupSpec(diagram: DiagramModel, group: GroupModel, spec: GroupSpe
   group.name = spec.label ?? '';
   const styled = spec.style !== undefined || spec.labelPlacement !== undefined;
   group.setMetadata('frameStyle', styled ? { ...(spec.style ?? {}), labelPlacement: spec.labelPlacement ?? 'top-left' } : undefined);
-  // A zone's caption lives in its padding, not in a title band.
-  if (styled) group.headerHeight = 0;
   if (spec.direction !== undefined) group.setMetadata('direction', spec.direction);
   const wanted = new Set(spec.children ?? []);
   for (const id of [...group.members]) if (!wanted.has(id)) group.removeMember(id, diagram);
@@ -735,9 +733,35 @@ function applyGroupSpec(diagram: DiagramModel, group: GroupModel, spec: GroupSpe
     group.position = { x: spec.bounds.x, y: spec.bounds.y };
     group.size = { width: spec.bounds.width, height: spec.bounds.height, depth: 0 };
     group.bounds = { ...spec.bounds };
+    if (styled) reserveZoneCaptionRoom(group, spec);
   } else {
     group.padding = spec.padding ?? 20;
+    if (styled) reserveZoneCaptionRoom(group, spec);
     group.fitToContents(diagram, { mode: 'exact' });
+  }
+}
+
+/**
+ * A zone has no title band: its caption is drawn inside the frame, ~20 px in
+ * from the top (or bottom) edge. Reserve that margin, so a frame fitted to its
+ * members — now, on a later `fitToContents()`, or when a node joins — never
+ * puts a member over the caption. A top caption gets a header band of the
+ * difference between the room it needs and the top padding; a bottom caption
+ * raises the bottom padding. A zone without a caption keeps its padding alone.
+ */
+function reserveZoneCaptionRoom(group: GroupModel, spec: GroupSpec): void {
+  group.headerHeight = 0;
+  if (!spec.label?.trim()) return;
+  const fontSize =
+    typeof spec.style?.fontSize === 'number' && Number.isFinite(spec.style.fontSize) ? spec.style.fontSize : 11;
+  // The caption is centred 12 + 0.7·size from the edge; its glyphs reach about
+  // 0.6·size past that, and 6 px keeps it clear of the member below.
+  const room = Math.ceil(12 + fontSize * 1.3 + 6);
+  const pad = group.getPadding();
+  if ((spec.labelPlacement ?? 'top-left').startsWith('bottom')) {
+    if (pad.bottom < room) group.padding = { ...pad, bottom: room };
+  } else {
+    group.headerHeight = Math.max(0, room - pad.top);
   }
 }
 

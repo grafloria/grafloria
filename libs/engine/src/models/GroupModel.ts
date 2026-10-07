@@ -801,6 +801,42 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
+   * Grow the frame just enough to take in every member, plus padding and the
+   * header band, without ever shrinking it. A group with no frame yet gets one
+   * fitted around its members. Writes nothing when the members already fit, so
+   * an unchanged frame records no change.
+   *
+   * @returns true when the frame changed.
+   */
+  growToFitMembers(diagram?: DiagramModel): boolean {
+    const dm = this.resolveDiagram(diagram);
+    if (!dm) return false;
+    const content = this.computeMemberExtent(dm);
+    if (!content) return false;
+    const pad = this.getPadding();
+    const fitted: GroupRect = {
+      x: content.x - pad.left,
+      y: content.y - pad.top - this.headerHeight,
+      width: content.width + pad.left + pad.right,
+      height: content.height + pad.top + pad.bottom + this.headerHeight,
+    };
+    const target = this.reconcileFit(fitted, 'grow-only');
+    if (this.size) {
+      const current = this.getOuterBounds();
+      if (
+        target.x === current.x &&
+        target.y === current.y &&
+        target.width === current.width &&
+        target.height === current.height
+      ) {
+        return false;
+      }
+    }
+    this.setFrame(target);
+    return true;
+  }
+
+  /**
    * Bounding box (world coords) of this group's members. Nodes contribute their
    * global bounds; member groups contribute their outer frame. Returns
    * undefined when nothing is positioned.
