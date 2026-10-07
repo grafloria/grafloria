@@ -418,6 +418,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   readonly comments = input<boolean | CommentStore | undefined>(undefined);
   private commentStore: CommentStore | null = null;
   private commentOverlay: CommentOverlayController | null = null;
+  private commentRepaintUnsub: (() => void) | null = null;
 
   private attachComments(config: boolean | CommentStore | undefined): void {
     if (this.commentOverlay || !config || !this.renderer) return;
@@ -426,6 +427,10 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.commentStore =
       config === true ? new CommentStore(diagram, { viewer: 'local' }) : config;
     this.commentOverlay = new CommentOverlayController(this.commentStore, this.renderer);
+    // The overlay drops its cached frame on every store change, but nothing
+    // repainted: a new thread showed no pin (and a resolved one kept its pin)
+    // until an unrelated hover. Paint on every change, as the JS canvas does.
+    this.commentRepaintUnsub = this.commentStore.onChange(() => this.scheduleRender());
   }
 
   /** The live comment store, when `[comments]` is enabled. */
@@ -1221,6 +1226,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     this.destroyed = true;
     this.presenceBinding?.dispose();
     this.presenceBinding = undefined;
+    this.commentRepaintUnsub?.();
+    this.commentRepaintUnsub = null;
     this.commentOverlay?.dispose();
     this.commentOverlay = null;
     this.collabSession?.leave();
