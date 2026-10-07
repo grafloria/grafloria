@@ -170,7 +170,7 @@ export class LayoutManager {
   }
 
   /**
-   * Re-layout all nodes using current algorithm (Phase 0.5 - Viewport-aware)
+   * Re-layout all nodes using current algorithm
    * Option 3: Supports animation and locked node constraints
    */
   async reLayout(config?: LayoutConfiguration): Promise<void> {
@@ -424,7 +424,7 @@ export class LayoutManager {
   }
 
   /**
-   * Phase 0.5.2 Enhanced: Select optimal ports based on layout-aware algorithm
+   * Select optimal ports based on layout-aware algorithm
    *
    * Uses layout-aware analysis based on academic research:
    * - Considers layout direction (TB/LR/RL/BT)
@@ -615,7 +615,7 @@ export class LayoutManager {
   }
 
   /**
-   * Phase 0.5.2 Enhanced: Optimize all connections after layout
+   * Optimize all connections after layout
    *
    * Reassigns ports for all links based on current node positions and layout context.
    * This ensures connections look natural after layout algorithms reposition nodes.

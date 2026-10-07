@@ -521,16 +521,10 @@ export class PortAwareLayoutManager {
   /**
    * Count edge crossings for a given port configuration.
    *
-   * BUG FIXED (Wave 7, Card 7): this took `nodePositions` and never used it. Port
-   * coordinates are RELATIVE to their own node, so every node's ports were being
-   * compared around a shared origin — two edges on opposite ends of a large canvas
-   * could be counted as crossing, and two that genuinely crossed could be missed.
-   * The old `getLinkEndpoint` even said so in a comment ("In real implementation,
-   * this should be absolute") and returned the relative point anyway. Every
-   * `edgeCrossings` number this module has ever reported was therefore noise.
-   *
-   * `ports` is what makes the fix possible: it maps a port back to its node, so
-   * the port's offset can be added to the node's origin. It is optional only for
+   * Port coordinates are RELATIVE to their own node, so crossings are counted
+   * in world coordinates: `nodePositions` gives each node's origin, and `ports`
+   * maps a port back to its node so the port's offset can be added to that
+   * origin. `ports` is optional only for
    * source compatibility — without it we cannot resolve the frame, so we fall back
    * to the relative comparison rather than silently inventing a node position.
    */

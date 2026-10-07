@@ -139,7 +139,7 @@ export function render(
   return instance;
 }
 
-/** Server-side render (Card 6). Re-exported so the tiny API is self-contained. */
+/** Server-side render. Re-exported so the tiny API is self-contained. */
 export function renderStatic(options: StaticRenderOptions = {}): StaticRenderResult {
   return renderToStaticSVG(options);
 }

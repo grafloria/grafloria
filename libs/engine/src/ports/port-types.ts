@@ -17,8 +17,7 @@
 // ===========================================================================
 
 /**
- * The port's rendered marker. `circle` is the historical (and default) glyph;
- * everything else is new in wave 6.
+ * The port's rendered marker. `circle` is the default glyph.
  *
  * `path` renders a caller-supplied SVG path (`PortShapeSpec.path`), authored in
  * a box of `size` centred on the port's anchor point.
@@ -129,7 +128,7 @@ export interface PortSpot {
  * them all on the centre point.
  *
  * Disabled by default: a port with one link never moves, and a port with many
- * links keeps its pre-wave-6 pile unless the author opts in. (Byte-stability.)
+ * links keeps them on its centre point unless the author opts in.
  */
 export interface PortSpreadSpec {
   enabled: boolean;
@@ -147,8 +146,8 @@ export interface PortSpreadSpec {
 // ===========================================================================
 
 /**
- * Named port-layout strategies (Card 4). `shape` is the DEFAULT and the
- * pre-wave-6 behaviour: defer to the shape registry's `portAnchor`, which knows
+ * Named port-layout strategies. `shape` is the DEFAULT: defer to the shape
+ * registry's `portAnchor`, which knows
  * the true silhouette of every shape (cylinder rim seam, actor hands, hexagon
  * flats…). Every other strategy is an explicit opt-in that overrides it.
  */
@@ -211,11 +210,11 @@ export interface PortLayoutSpec {
 // ===========================================================================
 
 /**
- * Directional connectability (Card 2). The pre-wave-6 model had ONE total
- * `maxConnections` and no notion of "may start a link" vs "may end one", so a
- * flow-chart output that must fan out to many but accept none was inexpressible.
+ * Directional connectability, on top of the total `maxConnections`: whether a
+ * port may start a link or end one, and per-direction caps — e.g. a flow-chart
+ * output that fans out to many but accepts none.
  *
- * Every field is optional and every default reproduces the old behaviour:
+ * Every field is optional. The defaults:
  *   isConnectableStart/End = true, from/toMaxLinks = null (unlimited),
  *   allowSelfLink = false, allowDuplicateLinks = true.
  */
@@ -232,7 +231,10 @@ export interface PortGatingSpec {
   maxConnections?: number | null;
   /** Allow a link whose source node IS its target node. Default false. */
   allowSelfLink?: boolean;
-  /** Allow a SECOND link between the same ordered pair of ports. Default true. */
+  /**
+   * Allow a SECOND link between the same two ports. Either direction counts: with
+   * this off, B → A is refused when A → B exists. Default true.
+   */
   allowDuplicateLinks?: boolean;
   /** Restrict which port data-types / system-types may attach. Empty = no restriction. */
   allowedTypes?: string[];
@@ -255,7 +257,7 @@ export interface PortDataTypeDefinition {
 }
 
 /**
- * Dynamic auto-ports (Card 7): keep a group topped up with free ports so the
+ * Dynamic auto-ports: keep a group topped up with free ports so the
  * user always has somewhere to drop the next link — the node-editor pattern
  * (Blender / Unreal / n8n).
  */
@@ -339,7 +341,7 @@ export interface ResolvedPortConfig {
   groupId?: string;
 }
 
-/** The gating defaults — every one of them reproduces pre-wave-6 behaviour. */
+/** The gating defaults: start and end allowed, no caps, no type whitelist, duplicates allowed, self-links refused. */
 export const DEFAULT_PORT_GATING: ResolvedPortGating = {
   isConnectableStart: true,
   isConnectableEnd: true,

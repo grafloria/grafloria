@@ -70,9 +70,8 @@ const isVertical = (d: FlowDirection): boolean => d === 'TB' || d === 'BT';
 /**
  * Choose the node a tree hangs from — or a radial layout centres on.
  *
- * SOURCE FIRST (in-degree 0), hub second (highest degree). The order matters and
- * "highest degree" alone is a real bug, which Card 2's own radial test caught:
- * in the tree
+ * SOURCE FIRST (in-degree 0), hub second (highest degree). The order matters,
+ * because "highest degree" alone picks the wrong root: in the tree
  *
  *     hub → mid1 → leaf1, leaf2
  *     hub → mid2 → leaf3

@@ -73,7 +73,7 @@ export interface ImportTextResult {
   /**
    * Set to the diagram-type name when the body is a Mermaid type we recognise
    * but do not yet parse (sequenceDiagram, gantt, pie, …). The diagram is empty
-   * rather than a garbage flowchart. See docs/MERMAID-GAP-ANALYSIS.md Phase 0.
+   * rather than a garbage flowchart.
    */
   unsupported?: string;
 }

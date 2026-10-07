@@ -22,7 +22,7 @@ import { positionContext, buildOutline } from '../a11y/diagram-outline';
 
 /**
  * KeyboardNavigationController — a fully keyboard-operable, screen-reader-
- * announced canvas (Card 7, wave4/interaction).
+ * announced canvas.
  *
  * No diagramming competitor does this: Mermaid is read-only, and React Flow /
  * JointJS+ / GoJS are pointer-first with, at best, arrow-key nudging. This class

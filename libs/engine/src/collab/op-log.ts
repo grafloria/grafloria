@@ -122,7 +122,7 @@ export class OpLog {
  * every later card stands on, and it would be silly to lose it because someone handed us
  * an array in arrival order.
  *
- * Card 4: and it ENFORCES THE INVARIANT at the end, because a peer that joins by replaying
+ * And it ENFORCES THE INVARIANT at the end, because a peer that joins by replaying
  * a log must arrive exactly where a peer that was in the room the whole time already is. If
  * integrity only ran in `Replica.receive()`, a log containing "delete a node that had links"
  * would replay into a document with a dangling link, and the newcomer would be the only one

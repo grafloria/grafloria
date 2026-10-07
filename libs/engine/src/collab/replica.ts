@@ -54,7 +54,7 @@ import { compareOps, setValueOf, type ActorId, type Op } from './op';
 export interface ReplicaOptions {
   /** This peer's identity. MUST be unique across peers — the total order depends on it. */
   actor: ActorId;
-  /** Called with each op this peer produces locally. Hand it to a transport (Card 5). */
+  /** Called with each op this peer produces locally. Hand it to a transport. */
   onLocalOp?: (op: Op) => void;
   /** Resume the Lamport clock from a persisted tail. */
   startClock?: number;
@@ -261,7 +261,7 @@ export class Replica {
   }
 
   /**
-   * Card 1: adopt a persisted op-log tail whose EFFECTS ARE ALREADY IN THE MODEL.
+   * Adopt a persisted op-log tail whose EFFECTS ARE ALREADY IN THE MODEL.
    *
    * This is `receive()`'s quiet twin, and the difference is the whole point. `receive()` is
    * for ops the model has not seen: it applies them. `adopt()` is for reopening a saved

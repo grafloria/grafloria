@@ -126,9 +126,7 @@ export interface LayoutResultMessage {
    *
    * Not decoration: `quality` only exists when the caller asked for it with
    * `calculateQuality`, and a result message that dropped it would make that
-   * option silently do nothing on the worker path while working inline — the
-   * single most common bug shape in this codebase, and one this card exists to
-   * stop repeating.
+   * option silently do nothing on the worker path while working inline.
    */
   metadata?: LayoutResult['metadata'];
   quality?: LayoutResult['quality'];

@@ -115,20 +115,10 @@ const DEFAULT_ASPECT_RATIO = 1.6;
  * tree, grid, circular, radial — it is a no-op, so it costs them one comparison
  * pass and nothing else.
  *
- * wave10/gallery — WHY IT IS EXPORTED, which is the bug.
- *
- * It used to be a closure inside `layoutWithComponentPacking`, reachable only from
- * `adapter.apply()`. But the layout HOST — the path `engine.layout()` actually
- * takes — does not call `apply()` for a steppable algorithm: it drives
+ * Exported because the layout HOST — the path `engine.layout()` takes — does not
+ * call `apply()` for a steppable algorithm such as force: it drives
  * `createRun()`/`step()`/`snapshot()` so the run can report progress and be
- * cancelled. `snapshot()` was returned RAW.
- *
- * Force is the only steppable built-in. So the one algorithm that genuinely needs
- * overlap removal was the one algorithm that never got it, and
- * `engine.layout('force')` handed back overlapping node boxes — while every unit
- * test stayed green, because they all go through `apply()`.
- *
- * A demo caught it in the first thirty seconds of being pointed at a real browser.
+ * cancelled, and runs this pass on the snapshot itself.
  */
 export function separateOverlappingNodes(
   nodes: readonly NodeModel[],

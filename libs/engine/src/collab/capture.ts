@@ -180,7 +180,7 @@ const PORT_DERIVED = new Set(['connections']);
 /**
  * What the register held BEFORE the op overwrote it.
  *
- * Card 4 (undo) needs it and nothing else does, so it is handed to the capture callback
+ * Undo needs it and nothing else does, so it is handed to the capture callback
  * ALONGSIDE the op rather than being put INSIDE it. An op is a wire format: it crosses a
  * network and a disk, it is broadcast to every peer, and a peer does not need — and must
  * not be trusted with — the sender's idea of the previous value. Undo is a LOCAL concern.

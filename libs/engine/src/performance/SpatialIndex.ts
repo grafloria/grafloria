@@ -54,7 +54,7 @@ interface CellCoord {
  * Generic spatial index using grid-based partitioning
  * Enables fast viewport queries for virtualization (O(visible) instead of O(all))
  *
- * Phase 5.1: Viewport Virtualization
+ * Viewport Virtualization
  *
  * @example
  * ```typescript
@@ -279,7 +279,7 @@ export class SpatialIndex<T extends { id: string }> {
   /**
    * All entities whose bounds fall within `radius` of `point`, nearest first.
    *
-   * wave8/culling — Card 2. Exists so interactive hit-testing (the nearest PORT
+   * Exists so interactive hit-testing (the nearest PORT
    * to a dragged link end, the node under the cursor) is served by the index
    * instead of a linear scan of the scene: a drag is a per-pointermove query, so
    * an O(n) answer is O(n) sixty times a second.

@@ -67,11 +67,8 @@ export interface ZoneContainer {
    * How deep the "above me" band hangs ABOVE the frame's top edge, in world
    * units. 0 or absent: no such band, and no inside top band either.
    *
-   * A hand looking for "above this panel" goes above it. It used to have to go
-   * BELOW the panel's header instead, into a 30 px lane inside the body, which
-   * is the opposite of where anyone points and reachable only by being told —
-   * "try dragging nps above the tab panel, won't work" (0.4.65). The band now
-   * hangs off the top edge, and the body means the page, all of it.
+   * A hand looking for "above this panel" goes above it: the band hangs off
+   * the top edge, and the body means the page, all of it.
    */
   topOutside?: number;
   /** The board a descent enters: a tab container's ACTIVE page, a section's own board. Null: nothing to enter. */

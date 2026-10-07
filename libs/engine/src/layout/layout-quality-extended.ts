@@ -94,8 +94,8 @@ export interface PortRespectResult {
 /**
  * Does each edge actually leave (and enter) in the direction its port faces?
  *
- * This is requirement 1 of the card as a measurement: "an edge leaving a `right`
- * port should not require the layout to place the target to the left". We check
+ * As a measurement: an edge leaving a `right` port should not require the layout
+ * to place the target to the left. We check
  * the sign of the displacement along the port's facing axis. A right port whose
  * target sits to the left scores a violation.
  *
@@ -171,9 +171,8 @@ export interface LabelClearanceResult {
 /**
  * Would this layout's edge labels sit on top of a node?
  *
- * Requirement 2 as a measurement. We are NOT placing labels here — the renderer's
- * edge optimizer does collision-aware placement at render time, and duplicating it
- * would be the exact mistake the card warns against. We ask the cheaper question a
+ * A measurement, not placement — the renderer's edge optimizer does collision-aware
+ * placement at render time. We ask the cheaper question a
  * LAYOUT can answer: if the label sat at its natural home (the midpoint of the
  * route the engine computed), would it land on a node? If yes, layout has not left
  * the optimizer enough room, and this layout is worse than one that did.
@@ -266,9 +265,8 @@ export function assessLabelClearance(
 /**
  * Total bend count across the routes the layout engine computed.
  *
- * Bends are one of the four measures the card names, and they only became
- * measurable once the adapters stopped discarding their routing output. A layout
- * whose edges need fewer corners is easier to follow.
+ * Measured from the routing output the adapters report. A layout whose edges
+ * need fewer corners is easier to follow.
  *
  * Returns undefined when the engine reported no routes — an ABSENT measurement,
  * not a zero. Scoring "0 bends" for an engine that simply never told us would

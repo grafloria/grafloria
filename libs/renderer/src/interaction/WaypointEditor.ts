@@ -56,7 +56,7 @@ export interface AddWaypointResult {
 }
 
 /**
- * Phase 2.3a: WaypointEditor
+ * WaypointEditor
  *
  * Handles interactive waypoint editing on link paths:
  * - Add waypoints by clicking on path

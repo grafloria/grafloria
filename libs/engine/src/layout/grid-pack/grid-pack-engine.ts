@@ -1,6 +1,5 @@
 /**
- * GridPackEngine — the dashboard-grid interaction engine (Phase 1 of the
- * dashboard-grid plan; `documentation/api-architecture/dashboard-grid-plan.html`).
+ * GridPackEngine — the dashboard-grid interaction engine.
  *
  * A DOM-free, deterministic INTEGER-CELL engine implementing the gridstack
  * interaction model, with semantics EMPIRICALLY RECORDED from the real
@@ -33,7 +32,7 @@
  *
  * The engine mutates ONLY the {x,y,w,h} cells of the items it is given. Pixel
  * mapping (row height, margins, the fit/grow sizing modes), placeholders,
- * ghosts and commands belong to the binder built on top (Phase 2) — this
+ * ghosts and commands belong to the binder built on top — this
  * class must stay pure enough to drive from a table-driven spec.
  */
 
@@ -116,9 +115,8 @@ export interface GridPackOptions {
    * section: one row, always). Any op whose settled result would exceed it —
    * a height resize, a width resize whose push spills a sibling down, a move
    * displacing someone out of bounds — ROLLS BACK wholesale and reports
-   * `changed: false`; `add()` returns null when nothing can fit. Without
-   * this, growing a first-row KPI exploded the strip's `rows()` and fit-mode
-   * collapsed its row height (live report: "design is destroyed").
+   * `changed: false`; `add()` returns null when nothing can fit, so growing
+   * a first-row KPI can never push the strip past its row count.
    */
   maxRows?: number;
   /**
@@ -134,9 +132,8 @@ export interface GridPackOptions {
 }
 
 /**
- * Why a change was refused (tile first, step 1). A binder used to read
- * `changed:false` as "refused" when it also means "already there", and asked
- * the tile where it was instead; now every refusal names itself.
+ * Why a change was refused (tile first, step 1). `changed: false` alone can
+ * also mean "already there", so every refusal names itself.
  */
 export type GridPackRefusal = 'locked' | 'solid' | 'bound' | 'gate' | 'noop' | 'missing';
 

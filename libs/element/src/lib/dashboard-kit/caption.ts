@@ -163,9 +163,8 @@ export function captionPainted(c: SectionCaptionOptions | null, isStatic: boolea
 
 /**
  * The band's height for a section of `sectionH` px: the authored height (or
- * the tier), CLAMPED so the children always keep `CAPTION_MIN_CONTENT` px. A
- * one-row section used to hand its whole 34 px to a 22 px band and paint a
- * 12 px sliver of a child.
+ * the tier), CLAMPED so the children always keep `CAPTION_MIN_CONTENT` px — a
+ * one-row section never gives its body away to the band.
  */
 export function captionBandHeight(c: SectionCaptionOptions, sectionH: number): number {
   // An authored `height` WINS over the squeezed tier — the tier is a default

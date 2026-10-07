@@ -136,8 +136,7 @@ export class UnreliableHub extends MemoryHub {
    *
    * The random order is the point. A FIFO flush would only ever produce late delivery, and
    * late-but-ordered is the easy case — the LWW gate handles it alone. Releasing out of
-   * order is what lets a `set` land before its `add`, which is the case that used to be
-   * unrecoverable and is the reason `CausalBuffer` exists.
+   * order is what lets a `set` land before its `add` — the case `CausalBuffer` exists for.
    */
   step(fraction = 0.5): number {
     if (this.inFlight.length === 0) return 0;

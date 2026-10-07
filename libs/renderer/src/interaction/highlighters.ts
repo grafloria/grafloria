@@ -3,7 +3,7 @@ import type { Rectangle } from '../types/geometry.types';
 
 /**
  * HighlighterController — hover / selection / validation / drop-target
- * decorations (Card 5, wave4/interaction).
+ * decorations.
  *
  * JointJS calls these "highlighters": decorations layered OVER an element rather
  * than baked into it. Keeping them out of the shape lets several stack (a node

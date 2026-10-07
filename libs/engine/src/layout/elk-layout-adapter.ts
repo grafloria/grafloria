@@ -63,7 +63,7 @@ export interface ELKLayoutOptions extends LayoutOptions {
   'elk.spacing.edgeNode'?: number;
   /** Spacing between edges */
   'elk.spacing.edgeEdge'?: number;
-  /** Spacing between an edge and its label (Wave 7 — Card 7) */
+  /** Spacing between an edge and its label */
   'elk.spacing.edgeLabel'?: number;
 
   // Layered algorithm specific options

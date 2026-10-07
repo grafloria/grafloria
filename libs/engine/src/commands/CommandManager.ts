@@ -10,11 +10,10 @@ export interface CommandHistoryEntry {
   timestamp: number;
   duration: number;
   /**
-   * Wave 14: history only ever records commands that EXECUTED successfully, so
+   * History only ever records commands that EXECUTED successfully, so
    * this is always `true` and `error` is never set. Both fields survive purely
    * for API compatibility — a command that throws (or fails strict validation)
-   * no longer enters history at all, because canUndo()/undo() never consulted
-   * these flags and would happily "undo" a mutation that never happened.
+   * never enters history.
    */
   success: boolean;
   error?: Error;
@@ -293,10 +292,9 @@ export class CommandManager {
 
   /**
    * End batch mode: commit the queued commands as ONE BatchCommand through the
-   * normal execute() path (wave 14) — one history entry, one undo step (with
+   * normal execute() path — one history entry, one undo step (with
    * reverse-order undo), and the same strict-validation gate as any other
-   * command. The old code looped executeCommand() directly, so a "batch"
-   * mutated the diagram while building NO history at all.
+   * command.
    *
    * Note BatchCommand's existing gate contract: its canExecute() checks every
    * queued command against the CURRENT (pre-batch) state, so a queue whose

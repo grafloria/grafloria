@@ -7,8 +7,7 @@ import {
 import type { Rectangle } from '../types/geometry.types';
 
 /**
- * InPlaceTextEditor — the model behind double-click-to-edit (Card 5,
- * wave4/interaction).
+ * InPlaceTextEditor — the model behind double-click-to-edit.
  *
  * A host cannot avoid owning the actual text widget (an `<input>`, a
  * `contenteditable`, a native text field), but everything AROUND it is
@@ -19,8 +18,7 @@ import type { Rectangle } from '../types/geometry.types';
  *    its viewport, so the editor lands exactly over the text at any zoom);
  *  - the ONE undoable {@link Command} that commits the new value.
  *
- * The commit path is the point: before this, in-place edits wrote straight to the
- * model and could not be undone.
+ * The commit path is the point: an in-place edit is one undo step.
  */
 
 export type TextEditTargetType = 'node' | 'link-label';

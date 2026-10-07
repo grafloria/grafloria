@@ -376,26 +376,14 @@ export class SyncAdapter {
   /**
    * THE LOG AS THE NETWORK SEES IT — our history, minus everything coalescing withheld.
    *
-   * ---------------------------------------------------------------------------
-   * THE BUG THIS EXISTS TO FIX, WHICH WAS MINE, AND WHICH ONLY THE BROWSER FOUND
-   * ---------------------------------------------------------------------------
    * A 20-frame drag puts ONE op on the wire and leaves TWENTY in the local log — that is
-   * coalescing working exactly as designed, and the two peers' documents agree perfectly.
+   * coalescing working as designed, and the two peers' documents agree.
    *
-   * But anti-entropy compares FRONTIERS DERIVED FROM LOGS. So on the next sync round my
-   * frontier said "I hold 20 ops from alice" and the peer's said "I hold 1", and the digest
-   * — which cannot tell a withheld op from a lost one — declared a HOLE and repaired it by
-   * resending my entire history. Measured: `opsSent` went from 1 to 21 on the first sync
-   * after a single drag. And it never settles, because the peer can NEVER obtain the 19 ops
-   * I have deliberately decided never to send. Every sync round, forever, for the rest of
-   * the session, on the most common interaction in the product.
+   * Anti-entropy compares FRONTIERS DERIVED FROM LOGS, and a digest cannot tell a withheld
+   * op from a lost one. If the frontier counted the 19 withheld ops, every sync round would
+   * see a HOLE and resend the whole history, forever, since no peer can ever obtain them.
    *
-   * It is invisible to a convergence oracle — the document is perfectly correct throughout —
-   * and it was invisible to my own frontier-invariant test, which flushed after every single
-   * op and therefore never once coalesced anything while syncing. It took driving a real drag
-   * through a real browser to compose the two.
-   *
-   * THE FIX is a definition, not a patch: THE FRONTIER DESCRIBES THE SHARED LOG. An op we
+   * So THE FRONTIER DESCRIBES THE SHARED LOG. An op we
    * chose never to transmit is not part of the history we share with anyone, so it is not in
    * our frontier and it is not in the catch-up delta we serve — to ANY peer, including one
    * that joins tomorrow. Every peer therefore holds the same shared set, every digest agrees,
@@ -614,11 +602,9 @@ export class SyncAdapter {
    * unsubscribe from the transport.
    *
    * It does NOT close the transport. The session was handed that transport; it did not
-   * create it, so it is not the session's to destroy. This used to call
-   * `transport.close()`, and that broke collaboration under React StrictMode — on by
-   * default in Vite and Next dev — where a component mounts, cleans up and mounts again:
-   * the cleanup permanently closed the caller's `BroadcastChannelTransport`, and the
-   * second mount joined a dead channel. Nothing synced, and nothing said why.
+   * create it, so it is not the session's to destroy — which is what makes a
+   * mount / clean up / mount again cycle (React StrictMode, on by default in Vite and
+   * Next dev) work: the second mount joins the same, still-open transport.
    *
    * A disconnected transport holds no socket or channel and can be joined again by a new
    * session. Call `transport.close()` yourself when the transport itself is done.

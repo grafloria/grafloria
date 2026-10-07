@@ -22,7 +22,7 @@ export interface BoundingBox {
 }
 
 /**
- * Rectangle defined by position and size (Phase 5.1)
+ * Rectangle defined by position and size
  * Used for viewport queries and spatial indexing
  */
 export interface Rectangle {
@@ -40,7 +40,7 @@ export interface Transform {
 }
 
 /**
- * 2D Affine Transform Matrix (Phase 1.6a)
+ * 2D Affine Transform Matrix
  * Represents: translate, rotate, scale, skew
  * CSS-compatible format: matrix(a, b, c, d, e, f)
  *

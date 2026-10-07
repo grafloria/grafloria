@@ -200,11 +200,11 @@ export class InteractionController {
   protected isReconnectingLink = false;
   protected reconnectingLink: LinkModel | null = null;
   protected reconnectingEndpoint: 'source' | 'target' | null = null;
-  /** Wave 2: current cursor position while dragging a reconnecting endpoint. */
+  /** Current cursor position while dragging a reconnecting endpoint. */
   protected reconnectingMousePoint: Point | null = null;
 
   /**
-   * Wave 2 (Edges & links): inline label drag-reposition state. While active,
+   * Inline label drag-reposition state. While active,
    * mouse moves remap the cursor to a (position 0-1, offset) pair on the model
    * so the label survives re-routing. See {@link computeLabelDragUpdate}.
    */
@@ -213,13 +213,13 @@ export class InteractionController {
   protected editingLabelIndex: number | null = null;
 
   /**
-   * Phase 2.3a: Waypoint editing state
+   * Waypoint editing state
    */
   protected isDraggingWaypoint = false;
   protected editingLink: LinkModel | null = null;
   protected editingWaypointIndex: number | null = null;
   /**
-   * wave12: the link's points when a waypoint drag STARTED, so endWaypointDrag can commit
+   * The link's points when a waypoint drag STARTED, so endWaypointDrag can commit
    * the whole gesture as one undoable SetLinkPointsCommand (FROM→TO). Absent between drags.
    */
   protected waypointDragStartPoints: Point[] | null = null;
@@ -230,7 +230,7 @@ export class InteractionController {
   protected hoveredWaypointLink: LinkModel | null = null;
 
   /**
-   * Phase 2.3b: Control point editing state
+   * Control point editing state
    */
   protected isDraggingControlPoint = false;
   protected editingControlPointLink: LinkModel | null = null;
@@ -242,13 +242,13 @@ export class InteractionController {
   protected hoveredControlPointLink: LinkModel | null = null;
 
   /**
-   * Phase 5: Performance optimization - debounce hover detection
+   * Performance optimization - debounce hover detection
    */
   protected hoverDebounceTimer: any = null;
   protected readonly HOVER_DEBOUNCE_MS = 16; // ~60fps
 
   /**
-   * Phase 5: Performance monitoring
+   * Performance monitoring
    */
   protected performanceMetrics = {
     hoverDetectionTime: 0,
@@ -257,7 +257,7 @@ export class InteractionController {
   };
 
   /**
-   * Phase 5: Port hit test cache for performance
+   * Port hit test cache for performance
    */
   protected portHitCache = new Map<string, { x: number; y: number; radius: number }>();
   protected portHitCacheInvalidated = false;
@@ -293,7 +293,7 @@ export class InteractionController {
   }
 
   /**
-   * Phase 5: Dispose and cleanup resources
+   * Dispose and cleanup resources
    */
   dispose(): void {
     if (this.hoverDebounceTimer) {
@@ -334,22 +334,22 @@ export class InteractionController {
   }
 
   /**
-   * Phase 5: Get performance metrics
+   * Get performance metrics
    */
   getPerformanceMetrics() {
     return { ...this.performanceMetrics };
   }
 
   /**
-   * Phase 5: Invalidate port hit cache (call when nodes move or ports change)
+   * Invalidate port hit cache (call when nodes move or ports change)
    */
   invalidatePortHitCache(): void {
     this.portHitCacheInvalidated = true;
   }
 
   /**
-   * Phase 3: Handle mouse move for hover detection
-   * Phase 5: Enhanced with performance monitoring and validation
+   * Handle mouse move for hover detection
+   * Enhanced with performance monitoring and validation
    * Updates hover states for nodes, ports, and links
    * CRITICAL FIX: Added comprehensive debugging
    */
@@ -470,8 +470,8 @@ export class InteractionController {
   }
 
   /**
-   * Phase 3: Handle connection drag update
-   * Phase 5: Enhanced with performance monitoring and validation
+   * Handle connection drag update
+   * Enhanced with performance monitoring and validation
    * Updates connection preview during drag
    */
   handleConnectionDrag(
@@ -524,8 +524,8 @@ export class InteractionController {
   }
 
   /**
-   * Phase 3: Start connection from port
-   * Phase 5: Enhanced with validation and error handling
+   * Start connection from port
+   * Enhanced with validation and error handling
    * CRITICAL FIX: Added detailed logging
    */
   startConnection(port: PortModel, worldX: number, worldY: number, engine: DiagramEngine): void {
@@ -558,7 +558,7 @@ export class InteractionController {
   }
 
   /**
-   * wave12/connect-ergonomics (gap 3) — Easy Connect: start a connection from a
+   * Easy Connect: start a connection from a
    * node BODY, not a port glyph. Picks the source port nearest the press point
    * (so a drag off the right side starts from the right port) and begins the
    * normal connection drag from it. Returns false when the node has no port to
@@ -594,8 +594,8 @@ export class InteractionController {
   }
 
   /**
-   * Phase 3: Complete connection to target port
-   * Phase 5: Enhanced with validation and error handling
+   * Complete connection to target port
+   * Enhanced with validation and error handling
    */
   completeConnection(engine: DiagramEngine): boolean {
     if (this.isReadonlyEngine(engine)) return false;
@@ -723,7 +723,7 @@ export class InteractionController {
   }
 
   /**
-   * Phase 3: Cancel connection
+   * Cancel connection
    */
   cancelConnection(engine: DiagramEngine): void {
     if (!this.isConnecting) {
@@ -743,7 +743,7 @@ export class InteractionController {
   }
 
   /**
-   * Phase 3 / Wave 2: Start link reconnection.
+   * Start link reconnection.
    *
    * Enters endpoint-drag mode: the dragged endpoint follows the cursor while
    * the OTHER endpoint stays put. Seeds the engine's {@link ReconnectionPreview}
@@ -781,7 +781,7 @@ export class InteractionController {
   }
 
   /**
-   * Wave 2: Update the in-progress endpoint reconnection as the cursor moves.
+   * Update the in-progress endpoint reconnection as the cursor moves.
    *
    * Refreshes the ghost-preview endpoint, recomputes which ports are valid drop
    * targets (highlighting them), and reflects whether the currently hovered
@@ -820,7 +820,7 @@ export class InteractionController {
   }
 
   /**
-   * Wave 2: Is `candidatePort` a legal target for reconnecting `endpoint` of
+   * Is `candidatePort` a legal target for reconnecting `endpoint` of
    * `link`? The OTHER endpoint's port stays fixed; the candidate must differ
    * from it, live on a different node, be type-compatible (input↔output, or a
    * bidirectional port), and satisfy the connection-group rules. Pure w.r.t.
@@ -859,7 +859,7 @@ export class InteractionController {
   }
 
   /**
-   * Wave 2: Highlight ports as valid/invalid drop targets during an endpoint
+   * Highlight ports as valid/invalid drop targets during an endpoint
    * reconnection. Mirrors {@link updatePortHighlights} but uses the reconnect
    * validity rule instead of the {@link ConnectionStateManager} valid-target set
    * (which is empty during reconnection).
@@ -887,7 +887,7 @@ export class InteractionController {
   }
 
   /**
-   * Phase 3 / Wave 2: Complete link reconnection.
+   * Complete link reconnection.
    *
    * Drops the dragged endpoint on the hovered port. Rejects (and restores the
    * original connection) when there is no port under the cursor or the port
@@ -996,7 +996,7 @@ export class InteractionController {
   }
 
   /**
-   * Wave 2: Cancel an in-progress endpoint reconnection, restoring the link to
+   * Cancel an in-progress endpoint reconnection, restoring the link to
    * its original connection. Safe to call when not reconnecting.
    */
   cancelLinkReconnection(engine: DiagramEngine): void {
@@ -1006,7 +1006,7 @@ export class InteractionController {
   }
 
   /**
-   * Wave 2: Tear down all reconnection state — deselect the link's endpoints,
+   * Tear down all reconnection state — deselect the link's endpoints,
    * clear the engine preview, and clear port highlights.
    */
   protected resetReconnectionState(engine: DiagramEngine): void {
@@ -1024,7 +1024,7 @@ export class InteractionController {
   // ============================================================================
 
   /**
-   * Wave 2: Map a dragged world point to a model-space label placement.
+   * Map a dragged world point to a model-space label placement.
    *
    * Returns the `{ position, offset }` to store on the label such that the
    * renderer draws it exactly under the cursor now AND it sticks to the same
@@ -1107,7 +1107,7 @@ export class InteractionController {
   }
 
   /**
-   * Wave 2: Begin dragging label `labelIndex` of `link`.
+   * Begin dragging label `labelIndex` of `link`.
    */
   startLabelDrag(link: LinkModel, labelIndex: number): void {
     this.isDraggingLabel = true;
@@ -1117,7 +1117,7 @@ export class InteractionController {
   }
 
   /**
-   * Wave 2: Move the dragging label to follow the cursor. Writes the remapped
+   * Move the dragging label to follow the cursor. Writes the remapped
    * `{ position, offset }` back onto the model so the label survives re-routing.
    * Returns true when a re-render is warranted.
    */
@@ -1139,7 +1139,7 @@ export class InteractionController {
   }
 
   /**
-   * Wave 2: End the label drag.
+   * End the label drag.
    */
   endLabelDrag(): void {
     if (this.isDraggingLabel) {
@@ -1151,7 +1151,7 @@ export class InteractionController {
   }
 
   /**
-   * Phase 3: Handle link selection
+   * Handle link selection
    * FIXED: Support multi-select with Ctrl key, deselect other links otherwise
    */
   selectLink(link: LinkModel, engine: DiagramEngine, multiSelect: boolean = false): void {
@@ -1181,7 +1181,7 @@ export class InteractionController {
   }
 
   /**
-   * Phase 3: Delete selected link
+   * Delete selected link
    */
   deleteSelectedLink(engine: DiagramEngine): boolean {
     if (this.isReadonlyEngine(engine)) return false;
@@ -1228,7 +1228,7 @@ export class InteractionController {
   }
 
   /**
-   * Phase 3: Get current interaction state
+   * Get current interaction state
    */
   getState() {
     return {
@@ -1261,14 +1261,14 @@ export class InteractionController {
   }
 
   /**
-   * Phase 3: Check if currently interacting
+   * Check if currently interacting
    */
   isInteracting(): boolean {
     return this.isConnecting || this.isReconnectingLink || this.isDraggingWaypoint || this.isDraggingControlPoint || this.isDraggingLabel;
   }
 
   /**
-   * Phase 3: Get appropriate cursor for current state
+   * Get appropriate cursor for current state
    */
   getCursor(engine: DiagramEngine): string {
     if (this.isConnecting) {
@@ -1307,7 +1307,7 @@ export class InteractionController {
 
   /**
    * Find port at world position
-   * Phase 5: Optimized with performance monitoring and early exit
+   * Optimized with performance monitoring and early exit
    * CRITICAL FIX: Accept engine parameter instead of calling diagram.getEngine()
    */
   protected findPortAtPosition(
@@ -1603,7 +1603,7 @@ export class InteractionController {
   }
 
   /**
-   * Wave 6 (Card 6): the nearest VALID target port within the magnet radius.
+   * The nearest VALID target port within the magnet radius.
    *
    * "Valid" means the connection manager's valid-target set — the same set the
    * highlight paints — so the magnet can never latch onto a port the drop would
@@ -1647,14 +1647,9 @@ export class InteractionController {
   /**
    * Update port highlight states during connection.
    *
-   * Wave 6 (Card 6): this method was already correct — and already dead. It
-   * loops over `dragState.validTargetPorts`, a set that NOTHING ever filled:
-   * `ConnectionStateManager.calculateValidTargets()` was a comment-only stub and
-   * `setValidTargets()` had no production caller. So the loop ran zero times,
-   * every frame, and only the hovered port ever lit up. The manager now computes
-   * the set for real, which is what finally brings this to life — plus the
-   * `highlightValidTargets` config flag, itself dead config until now (declared,
-   * defaulted true, written by the config panel, read by nobody).
+   * Lights every port in `dragState.validTargetPorts` (computed by
+   * `ConnectionStateManager.calculateValidTargets()`), not only the hovered one,
+   * when the `highlightValidTargets` config flag is on (the default).
    */
   protected updatePortHighlights(engine: DiagramEngine): void {
     const diagram = engine.getDiagram();

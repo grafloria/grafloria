@@ -19,13 +19,13 @@ export interface SerializedGroup extends SerializedEntity {
   members: string[];
   isCollapsed: boolean;
   bounds?: { x: number; y: number; width: number; height: number };
-  layoutType?: LayoutType; // Phase 1.7
-  layoutConfig?: LayoutConfig; // Phase 1.7
+  layoutType?: LayoutType;
+  layoutConfig?: LayoutConfig;
   position?: { x: number; y: number }; // group geometry
   size?: { width: number; height: number; depth: number }; // group geometry
-  parentGroupId?: string; // Wave-2: compound-graph containment (nesting)
+  parentGroupId?: string; // Compound-graph containment (nesting)
 
-  // Wave-5 Card 3: subflow geometry — auto-fit padding, title band, z-order,
+  // Subflow geometry — auto-fit padding, title band, z-order,
   // fit mode and child-extent constraint. All optional so groups that never
   // touch these serialize byte-for-byte as before (round-trip invariant).
   padding?: GroupPadding;
@@ -34,25 +34,25 @@ export interface SerializedGroup extends SerializedEntity {
   fitMode?: GroupFitMode;
   constrainChildren?: boolean;
 
-  // Wave-5 Card 4: everything needed to expand a collapsed group back to
+  // Everything needed to expand a collapsed group back to
   // exactly its prior state. Present iff the group is currently collapsed.
   collapsedState?: CollapsedState;
 
-  // Wave-5 Card 5: per-group compound-layout intent (the GroupInfo bits that
+  // Per-group compound-layout intent (the GroupInfo bits that
   // belong to the group itself and should persist).
   subgraphLayout?: SubgraphGroupConfig;
 
-  // Wave-5 Card 6: swimlane/pool band config (present only on pools & lanes).
+  // Swimlane/pool band config (present only on pools & lanes).
   laneConfig?: LaneConfig;
 
-  // Wave-5 Card 7: serialized declarative membership rule (auto-membership).
+  // Serialized declarative membership rule (auto-membership).
   membershipRule?: MembershipRule;
-  // Wave-5 Card 7: capacity / WIP limit (0+; present only when set).
+  // Capacity / WIP limit (0+; present only when set).
   capacity?: number;
 }
 
 /**
- * Wave-5 Card 7: a SERIALIZABLE declarative membership predicate over a node's
+ * A SERIALIZABLE declarative membership predicate over a node's
  * `data` (never eval'd code). Leaves match one field with an operator; branches
  * compose with all/any/not. Kept intentionally small and closed so it round-
  * trips and can be reasoned about / edited as data.
@@ -72,18 +72,18 @@ export interface MembershipLeaf {
 }
 
 /**
- * Wave-5 Card 5: a group's own compound-layout configuration — the subset of
+ * A group's own compound-layout configuration — the subset of
  * the GroupInfo layout contract that is intrinsic to the group and round-trips.
- * Padding/header come from Card 3 (padding/headerHeight); size clamps come from
- * fitToContents.
+ * Padding and header come from the group's `padding`/`headerHeight`; size clamps
+ * come from fitToContents.
  */
 export interface SubgraphGroupConfig {
   /**
    * Algorithm for THIS group's contents. 'inherit' uses the parent/default.
    *
-   * Wave 7 Card 4: any name in the layout registry works here (force, spectral,
-   * community, or an extension-registered engine), not just the dagre|elk pair
-   * wave 5 hard-coded — nested layout resolves the name against the registry.
+   * Any name in the layout registry works here (dagre, elk, force, spectral,
+   * community, or an extension-registered engine) — nested layout resolves the
+   * name against the registry.
    * An unknown name falls back to the built-in grid rather than throwing.
    */
   algorithm?: 'dagre' | 'elk' | 'grid' | 'inherit' | (string & {});
@@ -94,7 +94,7 @@ export interface SubgraphGroupConfig {
 }
 
 /**
- * Wave-5 Card 6: swimlanes & pools as a GENERIC banded group (not BPMN-named).
+ * Swimlanes & pools as a GENERIC banded group (not BPMN-named).
  * A `pool` group tiles its child `lane` groups into bands along one axis; each
  * `lane` is an ordinary group (so drop-to-assign, membership, constraints all
  * reuse the existing machinery). This is intrinsic band config that round-trips.
@@ -122,7 +122,7 @@ export interface LaneConfig {
 }
 
 /**
- * Wave-5 Card 4: the reversible snapshot captured when a group collapses.
+ * The reversible snapshot captured when a group collapses.
  * Stored (serialized) on the group so a collapsed diagram round-trips and can
  * be expanded losslessly after a save/load — not just within one session.
  */
@@ -158,7 +158,7 @@ export interface CollapsedState {
   }>;
 }
 
-/** Wave-5 Card 3: per-side padding (a scalar expands to all four sides). */
+/** Per-side padding (a scalar expands to all four sides). */
 export type GroupPadding =
   | number
   | { top?: number; right?: number; bottom?: number; left?: number };
@@ -174,7 +174,7 @@ export const DEFAULT_GROUP_PADDING = 16;
 export const DEFAULT_GROUP_HEADER_HEIGHT = 24;
 
 /**
- * Wave-5 Card 3: how {@link GroupModel.fitToContents} reconciles the freshly
+ * How {@link GroupModel.fitToContents} reconciles the freshly
  * computed content rectangle with the group's current rectangle.
  * - `exact`      — snap to the content rectangle (default).
  * - `grow-only`  — never shrink below the current rectangle (union).
@@ -202,7 +202,7 @@ export interface FitToContentsOptions {
 }
 
 /**
- * Predicate used to gate group membership (Wave-2).
+ * Predicate used to gate group membership.
  * Return false to reject a candidate entity from joining the group.
  * @param candidateId - id of the node/group being added
  * @param group - the group the candidate would join
@@ -289,7 +289,7 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
-   * Whether `candidateId` may legally join this group (Wave-2).
+   * Whether `candidateId` may legally join this group.
    * Rejects self-membership, ancestor cycles (adding an ancestor group as a
    * member would create a containment loop), and candidates failing the
    * per-group `memberValidation` predicate. Node candidates only run the
@@ -332,7 +332,7 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
-   * Wave-5 Card 7: WIP state for the capacity limit. 'under' = room to spare,
+   * WIP state for the capacity limit. 'under' = room to spare,
    * 'full' = exactly at the limit (the visual warning threshold), 'over' = past
    * it (only reachable by lowering capacity below the current count). Returns
    * 'unlimited' when no capacity is set.
@@ -346,7 +346,7 @@ export class GroupModel extends DiagramEntity {
     return { count, capacity: this.capacity, state };
   }
 
-  /** Wave-5 Card 7: true when at or beyond the capacity limit (warning state). */
+  /** True when at or beyond the capacity limit (warning state). */
   isOverCapacity(): boolean {
     const s = this.getWipState().state;
     return s === 'full' || s === 'over';
@@ -532,7 +532,7 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
-   * Set transient drag-hover highlight state and notify listeners (Wave-2).
+   * Set transient drag-hover highlight state and notify listeners.
    * Renderers/canvas can subscribe to 'hover:changed' to outline a drop target.
    */
   setHovered(hovered: boolean): void {
@@ -565,7 +565,7 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
-   * Wave-5 Card 4: set (or clear) the reversible collapse snapshot. Tracked as a
+   * Set (or clear) the reversible collapse snapshot. Tracked as a
    * change so the incremental diff-capture serializes it and undo/redo see it.
    */
   setCollapsedState(state: CollapsedState | undefined): void {
@@ -575,7 +575,7 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
-   * Set layout configuration (Phase 1.7)
+   * Set layout configuration
    * @param type - Layout type ('flexbox' or 'grid')
    * @param config - Layout configuration object
    */
@@ -595,7 +595,7 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
-   * Clear layout configuration (Phase 1.7)
+   * Clear layout configuration
    */
   clearLayout(): void {
     const oldType = this.layoutType;
@@ -611,7 +611,7 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
-   * Get layout configuration (Phase 1.7)
+   * Get layout configuration
    */
   getLayout(): { type: LayoutType; config?: LayoutConfig } {
     return {
@@ -621,14 +621,14 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
-   * Check if group has layout configured (Phase 1.7)
+   * Check if group has layout configured
    */
   hasLayout(): boolean {
     return this.layoutType !== 'none' && this.layoutConfig !== undefined;
   }
 
   /**
-   * Get layout as flexbox config (Phase 1.7)
+   * Get layout as flexbox config
    * @throws Error if layout is not flexbox
    */
   getFlexboxLayout(): FlexboxLayoutConfig {
@@ -639,7 +639,7 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
-   * Get layout as grid config (Phase 1.7)
+   * Get layout as grid config
    * @throws Error if layout is not grid
    */
   getGridLayout(): GridLayoutConfig {
@@ -968,7 +968,7 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
-   * Wave-5 Card 4: restore raw geometry (position + optional size + bounds)
+   * Restore raw geometry (position + optional size + bounds)
    * captured before a collapse. Unlike setFrame this permits size === undefined
    * so a group that had no explicit frame is restored to exactly that.
    */
@@ -1071,7 +1071,7 @@ export class GroupModel extends DiagramEntity {
   }
 
   /**
-   * Apply layout to member nodes (Phase 1.7+)
+   * Apply layout to member nodes
    * Positions child nodes based on flex or grid layout configuration
    */
   applyLayout(diagram?: DiagramModel): void {

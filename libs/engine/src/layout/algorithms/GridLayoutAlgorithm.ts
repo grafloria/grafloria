@@ -99,7 +99,7 @@ export class GridLayoutAlgorithm extends BaseLayoutAlgorithm {
   }
 
   /**
-   * Re-layout all nodes in grid pattern (Phase 0.5 - Viewport-aware)
+   * Re-layout all nodes in grid pattern
    */
   reLayout(diagram: DiagramModel, config?: LayoutConfiguration): Map<string, Point> {
     if (config) {

@@ -169,11 +169,10 @@ const data = <T>(widget: DashboardWidgetSpec): Partial<T> =>
  * real box exists.
  */
 /**
- * READABILITY TIERS. A squeezed chart — a one-row line on a fit board, a
- * 60-px row after a pull — piled its five y labels onto each other and, under
- * 45 px, gave its whole body to the legend (kit lab L03/L05/L07, scenario
- * s11/s23). The text set never changes with the box (the save/load gate's
- * contract: a board reloaded at another size paints the same text), so the
+ * READABILITY TIERS, for a squeezed chart — a one-row line on a fit board, a
+ * 60-px row after a pull — whose y labels would pile onto each other or whose
+ * legend would take the whole body. The text set never changes with the box
+ * (a board reloaded at another size paints the same text), so the
  * SVG carries a tier class and the stylesheet HIDES what does not fit:
  * tier 1 drops the quarter ticks, tier 2 keeps only min and max, drops the x
  * labels and the bar values; a legend on a body under 64 px is hidden and the

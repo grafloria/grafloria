@@ -23,7 +23,7 @@ import type {
  * reconcile it against the live model. That reconciliation is diagram logic, not
  * framework logic, so it lives here and NOT in the wrappers.
  *
- * ## Determinism (Card 6 — SSR + hydration)
+ * ## Determinism
  *
  * The server and the client each build their own `DiagramEngine` from the SAME
  * spec, and the two VNode trees must come out byte-identical or hydration would
@@ -42,25 +42,10 @@ import type {
 /**
  * A port on a node. Omit `id` to get the deterministic `<nodeId>__<side>` name.
  *
- * ## wave10/gallery BUG FIX — the wave-6 port vocabulary was UNREACHABLE
- *
- * `PortSpec` used to be `{ id, side, type, index }` and `buildNode()` passed
- * exactly those four fields to `new PortModel(...)`. Everything else Wave 6
- * shipped — glyph shapes, port labels, the pluggable layout strategies, port
- * groups, data types, directional gating, link spots, link spreading — is
- * declared on `PortModel`, is accepted by its constructor, and is READ by the
- * renderer and the connection validator… and was silently dropped on the floor
- * by the one translator every host actually goes through.
- *
- * `Grafloria.render()`, `<grafloria-flow>` and `<GrafloriaFlow>` (React) ALL build their
- * ports here. So an entire wave of feature work — square/diamond/triangle/path
- * glyphs, `sideLinear`/`line`/`ellipse` layouts, typed data-flow ports, "this
- * port accepts at most one link" — could not be expressed by any embedder, from
- * any framework, through any public entry point. It had passing unit tests the
- * whole time, because the unit tests construct `PortModel` directly.
- *
- * This is the demo gallery's canonical finding shape, and it is why the gallery
- * exists: a unit test proves a unit works; it never proves anything CALLS it.
+ * Carries the whole port vocabulary through to the `PortModel`: glyph shapes,
+ * port labels, the pluggable layout strategies, port groups, data types,
+ * directional gating, link spots and link spreading. `Grafloria.render()`,
+ * `<grafloria-flow>` and every framework component build their ports from this.
  */
 export interface PortSpec {
   id?: string;
@@ -207,17 +192,10 @@ export interface NodeSpec {
 /**
  * An edge, as a host hands it in. Node-to-node, like React Flow.
  *
- * ## wave10/gallery BUG FIX — `router`, `connector`, `metadata` and `points`
- *
- * Wave 5 Card 0 split `pathType` into two orthogonal, per-link, SERIALIZABLE
- * settings — `router` (where the line goes) and `connector` (how it is drawn) —
- * and Wave 6 Card 2 made the connector a real registry addressed by name. Both
- * fields live on `LinkModel`, both round-trip through `serialize()`… and neither
- * was on `EdgeSpec`. So the A* / manhattan obstacle routers, and every custom
- * connector, were addressable only by reaching past the spec layer into the live
- * model. Same for `metadata`, which is how a link names its anchor and its
- * connection-point strategy (floating edges), and for `points`, which is how a
- * host restores saved waypoints.
+ * `router` (where the line goes) and `connector` (how it is drawn, by registered
+ * name) are separate, per-link settings that round-trip through `serialize()`.
+ * `metadata` is how a link names its anchor and its connection-point strategy
+ * (floating edges), and `waypoints` restore saved bends.
  */
 export interface EdgeSpec {
   id?: string;
@@ -334,14 +312,14 @@ export function buildNode(spec: NodeSpec, index: number): NodeModel {
 }
 
 /**
- * Spec → `PortModel`, carrying the WHOLE wave-6 vocabulary through.
+ * Spec → `PortModel`, carrying the WHOLE port vocabulary through.
  *
  * The gating spec is flattened onto the model's individual fields because that
  * is the shape `resolvePortConfig()` reads; `PortSpec.gating` is only the
  * ergonomic grouping of them.
  *
  * A port with no explicit `side` and no `group` still lands on `right` (the
- * `PortModel` default) — but a port that names a group and no side is now built
+ * `PortModel` default) — but a port that names a group and no side is built
  * WITHOUT `side`, so `explicitSide` stays false and the group's side is
  * inherited, which is the entire reason that flag exists.
  */

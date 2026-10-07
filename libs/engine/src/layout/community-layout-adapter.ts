@@ -621,7 +621,7 @@ export class CommunityLayoutAdapter implements LayoutAdapter {
   }
 
   /**
-   * Apply incremental layout (Phase 1 compatibility)
+   * Apply incremental layout
    */
   async applyIncremental(
     nodes: NodeModel[],

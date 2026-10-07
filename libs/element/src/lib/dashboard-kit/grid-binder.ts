@@ -311,9 +311,8 @@ export interface DashboardGridOptions {
  * Is this press OURS? The renderer's tool registry is PAGE-GLOBAL: every
  * registered tool is asked about every press on every canvas, ties going to
  * the first registered. Two boards on one page sharing widget ids — a designer
- * beside its preview, a page of examples — had the FIRST board's tool claim
- * the second's presses: it selected its own tile and moved nothing (kit lab,
- * 2026-09-08: 16 of 23 boards dead to the mouse). A tool claims only a press
+ * beside its preview, a page of examples — would otherwise have the FIRST
+ * board's tool claim the second's presses. A tool claims only a press
  * whose DOM target sits in its own container and whose hit node is its own
  * diagram's object, not a namesake from another model.
  */
@@ -433,7 +432,7 @@ export interface DashboardGridHandle {
   /**
    * Programmatic single-step gestures — the demo asserts' deterministic hook.
    * Same pipeline as a pointer gesture, committed as ONE BatchCommand. Unlike
-   * a pointer commit (which fire-and-forgets, wave-3 style, because the
+   * a pointer commit (which fire-and-forgets, because the
    * visible state is already final), these AWAIT the command execution so a
    * caller can undo immediately after.
    */

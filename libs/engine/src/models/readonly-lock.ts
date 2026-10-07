@@ -1,19 +1,10 @@
 /**
- * The read-only lock — Wave 9, Card 7.
+ * The read-only lock.
  *
- * ## Why this exists
- *
- * `DiagramMode.VIEW` / `DiagramMode.PRESENTATION` and `ModeManager.isReadOnlyMode()`
- * have existed in this engine since long before this wave. They were documented as
- * "All editing disabled" / "No structural changes allowed".
- *
- * **They gated nothing.** Not one command, not one model mutator, not the DOM event
- * binder. `isReadOnlyMode()` was advisory — a boolean nobody asked. A "read-only"
- * diagram would happily accept a node drag, a Delete key, a paste, or a
- * `node.setPosition()` from any caller. That is not a feature, it is a
- * security-shaped lie: it *looks* locked and is not.
- *
- * This module is the enforcement primitive those modes now hang off.
+ * The enforcement primitive behind `DiagramMode.VIEW` / `DiagramMode.PRESENTATION`
+ * and `ModeManager.isReadOnlyMode()`: while it is held, commands, model mutators and
+ * the DOM event binder all refuse document writes — a node drag, a Delete key, a
+ * paste, or a `node.setPosition()` from any caller.
  *
  * ## The distinction that makes it safe: DOCUMENT writes vs SYSTEM writes
  *

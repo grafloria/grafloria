@@ -106,12 +106,12 @@ export interface DiagramEngineConfig {
     maxCommands?: number;
     maxSnapshots?: number;
   };
-  // Phase 1: Interaction configuration
+  // Interaction configuration
   interaction?: Partial<InteractionConfig>;
 }
 
 /**
- * Wave 2 (Edges & links): transient state for the endpoint-reconnection live
+ * Transient state for the endpoint-reconnection live
  * preview. Set by the interaction layer while an endpoint handle is being
  * dragged; read by the renderer to draw a ghost link from the stationary
  * endpoint to the cursor. Deliberately separate from {@link ConnectionStateManager}
@@ -129,10 +129,9 @@ export interface ReconnectionPreview {
 }
 
 /**
- * wave12/connect-ergonomics: the port pair a proximity-connect DROP would link,
+ * The port pair a proximity-connect DROP would link,
  * while a node drag is inside the radius. The renderer reads this to draw the
- * proposed wire itself — highlighting only the two ports left the proposal
- * nearly invisible (live report: "the wire isn't showing"). Same seam shape as
+ * proposed wire itself, not only the two ports. Same seam shape as
  * {@link ReconnectionPreview}: interaction layer writes, renderer reads,
  * cleared on drop/cancel.
  */
@@ -144,7 +143,7 @@ export interface ProximityPreview {
 }
 
 /**
- * wave15/helper-lines: one drawable snap-guide segment, in world coordinates.
+ * One drawable snap-guide segment, in world coordinates.
  * The interaction layer computes alignment / equal-spacing guides during a
  * node drag and publishes them here; the renderer draws them as dashed
  * overlay lines (spacing segments may carry a gap label). Cleared (null) when
@@ -361,28 +360,23 @@ export class DiagramEngine {
   }
 
   /**
-   * Get configuration (Phase 1 - Critical Fixes)
+   * Get configuration
    */
   getConfig(): DiagramEngineConfig {
     return this.config;
   }
 
   /**
-   * Phase 1: Get interaction configuration
+   * Get interaction configuration
    * Returns the current interaction mode settings
    *
    * A CACHED, FROZEN snapshot — not a fresh spread per call. This getter is on
    * the hottest paths in the product: the renderer consults it per port and per
-   * link inside every frame, and the binder on every pointer event, so the old
-   * `{ ...config }` allocated tens of thousands of full copies per second and
-   * showed up as the single largest self-time in a 2,000-node drag profile
-   * (~590ms of a 4.5s gesture — more than routing).
+   * link inside every frame, and the binder on every pointer event, so a copy
+   * per call would allocate tens of thousands of objects per second.
    *
-   * The spread existed to keep callers from mutating engine state; the freeze
-   * keeps that promise the honest way. A caller that used to scribble on its
-   * private copy now throws instead of silently diverging — which is the
-   * correct outcome, because two callers sharing one snapshot must not see each
-   * other's scribbles.
+   * Frozen so callers cannot mutate engine state through it: writing to it
+   * throws. Change settings with {@link setInteractionConfig}.
    */
   getInteractionConfig(): InteractionConfig {
     if (!this.interactionConfigSnapshot) {
@@ -395,7 +389,7 @@ export class DiagramEngine {
   private interactionConfigSnapshot: Readonly<InteractionConfig> | null = null;
 
   /**
-   * Phase 1: Set interaction configuration
+   * Set interaction configuration
    * Updates interaction mode settings and emits event
    */
   setInteractionConfig(config: Partial<InteractionConfig>): void {
@@ -414,7 +408,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Phase 1: Get connection state manager
+   * Get connection state manager
    * Used for managing connection drag operations
    */
   getConnectionStateManager(): ConnectionStateManager {
@@ -422,7 +416,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Wave 2 (Edges & links): current endpoint-reconnection preview, or null when
+   * Current endpoint-reconnection preview, or null when
    * no endpoint is being dragged. The renderer reads this to draw a ghost link.
    */
   getReconnectionPreview(): ReconnectionPreview | null {
@@ -430,7 +424,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Wave 2 (Edges & links): set (or clear, with null) the endpoint-reconnection
+   * Set (or clear, with null) the endpoint-reconnection
    * preview. Called by the interaction layer on start/move/end of an endpoint
    * drag. Does not emit — the interaction layer already triggers re-render.
    */
@@ -476,7 +470,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Phase 0.2: Enable live rerouting
+   * Enable live rerouting
    * Automatically updates link paths when nodes move or resize
    */
   enableLiveRerouting(): void {
@@ -494,7 +488,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Phase 0.2: Disable live rerouting
+   * Disable live rerouting
    */
   disableLiveRerouting(): void {
     if (this.liveReroutingEngine) {
@@ -504,7 +498,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Phase 0.2: Get live rerouting engine
+   * Get live rerouting engine
    */
   getLiveReroutingEngine(): LiveReroutingEngine | null {
     return this.liveReroutingEngine;
@@ -581,7 +575,7 @@ export class DiagramEngine {
   }): Promise<NodeModel>;
 
   /**
-   * Add node (pre-created NodeModel) (Phase 1.6b)
+   * Add node (pre-created NodeModel)
    */
   async addNode(node: NodeModel): Promise<NodeModel>;
 
@@ -622,9 +616,8 @@ export class DiagramEngine {
   /**
    * Remove node
    *
-   * Wave 14: async + awaited, mirroring removeGroup(). The execute() promise
-   * used to float — a command failure became an unhandled rejection (fatal
-   * under Node), and callers could not sequence on the removal completing.
+   * Async + awaited, mirroring removeGroup(): a command failure rejects the
+   * returned promise, and callers can sequence on the removal completing.
    */
   async removeNode(nodeId: string): Promise<void> {
     if (!this.diagram) {
@@ -741,7 +734,7 @@ export class DiagramEngine {
   /**
    * Remove link
    *
-   * Wave 14: async + awaited, mirroring removeGroup() — see removeNode().
+   * Async + awaited, mirroring removeGroup() — see removeNode().
    */
   async removeLink(linkId: string): Promise<void> {
     if (!this.diagram) {
@@ -758,7 +751,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Add group (Phase 1.6c)
+   * Add group
    */
   async addGroup(config: { name: string }): Promise<GroupModel> {
     if (!this.diagram) {
@@ -778,7 +771,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Remove group (Phase 1.6c)
+   * Remove group
    */
   async removeGroup(groupId: string): Promise<void> {
     if (!this.diagram) {
@@ -795,7 +788,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Add entity to group (Phase 1.6c)
+   * Add entity to group
    */
   async addToGroup(groupId: string, entityId: string): Promise<void> {
     if (!this.diagram) {
@@ -807,7 +800,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Remove entity from group (Phase 1.6c)
+   * Remove entity from group
    */
   async removeFromGroup(groupId: string, entityId: string): Promise<void> {
     if (!this.diagram) {
@@ -819,7 +812,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Expand group (Phase 1.6c)
+   * Expand group
    */
   async expandGroup(groupId: string): Promise<void> {
     if (!this.diagram) {
@@ -831,7 +824,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Collapse group (Phase 1.6c)
+   * Collapse group
    */
   async collapseGroup(groupId: string, options?: CollapseOptions): Promise<void> {
     if (!this.diagram) {
@@ -843,21 +836,21 @@ export class DiagramEngine {
   }
 
   /**
-   * Get group by ID (Phase 1.6c)
+   * Get group by ID
    */
   getGroup(groupId: string): GroupModel | undefined {
     return this.diagram?.getGroup(groupId);
   }
 
   /**
-   * Get all groups (Phase 1.6c)
+   * Get all groups
    */
   getGroups(): GroupModel[] {
     return this.diagram?.getGroups() || [];
   }
 
   /**
-   * Set layout configuration on a group (Phase 1.7)
+   * Set layout configuration on a group
    */
   async setLayout(
     groupId: string,
@@ -878,7 +871,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Clear layout configuration from a group (Phase 1.7)
+   * Clear layout configuration from a group
    */
   async clearLayout(groupId: string): Promise<void> {
     if (!this.diagram) {
@@ -895,7 +888,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Get layout configuration from a group (Phase 1.7)
+   * Get layout configuration from a group
    */
   getLayout(groupId: string): { type: LayoutType; config?: LayoutConfig } | undefined {
     const group = this.diagram?.getGroup(groupId);
@@ -903,7 +896,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Set flex item configuration on a node (Phase 1.7)
+   * Set flex item configuration on a node
    */
   async setFlexItem(nodeId: string, flexConfig: FlexItemConfig): Promise<void> {
     if (!this.diagram) {
@@ -920,7 +913,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Set grid item configuration on a node (Phase 1.7)
+   * Set grid item configuration on a node
    */
   async setGridItem(nodeId: string, gridConfig: GridItemConfig): Promise<void> {
     if (!this.diagram) {
@@ -937,7 +930,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Copy selected entities to clipboard (Phase 1.8)
+   * Copy selected entities to clipboard
    */
   async copy(options?: { includeGroups?: boolean; includeLinks?: boolean }): Promise<void> {
     if (!this.diagram) {
@@ -949,7 +942,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Paste entities from clipboard (Phase 1.8)
+   * Paste entities from clipboard
    */
   async paste(options?: { offset?: Point; selectPasted?: boolean }): Promise<void> {
     if (!this.diagram) {
@@ -965,7 +958,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Duplicate selected entities (Phase 1.8)
+   * Duplicate selected entities
    */
   async duplicate(options?: { offset?: Point; selectDuplicated?: boolean }): Promise<void> {
     if (!this.diagram) {
@@ -987,7 +980,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Delete selected entities (Phase 1.8)
+   * Delete selected entities
    */
   async deleteSelection(options?: { deleteChildren?: boolean; deleteLinks?: boolean }): Promise<void> {
     if (!this.diagram) {
@@ -1009,28 +1002,28 @@ export class DiagramEngine {
   }
 
   /**
-   * Get clipboard data (Phase 1.8)
+   * Get clipboard data
    */
   getClipboardData() {
     return this.clipboardManager.get();
   }
 
   /**
-   * Check if clipboard has data (Phase 1.8)
+   * Check if clipboard has data
    */
   hasClipboardData(): boolean {
     return this.clipboardManager.hasData();
   }
 
   /**
-   * Clear clipboard (Phase 1.8)
+   * Clear clipboard
    */
   clearClipboard(): void {
     this.clipboardManager.clear();
   }
 
   /**
-   * Get clipboard statistics (Phase 1.8)
+   * Get clipboard statistics
    */
   getClipboardStats() {
     return this.clipboardManager.getStats();
@@ -1188,7 +1181,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Validate layout configuration for a group (Phase 3 - Layout validation)
+   * Validate layout configuration for a group
    */
   validateLayout(groupId: string, options?: { strict?: boolean }): ValidationResult {
     if (!this.diagram) {
@@ -1246,7 +1239,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Register a group type definition (Phase 2 - Group validation)
+   * Register a group type definition
    * @param definition Group type definition
    */
   registerGroupType(definition: GroupTypeDefinition): void {
@@ -1414,10 +1407,8 @@ export class DiagramEngine {
    * Register a plugin AND bring it to life.
    *
    * `PluginManager.register()` only RECORDS a plugin; `install()` and
-   * `activate()` are separate steps. Calling register alone — which both of
-   * this engine's entry points used to do — left every plugin permanently
-   * inert: its hooks never fired, though `getPlugin()` happily returned it.
-   * "Register a plugin" can only sensibly mean "make it run", so this drives
+   * `activate()` are separate steps, and a plugin that is only recorded never
+   * fires its hooks. "Register a plugin" can only sensibly mean "make it run", so this drives
    * the full lifecycle. A plugin that throws is reported and skipped rather
    * than taking the host down with it.
    */
@@ -1791,7 +1782,7 @@ export class DiagramEngine {
   }
 
   /**
-   * Wave 5 (Edge routing) — Card 6: reconcile the shared ObstacleMap with the
+   * Reconcile the shared ObstacleMap with the
    * diagram's GROUP state, idempotently:
    *
    *   - a COLLAPSED group (with geometry) is ONE solid obstacle;
@@ -2278,12 +2269,9 @@ export class DiagramEngine {
   /**
    * The named-algorithm registry, with the built-ins already registered.
    *
-   * THE BUG THIS CLOSES: `applyLayout()` below requires `setLayoutService()` —
-   * and NOTHING in the codebase ever called it (the only mention is a doc comment
-   * in layout/index.ts). So dagre, ELK, force, spectral and community — thousands
-   * of lines, several of them untested — were UNREACHABLE from the engine. That
-   * is the whole "auto-layout is fragmented" finding. Layout now works out of the
-   * box, with no setup call.
+   * Every registered layout (dagre, ELK, force, spectral, community and the
+   * rest) runs through {@link layout} by name, with no setup call; register
+   * your own here.
    */
   getLayoutRegistry(): LayoutRegistry {
     if (!this._layoutRegistry) {
@@ -2307,9 +2295,7 @@ export class DiagramEngine {
    *
    * NOT to be confused with `DiagramModel.getLayoutManager()`, which answers a
    * DIFFERENT question — "where should this ONE newly-added node go?" — and is a
-   * placement strategy, not a graph layout. The audit called them "two parallel
-   * stacks" and asked for them to be merged; they are not parallel, and merging
-   * them would force a single-node placer to pretend it can lay out a graph.
+   * placement strategy, not a graph layout.
    */
   async layout(
     name: string = DEFAULT_LAYOUT_NAME,
@@ -2427,16 +2413,16 @@ export class DiagramEngine {
   }
 
   /**
-   * Wave 7 — Card 6: mental-map-preserving incremental layout.
+   * Mental-map-preserving incremental layout.
    *
    *     await engine.layoutIncremental({ changed: [newNode.id], budget: { maxPerNode: 60 } });
    *
    * Mermaid re-renders the whole diagram from scratch on every edit and destroys the
    * user's spatial memory of their own diagram. This does the opposite:
    *
-   *   1. everything outside the affected region becomes a Card-5 ANCHOR — an
-   *      immovable obstacle the layout works AROUND (impossible before Card 5, when
-   *      "constraints" were positions clamped after an unconstrained run);
+   *   1. everything outside the affected region becomes an ANCHOR — an
+   *      immovable obstacle the layout works AROUND, honoured during the run rather
+   *      than clamped after it;
    *   2. the result is RE-ALIGNED onto the previous layout by matching centroids —
    *      exactly the translation that minimises squared displacement, because a
    *      layered layout is defined only up to translation, so one new node widening
@@ -2632,8 +2618,8 @@ export class DiagramEngine {
    * @param config - Layout configuration
    * @returns Layout result with positions and metadata
    * @throws Error if no diagram is loaded or layout service is not initialized
-   * @deprecated Wave 7 Card 0 — use {@link layout} instead. This path requires a
-   * `setLayoutService()` call that nothing ever made, so it always threw.
+   * @deprecated Use {@link layout} instead. This path requires a prior
+   * `setLayoutService()` call and throws without one.
    */
   async applyLayout(config: {
     adapter: string | any;

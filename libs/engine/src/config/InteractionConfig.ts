@@ -143,39 +143,39 @@ export interface InteractionConfig {
   animateConnectionPreview: boolean;
 
   /**
-   * Phase 2.3: Enable waypoint editing on links
+   * Enable waypoint editing on links
    * Allow users to add/move/remove waypoints by clicking/dragging link paths
    */
   enableWaypointEditing: boolean;
 
   /**
-   * Phase 2.3: Show waypoint handles on selected links
+   * Show waypoint handles on selected links
    */
   showWaypointHandles: boolean;
 
   /**
-   * Phase 2.3: Waypoint editor configuration
+   * Waypoint editor configuration
    */
   waypointEditor?: WaypointEditorConfig;
 
   /**
-   * Phase 2.3: Enable control point editing on bezier curves
+   * Enable control point editing on bezier curves
    * Allow users to adjust bezier control points by dragging handles
    */
   enableControlPointEditing: boolean;
 
   /**
-   * Phase 2.3: Show control point handles on selected bezier links
+   * Show control point handles on selected bezier links
    */
   showControlPointHandles: boolean;
 
   /**
-   * Phase 2.3: Control point editor configuration
+   * Control point editor configuration
    */
   controlPointEditor?: ControlPointEditorConfig;
 
   /**
-   * wave12/connect-ergonomics (gap 1) — Drag a group's frame to move the whole
+   * Drag a group's frame to move the whole
    * subflow: the container and every member node (recursively through nested
    * groups) translate by the same delta, committed as ONE undoable step.
    *
@@ -187,7 +187,7 @@ export interface InteractionConfig {
   enableGroupDrag: boolean;
 
   /**
-   * wave12/connect-ergonomics (gap 2) — React-Flow "Proximity Connect": after a
+   * React-Flow "Proximity Connect": after a
    * node drag, if one of its ports comes within `proximityConnectRadius` of a
    * compatible port on another node, auto-create the link on drop (one undoable
    * command). Drives the shipped `SnapController.findProximityConnection` from
@@ -196,39 +196,34 @@ export interface InteractionConfig {
   enableProximityConnect: boolean;
 
   /**
-   * wave12/connect-ergonomics (gap 2) — Auto-link radius in world units for
+   * Auto-link radius in world units for
    * {@link enableProximityConnect}. Defaults to `DEFAULT_SNAP_CONFIG`'s value
    * when unset/0.
    */
   proximityConnectRadius: number;
 
   /**
-   * wave15/helper-lines — React-Flow "Helper Lines": while dragging a single
+   * React-Flow "Helper Lines": while dragging a single
    * top-level node, snap it to sibling edge/centre alignments and equal
-   * spacing, and draw the guides as dashed overlay lines. The SnapController
-   * always could compute this; nothing drove it from a live drag until now.
-   * Default false (opt-in) so the stock drag feel is unchanged.
+   * spacing, and draw the guides as dashed overlay lines (computed by the
+   * SnapController). Default false (opt-in).
    */
   enableHelperLines: boolean;
 
   /**
-   * T8/visio — Visio-style containment: dropping a node inside a container's
-   * frame REPARENTS it (and dropping it outside every container unembeds it),
-   * so it then moves with its container. `GroupMembershipService` always had
-   * the full drop logic — hit-test, per-group `canAddMember` veto, coordinate
-   * translation, undoable Add/RemoveFromGroupCommand — and nothing ever called
-   * it, so a drag into a container only changed x/y. Default true: a box dragged
-   * out of a zone stayed its member, drawn outside a frame that still owned it.
-   * A host that draws frames purely decoratively turns it off.
+   * Visio-style containment: dropping a node inside a container's frame
+   * REPARENTS it (and dropping it outside every container unembeds it), so it
+   * then moves with its container. The drop runs through `GroupMembershipService`
+   * (hit-test, per-group `canAddMember` veto, undoable
+   * Add/RemoveFromGroupCommand) and is one undo step with the move. Default
+   * true. A host that draws frames purely decoratively turns it off.
    */
   enableGroupMembershipOnDrop: boolean;
 
   /**
-   * T10/visio — double-click a node to edit its label in place. The editor
-   * (session + undoable commit) shipped in the renderer but was auto-wired ONLY
-   * in the Angular wrapper, so a vanilla / React / Vue embed got a
-   * `node:doubleclick` event and no caret. Default false (opt-in) so a host that
-   * already answers that event with its own editor keeps sole control.
+   * Double-click a node to edit its label in place, as one undoable commit.
+   * Default false (opt-in), so a host that already answers `node:doubleclick`
+   * with its own editor keeps sole control.
    */
   enableInPlaceTextEdit: boolean;
 
@@ -246,7 +241,7 @@ export interface InteractionConfig {
   enableKeyboardNudge: boolean;
 
   /**
-   * wave12/connect-ergonomics (gap 3) — React-Flow "Easy Connect": make the
+   * React-Flow "Easy Connect": make the
    * whole node BODY a connection handle. A press on a node body (not over a
    * specific port) starts a connection from the node's nearest/default port
    * instead of a move. Default false (opt-in) so normal body-drag-to-move is
@@ -256,7 +251,7 @@ export interface InteractionConfig {
   enableEasyConnect: boolean;
 
   /**
-   * wave12/connect-ergonomics (gap 3) — Optional modifier that must be held for
+   * Optional modifier that must be held for
    * an easy-connect body press to start a connection (e.g. 'shift'). When
    * 'none' (the default) any plain body press connects while {@link
    * enableEasyConnect} is on. Lets a host keep body-drag-to-move as the default
@@ -266,7 +261,7 @@ export interface InteractionConfig {
 }
 
 /**
- * Phase 2.3: Waypoint editor configuration
+ * Waypoint editor configuration
  */
 export interface WaypointEditorConfig {
   /**
@@ -311,7 +306,7 @@ export interface WaypointEditorConfig {
 }
 
 /**
- * Phase 2.3: Control point editor configuration
+ * Control point editor configuration
  */
 export interface ControlPointEditorConfig {
   /**

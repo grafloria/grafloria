@@ -12,8 +12,7 @@ import type { StrokePoint } from '../../models/StrokeModel';
  * there is no derived/manual flag to keep in step.
  *
  * COLLAB: execute()/undo() each call `setPoints` exactly ONCE, and `points` on a
- * stroke is a per-property register (wave11 scoped the capture's DERIVED set per
- * target precisely so stroke geometry reaches peers). One gesture therefore puts
+ * stroke is a per-property register, so stroke geometry reaches peers. One gesture therefore puts
  * ONE op on the wire — never per-pointermove spam, never a class instance.
  *
  * The FROM snapshot is taken from the model on first execute() when the caller

@@ -130,7 +130,7 @@ export function scalePoint(
  * Determine if a point is inside a shape
  * Returns true if point (px, py) is within the shape defined by bounds and shapeConfig
  *
- * Phase 3.3: Shape-aware hit detection for accurate mouse interactions
+ * Shape-aware hit detection for accurate mouse interactions
  */
 export function isPointInShape(
   px: number,

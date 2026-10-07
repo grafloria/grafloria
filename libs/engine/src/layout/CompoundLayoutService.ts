@@ -99,9 +99,9 @@ import type { UnifiedLayoutOptions } from './layout-registry';
 import { translateOptions } from './layout-registry';
 
 /**
- * Any registered layout name, or the built-in grid. Wave 5 hard-coded
- * `'dagre' | 'elk'`; nested layout now resolves whatever the registry knows
- * (force, spectral, community, or an extension-registered engine).
+ * Any registered layout name, or the built-in grid. Nested layout resolves
+ * whatever the registry knows (dagre, elk, force, spectral, community, or an
+ * extension-registered engine).
  */
 export type CompoundAlgorithm = 'grid' | 'dagre' | 'elk' | (string & {});
 
@@ -110,7 +110,7 @@ export interface CompoundLayoutOptions {
   defaultAlgorithm?: CompoundAlgorithm;
   /** Injected adapters used as black boxes, keyed by name. Unknown → grid. */
   adapters?: Record<string, LayoutAdapter | undefined>;
-  /** Fallback padding for groups without their own (Card 3) padding. */
+  /** Fallback padding for groups without their own padding. */
   defaultPadding?: number;
   /** Gap between units in the built-in grid. */
   gridGap?: number;

@@ -52,7 +52,7 @@ export type ActorId = string;
 /**
  * The entity kinds a diagram is made of, plus the diagram itself.
  *
- * wave10/whiteboard: `stroke` joins the list. Ink is DOCUMENT CONTENT — two people drawing
+ * `stroke` joins the list. Ink is DOCUMENT CONTENT — two people drawing
  * on the same board must converge — so a stroke is a first-class op target, not annotation
  * smuggled through a diagram-level `set`. (It very nearly WAS: `trackChange('strokes', …)`
  * is a diagram-level change event, and without `stroke` in this union the capture layer's
@@ -109,11 +109,8 @@ export interface SetOp extends OpBase {
   /**
    * The value the register now holds. ABSENT when the op is a clear.
    *
-   * wave14: this used to be required, and clearing a register (deleteMetadata,
-   * clearFlexItem) emitted `value: undefined` — which this type forbids and which only
-   * crossed the wire because JSON.stringify silently DROPS an undefined key and the
-   * peer's apply happened to read missing-as-undefined. A load-bearing accident. Clears
-   * are now EXPLICIT (`clear: true`), and `undefined` never appears in an emitted op.
+   * Clears are EXPLICIT (`clear: true`), and `undefined` never appears in an emitted
+   * op; an absent value in an older log still reads as a clear (see `setValueOf`).
    */
   value?: OpValue;
   /**
@@ -129,8 +126,8 @@ export type Op = AddOp | RemoveOp | SetOp;
 /**
  * The value a `set` op writes, with clears normalised to `undefined`.
  *
- * BACK-COMPAT lives here and nowhere else: every log persisted before wave14 encodes a
- * clear as an ABSENT value key (JSON dropped the `undefined`), so `value === undefined`
+ * BACK-COMPAT lives here and nowhere else: older persisted logs encode a clear as an
+ * ABSENT value key (JSON dropped the `undefined`), so `value === undefined`
  * must read as a clear forever — alongside the explicit `clear: true` new ops carry.
  */
 export function setValueOf(op: SetOp): OpValue | undefined {

@@ -28,7 +28,7 @@ import {
 } from '../utils/transform';
 
 /**
- * Positioning mode (Phase 1.6a)
+ * Positioning mode
  * - absolute: Position relative to diagram origin (default, backward compatible)
  * - relative: Position relative to parent
  * - layout: Position managed by parent's layout algorithm (future)
@@ -36,7 +36,7 @@ import {
 export type PositioningMode = 'absolute' | 'relative' | 'layout';
 
 /**
- * wave14/model — the LAST-KNOWN ANCHOR of a node the diagram has REMOVED.
+ * The LAST-KNOWN ANCHOR of a node the diagram has REMOVED.
  *
  * A removed parent leaves soft refs behind by design (children's `parentId`, group
  * `members`) — hard-clearing them would be irreversible under collab/undo, where the ref
@@ -79,24 +79,24 @@ export interface SerializedNode extends SerializedEntity {
   behavior: NodeBehavior;
   style: Partial<NodeStyle>;
   data: Record<string, any>;
-  // wave14/model — `behaviorOverrides` DELETED. It was dead machinery: its only reader
+  // `behaviorOverrides` DELETED. It was dead machinery: its only reader
   // was DiagramEngine.getNodeBehaviorForMode, itself dead outside its own spec; the real
   // read-only mechanism is the wave-9 ReadonlyLock. Legacy documents that still carry the
   // key deserialize cleanly (fromJSON ignores unknown keys) and re-save WITHOUT it — see
   // NodeModel.legacy-keys.spec.ts for why that does not break the round-trip invariant.
-  positionMode?: PositioningMode; // Phase 1.6a: Positioning mode
-  transformOrigin?: Point; // Phase 1.6a: Transform origin (normalized 0-1)
+  positionMode?: PositioningMode; // Positioning mode
+  transformOrigin?: Point; // Transform origin (normalized 0-1)
   /**
    * Model-level stacking order. OMITTED when the node never set one, so every
    * document written before this field existed round-trips byte-for-byte and no
    * schema migration is needed — absence means "unset", not 0.
    */
   zIndex?: number;
-  flexConfig?: FlexItemConfig; // Phase 1.7: Flexbox item configuration
-  gridConfig?: GridItemConfig; // Phase 1.7: Grid item configuration
-  portRenderingConfig?: any; // Phase 2: Port rendering configuration
-  dragHandlerConfig?: any; // Phase 2: Drag handler configuration
-  connectionGroup?: string; // Phase 2: Connection group identifier
+  flexConfig?: FlexItemConfig; // Flexbox item configuration
+  gridConfig?: GridItemConfig; // Grid item configuration
+  portRenderingConfig?: any; // Port rendering configuration
+  dragHandlerConfig?: any; // Drag handler configuration
+  connectionGroup?: string; // Connection group identifier
 }
 
 /**
@@ -161,12 +161,9 @@ export class NodeModel extends DiagramEntity {
   transformOrigin: Point = { x: 0.5, y: 0.5 }; // Phase 1.6a: Default to center (normalized 0-1)
 
   /**
-   * C — model-level stacking order (lower renders further back).
-   *
-   * `GroupModel` has had `zIndex` + `bringToFront`/`sendToBack` since Wave-5;
-   * nodes had nothing, so the only way to restack one was to write `style.zIndex`
-   * — a presentation field being used to carry a document fact, invisible to undo
-   * and to the diff/collab layers that watch `trackChange`.
+   * Model-level stacking order (lower renders further back), as on `GroupModel`.
+   * A document fact, so undo and the diff/collab layers see it (unlike
+   * `style.zIndex`).
    *
    * DELIBERATELY OPTIONAL, unlike the group's `zIndex = 0`. `undefined` means "this
    * node never expressed an opinion", which is what lets {@link getEffectiveZIndex}
@@ -319,9 +316,8 @@ export class NodeModel extends DiagramEntity {
   /**
    * Set size.
    *
-   * A — this used to be five lines that wrote a field and told NOBODY, while its
-   * sibling `setPosition` has propagated since Phase 1.6a. A node growing inside a
-   * flex/grid container is a layout-invalidating event: its siblings have to move.
+   * A node growing inside a flex/grid container is a layout-invalidating event:
+   * its siblings have to move.
    *
    * It notifies its LAYOUT CONTAINERS, and deliberately NOT the transform chain
    * `setPosition` uses: a parent's size does not move a relative child (the child's
@@ -480,7 +476,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get port by side (Phase 0.5.1)
+   * Get port by side
    * Returns the first port found on the specified side
    *
    * @param side - The side to search ('top', 'right', 'bottom', 'left')
@@ -491,7 +487,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get all ports on a specific side (Phase 0.5.1)
+   * Get all ports on a specific side
    * Useful for nodes with multiple ports per side
    *
    * @param side - The side to search ('top', 'right', 'bottom', 'left')
@@ -504,7 +500,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get available ports that can accept connections (Phase 0.5.1)
+   * Get available ports that can accept connections
    *
    * @param type - Optional filter by port type ('input', 'output', 'bi')
    * @returns Array of ports that can accept more connections
@@ -520,7 +516,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get ports that have active connections (Phase 0.5.1)
+   * Get ports that have active connections
    *
    * @returns Array of ports with at least one connection
    */
@@ -566,41 +562,27 @@ export class NodeModel extends DiagramEntity {
    *
    * The write `setState` cannot express, and the collab reducer's write path.
    *
-   * ## Why a merge was wrong
+   * ## Durable keys are replaced
    *
    * `state` is a value register: the op carries the whole (projected) object the author
-   * now holds. Applying it with the merging `setState` meant a peer could GAIN a key and
-   * never LOSE one — `NodeState.error`, `warning`, `status` and `animateStatus` are all
-   * optional, so the author clears an error badge and every other peer keeps it FOREVER,
-   * with no later edit able to correct it. Node `style` had exactly this defect and was
-   * fixed with `replaceStyle`; this is the same fix for the register next to it.
+   * now holds. The durable keys — `error`, `warning`, `status`, `animateStatus` — are
+   * replaced wholesale, so when the author clears an error badge it is cleared on every
+   * peer (a merge could add a key but never remove one). `replaceStyle` does the same for
+   * `style`.
    *
-   * ## Why it is not a plain wholesale replace either
+   * ## View keys are kept
    *
    * `selected` / `hovered` / `highlighted` / `focused` are facts about a VIEWER, not about
-   * the document. Capture strips them (see collab/capture.ts — syncing them meant your
-   * cursor lit up my node and your click deselected it), so an incoming register value
-   * never carries them. Replacing wholesale would therefore BLANK the receiving user's own
-   * selection on every remote state edit — reintroducing the very bug through the back
-   * door. So: durable keys replaced wholesale, view keys taken from what this replica
-   * already had.
+   * the document. Capture strips them (see collab/capture.ts), so an incoming register
+   * value never carries them, and this replica's own values are kept: a remote state edit
+   * never changes the local selection.
    *
-   * ## The read-only posture, deliberately UNCHANGED
+   * ## Read-only
    *
-   * This refuses outright while the document is locked, exactly like `setPosition`,
-   * `setStyle` and `replaceStyle`. It does NOT copy `setState`'s Wave-9 Card-7 filter,
-   * and that is not an oversight:
-   *
-   *   • That filter exists so a LOCAL user can still select, hover and keyboard-navigate a
-   *     presentation-mode diagram. It is about input, not about the wire.
-   *   • It would be a no-op here anyway: capture strips the view keys, so an incoming
-   *     `state` value contains none of the keys the filter admits — a locked replica
-   *     already dropped remote state ops entirely, before this method existed. Behaviour
-   *     is therefore identical, and `setState` is left untouched.
-   *   • Making `state` the one register that DID reach a locked replica would be
-   *     incoherent: a read-only replica currently applies no remote document write at all
-   *     (verified — a locked peer ignores remote `position` and `style` too). That gap is
-   *     real and systemic, and it belongs to the lock, not to this register.
+   * Refused outright while the document is locked, exactly like `setPosition`,
+   * `setStyle` and `replaceStyle`. (`setState`'s exception for local selection, hover
+   * and keyboard focus is about local input and does not apply here; a locked replica
+   * applies no remote document write.)
    */
   replaceState(state: Partial<NodeState>): void {
     if (this.writeBlocked()) return;
@@ -983,8 +965,8 @@ export class NodeModel extends DiagramEntity {
    * REPLACE the whole child collection. The collab reducer's write path.
    *
    * Same contract as {@link setClasses}: a Set in memory, an array on the wire, rebuilt
-   * rather than assigned, and a non-array refused so a pre-fix log degrades instead of
-   * destroying the collection.
+   * rather than assigned, and a non-array refused so a malformed or older log degrades
+   * instead of destroying the collection.
    *
    * This maintains only its own half of the hierarchy, exactly as `addChild`/`removeChild`
    * do — the child's `parentId` is its own register with its own op.
@@ -999,7 +981,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Set transform origin (Phase 1.6a)
+   * Set transform origin
    * @param x Normalized X coordinate (0-1)
    * @param y Normalized Y coordinate (0-1)
    */
@@ -1013,7 +995,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get absolute transform origin in pixels (Phase 1.6a)
+   * Get absolute transform origin in pixels
    */
   getAbsoluteTransformOrigin(): Point {
     return {
@@ -1026,7 +1008,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get local position (Phase 1.6a)
+   * Get local position
    * Returns the position property as-is
    */
   getLocalPosition(): Point {
@@ -1034,7 +1016,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get global position (Phase 1.6a)
+   * Get global position
    * In absolute mode: returns position as-is
    * In relative mode: transforms position by parent's hierarchy transform
    */
@@ -1093,7 +1075,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Set local position (Phase 1.6a)
+   * Set local position
    * Sets position directly and switches to relative mode
    */
   setLocalPosition(x: number, y: number, z?: number): void {
@@ -1102,7 +1084,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Set global position (Phase 1.6a)
+   * Set global position
    * Converts global coordinates to local if parent exists
    */
   setGlobalPosition(x: number, y: number, z?: number): void {
@@ -1173,7 +1155,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get local transform matrix (Phase 1.6a)
+   * Get local transform matrix
    * Composes translation, rotation, and scale relative to transform origin
    */
   getLocalTransformMatrix(): TransformMatrix {
@@ -1191,7 +1173,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get global transform matrix (Phase 1.6a)
+   * Get global transform matrix
    * In absolute mode: returns local matrix
    * In relative mode: composes parent's global matrix with local matrix
    */
@@ -1218,7 +1200,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get global bounding box (Phase 1.6a)
+   * Get global bounding box
    * Calculates bounds by transforming all 4 corners through global matrix
    */
   getGlobalBounds(): BoundingBox {
@@ -1266,7 +1248,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get direct children nodes (Phase 1.6a Part 3)
+   * Get direct children nodes
    */
   getChildren(): NodeModel[] {
     if (!this.diagram) {
@@ -1284,7 +1266,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get parent node (Phase 1.6a Part 3)
+   * Get parent node
    * Public version of getParentNode
    */
   getParent(): NodeModel | undefined {
@@ -1292,7 +1274,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get all ancestor nodes up to root (Phase 1.6a Part 3)
+   * Get all ancestor nodes up to root
    * Returns array with direct parent first, then grandparent, etc.
    */
   getAncestors(): NodeModel[] {
@@ -1313,7 +1295,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get all descendant nodes recursively (Phase 1.6a Part 3)
+   * Get all descendant nodes recursively
    */
   getDescendants(): NodeModel[] {
     const descendants: NodeModel[] = [];
@@ -1328,7 +1310,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get root node of hierarchy (Phase 1.6a Part 3)
+   * Get root node of hierarchy
    * Returns self if this is the root
    */
   getRoot(): NodeModel {
@@ -1344,7 +1326,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get sibling nodes (same parent, excluding self) (Phase 1.6a Part 3)
+   * Get sibling nodes (same parent, excluding self)
    */
   getSiblings(): NodeModel[] {
     const parent = this.getParent();
@@ -1356,7 +1338,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Check if this node is an ancestor of another node (Phase 1.6a Part 3)
+   * Check if this node is an ancestor of another node
    * @param nodeId ID of node to check
    * @returns true if this node is an ancestor of the given node
    */
@@ -1379,7 +1361,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get depth in hierarchy (Phase 1.6a Part 3)
+   * Get depth in hierarchy
    * Root nodes have depth 0, their children have depth 1, etc.
    * @returns depth level (0 = root)
    */
@@ -1402,7 +1384,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Validate hierarchy for circular references (Phase 1.6a Part 3)
+   * Validate hierarchy for circular references
    * @returns true if hierarchy is valid (no cycles)
    */
   validateHierarchy(): boolean {
@@ -1423,7 +1405,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Update depth for this node and all descendants (Phase 1.6a Part 3)
+   * Update depth for this node and all descendants
    * Recalculates depth values based on current hierarchy
    */
   updateHierarchyDepth(): void {
@@ -1438,7 +1420,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get all nodes affected by transform changes (Phase 1.6a Part 4)
+   * Get all nodes affected by transform changes
    * Returns this node plus all descendants in relative positioning mode
    * @returns Array of nodes that would be affected by this node's transform
    */
@@ -1527,7 +1509,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Set flexbox item configuration (Phase 1.7)
+   * Set flexbox item configuration
    */
   setFlexItem(config: FlexItemConfig): void {
     const oldConfig = this.flexConfig;
@@ -1537,7 +1519,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Clear flexbox item configuration (Phase 1.7)
+   * Clear flexbox item configuration
    */
   clearFlexItem(): void {
     const oldConfig = this.flexConfig;
@@ -1547,21 +1529,21 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get flexbox item configuration (Phase 1.7)
+   * Get flexbox item configuration
    */
   getFlexItem(): FlexItemConfig | undefined {
     return this.flexConfig;
   }
 
   /**
-   * Check if node has flex item configuration (Phase 1.7)
+   * Check if node has flex item configuration
    */
   hasFlexItem(): boolean {
     return this.flexConfig !== undefined;
   }
 
   /**
-   * Set grid item configuration (Phase 1.7)
+   * Set grid item configuration
    */
   setGridItem(config: GridItemConfig): void {
     const oldConfig = this.gridConfig;
@@ -1571,7 +1553,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Clear grid item configuration (Phase 1.7)
+   * Clear grid item configuration
    */
   clearGridItem(): void {
     const oldConfig = this.gridConfig;
@@ -1581,14 +1563,14 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get grid item configuration (Phase 1.7)
+   * Get grid item configuration
    */
   getGridItem(): GridItemConfig | undefined {
     return this.gridConfig;
   }
 
   /**
-   * Check if node has grid item configuration (Phase 1.7)
+   * Check if node has grid item configuration
    */
   hasGridItem(): boolean {
     return this.gridConfig !== undefined;
@@ -1599,7 +1581,7 @@ export class NodeModel extends DiagramEntity {
   // ========================================
 
   /**
-   * Set port rendering configuration (Phase 2)
+   * Set port rendering configuration
    */
   setPortRenderingConfig(config: any): void {
     const oldConfig = this.portRenderingConfig;
@@ -1609,14 +1591,14 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get port rendering configuration (Phase 2)
+   * Get port rendering configuration
    */
   getPortRenderingConfig(): any | undefined {
     return this.portRenderingConfig;
   }
 
   /**
-   * Get port rendering mode (Phase 2)
+   * Get port rendering mode
    * Auto-detects based on configuration and metadata
    */
   getPortRenderingMode(): 'svg' | 'html' | 'auto' {
@@ -1642,7 +1624,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Set drag handler configuration (Phase 2)
+   * Set drag handler configuration
    */
   setDragHandlerConfig(config: any): void {
     const oldConfig = this.dragHandlerConfig;
@@ -1652,21 +1634,21 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get drag handler configuration (Phase 2)
+   * Get drag handler configuration
    */
   getDragHandlerConfig(): any | undefined {
     return this.dragHandlerConfig;
   }
 
   /**
-   * Check if this node is a drag handler (Phase 2)
+   * Check if this node is a drag handler
    */
   isDragHandler(): boolean {
     return this.dragHandlerConfig?.isDragHandler === true;
   }
 
   /**
-   * Set connection group (Phase 2)
+   * Set connection group
    */
   setConnectionGroup(group: string): void {
     const oldGroup = this.connectionGroup;
@@ -1676,7 +1658,7 @@ export class NodeModel extends DiagramEntity {
   }
 
   /**
-   * Get connection group (Phase 2)
+   * Get connection group
    */
   getConnectionGroup(): string | undefined {
     return this.connectionGroup;

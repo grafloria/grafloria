@@ -11,7 +11,7 @@ export interface NodeTypeDefinition {
   minPorts?: number;
   maxPorts?: number;
   validator?: (node: any) => ValidationResult;
-  // Phase 2: Type System Enhancements
+  // Type System Enhancements
   extends?: string;
   category?: string;
   family?: string;
@@ -19,13 +19,13 @@ export interface NodeTypeDefinition {
   defaultBehavior?: Partial<NodeBehavior>;
   defaultStyle?: Partial<NodeStyle>;
   defaultSize?: Partial<Size>;
-  // Phase 2: Hierarchy Validation
+  // Hierarchy Validation
   allowedChildTypes?: string[]; // Allowed child node types
   allowedParentTypes?: string[]; // Allowed parent node types
   maxChildren?: number; // Maximum number of children
   maxDepth?: number; // Maximum depth from root
   canBeRoot?: boolean; // Can be a root node (no parent)
-  // Phase 2: Template System Integration
+  // Template System Integration
   templateId?: string; // Reference to NodeTemplate
   defaultPortRendering?: any; // Default port rendering configuration
 }
@@ -59,8 +59,8 @@ export interface GroupTypeDefinition {
   minMembers?: number; // Minimum number of members
   maxMembers?: number; // Maximum number of members
   canNest?: boolean; // Can contain other groups
-  allowedLayoutTypes?: ('flexbox' | 'grid')[]; // Phase 3: Allowed layout types for this group
-  requireLayout?: boolean; // Phase 3: Whether this group must have a layout configured
+  allowedLayoutTypes?: ('flexbox' | 'grid')[]; // Allowed layout types for this group
+  requireLayout?: boolean; // Whether this group must have a layout configured
   validator?: (group: any) => ValidationResult;
 }
 
@@ -140,7 +140,7 @@ export class TypeRegistry {
   }
 
   /**
-   * Register a group type (Phase 2)
+   * Register a group type
    */
   registerGroupType(definition: GroupTypeDefinition): void {
     if (this.groupTypes.has(definition.type)) {
@@ -172,7 +172,7 @@ export class TypeRegistry {
   }
 
   /**
-   * Unregister a group type (Phase 2)
+   * Unregister a group type
    */
   unregisterGroupType(type: string): boolean {
     return this.groupTypes.delete(type);
@@ -200,7 +200,7 @@ export class TypeRegistry {
   }
 
   /**
-   * Get group type definition (Phase 2)
+   * Get group type definition
    */
   getGroupType(type: string): GroupTypeDefinition | undefined {
     return this.groupTypes.get(type);
@@ -228,7 +228,7 @@ export class TypeRegistry {
   }
 
   /**
-   * Check if group type exists (Phase 2)
+   * Check if group type exists
    */
   hasGroupType(type: string): boolean {
     return this.groupTypes.has(type);
@@ -256,7 +256,7 @@ export class TypeRegistry {
   }
 
   /**
-   * List all group types (Phase 2)
+   * List all group types
    */
   listGroupTypes(): GroupTypeDefinition[] {
     return Array.from(this.groupTypes.values());
@@ -453,7 +453,7 @@ export class TypeRegistry {
   }
 
   /**
-   * Get all node types using a specific template (Phase 2)
+   * Get all node types using a specific template
    * Includes types that inherit template ID from parent
    */
   getNodeTypesByTemplate(templateId: string): NodeTypeDefinition[] {

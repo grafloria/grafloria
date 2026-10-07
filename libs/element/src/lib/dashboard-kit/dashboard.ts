@@ -222,14 +222,14 @@ export interface DashboardOptions {
   /** Engine float mode (default false → gravity packs upward). */
   float?: boolean;
   /**
-   * DIAGRAM OR LAYOUT — the one switch (decision of 2026-09-06).
+   * DIAGRAM OR LAYOUT — the one switch.
    *
    * 'fluid' (the default): the board is 100% of its container, laid out at
    *   real CSS pixels; zoom is pinned at 1; a plain wheel scrolls; in 'fit' the
    *   height follows the container too. What every grid library does, and
    *   what "responsive" means to a dashboard author.
    * 'fixed': the authored `width`/`height` are the world, and the camera frames
-   *   them — today's behaviour, kept for a dashboard embedded inside a larger
+   *   them; for a dashboard embedded inside a larger
    *   diagram. An explicit `width` implies 'fixed', so existing boards keep
    *   their behaviour without naming a mode.
    */
@@ -468,12 +468,8 @@ export interface DashboardHandle {
    *
    * Values are read from the LIVE board, not from the authored literal, so a
    * mode or column count the user changed after mount is what you get back.
-   *
-   * This used to return only `views`, which made the round-trip claim true of
-   * the layout and false of the board: a board authored `grow` at a 10-column,
-   * 6px-gap geometry reloaded as a 12-column `fit` one. It is also what
-   * `JSON.stringify(handle)` calls, so the partial answer was a permanent
-   * footgun in a save API rather than merely an omission.
+   * Sizing, columns and gap come back with the views, so a board reloads with
+   * its own geometry. It is also what `JSON.stringify(handle)` calls.
    */
   toJSON(): DashboardSnapshot;
   /**
