@@ -322,3 +322,17 @@ describe('exportDiagramText / importDiagramText', () => {
     ).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('importDiagramText reports what the parser could not read', () => {
+  it('an unclosed bracket is in result.errors, at its line', () => {
+    const result = importDiagramText('flowchart TD\n  A[Start] --> B[Middle\n  B --> C[End]\n');
+    expect(result.source).toBe('text');
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors![0]).toMatch(/line 2\b/i);
+    expect(result.errors![0]).toMatch(/"\[" is never closed/);
+  });
+
+  it('clean text has no errors', () => {
+    expect(importDiagramText('flowchart TD\n  A --> B\n').errors ?? []).toEqual([]);
+  });
+});

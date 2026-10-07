@@ -1893,9 +1893,10 @@ export function createDiagram(
       if (result.source === 'text') {
         // The body was parsed (no sidecar, or it was hand-edited): it must be
         // what it claims to be, every line of it.
-        const body = stripGrafloriaSidecar(text.replace(/\r\n?/g, '\n'));
-        const check = new DSL({ autoLayout: false }).validate(body);
-        if (!check.valid) refuse(`the text has errors — ${check.errors.join(' ')}`);
+        const errors =
+          result.errors ??
+          new DSL({ autoLayout: false }).validate(stripGrafloriaSidecar(text.replace(/\r\n?/g, '\n'))).errors;
+        if (errors.length > 0) refuse(`the text has errors — ${errors.join(' ')}`);
       }
       // Reconcile INTO the live model (never swap it): applyNodes/applyEdges
       // are full reconcilers, so removals happen and every listener, plugin,

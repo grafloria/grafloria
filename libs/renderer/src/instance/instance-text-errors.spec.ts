@@ -50,6 +50,8 @@ describe('loadText', () => {
       ['a header typo', 'flowchrt\n  A --> B', /"flowchrt" is not a diagram type/],
       ['empty text', '', /empty/i],
       ['blank text', '  \n\t\n', /empty/i],
+      ['an unclosed bracket that would swallow the next line', 'flowchart TD\n  A[Start] --> B[Middle\n  B --> C[End]\n', /line 2\b[\s\S]*"\[" is never closed/i],
+      ['an unclosed quote', 'flowchart TD\n  A[Start] --> B["Middle]\n  B --> C[End]\n', /line 2\b[\s\S]*quote[\s\S]*never closed/i],
       ['an unsupported diagram type', 'sequenceDiagram\n  A->>B: hi', /sequenceDiagram[\s\S]*flowchart[\s\S]*erDiagram/],
     ];
     for (const [what, text, message] of cases) {

@@ -401,6 +401,9 @@ export class Lexer {
    */
   private scanString(quote: string, start: number, startColumn: number): void {
     let value = '';
+    // A string may span lines (a quoted multi-line label); its token still
+    // belongs to the line it OPENED on, which is where an error must point.
+    const startLine = this.line;
 
     while (!this.isAtEnd() && this.peek() !== quote) {
       if (this.peek() === '\n') {
@@ -411,15 +414,22 @@ export class Lexer {
     }
 
     if (this.isAtEnd()) {
-      // Unterminated string
-      this.addToken(TokenType.UNKNOWN, quote + value, start, this.position);
+      // Unterminated: the stray quote runs to the end of ITS line, not of the
+      // text. Swallowing every line after it lost the rest of the diagram from
+      // even a best-effort parse; the parser reports the quote at its line.
+      const newline = this.input.indexOf('\n', start);
+      const stop = newline < 0 ? this.input.length : newline;
+      this.position = stop;
+      this.line = startLine;
+      this.column = startColumn + (stop - start);
+      this.tokens.push(createToken(TokenType.UNKNOWN, this.input.substring(start, stop), startLine, startColumn, start, stop));
       return;
     }
 
     // Consume closing quote
     this.advance();
 
-    this.addToken(TokenType.STRING, value, start, this.position);
+    this.tokens.push(createToken(TokenType.STRING, value, startLine, startColumn, start, this.position));
   }
 
   /**

@@ -76,6 +76,13 @@ export interface ImportTextResult {
    * rather than a garbage flowchart.
    */
   unsupported?: string;
+  /**
+   * When the body was parsed (`source: 'text'`): what in it could not be read —
+   * a line the parser skipped, an unclosed bracket or quote, a header that is
+   * not a diagram type — each naming its line. The import itself is best
+   * effort (the readable lines are in `diagram`); empty means the text is clean.
+   */
+  errors?: string[];
 }
 
 /** The body without any %%grafloria sidecar lines (what a human reads/edits). */
@@ -217,6 +224,9 @@ export function importDiagramText(
   if (unsupported) {
     return { diagram: parsed, source: 'text', bodyEdited, sidecarInvalid, unsupported };
   }
+  // The parse above recovers line by line and never throws for what it skips;
+  // say what that was, so a caller can refuse the text (loadText does).
+  const errors = dsl.validate(body).errors;
 
   // THE MERGE. The grammar covers structure and labels — nothing else. Loading
   // the parsed body alone therefore wiped positions, sizes, styles, ports and
@@ -227,9 +237,9 @@ export function importDiagramText(
   // through untouched.
   if (sidecarDoc !== undefined && prefer !== 'text') {
     const diagram = applyBodyOntoSidecar(sidecarDoc, parsed, options);
-    return { diagram, source: 'text', bodyEdited, sidecarMerged: true, sidecarInvalid };
+    return { diagram, source: 'text', bodyEdited, sidecarMerged: true, sidecarInvalid, errors };
   }
-  return { diagram: parsed, source: 'text', bodyEdited, sidecarInvalid };
+  return { diagram: parsed, source: 'text', bodyEdited, sidecarInvalid, errors };
 }
 
 /**

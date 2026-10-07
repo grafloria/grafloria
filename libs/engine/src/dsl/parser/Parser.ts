@@ -39,6 +39,41 @@ export class ParseError extends Error {
   }
 }
 
+/** The tokens that open a shape's label: met on a LATER line, the label before never closed. */
+const SHAPE_OPENERS: ReadonlySet<TokenType> = new Set([
+  TokenType.SQUARE_OPEN,
+  TokenType.SUBROUTINE_OPEN,
+  TokenType.STADIUM_OPEN,
+  TokenType.CYLINDRICAL_OPEN,
+  TokenType.CIRCLE_OPEN,
+  TokenType.ROUND_OPEN,
+  TokenType.RHOMBUS_OPEN,
+  TokenType.HEXAGON_OPEN,
+  TokenType.TRAPEZOID_OPEN,
+]);
+
+/** The lexer's token for a quote with no closing quote (it runs to the end of its line). */
+function isUnclosedQuote(token: Token): boolean {
+  return token.type === TokenType.UNKNOWN && (token.value.startsWith('"') || token.value.startsWith("'"));
+}
+
+/** What the author has to type to close a label, for the error message. */
+function closingText(endType: TokenType): string {
+  switch (endType) {
+    case TokenType.SQUARE_CLOSE: return ']';
+    case TokenType.SUBROUTINE_CLOSE: return ']]';
+    case TokenType.STADIUM_CLOSE: return '])';
+    case TokenType.CYLINDRICAL_CLOSE: return ')]';
+    case TokenType.CIRCLE_CLOSE: return '))';
+    case TokenType.ROUND_CLOSE: return ')';
+    case TokenType.RHOMBUS_CLOSE: return '}';
+    case TokenType.HEXAGON_CLOSE: return '}}';
+    case TokenType.TRAPEZOID_CLOSE: return '/] or \\]';
+    case TokenType.PIPE: return '|';
+    default: return endType;
+  }
+}
+
 interface NodeRef {
   id: string;
   shape?: NodeShape;
@@ -219,7 +254,9 @@ export class Parser {
       if (!this.isAtEnd() && !this.check(TokenType.NEWLINE)) {
         const token = this.currentToken();
         this.errors.push(new ParseError(
-          `Unexpected "${token.value}" — not a node or an edge; the line was skipped`,
+          isUnclosedQuote(token)
+            ? `the quote ${token.value[0]} is never closed — add the closing ${token.value[0]} on this line`
+            : `Unexpected "${token.value}" — not a node or an edge; the line was skipped`,
           token, token.line, token.column
         ));
       }
@@ -769,13 +806,44 @@ export class Parser {
   }
 
   /**
-   * Parse text until a specific token type
+   * Parse text until a specific token type — the label of the shape (or edge
+   * label) whose opening token was just consumed.
+   *
+   * A label may run on across lines (Mermaid takes that), but one that runs
+   * into ANOTHER shape's opening bracket on a later line, or to the end of the
+   * text, was never closed: the reader used to carry on to the next `]` it met
+   * and swallow the line in between, silently. That is a ParseError at the
+   * line where the bracket opened; recovery resumes at the first line break
+   * the label crossed, so the following lines still parse.
    */
   private parseTextUntil(endType: TokenType): string {
+    const open = this.previous();
+    let firstBreak = -1;
+    const unclosed = (): ParseError => {
+      if (firstBreak >= 0) this.current = firstBreak;
+      return new ParseError(
+        `"${open.value}" is never closed — add the closing "${closingText(endType)}" on this line`,
+        open, open.line, open.column
+      );
+    };
+
     let text = '';
     let prevEnd = -1;
 
-    while (!this.check(endType) && !this.isAtEnd()) {
+    while (!this.check(endType)) {
+      if (this.isAtEnd()) throw unclosed();
+      if (this.check(TokenType.NEWLINE)) {
+        if (firstBreak < 0) firstBreak = this.current;
+      } else if (firstBreak >= 0 && SHAPE_OPENERS.has(this.peek().type)) {
+        throw unclosed();
+      }
+      if (isUnclosedQuote(this.peek())) {
+        const quote = this.peek();
+        throw new ParseError(
+          `the quote ${quote.value[0]} is never closed — add the closing ${quote.value[0]} on this line`,
+          quote, quote.line, quote.column
+        );
+      }
       const token = this.advance();
       // Join by SOURCE ADJACENCY, not with an unconditional space: tokens that
       // touch in the input stay touching in the label. The unconditional join

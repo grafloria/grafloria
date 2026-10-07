@@ -68,6 +68,51 @@ describe('DSL — parse errors are reported, not swallowed', () => {
   });
 });
 
+// An unclosed bracket or quote used to swallow the NEXT line silently: the label
+// reader ran on across the newline to the next line's `]`, so
+// `A[Start] --> B[Middle` + `B --> C[End]` gave A and B — C gone, no error.
+// Mermaid itself refuses that text. A label may still span lines (Mermaid takes
+// a quoted multi-line label, and a plain one that closes), but a label that runs
+// into another shape, or to the end of the text, is reported at the line where
+// its bracket opened — and recovery resumes on the next line.
+describe('DSL — an unclosed bracket or quote is an error at its own line', () => {
+  const cases: Array<[string, string, string]> = [
+    ['[', 'flowchart TD\n  A[Start] --> B[Middle\n  B --> C[End]\n', '"["'],
+    ['(', 'flowchart TD\n  A[Start] --> B(Middle\n  B --> C[End]\n', '"("'],
+    ['{', 'flowchart TD\n  A[Start] --> B{Middle\n  B --> C[End]\n', '"{"'],
+    ['"', 'flowchart TD\n  A[Start] --> B["Middle]\n  B --> C[End]\n', 'quote'],
+    ['[ at the end of the text', 'flowchart TD\n  A[Start] --> B[Middle\n  B --> C\n', '"["'],
+  ];
+  for (const [what, text, named] of cases) {
+    it(`an unclosed ${what} is reported at line 2, naming it`, () => {
+      const v = dsl().validate(text);
+      expect(v.valid).toBe(false);
+      expect(v.errors).toHaveLength(1);
+      expect(v.errors[0]).toMatch(/line 2\b/i);
+      expect(v.errors[0]).toContain(named);
+      expect(v.errors[0]).toMatch(/never closed/);
+    });
+  }
+
+  it('best-effort parse() drops the broken line only: the next line still parses', () => {
+    const result = dsl().parseDetailed('flowchart TD\n  A[Start] --> B[Middle\n  B --> C[End]\n');
+    expect(result.errors).toHaveLength(1);
+    expect(result.diagram.getNodes().map((n) => n.id).sort()).toEqual(['B', 'C']);
+  });
+
+  it('labels Mermaid takes across lines stay valid', () => {
+    for (const text of [
+      'flowchart TD\n  A["line one\n  line two"] --> B\n',
+      'flowchart TD\n  A["`**bold**\n  next`"] --> B\n',
+      'flowchart TD\n  A[line one\n  line two] --> B\n',
+      'flowchart TD\n  A(round one\n  round two) --> B{yes\n  or no}\n',
+    ]) {
+      const v = dsl().validate(text);
+      expect({ text, ...v }).toEqual({ text, valid: true, errors: [] });
+    }
+  });
+});
+
 describe('adoptTextGrammarMetadata — what loading text INTO a model must carry', () => {
   it('copies the grammar keys the source has and clears the ones it lacks', () => {
     const er = dsl().parse('erDiagram\n    CUSTOMER ||--o{ ORDER : places');
