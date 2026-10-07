@@ -42,6 +42,7 @@ export const umlInitialStateTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"uml-initial-state-content\">\n          <div class=\"node-label\">{{data.label || 'Initial State'}}</div>\n        </div>",

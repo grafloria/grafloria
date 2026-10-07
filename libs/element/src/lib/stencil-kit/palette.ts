@@ -108,11 +108,14 @@ function applyNotationTheme(
   node.setMetadata('shape', shape);
 }
 
-/** UML classifiers get a name compartment + a member compartment. */
+/** UML classifiers get a name compartment + a member compartment.
+ *  Keys are MASTER IDS — `uml-enum` / `uml-primitive-type` are the generated
+ *  ids (the old `uml-enumeration` / `uml-primitivetype` keys matched nothing,
+ *  so those two masters dropped as bare rectangles with no card). */
 const UML_CLASSIFIERS: Record<string, string | null> = {
   'uml-class': null, 'uml-abstract-class': '«abstract»', 'uml-interface': '«interface»',
-  'uml-enumeration': '«enumeration»', 'uml-datatype': '«dataType»',
-  'uml-primitivetype': '«primitive»', 'uml-signal': '«signal»', 'uml-object': null,
+  'uml-enum': '«enumeration»', 'uml-datatype': '«dataType»',
+  'uml-primitive-type': '«primitive»', 'uml-signal': '«signal»', 'uml-object': null,
 };
 
 /** BPMN event types carry their trigger glyph inside the circle. */
@@ -128,7 +131,9 @@ const BPMN_EVENT_GLYPH: Record<string, string> = {
 function applyNotationPanel(node: any, masterId: string, master: NodeTemplate): void {
   const glyph = BPMN_EVENT_GLYPH[masterId];
   if (glyph) {
-    node.setMetadata('panel', { icon: { glyph, size: 16, corner: 'tl' } });
+    // CENTRED, as BPMN draws its trigger glyphs — the caption now paints BELOW
+    // the circle (labelPlacement), so the middle belongs to the badge.
+    node.setMetadata('panel', { icon: { glyph, size: 16, corner: 'c' } });
     return;
   }
   if (!(masterId in UML_CLASSIFIERS)) return;
@@ -136,11 +141,14 @@ function applyNotationPanel(node: any, masterId: string, master: NodeTemplate): 
   const name = (master as any).meta?.name ?? 'Class';
   // Placeholder members, so a dropped classifier looks like a UML card the user
   // can then edit rather than an empty box.
-  const rows = masterId === 'uml-enumeration'
+  const rows = masterId === 'uml-enum'
     ? [{ text: 'VALUE_A' }, { text: 'VALUE_B' }]
     : [{ text: '+ field: Type' }, { text: '+ method(): void' }];
   node.setMetadata('panel', {
-    header: { text: stereotype ? `${stereotype} ${name}` : name },
+    // A stereotyped classifier stacks «stereotype» OVER the name, the way UML
+    // draws its cards — inline ("«enumeration» Enumeration") the header line
+    // was wider than the card and painted cut off at both edges.
+    header: stereotype ? { lines: [stereotype, name] } : { text: name },
     rows,
     rowHeight: 18,
   });

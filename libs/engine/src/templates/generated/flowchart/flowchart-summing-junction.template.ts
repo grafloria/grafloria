@@ -43,6 +43,7 @@ export const flowchartSummingJunctionTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"flowchart-summing-junction-content\">\n          <div class=\"node-label\">{{data.label || 'Summing Junction'}}</div>\n        </div>",

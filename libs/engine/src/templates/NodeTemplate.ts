@@ -86,6 +86,12 @@ export type ShapeType =
   | 'double-rect'        // ERD (Chen): weak entity
   | 'double-diamond'     // ERD (Chen): weak relationship
   | 'double-ellipse'     // ERD (Chen): multivalued attribute
+  // Notation MARKER shapes — the glyph IS the identity (stencil master audit).
+  | 'gateway-xor'        // BPMN: diamond + ✕ (exclusive)
+  | 'gateway-or'         // BPMN: diamond + ◯ ring (inclusive)
+  | 'gateway-and'        // BPMN: diamond + ＋ (parallel)
+  | 'event-intermediate' // BPMN: double ring
+  | 'final-node'         // UML activity/state: bulls-eye (ring + solid dot)
   // common aliases
   | 'database'
   | 'stadium'
@@ -346,6 +352,15 @@ export interface NodeStructureDefinition {
    * If not specified, defaults to rectangle
    */
   shape?: ShapeConfig;
+
+  /**
+   * Where the node's caption paints. `'inside'` (default) centres it in the
+   * shape's inner rect; `'below'` paints it centred UNDER the silhouette — the
+   * Visio/BPMN convention for glyph-sized masters (event circles, gateway
+   * diamonds, connectors, fork/join bars) whose caption cannot fit inside.
+   * Carried to the node as `metadata.labelPlacement`; the renderer consumes it.
+   */
+  labelPlacement?: 'inside' | 'below';
 
   layout?: LayoutConfig;
 

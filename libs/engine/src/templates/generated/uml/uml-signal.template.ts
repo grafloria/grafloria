@@ -29,15 +29,15 @@ export const umlSignalTemplate: NodeTemplate = {
   "structure": {
     "type": "uml:signal",
     "size": {
-      "width": 100,
-      "height": 60,
+      "width": 120,
+      "height": 80,
       "minWidth": 120,
       "maxWidth": 400,
       "minHeight": 80,
       "maxHeight": 600
     },
     "shape": {
-      "type": "trapezoid",
+      "type": "rect",
       "fill": "#F8FAFC",
       "stroke": "#475569",
       "strokeWidth": 2,

@@ -152,7 +152,7 @@ import {
 
 // Node label engine: shared, link-agnostic text-block core (wrap / multi-line /
 // ellipsis / shape-fit) — the same code path link labels render through.
-import { renderTextBlock } from './text-block';
+import { renderTextBlock, wrapText } from './text-block';
 
 // Wave 5 Card 7: content-aware auto-sizing (opt-in via metadata.sizing.auto).
 import { autoSizeNode, type AutoSizeOptions } from './auto-size';
@@ -4999,6 +4999,15 @@ export class SVGRenderer implements IRenderer {
    * so the clip rect and the text share the node-local coordinate space.
    */
   private renderNodeLabel(node: NodeModel): VNode[] {
+    // OUTSIDE LABEL (Visio/BPMN convention): a glyph-sized master — an event
+    // circle, a gateway diamond, a connector dot, a fork bar — cannot carry its
+    // caption INSIDE without shearing it into garbage ("onnect" in an 18px
+    // circle). `metadata.labelPlacement: 'below'` paints the caption centred
+    // UNDER the silhouette instead. Pure paint: hit geometry, ports and the
+    // shape body are untouched.
+    if (node.getMetadata('labelPlacement') === 'below') {
+      return this.renderNodeLabelBelow(node);
+    }
     const shapeConfig = node.getMetadata('shape') || { type: 'rect' };
     const { width, height } = node.size;
     // Card 5: when the node carries a composite panel, keep the label out of the
@@ -5067,6 +5076,50 @@ export class SVGRenderer implements IRenderer {
     }
 
     return [clip, text];
+  }
+
+  /** Gap between a silhouette's bottom edge and its below-label (px). */
+  private static readonly BELOW_LABEL_GAP = 5;
+
+  /**
+   * Paint a node's caption BELOW its silhouette (`metadata.labelPlacement:
+   * 'below'`). The label is centred under the node, wraps at a width a little
+   * wider than the shape (a 36px event circle should not force one-character
+   * lines), is NEVER clipped and NEVER shrunk below the theme size — outside
+   * the silhouette there is room, so legibility wins. The text block's top edge
+   * sits {@link BELOW_LABEL_GAP} px under the node's height, so it can never
+   * straddle the silhouette edge.
+   */
+  private renderNodeLabelBelow(node: NodeModel): VNode[] {
+    const { width, height } = node.size;
+    const label = String(node.getLabel());
+    const fontSize = this.theme.typography.fontSize.md as number;
+    const lineHeight = fontSize * 1.2;
+    // Wrap width: at least ~9em so short captions stay one line under tiny
+    // glyphs, at most the node width when the node is already wide.
+    const maxWidth = Math.max(width, fontSize * 9);
+    const lines = wrapText(label, maxWidth, fontSize);
+    const blockH = lines.length * lineHeight;
+    const top = height + SVGRenderer.BELOW_LABEL_GAP;
+
+    const text = renderTextBlock({
+      text: label,
+      x: width / 2,
+      y: top + blockH / 2,
+      maxWidth,
+      align: 'middle',
+      valign: 'middle',
+      fontSize,
+      lineHeight: 1.2,
+      // No maxLines and no clipId: an outside label is never truncated and
+      // never clipped — that is its whole reason to exist.
+      nonInteractive: true,
+      className: this.config.useCSSMode ? 'diagram-label gf-label-below' : 'gf-label-below',
+      emitFontSize: !this.config.useCSSMode,
+      color: this.config.useCSSMode ? undefined : (this.theme.colors.text.primary as string),
+      fontWeight: this.config.useCSSMode ? undefined : (this.theme.typography.fontWeight.medium as number),
+    });
+    return [text];
   }
 
   private renderNodeShape(node: NodeModel, styles: any, isHovered: boolean): VNode {

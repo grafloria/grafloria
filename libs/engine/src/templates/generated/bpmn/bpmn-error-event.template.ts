@@ -28,8 +28,8 @@ export const bpmnErrorEventTemplate: NodeTemplate = {
   "structure": {
     "type": "bpmn:error-event",
     "size": {
-      "width": 120,
-      "height": 80,
+      "width": 36,
+      "height": 36,
       "minWidth": 80,
       "maxWidth": 300,
       "minHeight": 60,
@@ -42,6 +42,7 @@ export const bpmnErrorEventTemplate: NodeTemplate = {
       "strokeWidth": 2,
       "opacity": 1
     },
+    "labelPlacement": "below",
     "html": {
       "mode": "template",
       "template": "<div class=\"bpmn-error-event-content\">\n          <div class=\"node-label\">{{data.label || 'Error Event'}}</div>\n        </div>",
