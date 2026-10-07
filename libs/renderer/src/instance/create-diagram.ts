@@ -22,9 +22,7 @@ import type { GovernorState } from '../perf/quality-governor';
 import type { AnimationService } from '../services/animation.service';
 import type { SvgExportResult } from '../export/svg-export';
 import type { PdfExportResult } from '../export/pdf/pdf-export';
-import type { CustomNodeCapture } from '../export/custom-nodes';
-import { captureCustomNodeHost, stripResolvedImageWarnings } from '../export/capture-host';
-import { collectAssetUrls, fetchAssetsTiered, inlineAssets } from '../export/assets';
+import { createExportPipeline } from '../export/capture-pipeline';
 import type { VNode } from '../types/vnode.types';
 import { SVGRenderer } from '../svg/svg-renderer';
 import type { FrameCoverage } from '../svg/svg-renderer';
@@ -989,9 +987,9 @@ export function createDiagram(
   };
 
   /**
-   * The custom nodes an export with this scope will contain — the one definition of
-   * "in scope", shared by everything that has to agree on it (what gets materialized,
-   * what gets pinned, what gets waited for).
+   * Which custom nodes an export can contain — combined with the export's own scope by
+   * the pipeline, it is the one definition of "in scope", shared by everything that has
+   * to agree on it (what gets materialized, what gets pinned, what gets waited for).
    *
    * WHAT IT WILL NOT INCLUDE. An explicit {@link ViewLifecycle} freeze is skipped, and
    * that is not timidity: `SVGRenderer.render` gates every entity on
@@ -999,15 +997,8 @@ export function createDiagram(
    * Capturing its widget would put content in the file with no node beneath it, and
    * stretch the fitted viewBox to reach a node the same file does not draw.
    */
-  const exportableCustomNodes = (needed: (node: NodeModel) => boolean): NodeModel[] =>
-    model
-      .getNodes()
-      .filter(
-        (node: NodeModel) =>
-          !!node.getMetadata('useHTMLLayer') &&
-          needed(node) &&
-          !lifecycle?.isExplicitlyFrozen('node', node.id)
-      );
+  const isExportableCustomNode = (node: NodeModel): boolean =>
+    !!node.getMetadata('useHTMLLayer') && !lifecycle?.isExplicitlyFrozen('node', node.id);
 
   /**
    * FORCE-MATERIALIZE the hosts an export is about to read, and hand back the undo.
@@ -1047,7 +1038,7 @@ export function createDiagram(
    *                       between `setNodes()` and the frame it schedules — which used to
    *                       export blank widgets, and no longer does.)
    *
-   * WHAT IT WILL NOT OVERRULE is decided by `exportableCustomNodes` above — an explicit
+   * WHAT IT WILL NOT OVERRULE is decided by `isExportableCustomNode` above — an explicit
    * {@link ViewLifecycle} freeze is skipped, and it says why.
    *
    * WHAT IT CANNOT DO ON ITS OWN. `renderCustomNode` is called here and read on the next
@@ -1056,10 +1047,10 @@ export function createDiagram(
    * below exists for; the synchronous one still reports it rather than exporting a
    * silent blank.
    */
-  const materializeCustomNodes = (needed: (node: NodeModel) => boolean): (() => void) => {
+  const materializeCustomNodes = (nodes: readonly NodeModel[]): (() => void) => {
     const undo: Array<() => void> = [];
 
-    for (const node of exportableCustomNodes(needed)) {
+    for (const node of nodes) {
       if (nodeHosts.get(node.id)?.parentNode) continue; // already live — leave it alone
 
       const was = nodeHosts.has(node.id) ? 'detached' : 'absent';
@@ -1140,304 +1131,30 @@ export function createDiagram(
   };
 
   /**
-   * THE EXPORT BOUNDARY for HTML-layer nodes.
+   * THE EXPORT BOUNDARY for HTML-layer nodes — this canvas's hosts, handed to the shared
+   * pipeline in `export/capture-pipeline.ts` (which every canvas runs, so the Angular
+   * canvas captures its own HTML layer through the identical code).
    *
-   * A custom node paints into a raw host that is a SIBLING of the SVG, so the VNode
-   * tree the exporter serializes contains an empty `<g>` for it and nothing else. That
-   * is why an exported dashboard used to be a set of blank rectangles: the content was
-   * never in the tree to begin with.
-   *
-   * THIS is the only place that can fix it, because this is the only place that holds
-   * the hosts. So the DOM read happens HERE, once, and produces plain data —
-   * `exportSvg` stays pure, DOM-free and deterministic, which is a property worth
-   * strictly more than the convenience of reaching into the document from inside it.
-   *
-   * A caller's own `customNodes` always wins (including `[]`, which means "export the
-   * diagram without its widgets").
+   * Only this instance holds the hosts, the culler and the paint ledger, so what it
+   * supplies is exactly those: where each host is, how to force-mount one
+   * (`materializeCustomNodes`), which painters are still pending, what to warn about
+   * them, and the pin that keeps a waited-on host from being culled mid-capture.
    */
-  const captureCustomNodes = (needed: (node: NodeModel) => boolean): CustomNodeCapture[] => {
-    const restore = materializeCustomNodes(needed);
-    try {
-      return readHosts(false, 0);
-    } finally {
-      // `finally`: a capture that threw must not leave a board's worth of hosts mounted.
-      // (`captureCustomNodeHost` is documented never to throw, but the restore is the one
-      // thing here whose failure would be permanent, so it does not depend on that.)
-      restore();
-    }
-  };
-
-  /** The DOM read, shared by both capture paths so they cannot disagree about a host. */
-  const readHosts = (waited: boolean, timeoutMs: number): CustomNodeCapture[] => {
-    const captures: CustomNodeCapture[] = [];
-    // Model order, not Map order: an export must not depend on mount sequence, or two
-    // runs of the same board would differ in byte order.
-    for (const node of model.getNodes()) {
-      const host = nodeHosts.get(node.id);
-      if (!host) continue;
-      const capture = captureCustomNodeHost(node.id, nodeBounds(node), host);
-      // A still-painting caveat is the CAUSE and leads; the capture's own fidelity caveats
-      // (an image that PDF cannot draw, an inset shadow that was skipped) follow it. Merging
-      // rather than overwriting keeps both — a widget can be both async AND hold an image.
-      const paint = paintWarning(node.id, waited, timeoutMs);
-      const warning = [paint, capture.warning].filter(Boolean).join(' ');
-      captures.push(warning ? { ...capture, warning } : capture);
-    }
-    return captures;
-  };
-
-  /**
-   * THE ASYNC CAPTURE — the same boundary, allowed to wait for a painter that said it
-   * was not finished.
-   *
-   * THE SIGNAL IS THE PROMISE, and nothing else. A fixed sleep would be both slow (every
-   * export pays for the slowest imaginable widget) and wrong (the slowest widget is always
-   * slower than the guess, on someone's machine). `renderCustomNode` returning a promise
-   * is a contract the painter's author owns, can type, and is never wrong about — so this
-   * waits for exactly those, and returns the instant the last one settles.
-   *
-   * THE BOUND. `customNodeTimeout` (default 5s) is a safety net, never the mechanism: a
-   * painter that never settles must not hang a print job. On expiry the export takes the
-   * host as it stands — partial, or blank — and every widget it did not get to wait out is
-   * WARNED about by id. Degraded, reported, never silent.
-   *
-   * WHY THE SYNC PATH IS REUSED VERBATIM WHEN NOTHING IS PENDING. If no painter in scope
-   * has an unsettled promise, this runs materialize → read → restore with no suspension
-   * point at all, i.e. the identical sequence `exportSvgString()` performs. That makes "an
-   * all-sync board exports the same bytes through both paths" structurally true rather
-   * than merely tested — there is no second code path for it to drift into.
-   */
-  const captureCustomNodesAsync = async (
-    needed: (node: NodeModel) => boolean,
-    timeoutMs: number
-  ): Promise<CustomNodeCapture[]> => {
-    const scope = exportableCustomNodes(needed).map((node: NodeModel) => node.id);
-    for (const id of scope) pinnedHosts.add(id);
-
-    const restore = materializeCustomNodes(needed);
-    try {
-      // Only NOW is the pending set knowable: materializing runs first mounts, and a
-      // first mount is exactly where a painter announces that it is async.
-      const waits = scope
-        .map((id) => pendingPaints.get(id))
-        .filter((p): p is Promise<void> => p !== undefined);
-
-      if (waits.length === 0) return readHosts(false, timeoutMs); // ← atomic, as above
-      await settle(waits, timeoutMs);
-      return readHosts(true, timeoutMs);
-    } finally {
-      restore();
-      for (const id of scope) pinnedHosts.delete(id);
-    }
-  };
-
-  /** Wait for every tracked paint, or for the deadline — whichever comes first. */
-  const settle = async (waits: Promise<void>[], timeoutMs: number): Promise<void> => {
-    if (!(timeoutMs > 0)) return; // 0 (or nonsense) means "do not wait"; still reported
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const deadline = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, timeoutMs);
-    });
-    try {
-      // The tracked promises are wrapped never to reject, so this races two resolutions
-      // and cannot itself throw. A rejecting painter is recorded, not propagated.
-      await Promise.race([Promise.all(waits), deadline]);
-    } finally {
-      // Without this a fast export still holds the event loop open for the full deadline,
-      // which in Node keeps a process alive after the work is done.
-      if (timer !== undefined) clearTimeout(timer);
-    }
-  };
-
-  /**
-   * ONE async capture at a time.
-   *
-   * Two exports in flight would otherwise interleave their materialize/restore pairs —
-   * the first's restore tearing down a host the second is still waiting to read, which is
-   * a blank widget in a file that asked for nothing unusual. Serializing is also the
-   * cheaper answer: the second export finds the first's painters already settled.
-   */
-  let captureQueue: Promise<unknown> = Promise.resolve();
-  const serializeCapture = <T>(run: () => Promise<T>): Promise<T> => {
-    const result = captureQueue.then(run, run);
-    captureQueue = result.then(
-      () => undefined,
-      () => undefined
-    );
-    return result;
-  };
-
-  /**
-   * Which nodes this export will actually contain.
-   *
-   * Materializing is the expensive half — it runs a painter — so it is bounded by the
-   * export's own scope rather than mounting a 300-widget board to capture the three
-   * widgets `includeIds` asked for. The predicates mirror what the renderer resolves
-   * `ids` to (`SVGRenderer.selectedIds` reads exactly this `state.selected`), so what is
-   * mounted and what survives `filterCaptures` are the same set.
-   */
-  const exportNeeds = (exportOptions?: ExportOptions): ((node: NodeModel) => boolean) => {
-    if (exportOptions?.scope === 'selection') return (node) => node.state?.selected === true;
-    if (exportOptions?.includeIds === undefined) return () => true;
-    const ids = new Set(exportOptions.includeIds);
-    return (node) => ids.has(node.id);
-  };
-
-  const withCustomNodes = (exportOptions?: ExportOptions): ExportOptions => {
-    if (exportOptions?.customNodes !== undefined) return exportOptions;
-    const customNodes = captureCustomNodes(exportNeeds(exportOptions));
-    if (customNodes.length === 0) return exportOptions ?? {};
-    return { ...exportOptions, customNodes };
-  };
-
-  /** Default bound on waiting for an async painter. See ExportOptions.customNodeTimeout. */
-  const DEFAULT_CUSTOM_NODE_TIMEOUT = 5000;
-
-  const withCustomNodesAsync = async (exportOptions?: ExportOptions): Promise<ExportOptions> => {
-    // The caller's own captures win, and short-circuit the wait entirely — `customNodes:
-    // []` means "export the diagram without its widgets", which must not sit out a
-    // deadline for painters whose output was never going in the file.
-    if (exportOptions?.customNodes !== undefined) return exportOptions;
-    const customNodes = await serializeCapture(() =>
-      captureCustomNodesAsync(
-        exportNeeds(exportOptions),
-        exportOptions?.customNodeTimeout ?? DEFAULT_CUSTOM_NODE_TIMEOUT
-      )
-    );
-    if (customNodes.length === 0) return exportOptions ?? {};
-    return { ...exportOptions, customNodes };
-  };
-
-  /**
-   * EXTERNAL-URL IMAGES → embedded bytes, for the async export only.
-   *
-   * A widget's `<img src="https://…">` captures as `<image href="https://…">`, which an
-   * SVG renders online and a PDF cannot draw at all. This library is client-side: the
-   * export RUNS IN A BROWSER, and the browser can usually fetch that URL itself. So the
-   * awaited path fetches every external reference and swaps it for the `data:` URI the
-   * PDF writer already embeds as an XObject (b2854b0a1) — three tiers, see
-   * `fetchAssetsTiered`: environment fetch (same-origin / CORS-allowed), then
-   * `ExportOptions.assetFetcher` (the app's proxy), then the accurate warning.
-   *
-   * TWO KINDS OF IMAGE, ONE PASS. Widget captures hold their images as captured VNodes
-   * and are substituted here directly. But a PANEL-type diagram node (an ERD avatar, a
-   * logo — `metadata.panel.image/icon.href`) is painted by the RENDERER'S OWN tree,
-   * which is built inside the synchronous export — this layer never holds it. So the
-   * renderer enumerates that tree's URLs up front (`collectExportImageUrls` — the same
-   * `render()` the export serializes, so no drift), the fetch covers the UNION of both
-   * kinds (one fetch per URL, however many widgets and panels share it), and the
-   * resolved map rides down `ExportOptions.resolvedAssets` for the sync path's pure
-   * `inlineAssets` substitution. A URL the caller pre-resolved is trusted, never fetched.
-   *
-   * THE WARNING LEDGER IS RECONCILED, both ways. A capture whose external images were
-   * all embedded has its capture-time "EXTERNAL URL" caveat STRIPPED — after the fetch
-   * it asserts a problem that no longer exists. A URL every tier failed on keeps the
-   * reference (broken-but-visible beats silently blanked, the `inlineAssets` rule) and
-   * gains a warning naming the URL, the reason, and the escape hatches — a tree image's
-   * failure reaches `onWarnings` the same way a widget image's reaches the capture.
-   *
-   * `exportSvgString()` / `exportPdf()` stay synchronous and network-free: they fetch
-   * nothing, and honour only a `resolvedAssets` map the caller supplies.
-   */
-  const withInlinedImages = async (exportOptions: ExportOptions): Promise<ExportOptions> => {
-    const captures = exportOptions.customNodes ?? [];
-
-    // Collect the union — widget-capture URLs first, then the renderer's tree — each
-    // deduplicated in a STABLE order (model order, then first appearance) for
-    // determinism. One URL, one fetch, no matter which kinds reference it.
-    const roots = new Map<CustomNodeCapture, VNode>();
-    const urls: string[] = [];
-    const seen = new Set<string>();
-    const add = (found: readonly string[]): void => {
-      for (const url of found) {
-        if (!seen.has(url)) {
-          seen.add(url);
-          urls.push(url);
-        }
-      }
-    };
-    for (const capture of captures) {
-      if (!capture.content || capture.content.length === 0) continue;
-      const root: VNode = { type: 'g', props: {}, children: [...capture.content] };
-      const found = collectAssetUrls(root);
-      if (found.length === 0) continue;
-      roots.set(capture, root);
-      add(found);
-    }
-    const treeUrls = renderer.collectExportImageUrls(exportOptions);
-    add(treeUrls);
-
-    if (urls.length === 0) return exportOptions; // nothing external — identical options out
-
-    // A URL the caller already resolved is bytes we hold — fetching it again would be
-    // both wasteful and a trust inversion (their bytes are the ones they want in the file).
-    const preResolved = exportOptions.resolvedAssets;
-    const toFetch = preResolved ? urls.filter((url) => !preResolved.has(url)) : urls;
-
-    const { byUrl, failures } =
-      toFetch.length > 0
-        ? await fetchAssetsTiered(toFetch, {
-            fetcher: exportOptions.assetFetcher,
-            maxBytes: exportOptions.assetMaxBytes,
-            timeoutMs: exportOptions.assetTimeout,
-          })
-        : { byUrl: new Map<string, string>(), failures: new Map<string, string>() };
-    if (preResolved) {
-      for (const [url, uri] of preResolved) byUrl.set(url, uri);
-    }
-
-    const customNodes = captures.map((capture): CustomNodeCapture => {
-      const root = roots.get(capture);
-      if (!root) return capture;
-
-      const inlined = inlineAssets(root, byUrl);
-      const remaining = collectAssetUrls(inlined);
-
-      let warning = capture.warning;
-      if (remaining.length === 0) {
-        // Every external image is now bytes in the file — the capture-time caveat
-        // (written for the sync paths, which cannot fetch) is no longer true here.
-        warning = stripResolvedImageWarnings(warning);
-      } else {
-        const residue = remaining
-          .map(
-            (url) =>
-              `widget image "${url}" could not be embedded: ${failures.get(url) ?? 'unknown failure'}. ` +
-              'The reference is left in the file (an SVG still renders it online); it will be ' +
-              'MISSING from a PDF export.'
-          )
-          .join(' ');
-        warning = [warning, residue].filter(Boolean).join(' ');
-      }
-
-      return { ...capture, content: inlined.children ?? [], warning };
-    });
-
-    const out: ExportOptions = { ...exportOptions };
-    if (exportOptions.customNodes !== undefined) out.customNodes = customNodes;
-    // The resolved map rides DOWN the same options object: the sync export applies it
-    // to the renderer's tree with the pure `inlineAssets` — which is how a panel image
-    // becomes bytes without the sync path ever fetching.
-    if (byUrl.size > 0) out.resolvedAssets = byUrl;
-
-    // A TREE image's failure has no capture to carry its warning, so it goes to the
-    // export's own fidelity channel. Same honesty rule as the widget residue: name the
-    // URL, the reason, and (via the tier-3 text) both escape hatches.
-    const treeResidue = treeUrls
-      .filter((url) => !byUrl.has(url))
-      .map(
-        (url) =>
-          `diagram image "${url}" could not be embedded: ${failures.get(url) ?? 'unknown failure'}. ` +
-          'The reference is left in the file (an SVG still renders it online); it will be ' +
-          'MISSING from a PDF export.'
-      );
-    if (treeResidue.length > 0) {
-      const original = exportOptions.onWarnings;
-      out.onWarnings = (warnings) => original?.([...warnings, ...treeResidue]);
-    }
-
-    return out;
-  };
+  const exportPipeline = createExportPipeline(renderer, {
+    getNodes: () => model.getNodes(),
+    getHost: (id) => nodeHosts.get(id),
+    isExportable: isExportableCustomNode,
+    bounds: nodeBounds,
+    materialize: materializeCustomNodes,
+    pendingPaint: (id) => pendingPaints.get(id),
+    paintWarning,
+    pin: (ids) => {
+      for (const id of ids) pinnedHosts.add(id);
+      return () => {
+        for (const id of ids) pinnedHosts.delete(id);
+      };
+    },
+  });
 
   // -- the frame --------------------------------------------------------------
   let lastViewportKey = '';
@@ -1824,10 +1541,9 @@ export function createDiagram(
     // needs no new public method: this is where waiting for one belongs. The two
     // synchronous entry points below keep their contract exactly, and report an
     // unfinished painter rather than pretending to have read it.
-    export: async (format, exportOptions) =>
-      renderer.export(format, await withInlinedImages(await withCustomNodesAsync(exportOptions))),
-    exportSvgString: (exportOptions) => renderer.exportSvgString(withCustomNodes(exportOptions)),
-    exportPdf: (exportOptions) => renderer.exportPdf(withCustomNodes(exportOptions)),
+    export: (format, exportOptions) => exportPipeline.export(format, exportOptions),
+    exportSvgString: (exportOptions) => exportPipeline.exportSvgString(exportOptions),
+    exportPdf: (exportOptions) => exportPipeline.exportPdf(exportOptions),
 
     exportText: (textOptions) => exportDiagramText(model, textOptions),
     loadText: (text, textOptions) => {

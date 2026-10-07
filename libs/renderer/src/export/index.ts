@@ -19,6 +19,7 @@ export * from './assets';
 export * from './svg-export';
 export * from './custom-nodes';
 export * from './capture-host';
+export * from './capture-pipeline';
 export * from './raster';
 export * from './node-raster';
 export * from './pagination';
