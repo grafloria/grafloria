@@ -123,11 +123,17 @@ defineDemo({
     let mainThreadTicks = 0;
     const ticker = setInterval(() => { mainThreadTicks++; }, 4);
 
+    // Cancel once the worker has REPORTED real progress (1% of the run), not after a
+    // fixed delay: 60 ms was too late on a fast runner (4000 iterations done, nothing
+    // to cancel) and too early on a starved one (the run not yet started).
     const controller = new AbortController();
+    let underWay;
+    const started = new Promise((r) => (underWay = r));
     const running = engine.layout('force', {
       seed: 0x5eed, iterations: 4000, threshold: 0, sliceMs: 0, signal: controller.signal,
+      onProgress: (p) => { if (p.progress >= 0.01) underWay(); },
     });
-    await new Promise((r) => setTimeout(r, 60)); // let the worker get genuinely under way
+    await Promise.race([started, new Promise((r) => setTimeout(r, 2000))]);
     controller.abort();
     const cancelled = await running;
     clearInterval(ticker);
