@@ -83,6 +83,17 @@ export interface DomEventBinderHost {
   requestRender(): void;
   /** Emit a public diagram event (`node:click`, `connect`, …). */
   emit(event: string, payload: unknown): void;
+  /**
+   * Optional: bracket a USER GESTURE so the host can coalesce its selection
+   * events. The binder opens a batch around every DOM event it handles, and holds
+   * one from a press to its release (a marquee clears on the press and selects on
+   * the release). Batches nest; a host that implements these emits ONE
+   * `selection:change`, with the final selection, when the outermost one closes —
+   * instead of one per model mutation plus the binder's own (which fired stale,
+   * mid-gesture events: `{n:1,e:1}` then `{n:1,e:0}` for one click).
+   */
+  beginSelectionBatch?(): void;
+  endSelectionBatch?(): void;
 }
 
 export interface DomEventBinderOptions {
@@ -244,11 +255,20 @@ export class DomEventBinder {
   /** The container's own touch-action, restored on detach. */
   private previousTouchAction: string | null = null;
 
-  private readonly boundPointerDown = (e: PointerEvent) => this.onPointerDown(e);
-  private readonly boundPointerMove = (e: PointerEvent) => this.onPointerMove(e);
-  private readonly boundPointerUp = (e: PointerEvent) => this.onPointerUp(e);
-  private readonly boundPointerCancel = (e: PointerEvent) => this.onPointerCancel(e);
-  private readonly boundContextMenu = (e: MouseEvent) => this.onContextMenu(e);
+  // Every DOM entry point runs inside a selection batch (see
+  // DomEventBinderHost.beginSelectionBatch); a press opens a hold its release closes.
+  private readonly boundPointerDown = (e: PointerEvent) =>
+    this.inSelectionBatch(() => { this.holdPress(); this.onPointerDown(e); });
+  private readonly boundPointerMove = (e: PointerEvent) => this.inSelectionBatch(() => this.onPointerMove(e));
+  private readonly boundPointerUp = (e: PointerEvent) => {
+    this.inSelectionBatch(() => this.onPointerUp(e));
+    this.releasePress();
+  };
+  private readonly boundPointerCancel = (e: PointerEvent) => {
+    this.inSelectionBatch(() => this.onPointerCancel(e));
+    this.releasePress();
+  };
+  private readonly boundContextMenu = (e: MouseEvent) => this.inSelectionBatch(() => this.onContextMenu(e));
   /**
    * Wave 6 — Card 5. The registered tool that CLAIMED the current gesture, if
    * any. Exactly one tool owns a gesture end-to-end (the same single-active-tool
@@ -293,20 +313,51 @@ export class DomEventBinder {
   // very path that replaces these.
   private readonly boundMouseDown = (e: MouseEvent) => {
     if (this.sawPointerEvent) return;
-    this.onMouseDown(e);
+    this.inSelectionBatch(() => { this.holdPress(); this.onMouseDown(e); });
   };
   private readonly boundMouseMove = (e: MouseEvent) => {
     if (this.sawPointerEvent) return;
-    this.onMouseMove(e);
+    this.inSelectionBatch(() => this.onMouseMove(e));
   };
   private readonly boundMouseUp = (e: MouseEvent) => {
     if (this.sawPointerEvent) return;
-    this.onMouseUp(e);
+    this.inSelectionBatch(() => this.onMouseUp(e));
+    this.releasePress();
   };
-  private readonly boundMouseLeave = () => this.onMouseLeave();
-  private readonly boundDblClick = (e: MouseEvent) => this.onDoubleClick(e);
-  private readonly boundKeyDown = (e: KeyboardEvent) => this.onKeyDown(e);
-  private readonly boundKeyUp = (e: KeyboardEvent) => this.onKeyUp(e);
+  private readonly boundMouseLeave = () => {
+    this.inSelectionBatch(() => this.onMouseLeave());
+    // The release may never reach a container the pointer has left.
+    this.releasePress();
+  };
+  private readonly boundDblClick = (e: MouseEvent) => this.inSelectionBatch(() => this.onDoubleClick(e));
+  private readonly boundKeyDown = (e: KeyboardEvent) => this.inSelectionBatch(() => this.onKeyDown(e));
+  private readonly boundKeyUp = (e: KeyboardEvent) => this.inSelectionBatch(() => this.onKeyUp(e));
+
+  /** True while a press holds a selection batch open until its release. */
+  private pressHeld = false;
+
+  /** Run one DOM event's handling inside a selection batch (host permitting). */
+  private inSelectionBatch(run: () => void): void {
+    this.host.beginSelectionBatch?.();
+    try {
+      run();
+    } finally {
+      this.host.endSelectionBatch?.();
+    }
+  }
+
+  /** A press opens a batch that lasts until its release (or the pointer leaves). */
+  private holdPress(): void {
+    if (this.pressHeld) return;
+    this.pressHeld = true;
+    this.host.beginSelectionBatch?.();
+  }
+
+  private releasePress(): void {
+    if (!this.pressHeld) return;
+    this.pressHeld = false;
+    this.host.endSelectionBatch?.();
+  }
 
   constructor(
     private readonly container: HTMLElement,
@@ -413,6 +464,8 @@ export class DomEventBinder {
   detach(): void {
     if (!this.attached) return;
     this.attached = false;
+    // A press still held open must not leave the host batching forever.
+    this.releasePress();
 
     this.container.removeEventListener('wheel', this.boundWheel);
     this.container.removeEventListener('pointerdown', this.boundPointerDown);
@@ -1487,20 +1540,27 @@ export class DomEventBinder {
         // throwing exactly that way).
         const nodeIds = selectedNodes.map((n: NodeModel) => n.id);
         const linkId = selectedLink?.id;
+        // The deletes land after the key event's batch has closed: hold one
+        // across them, so the whole Delete is still ONE selection:change.
+        this.host.beginSelectionBatch?.();
         void (async () => {
           const cm = engine.commandManager;
           const many = nodeIds.length + (linkId ? 1 : 0) > 1;
-          if (many) cm.beginBatch();
           try {
-            if (linkId) await engine.removeLink(linkId);
-            for (const id of nodeIds) await engine.removeNode(id);
+            if (many) cm.beginBatch();
+            try {
+              if (linkId) await engine.removeLink(linkId);
+              for (const id of nodeIds) await engine.removeNode(id);
+            } finally {
+              if (many) await cm.endBatch('Delete Selection');
+            }
+            this.host.requestRender();
+            if (nodeIds.length > 0) this.emitNodesChange();
+            if (linkId) this.emitEdgesChange();
+            this.emitSelectionChange();
           } finally {
-            if (many) await cm.endBatch('Delete Selection');
+            this.host.endSelectionBatch?.();
           }
-          this.host.requestRender();
-          if (nodeIds.length > 0) this.emitNodesChange();
-          if (linkId) this.emitEdgesChange();
-          this.emitSelectionChange();
         })();
       }
       return;

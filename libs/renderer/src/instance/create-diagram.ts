@@ -672,6 +672,32 @@ export function createDiagram(
     for (const listener of [...set]) (listener as (p: unknown) => void)(payload);
   };
 
+  // -- selection:change: ONE per gesture, carrying the final selection ---------
+  // Two channels announce a selection change: the model's `selection:changed`
+  // (one per mutation) and the event binder's own emit at the end of a gesture.
+  // Both used to reach listeners, so one click fired twice — and the first was
+  // STALE: `selectNode` fires the model event before the binder deselects the
+  // edge that was selected ({n:1,e:1} then {n:1,e:0}). Every framework binding
+  // forwards these, so React/Vue/Qwik selection callbacks fired twice per click.
+  //
+  // Now both go through one gate. While the binder is handling a gesture (it
+  // brackets each DOM event, and holds a press until its release) an emission is
+  // only OWED; it is paid once, with the selection as it then stands, when the
+  // outermost batch closes. Outside any gesture — selectNode()/clearSelection()
+  // from code — it emits immediately, as it always did.
+  let selectionBatchDepth = 0;
+  let selectionOwed = false;
+  const emitSelectionNow = (): void => {
+    emit('selection:change', {
+      nodes: model.getSelectedNodes(),
+      edges: model.getLinks().filter((l: LinkModel) => l.state === 'selected'),
+    });
+  };
+  const announceSelection = (): void => {
+    if (selectionBatchDepth > 0) selectionOwed = true;
+    else emitSelectionNow();
+  };
+
   // -- comments ---------------------------------------------------------------
   // The overlay hooks the renderer's comment source, so pins render inside the
   // VNode tree (they survive export and pan/zoom for free).
@@ -710,7 +736,20 @@ export function createDiagram(
       interaction,
       getRect,
       requestRender: () => scheduler.schedule(),
-      emit,
+      // The binder's selection:change is the same announcement as the model's:
+      // route it through the gate (its payload is re-read at emit time).
+      emit: (event, payload) => (event === 'selection:change' ? announceSelection() : emit(event, payload)),
+      beginSelectionBatch: () => {
+        selectionBatchDepth++;
+      },
+      endSelectionBatch: () => {
+        if (selectionBatchDepth === 0) return;
+        selectionBatchDepth--;
+        if (selectionBatchDepth === 0 && selectionOwed) {
+          selectionOwed = false;
+          emitSelectionNow();
+        }
+      },
     },
     options
   );
@@ -1663,10 +1702,7 @@ export function createDiagram(
   }
   onModel('selection:changed', () => {
     scheduler.schedule();
-    emit('selection:change', {
-      nodes: model.getSelectedNodes(),
-      edges: model.getLinks().filter((l: LinkModel) => l.state === 'selected'),
-    });
+    announceSelection();
   });
 
   unsubs.push(
