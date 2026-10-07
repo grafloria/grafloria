@@ -7924,11 +7924,21 @@ export class SVGRenderer implements IRenderer {
     // which beats it. `stroke` is ALSO kept as a prop for consumers that read
     // props.stroke (and for Canvas parity). Only properties a layer actually set
     // are emitted, so untouched props still fall back to the theme.
+    // `animation.duration` (ms) was in the type and ignored. Inline, it beats the
+    // `speed` preset classes; the reduced-motion / performance / battery rules are
+    // `!important` and still override it.
+    const animation = link.style.animation;
+    const animationMs =
+      animation && animation.type !== 'none' &&
+      typeof animation.duration === 'number' && Number.isFinite(animation.duration) && animation.duration > 0
+        ? animation.duration
+        : undefined;
     const inlineStyle = [
       resolvedStroke !== undefined ? `stroke: ${resolvedStroke}` : '',
       style.strokeWidth !== undefined ? `stroke-width: ${style.strokeWidth}` : '',
       style.strokeDasharray !== undefined ? `stroke-dasharray: ${style.strokeDasharray}` : '',
       style.opacity !== undefined ? `opacity: ${style.opacity}` : '',
+      animationMs !== undefined ? `animation-duration: ${animationMs}ms` : '',
     ].filter(Boolean).join('; ');
 
     // …but the PROP becomes an ATTRIBUTE (`stroke="…"`), and an attribute cannot
