@@ -98,6 +98,14 @@ export interface GrafloriaLayoutRequest {
 }
 import {
   SVGRenderer,
+  // Defect #29: the export pipeline (custom-node capture + image inlining) the JS canvas
+  // runs, bound here to THIS canvas's own HTML node layer.
+  createExportPipeline,
+  type CustomNodeHostSource,
+  type ExportPipeline,
+  type ExportOptions,
+  type SvgExportResult,
+  type PdfExportResult,
   LIGHT_THEME,
   type Theme,
   type Rectangle,
@@ -544,22 +552,89 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   // --- Angular-native export / persistence -----------------------------------
 
-  /** Async export — the full pipeline, including async custom-node capture. */
-  exportDiagram(format: 'svg' | 'png' | 'jpeg' | 'webp' | 'pdf' = 'svg', options: any = {}): Promise<string> {
-    this.assertRenderer();
-    return this.renderer!.export(format as any, options);
+  /**
+   * Async export — the full pipeline, the same one `createDiagram().export()` runs.
+   *
+   * Every custom node in scope (an `<ng-template grafloriaNode>` card, a registered
+   * component, `custom: true`) is captured from this canvas's HTML node layer into the
+   * file, and every external image — in a card or on a panel node — is fetched and
+   * embedded as a `data:` URI (the environment's fetch, then `options.assetFetcher`; a
+   * URL neither can fetch stays a link and is reported through `options.onWarnings`).
+   * Pass `customNodes` yourself to override the capture (`[]` = no widgets).
+   * Resolves to the SVG text, or a `data:` URL for 'png' | 'jpeg' | 'webp' | 'pdf'.
+   */
+  exportDiagram(
+    format: 'svg' | 'png' | 'jpeg' | 'webp' | 'pdf' = 'svg',
+    options: ExportOptions = {}
+  ): Promise<string> {
+    return this.exportPipeline().export(format, options);
   }
 
-  /** Synchronous SVG string export. */
-  exportSvg(options: any = {}): any {
-    this.assertRenderer();
-    return this.renderer!.exportSvgString(options);
+  /**
+   * Synchronous SVG export. Custom nodes are captured from the HTML node layer as they
+   * stand now; NOTHING is fetched, so an external image stays a URL (with a warning) —
+   * use `await exportDiagram('svg')` to embed it, or pass `options.resolvedAssets`.
+   */
+  exportSvg(options: ExportOptions = {}): SvgExportResult {
+    return this.exportPipeline().exportSvgString(options);
   }
 
-  /** Synchronous vector-PDF export. */
-  exportPdf(options: any = {}): any {
+  /**
+   * Synchronous vector-PDF export. Custom nodes are captured as they stand now; nothing
+   * is fetched, so an external image is MISSING from the PDF (and reported in
+   * `warnings`) — use `await exportDiagram('pdf')` to embed it.
+   */
+  exportPdf(options: ExportOptions = {}): PdfExportResult {
+    return this.exportPipeline().exportPdf(options);
+  }
+
+  /**
+   * THIS canvas's custom-node hosts, as the shared export pipeline reads them.
+   *
+   * A host is the `.html-node-wrapper` the template stamps for a node in the HTML layer.
+   * They are always in the document (this canvas does not cull), so the only
+   * "materializing" is making sure the layer is current: a node added since the last
+   * frame has no wrapper yet, and one change-detection pass gives it one.
+   */
+  private readonly customNodeHosts: CustomNodeHostSource = {
+    getNodes: () => this.eng?.getDiagram()?.getNodes() ?? [],
+    getHost: (id) => {
+      const layer = this.htmlLayerRef?.nativeElement;
+      if (!layer) return undefined;
+      for (const child of Array.from(layer.children)) {
+        if (child.getAttribute('data-node-id') === id) return child as HTMLElement;
+      }
+      return undefined;
+    },
+    // The SAME world rect the wrapper is laid out at (getNodeX/getNodeY).
+    bounds: (node) => ({
+      x: this.getAbsoluteX(node),
+      y: this.getAbsoluteY(node),
+      width: node.size?.width ?? 0,
+      height: node.size?.height ?? 0,
+    }),
+    materialize: (nodes) => {
+      if (nodes.some((node) => !this.customNodeHosts.getHost(node.id)) && !this.destroyed) {
+        this.renderHTMLNodes();
+        this.cdr.detectChanges();
+      }
+      return () => undefined; // nothing was mounted that the canvas would not keep
+    },
+  };
+
+  private exportPipelineState?: { renderer: SVGRenderer; pipeline: ExportPipeline };
+
+  /** The pipeline bound to the CURRENT renderer (an engine swap creates a new one). */
+  private exportPipeline(): ExportPipeline {
     this.assertRenderer();
-    return this.renderer!.exportPdf(options);
+    const renderer = this.renderer!;
+    if (this.exportPipelineState?.renderer !== renderer) {
+      this.exportPipelineState = {
+        renderer,
+        pipeline: createExportPipeline(renderer, this.customNodeHosts),
+      };
+    }
+    return this.exportPipelineState.pipeline;
   }
 
   /** Serialize the current diagram — feed the result back to `loadSnapshot`. */

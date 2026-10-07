@@ -278,8 +278,16 @@ const px = (value: string): number => {
   return Number.isFinite(v) ? v : 0;
 };
 
+/**
+ * The opt-out: an element marked `data-grafloria-export="ignore"` is on screen but not in
+ * the file — interaction chrome a canvas draws inside a host (the Angular canvas's port
+ * handles), or a card's own buttons. Its whole subtree is skipped.
+ */
+export const EXPORT_IGNORE_ATTRIBUTE = 'data-grafloria-export';
+
 function walk(el: El, ctx: WalkContext, sink: VNode[]): void {
   if (ctx.budget-- <= 0) return;
+  if (el.getAttribute(EXPORT_IGNORE_ATTRIBUTE) === 'ignore') return;
 
   const style = ctx.win.getComputedStyle(el);
   if (style['display'] === 'none' || style['visibility'] === 'hidden') return;

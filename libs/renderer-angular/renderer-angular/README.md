@@ -83,9 +83,20 @@ so user drags are not fought. Re-run on demand with `applyLayout()`; listen via
 ## Export & persistence
 
 ```ts
-canvas().exportSvg();                  // SVG string, synchronous
-canvas().exportPdf();                  // vector PDF, synchronous
-await canvas().exportDiagram('png');   // full async pipeline
+canvas().exportSvg();                  // { svg, warnings }, synchronous
+canvas().exportPdf();                  // { pdf, warnings }, synchronous vector PDF
+await canvas().exportDiagram('png');   // full async pipeline → data: URL
+```
+
+All three include your custom nodes (`ng-template grafloriaNode` cards and
+registered components), captured from the canvas's HTML layer. Only
+`exportDiagram()` fetches external images and embeds them as `data:` URIs (pass
+`assetFetcher` for a server that refuses CORS); the synchronous two never touch
+the network, so an external image stays a link there and is reported in
+`warnings`. Mark any element in a card `data-grafloria-export="ignore"` to keep
+it on screen but out of the file.
+
+```ts
 const doc = canvas().snapshot();       // serialize …
 canvas().loadSnapshot(doc);            // … and restore
 ```

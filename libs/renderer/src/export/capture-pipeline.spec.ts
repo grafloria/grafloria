@@ -92,6 +92,18 @@ describe('capture-pipeline — the export pipeline over any canvas’s hosts', (
     expect(captures[0].rect).toEqual({ x: 200, y: 0, width: 160, height: 80 });
   });
 
+  it('an element marked data-grafloria-export="ignore" stays out of the capture', () => {
+    const chrome = document.createElement('div');
+    chrome.setAttribute('data-grafloria-export', 'ignore');
+    chrome.style.background = 'rgb(1, 2, 3)';
+    chrome.getBoundingClientRect = rect(8, 8);
+    hosts.get('b')!.appendChild(chrome);
+    expect(JSON.stringify(captureCustomNodes(source))).not.toContain('rgb(1, 2, 3)');
+
+    chrome.removeAttribute('data-grafloria-export'); // control: unmarked, it IS captured
+    expect(JSON.stringify(captureCustomNodes(source))).toContain('rgb(1, 2, 3)');
+  });
+
   it('materializes only the in-scope exportable nodes, and always restores', () => {
     const asked: string[][] = [];
     let restored = 0;
