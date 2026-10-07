@@ -24,7 +24,7 @@
  */
 import { ensureDiagramKitStyles } from './styles';
 import { bindRowInteractions } from './rows';
-import { classCardContent, classAutoHeight, classAutoWidth } from './card';
+import { classCardContent, classAutoHeight, classAutoWidth, cardHtml } from './card';
 import { bindCardEditing } from './editing';
 
 
@@ -151,7 +151,7 @@ export function umlDiagram(options: UmlDiagramOptions): {
       // interactive: members are real DOM targets (hover, row selection, inline
       // editing); node drag/select stay geometric in the binder.
       metadata: {
-        html: { content: classCardContent(cls, editable), interactive: true },
+        html: cardHtml(classCardContent(cls, editable)),
         kitClass: cls,
         kitEditable: editable,
         // Opt-out only — see the same stamp in er.ts.

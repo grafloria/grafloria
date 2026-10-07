@@ -71,9 +71,9 @@ describe('erDiagram — entities', () => {
     expect(text).toContain('axk-entity');
   });
 
-  it('sizes the card from its column count (slack covers wrapper padding + borders)', () => {
+  it("sizes the card from its column count (slack covers the card's borders; no wrapper padding)", () => {
     const spec = erDiagram({ entities: [CUSTOMER] });
-    expect(findNode(spec, 'CUSTOMER').size.height).toBe(ER_HEAD_H + 3 * ER_ROW_H + 9);
+    expect(findNode(spec, 'CUSTOMER').size.height).toBe(ER_HEAD_H + 3 * ER_ROW_H + 1);
   });
 
   it("hides the node's own rectangle so the card's border is the only border", () => {

@@ -41,6 +41,7 @@ import {
   erRowCenterY,
   rowIndexFromY,
   matchColumns,
+  cardHtml,
   type HtmlNode,
 } from './card';
 
@@ -196,7 +197,7 @@ class UpdateCardCommand extends Command {
       }
     }
 
-    node.setMetadata('html', { content: result.content, interactive: true });
+    node.setMetadata('html', cardHtml(result.content));
     node.setMetadata(kitKey, result.newKit);
     node.setSize(newWidth, result.height);
     if (this.before) this.before.links = removedLinks;

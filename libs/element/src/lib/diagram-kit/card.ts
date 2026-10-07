@@ -22,12 +22,24 @@ import type { UmlClassSpec } from './uml';
 export const ER_ROW_H = 25;
 export const ER_HEAD_H = 28;
 /**
- * Auto-height slack: the html wrapper's padding (8px) + the card's 1px
- * top/bottom borders + the head rendering slightly under ER_HEAD_H. Measured
- * live — with less, an auto-sized card overflows a few px, and the wheel
- * delegation would steal that much scroll on EVERY card.
+ * The html wrapper's padding around a card: none. The card's border is the
+ * node's bounds, so ports, the markers that touch a node's edge (the crow's
+ * foot) and the selection sit on the border the reader sees.
  */
-export const ER_BORDER_SLACK = 9;
+export const CARD_WRAPPER_PADDING = 0;
+
+/** The `metadata.html` every ER/UML card is stamped with (builders, edits, palette drops). */
+export function cardHtml(content: unknown): { content: unknown; interactive: true; padding: number } {
+  return { content, interactive: true, padding: CARD_WRAPPER_PADDING };
+}
+
+/**
+ * Auto-height slack: the card's 1px top/bottom borders, less the head
+ * rendering 1px under ER_HEAD_H. With less, an auto-sized card overflows by a
+ * pixel or two, and the wheel delegation would steal that much scroll on EVERY
+ * card.
+ */
+export const ER_BORDER_SLACK = 1;
 /** The editable "add column" affordance row's height (excluded from row math). */
 export const ER_ADD_H = 26;
 
@@ -124,13 +136,12 @@ export const ER_TYPE_MIN_W = 52;
 /** `.axk-col-del`'s `width: 14px` (present only when editable). */
 export const CARD_DEL_W = 14;
 /**
- * Horizontal counterpart of ER_BORDER_SLACK: the html wrapper's padding
- * (`html.padding ?? 4`, so 8px across) plus the card's own 1px left/right
- * borders. The node's width is the OUTER box; the row only ever gets what is
- * left after these, so a derived width that ignored them came out 10px short
- * and truncated by a hair — which is exactly how it was first measured.
+ * Horizontal counterpart of ER_BORDER_SLACK: the card's own 1px left/right
+ * borders. The node's width is the card's OUTER box; the row only ever gets
+ * what is left inside the borders, so a derived width that ignored them would
+ * come out short and truncate by a hair.
  */
-export const CARD_SLACK_X = 10;
+export const CARD_SLACK_X = 2;
 /** Defaults, and the floor every derived width is taken against. */
 export const ER_DEFAULT_WIDTH = 190;
 export const UML_DEFAULT_WIDTH = 200;
@@ -306,7 +317,7 @@ export function classAutoHeight(cls: UmlClassSpec, editable = false): number {
     (cls.stereotype ? UML_STEREO_H : 0) +
     (attrs.length + methods.length + addRows) * UML_LINE_H +
     UML_PAD * 2 +
-    12
+    4
   );
 }
 

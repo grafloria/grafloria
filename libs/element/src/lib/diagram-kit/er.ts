@@ -29,6 +29,7 @@ import {
   erRowCenterY,
   ER_ROW_H,
   ER_HEAD_H,
+  cardHtml,
 } from './card';
 import { bindCardEditing } from './editing';
 
@@ -220,7 +221,7 @@ export function erDiagram(options: ErDiagramOptions): {
     // interactive: rows are real DOM targets (hover, row selection, inline
     // editing) — node drag/select stay geometric in the binder.
     metadata: {
-      html: { content: entityCardContent(entity, editable), interactive: true },
+      html: cardHtml(entityCardContent(entity, editable)),
       kitEntity: entity,
       kitEditable: editable,
       // Only the OPT-OUT is recorded. A loader has to know not to re-bind row

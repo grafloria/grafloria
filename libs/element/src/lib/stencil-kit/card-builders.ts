@@ -22,6 +22,7 @@ import {
   bindCardEditing,
   ensureDiagramKitStyles,
 } from '../diagram-kit';
+import { cardHtml } from '../diagram-kit/card';
 import { registerStencilBuilder, type StencilBuildContext } from './builders';
 
 /** Cards are transparent: the HTML body IS the card, the shape must not paint. */
@@ -45,7 +46,7 @@ function mountCard(
   });
   // The SAME metadata shape erDiagram()/umlDiagram() stamp — that is what the
   // row and editing layers key off.
-  node.setMetadata('html', { content: opts.content, interactive: true });
+  node.setMetadata('html', cardHtml(opts.content));
   node.setMetadata(opts.metaKey, opts.spec);
   node.setMetadata('kitEditable', true);
   node.setMetadata('shape', CARD_SHAPE);
