@@ -22,11 +22,13 @@
 import {
   defineComponent,
   h,
+  isProxy,
   onBeforeUnmount,
   onMounted,
   ref,
   render as vueRender,
   shallowRef,
+  toRaw,
   watch,
   type PropType,
   type Slots,
@@ -36,6 +38,8 @@ import { inject } from 'vue';
 import { createSyncSession } from '@grafloria/engine';
 import type { NodeModel, LinkModel, GroupModel, DiagramEngine, SyncAdapter, SyncTransport } from '@grafloria/engine';
 import { GRAFLORIA_STORE, type SelectionChange } from './composables';
+import { watchControlledList } from './controlled-list';
+import { specKey } from './spec-key';
 
 /** The uniform collab contract every Grafloria wrapper shares. */
 export interface GrafloriaCollabOptions {
@@ -76,6 +80,15 @@ export interface NodeSlotProps {
   data: Record<string, unknown>;
   engine: DiagramEngine;
 }
+
+/** A plain spec object, not a live model the reconciler takes as it is. */
+const isPlainSpec = (value: unknown): boolean => {
+  const proto = value !== null && typeof value === 'object' ? Object.getPrototypeOf(value) : undefined;
+  return proto === Object.prototype || proto === null;
+};
+
+/** The array's items as plain data, so no reactive proxy ends up inside the canvas. */
+const rawList = <T>(list: readonly T[] | undefined): T[] | undefined => (list ? [...toRaw(list)] : undefined);
 
 interface MountedNode {
   node: NodeModel;
@@ -186,6 +199,9 @@ export const GrafloriaFlow = defineComponent({
     const providedStore = inject(GRAFLORIA_STORE, undefined);
     const mounted = new Map<string, MountedNode>();
     const offs: Array<() => void> = [];
+    /** The arrays this canvas last emitted through `update:nodes` / `update:edges`. */
+    let emittedNodes: readonly NodeSpec[] | null = null;
+    let emittedEdges: readonly EdgeSpec[] | null = null;
 
     const slotFor = (node: NodeModel): ((p: NodeSlotProps) => VNode[]) | undefined => {
       const type = (node.type ?? (node as any).getMetadata?.('type')) as string | undefined;
@@ -201,7 +217,7 @@ export const GrafloriaFlow = defineComponent({
      */
     const withSlotCustom = (specs: NodeSpec[] | undefined): NodeSpec[] | undefined =>
       specs?.map((spec) =>
-        spec.custom === undefined && spec.type && slots[`node-${spec.type}`]
+        isPlainSpec(spec) && spec.custom === undefined && spec.type && slots[`node-${spec.type}`]
           ? { ...spec, custom: true }
           : spec
       );
@@ -255,10 +271,10 @@ export const GrafloriaFlow = defineComponent({
       if (!el) return;
 
       const inst = createDiagram(el, {
-        nodes: withSlotCustom(props.nodes ?? props.defaultNodes) ?? [],
-        edges: props.edges ?? props.defaultEdges ?? [],
-        groups: props.groups ?? props.defaultGroups,
-        theme: props.theme,
+        nodes: withSlotCustom(rawList(props.nodes ?? props.defaultNodes)) ?? [],
+        edges: rawList(props.edges ?? props.defaultEdges) ?? [],
+        groups: rawList(props.groups ?? props.defaultGroups),
+        theme: props.theme && toRaw(props.theme),
         colorMode: props.colorMode,
         fitView: props.fitView,
         enablePan: props.enablePan,
@@ -289,10 +305,16 @@ export const GrafloriaFlow = defineComponent({
       offs.push(
         inst.on('nodes:change', ({ nodes: next }: { nodes: NodeModel[] }) => {
           repaintSlots();
-          if (props.nodes !== undefined) emit('update:nodes', next.map((n) => toNodeSpec(n)));
+          if (props.nodes === undefined) return;
+          const specs = next.map((n) => toNodeSpec(n));
+          emittedNodes = specs;
+          emit('update:nodes', specs);
         }),
         inst.on('edges:change', ({ edges: next }: { edges: LinkModel[] }) => {
-          if (props.edges !== undefined) emit('update:edges', next.map((e) => toEdgeSpec(e)));
+          if (props.edges === undefined) return;
+          const specs = next.map((e) => toEdgeSpec(e));
+          emittedEdges = specs;
+          emit('update:edges', specs);
         }),
         inst.on('selection:change', (change) => emit('selectionChange', change)),
         inst.on('connect', (change) => emit('connect', change)),
@@ -316,29 +338,37 @@ export const GrafloriaFlow = defineComponent({
     });
 
     // -- controlled data IN --------------------------------------------------
+    // Replacing an array and changing it in place both reach the canvas; the
+    // canvas's own `update:*` value, written back by v-model, is not applied again.
+    // The positional ids (`node-3`) are the renderer reconciler's own default for an id-less spec.
+    const model = () => instance.value?.getModel();
+    watchControlledList<NodeSpec>({
+      source: () => props.nodes,
+      idOf: (item, index) => (item as { id?: string }).id ?? `node-${index}`,
+      live: (id) => model()?.getNode(id),
+      apply: (items) => instance.value?.setNodes(withSlotCustom(items as NodeSpec[])!),
+      isOwnEcho: (array) => array === emittedNodes,
+    });
+    watchControlledList<EdgeSpec>({
+      source: () => props.edges,
+      idOf: (item, index) => (item as { id?: string }).id ?? `edge-${index}`,
+      live: (id) => model()?.getLink(id),
+      apply: (items) => instance.value?.setEdges(items as EdgeSpec[]),
+      isOwnEcho: (array) => array === emittedEdges,
+    });
+    watchControlledList<GroupSpec | GroupModel>({
+      source: () => props.groups,
+      idOf: (item) => item.id,
+      live: (id) => model()?.getGroup(id),
+      apply: (items) => instance.value?.setGroups(items as Array<GroupSpec | GroupModel>),
+    });
+    // The theme follows its reference AND its content (a token changed in place).
     watch(
-      () => props.nodes,
-      (next) => {
-        if (next && instance.value) instance.value.setNodes(withSlotCustom(next)!);
-      }
-    );
-    watch(
-      () => props.edges,
-      (next) => {
-        if (next && instance.value) instance.value.setEdges(next);
-      }
-    );
-    watch(
-      () => props.groups,
-      (next) => {
-        if (next && instance.value) instance.value.setGroups(next);
-      }
-    );
-    watch(
-      () => props.theme,
-      (next) => {
+      () => [props.theme, props.theme && isProxy(props.theme) ? specKey(props.theme, null) : ''] as const,
+      ([next, key], prev) => {
+        if (prev && next === prev[0] && key === prev[1]) return;
         // A colour mode decides the theme while it is set; a stray theme must not fight it.
-        if (next && instance.value && !props.colorMode) instance.value.setTheme(next);
+        if (next && instance.value && !props.colorMode) instance.value.setTheme(toRaw(next));
       }
     );
     watch(

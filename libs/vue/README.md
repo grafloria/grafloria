@@ -32,7 +32,12 @@ const edges = ref<EdgeSpec[]>([{ source: 'a', target: 'b' }]);
 ```
 
 - **`v-model:nodes` / `v-model:edges`** — controlled data; adds/removes made
-  inside the diagram emit back as specs. `defaultNodes`/`defaultEdges` for
+  inside the diagram emit back as specs. Ordinary Vue reactivity reaches the
+  canvas: replace the array, or change it in place (`nodes.value.push(…)`,
+  `nodes.value[0].label = 'X'`) — only the items that changed are applied, so a
+  dragged node keeps its place. (In-place changes are seen through the reactive
+  proxy, a walk of every field on each change; a very large diagram held in a
+  `shallowRef` and replaced skips that walk.) `defaultNodes`/`defaultEdges` for
   uncontrolled use.
 - **Custom nodes are slots** — `#node-<type>` renders every node of that
   `type` (declaring the slot is the whole opt-in); `#node` is the wildcard.
