@@ -318,8 +318,12 @@ describe('SVGRenderer - instance-scoped theme (CSS custom properties)', () => {
 
       const css = document.getElementById(GRAFLORIA_BASE_STYLE_ID)!.textContent!;
       // Only the scoped rule block matters (the animation CSS below it is static
-      // and has always carried its own literals).
-      const scoped = css.slice(0, css.indexOf('/* Link Path'));
+      // and has always carried its own literals). Its first static rule marks the
+      // end — the `/* Link Path */` comment that used to mark it is stripped from
+      // the shipped stylesheet now, and indexOf(-1) silently scanned everything.
+      const end = css.indexOf('.link-group path');
+      expect(end).toBeGreaterThan(0);
+      const scoped = css.slice(0, end);
       expect(scoped).not.toMatch(/#[0-9a-f]{3,8}\b/i);
       expect(scoped).toContain('var(--grafloria-node-fill)');
     });
