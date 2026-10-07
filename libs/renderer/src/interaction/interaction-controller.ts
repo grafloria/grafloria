@@ -42,6 +42,42 @@ import { isValidConnection } from '../ext/tools';
 const LINK_HIT_QUERY_PAD = 250;
 
 /**
+ * Whether a mouse button, pen or finger is currently pressed anywhere in the
+ * page. {@link InteractionController.addWaypoint} uses it to tell the press
+ * that clicked a path (which may go on to drag the new bend, and whose release
+ * commits it) from a double-click (whose buttons are already up, so no release
+ * would ever close a drag). Tracked once per page, in the capture phase.
+ */
+let pointerButtonDown = false;
+let pointerTrackerInstalled = false;
+
+function trackPointerButtons(): void {
+  if (pointerTrackerInstalled) return;
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+  pointerTrackerInstalled = true;
+  const down = (): void => {
+    pointerButtonDown = true;
+  };
+  const up = (): void => {
+    pointerButtonDown = false;
+  };
+  for (const type of ['pointerdown', 'mousedown', 'touchstart']) {
+    window.addEventListener(type, down, { capture: true, passive: true });
+  }
+  for (const type of ['pointerup', 'mouseup', 'pointercancel', 'touchend', 'touchcancel', 'dragend']) {
+    window.addEventListener(type, up, { capture: true, passive: true });
+  }
+  // The page losing focus mid-press never delivers the release.
+  window.addEventListener('blur', (event) => {
+    if (event.target === window) up();
+  });
+}
+
+function isPointerButtonDown(): boolean {
+  return pointerButtonDown;
+}
+
+/**
  * Part-aware link hit result: a link plus WHICH sub-part of it was hit
  * (body / label / endpoint / arrow) and local info (label index, or the 0-1
  * position `t` along the path for body hits). Downstream edge features
@@ -187,6 +223,8 @@ export class InteractionController {
    * the whole gesture as one undoable SetLinkPointsCommand (FROM→TO). Absent between drags.
    */
   protected waypointDragStartPoints: Point[] | null = null;
+  /** The link's `hasManualWaypoints` flag when the drag started, restored by its undo. */
+  protected waypointDragStartManual = false;
   protected waypointEditor: WaypointEditor | null = null;
   protected hoveredWaypointIndex: number | null = null;
   protected hoveredWaypointLink: LinkModel | null = null;
@@ -225,6 +263,7 @@ export class InteractionController {
   protected portHitCacheInvalidated = false;
 
   constructor() {
+    trackPointerButtons();
     // Phase 2.3a: Initialize waypoint editor with default config
     this.waypointEditor = new WaypointEditor({
       snapToGrid: false,
@@ -1737,6 +1776,7 @@ export class InteractionController {
     this.editingWaypointIndex = waypointIndex;
     // wave12: snapshot the path BEFORE the drag so end can commit one undoable FROM→TO step.
     this.waypointDragStartPoints = link.points.map((p) => ({ ...p }));
+    this.waypointDragStartManual = link.getMetadata('hasManualWaypoints') === true;
     debugLog(`🔵 Started dragging waypoint ${waypointIndex} on link ${link.id}`);
   }
 
@@ -1776,11 +1816,11 @@ export class InteractionController {
     if (this.isDraggingWaypoint) {
       debugLog(`🔵 Ended dragging waypoint ${this.editingWaypointIndex} on link ${this.editingLink?.id}`);
 
-      // wave12: commit the finished gesture as ONE undoable step. The live moveWaypoint
+      // Commit the finished gesture as ONE undoable step. The live moveWaypoint
       // already applied the final points, so SetLinkPointsCommand's execute() re-sets the
-      // already-current `to` (a no-op) and records one history entry; undo restores `from`.
-      // Same FROM→TO snapshot pattern as node-drag and group-drag. Only commit when the
-      // path actually changed — a click-with-no-drag must not litter the undo stack.
+      // already-current `to` (a no-op) and records one history entry; undo restores `from`
+      // and the manual-waypoint flag as they were when the gesture began. Only commit when
+      // the path actually changed — a click-with-no-drag must not litter the undo stack.
       const link = this.editingLink;
       const from = this.waypointDragStartPoints;
       if (engine && link && from) {
@@ -1789,7 +1829,9 @@ export class InteractionController {
           to.length !== from.length ||
           to.some((p, i) => p.x !== from[i].x || p.y !== from[i].y);
         if (changed) {
-          void engine.commandManager.execute(new SetLinkPointsCommand(link.id, to, from));
+          void engine.commandManager.execute(
+            new SetLinkPointsCommand(link.id, to, from, this.waypointDragStartManual)
+          );
         }
       }
     }
@@ -1797,27 +1839,49 @@ export class InteractionController {
     this.editingLink = null;
     this.editingWaypointIndex = null;
     this.waypointDragStartPoints = null;
+    this.waypointDragStartManual = false;
   }
 
   /**
-   * Add waypoint at click position on path
+   * Insert a bend where the path was clicked. Returns false when nothing was
+   * inserted: a read-only link, a point too close to an endpoint, or a point on
+   * an existing bend (a bend is never stacked on another).
+   *
+   * Undo: with `engine`, the insert is committed at once as its own undo step.
+   * Without it, when a pointer button is down (the press that clicked the
+   * path), the insert opens a bend drag on the new bend: moving the pointer
+   * before release moves the bend, and {@link endWaypointDrag} commits insert
+   * and move together as one undo step at release.
    */
-  addWaypoint(clickX: number, clickY: number, link: LinkModel): boolean {
+  addWaypoint(clickX: number, clickY: number, link: LinkModel, engine?: DiagramEngine): boolean {
     if (this.isReadonlyLink(link)) return false;
     if (!this.waypointEditor) {
       return false;
     }
+    if (this.isDraggingWaypoint) return false;
+    if (this.hitTestWaypoint(clickX, clickY, link) !== null) return false;
 
-    const result = this.waypointEditor.addWaypointAtPosition(clickX, clickY, link.points);
+    const before = link.points.map((p) => ({ ...p }));
+    const beforeManual = link.getMetadata('hasManualWaypoints') === true;
+    const result = this.waypointEditor.addWaypointAtPosition(clickX, clickY, before);
+    if (!result) return false;
 
-    if (result) {
-      link.setPoints(result.newPoints);
-      link.setMetadata('hasManualWaypoints', true);
-      debugLog(`🟢 Added waypoint at index ${result.waypointIndex} on link ${link.id}`);
-      return true;
+    link.setPoints(result.newPoints);
+    link.setMetadata('hasManualWaypoints', true);
+    debugLog(`🟢 Added waypoint at index ${result.waypointIndex} on link ${link.id}`);
+
+    if (engine) {
+      void engine.commandManager.execute(
+        new SetLinkPointsCommand(link.id, result.newPoints, before, beforeManual)
+      );
+    } else if (isPointerButtonDown()) {
+      this.isDraggingWaypoint = true;
+      this.editingLink = link;
+      this.editingWaypointIndex = result.waypointIndex;
+      this.waypointDragStartPoints = before;
+      this.waypointDragStartManual = beforeManual;
     }
-
-    return false;
+    return true;
   }
 
   /**

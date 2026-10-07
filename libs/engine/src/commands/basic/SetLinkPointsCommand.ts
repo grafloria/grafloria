@@ -1,22 +1,25 @@
-// SetLinkPointsCommand - Replaces a link's routed points (wave4/interaction: vertex tools)
-
 import { Command, CommandContext, SerializedCommand } from '../Command';
 import { Point } from '../../types';
 
 /**
  * Replace a link's `points` (its routed polyline, including any user waypoints),
- * undoable.
+ * undoable. Each bend gesture on the canvas (insert, move, remove) commits one
+ * of these when the pointer is released.
  *
- * Waypoint editing — add / move / remove a vertex — used to mutate
- * `link.points` directly through {@link WaypointEditor}, which meant NONE of it
- * was undoable: Ctrl+Z after dragging a vertex did nothing (or, worse, rewound
- * some unrelated earlier command). Every vertex gesture now commits exactly one
- * of these at pointer-up.
+ * The `hasManualWaypoints` metadata flag is part of the state being changed:
+ * the renderer keeps a link's interior points only while that flag is set, so
+ * execute sets it when the new path has bends and undo restores the value it
+ * had before. Without the old value, undoing a bend drag would clear the flag
+ * and the next re-route would drop the bend itself.
  *
- * `hasManualWaypoints` is part of the state being changed: the renderer only
- * preserves interior points when that metadata flag is set, so undoing back to a
- * 2-point route must also clear it or the old vertices would be resurrected on
- * the next re-route.
+ * @param linkId - The link to edit.
+ * @param newPoints - The path to apply.
+ * @param oldPoints - The path to restore on undo. Pass it when the link has
+ *   already been changed live (during a drag); omitted, the link's points at
+ *   the first execute are used.
+ * @param oldManual - The `hasManualWaypoints` flag to restore on undo. Pass it
+ *   with `oldPoints` when the flag has also been changed live; omitted, the
+ *   link's flag at the first execute is used.
  */
 export class SetLinkPointsCommand extends Command {
   private readonly newPoints: Point[];
@@ -26,13 +29,15 @@ export class SetLinkPointsCommand extends Command {
   constructor(
     private linkId: string,
     newPoints: Point[],
-    oldPoints?: Point[]
+    oldPoints?: Point[],
+    oldManual?: boolean
   ) {
     super('Edit Link Path');
     this.newPoints = newPoints.map((p) => ({ ...p }));
     if (oldPoints) {
       this.oldPoints = oldPoints.map((p) => ({ ...p }));
     }
+    this.oldManual = oldManual;
   }
 
   override execute(context: CommandContext): void {
@@ -48,6 +53,8 @@ export class SetLinkPointsCommand extends Command {
 
     if (!this.oldPoints) {
       this.oldPoints = link.points.map((p: Point) => ({ ...p }));
+    }
+    if (this.oldManual === undefined) {
       this.oldManual = link.getMetadata('hasManualWaypoints') === true;
     }
 
