@@ -175,6 +175,11 @@ export interface NodeSpec {
   /** Convenience for `metadata.shape` (fill / stroke / cornerRadius / …). */
   shape?: Record<string, any>;
   style?: Partial<NodeStyle>;
+  /**
+   * Select (or deselect) the node. Omitted, `setNodes` leaves the selection as
+   * the user made it — and `toNodeSpec` never projects it, so a host writing its
+   * stored specs back never re-selects anything.
+   */
   selected?: boolean;
   draggable?: boolean;
   selectable?: boolean;
@@ -249,6 +254,7 @@ export interface EdgeSpec {
    */
   waypoints?: Point[];
   style?: Partial<LinkStyle>;
+  /** Select (or deselect) the edge. Omitted, the selection is left alone; see `NodeSpec.selected`. */
   selected?: boolean;
   data?: Record<string, any>;
   /**
@@ -559,6 +565,15 @@ export function applyNodes(diagram: DiagramModel, specs: Array<NodeSpec | NodeMo
  * own state (a React `useState`, a Vue `ref`, a web-component property). Without
  * it a wrapper would have to reach into engine models, which is exactly the
  * coupling these specs exist to avoid.
+ *
+ * It carries no `selected`. Selection is viewer state that changes on every
+ * click, and `nodes:change` — when hosts store this projection — fires for the
+ * document (a node added, removed, dropped), not for a click. A projected
+ * `selected` therefore went stale the moment the user clicked elsewhere, and the
+ * host's next write (a rename) selected the node again. Absent, writing the
+ * projection back never touches the selection. A host that wants to DRIVE the
+ * selection still sets `selected` in its own specs (`setNodes` applies it) and
+ * reads it from `selection:change`.
  */
 export function toNodeSpec(node: NodeModel): NodeSpec {
   const spec: NodeSpec = {
@@ -566,7 +581,6 @@ export function toNodeSpec(node: NodeModel): NodeSpec {
     type: node.type,
     position: { x: node.position.x, y: node.position.y },
     size: { width: node.size.width, height: node.size.height },
-    selected: node.isSelected(),
   };
 
   const data = node.data;
@@ -587,7 +601,7 @@ export function toNodeSpec(node: NodeModel): NodeSpec {
   return spec;
 }
 
-/** Model → spec for a link. See {@link toNodeSpec}. */
+/** Model → spec for a link. See {@link toNodeSpec} — no `selected` either, for the same reason. */
 export function toEdgeSpec(link: LinkModel): EdgeSpec {
   const spec: EdgeSpec = {
     id: link.id,
@@ -596,7 +610,6 @@ export function toEdgeSpec(link: LinkModel): EdgeSpec {
     sourceHandle: link.sourcePortId,
     targetHandle: link.targetPortId,
     type: link.pathType,
-    selected: link.state === 'selected',
   };
 
   // Round-trip the wave-5 split fields, or a host that projects the model back

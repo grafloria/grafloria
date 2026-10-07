@@ -1,15 +1,15 @@
 /**
- * Selection is controlled state: a selection change announces `nodes:change`
- * (and `edges:change` for an edge), so a host's stored specs stay current.
+ * A host's stored specs never re-select what the user deselected.
  *
- * `toNodeSpec` projects `selected` and `setNodes` applies it, but a selection
- * change emitted only `selection:change`. A host that stores the projected specs
- * (React `useNodesState`, Vue `v-model:nodes`) therefore kept `selected: true`
- * after the user deselected the node, and its next write — a rename — selected
- * it again. React Flow's model: selection travels in `onNodesChange`.
+ * `toNodeSpec` used to project `selected`, and `setNodes` applies it. But a
+ * selection change does not fire `nodes:change` — that event means "the document
+ * changed" (a node added, removed, dropped), and gallery pages and hosts act on
+ * it as such — so the projection a host stored (React `useNodesState`, Vue
+ * `v-model:nodes`, Qwik, Angular `[(nodes)]`) kept `selected: true` after the
+ * user deselected the node, and its next write — a rename — selected it again.
  *
- * One gesture still makes ONE `nodes:change`: a drag that ends with a
- * `nodes:change` of its own (carrying the final selection) gets no second one.
+ * The projection carries no `selected` now. Writing it back never touches the
+ * selection; a host that wants to drive the selection sets `selected` itself.
  */
 import { createDiagram, toNodeSpec, toEdgeSpec } from '../index';
 import type { DiagramInstance, NodeSpec, EdgeSpec } from '../index';
@@ -17,7 +17,7 @@ import type { DiagramInstance, NodeSpec, EdgeSpec } from '../index';
 const WIDTH = 800;
 const HEIGHT = 600;
 
-describe('selection changes keep controlled nodes/edges current', () => {
+describe('stored projections never re-select (selection stays the user\'s)', () => {
   let container: HTMLElement;
   let diagram: DiagramInstance;
   let log: string[];
@@ -39,11 +39,11 @@ describe('selection changes keep controlled nodes/edges current', () => {
     log = [];
     // The host side of `useNodesState` / `v-model:nodes`: store the projection.
     diagram.on('nodes:change', ({ nodes }) => {
-      log.push('nodes:' + nodes.filter((n) => n.isSelected()).map((n) => n.id).join(''));
+      log.push('nodes');
       hostNodes = nodes.map(toNodeSpec);
     });
     diagram.on('edges:change', ({ edges }) => {
-      log.push('edges:' + edges.filter((l) => l.state === 'selected').map((l) => l.id).join(''));
+      log.push('edges');
       hostEdges = edges.map(toEdgeSpec);
     });
     diagram.on('selection:change', ({ nodes, edges }) => {
@@ -62,22 +62,6 @@ describe('selection changes keep controlled nodes/edges current', () => {
     container.dispatchEvent(new MouseEvent('mouseup', at(x, y)));
     container.dispatchEvent(new MouseEvent('click', at(x, y)));
   };
-  const rename = (id: string, label: string) =>
-    diagram.setNodes(hostNodes.map((s) => (s.id === id ? { ...s, label } : s)));
-  const selected = (id: string) => diagram.getModel().getNode(id)!.isSelected();
-
-  it('a click that selects a node emits nodes:change once, before selection:change', () => {
-    click(160, 130);
-    expect(log).toEqual(['nodes:a', 'selection:a|']);
-  });
-
-  it('a click on the node that already is the selection emits nothing', () => {
-    click(160, 130);
-    log.length = 0;
-    click(160, 130);
-    expect(log).toEqual([]);
-  });
-
   const drag = (x: number, y: number) => {
     container.dispatchEvent(new MouseEvent('mousedown', at(x, y)));
     for (let i = 1; i <= 4; i++) {
@@ -85,10 +69,21 @@ describe('selection changes keep controlled nodes/edges current', () => {
     }
     container.dispatchEvent(new MouseEvent('mouseup', at(x + 200, y + 40)));
   };
+  const rename = (id: string, label: string) =>
+    diagram.setNodes(hostNodes.map((s) => (s.id === id ? { ...s, label } : s)));
+  const selected = (id: string) => diagram.getModel().getNode(id)!.isSelected();
 
-  it('drag a (stored specs say selected), click empty canvas, rename a: a stays deselected', () => {
+  it('the projections carry no selected, even for a selected node or edge', () => {
+    const model = diagram.getModel();
+    model.selectNode(model.getNode('a')!);
+    model.getLink('e1')!.setState('selected');
+    expect('selected' in toNodeSpec(model.getNode('a')!)).toBe(false);
+    expect('selected' in toEdgeSpec(model.getLink('e1')!)).toBe(false);
+  });
+
+  it('drag a (stored while selected), click empty canvas, rename a: a stays deselected', () => {
     drag(160, 130);
-    expect(hostNodes.find((s) => s.id === 'a')!.selected).toBe(true);
+    expect(log).toContain('nodes'); // the drop stored the projection while a was selected
     click(700, 550);
     expect(selected('a')).toBe(false);
     rename('a', 'Renamed');
@@ -96,39 +91,32 @@ describe('selection changes keep controlled nodes/edges current', () => {
     expect(selected('a')).toBe(false);
   });
 
-  it('programmatic selectNode / clearSelection keep the stored specs current too', () => {
+  it('the reported case: specs projected while selected, deselected in code, renamed: not re-selected', () => {
     const model = diagram.getModel();
     model.selectNode(model.getNode('a')!);
+    const specs = model.getNodes().map(toNodeSpec);
     model.clearSelection();
-    expect(log).toEqual(['nodes:a', 'selection:a|', 'nodes:', 'selection:|']);
-    rename('a', 'Renamed');
+    diagram.setNodes(specs.map((s) => (s.id === 'a' ? { ...s, label: 'Renamed' } : s)));
     expect(selected('a')).toBe(false);
   });
 
-  it('writing the stored specs back emits no nodes:change (no controlled feedback loop)', () => {
+  it('writing the projection back keeps a live selection as it is', () => {
     click(160, 130);
-    log.length = 0;
-    diagram.setNodes(hostNodes);
-    diagram.setEdges(hostEdges);
-    expect(log).toEqual([]);
+    diagram.setNodes(diagram.getModel().getNodes().map(toNodeSpec));
     expect(selected('a')).toBe(true);
   });
 
-  it('a drag of an unselected node: ONE nodes:change, carrying the selection', () => {
-    drag(160, 130);
-    expect(log.filter((e) => e.startsWith('nodes:'))).toEqual(['nodes:a']);
-    expect(log.filter((e) => e.startsWith('selection:'))).toEqual(['selection:a|']);
-    expect(hostNodes.find((s) => s.id === 'a')!.selected).toBe(true);
+  it('a click is a selection change, not a document change: no nodes:change / edges:change', () => {
+    click(160, 130);
+    click(340, 130); // the a→b line
+    click(700, 550);
+    expect(log).toEqual(['selection:a|', 'selection:|e1', 'selection:|']);
   });
 
-  it('selecting an edge emits edges:change; selecting a node after it emits both', () => {
-    diagram.renderNow();
-    click(340, 130); // on the straight a→b line, between the nodes
-    expect(log).toEqual(['edges:e1', 'selection:|e1']);
-    expect(hostEdges[0].selected).toBe(true);
-    log.length = 0;
-    click(160, 130);
-    expect(log).toEqual(['nodes:a', 'edges:', 'selection:a|']);
-    expect(hostEdges[0].selected).toBe(false);
+  it('a host can still drive the selection by setting selected itself', () => {
+    diagram.setNodes(hostNodes.map((s) => (s.id === 'b' ? { ...s, selected: true } : s)));
+    expect(selected('b')).toBe(true);
+    diagram.setNodes(hostNodes.map((s) => (s.id === 'b' ? { ...s, selected: false } : s)));
+    expect(selected('b')).toBe(false);
   });
 });

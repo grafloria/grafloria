@@ -668,17 +668,7 @@ export function createDiagram(
 
   // -- events -----------------------------------------------------------------
   const listeners = new Map<string, Set<Listener>>();
-  // Read by `emit` below; owned by the selection gate further down.
-  let selectionBatchDepth = 0;
-  let nodesSentKey: string | null = null;
-  let edgesSentKey: string | null = null;
   const emit = (event: string, payload: unknown): void => {
-    // Inside a gesture, remember the selection each `nodes:change` / `edges:change`
-    // already carried, so the gate does not send the same projection twice.
-    if (selectionBatchDepth > 0) {
-      if (event === 'nodes:change') nodesSentKey = selectedNodesKey();
-      else if (event === 'edges:change') edgesSentKey = selectedEdgesKey();
-    }
     const set = listeners.get(event);
     if (!set) return;
     // Copy: a handler is allowed to unsubscribe itself.
@@ -703,46 +693,20 @@ export function createDiagram(
   // the selection, a click on empty canvas with nothing selected — owes nothing:
   // the selection is compared with the one the gesture began with, and only a
   // real change is announced.
-  //
-  // Selection is part of the controlled state: `toNodeSpec` / `toEdgeSpec` project
-  // `selected`, and `setNodes` applies it. So a selection change also announces
-  // `nodes:change` (and `edges:change` when an edge's selection changed), at the
-  // same moment and before `selection:change` — otherwise a host's stored specs
-  // kept the old `selected`, and its next write (a rename) re-selected a node the
-  // user had deselected. Once per gesture: not when a `nodes:change` during the
-  // gesture (a drag's end) already carried the final selection.
+  let selectionBatchDepth = 0;
   let selectionOwed = false;
-  let nodesAtGestureStart = '';
-  let edgesAtGestureStart = '';
+  let selectionAtGestureStart = '';
   const selectedEdges = (): LinkModel[] => model.getLinks().filter((l: LinkModel) => l.state === 'selected');
-  function selectedNodesKey(): string {
-    return model.getSelectedNodes().map((n: NodeModel) => n.id).join('\u0000');
-  }
-  function selectedEdgesKey(): string {
-    return selectedEdges().map((l: LinkModel) => l.id).join('\u0000');
-  }
-  const emitSelectionNow = (nodesChanged: boolean, edgesChanged: boolean): void => {
-    if (nodesChanged) emit('nodes:change', { nodes: model.getNodes() });
-    if (edgesChanged) emit('edges:change', { edges: model.getLinks() });
+  const selectionKey = (): string =>
+    model.getSelectedNodes().map((n: NodeModel) => n.id).join('\u0000') +
+    '\u0001' +
+    selectedEdges().map((l: LinkModel) => l.id).join('\u0000');
+  const emitSelectionNow = (): void => {
     emit('selection:change', { nodes: model.getSelectedNodes(), edges: selectedEdges() });
   };
-  /** Pay what a gesture owes, at its end. */
-  const settleGestureSelection = (): void => {
-    const nodesKey = selectedNodesKey();
-    const edgesKey = selectedEdgesKey();
-    const nodesChanged = nodesKey !== nodesAtGestureStart;
-    const edgesChanged = edgesKey !== edgesAtGestureStart;
-    if (!nodesChanged && !edgesChanged) return;
-    emitSelectionNow(nodesChanged && nodesSentKey !== nodesKey, edgesChanged && edgesSentKey !== edgesKey);
-  };
-  /**
-   * A selection change was announced. In a gesture it is owed until the end;
-   * from code it is paid now. `nodesChanged` is true for the model's own event
-   * (node selection); the binder's announcement outside a gesture compares nothing.
-   */
-  const announceSelection = (nodesChanged = false): void => {
+  const announceSelection = (): void => {
     if (selectionBatchDepth > 0) selectionOwed = true;
-    else emitSelectionNow(nodesChanged, false);
+    else emitSelectionNow();
   };
 
   // -- comments ---------------------------------------------------------------
@@ -787,12 +751,7 @@ export function createDiagram(
       // route it through the gate (its payload is re-read at emit time).
       emit: (event, payload) => (event === 'selection:change' ? announceSelection() : emit(event, payload)),
       beginSelectionBatch: () => {
-        if (selectionBatchDepth === 0) {
-          nodesAtGestureStart = selectedNodesKey();
-          edgesAtGestureStart = selectedEdgesKey();
-          nodesSentKey = null;
-          edgesSentKey = null;
-        }
+        if (selectionBatchDepth === 0) selectionAtGestureStart = selectionKey();
         selectionBatchDepth++;
       },
       endSelectionBatch: () => {
@@ -800,7 +759,7 @@ export function createDiagram(
         selectionBatchDepth--;
         if (selectionBatchDepth === 0 && selectionOwed) {
           selectionOwed = false;
-          settleGestureSelection();
+          if (selectionKey() !== selectionAtGestureStart) emitSelectionNow();
         }
       },
     },
@@ -1755,7 +1714,7 @@ export function createDiagram(
   }
   onModel('selection:changed', () => {
     scheduler.schedule();
-    announceSelection(true);
+    announceSelection();
   });
 
   unsubs.push(
