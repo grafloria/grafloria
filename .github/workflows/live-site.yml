@@ -1,25 +1,16 @@
 name: Live site
 
-# The gates in ci.yml test the LOCAL tree. A file the HOST refuses to serve is
-# invisible to them: GitHub Pages' Jekyll dropped demos/layout/_layout-lib.js
-# (a leading underscore) and seven layout demos were blank on grafloria.com for
-# two months while every gate was green. This runs the same gallery gate
-# against the deployed site after each Pages deployment.
-on:
-  deployment_status:
-  workflow_dispatch:
-
 jobs:
   gallery:
     if: github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'github-pages')
     name: Gallery on grafloria.com
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+    runs-on: windows-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
@@ -27,5 +18,5 @@ jobs:
       # Every page of the site, as a reader opens it: no errors, no missing file,
       # no example stuck loading, no link to nowhere.
       - run: node demos/e2e/site-run.mjs
-      # Code text is coloured on the deployed pages too (Monaco comes from a CDN).
+      # Code text is coloured by chalkColors on the deployed pages too (Monaco comes from a CDN).
       - run: node demos/e2e/code-colour-run.mjs --origin https://grafloria.com
