@@ -45,6 +45,9 @@ import type { SyncMessage } from './protocol';
 import type { SyncTransport, TransportStatus, Unsubscribe } from './transport';
 import { VersionVector, deltaFor, type VersionVectorJSON } from './version-vector';
 
+/** How long a silent peer keeps its presence, by default. */
+const DEFAULT_AWARENESS_TIMEOUT_MS = 15_000;
+
 export interface SyncAdapterOptions {
   /** Batching. `false` sends every op the instant it happens — legal, and a bad idea. */
   batch?: Omit<OpBatcherOptions, 'onFlush'> | false;
@@ -63,13 +66,23 @@ export interface SyncAdapterOptions {
   /** Periodic anti-entropy, ms. 0 disables it (the tests drive `sync()` by hand). */
   syncIntervalMs?: number;
 
-  /** Re-publish our awareness this often so peers do not time us out while we sit still. */
+  /**
+   * Re-publish our awareness this often, so peers do not time us out while we sit
+   * still. Default: a third of {@link awarenessTimeoutMs} (5 s with the defaults).
+   * 0 turns the heartbeat off; peers then expire anyone silent for the timeout,
+   * idle or not.
+   */
   heartbeatMs?: number;
 
   /** Minimum ms between awareness sends. 60Hz in, ~20Hz out. */
   awarenessThrottleMs?: number;
 
-  /** Drop a peer's presence after this long without a word. */
+  /**
+   * Drop a peer's presence (its cursor, selection and name) after this long
+   * without a word from it. Default 15 s. Checked on a timer, so a peer that
+   * crashes without saying goodbye is removed within about the timeout plus a
+   * third of it. A peer that leaves cleanly is removed at once.
+   */
   awarenessTimeoutMs?: number;
 
   /** Injectables, so every timing test is deterministic instead of a race. */
@@ -280,19 +293,23 @@ export class SyncAdapter {
       this.syncTimer = this.setIntervalFn(() => this.sync(), interval);
     }
 
-    const beat = this.options.heartbeatMs ?? 0;
-    if (beat > 0 && this.heartbeatTimer === null) {
+    // Presence upkeep runs on ONE timer, on by default. Expiry has to be driven by a
+    // timer: nothing arrives from a peer whose tab has crashed, so there is no event to
+    // hang it on, and its cursor would otherwise hover on the canvas forever.
+    const timeout = this.options.awarenessTimeoutMs ?? DEFAULT_AWARENESS_TIMEOUT_MS;
+    const beat = this.options.heartbeatMs ?? Math.max(1, Math.floor(timeout / 3));
+    if (this.heartbeatTimer === null) {
+      const every = beat > 0 ? beat : Math.max(1, Math.floor(timeout / 3));
       this.heartbeatTimer = this.setIntervalFn(() => {
         // A heartbeat is a re-send of the CURRENT state at the CURRENT sequence — it must
         // not bump `seq`, or every peer would think our cursor "changed" every 5 seconds
         // and repaint it. It refreshes their `lastSeen`, nothing more.
-        this.sendAwareness();
-        // …and it is where WE drop peers who have stopped heartbeating at us. Expiry has
-        // to be driven by a timer: nothing arrives from a peer whose tab has crashed, so
-        // there is no event to hang it on. That is precisely why their cursor would
-        // otherwise hover on the canvas forever.
+        if (beat > 0) this.sendAwareness();
+        // …and drop the peers we have not heard from inside the timeout.
         this.awareness.prune();
-      }, beat);
+      }, every);
+      // A presence timer must never keep a Node process alive on its own.
+      (this.heartbeatTimer as { unref?: () => void } | null)?.unref?.();
     }
   }
 
