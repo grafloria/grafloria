@@ -474,8 +474,11 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
 
 /**
  * Renders one custom node component into the host element the core created,
- * and keeps it in sync with the model (selection, data) via the instance's
- * events rather than a React render of the whole flow.
+ * and keeps it in sync with the model via events rather than a React render of
+ * the whole flow: the instance's `nodes:change` / `selection:change`, and the
+ * node's own data and metadata writes (`node.setData()`, `setMetadata()`), so a
+ * card follows its data in uncontrolled mode too. Each data change hands the
+ * component a new `data` object, so a `React.memo` card refreshes as well.
  */
 function NodePortalHost({
   portal,
@@ -489,6 +492,7 @@ function NodePortalHost({
   const { node, element } = portal;
   const Component = nodeTypes?.[node.type];
   const [, force] = useState(0);
+  const [dataVersion, setDataVersion] = useState(0);
 
   const rerender = useCallback(() => force((n) => n + 1), []);
 
@@ -502,6 +506,25 @@ function NodePortalHost({
     };
   }, [instance, rerender]);
 
+  // The node's own writes. Only data and metadata: a drag changes the position
+  // on every frame, and the card's content does not depend on it.
+  useEffect(
+    () =>
+      node.on('change', (entry: { property?: string } | undefined) => {
+        const property = entry?.property ?? '';
+        if (property.startsWith('data') || property.startsWith('metadata.')) {
+          setDataVersion((v) => v + 1);
+        }
+      }),
+    [node]
+  );
+
+  const data = useMemo(
+    () => ({ ...(node.data ?? {}) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [node, node.data, dataVersion]
+  );
+
   if (!Component) {
     // A `custom: true` node with no matching entry in `nodeTypes` is a caller
     // error; render nothing rather than an exception in the middle of a canvas.
@@ -511,7 +534,7 @@ function NodePortalHost({
   return createPortal(
     <Component
       id={node.id}
-      data={node.data as never}
+      data={data as never}
       selected={node.isSelected()}
       node={node}
     />,
