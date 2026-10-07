@@ -4,6 +4,7 @@
     "outDir": ".",
     "rootDir": ".",
     "declaration": true,
+    "sourceMap": false,
     "noEmitOnError": false,
     "baseUrl": ".",
     "paths": {},
