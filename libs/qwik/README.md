@@ -64,20 +64,21 @@ export default component$(() => {
 
 MIT © [Grafloria](https://github.com/grafloria/grafloria)
 
-## Vite setup — one line
+## Vite setup — nothing to add
 
-Add `grafloriaQwik()` next to `qwikVite()`:
+`qwikVite()` is the whole Vite config (plus `qwikCity()` in a Qwik City app) — in the dev server, with server rendering, and in production builds:
 
 ```ts
 // vite.config.ts
 import { defineConfig } from 'vite';
 import { qwikVite } from '@builder.io/qwik/optimizer';
-import { grafloriaQwik } from '@grafloria/qwik/vite';
 
-export default defineConfig({ plugins: [qwikVite(), grafloriaQwik()] });
+export default defineConfig({ plugins: [qwikVite()] });
 ```
 
-This package is a Qwik library (its `qwik` field makes your optimizer compile it), so Vite's dev server does not pre-bundle it — nor anything it imports. The engine, renderer and element depend on CommonJS packages a browser cannot load raw, and without the plugin the dev server fails with `…eventemitter3/index.js does not provide an export named 'default'`. The plugin only adds them to `optimizeDeps.include`; production builds work either way.
+This package is a Qwik library (its `qwik` field makes your optimizer compile it), so Vite's dev server does not pre-bundle it, nor the engine, renderer and element it imports: they are served as plain ES modules. Everything a browser loads from them is plain ESM — the engine ships ES module copies of its CommonJS dependencies (eventemitter3, dagre, lemonadejs, and elkjs, which still loads only when an ELK layout runs) — and each of the three carries a `qwik` field too, so `qwikVite()` serves **one** copy of each however your app imports them: `instanceof NodeModel` holds between your code and the component's.
+
+`grafloriaQwik()` from `@grafloria/qwik/vite`, which @grafloria/qwik 0.10.6 required, still works and is now optional: it pre-bundles the three packages for the dev server, so the first page load makes a few dozen requests instead of ~600. Production builds are the same with or without it.
 
 ## Server rendering, and why Qwik gets the best version of it
 

@@ -1,32 +1,29 @@
 /**
- * `@grafloria/qwik/vite` — one Vite plugin, next to `qwikVite()`:
+ * `@grafloria/qwik/vite` — OPTIONAL since the release after 0.10.6. A Vite config
+ * needs nothing for Grafloria: `qwikVite()` (plus `qwikCity()` in a Qwik City app)
+ * is the whole setup.
+ *
+ * WHY IT IS NO LONGER NEEDED. `@grafloria/qwik` is a Qwik library, so Vite never
+ * pre-bundles it — nor the engine, renderer and element it imports: the dev server
+ * serves them as raw ES modules. 0.10.6's engine depended on CommonJS packages a
+ * browser cannot load raw (eventemitter3, @dagrejs/dagre, lemonadejs, elkjs) and
+ * the dev server died on "…eventemitter3/index.js does not provide an export named
+ * 'default'"; this plugin worked around it. Now the engine ships ES module copies of
+ * those packages, so everything a browser loads is plain ESM, and the engine,
+ * renderer and element carry a `qwik` field, which makes `qwikVite()` serve exactly
+ * one copy of each however the app imports them.
+ *
+ * WHAT IT STILL DOES, if you keep it: it pre-bundles the three packages for the dev
+ * server (`optimizeDeps.include`, in the `parent > child` form so it resolves them
+ * from where `@grafloria/qwik` is installed, pnpm included). The first dev page load
+ * then makes a few dozen requests instead of ~600. Production builds are identical
+ * with or without it.
  *
  * ```ts
  * import { qwikVite } from '@builder.io/qwik/optimizer';
  * import { grafloriaQwik } from '@grafloria/qwik/vite';
  *
  * export default defineConfig({ plugins: [qwikVite(), grafloriaQwik()] });
- * ```
- *
- * WHY IT EXISTS. `@grafloria/qwik` is a Qwik library: its package.json `qwik` field
- * makes `qwikVite()` run the app's optimizer over it — and, by the same token,
- * EXCLUDES it from Vite's dev-server dependency pre-bundling. Vite then serves its
- * imports raw too: it never pre-bundles a package that is imported only from inside
- * `node_modules`. The engine, renderer and element it imports are ESM, but they
- * depend on CommonJS packages (eventemitter3, @dagrejs/dagre, lemonadejs, elkjs) a
- * browser cannot load raw — the dev server failed with "…eventemitter3/index.js does
- * not provide an export named 'default'" while production builds (which bundle
- * everything) worked.
- *
- * Vite's own answer for "an excluded ESM dependency with CommonJS inside" is to list
- * the nested packages in `optimizeDeps.include`. That is all this plugin does — in the
- * `parent > child` form, so it resolves them from where `@grafloria/qwik` is
- * installed (it works under pnpm's strict layout too). Writing the same line in your
- * own config is equivalent:
- *
- * ```ts
- * optimizeDeps: { include: ['@grafloria/qwik > @grafloria/engine',
- *   '@grafloria/qwik > @grafloria/renderer', '@grafloria/qwik > @grafloria/element'] }
  * ```
  */
 const NESTED = ['@grafloria/engine', '@grafloria/renderer', '@grafloria/element'];
