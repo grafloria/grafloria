@@ -180,12 +180,27 @@ describe('dashboard() containment', () => {
   it('addWidget accepts a container id as the target board — when it has room', () => {
     // NESTED's section is 3 columns × 1 row and FULL. Adding a fourth KPI used
     // to "succeed": the node became a member with no engine item, invisible,
-    // and this test read the membership and called it a pass. A bounded board
-    // now refuses up front, and nothing is created.
+    // and this test read the membership and called it a pass. A full section
+    // now does what a DROP into it does (D4): a grow section takes the rows
+    // from its parent — so the KPI lands on a real cell, visibly — and a fit
+    // section refuses up front, with nothing created.
     const full = mount(NESTED());
-    expect(full.handle.addWidget({ id: 'k4', kind: 'kpi', span: 1, rows: 1 }, 'section')).toBeUndefined();
-    expect(full.model.getNode('k4')).toBeUndefined();
-    expect(full.model.getGroup('section')!.members?.has('k4')).toBe(false);
+    const slab0 = full.handle.binderOf('main')!.cellOf('section')!.h;
+    const k4 = full.handle.addWidget({ id: 'k4', kind: 'kpi', span: 1, rows: 1 }, 'section');
+    expect(k4?.cell).toBeDefined(); // an engine item: never the invisible member again
+    expect(full.model.getGroup('section')!.members?.has('k4')).toBe(true);
+    expect(full.handle.binderOf('main')!.cellOf('section')!.h).toBeGreaterThan(slab0);
+    const fit = mount(dashboard({ columns: 12, views: [{ id: 'main', widgets: [
+      { id: 'section', span: 9, rows: 2, columns: 3, sizing: 'fit', widgets: [
+        { id: 'k1', kind: 'kpi', span: 1, rows: 1 }, { id: 'k2', kind: 'kpi', span: 1, rows: 1 }, { id: 'k3', kind: 'kpi', span: 1, rows: 1 },
+      ] },
+    ] }] }));
+    // a fit section is bounded by its pane: full means full
+    const before = fit.handle.toJSON().views[0].widgets[0].widgets!.length;
+    const added = fit.handle.addWidget({ id: 'k4', kind: 'kpi', span: 3, rows: 5 }, 'section');
+    expect(added).toBeUndefined();
+    expect(fit.model.getNode('k4')).toBeUndefined();
+    expect(fit.handle.toJSON().views[0].widgets[0].widgets!.length).toBe(before);
 
     // The same section with a free column takes it, membership and all.
     const roomy = dashboard({
