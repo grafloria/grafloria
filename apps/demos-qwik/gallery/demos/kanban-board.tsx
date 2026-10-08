@@ -18,14 +18,14 @@ import { markReady } from '../ready';
 const ROW = 8;        // row unit, px — small, so a card's height rounds up by at most ROW + GAP
 const HEAD_ROWS = 2;  // the column header spans this many parent row units (2 × 16 = 32 px)
 const GAP = 8;
-const EMPTY_ROWS = 8; // an empty column's inner height in rows
-interface Column { id: string; name: string; wip?: number }
+const EMPTY_ROWS = 30; // a stage's inner height in rows when its cards need less: room to drop into
+interface Column { id: string; name: string; wip?: number; tint: string }
 interface Card { title: string; desc?: string; tag?: string; who?: string }
 const COLUMNS: Column[] = [
-  { id: 'backlog', name: 'Backlog' },
-  { id: 'doing',   name: 'In progress', wip: 3 },
-  { id: 'review',  name: 'Review',      wip: 2 },
-  { id: 'done',    name: 'Done' },
+  { id: 'backlog', name: 'Backlog', tint: 'var(--kb-st-backlog, #eceff5)' },
+  { id: 'doing',   name: 'In progress', wip: 3, tint: 'var(--kb-st-doing, #e6eefc)' },
+  { id: 'review',  name: 'Review',      wip: 2, tint: 'var(--kb-st-review, #fbf1df)' },
+  { id: 'done',    name: 'Done', tint: 'var(--kb-st-done, #e4f3ea)' },
 ];
 const CARDS: Record<string, Card[]> = {
   backlog: [
@@ -135,8 +135,9 @@ function buildBoard() {
       // height; cards measured taller grow the slab, and give the rows back.
       const inner = Math.max(EMPTY_ROWS, CARDS[c.id].length * GUESS);
       return {
-        id: c.id, title: c.name, span: 3, rows: inner + HEAD_ROWS, columns: 1, pinned: true, movable: false, resizable: false,
-        caption: { text: c.name, height: HEAD_ROWS * (ROW + GAP) },
+        id: c.id, title: c.name, span: 3, rows: inner + HEAD_ROWS, columns: 1, pinned: true, movable: 'row', resizable: false,
+    background: c.tint, stack: true, // a stage only trades places with the others; a tinted list
+        caption: { text: c.name, height: HEAD_ROWS * (ROW + GAP), background: 'transparent' },
         maxRows: EMPTY_ROWS,
         widgets: CARDS[c.id].map(cardSpec),
       };
@@ -178,7 +179,7 @@ const CSS = `
   .kbq-page .kb-head button[hidden] { display: none; }
 
   @media (prefers-color-scheme: dark) {
-    .kbq-page { --kb-card: #1f232b; --kb-line: #353b47; --kb-ink: #e6e9ef; --kb-muted: #9aa3b5; --kb-tag: #27305a; --kb-bg: transparent; }
+    .kbq-page { --kb-st-backlog: #1e222a; --kb-st-doing: #1a2436; --kb-st-review: #2b2417; --kb-st-done: #18271f; --kb-card: #1f232b; --kb-line: #353b47; --kb-ink: #e6e9ef; --kb-muted: #9aa3b5; --kb-tag: #27305a; --kb-bg: transparent; }
   }
 `;
 
