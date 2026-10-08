@@ -699,6 +699,30 @@ describe('stages — sections for a Kanban board', () => {
     tool.onPointerUp?.(tev('up', p3.x, p3.y), hit);
     expect(api.container.querySelectorAll('.axdb-slab--drop, .axdb-slab--refused')).toHaveLength(0);
   });
+
+  it('the drop ring is opt-in: a stack list rings without a policy, a plain section (no stack, no canDrop) never does', () => {
+    const ringMidDrag = (stack: boolean) => {
+      const { model, api } = mount(dashboard({
+        columns: 12, gap: 8, width: 1200, height: 800, sizing: 'grow', rowHeight: 8, float: false,
+        widgets: ['s1', 's2'].map((id) => ({
+          id, span: 6, rows: 30, columns: 1, maxRows: 30, stack,
+          caption: { text: id, height: 32 }, widgets: [{ id: `${id}-c1`, kind: 'card', span: 1, rows: 4 }],
+        })),
+      }));
+      const tool = toolOf('s1');
+      const hit = { node: model.getNode('s1-c1')!, empty: false };
+      const a = centre(model, 's1-c1');
+      const g = model.getGroup('s2')!;
+      const p = { x: g.position.x + g.size!.width / 2, y: g.position.y + 200 };
+      tool.onPointerDown?.(tev('down', a.x, a.y), hit);
+      for (let i = 1; i <= 8; i++) tool.onPointerMove?.(tev('move', a.x + ((p.x - a.x) * i) / 8, a.y + ((p.y - a.y) * i) / 8), hit);
+      const ringed = api.container.querySelectorAll('.axdb-slab--drop').length;
+      tool.onPointerUp?.(tev('up', p.x, p.y), hit);
+      return ringed;
+    };
+    expect(ringMidDrag(true)).toBe(1); // the same path reaches s2: what differs below is only the opt-in
+    expect(ringMidDrag(false)).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

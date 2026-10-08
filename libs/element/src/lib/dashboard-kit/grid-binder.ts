@@ -2493,7 +2493,10 @@ export function bindDashboardGrid(
     }
     syncPlaceholder();
     // The board that will take the tile: the one holding its leg, else this one while it is on it.
-    markDrop(g.leg ? g.leg.adopted.groupId : !g.removedFromBoard && !g.strip ? group.id : null, false);
+    // Opt-in: only a board with a `canDrop` policy, or a stack list, rings — a plain section looks as it always did.
+    const target = g.leg ? g.leg.adopted.groupId : !g.removedFromBoard && !g.strip ? group.id : null;
+    const rings = !!options.canDrop || (g.leg ? !!g.leg.peer.isList?.() : isList());
+    markDrop(rings ? target : null, false);
     // A carried group's slab and frame are this board's chrome, but its frame
     // is written by whichever board holds it now: re-sync so they follow.
     if (g.subject === 'group') syncSlabs();
