@@ -1,0 +1,1 @@
+import{v as t}from"./core.min-C7M5tFMw.js";import{x as f}from"./core.min-C7M5tFMw.js";import{m as r}from"./ready-C4_3DsUA.js";import"./preloader-D7tuiBjF.js";const e=()=>{const[o]=t();o.value?.fitView(40),r()};export{f as _hW,e as s_hJ7tFjysjB8};

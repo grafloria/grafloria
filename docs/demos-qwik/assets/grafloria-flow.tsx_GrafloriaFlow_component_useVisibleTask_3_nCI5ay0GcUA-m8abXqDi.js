@@ -1,1 +1,0 @@
-import{v as r}from"./core.min-DSxUtzo6.js";import{x as m}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const a=({track:o})=>{const[n,e]=r(),s=o(()=>e.groups),t=o(()=>n.value);!s||!t||t.setGroups(s)};export{m as _hW,a as s_nCI5ay0GcUA};

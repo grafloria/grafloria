@@ -36,9 +36,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-// node_modules/eventemitter3/index.js
+// ../kanban-form/node_modules/eventemitter3/index.js
 var require_eventemitter3 = __commonJS({
-  "node_modules/eventemitter3/index.js"(exports, module) {
+  "../kanban-form/node_modules/eventemitter3/index.js"(exports, module) {
     "use strict";
     var has = Object.prototype.hasOwnProperty;
     var prefix = "~";
@@ -198,9 +198,9 @@ var require_eventemitter3 = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/graph.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/graph.js
 var require_graph = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/graph.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/graph.js"(exports, module) {
     "use strict";
     var DEFAULT_EDGE_NAME = "\0";
     var GRAPH_NODE = "\0";
@@ -791,16 +791,16 @@ var require_graph = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/version.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/version.js
 var require_version = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/version.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/version.js"(exports, module) {
     module.exports = "2.2.4";
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/index.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/index.js
 var require_lib = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/index.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/index.js"(exports, module) {
     module.exports = {
       Graph: require_graph(),
       version: require_version()
@@ -808,9 +808,9 @@ var require_lib = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/json.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/json.js
 var require_json = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/json.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/json.js"(exports, module) {
     var Graph = require_graph();
     module.exports = {
       write,
@@ -874,9 +874,9 @@ var require_json = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/components.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/components.js
 var require_components = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/components.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/components.js"(exports, module) {
     module.exports = components;
     function components(g) {
       var visited = {};
@@ -901,9 +901,9 @@ var require_components = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/data/priority-queue.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/data/priority-queue.js
 var require_priority_queue = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/data/priority-queue.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/data/priority-queue.js"(exports, module) {
     var PriorityQueue4 = class {
       constructor() {
         __publicField(this, "_arr", []);
@@ -1041,9 +1041,9 @@ var require_priority_queue = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/dijkstra.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/dijkstra.js
 var require_dijkstra = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/dijkstra.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/dijkstra.js"(exports, module) {
     var PriorityQueue4 = require_priority_queue();
     module.exports = dijkstra;
     var DEFAULT_WEIGHT_FUNC = () => 1;
@@ -1093,9 +1093,9 @@ var require_dijkstra = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/dijkstra-all.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/dijkstra-all.js
 var require_dijkstra_all = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/dijkstra-all.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/dijkstra-all.js"(exports, module) {
     var dijkstra = require_dijkstra();
     module.exports = dijkstraAll;
     function dijkstraAll(g, weightFunc, edgeFunc) {
@@ -1107,9 +1107,9 @@ var require_dijkstra_all = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/tarjan.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/tarjan.js
 var require_tarjan = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/tarjan.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/tarjan.js"(exports, module) {
     module.exports = tarjan;
     function tarjan(g) {
       var index = 0;
@@ -1152,9 +1152,9 @@ var require_tarjan = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/find-cycles.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/find-cycles.js
 var require_find_cycles = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/find-cycles.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/find-cycles.js"(exports, module) {
     var tarjan = require_tarjan();
     module.exports = findCycles2;
     function findCycles2(g) {
@@ -1165,9 +1165,9 @@ var require_find_cycles = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/floyd-warshall.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/floyd-warshall.js
 var require_floyd_warshall = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/floyd-warshall.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/floyd-warshall.js"(exports, module) {
     module.exports = floydWarshall;
     var DEFAULT_WEIGHT_FUNC = () => 1;
     function floydWarshall(g, weightFn, edgeFn) {
@@ -1217,9 +1217,9 @@ var require_floyd_warshall = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/topsort.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/topsort.js
 var require_topsort = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/topsort.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/topsort.js"(exports, module) {
     function topsort(g) {
       var visited = {};
       var stack = {};
@@ -1252,9 +1252,9 @@ var require_topsort = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/is-acyclic.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/is-acyclic.js
 var require_is_acyclic = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/is-acyclic.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/is-acyclic.js"(exports, module) {
     var topsort = require_topsort();
     module.exports = isAcyclic2;
     function isAcyclic2(g) {
@@ -1271,9 +1271,9 @@ var require_is_acyclic = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/dfs.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/dfs.js
 var require_dfs = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/dfs.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/dfs.js"(exports, module) {
     module.exports = dfs;
     function dfs(g, vs, order) {
       if (!Array.isArray(vs)) {
@@ -1327,9 +1327,9 @@ var require_dfs = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/postorder.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/postorder.js
 var require_postorder = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/postorder.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/postorder.js"(exports, module) {
     var dfs = require_dfs();
     module.exports = postorder;
     function postorder(g, vs) {
@@ -1338,9 +1338,9 @@ var require_postorder = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/preorder.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/preorder.js
 var require_preorder = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/preorder.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/preorder.js"(exports, module) {
     var dfs = require_dfs();
     module.exports = preorder;
     function preorder(g, vs) {
@@ -1349,9 +1349,9 @@ var require_preorder = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/prim.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/prim.js
 var require_prim = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/prim.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/prim.js"(exports, module) {
     var Graph = require_graph();
     var PriorityQueue4 = require_priority_queue();
     module.exports = prim;
@@ -1396,9 +1396,9 @@ var require_prim = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/lib/alg/index.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/index.js
 var require_alg = __commonJS({
-  "node_modules/@dagrejs/graphlib/lib/alg/index.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/lib/alg/index.js"(exports, module) {
     module.exports = {
       components: require_components(),
       dijkstra: require_dijkstra(),
@@ -1415,9 +1415,9 @@ var require_alg = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/graphlib/index.js
+// ../kanban-form/node_modules/@dagrejs/graphlib/index.js
 var require_graphlib = __commonJS({
-  "node_modules/@dagrejs/graphlib/index.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/graphlib/index.js"(exports, module) {
     var lib = require_lib();
     module.exports = {
       Graph: lib.Graph,
@@ -1428,9 +1428,9 @@ var require_graphlib = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/data/list.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/data/list.js
 var require_list = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/data/list.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/data/list.js"(exports, module) {
     var List = class {
       constructor() {
         let sentinel = {};
@@ -1481,9 +1481,9 @@ var require_list = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/greedy-fas.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/greedy-fas.js
 var require_greedy_fas = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/greedy-fas.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/greedy-fas.js"(exports, module) {
     var Graph = require_graphlib().Graph;
     var List = require_list();
     module.exports = greedyFAS;
@@ -1582,9 +1582,9 @@ var require_greedy_fas = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/util.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/util.js
 var require_util = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/util.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/util.js"(exports, module) {
     "use strict";
     var Graph = require_graphlib().Graph;
     module.exports = {
@@ -1846,9 +1846,9 @@ var require_util = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/acyclic.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/acyclic.js
 var require_acyclic = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/acyclic.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/acyclic.js"(exports, module) {
     "use strict";
     var greedyFAS = require_greedy_fas();
     var uniqueId = require_util().uniqueId;
@@ -1908,9 +1908,9 @@ var require_acyclic = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/normalize.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/normalize.js
 var require_normalize = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/normalize.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/normalize.js"(exports, module) {
     "use strict";
     var util = require_util();
     module.exports = {
@@ -1980,9 +1980,9 @@ var require_normalize = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/rank/util.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/rank/util.js
 var require_util2 = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/rank/util.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/rank/util.js"(exports, module) {
     "use strict";
     var { applyWithChunking } = require_util();
     module.exports = {
@@ -2017,9 +2017,9 @@ var require_util2 = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/rank/feasible-tree.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/rank/feasible-tree.js
 var require_feasible_tree = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/rank/feasible-tree.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/rank/feasible-tree.js"(exports, module) {
     "use strict";
     var Graph = require_graphlib().Graph;
     var slack = require_util2().slack;
@@ -2070,9 +2070,9 @@ var require_feasible_tree = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/rank/network-simplex.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/rank/network-simplex.js
 var require_network_simplex = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/rank/network-simplex.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/rank/network-simplex.js"(exports, module) {
     "use strict";
     var feasibleTree = require_feasible_tree();
     var slack = require_util2().slack;
@@ -2216,9 +2216,9 @@ var require_network_simplex = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/rank/index.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/rank/index.js
 var require_rank = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/rank/index.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/rank/index.js"(exports, module) {
     "use strict";
     var rankUtil = require_util2();
     var longestPath = rankUtil.longestPath;
@@ -2257,9 +2257,9 @@ var require_rank = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/parent-dummy-chains.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/parent-dummy-chains.js
 var require_parent_dummy_chains = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/parent-dummy-chains.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/parent-dummy-chains.js"(exports, module) {
     module.exports = parentDummyChains;
     function parentDummyChains(g) {
       let postorderNums = postorder(g);
@@ -2326,9 +2326,9 @@ var require_parent_dummy_chains = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/nesting-graph.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/nesting-graph.js
 var require_nesting_graph = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/nesting-graph.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/nesting-graph.js"(exports, module) {
     var util = require_util();
     module.exports = {
       run,
@@ -2412,9 +2412,9 @@ var require_nesting_graph = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/add-border-segments.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/add-border-segments.js
 var require_add_border_segments = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/add-border-segments.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/add-border-segments.js"(exports, module) {
     var util = require_util();
     module.exports = addBorderSegments;
     function addBorderSegments(g) {
@@ -2448,9 +2448,9 @@ var require_add_border_segments = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/coordinate-system.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/coordinate-system.js
 var require_coordinate_system = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/coordinate-system.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/coordinate-system.js"(exports, module) {
     "use strict";
     module.exports = {
       adjust,
@@ -2512,9 +2512,9 @@ var require_coordinate_system = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/init-order.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/init-order.js
 var require_init_order = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/init-order.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/init-order.js"(exports, module) {
     "use strict";
     var util = require_util();
     module.exports = initOrder;
@@ -2538,9 +2538,9 @@ var require_init_order = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/cross-count.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/cross-count.js
 var require_cross_count = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/cross-count.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/cross-count.js"(exports, module) {
     "use strict";
     var zipObject = require_util().zipObject;
     module.exports = crossCount;
@@ -2582,9 +2582,9 @@ var require_cross_count = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/barycenter.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/barycenter.js
 var require_barycenter = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/barycenter.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/barycenter.js"(exports, module) {
     module.exports = barycenter;
     function barycenter(g, movable = []) {
       return movable.map((v) => {
@@ -2610,9 +2610,9 @@ var require_barycenter = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/resolve-conflicts.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/resolve-conflicts.js
 var require_resolve_conflicts = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/resolve-conflicts.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/resolve-conflicts.js"(exports, module) {
     "use strict";
     var util = require_util();
     module.exports = resolveConflicts;
@@ -2692,9 +2692,9 @@ var require_resolve_conflicts = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/sort.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/sort.js
 var require_sort = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/sort.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/sort.js"(exports, module) {
     var util = require_util();
     module.exports = sort;
     function sort(entries, biasRight) {
@@ -2740,9 +2740,9 @@ var require_sort = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/sort-subgraph.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/sort-subgraph.js
 var require_sort_subgraph = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/sort-subgraph.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/sort-subgraph.js"(exports, module) {
     var barycenter = require_barycenter();
     var resolveConflicts = require_resolve_conflicts();
     var sort = require_sort();
@@ -2805,9 +2805,9 @@ var require_sort_subgraph = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/build-layer-graph.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/build-layer-graph.js
 var require_build_layer_graph = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/build-layer-graph.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/build-layer-graph.js"(exports, module) {
     var Graph = require_graphlib().Graph;
     var util = require_util();
     module.exports = buildLayerGraph;
@@ -2840,9 +2840,9 @@ var require_build_layer_graph = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/add-subgraph-constraints.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/add-subgraph-constraints.js
 var require_add_subgraph_constraints = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/add-subgraph-constraints.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/add-subgraph-constraints.js"(exports, module) {
     module.exports = addSubgraphConstraints;
     function addSubgraphConstraints(g, cg, vs) {
       let prev = {}, rootPrev;
@@ -2868,9 +2868,9 @@ var require_add_subgraph_constraints = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/order/index.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/order/index.js
 var require_order = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/order/index.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/order/index.js"(exports, module) {
     "use strict";
     var initOrder = require_init_order();
     var crossCount = require_cross_count();
@@ -2924,9 +2924,9 @@ var require_order = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/position/bk.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/position/bk.js
 var require_bk = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/position/bk.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/position/bk.js"(exports, module) {
     "use strict";
     var Graph = require_graphlib().Graph;
     var util = require_util();
@@ -3232,9 +3232,9 @@ var require_bk = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/position/index.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/position/index.js
 var require_position = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/position/index.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/position/index.js"(exports, module) {
     "use strict";
     var util = require_util();
     var positionX = require_bk().positionX;
@@ -3264,9 +3264,9 @@ var require_position = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/layout.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/layout.js
 var require_layout = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/layout.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/layout.js"(exports, module) {
     "use strict";
     var acyclic = require_acyclic();
     var normalize = require_normalize();
@@ -3624,9 +3624,9 @@ var require_layout = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/debug.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/debug.js
 var require_debug = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/debug.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/debug.js"(exports, module) {
     var util = require_util();
     var Graph = require_graphlib().Graph;
     module.exports = {
@@ -3653,16 +3653,16 @@ var require_debug = __commonJS({
   }
 });
 
-// node_modules/@dagrejs/dagre/lib/version.js
+// ../kanban-form/node_modules/@dagrejs/dagre/lib/version.js
 var require_version2 = __commonJS({
-  "node_modules/@dagrejs/dagre/lib/version.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/lib/version.js"(exports, module) {
     module.exports = "1.1.5";
   }
 });
 
-// node_modules/@dagrejs/dagre/index.js
+// ../kanban-form/node_modules/@dagrejs/dagre/index.js
 var require_dagre = __commonJS({
-  "node_modules/@dagrejs/dagre/index.js"(exports, module) {
+  "../kanban-form/node_modules/@dagrejs/dagre/index.js"(exports, module) {
     module.exports = {
       graphlib: require_graphlib(),
       layout: require_layout(),
@@ -3676,9 +3676,9 @@ var require_dagre = __commonJS({
   }
 });
 
-// node_modules/elkjs/lib/elk.bundled.js
+// ../kanban-form/node_modules/elkjs/lib/elk.bundled.js
 var require_elk_bundled = __commonJS({
-  "node_modules/elkjs/lib/elk.bundled.js"(exports, module) {
+  "../kanban-form/node_modules/elkjs/lib/elk.bundled.js"(exports, module) {
     (function(f) {
       if (typeof exports === "object" && typeof module !== "undefined") {
         module.exports = f();
@@ -96673,9 +96673,9 @@ var require_elk_bundled = __commonJS({
   }
 });
 
-// node_modules/lemonadejs/dist/lemonade.js
+// ../kanban-form/node_modules/lemonadejs/dist/lemonade.js
 var require_lemonade = __commonJS({
-  "node_modules/lemonadejs/dist/lemonade.js"(exports, module) {
+  "../kanban-form/node_modules/lemonadejs/dist/lemonade.js"(exports, module) {
     (function(global3, factory) {
       typeof exports === "object" && typeof module !== "undefined" ? module.exports = factory() : typeof define === "function" && define.amd ? define(factory) : global3.lemonade = factory();
     })(exports, function() {
@@ -99705,7 +99705,10 @@ var BASE_STYLE_RULES = [
   { selector: ".port-output.port-highlighted", decls: { fill: themeVar("port.output") } },
   { selector: ".port-bi.port-highlighted", decls: { fill: themeVar("port.bi") } }
 ];
-var STATIC_CSS = `
+function stripCssComments(css) {
+  return css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+var STATIC_CSS = stripCssComments(`
 /* The diagram root is keyboard-focusable (tabindex=0, the a11y entry point),
    and every node/link group carries tabindex=-1 for programmatic keyboard
    navigation \u2014 which ALSO makes them mouse-focusable, so a click on a link's
@@ -99803,7 +99806,7 @@ svg.grafloria-diagram text {
   pointer-events: none;
   transition: opacity 0.2s ease;
 }
-`.trim();
+`);
 function instanceScopeSelector(instanceId) {
   return `[${GRAFLORIA_INSTANCE_ATTR}="${instanceId}"]`;
 }
@@ -102677,7 +102680,7 @@ function createDefaultLODConfig() {
   };
 }
 
-// node_modules/eventemitter3/index.mjs
+// ../kanban-form/node_modules/eventemitter3/index.mjs
 var import_index = __toESM(require_eventemitter3(), 1);
 
 // libs/engine/src/utils/geometry.ts
@@ -102823,10 +102826,10 @@ function isPointInPolygon(px2, py, vertices) {
   return inside;
 }
 
-// node_modules/nanoid/url-alphabet/index.js
+// ../kanban-form/node_modules/nanoid/url-alphabet/index.js
 var urlAlphabet = "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict";
 
-// node_modules/nanoid/index.browser.js
+// ../kanban-form/node_modules/nanoid/index.browser.js
 var nanoid = (size = 21) => {
   let id = "";
   let bytes = crypto.getRandomValues(new Uint8Array(size |= 0));
@@ -102836,7 +102839,7 @@ var nanoid = (size = 21) => {
   return id;
 };
 
-// node_modules/uuid/dist/stringify.js
+// ../kanban-form/node_modules/uuid/dist/stringify.js
 var byteToHex = [];
 for (let i = 0; i < 256; ++i) {
   byteToHex.push((i + 256).toString(16).slice(1));
@@ -102845,7 +102848,7 @@ function unsafeStringify(arr, offset = 0) {
   return (byteToHex[arr[offset + 0]] + byteToHex[arr[offset + 1]] + byteToHex[arr[offset + 2]] + byteToHex[arr[offset + 3]] + "-" + byteToHex[arr[offset + 4]] + byteToHex[arr[offset + 5]] + "-" + byteToHex[arr[offset + 6]] + byteToHex[arr[offset + 7]] + "-" + byteToHex[arr[offset + 8]] + byteToHex[arr[offset + 9]] + "-" + byteToHex[arr[offset + 10]] + byteToHex[arr[offset + 11]] + byteToHex[arr[offset + 12]] + byteToHex[arr[offset + 13]] + byteToHex[arr[offset + 14]] + byteToHex[arr[offset + 15]]).toLowerCase();
 }
 
-// node_modules/uuid/dist/rng.js
+// ../kanban-form/node_modules/uuid/dist/rng.js
 var getRandomValues;
 var rnds8 = new Uint8Array(16);
 function rng() {
@@ -102858,11 +102861,11 @@ function rng() {
   return getRandomValues(rnds8);
 }
 
-// node_modules/uuid/dist/native.js
+// ../kanban-form/node_modules/uuid/dist/native.js
 var randomUUID = typeof crypto !== "undefined" && crypto.randomUUID && crypto.randomUUID.bind(crypto);
 var native_default = { randomUUID };
 
-// node_modules/uuid/dist/v4.js
+// ../kanban-form/node_modules/uuid/dist/v4.js
 function _v4(options, buf, offset) {
   options = options || {};
   const rnds = options.random ?? options.rng?.() ?? rng();
@@ -103033,13 +103036,13 @@ var DiagramEntity = class {
     this._dirtyTimestamp = Date.now();
   }
   /**
-   * Check if entity has been modified since last render (Phase 5.2)
+   * Check if entity has been modified since last render
    */
   get isDirty() {
     return this._isDirty;
   }
   /**
-   * Mark entity as dirty (needs re-render) (Phase 5.2)
+   * Mark entity as dirty (needs re-render)
    */
   markDirty(reason) {
     this.assertNotDisposed();
@@ -103055,7 +103058,7 @@ var DiagramEntity = class {
     }
   }
   /**
-   * Mark entity as clean (rendered) (Phase 5.2)
+   * Mark entity as clean (rendered)
    */
   markClean() {
     this.assertNotDisposed();
@@ -103068,26 +103071,26 @@ var DiagramEntity = class {
     }
   }
   /**
-   * Get reasons why entity is dirty (Phase 5.2)
+   * Get reasons why entity is dirty
    */
   getDirtyReasons() {
     return Array.from(this._dirtyReasons);
   }
   /**
-   * Get timestamp when entity was marked dirty (Phase 5.2)
+   * Get timestamp when entity was marked dirty
    */
   getDirtyTimestamp() {
     return this._dirtyTimestamp;
   }
   /**
-   * Begin batch update (Phase 5.2)
+   * Begin batch update
    * Delays dirty marking until batch ends
    */
   beginBatch() {
     this._batchDepth++;
   }
   /**
-   * End batch update (Phase 5.2)
+   * End batch update
    * Marks dirty once if any changes occurred
    */
   endBatch() {
@@ -103269,13 +103272,13 @@ var DiagramEntity = class {
     return deepClone(value);
   }
   /**
-   * Check if entity has been disposed (Phase 5.4)
+   * Check if entity has been disposed
    */
   isDisposed() {
     return this._disposed;
   }
   /**
-   * Check if entity is not disposed and throw if it is (Phase 5.4)
+   * Check if entity is not disposed and throw if it is
    */
   assertNotDisposed() {
     if (this._disposed) {
@@ -103283,7 +103286,7 @@ var DiagramEntity = class {
     }
   }
   /**
-   * Dispose entity and clean up resources (Phase 5.4)
+   * Dispose entity and clean up resources
    * Prevents memory leaks by:
    * - Removing all event listeners
    * - Clearing change log
@@ -103331,8 +103334,7 @@ var PortTypeRegistry = class {
   /**
    * May a link carry `from` into `to`?
    *
-   * - either side UNTYPED  → yes (an untyped port is unconstrained; this is what
-   *   keeps every pre-wave-6 diagram connecting exactly as it did)
+   * - either side UNTYPED  → yes (an untyped port is unconstrained)
    * - either side is `*`    → yes
    * - identical names       → yes
    * - `from`'s registered `compatibleWith` lists `to` (or `*`) → yes
@@ -103383,7 +103385,7 @@ var PortModel = class _PortModel extends DiagramEntity {
      *
      * DERIVED state, rebuilt from the diagram's links by
      * `DiagramModel.reconcilePortConnections()`, exactly like `currentConnections`.
-     * It exists because `fromMaxLinks` / `toMaxLinks` (Card 2) need a DIRECTIONAL
+     * It exists because `fromMaxLinks` / `toMaxLinks` need a DIRECTIONAL
      * count and `currentConnections` is a direction-blind Set of link ids.
      *
      * A link registered without a role (legacy `addConnection(id)` callers) is
@@ -103579,7 +103581,7 @@ var PortModel = class _PortModel extends DiagramEntity {
     return this.currentConnections.size;
   }
   /**
-   * Wave 6 (Card 2): how many links LEAVE this port / how many ARRIVE at it.
+   * How many links LEAVE this port / how many ARRIVE at it.
    *
    * A self-loop that both starts and ends here registers once in
    * `currentConnections` (the Set dedupes) but `linkRoles` can only hold one
@@ -103610,13 +103612,12 @@ var PortModel = class _PortModel extends DiagramEntity {
    * - output can connect to input or bi
    * - bi can connect to any
    *
-   * Wave 6 (Card 2) adds the DIRECTIONAL gates on top: `isConnectableStart` on
+   * On top of that, the DIRECTIONAL gates: `isConnectableStart` on
    * the source, `isConnectableEnd` on the target, the per-direction
-   * `fromMaxLinks`/`toMaxLinks` caps, the `allowedTypes` whitelist (which was
-   * dead config — `isTypeAllowed` had no caller anywhere in the tree) and
-   * `dataType` compatibility (Card 7).
+   * `fromMaxLinks`/`toMaxLinks` caps, the `allowedTypes` whitelist and
+   * `dataType` compatibility.
    *
-   * Every new gate is opt-in: unset → the pre-wave-6 answer, unchanged.
+   * Every gate is opt-in: unset, only the direction rules above apply.
    *
    * NOTE: this is the PORT-LOCAL rule. Rules that need the graph (self-links,
    * duplicate links, connection groups) live in `evaluatePortConnection()`,
@@ -103687,7 +103688,7 @@ var PortModel = class _PortModel extends DiagramEntity {
     };
   }
   /**
-   * Phase 1: Get port position at node edge (for smart mode)
+   * Get port position at node edge (for smart mode)
    * Returns the position at the edge midpoint based on alignment
    */
   getEdgePosition(nodeBounds) {
@@ -103716,7 +103717,7 @@ var PortModel = class _PortModel extends DiagramEntity {
     }
   }
   /**
-   * Phase 1: Find nearest port on a node to a given point
+   * Find nearest port on a node to a given point
    * Used in smart mode for auto-connect to nearest port
    *
    * @param point - Point in world coordinates
@@ -103740,7 +103741,7 @@ var PortModel = class _PortModel extends DiagramEntity {
     return nearestPort;
   }
   /**
-   * Phase 1: Calculate distance from point to this port
+   * Calculate distance from point to this port
    *
    * @param point - Point in world coordinates
    * @param nodeBounds - Bounding box of the node this port belongs to
@@ -103753,7 +103754,7 @@ var PortModel = class _PortModel extends DiagramEntity {
     return Math.sqrt(dx * dx + dy * dy);
   }
   /**
-   * Phase 1: Reset interaction state
+   * Reset interaction state
    * Called when connection drag ends or is cancelled
    */
   resetInteractionState() {
@@ -103762,7 +103763,7 @@ var PortModel = class _PortModel extends DiagramEntity {
     this.isValidTarget = false;
   }
   /**
-   * Phase 2: Set port rendering configuration from template
+   * Set port rendering configuration from template
    */
   setRenderingConfig(config) {
     const oldConfig = this.renderingConfig;
@@ -103771,13 +103772,13 @@ var PortModel = class _PortModel extends DiagramEntity {
     this.emitter.emit("rendering-config:changed", config);
   }
   /**
-   * Phase 2: Get port rendering configuration
+   * Get port rendering configuration
    */
   getRenderingConfig() {
     return this.renderingConfig;
   }
   /**
-   * Phase 2: Get effective visibility considering port and node configuration
+   * Get effective visibility considering port and node configuration
    * Priority: port config > node metadata > default ('on-hover')
    */
   getEffectiveVisibility(node, globalDefault) {
@@ -104167,9 +104168,8 @@ var NodeModel = class _NodeModel extends DiagramEntity {
   /**
    * Set size.
    *
-   * A — this used to be five lines that wrote a field and told NOBODY, while its
-   * sibling `setPosition` has propagated since Phase 1.6a. A node growing inside a
-   * flex/grid container is a layout-invalidating event: its siblings have to move.
+   * A node growing inside a flex/grid container is a layout-invalidating event:
+   * its siblings have to move.
    *
    * It notifies its LAYOUT CONTAINERS, and deliberately NOT the transform chain
    * `setPosition` uses: a parent's size does not move a relative child (the child's
@@ -104304,7 +104304,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return this.getPorts().filter((p) => p.type === type);
   }
   /**
-   * Get port by side (Phase 0.5.1)
+   * Get port by side
    * Returns the first port found on the specified side
    *
    * @param side - The side to search ('top', 'right', 'bottom', 'left')
@@ -104314,7 +104314,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return Array.from(this.ports.values()).find((port) => port.side === side);
   }
   /**
-   * Get all ports on a specific side (Phase 0.5.1)
+   * Get all ports on a specific side
    * Useful for nodes with multiple ports per side
    *
    * @param side - The side to search ('top', 'right', 'bottom', 'left')
@@ -104324,7 +104324,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return Array.from(this.ports.values()).filter((port) => port.side === side).sort((a, b) => a.index - b.index);
   }
   /**
-   * Get available ports that can accept connections (Phase 0.5.1)
+   * Get available ports that can accept connections
    *
    * @param type - Optional filter by port type ('input', 'output', 'bi')
    * @returns Array of ports that can accept more connections
@@ -104337,7 +104337,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return ports.filter((port) => port.canConnect());
   }
   /**
-   * Get ports that have active connections (Phase 0.5.1)
+   * Get ports that have active connections
    *
    * @returns Array of ports with at least one connection
    */
@@ -104369,41 +104369,27 @@ var NodeModel = class _NodeModel extends DiagramEntity {
    *
    * The write `setState` cannot express, and the collab reducer's write path.
    *
-   * ## Why a merge was wrong
+   * ## Durable keys are replaced
    *
    * `state` is a value register: the op carries the whole (projected) object the author
-   * now holds. Applying it with the merging `setState` meant a peer could GAIN a key and
-   * never LOSE one — `NodeState.error`, `warning`, `status` and `animateStatus` are all
-   * optional, so the author clears an error badge and every other peer keeps it FOREVER,
-   * with no later edit able to correct it. Node `style` had exactly this defect and was
-   * fixed with `replaceStyle`; this is the same fix for the register next to it.
+   * now holds. The durable keys — `error`, `warning`, `status`, `animateStatus` — are
+   * replaced wholesale, so when the author clears an error badge it is cleared on every
+   * peer (a merge could add a key but never remove one). `replaceStyle` does the same for
+   * `style`.
    *
-   * ## Why it is not a plain wholesale replace either
+   * ## View keys are kept
    *
    * `selected` / `hovered` / `highlighted` / `focused` are facts about a VIEWER, not about
-   * the document. Capture strips them (see collab/capture.ts — syncing them meant your
-   * cursor lit up my node and your click deselected it), so an incoming register value
-   * never carries them. Replacing wholesale would therefore BLANK the receiving user's own
-   * selection on every remote state edit — reintroducing the very bug through the back
-   * door. So: durable keys replaced wholesale, view keys taken from what this replica
-   * already had.
+   * the document. Capture strips them (see collab/capture.ts), so an incoming register
+   * value never carries them, and this replica's own values are kept: a remote state edit
+   * never changes the local selection.
    *
-   * ## The read-only posture, deliberately UNCHANGED
+   * ## Read-only
    *
-   * This refuses outright while the document is locked, exactly like `setPosition`,
-   * `setStyle` and `replaceStyle`. It does NOT copy `setState`'s Wave-9 Card-7 filter,
-   * and that is not an oversight:
-   *
-   *   • That filter exists so a LOCAL user can still select, hover and keyboard-navigate a
-   *     presentation-mode diagram. It is about input, not about the wire.
-   *   • It would be a no-op here anyway: capture strips the view keys, so an incoming
-   *     `state` value contains none of the keys the filter admits — a locked replica
-   *     already dropped remote state ops entirely, before this method existed. Behaviour
-   *     is therefore identical, and `setState` is left untouched.
-   *   • Making `state` the one register that DID reach a locked replica would be
-   *     incoherent: a read-only replica currently applies no remote document write at all
-   *     (verified — a locked peer ignores remote `position` and `style` too). That gap is
-   *     real and systemic, and it belongs to the lock, not to this register.
+   * Refused outright while the document is locked, exactly like `setPosition`,
+   * `setStyle` and `replaceStyle`. (`setState`'s exception for local selection, hover
+   * and keyboard focus is about local input and does not apply here; a locked replica
+   * applies no remote document write.)
    */
   replaceState(state) {
     if (this.writeBlocked()) return;
@@ -104691,8 +104677,8 @@ var NodeModel = class _NodeModel extends DiagramEntity {
    * REPLACE the whole child collection. The collab reducer's write path.
    *
    * Same contract as {@link setClasses}: a Set in memory, an array on the wire, rebuilt
-   * rather than assigned, and a non-array refused so a pre-fix log degrades instead of
-   * destroying the collection.
+   * rather than assigned, and a non-array refused so a malformed or older log degrades
+   * instead of destroying the collection.
    *
    * This maintains only its own half of the hierarchy, exactly as `addChild`/`removeChild`
    * do — the child's `parentId` is its own register with its own op.
@@ -104706,7 +104692,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     this.trackChange("children", prev, [...this.children]);
   }
   /**
-   * Set transform origin (Phase 1.6a)
+   * Set transform origin
    * @param x Normalized X coordinate (0-1)
    * @param y Normalized Y coordinate (0-1)
    */
@@ -104717,7 +104703,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     this.emitTransformPropagated("transformOrigin", this.transformOrigin);
   }
   /**
-   * Get absolute transform origin in pixels (Phase 1.6a)
+   * Get absolute transform origin in pixels
    */
   getAbsoluteTransformOrigin() {
     return {
@@ -104727,14 +104713,14 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     };
   }
   /**
-   * Get local position (Phase 1.6a)
+   * Get local position
    * Returns the position property as-is
    */
   getLocalPosition() {
     return { ...this.position };
   }
   /**
-   * Get global position (Phase 1.6a)
+   * Get global position
    * In absolute mode: returns position as-is
    * In relative mode: transforms position by parent's hierarchy transform
    */
@@ -104781,7 +104767,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     };
   }
   /**
-   * Set local position (Phase 1.6a)
+   * Set local position
    * Sets position directly and switches to relative mode
    */
   setLocalPosition(x, y, z) {
@@ -104789,7 +104775,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     this.setPosition(x, y, z);
   }
   /**
-   * Set global position (Phase 1.6a)
+   * Set global position
    * Converts global coordinates to local if parent exists
    */
   setGlobalPosition(x, y, z) {
@@ -104839,7 +104825,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     this.setPosition(localX, localY, z !== void 0 ? z - (parentGlobalPos.z ?? 0) : void 0);
   }
   /**
-   * Get local transform matrix (Phase 1.6a)
+   * Get local transform matrix
    * Composes translation, rotation, and scale relative to transform origin
    */
   getLocalTransformMatrix() {
@@ -104853,7 +104839,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     );
   }
   /**
-   * Get global transform matrix (Phase 1.6a)
+   * Get global transform matrix
    * In absolute mode: returns local matrix
    * In relative mode: composes parent's global matrix with local matrix
    */
@@ -104874,7 +104860,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return composeMatrices(parentMatrix, localMatrix);
   }
   /**
-   * Get global bounding box (Phase 1.6a)
+   * Get global bounding box
    * Calculates bounds by transforming all 4 corners through global matrix
    */
   getGlobalBounds() {
@@ -104912,7 +104898,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return this.diagram.getNode(this.parentId);
   }
   /**
-   * Get direct children nodes (Phase 1.6a Part 3)
+   * Get direct children nodes
    */
   getChildren() {
     if (!this.diagram) {
@@ -104928,14 +104914,14 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return children;
   }
   /**
-   * Get parent node (Phase 1.6a Part 3)
+   * Get parent node
    * Public version of getParentNode
    */
   getParent() {
     return this.getParentNode();
   }
   /**
-   * Get all ancestor nodes up to root (Phase 1.6a Part 3)
+   * Get all ancestor nodes up to root
    * Returns array with direct parent first, then grandparent, etc.
    */
   getAncestors() {
@@ -104950,7 +104936,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return ancestors;
   }
   /**
-   * Get all descendant nodes recursively (Phase 1.6a Part 3)
+   * Get all descendant nodes recursively
    */
   getDescendants() {
     const descendants = [];
@@ -104962,7 +104948,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return descendants;
   }
   /**
-   * Get root node of hierarchy (Phase 1.6a Part 3)
+   * Get root node of hierarchy
    * Returns self if this is the root
    */
   getRoot() {
@@ -104975,7 +104961,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return current;
   }
   /**
-   * Get sibling nodes (same parent, excluding self) (Phase 1.6a Part 3)
+   * Get sibling nodes (same parent, excluding self)
    */
   getSiblings() {
     const parent = this.getParent();
@@ -104985,7 +104971,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return parent.getChildren().filter((child) => child.id !== this.id);
   }
   /**
-   * Check if this node is an ancestor of another node (Phase 1.6a Part 3)
+   * Check if this node is an ancestor of another node
    * @param nodeId ID of node to check
    * @returns true if this node is an ancestor of the given node
    */
@@ -105004,7 +104990,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return ancestors.some((ancestor) => ancestor.id === this.id);
   }
   /**
-   * Get depth in hierarchy (Phase 1.6a Part 3)
+   * Get depth in hierarchy
    * Root nodes have depth 0, their children have depth 1, etc.
    * @returns depth level (0 = root)
    */
@@ -105020,7 +105006,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return depth;
   }
   /**
-   * Validate hierarchy for circular references (Phase 1.6a Part 3)
+   * Validate hierarchy for circular references
    * @returns true if hierarchy is valid (no cycles)
    */
   validateHierarchy() {
@@ -105036,7 +105022,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return true;
   }
   /**
-   * Update depth for this node and all descendants (Phase 1.6a Part 3)
+   * Update depth for this node and all descendants
    * Recalculates depth values based on current hierarchy
    */
   updateHierarchyDepth() {
@@ -105047,7 +105033,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     }
   }
   /**
-   * Get all nodes affected by transform changes (Phase 1.6a Part 4)
+   * Get all nodes affected by transform changes
    * Returns this node plus all descendants in relative positioning mode
    * @returns Array of nodes that would be affected by this node's transform
    */
@@ -105124,7 +105110,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     this.setZIndex(min - 1);
   }
   /**
-   * Set flexbox item configuration (Phase 1.7)
+   * Set flexbox item configuration
    */
   setFlexItem(config) {
     const oldConfig = this.flexConfig;
@@ -105133,7 +105119,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     this.emitter.emit("flex-item:changed", config);
   }
   /**
-   * Clear flexbox item configuration (Phase 1.7)
+   * Clear flexbox item configuration
    */
   clearFlexItem() {
     const oldConfig = this.flexConfig;
@@ -105142,19 +105128,19 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     this.emitter.emit("flex-item:cleared");
   }
   /**
-   * Get flexbox item configuration (Phase 1.7)
+   * Get flexbox item configuration
    */
   getFlexItem() {
     return this.flexConfig;
   }
   /**
-   * Check if node has flex item configuration (Phase 1.7)
+   * Check if node has flex item configuration
    */
   hasFlexItem() {
     return this.flexConfig !== void 0;
   }
   /**
-   * Set grid item configuration (Phase 1.7)
+   * Set grid item configuration
    */
   setGridItem(config) {
     const oldConfig = this.gridConfig;
@@ -105163,7 +105149,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     this.emitter.emit("grid-item:changed", config);
   }
   /**
-   * Clear grid item configuration (Phase 1.7)
+   * Clear grid item configuration
    */
   clearGridItem() {
     const oldConfig = this.gridConfig;
@@ -105172,13 +105158,13 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     this.emitter.emit("grid-item:cleared");
   }
   /**
-   * Get grid item configuration (Phase 1.7)
+   * Get grid item configuration
    */
   getGridItem() {
     return this.gridConfig;
   }
   /**
-   * Check if node has grid item configuration (Phase 1.7)
+   * Check if node has grid item configuration
    */
   hasGridItem() {
     return this.gridConfig !== void 0;
@@ -105187,7 +105173,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
   // Template Support Methods (Phase 2)
   // ========================================
   /**
-   * Set port rendering configuration (Phase 2)
+   * Set port rendering configuration
    */
   setPortRenderingConfig(config) {
     const oldConfig = this.portRenderingConfig;
@@ -105196,13 +105182,13 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     this.emitter.emit("port-rendering:changed", config);
   }
   /**
-   * Get port rendering configuration (Phase 2)
+   * Get port rendering configuration
    */
   getPortRenderingConfig() {
     return this.portRenderingConfig;
   }
   /**
-   * Get port rendering mode (Phase 2)
+   * Get port rendering mode
    * Auto-detects based on configuration and metadata
    */
   getPortRenderingMode() {
@@ -105220,7 +105206,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     return "svg";
   }
   /**
-   * Set drag handler configuration (Phase 2)
+   * Set drag handler configuration
    */
   setDragHandlerConfig(config) {
     const oldConfig = this.dragHandlerConfig;
@@ -105229,19 +105215,19 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     this.emitter.emit("drag-handler:changed", config);
   }
   /**
-   * Get drag handler configuration (Phase 2)
+   * Get drag handler configuration
    */
   getDragHandlerConfig() {
     return this.dragHandlerConfig;
   }
   /**
-   * Check if this node is a drag handler (Phase 2)
+   * Check if this node is a drag handler
    */
   isDragHandler() {
     return this.dragHandlerConfig?.isDragHandler === true;
   }
   /**
-   * Set connection group (Phase 2)
+   * Set connection group
    */
   setConnectionGroup(group) {
     const oldGroup = this.connectionGroup;
@@ -105250,7 +105236,7 @@ var NodeModel = class _NodeModel extends DiagramEntity {
     this.emitter.emit("connection-group:changed", { group });
   }
   /**
-   * Get connection group (Phase 2)
+   * Get connection group
    */
   getConnectionGroup() {
     return this.connectionGroup;
@@ -105427,7 +105413,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
     return writeBlocked(this.diagram);
   }
   /**
-   * Wave 4 (Edges & links) — Card 4: is this link a SELF-LOOP, i.e. do both
+   * Is this link a SELF-LOOP, i.e. do both
    * ends live on the same node?
    *
    * Reads the cached owning-node ids, which `DiagramModel.installLink` backfills
@@ -105443,7 +105429,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
     return !!this.sourceNodeId && this.sourceNodeId === this.targetNodeId;
   }
   /**
-   * Wave 4 — Card 4: the unordered node pair this link connects, as a stable
+   * The unordered node pair this link connects, as a stable
    * key. UNORDERED on purpose: A→B and B→A are the same visual bundle and must
    * fan out together, or a bidirectional pair would draw both links on the same
    * centre line. Returns null when the owning nodes are unknown.
@@ -105491,7 +105477,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
     this.trackChange("pathType", oldType, pathType);
   }
   /**
-   * Card 0: set the routing geometry explicitly. Clears the cached route the
+   * Set the routing geometry explicitly. Clears the cached route the
    * same way setPathType does — the old polyline belongs to the old router.
    */
   setRouter(router) {
@@ -105504,7 +105490,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
     this.setMetadata("hasManualWaypoints", false);
     this.trackChange("router", old, router);
   }
-  /** Card 0: set the polyline rendering explicitly. Pure re-render; the routed
+  /** Set the polyline rendering explicitly. Pure re-render; the routed
    * points are still valid, so the cache is NOT cleared. */
   setConnector(connector) {
     if (this.writeBlocked()) return;
@@ -105535,10 +105521,8 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
    * explicitly axis-aligned ROUTER, else derived from pathType.
    *
    * The router rung exists because `{ router: 'orthogonal' }` with the default
-   * pathType used to draw a smooth SPLINE through Manhattan waypoints — the
-   * route was orthogonal, the picture was wavy (the screenshot audit caught the
-   * demo's own readout saying "orthogonal" over a curve). Asking for an
-   * axis-aligned router IS asking for axis-aligned rendering; rounded corners
+   * pathType would otherwise draw a smooth SPLINE through Manhattan waypoints.
+   * Asking for an axis-aligned router IS asking for axis-aligned rendering; rounded corners
    * are that family's standard look. An explicit `connector` still overrides.
    */
   effectiveConnector() {
@@ -105809,11 +105793,10 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
   /**
    * Add label
    *
-   * Wave 4 (Card 5): `position` is no longer required when the label names a
-   * `slot` — and every other LinkLabel field (html, template, slot, autoOffset,
-   * rotation…) is now carried through instead of being silently dropped. The old
-   * body hand-copied five fields, so a label created here could not be an HTML
-   * label, could not auto-rotate and could not opt into auto-placement.
+   * `position` is optional when the label names a `slot`, and every other
+   * LinkLabel field (html, template, slot, autoOffset, rotation…) is carried
+   * through, so a label created here can be an HTML label, auto-rotate and opt
+   * into auto-placement.
    */
   addLabel(label) {
     if (this.writeBlocked()) return;
@@ -105876,12 +105859,9 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
   /**
    * REPLACE the whole label collection — the write `addLabel`/`updateLabel` cannot express.
    *
-   * `SetLinkLabelsCommand` used to do this by assigning `link.labels` directly on BOTH
-   * execute and undo. A plain field write does not pass `trackChange()` — the one funnel
-   * collab captures from — so the command emitted ZERO ops in BOTH directions: authoring
-   * a link's labels was invisible to every other peer, and so was taking it back. (The
-   * `UpdateLinkStyleCommand` defect at least emitted one op on execute; this emitted none
-   * at all.) `replaceStyle` is the same seam for the same reason.
+   * The write goes through `trackChange()` — the one funnel collab captures from — so
+   * setting a link's labels, and undoing it, reaches every peer. Assign through this,
+   * never to `link.labels` directly. `replaceStyle` is the same seam for the same reason.
    */
   setLabels(labels) {
     if (this.writeBlocked()) return;
@@ -105918,11 +105898,9 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
    * REPLACE the whole style object — the write `updateStyle` cannot express.
    *
    * `updateStyle` merges, so it can never REMOVE a key; restoring a snapshot has to
-   * assign wholesale. `UpdateLinkStyleCommand.undo()` used to do that with a direct
-   * field write (`link.style = restored`), which never passes `trackChange()` — the
-   * single funnel collab captures from. Measured: execute emitted 1 op, undo emitted 0,
-   * so every peer kept the styled link forever while the author saw it correctly
-   * reverted. See collab/style-undo.spec.ts.
+   * assign wholesale. This does, through `trackChange()` — the single funnel collab
+   * captures from — so restoring a style (as `UpdateLinkStyleCommand.undo()` does)
+   * reaches every peer. Never write `link.style` directly.
    */
   replaceStyle(style) {
     if (this.writeBlocked()) return;
@@ -105947,7 +105925,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
     return this.data[key];
   }
   /**
-   * Phase 1: Reconnect source endpoint to new port
+   * Reconnect source endpoint to new port
    * Used for link reconnection workflow
    */
   reconnectSource(newPortId, newNodeId) {
@@ -105969,7 +105947,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
     this.markDirty();
   }
   /**
-   * Phase 1: Reconnect target endpoint to new port
+   * Reconnect target endpoint to new port
    * Used for link reconnection workflow
    */
   reconnectTarget(newPortId, newNodeId) {
@@ -105991,21 +105969,21 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
     this.markDirty();
   }
   /**
-   * Phase 1: Get source endpoint position
+   * Get source endpoint position
    * Returns the first point in the path (source end)
    */
   getSourceEndpoint() {
     return this.points[0] || { x: 0, y: 0 };
   }
   /**
-   * Phase 1: Get target endpoint position
+   * Get target endpoint position
    * Returns the last point in the path (target end)
    */
   getTargetEndpoint() {
     return this.points[this.points.length - 1] || { x: 0, y: 0 };
   }
   /**
-   * Phase 1: Select source endpoint handle
+   * Select source endpoint handle
    */
   selectSourceEndpoint() {
     this.isSourceEndpointSelected = true;
@@ -106013,7 +105991,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
     this.emitter.emit("link:endpoint-selected", { endpoint: "source" });
   }
   /**
-   * Phase 1: Select target endpoint handle
+   * Select target endpoint handle
    */
   selectTargetEndpoint() {
     this.isTargetEndpointSelected = true;
@@ -106021,7 +105999,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
     this.emitter.emit("link:endpoint-selected", { endpoint: "target" });
   }
   /**
-   * Phase 1: Deselect all endpoint handles
+   * Deselect all endpoint handles
    */
   deselectEndpoints() {
     this.isSourceEndpointSelected = false;
@@ -106029,7 +106007,7 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
     this.emitter.emit("link:endpoint-deselected");
   }
   /**
-   * Phase 1: Check if any endpoint is selected
+   * Check if any endpoint is selected
    */
   hasSelectedEndpoint() {
     return this.isSourceEndpointSelected || this.isTargetEndpointSelected;
@@ -106323,14 +106301,12 @@ var _LinkModel = class _LinkModel extends DiagramEntity {
   }
 };
 /**
- * Wave 3 (Edges & links): the curve tightness of a smooth/bezier link.
+ * The curve tightness of a smooth/bezier link.
  *
  * `style.curvature` is a multiplier of the endpoint distance for the
- * control-point offset. It used to be DEAD (declared on LinkStyle, read by
- * nobody); it is now the single knob both this model and the SVG renderer
- * read, so a per-link value produces the same curve whichever produced the
- * path. Default 0.5 = the historical hardcoded factor; negatives are clamped
- * to 0 (a straight chord).
+ * control-point offset, read by both this model and the SVG renderer, so a
+ * per-link value produces the same curve whichever produced the path.
+ * Default 0.5; negatives are clamped to 0 (a straight chord).
  */
 _LinkModel.DEFAULT_CURVATURE = 0.5;
 var LinkModel = _LinkModel;
@@ -106393,7 +106369,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     return diagram ?? this.metadata.get("diagram");
   }
   /**
-   * Whether `candidateId` may legally join this group (Wave-2).
+   * Whether `candidateId` may legally join this group.
    * Rejects self-membership, ancestor cycles (adding an ancestor group as a
    * member would create a containment loop), and candidates failing the
    * per-group `memberValidation` predicate. Node candidates only run the
@@ -106420,7 +106396,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     return true;
   }
   /**
-   * Wave-5 Card 7: WIP state for the capacity limit. 'under' = room to spare,
+   * WIP state for the capacity limit. 'under' = room to spare,
    * 'full' = exactly at the limit (the visual warning threshold), 'over' = past
    * it (only reachable by lowering capacity below the current count). Returns
    * 'unlimited' when no capacity is set.
@@ -106433,7 +106409,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     const state = count2 > this.capacity ? "over" : count2 >= this.capacity ? "full" : "under";
     return { count: count2, capacity: this.capacity, state };
   }
-  /** Wave-5 Card 7: true when at or beyond the capacity limit (warning state). */
+  /** True when at or beyond the capacity limit (warning state). */
   isOverCapacity() {
     const s = this.getWipState().state;
     return s === "full" || s === "over";
@@ -106472,6 +106448,43 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     this.trackChange("members", null, entityId);
     this.emitter.emit("member:added", entityId);
     this.requestLayout(dm);
+    if (dm) this.growFramesToTakeIn(dm, entityId);
+  }
+  /**
+   * Whether a joining member may grow this group's frame. Frames that something
+   * else owns are left alone: a collapsed group, a layout container
+   * (`setLayout`), a swimlane or pool (`laneConfig`), a group that confines its
+   * members (`constrainChildren`: its frame is the extent they are kept inside),
+   * and a group drawn without a frame (`metadata.frameChrome === 'none'`, as
+   * dashboard boards are).
+   */
+  ownsItsFrame() {
+    return !this.isCollapsed && !this.hasLayout() && !this.laneConfig && this.constrainChildren !== true && this.getMetadata("frameChrome") !== "none";
+  }
+  /**
+   * Take a joining member in: when it reaches outside this frame, grow the frame
+   * (grow-only, to the members plus padding and header band — an authored frame
+   * keeps its size and is only ever extended), then the enclosing frame if the
+   * grown one now reaches outside it, and so on. A member already inside the
+   * frame changes nothing, so an importer's or author's exact frame is left as
+   * it was drawn. Frames that are not their own (see {@link ownsItsFrame}) and
+   * a group with NO frame yet (left to whoever fits it: an importer, a layout,
+   * `fitToContents`) are not touched. Not during a system write: a remote or
+   * replayed membership arrives with the frame its origin computed.
+   */
+  growFramesToTakeIn(dm, memberId) {
+    if (dm.inSystemWrite?.() || dm.blocksDocumentWrite?.()) return;
+    let reach = extentOf(dm, memberId);
+    const seen = /* @__PURE__ */ new Set();
+    let current = this;
+    while (reach && current && !seen.has(current.id)) {
+      seen.add(current.id);
+      if (!current.size || !current.ownsItsFrame()) return;
+      if (rectContains(current.getOuterBounds(), reach)) return;
+      if (!current.growToFitMembers(dm)) return;
+      reach = current.getOuterBounds();
+      current = current.parentGroupId ? dm.getGroup(current.parentGroupId) : void 0;
+    }
   }
   /**
    * Remove member from group. When the member is a group whose parent is this
@@ -106574,7 +106587,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     return true;
   }
   /**
-   * Set transient drag-hover highlight state and notify listeners (Wave-2).
+   * Set transient drag-hover highlight state and notify listeners.
    * Renderers/canvas can subscribe to 'hover:changed' to outline a drop target.
    */
   setHovered(hovered) {
@@ -106604,7 +106617,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     }
   }
   /**
-   * Wave-5 Card 4: set (or clear) the reversible collapse snapshot. Tracked as a
+   * Set (or clear) the reversible collapse snapshot. Tracked as a
    * change so the incremental diff-capture serializes it and undo/redo see it.
    */
   setCollapsedState(state) {
@@ -106623,7 +106636,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     this.emitter.emit("layout:changed", { type, config });
   }
   /**
-   * Clear layout configuration (Phase 1.7)
+   * Clear layout configuration
    */
   clearLayout() {
     const oldType = this.layoutType;
@@ -106636,7 +106649,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     this.emitter.emit("layout:cleared");
   }
   /**
-   * Get layout configuration (Phase 1.7)
+   * Get layout configuration
    */
   getLayout() {
     return {
@@ -106645,13 +106658,13 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     };
   }
   /**
-   * Check if group has layout configured (Phase 1.7)
+   * Check if group has layout configured
    */
   hasLayout() {
     return this.layoutType !== "none" && this.layoutConfig !== void 0;
   }
   /**
-   * Get layout as flexbox config (Phase 1.7)
+   * Get layout as flexbox config
    * @throws Error if layout is not flexbox
    */
   getFlexboxLayout() {
@@ -106661,7 +106674,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     return this.layoutConfig;
   }
   /**
-   * Get layout as grid config (Phase 1.7)
+   * Get layout as grid config
    * @throws Error if layout is not grid
    */
   getGridLayout() {
@@ -106801,6 +106814,36 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     this.setFrame(target);
   }
   /**
+   * Grow the frame just enough to take in every member, plus padding and the
+   * header band, without ever shrinking it. A group with no frame yet gets one
+   * fitted around its members. Writes nothing when the members already fit, so
+   * an unchanged frame records no change.
+   *
+   * @returns true when the frame changed.
+   */
+  growToFitMembers(diagram) {
+    const dm = this.resolveDiagram(diagram);
+    if (!dm) return false;
+    const content = this.computeMemberExtent(dm);
+    if (!content) return false;
+    const pad = this.getPadding();
+    const fitted = {
+      x: content.x - pad.left,
+      y: content.y - pad.top - this.headerHeight,
+      width: content.width + pad.left + pad.right,
+      height: content.height + pad.top + pad.bottom + this.headerHeight
+    };
+    const target = this.reconcileFit(fitted, "grow-only");
+    if (this.size) {
+      const current = this.getOuterBounds();
+      if (target.x === current.x && target.y === current.y && target.width === current.width && target.height === current.height) {
+        return false;
+      }
+    }
+    this.setFrame(target);
+    return true;
+  }
+  /**
    * Bounding box (world coords) of this group's members. Nodes contribute their
    * global bounds; member groups contribute their outer frame. Returns
    * undefined when nothing is positioned.
@@ -106916,7 +106959,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     return true;
   }
   /**
-   * Wave-5 Card 4: restore raw geometry (position + optional size + bounds)
+   * Restore raw geometry (position + optional size + bounds)
    * captured before a collapse. Unlike setFrame this permits size === undefined
    * so a group that had no explicit frame is restored to exactly that.
    */
@@ -106989,7 +107032,7 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     this.applyLayout(diagram);
   }
   /**
-   * Apply layout to member nodes (Phase 1.7+)
+   * Apply layout to member nodes
    * Positions child nodes based on flex or grid layout configuration
    */
   applyLayout(diagram) {
@@ -107581,6 +107624,22 @@ var GroupModel = class _GroupModel extends DiagramEntity {
     return group;
   }
 };
+function extentOf(dm, id) {
+  const node = dm.getNode(id);
+  if (node) {
+    const b = node.getGlobalBounds();
+    return { x: b.left, y: b.top, width: b.right - b.left, height: b.bottom - b.top };
+  }
+  const group = dm.getGroup(id);
+  if (group) {
+    const r = group.getOuterBounds();
+    return r.width > 0 || r.height > 0 ? r : void 0;
+  }
+  return void 0;
+}
+function rectContains(outer, inner) {
+  return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.width <= outer.x + outer.width && inner.y + inner.height <= outer.y + outer.height;
+}
 
 // libs/engine/src/routing/PathSimplifier.ts
 var PathSimplifier = class {
@@ -107984,12 +108043,10 @@ var StrokeModel = class _StrokeModel extends DiagramEntity {
    * A two-second scribble at 120Hz is ~240 samples, most of them a fraction of a pixel
    * apart. Persisting them all means a document that is mostly float noise, an op
    * payload that is kilobytes per line, and an SVG path the browser re-parses on every
-   * frame. The brief's phrasing is exactly right: a 500-point stroke that serialises as
-   * 500 points is a bug.
+   * frame.
    *
-   * So: Douglas-Peucker, through the engine's OWN `PathSimplifier` — which existed and
-   * which the renderer had never called until Wave 8, and which I am not going to
-   * reimplement a second copy of. Typical reduction on real ink is 85-95%.
+   * So: Douglas-Peucker, through the engine's own `PathSimplifier`. Typical reduction
+   * on real ink is 85-95%.
    *
    * IT PRESERVES PRESSURE, and that is a property of the algorithm rather than luck:
    * Douglas-Peucker SELECTS a subset of the input points (it returns the very objects it
@@ -108171,7 +108228,7 @@ var SpatialIndex = class {
   /**
    * All entities whose bounds fall within `radius` of `point`, nearest first.
    *
-   * wave8/culling — Card 2. Exists so interactive hit-testing (the nearest PORT
+   * Exists so interactive hit-testing (the nearest PORT
    * to a dragged link end, the node under the cursor) is served by the index
    * instead of a linear scan of the scene: a drag is a per-pointermove query, so
    * an O(n) answer is O(n) sixty times a second.
@@ -108583,7 +108640,7 @@ var GridLayoutAlgorithm = class extends BaseLayoutAlgorithm {
     };
   }
   /**
-   * Re-layout all nodes in grid pattern (Phase 0.5 - Viewport-aware)
+   * Re-layout all nodes in grid pattern
    */
   reLayout(diagram, config) {
     if (config) {
@@ -109671,7 +109728,7 @@ var LayoutManager = class {
     }
   }
   /**
-   * Re-layout all nodes using current algorithm (Phase 0.5 - Viewport-aware)
+   * Re-layout all nodes using current algorithm
    * Option 3: Supports animation and locked node constraints
    */
   async reLayout(config) {
@@ -109853,7 +109910,7 @@ var LayoutManager = class {
     debugLog(`\u{1F517} Recalculated ${recalculated} link paths after layout`);
   }
   /**
-   * Phase 0.5.2 Enhanced: Select optimal ports based on layout-aware algorithm
+   * Select optimal ports based on layout-aware algorithm
    *
    * Uses layout-aware analysis based on academic research:
    * - Considers layout direction (TB/LR/RL/BT)
@@ -109982,7 +110039,7 @@ var LayoutManager = class {
     return { sourcePort, targetPort };
   }
   /**
-   * Phase 0.5.2 Enhanced: Optimize all connections after layout
+   * Optimize all connections after layout
    *
    * Reassigns ports for all links based on current node positions and layout context.
    * This ensures connections look natural after layout algorithms reposition nodes.
@@ -110474,7 +110531,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     this.links = /* @__PURE__ */ new Map();
     this.groups = /* @__PURE__ */ new Map();
     // Phase 1.6c
-    /** wave10/whiteboard: freehand ink strokes. See StrokeModel for why these are not nodes. */
+    /** Freehand ink strokes. See StrokeModel for why these are not nodes. */
     this.strokes = /* @__PURE__ */ new Map();
     /**
      * Wave 9 — Card 7. The read-only lock. THE enforcement point for
@@ -110513,15 +110570,13 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
      */
     this.detachedAnchors = /* @__PURE__ */ new Map();
     /**
-     * Wave 10 — who owns the invariant "a link whose node is gone is not a link"?
+     * Who owns the invariant "a link whose node is gone is not a link"?
      *
      * `'model'` (the default): {@link removeNode} CASCADES — it removes the links attached
-     * to the node it removes. This is the right answer for an ordinary single-user document,
-     * and its absence was a real bug: deleting a node left its edges in `getLinks()` and on
-     * the screen, through every removal path there is.
+     * to the node it removes. This is the right answer for an ordinary single-user document.
      *
      * `'external'`: something with a BETTER answer owns it, and the cascade must keep its
-     * hands off. Specifically {@link ReferentialIntegrity} (wave 9, collab), which derives
+     * hands off. Specifically {@link ReferentialIntegrity} (collaboration), which derives
      * liveness from the presence registers and QUARANTINES an orphaned link instead of
      * destroying it — so undoing the node delete, or a peer resurrecting the node, brings the
      * links back too, including links this peer never saw. A hard cascade there would be
@@ -110808,16 +110863,10 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
   /**
    * Remove node from diagram — AND every link attached to it.
    *
-   * Wave 10 BUG FIX. This used to delete the node and nothing else, so every link that
-   * touched it survived: still in `getLinks()`, still in the spatial index, and still
-   * PAINTED — two edges hanging off a node that no longer existed. `deleteSelected()`
-   * carried the comment "this will also trigger link cleanup via events"; nothing
-   * listened to `node:removed` for cleanup, so that cleanup never happened, anywhere.
-   *
-   * It matters because EVERY removal path funnels through here:
+   * EVERY removal path funnels through here:
    *   - `deleteSelected()` — what the Delete key calls;
-   *   - `applyNodes()` — what `setNodes()` calls, so dropping a node from a React-shaped
-   *     spec left the dangling links behind;
+   *   - `applyNodes()` — what `setNodes()` calls, so dropping a node from a spec drops
+   *     its links too;
    *   - `RemoveNodeCommand`.
    *
    * A link's endpoints are the invariant that makes it a link; a link to nowhere is not
@@ -110827,6 +110876,72 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
    * UNLESS someone better owns that invariant — see {@link linkIntegrityOwner}.
    */
   removeNode(nodeId) {
+    return this.detachNode(nodeId);
+  }
+  /**
+   * Swap the live model under `next.id` for `next`, KEEPING the links attached
+   * to it. (An id not on the canvas is simply added.)
+   *
+   * `removeNode(id); addNode(next)` is not a swap: the removal cascades the
+   * node's links, so handing `setNodes()` a reloaded document's models deleted
+   * every edge of every node it replaced. Here each attached link is rebound to
+   * `next`'s ports instead — the SAME port id when `next` has it (a reloaded
+   * document keeps its port ids), else the first port on the same side. A link
+   * whose port has no counterpart on `next` goes, exactly as a removal takes it.
+   *
+   * Observable as what it is: `node:removed` + `node:added` for the node (one
+   * change-log entry each, so collab peers and change capture replay the swap).
+   * A link that keeps its port id is left alone — no event, no op. A link that
+   * moves to another port id is taken out and put back on its new port
+   * (`link:removed` + `link:added`): rebinding it in place would leave it, for a
+   * moment, on a port no node owns, and a collab replica quarantines exactly
+   * such a link, where a port write can no longer reach it.
+   */
+  replaceNode(next) {
+    if (this.blocksDocumentWrite()) return;
+    const current = this.nodes.get(next.id);
+    if (!current) {
+      this.addNode(next);
+      return;
+    }
+    if (current === next) return;
+    const counterpart = (portId) => {
+      const old = current.getPort(portId);
+      if (!old) return void 0;
+      if (next.getPort(portId)) return portId;
+      return next.getPortBySide(old.side)?.id ?? null;
+    };
+    const kept = [];
+    const moved = [];
+    for (const link of this.getLinksForNode(current.id)) {
+      const source = counterpart(link.sourcePortId);
+      const target = counterpart(link.targetPortId);
+      if (source === null || target === null) {
+        this.removeLink(link.id);
+      } else if ((source ?? link.sourcePortId) === link.sourcePortId && (target ?? link.targetPortId) === link.targetPortId) {
+        current.getPort(link.sourcePortId)?.removeConnection(link.id);
+        current.getPort(link.targetPortId)?.removeConnection(link.id);
+        kept.push(link);
+      } else {
+        this.removeLink(link.id);
+        moved.push({ link, source, target });
+      }
+    }
+    this.detachNode(current.id, new Set(kept.map((link) => link.id)));
+    this.installNode(next);
+    for (const link of kept) {
+      next.getPort(link.sourcePortId)?.restoreConnection(link.id, "source");
+      next.getPort(link.targetPortId)?.restoreConnection(link.id, "target");
+      link.markDirty("node-replaced");
+    }
+    for (const { link, source, target } of moved) {
+      if (source !== void 0) link.setSourcePort(source, next.id);
+      if (target !== void 0) link.setTargetPort(target, next.id);
+      this.addLink(link);
+    }
+  }
+  /** removeNode() — sparing the links in `keep`, which a swap rebinds itself. */
+  detachNode(nodeId, keep) {
     if (this.blocksDocumentWrite()) return void 0;
     const node = this.nodes.get(nodeId);
     if (node) {
@@ -110839,7 +110954,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
       });
       if (this.linkIntegrityOwner === "model") {
         for (const link of this.getLinksForNode(nodeId)) {
-          this.removeLink(link.id);
+          if (!keep?.has(link.id)) this.removeLink(link.id);
         }
       }
       this.nodes.delete(nodeId);
@@ -110867,7 +110982,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return out;
   }
   /**
-   * Restore node from serialized data (Phase 1.8)
+   * Restore node from serialized data
    */
   restoreNode(data2) {
     try {
@@ -110892,7 +111007,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return Array.from(this.nodes.values());
   }
   /**
-   * Phase 3: Get node that owns a specific port
+   * Get node that owns a specific port
    * Used for connection group validation and other port-based queries.
    * O(1) via the portIndex (was an O(nodes×ports) linear scan).
    */
@@ -110907,7 +111022,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return this.portIndex.get(portId)?.port;
   }
   /**
-   * wave14/model — the last-known anchor of a REMOVED node, or undefined if the id is
+   * The last-known anchor of a REMOVED node, or undefined if the id is
    * live, was never here, or the anchor was wholesale-cleared. The tolerant readers in
    * NodeModel (getWorldPosition / getGlobalPosition / getGlobalTransformMatrix /
    * setGlobalPosition) resolve an unresolvable parent through this so orphaned relative
@@ -111013,7 +111128,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return link;
   }
   /**
-   * Restore link from serialized data (Phase 1.8)
+   * Restore link from serialized data
    */
   restoreLink(data2) {
     try {
@@ -111038,7 +111153,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return Array.from(this.links.values());
   }
   /**
-   * Phase 0.2: Get all links connected to a specific port
+   * Get all links connected to a specific port
    */
   getLinksForPort(portId) {
     return this.getLinks().filter(
@@ -111059,7 +111174,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     this.emitOrQueue("links:cleared");
   }
   /**
-   * Phase 0.5.3: Create a smart link with automatic port selection
+   * Create a smart link with automatic port selection
    *
    * This high-level API simplifies link creation by:
    * - Automatically selecting optimal ports based on node geometry
@@ -111107,7 +111222,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return link;
   }
   /**
-   * Phase 0.5.3: High-level API to connect two nodes
+   * High-level API to connect two nodes
    *
    * Convenience method that creates a smart link and returns success status.
    * This is the simplest way to connect nodes.
@@ -111129,7 +111244,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return link !== void 0;
   }
   /**
-   * Phase 0.5.3: Get all connections for a node
+   * Get all connections for a node
    *
    * Returns all links where the node is either source or target.
    * Useful for querying node connectivity.
@@ -111166,7 +111281,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     };
   }
   /**
-   * Phase 0.5.3: Disconnect two nodes
+   * Disconnect two nodes
    *
    * Removes all links between the specified nodes.
    * Handles cleanup of port connections.
@@ -111209,7 +111324,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return linksToRemove.length;
   }
   /**
-   * Add group (Phase 1.6c)
+   * Add group
    */
   addGroup(group) {
     if (this.blocksDocumentWrite()) return;
@@ -111235,7 +111350,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     });
   }
   /**
-   * Remove group (Phase 1.6c)
+   * Remove group
    */
   removeGroup(groupId) {
     if (this.blocksDocumentWrite()) return void 0;
@@ -111248,7 +111363,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return group;
   }
   /**
-   * Restore group from serialized data (Phase 1.8)
+   * Restore group from serialized data
    */
   restoreGroup(data2) {
     try {
@@ -111261,19 +111376,19 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     }
   }
   /**
-   * Get group by ID (Phase 1.6c)
+   * Get group by ID
    */
   getGroup(groupId) {
     return this.groups.get(groupId);
   }
   /**
-   * Get all groups (Phase 1.6c)
+   * Get all groups
    */
   getGroups() {
     return Array.from(this.groups.values());
   }
   /**
-   * Wave-5 Card 3: groups in deterministic back-to-front stacking order —
+   * Groups in deterministic back-to-front stacking order —
    * ascending `zIndex`, ties broken by Map insertion order (a STABLE sort keeps
    * it). This is the model-level z-order story that replaces "stacking == Map
    * insertion order" as the only determinant; a renderer paints groups in this
@@ -111283,7 +111398,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return this.getGroups().sort((a, b) => a.zIndex - b.zIndex);
   }
   /**
-   * Wave-5 Card 4: the placeholder "group-as-node" for a collapsed group, if
+   * The placeholder "group-as-node" for a collapsed group, if
    * present. Placeholder nodes are ordinary NodeModels tagged with the group id
    * so callers can filter them out of exports / counts.
    */
@@ -111295,12 +111410,12 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     }
     return void 0;
   }
-  /** Wave-5 Card 4: is this node a collapsed-group placeholder? */
+  /** Is this node a collapsed-group placeholder? */
   isProxyNode(node) {
     return node.getMetadata("__isGroupProxy") === true;
   }
   /**
-   * Clear all groups (Phase 1.6c)
+   * Clear all groups
    */
   clearGroups() {
     this.groups.clear();
@@ -111388,7 +111503,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return out;
   }
   /**
-   * Compound-graph containment (Wave-2)
+   * Compound-graph containment
    *
    * These derive the nesting tree from each GroupModel.parentGroupId pointer,
    * which addMember/removeMember/setParent keep authoritative. Coordinates stay
@@ -111459,11 +111574,14 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     if (!node.isSelectable()) {
       return;
     }
-    this.clearSelection();
-    node.setSelected(true);
+    const deselected = this.getSelectedNodes().filter((other) => other !== node);
+    const wasSelected = node.isSelected();
+    deselected.forEach((other) => other.setSelected(false));
+    if (!wasSelected) node.setSelected(true);
+    if (wasSelected && deselected.length === 0) return;
     this.emitOrQueue("selection:changed", {
-      selected: [node],
-      deselected: []
+      selected: wasSelected ? [] : [node],
+      deselected
     });
   }
   /**
@@ -111558,7 +111676,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
    * @param x - X coordinate
    * @param y - Y coordinate
    * @returns Node at position, or undefined if none found
-   * Phase 3.3: Uses shape-aware hit detection
+   * Uses shape-aware hit detection
    */
   getNodeAtPosition(x, y) {
     const nodes = this.getNodes();
@@ -111578,9 +111696,8 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
    * Same z contract as {@link getNodeAtPosition} (array order, topmost last),
    * same shape-aware containment. This is the occlusion oracle for PORTS: a
    * port whose anchor a higher node covers must neither paint nor accept
-   * input — pre-fix, an overlapped node's port glyphs floated on top of the
-   * covering node's body, and its hidden ports still won the hover/press race
-   * through it (live report from stacked pasted nodes).
+   * input, so a covered port neither floats on top of the covering node's body
+   * nor wins the hover/press race through it.
    */
   isPointCoveredAbove(x, y, nodeId) {
     const nodes = this.getNodes();
@@ -111658,7 +111775,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return lockedNodes.length;
   }
   /**
-   * Set viewport (Phase 0.5 - Viewport-Aware Layout)
+   * Set viewport
    */
   setViewport(x, y, width, height, zoom) {
     const oldViewport = { ...this.viewport };
@@ -111705,7 +111822,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
   }
   /**
    * Set absolute zoom level
-   * Phase 0.5 - Option B: Pan/Zoom controls
+   * Option B: Pan/Zoom controls
    * @param level - Zoom level (0.1 to 10.0)
    * @param center - Optional center point for zoom (defaults to viewport center)
    */
@@ -111721,7 +111838,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
   }
   /**
    * Fit viewport to show all nodes (without changing zoom level)
-   * Phase 0.5 - Option B: Pan/Zoom controls
+   * Option B: Pan/Zoom controls
    * @param padding - Padding around content (default 100)
    */
   fitToView(padding = 100) {
@@ -111758,7 +111875,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
   }
   /**
    * Fit viewport to show all nodes AND adjust zoom to fit screen
-   * Phase 0.5 - Option B: Pan/Zoom controls
+   * Option B: Pan/Zoom controls
    * @param targetWidth - Target viewport width (e.g. screen width)
    * @param targetHeight - Target viewport height (e.g. screen height)
    * @param padding - Padding around content (default 100)
@@ -111799,7 +111916,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     debugLog(`\u{1F50D} Zoom to fit: ${nodes.length} nodes, zoom=${newZoom.toFixed(2)}, content=${contentWidth.toFixed(1)}x${contentHeight.toFixed(1)}`);
   }
   /**
-   * Clear all nodes, links, and groups (Phase 1.6c)
+   * Clear all nodes, links, and groups
    */
   clear() {
     const linkIds = Array.from(this.links.keys());
@@ -111823,7 +111940,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     this.emitOrQueue("diagram:cleared");
   }
   /**
-   * Get nodes visible in viewport (Phase 5.1)
+   * Get nodes visible in viewport
    * This enables viewport virtualization - only render visible nodes
    *
    * @param viewport - Rectangular viewport region in world coordinates
@@ -111847,7 +111964,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     });
   }
   /**
-   * Get links visible in viewport (Phase 5.1)
+   * Get links visible in viewport
    * This enables viewport virtualization - only render visible links
    *
    * @param viewport - Rectangular viewport region in world coordinates
@@ -111859,7 +111976,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
   /**
    * The nearest port to a world point, served BY THE SPATIAL INDEX.
    *
-   * wave8/culling — Card 2. This is the query a link drag makes on every
+   * This is the query a link drag makes on every
    * pointermove, so it is the one query that must never be a scan: the existing
    * answer (`PortModel.findNearestPort`) could only search ONE node — the one the
    * pointer happened to be over — because searching more would have meant walking
@@ -111870,9 +111987,9 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
    * `portPosition` is injectable because THE ENGINE DOES NOT KNOW WHERE PORTS ARE.
    * Its default (`getAbsolutePosition`) walks the bounding box — edge midpoints,
    * blind to the silhouette and to how many ports share a side — while the
-   * renderer draws them shape-aware (`portWorldPosition`). Wave 6 fixed exactly
-   * this divergence for the port hit-test and the magnet, and it is why callers
-   * inside the renderer MUST pass the shape-aware resolver: otherwise you snap to
+   * renderer draws them shape-aware (`portWorldPosition`). The port hit-test and
+   * the magnet use the shape-aware resolver, and callers inside the renderer MUST
+   * pass it too: otherwise you snap to
    * a point several pixels from the circle you can see.
    *
    * @param point   World-space point (usually the drag position).
@@ -111904,7 +112021,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return best;
   }
   /**
-   * Get bounding box of all visible entities (Phase 5.1)
+   * Get bounding box of all visible entities
    * Useful for "fit to viewport" operations
    *
    * @param viewport - Rectangular viewport region
@@ -111943,28 +112060,28 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     };
   }
   /**
-   * Get all dirty nodes (Phase 5.2)
+   * Get all dirty nodes
    * Returns nodes that need re-rendering
    */
   getDirtyNodes() {
     return this.getNodes().filter((node) => node.isDirty);
   }
   /**
-   * Get all dirty links (Phase 5.2)
+   * Get all dirty links
    * Returns links that need re-rendering
    */
   getDirtyLinks() {
     return this.getLinks().filter((link) => link.isDirty);
   }
   /**
-   * Get all dirty groups (Phase 5.2)
+   * Get all dirty groups
    * Returns groups that need re-rendering
    */
   getDirtyGroups() {
     return this.getGroups().filter((group) => group.isDirty);
   }
   /**
-   * Mark all entities as clean (Phase 5.2)
+   * Mark all entities as clean
    * Call this after rendering to reset dirty flags
    */
   markAllClean() {
@@ -111980,7 +112097,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     this.emitOrQueue("dirty:cleared");
   }
   /**
-   * Get total count of dirty entities (Phase 5.2)
+   * Get total count of dirty entities
    * Useful for monitoring render performance
    */
   getDirtyCount() {
@@ -111997,7 +112114,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return count2;
   }
   /**
-   * Get visible dirty nodes (Phase 5.2)
+   * Get visible dirty nodes
    * Combines viewport virtualization with dirty marking
    * Only returns nodes that are both visible AND need re-rendering
    *
@@ -112015,7 +112132,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return this.getVisibleNodes(viewport).filter((node) => node.isDirty);
   }
   /**
-   * Get visible dirty links (Phase 5.2)
+   * Get visible dirty links
    * Combines viewport virtualization with dirty marking
    * Only returns links that are both visible AND need re-rendering
    *
@@ -112026,17 +112143,16 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return this.getVisibleLinks(viewport).filter((link) => link.isDirty);
   }
   /**
-   * Get LOD level based on zoom (Phase 5.3)
+   * Get LOD level based on zoom
    *
-   * wave2/rendering: driven by the declarative {@link LODConfig}. Picks the
+   * Driven by the declarative {@link LODConfig}. Picks the
    * tier whose `minZoom` the zoom crosses — tiers are pre-sorted highest-first,
    * so the first match wins. With the default config this is exactly:
    *   zoom >= 1.0        -> 'high'
    *   0.5 <= zoom < 1.0  -> 'medium'
    *   zoom <  0.5        -> 'low'
    *
-   * (wave8/culling moved the medium/low breakpoint 0.2 → 0.5 — see
-   * {@link createDefaultLODConfig} for why.)
+   * (See {@link createDefaultLODConfig} for why the medium/low breakpoint is 0.5.)
    *
    * @param zoom - Current zoom level
    * @returns Tier name (default policy: 'high' | 'medium' | 'low')
@@ -112051,7 +112167,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return tiers.length > 0 ? tiers[tiers.length - 1].name : "low";
   }
   /**
-   * wave2/rendering: single feature gate that reads the active LOD tier's
+   * Single feature gate that reads the active LOD tier's
    * feature set. Renderers call this instead of hardcoding `lod === 'high'`
    * checks, so custom tiers work automatically.
    *
@@ -112114,7 +112230,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     );
   }
   /**
-   * Get visible nodes with LOD information (Phase 5.3)
+   * Get visible nodes with LOD information
    * Combines viewport virtualization with Level of Detail
    *
    * @param viewport - Rectangular viewport region
@@ -112130,7 +112246,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     }));
   }
   /**
-   * Get visible links with LOD information (Phase 5.3)
+   * Get visible links with LOD information
    * Combines viewport virtualization with Level of Detail
    *
    * @param viewport - Rectangular viewport region
@@ -112146,29 +112262,29 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     }));
   }
   /**
-   * Check if labels should be rendered at this LOD level (Phase 5.3)
-   * wave2/rendering: now reads the LOD tier's feature set.
+   * Check if labels should be rendered at this LOD level
+   * Now reads the LOD tier's feature set.
    */
   shouldRenderLabels(lod) {
     return this.shouldRender("labels", lod);
   }
   /**
-   * Check if icons should be rendered at this LOD level (Phase 5.3)
-   * wave2/rendering: now reads the LOD tier's feature set.
+   * Check if icons should be rendered at this LOD level
+   * Now reads the LOD tier's feature set.
    */
   shouldRenderIcons(lod) {
     return this.shouldRender("icons", lod);
   }
   /**
-   * Check if borders should be rendered at this LOD level (Phase 5.3)
-   * wave2/rendering: now reads the LOD tier's feature set.
+   * Check if borders should be rendered at this LOD level
+   * Now reads the LOD tier's feature set.
    */
   shouldRenderBorders(lod) {
     return this.shouldRender("borders", lod);
   }
   /**
-   * Check if shadows should be rendered at this LOD level (Phase 5.3)
-   * wave2/rendering: now reads the LOD tier's feature set.
+   * Check if shadows should be rendered at this LOD level
+   * Now reads the LOD tier's feature set.
    */
   shouldRenderShadows(lod) {
     return this.shouldRender("shadows", lod);
@@ -112552,7 +112668,7 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     return diagram;
   }
   /**
-   * Dispose diagram and all child entities (Phase 5.4)
+   * Dispose diagram and all child entities
    * Prevents memory leaks by:
    * - Disposing all nodes, links, and groups
    * - Breaking circular references
@@ -112831,10 +112947,8 @@ var Command = class {
    * `canUndo(context)` is a state probe ("can I undo RIGHT NOW?") consulted at
    * undo time — many commands answer it from live diagram state. This is the
    * static declaration consulted at EXECUTE time: a non-mutating command
-   * (Copy) answers false and never enters history. Recording one used to
-   * poison the stack — undo() hit the entry, threw "Cannot undo command:
-   * Copy", never decremented the index, and everything behind it became
-   * permanently unreachable.
+   * (Copy) answers false and never enters history, so undo never lands on an
+   * entry it cannot undo.
    */
   isUndoable() {
     return true;
@@ -113125,10 +113239,9 @@ var CommandManager = class {
   }
   /**
    * End batch mode: commit the queued commands as ONE BatchCommand through the
-   * normal execute() path (wave 14) — one history entry, one undo step (with
+   * normal execute() path — one history entry, one undo step (with
    * reverse-order undo), and the same strict-validation gate as any other
-   * command. The old code looped executeCommand() directly, so a "batch"
-   * mutated the diagram while building NO history at all.
+   * command.
    *
    * Note BatchCommand's existing gate contract: its canExecute() checks every
    * queued command against the CURRENT (pre-batch) state, so a queue whose
@@ -113899,6 +114012,8 @@ var AddToGroupCommand = class extends Command {
     super("Add To Group");
     this.groupId = groupId;
     this.entityId = entityId;
+    /** The frames this execution changed, outermost last, for undo. */
+    this.refitted = [];
   }
   execute(context) {
     const diagram = context.diagram;
@@ -113909,7 +114024,16 @@ var AddToGroupCommand = class extends Command {
     if (!group) {
       throw new Error(`Group ${this.groupId} not found`);
     }
+    const joined = !group.members.has(this.entityId);
+    const before = joined ? frameChain(diagram, group) : [];
     group.addMember(this.entityId);
+    this.refitted = [];
+    if (!joined || !group.members.has(this.entityId)) return;
+    if (!group.size && group.ownsItsFrame()) group.growToFitMembers(diagram);
+    for (const snap of before) {
+      const now3 = diagram.getGroup(snap.groupId);
+      if (now3 && !sameFrame(now3, snap.before)) this.refitted.push(snap);
+    }
   }
   undo(context) {
     const diagram = context.diagram;
@@ -113921,6 +114045,14 @@ var AddToGroupCommand = class extends Command {
       throw new Error(`Group ${this.groupId} not found`);
     }
     group.removeMember(this.entityId);
+    for (const { groupId, before } of [...this.refitted].reverse()) {
+      diagram.getGroup(groupId)?.restoreGeometry({
+        position: { ...before.position },
+        size: before.size ? { ...before.size } : void 0,
+        bounds: before.bounds ? { ...before.bounds } : void 0
+      });
+    }
+    this.refitted = [];
   }
   canExecute(context) {
     if (!context.diagram) {
@@ -113955,6 +114087,29 @@ var AddToGroupCommand = class extends Command {
     return `Add entity ${this.entityId} to group ${this.groupId}`;
   }
 };
+function frameChain(diagram, group) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  let current = group;
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    out.push({
+      groupId: current.id,
+      before: {
+        position: { ...current.position },
+        size: current.size ? { ...current.size } : void 0,
+        bounds: current.bounds ? { ...current.bounds } : void 0
+      }
+    });
+    current = current.parentGroupId ? diagram.getGroup(current.parentGroupId) : void 0;
+  }
+  return out;
+}
+function sameFrame(group, frame) {
+  const s = group.size;
+  const b = group.bounds;
+  return group.position.x === frame.position.x && group.position.y === frame.position.y && s?.width === frame.size?.width && s?.height === frame.size?.height && b?.x === frame.bounds?.x && b?.y === frame.bounds?.y && b?.width === frame.bounds?.width && b?.height === frame.bounds?.height;
+}
 
 // libs/engine/src/commands/basic/RemoveFromGroupCommand.ts
 var RemoveFromGroupCommand = class extends Command {
@@ -115658,13 +115813,14 @@ var SetNodeLabelCommand = class extends Command {
 
 // libs/engine/src/commands/basic/SetLinkPointsCommand.ts
 var SetLinkPointsCommand = class extends Command {
-  constructor(linkId, newPoints, oldPoints) {
+  constructor(linkId, newPoints, oldPoints, oldManual) {
     super("Edit Link Path");
     this.linkId = linkId;
     this.newPoints = newPoints.map((p) => ({ ...p }));
     if (oldPoints) {
       this.oldPoints = oldPoints.map((p) => ({ ...p }));
     }
+    this.oldManual = oldManual;
   }
   execute(context) {
     const diagram = context.diagram;
@@ -115677,6 +115833,8 @@ var SetLinkPointsCommand = class extends Command {
     }
     if (!this.oldPoints) {
       this.oldPoints = link.points.map((p) => ({ ...p }));
+    }
+    if (this.oldManual === void 0) {
       this.oldManual = link.getMetadata("hasManualWaypoints") === true;
     }
     link.setPoints(this.newPoints.map((p) => ({ ...p })));
@@ -116882,7 +117040,7 @@ var TypeRegistry = class {
     this.linkTypes.set(definition.type, definition);
   }
   /**
-   * Register a group type (Phase 2)
+   * Register a group type
    */
   registerGroupType(definition) {
     if (this.groupTypes.has(definition.type)) {
@@ -116909,7 +117067,7 @@ var TypeRegistry = class {
     return this.linkTypes.delete(type);
   }
   /**
-   * Unregister a group type (Phase 2)
+   * Unregister a group type
    */
   unregisterGroupType(type) {
     return this.groupTypes.delete(type);
@@ -116933,7 +117091,7 @@ var TypeRegistry = class {
     return this.linkTypes.get(type);
   }
   /**
-   * Get group type definition (Phase 2)
+   * Get group type definition
    */
   getGroupType(type) {
     return this.groupTypes.get(type);
@@ -116957,7 +117115,7 @@ var TypeRegistry = class {
     return this.linkTypes.has(type);
   }
   /**
-   * Check if group type exists (Phase 2)
+   * Check if group type exists
    */
   hasGroupType(type) {
     return this.groupTypes.has(type);
@@ -116981,7 +117139,7 @@ var TypeRegistry = class {
     return Array.from(this.linkTypes.values());
   }
   /**
-   * List all group types (Phase 2)
+   * List all group types
    */
   listGroupTypes() {
     return Array.from(this.groupTypes.values());
@@ -117137,7 +117295,7 @@ var TypeRegistry = class {
     );
   }
   /**
-   * Get all node types using a specific template (Phase 2)
+   * Get all node types using a specific template
    * Includes types that inherit template ID from parent
    */
   getNodeTypesByTemplate(templateId) {
@@ -117180,7 +117338,7 @@ var ValidationEngine = class {
     this.realTimeValidation = false;
   }
   /**
-   * Check if real-time validation is enabled (Phase 1 - Critical Fixes)
+   * Check if real-time validation is enabled
    */
   isRealTimeValidationEnabled() {
     return this.realTimeValidation;
@@ -117543,7 +117701,7 @@ var ValidationEngine = class {
     return result;
   }
   /**
-   * Validate node hierarchy (Phase 2 - Hierarchy-aware validation)
+   * Validate node hierarchy
    */
   validateHierarchy(node, diagram, options = {}) {
     this.eventBus?.emit(DiagramEventTypes.VALIDATION_STARTED, {
@@ -117659,7 +117817,7 @@ var ValidationEngine = class {
     return result;
   }
   /**
-   * Validate group (Phase 2 - Group validation)
+   * Validate group
    */
   validateGroup(group, diagram, options = {}) {
     this.eventBus?.emit(DiagramEventTypes.VALIDATION_STARTED, {
@@ -117774,7 +117932,7 @@ var ValidationEngine = class {
     return result;
   }
   /**
-   * Validate layout configuration (Phase 3 - Layout validation)
+   * Validate layout configuration
    */
   validateLayout(group, diagram, options = {}) {
     this.eventBus?.emit(DiagramEventTypes.VALIDATION_STARTED, {
@@ -119104,7 +119262,7 @@ var ClipboardManager = class {
    * Repeat-pasting the same copy must cascade — the clipboard's serialized
    * positions are frozen at copy time, so a constant default offset lands
    * every paste on the exact same pixels and "paste" appears to work only
-   * once (live report). Each PasteCommand claims its slot once (stable
+   * once. Each PasteCommand claims its slot once (stable
    * across redo); a new copy() resets the cascade.
    */
   claimPasteSlot() {
@@ -122342,6 +122500,8 @@ var PriorityQueue = class {
 };
 var AStarRouter = class {
   constructor(obstacleMap, options = {}) {
+    /** Set per route() call — see EndpointZone. */
+    this.endpointZones = [];
     this.obstacleMap = obstacleMap;
     this.options = {
       heuristic: options.heuristic ?? "manhattan" /* MANHATTAN */,
@@ -122370,16 +122530,67 @@ var AStarRouter = class {
     if (this.pointsEqual(gridStart, gridEnd)) {
       return [start, end];
     }
-    const path = this.findPath(gridStart, gridEnd);
+    this.endpointZones = [
+      ...this.zonesFor(start, gridStart),
+      ...this.zonesFor(end, gridEnd)
+    ];
+    let path;
+    try {
+      path = this.findPath(gridStart, gridEnd);
+    } finally {
+      this.endpointZones = [];
+    }
     if (path.length === 0) {
       return [];
     }
     path[0] = start;
     path[path.length - 1] = end;
     if (this.options.smoothing) {
-      return this.smoothPath(path);
+      this.endpointZones = [
+        ...this.zonesFor(start, gridStart),
+        ...this.zonesFor(end, gridEnd)
+      ];
+      try {
+        return this.smoothPath(path);
+      } finally {
+        this.endpointZones = [];
+      }
     }
     return path;
+  }
+  /**
+   * The endpoint zones for one end of the route: every obstacle whose inflated
+   * box holds the port. The passable radius reaches from the port out past the
+   * body's nearest edge and its margin, plus one grid step — enough to step
+   * clear of the body, and no more.
+   */
+  zonesFor(point, gridPoint) {
+    const margin = this.options.obstacleMargin;
+    const { gridSize } = this.options;
+    const zones = [];
+    const probe = { x: Math.min(point.x, gridPoint.x) - margin, y: Math.min(point.y, gridPoint.y) - margin };
+    const candidates = this.obstacleMap.queryRegion({
+      x: probe.x,
+      y: probe.y,
+      width: Math.abs(point.x - gridPoint.x) + margin * 2,
+      height: Math.abs(point.y - gridPoint.y) + margin * 2
+    });
+    for (const o of candidates) {
+      const holds = (p) => p.x >= o.x - margin && p.x <= o.x + o.width + margin && p.y >= o.y - margin && p.y <= o.y + o.height + margin;
+      if (!holds(point) && !holds(gridPoint)) continue;
+      const depth = (p) => Math.max(0, Math.min(
+        p.x - o.x,
+        o.x + o.width - p.x,
+        p.y - o.y,
+        o.y + o.height - p.y
+      ));
+      zones.push({
+        obstacleId: o.id,
+        anchor: gridPoint,
+        radius: Math.max(depth(point), depth(gridPoint)) + margin + gridSize
+      });
+    }
+    return zones;
   }
   /**
    * Core A* pathfinding algorithm
@@ -122510,7 +122721,16 @@ var AStarRouter = class {
       height: margin * 2
     });
     for (const obstacle of obstacles) {
+      if (this.endpointZones.length > 0 && this.inEndpointZone(point, obstacle.id)) continue;
       if (point.x >= obstacle.x - margin && point.x <= obstacle.x + obstacle.width + margin && point.y >= obstacle.y - margin && point.y <= obstacle.y + obstacle.height + margin) {
+        return true;
+      }
+    }
+    return false;
+  }
+  inEndpointZone(point, obstacleId) {
+    for (const z of this.endpointZones) {
+      if (z.obstacleId === obstacleId && Math.max(Math.abs(point.x - z.anchor.x), Math.abs(point.y - z.anchor.y)) <= z.radius) {
         return true;
       }
     }
@@ -125080,16 +125300,10 @@ var PortAwareLayoutManager = class {
   /**
    * Count edge crossings for a given port configuration.
    *
-   * BUG FIXED (Wave 7, Card 7): this took `nodePositions` and never used it. Port
-   * coordinates are RELATIVE to their own node, so every node's ports were being
-   * compared around a shared origin — two edges on opposite ends of a large canvas
-   * could be counted as crossing, and two that genuinely crossed could be missed.
-   * The old `getLinkEndpoint` even said so in a comment ("In real implementation,
-   * this should be absolute") and returned the relative point anyway. Every
-   * `edgeCrossings` number this module has ever reported was therefore noise.
-   *
-   * `ports` is what makes the fix possible: it maps a port back to its node, so
-   * the port's offset can be added to the node's origin. It is optional only for
+   * Port coordinates are RELATIVE to their own node, so crossings are counted
+   * in world coordinates: `nodePositions` gives each node's origin, and `ports`
+   * maps a port back to its node so the port's offset can be added to that
+   * origin. `ports` is optional only for
    * source compatibility — without it we cannot resolve the frame, so we fall back
    * to the relative comparison rather than silently inventing a node position.
    */
@@ -127178,7 +127392,7 @@ var ForceLayoutAdapter = class {
     this.name = "force";
   }
   /**
-   * Wave 7 Card 3 — the simulation, exposed one iteration at a time.
+   * The simulation, exposed one iteration at a time.
    *
    * This is where the physics lives, and it is the ONLY place it lives: `apply()`
    * below is now just "drive this to convergence". Splitting the loop out (rather
@@ -127780,7 +127994,7 @@ var ForceLayoutAdapter = class {
     };
   }
   /**
-   * Apply incremental layout (Phase 1 compatibility)
+   * Apply incremental layout
    */
   async applyIncremental(nodes, links, incrementalOptions, layoutOptions) {
     const result = await this.apply(nodes, links, layoutOptions);
@@ -128117,7 +128331,7 @@ var SpectralLayoutAdapter = class {
     };
   }
   /**
-   * Apply incremental layout (Phase 1 compatibility)
+   * Apply incremental layout
    */
   async applyIncremental(nodes, links, incrementalOptions, layoutOptions) {
     const result = await this.apply(nodes, links, layoutOptions);
@@ -128528,7 +128742,7 @@ var CommunityLayoutAdapter = class {
     };
   }
   /**
-   * Apply incremental layout (Phase 1 compatibility)
+   * Apply incremental layout
    */
   async applyIncremental(nodes, links, incrementalOptions, layoutOptions) {
     const result = await this.apply(nodes, links, layoutOptions);
@@ -131075,7 +131289,7 @@ var LayoutRegistry = class {
     return [...this.engines.keys()].sort();
   }
   /**
-   * Wave 7 Card 4: name → adapter, for every registered engine that exposes one.
+   * Name → adapter, for every registered engine that exposes one.
    *
    * This is what nested (compound) layout resolves a container's algorithm
    * against — so `group.subgraphLayout = { algorithm: 'force' }` works, and so
@@ -132288,27 +132502,22 @@ var DiagramEngine = class {
     return this.diagram;
   }
   /**
-   * Get configuration (Phase 1 - Critical Fixes)
+   * Get configuration
    */
   getConfig() {
     return this.config;
   }
   /**
-   * Phase 1: Get interaction configuration
+   * Get interaction configuration
    * Returns the current interaction mode settings
    *
    * A CACHED, FROZEN snapshot — not a fresh spread per call. This getter is on
    * the hottest paths in the product: the renderer consults it per port and per
-   * link inside every frame, and the binder on every pointer event, so the old
-   * `{ ...config }` allocated tens of thousands of full copies per second and
-   * showed up as the single largest self-time in a 2,000-node drag profile
-   * (~590ms of a 4.5s gesture — more than routing).
+   * link inside every frame, and the binder on every pointer event, so a copy
+   * per call would allocate tens of thousands of objects per second.
    *
-   * The spread existed to keep callers from mutating engine state; the freeze
-   * keeps that promise the honest way. A caller that used to scribble on its
-   * private copy now throws instead of silently diverging — which is the
-   * correct outcome, because two callers sharing one snapshot must not see each
-   * other's scribbles.
+   * Frozen so callers cannot mutate engine state through it: writing to it
+   * throws. Change settings with {@link setInteractionConfig}.
    */
   getInteractionConfig() {
     if (!this.interactionConfigSnapshot) {
@@ -132317,7 +132526,7 @@ var DiagramEngine = class {
     return this.interactionConfigSnapshot;
   }
   /**
-   * Phase 1: Set interaction configuration
+   * Set interaction configuration
    * Updates interaction mode settings and emits event
    */
   setInteractionConfig(config) {
@@ -132333,21 +132542,21 @@ var DiagramEngine = class {
     });
   }
   /**
-   * Phase 1: Get connection state manager
+   * Get connection state manager
    * Used for managing connection drag operations
    */
   getConnectionStateManager() {
     return this.connectionStateManager;
   }
   /**
-   * Wave 2 (Edges & links): current endpoint-reconnection preview, or null when
+   * Current endpoint-reconnection preview, or null when
    * no endpoint is being dragged. The renderer reads this to draw a ghost link.
    */
   getReconnectionPreview() {
     return this.reconnectionPreview;
   }
   /**
-   * Wave 2 (Edges & links): set (or clear, with null) the endpoint-reconnection
+   * Set (or clear, with null) the endpoint-reconnection
    * preview. Called by the interaction layer on start/move/end of an endpoint
    * drag. Does not emit — the interaction layer already triggers re-render.
    */
@@ -132383,7 +132592,7 @@ var DiagramEngine = class {
     return this.routingEngine;
   }
   /**
-   * Phase 0.2: Enable live rerouting
+   * Enable live rerouting
    * Automatically updates link paths when nodes move or resize
    */
   enableLiveRerouting() {
@@ -132398,7 +132607,7 @@ var DiagramEngine = class {
     debugLog("\u2705 Live rerouting enabled");
   }
   /**
-   * Phase 0.2: Disable live rerouting
+   * Disable live rerouting
    */
   disableLiveRerouting() {
     if (this.liveReroutingEngine) {
@@ -132407,7 +132616,7 @@ var DiagramEngine = class {
     }
   }
   /**
-   * Phase 0.2: Get live rerouting engine
+   * Get live rerouting engine
    */
   getLiveReroutingEngine() {
     return this.liveReroutingEngine;
@@ -132480,9 +132689,8 @@ var DiagramEngine = class {
   /**
    * Remove node
    *
-   * Wave 14: async + awaited, mirroring removeGroup(). The execute() promise
-   * used to float — a command failure became an unhandled rejection (fatal
-   * under Node), and callers could not sequence on the removal completing.
+   * Async + awaited, mirroring removeGroup(): a command failure rejects the
+   * returned promise, and callers can sequence on the removal completing.
    */
   async removeNode(nodeId) {
     if (!this.diagram) {
@@ -132567,7 +132775,7 @@ var DiagramEngine = class {
   /**
    * Remove link
    *
-   * Wave 14: async + awaited, mirroring removeGroup() — see removeNode().
+   * Async + awaited, mirroring removeGroup() — see removeNode().
    */
   async removeLink(linkId) {
     if (!this.diagram) {
@@ -132581,7 +132789,7 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Add group (Phase 1.6c)
+   * Add group
    */
   async addGroup(config) {
     if (!this.diagram) {
@@ -132595,7 +132803,7 @@ var DiagramEngine = class {
     });
   }
   /**
-   * Remove group (Phase 1.6c)
+   * Remove group
    */
   async removeGroup(groupId) {
     if (!this.diagram) {
@@ -132609,7 +132817,7 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Add entity to group (Phase 1.6c)
+   * Add entity to group
    */
   async addToGroup(groupId, entityId) {
     if (!this.diagram) {
@@ -132619,7 +132827,7 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Remove entity from group (Phase 1.6c)
+   * Remove entity from group
    */
   async removeFromGroup(groupId, entityId) {
     if (!this.diagram) {
@@ -132629,7 +132837,7 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Expand group (Phase 1.6c)
+   * Expand group
    */
   async expandGroup(groupId) {
     if (!this.diagram) {
@@ -132639,7 +132847,7 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Collapse group (Phase 1.6c)
+   * Collapse group
    */
   async collapseGroup(groupId, options) {
     if (!this.diagram) {
@@ -132649,19 +132857,19 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Get group by ID (Phase 1.6c)
+   * Get group by ID
    */
   getGroup(groupId) {
     return this.diagram?.getGroup(groupId);
   }
   /**
-   * Get all groups (Phase 1.6c)
+   * Get all groups
    */
   getGroups() {
     return this.diagram?.getGroups() || [];
   }
   /**
-   * Set layout configuration on a group (Phase 1.7)
+   * Set layout configuration on a group
    */
   async setLayout(groupId, layoutType, layoutConfig) {
     if (!this.diagram) {
@@ -132675,7 +132883,7 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Clear layout configuration from a group (Phase 1.7)
+   * Clear layout configuration from a group
    */
   async clearLayout(groupId) {
     if (!this.diagram) {
@@ -132688,14 +132896,14 @@ var DiagramEngine = class {
     group.clearLayout();
   }
   /**
-   * Get layout configuration from a group (Phase 1.7)
+   * Get layout configuration from a group
    */
   getLayout(groupId) {
     const group = this.diagram?.getGroup(groupId);
     return group?.getLayout();
   }
   /**
-   * Set flex item configuration on a node (Phase 1.7)
+   * Set flex item configuration on a node
    */
   async setFlexItem(nodeId, flexConfig) {
     if (!this.diagram) {
@@ -132709,7 +132917,7 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Set grid item configuration on a node (Phase 1.7)
+   * Set grid item configuration on a node
    */
   async setGridItem(nodeId, gridConfig) {
     if (!this.diagram) {
@@ -132723,7 +132931,7 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Copy selected entities to clipboard (Phase 1.8)
+   * Copy selected entities to clipboard
    */
   async copy(options) {
     if (!this.diagram) {
@@ -132733,7 +132941,7 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Paste entities from clipboard (Phase 1.8)
+   * Paste entities from clipboard
    */
   async paste(options) {
     if (!this.diagram) {
@@ -132746,7 +132954,7 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Duplicate selected entities (Phase 1.8)
+   * Duplicate selected entities
    */
   async duplicate(options) {
     if (!this.diagram) {
@@ -132761,7 +132969,7 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Delete selected entities (Phase 1.8)
+   * Delete selected entities
    */
   async deleteSelection(options) {
     if (!this.diagram) {
@@ -132776,25 +132984,25 @@ var DiagramEngine = class {
     await this.commandManager.execute(command);
   }
   /**
-   * Get clipboard data (Phase 1.8)
+   * Get clipboard data
    */
   getClipboardData() {
     return this.clipboardManager.get();
   }
   /**
-   * Check if clipboard has data (Phase 1.8)
+   * Check if clipboard has data
    */
   hasClipboardData() {
     return this.clipboardManager.hasData();
   }
   /**
-   * Clear clipboard (Phase 1.8)
+   * Clear clipboard
    */
   clearClipboard() {
     this.clipboardManager.clear();
   }
   /**
-   * Get clipboard statistics (Phase 1.8)
+   * Get clipboard statistics
    */
   getClipboardStats() {
     return this.clipboardManager.getStats();
@@ -132939,7 +133147,7 @@ var DiagramEngine = class {
     return this.validationEngine.validatePort(port, node, options);
   }
   /**
-   * Validate layout configuration for a group (Phase 3 - Layout validation)
+   * Validate layout configuration for a group
    */
   validateLayout(groupId, options) {
     if (!this.diagram) {
@@ -132991,7 +133199,7 @@ var DiagramEngine = class {
     this.typeRegistry.registerLinkType(definition);
   }
   /**
-   * Register a group type definition (Phase 2 - Group validation)
+   * Register a group type definition
    * @param definition Group type definition
    */
   registerGroupType(definition) {
@@ -133127,10 +133335,8 @@ var DiagramEngine = class {
    * Register a plugin AND bring it to life.
    *
    * `PluginManager.register()` only RECORDS a plugin; `install()` and
-   * `activate()` are separate steps. Calling register alone — which both of
-   * this engine's entry points used to do — left every plugin permanently
-   * inert: its hooks never fired, though `getPlugin()` happily returned it.
-   * "Register a plugin" can only sensibly mean "make it run", so this drives
+   * `activate()` are separate steps, and a plugin that is only recorded never
+   * fires its hooks. "Register a plugin" can only sensibly mean "make it run", so this drives
    * the full lifecycle. A plugin that throws is reported and skipped rather
    * than taking the host down with it.
    */
@@ -133437,7 +133643,7 @@ var DiagramEngine = class {
     this.routingEngine.addObstacle(obstacle);
   }
   /**
-   * Wave 5 (Edge routing) — Card 6: reconcile the shared ObstacleMap with the
+   * Reconcile the shared ObstacleMap with the
    * diagram's GROUP state, idempotently:
    *
    *   - a COLLAPSED group (with geometry) is ONE solid obstacle;
@@ -133793,12 +133999,9 @@ var DiagramEngine = class {
   /**
    * The named-algorithm registry, with the built-ins already registered.
    *
-   * THE BUG THIS CLOSES: `applyLayout()` below requires `setLayoutService()` —
-   * and NOTHING in the codebase ever called it (the only mention is a doc comment
-   * in layout/index.ts). So dagre, ELK, force, spectral and community — thousands
-   * of lines, several of them untested — were UNREACHABLE from the engine. That
-   * is the whole "auto-layout is fragmented" finding. Layout now works out of the
-   * box, with no setup call.
+   * Every registered layout (dagre, ELK, force, spectral, community and the
+   * rest) runs through {@link layout} by name, with no setup call; register
+   * your own here.
    */
   getLayoutRegistry() {
     if (!this._layoutRegistry) {
@@ -133818,9 +134021,7 @@ var DiagramEngine = class {
    *
    * NOT to be confused with `DiagramModel.getLayoutManager()`, which answers a
    * DIFFERENT question — "where should this ONE newly-added node go?" — and is a
-   * placement strategy, not a graph layout. The audit called them "two parallel
-   * stacks" and asked for them to be merged; they are not parallel, and merging
-   * them would force a single-node placer to pretend it can lay out a graph.
+   * placement strategy, not a graph layout.
    */
   async layout(name = DEFAULT_LAYOUT_NAME, options = {}) {
     if (!this.diagram) {
@@ -133897,16 +134098,16 @@ var DiagramEngine = class {
     return { ...result, algorithm: name, seed };
   }
   /**
-   * Wave 7 — Card 6: mental-map-preserving incremental layout.
+   * Mental-map-preserving incremental layout.
    *
    *     await engine.layoutIncremental({ changed: [newNode.id], budget: { maxPerNode: 60 } });
    *
    * Mermaid re-renders the whole diagram from scratch on every edit and destroys the
    * user's spatial memory of their own diagram. This does the opposite:
    *
-   *   1. everything outside the affected region becomes a Card-5 ANCHOR — an
-   *      immovable obstacle the layout works AROUND (impossible before Card 5, when
-   *      "constraints" were positions clamped after an unconstrained run);
+   *   1. everything outside the affected region becomes an ANCHOR — an
+   *      immovable obstacle the layout works AROUND, honoured during the run rather
+   *      than clamped after it;
    *   2. the result is RE-ALIGNED onto the previous layout by matching centroids —
    *      exactly the translation that minimises squared displacement, because a
    *      layered layout is defined only up to translation, so one new node widening
@@ -134060,8 +134261,8 @@ var DiagramEngine = class {
    * @param config - Layout configuration
    * @returns Layout result with positions and metadata
    * @throws Error if no diagram is loaded or layout service is not initialized
-   * @deprecated Wave 7 Card 0 — use {@link layout} instead. This path requires a
-   * `setLayoutService()` call that nothing ever made, so it always threw.
+   * @deprecated Use {@link layout} instead. This path requires a prior
+   * `setLayoutService()` call and throws without one.
    */
   async applyLayout(config) {
     if (!this.diagram) {
@@ -134636,6 +134837,7 @@ var Lexer = class {
    */
   scanString(quote, start, startColumn) {
     let value = "";
+    const startLine = this.line;
     while (!this.isAtEnd() && this.peek() !== quote) {
       if (this.peek() === "\n") {
         this.line++;
@@ -134644,11 +134846,16 @@ var Lexer = class {
       value += this.advance();
     }
     if (this.isAtEnd()) {
-      this.addToken("UNKNOWN" /* UNKNOWN */, quote + value, start, this.position);
+      const newline = this.input.indexOf("\n", start);
+      const stop = newline < 0 ? this.input.length : newline;
+      this.position = stop;
+      this.line = startLine;
+      this.column = startColumn + (stop - start);
+      this.tokens.push(createToken("UNKNOWN" /* UNKNOWN */, this.input.substring(start, stop), startLine, startColumn, start, stop));
       return;
     }
     this.advance();
-    this.addToken("STRING" /* STRING */, value, start, this.position);
+    this.tokens.push(createToken("STRING" /* STRING */, value, startLine, startColumn, start, this.position));
   }
   /**
    * Scan number literal
@@ -134775,6 +134982,46 @@ var ParseError = class extends Error {
     this.name = "ParseError";
   }
 };
+var SHAPE_OPENERS = /* @__PURE__ */ new Set([
+  "SQUARE_OPEN" /* SQUARE_OPEN */,
+  "SUBROUTINE_OPEN" /* SUBROUTINE_OPEN */,
+  "STADIUM_OPEN" /* STADIUM_OPEN */,
+  "CYLINDRICAL_OPEN" /* CYLINDRICAL_OPEN */,
+  "CIRCLE_OPEN" /* CIRCLE_OPEN */,
+  "ROUND_OPEN" /* ROUND_OPEN */,
+  "RHOMBUS_OPEN" /* RHOMBUS_OPEN */,
+  "HEXAGON_OPEN" /* HEXAGON_OPEN */,
+  "TRAPEZOID_OPEN" /* TRAPEZOID_OPEN */
+]);
+function isUnclosedQuote(token) {
+  return token.type === "UNKNOWN" /* UNKNOWN */ && (token.value.startsWith('"') || token.value.startsWith("'"));
+}
+function closingText(endType) {
+  switch (endType) {
+    case "SQUARE_CLOSE" /* SQUARE_CLOSE */:
+      return "]";
+    case "SUBROUTINE_CLOSE" /* SUBROUTINE_CLOSE */:
+      return "]]";
+    case "STADIUM_CLOSE" /* STADIUM_CLOSE */:
+      return "])";
+    case "CYLINDRICAL_CLOSE" /* CYLINDRICAL_CLOSE */:
+      return ")]";
+    case "CIRCLE_CLOSE" /* CIRCLE_CLOSE */:
+      return "))";
+    case "ROUND_CLOSE" /* ROUND_CLOSE */:
+      return ")";
+    case "RHOMBUS_CLOSE" /* RHOMBUS_CLOSE */:
+      return "}";
+    case "HEXAGON_CLOSE" /* HEXAGON_CLOSE */:
+      return "}}";
+    case "TRAPEZOID_CLOSE" /* TRAPEZOID_CLOSE */:
+      return "/] or \\]";
+    case "PIPE" /* PIPE */:
+      return "|";
+    default:
+      return endType;
+  }
+}
 var V11_SHAPE_MAP = {
   rect: "rectangle",
   rectangle: "rectangle",
@@ -134816,11 +135063,23 @@ var Parser = class {
   constructor() {
     this.tokens = [];
     this.current = 0;
+    /** The lines the last parse() could not read and skipped — see getErrors(). */
+    this.errors = [];
+  }
+  /**
+   * The errors the last `parse()` RECOVERED from. The parser skips an unreadable
+   * line rather than abort the whole diagram (and never manufactures nodes from
+   * it), so `parse()` does not throw for them — which used to mean nobody heard
+   * about them at all: `flowchart\n a[[[ -->` parsed "cleanly" to nothing.
+   */
+  getErrors() {
+    return [...this.errors];
   }
   /**
    * Parse tokens into an AST
    */
   parse(tokens) {
+    this.errors = [];
     this.tokens = tokens.filter(
       (t) => t.type !== "WHITESPACE" /* WHITESPACE */ && // Keep ONLY the Tier-2 extension comments; ordinary %% comments still drop.
       (t.type !== "COMMENT" /* COMMENT */ || /^%%grafloria:(node|edge|group|at|layout|near)\b/.test(t.value))
@@ -134835,6 +135094,7 @@ var Parser = class {
     const start = this.currentToken();
     let diagramType = "flowchart";
     let direction;
+    this.consumeNewlines();
     if (this.match("FLOWCHART" /* FLOWCHART */, "GRAPH" /* GRAPH */)) {
       diagramType = "flowchart";
       if (this.match("TD" /* TD */, "TB" /* TB */, "BT" /* BT */, "RL" /* RL */, "LR" /* LR */)) {
@@ -134853,7 +135113,7 @@ var Parser = class {
     }
     const statements = [];
     while (!this.isAtEnd()) {
-      if (this.match("NEWLINE" /* NEWLINE */)) {
+      if (this.match("NEWLINE" /* NEWLINE */, "SEMICOLON" /* SEMICOLON */)) {
         continue;
       }
       const before = this.current;
@@ -134865,6 +135125,7 @@ var Parser = class {
         }
       } catch (error) {
         if (error instanceof ParseError) {
+          this.errors.push(error);
           this.skipLine();
         } else {
           throw error;
@@ -134906,11 +135167,26 @@ var Parser = class {
         case "direction":
           this.skipLine();
           return null;
+        // Accessibility metadata: valid Mermaid that draws nothing. Read as a
+        // statement it used to manufacture a node called "accTitle".
+        case "accTitle":
+        case "accDescr":
+          this.skipAccessibilityDirective();
+          return null;
       }
     }
     const start = this.currentToken();
     const firstGroup = this.parseNodeGroup();
     if (firstGroup.length === 0) {
+      if (!this.isAtEnd() && !this.check("NEWLINE" /* NEWLINE */)) {
+        const token = this.currentToken();
+        this.errors.push(new ParseError(
+          isUnclosedQuote(token) ? `the quote ${token.value[0]} is never closed \u2014 add the closing ${token.value[0]} on this line` : `Unexpected "${token.value}" \u2014 not a node or an edge; the line was skipped`,
+          token,
+          token.line,
+          token.column
+        ));
+      }
       this.skipLine();
       return null;
     }
@@ -135338,12 +135614,46 @@ var Parser = class {
     return { shape: "rectangle" };
   }
   /**
-   * Parse text until a specific token type
+   * Parse text until a specific token type — the label of the shape (or edge
+   * label) whose opening token was just consumed.
+   *
+   * A label may run on across lines (Mermaid takes that), but one that runs
+   * into ANOTHER shape's opening bracket on a later line, or to the end of the
+   * text, was never closed: the reader used to carry on to the next `]` it met
+   * and swallow the line in between, silently. That is a ParseError at the
+   * line where the bracket opened; recovery resumes at the first line break
+   * the label crossed, so the following lines still parse.
    */
   parseTextUntil(endType) {
+    const open = this.previous();
+    let firstBreak = -1;
+    const unclosed = () => {
+      if (firstBreak >= 0) this.current = firstBreak;
+      return new ParseError(
+        `"${open.value}" is never closed \u2014 add the closing "${closingText(endType)}" on this line`,
+        open,
+        open.line,
+        open.column
+      );
+    };
     let text = "";
     let prevEnd = -1;
-    while (!this.check(endType) && !this.isAtEnd()) {
+    while (!this.check(endType)) {
+      if (this.isAtEnd()) throw unclosed();
+      if (this.check("NEWLINE" /* NEWLINE */)) {
+        if (firstBreak < 0) firstBreak = this.current;
+      } else if (firstBreak >= 0 && SHAPE_OPENERS.has(this.peek().type)) {
+        throw unclosed();
+      }
+      if (isUnclosedQuote(this.peek())) {
+        const quote = this.peek();
+        throw new ParseError(
+          `the quote ${quote.value[0]} is never closed \u2014 add the closing ${quote.value[0]} on this line`,
+          quote,
+          quote.line,
+          quote.column
+        );
+      }
       const token = this.advance();
       if (prevEnd >= 0 && token.startIndex > prevEnd) {
         text += " ";
@@ -135452,6 +135762,15 @@ var Parser = class {
     }
   }
   /** Consume everything up to (not including) the next newline. */
+  /** `accTitle: …`, `accDescr: …`, or the block form `accDescr { … }` (to its `}`). */
+  skipAccessibilityDirective() {
+    this.advance();
+    if (this.peek().value === "{") {
+      while (!this.isAtEnd() && this.peek().value !== "}") this.advance();
+      if (!this.isAtEnd()) this.advance();
+    }
+    this.skipLine();
+  }
   skipLine() {
     while (!this.isAtEnd() && !this.check("NEWLINE" /* NEWLINE */)) {
       this.advance();
@@ -135461,6 +135780,7 @@ var Parser = class {
    * Get source location from start and end tokens
    */
   getLocation(start, end) {
+    end = end ?? start;
     return {
       start: {
         line: start.line,
@@ -139044,6 +139364,40 @@ function generateArchitectureFromDiagram(diagram) {
   return lines.join("\n") + "\n";
 }
 
+// libs/engine/src/dsl/mermaid/text-metadata.ts
+var TEXT_GRAMMAR_METADATA_KEYS = [
+  "diagramType",
+  // every graph-family parser — the generator routes on it
+  "direction",
+  // er / class / state / architecture
+  "erSpec",
+  // erDiagram → the diagram kit's erDiagram() options
+  "umlSpec",
+  // classDiagram → the kit's umlDiagram() options
+  "umlNotes",
+  // classDiagram notes
+  "stateNotes",
+  // stateDiagram notes
+  "grid",
+  // block-beta columns and cells
+  "blockStyleLines",
+  // block-beta pass-through directives
+  "layout",
+  // block-beta / architecture-beta: laid out as an architecture
+  "layoutCompact"
+  // block-beta
+];
+function adoptTextGrammarMetadata(target, source) {
+  for (const key of TEXT_GRAMMAR_METADATA_KEYS) {
+    const value = source.getMetadata(key);
+    if (value === void 0) {
+      if (target.getMetadata(key) !== void 0) target.deleteMetadata(key);
+    } else {
+      target.setMetadata(key, value);
+    }
+  }
+}
+
 // libs/engine/src/dsl/advanced/StyleParser.ts
 var StyleParser = class {
   /**
@@ -139508,6 +139862,7 @@ var _DSL = class _DSL {
         ast,
         tokens,
         layoutSuggestion,
+        errors: this.parser.getErrors().map((e) => e.message),
         stats: {
           nodeCount,
           linkCount,
@@ -139524,25 +139879,61 @@ var _DSL = class _DSL {
     }
   }
   /**
-   * Validate DSL text without creating a diagram
+   * Validate DSL text without creating a diagram.
+   *
+   * Stricter than `parse()`, on purpose: `parse()` is best-effort (it skips a line it
+   * cannot read, and takes a body with no header as a flowchart), while this answers
+   * "is this text what it claims to be?" — so a caller can refuse it before it replaces
+   * anything. Reported: empty text, a first line that is not a diagram type (`flowchrt`),
+   * and every line the flowchart parser had to skip.
    */
   validate(text) {
     const errors = [];
+    const header = this.headerLine(text);
+    if (!header) {
+      return { valid: false, errors: ["The text is empty \u2014 there is no diagram in it."] };
+    }
+    const firstWord = header.text.split(/[\s:]/)[0];
+    if (!_DSL.isDiagramHeader(firstWord)) {
+      return {
+        valid: false,
+        errors: [
+          `Line ${header.line}: "${firstWord}" is not a diagram type. Mermaid text starts with one: ${_DSL.SUPPORTED_TEXT_TYPES.join(", ")}.`
+        ]
+      };
+    }
+    if (this.detectDiagramType(text) !== "flowchart") return { valid: true, errors };
     try {
       this.lexer = new Lexer(text);
       const tokens = this.lexer.tokenize();
       this.parser.parse(tokens);
-      return { valid: true, errors: [] };
+      for (const error of this.parser.getErrors()) errors.push(error.message);
     } catch (error) {
-      if (error instanceof ParseError) {
-        errors.push(
-          `Line ${error.line}, Column ${error.column}: ${error.message}`
-        );
-      } else if (error instanceof Error) {
-        errors.push(error.message);
-      }
-      return { valid: false, errors };
+      errors.push(error instanceof Error ? error.message : String(error));
     }
+    return { valid: errors.length === 0, errors };
+  }
+  /** Is this first word a diagram header the DSL recognises (parsed or not)? */
+  static isDiagramHeader(word) {
+    const lower = word.toLowerCase();
+    return lower === "flowchart" || lower === "graph" || lower === "erdiagram" || lower === "classdiagram" || lower === "bpmn" || lower === "erd" || _DSL.KNOWN_DIAGRAM_TYPES[lower] !== void 0;
+  }
+  /** The header line (1-based) — the first line that is not blank, a comment or frontmatter. */
+  headerLine(text) {
+    let inFrontmatter = false;
+    const lines = text.replace(/\r\n?/g, "\n").split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      if (line === "---") {
+        inFrontmatter = !inFrontmatter;
+        continue;
+      }
+      if (inFrontmatter) continue;
+      if (line.startsWith("%%")) continue;
+      return { text: line, line: i + 1 };
+    }
+    return null;
   }
   /**
    * Get layout suggestion for text without parsing fully
@@ -139869,6 +140260,17 @@ _DSL.KNOWN_DIAGRAM_TYPES = {
   c4dynamic: "C4Dynamic",
   c4deployment: "C4Deployment"
 };
+/** The diagram types the text format reads and writes back (the canvas round-trips these). */
+_DSL.SUPPORTED_TEXT_TYPES = [
+  "flowchart",
+  "graph",
+  "erDiagram",
+  "classDiagram",
+  "stateDiagram",
+  "stateDiagram-v2",
+  "block-beta",
+  "architecture-beta"
+];
 var DSL = _DSL;
 
 // libs/engine/src/serialization/TextFormat.ts
@@ -139946,11 +140348,12 @@ function importDiagramText(text, options = {}) {
   if (unsupported) {
     return { diagram: parsed, source: "text", bodyEdited, sidecarInvalid, unsupported };
   }
+  const errors = dsl.validate(body).errors;
   if (sidecarDoc !== void 0 && prefer !== "text") {
     const diagram = applyBodyOntoSidecar(sidecarDoc, parsed, options);
-    return { diagram, source: "text", bodyEdited, sidecarMerged: true, sidecarInvalid };
+    return { diagram, source: "text", bodyEdited, sidecarMerged: true, sidecarInvalid, errors };
   }
-  return { diagram: parsed, source: "text", bodyEdited, sidecarInvalid };
+  return { diagram: parsed, source: "text", bodyEdited, sidecarInvalid, errors };
 }
 function applyBodyOntoSidecar(sidecarDoc, parsed, options) {
   const base = DiagramModel.fromJSON(sidecarDoc, options);
@@ -140234,6 +140637,11 @@ var CONSUMED_STYLE_KEYS = /* @__PURE__ */ new Set([
   "edgeLabel",
   "labelPosition",
   "verticalLabelPosition",
+  // Connection constraints: they choose the side an edge leaves / enters.
+  "exitX",
+  "exitY",
+  "entryX",
+  "entryY",
   ...Object.keys(SHAPE_MAP)
 ]);
 function stripHtmlToText(value) {
@@ -140565,6 +140973,20 @@ function buildDiagram(model, warnings) {
       continue;
     }
     link.setMetadata("drawioId", cell.id);
+    retargetTerminal(
+      diagram,
+      link,
+      "source",
+      source,
+      constraintSide(style, "exit") ?? (absWaypoints.length > 0 ? sideFacing(source, absWaypoints[0]) : void 0)
+    );
+    retargetTerminal(
+      diagram,
+      link,
+      "target",
+      target,
+      constraintSide(style, "entry") ?? (absWaypoints.length > 0 ? sideFacing(target, absWaypoints[absWaypoints.length - 1]) : void 0)
+    );
     const labelCell = findEdgeLabelChild(cell.id, cells);
     const labelText = cell.value || labelCell?.value || "";
     if (labelText) link.setLabel(labelText);
@@ -140599,6 +141021,49 @@ function installAnchorLifecycle(diagram) {
       if (n3.getMetadata("drawioContainerAnchor") === group.id) diagram.removeNode(n3.id);
     }
   });
+}
+function constraintSide(style, which) {
+  const fx = Number.parseFloat(style.tokens.get(`${which}X`) ?? "");
+  const fy = Number.parseFloat(style.tokens.get(`${which}Y`) ?? "");
+  if (!Number.isFinite(fx) || !Number.isFinite(fy)) return void 0;
+  const distances = [
+    ["left", fx],
+    ["right", 1 - fx],
+    ["top", fy],
+    ["bottom", 1 - fy]
+  ];
+  return distances.reduce((best, d) => d[1] < best[1] ? d : best)[0];
+}
+function sideFacing(node, hint) {
+  const left = node.position.x;
+  const top = node.position.y;
+  const right = left + node.size.width;
+  const bottom = top + node.size.height;
+  const withinX = hint.x >= left && hint.x <= right;
+  const withinY = hint.y >= top && hint.y <= bottom;
+  if (withinX && !withinY) return hint.y < top ? "top" : "bottom";
+  if (withinY && !withinX) return hint.x < left ? "left" : "right";
+  const dx = (hint.x - (left + right) / 2) / (node.size.width || 1);
+  const dy = (hint.y - (top + bottom) / 2) / (node.size.height || 1);
+  return Math.abs(dx) >= Math.abs(dy) ? dx < 0 ? "left" : "right" : dy < 0 ? "top" : "bottom";
+}
+function retargetTerminal(diagram, link, end, node, side) {
+  if (!side) return;
+  if (node.getMetadata("drawioContainerAnchor") !== void 0 || node.getMetadata("drawioPointAnchor") !== void 0) return;
+  const port = node.getPortBySide(side);
+  const currentId = end === "source" ? link.sourcePortId : link.targetPortId;
+  if (!port || port.id === currentId) return;
+  diagram.getPortById(currentId)?.removeConnection(link.id);
+  if (end === "source") link.setSourcePort(port.id, node.id);
+  else link.setTargetPort(port.id, node.id);
+  port.addConnection(link.id, end);
+  const at = port.getAbsolutePosition(node.getBoundingBox());
+  const pts = link.points.map((p) => ({ ...p }));
+  if (pts.length >= 2) {
+    if (end === "source") pts[0] = at;
+    else pts[pts.length - 1] = at;
+    link.setPoints(pts);
+  }
 }
 function nearestPerimeterPoint(frame, toward) {
   const left = frame.x;
@@ -141941,6 +142406,7 @@ var GridPackEngine = class _GridPackEngine {
     this.inColumnChange = false;
     this._columns = options.columns ?? 12;
     this.float = options.float ?? false;
+    this.packActive = options.packActive ?? false;
     this.maxRows = options.maxRows;
     this.capacity = options.capacity;
     for (const it of items) this.add(it);
@@ -142563,6 +143029,7 @@ var GridPackEngine = class _GridPackEngine {
    * cascade can bury the pinned row), recursively.
    */
   pushDown(placed, pushSolid = false) {
+    const startY = this.packActive ? new Map(this.items.map((i) => [i.id, i.y])) : null;
     for (const o of this.ordered()) {
       if (o === placed) continue;
       if (o.locked) continue;
@@ -142580,7 +143047,12 @@ var GridPackEngine = class _GridPackEngine {
       }
       o.y = placed.y + placed.h;
       let lk;
-      while (lk = pushSolid ? this.collideLocked(o, o) : this.collideWall(o, o)) o.y = lk.y + lk.h;
+      const above = (i) => !!startY && i !== o && i !== placed && (startY.get(i.id) ?? i.y) < (startY.get(o.id) ?? o.y) && _GridPackEngine.hit(o, i);
+      for (; ; ) {
+        if (lk = pushSolid ? this.collideLocked(o, o) : this.collideWall(o, o)) o.y = lk.y + lk.h;
+        else if (startY && (lk = this.items.find(above))) o.y = lk.y + lk.h;
+        else break;
+      }
       this.pushDown(o, pushSolid);
     }
   }
@@ -142595,7 +143067,7 @@ var GridPackEngine = class _GridPackEngine {
     for (let guard = 0; guard < 4 * this.items.length + 8; guard++) {
       let changed = false;
       for (const n3 of this.ordered()) {
-        if (n3.locked || n3 === active2) continue;
+        if (n3.locked || n3 === active2 && !this.packActive) continue;
         const mem = this.memory.get(n3.id);
         if (mem && (n3.x !== mem.x || n3.y !== mem.y)) {
           const home = { ...n3, x: mem.x, y: mem.y };
@@ -159391,7 +159863,7 @@ var Replica = class {
     return this.log.toArray();
   }
   /**
-   * Card 1: adopt a persisted op-log tail whose EFFECTS ARE ALREADY IN THE MODEL.
+   * Adopt a persisted op-log tail whose EFFECTS ARE ALREADY IN THE MODEL.
    *
    * This is `receive()`'s quiet twin, and the difference is the whole point. `receive()` is
    * for ops the model has not seen: it applies them. `adopt()` is for reopening a saved
@@ -159921,12 +160393,10 @@ var CommentStore = class {
    *      op to un-orphan the thread, from some peer that thought to look, and until then
    *      the thread sits detached beside the node it is attached to. Derived, the thread
    *      RE-ATTACHES on the very next read, with zero ops and zero code.
-   *   3. IT ASSUMES AN ANSWER THE CRDT CARD HAS NOT GIVEN YET. Card 4 is concurrently
-   *      deciding whether a remove beats a concurrent add, or whether an observed-remove
-   *      set lets the add survive. If they land on add-wins, a node this store had marked
-   *      dead comes back. Deriving the state means BOTH answers are already handled and
-   *      neither can be wrong: whatever the diagram says right now, the pin agrees with
-   *      it. That is the only way to be robust to a decision that has not been made.
+   *   3. IT WOULD DEPEND ON HOW CONCURRENT EDITS MERGE. Whether a remove beats a
+   *      concurrent add, or an observed-remove set lets the add survive, decides whether
+   *      a node this store had marked dead comes back. Deriving the state handles BOTH
+   *      answers: whatever the diagram says right now, the pin agrees with it.
    *
    * So: nothing is stored, nothing is broadcast, and `attached` is simply "is the entity
    * in the diagram, right now". The thread survives the delete BY NOT DEPENDING ON THE
@@ -160018,9 +160488,8 @@ var CommentStore = class {
    *
    * INCOMPLETE THREADS ARE INVISIBLE, NOT BROKEN. A thread is three ops, and an
    * unreliable transport is free to deliver the reply before the head that owns it — the
-   * substrate says so out loud (causal readiness is explicitly Card 4/5's, and until they
-   * ship it, `applyOp` will happily write `comments.t1.messages.m1` into a tree with no
-   * `t1.head`). A store that crashed on that would be broken by a packet reorder; a store
+   * substrate allows it (`applyOp` will write `comments.t1.messages.m1` into a tree with
+   * no `t1.head`). A store that crashed on that would be broken by a packet reorder; a store
    * that rendered a half-thread would show a message from nobody, about nothing. So a
    * thread without a head or an anchor simply does not exist yet, and it appears — whole,
    * with every message that arrived early already in it — the moment its head lands.
@@ -160609,6 +161078,7 @@ function deltaFor(ours, remote) {
 }
 
 // libs/engine/src/sync/sync-adapter.ts
+var DEFAULT_AWARENESS_TIMEOUT_MS = 15e3;
 var SyncAdapter = class {
   constructor(replica, transport, options = {}) {
     this.replica = replica;
@@ -160723,12 +161193,15 @@ var SyncAdapter = class {
     if (interval > 0 && this.syncTimer === null) {
       this.syncTimer = this.setIntervalFn(() => this.sync(), interval);
     }
-    const beat = this.options.heartbeatMs ?? 0;
-    if (beat > 0 && this.heartbeatTimer === null) {
+    const timeout = this.options.awarenessTimeoutMs ?? DEFAULT_AWARENESS_TIMEOUT_MS;
+    const beat = this.options.heartbeatMs ?? Math.max(1, Math.floor(timeout / 3));
+    if (this.heartbeatTimer === null) {
+      const every = beat > 0 ? beat : Math.max(1, Math.floor(timeout / 3));
       this.heartbeatTimer = this.setIntervalFn(() => {
-        this.sendAwareness();
+        if (beat > 0) this.sendAwareness();
         this.awareness.prune();
-      }, beat);
+      }, every);
+      this.heartbeatTimer?.unref?.();
     }
   }
   /** Say goodbye and stop. Best-effort — the peers' TTL is what actually guarantees it. */
@@ -160776,26 +161249,14 @@ var SyncAdapter = class {
   /**
    * THE LOG AS THE NETWORK SEES IT — our history, minus everything coalescing withheld.
    *
-   * ---------------------------------------------------------------------------
-   * THE BUG THIS EXISTS TO FIX, WHICH WAS MINE, AND WHICH ONLY THE BROWSER FOUND
-   * ---------------------------------------------------------------------------
    * A 20-frame drag puts ONE op on the wire and leaves TWENTY in the local log — that is
-   * coalescing working exactly as designed, and the two peers' documents agree perfectly.
+   * coalescing working as designed, and the two peers' documents agree.
    *
-   * But anti-entropy compares FRONTIERS DERIVED FROM LOGS. So on the next sync round my
-   * frontier said "I hold 20 ops from alice" and the peer's said "I hold 1", and the digest
-   * — which cannot tell a withheld op from a lost one — declared a HOLE and repaired it by
-   * resending my entire history. Measured: `opsSent` went from 1 to 21 on the first sync
-   * after a single drag. And it never settles, because the peer can NEVER obtain the 19 ops
-   * I have deliberately decided never to send. Every sync round, forever, for the rest of
-   * the session, on the most common interaction in the product.
+   * Anti-entropy compares FRONTIERS DERIVED FROM LOGS, and a digest cannot tell a withheld
+   * op from a lost one. If the frontier counted the 19 withheld ops, every sync round would
+   * see a HOLE and resend the whole history, forever, since no peer can ever obtain them.
    *
-   * It is invisible to a convergence oracle — the document is perfectly correct throughout —
-   * and it was invisible to my own frontier-invariant test, which flushed after every single
-   * op and therefore never once coalesced anything while syncing. It took driving a real drag
-   * through a real browser to compose the two.
-   *
-   * THE FIX is a definition, not a patch: THE FRONTIER DESCRIBES THE SHARED LOG. An op we
+   * So THE FRONTIER DESCRIBES THE SHARED LOG. An op we
    * chose never to transmit is not part of the history we share with anyone, so it is not in
    * our frontier and it is not in the catch-up delta we serve — to ANY peer, including one
    * that joins tomorrow. Every peer therefore holds the same shared set, every digest agrees,
@@ -160957,6 +161418,18 @@ var SyncAdapter = class {
     }
     this.awarenessPending = false;
   }
+  /**
+   * Stop for good: leave (which DISCONNECTS the transport), drop every timer and
+   * unsubscribe from the transport.
+   *
+   * It does NOT close the transport. The session was handed that transport; it did not
+   * create it, so it is not the session's to destroy — which is what makes a
+   * mount / clean up / mount again cycle (React StrictMode, on by default in Vite and
+   * Next dev) work: the second mount joins the same, still-open transport.
+   *
+   * A disconnected transport holds no socket or channel and can be joined again by a new
+   * session. Call `transport.close()` yourself when the transport itself is done.
+   */
   dispose() {
     if (this.disposed) return;
     if (this.joined) this.leave();
@@ -160965,7 +161438,6 @@ var SyncAdapter = class {
     this.batcher?.dispose();
     for (const u of this.unsubs) u();
     this.unsubs.length = 0;
-    this.transport.close();
   }
 };
 function createSyncSession(diagram, transport, options) {
@@ -161114,8 +161586,7 @@ var UnreliableHub = class extends MemoryHub {
    *
    * The random order is the point. A FIFO flush would only ever produce late delivery, and
    * late-but-ordered is the easy case — the LWW gate handles it alone. Releasing out of
-   * order is what lets a `set` land before its `add`, which is the case that used to be
-   * unrecoverable and is the reason `CausalBuffer` exists.
+   * order is what lets a `set` land before its `add` — the case `CausalBuffer` exists for.
    */
   step(fraction = 0.5) {
     if (this.inFlight.length === 0) return 0;
@@ -162200,7 +162671,7 @@ var SelectionToolsController = class {
    * Live-resize the node (direct model mutation, like the drag tool: smooth, no
    * command churn — the single undo entry is minted at {@link endGesture}).
    * `snap` optionally quantises the resulting box (grid / alignment) — the host
-   * passes the SnapController's hook so Card 6 composes with Card 5.
+   * passes the SnapController's hook so snapping composes with resizing.
    */
   updateResize(engine, worldX, worldY, modifiers = {}, snap) {
     const gesture = this.gesture;
@@ -162314,7 +162785,7 @@ var SelectionToolsController = class {
    * End the active gesture and return the ONE command that makes it undoable
    * (null for a no-op gesture). The model already sits at its final state — the
    * command re-applies it (a no-op) and records the inverse, exactly like the
-   * wave-3 node-drag commit.
+   * node-drag commit.
    */
   endGesture(engine) {
     const gesture = this.gesture;
@@ -162841,6 +163312,57 @@ function resolveCssVars(value, vars) {
     return "";
   });
   return unresolved ? void 0 : out.trim();
+}
+function substituteCssVars(value, lookup) {
+  const unresolved = [];
+  const resolveFrom = (input, depth) => {
+    if (depth > 8) {
+      unresolved.push(input);
+      return "";
+    }
+    let out2 = "";
+    let i = 0;
+    while (i < input.length) {
+      const at = input.indexOf("var(", i);
+      if (at < 0) {
+        out2 += input.slice(i);
+        break;
+      }
+      out2 += input.slice(i, at);
+      let level = 0;
+      let end = -1;
+      for (let j = at + 3; j < input.length; j++) {
+        if (input[j] === "(") level++;
+        else if (input[j] === ")") {
+          level--;
+          if (level === 0) {
+            end = j;
+            break;
+          }
+        }
+      }
+      if (end < 0) {
+        unresolved.push(input.slice(at));
+        return "";
+      }
+      const inner = input.slice(at + 4, end);
+      const comma = inner.indexOf(",");
+      const name = (comma < 0 ? inner : inner.slice(0, comma)).trim();
+      const fallback = comma < 0 ? void 0 : inner.slice(comma + 1).trim();
+      const found = lookup(name);
+      if (found !== void 0 && found.trim() !== "") {
+        out2 += resolveFrom(found.trim(), depth + 1);
+      } else if (fallback !== void 0 && fallback !== "") {
+        out2 += resolveFrom(fallback, depth + 1);
+      } else {
+        unresolved.push(name);
+      }
+      i = end + 1;
+    }
+    return out2;
+  };
+  const out = resolveFrom(value, 0).trim();
+  return unresolved.length > 0 ? { unresolved } : { value: out, unresolved };
 }
 function createClassStyleResolver(theme, warnings = []) {
   const vars = resolveThemeVars(theme);
@@ -165733,13 +166255,20 @@ function exportPdf(root, options = {}) {
   });
   const defs = collectDefs(root);
   const classStyles = createClassStyleResolver(options.theme ?? LIGHT_THEME, warnings);
+  const themeVars = resolveThemeVars(options.theme ?? LIGHT_THEME);
+  const lookupVar = (name) => {
+    const live = options.resolveVar?.(name);
+    if (typeof live === "string" && live.trim() !== "") return live.trim();
+    return themeVars[name];
+  };
   const ctx = {
     defs,
     shadings: new ShadingRegistry(),
     softMasks: new SoftMaskRegistry(),
     images: new ImageRegistry(),
     warnings,
-    classStyles
+    classStyles,
+    lookupVar
   };
   const writer = new PdfWriter();
   const catalogId = writer.allocate();
@@ -165896,6 +166425,19 @@ function resolved(vnode, ctx) {
       const prop = declaration.slice(0, colon).trim();
       const value = declaration.slice(colon + 1).trim();
       if (prop && value) out[prop] = value;
+    }
+  }
+  for (const key of Object.keys(out)) {
+    const value = out[key];
+    if (!value.includes("var(")) continue;
+    const result = substituteCssVars(value, ctx.lookupVar);
+    if (result.value !== void 0) {
+      out[key] = result.value;
+    } else {
+      ctx.warnings.push(
+        `"${key}: ${value}" uses ${result.unresolved.join(", ")}, which has no value here (no live style, theme token or fallback) \u2014 not painted`
+      );
+      delete out[key];
     }
   }
   return out;
@@ -166077,7 +166619,16 @@ function urlRefId(value) {
 }
 function flattenedPaint(value, ctx, why) {
   const id = urlRefId(value);
-  if (id === null) return parsePdfColor(value);
+  if (id === null) {
+    const color = parsePdfColor(value);
+    if (!color && typeof value === "string") {
+      const text = value.trim().toLowerCase();
+      if (text !== "" && text !== "none" && text !== "transparent") {
+        ctx.warnings.push(`the colour "${value}" could not be read \u2014 that paint is omitted`);
+      }
+    }
+    return color;
+  }
   const gradient = ctx.defs.gradients.get(id);
   if (gradient) {
     ctx.warnings.push(why);
@@ -166377,6 +166928,52 @@ function paintPageNumber(stream, page, total, size, margins) {
 }
 function dedupe(warnings) {
   return [...new Set(warnings)];
+}
+
+// libs/renderer/src/svg/group-frame-bounds.ts
+function captionWidth(text, fontSize) {
+  return text.length * fontSize * 0.6;
+}
+function groupFrameRects(diagram, options = {}) {
+  const groups = diagram?.getGroups?.() ?? [];
+  const themeFont = options.captionFontSize ?? 12;
+  const out = [];
+  for (const g of groups) {
+    if (!g.isCollapsed && g.getMetadata?.("frameChrome") === "none") continue;
+    const b = g.getOuterBounds();
+    if (!(b.width > 0 && b.height > 0)) continue;
+    let left = b.x;
+    let top = b.y;
+    let right = b.x + b.width;
+    let bottom = b.y + b.height;
+    const name = typeof g.name === "string" ? g.name : "";
+    if (name) {
+      const zone = !g.isCollapsed ? g.getMetadata?.("frameStyle") : void 0;
+      const lc = g.laneConfig;
+      const sideStrip = !g.isCollapsed && lc?.role === "pool" && lc.orientation === "horizontal" ? Math.min(lc.headerSize ?? 0, b.width) : 0;
+      if (zone) {
+        const size = typeof zone.fontSize === "number" && Number.isFinite(zone.fontSize) ? zone.fontSize : 11;
+        const w = captionWidth(name, size);
+        const placement = zone.labelPlacement ?? "top-left";
+        if (placement.endsWith("left")) right = Math.max(right, b.x + 16 + w);
+        else if (placement.endsWith("right")) left = Math.min(left, b.x + b.width - 16 - w);
+        else {
+          const mid = b.x + b.width / 2;
+          left = Math.min(left, mid - w / 2);
+          right = Math.max(right, mid + w / 2);
+        }
+      } else if (sideStrip > 0) {
+        const w = captionWidth(name, themeFont);
+        const mid = b.y + b.height / 2;
+        top = Math.min(top, mid - w / 2);
+        bottom = Math.max(bottom, mid + w / 2);
+      } else {
+        right = Math.max(right, b.x + 8 + captionWidth(name, themeFont));
+      }
+    }
+    out.push({ x: left, y: top, width: right - left, height: bottom - top });
+  }
+  return out;
 }
 
 // libs/renderer/src/export/pagination.ts
@@ -170302,9 +170899,9 @@ var ArrowRenderer = class {
       case "one":
         return this.renderOneArrow(size, color, width, transform);
       case "zero-or-one":
-        return this.renderZeroOrOneArrow(size, color, width, transform);
+        return this.renderZeroOrOneArrow(size, color, width, transform, backgroundColor);
       case "zero-or-many":
-        return this.renderZeroOrManyArrow(size, color, width, transform);
+        return this.renderZeroOrManyArrow(size, color, width, transform, backgroundColor);
       case "one-or-many":
         return this.renderOneOrManyArrow(size, color, width, transform);
       // UML arrows
@@ -170469,8 +171066,54 @@ var ArrowRenderer = class {
       }
     };
   }
+  // -------------------------------------------------------------------------
+  // ERD (crow's-foot / Information Engineering) cardinality markers.
+  //
+  // Local frame: +x points INTO the entity and the renderer puts x = tipOffset
+  // on the link's endpoint (the entity's edge). The notation reads outward from
+  // the entity: the symbol touching it is the MAXIMUM (foot = many, bar = one),
+  // the symbol beyond it the MINIMUM (circle = zero, bar = one).
+  //
+  // The foot used to be drawn the other way round — three lines meeting ON the
+  // entity and spreading away from it — which reads as a plain arrowhead.
+  // -------------------------------------------------------------------------
   /**
-   * ERD crow-foot arrow (one-to-many relationship)
+   * The three prongs of a crow's foot: they meet at the origin, out on the line,
+   * and fan out to touch the entity at x = size (the tip offset of this family).
+   */
+  crowFootProngs(size, color, width) {
+    const spread = size * 0.6;
+    return [-spread, 0, spread].map((y) => ({
+      type: "line",
+      props: { x1: 0, y1: 0, x2: size, y2: y, style: { stroke: color, strokeWidth: width } }
+    }));
+  }
+  /** A bar across the line at local x (the "one" symbol). */
+  erBar(x, size, color, width) {
+    return {
+      type: "line",
+      props: {
+        x1: x,
+        y1: -size / 2,
+        x2: x,
+        y2: size / 2,
+        style: { stroke: color, strokeWidth: width * 2 }
+        // Thicker line for emphasis
+      }
+    };
+  }
+  /**
+   * The "zero" circle centred at local x. Filled with the background so the
+   * line it sits on does not run through it.
+   */
+  erCircle(cx, size, color, width, bg) {
+    return {
+      type: "circle",
+      props: { cx, cy: 0, r: size / 3, style: { fill: bg, stroke: color, strokeWidth: width } }
+    };
+  }
+  /**
+   * ERD crow-foot arrow (many): three prongs fanning out at the entity.
    */
   renderCrowFootArrow(size, color, width, transform) {
     return {
@@ -170479,62 +171122,26 @@ var ArrowRenderer = class {
         transform,
         className: "arrow arrow-crow-foot"
       },
-      children: [
-        {
-          type: "line",
-          props: {
-            x1: 0,
-            y1: -size,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: "line",
-          props: {
-            x1: 0,
-            y1: 0,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: "line",
-          props: {
-            x1: 0,
-            y1: size,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        }
-      ]
+      children: this.crowFootProngs(size, color, width)
     };
   }
   /**
-   * ERD one arrow (exactly one - vertical bar)
+   * ERD one arrow (exactly one): a bar across the line, half a size out from
+   * the entity. On the edge itself (x = 0, where it was) it lay along the
+   * entity's border and the border hid it.
    */
   renderOneArrow(size, color, width, transform) {
+    const bar = this.erBar(-size / 2, size, color, width);
     return {
-      type: "line",
-      props: {
-        x1: 0,
-        y1: -size / 2,
-        x2: 0,
-        y2: size / 2,
-        style: { stroke: color, strokeWidth: width * 2 },
-        // Thicker line for emphasis
-        transform,
-        className: "arrow arrow-one"
-      }
+      ...bar,
+      props: { ...bar.props, transform, className: "arrow arrow-one" }
     };
   }
   /**
-   * ERD zero-or-one arrow (circle + bar)
+   * ERD zero-or-one arrow: the bar (max one) near the entity, the circle
+   * (min zero) beyond it.
    */
-  renderZeroOrOneArrow(size, color, width, transform) {
+  renderZeroOrOneArrow(size, color, width, transform, bg = "white") {
     return {
       type: "g",
       props: {
@@ -170542,33 +171149,16 @@ var ArrowRenderer = class {
         className: "arrow arrow-zero-or-one"
       },
       children: [
-        {
-          type: "circle",
-          props: {
-            cx: -size,
-            cy: 0,
-            r: size / 3,
-            fill: "none",
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: "line",
-          props: {
-            x1: 0,
-            y1: -size / 2,
-            x2: 0,
-            y2: size / 2,
-            style: { stroke: color, strokeWidth: width * 2 }
-          }
-        }
+        this.erCircle(-size * 1.25, size, color, width, bg),
+        this.erBar(-size / 2, size, color, width)
       ]
     };
   }
   /**
-   * ERD zero-or-many arrow (circle + crow-foot)
+   * ERD zero-or-many arrow: the foot (max many) at the entity, the circle
+   * (min zero) beyond where its prongs meet.
    */
-  renderZeroOrManyArrow(size, color, width, transform) {
+  renderZeroOrManyArrow(size, color, width, transform, bg = "white") {
     return {
       type: "g",
       props: {
@@ -170576,51 +171166,14 @@ var ArrowRenderer = class {
         className: "arrow arrow-zero-or-many"
       },
       children: [
-        {
-          type: "circle",
-          props: {
-            cx: -size * 1.5,
-            cy: 0,
-            r: size / 3,
-            fill: "none",
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: "line",
-          props: {
-            x1: 0,
-            y1: -size,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: "line",
-          props: {
-            x1: 0,
-            y1: 0,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: "line",
-          props: {
-            x1: 0,
-            y1: size,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        }
+        this.erCircle(-size * 0.75, size, color, width, bg),
+        ...this.crowFootProngs(size, color, width)
       ]
     };
   }
   /**
-   * ERD one-or-many arrow (bar + crow-foot)
+   * ERD one-or-many arrow: the foot (max many) at the entity, the bar
+   * (min one) beyond where its prongs meet.
    */
   renderOneOrManyArrow(size, color, width, transform) {
     return {
@@ -170630,46 +171183,8 @@ var ArrowRenderer = class {
         className: "arrow arrow-one-or-many"
       },
       children: [
-        {
-          type: "line",
-          props: {
-            x1: -size,
-            y1: -size / 2,
-            x2: -size,
-            y2: size / 2,
-            style: { stroke: color, strokeWidth: width * 2 }
-          }
-        },
-        {
-          type: "line",
-          props: {
-            x1: 0,
-            y1: -size,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: "line",
-          props: {
-            x1: 0,
-            y1: 0,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        },
-        {
-          type: "line",
-          props: {
-            x1: 0,
-            y1: size,
-            x2: size,
-            y2: 0,
-            style: { stroke: color, strokeWidth: width }
-          }
-        }
+        this.erBar(-size * 0.4, size, color, width),
+        ...this.crowFootProngs(size, color, width)
       ]
     };
   }
@@ -170802,8 +171317,8 @@ var ArrowRenderer = class {
         y1: -size / 2,
         x2: 0,
         y2: size / 2,
-        stroke: color,
-        strokeWidth: width * 2,
+        // Through STYLE like every other marker: the colour may be a var().
+        style: { stroke: color, strokeWidth: width * 2 },
         transform,
         className: "arrow arrow-bar"
       }
@@ -170819,8 +171334,8 @@ var ArrowRenderer = class {
         cx: 0,
         cy: 0,
         r: size / 2,
-        fill: color,
-        stroke: "none",
+        // Through STYLE like every other marker: the colour may be a var().
+        style: { fill: color, stroke: "none" },
         transform,
         className: "arrow arrow-dot"
       }
@@ -174627,6 +175142,25 @@ var _SVGRenderer = class _SVGRenderer {
     element.setAttribute(GRAFLORIA_INSTANCE_ATTR, this.instanceId);
   }
   /**
+   * Reads this diagram's CSS custom properties as the browser resolved them — on its
+   * root `<svg>`, so variables set on the host (a token bridge) are inherited in.
+   * `undefined` without a DOM, or when the diagram is not mounted: the PDF painter then
+   * uses the theme's token values and the var() fallbacks.
+   */
+  liveCssVarReader() {
+    if (typeof document === "undefined" || typeof getComputedStyle !== "function") return void 0;
+    let root = null;
+    try {
+      const scope = `[${GRAFLORIA_INSTANCE_ATTR}="${this.instanceId}"]`;
+      root = document.querySelector(`svg${scope}`) ?? document.querySelector(scope);
+    } catch {
+      return void 0;
+    }
+    if (!root) return void 0;
+    const computed = getComputedStyle(root);
+    return (name) => computed.getPropertyValue(name).trim() || void 0;
+  }
+  /**
    * The instance-scope prop for a root VNode. Emitted in CSS mode only:
    * programmatic mode injects no stylesheet, so scoping it would make its
    * elements match ANOTHER instance's shared rules with no variables defined.
@@ -174996,6 +175530,9 @@ var _SVGRenderer = class _SVGRenderer {
       // default light theme — or, in CSS mode, against nothing at all, and every link
       // loses its stroke and every node its fill.
       theme: this.theme,
+      // …and the live CSS variables, for paint that is a var() (the line markers):
+      // a token bridge's value only exists in the DOM.
+      resolveVar: this.liveCssVarReader(),
       padding,
       viewBox: options.viewport,
       backgroundColor: options.backgroundColor,
@@ -175048,6 +175585,7 @@ var _SVGRenderer = class _SVGRenderer {
     const layout = paginate(tree, { padding, ...pagination });
     const result = exportPdf(tree, {
       theme: this.theme,
+      resolveVar: this.liveCssVarReader(),
       padding,
       backgroundColor: options.backgroundColor,
       pageNumbers: true,
@@ -175123,6 +175661,12 @@ var _SVGRenderer = class _SVGRenderer {
           maxX = Math.max(maxX, point.x);
           maxY = Math.max(maxY, point.y);
         }
+      }
+      for (const frame of groupFrameRects(diagram, { captionFontSize: this.theme.typography.fontSize.sm })) {
+        minX = Math.min(minX, frame.x);
+        minY = Math.min(minY, frame.y);
+        maxX = Math.max(maxX, frame.x + frame.width);
+        maxY = Math.max(maxY, frame.y + frame.height);
       }
     }
     if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
@@ -178104,6 +178648,18 @@ var _SVGRenderer = class _SVGRenderer {
     if (a.x === x && x === c.x || a.y === y && y === c.y) {
       return `L${x} ${y}`;
     }
+    const axisA = a.x === x || a.y === y;
+    const axisC = c.x === x || c.y === y;
+    if (!axisA || !axisC) {
+      const dA = this.distance(a, b);
+      const dC = this.distance(b, c);
+      if (dA === 0 || dC === 0 || bendSize <= 0) return `L${x} ${y}`;
+      const p1x = x + (a.x - x) / dA * bendSize;
+      const p1y = y + (a.y - y) / dA * bendSize;
+      const p2x = x + (c.x - x) / dC * bendSize;
+      const p2y = y + (c.y - y) / dC * bendSize;
+      return `L ${p1x},${p1y}Q ${x},${y} ${p2x},${p2y}`;
+    }
     if (a.y === y) {
       const xDir2 = a.x < c.x ? -1 : 1;
       const yDir2 = a.y < c.y ? 1 : -1;
@@ -178994,11 +179550,14 @@ var _SVGRenderer = class _SVGRenderer {
     }
     const resolvedStroke = this.resolveStroke(style.stroke);
     const shadowFilter = this.resolveShadowFilter(style.shadow);
+    const animation = link.style.animation;
+    const animationMs = animation && animation.type !== "none" && typeof animation.duration === "number" && Number.isFinite(animation.duration) && animation.duration > 0 ? animation.duration : void 0;
     const inlineStyle = [
       resolvedStroke !== void 0 ? `stroke: ${resolvedStroke}` : "",
       style.strokeWidth !== void 0 ? `stroke-width: ${style.strokeWidth}` : "",
       style.strokeDasharray !== void 0 ? `stroke-dasharray: ${style.strokeDasharray}` : "",
-      style.opacity !== void 0 ? `opacity: ${style.opacity}` : ""
+      style.opacity !== void 0 ? `opacity: ${style.opacity}` : "",
+      animationMs !== void 0 ? `animation-duration: ${animationMs}ms` : ""
     ].filter(Boolean).join("; ");
     const strokeAttr = this.attributeSafePaint(
       resolvedStroke,
@@ -180138,7 +180697,8 @@ var _SVGRenderer = class _SVGRenderer {
       }
     }
     if (!routedPath) {
-      routedPath = routeWith("orthogonal", false);
+      if (algorithm !== "orthogonal") routedPath = routeWith("orthogonal", true);
+      if (!routedPath) routedPath = routeWith("orthogonal", false);
       usedOrthogonal = !!routedPath;
     }
     if (routedPath && usedOrthogonal) {
@@ -181063,8 +181623,10 @@ var px = (value) => {
   const v = parseFloat(value);
   return Number.isFinite(v) ? v : 0;
 };
+var EXPORT_IGNORE_ATTRIBUTE = "data-grafloria-export";
 function walk2(el2, ctx, sink) {
   if (ctx.budget-- <= 0) return;
+  if (el2.getAttribute(EXPORT_IGNORE_ATTRIBUTE) === "ignore") return;
   const style = ctx.win.getComputedStyle(el2);
   if (style["display"] === "none" || style["visibility"] === "hidden") return;
   if (parseFloat(style["opacity"] ?? "1") === 0) return;
@@ -181835,6 +182397,179 @@ function polygonShape2(args, rect) {
 }
 function round2(value) {
   return Math.round(value * 1e4) / 1e4;
+}
+
+// libs/renderer/src/export/capture-pipeline.ts
+var DEFAULT_CUSTOM_NODE_TIMEOUT = 5e3;
+var nodeWorldBounds = (node) => ({
+  x: node.position.x,
+  y: node.position.y,
+  width: node.size?.width ?? 0,
+  height: node.size?.height ?? 0
+});
+function exportScopeFilter(exportOptions) {
+  if (exportOptions?.scope === "selection") return (node) => node.state?.selected === true;
+  if (exportOptions?.includeIds === void 0) return () => true;
+  const ids = new Set(exportOptions.includeIds);
+  return (node) => ids.has(node.id);
+}
+function exportableNodes(source, needed) {
+  const exportable = source.isExportable ?? ((node) => !!node.getMetadata("useHTMLLayer"));
+  return source.getNodes().filter((node) => exportable(node) && needed(node));
+}
+function readHosts(source, waited, timeoutMs) {
+  const bounds = source.bounds ?? nodeWorldBounds;
+  const captures = [];
+  for (const node of source.getNodes()) {
+    const host = source.getHost(node.id);
+    if (!host) continue;
+    const capture = captureCustomNodeHost(node.id, bounds(node), host);
+    const paint2 = source.paintWarning?.(node.id, waited, timeoutMs);
+    const warning = [paint2, capture.warning].filter(Boolean).join(" ");
+    captures.push(warning ? { ...capture, warning } : capture);
+  }
+  return captures;
+}
+function captureCustomNodes(source, needed = () => true) {
+  const restore = source.materialize?.(exportableNodes(source, needed));
+  try {
+    return readHosts(source, false, 0);
+  } finally {
+    restore?.();
+  }
+}
+async function settle(waits, timeoutMs) {
+  if (!(timeoutMs > 0)) return;
+  let timer;
+  const deadline = new Promise((resolve2) => {
+    timer = setTimeout(resolve2, timeoutMs);
+  });
+  try {
+    await Promise.race([Promise.all(waits), deadline]);
+  } finally {
+    if (timer !== void 0) clearTimeout(timer);
+  }
+}
+async function captureCustomNodesAsync(source, needed, timeoutMs) {
+  const inScope = exportableNodes(source, needed);
+  const release = source.pin?.(inScope.map((node) => node.id));
+  try {
+    const restore = source.materialize?.(inScope);
+    try {
+      const waits = inScope.map((node) => source.pendingPaint?.(node.id)).filter((p) => p !== void 0);
+      if (waits.length === 0) return readHosts(source, false, timeoutMs);
+      await settle(waits, timeoutMs);
+      return readHosts(source, true, timeoutMs);
+    } finally {
+      restore?.();
+    }
+  } finally {
+    release?.();
+  }
+}
+function createCustomNodeCapturer(source) {
+  let captureQueue = Promise.resolve();
+  const serializeCapture = (run) => {
+    const result = captureQueue.then(run, run);
+    captureQueue = result.then(
+      () => void 0,
+      () => void 0
+    );
+    return result;
+  };
+  return {
+    withCustomNodes(exportOptions) {
+      if (exportOptions?.customNodes !== void 0) return exportOptions;
+      const customNodes = captureCustomNodes(source, exportScopeFilter(exportOptions));
+      if (customNodes.length === 0) return exportOptions ?? {};
+      return { ...exportOptions, customNodes };
+    },
+    async withCustomNodesAsync(exportOptions) {
+      if (exportOptions?.customNodes !== void 0) return exportOptions;
+      const customNodes = await serializeCapture(
+        () => captureCustomNodesAsync(
+          source,
+          exportScopeFilter(exportOptions),
+          exportOptions?.customNodeTimeout ?? DEFAULT_CUSTOM_NODE_TIMEOUT
+        )
+      );
+      if (customNodes.length === 0) return exportOptions ?? {};
+      return { ...exportOptions, customNodes };
+    }
+  };
+}
+async function withInlinedImages(renderer, exportOptions) {
+  const captures = exportOptions.customNodes ?? [];
+  const roots = /* @__PURE__ */ new Map();
+  const urls = [];
+  const seen = /* @__PURE__ */ new Set();
+  const add = (found) => {
+    for (const url of found) {
+      if (!seen.has(url)) {
+        seen.add(url);
+        urls.push(url);
+      }
+    }
+  };
+  for (const capture of captures) {
+    if (!capture.content || capture.content.length === 0) continue;
+    const root = { type: "g", props: {}, children: [...capture.content] };
+    const found = collectAssetUrls(root);
+    if (found.length === 0) continue;
+    roots.set(capture, root);
+    add(found);
+  }
+  const treeUrls = renderer.collectExportImageUrls(exportOptions);
+  add(treeUrls);
+  if (urls.length === 0) return exportOptions;
+  const preResolved = exportOptions.resolvedAssets;
+  const toFetch = preResolved ? urls.filter((url) => !preResolved.has(url)) : urls;
+  const { byUrl, failures } = toFetch.length > 0 ? await fetchAssetsTiered(toFetch, {
+    fetcher: exportOptions.assetFetcher,
+    maxBytes: exportOptions.assetMaxBytes,
+    timeoutMs: exportOptions.assetTimeout
+  }) : { byUrl: /* @__PURE__ */ new Map(), failures: /* @__PURE__ */ new Map() };
+  if (preResolved) {
+    for (const [url, uri] of preResolved) byUrl.set(url, uri);
+  }
+  const customNodes = captures.map((capture) => {
+    const root = roots.get(capture);
+    if (!root) return capture;
+    const inlined = inlineAssets(root, byUrl);
+    const remaining = collectAssetUrls(inlined);
+    let warning = capture.warning;
+    if (remaining.length === 0) {
+      warning = stripResolvedImageWarnings(warning);
+    } else {
+      const residue = remaining.map(
+        (url) => `widget image "${url}" could not be embedded: ${failures.get(url) ?? "unknown failure"}. The reference is left in the file (an SVG still renders it online); it will be MISSING from a PDF export.`
+      ).join(" ");
+      warning = [warning, residue].filter(Boolean).join(" ");
+    }
+    return { ...capture, content: inlined.children ?? [], warning };
+  });
+  const out = { ...exportOptions };
+  if (exportOptions.customNodes !== void 0) out.customNodes = customNodes;
+  if (byUrl.size > 0) out.resolvedAssets = byUrl;
+  const treeResidue = treeUrls.filter((url) => !byUrl.has(url)).map(
+    (url) => `diagram image "${url}" could not be embedded: ${failures.get(url) ?? "unknown failure"}. The reference is left in the file (an SVG still renders it online); it will be MISSING from a PDF export.`
+  );
+  if (treeResidue.length > 0) {
+    const original = exportOptions.onWarnings;
+    out.onWarnings = (warnings) => original?.([...warnings, ...treeResidue]);
+  }
+  return out;
+}
+function createExportPipeline(renderer, source) {
+  const capturer = createCustomNodeCapturer(source);
+  return {
+    export: async (format, options) => renderer.export(
+      format,
+      await withInlinedImages(renderer, await capturer.withCustomNodesAsync(options))
+    ),
+    exportSvgString: (options) => renderer.exportSvgString(capturer.withCustomNodes(options)),
+    exportPdf: (options) => renderer.exportPdf(capturer.withCustomNodes(options))
+  };
 }
 
 // libs/renderer/src/export/node-raster.ts
@@ -183930,6 +184665,31 @@ function resolveTool(event, hit) {
 
 // libs/renderer/src/interaction/interaction-controller.ts
 var LINK_HIT_QUERY_PAD = 250;
+var pointerButtonDown = false;
+var pointerTrackerInstalled = false;
+function trackPointerButtons() {
+  if (pointerTrackerInstalled) return;
+  if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+  pointerTrackerInstalled = true;
+  const down = () => {
+    pointerButtonDown = true;
+  };
+  const up = () => {
+    pointerButtonDown = false;
+  };
+  for (const type of ["pointerdown", "mousedown", "touchstart"]) {
+    window.addEventListener(type, down, { capture: true, passive: true });
+  }
+  for (const type of ["pointerup", "mouseup", "pointercancel", "touchend", "touchcancel", "dragend"]) {
+    window.addEventListener(type, up, { capture: true, passive: true });
+  }
+  window.addEventListener("blur", (event) => {
+    if (event.target === window) up();
+  });
+}
+function isPointerButtonDown() {
+  return pointerButtonDown;
+}
 var InteractionController = class {
   constructor() {
     /**
@@ -183973,10 +184733,10 @@ var InteractionController = class {
     this.isReconnectingLink = false;
     this.reconnectingLink = null;
     this.reconnectingEndpoint = null;
-    /** Wave 2: current cursor position while dragging a reconnecting endpoint. */
+    /** Current cursor position while dragging a reconnecting endpoint. */
     this.reconnectingMousePoint = null;
     /**
-     * Wave 2 (Edges & links): inline label drag-reposition state. While active,
+     * Inline label drag-reposition state. While active,
      * mouse moves remap the cursor to a (position 0-1, offset) pair on the model
      * so the label survives re-routing. See {@link computeLabelDragUpdate}.
      */
@@ -183984,21 +184744,23 @@ var InteractionController = class {
     this.editingLabelLink = null;
     this.editingLabelIndex = null;
     /**
-     * Phase 2.3a: Waypoint editing state
+     * Waypoint editing state
      */
     this.isDraggingWaypoint = false;
     this.editingLink = null;
     this.editingWaypointIndex = null;
     /**
-     * wave12: the link's points when a waypoint drag STARTED, so endWaypointDrag can commit
+     * The link's points when a waypoint drag STARTED, so endWaypointDrag can commit
      * the whole gesture as one undoable SetLinkPointsCommand (FROM→TO). Absent between drags.
      */
     this.waypointDragStartPoints = null;
+    /** The link's `hasManualWaypoints` flag when the drag started, restored by its undo. */
+    this.waypointDragStartManual = false;
     this.waypointEditor = null;
     this.hoveredWaypointIndex = null;
     this.hoveredWaypointLink = null;
     /**
-     * Phase 2.3b: Control point editing state
+     * Control point editing state
      */
     this.isDraggingControlPoint = false;
     this.editingControlPointLink = null;
@@ -184009,13 +184771,13 @@ var InteractionController = class {
     this.hoveredControlPointType = null;
     this.hoveredControlPointLink = null;
     /**
-     * Phase 5: Performance optimization - debounce hover detection
+     * Performance optimization - debounce hover detection
      */
     this.hoverDebounceTimer = null;
     this.HOVER_DEBOUNCE_MS = 16;
     // ~60fps
     /**
-     * Phase 5: Performance monitoring
+     * Performance monitoring
      */
     this.performanceMetrics = {
       hoverDetectionTime: 0,
@@ -184023,7 +184785,7 @@ var InteractionController = class {
       portHitTestTime: 0
     };
     /**
-     * Phase 5: Port hit test cache for performance
+     * Port hit test cache for performance
      */
     this.portHitCache = /* @__PURE__ */ new Map();
     this.portHitCacheInvalidated = false;
@@ -184052,6 +184814,7 @@ var InteractionController = class {
      * function call on a path that is already doing a hit-test.
      */
     this.validatorBridgedEngines = /* @__PURE__ */ new WeakSet();
+    trackPointerButtons();
     this.waypointEditor = new WaypointEditor({
       snapToGrid: false,
       gridSize: 20,
@@ -184103,7 +184866,7 @@ var InteractionController = class {
     this.linkHitAreaWidthConfig = Math.max(0, width);
   }
   /**
-   * Phase 5: Dispose and cleanup resources
+   * Dispose and cleanup resources
    */
   dispose() {
     if (this.hoverDebounceTimer) {
@@ -184137,20 +184900,20 @@ var InteractionController = class {
     this.hoveredControlPointLink = null;
   }
   /**
-   * Phase 5: Get performance metrics
+   * Get performance metrics
    */
   getPerformanceMetrics() {
     return { ...this.performanceMetrics };
   }
   /**
-   * Phase 5: Invalidate port hit cache (call when nodes move or ports change)
+   * Invalidate port hit cache (call when nodes move or ports change)
    */
   invalidatePortHitCache() {
     this.portHitCacheInvalidated = true;
   }
   /**
-   * Phase 3: Handle mouse move for hover detection
-   * Phase 5: Enhanced with performance monitoring and validation
+   * Handle mouse move for hover detection
+   * Enhanced with performance monitoring and validation
    * Updates hover states for nodes, ports, and links
    * CRITICAL FIX: Added comprehensive debugging
    */
@@ -184224,8 +184987,8 @@ var InteractionController = class {
     return needsRender;
   }
   /**
-   * Phase 3: Handle connection drag update
-   * Phase 5: Enhanced with performance monitoring and validation
+   * Handle connection drag update
+   * Enhanced with performance monitoring and validation
    * Updates connection preview during drag
    */
   handleConnectionDrag(worldX, worldY, engine) {
@@ -184253,8 +185016,8 @@ var InteractionController = class {
     }
   }
   /**
-   * Phase 3: Start connection from port
-   * Phase 5: Enhanced with validation and error handling
+   * Start connection from port
+   * Enhanced with validation and error handling
    * CRITICAL FIX: Added detailed logging
    */
   startConnection(port, worldX, worldY, engine) {
@@ -184281,7 +185044,7 @@ var InteractionController = class {
     }
   }
   /**
-   * wave12/connect-ergonomics (gap 3) — Easy Connect: start a connection from a
+   * Easy Connect: start a connection from a
    * node BODY, not a port glyph. Picks the source port nearest the press point
    * (so a drag off the right side starts from the right port) and begins the
    * normal connection drag from it. Returns false when the node has no port to
@@ -184310,8 +185073,8 @@ var InteractionController = class {
     return best;
   }
   /**
-   * Phase 3: Complete connection to target port
-   * Phase 5: Enhanced with validation and error handling
+   * Complete connection to target port
+   * Enhanced with validation and error handling
    */
   completeConnection(engine) {
     if (this.isReadonlyEngine(engine)) return false;
@@ -184393,7 +185156,7 @@ var InteractionController = class {
     }
   }
   /**
-   * Phase 3: Cancel connection
+   * Cancel connection
    */
   cancelConnection(engine) {
     if (!this.isConnecting) {
@@ -184407,7 +185170,7 @@ var InteractionController = class {
     debugLog("\u{1F6AB} Connection cancelled");
   }
   /**
-   * Phase 3 / Wave 2: Start link reconnection.
+   * Start link reconnection.
    *
    * Enters endpoint-drag mode: the dragged endpoint follows the cursor while
    * the OTHER endpoint stays put. Seeds the engine's {@link ReconnectionPreview}
@@ -184433,7 +185196,7 @@ var InteractionController = class {
     debugLog(`\u{1F517} Link reconnection started: ${endpoint} endpoint of link ${link.id}`);
   }
   /**
-   * Wave 2: Update the in-progress endpoint reconnection as the cursor moves.
+   * Update the in-progress endpoint reconnection as the cursor moves.
    *
    * Refreshes the ghost-preview endpoint, recomputes which ports are valid drop
    * targets (highlighting them), and reflects whether the currently hovered
@@ -184463,7 +185226,7 @@ var InteractionController = class {
     return true;
   }
   /**
-   * Wave 2: Is `candidatePort` a legal target for reconnecting `endpoint` of
+   * Is `candidatePort` a legal target for reconnecting `endpoint` of
    * `link`? The OTHER endpoint's port stays fixed; the candidate must differ
    * from it, live on a different node, be type-compatible (input↔output, or a
    * bidirectional port), and satisfy the connection-group rules. Pure w.r.t.
@@ -184487,7 +185250,7 @@ var InteractionController = class {
     return isConnectionAllowedByGroup(fixedPort, candidatePort, engine);
   }
   /**
-   * Wave 2: Highlight ports as valid/invalid drop targets during an endpoint
+   * Highlight ports as valid/invalid drop targets during an endpoint
    * reconnection. Mirrors {@link updatePortHighlights} but uses the reconnect
    * validity rule instead of the {@link ConnectionStateManager} valid-target set
    * (which is empty during reconnection).
@@ -184513,7 +185276,7 @@ var InteractionController = class {
     });
   }
   /**
-   * Phase 3 / Wave 2: Complete link reconnection.
+   * Complete link reconnection.
    *
    * Drops the dragged endpoint on the hovered port. Rejects (and restores the
    * original connection) when there is no port under the cursor or the port
@@ -184587,7 +185350,7 @@ var InteractionController = class {
     return true;
   }
   /**
-   * Wave 2: Cancel an in-progress endpoint reconnection, restoring the link to
+   * Cancel an in-progress endpoint reconnection, restoring the link to
    * its original connection. Safe to call when not reconnecting.
    */
   cancelLinkReconnection(engine) {
@@ -184596,7 +185359,7 @@ var InteractionController = class {
     debugLog("\u{1F6AB} Link reconnection cancelled");
   }
   /**
-   * Wave 2: Tear down all reconnection state — deselect the link's endpoints,
+   * Tear down all reconnection state — deselect the link's endpoints,
    * clear the engine preview, and clear port highlights.
    */
   resetReconnectionState(engine) {
@@ -184612,7 +185375,7 @@ var InteractionController = class {
   // Wave 2 (Edges & links): inline label drag-reposition
   // ============================================================================
   /**
-   * Wave 2: Map a dragged world point to a model-space label placement.
+   * Map a dragged world point to a model-space label placement.
    *
    * Returns the `{ position, offset }` to store on the label such that the
    * renderer draws it exactly under the cursor now AND it sticks to the same
@@ -184681,7 +185444,7 @@ var InteractionController = class {
     return bestArc / total;
   }
   /**
-   * Wave 2: Begin dragging label `labelIndex` of `link`.
+   * Begin dragging label `labelIndex` of `link`.
    */
   startLabelDrag(link, labelIndex) {
     this.isDraggingLabel = true;
@@ -184690,7 +185453,7 @@ var InteractionController = class {
     debugLog(`\u{1F3F7}\uFE0F Started dragging label ${labelIndex} on link ${link.id}`);
   }
   /**
-   * Wave 2: Move the dragging label to follow the cursor. Writes the remapped
+   * Move the dragging label to follow the cursor. Writes the remapped
    * `{ position, offset }` back onto the model so the label survives re-routing.
    * Returns true when a re-render is warranted.
    */
@@ -184709,7 +185472,7 @@ var InteractionController = class {
     return true;
   }
   /**
-   * Wave 2: End the label drag.
+   * End the label drag.
    */
   endLabelDrag() {
     if (this.isDraggingLabel) {
@@ -184720,7 +185483,7 @@ var InteractionController = class {
     this.editingLabelIndex = null;
   }
   /**
-   * Phase 3: Handle link selection
+   * Handle link selection
    * FIXED: Support multi-select with Ctrl key, deselect other links otherwise
    */
   selectLink(link, engine, multiSelect = false) {
@@ -184743,7 +185506,7 @@ var InteractionController = class {
     }
   }
   /**
-   * Phase 3: Delete selected link
+   * Delete selected link
    */
   deleteSelectedLink(engine) {
     if (this.isReadonlyEngine(engine)) return false;
@@ -184776,7 +185539,7 @@ var InteractionController = class {
     return this.findLinkHitAtPosition(worldX, worldY, diagram);
   }
   /**
-   * Phase 3: Get current interaction state
+   * Get current interaction state
    */
   getState() {
     return {
@@ -184808,13 +185571,13 @@ var InteractionController = class {
     };
   }
   /**
-   * Phase 3: Check if currently interacting
+   * Check if currently interacting
    */
   isInteracting() {
     return this.isConnecting || this.isReconnectingLink || this.isDraggingWaypoint || this.isDraggingControlPoint || this.isDraggingLabel;
   }
   /**
-   * Phase 3: Get appropriate cursor for current state
+   * Get appropriate cursor for current state
    */
   getCursor(engine) {
     if (this.isConnecting) {
@@ -184845,7 +185608,7 @@ var InteractionController = class {
   // Private helper methods
   /**
    * Find port at world position
-   * Phase 5: Optimized with performance monitoring and early exit
+   * Optimized with performance monitoring and early exit
    * CRITICAL FIX: Accept engine parameter instead of calling diagram.getEngine()
    */
   findPortAtPosition(worldX, worldY, diagram, engine) {
@@ -185012,7 +185775,7 @@ var InteractionController = class {
     return { x: tip.x + dx / len2 * offset, y: tip.y + dy / len2 * offset };
   }
   /**
-   * Wave 6 (Card 6): the nearest VALID target port within the magnet radius.
+   * The nearest VALID target port within the magnet radius.
    *
    * "Valid" means the connection manager's valid-target set — the same set the
    * highlight paints — so the magnet can never latch onto a port the drop would
@@ -185045,14 +185808,9 @@ var InteractionController = class {
   /**
    * Update port highlight states during connection.
    *
-   * Wave 6 (Card 6): this method was already correct — and already dead. It
-   * loops over `dragState.validTargetPorts`, a set that NOTHING ever filled:
-   * `ConnectionStateManager.calculateValidTargets()` was a comment-only stub and
-   * `setValidTargets()` had no production caller. So the loop ran zero times,
-   * every frame, and only the hovered port ever lit up. The manager now computes
-   * the set for real, which is what finally brings this to life — plus the
-   * `highlightValidTargets` config flag, itself dead config until now (declared,
-   * defaulted true, written by the config panel, read by nobody).
+   * Lights every port in `dragState.validTargetPorts` (computed by
+   * `ConnectionStateManager.calculateValidTargets()`), not only the hovered one,
+   * when the `highlightValidTargets` config flag is on (the default).
    */
   updatePortHighlights(engine) {
     const diagram = engine.getDiagram();
@@ -185150,6 +185908,7 @@ var InteractionController = class {
     this.editingLink = link;
     this.editingWaypointIndex = waypointIndex;
     this.waypointDragStartPoints = link.points.map((p) => ({ ...p }));
+    this.waypointDragStartManual = link.getMetadata("hasManualWaypoints") === true;
     debugLog(`\u{1F535} Started dragging waypoint ${waypointIndex} on link ${link.id}`);
   }
   /**
@@ -185188,7 +185947,9 @@ var InteractionController = class {
         const to = link.points.map((p) => ({ ...p }));
         const changed = to.length !== from.length || to.some((p, i) => p.x !== from[i].x || p.y !== from[i].y);
         if (changed) {
-          void engine.commandManager.execute(new SetLinkPointsCommand(link.id, to, from));
+          void engine.commandManager.execute(
+            new SetLinkPointsCommand(link.id, to, from, this.waypointDragStartManual)
+          );
         }
       }
     }
@@ -185196,23 +185957,45 @@ var InteractionController = class {
     this.editingLink = null;
     this.editingWaypointIndex = null;
     this.waypointDragStartPoints = null;
+    this.waypointDragStartManual = false;
   }
   /**
-   * Add waypoint at click position on path
+   * Insert a bend where the path was clicked. Returns false when nothing was
+   * inserted: a read-only link, a point too close to an endpoint, or a point on
+   * an existing bend (a bend is never stacked on another).
+   *
+   * Undo: with `engine`, the insert is committed at once as its own undo step.
+   * Without it, when a pointer button is down (the press that clicked the
+   * path), the insert opens a bend drag on the new bend: moving the pointer
+   * before release moves the bend, and {@link endWaypointDrag} commits insert
+   * and move together as one undo step at release.
    */
-  addWaypoint(clickX, clickY, link) {
+  addWaypoint(clickX, clickY, link, engine) {
     if (this.isReadonlyLink(link)) return false;
     if (!this.waypointEditor) {
       return false;
     }
-    const result = this.waypointEditor.addWaypointAtPosition(clickX, clickY, link.points);
-    if (result) {
-      link.setPoints(result.newPoints);
-      link.setMetadata("hasManualWaypoints", true);
-      debugLog(`\u{1F7E2} Added waypoint at index ${result.waypointIndex} on link ${link.id}`);
-      return true;
+    if (this.isDraggingWaypoint) return false;
+    if (this.hitTestWaypoint(clickX, clickY, link) !== null) return false;
+    const before = link.points.map((p) => ({ ...p }));
+    const beforeManual = link.getMetadata("hasManualWaypoints") === true;
+    const result = this.waypointEditor.addWaypointAtPosition(clickX, clickY, before);
+    if (!result) return false;
+    link.setPoints(result.newPoints);
+    link.setMetadata("hasManualWaypoints", true);
+    debugLog(`\u{1F7E2} Added waypoint at index ${result.waypointIndex} on link ${link.id}`);
+    if (engine) {
+      void engine.commandManager.execute(
+        new SetLinkPointsCommand(link.id, result.newPoints, before, beforeManual)
+      );
+    } else if (isPointerButtonDown()) {
+      this.isDraggingWaypoint = true;
+      this.editingLink = link;
+      this.editingWaypointIndex = result.waypointIndex;
+      this.waypointDragStartPoints = before;
+      this.waypointDragStartManual = beforeManual;
     }
-    return false;
+    return true;
   }
   /**
    * Remove waypoint at index
@@ -186046,13 +186829,11 @@ var SnapController = class {
   /**
    * World position of a port — THE one the port is actually drawn at.
    *
-   * BUG (wave 6): this used `port.getAbsolutePosition(node.getBoundingBox())`,
-   * which walks the BOUNDING BOX and lands on an edge midpoint — blind to the
-   * node's silhouette and to how many ports share the side. The renderer draws
-   * ports with `getPortPositionForShape`. So on a circle, a diamond, a hexagon,
-   * a cylinder — or ANY side carrying more than one port — the magnet was
-   * snapping to a point several pixels away from the port you could see, and
-   * proximity-connect measured its radius from the wrong place.
+   * The same shape-aware position the renderer draws ports at
+   * (`getPortPositionForShape`), not the bounding-box edge midpoint
+   * (`port.getAbsolutePosition`). So on a circle, a diamond, a hexagon, a
+   * cylinder — or any side carrying more than one port — the magnet snaps to
+   * the port you can see, and proximity-connect measures from it.
    */
   portPosition(node, port) {
     return portWorldPosition(port, node);
@@ -188978,6 +189759,38 @@ var ViewportController = class {
   }
 };
 
+// libs/renderer/src/instance/content-bounds.ts
+function contentBounds(model) {
+  const nodes = model.getNodes().filter((n3) => n3.state?.visible !== false);
+  if (nodes.length === 0 && groupFrameRects(model).length === 0) return null;
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const node of nodes) {
+    left = Math.min(left, node.position.x);
+    top = Math.min(top, node.position.y);
+    right = Math.max(right, node.position.x + (node.size?.width ?? 0));
+    bottom = Math.max(bottom, node.position.y + (node.size?.height ?? 0));
+  }
+  for (const link of model.getLinks()) {
+    for (const p of link.points ?? []) {
+      left = Math.min(left, p.x);
+      top = Math.min(top, p.y);
+      right = Math.max(right, p.x);
+      bottom = Math.max(bottom, p.y);
+    }
+  }
+  for (const frame of groupFrameRects(model)) {
+    left = Math.min(left, frame.x);
+    top = Math.min(top, frame.y);
+    right = Math.max(right, frame.x + frame.width);
+    bottom = Math.max(bottom, frame.y + frame.height);
+  }
+  if (!isFinite(left) || !isFinite(top)) return null;
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
 // libs/renderer/src/instance/render-scheduler.ts
 var RenderScheduler = class {
   constructor(options) {
@@ -189172,11 +189985,22 @@ var DomEventBinder = class {
     this.sawPointerEvent = false;
     /** The container's own touch-action, restored on detach. */
     this.previousTouchAction = null;
-    this.boundPointerDown = (e) => this.onPointerDown(e);
-    this.boundPointerMove = (e) => this.onPointerMove(e);
-    this.boundPointerUp = (e) => this.onPointerUp(e);
-    this.boundPointerCancel = (e) => this.onPointerCancel(e);
-    this.boundContextMenu = (e) => this.onContextMenu(e);
+    // Every DOM entry point runs inside a selection batch (see
+    // DomEventBinderHost.beginSelectionBatch); a press opens a hold its release closes.
+    this.boundPointerDown = (e) => this.inSelectionBatch(() => {
+      this.holdPress();
+      this.onPointerDown(e);
+    });
+    this.boundPointerMove = (e) => this.inSelectionBatch(() => this.onPointerMove(e));
+    this.boundPointerUp = (e) => {
+      this.inSelectionBatch(() => this.onPointerUp(e));
+      this.releasePress();
+    };
+    this.boundPointerCancel = (e) => {
+      this.inSelectionBatch(() => this.onPointerCancel(e));
+      this.releasePress();
+    };
+    this.boundContextMenu = (e) => this.inSelectionBatch(() => this.onContextMenu(e));
     // The legacy mouse listeners are GATED on `sawPointerEvent`: once the environment
     // has proved it delivers PointerEvents, the pointer pipeline owns everything and
     // these must go silent, or every mouse gesture would be handled twice (once as
@@ -189187,20 +190011,29 @@ var DomEventBinder = class {
     // very path that replaces these.
     this.boundMouseDown = (e) => {
       if (this.sawPointerEvent) return;
-      this.onMouseDown(e);
+      this.inSelectionBatch(() => {
+        this.holdPress();
+        this.onMouseDown(e);
+      });
     };
     this.boundMouseMove = (e) => {
       if (this.sawPointerEvent) return;
-      this.onMouseMove(e);
+      this.inSelectionBatch(() => this.onMouseMove(e));
     };
     this.boundMouseUp = (e) => {
       if (this.sawPointerEvent) return;
-      this.onMouseUp(e);
+      this.inSelectionBatch(() => this.onMouseUp(e));
+      this.releasePress();
     };
-    this.boundMouseLeave = () => this.onMouseLeave();
-    this.boundDblClick = (e) => this.onDoubleClick(e);
-    this.boundKeyDown = (e) => this.onKeyDown(e);
-    this.boundKeyUp = (e) => this.onKeyUp(e);
+    this.boundMouseLeave = () => {
+      this.inSelectionBatch(() => this.onMouseLeave());
+      this.releasePress();
+    };
+    this.boundDblClick = (e) => this.inSelectionBatch(() => this.onDoubleClick(e));
+    this.boundKeyDown = (e) => this.inSelectionBatch(() => this.onKeyDown(e));
+    this.boundKeyUp = (e) => this.inSelectionBatch(() => this.onKeyUp(e));
+    /** True while a press holds a selection batch open until its release. */
+    this.pressHeld = false;
     /** Did the press that resolveNode just handled land ON a drag handle? */
     this.pressViaDragHandle = false;
     this.options = {
@@ -189257,6 +190090,26 @@ var DomEventBinder = class {
   hasActiveGesture() {
     return this.selectionTools.isActive();
   }
+  /** Run one DOM event's handling inside a selection batch (host permitting). */
+  inSelectionBatch(run) {
+    this.host.beginSelectionBatch?.();
+    try {
+      run();
+    } finally {
+      this.host.endSelectionBatch?.();
+    }
+  }
+  /** A press opens a batch that lasts until its release (or the pointer leaves). */
+  holdPress() {
+    if (this.pressHeld) return;
+    this.pressHeld = true;
+    this.host.beginSelectionBatch?.();
+  }
+  releasePress() {
+    if (!this.pressHeld) return;
+    this.pressHeld = false;
+    this.host.endSelectionBatch?.();
+  }
   /**
    * Wave 9 — Card 7. Is editing forbidden RIGHT NOW?
    *
@@ -189297,6 +190150,7 @@ var DomEventBinder = class {
   detach() {
     if (!this.attached) return;
     this.attached = false;
+    this.releasePress();
     this.container.removeEventListener("wheel", this.boundWheel);
     this.container.removeEventListener("pointerdown", this.boundPointerDown);
     this.container.removeEventListener("pointermove", this.boundPointerMove);
@@ -190014,20 +190868,25 @@ var DomEventBinder = class {
         event.preventDefault();
         const nodeIds = selectedNodes.map((n3) => n3.id);
         const linkId = selectedLink?.id;
+        this.host.beginSelectionBatch?.();
         void (async () => {
           const cm = engine.commandManager;
           const many = nodeIds.length + (linkId ? 1 : 0) > 1;
-          if (many) cm.beginBatch();
           try {
-            if (linkId) await engine.removeLink(linkId);
-            for (const id of nodeIds) await engine.removeNode(id);
+            if (many) cm.beginBatch();
+            try {
+              if (linkId) await engine.removeLink(linkId);
+              for (const id of nodeIds) await engine.removeNode(id);
+            } finally {
+              if (many) await cm.endBatch("Delete Selection");
+            }
+            this.host.requestRender();
+            if (nodeIds.length > 0) this.emitNodesChange();
+            if (linkId) this.emitEdgesChange();
+            this.emitSelectionChange();
           } finally {
-            if (many) await cm.endBatch("Delete Selection");
+            this.host.endSelectionBatch?.();
           }
-          this.host.requestRender();
-          if (nodeIds.length > 0) this.emitNodesChange();
-          if (linkId) this.emitEdgesChange();
-          this.emitSelectionChange();
         })();
       }
       return;
@@ -190978,8 +191837,7 @@ function applyNodes(diagram, specs) {
       seen.add(spec.id);
       const current = diagram.getNode(spec.id);
       if (current && current !== spec) {
-        diagram.removeNode(current.id);
-        diagram.addNode(spec);
+        diagram.replaceNode(spec);
         changed = true;
       } else if (!current) {
         diagram.addNode(spec);
@@ -191011,8 +191869,7 @@ function toNodeSpec(node) {
     id: node.id,
     type: node.type,
     position: { x: node.position.x, y: node.position.y },
-    size: { width: node.size.width, height: node.size.height },
-    selected: node.isSelected()
+    size: { width: node.size.width, height: node.size.height }
   };
   const data2 = node.data;
   if (data2 && Object.keys(data2).length > 0) spec.data = { ...data2 };
@@ -191034,8 +191891,7 @@ function toEdgeSpec(link) {
     target: link.targetNodeId ?? link.targetPortId,
     sourceHandle: link.sourcePortId,
     targetHandle: link.targetPortId,
-    type: link.pathType,
-    selected: link.state === "selected"
+    type: link.pathType
   };
   if (link.router !== void 0) spec.router = link.router;
   if (link.connector !== void 0) spec.connector = link.connector;
@@ -191119,7 +191975,6 @@ function applyGroupSpec(diagram, group, spec) {
   group.name = spec.label ?? "";
   const styled = spec.style !== void 0 || spec.labelPlacement !== void 0;
   group.setMetadata("frameStyle", styled ? { ...spec.style ?? {}, labelPlacement: spec.labelPlacement ?? "top-left" } : void 0);
-  if (styled) group.headerHeight = 0;
   if (spec.direction !== void 0) group.setMetadata("direction", spec.direction);
   const wanted = new Set(spec.children ?? []);
   for (const id of [...group.members]) if (!wanted.has(id)) group.removeMember(id, diagram);
@@ -191128,9 +191983,23 @@ function applyGroupSpec(diagram, group, spec) {
     group.position = { x: spec.bounds.x, y: spec.bounds.y };
     group.size = { width: spec.bounds.width, height: spec.bounds.height, depth: 0 };
     group.bounds = { ...spec.bounds };
+    if (styled) reserveZoneCaptionRoom(group, spec);
   } else {
     group.padding = spec.padding ?? 20;
+    if (styled) reserveZoneCaptionRoom(group, spec);
     group.fitToContents(diagram, { mode: "exact" });
+  }
+}
+function reserveZoneCaptionRoom(group, spec) {
+  group.headerHeight = 0;
+  if (!spec.label?.trim()) return;
+  const fontSize = typeof spec.style?.fontSize === "number" && Number.isFinite(spec.style.fontSize) ? spec.style.fontSize : 11;
+  const room = Math.ceil(12 + fontSize * 1.3 + 6);
+  const pad = group.getPadding();
+  if ((spec.labelPlacement ?? "top-left").startsWith("bottom")) {
+    if (pad.bottom < room) group.padding = { ...pad, bottom: room };
+  } else {
+    group.headerHeight = Math.max(0, room - pad.top);
   }
 }
 
@@ -191190,6 +192059,26 @@ function inflate2(r, pad) {
 function intersects2(a, b) {
   return !(a.x + a.width < b.x || b.x + b.width < a.x || a.y + a.height < b.y || b.y + b.height < a.y);
 }
+
+// libs/renderer/src/instance/highlighter-overlay.ts
+var ShapeAwareHighlighterController = class extends HighlighterController {
+  refreshValidation(engine) {
+    const all = super.refreshValidation(engine);
+    const diagram = engine?.getDiagram?.();
+    if (!diagram) return all;
+    const isShapeTypeWarning = (issue) => {
+      if (issue.code !== "UNREGISTERED_NODE_TYPE" || issue.entity !== "node") return false;
+      const type = diagram.getNode(issue.entityId)?.type;
+      return typeof type === "string" && hasShape(type);
+    };
+    for (const [entityId, list2] of this.issues) {
+      const kept = list2.filter((issue) => !isShapeTypeWarning(issue));
+      if (kept.length === 0) this.issues.delete(entityId);
+      else if (kept.length !== list2.length) this.issues.set(entityId, kept);
+    }
+    return all.filter((issue) => !isShapeTypeWarning(issue));
+  }
+};
 
 // libs/renderer/src/instance/create-diagram.ts
 function createDiagram(container, options = {}) {
@@ -191272,7 +192161,7 @@ function createDiagram(container, options = {}) {
     }
     overlayPatcher.reconcile(overlayHost, tree);
   };
-  const highlighter = new HighlighterController();
+  const highlighter = new ShapeAwareHighlighterController();
   let highlighterOn = false;
   const highlighterPatcher = new VNodePatcher({ document: doc });
   let highlighterHost = null;
@@ -191336,6 +192225,18 @@ function createDiagram(container, options = {}) {
     if (!set) return;
     for (const listener of [...set]) listener(payload);
   };
+  let selectionBatchDepth = 0;
+  let selectionOwed = false;
+  let selectionAtGestureStart = "";
+  const selectedEdges = () => model.getLinks().filter((l) => l.state === "selected");
+  const selectionKey = () => model.getSelectedNodes().map((n3) => n3.id).join("\0") + "" + selectedEdges().map((l) => l.id).join("\0");
+  const emitSelectionNow = () => {
+    emit("selection:change", { nodes: model.getSelectedNodes(), edges: selectedEdges() });
+  };
+  const announceSelection = () => {
+    if (selectionBatchDepth > 0) selectionOwed = true;
+    else emitSelectionNow();
+  };
   let commentStore = null;
   let commentOverlay = null;
   if (options.comments) {
@@ -191360,7 +192261,21 @@ function createDiagram(container, options = {}) {
       interaction,
       getRect,
       requestRender: () => scheduler.schedule(),
-      emit
+      // The binder's selection:change is the same announcement as the model's:
+      // route it through the gate (its payload is re-read at emit time).
+      emit: (event, payload) => event === "selection:change" ? announceSelection() : emit(event, payload),
+      beginSelectionBatch: () => {
+        if (selectionBatchDepth === 0) selectionAtGestureStart = selectionKey();
+        selectionBatchDepth++;
+      },
+      endSelectionBatch: () => {
+        if (selectionBatchDepth === 0) return;
+        selectionBatchDepth--;
+        if (selectionBatchDepth === 0 && selectionOwed) {
+          selectionOwed = false;
+          if (selectionKey() !== selectionAtGestureStart) emitSelectionNow();
+        }
+      }
     },
     options
   );
@@ -191459,12 +192374,10 @@ function createDiagram(container, options = {}) {
       nodeHosts.delete(id);
     }
   };
-  const exportableCustomNodes = (needed) => model.getNodes().filter(
-    (node) => !!node.getMetadata("useHTMLLayer") && needed(node) && !lifecycle?.isExplicitlyFrozen("node", node.id)
-  );
-  const materializeCustomNodes = (needed) => {
+  const isExportableCustomNode = (node) => !!node.getMetadata("useHTMLLayer") && !lifecycle?.isExplicitlyFrozen("node", node.id);
+  const materializeCustomNodes = (nodes) => {
     const undo = [];
-    for (const node of exportableCustomNodes(needed)) {
+    for (const node of nodes) {
       if (nodeHosts.get(node.id)?.parentNode) continue;
       const was = nodeHosts.has(node.id) ? "detached" : "absent";
       try {
@@ -191502,147 +192415,21 @@ function createDiagram(container, options = {}) {
     }
     return `custom node "${id}" is STILL PAINTING asynchronously (its renderCustomNode returned a promise that has not settled). exportSvgString() / exportPdf() are synchronous by contract and cannot wait \u2014 use \`await diagram.export('svg' | 'pdf' | 'png', \u2026)\`, which does.`;
   };
-  const captureCustomNodes = (needed) => {
-    const restore = materializeCustomNodes(needed);
-    try {
-      return readHosts(false, 0);
-    } finally {
-      restore();
+  const exportPipeline = createExportPipeline(renderer, {
+    getNodes: () => model.getNodes(),
+    getHost: (id) => nodeHosts.get(id),
+    isExportable: isExportableCustomNode,
+    bounds: nodeBounds,
+    materialize: materializeCustomNodes,
+    pendingPaint: (id) => pendingPaints.get(id),
+    paintWarning,
+    pin: (ids) => {
+      for (const id of ids) pinnedHosts.add(id);
+      return () => {
+        for (const id of ids) pinnedHosts.delete(id);
+      };
     }
-  };
-  const readHosts = (waited, timeoutMs) => {
-    const captures = [];
-    for (const node of model.getNodes()) {
-      const host = nodeHosts.get(node.id);
-      if (!host) continue;
-      const capture = captureCustomNodeHost(node.id, nodeBounds(node), host);
-      const paint3 = paintWarning(node.id, waited, timeoutMs);
-      const warning = [paint3, capture.warning].filter(Boolean).join(" ");
-      captures.push(warning ? { ...capture, warning } : capture);
-    }
-    return captures;
-  };
-  const captureCustomNodesAsync = async (needed, timeoutMs) => {
-    const scope = exportableCustomNodes(needed).map((node) => node.id);
-    for (const id of scope) pinnedHosts.add(id);
-    const restore = materializeCustomNodes(needed);
-    try {
-      const waits = scope.map((id) => pendingPaints.get(id)).filter((p) => p !== void 0);
-      if (waits.length === 0) return readHosts(false, timeoutMs);
-      await settle(waits, timeoutMs);
-      return readHosts(true, timeoutMs);
-    } finally {
-      restore();
-      for (const id of scope) pinnedHosts.delete(id);
-    }
-  };
-  const settle = async (waits, timeoutMs) => {
-    if (!(timeoutMs > 0)) return;
-    let timer;
-    const deadline = new Promise((resolve2) => {
-      timer = setTimeout(resolve2, timeoutMs);
-    });
-    try {
-      await Promise.race([Promise.all(waits), deadline]);
-    } finally {
-      if (timer !== void 0) clearTimeout(timer);
-    }
-  };
-  let captureQueue = Promise.resolve();
-  const serializeCapture = (run) => {
-    const result = captureQueue.then(run, run);
-    captureQueue = result.then(
-      () => void 0,
-      () => void 0
-    );
-    return result;
-  };
-  const exportNeeds = (exportOptions) => {
-    if (exportOptions?.scope === "selection") return (node) => node.state?.selected === true;
-    if (exportOptions?.includeIds === void 0) return () => true;
-    const ids = new Set(exportOptions.includeIds);
-    return (node) => ids.has(node.id);
-  };
-  const withCustomNodes = (exportOptions) => {
-    if (exportOptions?.customNodes !== void 0) return exportOptions;
-    const customNodes = captureCustomNodes(exportNeeds(exportOptions));
-    if (customNodes.length === 0) return exportOptions ?? {};
-    return { ...exportOptions, customNodes };
-  };
-  const DEFAULT_CUSTOM_NODE_TIMEOUT = 5e3;
-  const withCustomNodesAsync = async (exportOptions) => {
-    if (exportOptions?.customNodes !== void 0) return exportOptions;
-    const customNodes = await serializeCapture(
-      () => captureCustomNodesAsync(
-        exportNeeds(exportOptions),
-        exportOptions?.customNodeTimeout ?? DEFAULT_CUSTOM_NODE_TIMEOUT
-      )
-    );
-    if (customNodes.length === 0) return exportOptions ?? {};
-    return { ...exportOptions, customNodes };
-  };
-  const withInlinedImages = async (exportOptions) => {
-    const captures = exportOptions.customNodes ?? [];
-    const roots = /* @__PURE__ */ new Map();
-    const urls = [];
-    const seen = /* @__PURE__ */ new Set();
-    const add = (found) => {
-      for (const url of found) {
-        if (!seen.has(url)) {
-          seen.add(url);
-          urls.push(url);
-        }
-      }
-    };
-    for (const capture of captures) {
-      if (!capture.content || capture.content.length === 0) continue;
-      const root = { type: "g", props: {}, children: [...capture.content] };
-      const found = collectAssetUrls(root);
-      if (found.length === 0) continue;
-      roots.set(capture, root);
-      add(found);
-    }
-    const treeUrls = renderer.collectExportImageUrls(exportOptions);
-    add(treeUrls);
-    if (urls.length === 0) return exportOptions;
-    const preResolved = exportOptions.resolvedAssets;
-    const toFetch = preResolved ? urls.filter((url) => !preResolved.has(url)) : urls;
-    const { byUrl, failures } = toFetch.length > 0 ? await fetchAssetsTiered(toFetch, {
-      fetcher: exportOptions.assetFetcher,
-      maxBytes: exportOptions.assetMaxBytes,
-      timeoutMs: exportOptions.assetTimeout
-    }) : { byUrl: /* @__PURE__ */ new Map(), failures: /* @__PURE__ */ new Map() };
-    if (preResolved) {
-      for (const [url, uri] of preResolved) byUrl.set(url, uri);
-    }
-    const customNodes = captures.map((capture) => {
-      const root = roots.get(capture);
-      if (!root) return capture;
-      const inlined = inlineAssets(root, byUrl);
-      const remaining = collectAssetUrls(inlined);
-      let warning = capture.warning;
-      if (remaining.length === 0) {
-        warning = stripResolvedImageWarnings(warning);
-      } else {
-        const residue = remaining.map(
-          (url) => `widget image "${url}" could not be embedded: ${failures.get(url) ?? "unknown failure"}. The reference is left in the file (an SVG still renders it online); it will be MISSING from a PDF export.`
-        ).join(" ");
-        warning = [warning, residue].filter(Boolean).join(" ");
-      }
-      return { ...capture, content: inlined.children ?? [], warning };
-    });
-    const out = { ...exportOptions };
-    if (exportOptions.customNodes !== void 0) out.customNodes = customNodes;
-    if (byUrl.size > 0) out.resolvedAssets = byUrl;
-    const treeResidue = treeUrls.filter((url) => !byUrl.has(url)).map(
-      (url) => `diagram image "${url}" could not be embedded: ${failures.get(url) ?? "unknown failure"}. The reference is left in the file (an SVG still renders it online); it will be MISSING from a PDF export.`
-    );
-    if (treeResidue.length > 0) {
-      const original = exportOptions.onWarnings;
-      out.onWarnings = (warnings) => original?.([...warnings, ...treeResidue]);
-    }
-    return out;
-  };
+  });
   let lastViewportKey = "";
   let lastFrameHadPreview = false;
   let lastFrameEpoch = -1;
@@ -191769,6 +192556,7 @@ function createDiagram(container, options = {}) {
     emit("edges:change", { edges: model.getLinks() });
   });
   onModel("groups:cleared", () => scheduler.schedule());
+  if (commentStore) unsubs.push(commentStore.onChange(() => scheduler.schedule()));
   for (const ev of ["node:added", "node:removed", "link:added", "link:removed", "group:added", "group:removed", "nodes:cleared", "links:cleared", "groups:cleared"]) {
     onModel(ev, () => {
       if (!highlighterOn) return;
@@ -191778,10 +192566,7 @@ function createDiagram(container, options = {}) {
   }
   onModel("selection:changed", () => {
     scheduler.schedule();
-    emit("selection:change", {
-      nodes: model.getSelectedNodes(),
-      edges: model.getLinks().filter((l) => l.state === "selected")
-    });
+    announceSelection();
   });
   unsubs.push(
     viewport.onChange((state) => {
@@ -191871,12 +192656,27 @@ function createDiagram(container, options = {}) {
     // needs no new public method: this is where waiting for one belongs. The two
     // synchronous entry points below keep their contract exactly, and report an
     // unfinished painter rather than pretending to have read it.
-    export: async (format, exportOptions) => renderer.export(format, await withInlinedImages(await withCustomNodesAsync(exportOptions))),
-    exportSvgString: (exportOptions) => renderer.exportSvgString(withCustomNodes(exportOptions)),
-    exportPdf: (exportOptions) => renderer.exportPdf(withCustomNodes(exportOptions)),
+    export: (format, exportOptions) => exportPipeline.export(format, exportOptions),
+    exportSvgString: (exportOptions) => exportPipeline.exportSvgString(exportOptions),
+    exportPdf: (exportOptions) => exportPipeline.exportPdf(exportOptions),
     exportText: (textOptions) => exportDiagramText(model, textOptions),
     loadText: (text, textOptions) => {
+      const refuse = (why) => {
+        throw new Error(`loadText: ${why} The canvas was left unchanged.`);
+      };
+      if (typeof text !== "string" || stripGrafloriaSidecar(text).trim() === "") {
+        refuse("the text is empty \u2014 there is no diagram in it. (To clear the canvas, call setNodes([]) and setEdges([]).)");
+      }
       const result = importDiagramText(text, textOptions);
+      if (result.unsupported) {
+        refuse(
+          `"${result.unsupported}" diagrams cannot be drawn on the canvas. Supported: ${DSL.SUPPORTED_TEXT_TYPES.join(", ")}.`
+        );
+      }
+      if (result.source === "text") {
+        const errors = result.errors ?? new DSL({ autoLayout: false }).validate(stripGrafloriaSidecar(text.replace(/\r\n?/g, "\n"))).errors;
+        if (errors.length > 0) refuse(`the text has errors \u2014 ${errors.join(" ")}`);
+      }
       applyNodes(model, result.diagram.getNodes());
       applyEdges(model, result.diagram.getLinks());
       const incoming = result.diagram.getGroups();
@@ -191889,6 +192689,17 @@ function createDiagram(container, options = {}) {
         if (current && current !== group) model.removeGroup(current.id);
         if (model.getGroup(group.id) !== group) model.addGroup(group);
       }
+      const incomingInk = result.diagram.getStrokes();
+      const wantedInk = new Set(incomingInk.map((stroke) => stroke.id));
+      for (const existing of model.getStrokes()) {
+        if (!wantedInk.has(existing.id)) model.removeStroke(existing.id);
+      }
+      for (const stroke of incomingInk) {
+        const current = model.getStroke(stroke.id);
+        if (current && current !== stroke) model.removeStroke(current.id);
+        if (model.getStroke(stroke.id) !== stroke) model.addStroke(stroke);
+      }
+      adoptTextGrammarMetadata(model, result.diagram);
       scheduler.schedule();
       return result;
     },
@@ -191947,30 +192758,6 @@ function createDiagram(container, options = {}) {
   };
   return instance;
 }
-function contentBounds(model) {
-  const nodes = model.getNodes().filter((n3) => n3.state?.visible !== false);
-  if (nodes.length === 0) return null;
-  let left = Infinity;
-  let top = Infinity;
-  let right = -Infinity;
-  let bottom = -Infinity;
-  for (const node of nodes) {
-    left = Math.min(left, node.position.x);
-    top = Math.min(top, node.position.y);
-    right = Math.max(right, node.position.x + (node.size?.width ?? 0));
-    bottom = Math.max(bottom, node.position.y + (node.size?.height ?? 0));
-  }
-  for (const link of model.getLinks()) {
-    for (const p of link.points ?? []) {
-      left = Math.min(left, p.x);
-      top = Math.min(top, p.y);
-      right = Math.max(right, p.x);
-      bottom = Math.max(bottom, p.y);
-    }
-  }
-  if (!isFinite(left) || !isFinite(top)) return null;
-  return { x: left, y: top, width: right - left, height: bottom - top };
-}
 function ensureLayers(container, doc, hydration) {
   if (hydration) {
     const root2 = container.querySelector(`.${ROOT_CLASS}`);
@@ -192019,6 +192806,7 @@ function renderToStaticSVG(options = {}) {
   const model = engine.createDiagram("grafloria-ssr");
   applyNodes(model, options.nodes ?? []);
   applyEdges(model, options.edges ?? []);
+  if (options.groups) applyGroups(model, options.groups);
   const viewport = new ViewportController({
     viewport: {
       x: options.viewport?.x ?? 0,
@@ -192029,7 +192817,7 @@ function renderToStaticSVG(options = {}) {
     zoom: options.zoom ?? 1
   });
   if (options.fitView) {
-    const bounds = contentBoundsOf(model);
+    const bounds = contentBounds(model);
     if (bounds) viewport.fitToBounds(bounds, options.fitPadding ?? 40);
   }
   const renderer = new SVGRenderer(engine, { instanceId }, options.theme);
@@ -192055,21 +192843,6 @@ function wrapInLayers(svg, instanceId) {
   return `<div class="${ROOT_CLASS}" style="${ROOT_STYLE}" data-grafloria-instance="${instanceId}"><div class="${SVG_LAYER_CLASS}" style="${SVG_LAYER_STYLE}">${svg}</div><div class="${HTML_LAYER_CLASS}" style="${htmlLayerStyle(
     "translate(0px, 0px) scale(1)"
   )}"></div></div>`;
-}
-function contentBoundsOf(model) {
-  const nodes = model.getNodes();
-  if (nodes.length === 0) return null;
-  let left = Infinity;
-  let top = Infinity;
-  let right = -Infinity;
-  let bottom = -Infinity;
-  for (const node of nodes) {
-    left = Math.min(left, node.position.x);
-    top = Math.min(top, node.position.y);
-    right = Math.max(right, node.position.x + node.size.width);
-    bottom = Math.max(bottom, node.position.y + node.size.height);
-  }
-  return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
 // libs/renderer/src/lazy/view-lifecycle.ts
@@ -193761,7 +194534,7 @@ function createBackground(root, viewport, options = {}) {
 
 // libs/renderer/src/ext/components/minimap.ts
 var SVG_NS4 = "http://www.w3.org/2000/svg";
-function contentBoundsOf2(model, padding) {
+function contentBoundsOf(model, padding) {
   const nodes = model.getNodes().filter((n3) => n3.state?.visible !== false);
   if (nodes.length === 0) return null;
   let left = Infinity;
@@ -193846,7 +194619,7 @@ function createMiniMap(root, viewport, getModel, options = {}) {
   const refresh = () => {
     if (!visible2) return;
     const model = getModel();
-    bounds = contentBoundsOf2(model, opts.padding);
+    bounds = contentBoundsOf(model, opts.padding);
     while (nodeLayer.firstChild) nodeLayer.removeChild(nodeLayer.firstChild);
     while (linkLayer.firstChild) linkLayer.removeChild(linkLayer.firstChild);
     if (!bounds) {
@@ -196231,7 +197004,11 @@ function bindRowInteractions(api) {
 // libs/element/src/lib/diagram-kit/card.ts
 var ER_ROW_H = 25;
 var ER_HEAD_H = 28;
-var ER_BORDER_SLACK = 9;
+var CARD_WRAPPER_PADDING = 0;
+function cardHtml(content) {
+  return { content, interactive: true, padding: CARD_WRAPPER_PADDING };
+}
+var ER_BORDER_SLACK = 1;
 var ER_ADD_H = 26;
 var UML_LINE_H = 19;
 var UML_NAME_H = 30;
@@ -196276,7 +197053,7 @@ var ER_ROW_GAP = 8;
 var ER_KEY_W = 22;
 var ER_TYPE_MIN_W = 52;
 var CARD_DEL_W = 14;
-var CARD_SLACK_X = 10;
+var CARD_SLACK_X = 2;
 var ER_DEFAULT_WIDTH = 190;
 var UML_DEFAULT_WIDTH = 200;
 var CARD_MAX_AUTO_W = 420;
@@ -196387,7 +197164,7 @@ function classAutoHeight(cls, editable = false) {
   const attrs = cls.attributes ?? [];
   const methods = cls.methods ?? [];
   const addRows = editable ? 2 : 0;
-  return UML_NAME_H + (cls.stereotype ? UML_STEREO_H : 0) + (attrs.length + methods.length + addRows) * UML_LINE_H + UML_PAD * 2 + 12;
+  return UML_NAME_H + (cls.stereotype ? UML_STEREO_H : 0) + (attrs.length + methods.length + addRows) * UML_LINE_H + UML_PAD * 2 + 4;
 }
 function classAutoWidth(cls, editable = false) {
   if (cls.width != null) return cls.width;
@@ -196488,7 +197265,7 @@ var UpdateCardCommand = class extends Command {
         }
       }
     }
-    node.setMetadata("html", { content: result.content, interactive: true });
+    node.setMetadata("html", cardHtml(result.content));
     node.setMetadata(kitKey, result.newKit);
     node.setSize(newWidth, result.height);
     if (this.before) this.before.links = removedLinks;
@@ -197206,6 +197983,9 @@ var CSS4 = `
 .grafloria-html-layer > .grafloria-node-host.axdb-carried { z-index: 30; opacity: .92; }
 .grafloria-html-layer > .axdb-group-bg.axdb-carried { z-index: 29; filter: drop-shadow(0 10px 16px rgba(16, 24, 40, .3)); }
 .grafloria-html-layer > .axdb-slab.axdb-carried { z-index: 31; }
+/* \u2026selected as well (a press selects what it carries): the frame \u2014 and the caption band on it \u2014
+   stays above the carried surface, or a section with a background loses its header mid-drag. */
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected.axdb-carried { z-index: 31; }
 .grafloria-html-layer > .axdb-tabs.axdb-carried { z-index: 32; }
 
 /* ===== the placeholder: dashed slab, truthful, never animated ===== */
@@ -197584,10 +198364,17 @@ var CSS4 = `
 .grafloria-html-layer > .axdb-slab { position: absolute; pointer-events: none; border-radius: var(--axdb-rs-radius, 8px); z-index: 4; }
 /* Selected, the overlay rises above the tiles so ITS corner handle wins a
    corner it shares with a child's; unselected, its handle takes no presses. */
+/* THE BOARD A DRAGGED TILE WILL LAND ON: its section's frame says so while the
+   hand is over it \u2014 and says no, in the refusal colour, when canDrop refused. */
+.grafloria-html-layer > .axdb-slab.axdb-slab--drop { box-shadow: inset 0 0 0 2px var(--axdb-drop-ring, rgba(59, 82, 217, .7)); }
+.grafloria-html-layer > .axdb-slab.axdb-slab--refused { box-shadow: inset 0 0 0 2px var(--axdb-refused-ring, rgba(194, 65, 12, .75)); }
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected { z-index: 6; box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)); }
 .grafloria-html-layer > .axdb-slab > .axdb-rs { pointer-events: none; opacity: 0; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { pointer-events: auto; opacity: 1; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-rs { display: none; }
+.grafloria-html-layer > .axdb-slab.axdb-slab--fixed > .axdb-rs { display: none; } /* resizable: false */
+/* A section's FOOTER band (\`footer\`): content at the frame's bottom \u2014 it takes presses, the board does not. */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-f { position: absolute; left: 0; right: 0; bottom: 0; box-sizing: border-box; pointer-events: auto; }
 
 /* GROUP FRAME (0.4.43): a TAB CONTAINER wears a frame by default \u2014 a bordered
    slab, and a tinted surface UNDER its pages (the strip's own track colour, so
@@ -197813,6 +198600,11 @@ function parentPaintsSectionChrome(diagram, group) {
 function sectionCaptionReserve(diagram, group, isStatic) {
   if (!parentPaintsSectionChrome(diagram, group)) return 0;
   return captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 });
+}
+function sectionFooterReserve(diagram, group) {
+  if (!parentPaintsSectionChrome(diagram, group)) return 0;
+  const f = group.getMetadata?.("containerWidget")?.footer;
+  return f?.height && f.height > 0 ? f.height : 0;
 }
 function captionPainted(c, isStatic) {
   if (!c) return false;
@@ -198394,7 +199186,7 @@ function createProjection(ctx, deps) {
     ghostHost?.classList.remove("axdb-ghost", "axdb-out");
     ghostHost = null;
   };
-  const setGhost = (id, on) => {
+  const setGhost = (id, on, settle2 = false) => {
     const host = ctx.hostOf(id);
     if (!host) return;
     if (ghostHost && ghostHost !== host) flushGhost();
@@ -198406,6 +199198,15 @@ function createProjection(ctx, deps) {
       ghostHost = host;
     } else {
       host.classList.remove("axdb-out");
+      if (settle2) {
+        if (ghostTimer) clearTimeout(ghostTimer);
+        ghostTimer = null;
+        armGlide();
+        host.classList.remove("axdb-ghost");
+        if (ghostHost === host) ghostHost = null;
+        disarmGlideSoon();
+        return;
+      }
       if (ghostTimer) clearTimeout(ghostTimer);
       ghostHost = host;
       ghostTimer = setTimeout(() => {
@@ -198494,7 +199295,7 @@ function createChrome(ctx, deps) {
   const { api, group, diagram, options } = ctx;
   const slabEls = /* @__PURE__ */ new Map();
   const groupBgs = /* @__PURE__ */ new Map();
-  const syncGroupBg = (layer, id, on, x, y, w, h) => {
+  const syncGroupBg = (layer, id, on, x, y, w, h, background) => {
     let bg = groupBgs.get(id) ?? null;
     if (!on) {
       bg?.remove();
@@ -198513,6 +199314,7 @@ function createChrome(ctx, deps) {
     bg.style.top = `${y}px`;
     bg.style.width = `${w}px`;
     bg.style.height = `${h}px`;
+    bg.style.background = background ?? "";
   };
   const hoverSlabs = /* @__PURE__ */ new Set();
   const markHotSection = (clientX, clientY) => {
@@ -198524,6 +199326,25 @@ function createChrome(ctx, deps) {
   };
   const onHoverLeave = () => {
     for (const el2 of hoverSlabs) el2.classList.remove("axdb-slab--hot");
+  };
+  const syncFooter = (el2, id, grp) => {
+    const f = grp.getMetadata?.("containerWidget")?.footer;
+    let band = el2.querySelector(":scope > .axdb-slab-f");
+    if (!f?.height) {
+      band?.remove();
+      return;
+    }
+    if (!band) {
+      band = document.createElement("div");
+      band.className = "axdb-slab-f";
+      el2.append(band);
+      try {
+        options.renderFooter?.(id, band);
+      } catch (e) {
+        console.error(`[grafloria] renderFooter threw for section "${id}"`, e);
+      }
+    }
+    band.style.height = `${f.height}px`;
   };
   const syncCaption = (el2, id, grp, sectionH) => {
     const cap = captionOfGroup(grp);
@@ -198600,11 +199421,14 @@ function createChrome(ctx, deps) {
       el2.style.height = `${sz2.height}px`;
       el2.classList.toggle("axdb-slab--selected", selectedId === id);
       el2.classList.toggle("axdb-slab--static", isStatic);
+      el2.classList.toggle("axdb-slab--fixed", grp.getMetadata?.("containerWidget")?.resizable === false);
       el2.querySelector(":scope > .axdb-rs")?.classList.toggle("axdb-rs--rtl", rtl);
       const tabs = isTabsGroup(grp);
       el2.classList.toggle("axdb-slab--tabs", tabs);
-      syncGroupBg(layer, id, tabs, p.x, p.y, sz2.width, sz2.height);
+      const background = grp.getMetadata?.("containerWidget")?.background;
+      syncGroupBg(layer, id, tabs || !!background, p.x, p.y, sz2.width, sz2.height, background);
       syncCaption(el2, id, grp, sz2.height);
+      syncFooter(el2, id, grp);
     }
     for (const [id, el2] of slabEls) {
       if (!seen.has(id)) {
@@ -198636,7 +199460,7 @@ function createChrome(ctx, deps) {
     return { groups, nodes };
   };
   const cssId = (id) => typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
-  const setCarried = (id, on) => {
+  const setCarried = (id, on, settle2 = false) => {
     const layer = ctx.htmlLayer();
     if (!layer) return;
     if (carriedTimer) {
@@ -198657,6 +199481,11 @@ function createChrome(ctx, deps) {
         el2.classList.add("axdb-carried");
         carriedEls.add(el2);
       }
+      return;
+    }
+    if (settle2) {
+      for (const el2 of carriedEls) el2.classList.remove("axdb-carried");
+      carriedEls.clear();
       return;
     }
     carriedTimer = setTimeout(() => {
@@ -199392,6 +200221,8 @@ function ownsPress(container, diagram, ev, hit) {
   if (hit.node && diagram.getNode(hit.node.id) !== hit.node) return false;
   if (typeof Element !== "undefined" && t instanceof Element) {
     if (t.closest(".axdb-tabs")) return false;
+    if (t.closest(".axdb-slab > .axdb-slab-f")) return false;
+    if (t.closest(".grafloria-node-host") && t.closest(WIDGET_PASS_THROUGH)) return false;
     const band = t.closest(".axdb-slab > .axdb-slab-h");
     const sid = band?.parentElement?.getAttribute("data-slab-id");
     if (band && sid) {
@@ -199401,6 +200232,7 @@ function ownsPress(container, diagram, ev, hit) {
   }
   return true;
 }
+var WIDGET_PASS_THROUGH = 'input, textarea, select, [contenteditable="true"], [contenteditable=""], [data-axdb-pass]';
 var BOARD_REGISTRY = /* @__PURE__ */ new WeakMap();
 var EMPTY_SUBTREE = /* @__PURE__ */ new Set();
 function parentPeerOf(container, groupId) {
@@ -199511,9 +200343,10 @@ function bindDashboardGrid(api, group, options = {}) {
   let float = options.float ?? false;
   const designRows = options.maxRows;
   let maxRows = options.maxRows;
-  const extentOf = (items) => items.reduce((m, i) => Math.max(m, i.y + i.h), 0);
-  const liveBound = (items) => designRows === void 0 ? void 0 : Math.max(designRows, extentOf(items));
+  const extentOf2 = (items) => items.reduce((m, i) => Math.max(m, i.y + i.h), 0);
+  const liveBound = (items) => designRows === void 0 ? void 0 : Math.max(designRows, extentOf2(items));
   const escalate = options.escalate !== false;
+  const stack = options.stack === true;
   const dragOut = options.dragOut ?? "cancel";
   const wantHandles = options.resizeHandles !== false;
   const fluid = options.fluid === true;
@@ -199530,7 +200363,7 @@ function bindDashboardGrid(api, group, options = {}) {
   let sizing = options.sizing ?? "fit";
   const engineFrom = (items, pack = false, at = columns) => {
     maxRows = liveBound(items);
-    const e = new GridPackEngine(items, { columns: at, float: pack ? float : true, maxRows, capacity });
+    const e = new GridPackEngine(items, { columns: at, float: pack ? float : true, maxRows, capacity, packActive: stack });
     e.float = float;
     return e;
   };
@@ -199600,13 +200433,14 @@ function bindDashboardGrid(api, group, options = {}) {
   let adoptedGhostId = null;
   let tearing = null;
   const ownReserve = () => sectionCaptionReserve(diagram, group, isStatic);
+  const ownFooter = () => sectionFooterReserve(diagram, group);
   const frame = () => {
     const r = ownReserve();
     return {
       x: group.position.x,
       y: group.position.y + r,
       width: group.size?.width ?? 0,
-      height: Math.max(0, (group.size?.height ?? 0) - r)
+      height: Math.max(0, (group.size?.height ?? 0) - r - ownFooter())
     };
   };
   const sizeOf = (e) => e.size ?? { width: 0, height: 0 };
@@ -199964,6 +200798,7 @@ function bindDashboardGrid(api, group, options = {}) {
     return null;
   };
   const slabEdgesNear = (grp, x, y, grip = edgeGripFor(grp)) => {
+    if (grp.getMetadata?.("containerWidget")?.resizable === false) return NO_EDGES;
     const p = grp.position;
     const s = sizeOf(grp);
     return { n: y - p.y <= grip, s: p.y + s.height - y <= grip, w: x - p.x <= grip, e: p.x + s.width - x <= grip };
@@ -200062,6 +200897,8 @@ function bindDashboardGrid(api, group, options = {}) {
     const grp = diagram.getGroup(id);
     const it = engine.getItem(id);
     if (!grp || !it || gesture || slabGesture || isStatic) return;
+    const movable = grp.getMetadata?.("containerWidget")?.movable;
+    if (movable === false) return;
     gesture = {
       kind: "move",
       id,
@@ -200085,8 +200922,50 @@ function bindDashboardGrid(api, group, options = {}) {
       lastScreen: null,
       hostEl: null,
       esc: null,
-      chip: null
+      chip: null,
+      ...movable === "row" ? { row: rowOf(id) } : {}
     };
+  };
+  const rowOf = (id) => {
+    const me = engine.getItem(id);
+    const ids = engine.getItems().filter((i) => i.y === me.y && isGroupMember(i.id) && diagram.getGroup(i.id)?.getMetadata?.("containerWidget")?.movable === "row").sort((a, b) => a.x - b.x).map((i) => i.id);
+    return { ids, startX: Math.min(...ids.map((i) => engine.getItem(i).x)) };
+  };
+  const reorderRow = (g, ev) => {
+    relayRow(g, ev);
+    const grp = diagram.getGroup(g.id);
+    if (grp) {
+      const sz2 = sizeOf(grp);
+      const f = frame();
+      const x = Math.max(f.x, Math.min(f.x + f.width - sz2.width, ev.world.x - g.grab.dx));
+      diagram.runSystemWrite(() => grp.setFrame({ x, y: grp.position.y, width: sz2.width, height: sz2.height }));
+      syncSlabs();
+      api.render();
+    }
+  };
+  const relayRow = (g, ev) => {
+    const row = g.row;
+    const restCentre = (id) => {
+      const s = g.startGeom.get(id);
+      return s ? s.pos.x + s.size.width / 2 : 0;
+    };
+    const others = row.ids.filter((id) => id !== g.id);
+    const slot = others.filter((id) => restCentre(id) < ev.world.x).length;
+    const order = [...others.slice(0, slot), g.id, ...others.slice(slot)];
+    const items = order.map((id) => engine.getItem(id));
+    const xs = [];
+    let x = row.startX;
+    for (const it of items) {
+      xs.push(x);
+      x += it.w;
+    }
+    const outside = engine.getItems().filter((i) => !row.ids.includes(i.id));
+    const clash = items.some((it, k) => outside.some((o) => o.x < xs[k] + it.w && xs[k] < o.x + o.w && o.y < it.y + it.h && it.y < o.y + o.h));
+    if (clash || items.every((it, k) => it.x === xs[k])) return;
+    items.forEach((it, k) => it.x = xs[k]);
+    project();
+    syncSlabs();
+    api.render();
   };
   const slabMove = (ev) => {
     if (gesture?.subject === "group") return onToolMove(ev);
@@ -200229,10 +201108,11 @@ function bindDashboardGrid(api, group, options = {}) {
     g.chip?.classList.toggle("axdb-out", on);
   };
   const cleanupGestureVisuals = (g) => {
+    markDrop(null, false);
     showRefusal(null, 0, 0);
     if (g.kind !== "palette") {
-      if (g.subject === "node") setGhost(g.id, false);
-      else setCarried(g.id, false);
+      if (g.subject === "node") setGhost(g.id, false, stack || !!g.leg?.peer.isList?.());
+      else setCarried(g.id, false, !!g.row);
     }
     disarmGlideSoon();
     releasePointer(g.pointerId);
@@ -200340,7 +201220,22 @@ function bindDashboardGrid(api, group, options = {}) {
       y: worldY - (spans.h * (rh + gap) - gap) / 2
     };
   };
+  const refusesDrop = (g, board) => {
+    if (!options.canDrop || g.kind !== "palette" && board.ref === selfPeer) return false;
+    const verdicts = g.dropVerdicts ?? (g.dropVerdicts = /* @__PURE__ */ new Map());
+    let ok = verdicts.get(board.id);
+    if (ok === void 0) {
+      ok = options.canDrop({ nodeId: g.id, from: g.kind === "palette" ? null : group.id, to: board.id }) !== false;
+      verdicts.set(board.id, ok);
+    }
+    return !ok;
+  };
   const moveGhost = (g, ev) => {
+    if (g.subject === "group" && g.row) {
+      reorderRow(g, ev);
+      return;
+    }
+    markDrop(null, false);
     const desired = { x: ev.world.x - g.grab.dx, y: ev.world.y - g.grab.dy };
     if (g.subject === "node") {
       nodeOf(g).setPosition(desired.x, desired.y);
@@ -200384,6 +201279,22 @@ function bindDashboardGrid(api, group, options = {}) {
       return true;
     };
     const z = resolveTileZone(g, ev);
+    const policyTarget = z.kind === "strip" ? { id: z.containerId } : z.kind === "plain" || z.kind === "beside" ? z.board : null;
+    g.policyRefused = !!policyTarget && refusesDrop(g, policyTarget);
+    if (g.policyRefused) {
+      markDrop(policyTarget && "id" in policyTarget ? policyTarget.id : null, true);
+      if (g.strip) {
+        options.tabDrop?.markDrop(null, null);
+        g.strip = null;
+      }
+      endBeside(true);
+      leaveSelf();
+      g.refusedPeer = null;
+      showRefusal(null, 0, 0);
+      setDim(g, true);
+      syncPlaceholder();
+      return;
+    }
     if (z.kind === "strip" && options.tabDrop && !isStatic && g.kind !== "palette" && g.subject === "node") {
       endBeside(true);
       leaveSelf();
@@ -200472,8 +201383,20 @@ function bindDashboardGrid(api, group, options = {}) {
       setDim(g, true);
     }
     syncPlaceholder();
+    const target = g.leg ? g.leg.adopted.groupId : !g.removedFromBoard && !g.strip ? group.id : null;
+    const rings = !!options.canDrop || (g.leg ? !!g.leg.peer.isList?.() : isList());
+    markDrop(rings ? target : null, false);
     if (g.subject === "group") syncSlabs();
   };
+  let dropMarked = null;
+  const markDrop = (boardId, refused) => {
+    const el2 = boardId ? api.container.querySelector(`.axdb-slab[data-slab-id="${cssEscapeId(boardId)}"]`) : null;
+    if (dropMarked && dropMarked !== el2) dropMarked.classList.remove("axdb-slab--drop", "axdb-slab--refused");
+    dropMarked = el2;
+    el2?.classList.toggle("axdb-slab--drop", !refused);
+    el2?.classList.toggle("axdb-slab--refused", refused);
+  };
+  const cssEscapeId = (id) => typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
   const onToolMove = (ev) => {
     const g = gesture;
     if (!g || g.kind === "palette") return;
@@ -200569,7 +201492,7 @@ function bindDashboardGrid(api, group, options = {}) {
           if (fullHeight) {
             if (slabRows > designRows && inner > 1) {
               engine.resizeCheck(g.id, pulled.w, Math.max(1, effWant));
-              const floor = Math.max(designRows, extentOf(engine.getItems()));
+              const floor = Math.max(designRows, extentOf2(engine.getItems()));
               let slab = slabRows;
               let bound2 = inner;
               while (slab > floor) {
@@ -200584,7 +201507,7 @@ function bindDashboardGrid(api, group, options = {}) {
             }
           } else if (pulled.h > 1 && E.s) {
             engine.resizeCheck(g.id, pulled.w, Math.max(1, wantRows));
-            const floor = Math.max(designRows, extentOf(engine.getItems()));
+            const floor = Math.max(designRows, extentOf2(engine.getItems()));
             let slab = slabRows;
             let bound2 = inner;
             while (slab > floor) {
@@ -200756,7 +201679,7 @@ function bindDashboardGrid(api, group, options = {}) {
       options.onGesture?.({ type: "commit", kind: g.kind, nodeId: g.id, changed: true });
       return;
     }
-    if (g.removedFromBoard && (dragOut === "cancel" || g.subject === "group")) {
+    if (g.removedFromBoard && (dragOut === "cancel" || g.subject === "group" || g.policyRefused)) {
       cancelActiveGesture();
       return;
     }
@@ -200790,12 +201713,62 @@ function bindDashboardGrid(api, group, options = {}) {
   };
   const peersOnCanvas = () => peersOnCanvasOf(api.container);
   const zoneRoots = () => zoneRootsOf(peersOnCanvas(), diagram);
+  const isList = () => stack && columns === 1;
+  const hugContent = () => {
+    if (!stack || !escalate || designRows === void 0 || disposed || gesture || slabGesture) return;
+    const parent = parentPeer();
+    if (!parent) return;
+    const unit = baseRowHeight + gap;
+    const have = Math.round((frame().height + gap) / unit);
+    const want = Math.max(designRows, extentOf2(engine.getItems()));
+    if (have === want || have <= 0) return;
+    if (!parent.resizeMemberBy(group.id, want - have).changed) return;
+    setLiveBound(want);
+    parent.persistCells?.();
+    project();
+    api.renderNow();
+  };
+  const placeInList = (id, worldY) => {
+    const me = engine.getItem(id);
+    if (!me) return false;
+    const f = frame();
+    const unit = rowHeightFor(geom(), rows()) + gap;
+    const at = (worldY - f.y) / unit;
+    const others = engine.getItems().filter((i) => i.id !== id).sort((a, b) => a.y - b.y);
+    let slot = others.length;
+    let top = 0;
+    for (let k = 0; k < others.length; k++) {
+      if (at < top + others[k].h / 2) {
+        slot = k;
+        break;
+      }
+      top += others[k].h;
+    }
+    const order = [...others.slice(0, slot), me, ...others.slice(slot)];
+    let y = 0;
+    let changed = false;
+    for (const it of order) {
+      if (it.y !== y || it.x !== 0) {
+        it.y = y;
+        it.x = 0;
+        changed = true;
+      }
+      y += it.h;
+    }
+    return changed;
+  };
   const placeOnSelf = (g, desired, pushSolid = false) => {
     if (g.removedFromBoard) {
       g.removedFromBoard = false;
       setDim(g, false);
       const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), g.spans.w);
       engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
+      if (isList() && g.lastWorld) {
+        placeInList(g.id, g.lastWorld.y);
+        project();
+        showRefusal(null, 0, 0);
+        return;
+      }
       const first = engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid });
       if (!first.changed) placeNear(g.id, cell.x, cell.y, g.spans.w, pushSolid);
       project();
@@ -200818,6 +201791,11 @@ function bindDashboardGrid(api, group, options = {}) {
       const stuck = !!now3 && now3.x === was.x && now3.y === was.y;
       showRefusal(stuck ? cell : null, it.w, it.h);
     } else {
+      if (isList() && g.lastWorld && g.subject === "node") {
+        if (placeInList(g.id, g.lastWorld.y)) project();
+        showRefusal(null, 0, 0);
+        return;
+      }
       const spanW = engine.getItem(g.id)?.w ?? g.spans.w;
       const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), spanW);
       const it = engine.getItem(g.id);
@@ -201073,7 +202051,8 @@ function bindDashboardGrid(api, group, options = {}) {
     } else {
       const cell0 = wantedCell(world.x, world.y, span.w, span.h);
       lastWant = cell0;
-      place(cell0, span.w, opts.push);
+      if (isList()) placeInList(node.id, world.y);
+      else place(cell0, span.w, opts.push);
     }
     armGlide();
     project();
@@ -201110,6 +202089,12 @@ function bindDashboardGrid(api, group, options = {}) {
         const item = engine.getItem(node.id);
         if (!item) return;
         if (beside) endBeside(true);
+        if (isList()) {
+          lastWant = null;
+          if (placeInList(node.id, w.y)) project();
+          syncPlaceholder();
+          return;
+        }
         const cell = wantedCell(w.x, w.y, item.w, opts.fit === "shrink" ? hNatural : item.h);
         if (lastWant && lastWant.x === cell.x && lastWant.y === cell.y) return;
         lastWant = cell;
@@ -201276,6 +202261,11 @@ function bindDashboardGrid(api, group, options = {}) {
       };
     },
     containsWorld: worldInsideBoard,
+    persistCells: () => {
+      persistLiveCells();
+      persistLayouts();
+    },
+    isList: () => isList(),
     containsWorldExtended: worldInsideBoardExtended,
     frameArea: boardArea,
     adopt
@@ -201662,6 +202652,7 @@ function bindDashboardGrid(api, group, options = {}) {
     sync() {
       rebuild(false);
     },
+    fitToContent: () => hugContent(),
     setColumns(n3, layout, opts) {
       if (disposed) return false;
       if (!opts?.responsive) responsivePinned = true;
@@ -201808,6 +202799,89 @@ function bindDashboardGrid(api, group, options = {}) {
     resizeTo(id, w, h) {
       const hh = isGroupMember(id) ? Math.max(h, innerRowsOf(id)) : h;
       return programmatic("Resize widget", id, () => engine.resizeCheck(id, w, hh).changed);
+    },
+    fitRows(id, h) {
+      const it = engine.getItem(id);
+      if (disposed || gesture || slabGesture || !it) return false;
+      const want = Math.max(1, Math.round(h));
+      const { w: w0, h: h0 } = it;
+      if (h0 === want) return true;
+      const parent = parentPeer();
+      let grownBy = 0;
+      engine.beginGesture();
+      try {
+        return fitWithin();
+      } finally {
+        engine.endGesture();
+      }
+      function fitWithin() {
+        const reached = () => {
+          engine.resizeCheck(id, w0, want);
+          return engine.getItem(id)?.h === want;
+        };
+        let ok = reached();
+        while (!ok && want > h0 && escalate && parent && grownBy < want - h0) {
+          if (!parent.resizeMemberBy(group.id, 1).changed) break;
+          grownBy += 1;
+          setLiveBound((maxRows ?? 0) + 1);
+          ok = reached();
+        }
+        if (!ok) {
+          engine.resizeCheck(id, w0, h0);
+          if (grownBy > 0 && parent) {
+            parent.resizeMemberBy(group.id, -grownBy);
+            setLiveBound(Math.max(1, (maxRows ?? 1) - grownBy));
+          }
+          return false;
+        }
+        if (want < h0 && parent && escalate && designRows !== void 0 && maxRows !== void 0) {
+          const spare = maxRows - Math.max(designRows, extentOf2(engine.getItems()));
+          if (spare > 0 && parent.resizeMemberBy(group.id, -spare).changed) setLiveBound(maxRows - spare);
+        }
+        parent?.persistCells?.();
+        persistLiveCells();
+        persistLayouts();
+        project();
+        enforceBoardHeight();
+        api.renderNow();
+        return true;
+      }
+    },
+    get busy() {
+      return !!gesture || !!slabGesture;
+    },
+    makeRoom(w, h) {
+      if (disposed || gesture || slabGesture) return null;
+      const fitsNow = () => {
+        const probe = new GridPackEngine(engine.getItems().map((i) => ({ ...i })), { columns, float: true, maxRows, capacity, packActive: stack });
+        return probe.add({ id: "\0probe", x: 0, y: 0, w: Math.max(1, w), h: Math.max(1, h), autoPosition: true }) !== null;
+      };
+      if (bound() === void 0 || fitsNow()) return [];
+      const parent = parentPeer();
+      if (!parent || !escalate) return null;
+      let rowsAdded = 0;
+      let first = null;
+      let last = null;
+      let parentCommands;
+      let fits = false;
+      while (!fits && rowsAdded < Math.max(1, h)) {
+        const res = parent.resizeMemberBy(group.id, 1);
+        if (!res.changed || !res.cellBefore || !res.cellAfter || !res.frameBefore || !res.frameAfter) break;
+        rowsAdded += 1;
+        first = first ?? { cell: res.cellBefore, frame: res.frameBefore };
+        last = { cell: res.cellAfter, frame: res.frameAfter };
+        if (res.commands) parentCommands = res.commands;
+        setLiveBound((maxRows ?? 0) + 1);
+        fits = fitsNow();
+      }
+      if (!fits || !first || !last) {
+        if (rowsAdded > 0) {
+          parent.resizeMemberBy(group.id, -rowsAdded);
+          setLiveBound(Math.max(1, (maxRows ?? 1) - rowsAdded));
+        }
+        return null;
+      }
+      return parentCommands ?? [new SetGroupCellCommand(group.id, first.cell, last.cell, first.frame, last.frame)];
     },
     beginPaletteDrag,
     dispose() {
@@ -202571,6 +203645,16 @@ function bindDashboardSplit(api, group, options = {}) {
     if (cell) return { width: Math.max(1, cell.w * (colW + gap) - gap), height: Math.max(1, cell.h * (baseRowHeight + gap) - gap) };
     return g.node ? { width: g.node.size.width, height: g.node.size.height } : { width: colW, height: baseRowHeight };
   };
+  const refusesDrop = (g, to, ref) => {
+    if (!options.canDrop || g.kind !== "palette" && ref === selfPeerRef) return false;
+    const verdicts = g.dropVerdicts ?? (g.dropVerdicts = /* @__PURE__ */ new Map());
+    let ok = verdicts.get(to);
+    if (ok === void 0) {
+      ok = options.canDrop({ nodeId: g.id, from: g.kind === "palette" ? null : group.id, to }) !== false;
+      verdicts.set(to, ok);
+    }
+    return !ok;
+  };
   const endStrip = (g) => {
     if (!g.strip) return;
     options.tabDrop?.markDrop(null, null);
@@ -202582,6 +203666,15 @@ function bindDashboardSplit(api, group, options = {}) {
     g.leg = null;
   };
   const zoneTarget = (g, z, world, inside, px2) => {
+    const toId = z.kind === "strip" ? z.containerId : z.kind === "plain" || z.kind === "beside" ? z.board.id : null;
+    const toRef = z.kind === "plain" || z.kind === "beside" ? z.board.ref : void 0;
+    g.refused = toId !== null && refusesDrop(g, toId, toRef);
+    if (g.refused) {
+      endLeg(g);
+      endStrip(g);
+      g.beside = null;
+      return null;
+    }
     if (z.kind === "strip") {
       endLeg(g);
       g.beside = null;
@@ -202925,9 +204018,9 @@ function bindDashboardSplit(api, group, options = {}) {
     const t = zoneTarget(g, tileZone(g, ev, prev), ev.world, inside, pxSizeOf(g));
     g.target = t ? targetOf(t) : null;
     showInsertion(t ? insertionRect(t.rect, t.side) : null);
-    const out = !inside && !t && !g.strip && !g.leg && options.dragOut === "remove" && (!options.removeZone || options.removeZone({ x: ev.screen.x, y: ev.screen.y }, { x: ev.world.x, y: ev.world.y }));
+    const out = !g.refused && !inside && !t && !g.strip && !g.leg && options.dragOut === "remove" && (!options.removeZone || options.removeZone({ x: ev.screen.x, y: ev.screen.y }, { x: ev.world.x, y: ev.world.y }));
     g.out = out;
-    g.hostEl?.classList.toggle("axdb-out", out);
+    g.hostEl?.classList.toggle("axdb-out", out || !!g.refused);
     api.render();
   };
   const onToolUp = () => {
@@ -202952,7 +204045,7 @@ function bindDashboardSplit(api, group, options = {}) {
       project(readTree());
       api.renderNow();
     };
-    const settle = () => {
+    const settle2 = () => {
       paint2();
       void Promise.resolve(pendingBatch).then(paint2, () => void 0);
     };
@@ -202969,7 +204062,7 @@ function bindDashboardSplit(api, group, options = {}) {
         return;
       }
       execute("Move widget into a new tab", cmds);
-      settle();
+      settle2();
       live.announce(`${nameOf2(g.id)} became a tab of ${nameOf2(target.containerId)}`, "polite", true);
       fire({ type: "commit", kind: "move", nodeId: g.id, changed: true });
       return;
@@ -203014,7 +204107,7 @@ function bindDashboardSplit(api, group, options = {}) {
       ];
       const leaving = options.onMemberLeaving?.(g.id) ?? [];
       execute("Move widget", leaving.length > 0 ? [new SequenceCommand("Move widget", [...crossing, ...leaving])] : crossing);
-      settle();
+      settle2();
       live.announce(`${nameOf2(g.id)} moved into ${nameOf2(leg.adopted.groupId)}`, "polite", true);
       fire({ type: "commit", kind: "move", nodeId: g.id, changed: true });
       return;
@@ -203682,6 +204775,11 @@ function bindDashboardSplit(api, group, options = {}) {
   })();
   const rowsGuess = () => rowsAtBind ?? Math.max(1, Math.round(frame().height / (baseRowHeight + gap)));
   const handle = {
+    // A split pane is always covered: its tiles' heights are the tree's shares, never their content's.
+    fitRows: () => false,
+    get busy() {
+      return !!gesture;
+    },
     sync() {
       if (disposed) return;
       applyFluidFrame();
@@ -204178,7 +205276,175 @@ var defaultWidgetRenderer = (widget, host) => {
   card(host, widget ?? { id: "" }, titleOf(widget ?? { id: "" }));
 };
 
+// libs/element/src/lib/dashboard-kit/auto-height.ts
+function naturalHeight(host) {
+  const prevH = host.style.height;
+  const prevC = host.style.containerType;
+  host.style.containerType = "inline-size";
+  host.style.height = "auto";
+  const h = host.offsetHeight;
+  host.style.height = prevH;
+  host.style.containerType = prevC;
+  return h;
+}
+function rowsForHeight(px2, rowHeight, gap) {
+  if (!(rowHeight > 0)) return 1;
+  return Math.max(1, Math.ceil((px2 + gap) / (rowHeight + gap) - 1e-3));
+}
+var BUSY_RETRY_MS = 120;
+function createAutoHeight(host) {
+  const hosts = /* @__PURE__ */ new Map();
+  const idOf = /* @__PURE__ */ new WeakMap();
+  const dirty = /* @__PURE__ */ new Set();
+  let frame = 0;
+  let retry = null;
+  let disposed = false;
+  const warned = /* @__PURE__ */ new Set();
+  const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver((entries) => {
+    for (const e of entries) {
+      const id = idOf.get(e.target);
+      if (id) dirty.add(id);
+    }
+    schedule();
+  }) : null;
+  const mo = typeof MutationObserver !== "undefined" ? new MutationObserver((records) => {
+    for (const r of records) {
+      const hostEl = (r.target instanceof Element ? r.target : r.target.parentElement)?.closest?.(".grafloria-node-host") ?? null;
+      const id = hostEl ? idOf.get(hostEl) : void 0;
+      if (id) {
+        dirty.add(id);
+        watchContent(id, hostEl);
+      }
+    }
+    schedule();
+  }) : null;
+  const watchContent = (id, el2) => {
+    const kid = el2.firstElementChild;
+    if (!kid || !ro || idOf.get(kid) === id) return;
+    idOf.set(kid, id);
+    ro.observe(kid);
+  };
+  const schedule = () => {
+    if (disposed || frame || dirty.size === 0) return;
+    frame = typeof requestAnimationFrame !== "undefined" ? requestAnimationFrame(run) : setTimeout(run, 16);
+  };
+  const run = () => {
+    frame = 0;
+    flush();
+  };
+  const fitOne = (id) => {
+    const el2 = hosts.get(id);
+    if (!el2 || !el2.isConnected || !host.isAuto(id)) return "done";
+    const why = host.unsupported?.(id);
+    if (why) {
+      if (!warned.has(id)) {
+        warned.add(id);
+        console.warn(`[grafloria] autoHeight is ignored for "${id}": ${why}.`);
+      }
+      return "done";
+    }
+    const binder = host.binderOf(id);
+    if (!binder?.fitRows) return "done";
+    if (binder.busy === true) return "busy";
+    const cell = binder.cellOf(id);
+    const m = binder.metrics();
+    if (!cell || !(m.rowHeight > 0)) return "done";
+    const worldW = binder.cellRectOf?.(id)?.width ?? host.worldWidthOf(id);
+    if (worldW && Math.abs(el2.offsetWidth - worldW) > 1) return "done";
+    const px2 = naturalHeight(el2);
+    if (px2 < 1) return "done";
+    const lim = host.limitsOf(id);
+    let rows = rowsForHeight(px2, m.rowHeight, m.gap);
+    if (lim?.minRows !== void 0) rows = Math.max(rows, lim.minRows);
+    if (lim?.maxRows !== void 0) rows = Math.min(rows, lim.maxRows);
+    if (rows !== cell.h) binder.fitRows(id, rows);
+    return "done";
+  };
+  const flush = () => {
+    if (disposed) return;
+    const top = (id) => host.binderOf(id)?.cellOf(id)?.y ?? 0;
+    const ids = [...dirty].sort((a, b) => top(a) - top(b));
+    dirty.clear();
+    let wait = false;
+    for (const id of ids) {
+      if (fitOne(id) === "busy") {
+        dirty.add(id);
+        wait = true;
+      }
+    }
+    if (wait && !retry) {
+      retry = setTimeout(() => {
+        retry = null;
+        schedule();
+      }, BUSY_RETRY_MS);
+    }
+  };
+  return {
+    observe(id, el2) {
+      if (disposed || !host.isAuto(id)) return;
+      const prev = hosts.get(id);
+      if (prev && prev !== el2) ro?.unobserve(prev);
+      hosts.set(id, el2);
+      idOf.set(el2, id);
+      ro?.observe(el2);
+      watchContent(id, el2);
+      mo?.observe(el2, { childList: true, subtree: true, characterData: true });
+      dirty.add(id);
+      schedule();
+    },
+    queue(id) {
+      if (!hosts.has(id)) return;
+      dirty.add(id);
+      schedule();
+    },
+    queueAll() {
+      for (const id of hosts.keys()) dirty.add(id);
+      schedule();
+    },
+    flush,
+    dispose() {
+      disposed = true;
+      ro?.disconnect();
+      mo?.disconnect();
+      if (frame && typeof cancelAnimationFrame !== "undefined") cancelAnimationFrame(frame);
+      if (retry) clearTimeout(retry);
+      hosts.clear();
+      dirty.clear();
+    }
+  };
+}
+
 // libs/element/src/lib/dashboard-kit/dashboard.ts
+var AddSectionCommand = class extends Command {
+  constructor(group, boardId, registry5) {
+    super("Add section");
+    this.group = group;
+    this.boardId = boardId;
+    this.registry = registry5;
+  }
+  execute(context) {
+    const diagram = context.diagram;
+    if (!diagram) return;
+    this.registry.register();
+    if (!diagram.getGroup(this.group.id)) diagram.addGroup(this.group);
+    diagram.getGroup(this.boardId)?.addMember(this.group.id);
+  }
+  undo(context) {
+    const diagram = context.diagram;
+    if (!diagram) return;
+    diagram.getGroup(this.boardId)?.removeMember(this.group.id);
+    diagram.removeGroup(this.group.id);
+    this.registry.unregister();
+  }
+  serialize() {
+    return {
+      id: this.id,
+      name: this.name,
+      timestamp: this.timestamp,
+      data: { groupId: this.group.id, boardId: this.boardId }
+    };
+  }
+};
 var AddWidgetCommand = class extends Command {
   /**
    * `registry` is the kit's bookkeeping for the widget (see
@@ -204296,6 +205562,7 @@ function buildWidgetNode(w, rowHeight) {
   if (w.limits !== void 0) node.setMetadata("widgetLimits", { ...w.limits });
   if (w.movable === false) node.setMetadata("widgetMovable", false);
   if (w.resizable === false) node.setMetadata("widgetResizable", false);
+  if (w.autoHeight !== void 0) node.setMetadata("widgetAutoHeight", w.autoHeight);
   if (w.x !== void 0 && w.y !== void 0) {
     node.setGridItem({
       columnStart: w.x + 1,
@@ -204522,6 +205789,35 @@ var SetCaptionCommand = class extends Command {
 function createDashboardHandle(ctx) {
   const { views, groups, binders, specById, viewOfWidget } = ctx;
   const hostOf = (id) => ctx.hosts.get(id);
+  const boardOfMember = (id) => {
+    for (const [bid, g] of ctx.boardGroups) if (g.members?.has(id)) return bid;
+    return void 0;
+  };
+  const boardSizesByContent = (bid) => {
+    const layout = ctx.layoutOf.get(bid);
+    if (layout === "split") return "its board is a split layout, where a pane's height is the tree's share";
+    if (layout === "tabs") return "it sits on a tab container";
+    if (ctx.viewOfBoard.get(bid) === bid) {
+      return binders.get(bid)?.getSizing() === "fit" ? "its view uses sizing 'fit', which squeezes rows to the board's height (use 'grow')" : void 0;
+    }
+    const parent = boardOfMember(bid);
+    if (parent !== void 0 && ctx.layoutOf.get(parent) === "tabs") return "it sits on a tab page, whose height is its container's";
+    if (specById.get(bid)?.sizing === "fit") return `its section "${bid}" uses sizing 'fit' and cannot grow`;
+    return parent === void 0 ? void 0 : boardSizesByContent(parent);
+  };
+  ctx.autoHeight = createAutoHeight({
+    isAuto: (id) => !ctx.boardGroups.has(id) && (specById.get(id)?.autoHeight ?? ctx.optionsBase.autoHeight ?? false),
+    binderOf: (id) => {
+      const bid = boardOfMember(id);
+      return bid === void 0 ? void 0 : binders.get(bid);
+    },
+    worldWidthOf: (id) => ctx.apiRef?.getModel().getNode(id)?.size.width,
+    limitsOf: (id) => specById.get(id)?.limits,
+    unsupported: (id) => {
+      const bid = boardOfMember(id);
+      return bid === void 0 ? void 0 : boardSizesByContent(bid);
+    }
+  });
   const frameView = (g) => {
     const vp = ctx.apiRef?.viewport;
     if (!vp) return;
@@ -205156,10 +206452,12 @@ function createDashboardHandle(ctx) {
         if (!binders.has(id) && model.getGroup(id)) ctx.rebindContainer?.(id);
       }
       for (const b of binders.values()) b.sync();
+      for (const b of binders.values()) b.fitToContent?.();
       for (const id of ctx.layoutOf.keys()) if (ctx.layoutOf.get(id) === "tabs") ctx.syncTabs?.(id);
       clampCamera();
       ctx.apiRef.renderNow();
       reportChanged();
+      ctx.autoHeight?.queueAll();
     };
     ctx.subscriptions = ctx.subscriptions ?? [];
     for (const ev of HISTORY_EVENTS) ctx.subscriptions.push(bus.on(ev, onHistory));
@@ -205344,14 +206642,41 @@ function createDashboardHandle(ctx) {
         span: spec.span ?? 3,
         rows: spec.rows ?? 1
       };
-      if (binders.get(vid)?.willItFit(w.span, w.rows) === false) return void 0;
+      if (w.widgets) {
+        if (w.widgets.length > 0) return void 0;
+        const binder = binders.get(vid);
+        if (!binder || !ctx.buildSection || ctx.layoutOf.get(vid) === "split") return void 0;
+        if (binder.willItFit(w.span, w.rows) === false) return void 0;
+        if (w.x === void 0 || w.y === void 0) {
+          const cols = binder.getColumns();
+          const taken = (x, y) => [...group.members ?? []].some((m) => {
+            const c = binder.cellOf(m);
+            return !!c && x < c.x + c.w && c.x < x + w.span && y < c.y + c.h && c.y < y + w.rows;
+          });
+          let at = null;
+          for (let y = 0; !at && y < 1e3; y++) for (let x = 0; x + w.span <= cols && !at; x++) if (!taken(x, y)) at = { x, y };
+          if (!at) return void 0;
+          w.x = at.x;
+          w.y = at.y;
+        }
+        w.widgets = [];
+        const { group: sg, registry: sreg } = ctx.buildSection(w, vid);
+        execCommand(new AddSectionCommand(sg, group.id, sreg));
+        binder.sync();
+        if (!binders.has(w.id)) ctx.rebindContainer?.(w.id);
+        ctx.apiRef?.renderNow();
+        return makeWidgetHandle(w.id);
+      }
+      const room = specById.get(vid)?.stack ? binders.get(vid)?.makeRoom?.(w.span, w.rows) : void 0;
+      if (room === null) return void 0;
+      if (room === void 0 && binders.get(vid)?.willItFit(w.span, w.rows) === false) return void 0;
       const registry5 = registryOf(w.id, vid, w);
       registry5.register();
       const existing = model.getNode(w.id);
       const node = existing ?? buildWidgetNode(w, ctx.rowHeight);
       if (w.pinned) node.setState({ locked: true });
       const add = new AddWidgetCommand(node, group.id, registry5, !!existing);
-      const displaced = opts?.displaced ?? [];
+      const displaced = [...room ?? [], ...opts?.displaced ?? []];
       execCommand(displaced.length > 0 ? new SequenceCommand("Add widget", [...displaced, add]) : add);
       binders.get(vid)?.sync();
       ctx.apiRef?.renderNow();
@@ -205359,7 +206684,9 @@ function createDashboardHandle(ctx) {
     },
     refresh() {
       for (const b of binders.values()) b.sync();
+      for (const b of binders.values()) b.fitToContent?.();
       ctx.apiRef?.renderNow();
+      ctx.autoHeight?.queueAll();
     },
     fit(viewId) {
       const g = groups.get(viewId ?? ctx.active);
@@ -205423,6 +206750,7 @@ function createDashboardHandle(ctx) {
     dispose() {
       for (const off of ctx.subscriptions ?? []) off();
       ctx.subscriptions = [];
+      ctx.autoHeight?.dispose();
       for (const b of binders.values()) b.dispose();
       binders.clear();
       const model = ctx.apiRef?.getModel();
@@ -205502,6 +206830,7 @@ function createDashboardHandle(ctx) {
         if (patch.kind !== void 0) spec.kind = patch.kind;
         const host = hostOf(id);
         if (host) ctx.renderWidget(spec, host);
+        ctx.autoHeight?.queue(id);
       },
       remove(displaced) {
         if (spec.widgets) {
@@ -205560,6 +206889,7 @@ function createDashboardHandle(ctx) {
       repaint() {
         const host = hostOf(id);
         if (host) ctx.renderWidget(spec, host);
+        ctx.autoHeight?.queue(id);
       }
       // (hosts are captured in renderCustomNode, so repaint works for every
       //  widget the renderer has mounted — including after a rebuild.)
@@ -205617,6 +206947,7 @@ function dashboard(options) {
           ...w.limits !== void 0 ? { widgetLimits: { ...w.limits } } : {},
           ...w.movable === false ? { widgetMovable: false } : {},
           ...w.resizable === false ? { widgetResizable: false } : {},
+          ...w.autoHeight !== void 0 ? { widgetAutoHeight: w.autoHeight } : {},
           columnSpan: w.span,
           rowSpan: w.rows,
           gridItem: { columnStart: w.x + 1, columnEnd: w.x + 1 + w.span, rowStart: w.y + 1, rowEnd: w.y + 1 + w.rows }
@@ -205671,6 +207002,7 @@ function dashboard(options) {
       if (!spec) return;
       ctx.hosts.set(n3.id, host);
       renderWidget(spec, host);
+      ctx.autoHeight?.observe(n3.id, host);
     },
     get handle() {
       return handle;
@@ -205744,6 +207076,38 @@ function dashboard(options) {
         else if (selected) binders.get(viewId)?.selectWidget(selected);
       };
       handle.showView(ctx.active);
+      ctx.buildSection = (w, boardId) => {
+        const group = sectionGroupOf(w);
+        const viewId = ctx.viewOfBoard.get(boardId) ?? boardId;
+        return {
+          group,
+          registry: {
+            register: () => {
+              specById.set(w.id, w);
+              viewOfWidget.set(w.id, boardId);
+              ctx.viewOfBoard.set(w.id, viewId);
+              ctx.boardGroups.set(w.id, group);
+              ctx.boardWidgets.set(w.id, w.widgets ?? (w.widgets = []));
+              ctx.layoutOf.set(w.id, w.layout ?? "grid");
+              const arr = ctx.boardWidgets.get(boardId);
+              if (arr && !arr.includes(w)) arr.push(w);
+            },
+            unregister: () => {
+              binders.get(w.id)?.dispose();
+              binders.delete(w.id);
+              specById.delete(w.id);
+              viewOfWidget.delete(w.id);
+              ctx.viewOfBoard.delete(w.id);
+              ctx.boardGroups.delete(w.id);
+              ctx.boardWidgets.delete(w.id);
+              ctx.layoutOf.delete(w.id);
+              const arr = ctx.boardWidgets.get(boardId);
+              const i = arr ? arr.indexOf(w) : -1;
+              if (arr && i >= 0) arr.splice(i, 1);
+            }
+          }
+        };
+      };
       ctx.rebindContainer = (id) => {
         const g = model.getGroup(id);
         const w = specById.get(id);
@@ -205788,44 +207152,54 @@ function dashboard(options) {
       attachTabsRuntime(ctx, model, a.container ?? null, handle);
       ctx.attachHistory?.();
       return;
+      function sectionGroupOf(w) {
+        const innerColumns = innerColumnsOf(w);
+        const innerRows = w.maxRows ?? rowExtentOf(w.widgets ?? []);
+        const cg = new GroupModel({ id: w.id, name: w.title ?? w.id });
+        cg.setMetadata("frameChrome", "none");
+        cg.setMetadata("gridItem", gridItemFromCell({ x: w.x, y: w.y, w: w.span, h: w.rows }));
+        cg.setMetadata("containerWidget", {
+          ...w.kind !== void 0 ? { kind: w.kind } : {},
+          ...w.title !== void 0 ? { title: w.title } : {},
+          columns: innerColumns,
+          maxRows: innerRows,
+          ...w.data !== void 0 ? { data: w.data } : {},
+          ...w.layout !== void 0 ? { layout: w.layout } : {},
+          ...w.sizing !== void 0 ? { sizing: w.sizing } : {},
+          ...w.caption !== void 0 ? { caption: w.caption } : {},
+          ...w.movable !== void 0 ? { movable: w.movable } : {},
+          ...w.background !== void 0 ? { background: w.background } : {},
+          ...w.stack ? { stack: true } : {},
+          ...w.resizable === false ? { resizable: false } : {},
+          ...w.footer ? { footer: { ...w.footer } } : {}
+        });
+        ctx.layoutOf.set(w.id, w.layout ?? "grid");
+        if (w.layout === "split" && w.tree !== void 0) cg.setMetadata(SPLIT_TREE_KEY, w.tree);
+        cg.setMetadata("dashboardBoard", {
+          columns: innerColumns,
+          gap,
+          padding: 0,
+          sizing: "fit",
+          baseRowHeight: rowHeight,
+          // The slab's height is the PARENT's business — 0 hands it over,
+          // which is what makes escalation grow the slab instead of the
+          // container fighting its own frame.
+          designHeight: 0,
+          maxRows: innerRows,
+          float: false,
+          rtl: options.rtl ?? false,
+          layout: w.layout ?? "grid",
+          escalate: w.sizing !== "fit",
+          ...w.stack ? { stack: true } : {}
+        });
+        cg.size = { width: 100, height: rowHeight, depth: 0 };
+        return cg;
+      }
       function mountBoard(boardId, viewId, widgets, boardGroup) {
         for (const w of widgets) {
           if (w.widgets) {
-            const innerColumns = innerColumnsOf(w);
-            const innerRows = w.maxRows ?? rowExtentOf(w.widgets);
-            const cg = new GroupModel({ id: w.id, name: w.title ?? w.id });
+            const cg = sectionGroupOf(w);
             model.addGroup(cg);
-            cg.setMetadata("frameChrome", "none");
-            cg.setMetadata("gridItem", gridItemFromCell({ x: w.x, y: w.y, w: w.span, h: w.rows }));
-            cg.setMetadata("containerWidget", {
-              ...w.kind !== void 0 ? { kind: w.kind } : {},
-              ...w.title !== void 0 ? { title: w.title } : {},
-              columns: innerColumns,
-              maxRows: innerRows,
-              ...w.data !== void 0 ? { data: w.data } : {},
-              ...w.layout !== void 0 ? { layout: w.layout } : {},
-              ...w.sizing !== void 0 ? { sizing: w.sizing } : {},
-              ...w.caption !== void 0 ? { caption: w.caption } : {}
-            });
-            ctx.layoutOf.set(w.id, w.layout ?? "grid");
-            if (w.layout === "split" && w.tree !== void 0) cg.setMetadata(SPLIT_TREE_KEY, w.tree);
-            cg.setMetadata("dashboardBoard", {
-              columns: innerColumns,
-              gap,
-              padding: 0,
-              sizing: "fit",
-              baseRowHeight: rowHeight,
-              // The slab's height is the PARENT's business — 0 hands it over,
-              // which is what makes escalation grow the slab instead of the
-              // container fighting its own frame.
-              designHeight: 0,
-              maxRows: innerRows,
-              float: false,
-              rtl: options.rtl ?? false,
-              layout: w.layout ?? "grid",
-              escalate: w.sizing !== "fit"
-            });
-            cg.size = { width: 100, height: rowHeight, depth: 0 };
             boardGroup.addMember(w.id);
             ctx.boardGroups.set(w.id, cg);
             mountBoard(w.id, viewId, w.widgets, cg);
@@ -205854,9 +207228,20 @@ function dashboard(options) {
           boardGroup.addMember(w.id);
         }
       }
+      function dropPolicy(viewId) {
+        const canDrop = options.canDrop;
+        return canDrop ? { canDrop: (e) => canDrop({ widgetId: e.nodeId, from: e.from, to: e.to, viewId }) } : {};
+      }
       function captionHooks(viewId) {
         const render2 = options.renderCaption;
+        const footer = options.renderFooter;
         return {
+          ...footer ? {
+            renderFooter: (sectionId, host) => {
+              const spec = specById.get(sectionId);
+              if (spec) footer(spec, host);
+            }
+          } : {},
           ...render2 ? {
             renderCaption: (sectionId, host) => {
               const spec = specById.get(sectionId);
@@ -205885,7 +207270,8 @@ function dashboard(options) {
           ...captionHooks(v.id),
           onMemberLeaving: (memberId) => ctx.closePageIfEmptied?.(v.id, memberId) ?? [],
           onMemberMoving: (memberId, from, to) => ctx.moveContainerCommands?.(memberId, from, to) ?? [],
-          ...ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {}
+          ...ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {},
+          ...dropPolicy(v.id)
         };
         if (viewLayout === "split") {
           return bindDashboardSplit(a, g, {
@@ -205927,7 +207313,8 @@ function dashboard(options) {
           ...captionHooks(ctx.viewOfBoard.get(w.id) ?? ctx.active),
           onMemberLeaving: (memberId) => ctx.closePageIfEmptied?.(w.id, memberId) ?? [],
           onMemberMoving: (memberId, from, to) => ctx.moveContainerCommands?.(memberId, from, to) ?? [],
-          ...ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {}
+          ...ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {},
+          ...dropPolicy(ctx.viewOfBoard.get(w.id) ?? ctx.active)
         };
         if ((ctx.layoutOf.get(w.id) ?? w.layout) === "split") {
           binders.set(w.id, bindDashboardSplit(a, cg, { ...inner, ...w.tree !== void 0 ? { tree: w.tree } : {} }));
@@ -205943,7 +207330,8 @@ function dashboard(options) {
             // the children's extent — the binder's live bound follows the cells.
             maxRows: innerRows ?? w.maxRows ?? cg.getMetadata("containerWidget")?.maxRows ?? rowExtentOf(w.widgets ?? []),
             float: false,
-            escalate: w.sizing !== "fit"
+            escalate: w.sizing !== "fit",
+            ...w.stack ? { stack: true } : {}
           })
         );
       }
@@ -205971,7 +207359,8 @@ function widgetSpecOf(node) {
     rows: node.getMetadata("rowSpan"),
     ...node.getMetadata("widgetLimits") !== void 0 ? { limits: { ...node.getMetadata("widgetLimits") } } : {},
     ...node.getMetadata("widgetMovable") === false ? { movable: false } : {},
-    ...node.getMetadata("widgetResizable") === false ? { resizable: false } : {}
+    ...node.getMetadata("widgetResizable") === false ? { resizable: false } : {},
+    ...typeof node.getMetadata("widgetAutoHeight") === "boolean" ? { autoHeight: node.getMetadata("widgetAutoHeight") } : {}
   };
 }
 function fromDocument(document2, options = {}) {
@@ -206093,7 +207482,9 @@ function fromDocument(document2, options = {}) {
     const widget = specById.get(node.id) ?? widgetSpecOf(node);
     if (widget) {
       ctx.hosts.set(node.id, host);
-      return paintWidget(widget, host);
+      paintWidget(widget, host);
+      ctx.autoHeight?.observe(node.id, host);
+      return;
     }
     getNodeType(node.type)?.(node, host);
   };
@@ -206104,6 +207495,9 @@ function fromDocument(document2, options = {}) {
     if (live) {
       for (const group of groups) {
         if (!live.getGroup?.(group.id)) live.addGroup?.(group);
+      }
+      for (const stroke of model.getStrokes()) {
+        if (!live.getStroke?.(stroke.id)) live.addStroke?.(stroke);
       }
     }
     if (options.interactive === false) return;
@@ -206265,7 +207659,7 @@ function erDiagram(options) {
     // interactive: rows are real DOM targets (hover, row selection, inline
     // editing) — node drag/select stay geometric in the binder.
     metadata: {
-      html: { content: entityCardContent(entity, editable), interactive: true },
+      html: cardHtml(entityCardContent(entity, editable)),
       kitEntity: entity,
       kitEditable: editable,
       // Only the OPT-OUT is recorded. A loader has to know not to re-bind row
@@ -206331,7 +207725,7 @@ function umlDiagram(options) {
       // interactive: members are real DOM targets (hover, row selection, inline
       // editing); node drag/select stay geometric in the binder.
       metadata: {
-        html: { content: classCardContent(cls, editable), interactive: true },
+        html: cardHtml(classCardContent(cls, editable)),
         kitClass: cls,
         kitEditable: editable,
         // Opt-out only — see the same stamp in er.ts.
@@ -207857,7 +209251,7 @@ function mountCard(ctx, opts) {
     position: { x: ctx.at.x, y: ctx.at.y },
     size: { width: opts.width, height: opts.height }
   });
-  node.setMetadata("html", { content: opts.content, interactive: true });
+  node.setMetadata("html", cardHtml(opts.content));
   node.setMetadata(opts.metaKey, opts.spec);
   node.setMetadata("kitEditable", true);
   node.setMetadata("shape", CARD_SHAPE);
@@ -208008,6 +209402,7 @@ export {
   DASHBOARD_KIT_CSS,
   DASHBOARD_KIT_STYLE_ID,
   DEFAULT_ARROW_RADIUS,
+  DEFAULT_CUSTOM_NODE_TIMEOUT,
   DEFAULT_ENDPOINT_RADIUS,
   DEFAULT_FLEXBOX_CONFIG,
   DEFAULT_GRID_CONFIG,
@@ -208084,6 +209479,7 @@ export {
   ERDTypes,
   ER_HEAD_H,
   ER_ROW_H,
+  EXPORT_IGNORE_ATTRIBUTE,
   EXTENSION_API_VERSION,
   EdgeBundlingManager,
   EdgeOptimizer,
@@ -208290,6 +209686,7 @@ export {
   SyncStateManager,
   TAB_DRAG_THRESHOLD,
   TAB_STRIP_HEIGHT,
+  TEXT_GRAMMAR_METADATA_KEYS,
   THEME_TOKENS,
   THEME_VARS,
   TOUCH_HIT_SLOP_PX,
@@ -208326,6 +209723,7 @@ export {
   actorColor,
   actorInitials,
   addColumnAt,
+  adoptTextGrammarMetadata,
   affectedRegion,
   alignToPrevious,
   analyseGraphShape,
@@ -208409,6 +209807,8 @@ export {
   captionBandHeight,
   captionReserve,
   captureCustomNodeHost,
+  captureCustomNodes,
+  captureCustomNodesAsync,
   cellFromGridItem,
   cellToRect,
   checksumOf,
@@ -208458,6 +209858,7 @@ export {
   createConnectionGroupValidator,
   createControls,
   createCounterScaledPortal,
+  createCustomNodeCapturer,
   createDefaultLODConfig,
   createDefaultLayoutRegistry,
   createDiagram,
@@ -208466,6 +209867,7 @@ export {
   createDomRasterBackend,
   createDrawTool,
   createEraserTool,
+  createExportPipeline,
   createExtensionHost,
   createForeignObject,
   createLayeredLayout,
@@ -208551,6 +209953,7 @@ export {
   exportBatch,
   exportDiagramText,
   exportPdf,
+  exportScopeFilter,
   exportSvg,
   extractModel,
   extractModelFromPng,
@@ -208635,6 +210038,7 @@ export {
   glyphHalfExtents,
   gridItemFromCell,
   gridLayout,
+  groupFrameRects,
   haloAllows,
   hasAnchor,
   hasConnectionPoint,
@@ -208761,6 +210165,7 @@ export {
   nodeRoleDescription,
   nodeSize,
   nodeSpecId,
+  nodeWorldBounds,
   normalizeAngle,
   normalizeCaption,
   notifyEdgeTemplatesChanged,
@@ -208966,6 +210371,7 @@ export {
   stripGrafloriaSidecar,
   stripHtmlToText,
   stripResolvedImageWarnings,
+  substituteCssVars,
   sugiyama,
   summarise,
   supportsAnimations,
@@ -209013,6 +210419,7 @@ export {
   validateSerializedDiagram,
   viewBoxTransform,
   vnodeBounds,
+  withInlinedImages,
   withLightness,
   wrapDiagramDocument,
   wrapText

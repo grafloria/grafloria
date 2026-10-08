@@ -1,1 +1,0 @@
-import{v as n}from"./core.min-DSxUtzo6.js";import{x as l}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const c=async e=>{const[o,t,a]=n(),{nodeId:s,displaced:d}=e.detail;o.value?.handle.widget(s)?.remove(d),await a(),await t("removed by dragging out over the palette — one undo puts it back")};export{l as _hW,c as s_j0DgGnsmEWE};

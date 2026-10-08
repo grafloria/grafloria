@@ -1,1 +1,0 @@
-import{v as s}from"./core.min-DSxUtzo6.js";import{x as l}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const p=e=>{const[o,t]=s(),{sectionId:a,actionId:m}=e.detail;o.value=`caption action "${m}" on ${a} — the app's to implement (maximize, a menu, remove…)`,t.value=!1};export{l as _hW,p as s_30pMNzEK5lA};

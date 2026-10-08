@@ -1,0 +1,1 @@
+import{v as a}from"./core.min-C7M5tFMw.js";import{x as v}from"./core.min-C7M5tFMw.js";import"./preloader-D7tuiBjF.js";const i=({track:s,cleanup:n})=>{const[t,r]=a(),e=s(()=>r.value);e&&n(e.on("selection:change",o=>{t({nodes:o.nodes,edges:o.edges})}))};export{v as _hW,i as s_O6VLCvJ1TmY};

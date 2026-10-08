@@ -1,1 +1,0 @@
-import{I as s}from"./core.min-DSxUtzo6.js";import"./preloader-D7tuiBjF.js";const i=o=>{const t=o.ui.value.toast;return s("div",{hidden:!t},{id:"ma-toast",role:"status"},t,1,"Z9_19")};export{i as s_w90h87JH2QI};

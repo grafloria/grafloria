@@ -1,0 +1,1 @@
+import{v as m}from"./core.min-C7M5tFMw.js";import{x as v}from"./core.min-C7M5tFMw.js";import"./preloader-D7tuiBjF.js";const f=(e,o=!1)=>{const[s,t]=m();s.value=e,t.value=o};export{v as _hW,f as s_mtCtm4uCV78};

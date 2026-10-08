@@ -1,0 +1,1 @@
+import{v as r}from"./core.min-C7M5tFMw.js";import"./preloader-D7tuiBjF.js";const i=async()=>{const[e,n,o,t]=r(),a=o.value?.getEngine().commandManager;a?.canRedo()&&(await a.redo(),e.value?.handle.refresh()),await t(),await n("redo")};export{i as s_71L0WknfERA};

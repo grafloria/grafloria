@@ -1,0 +1,1 @@
+import{v as t}from"./core.min-C7M5tFMw.js";import{x as p}from"./core.min-C7M5tFMw.js";import"./preloader-D7tuiBjF.js";const m=({cleanup:r})=>{const[o]=t();return r(()=>o.value?.destroy())};export{p as _hW,m as s_QcmuOSVjry4};
