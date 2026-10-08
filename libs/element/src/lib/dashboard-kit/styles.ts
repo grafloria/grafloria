@@ -471,6 +471,8 @@ const CSS = `
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { pointer-events: auto; opacity: 1; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-rs { display: none; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--fixed > .axdb-rs { display: none; } /* resizable: false */
+/* A section's FOOTER band (\`footer\`): content at the frame's bottom — it takes presses, the board does not. */
+.grafloria-html-layer > .axdb-slab > .axdb-slab-f { position: absolute; left: 0; right: 0; bottom: 0; box-sizing: border-box; pointer-events: auto; }
 
 /* GROUP FRAME (0.4.43): a TAB CONTAINER wears a frame by default — a bordered
    slab, and a tinted surface UNDER its pages (the strip's own track colour, so

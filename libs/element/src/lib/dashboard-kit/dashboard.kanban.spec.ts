@@ -700,3 +700,79 @@ describe('stages — sections for a Kanban board', () => {
     expect(api.container.querySelectorAll('.axdb-slab--drop, .axdb-slab--refused')).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// RUNTIME SECTIONS ("Add another list") and FOOTERS ("+ Add a card").
+// ---------------------------------------------------------------------------
+
+const THREE = (extra: Partial<DashboardOptions> = {}) =>
+  dashboard({
+    columns: 12, gap: 8, width: 1200, height: 800, sizing: 'grow', rowHeight: 8, float: false,
+    widgets: ['s1', 's2', 's3'].map((id) => ({
+      id, span: 3, rows: 12, columns: 1, maxRows: 8, movable: 'row' as const, stack: true,
+      caption: { text: id, height: 32 }, footer: { height: 32 },
+      widgets: [{ id: `${id}-c1`, kind: 'card', span: 1, rows: 4 }],
+    })),
+    ...extra,
+  });
+
+describe('runtime sections and footers', () => {
+  it('addWidget with `widgets` adds a SECTION in the first free cell — bound, empty, and ONE undo away from gone', async () => {
+    const { model, api, handle } = mount(THREE());
+    const s = handle.addWidget({ id: 's4', title: 'S4', span: 3, rows: 12, columns: 1, maxRows: 8, movable: 'row', stack: true, footer: { height: 32 }, widgets: [] });
+    await settle();
+    expect(s).toBeDefined();
+    expect(model.getGroup('s4')).toBeDefined();
+    expect(model.getGroup('main')!.members.has('s4')).toBe(true);
+    expect(handle.binderOf('main')!.cellOf('s4')).toMatchObject({ x: 9, y: 0, w: 3 });
+    expect(handle.binderOf('s4')).toBeDefined();
+    expect(handle.toJSON().views[0].widgets.map((w) => w.id)).toContain('s4');
+    // it is a real board: a card goes in
+    const card = handle.addWidget({ id: 's4-c1', kind: 'card', span: 1, rows: 4 }, 's4');
+    await settle();
+    expect(card && model.getGroup('s4')!.members.has('s4-c1')).toBe(true);
+    const cm = api.getEngine().commandManager;
+    await cm.undo(); await settle();                    // the card
+    await cm.undo(); await settle();                    // the section
+    expect(model.getGroup('s4')).toBeUndefined();
+    expect(handle.binderOf('s4')).toBeUndefined();
+    expect(handle.toJSON().views[0].widgets.map((w) => w.id)).not.toContain('s4');
+    await cm.redo(); await settle();
+    expect(model.getGroup('main')!.members.has('s4')).toBe(true);
+    expect(handle.binderOf('s4')).toBeDefined();         // re-bound by the history
+  });
+
+  it('a section with no free cell is not added', () => {
+    const { handle } = mount(dashboard({ columns: 3, width: 900, height: 600, sizing: 'fit', widgets: [{ id: 'a', span: 3, rows: 4, columns: 1, widgets: [] }] }));
+    // a fit board has its rows bounded: a full first row and no room below
+    expect(handle.addWidget({ id: 'b', span: 3, rows: 99, columns: 1, widgets: [] })).toBeUndefined();
+  });
+
+  it('footer: the band is painted by renderFooter at the frame bottom, its height kept clear of cards, and its presses are the page\'s', () => {
+    const renderFooter = jest.fn((_w: DashboardWidgetSpec, host: HTMLElement) => { host.innerHTML = '<button>+ Add a card</button>'; });
+    const { model, api, handle } = mount(THREE({ renderFooter }));
+    expect(renderFooter).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }), expect.any(HTMLElement));
+    const band = api.container.querySelector('.axdb-slab[data-slab-id="s1"] > .axdb-slab-f') as HTMLElement;
+    expect(band).not.toBeNull();
+    expect(band.style.height).toBe('32px');
+    // the inner board stops 32 px (caption) from the top and 32 px (footer) from the bottom
+    const g = model.getGroup('s1')!;
+    const f = (handle.binderOf('s1') as DashboardGridHandle).metrics().frame;
+    expect(f.y).toBe(g.position.y + 32);
+    expect(f.height).toBe(g.size!.height - 64);
+    // a press on the footer's button is not claimed by any board tool
+    const btn = band.querySelector('button')!;
+    const ev = { ...tev('down', g.position.x + 20, g.position.y + g.size!.height - 10), source: { target: btn } as unknown as PointerEvent };
+    expect(toolOf('main').hitTest(ev, { node: undefined, empty: true } as never)).toBe(false);
+    expect(toolOf('s1').hitTest(ev, { node: undefined, empty: true } as never)).toBe(false);
+  });
+
+  it('footer: a card dropped over a stack list\'s footer lands at the end of that list', async () => {
+    const { model, handle } = mount(THREE());
+    const s2 = model.getGroup('s2')!;
+    await drag(model, 's1', 's1-c1', { x: s2.position.x + s2.size!.width / 2, y: s2.position.y + s2.size!.height - 12 });
+    expect(model.getGroup('s2')!.members.has('s1-c1')).toBe(true);
+    const last = handle.widget('s2-c1')!.cell!;
+    expect(handle.widget('s1-c1')!.cell!.y).toBe(last.y + last.h);
+  });
+});

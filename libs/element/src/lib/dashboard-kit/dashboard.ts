@@ -198,6 +198,13 @@ export interface DashboardWidgetSpec {
    * Default false: a section is a board, and a drop goes where it is aimed.
    */
   stack?: boolean;
+  /**
+   * Container only: a FOOTER band at the bottom of the section, `height` px,
+   * painted by the dashboard's `renderFooter` — a Kanban list's "Add a card".
+   * The children's board stops above it; presses on it are the page's (its
+   * buttons just work); a card dragged over it lands at the end of a stack.
+   */
+  footer?: { height: number };
 }
 
 /** One board. Multiple views are the tab pattern: only one is on-camera. */
@@ -342,6 +349,8 @@ export interface DashboardOptions {
    * (a button, an input, `[data-axdb-pass]`) reaches your content.
    */
   renderCaption?: (widget: DashboardWidgetSpec, host: HTMLElement) => void;
+  /** Paint a section's FOOTER band (`footer` on the section): the band arrives empty and sized; its buttons and inputs are the page's. */
+  renderFooter?: (widget: DashboardWidgetSpec, host: HTMLElement) => void;
   /** A press on a caption action (`caption.actions`): the section, the action id, the view. */
   onCaptionAction?: (sectionId: string, actionId: string, viewId: string) => void;
   /** A tab container switched pages: the container, the page now showing, the view. */
@@ -588,6 +597,51 @@ export interface WidgetHandle {
  * would need two Ctrl-Z. This composite does both in its own execute(), and
  * unwinds both in undo().
  */
+/**
+ * A SECTION added at runtime (`addWidget` with `widgets`): its registry, its
+ * group and its membership in the board, as ONE undoable step — the section
+ * counterpart of AddWidgetCommand. The registry's unregister also disposes the
+ * section's own binder, so an undone section leaves nothing bound.
+ */
+class AddSectionCommand extends Command {
+  constructor(
+    private group: GroupModel,
+    private boardId: string,
+    private registry: { register(): void; unregister(): void }
+  ) {
+    super('Add section');
+  }
+
+  override execute(context: { diagram?: unknown }): void {
+    const diagram = context.diagram as
+      | { addGroup(g: GroupModel): void; getGroup(id: string): GroupModel | undefined }
+      | undefined;
+    if (!diagram) return;
+    this.registry.register();
+    if (!diagram.getGroup(this.group.id)) diagram.addGroup(this.group);
+    diagram.getGroup(this.boardId)?.addMember(this.group.id);
+  }
+
+  override undo(context: { diagram?: unknown }): void {
+    const diagram = context.diagram as
+      | { removeGroup(id: string): unknown; getGroup(id: string): GroupModel | undefined }
+      | undefined;
+    if (!diagram) return;
+    diagram.getGroup(this.boardId)?.removeMember(this.group.id);
+    diagram.removeGroup(this.group.id);
+    this.registry.unregister();
+  }
+
+  override serialize() {
+    return {
+      id: this.id,
+      name: this.name,
+      timestamp: this.timestamp,
+      data: { groupId: this.group.id, boardId: this.boardId },
+    };
+  }
+}
+
 class AddWidgetCommand extends Command {
   /**
    * `registry` is the kit's bookkeeping for the widget (see
@@ -1209,6 +1263,8 @@ export interface DashboardHandleContext {
    */
   reportChanged?: () => void;
   attachHistory?: () => void;
+  /** Build a runtime SECTION (finalize sets it): its group and registry, for an AddSectionCommand. */
+  buildSection?: (w: DashboardWidgetSpec, boardId: string) => { group: GroupModel; registry: { register(): void; unregister(): void } };
   /** The content-height watcher (`autoHeight`), created with the handle; hosts register on paint. */
   autoHeight?: AutoHeight;
   /** Unsubscribers dispose() runs. */
@@ -2233,6 +2289,35 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         span: spec.span ?? 3,
         rows: spec.rows ?? 1,
       };
+      // A SECTION (a spec carrying `widgets`): a group with its own board,
+      // added — and undone — as one step. It takes the cell it names, else the
+      // first free one; an empty section starts empty (its children arrive by
+      // drag or addWidget with its id as the board).
+      if (w.widgets) {
+        const binder = binders.get(vid);
+        if (!binder || !ctx.buildSection || ctx.layoutOf.get(vid) === 'split') return undefined;
+        if (binder.willItFit(w.span!, w.rows!) === false) return undefined; // a bounded board with no room says so
+        if (w.x === undefined || w.y === undefined) {
+          const cols = binder.getColumns();
+          const taken = (x: number, y: number) =>
+            [...(group.members ?? [])].some((m) => {
+              const c = binder.cellOf(m);
+              return !!c && x < c.x + c.w && c.x < x + w.span! && y < c.y + c.h && c.y < y + w.rows!;
+            });
+          let at: { x: number; y: number } | null = null;
+          for (let y = 0; !at && y < 1000; y++) for (let x = 0; x + w.span! <= cols && !at; x++) if (!taken(x, y)) at = { x, y };
+          if (!at) return undefined;
+          w.x = at.x;
+          w.y = at.y;
+        }
+        w.widgets = [...w.widgets];
+        const { group: sg, registry: sreg } = ctx.buildSection(w, vid);
+        execCommand(new AddSectionCommand(sg, group.id, sreg));
+        binder.sync();
+        if (!binders.has(w.id)) ctx.rebindContainer?.(w.id);
+        ctx.apiRef?.renderNow();
+        return makeWidgetHandle(w.id);
+      }
       // REGISTER FIRST: a custom node mounts exactly once, and the painter
       // returns early for an id the spec does not know — so the widget must be
       // known before the node reaches the model, or it paints blank forever.
@@ -2765,6 +2850,38 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         else if (selected) binders.get(viewId)?.selectWidget(selected);
       };
       handle.showView(ctx.active);
+      ctx.buildSection = (w: DashboardWidgetSpec, boardId: string) => {
+        const group = sectionGroupOf(w);
+        const viewId = ctx.viewOfBoard.get(boardId) ?? boardId;
+        return {
+          group,
+          registry: {
+            register: (): void => {
+              specById.set(w.id, w);
+              viewOfWidget.set(w.id, boardId);
+              ctx.viewOfBoard.set(w.id, viewId);
+              ctx.boardGroups.set(w.id, group);
+              ctx.boardWidgets.set(w.id, w.widgets ?? (w.widgets = []));
+              ctx.layoutOf.set(w.id, w.layout ?? 'grid');
+              const arr = ctx.boardWidgets.get(boardId);
+              if (arr && !arr.includes(w)) arr.push(w);
+            },
+            unregister: (): void => {
+              binders.get(w.id)?.dispose();
+              binders.delete(w.id);
+              specById.delete(w.id);
+              viewOfWidget.delete(w.id);
+              ctx.viewOfBoard.delete(w.id);
+              ctx.boardGroups.delete(w.id);
+              ctx.boardWidgets.delete(w.id);
+              ctx.layoutOf.delete(w.id);
+              const arr = ctx.boardWidgets.get(boardId);
+              const i = arr ? arr.indexOf(w) : -1;
+              if (arr && i >= 0) arr.splice(i, 1);
+            },
+          },
+        };
+      };
       ctx.rebindContainer = (id: string): void => {
         const g = model.getGroup(id);
         const w = specById.get(id);
@@ -2825,6 +2942,60 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       return;
 
       /**
+       * A SECTION's group, with everything it carries: its slab cell, its own
+       * spec fields and board geometry as metadata (so fromDocument() rebinds
+       * it). Not yet in the model — the boot mount adds it directly, a runtime
+       * addWidget() through an undoable AddSectionCommand.
+       */
+      function sectionGroupOf(w: DashboardWidgetSpec): GroupModel {
+        const innerColumns = innerColumnsOf(w);
+        const innerRows = w.maxRows ?? rowExtentOf(w.widgets ?? []);
+        const cg = new GroupModel({ id: w.id, name: w.title ?? w.id });
+        cg.setMetadata('frameChrome', 'none');
+        // Slab cells live in GROUP metadata (groups carry no GridItemConfig).
+        cg.setMetadata('gridItem', gridItemFromCell({ x: w.x!, y: w.y!, w: w.span!, h: w.rows! }));
+        // The container's own spec fields, persisted ON the group — a
+        // reloaded document has no authored literal to read them from.
+        cg.setMetadata('containerWidget', {
+          ...(w.kind !== undefined ? { kind: w.kind } : {}),
+          ...(w.title !== undefined ? { title: w.title } : {}),
+          columns: innerColumns,
+          maxRows: innerRows,
+          ...(w.data !== undefined ? { data: w.data } : {}),
+          ...(w.layout !== undefined ? { layout: w.layout } : {}),
+          ...(w.sizing !== undefined ? { sizing: w.sizing } : {}),
+          ...(w.caption !== undefined ? { caption: w.caption } : {}),
+          ...(w.movable !== undefined ? { movable: w.movable } : {}),
+          ...(w.background !== undefined ? { background: w.background } : {}),
+          ...(w.stack ? { stack: true } : {}),
+          ...(w.resizable === false ? { resizable: false } : {}),
+          ...(w.footer ? { footer: { ...w.footer } } : {}),
+        });
+        // Item 7: the container's own layout and bound, persisted like a view's.
+        ctx.layoutOf.set(w.id, w.layout ?? 'grid');
+        if (w.layout === 'split' && w.tree !== undefined) cg.setMetadata(SPLIT_TREE_KEY, w.tree);
+        cg.setMetadata('dashboardBoard', {
+          columns: innerColumns,
+          gap,
+          padding: 0,
+          sizing: 'fit',
+          baseRowHeight: rowHeight,
+          // The slab's height is the PARENT's business — 0 hands it over,
+          // which is what makes escalation grow the slab instead of the
+          // container fighting its own frame.
+          designHeight: 0,
+          maxRows: innerRows,
+          float: false,
+          rtl: options.rtl ?? false,
+          layout: w.layout ?? 'grid',
+          escalate: w.sizing !== 'fit',
+          ...(w.stack ? { stack: true } : {}),
+        });
+        cg.size = { width: 100, height: rowHeight, depth: 0 };
+        return cg;
+      }
+
+      /**
        * Mount one board's widgets into its group — and recurse for CONTAINERS.
        * A container is a view's construction one level down: a frameless
        * member group with a slab cell in the PARENT's grid, its own
@@ -2841,50 +3012,8 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       ): void {
         for (const w of widgets) {
           if (w.widgets) {
-            const innerColumns = innerColumnsOf(w);
-            const innerRows = w.maxRows ?? rowExtentOf(w.widgets);
-            const cg = new GroupModel({ id: w.id, name: w.title ?? w.id });
+            const cg = sectionGroupOf(w);
             model.addGroup(cg);
-            cg.setMetadata('frameChrome', 'none');
-            // Slab cells live in GROUP metadata (groups carry no GridItemConfig).
-            cg.setMetadata('gridItem', gridItemFromCell({ x: w.x!, y: w.y!, w: w.span!, h: w.rows! }));
-            // The container's own spec fields, persisted ON the group — a
-            // reloaded document has no authored literal to read them from.
-            cg.setMetadata('containerWidget', {
-              ...(w.kind !== undefined ? { kind: w.kind } : {}),
-              ...(w.title !== undefined ? { title: w.title } : {}),
-              columns: innerColumns,
-              maxRows: innerRows,
-              ...(w.data !== undefined ? { data: w.data } : {}),
-              ...(w.layout !== undefined ? { layout: w.layout } : {}),
-              ...(w.sizing !== undefined ? { sizing: w.sizing } : {}),
-              ...(w.caption !== undefined ? { caption: w.caption } : {}),
-              ...(w.movable !== undefined ? { movable: w.movable } : {}),
-              ...(w.background !== undefined ? { background: w.background } : {}),
-              ...(w.stack ? { stack: true } : {}),
-              ...(w.resizable === false ? { resizable: false } : {}),
-            });
-            // Item 7: the container's own layout and bound, persisted like a view's.
-            ctx.layoutOf.set(w.id, w.layout ?? 'grid');
-            if (w.layout === 'split' && w.tree !== undefined) cg.setMetadata(SPLIT_TREE_KEY, w.tree);
-            cg.setMetadata('dashboardBoard', {
-              columns: innerColumns,
-              gap,
-              padding: 0,
-              sizing: 'fit',
-              baseRowHeight: rowHeight,
-              // The slab's height is the PARENT's business — 0 hands it over,
-              // which is what makes escalation grow the slab instead of the
-              // container fighting its own frame.
-              designHeight: 0,
-              maxRows: innerRows,
-              float: false,
-              rtl: options.rtl ?? false,
-              layout: w.layout ?? 'grid',
-              escalate: w.sizing !== 'fit',
-              ...(w.stack ? { stack: true } : {}),
-            });
-            cg.size = { width: 100, height: rowHeight, depth: 0 };
             boardGroup.addMember(w.id);
             ctx.boardGroups.set(w.id, cg);
             mountBoard(w.id, viewId, w.widgets, cg);
@@ -2946,9 +3075,18 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         return canDrop ? { canDrop: (e) => canDrop({ widgetId: e.nodeId, from: e.from, to: e.to, viewId }) } : {};
       }
 
-      function captionHooks(viewId: string): Pick<DashboardGridOptions, 'renderCaption' | 'onCaptionAction'> {
+      function captionHooks(viewId: string): Pick<DashboardGridOptions, 'renderCaption' | 'onCaptionAction' | 'renderFooter'> {
         const render = options.renderCaption;
+        const footer = options.renderFooter;
         return {
+          ...(footer
+            ? {
+                renderFooter: (sectionId: string, host: HTMLElement) => {
+                  const spec = specById.get(sectionId);
+                  if (spec) footer(spec, host);
+                },
+              }
+            : {}),
           ...(render
             ? {
                 renderCaption: (sectionId: string, host: HTMLElement) => {

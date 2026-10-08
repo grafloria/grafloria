@@ -80,7 +80,7 @@ import {
   type WorldRect,
 } from './grid-mapping';
 import { ensureDashboardKitStyles } from './styles';
-import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCaptionBand, sectionCaptionReserve, sizeCaptionBand } from './caption';
+import { captionOfGroup, captionPainted, captionPassThrough, captionKey, paintCaptionBand, sectionCaptionReserve, sectionFooterReserve, sizeCaptionBand } from './caption';
 import { TAB_STRIP_HEIGHT } from './tabs';
 import { BESIDE_BAND, resolve as resolveZone, resolveTabZone, stripCrossing, stripUnder, type BesideSide, type ZoneBoard, type ZoneContainer } from './zones';
 import { SequenceCommand, SetGroupCellCommand, tileCommands } from './commit';
@@ -260,6 +260,8 @@ export interface DashboardGridOptions {
    * Default: the kit's icon · text · subtitle · ⓘ · actions.
    */
   renderCaption?: (sectionId: string, host: HTMLElement) => void;
+  /** Paint a section's FOOTER band (its `footer`); presses on the band are content — the DOM handles them. */
+  renderFooter?: (sectionId: string, host: HTMLElement) => void;
   /** A press on a caption action button (see `SectionCaptionOptions.actions`). */
   onCaptionAction?: (sectionId: string, actionId: string) => void;
   resizeHandles?: boolean;
@@ -344,6 +346,8 @@ export function ownsPress(
   if (typeof Element !== 'undefined' && t instanceof Element) {
     // A TAB STRIP is content, never a board press: its tabs are real buttons.
     if (t.closest('.axdb-tabs')) return false;
+    // …and so is a section's FOOTER band (an "Add a card" row).
+    if (t.closest('.axdb-slab > .axdb-slab-f')) return false;
     const band = t.closest('.axdb-slab > .axdb-slab-h');
     const sid = band?.parentElement?.getAttribute('data-slab-id');
     if (band && sid) {
@@ -1128,13 +1132,15 @@ export function bindDashboardGrid(
    * selects the section) rather than an empty press of this board.
    */
   const ownReserve = (): number => sectionCaptionReserve(diagram, group, isStatic);
+  /** …and the FOOTER band's at the bottom (`footer` on the container). */
+  const ownFooter = (): number => sectionFooterReserve(diagram, group as never);
   const frame = (): WorldRect => {
     const r = ownReserve();
     return {
       x: group.position.x,
       y: group.position.y + r,
       width: group.size?.width ?? 0,
-      height: Math.max(0, (group.size?.height ?? 0) - r),
+      height: Math.max(0, (group.size?.height ?? 0) - r - ownFooter()),
     };
   };
 

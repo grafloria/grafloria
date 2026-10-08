@@ -134,6 +134,22 @@ export function createChrome(ctx: BoardCtx, deps: ChromeDeps): Chrome {
    * per frame. The band takes the pointer (the slab itself does not): a press
    * on it selects the section, an action fires, pass-through reaches content.
    */
+  /** A section's FOOTER band (`footer`): painted once by `renderFooter`, sized every sync, gone with the option. */
+  const syncFooter = (el: HTMLElement, id: string, grp: GroupModel): void => {
+    const f = (grp.getMetadata?.('containerWidget') as { footer?: { height?: number } } | undefined)?.footer;
+    let band = el.querySelector(':scope > .axdb-slab-f') as HTMLElement | null;
+    if (!f?.height) {
+      band?.remove();
+      return;
+    }
+    if (!band) {
+      band = document.createElement('div');
+      band.className = 'axdb-slab-f';
+      el.append(band);
+      options.renderFooter?.(id, band);
+    }
+    band.style.height = `${f.height}px`;
+  };
   const syncCaption = (el: HTMLElement, id: string, grp: GroupModel, sectionH: number): void => {
     const cap = captionOfGroup(grp);
     const isStatic = ctx.isStatic();
@@ -222,6 +238,7 @@ export function createChrome(ctx: BoardCtx, deps: ChromeDeps): Chrome {
       const background = (grp.getMetadata?.('containerWidget') as { background?: string } | undefined)?.background;
       syncGroupBg(layer, id, tabs || !!background, p.x, p.y, sz.width, sz.height, background);
       syncCaption(el, id, grp, sz.height);
+      syncFooter(el, id, grp);
     }
     for (const [id, el] of slabEls) {
       if (!seen.has(id)) {

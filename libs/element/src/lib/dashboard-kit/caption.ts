@@ -155,6 +155,20 @@ export function sectionCaptionReserve(
   return captionReserve(captionOfGroup(group), { static: isStatic, sectionH: group.size?.height ?? 0 });
 }
 
+/**
+ * A section's FOOTER reserve: the band a container's `footer` asks for at the
+ * bottom of its frame (an "Add a card" row, a total), or 0. Like the caption,
+ * only a section whose parent paints section chrome has one.
+ */
+export function sectionFooterReserve(
+  diagram: CaptionDiagram,
+  group: CaptionGroup & { getMetadata?(key: string): unknown }
+): number {
+  if (!parentPaintsSectionChrome(diagram, group)) return 0;
+  const f = (group.getMetadata?.('containerWidget') as { footer?: { height?: number } } | undefined)?.footer;
+  return f?.height && f.height > 0 ? f.height : 0;
+}
+
 /** Painted at all? `show: 'design'` disappears under static. */
 export function captionPainted(c: SectionCaptionOptions | null, isStatic: boolean): boolean {
   if (!c) return false;
