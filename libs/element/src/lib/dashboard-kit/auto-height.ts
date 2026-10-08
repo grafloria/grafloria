@@ -10,7 +10,11 @@
  *
  * WHEN it measures: once the host is painted, whenever the host's width
  * changes (a responsive column count, a narrower window, a card dragged into a
- * wider column), after `update()`/`repaint()`, and after every history event
+ * wider column), whenever its CONTENT changes (a framework wrapper paints its
+ * component into the host after the kit hands the host over — a React portal,
+ * a Vue/Angular/Qwik view — and text edits, a field added; the host's own
+ * height is fixed, so only a mutation tells), after `update()`/`repaint()`,
+ * and after every history event
  * (an undo restores the cells as they were saved; the content decides again).
  * Reads are batched into one animation frame. A board with a live gesture is
  * asked again shortly after — a drag's own layout is never re-written under
@@ -100,6 +104,20 @@ export function createAutoHeight(host: AutoHeightHost): AutoHeight {
         })
       : null;
 
+  // Content arriving or changing inside a host. Attributes are left out: the
+  // kit's own writes (the cell's style, a measurement) are attribute changes.
+  const mo =
+    typeof MutationObserver !== 'undefined'
+      ? new MutationObserver((records) => {
+          for (const r of records) {
+            const hostEl = (r.target instanceof Element ? r.target : r.target.parentElement)?.closest?.('.grafloria-node-host') ?? null;
+            const id = hostEl ? idOf.get(hostEl) : undefined;
+            if (id) dirty.add(id);
+          }
+          schedule();
+        })
+      : null;
+
   const schedule = (): void => {
     if (disposed || frame || dirty.size === 0) return;
     frame = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame(run) : (setTimeout(run, 16) as unknown as number);
@@ -167,6 +185,7 @@ export function createAutoHeight(host: AutoHeightHost): AutoHeight {
       hosts.set(id, el);
       idOf.set(el, id);
       ro?.observe(el);
+      mo?.observe(el, { childList: true, subtree: true, characterData: true });
       dirty.add(id);
       schedule();
     },
@@ -183,6 +202,7 @@ export function createAutoHeight(host: AutoHeightHost): AutoHeight {
     dispose() {
       disposed = true;
       ro?.disconnect();
+      mo?.disconnect();
       if (frame && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(frame);
       if (retry) clearTimeout(retry);
       hosts.clear();

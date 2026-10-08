@@ -267,6 +267,25 @@ describe('autoHeight — the kit measures the widget', () => {
     expect((handle.binderOf('A') as DashboardGridHandle).metrics().rowHeight).toBe(rowH);
   });
 
+  it('content painted LATER (a framework portal) is measured when it arrives — the host itself never resized', async () => {
+    const spec = BOARD({ autoHeight: true });
+    const { model, api, handle } = mount(spec);
+    const host = document.createElement('div');
+    host.className = 'grafloria-node-host';
+    host.dataset['nodeId'] = 'b1';
+    api.layer.appendChild(host);
+    let natural = 0; // empty until the "portal" paints
+    stubLayout(host, () => natural, model.getNode('b1')!.size.width);
+    spec.renderCustomNode(model.getNode('b1'), host);
+    await frames();
+    natural = 150;
+    const card = document.createElement('div');
+    card.textContent = 'painted by the framework';
+    host.appendChild(card);
+    await frames();
+    expect(handle.widget('b1')!.cell!.h).toBe(rowsForHeight(150, 8, 8));
+  });
+
   it('a widget that opts out keeps its rows; limits still clamp an auto one', async () => {
     const spec = dashboard({
       columns: 12, gap: 8, width: 1200, height: 800, sizing: 'grow', rowHeight: 8, autoHeight: true,
