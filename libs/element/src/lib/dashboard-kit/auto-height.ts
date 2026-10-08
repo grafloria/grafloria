@@ -18,6 +18,13 @@
  *
  * Height only: the span stays the author's (or the user's). Containers are
  * never measured — their height is their children's.
+ *
+ * WHERE it applies: a board whose rows have a height of their own — a `grow`
+ * view, and the sections on it that may grow (not `sizing: 'fit'`). Elsewhere
+ * the height is not the widget's to ask for, and the kit says so once
+ * (console.warn) instead of half-working: a `fit` board squeezes its rows to
+ * its own height (more rows = smaller rows, a loop), a `split` pane is the
+ * tree's share, a tab page is its container's.
  */
 import type { DashboardGridHandle } from './grid-binder';
 
@@ -30,6 +37,8 @@ export interface AutoHeightHost {
   worldWidthOf(id: string): number | undefined;
   /** The spec's row limits, if any. */
   limitsOf(id: string): { minRows?: number; maxRows?: number } | undefined;
+  /** Why the board holding `id` cannot size by content (undefined = it can). */
+  unsupported?(id: string): string | undefined;
 }
 
 export interface AutoHeight {
@@ -78,6 +87,7 @@ export function createAutoHeight(host: AutoHeightHost): AutoHeight {
   let frame = 0;
   let retry: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
+  const warned = new Set<string>();
 
   const ro =
     typeof ResizeObserver !== 'undefined'
@@ -102,9 +112,18 @@ export function createAutoHeight(host: AutoHeightHost): AutoHeight {
   const fitOne = (id: string): 'done' | 'busy' => {
     const el = hosts.get(id);
     if (!el || !el.isConnected || !host.isAuto(id)) return 'done';
+    const why = host.unsupported?.(id);
+    if (why) {
+      if (!warned.has(id)) {
+        warned.add(id);
+        // eslint-disable-next-line no-console
+        console.warn(`[grafloria] autoHeight is ignored for "${id}": ${why}.`);
+      }
+      return 'done';
+    }
     const binder = host.binderOf(id);
-    if (!binder) return 'done';
-    if (binder.busy) return 'busy';
+    if (!binder?.fitRows) return 'done';
+    if (binder.busy === true) return 'busy';
     const cell = binder.cellOf(id);
     const m = binder.metrics();
     if (!cell || !(m.rowHeight > 0)) return 'done';
@@ -141,7 +160,8 @@ export function createAutoHeight(host: AutoHeightHost): AutoHeight {
 
   return {
     observe(id, el) {
-      if (disposed) return;
+      // Only auto widgets are watched: a board that never asks pays nothing.
+      if (disposed || !host.isAuto(id)) return;
       const prev = hosts.get(id);
       if (prev && prev !== el) ro?.unobserve(prev);
       hosts.set(id, el);

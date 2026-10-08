@@ -1217,6 +1217,20 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     for (const [bid, g] of ctx.boardGroups) if (g.members?.has(id)) return bid;
     return undefined;
   };
+  /** Why a board cannot size its widgets by content — undefined when it can (see auto-height.ts). */
+  const boardSizesByContent = (bid: string): string | undefined => {
+    const layout = ctx.layoutOf.get(bid);
+    if (layout === 'split') return 'its board is a split layout, where a pane\'s height is the tree\'s share';
+    if (layout === 'tabs') return 'it sits on a tab container';
+    if (ctx.viewOfBoard.get(bid) === bid) {
+      // a VIEW: its rows must have a height of their own
+      return binders.get(bid)?.getSizing() === 'fit' ? 'its view uses sizing \'fit\', which squeezes rows to the board\'s height (use \'grow\')' : undefined;
+    }
+    const parent = boardOfMember(bid);
+    if (parent !== undefined && ctx.layoutOf.get(parent) === 'tabs') return 'it sits on a tab page, whose height is its container\'s';
+    if (specById.get(bid)?.sizing === 'fit') return `its section "${bid}" uses sizing 'fit' and cannot grow`;
+    return parent === undefined ? undefined : boardSizesByContent(parent);
+  };
   ctx.autoHeight = createAutoHeight({
     isAuto: (id) => !ctx.boardGroups.has(id) && (specById.get(id)?.autoHeight ?? ctx.optionsBase.autoHeight ?? false),
     binderOf: (id) => {
@@ -1225,6 +1239,10 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     },
     worldWidthOf: (id) => ctx.apiRef?.getModel().getNode(id)?.size.width,
     limitsOf: (id) => specById.get(id)?.limits,
+    unsupported: (id) => {
+      const bid = boardOfMember(id);
+      return bid === undefined ? undefined : boardSizesByContent(bid);
+    },
   });
 
   /**

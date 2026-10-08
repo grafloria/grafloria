@@ -11,7 +11,9 @@
  */
 import { CommandManager, DiagramModel, EventBus, NodeModel } from '@grafloria/engine';
 import type { CanvasTool, ToolPointerEvent } from '@grafloria/renderer';
-import { dashboard, type DashboardHandle, type DashboardOptions, type DashboardSpec } from './dashboard';
+import { dashboard, type DashboardHandle, type DashboardOptions, type DashboardSpec, type DashboardWidgetSpec } from './dashboard';
+import { splitLeaves, type SplitNode } from './split-layout';
+import { SPLIT_TREE_KEY } from './split-binder';
 import { createAutoHeight, rowsForHeight } from './auto-height';
 import type { DashboardGridHandle } from './grid-binder';
 
@@ -28,6 +30,12 @@ jest.mock('@grafloria/renderer', () => {
     },
   };
 });
+const splitToolOf = (groupId: string): CanvasTool => {
+  const g = globalThis as unknown as { __axdbTools?: CanvasTool[] };
+  const t = [...(g.__axdbTools ?? [])].reverse().find((x) => x.id.startsWith(`dashboard-split:${groupId}:`));
+  if (!t) throw new Error(`no split tool registered for ${groupId}`);
+  return t;
+};
 const toolOf = (groupId: string): CanvasTool => {
   const g = globalThis as unknown as { __axdbTools?: CanvasTool[] };
   const t = [...(g.__axdbTools ?? [])].reverse().find((x) => x.id.startsWith(`dashboard-grid:${groupId}:`));
@@ -70,8 +78,15 @@ function mount(spec: DashboardSpec) {
   }
   const api = makeApi(model);
   spec.finalize(api);
+  mounted.push(spec.handle as DashboardHandle);
   return { model, api, handle: spec.handle as DashboardHandle };
 }
+const mounted: DashboardHandle[] = [];
+afterEach(() => {
+  for (const h of mounted.splice(0)) h.dispose();
+  document.body.innerHTML = '';
+  jest.restoreAllMocks();
+});
 
 /**
  * Three columns, gravity on; A holds two cards, B one, C none. Each slab is as
@@ -174,7 +189,7 @@ describe('fitRows — a height written as layout', () => {
   it('changes the row span with NO undo step and pushes the card below', () => {
     const { api, handle } = mount(BOARD());
     const a2y = handle.widget('a2')!.cell!.y;
-    expect(binder(handle, 'A').fitRows('a1', 5)).toBe(true);
+    expect(binder(handle, 'A').fitRows!('a1', 5)).toBe(true);
     expect(handle.widget('a1')!.cell!.h).toBe(5);
     expect(handle.widget('a2')!.cell!.y).toBe(a2y + 2);
     expect(api.getEngine().commandManager.canUndo()).toBe(false);
@@ -187,10 +202,10 @@ describe('fitRows — a height written as layout', () => {
     const { handle } = mount(BOARD());
     const slab0 = binder(handle, 'main').cellOf('A')!.h;
     // 3 + 3 rows in an 8-row design: 9 + 3 needs 4 more rows than the design holds
-    expect(binder(handle, 'A').fitRows('a1', 9)).toBe(true);
+    expect(binder(handle, 'A').fitRows!('a1', 9)).toBe(true);
     expect(handle.widget('a1')!.cell!.h).toBe(9);
     expect(binder(handle, 'main').cellOf('A')!.h).toBeGreaterThan(slab0);
-    expect(binder(handle, 'A').fitRows('a1', 3)).toBe(true);
+    expect(binder(handle, 'A').fitRows!('a1', 3)).toBe(true);
     expect(binder(handle, 'main').cellOf('A')!.h).toBe(slab0);
   });
 
@@ -202,7 +217,7 @@ describe('fitRows — a height written as layout', () => {
     tool.onPointerDown?.(tev('down', a.x, a.y), { node, empty: false });
     tool.onPointerMove?.(tev('move', a.x + 30, a.y + 30), { node, empty: false });
     expect(binder(handle, 'A').busy).toBe(true);
-    expect(binder(handle, 'A').fitRows('a1', 6)).toBe(false);
+    expect(binder(handle, 'A').fitRows!('a1', 6)).toBe(false);
     tool.onPointerUp?.(tev('up', a.x + 30, a.y + 30), { node, empty: false });
     expect(binder(handle, 'A').busy).toBe(false);
   });
@@ -290,5 +305,198 @@ describe('autoHeight — the kit measures the widget', () => {
     await new Promise((r) => setTimeout(r, 200));
     expect(fitRows).toHaveBeenCalledWith('w', rowsForHeight(88, 8, 8));
     ah.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EVERY MODE. The two features were built on a grow grid with sections; these
+// pin what they do everywhere else.
+// ---------------------------------------------------------------------------
+
+const K = (id: string, span: number, rows: number, x: number, y: number): DashboardWidgetSpec => ({ id, kind: 'kpi', span, rows, x, y });
+/** A tab container's strip, stubbed (jsdom lays nothing out); it follows the group. */
+const stubStrip = (api: { container: HTMLElement }, model: DiagramModel, id = 'side', h = 30) => {
+  const g = model.getGroup(id)!;
+  const strip = api.container.querySelector(`.axdb-tabs[data-tabs-id="${id}"]`) as HTMLElement;
+  const live = () => ({ left: g.position.x, top: g.position.y, right: g.position.x + g.size!.width, bottom: g.position.y + h, width: g.size!.width, height: h, x: g.position.x, y: g.position.y, toJSON: () => ({}) });
+  Object.defineProperty(strip, 'getBoundingClientRect', { value: () => live(), configurable: true });
+  return live();
+};
+const marked = (api: { container: HTMLElement }, id = 'side') => !!api.container.querySelector(`.axdb-tabs[data-tabs-id="${id}"].axdb-tabs--drop`);
+const at = (x: number, y: number) => ({ ...tev('move', x, y), screen: { x, y }, source: { target: null } as unknown as PointerEvent });
+const TABS = (layout: 'grid' | 'split', extra: Partial<DashboardOptions> = {}) =>
+  dashboard({
+    columns: 12, width: 1200, height: 600, gap: 10, rowHeight: 60, sizing: 'grow', layout,
+    widgets: [
+      layout === 'split' ? K('nps', 6, 6, 0, 0) : K('nps', 2, 1, 0, 0),
+      { id: 'side', title: 'Side', span: 6, rows: 6, x: 6, y: 0, layout: 'tabs', widgets: [{ id: 'p1', title: 'Filters', columns: 6, widgets: [K('k1', 3, 1, 0, 0)] }] },
+    ],
+    ...extra,
+  });
+const pagesOf = (model: DiagramModel) => [...(model.getGroup('side')!.members ?? [])].filter((m) => !!model.getGroup(m));
+
+describe('canDrop in every mode', () => {
+  it('GRID: a refused tab container — the strip does not mark, a release there makes no tab and no undo step', async () => {
+    const canDrop = jest.fn(({ to }: { to: string }) => to !== 'side');
+    const { api, model } = mount(TABS('grid', { canDrop }));
+    const r = stubStrip(api, model);
+    const tool = toolOf('main');
+    const nps = model.getNode('nps')!;
+    const hit = { node: nps } as never;
+    tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
+    tool.onPointerMove?.(tev('move', nps.position.x + 40, nps.position.y + 26), hit);
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 15), hit);
+    expect(marked(api)).toBe(false);
+    tool.onPointerUp?.(tev('up', r.x + r.width * 0.5, r.top + 15), hit);
+    await settle();
+    expect(pagesOf(model)).toEqual(['p1']);
+    expect(model.getGroup('main')!.members.has('nps')).toBe(true);
+    expect(api.getEngine().commandManager.canUndo()).toBe(false);
+    expect(canDrop).toHaveBeenCalledWith(expect.objectContaining({ widgetId: 'nps', from: 'main', to: 'side' }));
+  });
+
+  const splitStart = (tool: CanvasTool, nps: NodeModel) => {
+    const hit = { node: nps } as never;
+    tool.onPointerDown?.(tev('down', nps.position.x + 20, nps.position.y + 20), hit);
+    tool.onPointerMove?.(at(nps.position.x + 40, nps.position.y + 30), hit);
+    return hit;
+  };
+  const leaves = (model: DiagramModel) => splitLeaves(model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY) as SplitNode | null).sort();
+
+  it('SPLIT: a refused strip makes no tab — the pane stays where it was, no undo step', async () => {
+    const { api, model } = mount(TABS('split', { canDrop: ({ to }) => to !== 'side' }));
+    const r = stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const hit = splitStart(tool, model.getNode('nps')!);
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 15), hit);
+    expect(marked(api)).toBe(false);
+    tool.onPointerUp?.(at(r.x + r.width * 0.5, r.top + 15), hit);
+    await settle();
+    expect(pagesOf(model)).toEqual(['p1']);
+    expect(leaves(model)).toEqual(['nps', 'side']);
+    expect(api.getEngine().commandManager.canUndo()).toBe(false);
+  });
+
+  it('SPLIT: a refused PAGE does not take the widget, and a refusal is never a removal', async () => {
+    const onRemoveRequest = jest.fn();
+    const { api, model } = mount(TABS('split', { canDrop: ({ to }) => to !== 'p1', binder: { dragOut: 'remove', onRemoveRequest } }));
+    const r = stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const hit = splitStart(tool, model.getNode('nps')!);
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 250), hit);
+    tool.onPointerUp?.(at(r.x + r.width * 0.5, r.top + 250), hit);
+    await settle();
+    expect(model.getGroup('p1')!.members.has('nps')).toBe(false);
+    expect(model.getGroup('main')!.members.has('nps')).toBe(true);
+    expect(leaves(model)).toEqual(['nps', 'side']);
+    expect(onRemoveRequest).not.toHaveBeenCalled();
+  });
+
+  it('SPLIT: the same page with no policy still takes the widget (the refusal is the policy, not the mode)', async () => {
+    const { api, model } = mount(TABS('split'));
+    const r = stubStrip(api, model);
+    const tool = splitToolOf('main');
+    const hit = splitStart(tool, model.getNode('nps')!);
+    tool.onPointerMove?.(at(r.x + r.width * 0.5, r.top + 250), hit);
+    tool.onPointerUp?.(at(r.x + r.width * 0.5, r.top + 250), hit);
+    await settle();
+    expect(model.getGroup('p1')!.members.has('nps')).toBe(true);
+  });
+
+  it('FLOAT: a refused column keeps the card home on a float board too', async () => {
+    const { model } = mount(BOARD({ float: true, canDrop: ({ to }) => to !== 'B' }));
+    await drag(model, 'A', 'a1', centre(model, 'b1'));
+    expect(model.getGroup('A')!.members.has('a1')).toBe(true);
+  });
+});
+
+describe('autoHeight in every mode', () => {
+  const frames = () => new Promise<void>((r) => setTimeout(r, 60));
+  /** Paint hosts for `ids` whose natural height is `natural` px; counts the measurements. */
+  const paint = (spec: DashboardSpec, m: ReturnType<typeof mount>, ids: string[], natural = 300) => {
+    const reads = { n: 0 };
+    for (const id of ids) {
+      const host = document.createElement('div');
+      host.className = 'grafloria-node-host';
+      host.dataset['nodeId'] = id;
+      m.api.layer.appendChild(host);
+      Object.defineProperty(host, 'offsetHeight', {
+        configurable: true,
+        get: () => {
+          if (host.style.height !== 'auto') return parseFloat(host.style.height) || 0;
+          reads.n++;
+          return natural;
+        },
+      });
+      Object.defineProperty(host, 'offsetWidth', { configurable: true, get: () => m.model.getNode(id)!.size.width });
+      spec.renderCustomNode(m.model.getNode(id), host);
+    }
+    return reads;
+  };
+
+  it('FIT view: ignored, with ONE warning naming why — rows squeeze to the board there', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const spec = dashboard({ columns: 12, width: 1200, height: 600, sizing: 'fit', autoHeight: true, widgets: [K('w', 4, 2, 0, 0)] });
+    const m = mount(spec);
+    paint(spec, m, ['w']);
+    await frames();
+    m.handle.widget('w')!.repaint();
+    await frames();
+    expect(m.handle.widget('w')!.cell!.h).toBe(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toMatch(/autoHeight is ignored for "w".*fit/);
+  });
+
+  it('a FIT section on a grow view: ignored with a warning — that section cannot grow', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const spec = dashboard({ columns: 12, width: 1200, height: 600, sizing: 'grow', rowHeight: 8, autoHeight: true, widgets: [
+      { id: 'S', span: 6, rows: 8, columns: 1, maxRows: 8, sizing: 'fit', widgets: [{ id: 'c', kind: 'card', span: 1, rows: 3 }] },
+    ] });
+    const m = mount(spec);
+    paint(spec, m, ['c']);
+    await frames();
+    expect(m.handle.widget('c')!.cell!.h).toBe(3);
+    expect(String(warn.mock.calls[0]?.[0])).toMatch(/section "S".*fit/);
+  });
+
+  it('SPLIT view: ignored with a warning — a pane is the tree\'s share', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const spec = dashboard({ columns: 12, width: 1200, height: 600, sizing: 'grow', layout: 'split', autoHeight: true, widgets: [K('a', 6, 4, 0, 0), K('b', 6, 4, 6, 0)] });
+    const m = mount(spec);
+    const tree0 = JSON.stringify(m.model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY));
+    paint(spec, m, ['a', 'b']);
+    await frames();
+    expect(JSON.stringify(m.model.getGroup('main')!.getMetadata(SPLIT_TREE_KEY))).toBe(tree0);
+    expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/split/);
+  });
+
+  it('a TAB PAGE: ignored with a warning — a page\'s height is its container\'s', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const spec = TABS('grid', { autoHeight: true });
+    const m = mount(spec);
+    paint(spec, m, ['k1']);
+    await frames();
+    expect(m.handle.widget('k1')!.cell!.h).toBe(1);
+    expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/"k1".*tab/);
+  });
+
+  it('FLOAT grow board: sizes by content as on a gravity board', async () => {
+    const spec = dashboard({ columns: 12, width: 1200, height: 600, sizing: 'grow', rowHeight: 8, gap: 8, float: true, autoHeight: true, widgets: [K('w', 4, 2, 0, 0)] });
+    const m = mount(spec);
+    paint(spec, m, ['w'], 120);
+    await frames();
+    expect(m.handle.widget('w')!.cell!.h).toBe(rowsForHeight(120, 8, 8));
+    expect(m.api.getEngine().commandManager.canUndo()).toBe(false);
+  });
+
+  it('a board that never asks pays nothing: widgets without autoHeight are never measured', async () => {
+    const spec = dashboard({ columns: 12, width: 1200, height: 600, sizing: 'grow', widgets: [K('w', 4, 2, 0, 0)] });
+    const m = mount(spec);
+    const reads = paint(spec, m, ['w']);
+    await frames();
+    m.handle.refresh();
+    await frames();
+    expect(reads.n).toBe(0);
+    expect(m.handle.widget('w')!.cell!.h).toBe(2);
   });
 });

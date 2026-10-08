@@ -457,9 +457,9 @@ export interface DashboardGridHandle {
    * content shrinks (never below its design). False while a gesture is live
    * (ask again after it) or when the board cannot take the height.
    */
-  fitRows(id: string, h: number): boolean;
+  fitRows?(id: string, h: number): boolean;
   /** Is a pointer gesture live on this board? */
-  readonly busy: boolean;
+  readonly busy?: boolean;
   /**
    * Palette drag-in: `node` is a DETACHED widget node (not yet in the model).
    * A chip follows the cursor; entering the board places the node's item in
@@ -860,6 +860,8 @@ interface GestureState {
   removedFromBoard: boolean;
   /** `canDrop`'s answers this gesture, per board id — asked once, the page's state cannot change mid-drag. */
   dropVerdicts?: Map<string, boolean>;
+  /** The last move was refused by `canDrop`: a release snaps home, whatever `dragOut` and the pointer say. */
+  policyRefused?: boolean;
   /** The board whose adoption refused this tile: the widget then pushes that board's container on ITS parent (D2) instead of asking again every move. */
   refusedPeer?: BinderPeer | null;
   /** Live cross-container adoption, when the pointer is over another board. */
@@ -2256,6 +2258,27 @@ export function bindDashboardGrid(
     // BEFORE any engine is asked anything. The strip still wins over every
     // board; a band's stickiness and the vacated cell still hold a beside.
     const z = resolveTileZone(g, ev);
+    // -- REFUSED BY POLICY (`canDrop`): the board the zone names — a section, a
+    // page, the board beside a container, a strip's tab container — will not
+    // take this tile. Answered like a full board with nowhere to push: the tile
+    // leaves every board it was previewing on (their tiles settle home), dims,
+    // and a release over a board snaps it home. The board it started on is
+    // never asked — a tile can always go back where it came from.
+    const policyTarget = z.kind === 'strip' ? { id: z.containerId } : z.kind === 'plain' || z.kind === 'beside' ? z.board : null;
+    g.policyRefused = !!policyTarget && refusesDrop(g, policyTarget);
+    if (g.policyRefused) {
+      if (g.strip) {
+        options.tabDrop?.markDrop(null, null);
+        g.strip = null;
+      }
+      endBeside(true);
+      leaveSelf();
+      g.refusedPeer = null;
+      showRefusal(null, 0, 0);
+      setDim(g, true);
+      syncPlaceholder();
+      return;
+    }
     if (z.kind === 'strip' && options.tabDrop && !isStatic && g.kind !== 'palette' && g.subject === 'node') {
       // -- INTO A STRIP: the widget becomes a new tab there, so it leaves
       // this board (survivors settle home) and the strip marks the slot.
@@ -2274,20 +2297,6 @@ export function bindDashboardGrid(
     if (g.strip) {
       options.tabDrop?.markDrop(null, null);
       g.strip = null;
-    }
-    // -- REFUSED BY POLICY (`canDrop`): the board the zone names will not take
-    // this tile. Answered like a full board with nowhere to push: the tile
-    // leaves every board it was previewing on (their tiles settle home), dims,
-    // and a release over a board snaps it home. The board it started on is
-    // never asked — a tile can always go back where it came from.
-    if ((z.kind === 'plain' || z.kind === 'beside') && refusesDrop(g, z.board)) {
-      endBeside(true);
-      leaveSelf();
-      g.refusedPeer = null;
-      showRefusal(null, 0, 0);
-      setDim(g, true);
-      syncPlaceholder();
-      return;
     }
     // -- BESIDE a tab container: its outer band puts the widget next to it
     // — at the board's edge the container shifts over to make room, live
@@ -2804,7 +2813,7 @@ export function bindDashboardGrid(
       options.onGesture?.({ type: 'commit', kind: g.kind, nodeId: g.id, changed: true });
       return;
     }
-    if (g.removedFromBoard && (dragOut === 'cancel' || g.subject === 'group')) {
+    if (g.removedFromBoard && (dragOut === 'cancel' || g.subject === 'group' || g.policyRefused)) {
       // Released outside every board on a snap-home board: full restore,
       // nothing committed (the parked-outside release).
       cancelActiveGesture();

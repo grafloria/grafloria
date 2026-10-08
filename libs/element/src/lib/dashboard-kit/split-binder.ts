@@ -74,6 +74,7 @@ export interface DashboardSplitOptions
     | 'removeZone'
     | 'onRemoveRequest'
     | 'onDropIn'
+    | 'canDrop'
     | 'tabDrop'
     | 'onMemberLeaving'
     | 'nesting'
@@ -171,6 +172,10 @@ interface Gesture {
   hostEl: HTMLElement | null;
   /** The pointer captured on the container, so a release outside the canvas still arrives. */
   pointerId: number | null;
+  /** `canDrop` refused the board under the hand: no target, dimmed, and never "out" (a refusal is not a removal). */
+  refused?: boolean;
+  /** `canDrop`'s answers this gesture, per board id. */
+  dropVerdicts?: Map<string, boolean>;
   /** Move: the strip the widget will join as a new tab (0.4.69). */
   strip: { containerId: string; index: number } | null;
   /** Move: the nested board — a tab page, a section — holding the widget for the drop, through its leg (0.4.69). */
@@ -683,6 +688,16 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     if (cell) return { width: Math.max(1, cell.w * (colW + gap) - gap), height: Math.max(1, cell.h * (baseRowHeight + gap) - gap) };
     return g.node ? { width: g.node.size.width, height: g.node.size.height } : { width: colW, height: baseRowHeight };
   };
+  const refusesDrop = (g: Gesture, to: string, ref: unknown): boolean => {
+    if (!options.canDrop || (g.kind !== 'palette' && ref === selfPeerRef)) return false;
+    const verdicts = (g.dropVerdicts ??= new Map());
+    let ok = verdicts.get(to);
+    if (ok === undefined) {
+      ok = options.canDrop({ nodeId: g.id, from: g.kind === 'palette' ? null : group.id, to }) !== false;
+      verdicts.set(to, ok);
+    }
+    return !ok;
+  };
   const endStrip = (g: Gesture): void => {
     if (!g.strip) return;
     options.tabDrop?.markDrop(null, null);
@@ -704,6 +719,18 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
    * the pane under the pointer. Answers the insertion target, or null.
    */
   const zoneTarget = (g: Gesture, z: WalkZone, world: { x: number; y: number }, inside: boolean, px: { width: number; height: number }): DropTarget | null => {
+    // DROP POLICY (`canDrop`), the grid board's rule: the board the zone names
+    // — a strip's container, a section, the board beside a container — may
+    // refuse the tile; this board never refuses its own pane back.
+    const toId = z.kind === 'strip' ? z.containerId : z.kind === 'plain' || z.kind === 'beside' ? z.board.id : null;
+    const toRef = z.kind === 'plain' || z.kind === 'beside' ? z.board.ref : undefined;
+    g.refused = toId !== null && refusesDrop(g, toId, toRef);
+    if (g.refused) {
+      endLeg(g);
+      endStrip(g);
+      g.beside = null;
+      return null;
+    }
     if (z.kind === 'strip') {
       endLeg(g);
       g.beside = null;
@@ -1119,6 +1146,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
     g.target = t ? targetOf(t) : null;
     showInsertion(t ? insertionRect(t.rect, t.side) : null);
     const out =
+      !g.refused &&
       !inside &&
       !t &&
       !g.strip &&
@@ -1126,7 +1154,7 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
       options.dragOut === 'remove' &&
       (!options.removeZone || options.removeZone({ x: ev.screen.x, y: ev.screen.y }, { x: ev.world.x, y: ev.world.y }));
     g.out = out;
-    g.hostEl?.classList.toggle('axdb-out', out);
+    g.hostEl?.classList.toggle('axdb-out', out || !!g.refused);
     api.render();
   };
 
