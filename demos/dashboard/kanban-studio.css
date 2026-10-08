@@ -94,7 +94,7 @@
 #stage .grafloria-node-host.axdb-ghost > .ks-card { transform: rotate(4deg); box-shadow: 0 12px 24px -6px #091e4259, 0 0 1px #091e424f; }
 
 /* ---- a list's header and footer (the section's caption and footer bands) ------- */
-.ks-head { display: flex; align-items: center; gap: 4px; height: 100%; padding: 0 6px 0 8px; cursor: grab; color: var(--ks-list-ink); }
+.ks-head { display: flex; align-items: center; gap: 4px; height: 48px; padding: 0 6px 0 8px; cursor: grab; color: var(--ks-list-ink); }  /* the band is 60 px: 12 px of air above the first card */
 .ks-hname { flex: 1; min-width: 0; padding: 4px 8px; border-radius: 6px; font-weight: 600; font-size: 14px; line-height: 20px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; border: 0; background: transparent; color: inherit; text-align: left; font-family: inherit; }
 .ks-hname:hover { background: var(--ks-list-hover); }
@@ -124,7 +124,7 @@
 
 /* ---- a card -------------------------------------------------------------------- */
 .grafloria-node-host .ks-card { position: relative; box-sizing: border-box; margin: 0 8px; border-radius: 8px; background: var(--ks-card); color: var(--ks-card-ink);
-  box-shadow: var(--ks-card-shadow); overflow: hidden; cursor: pointer; }
+  box-shadow: var(--ks-card-shadow); overflow: hidden; cursor: pointer; transition: transform .18s ease-out, box-shadow .18s ease-out; }
 .grafloria-node-host:hover .ks-card:not(.ks-card--draft) { box-shadow: inset 0 0 0 2px var(--ks-ring), var(--ks-card-shadow); }
 .grafloria-node-host.ks-dim { opacity: .3; }
 .ks-cover { height: 36px; }

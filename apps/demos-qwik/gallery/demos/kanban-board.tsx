@@ -16,7 +16,7 @@ import { markReady } from '../ready';
  *  DOM painted by module functions — no Qwik handler lives inside the board. */
 
 const ROW = 8;        // row unit, px — small, so a card's height rounds up by at most ROW + GAP
-const HEAD_ROWS = 2;  // the column header spans this many parent row units (2 × 16 = 32 px)
+const HEAD_ROWS = 3;  // header band: 36 px of header + 12 px of air above the first card
 const GAP = 8;
 const EMPTY_ROWS = 30; // a stage's inner height in rows when its cards need less: room to drop into
 interface Column { id: string; name: string; wip?: number; tint: string }
@@ -137,7 +137,7 @@ function buildBoard() {
       return {
         id: c.id, title: c.name, span: 3, rows: inner + HEAD_ROWS, columns: 1, pinned: true, movable: 'row', resizable: false,
     background: c.tint, stack: true, // a stage only trades places with the others; a tinted list
-        caption: { text: c.name, height: HEAD_ROWS * (ROW + GAP), background: 'transparent' },
+        caption: { text: c.name, height: HEAD_ROWS * (ROW + GAP), background: 'transparent', border: 'none' },
         maxRows: EMPTY_ROWS,
         widgets: CARDS[c.id].map(cardSpec),
       };
@@ -169,7 +169,7 @@ const CSS = `
   .kbq-page .kb-card .who { margin-left: auto; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
     background: #3b52d9; color: #fff; font-size: 10px; font-weight: 600; }
 
-  .kbq-page .kb-head { display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 6px; white-space: nowrap; overflow: hidden;
+  .kbq-page .kb-head { display: flex; align-items: center; gap: 8px; height: calc(100% - 12px); padding: 0 6px; white-space: nowrap; overflow: hidden;
     font: 600 13px system-ui, sans-serif; color: var(--kb-ink, #1d2330); }
   .kbq-page .kb-head .n { font-weight: 500; color: var(--kb-muted, #5d6576); font-variant-numeric: tabular-nums; }
   .kbq-page .kb-head .n.over { color: #c2410c; font-weight: 700; }

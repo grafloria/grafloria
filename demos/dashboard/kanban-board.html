@@ -32,7 +32,7 @@
   .kb-card .who { margin-left: auto; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
     background: #3b52d9; color: #fff; font-size: 10px; font-weight: 600; }
 
-  .kb-head { display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 6px; white-space: nowrap; overflow: hidden;
+  .kb-head { display: flex; align-items: center; gap: 8px; height: calc(100% - 12px); padding: 0 6px; white-space: nowrap; overflow: hidden;
     font: 600 13px system-ui, sans-serif; color: var(--kb-ink, #1d2330); }
   .kb-head .n { font-weight: 500; color: var(--kb-muted, #5d6576); font-variant-numeric: tabular-nums; }
   .kb-head .n.over { color: #c2410c; font-weight: 700; }
@@ -54,7 +54,7 @@ import { render, dashboard } from '../shell/grafloria.js';
 import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
 
 const ROW = 8;        // row unit, px — small, so a card's height rounds up by at most ROW + GAP
-const HEAD_ROWS = 2;  // the column header spans this many parent row units (2 × 16 = 32 px)
+const HEAD_ROWS = 3;  // the column header spans this many parent row units (3 × 16 = 48 px: 36 px of header, 12 px of air above the first card)
 const GAP = 8;
 const EMPTY_ROWS = 30; // a stage's inner height in rows when its cards need less: room to drop into
 const COLUMNS = [
@@ -172,7 +172,7 @@ function buildSpec() {
         id: c.id, title: c.name, span: 3, rows: inner + HEAD_ROWS, columns: 1, pinned: true, movable: 'row', resizable: false,
         background: c.tint,
         stack: true,   // a list: a card dropped below the last one lands right after it
-        caption: { text: c.name, height: HEAD_ROWS * (ROW + GAP), background: 'transparent' },
+        caption: { text: c.name, height: HEAD_ROWS * (ROW + GAP), background: 'transparent', border: 'none' },
         maxRows: EMPTY_ROWS,
         widgets: CARDS[c.id].map(cardSpec),
       };
@@ -338,12 +338,14 @@ defineDemo({
     const tallH0 = D.getNode('card-2').size.height;
     container.style.width = '760px';
     for (let i = 0; i < 6; i++) await raf();
+    await new Promise((r) => setTimeout(r, 600));   // heights glide to their new size
     await settle();
     checkEqual(clipped().join(','), '', 'at 760 px no card is cut off');
     check(D.getNode('card-2').size.height > tallH0, 'the long card grew as its text re-wrapped');
     for (const c of COLUMNS) check(stacked(c.id), `${c.name}: still a clean stack at 760 px`);
     container.style.width = '';
     for (let i = 0; i < 6; i++) await raf();
+    await new Promise((r) => setTimeout(r, 600));
     await settle();
     checkEqual(D.getNode('card-2').size.height, tallH0, 'back at full width the long card is its old height again');
 

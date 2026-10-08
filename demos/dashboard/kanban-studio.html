@@ -38,7 +38,7 @@ import { buildChrome } from './kanban-studio-chrome.js';
 const { LABELS, MEMBERS, ME, CARDS, BACKDROPS } = DATA;
 const ROW = 4, GAP = 8;               // a small row unit: a card rounds up by at most 12 px
 const UNIT = ROW + GAP;               // one parent row, px
-const HEAD_ROWS = 4, FOOT_ROWS = 4;   // the list header and its "+ Add a card" footer: 48 px each
+const HEAD_ROWS = 5, FOOT_ROWS = 4;   // the list header (48 px of title + 12 px above the first card) and its "+ Add a card" footer (48 px)
 const LIST_W = 272;                   // a list, px
 const MAX_LISTS = 8;                  // the board has room for this many lists
 const GUESS = 8;                      // a card's first-guess rows; autoHeight measures it
@@ -52,7 +52,7 @@ const cardSpec = (d) => ({ id: `c${++seq}`, kind: 'card', span: 1, rows: GUESS, 
 const listSpec = (id, title, cards) => ({
   id, title, span: 1, rows: Math.max(1, cards.length * GUESS) + HEAD_ROWS + FOOT_ROWS, columns: 1, maxRows: 1,
   pinned: true, movable: 'row', resizable: false, stack: true, background: 'var(--ks-list)',
-  caption: { text: title, height: HEAD_ROWS * UNIT, background: 'transparent' },
+  caption: { text: title, height: HEAD_ROWS * UNIT, background: 'transparent', border: 'none' },
   footer: { height: FOOT_ROWS * UNIT },
   widgets: cards.map(cardSpec),
 });
