@@ -1,13 +1,18 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Kanban board — Grafloria</title>
-<meta name="description" content="A Kanban board built on dashboard(): each column is a one-column section with gravity, so cards stack, close gaps and reorder by push; a card dragged across columns is adopted live, one undo per move.">
+<meta name="description" content="A Kanban board from dashboard() data: cards stack in one-column sections, size to their own text (autoHeight), and canDrop keeps them in columns and enforces WIP limits.">
+<link rel="canonical" href="https://grafloria.com/demos/dashboard/kanban-board.html">
+<meta property="og:title" content="Kanban board — Grafloria">
+<meta property="og:description" content="A Kanban board from dashboard() data: cards stack in one-column sections, size to their own text (autoHeight), and canDrop keeps them in columns and enforces WIP limits.">
+<meta property="og:url" content="https://grafloria.com/demos/dashboard/kanban-board.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/dashboard/kanban-board.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/dashboard/kanban-board.png">
 <link rel="stylesheet" href="../shell/demo.css?v=drawer4">
 <style>
   /* ================================================================================
-     LAB PROTOTYPE (lab/kanban-form-designer). The question this page answers: is the
-     dashboard kit's pack grid enough to build a Kanban board, and what is missing?
-     Every column is a CONTAINER with `columns: 1` and gravity on (float off), so its
+     A KANBAN BOARD ON THE PACK GRID. Every column is a CONTAINER with `columns: 1` and gravity on (float off), so its
      cards stack top-down, close the gap a card leaves, and reorder by push. Cards
      are `autoHeight`: the kit measures them and takes whole rows. `canDrop` keeps
      cards inside columns and refuses a column at its WIP limit.
@@ -173,8 +178,8 @@ function buildSpec() {
 }
 
 defineDemo({
-  name: 'Kanban board (lab)',
-  blurb: 'LAB PROTOTYPE — a Kanban board on the dashboard kit, to find what the kit is missing. Each column is a one-column section with gravity: cards stack, a gap closes when a card leaves, a card dropped between two others pushes them down, and a card dragged into another column is adopted live with one undo for the whole move. Card heights come from their content (measured by the page and rounded to rows).',
+  name: 'Kanban board',
+  blurb: 'A Kanban board built from dashboard() data: each column is a one-column section with gravity, so cards stack, a gap closes when a card leaves, and a card dropped between two others pushes them down. A card dragged into another column is adopted live, and one undo puts the whole move back. Cards are autoHeight — as tall as their text, re-measured when the width changes — and canDrop keeps cards inside columns and refuses a column at its WIP limit.',
   howTo: [
     'Drag a card from Backlog into In progress: the column makes room where you hover, and Backlog closes the gap.',
     'Drag a card up or down inside a column to reorder it.',
@@ -189,7 +194,7 @@ defineDemo({
     api = render(spec, ctx.host);
     H = spec.handle;
     ctx.instance = api; ctx.diagram = api.getModel(); ctx.handle = H;
-    window.__lab = { H, api, D: ctx.diagram };   // lab probes
+    window.__lab = { H, api, D: ctx.diagram };   // the e2e probes read the live board
     api.renderNow();
     await ctx.tick();
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));   // the first measure
@@ -309,6 +314,31 @@ defineDemo({
     // ⑤ the board round-trips
     const snap = H.toJSON();
     check(snap.views[0].widgets.every((c) => Array.isArray(c.widgets)), 'toJSON() keeps every column with its cards');
+  },
+
+  async showcase(ctx) {
+    // The money shot: a Backlog card mid-drag into In progress, the column
+    // making room under the placeholder and Backlog closing its gap.
+    const D = ctx.diagram;
+    const container = ctx.host;
+    const toClient = (wx, wy) => ctx.instance.viewport.worldToClient(wx, wy, container.getBoundingClientRect());
+    const pev = (type, cx, cy) => (document.elementFromPoint(cx, cy) ?? container).dispatchEvent(new PointerEvent(type, {
+      clientX: cx, clientY: cy, bubbles: true, cancelable: true, composed: true,
+      pointerId: 99, pointerType: 'mouse', isPrimary: true, button: 0, buttons: 1,
+    }));
+    const byY = (col) => [...D.getGroup(col).members].map((id) => D.getNode(id)).filter(Boolean).sort((a, b) => a.position.y - b.position.y);
+    const card = byY('backlog')[0];
+    const target = byY('doing')[1];
+    const from = { x: card.position.x + card.size.width / 2, y: card.position.y + card.size.height / 2 };
+    const to = { x: target.position.x + target.size.width / 2 + 24, y: target.position.y + 10 };
+    const a = toClient(from.x, from.y);
+    pev('pointerdown', a.x, a.y);
+    for (let i = 1; i <= 10; i++) {
+      const c = toClient(from.x + ((to.x - from.x) * i) / 10, from.y + ((to.y - from.y) * i) / 10);
+      pev('pointermove', c.x, c.y);
+      await ctx.tick(16);
+    }
+    ctx.instance.renderNow();
   },
 });
 </script>
