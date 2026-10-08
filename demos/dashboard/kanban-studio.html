@@ -1,400 +1,520 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Kanban studio — Grafloria</title>
-<meta name="description" content="A team board built from dashboard() options: lists that only trade places, autoHeight cards with labels, due dates and checklists, WIP limits, filters and a card editor.">
+<meta name="description" content="A full team board built from dashboard() options: lists that only trade places, autoHeight cards with covers, labels, due dates and checklists, a card editor with comments, filters, backdrops and undo.">
 <link rel="canonical" href="https://grafloria.com/demos/dashboard/kanban-studio.html">
 <meta property="og:title" content="Kanban studio — Grafloria">
-<meta property="og:description" content="A team board built from dashboard() options: lists that only trade places, autoHeight cards with labels, due dates and checklists, WIP limits, filters and a card editor.">
+<meta property="og:description" content="A full team board built from dashboard() options: lists that only trade places, autoHeight cards with covers, labels, due dates and checklists, a card editor with comments, filters, backdrops and undo.">
 <meta property="og:url" content="https://grafloria.com/demos/dashboard/kanban-studio.html">
 <meta property="og:image" content="https://grafloria.com/demos/thumbs/dashboard/kanban-studio.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://grafloria.com/demos/thumbs/dashboard/kanban-studio.png">
 <link rel="stylesheet" href="../shell/demo.css?v=drawer4">
-<style>
-  /* ================================================================================
-     KANBAN STUDIO — a full team board on the dashboard kit. Lists are sections with
-     `movable: 'row'` (they only trade places), `stack` (a drop lands after the last
-     card) and a `background`; cards are `autoHeight` widgets painted by
-     kanban-studio-card.js; `canDrop` enforces the WIP limits. Everything the board
-     does comes from dashboard() options — the page paints and wires, nothing more.
-     ================================================================================ */
-  #stage {
-    --ks-list: #f1f2f4d9; --ks-list-ink: #172b4d; --ks-list-mut: #44546f;
-    --ks-card: #ffffff; --ks-card-ink: #172b4d; --ks-card-mut: #626f86; --ks-card-line: #091e4224;
-    --ks-card-shadow: 0 1px 1px #091e4240, 0 0 1px #091e424f;
-    --ks-hover: #091e420f; --ks-bar: #0000003d; --ks-bar-ink: #ffffff;
-    --ks-overdue: #ffd5d2; --ks-overdue-ink: #ae2e24; --ks-soon: #f8e6a0; --ks-soon-ink: #7f5f01;
-    --ks-ok: #1f845a; --ks-ok-ink: #ffffff; --ks-accent: #0c66e4;
-    --ks-dialog: #ffffff; --ks-field: #f7f8f9; --ks-field-line: #091e4224;
-    position: relative; height: calc(100vh - 96px); min-height: 600px;
-    display: grid; grid-template-rows: auto minmax(0, 1fr);
-    background: #3b2a63 center / cover no-repeat;
-    font: 14px/20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", Ubuntu, sans-serif;
-    color: var(--ks-list-ink); overflow: hidden;
-  }
-  #stage[data-backdrop="dusk"]   { background-image: url(kanban-studio-backdrop.svg); }
-  #stage[data-backdrop="ocean"]  { background-image: linear-gradient(160deg, #0b3a67 0%, #0e6c8f 45%, #36b7b4 100%); }
-  #stage[data-backdrop="meadow"] { background-image: linear-gradient(160deg, #1f5130 0%, #4e8f3c 50%, #c6d36a 100%); }
-  @media (prefers-color-scheme: dark) {
-    #stage {
-      --ks-list: #101204cc; --ks-list-ink: #b6c2cf; --ks-list-mut: #9fadbc;
-      --ks-card: #22272b; --ks-card-ink: #b6c2cf; --ks-card-mut: #9fadbc; --ks-card-line: #a6c5e229;
-      --ks-card-shadow: 0 1px 1px #03040480, 0 0 1px #03040480;
-      --ks-hover: #a6c5e214; --ks-bar: #00000066;
-      --ks-overdue: #42221f; --ks-overdue-ink: #fd9891; --ks-soon: #533f04; --ks-soon-ink: #f5cd47;
-      --ks-dialog: #323940; --ks-field: #22272b; --ks-field-line: #a6c5e229; --ks-accent: #579dff;
-    }
-  }
-
-  /* ---- the board bar, frosted over the backdrop ------------------------------ */
-  .ks-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px;
-    background: var(--ks-bar); color: var(--ks-bar-ink); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
-  .ks-name { font-size: 18px; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 0; background: transparent; color: inherit;
-    font-family: inherit; min-width: 4ch; max-width: 40ch; }
-  .ks-name:hover, .ks-name:focus { background: #ffffff33; outline: none; }
-  .ks-ibtn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: 4px;
-    background: #ffffff33; color: inherit; font: inherit; font-weight: 500; cursor: pointer; }
-  .ks-ibtn:hover { background: #ffffff4d; }
-  .ks-ibtn[aria-pressed="true"] { background: #ffffffe6; color: #172b4d; }
-  .ks-ibtn:disabled { opacity: .45; cursor: default; }
-  .ks-star { font-size: 16px; padding: 0 8px; }
-  .ks-star[aria-pressed="true"] { background: #ffffff33; color: #f5cd47; }
-  .ks-sp { flex: 1; }
-  .ks-team { display: inline-flex; padding-left: 6px; }
-  .ks-team .ks-av { margin-left: -6px; box-shadow: 0 0 0 2px #ffffffb3; cursor: pointer; }
-  .ks-team .ks-av[aria-pressed="true"] { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--ks-accent); }
-  .ks-filters { display: inline-flex; gap: 4px; }
-  .ks-dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; background: var(--c); cursor: pointer; padding: 0; }
-  .ks-dot[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 2px var(--c); }
-  .ks-search { height: 32px; width: 180px; padding: 0 10px; border-radius: 4px; border: 0; background: #ffffff33; color: inherit; font: inherit; }
-  .ks-search::placeholder { color: #ffffffb3; }
-  .ks-search:focus { background: #ffffff; color: #172b4d; outline: none; }
-  .ks-match { font-size: 12px; opacity: .9; min-width: 7ch; font-variant-numeric: tabular-nums; }
-  .ks-bd { display: inline-flex; gap: 4px; }
-  .ks-bd button { width: 28px; height: 20px; border-radius: 3px; border: 2px solid transparent; cursor: pointer; padding: 0; background: center / cover; }
-  .ks-bd button[aria-pressed="true"] { border-color: #fff; }
-
-  /* ---- the board scrolls sideways like any wide board ----------------------- */
-  .ks-scroll { overflow: auto hidden; min-height: 0; }
-  #canvas { height: 100%; min-width: 100%; }
-  #canvas, #canvas .grafloria-html-layer { background: transparent !important; }
-  /* Lists are frosted glass over the backdrop: translucent (the --ks-list tint the kit paints) and blurred. */
-  #stage .axdb-group-bg { backdrop-filter: blur(10px) saturate(1.2); -webkit-backdrop-filter: blur(10px) saturate(1.2); border-radius: 12px; }
-  #stage .axdb-slab { border-radius: 12px; }
-
-  /* ---- a list's header (painted into the section's caption band) ------------ */
-  .ks-head { display: flex; align-items: center; gap: 6px; height: 100%; padding: 0 6px 0 12px; cursor: grab;
-    font-weight: 600; color: var(--ks-list-ink); white-space: nowrap; overflow: hidden; }
-  .ks-head .ks-hname { overflow: hidden; text-overflow: ellipsis; }
-  .ks-head .ks-count { font-weight: 500; color: var(--ks-list-mut); font-size: 12px; font-variant-numeric: tabular-nums; }
-  .ks-head .ks-count.ks-full { color: var(--ks-overdue-ink); font-weight: 700; }
-  .ks-head button { margin-left: auto; flex: none; width: 28px; height: 28px; border-radius: 6px; border: 0; background: transparent;
-    color: var(--ks-list-mut); font-size: 18px; line-height: 1; cursor: pointer; }
-  .ks-head button:hover { background: var(--ks-hover); color: var(--ks-list-ink); }
-
-  /* ---- a card ---------------------------------------------------------------- */
-  .grafloria-node-host .ks-card { box-sizing: border-box; margin: 0 8px; border-radius: 8px; background: var(--ks-card); color: var(--ks-card-ink);
-    box-shadow: var(--ks-card-shadow); overflow: hidden; cursor: pointer; }
-  .grafloria-node-host:hover .ks-card { outline: 2px solid var(--ks-accent); outline-offset: -2px; }
-  .grafloria-node-host.ks-dim { opacity: .28; }
-  .ks-cover { height: 32px; }
-  .ks-body { padding: 8px 12px 6px; display: grid; gap: 4px; }
-  .ks-labels { display: flex; flex-wrap: wrap; gap: 4px; }
-  .ks-label { font-size: 12px; line-height: 16px; font-weight: 500; padding: 0 8px; border-radius: 4px; background: var(--c); color: #1d2125; }
-  .ks-title { font-size: 14px; line-height: 20px; overflow-wrap: anywhere; }
-  .ks-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 2px; }
-  .ks-badges { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; color: var(--ks-card-mut); font-size: 12px; }
-  .ks-badge { display: inline-flex; align-items: center; gap: 3px; height: 22px; border-radius: 3px; font-variant-numeric: tabular-nums; }
-  .ks-due { padding: 0 4px; }
-  .ks-due--overdue { background: var(--ks-overdue); color: var(--ks-overdue-ink); }
-  .ks-due--soon { background: var(--ks-soon); color: var(--ks-soon-ink); }
-  .ks-due--done, .ks-check--done { background: var(--ks-ok); color: var(--ks-ok-ink); padding: 0 4px; }
-  .ks-people { margin-left: auto; display: inline-flex; gap: 2px; }
-  .ks-av { width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; color: #fff;
-    font-size: 10px; font-weight: 700; flex: none; }
-
-  /* ---- the card dialog -------------------------------------------------------- */
-  .ks-shade { position: absolute; inset: 0; z-index: 50; background: #091e427d; display: grid; justify-items: center;
-    align-items: start; overflow: auto; padding: 40px 16px; }
-  .ks-dialog { position: relative; width: min(720px, 100%); background: var(--ks-dialog); color: var(--ks-card-ink);
-    border-radius: 12px; box-shadow: 0 8px 32px #091e4247; overflow: hidden; }
-  .ks-dlg-cover { height: 96px; }
-  .ks-dlg-x { position: absolute; top: 8px; right: 8px; width: 36px; height: 36px; border-radius: 50%; border: 0;
-    background: #091e420f; color: inherit; font-size: 22px; cursor: pointer; }
-  .ks-dlg-head { padding: 20px 56px 4px 24px; }
-  .ks-dlg-title { width: 100%; box-sizing: border-box; resize: none; border: 0; border-radius: 4px; padding: 4px 8px; margin-left: -8px;
-    background: transparent; color: inherit; font-family: inherit; font-size: 20px; font-weight: 600; line-height: 28px; }
-  .ks-dlg-title:focus { background: var(--ks-field); outline: 2px solid var(--ks-accent); }
-  .ks-dlg-where { font-size: 12px; color: var(--ks-card-mut); }
-  .ks-dlg-grid { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 24px; padding: 8px 24px 24px; }
-  @media (max-width: 640px) { .ks-dlg-grid { grid-template-columns: minmax(0, 1fr); } }
-  .ks-dlg-sec { display: grid; gap: 8px; margin-bottom: 16px; }
-  .ks-dlg-sec h4 { margin: 0; font-size: 12px; font-weight: 600; color: var(--ks-card-mut); letter-spacing: .02em; }
-  .ks-dlg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .ks-chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 4px; cursor: pointer;
-    border: 1px solid var(--ks-field-line); background: var(--ks-field); color: inherit; font: inherit; font-size: 13px; }
-  .ks-chip--label { border-left: 8px solid var(--c); }
-  .ks-chip[aria-pressed="true"] { border-color: var(--ks-accent); box-shadow: inset 0 0 0 1px var(--ks-accent); font-weight: 600; }
-  .ks-chip--label[aria-pressed="true"] { border-left-color: var(--c); }
-  .ks-dlg-desc, .ks-dlg-select, .ks-dlg-add input { box-sizing: border-box; width: 100%; border: 1px solid var(--ks-field-line); border-radius: 4px;
-    background: var(--ks-field); color: inherit; font: inherit; padding: 8px 10px; }
-  .ks-dlg-desc { resize: vertical; min-height: 88px; }
-  .ks-dlg-bar { display: grid; grid-template-columns: 36px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--ks-card-mut); }
-  .ks-dlg-track { height: 8px; border-radius: 4px; background: var(--ks-field-line); overflow: hidden; }
-  .ks-dlg-track > span { display: block; height: 100%; background: var(--ks-accent); transition: width .2s; }
-  .ks-dlg-bar--done .ks-dlg-track > span { background: var(--ks-ok); }
-  .ks-dlg-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-  .ks-dlg-items li { display: flex; align-items: center; gap: 10px; padding: 4px 6px; border-radius: 4px; }
-  .ks-dlg-items li:hover { background: var(--ks-hover); }
-  .ks-dlg-items input { width: 16px; height: 16px; accent-color: var(--ks-accent); }
-  .ks-dlg-items .ks-done { text-decoration: line-through; color: var(--ks-card-mut); }
-  .ks-dlg-add { display: flex; gap: 8px; }
-  .ks-btn { height: 32px; padding: 0 12px; border-radius: 4px; border: 0; background: var(--ks-accent); color: #fff; font: inherit; font-weight: 500; cursor: pointer; }
-  .ks-btn--danger { background: #c9372c; width: 100%; }
-  .ks-dlg-done { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-  .ks-dlg-hint { margin: 0; font-size: 12px; color: var(--ks-card-mut); }
-  :is(.ks-ibtn, .ks-dot, .ks-chip, .ks-btn, .ks-head button, .ks-dlg-x, .ks-bd button):focus-visible { outline: 2px solid #fff; outline-offset: 2px; box-shadow: 0 0 0 4px var(--ks-accent); }
-
-  /* ---- the toast --------------------------------------------------------------- */
-  .ks-toast { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 60; display: flex; gap: 12px; align-items: center;
-    padding: 10px 14px; border-radius: 8px; background: #172b4d; color: #fff; box-shadow: 0 8px 24px #091e4259; font-size: 13px;
-    pointer-events: none; }   /* a toast never swallows a drop on the list under it… */
-  .ks-toast button { pointer-events: auto; /* …only its action takes a click */ border: 0; background: transparent; color: #85b8ff; font: inherit; font-weight: 600; cursor: pointer; }
-  @media (prefers-reduced-motion: reduce) { .ks-dlg-track > span { transition: none; } }
-</style>
+<link rel="stylesheet" href="kanban-studio.css">
 
 <div id="demo-head"></div>
 <div id="stage" data-backdrop="dusk">
-  <div class="ks-bar">
-    <input class="ks-name" id="ks-name" aria-label="Board name">
-    <button class="ks-ibtn ks-star" id="ks-star" type="button" aria-pressed="true" title="Star this board">★</button>
-    <span class="ks-team" id="ks-team" aria-label="Filter by member"></span>
-    <span class="ks-filters" id="ks-filters" aria-label="Filter by label"></span>
-    <input class="ks-search" id="ks-search" type="search" placeholder="Search cards" aria-label="Search cards">
-    <span class="ks-match" id="ks-match" aria-live="polite"></span>
-    <span class="ks-sp"></span>
-    <button class="ks-ibtn" id="ks-undo" type="button" title="Undo (Ctrl+Z)">Undo</button>
-    <button class="ks-ibtn" id="ks-redo" type="button" title="Redo (Ctrl+Shift+Z)">Redo</button>
-    <span class="ks-bd" id="ks-bd" aria-label="Board background"></span>
-  </div>
-  <div class="ks-scroll" id="ks-scroll"><div id="canvas"></div></div>
+  <header class="ks-appbar" id="ks-appbar"></header>
+  <div class="ks-boardbar" id="ks-boardbar"></div>
+  <div class="ks-scroll" id="ks-scroll"><div class="ks-board" id="ks-board"><div id="canvas"></div></div></div>
 </div>
 
 <script type="module">
 import { render, dashboard } from '../shell/grafloria.js';
 import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
-import { BOARD_NAME, LABELS, MEMBERS, LISTS, CARDS, NEW_CARD_TITLES } from './kanban-studio-data.js';
-import { paintCard, openDetails, matches, avatar } from './kanban-studio-card.js';
+import * as DATA from './kanban-studio-data.js';
+import { paintCard, matches, el, icon } from './kanban-studio-card.js';
+import { openCardDialog } from './kanban-studio-dialog.js';
+import { buildChrome } from './kanban-studio-chrome.js';
 
-const ROW = 4, GAP = 8;          // a small row unit: a card rounds up by at most 12 px
-const HEAD_ROWS = 4;             // the list header: 4 × (ROW + GAP) = 48 px
-const LIST_W = 272;              // a list's width, px
-let EMPTY_ROWS = 40;             // a list reaches down the board, so there is always room below its last card (set from the board height)
-const GUESS = 8;                 // a card's first-guess rows; autoHeight measures it
-const ctx = { labels: LABELS, members: MEMBERS };
+/* ================================================================================
+   KANBAN STUDIO — a full team board on the dashboard kit. Lists are sections with
+   `movable: 'row'` (they only trade places), `stack` (a drop lands after the last
+   card), a `background` tint and a `footer` band ("+ Add a card"); new lists come
+   from addWidget({ widgets: [] }); cards are `autoHeight` widgets; `canDrop` holds
+   the WIP limits. The page paints and wires; the board's behaviour is the kit's.
+   Helpers: kanban-studio-{data,art,card,dialog,chrome}.js, styles in kanban-studio.css.
+   ================================================================================ */
+const { LABELS, MEMBERS, ME, CARDS, BACKDROPS } = DATA;
+const ROW = 4, GAP = 8;               // a small row unit: a card rounds up by at most 12 px
+const UNIT = ROW + GAP;               // one parent row, px
+const HEAD_ROWS = 4, FOOT_ROWS = 4;   // the list header and its "+ Add a card" footer: 48 px each
+const LIST_W = 272;                   // a list, px
+const MAX_LISTS = 8;                  // the board has room for this many lists
+const GUESS = 8;                      // a card's first-guess rows; autoHeight measures it
+const ctx = { labels: LABELS, members: MEMBERS, me: ME };
 const stage = document.getElementById('stage');
 
-let H, api, seq = 0;
+let H, api, chrome, seq = 0, listSeq = 0;
+const names = new Map(DATA.LISTS.map((l) => [l.id, l.name]));
+const wips = new Map(DATA.LISTS.filter((l) => l.wip).map((l) => [l.id, l.wip]));
 const cardSpec = (d) => ({ id: `c${++seq}`, kind: 'card', span: 1, rows: GUESS, resizable: false, data: structuredClone(d) });
+const listSpec = (id, title, cards) => ({
+  id, title, span: 1, rows: Math.max(1, cards.length * GUESS) + HEAD_ROWS + FOOT_ROWS, columns: 1, maxRows: 1,
+  pinned: true, movable: 'row', resizable: false, stack: true, background: 'var(--ks-list)',
+  caption: { text: title, height: HEAD_ROWS * UNIT, background: 'transparent' },
+  footer: { height: FOOT_ROWS * UNIT },
+  widgets: cards.map(cardSpec),
+});
 const dataOf = (id) => H.widget(id)?.spec.data;
 
-/* ---- counts, WIP and the drop policy --------------------------------------------- */
-const cardsIn = (listId) => (H?.toJSON().views[0].widgets.find((w) => w.id === listId)?.widgets ?? []).map((w) => w.id);
-const isFull = (listId) => { const l = LISTS.find((x) => x.id === listId); return !!l?.wip && cardsIn(listId).length >= l.wip; };
+/* ---- reading the board ------------------------------------------------------------- */
+const view = () => H.toJSON().views[0];
+/** The lists, left to right, as the board holds them now. */
+const lists = () => view().widgets.filter((w) => w.widgets).sort((a, b) => a.x - b.x).map((w) => ({ id: w.id, name: names.get(w.id) ?? w.title, wip: wips.get(w.id) }));
+const cardsIn = (listId) => (view().widgets.find((w) => w.id === listId)?.widgets ?? []).filter((w) => !w.data?.draft).map((w) => w.id);
+const listOfCard = (id) => lists().find((l) => cardsIn(l.id).includes(id))?.id;
+const isFull = (listId) => { const w = wips.get(listId); return !!w && cardsIn(listId).length >= w; };
+
+/* ---- activity ------------------------------------------------------------------------ */
+const activity = DATA.ACTIVITY.map((a) => ({ ...a }));
+function log(text, cardId, who = ME) {
+  activity.unshift({ who, at: 0, text });
+  if (cardId) { const d = dataOf(cardId); if (d) (d.activity ??= []).push({ who, at: 0, text }); }
+  chrome?.refreshActivity();
+}
+/** Where every card was after the last change — a diff names what moved. */
+let lastPlaces = new Map();
+let lastOrder = '';
+function noteMoves() {
+  const now = new Map();
+  for (const l of lists()) for (const id of cardsIn(l.id)) now.set(id, l.id);
+  for (const [id, to] of now) {
+    const from = lastPlaces.get(id);
+    if (from && from !== to) log(`moved ${dataOf(id)?.title} from ${names.get(from)} to ${names.get(to)}`, id);
+  }
+  const order = lists().map((l) => l.id).join(',');
+  if (lastOrder && order !== lastOrder) {
+    const before = lastOrder.split(','), after = order.split(',');
+    if (before.length === after.length) {
+      const moved = after.find((id, i) => before[i] !== id && after.indexOf(id) - before.indexOf(id) !== 0 && before[i + 1] !== id) ?? after.find((id, i) => before[i] !== id);
+      if (moved) log(`moved list ${names.get(moved)} to position ${after.indexOf(moved) + 1}`);
+    }
+  }
+  lastPlaces = now;
+  lastOrder = order;
+}
+
+/* ---- the drop policy, headers, footers ----------------------------------------------- */
 let lastRefusal = 0;
 function canDrop({ to }) {
-  if (!LISTS.some((l) => l.id === to)) return false;                 // cards live in lists
+  if (!lists().some((l) => l.id === to)) return false;               // cards live in lists
   if (!isFull(to)) return true;
-  if (Date.now() - lastRefusal > 1500) { lastRefusal = Date.now(); toast(`${LISTS.find((l) => l.id === to).name} holds ${LISTS.find((l) => l.id === to).wip} cards — finish one first`); }
+  if (Date.now() - lastRefusal > 1500) { lastRefusal = Date.now(); toast(`${names.get(to)} has a limit of ${wips.get(to)} cards — finish one first`); }
   return false;
 }
-const heads = new Map();
+const heads = new Map();   // listId → { host, count, menu }
 function paintHead(listId, host) {
-  const list = LISTS.find((l) => l.id === listId);
-  if (!list) return;
-  const head = document.createElement('div'); head.className = 'ks-head';
-  const name = document.createElement('span'); name.className = 'ks-hname'; name.textContent = list.name;
-  const count = document.createElement('span'); count.className = 'ks-count';
-  const add = document.createElement('button'); add.type = 'button'; add.textContent = '+'; add.dataset.axdbPass = '';
-  add.title = `Add a card to ${list.name}`; add.setAttribute('aria-label', add.title);
-  add.addEventListener('click', (e) => { e.stopPropagation(); addCard(list.id); });
-  head.append(name, count, add);
+  const head = el('div', 'ks-head');
+  // Not a <button>: a caption's buttons are content and never start a drag. A
+  // click (or Enter) renames; a press-and-drag moves the list, as the whole header does.
+  const name = el('span', 'ks-hname', names.get(listId));
+  name.setAttribute('role', 'button');
+  name.tabIndex = 0;
+  name.title = 'Rename this list';
+  name.addEventListener('click', (e) => { e.stopPropagation(); renameList(listId, host); });
+  name.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); renameList(listId, host); } });
+  const count = el('span', 'ks-count');
+  const menuBtn = el('button', 'ks-hbtn');
+  menuBtn.type = 'button';
+  menuBtn.dataset.axdbPass = '';
+  menuBtn.title = 'List actions';
+  menuBtn.setAttribute('aria-label', 'List actions');
+  menuBtn.append(icon('dots', 16));
+  menuBtn.addEventListener('click', (e) => { e.stopPropagation(); listMenu(listId, menuBtn); });
+  head.append(name, count, menuBtn);
   host.replaceChildren(head);
-  heads.set(listId, { count, add });
-  refreshCounts();
+  heads.set(listId, { host, count, menu: menuBtn });
+  if (H) refreshCounts();
+}
+function renameList(listId, host) {
+  const input = el('input', 'ks-hname-input');
+  input.value = names.get(listId);
+  input.setAttribute('aria-label', 'List name');
+  input.dataset.axdbPass = '';
+  host.querySelector('.ks-hname').replaceWith(input);
+  input.focus(); input.select();
+  let ended = false;
+  const end = (save) => {
+    if (ended) return;
+    ended = true;
+    const v = input.value.trim();
+    if (save && v && v !== names.get(listId)) { log(`renamed list ${names.get(listId)} to ${v}`); names.set(listId, v); }
+    paintHead(listId, host);
+  };
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') end(true); if (e.key === 'Escape') { e.stopPropagation(); end(false); } });
+  input.addEventListener('blur', () => end(true));
+}
+const feet = new Map();   // listId → host
+function paintFoot(listId, host) {
+  if (!host) return;
+  feet.set(listId, host);
+  host.replaceChildren();
+  const band = el('div', 'ks-foot-band');
+  if (draft && draft.listId === listId) {
+    const add = el('button', 'ks-compose-add', 'Add card');
+    add.type = 'button';
+    add.addEventListener('pointerdown', (e) => e.preventDefault());   // keep the composer's focus
+    add.addEventListener('click', () => commitDraft());
+    const x = el('button', 'ks-compose-x');
+    x.type = 'button';
+    x.title = 'Cancel';
+    x.setAttribute('aria-label', 'Cancel');
+    x.append(icon('close', 16));
+    x.addEventListener('pointerdown', (e) => e.preventDefault());
+    x.addEventListener('click', () => cancelDraft());
+    band.append(add, x);
+  } else {
+    const add = el('button', 'ks-addcard');
+    add.type = 'button';
+    add.append(icon('plus', 16), el('span', '', 'Add a card'));
+    add.hidden = !!H && isFull(listId);   // the kit paints footers while the board is still being built
+    add.title = `Add a card to ${names.get(listId)}`;
+    add.addEventListener('click', () => startDraft(listId));
+    band.append(add);
+  }
+  host.append(band);
 }
 function refreshCounts() {
   if (!H) return;
-  for (const l of LISTS) {
+  for (const l of lists()) {
     const h = heads.get(l.id);
-    if (!h) continue;
-    const n = cardsIn(l.id).length;
-    const full = !!l.wip && n >= l.wip;
-    h.count.textContent = l.wip ? `${n} / ${l.wip}` : String(n);
-    h.count.classList.toggle('ks-full', full);
-    h.count.title = l.wip ? `Work-in-progress limit: ${l.wip}` : '';
-    h.add.hidden = full;                         // a full list takes no new card; the count says why
+    if (h) {
+      const n = cardsIn(l.id).length;
+      h.count.textContent = l.wip ? `${n} / ${l.wip}` : '';
+      h.count.title = l.wip ? `Work-in-progress limit: ${l.wip}` : '';
+      h.count.classList.toggle('ks-full', !!l.wip && n >= l.wip);
+    }
+    if (!(draft && draft.listId === l.id)) paintFoot(l.id, feet.get(l.id));
   }
+  placeAddList();
   applyFilter();
 }
 
-/* ---- filter: dims what does not match (the layout never jumps) ------------------- */
-const filter = { labels: new Set(), members: new Set(), text: '' };
+/* ---- list actions ------------------------------------------------------------------- */
+function listMenu(listId, anchor) {
+  stage.querySelector('.ks-menu')?.remove();
+  const m = el('div', 'ks-menu');
+  m.style.width = '304px';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-label', 'List actions');
+  const head = el('div', 'ks-pop-head');
+  const x = el('button', 'ks-pop-x'); x.type = 'button'; x.setAttribute('aria-label', 'Close'); x.append(icon('close'));
+  head.append(el('span', '', 'List actions'), x);
+  const body = el('div', 'ks-pop-body');
+  const item = (text, fn) => { const b = el('button', 'ks-drawer-item', text); b.type = 'button'; b.addEventListener('click', () => { close(); fn(); }); body.append(b); return b; };
+  item('Add card', () => startDraft(listId));
+  body.append(el('h5', '', 'Work-in-progress limit'));
+  const limit = el('form', 'ks-row');
+  const n = el('input', 'ks-field');
+  n.type = 'number'; n.min = '0'; n.max = '50'; n.id = 'ks-wip-input';
+  n.value = String(wips.get(listId) ?? '');
+  n.placeholder = 'No limit';
+  n.setAttribute('aria-label', 'Most cards this list takes');
+  const set = el('button', 'ks-btn', 'Set'); set.type = 'submit';
+  limit.append(n, set);
+  limit.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = Number(n.value);
+    if (v > 0) wips.set(listId, v); else wips.delete(listId);
+    log(v > 0 ? `set a limit of ${v} cards on ${names.get(listId)}` : `removed the limit on ${names.get(listId)}`);
+    close(); refreshCounts();
+  });
+  body.append(limit);
+  const arch = item('Archive this list', () => {
+    const name = names.get(listId);
+    H.widget(listId)?.remove();
+    log(`archived list ${name}`);
+    setTimeout(refreshCounts, 0);
+    toast(`List archived: ${name}`, 'Undo', undo);
+  });
+  arch.id = 'ks-archive-list';
+  m.append(head, body);
+  stage.append(m);
+  const a = anchor.getBoundingClientRect(), s = stage.getBoundingClientRect();
+  m.style.left = `${Math.max(8, Math.min(a.left - s.left, s.width - 312))}px`;
+  m.style.top = `${a.bottom - s.top + 6}px`;
+  anchor.setAttribute('aria-expanded', 'true');
+  const close = () => { m.remove(); anchor.setAttribute('aria-expanded', 'false'); document.removeEventListener('pointerdown', outside, true); };
+  const outside = (e) => { if (!m.contains(e.target) && !anchor.contains(e.target)) close(); };
+  x.addEventListener('click', close);
+  setTimeout(() => document.addEventListener('pointerdown', outside, true));
+}
+
+/* ---- "+ Add another list" ----------------------------------------------------------------- */
+const addList = el('div', 'ks-addlist');
+function placeAddList() {
+  const n = lists().length;
+  addList.hidden = n >= MAX_LISTS;
+  addList.style.left = `${GAP + n * (LIST_W + GAP)}px`;
+}
+function paintAddList(open) {
+  addList.replaceChildren();
+  if (!open) {
+    const b = el('button');
+    b.type = 'button';
+    b.id = 'ks-addlist-open';
+    b.append(icon('plus', 16), el('span', '', lists().length ? 'Add another list' : 'Add a list'));
+    b.addEventListener('click', () => paintAddList(true));
+    addList.append(b);
+    return;
+  }
+  const form = el('form');
+  const input = el('input');
+  input.id = 'ks-addlist-name';
+  input.placeholder = 'Enter list name…';
+  input.setAttribute('aria-label', 'List name');
+  const row = el('div', 'ks-row');
+  const add = el('button', 'ks-compose-add', 'Add list'); add.type = 'submit';
+  const x = el('button', 'ks-compose-x'); x.type = 'button'; x.setAttribute('aria-label', 'Cancel'); x.append(icon('close', 16));
+  x.addEventListener('click', () => paintAddList(false));
+  row.append(add, x);
+  form.append(input, row);
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!name) return input.focus();
+    const id = `list-${++listSeq}`;
+    names.set(id, name);
+    const w = H.addWidget({ ...listSpec(id, name, []), x: lists().length, y: 0 });
+    if (w) { log(`added list ${name} to this board`); placeAddList(); paintAddList(true); }
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); paintAddList(false); } });
+  addList.append(form);
+  input.focus();
+}
+
+/* ---- the composer: a draft card at the end of a list ---------------------------------------- */
+let draft = null;   // { listId, id, at: the history index before its add }
+function startDraft(listId) {
+  if (draft) finishDraft();
+  if (isFull(listId)) { toast(`${names.get(listId)} has a limit of ${wips.get(listId)} cards`); return; }
+  const at = cmd().currentIndex;
+  const w = H.addWidget(cardSpec({ draft: true, title: '' }), listId);
+  if (!w) return;
+  draft = { listId, id: w.id, at };
+  paintFoot(listId, feet.get(listId));
+  requestAnimationFrame(() => requestAnimationFrame(() => focusDraft()));
+}
+function focusDraft() {
+  const ta = draft && document.querySelector(`.grafloria-node-host[data-node-id="${draft.id}"] .ks-draft`);
+  if (!ta) return;
+  ta.focus();
+  ta.oninput = () => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight}px`; };
+  ta.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commitDraft(); }
+    if (e.key === 'Escape') { e.stopPropagation(); cancelDraft(); }
+  };
+  ta.onblur = () => setTimeout(() => { if (draft && document.activeElement !== ta) finishDraft(); }, 150);
+}
+function draftText() { return document.querySelector(`.grafloria-node-host[data-node-id="${draft?.id}"] .ks-draft`)?.value.trim() ?? ''; }
+/** Enter / "Add card": the draft becomes a card, and a fresh draft opens under it. */
+function commitDraft() {
+  if (!draft) return;
+  const title = draftText();
+  if (!title) return focusDraft();
+  const { listId, id } = draft;
+  H.widget(id)?.update({ data: { title, labels: [], members: [], activity: [{ who: ME, at: 0, text: `added this card to ${names.get(listId)}` }] } });
+  log(`added ${title} to ${names.get(listId)}`);
+  draft = null;
+  refreshCounts();
+  startDraft(listId);
+}
+/** Blur: a draft with text is kept, an empty one goes. */
+function finishDraft() { if (draftText()) commitDraft(); else cancelDraft(); }
+/** × / Esc: the empty draft goes without a trace — its add is undone, not answered with a remove. */
+function cancelDraft() {
+  if (!draft) return;
+  const { listId, id, at } = draft;
+  draft = null;
+  const cm = cmd();
+  // Nothing happened since the draft's add (typing is not a step): undo it, so
+  // the history never holds a card that only ever was a draft.
+  if (cm.currentIndex === at + 1) cm.undo(); else H.widget(id)?.remove();
+  paintFoot(listId, feet.get(listId));
+  setTimeout(() => { refreshCounts(); syncUndo(); }, 0);
+}
+
+/* ---- filters --------------------------------------------------------------------------------- */
+const filter = { labels: new Set(), members: new Set(), due: new Set(), text: '' };
 function applyFilter() {
   if (!H) return;
-  const on = filter.labels.size || filter.members.size || filter.text;
+  const on = filter.labels.size || filter.members.size || filter.due.size || filter.text;
   let shown = 0, total = 0;
-  for (const l of LISTS) for (const id of cardsIn(l.id)) {
+  for (const l of lists()) for (const id of cardsIn(l.id)) {
     total++;
     const ok = !on || matches(dataOf(id), filter);
     if (ok) shown++;
     document.querySelector(`.grafloria-node-host[data-node-id="${id}"]`)?.classList.toggle('ks-dim', !ok);
   }
-  document.getElementById('ks-match').textContent = on ? `${shown} of ${total}` : '';
+  chrome?.setMatch(on ? `${shown} of ${total} cards` : '');
 }
 
-/* ---- add, edit, delete ----------------------------------------------------------- */
-function addCard(listId) {
-  if (isFull(listId)) return undefined;
-  const w = H.addWidget(cardSpec({ title: NEW_CARD_TITLES[seq % NEW_CARD_TITLES.length], labels: [], members: [] }), listId);
-  refreshCounts();
-  if (w) toast('Card added — click it to fill it in');
-  return w;
-}
+/* ---- cards: one delegated listener for the face's controls; a click opens the card ------------ */
 let dialog = null;
+function updateCard(id, next) { H.widget(id)?.update({ data: next }); applyFilter(); }
 function openCard(id) {
   const d = dataOf(id);
-  if (!d) return;
-  const listId = LISTS.find((l) => cardsIn(l.id).includes(id))?.id;
+  if (!d || d.draft) return;
   dialog?.close();
-  dialog = openDetails(stage, d, ctx, {
-    listName: LISTS.find((l) => l.id === listId)?.name ?? '',
-    onChange: (next) => { H.widget(id)?.update({ data: next }); applyFilter(); },   // repaint → autoHeight re-measures
-    onDelete: () => { H.widget(id)?.remove(); refreshCounts(); toast('Card deleted', 'Undo', undo); },
+  dialog = openCardDialog(stage, {
+    card: d, cardId: id, listId: listOfCard(id), lists: lists(), ctx,
+    onChange: (next) => updateCard(id, next),
+    onArchive: () => { const t = dataOf(id)?.title; H.widget(id)?.remove(); log(`archived ${t}`); setTimeout(refreshCounts, 0); toast(`Card archived: ${t}`, 'Undo', undo); },
+    onCopy: (copy) => {
+      const to = listOfCard(id);
+      if (isFull(to)) return toast(`${names.get(to)} has a limit of ${wips.get(to)} cards`);
+      const w = H.addWidget(cardSpec({ ...copy, title: `${copy.title} (copy)`, comments: undefined, activity: [] }), to);
+      if (w) { log(`copied ${copy.title} in ${names.get(to)}`); toast('Card copied'); setTimeout(refreshCounts, 0); }
+    },
+    onMove: (to) => moveCard(id, to),
+    log: (text) => log(text, id),
+    onClose: () => { dialog = null; },
   });
 }
-// A click on a card (press and release in place) opens it; a drag never does.
-let press = null;
-document.getElementById('canvas').addEventListener('pointerdown', (e) => {
+/** "Move" from the dialog: the card leaves one list and joins the end of another. */
+function moveCard(id, to) {
+  if (isFull(to)) return toast(`${names.get(to)} has a limit of ${wips.get(to)} cards`);
+  const d = structuredClone(dataOf(id));
+  const from = listOfCard(id);
+  H.widget(id)?.remove();
+  const w = H.addWidget({ id, kind: 'card', span: 1, rows: GUESS, resizable: false, data: d }, to);
+  if (w) log(`moved ${d.title} from ${names.get(from)} to ${names.get(to)}`, id);
+  setTimeout(refreshCounts, 0);
+}
+const canvas = document.getElementById('canvas');
+canvas.addEventListener('click', (e) => {
+  const actEl = e.target.closest?.('[data-act]');
   const host = e.target.closest?.('.grafloria-node-host');
-  press = host && e.target.closest('[data-card]') ? { id: host.dataset.nodeId, x: e.clientX, y: e.clientY } : null;
+  if (!actEl || !host) return;
+  e.stopPropagation();
+  const id = host.dataset.nodeId;
+  const d = structuredClone(dataOf(id));
+  switch (actEl.dataset.act) {
+    case 'complete':
+      d.complete = !d.complete;
+      updateCard(id, d);
+      log(`marked ${d.title} as ${d.complete ? 'complete' : 'incomplete'}`, id);
+      break;
+    case 'due':
+      d.due.done = !d.due.done;
+      updateCard(id, d);
+      log(`marked the due date on ${d.title} ${d.due.done ? 'complete' : 'incomplete'}`, id);
+      break;
+    case 'labels':
+      stage.classList.toggle('ks-labels-min');
+      H.refresh();   // every label row changed height: autoHeight measures each card again
+      break;
+    case 'open':
+      openCard(id);
+      break;
+  }
+});
+let press = null;
+canvas.addEventListener('pointerdown', (e) => {
+  const host = e.target.closest?.('.grafloria-node-host');
+  press = host && e.target.closest('[data-card]') && !e.target.closest('[data-act], textarea') ? { id: host.dataset.nodeId, x: e.clientX, y: e.clientY } : null;
 }, true);
 window.addEventListener('pointerup', (e) => {
   const p = press; press = null;
   if (p && Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y) < 5) openCard(p.id);
 }, true);
 
-/* ---- undo, toast ----------------------------------------------------------------- */
+/* ---- drag the backdrop to scroll the board --------------------------------------------------- */
+const scroller = document.getElementById('ks-scroll');
+scroller.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0 || e.target.closest('.grafloria-node-host, .axdb-slab, .ks-addlist, button, input, textarea, select')) return;
+  const overList = [...stage.querySelectorAll('.axdb-slab[data-slab-id]')].some((s) => { const r = s.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; });
+  if (overList) return;
+  e.preventDefault(); e.stopPropagation();
+  const x0 = e.clientX, left0 = scroller.scrollLeft;
+  scroller.classList.add('ks-panning');
+  const move = (ev) => { scroller.scrollLeft = left0 - (ev.clientX - x0); };
+  const up = () => { scroller.classList.remove('ks-panning'); window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', up, true); };
+  window.addEventListener('pointermove', move, true);
+  window.addEventListener('pointerup', up, true);
+}, true);
+
+/* ---- undo, toast, backdrops, keyboard --------------------------------------------------------- */
 const cmd = () => api.getEngine().commandManager;
 async function undo() { if (cmd().canUndo()) { await cmd().undo(); refreshCounts(); } syncUndo(); }
 async function redo() { if (cmd().canRedo()) { await cmd().redo(); refreshCounts(); } syncUndo(); }
-function syncUndo() {
-  document.getElementById('ks-undo').disabled = !cmd().canUndo();
-  document.getElementById('ks-redo').disabled = !cmd().canRedo();
-}
+const syncUndo = () => chrome?.syncUndo(cmd().canUndo(), cmd().canRedo());
 let toastTimer = 0;
 function toast(text, action, fn) {
   stage.querySelector('.ks-toast')?.remove();
-  const t = document.createElement('div'); t.className = 'ks-toast'; t.setAttribute('role', 'status');
-  t.append(Object.assign(document.createElement('span'), { textContent: text }));
-  if (action) { const b = document.createElement('button'); b.type = 'button'; b.textContent = action; b.addEventListener('click', () => { fn(); t.remove(); }); t.append(b); }
+  const t = el('div', 'ks-toast');
+  t.setAttribute('role', 'status');
+  t.append(el('span', '', text));
+  if (action) { const b = el('button', '', action); b.type = 'button'; b.addEventListener('click', () => { fn(); t.remove(); }); t.append(b); }
   stage.append(t);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.remove(), 4000);
+  toastTimer = setTimeout(() => t.remove(), 5000);
 }
-
-/* ---- the board bar ----------------------------------------------------------------- */
-function buildBar() {
-  const name = document.getElementById('ks-name');
-  name.value = BOARD_NAME;
-  name.size = Math.max(4, name.value.length);
-  name.addEventListener('input', () => { name.size = Math.max(4, name.value.length); });
-  const star = document.getElementById('ks-star');
-  star.addEventListener('click', () => star.setAttribute('aria-pressed', String(star.getAttribute('aria-pressed') !== 'true')));
-  const team = document.getElementById('ks-team');
-  for (const m of MEMBERS) {
-    const a = avatar(m); a.setAttribute('role', 'button'); a.tabIndex = 0; a.setAttribute('aria-pressed', 'false');
-    a.title = `Show ${m.name}'s cards`;
-    const toggle = () => { filter.members.has(m.id) ? filter.members.delete(m.id) : filter.members.add(m.id); a.setAttribute('aria-pressed', String(filter.members.has(m.id))); applyFilter(); };
-    a.addEventListener('click', toggle);
-    a.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
-    team.append(a);
-  }
-  const dots = document.getElementById('ks-filters');
-  for (const l of LABELS) {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'ks-dot'; b.style.setProperty('--c', l.color);
-    b.title = `Show ${l.name} cards`; b.setAttribute('aria-label', b.title); b.setAttribute('aria-pressed', 'false'); b.dataset.label = l.id;
-    b.addEventListener('click', () => { filter.labels.has(l.id) ? filter.labels.delete(l.id) : filter.labels.add(l.id); b.setAttribute('aria-pressed', String(filter.labels.has(l.id))); applyFilter(); });
-    dots.append(b);
-  }
-  document.getElementById('ks-search').addEventListener('input', (e) => { filter.text = e.target.value.trim(); applyFilter(); });
-  document.getElementById('ks-undo').addEventListener('click', undo);
-  document.getElementById('ks-redo').addEventListener('click', redo);
-  const bd = document.getElementById('ks-bd');
-  const BACKDROPS = [['dusk', 'Dusk', 'url(kanban-studio-backdrop.svg)'], ['ocean', 'Ocean', 'linear-gradient(160deg, #0b3a67, #36b7b4)'], ['meadow', 'Meadow', 'linear-gradient(160deg, #1f5130, #c6d36a)']];
-  let saved = 'dusk';
-  try { saved = localStorage.getItem('ks-backdrop') || 'dusk'; } catch { /* storage may be blocked */ }
-  for (const [key, label, bg] of BACKDROPS) {
-    const b = document.createElement('button'); b.type = 'button'; b.title = `${label} background`; b.setAttribute('aria-label', b.title);
-    b.style.backgroundImage = bg; b.dataset.backdrop = key;
-    b.addEventListener('click', () => setBackdrop(key));
-    bd.append(b);
-  }
-  const setBackdrop = (key) => {
-    stage.dataset.backdrop = key;
-    for (const b of bd.children) b.setAttribute('aria-pressed', String(b.dataset.backdrop === key));
-    try { localStorage.setItem('ks-backdrop', key); } catch { /* fine without */ }
-  };
-  setBackdrop(BACKDROPS.some(([k]) => k === saved) ? saved : 'dusk');
-  window.addEventListener('keydown', (e) => {
-    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z' || stage.querySelector('.ks-shade')) return;
-    if (/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName)) return;
-    e.preventDefault(); (e.shiftKey ? redo : undo)();
-  });
+let backdrop = 'dusk';
+function setBackdrop(key) {
+  const b = BACKDROPS.find((x) => x.key === key) ?? BACKDROPS[0];
+  backdrop = b.key;
+  stage.dataset.backdrop = b.key;
+  stage.style.backgroundImage = b.image ? `url(${b.image})` : 'none';
+  stage.style.backgroundColor = b.color ?? '#3b2a63';
+  try { localStorage.setItem('ks-backdrop', b.key); } catch { /* fine without */ }
 }
+window.addEventListener('keydown', (e) => {
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || stage.querySelector('.ks-shade')) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); (e.shiftKey ? redo : undo)(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'f') { e.preventDefault(); chrome.openFilter(); }
+  else if (e.key === 'q') { filter.members.has(ME) ? filter.members.delete(ME) : filter.members.add(ME); applyFilter(); chrome.syncFilterBtn(); }
+  else if (e.key === 'x') { filter.labels.clear(); filter.members.clear(); filter.due.clear(); filter.text = ''; applyFilter(); chrome.syncFilterBtn(); }
+  else if (e.key === '?') { chrome.shortcuts(); }
+});
 
-/* ---- the board ------------------------------------------------------------------- */
+/* ---- the board -------------------------------------------------------------------------------- */
 function buildSpec() {
   return dashboard({
-    columns: LISTS.length,
+    columns: MAX_LISTS,
     gap: GAP,
     sizing: 'grow',
     rowHeight: ROW,
     float: false,
     autoHeight: true,
     canDrop,
-    widgets: LISTS.map((l) => {
-      const inner = Math.max(EMPTY_ROWS, CARDS[l.id].length * GUESS);
-      return {
-        id: l.id, title: l.name, span: 1, rows: inner + HEAD_ROWS, columns: 1, maxRows: EMPTY_ROWS,
-        pinned: true, movable: 'row', resizable: false, stack: true, background: 'var(--ks-list)',
-        caption: { text: l.name, height: HEAD_ROWS * (ROW + GAP), background: 'transparent' },
-        widgets: CARDS[l.id].map(cardSpec),
-      };
-    }),
+    widgets: DATA.LISTS.map((l) => listSpec(l.id, l.name, CARDS[l.id])),
     renderWidget: (w, host) => { if (w.kind === 'card') paintCard(host, w.data, ctx); },
     renderCaption: (w, host) => paintHead(w.id, host),
-    onLayoutChange: () => { refreshCounts(); syncUndo(); },
+    renderFooter: (w, host) => paintFoot(w.id, host),
+    onLayoutChange: () => {
+      refreshCounts();
+      syncUndo();
+      try { noteMoves(); } catch (e) { console.error('noteMoves', e); }
+    },
   });
 }
 
 defineDemo({
   name: 'Kanban studio',
-  blurb: 'A team board built entirely from dashboard() options. Lists are sections that only trade places with each other (movable: \'row\'), keep their cards in order (stack) and carry a tint (background); cards are autoHeight widgets with labels, due dates, checklists and people; canDrop holds the work-in-progress limits. Click a card to edit it — the card grows and shrinks with what you write. Filter by label, person or text; switch the backdrop; undo anything.',
+  blurb: 'A full team board built from dashboard() options. Lists are sections that only trade places (movable: \'row\'), keep their cards in order (stack), carry a frosted tint (background) and an "Add a card" footer; new lists come from addWidget. Cards are autoHeight widgets with covers, labels, due dates, checklists and people; canDrop holds the work-in-progress limits. Click a card for the full editor — description, checklist, attachments, comments, cover, move, copy, archive — and it resizes as you go.',
   howTo: [
-    'Drag a card to another list: the list it will land in gets a blue ring. "In progress" holds 4 and "In review" 3 — a full list rings orange, refuses the card and says why.',
-    'Drag a list by its header to reorder the lists. A list never drops into another list.',
-    'Click a card to open it: add a checklist item, tick items, write a description, change labels or the due date. The card resizes as you go.',
-    'Use the coloured dots, the avatars or the search box to filter: cards that do not match fade out.',
-    'Press + on a list to add a card, Undo to take any change back, and pick a background on the right of the bar.',
+    'Drag a card to another list — it tilts in your hand and the list it will land in is ringed. "In progress" holds 4 and "In review" 3: a full list rings red, refuses the card and says why.',
+    'Drag a list by its header to reorder the lists. Click a list\'s name to rename it; its ⋯ menu sets a limit or archives it. "Add another list" adds one.',
+    'Press "Add a card" at the bottom of a list, type a title and press Enter — the composer stays open for the next card. Esc closes it.',
+    'Click a card to open it: add checklist items, comments, attachments, a cover or a due date; move, copy or archive it. Hover a card for its complete circle and the quick-edit pencil; click a label to collapse every label to a bar.',
+    'Filter from the Filters button (or press F; Q shows only your cards), search from the app bar, change the background from the ⋯ menu, and drag the empty backdrop to scroll. Ctrl+Z undoes.',
   ],
 
   async setup(c) {
-    buildBar();
-    const canvas = document.getElementById('canvas');
-    canvas.style.width = `${LISTS.length * (LIST_W + GAP) + GAP}px`;
-    // Lists run to just above the bottom edge: the board's height in rows, less the header and a margin.
-    EMPTY_ROWS = Math.max(20, Math.floor((canvas.clientHeight - 2 * GAP - 24) / (ROW + GAP)) - HEAD_ROWS);
+    chrome = buildChrome(document.getElementById('ks-appbar'), document.getElementById('ks-boardbar'), {
+      stage, data: DATA, filter,
+      onFilter: applyFilter, onBackdrop: setBackdrop, onUndo: undo, onRedo: redo,
+      activity: () => activity, backdropKey: () => backdrop,
+    });
+    let saved = 'dusk';
+    try { saved = localStorage.getItem('ks-backdrop') || 'dusk'; } catch { /* storage may be blocked */ }
+    setBackdrop(saved);
+    canvas.style.width = `${MAX_LISTS * (LIST_W + GAP) + GAP}px`;
+    document.getElementById('ks-board').style.width = canvas.style.width;
+    document.getElementById('ks-board').append(addList);
     const spec = buildSpec();
     api = render(spec, c.host);
     H = spec.handle;
@@ -403,145 +523,195 @@ defineDemo({
     api.renderNow();
     await c.tick();
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    paintAddList(false);
+    noteMoves();
     refreshCounts();
     syncUndo();
   },
 
   async assert(c) {
     const D = c.diagram;
-    const cm = cmd();
     const container = c.host;
     const settle = async () => { c.instance.renderNow(); await c.tick(); };
     const raf = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const frames = async (n = 4) => { for (let i = 0; i < n; i++) await raf(); await settle(); };
     const toClient = (wx, wy) => c.instance.viewport.worldToClient(wx, wy, container.getBoundingClientRect());
     let PID = 70;
     const pev = (type, cx, cy) => (document.elementFromPoint(cx, cy) ?? container).dispatchEvent(new PointerEvent(type, {
       clientX: cx, clientY: cy, bubbles: true, cancelable: true, composed: true,
       pointerId: PID, pointerType: 'mouse', isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1,
     }));
-    const hold = async (from, to, steps = 12) => {
+    const hold = async (from, to, steps = 14) => {
       PID++;
       const a = toClient(from.x, from.y); pev('pointerdown', a.x, a.y);
       for (let i = 1; i <= steps; i++) { const p = toClient(from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps); pev('pointermove', p.x, p.y); await raf(); }
       return async () => { const p = toClient(to.x, to.y); pev('pointerup', p.x, p.y); await settle(); };
     };
-    const drag = async (from, to) => (await hold(from, to))();
-    const centre = (n) => ({ x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 });
+    const grab = (n) => ({ x: n.position.x + n.size.width / 2, y: n.position.y + Math.min(n.size.height / 2, 30) });
     const order = (list) => [...D.getGroup(list).members].map((id) => D.getNode(id)).filter(Boolean).sort((a, b) => a.position.y - b.position.y).map((n) => n.id);
     const ring = (id) => { const e = container.querySelector(`.axdb-slab[data-slab-id="${id}"]`); return e?.classList.contains('axdb-slab--refused') ? 'refused' : e?.classList.contains('axdb-slab--drop') ? 'drop' : 'none'; };
     const clipped = () => [...container.querySelectorAll('.grafloria-node-host .ks-card')].filter((e) => e.offsetHeight > e.parentElement.clientHeight + 1).length;
-    const listOrder = () => LISTS.map((l) => D.getGroup(l.id)).sort((a, b) => a.position.x - b.position.x).map((g) => g.id).join(',');
-    const clickCard = async (id) => {
-      const host = container.querySelector(`.grafloria-node-host[data-node-id="${id}"] .ks-title`);
-      const r = host.getBoundingClientRect();
-      PID++; pev('pointerdown', r.x + 10, r.y + 6); pev('pointerup', r.x + 10, r.y + 6); await settle();
-    };
+    const listOrder = () => lists().map((l) => l.id).join(',');
+    const hostOf = (id) => container.querySelector(`.grafloria-node-host[data-node-id="${id}"]`);
+    const clickCard = async (id) => { const r = hostOf(id).querySelector('.ks-title').getBoundingClientRect(); PID++; pev('pointerdown', r.x + 6, r.y + 6); pev('pointerup', r.x + 6, r.y + 6); await settle(); };
+    const footBtn = (list) => container.querySelector(`.axdb-slab[data-slab-id="${list}"] .ks-addcard`);
+    const overFoot = (list) => { const g = D.getGroup(list); return { x: g.position.x + g.size.width / 2, y: g.position.y + g.size.height - 16 }; };
     await settle();
 
     // ① the board
     checkEqual(listOrder(), 'backlog,todo,doing,review,done', 'five lists, in order');
-    checkEqual(LISTS.reduce((n, l) => n + cardsIn(l.id).length, 0), 15, 'fifteen cards');
+    checkEqual(lists().reduce((n, l) => n + cardsIn(l.id).length, 0), 15, 'fifteen cards');
     checkEqual(clipped(), 0, 'no card is cut off');
-    check(LISTS.every((l) => container.querySelector(`.axdb-group-bg[data-group-bg="${l.id}"]`)), 'every list paints its surface');
+    check(lists().every((l) => footBtn(l.id)), 'every list ends in "Add a card"');
+    const doingG = D.getGroup('doing');
+    const lastDoing = D.getNode(order('doing').at(-1));
+    check(doingG.position.y + doingG.size.height - (lastDoing.position.y + lastDoing.size.height) <= FOOT_ROWS * UNIT + UNIT, 'lists hug their cards: the footer sits right under the last one');
     check(getComputedStyle(stage).backgroundImage.includes('kanban-studio-backdrop.svg'), 'the dusk backdrop is on');
+    check(!!container.querySelector('.ks-card--full'), 'a full-cover card is on the board');
+    check(!!document.getElementById('ks-addlist-open'), '"Add another list" sits after the last list');
 
     // ② filters fade what does not match, and never move anything
-    const posBefore = JSON.stringify(cardsIn('doing').map((id) => D.getNode(id).position));
-    document.querySelector('.ks-dot[data-label="bug"]').click();
-    const dimmed = container.querySelectorAll('.grafloria-node-host.ks-dim').length;
-    checkEqual(dimmed, 13, 'the Bug filter fades the 13 cards without that label');
-    checkEqual(JSON.stringify(cardsIn('doing').map((id) => D.getNode(id).position)), posBefore, 'and nothing moved');
-    document.querySelector('.ks-dot[data-label="bug"]').click();
-    const search = document.getElementById('ks-search');
-    search.value = 'page'; search.dispatchEvent(new Event('input'));
-    checkEqual(document.getElementById('ks-match').textContent, '2 of 15', 'searching "page" matches two cards');
-    search.value = ''; search.dispatchEvent(new Event('input'));
-    checkEqual(container.querySelectorAll('.grafloria-node-host.ks-dim').length, 0, 'clearing the filters shows every card');
+    const pos0 = JSON.stringify(cardsIn('doing').map((id) => D.getNode(id).position));
+    document.getElementById('ks-filter-btn').click();
+    stage.querySelector('.ks-menu input[data-filter="bug"]').click();
+    checkEqual(container.querySelectorAll('.grafloria-node-host.ks-dim').length, 13, 'the Bug filter fades the 13 cards without that label');
+    checkEqual(JSON.stringify(cardsIn('doing').map((id) => D.getNode(id).position)), pos0, 'and nothing moved');
+    stage.querySelector('.ks-menu input[data-filter="bug"]').click();
+    const kw = stage.querySelector('#ks-filter-text');
+    kw.value = 'page'; kw.dispatchEvent(new Event('input'));
+    checkEqual(document.getElementById('ks-match').textContent, '2 of 15 cards', 'the keyword "page" matches two cards');
+    stage.querySelector('.ks-clear').click();
+    checkEqual(container.querySelectorAll('.grafloria-node-host.ks-dim').length, 0, '"Clear all" shows every card');
 
-    // ③ a card opens on click, and grows with what is written in it
-    const target = cardsIn('backlog')[1];                 // "Pricing page A/B test plan": no checklist yet
+    // ③ labels collapse to bars, and every card measures again
+    const labelled = cardsIn('todo')[0];
+    const hLab = D.getNode(labelled).size.height;
+    hostOf(labelled).querySelector('.ks-label').click();
+    await frames();
+    check(stage.classList.contains('ks-labels-min'), 'a click on a label collapses every label');
+    checkEqual(hostOf(labelled).querySelector('.ks-label').getBoundingClientRect().height, 8, 'labels are now 8 px bars');
+    check(D.getNode(labelled).size.height <= hLab, 'and no card got taller (autoHeight measured again)');
+    checkEqual(clipped(), 0, 'nothing is cut off with bars');
+    hostOf(labelled).querySelector('.ks-label').click();
+    await frames();
+    checkEqual(D.getNode(labelled).size.height, hLab, 'a second click brings the names back');
+
+    // ④ the complete circle
+    const c1 = cardsIn('backlog')[1];
+    hostOf(c1).querySelector('.ks-done').click();
+    check(!!hostOf(c1).querySelector('.ks-card--complete'), 'the circle marks a card complete');
+    hostOf(c1).querySelector('.ks-done').click();
+
+    // ⑤ the card dialog: checklist, title, comment — the card follows
+    const target = cardsIn('backlog')[1];                 // "Pricing page A/B test plan"
     const h0 = D.getNode(target).size.height;
     await clickCard(target);
-    const dlg = stage.querySelector('.ks-dialog');
-    check(!!dlg, 'clicking a card opens its details');
-    const addIn = dlg.querySelector('#ks-dlg-add-item');
-    for (const t of ['Write the hypothesis', 'Pick the metric', 'Set the sample size']) { addIn.value = t; dlg.querySelector('.ks-dlg-add').requestSubmit(); }
-    dlg.querySelector('#ks-item-0').click();
-    const title = dlg.querySelector('#ks-dlg-title');
+    check(!!stage.querySelector('.ks-dialog'), 'clicking a card opens it');
+    [...stage.querySelectorAll('.ks-sidebtn')].find((b) => b.textContent === 'Checklist').click();
+    await raf();
+    for (const t of ['Write the hypothesis', 'Pick the metric', 'Set the sample size']) {
+      const input = stage.querySelector('#ks-dlg-add-item');
+      input.value = t; input.closest('form').requestSubmit(); await raf();
+    }
+    stage.querySelector('#ks-item-0').click();
+    const title = stage.querySelector('#ks-dlg-title');
     title.value = 'Pricing page A/B test plan: monthly-first against annual-first, two full weeks, decided on paid conversions';
     title.dispatchEvent(new Event('change'));
-    const desc = dlg.querySelector('#ks-dlg-desc');
-    desc.value = 'Two variants: monthly-first and annual-first. Run for two full weeks.'; desc.dispatchEvent(new Event('change'));
-    dlg.querySelector('.ks-dlg-x').click();
-    for (let i = 0; i < 4; i++) await raf();
-    await settle();
+    stage.querySelector('#ks-dlg-comment-open').click();
+    await raf();
+    stage.querySelector('#ks-dlg-comment').value = 'Starting Monday.';
+    stage.querySelector('.ks-cmt-form .ks-btn').click();
+    check([...stage.querySelectorAll('.ks-feed-text')].some((e) => e.textContent === 'Starting Monday.'), 'the comment is in the activity feed');
+    stage.querySelector('.ks-dlg-x').click();
+    await frames();
     check(!stage.querySelector('.ks-dialog'), 'the close button closes it');
-    const face = container.querySelector(`.grafloria-node-host[data-node-id="${target}"] .ks-check`);
-    checkEqual(face?.textContent, '1/3', 'the card shows its new checklist, 1 of 3 done');
+    checkEqual(hostOf(target).querySelector('.ks-check')?.textContent, '1/3', 'the card shows its checklist, 1 of 3 done');
+    checkEqual(hostOf(target).querySelector('.ks-badge[title$="comments"]')?.textContent, '1', 'and one comment');
     check(D.getNode(target).size.height > h0 + 20, 'and grew to fit its longer title (autoHeight)');
     checkEqual(clipped(), 0, 'still nothing cut off');
-    check(order('backlog').every((id, i, a) => i === 0 || D.getNode(id).position.y >= D.getNode(a[i - 1]).position.y + D.getNode(a[i - 1]).size.height), 'the cards below made room');
 
-    // ④ moving cards: the ring says where; a full list refuses
+    // ⑥ the composer
+    const doneBefore = cardsIn('done').length;
+    footBtn('done').click();
+    await frames();
+    const ta = container.querySelector('.ks-draft');
+    check(!!ta && document.activeElement === ta, '"Add a card" opens a focused composer at the end of Done');
+    ta.value = 'Ship the launch email';
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await frames();
+    checkEqual(cardsIn('done').length, doneBefore + 1, 'Enter adds the card');
+    check([...container.querySelectorAll('.ks-title')].some((e) => e.textContent === 'Ship the launch email'), 'with its title');
+    const ta2 = container.querySelector('.ks-draft');
+    check(!!ta2, 'and the composer stays open for the next card');
+    ta2.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await frames();
+    check(!container.querySelector('.ks-draft'), 'Esc closes the empty composer');
+    await undo();
+    checkEqual(cardsIn('done').length, doneBefore, 'one undo takes the new card back — the closed composer left no step');
+
+    // ⑦ moving cards: a card dropped over a list's footer lands at its end; a full list refuses
     const mover = cardsIn('todo')[0];
-    const doingG = D.getGroup('doing');
-    const into = { x: doingG.position.x + doingG.size.width / 2, y: doingG.position.y + doingG.size.height - 40 };
-    const release = await hold(centre(D.getNode(mover)), into);
-    checkEqual(ring('doing'), 'drop', 'mid-drag, In progress wears the blue ring');
+    const release = await hold(grab(D.getNode(mover)), overFoot('doing'));
+    checkEqual(ring('doing'), 'drop', 'mid-drag, In progress is ringed');
+    check(!!container.querySelector('.grafloria-node-host.axdb-ghost'), 'and the card in the hand is the tilted ghost');
     await release();
+    await frames();
     check(D.getGroup('doing').members.has(mover), 'the card moved into In progress');
-    checkEqual(heads.get('doing').count.textContent, '4 / 4', 'which is now full');
-    checkEqual(order('doing').at(-1), mover, 'dropped low, it landed after the last card (stack)');
+    checkEqual(order('doing').at(-1), mover, 'dropped on the footer, it landed at the end');
+    checkEqual(heads.get('doing').count.textContent, '4 / 4', 'In progress is now at its limit');
+    check(activity[0].text.startsWith('moved ') && activity[0].text.endsWith('to In progress'), 'the move is in the activity log');
     const extra = cardsIn('todo')[0];
-    const release2 = await hold(centre(D.getNode(extra)), into);
-    checkEqual(ring('doing'), 'refused', 'another card over the full list gets the orange ring');
+    const release2 = await hold(grab(D.getNode(extra)), overFoot('doing'));
+    checkEqual(ring('doing'), 'refused', 'another card over the full list is refused');
     await release2();
     check(D.getGroup('todo').members.has(extra), 'and goes back to To do');
     check(!!stage.querySelector('.ks-toast'), 'the board says why');
     await undo();
-    check(D.getGroup('todo').members.has(mover), 'Undo puts the first move back');
+    check(D.getGroup('todo').members.has(mover), 'Undo puts the move back');
 
-    // ⑤ lists only trade places
-    const backlog = D.getGroup('backlog'), review = D.getGroup('review');
-    await (await hold({ x: backlog.position.x + 30, y: backlog.position.y + 20 }, { x: review.position.x + review.size.width * 0.75, y: backlog.position.y + 24 }, 16))();
+    // ⑧ lists only trade places
+    const bl = D.getGroup('backlog'), rv = D.getGroup('review');
+    await (await hold({ x: bl.position.x + 30, y: bl.position.y + 24 }, { x: rv.position.x + rv.size.width * 0.75, y: bl.position.y + 28 }, 16))();
     checkEqual(listOrder(), 'todo,doing,review,backlog,done', 'Backlog dragged by its header now sits after In review');
-    check(LISTS.every((l) => D.getGroup(l.id).position.y === D.getGroup('done').position.y), 'every list is still on the one row');
+    check(lists().every((l) => D.getGroup(l.id).position.y === D.getGroup('done').position.y), 'every list is still on the one row');
     await undo();
     checkEqual(listOrder(), 'backlog,todo,doing,review,done', 'Undo restores the list order');
 
-    // ⑥ add and delete
-    const before = cardsIn('done').length;
-    const w = addCard('done');
-    await settle(); for (let i = 0; i < 3; i++) await raf();
-    checkEqual(cardsIn('done').length, before + 1, '+ adds a card to Done');
-    checkEqual(order('done').at(-1), w?.id, 'at the bottom');
-    await clickCard(w.id);
-    stage.querySelector('.ks-btn--danger').click();
-    await settle();
-    checkEqual(cardsIn('done').length, before, 'Delete card removes it');
+    // ⑨ "Add another list"
+    document.getElementById('ks-addlist-open').click();
+    const ln = document.getElementById('ks-addlist-name');
+    ln.value = 'QA'; ln.closest('form').requestSubmit();
+    await frames();
+    checkEqual(lists().length, 6, '"Add list" adds a sixth list');
+    checkEqual(lists().at(-1).name, 'QA', 'named QA, at the end');
+    check(!!footBtn(lists().at(-1).id), 'with its own "Add a card"');
+    document.getElementById('ks-addlist-name')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await undo();
-    checkEqual(cardsIn('done').length, before + 1, 'Undo brings it back');
+    checkEqual(lists().length, 5, 'Undo takes the list back');
 
-    // ⑦ backdrops
-    document.querySelector('#ks-bd button[data-backdrop="ocean"]').click();
-    checkEqual(stage.dataset.backdrop, 'ocean', 'the Ocean background applies');
-    document.querySelector('#ks-bd button[data-backdrop="dusk"]').click();
+    // ⑩ the board menu: background
+    document.getElementById('ks-menu-btn').click();
+    stage.querySelector('#ks-drawer-bg').click();
+    stage.querySelector('.ks-bg[data-backdrop="aurora"]').click();
+    check(getComputedStyle(stage).backgroundImage.includes('kanban-studio-aurora.svg'), 'the Aurora scene applies from the board menu');
+    stage.querySelector('.ks-bg[data-backdrop="dusk"]').click();
+    chrome.toggleDrawer(false);
   },
 
   async showcase(c) {
-    // The money shot: a card mid-drag toward In progress, its ring on.
+    // The money shot: a card mid-drag toward In progress, tilted in the hand.
     const D = c.diagram;
     const container = c.host;
     const toClient = (wx, wy) => c.instance.viewport.worldToClient(wx, wy, container.getBoundingClientRect());
     const pev = (type, cx, cy) => (document.elementFromPoint(cx, cy) ?? container).dispatchEvent(new PointerEvent(type, {
       clientX: cx, clientY: cy, bubbles: true, cancelable: true, composed: true, pointerId: 99, pointerType: 'mouse', isPrimary: true, button: 0, buttons: 1,
     }));
-    const card = D.getNode(cardsIn('todo')[1]);
+    const card = D.getNode(cardsIn('todo')[0]);
     const doing = D.getGroup('doing');
-    const from = { x: card.position.x + card.size.width / 2, y: card.position.y + card.size.height / 2 };
-    const to = { x: doing.position.x + doing.size.width / 2 + 30, y: doing.position.y + doing.size.height - 30 };
+    const from = { x: card.position.x + card.size.width / 2, y: card.position.y + 24 };
+    const to = { x: doing.position.x + doing.size.width / 2 + 36, y: doing.position.y + doing.size.height - 40 };
     const a = toClient(from.x, from.y); pev('pointerdown', a.x, a.y);
-    for (let i = 1; i <= 10; i++) { const p = toClient(from.x + ((to.x - from.x) * i) / 10, from.y + ((to.y - from.y) * i) / 10); pev('pointermove', p.x, p.y); await c.tick(16); }
+    for (let i = 1; i <= 12; i++) { const p = toClient(from.x + ((to.x - from.x) * i) / 12, from.y + ((to.y - from.y) * i) / 12); pev('pointermove', p.x, p.y); await c.tick(16); }
     c.instance.renderNow();
   },
 });
