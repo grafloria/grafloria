@@ -209,6 +209,32 @@ describe('fitRows — a height written as layout', () => {
     expect(binder(handle, 'main').cellOf('A')!.h).toBe(slab0);
   });
 
+  it('addWidget into a FULL growable column makes the room — and one undo takes the card and the rows back', async () => {
+    const { model, api, handle } = mount(BOARD());
+    const slab0 = binder(handle, 'main').cellOf('A')!.h;
+    // A holds 3 + 3 of an 8-row design: a 4-row card does not fit without growing
+    const w = handle.addWidget({ id: 'new', kind: 'card', span: 1, rows: 4 }, 'A');
+    await settle();
+    expect(w).toBeDefined();
+    expect(model.getGroup('A')!.members.has('new')).toBe(true);
+    const cell = handle.widget('new')!.cell!;
+    expect(cell.h).toBe(4);
+    expect(cell.y).toBeGreaterThanOrEqual(6);           // below the two cards, not over them
+    expect(binder(handle, 'main').cellOf('A')!.h).toBeGreaterThan(slab0);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(model.getNode('new')).toBeUndefined();
+    expect(binder(handle, 'main').cellOf('A')!.h).toBe(slab0);
+  });
+
+  it('a FIT column still refuses an add it has no room for', () => {
+    const { handle } = mount(dashboard({
+      columns: 12, gap: 8, width: 1200, height: 800, sizing: 'grow', rowHeight: 8,
+      widgets: [{ id: 'F', span: 4, rows: 8, columns: 1, maxRows: 8, sizing: 'fit', widgets: [{ id: 'f1', kind: 'card', span: 1, rows: 6 }] }],
+    }));
+    expect(handle.addWidget({ id: 'x', kind: 'card', span: 1, rows: 4 }, 'F')).toBeUndefined();
+  });
+
   it('answers false while a gesture is live (the caller asks again after it)', () => {
     const { model, handle } = mount(BOARD());
     const tool = toolOf('A');
@@ -284,6 +310,39 @@ describe('autoHeight — the kit measures the widget', () => {
     host.appendChild(card);
     await frames();
     expect(handle.widget('b1')!.cell!.h).toBe(rowsForHeight(150, 8, 8));
+  });
+
+  it('content that arrives for SEVERAL cards at once keeps their order — an empty host is never sized, and growth pushes the cards below', async () => {
+    const spec = BOARD({ autoHeight: true });
+    const { model, api, handle } = mount(spec);
+    // a framework wrapper: every host is handed over EMPTY, the content comes on a later commit
+    const nat: Record<string, number> = { a1: 0, a2: 0 };
+    const hosts: Record<string, HTMLElement> = {};
+    for (const id of ['a1', 'a2']) {
+      const host = document.createElement('div');
+      host.className = 'grafloria-node-host';
+      host.dataset['nodeId'] = id;
+      api.layer.appendChild(host);
+      stubLayout(host, () => nat[id]!, model.getNode(id)!.size.width);
+      spec.renderCustomNode(model.getNode(id), host);
+      hosts[id] = host;
+    }
+    await frames();
+    expect(handle.widget('a1')!.cell!.h).toBe(3); // an empty host keeps its authored rows
+    nat['a1'] = 70;
+    nat['a2'] = 150;
+    for (const id of ['a1', 'a2']) hosts[id]!.appendChild(document.createElement('div'));
+    await frames();
+    const a1 = handle.widget('a1')!.cell!, a2 = handle.widget('a2')!.cell!;
+    expect(a1.h).toBe(rowsForHeight(70, 8, 8));
+    expect(a2.h).toBe(rowsForHeight(150, 8, 8));
+    expect(a1.y).toBeLessThan(a2.y);               // the authored order holds
+    expect(a2.y).toBe(a1.y + a1.h);                // and the stack has no hole
+    // a second round of growth (the window narrowed) still keeps it
+    nat['a1'] = 200;
+    hosts['a1']!.appendChild(document.createElement('div'));
+    await frames();
+    expect(handle.widget('a1')!.cell!.y).toBeLessThan(handle.widget('a2')!.cell!.y);
   });
 
   it('a widget that opts out keeps its rows; limits still clamp an auto one', async () => {

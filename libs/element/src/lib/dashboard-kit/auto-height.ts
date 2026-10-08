@@ -149,6 +149,10 @@ export function createAutoHeight(host: AutoHeightHost): AutoHeight {
     const worldW = host.worldWidthOf(id);
     const scale = cssW > 0 && worldW && worldW > 0 ? cssW / worldW : 1;
     const px = naturalHeight(el) / scale;
+    // Nothing painted yet (a framework wrapper hands the host over empty and
+    // fills it on a later commit): there is no content to size by, and a
+    // one-row guess would only reshuffle the board when the content lands.
+    if (px < 1) return 'done';
     const lim = host.limitsOf(id);
     let rows = rowsForHeight(px, m.rowHeight, m.gap);
     if (lim?.minRows !== undefined) rows = Math.max(rows, lim.minRows);
@@ -159,7 +163,9 @@ export function createAutoHeight(host: AutoHeightHost): AutoHeight {
 
   const flush = (): void => {
     if (disposed) return;
-    const ids = [...dirty];
+    // Top to bottom: a card grows into the room below it, never past the next one.
+    const top = (id: string): number => host.binderOf(id)?.cellOf(id)?.y ?? 0;
+    const ids = [...dirty].sort((a, b) => top(a) - top(b));
     dirty.clear();
     let wait = false;
     for (const id of ids) {

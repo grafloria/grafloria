@@ -2220,7 +2220,11 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // and redo lists it again before the node comes back.
       // A bounded fit board with no room says so HERE, before anything is
       // created: undefined, the same answer as an unknown board.
-      if (binders.get(vid)?.willItFit(w.span!, w.rows!) === false) return undefined;
+      // A full SECTION that may grow makes the room first, as a drop into it
+      // does; the growth rides in this add's undo step.
+      const room = binders.get(vid)?.makeRoom?.(w.span!, w.rows!);
+      if (room === null) return undefined;
+      if (room === undefined && binders.get(vid)?.willItFit(w.span!, w.rows!) === false) return undefined;
 
       const registry = registryOf(w.id, vid, w);
       registry.register();
@@ -2233,7 +2237,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // runs its members across awaits, and the board is re-read right after
       // this call — the pushed cells must be in the model by then.
       const add = new AddWidgetCommand(node, group.id, registry, !!existing);
-      const displaced = opts?.displaced ?? [];
+      const displaced = [...(room ?? []), ...(opts?.displaced ?? [])];
       execCommand(displaced.length > 0 ? new SequenceCommand('Add widget', [...displaced, add]) : add);
 
       binders.get(vid)?.sync();

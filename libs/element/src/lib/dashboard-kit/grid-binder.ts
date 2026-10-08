@@ -458,6 +458,13 @@ export interface DashboardGridHandle {
    * (ask again after it) or when the board cannot take the height.
    */
   fitRows?(id: string, h: number): boolean;
+  /**
+   * ROOM FOR A NEW TILE: a full section that may grow takes the rows a w×h
+   * tile needs from its parent board — what a drop into it does. Answers the
+   * commands that record the growth, to fold into the add's own undo step
+   * (empty when it already fits), or null when no room can be made.
+   */
+  makeRoom?(w: number, h: number): Command[] | null;
   /** Is a pointer gesture live on this board? */
   readonly busy?: boolean;
   /**
@@ -4270,6 +4277,17 @@ export function bindDashboardGrid(
       if (h0 === want) return true;
       const parent = parentPeer();
       let grownBy = 0;
+      // A step of its own: the engine's displaced-tile memory is per gesture,
+      // and outside one it would carry over to the NEXT fit — a card pushed
+      // down by one growth then "teleported" back above the card that pushed
+      // it on the following one, and the column's order flipped.
+      engine.beginGesture();
+      try {
+        return fitWithin();
+      } finally {
+        engine.endGesture();
+      }
+      function fitWithin(): boolean {
       // The engine CLAMPS to the bound and still reports a change — the height
       // reached is the answer, not `changed`.
       const reached = (): boolean => {
@@ -4305,9 +4323,45 @@ export function bindDashboardGrid(
       enforceBoardHeight();
       api.renderNow();
       return true;
+      }
     },
     get busy() {
       return !!gesture || !!slabGesture;
+    },
+    makeRoom(w, h) {
+      if (disposed || gesture || slabGesture) return null;
+      // Probed at the LIVE bound: willItFit builds through engineFrom, which
+      // resets the bound to the design — it would forget each row just taken.
+      const fitsNow = (): boolean => {
+        const probe = new GridPackEngine(engine.getItems().map((i) => ({ ...i })), { columns, float: true, maxRows, capacity });
+        return probe.add({ id: '\u0000probe', x: 0, y: 0, w: Math.max(1, w), h: Math.max(1, h), autoPosition: true }) !== null;
+      };
+      if (bound() === undefined || fitsNow()) return [];
+      const parent = parentPeer();
+      if (!parent || !escalate) return null;
+      let rowsAdded = 0;
+      let first: { cell: CellRect; frame: WorldRect } | null = null;
+      let last: { cell: CellRect; frame: WorldRect } | null = null;
+      let parentCommands: Command[] | undefined;
+      let fits = false;
+      while (!fits && rowsAdded < Math.max(1, h)) {
+        const res = parent.resizeMemberBy(group.id, +1);
+        if (!res.changed || !res.cellBefore || !res.cellAfter || !res.frameBefore || !res.frameAfter) break;
+        rowsAdded += 1;
+        first = first ?? { cell: res.cellBefore, frame: res.frameBefore };
+        last = { cell: res.cellAfter, frame: res.frameAfter };
+        if (res.commands) parentCommands = res.commands;
+        setLiveBound((maxRows ?? 0) + 1);
+        fits = fitsNow();
+      }
+      if (!fits || !first || !last) {
+        if (rowsAdded > 0) {
+          parent.resizeMemberBy(group.id, -rowsAdded);
+          setLiveBound(Math.max(1, (maxRows ?? 1) - rowsAdded));
+        }
+        return null;
+      }
+      return parentCommands ?? [new SetGroupCellCommand(group.id, first.cell, last.cell, first.frame, last.frame)];
     },
     beginPaletteDrag,
     dispose(): void {
