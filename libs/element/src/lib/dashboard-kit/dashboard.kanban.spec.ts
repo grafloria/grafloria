@@ -780,6 +780,14 @@ describe('runtime sections and footers', () => {
     expect(handle.addWidget({ id: 'b', span: 3, rows: 99, columns: 1, widgets: [] })).toBeUndefined();
   });
 
+  it('a section that arrives WITH children is refused, not half-built: add it empty, then its widgets into it', () => {
+    const { model, handle } = mount(THREE());
+    const before = JSON.stringify(handle.toJSON());
+    expect(handle.addWidget({ id: 's9', span: 3, rows: 12, columns: 1, widgets: [{ id: 'k', kind: 'card', span: 1, rows: 4 }] })).toBeUndefined();
+    expect(model.getGroup('s9')).toBeUndefined();
+    expect(JSON.stringify(handle.toJSON())).toBe(before);
+  });
+
   it('footer: the band is painted by renderFooter at the frame bottom, its height kept clear of cards, and its presses are the page\'s', () => {
     const renderFooter = jest.fn((_w: DashboardWidgetSpec, host: HTMLElement) => { host.innerHTML = '<button>+ Add a card</button>'; });
     const { model, api, handle } = mount(THREE({ renderFooter }));

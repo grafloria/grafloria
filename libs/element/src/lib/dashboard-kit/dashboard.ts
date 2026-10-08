@@ -495,6 +495,10 @@ export interface DashboardHandle {
    * the board is re-read from the model and the push is forgotten: the new
    * widget then auto-positions into whatever hole is left (Quantia's "lands
    * on the cell it was aimed at", element 0.4.54).
+   *
+   * A spec with `widgets: []` adds an empty SECTION (grid views only) as one
+   * undoable step; add its children afterwards with the section's id as
+   * `viewId`. A section spec that brings children of its own is refused.
    */
   addWidget(spec: DashboardWidgetSpec, viewId?: string, opts?: { displaced?: Command[] }): WidgetHandle | undefined;
   /**
@@ -2293,9 +2297,11 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       };
       // A SECTION (a spec carrying `widgets`): a group with its own board,
       // added — and undone — as one step. It takes the cell it names, else the
-      // first free one; an empty section starts empty (its children arrive by
-      // drag or addWidget with its id as the board).
+      // first free one, and starts EMPTY: its children arrive by drag or by
+      // addWidget with its id as the board. A spec that brings children is
+      // refused rather than half-built (a section with no child nodes).
       if (w.widgets) {
+        if (w.widgets.length > 0) return undefined;
         const binder = binders.get(vid);
         if (!binder || !ctx.buildSection || ctx.layoutOf.get(vid) === 'split') return undefined;
         if (binder.willItFit(w.span!, w.rows!) === false) return undefined; // a bounded board with no room says so
@@ -2312,7 +2318,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
           w.x = at.x;
           w.y = at.y;
         }
-        w.widgets = [...w.widgets];
+        w.widgets = [];
         const { group: sg, registry: sreg } = ctx.buildSection(w, vid);
         execCommand(new AddSectionCommand(sg, group.id, sreg));
         binder.sync();
