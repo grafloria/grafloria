@@ -26,7 +26,8 @@ export interface Projection {
   disarmGlideSoon(): void;
   /** Lift a pending ghost NOW. */
   flushGhost(): void;
-  setGhost(id: string, on: boolean): void;
+  /** `settle`: on release, glide into the cell instead of snapping (a list's drop). */
+  setGhost(id: string, on: boolean, settle?: boolean): void;
   dispose(): void;
 }
 
@@ -165,7 +166,7 @@ export function createProjection(ctx: BoardCtx, deps: { afterProject(): void }):
     ghostHost?.classList.remove('axdb-ghost', 'axdb-out');
     ghostHost = null;
   };
-  const setGhost = (id: string, on: boolean): void => {
+  const setGhost = (id: string, on: boolean, settle = false): void => {
     const host = ctx.hostOf(id);
     if (!host) return;
     if (ghostHost && ghostHost !== host) flushGhost();
@@ -177,6 +178,18 @@ export function createProjection(ctx: BoardCtx, deps: { afterProject(): void }):
       ghostHost = host;
     } else {
       host.classList.remove('axdb-out');
+      // A LIST's drop SETTLES: the exemption goes now, with the glide armed, so
+      // the drop write carries the card from the hand into its slot — the way a
+      // card lands on a board, where the eye follows it in.
+      if (settle) {
+        if (ghostTimer) clearTimeout(ghostTimer);
+        ghostTimer = null;
+        armGlide();
+        host.classList.remove('axdb-ghost');
+        if (ghostHost === host) ghostHost = null;
+        disarmGlideSoon();
+        return;
+      }
       // Keep transition-exemption through the drop write so the snap into the
       // placeholder is INSTANT (gridstack-style), then let glides resume.
       if (ghostTimer) clearTimeout(ghostTimer);

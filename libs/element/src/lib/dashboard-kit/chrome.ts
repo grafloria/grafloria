@@ -54,7 +54,8 @@ export interface Chrome {
   onHover(e: PointerEvent): void;
   onHoverLeave(): void;
   /** Everything in a group's subtree — tiles, strips, slabs, the surface — transition-exempt while it is carried. */
-  setCarried(id: string, on: boolean): void;
+  /** `settle`: on release, glide into the slot instead of snapping (a list reordered by hand). */
+  setCarried(id: string, on: boolean, settle?: boolean): void;
   flushCarried(): void;
   /** The cell a slab move asked for and could not have — painted so the refusal is visible; null clears it. */
   showRefusal(cell: { x: number; y: number } | null, w: number, h: number): void;
@@ -289,7 +290,7 @@ export function createChrome(ctx: BoardCtx, deps: ChromeDeps): Chrome {
     return { groups, nodes };
   };
   const cssId = (id: string): string => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"'));
-  const setCarried = (id: string, on: boolean): void => {
+  const setCarried = (id: string, on: boolean, settle = false): void => {
     const layer = ctx.htmlLayer();
     if (!layer) return;
     if (carriedTimer) {
@@ -310,6 +311,11 @@ export function createChrome(ctx: BoardCtx, deps: ChromeDeps): Chrome {
         el.classList.add('axdb-carried');
         carriedEls.add(el);
       }
+      return;
+    }
+    if (settle) {
+      for (const el of carriedEls) el.classList.remove('axdb-carried');
+      carriedEls.clear();
       return;
     }
     carriedTimer = setTimeout(() => {

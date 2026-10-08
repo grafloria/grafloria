@@ -569,6 +569,8 @@ interface BinderPeer {
   containsWorld(x: number, y: number): boolean;
   /** Write the engine's live cells to the model and the layout cache — the history-free half of `fitRows` escalation. */
   persistCells?(): void;
+  /** A one-column `stack` list: a card dropped into it settles rather than snaps. */
+  isList?(): boolean;
   /**
    * Containment plus ONE extra row of grace below the frame — gridstack's
    * `_extraDragRow`: dropping "under the last row" appends a row rather than
@@ -1926,6 +1928,21 @@ export function bindDashboardGrid(
    * tile outside the run (a widget under a shorter column) is not taken.
    */
   const reorderRow = (g: GestureState, ev: ToolPointerEvent): void => {
+    relayRow(g, ev);
+    // The carried section FOLLOWS THE HAND along the row (its cards with it —
+    // the inner board re-projects on the frame change); the others glide into
+    // the slots it opens. Released, it settles into its own slot.
+    const grp = diagram.getGroup(g.id);
+    if (grp) {
+      const sz = sizeOf(grp);
+      const f = frame();
+      const x = Math.max(f.x, Math.min(f.x + f.width - sz.width, ev.world.x - g.grab.dx));
+      diagram.runSystemWrite(() => grp.setFrame({ x, y: grp.position.y, width: sz.width, height: sz.height }));
+      syncSlabs();
+      api.render();
+    }
+  };
+  const relayRow = (g: GestureState, ev: ToolPointerEvent): void => {
     const row = g.row!;
     const restCentre = (id: string): number => {
       const s = g.startGeom.get(id);
@@ -2132,8 +2149,9 @@ export function bindDashboardGrid(
     markDrop(null, false);
     showRefusal(null, 0, 0); // a widget's refused cell too (0.4.74), and a chip's
     if (g.kind !== 'palette') {
-      if (g.subject === 'node') setGhost(g.id, false);
-      else setCarried(g.id, false); // exempt through the drop write, then the glides resume
+      // A list (`stack`) or a list reorder SETTLES into its slot; a board snaps (gridstack).
+      if (g.subject === 'node') setGhost(g.id, false, stack || !!g.leg?.peer.isList?.());
+      else setCarried(g.id, false, !!g.row); // exempt through the drop write, then the glides resume
     }
     disarmGlideSoon();
     releasePointer(g.pointerId);
@@ -3713,6 +3731,7 @@ export function bindDashboardGrid(
       persistLiveCells();
       persistLayouts();
     },
+    isList: () => isList(),
     containsWorldExtended: worldInsideBoardExtended,
     frameArea: boardArea,
     adopt,
