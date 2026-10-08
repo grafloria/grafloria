@@ -18,6 +18,9 @@
      cards inside columns and refuses a column at its WIP limit.
      ================================================================================ */
   #canvas { width: 100%; height: calc(100vh - 90px); min-height: 560px; }
+  /* Each stage's tint (the section `background`), and the ring the kit draws on the
+     stage a dragged card will land in (blue) or that refuses it (orange). */
+  :root { --kb-st-backlog: #eceff5; --kb-st-doing: #e6eefc; --kb-st-review: #fbf1df; --kb-st-done: #e4f3ea; }
 
   .kb-card { box-sizing: border-box; height: 100%; padding: 8px 10px; border-radius: 8px;
     background: var(--kb-card, #fff); border: 1px solid var(--kb-line, #dfe3ea);
@@ -38,6 +41,7 @@
     border-radius: 6px; padding: 2px 8px; cursor: pointer; font: inherit; font-weight: 500; }
 
   @media (prefers-color-scheme: dark) {
+    :root { --kb-st-backlog: #1e222a; --kb-st-doing: #1a2436; --kb-st-review: #2b2417; --kb-st-done: #18271f; }
     :root { --kb-card: #1f232b; --kb-line: #353b47; --kb-ink: #e6e9ef; --kb-muted: #9aa3b5; --kb-tag: #27305a; }
   }
 </style>
@@ -52,12 +56,12 @@ import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
 const ROW = 8;        // row unit, px — small, so a card's height rounds up by at most ROW + GAP
 const HEAD_ROWS = 2;  // the column header spans this many parent row units (2 × 16 = 32 px)
 const GAP = 8;
-const EMPTY_ROWS = 8; // an empty column's inner height in rows
+const EMPTY_ROWS = 30; // a stage's inner height in rows when its cards need less: room to drop into
 const COLUMNS = [
-  { id: 'backlog', name: 'Backlog' },
-  { id: 'doing',   name: 'In progress', wip: 3 },
-  { id: 'review',  name: 'Review',      wip: 2 },
-  { id: 'done',    name: 'Done' },
+  { id: 'backlog', name: 'Backlog',                tint: 'var(--kb-st-backlog)' },
+  { id: 'doing',   name: 'In progress', wip: 3,    tint: 'var(--kb-st-doing)' },
+  { id: 'review',  name: 'Review',      wip: 2,    tint: 'var(--kb-st-review)' },
+  { id: 'done',    name: 'Done',                   tint: 'var(--kb-st-done)' },
 ];
 const CARDS = {
   backlog: [
@@ -163,8 +167,12 @@ function buildSpec() {
       // height; cards measured taller grow the slab, and give the rows back.
       const inner = Math.max(EMPTY_ROWS, CARDS[c.id].length * GUESS);
       return {
-        id: c.id, title: c.name, span: 3, rows: inner + HEAD_ROWS, columns: 1, pinned: true, movable: false, resizable: false,
-        caption: { text: c.name, height: HEAD_ROWS * (ROW + GAP) },
+        // A stage moves only by trading places with the other stages ('row'), and its
+        // tint runs under the header too (a transparent band), so it reads as one panel.
+        id: c.id, title: c.name, span: 3, rows: inner + HEAD_ROWS, columns: 1, pinned: true, movable: 'row', resizable: false,
+        background: c.tint,
+        stack: true,   // a list: a card dropped below the last one lands right after it
+        caption: { text: c.name, height: HEAD_ROWS * (ROW + GAP), background: 'transparent' },
         maxRows: EMPTY_ROWS,
         widgets: CARDS[c.id].map(cardSpec),
       };
@@ -186,6 +194,8 @@ defineDemo({
     'Press "+ Add" on a column header: a new card lands at the bottom and the count updates. In progress holds 3: at the limit its "+ Add" goes and a fourth card dragged in is refused (it dims and snaps back).',
     'Drop a card below the columns: it is refused and snaps back — cards live in columns.',
     'Make the window narrower: the cards re-wrap and grow to fit; nothing is cut off.',
+    'Drag a stage by its header: it only trades places with the other stages. It never drops into another stage or below the row, and one undo puts the order back.',
+    'While a card is dragged, the stage it will land in has a blue ring; a stage that refuses it (full) has an orange one.',
     '⌘Z undoes a whole move — both columns at once.',
   ],
 
@@ -225,6 +235,22 @@ defineDemo({
       const c = toClient(to.x, to.y); pev('pointerup', c.x, c.y); await settle();
     };
     const center = (n) => ({ x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 });
+    /** A drag that stops before the release: answers the release. */
+    const hold = async (from, to, steps = 12) => {
+      PID++;
+      const a = toClient(from.x, from.y); pev('pointerdown', a.x, a.y);
+      for (let i = 1; i <= steps; i++) {
+        const c = toClient(from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
+        pev('pointermove', c.x, c.y); await raf();
+      }
+      return async () => { const c = toClient(to.x, to.y); pev('pointerup', c.x, c.y); await settle(); };
+    };
+    const ring = (id) => {
+      const el = container.querySelector(`.axdb-slab[data-slab-id="${id}"]`);
+      return el?.classList.contains('axdb-slab--refused') ? 'refused' : el?.classList.contains('axdb-slab--drop') ? 'drop' : 'none';
+    };
+    const stageOrder = () => COLUMNS.map((c) => D.getGroup(c.id)).sort((a, b) => a.position.x - b.position.x).map((g) => g.id);
+    const header = (id) => { const g = D.getGroup(id); return { x: g.position.x + 24, y: g.position.y + 14 }; };
     const order = (col) => [...D.getGroup(col).members].map((id) => D.getNode(id)).filter(Boolean)
       .sort((a, b) => a.position.y - b.position.y).map((n) => n.id);
     const stacked = (col) => {
@@ -320,6 +346,57 @@ defineDemo({
     for (let i = 0; i < 6; i++) await raf();
     await settle();
     checkEqual(D.getNode('card-2').size.height, tallH0, 'back at full width the long card is its old height again');
+
+    // ⑨ every stage carries its tint
+    for (const c of COLUMNS) {
+      const bg = container.querySelector(`.axdb-group-bg[data-group-bg="${c.id}"]`);
+      check(!!bg && getComputedStyle(bg).backgroundColor !== 'rgba(0, 0, 0, 0)', `${c.name} has its tint`);
+    }
+
+    // ⑩ the drop ring: blue on the stage that will take the card, orange on one that refuses it
+    {
+      const stage = order('review').length < 2 ? 'review' : 'backlog';
+      const mover = order('done')[0] ?? order('backlog')[0];
+      const fromCol = COLUMNS.find((c) => D.getGroup(c.id).members.has(mover)).id;
+      const tgt = D.getGroup(stage);
+      const release = await hold(center(D.getNode(mover)), { x: tgt.position.x + tgt.size.width / 2, y: tgt.position.y + 60 });
+      checkEqual(ring(stage), 'drop', `mid-drag, ${stage} wears the blue ring`);
+      check(COLUMNS.filter((c) => c.id !== stage).every((c) => ring(c.id) === 'none'), 'and no other stage does');
+      await release();
+      check(COLUMNS.every((c) => ring(c.id) === 'none'), 'the ring goes on release');
+      await cm.undo(); H.refresh(); await settle();
+      check(D.getGroup(fromCol).members.has(mover), 'undo put the card back');
+      // In progress is full (⑥): a card held over it gets the orange ring, then snaps home
+      const doingG = D.getGroup('doing');
+      const other = order('backlog')[0];
+      const release2 = await hold(center(D.getNode(other)), { x: doingG.position.x + doingG.size.width / 2, y: doingG.position.y + 60 });
+      checkEqual(ring('doing'), 'refused', 'a card over the FULL In progress gets the orange ring');
+      await release2();
+      check(D.getGroup('backlog').members.has(other), 'and the release snaps it home');
+    }
+
+    // ⑪ a stage only trades places with the other stages
+    const order0 = stageOrder();
+    checkEqual(order0.join(','), 'backlog,doing,review,done', 'stages start in their order');
+    const backlogCards = [...D.getGroup('backlog').members];
+    const reviewStage = D.getGroup('review');
+    const releaseS = await hold(header('backlog'), { x: reviewStage.position.x + reviewStage.size.width * 0.75, y: header('backlog').y + 4 }, 16);
+    await releaseS();
+    checkEqual(stageOrder().join(','), 'doing,review,backlog,done', 'Backlog dragged past Review now sits after it');
+    check(COLUMNS.every((c) => D.getGroup(c.id).position.y === D.getGroup('doing').position.y), 'every stage is still on the one row');
+    const bg2 = D.getGroup('backlog');
+    check(backlogCards.every((id) => { const n = D.getNode(id); return n.position.x >= bg2.position.x && n.position.x < bg2.position.x + bg2.size.width; }), 'its cards travelled with it');
+    await cm.undo(); H.refresh(); await settle();
+    checkEqual(stageOrder().join(','), order0.join(','), 'one undo puts the stage order back');
+
+    // ⑫ a stage never drops INTO another stage or below the row
+    const doneG = D.getGroup('done');
+    const releaseN = await hold(header('done'), { x: D.getGroup('doing').position.x + 40, y: D.getGroup('doing').position.y + 140 }, 16);
+    await releaseN();
+    check([...D.getGroup(H.activeView).members].filter((id) => COLUMNS.some((c) => c.id === id)).length === 4, 'all four stages are still on the board');
+    check(COLUMNS.every((c) => !COLUMNS.some((o) => o.id !== c.id && D.getGroup(o.id).members.has(c.id))), 'no stage went inside another');
+    checkEqual(doneG.position.y, D.getGroup('doing').position.y, 'Done stayed on the row');
+    if (stageOrder().join(',') !== order0.join(',')) { await cm.undo(); H.refresh(); await settle(); } // only a reorder made a step
 
     // ⑤ the board round-trips
     const snap = H.toJSON();
