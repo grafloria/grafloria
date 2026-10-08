@@ -248,8 +248,11 @@ const IN_PAGE = () => {
     // smoothly TRAIL the cursor while every model number stayed perfect. Detect
     // it coordinate-agnostically — after the pointer STOPS, an eased transform
     // keeps sliding toward the model for the transition's duration, so the
-    // painted rect drifts while the model is static. (Physics/constraint demos
-    // whose MODEL keeps settling after release can't isolate easing → skipped.)
+    // painted rect drifts while the model is static. Measured while the pointer
+    // is still HELD: trailing the cursor is a drag bug, while a drop that
+    // settles into its slot after the release is a design (a Kanban list's
+    // card lands that way). (Physics/constraint demos whose MODEL keeps
+    // settling can't isolate easing → skipped.)
     const dragNode = model.getNodes().find((n) => n.behavior?.draggable !== false && !n.state?.locked);
     const gEl = dragNode && (host.querySelector(`[data-node-id="${dragNode.id}"]`) || host.querySelector(`[data-vnode-key="node-${dragNode.id}"]`));
     if (!dragNode || !gEl) out.skipped.push('RENDER-TRACK (no draggable node element)');
@@ -265,11 +268,12 @@ const IN_PAGE = () => {
       fire('pointermove', cx, cy); fire('pointerdown', cx, cy);
       fire('pointermove', cx + 8, cy); fire('pointermove', cx + 220, cy);
       const nodeMoved = Math.abs(dragNode.position.x - p0);
-      fire('pointerup', cx + 220, cy); await raf2();
-      // Right after release, then again after a beat with NO input.
+      await raf2();
+      // The pointer has STOPPED but is still held: now, then after a beat with NO input.
       const paintA = paintedCentre(), modelA = dragNode.position.x;
       await new Promise((r) => setTimeout(r, 260));
       const paintB = paintedCentre(), modelB = dragNode.position.x;
+      fire('pointerup', cx + 220, cy); await raf2();
       const modelDrift = Math.abs(modelB - modelA);
       const paintDrift = Math.hypot(paintB.x - paintA.x, paintB.y - paintA.y);
       if (nodeMoved < 20) out.skipped.push(`RENDER-TRACK (drag did not move the node: ${Math.round(nodeMoved)}px)`);
