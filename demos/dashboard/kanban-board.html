@@ -8,9 +8,9 @@
      LAB PROTOTYPE (lab/kanban-form-designer). The question this page answers: is the
      dashboard kit's pack grid enough to build a Kanban board, and what is missing?
      Every column is a CONTAINER with `columns: 1` and gravity on (float off), so its
-     cards stack top-down, close the gap a card leaves, and reorder by push. Card
-     heights are measured from their content and rounded up to whole rows — the kit
-     has no content-driven height, so the page does it (gap G1 in the notes below).
+     cards stack top-down, close the gap a card leaves, and reorder by push. Cards
+     are `autoHeight`: the kit measures them and takes whole rows. `canDrop` keeps
+     cards inside columns and refuses a column at its WIP limit.
      ================================================================================ */
   #canvas { width: 100%; height: calc(100vh - 90px); min-height: 560px; }
 
@@ -28,11 +28,9 @@
     font: 600 13px system-ui, sans-serif; color: var(--kb-ink, #1d2330); }
   .kb-head .n { font-weight: 500; color: var(--kb-muted, #5d6576); font-variant-numeric: tabular-nums; }
   .kb-head .n.over { color: #c2410c; font-weight: 700; }
-  .kb-head button { margin-left: auto; border: 1px solid var(--kb-line, #dfe3ea); background: transparent; color: inherit;
+  .kb-head > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+  .kb-head button { flex: none; margin-left: auto; border: 1px solid var(--kb-line, #dfe3ea); background: transparent; color: inherit;
     border-radius: 6px; padding: 2px 8px; cursor: pointer; font: inherit; font-weight: 500; }
-
-  /* The measuring sandbox: off-screen, same styles, fixed width. */
-  #kb-measure { position: absolute; left: -10000px; top: 0; visibility: hidden; }
 
   @media (prefers-color-scheme: dark) {
     :root { --kb-card: #1f232b; --kb-line: #353b47; --kb-ink: #e6e9ef; --kb-muted: #9aa3b5; --kb-tag: #27305a; }
@@ -41,7 +39,6 @@
 
 <div id="demo-head"></div>
 <div id="canvas"></div>
-<div id="kb-measure"></div>
 
 <script type="module">
 import { render, dashboard } from '../shell/grafloria.js';
@@ -50,6 +47,7 @@ import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
 const ROW = 8;        // row unit, px — small, so a card's height rounds up by at most ROW + GAP
 const HEAD_ROWS = 2;  // the column header spans this many parent row units (2 × 16 = 32 px)
 const GAP = 8;
+const EMPTY_ROWS = 8; // an empty column's inner height in rows
 const COLUMNS = [
   { id: 'backlog', name: 'Backlog' },
   { id: 'doing',   name: 'In progress', wip: 3 },
@@ -83,22 +81,10 @@ function paintCard(el, d) {
   const who = document.createElement('span'); who.className = 'who'; who.textContent = d.who ?? '?';
   m.append(tag, who); el.append(m);
 }
-/** G1 workaround: the kit sizes in whole rows, so the page measures the card at
- *  its column's width and converts px → rows itself. */
-let measureWidth = 260;
-function rowsFor(d) {
-  const box = document.getElementById('kb-measure');
-  box.style.width = `${measureWidth}px`;
-  const el = document.createElement('div');
-  paintCard(el, d);
-  el.style.height = 'auto';
-  box.replaceChildren(el);
-  const h = el.getBoundingClientRect().height;
-  return Math.max(1, Math.ceil((h + GAP) / (ROW + GAP)));
-}
-
 let seq = 0;
-const cardSpec = (d) => ({ id: `card-${++seq}`, kind: 'card', span: 1, rows: rowsFor(d), resizable: false, data: d });
+// `rows` is only the first guess: the dashboard's `autoHeight` measures the card.
+const GUESS = 4;
+const cardSpec = (d) => ({ id: `card-${++seq}`, kind: 'card', span: 1, rows: GUESS, resizable: false, data: d });
 
 /* ---- column headers: painted by the page, so counts update without an undo step - */
 const heads = new Map();
@@ -113,7 +99,7 @@ function paintHead(sectionId, host) {
   add.title = `Add a card to ${col.name}`;
   add.addEventListener('click', (e) => { e.stopPropagation(); addCard(col.id); });
   el.append(name, n, add); host.append(el);
-  heads.set(sectionId, n);
+  heads.set(sectionId, { n, add });
   updateCounts();
 }
 
@@ -128,15 +114,26 @@ function updateCounts() {
   if (!H) return;
   const counts = countsNow();
   for (const c of COLUMNS) {
-    const n = heads.get(c.id);
-    if (!n) continue;
-    n.textContent = c.wip ? `${counts[c.id]} / ${c.wip}` : String(counts[c.id]);
-    n.classList.toggle('over', !!c.wip && counts[c.id] > c.wip);
+    const h = heads.get(c.id);
+    if (!h) continue;
+    const full = !!c.wip && counts[c.id] >= c.wip;
+    h.n.textContent = c.wip ? `${counts[c.id]} / ${c.wip}${full ? ' · full' : ''}` : String(counts[c.id]);
+    h.n.classList.toggle('over', full);
+    h.add.hidden = full;   // a full column takes no new card — the count says why
   }
+}
+const isFull = (columnId) => {
+  const c = COLUMNS.find((x) => x.id === columnId);
+  return !!c?.wip && countsNow()[columnId] >= c.wip;
+};
+/** The drop policy: cards live in columns, and a column at its WIP limit takes no more. */
+function canDrop({ to }) {
+  return COLUMNS.some((c) => c.id === to) && !isFull(to);
 }
 
 const NEW_TITLES = ['Follow up with the design review', 'Fix the flaky timing test', 'Write the release notes', 'Try a 6-column board on a phone'];
 function addCard(columnId) {
+  if (isFull(columnId)) return undefined;
   const d = { title: NEW_TITLES[seq % NEW_TITLES.length], tag: 'new', who: 'RO' };
   // No cell given: the kit auto-positions — with gravity that is the bottom of the list.
   const w = H.addWidget(cardSpec(d), columnId);
@@ -152,15 +149,18 @@ function buildSpec() {
     sizing: 'grow',
     rowHeight: ROW,
     float: false,
+    autoHeight: true,
+    canDrop,
     widgets: COLUMNS.map((c) => {
-      const inner = Math.max(8, CARDS[c.id].reduce((s, d) => s + rowsFor(d), 0));
-      // G2: a section's inner rows are squeezed into its slab, so the slab must be
-      // sized in the PARENT's rows to give the inner rows the same height. With a
-      // header of HEAD_ROWS × (ROW + GAP), inner + HEAD_ROWS parent rows gives inner rows of ROW.
+      // A section's inner rows are squeezed into its slab, so the slab is sized in
+      // the PARENT's rows: a header of HEAD_ROWS × (ROW + GAP) and inner + HEAD_ROWS
+      // parent rows give inner rows of exactly ROW. `maxRows` is the empty column's
+      // height; cards measured taller grow the slab, and give the rows back.
+      const inner = Math.max(EMPTY_ROWS, CARDS[c.id].length * GUESS);
       return {
         id: c.id, title: c.name, span: 3, rows: inner + HEAD_ROWS, columns: 1, pinned: true, movable: false, resizable: false,
         caption: { text: c.name, height: HEAD_ROWS * (ROW + GAP) },
-        maxRows: inner,
+        maxRows: EMPTY_ROWS,
         widgets: CARDS[c.id].map(cardSpec),
       };
     }),
@@ -178,12 +178,13 @@ defineDemo({
   howTo: [
     'Drag a card from Backlog into In progress: the column makes room where you hover, and Backlog closes the gap.',
     'Drag a card up or down inside a column to reorder it.',
-    'Press "+ Add" on a column header: a new card lands at the bottom, and the count updates (In progress turns orange past its limit of 3).',
+    'Press "+ Add" on a column header: a new card lands at the bottom and the count updates. In progress holds 3: at the limit its "+ Add" goes and a fourth card dragged in is refused (it dims and snaps back).',
+    'Drop a card below the columns: it is refused and snaps back — cards live in columns.',
+    'Make the window narrower: the cards re-wrap and grow to fit; nothing is cut off.',
     '⌘Z undoes a whole move — both columns at once.',
   ],
 
   async setup(ctx) {
-    measureWidth = Math.max(160, ((ctx.host.clientWidth - GAP * 13) / 12) * 3 + GAP * 2 - 2 * GAP - 2);
     const spec = buildSpec();
     api = render(spec, ctx.host);
     H = spec.handle;
@@ -191,6 +192,7 @@ defineDemo({
     window.__lab = { H, api, D: ctx.diagram };   // lab probes
     api.renderNow();
     await ctx.tick();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));   // the first measure
     updateCounts();
   },
 
@@ -235,6 +237,12 @@ defineDemo({
     for (const c of COLUMNS) check(stacked(c.id), `${c.name}: cards are stacked with no holes`);
     const tall = D.getNode('card-2'), short = D.getNode('card-1');
     check(tall.size.height > short.size.height, 'a card with a description is taller than one without (content-driven rows)');
+    const clipped = () => [...container.querySelectorAll('.grafloria-node-host .kb-card')]
+      .filter((el) => el.scrollHeight > el.parentElement.clientHeight + 1).map((el) => el.closest('[data-node-id]')?.dataset.nodeId ?? '?');
+    const slack = () => [...container.querySelectorAll('.grafloria-node-host .kb-card')]
+      .map((el) => el.parentElement.clientHeight - el.scrollHeight);
+    checkEqual(clipped().join(','), '', 'autoHeight: no card is cut off');
+    check(slack().every((px) => px <= ROW + GAP + 1), 'autoHeight: no card is more than one row unit taller than its content');
 
     // ② cross-column move: Backlog's first card into In progress, between its two cards
     const doing = order('doing');
@@ -263,6 +271,40 @@ defineDemo({
     await settle();
     check(!!w && D.getGroup('done').members.has(w.id), '"+ Add" put a card into the empty Done column');
     checkEqual(countsNow().done, 1, 'the Done count reads 1');
+
+    // ⑥ WIP: In progress holds 3 — the third card goes in, a fourth is refused and snaps home
+    const fill = order('backlog')[0];
+    const doingLast = () => D.getNode(order('doing').at(-1));
+    await drag(center(D.getNode(fill)), { x: center(doingLast()).x, y: doingLast().position.y + doingLast().size.height - 4 });
+    check(D.getGroup('doing').members.has(fill), 'a third card goes into In progress');
+    check(heads.get('doing').add.hidden, 'at its limit, In progress shows no "+ Add"');
+    const extra = order('backlog')[0];
+    const extraAt = { ...D.getNode(extra).position };
+    const depth0 = cm.canUndo() ? 1 : 0; void depth0;
+    await drag(center(D.getNode(extra)), center(doingLast()));
+    check(D.getGroup('backlog').members.has(extra) && !D.getGroup('doing').members.has(extra), 'a fourth card is refused and stays in Backlog');
+    checkEqual(JSON.stringify(D.getNode(extra).position), JSON.stringify(extraAt), 'and snaps back to the exact place it left');
+    check(stacked('doing') && stacked('backlog'), 'both columns are clean stacks after the refusal');
+
+    // ⑦ cards live in columns: a drop below every column is refused
+    const loose = order('review')[0];
+    const reviewG = D.getGroup('review');
+    await drag(center(D.getNode(loose)), { x: center(D.getNode(loose)).x, y: reviewG.position.y + reviewG.size.height + 160 });
+    check(reviewG.members.has(loose), 'a card dropped below the columns stays in its column');
+    check([...D.getGroup(H.activeView).members].every((id) => COLUMNS.some((c) => c.id === id)), 'the board itself holds only columns');
+
+    // ⑧ a narrower board: cards re-wrap, re-measure, and nothing is cut off
+    const tallH0 = D.getNode('card-2').size.height;
+    container.style.width = '760px';
+    for (let i = 0; i < 6; i++) await raf();
+    await settle();
+    checkEqual(clipped().join(','), '', 'at 760 px no card is cut off');
+    check(D.getNode('card-2').size.height > tallH0, 'the long card grew as its text re-wrapped');
+    for (const c of COLUMNS) check(stacked(c.id), `${c.name}: still a clean stack at 760 px`);
+    container.style.width = '';
+    for (let i = 0; i < 6; i++) await raf();
+    await settle();
+    checkEqual(D.getNode('card-2').size.height, tallH0, 'back at full width the long card is its old height again');
 
     // ⑤ the board round-trips
     const snap = H.toJSON();
