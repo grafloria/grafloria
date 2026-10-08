@@ -1,11 +1,19 @@
-// Generate demos/dashboard/kanban-studio-backdrop.svg: a dusk sky over layered mountain ridges, seeded so it is reproducible.
-//     node tools/kanban-studio-backdrop.mjs demos/dashboard/kanban-studio-backdrop.svg
+// Generate the Kanban studio backdrops — original, seeded artwork, so every run
+// writes the same bytes:
+//     node tools/kanban-studio-backdrop.mjs demos/dashboard/kanban-studio-backdrop.svg          (dusk)
+//     node tools/kanban-studio-backdrop.mjs demos/dashboard/kanban-studio-aurora.svg aurora
+//     node tools/kanban-studio-backdrop.mjs demos/dashboard/kanban-studio-coast.svg coast
+//     node tools/kanban-studio-backdrop.mjs demos/dashboard/kanban-studio-desert.svg desert
 import { writeFileSync } from 'fs';
+
 const W = 2400, H = 1350;
-let seed = 7;
+const [out, variant = 'dusk'] = process.argv.slice(2);
+let seed = { dusk: 7, aurora: 11, coast: 23, desert: 31 }[variant];
+if (!out || !seed) throw new Error('usage: kanban-studio-backdrop.mjs <out.svg> [dusk|aurora|coast|desert]');
 const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-const ridge = (base, amp, rough, step) => {
-  // midpoint displacement along x, then a smooth path through the points
+
+/** A ridge line by midpoint displacement, closed down to the bottom edge. */
+const ridge = (base, amp, rough, step, smooth = false) => {
   let pts = [[0, base], [W, base]];
   let a = amp;
   for (let level = 0; level < 9; level++) {
@@ -18,21 +26,58 @@ const ridge = (base, amp, rough, step) => {
     pts = next;
     a *= rough;
   }
-  const d = pts.filter((_, i) => i % step === 0 || i === pts.length - 1).map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(0)} ${y.toFixed(0)}`).join(' ');
+  const kept = pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
+  let d;
+  if (smooth) {
+    // dunes: quadratic curves through the midpoints
+    d = `M${kept[0][0].toFixed(0)} ${kept[0][1].toFixed(0)}`;
+    for (let i = 1; i < kept.length - 1; i++) {
+      const [x, y] = kept[i], [nx, ny] = kept[i + 1];
+      d += ` Q${x.toFixed(0)} ${y.toFixed(0)} ${((x + nx) / 2).toFixed(0)} ${((y + ny) / 2).toFixed(0)}`;
+    }
+    d += ` L${W} ${kept[kept.length - 1][1].toFixed(0)}`;
+  } else {
+    d = kept.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(0)} ${y.toFixed(0)}`).join(' ');
+  }
   return `${d} L${W} ${H} L0 ${H} Z`;
 };
-const stars = Array.from({ length: 140 }, () => {
-  const x = rnd() * W, y = rnd() * H * 0.42, r = rnd() * 1.4 + 0.3, o = (rnd() * 0.6 + 0.25).toFixed(2);
+/** A headland rising from the horizon between x0 and x1: peaks only above `baseY`, tapering at both ends. */
+const headland = (x0, x1, baseY, amp) => {
+  let pts = [[x0, baseY], [x1, baseY]];
+  let a = amp;
+  for (let level = 0; level < 7; level++) {
+    const next = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
+      next.push(pts[i], [(ax + bx) / 2, (ay + by) / 2 - rnd() * a]);
+    }
+    next.push(pts[pts.length - 1]);
+    pts = next;
+    a *= 0.55;
+  }
+  const n = pts.length - 1;
+  // taper: the land meets the sea at both ends
+  const shaped = pts.map(([x, y], i) => [x, baseY - (baseY - y) * Math.sin((Math.PI * i) / n) ** 0.6]);
+  return shaped.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(0)} ${y.toFixed(0)}`).join(' ') + ' Z';
+};
+const stars = (n, maxY) => Array.from({ length: n }, () => {
+  const x = rnd() * W, y = rnd() * H * maxY, r = rnd() * 1.4 + 0.3, o = (rnd() * 0.6 + 0.25).toFixed(2);
   return `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${r.toFixed(1)}" fill="#fff" opacity="${o}"/>`;
 }).join('');
-const layers = [
-  { base: 760, amp: 520, rough: 0.55, fill: 'url(#m1)' },
-  { base: 880, amp: 420, rough: 0.55, fill: 'url(#m2)' },
-  { base: 1000, amp: 330, rough: 0.52, fill: 'url(#m3)' },
-  { base: 1120, amp: 240, rough: 0.5, fill: 'url(#m4)' },
-  { base: 1240, amp: 160, rough: 0.5, fill: 'url(#m5)' },
-];
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">
+const grad = (id, stops, vertical = true) =>
+  `<linearGradient id="${id}" x1="0" y1="0" x2="${vertical ? 0 : 1}" y2="${vertical ? 1 : 0}">${stops.map(([o, c, op]) => `<stop offset="${o}" stop-color="${c}"${op !== undefined ? ` stop-opacity="${op}"` : ''}/>`).join('')}</linearGradient>`;
+const head = (comment) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">\n<!-- ${comment} Original artwork for the Grafloria demos. -->\n`;
+
+function dusk() {
+  const st = stars(140, 0.42);
+  const layers = [
+    { base: 760, amp: 520, rough: 0.55, fill: 'url(#m1)' },
+    { base: 880, amp: 420, rough: 0.55, fill: 'url(#m2)' },
+    { base: 1000, amp: 330, rough: 0.52, fill: 'url(#m3)' },
+    { base: 1120, amp: 240, rough: 0.5, fill: 'url(#m4)' },
+    { base: 1240, amp: 160, rough: 0.5, fill: 'url(#m5)' },
+  ];
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">
 <!-- Kanban studio backdrop: generated by a seeded script (dusk sky, five ridges, mist). Original artwork for the Grafloria demos. -->
 <defs>
 <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b1f4b"/><stop offset=".38" stop-color="#4b2c6f"/><stop offset=".62" stop-color="#b4487a"/><stop offset=".8" stop-color="#f08a5d"/><stop offset="1" stop-color="#f9c784"/></linearGradient>
@@ -45,10 +90,71 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" pre
 <linearGradient id="mist" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6b3a0" stop-opacity="0"/><stop offset=".5" stop-color="#f6b3a0" stop-opacity=".22"/><stop offset="1" stop-color="#f6b3a0" stop-opacity="0"/></linearGradient>
 </defs>
 <rect width="${W}" height="${H}" fill="url(#sky)"/>
-<g>${stars}</g>
+<g>${st}</g>
 <rect width="${W}" height="${H}" fill="url(#sun)"/>
 <circle cx="${W * 0.64}" cy="${H * 0.6}" r="70" fill="#ffe7b8" opacity=".9"/>
 ${layers.map((l, i) => `<path d="${ridge(l.base, l.amp, l.rough, 2)}" fill="${l.fill}"/>${i < 3 ? `<rect y="${l.base - 120}" width="${W}" height="240" fill="url(#mist)"/>` : ''}`).join('\n')}
 </svg>`;
-writeFileSync(process.argv[2], svg);
-console.log('wrote', process.argv[2], (svg.length / 1024).toFixed(0) + ' KB');
+}
+
+function aurora() {
+  // ribbons: wide translucent curves, blurred
+  const ribbon = (y, amp, color, op) => {
+    let d = `M0 ${y}`;
+    for (let x = 0; x <= W; x += 200) d += ` Q${x + 100} ${(y + (rnd() - 0.5) * amp).toFixed(0)} ${x + 200} ${(y + (rnd() - 0.5) * amp * 0.6).toFixed(0)}`;
+    return `<path d="${d}" fill="none" stroke="${color}" stroke-width="${(120 + rnd() * 90).toFixed(0)}" stroke-linecap="round" opacity="${op}" filter="url(#blur)"/>`;
+  };
+  const layers = [[820, 380, 0.55, '#16324a', '#0e2236'], [930, 300, 0.53, '#10263a', '#0a1a2b'], [1060, 220, 0.5, '#0b1c2c', '#07121e'], [1190, 150, 0.5, '#07131f', '#030a12']];
+  return head('Kanban studio backdrop "aurora": generated by a seeded script (night sky, aurora ribbons, four ridges).') + `<defs>
+${grad('sky', [[0, '#020814'], [0.45, '#06203a'], [0.75, '#0d3b52'], [1, '#14506a']])}
+<filter id="blur" filterUnits="userSpaceOnUse" x="-200" y="-200" width="${W + 400}" height="${H + 400}"><feGaussianBlur stdDeviation="38"/></filter>
+${layers.map(([, , , a, b], i) => grad(`r${i}`, [[0, a], [1, b]])).join('\n')}
+</defs>
+<rect width="${W}" height="${H}" fill="url(#sky)"/>
+<g>${stars(220, 0.6)}</g>
+<g style="mix-blend-mode:screen">${ribbon(380, 260, '#3dfcb0', 0.55)}${ribbon(470, 220, '#24d6c9', 0.45)}${ribbon(300, 300, '#8af07c', 0.35)}${ribbon(540, 180, '#7b6cff', 0.3)}</g>
+${layers.map(([base, amp, rough], i) => `<path d="${ridge(base, amp, rough, 2)}" fill="url(#r${i})"/>`).join('\n')}
+</svg>`;
+}
+
+function coast() {
+  const waves = Array.from({ length: 26 }, (_, i) => {
+    const y = 860 + i * 18 + rnd() * 6, x = rnd() * W * 0.9, w = 80 + rnd() * 380;
+    return `<rect x="${x.toFixed(0)}" y="${y.toFixed(0)}" width="${w.toFixed(0)}" height="${(2 + rnd() * 2).toFixed(1)}" rx="2" fill="#fff" opacity="${(0.12 + rnd() * 0.2).toFixed(2)}"/>`;
+  }).join('');
+  return head('Kanban studio backdrop "coast": generated by a seeded script (dawn sky, sun, headland, sea).') + `<defs>
+${grad('sky', [[0, '#2a4a7f'], [0.4, '#6f8fc7'], [0.68, '#f6b8a2'], [0.84, '#ffd9a0'], [1, '#ffe9c4']])}
+${grad('sea', [[0, '#3b6ea8'], [0.5, '#24507f'], [1, '#12304f']])}
+${grad('glow', [[0, '#fff1c9', 0], [0.5, '#fff1c9', 0.75], [1, '#fff1c9', 0]], false)}
+${grad('hd', [[0, '#3d4f6e'], [1, '#1f2b40']])}
+<radialGradient id="sun" cx=".3" cy=".6" r=".28"><stop offset="0" stop-color="#fff4d6" stop-opacity=".95"/><stop offset=".3" stop-color="#ffd59a" stop-opacity=".5"/><stop offset="1" stop-color="#ffb38a" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="${W}" height="${H}" fill="url(#sky)"/>
+<rect width="${W}" height="${H}" fill="url(#sun)"/>
+<circle cx="${W * 0.3}" cy="${H * 0.62}" r="64" fill="#fff6dc"/>
+<path d="${headland(1380, 2420, H * 0.62 + 2, 240)}" fill="url(#hd)" opacity=".92"/>
+<path d="${headland(1720, 2100, H * 0.62 + 2, 90)}" fill="#1b2638" opacity=".55"/>
+<rect y="${H * 0.62}" width="${W}" height="${H * 0.38}" fill="url(#sea)"/>
+<rect x="${W * 0.3 - 60}" y="${H * 0.63}" width="120" height="${H * 0.37}" fill="url(#glow)"/>
+<g>${waves}</g>
+</svg>`;
+}
+
+function desert() {
+  const layers = [[880, 260, 0.5, '#e8a36c', '#d3814f'], [990, 200, 0.5, '#d98451', '#bf6638'], [1110, 160, 0.48, '#c4683a', '#a14f28'], [1230, 110, 0.48, '#9d4a24', '#7a3519']];
+  return head('Kanban studio backdrop "desert": generated by a seeded script (evening sky, four dune ridges).') + `<defs>
+${grad('sky', [[0, '#3c2a5d'], [0.4, '#8a4d7a'], [0.68, '#e48a6a'], [1, '#fbc58a']])}
+${layers.map(([, , , a, b], i) => grad(`d${i}`, [[0, a], [1, b]])).join('\n')}
+<radialGradient id="sun" cx=".7" cy=".62" r=".3"><stop offset="0" stop-color="#ffe6b0" stop-opacity=".9"/><stop offset="1" stop-color="#ff9e6e" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="${W}" height="${H}" fill="url(#sky)"/>
+<g>${stars(60, 0.3)}</g>
+<rect width="${W}" height="${H}" fill="url(#sun)"/>
+<circle cx="${W * 0.7}" cy="${H * 0.63}" r="58" fill="#fff0c8" opacity=".95"/>
+${layers.map(([base, amp, rough], i) => `<path d="${ridge(base, amp, rough, 4, true)}" fill="url(#d${i})"/>`).join('\n')}
+</svg>`;
+}
+
+const svg = { dusk, aurora, coast, desert }[variant]();
+writeFileSync(out, svg);
+console.log('wrote', out, (svg.length / 1024).toFixed(0) + ' KB');
