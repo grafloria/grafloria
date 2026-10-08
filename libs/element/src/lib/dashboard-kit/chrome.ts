@@ -146,7 +146,14 @@ export function createChrome(ctx: BoardCtx, deps: ChromeDeps): Chrome {
       band = document.createElement('div');
       band.className = 'axdb-slab-f';
       el.append(band);
-      options.renderFooter?.(id, band);
+      // The page's painter: a throw here must not abort the board being bound
+      // around it (it did — a footer reading the not-yet-returned handle left
+      // the whole dashboard without its history listener, silently).
+      try {
+        options.renderFooter?.(id, band);
+      } catch (e) {
+        console.error(`[grafloria] renderFooter threw for section "${id}"`, e);
+      }
     }
     band.style.height = `${f.height}px`;
   };

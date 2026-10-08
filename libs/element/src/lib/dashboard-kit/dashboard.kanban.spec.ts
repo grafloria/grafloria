@@ -776,3 +776,71 @@ describe('runtime sections and footers', () => {
     expect(handle.widget('s1-c1')!.cell!.y).toBe(last.y + last.h);
   });
 });
+
+describe('presses inside a card', () => {
+  it('a press on a form field or a [data-axdb-pass] element inside a widget is the content\'s; elsewhere on the card it is the board\'s', () => {
+    const { model, api } = mount(BOARD());
+    const host = document.createElement('div');
+    host.className = 'grafloria-node-host';
+    host.dataset['nodeId'] = 'a1';
+    host.innerHTML = '<div class="card"><textarea></textarea><button data-axdb-pass>done</button><button class="plain">x</button><span class="t">title</span></div>';
+    api.layer.appendChild(host);
+    const node = model.getNode('a1')!;
+    const at = (sel: string) => ({ ...tev('down', node.position.x + 5, node.position.y + 5), source: { target: host.querySelector(sel) } as unknown as PointerEvent });
+    const tool = toolOf('A');
+    expect(tool.hitTest(at('textarea'), { node, empty: false } as never)).toBe(false);
+    expect(tool.hitTest(at('[data-axdb-pass]'), { node, empty: false } as never)).toBe(false);
+    expect(tool.hitTest(at('.plain'), { node, empty: false } as never)).toBe(true);
+    expect(tool.hitTest(at('.t'), { node, empty: false } as never)).toBe(true);
+  });
+});
+
+describe('lists that hug their cards', () => {
+  /** Two one-column lists that hug: design of 1 row, a header and a footer band. */
+  const HUG = (extra: Partial<DashboardOptions> = {}) =>
+    dashboard({
+      columns: 12, gap: 8, width: 1200, height: 800, sizing: 'grow', rowHeight: 8, float: false,
+      widgets: ['L1', 'L2'].map((id, i) => ({
+        id, span: 3, rows: (i === 0 ? 8 : 4) + 8, columns: 1, maxRows: 1, movable: 'row' as const, stack: true,
+        caption: { text: id, height: 64 }, footer: { height: 64 },
+        widgets: (i === 0 ? ['a', 'b'] : ['c']).map((cid) => ({ id: `${id}-${cid}`, kind: 'card', span: 1, rows: 4 })),
+      })),
+      ...extra,
+    });
+  const slabRows = (h: DashboardHandle, id: string) => (h.binderOf('main') as DashboardGridHandle).cellOf(id)!.h;
+
+  it('a list a card left shrinks to its cards; the undo that brings it back grows it again', async () => {
+    const { model, api, handle } = mount(HUG());
+    const l1 = slabRows(handle, 'L1'), l2 = slabRows(handle, 'L2');
+    const L2 = model.getGroup('L2')!;
+    await drag(model, 'L1', 'L1-b', { x: L2.position.x + L2.size!.width / 2, y: L2.position.y + L2.size!.height - 20 });
+    expect(model.getGroup('L2')!.members.has('L1-b')).toBe(true);
+    expect(slabRows(handle, 'L1')).toBe(l1 - 4);                 // the hole closed
+    expect(slabRows(handle, 'L2')).toBe(l2 + 4);                 // the newcomer's rows, no more
+    await api.getEngine().commandManager.undo(); await settle();
+    expect(model.getGroup('L1')!.members.has('L1-b')).toBe(true);
+    expect(slabRows(handle, 'L1')).toBe(l1);
+    expect(slabRows(handle, 'L2')).toBe(l2);
+    expect(api.getEngine().commandManager.canRedo()).toBe(true);  // the fitting itself is not a step
+  });
+
+  it('a card dropped on a hugging list\'s footer lands after its last card — the list grows under the hand, the slot stays at the end', async () => {
+    const { model, handle } = mount(HUG());
+    const L1 = model.getGroup('L1')!;
+    await drag(model, 'L2', 'L2-c', { x: L1.position.x + L1.size!.width / 2, y: L1.position.y + L1.size!.height - 20 });
+    const order = ['L1-a', 'L1-b', 'L2-c'].map((id) => handle.widget(id)!.cell!.y);
+    expect(order[0]).toBeLessThan(order[1]!);
+    expect(order[1]).toBeLessThan(order[2]!);
+  });
+
+  it('a renderFooter that throws is reported, and the board still follows the history', async () => {
+    const err = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { model, api, handle } = mount(HUG({ renderFooter: () => { throw new Error('page bug'); }, onLayoutChange: jest.fn() }));
+    expect(err.mock.calls.some((c) => String(c[0]).includes('renderFooter threw'))).toBe(true);
+    const L2 = model.getGroup('L2')!;
+    await drag(model, 'L1', 'L1-a', { x: L2.position.x + L2.size!.width / 2, y: L2.position.y + L2.size!.height - 20 });
+    await api.getEngine().commandManager.undo(); await settle();
+    expect(model.getGroup('L1')!.members.has('L1-a')).toBe(true);
+    expect(slabRows(handle, 'L2')).toBeGreaterThan(0);
+  });
+});

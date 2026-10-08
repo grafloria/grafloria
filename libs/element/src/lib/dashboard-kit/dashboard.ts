@@ -2078,6 +2078,8 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         if (!binders.has(id) && model.getGroup(id)) ctx.rebindContainer?.(id);
       }
       for (const b of binders.values()) b.sync();
+      // …then lists hug their cards — only once every board reads the model.
+      for (const b of binders.values()) b.fitToContent?.();
       // …and undo/redo of a section resize must re-place the pages under the
       // strip, which only the tabs runtime knows how to do.
       for (const id of ctx.layoutOf.keys()) if (ctx.layoutOf.get(id) === 'tabs') ctx.syncTabs?.(id);
@@ -2351,6 +2353,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     },
     refresh() {
       for (const b of binders.values()) b.sync();
+      for (const b of binders.values()) b.fitToContent?.();
       ctx.apiRef?.renderNow();
       ctx.autoHeight?.queueAll();
     },

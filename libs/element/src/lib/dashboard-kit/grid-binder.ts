@@ -348,6 +348,11 @@ export function ownsPress(
     if (t.closest('.axdb-tabs')) return false;
     // …and so is a section's FOOTER band (an "Add a card" row).
     if (t.closest('.axdb-slab > .axdb-slab-f')) return false;
+    // Inside a WIDGET, a form field and anything marked `data-axdb-pass` are
+    // the content's: typing in a card's composer, ticking its box or pressing
+    // its marked button must not lift the card (gridstack's draggable
+    // `cancel`). Plain buttons still drag, as they always have.
+    if (t.closest('.grafloria-node-host') && t.closest(WIDGET_PASS_THROUGH)) return false;
     const band = t.closest('.axdb-slab > .axdb-slab-h');
     const sid = band?.parentElement?.getAttribute('data-slab-id');
     if (band && sid) {
@@ -357,6 +362,8 @@ export function ownsPress(
   }
   return true;
 }
+/** What a press inside a widget leaves to the widget's own DOM (see ownsPress). */
+export const WIDGET_PASS_THROUGH = 'input, textarea, select, [contenteditable="true"], [contenteditable=""], [data-axdb-pass]';
 export interface DashboardGridHandle {
   /** Rebuild the engine from the group's members + their cells, re-project pixels. */
   sync(): void;
@@ -473,6 +480,13 @@ export interface DashboardGridHandle {
   makeRoom?(w: number, h: number): Command[] | null;
   /** Is a pointer gesture live on this board? */
   readonly busy?: boolean;
+  /**
+   * A `stack` list takes exactly the rows its cards need from its parent (as
+   * layout, no undo step). Run AFTER every board has synced from the model —
+   * it writes the parent's cells, and a parent not yet synced would write its
+   * stale layout back (an undone list reorder came straight back).
+   */
+  fitToContent?(): void;
   /**
    * Palette drag-in: `node` is a DETACHED widget node (not yet in the model).
    * A chip follows the cursor; entering the board places the node's item in
@@ -2954,12 +2968,75 @@ export function bindDashboardGrid(
   /** The boards of this canvas as the zone walk sees them — see `zoneRootsOf`. */
   const zoneRoots = (): ZoneBoard[] => zoneRootsOf(peersOnCanvas(), diagram);
   /** The ghost takes the cell under the hand on THIS board: re-entering at the bottom edge first (collision-free), then gatelessly; a tile already here moves through the gate. */
+  /**
+   * A ONE-COLUMN LIST (`stack`) places a dragged card by INSERTION POINT, the
+   * way a list does: it goes before the first other card whose middle is
+   * below the hand, else after the last — so the hand over the list's footer
+   * means "at the end". The middles are read with the dragged card taken out
+   * (the others packed from the top), so the slot does not chase the cards it
+   * just pushed. The list is then laid out top to bottom in that order.
+   * Centring the card on the pointer, the board's rule, covered the last card
+   * and pushed it under the newcomer — and the list grew under the hand.
+   */
+  const isList = (): boolean => stack && columns === 1;
+  /**
+   * A LIST HUGS ITS CARDS: after any change the history brings (a card in, a
+   * card out, an undo), a growable `stack` section takes exactly the rows its
+   * cards need — never fewer than its design — from its parent, as LAYOUT
+   * (the way autoHeight writes a height): no undo step. Escalation only ever
+   * grew a section; a list a card had left kept the hole at its bottom, and an
+   * undo that brought the card back to a list that had shrunk overflowed it.
+   */
+  const hugContent = (): void => {
+    if (!stack || !escalate || designRows === undefined || disposed || gesture || slabGesture) return;
+    const parent = parentPeer();
+    if (!parent) return;
+    // Counted in the BOARD's row unit: this list's own rows are squeezed to
+    // whatever frame it has now, so they cannot say how far off the frame is.
+    const unit = baseRowHeight + gap;
+    const have = Math.round((frame().height + gap) / unit);
+    const want = Math.max(designRows, extentOf(engine.getItems()));
+    if (have === want || have <= 0) return;
+    if (!parent.resizeMemberBy(group.id, want - have).changed) return;
+    setLiveBound(want);
+    parent.persistCells?.();
+    project();
+    api.renderNow();
+  };
+  const placeInList = (id: string, worldY: number): boolean => {
+    const me = engine.getItem(id);
+    if (!me) return false;
+    const f = frame();
+    const unit = rowHeightFor(geom(), rows()) + gap;
+    const at = (worldY - f.y) / unit; // the hand, in rows
+    const others = engine.getItems().filter((i) => i.id !== id).sort((a, b) => a.y - b.y);
+    let slot = others.length;
+    let top = 0;
+    for (let k = 0; k < others.length; k++) {
+      if (at < top + others[k]!.h / 2) { slot = k; break; }
+      top += others[k]!.h;
+    }
+    const order = [...others.slice(0, slot), me, ...others.slice(slot)];
+    let y = 0;
+    let changed = false;
+    for (const it of order) {
+      if (it.y !== y || it.x !== 0) { it.y = y; it.x = 0; changed = true; }
+      y += it.h;
+    }
+    return changed;
+  };
   const placeOnSelf = (g: GestureState, desired: { x: number; y: number }, pushSolid = false): void => {
     if (g.removedFromBoard) {
       g.removedFromBoard = false;
       setDim(g, false);
       const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), g.spans.w);
       engine.add({ id: g.id, x: 0, y: engine.rows(), w: g.spans.w, h: g.spans.h });
+      if (isList() && g.lastWorld) {
+        placeInList(g.id, g.lastWorld.y);
+        project();
+        showRefusal(null, 0, 0);
+        return;
+      }
       const first = engine.moveCheck(g.id, cell.x, cell.y, { gate: false, pushSolid });
       if (!first.changed) placeNear(g.id, cell.x, cell.y, g.spans.w, pushSolid);
       project();
@@ -2990,6 +3067,11 @@ export function bindDashboardGrid(
       const stuck = !!now && now.x === was.x && now.y === was.y;
       showRefusal(stuck ? cell : null, it.w, it.h);
     } else {
+      if (isList() && g.lastWorld && g.subject === 'node') {
+        if (placeInList(g.id, g.lastWorld.y)) project();
+        showRefusal(null, 0, 0);
+        return;
+      }
       const spanW = engine.getItem(g.id)?.w ?? g.spans.w;
       const cell = pointToCell(desired.x, desired.y, frame(), geom(), rows(), spanW);
       // A PALETTE CHIP IS A FIRST PLACEMENT THE WHOLE WAY. The anti-jitter
@@ -3400,7 +3482,8 @@ export function bindDashboardGrid(
     } else {
       const cell0 = wantedCell(world.x, world.y, span.w, span.h);
       lastWant = cell0;
-      place(cell0, span.w, opts.push);
+      if (isList()) placeInList(node.id, world.y);
+      else place(cell0, span.w, opts.push);
     }
     armGlide();
     project();
@@ -3442,6 +3525,12 @@ export function bindDashboardGrid(
         const item = engine.getItem(node.id);
         if (!item) return;
         if (beside) endBeside(true); // the hand left the band: the container comes back before the tile takes a plain cell
+        if (isList()) {
+          lastWant = null;
+          if (placeInList(node.id, w.y)) project();
+          syncPlaceholder();
+          return;
+        }
         const cell = wantedCell(w.x, w.y, item.w, opts.fit === 'shrink' ? hNatural : item.h);
         // The search is worth running once per wanted cell, not per pixel.
         if (lastWant && lastWant.x === cell.x && lastWant.y === cell.y) return;
@@ -4183,6 +4272,7 @@ export function bindDashboardGrid(
     sync(): void {
       rebuild(false);
     },
+    fitToContent: () => hugContent(),
     setColumns(n, layout, opts): boolean {
       if (disposed) return false;
       if (!opts?.responsive) responsivePinned = true;

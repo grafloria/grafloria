@@ -13,7 +13,9 @@
  * wider column), whenever its CONTENT changes (a framework wrapper paints its
  * component into the host after the kit hands the host over — a React portal,
  * a Vue/Angular/Qwik view — and text edits, a field added; the host's own
- * height is fixed, so only a mutation tells), after `update()`/`repaint()`,
+ * height is fixed, so only a mutation tells), whenever the CONTENT's own box
+ * changes size (a CSS transition ending, an image or a font arriving — the
+ * painted element is observed as well as the host), after `update()`/`repaint()`,
  * and after every history event
  * (an undo restores the cells as they were saved; the content decides again).
  * Reads are batched into one animation frame. A board with a live gesture is
@@ -112,11 +114,22 @@ export function createAutoHeight(host: AutoHeightHost): AutoHeight {
           for (const r of records) {
             const hostEl = (r.target instanceof Element ? r.target : r.target.parentElement)?.closest?.('.grafloria-node-host') ?? null;
             const id = hostEl ? idOf.get(hostEl) : undefined;
-            if (id) dirty.add(id);
+            if (id) {
+              dirty.add(id);
+              watchContent(id, hostEl as HTMLElement);
+            }
           }
           schedule();
         })
       : null;
+
+  /** The painted element itself — its box changes without the host's (a transition, an image, a font). */
+  const watchContent = (id: string, el: HTMLElement): void => {
+    const kid = el.firstElementChild;
+    if (!kid || !ro || idOf.get(kid) === id) return;
+    idOf.set(kid, id);
+    ro.observe(kid);
+  };
 
   const schedule = (): void => {
     if (disposed || frame || dirty.size === 0) return;
@@ -145,10 +158,13 @@ export function createAutoHeight(host: AutoHeightHost): AutoHeight {
     const cell = binder.cellOf(id);
     const m = binder.metrics();
     if (!cell || !(m.rowHeight > 0)) return 'done';
-    const cssW = el.offsetWidth;
-    const worldW = host.worldWidthOf(id);
-    const scale = cssW > 0 && worldW && worldW > 0 ? cssW / worldW : 1;
-    const px = naturalHeight(el) / scale;
+    // A host is sized in board units; until it carries its cell's width it is
+    // not laid out yet (the renderer's 100 px default), and text measured at
+    // that width wraps into a height the card never has. The resize observer
+    // asks again the moment the width lands.
+    const worldW = binder.cellRectOf?.(id)?.width ?? host.worldWidthOf(id);
+    if (worldW && Math.abs(el.offsetWidth - worldW) > 1) return 'done';
+    const px = naturalHeight(el);
     // Nothing painted yet (a framework wrapper hands the host over empty and
     // fills it on a later commit): there is no content to size by, and a
     // one-row guess would only reshuffle the board when the content lands.
@@ -191,6 +207,7 @@ export function createAutoHeight(host: AutoHeightHost): AutoHeight {
       hosts.set(id, el);
       idOf.set(el, id);
       ro?.observe(el);
+      watchContent(id, el);
       mo?.observe(el, { childList: true, subtree: true, characterData: true });
       dirty.add(id);
       schedule();
