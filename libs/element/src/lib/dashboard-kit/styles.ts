@@ -81,6 +81,9 @@ const CSS = `
 .grafloria-html-layer > .grafloria-node-host.axdb-carried { z-index: 30; opacity: .92; }
 .grafloria-html-layer > .axdb-group-bg.axdb-carried { z-index: 29; filter: drop-shadow(0 10px 16px rgba(16, 24, 40, .3)); }
 .grafloria-html-layer > .axdb-slab.axdb-carried { z-index: 31; }
+/* …selected as well (a press selects what it carries): the frame — and the caption band on it —
+   stays above the carried surface, or a section with a background loses its header mid-drag. */
+.grafloria-html-layer > .axdb-slab.axdb-slab--selected.axdb-carried { z-index: 31; }
 .grafloria-html-layer > .axdb-tabs.axdb-carried { z-index: 32; }
 
 /* ===== the placeholder: dashed slab, truthful, never animated ===== */
@@ -459,10 +462,15 @@ const CSS = `
 .grafloria-html-layer > .axdb-slab { position: absolute; pointer-events: none; border-radius: var(--axdb-rs-radius, 8px); z-index: 4; }
 /* Selected, the overlay rises above the tiles so ITS corner handle wins a
    corner it shares with a child's; unselected, its handle takes no presses. */
+/* THE BOARD A DRAGGED TILE WILL LAND ON: its section's frame says so while the
+   hand is over it — and says no, in the refusal colour, when canDrop refused. */
+.grafloria-html-layer > .axdb-slab.axdb-slab--drop { box-shadow: inset 0 0 0 2px var(--axdb-drop-ring, rgba(59, 82, 217, .7)); }
+.grafloria-html-layer > .axdb-slab.axdb-slab--refused { box-shadow: inset 0 0 0 2px var(--axdb-refused-ring, rgba(194, 65, 12, .75)); }
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected { z-index: 6; box-shadow: 0 0 0 1.5px var(--axdb-accent-ring, rgba(59, 82, 217, .55)); }
 .grafloria-html-layer > .axdb-slab > .axdb-rs { pointer-events: none; opacity: 0; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--selected > .axdb-rs { pointer-events: auto; opacity: 1; }
 .grafloria-html-layer > .axdb-slab.axdb-slab--static > .axdb-rs { display: none; }
+.grafloria-html-layer > .axdb-slab.axdb-slab--fixed > .axdb-rs { display: none; } /* resizable: false */
 
 /* GROUP FRAME (0.4.43): a TAB CONTAINER wears a frame by default — a bordered
    slab, and a tinted surface UNDER its pages (the strip's own track colour, so

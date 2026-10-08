@@ -120,6 +120,13 @@ export interface GridPackOptions {
    */
   maxRows?: number;
   /**
+   * A LIST, not a board: gravity packs the tile being moved or resized too,
+   * so it can never be left below free space — its cell is always the next
+   * free slot up (gridstack's float:false placeholder). Default false: the
+   * moving tile goes exactly where it is aimed and the others make room.
+   */
+  packActive?: boolean;
+  /**
    * Row CAPACITY of a board whose frame can hold only so many rows — the
    * dashboard kit's bounded fit mode (a fit board never changes size; past
    * its row floor it refuses rather than overflows). Same trial-run-and-roll-
@@ -200,6 +207,8 @@ export class GridPackEngine {
     return this._columns;
   }
   float: boolean;
+  /** See {@link GridPackOptions.packActive}. */
+  packActive: boolean;
   /** Row bound (see GridPackOptions.maxRows). Undefined = unbounded. Changed through {@link setBound}. */
   maxRows?: number;
   /** Row capacity (see GridPackOptions.capacity). Undefined = unbounded. */
@@ -253,6 +262,7 @@ export class GridPackEngine {
   constructor(items: GridPackItem[] = [], options: GridPackOptions = {}) {
     this._columns = options.columns ?? 12;
     this.float = options.float ?? false;
+    this.packActive = options.packActive ?? false;
     this.maxRows = options.maxRows;
     this.capacity = options.capacity;
     for (const it of items) this.add(it);
@@ -1012,7 +1022,7 @@ export class GridPackEngine {
     for (let guard = 0; guard < 4 * this.items.length + 8; guard++) {
       let changed = false;
       for (const n of this.ordered()) {
-        if (n.locked || n === active) continue;
+        if (n.locked || (n === active && !this.packActive)) continue;
         const mem = this.memory.get(n.id);
         if (mem && (n.x !== mem.x || n.y !== mem.y)) {
           const home = { ...n, x: mem.x, y: mem.y };

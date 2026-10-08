@@ -228,6 +228,8 @@ export interface DashboardGridOptions {
    * The API (`moveTo`, `addWidget`, undo) is not asked: it is the page's own.
    */
   canDrop?: (e: { nodeId: string; from: string | null; to: string }) => boolean;
+  /** A LIST board: gravity packs the dragged tile too (the engine's `packActive`) — a drop below the last tile lands right after it. */
+  stack?: boolean;
   /**
    * A member is about to LEAVE this board through a gesture (moved into
    * another board, made a tab of its own). Answers the commands that follow
@@ -869,6 +871,8 @@ interface GestureState {
   dropVerdicts?: Map<string, boolean>;
   /** The last move was refused by `canDrop`: a release snaps home, whatever `dragOut` and the pointer say. */
   policyRefused?: boolean;
+  /** A `movable: 'row'` section: the sections it may trade places with (itself included), and where they started. */
+  row?: { ids: string[]; startX: number };
   /** The board whose adoption refused this tile: the widget then pushes that board's container on ITS parent (D2) instead of asking again every move. */
   refusedPeer?: BinderPeer | null;
   /** Live cross-container adoption, when the pointer is over another board. */
@@ -959,6 +963,7 @@ export function bindDashboardGrid(
     designRows === undefined ? undefined : Math.max(designRows, extentOf(items));
   /** May a pull past the bound grow the slab in the parent? `false` = the pane is the bound. */
   const escalate = options.escalate !== false;
+  const stack = options.stack === true;
   const dragOut = options.dragOut ?? 'cancel';
   const wantHandles = options.resizeHandles !== false;
   const fluid = options.fluid === true;
@@ -993,7 +998,7 @@ export function bindDashboardGrid(
    */
   const engineFrom = (items: GridPackItem[], pack = false, at = columns): GridPackEngine => {
     maxRows = liveBound(items);
-    const e = new GridPackEngine(items, { columns: at, float: pack ? float : true, maxRows, capacity });
+    const e = new GridPackEngine(items, { columns: at, float: pack ? float : true, maxRows, capacity, packActive: stack });
     e.float = float;
     return e;
   };
@@ -1661,6 +1666,8 @@ export function bindDashboardGrid(
   };
   /** Which of a section frame's edges a world point is within EDGE_GRIP of. */
   const slabEdgesNear = (grp: GroupModel, x: number, y: number, grip = edgeGripFor(grp)): ResizeEdges => {
+    // `resizable: false` on a section: no edge is a handle — no resize cursor, and a press there is not a resize.
+    if ((grp.getMetadata?.('containerWidget') as { resizable?: boolean } | undefined)?.resizable === false) return NO_EDGES;
     const p = grp.position;
     const s = sizeOf(grp);
     return { n: y - p.y <= grip, s: p.y + s.height - y <= grip, w: x - p.x <= grip, e: p.x + s.width - x <= grip };
@@ -1840,6 +1847,9 @@ export function bindDashboardGrid(
     const grp = diagram.getGroup(id);
     const it = engine.getItem(id);
     if (!grp || !it || gesture || slabGesture || isStatic) return;
+    // `movable: false` keeps a section where it is; `'row'` only reorders it (see `reorderRow`).
+    const movable = (grp.getMetadata?.('containerWidget') as { movable?: boolean | 'row' } | undefined)?.movable;
+    if (movable === false) return;
     // A GROUP MOVE IS A GESTURE OF THE ONE MACHINE (tile first, 4b-ii): the
     // same threshold, snapshot, zone walk, legs, beside and commit a widget
     // gets — the group being the subject. The frame follows its cell.
@@ -1874,7 +1884,50 @@ export function bindDashboardGrid(
       hostEl: null,
       esc: null,
       chip: null,
+      ...(movable === 'row' ? { row: rowOf(id) } : {}),
     };
+  };
+  /** The `'row'` sections sharing `id`'s row, left to right, and the column the run starts at. */
+  const rowOf = (id: string): { ids: string[]; startX: number } => {
+    const me = engine.getItem(id)!;
+    const ids = engine
+      .getItems()
+      .filter((i) => i.y === me.y && isGroupMember(i.id) && (diagram.getGroup(i.id)?.getMetadata?.('containerWidget') as { movable?: unknown } | undefined)?.movable === 'row')
+      .sort((a, b) => a.x - b.x)
+      .map((i) => i.id);
+    return { ids, startX: Math.min(...ids.map((i) => engine.getItem(i)!.x)) };
+  };
+  /**
+   * REORDER ALONG THE ROW (`movable: 'row'`): the hand picks a SLOT among the
+   * row's other 'row' sections, read at the frames they had when the drag
+   * began, and the run is laid out again in the new order from the column it
+   * started at — each keeping its width. Nothing leaves the row: no zone walk,
+   * no other board, no push down. An order that would land a section on a
+   * tile outside the run (a widget under a shorter column) is not taken.
+   */
+  const reorderRow = (g: GestureState, ev: ToolPointerEvent): void => {
+    const row = g.row!;
+    const restCentre = (id: string): number => {
+      const s = g.startGeom.get(id);
+      return s ? s.pos.x + s.size.width / 2 : 0;
+    };
+    const others = row.ids.filter((id) => id !== g.id);
+    const slot = others.filter((id) => restCentre(id) < ev.world.x).length;
+    const order = [...others.slice(0, slot), g.id, ...others.slice(slot)];
+    const items = order.map((id) => engine.getItem(id)!);
+    const xs: number[] = [];
+    let x = row.startX;
+    for (const it of items) {
+      xs.push(x);
+      x += it.w;
+    }
+    const outside = engine.getItems().filter((i) => !row.ids.includes(i.id));
+    const clash = items.some((it, k) => outside.some((o) => o.x < xs[k]! + it.w && xs[k]! < o.x + o.w && o.y < it.y + it.h && it.y < o.y + o.h));
+    if (clash || items.every((it, k) => it.x === xs[k])) return;
+    items.forEach((it, k) => (it.x = xs[k]!));
+    project();
+    syncSlabs();
+    api.render();
   };
   const slabMove = (ev: ToolPointerEvent): void => {
     if (gesture?.subject === 'group') return onToolMove(ev);
@@ -2056,6 +2109,7 @@ export function bindDashboardGrid(
   };
 
   const cleanupGestureVisuals = (g: GestureState): void => {
+    markDrop(null, false);
     showRefusal(null, 0, 0); // a widget's refused cell too (0.4.74), and a chip's
     if (g.kind !== 'palette') {
       if (g.subject === 'node') setGhost(g.id, false);
@@ -2212,6 +2266,11 @@ export function bindDashboardGrid(
    * intent where a section of that board refused it (D2), or on a plain cell.
    */
   const moveGhost = (g: GestureState, ev: ToolPointerEvent): void => {
+    if (g.subject === 'group' && g.row) {
+      reorderRow(g, ev);
+      return;
+    }
+    markDrop(null, false); // every answer below marks afresh; one that marks nothing leaves no stale ring
     const desired = { x: ev.world.x - g.grab.dx, y: ev.world.y - g.grab.dy };
     if (g.subject === 'node') {
       // The pixel ghost follows the hand; a group's frame is projected from its cell, carried.
@@ -2274,6 +2333,7 @@ export function bindDashboardGrid(
     const policyTarget = z.kind === 'strip' ? { id: z.containerId } : z.kind === 'plain' || z.kind === 'beside' ? z.board : null;
     g.policyRefused = !!policyTarget && refusesDrop(g, policyTarget);
     if (g.policyRefused) {
+      markDrop(policyTarget && 'id' in policyTarget ? policyTarget.id : null, true);
       if (g.strip) {
         options.tabDrop?.markDrop(null, null);
         g.strip = null;
@@ -2394,10 +2454,22 @@ export function bindDashboardGrid(
       setDim(g, true);
     }
     syncPlaceholder();
+    // The board that will take the tile: the one holding its leg, else this one while it is on it.
+    markDrop(g.leg ? g.leg.adopted.groupId : !g.removedFromBoard && !g.strip ? group.id : null, false);
     // A carried group's slab and frame are this board's chrome, but its frame
     // is written by whichever board holds it now: re-sync so they follow.
     if (g.subject === 'group') syncSlabs();
   };
+  /** Mark the SECTION a drag will land on (its slab, drawn by the board holding it) — or that refused it. */
+  let dropMarked: HTMLElement | null = null;
+  const markDrop = (boardId: string | null, refused: boolean): void => {
+    const el = boardId ? (api.container.querySelector(`.axdb-slab[data-slab-id="${cssEscapeId(boardId)}"]`) as HTMLElement | null) : null;
+    if (dropMarked && dropMarked !== el) dropMarked.classList.remove('axdb-slab--drop', 'axdb-slab--refused');
+    dropMarked = el;
+    el?.classList.toggle('axdb-slab--drop', !refused);
+    el?.classList.toggle('axdb-slab--refused', refused);
+  };
+  const cssEscapeId = (id: string): string => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"'));
 
   const onToolMove = (ev: ToolPointerEvent): void => {
     const g = gesture;
@@ -4333,7 +4405,7 @@ export function bindDashboardGrid(
       // Probed at the LIVE bound: willItFit builds through engineFrom, which
       // resets the bound to the design — it would forget each row just taken.
       const fitsNow = (): boolean => {
-        const probe = new GridPackEngine(engine.getItems().map((i) => ({ ...i })), { columns, float: true, maxRows, capacity });
+        const probe = new GridPackEngine(engine.getItems().map((i) => ({ ...i })), { columns, float: true, maxRows, capacity, packActive: stack });
         return probe.add({ id: '\u0000probe', x: 0, y: 0, w: Math.max(1, w), h: Math.max(1, h), autoPosition: true }) !== null;
       };
       if (bound() === undefined || fitsNow()) return [];

@@ -175,6 +175,8 @@ interface PersistedBoard {
   /** Containers: the inner row bound, and whether a pull past it grows the slab. */
   maxRows?: number;
   escalate?: boolean;
+  /** Containers: a list — gravity packs the dragged tile too. */
+  stack?: boolean;
 }
 
 /** True when the node is an ER entity card or a UML class card. */

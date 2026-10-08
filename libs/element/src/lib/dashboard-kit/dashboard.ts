@@ -100,8 +100,15 @@ export interface DashboardWidgetSpec {
    * its own `maxRows` field one level up, which is why these live in `limits`.
    */
   limits?: { minSpan?: number; maxSpan?: number; minRows?: number; maxRows?: number };
-  /** May the user drag it? Default true. The API can always move it. */
-  movable?: boolean;
+  /**
+   * May the user drag it? Default true. The API can always move it. For a
+   * CONTAINER, `false` keeps the section where it is (its caption band no
+   * longer drags it), and `'row'` lets it only REORDER along its row among
+   * the other `'row'` sections: the hand picks a slot, the others slide
+   * aside, nothing moves up or down or into another board, one undo step.
+   * The column order of a Kanban board.
+   */
+  movable?: boolean | 'row';
   /** May the user resize it? Default true (no handle when false). The API can always resize it. */
   resizable?: boolean;
   /**
@@ -178,6 +185,19 @@ export interface DashboardWidgetSpec {
    * not hold is refused where it stands, and nothing outside the pane moves.
    */
   sizing?: 'fit' | 'grow';
+  /**
+   * Container only: a SURFACE under the section's children, any CSS
+   * background (a colour, a `var(--token)` so it follows the theme). Default:
+   * none — a section is its frame. A Kanban column's tint.
+   */
+  background?: string;
+  /**
+   * Container only: a LIST. Its children always pack to the top in order —
+   * the card being dragged too, so a drop below the last card lands right
+   * after it and the placeholder always shows the real slot. A Kanban column.
+   * Default false: a section is a board, and a drop goes where it is aimed.
+   */
+  stack?: boolean;
 }
 
 /** One board. Multiple views are the tab pattern: only one is on-camera. */
@@ -2839,6 +2859,10 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
               ...(w.layout !== undefined ? { layout: w.layout } : {}),
               ...(w.sizing !== undefined ? { sizing: w.sizing } : {}),
               ...(w.caption !== undefined ? { caption: w.caption } : {}),
+              ...(w.movable !== undefined ? { movable: w.movable } : {}),
+              ...(w.background !== undefined ? { background: w.background } : {}),
+              ...(w.stack ? { stack: true } : {}),
+              ...(w.resizable === false ? { resizable: false } : {}),
             });
             // Item 7: the container's own layout and bound, persisted like a view's.
             ctx.layoutOf.set(w.id, w.layout ?? 'grid');
@@ -2858,6 +2882,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
               rtl: options.rtl ?? false,
               layout: w.layout ?? 'grid',
               escalate: w.sizing !== 'fit',
+              ...(w.stack ? { stack: true } : {}),
             });
             cg.size = { width: 100, height: rowHeight, depth: 0 };
             boardGroup.addMember(w.id);
@@ -3027,6 +3052,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
             maxRows: innerRows ?? w.maxRows ?? (cg.getMetadata('containerWidget') as { maxRows?: number } | undefined)?.maxRows ?? rowExtentOf(w.widgets ?? []),
             float: false,
             escalate: w.sizing !== 'fit',
+            ...(w.stack ? { stack: true } : {}),
           })
         );
       }

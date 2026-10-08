@@ -84,7 +84,7 @@ export function createChrome(ctx: BoardCtx, deps: ChromeDeps): Chrome {
    * card was the tab's. A plain section keeps its invisible slab.
    */
   const groupBgs = new Map<string, HTMLElement>();
-  const syncGroupBg = (layer: HTMLElement, id: string, on: boolean, x: number, y: number, w: number, h: number): void => {
+  const syncGroupBg = (layer: HTMLElement, id: string, on: boolean, x: number, y: number, w: number, h: number, background?: string): void => {
     let bg = groupBgs.get(id) ?? null;
     if (!on) {
       bg?.remove();
@@ -103,6 +103,7 @@ export function createChrome(ctx: BoardCtx, deps: ChromeDeps): Chrome {
     bg.style.top = `${y}px`;
     bg.style.width = `${w}px`;
     bg.style.height = `${h}px`;
+    bg.style.background = background ?? '';
   };
 
   /**
@@ -213,10 +214,13 @@ export function createChrome(ctx: BoardCtx, deps: ChromeDeps): Chrome {
       el.style.height = `${sz.height}px`;
       el.classList.toggle('axdb-slab--selected', selectedId === id);
       el.classList.toggle('axdb-slab--static', isStatic);
+      el.classList.toggle('axdb-slab--fixed', (grp.getMetadata?.('containerWidget') as { resizable?: boolean } | undefined)?.resizable === false);
       el.querySelector(':scope > .axdb-rs')?.classList.toggle('axdb-rs--rtl', rtl);
       const tabs = isTabsGroup(grp);
       el.classList.toggle('axdb-slab--tabs', tabs);
-      syncGroupBg(layer, id, tabs, p.x, p.y, sz.width, sz.height);
+      // A section's own surface (`background`), else a tab container's track-coloured one.
+      const background = (grp.getMetadata?.('containerWidget') as { background?: string } | undefined)?.background;
+      syncGroupBg(layer, id, tabs || !!background, p.x, p.y, sz.width, sz.height, background);
       syncCaption(el, id, grp, sz.height);
     }
     for (const [id, el] of slabEls) {

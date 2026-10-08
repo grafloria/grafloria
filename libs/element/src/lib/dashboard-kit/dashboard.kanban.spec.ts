@@ -578,3 +578,125 @@ describe('autoHeight in every mode', () => {
     expect(m.handle.widget('w')!.cell!.h).toBe(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// STAGES: sections that stay put, reorder only along their row, carry a tint,
+// and pack like a list.
+// ---------------------------------------------------------------------------
+
+/** Four stages on one row, each a list; `movable` / `resizable` as asked. */
+const STAGES = (movable: boolean | 'row', extra: Partial<DashboardOptions> = {}) =>
+  dashboard({
+    columns: 12, gap: 8, width: 1200, height: 800, sizing: 'grow', rowHeight: 8, float: false,
+    widgets: ['s1', 's2', 's3', 's4'].map((id, i) => ({
+      id, span: 3, rows: 30, columns: 1, maxRows: 30, movable, resizable: false, stack: true, background: `rgb(${200 + i * 10}, 220, 240)`,
+      caption: { text: id.toUpperCase(), height: 32 },
+      widgets: [{ id: `${id}-c1`, kind: 'card', span: 1, rows: 4 }],
+    })),
+    ...extra,
+  });
+const xOrder = (model: DiagramModel) => ['s1', 's2', 's3', 's4'].map((id) => model.getGroup(id)!).sort((a, b) => a.position.x - b.position.x).map((g) => g.id);
+/** Drag a section by its caption band (the band is the slab's top 32 px). */
+const dragSection = async (model: DiagramModel, id: string, to: { x: number; y: number }) => {
+  const g = model.getGroup(id)!;
+  const tool = toolOf('main');
+  const at0 = { x: g.position.x + 30, y: g.position.y + 12 };
+  const band = document.querySelector(`.axdb-slab[data-slab-id="${id}"] > .axdb-slab-h`);
+  const ev = (type: ToolPointerEvent['type'], x: number, y: number) => ({ ...tev(type, x, y), source: { target: band } as unknown as PointerEvent });
+  const hit = { group: g, empty: false } as never;
+  tool.onPointerDown?.(ev('down', at0.x, at0.y), hit);
+  tool.onPointerMove?.(ev('move', at0.x + 20, at0.y + 4), hit);
+  for (let i = 1; i <= 8; i++) tool.onPointerMove?.(ev('move', at0.x + ((to.x - at0.x) * i) / 8, at0.y + ((to.y - at0.y) * i) / 8), hit);
+  tool.onPointerUp?.(ev('up', to.x, to.y), hit);
+  await settle();
+};
+
+describe('stages — sections for a Kanban board', () => {
+  it("movable 'row': a stage dragged past two others takes the slot after them; the row stays one row; ONE undo restores the order", async () => {
+    const { model, api } = mount(STAGES('row'));
+    const y0 = model.getGroup('s1')!.position.y;
+    const s3 = model.getGroup('s3')!;
+    await dragSection(model, 's1', { x: s3.position.x + s3.size!.width * 0.8, y: y0 + 300 });
+    expect(xOrder(model)).toEqual(['s2', 's3', 's1', 's4']);
+    expect(['s1', 's2', 's3', 's4'].every((id) => model.getGroup(id)!.position.y === y0)).toBe(true);
+    // its card travelled with it
+    const s1 = model.getGroup('s1')!;
+    expect(model.getNode('s1-c1')!.position.x).toBeGreaterThanOrEqual(s1.position.x);
+    await api.getEngine().commandManager.undo();
+    await settle();
+    expect(xOrder(model)).toEqual(['s1', 's2', 's3', 's4']);
+  });
+
+  it("movable 'row': a stage dragged DOWN onto another never goes inside it", async () => {
+    const { model, handle } = mount(STAGES('row'));
+    const s2 = model.getGroup('s2')!;
+    await dragSection(model, 's4', { x: s2.position.x + 30, y: s2.position.y + 200 });
+    const inside = ['s1', 's2', 's3', 's4'].some((a) => ['s1', 's2', 's3', 's4'].some((b) => a !== b && model.getGroup(a)!.members.has(b)));
+    expect(inside).toBe(false);
+    expect([...model.getGroup(handle.activeView)!.members].filter((m) => m.startsWith('s') && !m.includes('-'))).toHaveLength(4);
+  });
+
+  it('movable false: the caption band does not drag the stage at all', async () => {
+    const { model, api } = mount(STAGES(false));
+    const s3 = model.getGroup('s3')!;
+    await dragSection(model, 's1', { x: s3.position.x + 50, y: s3.position.y + 20 });
+    expect(xOrder(model)).toEqual(['s1', 's2', 's3', 's4']);
+    expect(api.getEngine().commandManager.canUndo()).toBe(false);
+  });
+
+  it('resizable false: no edge of the stage is a handle, and its corner handle is hidden', () => {
+    const { api } = mount(STAGES('row'));
+    expect(api.container.querySelector('.axdb-slab[data-slab-id="s1"]')!.classList.contains('axdb-slab--fixed')).toBe(true);
+  });
+
+  it('background: each stage paints a surface under its cards, in its own colour', () => {
+    const { api } = mount(STAGES('row'));
+    const bg = api.container.querySelector('.axdb-group-bg[data-group-bg="s2"]') as HTMLElement | null;
+    expect(bg).not.toBeNull();
+    expect(bg!.style.background).toContain('rgb(210, 220, 240)');
+  });
+
+  it('stack: a card dropped far below the last card lands right after it (a list), not where the hand let go', async () => {
+    const { model, handle } = mount(STAGES('row'));
+    const s2 = model.getGroup('s2')!;
+    await drag(model, 's1', 's1-c1', { x: s2.position.x + s2.size!.width / 2, y: s2.position.y + 400 });
+    expect(model.getGroup('s2')!.members.has('s1-c1')).toBe(true);
+    const below = handle.widget('s2-c1')!.cell!;
+    expect(handle.widget('s1-c1')!.cell!.y).toBe(below.y + below.h);
+  });
+
+  it('a stage WITHOUT stack keeps the drop where it was aimed (boards are unchanged)', async () => {
+    const spec = dashboard({
+      columns: 12, gap: 8, width: 1200, height: 800, sizing: 'grow', rowHeight: 8, float: false,
+      widgets: [
+        { id: 'A', span: 6, rows: 30, columns: 1, maxRows: 30, widgets: [{ id: 'a1', kind: 'card', span: 1, rows: 4 }] },
+        { id: 'B', span: 6, rows: 30, columns: 1, maxRows: 30, widgets: [{ id: 'b1', kind: 'card', span: 1, rows: 4 }] },
+      ],
+    });
+    const { model, handle } = mount(spec);
+    const B = model.getGroup('B')!;
+    await drag(model, 'A', 'a1', { x: B.position.x + B.size!.width / 2, y: B.position.y + 300 });
+    expect(handle.widget('a1')!.cell!.y).toBeGreaterThan(handle.widget('b1')!.cell!.h);
+  });
+
+  it('the drop ring: the stage a card will land in is marked mid-drag, a refusing one in the refusal colour, and the mark goes on release', () => {
+    const { model, api } = mount(STAGES('row', { canDrop: ({ to }) => to !== 's3' }));
+    const slab = (id: string) => api.container.querySelector(`.axdb-slab[data-slab-id="${id}"]`)!;
+    const tool = toolOf('s1');
+    const node = model.getNode('s1-c1')!;
+    const hit = { node, empty: false };
+    const a = centre(model, 's1-c1');
+    const over = (id: string) => { const g = model.getGroup(id)!; return { x: g.position.x + g.size!.width / 2, y: g.position.y + 200 }; };
+    tool.onPointerDown?.(tev('down', a.x, a.y), hit);
+    tool.onPointerMove?.(tev('move', a.x + 20, a.y + 20), hit);
+    const p2 = over('s2');
+    for (let i = 1; i <= 6; i++) tool.onPointerMove?.(tev('move', a.x + ((p2.x - a.x) * i) / 6, a.y + ((p2.y - a.y) * i) / 6), hit);
+    expect(slab('s2').classList.contains('axdb-slab--drop')).toBe(true);
+    const p3 = over('s3');
+    for (let i = 1; i <= 6; i++) tool.onPointerMove?.(tev('move', p2.x + ((p3.x - p2.x) * i) / 6, p3.y), hit);
+    expect(slab('s3').classList.contains('axdb-slab--refused')).toBe(true);
+    expect(slab('s2').classList.contains('axdb-slab--drop')).toBe(false);
+    tool.onPointerUp?.(tev('up', p3.x, p3.y), hit);
+    expect(api.container.querySelectorAll('.axdb-slab--drop, .axdb-slab--refused')).toHaveLength(0);
+  });
+});
