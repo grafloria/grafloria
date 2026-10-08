@@ -1204,3 +1204,22 @@ describe('solid tiles — a container is pushed by INTENT, never by a passing wi
     expect(cells(e, 'k')).toEqual([6, 2]);
   });
 });
+
+describe('a list (packActive) keeps the order of the tiles it pushes', () => {
+  it('a tile that grows over TWO tiles at once pushes both below it, in their order (a list never swaps)', () => {
+    const e = new GridPackEngine(
+      [
+        { id: 'a', x: 0, y: 0, w: 1, h: 8 },
+        { id: 'b', x: 0, y: 8, w: 1, h: 8 },
+        { id: 'c', x: 0, y: 16, w: 1, h: 8 },
+        { id: 'd', x: 0, y: 24, w: 1, h: 8 },
+      ],
+      { columns: 1, packActive: true }
+    );
+    e.resizeCheck('a', 1, 25);
+    const y = (id: string) => e.getItem(id)!.y;
+    expect(y('b')).toBe(25);
+    expect(y('c')).toBe(33);
+    expect(y('d')).toBe(41);
+  });
+});

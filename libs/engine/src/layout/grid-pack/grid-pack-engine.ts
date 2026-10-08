@@ -985,6 +985,13 @@ export class GridPackEngine {
    * cascade can bury the pinned row), recursively.
    */
   private pushDown(placed: GridPackItem, pushSolid = false): void {
+    // A LIST KEEPS ITS ORDER (`packActive`): where `placed` covers several
+    // tiles at once, each goes below the tiles that were above it before this
+    // push — never to the same row as one it was under. Without it the second
+    // tile landed on the first and pushed it further down: two cards under a
+    // card that grew by twenty rows came out swapped. A board keeps its
+    // reading-order push (pinned by the solid-tile specs).
+    const startY = this.packActive ? new Map(this.items.map((i) => [i.id, i.y])) : null;
     for (const o of this.ordered()) {
       if (o === placed) continue;
       if (o.locked) continue; // locked: never pushed
@@ -1006,7 +1013,12 @@ export class GridPackEngine {
       }
       o.y = placed.y + placed.h;
       let lk: GridPackItem | undefined;
-      while ((lk = pushSolid ? this.collideLocked(o, o) : this.collideWall(o, o))) o.y = lk.y + lk.h;
+      const above = (i: GridPackItem): boolean => !!startY && i !== o && i !== placed && (startY.get(i.id) ?? i.y) < (startY.get(o.id) ?? o.y) && GridPackEngine.hit(o, i);
+      for (;;) {
+        if ((lk = pushSolid ? this.collideLocked(o, o) : this.collideWall(o, o))) o.y = lk.y + lk.h;
+        else if (startY && (lk = this.items.find(above))) o.y = lk.y + lk.h;
+        else break;
+      }
       this.pushDown(o, pushSolid);
     }
   }
