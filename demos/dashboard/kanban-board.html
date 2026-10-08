@@ -1,0 +1,272 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Kanban board — Grafloria</title>
+<meta name="description" content="A Kanban board built on dashboard(): each column is a one-column section with gravity, so cards stack, close gaps and reorder by push; a card dragged across columns is adopted live, one undo per move.">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  /* ================================================================================
+     LAB PROTOTYPE (lab/kanban-form-designer). The question this page answers: is the
+     dashboard kit's pack grid enough to build a Kanban board, and what is missing?
+     Every column is a CONTAINER with `columns: 1` and gravity on (float off), so its
+     cards stack top-down, close the gap a card leaves, and reorder by push. Card
+     heights are measured from their content and rounded up to whole rows — the kit
+     has no content-driven height, so the page does it (gap G1 in the notes below).
+     ================================================================================ */
+  #canvas { width: 100%; height: calc(100vh - 90px); min-height: 560px; }
+
+  .kb-card { box-sizing: border-box; height: 100%; padding: 8px 10px; border-radius: 8px;
+    background: var(--kb-card, #fff); border: 1px solid var(--kb-line, #dfe3ea);
+    font: 13px/1.35 system-ui, sans-serif; color: var(--kb-ink, #1d2330); overflow: hidden; }
+  .kb-card .t { font-weight: 600; margin-bottom: 4px; }
+  .kb-card .d { color: var(--kb-muted, #5d6576); font-size: 12px; margin-bottom: 6px; }
+  .kb-card .m { display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--kb-muted, #5d6576); }
+  .kb-card .tag { padding: 1px 6px; border-radius: 999px; background: var(--kb-tag, #eef1fb); color: #3b52d9; }
+  .kb-card .who { margin-left: auto; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+    background: #3b52d9; color: #fff; font-size: 10px; font-weight: 600; }
+
+  .kb-head { display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 6px; white-space: nowrap; overflow: hidden;
+    font: 600 13px system-ui, sans-serif; color: var(--kb-ink, #1d2330); }
+  .kb-head .n { font-weight: 500; color: var(--kb-muted, #5d6576); font-variant-numeric: tabular-nums; }
+  .kb-head .n.over { color: #c2410c; font-weight: 700; }
+  .kb-head button { margin-left: auto; border: 1px solid var(--kb-line, #dfe3ea); background: transparent; color: inherit;
+    border-radius: 6px; padding: 2px 8px; cursor: pointer; font: inherit; font-weight: 500; }
+
+  /* The measuring sandbox: off-screen, same styles, fixed width. */
+  #kb-measure { position: absolute; left: -10000px; top: 0; visibility: hidden; }
+
+  @media (prefers-color-scheme: dark) {
+    :root { --kb-card: #1f232b; --kb-line: #353b47; --kb-ink: #e6e9ef; --kb-muted: #9aa3b5; --kb-tag: #27305a; }
+  }
+</style>
+
+<div id="demo-head"></div>
+<div id="canvas"></div>
+<div id="kb-measure"></div>
+
+<script type="module">
+import { render, dashboard } from '../shell/grafloria.js';
+import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
+
+const ROW = 8;        // row unit, px — small, so a card's height rounds up by at most ROW + GAP
+const HEAD_ROWS = 2;  // the column header spans this many parent row units (2 × 16 = 32 px)
+const GAP = 8;
+const COLUMNS = [
+  { id: 'backlog', name: 'Backlog' },
+  { id: 'doing',   name: 'In progress', wip: 3 },
+  { id: 'review',  name: 'Review',      wip: 2 },
+  { id: 'done',    name: 'Done' },
+];
+const CARDS = {
+  backlog: [
+    { title: 'Export the board as PDF', tag: 'export', who: 'RO' },
+    { title: 'Keyboard shortcuts for moving a card between columns', desc: 'Ctrl+← / Ctrl+→ moves the focused card; the screen reader announces the new column and position.', tag: 'a11y', who: 'MS' },
+    { title: 'Swimlanes by assignee', tag: 'idea', who: 'LK' },
+  ],
+  doing: [
+    { title: 'Content-driven card height', desc: 'Cards measure their content and take whole rows.', tag: 'kit', who: 'RO' },
+    { title: 'WIP limits per column', tag: 'kit', who: 'MS' },
+  ],
+  review: [
+    { title: 'Undo a cross-column move in one step', tag: 'kit', who: 'LK' },
+  ],
+  done: [],
+};
+
+/* ---- cards: paint + measure ---------------------------------------------------- */
+function paintCard(el, d) {
+  el.className = 'kb-card';
+  el.innerHTML = '';
+  const t = document.createElement('div'); t.className = 't'; t.textContent = d.title; el.append(t);
+  if (d.desc) { const p = document.createElement('div'); p.className = 'd'; p.textContent = d.desc; el.append(p); }
+  const m = document.createElement('div'); m.className = 'm';
+  const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = d.tag ?? 'task';
+  const who = document.createElement('span'); who.className = 'who'; who.textContent = d.who ?? '?';
+  m.append(tag, who); el.append(m);
+}
+/** G1 workaround: the kit sizes in whole rows, so the page measures the card at
+ *  its column's width and converts px → rows itself. */
+let measureWidth = 260;
+function rowsFor(d) {
+  const box = document.getElementById('kb-measure');
+  box.style.width = `${measureWidth}px`;
+  const el = document.createElement('div');
+  paintCard(el, d);
+  el.style.height = 'auto';
+  box.replaceChildren(el);
+  const h = el.getBoundingClientRect().height;
+  return Math.max(1, Math.ceil((h + GAP) / (ROW + GAP)));
+}
+
+let seq = 0;
+const cardSpec = (d) => ({ id: `card-${++seq}`, kind: 'card', span: 1, rows: rowsFor(d), resizable: false, data: d });
+
+/* ---- column headers: painted by the page, so counts update without an undo step - */
+const heads = new Map();
+function paintHead(sectionId, host) {
+  const col = COLUMNS.find((c) => c.id === sectionId);
+  if (!col) return;
+  host.replaceChildren();
+  const el = document.createElement('div'); el.className = 'kb-head';
+  const name = document.createElement('span'); name.textContent = col.name;
+  const n = document.createElement('span'); n.className = 'n';
+  const add = document.createElement('button'); add.textContent = '+ Add'; add.dataset.axdbPass = '';
+  add.title = `Add a card to ${col.name}`;
+  add.addEventListener('click', (e) => { e.stopPropagation(); addCard(col.id); });
+  el.append(name, n, add); host.append(el);
+  heads.set(sectionId, n);
+  updateCounts();
+}
+
+let H, api;
+function countsNow() {
+  const out = {};
+  const view = H?.toJSON().views[0];
+  for (const c of COLUMNS) out[c.id] = (view?.widgets.find((w) => w.id === c.id)?.widgets ?? []).length;
+  return out;
+}
+function updateCounts() {
+  if (!H) return;
+  const counts = countsNow();
+  for (const c of COLUMNS) {
+    const n = heads.get(c.id);
+    if (!n) continue;
+    n.textContent = c.wip ? `${counts[c.id]} / ${c.wip}` : String(counts[c.id]);
+    n.classList.toggle('over', !!c.wip && counts[c.id] > c.wip);
+  }
+}
+
+const NEW_TITLES = ['Follow up with the design review', 'Fix the flaky timing test', 'Write the release notes', 'Try a 6-column board on a phone'];
+function addCard(columnId) {
+  const d = { title: NEW_TITLES[seq % NEW_TITLES.length], tag: 'new', who: 'RO' };
+  // No cell given: the kit auto-positions — with gravity that is the bottom of the list.
+  const w = H.addWidget(cardSpec(d), columnId);
+  updateCounts();
+  return w;
+}
+
+/* ---- the board ------------------------------------------------------------------ */
+function buildSpec() {
+  return dashboard({
+    columns: 12,
+    gap: GAP,
+    sizing: 'grow',
+    rowHeight: ROW,
+    float: false,
+    widgets: COLUMNS.map((c) => {
+      const inner = Math.max(8, CARDS[c.id].reduce((s, d) => s + rowsFor(d), 0));
+      // G2: a section's inner rows are squeezed into its slab, so the slab must be
+      // sized in the PARENT's rows to give the inner rows the same height. With a
+      // header of HEAD_ROWS × (ROW + GAP), inner + HEAD_ROWS parent rows gives inner rows of ROW.
+      return {
+        id: c.id, title: c.name, span: 3, rows: inner + HEAD_ROWS, columns: 1, pinned: true, movable: false, resizable: false,
+        caption: { text: c.name, height: HEAD_ROWS * (ROW + GAP) },
+        maxRows: inner,
+        widgets: CARDS[c.id].map(cardSpec),
+      };
+    }),
+    // Paint INTO a child: the host carries the kit's own classes (grafloria-node-host,
+    // axdb-ghost while dragged) — overwriting host.className drops the drag z-raise.
+    renderWidget: (w, host) => { if (w.kind === 'card') { const el = document.createElement('div'); paintCard(el, w.data); host.replaceChildren(el); } },
+    renderCaption: (w, host) => paintHead(w.id, host),
+    onLayoutChange: () => updateCounts(),
+  });
+}
+
+defineDemo({
+  name: 'Kanban board (lab)',
+  blurb: 'LAB PROTOTYPE — a Kanban board on the dashboard kit, to find what the kit is missing. Each column is a one-column section with gravity: cards stack, a gap closes when a card leaves, a card dropped between two others pushes them down, and a card dragged into another column is adopted live with one undo for the whole move. Card heights come from their content (measured by the page and rounded to rows).',
+  howTo: [
+    'Drag a card from Backlog into In progress: the column makes room where you hover, and Backlog closes the gap.',
+    'Drag a card up or down inside a column to reorder it.',
+    'Press "+ Add" on a column header: a new card lands at the bottom, and the count updates (In progress turns orange past its limit of 3).',
+    '⌘Z undoes a whole move — both columns at once.',
+  ],
+
+  async setup(ctx) {
+    measureWidth = Math.max(160, ((ctx.host.clientWidth - GAP * 13) / 12) * 3 + GAP * 2 - 2 * GAP - 2);
+    const spec = buildSpec();
+    api = render(spec, ctx.host);
+    H = spec.handle;
+    ctx.instance = api; ctx.diagram = api.getModel(); ctx.handle = H;
+    window.__lab = { H, api, D: ctx.diagram };   // lab probes
+    api.renderNow();
+    await ctx.tick();
+    updateCounts();
+  },
+
+  async assert(ctx) {
+    const D = ctx.diagram;
+    const cm = ctx.instance.getEngine().commandManager;
+    const container = ctx.host;
+    const settle = async () => { ctx.instance.renderNow(); await ctx.tick(); };
+    const toClient = (wx, wy) => ctx.instance.viewport.worldToClient(wx, wy, container.getBoundingClientRect());
+    const raf = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    let PID = 50;
+    // Dispatch on the element under the pointer, as a real mouse does: a press on
+    // the canvas root is not a press on the card's HTML host.
+    const pev = (type, cx, cy) => (document.elementFromPoint(cx, cy) ?? container).dispatchEvent(new PointerEvent(type, {
+      clientX: cx, clientY: cy, bubbles: true, cancelable: true, composed: true,
+      pointerId: PID, pointerType: 'mouse', isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1,
+    }));
+    const drag = async (from, to, steps = 12) => {
+      PID++;
+      const a = toClient(from.x, from.y); pev('pointerdown', a.x, a.y);
+      for (let i = 1; i <= steps; i++) {
+        const c = toClient(from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
+        pev('pointermove', c.x, c.y); await raf();
+      }
+      const c = toClient(to.x, to.y); pev('pointerup', c.x, c.y); await settle();
+    };
+    const center = (n) => ({ x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 });
+    const order = (col) => [...D.getGroup(col).members].map((id) => D.getNode(id)).filter(Boolean)
+      .sort((a, b) => a.position.y - b.position.y).map((n) => n.id);
+    const stacked = (col) => {
+      const ns = order(col).map((id) => D.getNode(id));
+      for (let i = 1; i < ns.length; i++) {
+        const gap = ns[i].position.y - (ns[i - 1].position.y + ns[i - 1].size.height);
+        if (gap < 0 || gap > GAP + 1) return false;
+      }
+      return true;
+    };
+    await settle();
+
+    // ① construction
+    checkEqual(JSON.stringify(countsNow()), JSON.stringify({ backlog: 3, doing: 2, review: 1, done: 0 }), 'the four columns hold their cards');
+    for (const c of COLUMNS) check(stacked(c.id), `${c.name}: cards are stacked with no holes`);
+    const tall = D.getNode('card-2'), short = D.getNode('card-1');
+    check(tall.size.height > short.size.height, 'a card with a description is taller than one without (content-driven rows)');
+
+    // ② cross-column move: Backlog's first card into In progress, between its two cards
+    const doing = order('doing');
+    const mover = order('backlog')[0];
+    const target = D.getNode(doing[1]);
+    await drag(center(D.getNode(mover)), { x: center(target).x, y: target.position.y + 6 });
+    check(D.getGroup('doing').members.has(mover), 'the card crossed into In progress');
+    check(!D.getGroup('backlog').members.has(mover), 'and left Backlog in the same gesture');
+    check(stacked('backlog'), 'Backlog closed the gap it left');
+    check(stacked('doing'), 'In progress is still a clean stack');
+    checkEqual(countsNow().doing, 3, 'the In progress count reads 3');
+    await cm.undo(); H.refresh(); await settle();
+    check(D.getGroup('backlog').members.has(mover) && !D.getGroup('doing').members.has(mover), 'one undo put the card back in Backlog');
+    check(stacked('backlog') && stacked('doing'), 'and both columns are clean stacks again');
+
+    // ③ reorder inside a column: drag the last Backlog card to the top
+    const b0 = order('backlog');
+    const last = D.getNode(b0[b0.length - 1]), first = D.getNode(b0[0]);
+    await drag(center(last), { x: center(first).x, y: first.position.y + 4 });
+    const b1 = order('backlog');
+    checkEqual(b1[0], last.id, 'the last card is now first');
+    check(stacked('backlog'), 'Backlog is a clean stack after the reorder');
+
+    // ④ add a card into the empty column
+    const w = addCard('done');
+    await settle();
+    check(!!w && D.getGroup('done').members.has(w.id), '"+ Add" put a card into the empty Done column');
+    checkEqual(countsNow().done, 1, 'the Done count reads 1');
+
+    // ⑤ the board round-trips
+    const snap = H.toJSON();
+    check(snap.views[0].widgets.every((c) => Array.isArray(c.widgets)), 'toJSON() keeps every column with its cards');
+  },
+});
+</script>
