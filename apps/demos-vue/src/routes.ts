@@ -47,6 +47,7 @@ export const ROUTES: Record<string, () => Promise<{ default: Component }>> = {
   'dashboard/dashboard-builder': () => import('./demos/dashboard-builder.vue'),
   'dashboard/fluid-board': () => import('./demos/fluid-board.vue'),
   'dashboard/nested-containers': () => import('./demos/dashboard-containers.vue'),
+  'dashboard/kanban-board': () => import('./demos/kanban-board.vue'),
   'collab/two-tabs-live': () => import('./demos/two-tabs-live.vue'),
   'collab/comments': () => import('./demos/comments.vue'),
   'misc/mermaid-text': () => import('./demos/mermaid-text.vue'),

@@ -15,6 +15,7 @@ export const routes: Routes = [
   { path: 'diagrams/erd-editor', loadComponent: () => import('./demos/erd-editor/erd-editor.component').then((m) => m.ErdEditorComponent) },
   { path: 'dashboard/dashboard-builder', loadComponent: () => import('./demos/dashboard-builder/dashboard-builder.component').then((m) => m.DashboardBuilderComponent) },
   { path: 'dashboard/fluid-board', loadComponent: () => import('./demos/fluid-board/fluid-board.component').then((m) => m.FluidBoardComponent) },
+  { path: 'dashboard/kanban-board', loadComponent: () => import('./demos/kanban-board/kanban-board.component').then((m) => m.KanbanBoardComponent) },
   { path: 'dashboard/nested-containers', loadComponent: () => import('./demos/dashboard-containers/dashboard-containers.component').then((m) => m.DashboardContainersComponent) },
   { path: 'collab/two-tabs-live', loadComponent: () => import('./demos/two-tabs-live/two-tabs-live.component').then((m) => m.TwoTabsLiveComponent) },
   { path: 'collab/comments', loadComponent: () => import('./demos/comments/comments.component').then((m) => m.CommentsComponent) },

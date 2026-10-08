@@ -86,6 +86,7 @@ export const ROUTES: Record<string, () => Promise<{ default: React.ComponentType
   'styling/theme-bound-properties': () => import('./demos/theme-bound-properties'),
   'styling/themes-and-tokens': () => import('./demos/themes-and-tokens'),
   'dashboard/grid-options': () => import('./demos/grid-options'),
+  'dashboard/kanban-board': () => import('./demos/kanban-board'),
   'styling/turbo-flow': () => import('./demos/turbo-flow'),
   'collab/conflict-resolution': () => import('./demos/conflict-resolution'),
   'collab/live-cursors': () => import('./demos/live-cursors'),
