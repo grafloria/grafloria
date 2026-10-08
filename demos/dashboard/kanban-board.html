@@ -276,6 +276,16 @@ defineDemo({
     await settle();
     check(!!w && D.getGroup('done').members.has(w.id), '"+ Add" put a card into the empty Done column');
     checkEqual(countsNow().done, 1, 'the Done count reads 1');
+    // …and into a column that already holds cards: the column grows to take it
+    const backlog0 = countsNow().backlog;
+    const wb = addCard('backlog');
+    await settle();
+    for (let i = 0; i < 3; i++) await raf();
+    check(!!wb && D.getGroup('backlog').members.has(wb.id), '"+ Add" puts a card into Backlog, which already holds cards');
+    checkEqual(countsNow().backlog, backlog0 + 1, 'the Backlog count went up by one');
+    checkEqual(order('backlog').at(-1), wb?.id, 'the new card is at the bottom of Backlog');
+    check(stacked('backlog'), 'Backlog is still a clean stack');
+    checkEqual(clipped().join(','), '', 'and nothing is cut off');
 
     // ⑥ WIP: In progress holds 3 — the third card goes in, a fourth is refused and snaps home
     const fill = order('backlog')[0];
