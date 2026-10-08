@@ -2327,9 +2327,10 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // and redo lists it again before the node comes back.
       // A bounded fit board with no room says so HERE, before anything is
       // created: undefined, the same answer as an unknown board.
-      // A full SECTION that may grow makes the room first, as a drop into it
-      // does; the growth rides in this add's undo step.
-      const room = binders.get(vid)?.makeRoom?.(w.span!, w.rows!);
+      // A full STACK LIST that may grow makes the room first, as a drop into it
+      // does; the growth rides in this add's undo step. Any other full section
+      // refuses, as it always has.
+      const room = specById.get(vid)?.stack ? binders.get(vid)?.makeRoom?.(w.span!, w.rows!) : undefined;
       if (room === null) return undefined;
       if (room === undefined && binders.get(vid)?.willItFit(w.span!, w.rows!) === false) return undefined;
 

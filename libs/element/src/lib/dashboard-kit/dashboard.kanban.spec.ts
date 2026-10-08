@@ -93,7 +93,7 @@ afterEach(() => {
  * many board rows as its inner design, so a column's rows are the board's 8 px
  * (a section's rows are squeezed into its slab — see the autoHeight docs).
  */
-const BOARD = (extra: Partial<DashboardOptions> = {}) =>
+const BOARD = (extra: Partial<DashboardOptions> = {}, aStack = false) =>
   dashboard({
     columns: 12,
     gap: 8,
@@ -103,7 +103,7 @@ const BOARD = (extra: Partial<DashboardOptions> = {}) =>
     rowHeight: 8,
     float: false,
     widgets: [
-      { id: 'A', span: 4, rows: 8, columns: 1, maxRows: 8, pinned: true, widgets: [
+      { id: 'A', span: 4, rows: 8, columns: 1, maxRows: 8, pinned: true, stack: aStack, widgets: [
         { id: 'a1', kind: 'card', span: 1, rows: 3 },
         { id: 'a2', kind: 'card', span: 1, rows: 3 },
       ] },
@@ -209,8 +209,8 @@ describe('fitRows — a height written as layout', () => {
     expect(binder(handle, 'main').cellOf('A')!.h).toBe(slab0);
   });
 
-  it('addWidget into a FULL growable column makes the room — and one undo takes the card and the rows back', async () => {
-    const { model, api, handle } = mount(BOARD());
+  it('addWidget into a FULL growable STACK list makes the room — and one undo takes the card and the rows back', async () => {
+    const { model, api, handle } = mount(BOARD({}, true));
     const slab0 = binder(handle, 'main').cellOf('A')!.h;
     // A holds 3 + 3 of an 8-row design: a 4-row card does not fit without growing
     const w = handle.addWidget({ id: 'new', kind: 'card', span: 1, rows: 4 }, 'A');
@@ -223,6 +223,14 @@ describe('fitRows — a height written as layout', () => {
     expect(binder(handle, 'main').cellOf('A')!.h).toBeGreaterThan(slab0);
     await api.getEngine().commandManager.undo();
     await settle();
+    expect(model.getNode('new')).toBeUndefined();
+    expect(binder(handle, 'main').cellOf('A')!.h).toBe(slab0);
+  });
+
+  it('a full PLAIN section (no stack) refuses an add, as it always has: nothing created, nothing grown', () => {
+    const { model, handle } = mount(BOARD());
+    const slab0 = binder(handle, 'main').cellOf('A')!.h;
+    expect(handle.addWidget({ id: 'new', kind: 'card', span: 1, rows: 4 }, 'A')).toBeUndefined();
     expect(model.getNode('new')).toBeUndefined();
     expect(binder(handle, 'main').cellOf('A')!.h).toBe(slab0);
   });
