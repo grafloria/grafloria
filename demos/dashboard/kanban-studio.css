@@ -335,3 +335,5 @@
   #stage *, #stage *::before { transition: none !important; }
   #stage .grafloria-node-host.axdb-ghost > .ks-card { transform: none; }
 }
+a.ks-menu-item { display: block; color: inherit; text-decoration: none; }
+.ks-views { display: inline-flex; }

@@ -426,6 +426,9 @@ scroller.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || e.target.closest('.grafloria-node-host, .axdb-slab, .ks-addlist, button, input, textarea, select')) return;
   const overList = [...stage.querySelectorAll('.axdb-slab[data-slab-id]')].some((s) => { const r = s.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; });
   if (overList) return;
+  // A press on the empty board is still a click on nothing: the selection clears, as anywhere else.
+  H?.selectWidget(undefined);
+  api?.getModel().clearSelection?.();
   e.preventDefault(); e.stopPropagation();
   const x0 = e.clientX, left0 = scroller.scrollLeft;
   scroller.classList.add('ks-panning');

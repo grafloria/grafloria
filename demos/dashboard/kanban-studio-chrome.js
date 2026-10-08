@@ -69,6 +69,14 @@ export function buildChrome(appbar, boardbar, o) {
 
   /* ---- the app bar ---------------------------------------------------------- */
   const apps = btn('ks-app-ibtn', '', 'grid', 'Switch apps');
+  apps.addEventListener('click', () => openMenu(apps, 'Grafloria apps', (body) => {
+    for (const [name, what, href] of [['Boards', 'You are here', null], ['Diagrams', 'Flowcharts, ER and UML', '../index.html#diagrams'], ['Dashboards', 'Boards of live widgets', '../index.html#dashboard']]) {
+      const row = el(href ? 'a' : 'div', 'ks-menu-item');
+      if (href) row.href = href;
+      row.append(el('strong', '', name), el('p', '', what));
+      body.append(row);
+    }
+  }));
   const brand = el('a', 'ks-brand');
   brand.href = '#';
   brand.addEventListener('click', (e) => e.preventDefault());
@@ -159,10 +167,16 @@ export function buildChrome(appbar, boardbar, o) {
       body.append(row);
     }
   }));
+  // The view switcher: the board is the one view this demo has, shown as the selected tab.
+  const views = el('div', 'ks-views');
+  views.setAttribute('role', 'tablist');
+  views.setAttribute('aria-label', 'Board views');
   const view = btn('ks-view', 'Board', 'board');
-  view.setAttribute('aria-current', 'true');
+  view.setAttribute('role', 'tab');
+  view.setAttribute('aria-selected', 'true');
+  views.append(view);
   const left = el('div', 'ks-bb-left');
-  left.append(name, star, vis, view);
+  left.append(name, star, vis, views);
 
   const filterBtn = btn('ks-bbtn ks-filterbtn', 'Filters', 'filter');
   filterBtn.id = 'ks-filter-btn';
