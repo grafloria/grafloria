@@ -1,6 +1,7 @@
 /* Kanban studio — the page's look. Tokens first (light, then dark); then the app
    bar, the board header, the board, lists, cards, menus, the card dialog. */
 #stage {
+  container: ks / inline-size;   /* the bars answer to the board's width, not the window's: the gallery shell takes ~580 px of a 1440 px window */
   --ks-list: #f1f2f4e8; --ks-list-ink: #172b4d; --ks-list-mut: #44546f; --ks-list-hover: #091e4224;
   --ks-card: #ffffff; --ks-card-ink: #172b4d; --ks-card-mut: #44546f; --ks-card-line: #091e4224;
   --ks-card-shadow: 0 1px 1px #091e4240, 0 0 1px #091e424f;
@@ -48,8 +49,8 @@
 .ks-app-search:focus-within input::placeholder { color: #626f86; }
 .ks-bell-dot { position: absolute; top: 6px; right: 7px; width: 8px; height: 8px; border-radius: 50%; background: #f87168; box-shadow: 0 0 0 2px #00000047; }
 .ks-me { margin-left: 4px; cursor: pointer; }
-@media (max-width: 1100px) { .ks-app-nav .ks-app-menu:nth-child(n+3) { display: none; } .ks-app-search { width: 160px; } }
-@media (max-width: 720px) { .ks-app-nav, .ks-brand span { display: none; } }
+@container ks (max-width: 1100px) { .ks-app-nav .ks-app-menu:nth-child(n+3) { display: none; } .ks-app-search { width: 160px; } }
+@container ks (max-width: 720px) { .ks-app-nav, .ks-brand span { display: none; } }
 
 /* ---- the board header --------------------------------------------------------- */
 .ks-boardbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 10px 8px 16px;

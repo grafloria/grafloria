@@ -19,6 +19,143 @@
   <div class="ks-scroll" id="ks-scroll"><div class="ks-board" id="ks-board"><div id="canvas"></div></div></div>
 </div>
 
+<script type="text/plain" data-code="angular">
+// The Kanban studio is plain JavaScript — no Angular port yet. These are
+// the same dashboard() options in the Angular component; the Kanban board
+// demo's Angular tab is a complete, running Angular port of a smaller board.
+import { Component } from '@angular/core';
+import { GrafloriaDashboardComponent, GrafloriaWidgetDefDirective } from '@grafloria/angular';
+import type { DashboardHandle, DashboardOptions, DashboardWidgetSpec } from '@grafloria/element';
+
+// One list: a section that only trades places with other lists.
+const list = (id: string, title: string, cards: DashboardWidgetSpec[]): DashboardWidgetSpec => ({
+  id, title, span: 1, rows: 12, columns: 1, maxRows: 1,
+  pinned: true, movable: 'row', resizable: false, stack: true,
+  background: 'var(--ks-list)',
+  caption: { text: title, height: 60, background: 'transparent', border: 'none' },
+  footer: { height: 48 },              // painted by options.renderFooter
+  widgets: cards,                      // cards: { kind: 'card', autoHeight: true, data }
+});
+const options: DashboardOptions = {
+  columns: 5, sizing: 'grow', rowHeight: 8, float: false, autoHeight: true,
+  canDrop: ({ to }) => !atWipLimit(to),   // refuse a full list
+  renderFooter: (w, host) => { host.innerHTML = '<button data-axdb-pass>+ Add a card</button>'; },
+};
+
+@Component({
+  selector: 'kanban-studio',
+  imports: [GrafloriaDashboardComponent, GrafloriaWidgetDefDirective],
+  template: `
+    <grafloria-dashboard [widgets]="lists" [options]="options" (ready)="onReady($event)">
+      <ng-template grafloriaWidget="card" let-data="data">
+        <div class="ks-card">{{ data['title'] }}</div>
+      </ng-template>
+    </grafloria-dashboard>`,
+})
+export class KanbanStudio {
+  lists = LISTS.map((l) => list(l.id, l.name, l.cards));
+  options = options;
+  onReady(h: DashboardHandle) { /* h.addWidget(list(...)) adds a list */ }
+}
+</script>
+<script type="text/plain" data-code="react">
+// The Kanban studio is plain JavaScript — no React port yet. These are
+// the same dashboard() options in the React component; the Kanban board
+// demo's React tab is a complete, running React port of a smaller board.
+import { GrafloriaDashboard } from '@grafloria/react';
+import type { DashboardOptions, DashboardWidgetSpec } from '@grafloria/element';
+
+// One list: a section that only trades places with other lists.
+const list = (id: string, title: string, cards: DashboardWidgetSpec[]): DashboardWidgetSpec => ({
+  id, title, span: 1, rows: 12, columns: 1, maxRows: 1,
+  pinned: true, movable: 'row', resizable: false, stack: true,
+  background: 'var(--ks-list)',
+  caption: { text: title, height: 60, background: 'transparent', border: 'none' },
+  footer: { height: 48 },              // painted by options.renderFooter
+  widgets: cards,                      // cards: { kind: 'card', autoHeight: true, data }
+});
+const options: DashboardOptions = {
+  columns: 5, sizing: 'grow', rowHeight: 8, float: false, autoHeight: true,
+  canDrop: ({ to }) => !atWipLimit(to),   // refuse a full list
+  renderFooter: (w, host) => { host.innerHTML = '<button data-axdb-pass>+ Add a card</button>'; },
+};
+
+export function KanbanStudio() {
+  return (
+    <GrafloriaDashboard
+      views={[{ id: 'board', widgets: LISTS.map((l) => list(l.id, l.name, l.cards)) }]}
+      options={options}
+      widgetTypes={{ card: ({ data }) => <div className="ks-card">{data.title}</div> }}
+      onReady={(h) => { /* h.addWidget(list(...)) adds a list */ }}
+    />
+  );
+}
+</script>
+<script type="text/plain" data-code="vue">
+<script setup lang="ts">
+// The Kanban studio is plain JavaScript — no Vue port yet. These are
+// the same dashboard() options in the Vue component; the Kanban board
+// demo's Vue tab is a complete, running Vue port of a smaller board.
+import { GrafloriaDashboard } from '@grafloria/vue';
+import type { DashboardHandle, DashboardOptions, DashboardWidgetSpec } from '@grafloria/element';
+
+// One list: a section that only trades places with other lists.
+const list = (id: string, title: string, cards: DashboardWidgetSpec[]): DashboardWidgetSpec => ({
+  id, title, span: 1, rows: 12, columns: 1, maxRows: 1,
+  pinned: true, movable: 'row', resizable: false, stack: true,
+  background: 'var(--ks-list)',
+  caption: { text: title, height: 60, background: 'transparent', border: 'none' },
+  footer: { height: 48 },              // painted by options.renderFooter
+  widgets: cards,                      // cards: { kind: 'card', autoHeight: true, data }
+});
+const options: DashboardOptions = {
+  columns: 5, sizing: 'grow', rowHeight: 8, float: false, autoHeight: true,
+  canDrop: ({ to }) => !atWipLimit(to),   // refuse a full list
+  renderFooter: (w, host) => { host.innerHTML = '<button data-axdb-pass>+ Add a card</button>'; },
+};
+const lists = LISTS.map((l) => list(l.id, l.name, l.cards));
+function onReady(h: DashboardHandle) { /* h.addWidget(list(...)) adds a list */ }
+<\/script>
+
+<template>
+  <GrafloriaDashboard :widgets="lists" :options="options" @ready="onReady">
+    <template #widget-card="{ data }"><div class="ks-card">{{ data.title }}</div></template>
+  </GrafloriaDashboard>
+</template>
+</script>
+<script type="text/plain" data-code="qwik">
+// The Kanban studio is plain JavaScript — no Qwik port yet. These are
+// the same dashboard() options in the Qwik component; the Kanban board
+// demo's Qwik tab is a complete, running Qwik port of a smaller board.
+import { component$, $, noSerialize, useSignal } from '@builder.io/qwik';
+import { GrafloriaDiagram } from '@grafloria/qwik';
+import { dashboard, type DashboardOptions, type DashboardWidgetSpec } from '@grafloria/element';
+
+// One list: a section that only trades places with other lists.
+const list = (id: string, title: string, cards: DashboardWidgetSpec[]): DashboardWidgetSpec => ({
+  id, title, span: 1, rows: 12, columns: 1, maxRows: 1,
+  pinned: true, movable: 'row', resizable: false, stack: true,
+  background: 'var(--ks-list)',
+  caption: { text: title, height: 60, background: 'transparent', border: 'none' },
+  footer: { height: 48 },              // painted by options.renderFooter
+  widgets: cards,                      // cards: { kind: 'card', autoHeight: true, data }
+});
+const options: DashboardOptions = {
+  columns: 5, sizing: 'grow', rowHeight: 8, float: false, autoHeight: true,
+  canDrop: ({ to }) => !atWipLimit(to),   // refuse a full list
+  renderFooter: (w, host) => { host.innerHTML = '<button data-axdb-pass>+ Add a card</button>'; },
+};
+
+export default component$(() => {
+  // The dashboard() spec carries functions — not data: noSerialize.
+  const board = useSignal(() => noSerialize(dashboard({
+    ...options,
+    widgets: LISTS.map((l) => list(l.id, l.name, l.cards)),
+    renderWidget: (w, host) => { host.textContent = String(w.data?.title ?? ''); },
+  })));
+  return <GrafloriaDiagram spec={board.value!} onReady$={$(() => { /* the handle is live */ })} />;
+});
+</script>
 <script type="module">
 import { render, dashboard } from '../shell/grafloria.js';
 import { defineDemo, check, checkEqual } from '../shell/demo.js?v=drawer4';
