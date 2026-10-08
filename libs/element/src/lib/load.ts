@@ -203,6 +203,7 @@ function widgetSpecOf(node: NodeModel): DashboardWidgetSpec | null {
       : {}),
     ...(node.getMetadata('widgetMovable') === false ? { movable: false } : {}),
     ...(node.getMetadata('widgetResizable') === false ? { resizable: false } : {}),
+    ...(typeof node.getMetadata('widgetAutoHeight') === 'boolean' ? { autoHeight: node.getMetadata('widgetAutoHeight') as boolean } : {}),
   };
 }
 
@@ -371,7 +372,9 @@ export function fromDocument(
     const widget = specById.get(node.id) ?? widgetSpecOf(node);
     if (widget) {
       ctx.hosts.set(node.id, host); // captured so update()/repaint() can find the host
-      return paintWidget(widget, host);
+      paintWidget(widget, host);
+      ctx.autoHeight?.observe(node.id, host);
+      return;
     }
     getNodeType(node.type)?.(node, host);
   };

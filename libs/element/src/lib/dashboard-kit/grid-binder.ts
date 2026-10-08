@@ -218,6 +218,17 @@ export interface DashboardGridOptions {
    */
   onDropIn?: (node: NodeModel, cell: CellRect, displaced: Command[], target: { boardId: string }) => void | Promise<void>;
   /**
+   * DROP POLICY: may the dragged tile land on board `to`? Asked once per board
+   * per gesture, the first time the hand would place the tile there — never
+   * for the board the tile started on (`from`), which always takes it back.
+   * `from` is null for a palette chip. A refusal is answered like a full
+   * board's: the tile dims, nothing on `to` moves, and a release snaps it home
+   * (never a removal, whatever `dragOut` says). A Kanban column at its WIP
+   * limit, a board that only holds sections, a page that takes no charts.
+   * The API (`moveTo`, `addWidget`, undo) is not asked: it is the page's own.
+   */
+  canDrop?: (e: { nodeId: string; from: string | null; to: string }) => boolean;
+  /**
    * A member is about to LEAVE this board through a gesture (moved into
    * another board, made a tab of its own). Answers the commands that follow
    * it in the same batch — a tab page emptied by the move closes.
@@ -439,6 +450,17 @@ export interface DashboardGridHandle {
   moveTo(id: string, x: number, y: number): Promise<boolean>;
   resizeTo(id: string, w: number, h: number): Promise<boolean>;
   /**
+   * CONTENT-DRIVEN HEIGHT: set a member's row span to `h` as LAYOUT, not as an
+   * edit — no undo step, no gesture, the way a responsive column change is
+   * written. Tiles below are pushed (or pulled up by gravity); a full section
+   * grows its slab in the parent board, and gives the rows back when its
+   * content shrinks (never below its design). False while a gesture is live
+   * (ask again after it) or when the board cannot take the height.
+   */
+  fitRows(id: string, h: number): boolean;
+  /** Is a pointer gesture live on this board? */
+  readonly busy: boolean;
+  /**
    * Palette drag-in: `node` is a DETACHED widget node (not yet in the model).
    * A chip follows the cursor; entering the board places the node's item in
    * the engine (first placement skips the anti-jitter gate, as gridstack's
@@ -518,6 +540,8 @@ interface BinderPeer {
     commands?: Command[];
   };
   containsWorld(x: number, y: number): boolean;
+  /** Write the engine's live cells to the model and the layout cache — the history-free half of `fitRows` escalation. */
+  persistCells?(): void;
   /**
    * Containment plus ONE extra row of grace below the frame — gridstack's
    * `_extraDragRow`: dropping "under the last row" appends a row rather than
@@ -834,6 +858,8 @@ interface GestureState {
   spans: { w: number; h: number };
   /** Drag-out: the item is currently absent from the engine. */
   removedFromBoard: boolean;
+  /** `canDrop`'s answers this gesture, per board id — asked once, the page's state cannot change mid-drag. */
+  dropVerdicts?: Map<string, boolean>;
   /** The board whose adoption refused this tile: the widget then pushes that board's container on ITS parent (D2) instead of asking again every move. */
   refusedPeer?: BinderPeer | null;
   /** Live cross-container adoption, when the pointer is over another board. */
@@ -2157,6 +2183,18 @@ export function bindDashboardGrid(
     };
   };
 
+  /** Does `canDrop` refuse this gesture's tile on `board`? Never for the board it started on; asked once per board. */
+  const refusesDrop = (g: GestureState, board: { id: string; ref?: unknown }): boolean => {
+    if (!options.canDrop || (g.kind !== 'palette' && board.ref === selfPeer)) return false;
+    const verdicts = (g.dropVerdicts ??= new Map());
+    let ok = verdicts.get(board.id);
+    if (ok === undefined) {
+      ok = options.canDrop({ nodeId: g.id, from: g.kind === 'palette' ? null : group.id, to: board.id }) !== false;
+      verdicts.set(board.id, ok);
+    }
+    return !ok;
+  };
+
   /**
    * THE GHOST FOLLOWS THE HAND — for a tile of this board and for a palette
    * chip alike (tile first, step 4a): the zone under the pointer is resolved
@@ -2236,6 +2274,20 @@ export function bindDashboardGrid(
     if (g.strip) {
       options.tabDrop?.markDrop(null, null);
       g.strip = null;
+    }
+    // -- REFUSED BY POLICY (`canDrop`): the board the zone names will not take
+    // this tile. Answered like a full board with nowhere to push: the tile
+    // leaves every board it was previewing on (their tiles settle home), dims,
+    // and a release over a board snaps it home. The board it started on is
+    // never asked — a tile can always go back where it came from.
+    if ((z.kind === 'plain' || z.kind === 'beside') && refusesDrop(g, z.board)) {
+      endBeside(true);
+      leaveSelf();
+      g.refusedPeer = null;
+      showRefusal(null, 0, 0);
+      setDim(g, true);
+      syncPlaceholder();
+      return;
     }
     // -- BESIDE a tab container: its outer band puts the widget next to it
     // — at the board's edge the container shifts over to make room, live
@@ -3474,6 +3526,10 @@ export function bindDashboardGrid(
       };
     },
     containsWorld: worldInsideBoard,
+    persistCells: () => {
+      persistLiveCells();
+      persistLayouts();
+    },
     containsWorldExtended: worldInsideBoardExtended,
     frameArea: boardArea,
     adopt,
@@ -4195,6 +4251,54 @@ export function bindDashboardGrid(
     resizeTo(id, w, h) {
       const hh = isGroupMember(id) ? Math.max(h, innerRowsOf(id)) : h; // a section: never below its children
       return programmatic('Resize widget', id, () => engine.resizeCheck(id, w, hh).changed);
+    },
+    fitRows(id, h) {
+      const it = engine.getItem(id);
+      if (disposed || gesture || slabGesture || !it) return false;
+      const want = Math.max(1, Math.round(h));
+      // The engine resizes this very item object: read its span before asking.
+      const { w: w0, h: h0 } = it;
+      if (h0 === want) return true;
+      const parent = parentPeer();
+      let grownBy = 0;
+      // The engine CLAMPS to the bound and still reports a change — the height
+      // reached is the answer, not `changed`.
+      const reached = (): boolean => {
+        engine.resizeCheck(id, w0, want);
+        return engine.getItem(id)?.h === want;
+      };
+      let ok = reached();
+      // A full section takes the rows from its parent, one at a time — the
+      // escalation a resize by hand uses, written as layout instead of a commit.
+      while (!ok && want > h0 && escalate && parent && grownBy < want - h0) {
+        if (!parent.resizeMemberBy(group.id, +1).changed) break;
+        grownBy += 1;
+        setLiveBound((maxRows ?? 0) + 1);
+        ok = reached();
+      }
+      if (!ok) {
+        engine.resizeCheck(id, w0, h0); // a partial clamp is not a fit: back to where it was
+        if (grownBy > 0 && parent) {
+          parent.resizeMemberBy(group.id, -grownBy);
+          setLiveBound(Math.max(1, (maxRows ?? 1) - grownBy));
+        }
+        return false;
+      }
+      // Shrunk: give back the rows escalation took that nothing needs now.
+      if (want < h0 && parent && escalate && designRows !== undefined && maxRows !== undefined) {
+        const spare = maxRows - Math.max(designRows, extentOf(engine.getItems()));
+        if (spare > 0 && parent.resizeMemberBy(group.id, -spare).changed) setLiveBound(maxRows - spare);
+      }
+      parent?.persistCells?.();
+      persistLiveCells();
+      persistLayouts();
+      project();
+      enforceBoardHeight();
+      api.renderNow();
+      return true;
+    },
+    get busy() {
+      return !!gesture || !!slabGesture;
     },
     beginPaletteDrag,
     dispose(): void {

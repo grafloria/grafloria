@@ -75,6 +75,7 @@ import { ensureDashboardKitStyles } from './styles';
 import type { SectionCaption } from './caption';
 import { paintTabStrip, tabStripKey, tabStripReserve, type TabsOptions, tabPageInset } from './tabs';
 import { defaultWidgetRenderer } from './widgets';
+import { createAutoHeight, type AutoHeight } from './auto-height';
 
 /** A widget, declared as data. */
 export interface DashboardWidgetSpec {
@@ -103,6 +104,16 @@ export interface DashboardWidgetSpec {
   movable?: boolean;
   /** May the user resize it? Default true (no handle when false). The API can always resize it. */
   resizable?: boolean;
+  /**
+   * CONTENT-DRIVEN HEIGHT: the kit measures what `renderWidget` painted and
+   * sets the row span to hold it — on mount, when the widget's width changes,
+   * after `update()`/`repaint()` and after undo/redo. `rows` is then only the
+   * first guess, and `limits.minRows/maxRows` still clamp. Written as layout,
+   * never as an undo step. Default: the dashboard's `autoHeight`. Containers
+   * ignore it. Best with `sizing: 'grow'` and a small `rowHeight`: a widget
+   * is rounded UP to whole rows, so the row unit is the most it can overshoot.
+   */
+  autoHeight?: boolean;
   /** Your payload — passed straight back to `renderWidget`. */
   data?: Record<string, unknown>;
   /** Optional title used by the built-in fallback renderer. */
@@ -317,6 +328,17 @@ export interface DashboardOptions {
   onTabChange?: (containerId: string, pageId: string, viewId: string) => void;
   /** Fires after any committed gesture, with the view whose layout changed. */
   onLayoutChange?: (viewId: string, widgets: DashboardWidgetSpec[]) => void;
+  /** `autoHeight` for every widget that does not say otherwise (default false). */
+  autoHeight?: boolean;
+  /**
+   * DROP POLICY: may this widget be dropped on board `to` (a view id or a
+   * container id)? Asked once per board per drag, never for the board the
+   * widget started on; `from` is null for a palette chip. Refused: the widget
+   * dims, nothing on that board moves, and a release snaps it home. A Kanban
+   * column at its WIP limit, a board whose top level holds only sections.
+   * The API (`addWidget`, `moveTo`, undo) is not asked.
+   */
+  canDrop?: (e: { widgetId: string; from: string | null; to: string; viewId: string }) => boolean;
   /** Extra binder options, merged last (escape hatch to the layer below). */
   binder?: Partial<DashboardGridOptions>;
 }
@@ -729,6 +751,7 @@ function buildWidgetNode(w: DashboardWidgetSpec, rowHeight: number): NodeModel {
   if (w.limits !== undefined) node.setMetadata('widgetLimits', { ...w.limits });
   if (w.movable === false) node.setMetadata('widgetMovable', false);
   if (w.resizable === false) node.setMetadata('widgetResizable', false);
+  if (w.autoHeight !== undefined) node.setMetadata('widgetAutoHeight', w.autoHeight);
   if (w.x !== undefined && w.y !== undefined) {
     node.setGridItem({
       columnStart: w.x + 1,
@@ -1166,6 +1189,8 @@ export interface DashboardHandleContext {
    */
   reportChanged?: () => void;
   attachHistory?: () => void;
+  /** The content-height watcher (`autoHeight`), created with the handle; hosts register on paint. */
+  autoHeight?: AutoHeight;
   /** Unsubscribers dispose() runs. */
   subscriptions?: Array<() => void>;
   /**
@@ -1186,6 +1211,21 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
   const { views, groups, binders, specById, viewOfWidget } = ctx;
 
   const hostOf = (id: string): HTMLElement | undefined => ctx.hosts.get(id);
+
+  /** The board that holds `id` NOW — read from live membership, which every drag across a boundary changes. */
+  const boardOfMember = (id: string): string | undefined => {
+    for (const [bid, g] of ctx.boardGroups) if (g.members?.has(id)) return bid;
+    return undefined;
+  };
+  ctx.autoHeight = createAutoHeight({
+    isAuto: (id) => !ctx.boardGroups.has(id) && (specById.get(id)?.autoHeight ?? ctx.optionsBase.autoHeight ?? false),
+    binderOf: (id) => {
+      const bid = boardOfMember(id);
+      return bid === undefined ? undefined : binders.get(bid);
+    },
+    worldWidthOf: (id) => ctx.apiRef?.getModel().getNode(id)?.size.width,
+    limitsOf: (id) => specById.get(id)?.limits,
+  });
 
   /**
    * Put the camera on a view. FLUID: the board IS the container, so the camera
@@ -1950,6 +1990,8 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       clampCamera();
       ctx.apiRef.renderNow();
       reportChanged();
+      // An undo puts back the cells as they were saved; the content decides the heights again.
+      ctx.autoHeight?.queueAll();
     };
     ctx.subscriptions = ctx.subscriptions ?? [];
     for (const ev of HISTORY_EVENTS) ctx.subscriptions.push(bus.on(ev, onHistory));
@@ -2183,6 +2225,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     refresh() {
       for (const b of binders.values()) b.sync();
       ctx.apiRef?.renderNow();
+      ctx.autoHeight?.queueAll();
     },
     fit(viewId) {
       const g = groups.get(viewId ?? ctx.active);
@@ -2263,6 +2306,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
     dispose() {
       for (const off of ctx.subscriptions ?? []) off();
       ctx.subscriptions = [];
+      ctx.autoHeight?.dispose();
       for (const b of binders.values()) b.dispose();
       binders.clear();
       // The groups finalize() created are ours to clean up — leaving them
@@ -2361,6 +2405,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         if (patch.kind !== undefined) spec.kind = patch.kind;
         const host = hostOf(id);
         if (host) ctx.renderWidget(spec, host);
+        ctx.autoHeight?.queue(id);
       },
       remove(displaced) {
         if (spec.widgets) {
@@ -2441,6 +2486,7 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       repaint() {
         const host = hostOf(id);
         if (host) ctx.renderWidget(spec, host);
+        ctx.autoHeight?.queue(id);
       },
       // (hosts are captured in renderCustomNode, so repaint works for every
       //  widget the renderer has mounted — including after a rebuild.)
@@ -2512,6 +2558,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           ...(w.limits !== undefined ? { widgetLimits: { ...w.limits } } : {}),
           ...(w.movable === false ? { widgetMovable: false } : {}),
           ...(w.resizable === false ? { widgetResizable: false } : {}),
+          ...(w.autoHeight !== undefined ? { widgetAutoHeight: w.autoHeight } : {}),
           columnSpan: w.span,
           rowSpan: w.rows,
           gridItem: { columnStart: w.x! + 1, columnEnd: w.x! + 1 + w.span!, rowStart: w.y! + 1, rowEnd: w.y! + 1 + w.rows! },
@@ -2578,6 +2625,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
       if (!spec) return;
       ctx.hosts.set(n.id, host);
       renderWidget(spec, host);
+      ctx.autoHeight?.observe(n.id, host);
     },
     get handle() {
       return handle;
@@ -2845,6 +2893,12 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
        * authored options the moment its layout changed (s34 caught it).
        */
       /** The caption escape hatches, with the spec and the view filled in. */
+      /** The page's `canDrop`, in the binder's terms: a widget id is the node id, the view rides along. */
+      function dropPolicy(viewId: string): Pick<DashboardGridOptions, 'canDrop'> {
+        const canDrop = options.canDrop;
+        return canDrop ? { canDrop: (e) => canDrop({ widgetId: e.nodeId, from: e.from, to: e.to, viewId }) } : {};
+      }
+
       function captionHooks(viewId: string): Pick<DashboardGridOptions, 'renderCaption' | 'onCaptionAction'> {
         const render = options.renderCaption;
         return {
@@ -2884,6 +2938,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           onMemberLeaving: (memberId: string) => ctx.closePageIfEmptied?.(v.id, memberId) ?? [],
           onMemberMoving: (memberId: string, from: string, to: string) => ctx.moveContainerCommands?.(memberId, from, to) ?? [],
           ...(ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {}),
+          ...dropPolicy(v.id),
         };
         if (viewLayout === 'split') {
           return bindDashboardSplit(a as never, g, {
@@ -2931,6 +2986,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
           onMemberLeaving: (memberId: string) => ctx.closePageIfEmptied?.(w.id, memberId) ?? [],
           onMemberMoving: (memberId: string, from: string, to: string) => ctx.moveContainerCommands?.(memberId, from, to) ?? [],
           ...(ctx.tabDrop ? { tabDrop: ctx.tabDrop } : {}),
+          ...dropPolicy(ctx.viewOfBoard.get(w.id) ?? ctx.active),
         };
         if ((ctx.layoutOf.get(w.id) ?? w.layout) === 'split') {
           // A splitter tree covering the pane; the pane's frame is the parent's

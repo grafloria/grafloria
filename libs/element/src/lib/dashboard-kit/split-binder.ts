@@ -2020,6 +2020,11 @@ export function bindDashboardSplit(api: DashboardGridApi, group: GroupModel, opt
   const rowsGuess = (): number => rowsAtBind ?? Math.max(1, Math.round(frame().height / (baseRowHeight + gap)));
 
   const handle: DashboardSplitHandle = {
+    // A split pane is always covered: its tiles' heights are the tree's shares, never their content's.
+    fitRows: () => false,
+    get busy() {
+      return !!gesture;
+    },
     sync(): void {
       if (disposed) return;
       applyFluidFrame();
