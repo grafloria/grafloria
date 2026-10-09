@@ -115,6 +115,20 @@ describe('node templates: (data) → card, ports and size — re-derived on ever
     expect(port('sw:in').layout).toBeUndefined(); // no row marks it: the side layout stays
   });
 
+  it('a wire FOLLOWS its port when anchoring moves it — on the frames the library schedules, no renderNow()', async () => {
+    mount();
+    const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await frames();
+    await frames();
+    const start = () => {
+      const d0 = container.querySelector('[data-link-id="wire"] path')?.getAttribute('d') ?? '';
+      const m = /M\s*([-\d.]+)[ ,]+([-\d.]+)/.exec(d0);
+      return m ? { x: Number(m[1]), y: Number(m[2]) } : null;
+    };
+    // sw:out2 is anchored to its row: right edge (x 200), y 40 + 2 × 30 + 15 = 115.
+    expect(start()).toEqual({ x: 200, y: 115 });
+  });
+
   it('below compactBelow the card draws its compact form (data-lod="compact"), and back', () => {
     mount({ compactBelow: 0.6 });
     d!.viewport.setZoom(0.5);

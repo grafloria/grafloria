@@ -931,6 +931,8 @@ export function createDiagram(
   });
 
   // -- workflow-editor features (each opt-in; see ./workflow/feature.ts) -------
+  /** Set by a feature's `invalidate()`; cleared when the next frame starts. */
+  let featureRepaintOwed = false;
   const featureCtx: FeatureContext = {
     doc,
     container,
@@ -940,6 +942,7 @@ export function createDiagram(
     viewport,
     schedule: () => scheduler.schedule(),
     invalidate: () => {
+      featureRepaintOwed = true;
       renderer.invalidateFrame();
       scheduler.schedule();
     },
@@ -1485,6 +1488,10 @@ export function createDiagram(
    */
   const canSkipFrame = (): boolean => {
     if (!engine.getDiagram()) return false;
+    // A feature measured something DURING the last frame (a port anchored to its
+    // row) and owes the picture a repaint. Its change happened before that frame
+    // stamped its epochs, so the epochs alone would call this frame idle.
+    if (featureRepaintOwed) return false;
     if (getMutationEpoch() !== lastFrameEpoch) return false;
     // …and the RENDERER's own picture must not have gone stale either. The model
     // epoch answers "did the world change"; this answers "did my picture of it
@@ -1575,7 +1582,11 @@ export function createDiagram(
   };
 
   const paint = (): void => {
-    if (tryCameraFrame()) return;
+    // An owed feature repaint is a FULL frame: the camera-only fast path keys on
+    // the same epochs and would move the viewBox and nothing else.
+    const owed = featureRepaintOwed;
+    featureRepaintOwed = false;
+    if (!owed && tryCameraFrame()) return;
 
     // -- READ ------------------------------------------------------------------
     const renderViewport = viewport.getRenderViewport();

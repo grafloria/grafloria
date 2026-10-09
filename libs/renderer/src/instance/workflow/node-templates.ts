@@ -160,8 +160,9 @@ export function installNodeTemplates(ctx: FeatureContext, templates: NodeTemplat
     const h = m.node.size?.height ?? 0;
     // The host is scaled by the camera: card units = screen px / scale.
     const scale = w > 0 && hostRect.width > 0 ? hostRect.width / w : ctx.viewport.getZoom() || 1;
-    let moved = false;
-    ctx.getModel().runSystemWrite(() => {
+    const moved: PortModel[] = [];
+    const model = ctx.getModel();
+    model.runSystemWrite(() => {
       for (const el of Array.from(marks)) {
         const port = m.node.getPort(el.getAttribute('data-port') ?? '') as PortModel | undefined;
         if (!port) continue;
@@ -175,10 +176,17 @@ export function installNodeTemplates(ctx: FeatureContext, templates: NodeTemplat
         if (args?.units === 'px' && Math.abs((args.x ?? 0) - x) <= PX && Math.abs((args.y ?? 0) - y) <= PX) continue;
         port.layout = { strategy: 'absolute', args: { units: 'px', x, y } };
         (port as { anchored?: boolean }).anchored = true;
-        moved = true;
+        moved.push(port);
       }
     });
-    if (moved) ctx.invalidate();
+    if (moved.length === 0) return;
+    // A port that moved takes its WIRES with it: the links on it (and the node,
+    // for its port glyphs) are marked changed, so the next frame re-routes them
+    // instead of serving the route they had before the port moved — and, as a
+    // model change, that frame is not one the scheduler is allowed to skip.
+    m.node.markDirty?.();
+    for (const port of moved) for (const link of model.getLinksForPort(port.id)) link.markDirty?.();
+    ctx.invalidate();
   };
 
   // Fonts change text metrics, and with them where every marked row sits.
