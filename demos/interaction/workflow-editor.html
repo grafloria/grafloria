@@ -102,14 +102,17 @@ import { TEMPLATES, KINDS, MENU, SLOT_OF } from './workflow-editor-steps.js';
 //   keyboard.beforeKey + clipboard  — the page owns its keys
 //   compactBelow    — far out, cards draw their compact form
 const SPEC = {
+  // The trigger is listed LAST on purpose: the page refuses to delete it (see
+  // keyboard.beforeKey), and the gallery's generic Delete audit deletes the
+  // first node it finds. Positions come from Tidy, not from this order.
   nodes: [
-    { id: 'trigger', type: 'trigger', position: { x: 0, y: 160 }, data: { note: 'New support request' } },
     { id: 'urgent', type: 'if', position: { x: 300, y: 140 }, data: { title: 'Is it urgent?', note: 'priority ≥ 4' } },
     { id: 'route', type: 'switch', position: { x: 600, y: 20 }, data: { title: 'Route by team', note: 'team', rules: ['billing', 'technical', 'other'] } },
     { id: 'mail', type: 'email', position: { x: 600, y: 330 }, data: { title: 'Acknowledge', note: 'reply within 24 h' } },
     { id: 'notify', type: 'slack', position: { x: 900, y: 0 }, data: { title: 'Ping #billing' } },
     { id: 'agent', type: 'agent', position: { x: 900, y: 130 }, data: { title: 'Draft a reply', note: 'from the docs' } },
     { id: 'llm', type: 'model', position: { x: 940, y: 300 }, data: { title: 'Chat model' } },
+    { id: 'trigger', type: 'trigger', position: { x: 0, y: 160 }, data: { note: 'New support request' } },
   ],
   edges: [
     { id: 'e1', source: 'trigger', sourceHandle: 'trigger:out', target: 'urgent', targetHandle: 'urgent:in' },

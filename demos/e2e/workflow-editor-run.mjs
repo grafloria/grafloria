@@ -198,6 +198,27 @@ await shot('01-boot');
   check('RUN-NOT-IN-DOCUMENT', end.doc === before.doc && end.undo === before.undo, 'serialized document and undo stack unchanged');
 }
 
+// ── 5b. editable: a real drag on a card (even on one of its rows) moves it, and the overlay follows ──
+{
+  await page.locator('#btn-run').click();
+  await page.waitForFunction(() => /run finished/.test(document.getElementById('readout').textContent), { timeout: 15000 });
+  const b = await nodeBox('urgent');
+  const x0 = await model(() => window.__we.api.getModel().getNode('urgent').position.x);
+  await page.mouse.move(b.x + b.w / 2, b.y + b.h - 20, { steps: 3 }); // on the "false" row
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.w / 2 + 50, b.y + b.h - 20, { steps: 12 });
+  await page.mouse.up();
+  await settle(150);
+  const r = await model(() => {
+    const n = window.__we.api.getModel().getNode('urgent');
+    const f = document.querySelector('.grafloria-run-frame[data-node-id="urgent"]');
+    return { x: n.position.x, frameLeft: f ? parseFloat(f.style.left) : null };
+  });
+  check('DRAG-MOVES-CARD', Math.abs(r.x - x0 - 50) <= 2 && r.frameLeft !== null && Math.abs(r.frameLeft - (r.x - 3)) < 0.5, `moved ${Math.round(r.x - x0)} px, run frame at ${r.frameLeft} for card x ${r.x}`);
+  await page.keyboard.press('Control+z');
+  await settle(200);
+}
+
 // ── 6. read-only: no "+", a real drag moves nothing, double-click still opens ──
 {
   await page.locator('#btn-ro').click();
