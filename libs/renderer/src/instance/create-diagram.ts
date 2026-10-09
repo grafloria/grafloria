@@ -36,6 +36,8 @@ import { installConnectReason } from './workflow/connect-reason';
 import { createClipboardApi } from './workflow/clipboard';
 import { installRunOverlay } from './workflow/run-overlay';
 import { insertNodeOnLink } from './workflow/insert-on-link';
+import { placeFlow, tidyFlow } from './workflow/flow-place';
+import type { FlowPlaceOptions, PlaceNodesOptions } from './workflow/flow-place';
 import type { InsertNodeOnLinkOptions, InsertNodeOnLinkResult } from './workflow/insert-on-link';
 import type { RunOverlay, RunOverlayFeature } from './workflow/run-overlay';
 import type { ClipboardHooks, PasteOptions } from './workflow/clipboard';
@@ -491,6 +493,22 @@ export interface DiagramInstance {
    * null when the link (or a named port) does not exist.
    */
   insertNodeOnLink(linkId: string, node: NodeSpec, options?: InsertNodeOnLinkOptions): Promise<InsertNodeOnLinkResult | null>;
+
+  /**
+   * Tidy the whole flow — a tree in OUTPUT PORT ORDER (an If's `true` branch
+   * above its `false` one, a Switch's outputs top to bottom), merges to the right
+   * of every branch that feeds them, nodes with no links (notes) left alone and
+   * kept clear. Animated (unless `animate: false` or reduced motion), ONE undo
+   * step. Resolves the ids that moved.
+   */
+  tidy(options?: FlowPlaceOptions): Promise<string[]>;
+  /**
+   * Place only `ids`; every other node stays put. Each goes one step along the
+   * flow from its parent (`after`, else the step linking into it), in its port's
+   * slot among the parent's children, nudged clear of what is there. Animated,
+   * ONE undo step. Resolves the ids that moved.
+   */
+  placeNodes(ids: string[], options?: PlaceNodesOptions): Promise<string[]>;
 
   /**
    * visio-depth — open the in-place label editor programmatically: a node's
@@ -1812,6 +1830,8 @@ export function createDiagram(
     setOverlay: (overlay) => overlayFeature().set(overlay),
     clearOverlay: () => runOverlay?.set({}),
     getOverlay: () => runOverlay?.get() ?? {},
+    tidy: (tidyOptions = {}) => tidyFlow(engine, tidyOptions, () => scheduler.schedule()),
+    placeNodes: (ids, placeOptions = {}) => placeFlow(engine, ids, placeOptions, () => scheduler.schedule()),
     async insertNodeOnLink(linkId, node, insertOptions) {
       const result = await insertNodeOnLink(engine, linkId, node, insertOptions);
       if (result) scheduler.schedule();
