@@ -168,9 +168,8 @@ await shot('01-boot');
     const edges = m.getLinks().map((l) => ({ id: l.id, source: m.getNodeByPortId(l.sourcePortId).id, sourceHandle: l.sourcePortId, target: m.getNodeByPortId(l.targetPortId).id, targetHandle: l.targetPortId }));
     edges.push({ id: 'host-wire', source: 'route', sourceHandle: 'route:r3', target: 'mail', targetHandle: 'mail:in' });
     api.setEdges(edges);
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   });
-  await settle(250);
+  await settle(1500); // nothing else happens on the page meanwhile
   const r = await model(() => {
     const m = window.__we.api.getModel();
     const host = document.querySelector('.grafloria-node-host[data-node-id="route"]');
@@ -180,10 +179,21 @@ await shot('01-boot');
       port: !!m.getNode('route').getPort('route:r3'),
       wire: m.getLink('host-wire')?.sourcePortId ?? null,
       plusGone: !document.querySelector('.grafloria-port-add[data-port-id="route:r3"]'),
+      // Where the wire is PAINTED to start, against the centre of the row it leaves
+      // from — screen px. No renderNow(): only the frames the library schedules.
+      wireStartOff: (() => {
+        const path = document.querySelector('[data-link-id="host-wire"] path.diagram-link, [data-link-id="host-wire"] path');
+        const row = host.querySelectorAll('.we-row')[3];
+        if (!path || !row) return null;
+        const p = path.getPointAtLength(0), mtx = path.getScreenCTM();
+        const y = p.x * mtx.b + p.y * mtx.d + mtx.f;
+        const rr = row.getBoundingClientRect();
+        return Math.round(Math.abs(y - (rr.top + rr.height / 2)) * 10) / 10;
+      })(),
     };
   });
   await shot('06b-host-setnodes');
-  check('HOST-SETNODES-REPAINTS', r.title === 'Route by queue' && r.rows === 4 && r.port && r.wire === 'route:r3' && r.plusGone, JSON.stringify(r));
+  check('HOST-SETNODES-REPAINTS', r.title === 'Route by queue' && r.rows === 4 && r.port && r.wire === 'route:r3' && r.plusGone && r.wireStartOff !== null && r.wireStartOff <= 1.5, JSON.stringify(r));
   // put the document back the same way (host state again)
   await page.evaluate(async () => {
     const { toNodeSpec } = await import('/shell/grafloria.js');
