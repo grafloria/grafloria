@@ -49,6 +49,22 @@ describe('tidy() / placeNodes(): the flow layout from the live model, one undo s
     expect(pos('note')).toEqual(noteBefore); // a node with no links is never moved
   });
 
+  it('a node plugged into a slot UNDERNEATH a step is an attachment: it follows its step, at its offset', async () => {
+    d = createDiagram(container, {
+      nodes: [
+        step('trigger', 500, 500),
+        { id: 'agent', position: { x: 50, y: 50 }, size: { width: 200, height: 80 }, ports: [{ id: 'agent:in', side: 'left', type: 'input' }, { id: 'agent:model', side: 'bottom', type: 'input' }] },
+        { id: 'model', position: { x: 60, y: 230 }, size: { width: 160, height: 50 }, ports: [{ id: 'model:out', side: 'top', type: 'output' }] },
+      ],
+      edges: [edge('t', 'trigger', 'out', 'agent'), { id: 'm', source: 'model', sourceHandle: 'model:out', target: 'agent', targetHandle: 'agent:model' }],
+    });
+    await d.tidy({ animate: false });
+    const a = pos('agent');
+    const m = pos('model');
+    expect([m.x - a.x, m.y - a.y]).toEqual([10, 180]); // the same offset under its step
+    expect(a.x).toBeGreaterThan(pos('trigger').x); // and the step is still after the trigger
+  });
+
   it('one undo puts every node back where it was', async () => {
     d = createDiagram(container, {
       nodes: [step('a', 0, 300), step('b', 37, 11), step('c', 500, 600)],

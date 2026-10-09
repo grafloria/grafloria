@@ -38,15 +38,53 @@ export interface PlaceNodesOptions extends FlowPlaceOptions {
   after?: string;
 }
 
-function flowInput(engine: DiagramEngine, lr: boolean): { boxes: FlowBox[]; edges: FlowEdge[]; linked: Set<string> } {
+/**
+ * An ATTACHMENT: a node whose only links go into a port on the CROSS-axis side
+ * of another (a model plugged into an AI step's slot underneath, in a
+ * left-to-right flow). It is not a step of the flow: it stays out of the layout
+ * and follows its host, keeping its offset.
+ */
+interface Attachment {
+  host: string;
+  dx: number;
+  dy: number;
+}
+
+function flowInput(engine: DiagramEngine, lr: boolean): { boxes: FlowBox[]; edges: FlowEdge[]; linked: Set<string>; attached: Map<string, Attachment> } {
   const diagram = engine.getDiagram()!;
   const boxes: FlowBox[] = [];
   const linked = new Set<string>();
   const edges: FlowEdge[] = [];
+  const crossSide = (side: string | undefined) => (lr ? side === 'top' || side === 'bottom' : side === 'left' || side === 'right');
+  // Who is an attachment: every link it takes part in enters a cross-axis port of ONE host.
+  const slotLinks = new Map<string, Set<string>>(); // source → hosts it plugs into
+  const flowNodes = new Set<string>();
   for (const link of diagram.getLinks() as LinkModel[]) {
     const s = diagram.getNodeByPortId(link.sourcePortId);
     const t = diagram.getNodeByPortId(link.targetPortId);
     if (!s || !t) continue;
+    const tp = t.getPort(link.targetPortId) as PortModel | undefined;
+    if (crossSide(tp?.side)) {
+      if (!slotLinks.has(s.id)) slotLinks.set(s.id, new Set());
+      slotLinks.get(s.id)!.add(t.id);
+      flowNodes.add(t.id);
+    } else {
+      flowNodes.add(s.id);
+      flowNodes.add(t.id);
+    }
+  }
+  const attached = new Map<string, Attachment>();
+  for (const [id, hosts] of slotLinks) {
+    if (flowNodes.has(id) || hosts.size !== 1) continue;
+    const host = [...hosts][0]!;
+    const a = diagram.getNode(id)!.position;
+    const h = diagram.getNode(host)!.position;
+    attached.set(id, { host, dx: a.x - h.x, dy: a.y - h.y });
+  }
+  for (const link of diagram.getLinks() as LinkModel[]) {
+    const s = diagram.getNodeByPortId(link.sourcePortId);
+    const t = diagram.getNodeByPortId(link.targetPortId);
+    if (!s || !t || attached.has(s.id)) continue;
     linked.add(s.id);
     linked.add(t.id);
     const port = s.getPort(link.sourcePortId) as PortModel | undefined;
@@ -54,10 +92,20 @@ function flowInput(engine: DiagramEngine, lr: boolean): { boxes: FlowBox[]; edge
     edges.push({ source: s.id, target: t.id, order: lr ? local.y : local.x });
   }
   for (const node of diagram.getNodes() as NodeModel[]) {
+    if (attached.has(node.id)) continue;
     const p = node.getWorldPosition();
     boxes.push({ id: node.id, width: node.size?.width ?? 0, height: node.size?.height ?? 0, x: p.x, y: p.y });
   }
-  return { boxes, edges, linked };
+  return { boxes, edges, linked, attached };
+}
+
+/** Each attachment goes where its host went, at the offset it had. */
+function carryAttachments(targets: Map<string, Pos>, attached: Map<string, Attachment>): Map<string, Pos> {
+  for (const [id, a] of attached) {
+    const host = targets.get(a.host);
+    if (host) targets.set(id, { x: host.x + a.dx, y: host.y + a.dy });
+  }
+  return targets;
 }
 
 const reducedMotion = (): boolean => {
@@ -118,10 +166,18 @@ async function commit(engine: DiagramEngine, targets: Map<string, Pos>, starts: 
 export async function tidyFlow(engine: DiagramEngine, options: FlowPlaceOptions, schedule: () => void): Promise<string[]> {
   if (!engine.getDiagram()) return [];
   const lr = (options.direction ?? 'LR') === 'LR';
-  const { boxes, edges, linked } = flowInput(engine, lr);
+  const { boxes, edges, linked, attached } = flowInput(engine, lr);
   const flow = boxes.filter((b) => linked.has(b.id));
   const obstacles = boxes.filter((b) => !linked.has(b.id)).map((b) => ({ x: b.x!, y: b.y!, width: b.width, height: b.height }));
-  const targets = flowLayout(flow, edges, { direction: options.direction, rankGap: options.rankGap, nodeGap: options.nodeGap, obstacles });
+  // A step with an attachment underneath needs that much more room across the flow.
+  for (const [id, a] of attached) {
+    const host = flow.find((b) => b.id === a.host);
+    const node = engine.getDiagram()!.getNode(id)!;
+    if (!host) continue;
+    if (lr) host.height = Math.max(host.height, a.dy + (node.size?.height ?? 0));
+    else host.width = Math.max(host.width, a.dx + (node.size?.width ?? 0));
+  }
+  const targets = carryAttachments(flowLayout(flow, edges, { direction: options.direction, rankGap: options.rankGap, nodeGap: options.nodeGap, obstacles }), attached);
   return commit(engine, targets, new Map(), 'Tidy flow', options, schedule);
 }
 
@@ -133,7 +189,7 @@ export async function placeFlow(engine: DiagramEngine, ids: string[], options: P
   const diagram = engine.getDiagram();
   if (!diagram) return [];
   const lr = (options.direction ?? 'LR') === 'LR';
-  const { boxes, edges, linked } = flowInput(engine, lr);
+  const { boxes, edges, linked, attached } = flowInput(engine, lr);
   const fresh = new Set(ids);
   const obstacles = boxes.filter((b) => !linked.has(b.id) && !fresh.has(b.id)).map((b) => ({ x: b.x!, y: b.y!, width: b.width, height: b.height }));
   const targets = placeFlowNodes(ids, boxes.filter((b) => linked.has(b.id) || fresh.has(b.id)), edges, {
@@ -143,6 +199,7 @@ export async function placeFlow(engine: DiagramEngine, ids: string[], options: P
     after: options.after,
     obstacles,
   });
+  carryAttachments(targets, attached);
   // Slide each new node out from its parent rather than from wherever it was made.
   const starts = new Map<string, Pos>();
   for (const id of targets.keys()) {
