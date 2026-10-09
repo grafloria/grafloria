@@ -31,6 +31,8 @@ import { VNodePatcher } from '../vnode/patch';
 import { InteractionController } from '../interaction/interaction-controller';
 import { HighlighterController, DEFAULT_HIGHLIGHTER_CONFIG, type Highlighter, type HighlighterConfig } from '../interaction/highlighters';
 import { ViewportController } from '../viewport/viewport-controller';
+import type { Feature, FeatureContext } from './workflow/feature';
+import { installConnectReason } from './workflow/connect-reason';
 import type { CanvasRect, Unsubscribe } from '../viewport/viewport-controller';
 import { RenderScheduler } from './render-scheduler';
 import { DomEventBinder } from './dom-event-binder';
@@ -273,6 +275,15 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
   comments?: boolean | CommentStore;
   /** Viewer id for a `comments: true`-created store (default `'local'`). */
   commentsViewer?: string;
+
+  /**
+   * While a connection is dragged over a port that refuses it, show WHY beside
+   * that port: a host validator's reason string (`registerConnectionValidator`
+   * returning text) or a built-in rule's message (a port at its link limit, a
+   * duplicate link). Off by default. Styled by `.grafloria-connect-reason` and
+   * `--grafloria-connect-reason-bg` / `--grafloria-connect-reason-fg`.
+   */
+  connectionReasons?: boolean;
 }
 
 export interface DiagramInstance {
@@ -763,6 +774,27 @@ export function createDiagram(
     },
     options
   );
+
+  // -- workflow-editor features (each opt-in; see ./workflow/feature.ts) -------
+  const featureCtx: FeatureContext = {
+    doc,
+    container,
+    htmlLayer: layers.html,
+    engine,
+    getModel: () => engine.getDiagram() ?? model,
+    viewport,
+    schedule: () => scheduler.schedule(),
+    emit: (event, payload) => emit(event, payload),
+    isReadonly: () => !!options.readonly || !!engine.getDiagram()?.isReadonly?.(),
+  };
+  const features: Feature[] = [];
+  if (options.connectionReasons) features.push(installConnectReason(featureCtx));
+  const syncFeatures = (): void => {
+    for (const f of features) f.sync?.();
+  };
+  const cameraFeatures = (): void => {
+    for (const f of features) f.camera?.();
+  };
 
   // -- custom (HTML-layer) nodes ---------------------------------------------
   //
@@ -1313,6 +1345,7 @@ export function createDiagram(
     // helper paint() writes.
     svg.setAttribute('viewBox', `${box.x} ${box.y} ${box.width} ${box.height}`);
     layers.html.setAttribute('style', htmlLayerStyle(viewport.getHtmlLayerTransform()));
+    cameraFeatures();
 
     // The epochs did not move (precondition) and the DOM'd frame is unchanged —
     // only the viewport key advances, so a following no-camera schedule skips.
@@ -1338,6 +1371,7 @@ export function createDiagram(
     syncCustomNodes();
     syncLineOverlay();
     syncHighlighterOverlay();
+    syncFeatures();
 
     lastViewportKey = viewportKey();
     lastFrameHadPreview = isConnectionPreviewActive();
@@ -1680,6 +1714,7 @@ export function createDiagram(
 
       commentOverlay?.dispose();
       commentOverlay = null;
+      for (const f of features.splice(0)) f.dispose();
       binder.detach();
       scheduler.dispose();
       resizeObserver?.disconnect();

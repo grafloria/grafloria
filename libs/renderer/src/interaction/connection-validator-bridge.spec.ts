@@ -110,3 +110,25 @@ describe('wave10 — the host connection-validator registry vetoes a DRAG', () =
     expect(calls).toBe(1);
   });
 });
+
+describe('a refusal carries its REASON to the drag (a workflow editor shows it beside the target)', () => {
+  it('the validator\'s reason string becomes the drag state\'s rejectionMessage', () => {
+    const ctx = scene();
+    registerConnectionValidator(({ targetPort }) => (targetPort?.id === 'b__left' ? 'A model goes into a Model slot' : true));
+    const csm = ctx.engine.getConnectionStateManager();
+    ctx.controller.startConnection(ctx.a.getPort('a__right')!, 100, 25, ctx.engine);
+    csm.updateConnection({ x: 300, y: 25 }, ctx.b.getPort('b__left')!);
+    expect(csm.getState().isOverValidTarget).toBe(false);
+    expect(csm.getState().rejectionReason).toBe('custom');
+    expect(csm.getState().rejectionMessage).toBe('A model goes into a Model slot');
+  });
+
+  it('a plain false keeps the generic message (unchanged behaviour)', () => {
+    const ctx = scene();
+    registerConnectionValidator(() => false);
+    const csm = ctx.engine.getConnectionStateManager();
+    ctx.controller.startConnection(ctx.a.getPort('a__right')!, 100, 25, ctx.engine);
+    csm.updateConnection({ x: 300, y: 25 }, ctx.b.getPort('b__left')!);
+    expect(csm.getState().rejectionMessage).toBe('This connection is not allowed.');
+  });
+});

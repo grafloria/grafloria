@@ -1969,12 +1969,14 @@ export class InteractionController {
       const targetNode = diagram?.getNodeByPortId(target.id);
       if (!sourceNode || !targetNode) return true;
 
-      return isValidConnection({
+      const verdict = isValidConnection({
         sourceNode,
         sourcePort: source,
         targetNode,
         targetPort: target,
-      }).valid;
+      });
+      // The reason travels with the refusal, so the drag can say WHY.
+      return verdict.valid ? true : verdict.reason || false;
     });
   }
 

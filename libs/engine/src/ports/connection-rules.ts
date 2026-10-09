@@ -62,7 +62,8 @@ export interface ConnectionRuleContext {
    */
   rejectDuplicatesByDefault?: boolean;
   /** Extra host rules (connection groups, ACLs…). Run last. */
-  validators?: Array<(source: PortModel, target: PortModel) => boolean>;
+  /** A host rule: true allows; false (or any falsy) refuses; a non-empty string refuses WITH that reason. */
+  validators?: Array<(source: PortModel, target: PortModel) => boolean | string>;
 }
 
 const OK: ConnectionVerdict = { ok: true };
@@ -185,9 +186,9 @@ export function evaluatePortConnection(
 
   // --- host rules (connection groups, ACLs…) -------------------------------
   for (const validator of context.validators ?? []) {
-    if (!validator(source, target)) {
-      return no('custom', 'This connection is not allowed.');
-    }
+    const verdict = validator(source, target);
+    if (typeof verdict === 'string' && verdict) return no('custom', verdict);
+    if (!verdict) return no('custom', 'This connection is not allowed.');
   }
 
   return OK;

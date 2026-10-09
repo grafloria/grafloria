@@ -78,13 +78,14 @@ export interface ConnectionDragState {
 }
 
 /**
- * Connection validation function
- * Returns true if connection is allowed
+ * Connection validation function.
+ * Returns true if the connection is allowed; false refuses it; a non-empty
+ * string refuses it and becomes the drag state's `rejectionMessage`.
  */
 export type ConnectionValidator = (
   sourcePort: PortModel,
   targetPort: PortModel
-) => boolean;
+) => boolean | string;
 
 /**
  * Manages connection creation state during drag operations
