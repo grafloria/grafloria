@@ -193561,6 +193561,25 @@ function createDiagram(container, options = {}) {
   const templateCards = nodeTemplates ? installNodeTemplates(featureCtx, nodeTemplates, { templates: options.nodeTemplates, compactBelow: options.compactBelow, anchorPorts: options.anchorPorts }) : null;
   if (templateCards) features.push(templateCards);
   if (options.affordances) features.push(installAffordances(featureCtx, options.affordances));
+  const templatedData = () => {
+    if (!nodeTemplates) return null;
+    const out = /* @__PURE__ */ new Map();
+    for (const node of model.getNodes()) if (nodeTemplates.has(node.type)) out.set(node.id, JSON.stringify(node.data ?? {}));
+    return out;
+  };
+  const rederiveTemplates = (before) => {
+    if (!nodeTemplates || !before) return;
+    let stale = false;
+    for (const node of model.getNodes()) {
+      if (!nodeTemplates.has(node.type) || before.get(node.id) === JSON.stringify(node.data ?? {})) continue;
+      nodeTemplates.prepare(model, node);
+      stale = true;
+    }
+    if (stale) {
+      renderer.invalidateFrame();
+      scheduler.schedule();
+    }
+  };
   const removeCustomHost = (id, host) => {
     templateCards?.unmount(id);
     options.removeCustomNode?.(id, host);
@@ -193900,7 +193919,10 @@ function createDiagram(container, options = {}) {
   }
   const instance = {
     setNodes(nodes) {
-      if (applyNodes(model, nodes)) scheduler.schedule();
+      const before = templatedData();
+      const changed = applyNodes(model, nodes);
+      rederiveTemplates(before);
+      if (changed) scheduler.schedule();
     },
     setEdges(edges) {
       if (applyEdges(model, edges)) scheduler.schedule();
@@ -193982,7 +194004,9 @@ function createDiagram(container, options = {}) {
         const errors = result.errors ?? new DSL({ autoLayout: false }).validate(stripGrafloriaSidecar(text.replace(/\r\n?/g, "\n"))).errors;
         if (errors.length > 0) refuse(`the text has errors \u2014 ${errors.join(" ")}`);
       }
+      const templatedBefore = templatedData();
       applyNodes(model, result.diagram.getNodes());
+      rederiveTemplates(templatedBefore);
       applyEdges(model, result.diagram.getLinks());
       const incoming = result.diagram.getGroups();
       const wanted = new Set(incoming.map((g) => g.id));
