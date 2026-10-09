@@ -7,3 +7,4 @@ export * from './LinkModel';
 export * from './DiagramModel';
 export * from './GroupModel';
 export * from './StrokeModel'; // wave10/whiteboard
+export * from './node-template';

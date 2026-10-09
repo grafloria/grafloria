@@ -33,6 +33,7 @@ import { deepClone, deepEqual } from '../utils/deep-clone';
 // wave9/comments (Card 6): the comment register namespace. Types only — the policy
 // (anchors, threads, convergence) lives in `../comments`, which depends on this file.
 import type { CommentRegisterTree } from '../comments/types';
+import type { NodeTemplateResolver } from './node-template';
 
 /**
  * How near a port must be to a point for {@link DiagramModel.findNearestPort} to
@@ -465,6 +466,23 @@ export class DiagramModel extends DiagramEntity {
    */
   runSystemWrite<T>(fn: () => T): T {
     return this.readonlyLock.runSystemWrite(fn);
+  }
+
+  /** The host's data-driven node templates (see ./node-template.ts); null = none. */
+  private nodeTemplateResolver: NodeTemplateResolver | null = null;
+
+  /**
+   * Register (or clear, with null) the resolver that answers a node's ports and
+   * size from its data. While one is set, `SetNodeDataCommand` reconciles each
+   * node it edits with the answer — removing links on dropped ports — inside its
+   * own undo step. Unset (the default), data edits touch only data.
+   */
+  setNodeTemplateResolver(resolver: NodeTemplateResolver | null): void {
+    this.nodeTemplateResolver = resolver;
+  }
+
+  getNodeTemplateResolver(): NodeTemplateResolver | null {
+    return this.nodeTemplateResolver;
   }
 
   addNode(node: NodeModel): void {

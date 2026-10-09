@@ -12,6 +12,8 @@
 // touched (including deleting keys that did not exist before).
 
 import { Command, CommandContext, SerializedCommand } from '../Command';
+import { applyNodeTemplate, restoreNodeTemplate } from '../../models/node-template';
+import type { NodeTemplateChange } from '../../models/node-template';
 
 /** The sentinel for "this key did not exist before" — distinct from a stored undefined. */
 const ABSENT = Symbol('absent');
@@ -20,6 +22,11 @@ export class SetNodeDataCommand extends Command {
   private readonly nodeIds: string[];
   /** Per-node snapshot of ONLY the touched keys, keyed by node id. */
   private previous?: Map<string, Map<string, unknown | typeof ABSENT>>;
+  /**
+   * What a registered node TEMPLATE changed in answer to the new data — ports,
+   * links on dropped ports, size — per node. Empty without a resolver.
+   */
+  private templated = new Map<string, NodeTemplateChange>();
 
   constructor(
     nodeId: string | readonly string[],
@@ -57,11 +64,30 @@ export class SetNodeDataCommand extends Command {
     for (const n of nodes) {
       for (const [key, value] of Object.entries(this.data)) n.setData(key, value);
     }
+
+    // A data-driven template (opt-in: `setNodeTemplateResolver`) re-derives the
+    // node's ports and size from the data it now has — in THIS step, so one undo
+    // takes the data, the ports and any wire to a removed port back together.
+    this.templated = new Map();
+    const resolve = diagram.getNodeTemplateResolver?.();
+    if (resolve) {
+      for (const n of nodes) {
+        const answer = resolve(n);
+        const change = answer ? applyNodeTemplate(diagram, n, answer) : null;
+        if (change) this.templated.set(n.id, change);
+      }
+    }
   }
 
   override undo(context: CommandContext): void {
     const diagram = context.diagram;
     if (!diagram || !this.previous) throw new Error('Cannot undo: missing diagram or snapshot');
+
+    // The template's structure first (ports, then their links), then the data.
+    for (const [id, change] of this.templated) {
+      const node = diagram.getNode(id);
+      if (node) restoreNodeTemplate(diagram, node, change);
+    }
 
     for (const [id, before] of this.previous) {
       const node = diagram.getNode(id);
