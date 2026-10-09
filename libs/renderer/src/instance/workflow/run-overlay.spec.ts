@@ -88,6 +88,32 @@ describe('the run overlay: a run drawn on the flow, never part of the document',
     expect(host.hasAttribute('data-run-status')).toBe(false);
   });
 
+  it('the frame FOLLOWS THE CARD\'S SHAPE: its corner radius, or the element marked data-run-shape', () => {
+    d = createDiagram(container, {
+      nodes: [
+        { id: 'trig', type: 'trigger', custom: true, position: { x: 0, y: 0 }, size: { width: 200, height: 70 } } as NodeSpec,
+        { id: 'sub', type: 'model', custom: true, position: { x: 300, y: 0 }, size: { width: 150, height: 100 } } as NodeSpec,
+      ],
+      renderCustomNode: (node, el) => {
+        el.innerHTML = node.id === 'trig'
+          ? '<div style="border-radius: 36px 14px 14px 36px">D</div>'
+          : '<div><span class="orb" data-run-shape style="border-radius: 50%">o</span><b>name</b></div>';
+      },
+    });
+    // jsdom lays nothing out: give the orb the box a browser would (56 px, centred, at the top).
+    const orb = container.querySelector('.orb') as HTMLElement;
+    const host = orb.closest('.grafloria-node-host') as HTMLElement;
+    host.getBoundingClientRect = () => ({ left: 300, top: 0, width: 150, height: 100, right: 450, bottom: 100 }) as DOMRect;
+    orb.getBoundingClientRect = () => ({ left: 347, top: 0, width: 56, height: 56, right: 403, bottom: 56 }) as DOMRect;
+    d.setOverlay({ nodes: { trig: { status: 'running' }, sub: { status: 'completed' } } });
+    const trig = q('.grafloria-run-frame[data-node-id="trig"]')!;
+    expect(trig.style.borderRadius).toBe('39px 17px 17px 39px'); // the card's radius, 3 px out
+    expect(trig.getAttribute('data-node-type')).toBe('trigger');
+    const sub = q('.grafloria-run-frame[data-node-id="sub"]')!;
+    expect([sub.style.left, sub.style.top, sub.style.width, sub.style.height]).toEqual(['344px', '-3px', '62px', '62px']); // hugs the orb
+    expect(sub.style.borderRadius).toBe('50%');
+  });
+
   it('follows a node that moves', () => {
     mount().setOverlay({ nodes: { a: { status: 'running' } } });
     d!.getModel().getNode('a')!.setPosition(200, 150);
