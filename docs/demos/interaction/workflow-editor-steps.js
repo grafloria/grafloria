@@ -136,11 +136,12 @@ export const TEMPLATES = {
 };
 
 // The sub-nodes an AI step's slots take: a round badge, its name beneath, and a
-// diamond output on top that plugs UP into a slot.
+// diamond output on top that plugs UP into a slot. The badge is marked
+// `data-run-shape`, so a run's status ring hugs the circle, not the caption.
 for (const kind of ['model', 'memory', 'tool']) {
   TEMPLATES[kind] = {
     render: (data, { node }) => ({
-      html: `<div class="we-sub"><span class="we-orb we-${KINDS[kind].hue}" data-port="${node.id}:out">${KINDS[kind].icon}</span>` +
+      html: `<div class="we-sub"><span class="we-orb we-${KINDS[kind].hue}" data-port="${node.id}:out" data-run-shape>${KINDS[kind].icon}</span>` +
         `<b>${titleOf(kind, data)}</b>${data.note ? `<small>${esc(data.note)}</small>` : ''}</div>`,
       ports: [{ id: `${node.id}:out`, side: 'top', type: 'output', dataType: 'ai', shape: DIAMOND }],
       size: { width: 150, height: 104 },

@@ -190255,6 +190255,34 @@ function installRunOverlay(ctx) {
     return root;
   };
   const findHost = (id) => ctx.container.querySelector(`.grafloria-node-host[data-node-id="${cssEscape2(id)}"]`);
+  const outset = (r) => {
+    const px2 = /^([\d.]+)px$/.exec(r.trim());
+    return px2 ? `${parseFloat(px2[1]) + 3}px` : r.trim() || "0px";
+  };
+  const measureShape = (node, host) => {
+    if (!host) return null;
+    const marked = host.querySelector("[data-run-shape]");
+    const target = marked ?? host.firstElementChild;
+    if (!target) return null;
+    const cs = getComputedStyle(target);
+    let raw = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius];
+    if (raw.every((c) => !c)) {
+      const v = (cs.borderRadius || target.style.borderRadius || "").split("/")[0].trim().split(/\s+/).filter(Boolean);
+      raw = v.length === 0 ? ["", "", "", ""] : [v[0], v[1] ?? v[0], v[2] ?? v[0], v[3] ?? v[1] ?? v[0]];
+    }
+    const corners = raw.map((c) => outset(c || "0px"));
+    const radius = corners.every((c) => c === corners[0]) ? corners[0] : corners.join(" ");
+    const w = node.size?.width ?? 0;
+    const h = node.size?.height ?? 0;
+    let box = { dx: 0, dy: 0, w, h };
+    if (marked) {
+      const hr = host.getBoundingClientRect();
+      const r = marked.getBoundingClientRect();
+      const scale = w > 0 && hr.width > 0 ? hr.width / w : 1;
+      if (r.width > 0) box = { dx: (r.left - hr.left) / scale, dy: (r.top - hr.top) / scale, w: r.width / scale, h: r.height / scale };
+    }
+    return { ...box, radius };
+  };
   const dropNodeView = (id, view) => {
     view.frame.remove();
     view.badge?.remove();
@@ -190276,14 +190304,25 @@ function installRunOverlay(ctx) {
         frame.className = "grafloria-run-frame";
         frame.setAttribute("data-node-id", id);
         root.appendChild(frame);
-        view = { frame, badge: null, status: "", frameStyle: "", badgeStyle: "", host: null };
+        frame.setAttribute("data-node-type", node.type);
+        view = { frame, badge: null, status: "", frameStyle: "", badgeStyle: "", host: null, shape: null };
         nodeViews.set(id, view);
         rehost = true;
+      }
+      if (rehost || view.host && !view.host.isConnected) {
+        const host = findHost(id);
+        if (host !== view.host) {
+          view.host?.removeAttribute("data-run-status");
+          view.host = host;
+          host?.setAttribute("data-run-status", status);
+        }
+        view.shape = measureShape(node, view.host);
       }
       const pos = node.getWorldPosition();
       const w = node.size?.width ?? 0;
       const h = node.size?.height ?? 0;
-      const frameStyle = `left:${pos.x - 3}px;top:${pos.y - 3}px;width:${w + 6}px;height:${h + 6}px`;
+      const sh = view.shape ?? { dx: 0, dy: 0, w, h, radius: "" };
+      const frameStyle = `left:${pos.x + sh.dx - 3}px;top:${pos.y + sh.dy - 3}px;width:${sh.w + 6}px;height:${sh.h + 6}px` + (sh.radius ? `;border-radius:${sh.radius}` : "");
       if (view.frameStyle !== frameStyle) view.frame.setAttribute("style", view.frameStyle = frameStyle);
       const statusChanged = view.status !== status;
       if (statusChanged) {
@@ -190299,19 +190338,11 @@ function installRunOverlay(ctx) {
           view.badge.setAttribute("data-status", status);
         } else if (statusChanged) view.badge.setAttribute("data-status", status);
         if (view.badge.textContent !== entry.badge) view.badge.textContent = entry.badge;
-        const badgeStyle = `left:${pos.x + w}px;top:${pos.y}px`;
+        const badgeStyle = `left:${pos.x + sh.dx + sh.w}px;top:${pos.y + sh.dy}px`;
         if (view.badgeStyle !== badgeStyle) view.badge.setAttribute("style", view.badgeStyle = badgeStyle);
       } else if (view.badge) {
         view.badge.remove();
         view.badge = null;
-      }
-      if (rehost || view.host && !view.host.isConnected) {
-        const host = findHost(id);
-        if (host !== view.host) {
-          view.host?.removeAttribute("data-run-status");
-          view.host = host;
-          host?.setAttribute("data-run-status", status);
-        }
       }
       if (statusChanged) view.host?.setAttribute("data-run-status", status);
     }
