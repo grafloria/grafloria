@@ -80,6 +80,9 @@ jobs:
       # The query-builder demo's own gestures: guided wiring (validator-aware
       # tints), pill-typed joins, the SQL that writes itself.
       - run: node demos/e2e/query-builder-run.mjs
+      # The workflow-editor surface under a real hand: "+" on ports and links,
+      # a refused drag that says why, read-only, the run overlay, compact zoom.
+      - run: node demos/e2e/workflow-editor-run.mjs
       # The Visio-editor covenant: every advertised gesture (marquee, nudge,
       # duplicate, F2/type-to-replace, context menu, port-drag connect,
       # drag-into-container, edge-label edit, palette ghost, toolbar) driven
