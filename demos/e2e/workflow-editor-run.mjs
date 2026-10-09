@@ -338,6 +338,169 @@ await shot('01-boot');
 }
 await ctx.close();
 
+// ── 10. wire gestures (a fresh page) ─────────────────────────────────────────────
+{
+  const { ctx: c2, page: p } = await open('light');
+  const shot2 = (name) => p.screenshot({ path: join(SHOTS, `${name}.png`) });
+  const m2 = (fn, arg) => p.evaluate(fn, arg);
+  /** A port's screen point, from the live model. */
+  const portAt = (portId) => p.evaluate(async (portId) => {
+    const { portWorldPosition } = await import('/shell/grafloria.js');
+    const api = window.__we.api, m = api.getModel();
+    const node = m.getNodeByPortId(portId);
+    const w = portWorldPosition(node.getPort(portId), node);
+    const r = document.getElementById('canvas').getBoundingClientRect();
+    return api.viewport.worldToClient(w.x, w.y, r);
+  }, portId);
+  const box = (id) => p.evaluate((id) => { const r = document.querySelector(`.grafloria-node-host[data-node-id="${id}"]`).getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }, id);
+  const linksBetween = (from, to) => m2(([from, to]) => window.__we.api.getModel().getLinks().filter((l) => l.sourcePortId === from && l.targetPortId === to).length, [from, to]);
+  const dragFromPlus = async (portId, to, steps = 16) => {
+    const b = await p.locator(`.grafloria-port-add[data-port-id="${portId}"]`).boundingBox();
+    await p.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 3 });
+    await p.mouse.down();
+    await p.mouse.move(to.x, to.y, { steps });
+  };
+
+  // 1. drag FROM the "+" to another step's input port → connect
+  {
+    const to = await portAt('mail:in');
+    await dragFromPlus('route:r2', to);
+    await p.mouse.up();
+    await p.waitForTimeout(250);
+    check('PLUS-DRAG-CONNECTS', (await linksBetween('route:r2', 'mail:in')) === 1, 'dragging the "+" of route:r2 onto mail:in made the link');
+    await p.keyboard.press('Control+z');
+    await p.waitForTimeout(200);
+  }
+
+  // 2. drag from the "+" to EMPTY canvas → connect:drop-empty with the world point → the page adds a step there
+  {
+    // An empty spot well inside the canvas: under the trigger, left of everything else.
+    const tr = await box('trigger');
+    const to = { x: tr.x + tr.w / 2, y: Math.min(tr.y + tr.h + 220, 860) };
+    const empty = await p.evaluate((to) => !document.elementFromPoint(to.x, to.y)?.closest('.grafloria-node-host'), to);
+    if (!empty) throw new Error('DROP-EMPTY staging: the chosen point is on a card');
+    await dragFromPlus('agent:out', to);
+    await p.mouse.up();
+    await p.waitForTimeout(200);
+    const drop = await m2(() => window.__we.lastDrop ?? null);
+    const menu = await p.locator('.we-menu').isVisible();
+    await shot2('20-drop-empty-menu');
+    if (menu) await p.locator('.we-menu [data-kind="http"]').click();
+    await p.waitForTimeout(300);
+    const r = await m2((drop) => {
+      const m = window.__we.api.getModel();
+      const http = m.getNodes().find((n) => n.type === 'http');
+      return { wired: !!http && m.getLinks().some((l) => l.sourcePortId === 'agent:out' && l.targetPortId === `${http.id}:in`), near: !!http && drop && Math.abs(http.position.x - drop.world.x) < 2 };
+    }, drop);
+    await shot2('21-drop-empty-added');
+    check('DROP-EMPTY-REPORTED', drop?.portId === 'agent:out' && typeof drop?.world?.x === 'number' && menu && r.wired && r.near, JSON.stringify({ drop, menu, ...r }));
+  }
+
+  // 3a. snapToNode: release over a card's BODY → its first accepting input
+  {
+    const mb = await box('mail');
+    await dragFromPlus('notify:out', { x: mb.x + mb.w / 2, y: mb.y + mb.h / 2 });
+    await p.waitForTimeout(120);
+    const marked = await m2(() => document.querySelector('.grafloria-node-host[data-node-id="mail"]')?.getAttribute('data-connect-snap'));
+    await shot2('22-snap-accept');
+    await p.mouse.up();
+    await p.waitForTimeout(250);
+    check('SNAP-TO-NODE', marked === 'accept' && (await linksBetween('notify:out', 'mail:in')) === 1, `marked=${marked}`);
+    await p.keyboard.press('Control+z');
+    await p.waitForTimeout(200);
+  }
+  // 3b. …a card whose inputs all refuse: marked refused, its reason shown, no link on release
+  {
+    const ub = await box('urgent');
+    await dragFromPlus('mail:out', { x: ub.x + ub.w / 2, y: ub.y + 40 });
+    await p.waitForTimeout(120);
+    const r = await m2(() => ({ mark: document.querySelector('.grafloria-node-host[data-node-id="urgent"]')?.getAttribute('data-connect-snap'), reason: document.querySelector('.grafloria-connect-reason')?.textContent ?? null }));
+    await shot2('23-snap-refuse');
+    await p.mouse.up();
+    await p.waitForTimeout(200);
+    const links = await linksBetween('mail:out', 'urgent:in');
+    const cleared = await m2(() => !document.querySelector('[data-connect-snap]'));
+    check('SNAP-REFUSED-SAYS-WHY', r.mark === 'refuse' && r.reason === 'That would loop back to an earlier step' && links === 0 && cleared, JSON.stringify({ ...r, links, cleared }));
+  }
+
+  // 4. a SELECTED link keeps its buttons after the pointer leaves; Delete goes through beforeKey
+  {
+    const mid = await linkMid.call(null, 'e3').catch(() => null);
+    const path = await p.evaluate(() => {
+      const el = document.querySelector('[data-link-id="e3"] path.diagram-link, [data-link-id="e3"] path');
+      const q = el.getPointAtLength(el.getTotalLength() / 3), mtx = el.getScreenCTM();
+      return { x: q.x * mtx.a + q.y * mtx.c + mtx.e, y: q.x * mtx.b + q.y * mtx.d + mtx.f };
+    });
+    void mid;
+    await p.mouse.move(path.x, path.y, { steps: 6 });
+    await p.mouse.down();
+    await p.mouse.up();
+    await p.mouse.move(80, 860, { steps: 6 }); // far away
+    await p.waitForTimeout(200);
+    const still = await p.locator('.grafloria-link-add').isVisible().catch(() => false);
+    await shot2('24-selected-link-buttons');
+    await m2(() => (window.__we.keys = []));
+    await p.keyboard.press('Delete');
+    await p.waitForTimeout(250);
+    const r = await m2(() => ({ keys: window.__we.keys, gone: !window.__we.api.getModel().getLink('e3') }));
+    check('SELECTED-LINK-BUTTONS', still && r.keys.includes('delete') && r.gone, JSON.stringify({ still, ...r }));
+    await p.keyboard.press('Control+z');
+    await p.waitForTimeout(250);
+  }
+
+  // 5. drag a step OVER a link → the link is marked; release → link:insert-request → the page rewires A→X→B
+  {
+    const nb = await box('notify');
+    const path = await p.evaluate(() => {
+      const el = document.querySelector('[data-link-id="e3"] path.diagram-link, [data-link-id="e3"] path');
+      const q = el.getPointAtLength(el.getTotalLength() / 2), mtx = el.getScreenCTM();
+      return { x: q.x * mtx.a + q.y * mtx.c + mtx.e, y: q.x * mtx.b + q.y * mtx.d + mtx.f };
+    });
+    const grab = { x: nb.x + nb.w / 2, y: nb.y + 20 };
+    await p.mouse.move(grab.x, grab.y, { steps: 3 });
+    await p.mouse.down();
+    await p.mouse.move(path.x, path.y, { steps: 20 });
+    await p.waitForTimeout(120);
+    const marked = await m2(() => !!document.querySelector('[data-link-id="e3"] .link-drop-target, [data-link-id="e3"].link-drop-target, path.link-drop-target'));
+    await shot2('25-drop-on-link-hover');
+    await p.mouse.up();
+    await p.waitForTimeout(300);
+    const r = await m2(() => {
+      const m = window.__we.api.getModel();
+      return { e3: !!m.getLink('e3'), into: m.getLinks().some((l) => l.sourcePortId === 'urgent:false' && l.targetPortId === 'notify:in'), out: m.getLinks().some((l) => l.sourcePortId === 'notify:out' && l.targetPortId === 'mail:in') };
+    });
+    await shot2('26-dropped-on-link');
+    check('NODE-DROP-ON-LINK', marked && !r.e3 && r.into && r.out, JSON.stringify({ marked, ...r }));
+  }
+
+  // F4. Shift-click on a card's BODY extends the selection
+  {
+    await p.mouse.click(700, 860);
+    const a = await box('mail'), b = await box('agent');
+    await p.mouse.click(a.x + 40, a.y + 20);
+    await p.keyboard.down('Shift');
+    await p.mouse.click(b.x + 40, b.y + 20);
+    await p.keyboard.up('Shift');
+    const sel = await m2(() => window.__we.api.getModel().getSelectedNodes().map((n) => n.id).sort());
+    check('SHIFT-CLICK-EXTENDS', JSON.stringify(sel) === JSON.stringify(['agent', 'mail']), JSON.stringify(sel));
+  }
+
+  // F3. an edge naming a port the node lacks is REPORTED, not dropped without a word
+  {
+    const r = await m2(() => {
+      const api = window.__we.api, m = api.getModel(), got = [];
+      const off = (w) => got.push(w);
+      api.on('renderer:warning', off);
+      const edges = m.getLinks().map((l) => ({ id: l.id, source: m.getNodeByPortId(l.sourcePortId).id, sourceHandle: l.sourcePortId, target: m.getNodeByPortId(l.targetPortId).id, targetHandle: l.targetPortId }));
+      api.setEdges([...edges, { id: 'stale', source: 'mail', sourceHandle: 'mail:out', target: 'trigger', targetHandle: 'trigger:in' }]);
+      api.off('renderer:warning', off);
+      return got.map((w) => [w.kind, w.edgeId, w.end]);
+    });
+    check('EDGE-DROP-WARNED', JSON.stringify(r) === JSON.stringify([['edge-dropped', 'stale', 'target']]), JSON.stringify(r));
+  }
+  await c2.close();
+}
+
 // ── 9. dark: the same page, the same run, its own palette ──────────────────────
 {
   const dark = await open('dark');
