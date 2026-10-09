@@ -34,6 +34,8 @@ import { ViewportController } from '../viewport/viewport-controller';
 import type { Feature, FeatureContext } from './workflow/feature';
 import { installConnectReason } from './workflow/connect-reason';
 import { createClipboardApi } from './workflow/clipboard';
+import { installRunOverlay } from './workflow/run-overlay';
+import type { RunOverlay, RunOverlayFeature } from './workflow/run-overlay';
 import type { ClipboardHooks, PasteOptions } from './workflow/clipboard';
 import type { CanvasRect, Unsubscribe } from '../viewport/viewport-controller';
 import { RenderScheduler } from './render-scheduler';
@@ -465,6 +467,21 @@ export interface DiagramInstance {
   paste(data?: ClipboardData, options?: PasteOptions): Promise<boolean>;
 
   /**
+   * Draw a RUN on the flow without making it part of the document: per node a
+   * status frame (`idle | pending | running | completed | error | warning`) and
+   * an optional badge, per link a label chip ("2 items") and an optional moving
+   * dash. REPLACES the previous overlay; repaints immediately, so it is cheap to
+   * call many times a second as a run streams in. Never enters undo,
+   * serialization or collab. Styled by `.grafloria-run-*` classes and
+   * `--grafloria-run-<status>` variables.
+   */
+  setOverlay(overlay: RunOverlay): void;
+  /** Remove the run overlay. */
+  clearOverlay(): void;
+  /** The overlay as last set (a copy). */
+  getOverlay(): RunOverlay;
+
+  /**
    * visio-depth — open the in-place label editor programmatically: a node's
    * label (`{ type: 'node', nodeId }`) or a link label
    * (`{ type: 'link-label', linkId, labelIndex }`). The seam a host's
@@ -849,6 +866,16 @@ export function createDiagram(
   if (options.readonly) applyReadonly(true);
   const features: Feature[] = [];
   if (options.connectionReasons) features.push(installConnectReason(featureCtx));
+  // The run overlay installs itself on first use: a diagram that never calls
+  // setOverlay() never creates its element or its stylesheet.
+  let runOverlay: RunOverlayFeature | null = null;
+  const overlayFeature = (): RunOverlayFeature => {
+    if (!runOverlay) {
+      runOverlay = installRunOverlay(featureCtx);
+      features.push(runOverlay);
+    }
+    return runOverlay;
+  };
   const syncFeatures = (): void => {
     for (const f of features) f.sync?.();
   };
@@ -1771,6 +1798,9 @@ export function createDiagram(
     copy: () => clipboardApi.copy(),
     cut: () => clipboardApi.cut(),
     paste: (data, pasteOptions) => clipboardApi.paste(data, pasteOptions),
+    setOverlay: (overlay) => overlayFeature().set(overlay),
+    clearOverlay: () => runOverlay?.set({}),
+    getOverlay: () => runOverlay?.get() ?? {},
 
     beginLabelEdit: (target, opts) => binder.beginLabelEdit(target, opts),
 
