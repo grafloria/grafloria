@@ -134,6 +134,43 @@ describe('node templates: (data) → card, ports and size — re-derived on ever
     expect(d!.getModel().getLink(r.downstreamLinkId)!.sourcePortId).toBe('out');
   });
 
+  describe('a host that keeps its OWN state and reconciles with setNodes / setEdges', () => {
+    const spec = (rules: string[], title = 'Switch') => [
+      { id: 'sw', type: 'switch', position: { x: 0, y: 0 }, data: { rules, title } } as never,
+      { id: 'x', type: 'step', position: { x: 400, y: 0 } } as never,
+    ];
+
+    it('a data change through setNodes REPAINTS the card — on the frame setNodes schedules, not only on renderNow()', async () => {
+      mount();
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      d!.setNodes(spec(['a', 'b', 'c', 'renamed']));
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      expect(Array.from(host('sw').querySelectorAll('.row')).map((r) => r.textContent)).toEqual(['a', 'b', 'c', 'renamed']);
+    });
+
+    it('…re-derives the ports, so a following setEdges can name the new one', () => {
+      mount();
+      d!.setNodes(spec(['a', 'b', 'c', 'd']));
+      expect(outs()).toEqual(['sw:out0', 'sw:out1', 'sw:out2', 'sw:out3']);
+      expect(d!.getModel().getNode('sw')!.size.height).toBe(160);
+      d!.setEdges([
+        { id: 'wire', source: 'sw', sourceHandle: 'sw:out2', target: 'x', targetHandle: 'in' },
+        { id: 'w4', source: 'sw', sourceHandle: 'sw:out3', target: 'x', targetHandle: 'in' },
+      ]);
+      expect(d!.getModel().getLink('w4')!.sourcePortId).toBe('sw:out3');
+    });
+
+    it('…drops the wire on a vanished port, and leaves NO undo entry (the host keeps its own undo)', () => {
+      mount();
+      const cm = d!.getEngine().commandManager;
+      const before = cm.canUndo();
+      d!.setNodes(spec(['a']));
+      expect(outs()).toEqual(['sw:out0']);
+      expect(d!.getModel().getLink('wire')).toBeUndefined();
+      expect(cm.canUndo()).toBe(before);
+    });
+  });
+
   it('without nodeTemplates nothing changes: a node of that type keeps its spec ports', () => {
     d = createDiagram(container, { nodes: [{ id: 'sw', type: 'switch', position: { x: 0, y: 0 }, size: { width: 100, height: 50 } } as never] });
     expect(d.getModel().getNode('sw')!.ports.size).toBe(4); // the four default side ports

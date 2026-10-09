@@ -962,6 +962,36 @@ export function createDiagram(
     : null;
   if (templateCards) features.push(templateCards);
   if (options.affordances) features.push(installAffordances(featureCtx, options.affordances));
+  /**
+   * `setNodes` writes a node's data by plain assignment — the HOST's state coming
+   * in, which must not become an undo entry. For a templated node that is not
+   * enough on its own: its ports and size come from its data, and its card is
+   * repainted only on a frame that knows the picture changed. So: note each
+   * templated node's data before, and for every one whose data changed re-derive
+   * ports and size (wires on a vanished port go with it, no undo entry) and mark
+   * the frame stale so the card repaints — before a following `setEdges` that
+   * may name a port that has only just appeared.
+   */
+  const templatedData = (): Map<string, string> | null => {
+    if (!nodeTemplates) return null;
+    const out = new Map<string, string>();
+    for (const node of model.getNodes()) if (nodeTemplates.has(node.type)) out.set(node.id, JSON.stringify(node.data ?? {}));
+    return out;
+  };
+  const rederiveTemplates = (before: Map<string, string> | null): void => {
+    if (!nodeTemplates || !before) return;
+    let stale = false;
+    for (const node of model.getNodes()) {
+      if (!nodeTemplates.has(node.type) || before.get(node.id) === JSON.stringify(node.data ?? {})) continue;
+      nodeTemplates.prepare(model, node);
+      stale = true;
+    }
+    if (stale) {
+      renderer.invalidateFrame();
+      scheduler.schedule();
+    }
+  };
+
   /** Tear a custom host down: the template's bookkeeping, then the host's own hook. */
   const removeCustomHost = (id: string, host: HTMLElement): void => {
     templateCards?.unmount(id);
@@ -1699,7 +1729,10 @@ export function createDiagram(
 
   const instance: DiagramInstance = {
     setNodes(nodes) {
-      if (applyNodes(model, nodes)) scheduler.schedule();
+      const before = templatedData();
+      const changed = applyNodes(model, nodes);
+      rederiveTemplates(before);
+      if (changed) scheduler.schedule();
     },
     setEdges(edges) {
       if (applyEdges(model, edges)) scheduler.schedule();
@@ -1814,7 +1847,9 @@ export function createDiagram(
       // required the projection — and exportText's own contract promises a
       // "lossless sidecar … feed the result back to loadText for a full
       // round-trip", which this is what makes true.
+      const templatedBefore = templatedData();
       applyNodes(model, result.diagram.getNodes());
+      rederiveTemplates(templatedBefore);
       applyEdges(model, result.diagram.getLinks());
 
       // Groups travel in neither `nodes` nor `edges`, so without this they were
