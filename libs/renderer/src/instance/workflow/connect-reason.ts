@@ -46,15 +46,21 @@ export function installConnectReason(ctx: FeatureContext): Feature {
     const at = portWorldPosition(port, node);
     const zoom = ctx.viewport.getZoom() || 1;
     // Anchored at its bottom-left, 10 screen px up and right of the port, and
-    // counter-scaled so it reads at its CSS size at any zoom.
-    label.setAttribute(
-      'style',
-      `position:absolute;left:${at.x}px;top:${at.y}px;transform:translate(${10 / zoom}px, calc(-100% - ${10 / zoom}px)) scale(${1 / zoom});` +
-        'transform-origin:0 100%;pointer-events:none;white-space:nowrap;z-index:6;' +
+    // counter-scaled so it reads at its CSS size at any zoom. Near the canvas's
+    // right edge it flips to the port's LEFT instead of running off the canvas.
+    const style = (flip: boolean) =>
+      `position:absolute;left:${at.x}px;top:${at.y}px;` +
+      (flip
+        ? `transform:translate(calc(-100% - ${10 / zoom}px), calc(-100% - ${10 / zoom}px)) scale(${1 / zoom});transform-origin:100% 100%;`
+        : `transform:translate(${10 / zoom}px, calc(-100% - ${10 / zoom}px)) scale(${1 / zoom});transform-origin:0 100%;`) +
+      'pointer-events:none;white-space:nowrap;z-index:6;' +
         'background:var(--grafloria-connect-reason-bg, #b42318);color:var(--grafloria-connect-reason-fg, #fff);' +
         'font:500 12px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;padding:4px 8px;border-radius:6px;' +
-        'box-shadow:0 2px 8px rgba(16, 24, 40, .2)'
-    );
+        'box-shadow:0 2px 8px rgba(16, 24, 40, .2)';
+    label.setAttribute('style', style(false));
+    const box = label.getBoundingClientRect();
+    const edge = ctx.container.getBoundingClientRect();
+    if (box.width > 0 && box.right > edge.right - 4) label.setAttribute('style', style(true));
   };
 
   const onUpdate = (p: UpdatePayload): void => {

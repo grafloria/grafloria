@@ -65,6 +65,24 @@ describe('tidy() / placeNodes(): the flow layout from the live model, one undo s
     expect(a.x).toBeGreaterThan(pos('trigger').x); // and the step is still after the trigger
   });
 
+  it('placeNodes keeps a new step clear of an ATTACHMENT (the model under an AI step)', async () => {
+    d = createDiagram(container, {
+      nodes: [
+        step('sw', 0, 0, ['a', 'b']),
+        { id: 'agent', position: { x: 200, y: 0 }, size: { width: 200, height: 80 }, ports: [{ id: 'agent:in', side: 'left', type: 'input' }, { id: 'agent:model', side: 'bottom', type: 'input' }] },
+        { id: 'model', position: { x: 220, y: 110 }, size: { width: 160, height: 50 }, ports: [{ id: 'model:out', side: 'top', type: 'output' }] },
+      ],
+      edges: [edge('sa', 'sw', 'a', 'agent'), { id: 'm', source: 'model', sourceHandle: 'model:out', target: 'agent', targetHandle: 'agent:model' }],
+    });
+    d.getModel().addNode(buildNode(step('n', 900, 900), 0));
+    d.getModel().addLink(new LinkModel('sw:b', 'n:in'));
+    await d.placeNodes(['n'], { animate: false });
+    const n = pos('n');
+    const m = pos('model');
+    const hit = n.x < m.x + 160 && m.x < n.x + 120 && n.y < m.y + 50 && m.y < n.y + 60;
+    expect(hit).toBe(false);
+  });
+
   it('one undo puts every node back where it was', async () => {
     d = createDiagram(container, {
       nodes: [step('a', 0, 300), step('b', 37, 11), step('c', 500, 600)],

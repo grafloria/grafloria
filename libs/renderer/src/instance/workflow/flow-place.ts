@@ -192,6 +192,12 @@ export async function placeFlow(engine: DiagramEngine, ids: string[], options: P
   const { boxes, edges, linked, attached } = flowInput(engine, lr);
   const fresh = new Set(ids);
   const obstacles = boxes.filter((b) => !linked.has(b.id) && !fresh.has(b.id)).map((b) => ({ x: b.x!, y: b.y!, width: b.width, height: b.height }));
+  // Attachments are out of the layout, not out of the way: a new step must not land on one.
+  for (const id of attached.keys()) {
+    const node = diagram.getNode(id)!;
+    const p = node.getWorldPosition();
+    obstacles.push({ x: p.x, y: p.y, width: node.size?.width ?? 0, height: node.size?.height ?? 0 });
+  }
   const targets = placeFlowNodes(ids, boxes.filter((b) => linked.has(b.id) || fresh.has(b.id)), edges, {
     direction: options.direction,
     rankGap: options.rankGap,
