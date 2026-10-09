@@ -483,6 +483,14 @@ const IN_PAGE = () => {
           if (c.x < r.left + 5 || c.y < r.top + 5 || c.x > r.left + r.width - 5 || c.y > r.top + r.height - 5) continue;
           fire('pointermove', c.x, c.y); await raf2(); inst.renderNow(); await raf2();
           if (!n.state?.hovered) continue;
+          // A port another node covers is (rightly) not drawn: if an earlier check
+          // parked something over every one of this node's ports, that is a
+          // staging miss too, not a verdict on hover visibility.
+          const anchor = (p) => {
+            const side = p.side ?? 'right';
+            return { x: wp.x + (side === 'right' ? n.size.width : side === 'left' ? 0 : n.size.width / 2), y: wp.y + (side === 'bottom' ? n.size.height : side === 'top' ? 0 : n.size.height / 2) };
+          };
+          if (typeof model.isPointCoveredAbove === 'function' && n.getPorts().every((p) => { const a = anchor(p); return model.isPointCoveredAbove(a.x, a.y, n.id); })) continue;
           staged = n; break;
         }
         if (!staged) out.skipped.push('HOVER-PORTS (no candidate node was hoverable at its centre)');
