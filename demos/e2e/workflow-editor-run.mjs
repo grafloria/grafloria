@@ -151,6 +151,54 @@ await shot('01-boot');
   check('RULE-ONE-UNDO', after === 3, `outputs after undo: ${after}`);
 }
 
+// ── 3b. a host that keeps its OWN state: rename + a rule via setNodes/setEdges only ──
+// No command, no renderNow(): the host hands in its whole document, as a React/Vue
+// app would. The card must repaint on the frame setNodes schedules, grow its
+// output, and take the wire setEdges names on the port that only just appeared.
+{
+  await page.evaluate(async () => {
+    const { toNodeSpec } = await import('/shell/grafloria.js');
+    const api = window.__we.api, m = api.getModel();
+    const nodes = m.getNodes().map((n) => {
+      const spec = toNodeSpec(n);
+      if (n.id === 'route') spec.data = { ...spec.data, title: 'Route by queue', rules: [...spec.data.rules, 'sales'] };
+      return spec;
+    });
+    api.setNodes(nodes);
+    const edges = m.getLinks().map((l) => ({ id: l.id, source: m.getNodeByPortId(l.sourcePortId).id, sourceHandle: l.sourcePortId, target: m.getNodeByPortId(l.targetPortId).id, targetHandle: l.targetPortId }));
+    edges.push({ id: 'host-wire', source: 'route', sourceHandle: 'route:r3', target: 'mail', targetHandle: 'mail:in' });
+    api.setEdges(edges);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  });
+  await settle(250);
+  const r = await model(() => {
+    const m = window.__we.api.getModel();
+    const host = document.querySelector('.grafloria-node-host[data-node-id="route"]');
+    return {
+      title: host.querySelector('.we-txt b')?.textContent,
+      rows: host.querySelectorAll('.we-row').length,
+      port: !!m.getNode('route').getPort('route:r3'),
+      wire: m.getLink('host-wire')?.sourcePortId ?? null,
+      plusGone: !document.querySelector('.grafloria-port-add[data-port-id="route:r3"]'),
+    };
+  });
+  await shot('06b-host-setnodes');
+  check('HOST-SETNODES-REPAINTS', r.title === 'Route by queue' && r.rows === 4 && r.port && r.wire === 'route:r3' && r.plusGone, JSON.stringify(r));
+  // put the document back the same way (host state again)
+  await page.evaluate(async () => {
+    const { toNodeSpec } = await import('/shell/grafloria.js');
+    const api = window.__we.api, m = api.getModel();
+    api.setNodes(m.getNodes().map((n) => {
+      const spec = toNodeSpec(n);
+      if (n.id === 'route') spec.data = { ...spec.data, title: 'Route by team', rules: spec.data.rules.slice(0, 3) };
+      return spec;
+    }));
+  });
+  await settle(250);
+  const back = await model(() => ({ wire: !!window.__we.api.getModel().getLink('host-wire'), outs: [...window.__we.api.getModel().getNode('route').ports.values()].filter((p) => p.type === 'output').length }));
+  check('HOST-SETNODES-DROPS-WIRE', !back.wire && back.outs === 3, JSON.stringify(back));
+}
+
 // ── 4. a REAL drag into a slot that refuses: the reason, beside the slot ───────
 {
   const from = await nodeBox('mail');
