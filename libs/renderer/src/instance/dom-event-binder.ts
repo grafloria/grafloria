@@ -1799,6 +1799,11 @@ export class DomEventBinder {
 
     if (event.ctrlKey || event.metaKey) {
       diagram.toggleNodeSelection(node);
+    } else if (event.shiftKey) {
+      // Shift EXTENDS — the same rule as a press near the node's port (the
+      // port-press path below), so one gesture means one thing wherever on the
+      // card it lands.
+      if (!wasSelected) diagram.addToSelection(node);
     } else if (!wasSelected) {
       diagram.selectNode(node);
       // A plain node click REPLACES the selection, and links are part of it.
