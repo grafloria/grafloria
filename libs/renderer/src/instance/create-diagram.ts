@@ -1,5 +1,5 @@
 import { DiagramEngine, getMutationEpoch, exportDiagramText, importDiagramText, CommentStore, layoutArchitecture, DSL, stripGrafloriaSidecar, adoptTextGrammarMetadata } from '@grafloria/engine';
-import type { MeasureText } from '@grafloria/engine';
+import type { MeasureText, ClipboardData } from '@grafloria/engine';
 import { CommentOverlayController } from '../comments/comment-overlay';
 import type {
   DiagramModel,
@@ -33,6 +33,8 @@ import { HighlighterController, DEFAULT_HIGHLIGHTER_CONFIG, type Highlighter, ty
 import { ViewportController } from '../viewport/viewport-controller';
 import type { Feature, FeatureContext } from './workflow/feature';
 import { installConnectReason } from './workflow/connect-reason';
+import { createClipboardApi } from './workflow/clipboard';
+import type { ClipboardHooks, PasteOptions } from './workflow/clipboard';
 import type { CanvasRect, Unsubscribe } from '../viewport/viewport-controller';
 import { RenderScheduler } from './render-scheduler';
 import { DomEventBinder } from './dom-event-binder';
@@ -284,6 +286,14 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * `--grafloria-connect-reason-bg` / `--grafloria-connect-reason-fg`.
    */
   connectionReasons?: boolean;
+
+  /**
+   * Keep the host's own clipboard format beside the diagram's. `onCopy` gets the
+   * diagram's payload after every copy/cut (keyboard or `copy()`/`cut()`);
+   * `onPaste` may answer one back before a paste. With this set, Ctrl/⌘ C and V
+   * go through these hooks; without it they run exactly as before.
+   */
+  clipboard?: ClipboardHooks;
 }
 
 export interface DiagramInstance {
@@ -440,6 +450,19 @@ export interface DiagramInstance {
   setReadonly(readonly: boolean): void;
   /** Is the view read-only — the `readonly` option / `setReadonly`, or the document's own lock? */
   isReadonly(): boolean;
+
+  /**
+   * Copy the selection to the diagram's clipboard; resolves with the payload
+   * (plain JSON), or null when nothing was selected. Calls `clipboard.onCopy`.
+   */
+  copy(): Promise<ClipboardData | null>;
+  /** Copy, then delete the selection — ONE undo step. Null when nothing was cut (or read-only). */
+  cut(): Promise<ClipboardData | null>;
+  /**
+   * Paste `data` if given, else what `clipboard.onPaste` answers, else the last
+   * copy. Resolves false when there was nothing to paste (or read-only).
+   */
+  paste(data?: ClipboardData, options?: PasteOptions): Promise<boolean>;
 
   /**
    * visio-depth — open the in-place label editor programmatically: a node's
@@ -768,6 +791,16 @@ export function createDiagram(
       interaction,
       getRect,
       requestRender: () => scheduler.schedule(),
+      // The clipboard keys go through the instance's copy/cut/paste only when the
+      // host asked for its hooks or owns the keyboard; otherwise the binder's own
+      // engine copy/paste runs, exactly as before.
+      clipboardKey:
+        options.clipboard || typeof options.keyboard === 'object'
+          ? (action) => {
+              void clipboardApi[action]();
+              return true;
+            }
+          : undefined,
       // The binder's selection:change is the same announcement as the model's:
       // route it through the gate (its payload is re-read at emit time).
       emit: (event, payload) => (event === 'selection:change' ? announceSelection() : emit(event, payload)),
@@ -786,6 +819,12 @@ export function createDiagram(
     },
     options
   );
+
+  // -- the clipboard: copy()/cut()/paste() and the host's hooks ----------------
+  const clipboardApi = createClipboardApi(engine, options.clipboard, {
+    changed: () => scheduler.schedule(),
+    isReadonly: () => binder.readonlyNow(),
+  });
 
   // -- workflow-editor features (each opt-in; see ./workflow/feature.ts) -------
   const featureCtx: FeatureContext = {
@@ -1729,6 +1768,9 @@ export function createDiagram(
       scheduler.schedule();
     },
     isReadonly: () => binder.readonlyNow(),
+    copy: () => clipboardApi.copy(),
+    cut: () => clipboardApi.cut(),
+    paste: (data, pasteOptions) => clipboardApi.paste(data, pasteOptions),
 
     beginLabelEdit: (target, opts) => binder.beginLabelEdit(target, opts),
 

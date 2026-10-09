@@ -94,6 +94,36 @@ export interface DomEventBinderHost {
    */
   beginSelectionBatch?(): void;
   endSelectionBatch?(): void;
+  /**
+   * Optional: take over a clipboard key (Ctrl/⌘ C, X, V). Answer true when the
+   * host handled it; the binder then does nothing more. Absent, the binder's own
+   * engine copy/paste runs, as it always has.
+   */
+  clipboardKey?(action: 'copy' | 'cut' | 'paste'): boolean;
+}
+
+/** What a key the binder handles is about to do — what `beforeKey` is asked about. */
+export type KeyAction =
+  | 'escape'
+  | 'delete'
+  | 'nudge'
+  | 'selectAll'
+  | 'undo'
+  | 'redo'
+  | 'copy'
+  | 'cut'
+  | 'paste'
+  | 'duplicate'
+  | 'rename';
+
+/** The `keyboard` option as an object: the host owns the keyboard, key by key. */
+export interface KeyboardOptions {
+  /**
+   * Asked before every built-in key action, with the event and what it would do.
+   * Return `false` to cancel it (the binder then neither acts nor calls
+   * `preventDefault`) — e.g. to put the host's own Delete confirmation first.
+   */
+  beforeKey?(event: KeyboardEvent, action: KeyAction): boolean | void;
 }
 
 export interface DomEventBinderOptions {
@@ -107,6 +137,12 @@ export interface DomEventBinderOptions {
   dragThreshold?: number;
   /** Ignore every mutation-causing gesture (still pans/zooms). Default false. */
   readonly?: boolean;
+  /**
+   * The built-in key bindings. `true` (default): as always. `false`: none at all
+   * — the host binds its own. An object opts into owning them key by key
+   * ({@link KeyboardOptions.beforeKey}) and adds Ctrl/⌘ X = cut.
+   */
+  keyboard?: boolean | KeyboardOptions;
 }
 
 /** An armed-but-not-yet-committed node drag. */
@@ -370,6 +406,7 @@ export class DomEventBinder {
       zoomSensitivity: options.zoomSensitivity ?? 0.1,
       dragThreshold: options.dragThreshold ?? 4,
       readonly: options.readonly ?? false,
+      keyboard: options.keyboard ?? true,
     };
 
     this.selectionTools = new SelectionToolsController({
@@ -1495,6 +1532,15 @@ export class DomEventBinder {
     // Never steal keys from a focused text field / contenteditable.
     if (isTextEntryTarget(event.target)) return;
 
+    // The host may own the keyboard: none of ours (`keyboard: false`), or each
+    // action asked first (`keyboard: { beforeKey }`).
+    const keyboard = this.options.keyboard;
+    if (keyboard === false) return;
+    if (typeof keyboard === 'object' && keyboard.beforeKey) {
+      const action = keyActionOf(event);
+      if (action && keyboard.beforeKey(event, action) === false) return;
+    }
+
     if (event.code === 'Space' && !this.spaceKeyPressed) {
       this.spaceKeyPressed = true;
       this.setCursor('grab');
@@ -1653,11 +1699,24 @@ export class DomEventBinder {
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
       // Copying mutates nothing — allowed even in readonly.
+      if (this.host.clipboardKey?.('copy')) return;
       void engine.copy();
       return;
     }
+    // Cut is the opted-in keyboard's: bound only when the host owns the keys.
+    if (typeof keyboard === 'object' && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'x') {
+      if (this.isReadonly() || diagram.getSelectedNodes().length === 0) return;
+      event.preventDefault();
+      this.host.clipboardKey?.('cut');
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
-      if (this.isReadonly() || !engine.hasClipboardData()) return;
+      if (this.isReadonly()) return;
+      if (this.host.clipboardKey?.('paste')) {
+        event.preventDefault();
+        return;
+      }
+      if (!engine.hasClipboardData()) return;
       event.preventDefault();
       void engine.paste().then(() => {
         this.host.requestRender();
@@ -2594,4 +2653,28 @@ function isTextEntryTarget(target: EventTarget | null): boolean {
   if (!el || typeof el.tagName !== 'string') return false;
   const tag = el.tagName.toUpperCase();
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
+}
+
+/**
+ * Which built-in action a key would trigger — the same ladder `onKeyDown` climbs,
+ * named for `beforeKey`. Null for a key the binder ignores.
+ */
+export function keyActionOf(event: KeyboardEvent): KeyAction | null {
+  const mod = event.ctrlKey || event.metaKey;
+  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  if (key === 'Escape') return 'escape';
+  if (key === 'Delete' || key === 'Backspace') return 'delete';
+  if (mod) {
+    if (key === 'a') return 'selectAll';
+    if (key === 'z') return event.shiftKey ? 'redo' : 'undo';
+    if (key === 'y') return 'redo';
+    if (key === 'c') return 'copy';
+    if (key === 'x') return 'cut';
+    if (key === 'v') return 'paste';
+    if (key === 'd') return 'duplicate';
+    return null;
+  }
+  if (key.startsWith('Arrow') && !event.altKey) return 'nudge';
+  if (key === 'F2') return 'rename';
+  return null;
 }
