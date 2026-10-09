@@ -16,11 +16,13 @@
     --we-row: #f3f5fa; --we-shadow: 0 1px 2px rgba(22, 30, 50, .08), 0 4px 14px rgba(22, 30, 50, .06);
     --we-amber: #f59e0b; --we-blue: #2f6fec; --we-slate: #64748b; --we-green: #16a34a; --we-violet: #7c4ddc;
     --we-pink: #d9467a; --we-teal: #0e9f8e; --we-indigo: #4f5bd5;
+    --we-true-ink: #126b34; --we-true-bg: #dcf5e4; --we-false-ink: #9f1d3c; --we-false-bg: #fde3e9;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --we-bg: #11151e; --we-dot: #222a39; --we-card: #1a2130; --we-ink: #e6eaf4; --we-mut: #9aa4bb; --we-line: #2c3547;
       --we-row: #212a3b; --we-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .3);
+      --we-true-ink: #7ee2a2; --we-true-bg: rgba(34, 197, 94, .16); --we-false-ink: #ff9fb4; --we-false-bg: rgba(244, 63, 94, .16);
     }
   }
   #we { --grafloria-add-bg: var(--we-card); --grafloria-add-fg: var(--we-mut); --grafloria-add-line: var(--we-line);
@@ -46,17 +48,44 @@
   .we-amber { background: var(--we-amber); } .we-blue { background: var(--we-blue); } .we-slate { background: var(--we-slate); }
   .we-green { background: var(--we-green); } .we-violet { background: var(--we-violet); } .we-pink { background: var(--we-pink); }
   .we-teal { background: var(--we-teal); } .we-indigo { background: var(--we-indigo); }
+  /* trigger: a "D" — round on the side nothing comes in from */
+  .we-trigger { border-radius: 36px 14px 14px 36px; }
+  .we-trigger .we-ico { border-radius: 50%; }
+  .we-eyebrow { font: 700 9.5px/1.2 system-ui, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: var(--we-amber); font-style: normal; }
+  /* the tested condition / routing key, as code */
+  .we-cond { padding: 0 12px 8px; color: var(--we-mut); font-size: 11.5px; }
+  .we-cond code { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; font: 500 11.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace; color: var(--we-ink); background: var(--we-row); border: 1px solid var(--we-line); border-radius: 6px; padding: 0 6px; }
+  /* if: a decision — a diamond mark, and two coloured branches on its right edge */
+  .we-if .we-head .we-ico { border-radius: 7px; transform: rotate(45deg) scale(.84); }
+  .we-if .we-head .we-ico i { transform: rotate(-45deg); font-style: normal; }
+  .we-branches { display: grid; justify-items: end; gap: 6px; padding: 2px 0 10px; }
+  .we-branch { margin-right: -1px; height: 24px; display: inline-flex; align-items: center; padding: 0 12px 0 10px; border-radius: 12px 0 0 12px; font: 600 11.5px/1 system-ui, sans-serif; }
+  .we-true { color: var(--we-true-ink); background: var(--we-true-bg); }
+  .we-false { color: var(--we-false-ink); background: var(--we-false-bg); }
+  /* switch: a router — numbered rules, each an output */
   .we-rows { display: grid; gap: 0; padding: 0 0 8px; }
-  .we-row { height: 28px; display: flex; align-items: center; justify-content: flex-end; padding: 0 14px; font: 500 12px/1 system-ui, sans-serif; color: var(--we-mut); border-top: 1px solid var(--we-row); }
-  .we-rule-tools { display: flex; gap: 6px; padding: 0 12px; height: 30px; align-items: center; }
+  .we-row { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 14px 0 12px; font: 500 12px/1 system-ui, sans-serif; color: var(--we-ink); border-top: 1px solid var(--we-row); }
+  .we-n { flex: none; width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; font: 600 10.5px/1 ui-monospace, monospace; color: var(--we-violet); background: color-mix(in srgb, var(--we-violet) 14%, transparent); }
+  .we-eq { margin-left: auto; color: var(--we-mut); }
+  .we-rule-tools { display: flex; gap: 6px; padding: 0 12px; height: 34px; align-items: center; }
   .we-rule { font: 500 11.5px/1 system-ui, sans-serif; color: var(--we-mut); background: var(--we-row); border: 0; border-radius: 6px; padding: 5px 8px; cursor: pointer; }
   .we-rule:hover { color: var(--we-ink); }
   [data-readonly] .we-rule-tools { visibility: hidden; }
-  .we-slots { display: flex; justify-content: space-around; padding: 4px 8px 0; font: 500 11px/1 system-ui, sans-serif; color: var(--we-mut); }
-  .we-slots em { color: #d9467a; font-style: normal; }
-  .we-sub { border-radius: 28px; }
-  .we-sub .we-ico { border-radius: 50%; }
+  /* agent: a tinted header band, typed slots along the bottom */
+  .we-agent .we-head { background: linear-gradient(90deg, color-mix(in srgb, var(--we-indigo) 12%, transparent), transparent 80%); border-bottom: 1px solid var(--we-row); }
+  .we-slots { display: flex; justify-content: space-around; padding: 10px 8px 0; }
+  .we-slot { font: 600 10.5px/1 system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--we-mut); padding: 4px 8px; border-radius: 6px; background: var(--we-row); }
+  .we-slot em { color: var(--we-pink); font-style: normal; }
+  /* sub-nodes: a round badge with its name beneath, plugging UP into a slot */
+  .we-sub { height: 100%; display: grid; justify-items: center; align-content: start; gap: 6px; font: 13px/1.25 system-ui, sans-serif; text-align: center; }
+  .we-orb { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; color: #fff; font: 600 24px/1 system-ui, sans-serif; box-shadow: 0 0 0 4px var(--we-card), 0 0 0 5px var(--we-line), var(--we-shadow); }
+  .we-sub b { font-weight: 600; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .we-sub small { color: var(--we-mut); font-size: 11.5px; }
+  .we-sub-mini { align-content: center; }
+  .we-sub-mini .we-orb { width: 80px; height: 80px; font-size: 36px; }
+  /* far zoom: icon and name, big enough to read */
   .we-mini { box-sizing: border-box; height: 100%; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--we-card); border: 1px solid var(--we-line); border-radius: 12px; font: 600 22px/1 system-ui, sans-serif; }
+  .we-mini-trigger { border-radius: 40px 14px 14px 40px; }
   .we-mini .we-ico { width: 44px; height: 44px; font-size: 22px; }
   .we-mini b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -106,12 +135,12 @@ const SPEC = {
   // keyboard.beforeKey), and the gallery's generic Delete audit deletes the
   // first node it finds. Positions come from Tidy, not from this order.
   nodes: [
-    { id: 'urgent', type: 'if', position: { x: 300, y: 140 }, data: { title: 'Is it urgent?', note: 'priority ≥ 4' } },
-    { id: 'route', type: 'switch', position: { x: 600, y: 20 }, data: { title: 'Route by team', note: 'team', rules: ['billing', 'technical', 'other'] } },
+    { id: 'urgent', type: 'if', position: { x: 300, y: 140 }, data: { title: 'Is it urgent?', condition: '{{ priority }} >= 4' } },
+    { id: 'route', type: 'switch', position: { x: 600, y: 20 }, data: { title: 'Route by team', key: '{{ team }}', rules: ['billing', 'technical', 'other'] } },
     { id: 'mail', type: 'email', position: { x: 600, y: 330 }, data: { title: 'Acknowledge', note: 'reply within 24 h' } },
     { id: 'notify', type: 'slack', position: { x: 900, y: 0 }, data: { title: 'Ping #billing' } },
     { id: 'agent', type: 'agent', position: { x: 900, y: 130 }, data: { title: 'Draft a reply', note: 'from the docs' } },
-    { id: 'llm', type: 'model', position: { x: 940, y: 300 }, data: { title: 'Chat model' } },
+    { id: 'llm', type: 'model', position: { x: 940, y: 300 }, data: { title: 'Chat model', note: 'any provider' } },
     { id: 'trigger', type: 'trigger', position: { x: 0, y: 160 }, data: { note: 'New support request' } },
   ],
   edges: [
