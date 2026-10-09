@@ -12,3 +12,4 @@ export type { RunOverlay, RunStatus } from './workflow/run-overlay';
 export type { ClipboardHooks, PasteOptions } from './workflow/clipboard';
 export type { InsertNodeOnLinkOptions, InsertNodeOnLinkResult } from './workflow/insert-on-link';
 export type { FlowPlaceOptions, PlaceNodesOptions } from './workflow/flow-place';
+export type { NodeTemplate, NodeTemplateDef, NodeTemplateFn, NodeTemplateContext, NodeTemplateOutput } from './workflow/node-templates';

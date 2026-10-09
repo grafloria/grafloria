@@ -37,6 +37,8 @@ import { createClipboardApi } from './workflow/clipboard';
 import { installRunOverlay } from './workflow/run-overlay';
 import { insertNodeOnLink } from './workflow/insert-on-link';
 import { placeFlow, tidyFlow } from './workflow/flow-place';
+import { createNodeTemplates, installNodeTemplates } from './workflow/node-templates';
+import type { NodeTemplate } from './workflow/node-templates';
 import type { FlowPlaceOptions, PlaceNodesOptions } from './workflow/flow-place';
 import type { InsertNodeOnLinkOptions, InsertNodeOnLinkResult } from './workflow/insert-on-link';
 import type { RunOverlay, RunOverlayFeature } from './workflow/run-overlay';
@@ -300,6 +302,26 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * go through these hooks; without it they run exactly as before.
    */
   clipboard?: ClipboardHooks;
+
+  /**
+   * Data-driven node TEMPLATES, one per node type: `(data, ctx) → { html, ports,
+   * size }`. Nodes of a templated type become HTML cards the template paints —
+   * and paints again whenever their data changes. Their ports and size come from
+   * the template, and a data edit through `SetNodeDataCommand` re-derives them in
+   * the SAME undo step, removing (and on undo restoring) wires on a removed port.
+   * An element marked `data-port="<port id>"` anchors that port level with it
+   * (see `anchorPorts`). A template may be an object with a `compact` form for
+   * zooms below `compactBelow`. Unset: nothing here runs.
+   */
+  nodeTemplates?: Record<string, NodeTemplate>;
+  /** Below this zoom, templated cards draw their `compact` form; hosts carry `data-lod`. */
+  compactBelow?: number;
+  /**
+   * Anchor a templated card's ports to its `[data-port]` elements: each port sits
+   * on its side's edge, level with its element, re-measured on content change,
+   * resize and font load. Default true when `nodeTemplates` is set.
+   */
+  anchorPorts?: boolean;
 }
 
 export interface DiagramInstance {
@@ -589,11 +611,30 @@ export function createDiagram(
   // Absent means "I am not managing this" — NOT "make it empty". A host that
   // really wants to clear the diagram passes `nodes: []` explicitly, which still
   // works.
+  // The camera does not exist yet when the first nodes are prepared: zoom 1 until it does.
+  let zoomNow: () => number = () => 1;
+  // Node templates go in BEFORE the nodes: a templated node must have its
+  // template's ports by the time the edges (which may name them) are applied.
+  const nodeTemplates = options.nodeTemplates
+    ? createNodeTemplates(
+        { templates: options.nodeTemplates, compactBelow: options.compactBelow, anchorPorts: options.anchorPorts },
+        () => zoomNow()
+      )
+    : null;
+  let stopTemplates: (() => void) | null = null;
+  if (nodeTemplates) {
+    model.setNodeTemplateResolver(nodeTemplates.resolve);
+    for (const node of model.getNodes()) nodeTemplates.prepare(model, node);
+    stopTemplates = model.on('node:added', (node: NodeModel) => nodeTemplates.prepare(model, node)) as unknown as () => void;
+  }
+
   if (options.nodes) applyNodes(model, options.nodes);
   // Zones after their boxes (membership needs the nodes), before the lines.
   if (options.groups) applyGroups(model, options.groups);
   if (options.edges) applyEdges(model, options.edges);
   if (options.layout === 'architecture') layoutArchitecture(model, { measureText: canvasTextMeasure() });
+
+  zoomNow = () => viewport.getZoom();
 
   // -- camera -----------------------------------------------------------------
   const rect0 = container.getBoundingClientRect();
@@ -881,6 +922,10 @@ export function createDiagram(
     getModel: () => engine.getDiagram() ?? model,
     viewport,
     schedule: () => scheduler.schedule(),
+    invalidate: () => {
+      renderer.invalidateFrame();
+      scheduler.schedule();
+    },
     emit: (event, payload) => emit(event, payload),
     isReadonly: () => binder.readonlyNow(),
   };
@@ -895,6 +940,15 @@ export function createDiagram(
   if (options.readonly) applyReadonly(true);
   const features: Feature[] = [];
   if (options.connectionReasons) features.push(installConnectReason(featureCtx));
+  const templateCards = nodeTemplates
+    ? installNodeTemplates(featureCtx, nodeTemplates, { templates: options.nodeTemplates!, compactBelow: options.compactBelow, anchorPorts: options.anchorPorts })
+    : null;
+  if (templateCards) features.push(templateCards);
+  /** Tear a custom host down: the template's bookkeeping, then the host's own hook. */
+  const removeCustomHost = (id: string, host: HTMLElement): void => {
+    templateCards?.unmount(id);
+    options.removeCustomNode?.(id, host);
+  };
   // The run overlay installs itself on first use: a diagram that never calls
   // setOverlay() never creates its element or its stylesheet.
   let runOverlay: RunOverlayFeature | null = null;
@@ -1049,7 +1103,10 @@ export function createDiagram(
       // the call (which is what a React error boundary or StrictMode does) and
       // the undisposable instances stack up in the same container.
       try {
-        trackPaint(node.id, options.renderCustomNode?.(node, host));
+        trackPaint(
+          node.id,
+          templateCards && nodeTemplates?.has(node.type) ? templateCards.mount(node, host) : options.renderCustomNode?.(node, host)
+        );
       } catch (error) {
         paintFailures.set(node.id, error instanceof Error ? error.message : String(error));
         paintThrew.add(node.id);
@@ -1107,7 +1164,7 @@ export function createDiagram(
         if (!culler.admits(node.id, nodeBounds(node), !!existing?.parentNode)) {
           if (existing) {
             if (culler.getMode() === 'destroy') {
-              options.removeCustomNode?.(node.id, existing);
+              removeCustomHost(node.id, existing);
               existing.remove();
               nodeHosts.delete(node.id);
             } else if (existing.parentNode) {
@@ -1128,7 +1185,7 @@ export function createDiagram(
 
     for (const [id, host] of [...nodeHosts]) {
       if (wanted.has(id)) continue;
-      options.removeCustomNode?.(id, host);
+      removeCustomHost(id, host);
       host.remove();
       nodeHosts.delete(id);
     }
@@ -1226,7 +1283,7 @@ export function createDiagram(
           // firing again would dispose an embedder's component twice. In the synchronous
           // path nothing can run in between, so this is always true and changes nothing.
           if (nodeHosts.get(node.id) !== host) return;
-          options.removeCustomNode?.(node.id, host);
+          removeCustomHost(node.id, host);
           host.remove();
           nodeHosts.delete(node.id);
         });
@@ -1833,7 +1890,7 @@ export function createDiagram(
     tidy: (tidyOptions = {}) => tidyFlow(engine, tidyOptions, () => scheduler.schedule()),
     placeNodes: (ids, placeOptions = {}) => placeFlow(engine, ids, placeOptions, () => scheduler.schedule()),
     async insertNodeOnLink(linkId, node, insertOptions) {
-      const result = await insertNodeOnLink(engine, linkId, node, insertOptions);
+      const result = await insertNodeOnLink(engine, linkId, node, insertOptions, nodeTemplates ? (n) => nodeTemplates.prepare(model, n) : undefined);
       if (result) scheduler.schedule();
       return result;
     },
@@ -1849,6 +1906,8 @@ export function createDiagram(
       commentOverlay?.dispose();
       commentOverlay = null;
       for (const f of features.splice(0)) f.dispose();
+      stopTemplates?.();
+      if (nodeTemplates && model.getNodeTemplateResolver() === nodeTemplates.resolve) model.setNodeTemplateResolver(null);
       binder.detach();
       scheduler.dispose();
       resizeObserver?.disconnect();
@@ -1858,7 +1917,7 @@ export function createDiagram(
       listeners.clear();
 
       for (const [id, host] of [...nodeHosts]) {
-        options.removeCustomNode?.(id, host);
+        removeCustomHost(id, host);
         host.remove();
       }
       nodeHosts.clear();

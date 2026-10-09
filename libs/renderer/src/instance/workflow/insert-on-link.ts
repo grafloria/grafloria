@@ -80,7 +80,9 @@ export async function insertNodeOnLink(
   engine: DiagramEngine,
   linkId: string,
   spec: NodeSpec,
-  options: InsertNodeOnLinkOptions = {}
+  options: InsertNodeOnLinkOptions = {},
+  /** Give the node its final shape before its ports are chosen (a node template's ports). */
+  prepare?: (node: NodeModel) => void
 ): Promise<InsertNodeOnLinkResult | null> {
   const diagram = engine.getDiagram();
   const link: LinkModel | undefined = diagram?.getLink(linkId);
@@ -95,6 +97,7 @@ export async function insertNodeOnLink(
   if (!id) do id = `node-ins-${++insertSeq}`; while (diagram.getNode(id));
   if (diagram.getNode(id)) return null;
   const node = buildNode({ ...spec, id, position: { x: 0, y: 0 } }, 0);
+  prepare?.(node);
 
   const from = portWorldPosition(aPort, a);
   const to = portWorldPosition(bPort, b);

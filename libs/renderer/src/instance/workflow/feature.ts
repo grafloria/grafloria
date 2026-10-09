@@ -21,6 +21,8 @@ export interface FeatureContext {
   readonly viewport: ViewportController;
   /** Ask for a frame. */
   schedule(): void;
+  /** The picture went stale without a model change (a measured port moved): repaint. */
+  invalidate(): void;
   /** Emit an instance event (`api.on(name, …)`). */
   emit(event: string, payload: unknown): void;
   /** The binder's read-only answer: the `readonly` option or the model's lock. */
