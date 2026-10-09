@@ -828,6 +828,16 @@ export class SVGRenderer implements IRenderer {
     return this.registryFacade;
   }
 
+  /** The host's read-only VIEW switch (not the document lock): no editing chrome. */
+  private viewReadonly = false;
+
+  /** Set by `createDiagram` from `readonly` / `setReadonly()`. */
+  setViewReadonly(readonly: boolean): void {
+    if (this.viewReadonly === readonly) return;
+    this.viewReadonly = readonly;
+    this.invalidateFrame();
+  }
+
   constructor(
     private engine: DiagramEngine,
     config: SVGRendererConfig = {},
@@ -6029,7 +6039,9 @@ export class SVGRenderer implements IRenderer {
    */
   private renderResizeToolsLayer(lod: LODLevel, zoom: number): VNode | null {
     const diagram = this.engine.getDiagram();
-    if (!diagram || diagram.isReadonly()) return null;
+    // A read-only VIEW (the instance's `readonly` / `setReadonly`) draws no
+    // handles either: they would be drawn and dead.
+    if (!diagram || diagram.isReadonly() || this.viewReadonly) return null;
     // Same LOD tier that gates link handles: far-zoom tiers drop fine controls.
     if (!this.lodAllows('handles', lod)) return null;
 

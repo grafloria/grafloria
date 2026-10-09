@@ -430,6 +430,18 @@ export interface DiagramInstance {
   getDraggingNodeIds(): string[];
 
   /**
+   * Read-only, live, as ONE switch. On: no moving, connecting, deleting,
+   * resizing, pasting or undoing from the keyboard, no "+" affordances, no
+   * editing chrome. Kept: selection, click, double-click (`node:doubleclick`
+   * still fires, so a viewer can open a step), hover, pan/zoom and the run
+   * overlay. A VIEW switch: code can still change the document. The container
+   * carries `data-readonly` while it is on. Starts from the `readonly` option.
+   */
+  setReadonly(readonly: boolean): void;
+  /** Is the view read-only — the `readonly` option / `setReadonly`, or the document's own lock? */
+  isReadonly(): boolean;
+
+  /**
    * visio-depth — open the in-place label editor programmatically: a node's
    * label (`{ type: 'node', nodeId }`) or a link label
    * (`{ type: 'link-label', linkId, labelIndex }`). The seam a host's
@@ -785,8 +797,17 @@ export function createDiagram(
     viewport,
     schedule: () => scheduler.schedule(),
     emit: (event, payload) => emit(event, payload),
-    isReadonly: () => !!options.readonly || !!engine.getDiagram()?.isReadonly?.(),
+    isReadonly: () => binder.readonlyNow(),
   };
+  // Read-only is a VIEW switch: the binder refuses gestures, the renderer drops
+  // editing chrome, the root says so for host CSS. The document stays writable.
+  const applyReadonly = (readonly: boolean): void => {
+    binder.setReadonly(readonly);
+    renderer.setViewReadonly(readonly);
+    if (readonly) container.setAttribute('data-readonly', '');
+    else container.removeAttribute('data-readonly');
+  };
+  if (options.readonly) applyReadonly(true);
   const features: Feature[] = [];
   if (options.connectionReasons) features.push(installConnectReason(featureCtx));
   const syncFeatures = (): void => {
@@ -1703,6 +1724,11 @@ export function createDiagram(
     },
 
     getDraggingNodeIds: () => binder.getDraggingNodeIds(),
+    setReadonly(readonly: boolean) {
+      applyReadonly(readonly);
+      scheduler.schedule();
+    },
+    isReadonly: () => binder.readonlyNow(),
 
     beginLabelEdit: (target, opts) => binder.beginLabelEdit(target, opts),
 

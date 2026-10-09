@@ -414,6 +414,20 @@ export class DomEventBinder {
     return this.options.readonly || this.host.getEngine()?.getDiagram()?.isReadonly() === true;
   }
 
+  /**
+   * Flip the `readonly` option live (the instance's `setReadonly`). A view-level
+   * switch: it refuses gestures and editing keys, but leaves the document
+   * writable to code — the model's own lock is untouched.
+   */
+  setReadonly(readonly: boolean): void {
+    this.options.readonly = readonly;
+  }
+
+  /** The answer every gesture consults: the option, or the document's lock. */
+  readonlyNow(): boolean {
+    return this.isReadonly();
+  }
+
   /** Bind DOM listeners. No-op on the server and no-op if already attached. */
   attach(): void {
     if (this.attached || !isBrowser()) return;
@@ -1410,7 +1424,15 @@ export class DomEventBinder {
   /** Double-click: node → in-place rename; link label → rename; link body → waypoint. */
   onDoubleClick(event: MouseEvent): void {
     const engine = this.engine();
-    if (!engine || this.isReadonly()) return;
+    if (!engine) return;
+    // Read-only keeps the double-click EVENT (a viewer opens a step to look at
+    // it) and refuses only what follows it: rename, waypoint, label edit.
+    if (this.isReadonly()) {
+      const { x, y } = this.toWorld(event);
+      const node = engine.getDiagram()?.getNodeAtPosition(x, y);
+      if (node) this.host.emit('node:doubleclick', { node, world: { x, y } });
+      return;
+    }
 
     const { x: worldX, y: worldY } = this.toWorld(event);
     // Node bodies cover link ink (nodes-layer paints above links-layer), so a
