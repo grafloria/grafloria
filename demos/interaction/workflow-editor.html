@@ -1,0 +1,450 @@
+<meta charset="utf-8">
+<title>Workflow editor kit — Grafloria</title>
+<meta name="description" content="A workflow editor built only on Grafloria's public APIs: data-driven step templates, ports anchored to card rows, “+” to add the next step, insert on a link, tidy in port order, a streamed run overlay, read-only mode and connection rules that say why.">
+<link rel="canonical" href="https://grafloria.com/demos/interaction/workflow-editor.html">
+<meta property="og:title" content="Workflow editor kit — Grafloria">
+<meta property="og:description" content="A workflow editor built only on Grafloria's public APIs: templates, anchored ports, “+”, insert on a link, tidy, a run overlay, read-only.">
+<meta property="og:url" content="https://grafloria.com/demos/interaction/workflow-editor.html">
+<meta property="og:image" content="https://grafloria.com/demos/thumbs/interaction/workflow-editor.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafloria.com/demos/thumbs/interaction/workflow-editor.png">
+<link rel="stylesheet" href="../shell/demo.css?v=drawer4">
+<style>
+  /* Page tokens, light and dark. The library's own pieces read --grafloria-* variables. */
+  :root {
+    --we-bg: #f6f7fb; --we-dot: #d9dde8; --we-card: #ffffff; --we-ink: #1d2433; --we-mut: #5e6880; --we-line: #d9dee9;
+    --we-row: #f3f5fa; --we-shadow: 0 1px 2px rgba(22, 30, 50, .08), 0 4px 14px rgba(22, 30, 50, .06);
+    --we-amber: #f59e0b; --we-blue: #2f6fec; --we-slate: #64748b; --we-green: #16a34a; --we-violet: #7c4ddc;
+    --we-pink: #d9467a; --we-teal: #0e9f8e; --we-indigo: #4f5bd5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --we-bg: #11151e; --we-dot: #222a39; --we-card: #1a2130; --we-ink: #e6eaf4; --we-mut: #9aa4bb; --we-line: #2c3547;
+      --we-row: #212a3b; --we-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .3);
+    }
+  }
+  #we { --grafloria-add-bg: var(--we-card); --grafloria-add-fg: var(--we-mut); --grafloria-add-line: var(--we-line);
+        --grafloria-delete-bg: var(--we-card); --grafloria-run-label-bg: var(--we-card); --grafloria-run-label-fg: var(--we-ink);
+        --grafloria-run-label-line: var(--we-line); --grafloria-run-radius: 12px; }
+  #bar { display: flex; gap: 8px; padding: 8px 24px; border-bottom: 1px solid rgba(127,127,127,.25); align-items: center; flex-wrap: wrap; }
+  #bar button { padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(127,127,127,.4); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  #bar button[aria-pressed="true"] { background: rgba(79, 91, 213, .14); border-color: var(--we-indigo); }
+  #bar .sep { width: 1px; align-self: stretch; background: rgba(127,127,127,.3); margin: 0 4px; }
+  #readout { margin-left: auto; font: 12px/1.4 ui-monospace, monospace; opacity: .85; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
+  #we { position: relative; height: calc(100vh - 118px); }
+  #canvas { position: absolute; inset: 0; background-color: var(--we-bg); background-image: radial-gradient(var(--we-dot) 1px, transparent 1px); background-size: 20px 20px; }
+
+  /* the cards (painted by the templates) */
+  .grafloria-node-host { color: var(--we-ink); }
+  .we-card { box-sizing: border-box; height: 100%; background: var(--we-card); border: 1px solid var(--we-line); border-radius: 12px; box-shadow: var(--we-shadow); font: 13px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+  .grafloria-node-host[aria-selected="true"] .we-card, .selected .we-card { border-color: var(--we-indigo); }
+  .we-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 10px; }
+  .we-ico { flex: none; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: #fff; font: 600 17px/1 system-ui, sans-serif; }
+  .we-txt { display: grid; min-width: 0; }
+  .we-txt b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .we-txt small { color: var(--we-mut); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .we-amber { background: var(--we-amber); } .we-blue { background: var(--we-blue); } .we-slate { background: var(--we-slate); }
+  .we-green { background: var(--we-green); } .we-violet { background: var(--we-violet); } .we-pink { background: var(--we-pink); }
+  .we-teal { background: var(--we-teal); } .we-indigo { background: var(--we-indigo); }
+  .we-rows { display: grid; gap: 0; padding: 0 0 8px; }
+  .we-row { height: 28px; display: flex; align-items: center; justify-content: flex-end; padding: 0 14px; font: 500 12px/1 system-ui, sans-serif; color: var(--we-mut); border-top: 1px solid var(--we-row); }
+  .we-rule-tools { display: flex; gap: 6px; padding: 0 12px; height: 30px; align-items: center; }
+  .we-rule { font: 500 11.5px/1 system-ui, sans-serif; color: var(--we-mut); background: var(--we-row); border: 0; border-radius: 6px; padding: 5px 8px; cursor: pointer; }
+  .we-rule:hover { color: var(--we-ink); }
+  [data-readonly] .we-rule-tools { visibility: hidden; }
+  .we-slots { display: flex; justify-content: space-around; padding: 4px 8px 0; font: 500 11px/1 system-ui, sans-serif; color: var(--we-mut); }
+  .we-slots em { color: #d9467a; font-style: normal; }
+  .we-sub { border-radius: 28px; }
+  .we-sub .we-ico { border-radius: 50%; }
+  .we-mini { box-sizing: border-box; height: 100%; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--we-card); border: 1px solid var(--we-line); border-radius: 12px; font: 600 22px/1 system-ui, sans-serif; }
+  .we-mini .we-ico { width: 44px; height: 44px; font-size: 22px; }
+  .we-mini b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* the host's own "+" menu and step details */
+  .we-menu { position: fixed; z-index: 50; min-width: 200px; background: var(--we-card); color: var(--we-ink); border: 1px solid var(--we-line); border-radius: 10px; box-shadow: 0 10px 30px rgba(16, 24, 40, .22); padding: 6px; font: 13px/1.3 system-ui, sans-serif; }
+  .we-menu h4 { margin: 4px 8px 6px; font: 600 11px/1 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--we-mut); }
+  .we-menu button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; color: inherit; padding: 6px 8px; border-radius: 7px; font: inherit; cursor: pointer; text-align: left; }
+  .we-menu button:hover, .we-menu button:focus-visible { background: var(--we-row); outline: none; }
+  .we-menu .we-ico { width: 26px; height: 26px; font-size: 14px; border-radius: 7px; }
+  #details { position: absolute; top: 12px; right: 12px; width: 280px; max-width: calc(100% - 24px); max-height: calc(100% - 24px); overflow: auto; z-index: 20; background: var(--we-card); color: var(--we-ink); border: 1px solid var(--we-line); border-radius: 12px; box-shadow: 0 10px 30px rgba(16, 24, 40, .2); padding: 14px; font: 13px/1.45 system-ui, sans-serif; }
+  #details h3 { margin: 0 0 8px; font-size: 15px; }
+  #details label { display: grid; gap: 4px; margin: 10px 0; color: var(--we-mut); font-size: 12px; }
+  #details input { font: inherit; color: var(--we-ink); background: var(--we-row); border: 1px solid var(--we-line); border-radius: 6px; padding: 6px 8px; }
+  #details pre { margin: 8px 0 0; padding: 8px; background: var(--we-row); border-radius: 8px; font: 11.5px/1.4 ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; }
+  #details .close { position: absolute; top: 8px; right: 8px; border: 0; background: transparent; color: var(--we-mut); font-size: 18px; cursor: pointer; }
+  [data-readonly] #details input { pointer-events: none; opacity: .7; }
+</style>
+<header id="demo-head"></header>
+<div id="bar">
+  <button id="btn-run">▶ Run</button>
+  <button id="btn-fail">Run with an error</button>
+  <button id="btn-clear">Clear run</button>
+  <span class="sep"></span>
+  <button id="btn-tidy">Tidy</button>
+  <button id="btn-ro" aria-pressed="false">Read-only</button>
+  <span id="readout">ready</span>
+</div>
+<div id="we"><div id="canvas"></div><aside id="details" hidden></aside></div>
+<script type="module">
+import { render, SetNodeDataCommand, registerConnectionValidator, AddNodeCommand, AddLinkCommand, MacroCommand, LinkModel, buildNode } from '../shell/grafloria.js';
+import { defineDemo, check } from '../shell/demo.js?v=drawer4';
+import { TEMPLATES, KINDS, MENU, SLOT_OF } from './workflow-editor-steps.js';
+
+// A workflow editor on the library's public surface only:
+//   nodeTemplates   — each step type is (data) → { html, ports, size }; data edits
+//                     re-derive ports in the same undo step (the Switch's rules)
+//   data-port       — every row marks its port; the library puts the port level with it
+//   affordances     — "+" on free outputs and on links; they only emit, this page decides
+//   insertNodeOnLink, placeNodes, tidy  — insertion and layout in port order
+//   setOverlay      — the run, drawn on the flow and never in the document
+//   setReadonly     — one switch; double-click still opens a step
+//   connectionReasons + registerConnectionValidator — refusals say why
+//   keyboard.beforeKey + clipboard  — the page owns its keys
+//   compactBelow    — far out, cards draw their compact form
+const SPEC = {
+  nodes: [
+    { id: 'trigger', type: 'trigger', position: { x: 0, y: 160 }, data: { note: 'New support request' } },
+    { id: 'urgent', type: 'if', position: { x: 300, y: 140 }, data: { title: 'Is it urgent?', note: 'priority ≥ 4' } },
+    { id: 'route', type: 'switch', position: { x: 600, y: 20 }, data: { title: 'Route by team', note: 'team', rules: ['billing', 'technical', 'other'] } },
+    { id: 'mail', type: 'email', position: { x: 600, y: 330 }, data: { title: 'Acknowledge', note: 'reply within 24 h' } },
+    { id: 'notify', type: 'slack', position: { x: 900, y: 0 }, data: { title: 'Ping #billing' } },
+    { id: 'agent', type: 'agent', position: { x: 900, y: 130 }, data: { title: 'Draft a reply', note: 'from the docs' } },
+    { id: 'llm', type: 'model', position: { x: 940, y: 300 }, data: { title: 'Chat model' } },
+  ],
+  edges: [
+    { id: 'e1', source: 'trigger', sourceHandle: 'trigger:out', target: 'urgent', targetHandle: 'urgent:in' },
+    { id: 'e2', source: 'urgent', sourceHandle: 'urgent:true', target: 'route', targetHandle: 'route:in' },
+    { id: 'e3', source: 'urgent', sourceHandle: 'urgent:false', target: 'mail', targetHandle: 'mail:in' },
+    { id: 'e4', source: 'route', sourceHandle: 'route:r0', target: 'notify', targetHandle: 'notify:in' },
+    { id: 'e5', source: 'route', sourceHandle: 'route:r1', target: 'agent', targetHandle: 'agent:in' },
+    { id: 'e6', source: 'llm', sourceHandle: 'llm:out', target: 'agent', targetHandle: 'agent:model' },
+  ],
+};
+
+const readout = (text) => (document.getElementById('readout').textContent = text);
+
+defineDemo({
+  name: 'Workflow editor kit',
+  blurb: 'A workflow editor built only on Grafloria\'s public APIs. Steps are data-driven templates whose rows anchor their ports; a Switch\'s outputs follow its rules in one undo step; “+” on free outputs and on links asks the page for the next step; insertion makes room downstream; Tidy lays the flow out in port order; a run streams over the flow without touching the document; read-only is one switch; and a refused connection says why.',
+  howTo: [
+    'Click a “+” on a free output (Switch “other”, Acknowledge, Ping #billing…): the page\'s own menu opens; pick a step and it is added AND placed beside its parent, in its port\'s slot.',
+    'Hover a wire: a “+” and a × appear at its middle. “+” inserts a step there — the steps downstream slide over only as far as needed. ⌘Z / Ctrl+Z takes the whole insertion back in one step, the original wire (same id) included.',
+    'On the Switch, click “+ rule” / “− rule”: the card grows a row, a new output appears level with it, and removing a rule takes its wire with it. One undo puts the rule, the port and the wire back.',
+    'Click “▶ Run”: statuses stream over the flow — pending, running, completed, item counts on the wires — and nothing of it enters undo or the saved document. “Run with an error” stops at the Slack step.',
+    'Click “Tidy”: the flow re-lays in PORT order (the If\'s true branch above its false branch, the Switch\'s outputs top to bottom) and the chat model stays plugged under its AI step.',
+    'Drag from a step\'s output to the AI step\'s “Model” slot: the slot refuses and says why. Drag the chat model to “Memory” — refused too; to “Model”, while one is already there — the slot holds one.',
+    'Toggle “Read-only”: the “+”, rule buttons and editing stop; selection, hover, the run overlay and double-click (step details) keep working.',
+    'Zoom far out (Ctrl + wheel): below 60 % every card switches to its compact form — icon and title — instead of shrinking its text to nothing.',
+    'Select the trigger and press Delete: the page\'s own key hook refuses (a workflow starts there). Ctrl+C / Ctrl+X / Ctrl+V go through the page\'s clipboard hooks.',
+  ],
+
+  async setup(ctx) {
+    let seq = 0;
+    const api = render(SPEC, ctx.host, {
+      nodeTemplates: TEMPLATES,
+      compactBelow: 0.6,
+      affordances: { portAdd: true, linkAdd: true, linkDelete: true },
+      connectionReasons: true,
+      keyboard: {
+        beforeKey(event, action) {
+          if ((action === 'delete' || action === 'cut') && api.getModel().getSelectedNodes().some((n) => n.type === 'trigger')) {
+            readout('the trigger stays — every workflow starts there');
+            return false;
+          }
+        },
+      },
+      clipboard: {
+        onCopy: (data, kind) => readout(`${kind === 'cut' ? 'cut' : 'copied'} ${data.nodes.length} step(s) — ${JSON.stringify(data).length} bytes of JSON`),
+      },
+    });
+    ctx.instance = api;
+    ctx.model = api.getModel();
+    window.__we = { api, ctx }; // for the browser gate (demos/e2e/workflow-editor-run.mjs)
+    const engine = api.getEngine();
+
+    // Slots take only their own kind; the library shows the reason beside the slot.
+    const SLOT_NAME = { model: 'Model', memory: 'Memory', tool: 'Tool' };
+    ctx.disposeRule = registerConnectionValidator(({ sourceNode, targetNode, targetPort }) => {
+      const slot = targetPort?.id?.split(':')[1];
+      if (targetNode.type === 'agent' && SLOT_NAME[slot]) {
+        if (SLOT_OF[sourceNode.type] !== slot) return `Only a ${KINDS[slot].title.toLowerCase()} plugs into the ${SLOT_NAME[slot]} slot`;
+      }
+      if (SLOT_OF[sourceNode.type] && !(targetNode.type === 'agent' && SLOT_NAME[slot])) return 'A sub-node plugs into an AI step\'s slot';
+      return true;
+    });
+
+    // -- the "+" menu: the page decides what a "+" means ------------------------
+    let menu = null;
+    const closeMenu = () => { menu?.remove(); menu = null; };
+    const openMenu = (point, title, choose) => {
+      closeMenu();
+      menu = document.createElement('div');
+      menu.className = 'we-menu';
+      menu.setAttribute('role', 'menu');
+      menu.innerHTML = `<h4>${title}</h4>` + MENU.map((k) => `<button role="menuitem" data-kind="${k}"><span class="we-ico we-${KINDS[k].hue}">${KINDS[k].icon}</span>${KINDS[k].title}</button>`).join('');
+      menu.style.left = `${Math.min(point.x, innerWidth - 220)}px`;
+      menu.style.top = `${Math.min(point.y, innerHeight - 320)}px`;
+      menu.addEventListener('click', (e) => {
+        const kind = e.target.closest('[data-kind]')?.dataset.kind;
+        if (kind) { closeMenu(); choose(kind); }
+      });
+      document.body.appendChild(menu);
+      menu.querySelector('button')?.focus();
+    };
+    addEventListener('pointerdown', (e) => { if (menu && !menu.contains(e.target)) closeMenu(); }, true);
+    addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+
+    ctx.addAfter = async (nodeId, portId, kind) => {
+      const id = `${kind}${++seq}`;
+      const node = buildNode({ id, type: kind, position: api.getModel().getNode(nodeId).position }, 0);
+      const macro = new MacroCommand('Add step');
+      macro.addStep(new AddNodeCommand(node));
+      macro.addStep(new AddLinkCommand(new LinkModel(portId, `${id}:in`)));
+      await engine.commandManager.execute(macro);
+      await api.placeNodes([id]);
+      readout(`added ${KINDS[kind].title} after ${nodeId}`);
+      return id;
+    };
+    ctx.insertOn = async (linkId, kind) => {
+      const r = await api.insertNodeOnLink(linkId, { id: `${kind}${++seq}`, type: kind });
+      if (r) readout(`inserted ${KINDS[kind].title}${r.moved.length ? `, ${r.moved.length} step(s) moved over` : ''}`);
+      return r;
+    };
+    api.on('port:add-request', ({ nodeId, portId, clientPoint }) => openMenu(clientPoint, 'Add the next step', (kind) => ctx.addAfter(nodeId, portId, kind)));
+    api.on('link:add-request', ({ linkId, clientPoint }) => openMenu(clientPoint, 'Insert a step', (kind) => ctx.insertOn(linkId, kind)));
+    api.on('link:delete-request', ({ linkId }) => { void engine.removeLink(linkId); readout('connection removed — ⌘Z brings it back'); });
+
+    // -- the Switch's rule buttons: a data edit, one undo step --------------------
+    ctx.setRules = async (nodeId, rules) => {
+      await engine.commandManager.execute(new SetNodeDataCommand(nodeId, { rules }));
+      readout(`${nodeId}: ${rules.length} rule(s) — ${rules.length} output(s)`);
+    };
+    ctx.host.addEventListener('click', (e) => {
+      const act = e.target.closest?.('[data-act]')?.dataset.act;
+      const id = e.target.closest?.('.grafloria-node-host')?.dataset.nodeId;
+      if (!act || !id || api.isReadonly()) return;
+      const rules = [...(api.getModel().getNode(id).getData('rules') ?? [])];
+      if (act === 'add-rule') void ctx.setRules(id, [...rules, `rule ${rules.length + 1}`]);
+      if (act === 'drop-rule' && rules.length > 1) void ctx.setRules(id, rules.slice(0, -1));
+    });
+
+    // -- step details: double-click, read-only or not -----------------------------
+    const details = document.getElementById('details');
+    const showDetails = (node) => {
+      const run = api.getOverlay().nodes?.[node.id];
+      details.hidden = false;
+      details.innerHTML = `<button class="close" aria-label="Close">×</button><h3>${KINDS[node.type].title}</h3>` +
+        `<label>Title<input id="d-title" value="${String(node.getData('title') ?? KINDS[node.type].title).replace(/"/g, '&quot;')}"></label>` +
+        `<div>Last run: <b>${run ? `${run.status}${run.badge ? ` · ${run.badge}` : ''}` : 'not run'}</b></div>` +
+        `<pre>${JSON.stringify(node.data ?? {}, null, 2).replace(/</g, '&lt;')}</pre>`;
+      details.querySelector('.close').onclick = () => (details.hidden = true);
+      const input = details.querySelector('#d-title');
+      input.readOnly = api.isReadonly();
+      input.onchange = () => !api.isReadonly() && engine.commandManager.execute(new SetNodeDataCommand(node.id, { title: input.value }));
+    };
+    api.on('node:doubleclick', ({ node }) => showDetails(node));
+
+    // -- the run: streamed over the flow, never in the document -------------------
+    ctx.flowOrder = () => {
+      const m = api.getModel();
+      const out = (id) => m.getLinks().filter((l) => m.getNodeByPortId(l.sourcePortId)?.id === id && !SLOT_OF[m.getNode(id).type]);
+      const order = [];
+      const seen = new Set(['trigger']);
+      const queue = [{ id: 'trigger', via: null }];
+      while (queue.length) {
+        const step = queue.shift();
+        order.push(step);
+        for (const l of out(step.id)) {
+          // the If takes its true branch on this request; everything else fans out
+          if (l.sourcePortId.endsWith(':false') && m.getNode(step.id).type === 'if') continue;
+          const next = m.getNodeByPortId(l.targetPortId).id;
+          if (seen.has(next)) continue;
+          seen.add(next);
+          queue.push({ id: next, via: l.id });
+        }
+      }
+      return order;
+    };
+    let runToken = 0;
+    ctx.run = async ({ failAt = null, stepMs = 420 } = {}) => {
+      const token = ++runToken;
+      const order = ctx.flowOrder();
+      const nodes = Object.fromEntries(order.map(({ id }) => [id, { status: 'pending' }]));
+      const links = {};
+      const items = (id) => ({ trigger: 1, urgent: 1, route: 2, notify: 1, agent: 1 })[id] ?? 1;
+      for (const { id, via } of order) {
+        if (token !== runToken) return;
+        nodes[id] = { status: 'running' };
+        if (via) links[via] = { animate: true, label: `${items(id)} item${items(id) > 1 ? 's' : ''}` };
+        const sub = api.getModel().getLinks().filter((l) => l.targetPortId.startsWith(`${id}:`) && SLOT_OF[api.getModel().getNodeByPortId(l.sourcePortId)?.type]);
+        for (const l of sub) nodes[api.getModel().getNodeByPortId(l.sourcePortId).id] = { status: 'running' };
+        api.setOverlay({ nodes, links });
+        readout(`running ${id}…`);
+        await new Promise((r) => setTimeout(r, stepMs));
+        if (token !== runToken) return;
+        if (via) links[via] = { label: links[via].label };
+        if (id === failAt) {
+          nodes[id] = { status: 'error', badge: 'failed' };
+          api.setOverlay({ nodes, links });
+          readout(`${id} failed — the run stopped there`);
+          return;
+        }
+        nodes[id] = { status: 'completed', badge: `${items(id)} item${items(id) > 1 ? 's' : ''}` };
+        for (const l of sub) nodes[api.getModel().getNodeByPortId(l.sourcePortId).id] = { status: 'completed' };
+      }
+      api.setOverlay({ nodes, links });
+      readout(`run finished — ${order.length} steps`);
+    };
+    ctx.clearRun = () => { runToken++; api.clearOverlay(); readout('run cleared'); };
+
+    document.getElementById('btn-run').onclick = () => ctx.run();
+    document.getElementById('btn-fail').onclick = () => ctx.run({ failAt: 'notify' });
+    document.getElementById('btn-clear').onclick = () => ctx.clearRun();
+    document.getElementById('btn-tidy').onclick = async () => { await api.tidy(); readout('tidied in port order — ⌘Z puts it back'); };
+    const ro = document.getElementById('btn-ro');
+    ro.onclick = () => {
+      api.setReadonly(!api.isReadonly());
+      ro.setAttribute('aria-pressed', String(api.isReadonly()));
+      document.getElementById('we').toggleAttribute('data-readonly', api.isReadonly());
+      readout(api.isReadonly() ? 'read-only: look, select, double-click — no edits' : 'editable');
+    };
+
+    await api.tidy({ animate: false });
+    api.fitView?.({ padding: 48 });
+    await ctx.tick();
+  },
+
+  async showcase(ctx) {
+    // A run half-way: trigger and If done, the Switch running, its wire moving.
+    ctx.instance.setOverlay({
+      nodes: { trigger: { status: 'completed', badge: '1 item' }, urgent: { status: 'completed', badge: '1 item' }, route: { status: 'running' }, notify: { status: 'pending' }, agent: { status: 'pending' } },
+      links: { e1: { label: '1 item' }, e2: { label: '1 item', animate: true } },
+    });
+    await ctx.tick(60);
+  },
+
+  async assert(ctx) {
+    const api = ctx.instance;
+    const m = ctx.model;
+    const engine = api.getEngine();
+    const tick = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const outs = (id) => [...m.getNode(id).ports.values()].filter((p) => p.type === 'output').map((p) => p.id);
+    const host = (id) => ctx.host.querySelector(`.grafloria-node-host[data-node-id="${id}"]`);
+    api.clearOverlay();
+
+    // A1 — a data edit re-derives the card, its ports and its size, in ONE undo step.
+    await ctx.setRules('route', ['billing', 'technical', 'other', 'sales']);
+    await tick();
+    check(outs('route').length === 4, `the Switch should have 4 outputs after a 4th rule, got ${outs('route').length}`);
+    check(host('route').querySelectorAll('.we-row').length === 4, 'the Switch card should draw 4 rule rows');
+    await ctx.setRules('route', ['billing']);
+    await tick();
+    check(!m.getLink('e5'), 'dropping the "technical" rule must take its wire (e5) with it');
+    await engine.undo();
+    await tick();
+    check(!!m.getLink('e5') && m.getLink('e5').sourcePortId === 'route:r1', 'ONE undo must bring the rule, its output and its wire back');
+    await engine.undo();
+    await tick();
+    check(outs('route').length === 3, 'a second undo returns to the 3 original rules');
+
+    // A2 — every rule's port sits level with its row, on the card's right edge (screen px).
+    const rows = [...host('route').querySelectorAll('.we-row')];
+    for (const [i, row] of rows.entries()) {
+      const rr = row.getBoundingClientRect();
+      const p = m.getNode('route').getPort(`route:r${i}`);
+      const box = p.layout?.args ?? {};
+      const hr = host('route').getBoundingClientRect();
+      const scale = hr.width / m.getNode('route').size.width;
+      const portScreenY = hr.top + box.y * scale;
+      check(Math.abs(portScreenY - (rr.top + rr.height / 2)) <= 1.5, `rule ${i}'s port should be level with its row (off by ${Math.abs(portScreenY - (rr.top + rr.height / 2)).toFixed(1)} px)`);
+      check(box.x === m.getNode('route').size.width, `rule ${i}'s port should sit on the right edge`);
+    }
+
+    // A3 — insert on a link: A→N→B, then one undo restores the link exactly.
+    const before = JSON.stringify(m.getLink('e4').serialize());
+    const r = await ctx.insertOn('e4', 'set');
+    check(!!r && !m.getLink('e4') && m.getLink(r.upstreamLinkId).sourcePortId === 'route:r0', 'insertNodeOnLink should replace route→notify with route→set→notify');
+    await engine.undo();
+    check(JSON.stringify(m.getLink('e4')?.serialize()) === before, 'one undo must restore the original link — same id, same everything');
+    check(!m.getNode(r.nodeId), 'and remove the inserted step');
+
+    // A4 — "+" on every free output, only an event; the page's menu decides.
+    await tick();
+    const plus = ctx.host.querySelector('.grafloria-port-add[data-port-id="route:r2"]');
+    check(!!plus, 'the Switch\'s free "other" output should carry a "+"');
+    check(!ctx.host.querySelector('.grafloria-port-add[data-port-id="route:r0"]'), 'a wired output carries no "+"');
+    let asked = null;
+    const off = (p) => (asked = p);
+    api.on('port:add-request', off);
+    plus.click();
+    api.off('port:add-request', off);
+    check(asked?.portId === 'route:r2' && asked?.nodeId === 'route', 'pressing "+" must emit port:add-request with its node and port');
+    document.querySelector('.we-menu')?.remove();
+
+    // A5 — the overlay paints, streams cheaply, and never touches undo or the document.
+    const doc0 = JSON.stringify(m.serialize());
+    const undoable0 = engine.commandManager.canUndo();
+    const t0 = performance.now();
+    for (let k = 0; k < 300; k++) api.setOverlay({ nodes: { trigger: { status: k % 2 ? 'running' : 'completed', badge: `${k}` }, urgent: { status: 'pending' } }, links: { e1: { label: `${k} items`, animate: true } } });
+    const per = (performance.now() - t0) / 300;
+    check(per < 2, `a streamed overlay update should cost well under 2 ms, got ${per.toFixed(2)} ms`);
+    check(!!ctx.host.querySelector('.grafloria-run-frame[data-node-id="trigger"]'), 'the overlay should draw a status frame');
+    check(JSON.stringify(m.serialize()) === doc0 && engine.commandManager.canUndo() === undoable0, 'the overlay must not enter the document or the undo stack');
+    api.clearOverlay();
+
+    // A6 — tidy in port order: the If's true branch above its false branch, rules top to bottom.
+    await api.tidy({ animate: false });
+    check(m.getNode('route').position.y < m.getNode('mail').position.y, 'after tidy the If\'s TRUE branch must sit above its FALSE branch');
+    check(m.getNode('notify').position.y < m.getNode('agent').position.y, 'after tidy the Switch\'s outputs keep rule order (billing above technical)');
+    const llm = m.getNode('llm').position, ag = m.getNode('agent').position;
+    check(llm.y > ag.y + m.getNode('agent').size.height, 'the chat model stays plugged UNDER its AI step after tidy');
+
+    // B1 — read-only: no "+", no moves; double-click still opens the step.
+    api.setReadonly(true);
+    await tick();
+    check(ctx.host.querySelectorAll('.grafloria-port-add').length === 0, 'read-only shows no "+"');
+    let opened = null;
+    const dbl = ({ node }) => (opened = node.id);
+    api.on('node:doubleclick', dbl);
+    const hr = host('mail').getBoundingClientRect();
+    ctx.host.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: hr.left + 20, clientY: hr.top + 20 }));
+    api.off('node:doubleclick', dbl);
+    check(opened === 'mail', 'double-click must still reach the page while read-only');
+    api.setReadonly(false);
+    document.getElementById('details').hidden = true;
+
+    // B2 — the page's key hook refuses deleting the trigger.
+    m.clearSelection();
+    m.selectNode(m.getNode('trigger'));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    await tick();
+    check(!!m.getNode('trigger'), 'beforeKey must be able to refuse Delete on the trigger');
+    m.clearSelection();
+
+    // B3 — a refused slot says why, beside the slot.
+    const csm = engine.getConnectionStateManager();
+    const reasonFor = (fromPort, toPort) => {
+      csm.startConnection(fromPort, { x: 0, y: 0 });
+      csm.updateConnection({ x: 0, y: 0 }, toPort);
+      api.renderNow();
+      const text = ctx.host.querySelector('.grafloria-connect-reason')?.textContent;
+      csm.cancelConnection();
+      return text;
+    };
+    const memoryReason = reasonFor(m.getNode('mail').getPort('mail:out'), m.getNode('agent').getPort('agent:memory'));
+    check(memoryReason === 'Only a window memory plugs into the Memory slot', `the Memory slot should say why it refuses a step, got "${memoryReason}"`);
+    const limitReason = reasonFor(m.getNode('mail').getPort('mail:out'), m.getNode('agent').getPort('agent:model'));
+    check(/limit/.test(limitReason ?? ''), `the Model slot holds ONE link and should say so, got "${limitReason}"`);
+    check(!ctx.host.querySelector('.grafloria-connect-reason'), 'the reason goes when the drag ends');
+
+    // B4 — far out, cards draw their compact form.
+    const z0 = api.viewport.getZoom();
+    api.viewport.setZoom(0.4);
+    api.renderNow();
+    check(host('route').getAttribute('data-lod') === 'compact' && !!host('route').querySelector('.we-mini'), 'below 60 % zoom the Switch should draw its compact form');
+    api.viewport.setZoom(z0);
+    api.renderNow();
+    check(host('route').getAttribute('data-lod') === 'full', 'zooming back draws the full card');
+  },
+});
+</script>
