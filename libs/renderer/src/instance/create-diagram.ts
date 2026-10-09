@@ -38,6 +38,8 @@ import { installRunOverlay } from './workflow/run-overlay';
 import { insertNodeOnLink } from './workflow/insert-on-link';
 import { placeFlow, tidyFlow } from './workflow/flow-place';
 import { createNodeTemplates, installNodeTemplates } from './workflow/node-templates';
+import { installAffordances } from './workflow/affordances';
+import type { AffordanceOptions, LinkAddRequest, PortAddRequest } from './workflow/affordances';
 import type { NodeTemplate } from './workflow/node-templates';
 import type { FlowPlaceOptions, PlaceNodesOptions } from './workflow/flow-place';
 import type { InsertNodeOnLinkOptions, InsertNodeOnLinkResult } from './workflow/insert-on-link';
@@ -88,6 +90,12 @@ export type NodeInput = NodeSpec | NodeModel;
 export type EdgeInput = EdgeSpec | LinkModel;
 
 export interface DiagramEventMap {
+  /** The "+" on an unconnected output port was pressed (`affordances.portAdd`). */
+  'port:add-request': PortAddRequest;
+  /** The "+" at a hovered link's midpoint was pressed (`affordances.linkAdd`). */
+  'link:add-request': LinkAddRequest;
+  /** The delete button beside it was pressed (`affordances.linkDelete`). */
+  'link:delete-request': LinkAddRequest;
   'nodes:change': { nodes: NodeModel[] };
   'edges:change': { edges: LinkModel[] };
   'selection:change': { nodes: NodeModel[]; edges: LinkModel[] };
@@ -322,6 +330,15 @@ export interface CreateDiagramOptions extends DomEventBinderOptions {
    * resize and font load. Default true when `nodeTemplates` is set.
    */
   anchorPorts?: boolean;
+
+  /**
+   * The "+" a flow editor shows where the next step can go: `portAdd` on every
+   * unconnected OUTPUT port, `linkAdd` / `linkDelete` at a hovered link's
+   * midpoint. They only emit (`port:add-request`, `link:add-request`,
+   * `link:delete-request`) — the host decides what happens — and never show
+   * while read-only. Off by default.
+   */
+  affordances?: AffordanceOptions;
 }
 
 export interface DiagramInstance {
@@ -944,6 +961,7 @@ export function createDiagram(
     ? installNodeTemplates(featureCtx, nodeTemplates, { templates: options.nodeTemplates!, compactBelow: options.compactBelow, anchorPorts: options.anchorPorts })
     : null;
   if (templateCards) features.push(templateCards);
+  if (options.affordances) features.push(installAffordances(featureCtx, options.affordances));
   /** Tear a custom host down: the template's bookkeeping, then the host's own hook. */
   const removeCustomHost = (id: string, host: HTMLElement): void => {
     templateCards?.unmount(id);
