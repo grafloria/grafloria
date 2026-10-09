@@ -65967,7 +65967,7 @@ var require_elk_bundled = __commonJS({
                   }
                 }
               }
-              p = JD(De(o10, SC(PX, { 3: 1, 4: 1, 5: 1, 2024: 1 }, 470, o10.a.gc(), 0, 1)), 2024);
+              p = JD(De(o10, SC(PX2, { 3: 1, 4: 1, 5: 1, 2024: 1 }, 470, o10.a.gc(), 0, 1)), 2024);
               D = b[0].c;
               bb = c[0].c;
               for (k = p, l = 0, m = k.length; l < m; ++l) {
@@ -79826,7 +79826,7 @@ var require_elk_bundled = __commonJS({
             _.c = 0;
             _.e = 0;
             _.f = 0;
-            var PX = Qeb(KBe, "HyperedgeCrossingsCounter/Hyperedge", 470);
+            var PX2 = Qeb(KBe, "HyperedgeCrossingsCounter/Hyperedge", 470);
             Ddb(371, 1, { 34: 1, 371: 1 }, _Jc);
             _.Dd = function aKc(a) {
               return $Jc(this, JD(a, 371));
@@ -110630,6 +110630,8 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     // Tiers pre-sorted highest-minZoom first so getLODLevel() is a linear scan,
     // not a per-call sort. Kept in sync whenever _lodConfig changes.
     this._lodTiersDesc = [];
+    /** The host's data-driven node templates (see ./node-template.ts); null = none. */
+    this.nodeTemplateResolver = null;
     if (name) this.name = name;
     this._lodConfig = options?.lodConfig ?? createDefaultLODConfig();
     this._resortLODTiers();
@@ -110812,6 +110814,18 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
    */
   runSystemWrite(fn) {
     return this.readonlyLock.runSystemWrite(fn);
+  }
+  /**
+   * Register (or clear, with null) the resolver that answers a node's ports and
+   * size from its data. While one is set, `SetNodeDataCommand` reconciles each
+   * node it edits with the answer — removing links on dropped ports — inside its
+   * own undo step. Unset (the default), data edits touch only data.
+   */
+  setNodeTemplateResolver(resolver) {
+    this.nodeTemplateResolver = resolver;
+  }
+  getNodeTemplateResolver() {
+    return this.nodeTemplateResolver;
   }
   addNode(node) {
     this.assertNotDisposed();
@@ -112702,6 +112716,48 @@ var DiagramModel = class _DiagramModel extends DiagramEntity {
     super.dispose();
   }
 };
+
+// libs/engine/src/models/node-template.ts
+var portKey = (p) => JSON.stringify(p.serialize());
+function applyNodeTemplate(diagram, node, resolution) {
+  const current = [...node.ports.values()];
+  const change = { portsBefore: current.map((p) => p.serialize()), linksRemoved: [] };
+  let changed = false;
+  if (resolution.ports) {
+    const want = new Map(resolution.ports.map((p) => [p.id, p]));
+    for (const port of current) {
+      if (want.has(port.id)) continue;
+      for (const link of diagram.getLinksForPort(port.id)) {
+        change.linksRemoved.push(link.serialize());
+        diagram.removeLink(link.id);
+      }
+      node.removePort(port.id);
+      changed = true;
+    }
+    for (const port of resolution.ports) {
+      const existing = node.getPort(port.id);
+      if (existing && portKey(existing) === portKey(port)) continue;
+      if (existing) node.removePort(port.id);
+      node.addPort(port);
+      changed = true;
+    }
+  }
+  if (resolution.size) {
+    const { width, height } = resolution.size;
+    if (node.size.width !== width || node.size.height !== height) {
+      change.sizeBefore = { width: node.size.width, height: node.size.height };
+      node.setSize(width, height);
+      changed = true;
+    }
+  }
+  return changed ? change : null;
+}
+function restoreNodeTemplate(diagram, node, change) {
+  for (const id of [...node.ports.keys()]) node.removePort(id);
+  for (const p of change.portsBefore) node.addPort(PortModel.fromJSON(p));
+  for (const l of change.linksRemoved) if (!diagram.getLink(l.id)) diagram.addLink(LinkModel.fromJSON(l));
+  if (change.sizeBefore) node.setSize(change.sizeBefore.width, change.sizeBefore.height);
+}
 
 // libs/engine/src/events/EventBus.ts
 var EventBus = class {
@@ -116445,6 +116501,11 @@ var SetNodeDataCommand = class extends Command {
   constructor(nodeId, data2) {
     super("Set Shape Data");
     this.data = data2;
+    /**
+     * What a registered node TEMPLATE changed in answer to the new data — ports,
+     * links on dropped ports, size — per node. Empty without a resolver.
+     */
+    this.templated = /* @__PURE__ */ new Map();
     this.nodeIds = typeof nodeId === "string" ? [nodeId] : [...nodeId];
   }
   execute(context) {
@@ -116468,10 +116529,23 @@ var SetNodeDataCommand = class extends Command {
     for (const n3 of nodes) {
       for (const [key, value] of Object.entries(this.data)) n3.setData(key, value);
     }
+    this.templated = /* @__PURE__ */ new Map();
+    const resolve2 = diagram.getNodeTemplateResolver?.();
+    if (resolve2) {
+      for (const n3 of nodes) {
+        const answer = resolve2(n3);
+        const change = answer ? applyNodeTemplate(diagram, n3, answer) : null;
+        if (change) this.templated.set(n3.id, change);
+      }
+    }
   }
   undo(context) {
     const diagram = context.diagram;
     if (!diagram || !this.previous) throw new Error("Cannot undo: missing diagram or snapshot");
+    for (const [id, change] of this.templated) {
+      const node = diagram.getNode(id);
+      if (node) restoreNodeTemplate(diagram, node, change);
+    }
     for (const [id, before] of this.previous) {
       const node = diagram.getNode(id);
       if (!node) continue;
@@ -118921,9 +118995,9 @@ function evaluatePortConnection(source, target, context = {}) {
     }
   }
   for (const validator of context.validators ?? []) {
-    if (!validator(source, target)) {
-      return no("custom", "This connection is not allowed.");
-    }
+    const verdict = validator(source, target);
+    if (typeof verdict === "string" && verdict) return no("custom", verdict);
+    if (!verdict) return no("custom", "This connection is not allowed.");
   }
   return OK;
 }
@@ -119255,6 +119329,26 @@ var ClipboardManager = class {
    */
   get() {
     return this.clipboard;
+  }
+  /**
+   * Load a payload a HOST kept — read back from the system clipboard, or from
+   * its own format — so the next paste pastes it. The same shape `get()` gives;
+   * it starts a fresh paste cascade, like a copy does.
+   */
+  set(data2) {
+    if (!data2 || !Array.isArray(data2.nodes)) throw new Error("ClipboardManager.set: not a clipboard payload (no nodes array)");
+    const payload = {
+      nodes: data2.nodes,
+      links: Array.isArray(data2.links) ? data2.links : [],
+      groups: Array.isArray(data2.groups) ? data2.groups : [],
+      timestamp: data2.timestamp ?? Date.now(),
+      sourceDiagramId: data2.sourceDiagramId ?? data2.sourceDigramId,
+      sourceDigramId: data2.sourceDiagramId ?? data2.sourceDigramId
+    };
+    this.clipboard = payload;
+    this.pasteSerial = 0;
+    this.history.unshift(payload);
+    if (this.history.length > this.maxHistorySize) this.history.pop();
   }
   /**
    * Claim the next paste slot for the CURRENT clipboard payload (1-based).
@@ -123258,11 +123352,11 @@ var VisibilityGraphRouter = class {
         return true;
       }
     }
-    const midpoint2 = {
+    const midpoint4 = {
       x: (a.x + b.x) / 2,
       y: (a.y + b.y) / 2
     };
-    if (midpoint2.x > rect.x && midpoint2.x < rect.x + rect.width && midpoint2.y > rect.y && midpoint2.y < rect.y + rect.height) {
+    if (midpoint4.x > rect.x && midpoint4.x < rect.x + rect.width && midpoint4.y > rect.y && midpoint4.y < rect.y + rect.height) {
       return true;
     }
     return false;
@@ -128853,7 +128947,7 @@ function assessPortRespect(nodes, links, portInfos) {
   };
 }
 function assessLabelClearance(nodes, links, result) {
-  let overlaps3 = 0;
+  let overlaps4 = 0;
   let judged = 0;
   const collidingLinks = [];
   const nodeById = new Map(nodes.map((n3) => [n3.id, n3]));
@@ -128890,16 +128984,16 @@ function assessLabelClearance(nodes, links, result) {
       };
       const hit = labelRect.left < nodeRect2.right && labelRect.right > nodeRect2.left && labelRect.top < nodeRect2.bottom && labelRect.bottom > nodeRect2.top;
       if (hit) {
-        overlaps3++;
+        overlaps4++;
         collidingLinks.push(link.id);
         break;
       }
     }
   }
   return {
-    overlaps: overlaps3,
+    overlaps: overlaps4,
     judged,
-    score: judged === 0 ? 100 : Math.round((judged - overlaps3) / judged * 100),
+    score: judged === 0 ? 100 : Math.round((judged - overlaps4) / judged * 100),
     collidingLinks
   };
 }
@@ -138812,7 +138906,7 @@ function layoutStateModel(model, nodes, start) {
     arrangements.set(key, arrangement);
     return arrangement;
   };
-  const commit = (state, x, y) => {
+  const commit2 = (state, x, y) => {
     const node = nodes.get(state.id);
     node.setPosition(x, y);
     if (!state.composite) return;
@@ -138844,11 +138938,11 @@ function layoutStateModel(model, nodes, start) {
       }
     }
   };
-  const commitChild = commit;
+  const commitChild = commit2;
   const root = arrange(void 0);
   for (const child of childrenOf(void 0)) {
     const local = root.positions.get(child.id);
-    commit(child, start.x + local.x, start.y + local.y);
+    commit2(child, start.x + local.x, start.y + local.y);
   }
 }
 function stateModelToDiagram(model) {
@@ -142361,6 +142455,198 @@ var LayoutService = class {
 };
 var layoutService = new LayoutService();
 
+// libs/engine/src/layout/flow/flow-layout.ts
+function buildGraph2(nodes, edges) {
+  const box = new Map(nodes.map((n3) => [n3.id, n3]));
+  const out = /* @__PURE__ */ new Map();
+  const inc = /* @__PURE__ */ new Map();
+  for (const n3 of nodes) {
+    out.set(n3.id, []);
+    inc.set(n3.id, []);
+  }
+  edges.forEach((e, i) => {
+    if (!box.has(e.source) || !box.has(e.target) || e.source === e.target) return;
+    out.get(e.source).push({ t: e.target, o: e.order ?? 0, i });
+    inc.get(e.target).push(e.source);
+  });
+  const sorted = /* @__PURE__ */ new Map();
+  for (const [id, list2] of out) sorted.set(id, list2.sort((a, b) => a.o - b.o || a.i - b.i).map((x) => x.t));
+  return { ids: nodes.map((n3) => n3.id), box, out: sorted, inc };
+}
+var crossSize = (b, lr) => lr ? b.height : b.width;
+var mainSize = (b, lr) => lr ? b.width : b.height;
+function overlaps2(a, b, pad) {
+  return a.x < b.x + b.width + pad && b.x < a.x + a.width + pad && a.y < b.y + b.height + pad && b.y < a.y + a.height + pad;
+}
+function flowLayout(nodes, edges, options = {}) {
+  const lr = (options.direction ?? "LR") === "LR";
+  const rankGap = options.rankGap ?? 80;
+  const nodeGap = options.nodeGap ?? 40;
+  const g = buildGraph2(nodes, edges);
+  const result = /* @__PURE__ */ new Map();
+  if (g.ids.length === 0) return result;
+  const parent = /* @__PURE__ */ new Map();
+  const children = new Map(g.ids.map((id) => [id, []]));
+  const state = /* @__PURE__ */ new Map();
+  const back = /* @__PURE__ */ new Set();
+  const order = [];
+  const roots = [];
+  const visit = (root) => {
+    const stack = [{ id: root, next: 0 }];
+    state.set(root, 1);
+    order.push(root);
+    while (stack.length) {
+      const top = stack[stack.length - 1];
+      const kids = g.out.get(top.id);
+      if (top.next >= kids.length) {
+        state.set(top.id, 2);
+        stack.pop();
+        continue;
+      }
+      const v = kids[top.next++];
+      const s = state.get(v) ?? 0;
+      if (s === 1) back.add(`${top.id}\0${v}`);
+      if (s !== 0) continue;
+      state.set(v, 1);
+      parent.set(v, top.id);
+      children.get(top.id).push(v);
+      order.push(v);
+      stack.push({ id: v, next: 0 });
+    }
+  };
+  for (const id of g.ids) if (g.inc.get(id).length === 0 && !state.get(id)) roots.push(id), parent.set(id, null), visit(id);
+  for (const id of g.ids) if (!state.get(id)) roots.push(id), parent.set(id, null), visit(id);
+  const rank = new Map(g.ids.map((id) => [id, 0]));
+  const indeg = new Map(g.ids.map((id) => [id, 0]));
+  for (const u of g.ids) for (const v of g.out.get(u)) if (!back.has(`${u}\0${v}`)) indeg.set(v, indeg.get(v) + 1);
+  const queue = g.ids.filter((id) => indeg.get(id) === 0);
+  for (let i = 0; i < queue.length; i++) {
+    const u = queue[i];
+    for (const v of g.out.get(u)) {
+      if (back.has(`${u}\0${v}`)) continue;
+      rank.set(v, Math.max(rank.get(v), rank.get(u) + 1));
+      indeg.set(v, indeg.get(v) - 1);
+      if (indeg.get(v) === 0) queue.push(v);
+    }
+  }
+  const maxRank = Math.max(...rank.values());
+  const colSize = new Array(maxRank + 1).fill(0);
+  for (const id of g.ids) colSize[rank.get(id)] = Math.max(colSize[rank.get(id)], mainSize(g.box.get(id), lr));
+  const colStart = [];
+  let acc = 0;
+  for (let r = 0; r <= maxRank; r++) {
+    colStart.push(acc);
+    acc += colSize[r] + rankGap;
+  }
+  const block = /* @__PURE__ */ new Map();
+  for (let i = order.length - 1; i >= 0; i--) {
+    const id = order[i];
+    const kids = children.get(id);
+    const span = kids.reduce((s, k) => s + block.get(k), 0) + Math.max(0, kids.length - 1) * nodeGap;
+    block.set(id, Math.max(crossSize(g.box.get(id), lr), span));
+  }
+  const cross3 = /* @__PURE__ */ new Map();
+  const place = (id, top) => {
+    const size = crossSize(g.box.get(id), lr);
+    const b = block.get(id);
+    cross3.set(id, top + (b - size) / 2);
+    const kids = children.get(id);
+    const span = kids.reduce((s, k) => s + block.get(k), 0) + Math.max(0, kids.length - 1) * nodeGap;
+    let t = top + (b - span) / 2;
+    for (const k of kids) {
+      place(k, t);
+      t += block.get(k) + nodeGap;
+    }
+  };
+  const placed = nodes.filter((n3) => n3.x !== void 0 && n3.y !== void 0);
+  const origin = options.origin ?? (placed.length ? { x: Math.min(...placed.map((n3) => n3.x)), y: Math.min(...placed.map((n3) => n3.y)) } : { x: 0, y: 0 });
+  const obstacles = options.obstacles ?? [];
+  const positionsOf = (ids, crossTop) => {
+    const m = /* @__PURE__ */ new Map();
+    for (const id of ids) {
+      const b = g.box.get(id);
+      const r = rank.get(id);
+      const main = colStart[r] + (colSize[r] - mainSize(b, lr)) / 2;
+      const c = cross3.get(id) + crossTop;
+      m.set(id, lr ? { x: origin.x + main, y: origin.y + c } : { x: origin.x + c, y: origin.y + main });
+    }
+    return m;
+  };
+  const subtree2 = (root) => {
+    const out = [];
+    const walk3 = (id) => {
+      out.push(id);
+      for (const k of children.get(id)) walk3(k);
+    };
+    walk3(root);
+    return out;
+  };
+  let cursor = 0;
+  for (const root of roots) {
+    place(root, 0);
+    const ids = subtree2(root);
+    let top = cursor;
+    for (let guard = 0; guard < 200; guard++) {
+      const pos = positionsOf(ids, top);
+      const hit = obstacles.find((o) => ids.some((id) => overlaps2({ ...pos.get(id), width: g.box.get(id).width, height: g.box.get(id).height }, o, nodeGap / 2)));
+      if (!hit) break;
+      top = (lr ? hit.y + hit.height - origin.y : hit.x + hit.width - origin.x) + nodeGap;
+    }
+    for (const [id, p] of positionsOf(ids, top)) result.set(id, p);
+    cursor = top + block.get(root) + nodeGap * 2;
+  }
+  return result;
+}
+function placeFlowNodes(newIds, nodes, edges, options = {}) {
+  const lr = (options.direction ?? "LR") === "LR";
+  const rankGap = options.rankGap ?? 80;
+  const nodeGap = options.nodeGap ?? 40;
+  const g = buildGraph2(nodes, edges);
+  const fresh = new Set(newIds);
+  const at = /* @__PURE__ */ new Map();
+  for (const n3 of nodes) if (!fresh.has(n3.id) && n3.x !== void 0 && n3.y !== void 0) at.set(n3.id, { x: n3.x, y: n3.y });
+  const result = /* @__PURE__ */ new Map();
+  const obstacles = options.obstacles ?? [];
+  for (const id of newIds) {
+    const b = g.box.get(id);
+    if (!b) continue;
+    const parentId = options.after ?? g.inc.get(id).find((p2) => at.has(p2));
+    const pb = parentId ? g.box.get(parentId) : void 0;
+    const pp = parentId ? at.get(parentId) : void 0;
+    if (!pb || !pp) {
+      if (b.x !== void 0 && b.y !== void 0) {
+        at.set(id, { x: b.x, y: b.y });
+        result.set(id, { x: b.x, y: b.y });
+      }
+      continue;
+    }
+    const kids = g.out.get(parentId);
+    const k = Math.max(0, kids.indexOf(id));
+    const n3 = Math.max(1, kids.length);
+    const size = crossSize(b, lr);
+    const pCenter = lr ? pp.y + pb.height / 2 : pp.x + pb.width / 2;
+    const ideal = pCenter + (k - (n3 - 1) / 2) * (size + nodeGap) - size / 2;
+    const main = lr ? pp.x + pb.width + rankGap : pp.y + pb.height + rankGap;
+    const dir = k >= (n3 - 1) / 2 ? 1 : -1;
+    const boxAt2 = (c2) => lr ? { x: main, y: c2, width: b.width, height: b.height } : { x: c2, y: main, width: b.width, height: b.height };
+    const blocked = (c2) => {
+      const me = boxAt2(c2);
+      for (const [other, p2] of at) {
+        if (other === id) continue;
+        const ob = g.box.get(other);
+        if (overlaps2(me, { ...p2, width: ob.width, height: ob.height }, nodeGap / 2)) return true;
+      }
+      return obstacles.some((o) => overlaps2(me, o, nodeGap / 2));
+    };
+    let c = ideal;
+    for (let guard = 0; guard < 400 && blocked(c); guard++) c += dir * (nodeGap / 2);
+    const p = lr ? { x: main, y: c } : { x: c, y: main };
+    at.set(id, p);
+    result.set(id, p);
+  }
+  return result;
+}
+
 // libs/engine/src/layout/grid-pack/grid-pack-engine.ts
 var GridPackEngine = class _GridPackEngine {
   constructor(items = [], options = {}) {
@@ -143413,11 +143699,11 @@ var SwimlaneService = class {
    * Resize a lane along the cross axis by pinning its band (fixedSize) and
    * re-laying out the pool so siblings absorb the remaining space.
    */
-  resizeLane(pool, laneId, crossSize) {
+  resizeLane(pool, laneId, crossSize2) {
     this.assertPool(pool);
     const lane = this.diagram.getGroup(laneId);
     if (!lane || !lane.laneConfig) return;
-    lane.laneConfig = { ...lane.laneConfig, fixedSize: Math.max(0, crossSize) };
+    lane.laneConfig = { ...lane.laneConfig, fixedSize: Math.max(0, crossSize2) };
     this.touch(lane);
     this.reflow(pool);
   }
@@ -174390,6 +174676,8 @@ var _SVGRenderer = class _SVGRenderer {
      */
     this.registryScope = new RegistryScope();
     this.registryFacade = new DiagramRegistry(this.registryScope);
+    /** The host's read-only VIEW switch (not the document lock): no editing chrome. */
+    this.viewReadonly = false;
     /**
      * Every VNode-cache key an entity currently occupies — one per LOD tier it
      * has been rendered at since its last change.
@@ -174545,6 +174833,12 @@ var _SVGRenderer = class _SVGRenderer {
    */
   getRegistry() {
     return this.registryFacade;
+  }
+  /** Set by `createDiagram` from `readonly` / `setReadonly()`. */
+  setViewReadonly(readonly) {
+    if (this.viewReadonly === readonly) return;
+    this.viewReadonly = readonly;
+    this.invalidateFrame();
   }
   /**
    * Render diagram to VNode tree.
@@ -178212,7 +178506,7 @@ var _SVGRenderer = class _SVGRenderer {
    */
   renderResizeToolsLayer(lod, zoom) {
     const diagram = this.engine.getDiagram();
-    if (!diagram || diagram.isReadonly()) return null;
+    if (!diagram || diagram.isReadonly() || this.viewReadonly) return null;
     if (!this.lodAllows("handles", lod)) return null;
     const layer = this.resizeTools.computeLayer(this.engine, zoom);
     const handles = layer.handles.filter((h) => h.kind === "resize");
@@ -186048,12 +186342,13 @@ var InteractionController = class {
       const sourceNode = diagram?.getNodeByPortId(source.id);
       const targetNode = diagram?.getNodeByPortId(target.id);
       if (!sourceNode || !targetNode) return true;
-      return isValidConnection({
+      const verdict = isValidConnection({
         sourceNode,
         sourcePort: source,
         targetNode,
         targetPort: target
-      }).valid;
+      });
+      return verdict.valid ? true : verdict.reason || false;
     });
   }
   /**
@@ -189791,6 +190086,1178 @@ function contentBounds(model) {
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
+// libs/renderer/src/instance/workflow/connect-reason.ts
+function installConnectReason(ctx) {
+  let label = null;
+  let port = null;
+  let message = "";
+  const hide = () => {
+    port = null;
+    message = "";
+    label?.remove();
+    label = null;
+  };
+  const place = () => {
+    if (!port || !message) return hide();
+    const node = ctx.getModel().getNodeByPortId(port.id);
+    if (!node) return hide();
+    if (!label) {
+      label = ctx.doc.createElement("div");
+      label.className = "grafloria-connect-reason";
+      label.setAttribute("role", "status");
+      label.setAttribute("aria-live", "polite");
+      ctx.htmlLayer.appendChild(label);
+    }
+    if (label.textContent !== message) label.textContent = message;
+    const at = portWorldPosition(port, node);
+    const zoom = ctx.viewport.getZoom() || 1;
+    const style = (flip) => `position:absolute;left:${at.x}px;top:${at.y}px;` + (flip ? `transform:translate(calc(-100% - ${10 / zoom}px), calc(-100% - ${10 / zoom}px)) scale(${1 / zoom});transform-origin:100% 100%;` : `transform:translate(${10 / zoom}px, calc(-100% - ${10 / zoom}px)) scale(${1 / zoom});transform-origin:0 100%;`) + 'pointer-events:none;white-space:nowrap;z-index:6;background:var(--grafloria-connect-reason-bg, #b42318);color:var(--grafloria-connect-reason-fg, #fff);font:500 12px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;padding:4px 8px;border-radius:6px;box-shadow:0 2px 8px rgba(16, 24, 40, .2)';
+    label.setAttribute("style", style(false));
+    const box = label.getBoundingClientRect();
+    const edge = ctx.container.getBoundingClientRect();
+    if (box.width > 0 && box.right > edge.right - 4) label.setAttribute("style", style(true));
+  };
+  const onUpdate = (p) => {
+    const refused = !!p.targetPort && p.isValid === false && !!p.rejectionMessage;
+    if (!refused) return hide();
+    port = p.targetPort ?? null;
+    message = p.rejectionMessage ?? "";
+    place();
+  };
+  ctx.engine.on("connection:update", onUpdate);
+  ctx.engine.on("connection:complete", hide);
+  ctx.engine.on("connection:cancel", hide);
+  return {
+    sync: () => port ? place() : void 0,
+    camera: () => port ? place() : void 0,
+    dispose: () => {
+      ctx.engine.off("connection:update", onUpdate);
+      ctx.engine.off("connection:complete", hide);
+      ctx.engine.off("connection:cancel", hide);
+      hide();
+    }
+  };
+}
+
+// libs/renderer/src/instance/workflow/clipboard.ts
+function createClipboardApi(engine, hooks, after) {
+  const selection = () => {
+    const diagram = engine.getDiagram();
+    if (!diagram) return { nodes: [] };
+    return {
+      nodes: diagram.getSelectedNodes(),
+      link: diagram.getLinks().find((l) => l.state === "selected")
+    };
+  };
+  const copy = async (kind) => {
+    if (!engine.getDiagram() || selection().nodes.length === 0) return null;
+    await engine.copy();
+    const data2 = engine.getClipboardData();
+    if (data2) hooks?.onCopy?.(data2, kind);
+    return data2;
+  };
+  return {
+    copy: () => copy("copy"),
+    /** Copy, then delete the selection as ONE undo step. Refused while read-only. */
+    async cut() {
+      if (after.isReadonly()) return null;
+      const { nodes, link } = selection();
+      const data2 = await copy("cut");
+      if (!data2) return null;
+      const cm = engine.commandManager;
+      cm.beginBatch();
+      try {
+        if (link) await engine.removeLink(link.id);
+        for (const node of nodes) await engine.removeNode(node.id);
+      } finally {
+        await cm.endBatch("Cut");
+      }
+      after.changed();
+      return data2;
+    },
+    /** Paste `data` (or what `onPaste` answers, or the last copy). False when there was nothing to paste. */
+    async paste(data2, options) {
+      if (after.isReadonly() || !engine.getDiagram()) return false;
+      const payload = data2 ?? await hooks?.onPaste?.();
+      if (payload) engine.clipboardManager.set(payload);
+      if (!engine.hasClipboardData()) return false;
+      await engine.paste(options);
+      after.changed();
+      return true;
+    }
+  };
+}
+
+// libs/renderer/src/instance/workflow/run-overlay.ts
+var SVG_NS3 = "http://www.w3.org/2000/svg";
+var STYLE_ID = "grafloria-run-overlay-css";
+var RUN_CSS = `
+.grafloria-run-overlay{position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:2}
+.grafloria-run-overlay>svg{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible}
+.grafloria-run-frame{position:absolute;box-sizing:border-box;border-radius:var(--grafloria-run-radius,10px);border:2px solid var(--_grc);box-shadow:0 0 0 3px color-mix(in srgb,var(--_grc) 20%,transparent)}
+.grafloria-run-frame[data-status="idle"]{display:none}
+.grafloria-run-frame[data-status="pending"]{border-style:dashed;box-shadow:none}
+.grafloria-run-frame[data-status="running"]{animation:grafloria-run-pulse 1.2s ease-in-out infinite}
+.grafloria-run-badge{position:absolute;transform:translate(-70%,-50%);white-space:nowrap;background:var(--_grc);color:var(--grafloria-run-badge-fg,#fff);font:600 11px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:0 7px;border-radius:999px;box-shadow:0 1px 3px rgba(16,24,40,.25)}
+.grafloria-run-label{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;background:var(--grafloria-run-label-bg,#fff);color:var(--grafloria-run-label-fg,#1f2430);border:1px solid var(--grafloria-run-label-line,rgba(31,36,48,.16));font:600 11px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:0 8px;border-radius:999px}
+.grafloria-run-flow{fill:none;stroke:var(--grafloria-run-flow,var(--grafloria-run-running,#2563eb));stroke-width:2.5;stroke-linecap:round;stroke-dasharray:6 8;animation:grafloria-run-dash .7s linear infinite}
+[data-status="idle"]{--_grc:var(--grafloria-run-idle,#94a3b8)}
+[data-status="pending"]{--_grc:var(--grafloria-run-pending,#94a3b8)}
+[data-status="running"]{--_grc:var(--grafloria-run-running,#2563eb)}
+[data-status="completed"]{--_grc:var(--grafloria-run-completed,#16a34a)}
+[data-status="error"]{--_grc:var(--grafloria-run-error,#dc2626)}
+[data-status="warning"]{--_grc:var(--grafloria-run-warning,#d97706)}
+@keyframes grafloria-run-pulse{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--_grc) 10%,transparent)}}
+@keyframes grafloria-run-dash{to{stroke-dashoffset:-14}}
+@media (prefers-reduced-motion: reduce){.grafloria-run-frame,.grafloria-run-flow{animation:none}}
+`;
+function midpoint2(points) {
+  if (points.length === 0) return null;
+  if (points.length === 1) return { ...points[0] };
+  let total = 0;
+  for (let i = 1; i < points.length; i++) total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  let left = total / 2;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const seg = Math.hypot(b.x - a.x, b.y - a.y);
+    if (seg >= left && seg > 0) return { x: a.x + (b.x - a.x) * left / seg, y: a.y + (b.y - a.y) * left / seg };
+    left -= seg;
+  }
+  return { ...points[points.length - 1] };
+}
+function installRunOverlay(ctx) {
+  const doc = ctx.doc;
+  if (!doc.getElementById(STYLE_ID)) {
+    const style = doc.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = RUN_CSS;
+    (doc.head ?? doc.documentElement).appendChild(style);
+  }
+  let overlay = {};
+  let root = null;
+  let svg = null;
+  const nodeViews = /* @__PURE__ */ new Map();
+  const linkViews = /* @__PURE__ */ new Map();
+  const ensureRoot = () => {
+    if (!root || root.parentNode !== ctx.htmlLayer) {
+      root = doc.createElement("div");
+      root.className = "grafloria-run-overlay";
+      root.setAttribute("aria-hidden", "true");
+      svg = doc.createElementNS(SVG_NS3, "svg");
+      root.appendChild(svg);
+      ctx.htmlLayer.appendChild(root);
+      nodeViews.clear();
+      linkViews.clear();
+    } else if (root.nextSibling) {
+      ctx.htmlLayer.appendChild(root);
+    }
+    return root;
+  };
+  const findHost = (id) => ctx.container.querySelector(`.grafloria-node-host[data-node-id="${cssEscape2(id)}"]`);
+  const dropNodeView = (id, view) => {
+    view.frame.remove();
+    view.badge?.remove();
+    view.host?.removeAttribute("data-run-status");
+    nodeViews.delete(id);
+  };
+  const paintNodes = (rehost) => {
+    const model = ctx.getModel();
+    const want = overlay.nodes ?? {};
+    for (const [id, view] of nodeViews) if (!want[id] || !model.getNode(id)) dropNodeView(id, view);
+    for (const id in want) {
+      const entry = want[id];
+      const node = model.getNode(id);
+      if (!node) continue;
+      const status = entry.status ?? "idle";
+      let view = nodeViews.get(id);
+      if (!view) {
+        const frame = doc.createElement("div");
+        frame.className = "grafloria-run-frame";
+        frame.setAttribute("data-node-id", id);
+        root.appendChild(frame);
+        view = { frame, badge: null, status: "", frameStyle: "", badgeStyle: "", host: null };
+        nodeViews.set(id, view);
+        rehost = true;
+      }
+      const pos = node.getWorldPosition();
+      const w = node.size?.width ?? 0;
+      const h = node.size?.height ?? 0;
+      const frameStyle = `left:${pos.x - 3}px;top:${pos.y - 3}px;width:${w + 6}px;height:${h + 6}px`;
+      if (view.frameStyle !== frameStyle) view.frame.setAttribute("style", view.frameStyle = frameStyle);
+      const statusChanged = view.status !== status;
+      if (statusChanged) {
+        view.status = status;
+        view.frame.setAttribute("data-status", status);
+      }
+      if (entry.badge) {
+        if (!view.badge) {
+          view.badge = doc.createElement("div");
+          view.badge.className = "grafloria-run-badge";
+          root.appendChild(view.badge);
+          view.badgeStyle = "";
+          view.badge.setAttribute("data-status", status);
+        } else if (statusChanged) view.badge.setAttribute("data-status", status);
+        if (view.badge.textContent !== entry.badge) view.badge.textContent = entry.badge;
+        const badgeStyle = `left:${pos.x + w}px;top:${pos.y}px`;
+        if (view.badgeStyle !== badgeStyle) view.badge.setAttribute("style", view.badgeStyle = badgeStyle);
+      } else if (view.badge) {
+        view.badge.remove();
+        view.badge = null;
+      }
+      if (rehost || view.host && !view.host.isConnected) {
+        const host = findHost(id);
+        if (host !== view.host) {
+          view.host?.removeAttribute("data-run-status");
+          view.host = host;
+          host?.setAttribute("data-run-status", status);
+        }
+      }
+      if (statusChanged) view.host?.setAttribute("data-run-status", status);
+    }
+  };
+  const paintLinks = () => {
+    const model = ctx.getModel();
+    const want = overlay.links ?? {};
+    for (const [id, view] of linkViews) {
+      if (!want[id] || !model.getLink(id)) {
+        view.label?.remove();
+        view.flow?.remove();
+        linkViews.delete(id);
+      }
+    }
+    for (const [id, entry] of Object.entries(want)) {
+      const link = model.getLink(id);
+      if (!link) continue;
+      const points = link.points ?? [];
+      let view = linkViews.get(id);
+      if (!view) {
+        view = { label: null, flow: null };
+        linkViews.set(id, view);
+      }
+      if (entry.animate && points.length >= 2) {
+        if (!view.flow) {
+          view.flow = doc.createElementNS(SVG_NS3, "path");
+          view.flow.setAttribute("class", "grafloria-run-flow");
+          view.flow.setAttribute("data-link-id", id);
+          svg.appendChild(view.flow);
+        }
+        view.flow.setAttribute("d", points.map((p, i) => `${i ? "L" : "M"}${p.x} ${p.y}`).join(" "));
+      } else if (view.flow) {
+        view.flow.remove();
+        view.flow = null;
+      }
+      const mid = entry.label ? midpoint2(points) : null;
+      if (entry.label && mid) {
+        if (!view.label) {
+          view.label = doc.createElement("div");
+          view.label.className = "grafloria-run-label";
+          view.label.setAttribute("data-link-id", id);
+          root.appendChild(view.label);
+        }
+        if (view.label.textContent !== entry.label) view.label.textContent = entry.label;
+        view.label.setAttribute("style", `left:${mid.x}px;top:${mid.y}px`);
+      } else if (view.label) {
+        view.label.remove();
+        view.label = null;
+      }
+    }
+  };
+  const isEmpty = () => Object.keys(overlay.nodes ?? {}).length === 0 && Object.keys(overlay.links ?? {}).length === 0;
+  const paint2 = (rehost = false) => {
+    if (isEmpty()) {
+      for (const [id, view] of nodeViews) dropNodeView(id, view);
+      nodeViews.clear();
+      linkViews.clear();
+      root?.remove();
+      root = null;
+      svg = null;
+      return;
+    }
+    ensureRoot();
+    paintNodes(rehost);
+    paintLinks();
+  };
+  return {
+    set(next) {
+      overlay = {
+        nodes: next.nodes ? { ...next.nodes } : void 0,
+        links: next.links ? { ...next.links } : void 0
+      };
+      paint2();
+    },
+    get: () => ({
+      nodes: overlay.nodes ? { ...overlay.nodes } : void 0,
+      links: overlay.links ? { ...overlay.links } : void 0
+    }),
+    // Nodes move and routes change on painted frames: follow them.
+    sync: () => isEmpty() ? void 0 : paint2(true),
+    dispose: () => {
+      overlay = {};
+      paint2();
+    }
+  };
+}
+function cssEscape2(id) {
+  const escape = globalThis.CSS?.escape;
+  return escape ? escape(id) : id.replace(/["\\]/g, "\\$&");
+}
+
+// libs/renderer/src/instance/model-input.ts
+var PORT_SIDES = ["top", "right", "bottom", "left"];
+function defaultPortId(nodeId, side) {
+  return `${nodeId}__${side}`;
+}
+function nodeSpecId(spec, index) {
+  return spec.id ?? `node-${index}`;
+}
+function edgeSpecId(spec, index) {
+  return spec.id ?? `edge-${index}`;
+}
+function isNodeModel(value) {
+  return value instanceof NodeModel;
+}
+function isLinkModel(value) {
+  return value instanceof LinkModel;
+}
+function buildNode(spec, index) {
+  const id = nodeSpecId(spec, index);
+  const node = new NodeModel({
+    id,
+    type: spec.type ?? "rect",
+    position: { ...spec.position ?? { x: 0, y: 0 } },
+    size: spec.size ? { ...spec.size } : void 0
+  });
+  node.ports.clear();
+  const ports = spec.ports ?? PORT_SIDES.map((side) => ({ side, type: "bi", index: 0 }));
+  for (const [portIndex, port] of ports.entries()) {
+    node.addPort(buildPort(id, port, portIndex));
+  }
+  applyNodeSpec(node, spec);
+  return node;
+}
+function buildPort(nodeId, spec, index) {
+  const gating = spec.gating;
+  const id = spec.id ?? (spec.side ? defaultPortId(nodeId, spec.side) : `${nodeId}__p${index}`);
+  return new PortModel({
+    id,
+    type: spec.type ?? "bi",
+    // Only pass `side` when the author actually declared one — see explicitSide.
+    ...spec.side ? { side: spec.side } : {},
+    index: spec.index ?? 0,
+    group: spec.group,
+    shape: spec.shape,
+    label: spec.label,
+    layout: spec.layout,
+    fromSpot: spec.fromSpot,
+    toSpot: spec.toSpot,
+    spread: spec.spread,
+    style: spec.style,
+    visible: spec.visible,
+    dataType: spec.dataType,
+    maxConnections: gating?.maxConnections ?? spec.maxConnections ?? void 0,
+    isConnectableStart: gating?.isConnectableStart,
+    isConnectableEnd: gating?.isConnectableEnd,
+    fromMaxLinks: gating?.fromMaxLinks,
+    toMaxLinks: gating?.toMaxLinks,
+    allowSelfLink: gating?.allowSelfLink,
+    allowDuplicateLinks: gating?.allowDuplicateLinks,
+    allowedTypes: gating?.allowedTypes
+  });
+}
+function applyNodeSpec(node, spec) {
+  if (spec.position && (node.position.x !== spec.position.x || node.position.y !== spec.position.y)) {
+    node.setPosition(spec.position.x, spec.position.y);
+  }
+  if (spec.size && (node.size.width !== spec.size.width || node.size.height !== spec.size.height)) {
+    node.setSize(spec.size.width, spec.size.height);
+  }
+  if (spec.data) node.data = { ...spec.data };
+  if (spec.style) node.style = { ...node.style, ...spec.style };
+  if (spec.label !== void 0) node.setMetadata("label", spec.label);
+  if (spec.sublabel !== void 0) node.setMetadata("sublabel", spec.sublabel);
+  if (spec.near !== void 0) node.setMetadata("near", spec.near ? { ...spec.near } : void 0);
+  if (spec.shape !== void 0) node.setMetadata("shape", spec.shape);
+  if (spec.custom !== void 0) node.setMetadata("useHTMLLayer", spec.custom);
+  if (spec.metadata) {
+    for (const [key, value] of Object.entries(spec.metadata)) node.setMetadata(key, value);
+  }
+  if (spec.draggable !== void 0) node.behavior.draggable = spec.draggable;
+  if (spec.selectable !== void 0) node.behavior.selectable = spec.selectable;
+  if (spec.selected !== void 0 && spec.selected !== node.isSelected()) {
+    node.setSelected(spec.selected);
+  }
+}
+function resolvePortId(diagram, nodeOrPortId, handle, fallbackSide) {
+  const node = diagram.getNode(nodeOrPortId);
+  if (!node) {
+    return diagram.getPortById(nodeOrPortId) ? nodeOrPortId : void 0;
+  }
+  if (handle) {
+    if (node.getPort(handle)) return handle;
+    const anchored = ensureSideAnchorPort(node, handle);
+    if (anchored) return anchored;
+    if (PORT_SIDES.includes(handle)) {
+      const port = node.getPortBySide(handle);
+      if (port) return port.id;
+    }
+  }
+  return node.getPortBySide(fallbackSide)?.id;
+}
+function buildEdge(diagram, spec, index) {
+  const sourcePortId = resolvePortId(diagram, spec.source, spec.sourceHandle, "right");
+  const targetPortId = resolvePortId(diagram, spec.target, spec.targetHandle, "left");
+  if (!sourcePortId || !targetPortId) return null;
+  const link = new LinkModel(sourcePortId, targetPortId, spec.type ?? "smooth");
+  link.id = edgeSpecId(spec, index);
+  link.sourceNodeId = diagram.getNodeByPortId(sourcePortId)?.id;
+  link.targetNodeId = diagram.getNodeByPortId(targetPortId)?.id;
+  applyEdgeSpec(link, spec);
+  if (!spec.sourceHandle && !spec.targetHandle && spec.points === void 0 && spec.metadata?.["connectionPoint"] === void 0 && spec.metadata?.["sourceAnchor"] === void 0 && spec.metadata?.["targetAnchor"] === void 0) {
+    link.setMetadata("autoConnectionPoint", true);
+  }
+  return link;
+}
+function applyEdgeSpec(link, spec) {
+  if (spec.type && link.pathType !== spec.type) link.setPathType(spec.type);
+  const plainSide = (h) => h === "top" || h === "right" || h === "bottom" || h === "left" ? h : void 0;
+  if (plainSide(spec.sourceHandle)) link.setMetadata("sourceSide", plainSide(spec.sourceHandle));
+  if (plainSide(spec.targetHandle)) link.setMetadata("targetSide", plainSide(spec.targetHandle));
+  if (spec.router !== void 0 && link.router !== spec.router) link.setRouter(spec.router);
+  if (spec.connector !== void 0 && link.connector !== spec.connector) {
+    link.setConnector(spec.connector);
+  }
+  if (spec.style) link.updateStyle(spec.style);
+  if (spec.data) link.data = { ...spec.data };
+  if (spec.label !== void 0) link.setMetadata("label", spec.label);
+  if (spec.labelPlacement !== void 0) link.setMetadata("labelPlacement", spec.labelPlacement === "on" ? void 0 : spec.labelPlacement);
+  const text = spec.label ?? link.getLabel();
+  if (text !== void 0 && text !== "" && (spec.labelPlacement !== void 0 || spec.labelStyle !== void 0)) {
+    const offLine = spec.labelPlacement === "above" || spec.labelPlacement === "below";
+    link.setLabels([{ id: `${link.id}-label`, text: String(text), position: 0.5, offset: { x: 0, y: 0 }, style: { ...offLine ? { background: "none" } : {}, ...spec.labelStyle ?? {} } }]);
+  }
+  if (spec.metadata) {
+    for (const [key, value] of Object.entries(spec.metadata)) link.setMetadata(key, value);
+  }
+  if (spec.points) link.setPoints(spec.points);
+  if (spec.waypoints && spec.waypoints.length > 0) {
+    const first = spec.waypoints[0];
+    const last = spec.waypoints[spec.waypoints.length - 1];
+    link.setPoints([{ ...first }, ...spec.waypoints.map((p) => ({ ...p })), { ...last }]);
+    link.setMetadata("hasManualWaypoints", true);
+  }
+  if (spec.selected !== void 0) {
+    const want = spec.selected ? "selected" : "default";
+    if (link.state !== want) link.setState(want);
+  }
+}
+function applyNodes(diagram, specs) {
+  const seen = /* @__PURE__ */ new Set();
+  let changed = false;
+  specs.forEach((spec, index) => {
+    if (isNodeModel(spec)) {
+      seen.add(spec.id);
+      const current = diagram.getNode(spec.id);
+      if (current && current !== spec) {
+        diagram.replaceNode(spec);
+        changed = true;
+      } else if (!current) {
+        diagram.addNode(spec);
+        changed = true;
+      }
+      return;
+    }
+    const id = nodeSpecId(spec, index);
+    seen.add(id);
+    const existing = diagram.getNode(id);
+    if (existing) {
+      applyNodeSpec(existing, spec);
+      changed = true;
+    } else {
+      diagram.addNode(buildNode(spec, index));
+      changed = true;
+    }
+  });
+  for (const node of diagram.getNodes()) {
+    if (!seen.has(node.id)) {
+      diagram.removeNode(node.id);
+      changed = true;
+    }
+  }
+  return changed;
+}
+function toNodeSpec(node) {
+  const spec = {
+    id: node.id,
+    type: node.type,
+    position: { x: node.position.x, y: node.position.y },
+    size: { width: node.size.width, height: node.size.height }
+  };
+  const data2 = node.data;
+  if (data2 && Object.keys(data2).length > 0) spec.data = { ...data2 };
+  const label = node.getLabel();
+  if (label !== void 0) spec.label = label;
+  const sublabel = node.getMetadata("sublabel");
+  if (sublabel !== void 0) spec.sublabel = sublabel;
+  const near = node.getMetadata("near");
+  if (near) spec.near = { ...near };
+  const shape = node.getMetadata("shape");
+  if (shape !== void 0) spec.shape = shape;
+  if (node.getMetadata("useHTMLLayer")) spec.custom = true;
+  return spec;
+}
+function toEdgeSpec(link) {
+  const spec = {
+    id: link.id,
+    source: link.sourceNodeId ?? link.sourcePortId,
+    target: link.targetNodeId ?? link.targetPortId,
+    sourceHandle: link.sourcePortId,
+    targetHandle: link.targetPortId,
+    type: link.pathType
+  };
+  if (link.router !== void 0) spec.router = link.router;
+  if (link.connector !== void 0) spec.connector = link.connector;
+  const label = link.getLabel();
+  if (label !== void 0) spec.label = label;
+  if (link.data && Object.keys(link.data).length > 0) spec.data = { ...link.data };
+  return spec;
+}
+function applyEdges(diagram, specs) {
+  const seen = /* @__PURE__ */ new Set();
+  let changed = false;
+  specs.forEach((spec, index) => {
+    if (isLinkModel(spec)) {
+      seen.add(spec.id);
+      const current = diagram.getLink(spec.id);
+      if (current && current !== spec) {
+        diagram.removeLink(current.id);
+        diagram.addLink(spec);
+        changed = true;
+      } else if (!current) {
+        diagram.addLink(spec);
+        changed = true;
+      }
+      return;
+    }
+    const id = edgeSpecId(spec, index);
+    seen.add(id);
+    const existing = diagram.getLink(id);
+    if (existing) {
+      applyEdgeSpec(existing, spec);
+      changed = true;
+    } else {
+      const link = buildEdge(diagram, spec, index);
+      if (link) {
+        diagram.addLink(link);
+        changed = true;
+      }
+    }
+  });
+  for (const link of diagram.getLinks()) {
+    if (!seen.has(link.id)) {
+      diagram.removeLink(link.id);
+      changed = true;
+    }
+  }
+  return changed;
+}
+function isGroupModel(value) {
+  return value instanceof GroupModel;
+}
+function applyGroups(diagram, specs) {
+  const seen = /* @__PURE__ */ new Set();
+  let changed = false;
+  for (const spec of specs) {
+    if (isGroupModel(spec)) {
+      seen.add(spec.id);
+      if (!diagram.getGroup(spec.id)) {
+        diagram.addGroup(spec);
+        changed = true;
+      }
+      continue;
+    }
+    seen.add(spec.id);
+    let group = diagram.getGroup(spec.id);
+    if (!group) {
+      group = new GroupModel({ id: spec.id, name: spec.label ?? "" });
+      diagram.addGroup(group);
+    }
+    applyGroupSpec(diagram, group, spec);
+    changed = true;
+  }
+  for (const group of diagram.getGroups()) {
+    if (!seen.has(group.id)) {
+      diagram.removeGroup(group.id);
+      changed = true;
+    }
+  }
+  return changed;
+}
+function applyGroupSpec(diagram, group, spec) {
+  group.name = spec.label ?? "";
+  const styled = spec.style !== void 0 || spec.labelPlacement !== void 0;
+  group.setMetadata("frameStyle", styled ? { ...spec.style ?? {}, labelPlacement: spec.labelPlacement ?? "top-left" } : void 0);
+  if (spec.direction !== void 0) group.setMetadata("direction", spec.direction);
+  const wanted = new Set(spec.children ?? []);
+  for (const id of [...group.members]) if (!wanted.has(id)) group.removeMember(id, diagram);
+  for (const id of wanted) if (!group.members.has(id) && diagram.getNode(id)) group.addMember(id, diagram);
+  if (spec.bounds) {
+    group.position = { x: spec.bounds.x, y: spec.bounds.y };
+    group.size = { width: spec.bounds.width, height: spec.bounds.height, depth: 0 };
+    group.bounds = { ...spec.bounds };
+    if (styled) reserveZoneCaptionRoom(group, spec);
+  } else {
+    group.padding = spec.padding ?? 20;
+    if (styled) reserveZoneCaptionRoom(group, spec);
+    group.fitToContents(diagram, { mode: "exact" });
+  }
+}
+function reserveZoneCaptionRoom(group, spec) {
+  group.headerHeight = 0;
+  if (!spec.label?.trim()) return;
+  const fontSize = typeof spec.style?.fontSize === "number" && Number.isFinite(spec.style.fontSize) ? spec.style.fontSize : 11;
+  const room = Math.ceil(12 + fontSize * 1.3 + 6);
+  const pad = group.getPadding();
+  if ((spec.labelPlacement ?? "top-left").startsWith("bottom")) {
+    if (pad.bottom < room) group.padding = { ...pad, bottom: room };
+  } else {
+    group.headerHeight = Math.max(0, room - pad.top);
+  }
+}
+
+// libs/renderer/src/instance/workflow/insert-on-link.ts
+var insertSeq = 0;
+function pickPort(node, id, kind, side) {
+  if (id) return node.getPort(id) ?? void 0;
+  const ports = [...node.ports.values()];
+  return ports.find((p) => p.type === kind) ?? node.getPortBySide(side) ?? ports[0];
+}
+function downstreamOf(engine, start, stop) {
+  const diagram = engine.getDiagram();
+  const seen = /* @__PURE__ */ new Set([start.id]);
+  const out = [start];
+  for (let i = 0; i < out.length; i++) {
+    const node = out[i];
+    for (const port of node.ports.values()) {
+      for (const link of diagram.getLinksForPort(port.id)) {
+        if (link.sourcePortId !== port.id) continue;
+        const next = diagram.getNodeByPortId(link.targetPortId);
+        if (!next || seen.has(next.id) || stop.has(next.id)) continue;
+        seen.add(next.id);
+        out.push(next);
+      }
+    }
+  }
+  return out;
+}
+async function insertNodeOnLink(engine, linkId, spec, options = {}, prepare) {
+  const diagram = engine.getDiagram();
+  const link = diagram?.getLink(linkId);
+  if (!diagram || !link) return null;
+  const a = diagram.getNodeByPortId(link.sourcePortId);
+  const b = diagram.getNodeByPortId(link.targetPortId);
+  const aPort = diagram.getPortById(link.sourcePortId);
+  const bPort = diagram.getPortById(link.targetPortId);
+  if (!a || !b || !aPort || !bPort) return null;
+  let id = spec.id;
+  if (!id) do
+    id = `node-ins-${++insertSeq}`;
+  while (diagram.getNode(id));
+  if (diagram.getNode(id)) return null;
+  const node = buildNode({ ...spec, id, position: { x: 0, y: 0 } }, 0);
+  prepare?.(node);
+  const from = portWorldPosition(aPort, a);
+  const to = portWorldPosition(bPort, b);
+  const direction = options.direction ?? (Math.abs(to.x - from.x) >= Math.abs(to.y - from.y) ? "LR" : "TB");
+  const lr = direction === "LR";
+  const inPort = pickPort(node, options.inPort, "input", lr ? "left" : "top");
+  const outPort = pickPort(node, options.outPort, "output", lr ? "right" : "bottom");
+  if (!inPort || !outPort) return null;
+  const gap = options.gap ?? 60;
+  const w = node.size?.width ?? 0;
+  const h = node.size?.height ?? 0;
+  const inLocal = getPortPositionForShape(inPort, node);
+  const length = lr ? w : h;
+  const available = lr ? to.x - from.x : to.y - from.y;
+  const needed = gap + length + gap;
+  const shift2 = Math.max(0, needed - available);
+  const along = (lr ? from.x : from.y) + (shift2 > 0 ? gap : (available - length) / 2);
+  const position = lr ? { x: along, y: from.y - inLocal.y } : { x: from.x - inLocal.x, y: along };
+  node.setPosition(position.x, position.y);
+  const upstream = new LinkModel(link.sourcePortId, inPort.id, link.pathType);
+  const downstream = new LinkModel(outPort.id, link.targetPortId, link.pathType);
+  upstream.style = { ...link.style };
+  downstream.style = { ...link.style };
+  delete upstream.style.arrowHead;
+  delete downstream.style.arrowTail;
+  const labels = options.labels ?? "upstream";
+  const carry = (l, i) => ({ ...l, id: `${l.id}~${labels === "upstream" ? "up" : "down"}${i}` });
+  const keeper = labels === "upstream" ? upstream : labels === "downstream" ? downstream : null;
+  if (keeper) {
+    keeper.labels = link.labels.map(carry);
+    for (const key of ["label", "labelPlacement"]) {
+      const value = link.getMetadata(key);
+      if (value !== void 0) keeper.setMetadata(key, value);
+    }
+  }
+  const macro = new MacroCommand("Insert node on link");
+  const moved = [];
+  if (shift2 > 0) {
+    for (const n3 of downstreamOf(engine, b, /* @__PURE__ */ new Set([a.id]))) {
+      const p = n3.position;
+      macro.addStep(new MoveNodeCommand(n3.id, lr ? { x: p.x + shift2, y: p.y, z: p.z } : { x: p.x, y: p.y + shift2, z: p.z }, { ...p }, { mergeable: false }));
+      moved.push(n3.id);
+    }
+  }
+  macro.addStep(new RemoveLinkCommand(link.id));
+  macro.addStep(new AddNodeCommand(node));
+  macro.addStep(new AddLinkCommand(upstream));
+  macro.addStep(new AddLinkCommand(downstream));
+  await engine.commandManager.execute(macro);
+  return { nodeId: node.id, upstreamLinkId: upstream.id, downstreamLinkId: downstream.id, moved };
+}
+
+// libs/renderer/src/instance/workflow/flow-place.ts
+function flowInput(engine, lr) {
+  const diagram = engine.getDiagram();
+  const boxes = [];
+  const linked = /* @__PURE__ */ new Set();
+  const edges = [];
+  const crossSide = (side) => lr ? side === "top" || side === "bottom" : side === "left" || side === "right";
+  const slotLinks = /* @__PURE__ */ new Map();
+  const flowNodes = /* @__PURE__ */ new Set();
+  for (const link of diagram.getLinks()) {
+    const s = diagram.getNodeByPortId(link.sourcePortId);
+    const t = diagram.getNodeByPortId(link.targetPortId);
+    if (!s || !t) continue;
+    const tp = t.getPort(link.targetPortId);
+    if (crossSide(tp?.side)) {
+      if (!slotLinks.has(s.id)) slotLinks.set(s.id, /* @__PURE__ */ new Set());
+      slotLinks.get(s.id).add(t.id);
+      flowNodes.add(t.id);
+    } else {
+      flowNodes.add(s.id);
+      flowNodes.add(t.id);
+    }
+  }
+  const attached = /* @__PURE__ */ new Map();
+  for (const [id, hosts] of slotLinks) {
+    if (flowNodes.has(id) || hosts.size !== 1) continue;
+    const host = [...hosts][0];
+    const a = diagram.getNode(id).position;
+    const h = diagram.getNode(host).position;
+    attached.set(id, { host, dx: a.x - h.x, dy: a.y - h.y });
+  }
+  for (const link of diagram.getLinks()) {
+    const s = diagram.getNodeByPortId(link.sourcePortId);
+    const t = diagram.getNodeByPortId(link.targetPortId);
+    if (!s || !t || attached.has(s.id)) continue;
+    linked.add(s.id);
+    linked.add(t.id);
+    const port = s.getPort(link.sourcePortId);
+    const local = port ? getPortPositionForShape(port, s) : { x: 0, y: 0 };
+    edges.push({ source: s.id, target: t.id, order: lr ? local.y : local.x });
+  }
+  for (const node of diagram.getNodes()) {
+    if (attached.has(node.id)) continue;
+    const p = node.getWorldPosition();
+    boxes.push({ id: node.id, width: node.size?.width ?? 0, height: node.size?.height ?? 0, x: p.x, y: p.y });
+  }
+  return { boxes, edges, linked, attached };
+}
+function carryAttachments(targets, attached) {
+  for (const [id, a] of attached) {
+    const host = targets.get(a.host);
+    if (host) targets.set(id, { x: host.x + a.dx, y: host.y + a.dy });
+  }
+  return targets;
+}
+var reducedMotion = () => {
+  try {
+    return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+};
+async function commit(engine, targets, starts, name, options, schedule) {
+  const diagram = engine.getDiagram();
+  const moving = [...targets].filter(([id, to]) => {
+    const node = diagram.getNode(id);
+    if (!node) return false;
+    const from = node.position;
+    return Math.abs(from.x - to.x) > 0.01 || Math.abs(from.y - to.y) > 0.01 || starts.has(id);
+  });
+  if (moving.length === 0) return [];
+  const origin = new Map(moving.map(([id]) => [id, { ...diagram.getNode(id).position }]));
+  const animate = options.animate !== false && !reducedMotion() && typeof requestAnimationFrame === "function";
+  if (animate) {
+    const duration = options.duration ?? 280;
+    const begin = new Map(moving.map(([id]) => [id, starts.get(id) ?? origin.get(id)]));
+    await new Promise((resolve2) => {
+      const t0 = performance.now();
+      const frame = (now3) => {
+        const t = Math.min(1, (now3 - t0) / duration);
+        const e = 1 - Math.pow(1 - t, 3);
+        for (const [id, to] of moving) {
+          const from = begin.get(id);
+          diagram.getNode(id)?.setPosition(from.x + (to.x - from.x) * e, from.y + (to.y - from.y) * e);
+        }
+        schedule();
+        if (t < 1) requestAnimationFrame(frame);
+        else resolve2();
+      };
+      requestAnimationFrame(frame);
+    });
+    for (const [id] of moving) {
+      const o = origin.get(id);
+      diagram.getNode(id)?.setPosition(o.x, o.y, o.z);
+    }
+  }
+  const macro = new MacroCommand(name);
+  for (const [id, to] of moving) {
+    const o = origin.get(id);
+    macro.addStep(new MoveNodeCommand(id, { x: to.x, y: to.y, z: o.z }, o, { mergeable: false }));
+  }
+  await engine.commandManager.execute(macro);
+  schedule();
+  return moving.map(([id]) => id);
+}
+async function tidyFlow(engine, options, schedule) {
+  if (!engine.getDiagram()) return [];
+  const lr = (options.direction ?? "LR") === "LR";
+  const { boxes, edges, linked, attached } = flowInput(engine, lr);
+  const flow = boxes.filter((b) => linked.has(b.id));
+  const obstacles = boxes.filter((b) => !linked.has(b.id)).map((b) => ({ x: b.x, y: b.y, width: b.width, height: b.height }));
+  for (const [id, a] of attached) {
+    const host = flow.find((b) => b.id === a.host);
+    const node = engine.getDiagram().getNode(id);
+    if (!host) continue;
+    if (lr) host.height = Math.max(host.height, a.dy + (node.size?.height ?? 0));
+    else host.width = Math.max(host.width, a.dx + (node.size?.width ?? 0));
+  }
+  const targets = carryAttachments(flowLayout(flow, edges, { direction: options.direction, rankGap: options.rankGap, nodeGap: options.nodeGap, obstacles }), attached);
+  return commit(engine, targets, /* @__PURE__ */ new Map(), "Tidy flow", options, schedule);
+}
+async function placeFlow(engine, ids, options, schedule) {
+  const diagram = engine.getDiagram();
+  if (!diagram) return [];
+  const lr = (options.direction ?? "LR") === "LR";
+  const { boxes, edges, linked, attached } = flowInput(engine, lr);
+  const fresh = new Set(ids);
+  const obstacles = boxes.filter((b) => !linked.has(b.id) && !fresh.has(b.id)).map((b) => ({ x: b.x, y: b.y, width: b.width, height: b.height }));
+  for (const id of attached.keys()) {
+    const node = diagram.getNode(id);
+    const p = node.getWorldPosition();
+    obstacles.push({ x: p.x, y: p.y, width: node.size?.width ?? 0, height: node.size?.height ?? 0 });
+  }
+  const targets = placeFlowNodes(ids, boxes.filter((b) => linked.has(b.id) || fresh.has(b.id)), edges, {
+    direction: options.direction,
+    rankGap: options.rankGap,
+    nodeGap: options.nodeGap,
+    after: options.after,
+    obstacles
+  });
+  carryAttachments(targets, attached);
+  const starts = /* @__PURE__ */ new Map();
+  for (const id of targets.keys()) {
+    const parentId = options.after ?? edges.find((e) => e.target === id && !fresh.has(e.source))?.source;
+    const parent = parentId ? diagram.getNode(parentId) : void 0;
+    if (parent) starts.set(id, { ...parent.position });
+  }
+  return commit(engine, targets, starts, "Place nodes", options, schedule);
+}
+
+// libs/renderer/src/instance/workflow/node-templates.ts
+var defOf = (t) => typeof t === "function" ? { render: t } : t;
+function createNodeTemplates(config, getZoom) {
+  const defs = new Map(Object.entries(config.templates).map(([type, t]) => [type, defOf(t)]));
+  const compactBelowOf = (def) => def.compactBelow ?? config.compactBelow;
+  const isCompact = (def) => {
+    const below = compactBelowOf(def);
+    return below !== void 0 && getZoom() < below;
+  };
+  const output = (node) => {
+    const def = defs.get(node.type);
+    if (!def) return void 0;
+    return def.render({ ...node.data ?? {} }, { node, zoom: getZoom(), compact: isCompact(def) });
+  };
+  const resolve2 = (node) => {
+    const out = output(node);
+    if (!out) return void 0;
+    const ports = out.ports?.map((spec, i) => {
+      const port = buildPort(node.id, spec, i);
+      const prev = node.getPort(port.id);
+      if (prev?.layout && !spec.layout && prev.anchored) {
+        port.layout = prev.layout;
+        port.anchored = true;
+      }
+      return port;
+    });
+    return { ports, size: out.size };
+  };
+  return {
+    has: (type) => defs.has(type),
+    defOf: (type) => defs.get(type),
+    output,
+    resolve: resolve2,
+    isCompact,
+    /** Make a node of a templated type an HTML card with the template's ports and size (no undo entry). */
+    prepare(model, node) {
+      if (!defs.has(node.type)) return;
+      model.runSystemWrite(() => {
+        if (!node.getMetadata("useHTMLLayer")) node.setMetadata("useHTMLLayer", true);
+        const answer = resolve2(node);
+        if (answer) applyNodeTemplate(model, node, answer);
+      });
+    }
+  };
+}
+var PX = 0.5;
+function installNodeTemplates(ctx, templates, config) {
+  const mounted = /* @__PURE__ */ new Map();
+  const anchor = config.anchorPorts !== false;
+  const paint2 = (m) => {
+    const def = templates.defOf(m.node.type);
+    if (!def) return;
+    const compact2 = templates.isCompact(def);
+    const data2 = { ...m.node.data ?? {} };
+    const tctx = { node: m.node, zoom: ctx.viewport.getZoom(), compact: compact2 };
+    const content = compact2 && def.compact ? def.compact(data2, tctx) : def.render(data2, tctx).html;
+    m.host.replaceChildren();
+    if (typeof content === "string") m.host.innerHTML = content;
+    else if (content) m.host.appendChild(content);
+    m.host.setAttribute("data-lod", compact2 ? "compact" : "full");
+    m.host.setAttribute("data-node-type", m.node.type);
+    m.dataKey = JSON.stringify(m.node.data ?? {});
+    m.compact = compact2;
+    if (!compact2) measure2(m);
+  };
+  const measure2 = (m) => {
+    if (!anchor || !m.host.isConnected) return;
+    const marks = m.host.querySelectorAll("[data-port]");
+    if (marks.length === 0) return;
+    const hostRect = m.host.getBoundingClientRect();
+    const w = m.node.size?.width ?? 0;
+    const h = m.node.size?.height ?? 0;
+    const scale = w > 0 && hostRect.width > 0 ? hostRect.width / w : ctx.viewport.getZoom() || 1;
+    let moved = false;
+    ctx.getModel().runSystemWrite(() => {
+      for (const el2 of Array.from(marks)) {
+        const port = m.node.getPort(el2.getAttribute("data-port") ?? "");
+        if (!port) continue;
+        const r = el2.getBoundingClientRect();
+        const cy = (r.top + r.height / 2 - hostRect.top) / scale;
+        const cx = (r.left + r.width / 2 - hostRect.left) / scale;
+        const side = port.side ?? "right";
+        const x = side === "left" ? 0 : side === "right" ? w : cx;
+        const y = side === "top" ? 0 : side === "bottom" ? h : cy;
+        const args = port.layout?.strategy === "absolute" ? port.layout.args : void 0;
+        if (args?.units === "px" && Math.abs((args.x ?? 0) - x) <= PX && Math.abs((args.y ?? 0) - y) <= PX) continue;
+        port.layout = { strategy: "absolute", args: { units: "px", x, y } };
+        port.anchored = true;
+        moved = true;
+      }
+    });
+    if (moved) ctx.invalidate();
+  };
+  const fonts = ctx.doc.fonts;
+  const onFonts = () => {
+    for (const m of mounted.values()) if (!m.compact) measure2(m);
+  };
+  fonts?.addEventListener?.("loadingdone", onFonts);
+  return {
+    mount(node, host) {
+      const m = { node, host, dataKey: "", compact: false };
+      mounted.set(node.id, m);
+      paint2(m);
+      if (anchor && typeof ResizeObserver !== "undefined") {
+        m.resize = new ResizeObserver(() => m.compact ? void 0 : measure2(m));
+        m.resize.observe(host);
+      }
+    },
+    unmount(nodeId) {
+      mounted.get(nodeId)?.resize?.disconnect();
+      mounted.delete(nodeId);
+    },
+    sync() {
+      const model = ctx.getModel();
+      for (const [id, m] of mounted) {
+        const node = model.getNode(id);
+        if (!node) continue;
+        m.node = node;
+        const def = templates.defOf(node.type);
+        if (!def) continue;
+        if (JSON.stringify(node.data ?? {}) !== m.dataKey || templates.isCompact(def) !== m.compact) paint2(m);
+      }
+    },
+    camera() {
+      for (const m of mounted.values()) {
+        const def = templates.defOf(m.node.type);
+        if (def && templates.isCompact(def) !== m.compact) paint2(m);
+      }
+    },
+    dispose() {
+      fonts?.removeEventListener?.("loadingdone", onFonts);
+      for (const m of mounted.values()) m.resize?.disconnect();
+      mounted.clear();
+    }
+  };
+}
+
+// libs/renderer/src/instance/workflow/affordances.ts
+var STYLE_ID2 = "grafloria-affordances-css";
+var AFF_CSS = `
+.grafloria-affordances{position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:3}
+.grafloria-port-add,.grafloria-link-add,.grafloria-link-delete{position:absolute;box-sizing:border-box;width:22px;height:22px;margin:-11px 0 0 -11px;padding:0;border-radius:6px;display:grid;place-items:center;pointer-events:auto;cursor:pointer;font:600 15px/1 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--grafloria-add-bg,#fff);color:var(--grafloria-add-fg,#4b5563);border:1.5px solid var(--grafloria-add-line,#9aa3b2);transition:transform .12s,background .12s,color .12s}
+.grafloria-port-add:hover,.grafloria-link-add:hover{background:var(--grafloria-add-fg,#4b5563);color:var(--grafloria-add-bg,#fff);transform:scale(1.08)}
+.grafloria-port-add::before{content:"";position:absolute;border-color:var(--grafloria-add-line,#9aa3b2);border-style:solid;border-width:0}
+.grafloria-port-add[data-side="right"]::before{right:100%;top:50%;width:14px;border-top-width:1.5px}
+.grafloria-port-add[data-side="left"]::before{left:100%;top:50%;width:14px;border-top-width:1.5px}
+.grafloria-port-add[data-side="bottom"]::before{bottom:100%;left:50%;height:14px;border-left-width:1.5px}
+.grafloria-port-add[data-side="top"]::before{top:100%;left:50%;height:14px;border-left-width:1.5px}
+.grafloria-link-delete{font-size:13px;background:var(--grafloria-delete-bg,#fff);color:var(--grafloria-delete-fg,#b42318);border-color:var(--grafloria-delete-fg,#b42318)}
+.grafloria-link-delete:hover{background:var(--grafloria-delete-fg,#b42318);color:var(--grafloria-delete-bg,#fff)}
+@media (prefers-reduced-motion: reduce){.grafloria-port-add,.grafloria-link-add,.grafloria-link-delete{transition:none}}
+`;
+var OFFSET = 26;
+function midpoint3(points) {
+  if (points.length < 2) return null;
+  let total = 0;
+  for (let i = 1; i < points.length; i++) total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  let left = total / 2;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const seg = Math.hypot(b.x - a.x, b.y - a.y);
+    if (seg >= left && seg > 0) return { x: a.x + (b.x - a.x) * left / seg, y: a.y + (b.y - a.y) * left / seg };
+    left -= seg;
+  }
+  return { ...points[points.length - 1] };
+}
+function installAffordances(ctx, options) {
+  const doc = ctx.doc;
+  if (!doc.getElementById(STYLE_ID2)) {
+    const style = doc.createElement("style");
+    style.id = STYLE_ID2;
+    style.textContent = AFF_CSS;
+    (doc.head ?? doc.documentElement).appendChild(style);
+  }
+  const root = doc.createElement("div");
+  root.className = "grafloria-affordances";
+  ctx.htmlLayer.appendChild(root);
+  const portButtons = /* @__PURE__ */ new Map();
+  let linkAdd = null;
+  let linkDelete = null;
+  let shownLink = null;
+  let overButtons = false;
+  const own = (el2) => {
+    for (const type of ["pointerdown", "mousedown", "dblclick", "touchstart"]) el2.addEventListener(type, (e) => e.stopPropagation());
+  };
+  const button = (cls, text, label) => {
+    const b = doc.createElement("button");
+    b.type = "button";
+    b.className = cls;
+    b.textContent = text;
+    b.setAttribute("aria-label", label);
+    own(b);
+    return b;
+  };
+  const point = (e) => ({ x: e.clientX, y: e.clientY });
+  const syncPorts = () => {
+    const want = /* @__PURE__ */ new Set();
+    if (options.portAdd && !ctx.isReadonly()) {
+      const model = ctx.getModel();
+      const pick2 = typeof options.portAdd === "function" ? options.portAdd : null;
+      for (const node of model.getNodes()) {
+        for (const port of node.ports.values()) {
+          if (port.type !== "output") continue;
+          if (pick2 ? !pick2(port, node) : false) continue;
+          if (model.getLinksForPort(port.id).length > 0) continue;
+          want.add(port.id);
+          let b = portButtons.get(port.id);
+          if (!b) {
+            b = button("grafloria-port-add", "+", "Add a step");
+            const nodeId = node.id;
+            const portId = port.id;
+            b.addEventListener("click", (e) => ctx.emit("port:add-request", { nodeId, portId, clientPoint: point(e) }));
+            root.appendChild(b);
+            portButtons.set(port.id, b);
+          }
+          const at = portWorldPosition(port, node);
+          const side = port.side ?? "right";
+          const x = at.x + (side === "right" ? OFFSET : side === "left" ? -OFFSET : 0);
+          const y = at.y + (side === "bottom" ? OFFSET : side === "top" ? -OFFSET : 0);
+          b.setAttribute("data-side", side);
+          b.setAttribute("data-port-id", port.id);
+          b.style.left = `${x}px`;
+          b.style.top = `${y}px`;
+        }
+      }
+    }
+    for (const [id, b] of portButtons) {
+      if (want.has(id)) continue;
+      b.remove();
+      portButtons.delete(id);
+    }
+  };
+  const hideLink = () => {
+    linkAdd?.remove();
+    linkDelete?.remove();
+    linkAdd = linkDelete = null;
+    shownLink = null;
+  };
+  const syncLink = () => {
+    if (!options.linkAdd && !options.linkDelete || ctx.isReadonly()) return hideLink();
+    const model = ctx.getModel();
+    const hovered = model.getLinks().find((l) => l.state === "hovered");
+    const id = hovered?.id ?? (overButtons ? shownLink : null);
+    const link = id ? model.getLink(id) : void 0;
+    const mid = link ? midpoint3(link.points ?? []) : null;
+    if (!link || !mid) return hideLink();
+    shownLink = link.id;
+    if (options.linkAdd) {
+      if (!linkAdd) {
+        linkAdd = button("grafloria-link-add", "+", "Insert a step here");
+        linkAdd.addEventListener("click", (e) => shownLink && ctx.emit("link:add-request", { linkId: shownLink, clientPoint: point(e) }));
+        hold(linkAdd);
+        root.appendChild(linkAdd);
+      }
+      linkAdd.setAttribute("data-link-id", link.id);
+      linkAdd.style.left = `${mid.x - (options.linkDelete ? 14 : 0)}px`;
+      linkAdd.style.top = `${mid.y}px`;
+    }
+    if (options.linkDelete) {
+      if (!linkDelete) {
+        linkDelete = button("grafloria-link-delete", "\xD7", "Delete this connection");
+        linkDelete.addEventListener("click", (e) => shownLink && ctx.emit("link:delete-request", { linkId: shownLink, clientPoint: point(e) }));
+        hold(linkDelete);
+        root.appendChild(linkDelete);
+      }
+      linkDelete.setAttribute("data-link-id", link.id);
+      linkDelete.style.left = `${mid.x + (options.linkAdd ? 14 : 0)}px`;
+      linkDelete.style.top = `${mid.y}px`;
+    }
+  };
+  function hold(el2) {
+    el2.addEventListener("pointerenter", () => overButtons = true);
+    el2.addEventListener("pointerleave", () => {
+      overButtons = false;
+      ctx.schedule();
+    });
+  }
+  return {
+    sync() {
+      if (root.parentNode !== ctx.htmlLayer || root.nextSibling) ctx.htmlLayer.appendChild(root);
+      syncPorts();
+      syncLink();
+    },
+    dispose() {
+      root.remove();
+      portButtons.clear();
+    }
+  };
+}
+
 // libs/renderer/src/instance/render-scheduler.ts
 var RenderScheduler = class {
   constructor(options) {
@@ -190041,7 +191508,8 @@ var DomEventBinder = class {
       enableZoom: options.enableZoom ?? true,
       zoomSensitivity: options.zoomSensitivity ?? 0.1,
       dragThreshold: options.dragThreshold ?? 4,
-      readonly: options.readonly ?? false
+      readonly: options.readonly ?? false,
+      keyboard: options.keyboard ?? true
     };
     this.selectionTools = new SelectionToolsController({
       showHalo: false,
@@ -190125,6 +191593,18 @@ var DomEventBinder = class {
    */
   isReadonly() {
     return this.options.readonly || this.host.getEngine()?.getDiagram()?.isReadonly() === true;
+  }
+  /**
+   * Flip the `readonly` option live (the instance's `setReadonly`). A view-level
+   * switch: it refuses gestures and editing keys, but leaves the document
+   * writable to code — the model's own lock is untouched.
+   */
+  setReadonly(readonly) {
+    this.options.readonly = readonly;
+  }
+  /** The answer every gesture consults: the option, or the document's lock. */
+  readonlyNow() {
+    return this.isReadonly();
   }
   /** Bind DOM listeners. No-op on the server and no-op if already attached. */
   attach() {
@@ -190788,7 +192268,13 @@ var DomEventBinder = class {
   /** Double-click: node → in-place rename; link label → rename; link body → waypoint. */
   onDoubleClick(event) {
     const engine = this.engine();
-    if (!engine || this.isReadonly()) return;
+    if (!engine) return;
+    if (this.isReadonly()) {
+      const { x, y } = this.toWorld(event);
+      const node = engine.getDiagram()?.getNodeAtPosition(x, y);
+      if (node) this.host.emit("node:doubleclick", { node, world: { x, y } });
+      return;
+    }
     const { x: worldX, y: worldY } = this.toWorld(event);
     const nodeUnder = engine.getDiagram()?.getNodeAtPosition(worldX, worldY);
     const hit = nodeUnder ? null : this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
@@ -190827,6 +192313,12 @@ var DomEventBinder = class {
     const diagram = engine?.getDiagram();
     if (!engine || !diagram) return;
     if (isTextEntryTarget(event.target)) return;
+    const keyboard = this.options.keyboard;
+    if (keyboard === false) return;
+    if (typeof keyboard === "object" && keyboard.beforeKey) {
+      const action = keyActionOf(event);
+      if (action && keyboard.beforeKey(event, action) === false) return;
+    }
     if (event.code === "Space" && !this.spaceKeyPressed) {
       this.spaceKeyPressed = true;
       this.setCursor("grab");
@@ -190937,11 +192429,23 @@ var DomEventBinder = class {
       return;
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
+      if (this.host.clipboardKey?.("copy")) return;
       void engine.copy();
       return;
     }
+    if (typeof keyboard === "object" && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "x") {
+      if (this.isReadonly() || diagram.getSelectedNodes().length === 0) return;
+      event.preventDefault();
+      this.host.clipboardKey?.("cut");
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") {
-      if (this.isReadonly() || !engine.hasClipboardData()) return;
+      if (this.isReadonly()) return;
+      if (this.host.clipboardKey?.("paste")) {
+        event.preventDefault();
+        return;
+      }
+      if (!engine.hasClipboardData()) return;
       event.preventDefault();
       void engine.paste().then(() => {
         this.host.requestRender();
@@ -191535,11 +193039,11 @@ var DomEventBinder = class {
     let settled = false;
     const cleanup = () => {
       input.removeEventListener("keydown", onKeyDown);
-      input.removeEventListener("blur", commit);
+      input.removeEventListener("blur", commit2);
       input.remove();
       if (this.activeTextInput === input) this.activeTextInput = void 0;
     };
-    const commit = () => {
+    const commit2 = () => {
       if (settled) return;
       settled = true;
       const command = editor.commit(engine, input.value);
@@ -191560,14 +193064,14 @@ var DomEventBinder = class {
       e.stopPropagation();
       if (e.key === "Enter") {
         e.preventDefault();
-        commit();
+        commit2();
       } else if (e.key === "Escape") {
         e.preventDefault();
         cancel();
       }
     };
     input.addEventListener("keydown", onKeyDown);
-    input.addEventListener("blur", commit);
+    input.addEventListener("blur", commit2);
     (this.container.ownerDocument ?? document).body.appendChild(input);
     this.activeTextInput = input;
     input.focus();
@@ -191680,327 +193184,24 @@ function isTextEntryTarget(target) {
   const tag = el2.tagName.toUpperCase();
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el2.isContentEditable === true;
 }
-
-// libs/renderer/src/instance/model-input.ts
-var PORT_SIDES = ["top", "right", "bottom", "left"];
-function defaultPortId(nodeId, side) {
-  return `${nodeId}__${side}`;
-}
-function nodeSpecId(spec, index) {
-  return spec.id ?? `node-${index}`;
-}
-function edgeSpecId(spec, index) {
-  return spec.id ?? `edge-${index}`;
-}
-function isNodeModel(value) {
-  return value instanceof NodeModel;
-}
-function isLinkModel(value) {
-  return value instanceof LinkModel;
-}
-function buildNode(spec, index) {
-  const id = nodeSpecId(spec, index);
-  const node = new NodeModel({
-    id,
-    type: spec.type ?? "rect",
-    position: { ...spec.position ?? { x: 0, y: 0 } },
-    size: spec.size ? { ...spec.size } : void 0
-  });
-  node.ports.clear();
-  const ports = spec.ports ?? PORT_SIDES.map((side) => ({ side, type: "bi", index: 0 }));
-  for (const [portIndex, port] of ports.entries()) {
-    node.addPort(buildPort(id, port, portIndex));
+function keyActionOf(event) {
+  const mod = event.ctrlKey || event.metaKey;
+  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  if (key === "Escape") return "escape";
+  if (key === "Delete" || key === "Backspace") return "delete";
+  if (mod) {
+    if (key === "a") return "selectAll";
+    if (key === "z") return event.shiftKey ? "redo" : "undo";
+    if (key === "y") return "redo";
+    if (key === "c") return "copy";
+    if (key === "x") return "cut";
+    if (key === "v") return "paste";
+    if (key === "d") return "duplicate";
+    return null;
   }
-  applyNodeSpec(node, spec);
-  return node;
-}
-function buildPort(nodeId, spec, index) {
-  const gating = spec.gating;
-  const id = spec.id ?? (spec.side ? defaultPortId(nodeId, spec.side) : `${nodeId}__p${index}`);
-  return new PortModel({
-    id,
-    type: spec.type ?? "bi",
-    // Only pass `side` when the author actually declared one — see explicitSide.
-    ...spec.side ? { side: spec.side } : {},
-    index: spec.index ?? 0,
-    group: spec.group,
-    shape: spec.shape,
-    label: spec.label,
-    layout: spec.layout,
-    fromSpot: spec.fromSpot,
-    toSpot: spec.toSpot,
-    spread: spec.spread,
-    style: spec.style,
-    visible: spec.visible,
-    dataType: spec.dataType,
-    maxConnections: gating?.maxConnections ?? spec.maxConnections ?? void 0,
-    isConnectableStart: gating?.isConnectableStart,
-    isConnectableEnd: gating?.isConnectableEnd,
-    fromMaxLinks: gating?.fromMaxLinks,
-    toMaxLinks: gating?.toMaxLinks,
-    allowSelfLink: gating?.allowSelfLink,
-    allowDuplicateLinks: gating?.allowDuplicateLinks,
-    allowedTypes: gating?.allowedTypes
-  });
-}
-function applyNodeSpec(node, spec) {
-  if (spec.position && (node.position.x !== spec.position.x || node.position.y !== spec.position.y)) {
-    node.setPosition(spec.position.x, spec.position.y);
-  }
-  if (spec.size && (node.size.width !== spec.size.width || node.size.height !== spec.size.height)) {
-    node.setSize(spec.size.width, spec.size.height);
-  }
-  if (spec.data) node.data = { ...spec.data };
-  if (spec.style) node.style = { ...node.style, ...spec.style };
-  if (spec.label !== void 0) node.setMetadata("label", spec.label);
-  if (spec.sublabel !== void 0) node.setMetadata("sublabel", spec.sublabel);
-  if (spec.near !== void 0) node.setMetadata("near", spec.near ? { ...spec.near } : void 0);
-  if (spec.shape !== void 0) node.setMetadata("shape", spec.shape);
-  if (spec.custom !== void 0) node.setMetadata("useHTMLLayer", spec.custom);
-  if (spec.metadata) {
-    for (const [key, value] of Object.entries(spec.metadata)) node.setMetadata(key, value);
-  }
-  if (spec.draggable !== void 0) node.behavior.draggable = spec.draggable;
-  if (spec.selectable !== void 0) node.behavior.selectable = spec.selectable;
-  if (spec.selected !== void 0 && spec.selected !== node.isSelected()) {
-    node.setSelected(spec.selected);
-  }
-}
-function resolvePortId(diagram, nodeOrPortId, handle, fallbackSide) {
-  const node = diagram.getNode(nodeOrPortId);
-  if (!node) {
-    return diagram.getPortById(nodeOrPortId) ? nodeOrPortId : void 0;
-  }
-  if (handle) {
-    if (node.getPort(handle)) return handle;
-    const anchored = ensureSideAnchorPort(node, handle);
-    if (anchored) return anchored;
-    if (PORT_SIDES.includes(handle)) {
-      const port = node.getPortBySide(handle);
-      if (port) return port.id;
-    }
-  }
-  return node.getPortBySide(fallbackSide)?.id;
-}
-function buildEdge(diagram, spec, index) {
-  const sourcePortId = resolvePortId(diagram, spec.source, spec.sourceHandle, "right");
-  const targetPortId = resolvePortId(diagram, spec.target, spec.targetHandle, "left");
-  if (!sourcePortId || !targetPortId) return null;
-  const link = new LinkModel(sourcePortId, targetPortId, spec.type ?? "smooth");
-  link.id = edgeSpecId(spec, index);
-  link.sourceNodeId = diagram.getNodeByPortId(sourcePortId)?.id;
-  link.targetNodeId = diagram.getNodeByPortId(targetPortId)?.id;
-  applyEdgeSpec(link, spec);
-  if (!spec.sourceHandle && !spec.targetHandle && spec.points === void 0 && spec.metadata?.["connectionPoint"] === void 0 && spec.metadata?.["sourceAnchor"] === void 0 && spec.metadata?.["targetAnchor"] === void 0) {
-    link.setMetadata("autoConnectionPoint", true);
-  }
-  return link;
-}
-function applyEdgeSpec(link, spec) {
-  if (spec.type && link.pathType !== spec.type) link.setPathType(spec.type);
-  const plainSide = (h) => h === "top" || h === "right" || h === "bottom" || h === "left" ? h : void 0;
-  if (plainSide(spec.sourceHandle)) link.setMetadata("sourceSide", plainSide(spec.sourceHandle));
-  if (plainSide(spec.targetHandle)) link.setMetadata("targetSide", plainSide(spec.targetHandle));
-  if (spec.router !== void 0 && link.router !== spec.router) link.setRouter(spec.router);
-  if (spec.connector !== void 0 && link.connector !== spec.connector) {
-    link.setConnector(spec.connector);
-  }
-  if (spec.style) link.updateStyle(spec.style);
-  if (spec.data) link.data = { ...spec.data };
-  if (spec.label !== void 0) link.setMetadata("label", spec.label);
-  if (spec.labelPlacement !== void 0) link.setMetadata("labelPlacement", spec.labelPlacement === "on" ? void 0 : spec.labelPlacement);
-  const text = spec.label ?? link.getLabel();
-  if (text !== void 0 && text !== "" && (spec.labelPlacement !== void 0 || spec.labelStyle !== void 0)) {
-    const offLine = spec.labelPlacement === "above" || spec.labelPlacement === "below";
-    link.setLabels([{ id: `${link.id}-label`, text: String(text), position: 0.5, offset: { x: 0, y: 0 }, style: { ...offLine ? { background: "none" } : {}, ...spec.labelStyle ?? {} } }]);
-  }
-  if (spec.metadata) {
-    for (const [key, value] of Object.entries(spec.metadata)) link.setMetadata(key, value);
-  }
-  if (spec.points) link.setPoints(spec.points);
-  if (spec.waypoints && spec.waypoints.length > 0) {
-    const first = spec.waypoints[0];
-    const last = spec.waypoints[spec.waypoints.length - 1];
-    link.setPoints([{ ...first }, ...spec.waypoints.map((p) => ({ ...p })), { ...last }]);
-    link.setMetadata("hasManualWaypoints", true);
-  }
-  if (spec.selected !== void 0) {
-    const want = spec.selected ? "selected" : "default";
-    if (link.state !== want) link.setState(want);
-  }
-}
-function applyNodes(diagram, specs) {
-  const seen = /* @__PURE__ */ new Set();
-  let changed = false;
-  specs.forEach((spec, index) => {
-    if (isNodeModel(spec)) {
-      seen.add(spec.id);
-      const current = diagram.getNode(spec.id);
-      if (current && current !== spec) {
-        diagram.replaceNode(spec);
-        changed = true;
-      } else if (!current) {
-        diagram.addNode(spec);
-        changed = true;
-      }
-      return;
-    }
-    const id = nodeSpecId(spec, index);
-    seen.add(id);
-    const existing = diagram.getNode(id);
-    if (existing) {
-      applyNodeSpec(existing, spec);
-      changed = true;
-    } else {
-      diagram.addNode(buildNode(spec, index));
-      changed = true;
-    }
-  });
-  for (const node of diagram.getNodes()) {
-    if (!seen.has(node.id)) {
-      diagram.removeNode(node.id);
-      changed = true;
-    }
-  }
-  return changed;
-}
-function toNodeSpec(node) {
-  const spec = {
-    id: node.id,
-    type: node.type,
-    position: { x: node.position.x, y: node.position.y },
-    size: { width: node.size.width, height: node.size.height }
-  };
-  const data2 = node.data;
-  if (data2 && Object.keys(data2).length > 0) spec.data = { ...data2 };
-  const label = node.getLabel();
-  if (label !== void 0) spec.label = label;
-  const sublabel = node.getMetadata("sublabel");
-  if (sublabel !== void 0) spec.sublabel = sublabel;
-  const near = node.getMetadata("near");
-  if (near) spec.near = { ...near };
-  const shape = node.getMetadata("shape");
-  if (shape !== void 0) spec.shape = shape;
-  if (node.getMetadata("useHTMLLayer")) spec.custom = true;
-  return spec;
-}
-function toEdgeSpec(link) {
-  const spec = {
-    id: link.id,
-    source: link.sourceNodeId ?? link.sourcePortId,
-    target: link.targetNodeId ?? link.targetPortId,
-    sourceHandle: link.sourcePortId,
-    targetHandle: link.targetPortId,
-    type: link.pathType
-  };
-  if (link.router !== void 0) spec.router = link.router;
-  if (link.connector !== void 0) spec.connector = link.connector;
-  const label = link.getLabel();
-  if (label !== void 0) spec.label = label;
-  if (link.data && Object.keys(link.data).length > 0) spec.data = { ...link.data };
-  return spec;
-}
-function applyEdges(diagram, specs) {
-  const seen = /* @__PURE__ */ new Set();
-  let changed = false;
-  specs.forEach((spec, index) => {
-    if (isLinkModel(spec)) {
-      seen.add(spec.id);
-      const current = diagram.getLink(spec.id);
-      if (current && current !== spec) {
-        diagram.removeLink(current.id);
-        diagram.addLink(spec);
-        changed = true;
-      } else if (!current) {
-        diagram.addLink(spec);
-        changed = true;
-      }
-      return;
-    }
-    const id = edgeSpecId(spec, index);
-    seen.add(id);
-    const existing = diagram.getLink(id);
-    if (existing) {
-      applyEdgeSpec(existing, spec);
-      changed = true;
-    } else {
-      const link = buildEdge(diagram, spec, index);
-      if (link) {
-        diagram.addLink(link);
-        changed = true;
-      }
-    }
-  });
-  for (const link of diagram.getLinks()) {
-    if (!seen.has(link.id)) {
-      diagram.removeLink(link.id);
-      changed = true;
-    }
-  }
-  return changed;
-}
-function isGroupModel(value) {
-  return value instanceof GroupModel;
-}
-function applyGroups(diagram, specs) {
-  const seen = /* @__PURE__ */ new Set();
-  let changed = false;
-  for (const spec of specs) {
-    if (isGroupModel(spec)) {
-      seen.add(spec.id);
-      if (!diagram.getGroup(spec.id)) {
-        diagram.addGroup(spec);
-        changed = true;
-      }
-      continue;
-    }
-    seen.add(spec.id);
-    let group = diagram.getGroup(spec.id);
-    if (!group) {
-      group = new GroupModel({ id: spec.id, name: spec.label ?? "" });
-      diagram.addGroup(group);
-    }
-    applyGroupSpec(diagram, group, spec);
-    changed = true;
-  }
-  for (const group of diagram.getGroups()) {
-    if (!seen.has(group.id)) {
-      diagram.removeGroup(group.id);
-      changed = true;
-    }
-  }
-  return changed;
-}
-function applyGroupSpec(diagram, group, spec) {
-  group.name = spec.label ?? "";
-  const styled = spec.style !== void 0 || spec.labelPlacement !== void 0;
-  group.setMetadata("frameStyle", styled ? { ...spec.style ?? {}, labelPlacement: spec.labelPlacement ?? "top-left" } : void 0);
-  if (spec.direction !== void 0) group.setMetadata("direction", spec.direction);
-  const wanted = new Set(spec.children ?? []);
-  for (const id of [...group.members]) if (!wanted.has(id)) group.removeMember(id, diagram);
-  for (const id of wanted) if (!group.members.has(id) && diagram.getNode(id)) group.addMember(id, diagram);
-  if (spec.bounds) {
-    group.position = { x: spec.bounds.x, y: spec.bounds.y };
-    group.size = { width: spec.bounds.width, height: spec.bounds.height, depth: 0 };
-    group.bounds = { ...spec.bounds };
-    if (styled) reserveZoneCaptionRoom(group, spec);
-  } else {
-    group.padding = spec.padding ?? 20;
-    if (styled) reserveZoneCaptionRoom(group, spec);
-    group.fitToContents(diagram, { mode: "exact" });
-  }
-}
-function reserveZoneCaptionRoom(group, spec) {
-  group.headerHeight = 0;
-  if (!spec.label?.trim()) return;
-  const fontSize = typeof spec.style?.fontSize === "number" && Number.isFinite(spec.style.fontSize) ? spec.style.fontSize : 11;
-  const room = Math.ceil(12 + fontSize * 1.3 + 6);
-  const pad = group.getPadding();
-  if ((spec.labelPlacement ?? "top-left").startsWith("bottom")) {
-    if (pad.bottom < room) group.padding = { ...pad, bottom: room };
-  } else {
-    group.headerHeight = Math.max(0, room - pad.top);
-  }
+  if (key.startsWith("Arrow") && !event.altKey) return "nudge";
+  if (key === "F2") return "rename";
+  return null;
 }
 
 // libs/renderer/src/lazy/host-culling.ts
@@ -192093,10 +193294,22 @@ function createDiagram(container, options = {}) {
     options.interaction ? { interaction: options.interaction } : {}
   );
   const model = engine.getDiagram() ?? engine.createDiagram("grafloria");
+  let zoomNow = () => 1;
+  const nodeTemplates = options.nodeTemplates ? createNodeTemplates(
+    { templates: options.nodeTemplates, compactBelow: options.compactBelow, anchorPorts: options.anchorPorts },
+    () => zoomNow()
+  ) : null;
+  let stopTemplates = null;
+  if (nodeTemplates) {
+    model.setNodeTemplateResolver(nodeTemplates.resolve);
+    for (const node of model.getNodes()) nodeTemplates.prepare(model, node);
+    stopTemplates = model.on("node:added", (node) => nodeTemplates.prepare(model, node));
+  }
   if (options.nodes) applyNodes(model, options.nodes);
   if (options.groups) applyGroups(model, options.groups);
   if (options.edges) applyEdges(model, options.edges);
   if (options.layout === "architecture") layoutArchitecture(model, { measureText: canvasTextMeasure() });
+  zoomNow = () => viewport.getZoom();
   const rect0 = container.getBoundingClientRect();
   const viewport = new ViewportController({
     viewport: {
@@ -192261,6 +193474,13 @@ function createDiagram(container, options = {}) {
       interaction,
       getRect,
       requestRender: () => scheduler.schedule(),
+      // The clipboard keys go through the instance's copy/cut/paste only when the
+      // host asked for its hooks or owns the keyboard; otherwise the binder's own
+      // engine copy/paste runs, exactly as before.
+      clipboardKey: options.clipboard || typeof options.keyboard === "object" ? (action) => {
+        void clipboardApi[action]();
+        return true;
+      } : void 0,
       // The binder's selection:change is the same announcement as the model's:
       // route it through the gate (its payload is re-read at emit time).
       emit: (event, payload) => event === "selection:change" ? announceSelection() : emit(event, payload),
@@ -192279,6 +193499,55 @@ function createDiagram(container, options = {}) {
     },
     options
   );
+  const clipboardApi = createClipboardApi(engine, options.clipboard, {
+    changed: () => scheduler.schedule(),
+    isReadonly: () => binder.readonlyNow()
+  });
+  const featureCtx = {
+    doc,
+    container,
+    htmlLayer: layers.html,
+    engine,
+    getModel: () => engine.getDiagram() ?? model,
+    viewport,
+    schedule: () => scheduler.schedule(),
+    invalidate: () => {
+      renderer.invalidateFrame();
+      scheduler.schedule();
+    },
+    emit: (event, payload) => emit(event, payload),
+    isReadonly: () => binder.readonlyNow()
+  };
+  const applyReadonly = (readonly) => {
+    binder.setReadonly(readonly);
+    renderer.setViewReadonly(readonly);
+    if (readonly) container.setAttribute("data-readonly", "");
+    else container.removeAttribute("data-readonly");
+  };
+  if (options.readonly) applyReadonly(true);
+  const features = [];
+  if (options.connectionReasons) features.push(installConnectReason(featureCtx));
+  const templateCards = nodeTemplates ? installNodeTemplates(featureCtx, nodeTemplates, { templates: options.nodeTemplates, compactBelow: options.compactBelow, anchorPorts: options.anchorPorts }) : null;
+  if (templateCards) features.push(templateCards);
+  if (options.affordances) features.push(installAffordances(featureCtx, options.affordances));
+  const removeCustomHost = (id, host) => {
+    templateCards?.unmount(id);
+    options.removeCustomNode?.(id, host);
+  };
+  let runOverlay = null;
+  const overlayFeature = () => {
+    if (!runOverlay) {
+      runOverlay = installRunOverlay(featureCtx);
+      features.push(runOverlay);
+    }
+    return runOverlay;
+  };
+  const syncFeatures = () => {
+    for (const f of features) f.sync?.();
+  };
+  const cameraFeatures = () => {
+    for (const f of features) f.camera?.();
+  };
   const nodeHosts = /* @__PURE__ */ new Map();
   const culler = options.cullCustomNodes ? new HtmlHostCuller(
     options.cullCustomNodes === true ? {} : options.cullCustomNodes,
@@ -192330,7 +193599,10 @@ function createDiagram(container, options = {}) {
       paintFailures.delete(node.id);
       paintThrew.delete(node.id);
       try {
-        trackPaint(node.id, options.renderCustomNode?.(node, host));
+        trackPaint(
+          node.id,
+          templateCards && nodeTemplates?.has(node.type) ? templateCards.mount(node, host) : options.renderCustomNode?.(node, host)
+        );
       } catch (error) {
         paintFailures.set(node.id, error instanceof Error ? error.message : String(error));
         paintThrew.add(node.id);
@@ -192355,7 +193627,7 @@ function createDiagram(container, options = {}) {
         if (!culler.admits(node.id, nodeBounds(node), !!existing?.parentNode)) {
           if (existing) {
             if (culler.getMode() === "destroy") {
-              options.removeCustomNode?.(node.id, existing);
+              removeCustomHost(node.id, existing);
               existing.remove();
               nodeHosts.delete(node.id);
             } else if (existing.parentNode) {
@@ -192369,7 +193641,7 @@ function createDiagram(container, options = {}) {
     }
     for (const [id, host] of [...nodeHosts]) {
       if (wanted.has(id)) continue;
-      options.removeCustomNode?.(id, host);
+      removeCustomHost(id, host);
       host.remove();
       nodeHosts.delete(id);
     }
@@ -192391,7 +193663,7 @@ function createDiagram(container, options = {}) {
       } else if (culler.getMode() === "destroy") {
         undo.push(() => {
           if (nodeHosts.get(node.id) !== host) return;
-          options.removeCustomNode?.(node.id, host);
+          removeCustomHost(node.id, host);
           host.remove();
           nodeHosts.delete(node.id);
         });
@@ -192486,6 +193758,7 @@ function createDiagram(container, options = {}) {
     if (!svg) return false;
     svg.setAttribute("viewBox", `${box.x} ${box.y} ${box.width} ${box.height}`);
     layers.html.setAttribute("style", htmlLayerStyle(viewport.getHtmlLayerTransform()));
+    cameraFeatures();
     lastViewportKey = viewportKey();
     return true;
   };
@@ -192501,6 +193774,7 @@ function createDiagram(container, options = {}) {
     syncCustomNodes();
     syncLineOverlay();
     syncHighlighterOverlay();
+    syncFeatures();
     lastViewportKey = viewportKey();
     lastFrameHadPreview = isConnectionPreviewActive();
     lastFrameEpoch = getMutationEpoch();
@@ -192727,6 +194001,24 @@ function createDiagram(container, options = {}) {
       scheduler.schedule();
     },
     getDraggingNodeIds: () => binder.getDraggingNodeIds(),
+    setReadonly(readonly) {
+      applyReadonly(readonly);
+      scheduler.schedule();
+    },
+    isReadonly: () => binder.readonlyNow(),
+    copy: () => clipboardApi.copy(),
+    cut: () => clipboardApi.cut(),
+    paste: (data2, pasteOptions) => clipboardApi.paste(data2, pasteOptions),
+    setOverlay: (overlay) => overlayFeature().set(overlay),
+    clearOverlay: () => runOverlay?.set({}),
+    getOverlay: () => runOverlay?.get() ?? {},
+    tidy: (tidyOptions = {}) => tidyFlow(engine, tidyOptions, () => scheduler.schedule()),
+    placeNodes: (ids, placeOptions = {}) => placeFlow(engine, ids, placeOptions, () => scheduler.schedule()),
+    async insertNodeOnLink(linkId, node, insertOptions) {
+      const result = await insertNodeOnLink(engine, linkId, node, insertOptions, nodeTemplates ? (n3) => nodeTemplates.prepare(model, n3) : void 0);
+      if (result) scheduler.schedule();
+      return result;
+    },
     beginLabelEdit: (target, opts) => binder.beginLabelEdit(target, opts),
     registry: renderer.getRegistry(),
     dispose() {
@@ -192734,6 +194026,9 @@ function createDiagram(container, options = {}) {
       disposed = true;
       commentOverlay?.dispose();
       commentOverlay = null;
+      for (const f of features.splice(0)) f.dispose();
+      stopTemplates?.();
+      if (nodeTemplates && model.getNodeTemplateResolver() === nodeTemplates.resolve) model.setNodeTemplateResolver(null);
       binder.detach();
       scheduler.dispose();
       resizeObserver?.disconnect();
@@ -192741,7 +194036,7 @@ function createDiagram(container, options = {}) {
       unsubs.length = 0;
       listeners3.clear();
       for (const [id, host] of [...nodeHosts]) {
-        options.removeCustomNode?.(id, host);
+        removeCustomHost(id, host);
         host.remove();
       }
       nodeHosts.clear();
@@ -194102,7 +195397,7 @@ function nodeRect(node) {
   const p = typeof node.getWorldPosition === "function" ? node.getWorldPosition() : node.position;
   return { x: p.x, y: p.y, width: node.size.width, height: node.size.height };
 }
-var overlaps2 = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+var overlaps3 = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 var contains = (outer, inner) => inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.width <= outer.x + outer.width && inner.y + inner.height <= outer.y + outer.height;
 function sameValue(a, b) {
   if (Object.is(a, b)) return true;
@@ -194207,7 +195502,7 @@ function createDiagramApi(instance) {
       return getNodes().filter((node) => {
         if (visibleOnly && node.state?.visible === false) return false;
         const r = nodeRect(node);
-        return fully ? contains(target, r) : overlaps2(target, r);
+        return fully ? contains(target, r) : overlaps3(target, r);
       });
     },
     getNodeAt: (point) => model().getNodeAtPosition(point.x, point.y) ?? null,
@@ -194387,7 +195682,7 @@ function nodeComponentOptions(registry5, getInstance) {
 
 // libs/renderer/src/ext/components/background.ts
 var BACKGROUND_LAYER_CLASS = "grafloria-background-layer";
-var SVG_NS3 = "http://www.w3.org/2000/svg";
+var SVG_NS4 = "http://www.w3.org/2000/svg";
 var backgroundSeq = 0;
 function createBackground(root, viewport, options = {}) {
   const doc = root.ownerDocument;
@@ -194415,31 +195710,31 @@ function createBackground(root, viewport, options = {}) {
     );
     root.insertBefore(layer, root.firstChild);
   }
-  const svg = doc.createElementNS(SVG_NS3, "svg");
+  const svg = doc.createElementNS(SVG_NS4, "svg");
   svg.setAttribute("width", "100%");
   svg.setAttribute("height", "100%");
   svg.setAttribute("class", "grafloria-background");
   svg.style.display = "block";
-  const defs = doc.createElementNS(SVG_NS3, "defs");
-  const pattern = doc.createElementNS(SVG_NS3, "pattern");
+  const defs = doc.createElementNS(SVG_NS4, "defs");
+  const pattern = doc.createElementNS(SVG_NS4, "pattern");
   pattern.setAttribute("id", patternId);
   pattern.setAttribute("patternUnits", "userSpaceOnUse");
-  const majorPattern = doc.createElementNS(SVG_NS3, "pattern");
+  const majorPattern = doc.createElementNS(SVG_NS4, "pattern");
   majorPattern.setAttribute("id", majorId);
   majorPattern.setAttribute("patternUnits", "userSpaceOnUse");
   defs.appendChild(pattern);
   defs.appendChild(majorPattern);
   svg.appendChild(defs);
-  const bgRect = doc.createElementNS(SVG_NS3, "rect");
+  const bgRect = doc.createElementNS(SVG_NS4, "rect");
   bgRect.setAttribute("width", "100%");
   bgRect.setAttribute("height", "100%");
   svg.appendChild(bgRect);
-  const gridRect = doc.createElementNS(SVG_NS3, "rect");
+  const gridRect = doc.createElementNS(SVG_NS4, "rect");
   gridRect.setAttribute("width", "100%");
   gridRect.setAttribute("height", "100%");
   gridRect.setAttribute("fill", `url(#${patternId})`);
   svg.appendChild(gridRect);
-  const majorRect = doc.createElementNS(SVG_NS3, "rect");
+  const majorRect = doc.createElementNS(SVG_NS4, "rect");
   majorRect.setAttribute("width", "100%");
   majorRect.setAttribute("height", "100%");
   majorRect.setAttribute("fill", `url(#${majorId})`);
@@ -194453,7 +195748,7 @@ function createBackground(root, viewport, options = {}) {
     while (target.firstChild) target.removeChild(target.firstChild);
     if (variant === "none" || tile <= 0) return;
     if (variant === "dots") {
-      const dot = doc.createElementNS(SVG_NS3, "circle");
+      const dot = doc.createElementNS(SVG_NS4, "circle");
       dot.setAttribute("cx", String(thickness));
       dot.setAttribute("cy", String(thickness));
       dot.setAttribute("r", String(thickness));
@@ -194463,7 +195758,7 @@ function createBackground(root, viewport, options = {}) {
     }
     if (variant === "cross") {
       const arm = Math.max(2, tile * 0.12);
-      const path2 = doc.createElementNS(SVG_NS3, "path");
+      const path2 = doc.createElementNS(SVG_NS4, "path");
       path2.setAttribute("d", `M ${-arm} 0 H ${arm} M 0 ${-arm} V ${arm}`);
       path2.setAttribute("stroke", color);
       path2.setAttribute("stroke-width", String(thickness));
@@ -194471,7 +195766,7 @@ function createBackground(root, viewport, options = {}) {
       target.appendChild(path2);
       return;
     }
-    const path = doc.createElementNS(SVG_NS3, "path");
+    const path = doc.createElementNS(SVG_NS4, "path");
     path.setAttribute("d", `M ${tile} 0 V ${tile} M 0 ${tile} H ${tile}`);
     path.setAttribute("stroke", color);
     path.setAttribute("stroke-width", String(thickness));
@@ -194533,7 +195828,7 @@ function createBackground(root, viewport, options = {}) {
 }
 
 // libs/renderer/src/ext/components/minimap.ts
-var SVG_NS4 = "http://www.w3.org/2000/svg";
+var SVG_NS5 = "http://www.w3.org/2000/svg";
 function contentBoundsOf(model, padding) {
   const nodes = model.getNodes().filter((n3) => n3.state?.visible !== false);
   if (nodes.length === 0) return null;
@@ -194590,18 +195885,18 @@ function createMiniMap(root, viewport, getModel, options = {}) {
     portal.element.style.cursor = opts.interactive ? "pointer" : "default";
   };
   applyPanelStyle();
-  const svg = doc.createElementNS(SVG_NS4, "svg");
+  const svg = doc.createElementNS(SVG_NS5, "svg");
   svg.setAttribute("width", "100%");
   svg.setAttribute("height", "100%");
   svg.setAttribute("class", "grafloria-minimap-svg");
   svg.setAttribute("role", "img");
   svg.setAttribute("aria-label", opts.ariaLabel);
   svg.style.display = "block";
-  const linkLayer = doc.createElementNS(SVG_NS4, "g");
+  const linkLayer = doc.createElementNS(SVG_NS5, "g");
   linkLayer.setAttribute("class", "grafloria-minimap-links");
-  const nodeLayer = doc.createElementNS(SVG_NS4, "g");
+  const nodeLayer = doc.createElementNS(SVG_NS5, "g");
   nodeLayer.setAttribute("class", "grafloria-minimap-nodes");
-  const cameraRect = doc.createElementNS(SVG_NS4, "rect");
+  const cameraRect = doc.createElementNS(SVG_NS5, "rect");
   cameraRect.setAttribute("class", "grafloria-minimap-viewport");
   cameraRect.setAttribute("pointer-events", "none");
   svg.appendChild(linkLayer);
@@ -194634,7 +195929,7 @@ function createMiniMap(root, viewport, getModel, options = {}) {
       for (const link of model.getLinks()) {
         const pts = link.points;
         if (!pts || pts.length < 2) continue;
-        const line = doc.createElementNS(SVG_NS4, "polyline");
+        const line = doc.createElementNS(SVG_NS5, "polyline");
         line.setAttribute("points", pts.map((p) => `${p.x},${p.y}`).join(" "));
         line.setAttribute("fill", "none");
         line.setAttribute("stroke", opts.linkColor);
@@ -194645,7 +195940,7 @@ function createMiniMap(root, viewport, getModel, options = {}) {
     for (const node of model.getNodes()) {
       if (node.state?.visible === false) continue;
       const p = typeof node.getWorldPosition === "function" ? node.getWorldPosition() : node.position;
-      const rect = doc.createElementNS(SVG_NS4, "rect");
+      const rect = doc.createElementNS(SVG_NS5, "rect");
       rect.setAttribute("x", String(p.x));
       rect.setAttribute("y", String(p.y));
       rect.setAttribute("width", String(Math.max(1, node.size.width)));
@@ -196787,7 +198082,7 @@ var GrafloriaFlowElement = class extends HTMLElementBase {
       return;
     }
     const template = this.querySelector(
-      `template[data-node-type="${cssEscape2(node.type)}"]`
+      `template[data-node-type="${cssEscape3(node.type)}"]`
     );
     if (template) {
       renderFromTemplate(template, node, element);
@@ -196837,7 +198132,7 @@ function parseJsonAttribute(raw, fallback) {
     return fallback;
   }
 }
-function cssEscape2(value) {
+function cssEscape3(value) {
   return value.replace(/["\\]/g, "\\$&");
 }
 function defineGrafloriaFlow(tagName = "grafloria-flow") {
@@ -197409,7 +198704,7 @@ function neighbourCell(el2, dir) {
   return a.kind === "type" ? { ...a, kind: "name" } : { ...a, rowIndex: a.rowIndex - 1, kind: "type" };
 }
 function reopenAt(api, addr) {
-  const card2 = api.container.querySelector(`[data-node-id="${cssEscape3(addr.nodeId)}"]`);
+  const card2 = api.container.querySelector(`[data-node-id="${cssEscape4(addr.nodeId)}"]`);
   const row = card2?.querySelectorAll(".axk-row, .axk-member")[addr.rowIndex];
   const cell = row?.querySelector(addr.kind === "type" ? ".axk-ty" : ".axk-col");
   if (cell) beginRename(api, cell);
@@ -197483,7 +198778,7 @@ function openInlineEditor(api, targetEl, value, onCommit, suggestions) {
     listEl?.remove();
     input.remove();
   };
-  const commit = () => {
+  const commit2 = () => {
     if (done) return;
     done = true;
     const next = input.value.trim();
@@ -197500,14 +198795,14 @@ function openInlineEditor(api, targetEl, value, onCommit, suggestions) {
       const next = neighbourCell(targetEl, e.shiftKey ? -1 : 1);
       if (next) {
         e.preventDefault();
-        commit();
+        commit2();
         setTimeout(() => reopenAt(api, next), 0);
         return;
       }
     }
     if (e.key === "Enter") {
       e.preventDefault();
-      commit();
+      commit2();
     } else if (e.key === "Escape") {
       e.preventDefault();
       cancel();
@@ -197516,7 +198811,7 @@ function openInlineEditor(api, targetEl, value, onCommit, suggestions) {
   });
   self2.cancel = cancel;
   activeEditor = self2;
-  input.addEventListener("blur", commit);
+  input.addEventListener("blur", commit2);
   for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick"]) {
     input.addEventListener(type, (e) => e.stopPropagation());
   }
@@ -197603,7 +198898,7 @@ function handleAdd(api, target) {
     if (!ent) return true;
     const columns = addColumnAt(ent.columns, { name: "new_column", type: "" });
     void updateEntity(api, loc.nodeId, { columns }).then(() => {
-      const newRow = api.container.querySelectorAll(`[data-node-id="${cssEscape3(loc.nodeId)}"] .axk-row`)[columns.length - 1];
+      const newRow = api.container.querySelectorAll(`[data-node-id="${cssEscape4(loc.nodeId)}"] .axk-row`)[columns.length - 1];
       const col = newRow?.querySelector(".axk-col");
       if (col) beginRename(api, col);
     });
@@ -197642,7 +198937,7 @@ function handleDelete(api, target) {
   }
   return true;
 }
-function cssEscape3(id) {
+function cssEscape4(id) {
   return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
 }
 function bindCardEditing(api) {
@@ -200134,7 +201429,7 @@ function createTearOut(ctx, deps) {
       api.renderNow();
       options.onGesture?.({ type: kind, kind: "move", nodeId: pageId, changed });
     };
-    const finish = (commit) => {
+    const finish = (commit2) => {
       detach();
       chip2.remove();
       hideOverlay();
@@ -200142,9 +201437,9 @@ function createTearOut(ctx, deps) {
       setTearing(null);
       if (disposed()) return;
       const world = toWorld(last.x, last.y);
-      const z = commit ? zoneAt(last.x, last.y, world) : { kind: "home" };
+      const z = commit2 ? zoneAt(last.x, last.y, world) : { kind: "home" };
       if (z.kind !== "root") undoInsertRows();
-      if (!commit || z.kind === "home" || z.kind === "off" || z.kind === "root" && !ensureLeg(world, null) || z.kind === "board" && (!ensureLeg(world, z.peer ?? null) || landingHidden())) {
+      if (!commit2 || z.kind === "home" || z.kind === "off" || z.kind === "root" && !ensureLeg(world, null) || z.kind === "board" && (!ensureLeg(world, z.peer ?? null) || landingHidden())) {
         undoSplitPreview();
         leg?.abort();
         done(false, "cancel");
@@ -202546,7 +203841,7 @@ function bindDashboardGrid(api, group, options = {}) {
       options.onGesture?.({ type: "drop-in", kind: "palette", nodeId: g.id, changed: true });
       api.renderNow();
     };
-    const finish = (commit) => {
+    const finish = (commit2) => {
       detach();
       if (gesture !== g) return;
       if (!g.started) {
@@ -202554,7 +203849,7 @@ function bindDashboardGrid(api, group, options = {}) {
         chip2?.remove();
         return;
       }
-      if (commit && g.leg) {
+      if (commit2 && g.leg) {
         const fin = g.leg.adopted.finalize();
         const boardId = g.leg.adopted.groupId;
         g.leg = null;
@@ -202562,7 +203857,7 @@ function bindDashboardGrid(api, group, options = {}) {
           dropOn(boardId, fin.cell, [...tileCommands(deltasSince(g.startCells, g.startGeom, g.id)), ...fin.commands]);
           return;
         }
-      } else if (commit && !g.removedFromBoard && engine.getItem(g.id)) {
+      } else if (commit2 && !g.removedFromBoard && engine.getItem(g.id)) {
         const item = engine.getItem(g.id);
         endBeside(false);
         dropOn(group.id, { x: item.x, y: item.y, w: item.w, h: item.h }, tileCommands(deltasSince(g.startCells, g.startGeom, g.id)));
@@ -204411,7 +205706,7 @@ function bindDashboardSplit(api, group, options = {}) {
       if (p && typeof p.then === "function") void p.then(paint2, () => void 0);
       fire({ type: kind, kind: "move", nodeId: pageId, changed });
     };
-    const finish = (commit) => {
+    const finish = (commit2) => {
       detach();
       chip2.remove();
       hideJoin();
@@ -204422,7 +205717,7 @@ function bindDashboardSplit(api, group, options = {}) {
         tearing = false;
         return;
       }
-      const z = commit ? zoneAt(last.x, last.y, toWorld(last.x, last.y)) : { kind: "home" };
+      const z = commit2 ? zoneAt(last.x, last.y, toWorld(last.x, last.y)) : { kind: "home" };
       if (z.kind === "home" || z.kind === "off") {
         done(false, "cancel");
         return;
@@ -204501,14 +205796,14 @@ function bindDashboardSplit(api, group, options = {}) {
       window.removeEventListener("pointercancel", onCancel, true);
       window.removeEventListener("keydown", onKey2, true);
     };
-    const finish = (commit) => {
+    const finish = (commit2) => {
       detach();
       chip2.remove();
       showInsertion(null);
       tearing = false;
       doc.body.style.userSelect = bodyUserSelect;
       if (disposed || !started) return;
-      const t = commit ? target : null;
+      const t = commit2 ? target : null;
       if (!t) {
         api.renderNow();
         fire({ type: "cancel", kind: "move", nodeId: id, changed: false });
@@ -205638,7 +206933,7 @@ function assignCells(widgets, columns) {
     w.rows = rows;
   }
 }
-var cssEscape4 = (v) => typeof CSS !== "undefined" && CSS.escape ? CSS.escape(v) : v.replace(/"/g, '\\"');
+var cssEscape5 = (v) => typeof CSS !== "undefined" && CSS.escape ? CSS.escape(v) : v.replace(/"/g, '\\"');
 function attachTabsRuntime(ctx, model, container, handle) {
   const pagesOf = (id) => {
     const cg = ctx.boardGroups.get(id) ?? model.getGroup(id);
@@ -205722,7 +207017,7 @@ function attachTabsRuntime(ctx, model, container, handle) {
       const pg = model.getGroup(p.id);
       const parked = p.id !== active2;
       for (const m of pg?.members ?? []) {
-        const host = container?.querySelector(`.grafloria-node-host[data-node-id="${cssEscape4(m)}"]`);
+        const host = container?.querySelector(`.grafloria-node-host[data-node-id="${cssEscape5(m)}"]`);
         if (!host) continue;
         if (parked) {
           host.setAttribute("aria-hidden", "true");
@@ -208371,7 +209666,7 @@ function getStencilBuilder(masterId) {
 }
 
 // libs/element/src/lib/stencil-kit/palette.ts
-var SVG_NS5 = "http://www.w3.org/2000/svg";
+var SVG_NS6 = "http://www.w3.org/2000/svg";
 var DND_TYPE = "application/x-grafloria-master";
 function applyNotationTheme(node, stencilId, scheme, api) {
   if (!stencilId || !scheme) return;
@@ -208422,7 +209717,7 @@ function applyNotationPanel(node, masterId, master) {
   node.setLabel?.("");
 }
 function thumbnail(master, box = 34) {
-  const svg = document.createElementNS(SVG_NS5, "svg");
+  const svg = document.createElementNS(SVG_NS6, "svg");
   svg.setAttribute("width", String(box));
   svg.setAttribute("height", String(box));
   svg.setAttribute("viewBox", `0 0 ${box} ${box}`);
@@ -208438,10 +209733,10 @@ function thumbnail(master, box = 34) {
   let el2;
   try {
     const spec = getShape(paint2.type).outline(w, h);
-    el2 = document.createElementNS(SVG_NS5, spec.el);
+    el2 = document.createElementNS(SVG_NS6, spec.el);
     for (const [k, v] of Object.entries(spec.geom)) el2.setAttribute(k, String(v));
   } catch {
-    el2 = document.createElementNS(SVG_NS5, "rect");
+    el2 = document.createElementNS(SVG_NS6, "rect");
     el2.setAttribute("width", String(w));
     el2.setAttribute("height", String(h));
     el2.setAttribute("rx", "3");
@@ -208449,7 +209744,7 @@ function thumbnail(master, box = 34) {
   el2.setAttribute("fill", paint2.fill ?? "#eef1fb");
   el2.setAttribute("stroke", paint2.stroke ?? "#3B52D9");
   el2.setAttribute("stroke-width", String(Math.min(Number(paint2.strokeWidth) || 1.5, 2)));
-  const g = document.createElementNS(SVG_NS5, "g");
+  const g = document.createElementNS(SVG_NS6, "g");
   g.setAttribute("transform", `translate(${(box - w) / 2} ${(box - h) / 2})`);
   g.appendChild(el2);
   svg.appendChild(g);
@@ -208794,7 +210089,7 @@ function bindShapeDataPanel(api, host, options = {}) {
       if (prop.description) row.title = prop.description;
       row.appendChild(label);
       const current = node.getData?.(key) ?? prop.default ?? "";
-      const commit = (value) => {
+      const commit2 = (value) => {
         void engine.commandManager.execute(new SetNodeDataCommand(node.id, { [key]: value }));
         options.onEdit?.({ nodeId: node.id, key, value });
       };
@@ -208809,14 +210104,14 @@ function bindShapeDataPanel(api, host, options = {}) {
           if (String(opt) === String(current)) o.selected = true;
           sel.appendChild(o);
         }
-        sel.addEventListener("change", () => commit(sel.value));
+        sel.addEventListener("change", () => commit2(sel.value));
         field = sel;
       } else if (prop.type === "boolean") {
         const box = document.createElement("input");
         box.type = "checkbox";
         box.className = "gf-sd-check";
         box.checked = current === true || current === "true";
-        box.addEventListener("change", () => commit(box.checked));
+        box.addEventListener("change", () => commit2(box.checked));
         field = box;
       } else {
         const input = document.createElement("input");
@@ -208831,9 +210126,9 @@ function bindShapeDataPanel(api, host, options = {}) {
               input.value = String(node.getData?.(key) ?? "");
               return;
             }
-            commit(n3);
+            commit2(n3);
           } else {
-            commit(input.value);
+            commit2(input.value);
           }
         });
         input.addEventListener("keydown", (e) => {
@@ -209127,7 +210422,7 @@ function bindShapeDataPanel(api, host, options = {}) {
     row.append(l, v);
     return row;
   };
-  const textField = (label, value, commit) => {
+  const textField = (label, value, commit2) => {
     const row = document.createElement("label");
     row.className = "gf-sd-row";
     const l = document.createElement("span");
@@ -209136,7 +210431,7 @@ function bindShapeDataPanel(api, host, options = {}) {
     const i = document.createElement("input");
     i.className = "gf-sd-input";
     i.value = value;
-    i.addEventListener("change", () => commit(i.value));
+    i.addEventListener("change", () => commit2(i.value));
     i.addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (e.key === "Enter") i.blur();
@@ -209153,19 +210448,19 @@ function bindShapeDataPanel(api, host, options = {}) {
     row.append(l, field);
     return row;
   };
-  const ctlTextField = (label, value, commit) => {
+  const ctlTextField = (label, value, commit2) => {
     const i = document.createElement("input");
     i.type = "text";
     i.className = "gf-sd-ctl";
     i.value = value;
-    i.addEventListener("change", () => commit(i.value));
+    i.addEventListener("change", () => commit2(i.value));
     i.addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (e.key === "Enter") i.blur();
     });
     return fieldRow(label, i);
   };
-  const numberField = (label, current, commit) => {
+  const numberField = (label, current, commit2) => {
     const i = document.createElement("input");
     i.type = "number";
     i.className = "gf-sd-ctl";
@@ -209180,7 +210475,7 @@ function bindShapeDataPanel(api, host, options = {}) {
         seed();
         return;
       }
-      commit(n3);
+      commit2(n3);
     });
     i.addEventListener("keydown", (e) => {
       e.stopPropagation();
@@ -209188,23 +210483,23 @@ function bindShapeDataPanel(api, host, options = {}) {
     });
     return fieldRow(label, i);
   };
-  const colorField = (label, hex, commit) => {
+  const colorField = (label, hex, commit2) => {
     const i = document.createElement("input");
     i.type = "color";
     i.className = "gf-sd-color";
     i.value = hex;
-    i.addEventListener("change", () => commit(i.value));
+    i.addEventListener("change", () => commit2(i.value));
     return fieldRow(label, i);
   };
-  const checkField = (label, checked, commit) => {
+  const checkField = (label, checked, commit2) => {
     const i = document.createElement("input");
     i.type = "checkbox";
     i.className = "gf-sd-check";
     i.checked = checked;
-    i.addEventListener("change", () => commit(i.checked));
+    i.addEventListener("change", () => commit2(i.checked));
     return fieldRow(label, i, true);
   };
-  const selectField = (label, opts, current, commit) => {
+  const selectField = (label, opts, current, commit2) => {
     const sel = document.createElement("select");
     sel.className = "gf-sd-ctl";
     const values = opts.includes(current) ? opts : [current, ...opts];
@@ -209215,7 +210510,7 @@ function bindShapeDataPanel(api, host, options = {}) {
       if (opt === current) o.selected = true;
       sel.appendChild(o);
     }
-    sel.addEventListener("change", () => commit(sel.value));
+    sel.addEventListener("change", () => commit2(sel.value));
     return fieldRow(label, sel);
   };
   const pair = (a, b) => {
@@ -209738,6 +211033,7 @@ export {
   applyMatrix,
   applyNodePreset,
   applyNodeSpec,
+  applyNodeTemplate,
   applyNodes,
   applyOp,
   applyResizeToNode,
@@ -209970,6 +211266,7 @@ export {
   fitCmdsToBox,
   fitFontSize,
   flattenPath,
+  flowLayout,
   followPresenter,
   fontFaceCss,
   fontFormatFromUrl,
@@ -210102,6 +211399,7 @@ export {
   isValidId,
   isValidStatus,
   isValidUUID,
+  keyActionOf,
   laneAtPoint,
   lanesOfPool,
   layoutArchitecture,
@@ -210210,6 +211508,7 @@ export {
   pathBounds,
   pickEngineForScale,
   pickRoot,
+  placeFlowNodes,
   planDynamicPorts,
   planTween,
   pointAtPositionOnPolyline,
@@ -210314,6 +211613,7 @@ export {
   resolveThemeVars,
   resolveTool,
   resolveToolbar,
+  restoreNodeTemplate,
   reviveGraph,
   rgbToHsl,
   rootNodes,

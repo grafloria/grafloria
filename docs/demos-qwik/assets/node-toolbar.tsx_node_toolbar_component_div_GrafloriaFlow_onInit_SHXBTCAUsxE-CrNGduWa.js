@@ -1,0 +1,1 @@
+import{v as a}from"./core.min-C7M5tFMw.js";import{x}from"./core.min-C7M5tFMw.js";import{_auto_installToolbar as t}from"./node-toolbar-CVgVZyfZ.js";import{m}from"./ready-C4_3DsUA.js";import"./preloader-D7tuiBjF.js";import"./preload-helper-D57DdDQb.js";const f=r=>{const[o]=a();o.value&&t(o.value,r),m()};export{x as _hW,f as s_SHXBTCAUsxE};

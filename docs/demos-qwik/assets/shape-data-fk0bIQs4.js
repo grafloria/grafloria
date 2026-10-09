@@ -1,0 +1,1 @@
+import{_ as t}from"./preload-helper-D57DdDQb.js";import{y as o,L as r}from"./core.min-C7M5tFMw.js";import"./preloader-D7tuiBjF.js";const e=o(r(()=>t(()=>import("./shape-data.tsx_shape_data_component_OSm0cRet9v0-DEeYFrbf.js"),[],import.meta.url),"s_OSm0cRet9v0"));export{e as default};
