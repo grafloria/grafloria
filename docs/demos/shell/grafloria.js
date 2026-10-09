@@ -191071,8 +191071,9 @@ function installNodeTemplates(ctx, templates, config) {
     const w = m.node.size?.width ?? 0;
     const h = m.node.size?.height ?? 0;
     const scale = w > 0 && hostRect.width > 0 ? hostRect.width / w : ctx.viewport.getZoom() || 1;
-    let moved = false;
-    ctx.getModel().runSystemWrite(() => {
+    const moved = [];
+    const model = ctx.getModel();
+    model.runSystemWrite(() => {
       for (const el2 of Array.from(marks)) {
         const port = m.node.getPort(el2.getAttribute("data-port") ?? "");
         if (!port) continue;
@@ -191086,10 +191087,13 @@ function installNodeTemplates(ctx, templates, config) {
         if (args?.units === "px" && Math.abs((args.x ?? 0) - x) <= PX && Math.abs((args.y ?? 0) - y) <= PX) continue;
         port.layout = { strategy: "absolute", args: { units: "px", x, y } };
         port.anchored = true;
-        moved = true;
+        moved.push(port);
       }
     });
-    if (moved) ctx.invalidate();
+    if (moved.length === 0) return;
+    m.node.markDirty?.();
+    for (const port of moved) for (const link of model.getLinksForPort(port.id)) link.markDirty?.();
+    ctx.invalidate();
   };
   const fonts = ctx.doc.fonts;
   const onFonts = () => {
@@ -193534,6 +193538,7 @@ function createDiagram(container, options = {}) {
     changed: () => scheduler.schedule(),
     isReadonly: () => binder.readonlyNow()
   });
+  let featureRepaintOwed = false;
   const featureCtx = {
     doc,
     container,
@@ -193543,6 +193548,7 @@ function createDiagram(container, options = {}) {
     viewport,
     schedule: () => scheduler.schedule(),
     invalidate: () => {
+      featureRepaintOwed = true;
       renderer.invalidateFrame();
       scheduler.schedule();
     },
@@ -193780,6 +193786,7 @@ function createDiagram(container, options = {}) {
   };
   const canSkipFrame = () => {
     if (!engine.getDiagram()) return false;
+    if (featureRepaintOwed) return false;
     if (getMutationEpoch() !== lastFrameEpoch) return false;
     if (renderer.getInvalidationEpoch() !== lastRendererEpoch) return false;
     if (viewportKey() !== lastViewportKey) return false;
@@ -193813,7 +193820,9 @@ function createDiagram(container, options = {}) {
     return true;
   };
   const paint2 = () => {
-    if (tryCameraFrame()) return;
+    const owed = featureRepaintOwed;
+    featureRepaintOwed = false;
+    if (!owed && tryCameraFrame()) return;
     const renderViewport = viewport.getRenderViewport();
     const zoom = viewport.getZoom();
     const htmlTransform = viewport.getHtmlLayerTransform();
