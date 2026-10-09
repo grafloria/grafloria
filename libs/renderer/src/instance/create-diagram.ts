@@ -92,6 +92,13 @@ export type EdgeInput = EdgeSpec | LinkModel;
 
 export interface DiagramEventMap {
   /**
+   * A connection drag (from a port, or its "+") ended over NOTHING. The host can
+   * offer the next step there; `world` is where, in diagram coordinates.
+   */
+  'connect:drop-empty': { nodeId: string | undefined; portId: string; world: { x: number; y: number }; clientPoint: { x: number; y: number } };
+  /** A single node was dragged and released over a link (`nodeDropOnLink`). Nothing changed; the host decides. */
+  'link:insert-request': { linkId: string; nodeId: string; clientPoint: { x: number; y: number } };
+  /**
    * Something in the input did not land as written, and the instance carried on:
    * an edge dropped because an end resolves to no port, or attached to a
    * fallback port because the one it names does not exist. Warnings raised while
@@ -916,6 +923,19 @@ export function createDiagram(
       // The clipboard keys go through the instance's copy/cut/paste only when the
       // host asked for its hooks or owns the keyboard; otherwise the binder's own
       // engine copy/paste runs, exactly as before.
+      // connection.snapToNode / nodeDropOnLink: the marks the drag shows.
+      markConnectSnap: (nodeId, verdict) => {
+        for (const [id, host] of nodeHosts) {
+          if (id === nodeId) host.setAttribute('data-connect-snap', verdict ?? 'accept');
+          else if (host.hasAttribute('data-connect-snap')) host.removeAttribute('data-connect-snap');
+        }
+        renderer.setConnectSnap(nodeId, verdict);
+        scheduler.schedule();
+      },
+      markDropLink: (linkId) => {
+        renderer.setDropTargetLink(linkId);
+        scheduler.schedule();
+      },
       clipboardKey:
         options.clipboard || typeof options.keyboard === 'object'
           ? (action) => {
@@ -966,6 +986,7 @@ export function createDiagram(
     },
     emit: (event, payload) => emit(event, payload),
     isReadonly: () => binder.readonlyNow(),
+    startConnection: (portId, clientX, clientY) => binder.startConnectionFromPort(portId, clientX, clientY),
   };
   // Read-only is a VIEW switch: the binder refuses gestures, the renderer drops
   // editing chrome, the root says so for host CSS. The document stays writable.

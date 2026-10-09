@@ -186,6 +186,23 @@ export class InteractionController {
    */
   protected hoveredNode: NodeModel | null = null;
   protected hoveredPort: PortModel | null = null;
+  /**
+   * A connection drag's SNAP target (`connection.snapToNode`): the input port of
+   * the node under or near the pointer that the drag would connect to. Shown
+   * like a hovered port while dragging; used on release only when it `accepts`
+   * (a refused one is shown so its reason can be read, never connected).
+   */
+  protected snap: { port: PortModel; accepts: boolean } | null = null;
+
+  /** Set (or clear) the connection drag's snap target. The binder's `snapToNode` drives it. */
+  setConnectionSnap(snap: { port: PortModel; accepts: boolean } | null): void {
+    this.snap = snap;
+  }
+
+  /** The port a release would connect to now: the hovered port, else an accepting snap. */
+  getConnectionTarget(): PortModel | null {
+    return this.hoveredPort ?? (this.snap?.accepts ? this.snap.port : null);
+  }
   protected hoveredLink: LinkModel | null = null;
 
   /**
@@ -500,7 +517,7 @@ export class InteractionController {
       // engine's `snapToPortRadius`, and the candidate set is the SAME
       // valid-target set the highlight paints — the thing you can snap to is
       // exactly the thing lit up as snappable, which is the whole contract.
-      const hoveredPort = this.hoveredPort ?? this.findMagnetPort(worldX, worldY, engine);
+      const hoveredPort = this.hoveredPort ?? this.snap?.port ?? this.findMagnetPort(worldX, worldY, engine);
 
       // Update connection state with current mouse position and hovered port
       connectionStateManager.updateConnection(
@@ -613,7 +630,7 @@ export class InteractionController {
     try {
       const config = engine.getInteractionConfig();
       const connectionStateManager = engine.getConnectionStateManager();
-      let targetPort = this.hoveredPort;
+      let targetPort = this.hoveredPort ?? (this.snap?.accepts ? this.snap.port : null);
 
     // Smart mode: Auto-connect to nearest port if dropping on (or near) a node.
     //
@@ -726,6 +743,7 @@ export class InteractionController {
    * Cancel connection
    */
   cancelConnection(engine: DiagramEngine): void {
+    this.snap = null;
     if (!this.isConnecting) {
       return;
     }

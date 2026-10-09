@@ -5,6 +5,10 @@
  *  - `linkAdd` / `linkDelete`: on a hovered link, a "+" at its midpoint (insert a
  *    step here) and a delete button beside it.
  *
+ * A press that MOVES past the drag threshold on a port's "+" starts a connection
+ * from that port, exactly as a drag from the port does — the "+" is the bigger
+ * target. A press without movement still only asks.
+ *
  * They only ASK: a press emits `port:add-request { nodeId, portId, clientPoint }`,
  * `link:add-request { linkId, clientPoint }` or `link:delete-request { linkId,
  * clientPoint }` and changes nothing — the host opens its menu, inserts, deletes.
@@ -27,6 +31,12 @@ export interface AffordanceOptions {
   linkAdd?: boolean;
   /** A delete button beside it. */
   linkDelete?: boolean;
+  /**
+   * When a link's buttons show. `'hover'` (default): while it is hovered.
+   * `'hover-and-selected'`: also while it is SELECTED (a click selects it), until
+   * the selection changes — the only way to reach them on a touch screen.
+   */
+  linkButtons?: 'hover' | 'hover-and-selected';
 }
 
 export interface PortAddRequest {
@@ -120,7 +130,34 @@ export function installAffordances(ctx: FeatureContext, options: AffordanceOptio
             b = button('grafloria-port-add', '+', 'Add a step');
             const nodeId = node.id;
             const portId = port.id;
-            b.addEventListener('click', (e) => ctx.emit('port:add-request', { nodeId, portId, clientPoint: point(e) } satisfies PortAddRequest));
+            const plus = b;
+            // A press that moves becomes a connection drag from the port; one that
+            // does not stays a click.
+            let dragged = false;
+            plus.addEventListener('mousedown', (e) => {
+              if (e.button !== 0 || ctx.isReadonly()) return;
+              dragged = false;
+              const x0 = e.clientX;
+              const y0 = e.clientY;
+              const move = (m: MouseEvent) => {
+                if (Math.hypot(m.clientX - x0, m.clientY - y0) < 4) return;
+                done();
+                dragged = ctx.startConnection(portId, m.clientX, m.clientY);
+              };
+              const done = () => {
+                ctx.doc.removeEventListener('mousemove', move, true);
+                ctx.doc.removeEventListener('mouseup', done, true);
+              };
+              ctx.doc.addEventListener('mousemove', move, true);
+              ctx.doc.addEventListener('mouseup', done, true);
+            });
+            b.addEventListener('click', (e) => {
+              if (dragged) {
+                dragged = false;
+                return;
+              }
+              ctx.emit('port:add-request', { nodeId, portId, clientPoint: point(e) } satisfies PortAddRequest);
+            });
             root.appendChild(b);
             portButtons.set(port.id, b);
           }
@@ -152,8 +189,10 @@ export function installAffordances(ctx: FeatureContext, options: AffordanceOptio
   const syncLink = (): void => {
     if ((!options.linkAdd && !options.linkDelete) || ctx.isReadonly()) return hideLink();
     const model = ctx.getModel();
-    const hovered = (model.getLinks() as LinkModel[]).find((l) => l.state === 'hovered');
-    const id = hovered?.id ?? (overButtons ? shownLink : null);
+    const links = model.getLinks() as LinkModel[];
+    const hovered = links.find((l) => l.state === 'hovered');
+    const selected = options.linkButtons === 'hover-and-selected' ? links.find((l) => l.state === 'selected') : undefined;
+    const id = hovered?.id ?? (overButtons ? shownLink : null) ?? selected?.id ?? null;
     const link = id ? model.getLink(id) : undefined;
     const mid = link ? midpoint(link.points ?? []) : null;
     if (!link || !mid) return hideLink();

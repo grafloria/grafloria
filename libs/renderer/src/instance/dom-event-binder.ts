@@ -1,4 +1,4 @@
-import type { DiagramEngine, LinkModel, NodeModel, GroupModel } from '@grafloria/engine';
+import type { DiagramEngine, LinkModel, NodeModel, GroupModel, PortModel } from '@grafloria/engine';
 // wave12/connect-ergonomics (gap 1): the ONE undoable step a subflow drag commits.
 import {
   MoveGroupCommand, MoveNodeCommand, MacroCommand, GroupMembershipService,
@@ -100,6 +100,24 @@ export interface DomEventBinderHost {
    * engine copy/paste runs, as it always has.
    */
   clipboardKey?(action: 'copy' | 'cut' | 'paste'): boolean;
+  /** Optional: mark (or clear) the node a connection drag is snapping to. */
+  markConnectSnap?(nodeId: string | null, verdict?: 'accept' | 'refuse'): void;
+  /** Optional: mark (or clear) the link a dragged node would be dropped onto. */
+  markDropLink?(linkId: string | null): void;
+}
+
+/** The `connection` option: how a connection drag finds its target. */
+export interface ConnectionOptions {
+  /**
+   * Releasing over a node's BODY (or within `snapRadius` of it) connects to that
+   * node's first input port the rules accept — the first one no validator gives
+   * a reason against. While dragging, that node is marked (`data-connect-snap` on
+   * its HTML host, class `connect-snap-accept|refuse` on an SVG node), and a node
+   * whose inputs all refuse shows the first refusal's reason like a port does.
+   */
+  snapToNode?: boolean;
+  /** World px around a node's box that still counts as "on" it. Default 40. */
+  snapRadius?: number;
 }
 
 /** What a key the binder handles is about to do — what `beforeKey` is asked about. */
@@ -143,6 +161,14 @@ export interface DomEventBinderOptions {
    * ({@link KeyboardOptions.beforeKey}) and adds Ctrl/⌘ X = cut.
    */
   keyboard?: boolean | KeyboardOptions;
+  /** How a connection drag finds its target; see {@link ConnectionOptions}. */
+  connection?: ConnectionOptions;
+  /**
+   * A single node dragged and released over a link emits `link:insert-request
+   * { linkId, nodeId, clientPoint }` and changes nothing; while it is over the
+   * link, the link is marked (`link-drop-target`). Off by default.
+   */
+  nodeDropOnLink?: boolean;
 }
 
 /** An armed-but-not-yet-committed node drag. */
@@ -407,6 +433,8 @@ export class DomEventBinder {
       dragThreshold: options.dragThreshold ?? 4,
       readonly: options.readonly ?? false,
       keyboard: options.keyboard ?? true,
+      connection: options.connection ?? {},
+      nodeDropOnLink: options.nodeDropOnLink ?? false,
     };
 
     this.selectionTools = new SelectionToolsController({
@@ -463,6 +491,73 @@ export class DomEventBinder {
   /** The answer every gesture consults: the option, or the document's lock. */
   readonlyNow(): boolean {
     return this.isReadonly();
+  }
+
+  /**
+   * Start a connection drag from `portId` at a client point — what a press on
+   * the port itself does, for a control that stands in for the port (the
+   * affordances' "+"). The rest of the gesture is the binder's as usual: the
+   * preview line, snapping, the reason label, `connect` or `connect:drop-empty`.
+   */
+  startConnectionFromPort(portId: string, clientX: number, clientY: number): boolean {
+    const engine = this.engine();
+    const diagram = engine?.getDiagram();
+    const port = diagram?.getPortById(portId) as PortModel | undefined;
+    if (!engine || !port || this.isReadonly()) return false;
+    const rect = this.host.getRect();
+    const { x, y } = this.host.viewport.clientToWorld(clientX, clientY, rect);
+    this.pendingPortClick = null;
+    this.host.interaction.startConnection(port, x, y, engine);
+    this.host.requestRender();
+    return true;
+  }
+
+  /** The node under or within the snap radius of a world point (never the drag's own source). */
+  private snapNodeAt(diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>, x: number, y: number, exclude: string | undefined): NodeModel | null {
+    const radius = this.options.connection.snapRadius ?? 40;
+    let best: NodeModel | null = null;
+    let bestD = Infinity;
+    for (const node of diagram.getNodes() as NodeModel[]) {
+      if (node.id === exclude) continue;
+      const p = node.getWorldPosition();
+      const dx = Math.max(p.x - x, 0, x - (p.x + node.size.width));
+      const dy = Math.max(p.y - y, 0, y - (p.y + node.size.height));
+      const d = Math.hypot(dx, dy);
+      if (d <= radius && d < bestD) {
+        best = node;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  /** `connection.snapToNode`: pick the snap target for this pointer position (or clear it). */
+  private updateConnectionSnap(engine: DiagramEngine, x: number, y: number): void {
+    const diagram = engine.getDiagram();
+    const interaction = this.host.interaction;
+    const state = interaction.getState();
+    const clear = () => {
+      interaction.setConnectionSnap(null);
+      this.host.markConnectSnap?.(null);
+    };
+    if (!diagram || state.hoveredPort) return clear();
+    const csm = engine.getConnectionStateManager();
+    const source = csm.getState().sourcePort;
+    const sourceNode = source ? diagram.getNodeByPortId(source.id) : undefined;
+    const node = this.snapNodeAt(diagram, x, y, sourceNode?.id);
+    if (!node) return clear();
+    const inputs = ([...node.getPorts().values()] as PortModel[]).filter((p) => p.type !== 'output').sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    if (inputs.length === 0) return clear();
+    let accepted: PortModel | null = null;
+    for (const port of inputs) {
+      csm.updateConnection({ x, y }, port);
+      if (csm.getState().isOverValidTarget) {
+        accepted = port;
+        break;
+      }
+    }
+    interaction.setConnectionSnap({ port: accepted ?? inputs[0]!, accepts: !!accepted });
+    this.host.markConnectSnap?.(node.id, accepted ? 'accept' : 'refuse');
   }
 
   /** Bind DOM listeners. No-op on the server and no-op if already attached. */
@@ -1224,6 +1319,7 @@ export class DomEventBinder {
     let needsRender = this.host.interaction.handleMouseMove(worldX, worldY, engine);
 
     if (this.host.interaction.getState().isConnecting) {
+      if (this.options.connection.snapToNode) this.updateConnectionSnap(engine, worldX, worldY);
       needsRender =
         this.host.interaction.handleConnectionDrag(worldX, worldY, engine) || needsRender;
     }
@@ -1369,7 +1465,20 @@ export class DomEventBinder {
       // The link itself is created asynchronously by the engine's
       // `connection:complete` handler, so `connect` is emitted from the
       // instance's `link:added` subscription — not from here.
-      this.host.interaction.completeConnection(engine);
+      const sourcePort = engine.getConnectionStateManager().getState().sourcePort;
+      const world = this.toWorld(event);
+      const connected = this.host.interaction.completeConnection(engine);
+      this.host.markConnectSnap?.(null);
+      // Released over NOTHING: say where, so the host can offer the next step there.
+      const diagram = engine.getDiagram();
+      if (!connected && sourcePort && diagram && !diagram.getNodeAtPosition(world.x, world.y)) {
+        this.host.emit('connect:drop-empty', {
+          nodeId: diagram.getNodeByPortId(sourcePort.id)?.id,
+          portId: sourcePort.id,
+          world: { x: world.x, y: world.y },
+          clientPoint: { x: event.clientX, y: event.clientY },
+        });
+      }
       this.host.requestRender();
       return;
     }
@@ -1405,6 +1514,13 @@ export class DomEventBinder {
       // CONTAINS the node that the drop makes — as ONE undoable step (a drop out
       // of a group used to take two Ctrl+Z presses, into another group three).
       if (moved && engine) this.commitDrop(engine, drag);
+      // nodeDropOnLink: released over a link — only ASK; the host decides.
+      if (this.dropLinkId) {
+        const linkId = this.dropLinkId;
+        this.dropLinkId = null;
+        this.host.markDropLink?.(null);
+        if (moved) this.host.emit('link:insert-request', { linkId, nodeId: drag.nodeIds[0], clientPoint: { x: event.clientX, y: event.clientY } });
+      }
       // wave12 (gap 2): a drag that ended near a compatible port auto-links on drop.
       const connected = moved ? this.commitProximityConnection() : false;
       if (moved) this.emitNodesChange();
@@ -1446,6 +1562,10 @@ export class DomEventBinder {
       // back would be worse) and STILL record it as one undoable step. Do not auto-connect.
       if (moved && engine) this.commitNodeMove(engine, drag);
       this.clearProximityPreview();
+      if (this.dropLinkId) {
+        this.dropLinkId = null;
+        this.host.markDropLink?.(null);
+      }
       if (moved) this.emitNodesChange();
     }
 
@@ -1904,8 +2024,28 @@ export class DomEventBinder {
     // wave12 (gap 2): live proximity-connect preview — light up the port pair a
     // drop would auto-link, and remember it for commit on mouseup.
     this.updateProximityPreview(drag.nodeIds);
+    if (this.options.nodeDropOnLink) this.updateDropLink(drag, worldX, worldY);
 
     this.host.requestRender();
+  }
+
+  /** `nodeDropOnLink`: the link a single dragged node is over (not one of its own). */
+  private dropLinkId: string | null = null;
+  private updateDropLink(drag: NodeDragState, worldX: number, worldY: number): void {
+    const engine = this.engine();
+    const diagram = engine?.getDiagram();
+    let id: string | null = null;
+    if (engine && diagram && drag.nodeIds.length === 1) {
+      const nodeId = drag.nodeIds[0]!;
+      const hit = this.host.interaction.getLinkHitAtPosition(worldX, worldY, engine);
+      const link = hit?.link;
+      const own = link && (diagram.getNodeByPortId(link.sourcePortId)?.id === nodeId || diagram.getNodeByPortId(link.targetPortId)?.id === nodeId);
+      if (link && !own) id = link.id;
+    }
+    if (id !== this.dropLinkId) {
+      this.dropLinkId = id;
+      this.host.markDropLink?.(id);
+    }
   }
 
   // ==========================================================================

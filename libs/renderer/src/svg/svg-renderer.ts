@@ -831,6 +831,26 @@ export class SVGRenderer implements IRenderer {
   /** The host's read-only VIEW switch (not the document lock): no editing chrome. */
   private viewReadonly = false;
 
+  /** The node a connection drag is snapping to, and whether it accepts (`connection.snapToNode`). */
+  private connectSnap: { nodeId: string; verdict: 'accept' | 'refuse' } | null = null;
+  /** The link a dragged node would be dropped onto (`nodeDropOnLink`). */
+  private dropTargetLinkId: string | null = null;
+
+  /** Mark (or clear) the node a connection drag snaps to: class `connect-snap-accept|refuse`. */
+  setConnectSnap(nodeId: string | null, verdict: 'accept' | 'refuse' = 'accept'): void {
+    const next = nodeId ? { nodeId, verdict } : null;
+    if (next?.nodeId === this.connectSnap?.nodeId && next?.verdict === this.connectSnap?.verdict) return;
+    this.connectSnap = next;
+    this.invalidateFrame();
+  }
+
+  /** Mark (or clear) the link a dragged node would land on: class `link-drop-target`. */
+  setDropTargetLink(linkId: string | null): void {
+    if (linkId === this.dropTargetLinkId) return;
+    this.dropTargetLinkId = linkId;
+    this.invalidateFrame();
+  }
+
   /** Set by `createDiagram` from `readonly` / `setReadonly()`. */
   setViewReadonly(readonly: boolean): void {
     if (this.viewReadonly === readonly) return;
@@ -4891,7 +4911,7 @@ export class SVGRenderer implements IRenderer {
     // Check cache if enabled (include LOD in cache key since rendering varies by LOD).
     // Paint-server nodes bypass the cache so their `<defs>` entry is re-registered
     // every frame (a cache hit would skip style computation and orphan url(#…)).
-    const cacheKey = `node-${node.id}-${lod}`;
+    const cacheKey = `node-${node.id}-${lod}${this.connectSnap?.nodeId === node.id ? `~snap-${this.connectSnap.verdict}` : ''}`;
     const usesPaintServer = this.nodeUsesPaintServer(node);
     if (this.config.enableCaching && !node.isDirty && !usesPaintServer) {
       const cached = this.vnodeCache.get(cacheKey);
@@ -7058,7 +7078,7 @@ export class SVGRenderer implements IRenderer {
     // selection changes the picture of lines whose own model never changed.
     const connection = this.frameConnections.get(link.id);
     const crossing = this.frameCrossings.has(link.id);
-    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}${connection ? `|${connection}` : ''}${crossing ? '~x' : ''}`;
+    const cacheKey = `link-${link.id}-${lod}-${this.endpointNameKey(link)}${connection ? `|${connection}` : ''}${crossing ? '~x' : ''}${this.dropTargetLinkId === link.id ? '~drop' : ''}`;
     // Paint-server links bypass the cache so their `<defs>` entry is re-registered
     // every frame (a cache hit would skip style computation and orphan url(#…)).
     const usesPaintServer = this.linkUsesPaintServer(link);
@@ -7825,6 +7845,7 @@ export class SVGRenderer implements IRenderer {
     // `.highlighted` rule is authored BEFORE `.selected`).
     if (node.state.highlighted) classes.push('highlighted');
     if (node.state.hovered) classes.push('hovered');
+    if (this.connectSnap?.nodeId === node.id) classes.push(`connect-snap-${this.connectSnap.verdict}`);
     if (!node.state.enabled) classes.push('disabled');
     if (node.state.error) classes.push('error');
 
@@ -7915,6 +7936,7 @@ export class SVGRenderer implements IRenderer {
     // co-occur with `selected`.
     if (link.state === 'highlighted') classes.push('highlighted');
     if (link.state === 'hovered') classes.push('hovered');
+    if (this.dropTargetLinkId === link.id) classes.push('link-drop-target');
 
     // Named styles (classDef) + free-form host classes — see computeNodeStylesCSS.
     classes.push(...styleClassTokens(link.style.styleClass));

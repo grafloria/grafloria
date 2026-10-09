@@ -27,6 +27,8 @@ export interface FeatureContext {
   emit(event: string, payload: unknown): void;
   /** The binder's read-only answer: the `readonly` option or the model's lock. */
   isReadonly(): boolean;
+  /** Start a connection drag from a port at a client point (what a press on the port does). */
+  startConnection(portId: string, clientX: number, clientY: number): boolean;
 }
 
 export interface Feature {

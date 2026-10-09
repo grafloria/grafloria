@@ -132,3 +132,25 @@ describe('a refusal carries its REASON to the drag (a workflow editor shows it b
     expect(csm.getState().rejectionMessage).toBe('This connection is not allowed.');
   });
 });
+
+describe('connection snap (connection.snapToNode): a refused snap is SHOWN, never connected', () => {
+  it('an accepting snap is the release target; a refusing one is not; cancel clears it', () => {
+    const ctx = scene();
+    const target = ctx.b.getPort('b__left')!;
+    ctx.controller.startConnection(ctx.a.getPort('a__right')!, 100, 25, ctx.engine);
+    ctx.controller.setConnectionSnap({ port: target, accepts: false });
+    expect(ctx.controller.getConnectionTarget()).toBeNull();
+    ctx.controller.setConnectionSnap({ port: target, accepts: true });
+    expect(ctx.controller.getConnectionTarget()).toBe(target);
+    expect(ctx.controller.completeConnection(ctx.engine)).toBe(true);
+    expect(ctx.controller.getConnectionTarget()).toBeNull(); // completion cancels → snap cleared
+  });
+
+  it('released with only a refusing snap: no link', () => {
+    const ctx = scene();
+    ctx.controller.startConnection(ctx.a.getPort('a__right')!, 100, 25, ctx.engine);
+    ctx.controller.setConnectionSnap({ port: ctx.b.getPort('b__left')!, accepts: false });
+    expect(ctx.controller.completeConnection(ctx.engine)).toBe(false);
+    expect(ctx.model.getLinks()).toHaveLength(0);
+  });
+});
