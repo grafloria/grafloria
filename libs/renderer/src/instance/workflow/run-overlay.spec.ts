@@ -95,17 +95,30 @@ describe('the run overlay: a run drawn on the flow, never part of the document',
     expect(q('.grafloria-run-frame[data-node-id="a"]')!.style.left).toBe('197px');
   });
 
-  it('is cheap to stream: 2,000 updates over 40 nodes stay under two seconds, even in jsdom', () => {
+  it('is cheap to stream: an unchanged update writes NOTHING, one changed node writes only that node', () => {
     const many: NodeSpec[] = Array.from({ length: 40 }, (_, i) => ({ id: `n${i}`, position: { x: (i % 8) * 120, y: Math.floor(i / 8) * 90 }, size: { width: 100, height: 60 } }));
     d = createDiagram(container, { nodes: many });
-    const statuses = ['pending', 'running', 'completed'] as const;
-    const t0 = performance.now();
-    for (let k = 0; k < 2000; k++) {
-      const nodes: Record<string, { status: (typeof statuses)[number]; badge: string }> = {};
-      for (let i = 0; i < 40; i++) nodes[`n${i}`] = { status: statuses[(k + i) % 3]!, badge: `${k}` };
-      d.setOverlay({ nodes });
+    const overlay = (k: number, odd = 'running' as const) => ({
+      nodes: Object.fromEntries(many.map((n, i) => [n.id!, { status: i === 7 ? odd : ('completed' as const), badge: i === 7 ? `${k}` : '1 item' }])),
+    });
+    d.setOverlay(overlay(0));
+    // Count every DOM write the overlay makes from here on (counts, not clocks:
+    // a wall-clock budget in jsdom passes on a fast box and fails on a CI runner).
+    const real = Element.prototype.setAttribute;
+    let writes = 0;
+    Element.prototype.setAttribute = function (this: Element, name: string, value: string) {
+      writes++;
+      return real.call(this, name, value);
+    };
+    try {
+      d.setOverlay(overlay(0));
+      expect(writes).toBe(0); // the same overlay again: not one attribute touched
+      d.setOverlay(overlay(1, 'error' as never));
+      expect(writes).toBeLessThanOrEqual(3); // n7's frame + badge status (its badge text is not an attribute)
+    } finally {
+      Element.prototype.setAttribute = real;
     }
-    expect(performance.now() - t0).toBeLessThan(2000); // jsdom; a browser is far faster (gated there)
     expect(container.querySelectorAll('.grafloria-run-frame')).toHaveLength(40);
+    expect(container.querySelector('.grafloria-run-frame[data-node-id="n7"]')!.getAttribute('data-status')).toBe('error');
   });
 });
