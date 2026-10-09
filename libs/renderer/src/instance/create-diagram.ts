@@ -35,6 +35,8 @@ import type { Feature, FeatureContext } from './workflow/feature';
 import { installConnectReason } from './workflow/connect-reason';
 import { createClipboardApi } from './workflow/clipboard';
 import { installRunOverlay } from './workflow/run-overlay';
+import { insertNodeOnLink } from './workflow/insert-on-link';
+import type { InsertNodeOnLinkOptions, InsertNodeOnLinkResult } from './workflow/insert-on-link';
 import type { RunOverlay, RunOverlayFeature } from './workflow/run-overlay';
 import type { ClipboardHooks, PasteOptions } from './workflow/clipboard';
 import type { CanvasRect, Unsubscribe } from '../viewport/viewport-controller';
@@ -480,6 +482,15 @@ export interface DiagramInstance {
   clearOverlay(): void;
   /** The overlay as last set (a copy). */
   getOverlay(): RunOverlay;
+
+  /**
+   * Replace the link A→B with A→N→B as ONE undo step: N (built from `node`, the
+   * same spec `render()` takes) lands in the gap, its entry port level with A's,
+   * and B and what lies downstream shift along the flow only as far as N needs.
+   * Undo restores A→B exactly — the same link id, labels and style. Resolves
+   * null when the link (or a named port) does not exist.
+   */
+  insertNodeOnLink(linkId: string, node: NodeSpec, options?: InsertNodeOnLinkOptions): Promise<InsertNodeOnLinkResult | null>;
 
   /**
    * visio-depth — open the in-place label editor programmatically: a node's
@@ -1801,6 +1812,11 @@ export function createDiagram(
     setOverlay: (overlay) => overlayFeature().set(overlay),
     clearOverlay: () => runOverlay?.set({}),
     getOverlay: () => runOverlay?.get() ?? {},
+    async insertNodeOnLink(linkId, node, insertOptions) {
+      const result = await insertNodeOnLink(engine, linkId, node, insertOptions);
+      if (result) scheduler.schedule();
+      return result;
+    },
 
     beginLabelEdit: (target, opts) => binder.beginLabelEdit(target, opts),
 

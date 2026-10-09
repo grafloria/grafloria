@@ -10,3 +10,4 @@ export * from './layers';
 // The workflow-editor features' public types (each feature is opt-in).
 export type { RunOverlay, RunStatus } from './workflow/run-overlay';
 export type { ClipboardHooks, PasteOptions } from './workflow/clipboard';
+export type { InsertNodeOnLinkOptions, InsertNodeOnLinkResult } from './workflow/insert-on-link';
