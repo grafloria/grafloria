@@ -3,7 +3,7 @@
   <url><loc>https://grafloria.com/</loc><lastmod>2026-10-04</lastmod><priority>1.0</priority></url>
   <url><loc>https://grafloria.com/angular/</loc><lastmod>2026-10-02</lastmod><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/compare/</loc><lastmod>2026-09-07</lastmod><priority>0.9</priority></url>
-  <url><loc>https://grafloria.com/demos/</loc><lastmod>2026-10-08</lastmod><priority>0.9</priority></url>
+  <url><loc>https://grafloria.com/demos/</loc><lastmod>2026-10-09</lastmod><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/javascript/</loc><lastmod>2026-10-02</lastmod><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/mermaid/</loc><lastmod>2026-09-30</lastmod><priority>0.9</priority></url>
   <url><loc>https://grafloria.com/react/</loc><lastmod>2026-10-02</lastmod><priority>0.9</priority></url>
@@ -132,6 +132,7 @@
   <url><loc>https://grafloria.com/demos/interaction/undo-redo.html</loc><lastmod>2026-08-21</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/validation.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/interaction/workflow-builder.html</loc><lastmod>2026-10-04</lastmod><priority>0.6</priority></url>
+  <url><loc>https://grafloria.com/demos/interaction/workflow-editor.html</loc><lastmod>2026-10-09</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/layout/auto-layout.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/layout/dagre-tree.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
   <url><loc>https://grafloria.com/demos/layout/dynamic-layouting.html</loc><lastmod>2026-09-07</lastmod><priority>0.6</priority></url>
