@@ -50,6 +50,7 @@ import { RenderScheduler } from './render-scheduler';
 import { DomEventBinder } from './dom-event-binder';
 import type { DomEventBinderOptions } from './dom-event-binder';
 import { applyEdges, applyGroups, applyNodes, toNodeSpec, toEdgeSpec } from './model-input';
+import type { EdgeWarning } from './model-input';
 import type { EdgeSpec, GroupSpec, NodeSpec } from './model-input';
 import {
   HTML_LAYER_CLASS,
@@ -90,6 +91,14 @@ export type NodeInput = NodeSpec | NodeModel;
 export type EdgeInput = EdgeSpec | LinkModel;
 
 export interface DiagramEventMap {
+  /**
+   * Something in the input did not land as written, and the instance carried on:
+   * an edge dropped because an end resolves to no port, or attached to a
+   * fallback port because the one it names does not exist. Warnings raised while
+   * `createDiagram` applies its initial spec arrive a microtask later, so a
+   * listener added right after it returns still hears them.
+   */
+  'renderer:warning': EdgeWarning;
   /** The "+" on an unconnected output port was pressed (`affordances.portAdd`). */
   'port:add-request': PortAddRequest;
   /** The "+" at a hovered link's midpoint was pressed (`affordances.linkAdd`). */
@@ -648,7 +657,10 @@ export function createDiagram(
   if (options.nodes) applyNodes(model, options.nodes);
   // Zones after their boxes (membership needs the nodes), before the lines.
   if (options.groups) applyGroups(model, options.groups);
-  if (options.edges) applyEdges(model, options.edges);
+  // Warnings from the initial spec are held until listeners can exist.
+  const earlyWarnings: EdgeWarning[] = [];
+  let warnEdge: (w: EdgeWarning) => void = (w) => earlyWarnings.push(w);
+  if (options.edges) applyEdges(model, options.edges, (w) => warnEdge(w));
   if (options.layout === 'architecture') layoutArchitecture(model, { measureText: canvasTextMeasure() });
 
   zoomNow = () => viewport.getZoom();
@@ -822,6 +834,12 @@ export function createDiagram(
     // Copy: a handler is allowed to unsubscribe itself.
     for (const listener of [...set]) (listener as (p: unknown) => void)(payload);
   };
+
+  warnEdge = (w) => emit('renderer:warning', w);
+  if (earlyWarnings.length) {
+    const held = earlyWarnings.splice(0);
+    queueMicrotask(() => held.forEach((w) => emit('renderer:warning', w)));
+  }
 
   // -- selection:change: ONE per gesture, carrying the final selection ---------
   // Two channels announce a selection change: the model's `selection:changed`
@@ -1746,7 +1764,7 @@ export function createDiagram(
       if (changed) scheduler.schedule();
     },
     setEdges(edges) {
-      if (applyEdges(model, edges)) scheduler.schedule();
+      if (applyEdges(model, edges, (w) => warnEdge(w))) scheduler.schedule();
     },
     setGroups(groups) {
       if (applyGroups(model, groups)) {
@@ -1861,7 +1879,7 @@ export function createDiagram(
       const templatedBefore = templatedData();
       applyNodes(model, result.diagram.getNodes());
       rederiveTemplates(templatedBefore);
-      applyEdges(model, result.diagram.getLinks());
+      applyEdges(model, result.diagram.getLinks(), (w) => warnEdge(w));
 
       // Groups travel in neither `nodes` nor `edges`, so without this they were
       // simply not loaded — the same trap `@grafloria/element`'s loader documents

@@ -425,10 +425,17 @@ export function resolvePortId(
 export function buildEdge(
   diagram: DiagramModel,
   spec: EdgeSpec,
-  index: number
+  index: number,
+  warn?: (warning: EdgeWarning) => void
 ): LinkModel | null {
   const sourcePortId = resolvePortId(diagram, spec.source, spec.sourceHandle, 'right');
   const targetPortId = resolvePortId(diagram, spec.target, spec.targetHandle, 'left');
+  if (warn) {
+    const id = edgeSpecId(spec, index);
+    const dropped = !sourcePortId || !targetPortId;
+    warnEnd(diagram, warn, id, 'source', spec.source, spec.sourceHandle, 'right', sourcePortId, dropped);
+    warnEnd(diagram, warn, id, 'target', spec.target, spec.targetHandle, 'left', targetPortId, dropped);
+  }
   if (!sourcePortId || !targetPortId) return null;
 
   const link = new LinkModel(sourcePortId, targetPortId, spec.type ?? 'smooth');
@@ -625,7 +632,61 @@ export function toEdgeSpec(link: LinkModel): EdgeSpec {
 }
 
 /** Reconcile the diagram's links against `specs`. See {@link applyNodes}. */
-export function applyEdges(diagram: DiagramModel, specs: Array<EdgeSpec | LinkModel>): boolean {
+/**
+ * Why an edge from a spec did not land as written — reported, never thrown (the
+ * `renderer:warning` event). A document can hold a wire that is wrong: a file
+ * from an older version, a port that went away. Dropped without a word, the
+ * person can neither see it nor remove it.
+ *
+ *  - `edge-dropped`: an end resolves to no port at all (no such node, or no such
+ *    port and none on the fallback side), so the edge is not in the model.
+ *  - `edge-port-fallback`: an end names a port the node does not have; the edge
+ *    was attached to the port on the fallback side instead.
+ */
+export interface EdgeWarning {
+  kind: 'edge-dropped' | 'edge-port-fallback';
+  edgeId: string;
+  end: 'source' | 'target';
+  nodeId: string;
+  handle?: string;
+  /** The port the end landed on (`edge-port-fallback`). */
+  portId?: string;
+  reason: string;
+}
+
+function warnEnd(
+  diagram: DiagramModel,
+  warn: (w: EdgeWarning) => void,
+  edgeId: string,
+  end: 'source' | 'target',
+  nodeId: string,
+  handle: string | undefined,
+  side: (typeof PORT_SIDES)[number],
+  resolved: string | undefined,
+  dropped: boolean
+): void {
+  const node = diagram.getNode(nodeId);
+  if (!resolved) {
+    const reason = !node && !diagram.getPortById(nodeId)
+      ? `there is no node "${nodeId}"`
+      : handle
+        ? `node "${nodeId}" has no port "${handle}", and none on its ${side} side`
+        : `node "${nodeId}" has no port on its ${side} side`;
+    warn({ kind: 'edge-dropped', edgeId, end, nodeId, handle, reason });
+    return;
+  }
+  // A side name or a side anchor ('right@36') names a place, not a port id.
+  const namesPlace = !!handle && ((PORT_SIDES as readonly string[]).includes(handle) || handle.includes('@'));
+  if (!dropped && node && handle && !namesPlace && resolved !== handle) {
+    warn({ kind: 'edge-port-fallback', edgeId, end, nodeId, handle, portId: resolved, reason: `node "${nodeId}" has no port "${handle}"; attached to "${resolved}" on its ${side} side instead` });
+  }
+}
+
+export function applyEdges(
+  diagram: DiagramModel,
+  specs: Array<EdgeSpec | LinkModel>,
+  warn?: (warning: EdgeWarning) => void
+): boolean {
   const seen = new Set<string>();
   let changed = false;
 
@@ -653,7 +714,7 @@ export function applyEdges(diagram: DiagramModel, specs: Array<EdgeSpec | LinkMo
       applyEdgeSpec(existing, spec);
       changed = true;
     } else {
-      const link = buildEdge(diagram, spec, index);
+      const link = buildEdge(diagram, spec, index, warn);
       if (link) {
         diagram.addLink(link);
         changed = true;
