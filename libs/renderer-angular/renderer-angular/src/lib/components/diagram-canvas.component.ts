@@ -4768,8 +4768,16 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       if (command) void this.executeCommand(command);
     }
 
-    // wave4/interaction: abandon an in-flight tool gesture (restoring the model)
-    // so a resize/rotate can't "stick" when the pointer leaves the canvas.
+    // A RESIZE commits what is on screen when the pointer leaves (the JS canvas
+    // does the same): the node already looks resized, and abandoning the gesture
+    // snapped it back to its start size under the user — a resize past the max
+    // usually runs the pointer off the canvas before the release.
+    if (this.selectionTools.activeGesture() === 'resize') {
+      this.endToolGesture();
+    }
+
+    // wave4/interaction: abandon any other in-flight tool gesture (restoring the
+    // model) so a rotate/vertex drag can't "stick" when the pointer leaves the canvas.
     if (this.selectionTools.isActive()) {
       this.selectionTools.cancelGesture(this.eng);
       this.pendingVertexHandle = null;
