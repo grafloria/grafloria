@@ -353,6 +353,9 @@ const CSS = `
    used to select every label on it; kit cards are not prose. Tables stay
    copyable — a figure in a grid is the one thing a viewer selects. */
 .axdb-widget { user-select: none; -webkit-user-select: none; }
+/* A card lays out its own text: never the host's alignment (React's template centres #root). */
+.axdb-widget { text-align: start; }
+.axdb-slab, .axdb-tabs { text-align: start; }
 .axdb-widget .axdb-table { user-select: text; -webkit-user-select: text; }
 .axdb-widget-b > svg { display: block; width: 100%; height: 100%; }
 .axdb-widget-b.axdb-scroll { overflow: auto; }

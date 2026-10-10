@@ -19,6 +19,7 @@ export const DIAGRAM_KIT_STYLE_ID = 'grafloria-diagram-kit-styles';
 const CSS = `
 /* ===== ER entity (table) cards ===== */
 .axk-entity { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #64748b;
+  text-align: start; /* never the host's: React's template centres #root */
   border-radius: 6px; overflow: hidden; background: #fff;
   width: 100%; height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column; }
@@ -67,6 +68,7 @@ const CSS = `
 
 /* ===== UML class cards ===== */
 .axk-uml { font: 12px/1.5 system-ui, sans-serif; border: 1px solid #475569;
+  text-align: start; /* never the host's: React's template centres #root */
   border-radius: 4px; overflow: hidden; background: #fff;
   width: 100%; height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column; }
