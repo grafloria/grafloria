@@ -108,7 +108,22 @@
       }
 
       @for (handle of toolLayer.handles; track handle.id) {
-        @if (handle.kind === 'resize') {
+        @if (handle.kind === 'resize' && handle.segment) {
+          <!-- A SIDE handle is the whole edge (like the JS canvas): a line along the
+               border, never a dot on the midpoint where the side port sits. -->
+          <line
+            class="grafloria-tool grafloria-tool-resize-edge"
+            [attr.data-tool]="handle.handleId"
+            [attr.x1]="handle.segment.a.x"
+            [attr.y1]="handle.segment.a.y"
+            [attr.x2]="handle.segment.b.x"
+            [attr.y2]="handle.segment.b.y"
+            [attr.stroke-width]="overlayStroke * 1.5"
+            [style.pointer-events]="sideHandleYields(handle) ? 'none' : null"
+            [style.cursor]="handle.cursor">
+            <title>{{ handle.label }}</title>
+          </line>
+        } @else if (handle.kind === 'resize') {
           <rect
             class="grafloria-tool grafloria-tool-resize"
             [attr.data-tool]="handle.handleId"

@@ -132,6 +132,7 @@ import {
   // @grafloria/renderer (framework-agnostic). This component only routes DOM events
   // into it, draws the geometry it returns, and dispatches the commands it builds.
   SelectionToolsController,
+  sideHandleYieldsToPort,
   type SelectionToolLayer,
   type ToolHandle,
   SnapController,
@@ -960,7 +961,9 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    */
   readonly highlighterConfig = input<boolean | Partial<HighlighterConfig>>(true);
 
-  private readonly selectionTools = new SelectionToolsController();
+  // haloGap 20 (default 12): the halo column and the ✕ start clear of the right
+  // side port's grab radius and the NE resize corner, so neither covers them.
+  private readonly selectionTools = new SelectionToolsController({ haloGap: 20 });
   private readonly snapController = new SnapController();
   // Not the bare HighlighterController: built-in shape types (`rect`, the
   // default type of every node spec) are not flagged as unregistered.
@@ -1756,6 +1759,14 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   /** Stroke width that stays 1 CSS px in a world-space overlay. */
   get overlayStroke(): number {
     return 1 / Math.max(this.zoom(), 0.01);
+  }
+
+  /**
+   * A side resize band yields to a hovered port of its node (see the mouse ladder):
+   * its line stops catching the pointer so the port's own cursor shows.
+   */
+  sideHandleYields(handle: ToolHandle): boolean {
+    return sideHandleYieldsToPort(handle, this.interactionHandler.getState().hoveredPort);
   }
 
   /** Square side of a tool handle in world units (constant on screen). */
@@ -4089,7 +4100,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // handle sitting over a port would start a connection instead of a resize.
       if (this.enableSelectionTools()) {
         const toolHit = this.selectionTools.hitTest(this.toolLayer, worldX, worldY);
-        if (toolHit) {
+        // The four SIDE resize handles own the whole border, where the side ports
+        // also sit. Same rule as the JS canvas (`sideHandleYieldsToPort`): a port of
+        // the SAME node under the pointer wins its grab radius and the press falls
+        // through to the connection rung below; the rest of the border resizes.
+        if (toolHit && !sideHandleYieldsToPort(toolHit, this.interactionHandler.getState().hoveredPort)) {
           event.preventDefault();
           this.onToolHandleDown(toolHit, worldX, worldY);
           this.cdr.markForCheck();

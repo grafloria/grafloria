@@ -95,7 +95,10 @@ describe('DiagramCanvasComponent — wave4/interaction (Cards 5-7)', () => {
       diagram.selectNode(node);
       paint();
 
-      expect(overlay('.grafloria-tool-resize')).toHaveLength(8);
+      // 4 corner dots + 4 side handles drawn as edge lines (the side ports sit on
+      // the edge midpoints, so a dot there would cover them — like the JS canvas).
+      expect(overlay('.grafloria-tool-resize')).toHaveLength(4);
+      expect(overlay('.grafloria-tool-resize-edge')).toHaveLength(4);
       expect(overlay('.grafloria-tool-remove')).toHaveLength(1);
       expect(overlay('.grafloria-tool-halo')).toHaveLength(4);
       expect(overlay('.grafloria-selection-frame')).toHaveLength(1);
