@@ -101,8 +101,9 @@ export interface InteractionConfig {
   portDefaultRadius: number;
 
   /**
-   * Snap to port radius in pixels
-   * Connection will snap when mouse is within this distance
+   * Snap to port radius in pixels.
+   * A connection drag (and a dragged link endpoint) latches onto the nearest valid
+   * port within this distance — and a release there connects to it.
    */
   snapToPortRadius: number;
 
@@ -127,8 +128,11 @@ export interface InteractionConfig {
   showLinkEndpointHandles: boolean;
 
   /**
-   * Enable smart mode nearest port auto-connect
-   * When enabled, dropping on node body connects to nearest port
+   * Enable smart mode nearest port auto-connect (with `mode: 'smart'`).
+   * When enabled, dropping a new connection — or a dragged link endpoint
+   * (reconnection) — on a node BODY connects to that node's nearest valid port
+   * (for a reconnect: the valid port facing the link's fixed end). A drop off
+   * any body still snaps to a valid port within {@link snapToPortRadius}.
    */
   enableSmartAutoConnect: boolean;
 
