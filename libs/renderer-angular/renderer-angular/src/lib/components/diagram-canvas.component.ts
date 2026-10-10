@@ -204,6 +204,7 @@ import {
   ToolInteractionMode,
 } from '../interaction';
 import { CanvasHighlighterController } from '../interaction/canvas-highlighter';
+import { GroupDragController } from '../interaction/group-drag';
 import { CanvasEventHub, type GrafloriaCanvasInstance } from './diagram-canvas.instance';
 // Wave 3 (Edges & links): path-anchored edge toolbar. The canvas only HOSTS it
 // (picks the target link, forwards viewport/zoom) — all toolbar logic lives in
@@ -977,6 +978,8 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   // Not the bare HighlighterController: built-in shape types (`rect`, the
   // default type of every node spec) are not flagged as unregistered.
   private readonly highlighterController = new CanvasHighlighterController();
+  /** A6: the frame / lane drag (JS canvas parity, `enableGroupDrag`). */
+  private readonly groupDrag = new GroupDragController();
   private readonly keyboardNav = new KeyboardNavigationController();
   private readonly inPlaceEditor = new InPlaceTextEditor();
 
@@ -4413,6 +4416,21 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         // With no modifier a bare click clears the selection (existing behavior);
         // with a modifier we keep it so Shift/Cmd/Alt-marquee can extend it.
         const hasModifier = event.shiftKey || event.ctrlKey || event.metaKey || event.altKey;
+
+        // A6: the empty part of a group frame (or a swimlane) drags the whole
+        // container and its members — the JS canvas's `enableGroupDrag` (on by
+        // default). Reached only when no node, link or port was under the pointer.
+        if (
+          !hasModifier &&
+          !diagram.isReadonly() &&
+          config.enableGroupDrag !== false &&
+          this.groupDrag.press(diagram, worldX, worldY, event.clientX, event.clientY)
+        ) {
+          event.preventDefault();
+          if (this.containerRef?.nativeElement) this.containerRef.nativeElement.style.cursor = 'move';
+          this.cdr.markForCheck();
+          return;
+        }
         if (!hasModifier) {
           diagram.clearSelection();
 
@@ -4462,6 +4480,18 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       );
       this.scheduleRender();
       this.cdr.markForCheck();
+      return;
+    }
+
+    // A6: an armed frame / lane drag owns every move until the release.
+    if (this.groupDrag.isActive()) {
+      const { worldX, worldY } = this.clientToWorld(event.clientX, event.clientY);
+      const threshold = this.eng.getInteractionConfig().dragThreshold ?? 4;
+      if (this.groupDrag.move(diagram, worldX, worldY, event.clientX, event.clientY, threshold)) {
+        this.recalculateLinkPathsForNodes(diagram, diagram.getNodes().map((n) => n.id));
+        this.renderDiagram();
+        this.cdr.markForCheck();
+      }
       return;
     }
 
@@ -4634,6 +4664,17 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
         return;
       }
 
+      // A6: commit a frame / lane drag as ONE undo entry.
+      if (this.groupDrag.isActive() && this.eng) {
+        event.preventDefault();
+        const command = this.groupDrag.end(this.eng.getDiagram());
+        if (command) void this.executeCommand(command);
+        if (this.containerRef?.nativeElement) this.containerRef.nativeElement.style.cursor = 'default';
+        this.scheduleRender();
+        this.cdr.markForCheck();
+        return;
+      }
+
       // Phase 2.3b: End control point drag if in progress
       const interactionState = this.interactionHandler.getState();
       if (interactionState.isDraggingControlPoint) {
@@ -4721,6 +4762,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    */
   onMouseLeave(): void {
     this.isPanning = false;
+    // A6: the pointer left mid frame-drag → commit what was moved (the JS canvas does the same).
+    if (this.groupDrag.isActive()) {
+      const command = this.groupDrag.end(this.eng?.getDiagram());
+      if (command) void this.executeCommand(command);
+    }
 
     // wave4/interaction: abandon an in-flight tool gesture (restoring the model)
     // so a resize/rotate can't "stick" when the pointer leaves the canvas.
