@@ -38,6 +38,8 @@ export interface ChromeDeps {
   memberGroupAt(x: number, y: number): string | null;
   /** Which of a section frame's edges a world point is within its grip of. */
   slabEdgesNear(grp: GroupModel, x: number, y: number): ResizeEdges;
+  /** A member card painted without an HTML host under the world point: its edges there (null: none). */
+  hostlessCardEdgesAt?(x: number, y: number): ResizeEdges | null;
   dragHandle(): DragHandleOption;
   wantHandles: boolean;
 }
@@ -497,9 +499,10 @@ export function createChrome(ctx: BoardCtx, deps: ChromeDeps): Chrome {
     const grabbing = deps.grabbing();
     if (!host) {
       const wpt = api.viewport?.clientToWorld ? api.viewport.clientToWorld(e.clientX, e.clientY, api.container.getBoundingClientRect()) : null;
-      const sid = wpt ? deps.memberGroupAt(wpt.x, wpt.y) : null;
+      const card = wpt && !ctx.isStatic() ? deps.hostlessCardEdgesAt?.(wpt.x, wpt.y) ?? null : null;
+      const sid = wpt && !card ? deps.memberGroupAt(wpt.x, wpt.y) : null;
       const grp = sid ? diagram.getGroup(sid) : undefined;
-      const c = grp && wpt && !ctx.isStatic() ? cursorFor(deps.slabEdgesNear(grp, wpt.x, wpt.y)) : '';
+      const c = card ? cursorFor(card) : grp && wpt && !ctx.isStatic() ? cursorFor(deps.slabEdgesNear(grp, wpt.x, wpt.y)) : '';
       if (!grabbing) api.container.style.cursor = c;
       return;
     }

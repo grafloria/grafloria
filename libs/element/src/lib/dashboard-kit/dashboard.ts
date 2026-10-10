@@ -397,8 +397,23 @@ export interface DashboardSpec {
  */
 export type DashboardSnapshot = Omit<
   DashboardOptions,
-  'renderWidget' | 'onLayoutChange' | 'views'
+  'renderWidget' | 'onLayoutChange' | 'views' | 'widgets'
 > & { views: DashboardViewSpec[] };
+
+/**
+ * Options minus every function and every undefined value, one level into plain
+ * objects (`binder`, `responsive`): what a snapshot may carry.
+ */
+function dataOnly<T extends object>(o: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (v === undefined || typeof v === 'function') continue;
+    if (v && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype) {
+      out[k] = dataOnly(v as Record<string, unknown>);
+    } else out[k] = v;
+  }
+  return out as T;
+}
 
 /** The typed façade — the `erTable`/`umlClass` equivalent for dashboards. */
 export interface DashboardHandle {
@@ -462,7 +477,11 @@ export interface DashboardHandle {
   moveToTab(widgetId: string, containerId: string, index?: number): Promise<boolean>;
   /** Reorder a page along its container's strip. One undoable step; the order is saved with the container. */
   moveTab(containerId: string, pageId: string, index: number): boolean;
-  /** Live sizing/float switches — the two prototype toggles. */
+  /**
+   * Live sizing/float switches — the two prototype toggles. A split view always
+   * fits (getSizing says 'fit' there); the board keeps the setting for its grid
+   * views — a view switched back from split uses it — and toJSON saves it.
+   */
   setSizing(mode: 'fit' | 'grow'): void;
   getSizing(): 'fit' | 'grow';
   setFloat(on: boolean): void;
@@ -1240,6 +1259,13 @@ export interface DashboardHandleContext {
   onTabChange?: (containerId: string, pageId: string, viewId: string) => void;
   /** Set by finalize: re-bind a VIEW's board under the given layout (setLayout). */
   rebindView?: (viewId: string, layout: 'grid' | 'split') => void;
+  /**
+   * The board's sizing as the user last SET it (setSizing). A split view always
+   * fits — its tree divides the frame — so the setting lives here, not only on
+   * a grid binder: a view switched to split and back grows again, grow chosen
+   * while in split is what the grid shows next, and toJSON saves it.
+   */
+  sizing?: 'fit' | 'grow';
   /**
    * Spread verbatim into `toJSON()` output — carries width/height/responsive
    * and any other authored option so a new `DashboardOptions` field round-trips
@@ -2247,12 +2273,13 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // design height — its height is its container's business — and switched
       // to grow it painted its rows at the base height, 700 px past a torn-out
       // group or a split pane (0.4.38).
+      ctx.sizing = mode;
       for (const [id, b] of binders) if (groups.has(id)) b.setSizing(mode);
       clampCamera();
       ctx.apiRef?.renderNow();
     },
     getSizing: () =>
-      binders.get(ctx.active)?.getSizing() ?? ctx.optionsBase.sizing ?? (ctx.mode === 'fluid' ? 'grow' : 'fit'),
+      binders.get(ctx.active)?.getSizing() ?? ctx.sizing ?? ctx.optionsBase.sizing ?? (ctx.mode === 'fluid' ? 'grow' : 'fit'),
     setFloat(on) {
       for (const b of binders.values()) b.setFloat(on);
       ctx.apiRef?.renderNow();
@@ -2422,16 +2449,23 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // `sizing` and `float` are the two a user changes from the toolbar, and
       // reading them from the authored literal would restore the board they
       // started with rather than the one they are looking at.
+      // A snapshot is DATA: the authored `widgets` shorthand is stale next to
+      // the live `views` (and dashboard() prefers `views`), and callbacks —
+      // renderWidget, onLayoutChange, canDrop, onSelect… — are the caller's to
+      // pass again, not state to store. Leaving them in made a snapshot that
+      // could not be saved as JSON and carried a widget list that lied.
+      const { widgets: _authored, views: _views, ...rest } = ctx.optionsBase;
+      void _authored;
+      void _views;
       return {
-        ...ctx.optionsBase,
-        renderWidget: undefined,
-        onLayoutChange: undefined,
+        ...dataOnly(rest),
         columns: ctx.columns,
         gap: ctx.gap,
         rowHeight: ctx.rowHeight,
         mode: ctx.mode,
         overflow: ctx.overflow,
-        sizing: handle.getSizing(),
+        // The SETTING, which a split view (always 'fit') keeps for its grid.
+        sizing: ctx.sizing ?? handle.getSizing(),
         float: handle.getFloat(),
         rtl: handle.getRtl(),
         static: handle.getStatic(),
@@ -3147,7 +3181,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         return bindDashboardGrid(a as never, g, {
           ...common,
           columns: v.columns ?? columns,
-          sizing,
+          sizing: ctx.sizing ?? sizing,
           baseRowHeight: rowHeight,
           designHeight: viewH(v),
           float: options.float ?? false,

@@ -92,6 +92,16 @@ const DEFAULT_VIEWPORT: Rectangle = { x: 0, y: 0, width: 800, height: 600 };
  * exactly that; the fix belongs to the zoom card and is why this convention now
  * lives in one place.)
  */
+/** How {@link ViewportController.setCanvasSize} places the camera on a size change. */
+export interface CanvasSizeOptions {
+  /**
+   * `'origin'` (default) keeps the camera's x/y. `'center'` keeps the world point at
+   * the canvas centre — what a picture drawn with `preserveAspectRatio="xMidYMid meet"`
+   * (an adopted server svg before the first resize) showed.
+   */
+  anchor?: 'origin' | 'center';
+}
+
 export class ViewportController {
   protected viewport: Rectangle;
   protected zoom: number;
@@ -137,15 +147,21 @@ export class ViewportController {
    * size for {@link clientToWorld} to be the true inverse of the rendered
    * `viewBox` (see the coordinate contract).
    */
-  setCanvasSize(width: number, height: number): void {
+  setCanvasSize(width: number, height: number, options: CanvasSizeOptions = {}): void {
     if (width === this.viewport.width && height === this.viewport.height) return;
-    this.viewport = { ...this.viewport, width, height };
+    const { x, y, width: w0, height: h0 } = this.viewport;
+    // 'centre' keeps the world point at the canvas centre where it is: the camera
+    // centre is (x + w/2, y + h/2), so x/y move by half the size change.
+    this.viewport =
+      options.anchor === 'center'
+        ? { x: x + (w0 - width) / 2, y: y + (h0 - height) / 2, width, height }
+        : { ...this.viewport, width, height };
     this.emit();
   }
 
   /** Convenience form of {@link setCanvasSize} taking a `getBoundingClientRect()`. */
-  syncCanvasSize(rect: CanvasRect): void {
-    this.setCanvasSize(rect.width, rect.height);
+  syncCanvasSize(rect: CanvasRect, options: CanvasSizeOptions = {}): void {
+    this.setCanvasSize(rect.width, rect.height, options);
   }
 
   // ==========================================================================

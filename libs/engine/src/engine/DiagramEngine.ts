@@ -2588,7 +2588,7 @@ export class DiagramEngine {
    *
    *     const worker = new Worker(new URL('./layout.worker', import.meta.url),
    *                               { type: 'module' });
-   *     engine.setLayoutPort(worker as unknown as LayoutPort);
+   *     engine.setLayoutPort(worker);
    *
    * Pass `undefined` to go back to running inline.
    */

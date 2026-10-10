@@ -34,3 +34,31 @@ describe('a dashboard turns the generic group gestures off for its canvas', () =
     });
   }
 });
+
+describe('disposing the instance disposes the board', () => {
+  // The board's tools are process-wide and its listeners sit on the host
+  // element, which outlives the instance. Left registered, a disposed board
+  // kept claiming presses on the next board mounted in that element: React
+  // StrictMode's double mount sent drags to a dead history, made split
+  // dividers inert and painted section chrome twice.
+  const { listTools } = jest.requireActual('@grafloria/renderer') as typeof import('@grafloria/renderer');
+  const dashTools = () => listTools().filter((id) => id.startsWith('dashboard-'));
+  for (const layout of ['grid', 'split'] as const) {
+    it(`${layout}: instance.dispose() unregisters the board's tools; a re-mount in the same element owns one set`, () => {
+      const el = document.createElement('div');
+      document.body.appendChild(el);
+      const before = dashTools().length;
+      const widgets = [{ id: 'a', kind: 'kpi' }, { id: 'b', kind: 'line' }];
+      const first = render(dashboard({ layout, widgets }) as never, el);
+      expect(dashTools().length - before).toBe(1);
+      first.dispose();
+      expect(dashTools().length).toBe(before);
+      const second = render(dashboard({ layout, widgets }) as never, el);
+      expect(dashTools().length - before).toBe(1);
+      second.dispose();
+      second.dispose(); // idempotent
+      expect(dashTools().length).toBe(before);
+      el.remove();
+    });
+  }
+});

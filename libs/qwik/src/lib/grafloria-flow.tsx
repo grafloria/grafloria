@@ -77,6 +77,7 @@ import {
   type NodeSpec,
   type PresenceBinding,
   type Theme,
+  type TokenBridge,
 } from '@grafloria/renderer';
 import { withCustomFlag } from './custom-nodes';
 import { GRAFLORIA_STORE, type SelectionChange } from './hooks';
@@ -207,7 +208,7 @@ export interface GrafloriaFlowProps {
   /** Interaction config passthrough (portVisibility, enableHelperLines, …). */
   interaction?: Record<string, unknown>;
   /** Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables. */
-  tokenBridge?: unknown;
+  tokenBridge?: TokenBridge;
   /**
    * The outline layer: outlines around the hovered node, the selected node,
    * nodes with a validation issue, and valid connection targets. `true` turns
@@ -273,7 +274,7 @@ export const GrafloriaFlow = component$<GrafloriaFlowProps>((props) => {
       commentsViewer: props.commentsViewer,
       renderer: props.rendererConfig as never,
       interaction: props.interaction,
-      tokenBridge: props.tokenBridge as never,
+      tokenBridge: props.tokenBridge,
       highlighterConfig: props.highlighterConfig,
       highlightConnected: props.highlightConnected,
 

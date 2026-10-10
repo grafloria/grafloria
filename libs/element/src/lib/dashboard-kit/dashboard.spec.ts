@@ -374,6 +374,41 @@ describe('the typed handles (the erTable/umlClass equivalent)', () => {
     expect(h2.widget('c')!.cell).toEqual(handle.widget('c')!.cell);
   });
 
+  it('toJSON() of a board declared with `widgets` is DATA: no stale `widgets`, no callbacks', () => {
+    // The `widgets` shorthand used to come back verbatim (the AUTHORED list,
+    // not the live one) next to the live `views`, with renderWidget/onLayoutChange
+    // as undefined keys and every other callback option (canDrop, onSelect…)
+    // copied in — a snapshot a reader could not store as JSON or trust.
+    const spec = dashboard({
+      widgets: [
+        { id: 'a', kind: 'kpi', span: 6, rows: 1 },
+        { id: 'b', kind: 'kpi', span: 6, rows: 1 },
+      ],
+      canDrop: () => true,
+      onSelect: () => undefined,
+      renderCaption: () => undefined,
+      onLayoutChange: () => undefined,
+      binder: { columns: 12, onCommit: () => undefined } as never,
+    });
+    const { handle } = mount(spec);
+    handle.addWidget({ id: 'c', kind: 'kpi', span: 6, rows: 1 });
+    const snap = handle.toJSON() as Record<string, unknown>;
+    expect('widgets' in snap).toBe(false);
+    const fnPaths: string[] = [];
+    const walk = (v: unknown, path: string): void => {
+      if (typeof v === 'function') fnPaths.push(path);
+      else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, `${path}.${k}`);
+    };
+    walk(snap, 'snap');
+    expect(fnPaths).toEqual([]);
+    expect(Object.entries(snap).filter(([, v]) => v === undefined).map(([k]) => k)).toEqual([]);
+    expect(JSON.parse(JSON.stringify(snap))).toEqual(snap);
+    expect(handle.toJSON().views.map((v) => `${v.id}:${v.widgets.map((w) => w.id).join(',')}`)).toEqual(['main:a,b,c']);
+    // …and it is still dashboard() input: the restored board holds all three.
+    const { handle: h2 } = mount(dashboard({ ...handle.toJSON() }));
+    expect(h2.widgetsOf().map((w) => w.id).sort()).toEqual(['a', 'b', 'c']);
+  });
+
   it('onLayoutChange is wired to committed gestures', () => {
     const calls: string[] = [];
     const spec = dashboard({
@@ -1600,6 +1635,35 @@ describe("layout: 'split' — the board is always covered", () => {
     const area = rects.reduce((s, r) => s + r.width * r.height, 0);
     return Math.abs(area - f.width * f.height) < 1;
   };
+
+  it("the board keeps its sizing through split: grow chosen in grid or in split is what grid shows again", () => {
+    // A split view always fits (the tree divides the frame). The setting used
+    // to live only on the grid binder, so a switch to split dropped it: Grow,
+    // Split, Grid came back 'fit', and setSizing('grow') in split did nothing
+    // at all — not for the grid the user went back to, not in toJSON.
+    const heightOf = (h: ReturnType<typeof dashboard>['handle']) => Math.round(h.widget('a')!.rect!.height);
+    const grid = mount(board({ layout: 'grid' }));
+    const fitH = heightOf(grid.handle);
+    grid.handle.setSizing('grow');
+    const growH = heightOf(grid.handle);
+    expect(growH).not.toBe(fitH);
+    grid.handle.setLayout('split');
+    expect(grid.handle.getSizing()).toBe('fit'); // the split view itself fits…
+    expect(covered(grid.handle)).toBe(true);
+    expect(grid.handle.toJSON().sizing).toBe('grow'); // …and the board keeps the setting
+    grid.handle.setLayout('grid');
+    expect(grid.handle.getSizing()).toBe('grow');
+    expect(heightOf(grid.handle)).toBe(growH);
+
+    const split = mount(board());
+    split.handle.setSizing('grow');
+    expect(split.handle.getSizing()).toBe('fit');
+    expect(covered(split.handle)).toBe(true);
+    expect(split.handle.toJSON().sizing).toBe('grow');
+    split.handle.setLayout('grid');
+    expect(split.handle.getSizing()).toBe('grow');
+    expect(heightOf(split.handle)).toBe(growH);
+  });
 
   it('opens a grid-authored board as a tree with the same proportions, every slot covered', () => {
     const { handle } = mount(board());

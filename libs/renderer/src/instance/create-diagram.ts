@@ -1772,9 +1772,16 @@ export function createDiagram(
   // -- resize -----------------------------------------------------------------
   let resizeObserver: ResizeObserver | undefined;
   if (typeof ResizeObserver !== 'undefined') {
+    // An adopted server svg is drawn into the real container with the default
+    // preserveAspectRatio (xMidYMid meet) until the first resize: a fitted picture
+    // sits in the MIDDLE of a wider box. The first size sync keeps that centre, or
+    // the picture jumped right on resume and its left edge was clipped.
+    let keepCentre = !!hydration;
     resizeObserver = new ResizeObserver(() => {
       const r = getRect();
-      if (r.width > 0 && r.height > 0) viewport.syncCanvasSize(r);
+      if (!(r.width > 0 && r.height > 0)) return;
+      viewport.syncCanvasSize(r, keepCentre ? { anchor: 'center' } : {});
+      keepCentre = false;
     });
     resizeObserver.observe(container);
   }

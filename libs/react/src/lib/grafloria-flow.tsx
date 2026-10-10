@@ -19,7 +19,7 @@ export interface GrafloriaCollabOptions {
   [option: string]: unknown;
 }
 import { createDiagram, loadCanvasPlugins, bindPresence } from '@grafloria/renderer';
-import type { CanvasPluginOptions, BindPresenceOptions, PresenceBinding, HighlighterConfig, HighlightConnectedOptions, GroupSpec } from '@grafloria/renderer';
+import type { CanvasPluginOptions, BindPresenceOptions, PresenceBinding, HighlighterConfig, HighlightConnectedOptions, GroupSpec, TokenBridge } from '@grafloria/renderer';
 import type {
   ColorMode,
   CreateDiagramOptions,
@@ -155,7 +155,7 @@ export interface GrafloriaFlowProps {
   /** Interaction config passthrough (portVisibility, enableHelperLines, …). */
   interaction?: Record<string, unknown>;
   /** Design-token bridge — adopt the app's shadcn / MUI / Tailwind CSS variables. */
-  tokenBridge?: unknown;
+  tokenBridge?: TokenBridge;
   /**
    * The outline layer Angular's canvas draws: outlines around the hovered node,
    * the selected node, nodes with a validation issue, and valid connection
@@ -237,7 +237,7 @@ export function GrafloriaFlow(props: GrafloriaFlowProps) {
       commentsViewer: callbacks.current.commentsViewer,
       renderer: callbacks.current.rendererConfig as never,
       interaction: callbacks.current.interaction,
-      tokenBridge: callbacks.current.tokenBridge as never,
+      tokenBridge: callbacks.current.tokenBridge,
       highlighterConfig: callbacks.current.highlighterConfig,
       highlightConnected: callbacks.current.highlightConnected,
 

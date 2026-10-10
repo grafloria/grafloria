@@ -146,15 +146,24 @@ export type LayoutResponse =
   | LayoutResultMessage
   | LayoutErrorMessage;
 
-/** The message-port surface the host needs — a real Worker satisfies it. */
+/**
+ * A message handler checked BIVARIANTLY (method syntax). The DOM's handlers take
+ * a `MessageEvent` — more than `{ data }` — so under `strictFunctionTypes` a
+ * plain function type rejected a real `Worker` and a worker's `self` (TS2345),
+ * and every caller needed `as unknown as LayoutPort`. The engine stays free of
+ * DOM types; the handler still reads only `ev.data`.
+ */
+export type PortMessageHandler<T> = { handle(ev: { data: T }): void }['handle'];
+
+/** The message-port surface the host needs — a real `Worker` satisfies it, no cast. */
 export interface LayoutPort {
   postMessage(msg: LayoutRequest): void;
-  onmessage: ((ev: { data: LayoutResponse }) => void) | null;
+  onmessage: PortMessageHandler<LayoutResponse> | null;
 }
 
-/** The port surface the SERVER side needs — a worker's `self` satisfies it. */
+/** The port surface the SERVER side needs — a worker's `self` satisfies it, no cast. */
 export interface LayoutServePort {
-  onmessage: ((ev: { data: LayoutRequest }) => void) | null;
+  onmessage: PortMessageHandler<LayoutRequest> | null;
   postMessage(msg: LayoutResponse): void;
 }
 
