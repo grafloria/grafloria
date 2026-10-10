@@ -222,6 +222,15 @@ interface GroupDragState {
   frameFrom: Map<string, GroupFrameSnapshot>;
 }
 
+/**
+ * The diagram the person is working in: the last one pressed in or focused.
+ * Every binder listens for keys on `window` (a canvas is rarely focused), so
+ * without this one ⌘Z undid — and one Delete deleted — in EVERY diagram on the
+ * page. Null until a diagram is touched, so a page with one diagram behaves
+ * exactly as before.
+ */
+let activeBinder: DomEventBinder | null = null;
+
 export class DomEventBinder {
   private readonly options: Required<DomEventBinderOptions>;
 
@@ -602,6 +611,7 @@ export class DomEventBinder {
     this.container.addEventListener('mouseup', this.boundMouseUp);
     this.container.addEventListener('mouseleave', this.boundMouseLeave);
     this.container.addEventListener('dblclick', this.boundDblClick);
+    this.container.addEventListener('focusin', this.boundFocusIn);
     window.addEventListener('keydown', this.boundKeyDown);
     window.addEventListener('keyup', this.boundKeyUp);
   }
@@ -624,6 +634,8 @@ export class DomEventBinder {
     this.container.removeEventListener('mouseup', this.boundMouseUp);
     this.container.removeEventListener('mouseleave', this.boundMouseLeave);
     this.container.removeEventListener('dblclick', this.boundDblClick);
+    this.container.removeEventListener('focusin', this.boundFocusIn);
+    if (activeBinder === this) activeBinder = null;
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', this.boundKeyDown);
       window.removeEventListener('keyup', this.boundKeyUp);
@@ -864,7 +876,13 @@ export class DomEventBinder {
     return null;
   }
 
+  /** Focus moving into this diagram makes it the one keys act on. */
+  private readonly boundFocusIn = (): void => {
+    activeBinder = this;
+  };
+
   onMouseDown(event: MouseEvent): void {
+    activeBinder = this;
     const engine = this.engine();
     const diagram = engine?.getDiagram();
     if (!engine || !diagram) return;
@@ -1651,6 +1669,9 @@ export class DomEventBinder {
 
     // Never steal keys from a focused text field / contenteditable.
     if (isTextEntryTarget(event.target)) return;
+
+    // Another diagram on the page is the one being worked in: its keys, not ours.
+    if (activeBinder && activeBinder !== this) return;
 
     // The host may own the keyboard: none of ours (`keyboard: false`), or each
     // action asked first (`keyboard: { beforeKey }`).
