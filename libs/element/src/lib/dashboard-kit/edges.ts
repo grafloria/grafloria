@@ -23,6 +23,26 @@ export function edgesNear(host: Element, cx: number, cy: number): ResizeEdges {
   };
 }
 
+/**
+ * {@link edgesNear} in WORLD units, for a card that has no HTML host to measure
+ * (a plain SVG-painted node): `grip` is EDGE_GRIP converted to world units.
+ */
+export function edgesNearRect(
+  r: { x: number; y: number; width: number; height: number },
+  x: number,
+  y: number,
+  grip: number,
+  slack = grip * (2 / EDGE_GRIP)
+): ResizeEdges {
+  if (x < r.x - slack || x > r.x + r.width + slack || y < r.y - slack || y > r.y + r.height + slack) return NO_EDGES;
+  return {
+    n: y - r.y <= grip,
+    s: r.y + r.height - y <= grip,
+    w: x - r.x <= grip,
+    e: r.x + r.width - x <= grip,
+  };
+}
+
 export const anyEdge = (E: ResizeEdges): boolean => E.n || E.e || E.s || E.w;
 
 /** The resize cursor for a set of edges ('' when none). */

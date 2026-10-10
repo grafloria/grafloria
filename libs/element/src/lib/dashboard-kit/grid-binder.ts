@@ -86,7 +86,7 @@ import { BESIDE_BAND, resolve as resolveZone, resolveTabZone, stripCrossing, str
 import { SequenceCommand, SetGroupCellCommand, tileCommands } from './commit';
 import { EDGE_GRACE, type BoardCtx } from './board-ctx';
 import { createProjection } from './project';
-import { cursorFor, edgesNear, EDGE_GRIP, NO_EDGES, anyEdge, type ResizeEdges } from './edges';
+import { cursorFor, edgesNear, edgesNearRect, EDGE_GRIP, NO_EDGES, anyEdge, type ResizeEdges } from './edges';
 import { DRAG_HANDLE_CLASS, dragHandleSelector, gripHostOf, normalizeDragHandle, pressOnDragHandle, sameDragHandle, type DragHandleOption } from './grip';
 import { createChrome, edgeGripFor, isTabsGroup } from './chrome';
 import { createKeyboard, describeCell, liveRegionFor } from './keyboard';
@@ -1345,6 +1345,19 @@ export function bindDashboardGrid(
     gestureRunning: () => !!gesture,
     memberGroupAt: (x, y) => memberGroupAt(x, y),
     slabEdgesNear: (grp, x, y) => slabEdgesNear(grp, x, y),
+    hostlessCardEdgesAt: (x, y) => {
+      for (const id of group.members ?? []) {
+        if (hostOf(id)) continue;
+        const node = diagram.getNode(id);
+        if (!node) continue;
+        const edges = nodeEdgesNear(node, x, y);
+        const inside = x >= node.position.x && x <= node.position.x + node.size.width && y >= node.position.y && y <= node.position.y + node.size.height;
+        if (!inside && !anyEdge(edges)) continue;
+        const resizable = node.state?.locked !== true && node.getMetadata?.('widgetResizable') !== false;
+        return resizable ? edges : NO_EDGES;
+      }
+      return null;
+    },
     dragHandle: () => dragHandle,
     wantHandles,
   });
@@ -1687,6 +1700,25 @@ export function bindDashboardGrid(
     return null;
   };
   /** Which of a section frame's edges a world point is within EDGE_GRIP of. */
+  /** The border of a host-less (SVG-painted) member card a world point is on. */
+  const nodeEdgesNear = (node: NodeModel, x: number, y: number): ResizeEdges => {
+    const k = clientPerWorld();
+    const grip = EDGE_GRIP / (Math.min(k.x, k.y) || 1);
+    return edgesNearRect({ x: node.position.x, y: node.position.y, width: node.size.width, height: node.size.height }, x, y, grip);
+  };
+  /**
+   * The host-less member card whose border band holds a world point. The band
+   * reaches a little past the card (edgesNearRect's slack), where the renderer's
+   * hit test already reports empty canvas — a press there must still resize.
+   */
+  const hostlessCardOnEdge = (x: number, y: number): NodeModel | null => {
+    for (const id of group.members ?? []) {
+      if (hostOf(id)) continue;
+      const node = diagram.getNode(id);
+      if (node && anyEdge(nodeEdgesNear(node, x, y))) return node;
+    }
+    return null;
+  };
   const slabEdgesNear = (grp: GroupModel, x: number, y: number, grip = edgeGripFor(grp)): ResizeEdges => {
     // `resizable: false` on a section: no edge is a handle — no resize cursor, and a press there is not a resize.
     if ((grp.getMetadata?.('containerWidget') as { resizable?: boolean } | undefined)?.resizable === false) return NO_EDGES;
@@ -3794,6 +3826,8 @@ export function bindDashboardGrid(
         }
         return insideMemberGroupFrame(ev.world.x, ev.world.y);
       }
+      // Just outside a host-less card's border: still that card's edge band.
+      if (hostlessCardOnEdge(ev.world.x, ev.world.y)) return true;
       // An EMPTY press inside a NESTED board's frame is that board's: its
       // dividers, its band, its own section press (which it hands back up).
       // Ties went to the first registered tool, and a section re-bound by a
@@ -3836,6 +3870,8 @@ export function bindDashboardGrid(
       const ownCaption = !!captionId && (group.members ?? new Set<string>()).has(captionId);
       // (An action button never reaches here: it is pass-through, and its own
       // `click` fires onCaptionAction — see captionPassThrough.)
+      const bandNode = !hit.node && !onGrip && !sectionHandle && !ownCaption ? hostlessCardOnEdge(ev.world.x, ev.world.y) : null;
+      if (bandNode) hit = { ...hit, node: bandNode, empty: false };
       if ((!hit.node && !onGrip) || sectionHandle || ownCaption) {
         // A press on a SECTION — its empty band, its caption, its corner
         // handle or its frame edge — selects the section; the handle or an
@@ -3907,6 +3943,9 @@ export function bindDashboardGrid(
       if (resizable && !onGrip) {
         if (onHandle) edges = rtl ? { n: false, e: false, s: true, w: true } : { n: false, e: true, s: true, w: false };
         else if (hostEl) edges = edgesNear(hostEl, cx, cy);
+        // A card painted in the SVG layer has no host to measure: its border is
+        // read off the model in world units (it used to be a move everywhere).
+        else edges = nodeEdgesNear(node, ev.world.x, ev.world.y);
       }
       const isResize = anyEdge(edges);
       if (!isResize && !movable) return; // a fixed tile: refuse the drag, click still focuses
