@@ -462,7 +462,8 @@ export function fromDocument(
         group.setMetadata('dashboardBoard', { ...board, layout: next });
       });
       ctx.layoutOf.set(viewId, next);
-      boards.set(viewId, bindBoard(group, { ...board, layout: next }));
+      // The board's sizing setting survives a trip through split (always fit).
+      boards.set(viewId, bindBoard(group, { ...board, layout: next, ...(ctx.sizing ? { sizing: ctx.sizing } : {}) }));
       boards.get(viewId)?.sync();
     };
     // A container removed and restored through the history comes back as a

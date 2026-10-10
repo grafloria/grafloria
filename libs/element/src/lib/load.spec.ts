@@ -496,6 +496,17 @@ describe('fromDocument — dashboard handle', () => {
     expect(rebuilt.spec.handle.widget('k1')!.cell).toEqual({ x: 0, y: 0, w: 3, h: 1 });
   });
 
+  it('a reloaded board keeps its sizing setting through a trip to split and back', () => {
+    const original = mount(DASH_SPEC());
+    const spec = fromDocument(save(original.api));
+    mount(spec);
+    spec.handle.setSizing('fit');
+    spec.handle.setLayout('split');
+    expect(spec.handle.getSizing()).toBe('fit');
+    spec.handle.setLayout('grid');
+    expect(spec.handle.getSizing()).toBe('fit'); // not the document's saved 'grow'
+  });
+
   it('showView parks the inactive board on a reloaded TABBED dashboard', () => {
     const original = mount(
       dashboard({

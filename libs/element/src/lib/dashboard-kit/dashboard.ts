@@ -477,7 +477,11 @@ export interface DashboardHandle {
   moveToTab(widgetId: string, containerId: string, index?: number): Promise<boolean>;
   /** Reorder a page along its container's strip. One undoable step; the order is saved with the container. */
   moveTab(containerId: string, pageId: string, index: number): boolean;
-  /** Live sizing/float switches — the two prototype toggles. */
+  /**
+   * Live sizing/float switches — the two prototype toggles. A split view always
+   * fits; the board keeps the setting (getSizing reports it) and its grid views
+   * use it, including a view switched back from split.
+   */
   setSizing(mode: 'fit' | 'grow'): void;
   getSizing(): 'fit' | 'grow';
   setFloat(on: boolean): void;
@@ -1255,6 +1259,13 @@ export interface DashboardHandleContext {
   onTabChange?: (containerId: string, pageId: string, viewId: string) => void;
   /** Set by finalize: re-bind a VIEW's board under the given layout (setLayout). */
   rebindView?: (viewId: string, layout: 'grid' | 'split') => void;
+  /**
+   * The board's sizing as the user last SET it (setSizing). A split view always
+   * fits — its tree divides the frame — so the setting lives here, not only on
+   * a grid binder: a view switched to split and back grows again, and grow
+   * chosen while in split is what the grid shows next.
+   */
+  sizing?: 'fit' | 'grow';
   /**
    * Spread verbatim into `toJSON()` output — carries width/height/responsive
    * and any other authored option so a new `DashboardOptions` field round-trips
@@ -2262,12 +2273,17 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       // design height — its height is its container's business — and switched
       // to grow it painted its rows at the base height, 700 px past a torn-out
       // group or a split pane (0.4.38).
+      ctx.sizing = mode;
       for (const [id, b] of binders) if (groups.has(id)) b.setSizing(mode);
       clampCamera();
       ctx.apiRef?.renderNow();
     },
-    getSizing: () =>
-      binders.get(ctx.active)?.getSizing() ?? ctx.optionsBase.sizing ?? (ctx.mode === 'fluid' ? 'grow' : 'fit'),
+    getSizing: () => {
+      const setting = ctx.sizing ?? ctx.optionsBase.sizing ?? (ctx.mode === 'fluid' ? 'grow' : 'fit');
+      // A split view draws 'fit' whatever the setting; the setting is the answer.
+      if (ctx.layoutOf.get(ctx.active) === 'split') return setting;
+      return binders.get(ctx.active)?.getSizing() ?? setting;
+    },
     setFloat(on) {
       for (const b of binders.values()) b.setFloat(on);
       ctx.apiRef?.renderNow();
@@ -3168,7 +3184,7 @@ export function dashboard(options: DashboardOptions): DashboardSpec {
         return bindDashboardGrid(a as never, g, {
           ...common,
           columns: v.columns ?? columns,
-          sizing,
+          sizing: ctx.sizing ?? sizing,
           baseRowHeight: rowHeight,
           designHeight: viewH(v),
           float: options.float ?? false,
