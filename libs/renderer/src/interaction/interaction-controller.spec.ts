@@ -346,6 +346,80 @@ describe('InteractionController (framework-agnostic interaction brain)', () => {
   });
 
   // ==========================================================================
+  // C1 / C2 (docs review v3): where a RELEASE lands is judged by the same rules
+  // the drag showed — the magnet radius (`snapToPortRadius`) and, with smart
+  // auto-connect, the whole node body ("dropping on node body connects to
+  // nearest port", as InteractionConfig promises).
+  describe('drop resolution matches what the drag showed', () => {
+    const settle = () => new Promise((r) => setTimeout(r, 0));
+
+    it('C2: a new connection released inside the magnet radius (but off the port) links', async () => {
+      engine.setInteractionConfig({ snapToPortRadius: 30 });
+      const aNode = addNode(0);
+      const bNode = addNode(300);
+      const aPort = sidePort(aNode, 'right');
+      const bPort = sidePort(bNode, 'left');
+      const src = at(aNode, aPort);
+      const tgt = at(bNode, bPort);
+      const drop = { x: tgt.x - 27, y: tgt.y }; // 27 px out, outside B, inside the 30 px magnet
+
+      controller.startConnection(aPort, src.x, src.y, engine);
+      controller.handleMouseMove(drop.x, drop.y, engine);
+      controller.handleConnectionDrag(drop.x, drop.y, engine);
+      // The drag LATCHED onto B's port — that is what the user is shown…
+      expect(engine.getConnectionStateManager().getState().targetPort?.id).toBe(bPort.id);
+
+      // …so the release must land there.
+      expect(controller.completeConnection(engine)).toBe(true);
+      await settle();
+      expect(diagram.getLinks().map((l) => l.targetPortId)).toEqual([bPort.id]);
+    });
+
+    it('C1: a reconnect dropped on a node BODY lands on its port facing the fixed end (smart auto-connect)', () => {
+      const { link } = makeAToBLink();
+      const cNode = addNode(600);
+      const centre = { x: 650, y: 25 };
+
+      controller.startLinkReconnection(link, 'target', 300, 25, engine);
+      controller.handleMouseMove(centre.x, centre.y, engine);
+      controller.updateLinkReconnection(centre.x, centre.y, engine);
+      // The ghost says "valid" over the body, before the release.
+      expect(engine.getReconnectionPreview()?.isValid).toBe(true);
+
+      expect(controller.completeLinkReconnection(engine)).toBe(true);
+      expect(link.targetNodeId).toBe(cNode.id);
+      expect(link.targetPortId).toBe(sidePort(cNode, 'left').id);
+    });
+
+    it('C1: a reconnect released inside the magnet radius of a port (off the node) lands on it', () => {
+      engine.setInteractionConfig({ snapToPortRadius: 30 });
+      const { link } = makeAToBLink();
+      const cNode = addNode(600);
+      const cLeft = at(cNode, sidePort(cNode, 'left'));
+      const drop = { x: cLeft.x - 27, y: cLeft.y };
+
+      controller.startLinkReconnection(link, 'target', 300, 25, engine);
+      controller.handleMouseMove(drop.x, drop.y, engine);
+      controller.updateLinkReconnection(drop.x, drop.y, engine);
+      expect(controller.completeLinkReconnection(engine)).toBe(true);
+      expect(link.targetPortId).toBe(sidePort(cNode, 'left').id);
+    });
+
+    it('C1: with smart auto-connect OFF a body drop is still refused (the port is the target)', () => {
+      // A small magnet, so the centre is out of every port's reach.
+      engine.setInteractionConfig({ enableSmartAutoConnect: false, snapToPortRadius: 10 });
+      const { link, b } = makeAToBLink();
+      addNode(600);
+
+      controller.startLinkReconnection(link, 'target', 300, 25, engine);
+      controller.handleMouseMove(650, 25, engine);
+      controller.updateLinkReconnection(650, 25, engine);
+      expect(controller.completeLinkReconnection(engine)).toBe(false);
+      expect(link.targetPortId).toBe(b.port.id);
+    });
+  });
+
+  // ==========================================================================
   describe('inline label drag-reposition', () => {
     it('maps a world point to a (position, offset) that reproduces the point', () => {
       const { link } = makeAToBLink();
