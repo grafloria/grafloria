@@ -1151,6 +1151,13 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
   private rafHandle: number | null = null;
   /** viewport+zoom actually drawn last frame — used by the idle-skip check. */
   private lastRenderedViewportKey = '';
+  /** The keyboard focus the frame on screen drew a ring for — see canSkipFrame. */
+  private lastRenderedFocusKey = '';
+
+  private focusKey(): string {
+    const focused = this.keyboardNav.getFocused();
+    return focused ? `${focused.type}:${focused.id}` : '';
+  }
   /** Whether last painted frame drew a live connection preview (idle-skip). */
   private lastFrameHadConnectionPreview = false;
   /** wave8/dirty: mutation epoch as of the END of the last painted frame. */
@@ -2882,6 +2889,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     // Clear dirty + snapshot what we drew so the next frame can idle-skip.
     this.renderDirty = false;
     this.lastRenderedViewportKey = this.viewportKey();
+    this.lastRenderedFocusKey = this.focusKey();
     this.lastFrameHadConnectionPreview = this.isConnectionPreviewActive();
     // AFTER the paint: rendering legitimately dirties entities of its own
     // (routed link geometry, auto-sizing), so an epoch snapshotted before
@@ -3006,6 +3014,12 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
     }
     if (this.viewportKey() !== this.lastRenderedViewportKey) {
       return false; // pan / zoom changed
+    }
+    // A14: keyboard FOCUS moved. Focus is not a model change, so neither epoch
+    // sees it — a Tab used to move focus (and announce it) with no ring drawn
+    // until something unrelated repainted.
+    if (this.focusKey() !== this.lastRenderedFocusKey) {
+      return false;
     }
     if (this.isConnectionPreviewActive() || this.lastFrameHadConnectionPreview) {
       return false;

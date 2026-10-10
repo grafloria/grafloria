@@ -418,6 +418,28 @@ describe('DiagramCanvasComponent — wave4/interaction (Cards 5-7)', () => {
       expect(component.focusRing?.label).toContain('Beta');
     });
 
+    test('A14: a Tab paints its ring on the frame the canvas schedules (focus is not a model change)', () => {
+      // Drive the real, rAF-coalesced loop — paint() would force the frame.
+      const queued: FrameRequestCallback[] = [];
+      const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => (queued.push(cb), queued.length));
+      const frames = () => {
+        while (queued.length) queued.shift()!(performance.now());
+        fixture.detectChanges();
+      };
+      try {
+        (component as unknown as { rafHandle: number | null }).rafHandle = null; // drop a frame armed before the mock
+        const a = addNode(0, 0, 'Alpha');
+        addNode(300, 0, 'Beta');
+        frames();
+        key('Tab');
+        frames();
+        expect(component.focusRing?.id).toBe(a.id);
+        expect(overlay('.grafloria-focus-ring')).toHaveLength(1);
+      } finally {
+        raf.mockRestore();
+      }
+    });
+
     test('arrow keys nudge the SELECTION (Shift = coarse) — each is one undo step', async () => {
       const node = addNode(100, 100);
       diagram.selectNode(node);
