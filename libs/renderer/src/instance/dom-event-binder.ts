@@ -153,7 +153,11 @@ export interface DomEventBinderOptions {
   zoomSensitivity?: number;
   /** CSS px the pointer must travel before a node drag commits. Default 4. */
   dragThreshold?: number;
-  /** Ignore every mutation-causing gesture (still pans/zooms). Default false. */
+  /**
+   * Ignore every mutation-causing gesture (still pans/zooms). Default false.
+   * Through `createDiagram`/`render` it locks the document too — see
+   * `DiagramInstance.setReadonly`.
+   */
   readonly?: boolean;
   /**
    * The built-in key bindings. `true` (default): as always. `false`: none at all

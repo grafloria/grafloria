@@ -74,10 +74,14 @@ describe('read-only as ONE live switch', () => {
     expect(handles()).toBe(0);
   });
 
-  it('a view switch, not the document lock: code can still change the document', () => {
+  it('locks the document too (owner decision, C14): a direct edit is refused until unlocked', () => {
     d = createDiagram(container, { nodes: NODES, readonly: true });
+    expect(d.getModel().isReadonly()).toBe(true);
+    d.getModel().getNode('a')!.setData('status', 'seen');
+    expect(d.getModel().getNode('a')!.getData('status')).toBeUndefined();
+    d.setReadonly(false);
+    expect(d.getModel().isReadonly()).toBe(false);
     d.getModel().getNode('a')!.setData('status', 'seen');
     expect(d.getModel().getNode('a')!.getData('status')).toBe('seen');
-    expect(d.getModel().isReadonly()).toBe(false);
   });
 });

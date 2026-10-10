@@ -505,8 +505,12 @@ export interface DiagramInstance {
    * resizing, pasting or undoing from the keyboard, no "+" affordances, no
    * editing chrome. Kept: selection, click, double-click (`node:doubleclick`
    * still fires, so a viewer can open a step), hover, pan/zoom and the run
-   * overlay. A VIEW switch: code can still change the document. The container
-   * carries `data-readonly` while it is on. Starts from the `readonly` option.
+   * overlay. The DOCUMENT is locked too: a command executed through the engine,
+   * undo, or a direct model edit is refused. The instance's own input
+   * (`setNodes`/`setEdges`/`setGroups`/`loadText`) still applies, so a read-only
+   * viewer follows its data. Turning it off lifts only the lock it set (an
+   * engine VIEW mode stays). The container carries `data-readonly` while it is
+   * on. Starts from the `readonly` option.
    */
   setReadonly(readonly: boolean): void;
   /** Is the view read-only — the `readonly` option / `setReadonly`, or the document's own lock? */
@@ -988,14 +992,32 @@ export function createDiagram(
     isReadonly: () => binder.readonlyNow(),
     startConnection: (portId, clientX, clientY) => binder.startConnectionFromPort(portId, clientX, clientY),
   };
-  // Read-only is a VIEW switch: the binder refuses gestures, the renderer drops
-  // editing chrome, the root says so for host CSS. The document stays writable.
+  // Read-only: the binder refuses gestures, the renderer drops editing chrome,
+  // the root says so for host CSS — and the DOCUMENT is locked too, so a
+  // command executed through the engine (or a direct model edit) is refused
+  // rather than editing a "read-only" diagram behind the view's back.
+  //
+  // Only a lock THIS switch set is lifted by it: a document locked by the
+  // engine's VIEW/PRESENTATION mode stays locked when the view is unlocked.
+  let viewLockedModel = false;
   const applyReadonly = (readonly: boolean): void => {
     binder.setReadonly(readonly);
     renderer.setViewReadonly(readonly);
     if (readonly) container.setAttribute('data-readonly', '');
     else container.removeAttribute('data-readonly');
+    if (readonly && !model.isReadonly()) {
+      model.setReadonly(true);
+      viewLockedModel = true;
+    } else if (!readonly && viewLockedModel) {
+      model.setReadonly(false);
+      viewLockedModel = false;
+    }
   };
+  // The instance's own INPUT (setNodes/setEdges/setGroups/loadText) still
+  // applies under that lock, as a system write: it is how every binding feeds a
+  // read-only viewer its data, and a viewer that stopped following its props
+  // would be broken, not read-only.
+  const asInput = <T>(apply: () => T): T => (viewLockedModel ? model.runSystemWrite(apply) : apply());
   if (options.readonly) applyReadonly(true);
   const features: Feature[] = [];
   if (options.connectionReasons) features.push(installConnectReason(featureCtx));
@@ -1780,15 +1802,15 @@ export function createDiagram(
   const instance: DiagramInstance = {
     setNodes(nodes) {
       const before = templatedData();
-      const changed = applyNodes(model, nodes);
-      rederiveTemplates(before);
+      const changed = asInput(() => applyNodes(model, nodes));
+      asInput(() => rederiveTemplates(before));
       if (changed) scheduler.schedule();
     },
     setEdges(edges) {
-      if (applyEdges(model, edges, (w) => warnEdge(w))) scheduler.schedule();
+      if (asInput(() => applyEdges(model, edges, (w) => warnEdge(w)))) scheduler.schedule();
     },
     setGroups(groups) {
-      if (applyGroups(model, groups)) {
+      if (asInput(() => applyGroups(model, groups))) {
         renderer.invalidateFrame();
         scheduler.schedule();
       }
@@ -1854,7 +1876,7 @@ export function createDiagram(
     exportPdf: (exportOptions) => exportPipeline.exportPdf(exportOptions),
 
     exportText: (textOptions) => exportDiagramText(model, textOptions),
-    loadText: (text, textOptions) => {
+    loadText: (text, textOptions) => asInput(() => {
       // REFUSE what cannot be read, before anything is applied: the canvas must
       // be left exactly as it was. The parser recovers line by line, so the
       // import itself never fails — `flowchart\n a[[[ -->` parsed to an empty
@@ -1941,7 +1963,7 @@ export function createDiagram(
 
       scheduler.schedule();
       return result;
-    },
+    }),
 
     /** The LOD tier actually rendered, and the governor's last verdict. */
     getQualityState: () => renderer.getQualityState(),
