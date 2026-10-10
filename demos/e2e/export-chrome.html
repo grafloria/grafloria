@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Export chrome fixture</title>
+<style>body { margin: 0; font: 13px system-ui, sans-serif; } #cv { width: 900px; height: 420px; }</style>
+<div id="cv"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+const nodes = [
+  { id: 'a', label: 'Requirements', position: { x: 40, y: 100 }, size: { width: 160, height: 70 } },
+  { id: 'b', label: 'Design', position: { x: 280, y: 100 }, size: { width: 160, height: 70 } },
+  { id: 'c', label: 'Ship', position: { x: 520, y: 100 }, size: { width: 160, height: 70 } },
+];
+const edges = [{ id: 'ab', source: 'a', target: 'b' }, { id: 'bc', source: 'b', target: 'c' }];
+window.instance = render({ nodes, edges }, document.getElementById('cv'));
+window.ready = true;
+</script>

@@ -602,11 +602,108 @@ export class SVGRenderer implements IRenderer {
    */
   private renderForExport(viewport: Rectangle, zoom: number): VNode {
     this.exportDepth++;
+    const restore = this.exportDepth === 1 ? this.maskEditorChrome() : null;
     try {
       return this.render(viewport, zoom);
     } finally {
+      restore?.();
       this.exportDepth--;
     }
+  }
+
+  /**
+   * Entities whose transient view state is masked for the export in progress
+   * (`node:<id>` / `link:<id>`). Their cached VNodes were built WITH the chrome,
+   * so the export must neither read nor write the cache for them.
+   */
+  private exportMasked: Set<string> | null = null;
+
+  /**
+   * AN EXPORT IS A PICTURE OF THE DIAGRAM, NOT OF THE EDITOR.
+   *
+   * After any drag the node is still selected and still hovered, so every export
+   * used to carry the dashed selection ring, the resize dots, the hover-only port
+   * circles, a selected line's casing and endpoint/waypoint handles, and the focus
+   * ring. All of it is VIEW state (selection, hover, focus, port highlight, the
+   * connect-snap and drop-target marks), so for the length of the export pass it
+   * is set to "nothing is going on" — directly on the fields, emitting no events
+   * and touching no history — and put back afterwards. The interaction layers
+   * (connection preview, snap guides, resize tools) are simply not built while
+   * exporting; see `renderInScope`.
+   *
+   * `highlighted`, `error`, `locked` and `enabled` are DOCUMENT state an app sets on
+   * purpose and stay in the picture, as do ports whose visibility is `always`.
+   */
+  private maskEditorChrome(): () => void {
+    const diagram = this.engine.getDiagram();
+    const masked = new Set<string>();
+    const undo: Array<() => void> = [];
+
+    const focus = this.a11yFocus;
+    const snap = this.connectSnap;
+    const drop = this.dropTargetLinkId;
+    if (focus) masked.add(`${focus.type}:${focus.id}`);
+    if (snap) masked.add(`node:${snap.nodeId}`);
+    if (drop) masked.add(`link:${drop}`);
+    this.a11yFocus = null;
+    this.connectSnap = null;
+    this.dropTargetLinkId = null;
+    undo.push(() => {
+      this.a11yFocus = focus;
+      this.connectSnap = snap;
+      this.dropTargetLinkId = drop;
+    });
+
+    for (const node of diagram?.getNodes() ?? []) {
+      const state = node.state;
+      if (state && (state.selected || state.hovered || state.focused)) {
+        node.state = { ...state, selected: false, hovered: false, focused: false };
+        masked.add(`node:${node.id}`);
+        undo.push(() => {
+          node.state = state;
+        });
+      }
+      for (const port of node.getPorts?.() ?? []) {
+        const { isHovered, isHighlighted, isValidTarget } = port;
+        if (!isHovered && !isHighlighted && !isValidTarget) continue;
+        port.isHovered = false;
+        port.isHighlighted = false;
+        port.isValidTarget = false;
+        masked.add(`node:${node.id}`);
+        undo.push(() => {
+          port.isHovered = isHovered;
+          port.isHighlighted = isHighlighted;
+          port.isValidTarget = isValidTarget;
+        });
+      }
+    }
+
+    for (const link of diagram?.getLinks() ?? []) {
+      const state = link.state;
+      const src = link.isSourceEndpointSelected;
+      const tgt = link.isTargetEndpointSelected;
+      if (state !== 'selected' && state !== 'hovered' && !src && !tgt) continue;
+      if (state === 'selected' || state === 'hovered') link.state = 'default';
+      link.isSourceEndpointSelected = false;
+      link.isTargetEndpointSelected = false;
+      masked.add(`link:${link.id}`);
+      undo.push(() => {
+        link.state = state;
+        link.isSourceEndpointSelected = src;
+        link.isTargetEndpointSelected = tgt;
+      });
+    }
+
+    this.exportMasked = masked;
+    return () => {
+      this.exportMasked = null;
+      for (let i = undo.length - 1; i >= 0; i--) undo[i]();
+    };
+  }
+
+  /** May this entity's VNode come from / go into the cache on the current pass? */
+  private cacheableThisPass(kind: 'node' | 'link', id: string): boolean {
+    return !this.exportMasked?.has(`${kind}:${id}`);
   }
   /**
    * Did the frame being built move any link's FINAL geometry? If so it has not
@@ -1209,13 +1306,14 @@ export class SVGRenderer implements IRenderer {
     // Render layers
     const linksLayer = this.renderLinksLayer(visibleLinks, lod);
     const nodesLayer = this.renderNodesLayer(visibleNodes, lod);
-    const connectionPreviewLayer = this.renderConnectionPreviewLayer();
-    const snapGuidesLayer = this.renderSnapGuidesLayer();
+    // Interaction layers are editor chrome, never part of an exported picture (B6).
+    const connectionPreviewLayer = this.exporting ? null : this.renderConnectionPreviewLayer();
+    const snapGuidesLayer = this.exporting ? null : this.renderSnapGuidesLayer();
     // resize-ux: RF-style resize affordances (4 corner dots + 4 edge lines) for
     // the single selected resizable node. Recomputed per frame — NEVER cached —
     // because the glyphs hold a constant SCREEN size (world size = px/zoom) and
     // a cached node group would keep a stale zoom's sizing.
-    const resizeHandlesLayer = this.renderResizeToolsLayer(lod, zoom);
+    const resizeHandlesLayer = this.exporting ? null : this.renderResizeToolsLayer(lod, zoom);
 
     // wave9/comments (Card 6): the pins. Null unless a comment source is attached, so a
     // canvas with no comment system pays literally nothing — not a layer, not a query.
@@ -4913,7 +5011,7 @@ export class SVGRenderer implements IRenderer {
     // every frame (a cache hit would skip style computation and orphan url(#…)).
     const cacheKey = `node-${node.id}-${lod}${this.connectSnap?.nodeId === node.id ? `~snap-${this.connectSnap.verdict}` : ''}`;
     const usesPaintServer = this.nodeUsesPaintServer(node);
-    if (this.config.enableCaching && !node.isDirty && !usesPaintServer) {
+    if (this.config.enableCaching && !node.isDirty && !usesPaintServer && this.cacheableThisPass('node', node.id)) {
       const cached = this.vnodeCache.get(cacheKey);
       if (cached) {
         // Removed overwhelming cache log - use only for debugging if needed
@@ -5070,6 +5168,10 @@ export class SVGRenderer implements IRenderer {
     vnode: VNode,
     entity: { isDirty: boolean; markClean(): void }
   ): void {
+    // A masked export pass built this VNode WITHOUT the chrome the screen shows —
+    // caching it (and marking the entity clean) would hand the screen a picture
+    // with its selection missing.
+    if (!this.cacheableThisPass(kind, id)) return;
     const entityKey = `${kind}-${id}`;
     if (entity.isDirty) {
       for (const stale of this.entityCacheKeys.get(entityKey) ?? []) {
@@ -7082,7 +7184,7 @@ export class SVGRenderer implements IRenderer {
     // Paint-server links bypass the cache so their `<defs>` entry is re-registered
     // every frame (a cache hit would skip style computation and orphan url(#…)).
     const usesPaintServer = this.linkUsesPaintServer(link);
-    if (this.config.enableCaching && !link.isDirty && !usesPaintServer) {
+    if (this.config.enableCaching && !link.isDirty && !usesPaintServer && this.cacheableThisPass('link', link.id)) {
       const cached = this.vnodeCache.get(cacheKey);
       if (cached) {
         return cached;
