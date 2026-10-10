@@ -646,6 +646,11 @@ const IN_PAGE = () => {
           // that is ALREADY selected: clicking the open page is a no-op in
           // every tab UI there is.
           if (b.disabled || b.getAttribute('aria-selected') === 'true') continue;
+          // Judged as a hand would meet it, at the moment of the click: an earlier
+          // button may have HIDDEN this one (the workflow editor's Read-only toggle
+          // hides its rule buttons with `visibility: hidden`, which offsetParent
+          // does not see). A button no one can see is not a dead button.
+          if (b.offsetParent === null || getComputedStyle(b).visibility !== 'visible') continue;
           let mutated = false;
           const mo = new MutationObserver(() => { mutated = true; });
           mo.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
