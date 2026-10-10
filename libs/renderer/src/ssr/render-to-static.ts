@@ -1,4 +1,4 @@
-import { DiagramEngine } from '@grafloria/engine';
+import { DiagramEngine, runDeterministic } from '@grafloria/engine';
 import type { Theme } from '../types/theme.types';
 import { SVGRenderer } from '../svg/svg-renderer';
 import { ViewportController } from '../viewport/viewport-controller';
@@ -104,6 +104,14 @@ export interface StaticRenderResult {
 }
 
 export function renderToStaticSVG(options: StaticRenderOptions = {}): StaticRenderResult {
+  // C13: a static render reads NO clock and NO random source — entity timestamps
+  // freeze and ids come from a counter (see engine `runDeterministic`). A server
+  // component prerendered under Next's `cacheComponents` refused the first
+  // `Date.now()`, and the same input now gives the same bytes.
+  return runDeterministic(() => renderStaticNow(options));
+}
+
+function renderStaticNow(options: StaticRenderOptions): StaticRenderResult {
   const width = options.width ?? 800;
   const height = options.height ?? 600;
   const instanceId = options.instanceId ?? 'grafloria-ssr';

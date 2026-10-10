@@ -2,12 +2,16 @@
 
 import { nanoid } from 'nanoid';
 import { v4 as uuidv4 } from 'uuid';
+import { deterministicPrefix, nextDeterministicSeq } from './deterministic';
 
 /**
  * Generate a short unique ID (12 characters)
  * Used for internal references
  */
 export function generateId(): string {
+  // Inside runDeterministic: a counter, never crypto (see deterministic.ts).
+  const seq = nextDeterministicSeq();
+  if (seq !== null) return `${deterministicPrefix()}${seq.toString(36).padStart(11, '0')}`;
   return nanoid(12);
 }
 
@@ -16,6 +20,8 @@ export function generateId(): string {
  * Used for persistent identifiers
  */
 export function generateUUID(): string {
+  const seq = nextDeterministicSeq();
+  if (seq !== null) return `00000000-0000-4000-8000-${seq.toString(16).padStart(12, '0')}`;
   return uuidv4();
 }
 
@@ -23,6 +29,8 @@ export function generateUUID(): string {
  * Generate a prefixed ID
  */
 export function generatePrefixedId(prefix: string): string {
+  const seq = nextDeterministicSeq();
+  if (seq !== null) return `${prefix}_${seq.toString(36).padStart(8, '0')}`;
   return `${prefix}_${nanoid(8)}`;
 }
 

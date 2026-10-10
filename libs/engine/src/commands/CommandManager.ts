@@ -4,6 +4,7 @@ import { Command, CommandContext } from './Command';
 import { BatchCommand } from './composite/BatchCommand';
 import { EventBus } from '../events/EventBus';
 import { DiagramEventTypes } from '../types/event.types';
+import { engineNow } from '../utils/deterministic';
 
 export interface CommandHistoryEntry {
   command: Command;
@@ -111,7 +112,7 @@ export class CommandManager {
     if (command.isUndoable()) {
       this.addToHistory({
         command,
-        timestamp: Date.now(),
+        timestamp: engineNow(),
         duration,
         success: true,
       });
@@ -165,7 +166,7 @@ export class CommandManager {
     }
 
     lastEntry.command = merged;
-    lastEntry.timestamp = Date.now();
+    lastEntry.timestamp = engineNow();
     this.eventBus.emit(DiagramEventTypes.COMMAND_MERGED, { command: merged });
   }
 
@@ -454,7 +455,7 @@ export class CommandManager {
     const lastCommand = lastEntry.command;
 
     // Check time window
-    const timeDiff = Date.now() - lastEntry.timestamp;
+    const timeDiff = engineNow() - lastEntry.timestamp;
     if (timeDiff > this.mergingWindow) {
       return false;
     }

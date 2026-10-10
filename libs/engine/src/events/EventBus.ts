@@ -1,6 +1,7 @@
 // EventBus - Central event dispatcher for the diagram engine
 
 import { EventEmitter } from 'eventemitter3';
+import { engineNow } from '../utils/deterministic';
 
 export interface EventLogEntry {
   timestamp: number;
@@ -149,7 +150,7 @@ export class EventBus {
   ): () => void {
     let lastCall = 0;
     const wrappedHandler = (data: any) => {
-      const now = Date.now();
+      const now = engineNow();
       if (now - lastCall >= delay) {
         lastCall = now;
         handler(data);
@@ -257,7 +258,7 @@ export class EventBus {
    */
   private logEvent(event: string, data: any, parsed: ParsedEvent): void {
     this.eventLog.push({
-      timestamp: Date.now(),
+      timestamp: engineNow(),
       event,
       data,
       namespace: parsed.namespace,

@@ -12,6 +12,7 @@ import type {
   ModeChangeHook,
   ModeChangeContext,
 } from './DiagramModeTypes';
+import { engineNow } from '../utils/deterministic';
 
 /**
  * ModeManager - Centralized mode management for diagram engine
@@ -38,7 +39,7 @@ export class ModeManager {
   private history: ModeHistoryEntry[] = [];
   private stack: DiagramMode[] = []; // For push/pop operations
   private historyIndex: number = -1; // For previous/next navigation
-  private modeStartTime: number = Date.now();
+  private modeStartTime: number = engineNow();
 
   // Priority 3c: Before/After Hooks
   private beforeHooks: ModeChangeHook[] = [];
@@ -111,7 +112,7 @@ export class ModeManager {
 
     // Apply mode change
     this.currentMode = mode;
-    this.modeStartTime = Date.now();
+    this.modeStartTime = engineNow();
 
     // Emit mode changed event
     this.eventBus.emit('mode-changed', { previousMode, currentMode: mode });
@@ -272,7 +273,7 @@ export class ModeManager {
    * Update history when mode changes
    */
   private updateHistory(newMode: DiagramMode): void {
-    const now = Date.now();
+    const now = engineNow();
     const duration = now - this.modeStartTime;
 
     // Update duration for current (previous) mode
@@ -456,7 +457,7 @@ export class ModeManager {
   restore(mode: DiagramMode | undefined): void {
     if (mode && isValidDiagramMode(mode)) {
       this.currentMode = mode;
-      this.modeStartTime = Date.now();
+      this.modeStartTime = engineNow();
       this.history = [{
         mode,
         timestamp: this.modeStartTime,
