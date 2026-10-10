@@ -4700,7 +4700,9 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       // Phase 2.3a: End waypoint drag if in progress
       if (interactionState.isDraggingWaypoint) {
         event.preventDefault();
-        this.interactionHandler.endWaypointDrag();
+        // With the engine: the gesture is committed as ONE undo step (a press that
+        // inserted a bend, or a drag of one) — without it nothing reached history.
+        this.interactionHandler.endWaypointDrag(this.eng);
         this.scheduleRender();
         this.cdr.markForCheck();
         return;

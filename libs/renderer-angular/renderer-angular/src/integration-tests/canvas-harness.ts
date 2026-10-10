@@ -80,9 +80,9 @@ export class CanvasHarness {
       buttons: type === 'pointerup' ? 0 : 1,
       ...init,
     }) as unknown as PointerEvent;
-    if (type === 'pointerdown') this.canvas.onPointerDown(event);
-    else if (type === 'pointermove') this.canvas.onPointerMove(event);
-    else this.canvas.onPointerUp(event);
+    // Dispatched for real (it bubbles to the component's host listeners and on to
+    // window, where the renderer's pointer-button tracker listens too).
+    this.canvas.containerRef.nativeElement.dispatchEvent(event);
   }
 
   /** Hover (no button) at a client point, the way a mouse arrives before it presses. */
