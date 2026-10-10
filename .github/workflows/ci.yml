@@ -104,3 +104,6 @@ jobs:
       # An export after a drag carries no selection ring, handles or hover ports —
       # SVG, PNG and PDF byte-identical to the unselected export.
       - run: node demos/e2e/export-chrome-run.mjs
+      # Wire options under a real mouse: an 88 px link selects anywhere along it
+      # (linkButtons 'selected'), a port anchored at its element, portAddOffset.
+      - run: node demos/e2e/wire-options-run.mjs

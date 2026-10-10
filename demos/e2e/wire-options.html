@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Wire options fixture</title>
+<style>
+  body { margin: 0; font: 13px system-ui, sans-serif; display: grid; gap: 12px; padding: 12px; }
+  .cv { width: 760px; height: 240px; border: 1px solid #d0d5dd; position: relative; }
+  .card { position: absolute; left: 0; top: 0; width: 140px; height: 100%; box-sizing: border-box; border: 1.5px solid #64748b; border-radius: 8px; background: #fff; display: grid; place-items: center; }
+  .name { position: absolute; left: 146px; top: 18px; font-size: 11px; color: #475569; }
+  .dot { position: absolute; left: 136px; top: 26px; width: 8px; height: 8px; }
+</style>
+<div class="cv" id="c6"></div>
+<div class="cv" id="c7"></div>
+<div class="cv" id="c8a"></div>
+<div class="cv" id="c8b"></div>
+<script type="module">
+import { render } from '../shell/grafloria.js';
+
+const step = (id, x, outs = ['out']) => ({
+  id, label: id, position: { x, y: 60 }, size: { width: 120, height: 60 },
+  ports: [{ id: `${id}:in`, side: 'left', type: 'input' }, ...outs.map((o, i) => ({ id: `${id}:${o}`, side: 'right', type: 'output', index: i }))],
+});
+const pinned = { minZoom: 1, maxZoom: 1 };
+window.asked = [];
+
+// 6. an 88 px link whose buttons come only once it is selected
+window.c6 = render({
+  nodes: [step('a', 60), step('b', 268)],
+  edges: [{ id: 'ab', source: 'a', sourceHandle: 'a:out', target: 'b', targetHandle: 'b:in' }],
+}, document.getElementById('c6'), { ...pinned, fitView: false, affordances: { linkAdd: true, linkDelete: true, linkButtons: 'selected' } });
+window.c6.on('link:add-request', (e) => window.asked.push(['add', e.linkId]));
+window.c6.on('link:delete-request', (e) => window.asked.push(['delete', e.linkId]));
+
+// 7. a card wider than its box (an output name drawn on the wire): the port sits AT its element
+window.c7 = render({
+  nodes: [
+    { id: 'n', type: 'named', position: { x: 60, y: 60 } },
+    step('t', 420),
+  ],
+  edges: [{ id: 'w', source: 'n', sourceHandle: 'n:yes', target: 't', targetHandle: 't:in' }],
+}, document.getElementById('c7'), {
+  ...pinned, fitView: false,
+  nodeTemplates: {
+    named: () => ({
+      html: '<div class="card">Check</div><div class="name">yes</div><div class="dot" data-port="n:yes" data-port-anchor="element"></div>',
+      ports: [{ id: 'n:in', side: 'left', type: 'input' }, { id: 'n:yes', side: 'right', type: 'output' }],
+      size: { width: 220, height: 60 },
+    }),
+  },
+});
+
+// 8. the free output's "+" — default distance, and 70 px
+const free = () => ({ nodes: [step('f', 60)], edges: [] });
+window.c8a = render(free(), document.getElementById('c8a'), { ...pinned, fitView: false, affordances: { portAdd: true } });
+window.c8b = render(free(), document.getElementById('c8b'), { ...pinned, fitView: false, affordances: { portAdd: true, portAddOffset: () => 70 } });
+window.ready = true;
+</script>
