@@ -171,3 +171,59 @@ describe('wave14/interaction defect 1 — endpoint handle vs hovered port', () =
     expect(state.reconnectingEndpoint).toBe('target');
   });
 });
+
+// C3 (docs review v3): with the edge selected, a drag from the port where it ends
+// grabbed the endpoint (by the design above) and then, released on another node's
+// BODY, did nothing at all — no new link, no reconnect. The release now resolves the
+// way the drag shows it (see InteractionController.resolveReconnectTarget): the
+// endpoint lands on that node, on the port facing the edge's fixed end.
+describe('C3 — a drag from the selected edge’s end port, released on a node body', () => {
+  let h: Harness;
+  afterEach(() => h?.destroy());
+
+  function setup(): LinkModel {
+    h = harness();
+    applyNodes(h.model, [
+      { id: 'a', position: { x: 100, y: 100 }, size: { width: 100, height: 60 } },
+      { id: 'b', position: { x: 400, y: 100 }, size: { width: 100, height: 60 } },
+      { id: 'c', position: { x: 250, y: 360 }, size: { width: 120, height: 60 } },
+    ]);
+    applyEdges(h.model, [{ id: 'e1', source: 'a', target: 'b' }]);
+    const link = h.model.getLink('e1')!;
+    link.setPoints([{ x: 200, y: 130 }, { x: 400, y: 130 }]);
+    link.setState('selected');
+    return link;
+  }
+
+  /** Press at `from`, travel to `to` in ≤50 px steps (hand speed), release there. */
+  function dragTo(from: { x: number; y: number }, to: { x: number; y: number }): void {
+    h.container.dispatchEvent(mouse('mousemove', { clientX: from.x, clientY: from.y }));
+    h.container.dispatchEvent(mouse('mousedown', { clientX: from.x, clientY: from.y }));
+    const n = Math.max(3, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / 50));
+    for (let i = 1; i <= n; i++) {
+      const x = from.x + ((to.x - from.x) * i) / n;
+      const y = from.y + ((to.y - from.y) * i) / n;
+      h.container.dispatchEvent(mouse('mousemove', { clientX: x, clientY: y, buttons: 1 }));
+    }
+    h.container.dispatchEvent(mouse('mouseup', { clientX: to.x, clientY: to.y }));
+  }
+
+  it('the endpoint lands on that node (it used to be silently refused)', () => {
+    const link = setup();
+    dragTo({ x: 400, y: 130 }, { x: 310, y: 390 }); // c's centre
+
+    expect(link.targetNodeId).toBe('c');
+    expect(link.sourceNodeId).toBe('a');
+    expect(h.events.some((e) => e.event === 'reconnect')).toBe(true);
+    expect(h.interaction.getState().isReconnectingLink).toBe(false);
+  });
+
+  it('released over empty canvas it still reverts — the edge is untouched', () => {
+    const link = setup();
+    dragTo({ x: 400, y: 130 }, { x: 700, y: 600 });
+
+    expect(link.targetNodeId).toBe('b');
+    expect(link.targetPortId).toBe('b__left');
+    expect(h.events.some((e) => e.event === 'reconnect')).toBe(false);
+  });
+});

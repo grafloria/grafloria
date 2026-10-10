@@ -176,13 +176,24 @@ describe('SVGRenderer.export()', () => {
       expect(out).not.toContain(`fill="${LIGHT_THEME.colors.node.default.fill}"`);
     });
 
-    it('state beats element-inline (a selected node exports selected)', async () => {
+    it('state beats element-inline (a highlighted node exports highlighted)', async () => {
+      // DOCUMENT state an app sets on purpose. Selection and hover are VIEW state
+      // and never reach a file — see export-chrome.spec.ts.
+      const node = addNode('n1', 0, 0, { fill: '#123456' });
+      node.setHighlighted(true);
+      const out = await svg();
+
+      expect(out).toContain(`fill="${LIGHT_THEME.colors.node.highlighted.fill}"`);
+      expect(out).not.toContain('#123456');
+    });
+
+    it('a SELECTED node exports as it looks unselected (selection is view state)', async () => {
       const node = addNode('n1', 0, 0, { fill: '#123456' });
       diagram.selectNode(node);
       const out = await svg();
 
-      expect(out).toContain(`fill="${LIGHT_THEME.colors.node.selected.fill}"`);
-      expect(out).not.toContain('#123456');
+      expect(out).toContain('#123456');
+      expect(out).not.toContain(LIGHT_THEME.colors.node.selected.fill);
     });
 
     it("REGRESSION: a 'spread' shape (ellipse) keeps its own fill — the stylesheet used to eat it", async () => {
@@ -482,10 +493,10 @@ describe('SVGRenderer.export()', () => {
 
       // Only one node survives; the other's markup is GONE, not merely cropped.
       expect(out.match(/class="node-group"/g)).toHaveLength(1);
-      // …and the box is tight around what is left, nowhere near (900, 900).
-      // A SELECTED node also paints its selection ring (a -3,-3 rect with a 3px
-      // stroke), which is ink and so widens the box past the plain-node 148×98.
-      expect(out).toContain('viewBox="-24.5 -24.5 151.5 101.5"');
+      // …and the box is tight around what is left, nowhere near (900, 900). The
+      // node is drawn WITHOUT its selection ring (editor chrome), so the box is the
+      // plain node's 148×98.
+      expect(out).toContain('viewBox="-21 -21 148 98"');
     });
 
     it('includeIds does the same thing explicitly', async () => {

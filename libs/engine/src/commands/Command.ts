@@ -1,6 +1,7 @@
 // Command interface for undo/redo system
 
 import { generateId } from '../utils';
+import { engineNow } from '../utils/deterministic';
 
 // Forward declarations - will be defined when we create these classes
 export interface CommandContext {
@@ -25,7 +26,7 @@ export abstract class Command {
   constructor(name: string) {
     this.id = generateId();
     this.name = name;
-    this.timestamp = Date.now();
+    this.timestamp = engineNow();
   }
 
   /**

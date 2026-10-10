@@ -1089,6 +1089,8 @@ export class GroupModel extends DiagramEntity {
    * every push that arrives DURING a pass is dropped, because that pass is already
    * producing the answer the push would ask for.
    */
+  /** The diagram the in-flight layout pass resolves members against. */
+  private layoutDiagram: DiagramModel | undefined;
   private layoutInFlight = false;
 
   /**
@@ -1155,6 +1157,7 @@ export class GroupModel extends DiagramEntity {
     }
 
     this.layoutInFlight = true;
+    this.layoutDiagram = diagramToUse;
     try {
       if (this.layoutType === 'flexbox') {
         this.applyFlexboxLayout(entities);
@@ -1163,6 +1166,7 @@ export class GroupModel extends DiagramEntity {
       }
     } finally {
       this.layoutInFlight = false;
+      this.layoutDiagram = undefined;
     }
   }
 
@@ -1198,12 +1202,51 @@ export class GroupModel extends DiagramEntity {
       return;
     }
     const group = entity as GroupModel;
+    // C5: a member GROUP's frame is its contents' container, not a free rectangle —
+    // moving the frame alone left a plain nested group's members behind, outside
+    // it. Carry them (and any deeper frames) by the same delta first; a nested
+    // container with its own layout then reflows from its new frame anyway.
+    this.translateGroupContents(group, x - group.position.x, y - group.position.y);
     if (group.size) {
       group.setFrame({ x, y, width: group.size.width, height: group.size.height });
       return;
     }
     group.position = { x, y };
     group.requestLayout();
+  }
+
+  /**
+   * Move every member node of `group` (recursively, through nested groups) and
+   * every nested group frame by (dx, dy) — the frame of `group` itself excepted,
+   * the caller places that. Cycle-guarded; pinned (locked) nodes stay put.
+   */
+  private translateGroupContents(group: GroupModel, dx: number, dy: number): void {
+    const diagram = this.layoutDiagram ?? this.resolveDiagram();
+    if (!diagram || (dx === 0 && dy === 0)) return;
+    const seen = new Set<string>([group.id]);
+    const stack: GroupModel[] = [group];
+    while (stack.length) {
+      const g = stack.pop()!;
+      for (const id of g.members) {
+        const node = diagram.getNode(id);
+        if (node) {
+          if (!this.isPinned(node)) node.setPosition(node.position.x + dx, node.position.y + dy);
+          continue;
+        }
+        const child = diagram.getGroup(id);
+        if (!child || seen.has(child.id)) continue;
+        seen.add(child.id);
+        const b = child.getOuterBounds();
+        if (child.size) {
+          child.setFrame({ x: b.x + dx, y: b.y + dy, width: child.size.width, height: child.size.height });
+        } else {
+          child.position = { x: child.position.x + dx, y: child.position.y + dy };
+        }
+        // A nested container that reflows on its own already re-placed its members
+        // from the frame just written; translating them too would move them twice.
+        if (!(child.size && child.isAutoLayoutEnabled())) stack.push(child);
+      }
+    }
   }
 
   /**

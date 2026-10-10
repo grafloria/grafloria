@@ -2,6 +2,7 @@
 
 import type { Viewport } from '../types';
 import type { DiagramModel } from '../models/DiagramModel';
+import { engineNow } from '../utils/deterministic';
 
 export interface RenderStats {
   fps: number;
@@ -270,7 +271,7 @@ export class DiagramStore {
    */
   createSnapshot(): StateSnapshot {
     return {
-      timestamp: Date.now(),
+      timestamp: engineNow(),
       state: this.deepClone(this.state),
       version: '1.0.0',
     };

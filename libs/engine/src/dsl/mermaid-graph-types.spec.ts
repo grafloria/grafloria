@@ -482,6 +482,23 @@ describe('Mermaid compat — Phase 3: stateDiagram-v2', () => {
     expect(model.transitions.map((t) => t.label)).toEqual(['start', 'stop']);
   });
 
+  // C9 (docs review v3): `Idle --> Running : start` + `Running --> Idle : stop` drew
+  // BOTH transitions down the same line between the same two ports, so the two
+  // labels printed over each other ("stop" over "start").
+  it('a transition and its REVERSE take different routes (their labels cannot collide)', () => {
+    const r = imp('stateDiagram-v2\n  [*] --> Idle\n  Idle --> Running : start\n  Running --> Idle : stop');
+    const link = (from: string, to: string) =>
+      r.diagram.getLinks().find((l) => l.sourceNodeId === from && l.targetNodeId === to)!;
+    const there = link('Idle', 'Running');
+    const back = link('Running', 'Idle');
+    const ports = (l: typeof there) => [l.sourcePortId, l.targetPortId].sort().join(',');
+    expect(ports(back)).not.toBe(ports(there));
+    // …and on two distinct SIDES of each node, so the lines do not overlap either.
+    const side = (portId: string) => r.diagram.getPortById(portId)?.side;
+    expect(side(back.sourcePortId)).not.toBe(side(there.targetPortId));
+    expect(side(back.targetPortId)).not.toBe(side(there.sourcePortId));
+  });
+
   it('a COMPOSITE state becomes a group, and its `[*]` is scoped to it', () => {
     const r = imp(
       'stateDiagram-v2\n' +

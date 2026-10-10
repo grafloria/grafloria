@@ -123,7 +123,7 @@ function edgeStyleFor(kind: UmlRelationKind): EdgeStyle {
 }
 
 /** Multiplicity chip, positioned near an edge end. */
-const chip = (text: string, slot: 'start' | 'end') => ({
+export const multiplicityChip = (text: string, slot: 'start' | 'end') => ({
   text,
   slot,
   offset: { x: 0, y: -7 },
@@ -201,8 +201,8 @@ export function umlDiagram(options: UmlDiagramOptions): {
       if (!rel.multiplicity) return;
       const link = model.getLink((edges[i] as { id: string }).id);
       if (!link) return;
-      link.addLabel(chip(rel.multiplicity[0], 'start'));
-      link.addLabel(chip(rel.multiplicity[1], 'end'));
+      link.addLabel(multiplicityChip(rel.multiplicity[0], 'start'));
+      link.addLabel(multiplicityChip(rel.multiplicity[1], 'end'));
       added = true;
     });
     if (added) (api as { renderNow?: () => void })?.renderNow?.();

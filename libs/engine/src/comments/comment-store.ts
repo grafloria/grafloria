@@ -103,10 +103,37 @@ export class CommentStore {
       for (const mid of Object.keys(t.messages ?? {})) this.notified.add(mentionKey(tid, mid));
     }
 
-    this.unsubscribe = this.diagram.on('change', ((entry: { property: string }) => {
+    const offChange = this.diagram.on('change', ((entry: { property: string }) => {
       if (entry.property !== 'comments' && !entry.property.startsWith('comments.')) return;
       this.onCommentsChanged();
     }) as never);
+
+    // C7: `attached` is DERIVED (see resolveAnchor), so deleting — or restoring — the
+    // entity a thread is anchored to changes what every listener shows without a
+    // single comment register being written. Nothing told them: a panel wired to
+    // onChange kept saying "attached" beside a deleted node. Tell them — but only
+    // when a thread is actually anchored to that entity.
+    const entityEvent = (kind: 'node' | 'link') =>
+      ((entity: { id?: string } | undefined) => {
+        if (entity?.id && this.isAnchorOf(kind, entity.id)) this.emit();
+      }) as never;
+    const offs = [
+      offChange,
+      this.diagram.on('node:removed', entityEvent('node')),
+      this.diagram.on('node:added', entityEvent('node')),
+      this.diagram.on('link:removed', entityEvent('link')),
+      this.diagram.on('link:added', entityEvent('link')),
+    ];
+    this.unsubscribe = () => offs.forEach((off) => off?.());
+  }
+
+  /** Is any thread anchored to this entity? */
+  private isAnchorOf(kind: 'node' | 'link', id: string): boolean {
+    for (const t of Object.values(this.tree())) {
+      const anchor = (t as { anchor?: CommentAnchor }).anchor;
+      if (anchor && anchor.kind === kind && anchor.id === id) return true;
+    }
+    return false;
   }
 
   // ==========================================================================

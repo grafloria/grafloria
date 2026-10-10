@@ -192,4 +192,55 @@ describe('SwimlaneService (Wave-5 Card 6)', () => {
     const rl = reloaded.getGroup(lanes[0].id)!;
     expect(rl.laneConfig).toMatchObject({ role: 'lane', weight: 2 });
   });
+
+  // C6 (docs review v3): re-tiling moved the lane FRAMES and left every ticket
+  // where it was — a lane-B ticket ended up drawn in the new lane C's band.
+  describe('re-tiling carries each lane\'s members with its band', () => {
+    function inside(n: NodeModel, g: GroupModel): boolean {
+      const b = g.getOuterBounds();
+      return n.position.x >= b.x && n.position.y >= b.y &&
+        n.position.x + n.size.width <= b.x + b.width && n.position.y + n.size.height <= b.y + b.height;
+    }
+
+    function poolWithTicket() {
+      const diagram = new DiagramModel();
+      const svc = new SwimlaneService(diagram);
+      const t = new NodeModel({ id: 't', type: 'default', position: { x: 100, y: 230 }, size: { width: 100, height: 40 } });
+      diagram.addNode(t);
+      const { pool, lanes } = svc.createPool({
+        name: 'P', orientation: 'horizontal', headerSize: 30,
+        bounds: { x: 0, y: 0, width: 400, height: 300 }, lanes: [{ name: 'A' }, { name: 'B' }],
+      });
+      lanes[1]!.addMember('t', diagram);
+      return { diagram, svc, t, pool, lanes };
+    }
+
+    it('addLane: the ticket stays inside its own (shrunken, moved) lane', () => {
+      const { svc, t, pool, lanes } = poolWithTicket();
+      expect(inside(t, lanes[1]!)).toBe(true);
+      const c = svc.addLane(pool, { name: 'C' });
+      expect(lanes[1]!.getOuterBounds()).toEqual({ x: 30, y: 100, width: 370, height: 100 });
+      expect(inside(t, lanes[1]!)).toBe(true);
+      expect(inside(t, c)).toBe(false);
+      expect(t.position.x).toBe(100); // the main axis is untouched
+    });
+
+    it('a band that MOVES carries its member by the same offset', () => {
+      const { svc, t, pool, lanes } = poolWithTicket();
+      // Lane B: the y 150..300 band; put the ticket 30 below its top (inside the padding).
+      t.setPosition(100, 180);
+      svc.addLane(pool, { name: 'Top' }, 0); // B becomes the third band, y 200..300
+      expect(lanes[1]!.getOuterBounds().y).toBe(200);
+      expect(t.position.y).toBe(230);
+    });
+
+    it('removeLane and resizePool keep members in their lanes too', () => {
+      const { svc, t, pool, lanes } = poolWithTicket();
+      svc.addLane(pool, { name: 'C' });
+      svc.resizePool(pool, { x: 0, y: 0, width: 400, height: 240 });
+      expect(inside(t, lanes[1]!)).toBe(true);
+      svc.removeLane(pool, lanes[0]!.id);
+      expect(inside(t, lanes[1]!)).toBe(true);
+    });
+  });
 });

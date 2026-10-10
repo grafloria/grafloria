@@ -3,6 +3,7 @@
 import { EventEmitter } from 'eventemitter3';
 import { SerializedEntity } from '../types';
 import { generateId, generateUUID, deepClone } from '../utils';
+import { engineNow } from '../utils/deterministic';
 
 export interface ChangeEntry {
   timestamp: number;
@@ -80,7 +81,7 @@ export abstract class DiagramEntity {
     this.uuid = uuid || generateUUID();
     this.metadata = new Map();
     this.emitter = new EventEmitter();
-    this._dirtyTimestamp = Date.now(); // Set initial timestamp
+    this._dirtyTimestamp = engineNow(); // Set initial timestamp
   }
 
   /**
@@ -106,7 +107,7 @@ export abstract class DiagramEntity {
     mutationEpoch++;
 
     this._isDirty = true;
-    this._dirtyTimestamp = Date.now();
+    this._dirtyTimestamp = engineNow();
 
     if (reason) {
       this._dirtyReasons.add(reason);
@@ -211,7 +212,7 @@ export abstract class DiagramEntity {
     if (oldValue === newValue) return;
 
     const entry: ChangeEntry = {
-      timestamp: Date.now(),
+      timestamp: engineNow(),
       property,
       oldValue: this.cloneValue(oldValue),
       newValue: this.cloneValue(newValue),

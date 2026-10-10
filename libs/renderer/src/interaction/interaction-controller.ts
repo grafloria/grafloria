@@ -219,6 +219,8 @@ export class InteractionController {
   protected reconnectingEndpoint: 'source' | 'target' | null = null;
   /** Current cursor position while dragging a reconnecting endpoint. */
   protected reconnectingMousePoint: Point | null = null;
+  /** Where the last {@link handleMouseMove} put the cursor — what a release resolves against. */
+  protected lastHoverPoint: Point | null = null;
 
   /**
    * Inline label drag-reposition state. While active,
@@ -382,6 +384,7 @@ export class InteractionController {
 
     const diagram = engine.getDiagram();
     if (!diagram) return false;
+    this.lastHoverPoint = { x: worldX, y: worldY };
 
     // Phase 5: Performance monitoring
     const startTime = performance.now();
@@ -632,6 +635,16 @@ export class InteractionController {
       const connectionStateManager = engine.getConnectionStateManager();
       let targetPort = this.hoveredPort ?? (this.snap?.accepts ? this.snap.port : null);
 
+      // C2: THE MAGNET THE DRAG SHOWED. `handleConnectionDrag` latches onto the nearest
+      // valid port within `snapToPortRadius` and lights it as the target; the release
+      // used to ignore that and re-search with the index's own 24-unit default, so a
+      // drop 25–29 px from a port (inside a 30 px magnet) created nothing while the UI
+      // said it would connect. The release now resolves by the same rule.
+      if (!targetPort) {
+        const at = connectionStateManager.getState().currentMousePosition;
+        if (at) targetPort = this.findMagnetPort(at.x, at.y, engine);
+      }
+
     // Smart mode: Auto-connect to nearest port if dropping on (or near) a node.
     //
     // wave8/culling — Card 2. This used to call `PortModel.findNearestPort`, and
@@ -707,6 +720,7 @@ export class InteractionController {
         // Smart-mode port snap (also the fallback when easy-connect found no node).
         if (!targetPort && smartAutoConnect) {
           const hit = diagram.findNearestPort(pos, {
+            radius: config.snapToPortRadius > 0 ? config.snapToPortRadius : undefined,
             portPosition: (port, node) => portWorldPosition(port, node),
           });
           targetPort = hit?.port ?? null;
@@ -815,16 +829,10 @@ export class InteractionController {
 
     this.reconnectingMousePoint = { x: worldX, y: worldY };
 
-    // Is the port under the cursor (if any) a legal drop target?
-    const isValid = !!(
-      this.hoveredPort &&
-      this.isValidReconnectionTarget(
-        this.reconnectingLink,
-        this.reconnectingEndpoint,
-        this.hoveredPort,
-        engine
-      )
-    );
+    // Would a release HERE land? The same resolution the drop uses (port under the
+    // cursor, magnet radius, then — with smart auto-connect — the node body), so the
+    // ghost turns valid exactly where the release will succeed.
+    const isValid = this.resolveReconnectTarget(engine, { x: worldX, y: worldY }) !== null;
 
     engine.setReconnectionPreview({
       linkId: this.reconnectingLink.id,
@@ -835,6 +843,71 @@ export class InteractionController {
 
     this.updateReconnectPortHighlights(engine);
     return true;
+  }
+
+  /**
+   * Where a reconnect released at `at` lands, or null when it would be refused.
+   *
+   * 1. The port under the cursor, when it is a legal target.
+   * 2. With smart auto-connect (`mode: 'smart'` + `enableSmartAutoConnect`, the
+   *    defaults) or Easy Connect, the node BODY under the cursor: its legal port
+   *    nearest the link's FIXED end, i.e. the side facing it — what
+   *    `InteractionConfig.enableSmartAutoConnect` promises ("dropping on node body
+   *    connects to nearest port"), and the same nearest-pair rule Easy Connect uses
+   *    for a body-to-body wire. A body press otherwise ties the four sides and the
+   *    first in iteration order (top) would win.
+   * 3. The MAGNET: the nearest legal port within `snapToPortRadius` — the same reach
+   *    a new connection's drag has (C1/C2: a port you can snap a new wire to is a
+   *    port you can snap a dragged endpoint to).
+   */
+  protected resolveReconnectTarget(engine: DiagramEngine, at: Point | null): PortModel | null {
+    const link = this.reconnectingLink;
+    const endpoint = this.reconnectingEndpoint;
+    const diagram = engine.getDiagram();
+    if (!link || !endpoint || !diagram) return null;
+    const legal = (port: PortModel) => this.isValidReconnectionTarget(link, endpoint, port, engine);
+
+    if (this.hoveredPort && legal(this.hoveredPort)) return this.hoveredPort;
+    if (!at) return null;
+
+    const config = engine.getInteractionConfig();
+    const bodyDrop =
+      (config.mode === 'smart' && config.enableSmartAutoConnect) || config.enableEasyConnect;
+    const over = diagram.getNodeAtPosition(at.x, at.y);
+
+    // Over a node body with body-drop on: the node is the target, whichever of its
+    // ports the cursor happens to be nearest (on a small node every interior point
+    // is within the magnet of the top or bottom port).
+    if (bodyDrop && over) {
+      const fixedPortId = endpoint === 'source' ? link.targetPortId : link.sourcePortId;
+      const fixedPort = diagram.getPortById(fixedPortId);
+      const fixedNode = diagram.getNodeByPortId(fixedPortId);
+      const anchor = fixedPort && fixedNode ? portWorldPosition(fixedPort, fixedNode) : at;
+      let best: PortModel | null = null;
+      let bestDistance = Infinity;
+      for (const port of over.getPorts()) {
+        if (!legal(port)) continue;
+        const p = portWorldPosition(port, over);
+        const d = Math.hypot(anchor.x - p.x, anchor.y - p.y);
+        if (d < bestDistance) {
+          bestDistance = d;
+          best = port;
+        }
+      }
+      if (best) return best;
+    }
+
+    // The magnet — a near miss off any body.
+    const radius = config.snapToPortRadius;
+    if (radius > 0) {
+      const hit = diagram.findNearestPort(at, {
+        radius,
+        filter: (port) => legal(port),
+        portPosition: (port, node) => portWorldPosition(port, node),
+      });
+      if (hit) return hit.port;
+    }
+    return null;
   }
 
   /**
@@ -885,6 +958,7 @@ export class InteractionController {
   protected updateReconnectPortHighlights(engine: DiagramEngine): void {
     const diagram = engine.getDiagram();
     if (!diagram || !this.reconnectingLink || !this.reconnectingEndpoint) return;
+    const target = this.resolveReconnectTarget(engine, this.reconnectingMousePoint);
 
     diagram.getNodes().forEach((node: NodeModel) => {
       node.getPorts().forEach((port: PortModel) => {
@@ -894,7 +968,7 @@ export class InteractionController {
           port,
           engine
         );
-        const highlighted = valid && port === this.hoveredPort;
+        const highlighted = valid && port === target;
         if (port.isValidTarget !== valid || port.isHighlighted !== highlighted) {
           node.markDirty('port-highlight');
         }
@@ -917,11 +991,12 @@ export class InteractionController {
       return false;
     }
 
-    const targetPort = this.hoveredPort;
+    // C1: resolved like the preview — port, magnet, then (smart) the node body.
+    // Against the last HOVERED point: that is where the pointer was released.
+    const targetPort = this.resolveReconnectTarget(engine, this.lastHoverPoint ?? this.reconnectingMousePoint);
 
     // Reject: no drop target, or an invalid one → restore original connection.
-    if (!targetPort ||
-        !this.isValidReconnectionTarget(this.reconnectingLink, this.reconnectingEndpoint, targetPort, engine)) {
+    if (!targetPort) {
       debugLog('🚫 Link reconnection rejected: no valid target port');
       this.cancelLinkReconnection(engine);
       return false;
