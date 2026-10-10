@@ -892,6 +892,17 @@ export class DomEventBinder {
     return null;
   }
 
+  /** Does `link` leave (or enter) `node` through a port that sits strictly inside the node's box? */
+  private isOwnLead(link: LinkModel, node: NodeModel): boolean {
+    const portId = link.sourceNodeId === node.id ? link.sourcePortId : link.targetNodeId === node.id ? link.targetPortId : undefined;
+    const port = portId ? (node.getPort(portId) as PortModel | undefined) : undefined;
+    if (!port) return false;
+    const at = portWorldPosition(port, node);
+    const pos = node.getWorldPosition();
+    const EPS = 0.5;
+    return at.x > pos.x + EPS && at.x < pos.x + node.size.width - EPS && at.y > pos.y + EPS && at.y < pos.y + node.size.height - EPS;
+  }
+
   /** Focus moving into this diagram makes it the one keys act on. */
   private readonly boundFocusIn = (): void => {
     activeBinder = this;
@@ -1151,10 +1162,14 @@ export class DomEventBinder {
     // the user grabbed it (visio gate: recv adopted between pick and ship sits
     // on the pick→ship path; the drag-out press selected that link instead and
     // the node never moved).
-    const link = diagram.getNodeAtPosition(worldX, worldY)
-      ? null
-      : (state.hoveredLink ??
-        this.host.interaction.getLinkAtPosition(worldX, worldY, engine));
+    //
+    // Except a link's own LEAD: the stretch from a port anchored INSIDE its node
+    // (`data-port-anchor="element"`, a card drawing an output's name on the wire)
+    // to that node's edge. There the ink is the link's, drawn across its own
+    // node's name strip, and a click on it selects the link.
+    const nodeUnder = diagram.getNodeAtPosition(worldX, worldY);
+    const inkUnder = state.hoveredLink ?? this.host.interaction.getLinkAtPosition(worldX, worldY, engine);
+    const link = !nodeUnder ? inkUnder : inkUnder && this.isOwnLead(inkUnder, nodeUnder) ? inkUnder : null;
     if (link) {
       event.preventDefault();
       this.host.interaction.selectLink(link, engine, event.ctrlKey || event.metaKey);

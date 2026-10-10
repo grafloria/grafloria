@@ -9,7 +9,8 @@
  *    `setNodeTemplateResolver` is what makes a data edit re-derive them INSIDE
  *    the edit's own undo step, wires to a removed port included.
  *  - An element in the card marked `data-port="<port id>"` anchors that port: the
- *    port sits on its side's edge, level with the element. Re-measured after
+ *    port sits on its side's edge, level with the element (or AT the element,
+ *    with `portAnchor: 'element'` / `data-port-anchor="element"`). Re-measured after
  *    every paint, when the card resizes and when fonts finish loading; measured
  *    in card units, so the zoom never moves it.
  *  - Below `compactBelow` zoom a card shows the template's `compact` content
@@ -50,6 +51,14 @@ export interface NodeTemplateDef {
   compact?(data: Record<string, unknown>, ctx: NodeTemplateContext): string | Node;
   /** Override the instance's `compactBelow` for this type. */
   compactBelow?: number;
+  /**
+   * Where an anchored LEFT/RIGHT port sits across the card. `'edge'` (default):
+   * on its side's edge, level with its element. `'element'`: at the element's
+   * centre, x as well as y — for a card that draws something past its edge (an
+   * output's name on the wire), so the wire starts where the element is. One
+   * element can ask for it alone with `data-port-anchor="element"`.
+   */
+  portAnchor?: 'edge' | 'element';
 }
 
 export type NodeTemplate = NodeTemplateFn | NodeTemplateDef;
@@ -162,6 +171,8 @@ export function installNodeTemplates(ctx: FeatureContext, templates: NodeTemplat
     const scale = w > 0 && hostRect.width > 0 ? hostRect.width / w : ctx.viewport.getZoom() || 1;
     const moved: PortModel[] = [];
     const model = ctx.getModel();
+    const template = config.templates[m.node.type];
+    const typeAnchor = template ? defOf(template).portAnchor ?? 'edge' : 'edge';
     model.runSystemWrite(() => {
       for (const el of Array.from(marks)) {
         const port = m.node.getPort(el.getAttribute('data-port') ?? '') as PortModel | undefined;
@@ -170,8 +181,9 @@ export function installNodeTemplates(ctx: FeatureContext, templates: NodeTemplat
         const cy = (r.top + r.height / 2 - hostRect.top) / scale;
         const cx = (r.left + r.width / 2 - hostRect.left) / scale;
         const side = port.side ?? 'right';
-        const x = side === 'left' ? 0 : side === 'right' ? w : cx;
-        const y = side === 'top' ? 0 : side === 'bottom' ? h : cy;
+        const atElement = (el.getAttribute('data-port-anchor') ?? typeAnchor) === 'element';
+        const x = atElement ? cx : side === 'left' ? 0 : side === 'right' ? w : cx;
+        const y = atElement ? cy : side === 'top' ? 0 : side === 'bottom' ? h : cy;
         const args = port.layout?.strategy === 'absolute' ? (port.layout.args as { x?: number; y?: number; units?: string } | undefined) : undefined;
         if (args?.units === 'px' && Math.abs((args.x ?? 0) - x) <= PX && Math.abs((args.y ?? 0) - y) <= PX) continue;
         port.layout = { strategy: 'absolute', args: { units: 'px', x, y } };

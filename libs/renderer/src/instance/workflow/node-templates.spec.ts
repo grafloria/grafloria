@@ -2,7 +2,7 @@ import { SetNodeDataCommand } from '@grafloria/engine';
 import type { PortModel } from '@grafloria/engine';
 import { createDiagram } from '../create-diagram';
 import type { CreateDiagramOptions, DiagramInstance } from '../create-diagram';
-import type { NodeTemplate } from './node-templates';
+import type { NodeTemplate, NodeTemplateDef } from './node-templates';
 
 function makeContainer(): HTMLElement {
   const el = document.createElement('div');
@@ -127,6 +127,46 @@ describe('node templates: (data) → card, ports and size — re-derived on ever
     };
     // sw:out2 is anchored to its row: right edge (x 200), y 40 + 2 × 30 + 15 = 115.
     expect(start()).toEqual({ x: 200, y: 115 });
+  });
+
+  it('data-port-anchor="element": a right port takes its x from its element too, and its wire starts there', () => {
+    const marked: NodeTemplate = (data, c) => {
+      const out = (SWITCH as NodeTemplateDef).render(data, c);
+      return { ...out, html: String(out.html).replace('data-port="sw:out2"', 'data-port="sw:out2" data-port-anchor="element"') };
+    };
+    mount({ nodeTemplates: { switch: marked, step: STEP } });
+    d!.renderNow();
+    const port = (id: string) => d!.getModel().getNode('sw')!.getPort(id) as PortModel;
+    // The row is 200 wide from the card's left: its centre is x 100, not the edge (200).
+    expect(port('sw:out2').layout).toEqual({ strategy: 'absolute', args: { units: 'px', x: 100, y: 115 } });
+    expect(port('sw:out0').layout).toEqual({ strategy: 'absolute', args: { units: 'px', x: 200, y: 55 } }); // unmarked: the edge
+    d!.renderNow();
+    const d0 = container.querySelector('[data-link-id="wire"] path')?.getAttribute('d') ?? '';
+    const m = /M\s*([-\d.]+)[ ,]+([-\d.]+)/.exec(d0);
+    expect(m && { x: Number(m[1]), y: Number(m[2]) }).toEqual({ x: 100, y: 115 });
+    // …and runs STRAIGHT to the box edge first: the card's own box is not an
+    // obstacle for its inside port (it used to escape down and around).
+    const pts = d!.getModel().getLink('wire')!.points;
+    expect(pts[0]).toEqual({ x: 100, y: 115 });
+    expect(pts[1]).toEqual({ x: 200, y: 115 });
+
+    // A bend added to it keeps the user's waypoint and drops the box-edge point,
+    // which would otherwise be a fixed waypoint, stale once the card moves.
+    const link = d!.getModel().getLink('wire')!;
+    link.points = [{ x: 100, y: 115 }, { x: 200, y: 115 }, { x: 300, y: 115 }, { x: 300, y: 30 }, { x: 400, y: 30 }];
+    link.setMetadata('hasManualWaypoints', true);
+    d!.renderNow();
+    expect(link.points.map((p) => [p.x, p.y])).toEqual([[200, 115], [300, 115], [300, 30], [400, 30]]);
+    const drawn = container.querySelector('[data-link-id="wire"] path')?.getAttribute('d') ?? '';
+    expect(/^M\s*100[ ,]+115/.test(drawn)).toBe(true); // the lead is still drawn from the port
+  });
+
+  it("portAnchor: 'element' on the template does it for every marked port", () => {
+    mount({ nodeTemplates: { switch: { ...(SWITCH as NodeTemplateDef), portAnchor: 'element' }, step: STEP } });
+    d!.renderNow();
+    const port = (id: string) => d!.getModel().getNode('sw')!.getPort(id) as PortModel;
+    expect(port('sw:out0').layout).toEqual({ strategy: 'absolute', args: { units: 'px', x: 100, y: 55 } });
+    expect(port('sw:out2').layout).toEqual({ strategy: 'absolute', args: { units: 'px', x: 100, y: 115 } });
   });
 
   it('below compactBelow the card draws its compact form (data-lod="compact"), and back', () => {

@@ -510,6 +510,8 @@ export class SVGRenderer implements IRenderer {
 
   // Phase 1.1: Arrow type rendering
   private arrowRenderer: ArrowRenderer;
+  /** Per link, this frame: the inside port point each routed-from-the-edge end leads back to. */
+  private readonly framePortLeads = new Map<string, { source?: { x: number; y: number }; target?: { x: number; y: number } }>();
 
   // Phase 1.2: Label rendering
   private labelRenderer: LabelRenderer;
@@ -6469,12 +6471,59 @@ export class SVGRenderer implements IRenderer {
       ? { point: targetAnchored.point, direction: targetAnchored.side ?? defaults.targetDirection }
       : this.portAttachment(link, targetPort, targetNode, defaults.end, 'target');
 
+    // A port INSIDE its node's box (anchored at an element: a card that draws an
+    // output's name past its edge) routes from the box EDGE level with it, and
+    // the stretch from the port to that edge is a straight lead put back on the
+    // route (see withPortLeads). Routed from the port itself, the search treated
+    // the node's own box as an obstacle and escaped it sideways — the wire went
+    // down and around instead of running under the name.
+    const sourceLead = this.insideLead(source.point, sourceRect, source.direction);
+    const targetLead = this.insideLead(target.point, targetRect, target.direction);
+    if (sourceLead || targetLead) {
+      this.framePortLeads.set(link.id, { source: sourceLead ? source.point : undefined, target: targetLead ? target.point : undefined });
+    } else {
+      this.framePortLeads.delete(link.id);
+    }
+
     return {
-      start: source.point,
-      end: target.point,
+      start: sourceLead ?? source.point,
+      end: targetLead ?? target.point,
       sourceDirection: source.direction,
       targetDirection: target.direction,
     };
+  }
+
+  /** Where a point strictly inside `rect` meets the edge on its `side` (level with it), or null. */
+  private insideLead(
+    point: { x: number; y: number },
+    rect: { x: number; y: number; w: number; h: number },
+    side: string | undefined
+  ): { x: number; y: number } | null {
+    const EPS = 0.5;
+    const insideX = point.x > rect.x + EPS && point.x < rect.x + rect.w - EPS;
+    const insideY = point.y > rect.y + EPS && point.y < rect.y + rect.h - EPS;
+    if (!insideX || !insideY) return null;
+    switch (side) {
+      case 'right': return { x: rect.x + rect.w, y: point.y };
+      case 'left': return { x: rect.x, y: point.y };
+      case 'bottom': return { x: point.x, y: rect.y + rect.h };
+      case 'top': return { x: point.x, y: rect.y };
+      default: return null;
+    }
+  }
+
+  /** A route from the box edge, with the lead back to an inside port put back on (a copy). */
+  private withPortLeads<T extends { points: Array<{ x: number; y: number }> }>(linkId: string, routed: T): T {
+    const lead = this.framePortLeads.get(linkId);
+    if (!lead || routed.points.length === 0) return routed;
+    // Idempotent: a route that already carries its lead is returned as it is.
+    const same = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.abs(a.x - b.x) <= 0.5 && Math.abs(a.y - b.y) <= 0.5;
+    const first = routed.points[0], last = routed.points[routed.points.length - 1];
+    const addSource = !!lead.source && !same(first, lead.source);
+    const addTarget = !!lead.target && !same(last, lead.target);
+    if (!addSource && !addTarget) return routed;
+    const points = [...(addSource ? [lead.source!] : []), ...routed.points, ...(addTarget ? [lead.target!] : [])];
+    return { ...routed, points, segments: undefined };
   }
 
   /**
@@ -7033,6 +7082,9 @@ export class SVGRenderer implements IRenderer {
     } | null
   ): void {
     const eps = endpoints ?? this.getLinkEndpoints(link);
+    // Every stored route carries its lead back to an inside port (see insideLead),
+    // whichever pass stored it, so hit-testing and hover cover that stretch too.
+    routePoints = this.withPortLeads(link.id, { points: routePoints }).points;
     if (!eps) {
       this.syncLinkPoints(link, routePoints);
       return;
@@ -7229,9 +7281,10 @@ export class SVGRenderer implements IRenderer {
       // The fallback goes through routeForLOD, not computeAutoRoute, so a link the
       // pre-pass somehow missed cannot smuggle a full obstacle search into a tier
       // that has dropped routing.
-      const routedPath =
+      const rawRoute =
         this.frameRoutes.get(link.id) ??
         this.routeForLOD(link, endpoints, this.lodAllows('routing', lod));
+      const routedPath = rawRoute ? this.withPortLeads(link.id, rawRoute) : rawRoute;
 
       if (routedPath) {
         points = routedPath.points;
@@ -7267,13 +7320,25 @@ export class SVGRenderer implements IRenderer {
       // both endpoints from the CURRENT port positions, otherwise the link
       // stays anchored to wherever the nodes were when the waypoint was added.
       points = link.points;
+      const lead = this.framePortLeads.get(link.id);
       if (endpoints && points.length >= 2) {
+        // With an inside port (see insideLead) a ROUTED link's stored points began
+        // [port, box edge, …]; a bend added to it would keep that box-edge point
+        // as a fixed waypoint, stale the moment the node moves. Drop it.
+        const near = (a: { x: number; y: number }, b?: { x: number; y: number }) =>
+          !!b && Math.abs(a.x - b.x) <= 0.5 && Math.abs(a.y - b.y) <= 0.5;
+        const interior = points
+          .slice(1, -1)
+          .filter((p) => !lead || !(near(p, endpoints.start) || near(p, endpoints.end) || near(p, lead.source) || near(p, lead.target)));
         points = [
           { ...endpoints.start },
-          ...points.slice(1, -1).map(p => ({ ...p })),
+          ...interior.map(p => ({ ...p })),
           { ...endpoints.end },
         ];
         this.syncLinkPoints(link, points);
+        // The lead back to an inside port is DRAWN (not stored: the stored
+        // waypoints stay the user's, from the box edge).
+        if (lead) points = this.withPortLeads(link.id, { points }).points;
       }
 
       // ✅ HIGH-PERFORMANCE: For orthogonal paths with manual waypoints
