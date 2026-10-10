@@ -5523,14 +5523,19 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       return false;
     }
 
-    // Check port visibility (defaultVisibility or port-specific visibility)
-    const defaultVisibility = portsConfig?.defaultVisibility || 'on-hover';
-    const portVisibility = port.getMetadata('visibility') || defaultVisibility;
+    // Visibility: the port's own (metadata / rendering config), then the node
+    // template's default, then the node's metadata and the GLOBAL interaction
+    // config — the chain the SVG renderer resolves. The global config used to be
+    // ignored here, so "Port visibility: Hidden" left every custom node's
+    // handles on screen.
+    const own = port.getMetadata('visibility') || portsConfig?.defaultVisibility;
+    const global = String(this.eng?.getInteractionConfig().portVisibility ?? 'on-hover').toLowerCase();
+    const visibility = String(own || port.getEffectiveVisibility(node, global as never)).toLowerCase();
 
-    // For now, always show ports that are explicitly enabled
-    // TODO: Implement on-hover visibility when interaction system is enhanced
-    return portVisibility === 'always' || portVisibility === 'on-hover';
+    // 'on-hover' handles stay drawn: the HTML layer has no hover reveal yet.
+    return visibility === 'always' || visibility === 'on-hover';
   }
+
 
   /**
    * Get port position CSS value for top or left
