@@ -3184,6 +3184,13 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       'link:added',
       'link:removed',
       'link:changed',
+      // Groups paint too (frames, lanes, collapse proxies): without these an
+      // addGroup or a membership change stayed invisible until something else
+      // happened to paint — the JS canvas subscribes to the same four.
+      'group:added',
+      'group:removed',
+      'group:changed',
+      'groups:cleared',
     ] as const) {
       this.engineSubscriptions.push(diagram.on(event, onMutation));
     }
