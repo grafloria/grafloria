@@ -172,12 +172,32 @@ export class SwimlaneService {
       const frame: GroupRect = horizontal
         ? { x: mainStart, y: cross, width: mainSpan, height: size }
         : { x: cross, y: mainStart, width: size, height: mainSpan };
+      const previous = lane.getOuterBounds();
       lane.setFrame(frame);
       // Lanes constrain their members to the band (Card 3 clamping).
       lane.constrainChildren = true;
+      // C6: the members ride with their band. Re-tiling used to move only the lane
+      // FRAMES, so a ticket stayed where it was and ended up drawn in a NEIGHBOUR's
+      // band. Carry each member by the band's offset, then clamp it into the band
+      // (it may have shrunk).
+      this.carryMembers(lane, previous, frame);
       // Keep each lane's orientation in sync for downstream consumers.
       lane.laneConfig = { ...lc, orientation: cfg.orientation };
       cross += size;
+    }
+  }
+
+  /** Move a lane's member nodes from its previous band to `next`, then clamp them in. */
+  private carryMembers(lane: GroupModel, previous: GroupRect, next: GroupRect): void {
+    // A lane that had no band yet (just built) has nothing to carry.
+    const hadBand = previous.width > 0 && previous.height > 0;
+    const dx = hadBand ? next.x - previous.x : 0;
+    const dy = hadBand ? next.y - previous.y : 0;
+    for (const id of lane.members) {
+      const node = this.diagram.getNode(id);
+      if (!node) continue;
+      if (dx !== 0 || dy !== 0) node.setPosition(node.position.x + dx, node.position.y + dy);
+      lane.clampChildToExtent(id, this.diagram);
     }
   }
 
