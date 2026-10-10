@@ -55,7 +55,6 @@ import {
   type SerializedDiagram,
   // Advanced domains wave 1: Mermaid-compatible text on the component.
   exportDiagramText,
-  importDiagramText,
   // Tier 3: real-time collaboration.
   createSyncSession,
   type SyncAdapter,
@@ -117,6 +116,7 @@ import {
   // Angular delegates to exactly the same code: one diff algorithm, not two.
   applyNodes,
   applyEdges,
+  loadTextInto,
   toNodeSpec,
   toEdgeSpec,
   // Advanced domains: the same minimap/controls/background the React and Vue
@@ -664,28 +664,16 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   /**
    * Parse Mermaid-compatible text (sidecar-aware) and reconcile it into the
-   * live diagram — same mechanics as `loadSnapshot`.
+   * live diagram — the SAME load path as `createDiagram().loadText`
+   * (`loadTextInto` from `@grafloria/renderer`): text it cannot read (empty, an
+   * unsupported type, a parse error) throws and leaves the canvas unchanged, and
+   * the diagram type is kept, so `exportText` writes the grammar the text came in.
    */
   loadText(text: string, options?: unknown): unknown {
     const diagram = this.eng?.getDiagram();
     if (!diagram) return undefined;
-    const result = importDiagramText(text, options as never);
-    // The imported MODELS, not spec projections of them — see the same call in
-    // createDiagram's loadText. Projecting through toNodeSpec/toEdgeSpec drops
-    // custom ports, styles and all metadata but `label`, which turned "open a
-    // saved file" into a quiet data loss.
-    applyNodes(diagram, result.diagram.getNodes());
-    applyEdges(diagram, result.diagram.getLinks());
-
-    // Groups ride in neither collection, so they need their own reconcile.
-    const incoming = result.diagram.getGroups();
-    const wanted = new Set(incoming.map((g) => g.id));
-    for (const existing of diagram.getGroups()) {
-      if (!wanted.has(existing.id)) diagram.removeGroup(existing.id);
-    }
-    for (const group of incoming) {
-      if (!diagram.getGroup(group.id)) diagram.addGroup(group);
-    }
+    const result = loadTextInto(diagram, text, options as never);
+    this.scheduleRender();
     return result;
   }
 
