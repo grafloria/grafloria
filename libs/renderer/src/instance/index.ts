@@ -7,6 +7,7 @@ export * from './render-scheduler';
 export * from './dom-event-binder';
 export * from './model-input';
 export * from './layers';
+export { registerTextKit, textKitFor, type TextKit } from './text-kits';
 // The workflow-editor features' public types (each feature is opt-in).
 export type { RunOverlay, RunStatus } from './workflow/run-overlay';
 export type { ClipboardHooks, PasteOptions } from './workflow/clipboard';

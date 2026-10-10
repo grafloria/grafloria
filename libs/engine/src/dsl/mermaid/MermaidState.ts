@@ -26,6 +26,7 @@
  */
 import { DiagramModel } from '../../models/DiagramModel';
 import { NodeModel } from '../../models/NodeModel';
+import { LinkModel } from '../../models/LinkModel';
 import { GroupModel } from '../../models/GroupModel';
 import { significantLines, unquote } from './lines';
 import { placeByRank, assignRanks, type RankEdge } from './layout';
@@ -559,13 +560,47 @@ export function stateModelToDiagram(model: MermaidStateModel): DiagramModel {
     const source = nodes.get(transition.from);
     const target = nodes.get(transition.to);
     if (!source || !target) continue;
-    const link = diagram.createSmartLink(source, target, 'orthogonal');
+    const link = reverseRoute(diagram, source, target) ?? diagram.createSmartLink(source, target, 'orthogonal');
     if (!link) continue;
     if (transition.label) link.setLabel(transition.label);
     link.setMetadata('stateTransition', transition);
   }
 
   return diagram;
+}
+
+/**
+ * A transition whose REVERSE is already drawn (`Idle --> Running` then
+ * `Running --> Idle`) would get the very same two ports from the smart picker —
+ * both lines on one track, both labels printed over each other. Route it round
+ * the side instead: if the pair runs vertically (bottom→top) the return leaves and
+ * enters on the RIGHT; horizontally, underneath. Returns undefined when there is
+ * no reverse to avoid (the caller then picks ports as usual).
+ */
+function reverseRoute(diagram: DiagramModel, source: NodeModel, target: NodeModel): LinkModel | undefined {
+  const reverse = diagram
+    .getLinks()
+    .find((l) => l.sourceNodeId === target.id && l.targetNodeId === source.id);
+  if (!reverse) return undefined;
+  const sideOf = (portId: string) => diagram.getPortById(portId)?.side;
+  const vertical = new Set([sideOf(reverse.sourcePortId), sideOf(reverse.targetPortId)]);
+  const around = vertical.has('top') || vertical.has('bottom') ? 'right' : 'bottom';
+  const sp = source.getPortBySide(around);
+  const tp = target.getPortBySide(around);
+  if (!sp || !tp || !sp.canConnectTo(tp)) return undefined;
+  const link = new LinkModel(sp.id, tp.id, 'orthogonal');
+  link.sourceNodeId = source.id;
+  link.targetNodeId = target.id;
+  sp.addConnection(link.id, 'source');
+  tp.addConnection(link.id, 'target');
+  link.generatePath(
+    sp.getAbsolutePosition(source.getBoundingBox()),
+    tp.getAbsolutePosition(target.getBoundingBox()),
+    around,
+    around
+  );
+  diagram.addLink(link);
+  return link;
 }
 
 export function stateModelFromDiagram(diagram: DiagramModel): MermaidStateModel {

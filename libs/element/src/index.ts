@@ -14,6 +14,7 @@
  */
 
 import { defineGrafloriaFlow } from './lib/grafloria-flow-element';
+import { registerDiagramKitTextKits } from './lib/diagram-kit/text-kits';
 
 export { GrafloriaFlowElement, defineGrafloriaFlow, GRAFLORIA_EVENTS } from './lib/grafloria-flow-element';
 
@@ -824,3 +825,8 @@ export type {
 // `<script type="module" src="…/grafloria.js"></script>` + `<grafloria-flow>` in the
 // markup Just Work, which is the entire point of the card.
 defineGrafloriaFlow();
+
+// Side effect: Mermaid ER / class text loaded with `loadText` draws as the diagram
+// kit's table and class cards with their real markers, in every binding (they all
+// load this package). The renderer cannot import the kits; they register with it.
+registerDiagramKitTextKits();

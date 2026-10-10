@@ -1,6 +1,7 @@
 import { DiagramEngine, getMutationEpoch, exportDiagramText, importDiagramText, CommentStore, layoutArchitecture, DSL, stripGrafloriaSidecar, adoptTextGrammarMetadata } from '@grafloria/engine';
 import type { MeasureText, ClipboardData } from '@grafloria/engine';
 import { CommentOverlayController } from '../comments/comment-overlay';
+import { textKitFor } from './text-kits';
 import type {
   DiagramModel,
   GroupModel,
@@ -1897,6 +1898,11 @@ export function createDiagram(
       // required the projection — and exportText's own contract promises a
       // "lossless sidecar … feed the result back to loadText for a full
       // round-trip", which this is what makes true.
+      // C9: the diagram type's proper notation (ER table cards + crow's feet, UML
+      // class cards + markers), when a kit registered one — see text-kits.ts.
+      const kit = textKitFor(result.diagram.getMetadata('diagramType'));
+      kit?.decorate(result.diagram);
+
       const templatedBefore = templatedData();
       applyNodes(model, result.diagram.getNodes());
       rederiveTemplates(templatedBefore);
@@ -1940,6 +1946,13 @@ export function createDiagram(
       adoptTextGrammarMetadata(model, result.diagram);
 
       scheduler.schedule();
+      if (kit?.finalize) {
+        try {
+          kit.finalize(instance);
+        } catch {
+          /* a kit's finalize must never break the load */
+        }
+      }
       return result;
     },
 
