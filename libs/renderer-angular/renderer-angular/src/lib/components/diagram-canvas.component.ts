@@ -215,6 +215,15 @@ import {
 } from './link-toolbar';
 
 /**
+ * The canvas the person is working in: the last one pressed in or focused. Every
+ * canvas listens for keys on `window` (a canvas is rarely focused), so without
+ * this one ⌘Z undid — and one Delete deleted — in EVERY canvas on the page. Null
+ * until a canvas is touched, so a page with one canvas behaves exactly as before.
+ * The same rule as the JS canvas (DomEventBinder).
+ */
+let activeCanvas: DiagramCanvasComponent | null = null;
+
+/**
  * DiagramCanvasComponent
  *
  * Standalone, OnPush, **signal-based** Angular canvas over the framework-agnostic
@@ -1357,6 +1366,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    if (activeCanvas === this) activeCanvas = null;
     this.hub.clear();
     this.presenceBinding?.dispose();
     this.presenceBinding = undefined;
@@ -3855,6 +3865,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    */
   @HostListener('pointerdown', ['$event'])
   onPointerDown(event: PointerEvent): void {
+    activeCanvas = this;
     this.sawPointerEvent = true;
     if (event.pointerType === 'touch') {
       // Claim the gesture: suppresses the compatibility mouse events a browser
@@ -4054,6 +4065,7 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    * - Space + Left click: Pan
    */
   onMouseDown(event: MouseEvent): void {
+    activeCanvas = this;
     if (!this.eng) {
       return;
     }
@@ -4999,6 +5011,12 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
    * - Ctrl/⌘+X / +C / +V cut / copy / paste-at-cursor
    * - Ctrl/⌘ +'=' / '-' / '0' zoom in / out / reset; Shift+1 fit, Shift+2 fit selection
    */
+  /** Focus moving into this canvas makes it the one keys act on. */
+  @HostListener('focusin')
+  onFocusIn(): void {
+    activeCanvas = this;
+  }
+
   @HostListener('window:keydown', ['$event'])
   onKeyDown(event: KeyboardEvent): void {
     // Handle Space key for pan mode cursor
@@ -5008,6 +5026,11 @@ export class DiagramCanvasComponent implements AfterViewInit, OnDestroy {
       if (this.containerRef?.nativeElement) {
         this.containerRef.nativeElement.style.cursor = 'grab';
       }
+    }
+
+    // Another canvas on the page is the one being worked in: its keys, not ours.
+    if (activeCanvas && activeCanvas !== this) {
+      return;
     }
 
     if (!this.eng) {
