@@ -305,4 +305,54 @@ describe('hydration — the server canvas is not the browser container', () => {
     container.remove();
     fresh.remove();
   });
+  // Before resume the browser draws the server svg into the wider container with
+  // the default preserveAspectRatio (xMidYMid meet): the fitted picture sits in
+  // the MIDDLE. The first size sync kept the camera's x and grew the box to the
+  // right, so the picture jumped right on resume and the left node was clipped
+  // (viewBox x 52 → 123 at 1280 px in a Qwik reader app).
+  it('a fitView result adopted into a WIDER container stays centred where the server markup showed it', () => {
+    const nodes: NodeSpec[] = [
+      { id: 'server', position: { x: 80, y: 100 }, size: { width: 180, height: 64 }, label: 'Server markup' },
+      { id: 'browser', position: { x: 400, y: 100 }, size: { width: 180, height: 64 }, label: 'Live instance' },
+    ];
+    const server = renderToStaticSVG({ nodes, width: 800, height: 400, fitView: true, instanceId: 'grafloria-wide' });
+    const serverHost = document.createElement('div');
+    serverHost.innerHTML = server.html;
+    const serverBox = serverHost.querySelector('svg')!.getAttribute('viewBox')!.split(/\s+/).map(Number);
+    const serverCentre = { x: serverBox[0]! + serverBox[2]! / 2, y: serverBox[1]! + serverBox[3]! / 2 };
+    // The real path: the instance's own ResizeObserver reports the laid-out box.
+    const observers: Array<() => void> = [];
+    const g = globalThis as { ResizeObserver?: unknown };
+    const saved = g.ResizeObserver;
+    g.ResizeObserver = class {
+      constructor(private cb: () => void) { observers.push(() => this.cb()); }
+      observe() { /* fired by hand below */ }
+      disconnect() { /* nothing */ }
+    };
+    for (const [w, h] of [[1264, 400], [984, 400], [1264, 700]] as const) {
+      const container = sized(w, h);
+      container.innerHTML = server.html;
+      observers.length = 0;
+      const diagram = createDiagram(container, { nodes, hydrate: server.snapshot });
+      observers.forEach((fire) => fire());
+      diagram.renderNow();
+      const [x, y, vw, vh] = container.querySelector('svg')!.getAttribute('viewBox')!.split(/\s+/).map(Number);
+      expect({ w, h, cx: x! + vw! / 2, cy: y! + vh! / 2 }).toEqual({
+        w, h, cx: expect.closeTo(serverCentre.x, 3), cy: expect.closeTo(serverCentre.y, 3),
+      });
+      // Both nodes are inside the visible world box.
+      expect(x!).toBeLessThanOrEqual(80);
+      expect(x! + vw!).toBeGreaterThanOrEqual(580);
+      // …and the live camera agrees with what is painted (pointer maths).
+      expect(vw! * diagram.viewport.getZoom()).toBeCloseTo(w, 3);
+      // A LATER resize is an ordinary one again: the camera's x/y hold.
+      const before = diagram.viewport.getViewport();
+      container.getBoundingClientRect = () => ({ left: 0, top: 0, width: w + 100, height: h, right: w + 100, bottom: h }) as DOMRect;
+      observers.forEach((fire) => fire());
+      expect(diagram.viewport.getViewport()).toMatchObject({ x: before.x, y: before.y, width: w + 100 });
+      diagram.dispose();
+      container.remove();
+    }
+    g.ResizeObserver = saved;
+  });
 });
