@@ -479,8 +479,8 @@ export interface DashboardHandle {
   moveTab(containerId: string, pageId: string, index: number): boolean;
   /**
    * Live sizing/float switches — the two prototype toggles. A split view always
-   * fits; the board keeps the setting (getSizing reports it) and its grid views
-   * use it, including a view switched back from split.
+   * fits (getSizing says 'fit' there); the board keeps the setting for its grid
+   * views — a view switched back from split uses it — and toJSON saves it.
    */
   setSizing(mode: 'fit' | 'grow'): void;
   getSizing(): 'fit' | 'grow';
@@ -1262,8 +1262,8 @@ export interface DashboardHandleContext {
   /**
    * The board's sizing as the user last SET it (setSizing). A split view always
    * fits — its tree divides the frame — so the setting lives here, not only on
-   * a grid binder: a view switched to split and back grows again, and grow
-   * chosen while in split is what the grid shows next.
+   * a grid binder: a view switched to split and back grows again, grow chosen
+   * while in split is what the grid shows next, and toJSON saves it.
    */
   sizing?: 'fit' | 'grow';
   /**
@@ -2278,12 +2278,8 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
       clampCamera();
       ctx.apiRef?.renderNow();
     },
-    getSizing: () => {
-      const setting = ctx.sizing ?? ctx.optionsBase.sizing ?? (ctx.mode === 'fluid' ? 'grow' : 'fit');
-      // A split view draws 'fit' whatever the setting; the setting is the answer.
-      if (ctx.layoutOf.get(ctx.active) === 'split') return setting;
-      return binders.get(ctx.active)?.getSizing() ?? setting;
-    },
+    getSizing: () =>
+      binders.get(ctx.active)?.getSizing() ?? ctx.sizing ?? ctx.optionsBase.sizing ?? (ctx.mode === 'fluid' ? 'grow' : 'fit'),
     setFloat(on) {
       for (const b of binders.values()) b.setFloat(on);
       ctx.apiRef?.renderNow();
@@ -2468,7 +2464,8 @@ export function createDashboardHandle(ctx: DashboardHandleContext): DashboardHan
         rowHeight: ctx.rowHeight,
         mode: ctx.mode,
         overflow: ctx.overflow,
-        sizing: handle.getSizing(),
+        // The SETTING, which a split view (always 'fit') keeps for its grid.
+        sizing: ctx.sizing ?? handle.getSizing(),
         float: handle.getFloat(),
         rtl: handle.getRtl(),
         static: handle.getStatic(),

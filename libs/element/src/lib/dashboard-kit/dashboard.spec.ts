@@ -1640,7 +1640,7 @@ describe("layout: 'split' — the board is always covered", () => {
     // A split view always fits (the tree divides the frame). The setting used
     // to live only on the grid binder, so a switch to split dropped it: Grow,
     // Split, Grid came back 'fit', and setSizing('grow') in split did nothing
-    // at all — not even for the grid the user went back to.
+    // at all — not for the grid the user went back to, not in toJSON.
     const heightOf = (h: ReturnType<typeof dashboard>['handle']) => Math.round(h.widget('a')!.rect!.height);
     const grid = mount(board({ layout: 'grid' }));
     const fitH = heightOf(grid.handle);
@@ -1648,15 +1648,16 @@ describe("layout: 'split' — the board is always covered", () => {
     const growH = heightOf(grid.handle);
     expect(growH).not.toBe(fitH);
     grid.handle.setLayout('split');
-    expect(grid.handle.getSizing()).toBe('grow');
-    expect(covered(grid.handle)).toBe(true); // the split view itself still fits
+    expect(grid.handle.getSizing()).toBe('fit'); // the split view itself fits…
+    expect(covered(grid.handle)).toBe(true);
+    expect(grid.handle.toJSON().sizing).toBe('grow'); // …and the board keeps the setting
     grid.handle.setLayout('grid');
     expect(grid.handle.getSizing()).toBe('grow');
     expect(heightOf(grid.handle)).toBe(growH);
 
     const split = mount(board());
     split.handle.setSizing('grow');
-    expect(split.handle.getSizing()).toBe('grow');
+    expect(split.handle.getSizing()).toBe('fit');
     expect(covered(split.handle)).toBe(true);
     expect(split.handle.toJSON().sizing).toBe('grow');
     split.handle.setLayout('grid');
