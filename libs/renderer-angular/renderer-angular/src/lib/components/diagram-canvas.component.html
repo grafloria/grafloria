@@ -209,6 +209,7 @@
       <div class="html-node-wrapper"
            [attr.data-node-id]="node.id"
            [attr.data-parent-id]="node.parent || ''"
+           [attr.data-selected]="node.isSelected?.() ? 'true' : 'false'"
            [style.position]="'absolute'"
            [style.left.px]="getNodeX(node)"
            [style.top.px]="getNodeY(node)"
