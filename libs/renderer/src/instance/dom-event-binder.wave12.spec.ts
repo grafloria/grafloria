@@ -139,6 +139,25 @@ describe('wave12 gap 1 — group drag carries members', () => {
     expect(after.y).toBeCloseTo(before.y);
   });
 
+  // C4: a group swallowed by a collapsed ancestor is not drawn — so it must not be
+  // grabbable either (it used to be the hit under the collapsed placeholder).
+  it('a group inside a COLLAPSED ancestor is not a drag target', () => {
+    const inner = buildSubflow();
+    const outer = new GroupModel({ name: 'Outer' });
+    h.model.addGroup(outer);
+    outer.setFrame({ x: 360, y: 150, width: 360, height: 180 });
+    outer.addMember(inner.id, h.model);
+    outer.isCollapsed = true;
+    const before = { ...inner.getOuterBounds() };
+
+    h.container.dispatchEvent(mouse('mousedown', pressPoint));
+    h.container.dispatchEvent(mouse('mousemove', { clientX: pressPoint.clientX + 120, clientY: pressPoint.clientY + 40 }));
+    h.container.dispatchEvent(mouse('mouseup', { clientX: pressPoint.clientX + 120, clientY: pressPoint.clientY + 40 }));
+
+    expect(inner.getOuterBounds().x).toBeCloseTo(before.x);
+    expect(inner.getOuterBounds().y).toBeCloseTo(before.y);
+  });
+
   it('commits as ONE undoable step — undo restores every member and the frame', async () => {
     const g = buildSubflow();
     const m1 = h.model.getNode('m1')!, m2 = h.model.getNode('m2')!;

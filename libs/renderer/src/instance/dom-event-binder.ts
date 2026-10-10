@@ -2202,6 +2202,8 @@ export class DomEventBinder {
 
     for (const group of diagram.getGroups()) {
       if (group.isCollapsed) continue;
+      // C4: swallowed by a collapsed ancestor — not drawn, so not grabbable.
+      if (this.hasCollapsedAncestor(diagram, group)) continue;
       const r = group.getOuterBounds();
       if (r.width <= 0 || r.height <= 0) continue;
       if (worldX < r.x || worldX > r.x + r.width || worldY < r.y || worldY > r.y + r.height) {
@@ -2216,6 +2218,21 @@ export class DomEventBinder {
       }
     }
     return best;
+  }
+
+  /** Is any ancestor of `group` collapsed? Cycle-guarded. */
+  private hasCollapsedAncestor(
+    diagram: NonNullable<ReturnType<DiagramEngine['getDiagram']>>,
+    group: GroupModel
+  ): boolean {
+    const seen = new Set<string>([group.id]);
+    let cur = group.parentGroupId ? diagram.getGroup(group.parentGroupId) : undefined;
+    while (cur && !seen.has(cur.id)) {
+      if (cur.isCollapsed) return true;
+      seen.add(cur.id);
+      cur = cur.parentGroupId ? diagram.getGroup(cur.parentGroupId) : undefined;
+    }
+    return false;
   }
 
   /**

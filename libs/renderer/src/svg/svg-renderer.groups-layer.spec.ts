@@ -153,6 +153,41 @@ describe('wave12/group-visuals — the SVG renderer draws a frame for every grou
     expect(order.indexOf('parent')).toBeLessThan(order.indexOf('child'));
   });
 
+  // C4 (docs review v3): collapsing an outer group left every nested group's frame
+  // drawn — floating over the collapsed placeholder with nothing inside it.
+  it('a group inside a COLLAPSED ancestor (at any depth) draws no frame', () => {
+    const outer = addGroup('outer', 'Outer', { x: 0, y: 0, width: 500, height: 400 });
+    const inner = new GroupModel({ id: 'inner', name: 'Inner' });
+    diagram.addGroup(inner);
+    inner.setFrame({ x: 40, y: 40, width: 300, height: 250 });
+    outer.addMember('inner', diagram);
+    const deepest = new GroupModel({ id: 'deepest', name: 'Deepest' });
+    diagram.addGroup(deepest);
+    deepest.setFrame({ x: 60, y: 80, width: 120, height: 100 });
+    inner.addMember('deepest', diagram);
+
+    let root = renderer.render(FULL_VIEW, 1);
+    expect(findGroupFrame(root, 'inner')).toBeDefined();
+    expect(findGroupFrame(root, 'deepest')).toBeDefined();
+
+    outer.isCollapsed = true;
+    renderer.invalidateFrame();
+    root = renderer.render(FULL_VIEW, 1);
+    expect(findGroupFrame(root, 'outer')).toBeDefined();
+    expect(findGroupFrame(root, 'inner')).toBeUndefined();
+    expect(findGroupFrame(root, 'deepest')).toBeUndefined();
+
+    // Only the COLLAPSED one hides its descendants: a collapsed inner group inside an
+    // open outer still draws (as its own collapsed anchor).
+    outer.isCollapsed = false;
+    inner.isCollapsed = true;
+    renderer.invalidateFrame();
+    root = renderer.render(FULL_VIEW, 1);
+    expect(findGroupFrame(root, 'outer')).toBeDefined();
+    expect((findGroupFrame(root, 'inner')!.props as any)['data-collapsed']).toBe('true');
+    expect(findGroupFrame(root, 'deepest')).toBeUndefined();
+  });
+
   it('paints the groups layer BEHIND links and nodes (earlier in document order)', () => {
     addNode('a', 60, 60);
     addGroup('g1', 'G', { x: 0, y: 0, width: 200, height: 120 });

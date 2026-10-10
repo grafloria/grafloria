@@ -4494,7 +4494,22 @@ export class SVGRenderer implements IRenderer {
       return depth;
     };
 
+    // C4: a group INSIDE a collapsed ancestor (at any depth) is swallowed by that
+    // collapse, exactly like its member nodes — its frame must not float over the
+    // collapsed placeholder. Same cycle guard as depthOf.
+    const hiddenByCollapse = (g: GroupModel): boolean => {
+      const seen = new Set<string>([g.id]);
+      let cur = g.parentGroupId ? byId.get(g.parentGroupId) : undefined;
+      while (cur && !seen.has(cur.id)) {
+        if (cur.isCollapsed) return true;
+        seen.add(cur.id);
+        cur = cur.parentGroupId ? byId.get(cur.parentGroupId) : undefined;
+      }
+      return false;
+    };
+
     const ordered = groups
+      .filter((g) => !hiddenByCollapse(g))
       .map((g, i) => ({ g, i, depth: depthOf(g) }))
       .sort((a, b) => a.depth - b.depth || a.g.zIndex - b.g.zIndex || a.i - b.i);
 
