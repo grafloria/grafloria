@@ -37,7 +37,7 @@ import { createServer as createNetServer } from 'node:net';
 import { join, dirname, extname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
-import { builtinModules } from 'node:module';
+import { builtinModules, createRequire } from 'node:module';
 import { build as esbuild } from 'esbuild';
 import { chromium } from 'playwright';
 
@@ -88,7 +88,10 @@ try {
   // still lying around — while failing on CI.)
   // element LAST: its release build maps engine and renderer to their built
   // .d.ts and pulls their sources in the same way — one more clobber source.
-  const PACKAGES = ['engine', 'renderer', 'element'];
+  // dashboard after element: its release build maps element's built .d.ts. It is
+  // here because its PEER RANGES went stale unnoticed (element ^0.4.9 next to
+  // element 0.5.x): installing it beside the packages it re-exports is the check.
+  const PACKAGES = ['engine', 'renderer', 'element', 'dashboard'];
   const given = process.env['GRAFLORIA_TARBALLS'];
   const tarballs = [];
   let qwikTarball;
@@ -179,6 +182,9 @@ import { renderToStaticSVG, hasShape } from '@grafloria/renderer';
 // element too — the package with the most surface: the custom element must
 // stay inert without a DOM, and the data-first kit must build a board.
 import { dashboard } from '@grafloria/element';
+// @grafloria/dashboard is element's dashboard kit under its own name: the same function.
+import { dashboard as dashboardPkg } from '@grafloria/dashboard';
+const samePkg = dashboardPkg === dashboard;
 const board = dashboard({ layout: 'split', widgets: [{ id: 'a', kind: 'kpi', span: 6 }, { id: 'b', kind: 'kpi', span: 6 }] });
 const kit = { nodes: board.nodes.length, layout: board.handle.getLayout() };
 const NOTATION = ['delay', 'display', 'summing-junction', 'sync-bar', 'final-node'];
@@ -208,7 +214,7 @@ async function columns(name) {
   return new Set(d.getNodes().map((n) => Math.round(n.position.x))).size;
 }
 const layouts = { dagre: await columns('dagre'), elk: await columns('elk') };
-console.log(JSON.stringify({ missing, drew, kit, layouts }));
+console.log(JSON.stringify({ missing, drew, kit, layouts, samePkg }));
 `
   );
 
@@ -218,6 +224,24 @@ console.log(JSON.stringify({ missing, drew, kit, layouts }));
   check('delay draws its silhouette', raw.drew, 'path');
   check('element imports without a DOM and dashboard() builds a split board', `${raw.kit.nodes}/${raw.kit.layout}`, '2/split');
   check('dagre and ELK lay out a chain in three columns', `${raw.layouts.dagre}/${raw.layouts.elk}`, '3/3');
+  check('@grafloria/dashboard re-exports element\'s dashboard()', raw.samePkg, true);
+
+  // Every @grafloria peer range accepts the version packed beside it. npm only
+  // WARNS on some mismatches, and a stale range silently installs an old release
+  // in a fresh project (dashboard 0.1.0 pulled element 0.4.83 / engine 0.3.18).
+  {
+    const semver = createRequire(join(REPO, 'package.json'))('semver');
+    const nm = join(consumer, 'node_modules', '@grafloria');
+    const versions = Object.fromEntries(readdirSync(nm).map((d) => [`@grafloria/${d}`, JSON.parse(readFileSync(join(nm, d, 'package.json'), 'utf8')).version]));
+    const stale = [];
+    for (const d of readdirSync(nm)) {
+      const pj = JSON.parse(readFileSync(join(nm, d, 'package.json'), 'utf8'));
+      for (const [dep, range] of Object.entries(pj.peerDependencies ?? {})) {
+        if (versions[dep] && !semver.satisfies(versions[dep], range)) stale.push(`${pj.name} wants ${dep}@${range}, got ${versions[dep]}`);
+      }
+    }
+    check('every @grafloria peer range accepts the version packed beside it', stale.join('; ') || 'none', 'none');
+  }
 
   console.log('\npackaging: esbuild, production settings (respects sideEffects)');
   run(
